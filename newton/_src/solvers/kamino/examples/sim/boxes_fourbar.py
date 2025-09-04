@@ -13,12 +13,12 @@ from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.core.types import float32, vec6f
 from newton._src.solvers.kamino.examples import (
     get_examples_data_hdf5_path,
-    print_frame
+    print_frame,
 )
 from newton._src.solvers.kamino.models import get_primitives_usd_assets_path
 from newton._src.solvers.kamino.models.builders import (
     add_ground_geom,
-    build_boxes_fourbar
+    build_boxes_fourbar,
 )
 from newton._src.solvers.kamino.simulation.simulator import Simulator
 from newton._src.solvers.kamino.utils.io import hdf5
@@ -325,7 +325,6 @@ class BoxesFourbarExample:
                     # Box dimensions: params = [depth, width, height, 0]
                     self.box_dimensions.append((params[0], params[1], params[2]))
         
-        print(f"Extracted {len(self.box_dimensions)} box geometries and ground plane")
 
     def capture(self):
         """Capture CUDA graph if available."""
@@ -355,19 +354,8 @@ class BoxesFourbarExample:
         try:
             body_poses = self.sim.model_data.bodies.q_i.numpy()
             
-            # Debug: Print positions to check if they're inside ground plane
-            if self.sim_time < 0.1 and len(body_poses) > 0:  # Print for first few frames
-                print(f"Frame {self.sim_time:.3f} - Box positions:")
-                for i, pose in enumerate(body_poses):
-                    print(f"  Box {i+1}: z = {pose[2]:.3f}")
-                print(f"Ground plane: z = -0.5 (extends from -1.0 to 0.0)")
-                if any(pose[2] < 0.0 for pose in body_poses):
-                    print("⚠️  WARNING: Some boxes are below z=0.0 (inside ground plane!)")
-                else:
-                    print("✅ All boxes are above ground plane")
-            
             # Render each box using log_shapes
-            for i, (dimensions, color) in enumerate(zip(self.box_dimensions, self.box_colors)):
+            for i, (dimensions, color) in enumerate(zip(self.box_dimensions, self.box_colors, strict=False)):
                 if i < len(body_poses):
                     # Convert kamino transformf to warp transform
                     pose = body_poses[i]
@@ -396,30 +384,24 @@ class BoxesFourbarExample:
 
         # Render the ground plane from kamino
         if self.ground_info:
-            # For the ground plane, use the offset directly as it defines the position
-            # From the kamino builder: offset=transformf(0.0, 0.0, -0.5, 0.0, 0.0, 0.0, 1.0)
-            # This should place the ground plane at z = -0.5
             ground_offset = self.ground_info['offset']
-            # kamino transformf format: [x, y, z, qx, qy, qz, qw]
             ground_pos = wp.vec3(float(ground_offset[0]), float(ground_offset[1]), float(ground_offset[2]))
-            ground_quat = wp.quat(float(ground_offset[3]), float(ground_offset[4]), 
+            ground_quat = wp.quat(float(ground_offset[3]), float(ground_offset[4]),
                                 float(ground_offset[5]), float(ground_offset[6]))
             ground_transform = wp.transform(ground_pos, ground_quat)
-            
-            # Ground plane positioned correctly at z = -0.5 (extends from -1.0 to 0.0)
-            
+
             # Convert ground plane dimensions to half-extents
-            # Kamino: BoxShape(20.0, 20.0, 1.0) = full dimensions  
+            # Kamino: BoxShape(20.0, 20.0, 1.0) = full dimensions
             # Newton: expects (10.0, 10.0, 0.5) = half-extents
             ground_half_extents = (
                 self.ground_info['dimensions'][0]/2,  # 20.0 -> 10.0
-                self.ground_info['dimensions'][1]/2,  # 20.0 -> 10.0  
+                self.ground_info['dimensions'][1]/2,  # 20.0 -> 10.0
                 self.ground_info['dimensions'][2]/2   # 1.0 -> 0.5
             )
-            
+
             # Ground plane color (gray)
             ground_color = wp.array([wp.vec3(0.7, 0.7, 0.7)], dtype=wp.vec3)
-            
+
             self.viewer.log_shapes(
                 "/fourbar/ground",
                 newton.GeoType.BOX,
@@ -497,5 +479,4 @@ if __name__ == "__main__":
             yaw = -261.3
             viewer.set_camera(camera_pos, pitch, yaw)
         
-        print("Starting viewer loop...")
         newton.examples.run(example)

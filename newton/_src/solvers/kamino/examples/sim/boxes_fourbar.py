@@ -277,23 +277,11 @@ class BoxesFourbarExample:
         self.sim = Simulator(builder=builder, device=device)
         self.sim.set_control_callback(control_callback)
 
-        # Create a simple newton model just for the viewer (with ground plane)
-        newton_builder = newton.ModelBuilder()
-        newton_builder.add_ground_plane()
-        newton_model = newton_builder.finalize()
-        self.viewer.set_model(newton_model)
+        # Don't set a newton model - we'll render everything manually using log_shapes
+        self.viewer.set_model(None)
 
-        # Define box dimensions (from build_boxes_fourbar function)
-        # Box 1: horizontal bar (d_1=0.1, w_1=0.01, h_1=0.01)
-        # Box 2: vertical bar (d_2=0.01, w_2=0.01, h_2=0.1)  
-        # Box 3: horizontal bar (d_3=0.1, w_3=0.01, h_3=0.01)
-        # Box 4: vertical bar (d_4=0.01, w_4=0.01, h_4=0.1)
-        self.box_dimensions = [
-            (0.1, 0.01, 0.01),  # Box 1 - horizontal
-            (0.01, 0.01, 0.1),  # Box 2 - vertical
-            (0.1, 0.01, 0.01),  # Box 3 - horizontal
-            (0.01, 0.01, 0.1),  # Box 4 - vertical
-        ]
+        # Extract geometry information from the kamino simulator
+        self.extract_geometry_info()
 
         # Define diverse colors for each box
         self.box_colors = [
@@ -310,6 +298,34 @@ class BoxesFourbarExample:
         
         # Don't capture graphs initially to avoid CUDA stream conflicts
         self.graph = None
+
+    def extract_geometry_info(self):
+        """Extract geometry information from the kamino simulator."""
+        # Get collision geometry information from the simulator
+        cgeom_model = self.sim.model.cgeoms
+        
+        self.box_dimensions = []
+        self.ground_info = None
+        
+        # Extract box dimensions and ground plane info from collision geometries
+        for i in range(cgeom_model.num_geoms):
+            bid = cgeom_model.bid.numpy()[i]  # Body ID (-1 for static/ground)
+            sid = cgeom_model.sid.numpy()[i]  # Shape ID (5 = BOX from SHAPE_BOX constant)
+            params = cgeom_model.params.numpy()[i]  # Shape parameters
+            offset = cgeom_model.offset.numpy()[i]  # Geometry offset
+            
+            if sid == 5:  # BOX shape (SHAPE_BOX = 5)
+                if bid == -1:  # Ground plane (static body)
+                    # Ground plane: params = [depth, width, height, 0]
+                    self.ground_info = {
+                        'dimensions': (params[0], params[1], params[2]),  # depth, width, height
+                        'offset': offset  # position and orientation
+                    }
+                else:  # Regular box bodies
+                    # Box dimensions: params = [depth, width, height, 0]
+                    self.box_dimensions.append((params[0], params[1], params[2]))
+        
+        print(f"Extracted {len(self.box_dimensions)} box geometries and ground plane")
 
     def capture(self):
         """Capture CUDA graph if available."""
@@ -339,13 +355,17 @@ class BoxesFourbarExample:
         try:
             body_poses = self.sim.model_data.bodies.q_i.numpy()
             
-            # Debug: print body poses info for first few frames
-            if self.sim_time < 0.1:
-                print(f"Number of bodies: {len(body_poses)}")
-                print(f"Body poses shape: {body_poses.shape}")
-                if len(body_poses) > 0:
-                    print(f"First body pose: {body_poses[0]}")
-
+            # Debug: Print positions to check if they're inside ground plane
+            if self.sim_time < 0.1 and len(body_poses) > 0:  # Print for first few frames
+                print(f"Frame {self.sim_time:.3f} - Box positions:")
+                for i, pose in enumerate(body_poses):
+                    print(f"  Box {i+1}: z = {pose[2]:.3f}")
+                print(f"Ground plane: z = -0.5 (extends from -1.0 to 0.0)")
+                if any(pose[2] < 0.0 for pose in body_poses):
+                    print("⚠️  WARNING: Some boxes are below z=0.0 (inside ground plane!)")
+                else:
+                    print("✅ All boxes are above ground plane")
+            
             # Render each box using log_shapes
             for i, (dimensions, color) in enumerate(zip(self.box_dimensions, self.box_colors)):
                 if i < len(body_poses):
@@ -356,22 +376,57 @@ class BoxesFourbarExample:
                     quaternion = wp.quat(float(pose[3]), float(pose[4]), float(pose[5]), float(pose[6]))
                     transform = wp.transform(position, quaternion)
 
+                    # Convert kamino full dimensions to newton half-extents
+                    # Kamino: BoxShape(depth, width, height) = full dimensions
+                    # Newton: expects (half_depth, half_width, half_height)
+                    half_extents = (dimensions[0]/2, dimensions[1]/2, dimensions[2]/2)
+
                     # Log the box shape
                     self.viewer.log_shapes(
                         f"/fourbar/box_{i+1}",
                         newton.GeoType.BOX,
-                        dimensions,
+                        half_extents,
                         wp.array([transform], dtype=wp.transform),
                         color,
                     )
-                    
-                    # Debug: print transform info for first few frames
-                    if self.sim_time < 0.1:
-                        print(f"Box {i+1}: pos={position}, quat={quaternion}")
 
         except Exception as e:
             print(f"Error accessing body poses: {e}")
             print(f"Available attributes: {dir(self.sim.model_data.bodies)}")
+
+        # Render the ground plane from kamino
+        if self.ground_info:
+            # For the ground plane, use the offset directly as it defines the position
+            # From the kamino builder: offset=transformf(0.0, 0.0, -0.5, 0.0, 0.0, 0.0, 1.0)
+            # This should place the ground plane at z = -0.5
+            ground_offset = self.ground_info['offset']
+            # kamino transformf format: [x, y, z, qx, qy, qz, qw]
+            ground_pos = wp.vec3(float(ground_offset[0]), float(ground_offset[1]), float(ground_offset[2]))
+            ground_quat = wp.quat(float(ground_offset[3]), float(ground_offset[4]), 
+                                float(ground_offset[5]), float(ground_offset[6]))
+            ground_transform = wp.transform(ground_pos, ground_quat)
+            
+            # Ground plane positioned correctly at z = -0.5 (extends from -1.0 to 0.0)
+            
+            # Convert ground plane dimensions to half-extents
+            # Kamino: BoxShape(20.0, 20.0, 1.0) = full dimensions  
+            # Newton: expects (10.0, 10.0, 0.5) = half-extents
+            ground_half_extents = (
+                self.ground_info['dimensions'][0]/2,  # 20.0 -> 10.0
+                self.ground_info['dimensions'][1]/2,  # 20.0 -> 10.0  
+                self.ground_info['dimensions'][2]/2   # 1.0 -> 0.5
+            )
+            
+            # Ground plane color (gray)
+            ground_color = wp.array([wp.vec3(0.7, 0.7, 0.7)], dtype=wp.vec3)
+            
+            self.viewer.log_shapes(
+                "/fourbar/ground",
+                newton.GeoType.BOX,
+                ground_half_extents,
+                wp.array([ground_transform], dtype=wp.transform),
+                ground_color,
+            )
 
         self.viewer.end_frame()
 
@@ -433,4 +488,14 @@ if __name__ == "__main__":
 
         # Create and run example
         example = BoxesFourbarExample(viewer, load_from_usd=args.load_from_usd)
+        
+        # Set initial camera position for better view of the fourbar mechanism
+        if hasattr(viewer, 'set_camera'):
+            # Position camera to get a good view of the fourbar mechanism
+            camera_pos = wp.vec3(0.161, -1.449, 0.303)
+            pitch = -8.5
+            yaw = -261.3
+            viewer.set_camera(camera_pos, pitch, yaw)
+        
+        print("Starting viewer loop...")
         newton.examples.run(example)

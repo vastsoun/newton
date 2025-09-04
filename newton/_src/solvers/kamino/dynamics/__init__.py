@@ -2,17 +2,17 @@
 # KAMINO: Dual Dynamics Module
 ###########################################################################
 
-from .delassus import DelassusState, DelassusOperator
-from .dual import DualProblemSettings, DualProblemState, DualProblem
+from .delassus import DelassusData, DelassusOperator
+from .dual import DualProblemSettings, DualProblemData, DualProblem
 
 ###
 # Module interface
 ###
 
 __all__ = [
-    "DelassusState",
+    "DelassusData",
     "DelassusOperator",
     "DualProblemSettings",
-    "DualProblemState",
+    "DualProblemData",
     "DualProblem",
 ]

@@ -8,7 +8,7 @@ import warp as wp
 
 from newton._src.solvers.kamino.core.types import int32, float32, vec2i, vec3f, vec4f, vec6f, mat63f
 from newton._src.solvers.kamino.core.model import Model, ModelData
-from newton._src.solvers.kamino.geometry.contacts import ContactsState
+from newton._src.solvers.kamino.geometry.contacts import ContactsData
 from newton._src.solvers.kamino.kinematics.limits import LimitsData
 from newton._src.solvers.kamino.kinematics.jacobians import DenseSystemJacobiansData
 
@@ -394,7 +394,7 @@ def compute_constraint_body_wrenches(
     model: Model,
     state: ModelData,
     limits: LimitsData,
-    contacts: ContactsState,
+    contacts: ContactsData,
     jacobians: DenseSystemJacobiansData,
     lambdas_offsets: wp.array(dtype=int32),
     lambdas_data: wp.array(dtype=float32),

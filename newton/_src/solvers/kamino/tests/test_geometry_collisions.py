@@ -123,10 +123,10 @@ class TestGeometryCollisions(unittest.TestCase):
             print(f"collisions.cmodel.wid (size={len(collisions.cmodel.wid)}):\n{collisions.cmodel.wid}")
             print(f"collisions.cmodel.pairid (size={len(collisions.cmodel.pairid)}):\n{collisions.cmodel.pairid}")
             print(f"collisions.cmodel.geom_pair (size={len(collisions.cmodel.geom_pair)}):\n{collisions.cmodel.geom_pair}")
-            print(f"collisions.cstate.model_num_collisions (size={len(collisions.cstate.model_num_collisions)}):\n{collisions.cstate.model_num_collisions}")
-            print(f"collisions.cstate.world_num_collisions (size={len(collisions.cstate.world_num_collisions)}):\n{collisions.cstate.world_num_collisions}")
-            print(f"collisions.cstate.wid (size={len(collisions.cstate.wid)}):\n{collisions.cstate.wid}")
-            print(f"collisions.cstate.geom_pair (size={len(collisions.cstate.geom_pair)}):\n{collisions.cstate.geom_pair}")
+            print(f"collisions.cdata.model_num_collisions (size={len(collisions.cdata.model_num_collisions)}):\n{collisions.cdata.model_num_collisions}")
+            print(f"collisions.cdata.world_num_collisions (size={len(collisions.cdata.world_num_collisions)}):\n{collisions.cdata.world_num_collisions}")
+            print(f"collisions.cdata.wid (size={len(collisions.cdata.wid)}):\n{collisions.cdata.wid}")
+            print(f"collisions.cdata.geom_pair (size={len(collisions.cdata.geom_pair)}):\n{collisions.cdata.geom_pair}")
 
         # Check collision container allocations
         self.assertLessEqual(collisions.cmodel.num_model_geom_pairs, max_geom_pairs)
@@ -138,10 +138,10 @@ class TestGeometryCollisions(unittest.TestCase):
         self.assertEqual(len(collisions.cmodel.wid), num_collision_pairs)
         self.assertEqual(len(collisions.cmodel.pairid), num_collision_pairs)
         self.assertEqual(len(collisions.cmodel.geom_pair), num_collision_pairs)
-        self.assertEqual(len(collisions.cstate.model_num_collisions), 1)
-        self.assertEqual(len(collisions.cstate.world_num_collisions), num_worlds)
-        self.assertEqual(len(collisions.cstate.wid), num_collision_pairs)
-        self.assertEqual(len(collisions.cstate.geom_pair), num_collision_pairs)
+        self.assertEqual(len(collisions.cdata.model_num_collisions), 1)
+        self.assertEqual(len(collisions.cdata.world_num_collisions), num_worlds)
+        self.assertEqual(len(collisions.cdata.wid), num_collision_pairs)
+        self.assertEqual(len(collisions.cdata.geom_pair), num_collision_pairs)
 
 
 ###

@@ -100,12 +100,12 @@ from .core.builder import (
 
 from .geometry.collisions import (
     CollisionsModel,
-    CollisionsState,
+    CollisionsData,
     Collisions
 )
 
 from .geometry.contacts import (
-    ContactsState,
+    ContactsData,
     Contacts,
 )
 
@@ -119,12 +119,12 @@ from .kinematics.jacobians import (
 )
 
 from .dynamics.delassus import (
-    DelassusState,
+    DelassusData,
     DelassusOperator,
 )
 
 from .dynamics.dual import (
-    DualProblemState,
+    DualProblemData,
     DualProblem,
 )
 
@@ -172,12 +172,12 @@ __all__ = [
     "Control",
     "ModelDataInfo", "ModelData", "ModelInfo", "Model",
     "WorldDescriptor", "ModelBuilder",
-    "CollisionsModel", "CollisionsState", "Collisions",
-    "ContactsState", "Contacts",
+    "CollisionsModel", "CollisionsData", "Collisions",
+    "ContactsData", "Contacts",
     "CollisionDetector",
     "DenseSystemJacobiansData", "DenseSystemJacobians",
-    "DelassusState", "DelassusOperator",
-    "DualProblemState", "DualProblem",
+    "DelassusData", "DelassusOperator",
+    "DualProblemData", "DualProblem",
     "padmm",
     "Simulator",
     "printmatrix", "printvector",

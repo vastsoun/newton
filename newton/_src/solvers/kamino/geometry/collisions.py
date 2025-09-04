@@ -22,7 +22,7 @@ from newton._src.solvers.kamino.utils import logger as msg
 __all__ = [
     "make_collision_pairs",
     "CollisionsModel",
-    "CollisionsState",
+    "CollisionsData",
     "Collisions",
 ]
 
@@ -190,7 +190,7 @@ class CollisionsModel:
         """Geometry indices of each collision pair. Shape of ``(sum(ncp_w),)`` and type :class:`vec2i`."""
 
 
-class CollisionsState:
+class CollisionsData:
     def __init__(self):
         self.model_num_collisions: wp.array(dtype=int32) | None = None
         """Number of collisions detected across all worlds in the model. Shape of ``(1,)`` and type :class:`int32`."""
@@ -219,7 +219,7 @@ class Collisions:
 
         # Collision data containers
         self.cmodel: CollisionsModel = CollisionsModel()
-        self.cstate: CollisionsState = CollisionsState()
+        self.cdata: CollisionsData = CollisionsData()
 
         # Perofrm memory allocation if max_contacts is specified
         if builder is not None:
@@ -251,23 +251,23 @@ class Collisions:
             self.cmodel.geom_pair = wp.array(model_nxn_geom_pair, dtype=vec2i)
 
             # Allocate the collision state data
-            self.cstate.model_num_collisions = wp.zeros(shape=(1,), dtype=int32)
-            self.cstate.world_num_collisions = wp.zeros(shape=(num_worlds,), dtype=int32)
-            self.cstate.wid = wp.zeros(shape=(self.cmodel.num_model_geom_pairs,), dtype=int32)
-            self.cstate.geom_pair = wp.zeros(shape=(self.cmodel.num_model_geom_pairs,), dtype=vec2i)
+            self.cdata.model_num_collisions = wp.zeros(shape=(1,), dtype=int32)
+            self.cdata.world_num_collisions = wp.zeros(shape=(num_worlds,), dtype=int32)
+            self.cdata.wid = wp.zeros(shape=(self.cmodel.num_model_geom_pairs,), dtype=int32)
+            self.cdata.geom_pair = wp.zeros(shape=(self.cmodel.num_model_geom_pairs,), dtype=vec2i)
 
     def clear(self):
         """
         Clears the active collision count.
         """
-        self.cstate.model_num_collisions.zero_()
-        self.cstate.world_num_collisions.zero_()
+        self.cdata.model_num_collisions.zero_()
+        self.cdata.world_num_collisions.zero_()
 
     def zero(self):
         """
         Clears the active collision count.
         """
-        self.cstate.model_num_collisions.zero_()
-        self.cstate.world_num_collisions.zero_()
-        self.cstate.wid.zero_()
-        self.cstate.geom_pair.zero_()
+        self.cdata.model_num_collisions.zero_()
+        self.cdata.world_num_collisions.zero_()
+        self.cdata.wid.zero_()
+        self.cdata.geom_pair.zero_()

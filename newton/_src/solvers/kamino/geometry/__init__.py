@@ -2,8 +2,8 @@
 # KAMINO: Collisions Module
 ###########################################################################
 
-from .collisions import CollisionsModel, CollisionsState, Collisions
-from .contacts import ContactsState, Contacts
+from .collisions import CollisionsModel, CollisionsData, Collisions
+from .contacts import ContactsData, Contacts
 from .detector import CollisionDetector
 
 ###
@@ -12,9 +12,9 @@ from .detector import CollisionDetector
 
 __all__ = [
     "CollisionsModel",
-    "CollisionsState",
+    "CollisionsData",
     "Collisions",
-    "ContactsState",
+    "ContactsData",
     "Contacts",
     "CollisionDetector",
 ]

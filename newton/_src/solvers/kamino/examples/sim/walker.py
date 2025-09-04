@@ -269,8 +269,8 @@ if __name__ == "__main__":
 
                 # msg.warning(f"cgeoms.offset :\n{sim.model.cgeoms.offset}")
                 # msg.warning(f"cgeoms.pose :\n{sim.model_data.cgeoms.pose}")
-                # msg.warning(f"collisions.model_num_collisions :\n{sim.collision_detector.collisions.cstate.model_num_collisions}")
-                # msg.warning(f"collisions.geom_pair :\n{sim.collision_detector.collisions.cstate.geom_pair}")
+                # msg.warning(f"collisions.model_num_collisions :\n{sim.collision_detector.collisions.cdata.model_num_collisions}")
+                # msg.warning(f"collisions.geom_pair :\n{sim.collision_detector.collisions.cdata.geom_pair}")
                 # msg.warning(f"contacts.model_num_collisions :\n{sim.contacts.data.model_num_contacts}")
                 # msg.warning(f"contacts.gapfunc :\n{sim.contacts.data.gapfunc}")
 

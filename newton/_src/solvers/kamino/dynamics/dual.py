@@ -17,7 +17,7 @@ from newton._src.solvers.kamino.core.math import UNIT_Z, screw_linear, screw_ang
 from newton._src.solvers.kamino.core.model import ModelSize, ModelData, Model
 from newton._src.solvers.kamino.linalg.cholesky import CholeskyFactorizer
 from newton._src.solvers.kamino.kinematics.limits import LimitsData, Limits
-from newton._src.solvers.kamino.geometry.contacts import ContactsState, Contacts
+from newton._src.solvers.kamino.geometry.contacts import ContactsData, Contacts
 from newton._src.solvers.kamino.kinematics.jacobians import DenseSystemJacobians, DenseSystemJacobiansData
 from newton._src.solvers.kamino.dynamics.delassus import DelassusOperator
 
@@ -32,7 +32,7 @@ __all__ = [
     "build_free_velocity",
     "DualProblemSettings",
     "DualProblemConfig",
-    "DualProblemState",
+    "DualProblemData",
     "DualProblem",
 ]
 
@@ -95,7 +95,7 @@ class DualProblemSettings:
         return config
 
 
-class DualProblemState:
+class DualProblemData:
     """
     A container to hold the the dual problem of forward dynamics.
     """
@@ -638,7 +638,7 @@ def _build_free_velocity(
 def build_nonlinear_generalized_force(
     model: Model,
     state: ModelData,
-    problem: DualProblemState
+    problem: DualProblemData
 ):
     """
     Builds the generalized free-velocity vector (i.e. unconstrained) `u_f`.
@@ -665,7 +665,7 @@ def build_nonlinear_generalized_force(
 def build_generalized_free_velocity(
     model: Model,
     state: ModelData,
-    problem: DualProblemState
+    problem: DualProblemData
 ):
     """
     Builds the generalized free-velocity vector (i.e. unconstrained) `u_f`.
@@ -695,8 +695,8 @@ def build_free_velocity_bias(
     model: Model,
     state: ModelData,
     limits: LimitsData,
-    contacts: ContactsState,
-    problem: DualProblemState
+    contacts: ContactsData,
+    problem: DualProblemData
 ):
     """
     Builds the joint constraint section of the free-velocity vector.
@@ -864,7 +864,7 @@ class DualProblem:
         self._delassus: DelassusOperator | None = None
         """The Delassus operator interface container."""
 
-        self._data: DualProblemState = DualProblemState()
+        self._data: DualProblemData = DualProblemData()
         """The dual problem state data container bundling are relevant memory allocations."""
 
         # Allocate the dual problem state if a model is provided
@@ -914,7 +914,7 @@ class DualProblem:
         return self._delassus
 
     @property
-    def data(self) -> DualProblemState:
+    def data(self) -> DualProblemData:
         """
         Returns the dual problem state data container.
         """
@@ -1026,7 +1026,7 @@ class DualProblem:
             model: Model,
             state: ModelData,
             limits: LimitsData,
-            contacts: ContactsState,
+            contacts: ContactsData,
             jacobians: DenseSystemJacobiansData,
             reset_to_zero: bool = True,
     ):

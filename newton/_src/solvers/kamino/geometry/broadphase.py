@@ -8,7 +8,7 @@ import warp as wp
 
 from newton._src.solvers.kamino.core.types import int32, float32, vec2i, mat83f, transformf
 from newton._src.solvers.kamino.core.geometry import CollisionGeometriesModel, CollisionGeometriesData
-from newton._src.solvers.kamino.geometry.collisions import CollisionsModel, CollisionsState
+from newton._src.solvers.kamino.geometry.collisions import CollisionsModel, CollisionsData
 from newton._src.solvers.kamino.core.bv import has_bs_overlap, has_aabb_overlap
 
 
@@ -116,7 +116,7 @@ def _nxn_broadphase(
 # Kernel Launcher
 ###
 
-def nxn_broadphase(gmodel: CollisionGeometriesModel, gstate: CollisionGeometriesData, cmodel: CollisionsModel, cstate: CollisionsState):
+def nxn_broadphase(gmodel: CollisionGeometriesModel, gstate: CollisionGeometriesData, cmodel: CollisionsModel, cdata: CollisionsData):
     # we need to figure out how to keep the overhead of this small - not launching anything
     # for pair types without collisions, as well as updating the launch dimensions.
     wp.launch(
@@ -132,9 +132,9 @@ def nxn_broadphase(gmodel: CollisionGeometriesModel, gstate: CollisionGeometries
             cmodel.pairid,
             cmodel.geom_pair,
             # Outputs:
-            cstate.model_num_collisions,
-            cstate.world_num_collisions,
-            cstate.wid,
-            cstate.geom_pair
+            cdata.model_num_collisions,
+            cdata.world_num_collisions,
+            cdata.wid,
+            cdata.geom_pair
         ]
     )

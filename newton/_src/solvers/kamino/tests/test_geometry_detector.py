@@ -83,12 +83,12 @@ class TestGeometryCollisionDetector(unittest.TestCase):
 
         # Execute brute-force (NxN) broadphase
         with wp.ScopedTimer("nxn_broadphase"):
-            nxn_broadphase(model.cgeoms, state.cgeoms, collisions.cmodel, collisions.cstate)
+            nxn_broadphase(model.cgeoms, state.cgeoms, collisions.cmodel, collisions.cdata)
 
         # Check collision output
-        self.assertEqual(collisions.cstate.model_num_collisions.numpy()[0], num_worlds * self.num_collisions)
+        self.assertEqual(collisions.cdata.model_num_collisions.numpy()[0], num_worlds * self.num_collisions)
         for i in range(num_worlds):
-            self.assertEqual(collisions.cstate.world_num_collisions.numpy()[i], self.num_collisions)
+            self.assertEqual(collisions.cdata.world_num_collisions.numpy()[i], self.num_collisions)
 
         # Optional verbose output
         if self.verbose:
@@ -99,10 +99,10 @@ class TestGeometryCollisionDetector(unittest.TestCase):
             print(f"collisions.cmodel.wid (size={len(collisions.cmodel.wid)}): {collisions.cmodel.wid}")
             print(f"collisions.cmodel.pairid (size={len(collisions.cmodel.pairid)}): {collisions.cmodel.pairid}")
             print(f"collisions.cmodel.geom_pair (size={len(collisions.cmodel.geom_pair)}):\n{collisions.cmodel.geom_pair}")
-            print(f"collisions.cstate.model_num_collisions (size={len(collisions.cstate.model_num_collisions)}): {collisions.cstate.model_num_collisions}")
-            print(f"collisions.cstate.world_num_collisions (size={len(collisions.cstate.world_num_collisions)}): {collisions.cstate.world_num_collisions}")
-            print(f"collisions.cstate.wid (size={len(collisions.cstate.wid)}): {collisions.cstate.wid}")
-            print(f"collisions.cstate.geom_pair (size={len(collisions.cstate.geom_pair)}):\n{collisions.cstate.geom_pair}")
+            print(f"collisions.cdata.model_num_collisions (size={len(collisions.cdata.model_num_collisions)}): {collisions.cdata.model_num_collisions}")
+            print(f"collisions.cdata.world_num_collisions (size={len(collisions.cdata.world_num_collisions)}): {collisions.cdata.world_num_collisions}")
+            print(f"collisions.cdata.wid (size={len(collisions.cdata.wid)}): {collisions.cdata.wid}")
+            print(f"collisions.cdata.geom_pair (size={len(collisions.cdata.geom_pair)}):\n{collisions.cdata.geom_pair}")
 
     def test_03_primitive_narrowphase(self):
         # Create and set up a model builder
@@ -122,7 +122,7 @@ class TestGeometryCollisionDetector(unittest.TestCase):
         collisions = Collisions(builder=builder, device=self.default_device)
 
         # Execute brute-force (NxN) broadphase
-        nxn_broadphase(model.cgeoms, state.cgeoms, collisions.cmodel, collisions.cstate)
+        nxn_broadphase(model.cgeoms, state.cgeoms, collisions.cmodel, collisions.cdata)
 
         # Create a contacts container
         capacity = [self.max_contacts] * num_worlds  # Custom capacity for each world

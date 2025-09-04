@@ -16,7 +16,7 @@ from newton._src.solvers.kamino.core.types import (int32, vec2f, vec4f, mat33f, 
 ###
 
 __all__ = [
-    "ContactsState",
+    "ContactsData",
     "Contacts"
 ]
 
@@ -49,7 +49,7 @@ W_I = wp.constant(mat63f(
 # Containers
 ###
 
-class ContactsState:
+class ContactsData:
     """
     An SoA-based container to hold time-varying contact data of a set of contact elements.
 
@@ -158,7 +158,7 @@ class Contacts:
             self._default_max_world_contacts = default_max_contacts
 
         # Contacts data container
-        self._data: ContactsState = ContactsState()
+        self._data: ContactsData = ContactsData()
 
         # Perofrm memory allocation if max_contacts is specified
         if capacity is not None:
@@ -185,7 +185,7 @@ class Contacts:
         self._default_max_world_contacts = max_contacts
 
     @property
-    def data(self) -> ContactsState:
+    def data(self) -> ContactsData:
         """
         Returns the managed contacts data container.
         """

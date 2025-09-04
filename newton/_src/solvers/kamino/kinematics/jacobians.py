@@ -34,7 +34,7 @@ from newton._src.solvers.kamino.kinematics.joints import (
     S_dofs_free,
 )
 from newton._src.solvers.kamino.kinematics.limits import LimitsData, Limits
-from newton._src.solvers.kamino.geometry.contacts import ContactsState, Contacts
+from newton._src.solvers.kamino.geometry.contacts import ContactsData, Contacts
 
 
 ###
@@ -670,7 +670,7 @@ def build_limit_jacobians(
 def build_contact_jacobians(
     model: Model,
     state: ModelData,
-    contacts: ContactsState,
+    contacts: ContactsData,
     jacobian_cts_offsets: wp.array,
     jacobian_cts_data: wp.array,
     reset_to_zero: bool = False
@@ -706,7 +706,7 @@ def build_jacobians(
     model: Model,
     state: ModelData,
     limits: LimitsData | None,
-    contacts: ContactsState | None,
+    contacts: ContactsData | None,
     jacobian_cts_offsets: wp.array,
     jacobian_cts_data: wp.array,
     jacobian_dofs_offsets: wp.array,
@@ -771,8 +771,8 @@ def build_jacobians(
 
     # Build the contact constraints Jacobians if a contacts data container is provided
     if contacts is not None:
-        if not isinstance(contacts, ContactsState):
-            raise TypeError(f"`contacts` is required to be of type `ContactsState` but got {type(contacts)}.")
+        if not isinstance(contacts, ContactsData):
+            raise TypeError(f"`contacts` is required to be of type `ContactsData` but got {type(contacts)}.")
         wp.launch(
             _build_contact_jacobians,
             dim=contacts.num_model_max_contacts,
@@ -923,7 +923,7 @@ class DenseSystemJacobians:
         model: Model,
         state: ModelData,
         limits: LimitsData,
-        contacts: ContactsState,
+        contacts: ContactsData,
         reset_to_zero: bool = True
     ):
         """

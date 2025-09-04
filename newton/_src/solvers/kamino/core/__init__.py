@@ -4,7 +4,7 @@
 
 from .state import State
 from .control import Control
-from .model import Model
+from .model import Model, ModelData
 from .builder import ModelBuilder
 
 
@@ -16,5 +16,6 @@ __all__ = [
     "State",
     "Control",
     "Model",
+    "ModelData",
     "ModelBuilder"
 ]

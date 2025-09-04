@@ -9,7 +9,7 @@ defined by the set of active constraints imposed on a constrained rigid multi-bo
 
 This module provides building-blocks to compute the Delassus operator in parallel across
 multiple worlds represented within a :class:`Model`. A set of Warp kernels that compute the
-Delassus matrix using various parallelization strategies The :class:`DelassusData` data
+Delassus matrix using various parallelization strategies The :class:`DelassusOperatorData` data
 structure to bundle the necessary data arrays, either by allocation or by references to
 existing arrays provided by the user. The :class:`DelassusOperator` class provides a
 high-level interface to encapsulate both the data representations as well as the relevant
@@ -76,7 +76,7 @@ from newton._src.solvers.kamino.kinematics.constraints import max_constraints_pe
 ###
 
 __all__ = [
-    "DelassusData",
+    "DelassusOperatorData",
     "DelassusOperator",
 ]
 
@@ -92,7 +92,7 @@ wp.set_module_options({"enable_backward": False})
 # Containers
 ###
 
-class DelassusData:
+class DelassusOperatorData:
     """
     A container to hold the time-varying data of the Delassus operator.
     """
@@ -346,7 +346,7 @@ class DelassusOperator:
         self._size: ModelSize | None = None
 
         # Initialize the Delassus state container
-        self._data: DelassusData = DelassusData()
+        self._data: DelassusOperatorData = DelassusOperatorData()
 
         # Declare the optional Cholesky factorization
         self._factorizer: CholeskyFactorizer = None
@@ -387,7 +387,7 @@ class DelassusOperator:
         return self._model_maxsize
 
     @property
-    def data(self) -> DelassusData:
+    def data(self) -> DelassusOperatorData:
         """
         Returns a reference to the flat Delassus matrix array.
         """

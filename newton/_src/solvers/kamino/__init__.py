@@ -119,7 +119,7 @@ from .kinematics.jacobians import (
 )
 
 from .dynamics.delassus import (
-    DelassusData,
+    DelassusOperatorData,
     DelassusOperator,
 )
 
@@ -176,7 +176,7 @@ __all__ = [
     "ContactsData", "Contacts",
     "CollisionDetector",
     "DenseSystemJacobiansData", "DenseSystemJacobians",
-    "DelassusData", "DelassusOperator",
+    "DelassusOperatorData", "DelassusOperator",
     "DualProblemData", "DualProblem",
     "padmm",
     "Simulator",

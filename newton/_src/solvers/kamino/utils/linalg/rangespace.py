@@ -48,16 +48,16 @@ def in_range_no_pivot(A: np.ndarray, b: np.ndarray, tol: float = 1e-12):
     - This procedure is less numerically robust than pivoted elimination.
     - Rank is computed as the number of nonzero rows (by `tol`) in the echelon form.
     """
-    A = np.asarray(A, dtype=float)
-    b = np.asarray(b, dtype=float)
+    tol = A.dtype.type(tol)
     if b.ndim == 1:
         b = b[:, None]
     if A.shape[0] != b.shape[0]:
         raise ValueError("A and b must have the same number of rows.")
+    if A.dtype != b.dtype:
+        raise ValueError("A and b must have the same dtype.")
 
     # Form augmented matrix [A | b]
-    UAb = np.concatenate([A, b], axis=1).astype(float, copy=True)
-
+    UAb = np.concatenate([A, b], axis=1)
     m, n_aug = UAb.shape
     n = n_aug - 1  # number of columns in A portion
 
@@ -86,11 +86,50 @@ def in_range_no_pivot(A: np.ndarray, b: np.ndarray, tol: float = 1e-12):
     return (rank_A == rank_Ab), (rank_A, rank_Ab), UAb
 
 
+def in_range_via_lu(A: np.ndarray, b: np.ndarray, tol: float = 1e-12):
+    """
+    Decide if b ∈ R(A) using the LU viewpoint:
+      - Perform *no-pivot* LU (i.e., Gaussian elimination steps).
+      - Apply the same row ops to b via y = L^{-1} b (forward-sub).
+      - Inspect rows where U is (numerically) zero:
+            if such a row has |y_i| > tol, then [A|b] has larger rank ⇒ b ∉ R(A).
+
+    Returns:
+        in_range: bool
+        ranks: (rank(A), rank([A|b]))
+        debug: dict with L, U, y
+    """
+    L, U = lu_nopiv(A, tol=tol)
+    y = forward_sub_unit_lower(L, b)
+
+    # Helper: row is (numerically) zero if all entries ≤ tol in magnitude
+    def zero_row(row):
+        return np.all(np.abs(row) <= tol)
+
+    m = U.shape[0]
+    zero_mask = np.array([zero_row(U[i, :]) for i in range(m)], dtype=bool)
+    rank_A = int(np.sum(~zero_mask))
+
+    # If a zero row in U has a nonzero y_i, then the augmented rank increases.
+    inconsistent = any(
+        z and (abs(y[i]) > tol if np.ndim(y) == 1 else np.any(np.abs(y[i, :]) > tol)) for i, z in enumerate(zero_mask)
+    )
+    rank_Ab = rank_A + (1 if inconsistent else 0)
+
+    return (not inconsistent), (rank_A, rank_Ab), {"L": L, "U": U, "y": y}
+
+
 # --- Example ---
 if __name__ == "__main__":
-    A = np.array([[1., 2.], [2., 4.], [3., 6.]])
-    b1 = np.array([3., 6., 9.])   # in the span
-    b2 = np.array([3., 6., 10.])  # not in the span
+    # dtype = np.float64
+    dtype = np.float32
 
-    print(in_range_no_pivot(A, b1)[0])  # True
-    print(in_range_no_pivot(A, b2)[0])  # False
+    A = np.array([[1.0, 2.0], [2.0, 4.0], [3.0, 6.0]], dtype=dtype)
+    print(f"\nA {A.shape}[{A.dtype}]:\n{A}\n")
+    b1 = np.array([3.0, 6.0, 9.0], dtype=dtype)  # in the span
+    print(f"\nb1 {b1.shape}[{b1.dtype}]:\n{b1}\n")
+    b2 = np.array([3.0, 6.0, 10.0], dtype=dtype)  # not in the span
+    print(f"\nb2 {b2.shape}[{b2.dtype}]:\n{b2}\n")
+
+    print(f"b1 ∈ range(A): {in_range_no_pivot(A, b1)[0]}")  # True
+    print(f"b2 ∈ range(A): {in_range_no_pivot(A, b2)[0]}")  # False

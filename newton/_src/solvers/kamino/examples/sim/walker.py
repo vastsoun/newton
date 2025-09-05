@@ -1,13 +1,16 @@
+import argparse
 import os
 import time
-import h5py
 
+import h5py
 import numpy as np
 import warp as wp
 
+import newton
+import newton.examples
+
 import newton._src.solvers.kamino.utils.logger as msg
-from newton._src.solvers.kamino.core.types import float32, vec3f, vec6f, mat33f, transformf
-from newton._src.solvers.kamino.core.math import R_x, R_y, R_z, screw
+from newton._src.solvers.kamino.core.types import float32, vec6f
 from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.utils.io import hdf5
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
@@ -15,18 +18,20 @@ from newton._src.solvers.kamino.simulation.simulator import Simulator
 from newton._src.solvers.kamino.utils.print import print_progress_bar
 from newton._src.solvers.kamino.utils.profile import get_device_info
 from newton._src.solvers.kamino.models import get_examples_usd_assets_path
-from newton._src.solvers.kamino.models.builders import (
-    add_ground_geom,
-    add_velocity_bias,
-    offset_builder,
-)
+# Note: Keeping imports for potential use in commented code sections
+# from newton._src.solvers.kamino.models.builders import (
+#     add_ground_geom,
+#     add_velocity_bias,
+#     offset_builder,
+# )
 from newton._src.solvers.kamino.examples import (
     get_examples_data_root_path,
     get_examples_data_hdf5_path,
     print_frame
 )
 
-from newton._src.solvers.kamino.tests.test_solvers_padmm import save_solver_info
+# Note: Keeping import for potential use in commented code sections
+# from newton._src.solvers.kamino.tests.test_solvers_padmm import save_solver_info
 
 
 ###
@@ -103,13 +108,9 @@ PADMM_INFO_PATH = os.path.join(get_examples_data_root_path(), "padmm")
 # Main function
 ###
 
-if __name__ == "__main__":
-
-    # TODO: load these from arguments
+def run_hdf5_mode(clear_warp_cache=True, use_cuda_graph=False, verbose=False):
+    """Run the simulation in HDF5 mode to save data to file."""
     # Application options
-    clear_warp_cache = True
-    use_cuda_graph = False
-    verbose = False
 
     # Clear the warp caches
     if clear_warp_cache:
@@ -328,3 +329,251 @@ if __name__ == "__main__":
     # Save the dataset
     msg.info("Saving all frames to HDF5...")
     renderer.save()
+
+
+class WalkerExample:
+    """ViewerGL example class for walker simulation."""
+
+    def __init__(self, viewer):
+        self.fps = 60
+        self.frame_dt = 1.0 / self.fps
+        self.sim_time = 0.0
+        self.sim_substeps = 10
+        self.sim_dt = self.frame_dt / self.sim_substeps
+
+        self.viewer = viewer
+
+        # Get the default warp device
+        device = wp.get_preferred_device()
+        device = wp.get_device(device)
+
+        # Create a single-instance system (always load from USD for walker)
+        msg.info("Constructing builder from imported USD ...")
+        importer = USDImporter()
+        builder: ModelBuilder = importer.import_from(source=USD_MODEL_PATH)
+
+        # Set gravity (disabled for walker as in original)
+        builder.gravity.enabled = False
+
+        # Print the collision masking of each geom (preserve original logging)
+        for i in range(len(builder.collision_geoms)):
+            msg.info(f"builder.cgeom{i}: group={builder.collision_geoms[i].group}, collides={builder.collision_geoms[i].collides}")
+
+        # Create a simulator
+        msg.info("Building the simulator...")
+        self.sim = Simulator(builder=builder, device=device)
+        self.sim.set_control_callback(control_callback)
+
+        # Don't set a newton model - we'll render everything manually using log_shapes
+        self.viewer.set_model(None)
+
+        # Extract geometry information from the kamino simulator
+        self.extract_geometry_info()
+
+        # Define colors for different parts of the walker
+        self.body_colors = [
+            wp.array([wp.vec3(0.9, 0.1, 0.3)], dtype=wp.vec3),  # Crimson Red
+            wp.array([wp.vec3(0.1, 0.7, 0.9)], dtype=wp.vec3),  # Cyan Blue
+            wp.array([wp.vec3(1.0, 0.5, 0.0)], dtype=wp.vec3),  # Orange
+            wp.array([wp.vec3(0.6, 0.2, 0.8)], dtype=wp.vec3),  # Purple
+            wp.array([wp.vec3(0.2, 0.8, 0.2)], dtype=wp.vec3),  # Green
+            wp.array([wp.vec3(0.8, 0.8, 0.2)], dtype=wp.vec3),  # Yellow
+            wp.array([wp.vec3(0.8, 0.2, 0.8)], dtype=wp.vec3),  # Magenta
+            wp.array([wp.vec3(0.5, 0.5, 0.5)], dtype=wp.vec3),  # Gray
+        ]
+
+        # Initialize the simulator with a warm-up step
+        self.sim.reset()
+
+        # Don't capture graphs initially to avoid CUDA stream conflicts
+        self.graph = None
+
+    def extract_geometry_info(self):
+        """Extract geometry information from the kamino simulator."""
+        # Get collision geometry information from the simulator
+        cgeom_model = self.sim.model.cgeoms
+
+        self.geometry_info = []
+
+        # Extract geometry info from collision geometries
+        for i in range(cgeom_model.num_geoms):
+            bid = cgeom_model.bid.numpy()[i]  # Body ID (-1 for static/ground)
+            sid = cgeom_model.sid.numpy()[i]  # Shape ID
+            params = cgeom_model.params.numpy()[i]  # Shape parameters
+            offset = cgeom_model.offset.numpy()[i]  # Geometry offset
+
+            # Store geometry information for rendering
+            geom_info = {
+                'body_id': bid,
+                'shape_id': sid,
+                'params': params,
+                'offset': offset
+            }
+            self.geometry_info.append(geom_info)
+
+    def capture(self):
+        """Capture CUDA graph if available."""
+        # For now, disable CUDA graph capture to avoid stream conflicts
+        # This can be re-enabled later if needed with proper stream management
+        self.graph = None
+
+    def simulate(self):
+        """Run simulation substeps."""
+        for _ in range(self.sim_substeps):
+            self.sim.step()
+
+    def step(self):
+        """Step the simulation."""
+        if self.graph:
+            wp.capture_launch(self.graph)
+        else:
+            self.simulate()
+
+        self.sim_time += self.frame_dt
+
+    def render(self):
+        """Render the current frame."""
+        self.viewer.begin_frame(self.sim_time)
+
+        # Extract body poses from the kamino simulator
+        try:
+            body_poses = self.sim.model_data.bodies.q_i.numpy()
+
+            # Render each geometry using log_shapes
+            for i, geom_info in enumerate(self.geometry_info):
+                bid = geom_info['body_id']
+                sid = geom_info['shape_id']
+                params = geom_info['params']
+                offset = geom_info['offset']
+
+                # Skip static geometries (ground plane, etc.)
+                if bid == -1:
+                    continue
+
+                # Get body pose if available
+                if bid < len(body_poses):
+                    # Convert kamino transformf to warp transform
+                    pose = body_poses[bid]
+                    # kamino transformf has [x, y, z, qx, qy, qz, qw] format
+                    position = wp.vec3(float(pose[0]), float(pose[1]), float(pose[2]))
+                    quaternion = wp.quat(float(pose[3]), float(pose[4]), float(pose[5]), float(pose[6]))
+                    body_transform = wp.transform(position, quaternion)
+
+                    # Apply geometry offset
+                    offset_pos = wp.vec3(float(offset[0]), float(offset[1]), float(offset[2]))
+                    offset_quat = wp.quat(float(offset[3]), float(offset[4]), float(offset[5]), float(offset[6]))
+                    offset_transform = wp.transform(offset_pos, offset_quat)
+
+                    # Combine body and offset transforms
+                    final_transform = wp.transform_multiply(body_transform, offset_transform)
+
+                    # Choose color based on body ID
+                    color_idx = bid % len(self.body_colors)
+                    color = self.body_colors[color_idx]
+
+                    # Render based on shape type
+                    if sid == 5:  # BOX shape (SHAPE_BOX = 5)
+                        # Convert kamino full dimensions to newton half-extents
+                        half_extents = (params[0]/2, params[1]/2, params[2]/2)
+
+                        self.viewer.log_shapes(
+                            f"/walker/body_{bid}_geom_{i}",
+                            newton.GeoType.BOX,
+                            half_extents,
+                            wp.array([final_transform], dtype=wp.transform),
+                            color,
+                        )
+                    elif sid == 1:  # SPHERE shape (SHAPE_SPHERE = 1)
+                        radius = params[0]
+
+                        self.viewer.log_shapes(
+                            f"/walker/body_{bid}_geom_{i}",
+                            newton.GeoType.SPHERE,
+                            radius,
+                            wp.array([final_transform], dtype=wp.transform),
+                            color,
+                        )
+                    elif sid == 2:  # CAPSULE shape (SHAPE_CAPSULE = 2)
+                        radius = params[0]
+                        half_height = params[1] / 2
+
+                        self.viewer.log_shapes(
+                            f"/walker/body_{bid}_geom_{i}",
+                            newton.GeoType.CAPSULE,
+                            (radius, half_height),
+                            wp.array([final_transform], dtype=wp.transform),
+                            color,
+                        )
+
+        except Exception as e:
+            print(f"Error accessing body poses: {e}")
+            print(f"Available attributes: {dir(self.sim.model_data.bodies)}")
+
+        self.viewer.end_frame()
+
+    def test(self):
+        """Test function for compatibility."""
+        pass
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Walker simulation example")
+    parser.add_argument(
+        "--mode",
+        choices=["hdf5", "viewer"],
+        default="viewer",
+        help="Simulation mode: 'hdf5' for data collection, 'viewer' for live visualization"
+    )
+    parser.add_argument("--clear-cache", action="store_true", default=True, help="Clear warp cache")
+    parser.add_argument("--cuda-graph", action="store_true", help="Use CUDA graphs")
+    parser.add_argument("--verbose", action="store_true", help="Enable verbose output")
+
+    # Add viewer arguments when in viewer mode
+    parser.add_argument("--viewer", choices=["gl", "usd", "rerun", "null"], default="gl", help="Viewer type")
+    parser.add_argument("--headless", action="store_true", help="Run in headless mode")
+    parser.add_argument("--device", type=str, help="Compute device")
+    parser.add_argument("--output-path", type=str, help="Output path for USD viewer")
+    parser.add_argument("--num-frames", type=int, default=1000, help="Number of frames for null/USD viewer")
+
+    args = parser.parse_args()
+
+    if args.mode == "hdf5":
+        msg.info("Running in HDF5 mode...")
+        run_hdf5_mode(
+            clear_warp_cache=args.clear_cache,
+            use_cuda_graph=args.cuda_graph,
+            verbose=args.verbose
+        )
+    elif args.mode == "viewer":
+        msg.info("Running in ViewerGL mode...")
+
+        # Set device if specified
+        if args.device:
+            wp.set_device(args.device)
+
+        # Create viewer based on type
+        if args.viewer == "gl":
+            viewer = newton.viewer.ViewerGL(headless=args.headless)
+        elif args.viewer == "usd":
+            if args.output_path is None:
+                raise ValueError("--output-path is required when using usd viewer")
+            viewer = newton.viewer.ViewerUSD(output_path=args.output_path, num_frames=args.num_frames)
+        elif args.viewer == "rerun":
+            viewer = newton.viewer.ViewerRerun()
+        elif args.viewer == "null":
+            viewer = newton.viewer.ViewerNull(num_frames=args.num_frames)
+        else:
+            raise ValueError(f"Invalid viewer: {args.viewer}")
+
+        # Create and run example
+        example = WalkerExample(viewer)
+
+        # Set initial camera position for better view of the walker
+        if hasattr(viewer, 'set_camera'):
+            # Position camera to get a good view of the walker
+            camera_pos = wp.vec3(2.0, -3.0, 1.5)
+            pitch = -20.0
+            yaw = 130.0
+            viewer.set_camera(camera_pos, pitch, yaw)
+
+        newton.examples.run(example)

@@ -1,9 +1,13 @@
+import argparse
 import os
 import time
-import h5py
 
+import h5py
 import numpy as np
 import warp as wp
+
+import newton
+import newton.examples
 
 import newton._src.solvers.kamino.utils.logger as msg
 from newton._src.solvers.kamino.core.types import float32, vec6f
@@ -15,13 +19,10 @@ from newton._src.solvers.kamino.utils.print import print_progress_bar
 from newton._src.solvers.kamino.utils.profile import get_device_info
 from newton._src.solvers.kamino.models import get_primitives_usd_assets_path
 from newton._src.solvers.kamino.models.builders import (
-    offset_builder,
-    add_ground_geom,
     build_box_pendulum_vertical
 )
 from newton._src.solvers.kamino.examples import (
     get_examples_data_hdf5_path,
-    get_examples_data_npy_path,
     print_frame
 )
 
@@ -96,14 +97,9 @@ RENDER_DATASET_PATH = os.path.join(get_examples_data_hdf5_path(), "box_pendulum.
 # Main function
 ###
 
-if __name__ == "__main__":
-
-    # TODO: load these from arguments
+def run_hdf5_mode(clear_warp_cache=True, use_cuda_graph=False, load_from_usd=True, verbose=False):
+    """Run the simulation in HDF5 mode to save data to file."""
     # Application options
-    clear_warp_cache = True
-    use_cuda_graph = False
-    load_from_usd = True
-    verbose = False
 
     # Clear the warp caches
     if clear_warp_cache:
@@ -225,3 +221,232 @@ if __name__ == "__main__":
     # Save the dataset
     msg.info("Saving all frames to HDF5...")
     renderer.save()
+
+
+class BoxPendulumExample:
+    """ViewerGL example class for box pendulum simulation."""
+
+    def __init__(self, viewer, load_from_usd=True):
+        self.fps = 60
+        self.frame_dt = 1.0 / self.fps
+        self.sim_time = 0.0
+        self.sim_substeps = 10
+        self.sim_dt = self.frame_dt / self.sim_substeps
+
+        self.viewer = viewer
+
+        # Get the default warp device
+        device = wp.get_preferred_device()
+        device = wp.get_device(device)
+
+        # Create a single-instance system
+        if load_from_usd:
+            msg.info("Constructing builder from imported USD ...")
+            importer = USDImporter()
+            builder: ModelBuilder = importer.import_from(source=USD_MODEL_PATH, load_static_geometry=True)
+        else:
+            msg.info("Constructing builder using generator ...")
+            builder = ModelBuilder()
+            build_box_pendulum_vertical(builder=builder, z_offset=0.7, ground=True)
+
+        # Set gravity
+        builder.gravity.enabled = True
+
+        # Create a simulator
+        msg.info("Building the simulator...")
+        self.sim = Simulator(builder=builder, device=device)
+        self.sim.set_control_callback(control_callback)
+
+        # Don't set a newton model - we'll render everything manually using log_shapes
+        self.viewer.set_model(None)
+
+        # Extract geometry information from the kamino simulator
+        self.extract_geometry_info()
+
+        # Define colors for the pendulum box
+        self.box_color = wp.array([wp.vec3(0.9, 0.1, 0.3)], dtype=wp.vec3)  # Crimson Red
+
+        # Initialize the simulator with a warm-up step
+        self.sim.reset()
+
+        # Don't capture graphs initially to avoid CUDA stream conflicts
+        self.graph = None
+
+    def extract_geometry_info(self):
+        """Extract geometry information from the kamino simulator."""
+        # Get collision geometry information from the simulator
+        cgeom_model = self.sim.model.cgeoms
+
+        self.box_dimensions = []
+        self.ground_info = None
+
+        # Extract box dimensions and ground plane info from collision geometries
+        for i in range(cgeom_model.num_geoms):
+            bid = cgeom_model.bid.numpy()[i]  # Body ID (-1 for static/ground)
+            sid = cgeom_model.sid.numpy()[i]  # Shape ID (5 = BOX from SHAPE_BOX constant)
+            params = cgeom_model.params.numpy()[i]  # Shape parameters
+            offset = cgeom_model.offset.numpy()[i]  # Geometry offset
+
+            if sid == 5:  # BOX shape (SHAPE_BOX = 5)
+                if bid == -1:  # Ground plane (static body)
+                    # Ground plane: params = [depth, width, height, 0]
+                    self.ground_info = {
+                        'dimensions': (params[0], params[1], params[2]),  # depth, width, height
+                        'offset': offset  # position and orientation
+                    }
+                else:  # Regular box bodies
+                    # Box dimensions: params = [depth, width, height, 0]
+                    self.box_dimensions.append((params[0], params[1], params[2]))
+
+    def capture(self):
+        """Capture CUDA graph if available."""
+        # For now, disable CUDA graph capture to avoid stream conflicts
+        # This can be re-enabled later if needed with proper stream management
+        self.graph = None
+
+    def simulate(self):
+        """Run simulation substeps."""
+        for _ in range(self.sim_substeps):
+            self.sim.step()
+
+    def step(self):
+        """Step the simulation."""
+        if self.graph:
+            wp.capture_launch(self.graph)
+        else:
+            self.simulate()
+
+        self.sim_time += self.frame_dt
+
+    def render(self):
+        """Render the current frame."""
+        self.viewer.begin_frame(self.sim_time)
+
+        # Extract body poses from the kamino simulator
+        try:
+            body_poses = self.sim.model_data.bodies.q_i.numpy()
+
+            # Render the pendulum box using log_shapes
+            for i, dimensions in enumerate(self.box_dimensions):
+                if i < len(body_poses):
+                    # Convert kamino transformf to warp transform
+                    pose = body_poses[i]
+                    # kamino transformf has [x, y, z, qx, qy, qz, qw] format
+                    position = wp.vec3(float(pose[0]), float(pose[1]), float(pose[2]))
+                    quaternion = wp.quat(float(pose[3]), float(pose[4]), float(pose[5]), float(pose[6]))
+                    transform = wp.transform(position, quaternion)
+
+                    # Convert kamino full dimensions to newton half-extents
+                    # Kamino: BoxShape(depth, width, height) = full dimensions
+                    # Newton: expects (half_depth, half_width, half_height)
+                    half_extents = (dimensions[0]/2, dimensions[1]/2, dimensions[2]/2)
+
+                    # Log the box shape
+                    self.viewer.log_shapes(
+                        f"/pendulum/box_{i+1}",
+                        newton.GeoType.BOX,
+                        half_extents,
+                        wp.array([transform], dtype=wp.transform),
+                        self.box_color,
+                    )
+
+        except Exception as e:
+            print(f"Error accessing body poses: {e}")
+            print(f"Available attributes: {dir(self.sim.model_data.bodies)}")
+
+        # Render the ground plane from kamino
+        if self.ground_info:
+            ground_offset = self.ground_info['offset']
+            ground_pos = wp.vec3(float(ground_offset[0]), float(ground_offset[1]), float(ground_offset[2]))
+            ground_quat = wp.quat(float(ground_offset[3]), float(ground_offset[4]),
+                                float(ground_offset[5]), float(ground_offset[6]))
+            ground_transform = wp.transform(ground_pos, ground_quat)
+
+            # Convert ground plane dimensions to half-extents
+            ground_half_extents = (
+                self.ground_info['dimensions'][0]/2,
+                self.ground_info['dimensions'][1]/2,
+                self.ground_info['dimensions'][2]/2
+            )
+
+            # Ground plane color (gray)
+            ground_color = wp.array([wp.vec3(0.7, 0.7, 0.7)], dtype=wp.vec3)
+
+            self.viewer.log_shapes(
+                "/pendulum/ground",
+                newton.GeoType.BOX,
+                ground_half_extents,
+                wp.array([ground_transform], dtype=wp.transform),
+                ground_color,
+            )
+
+        self.viewer.end_frame()
+
+    def test(self):
+        """Test function for compatibility."""
+        pass
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Box pendulum simulation example")
+    parser.add_argument(
+        "--mode",
+        choices=["hdf5", "viewer"],
+        default="viewer",
+        help="Simulation mode: 'hdf5' for data collection, 'viewer' for live visualization"
+    )
+    parser.add_argument("--clear-cache", action="store_true", default=True, help="Clear warp cache")
+    parser.add_argument("--cuda-graph", action="store_true", help="Use CUDA graphs")
+    parser.add_argument("--load-from-usd", action="store_true", default=True, help="Load model from USD file")
+    parser.add_argument("--verbose", action="store_true", help="Enable verbose output")
+
+    # Add viewer arguments when in viewer mode
+    parser.add_argument("--viewer", choices=["gl", "usd", "rerun", "null"], default="gl", help="Viewer type")
+    parser.add_argument("--headless", action="store_true", help="Run in headless mode")
+    parser.add_argument("--device", type=str, help="Compute device")
+    parser.add_argument("--output-path", type=str, help="Output path for USD viewer")
+    parser.add_argument("--num-frames", type=int, default=1000, help="Number of frames for null/USD viewer")
+
+    args = parser.parse_args()
+
+    if args.mode == "hdf5":
+        msg.info("Running in HDF5 mode...")
+        run_hdf5_mode(
+            clear_warp_cache=args.clear_cache,
+            use_cuda_graph=args.cuda_graph,
+            load_from_usd=args.load_from_usd,
+            verbose=args.verbose
+        )
+    elif args.mode == "viewer":
+        msg.info("Running in ViewerGL mode...")
+
+        # Set device if specified
+        if args.device:
+            wp.set_device(args.device)
+
+        # Create viewer based on type
+        if args.viewer == "gl":
+            viewer = newton.viewer.ViewerGL(headless=args.headless)
+        elif args.viewer == "usd":
+            if args.output_path is None:
+                raise ValueError("--output-path is required when using usd viewer")
+            viewer = newton.viewer.ViewerUSD(output_path=args.output_path, num_frames=args.num_frames)
+        elif args.viewer == "rerun":
+            viewer = newton.viewer.ViewerRerun()
+        elif args.viewer == "null":
+            viewer = newton.viewer.ViewerNull(num_frames=args.num_frames)
+        else:
+            raise ValueError(f"Invalid viewer: {args.viewer}")
+
+        # Create and run example
+        example = BoxPendulumExample(viewer, load_from_usd=args.load_from_usd)
+
+        # Set initial camera position for better view of the pendulum
+        if hasattr(viewer, 'set_camera'):
+            # Position camera to get a good view of the pendulum
+            camera_pos = wp.vec3(0.0, -2.0, 1.0)
+            pitch = -10.0
+            yaw = 90  # Changed to -90 degrees to look left
+            viewer.set_camera(camera_pos, pitch, yaw)
+
+        newton.examples.run(example)

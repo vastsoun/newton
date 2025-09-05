@@ -560,7 +560,7 @@ class ModelBuilder:
         body_id: int,
         shape: ShapeDescriptorType,
         layer: int | str = 0,
-        offset: transformf = transformf(),
+        offset: transformf | None = None,
         material: str | int | None = None,
         max_contacts: int = 0,
         group: int = 1,
@@ -571,6 +571,10 @@ class ModelBuilder:
     ) -> int:
         # Check if the world index is valid
         self._check_world_index(world_index)
+
+        # Handle default offset
+        if offset is None:
+            offset = transformf()
 
         # Get current bid from the number of bodies
         cgid = self._worlds[world_index].num_collision_geoms
@@ -655,13 +659,17 @@ class ModelBuilder:
         body_id: int,
         shape: ShapeDescriptorType,
         layer: int | str = 0,
-        offset: transformf = transformf(),
+        offset: transformf | None = None,
         name: str | None = None,
         uid: str | None = None,
         world_index: int = 0,
     ) -> int:
         # Check if the world index is valid
         self._check_world_index(world_index)
+
+        # Handle default offset
+        if offset is None:
+            offset = transformf()
 
         # Get current bid from the number of bodies
         pgid = self._worlds[world_index].num_physical_geoms

@@ -6,32 +6,31 @@ from __future__ import annotations
 
 import warp as wp
 
-from newton._src.solvers.kamino.core.types import int32, float32, vec3f, vec4f, vec8f, mat83f, transformf
 from newton._src.solvers.kamino.core.math import FLOAT32_MAX, FLOAT32_MIN
 from newton._src.solvers.kamino.core.shapes import ShapeType
-
+from newton._src.solvers.kamino.core.types import float32, int32, mat83f, transformf, vec3f, vec4f, vec8f
 
 ###
 # Module interface
 ###
 
 __all__ = [
-    "bs_sphere",
-    "bs_cylinder",
-    "bs_cone",
-    "bs_capsule",
-    "bs_ellipsoid",
-    "bs_box",
-    "bs_geom",
-    "aabb_sphere",
-    "aabb_cylinder",
-    "aabb_cone",
-    "aabb_capsule",
-    "aabb_ellipsoid",
     "aabb_box",
+    "aabb_capsule",
+    "aabb_cone",
+    "aabb_cylinder",
+    "aabb_ellipsoid",
     "aabb_geom",
-    "has_bs_overlap",
+    "aabb_sphere",
+    "bs_box",
+    "bs_capsule",
+    "bs_cone",
+    "bs_cylinder",
+    "bs_ellipsoid",
+    "bs_geom",
+    "bs_sphere",
     "has_aabb_overlap",
+    "has_bs_overlap",
 ]
 
 ###
@@ -44,6 +43,7 @@ wp.set_module_options({"enable_backward": False})
 ###
 # Bounding-Spheres (BS) Functions
 ###
+
 
 @wp.func
 def bs_sphere(pose: transformf, radius: float32) -> float32:
@@ -117,6 +117,7 @@ def has_bs_overlap(pose1: transformf, pose2: transformf, radius1: float32, radiu
 # Axis-Alinged Bounding-Box (AABB) Functions
 ###
 
+
 @wp.func
 def aabb_sphere(pose: transformf, radius: float32) -> mat83f:
     r_g = wp.transform_get_translation(pose)
@@ -124,14 +125,30 @@ def aabb_sphere(pose: transformf, radius: float32) -> mat83f:
     max_corner = r_g + vec3f(radius, radius, radius)
     # Generate 8 corners of the AABB
     aabb = mat83f(
-        min_corner[0], min_corner[1], min_corner[2],
-        min_corner[0], min_corner[1], max_corner[2],
-        min_corner[0], max_corner[1], min_corner[2],
-        min_corner[0], max_corner[1], max_corner[2],
-        max_corner[0], min_corner[1], min_corner[2],
-        max_corner[0], min_corner[1], max_corner[2],
-        max_corner[0], max_corner[1], min_corner[2],
-        max_corner[0], max_corner[1], max_corner[2],
+        min_corner[0],
+        min_corner[1],
+        min_corner[2],
+        min_corner[0],
+        min_corner[1],
+        max_corner[2],
+        min_corner[0],
+        max_corner[1],
+        min_corner[2],
+        min_corner[0],
+        max_corner[1],
+        max_corner[2],
+        max_corner[0],
+        min_corner[1],
+        min_corner[2],
+        max_corner[0],
+        min_corner[1],
+        max_corner[2],
+        max_corner[0],
+        max_corner[1],
+        min_corner[2],
+        max_corner[0],
+        max_corner[1],
+        max_corner[2],
     )
     return aabb
 
@@ -164,13 +181,13 @@ def aabb_box(pose: transformf, size: vec3f) -> mat83f:
     dy = 0.5 * size[1]
     dz = 0.5 * size[2]
     b_v_0 = vec3f(-dx, -dy, -dz)
-    b_v_1 = vec3f(-dx, -dy,  dz)
-    b_v_2 = vec3f(-dx,  dy, -dz)
-    b_v_3 = vec3f(-dx,  dy,  dz)
+    b_v_1 = vec3f(-dx, -dy, dz)
+    b_v_2 = vec3f(-dx, dy, -dz)
+    b_v_3 = vec3f(-dx, dy, dz)
     b_v_4 = vec3f(dx, -dy, -dz)
-    b_v_5 = vec3f(dx, -dy,  dz)
-    b_v_6 = vec3f(dx,  dy, -dz)
-    b_v_7 = vec3f(dx,  dy,  dz)
+    b_v_5 = vec3f(dx, -dy, dz)
+    b_v_6 = vec3f(dx, dy, -dz)
+    b_v_7 = vec3f(dx, dy, dz)
     w_v_0 = r_g + (R_b @ b_v_0)
     w_v_1 = r_g + (R_b @ b_v_1)
     w_v_2 = r_g + (R_b @ b_v_2)
@@ -186,14 +203,30 @@ def aabb_box(pose: transformf, size: vec3f) -> mat83f:
     min_z = wp.min(vec8f(w_v_0[2], w_v_1[2], w_v_2[2], w_v_3[2], w_v_4[2], w_v_5[2], w_v_6[2], w_v_7[2]))
     max_z = wp.max(vec8f(w_v_0[2], w_v_1[2], w_v_2[2], w_v_3[2], w_v_4[2], w_v_5[2], w_v_6[2], w_v_7[2]))
     aabb = mat83f(
-        min_x, min_y, min_z,
-        min_x, min_y, max_z,
-        min_x, max_y, min_z,
-        min_x, max_y, max_z,
-        max_x, min_y, min_z,
-        max_x, min_y, max_z,
-        max_x, max_y, min_z,
-        max_x, max_y, max_z,
+        min_x,
+        min_y,
+        min_z,
+        min_x,
+        min_y,
+        max_z,
+        min_x,
+        max_y,
+        min_z,
+        min_x,
+        max_y,
+        max_z,
+        max_x,
+        min_y,
+        min_z,
+        max_x,
+        min_y,
+        max_z,
+        max_x,
+        max_y,
+        min_z,
+        max_x,
+        max_y,
+        max_z,
     )
     return aabb
 

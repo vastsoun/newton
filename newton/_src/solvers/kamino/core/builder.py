@@ -223,7 +223,7 @@ class ModelBuilder:
             ValueError: If the inertia matrix is not symmetric of positive definite.
         """
         i_I_i_np = np.ndarray(buffer=i_I_i, shape=(3, 3), dtype=np.float32)
-        if not np.allclose(i_I_i_np, i_I_i_np.T, atol=FLOAT32_EPS):
+        if not np.allclose(i_I_i_np, i_I_i_np.T, atol=float(FLOAT32_EPS)):
             raise ValueError(f"Invalid body inertia matrix:\n{i_I_i}\nMust be symmetric.")
         if not np.all(np.linalg.eigvals(i_I_i_np) > 0.0):
             raise ValueError(f"Invalid body inertia matrix:\n{i_I_i}\nMust be positive definite.")
@@ -243,7 +243,7 @@ class ModelBuilder:
             raise TypeError(f"Invalid body pose type: {type(q_i)}. Must be `transformf`.")
 
         # Extract the orientation quaterion
-        if not np.isclose(wp.length(q_i.q), 1.0, atol=FLOAT32_EPS):
+        if not np.isclose(wp.length(q_i.q), 1.0, atol=float(FLOAT32_EPS)):
             raise ValueError(
                 f"Invalid body pose orientation quaternion: {q_i.q}. "
                 "Must be a unit quaternion."

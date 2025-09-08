@@ -25,11 +25,11 @@ from .ldlt_nopivot import LDLTNoPivot
 from .llt_std import LLT
 from .lu_nopiv import LUNoPivot
 from .matrix import (
-    is_square_matrix,
-    is_symmetric_matrix,
     MatrixComparison,
     MatrixSign,
     SquareSymmetricMatrixProperties,
+    is_square_matrix,
+    is_symmetric_matrix,
 )
 
 # FactorizerType = Union[LLT, LDLTNoPivot, LDLTBunchKaufman, LDLTBlocked, LDLTEigen3]

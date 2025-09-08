@@ -2,29 +2,27 @@
 # KAMINO: Utilities: Linear Algebra: LDLT w/ Bunch-Kaufman pivoting
 ###########################################################################
 
+from typing import Any
+
 import numpy as np
-from typing import Any, Optional, Tuple
+
+from newton._src.solvers.kamino.utils.linalg.factorizer import MatrixFactorizer, MatrixSign
 from newton._src.solvers.kamino.utils.linalg.matrix import (
     _make_tolerance,
     assert_is_square_matrix,
     assert_is_symmetric_matrix,
 )
-from newton._src.solvers.kamino.utils.linalg.factorizer import (
-    MatrixSign,
-    MatrixFactorizer
-)
-
 
 ###
 # Module interface
 ###
 
 __all__ = [
+    "LDLTBunchKaufman",
     "compute_ldlt_bk_lower",
-    "compute_ldlt_bk_lower_solve",
     "compute_ldlt_bk_lower_reconstruct",
+    "compute_ldlt_bk_lower_solve",
     "unpack_ldlt_bk_lower",
-    "LDLTBunchKaufman"
 ]
 
 
@@ -40,6 +38,7 @@ DEFAULT_ALPHA = float((1.0 + np.sqrt(17.0)) / 8.0)
 # Utilities
 ###
 
+
 def _swap_rows_cols_sym(A, i, j):
     if i == j:
         return
@@ -54,14 +53,15 @@ def _swap_rows_cols_sym(A, i, j):
 # Factorization
 ###
 
+
 def compute_ldlt_bk_lower(
     A: np.ndarray,
-    tol: Optional[float] = None,
+    tol: float | None = None,
     itype: np.dtype = np.int64,
     alpha: float = DEFAULT_ALPHA,
     check_symmetry: bool = True,
-    use_zero_correction: bool = False
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    use_zero_correction: bool = False,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     assert_is_square_matrix(A)
     if check_symmetry:
         assert_is_symmetric_matrix(A)
@@ -175,14 +175,10 @@ def compute_ldlt_bk_lower(
 # Linear systems
 ###
 
-def compute_ldlt_bk_lower_solve(
-    L: np.ndarray,
-    D: np.ndarray,
-    perm: np.ndarray,
-    b: np.ndarray,
-    tol: Optional[float] = None
-) -> np.ndarray:
 
+def compute_ldlt_bk_lower_solve(
+    L: np.ndarray, D: np.ndarray, perm: np.ndarray, b: np.ndarray, tol: float | None = None
+) -> np.ndarray:
     n = L.shape[0]
 
     tol = _make_tolerance(tol, dtype=L.dtype)
@@ -239,11 +235,8 @@ def compute_ldlt_bk_lower_solve(
 # Reconstruction
 ###
 
-def compute_ldlt_bk_lower_reconstruct(
-    L: np.ndarray,
-    D: np.ndarray,
-    perm: np.ndarray
-) -> np.ndarray:
+
+def compute_ldlt_bk_lower_reconstruct(L: np.ndarray, D: np.ndarray, perm: np.ndarray) -> np.ndarray:
     S = L @ D @ L.T
     A_hat = np.zeros_like(S)
     A_hat[np.ix_(perm, perm)] = S
@@ -251,10 +244,8 @@ def compute_ldlt_bk_lower_reconstruct(
 
 
 def unpack_ldlt_bk_lower(
-    matrix: np.ndarray,
-    diagonals: np.ndarray,
-    permutations: np.ndarray
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    matrix: np.ndarray, diagonals: np.ndarray, permutations: np.ndarray
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     P = np.eye(matrix.shape[0], dtype=matrix.dtype)[:, permutations]
     return matrix, diagonals, P
 
@@ -263,25 +254,26 @@ def unpack_ldlt_bk_lower(
 # Factorizer
 ###
 
+
 class LDLTBunchKaufman(MatrixFactorizer):
     def __init__(
         self,
-        A: Optional[np.ndarray] = None,
-        tol: Optional[float] = None,
-        dtype: Optional[np.dtype] = None,
-        itype: Optional[np.dtype] = None,
+        A: np.ndarray | None = None,
+        tol: float | None = None,
+        dtype: np.dtype | None = None,
+        itype: np.dtype | None = None,
         upper: bool = False,
         check_symmetry: bool = False,
-        compute_error: bool = False
+        compute_error: bool = False,
     ):
         # Declare internal data structures
-        self._diagonals: Optional[np.ndarray] = None
-        self._permutations: Optional[np.ndarray] = None
+        self._diagonals: np.ndarray | None = None
+        self._permutations: np.ndarray | None = None
 
         # Declare optional unpacked factors
-        self.L: Optional[np.ndarray] = None
-        self.D: Optional[np.ndarray] = None
-        self.P: Optional[np.ndarray] = None
+        self.L: np.ndarray | None = None
+        self.D: np.ndarray | None = None
+        self.P: np.ndarray | None = None
 
         # Call the parent constructor
         super().__init__(
@@ -291,7 +283,7 @@ class LDLTBunchKaufman(MatrixFactorizer):
             itype=itype,
             upper=upper,
             check_symmetry=check_symmetry,
-            compute_error=compute_error
+            compute_error=compute_error,
         )
 
     def _factorize_impl(self, A: np.ndarray) -> None:
@@ -304,9 +296,7 @@ class LDLTBunchKaufman(MatrixFactorizer):
             print(f"LDLT BK: permutations:\n{self._permutations}\n")
             self._sign = MatrixSign.PositiveDef  # TODO: parse D to determine sign
         except np.linalg.LinAlgError as e:
-            raise np.linalg.LinAlgError(
-                f"Cholesky factorization failed: {str(e)}"
-            ) from e
+            raise np.linalg.LinAlgError(f"Cholesky factorization failed: {e!s}") from e
 
     def _unpack_impl(self) -> None:
         self.L, self.D, self.P = unpack_ldlt_bk_lower(self._matrix, self._diagonals, self._permutations)

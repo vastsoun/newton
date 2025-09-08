@@ -13,23 +13,75 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""TODO"""
+"""KAMINO: Utilities: Linear Algebra: Fixed-point iteration solvers"""
+
+from dataclasses import dataclass
 
 import numpy as np
 
+###
+# Types
+###
 
+
+@dataclass
 class FixedPointSolution:
-
-    def __init__(self):
-        self.x: np.ndarray | None = None
-        self.error: float | None = None
-        self.iterations: int = 0
-        self.converged: bool = False
+    x: np.ndarray | None = None
+    error: float = np.inf
+    iterations: int = 0
+    converged: bool = False
 
 
-def jacobi(A, b, x0, tolerance, max_iterations, verbose=False):
-    solution = FixedPointSolution()
+###
+# Utilities
+###
 
+
+def _check_compatibility(A: np.ndarray, b: np.ndarray) -> None:
+    if A.ndim != 2 or A.shape[0] != A.shape[1]:
+        raise ValueError(f"Matrix A must be square (n x n) but has shape {A.shape}.")
+    if b.ndim != 1 or b.shape[0] != A.shape[0]:
+        raise ValueError(f"Vector b ({b.shape}) must have compatible dimensions with A ({A.shape}).")
+    if b.dtype != A.dtype:
+        raise ValueError(f"Vector b ({b.dtype}) must have the same data type as matrix A ({A.dtype}).")
+
+
+def _check_initial_guess(b: np.ndarray, x_0: np.ndarray | None) -> np.ndarray:
+    if x_0 is None:
+        return np.zeros(b.shape[0], dtype=b.dtype)
+    if x_0.ndim != 1 or x_0.shape[0] != b.shape[0]:
+        raise ValueError(f"Initial guess x_0 ({x_0.shape}) must have compatible dimensions with b ({b.shape}).")
+    if x_0.dtype != b.dtype:
+        raise ValueError(f"Initial guess x_0 ({x_0.dtype}) must have the same data type as vector b ({b.dtype}).")
+    return x_0
+
+
+###
+# Functions
+###
+
+
+def jacobi(
+    A: np.ndarray,
+    b: np.ndarray,
+    x_0: np.ndarray | None,
+    tolerance: float = 1e-12,
+    max_iterations: int = 1000,
+    verbose: bool = False,
+) -> FixedPointSolution:
+    # Check if inputs are compatible
+    if A.ndim != 2 or A.shape[0] != A.shape[1]:
+        raise ValueError(f"Matrix A must be square (n x n) but has shape {A.shape}.")
+    if b.ndim != 1 or b.shape[0] != A.shape[0]:
+        raise ValueError(f"Vector b ({b.shape}) must have compatible dimensions with A ({A.shape}).")
+    if b.dtype != A.dtype:
+        raise ValueError(f"Vector b ({b.dtype}) must have the same data type as matrix A ({A.dtype}).")
+
+    # Set initial guess to zeros if not provided
+    if x_0 is None:
+        x_0 = np.zeros_like(b)
+
+    # TODO
     if verbose:
         D = np.diag(np.diag(A))
         L = np.tril(A, -1)
@@ -37,9 +89,11 @@ def jacobi(A, b, x0, tolerance, max_iterations, verbose=False):
         S = -np.linalg.inv(D) @ (L + U)
         print("[Jacobi]: Iteration Matrix: S:\n", S)
 
-    x_p = x0.copy()
-    x_n = x0.copy()
+    # Initialize internals
     n = A.shape[0]
+    x_p = x_0.copy()
+    x_n = x_0.copy()
+    solution = FixedPointSolution()
 
     for i in range(max_iterations):
         solution.iterations = i + 1
@@ -213,3 +267,53 @@ def minimum_residual(A, b, x0, epsilon, tolerance, max_iterations):
 
     solution.x = x
     return solution
+
+
+###
+# Classes
+###
+
+# ---------------------------
+# Example usage / sanity checks
+# ---------------------------
+if __name__ == "__main__":
+    # ----------------------------
+    # dtype = np.float64
+    dtype = np.float32
+    print("----------------------------")
+    print(f"dtype: {dtype}")
+
+    # ----------------------------
+    A = np.array([[2.0, 1.0], [3.0, 4.0]], dtype=dtype)
+    b = np.array([5.0, 11.0], dtype=dtype)
+    print("----------------------------")
+    print(f"\nA {A.shape}[{A.dtype}]:\n{A}\n")
+    print(f"\nb {b.shape}[{b.dtype}]:\n{b}\n")
+
+    # ---------------------------- Reference
+    x_np = np.linalg.solve(A, b)
+    r_np = A @ x_np - b
+    print("----------------------------")
+    print(f"\nx_np {x_np.shape}[{x_np.dtype}]:\n{x_np}\n")
+
+    # ---------------------------- Jacobi
+    jac = jacobi(A=A, b=b, x_0=None, tolerance=1e-15, max_iterations=1000, verbose=True)
+    r_jac = A @ jac.x - b
+    print("----------------------------")
+    print(f"Jacobi:  converged: {jac.converged}")
+    print(f"Jacobi: iterations: {jac.iterations}")
+    print(f"Jacobi:      error: {jac.error}")
+    print("----------------------------")
+    print(f"\nx_jac {jac.x.shape}[{jac.x.dtype}]:\n{jac.x}\n")
+
+    # ----------------------------
+    r_np_l2 = np.linalg.norm(r_np, ord=2)
+    r_jac_l2 = np.linalg.norm(r_jac, ord=2)
+    r_np_infnorm = np.linalg.norm(r_np, ord=np.inf)
+    r_jac_infnorm = np.linalg.norm(r_jac, ord=np.inf)
+    print("----------------------------")
+    print(f"r_np_l2: {r_np_l2}")
+    print(f"r_jac_l2: {r_jac_l2}")
+    print("----------------------------")
+    print(f"r_np_infnorm: {r_np_infnorm}")
+    print(f"r_jac_infnorm: {r_jac_infnorm}")

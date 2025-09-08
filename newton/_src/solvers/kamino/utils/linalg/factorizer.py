@@ -16,12 +16,13 @@
 """KAMINO: Utilities: Linear Algebra: Factorizer base class"""
 
 from abc import ABC, abstractmethod
-from enum import IntEnum
 from typing import Any
 
 import numpy as np
 
+from newton._src.solvers.kamino.utils.linalg.linear import ComputationInfo
 from newton._src.solvers.kamino.utils.linalg.matrix import (
+    MatrixSign,
     _make_tolerance,
     assert_is_square_matrix,
     assert_is_symmetric_matrix,
@@ -30,23 +31,6 @@ from newton._src.solvers.kamino.utils.linalg.matrix import (
 ###
 # Types
 ###
-
-
-class MatrixSign(IntEnum):
-    ZeroSign = 0
-    Indefinite = 1
-    PositiveSemiDef = 2
-    NegativeSemiDef = 3
-    PositiveDef = 4
-    NegativeDef = 5
-
-
-class ComputationInfo(IntEnum):
-    Success = 0
-    Uninitialized = 1
-    NumericalIssue = 2
-    NoConvergence = 3
-    InvalidInput = 4
 
 
 class MatrixFactorizer(ABC):

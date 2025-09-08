@@ -16,15 +16,16 @@
 """KAMINO: Utilities: Linear Algebra: Linear system solver base class"""
 
 from abc import ABC, abstractmethod
+from enum import IntEnum
 
 import numpy as np
-from enum import IntEnum
-from newton._src.solvers.kamino.utils.linalg.matrix import MatrixSign, _make_tolerance
 
+from newton._src.solvers.kamino.utils.linalg.matrix import MatrixSign, _make_tolerance
 
 ###
 # Types
 ###
+
 
 class ComputationInfo(IntEnum):
     Success = 0

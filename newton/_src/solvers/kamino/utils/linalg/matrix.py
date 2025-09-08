@@ -15,9 +15,9 @@
 
 """KAMINO: Utilities: Linear Algebra: Matrix properties"""
 
-import numpy as np
 from enum import IntEnum
-from typing import Optional
+
+import numpy as np
 
 ###
 # Module interface
@@ -25,14 +25,14 @@ from typing import Optional
 
 __all__ = [
     "DEFAULT_MATRIX_SYMMETRY_EPS",
-    "is_square_matrix",
-    "is_symmetric_matrix",
-    "symmetry_error_norm_l2",
-    "assert_is_square_matrix",
-    "assert_is_symmetric_matrix",
     "MatrixComparison",
     "MatrixSign",
     "SquareSymmetricMatrixProperties",
+    "assert_is_square_matrix",
+    "assert_is_symmetric_matrix",
+    "is_square_matrix",
+    "is_symmetric_matrix",
+    "symmetry_error_norm_l2",
 ]
 
 
@@ -48,6 +48,7 @@ DEFAULT_MATRIX_SYMMETRY_EPS = 1e-10
 # Types
 ###
 
+
 class MatrixSign(IntEnum):
     ZeroSign = 0
     Indefinite = 1
@@ -61,10 +62,8 @@ class MatrixSign(IntEnum):
 # Utilities
 ###
 
-def _make_tolerance(
-    tol: Optional[float] = None,
-    dtype: np.dtype = np.float64
-):
+
+def _make_tolerance(tol: float | None = None, dtype: np.dtype = np.float64):
     if tol is None:
         tol = dtype.type(np.finfo(dtype).eps)
     else:
@@ -77,7 +76,7 @@ def is_square_matrix(A: np.ndarray) -> bool:
     return A.shape[0] == A.shape[1]
 
 
-def is_symmetric_matrix(A: np.ndarray, tol: Optional[float] = None) -> bool:
+def is_symmetric_matrix(A: np.ndarray, tol: float | None = None) -> bool:
     tol = _make_tolerance(tol=tol, dtype=A.dtype)
     return np.allclose(A, A.T, atol=tol, rtol=0.0)
 
@@ -95,19 +94,16 @@ def assert_is_symmetric_matrix(A: np.ndarray) -> bool:
     eps = max(_make_tolerance(dtype=A.dtype), A.dtype.type(DEFAULT_MATRIX_SYMMETRY_EPS))
     if not is_symmetric_matrix(A, tol=eps):
         error = symmetry_error_norm_l2(A)
-        raise ValueError(
-            f"Matrix is not symmetric within tolerance {eps}, "
-            f"with error (inf-norm): {error}"
-        )
+        raise ValueError(f"Matrix is not symmetric within tolerance {eps}, with error (inf-norm): {error}")
 
 
 ###
 # Matrix Properties
 ###
 
-class SquareSymmetricMatrixProperties:
-    def __init__(self, matrix: Optional[np.ndarray] = None, tol: Optional[float] = None):
 
+class SquareSymmetricMatrixProperties:
+    def __init__(self, matrix: np.ndarray | None = None, tol: float | None = None):
         self.matrix: np.ndarray
         """Reference to the original matrix."""
 
@@ -184,7 +180,7 @@ class SquareSymmetricMatrixProperties:
         if matrix is not None:
             self.compute(matrix, tol)
 
-    def compute(self, matrix: np.ndarray, tol: Optional[float] = None):
+    def compute(self, matrix: np.ndarray, tol: float | None = None):
         """
         Compute the properties of the matrix.
 
@@ -211,7 +207,7 @@ class SquareSymmetricMatrixProperties:
             eps_symmetry = max(tol, DEFAULT_MATRIX_SYMMETRY_EPS)
         else:
             eps = float(np.finfo(matrix.dtype).eps)
-            eps_relaxed = 1e+3 * eps
+            eps_relaxed = 1e3 * eps
             eps_symmetry = max(eps_relaxed, DEFAULT_MATRIX_SYMMETRY_EPS)
 
         # Capture the reference to the target matrix
@@ -327,11 +323,13 @@ class MatrixComparison:
         name_A: str = "A",
         name_B: str = "B",
         symbol_A: str = "A",
-        symbol_B: str = "B"
+        symbol_B: str = "B",
     ):
         """Save error visualizations to the specified path."""
         import os
+
         from newton._src.solvers.kamino.utils.sparse import sparseview
+
         os.makedirs(path, exist_ok=True)
         sparseview(self.A, title=f"{title} {name_A}", path=os.path.join(path, f"{symbol_A}.png"))
         sparseview(self.B, title=f"{title} {name_B}", path=os.path.join(path, f"{symbol_B}.png"))
@@ -354,13 +352,13 @@ class MatrixComparison:
         return E_clip
 
     def _frobenius_error(self):
-        return np.linalg.norm(self.E, 'fro')
+        return np.linalg.norm(self.E, "fro")
 
     def _max_element_error(self):
         return np.max(np.abs(self.E))
 
     def _relative_frobenius_error(self):
-        return np.linalg.norm(self.E, 'fro') / np.linalg.norm(self.A, 'fro')
+        return np.linalg.norm(self.E, "fro") / np.linalg.norm(self.A, "fro")
 
     def _svd_error(self):
         # Singular value decomposition error

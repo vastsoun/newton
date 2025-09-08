@@ -18,15 +18,20 @@
 from abc import ABC, abstractmethod
 
 import numpy as np
+from enum import IntEnum
+from newton._src.solvers.kamino.utils.linalg.matrix import MatrixSign, _make_tolerance
 
-from newton._src.solvers.kamino.utils.linalg.factorizer import ComputationInfo, MatrixSign
-from newton._src.solvers.kamino.utils.linalg.matrix import (
-    _make_tolerance,
-)
 
 ###
 # Types
 ###
+
+class ComputationInfo(IntEnum):
+    Success = 0
+    Uninitialized = 1
+    NumericalIssue = 2
+    NoConvergence = 3
+    InvalidInput = 4
 
 
 class LinearSolver(ABC):

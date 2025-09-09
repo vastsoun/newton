@@ -70,6 +70,7 @@ def jacobi(
 ) -> FixedPointSolution:
     _check_system_compatibility(A, b)
     x_0 = _check_initial_guess(A, x_0)
+    tolerance = A.dtype.type(tolerance)
 
     n = A.shape[0]
     x_p = x_0.copy()
@@ -80,14 +81,13 @@ def jacobi(
         solution.iterations = i + 1
 
         for j in range(n):
-            sum_ = 0.0
+            sum = A.dtype.type(0)
             for k in range(n):
                 if k != j:
-                    sum_ += A[j, k] * x_p[k]
-            x_n[j] = (b[j] - sum_) / A[j, j]
+                    sum += A[j, k] * x_p[k]
+            x_n[j] = (b[j] - sum) / A[j, j]
 
         solution.error = np.max(np.abs(x_n - x_p))
-
         if solution.error < tolerance:
             solution.converged = True
             break
@@ -107,6 +107,7 @@ def gauss_seidel(
 ) -> FixedPointSolution:
     _check_system_compatibility(A, b)
     x_0 = _check_initial_guess(A, x_0)
+    tolerance = A.dtype.type(tolerance)
 
     n = A.shape[0]
     x_n = x_0.copy()
@@ -116,14 +117,13 @@ def gauss_seidel(
         solution.iterations = i + 1
 
         for j in range(n):
-            sum_ = 0.0
+            sum = A.dtype.type(0)
             for k in range(n):
                 if k != j:
-                    sum_ += A[j, k] * x_n[k]
-            x_n[j] = (b[j] - sum_) / A[j, j]
+                    sum += A[j, k] * x_n[k]
+            x_n[j] = (b[j] - sum) / A[j, j]
 
         solution.error = np.max(np.abs(x_n - x_0))
-
         if solution.error < tolerance:
             solution.converged = True
             break
@@ -146,6 +146,8 @@ def successive_over_relaxation(
     x_0 = _check_initial_guess(A, x_0)
     if not (0.0 < omega < 2.0):
         raise ValueError(f"Relaxation factor omega must be in the range (0, 2) but is {omega}.")
+    omega = A.dtype.type(omega)
+    tolerance = A.dtype.type(tolerance)
 
     n = A.shape[0]
     x_p = x_0.copy()
@@ -156,14 +158,13 @@ def successive_over_relaxation(
         solution.iterations = i + 1
 
         for j in range(n):
-            sum_ = 0.0
+            sum = A.dtype.type(0)
             for k in range(n):
                 if k != j:
-                    sum_ += A[j, k] * x_n[k]
-            x_n[j] = x_p[j] + omega * ((b[j] - sum_) / A[j, j] - x_p[j])
+                    sum += A[j, k] * x_n[k]
+            x_n[j] = x_p[j] + omega * ((b[j] - sum) / A[j, j] - x_p[j])
 
         solution.error = np.max(np.abs(x_n - x_p))
-
         if solution.error < tolerance:
             solution.converged = True
             break
@@ -184,32 +185,34 @@ def conjugate_gradient(
 ) -> FixedPointSolution:
     _check_system_compatibility(A, b)
     x_0 = _check_initial_guess(A, x_0)
+    epsilon = A.dtype.type(epsilon)
+    tolerance = A.dtype.type(tolerance)
 
-    n = A.shape[0]
     r = b - A @ x_0
-    x = x_0.copy()
     g = r.copy()
-    r_old = np.zeros(n)
-    Ag = np.zeros(n)
+    Ag = np.zeros_like(g)
+    x = x_0.copy()
+    rsold = np.dot(r, r)
     solution = FixedPointSolution()
 
     for i in range(max_iterations):
         solution.iterations = i + 1
 
-        r_old[:] = r
         Ag[:] = A @ g
-        alpha = np.dot(r, r) / max(np.dot(g, Ag), epsilon)
+        gAg = np.dot(g, Ag)
+        alpha = rsold / max(gAg, epsilon)  # cap denom to avoid div-by-zero
         x += alpha * g
         r -= alpha * Ag
+        rsnew = np.dot(r, r)
 
         solution.error = np.max(np.abs(r))
-
         if solution.error < tolerance:
             solution.converged = True
             break
 
-        beta = np.dot(r, r) / max(np.dot(r_old, r_old), epsilon)
+        beta = rsnew / max(rsold, epsilon)  # cap denom to avoid div-by-zero
         g = r + beta * g
+        rsold = rsnew
 
     solution.x = x
     return solution
@@ -225,14 +228,16 @@ def minimum_residual(
 ) -> FixedPointSolution:
     _check_system_compatibility(A, b)
     x_0 = _check_initial_guess(A, x_0)
+    epsilon = A.dtype.type(epsilon)
+    tolerance = A.dtype.type(tolerance)
 
     n = A.shape[0]
     r = b - A @ x_0
-    x = x_0.copy()
     p0 = r.copy()
     s0 = A @ p0
     p1 = p0.copy()
     s1 = s0.copy()
+    x = x_0.copy()
     p2 = np.zeros(n)
     s2 = np.zeros(n)
     solution = FixedPointSolution()
@@ -244,13 +249,14 @@ def minimum_residual(
         p1[:] = p0
         s2[:] = s1
         s1[:] = s0
+        s1_prod = np.dot(s1, s1)
+        s2_prod = np.dot(s2, s2)
 
-        alpha = np.dot(r, s1) / max(np.dot(s1, s1), epsilon)
+        alpha = np.dot(r, s1) / max(s1_prod, epsilon)  # cap denom to avoid div-by-zero
         x += alpha * p1
         r -= alpha * s1
 
         solution.error = np.max(np.abs(r))
-
         if solution.error < tolerance:
             solution.converged = True
             break
@@ -258,12 +264,12 @@ def minimum_residual(
         p0[:] = s1
         s0[:] = A @ s1
 
-        beta = np.dot(s0, s1) / max(np.dot(s1, s1), epsilon)
+        beta = np.dot(s0, s1) / max(s1_prod, epsilon)  # cap denom to avoid div-by-zero
         p0 -= beta * p1
         s0 -= beta * s1
 
         if i > 0:
-            gamma = np.dot(s0, s2) / max(np.dot(s2, s2), epsilon)
+            gamma = np.dot(s0, s2) / max(s2_prod, epsilon)  # cap denom to avoid div-by-zero
             p0 -= gamma * p2
             s0 -= gamma * s2
 
@@ -286,11 +292,30 @@ if __name__ == "__main__":
     print(f"dtype: {dtype}")
 
     # ----------------------------
-    A = np.array([[2.0, 1.0], [3.0, 4.0]], dtype=dtype)
-    b = np.array([5.0, 11.0], dtype=dtype)
+    # epsilon = np.finfo(dtype).eps
+    epsilon = 0.0
+    tolerance = 1e-15
+    max_iterations = 1000
+    print("----------------------------")
+    print(f"epsilon: {epsilon}")
+    print(f"tolerance: {tolerance}")
+    print(f"max_iterations: {max_iterations}")
+
+    # ----------------------------
+    A = np.array([[2.0, 1.0], [1.0, 4.0]], dtype=dtype)  # symmetric positive-definite matrix
+    b = np.array([1.0, 2.0], dtype=dtype)  # right-hand side in range-space of A
     print("----------------------------")
     print(f"\nA {A.shape}[{A.dtype}]:\n{A}\n")
     print(f"\nb {b.shape}[{b.dtype}]:\n{b}\n")
+
+    # ----------------------------
+    lambdas_A = np.linalg.eigvals(A)
+    rank_A = np.linalg.matrix_rank(A)
+    cond_A = np.linalg.cond(A)
+    print("----------------------------")
+    print(f"lambda(A): {lambdas_A}")
+    print(f"rank(A): {rank_A}")
+    print(f"cond(A): {cond_A}")
 
     # ---------------------------- Reference
     x_np = np.linalg.solve(A, b)
@@ -299,7 +324,7 @@ if __name__ == "__main__":
     print(f"\nx_np {x_np.shape}[{x_np.dtype}]:\n{x_np}\n")
 
     # ---------------------------- Jacobi
-    jac = jacobi(A=A, b=b, x_0=None, tolerance=1e-15, max_iterations=1000)
+    jac = jacobi(A=A, b=b, x_0=None, tolerance=tolerance, max_iterations=max_iterations)
     r_jac = A @ jac.x - b
     print("----------------------------")
     print(f"Jacobi:  converged: {jac.converged}")
@@ -309,7 +334,7 @@ if __name__ == "__main__":
     print(f"\nx_jac {jac.x.shape}[{jac.x.dtype}]:\n{jac.x}\n")
 
     # ---------------------------- Gauss-Seidel
-    gs = gauss_seidel(A=A, b=b, x_0=None, tolerance=1e-15, max_iterations=1000)
+    gs = gauss_seidel(A=A, b=b, x_0=None, tolerance=tolerance, max_iterations=max_iterations)
     r_gs = A @ gs.x - b
     print("----------------------------")
     print(f"Gauss-Seidel:  converged: {gs.converged}")
@@ -319,7 +344,7 @@ if __name__ == "__main__":
     print(f"\nx_gs {gs.x.shape}[{gs.x.dtype}]:\n{gs.x}\n")
 
     # ---------------------------- Successive Over-Relaxation
-    sor = successive_over_relaxation(A=A, b=b, x_0=None, omega=1.25, tolerance=1e-15, max_iterations=1000)
+    sor = successive_over_relaxation(A=A, b=b, x_0=None, omega=1.25, tolerance=tolerance, max_iterations=max_iterations)
     r_sor = A @ sor.x - b
     print("----------------------------")
     print(f"Successive Over-Relaxation:  converged: {sor.converged}")
@@ -329,7 +354,7 @@ if __name__ == "__main__":
     print(f"\nx_sor {sor.x.shape}[{sor.x.dtype}]:\n{sor.x}\n")
 
     # ---------------------------- Conjugate Gradient
-    cg = conjugate_gradient(A=A, b=b, x_0=None, epsilon=1e-15, tolerance=1e-15, max_iterations=1000)
+    cg = conjugate_gradient(A=A, b=b, x_0=None, epsilon=epsilon, tolerance=tolerance, max_iterations=max_iterations)
     r_cg = A @ cg.x - b
     print("----------------------------")
     print(f"Conjugate Gradient:  converged: {cg.converged}")
@@ -339,7 +364,7 @@ if __name__ == "__main__":
     print(f"\nx_cg {cg.x.shape}[{cg.x.dtype}]:\n{cg.x}\n")
 
     # ---------------------------- Minimum Residual
-    minres = minimum_residual(A=A, b=b, x_0=None, epsilon=1e-15, tolerance=1e-15, max_iterations=1000)
+    minres = minimum_residual(A=A, b=b, x_0=None, epsilon=epsilon, tolerance=tolerance, max_iterations=max_iterations)
     r_minres = A @ minres.x - b
     print("----------------------------")
     print(f"Minimum Residual:  converged: {minres.converged}")

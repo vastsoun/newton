@@ -15,9 +15,23 @@
 
 """KAMINO: Utilities: Linear Algebra: Fixed-point iteration solvers"""
 
-from dataclasses import dataclass
+import sys
+from dataclasses import dataclass, field
+from typing import Any
 
 import numpy as np
+
+from newton._src.solvers.kamino.utils.linalg.linear import LinearSolver
+
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    try:
+        from typing_extensions import override
+    except ImportError:
+        # Fallback no-op decorator if typing_extensions is not available
+        def override(func):
+            return func
 
 ###
 # Types
@@ -30,6 +44,7 @@ class FixedPointSolution:
     error: float = np.inf
     iterations: int = 0
     converged: bool = False
+    res_history: list[float] = field(default_factory=list)
 
 
 ###
@@ -57,6 +72,158 @@ def _check_initial_guess(A: np.ndarray, x_0: np.ndarray | None) -> np.ndarray:
 
 
 ###
+# Wrapper classes
+###
+
+
+class JacobiSolver(LinearSolver):
+    def __init__(
+        self,
+        tol: float = 1e-12,
+        dtype: np.dtype | None = None,
+        compute_errors: bool = False,
+        max_iterations: int = 1000,
+        **kwargs: dict[str, Any],
+    ):
+        super().__init__(dtype, compute_errors, **kwargs)
+        self._tolerance: float = tol
+        self._max_iterations: int = max_iterations
+
+    @override
+    def _compute_impl(self, A: np.ndarray):
+        self._A = A
+
+    @override
+    def _solve_inplace_impl(
+        self, b: np.ndarray, compute_errors: bool, x_0: np.ndarray | None = None, **kwargs
+    ) -> FixedPointSolution:
+        tol = self._tolerance
+        max_iter = self._max_iterations
+        result = jacobi(
+            self._A,
+            b,
+            x_0,
+            tolerance=tol,
+            max_iterations=max_iter,
+            compute_residuals=compute_errors,
+        )
+        b[:] = result.x
+        return result
+
+
+class GaussSeidelSolver(LinearSolver):
+    def __init__(
+        self,
+        tol: float = 1e-12,
+        dtype: np.dtype | None = None,
+        compute_errors: bool = False,
+        max_iterations: int = 1000,
+        **kwargs: dict[str, Any],
+    ):
+        super().__init__(dtype, **kwargs)
+        self._tolerance: float = tol
+        self._max_iterations: int = max_iterations
+
+    @override
+    def _compute_impl(self, A: np.ndarray):
+        self._A = A
+
+    @override
+    def _solve_inplace_impl(
+        self, b: np.ndarray, compute_errors: bool, x_0: np.ndarray | None = None, **kwargs
+    ) -> FixedPointSolution:
+        tol = self._tolerance
+        max_iter = self._max_iterations
+        result = gauss_seidel(
+            self._A,
+            b,
+            x_0,
+            tolerance=tol,
+            max_iterations=max_iter,
+            compute_residuals=compute_errors,
+        )
+        b[:] = result.x
+        return result
+
+
+class SORSolver(LinearSolver):
+    def __init__(
+        self,
+        tol: float = 1e-12,
+        dtype: np.dtype | None = None,
+        compute_errors: bool = False,
+        max_iterations: int = 1000,
+        omega: float = 1.0,
+        **kwargs: dict[str, Any],
+    ):
+        super().__init__(dtype, **kwargs)
+        self._tolerance: float = tol
+        self._max_iterations: int = max_iterations
+        self._omega: float = omega
+
+    @override
+    def _compute_impl(self, A: np.ndarray):
+        self._A = A
+
+    @override
+    def _solve_inplace_impl(
+        self, b: np.ndarray, compute_errors: bool, x_0: np.ndarray | None = None, **kwargs
+    ) -> FixedPointSolution:
+        tol = self._tolerance
+        max_iter = self._max_iterations
+        result = successive_over_relaxation(
+            self._A,
+            b,
+            x_0,
+            omega=self._omega,
+            tolerance=tol,
+            max_iterations=max_iter,
+            compute_residuals=compute_errors,
+        )
+        b[:] = result.x
+        return result
+
+
+class ConjugateGradientSolver(LinearSolver):
+    def __init__(
+        self,
+        tol: float = 1e-12,
+        dtype: np.dtype | None = None,
+        compute_errors: bool = False,
+        max_iterations: int = 1000,
+        epsilon: float = 1e-12,
+        **kwargs: dict[str, Any],
+    ):
+        super().__init__(dtype, **kwargs)
+        self._tolerance: float = tol
+        self._max_iterations: int = max_iterations
+        self._epsilon: float = epsilon
+
+    @override
+    def _compute_impl(self, A: np.ndarray):
+        self._A = A
+
+    @override
+    def _solve_inplace_impl(
+        self, b: np.ndarray, compute_errors: bool, x_0: np.ndarray | None = None, **kwargs
+    ) -> FixedPointSolution:
+        tol = self._tolerance
+        max_iter = self._max_iterations
+        epsilon = self._epsilon
+        result = conjugate_gradient(
+            self._A,
+            b,
+            x_0,
+            epsilon=epsilon,
+            tolerance=tol,
+            max_iterations=max_iter,
+            compute_residuals=compute_errors,
+        )
+        b[:] = result.x
+        return result
+
+
+###
 # Functions
 ###
 
@@ -67,6 +234,7 @@ def jacobi(
     x_0: np.ndarray | None,
     tolerance: float = 1e-12,
     max_iterations: int = 1000,
+    compute_residuals: bool = False,
 ) -> FixedPointSolution:
     _check_system_compatibility(A, b)
     x_0 = _check_initial_guess(A, x_0)
@@ -88,6 +256,8 @@ def jacobi(
             x_n[j] = (b[j] - sum) / A[j, j]
 
         solution.error = np.max(np.abs(x_n - x_p))
+        if compute_residuals:
+            solution.res_history.append(A @ x_n - b)
         if solution.error < tolerance:
             solution.converged = True
             break
@@ -104,6 +274,7 @@ def gauss_seidel(
     x_0: np.ndarray | None,
     tolerance: float = 1e-12,
     max_iterations: int = 1000,
+    compute_residuals: bool = False,
 ) -> FixedPointSolution:
     _check_system_compatibility(A, b)
     x_0 = _check_initial_guess(A, x_0)
@@ -124,6 +295,8 @@ def gauss_seidel(
             x_n[j] = (b[j] - sum) / A[j, j]
 
         solution.error = np.max(np.abs(x_n - x_0))
+        if compute_residuals:
+            solution.res_history.append(A @ x_n - b)
         if solution.error < tolerance:
             solution.converged = True
             break
@@ -141,6 +314,7 @@ def successive_over_relaxation(
     omega: float = 1.0,
     tolerance: float = 1e-12,
     max_iterations: int = 1000,
+    compute_residuals: bool = False,
 ) -> FixedPointSolution:
     _check_system_compatibility(A, b)
     x_0 = _check_initial_guess(A, x_0)
@@ -165,6 +339,8 @@ def successive_over_relaxation(
             x_n[j] = x_p[j] + omega * ((b[j] - sum) / A[j, j] - x_p[j])
 
         solution.error = np.max(np.abs(x_n - x_p))
+        if compute_residuals:
+            solution.res_history.append(A @ x_n - b)
         if solution.error < tolerance:
             solution.converged = True
             break
@@ -182,6 +358,7 @@ def conjugate_gradient(
     epsilon: float = 1e-12,
     tolerance: float = 1e-12,
     max_iterations: int = 1000,
+    compute_residuals: bool = False,
 ) -> FixedPointSolution:
     _check_system_compatibility(A, b)
     x_0 = _check_initial_guess(A, x_0)
@@ -206,6 +383,8 @@ def conjugate_gradient(
         rsnew = np.dot(r, r)
 
         solution.error = np.max(np.abs(r))
+        if compute_residuals:
+            solution.res_history.append(A @ x - b)
         if solution.error < tolerance:
             solution.converged = True
             break
@@ -225,6 +404,7 @@ def minimum_residual(
     epsilon: float = 1e-12,
     tolerance: float = 1e-12,
     max_iterations: int = 1000,
+    compute_residuals: bool = False,
 ) -> FixedPointSolution:
     _check_system_compatibility(A, b)
     x_0 = _check_initial_guess(A, x_0)

@@ -17,10 +17,11 @@
 
 from abc import ABC, abstractmethod
 from enum import IntEnum
+from typing import Any
 
 import numpy as np
 
-from newton._src.solvers.kamino.utils.linalg.matrix import MatrixSign, _make_tolerance
+from newton._src.solvers.kamino.utils.linalg.matrix import MatrixSign
 
 ###
 # Types
@@ -38,8 +39,9 @@ class ComputationInfo(IntEnum):
 class LinearSolver(ABC):
     def __init__(
         self,
-        tol: float | None = None,
         dtype: np.dtype | None = None,
+        compute_errors: bool = False,
+        **kwargs: dict[str, Any],
     ):
         # Declare internal data structures
         self._residuals: np.ndarray | None = None
@@ -47,12 +49,13 @@ class LinearSolver(ABC):
         self._error_inf: np.ndarray | None = None
 
         # Initialize internal solver meta-data
-        self._tolerance: float | None = tol
         self._dtype: np.dtype | None = dtype
 
         # Initialize internal solution meta-data
         self._info: ComputationInfo = ComputationInfo.Uninitialized
         self._success: bool = False
+        if kwargs:
+            raise ArgumentError(f"Unused kwargs: {list(kwargs)}")
 
     def _compute_errors(self) -> float:
         """TODO"""
@@ -80,23 +83,27 @@ class LinearSolver(ABC):
     ###
 
     @abstractmethod
-    def _solve_inplace_impl(self, A: np.ndarray, x: np.ndarray):
+    def _compute_impl(self, A: np.ndarray):
+        raise NotImplementedError("Missing compute implementation.")
+
+    @abstractmethod
+    def _solve_inplace_impl(self, b: np.ndarray, compute_errors: bool, **kwargs):
         raise NotImplementedError("In-place solving implementation is not provided.")
 
     ###
     # Public API
     ###
 
-    def solve_inplace(self, A: np.ndarray, x: np.ndarray, tol: float | None = None, compute_errors: bool = False):
+    def solve_inplace(self, b: np.ndarray, compute_errors: bool = False, **kwargs):
         """Solves the linear system `A@x = b` in-place"""
-        # TODO: Check that A, x are compatible types
-        # TODO: Check that A, x are compatible shapes
-        if tol is not None:
-            self._tolerance = _make_tolerance(tol, dtype=self._dtype)
-        self._solve_inplace_impl(A, x)
+        # TODO: Check that A, b are compatible types
+        # TODO: Check that A, b are compatible shapes
+        return self._solve_inplace_impl(b, compute_errors=compute_errors, **kwargs)
 
-    def solve(self, A: np.ndarray, b: np.ndarray, tol: float | None = None, compute_errors: bool = False) -> np.ndarray:
+    def compute(self, A: np.ndarray):
+        """Ingest matrix and precompute rhs-independent intermediate."""
+        self._compute_impl(A)
+
+    def solve(self, b: np.ndarray, compute_errors: bool = False, **kwargs) -> np.ndarray:
         """Solves the linear system `A@x = b`"""
-        x = b.astype(A.dtype, copy=True)
-        self.solve_inplace(A, x, tol)
-        return x
+        return self.solve_inplace(b.copy(), compute_errors=compute_errors, **kwargs)

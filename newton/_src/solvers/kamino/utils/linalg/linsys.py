@@ -286,15 +286,17 @@ def minimum_residual(
 # ---------------------------
 if __name__ == "__main__":
     # ----------------------------
-    dtype = np.float64
-    # dtype = np.float32
+    np.set_printoptions(linewidth=2000, precision=10, threshold=10000, suppress=False)  # Suppress scientific notation
+
+    # ----------------------------
+    # dtype = np.float64
+    dtype = np.float32
     print("----------------------------")
     print(f"dtype: {dtype}")
 
     # ----------------------------
-    # epsilon = np.finfo(dtype).eps
-    epsilon = 0.0
-    tolerance = 1e-15
+    epsilon = np.finfo(dtype).eps
+    tolerance = np.finfo(dtype).eps
     max_iterations = 1000
     print("----------------------------")
     print(f"epsilon: {epsilon}")

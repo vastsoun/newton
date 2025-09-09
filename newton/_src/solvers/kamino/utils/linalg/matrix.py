@@ -102,6 +102,117 @@ def assert_is_symmetric_matrix(A: np.ndarray) -> bool:
 ###
 
 
+class RectangularMatrixProperties:
+    def __init__(self, matrix: np.ndarray | None = None):
+        self.matrix: np.ndarray
+        """Reference to the original matrix."""
+
+        # Matrix statistics
+        self.min: float = np.inf
+        """The minimum element of the matrix."""
+        self.max: float = np.inf
+        """The maximum element of the matrix."""
+        self.mean: float = np.inf
+        """The mean of the matrix elements."""
+        self.std: float = np.inf
+        """The standard deviation of the matrix elements."""
+
+        # Matrix dimensions
+        self.shape: tuple[int, int] = (0, 0)
+        """The matrix shape (rows, cols)."""
+
+        # Matrix properties
+        self.rank: int = 0
+        """The matrix rank compute using `numpy.linalg.matrix_rank()`."""
+
+        # Matrix norms
+        self.norm_l1: float = np.inf
+        """The L1-norm compute using `numpy.linalg.norm()`."""
+        self.norm_l2: float = np.inf
+        """The L2-norm compute using `numpy.linalg.norm()`."""
+        self.norm_inf: float = np.inf
+        """The infinity norm compute using `numpy.linalg.norm()`."""
+
+        # SVD properties
+        self.sigma_min: float = np.inf
+        """The smallest singular value."""
+        self.sigma_max: float = np.inf
+        """The largest singular value."""
+        self.sigma_cond: float = np.inf
+        """The condition number defined via the ratio of max/min singular values."""
+
+        # Caches
+        self.sigmas: np.ndarray = np.array([])
+
+        # Compute matrix properties if specified
+        if matrix is not None:
+            self.compute(matrix)
+
+    def compute(self, matrix: np.ndarray):
+        """
+        Compute the properties of the rectangular matrix.
+
+        Args:
+            matrix (np.ndarray): The input matrix to analyze.
+            tol (float, optional): The tolerance for numerical stability.
+
+        Raises:
+            TypeError: If the input matrix is not a numpy array.
+            ValueError: If the input matrix is not 2D.
+        """
+        # Check if the matrix is valid type and dimensions
+        if not isinstance(matrix, np.ndarray):
+            raise TypeError("Input must be a numpy array.")
+        if matrix.ndim != 2:
+            raise ValueError("Input must be a 2D matrix.")
+
+        # Capture the reference to the target matrix
+        self.matrix = matrix
+
+        # Then compute statistics over the coefficients
+        self.min = np.min(self.matrix)
+        self.max = np.max(self.matrix)
+        self.mean = np.mean(self.matrix)
+        self.std = np.std(self.matrix)
+
+        # Extract additional properties using numpy operations
+        self.shape = self.matrix.shape
+        self.rank = np.linalg.matrix_rank(self.matrix)
+
+        # Compute matrix norms
+        self.norm_l1 = np.linalg.norm(self.matrix, ord=1)
+        self.norm_l2 = np.linalg.norm(self.matrix, ord=2)
+        self.norm_inf = np.linalg.norm(self.matrix, ord=np.inf)
+
+        # Extract the matrix singular values
+        self.sigmas = np.linalg.svd(self.matrix, compute_uv=False, hermitian=False).real
+        self.sigma_min = self.sigmas[-1]
+        self.sigma_max = self.sigmas[0]
+        self.sigma_cond = self.sigma_max / self.sigma_min
+
+    def __str__(self) -> str:
+        return (
+            f"Type:\n"
+            f"   shape: {self.matrix.shape}\n"
+            f"   dtype: {self.matrix.dtype}\n"
+            f"Statistics:\n"
+            f"   min: {self.min}\n"
+            f"   max: {self.max}\n"
+            f"  mean: {self.mean}\n"
+            f"   std: {self.std}\n"
+            f"Basics:\n"
+            f"   rank: {self.rank}\n"
+            f"Norms:\n"
+            f"    l1: {self.norm_l1}\n"
+            f"    l2: {self.norm_l2}\n"
+            f"   inf: {self.norm_inf}\n"
+            f"SVD:\n"
+            f"   sigma min: {self.sigma_min}\n"
+            f"   sigma max: {self.sigma_max}\n"
+            f"  sigma cond: {self.sigma_cond}\n"
+        )
+
+
 class SquareSymmetricMatrixProperties:
     def __init__(self, matrix: np.ndarray | None = None, tol: float | None = None):
         self.matrix: np.ndarray
@@ -249,6 +360,7 @@ class SquareSymmetricMatrixProperties:
         self.sigma_cond = self.sigma_max / self.sigma_min
 
         # Compute the convexity parameters
+        # self.m = np.abs(self.lambda_min)
         self.m = max(0.0, self.lambda_min)
         self.L = np.abs(self.lambda_max)
         self.kappa = self.L / self.m if self.m > 0 else np.inf

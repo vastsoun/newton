@@ -4,8 +4,8 @@
 
 import numpy as np
 
-from newton._src.solvers.kamino.utils.linalg.cholesky import Cholesky
 from newton._src.solvers.kamino.utils.linalg.ldlt_eigen3 import LDLTEigen3
+from newton._src.solvers.kamino.utils.linalg.llt_std import LLT
 
 ###
 # Solvers
@@ -96,7 +96,7 @@ class ADMMSolver:
     def _factorize(self, mat: np.ndarray, use_cholesky: bool, use_ldlt: bool):
         if use_cholesky:
             try:
-                self.llt = Cholesky(mat)
+                self.llt = LLT(mat)
             except np.linalg.LinAlgError:
                 raise ValueError("Matrix is not positive definite!")
         elif use_ldlt:

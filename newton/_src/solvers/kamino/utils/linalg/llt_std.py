@@ -15,12 +15,9 @@
 
 """KAMINO: Utilities: Linear Algebra: LLT (a.k.a. Cholesky) factorization"""
 
-from typing import Any
-
 import numpy as np
 
-from newton._src.solvers.kamino.utils.linalg.factorizer import MatrixFactorizer, MatrixSign
-from newton._src.solvers.kamino.utils.linalg.matrix import (
+from .matrix import (
     _make_tolerance,
     assert_is_square_matrix,
     assert_is_symmetric_matrix,
@@ -31,7 +28,6 @@ from newton._src.solvers.kamino.utils.linalg.matrix import (
 ###
 
 __all__ = [
-    "LLT",
     "compute_cholesky_lower",
     "compute_cholesky_lower_reconstruct",
     "compute_cholesky_lower_solve",
@@ -317,56 +313,3 @@ def compute_cholesky_lower_reconstruct(L: np.ndarray) -> np.ndarray:
 
 def compute_cholesky_upper_reconstruct(U: np.ndarray) -> np.ndarray:
     return U @ U.T
-
-
-###
-# Factorizer
-###
-
-
-class LLT(MatrixFactorizer):
-    def __init__(
-        self,
-        A: np.ndarray | None = None,
-        tol: float | None = None,
-        dtype: np.dtype | None = None,
-        itype: np.dtype | None = None,
-        upper: bool = False,
-        check_symmetry: bool = False,
-        compute_error: bool = False,
-    ):
-        # Call the parent constructor
-        super().__init__(
-            A=A,
-            tol=tol,
-            dtype=dtype,
-            itype=itype,
-            upper=upper,
-            check_symmetry=check_symmetry,
-            compute_error=compute_error,
-        )
-
-    def _factorize_impl(self, A: np.ndarray) -> None:
-        # Attempt factorization of A
-        try:
-            self._matrix = compute_cholesky_lower(A, False)
-            self._sign = MatrixSign.PositiveDef
-        except np.linalg.LinAlgError as e:
-            raise np.linalg.LinAlgError(f"Cholesky factorization failed: {e!s}") from e
-
-        # Update internal meta-data
-        self._sign = MatrixSign.ZeroSign
-
-    def _unpack_impl(self) -> None:
-        pass
-
-    def _get_unpacked_impl(self) -> Any:
-        return self._matrix
-
-    def _solve_inplace_impl(self, x: np.ndarray):
-        b = np.asarray(x, dtype=self._matrix.dtype)
-        y = compute_cholesky_lower_solve(self._matrix, b)
-        x[:] = y
-
-    def _reconstruct_impl(self) -> np.ndarray:
-        return self._matrix @ self._matrix.T

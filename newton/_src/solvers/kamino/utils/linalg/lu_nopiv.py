@@ -15,18 +15,13 @@
 
 """KAMINO: Utilities: Linear Algebra: LU factorization w/o pivoting"""
 
-from typing import Any
-
 import numpy as np
-
-from newton._src.solvers.kamino.utils.linalg.factorizer import MatrixFactorizer, MatrixSign
 
 ###
 # Module interface
 ###
 
 __all__ = [
-    "LUNoPivot",
     "compute_lu_backward_upper",
     "compute_lu_forward_lower",
     "lu_nopiv",
@@ -100,66 +95,6 @@ def compute_lu_backward_upper(U: np.ndarray, y: np.ndarray, tol: float = 1e-12):
 ###
 # Factorizer
 ###
-
-
-class LUNoPivot(MatrixFactorizer):
-    def __init__(
-        self,
-        A: np.ndarray | None = None,
-        tol: float | None = None,
-        dtype: np.dtype | None = None,
-        itype: np.dtype | None = None,
-        upper: bool = False,
-        check_symmetry: bool = False,
-        compute_error: bool = False,
-    ):
-        # Declare internal data structures
-        self._L: np.ndarray | None = None
-        self._U: np.ndarray | None = None
-
-        # Call the parent constructor
-        super().__init__(
-            A=A,
-            tol=tol,
-            dtype=dtype,
-            itype=itype,
-            upper=upper,
-            check_symmetry=check_symmetry,
-            compute_error=compute_error,
-        )
-
-    @property
-    def L(self) -> np.ndarray | None:
-        return self._L
-
-    @property
-    def U(self) -> np.ndarray | None:
-        return self._U
-
-    def _factorize_impl(self, A: np.ndarray) -> None:
-        # Attempt factorization of A
-        try:
-            self._L, self._U = lu_nopiv(A, self._tolerance)
-        except np.linalg.LinAlgError as e:
-            raise np.linalg.LinAlgError(f"LU factorization failed: {e!s}") from e
-
-        # Update internal meta-data
-        self._matrix = self._L
-        self._sign = MatrixSign.ZeroSign
-
-    def _unpack_impl(self) -> None:
-        pass
-
-    def _get_unpacked_impl(self) -> Any:
-        return self._matrix
-
-    def _solve_inplace_impl(self, x: np.ndarray):
-        b = np.asarray(x, dtype=self._matrix.dtype)
-        y = compute_lu_forward_lower(self._L, b)
-        x[:] = compute_lu_backward_upper(self._U, y, tol=self._tolerance)
-
-    def _reconstruct_impl(self) -> np.ndarray:
-        return self._L @ self._U
 
 
 # # ---------------------------

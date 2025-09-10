@@ -19,9 +19,7 @@ from enum import IntEnum
 
 import numpy as np
 
-from newton._src.solvers.kamino.utils.linalg.ldlt_eigen3 import LDLTEigen3
-from newton._src.solvers.kamino.utils.linalg.linear import ComputationInfo
-from newton._src.solvers.kamino.utils.linalg.llt_std import LLT
+from .linear import LLT, ComputationInfo, LDLTEigen3
 
 ###
 # Functions

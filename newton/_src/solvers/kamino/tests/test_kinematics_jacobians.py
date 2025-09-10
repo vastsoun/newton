@@ -60,7 +60,7 @@ def extract_cts_jacobians(
     J_cts_flat_total_size = J_cts_flat.size
     J_cts_flat_offsets = [int(cjmio[i]) for i in range(num_worlds)]
     J_cts_flat_sizes = [0] * num_worlds
-    J_cts_flat_offsets_ext = J_cts_flat_offsets + [J_cts_flat_total_size]
+    J_cts_flat_offsets_ext = [*J_cts_flat_offsets, J_cts_flat_total_size]
     for i in range(num_worlds - 1, -1, -1):
         J_cts_flat_sizes[i] = J_cts_flat_offsets_ext[i + 1] - J_cts_flat_offsets_ext[i]
 
@@ -101,7 +101,7 @@ def extract_dofs_jacobians(model: Model, jacobians: DenseSystemJacobians, verbos
     J_dofs_flat_total_size = J_dofs_flat.size
     J_dofs_flat_offsets = [int(ajmio[i]) for i in range(num_worlds)]
     J_dofs_flat_sizes = [0] * num_worlds
-    J_dofs_flat_offsets_ext = J_dofs_flat_offsets + [J_dofs_flat_total_size]
+    J_dofs_flat_offsets_ext = [*J_dofs_flat_offsets, J_dofs_flat_total_size]
     for i in range(num_worlds - 1, -1, -1):
         J_dofs_flat_sizes[i] = J_dofs_flat_offsets_ext[i + 1] - J_dofs_flat_offsets_ext[i]
 
@@ -817,10 +817,10 @@ class TestKinematicsJacobians(unittest.TestCase):
         wp.synchronize()
 
         # Extract the Jacobian matrices
-        J_cts_mat = extract_cts_jacobians(
+        extract_cts_jacobians(
             model=model, limits=limits, contacts=detector.contacts, jacobians=jacobians, verbose=self.verbose
         )
-        J_dofs_mat = extract_dofs_jacobians(model=model, jacobians=jacobians, verbose=self.verbose)
+        extract_dofs_jacobians(model=model, jacobians=jacobians, verbose=self.verbose)
         # TODO: Add checks for the Jacobian matrices
 
     def test_09_build_heterogeneous_dense_system_jacobians(self):
@@ -906,10 +906,10 @@ class TestKinematicsJacobians(unittest.TestCase):
         wp.synchronize()
 
         # Extract the Jacobian matrices
-        J_cts_mat = extract_cts_jacobians(
+        extract_cts_jacobians(
             model=model, limits=limits, contacts=detector.contacts, jacobians=jacobians, verbose=self.verbose
         )
-        J_dofs_mat = extract_dofs_jacobians(model=model, jacobians=jacobians, verbose=self.verbose)
+        extract_dofs_jacobians(model=model, jacobians=jacobians, verbose=self.verbose)
         # TODO: Add checks for the Jacobian matrices
 
 

@@ -8,7 +8,6 @@ import numpy as np
 import warp as wp
 
 # Moduel to be tested
-from newton._src.solvers.kamino.core.world import WorldDescriptor
 
 ###
 # Tests
@@ -23,8 +22,8 @@ class TestWorldDescriptor(unittest.TestCase):
         self.default_device = None
 
     def test_single_model(self):
-        world = WorldDescriptor()
         # TODO
+        pass
 
 
 ###

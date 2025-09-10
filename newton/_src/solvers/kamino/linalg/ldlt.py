@@ -5,7 +5,6 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Union
 
 import warp as wp
 from warp.context import Devicelike
@@ -22,17 +21,6 @@ __all__ = [
     "LDLTFactorizer",
     "LDLTFactorizerBase",
     "SequentialLDLTFactorizer",
-    "ldlt_blocked_factorize",
-    "ldlt_blocked_solve",
-    "ldlt_blocked_solve_inplace",
-    "ldlt_sequential_factorize",
-    "ldlt_sequential_solve",
-    "ldlt_sequential_solve_backward",
-    "ldlt_sequential_solve_forward",
-    "ldlt_sequential_solve_inplace",
-    "make_ldlt_blocked_factorize_kernel",
-    "make_ldlt_blocked_solve_inplace_kernel",
-    "make_ldlt_blocked_solve_kernel",
 ]
 
 
@@ -1004,7 +992,7 @@ class SequentialLDLTFactorizer(LDLTFactorizerBase):
     and supports heterogeneous matrix block sizes.\n
     """
 
-    def __init__(self, dims: list[int] = [], allocate_info=True, device: Devicelike = None):
+    def __init__(self, dims: list[int] | None = None, allocate_info=True, device: Devicelike = None):
         super().__init__(dims=dims, allocate_info=allocate_info, device=device)
 
     def _allocate(self):
@@ -1079,7 +1067,7 @@ class BlockedLDLTFactorizer(LDLTFactorizerBase):
 
     def __init__(
         self,
-        dims: list[int] = [],
+        dims: list[int] | None = None,
         block_size: int = 16,
         solve_block_dim: int = 64,
         factortize_block_dim: int = 128,
@@ -1221,5 +1209,5 @@ class BlockedLDLTFactorizer(LDLTFactorizerBase):
         # )
 
 
-LDLTFactorizer = Union[SequentialLDLTFactorizer, BlockedLDLTFactorizer, None]
+LDLTFactorizer = SequentialLDLTFactorizer | BlockedLDLTFactorizer | None
 """A type alias for the LDLT factorizer, which can be either a sequential or blocked implementation."""

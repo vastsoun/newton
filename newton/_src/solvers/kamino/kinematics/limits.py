@@ -365,7 +365,7 @@ class Limits:
         # as well as the limit capacities for each world. Corresponding sizes are defaulted to 0 (empty).
         model_max_limits = 0
         world_max_limits = [0] * builder.num_worlds
-        for j, joint in enumerate(builder.joints):
+        for _j, joint in enumerate(builder.joints):
             for dof in range(joint.num_dofs):
                 # Check if the joint has finite generalized coordinate limits
                 if joint.q_j_min[dof] > float(FLOAT32_MIN) or joint.q_j_max[dof] < float(FLOAT32_MAX):

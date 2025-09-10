@@ -97,13 +97,13 @@ class ADMMSolver:
         if use_cholesky:
             try:
                 self.llt = Cholesky(mat)
-            except np.linalg.LinAlgError:
-                raise ValueError("Matrix is not positive definite!")
+            except np.linalg.LinAlgError as e:
+                raise ValueError("Matrix is not positive definite!") from e
         elif use_ldlt:
             try:
                 self.ldlt = LDLTEigen3(mat)
-            except np.linalg.LinAlgError:
-                raise ValueError("Matrix is not positive definite!")
+            except np.linalg.LinAlgError as e:
+                raise ValueError("Matrix is not positive definite!") from e
 
     def _solve_system(self, mat: np.ndarray, vec: np.ndarray, use_cholesky: bool, use_ldlt: bool) -> np.ndarray:
         if use_cholesky:

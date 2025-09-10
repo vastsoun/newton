@@ -12,17 +12,17 @@ import numpy as np
 ###
 
 
-def printmatrix(x: np.ndarray, name: str = None):
+def printmatrix(x: np.ndarray, name: str | None = None):
     if name:
         print(name, ":")
     for row in x:
-        print(" ".join(map(lambda x: f"{x:.3f}\t", row)))
+        print(" ".join(f"{val:.3f}\t" for val in row))
 
 
-def printvector(x: np.ndarray, name: str = None):
+def printvector(x: np.ndarray, name: str | None = None):
     if name:
         print(name, ":")
-    print(" ".join(map(lambda x: f"{x:.3f}\t", x)))
+    print(" ".join(f"{val:.3f}\t" for val in x))
 
 
 def print_progress_bar(iteration, total, start_time, length=40, prefix="", suffix=""):

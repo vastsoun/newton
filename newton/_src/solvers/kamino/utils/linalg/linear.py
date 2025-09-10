@@ -53,9 +53,9 @@ class LinearSolver(ABC):
 
         # Initialize internal solution meta-data
         self._info: ComputationInfo = ComputationInfo.Uninitialized
-        self._success: bool = False
+        self._compute_success: bool = False
         if kwargs:
-            raise ArgumentError(f"Unused kwargs: {list(kwargs)}")
+            raise TypeError(f"Unused kwargs: {list(kwargs)}")
 
     def _compute_errors(self) -> float:
         """TODO"""
@@ -67,16 +67,8 @@ class LinearSolver(ABC):
         return self._dtype
 
     @property
-    def tolerance(self) -> float:
-        return self._tolerance
-
-    @property
-    def sign(self) -> MatrixSign:
-        return self._sign
-
-    @property
-    def success(self) -> bool:
-        return self._success
+    def compute_success(self) -> bool:
+        return self._compute_success
 
     ###
     # Internals

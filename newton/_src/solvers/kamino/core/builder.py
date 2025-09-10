@@ -5,50 +5,32 @@
 from __future__ import annotations
 
 import uuid  # TODO: remove this import
+
 import numpy as np
 import warp as wp
-
-from typing import List
 from warp.context import Devicelike
 
-from .types import (
-    uint32, int32, float32,
-    vec3f, vec4f, vec6f,
-    mat33f,
-    transformf,
-    Axis
-)
-from .math import (
-    FLOAT32_MIN,
-    FLOAT32_MAX,
-    FLOAT32_EPS
-)
-from .world import WorldDescriptor
-from .time import TimeModel
-from .gravity import GravityDescriptor, GravityModel
-from .shapes import ShapeDescriptorType
-from .materials import (
-    MaterialDescriptor,
-    MaterialPairProperties,
-    MaterialManager,
-    MaterialPairsModel
-)
+from .bodies import RigidBodiesModel, RigidBodyDescriptor
 from .geometry import (
-    GeometryDescriptor,
-    GeometriesModel,
-    CollisionGeometryDescriptor,
     CollisionGeometriesModel,
+    CollisionGeometryDescriptor,
+    GeometriesModel,
+    GeometryDescriptor,
 )
-from .bodies import RigidBodyDescriptor, RigidBodiesModel
+from .gravity import GravityDescriptor, GravityModel
 from .joints import (
     JointActuationType,
-    JointDoFType,
     JointDescriptor,
+    JointDoFType,
     JointsModel,
 )
-from .model import ModelInfo, Model
-
-import newton._src.solvers.kamino.utils.logger as msg
+from .materials import MaterialDescriptor, MaterialManager, MaterialPairProperties, MaterialPairsModel
+from .math import FLOAT32_EPS, FLOAT32_MAX, FLOAT32_MIN
+from .model import Model, ModelInfo
+from .shapes import ShapeDescriptorType
+from .time import TimeModel
+from .types import Axis, float32, int32, mat33f, transformf, uint32, vec3f, vec4f, vec6f
+from .world import WorldDescriptor
 
 ###
 # Module interface
@@ -70,10 +52,12 @@ wp.set_module_options({"enable_backward": False})
 # Containers
 ###
 
+
 class ModelBuilder:
     """
     A class to facilitate construction of simulation models.
     """
+
     def __init__(self):
         # Meta-data
         self._num_worlds: int = 1
@@ -92,14 +76,14 @@ class ModelBuilder:
         self._num_jcts: int = 0
 
         # Model descriptors
-        self._up_axes: List[Axis] = [Axis.Z]
-        self._worlds: List[WorldDescriptor] = [WorldDescriptor()]
-        self._gravity: List[GravityDescriptor] = [GravityDescriptor()]
-        self._materials: List[MaterialManager] = [MaterialManager()]
-        self._bodies: List[RigidBodyDescriptor] = []
-        self._joints: List[JointDescriptor] = []
-        self._pgeoms: List[GeometryDescriptor] = []
-        self._cgeoms: List[CollisionGeometryDescriptor] = []
+        self._up_axes: list[Axis] = [Axis.Z]
+        self._worlds: list[WorldDescriptor] = [WorldDescriptor()]
+        self._gravity: list[GravityDescriptor] = [GravityDescriptor()]
+        self._materials: list[MaterialManager] = [MaterialManager()]
+        self._bodies: list[RigidBodyDescriptor] = []
+        self._joints: list[JointDescriptor] = []
+        self._pgeoms: list[GeometryDescriptor] = []
+        self._cgeoms: list[CollisionGeometryDescriptor] = []
 
         # Initialize the default world descriptor with the default material
         self.world.add_material(self.materials.default)
@@ -165,19 +149,19 @@ class ModelBuilder:
         return self._materials[0]
 
     @property
-    def bodies(self) -> List[RigidBodyDescriptor]:
+    def bodies(self) -> list[RigidBodyDescriptor]:
         return self._bodies
 
     @property
-    def joints(self) -> List[JointDescriptor]:
+    def joints(self) -> list[JointDescriptor]:
         return self._joints
 
     @property
-    def collision_geoms(self) -> List[CollisionGeometryDescriptor]:
+    def collision_geoms(self) -> list[CollisionGeometryDescriptor]:
         return self._cgeoms
 
     @property
-    def physical_geoms(self) -> List[GeometryDescriptor]:
+    def physical_geoms(self) -> list[GeometryDescriptor]:
         return self._pgeoms
 
     ###
@@ -244,10 +228,7 @@ class ModelBuilder:
 
         # Extract the orientation quaterion
         if not np.isclose(wp.length(q_i.q), 1.0, atol=float(FLOAT32_EPS)):
-            raise ValueError(
-                f"Invalid body pose orientation quaternion: {q_i.q}. "
-                "Must be a unit quaternion."
-            )
+            raise ValueError(f"Invalid body pose orientation quaternion: {q_i.q}. Must be a unit quaternion.")
 
     def _check_world_index(self, world_index: int):
         """
@@ -260,17 +241,12 @@ class ModelBuilder:
             ValueError: If the world index is out of range.
         """
         if world_index < 0 or world_index >= self._num_worlds:
-            raise ValueError(
-                f"Invalid world index (wid): {world_index}. "
-                f"Must be between 0 and {self._num_worlds - 1}."
-            )
+            raise ValueError(f"Invalid world index (wid): {world_index}. Must be between 0 and {self._num_worlds - 1}.")
 
     @staticmethod
     def _check_limits(
-        limits: List[float] | float | None,
-        num_dofs: int,
-        default: float = float(FLOAT32_MAX)
-    ) -> List[float]:
+        limits: list[float] | float | None, num_dofs: int, default: float = float(FLOAT32_MAX)
+    ) -> list[float]:
         """
         Processes a specified limit value to ensure it is a list of floats.
 
@@ -303,7 +279,7 @@ class ModelBuilder:
             else:
                 return [limits] * num_dofs
 
-        if isinstance(limits, List):
+        if isinstance(limits, list):
             if len(limits) == 0:
                 return [float(default) for _ in range(num_dofs)]
 
@@ -314,8 +290,7 @@ class ModelBuilder:
                 return limits
             else:
                 raise TypeError(
-                    f"Invalid limits type: All entries must be `float`, "
-                    f"but got:\n{[type(x) for x in limits]}"
+                    f"Invalid limits type: All entries must be `float`, but got:\n{[type(x) for x in limits]}"
                 )
 
     ###
@@ -339,10 +314,7 @@ class ModelBuilder:
 
         # Check if the gravity descriptor is valid
         if not isinstance(gravity, GravityDescriptor):
-            raise TypeError(
-                f"Invalid gravity descriptor type: {type(gravity)}. "
-                "Must be `GravityDescriptor`."
-            )
+            raise TypeError(f"Invalid gravity descriptor type: {type(gravity)}. Must be `GravityDescriptor`.")
 
         # Set the new gravity configurations
         self._gravity[world_index] = gravity
@@ -408,10 +380,7 @@ class ModelBuilder:
         """
         # Check if the descriptor is valid
         if not isinstance(descriptor, RigidBodyDescriptor):
-            raise TypeError(
-                f"Invalid body descriptor type: {type(descriptor)}. "
-                "Must be `RigidBodyDescriptor`."
-            )
+            raise TypeError(f"Invalid body descriptor type: {type(descriptor)}. Must be `RigidBodyDescriptor`.")
 
         # TODO: this seems wasteful to unpack and re-pack the descriptor, how can we avoid this?
         return self.add_body(
@@ -433,10 +402,10 @@ class ModelBuilder:
         B_r_Bj: vec3f,
         F_r_Fj: vec3f,
         X_j: mat33f,
-        q_j_min: List[float] | float | None = None,
-        q_j_max: List[float] | float | None = None,
-        dq_j_max: List[float] | float | None = None,
-        tau_j_max: List[float] | float | None = None,
+        q_j_min: list[float] | float | None = None,
+        q_j_max: list[float] | float | None = None,
+        dq_j_max: list[float] | float | None = None,
+        tau_j_max: list[float] | float | None = None,
         name: str | None = None,
         uid: str | None = None,
         world_index: int = 0,
@@ -446,15 +415,11 @@ class ModelBuilder:
 
         # Check if the actuation type is valid
         if not isinstance(act_type, JointActuationType):
-            raise TypeError(
-                f"Invalid actuation type: {act_type}. Must be `JointActuationType`."
-            )
+            raise TypeError(f"Invalid actuation type: {act_type}. Must be `JointActuationType`.")
 
         # Check if the DoF type is valid
         if not isinstance(dof_type, JointDoFType):
-            raise TypeError(
-                f"Invalid DoF type: {dof_type}. Must be `JointDoFType`."
-            )
+            raise TypeError(f"Invalid DoF type: {dof_type}. Must be `JointDoFType`.")
 
         # Check if the body indices are valid
         if bid_B < 0 and bid_F < 0:
@@ -510,8 +475,12 @@ class ModelBuilder:
         joint.dofs_offset = self._worlds[world_index].num_joint_dofs
         # NOTE: passive/actuated index offsets are set to -1 if not beloning to the respective category
         # TODO: Is there a better way to handle this?
-        joint.passive_dofs_offset = self._worlds[world_index].num_passive_joint_dofs if act_type == JointActuationType.PASSIVE else -1
-        joint.actuated_dofs_offset = self._worlds[world_index].num_actuated_joint_dofs if act_type > JointActuationType.PASSIVE else -1
+        joint.passive_dofs_offset = (
+            self._worlds[world_index].num_passive_joint_dofs if act_type == JointActuationType.PASSIVE else -1
+        )
+        joint.actuated_dofs_offset = (
+            self._worlds[world_index].num_actuated_joint_dofs if act_type > JointActuationType.PASSIVE else -1
+        )
 
         # Set default values for joint limits if not provided
         q_j_min = self._check_limits(q_j_min, joint.num_dofs, float(FLOAT32_MIN))
@@ -543,10 +512,7 @@ class ModelBuilder:
         """Add a joint to the model by descriptor."""
         # Check if the descriptor is valid
         if not isinstance(descriptor, JointDescriptor):
-            raise TypeError(
-                f"Invalid joint descriptor type: {type(descriptor)}. "
-                "Must be `JointDescriptor`."
-            )
+            raise TypeError(f"Invalid joint descriptor type: {type(descriptor)}. Must be `JointDescriptor`.")
         # TODO: this seems wasteful to unpack and re-pack the descriptor, how can we avoid this?
         return self.add_joint(
             act_type=descriptor.act_type,
@@ -562,7 +528,7 @@ class ModelBuilder:
             tau_j_max=descriptor.tau_j_max,
             name=descriptor.name,
             uid=descriptor.uid,
-            world_index=world_index
+            world_index=world_index,
         )
 
     def add_collision_layer(self, name: str, world_index: int = 0):
@@ -681,7 +647,7 @@ class ModelBuilder:
             collides=descriptor.collides,
             name=descriptor.name,
             uid=descriptor.uid,
-            world_index=world_index
+            world_index=world_index,
         )
 
     def add_physical_geometry(
@@ -749,8 +715,7 @@ class ModelBuilder:
         # Check if the descriptor is valid
         if not isinstance(descriptor, GeometryDescriptor):
             raise TypeError(
-                f"Invalid physical geometry descriptor type: {type(descriptor)}. "
-                "Must be `GeometryDescriptor`."
+                f"Invalid physical geometry descriptor type: {type(descriptor)}. Must be `GeometryDescriptor`."
             )
 
         # TODO: this seems wasteful to unpack and re-pack the descriptor, how can we avoid this?
@@ -761,7 +726,7 @@ class ModelBuilder:
             offset=descriptor.offset,
             name=descriptor.name,
             uid=descriptor.uid,
-            world_index=world_index
+            world_index=world_index,
         )
 
     def set_default_material(self, material: MaterialDescriptor, world_index: int = 0):
@@ -799,7 +764,7 @@ class ModelBuilder:
         first: int | str | MaterialDescriptor,
         second: int | str | MaterialDescriptor,
         material_pair: MaterialPairProperties,
-        world_index: int = 0
+        world_index: int = 0,
     ):
         # Check if the world index is valid
         self._check_world_index(world_index)
@@ -809,11 +774,7 @@ class ModelBuilder:
         second_id = second.name if isinstance(second, MaterialDescriptor) else second
 
         # Register the material pair in the material manager
-        self._materials[world_index].configure_pair(
-            first=first_id,
-            second=second_id,
-            material_pair=material_pair
-        )
+        self._materials[world_index].configure_pair(first=first_id, second=second_id, material_pair=material_pair)
 
     def add_builder(self, other: ModelBuilder):
         """
@@ -830,10 +791,7 @@ class ModelBuilder:
         """
         # Check if the other builder is of valid type
         if not isinstance(other, ModelBuilder):
-            raise ValueError(
-                f"Invalid builder type: {type(other)}. "
-                "Must be a ModelBuilder instance."
-            )
+            raise ValueError(f"Invalid builder type: {type(other)}. Must be a ModelBuilder instance.")
 
         # Offset the indices of the other builders elements
         for body in other.bodies:

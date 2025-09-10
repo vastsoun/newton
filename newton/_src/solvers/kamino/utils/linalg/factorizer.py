@@ -2,20 +2,22 @@
 # KAMINO: Utilities: Linear Algebra: Factorizer
 ###########################################################################
 
-import numpy as np
-from enum import IntEnum
 from abc import ABC, abstractmethod
-from typing import Any, Optional
+from enum import IntEnum
+from typing import Any
+
+import numpy as np
+
 from newton._src.solvers.kamino.utils.linalg.matrix import (
     _make_tolerance,
     assert_is_square_matrix,
     assert_is_symmetric_matrix,
 )
 
-
 ###
 # Types
 ###
+
 
 class MatrixSign(IntEnum):
     ZeroSign = 0
@@ -37,23 +39,23 @@ class ComputationInfo(IntEnum):
 class MatrixFactorizer(ABC):
     def __init__(
         self,
-        A: Optional[np.ndarray] = None,
-        tol: Optional[float] = None,
-        dtype: Optional[np.dtype] = None,
-        itype: Optional[np.dtype] = None,
+        A: np.ndarray | None = None,
+        tol: float | None = None,
+        dtype: np.dtype | None = None,
+        itype: np.dtype | None = None,
         upper: bool = False,
         check_symmetry: bool = False,
         compute_error: bool = False,
     ):
         # Declare internal data structures
-        self._source: Optional[np.ndarray] = None
-        self._matrix: Optional[np.ndarray] = None
-        self._errors: Optional[np.ndarray] = None
+        self._source: np.ndarray | None = None
+        self._matrix: np.ndarray | None = None
+        self._errors: np.ndarray | None = None
 
         # Initialize internal meta-data
-        self._tolerance: Optional[float] = tol
-        self._dtype: Optional[np.dtype] = dtype
-        self._itype: Optional[np.dtype] = itype
+        self._tolerance: float | None = tol
+        self._dtype: np.dtype | None = dtype
+        self._itype: np.dtype | None = itype
         self._sign: MatrixSign = MatrixSign.ZeroSign
         self._info: ComputationInfo = ComputationInfo.Success
         self._upper: bool = upper
@@ -86,11 +88,11 @@ class MatrixFactorizer(ABC):
         return self._itype
 
     @property
-    def matrix(self) -> Optional[np.ndarray]:
+    def matrix(self) -> np.ndarray | None:
         return self._matrix
 
     @property
-    def errors(self) -> Optional[np.ndarray]:
+    def errors(self) -> np.ndarray | None:
         return self._errors
 
     @property
@@ -136,8 +138,8 @@ class MatrixFactorizer(ABC):
     def factorize(
         self,
         A: np.ndarray,
-        tol: Optional[float] = None,
-        itype: Optional[np.dtype] = None,
+        tol: float | None = None,
+        itype: np.dtype | None = None,
         check_symmetry: bool = False,
         compute_error: bool = False,
     ):
@@ -178,14 +180,14 @@ class MatrixFactorizer(ABC):
         if compute_error:
             self._errors = self._compute_errors(A)
 
-    def solve_inplace(self, x: np.ndarray, tol: Optional[float] = None):
+    def solve_inplace(self, x: np.ndarray, tol: float | None = None):
         """Solves the linear system `A@x = b` using the LDLT factorization in-place."""
         self._check_has_factorization()
         if tol is not None:
             self._tolerance = _make_tolerance(tol, dtype=self._dtype)
         self._solve_inplace_impl(x)
 
-    def solve(self, b: np.ndarray, tol: Optional[float] = None) -> np.ndarray:
+    def solve(self, b: np.ndarray, tol: float | None = None) -> np.ndarray:
         """Solves the linear system `A@x = b` using the LDLT factorization."""
         x = b.astype(self._matrix.dtype, copy=True)
         self.solve_inplace(x, tol)

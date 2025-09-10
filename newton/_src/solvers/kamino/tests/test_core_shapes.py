@@ -3,19 +3,19 @@
 ###########################################################################
 
 import unittest
+
 import numpy as np
 import warp as wp
 
 # Module to be tested
-from newton._src.solvers.kamino.core.shapes import ShapeType, ShapeDescriptor, SphereShape
-
+from newton._src.solvers.kamino.core.shapes import ShapeDescriptor, ShapeType, SphereShape
 
 ###
 # Tests
 ###
 
-class TestShapes(unittest.TestCase):
 
+class TestShapes(unittest.TestCase):
     def test_sphere_type(self):
         # Create a default-constructed surface material
         sid = ShapeType.SPHERE

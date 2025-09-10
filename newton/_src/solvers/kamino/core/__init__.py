@@ -2,20 +2,13 @@
 # KAMINO: Core Module
 ###########################################################################
 
-from .state import State
+from .builder import ModelBuilder
 from .control import Control
 from .model import Model, ModelData
-from .builder import ModelBuilder
-
+from .state import State
 
 ###
 # Module interface
 ###
 
-__all__ = [
-    "State",
-    "Control",
-    "Model",
-    "ModelData",
-    "ModelBuilder"
-]
+__all__ = ["Control", "Model", "ModelBuilder", "ModelData", "State"]

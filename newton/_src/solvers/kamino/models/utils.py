@@ -2,25 +2,24 @@
 # KAMINO: MODELS: MODEL BUILDER UTILITIES
 ###########################################################################
 
-from typing import List
+
 from newton._src.solvers.kamino.core import ModelBuilder
 from newton._src.solvers.kamino.models.builders import (
     build_box_on_plane,
     build_box_pendulum,
+    build_boxes_fourbar,
     build_boxes_hinged,
     build_boxes_nunchaku,
-    build_boxes_fourbar,
 )
-
 
 ###
 # Module interface
 ###
 
 __all__ = [
-    "make_single_builder",
-    "make_homogeneous_builder",
     "make_heterogeneous_builder",
+    "make_homogeneous_builder",
+    "make_single_builder",
 ]
 
 
@@ -28,7 +27,8 @@ __all__ = [
 # Builder utilities
 ###
 
-def make_single_builder(build_func=build_boxes_nunchaku) -> tuple[ModelBuilder, List[int], List[int]]:
+
+def make_single_builder(build_func=build_boxes_nunchaku) -> tuple[ModelBuilder, list[int], list[int]]:
     num_jcts = []
     num_bodies = []
     builder = ModelBuilder()
@@ -38,7 +38,9 @@ def make_single_builder(build_func=build_boxes_nunchaku) -> tuple[ModelBuilder, 
     return builder, num_bodies, num_jcts
 
 
-def make_homogeneous_builder(num_worlds: int, build_func=build_boxes_nunchaku) -> tuple[ModelBuilder, List[int], List[int]]:
+def make_homogeneous_builder(
+    num_worlds: int, build_func=build_boxes_nunchaku
+) -> tuple[ModelBuilder, list[int], list[int]]:
     num_jcts = []
     num_bodies = []
     builder = ModelBuilder()
@@ -54,7 +56,7 @@ def make_homogeneous_builder(num_worlds: int, build_func=build_boxes_nunchaku) -
     return builder, num_bodies, num_jcts
 
 
-def make_heterogeneous_builder() -> tuple[ModelBuilder, List[int], List[int]]:
+def make_heterogeneous_builder() -> tuple[ModelBuilder, list[int], list[int]]:
     num_jcts = []
     num_bodies = []
     builder = ModelBuilder()

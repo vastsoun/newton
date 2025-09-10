@@ -3,6 +3,7 @@
 ###########################################################################
 
 import unittest
+
 import numpy as np
 import warp as wp
 
@@ -11,17 +12,16 @@ from newton._src.solvers.kamino.core.materials import (
     DEFAULT_FRICTION,
     DEFAULT_RESTITUTION,
     MaterialDescriptor,
+    MaterialManager,
     MaterialPairProperties,
-    MaterialManager
 )
-
 
 ###
 # Tests
 ###
 
-class TestMaterials(unittest.TestCase):
 
+class TestMaterials(unittest.TestCase):
     def setUp(self):
         self.verbose = False  # Set to True for verbose output
 
@@ -74,11 +74,7 @@ class TestMaterials(unittest.TestCase):
         manager.configure_pair(
             first="default",
             second="default",
-            material_pair=MaterialPairProperties(
-                restitution=0.5,
-                static_friction=0.5,
-                dynamic_friction=0.5
-            )
+            material_pair=MaterialPairProperties(restitution=0.5, static_friction=0.5, dynamic_friction=0.5),
         )
 
         # Check modified material-pair properties
@@ -181,11 +177,7 @@ class TestMaterials(unittest.TestCase):
         manager.configure_pair(
             first="default",
             second="steel",
-            material_pair=MaterialPairProperties(
-                restitution=0.5,
-                static_friction=0.5,
-                dynamic_friction=0.5
-            )
+            material_pair=MaterialPairProperties(restitution=0.5, static_friction=0.5, dynamic_friction=0.5),
         )
 
         # Check the material-pair properties

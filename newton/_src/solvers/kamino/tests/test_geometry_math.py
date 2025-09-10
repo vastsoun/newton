@@ -3,18 +3,19 @@
 ###########################################################################
 
 import unittest
+
 import numpy as np
 import warp as wp
 
-from newton._src.solvers.kamino.core.types import List, vec3f, mat33f
+from newton._src.solvers.kamino.core.types import List, mat33f, vec3f
 
 # Module to be tested
-from newton._src.solvers.kamino.geometry.math import make_contact_frame_znorm, make_contact_frame_xnorm
-
+from newton._src.solvers.kamino.geometry.math import make_contact_frame_xnorm, make_contact_frame_znorm
 
 ###
 # Kernels
 ###
+
 
 @wp.kernel
 def _compute_contact_frame_znorm(
@@ -41,6 +42,7 @@ def _compute_contact_frame_xnorm(
 ###
 # Launchers
 ###
+
 
 def compute_contact_frame_znorm(
     normal: wp.array(dtype=vec3f),
@@ -72,8 +74,8 @@ def compute_contact_frame_xnorm(
 # Tests
 ###
 
-class TestGeometryMath(unittest.TestCase):
 
+class TestGeometryMath(unittest.TestCase):
     def setUp(self):
         self.verbose = False  # Set to True for verbose output
         self.default_device = wp.get_device()
@@ -112,12 +114,24 @@ class TestGeometryMath(unittest.TestCase):
             self.assertTrue(np.isclose(det, 1.0, atol=1e-6))
 
         # Check each primtive frame
-        self.assertTrue(np.allclose(frames_np[0], np.array([[0.0, 0.0, 1.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]), atol=1e-6))
-        self.assertTrue(np.allclose(frames_np[1], np.array([[1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, -1.0, 0.0]]), atol=1e-6))
-        self.assertTrue(np.allclose(frames_np[2], np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]), atol=1e-6))
-        self.assertTrue(np.allclose(frames_np[3], np.array([[0.0, 0.0, -1.0], [1.0, 0.0, 0.0], [0.0, -1.0, 0.0]]), atol=1e-6))
-        self.assertTrue(np.allclose(frames_np[4], np.array([[1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]]), atol=1e-6))
-        self.assertTrue(np.allclose(frames_np[5], np.array([[1.0, 0.0, 0.0], [0.0, -1.0, 0.0], [0.0, 0.0, -1.0]]), atol=1e-6))
+        self.assertTrue(
+            np.allclose(frames_np[0], np.array([[0.0, 0.0, 1.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]), atol=1e-6)
+        )
+        self.assertTrue(
+            np.allclose(frames_np[1], np.array([[1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, -1.0, 0.0]]), atol=1e-6)
+        )
+        self.assertTrue(
+            np.allclose(frames_np[2], np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]), atol=1e-6)
+        )
+        self.assertTrue(
+            np.allclose(frames_np[3], np.array([[0.0, 0.0, -1.0], [1.0, 0.0, 0.0], [0.0, -1.0, 0.0]]), atol=1e-6)
+        )
+        self.assertTrue(
+            np.allclose(frames_np[4], np.array([[1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]]), atol=1e-6)
+        )
+        self.assertTrue(
+            np.allclose(frames_np[5], np.array([[1.0, 0.0, 0.0], [0.0, -1.0, 0.0], [0.0, 0.0, -1.0]]), atol=1e-6)
+        )
 
     def test_make_contact_frame_xnorm(self):
         # Create a normal vectors

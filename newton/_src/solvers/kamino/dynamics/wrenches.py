@@ -6,19 +6,19 @@ from __future__ import annotations
 
 import warp as wp
 
-from newton._src.solvers.kamino.core.types import int32, float32, vec2i, vec3f, vec4f, vec6f, mat63f
 from newton._src.solvers.kamino.core.model import Model, ModelData
+from newton._src.solvers.kamino.core.types import float32, int32, mat63f, vec2i, vec3f, vec4f, vec6f
 from newton._src.solvers.kamino.geometry.contacts import ContactsData
-from newton._src.solvers.kamino.kinematics.limits import LimitsData
 from newton._src.solvers.kamino.kinematics.jacobians import DenseSystemJacobiansData
+from newton._src.solvers.kamino.kinematics.limits import LimitsData
 
 ###
 # Module interface
 ###
 
 __all__ = [
-    "compute_joint_dof_body_wrenches",
     "compute_constraint_body_wrenches",
+    "compute_joint_dof_body_wrenches",
 ]
 
 
@@ -32,6 +32,7 @@ wp.set_module_options({"enable_backward": False})
 ###
 # Kernels
 ###
+
 
 @wp.kernel
 def _compute_joint_dof_body_wrenches(
@@ -122,7 +123,7 @@ def _compute_joint_cts_body_wrenches(
     lambdas_offsets: wp.array(dtype=int32),
     lambdas_data: wp.array(dtype=float32),
     # Outputs:
-    state_bodies_w_j: wp.array(dtype=vec6f)
+    state_bodies_w_j: wp.array(dtype=vec6f),
 ):
     # Retrieve the thread index as the joint index
     jid = wp.tid()
@@ -197,7 +198,7 @@ def _compute_limit_cts_body_wrenches(
     lambdas_offsets: wp.array(dtype=int32),
     lambdas_data: wp.array(dtype=float32),
     # Outputs:
-    state_bodies_w_l: wp.array(dtype=vec6f)
+    state_bodies_w_l: wp.array(dtype=vec6f),
 ):
     # Retrieve the thread index
     tid = wp.tid()
@@ -286,7 +287,7 @@ def _compute_contact_cts_body_wrenches(
     lambdas_offsets: wp.array(dtype=int32),
     lambdas_data: wp.array(dtype=float32),
     # Outputs:
-    state_bodies_w_c: wp.array(dtype=vec6f)
+    state_bodies_w_c: wp.array(dtype=vec6f),
 ):
     # Retrieve the thread index
     tid = wp.tid()
@@ -364,6 +365,7 @@ def _compute_contact_cts_body_wrenches(
 # Launchers
 ###
 
+
 def compute_joint_dof_body_wrenches(model: Model, state: ModelData, jacobians: DenseSystemJacobiansData):
     """
     Update the actuation wrenches of the bodies based on the active joint torques.
@@ -420,8 +422,8 @@ def compute_constraint_body_wrenches(
             lambdas_offsets,
             lambdas_data,
             # Outputs:
-            state.bodies.w_j_i
-        ]
+            state.bodies.w_j_i,
+        ],
     )
 
     if limits is not None:
@@ -444,7 +446,7 @@ def compute_constraint_body_wrenches(
                 lambdas_data,
                 # Outputs:
                 state.bodies.w_l_i,
-            ]
+            ],
         )
 
     if contacts is not None:
@@ -468,5 +470,5 @@ def compute_constraint_body_wrenches(
                 lambdas_data,
                 # Outputs:
                 state.bodies.w_c_i,
-            ]
+            ],
         )

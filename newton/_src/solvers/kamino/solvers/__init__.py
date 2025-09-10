@@ -2,13 +2,13 @@
 # KAMINO: Solvers Module
 ###########################################################################
 
-from .padmm import PADMMSettings, PADMMDualSolver
+from .padmm import PADMMDualSolver, PADMMSettings
 
 ###
 # Module interface
 ###
 
 __all__ = [
-    "PADMMSettings",
     "PADMMDualSolver",
+    "PADMMSettings",
 ]

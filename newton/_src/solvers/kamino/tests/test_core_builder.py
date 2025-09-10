@@ -3,28 +3,28 @@
 ###########################################################################
 
 import unittest
+
 import numpy as np
 import warp as wp
+
+# Moduel to be tested
+from newton._src.solvers.kamino.core.builder import ModelBuilder
 
 # Test utilities
 from newton._src.solvers.kamino.models.builders import (
     build_box_on_plane,
     build_box_pendulum,
+    build_boxes_fourbar,
     build_boxes_hinged,
     build_boxes_nunchaku,
-    build_boxes_fourbar
 )
-
-# Moduel to be tested
-from newton._src.solvers.kamino.core.builder import ModelBuilder
-
 
 ###
 # Tests
 ###
 
-class TestModelBuilder(unittest.TestCase):
 
+class TestModelBuilder(unittest.TestCase):
     def setUp(self):
         self.verbose = False  # Set to True to enable verbose output
         self.default_device = wp.get_device()

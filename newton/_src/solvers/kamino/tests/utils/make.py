@@ -4,25 +4,22 @@
 
 import numpy as np
 import warp as wp
-
 from warp.context import Devicelike
+
+from newton._src.solvers.kamino.core.bodies import update_body_inertias
 from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.core.model import Model, ModelData
 from newton._src.solvers.kamino.geometry.detector import CollisionDetector
-from newton._src.solvers.kamino.kinematics.limits import Limits
+from newton._src.solvers.kamino.kinematics.constraints import make_unilateral_constraints_info, update_constraints_info
 from newton._src.solvers.kamino.kinematics.jacobians import DenseSystemJacobians
-from newton._src.solvers.kamino.simulation.simulator import Simulator
-from newton._src.solvers.kamino.core.bodies import update_body_inertias
 from newton._src.solvers.kamino.kinematics.joints import compute_joints_state
-from newton._src.solvers.kamino.kinematics.constraints import (
-    make_unilateral_constraints_info,
-    update_constraints_info
-)
-
+from newton._src.solvers.kamino.kinematics.limits import Limits
+from newton._src.solvers.kamino.simulation.simulator import Simulator
 
 ###
 # Helper functions
 ###
+
 
 def make_simulator(nw: int, model_build_func, device=None) -> Simulator:
     # Create a model builder
@@ -64,11 +61,11 @@ def make_generalized_mass_matrices(model: Model, state: ModelData) -> list[np.nd
     for w in range(num_worlds):
         nb = model.worlds[w].num_bodies
         bio = model.worlds[w].bodies_idx_offset
-        M = np.zeros((6*nb, 6*nb), dtype=np.float32)
+        M = np.zeros((6 * nb, 6 * nb), dtype=np.float32)
         for i in range(nb):
             start = 6 * i
-            M[start:start + 3, start:start + 3] = m_i[bio + i] * np.eye(3)  # Linear part
-            M[start + 3:start + 6, start + 3:start + 6] = I_i[bio + i]  # Angular part
+            M[start : start + 3, start : start + 3] = m_i[bio + i] * np.eye(3)  # Linear part
+            M[start + 3 : start + 6, start + 3 : start + 6] = I_i[bio + i]  # Angular part
         M_np.append(M)
 
     # Return the list of generalized mass matrices
@@ -88,11 +85,11 @@ def make_inverse_generalized_mass_matrices(model: Model, state: ModelData) -> li
     for w in range(num_worlds):
         nb = model.worlds[w].num_bodies
         bio = model.worlds[w].bodies_idx_offset
-        invM = np.zeros((6*nb, 6*nb), dtype=np.float32)
+        invM = np.zeros((6 * nb, 6 * nb), dtype=np.float32)
         for i in range(nb):
             start = 6 * i
-            invM[start:start + 3, start:start + 3] = inv_m_i[bio + i] * np.eye(3)  # Linear part
-            invM[start + 3:start + 6, start + 3:start + 6] = inv_I_i[bio + i]  # Angular part
+            invM[start : start + 3, start : start + 3] = inv_m_i[bio + i] * np.eye(3)  # Linear part
+            invM[start + 3 : start + 6, start + 3 : start + 6] = inv_I_i[bio + i]  # Angular part
         invM_np.append(invM)
 
     # Return the list of inverse generalized mass matrices
@@ -100,10 +97,7 @@ def make_inverse_generalized_mass_matrices(model: Model, state: ModelData) -> li
 
 
 def make_containers(
-    builder: ModelBuilder,
-    max_world_contacts: int = 0,
-    dt: float = 0.001,
-    device: Devicelike = None
+    builder: ModelBuilder, max_world_contacts: int = 0, dt: float = 0.001, device: Devicelike = None
 ) -> tuple[Model, ModelData, Limits, CollisionDetector, DenseSystemJacobians]:
     # Create the model from the builder
     model = builder.finalize(device=device)
@@ -132,11 +126,7 @@ def make_containers(
 
 
 def update_containers(
-    model: Model,
-    state: ModelData,
-    limits: Limits,
-    detector: CollisionDetector,
-    jacobians: DenseSystemJacobians
+    model: Model, state: ModelData, limits: Limits, detector: CollisionDetector, jacobians: DenseSystemJacobians
 ) -> None:
     # Update body inertias according to the current state of the bodies
     update_body_inertias(model=model.bodies, state=state.bodies)

@@ -6,16 +6,15 @@ from __future__ import annotations
 
 import warp as wp
 
-from .types import int32, float32
-
+from .types import float32, int32
 
 ###
 # Module interface
 ###
 
 __all__ = [
-    "TimeModel",
     "TimeData",
+    "TimeModel",
     "advance_time",
 ]
 
@@ -36,6 +35,7 @@ class TimeModel:
     """
     A container to hold the time-invariant gravity model data.
     """
+
     def __init__(self):
         self.dt: wp.array(dtype=float32) | None = None
         """
@@ -64,6 +64,7 @@ class TimeData:
     """
     A container to hold the time-invariant gravity model data.
     """
+
     def __init__(self):
         self.steps: wp.array(dtype=int32) | None = None
         """
@@ -89,6 +90,7 @@ class TimeData:
 # Kernels
 ###
 
+
 @wp.kernel
 def _advance_time(
     # Inputs
@@ -112,8 +114,8 @@ def _advance_time(
 # Launchers
 ###
 
-def advance_time(model: TimeModel, data: TimeData):
 
+def advance_time(model: TimeModel, data: TimeData):
     # Ensure the model is valid
     if model is None:
         raise ValueError("'model' must be initialized, is None.")
@@ -143,6 +145,6 @@ def advance_time(model: TimeModel, data: TimeData):
             model.dt,
             # Outputs:
             data.steps,
-            data.time
-        ]
+            data.time,
+        ],
     )

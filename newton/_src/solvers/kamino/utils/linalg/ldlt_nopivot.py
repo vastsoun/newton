@@ -2,29 +2,27 @@
 # KAMINO: Utilities: Linear Algebra: standard LDLT w/o pivoting
 ###########################################################################
 
+from typing import Any
+
 import numpy as np
-from typing import Any, Optional, Tuple
+
+from newton._src.solvers.kamino.utils.linalg.factorizer import MatrixFactorizer, MatrixSign
 from newton._src.solvers.kamino.utils.linalg.matrix import (
     _make_tolerance,
     assert_is_square_matrix,
     assert_is_symmetric_matrix,
 )
-from newton._src.solvers.kamino.utils.linalg.factorizer import (
-    MatrixSign,
-    MatrixFactorizer
-)
-
 
 ###
 # Module interface
 ###
 
 __all__ = [
-    "compute_ldlt_nopivot_lower",
-    "compute_ldlt_lower_solve_inplace",
-    "compute_ldlt_upper_solve_inplace",
+    "LDLTNoPivot",
     "compute_ldlt_lower_reconstruct",
-    "LDLTNoPivot"
+    "compute_ldlt_lower_solve_inplace",
+    "compute_ldlt_nopivot_lower",
+    "compute_ldlt_upper_solve_inplace",
 ]
 
 
@@ -32,12 +30,10 @@ __all__ = [
 # LDLT w/o pivoting
 ###
 
+
 def compute_ldlt_nopivot_lower(
-    A: np.ndarray,
-    tol: Optional[float] = None,
-    check_symmetry: bool = True,
-    use_zero_correction: bool = True
-) -> Tuple[np.ndarray, np.ndarray]:
+    A: np.ndarray, tol: float | None = None, check_symmetry: bool = True, use_zero_correction: bool = True
+) -> tuple[np.ndarray, np.ndarray]:
     assert_is_square_matrix(A)
     if check_symmetry:
         assert_is_symmetric_matrix(A)
@@ -178,6 +174,7 @@ def compute_ldlt_upper_solve_inplace(U: np.ndarray, D: np.ndarray, x: np.ndarray
 # Reconstruction
 ###
 
+
 def compute_ldlt_lower_reconstruct(L: np.ndarray, D: np.ndarray) -> np.ndarray:
     return L @ np.diag(D) @ L.T
 
@@ -190,23 +187,24 @@ def compute_ldlt_upper_reconstruct(U: np.ndarray, D: np.ndarray) -> np.ndarray:
 # Factorizer
 ###
 
+
 class LDLTNoPivot(MatrixFactorizer):
     def __init__(
         self,
-        A: Optional[np.ndarray] = None,
-        tol: Optional[float] = None,
-        dtype: Optional[np.dtype] = None,
-        itype: Optional[np.dtype] = None,
+        A: np.ndarray | None = None,
+        tol: float | None = None,
+        dtype: np.dtype | None = None,
+        itype: np.dtype | None = None,
         upper: bool = False,
         check_symmetry: bool = False,
-        compute_error: bool = False
+        compute_error: bool = False,
     ):
         # Declare internal data structures
-        self._diagonals: Optional[np.ndarray] = None
+        self._diagonals: np.ndarray | None = None
 
         # Declare optional unpacked factors
-        self.L: Optional[np.ndarray] = None
-        self.D: Optional[np.ndarray] = None
+        self.L: np.ndarray | None = None
+        self.D: np.ndarray | None = None
 
         # Raise error if upper requested since it's not supported
         if upper:
@@ -220,17 +218,17 @@ class LDLTNoPivot(MatrixFactorizer):
             itype=itype,
             upper=upper,
             check_symmetry=check_symmetry,
-            compute_error=compute_error
+            compute_error=compute_error,
         )
 
     def _factorize_impl(self, A: np.ndarray) -> None:
         try:
-            self._matrix, self._diagonals = compute_ldlt_nopivot_lower(A=A, tol=self._tolerance, use_zero_correction=True)
+            self._matrix, self._diagonals = compute_ldlt_nopivot_lower(
+                A=A, tol=self._tolerance, use_zero_correction=True
+            )
             self._sign = MatrixSign.PositiveDef
         except np.linalg.LinAlgError as e:
-            raise np.linalg.LinAlgError(
-                f"Cholesky factorization failed: {str(e)}"
-            ) from e
+            raise np.linalg.LinAlgError(f"Cholesky factorization failed: {e!s}") from e
 
     def _unpack_impl(self) -> None:
         self.L, self.D = self._matrix, np.diag(self._diagonals)

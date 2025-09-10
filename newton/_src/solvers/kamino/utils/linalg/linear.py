@@ -21,8 +21,6 @@ from typing import Any
 
 import numpy as np
 
-from newton._src.solvers.kamino.utils.linalg.matrix import MatrixSign
-
 ###
 # Types
 ###

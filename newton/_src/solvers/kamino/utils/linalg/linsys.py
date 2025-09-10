@@ -70,6 +70,7 @@ def _check_initial_guess(A: np.ndarray, x_0: np.ndarray | None) -> np.ndarray:
         raise ValueError(f"Initial guess x_0 ({x_0.dtype}) must have the same data type as matrix A ({A.dtype}).")
     return x_0
 
+
 ###
 # Functions
 ###

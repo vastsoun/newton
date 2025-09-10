@@ -23,7 +23,7 @@ def extract_active_constraint_dims(delassus: DelassusOperator) -> list[int]:
 def extract_cts_jacobians(
     jacobians: DenseSystemJacobians,
     num_bodies: list[int],
-    active_dims: list[int] = [],
+    active_dims: list[int] | None = None,
 ) -> list[np.ndarray]:
     # Reshape the flat Jacobian as a set of matrices
     num_body_dofs = [6 * num_bodies[i] for i in range(len(num_bodies))]
@@ -33,7 +33,7 @@ def extract_cts_jacobians(
     J_cts_flat_total_size = J_cts_flat.size
     J_cts_flat_offsets = [int(cjmio[i]) for i in range(num_jacobians)]
     J_cts_flat_sizes = [0] * num_jacobians
-    J_cts_flat_offsets_ext = J_cts_flat_offsets + [J_cts_flat_total_size]
+    J_cts_flat_offsets_ext = [*J_cts_flat_offsets, J_cts_flat_total_size]
     J_cts_flat_shapes = [(0, 0)] * num_jacobians
     for i in range(num_jacobians - 1, -1, -1):
         J_cts_flat_sizes[i] = J_cts_flat_offsets_ext[i + 1] - J_cts_flat_offsets_ext[i]
@@ -43,7 +43,7 @@ def extract_cts_jacobians(
     # Extract each Jacobian as a matrix
     J_cts_mat: list[np.ndarray] = []
     for i in range(num_jacobians):
-        if len(active_dims) > 0:
+        if active_dims is not None and len(active_dims) > 0:
             J_rows = active_dims[i]
         else:
             J_rows = J_cts_flat_shapes[i][0]
@@ -61,7 +61,7 @@ def extract_cts_jacobians(
 def extract_dofs_jacobians(
     jacobians: DenseSystemJacobians,
     num_body_dofs: list[int],
-    active_dims: list[int] = [],
+    active_dims: list[int] | None = None,
 ) -> list[np.ndarray]:
     # Reshape the flat Jacobian as a set of matrices
     ajmio = jacobians.data.J_dofs_offsets.numpy()
@@ -70,7 +70,7 @@ def extract_dofs_jacobians(
     J_dofs_flat_total_size = J_dofs_flat.size
     J_dofs_flat_offsets = [int(ajmio[i]) for i in range(num_jacobians)]
     J_dofs_flat_sizes = [0] * num_jacobians
-    J_dofs_flat_offsets_ext = J_dofs_flat_offsets + [J_dofs_flat_total_size]
+    J_dofs_flat_offsets_ext = [*J_dofs_flat_offsets, J_dofs_flat_total_size]
     J_dofs_flat_shapes = [(0, 0)] * num_jacobians
     for i in range(num_jacobians - 1, -1, -1):
         J_dofs_flat_sizes[i] = J_dofs_flat_offsets_ext[i + 1] - J_dofs_flat_offsets_ext[i]
@@ -80,7 +80,7 @@ def extract_dofs_jacobians(
     # Extract each Jacobian as a matrix
     J_cts_mat: list[np.ndarray] = []
     for i in range(num_jacobians):
-        if len(active_dims) > 0:
+        if active_dims is not None and len(active_dims) > 0:
             J_rows = active_dims[i]
         else:
             J_rows = J_dofs_flat_shapes[i][0]
@@ -140,11 +140,11 @@ def extract_problem_vector(
     return vectors_np
 
 
-def extract_info_vectors(offsets: np.ndarray, vectors: np.ndarray, dims: list[int] = []) -> list[np.ndarray]:
+def extract_info_vectors(offsets: np.ndarray, vectors: np.ndarray, dims: list[int] | None = None) -> list[np.ndarray]:
     # Determine vector sizes
     nv = offsets.size
     maxn = vectors.size // nv
-    n = dims if len(dims) == nv else [maxn] * nv
+    n = dims if dims is not None and len(dims) == nv else [maxn] * nv
 
     # Extract each vector for each world
     vectors_list: list[np.ndarray] = []

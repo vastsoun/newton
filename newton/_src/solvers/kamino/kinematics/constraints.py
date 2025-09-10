@@ -139,7 +139,7 @@ def make_unilateral_constraints_info(
     model.size.max_of_max_unilaterals = max(world_max_unilaterals)
 
     # Compute the maximum number of constraints per world: limits, contacts, and total
-    world_maxnlc: list[int] = [maxnl for maxnl in world_maxnl]
+    world_maxnlc: list[int] = list(world_maxnl)
     world_maxncc: list[int] = [3 * maxnc for maxnc in world_maxnc]
     world_njc = [world.num_joint_cts for world in model.worlds]
     world_maxncts = [

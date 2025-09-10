@@ -179,9 +179,9 @@ class ModelSize:
         ]
 
         # Compute column widths
-        name_width = max(len("Name"), max(len(r[0]) for r in rows))
-        sum_width = max(len("Sum"), max(len(str(getattr(self, r[1]))) for r in rows))
-        max_width = max(len("Max"), max(len(str(getattr(self, r[2]))) for r in rows))
+        name_width = max(len("Name"), *(len(r[0]) for r in rows))
+        sum_width = max(len("Sum"), *(len(str(getattr(self, r[1]))) for r in rows))
+        max_width = max(len("Max"), *(len(str(getattr(self, r[2]))) for r in rows))
 
         # Write ModelSize members as a formatted table
         lines = []

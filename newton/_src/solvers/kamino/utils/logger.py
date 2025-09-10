@@ -12,6 +12,7 @@ Authors:
 
 import logging
 from enum import IntEnum
+from typing import ClassVar
 
 
 class LogLevel(IntEnum):
@@ -42,7 +43,7 @@ class Logger(logging.Formatter):
     LINE_FORMAT = "[%(asctime)s][%(filename)s:%(lineno)d][%(levelname)s]: %(message)s"
     """Line format for the log messages, including timestamp, filename, line number, log level, and message."""
 
-    FORMATS = {
+    FORMATS: ClassVar[dict[int, str]] = {
         logging.DEBUG: BLUE + LINE_FORMAT + RESET,
         logging.INFO: GREY + LINE_FORMAT + RESET,
         logging.WARNING: YELLOW + LINE_FORMAT + RESET,
@@ -80,7 +81,7 @@ LOGGER: Logger | None = None
 
 def get_default_logger() -> logging.Logger:
     """Initialize the global logger instance."""
-    global LOGGER
+    global LOGGER  # noqa: PLW0603
     if LOGGER is None:
         LOGGER = Logger()
     return LOGGER.get()

@@ -74,12 +74,12 @@ def make_collision_pairs(builder: ModelBuilder, allow_neighbors: bool = False):
         world_wid = []
 
         # Iterate over each gid pair and filtering out pairs not viable for collision detection
-        for gid1, gid2 in zip(
+        for gid1_, gid2_ in zip(
             *np.triu_indices(ncg[wid], k=1), strict=False
         ):  # k=1 skip diagonal to exclude self-collisions
             # Convert the per-world local gids to model gid integers
-            gid1 = int(gid1) + ncg_offset
-            gid2 = int(gid2) + ncg_offset
+            gid1 = int(gid1_) + ncg_offset
+            gid2 = int(gid2_) + ncg_offset
 
             # Get references to the geometries
             geom1, geom2 = builder.collision_geoms[gid1], builder.collision_geoms[gid2]
@@ -107,13 +107,12 @@ def make_collision_pairs(builder: ModelBuilder, allow_neighbors: bool = False):
             # 5. Check for neighbor collision for fixed and DoF joints
             are_fixed_neighbors = False
             are_dof_neighbors = False
-            are_unary_neighbors = False
             for joint in builder.joints:
                 if (joint.bid_B == bid1 and joint.bid_F == bid2) or (joint.bid_B == bid2 and joint.bid_F == bid1):
                     if joint.dof_type == JointDoFType.FIXED:
                         are_fixed_neighbors = True
                     elif joint.bid_B < 0:
-                        are_unary_neighbors = True
+                        pass
                     else:
                         are_dof_neighbors = True
                     break

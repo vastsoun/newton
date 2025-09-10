@@ -243,7 +243,7 @@ def _compute_limit_cts_body_wrenches(
     # Extract the contact constraint Jacobian for the follower body
     JT_l_F = vec6f(0.0)
     dio_F = 6 * (bid_F - bio)
-    for j in range(3):
+    for _j in range(3):
         mio_lF = mio_l + dio_F
         for i in range(6):
             JT_l_F[i] = jacobian_cts_data[mio_lF + i]

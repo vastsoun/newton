@@ -7,7 +7,6 @@ from __future__ import annotations
 import sys
 from abc import ABC, abstractmethod
 from enum import IntEnum
-from typing import Union
 
 import numpy as np
 import warp as wp
@@ -380,18 +379,18 @@ class SDFShape(ShapeDescriptor):
         return vec4f(0.0, 0.0, 0.0, 0.0)
 
 
-ShapeDescriptorType = Union[
-    None,
-    EmptyShape,
-    SphereShape,
-    CylinderShape,
-    ConeShape,
-    CapsuleShape,
-    BoxShape,
-    EllipsoidShape,
-    PlaneShape,
-    ConvexShape,
-    MeshShape,
-    SDFShape,
-]
+ShapeDescriptorType = (
+    None
+    | EmptyShape
+    | SphereShape
+    | CylinderShape
+    | ConeShape
+    | CapsuleShape
+    | BoxShape
+    | EllipsoidShape
+    | PlaneShape
+    | ConvexShape
+    | MeshShape
+    | SDFShape
+)
 """Type that can be used to represent any shape descriptor, including primitive and explicit shapes."""

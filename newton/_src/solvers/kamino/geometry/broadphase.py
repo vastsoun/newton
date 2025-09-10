@@ -6,11 +6,10 @@ from __future__ import annotations
 
 import warp as wp
 
-from newton._src.solvers.kamino.core.types import int32, float32, vec2i, mat83f, transformf
-from newton._src.solvers.kamino.core.geometry import CollisionGeometriesModel, CollisionGeometriesData
-from newton._src.solvers.kamino.geometry.collisions import CollisionsModel, CollisionsData
-from newton._src.solvers.kamino.core.bv import has_bs_overlap, has_aabb_overlap
-
+from newton._src.solvers.kamino.core.bv import has_aabb_overlap
+from newton._src.solvers.kamino.core.geometry import CollisionGeometriesData, CollisionGeometriesModel
+from newton._src.solvers.kamino.core.types import int32, mat83f, vec2i
+from newton._src.solvers.kamino.geometry.collisions import CollisionsData, CollisionsModel
 
 ###
 # Module configs
@@ -22,6 +21,7 @@ wp.set_module_options({"enable_backward": False})
 ###
 # Functions
 ###
+
 
 @wp.func
 def add_active_pair(
@@ -61,6 +61,7 @@ def add_active_pair(
 ###
 # Kernels
 ###
+
 
 @wp.kernel
 def _nxn_broadphase(
@@ -116,7 +117,10 @@ def _nxn_broadphase(
 # Kernel Launcher
 ###
 
-def nxn_broadphase(gmodel: CollisionGeometriesModel, gstate: CollisionGeometriesData, cmodel: CollisionsModel, cdata: CollisionsData):
+
+def nxn_broadphase(
+    gmodel: CollisionGeometriesModel, gstate: CollisionGeometriesData, cmodel: CollisionsModel, cdata: CollisionsData
+):
     # we need to figure out how to keep the overhead of this small - not launching anything
     # for pair types without collisions, as well as updating the launch dimensions.
     wp.launch(
@@ -135,6 +139,6 @@ def nxn_broadphase(gmodel: CollisionGeometriesModel, gstate: CollisionGeometries
             cdata.model_num_collisions,
             cdata.world_num_collisions,
             cdata.wid,
-            cdata.geom_pair
-        ]
+            cdata.geom_pair,
+        ],
     )

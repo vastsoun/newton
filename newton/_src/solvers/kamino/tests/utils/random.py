@@ -2,26 +2,27 @@
 # KAMINO: UNIT TESTS: RANDOM DATA GENERATION
 ###########################################################################
 
+from typing import Union
+
 import numpy as np
-import warp as wp
 import scipy as sp
-
-from typing import List, Optional, Tuple, Union
+import warp as wp
 from warp.context import Devicelike
-from newton._src.solvers.kamino.core.types import int32, float32
 
+from newton._src.solvers.kamino.core.types import float32, int32
 
 ###
 # Types
 ###
 
-ArrayLike = Union[np.ndarray, List[int], List[float], List[List[int]], List[List[float]], None]
+ArrayLike = Union[np.ndarray, list[int], list[float], list[list[int]], list[list[float]], None]
 """An Array-like structure for aliasing various data types compatible with numpy."""
 
 
 ###
 # Functions
 ###
+
 
 def eigenvalues_from_distribution(
     size: int,
@@ -30,13 +31,13 @@ def eigenvalues_from_distribution(
     num_zero: int | float = 0,
     num_neg_eps: int | float = 0,
     num_neg: int | float = 0,
-    max_pos: float = 1e+2,
+    max_pos: float = 1e2,
     min_pos: float = 1e-2,
     eps_val: float = 1e-6,
     max_neg: float = -1e-2,
-    min_neg: float = -1e+2,
+    min_neg: float = -1e2,
     dtype: np.dtype = np.float64,
-    shuffle: bool = False
+    shuffle: bool = False,
 ) -> np.ndarray:
     """
     Creates an array of eigen-values based on a specified distribution.
@@ -64,6 +65,7 @@ def eigenvalues_from_distribution(
     Returns:
         np.ndarray: The generated eigenvalue array.
     """
+
     # Helper to convert count/percentage to int
     def resolve_count(val):
         if isinstance(val, float):
@@ -72,11 +74,11 @@ def eigenvalues_from_distribution(
 
     # Interpret args as either counts or percentages
     counts = {
-        'num_pos': resolve_count(num_pos),
-        'num_pos_eps': resolve_count(num_pos_eps),
-        'num_zero': resolve_count(num_zero),
-        'num_neg_eps': resolve_count(num_neg_eps),
-        'num_neg': resolve_count(num_neg),
+        "num_pos": resolve_count(num_pos),
+        "num_pos_eps": resolve_count(num_pos_eps),
+        "num_zero": resolve_count(num_zero),
+        "num_neg_eps": resolve_count(num_neg_eps),
+        "num_neg": resolve_count(num_neg),
     }
 
     # Check total counts and correct if necessary
@@ -84,7 +86,7 @@ def eigenvalues_from_distribution(
 
     # If all counts are zero, assign all eigenvalues as positive
     if total == 0:
-        counts['num_pos'] = size
+        counts["num_pos"] = size
 
     # Otherwise, adjust counts to match 'size'
     elif total != size:
@@ -96,20 +98,22 @@ def eigenvalues_from_distribution(
             counts[max_key] += diff
 
     # Generate the distribution of eigenvalues according to the specified counts
-    eigenvalues_pos = np.linspace(max_pos, min_pos, num=counts['num_pos']) if counts['num_pos'] > 0 else np.array([])
-    eigenvalues_pos_eps = np.array([eps_val] * counts['num_pos_eps']) if counts['num_pos_eps'] > 0 else np.array([])
-    eigenvalues_zero = np.zeros(counts['num_zero']) if counts['num_zero'] > 0 else np.array([])
-    eigenvalues_neg_eps = np.array([-eps_val] * counts['num_neg_eps']) if counts['num_neg_eps'] > 0 else np.array([])
-    eigenvalues_neg = np.linspace(max_neg, min_neg, num=counts['num_neg']) if counts['num_neg'] > 0 else np.array([])
+    eigenvalues_pos = np.linspace(max_pos, min_pos, num=counts["num_pos"]) if counts["num_pos"] > 0 else np.array([])
+    eigenvalues_pos_eps = np.array([eps_val] * counts["num_pos_eps"]) if counts["num_pos_eps"] > 0 else np.array([])
+    eigenvalues_zero = np.zeros(counts["num_zero"]) if counts["num_zero"] > 0 else np.array([])
+    eigenvalues_neg_eps = np.array([-eps_val] * counts["num_neg_eps"]) if counts["num_neg_eps"] > 0 else np.array([])
+    eigenvalues_neg = np.linspace(max_neg, min_neg, num=counts["num_neg"]) if counts["num_neg"] > 0 else np.array([])
 
     # Concatenate all eigenvalues into a single array of target dtype
-    eigenvalues = np.concatenate([
-        eigenvalues_pos.astype(dtype),
-        eigenvalues_pos_eps.astype(dtype),
-        eigenvalues_zero.astype(dtype),
-        eigenvalues_neg_eps.astype(dtype),
-        eigenvalues_neg.astype(dtype)
-    ])
+    eigenvalues = np.concatenate(
+        [
+            eigenvalues_pos.astype(dtype),
+            eigenvalues_pos_eps.astype(dtype),
+            eigenvalues_zero.astype(dtype),
+            eigenvalues_neg_eps.astype(dtype),
+            eigenvalues_neg.astype(dtype),
+        ]
+    )
 
     # Optionally shuffle the eigenvalues to randomize their order
     if shuffle:
@@ -122,12 +126,12 @@ def eigenvalues_from_distribution(
 def random_symmetric_matrix(
     dim: int,
     dtype=np.float32,
-    scale: Optional[float] = None,
-    seed: Optional[int] = None,
-    rank: Optional[int] = None,
+    scale: float | None = None,
+    seed: int | None = None,
+    rank: int | None = None,
     eigenvalues: ArrayLike = None,
     return_source: bool = False,
-) -> np.ndarray | Tuple[np.ndarray, np.ndarray]:
+) -> np.ndarray | tuple[np.ndarray, np.ndarray]:
     """
     Generate a random symmetric matrix of size (dim, dim).
 
@@ -203,10 +207,10 @@ def random_symmetric_matrix(
 def random_spd_matrix(
     dim: int,
     dtype=np.float32,
-    scale: Optional[float] = None,
-    seed: Optional[int] = None,
+    scale: float | None = None,
+    seed: int | None = None,
     return_source: bool = False,
-) -> np.ndarray | Tuple[np.ndarray, np.ndarray]:
+) -> np.ndarray | tuple[np.ndarray, np.ndarray]:
     """
     Generate a symmetric positive definite (SPD) matrix of shape (n, n).
 
@@ -250,10 +254,8 @@ def random_spd_matrix(
 
 
 def random_rhs_for_matrix(
-    A: np.ndarray,
-    scale: float = 1.0,
-    return_source: bool = False
-) -> np.ndarray | Tuple[np.ndarray, np.ndarray]:
+    A: np.ndarray, scale: float = 1.0, return_source: bool = False
+) -> np.ndarray | tuple[np.ndarray, np.ndarray]:
     """
     Generate a random RHS vector b that is in the range space of A.
 
@@ -277,7 +279,8 @@ def random_rhs_for_matrix(
 # Utilities
 ###
 
-def solve_cholesky_lower_numpy(L: np.ndarray, b: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+
+def solve_cholesky_lower_numpy(L: np.ndarray, b: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """
     Solve the linear system Ax = b using Cholesky decomposition.
 
@@ -293,7 +296,7 @@ def solve_cholesky_lower_numpy(L: np.ndarray, b: np.ndarray) -> Tuple[np.ndarray
     return y, x
 
 
-def solve_cholesky_upper_numpy(U: np.ndarray, b: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+def solve_cholesky_upper_numpy(U: np.ndarray, b: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """
     Solve the linear system Ax = b using Cholesky decomposition.
 
@@ -310,11 +313,8 @@ def solve_cholesky_upper_numpy(U: np.ndarray, b: np.ndarray) -> Tuple[np.ndarray
 
 
 def solve_ldlt_lower_numpy(
-    L: np.ndarray,
-    D: np.ndarray,
-    P: np.ndarray,
-    b: np.ndarray
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    L: np.ndarray, D: np.ndarray, P: np.ndarray, b: np.ndarray
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Solve the linear system Ax = b using LDL^T decomposition.
 
@@ -335,11 +335,8 @@ def solve_ldlt_lower_numpy(
 
 
 def solve_ldlt_upper_numpy(
-    U: np.ndarray,
-    D: np.ndarray,
-    P: np.ndarray,
-    b: np.ndarray
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    U: np.ndarray, D: np.ndarray, P: np.ndarray, b: np.ndarray
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Solve the linear system Ax = b using LDL^T decomposition.
 
@@ -363,18 +360,19 @@ def solve_ldlt_upper_numpy(
 # Classes
 ###
 
+
 class RandomProblemCholesky:
     def __init__(
         self,
         seed: int = 42,
-        dims: List[int] | int | None = None,
-        A: List[np.ndarray] | None = None,
-        b: List[np.ndarray] | None = None,
+        dims: list[int] | int | None = None,
+        A: list[np.ndarray] | None = None,
+        b: list[np.ndarray] | None = None,
         np_dtype=np.float32,
         wp_dtype=float32,
         device: Devicelike = None,
         upper: bool = False,
-        verbose: bool = False
+        verbose: bool = False,
     ):
         # Check input data to ensure they are indeed lists of numpy arrays
         if A is not None:
@@ -396,18 +394,18 @@ class RandomProblemCholesky:
 
         # Cache the problem configurations
         self.num_blocks: int = len(dims)
-        self.dims: List[int] = dims
+        self.dims: list[int] = dims
         self.seed: int = seed
         self.np_dtype = np_dtype
         self.wp_dtype = wp_dtype
         self.device: Devicelike = device
 
         # Declare the lists of reference problem data
-        self.A_np: List[np.ndarray] = []
-        self.b_np: List[np.ndarray] = []
-        self.X_np: List[np.ndarray] = []
-        self.y_np: List[np.ndarray] = []
-        self.x_np: List[np.ndarray] = []
+        self.A_np: list[np.ndarray] = []
+        self.b_np: list[np.ndarray] = []
+        self.X_np: list[np.ndarray] = []
+        self.y_np: list[np.ndarray] = []
+        self.x_np: list[np.ndarray] = []
 
         # Declare the warp arrays of contatenated problem data
         self.mio_wp: wp.array(dtype=int32) | None = None
@@ -463,8 +461,8 @@ class RandomProblemCholesky:
 
         # Construct the warp arrays
         with wp.ScopedDevice(self.device):
-            self.mio_wp = wp.array(A_offsets[:self.num_blocks], dtype=wp.int32)
-            self.vio_wp = wp.array(b_offsets[:self.num_blocks], dtype=wp.int32)
+            self.mio_wp = wp.array(A_offsets[: self.num_blocks], dtype=wp.int32)
+            self.vio_wp = wp.array(b_offsets[: self.num_blocks], dtype=wp.int32)
             self.maxdim_wp = wp.array(self.dims, dtype=wp.int32)
             self.dim_wp = wp.array(self.dims, dtype=wp.int32)
             self.A_wp = wp.array(A_flat, dtype=wp.float32)
@@ -496,16 +494,16 @@ class RandomProblemLDLT:
     def __init__(
         self,
         seed: int = 42,
-        dims: List[int] | int | None = None,
-        ranks: List[int] | int | None = None,
+        dims: list[int] | int | None = None,
+        ranks: list[int] | int | None = None,
         eigenvalues: ArrayLike = None,
-        A: List[np.ndarray] | None = None,
-        b: List[np.ndarray] | None = None,
+        A: list[np.ndarray] | None = None,
+        b: list[np.ndarray] | None = None,
         np_dtype=np.float32,
         wp_dtype=float32,
         device: Devicelike = None,
         lower: bool = True,
-        verbose: bool = False
+        verbose: bool = False,
     ):
         # Check input data to ensure they are indeed lists of numpy arrays
         if A is not None:
@@ -546,21 +544,21 @@ class RandomProblemLDLT:
 
         # Cache the problem configurations
         self.num_blocks: int = len(dims)
-        self.dims: List[int] = dims
+        self.dims: list[int] = dims
         self.seed: int = seed
         self.np_dtype = np_dtype
         self.wp_dtype = wp_dtype
         self.device: Devicelike = device
 
         # Declare the lists of reference problem data
-        self.A_np: List[np.ndarray] = []
-        self.b_np: List[np.ndarray] = []
-        self.X_np: List[np.ndarray] = []
-        self.D_np: List[np.ndarray] = []
-        self.P_np: List[np.ndarray] = []
-        self.y_np: List[np.ndarray] = []
-        self.z_np: List[np.ndarray] = []
-        self.x_np: List[np.ndarray] = []
+        self.A_np: list[np.ndarray] = []
+        self.b_np: list[np.ndarray] = []
+        self.X_np: list[np.ndarray] = []
+        self.D_np: list[np.ndarray] = []
+        self.P_np: list[np.ndarray] = []
+        self.y_np: list[np.ndarray] = []
+        self.z_np: list[np.ndarray] = []
+        self.x_np: list[np.ndarray] = []
 
         # Declare the warp arrays of contatenated problem data
         self.mio_wp: wp.array(dtype=int32) | None = None
@@ -585,10 +583,7 @@ class RandomProblemLDLT:
             # Generate a random SPD matrix if not provided
             if A is None:
                 A_mat = random_symmetric_matrix(
-                    dim=n, seed=self.seed,
-                    rank=ranks[i],
-                    eigenvalues=eigenvalues[i],
-                    dtype=np_dtype
+                    dim=n, seed=self.seed, rank=ranks[i], eigenvalues=eigenvalues[i], dtype=np_dtype
                 )
             else:
                 A_mat = A[i]
@@ -624,8 +619,8 @@ class RandomProblemLDLT:
 
         # Construct the warp arrays
         with wp.ScopedDevice(self.device):
-            self.mio_wp = wp.array(A_offsets[:self.num_blocks], dtype=wp.int32)
-            self.vio_wp = wp.array(b_offsets[:self.num_blocks], dtype=wp.int32)
+            self.mio_wp = wp.array(A_offsets[: self.num_blocks], dtype=wp.int32)
+            self.vio_wp = wp.array(b_offsets[: self.num_blocks], dtype=wp.int32)
             self.maxdim_wp = wp.array(self.dims, dtype=wp.int32)
             self.dim_wp = wp.array(self.dims, dtype=wp.int32)
             self.A_wp = wp.array(A_flat, dtype=wp.float32)

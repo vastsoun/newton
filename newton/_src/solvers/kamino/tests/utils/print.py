@@ -6,10 +6,10 @@ import numpy as np
 
 from newton._src.solvers.kamino.core.model import Model, ModelData
 
-
 ###
 # Model Functions
 ###
+
 
 def print_model_size(model: Model):
     # Print the host-side model size meta-data
@@ -180,6 +180,7 @@ def print_model_state(state: ModelData, info=True):
 ###
 # General-Purpose Functions
 ###
+
 
 def print_error_stats(name, arr, ref, n, show_errors=False):
     err = arr - ref

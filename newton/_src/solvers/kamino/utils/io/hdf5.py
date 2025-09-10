@@ -2,34 +2,32 @@
 # KAMINO: UTILS: Input/Output: HDF5
 ###########################################################################
 
-import os
-import h5py
 import ctypes
 
+import h5py
 import numpy as np
 
-from newton._src.solvers.kamino.core.joints import (
-    JOINT_FREE,
-    JOINT_REVOLUTE,
-    JOINT_PRISMATIC,
-    JOINT_CYLINDRICAL,
-    JOINT_UNIVERSAL,
-    JOINT_SPHERICAL,
-    JOINT_CARTESIAN,
-    JOINT_FIXED,
-    JOINT_PASSIVE,
-    JOINT_FORCE_CONTROLLED
-)
-
 from newton._src.solvers.kamino.core.builder import WorldDescriptor
+from newton._src.solvers.kamino.core.joints import (
+    JOINT_CARTESIAN,
+    JOINT_CYLINDRICAL,
+    JOINT_FIXED,
+    JOINT_FORCE_CONTROLLED,
+    JOINT_FREE,
+    JOINT_PASSIVE,
+    JOINT_PRISMATIC,
+    JOINT_REVOLUTE,
+    JOINT_SPHERICAL,
+    JOINT_UNIVERSAL,
+)
 from newton._src.solvers.kamino.simulation.simulator import Simulator
-
 
 ###
 # Helper functions
 ###
 
 # TODO: Add helper to check that 'dataset' is a valid HDF5 dataset
+
 
 def joint_dof_name_from_id(dofid: int) -> str:
     name = "Unknown"
@@ -64,6 +62,7 @@ def joint_type_name_from_id(typeid: int) -> str:
 ###
 # Containers
 ###
+
 
 # NumPy-based container for the RigidBody data loaded from HDF5
 class RigidBodyData:
@@ -100,33 +99,33 @@ class RigidBodyData:
 
     def load(self, dataset, dtype=np.float64):
         # Load the data from the dataset
-        self.name = dataset['name'][()].decode('UTF-8')
-        self.uid = dataset['uid'][()].decode('UTF-8')
-        self.m_i = dataset['m_i'][()].astype(dtype)
-        self.i_I_i[:] = dataset['i_I_i'][:].astype(dtype)
-        self.s_i_0[:] = dataset['s_i_0'][:].astype(dtype)
-        self.s_i[:] = dataset['s_i'][:].astype(dtype)
-        self.w_i[:] = dataset['w_i'][:].astype(dtype)
-        self.w_a_i[:] = dataset['w_a_i'][:].astype(dtype)
-        self.w_j_i[:] = dataset['w_j_i'][:].astype(dtype)
-        self.w_l_i[:] = dataset['w_l_i'][:].astype(dtype)
-        self.w_c_i[:] = dataset['w_c_i'][:].astype(dtype)
-        self.w_e_i[:] = dataset['w_e_i'][:].astype(dtype)
+        self.name = dataset["name"][()].decode("UTF-8")
+        self.uid = dataset["uid"][()].decode("UTF-8")
+        self.m_i = dataset["m_i"][()].astype(dtype)
+        self.i_I_i[:] = dataset["i_I_i"][:].astype(dtype)
+        self.s_i_0[:] = dataset["s_i_0"][:].astype(dtype)
+        self.s_i[:] = dataset["s_i"][:].astype(dtype)
+        self.w_i[:] = dataset["w_i"][:].astype(dtype)
+        self.w_a_i[:] = dataset["w_a_i"][:].astype(dtype)
+        self.w_j_i[:] = dataset["w_j_i"][:].astype(dtype)
+        self.w_l_i[:] = dataset["w_l_i"][:].astype(dtype)
+        self.w_c_i[:] = dataset["w_c_i"][:].astype(dtype)
+        self.w_e_i[:] = dataset["w_e_i"][:].astype(dtype)
 
     def store(self, dataset, namespace: str = ""):
         # Store the data into the dataset
-        dataset[namespace + '/name'] = self.name.encode('UTF-8')
-        dataset[namespace + '/uid'] = self.uid.encode('UTF-8')
-        dataset[namespace + '/m_i'] = ctypes.c_double(self.m_i)
-        dataset[namespace + '/i_I_i'] = self.i_I_i.astype(np.float64)
-        dataset[namespace + '/s_i_0'] = self.s_i_0.astype(np.float64)
-        dataset[namespace + '/s_i'] = self.s_i.astype(np.float64)
-        dataset[namespace + '/w_i'] = self.w_i.astype(np.float64)
-        dataset[namespace + '/w_a_i'] = self.w_a_i.astype(np.float64)
-        dataset[namespace + '/w_j_i'] = self.w_j_i.astype(np.float64)
-        dataset[namespace + '/w_l_i'] = self.w_l_i.astype(np.float64)
-        dataset[namespace + '/w_c_i'] = self.w_c_i.astype(np.float64)
-        dataset[namespace + '/w_e_i'] = self.w_e_i.astype(np.float64)
+        dataset[namespace + "/name"] = self.name.encode("UTF-8")
+        dataset[namespace + "/uid"] = self.uid.encode("UTF-8")
+        dataset[namespace + "/m_i"] = ctypes.c_double(self.m_i)
+        dataset[namespace + "/i_I_i"] = self.i_I_i.astype(np.float64)
+        dataset[namespace + "/s_i_0"] = self.s_i_0.astype(np.float64)
+        dataset[namespace + "/s_i"] = self.s_i.astype(np.float64)
+        dataset[namespace + "/w_i"] = self.w_i.astype(np.float64)
+        dataset[namespace + "/w_a_i"] = self.w_a_i.astype(np.float64)
+        dataset[namespace + "/w_j_i"] = self.w_j_i.astype(np.float64)
+        dataset[namespace + "/w_l_i"] = self.w_l_i.astype(np.float64)
+        dataset[namespace + "/w_c_i"] = self.w_c_i.astype(np.float64)
+        dataset[namespace + "/w_e_i"] = self.w_e_i.astype(np.float64)
 
 
 # NumPy-based container for the Joint data loaded from HDF5
@@ -153,22 +152,22 @@ class JointData:
             \nfollower_id={self.follower_id})"
 
     def load(self, dataset, dtype=np.float64, itype=np.int32):
-        self.name = dataset['name'][()].decode('UTF-8')
-        self.uid = dataset['uid'][()].decode('UTF-8')
-        self.dofs = dataset['dofs'][()].decode('UTF-8')
-        self.type = dataset['type'][()].decode('UTF-8')
-        self.base_id = dataset['base_id'][()].astype(itype)
-        self.follower_id = dataset['follower_id'][()].astype(itype)
-        self.frame = dataset['frame'][:].astype(dtype)
+        self.name = dataset["name"][()].decode("UTF-8")
+        self.uid = dataset["uid"][()].decode("UTF-8")
+        self.dofs = dataset["dofs"][()].decode("UTF-8")
+        self.type = dataset["type"][()].decode("UTF-8")
+        self.base_id = dataset["base_id"][()].astype(itype)
+        self.follower_id = dataset["follower_id"][()].astype(itype)
+        self.frame = dataset["frame"][:].astype(dtype)
 
     def store(self, dataset, namespace: str = ""):
-        dataset[namespace + '/name'] = self.name.encode('UTF-8')
-        dataset[namespace + '/uid'] = self.uid.encode('UTF-8')
-        dataset[namespace + '/dofs'] = self.dofs.encode('UTF-8')
-        dataset[namespace + '/type'] = self.type.encode('UTF-8')
-        dataset[namespace + '/base_id'] = ctypes.c_int(self.base_id)
-        dataset[namespace + '/follower_id'] = ctypes.c_int(self.follower_id)
-        dataset[namespace + '/frame'] = self.frame.astype(np.float64)
+        dataset[namespace + "/name"] = self.name.encode("UTF-8")
+        dataset[namespace + "/uid"] = self.uid.encode("UTF-8")
+        dataset[namespace + "/dofs"] = self.dofs.encode("UTF-8")
+        dataset[namespace + "/type"] = self.type.encode("UTF-8")
+        dataset[namespace + "/base_id"] = ctypes.c_int(self.base_id)
+        dataset[namespace + "/follower_id"] = ctypes.c_int(self.follower_id)
+        dataset[namespace + "/frame"] = self.frame.astype(np.float64)
 
 
 class GravityData:
@@ -188,16 +187,16 @@ class GravityData:
             \nvector={self.vector})"
 
     def load(self, dataset, dtype=np.float64):
-        self.enabled = dataset['enabled'][()]
-        self.acceleration = dataset['acceleration'][()].astype(dtype)
-        self.direction[:] = dataset['direction'][:].astype(dtype)
-        self.vector[:] = dataset['vector'][:].astype(dtype)
+        self.enabled = dataset["enabled"][()]
+        self.acceleration = dataset["acceleration"][()].astype(dtype)
+        self.direction[:] = dataset["direction"][:].astype(dtype)
+        self.vector[:] = dataset["vector"][:].astype(dtype)
 
     def store(self, dataset, namespace: str = ""):
-        dataset[namespace + '/enabled'] = self.enabled
-        dataset[namespace + '/acceleration'] = ctypes.c_double(self.acceleration)
-        dataset[namespace + '/direction'] = self.direction.astype(np.float64)
-        dataset[namespace + '/vector'] = self.vector.astype(np.float64)
+        dataset[namespace + "/enabled"] = self.enabled
+        dataset[namespace + "/acceleration"] = ctypes.c_double(self.acceleration)
+        dataset[namespace + "/direction"] = self.direction.astype(np.float64)
+        dataset[namespace + "/vector"] = self.vector.astype(np.float64)
 
 
 # NumPy-based container for the RigidBodySystemInfo data loaded from HDF5
@@ -270,68 +269,68 @@ class RigidBodySystemInfoData:
             \ntotal_diagonal_inertia={self.total_diagonal_inertia})"
 
     def load(self, dataset, dtype=np.float64, itype=np.int32):
-        self.nsd = dataset['nsd'][()].astype(itype)
-        self.nb = dataset['nb'][()].astype(itype)
-        self.nbd = dataset['nbd'][()].astype(itype)
-        self.nj = dataset['nj'][()].astype(itype)
-        self.njd = dataset['njd'][()].astype(itype)
-        self.np = dataset['np'][()].astype(itype)
-        self.npd = dataset['npd'][()].astype(itype)
-        self.nq = dataset['nq'][()].astype(itype)
-        self.nqd = dataset['nqd'][()].astype(itype)
-        self.njdims = dataset['njdims'][:].astype(itype)
-        self.npdims = dataset['npdims'][:].astype(itype)
-        self.nqdims = dataset['nqdims'][:].astype(itype)
-        self.body_names = [str(s.decode('UTF-8')) for s in dataset['body_names']]
+        self.nsd = dataset["nsd"][()].astype(itype)
+        self.nb = dataset["nb"][()].astype(itype)
+        self.nbd = dataset["nbd"][()].astype(itype)
+        self.nj = dataset["nj"][()].astype(itype)
+        self.njd = dataset["njd"][()].astype(itype)
+        self.np = dataset["np"][()].astype(itype)
+        self.npd = dataset["npd"][()].astype(itype)
+        self.nq = dataset["nq"][()].astype(itype)
+        self.nqd = dataset["nqd"][()].astype(itype)
+        self.njdims = dataset["njdims"][:].astype(itype)
+        self.npdims = dataset["npdims"][:].astype(itype)
+        self.nqdims = dataset["nqdims"][:].astype(itype)
+        self.body_names = [str(s.decode("UTF-8")) for s in dataset["body_names"]]
         # self.joint_names = [str(s.decode('UTF-8')) for s in dataset['joint_names']]
-        self.physical_geometry_layers = [str(s.decode('UTF-8')) for s in dataset['physical_geometry_layers']]
-        self.collision_geometry_layers = [str(s.decode('UTF-8')) for s in dataset['collision_geometry_layers']]
-        self.fixed_joint_names = [str(s.decode('UTF-8')) for s in dataset['fixed_joint_names']]
-        self.passive_joint_names = [str(s.decode('UTF-8')) for s in dataset['passive_joint_names']]
-        self.actuated_joint_names = [str(s.decode('UTF-8')) for s in dataset['actuated_joint_names']]
-        self.base_name = dataset['base_name'][()].decode('UTF-8')
-        self.base_idx = dataset['base_idx'][()].astype(itype)
-        self.grounding_name = dataset['grounding_name'][()].decode('UTF-8')
-        self.grounding_idx = dataset['grounding_idx'][()].astype(itype)
-        self.has_base = dataset['has_base'][()]
-        self.has_floating_base = dataset['has_floating_base'][()]
-        self.has_grounding = dataset['has_grounding'][()]
-        self.has_passive_dofs = dataset['has_passive_dofs'][()]
-        self.has_actuated_dofs = dataset['has_actuated_dofs'][()]
-        self.total_mass = dataset['total_mass'][()].astype(dtype)
-        self.total_diagonal_inertia = dataset['total_diagonal_inertia'][()].astype(dtype)
+        self.physical_geometry_layers = [str(s.decode("UTF-8")) for s in dataset["physical_geometry_layers"]]
+        self.collision_geometry_layers = [str(s.decode("UTF-8")) for s in dataset["collision_geometry_layers"]]
+        self.fixed_joint_names = [str(s.decode("UTF-8")) for s in dataset["fixed_joint_names"]]
+        self.passive_joint_names = [str(s.decode("UTF-8")) for s in dataset["passive_joint_names"]]
+        self.actuated_joint_names = [str(s.decode("UTF-8")) for s in dataset["actuated_joint_names"]]
+        self.base_name = dataset["base_name"][()].decode("UTF-8")
+        self.base_idx = dataset["base_idx"][()].astype(itype)
+        self.grounding_name = dataset["grounding_name"][()].decode("UTF-8")
+        self.grounding_idx = dataset["grounding_idx"][()].astype(itype)
+        self.has_base = dataset["has_base"][()]
+        self.has_floating_base = dataset["has_floating_base"][()]
+        self.has_grounding = dataset["has_grounding"][()]
+        self.has_passive_dofs = dataset["has_passive_dofs"][()]
+        self.has_actuated_dofs = dataset["has_actuated_dofs"][()]
+        self.total_mass = dataset["total_mass"][()].astype(dtype)
+        self.total_diagonal_inertia = dataset["total_diagonal_inertia"][()].astype(dtype)
 
     def store(self, dataset, namespace: str = ""):
-        dataset[namespace + '/nsd'] = ctypes.c_long(self.nsd)
-        dataset[namespace + '/nb'] = ctypes.c_long(self.nb)
-        dataset[namespace + '/nbd'] = ctypes.c_long(self.nbd)
-        dataset[namespace + '/nj'] = ctypes.c_long(self.nj)
-        dataset[namespace + '/njd'] = ctypes.c_long(self.njd)
-        dataset[namespace + '/np'] = ctypes.c_long(self.np)
-        dataset[namespace + '/npd'] = ctypes.c_long(self.npd)
-        dataset[namespace + '/nq'] = ctypes.c_long(self.nq)
-        dataset[namespace + '/nqd'] = ctypes.c_long(self.nqd)
-        dataset[namespace + '/njdims'] = (ctypes.c_int * len(self.njdims))(*self.njdims)
-        dataset[namespace + '/npdims'] = (ctypes.c_int * len(self.npdims))(*self.npdims)
-        dataset[namespace + '/nqdims'] = (ctypes.c_int * len(self.nqdims))(*self.nqdims)
-        dataset[namespace + '/body_names'] = [s.encode('UTF-8') for s in self.body_names]
-        dataset[namespace + '/joint_names'] = [s.encode('UTF-8') for s in self.joint_names]
-        dataset[namespace + '/physical_geometry_layers'] = [s.encode('UTF-8') for s in self.physical_geometry_layers]
-        dataset[namespace + '/collision_geometry_layers'] = [s.encode('UTF-8') for s in self.collision_geometry_layers]
-        dataset[namespace + '/fixed_joint_names'] = [s.encode('UTF-8') for s in self.fixed_joint_names]
-        dataset[namespace + '/passive_joint_names'] = [s.encode('UTF-8') for s in self.passive_joint_names]
-        dataset[namespace + '/actuated_joint_names'] = [s.encode('UTF-8') for s in self.actuated_joint_names]
-        dataset[namespace + '/base_name'] = self.base_name.encode('UTF-8')
-        dataset[namespace + '/base_idx'] = ctypes.c_long(self.base_idx)
-        dataset[namespace + '/grounding_name'] = self.grounding_name.encode('UTF-8')
-        dataset[namespace + '/grounding_idx'] = ctypes.c_long(self.grounding_idx)
-        dataset[namespace + '/has_base'] = ctypes.c_bool(self.has_base)
-        dataset[namespace + '/has_floating_base'] = ctypes.c_bool(self.has_floating_base)
-        dataset[namespace + '/has_grounding'] = ctypes.c_bool(self.has_grounding)
-        dataset[namespace + '/has_passive_dofs'] = ctypes.c_bool(self.has_passive_dofs)
-        dataset[namespace + '/has_actuated_dofs'] = ctypes.c_bool(self.has_actuated_dofs)
-        dataset[namespace + '/total_mass'] = ctypes.c_double(self.total_mass)
-        dataset[namespace + '/total_diagonal_inertia'] = ctypes.c_double(self.total_diagonal_inertia)
+        dataset[namespace + "/nsd"] = ctypes.c_long(self.nsd)
+        dataset[namespace + "/nb"] = ctypes.c_long(self.nb)
+        dataset[namespace + "/nbd"] = ctypes.c_long(self.nbd)
+        dataset[namespace + "/nj"] = ctypes.c_long(self.nj)
+        dataset[namespace + "/njd"] = ctypes.c_long(self.njd)
+        dataset[namespace + "/np"] = ctypes.c_long(self.np)
+        dataset[namespace + "/npd"] = ctypes.c_long(self.npd)
+        dataset[namespace + "/nq"] = ctypes.c_long(self.nq)
+        dataset[namespace + "/nqd"] = ctypes.c_long(self.nqd)
+        dataset[namespace + "/njdims"] = (ctypes.c_int * len(self.njdims))(*self.njdims)
+        dataset[namespace + "/npdims"] = (ctypes.c_int * len(self.npdims))(*self.npdims)
+        dataset[namespace + "/nqdims"] = (ctypes.c_int * len(self.nqdims))(*self.nqdims)
+        dataset[namespace + "/body_names"] = [s.encode("UTF-8") for s in self.body_names]
+        dataset[namespace + "/joint_names"] = [s.encode("UTF-8") for s in self.joint_names]
+        dataset[namespace + "/physical_geometry_layers"] = [s.encode("UTF-8") for s in self.physical_geometry_layers]
+        dataset[namespace + "/collision_geometry_layers"] = [s.encode("UTF-8") for s in self.collision_geometry_layers]
+        dataset[namespace + "/fixed_joint_names"] = [s.encode("UTF-8") for s in self.fixed_joint_names]
+        dataset[namespace + "/passive_joint_names"] = [s.encode("UTF-8") for s in self.passive_joint_names]
+        dataset[namespace + "/actuated_joint_names"] = [s.encode("UTF-8") for s in self.actuated_joint_names]
+        dataset[namespace + "/base_name"] = self.base_name.encode("UTF-8")
+        dataset[namespace + "/base_idx"] = ctypes.c_long(self.base_idx)
+        dataset[namespace + "/grounding_name"] = self.grounding_name.encode("UTF-8")
+        dataset[namespace + "/grounding_idx"] = ctypes.c_long(self.grounding_idx)
+        dataset[namespace + "/has_base"] = ctypes.c_bool(self.has_base)
+        dataset[namespace + "/has_floating_base"] = ctypes.c_bool(self.has_floating_base)
+        dataset[namespace + "/has_grounding"] = ctypes.c_bool(self.has_grounding)
+        dataset[namespace + "/has_passive_dofs"] = ctypes.c_bool(self.has_passive_dofs)
+        dataset[namespace + "/has_actuated_dofs"] = ctypes.c_bool(self.has_actuated_dofs)
+        dataset[namespace + "/total_mass"] = ctypes.c_double(self.total_mass)
+        dataset[namespace + "/total_diagonal_inertia"] = ctypes.c_double(self.total_diagonal_inertia)
 
     def from_descriptor(self, world: WorldDescriptor):
         self.nb = world.num_bodies
@@ -427,61 +426,61 @@ class RigidBodySystemData:
     def load(self, dataset, dtype=np.float64, itype=np.int32):
         self._dtype = dtype
         self._itype = itype
-        self.gravity.load(dataset['gravity'], dtype)
-        self.info.load(dataset['info'], dtype, itype)
-        self.bodies = [RigidBodyData(dataset[f'bodies/{i}'], dtype) for i in range(self.info.nb)]
-        self.joints = [JointData(dataset[f'joints/{j}'], dtype) for j in range(self.info.nj)]
+        self.gravity.load(dataset["gravity"], dtype)
+        self.info.load(dataset["info"], dtype, itype)
+        self.bodies = [RigidBodyData(dataset[f"bodies/{i}"], dtype) for i in range(self.info.nb)]
+        self.joints = [JointData(dataset[f"joints/{j}"], dtype) for j in range(self.info.nj)]
 
     def store(self, dataset, namespace: str = ""):
-        self.gravity.store(dataset, namespace=f'{namespace}/gravity')
-        self.info.store(dataset, namespace=f'{namespace}/info')
+        self.gravity.store(dataset, namespace=f"{namespace}/gravity")
+        self.info.store(dataset, namespace=f"{namespace}/info")
         for i, body in enumerate(self.bodies):
-            body.store(dataset, namespace=f'{namespace}/bodies/{i}')
+            body.store(dataset, namespace=f"{namespace}/bodies/{i}")
         for j, joint in enumerate(self.joints):
-            joint.store(dataset, namespace=f'{namespace}/joints/{j}')
+            joint.store(dataset, namespace=f"{namespace}/joints/{j}")
         # Store additional system data
-        dataset[namespace + '/state/p_design'] = self.p_design
-        dataset[namespace + '/state/p_control'] = self.p_control
-        dataset[namespace + '/state/state'] = self.state
-        dataset[namespace + '/state/state_p'] = self.state_p
-        dataset[namespace + '/state/state_0'] = self.state_0
-        dataset[namespace + '/geometry/physical/state_0'] = self.state_0_pgo
-        dataset[namespace + '/geometry/collision/state_0'] = self.state_0_cgo
-        dataset[namespace + '/multipliers/lambda_j'] = self.lambda_j
-        dataset[namespace + '/multipliers/lambda_l'] = self.lambda_l
-        dataset[namespace + '/multipliers/lambda_c'] = self.lambda_c
-        dataset[namespace + '/wrenches/w_a'] = self.w_a
-        dataset[namespace + '/wrenches/w_j'] = self.w_j
-        dataset[namespace + '/wrenches/w_l'] = self.w_l
-        dataset[namespace + '/wrenches/w_c'] = self.w_c
-        dataset[namespace + '/system/p_j'] = self.p_j
-        dataset[namespace + '/system/p_j_0'] = self.p_j_0
-        dataset[namespace + '/system/p_j_min'] = self.p_j_min
-        dataset[namespace + '/system/p_j_max'] = self.p_j_max
-        dataset[namespace + '/system/dp_j'] = self.dp_j
-        dataset[namespace + '/system/dp_j_0'] = self.dp_j_0
-        dataset[namespace + '/system/q_j'] = self.q_j
-        dataset[namespace + '/system/q_j_0'] = self.q_j_0
-        dataset[namespace + '/system/q_j_min'] = self.q_j_min
-        dataset[namespace + '/system/q_j_max'] = self.q_j_max
-        dataset[namespace + '/system/dq_j'] = self.dq_j
-        dataset[namespace + '/system/dq_j_0'] = self.dq_j_0
-        dataset[namespace + '/system/tau_j'] = self.tau_j
-        dataset[namespace + '/system/R_b_frame_to_com'] = self.R_b_frame_to_com
-        dataset[namespace + '/system/r_b_frame_to_com'] = self.r_b_frame_to_com
-        dataset[namespace + '/system/R_b'] = self.R_b
-        dataset[namespace + '/system/R_b_0'] = self.R_b_0
-        dataset[namespace + '/system/r_b'] = self.r_b
-        dataset[namespace + '/system/r_b_0'] = self.r_b_0
-        dataset[namespace + '/system/omega_b'] = self.omega_b
-        dataset[namespace + '/system/omega_b_0'] = self.omega_b_0
-        dataset[namespace + '/system/v_b'] = self.v_b
-        dataset[namespace + '/system/v_b_0'] = self.v_b_0
-        dataset[namespace + '/energy/T_total'] = ctypes.c_double(self.T_total)
-        dataset[namespace + '/energy/U_total'] = ctypes.c_double(self.U_total)
-        dataset[namespace + '/energy/E_total'] = ctypes.c_double(self.E_total)
-        dataset[namespace + '/collision/category'] = ctypes.c_ulong(self.category)
-        dataset[namespace + '/collision/collides'] = ctypes.c_ulong(self.collides)
+        dataset[namespace + "/state/p_design"] = self.p_design
+        dataset[namespace + "/state/p_control"] = self.p_control
+        dataset[namespace + "/state/state"] = self.state
+        dataset[namespace + "/state/state_p"] = self.state_p
+        dataset[namespace + "/state/state_0"] = self.state_0
+        dataset[namespace + "/geometry/physical/state_0"] = self.state_0_pgo
+        dataset[namespace + "/geometry/collision/state_0"] = self.state_0_cgo
+        dataset[namespace + "/multipliers/lambda_j"] = self.lambda_j
+        dataset[namespace + "/multipliers/lambda_l"] = self.lambda_l
+        dataset[namespace + "/multipliers/lambda_c"] = self.lambda_c
+        dataset[namespace + "/wrenches/w_a"] = self.w_a
+        dataset[namespace + "/wrenches/w_j"] = self.w_j
+        dataset[namespace + "/wrenches/w_l"] = self.w_l
+        dataset[namespace + "/wrenches/w_c"] = self.w_c
+        dataset[namespace + "/system/p_j"] = self.p_j
+        dataset[namespace + "/system/p_j_0"] = self.p_j_0
+        dataset[namespace + "/system/p_j_min"] = self.p_j_min
+        dataset[namespace + "/system/p_j_max"] = self.p_j_max
+        dataset[namespace + "/system/dp_j"] = self.dp_j
+        dataset[namespace + "/system/dp_j_0"] = self.dp_j_0
+        dataset[namespace + "/system/q_j"] = self.q_j
+        dataset[namespace + "/system/q_j_0"] = self.q_j_0
+        dataset[namespace + "/system/q_j_min"] = self.q_j_min
+        dataset[namespace + "/system/q_j_max"] = self.q_j_max
+        dataset[namespace + "/system/dq_j"] = self.dq_j
+        dataset[namespace + "/system/dq_j_0"] = self.dq_j_0
+        dataset[namespace + "/system/tau_j"] = self.tau_j
+        dataset[namespace + "/system/R_b_frame_to_com"] = self.R_b_frame_to_com
+        dataset[namespace + "/system/r_b_frame_to_com"] = self.r_b_frame_to_com
+        dataset[namespace + "/system/R_b"] = self.R_b
+        dataset[namespace + "/system/R_b_0"] = self.R_b_0
+        dataset[namespace + "/system/r_b"] = self.r_b
+        dataset[namespace + "/system/r_b_0"] = self.r_b_0
+        dataset[namespace + "/system/omega_b"] = self.omega_b
+        dataset[namespace + "/system/omega_b_0"] = self.omega_b_0
+        dataset[namespace + "/system/v_b"] = self.v_b
+        dataset[namespace + "/system/v_b_0"] = self.v_b_0
+        dataset[namespace + "/energy/T_total"] = ctypes.c_double(self.T_total)
+        dataset[namespace + "/energy/U_total"] = ctypes.c_double(self.U_total)
+        dataset[namespace + "/energy/E_total"] = ctypes.c_double(self.E_total)
+        dataset[namespace + "/collision/category"] = ctypes.c_ulong(self.category)
+        dataset[namespace + "/collision/collides"] = ctypes.c_ulong(self.collides)
 
     def configure(self, simulator: Simulator, wid: int = 0, dtype=np.float64):
         # Configure gravity
@@ -591,7 +590,9 @@ class RigidBodySystemData:
         for i in range(self.info.nb):
             if bodies_wid[i] == wid:
                 self.bodies[i].s_i[0:7] = bodies_q_i[i, :]
-                self.bodies[i].s_i[7:14] = self._to_quaternion_derivative(bodies_u_i[i, :], self.bodies[i].s_i[3:7], dtype=dtype)
+                self.bodies[i].s_i[7:14] = self._to_quaternion_derivative(
+                    bodies_u_i[i, :], self.bodies[i].s_i[3:7], dtype=dtype
+                )
                 self.bodies[i].w_i = bodies_w_i[i, :]
                 self.bodies[i].w_a_i = bodies_w_a_i[i, :]
                 self.bodies[i].w_j_i = bodies_w_j_i[i, :]
@@ -655,48 +656,48 @@ class ContactData:
             \nbilateral={self.bilateral})"
 
     def load(self, dataset, dtype=np.float64, itype=np.int32):
-        self.gid_A = dataset['point/A/gid'][()].astype(itype)
-        self.bid_A = dataset['point/A/bid'][()].astype(itype)
-        self.position_A[:] = dataset['point/A/position'][:].astype(dtype)
-        self.gid_B = dataset['point/B/gid'][()].astype(itype)
-        self.bid_B = dataset['point/B/bid'][()].astype(itype)
-        self.position_B[:] = dataset['point/B/position'][:].astype(dtype)
-        self.position[:] = dataset['point/position'][:].astype(dtype)
-        self.normal[:] = dataset['point/normal'][:].astype(dtype)
-        self.penetration = dataset['point/penetration'][()].astype(dtype)
-        self.friction = dataset['material/mu'][()].astype(dtype)
-        self.restitutuon = dataset['material/epsilon'][()].astype(dtype)
-        self.d_n[:] = dataset['conic/d_n'][:].astype(dtype)
-        self.ratio = float(dataset['conic/ratio'][()])
-        self.type = int(dataset['conic/type'][()])
-        self.frame[:] = dataset['reaction/frame'][:, :].astype(dtype)
-        self.lambda_0[:] = dataset['reaction/lambda_0'][:].astype(dtype)
-        self.lambda_n[:] = dataset['reaction/lambda'][:].astype(dtype)
-        self.v_plus[:] = dataset['reaction/v_plus'][:].astype(dtype)
-        self.mode = int(dataset['reaction/mode'][()])
-        self.bilateral = bool(dataset['reaction/bilateral'][()])
+        self.gid_A = dataset["point/A/gid"][()].astype(itype)
+        self.bid_A = dataset["point/A/bid"][()].astype(itype)
+        self.position_A[:] = dataset["point/A/position"][:].astype(dtype)
+        self.gid_B = dataset["point/B/gid"][()].astype(itype)
+        self.bid_B = dataset["point/B/bid"][()].astype(itype)
+        self.position_B[:] = dataset["point/B/position"][:].astype(dtype)
+        self.position[:] = dataset["point/position"][:].astype(dtype)
+        self.normal[:] = dataset["point/normal"][:].astype(dtype)
+        self.penetration = dataset["point/penetration"][()].astype(dtype)
+        self.friction = dataset["material/mu"][()].astype(dtype)
+        self.restitutuon = dataset["material/epsilon"][()].astype(dtype)
+        self.d_n[:] = dataset["conic/d_n"][:].astype(dtype)
+        self.ratio = float(dataset["conic/ratio"][()])
+        self.type = int(dataset["conic/type"][()])
+        self.frame[:] = dataset["reaction/frame"][:, :].astype(dtype)
+        self.lambda_0[:] = dataset["reaction/lambda_0"][:].astype(dtype)
+        self.lambda_n[:] = dataset["reaction/lambda"][:].astype(dtype)
+        self.v_plus[:] = dataset["reaction/v_plus"][:].astype(dtype)
+        self.mode = int(dataset["reaction/mode"][()])
+        self.bilateral = bool(dataset["reaction/bilateral"][()])
 
     def store(self, dataset, namespace: str = ""):
-        dataset[namespace + '/point/A/gid'] = ctypes.c_long(self.gid_A)
-        dataset[namespace + '/point/A/bid'] = ctypes.c_long(self.bid_A)
-        dataset[namespace + '/point/A/position'] = self.position_A.astype(np.float64)
-        dataset[namespace + '/point/B/gid'] = ctypes.c_long(self.gid_B)
-        dataset[namespace + '/point/B/bid'] = ctypes.c_long(self.bid_B)
-        dataset[namespace + '/point/B/position'] = self.position_B.astype(np.float64)
-        dataset[namespace + '/point/position'] = self.position.astype(np.float64)
-        dataset[namespace + '/point/normal'] = self.normal.astype(np.float64)
-        dataset[namespace + '/point/penetration'] = self.penetration
-        dataset[namespace + '/material/mu'] = self.friction
-        dataset[namespace + '/material/epsilon'] = self.restitutuon
-        dataset[namespace + '/reaction/frame'] = self.frame.astype(np.float64)
-        dataset[namespace + '/reaction/lambda_0'] = self.lambda_0.astype(np.float64)
-        dataset[namespace + '/reaction/lambda'] = self.lambda_n.astype(np.float64)
-        dataset[namespace + '/reaction/v_plus'] = self.v_plus.astype(np.float64)
-        dataset[namespace + '/reaction/mode'] = ctypes.c_int8(self.mode)
-        dataset[namespace + '/reaction/bilateral'] = ctypes.c_bool(self.bilateral)
-        dataset[namespace + '/conic/d_n'] = self.d_n.astype(np.float64)
-        dataset[namespace + '/conic/ratio'] = ctypes.c_double(self.ratio)
-        dataset[namespace + '/conic/type'] = ctypes.c_long(self.type)
+        dataset[namespace + "/point/A/gid"] = ctypes.c_long(self.gid_A)
+        dataset[namespace + "/point/A/bid"] = ctypes.c_long(self.bid_A)
+        dataset[namespace + "/point/A/position"] = self.position_A.astype(np.float64)
+        dataset[namespace + "/point/B/gid"] = ctypes.c_long(self.gid_B)
+        dataset[namespace + "/point/B/bid"] = ctypes.c_long(self.bid_B)
+        dataset[namespace + "/point/B/position"] = self.position_B.astype(np.float64)
+        dataset[namespace + "/point/position"] = self.position.astype(np.float64)
+        dataset[namespace + "/point/normal"] = self.normal.astype(np.float64)
+        dataset[namespace + "/point/penetration"] = self.penetration
+        dataset[namespace + "/material/mu"] = self.friction
+        dataset[namespace + "/material/epsilon"] = self.restitutuon
+        dataset[namespace + "/reaction/frame"] = self.frame.astype(np.float64)
+        dataset[namespace + "/reaction/lambda_0"] = self.lambda_0.astype(np.float64)
+        dataset[namespace + "/reaction/lambda"] = self.lambda_n.astype(np.float64)
+        dataset[namespace + "/reaction/v_plus"] = self.v_plus.astype(np.float64)
+        dataset[namespace + "/reaction/mode"] = ctypes.c_int8(self.mode)
+        dataset[namespace + "/reaction/bilateral"] = ctypes.c_bool(self.bilateral)
+        dataset[namespace + "/conic/d_n"] = self.d_n.astype(np.float64)
+        dataset[namespace + "/conic/ratio"] = ctypes.c_double(self.ratio)
+        dataset[namespace + "/conic/type"] = ctypes.c_long(self.type)
 
 
 # NumPy-based container for multiple Contact data loaded from HDF5
@@ -714,14 +715,14 @@ class ContactsData:
 
     def load(self, dataset, dtype=np.float64, itype=np.int32):
         # Load the data from the dataset
-        self.ncontacts = dataset['nc'][()].astype(itype)
-        self.contacts = [ContactData(dataset[f'contacts/{c}'], dtype) for c in range(self.ncontacts)]
+        self.ncontacts = dataset["nc"][()].astype(itype)
+        self.contacts = [ContactData(dataset[f"contacts/{c}"], dtype) for c in range(self.ncontacts)]
 
     def store(self, dataset, namespace: str = ""):
         # Store the data into the dataset
-        dataset[namespace + '/nc'] = ctypes.c_long(self.ncontacts)
+        dataset[namespace + "/nc"] = ctypes.c_long(self.ncontacts)
         for c, contact in enumerate(self.contacts):
-            contact.store(dataset, namespace=f'{namespace}/contacts/{c}')
+            contact.store(dataset, namespace=f"{namespace}/contacts/{c}")
 
     def update_from(self, simulator: Simulator, wid: int = 0, dtype=np.float64, itype=np.int32):
         self.ncontacts = int(simulator.contacts.world_num_contacts.numpy()[wid])
@@ -790,36 +791,36 @@ class DualProblemInfoData:
             \nnd={self.nd})"
 
     def load(self, dataset, itype=np.int32):
-        self.njdims = dataset['njdims'][:].astype(itype)
-        self.nb = dataset['nb'][()].astype(itype)
-        self.nj = dataset['nj'][()].astype(itype)
-        self.nl = dataset['nl'][()].astype(itype)
-        self.nc = dataset['nc'][()].astype(itype)
-        self.nbd = dataset['nbd'][()].astype(itype)
-        self.njd = dataset['njd'][()].astype(itype)
-        self.nld = dataset['nld'][()].astype(itype)
-        self.ncd = dataset['ncd'][()].astype(itype)
-        self.ij = dataset['ij'][()].astype(itype)
-        self.il = dataset['il'][()].astype(itype)
-        self.ic = dataset['ic'][()].astype(itype)
-        self.nbc = dataset['nbc'][()].astype(itype)
-        self.nd = dataset['nd'][()].astype(itype)
+        self.njdims = dataset["njdims"][:].astype(itype)
+        self.nb = dataset["nb"][()].astype(itype)
+        self.nj = dataset["nj"][()].astype(itype)
+        self.nl = dataset["nl"][()].astype(itype)
+        self.nc = dataset["nc"][()].astype(itype)
+        self.nbd = dataset["nbd"][()].astype(itype)
+        self.njd = dataset["njd"][()].astype(itype)
+        self.nld = dataset["nld"][()].astype(itype)
+        self.ncd = dataset["ncd"][()].astype(itype)
+        self.ij = dataset["ij"][()].astype(itype)
+        self.il = dataset["il"][()].astype(itype)
+        self.ic = dataset["ic"][()].astype(itype)
+        self.nbc = dataset["nbc"][()].astype(itype)
+        self.nd = dataset["nd"][()].astype(itype)
 
     def store(self, dataset, namespace: str = ""):
-        dataset[namespace + '/njdims'] = self.njdims[:].astype(np.int32)
-        dataset[namespace + '/nb'] = ctypes.c_long(self.nb)
-        dataset[namespace + '/nj'] = ctypes.c_long(self.nj)
-        dataset[namespace + '/nl'] = ctypes.c_long(self.nl)
-        dataset[namespace + '/nc'] = ctypes.c_long(self.nc)
-        dataset[namespace + '/nbd'] = ctypes.c_long(self.nbd)
-        dataset[namespace + '/njd'] = ctypes.c_long(self.njd)
-        dataset[namespace + '/nld'] = ctypes.c_long(self.nld)
-        dataset[namespace + '/ncd'] = ctypes.c_long(self.ncd)
-        dataset[namespace + '/ij'] = ctypes.c_long(self.ij)
-        dataset[namespace + '/il'] = ctypes.c_long(self.il)
-        dataset[namespace + '/ic'] = ctypes.c_long(self.ic)
-        dataset[namespace + '/nbc'] = ctypes.c_long(self.nbc)
-        dataset[namespace + '/nd'] = ctypes.c_long(self.nd)
+        dataset[namespace + "/njdims"] = self.njdims[:].astype(np.int32)
+        dataset[namespace + "/nb"] = ctypes.c_long(self.nb)
+        dataset[namespace + "/nj"] = ctypes.c_long(self.nj)
+        dataset[namespace + "/nl"] = ctypes.c_long(self.nl)
+        dataset[namespace + "/nc"] = ctypes.c_long(self.nc)
+        dataset[namespace + "/nbd"] = ctypes.c_long(self.nbd)
+        dataset[namespace + "/njd"] = ctypes.c_long(self.njd)
+        dataset[namespace + "/nld"] = ctypes.c_long(self.nld)
+        dataset[namespace + "/ncd"] = ctypes.c_long(self.ncd)
+        dataset[namespace + "/ij"] = ctypes.c_long(self.ij)
+        dataset[namespace + "/il"] = ctypes.c_long(self.il)
+        dataset[namespace + "/ic"] = ctypes.c_long(self.ic)
+        dataset[namespace + "/nbc"] = ctypes.c_long(self.nbc)
+        dataset[namespace + "/nd"] = ctypes.c_long(self.nd)
 
     def configure(self, simulator: Simulator, wid: int = 0, dtype=np.float64, itype=np.int32):
         # Update the problem info from the simulator model
@@ -921,61 +922,61 @@ class DualProblemData:
 
     def load(self, dataset, dtype=np.float64, itype=np.int32):
         # Load the data from the dataset
-        self.info = DualProblemInfoData(dataset=dataset['info'], itype=itype)
-        self.D = dataset['problem/D'][:, :].astype(dtype)
-        self.v_f = dataset['problem/v_f'][:].astype(dtype)
-        self.mu = dataset['problem/mu'][:].astype(dtype)
-        self.dt = dataset['system/dt'][()].astype(dtype)
-        self.M = dataset['system/M'][:, :].astype(dtype)
-        self.invM = dataset['system/invM'][:, :].astype(dtype)
-        self.J = dataset['system/J'][:, :].astype(dtype)
-        self.h = dataset['system/h'][:].astype(dtype)
-        self.u_h = dataset['system/u_h'][:].astype(dtype)
-        self.u_minus = dataset['system/u_minus'][:].astype(dtype)
-        self.U_minus = dataset['system/U_minus'][()].astype(dtype)
-        self.T_minus = dataset['system/T_minus'][()].astype(dtype)
-        self.E_minus = dataset['system/E_minus'][()].astype(dtype)
-        self.total_mass = dataset['system/total_mass'][()].astype(dtype)
-        self.total_diagonal_inertia = dataset['system/total_diagonal_inertia'][()].astype(dtype)
-        self.r_j = dataset['residuals/r_j'][:].astype(dtype)
-        self.r_l = dataset['residuals/r_l'][:].astype(dtype)
-        self.r_c = dataset['residuals/r_c'][:].astype(dtype)
-        self.v_i = dataset['vf/v_i'][:].astype(dtype)
-        self.v_b = dataset['vf/v_b'][:].astype(dtype)
-        self.lambdas = dataset['solution/lambdas'][:].astype(dtype)
-        self.v_plus = dataset['solution/v_plus'][:].astype(dtype)
-        self.w_j = dataset['wrenches/w_j'][:].astype(dtype)
-        self.w_l = dataset['wrenches/w_l'][:].astype(dtype)
-        self.w_c = dataset['wrenches/w_c'][:].astype(dtype)
+        self.info = DualProblemInfoData(dataset=dataset["info"], itype=itype)
+        self.D = dataset["problem/D"][:, :].astype(dtype)
+        self.v_f = dataset["problem/v_f"][:].astype(dtype)
+        self.mu = dataset["problem/mu"][:].astype(dtype)
+        self.dt = dataset["system/dt"][()].astype(dtype)
+        self.M = dataset["system/M"][:, :].astype(dtype)
+        self.invM = dataset["system/invM"][:, :].astype(dtype)
+        self.J = dataset["system/J"][:, :].astype(dtype)
+        self.h = dataset["system/h"][:].astype(dtype)
+        self.u_h = dataset["system/u_h"][:].astype(dtype)
+        self.u_minus = dataset["system/u_minus"][:].astype(dtype)
+        self.U_minus = dataset["system/U_minus"][()].astype(dtype)
+        self.T_minus = dataset["system/T_minus"][()].astype(dtype)
+        self.E_minus = dataset["system/E_minus"][()].astype(dtype)
+        self.total_mass = dataset["system/total_mass"][()].astype(dtype)
+        self.total_diagonal_inertia = dataset["system/total_diagonal_inertia"][()].astype(dtype)
+        self.r_j = dataset["residuals/r_j"][:].astype(dtype)
+        self.r_l = dataset["residuals/r_l"][:].astype(dtype)
+        self.r_c = dataset["residuals/r_c"][:].astype(dtype)
+        self.v_i = dataset["vf/v_i"][:].astype(dtype)
+        self.v_b = dataset["vf/v_b"][:].astype(dtype)
+        self.lambdas = dataset["solution/lambdas"][:].astype(dtype)
+        self.v_plus = dataset["solution/v_plus"][:].astype(dtype)
+        self.w_j = dataset["wrenches/w_j"][:].astype(dtype)
+        self.w_l = dataset["wrenches/w_l"][:].astype(dtype)
+        self.w_c = dataset["wrenches/w_c"][:].astype(dtype)
 
     def store(self, dataset, namespace: str = ""):
         # Store the data into the dataset
-        self.info.store(dataset, namespace=f'{namespace}/info')
-        dataset[namespace + '/problem/D'] = self.D.astype(np.float64)
-        dataset[namespace + '/problem/v_f'] = self.v_f.astype(np.float64)
-        dataset[namespace + '/problem/mu'] = self.mu.astype(np.float64)
-        dataset[namespace + '/system/dt'] = self.dt.astype(np.float64)
-        dataset[namespace + '/system/M'] = self.M.astype(np.float64)
-        dataset[namespace + '/system/invM'] = self.invM.astype(np.float64)
-        dataset[namespace + '/system/J'] = self.J.astype(np.float64)
-        dataset[namespace + '/system/h'] = self.h.astype(np.float64)
-        dataset[namespace + '/system/u_h'] = self.u_h.astype(np.float64)
-        dataset[namespace + '/system/u_minus'] = self.u_minus.astype(np.float64)
-        dataset[namespace + '/system/U_minus'] = ctypes.c_double(self.U_minus)
-        dataset[namespace + '/system/T_minus'] = ctypes.c_double(self.T_minus)
-        dataset[namespace + '/system/E_minus'] = ctypes.c_double(self.E_minus)
-        dataset[namespace + '/system/total_mass'] = ctypes.c_double(self.total_mass)
-        dataset[namespace + '/system/total_diagonal_inertia'] = ctypes.c_double(self.total_diagonal_inertia)
-        dataset[namespace + '/residuals/r_j'] = self.r_j.astype(np.float64)
-        dataset[namespace + '/residuals/r_l'] = self.r_l.astype(np.float64)
-        dataset[namespace + '/residuals/r_c'] = self.r_c.astype(np.float64)
-        dataset[namespace + '/vf/v_i'] = self.v_i.astype(np.float64)
-        dataset[namespace + '/vf/v_b'] = self.v_b.astype(np.float64)
-        dataset[namespace + '/solution/lambdas'] = self.lambdas.astype(np.float64)
-        dataset[namespace + '/solution/v_plus'] = self.v_plus.astype(np.float64)
-        dataset[namespace + '/wrenches/w_j'] = self.w_j.astype(np.float64)
-        dataset[namespace + '/wrenches/w_l'] = self.w_l.astype(np.float64)
-        dataset[namespace + '/wrenches/w_c'] = self.w_c.astype(np.float64)
+        self.info.store(dataset, namespace=f"{namespace}/info")
+        dataset[namespace + "/problem/D"] = self.D.astype(np.float64)
+        dataset[namespace + "/problem/v_f"] = self.v_f.astype(np.float64)
+        dataset[namespace + "/problem/mu"] = self.mu.astype(np.float64)
+        dataset[namespace + "/system/dt"] = self.dt.astype(np.float64)
+        dataset[namespace + "/system/M"] = self.M.astype(np.float64)
+        dataset[namespace + "/system/invM"] = self.invM.astype(np.float64)
+        dataset[namespace + "/system/J"] = self.J.astype(np.float64)
+        dataset[namespace + "/system/h"] = self.h.astype(np.float64)
+        dataset[namespace + "/system/u_h"] = self.u_h.astype(np.float64)
+        dataset[namespace + "/system/u_minus"] = self.u_minus.astype(np.float64)
+        dataset[namespace + "/system/U_minus"] = ctypes.c_double(self.U_minus)
+        dataset[namespace + "/system/T_minus"] = ctypes.c_double(self.T_minus)
+        dataset[namespace + "/system/E_minus"] = ctypes.c_double(self.E_minus)
+        dataset[namespace + "/system/total_mass"] = ctypes.c_double(self.total_mass)
+        dataset[namespace + "/system/total_diagonal_inertia"] = ctypes.c_double(self.total_diagonal_inertia)
+        dataset[namespace + "/residuals/r_j"] = self.r_j.astype(np.float64)
+        dataset[namespace + "/residuals/r_l"] = self.r_l.astype(np.float64)
+        dataset[namespace + "/residuals/r_c"] = self.r_c.astype(np.float64)
+        dataset[namespace + "/vf/v_i"] = self.v_i.astype(np.float64)
+        dataset[namespace + "/vf/v_b"] = self.v_b.astype(np.float64)
+        dataset[namespace + "/solution/lambdas"] = self.lambdas.astype(np.float64)
+        dataset[namespace + "/solution/v_plus"] = self.v_plus.astype(np.float64)
+        dataset[namespace + "/wrenches/w_j"] = self.w_j.astype(np.float64)
+        dataset[namespace + "/wrenches/w_l"] = self.w_l.astype(np.float64)
+        dataset[namespace + "/wrenches/w_c"] = self.w_c.astype(np.float64)
 
     def configure(self, simulator: Simulator, wid: int = 0, dtype=np.float64, itype=np.int32):
         # Configure the problem info
@@ -1022,13 +1023,17 @@ class DualProblemData:
         dim = simulator.problem.data.dim.numpy().astype(itype)[wid]
         self.D = simulator.problem.data.D.numpy().reshape((maxdim, maxdim))[:dim, :dim].astype(dtype)
         self.v_f = simulator.problem.data.v_f.numpy()[:dim].astype(dtype)
-        self.mu = simulator.problem.data.mu.numpy()[:self.info.nc].astype(dtype)
+        self.mu = simulator.problem.data.mu.numpy()[: self.info.nc].astype(dtype)
         # self.D = simulator.problem.data.D.numpy().reshape((maxdim, maxdim)).astype(dtype)
         # self.v_f = simulator.problem.data.v_f.numpy().astype(dtype)
         # self.mu = simulator.problem.data.mu.numpy().astype(dtype)
 
         # Construct a list of generalized inverse mass matrices of each world
-        from newton._src.solvers.kamino.tests.utils.make import make_generalized_mass_matrices, make_inverse_generalized_mass_matrices
+        from newton._src.solvers.kamino.tests.utils.make import (
+            make_generalized_mass_matrices,
+            make_inverse_generalized_mass_matrices,
+        )
+
         self.M = make_generalized_mass_matrices(simulator.model, simulator.model_data)[wid].astype(dtype)
         self.invM = make_inverse_generalized_mass_matrices(simulator.model, simulator.model_data)[wid].astype(dtype)
 
@@ -1069,6 +1074,7 @@ class DualProblemData:
 # Dataset Renderer
 ###
 
+
 class DatasetRenderer:
     def __init__(self, sysname: str, datafile: h5py.File, dt: float = 0.001):
         self.datafile = datafile
@@ -1086,7 +1092,9 @@ class DatasetRenderer:
         self.datafile[self.namescope + "/info/steps"] = 0
         self.datafile[self.namescope + "/info/maxtime"] = 0.0
 
-    def add_frame(self, system: RigidBodySystemData, contacts: ContactsData | None = None, problem: DualProblemData | None = None):
+    def add_frame(
+        self, system: RigidBodySystemData, contacts: ContactsData | None = None, problem: DualProblemData | None = None
+    ):
         system.store(self.datafile, namespace=self.namescope + "/frames/" + str(self.framecount) + "/RigidBodySystem")
         if contacts is not None:
             contacts.store(self.datafile, namespace=self.namescope + "/frames/" + str(self.framecount) + "/Contacts")

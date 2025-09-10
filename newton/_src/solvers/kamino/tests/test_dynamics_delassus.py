@@ -2,62 +2,49 @@
 # KAMINO: UNIT TESTS: DYNAMICS: DELASSUS
 ###########################################################################
 
-import os
 import unittest
+
 import numpy as np
 import warp as wp
 
-from typing import List
-from newton._src.solvers.kamino.core.types import vec3f, transformf
-from newton._src.solvers.kamino.core.math import R_x, R_y, R_z
 from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.core.model import Model
-from newton._src.solvers.kamino.kinematics.limits import Limits
-from newton._src.solvers.kamino.geometry.contacts import Contacts
-from newton._src.solvers.kamino.kinematics.constraints import max_constraints_per_world
-from newton._src.solvers.kamino.linalg.cholesky import SequentialCholeskyFactorizer
-from newton._src.solvers.kamino.utils.linalg import SquareSymmetricMatrixProperties, MatrixComparison
-from newton._src.solvers.kamino.utils.io.usd import USDImporter
-from newton._src.solvers.kamino.utils.sparse import sparseview
-import newton._src.solvers.kamino.utils.logger as msg
-from newton._src.solvers.kamino.models import get_examples_usd_assets_path
-from newton._src.solvers.kamino.models.builders import offset_builder
-from newton._src.solvers.kamino.models.builders import (
-    build_box_on_plane,
-    build_box_pendulum,
-    build_boxes_hinged,
-    build_boxes_nunchaku,
-    build_boxes_fourbar,
-)
-from newton._src.solvers.kamino.models.utils import (
-    make_single_builder,
-    make_homogeneous_builder,
-    make_heterogeneous_builder
-)
 
 # Module to be tested
 from newton._src.solvers.kamino.dynamics.delassus import DelassusOperator
-
-# Test utilities
-from newton._src.solvers.kamino.tests.utils.print import print_error_stats
-from newton._src.solvers.kamino.tests.utils.random import random_rhs_for_matrix
-from newton._src.solvers.kamino.tests.utils.make import (
-    make_inverse_generalized_mass_matrices,
-    make_containers,
-    update_containers,
+from newton._src.solvers.kamino.geometry.contacts import Contacts
+from newton._src.solvers.kamino.kinematics.constraints import max_constraints_per_world
+from newton._src.solvers.kamino.kinematics.limits import Limits
+from newton._src.solvers.kamino.linalg.cholesky import SequentialCholeskyFactorizer
+from newton._src.solvers.kamino.models.builders import (
+    build_boxes_fourbar,
+    build_boxes_nunchaku,
+)
+from newton._src.solvers.kamino.models.utils import (
+    make_heterogeneous_builder,
+    make_homogeneous_builder,
+    make_single_builder,
 )
 from newton._src.solvers.kamino.tests.utils.extract import (
     extract_active_constraint_dims,
     extract_cts_jacobians,
-    extract_dofs_jacobians,
     extract_delassus,
-    extract_problem_vector
+    extract_problem_vector,
+)
+from newton._src.solvers.kamino.tests.utils.make import (
+    make_containers,
+    make_inverse_generalized_mass_matrices,
+    update_containers,
 )
 
+# Test utilities
+from newton._src.solvers.kamino.tests.utils.print import print_error_stats
+from newton._src.solvers.kamino.tests.utils.random import random_rhs_for_matrix
 
 ###
 # Helper functions
 ###
+
 
 def check_delassus_allocations(
     fixture: unittest.TestCase,
@@ -71,7 +58,9 @@ def check_delassus_allocations(
     num_worlds = len(expected_max_constraint_dims)
     expected_D_sizes = [expected_max_constraint_dims[i] * expected_max_constraint_dims[i] for i in range(num_worlds)]
     delassus_maxdim_np = delassus.data.maxdim.numpy()
-    fixture.assertEqual(len(delassus_maxdim_np), num_worlds, "Number of Delassus operator blocks does not match the number of worlds")
+    fixture.assertEqual(
+        len(delassus_maxdim_np), num_worlds, "Number of Delassus operator blocks does not match the number of worlds"
+    )
     D_maxdims = [int(delassus_maxdim_np[i]) for i in range(num_worlds)]
     D_sizes = [D_maxdims[i] * D_maxdims[i] for i in range(num_worlds)]
     D_sizes_sum = sum(D_sizes)
@@ -79,12 +68,12 @@ def check_delassus_allocations(
 
     for i in range(num_worlds):
         fixture.assertEqual(
-            D_maxdims[i], expected_max_constraint_dims[i],
-            f"Delassus operator block {i} maxdim does not match expected maximum constraint dimension"
+            D_maxdims[i],
+            expected_max_constraint_dims[i],
+            f"Delassus operator block {i} maxdim does not match expected maximum constraint dimension",
         )
         fixture.assertEqual(
-            D_sizes[i], expected_D_sizes[i],
-            f"Delassus operator block {i} max size does not match expected max size"
+            D_sizes[i], expected_D_sizes[i], f"Delassus operator block {i} max size does not match expected max size"
         )
 
     # Check Delassus operator data sizes
@@ -117,8 +106,8 @@ def print_delassus_info(delassus: DelassusOperator) -> None:
 # Tests
 ###
 
-class TestDelassusOperator(unittest.TestCase):
 
+class TestDelassusOperator(unittest.TestCase):
     def setUp(self):
         self.verbose = False  # Set to True for detailed output
         self.default_device = wp.get_device()
@@ -135,9 +124,7 @@ class TestDelassusOperator(unittest.TestCase):
 
         # Create the model and containers from the builder
         model, state, limits, detector, jacobians = make_containers(
-            builder=builder,
-            max_world_contacts=max_world_contacts,
-            device=self.default_device
+            builder=builder, max_world_contacts=max_world_contacts, device=self.default_device
         )
 
         # Update the containers
@@ -150,7 +137,7 @@ class TestDelassusOperator(unittest.TestCase):
             limits=limits,
             contacts=detector.contacts,
             device=self.default_device,
-            factorizer=SequentialCholeskyFactorizer
+            factorizer=SequentialCholeskyFactorizer,
         )
 
         # Compare expected to allocated dimensions and sizes
@@ -171,9 +158,7 @@ class TestDelassusOperator(unittest.TestCase):
 
         # Create the model and containers from the builder
         model, state, limits, detector, jacobians = make_containers(
-            builder=builder,
-            max_world_contacts=max_world_contacts,
-            device=self.default_device
+            builder=builder, max_world_contacts=max_world_contacts, device=self.default_device
         )
 
         # Update the containers
@@ -186,7 +171,7 @@ class TestDelassusOperator(unittest.TestCase):
             limits=limits,
             contacts=detector.contacts,
             device=self.default_device,
-            factorizer=SequentialCholeskyFactorizer
+            factorizer=SequentialCholeskyFactorizer,
         )
 
         # Compare expected to allocated dimensions and sizes
@@ -206,9 +191,7 @@ class TestDelassusOperator(unittest.TestCase):
 
         # Create the model and containers from the builder
         model, state, limits, detector, jacobians = make_containers(
-            builder=builder,
-            max_world_contacts=max_world_contacts,
-            device=self.default_device
+            builder=builder, max_world_contacts=max_world_contacts, device=self.default_device
         )
 
         # Update the containers
@@ -221,7 +204,7 @@ class TestDelassusOperator(unittest.TestCase):
             limits=limits,
             contacts=detector.contacts,
             device=self.default_device,
-            factorizer=SequentialCholeskyFactorizer
+            factorizer=SequentialCholeskyFactorizer,
         )
 
         # Compare expected to allocated dimensions and sizes
@@ -245,9 +228,7 @@ class TestDelassusOperator(unittest.TestCase):
 
         # Create the model and containers from the builder
         model, state, limits, detector, jacobians = make_containers(
-            builder=builder,
-            max_world_contacts=max_world_contacts,
-            device=self.default_device
+            builder=builder, max_world_contacts=max_world_contacts, device=self.default_device
         )
 
         # Update the containers
@@ -260,16 +241,11 @@ class TestDelassusOperator(unittest.TestCase):
             limits=limits,
             contacts=detector.contacts,
             device=self.default_device,
-            factorizer=SequentialCholeskyFactorizer
+            factorizer=SequentialCholeskyFactorizer,
         )
 
         # Build the Delassus operator from the current data
-        delassus.build(
-            model=model,
-            state=state,
-            jacobians=jacobians.data,
-            reset_to_zero=True
-        )
+        delassus.build(model=model, state=state, jacobians=jacobians.data, reset_to_zero=True)
 
         # Extract the active constraint dimensions
         active_dims = extract_active_constraint_dims(delassus)
@@ -308,9 +284,7 @@ class TestDelassusOperator(unittest.TestCase):
 
         # Create the model and containers from the builder
         model, state, limits, detector, jacobians = make_containers(
-            builder=builder,
-            max_world_contacts=max_world_contacts,
-            device=self.default_device
+            builder=builder, max_world_contacts=max_world_contacts, device=self.default_device
         )
 
         # Update the containers
@@ -323,16 +297,11 @@ class TestDelassusOperator(unittest.TestCase):
             limits=limits,
             contacts=detector.contacts,
             device=self.default_device,
-            factorizer=SequentialCholeskyFactorizer
+            factorizer=SequentialCholeskyFactorizer,
         )
 
         # Build the Delassus operator from the current data
-        delassus.build(
-            model=model,
-            state=state,
-            jacobians=jacobians.data,
-            reset_to_zero=True
-        )
+        delassus.build(model=model, state=state, jacobians=jacobians.data, reset_to_zero=True)
 
         # Extract the active constraint dimensions
         active_dims = extract_active_constraint_dims(delassus)
@@ -384,9 +353,7 @@ class TestDelassusOperator(unittest.TestCase):
 
         # Create the model and containers from the builder
         model, state, limits, detector, jacobians = make_containers(
-            builder=builder,
-            max_world_contacts=max_world_contacts,
-            device=self.default_device
+            builder=builder, max_world_contacts=max_world_contacts, device=self.default_device
         )
 
         # Update the containers
@@ -399,16 +366,11 @@ class TestDelassusOperator(unittest.TestCase):
             limits=limits,
             contacts=detector.contacts,
             device=self.default_device,
-            factorizer=SequentialCholeskyFactorizer
+            factorizer=SequentialCholeskyFactorizer,
         )
 
         # Build the Delassus operator from the current data
-        delassus.build(
-            model=model,
-            state=state,
-            jacobians=jacobians.data,
-            reset_to_zero=True
-        )
+        delassus.build(model=model, state=state, jacobians=jacobians.data, reset_to_zero=True)
 
         # Extract the active constraint dimensions
         active_dims = extract_active_constraint_dims(delassus)
@@ -460,9 +422,7 @@ class TestDelassusOperator(unittest.TestCase):
 
         # Create the model and containers from the builder
         model, state, limits, detector, jacobians = make_containers(
-            builder=builder,
-            max_world_contacts=max_world_contacts,
-            device=self.default_device
+            builder=builder, max_world_contacts=max_world_contacts, device=self.default_device
         )
 
         # Update the containers
@@ -475,22 +435,19 @@ class TestDelassusOperator(unittest.TestCase):
             limits=limits,
             contacts=detector.contacts,
             device=self.default_device,
-            factorizer=SequentialCholeskyFactorizer
+            factorizer=SequentialCholeskyFactorizer,
         )
 
         # Build the Delassus operator from the current data
-        delassus.build(
-            model=model,
-            state=state,
-            jacobians=jacobians.data,
-            reset_to_zero=True
-        )
+        delassus.build(model=model, state=state, jacobians=jacobians.data, reset_to_zero=True)
 
         # Extract the active constraint dimensions
         active_dims = extract_active_constraint_dims(delassus)
 
         # Now we reset the Delassus operator to zero and use diagonal regularization to set the diagonal entries to 1.0
-        eta_wp = wp.full(shape=(delassus._model_maxdims,), value=wp.float32(1.0), dtype=wp.float32, device=self.default_device)
+        eta_wp = wp.full(
+            shape=(delassus._model_maxdims,), value=wp.float32(1.0), dtype=wp.float32, device=self.default_device
+        )
         delassus.zero()
         delassus.regularize(eta_wp)
 
@@ -544,9 +501,7 @@ class TestDelassusOperator(unittest.TestCase):
 
         # Create the model and containers from the builder
         model, state, limits, detector, jacobians = make_containers(
-            builder=builder,
-            max_world_contacts=max_world_contacts,
-            device=self.default_device
+            builder=builder, max_world_contacts=max_world_contacts, device=self.default_device
         )
 
         # Update the containers
@@ -568,23 +523,20 @@ class TestDelassusOperator(unittest.TestCase):
             limits=limits,
             contacts=detector.contacts,
             device=self.default_device,
-            factorizer=SequentialCholeskyFactorizer
+            factorizer=SequentialCholeskyFactorizer,
         )
 
         # Build the Delassus operator from the current data
-        delassus.build(
-            model=model,
-            state=state,
-            jacobians=jacobians.data,
-            reset_to_zero=True
-        )
+        delassus.build(model=model, state=state, jacobians=jacobians.data, reset_to_zero=True)
 
         # Extract the active constraint dimensions
         active_dims = extract_active_constraint_dims(delassus)
 
         # Add some regularization to the Delassus matrix to ensure it is positive definite
         eta = 10.0  # TODO: investigate why this has to be so large
-        eta_wp = wp.full(shape=(delassus._model_maxdims,), value=wp.float32(eta), dtype=wp.float32, device=self.default_device)
+        eta_wp = wp.full(
+            shape=(delassus._model_maxdims,), value=wp.float32(eta), dtype=wp.float32, device=self.default_device
+        )
         delassus.regularize(eta=eta_wp)
 
         # Factorize the Delassus matrix
@@ -599,7 +551,7 @@ class TestDelassusOperator(unittest.TestCase):
         v_f_np = np.zeros(shape=(delassus._model_maxdims,), dtype=np.float32)
         for w in range(num_worlds):
             v_f_w = random_rhs_for_matrix(D_np[w])
-            v_f_np[vio_np[w]:vio_np[w] + v_f_w.size] = v_f_w
+            v_f_np[vio_np[w] : vio_np[w] + v_f_w.size] = v_f_w
 
         # Construct a warp array for the free-velocity and solution vectors
         v_f_wp = wp.array(v_f_np, dtype=wp.float32, device=self.default_device)
@@ -613,9 +565,9 @@ class TestDelassusOperator(unittest.TestCase):
         x_wp_np = extract_problem_vector(delassus, vector=x_wp.numpy(), only_active_dims=True)
 
         # For each world, solve the linear system using numpy
-        x_np: List[np.ndarray] = []
+        x_np: list[np.ndarray] = []
         for w in range(num_worlds):
-            x_np.append(np.linalg.solve(D_np[w][:active_dims[w], :active_dims[w]], v_f_np[w]))
+            x_np.append(np.linalg.solve(D_np[w][: active_dims[w], : active_dims[w]], v_f_np[w]))
 
         # Optional verbose output
         if self.verbose:

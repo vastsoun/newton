@@ -3,32 +3,26 @@
 ###########################################################################
 
 import os
-import h5py
 import unittest
 
+import h5py
 import numpy as np
 import warp as wp
 
-from newton._src.solvers.kamino.simulation.simulator import Simulator
+# Module to be tested
+import newton._src.solvers.kamino.utils.io.hdf5 as hdf5
 from newton._src.solvers.kamino.models.builders import (
-    build_box_on_plane,
-    build_box_pendulum,
-    build_boxes_hinged,
     build_boxes_nunchaku,
 )
 from newton._src.solvers.kamino.models.utils import (
     make_single_builder,
-    make_homogeneous_builder,
-    make_heterogeneous_builder
 )
-
-# Module to be tested
-import newton._src.solvers.kamino.utils.io.hdf5 as hdf5
-
+from newton._src.solvers.kamino.simulation.simulator import Simulator
 
 ###
 # Helper functions
 ###
+
 
 def test_output_path():
     return os.path.dirname(os.path.realpath(__file__)) + "/data"
@@ -46,8 +40,8 @@ DEFAULT_OUTPUT_DATASET_PATH = test_output_path() + "/output.hdf5"
 # Tests
 ###
 
-class TestHDF5(unittest.TestCase):
 
+class TestHDF5(unittest.TestCase):
     def setUp(self):
         self.dtype = np.float32
         self.default_device = wp.get_device()
@@ -66,7 +60,7 @@ class TestHDF5(unittest.TestCase):
 
         # Load the data from the HDF5 file if it exists
         print(f"Loading HDF5 data from {self.infilename}")
-        indata = h5py.File(self.infilename, 'r')
+        indata = h5py.File(self.infilename, "r")
         inframe = indata[self.datapath]
         print("indata: ", indata)
         print("inframe: ", inframe)
@@ -85,7 +79,7 @@ class TestHDF5(unittest.TestCase):
 
         # Load the data from the HDF5 file if it exists
         print(f"Loading HDF5 data from {self.infilename}")
-        indata = h5py.File(self.infilename, 'r')
+        indata = h5py.File(self.infilename, "r")
         inframe = indata[self.datapath]
         print("indata: ", indata)
         print("inframe: ", inframe)
@@ -96,7 +90,7 @@ class TestHDF5(unittest.TestCase):
         print("rbd0: ", rbd0)
 
         # Test saving the data
-        outdata = h5py.File(DEFAULT_OUTPUT_DATASET_PATH, 'w')
+        outdata = h5py.File(DEFAULT_OUTPUT_DATASET_PATH, "w")
         rbd0.store(dataset=outdata, namespace="RigidBodySystem/bodies/0")
 
         # Test loading the data again
@@ -125,7 +119,7 @@ class TestHDF5(unittest.TestCase):
 
         # Load the data from the HDF5 file if it exists
         print(f"Loading HDF5 data from {self.infilename}")
-        indata = h5py.File(self.infilename, 'r')
+        indata = h5py.File(self.infilename, "r")
         inframe = indata[self.datapath]
         print("indata: ", indata)
         print("inframe: ", inframe)
@@ -136,7 +130,7 @@ class TestHDF5(unittest.TestCase):
         print("j0: ", j0)
 
         # Test saving the data
-        outdata = h5py.File(DEFAULT_OUTPUT_DATASET_PATH, 'w')
+        outdata = h5py.File(DEFAULT_OUTPUT_DATASET_PATH, "w")
         j0.store(dataset=outdata, namespace="RigidBodySystem/joints/0")
 
         # Test loading the data again
@@ -160,7 +154,7 @@ class TestHDF5(unittest.TestCase):
 
         # Load the data from the HDF5 file if it exists
         print(f"Loading HDF5 data from {self.infilename}")
-        indata = h5py.File(self.infilename, 'r')
+        indata = h5py.File(self.infilename, "r")
         inframe = indata[self.datapath]
         print("indata: ", indata)
         print("inframe: ", inframe)
@@ -171,7 +165,7 @@ class TestHDF5(unittest.TestCase):
         print("c0: ", c0)
 
         # Test saving the data
-        outdata = h5py.File(DEFAULT_OUTPUT_DATASET_PATH, 'w')
+        outdata = h5py.File(DEFAULT_OUTPUT_DATASET_PATH, "w")
         c0.store(dataset=outdata, namespace="Contacts/contacts/0")
 
         # Test loading the data again

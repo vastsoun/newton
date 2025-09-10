@@ -35,6 +35,7 @@ TRIS_DIM = 3 * EPS_BEST_COUNT
 # Primitive data Types
 ###
 
+
 class matc3(wp.types.matrix(shape=(EPS_BEST_COUNT, 3), dtype=float32)):
     pass
 
@@ -47,6 +48,7 @@ class vecc3(wp.types.vector(EPS_BEST_COUNT * 3, dtype=float32)):
 # triangles of the polytope. Note that the first dimension is 2, as we need
 # to store the previous and current polytope. But since Warp doesn't support
 # 3D matrices yet, we use 2 * 3 * EPS_BEST_COUNT as the first dimension.
+
 
 class mat2c3(wp.types.matrix(shape=(2 * TRIS_DIM, 3), dtype=float32)):
     pass

@@ -3,22 +3,19 @@
 ###########################################################################
 
 import unittest
+
 import numpy as np
 import warp as wp
 
 # Moduel to be tested
-from newton._src.solvers.kamino.core.joints import (
-    JOINT_REVOLUTE,
-    JointDoFType
-)
-
+from newton._src.solvers.kamino.core.joints import JOINT_REVOLUTE, JointDoFType
 
 ###
 # Tests
 ###
 
-class TestCoreJoints(unittest.TestCase):
 
+class TestCoreJoints(unittest.TestCase):
     def setUp(self):
         self.verbose = False  # Set to True to enable verbose output
         self.default_device = wp.get_device()

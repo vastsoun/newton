@@ -2,16 +2,15 @@
 # KAMINO: Utilities: Linear Algebra: LDLT based on that of Eigen3
 ###########################################################################
 
+from typing import Any
+
 import numpy as np
-from typing import Any, Optional, Tuple
+
+from newton._src.solvers.kamino.utils.linalg.factorizer import MatrixFactorizer, MatrixSign
 from newton._src.solvers.kamino.utils.linalg.matrix import (
     _make_tolerance,
     assert_is_square_matrix,
     assert_is_symmetric_matrix,
-)
-from newton._src.solvers.kamino.utils.linalg.factorizer import (
-    MatrixSign,
-    MatrixFactorizer
 )
 
 ###
@@ -19,18 +18,19 @@ from newton._src.solvers.kamino.utils.linalg.factorizer import (
 ###
 
 __all__ = [
+    "LDLTEigen3",
     "compute_ldlt_eigen3_inplace_lower",
     "compute_ldlt_eigen3_lower",
-    "compute_ldlt_eigen3_solve_inplace",
     "compute_ldlt_eigen3_solve",
+    "compute_ldlt_eigen3_solve_inplace",
     "unpack_ldlt_eigen3",
-    "LDLTEigen3"
 ]
 
 
 ###
 # Factorization
 ###
+
 
 def compute_ldlt_eigen3_inplace_lower(mat, transpositions, temp, sign_ref):
     # mat: (n,n) numpy array (real or complex), modified in-place
@@ -130,7 +130,7 @@ def compute_ldlt_eigen3_inplace_lower(mat, transpositions, temp, sign_ref):
                     mat[k + 1 + r, k] = mat[k + 1 + r, k] - acc
 
         realAkk = float(mat[k, k].real)
-        pivot_is_valid = (abs(realAkk) > 0.0)
+        pivot_is_valid = abs(realAkk) > 0.0
 
         if k == 0 and (not pivot_is_valid):
             # Entire diagonal is zero; fill transpositions with identity and check strictly lower part is zero
@@ -181,10 +181,8 @@ def compute_ldlt_eigen3_inplace_lower(mat, transpositions, temp, sign_ref):
 
 
 def compute_ldlt_eigen3_lower(
-    A: np.ndarray,
-    itype: np.dtype = np.int32,
-    check_symmetry: bool = False
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, MatrixSign, bool]:
+    A: np.ndarray, itype: np.dtype = np.int32, check_symmetry: bool = False
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, MatrixSign, bool]:
     assert_is_square_matrix(A)
     if check_symmetry:
         assert_is_symmetric_matrix(A)
@@ -228,11 +226,12 @@ def compute_ldlt_eigen3_lower(
 # Linear systems
 ###
 
+
 def compute_ldlt_eigen3_solve_inplace(
     LD: np.ndarray,
     transpositions: np.ndarray,
     x: np.ndarray,
-    tol: Optional[float] = None,
+    tol: float | None = None,
 ) -> None:
     # Solve A x = b where A = P (L D L^*) P^T and mat stores L (strict lower) and D on the diagonal.
     tol = _make_tolerance(tol, dtype=LD.dtype)
@@ -275,12 +274,7 @@ def compute_ldlt_eigen3_solve_inplace(
             x[k], x[p] = x[p], x[k]
 
 
-def compute_ldlt_eigen3_solve(
-    mat: np.ndarray,
-    transpositions: np.ndarray,
-    b: np.ndarray,
-    tol: float = 1e-8
-) -> bool:
+def compute_ldlt_eigen3_solve(mat: np.ndarray, transpositions: np.ndarray, b: np.ndarray, tol: float = 1e-8) -> bool:
     x = b.astype(mat.dtype, copy=True)
     compute_ldlt_eigen3_solve_inplace(mat, transpositions, x, tol)
     return x
@@ -290,10 +284,11 @@ def compute_ldlt_eigen3_solve(
 # Unpacking
 ###
 
+
 def unpack_ldlt_eigen3(
     LD: np.ndarray,
     transpositions: np.ndarray,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     dim = LD.shape[0]
     dtype = LD.dtype
 
@@ -316,25 +311,26 @@ def unpack_ldlt_eigen3(
 # Factorizer
 ###
 
+
 class LDLTEigen3(MatrixFactorizer):
     def __init__(
         self,
-        A: Optional[np.ndarray] = None,
-        tol: Optional[float] = None,
-        dtype: Optional[np.dtype] = None,
-        itype: Optional[np.dtype] = None,
+        A: np.ndarray | None = None,
+        tol: float | None = None,
+        dtype: np.dtype | None = None,
+        itype: np.dtype | None = None,
         upper: bool = False,
         check_symmetry: bool = False,
-        compute_error: bool = False
+        compute_error: bool = False,
     ):
         # Declare internal data structures
-        self._transpositions: Optional[np.ndarray] = None
-        self._scratch: Optional[np.ndarray] = None
+        self._transpositions: np.ndarray | None = None
+        self._scratch: np.ndarray | None = None
 
         # Declare optional unpacked factors
-        self.L: Optional[np.ndarray] = None
-        self.D: Optional[np.ndarray] = None
-        self.P: Optional[np.ndarray] = None
+        self.L: np.ndarray | None = None
+        self.D: np.ndarray | None = None
+        self.P: np.ndarray | None = None
 
         # Raise error if upper requested since it's not supported
         if upper:
@@ -348,15 +344,17 @@ class LDLTEigen3(MatrixFactorizer):
             itype=itype,
             upper=upper,
             check_symmetry=check_symmetry,
-            compute_error=compute_error
+            compute_error=compute_error,
         )
 
     @property
-    def transpositions(self) -> Optional[np.ndarray]:
+    def transpositions(self) -> np.ndarray | None:
         return self._transpositions
 
     def _factorize_impl(self, A: np.ndarray) -> None:
-        self._matrix, self._transpositions, self._scratch, self._sign, self._success = compute_ldlt_eigen3_lower(A, self._itype)
+        self._matrix, self._transpositions, self._scratch, self._sign, self._success = compute_ldlt_eigen3_lower(
+            A, self._itype
+        )
 
     def _unpack_impl(self) -> None:
         self.L, self.D, self.P = unpack_ldlt_eigen3(self._matrix, self._transpositions)

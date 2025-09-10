@@ -3,21 +3,17 @@
 ###########################################################################
 
 import numpy as np
+
 from newton._src.solvers.kamino.utils.linalg.cholesky import Cholesky
 from newton._src.solvers.kamino.utils.linalg.ldlt_eigen3 import LDLTEigen3
-
 
 ###
 # Solvers
 ###
 
+
 class ADMMStatus:
-    def __init__(
-        self,
-        converged: bool = False,
-        iterations: int = 0,
-        message: str = ""
-    ):
+    def __init__(self, converged: bool = False, iterations: int = 0, message: str = ""):
         self.message = message
         self.converged: bool = converged
         self.iterations: int = iterations
@@ -50,7 +46,7 @@ class ADMMSolver:
         eta: float = 1e-5,
         rho: float = 1.0,
         omega: float = 1.0,
-        maxiter: int = 200
+        maxiter: int = 200,
     ):
         # Settings
         self.primal_tolerance = primal_tolerance
@@ -137,10 +133,10 @@ class ADMMSolver:
     def _has_converged(self, iter: int) -> bool:
         """Check if the solver has converged based on the current iteration."""
         return (
-            iter > 0 and
-            self.status.r_p < self.primal_tolerance and
-            self.status.r_d < self.dual_tolerance and
-            self.status.r_c < self.compl_tolerance
+            iter > 0
+            and self.status.r_p < self.primal_tolerance
+            and self.status.r_d < self.dual_tolerance
+            and self.status.r_c < self.compl_tolerance
         )
 
     def _update_previous(self):
@@ -149,18 +145,13 @@ class ADMMSolver:
         self.z_p = self.z.copy()
 
     def _truncate_residuals(self):
-        self.info.r_p = self.info.r_p[:self.status.iterations]
-        self.info.r_d = self.info.r_d[:self.status.iterations]
-        self.info.r_c = self.info.r_c[:self.status.iterations]
+        self.info.r_p = self.info.r_p[: self.status.iterations]
+        self.info.r_d = self.info.r_d[: self.status.iterations]
+        self.info.r_c = self.info.r_c[: self.status.iterations]
 
     def solve_schur(
-        self,
-        D: np.ndarray,
-        v_f: np.ndarray,
-        use_cholesky: bool = False,
-        use_ldlt: bool = False
+        self, D: np.ndarray, v_f: np.ndarray, use_cholesky: bool = False, use_ldlt: bool = False
     ) -> ADMMStatus:
-
         self.info = ADMMInfo(maxiter=self.maxiter, dtype=D.dtype)
 
         self.v = np.zeros_like(v_f)
@@ -181,10 +172,9 @@ class ADMMSolver:
 
         self.status = ADMMStatus()
         for i in range(self.maxiter):
-
             self.status.iterations += 1
 
-            self.v = - v_f + self.eta * self.x_p + self.rho * self.y_p + self.z_p
+            self.v = -v_f + self.eta * self.x_p + self.rho * self.y_p + self.z_p
 
             self.x = self._solve_system(self.D, self.v, use_cholesky, use_ldlt)
 
@@ -202,13 +192,8 @@ class ADMMSolver:
         return self.status
 
     def solve_schur_preconditioned(
-        self,
-        D: np.ndarray,
-        v_f: np.ndarray,
-        use_cholesky: bool = False,
-        use_ldlt: bool = False
+        self, D: np.ndarray, v_f: np.ndarray, use_cholesky: bool = False, use_ldlt: bool = False
     ) -> ADMMStatus:
-
         self.info = ADMMInfo(maxiter=self.maxiter, dtype=D.dtype)
 
         self.v = np.zeros_like(v_f)
@@ -236,10 +221,9 @@ class ADMMSolver:
 
         self.status = ADMMStatus()
         for i in range(self.maxiter):
-
             self.status.iterations += 1
 
-            self.v = - self.vp + self.eta * self.x_p + self.rho * self.y_p + self.z_p
+            self.v = -self.vp + self.eta * self.x_p + self.rho * self.y_p + self.z_p
 
             self.x = self._solve_system(self.Dp, self.v, use_cholesky, use_ldlt)
 
@@ -257,15 +241,8 @@ class ADMMSolver:
         return self.status
 
     def solve_kkt(
-        self,
-        M: np.ndarray,
-        J: np.ndarray,
-        h: np.ndarray,
-        u_p: np.ndarray,
-        v_star: np.ndarray,
-        use_ldlt: bool = False
+        self, M: np.ndarray, J: np.ndarray, h: np.ndarray, u_p: np.ndarray, v_star: np.ndarray, use_ldlt: bool = False
     ) -> ADMMStatus:
-
         self.info = ADMMInfo(maxiter=self.maxiter, dtype=M.dtype)
 
         nbd = M.shape[0]
@@ -280,7 +257,7 @@ class ADMMSolver:
         # self.K[nbd:, :nbd] = J
         # self.K[nbd:, nbd:] = - (self.eta + self.rho) * np.eye(ncts, dtype=M.dtype)
         # self.k[:nbd] = M @ u_p + h
-        self.K[:ncts, :ncts] = - (self.eta + self.rho) * np.eye(ncts, dtype=M.dtype)
+        self.K[:ncts, :ncts] = -(self.eta + self.rho) * np.eye(ncts, dtype=M.dtype)
         self.K[:ncts, ncts:] = J
         self.K[ncts:, :ncts] = J.T
         self.K[ncts:, ncts:] = M
@@ -300,17 +277,16 @@ class ADMMSolver:
 
         self.status = ADMMStatus()
         for i in range(self.maxiter):
-
             self.status.iterations += 1
 
             # self.k[nbd:] = - v_star + self.eta * self.x_p + self.rho * self.y_p + self.z_p
-            self.k[:ncts] = - v_star + self.eta * self.x_p + self.rho * self.y_p + self.z_p
+            self.k[:ncts] = -v_star + self.eta * self.x_p + self.rho * self.y_p + self.z_p
 
             ux = self._solve_system(self.K, self.k, False, use_ldlt)
 
             # self.u_plus = ux[:nbd]
             # self.x = - ux[nbd:]
-            self.x = - ux[:ncts]
+            self.x = -ux[:ncts]
             self.u_plus = ux[ncts:]
 
             self._update_variables()
@@ -327,6 +303,7 @@ class ADMMSolver:
 
     def save_info(self, path: str, suffix: str = ""):
         import os
+
         import matplotlib.pyplot as plt
 
         plt.figure(figsize=(8, 4))

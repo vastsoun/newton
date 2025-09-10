@@ -3,17 +3,21 @@
 ###########################################################################
 
 import unittest
+
 import numpy as np
 import warp as wp
 
 from newton._src.solvers.kamino.core.model import Model
-from newton._src.solvers.kamino.kinematics.limits import Limits
 from newton._src.solvers.kamino.geometry.contacts import Contacts
+
+# Module to be tested
+from newton._src.solvers.kamino.kinematics.constraints import make_unilateral_constraints_info
+from newton._src.solvers.kamino.kinematics.limits import Limits
 from newton._src.solvers.kamino.models.builders import build_boxes_fourbar
 from newton._src.solvers.kamino.models.utils import (
-    make_single_builder,
-    make_homogeneous_builder,
     make_heterogeneous_builder,
+    make_homogeneous_builder,
+    make_single_builder,
 )
 
 # Test utilities
@@ -21,10 +25,6 @@ from newton._src.solvers.kamino.tests.utils.print import (
     print_model_constraint_info,
     print_model_state_info,
 )
-
-# Module to be tested
-from newton._src.solvers.kamino.kinematics.constraints import make_unilateral_constraints_info
-
 
 ###
 # Module configs
@@ -37,8 +37,8 @@ wp.set_module_options({"enable_backward": False})
 # Tests
 ###
 
-class TestKinematicsConstraints(unittest.TestCase):
 
+class TestKinematicsConstraints(unittest.TestCase):
     def setUp(self):
         self.verbose = False  # Set to True for detailed output
         self.default_device = wp.get_device()
@@ -76,7 +76,9 @@ class TestKinematicsConstraints(unittest.TestCase):
             print("required_world_max_contacts: ", required_world_max_contacts)
 
         # Construct and allocate the contacts container
-        contacts = Contacts(capacity=required_world_max_contacts, default_max_contacts=max_world_contacts, device=self.default_device)
+        contacts = Contacts(
+            capacity=required_world_max_contacts, default_max_contacts=max_world_contacts, device=self.default_device
+        )
         if self.verbose:
             print("contacts.default_max_world_contacts: ", contacts.default_max_world_contacts)
             print("contacts.num_model_max_contacts: ", contacts.num_model_max_contacts)
@@ -126,7 +128,9 @@ class TestKinematicsConstraints(unittest.TestCase):
             print("required_world_max_contacts: ", required_world_max_contacts)
 
         # Construct and allocate the contacts container
-        contacts = Contacts(capacity=required_world_max_contacts, default_max_contacts=max_world_contacts, device=self.default_device)
+        contacts = Contacts(
+            capacity=required_world_max_contacts, default_max_contacts=max_world_contacts, device=self.default_device
+        )
         if self.verbose:
             print("contacts.default_max_world_contacts: ", contacts.default_max_world_contacts)
             print("contacts.num_model_max_contacts: ", contacts.num_model_max_contacts)
@@ -219,7 +223,9 @@ class TestKinematicsConstraints(unittest.TestCase):
             print("required_world_max_contacts: ", required_world_max_contacts)
 
         # Construct and allocate the contacts container
-        contacts = Contacts(capacity=required_world_max_contacts, default_max_contacts=max_world_contacts, device=self.default_device)
+        contacts = Contacts(
+            capacity=required_world_max_contacts, default_max_contacts=max_world_contacts, device=self.default_device
+        )
         if self.verbose:
             print("contacts.default_max_world_contacts: ", contacts.default_max_world_contacts)
             print("contacts.num_model_max_contacts: ", contacts.num_model_max_contacts)

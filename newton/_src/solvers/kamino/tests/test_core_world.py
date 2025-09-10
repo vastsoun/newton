@@ -3,19 +3,19 @@
 ###########################################################################
 
 import unittest
+
 import numpy as np
 import warp as wp
 
 # Moduel to be tested
 from newton._src.solvers.kamino.core.world import WorldDescriptor
 
-
 ###
 # Tests
 ###
 
-class TestWorldDescriptor(unittest.TestCase):
 
+class TestWorldDescriptor(unittest.TestCase):
     def setUp(self):
         self.default_device = wp.get_device()
 

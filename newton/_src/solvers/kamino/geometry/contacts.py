@@ -5,20 +5,15 @@
 from __future__ import annotations
 
 import warp as wp
-
-from typing import List
 from warp.context import Devicelike
-from newton._src.solvers.kamino.core.types import (int32, vec2f, vec4f, mat33f, mat63f)
 
+from newton._src.solvers.kamino.core.types import int32, mat33f, mat63f, vec2f, vec4f
 
 ###
 # Module interface
 ###
 
-__all__ = [
-    "ContactsData",
-    "Contacts"
-]
+__all__ = ["Contacts", "ContactsData"]
 
 
 ###
@@ -35,13 +30,7 @@ wp.set_module_options({"enable_backward": False})
 MAX_WORLD_CONTACTS_DEFAULT = int(32)
 """The default maximum number of contacts per world."""
 
-W_I = wp.constant(mat63f(
-    [1, 0, 0],
-    [0, 1, 0],
-    [0, 0, 1],
-    [0, 0, 0],
-    [0, 0, 0],
-    [0, 0, 0]))
+W_I = wp.constant(mat63f([1, 0, 0], [0, 1, 0], [0, 0, 1], [0, 0, 0], [0, 0, 0], [0, 0, 0]))
 """The identity wrench matrix, used to initialize the contact wrench matrices."""
 
 
@@ -49,21 +38,22 @@ W_I = wp.constant(mat63f(
 # Containers
 ###
 
+
 class ContactsData:
     """
     An SoA-based container to hold time-varying contact data of a set of contact elements.
 
     This container is intended as the final output of collision detectors and as input to solvers.
     """
-    def __init__(self):
 
+    def __init__(self):
         self.num_model_max_contacts: int = 0
         """
         The maximum number of contacts allocated across all worlds.\n
         This is cached on the host-side for managing data allocations and setting thread sizes in kernels.
         """
 
-        self.num_world_max_contacts: List[int] = [0]
+        self.num_world_max_contacts: list[int] = [0]
         """
         The maximum number of contacts allocated per world.\n
         This is cached on the host-side for managing data allocations and setting thread sizes in kernels.
@@ -139,13 +129,15 @@ class ContactsData:
 # Interfaces
 ###
 
+
 class Contacts:
     """
     A container to hold and manage time-varying contacts.
     """
+
     def __init__(
         self,
-        capacity: int | List[int] | None = None,
+        capacity: int | list[int] | None = None,
         default_max_contacts: int | None = None,
         device: Devicelike = None,
     ):
@@ -199,7 +191,7 @@ class Contacts:
         return self._data.num_model_max_contacts
 
     @property
-    def num_world_max_contacts(self) -> List[int]:
+    def num_world_max_contacts(self) -> list[int]:
         """
         The maximum number of contacts allocated per world.
         """
@@ -282,14 +274,14 @@ class Contacts:
         """
         return self._data.material
 
-    def allocate(self, capacity: int | List[int], device: Devicelike = None):
+    def allocate(self, capacity: int | list[int], device: Devicelike = None):
         # The memory allocation requires the total number of contacts (over multiple worlds)
         # as well as the contacts capacities for each world. Corresponding sizes are defaulted to 0 (empty).
         model_max_contacts = 0
         world_max_contacts = [0]
 
         # If the capacity is a list, this means we are allocating for multiple worlds
-        if isinstance(capacity, List):
+        if isinstance(capacity, list):
             if len(capacity) == 0:
                 raise ValueError("Contacts: capacity cannot be an empty list")
             for i in range(len(capacity)):

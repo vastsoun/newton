@@ -6,8 +6,8 @@ from __future__ import annotations
 
 import warp as wp
 
-from newton._src.solvers.kamino.core.types import vec3f, mat33f
-from newton._src.solvers.kamino.core.math import UNIT_X, UNIT_Y, COS_PI_6
+from newton._src.solvers.kamino.core.math import COS_PI_6, UNIT_X, UNIT_Y
+from newton._src.solvers.kamino.core.types import mat33f, vec3f
 
 ###
 # Module configs
@@ -19,6 +19,7 @@ wp.set_module_options({"enable_backward": False})
 ###
 # Functions
 ###
+
 
 @wp.func
 def all_same(v0: vec3f, v1: vec3f) -> wp.bool:
@@ -73,11 +74,7 @@ def make_contact_frame_znorm(n: vec3f) -> mat33f:
         e = UNIT_Y
     o = wp.normalize(wp.cross(n, e))
     t = wp.normalize(wp.cross(o, n))
-    return mat33f(
-        t.x, o.x, n.x,
-        t.y, o.y, n.y,
-        t.z, o.z, n.z
-    )
+    return mat33f(t.x, o.x, n.x, t.y, o.y, n.y, t.z, o.z, n.z)
 
 
 @wp.func
@@ -89,8 +86,4 @@ def make_contact_frame_xnorm(n: vec3f) -> mat33f:
         e = UNIT_Y
     o = wp.normalize(wp.cross(n, e))
     t = wp.normalize(wp.cross(o, n))
-    return mat33f(
-        n.x, t.x, o.x,
-        n.y, t.y, o.y,
-        n.z, t.z, o.z
-    )
+    return mat33f(n.x, t.x, o.x, n.y, t.y, o.y, n.z, t.z, o.z)

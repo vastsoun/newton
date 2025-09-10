@@ -7,8 +7,8 @@ import numpy as np
 import warp as wp
 
 import newton
-import newton.examples
 import newton._src.solvers.kamino.utils.logger as msg
+import newton.examples
 from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.core.types import float32, vec6f
 from newton._src.solvers.kamino.examples import (
@@ -26,10 +26,10 @@ from newton._src.solvers.kamino.utils.io.usd import USDImporter
 from newton._src.solvers.kamino.utils.print import print_progress_bar
 from newton._src.solvers.kamino.utils.profile import get_device_info
 
-
 ###
 # Kernels
 ###
+
 
 @wp.kernel
 def _control_callback(
@@ -65,6 +65,7 @@ def _control_callback(
 # Launchers
 ###
 
+
 def control_callback(sim: Simulator):
     """
     A control callback function
@@ -79,7 +80,7 @@ def control_callback(sim: Simulator):
             sim.model_data.joints.dq_j,
             sim.model_data.joints.tau_j,
             sim.model_data.bodies.w_e_i,
-        ]
+        ],
     )
 
 
@@ -97,6 +98,7 @@ RENDER_DATASET_PATH = os.path.join(get_examples_data_hdf5_path(), "fourbar_free.
 ###
 # Main function
 ###
+
 
 def run_hdf5_mode(clear_warp_cache=True, use_cuda_graph=False, load_from_usd=False, verbose=False):
     """Run the simulation in HDF5 mode to save data to file."""
@@ -202,7 +204,7 @@ def run_hdf5_mode(clear_warp_cache=True, use_cuda_graph=False, load_from_usd=Fal
 
     # Create a dataset file and renderer
     msg.info("Creating the HDF5 renderer...")
-    datafile = h5py.File(RENDER_DATASET_PATH, 'w')
+    datafile = h5py.File(RENDER_DATASET_PATH, "w")
     renderer = hdf5.DatasetRenderer(sysname="fourbar_free", datafile=datafile, dt=sim.dt)
 
     # Store the initial state of the system
@@ -233,7 +235,7 @@ def run_hdf5_mode(clear_warp_cache=True, use_cuda_graph=False, load_from_usd=Fal
                 cdata.update_from(simulator=sim)
                 pdata.update_from(simulator=sim)
                 renderer.add_frame(system=sdata, contacts=cdata, problem=pdata)
-                print_progress_bar(i, ns, start_time, prefix='Progress', suffix='')
+                print_progress_bar(i, ns, start_time, prefix="Progress", suffix="")
 
     # Save the dataset
     msg.info("Saving all frames to HDF5...")
@@ -295,7 +297,7 @@ class BoxesFourbarExample:
 
         # Initialize the simulator with a warm-up step
         self.sim.reset()
-        
+
         # Don't capture graphs initially to avoid CUDA stream conflicts
         self.graph = None
 
@@ -303,28 +305,27 @@ class BoxesFourbarExample:
         """Extract geometry information from the kamino simulator."""
         # Get collision geometry information from the simulator
         cgeom_model = self.sim.model.cgeoms
-        
+
         self.box_dimensions = []
         self.ground_info = None
-        
+
         # Extract box dimensions and ground plane info from collision geometries
         for i in range(cgeom_model.num_geoms):
             bid = cgeom_model.bid.numpy()[i]  # Body ID (-1 for static/ground)
             sid = cgeom_model.sid.numpy()[i]  # Shape ID (5 = BOX from SHAPE_BOX constant)
             params = cgeom_model.params.numpy()[i]  # Shape parameters
             offset = cgeom_model.offset.numpy()[i]  # Geometry offset
-            
+
             if sid == 5:  # BOX shape (SHAPE_BOX = 5)
                 if bid == -1:  # Ground plane (static body)
                     # Ground plane: params = [depth, width, height, 0]
                     self.ground_info = {
-                        'dimensions': (params[0], params[1], params[2]),  # depth, width, height
-                        'offset': offset  # position and orientation
+                        "dimensions": (params[0], params[1], params[2]),  # depth, width, height
+                        "offset": offset,  # position and orientation
                     }
                 else:  # Regular box bodies
                     # Box dimensions: params = [depth, width, height, 0]
                     self.box_dimensions.append((params[0], params[1], params[2]))
-        
 
     def capture(self):
         """Capture CUDA graph if available."""
@@ -353,7 +354,7 @@ class BoxesFourbarExample:
         # Extract body poses from the kamino simulator
         try:
             body_poses = self.sim.model_data.bodies.q_i.numpy()
-            
+
             # Render each box using log_shapes
             for i, (dimensions, color) in enumerate(zip(self.box_dimensions, self.box_colors, strict=False)):
                 if i < len(body_poses):
@@ -367,11 +368,11 @@ class BoxesFourbarExample:
                     # Convert kamino full dimensions to newton half-extents
                     # Kamino: BoxShape(depth, width, height) = full dimensions
                     # Newton: expects (half_depth, half_width, half_height)
-                    half_extents = (dimensions[0]/2, dimensions[1]/2, dimensions[2]/2)
+                    half_extents = (dimensions[0] / 2, dimensions[1] / 2, dimensions[2] / 2)
 
                     # Log the box shape
                     self.viewer.log_shapes(
-                        f"/fourbar/box_{i+1}",
+                        f"/fourbar/box_{i + 1}",
                         newton.GeoType.BOX,
                         half_extents,
                         wp.array([transform], dtype=wp.transform),
@@ -384,19 +385,20 @@ class BoxesFourbarExample:
 
         # Render the ground plane from kamino
         if self.ground_info:
-            ground_offset = self.ground_info['offset']
+            ground_offset = self.ground_info["offset"]
             ground_pos = wp.vec3(float(ground_offset[0]), float(ground_offset[1]), float(ground_offset[2]))
-            ground_quat = wp.quat(float(ground_offset[3]), float(ground_offset[4]),
-                                float(ground_offset[5]), float(ground_offset[6]))
+            ground_quat = wp.quat(
+                float(ground_offset[3]), float(ground_offset[4]), float(ground_offset[5]), float(ground_offset[6])
+            )
             ground_transform = wp.transform(ground_pos, ground_quat)
 
             # Convert ground plane dimensions to half-extents
             # Kamino: BoxShape(20.0, 20.0, 1.0) = full dimensions
             # Newton: expects (10.0, 10.0, 0.5) = half-extents
             ground_half_extents = (
-                self.ground_info['dimensions'][0]/2,  # 20.0 -> 10.0
-                self.ground_info['dimensions'][1]/2,  # 20.0 -> 10.0
-                self.ground_info['dimensions'][2]/2   # 1.0 -> 0.5
+                self.ground_info["dimensions"][0] / 2,  # 20.0 -> 10.0
+                self.ground_info["dimensions"][1] / 2,  # 20.0 -> 10.0
+                self.ground_info["dimensions"][2] / 2,  # 1.0 -> 0.5
             )
 
             # Ground plane color (gray)
@@ -423,7 +425,7 @@ if __name__ == "__main__":
         "--mode",
         choices=["hdf5", "viewer"],
         default="viewer",
-        help="Simulation mode: 'hdf5' for data collection, 'viewer' for live visualization"
+        help="Simulation mode: 'hdf5' for data collection, 'viewer' for live visualization",
     )
     parser.add_argument("--clear-cache", action="store_true", default=True, help="Clear warp cache")
     parser.add_argument("--cuda-graph", action="store_true", help="Use CUDA graphs")
@@ -445,7 +447,7 @@ if __name__ == "__main__":
             clear_warp_cache=args.clear_cache,
             use_cuda_graph=args.cuda_graph,
             load_from_usd=args.load_from_usd,
-            verbose=args.verbose
+            verbose=args.verbose,
         )
     elif args.mode == "viewer":
         msg.info("Running in ViewerGL mode...")
@@ -470,13 +472,13 @@ if __name__ == "__main__":
 
         # Create and run example
         example = BoxesFourbarExample(viewer, load_from_usd=args.load_from_usd)
-        
+
         # Set initial camera position for better view of the fourbar mechanism
-        if hasattr(viewer, 'set_camera'):
+        if hasattr(viewer, "set_camera"):
             # Position camera to get a good view of the fourbar mechanism
             camera_pos = wp.vec3(0.161, -1.449, 0.303)
             pitch = -8.5
             yaw = -261.3
             viewer.set_camera(camera_pos, pitch, yaw)
-        
+
         newton.examples.run(example)

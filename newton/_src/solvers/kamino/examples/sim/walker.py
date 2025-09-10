@@ -7,28 +7,24 @@ import numpy as np
 import warp as wp
 
 import newton
-import newton.examples
-
 import newton._src.solvers.kamino.utils.logger as msg
-from newton._src.solvers.kamino.core.types import float32, vec6f
+import newton.examples
 from newton._src.solvers.kamino.core.builder import ModelBuilder
-from newton._src.solvers.kamino.utils.io import hdf5
-from newton._src.solvers.kamino.utils.io.usd import USDImporter
-from newton._src.solvers.kamino.simulation.simulator import Simulator
-from newton._src.solvers.kamino.utils.print import print_progress_bar
-from newton._src.solvers.kamino.utils.profile import get_device_info
-from newton._src.solvers.kamino.models import get_examples_usd_assets_path
+from newton._src.solvers.kamino.core.types import float32, vec6f
+
 # Note: Keeping imports for potential use in commented code sections
 # from newton._src.solvers.kamino.models.builders import (
 #     add_ground_geom,
 #     add_velocity_bias,
 #     offset_builder,
 # )
-from newton._src.solvers.kamino.examples import (
-    get_examples_data_root_path,
-    get_examples_data_hdf5_path,
-    print_frame
-)
+from newton._src.solvers.kamino.examples import get_examples_data_hdf5_path, get_examples_data_root_path, print_frame
+from newton._src.solvers.kamino.models import get_examples_usd_assets_path
+from newton._src.solvers.kamino.simulation.simulator import Simulator
+from newton._src.solvers.kamino.utils.io import hdf5
+from newton._src.solvers.kamino.utils.io.usd import USDImporter
+from newton._src.solvers.kamino.utils.print import print_progress_bar
+from newton._src.solvers.kamino.utils.profile import get_device_info
 
 # Note: Keeping import for potential use in commented code sections
 # from newton._src.solvers.kamino.tests.test_solvers_padmm import save_solver_info
@@ -37,6 +33,7 @@ from newton._src.solvers.kamino.examples import (
 ###
 # Kernels
 ###
+
 
 @wp.kernel
 def _control_callback(
@@ -72,6 +69,7 @@ def _control_callback(
 # Launchers
 ###
 
+
 def control_callback(sim: Simulator):
     """
     A control callback function
@@ -86,7 +84,7 @@ def control_callback(sim: Simulator):
             sim.model_data.joints.dq_j,
             sim.model_data.joints.tau_j,
             sim.model_data.bodies.w_e_i,
-        ]
+        ],
     )
 
 
@@ -107,6 +105,7 @@ PADMM_INFO_PATH = os.path.join(get_examples_data_root_path(), "padmm")
 ###
 # Main function
 ###
+
 
 def run_hdf5_mode(clear_warp_cache=True, use_cuda_graph=False, verbose=False):
     """Run the simulation in HDF5 mode to save data to file."""
@@ -181,7 +180,9 @@ def run_hdf5_mode(clear_warp_cache=True, use_cuda_graph=False, verbose=False):
 
     # Print the collision masking of each geom
     for i in range(len(builder.collision_geoms)):
-        msg.info(f"builder.cgeom{i}: group={builder.collision_geoms[i].group}, collides={builder.collision_geoms[i].collides}")
+        msg.info(
+            f"builder.cgeom{i}: group={builder.collision_geoms[i].group}, collides={builder.collision_geoms[i].collides}"
+        )
 
     # Create a simulator
     msg.info("Building the simulator...")
@@ -235,7 +236,7 @@ def run_hdf5_mode(clear_warp_cache=True, use_cuda_graph=False, verbose=False):
 
     # Create a dataset file and renderer
     msg.info("Creating the HDF5 renderer...")
-    datafile = h5py.File(RENDER_DATASET_PATH, 'w')
+    datafile = h5py.File(RENDER_DATASET_PATH, "w")
     renderer = hdf5.DatasetRenderer(sysname="walker", datafile=datafile, dt=sim.dt)
 
     # Store the initial state of the system
@@ -289,9 +290,9 @@ def run_hdf5_mode(clear_warp_cache=True, use_cuda_graph=False, verbose=False):
                 # is_D_finite = np.isfinite(D_np).all()
                 # is_L_finite = np.isfinite(L_np).all()
                 # is_y_finite = np.isfinite(y_np).all()
-                is_lambda_valid = np.all(np.abs(lambda_np) < 1e+1)
-                is_u_valid = np.all(np.abs(u_np) < 1e+2)
-                is_q_valid = np.all(np.abs(q_np) < 1e+2)
+                is_lambda_valid = np.all(np.abs(lambda_np) < 1e1)
+                is_u_valid = np.all(np.abs(u_np) < 1e2)
+                is_q_valid = np.all(np.abs(q_np) < 1e2)
                 is_q_finite = np.isfinite(q_np).all()
                 # if not is_v_f_finite:
                 #     msg.error("v_f is not finite!")
@@ -306,7 +307,7 @@ def run_hdf5_mode(clear_warp_cache=True, use_cuda_graph=False, verbose=False):
                 cdata.update_from(simulator=sim)
                 pdata.update_from(simulator=sim)
                 renderer.add_frame(system=sdata, contacts=cdata, problem=pdata)
-                print_progress_bar(i, ns, start_time, prefix='Progress', suffix='')
+                print_progress_bar(i, ns, start_time, prefix="Progress", suffix="")
                 # if verbose:
                 #     print_frame(sim, i + 1)
 
@@ -357,7 +358,9 @@ class WalkerExample:
 
         # Print the collision masking of each geom (preserve original logging)
         for i in range(len(builder.collision_geoms)):
-            msg.info(f"builder.cgeom{i}: group={builder.collision_geoms[i].group}, collides={builder.collision_geoms[i].collides}")
+            msg.info(
+                f"builder.cgeom{i}: group={builder.collision_geoms[i].group}, collides={builder.collision_geoms[i].collides}"
+            )
 
         # Create a simulator
         msg.info("Building the simulator...")
@@ -403,12 +406,7 @@ class WalkerExample:
             offset = cgeom_model.offset.numpy()[i]  # Geometry offset
 
             # Store geometry information for rendering
-            geom_info = {
-                'body_id': bid,
-                'shape_id': sid,
-                'params': params,
-                'offset': offset
-            }
+            geom_info = {"body_id": bid, "shape_id": sid, "params": params, "offset": offset}
             self.geometry_info.append(geom_info)
 
     def capture(self):
@@ -441,10 +439,10 @@ class WalkerExample:
 
             # Render each geometry using log_shapes
             for i, geom_info in enumerate(self.geometry_info):
-                bid = geom_info['body_id']
-                sid = geom_info['shape_id']
-                params = geom_info['params']
-                offset = geom_info['offset']
+                bid = geom_info["body_id"]
+                sid = geom_info["shape_id"]
+                params = geom_info["params"]
+                offset = geom_info["offset"]
 
                 # Skip static geometries (ground plane, etc.)
                 if bid == -1:
@@ -474,7 +472,7 @@ class WalkerExample:
                     # Render based on shape type
                     if sid == 5:  # BOX shape (SHAPE_BOX = 5)
                         # Convert kamino full dimensions to newton half-extents
-                        half_extents = (params[0]/2, params[1]/2, params[2]/2)
+                        half_extents = (params[0] / 2, params[1] / 2, params[2] / 2)
 
                         self.viewer.log_shapes(
                             f"/walker/body_{bid}_geom_{i}",
@@ -522,7 +520,7 @@ if __name__ == "__main__":
         "--mode",
         choices=["hdf5", "viewer"],
         default="viewer",
-        help="Simulation mode: 'hdf5' for data collection, 'viewer' for live visualization"
+        help="Simulation mode: 'hdf5' for data collection, 'viewer' for live visualization",
     )
     parser.add_argument("--clear-cache", action="store_true", default=True, help="Clear warp cache")
     parser.add_argument("--cuda-graph", action="store_true", help="Use CUDA graphs")
@@ -539,11 +537,7 @@ if __name__ == "__main__":
 
     if args.mode == "hdf5":
         msg.info("Running in HDF5 mode...")
-        run_hdf5_mode(
-            clear_warp_cache=args.clear_cache,
-            use_cuda_graph=args.cuda_graph,
-            verbose=args.verbose
-        )
+        run_hdf5_mode(clear_warp_cache=args.clear_cache, use_cuda_graph=args.cuda_graph, verbose=args.verbose)
     elif args.mode == "viewer":
         msg.info("Running in ViewerGL mode...")
 
@@ -569,7 +563,7 @@ if __name__ == "__main__":
         example = WalkerExample(viewer)
 
         # Set initial camera position for better view of the walker
-        if hasattr(viewer, 'set_camera'):
+        if hasattr(viewer, "set_camera"):
             # Position camera to get a good view of the walker
             camera_pos = wp.vec3(2.0, -3.0, 1.5)
             pitch = -20.0

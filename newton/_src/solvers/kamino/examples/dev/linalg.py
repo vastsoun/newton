@@ -1,20 +1,21 @@
 import os
+
 import h5py
 import numpy as np
 
 import newton._src.solvers.kamino.utils.logger as msg
-from newton._src.solvers.kamino.utils.io import hdf5
-from newton._src.solvers.kamino.utils.sparse import sparseview
 from newton._src.solvers.kamino.tests.utils.print import print_error_stats
+from newton._src.solvers.kamino.utils.io import hdf5
 from newton._src.solvers.kamino.utils.linalg import (
-    SquareSymmetricMatrixProperties,
     ADMMSolver,
+    SquareSymmetricMatrixProperties,
 )
-
+from newton._src.solvers.kamino.utils.sparse import sparseview
 
 ###
 # Helper functions
 ###
+
 
 def clip_below(A: np.ndarray, min: float = 0.0) -> np.ndarray:
     A_clip = np.zeros_like(A)
@@ -40,12 +41,7 @@ def linsys_residual_l2norm(A: np.ndarray, b: np.ndarray, x: np.ndarray) -> float
 
 
 def compute_u_next(
-    u_p: np.ndarray,
-    invM: np.ndarray,
-    J: np.ndarray,
-    h: np.ndarray,
-    lambdas: np.ndarray,
-    dt: float
+    u_p: np.ndarray, invM: np.ndarray, J: np.ndarray, h: np.ndarray, lambdas: np.ndarray, dt: float
 ) -> np.ndarray:
     """
     Compute the next-step generalized velocity vector.
@@ -75,20 +71,19 @@ PLOT_OUTPUT_PATH = f"{DATA_DIR_PATH}/plots/{PROBLEM_NAME}"
 ###
 
 if __name__ == "__main__":
-
     # Set global numpy configurations
     np.set_printoptions(linewidth=20000, precision=6, threshold=10000, suppress=True)  # Suppress scientific notation
     msg.set_log_level(msg.LogLevel.INFO)
 
     # Construct and configure the data containers
     msg.info("Loading HDF5 data containers...")
-    datafile_ko = h5py.File(HDF5_DATASET_PATH, 'r')
+    datafile_ko = h5py.File(HDF5_DATASET_PATH, "r")
 
     # Retrieve target data frames
     # FRAME = 1
     # FRAME = 100
     FRAME = 173
-    dataframe_ko = datafile_ko[f'Worlds/{PROBLEM_NAME}/frames/{FRAME}/DualProblem']
+    dataframe_ko = datafile_ko[f"Worlds/{PROBLEM_NAME}/frames/{FRAME}/DualProblem"]
 
     # Create data containers
     pdata = hdf5.DualProblemData()
@@ -172,7 +167,11 @@ if __name__ == "__main__":
     # Visualize the error matrix as an image
     os.makedirs(PLOT_OUTPUT_PATH, exist_ok=True)
     sparseview(D_np_err, title="Delassus Symmetry Error", path=os.path.join(PLOT_OUTPUT_PATH, "D_np_err.png"))
-    sparseview(D_np_err_clip, title="Delassus Symmetry Error (Clipped)", path=os.path.join(PLOT_OUTPUT_PATH, "D_np_err_clip.png"))
+    sparseview(
+        D_np_err_clip,
+        title="Delassus Symmetry Error (Clipped)",
+        path=os.path.join(PLOT_OUTPUT_PATH, "D_np_err_clip.png"),
+    )
 
     ###
     # Dual linear system
@@ -220,7 +219,9 @@ if __name__ == "__main__":
     # Visualize the error matrix as an image
     os.makedirs(PLOT_OUTPUT_PATH, exist_ok=True)
     sparseview(K_np_err, title="KKT Symmetry Error", path=os.path.join(PLOT_OUTPUT_PATH, "K_np_err.png"))
-    sparseview(K_np_err_clip, title="KKT Symmetry Error (Clipped)", path=os.path.join(PLOT_OUTPUT_PATH, "K_np_err_clip.png"))
+    sparseview(
+        K_np_err_clip, title="KKT Symmetry Error (Clipped)", path=os.path.join(PLOT_OUTPUT_PATH, "K_np_err_clip.png")
+    )
 
     # Correct symmetry of the KKT matrix
     K_np = 0.5 * (K_np + K_np.T)
@@ -231,7 +232,7 @@ if __name__ == "__main__":
 
     k_np = np.zeros((kdim,), dtype=M.dtype)
     k_np[:nbd] = M @ u_p + h
-    k_np[nbd:] = - v_star
+    k_np[nbd:] = -v_star
     msg.warning(f"k_np: {k_np.shape}")
     msg.warning(f"K_np: {np.linalg.norm(K_np)}")
     msg.warning(f"k_np: {np.linalg.norm(k_np)}")
@@ -413,10 +414,18 @@ if __name__ == "__main__":
     res_dual_x_admm_kkt_infnorm = linsys_residual_infnorm(D_np, -v_np, x_admm_kkt)
 
     rel_res_dual_x_np_infnorm = res_dual_x_np_infnorm / v_np_norm_inf if v_np_norm_inf > 0 else res_dual_x_np_infnorm
-    rel_res_dual_x_np_scaled_infnorm = res_dual_x_np_scaled_infnorm / v_np_norm_inf if v_np_norm_inf > 0 else res_dual_x_np_scaled_infnorm
-    rel_res_dual_x_admm_schur_infnorm = res_dual_x_admm_schur_infnorm / v_np_norm_inf if v_np_norm_inf > 0 else res_dual_x_admm_schur_infnorm
-    rel_res_dual_x_admm_schur_prec_infnorm = res_dual_x_admm_schur_prec_infnorm / v_np_norm_inf if v_np_norm_inf > 0 else res_dual_x_admm_schur_prec_infnorm
-    rel_res_dual_x_admm_kkt_infnorm = res_dual_x_admm_kkt_infnorm / v_np_norm_inf if v_np_norm_inf > 0 else res_dual_x_admm_kkt_infnorm
+    rel_res_dual_x_np_scaled_infnorm = (
+        res_dual_x_np_scaled_infnorm / v_np_norm_inf if v_np_norm_inf > 0 else res_dual_x_np_scaled_infnorm
+    )
+    rel_res_dual_x_admm_schur_infnorm = (
+        res_dual_x_admm_schur_infnorm / v_np_norm_inf if v_np_norm_inf > 0 else res_dual_x_admm_schur_infnorm
+    )
+    rel_res_dual_x_admm_schur_prec_infnorm = (
+        res_dual_x_admm_schur_prec_infnorm / v_np_norm_inf if v_np_norm_inf > 0 else res_dual_x_admm_schur_prec_infnorm
+    )
+    rel_res_dual_x_admm_kkt_infnorm = (
+        res_dual_x_admm_kkt_infnorm / v_np_norm_inf if v_np_norm_inf > 0 else res_dual_x_admm_kkt_infnorm
+    )
 
     res_dual_x_np_l2 = linsys_residual_l2norm(D_np, -v_np, x_np)
     res_dual_x_np_scaled_l2 = linsys_residual_l2norm(D_np, -v_np, x_np_scaled)
@@ -425,9 +434,15 @@ if __name__ == "__main__":
     res_dual_x_admm_kkt_l2 = linsys_residual_l2norm(D_np, -v_np, x_admm_kkt)
 
     rel_res_dual_x_np_l2 = res_dual_x_np_l2 / v_np_norm_l2 if v_np_norm_l2 > 0 else res_dual_x_np_l2
-    rel_res_dual_x_np_scaled_l2 = res_dual_x_np_scaled_l2 / v_np_norm_l2 if v_np_norm_l2 > 0 else res_dual_x_np_scaled_l2
-    rel_res_dual_x_admm_schur_l2 = res_dual_x_admm_schur_l2 / v_np_norm_l2 if v_np_norm_l2 > 0 else res_dual_x_admm_schur_l2
-    rel_res_dual_x_admm_schur_prec_l2 = res_dual_x_admm_schur_prec_l2 / v_np_norm_l2 if v_np_norm_l2 > 0 else res_dual_x_admm_schur_prec_l2
+    rel_res_dual_x_np_scaled_l2 = (
+        res_dual_x_np_scaled_l2 / v_np_norm_l2 if v_np_norm_l2 > 0 else res_dual_x_np_scaled_l2
+    )
+    rel_res_dual_x_admm_schur_l2 = (
+        res_dual_x_admm_schur_l2 / v_np_norm_l2 if v_np_norm_l2 > 0 else res_dual_x_admm_schur_l2
+    )
+    rel_res_dual_x_admm_schur_prec_l2 = (
+        res_dual_x_admm_schur_prec_l2 / v_np_norm_l2 if v_np_norm_l2 > 0 else res_dual_x_admm_schur_prec_l2
+    )
     rel_res_dual_x_admm_kkt_l2 = res_dual_x_admm_kkt_l2 / v_np_norm_l2 if v_np_norm_l2 > 0 else res_dual_x_admm_kkt_l2
 
     # TODO: errors w.r.t solving the KKT linear system (better conditioned, and actually what we want)
@@ -438,10 +453,18 @@ if __name__ == "__main__":
     res_kkt_ux_admm_kkt_infnorm = linsys_residual_infnorm(K_np, k_np, ux_admm_kkt)
 
     rel_res_kkt_ux_np_infnorm = res_kkt_ux_np_infnorm / k_np_norm_inf if k_np_norm_inf > 0 else res_kkt_ux_np_infnorm
-    rel_res_kkt_ux_np_scaled_infnorm = res_kkt_ux_np_scaled_infnorm / k_np_norm_inf if k_np_norm_inf > 0 else res_kkt_ux_np_scaled_infnorm
-    rel_res_kkt_ux_admm_schur_infnorm = res_kkt_ux_admm_schur_infnorm / k_np_norm_inf if k_np_norm_inf > 0 else res_kkt_ux_admm_schur_infnorm
-    rel_res_kkt_ux_admm_schur_prec_infnorm = res_kkt_ux_admm_schur_prec_infnorm / k_np_norm_inf if k_np_norm_inf > 0 else res_kkt_ux_admm_schur_prec_infnorm
-    rel_res_kkt_ux_admm_kkt_infnorm = res_kkt_ux_admm_kkt_infnorm / k_np_norm_inf if k_np_norm_inf > 0 else res_kkt_ux_admm_kkt_infnorm
+    rel_res_kkt_ux_np_scaled_infnorm = (
+        res_kkt_ux_np_scaled_infnorm / k_np_norm_inf if k_np_norm_inf > 0 else res_kkt_ux_np_scaled_infnorm
+    )
+    rel_res_kkt_ux_admm_schur_infnorm = (
+        res_kkt_ux_admm_schur_infnorm / k_np_norm_inf if k_np_norm_inf > 0 else res_kkt_ux_admm_schur_infnorm
+    )
+    rel_res_kkt_ux_admm_schur_prec_infnorm = (
+        res_kkt_ux_admm_schur_prec_infnorm / k_np_norm_inf if k_np_norm_inf > 0 else res_kkt_ux_admm_schur_prec_infnorm
+    )
+    rel_res_kkt_ux_admm_kkt_infnorm = (
+        res_kkt_ux_admm_kkt_infnorm / k_np_norm_inf if k_np_norm_inf > 0 else res_kkt_ux_admm_kkt_infnorm
+    )
 
     res_kkt_ux_np_l2 = linsys_residual_l2norm(K_np, k_np, ux_np)
     res_kkt_ux_np_scaled_l2 = linsys_residual_l2norm(K_np, k_np, ux_np_scaled)
@@ -450,9 +473,15 @@ if __name__ == "__main__":
     res_kkt_ux_admm_kkt_l2 = linsys_residual_l2norm(K_np, k_np, ux_admm_kkt)
 
     rel_res_kkt_ux_np_l2 = res_kkt_ux_np_l2 / k_np_norm_l2 if k_np_norm_l2 > 0 else res_kkt_ux_np_l2
-    rel_res_kkt_ux_np_scaled_l2 = res_kkt_ux_np_scaled_l2 / k_np_norm_l2 if k_np_norm_l2 > 0 else res_kkt_ux_np_scaled_l2
-    rel_res_kkt_ux_admm_schur_l2 = res_kkt_ux_admm_schur_l2 / k_np_norm_l2 if k_np_norm_l2 > 0 else res_kkt_ux_admm_schur_l2
-    rel_res_kkt_ux_admm_schur_prec_l2 = res_kkt_ux_admm_schur_prec_l2 / k_np_norm_l2 if k_np_norm_l2 > 0 else res_kkt_ux_admm_schur_prec_l2
+    rel_res_kkt_ux_np_scaled_l2 = (
+        res_kkt_ux_np_scaled_l2 / k_np_norm_l2 if k_np_norm_l2 > 0 else res_kkt_ux_np_scaled_l2
+    )
+    rel_res_kkt_ux_admm_schur_l2 = (
+        res_kkt_ux_admm_schur_l2 / k_np_norm_l2 if k_np_norm_l2 > 0 else res_kkt_ux_admm_schur_l2
+    )
+    rel_res_kkt_ux_admm_schur_prec_l2 = (
+        res_kkt_ux_admm_schur_prec_l2 / k_np_norm_l2 if k_np_norm_l2 > 0 else res_kkt_ux_admm_schur_prec_l2
+    )
     rel_res_kkt_ux_admm_kkt_l2 = res_kkt_ux_admm_kkt_l2 / k_np_norm_l2 if k_np_norm_l2 > 0 else res_kkt_ux_admm_kkt_l2
 
     ###

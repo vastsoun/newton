@@ -12,6 +12,7 @@ class State:
     The exact attributes depend on the contents of the model.
     State objects should generally be created using the :func:`Model.state()` function.
     """
+
     def __init__(self):
         self.q_i: wp.array | None = None
         """Array of body coordinates (7-dof transforms) in maximal coordinates with shape ``(nb,)`` and type :class:`transformf`."""

@@ -4,7 +4,6 @@
 
 from .euler import integrate_semi_implicit_euler
 
-
 ##
 # Module interface
 ##

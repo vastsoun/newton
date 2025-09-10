@@ -3,19 +3,19 @@
 ###########################################################################
 
 import unittest
+
 import numpy as np
 import warp as wp
 
 # Module to be tested
 from newton._src.solvers.kamino.geometry.contacts import Contacts
 
-
 ###
 # Tests
 ###
 
-class TestGeometryContacts(unittest.TestCase):
 
+class TestGeometryContacts(unittest.TestCase):
     def setUp(self):
         self.default_device = wp.get_device()
 

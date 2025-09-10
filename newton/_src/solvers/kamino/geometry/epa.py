@@ -7,14 +7,18 @@ from __future__ import annotations
 import warp as wp
 
 from newton._src.solvers.kamino.core.types import mat43f
-from newton._src.solvers.kamino.geometry.types import (
-    FLOAT_MAX, EPS_BEST_COUNT, TRIS_DIM,
-    matc3, vecc3, mat2c3,
-    VECI1, VECI2,
-)
-from newton._src.solvers.kamino.geometry.math import gjk_normalize
 from newton._src.solvers.kamino.geometry.gjk import gjk_support
-
+from newton._src.solvers.kamino.geometry.math import gjk_normalize
+from newton._src.solvers.kamino.geometry.types import (
+    EPS_BEST_COUNT,
+    FLOAT_MAX,
+    TRIS_DIM,
+    VECI1,
+    VECI2,
+    mat2c3,
+    matc3,
+    vecc3,
+)
 
 ###
 # Module configs
@@ -26,6 +30,7 @@ wp.set_module_options({"enable_backward": False})
 ###
 # Functions
 ###
+
 
 @wp.func
 def expand_polytope(count: int, prev_count: int, dists: vecc3, tris: mat2c3, p: matc3):
@@ -58,11 +63,11 @@ def expand_polytope(count: int, prev_count: int, dists: vecc3, tris: mat2c3, p: 
 
 
 def get_epa(
-  geomtype1: int,
-  geomtype2: int,
-  epa_iterations: int,
-  epa_exact_neg_distance: bool,
-  depth_extension: float,
+    geomtype1: int,
+    geomtype2: int,
+    epa_iterations: int,
+    epa_exact_neg_distance: bool,
+    depth_extension: float,
 ):
     # compute contact normal and depth
     @wp.func

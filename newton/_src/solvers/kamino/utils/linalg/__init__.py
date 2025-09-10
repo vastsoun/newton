@@ -4,24 +4,13 @@
 
 from typing import Union
 
-from .matrix import (
-    is_square_matrix,
-    is_symmetric_matrix,
-    SquareSymmetricMatrixProperties,
-    MatrixComparison
-)
-
+from .admm import ADMMInfo, ADMMSolver, ADMMStatus
 from .cholesky import Cholesky
-from .ldlt_nopivot import LDLTNoPivot
 from .ldlt_bk import LDLTBunchKaufman
 from .ldlt_blocked import LDLTBlocked
 from .ldlt_eigen3 import LDLTEigen3
-
-from .admm import (
-    ADMMStatus,
-    ADMMInfo,
-    ADMMSolver
-)
+from .ldlt_nopivot import LDLTNoPivot
+from .matrix import MatrixComparison, SquareSymmetricMatrixProperties, is_square_matrix, is_symmetric_matrix
 
 FactorizerType = Union[Cholesky, LDLTNoPivot, LDLTBunchKaufman, LDLTBlocked, LDLTEigen3]
 
@@ -31,17 +20,17 @@ FactorizerType = Union[Cholesky, LDLTNoPivot, LDLTBunchKaufman, LDLTBlocked, LDL
 ###
 
 __all__ = [
+    "ADMMInfo",
+    "ADMMSolver",
+    "ADMMStatus",
+    "Cholesky",
+    "FactorizerType",
+    "LDLTBlocked",
+    "LDLTBunchKaufman",
+    "LDLTEigen3",
+    "LDLTNoPivot",
+    "MatrixComparison",
+    "SquareSymmetricMatrixProperties",
     "is_square_matrix",
     "is_symmetric_matrix",
-    "SquareSymmetricMatrixProperties",
-    "MatrixComparison",
-    "Cholesky",
-    "LDLTNoPivot",
-    "LDLTBunchKaufman",
-    "LDLTBlocked",
-    "LDLTEigen3",
-    "FactorizerType",
-    "ADMMStatus",
-    "ADMMInfo",
-    "ADMMSolver"
 ]

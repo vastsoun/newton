@@ -16,6 +16,7 @@ from enum import IntEnum
 
 class LogLevel(IntEnum):
     """Enumeration for log levels."""
+
     DEBUG = logging.DEBUG
     INFO = logging.INFO
     WARNING = logging.WARNING
@@ -38,7 +39,7 @@ class Logger(logging.Formatter):
     RESET = "\x1b[0m"
 
     # TODO: How to include the filename and line number in the log messages when called from the func wrappers?
-    LINE_FORMAT = ("[%(asctime)s][%(filename)s:%(lineno)d][%(levelname)s]: %(message)s")
+    LINE_FORMAT = "[%(asctime)s][%(filename)s:%(lineno)d][%(levelname)s]: %(message)s"
     """Line format for the log messages, including timestamp, filename, line number, log level, and message."""
 
     FORMATS = {

@@ -6,22 +6,21 @@ from __future__ import annotations
 
 import warp as wp
 
-from .types import (uint32, int32, float32, vec4f, mat83f, transformf)
+from .bv import aabb_geom, bs_geom
 from .shapes import ShapeDescriptorType
-from .bv import bs_geom, aabb_geom
-
+from .types import float32, int32, mat83f, transformf, uint32, vec4f
 
 ###
 # Module interface
 ###
 
 __all__ = [
-    "GeometryDescriptor",
-    "GeometriesModel",
-    "GeometriesData",
-    "CollisionGeometryDescriptor",
+    "CollisionGeometriesData",
     "CollisionGeometriesModel",
-    "CollisionGeometriesData"
+    "CollisionGeometryDescriptor",
+    "GeometriesData",
+    "GeometriesModel",
+    "GeometryDescriptor",
 ]
 
 
@@ -36,6 +35,7 @@ wp.set_module_options({"enable_backward": False})
 # Base Geometry Containers
 ###
 
+
 class GeometryDescriptor:
     """
     A container to describe a generic geometry element.
@@ -45,6 +45,7 @@ class GeometryDescriptor:
     The geometry descriptor bundles the unique object identifiers of the element, indices to the asscociated body and layer,
     the offset pose w.r.t. the body, and a shape descriptor.
     """
+
     def __init__(self):
         self.name: str | None = None
         """Name of the geometry element."""
@@ -89,6 +90,7 @@ class GeometriesModel:
     """
     An SoA-based container to hold time-invariant model data of a set of generic geometry elements.
     """
+
     def __init__(self):
         self.num_geoms: int = 0
         """Total number of geometry elements in the model (host-side)."""
@@ -140,6 +142,7 @@ class GeometriesData:
     """
     An SoA-based container to hold time-varying data of a set of generic geometry elements.
     """
+
     def __init__(self):
         self.num_geoms: int32 = 0
         """Total number of geometry elements in the model (host-side)."""
@@ -155,6 +158,7 @@ class GeometriesData:
 # Collision Geometry Containers
 ###
 
+
 class CollisionGeometryDescriptor(GeometryDescriptor):
     """
     A container to describe a collision geometry element.
@@ -162,6 +166,7 @@ class CollisionGeometryDescriptor(GeometryDescriptor):
     Collision geometry elements are specializations of the base geometry elements,
     which are extended to include additional properties relevant for collision detection.
     """
+
     def __init__(self, base: GeometryDescriptor | None = None):
         super().__init__()
 
@@ -214,6 +219,7 @@ class CollisionGeometriesModel(GeometriesModel):
     """
     An SoA-based container to hold time-invariant model data of a set of collision geometry elements.
     """
+
     def __init__(self):
         super().__init__()
 
@@ -240,6 +246,7 @@ class CollisionGeometriesData(GeometriesData):
     """
     An SoA-based container to hold time-varying data of a set of collision geometry elements.
     """
+
     def __init__(self):
         super().__init__()
 
@@ -259,6 +266,7 @@ class CollisionGeometriesData(GeometriesData):
 ###
 # Kernels
 ###
+
 
 @wp.kernel
 def _update_geometries_state(
@@ -370,10 +378,9 @@ def _update_collision_geometries_state(
 # Launchers
 ###
 
+
 def update_geometries_state(
-    body_poses: wp.array(dtype=transformf),
-    geom_model: GeometriesModel,
-    geom_data: GeometriesData
+    body_poses: wp.array(dtype=transformf), geom_model: GeometriesModel, geom_data: GeometriesData
 ):
     # we need to figure out how to keep the overhead of this small - not launching anything
     # for pair types without collisions, as well as updating the launch dimensions.
@@ -385,10 +392,7 @@ def update_geometries_state(
     )
 
 
-def update_aabb(
-    geom_model: CollisionGeometriesModel,
-    geom_data: CollisionGeometriesData
-):
+def update_aabb(geom_model: CollisionGeometriesModel, geom_data: CollisionGeometriesData):
     # we need to figure out how to keep the overhead of this small - not launching anything
     # for pair types without collisions, as well as updating the launch dimensions.
     wp.launch(
@@ -399,10 +403,7 @@ def update_aabb(
     )
 
 
-def update_bounding_spheres(
-    geom_model: CollisionGeometriesModel,
-    geom_data: CollisionGeometriesData
-):
+def update_bounding_spheres(geom_model: CollisionGeometriesModel, geom_data: CollisionGeometriesData):
     # we need to figure out how to keep the overhead of this small - not launching anything
     # for pair types without collisions, as well as updating the launch dimensions.
     wp.launch(
@@ -414,9 +415,7 @@ def update_bounding_spheres(
 
 
 def update_collision_geometries_state(
-    body_poses: wp.array(dtype=transformf),
-    geom_model: CollisionGeometriesModel,
-    geom_data: CollisionGeometriesData
+    body_poses: wp.array(dtype=transformf), geom_model: CollisionGeometriesModel, geom_data: CollisionGeometriesData
 ):
     # we need to figure out how to keep the overhead of this small - not launching anything
     # for pair types without collisions, as well as updating the launch dimensions.

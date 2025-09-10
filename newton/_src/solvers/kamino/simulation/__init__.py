@@ -4,7 +4,6 @@
 
 from .simulator import Simulator
 
-
 ###
 # Module interface
 ###

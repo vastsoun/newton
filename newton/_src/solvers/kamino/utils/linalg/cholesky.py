@@ -2,41 +2,40 @@
 # KAMINO: Utilities: Linear Algebra: Cholesky (a.k.a. LLT) factorization
 ###########################################################################
 
+from typing import Any
+
 import numpy as np
-from typing import Any, Optional
+
+from newton._src.solvers.kamino.utils.linalg.factorizer import MatrixFactorizer, MatrixSign
 from newton._src.solvers.kamino.utils.linalg.matrix import (
     _make_tolerance,
     assert_is_square_matrix,
     assert_is_symmetric_matrix,
 )
-from newton._src.solvers.kamino.utils.linalg.factorizer import (
-    MatrixSign,
-    MatrixFactorizer
-)
-
 
 ###
 # Module interface
 ###
 
 __all__ = [
+    "Cholesky",
     "compute_cholesky_lower",
+    "compute_cholesky_lower_reconstruct",
+    "compute_cholesky_lower_solve",
     "compute_cholesky_upper",
+    "compute_cholesky_upper_reconstruct",
+    "compute_cholesky_upper_solve",
     "compute_cholesky_with_tolerance_lower",
     "compute_cholesky_with_tolerance_upper",
     "compute_cholesky_without_conditionals_lower",
     "compute_cholesky_without_conditionals_upper",
-    "compute_cholesky_lower_solve",
-    "compute_cholesky_upper_solve",
-    "compute_cholesky_lower_reconstruct",
-    "compute_cholesky_upper_reconstruct",
-    "Cholesky"
 ]
 
 
 ###
 # Factorization
 ###
+
 
 def compute_cholesky_lower(A: np.ndarray, check_symmetry: bool = True) -> np.ndarray:
     assert_is_square_matrix(A)
@@ -85,9 +84,7 @@ def compute_cholesky_upper(A: np.ndarray, check_symmetry: bool = True) -> np.nda
 
 
 def compute_cholesky_with_tolerance_lower(
-    A: np.ndarray,
-    tol: Optional[float] = None,
-    check_symmetry: bool = True
+    A: np.ndarray, tol: float | None = None, check_symmetry: bool = True
 ) -> np.ndarray:
     assert_is_square_matrix(A)
     if check_symmetry:
@@ -113,9 +110,7 @@ def compute_cholesky_with_tolerance_lower(
 
 
 def compute_cholesky_with_tolerance_upper(
-    A: np.ndarray,
-    tol: Optional[float] = None,
-    check_symmetry: bool = True
+    A: np.ndarray, tol: float | None = None, check_symmetry: bool = True
 ) -> np.ndarray:
     assert_is_square_matrix(A)
     if check_symmetry:
@@ -141,9 +136,7 @@ def compute_cholesky_with_tolerance_upper(
 
 
 def compute_cholesky_without_conditionals_lower(
-    A: np.ndarray,
-    tol: Optional[float] = None,
-    check_symmetry: bool = True
+    A: np.ndarray, tol: float | None = None, check_symmetry: bool = True
 ) -> np.ndarray:
     assert_is_square_matrix(A)
     if check_symmetry:
@@ -181,9 +174,7 @@ def compute_cholesky_without_conditionals_lower(
 
 
 def compute_cholesky_without_conditionals_upper(
-    A: np.ndarray,
-    tol: Optional[float] = None,
-    check_symmetry: bool = True
+    A: np.ndarray, tol: float | None = None, check_symmetry: bool = True
 ) -> np.ndarray:
     assert_is_square_matrix(A)
     if check_symmetry:
@@ -224,10 +215,8 @@ def compute_cholesky_without_conditionals_upper(
 # Linear systems
 ###
 
-def compute_cholesky_lower_solve_inplace(
-    L: np.ndarray,
-    x: np.ndarray
-) -> None:
+
+def compute_cholesky_lower_solve_inplace(L: np.ndarray, x: np.ndarray) -> None:
     # Ensure rhs is a numpy array with the same dtype as L
     x = np.asarray(x, dtype=L.dtype)
 
@@ -250,10 +239,7 @@ def compute_cholesky_lower_solve_inplace(
         x[i] = sum / L[i, i]
 
 
-def compute_cholesky_lower_solve(
-    L: np.ndarray,
-    b: np.ndarray
-) -> np.ndarray:
+def compute_cholesky_lower_solve(L: np.ndarray, b: np.ndarray) -> np.ndarray:
     # Ensure rhs is a numpy array with the same dtype as L
     b = np.asarray(b, dtype=L.dtype)
 
@@ -280,10 +266,7 @@ def compute_cholesky_lower_solve(
     return x
 
 
-def compute_cholesky_upper_solve(
-    U: np.ndarray,
-    b: np.ndarray
-) -> np.ndarray:
+def compute_cholesky_upper_solve(U: np.ndarray, b: np.ndarray) -> np.ndarray:
     # Ensure rhs is a numpy array with the same dtype as U
     b = np.asarray(b, dtype=U.dtype)
 
@@ -314,6 +297,7 @@ def compute_cholesky_upper_solve(
 # Reconstruction
 ###
 
+
 def compute_cholesky_lower_reconstruct(L: np.ndarray) -> np.ndarray:
     return L @ L.T
 
@@ -326,16 +310,17 @@ def compute_cholesky_upper_reconstruct(U: np.ndarray) -> np.ndarray:
 # Factorizer
 ###
 
+
 class Cholesky(MatrixFactorizer):
     def __init__(
         self,
-        A: Optional[np.ndarray] = None,
-        tol: Optional[float] = None,
-        dtype: Optional[np.dtype] = None,
-        itype: Optional[np.dtype] = None,
+        A: np.ndarray | None = None,
+        tol: float | None = None,
+        dtype: np.dtype | None = None,
+        itype: np.dtype | None = None,
         upper: bool = False,
         check_symmetry: bool = False,
-        compute_error: bool = False
+        compute_error: bool = False,
     ):
         # Call the parent constructor
         super().__init__(
@@ -345,11 +330,11 @@ class Cholesky(MatrixFactorizer):
             itype=itype,
             upper=upper,
             check_symmetry=check_symmetry,
-            compute_error=compute_error
+            compute_error=compute_error,
         )
 
     @property
-    def transpositions(self) -> Optional[np.ndarray]:
+    def transpositions(self) -> np.ndarray | None:
         return self._transpositions
 
     def _factorize_impl(self, A: np.ndarray) -> None:
@@ -357,9 +342,7 @@ class Cholesky(MatrixFactorizer):
             self._matrix = compute_cholesky_lower(A, False)
             self._sign = MatrixSign.PositiveDef
         except np.linalg.LinAlgError as e:
-            raise np.linalg.LinAlgError(
-                f"Cholesky factorization failed: {str(e)}"
-            ) from e
+            raise np.linalg.LinAlgError(f"Cholesky factorization failed: {e!s}") from e
 
     def _unpack_impl(self) -> None:
         pass

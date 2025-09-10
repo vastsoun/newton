@@ -6,11 +6,10 @@ from __future__ import annotations
 
 import warp as wp
 
-from newton._src.solvers.kamino.core.types import int32, float32, vec3f, vec4f, mat33f, transformf, vec6f
-from newton._src.solvers.kamino.core.math import screw, screw_linear, screw_angular, quat_box_plus
+from newton._src.solvers.kamino.core.math import quat_box_plus, screw, screw_angular, screw_linear
 from newton._src.solvers.kamino.core.model import Model, ModelData
 from newton._src.solvers.kamino.core.state import State
-
+from newton._src.solvers.kamino.core.types import float32, int32, mat33f, transformf, vec3f, vec4f, vec6f
 
 ###
 # Module interface
@@ -30,6 +29,7 @@ wp.set_module_options({"enable_backward": False})
 ###
 # Functions
 ###
+
 
 @wp.func
 def semi_implicit_euler_with_logmap(
@@ -70,6 +70,7 @@ def semi_implicit_euler_with_logmap(
 ###
 # Kernels
 ###
+
 
 @wp.kernel
 def _integrate_semi_implicit_euler(
@@ -130,6 +131,7 @@ def _integrate_semi_implicit_euler(
 # Launchers
 ###
 
+
 def integrate_semi_implicit_euler(model: Model, state: ModelData, s_n: State):
     wp.launch(
         _integrate_semi_implicit_euler,
@@ -148,5 +150,5 @@ def integrate_semi_implicit_euler(model: Model, state: ModelData, s_n: State):
             # Outputs:
             s_n.q_i,
             s_n.u_i,
-        ]
+        ],
     )

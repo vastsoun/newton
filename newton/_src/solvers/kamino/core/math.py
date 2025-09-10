@@ -9,11 +9,15 @@ import warp as wp
 
 from .types import (
     float32,
-    vec3f, vec6f,
-    mat22f, mat33f, mat44f, mat66f, mat34f,
+    mat22f,
+    mat33f,
+    mat34f,
+    mat44f,
+    mat66f,
     quatf,
+    vec3f,
+    vec6f,
 )
-
 
 ###
 # Module configs
@@ -47,37 +51,25 @@ UNIT_Z = wp.constant(vec3f(0.0, 0.0, 1.0))
 COS_PI_6 = wp.constant(0.8660254037844387)
 """Convenience constant for cos(PI / 6)"""
 
-I_2 = wp.constant(mat22f(
-    1, 0,
-    0, 1))
+I_2 = wp.constant(mat22f(1, 0, 0, 1))
 """ The 2x2 identity matrix."""
 
-I_3 = wp.constant(mat33f(
-    1, 0, 0,
-    0, 1, 0,
-    0, 0, 1))
+I_3 = wp.constant(mat33f(1, 0, 0, 0, 1, 0, 0, 0, 1))
 """ The 3x3 identity matrix."""
 
-I_4 = wp.constant(mat44f(
-    1, 0, 0, 0,
-    0, 1, 0, 0,
-    0, 0, 1, 0,
-    0, 0, 0, 1))
+I_4 = wp.constant(mat44f(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1))
 """ The 4x4 identity matrix."""
 
-I_6 = wp.constant(mat66f(
-    1, 0, 0, 0, 0, 0,
-    0, 1, 0, 0, 0, 0,
-    0, 0, 1, 0, 0, 0,
-    0, 0, 0, 1, 0, 0,
-    0, 0, 0, 0, 1, 0,
-    0, 0, 0, 0, 0, 1))
+I_6 = wp.constant(
+    mat66f(1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1)
+)
 """ The 6x6 identity matrix."""
 
 
 ###
 # Rotation matrices
 ###
+
 
 @wp.func
 def R_x(theta: float32) -> mat33f:
@@ -92,11 +84,7 @@ def R_x(theta: float32) -> mat33f:
     """
     c = wp.cos(theta)
     s = wp.sin(theta)
-    return mat33f(
-        1.0, 0.0, 0.0,
-        0.0, c, -s,
-        0.0, s, c
-    )
+    return mat33f(1.0, 0.0, 0.0, 0.0, c, -s, 0.0, s, c)
 
 
 @wp.func
@@ -112,11 +100,7 @@ def R_y(theta: float32) -> mat33f:
     """
     c = wp.cos(theta)
     s = wp.sin(theta)
-    return mat33f(
-        c, 0.0, s,
-        0.0, 1.0, 0.0,
-        -s, 0.0, c
-    )
+    return mat33f(c, 0.0, s, 0.0, 1.0, 0.0, -s, 0.0, c)
 
 
 @wp.func
@@ -132,11 +116,7 @@ def R_z(theta: float32) -> mat33f:
     """
     c = wp.cos(theta)
     s = wp.sin(theta)
-    return mat33f(
-        c, -s, 0.0,
-        s, c, 0.0,
-        0.0, 0.0, 1.0
-    )
+    return mat33f(c, -s, 0.0, s, c, 0.0, 0.0, 0.0, 1.0)
 
 
 @wp.func
@@ -156,6 +136,7 @@ def unskew(S: mat33f) -> vec3f:
 ###
 # Quaternions
 ###
+
 
 @wp.func
 def G_of(q: quatf) -> mat34f:
@@ -371,6 +352,7 @@ def quat_box_plus(q: quatf, v: vec3f) -> quatf:
 ###
 # Screws
 ###
+
 
 @wp.func
 def screw(linear: vec3f, angular: vec3f) -> vec6f:

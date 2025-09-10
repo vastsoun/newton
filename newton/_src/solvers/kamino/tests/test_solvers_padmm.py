@@ -4,40 +4,29 @@
 
 import os
 import unittest
+
+import matplotlib.pyplot as plt
 import numpy as np
 import warp as wp
 
-import matplotlib.pyplot as plt
-
-from newton._src.solvers.kamino.linalg.cholesky import SequentialCholeskyFactorizer
 from newton._src.solvers.kamino.dynamics.dual import DualProblem
-from newton._src.solvers.kamino.simulation.simulator import compute_constraint_body_wrenches
-from newton._src.solvers.kamino.models.builders import (
-    build_box_on_plane,
-    build_box_pendulum,
-    build_boxes_hinged,
-    build_boxes_nunchaku,
-    build_boxes_fourbar,
-)
+from newton._src.solvers.kamino.linalg.cholesky import SequentialCholeskyFactorizer
 from newton._src.solvers.kamino.models.utils import (
-    make_single_builder,
-    make_homogeneous_builder,
-    make_heterogeneous_builder
+    make_heterogeneous_builder,
 )
+
+# Module to be tested
+from newton._src.solvers.kamino.solvers.padmm import PADMMDualSolver, PADMMSettings
+from newton._src.solvers.kamino.tests.utils.extract import extract_info_vectors, extract_problem_vector
 
 # Test utilities
 from newton._src.solvers.kamino.tests.utils.make import make_containers, update_containers
-from newton._src.solvers.kamino.tests.utils.extract import extract_problem_vector, extract_info_vectors
 from newton._src.solvers.kamino.tests.utils.print import print_model_info
-
-
-# Module to be tested
-from newton._src.solvers.kamino.solvers.padmm import PADMMSettings, PADMMDualSolver
-
 
 ###
 # Helper functions
 ###
+
 
 def print_problem_summary(problem: DualProblem):
     print(f"problem.data.num_worlds: {problem.data.num_worlds}")
@@ -134,11 +123,11 @@ def save_solver_info(solver: PADMMDualSolver, path: str | None = None, verbose: 
     for row, (label, arr) in enumerate(info_list):
         for col in range(nw):
             ax = axes[row, col]
-            ax.plot(arr[col], label=f'{label}')
-            ax.set_xlabel('Iteration')
+            ax.plot(arr[col], label=f"{label}")
+            ax.set_xlabel("Iteration")
             ax.set_ylabel(label)
             if row == 0:
-                ax.set_title(f'World {col}')
+                ax.set_title(f"World {col}")
             if col == 0:
                 ax.set_ylabel(label)
             else:
@@ -146,7 +135,12 @@ def save_solver_info(solver: PADMMDualSolver, path: str | None = None, verbose: 
             ax.grid(True)
     plt.tight_layout()
     if path is None:
-        plt.savefig(os.path.dirname(os.path.realpath(__file__)) + "/data/padmm_solver_info.pdf", format="pdf", dpi=300, bbox_inches="tight")
+        plt.savefig(
+            os.path.dirname(os.path.realpath(__file__)) + "/data/padmm_solver_info.pdf",
+            format="pdf",
+            dpi=300,
+            bbox_inches="tight",
+        )
     else:
         plt.savefig(path, format="pdf", dpi=300, bbox_inches="tight")
 
@@ -155,8 +149,8 @@ def save_solver_info(solver: PADMMDualSolver, path: str | None = None, verbose: 
 # Tests
 ###
 
-class TestPADMMDualSolver(unittest.TestCase):
 
+class TestPADMMDualSolver(unittest.TestCase):
     def setUp(self):
         self.verbose = True  # Set to True for detailed output
         self.savefig = True  # Set to True to generate solver info plots
@@ -183,9 +177,7 @@ class TestPADMMDualSolver(unittest.TestCase):
 
         # Create the model and containers from the builder
         model, state, limits, detector, jacobians = make_containers(
-            builder=builder,
-            max_world_contacts=max_world_contacts,
-            device=self.default_device
+            builder=builder, max_world_contacts=max_world_contacts, device=self.default_device
         )
 
         # Update the containers
@@ -202,16 +194,12 @@ class TestPADMMDualSolver(unittest.TestCase):
             limits=limits,
             contacts=detector.contacts,
             factorizer=SequentialCholeskyFactorizer,
-            device=self.default_device
+            device=self.default_device,
         )
 
         # Build the dual problem
         problem.build(
-            model=model,
-            state=state,
-            limits=limits.data,
-            contacts=detector.contacts.data,
-            jacobians=jacobians.data
+            model=model, state=state, limits=limits.data, contacts=detector.contacts.data, jacobians=jacobians.data
         )
 
         # Optional verbose output
@@ -235,7 +223,7 @@ class TestPADMMDualSolver(unittest.TestCase):
             contacts=detector.contacts,
             settings=settings,
             collect_info=True,
-            device=self.default_device
+            device=self.default_device,
         )
 
         # Optional verbose output
@@ -256,15 +244,33 @@ class TestPADMMDualSolver(unittest.TestCase):
         # Extract numpy arrays from the solver state and solution
         only_active_dims = True
         # D_wp_np = extract_delassus(problem.delassus, only_active_dims=only_active_dims)
-        s_wp_np = extract_problem_vector(problem.delassus, solver.data.state.s.numpy(), only_active_dims=only_active_dims)
-        v_wp_np = extract_problem_vector(problem.delassus, solver.data.state.v.numpy(), only_active_dims=only_active_dims)
-        x_wp_np = extract_problem_vector(problem.delassus, solver.data.state.x.numpy(), only_active_dims=only_active_dims)
-        y_wp_np = extract_problem_vector(problem.delassus, solver.data.state.y.numpy(), only_active_dims=only_active_dims)
-        z_wp_np = extract_problem_vector(problem.delassus, solver.data.state.z.numpy(), only_active_dims=only_active_dims)
-        v_plus_wp_np = extract_problem_vector(problem.delassus, solver.data.solution.v_plus.numpy(), only_active_dims=only_active_dims)
-        lambdas_wp_np = extract_problem_vector(problem.delassus, solver.data.solution.lambdas.numpy(), only_active_dims=only_active_dims)
-        r_primal_wp_np = extract_problem_vector(problem.delassus, solver.data.residuals.r_primal.numpy(), only_active_dims=only_active_dims)
-        r_dual_wp_np = extract_problem_vector(problem.delassus, solver.data.residuals.r_dual.numpy(), only_active_dims=only_active_dims)
+        s_wp_np = extract_problem_vector(
+            problem.delassus, solver.data.state.s.numpy(), only_active_dims=only_active_dims
+        )
+        v_wp_np = extract_problem_vector(
+            problem.delassus, solver.data.state.v.numpy(), only_active_dims=only_active_dims
+        )
+        x_wp_np = extract_problem_vector(
+            problem.delassus, solver.data.state.x.numpy(), only_active_dims=only_active_dims
+        )
+        y_wp_np = extract_problem_vector(
+            problem.delassus, solver.data.state.y.numpy(), only_active_dims=only_active_dims
+        )
+        z_wp_np = extract_problem_vector(
+            problem.delassus, solver.data.state.z.numpy(), only_active_dims=only_active_dims
+        )
+        v_plus_wp_np = extract_problem_vector(
+            problem.delassus, solver.data.solution.v_plus.numpy(), only_active_dims=only_active_dims
+        )
+        lambdas_wp_np = extract_problem_vector(
+            problem.delassus, solver.data.solution.lambdas.numpy(), only_active_dims=only_active_dims
+        )
+        r_primal_wp_np = extract_problem_vector(
+            problem.delassus, solver.data.residuals.r_primal.numpy(), only_active_dims=only_active_dims
+        )
+        r_dual_wp_np = extract_problem_vector(
+            problem.delassus, solver.data.residuals.r_dual.numpy(), only_active_dims=only_active_dims
+        )
 
         # Retrieve the number of worlds in the model
         nw = model.info.num_worlds
@@ -306,8 +312,12 @@ class TestPADMMDualSolver(unittest.TestCase):
             print("\n")  # Print a newline for better readability
 
         # Extract solver explicit solution
-        v_plus_np = extract_problem_vector(problem.delassus, solver.data.info.v_plus.numpy(), only_active_dims=only_active_dims)
-        v_aug_np = extract_problem_vector(problem.delassus, solver.data.info.v_aug.numpy(), only_active_dims=only_active_dims)
+        v_plus_np = extract_problem_vector(
+            problem.delassus, solver.data.info.v_plus.numpy(), only_active_dims=only_active_dims
+        )
+        v_aug_np = extract_problem_vector(
+            problem.delassus, solver.data.info.v_aug.numpy(), only_active_dims=only_active_dims
+        )
         s_np = extract_problem_vector(problem.delassus, solver.data.info.s.numpy(), only_active_dims=only_active_dims)
         if self.verbose:
             print("\n")  # Print a newline for better readability

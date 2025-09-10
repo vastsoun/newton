@@ -3,31 +3,31 @@
 ###########################################################################
 
 from .constraints import make_unilateral_constraints_info, update_constraints_info
-from .joints import compute_joints_state
-from .limits import LimitsData, Limits
 from .jacobians import (
-    build_joint_jacobians,
-    build_limit_jacobians,
+    DenseSystemJacobians,
+    DenseSystemJacobiansData,
     build_contact_jacobians,
     build_jacobians,
-    DenseSystemJacobiansData,
-    DenseSystemJacobians
+    build_joint_jacobians,
+    build_limit_jacobians,
 )
+from .joints import compute_joints_state
+from .limits import Limits, LimitsData
 
 ###
 # Module interface
 ###
 
 __all__ = [
-    "make_unilateral_constraints_info",
-    "update_constraints_info",
-    "compute_joints_state",
-    "LimitsData",
+    "DenseSystemJacobians",
+    "DenseSystemJacobiansData",
     "Limits",
-    "build_joint_jacobians",
-    "build_limit_jacobians",
+    "LimitsData",
     "build_contact_jacobians",
     "build_jacobians",
-    "DenseSystemJacobiansData",
-    "DenseSystemJacobians"
+    "build_joint_jacobians",
+    "build_limit_jacobians",
+    "compute_joints_state",
+    "make_unilateral_constraints_info",
+    "update_constraints_info",
 ]

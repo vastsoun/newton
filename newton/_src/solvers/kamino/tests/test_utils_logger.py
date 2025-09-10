@@ -7,17 +7,17 @@ import unittest
 import numpy as np
 import warp as wp
 
-# Module to be tested
-from newton._src.solvers.kamino.utils.logger import Logger
 import newton._src.solvers.kamino.utils.logger as msg
 
+# Module to be tested
+from newton._src.solvers.kamino.utils.logger import Logger
 
 ###
 # Tests
 ###
 
-class TestUtilsLogger(unittest.TestCase):
 
+class TestUtilsLogger(unittest.TestCase):
     def setUp(self):
         self.verbose = True  # Set to True for verbose output
         self.default_device = wp.get_device()

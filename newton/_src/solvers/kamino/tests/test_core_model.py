@@ -3,8 +3,14 @@
 ###########################################################################
 
 import unittest
+
 import numpy as np
 import warp as wp
+
+from newton._src.solvers.kamino.core.builder import ModelBuilder
+
+# Module to be tested
+from newton._src.solvers.kamino.core.model import Model
 
 # Test utilities
 from newton._src.solvers.kamino.models.builders import (
@@ -12,27 +18,22 @@ from newton._src.solvers.kamino.models.builders import (
     build_boxes_nunchaku,
 )
 from newton._src.solvers.kamino.models.utils import (
-    make_homogeneous_builder,
     make_heterogeneous_builder,
+    make_homogeneous_builder,
 )
 from newton._src.solvers.kamino.tests.utils.print import (
-    print_model_info,
     print_model_bodies,
+    print_model_info,
     print_model_joints,
     print_model_state_info,
 )
-
-# Module to be tested
-from newton._src.solvers.kamino.core.model import Model
-from newton._src.solvers.kamino.core.builder import ModelBuilder
-
 
 ###
 # Tests
 ###
 
-class TestModel(unittest.TestCase):
 
+class TestModel(unittest.TestCase):
     def setUp(self):
         self.verbose = False  # Set to True for verbose output
         self.default_device = wp.get_device()
@@ -121,10 +122,10 @@ class TestModel(unittest.TestCase):
             print_model_state_info(state)
 
         # Check the model info entries
-        self.assertEqual(model.size.sum_of_num_bodies, num_worlds*2)
-        self.assertEqual(model.size.sum_of_num_joints, num_worlds*1)
-        self.assertEqual(model.size.sum_of_num_collision_geoms, num_worlds*3)
-        self.assertEqual(model.size.sum_of_num_physical_geoms, num_worlds*0)
+        self.assertEqual(model.size.sum_of_num_bodies, num_worlds * 2)
+        self.assertEqual(model.size.sum_of_num_joints, num_worlds * 1)
+        self.assertEqual(model.size.sum_of_num_collision_geoms, num_worlds * 3)
+        self.assertEqual(model.size.sum_of_num_physical_geoms, num_worlds * 0)
         self.assertEqual(model.device, self.default_device)
 
     def test_04_hetereogeneous_model(self):

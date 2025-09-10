@@ -6,17 +6,16 @@ from __future__ import annotations
 
 import warp as wp
 
-from .types import vec3f, vec4f, Descriptor
-
+from .types import Descriptor, vec3f, vec4f
 
 ###
 # Module interface
 ###
 
 __all__ = [
-    "GRAVITY_NAME_DEFAULT",
     "GRAVITY_ACCEL_DEFAULT",
     "GRAVITY_DIREC_DEFAULT",
+    "GRAVITY_NAME_DEFAULT",
     "GravityDescriptor",
     "GravityModel",
 ]
@@ -47,10 +46,12 @@ GRAVITY_DIREC_DEFAULT = [0.0, 0.0, -1.0]
 # Containers
 ###
 
+
 class GravityDescriptor(Descriptor):
     """
     A container to describe a world's gravity.
     """
+
     def __init__(self, name: str = GRAVITY_NAME_DEFAULT):
         super().__init__(name)
         self._enabled: bool = True
@@ -104,6 +105,7 @@ class GravityModel:
     """
     A container to hold the time-invariant gravity model data.
     """
+
     def __init__(self):
         self.g_dir_acc: wp.array(dtype=vec4f) | None = None
         """

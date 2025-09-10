@@ -5,22 +5,20 @@
 from __future__ import annotations
 
 import warp as wp
-
-from typing import List
 from warp.context import Devicelike
-from newton._src.solvers.kamino.core.types import int32
-from newton._src.solvers.kamino.core.model import Model, ModelData
-from newton._src.solvers.kamino.kinematics.limits import Limits
-from newton._src.solvers.kamino.geometry.contacts import Contacts
 
+from newton._src.solvers.kamino.core.model import Model, ModelData
+from newton._src.solvers.kamino.core.types import int32
+from newton._src.solvers.kamino.geometry.contacts import Contacts
+from newton._src.solvers.kamino.kinematics.limits import Limits
 
 ###
 # Module interface
 ###
 
 __all__ = [
-    "max_constraints_per_world",
     "make_unilateral_constraints_info",
+    "max_constraints_per_world",
     "update_constraints_info",
 ]
 
@@ -36,11 +34,12 @@ wp.set_module_options({"enable_backward": False})
 # Functions
 ###
 
+
 def max_constraints_per_world(
     model: Model,
     limits: Limits | None,
     contacts: Contacts | None,
-) -> List[int]:
+) -> list[int]:
     """
     Returns the maximum number of constraints for each world in the model.
 
@@ -63,9 +62,9 @@ def max_constraints_per_world(
 def make_unilateral_constraints_info(
     model: Model,
     state: ModelData,
-    limits:  Limits | None = None,
+    limits: Limits | None = None,
     contacts: Contacts | None = None,
-    device: Devicelike = None
+    device: Devicelike = None,
 ):
     """
     Constructs constraints entries in the ModelInfo member of a model.
@@ -95,8 +94,8 @@ def make_unilateral_constraints_info(
     # Declare the lists of per-world maximum limits and contacts
     # NOTE: These will either be captured by reference from the limits and contacts
     # containers or initialized to zero if no limits or contacts are provided.
-    world_maxnl: List[int] = []
-    world_maxnc: List[int] = []
+    world_maxnl: list[int] = []
+    world_maxnc: list[int] = []
 
     # If a limits container is provided, ensure it is valid
     # and then assign the entity counters to the model info.
@@ -135,15 +134,17 @@ def make_unilateral_constraints_info(
             state.info.num_contacts = wp.zeros(shape=(num_worlds,), dtype=int32)
 
     # Compute the maximum number of unilateral entities (limits and contacts) per world
-    world_max_unilaterals: List[int] = [nl + nc for nl, nc in zip(world_maxnl, world_maxnc)]
+    world_max_unilaterals: list[int] = [nl + nc for nl, nc in zip(world_maxnl, world_maxnc, strict=False)]
     model.size.sum_of_max_unilaterals = sum(world_max_unilaterals)
     model.size.max_of_max_unilaterals = max(world_max_unilaterals)
 
     # Compute the maximum number of constraints per world: limits, contacts, and total
-    world_maxnlc: List[int] = [maxnl for maxnl in world_maxnl]
-    world_maxncc: List[int] = [3 * maxnc for maxnc in world_maxnc]
+    world_maxnlc: list[int] = [maxnl for maxnl in world_maxnl]
+    world_maxncc: list[int] = [3 * maxnc for maxnc in world_maxnc]
     world_njc = [world.num_joint_cts for world in model.worlds]
-    world_maxncts = [maxnl + maxnc + njc for maxnl, maxnc, njc in zip(world_maxnlc, world_maxncc, world_njc)]
+    world_maxncts = [
+        maxnl + maxnc + njc for maxnl, maxnc, njc in zip(world_maxnlc, world_maxncc, world_njc, strict=False)
+    ]
     model.size.sum_of_max_total_cts = sum(world_maxncts)
     model.size.max_of_max_total_cts = max(world_maxncts)
 
@@ -158,7 +159,9 @@ def make_unilateral_constraints_info(
     world_lcio = [0] + [sum(world_maxnlc[:i]) for i in range(1, num_worlds + 1)]
     world_ccio = [0] + [sum(world_maxncc[:i]) for i in range(1, num_worlds + 1)]
     world_ucio = [0] + [sum(world_maxnlc[:i]) + sum(world_maxncc[:i]) for i in range(1, num_worlds + 1)]
-    world_ctsio = [0] + [sum(world_njc[:i]) + sum(world_maxnlc[:i]) + sum(world_maxncc[:i]) for i in range(1, num_worlds + 1)]
+    world_ctsio = [0] + [
+        sum(world_njc[:i]) + sum(world_maxnlc[:i]) + sum(world_maxncc[:i]) for i in range(1, num_worlds + 1)
+    ]
 
     # Allocate all constraint info arrays on the target device
     with wp.ScopedDevice(device):
@@ -191,6 +194,7 @@ def make_unilateral_constraints_info(
 ###
 # Kernels
 ###
+
 
 @wp.kernel
 def _update_constraints_info(
@@ -237,6 +241,7 @@ def _update_constraints_info(
 # Launchers
 ###
 
+
 def update_constraints_info(
     model: Model,
     state: ModelData,
@@ -258,5 +263,5 @@ def update_constraints_info(
             state.info.num_contact_cts,
             state.info.limit_cts_group_offset,
             state.info.contact_cts_group_offset,
-        ]
+        ],
     )

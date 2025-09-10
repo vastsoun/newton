@@ -4,21 +4,18 @@
 
 import math
 import unittest
+
 import numpy as np
 import warp as wp
 
-from newton._src.solvers.kamino.core.types import int32, float32, vec3f, vec6f, mat33f, transformf
-from newton._src.solvers.kamino.core.math import screw_linear, screw_angular, screw, quat_exp
+from newton._src.solvers.kamino.core.math import quat_exp, screw, screw_angular, screw_linear
 from newton._src.solvers.kamino.core.model import Model, ModelData
-from newton._src.solvers.kamino.models.builders import build_revolute_joint_test_system
-from newton._src.solvers.kamino.models.utils import (
-    make_single_builder,
-    make_homogeneous_builder
-)
+from newton._src.solvers.kamino.core.types import float32, int32, mat33f, transformf, vec3f, vec6f
 
 # Module to be tested
 from newton._src.solvers.kamino.kinematics.joints import compute_joints_state
-
+from newton._src.solvers.kamino.models.builders import build_revolute_joint_test_system
+from newton._src.solvers.kamino.models.utils import make_homogeneous_builder, make_single_builder
 
 ###
 # Module configs
@@ -41,6 +38,7 @@ J_DOMEGA_J = vec3f(-1.0, 0.04, -0.05)
 ###
 # Kernels
 ###
+
 
 @wp.kernel
 def _set_joint_follower_body_state(
@@ -85,8 +83,8 @@ def _set_joint_follower_body_state(
     theta_y_j = THETA_Y_J
     theta_z_j = THETA_Z_J
     j_dR_j = vec3f(q_x_j, theta_y_j, theta_z_j)  # Joint offset as rotation vector
-    q_jq = quat_exp(j_dR_j)                      # Joint offset as rotation quaternion
-    R_jq = wp.quat_to_matrix(q_jq)               # Joint offset as rotation matrix
+    q_jq = quat_exp(j_dR_j)  # Joint offset as rotation quaternion
+    R_jq = wp.quat_to_matrix(q_jq)  # Joint offset as rotation matrix
 
     # Define the joint translation offset
     j_dr_j = J_DR_J
@@ -119,6 +117,7 @@ def _set_joint_follower_body_state(
 # Launchers
 ###
 
+
 def set_joint_follower_body_state(model: Model, state: ModelData):
     wp.launch(
         _set_joint_follower_body_state,
@@ -131,7 +130,7 @@ def set_joint_follower_body_state(model: Model, state: ModelData):
             model.joints.X_j,
             state.bodies.q_i,
             state.bodies.u_i,
-        ]
+        ],
     )
 
 
@@ -139,8 +138,8 @@ def set_joint_follower_body_state(model: Model, state: ModelData):
 # Tests
 ###
 
-class TestKinematicsJoints(unittest.TestCase):
 
+class TestKinematicsJoints(unittest.TestCase):
     def setUp(self):
         self.verbose = False  # Set to True for verbose output
         self.default_device = wp.get_device()

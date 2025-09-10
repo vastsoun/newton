@@ -2,7 +2,6 @@
 # KAMINO: Utilities: Profiling
 ###########################################################################
 
-import warp as wp
 
 from warp.context import Devicelike
 
@@ -34,4 +33,4 @@ def get_device_info(device: Devicelike) -> str:
 
 
 def get_device_memory_allocation_info(device: Devicelike) -> str:
-    return ''
+    return ""

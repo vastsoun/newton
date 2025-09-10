@@ -5,40 +5,33 @@
 from __future__ import annotations
 
 import warp as wp
-
-from typing import List
 from warp.context import Devicelike
-from .types import (
-    int32, float32,
-    vec6f,
-    mat83f, mat33f,
-    transformf
-)
-from .world import WorldDescriptor
-from .time import TimeModel, TimeData
-from .gravity import GravityModel
-from .materials import MaterialPairsModel
-from .geometry import (
-    GeometriesModel,
-    GeometriesData,
-    CollisionGeometriesModel,
-    CollisionGeometriesData,
-)
-from .bodies import RigidBodiesModel, RigidBodiesData
-from .joints import JointsModel, JointsData
-from .state import State
-from .control import Control
 
+from .bodies import RigidBodiesData, RigidBodiesModel
+from .control import Control
+from .geometry import (
+    CollisionGeometriesData,
+    CollisionGeometriesModel,
+    GeometriesData,
+    GeometriesModel,
+)
+from .gravity import GravityModel
+from .joints import JointsData, JointsModel
+from .materials import MaterialPairsModel
+from .state import State
+from .time import TimeData, TimeModel
+from .types import float32, int32, mat33f, mat83f, transformf, vec6f
+from .world import WorldDescriptor
 
 ###
 # Module interface
 ###
 
 __all__ = [
-    "ModelInfo",
-    "ModelDataInfo",
-    "ModelData",
     "Model",
+    "ModelData",
+    "ModelDataInfo",
+    "ModelInfo",
 ]
 
 
@@ -53,6 +46,7 @@ wp.set_module_options({"enable_backward": False})
 # Containers
 ###
 
+
 class ModelSize:
     """
     A container to hold the summary size of memory allocations and thread dimensions.
@@ -62,6 +56,7 @@ class ModelSize:
     - The maximums are used to define 2D thread shapes: (num_worlds, max_of_max_XXX)
     - Where `XXX` is the maximum number of limits, contacts, unilaterals, or constraints in any world.
     """
+
     def __init__(self):
         self.num_worlds: int = 0
         """The number of worlds represented in the model."""
@@ -208,8 +203,8 @@ class ModelInfo:
     """
     A container to hold the time-invariant information and meta-data of a model.
     """
-    def __init__(self):
 
+    def __init__(self):
         ###
         # Host-side Summary Counts
         ###
@@ -454,8 +449,8 @@ class ModelDataInfo:
     """
     A container to hold the time-varying information and meta-data of a model-state.
     """
-    def __init__(self):
 
+    def __init__(self):
         ###
         # Total Constraints
         ###
@@ -515,6 +510,7 @@ class ModelData:
     """
     A container to hold the time-varying state of the model entities.
     """
+
     def __init__(self):
         self.info: ModelDataInfo | None = None
         """The info container holding the information and meta-data of the model data."""
@@ -539,6 +535,7 @@ class Model:
     """
     A container to hold the time-invariant system model data.
     """
+
     def __init__(self):
         self.device: Devicelike = None
         """The device on which the model data is allocated."""
@@ -552,7 +549,7 @@ class Model:
         This is used for memory allocations and kernel thread dimensions.
         """
 
-        self.worlds: List[WorldDescriptor] = []
+        self.worlds: list[WorldDescriptor] = []
         """
         Host-side cache of the world descriptors.\n
         This is used to construct the model and for memory allocations.
@@ -587,7 +584,7 @@ class Model:
         skip_body_dofs: bool = False,
         unilateral_cts: bool = False,
         requires_grad: bool = False,
-        device: Devicelike = None
+        device: Devicelike = None,
     ) -> ModelData:
         """
         Create a model data container with the initial state of the model entities.
@@ -607,7 +604,6 @@ class Model:
 
         # Construct the model data on the specified device
         with wp.ScopedDevice(device=device):
-
             # Retrieve entity counts
             nw = self.size.num_worlds
             nb = self.size.sum_of_num_bodies
@@ -730,7 +726,9 @@ class Model:
         # Create a new control container on the specified device
         with wp.ScopedDevice(device=device):
             c = Control()
-            c.tau_j = wp.zeros(shape=self.size.sum_of_num_actuated_joint_dofs, dtype=float32, requires_grad=requires_grad)
+            c.tau_j = wp.zeros(
+                shape=self.size.sum_of_num_actuated_joint_dofs, dtype=float32, requires_grad=requires_grad
+            )
 
         # Return the constructed control container
         return c

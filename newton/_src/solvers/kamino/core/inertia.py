@@ -6,17 +6,16 @@ from __future__ import annotations
 
 from .types import mat33f
 
-
 ###
 # Module interface
 ###
 
 __all__ = [
-    "solid_sphere_body_moment_of_inertia",
-    "solid_cylinder_body_moment_of_inertia",
     "solid_cone_body_moment_of_inertia",
+    "solid_cuboid_body_moment_of_inertia",
+    "solid_cylinder_body_moment_of_inertia",
     "solid_ellipsoid_body_moment_of_inertia",
-    "solid_cuboid_body_moment_of_inertia"
+    "solid_sphere_body_moment_of_inertia",
 ]
 
 

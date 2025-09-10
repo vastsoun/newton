@@ -92,7 +92,7 @@ class LinearSolver(ABC):
 
         # Initialize internal solution meta-data
         self._info: ComputationInfo = ComputationInfo.Uninitialized
-        self._compute_success: bool = False
+        self._success: bool = False
         if kwargs:
             raise TypeError(f"Unused kwargs: {list(kwargs)}")
 
@@ -106,15 +106,15 @@ class LinearSolver(ABC):
         return self._dtype
 
     @property
-    def compute_success(self) -> bool:
-        return self._compute_success
+    def success(self) -> bool:
+        return self._success
 
     ###
     # Internals
     ###
 
     @abstractmethod
-    def _compute_impl(self, A: np.ndarray):
+    def _compute_impl(self, A: np.ndarray, **kwargs):
         raise NotImplementedError("Missing compute implementation.")
 
     @abstractmethod
@@ -131,16 +131,16 @@ class LinearSolver(ABC):
         # TODO: Check that A, b are compatible shapes
         return self._solve_inplace_impl(b, compute_errors=compute_errors, **kwargs)
 
-    def compute(self, A: np.ndarray):
+    def compute(self, A: np.ndarray, **kwargs):
         """Ingest matrix and precompute rhs-independent intermediate."""
-        self._compute_impl(A)
+        self._compute_impl(A, **kwargs)
 
     def solve(self, b: np.ndarray, compute_errors: bool = False, **kwargs) -> np.ndarray:
         """Solves the linear system `A@x = b`"""
         return self.solve_inplace(b.copy(), compute_errors=compute_errors, **kwargs)
 
 
-class MatrixFactorizer(ABC):
+class MatrixFactorizer(LinearSolver):
     def __init__(
         self,
         A: np.ndarray | None = None,
@@ -151,6 +151,7 @@ class MatrixFactorizer(ABC):
         check_symmetry: bool = False,
         compute_error: bool = False,
     ):
+        super().__init__(dtype, compute_error)
         # Declare internal data structures
         self._source: np.ndarray | None = None
         self._matrix: np.ndarray | None = None
@@ -158,14 +159,12 @@ class MatrixFactorizer(ABC):
 
         # Initialize internal meta-data
         self._tolerance: float | None = tol
-        self._dtype: np.dtype | None = dtype
         self._itype: np.dtype | None = itype
         self._sign: MatrixSign = MatrixSign.ZeroSign
         self._info: ComputationInfo = ComputationInfo.Success
         self._upper: bool = upper
 
         # Initialize internal flags
-        self._success: bool = False
         self._has_factors: bool = False
         self._has_unpacked: bool = False
 
@@ -182,10 +181,6 @@ class MatrixFactorizer(ABC):
         """Computes the reconstruction error of the factorization."""
         A_rec = self.reconstructed()
         return A - A_rec
-
-    @property
-    def dtype(self) -> np.dtype:
-        return self._dtype
 
     @property
     def itype(self) -> np.dtype:
@@ -207,13 +202,13 @@ class MatrixFactorizer(ABC):
     def sign(self) -> MatrixSign:
         return self._sign
 
-    @property
-    def success(self) -> bool:
-        return self._success
-
     ###
     # Internals
     ###
+
+    @override
+    def _compute_impl(self, A: np.ndarray, **kwargs):
+        self.factorize(A, **kwargs)
 
     @abstractmethod
     def _factorize_impl(self, A: np.ndarray) -> None:
@@ -227,7 +222,6 @@ class MatrixFactorizer(ABC):
     def _get_unpacked_impl(self) -> Any:
         raise NotImplementedError("Getting unpacked factors implementation is not provided.")
 
-    @abstractmethod
     def _solve_inplace_impl(self, x: np.ndarray):
         raise NotImplementedError("In-place solving implementation is not provided.")
 
@@ -288,6 +282,7 @@ class MatrixFactorizer(ABC):
         if compute_error:
             self._errors = self._compute_errors(A)
 
+    @override
     def solve_inplace(self, x: np.ndarray, tol: float | None = None):
         """Solves the linear system `A@x = b` using the LDLT factorization in-place."""
         self._check_has_factorization()
@@ -295,6 +290,7 @@ class MatrixFactorizer(ABC):
             self._tolerance = _make_tolerance(tol, dtype=self._dtype)
         self._solve_inplace_impl(x)
 
+    @override
     def solve(self, b: np.ndarray, tol: float | None = None) -> np.ndarray:
         """Solves the linear system `A@x = b` using the LDLT factorization."""
         x = b.astype(self._matrix.dtype, copy=True)
@@ -357,7 +353,7 @@ class NumpySolve(LinearSolver):
         self._A: np.ndarray | None = None
 
     @override
-    def _compute_impl(self, A: np.ndarray):
+    def _compute_impl(self, A: np.ndarray, **kwargs):
         self._A = A
         self._compute_success = True
 
@@ -390,7 +386,7 @@ class ScipySolve(LinearSolver):
         self._A: np.ndarray | None = None
 
     @override
-    def _compute_impl(self, A: np.ndarray):
+    def _compute_impl(self, A: np.ndarray, **kwargs):
         self._A = A
         self._compute_success = True
 
@@ -660,7 +656,7 @@ class JacobiSolver(LinearSolver):
         self._max_iterations: int = max_iterations
 
     @override
-    def _compute_impl(self, A: np.ndarray):
+    def _compute_impl(self, A: np.ndarray, **kwargs):
         self._A = A
         self._compute_success = True
 
@@ -696,7 +692,7 @@ class GaussSeidelSolver(LinearSolver):
         self._max_iterations: int = max_iterations
 
     @override
-    def _compute_impl(self, A: np.ndarray):
+    def _compute_impl(self, A: np.ndarray, **kwargs):
         self._A = A
         self._compute_success = True
 
@@ -734,7 +730,7 @@ class SORSolver(LinearSolver):
         self._omega: float = omega
 
     @override
-    def _compute_impl(self, A: np.ndarray):
+    def _compute_impl(self, A: np.ndarray, **kwargs):
         self._A = A
         self._compute_success = True
 
@@ -773,7 +769,7 @@ class ConjugateGradientSolver(LinearSolver):
         self._epsilon: float = epsilon
 
     @override
-    def _compute_impl(self, A: np.ndarray):
+    def _compute_impl(self, A: np.ndarray, **kwargs):
         self._A = A
         self._compute_success = True
 
@@ -813,7 +809,7 @@ class MinimumResidualSolver(LinearSolver):
         self._epsilon: float = epsilon
 
     @override
-    def _compute_impl(self, A: np.ndarray):
+    def _compute_impl(self, A: np.ndarray, **kwargs):
         self._A = A
         self._compute_success = True
 

@@ -38,7 +38,7 @@ def _make_tolerance(tol: float | None = None, dtype: np.dtype = np.float64):
     if tol is None:
         tol = dtype.type(np.finfo(dtype).eps)
     else:
-        if not isinstance(tol, (float, np.float32, np.float64)):
+        if not isinstance(tol, float | np.float32 | np.float64):
             raise ValueError("tolerance 'tol' must be a `float`, `np.float32`, or `np.float64` value.")
     return dtype.type(tol)
 

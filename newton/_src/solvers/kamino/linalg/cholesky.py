@@ -6,7 +6,6 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from functools import cache
-from typing import Union
 
 import warp as wp
 from warp.context import Devicelike
@@ -280,7 +279,6 @@ def make_cholesky_blocked_factorize_kernel(block_size: int):
     ):
         # Retrieve the thread index and thread-block configuration
         tid, tid_block = wp.tid()
-        num_threads_per_block = wp.block_dim()
 
         # Retrieve the matrix block dimensions and size
         dim = dim_in[tid]
@@ -374,7 +372,6 @@ def make_cholesky_blocked_solve_kernel(block_size: int):
     ):
         # Retrieve the thread index and thread-block configuration
         tid, tid_block = wp.tid()
-        num_threads_per_block = wp.block_dim()
 
         # Retrieve the matrix block dimensions and size
         dim = dim_in[tid]
@@ -431,7 +428,6 @@ def make_cholesky_blocked_solve_inplace_kernel(block_size: int):
     ):
         # Retrieve the thread index and thread-block configuration
         tid, tid_block = wp.tid()
-        num_threads_per_block = wp.block_dim()
 
         # Retrieve the matrix block dimensions and size
         dim = dim_in[tid]
@@ -971,7 +967,9 @@ class SequentialCholeskyFactorizer(CholeskyFactorizerBase):
     and supports heterogeneous matrix block sizes.\n
     """
 
-    def __init__(self, dims: list[int] = [], allocate_info=True, device: Devicelike = None):
+    def __init__(self, dims: list[int] | None = None, allocate_info=True, device: Devicelike = None):
+        if dims is None:
+            dims = []
         super().__init__(dims=dims, allocate_info=allocate_info, device=device)
 
     def _allocate(self):
@@ -1046,7 +1044,7 @@ class BlockedCholeskyFactorizer(CholeskyFactorizerBase):
 
     def __init__(
         self,
-        dims: list[int] = [],
+        dims: list[int] | None = None,
         block_size: int = 16,
         solve_block_dim: int = 64,
         factortize_block_dim: int = 128,
@@ -1054,6 +1052,8 @@ class BlockedCholeskyFactorizer(CholeskyFactorizerBase):
         device: Devicelike = None,
     ):
         # Initialize the base class with the specified capacity and size
+        if dims is None:
+            dims = []
         super().__init__(dims=dims, allocate_info=allocate_info, device=device)
 
         # Cache the block size
@@ -1190,5 +1190,5 @@ class BlockedCholeskyFactorizer(CholeskyFactorizerBase):
         # )
 
 
-CholeskyFactorizer = Union[SequentialCholeskyFactorizer, BlockedCholeskyFactorizer, None]
+CholeskyFactorizer = SequentialCholeskyFactorizer | BlockedCholeskyFactorizer | None
 """A type alias for the Cholesky factorizer, which can be either a sequential or blocked implementation."""

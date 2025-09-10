@@ -1904,7 +1904,7 @@ class PADMMDualSolver:
         ###
 
         # NOTE: The high-level solver loop iterates over the maximum number of iterations configured for each world
-        for i in range(self._max_iters):
+        for _i in range(self._max_iters):
             # Compute De Saxce correction from the previous dual variables
             wp.launch(
                 kernel=_compute_desaxce_correction,

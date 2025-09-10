@@ -3,28 +3,18 @@
 ###########################################################################
 
 import uuid
+from collections.abc import Iterable
+from typing import Any, Union
 
 import numpy as np
 import warp as wp
 
 import newton._src.solvers.kamino.utils.logger as msg
-
-from typing import Any, Dict, Iterable, List, Optional, Union
-from newton._src.solvers.kamino.core.types import Transform, vec3f, quatf, transformf, Axis, AxisType
-from newton._src.solvers.kamino.core.math import I_3, screw
+from newton._src.solvers.kamino.core.bodies import RigidBodyDescriptor
+from newton._src.solvers.kamino.core.builder import ModelBuilder
+from newton._src.solvers.kamino.core.geometry import CollisionGeometryDescriptor, GeometryDescriptor
 from newton._src.solvers.kamino.core.gravity import GravityDescriptor
-from newton._src.solvers.kamino.core.shapes import (
-    SphereShape,
-    CylinderShape,
-    ConeShape,
-    CapsuleShape,
-    BoxShape,
-    EllipsoidShape,
-    PlaneShape,
-    # ConvexShape,
-    # MeshShape,
-    # SDFShape
-)
+from newton._src.solvers.kamino.core.joints import JointActuationType, JointDescriptor, JointDoFType
 from newton._src.solvers.kamino.core.materials import (
     DEFAULT_DENSITY,
     DEFAULT_FRICTION,
@@ -32,11 +22,20 @@ from newton._src.solvers.kamino.core.materials import (
     MaterialDescriptor,
     MaterialPairProperties,
 )
-from newton._src.solvers.kamino.core.geometry import GeometryDescriptor, CollisionGeometryDescriptor
-from newton._src.solvers.kamino.core.joints import JointActuationType, JointDoFType, JointDescriptor
-from newton._src.solvers.kamino.core.bodies import RigidBodyDescriptor
-from newton._src.solvers.kamino.core.builder import ModelBuilder
-
+from newton._src.solvers.kamino.core.math import I_3, screw
+from newton._src.solvers.kamino.core.shapes import (
+    BoxShape,
+    CapsuleShape,
+    ConeShape,
+    CylinderShape,
+    EllipsoidShape,
+    PlaneShape,
+    # ConvexShape,
+    # MeshShape,
+    # SDFShape
+    SphereShape,
+)
+from newton._src.solvers.kamino.core.types import Axis, AxisType, Transform, quatf, transformf, vec3f
 
 ###
 # Helper Functions
@@ -72,6 +71,7 @@ def quat_between_axes(*axes: AxisType) -> quatf:
 # Importer
 ###
 
+
 class USDImporter:
     """
     A class to parse OpenUSD files and extract relevant data.
@@ -92,6 +92,7 @@ class USDImporter:
         if cls.Sdf is None:
             try:
                 from pxr import Sdf, Usd, UsdGeom, UsdPhysics
+
                 cls.Sdf = Sdf
                 cls.Usd = Usd
                 cls.UsdGeom = UsdGeom
@@ -182,7 +183,7 @@ class USDImporter:
     @staticmethod
     def _get_prim_name(prim) -> str:
         """Retrieves the name of the prim from its path."""
-        return str(prim.GetPath())[len(str(prim.GetParent().GetPath())):].lstrip("/")
+        return str(prim.GetPath())[len(str(prim.GetParent().GetPath())) :].lstrip("/")
 
     @staticmethod
     def _get_prim_uid(prim) -> str:
@@ -209,7 +210,7 @@ class USDImporter:
         attr = self._get_attribute(prim, name)
         return attr.IsValid() and attr.HasAuthoredValue()
 
-    def _parse_float(self, prim, name, default=None) -> Optional[float]:
+    def _parse_float(self, prim, name, default=None) -> Union[float, None]:
         attr = self._get_attribute(prim, name)
         if not attr or not attr.HasAuthoredValue():
             return default
@@ -236,7 +237,7 @@ class USDImporter:
     def _from_gfquat(gfquat) -> wp.quat:
         return wp.normalize(wp.quat(*gfquat.imaginary, gfquat.real))
 
-    def _parse_quat(self, prim, name, default=None) -> Optional[np.array]:
+    def _parse_quat(self, prim, name, default=None) -> Union[np.array, None]:
         attr = self._get_attribute(prim, name)
         if not attr or not attr.HasAuthoredValue():
             return default
@@ -250,7 +251,7 @@ class USDImporter:
             return quat
         return default
 
-    def _parse_vec(self, prim, name, default=None) -> Optional[np.array]:
+    def _parse_vec(self, prim, name, default=None) -> Union[np.array, None]:
         attr = self._get_attribute(prim, name)
         if not attr or not attr.HasAuthoredValue():
             return default
@@ -259,7 +260,7 @@ class USDImporter:
             return np.array(val, dtype=np.float32)
         return default
 
-    def _parse_generic(self, prim, name, default=None) -> Optional[Any]:
+    def _parse_generic(self, prim, name, default=None) -> Union[Any, None]:
         attr = self._get_attribute(prim, name)
         if not attr or not attr.HasAuthoredValue():
             return default
@@ -296,7 +297,7 @@ class USDImporter:
         material_prim,
         distance_unit: float = 1.0,
         mass_unit: float = 1.0,
-    ) -> Optional[MaterialDescriptor]:
+    ) -> Union[MaterialDescriptor, None]:
         """
         Parses a material prim and returns a MaterialDescriptor.
 
@@ -355,7 +356,7 @@ class USDImporter:
             density=density,
             restitution=restitution,
             static_friction=static_friction,
-            dynamic_friction=dynamic_friction
+            dynamic_friction=dynamic_friction,
         )
 
     def _parse_rigid_body(
@@ -365,10 +366,9 @@ class USDImporter:
         distance_unit: float = 1.0,
         rotation_unit: float = 1.0,
         mass_unit: float = 1.0,
-        offset_xform: Optional[wp.transform] = None,
+        offset_xform: Union[wp.transform, None] = None,
         only_load_enabled_rigid_bodies: bool = True,
-    ) -> Optional[RigidBodyDescriptor]:
-
+    ) -> Union[RigidBodyDescriptor, None]:
         # Skip this body if it is not enable and we are only loading enabled rigid bodies
         if not rigid_body_spec.rigidBodyEnabled and only_load_enabled_rigid_bodies:
             return None
@@ -432,11 +432,17 @@ class USDImporter:
         if m_i is None:
             raise ValueError(f"Rigid body '{path}' has no mass defined. Please set the mass using 'physics:mass'.")
         if i_r_com_i is None:
-            raise ValueError(f"Rigid body '{path}' has no center of mass defined. Please set the center of mass using 'physics:centerOfMass'.")
+            raise ValueError(
+                f"Rigid body '{path}' has no center of mass defined. Please set the center of mass using 'physics:centerOfMass'."
+            )
         if i_I_i_diag is None:
-            raise ValueError(f"Rigid body '{path}' has no diagonal inertia defined. Please set the diagonal inertia using 'physics:diagonalInertia'.")
+            raise ValueError(
+                f"Rigid body '{path}' has no diagonal inertia defined. Please set the diagonal inertia using 'physics:diagonalInertia'."
+            )
         if i_q_i_pa is None:
-            raise ValueError(f"Rigid body '{path}' has no principal axes defined. Please set the principal axes using 'physics:principalAxes'.")
+            raise ValueError(
+                f"Rigid body '{path}' has no principal axes defined. Please set the principal axes using 'physics:principalAxes'."
+            )
 
         # Check each property to ensure they are valid
         # TODO: What should we check?
@@ -486,7 +492,7 @@ class USDImporter:
                 return True
         return False
 
-    def _get_joint_dof_hint(self, prim) -> Optional[JointDoFType]:
+    def _get_joint_dof_hint(self, prim) -> Union[JointDoFType, None]:
         """Queries the custom data for a DoF type hints."""
         dofs = None
         cdata = prim.GetCustomData()
@@ -541,14 +547,7 @@ class USDImporter:
             act_type = JointActuationType.PASSIVE
         return dof_type, act_type, X_j, q_j_min, q_j_max, tau_j_max
 
-    def _parse_joint_revolute_from_d6(
-        self,
-        name,
-        joint_prim,
-        joint_spec,
-        joint_dof,
-        rotation_unit: float = 1.0
-    ):
+    def _parse_joint_revolute_from_d6(self, name, joint_prim, joint_spec, joint_dof, rotation_unit: float = 1.0):
         dof_type = JointDoFType.REVOLUTE
         X_j = self.usd_dofs_to_axis[joint_dof].to_mat33()
         q_j_min = []
@@ -572,14 +571,7 @@ class USDImporter:
             act_type = JointActuationType.PASSIVE
         return dof_type, act_type, X_j, q_j_min, q_j_max, tau_j_max
 
-    def _parse_joint_prismatic_from_d6(
-        self,
-        name,
-        joint_prim,
-        joint_spec,
-        joint_dof,
-        distance_unit: float = 1.0
-    ):
+    def _parse_joint_prismatic_from_d6(self, name, joint_prim, joint_spec, joint_dof, distance_unit: float = 1.0):
         dof_type = JointDoFType.PRISMATIC
         X_j = self.usd_dofs_to_axis[joint_dof].to_mat33()
         q_j_min = []
@@ -604,12 +596,7 @@ class USDImporter:
         return dof_type, act_type, X_j, q_j_min, q_j_max, tau_j_max
 
     def _parse_joint_cylindrical_from_d6(
-        self,
-        name,
-        joint_prim,
-        joint_spec,
-        distance_unit: float = 1.0,
-        rotation_unit: float = 1.0
+        self, name, joint_prim, joint_spec, distance_unit: float = 1.0, rotation_unit: float = 1.0
     ):
         dof_type = JointDoFType.CYLINDRICAL
         q_j_min = []
@@ -636,13 +623,7 @@ class USDImporter:
             act_type = JointActuationType.PASSIVE
         return dof_type, act_type, q_j_min, q_j_max, tau_j_max
 
-    def _parse_joint_universal_from_d6(
-        self,
-        name,
-        joint_prim,
-        joint_spec,
-        rotation_unit: float = 1.0
-    ):
+    def _parse_joint_universal_from_d6(self, name, joint_prim, joint_spec, rotation_unit: float = 1.0):
         dof_type = JointDoFType.UNIVERSAL
         q_j_min = []
         q_j_max = []
@@ -703,13 +684,7 @@ class USDImporter:
             act_type = JointActuationType.PASSIVE
         return dof_type, act_type, q_j_min, q_j_max, tau_j_max
 
-    def _parse_joint_spherical_from_d6(
-        self,
-        name,
-        joint_prim,
-        joint_spec,
-        rotation_unit: float = 1.0
-    ):
+    def _parse_joint_spherical_from_d6(self, name, joint_prim, joint_spec, rotation_unit: float = 1.0):
         dof_type = JointDoFType.SPHERICAL
         q_j_min = []
         q_j_max = []
@@ -743,12 +718,11 @@ class USDImporter:
         joint_prim,
         joint_spec,
         joint_type,
-        body_index_map: Dict[str, int],
+        body_index_map: dict[str, int],
         distance_unit: float = 1.0,
         rotation_unit: float = 1.0,
         only_load_enabled_joints: bool = True,
-    ) -> Optional[JointDescriptor]:
-
+    ) -> Union[JointDescriptor, None]:
         # Skip this body if it is not enable and we are only loading enabled rigid bodies
         if not joint_spec.jointEnabled and only_load_enabled_joints:
             return None
@@ -917,7 +891,9 @@ class USDImporter:
             raise NotImplementedError("Custom joints are not yet supported.")
 
         else:
-            raise ValueError(f"Unsupported joint type: {joint_type}. Supported types are: {self.supported_usd_joint_types}.")
+            raise ValueError(
+                f"Unsupported joint type: {joint_type}. Supported types are: {self.supported_usd_joint_types}."
+            )
         msg.info(f"dof_type: {dof_type}")
         msg.info(f"act_type: {act_type}")
         msg.info(f"X_j:\n{X_j}")
@@ -951,12 +927,12 @@ class USDImporter:
         geom_prim,
         geom_type,
         geom_spec,
-        body_index_map: Dict[str, int],
-        cgroup_index_map: Dict[str, int],
-        material_index_map: Dict[str, int],
+        body_index_map: dict[str, int],
+        cgroup_index_map: dict[str, int],
+        material_index_map: dict[str, int],
         distance_unit: float = 1.0,
         rotation_unit: float = 1.0,
-    ) -> Optional[Union[CollisionGeometryDescriptor, GeometryDescriptor]]:
+    ) -> Union[CollisionGeometryDescriptor, GeometryDescriptor, None]:
         """
         Parses a geometry prim and returns a GeometryDescriptor.
         """
@@ -1041,16 +1017,12 @@ class USDImporter:
                 shape = EllipsoidShape(a=a, b=b, c=c)
 
         elif geom_type == self.UsdPhysics.ObjectType.MeshShape:
-            msg.warning(
-                f"Mesh shapes are not yet supported. "
-                f"Geom '{name}' ({geom_prim.GetPath()}) will be ignored."
-            )
+            msg.warning(f"Mesh shapes are not yet supported. Geom '{name}' ({geom_prim.GetPath()}) will be ignored.")
             return None  # TODO: Implement mesh shapes
 
         else:
             raise ValueError(
-                f"Unsupported geometry type: {geom_type}. "
-                f"Supported types are: {self.supported_usd_geom_types}."
+                f"Unsupported geometry type: {geom_type}. Supported types are: {self.supported_usd_geom_types}."
             )
         msg.info(f"[{name}]: shape: {shape}")
 
@@ -1116,9 +1088,9 @@ class USDImporter:
         self,
         source: str,
         root_path: str = "/",
-        xform: Optional[Transform] = None,
-        ignore_paths: Optional[List[str]] = None,
-        builder: Optional[ModelBuilder] = None,
+        xform: Union[Transform, None] = None,
+        ignore_paths: Union[list[str], None] = None,
+        builder: Union[ModelBuilder, None] = None,
         apply_up_axis_from_stage: bool = True,
         only_load_enabled_rigid_bodies: bool = True,
         only_load_enabled_joints: bool = True,
@@ -1190,10 +1162,7 @@ class USDImporter:
             path, scene_desc = paths[0], scene_descs[0]
             msg.info(f"Found PhysicsScene at {path}")
             if len(paths) > 1:
-                msg.error(
-                    "Multiple PhysicsScene prims found in the USD file. "
-                    "Only the first prim will be considered."
-                )
+                msg.error("Multiple PhysicsScene prims found in the USD file. Only the first prim will be considered.")
 
             # Extract the world gravity from the physics scene
             gravity = GravityDescriptor()
@@ -1233,12 +1202,11 @@ class USDImporter:
 
         # Load materials only if requested
         if load_materials:
-
             # TODO: mechanism to detect multiple default overrides
             # Parse for and import UsdPhysicsRigidBodyMaterialDesc entries
             if self.UsdPhysics.ObjectType.RigidBodyMaterial in ret_dict:
                 prim_paths, rigid_body_material_specs = ret_dict[self.UsdPhysics.ObjectType.RigidBodyMaterial]
-                for prim_path, material_spec in zip(prim_paths, rigid_body_material_specs):
+                for prim_path, material_spec in zip(prim_paths, rigid_body_material_specs, strict=False):
                     msg.info(f"Parsing material @'{prim_path}': {material_spec}")
                     material_desc = self._parse_material(
                         material_prim=stage.GetPrimAtPath(prim_path),
@@ -1278,7 +1246,7 @@ class USDImporter:
         cgroup_index_map = {}
         if self.UsdPhysics.ObjectType.CollisionGroup in ret_dict:
             prim_paths, collision_group_specs = ret_dict[self.UsdPhysics.ObjectType.CollisionGroup]
-            for prim_path, collision_group_spec in zip(prim_paths, collision_group_specs):
+            for prim_path, collision_group_spec in zip(prim_paths, collision_group_specs, strict=False):
                 msg.info(f"Parsing collision group @'{prim_path}': {collision_group_spec}")
                 cgroup_index_map[str(prim_path)] = cgroup_count + 1
                 cgroup_count += 1
@@ -1296,7 +1264,7 @@ class USDImporter:
         # Parse for and import UsdPhysicsRigidBody prims
         if self.UsdPhysics.ObjectType.RigidBody in ret_dict:
             prim_paths, rigid_body_specs = ret_dict[self.UsdPhysics.ObjectType.RigidBody]
-            for prim_path, rigid_body_spec in zip(prim_paths, rigid_body_specs):
+            for prim_path, rigid_body_spec in zip(prim_paths, rigid_body_specs, strict=False):
                 msg.info(f"Parsing rigid body @'{prim_path}'")
                 rigid_body_desc = self._parse_rigid_body(
                     only_load_enabled_rigid_bodies=only_load_enabled_rigid_bodies,
@@ -1328,10 +1296,10 @@ class USDImporter:
         msg.debug(f"joint_type_names: {joint_type_names}")
 
         # Then iterate over each pair of prim path and joint type-name to parse the joint specifications
-        for joint_prim_path, joint_type_name in zip(joint_prim_paths, joint_type_names):
+        for joint_prim_path, joint_type_name in zip(joint_prim_paths, joint_type_names, strict=False):
             joint_type = self.supported_usd_joint_types[self.supported_usd_joint_type_names.index(joint_type_name)]
             joint_paths, joint_specs = ret_dict[joint_type]
-            for prim_path, joint_spec in zip(joint_paths, joint_specs):
+            for prim_path, joint_spec in zip(joint_paths, joint_specs, strict=False):
                 if prim_path == joint_prim_path:
                     msg.info(f"Parsing joint @'{prim_path}' of type '{joint_type_name}'")
                     joint_desc = self._parse_joint(
@@ -1371,10 +1339,10 @@ class USDImporter:
             builder.add_physical_layer(name="world")
 
         # Iterate over each pair of prim path and geom type-name to parse the geometry specifications
-        for geom_prim_path, geom_type_name in zip(geom_prim_paths, geom_type_names):
+        for geom_prim_path, geom_type_name in zip(geom_prim_paths, geom_type_names, strict=False):
             geom_type = self.supported_usd_geom_types[self.supported_usd_geom_type_names.index(geom_type_name)]
             geom_paths, geom_specs = ret_dict[geom_type]
-            for prim_path, geom_spec in zip(geom_paths, geom_specs):
+            for prim_path, geom_spec in zip(geom_paths, geom_specs, strict=False):
                 if prim_path == geom_prim_path:
                     msg.info(f"Parsing geometry @'{prim_path}' of type '{geom_type_name}'")
                     geom_desc = self._parse_geom(

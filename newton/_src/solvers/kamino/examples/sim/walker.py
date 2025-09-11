@@ -521,7 +521,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--mode",
         choices=["hdf5", "viewer"],
-        default="viewer",
+        default="hdf5",
         help="Simulation mode: 'hdf5' for data collection, 'viewer' for live visualization"
     )
     parser.add_argument("--clear-cache", action="store_true", default=True, help="Clear warp cache")

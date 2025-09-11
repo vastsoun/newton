@@ -85,8 +85,8 @@ def linsys_residual_l2norm(A: np.ndarray, b: np.ndarray, x: np.ndarray) -> float
 ###
 
 # PROBLEM_NAME = "boxes_hinged"
-# PROBLEM_NAME = "fourbar_free"
-PROBLEM_NAME = "walker"
+PROBLEM_NAME = "fourbar_free"
+# PROBLEM_NAME = "walker"
 
 # Retrieve the path to the data directory
 DATA_DIR_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../data"))
@@ -108,22 +108,22 @@ if __name__ == "__main__":
 
     # Construct and configure the data containers
     msg.info("Loading HDF5 data containers...")
-    datafile_ko = h5py.File(HDF5_DATASET_PATH, "r")
+    datafile = h5py.File(HDF5_DATASET_PATH, "r")
 
     # Retrieve target data frames
-    # FRAME = 1
+    FRAME = 1
     # FRAME = 10
     # FRAME = 100
-    FRAME = 173
-    dataframe_ko = datafile_ko[f"Worlds/{PROBLEM_NAME}/frames/{FRAME}/DualProblem"]
+    # FRAME = 173
+    dataframe = datafile[f"Worlds/{PROBLEM_NAME}/frames/{FRAME}/DualProblem"]
 
     # Create data containers
     pdata = hdf5.DualProblemData()
 
     # Extract data from HDF5
-    # np_dtype = np.float64
-    np_dtype = np.float32
-    pdata.load(dataset=dataframe_ko, dtype=np_dtype)
+    np_dtype = np.float64
+    # np_dtype = np.float32
+    pdata.load(dataset=dataframe, dtype=np_dtype)
 
     # Create output directories
     os.makedirs(PLOT_OUTPUT_PATH, exist_ok=True)
@@ -165,12 +165,20 @@ if __name__ == "__main__":
     h = pdata.h
     u_minus = pdata.u_minus
     v_star = pdata.v_i + pdata.v_b
-    msg.warning(f"invM: {np.linalg.norm(invM)}, {invM.shape}, {invM.dtype}")
     msg.warning(f"M: {np.linalg.norm(M)}, {M.shape}, {M.dtype}")
+    msg.warning(f"invM: {np.linalg.norm(invM)}, {invM.shape}, {invM.dtype}")
     msg.warning(f"J: {np.linalg.norm(J)}, {J.shape}, {J.dtype}")
     msg.warning(f"h: {np.linalg.norm(h)}, {h.shape}, {h.dtype}")
     msg.warning(f"u_minus: {np.linalg.norm(u_minus)}, {u_minus.shape}, {u_minus.dtype}")
     msg.warning(f"v_star: {np.linalg.norm(v_star)}, {v_star.shape}, {v_star.dtype}\n")
+
+    # Print quantities in full
+    msg.warning(f"M {M.shape}, {M.dtype}:\n{M}\n")
+    msg.warning(f"invM {invM.shape}, {invM.dtype}:\n{invM}\n")
+    msg.warning(f"J {J.shape}, {J.dtype}:\n{J}\n")
+    msg.warning(f"h {h.shape}, {h.dtype}:\n{h}\n")
+    msg.warning(f"u_minus {u_minus.shape}, {u_minus.dtype}:\n{u_minus}\n")
+    msg.warning(f"v_star {v_star.shape}, {v_star.dtype}:\n{v_star}\n\n")
 
     # Extract problem dimensions
     nbd = M.shape[0]

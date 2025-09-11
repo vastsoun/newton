@@ -56,7 +56,7 @@ def _control_callback(
 
     # Apply a time-dependent external force
     if t > t_start and t < t_end:
-        state_joints_tau_j[jid] = 4.0
+        state_joints_tau_j[jid] = -3.0
     else:
         state_joints_tau_j[jid] = 0.0
 
@@ -397,7 +397,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--mode",
         choices=["hdf5", "viewer"],
-        default="viewer",
+        default="hdf5",
         help="Simulation mode: 'hdf5' for data collection, 'viewer' for live visualization"
     )
     parser.add_argument("--clear-cache", action="store_true", default=True, help="Clear warp cache")

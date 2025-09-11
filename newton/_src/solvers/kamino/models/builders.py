@@ -7,12 +7,14 @@ import math
 import warp as wp
 
 from newton._src.solvers.kamino.core import ModelBuilder
-from newton._src.solvers.kamino.core.types import vec3f, vec6f, mat33f, transformf, Axis
-from newton._src.solvers.kamino.core.math import FLOAT32_MIN, FLOAT32_MAX, I_3
+from newton._src.solvers.kamino.core.inertia import (
+    solid_cuboid_body_moment_of_inertia,
+    solid_sphere_body_moment_of_inertia,
+)
+from newton._src.solvers.kamino.core.joints import JointActuationType, JointDoFType
+from newton._src.solvers.kamino.core.math import FLOAT32_MAX, FLOAT32_MIN, I_3
 from newton._src.solvers.kamino.core.shapes import BoxShape, SphereShape
-from newton._src.solvers.kamino.core.joints import JointDoFType, JointActuationType
-from newton._src.solvers.kamino.core.inertia import solid_sphere_body_moment_of_inertia, solid_cuboid_body_moment_of_inertia
-
+from newton._src.solvers.kamino.core.types import Axis, transformf, vec3f, vec6f
 
 ###
 # Module interface
@@ -20,14 +22,14 @@ from newton._src.solvers.kamino.core.inertia import solid_sphere_body_moment_of_
 
 __all__ = [
     "add_ground_geom",
-    "offset_builder",
     "build_box_on_plane",
     "build_box_pendulum",
     "build_box_pendulum_vertical",
+    "build_boxes_fourbar",
     "build_boxes_hinged",
     "build_boxes_nunchaku",
     "build_boxes_nunchaku_vertical",
-    "build_boxes_fourbar",
+    "offset_builder",
 ]
 
 
@@ -35,16 +37,17 @@ __all__ = [
 # Builder modifiers
 ###
 
+
 def add_ground_geom(builder: ModelBuilder, group: int = 1, collides: int = 1) -> int:
     """Adds a static collision layer and geometry to a given builder to represent a flat ground plane."""
     builder.add_collision_layer("world")
     gid = builder.add_collision_geometry(
-            body_id=-1,
-            shape=BoxShape(20.0, 20.0, 1.0),
-            offset=transformf(0.0, 0.0, -0.5, 0.0, 0.0, 0.0, 1.0),
-            group=group,
-            collides=collides
-        )
+        body_id=-1,
+        shape=BoxShape(20.0, 20.0, 1.0),
+        offset=transformf(0.0, 0.0, -0.5, 0.0, 0.0, 0.0, 1.0),
+        group=group,
+        collides=collides,
+    )
     return gid
 
 
@@ -55,7 +58,7 @@ def offset_builder(builder: ModelBuilder, offset: transformf):
         # Math::Matrix3 R_i = R_offset * R_of(s_i.segment<4>(3));
         # Math::Vector3 r_i = r_offset + R_offset * s_i.segment<3>(0);
         # s_i << r_i, to_quaternion(R_i);
-        builder.bodies[i].q_i_0 = wp.mul(offset,  builder.bodies[i].q_i_0)
+        builder.bodies[i].q_i_0 = wp.mul(offset, builder.bodies[i].q_i_0)
 
 
 def add_velocity_bias(builder: ModelBuilder, bias: vec6f):
@@ -71,6 +74,7 @@ def add_velocity_bias(builder: ModelBuilder, bias: vec6f):
 ###
 # Builders for unit-tests
 ###
+
 
 def build_revolute_joint_test_system(builder: ModelBuilder):
     ###
@@ -155,7 +159,8 @@ def build_box_on_plane(builder: ModelBuilder, z_offset: float = 0.0, ground: boo
     # Add a static collision layer and geometry for the plane
     if ground:
         builder.add_collision_layer("world")
-        gids.append(builder.add_collision_geometry(
+        gids.append(
+            builder.add_collision_geometry(
                 body_id=-1,
                 shape=BoxShape(20.0, 20.0, 1.0),
                 offset=transformf(0.0, 0.0, -0.5, 0.0, 0.0, 0.0, 1.0),
@@ -166,12 +171,7 @@ def build_box_on_plane(builder: ModelBuilder, z_offset: float = 0.0, ground: boo
     return bids, jids, gids
 
 
-def build_box_pendulum(
-    builder: ModelBuilder,
-    z_offset: float = 0.7,
-    ground: bool = True
-) -> BuilderInfo:
-
+def build_box_pendulum(builder: ModelBuilder, z_offset: float = 0.7, ground: bool = True) -> BuilderInfo:
     # Create lists of BIDs, JIDs and GIDs
     bids = []
     jids = []
@@ -212,7 +212,8 @@ def build_box_pendulum(
     # Add a static collision layer and geometry for the plane
     if ground:
         builder.add_collision_layer("world")
-        gids.append(builder.add_collision_geometry(
+        gids.append(
+            builder.add_collision_geometry(
                 body_id=-1,
                 shape=BoxShape(20.0, 20.0, 1.0),
                 offset=transformf(0.0, 0.0, -0.5, 0.0, 0.0, 0.0, 1.0),
@@ -223,12 +224,7 @@ def build_box_pendulum(
     return bids, jids, gids
 
 
-def build_box_pendulum_vertical(
-    builder: ModelBuilder,
-    z_offset: float = 0.7,
-    ground: bool = True
-) -> BuilderInfo:
-
+def build_box_pendulum_vertical(builder: ModelBuilder, z_offset: float = 0.7, ground: bool = True) -> BuilderInfo:
     # Create lists of BIDs, JIDs and GIDs
     bids = []
     jids = []
@@ -269,7 +265,8 @@ def build_box_pendulum_vertical(
     # Add a static collision layer and geometry for the plane
     if ground:
         builder.add_collision_layer("world")
-        gids.append(builder.add_collision_geometry(
+        gids.append(
+            builder.add_collision_geometry(
                 body_id=-1,
                 shape=BoxShape(20.0, 20.0, 1.0),
                 offset=transformf(0.0, 0.0, -0.5, 0.0, 0.0, 0.0, 1.0),
@@ -332,12 +329,13 @@ def build_boxes_hinged(builder: ModelBuilder, z_offset: float = 0.0, ground: boo
     # Add a static collision layer and geometry for the plane
     if ground:
         builder.add_collision_layer("world")
-        gids.append(builder.add_collision_geometry(
+        gids.append(
+            builder.add_collision_geometry(
                 body_id=-1,
                 shape=BoxShape(20.0, 20.0, 1.0),
                 offset=transformf(0.0, 0.0, -0.5, 0.0, 0.0, 0.0, 1.0),
                 group=1,
-                collides=7
+                collides=7,
             )
         )
 
@@ -368,7 +366,7 @@ def build_boxes_nunchaku(builder: ModelBuilder, z_offset: float = 0.0, ground: b
     bid0 = builder.add_body(
         m_i=m_0,
         i_I_i=solid_cuboid_body_moment_of_inertia(m_0, d, w, h),
-        q_i_0=transformf(0.5*d, 0.0, 0.5*h + z_0, 0.0, 0.0, 0.0, 1.0),
+        q_i_0=transformf(0.5 * d, 0.0, 0.5 * h + z_0, 0.0, 0.0, 0.0, 1.0),
         u_i_0=vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
     )
     bids.append(bid0)
@@ -386,7 +384,7 @@ def build_boxes_nunchaku(builder: ModelBuilder, z_offset: float = 0.0, ground: b
     bid2 = builder.add_body(
         m_i=m_2,
         i_I_i=solid_cuboid_body_moment_of_inertia(m_2, d, w, h),
-        q_i_0=transformf(1.5*d + 2.0*r, 0.0, 0.5*h + z_0, 0.0, 0.0, 0.0, 1.0),
+        q_i_0=transformf(1.5 * d + 2.0 * r, 0.0, 0.5 * h + z_0, 0.0, 0.0, 0.0, 1.0),
         u_i_0=vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
     )
     bids.append(bid2)
@@ -397,7 +395,7 @@ def build_boxes_nunchaku(builder: ModelBuilder, z_offset: float = 0.0, ground: b
         act_type=JointActuationType.PASSIVE,
         bid_B=bid0,
         bid_F=bid1,
-        B_r_Bj=vec3f(0.5*d, 0.0, 0.0),
+        B_r_Bj=vec3f(0.5 * d, 0.0, 0.0),
         F_r_Fj=vec3f(-r, 0.0, 0.0),
         X_j=I_3,
     )
@@ -410,7 +408,7 @@ def build_boxes_nunchaku(builder: ModelBuilder, z_offset: float = 0.0, ground: b
         bid_B=bid1,
         bid_F=bid2,
         B_r_Bj=vec3f(r, 0.0, 0.0),
-        F_r_Fj=vec3f(-0.5*d, 0.0, 0.0),
+        F_r_Fj=vec3f(-0.5 * d, 0.0, 0.0),
         X_j=I_3,
     )
     jids.append(jid1)
@@ -424,12 +422,13 @@ def build_boxes_nunchaku(builder: ModelBuilder, z_offset: float = 0.0, ground: b
     # Add a static collision layer and geometry for the plane
     if ground:
         builder.add_collision_layer("world")
-        gids.append(builder.add_collision_geometry(
+        gids.append(
+            builder.add_collision_geometry(
                 body_id=-1,
                 shape=BoxShape(20.0, 20.0, 1.0),
                 offset=transformf(0.0, 0.0, -0.5, 0.0, 0.0, 0.0, 1.0),
                 group=1,
-                collides=7
+                collides=7,
             )
         )
 
@@ -437,11 +436,7 @@ def build_boxes_nunchaku(builder: ModelBuilder, z_offset: float = 0.0, ground: b
     return bids, jids, gids
 
 
-def build_boxes_nunchaku_vertical(
-    builder: ModelBuilder,
-    z_offset: float = 0.0,
-    ground: bool = True
-) -> BuilderInfo:
+def build_boxes_nunchaku_vertical(builder: ModelBuilder, z_offset: float = 0.0, ground: bool = True) -> BuilderInfo:
     # Create lists of BIDs, JIDs and GIDs
     bids = []
     jids = []
@@ -464,7 +459,7 @@ def build_boxes_nunchaku_vertical(
     bid0 = builder.add_body(
         m_i=m_0,
         i_I_i=solid_cuboid_body_moment_of_inertia(m_0, d, w, h),
-        q_i_0=transformf(0.0, 0.0, 0.5*h + z_0, 0.0, 0.0, 0.0, 1.0),
+        q_i_0=transformf(0.0, 0.0, 0.5 * h + z_0, 0.0, 0.0, 0.0, 1.0),
         u_i_0=vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
     )
     bids.append(bid0)
@@ -482,7 +477,7 @@ def build_boxes_nunchaku_vertical(
     bid2 = builder.add_body(
         m_i=m_2,
         i_I_i=solid_cuboid_body_moment_of_inertia(m_2, d, w, h),
-        q_i_0=transformf(0.0, 0.0, 1.5*h + 2.0*r + z_0, 0.0, 0.0, 0.0, 1.0),
+        q_i_0=transformf(0.0, 0.0, 1.5 * h + 2.0 * r + z_0, 0.0, 0.0, 0.0, 1.0),
         u_i_0=vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
     )
     bids.append(bid2)
@@ -493,7 +488,7 @@ def build_boxes_nunchaku_vertical(
         act_type=JointActuationType.PASSIVE,
         bid_B=bid0,
         bid_F=bid1,
-        B_r_Bj=vec3f(0.0, 0.0, 0.5*h),
+        B_r_Bj=vec3f(0.0, 0.0, 0.5 * h),
         F_r_Fj=vec3f(0.0, 0.0, -r),
         X_j=I_3,
     )
@@ -506,7 +501,7 @@ def build_boxes_nunchaku_vertical(
         bid_B=bid1,
         bid_F=bid2,
         B_r_Bj=vec3f(0.0, 0.0, r),
-        F_r_Fj=vec3f(0.0, 0.0, -0.5*h),
+        F_r_Fj=vec3f(0.0, 0.0, -0.5 * h),
         X_j=I_3,
     )
     jids.append(jid1)
@@ -520,12 +515,13 @@ def build_boxes_nunchaku_vertical(
     # Add a static collision layer and geometry for the plane
     if ground:
         builder.add_collision_layer("world")
-        gids.append(builder.add_collision_geometry(
+        gids.append(
+            builder.add_collision_geometry(
                 body_id=-1,
                 shape=BoxShape(20.0, 20.0, 1.0),
                 offset=transformf(0.0, 0.0, -0.5, 0.0, 0.0, 0.0, 1.0),
                 group=1,
-                collides=7
+                collides=7,
             )
         )
 
@@ -539,7 +535,7 @@ def build_boxes_fourbar(
     fixedbase: bool = False,
     limits: bool = True,
     ground: bool = True,
-    verbose: bool = False
+    verbose: bool = False,
 ) -> BuilderInfo:
     # Create lists of BIDs, JIDs and GIDs
     bids = []
@@ -629,7 +625,7 @@ def build_boxes_fourbar(
         print(f"r_j4: {r_j4}")
 
     # Joint axes matrix
-    X_j = mat33f(0, 0, 1, 1, 0, 0, 0, 1, 0)
+    X_j = Axis.Y.to_mat33()
 
     ###
     # Bodies
@@ -756,7 +752,8 @@ def build_boxes_fourbar(
     # Add a static collision layer and geometry for the plane
     if ground:
         builder.add_collision_layer("world")
-        gids.append(builder.add_collision_geometry(
+        gids.append(
+            builder.add_collision_geometry(
                 body_id=-1,
                 shape=BoxShape(20.0, 20.0, 1.0),
                 offset=transformf(0.0, 0.0, -0.5, 0.0, 0.0, 0.0, 1.0),

@@ -245,9 +245,6 @@ def run_hdf5_mode(clear_warp_cache=True, use_cuda_graph=False, verbose=False):
     if verbose:
         print_frame(sim, 0)
 
-    nbd = sim.model.size.sum_of_num_body_dofs
-    njd = sim.model.size.sum_of_num_joint_dofs
-
     # Step the simulation and collect frames
     ns = 3000  # TODO: 25000
     msg.info(f"Collecting ns={ns} frames...")

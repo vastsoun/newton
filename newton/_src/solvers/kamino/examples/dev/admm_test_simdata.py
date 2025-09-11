@@ -84,19 +84,27 @@ def linsys_residual_l2norm(A: np.ndarray, b: np.ndarray, x: np.ndarray) -> float
 # Constants
 ###
 
+
+# PROBLEM_TYPE = "Primitive"
+# PROBLEM_TYPE = "Robotics"
+PROBLEM_TYPE = "Animatronics"
+
 # PROBLEM_NAME = "boxes_hinged"
 # PROBLEM_NAME = "fourbar_free"
 PROBLEM_NAME = "walker"
+
+PROBLEM_CATEGORY = "RedundantJoints"
+# PROBLEM_CATEGORY = "DenseConstraints"
+
 
 # Retrieve the path to the data directory
 DATA_DIR_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../data"))
 
 # Set the path to the generated HDF5 dataset file
-# HDF5_DATASET_PATH = f"{DATA_DIR_PATH}/hdf5/{PROBLEM_NAME}.hdf5"
 HDF5_DATASET_PATH = f"{DATA_DIR_PATH}/hdf5/simdata.hdf5"
 
 # Set path for generated plots
-PLOT_OUTPUT_PATH = f"{DATA_DIR_PATH}/plots/{PROBLEM_NAME}"
+PLOT_OUTPUT_PATH = f"{DATA_DIR_PATH}/plots/simdata/{PROBLEM_NAME}"
 
 ###
 # Main function
@@ -109,15 +117,11 @@ if __name__ == "__main__":
 
     # Construct and configure the data containers
     msg.info("Loading HDF5 data containers...")
-    datafile_ko = h5py.File(HDF5_DATASET_PATH, "r")
+    datafile = h5py.File(HDF5_DATASET_PATH, "r")
 
     # Retrieve target data frames
-    # FRAME = 1
-    # FRAME = 10
-    # FRAME = 100
-    # FRAME = 173
-    # dataframe_ko = datafile_ko[f"Worlds/{PROBLEM_NAME}/frames/{FRAME}/DualProblem"]
-    dataframe_ko = datafile_ko[f"Animatronics/{PROBLEM_NAME}/DenseConstraints/0/DualProblem"]
+    SAMPLE = 1
+    dataframe = datafile[f"{PROBLEM_TYPE}/{PROBLEM_NAME}/{PROBLEM_CATEGORY}/{SAMPLE}/DualProblem"]
 
     # Create data containers
     pdata = hdf5.DualProblemData()
@@ -125,32 +129,13 @@ if __name__ == "__main__":
     # Extract data from HDF5
     np_dtype = np.float64
     # np_dtype = np.float32
-    pdata.load(dataset=dataframe_ko, dtype=np_dtype)
+    pdata.load(dataset=dataframe, dtype=np_dtype)
 
     # Create output directories
     os.makedirs(PLOT_OUTPUT_PATH, exist_ok=True)
 
     # Configure the machine-precision epsilon based in the imported dtype
     eps = float(np.finfo(np_dtype).eps)
-
-    ###
-    # Regularization
-    ###
-
-    # Regularization parameters
-    # NOTE: These should be configured to those used in the simulation
-    eta = np_dtype(1e-6)
-    rho = np_dtype(1.0)
-    epsilon = rho + eta
-    r_epsilon = np_dtype(1) / epsilon
-    I_epsilon = epsilon * np.eye(pdata.D.shape[0], dtype=np_dtype)
-    msg.warning(
-        f"Regularization:"
-        f"\nrho: {rho}, {rho.dtype}"
-        f"\neta: {eta}, {eta.dtype}"
-        f"\nepsilon: {epsilon}, {epsilon.dtype}"
-        f"\nr_epsilon: {r_epsilon}, {r_epsilon.dtype}\n"
-    )
 
     ###
     # Dynamics Quantities
@@ -167,12 +152,20 @@ if __name__ == "__main__":
     h = dt * pdata.h
     u_minus = pdata.u_minus
     v_star = pdata.v_i + pdata.v_b
-    msg.warning(f"invM: {np.linalg.norm(invM)}, {invM.shape}, {invM.dtype}")
     msg.warning(f"M: {np.linalg.norm(M)}, {M.shape}, {M.dtype}")
+    msg.warning(f"invM: {np.linalg.norm(invM)}, {invM.shape}, {invM.dtype}")
     msg.warning(f"J: {np.linalg.norm(J)}, {J.shape}, {J.dtype}")
     msg.warning(f"h: {np.linalg.norm(h)}, {h.shape}, {h.dtype}")
     msg.warning(f"u_minus: {np.linalg.norm(u_minus)}, {u_minus.shape}, {u_minus.dtype}")
     msg.warning(f"v_star: {np.linalg.norm(v_star)}, {v_star.shape}, {v_star.dtype}\n")
+
+    # # Print quantities in full
+    # msg.warning(f"M {M.shape}, {M.dtype}:\n{M}\n")
+    # msg.warning(f"invM {invM.shape}, {invM.dtype}:\n{invM}\n")
+    # msg.warning(f"J {J.shape}, {J.dtype}:\n{J}\n")
+    # msg.warning(f"h {h.shape}, {h.dtype}:\n{h}\n")
+    # msg.warning(f"u_minus {u_minus.shape}, {u_minus.dtype}:\n{u_minus}\n")
+    # msg.warning(f"v_star {v_star.shape}, {v_star.dtype}:\n{v_star}\n\n")
 
     # Extract problem dimensions
     nbd = M.shape[0]
@@ -237,7 +230,6 @@ if __name__ == "__main__":
     # Retrieve the dual dynamics quantities
     # NOTE: These are also the dual Schur-complement quantities
     D = pdata.D
-    # D -= I_epsilon  # Remove Delassus regularization
     d = -pdata.v_f
     v_f = pdata.v_f - v_star  # Remove the free-velocity bias
     msg.warning(f"D: {np.linalg.norm(D)}, {D.shape}, {D.dtype}")
@@ -282,7 +274,7 @@ if __name__ == "__main__":
         eta=1e-3,
         rho=1.0,
         omega=1.0,
-        maxiter=20,
+        maxiter=200,
     )
 
     # As KKT system

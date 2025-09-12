@@ -4,17 +4,27 @@
 
 import numpy as np
 
-from newton._src.solvers.kamino.utils.linalg.matrix import (
+from ..matrix import (
     assert_is_square_matrix,
     assert_is_symmetric_matrix,
 )
 
 ###
-# Factorization
+# Module interface
+###
+
+__all__ = [
+    "ldlt_blocked_lower",
+    "ldlt_blocked_upper",
+]
+
+
+###
+# Factorize
 ###
 
 
-def compute_ldlt_blocked_lower(
+def ldlt_blocked_lower(
     A: np.ndarray, block_size: int = 1, check_symmetric: bool = True
 ) -> tuple[np.ndarray, np.ndarray]:
     """
@@ -84,7 +94,7 @@ def compute_ldlt_blocked_lower(
     return L, D
 
 
-def compute_ldlt_blocked_upper(
+def ldlt_blocked_upper(
     A: np.ndarray, block_size: int = 1, check_symmetric: bool = True
 ) -> tuple[np.ndarray, np.ndarray]:
     """

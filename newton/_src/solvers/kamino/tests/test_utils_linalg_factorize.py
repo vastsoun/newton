@@ -16,17 +16,19 @@
 """Unit tests for linear algebra utilities"""
 
 import unittest
-import numpy as np
 from dataclasses import dataclass
+
+import numpy as np
+
 import newton._src.solvers.kamino.tests.utils.random as rand
 
 # Module to be tested
 import newton._src.solvers.kamino.utils.linalg as linalg
 
-
 ###
 # Helpers
 ###
+
 
 @dataclass
 class FactorizerProblem:
@@ -51,18 +53,20 @@ class FactorizerPerformance:
 
 
 def run_factorizer_performance_test(
-    factorizer: linalg.FactorizerType,
-    problem: FactorizerProblem
+    factorizer: linalg.FactorizerType, problem: FactorizerProblem
 ) -> FactorizerPerformance:
-
     # TODO
     factorizer.factorize(problem.A)
     A_rec = factorizer.reconstructed()
     A_err = problem.A - A_rec
     abs_factorization_error_norm_l2 = np.linalg.norm(A_err)
     abs_factorization_error_norm_inf = np.max(np.abs(A_err))
-    rel_factorization_error_norm_l2 = abs_factorization_error_norm_l2 / problem.A_norm_l2 if problem.A_norm_l2 > 0 else np.nan
-    rel_factorization_error_norm_inf = abs_factorization_error_norm_inf / problem.A_norm_inf if problem.A_norm_inf > 0 else np.nan
+    rel_factorization_error_norm_l2 = (
+        abs_factorization_error_norm_l2 / problem.A_norm_l2 if problem.A_norm_l2 > 0 else np.nan
+    )
+    rel_factorization_error_norm_inf = (
+        abs_factorization_error_norm_inf / problem.A_norm_inf if problem.A_norm_inf > 0 else np.nan
+    )
 
     # TODO
     x = factorizer.solve(problem.b)
@@ -89,8 +93,8 @@ def run_factorizer_performance_test(
 # Tests
 ###
 
-class TestFactorizations(unittest.TestCase):
 
+class TestFactorizations(unittest.TestCase):
     def setUp(self):
         self.verbose = True  # Set to True for verbose output
 
@@ -111,13 +115,13 @@ class TestFactorizations(unittest.TestCase):
         print(f"eigenvalues ({len(eigenvalues)})[{eigenvalues.dtype}]:\n{eigenvalues}\n")
 
         # Generate a random symmetric matrix
-        A = rand.random_symmetric_matrix(dim, eigenvalues=eigenvalues, scale=1.0, dtype=dtype, seed=seed)
+        A = rand.random_symmetric_matrix(dim, eigenvalues=eigenvalues, scale=scale, dtype=dtype, seed=seed)
         print(f"A ({A.shape})[{A.dtype}]:\n{A}\n")
         A_props = linalg.SquareSymmetricMatrixProperties(A)
         print(f"A properties:\n{A_props}\n")
 
         # Generate a random right-hand side vector to complete the linear system
-        b = rand.random_rhs_for_matrix(A, scale=1.0)
+        b = rand.random_rhs_for_matrix(A, scale=scale)
         b_norm_l2 = np.linalg.norm(b)
         b_norm_inf = np.max(np.abs(b))
         print(f"b ({b.shape})[{b.dtype}]:\n{b}\n")
@@ -146,8 +150,12 @@ class TestFactorizations(unittest.TestCase):
         A_err_norm_inf = np.max(np.abs(A_err))
         print(f"factorization: absolute error (L2): {A_err_norm_l2}")
         print(f"factorization: absolute error (L∞): {A_err_norm_inf}")
-        print(f"factorization: relative error (L2): {A_err_norm_l2 / A_props.norm_l2 if A_props.norm_l2 > 0 else np.nan}")
-        print(f"factorization: relative error (L∞): {A_err_norm_inf / A_props.norm_inf if A_props.norm_inf > 0 else np.nan}\n")
+        print(
+            f"factorization: relative error (L2): {A_err_norm_l2 / A_props.norm_l2 if A_props.norm_l2 > 0 else np.nan}"
+        )
+        print(
+            f"factorization: relative error (L∞): {A_err_norm_inf / A_props.norm_inf if A_props.norm_inf > 0 else np.nan}\n"
+        )
 
         solve_err = A @ x - b
         solver_error_norm_l2 = np.linalg.norm(solve_err)

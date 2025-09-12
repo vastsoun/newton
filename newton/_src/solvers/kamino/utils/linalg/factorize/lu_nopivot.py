@@ -22,14 +22,15 @@ import numpy as np
 ###
 
 __all__ = [
-    "compute_lu_backward_upper",
-    "compute_lu_forward_lower",
     "lu_nopiv",
+    "lu_nopiv_solve",
+    "lu_nopiv_solve_backward_upper",
+    "lu_nopiv_solve_forward_lower",
 ]
 
 
 ###
-# Factorization
+# Factorize
 ###
 
 
@@ -59,7 +60,12 @@ def lu_nopiv(A: np.ndarray, tol: float = 1e-12):
     return L, U
 
 
-def compute_lu_forward_lower(L: np.ndarray, b: np.ndarray):
+###
+# Solve
+###
+
+
+def lu_nopiv_solve_forward_lower(L: np.ndarray, b: np.ndarray) -> np.ndarray:
     """
     Solve Ly = b for unit-lower-triangular L (diag(L)=1).
     Works even if some columns of L were 'skipped' (multipliers left at 0).
@@ -73,7 +79,7 @@ def compute_lu_forward_lower(L: np.ndarray, b: np.ndarray):
     return y
 
 
-def compute_lu_backward_upper(U: np.ndarray, y: np.ndarray, tol: float = 1e-12):
+def lu_nopiv_solve_backward_upper(U: np.ndarray, y: np.ndarray, tol: float = 1e-12) -> np.ndarray:
     """
     Solve Ux = y by back-substitution (for square, nonsingular U).
     """
@@ -89,44 +95,13 @@ def compute_lu_backward_upper(U: np.ndarray, y: np.ndarray, tol: float = 1e-12):
             if np.abs(U[i, i]) <= tol:
                 raise np.linalg.LinAlgError("Singular U encountered in back-substitution.")
             x[i, j] = (y[i, j] - U[i, i + 1 :] @ x[i + 1 :, j]) / U[i, i]
-    return x.squeeze() if x.shape[1] == 1 else x
+    return x
 
 
-###
-# Factorizer
-###
-
-
-# # ---------------------------
-# # Example usage / sanity checks
-# # ---------------------------
-# if __name__ == "__main__":
-#     # dtype = np.float64
-#     dtype = np.float32
-
-#     A = np.array([[1.0, 2.0], [2.0, 4.0], [3.0, 6.0]], dtype=dtype)
-#     print(f"\nA {A.shape}[{A.dtype}]:\n{A}\n")
-#     b1 = np.array([3.0, 6.0, 9.0], dtype=dtype)  # in the span
-#     print(f"\nb1 {b1.shape}[{b1.dtype}]:\n{b1}\n")
-#     b2 = np.array([3.0, 6.0, 10.0], dtype=dtype)  # not in the span
-#     print(f"\nb2 {b2.shape}[{b2.dtype}]:\n{b2}\n")
-
-#     # ok1, ranks1, dbg1 = in_range_via_lu(A, b1)
-#     # ok2, ranks2, dbg2 = in_range_via_lu(A, b2)
-#     # print(ok1, ranks1)  # True,  (rankA, rankAb) like (1,1)
-#     # print(ok2, ranks2)  # False, (1,2)
-
-#     # For a square nonsingular A, we can also solve Ax=b with LU:
-#     A2 = np.array([[2.0, 1.0], [3.0, 4.0]], dtype=dtype)
-#     b3 = np.array([5.0, 11.0], dtype=dtype)
-#     L, U = lu_nopiv(A2)
-#     print(f"\nL {L.shape}[{L.dtype}]:\n{L}\n")
-#     print(f"\nU {U.shape}[{U.dtype}]:\n{U}\n")
-#     y = compute_lu_forward_lower(L, b3)
-#     print(f"\ny {y.shape}[{y.dtype}]:\n{y}\n")
-#     x = compute_lu_backward_upper(U, y)
-#     print(f"\nx {x.shape}[{x.dtype}]:\n{x}\n")
-
-#     lu = FactorizerLUNoPivot(A=A2, tol=1e-12)
-#     x = lu.solve(b3)
-#     print(f"\nx {x.shape}[{x.dtype}]:\n{x}\n")
+def lu_nopiv_solve(L: np.ndarray, U: np.ndarray, b: np.ndarray, tol: float = 1e-12) -> np.ndarray:
+    """
+    Solve Ax = b given LU factorization A = LU (w/o pivoting).
+    """
+    y = lu_nopiv_solve_forward_lower(L, b)
+    x = lu_nopiv_solve_backward_upper(U, y, tol=tol)
+    return x

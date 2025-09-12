@@ -19,7 +19,7 @@ from enum import IntEnum
 
 import numpy as np
 
-from .linear import LLT, ComputationInfo, LDLTEigen3
+from .linear import ComputationInfo, LinearSolverType, NumPySolver
 
 ###
 # Functions
@@ -95,6 +95,9 @@ class ADMMSolver:
         rho: float = 1.0,
         omega: float = 1.0,
         maxiter: int = 200,
+        linsys_atol: float | None = None,
+        linsys_rtol: float | None = None,
+        linsys_ftol: float | None = None,
     ):
         # Meta-data
         self.dtype: np.dtype = dtype
@@ -118,7 +121,9 @@ class ADMMSolver:
         self.r_c: np.ndarray | None = None
 
         # Linear system solver
-        self.linear_solver = None
+        self.linsys_atol: float | None = linsys_atol
+        self.linsys_rtol: float | None = linsys_rtol
+        self.linsys_solver: LinearSolverType = NumPySolver(dtype=self.dtype, atol=linsys_atol, rtol=linsys_rtol)
 
         # KKT linear problem
         self.K: np.ndarray | None = None
@@ -154,26 +159,6 @@ class ADMMSolver:
     ###
     # Internal operations
     ###
-
-    def _factorize(self, mat: np.ndarray, use_cholesky: bool, use_ldlt: bool):
-        if use_cholesky:
-            try:
-                self.llt = LLT(mat)
-            except np.linalg.LinAlgError:
-                raise ValueError("Matrix is not positive definite!")
-        elif use_ldlt:
-            try:
-                self.ldlt = LDLTEigen3(mat)
-            except np.linalg.LinAlgError:
-                raise ValueError("Matrix is not positive definite!")
-
-    def _solve_system(self, mat: np.ndarray, vec: np.ndarray, use_cholesky: bool, use_ldlt: bool) -> np.ndarray:
-        if use_cholesky:
-            return self.llt.solve(vec)
-        elif use_ldlt:
-            return self.ldlt.solve(vec)
-        else:
-            return np.linalg.solve(mat, vec)
 
     def _update_state(self):
         """Update the ADMM state vectors: primal, slack and dual variables."""
@@ -223,7 +208,6 @@ class ADMMSolver:
         h: np.ndarray,
         u_minus: np.ndarray,
         v_star: np.ndarray,
-        use_ldlt: bool = False,
     ) -> ADMMStatus:
         self.dtype = M.dtype
         self.status = ADMMStatus(dtype=self.dtype)
@@ -254,14 +238,14 @@ class ADMMSolver:
         self.K[: self.ncts, self.ncts :] = J
         self.K[: self.ncts, : self.ncts] = -(self.eta + self.rho) * np.eye(self.ncts, dtype=self.dtype)
 
-        self._factorize(self.K, False, use_ldlt)
+        self.linsys_solver.compute(A=self.K)
 
         for i in range(self.maxiter):
             self.status.iterations += 1
 
             self.v[:] = -v_star + self.eta * self.x_p + self.rho * self.y_p + self.z_p
             self.k[: self.ncts] = self.v
-            self.ux[:] = self._solve_system(self.K, self.k, False, use_ldlt)
+            self.ux[:] = self.linsys_solver.solve(b=self.k)
             self.x[:] = -self.ux[: self.ncts]
 
             self._update_state()
@@ -285,8 +269,6 @@ class ADMMSolver:
         h: np.ndarray,
         u_minus: np.ndarray,
         v_star: np.ndarray,
-        use_cholesky: bool = False,
-        use_ldlt: bool = False,
     ) -> ADMMStatus:
         self.dtype = M.dtype
         self.status = ADMMStatus(dtype=self.dtype)
@@ -312,14 +294,14 @@ class ADMMSolver:
         self.p = np.zeros_like(self.w)
         self.P = M + r_epsilon * (J.T @ J)
 
-        self._factorize(self.P, use_cholesky, use_ldlt)
+        self.linsys_solver.compute(A=self.P)
 
         for i in range(self.maxiter):
             self.status.iterations += 1
 
             self.v[:] = -v_star + self.eta * self.x_p + self.rho * self.y_p + self.z_p
             self.p[:] = self.w + r_epsilon * (J.T @ self.v)
-            self.u[:] = self._solve_system(self.P, self.p, use_cholesky, use_ldlt)
+            self.u[:] = self.linsys_solver.solve(b=self.p)
             self.x[:] = r_epsilon * (self.v - J @ self.u)
 
             self._update_state()
@@ -345,8 +327,6 @@ class ADMMSolver:
         invM: np.ndarray,
         J: np.ndarray,
         h: np.ndarray,
-        use_cholesky: bool = False,
-        use_ldlt: bool = False,
         use_preconditioning: bool = False,
     ) -> ADMMStatus:
         self.dtype = D.dtype
@@ -373,13 +353,13 @@ class ADMMSolver:
             self.D = S @ self.D @ S
         self.D += (self.eta + self.rho) * np.eye(D.shape[0])
 
-        self._factorize(self.D, use_cholesky, use_ldlt)
+        self.linsys_solver.compute(A=self.D)
 
         for i in range(self.maxiter):
             self.status.iterations += 1
 
             self.d[:] = self.v + self.eta * self.x_p + self.rho * self.y_p + self.z_p
-            self.x[:] = self._solve_system(self.D, self.d, use_cholesky, use_ldlt)
+            self.x[:] = self.linsys_solver.solve(b=self.d)
 
             self._update_state()
             self._compute_residuals(i)
@@ -400,9 +380,9 @@ class ADMMSolver:
         return self.status
 
     def save_info(self, path: str, suffix: str = ""):
-        import os
+        import os  # noqa: PLC0415
 
-        import matplotlib.pyplot as plt
+        import matplotlib.pyplot as plt  # noqa: PLC0415
 
         plt.figure(figsize=(8, 4))
         plt.plot(self.info.r_p)

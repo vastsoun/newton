@@ -4,7 +4,7 @@
 
 import numpy as np
 
-from .matrix import (
+from ..matrix import (
     MatrixSign,
     _make_tolerance,
     assert_is_square_matrix,
@@ -16,20 +16,20 @@ from .matrix import (
 ###
 
 __all__ = [
-    "compute_ldlt_eigen3_inplace_lower",
-    "compute_ldlt_eigen3_lower",
-    "compute_ldlt_eigen3_solve",
-    "compute_ldlt_eigen3_solve_inplace",
-    "unpack_ldlt_eigen3",
+    "ldlt_eigen3_lower",
+    "ldlt_eigen3_lower_inplace",
+    "ldlt_eigen3_lower_solve",
+    "ldlt_eigen3_lower_solve_inplace",
+    "ldlt_eigen3_lower_unpack",
 ]
 
 
 ###
-# Factorization
+# Factorize
 ###
 
 
-def compute_ldlt_eigen3_inplace_lower(mat, transpositions, temp, sign_ref):
+def ldlt_eigen3_lower_inplace(mat, transpositions, temp, sign_ref):
     # mat: (n,n) numpy array (real or complex), modified in-place
     # transpositions: (n,) int array, modified in-place
     # temp: (n,) workspace array (same dtype as mat), modified in-place
@@ -177,7 +177,7 @@ def compute_ldlt_eigen3_inplace_lower(mat, transpositions, temp, sign_ref):
     return ret
 
 
-def compute_ldlt_eigen3_lower(
+def ldlt_eigen3_lower(
     A: np.ndarray, itype: np.dtype = np.int32, check_symmetry: bool = False
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, MatrixSign, bool]:
     assert_is_square_matrix(A)
@@ -213,18 +213,18 @@ def compute_ldlt_eigen3_lower(
 
     # Otherwise, proceed with the factorization
     else:
-        success = compute_ldlt_eigen3_inplace_lower(LD, transpositions, scratch, sign)
+        success = ldlt_eigen3_lower_inplace(LD, transpositions, scratch, sign)
 
     # Return the tuple of factorization data
     return LD, transpositions, scratch, sign[0], success
 
 
 ###
-# Linear systems
+# Solve
 ###
 
 
-def compute_ldlt_eigen3_solve_inplace(
+def ldlt_eigen3_lower_solve_inplace(
     LD: np.ndarray,
     transpositions: np.ndarray,
     x: np.ndarray,
@@ -271,18 +271,18 @@ def compute_ldlt_eigen3_solve_inplace(
             x[k], x[p] = x[p], x[k]
 
 
-def compute_ldlt_eigen3_solve(mat: np.ndarray, transpositions: np.ndarray, b: np.ndarray, tol: float = 1e-8) -> bool:
+def ldlt_eigen3_lower_solve(mat: np.ndarray, transpositions: np.ndarray, b: np.ndarray, tol: float = 1e-8) -> bool:
     x = b.astype(mat.dtype, copy=True)
-    compute_ldlt_eigen3_solve_inplace(mat, transpositions, x, tol)
+    ldlt_eigen3_lower_solve_inplace(mat, transpositions, x, tol)
     return x
 
 
 ###
-# Unpacking
+# Unpack
 ###
 
 
-def unpack_ldlt_eigen3(
+def ldlt_eigen3_lower_unpack(
     LD: np.ndarray,
     transpositions: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -302,8 +302,3 @@ def unpack_ldlt_eigen3(
 
     # Return the unpacked factorization
     return L, D, P
-
-
-###
-# Factorizer
-###

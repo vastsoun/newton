@@ -17,7 +17,7 @@
 
 import numpy as np
 
-from .matrix import (
+from ..matrix import (
     _make_tolerance,
     assert_is_square_matrix,
     assert_is_symmetric_matrix,
@@ -28,25 +28,25 @@ from .matrix import (
 ###
 
 __all__ = [
-    "compute_cholesky_lower",
-    "compute_cholesky_lower_reconstruct",
-    "compute_cholesky_lower_solve",
-    "compute_cholesky_upper",
-    "compute_cholesky_upper_reconstruct",
-    "compute_cholesky_upper_solve",
-    "compute_cholesky_with_tolerance_lower",
-    "compute_cholesky_with_tolerance_upper",
-    "compute_cholesky_without_conditionals_lower",
-    "compute_cholesky_without_conditionals_upper",
+    "llt_std_lower",
+    "llt_std_lower_reconstruct",
+    "llt_std_lower_solve",
+    "llt_std_lower_with_tolerance",
+    "llt_std_lower_without_conditionals",
+    "llt_std_upper",
+    "llt_std_upper_reconstruct",
+    "llt_std_upper_solve",
+    "llt_std_upper_with_tolerance",
+    "llt_std_upper_without_conditionals",
 ]
 
 
 ###
-# Factorization
+# Factorize
 ###
 
 
-def compute_cholesky_lower(A: np.ndarray, check_symmetry: bool = True) -> np.ndarray:
+def llt_std_lower(A: np.ndarray, check_symmetry: bool = True) -> np.ndarray:
     assert_is_square_matrix(A)
     if check_symmetry:
         assert_is_symmetric_matrix(A)
@@ -69,7 +69,7 @@ def compute_cholesky_lower(A: np.ndarray, check_symmetry: bool = True) -> np.nda
     return L
 
 
-def compute_cholesky_upper(A: np.ndarray, check_symmetry: bool = True) -> np.ndarray:
+def llt_std_upper(A: np.ndarray, check_symmetry: bool = True) -> np.ndarray:
     assert_is_square_matrix(A)
     if check_symmetry:
         assert_is_symmetric_matrix(A)
@@ -92,9 +92,7 @@ def compute_cholesky_upper(A: np.ndarray, check_symmetry: bool = True) -> np.nda
     return U
 
 
-def compute_cholesky_with_tolerance_lower(
-    A: np.ndarray, tol: float | None = None, check_symmetry: bool = True
-) -> np.ndarray:
+def llt_std_lower_with_tolerance(A: np.ndarray, tol: float | None = None, check_symmetry: bool = True) -> np.ndarray:
     assert_is_square_matrix(A)
     if check_symmetry:
         assert_is_symmetric_matrix(A)
@@ -118,9 +116,7 @@ def compute_cholesky_with_tolerance_lower(
     return L
 
 
-def compute_cholesky_with_tolerance_upper(
-    A: np.ndarray, tol: float | None = None, check_symmetry: bool = True
-) -> np.ndarray:
+def llt_std_upper_with_tolerance(A: np.ndarray, tol: float | None = None, check_symmetry: bool = True) -> np.ndarray:
     assert_is_square_matrix(A)
     if check_symmetry:
         assert_is_symmetric_matrix(A)
@@ -144,7 +140,7 @@ def compute_cholesky_with_tolerance_upper(
     return U
 
 
-def compute_cholesky_without_conditionals_lower(
+def llt_std_lower_without_conditionals(
     A: np.ndarray, tol: float | None = None, check_symmetry: bool = True
 ) -> np.ndarray:
     assert_is_square_matrix(A)
@@ -182,7 +178,7 @@ def compute_cholesky_without_conditionals_lower(
     return L
 
 
-def compute_cholesky_without_conditionals_upper(
+def llt_std_upper_without_conditionals(
     A: np.ndarray, tol: float | None = None, check_symmetry: bool = True
 ) -> np.ndarray:
     assert_is_square_matrix(A)
@@ -221,11 +217,11 @@ def compute_cholesky_without_conditionals_upper(
 
 
 ###
-# Linear systems
+# Solve
 ###
 
 
-def compute_cholesky_lower_solve_inplace(L: np.ndarray, x: np.ndarray) -> None:
+def llt_std_lower_solve_inplace(L: np.ndarray, x: np.ndarray) -> None:
     # Ensure rhs is a numpy array with the same dtype as L
     x = np.asarray(x, dtype=L.dtype)
 
@@ -248,7 +244,7 @@ def compute_cholesky_lower_solve_inplace(L: np.ndarray, x: np.ndarray) -> None:
         x[i] = sum / L[i, i]
 
 
-def compute_cholesky_lower_solve(L: np.ndarray, b: np.ndarray) -> np.ndarray:
+def llt_std_lower_solve(L: np.ndarray, b: np.ndarray) -> np.ndarray:
     # Ensure rhs is a numpy array with the same dtype as L
     b = np.asarray(b, dtype=L.dtype)
 
@@ -275,7 +271,7 @@ def compute_cholesky_lower_solve(L: np.ndarray, b: np.ndarray) -> np.ndarray:
     return x
 
 
-def compute_cholesky_upper_solve(U: np.ndarray, b: np.ndarray) -> np.ndarray:
+def llt_std_upper_solve(U: np.ndarray, b: np.ndarray) -> np.ndarray:
     # Ensure rhs is a numpy array with the same dtype as U
     b = np.asarray(b, dtype=U.dtype)
 
@@ -307,9 +303,9 @@ def compute_cholesky_upper_solve(U: np.ndarray, b: np.ndarray) -> np.ndarray:
 ###
 
 
-def compute_cholesky_lower_reconstruct(L: np.ndarray) -> np.ndarray:
+def llt_std_lower_reconstruct(L: np.ndarray) -> np.ndarray:
     return L @ L.T
 
 
-def compute_cholesky_upper_reconstruct(U: np.ndarray) -> np.ndarray:
+def llt_std_upper_reconstruct(U: np.ndarray) -> np.ndarray:
     return U @ U.T

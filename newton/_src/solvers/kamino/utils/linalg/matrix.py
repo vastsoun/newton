@@ -64,12 +64,13 @@ class MatrixSign(IntEnum):
 
 
 def _make_tolerance(tol: float | None = None, dtype: np.dtype = np.float64):
+    eps = np.finfo(dtype).eps
     if tol is None:
-        tol = dtype.type(np.finfo(dtype).eps)
+        tol = dtype.type(eps)
     else:
-        if not isinstance(tol, (float, np.float32, np.float64)):
+        if not isinstance(tol, float | np.float32 | np.float64):
             raise ValueError("tolerance 'tol' must be a `float`, `np.float32`, or `np.float64` value.")
-    return dtype.type(tol)
+    return dtype.type(max(tol, eps))
 
 
 def is_square_matrix(A: np.ndarray) -> bool:
@@ -438,9 +439,9 @@ class MatrixComparison:
         symbol_B: str = "B",
     ):
         """Save error visualizations to the specified path."""
-        import os
+        import os  # noqa: PLC0415
 
-        from newton._src.solvers.kamino.utils.sparse import sparseview
+        from newton._src.solvers.kamino.utils.sparse import sparseview  # noqa: PLC0415
 
         os.makedirs(path, exist_ok=True)
         sparseview(self.A, title=f"{title} {name_A}", path=os.path.join(path, f"{symbol_A}.png"))

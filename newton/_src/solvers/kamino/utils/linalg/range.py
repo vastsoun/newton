@@ -17,6 +17,11 @@
 
 import numpy as np
 
+from .factorize.lu_nopivot import (
+    lu_nopiv,
+    lu_nopiv_solve_forward_lower,
+)
+
 
 def in_range_no_pivot(A: np.ndarray, b: np.ndarray, tol: float = 1e-12):
     """
@@ -100,7 +105,7 @@ def in_range_via_lu(A: np.ndarray, b: np.ndarray, tol: float = 1e-12):
         debug: dict with L, U, y
     """
     L, U = lu_nopiv(A, tol=tol)
-    y = forward_sub_unit_lower(L, b)
+    y = lu_nopiv_solve_forward_lower(L, b)
 
     # Helper: row is (numerically) zero if all entries ≤ tol in magnitude
     def zero_row(row):

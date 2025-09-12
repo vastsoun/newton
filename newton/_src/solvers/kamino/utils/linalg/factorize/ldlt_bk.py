@@ -2,11 +2,10 @@
 # KAMINO: Utilities: Linear Algebra: LDLT w/ Bunch-Kaufman pivoting
 ###########################################################################
 
-from typing import Any
 
 import numpy as np
 
-from newton._src.solvers.kamino.utils.linalg.matrix import (
+from ..matrix import (
     _make_tolerance,
     assert_is_square_matrix,
     assert_is_symmetric_matrix,
@@ -17,10 +16,10 @@ from newton._src.solvers.kamino.utils.linalg.matrix import (
 ###
 
 __all__ = [
-    "compute_ldlt_bk_lower",
-    "compute_ldlt_bk_lower_reconstruct",
-    "compute_ldlt_bk_lower_solve",
-    "unpack_ldlt_bk_lower",
+    "ldlt_bk_lower",
+    "ldlt_bk_lower_reconstruct",
+    "ldlt_bk_lower_solve",
+    "ldlt_bk_lower_unpack",
 ]
 
 
@@ -48,11 +47,11 @@ def _swap_rows_cols_sym(A, i, j):
 
 
 ###
-# Factorization
+# Factorize
 ###
 
 
-def compute_ldlt_bk_lower(
+def ldlt_bk_lower(
     A: np.ndarray,
     tol: float | None = None,
     itype: np.dtype = np.int64,
@@ -65,6 +64,7 @@ def compute_ldlt_bk_lower(
         assert_is_symmetric_matrix(A)
 
     tol = _make_tolerance(tol, dtype=A.dtype)
+    alpha = A.dtype.type(alpha)
 
     n = A.shape[0]
 
@@ -170,11 +170,11 @@ def compute_ldlt_bk_lower(
 
 
 ###
-# Linear systems
+# Solve
 ###
 
 
-def compute_ldlt_bk_lower_solve(
+def ldlt_bk_lower_solve(
     L: np.ndarray, D: np.ndarray, perm: np.ndarray, b: np.ndarray, tol: float | None = None
 ) -> np.ndarray:
     n = L.shape[0]
@@ -230,24 +230,24 @@ def compute_ldlt_bk_lower_solve(
 
 
 ###
-# Reconstruction
+# Reconstruct
 ###
 
 
-def compute_ldlt_bk_lower_reconstruct(L: np.ndarray, D: np.ndarray, perm: np.ndarray) -> np.ndarray:
+def ldlt_bk_lower_reconstruct(L: np.ndarray, D: np.ndarray, perm: np.ndarray) -> np.ndarray:
     S = L @ D @ L.T
     A_hat = np.zeros_like(S)
     A_hat[np.ix_(perm, perm)] = S
     return A_hat
 
 
-def unpack_ldlt_bk_lower(
+###
+# Unpack
+###
+
+
+def ldlt_bk_lower_unpack(
     matrix: np.ndarray, diagonals: np.ndarray, permutations: np.ndarray
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     P = np.eye(matrix.shape[0], dtype=matrix.dtype)[:, permutations]
     return matrix, diagonals, P
-
-
-###
-# Factorizer
-###

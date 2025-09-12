@@ -247,6 +247,7 @@ if __name__ == "__main__":
     # Reference solutions using numpy & scipy
     ###
 
+    # x_np = np.linalg.lstsq(D, d)[0]
     x_np = np.linalg.solve(D, d)
     u_np = compute_u_plus(u_minus, invM, J, h, x_np)
     ux_np = np.concatenate((u_np, -x_np))
@@ -254,6 +255,7 @@ if __name__ == "__main__":
     msg.warning(f"u_np: {np.linalg.norm(u_np)}")
     msg.warning(f"x_np: {np.linalg.norm(x_np)}\n")
 
+    # x_sp = linalg.lstsq(D, d)[0]
     x_sp = linalg.solve(D, d)
     u_sp = compute_u_plus(u_minus, invM, J, h, x_sp)
     ux_sp = np.concatenate((u_sp, -x_sp))
@@ -278,7 +280,7 @@ if __name__ == "__main__":
     )
 
     # As KKT system
-    status = admm.solve_kkt(M, J, h, u_minus, v_star, use_ldlt=False)
+    status = admm.solve_kkt(M, J, h, u_minus, v_star)
     admm.save_info(path=PLOT_OUTPUT_PATH, suffix="_kkt")
     u_admm_kkt = admm.u_plus
     x_admm_kkt = admm.lambdas
@@ -298,7 +300,7 @@ if __name__ == "__main__":
     print(f"ADMM K properties:\n{properties_K_admm}")
 
     # As primal Schur complement system
-    status = admm.solve_schur_primal(M, J, h, u_minus, v_star, use_cholesky=False, use_ldlt=False)
+    status = admm.solve_schur_primal(M, J, h, u_minus, v_star)
     admm.save_info(path=PLOT_OUTPUT_PATH, suffix="_schur_primal")
     x_admm_schur_prim = admm.lambdas
     u_admm_schur_prim = admm.u_plus
@@ -318,7 +320,7 @@ if __name__ == "__main__":
     print(f"ADMM P properties:\n{properties_P_admm}")
 
     # As dual Schur complement system
-    status = admm.solve_schur_dual(D, v_f, v_star, u_minus, invM, J, h, use_cholesky=False, use_ldlt=False, use_preconditioning=False)
+    status = admm.solve_schur_dual(D, v_f, v_star, u_minus, invM, J, h, use_preconditioning=False)
     admm.save_info(path=PLOT_OUTPUT_PATH, suffix="_schur_dual")
     x_admm_schur_dual = admm.lambdas
     u_admm_schur_dual = admm.u_plus
@@ -338,7 +340,7 @@ if __name__ == "__main__":
     print(f"ADMM D properties:\n{properties_D_admm}")
 
     # As dual Schur complement system w/ preconditioning
-    status = admm.solve_schur_dual(D, v_f, v_star, u_minus, invM, J, h, use_cholesky=False, use_ldlt=False, use_preconditioning=True)
+    status = admm.solve_schur_dual(D, v_f, v_star, u_minus, invM, J, h, use_preconditioning=True)
     admm.save_info(path=PLOT_OUTPUT_PATH, suffix="_schur_dual_prec")
     x_admm_schur_dual_prec = admm.lambdas
     u_admm_schur_dual_prec = admm.u_plus
@@ -365,6 +367,13 @@ if __name__ == "__main__":
     k_norm_inf = np.max(np.abs(k))
     d_norm_l2 = np.linalg.norm(d)
     d_norm_inf = np.max(np.abs(d))
+
+    u_np_norm = np.linalg.norm(u_np)
+    u_sp_norm = np.linalg.norm(u_sp)
+    u_admm_kkt_norm = np.linalg.norm(u_admm_kkt)
+    u_admm_schur_prim_norm = np.linalg.norm(u_admm_schur_prim)
+    u_admm_schur_dual_norm = np.linalg.norm(u_admm_schur_dual)
+    u_admm_schur_dual_prec_norm = np.linalg.norm(u_admm_schur_dual_prec)
 
     ux_np_norm = np.linalg.norm(ux_np)
     ux_sp_norm = np.linalg.norm(ux_sp)
@@ -439,6 +448,15 @@ if __name__ == "__main__":
     ###
     # Summary of solving the KKT system
     ###
+
+    # Compare solution norms
+    print("\nu NORMS:")
+    print(f"u_np                   : {u_np_norm}")
+    print(f"u_sp                   : {u_sp_norm}")
+    print(f"u_admm_kkt             : {u_admm_kkt_norm}")
+    print(f"u_admm_schur_prim      : {u_admm_schur_prim_norm}")
+    print(f"u_admm_schur_dual      : {u_admm_schur_dual_norm}")
+    print(f"u_admm_schur_dual_prec : {u_admm_schur_dual_prec_norm}")
 
     # Compare solution norms
     print("\nux NORMS:")

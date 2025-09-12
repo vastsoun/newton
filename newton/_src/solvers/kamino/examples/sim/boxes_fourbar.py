@@ -212,9 +212,6 @@ def run_hdf5_mode(clear_warp_cache=True, use_cuda_graph=False, load_from_usd=Fal
     if verbose:
         print_frame(sim, 0)
 
-    nbd = sim.model.size.sum_of_num_body_dofs
-    njd = sim.model.size.sum_of_num_joint_dofs
-
     # Step the simulation and collect frames
     ns = 10000
     msg.info(f"Collecting ns={ns} frames...")
@@ -295,7 +292,7 @@ class BoxesFourbarExample:
 
         # Initialize the simulator with a warm-up step
         self.sim.reset()
-        
+
         # Don't capture graphs initially to avoid CUDA stream conflicts
         self.graph = None
 
@@ -303,17 +300,17 @@ class BoxesFourbarExample:
         """Extract geometry information from the kamino simulator."""
         # Get collision geometry information from the simulator
         cgeom_model = self.sim.model.cgeoms
-        
+
         self.box_dimensions = []
         self.ground_info = None
-        
+
         # Extract box dimensions and ground plane info from collision geometries
         for i in range(cgeom_model.num_geoms):
             bid = cgeom_model.bid.numpy()[i]  # Body ID (-1 for static/ground)
             sid = cgeom_model.sid.numpy()[i]  # Shape ID (5 = BOX from SHAPE_BOX constant)
             params = cgeom_model.params.numpy()[i]  # Shape parameters
             offset = cgeom_model.offset.numpy()[i]  # Geometry offset
-            
+
             if sid == 5:  # BOX shape (SHAPE_BOX = 5)
                 if bid == -1:  # Ground plane (static body)
                     # Ground plane: params = [depth, width, height, 0]
@@ -324,7 +321,7 @@ class BoxesFourbarExample:
                 else:  # Regular box bodies
                     # Box dimensions: params = [depth, width, height, 0]
                     self.box_dimensions.append((params[0], params[1], params[2]))
-        
+
 
     def capture(self):
         """Capture CUDA graph if available."""
@@ -353,7 +350,7 @@ class BoxesFourbarExample:
         # Extract body poses from the kamino simulator
         try:
             body_poses = self.sim.model_data.bodies.q_i.numpy()
-            
+
             # Render each box using log_shapes
             for i, (dimensions, color) in enumerate(zip(self.box_dimensions, self.box_colors, strict=False)):
                 if i < len(body_poses):
@@ -422,7 +419,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--mode",
         choices=["hdf5", "viewer"],
-        default="viewer",
+        default="hdf5",
         help="Simulation mode: 'hdf5' for data collection, 'viewer' for live visualization"
     )
     parser.add_argument("--clear-cache", action="store_true", default=True, help="Clear warp cache")
@@ -470,7 +467,7 @@ if __name__ == "__main__":
 
         # Create and run example
         example = BoxesFourbarExample(viewer, load_from_usd=args.load_from_usd)
-        
+
         # Set initial camera position for better view of the fourbar mechanism
         if hasattr(viewer, 'set_camera'):
             # Position camera to get a good view of the fourbar mechanism
@@ -478,5 +475,5 @@ if __name__ == "__main__":
             pitch = -8.5
             yaw = -261.3
             viewer.set_camera(camera_pos, pitch, yaw)
-        
+
         newton.examples.run(example)

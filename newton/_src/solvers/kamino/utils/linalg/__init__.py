@@ -22,12 +22,7 @@ from .admm import (
     compute_lambdas,
     compute_u_plus,
 )
-from .ldlt_bk import LDLTBunchKaufman
-from .ldlt_blocked import LDLTBlocked
-from .ldlt_eigen3 import LDLTEigen3
-from .ldlt_nopivot import LDLTNoPivot
-from .llt_std import LLT
-from .lu_nopiv import LUNoPivot
+from .linear import LLT, LDLTBlocked, LDLTBunchKaufman, LDLTEigen3, LDLTNoPivot, LUNoPivot, NumpySolve, ScipySolve
 from .matrix import (
     MatrixComparison,
     MatrixSign,
@@ -57,7 +52,9 @@ __all__ = [
     "LUNoPivot",
     "MatrixComparison",
     "MatrixSign",
+    "NumpySolve",
     "RectangularMatrixProperties",
+    "ScipySolve",
     "SquareSymmetricMatrixProperties",
     "compute_lambdas",
     "compute_u_plus",

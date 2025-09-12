@@ -2,29 +2,12 @@
 # KAMINO: Utilities: Linear Algebra: Block LDLT
 ###########################################################################
 
-from typing import Any
-
 import numpy as np
 
-from newton._src.solvers.kamino.utils.linalg.factorizer import MatrixFactorizer
-from newton._src.solvers.kamino.utils.linalg.ldlt_nopivot import (
-    compute_ldlt_lower_solve_inplace,
-    compute_ldlt_upper_solve_inplace,
-)
 from newton._src.solvers.kamino.utils.linalg.matrix import (
     assert_is_square_matrix,
     assert_is_symmetric_matrix,
 )
-
-###
-# Module interface
-###
-
-__all__ = [
-    "compute_ldlt_blocked_lower",
-    "compute_ldlt_blocked_upper",
-]
-
 
 ###
 # Factorization
@@ -169,73 +152,3 @@ def compute_ldlt_blocked_upper(
             U[k:end, i : i + block_size] = U_ki
 
     return U, D
-
-
-###
-# Factorizer
-###
-
-
-class LDLTBlocked(MatrixFactorizer):
-    def __init__(
-        self,
-        A: np.ndarray | None = None,
-        tol: float | None = None,
-        dtype: np.dtype | None = None,
-        itype: np.dtype | None = None,
-        blocksize: int = 1,
-        upper: bool = False,
-        check_symmetry: bool = False,
-        compute_error: bool = False,
-    ):
-        # Declare internal data structures
-        self._diagonals: np.ndarray | None = None
-        self._blocksize: int = blocksize
-
-        # Declare optional unpacked factors
-        self.L: np.ndarray | None = None
-        self.U: np.ndarray | None = None
-        self.D: np.ndarray | None = None
-
-        # Call the parent constructor
-        super().__init__(
-            A=A,
-            tol=tol,
-            dtype=dtype,
-            itype=itype,
-            upper=upper,
-            check_symmetry=check_symmetry,
-            compute_error=compute_error,
-        )
-
-    def _factorize_impl(self, A: np.ndarray) -> None:
-        if self._upper:
-            self._matrix, self._diagonals = compute_ldlt_blocked_upper(A, self._blocksize)
-        else:
-            self._matrix, self._diagonals = compute_ldlt_blocked_lower(A, self._blocksize)
-
-    def _unpack_impl(self) -> None:
-        if self._upper:
-            self.U, self.D = self._matrix, self._diagonals
-        else:
-            self.L, self.D = self._matrix, self._diagonals
-
-    def _get_unpacked_impl(self) -> Any:
-        if self._upper:
-            return self.U, self.D
-        return self.L, self.D
-
-    def _solve_inplace_impl(self, x: np.ndarray):
-        b = np.asarray(x, dtype=self._matrix.dtype, copy=True)
-        if self._upper:
-            compute_ldlt_upper_solve_inplace(self._matrix, self._diagonals, b)
-        else:
-            compute_ldlt_lower_solve_inplace(self._matrix, self._diagonals, b)
-        x[:] = b
-
-    def _reconstruct_impl(self) -> np.ndarray:
-        if self._upper:
-            U, D = self.unpacked()
-            return U @ D @ U.T
-        L, D = self.unpacked()
-        return L @ D @ L.T

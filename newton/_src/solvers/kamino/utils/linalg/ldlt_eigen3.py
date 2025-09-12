@@ -2,12 +2,10 @@
 # KAMINO: Utilities: Linear Algebra: LDLT based on that of Eigen3
 ###########################################################################
 
-from typing import Any
-
 import numpy as np
 
-from newton._src.solvers.kamino.utils.linalg.factorizer import MatrixFactorizer, MatrixSign
-from newton._src.solvers.kamino.utils.linalg.matrix import (
+from .matrix import (
+    MatrixSign,
     _make_tolerance,
     assert_is_square_matrix,
     assert_is_symmetric_matrix,
@@ -18,7 +16,6 @@ from newton._src.solvers.kamino.utils.linalg.matrix import (
 ###
 
 __all__ = [
-    "LDLTEigen3",
     "compute_ldlt_eigen3_inplace_lower",
     "compute_ldlt_eigen3_lower",
     "compute_ldlt_eigen3_solve",
@@ -310,61 +307,3 @@ def unpack_ldlt_eigen3(
 ###
 # Factorizer
 ###
-
-
-class LDLTEigen3(MatrixFactorizer):
-    def __init__(
-        self,
-        A: np.ndarray | None = None,
-        tol: float | None = None,
-        dtype: np.dtype | None = None,
-        itype: np.dtype | None = None,
-        upper: bool = False,
-        check_symmetry: bool = False,
-        compute_error: bool = False,
-    ):
-        # Declare internal data structures
-        self._transpositions: np.ndarray | None = None
-        self._scratch: np.ndarray | None = None
-
-        # Declare optional unpacked factors
-        self.L: np.ndarray | None = None
-        self.D: np.ndarray | None = None
-        self.P: np.ndarray | None = None
-
-        # Raise error if upper requested since it's not supported
-        if upper:
-            raise ValueError("Upper triangular form is not yet supported")
-
-        # Call the parent constructor
-        super().__init__(
-            A=A,
-            tol=tol,
-            dtype=dtype,
-            itype=itype,
-            upper=upper,
-            check_symmetry=check_symmetry,
-            compute_error=compute_error,
-        )
-
-    @property
-    def transpositions(self) -> np.ndarray | None:
-        return self._transpositions
-
-    def _factorize_impl(self, A: np.ndarray) -> None:
-        self._matrix, self._transpositions, self._scratch, self._sign, self._success = compute_ldlt_eigen3_lower(
-            A, self._itype
-        )
-
-    def _unpack_impl(self) -> None:
-        self.L, self.D, self.P = unpack_ldlt_eigen3(self._matrix, self._transpositions)
-
-    def _get_unpacked_impl(self) -> Any:
-        return self.L, self.D, self.P
-
-    def _solve_inplace_impl(self, x: np.ndarray):
-        compute_ldlt_eigen3_solve_inplace(self._matrix, self._transpositions, x, self._tolerance)
-
-    def _reconstruct_impl(self) -> np.ndarray:
-        L, D, P = self.unpacked()
-        return P @ (L @ D @ L.T) @ P.T

@@ -23,7 +23,86 @@ from .factorize.lu_nopivot import (
 )
 
 
-def in_range_no_pivot(A: np.ndarray, b: np.ndarray, tol: float = 1e-12):
+def in_range_via_rank(A: np.ndarray, b: np.ndarray) -> bool:
+    """
+    b is in range(A) iff rank(A) == rank([A|b])
+    """
+    b = b.reshape(-1, 1)
+    rank_A = np.linalg.matrix_rank(A)
+    rank_Ab = np.linalg.matrix_rank(np.hstack([A, b]))
+    return rank_A == rank_Ab
+
+
+def in_range_via_residual(A: np.ndarray, b: np.ndarray) -> bool:
+    """
+    Solve min_x ||Ax - b||_2 and test if residual is ~0.
+    Tolerance scales with numerical precision and conditioning of A.
+    """
+    b = b.reshape(-1, 1)
+
+    # Least-squares solution
+    x, *_ = np.linalg.lstsq(A, b, rcond=None)
+    r = b - A @ x
+    r_norm = float(np.linalg.norm(r))
+
+    # Compute singular values for scaling the tolerance
+    s = np.linalg.svd(A, compute_uv=False)
+
+    # Scale-aware tolerance: eps * max(n) * sigma_max(A) * ||b||
+    eps = float(np.finfo(s.dtype).eps)
+    sigma_max = float(s[0]) if s.size else float(1.0)
+    tol = eps * max(A.shape) * sigma_max * float(np.linalg.norm(b))
+    return r_norm <= tol, r_norm, float(tol), x.ravel()
+
+
+def svd_rank(s: np.ndarray, shape: tuple, rcond: float | None = None):
+    """
+    Determine numerical rank from singular values using a pinv-like threshold.
+    """
+    m, n = shape
+    if rcond is None:
+        rcond = float(np.finfo(s.dtype).eps)
+    tol = rcond * max(m, n) * (s[0] if s.size else 0.0)
+    return int(np.sum(s > tol)), float(tol)
+
+
+def in_range_via_left_nullspace(U: np.ndarray, s: np.ndarray, b: np.ndarray, shape: tuple, rcond: float | None = None):
+    """
+    b is in range(A) iff U0^T b ≈ 0, where U0 are left singular vectors for zero sigmas.
+    Returns (bool, residual_norm, tol).
+    """
+    r, _ = svd_rank(s, shape, rcond)
+
+    U0 = U[:, r:]  # left-nullspace basis (empty if full rank)
+    if U0.size == 0:
+        return True, 0.0, 0.0
+
+    w = U0.T @ b
+    res = float(np.linalg.norm(w))
+    norm_b = float(np.linalg.norm(b))
+    eps = float(np.finfo(b.dtype).eps)
+    tol_b = eps * float(max(shape)) * norm_b
+    return res <= tol_b, res, tol_b
+
+
+def in_range_via_projection(U: np.ndarray, s: np.ndarray, b: np.ndarray, shape: tuple, rcond: float | None = None):
+    """
+    Project b onto span(U_r) and measure the leftover: ||(I - U_r U_r^T) b||.
+    Returns (bool, distance_to_range, tol, b_proj).
+    """
+    r, _ = svd_rank(s, shape, rcond)
+
+    Ur = U[:, :r]
+    b_proj = Ur @ (Ur.T @ b) if r > 0 else np.zeros_like(b)
+    residual = b - b_proj
+    norm_b = float(np.linalg.norm(b))
+    dist = float(np.linalg.norm(residual))
+    eps = float(np.finfo(b.dtype).eps)
+    tol_b = eps * float(max(shape)) * norm_b
+    return dist <= tol_b, dist, tol_b, b_proj
+
+
+def in_range_via_gaussian_elimination(A: np.ndarray, b: np.ndarray, tol: float = 1e-12):
     """
     Check if b is in the range (column space) of A by forming the augmented
     matrix Ab = [A | b] and performing Gaussian elimination without pivoting.
@@ -122,19 +201,3 @@ def in_range_via_lu(A: np.ndarray, b: np.ndarray, tol: float = 1e-12):
     rank_Ab = rank_A + (1 if inconsistent else 0)
 
     return (not inconsistent), (rank_A, rank_Ab), {"L": L, "U": U, "y": y}
-
-
-# --- Example ---
-if __name__ == "__main__":
-    # dtype = np.float64
-    dtype = np.float32
-
-    A = np.array([[1.0, 2.0], [2.0, 4.0], [3.0, 6.0]], dtype=dtype)
-    print(f"\nA {A.shape}[{A.dtype}]:\n{A}\n")
-    b1 = np.array([3.0, 6.0, 9.0], dtype=dtype)  # in the span
-    print(f"\nb1 {b1.shape}[{b1.dtype}]:\n{b1}\n")
-    b2 = np.array([3.0, 6.0, 10.0], dtype=dtype)  # not in the span
-    print(f"\nb2 {b2.shape}[{b2.dtype}]:\n{b2}\n")
-
-    print(f"b1 ∈ range(A): {in_range_no_pivot(A, b1)[0]}")  # True
-    print(f"b2 ∈ range(A): {in_range_no_pivot(A, b2)[0]}")  # False

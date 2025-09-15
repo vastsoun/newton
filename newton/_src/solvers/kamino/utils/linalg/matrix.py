@@ -143,7 +143,9 @@ class RectangularMatrixProperties:
         """The condition number defined via the ratio of max/min singular values."""
 
         # Caches
-        self.sigmas: np.ndarray = np.array([])
+        self.sigmas: np.ndarray | None = None
+        self.U: np.ndarray | None = None
+        self.Vt: np.ndarray | None = None
 
         # Compute matrix properties if specified
         if matrix is not None:
@@ -186,7 +188,7 @@ class RectangularMatrixProperties:
         self.norm_inf = np.linalg.norm(self.matrix, ord=np.inf)
 
         # Extract the matrix singular values
-        self.sigmas = np.linalg.svd(self.matrix, compute_uv=False, hermitian=False).real
+        self.U, self.sigmas, self.Vt = np.linalg.svd(self.matrix, full_matrices=True, compute_uv=True, hermitian=False)
         self.sigma_min = self.sigmas[-1]
         self.sigma_max = self.sigmas[0]
         self.sigma_cond = self.sigma_max / self.sigma_min
@@ -285,8 +287,10 @@ class SquareSymmetricMatrixProperties:
         self.is_positive_semi_definite: bool = False
 
         # Caches
-        self.lambdas: np.ndarray = np.array([])
-        self.sigmas: np.ndarray = np.array([])
+        self.lambdas: np.ndarray | None = None
+        self.sigmas: np.ndarray | None = None
+        self.U: np.ndarray | None = None
+        self.Vt: np.ndarray | None = None
 
         # Compute matrix properties if specified
         if matrix is not None:
@@ -355,7 +359,7 @@ class SquareSymmetricMatrixProperties:
         self.lambda_cond = self.lambda_max / self.lambda_min
 
         # Extract the matrix singular values
-        self.sigmas = np.linalg.svd(self.matrix, compute_uv=False, hermitian=False).real
+        self.U, self.sigmas, self.Vt = np.linalg.svd(self.matrix, full_matrices=True, compute_uv=True, hermitian=False)
         self.sigma_min = self.sigmas[-1]
         self.sigma_max = self.sigmas[0]
         self.sigma_cond = self.sigma_max / self.sigma_min

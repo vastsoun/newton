@@ -22,6 +22,10 @@ from .admm import (
     compute_lambdas,
     compute_u_plus,
 )
+from .eigval import (
+    GramIteration,
+    PowerIteration,
+)
 from .linear import (
     ComputationInfo,
     ConjugateGradientSolver,
@@ -73,6 +77,7 @@ __all__ = [
     "ConjugateGradientSolver",
     "DirectSolver",
     "GaussSeidelSolver",
+    "GramIteration",
     "IndirectSolver",
     "JacobiSolver",
     "LDLTBlockedSolver",
@@ -92,6 +97,7 @@ __all__ = [
     "MatrixSign",
     "MinimumResidualSolver",
     "NumPySolver",
+    "PowerIteration",
     "RectangularMatrixProperties",
     "SORSolver",
     "SciPySolver",

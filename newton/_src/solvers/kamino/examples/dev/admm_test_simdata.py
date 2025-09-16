@@ -23,14 +23,10 @@ from typing import Any
 import h5py
 import numpy as np
 
+import newton._src.solvers.kamino.utils.linalg as linalg
 import newton._src.solvers.kamino.utils.logger as msg
 from newton._src.solvers.kamino.tests.utils.print import print_error_stats
 from newton._src.solvers.kamino.utils.io import hdf5
-from newton._src.solvers.kamino.utils.linalg import (
-    ADMMSolver,
-    ADMMStatus,
-    SquareSymmetricMatrixProperties,
-)
 from newton._src.solvers.kamino.utils.sparse import sparseview
 
 ###
@@ -141,6 +137,7 @@ class SolutionMetrics(ConstrainedDynamicsMetrics):
 
 @dataclass
 class BenchmarkProblem:
+    name: str | None = None
     crbd: ConstrainedDynamicsProblem | None = None
     kkt: LinearSystemProblem | None = None
     dual: LinearSystemProblem | None = None
@@ -156,6 +153,7 @@ class BenchmarkSolution:
 
 @dataclass
 class BenchmarkMetrics:
+    pname: str | None = None
     info: SolutionInfo | None = None
     data: SolutionMetrics | None = None
 
@@ -223,7 +221,7 @@ class BenchmarkMetrics:
         """Render a single instance as a one-row table string."""
 
         # Prepare title, columns, and rows
-        title = self._solverid()
+        title = self._solverid() + " @ " + (self.pname if self.pname else "Unknown")
         columns = self._metrics()
         rows = [[self._values()[c] for c in columns]]
 
@@ -240,11 +238,11 @@ class BenchmarkMetrics:
 
         # Compute total width for title centering
         total_width = sum(widths) + 3 * (len(widths) - 1)
-        title_line = title.center(total_width)
+        title = title.center(total_width)
 
         # Build and return data row
         line = " | ".join(val.rjust(w) for val, w in zip(rows[0], widths, strict=False))
-        return "\n".join([title_line, rule, header, rule, line, rule])
+        return "\n".join([title, rule, header, rule, line, rule])
 
     def __str__(self) -> str:
         """Pretty print a single instance as a one-row table."""
@@ -447,7 +445,7 @@ def make_kkt_system(
 
     # Optionally compute matrix properties
     if save_matrix_info:
-        properties_K = SquareSymmetricMatrixProperties(K)
+        properties_K = linalg.SquareSymmetricMatrixProperties(K)
         msg.info("K properties: %s", properties_K)
 
     # Optionally render the KKT matrix and symmetry error info as images
@@ -482,7 +480,7 @@ def make_dual_system(
 
     # Optionally compute matrix properties
     if save_matrix_info:
-        properties_D = SquareSymmetricMatrixProperties(D)
+        properties_D = linalg.SquareSymmetricMatrixProperties(D)
         msg.info("D properties: %s", properties_D)
 
     # Optionally render the primal schur complement matrix and symmetry error info as images
@@ -495,6 +493,7 @@ def make_dual_system(
 
 
 def make_benchmark_problem(
+    name: str,
     problem: ConstrainedDynamicsProblem,
     ensure_symmetric: bool = False,
     save_matrix_info: bool = False,
@@ -513,10 +512,10 @@ def make_benchmark_problem(
         save_matrix_info=save_matrix_info,
         save_symmetry_info=save_symmetry_info,
     )
-    return BenchmarkProblem(crbd=problem, kkt=kkt, dual=dual)
+    return BenchmarkProblem(name=name, crbd=problem, kkt=kkt, dual=dual)
 
 
-def make_benchmark_solution(admm: ADMMSolver, info: SolutionInfo) -> BenchmarkSolution:
+def make_benchmark_solution(admm: linalg.ADMMSolver, info: SolutionInfo) -> BenchmarkSolution:
     """Create a BenchmarkSolution from an ADMMSolver."""
     return BenchmarkSolution(
         crbd=ConstrainedDynamicsSolution(lambdas=admm.lambdas, u_plus=admm.u_plus, v_plus=admm.v_plus),
@@ -528,12 +527,12 @@ def make_benchmark_solution(admm: ADMMSolver, info: SolutionInfo) -> BenchmarkSo
 
 def make_benchmark_metrics(
     time: float,
-    status: ADMMStatus,
+    status: linalg.ADMMStatus,
     problem: BenchmarkProblem,
     solution: BenchmarkSolution,
 ) -> BenchmarkMetrics:
     # Create a new metrics container
-    metrics = BenchmarkMetrics(info=solution.info, data=SolutionMetrics())
+    metrics = BenchmarkMetrics(pname=problem.name, info=solution.info, data=SolutionMetrics())
 
     # Set the basic solution metrics
     metrics.data.converged = status.converged
@@ -556,7 +555,7 @@ def make_benchmark_metrics(
     return metrics
 
 
-def solve_benchmark_problem(problem: BenchmarkProblem, admm: ADMMSolver) -> list[BenchmarkMetrics]:
+def solve_benchmark_problem(problem: BenchmarkProblem, admm: linalg.ADMMSolver) -> list[BenchmarkMetrics]:
     """Solve a ConstrainedDynamicsProblem using an ADMM solver."""
 
     # Extract solver info
@@ -734,15 +733,31 @@ if __name__ == "__main__":
     msg.info("Loading HDF5 data containers...")
     datafile = h5py.File(HDF5_DATASET_PATH, "r")
 
-    # # Find and print all DualProblem paths
-    # dualproblem_paths = find_dualproblem_paths(datafile)
-    # msg.info(f"Found {len(dualproblem_paths)} DualProblem path(s).")
-    # for p in dualproblem_paths:
-    #     print(f"- {p}")
-
     # Select the numpy data type for computations
     np_dtype = np.float64
     # np_dtype = np.float32
+
+    ###
+    # Solver set-up
+    ###
+
+    # Create and configure the ADMM solver
+    admm = linalg.ADMMSolver(
+        dtype=np_dtype,
+        # primal_tolerance=1e-6,
+        # dual_tolerance=1e-6,
+        # compl_tolerance=1e-6,
+        # eta=1e-5,
+        # rho=1.0,
+        # omega=1.0,
+        # maxiter=200,
+        # linsys_atol=None,
+        # linsys_rtol=None,
+        # linsys_ftol=None,
+    )
+
+    # Configure the linear system solver
+    # admm.linsys_solver = linalg.NumPySolver()
 
     ###
     # Single-problem demo
@@ -750,21 +765,18 @@ if __name__ == "__main__":
 
     # Retrieve target data frames
     SAMPLE = 0
-    dataframe = datafile[f"{PROBLEM_TYPE}/{PROBLEM_NAME}/{PROBLEM_CATEGORY}/{SAMPLE}/DualProblem"]
+    fpath = f"{PROBLEM_TYPE}/{PROBLEM_NAME}/{PROBLEM_CATEGORY}/{SAMPLE}/DualProblem"
+    dataframe = datafile[fpath]
 
     # Load the problem data into a container
     msg.info(f"Loading problem data from '{dataframe.name}'...")
     problem = make_benchmark_problem(
+        name=fpath,
         problem=load_dualproblem_data(dataframe=dataframe, dtype=np_dtype),
         ensure_symmetric=False,
         save_matrix_info=False,
         save_symmetry_info=False,
     )
-    # print(f"\n{problem}\n")
-
-    # Create and configure the ADMM solver
-    admm = ADMMSolver(dtype=np_dtype)
-    print(f"solver_typename: {get_solver_typename(admm)}\n")
 
     # Solve the benchmark problem using the ADMM solver
     metrics = solve_benchmark_problem(problem, admm)
@@ -774,6 +786,38 @@ if __name__ == "__main__":
     ###
     # Multiple-problems demo
     ###
+
+    # Find and print all DualProblem paths
+    search_scope = f"{PROBLEM_TYPE}/{PROBLEM_NAME}/{PROBLEM_CATEGORY}"
+    msg.info(f"Searching for DualProblem paths in scope '{search_scope}'...")
+    dualproblem_paths = find_dualproblem_paths(datafile=datafile, scope=search_scope)
+    msg.info(f"Found {len(dualproblem_paths)} DualProblem path(s).")
+    for path in dualproblem_paths:
+        print(f"- {path}")
+
+    # Iterate over all found DualProblem paths
+    metrics = []
+    msg.info("Iterating over all found DualProblem paths...")
+    for path in dualproblem_paths:
+        problem = make_benchmark_problem(
+            name=path,
+            problem=load_dualproblem_data(dataframe=dataframe, dtype=np_dtype),
+            ensure_symmetric=False,
+            save_matrix_info=False,
+            save_symmetry_info=False,
+        )
+        metrics.extend(solve_benchmark_problem(problem, admm))
+
+    # TODO
+    for m in metrics:
+        print(f"\n{m}\n")
+
+    # TODO:
+    #   -  Iterate over metrics and create table/matrix for each metric
+    #   -  Create a list of unique solver IDs
+    #   -  Add collection of problem properties
+    #   -  Compute and print performance profiles for each metric
+    #   -  Create metric-vs-problem_size plots for each metric
 
     # Close the HDF5 data file
     datafile.close()

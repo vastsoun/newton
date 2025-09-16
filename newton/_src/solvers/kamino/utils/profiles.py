@@ -88,11 +88,11 @@ class PerformanceProfile:
     and cached for later use.
 
     Args:
-        data (np.ndarray): Array of shape (num_solvers, np) with measurements for num_solvers solvers
-            across np problems. Each entry typically represents a cost such as time,
+        data (np.ndarray): Array of shape (num_solvers, num_problems) with measurements for num_solvers
+            solvers across num_problems problems. Each entry typically represents a cost such as time,
             iterations, or error.
         success (np.ndarray | None): Optional boolean or integer array of shape
-            (num_solvers, np) indicating successful runs (nonzero/True means success). Failed
+            (num_solvers, num_problems) indicating successful runs (nonzero/True means success). Failed
             runs are excluded from the profile. If None, all runs are treated as
             successful.
         taumax (float): Maximum performance ratio τ for which the profile is

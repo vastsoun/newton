@@ -25,6 +25,7 @@ import numpy as np
 
 import newton._src.solvers.kamino.utils.linalg as linalg
 import newton._src.solvers.kamino.utils.logger as msg
+import newton._src.solvers.kamino.utils.profiles as profiles
 from newton._src.solvers.kamino.tests.utils.print import print_error_stats
 from newton._src.solvers.kamino.utils.io import hdf5
 from newton._src.solvers.kamino.utils.sparse import sparseview
@@ -421,22 +422,22 @@ def make_kkt_system(
     nbd = problem.M.shape[0]
     ncts = problem.J.shape[0]
     kdim = nbd + ncts
-    msg.info("nbd: %d", nbd)
-    msg.info("ncts: %d", ncts)
-    msg.info("kdim: %d", kdim)
+    msg.debug("nbd: %d", nbd)
+    msg.debug("ncts: %d", ncts)
+    msg.debug("kdim: %d", kdim)
 
     # Assemble the KKT matrix
     K = np.zeros((kdim, kdim), dtype=problem.M.dtype)
     K[:nbd, :nbd] = problem.M
     K[:nbd, nbd:] = problem.J.T
     K[nbd:, :nbd] = problem.J
-    msg.info("K: norm=%s, shape=%s, dtype=%s", np.linalg.norm(K), K.shape, K.dtype)
+    msg.debug("K: norm=%s, shape=%s, dtype=%s", np.linalg.norm(K), K.shape, K.dtype)
 
     # Assemble the KKT rhs
     k = np.zeros((kdim,), dtype=problem.M.dtype)
     k[:nbd] = problem.M @ problem.u_minus + problem.h
     k[nbd:] = -problem.v_star
-    msg.info("k: norm=%s, shape=%s, dtype=%s", np.linalg.norm(k), k.shape, k.dtype)
+    msg.debug("k: norm=%s, shape=%s, dtype=%s", np.linalg.norm(k), k.shape, k.dtype)
 
     # Optionally ensure symmetry of the KKT matrix
     if ensure_symmetric:
@@ -446,7 +447,7 @@ def make_kkt_system(
     # Optionally compute matrix properties
     if save_matrix_info:
         properties_K = linalg.SquareSymmetricMatrixProperties(K)
-        msg.info("K properties: %s", properties_K)
+        msg.debug("K properties: %s", properties_K)
 
     # Optionally render the KKT matrix and symmetry error info as images
     if save_symmetry_info:
@@ -470,8 +471,8 @@ def make_dual_system(
     # Assemble the dual system matrix and rhs
     D = problem.D
     d = -problem.v_f
-    msg.info("D: norm=%s, shape=%s, dtype=%s", np.linalg.norm(D), D.shape, D.dtype)
-    msg.info("d: norm=%s, shape=%s, dtype=%s", np.linalg.norm(d), d.shape, d.dtype)
+    msg.debug("D: norm=%s, shape=%s, dtype=%s", np.linalg.norm(D), D.shape, D.dtype)
+    msg.debug("d: norm=%s, shape=%s, dtype=%s", np.linalg.norm(d), d.shape, d.dtype)
 
     # Optionally ensure symmetry of the dual system matrix
     if ensure_symmetric:
@@ -481,7 +482,7 @@ def make_dual_system(
     # Optionally compute matrix properties
     if save_matrix_info:
         properties_D = linalg.SquareSymmetricMatrixProperties(D)
-        msg.info("D properties: %s", properties_D)
+        msg.debug("D properties: %s", properties_D)
 
     # Optionally render the primal schur complement matrix and symmetry error info as images
     if save_symmetry_info:
@@ -518,9 +519,11 @@ def make_benchmark_problem(
 def make_benchmark_solution(admm: linalg.ADMMSolver, info: SolutionInfo) -> BenchmarkSolution:
     """Create a BenchmarkSolution from an ADMMSolver."""
     return BenchmarkSolution(
-        crbd=ConstrainedDynamicsSolution(lambdas=admm.lambdas, u_plus=admm.u_plus, v_plus=admm.v_plus),
+        crbd=ConstrainedDynamicsSolution(
+            lambdas=admm.lambdas.copy(), u_plus=admm.u_plus.copy(), v_plus=admm.v_plus.copy()
+        ),
         kkt=LinearSystemSolution(x=np.concatenate((admm.u_plus, -admm.lambdas))),
-        dual=LinearSystemSolution(x=admm.lambdas),
+        dual=LinearSystemSolution(x=admm.lambdas.copy()),
         info=info,
     )
 
@@ -695,16 +698,18 @@ def symmetry_info(A: np.ndarray, name: str = "A", title: str = "A", eps: float =
 ###
 
 
-PROBLEM_TYPE = "Primitive"
+# PROBLEM_TYPE = "Primitive"
 # PROBLEM_TYPE = "Robotics"
-# PROBLEM_TYPE = "Animatronics"
+PROBLEM_TYPE = "Animatronics"
 
-PROBLEM_NAME = "boxes_hinged"
+# PROBLEM_NAME = "boxes_hinged"
 # PROBLEM_NAME = "fourbar_free"
-# PROBLEM_NAME = "walker"
+PROBLEM_NAME = "walker"
 
-PROBLEM_CATEGORY = "IndependentJoints"
+# PROBLEM_CATEGORY = "IndependentJoints"
 # PROBLEM_CATEGORY = "RedundantJoints"
+PROBLEM_CATEGORY = "SingleContact"
+# PROBLEM_CATEGORY = "SparseContacts"
 # PROBLEM_CATEGORY = "DenseConstraints"
 
 
@@ -723,7 +728,7 @@ PLOT_OUTPUT_PATH = f"{DATA_DIR_PATH}/plots/simdata/{PROBLEM_NAME}"
 
 if __name__ == "__main__":
     # Set global numpy configurations
-    np.set_printoptions(linewidth=20000, precision=6, threshold=10000, suppress=True)  # Suppress scientific notation
+    np.set_printoptions(linewidth=20000, precision=10, threshold=10000, suppress=True)  # Suppress scientific notation
     msg.set_log_level(msg.LogLevel.INFO)
 
     # Create output directories
@@ -734,8 +739,8 @@ if __name__ == "__main__":
     datafile = h5py.File(HDF5_DATASET_PATH, "r")
 
     # Select the numpy data type for computations
-    np_dtype = np.float64
-    # np_dtype = np.float32
+    # np_dtype = np.float64
+    np_dtype = np.float32
 
     ###
     # Solver set-up
@@ -744,16 +749,13 @@ if __name__ == "__main__":
     # Create and configure the ADMM solver
     admm = linalg.ADMMSolver(
         dtype=np_dtype,
-        # primal_tolerance=1e-6,
-        # dual_tolerance=1e-6,
-        # compl_tolerance=1e-6,
-        # eta=1e-5,
-        # rho=1.0,
-        # omega=1.0,
-        # maxiter=200,
-        # linsys_atol=None,
-        # linsys_rtol=None,
-        # linsys_ftol=None,
+        primal_tolerance=1e-6,
+        dual_tolerance=1e-6,
+        compl_tolerance=1e-6,
+        eta=1e-3,
+        rho=1.0,
+        omega=1.0,
+        maxiter=200,
     )
 
     # Configure the linear system solver
@@ -789,35 +791,110 @@ if __name__ == "__main__":
 
     # Find and print all DualProblem paths
     search_scope = f"{PROBLEM_TYPE}/{PROBLEM_NAME}/{PROBLEM_CATEGORY}"
+    # search_scope = f"{PROBLEM_TYPE}/{PROBLEM_NAME}"
     msg.info(f"Searching for DualProblem paths in scope '{search_scope}'...")
-    dualproblem_paths = find_dualproblem_paths(datafile=datafile, scope=search_scope)
-    msg.info(f"Found {len(dualproblem_paths)} DualProblem path(s).")
-    for path in dualproblem_paths:
-        print(f"- {path}")
+    problem_paths = find_dualproblem_paths(datafile=datafile, scope=search_scope)
+    msg.info(f"Found {len(problem_paths)} DualProblem path(s).")
+    # for path in problem_paths:
+    #     print(f"- {path}")
 
     # Iterate over all found DualProblem paths
-    metrics = []
+    metrics: list[BenchmarkMetrics] = []
     msg.info("Iterating over all found DualProblem paths...")
-    for path in dualproblem_paths:
+    for path in problem_paths:
+        pdata = load_dualproblem_data(dataframe=datafile[path], dtype=np_dtype)
         problem = make_benchmark_problem(
             name=path,
-            problem=load_dualproblem_data(dataframe=dataframe, dtype=np_dtype),
+            problem=pdata,
             ensure_symmetric=False,
             save_matrix_info=False,
             save_symmetry_info=False,
         )
         metrics.extend(solve_benchmark_problem(problem, admm))
+    # for m in metrics:
+    #     print(f"\n{m}\n")
 
-    # TODO
+    # Iterate over all collected metrics and collect a list of unique solver IDs
+    solvers = set()
     for m in metrics:
-        print(f"\n{m}\n")
+        sid = m._solverid()
+        solvers.add(sid)
+    solvers = sorted(solvers)
+    msg.info(f"Collected metrics for {len(solvers)} unique solver ID(s).")
+    # for s in solvers:
+    #     print(f"- {s}")
+
+    # Print summary of all collected metrics
+    num_solvers = len(solvers)
+    num_problems = len(problem_paths)
+    msg.info(f"num_solvers = {num_solvers}")
+    msg.info(f"num_problems = {num_problems}")
+
+    ###
+    # Performance profiles
+    ###
+
+    # Create a dictionary of 2D arrays for each metric
+    metric_names = BenchmarkMetrics._metrics()
+    solution_data: dict[str, np.ndarray] = {
+        metric: np.empty((num_solvers, num_problems), dtype=float) for metric in metric_names
+    }
+
+    # Populate the metric data arrays
+    msg.info("Populating metric data arrays...")
+    for metric in metrics:
+        s = solvers.index(metric._solverid())
+        p = problem_paths.index(metric.pname) if metric.pname in problem_paths else -1
+        if p < 0:
+            msg.error("Problem name '%s' not found in problem paths.", metric.pname)
+            continue
+        solution_data["converged"][s, p] = 1.0 if metric.data.converged else 0.0
+        solution_data["iterations"][s, p] = float(metric.data.iterations)
+        solution_data["total_time"][s, p] = metric.data.total_time
+        solution_data["iteration_time"][s, p] = metric.data.iteration_time
+        solution_data["primal_residual_inf"][s, p] = metric.data.primal_residual_inf
+        solution_data["dual_residual_inf"][s, p] = metric.data.dual_residual_inf
+        solution_data["compl_residual_inf"][s, p] = metric.data.compl_residual_inf
+        solution_data["primal_error_abs"][s, p] = metric.data.primal_error_abs
+        solution_data["primal_error_rel"][s, p] = metric.data.primal_error_rel
+        solution_data["dual_error_abs"][s, p] = metric.data.dual_error_abs
+        solution_data["dual_error_rel"][s, p] = metric.data.dual_error_rel
+        solution_data["kkt_error_abs"][s, p] = metric.data.kkt_error_abs
+        solution_data["kkt_error_rel"][s, p] = metric.data.kkt_error_rel
+
+    # DEBUG: Print some of the populated metric data arrays
+    print("\nDual Residual:\n", solution_data["dual_residual_inf"], "\n")
+
+    # Compute performance profiles for selected metrics
+    msg.info("Computing performance profiles...")
+    pp_total_time = profiles.PerformanceProfile(solution_data["total_time"], taumax=np.inf)
+    pp_iteration_time = profiles.PerformanceProfile(solution_data["iteration_time"], taumax=np.inf)
+    pp_dual_residual_inf = profiles.PerformanceProfile(solution_data["dual_residual_inf"], taumax=np.inf)
+    pp_primal_error_abs = profiles.PerformanceProfile(solution_data["primal_error_abs"], taumax=np.inf)
+    pp_primal_error_rel = profiles.PerformanceProfile(solution_data["primal_error_rel"], taumax=np.inf)
+    pp_dual_error_abs = profiles.PerformanceProfile(solution_data["dual_error_abs"], taumax=np.inf)
+    pp_dual_error_rel = profiles.PerformanceProfile(solution_data["dual_error_rel"], taumax=np.inf)
+    pp_kkt_error_abs = profiles.PerformanceProfile(solution_data["kkt_error_abs"], taumax=np.inf)
+    pp_kkt_error_rel = profiles.PerformanceProfile(solution_data["kkt_error_rel"], taumax=np.inf)
+
+    # Render performance profiles to files
+    msg.info("Rendering performance profiles...")
+    solvers_list = list(solvers)
+    pp_total_time.plot(solvers_list, title="Total Time")
+    pp_iteration_time.plot(solvers_list, title="Iteration Time")
+    pp_dual_residual_inf.plot(solvers_list, title="Dual Residual Infinity-Norm")
+    pp_primal_error_abs.plot(solvers_list, title="Primal System Absolute Error")
+    pp_primal_error_rel.plot(solvers_list, title="Primal System Relative Error")
+    pp_dual_error_abs.plot(solvers_list, title="Dual System Absolute Error")
+    pp_dual_error_rel.plot(solvers_list, title="Dual System Relative Error")
+    pp_kkt_error_abs.plot(solvers_list, title="KKT System Absolute Error")
+    pp_kkt_error_rel.plot(solvers_list, title="KKT System Relative Error")
 
     # TODO:
-    #   -  Iterate over metrics and create table/matrix for each metric
-    #   -  Create a list of unique solver IDs
-    #   -  Add collection of problem properties
-    #   -  Compute and print performance profiles for each metric
-    #   -  Create metric-vs-problem_size plots for each metric
+    #   - Add use of converged flag in performance profiles
+    #   - Add stagnation check in ADMM solver
+    #   - Add collection of problem properties
+    #   - Create metric-vs-problem_size plots for each metric
 
     # Close the HDF5 data file
     datafile.close()

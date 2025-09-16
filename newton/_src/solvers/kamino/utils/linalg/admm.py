@@ -95,9 +95,7 @@ class ADMMSolver:
         rho: float = 1.0,
         omega: float = 1.0,
         maxiter: int = 200,
-        linsys_atol: float | None = None,
-        linsys_rtol: float | None = None,
-        linsys_ftol: float | None = None,
+        linsys_solver: LinearSolverType | None = None,
     ):
         # Meta-data
         self.dtype: np.dtype = dtype
@@ -121,9 +119,7 @@ class ADMMSolver:
         self.r_c: np.ndarray | None = None
 
         # Linear system solver
-        self.linsys_atol: float | None = linsys_atol
-        self.linsys_rtol: float | None = linsys_rtol
-        self.linsys_solver: LinearSolverType = NumPySolver(dtype=self.dtype, atol=linsys_atol, rtol=linsys_rtol)
+        self.linsys_solver: LinearSolverType = linsys_solver or NumPySolver(dtype=self.dtype)
 
         # KKT linear problem
         self.K: np.ndarray | None = None

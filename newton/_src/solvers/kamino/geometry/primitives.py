@@ -6,31 +6,27 @@ from __future__ import annotations
 
 import warp as wp
 
-from newton._src.solvers.kamino.core.math import FLOAT32_EPS, UNIT_Z
+from newton._src.geometry.collision_primitive import (
+    collide_box_box,
+    collide_sphere_box,
+    collide_sphere_sphere,
+)
+from newton._src.solvers.kamino.core.math import FLOAT32_EPS
 from newton._src.solvers.kamino.core.model import Model, ModelData
 from newton._src.solvers.kamino.core.shapes import ShapeType
 from newton._src.solvers.kamino.core.types import (
     float32,
     int32,
     mat33f,
-    mat43f,
-    mat83f,
     transformf,
     vec2f,
     vec2i,
     vec3f,
     vec4f,
-    vec8f,
 )
 from newton._src.solvers.kamino.geometry.collisions import Collisions
 from newton._src.solvers.kamino.geometry.contacts import Contacts
 from newton._src.solvers.kamino.geometry.math import make_contact_frame_znorm
-from newton._src.geometry.collision_primitive import (
-    normalize_with_norm as collision_normalize_with_norm,
-    collide_sphere_sphere,
-    collide_sphere_box,
-    collide_box_box,
-)
 
 ###
 # Module configs
@@ -92,10 +88,6 @@ def make_sphere(pose: transformf, params: vec4f, gid: int32, bid: int32) -> Sphe
     sphere.rot = wp.quat_to_matrix(wp.transform_get_rotation(pose))
     sphere.radius = params[0]
     return sphere
-
-
-# Use the tested version from collision_primitive.py
-normalize_with_norm = collision_normalize_with_norm
 
 
 ###

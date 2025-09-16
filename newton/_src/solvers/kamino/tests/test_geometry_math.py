@@ -7,7 +7,9 @@ import unittest
 import numpy as np
 import warp as wp
 
-from newton._src.solvers.kamino.core.types import List, mat33f, vec3f
+from typing import List
+
+from newton._src.solvers.kamino.core.types import mat33f, vec3f
 
 # Module to be tested
 from newton._src.solvers.kamino.geometry.math import make_contact_frame_xnorm, make_contact_frame_znorm

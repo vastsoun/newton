@@ -2,7 +2,6 @@
 # KAMINO: UNIT TESTS: RANDOM DATA GENERATION
 ###########################################################################
 
-from typing import Union
 
 import numpy as np
 import scipy as sp
@@ -15,7 +14,7 @@ from newton._src.solvers.kamino.core.types import float32, int32
 # Types
 ###
 
-ArrayLike = Union[np.ndarray, list[int], list[float], list[list[int]], list[list[float]], None]
+ArrayLike = np.ndarray | list[int] | list[float] | list[list[int]] | list[list[float]] | None
 """An Array-like structure for aliasing various data types compatible with numpy."""
 
 
@@ -38,6 +37,7 @@ def eigenvalues_from_distribution(
     min_neg: float = -1e2,
     dtype: np.dtype = np.float64,
     shuffle: bool = False,
+    seed: int | None = None,
 ) -> np.ndarray:
     """
     Creates an array of eigen-values based on a specified distribution.
@@ -117,7 +117,8 @@ def eigenvalues_from_distribution(
 
     # Optionally shuffle the eigenvalues to randomize their order
     if shuffle:
-        np.random.shuffle(eigenvalues)
+        rng = np.random.default_rng(seed)
+        rng.shuffle(eigenvalues)
 
     # Finally return the constructed eigenvalues array
     return eigenvalues
@@ -147,11 +148,12 @@ def random_symmetric_matrix(
     Returns:
     - A (ndarray): A (dim, dim) symmetric matrix.
     """
-    # Set the random seed if specified and valid
-    if seed is not None:
-        if not isinstance(seed, int):
-            raise TypeError("seed must be a int.")
-        np.random.seed(seed)
+    # Create random number generator
+    rng = np.random.default_rng(seed)
+
+    # Validate seed if provided
+    if seed is not None and not isinstance(seed, int):
+        raise TypeError("seed must be a int.")
 
     # Set a default unit scale if unspecified
     if scale is None:
@@ -165,7 +167,7 @@ def random_symmetric_matrix(
 
     # Generate a symmetric matrix of random rank and eigenvalues, if unspecified
     if eigenvalues is None and rank is None:
-        X = scale * np.random.randn(dim, dim).astype(dtype)
+        X = scale * rng.standard_normal((dim, dim)).astype(dtype)
         # Make a symmetric matrix from the source random matrix
         A = 0.5 * (X + X.T)
 
@@ -176,9 +178,9 @@ def random_symmetric_matrix(
 
         # Generate random square matrix
         if np.all(eigenvalues == eigenvalues[0]):
-            X = np.random.randn(dim, dim).astype(dtype)
+            X = rng.standard_normal((dim, dim)).astype(dtype)
         else:
-            X, _ = np.linalg.qr(np.random.randn(dim, dim).astype(dtype))
+            X, _ = np.linalg.qr(rng.standard_normal((dim, dim)).astype(dtype))
         # Diagonal matrix of eigenvalues
         D = np.diag(eigenvalues)
         # A = X * D * X^T
@@ -191,7 +193,7 @@ def random_symmetric_matrix(
         if rank > dim:
             raise ValueError("Rank must not exceed matrix dimension.")
         # Generate random rectangular matrix
-        X = sqrt_scale * np.random.randn(dim, rank).astype(dtype)
+        X = sqrt_scale * rng.standard_normal((dim, rank)).astype(dtype)
         # Make a rank-deficient symmetric matrix
         A = X @ X.T
         # Additional step to ensure symmetry
@@ -224,10 +226,12 @@ def random_spd_matrix(
     Returns:
     - A (ndarray): An n x n symmetric positive definite matrix.
     """
-    if seed is not None:
-        if not isinstance(seed, int):
-            raise TypeError("seed must be a int.")
-        np.random.seed(seed)
+    # Create random number generator
+    rng = np.random.default_rng(seed)
+
+    # Validate seed if provided
+    if seed is not None and not isinstance(seed, int):
+        raise TypeError("seed must be a int.")
 
     if scale is None:
         scale = 1.0
@@ -238,7 +242,7 @@ def random_spd_matrix(
         sqrt_scale = np.sqrt(scale)
 
     # Generate a random matrix
-    X = sqrt_scale * np.random.randn(dim, dim).astype(dtype)
+    X = sqrt_scale * rng.standard_normal((dim, dim)).astype(dtype)
 
     # Construct symmetric positive definite matrix: A.T @ A + dim * I
     A = X.T @ X + scale * float(dim) * np.eye(dim, dtype=dtype)
@@ -268,7 +272,8 @@ def random_rhs_for_matrix(
         np.ndarray: A random RHS vector b in the range space of A.
     """
     n = A.shape[0]
-    x = scale * np.random.randn(n).astype(A.dtype)
+    rng = np.random.default_rng()
+    x = scale * rng.standard_normal(n).astype(A.dtype)
     b = A @ x
     if return_source:
         return b, x
@@ -420,7 +425,7 @@ class RandomProblemCholesky:
         A_offsets = [0] + [sum(A_sizes[:i]) for i in range(1, len(A_sizes) + 1)]
         A_flat_size = sum(A_sizes)
         A_flat = np.ndarray(shape=(A_flat_size,), dtype=np_dtype)
-        b_sizes = [n for n in self.dims]
+        b_sizes = list(self.dims)
         b_offsets = [0] + [sum(b_sizes[:i]) for i in range(1, len(b_sizes) + 1)]
         b_flat_size = sum(b_sizes)
         b_flat = np.ndarray(shape=(b_flat_size,), dtype=np_dtype)
@@ -537,7 +542,7 @@ class RandomProblemLDLT:
 
         # Ensure the eigenvalues are valid
         if eigenvalues is not None:
-            if not isinstance(eigenvalues, list) or not all(isinstance(ev, (int, float)) for ev in eigenvalues):
+            if not isinstance(eigenvalues, list) or not all(isinstance(ev, int | float) for ev in eigenvalues):
                 raise TypeError("Eigenvalues must be a list of numbers.")
         else:
             eigenvalues = [None] * len(dims)
@@ -573,7 +578,7 @@ class RandomProblemLDLT:
         A_offsets = [0] + [sum(A_sizes[:i]) for i in range(1, len(A_sizes) + 1)]
         A_flat_size = sum(A_sizes)
         A_flat = np.ndarray(shape=(A_flat_size,), dtype=np_dtype)
-        b_sizes = [n for n in self.dims]
+        b_sizes = list(self.dims)
         b_offsets = [0] + [sum(b_sizes[:i]) for i in range(1, len(b_sizes) + 1)]
         b_flat_size = sum(b_sizes)
         b_flat = np.ndarray(shape=(b_flat_size,), dtype=np_dtype)

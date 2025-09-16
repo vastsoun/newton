@@ -560,7 +560,7 @@ class ModelBuilder:
         body_id: int,
         shape: ShapeDescriptorType,
         layer: int | str = 0,
-        offset: transformf = transformf(),
+        offset: transformf | None = None,
         material: str | int | None = None,
         max_contacts: int = 0,
         group: int = 1,
@@ -610,7 +610,7 @@ class ModelBuilder:
         geom.gid = cgid
         geom.bid = body_id
         geom.lid = layer_id
-        geom.offset = offset
+        geom.offset = offset if offset is not None else transformf()
         geom.shape = shape
         geom.mid = self.materials.index(material)
         geom.group = group
@@ -655,7 +655,7 @@ class ModelBuilder:
         body_id: int,
         shape: ShapeDescriptorType,
         layer: int | str = 0,
-        offset: transformf = transformf(),
+        offset: transformf | None = None,
         name: str | None = None,
         uid: str | None = None,
         world_index: int = 0,
@@ -697,7 +697,7 @@ class ModelBuilder:
         geom.gid = pgid
         geom.bid = body_id
         geom.lid = layer_id
-        geom.offset = offset
+        geom.offset = offset if offset is not None else transformf()
         geom.shape = shape
 
         # Append body model data

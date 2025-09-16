@@ -298,7 +298,7 @@ AxisType = Axis | Literal["X", "Y", "Z"] | Literal[0, 1, 2] | int | str
 
 def axis_to_vec3(axis: AxisType | Vec3) -> vec3f:
     """Convert an axis representation to a 3D vector."""
-    if isinstance(axis, (list, tuple, np.ndarray)):
+    if isinstance(axis, list | tuple | np.ndarray):
         return vec3f(*axis)
     elif wp.types.type_is_vector(type(axis)):
         return vec3f(*axis)
@@ -308,7 +308,7 @@ def axis_to_vec3(axis: AxisType | Vec3) -> vec3f:
 
 def axis_to_mat33(axis: AxisType | Vec3) -> mat33f:
     """Convert an axis representation to a 3x3 matrix."""
-    if isinstance(axis, (list, tuple, np.ndarray)):
+    if isinstance(axis, list | tuple | np.ndarray):
         return mat33f(*axis)
     elif wp.types.type_is_vector(type(axis)):
         return mat33f(*axis)

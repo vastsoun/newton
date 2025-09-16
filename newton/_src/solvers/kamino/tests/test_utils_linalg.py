@@ -91,7 +91,6 @@ class TestFactorizations(unittest.TestCase):
         # Define data parameters
         dtype = np.float32
         dim = 200
-        scale = 1.0  # 1e+4
         seed = 42
 
         # Generate a set of eigenvalues

@@ -18,7 +18,7 @@ def sparseview(
     tick_fontsize: int = 5,
     max_ticks: int = 20,
     grid: bool = False,
-    path: str = None,
+    path: str | None = None,
 ):
     """
     Visualize the sparsity pattern of a matrix.
@@ -60,7 +60,7 @@ def sparseview(
 
     # Plot the image
     fig, ax = plt.subplots()
-    im = ax.imshow(color_image, origin="upper")
+    ax.imshow(color_image, origin="upper")
 
     # Confgure figure tick labels
     xticks = get_sparse_ticks(matrix.shape[1], max_ticks)

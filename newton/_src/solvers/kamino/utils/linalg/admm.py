@@ -95,7 +95,8 @@ class ADMMSolver:
         rho: float = 1.0,
         omega: float = 1.0,
         maxiter: int = 200,
-        linsys_solver: LinearSolverType | None = None,
+        kkt_solver: LinearSolverType | None = None,
+        schur_solver: LinearSolverType | None = None,
     ):
         # Meta-data
         self.dtype: np.dtype = dtype
@@ -119,7 +120,8 @@ class ADMMSolver:
         self.r_c: np.ndarray | None = None
 
         # Linear system solver
-        self.linsys_solver: LinearSolverType = linsys_solver or NumPySolver(dtype=self.dtype)
+        self.kkt_solver: LinearSolverType = kkt_solver or NumPySolver(dtype=self.dtype)
+        self.schur_solver: LinearSolverType = schur_solver or NumPySolver(dtype=self.dtype)
 
         # KKT linear problem
         self.K: np.ndarray | None = None
@@ -234,14 +236,14 @@ class ADMMSolver:
         self.K[: self.ncts, self.ncts :] = J
         self.K[: self.ncts, : self.ncts] = -(self.eta + self.rho) * np.eye(self.ncts, dtype=self.dtype)
 
-        self.linsys_solver.compute(A=self.K)
+        self.kkt_solver.compute(A=self.K)
 
         for i in range(self.maxiter):
             self.status.iterations += 1
 
             self.v[:] = -v_star + self.eta * self.x_p + self.rho * self.y_p + self.z_p
             self.k[: self.ncts] = self.v
-            self.ux[:] = self.linsys_solver.solve(b=self.k)
+            self.ux[:] = self.kkt_solver.solve(b=self.k)
             self.x[:] = -self.ux[: self.ncts]
 
             self._update_state()
@@ -290,14 +292,14 @@ class ADMMSolver:
         self.p = np.zeros_like(self.w)
         self.P = M + r_epsilon * (J.T @ J)
 
-        self.linsys_solver.compute(A=self.P)
+        self.schur_solver.compute(A=self.P)
 
         for i in range(self.maxiter):
             self.status.iterations += 1
 
             self.v[:] = -v_star + self.eta * self.x_p + self.rho * self.y_p + self.z_p
             self.p[:] = self.w + r_epsilon * (J.T @ self.v)
-            self.u[:] = self.linsys_solver.solve(b=self.p)
+            self.u[:] = self.schur_solver.solve(b=self.p)
             self.x[:] = r_epsilon * (self.v - J @ self.u)
 
             self._update_state()
@@ -349,13 +351,13 @@ class ADMMSolver:
             self.D = S @ self.D @ S
         self.D += (self.eta + self.rho) * np.eye(D.shape[0])
 
-        self.linsys_solver.compute(A=self.D)
+        self.schur_solver.compute(A=self.D)
 
         for i in range(self.maxiter):
             self.status.iterations += 1
 
             self.d[:] = self.v + self.eta * self.x_p + self.rho * self.y_p + self.z_p
-            self.x[:] = self.linsys_solver.solve(b=self.d)
+            self.x[:] = self.schur_solver.solve(b=self.d)
 
             self._update_state()
             self._compute_residuals(i)

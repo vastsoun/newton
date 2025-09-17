@@ -25,7 +25,6 @@ import numpy as np
 
 import newton._src.solvers.kamino.utils.linalg as linalg
 import newton._src.solvers.kamino.utils.logger as msg
-import newton._src.solvers.kamino.utils.profiles as profiles
 from newton._src.solvers.kamino.tests.utils.print import print_error_stats
 from newton._src.solvers.kamino.utils.io import hdf5
 from newton._src.solvers.kamino.utils.sparse import sparseview
@@ -110,6 +109,14 @@ class ConstrainedDynamicsMetrics:
 ###
 # Solver Containers
 ###
+
+
+@dataclass
+class SolutionMethods:
+    kkt: bool = True
+    schur_primal: bool = True
+    schur_dual: bool = True
+    schur_dual_prec: bool = True
 
 
 @dataclass
@@ -558,73 +565,88 @@ def make_benchmark_metrics(
     return metrics
 
 
-def solve_benchmark_problem(problem: BenchmarkProblem, admm: linalg.ADMMSolver) -> list[BenchmarkMetrics]:
+def solve_benchmark_problem(
+    problem: BenchmarkProblem, admm: linalg.ADMMSolver, methods: SolutionMethods
+) -> list[BenchmarkMetrics]:
     """Solve a ConstrainedDynamicsProblem using an ADMM solver."""
+
+    # Initialize solver metrics list
+    metrics = []
 
     # Extract solver info
     solver_name = get_solver_typename(admm)
-    linear_solver = get_solver_typename(admm.linsys_solver)
 
     # Solve as KKT system
-    start_kkt = time.perf_counter()
-    status_kkt = admm.solve_kkt(
-        M=problem.crbd.M, J=problem.crbd.J, h=problem.crbd.h, u_minus=problem.crbd.u_minus, v_star=problem.crbd.v_star
-    )
-    time_kkt = time.perf_counter() - start_kkt
-    msg.debug(f"ADMM.solve_kkt took {time_kkt:.6f} seconds")
+    if methods.kkt:
+        start_kkt = time.perf_counter()
+        status_kkt = admm.solve_kkt(
+            M=problem.crbd.M,
+            J=problem.crbd.J,
+            h=problem.crbd.h,
+            u_minus=problem.crbd.u_minus,
+            v_star=problem.crbd.v_star,
+        )
+        time_kkt = time.perf_counter() - start_kkt
+        msg.debug(f"ADMM.solve_kkt took {time_kkt:.6f} seconds")
 
-    # Generate the benchmark solution and metrics for the KKT solve
-    kkt_info = SolutionInfo(
-        dtype=admm.dtype,
-        solver_name=solver_name,
-        method_name="KKT",
-        linear_solver=linear_solver,
-    )
-    solution_kkt = make_benchmark_solution(admm, kkt_info)
-    metrics_kkt = make_benchmark_metrics(time_kkt, status_kkt, problem, solution_kkt)
+        # Generate the benchmark solution and metrics for the KKT solve
+        kkt_info = SolutionInfo(
+            dtype=admm.dtype,
+            solver_name=solver_name,
+            method_name="KKT",
+            linear_solver=get_solver_typename(admm.kkt_solver),
+        )
+        solution_kkt = make_benchmark_solution(admm, kkt_info)
+        metrics.append(make_benchmark_metrics(time_kkt, status_kkt, problem, solution_kkt))
 
     # Solve as primal Schur-complement system
-    start_schur_prim = time.perf_counter()
-    status_schur_prim = admm.solve_schur_primal(
-        M=problem.crbd.M, J=problem.crbd.J, h=problem.crbd.h, u_minus=problem.crbd.u_minus, v_star=problem.crbd.v_star
-    )
-    time_schur_prim = time.perf_counter() - start_schur_prim
-    msg.debug(f"ADMM.solve_schur_prim took {time_schur_prim:.6f} seconds")
+    if methods.schur_primal:
+        start_schur_prim = time.perf_counter()
+        status_schur_prim = admm.solve_schur_primal(
+            M=problem.crbd.M,
+            J=problem.crbd.J,
+            h=problem.crbd.h,
+            u_minus=problem.crbd.u_minus,
+            v_star=problem.crbd.v_star,
+        )
+        time_schur_prim = time.perf_counter() - start_schur_prim
+        msg.debug(f"ADMM.solve_schur_prim took {time_schur_prim:.6f} seconds")
 
-    # Generate the benchmark solution and metrics for the primal Schur-complement solve
-    schur_prim_info = SolutionInfo(
-        dtype=admm.dtype,
-        solver_name=solver_name,
-        method_name="Schur-Primal",
-        linear_solver=linear_solver,
-    )
-    solution_schur_prim = make_benchmark_solution(admm, schur_prim_info)
-    metrics_schur_prim = make_benchmark_metrics(time_schur_prim, status_schur_prim, problem, solution_schur_prim)
+        # Generate the benchmark solution and metrics for the primal Schur-complement solve
+        schur_prim_info = SolutionInfo(
+            dtype=admm.dtype,
+            solver_name=solver_name,
+            method_name="Schur-Primal",
+            linear_solver=get_solver_typename(admm.schur_solver),
+        )
+        solution_schur_prim = make_benchmark_solution(admm, schur_prim_info)
+        metrics.append(make_benchmark_metrics(time_schur_prim, status_schur_prim, problem, solution_schur_prim))
 
     # Solve as dual Schur-complement system w/o preconditioning
-    start_schur_dual = time.perf_counter()
-    status_schur_dual = admm.solve_schur_dual(
-        D=problem.crbd.D,
-        v_f=problem.crbd.v_f,
-        v_star=problem.crbd.v_star,
-        u_minus=problem.crbd.u_minus,
-        invM=problem.crbd.invM,
-        J=problem.crbd.J,
-        h=problem.crbd.h,
-        use_preconditioning=False,
-    )
-    time_schur_dual = time.perf_counter() - start_schur_dual
-    msg.debug(f"ADMM.solve_schur_dual took {time_schur_dual:.6f} seconds")
+    if methods.schur_dual:
+        start_schur_dual = time.perf_counter()
+        status_schur_dual = admm.solve_schur_dual(
+            D=problem.crbd.D,
+            v_f=problem.crbd.v_f,
+            v_star=problem.crbd.v_star,
+            u_minus=problem.crbd.u_minus,
+            invM=problem.crbd.invM,
+            J=problem.crbd.J,
+            h=problem.crbd.h,
+            use_preconditioning=False,
+        )
+        time_schur_dual = time.perf_counter() - start_schur_dual
+        msg.debug(f"ADMM.solve_schur_dual took {time_schur_dual:.6f} seconds")
 
-    # Generate the benchmark solution and metrics for the dual Schur-complement solve
-    schur_dual_info = SolutionInfo(
-        dtype=admm.dtype,
-        solver_name=solver_name,
-        method_name="Schur-Dual",
-        linear_solver=linear_solver,
-    )
-    solution_schur_dual = make_benchmark_solution(admm, schur_dual_info)
-    metrics_schur_dual = make_benchmark_metrics(time_schur_dual, status_schur_dual, problem, solution_schur_dual)
+        # Generate the benchmark solution and metrics for the dual Schur-complement solve
+        schur_dual_info = SolutionInfo(
+            dtype=admm.dtype,
+            solver_name=solver_name,
+            method_name="Schur-Dual",
+            linear_solver=get_solver_typename(admm.schur_solver),
+        )
+        solution_schur_dual = make_benchmark_solution(admm, schur_dual_info)
+        metrics.append(make_benchmark_metrics(time_schur_dual, status_schur_dual, problem, solution_schur_dual))
 
     # Solve as dual Schur-complement system with preconditioning
     start_schur_dual_prec = time.perf_counter()
@@ -642,19 +664,20 @@ def solve_benchmark_problem(problem: BenchmarkProblem, admm: linalg.ADMMSolver) 
     msg.debug(f"ADMM.solve_schur_dual (prec) took {time_schur_dual_prec:.6f} seconds")
 
     # Generate the benchmark solution and metrics for the dual Schur-complement solve with preconditioning
-    schur_dual_prec_info = SolutionInfo(
-        dtype=admm.dtype,
-        solver_name=solver_name,
-        method_name="Schur-Dual-Prec",
-        linear_solver=linear_solver,
-    )
-    solution_schur_dual_prec = make_benchmark_solution(admm, schur_dual_prec_info)
-    metrics_schur_dual_prec = make_benchmark_metrics(
-        time_schur_dual_prec, status_schur_dual_prec, problem, solution_schur_dual_prec
-    )
+    if methods.schur_dual_prec:
+        schur_dual_prec_info = SolutionInfo(
+            dtype=admm.dtype,
+            solver_name=solver_name,
+            method_name="Schur-Dual-Prec",
+            linear_solver=get_solver_typename(admm.schur_solver),
+        )
+        solution_schur_dual_prec = make_benchmark_solution(admm, schur_dual_prec_info)
+        metrics.append(
+            make_benchmark_metrics(time_schur_dual_prec, status_schur_dual_prec, problem, solution_schur_dual_prec)
+        )
 
     # Return all metrics for this problem
-    return [metrics_kkt, metrics_schur_prim, metrics_schur_dual, metrics_schur_dual_prec]
+    return metrics
 
 
 ###
@@ -708,9 +731,9 @@ PROBLEM_NAME = "walker"
 
 # PROBLEM_CATEGORY = "IndependentJoints"
 # PROBLEM_CATEGORY = "RedundantJoints"
-PROBLEM_CATEGORY = "SingleContact"
+# PROBLEM_CATEGORY = "SingleContact"
 # PROBLEM_CATEGORY = "SparseContacts"
-# PROBLEM_CATEGORY = "DenseConstraints"
+PROBLEM_CATEGORY = "DenseConstraints"
 
 
 # Retrieve the path to the data directory
@@ -759,7 +782,16 @@ if __name__ == "__main__":
     )
 
     # Configure the linear system solver
-    # admm.linsys_solver = linalg.NumPySolver()
+    # admm.kkt_solver = linalg.NumPySolver()
+    # admm.schur_solver = linalg.NumPySolver()
+
+    # Configure the solution methods to be used
+    methods = SolutionMethods(
+        kkt=False,
+        schur_primal=True,
+        schur_dual=True,
+        schur_dual_prec=True,
+    )
 
     ###
     # Single-problem demo
@@ -781,114 +813,114 @@ if __name__ == "__main__":
     )
 
     # Solve the benchmark problem using the ADMM solver
-    metrics = solve_benchmark_problem(problem, admm)
+    metrics = solve_benchmark_problem(problem, admm, methods)
     for m in metrics:
         print(f"\n{m}\n")
 
-    ###
-    # Multiple-problems demo
-    ###
+    # ###
+    # # Multiple-problems demo
+    # ###
 
-    # Find and print all DualProblem paths
-    search_scope = f"{PROBLEM_TYPE}/{PROBLEM_NAME}/{PROBLEM_CATEGORY}"
-    # search_scope = f"{PROBLEM_TYPE}/{PROBLEM_NAME}"
-    msg.info(f"Searching for DualProblem paths in scope '{search_scope}'...")
-    problem_paths = find_dualproblem_paths(datafile=datafile, scope=search_scope)
-    msg.info(f"Found {len(problem_paths)} DualProblem path(s).")
+    # # Find and print all DualProblem paths
+    # search_scope = f"{PROBLEM_TYPE}/{PROBLEM_NAME}/{PROBLEM_CATEGORY}"
+    # # search_scope = f"{PROBLEM_TYPE}/{PROBLEM_NAME}"
+    # msg.info(f"Searching for DualProblem paths in scope '{search_scope}'...")
+    # problem_paths = find_dualproblem_paths(datafile=datafile, scope=search_scope)
+    # msg.info(f"Found {len(problem_paths)} DualProblem path(s).")
+    # # for path in problem_paths:
+    # #     print(f"- {path}")
+
+    # # Iterate over all found DualProblem paths
+    # metrics: list[BenchmarkMetrics] = []
+    # msg.info("Iterating over all found DualProblem paths...")
     # for path in problem_paths:
-    #     print(f"- {path}")
+    #     pdata = load_dualproblem_data(dataframe=datafile[path], dtype=np_dtype)
+    #     problem = make_benchmark_problem(
+    #         name=path,
+    #         problem=pdata,
+    #         ensure_symmetric=False,
+    #         save_matrix_info=False,
+    #         save_symmetry_info=False,
+    #     )
+    #     metrics.extend(solve_benchmark_problem(problem, admm, methods))
+    # # for m in metrics:
+    # #     print(f"\n{m}\n")
 
-    # Iterate over all found DualProblem paths
-    metrics: list[BenchmarkMetrics] = []
-    msg.info("Iterating over all found DualProblem paths...")
-    for path in problem_paths:
-        pdata = load_dualproblem_data(dataframe=datafile[path], dtype=np_dtype)
-        problem = make_benchmark_problem(
-            name=path,
-            problem=pdata,
-            ensure_symmetric=False,
-            save_matrix_info=False,
-            save_symmetry_info=False,
-        )
-        metrics.extend(solve_benchmark_problem(problem, admm))
+    # # Iterate over all collected metrics and collect a list of unique solver IDs
+    # solvers = set()
     # for m in metrics:
-    #     print(f"\n{m}\n")
+    #     sid = m._solverid()
+    #     solvers.add(sid)
+    # solvers = sorted(solvers)
+    # msg.info(f"Collected metrics for {len(solvers)} unique solver ID(s).")
+    # # for s in solvers:
+    # #     print(f"- {s}")
 
-    # Iterate over all collected metrics and collect a list of unique solver IDs
-    solvers = set()
-    for m in metrics:
-        sid = m._solverid()
-        solvers.add(sid)
-    solvers = sorted(solvers)
-    msg.info(f"Collected metrics for {len(solvers)} unique solver ID(s).")
-    # for s in solvers:
-    #     print(f"- {s}")
+    # # Print summary of all collected metrics
+    # num_solvers = len(solvers)
+    # num_problems = len(problem_paths)
+    # msg.info(f"num_solvers = {num_solvers}")
+    # msg.info(f"num_problems = {num_problems}")
 
-    # Print summary of all collected metrics
-    num_solvers = len(solvers)
-    num_problems = len(problem_paths)
-    msg.info(f"num_solvers = {num_solvers}")
-    msg.info(f"num_problems = {num_problems}")
+    # ###
+    # # Performance profiles
+    # ###
 
-    ###
-    # Performance profiles
-    ###
+    # # Create a dictionary of 2D arrays for each metric
+    # metric_names = BenchmarkMetrics._metrics()
+    # solution_data: dict[str, np.ndarray] = {
+    #     metric: np.empty((num_solvers, num_problems), dtype=float) for metric in metric_names
+    # }
 
-    # Create a dictionary of 2D arrays for each metric
-    metric_names = BenchmarkMetrics._metrics()
-    solution_data: dict[str, np.ndarray] = {
-        metric: np.empty((num_solvers, num_problems), dtype=float) for metric in metric_names
-    }
+    # # Populate the metric data arrays
+    # msg.info("Populating metric data arrays...")
+    # for metric in metrics:
+    #     s = solvers.index(metric._solverid())
+    #     p = problem_paths.index(metric.pname) if metric.pname in problem_paths else -1
+    #     if p < 0:
+    #         msg.error("Problem name '%s' not found in problem paths.", metric.pname)
+    #         continue
+    #     solution_data["converged"][s, p] = 1.0 if metric.data.converged else 0.0
+    #     solution_data["iterations"][s, p] = float(metric.data.iterations)
+    #     solution_data["total_time"][s, p] = metric.data.total_time
+    #     solution_data["iteration_time"][s, p] = metric.data.iteration_time
+    #     solution_data["primal_residual_inf"][s, p] = metric.data.primal_residual_inf
+    #     solution_data["dual_residual_inf"][s, p] = metric.data.dual_residual_inf
+    #     solution_data["compl_residual_inf"][s, p] = metric.data.compl_residual_inf
+    #     solution_data["primal_error_abs"][s, p] = metric.data.primal_error_abs
+    #     solution_data["primal_error_rel"][s, p] = metric.data.primal_error_rel
+    #     solution_data["dual_error_abs"][s, p] = metric.data.dual_error_abs
+    #     solution_data["dual_error_rel"][s, p] = metric.data.dual_error_rel
+    #     solution_data["kkt_error_abs"][s, p] = metric.data.kkt_error_abs
+    #     solution_data["kkt_error_rel"][s, p] = metric.data.kkt_error_rel
 
-    # Populate the metric data arrays
-    msg.info("Populating metric data arrays...")
-    for metric in metrics:
-        s = solvers.index(metric._solverid())
-        p = problem_paths.index(metric.pname) if metric.pname in problem_paths else -1
-        if p < 0:
-            msg.error("Problem name '%s' not found in problem paths.", metric.pname)
-            continue
-        solution_data["converged"][s, p] = 1.0 if metric.data.converged else 0.0
-        solution_data["iterations"][s, p] = float(metric.data.iterations)
-        solution_data["total_time"][s, p] = metric.data.total_time
-        solution_data["iteration_time"][s, p] = metric.data.iteration_time
-        solution_data["primal_residual_inf"][s, p] = metric.data.primal_residual_inf
-        solution_data["dual_residual_inf"][s, p] = metric.data.dual_residual_inf
-        solution_data["compl_residual_inf"][s, p] = metric.data.compl_residual_inf
-        solution_data["primal_error_abs"][s, p] = metric.data.primal_error_abs
-        solution_data["primal_error_rel"][s, p] = metric.data.primal_error_rel
-        solution_data["dual_error_abs"][s, p] = metric.data.dual_error_abs
-        solution_data["dual_error_rel"][s, p] = metric.data.dual_error_rel
-        solution_data["kkt_error_abs"][s, p] = metric.data.kkt_error_abs
-        solution_data["kkt_error_rel"][s, p] = metric.data.kkt_error_rel
+    # # DEBUG: Print some of the populated metric data arrays
+    # print("\nDual Residual:\n", solution_data["dual_residual_inf"], "\n")
 
-    # DEBUG: Print some of the populated metric data arrays
-    print("\nDual Residual:\n", solution_data["dual_residual_inf"], "\n")
+    # # Compute performance profiles for selected metrics
+    # msg.info("Computing performance profiles...")
+    # pp_total_time = profiles.PerformanceProfile(solution_data["total_time"], taumax=np.inf)
+    # pp_iteration_time = profiles.PerformanceProfile(solution_data["iteration_time"], taumax=np.inf)
+    # pp_dual_residual_inf = profiles.PerformanceProfile(solution_data["dual_residual_inf"], taumax=np.inf)
+    # pp_primal_error_abs = profiles.PerformanceProfile(solution_data["primal_error_abs"], taumax=np.inf)
+    # pp_primal_error_rel = profiles.PerformanceProfile(solution_data["primal_error_rel"], taumax=np.inf)
+    # pp_dual_error_abs = profiles.PerformanceProfile(solution_data["dual_error_abs"], taumax=np.inf)
+    # pp_dual_error_rel = profiles.PerformanceProfile(solution_data["dual_error_rel"], taumax=np.inf)
+    # pp_kkt_error_abs = profiles.PerformanceProfile(solution_data["kkt_error_abs"], taumax=np.inf)
+    # pp_kkt_error_rel = profiles.PerformanceProfile(solution_data["kkt_error_rel"], taumax=np.inf)
 
-    # Compute performance profiles for selected metrics
-    msg.info("Computing performance profiles...")
-    pp_total_time = profiles.PerformanceProfile(solution_data["total_time"], taumax=np.inf)
-    pp_iteration_time = profiles.PerformanceProfile(solution_data["iteration_time"], taumax=np.inf)
-    pp_dual_residual_inf = profiles.PerformanceProfile(solution_data["dual_residual_inf"], taumax=np.inf)
-    pp_primal_error_abs = profiles.PerformanceProfile(solution_data["primal_error_abs"], taumax=np.inf)
-    pp_primal_error_rel = profiles.PerformanceProfile(solution_data["primal_error_rel"], taumax=np.inf)
-    pp_dual_error_abs = profiles.PerformanceProfile(solution_data["dual_error_abs"], taumax=np.inf)
-    pp_dual_error_rel = profiles.PerformanceProfile(solution_data["dual_error_rel"], taumax=np.inf)
-    pp_kkt_error_abs = profiles.PerformanceProfile(solution_data["kkt_error_abs"], taumax=np.inf)
-    pp_kkt_error_rel = profiles.PerformanceProfile(solution_data["kkt_error_rel"], taumax=np.inf)
-
-    # Render performance profiles to files
-    msg.info("Rendering performance profiles...")
-    solvers_list = list(solvers)
-    pp_total_time.plot(solvers_list, title="Total Time")
-    pp_iteration_time.plot(solvers_list, title="Iteration Time")
-    pp_dual_residual_inf.plot(solvers_list, title="Dual Residual Infinity-Norm")
-    pp_primal_error_abs.plot(solvers_list, title="Primal System Absolute Error")
-    pp_primal_error_rel.plot(solvers_list, title="Primal System Relative Error")
-    pp_dual_error_abs.plot(solvers_list, title="Dual System Absolute Error")
-    pp_dual_error_rel.plot(solvers_list, title="Dual System Relative Error")
-    pp_kkt_error_abs.plot(solvers_list, title="KKT System Absolute Error")
-    pp_kkt_error_rel.plot(solvers_list, title="KKT System Relative Error")
+    # # Render performance profiles to files
+    # msg.info("Rendering performance profiles...")
+    # solvers_list = list(solvers)
+    # pp_total_time.plot(solvers_list, title="Total Time")
+    # pp_iteration_time.plot(solvers_list, title="Iteration Time")
+    # pp_dual_residual_inf.plot(solvers_list, title="Dual Residual Infinity-Norm")
+    # pp_primal_error_abs.plot(solvers_list, title="Primal System Absolute Error")
+    # pp_primal_error_rel.plot(solvers_list, title="Primal System Relative Error")
+    # pp_dual_error_abs.plot(solvers_list, title="Dual System Absolute Error")
+    # pp_dual_error_rel.plot(solvers_list, title="Dual System Relative Error")
+    # pp_kkt_error_abs.plot(solvers_list, title="KKT System Absolute Error")
+    # pp_kkt_error_rel.plot(solvers_list, title="KKT System Relative Error")
 
     # TODO:
     #   - Add use of converged flag in performance profiles

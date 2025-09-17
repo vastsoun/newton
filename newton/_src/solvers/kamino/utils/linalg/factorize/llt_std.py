@@ -62,7 +62,9 @@ def llt_std_lower(A: np.ndarray, check_symmetry: bool = True) -> np.ndarray:
             if i == j:
                 val = A[i, i] - sum
                 if val <= 0:
-                    raise np.linalg.LinAlgError("Matrix is not positive definite.")
+                    raise np.linalg.LinAlgError(
+                        f"Matrix is not positive definite: Non-positive diagonal element detected at index {i}: {val}"
+                    )
                 L[i, j] = np.sqrt(val)
             else:
                 L[i, j] = (A[i, j] - sum) / L[j, j]
@@ -85,7 +87,9 @@ def llt_std_upper(A: np.ndarray, check_symmetry: bool = True) -> np.ndarray:
             if i == j:
                 val = A[i, i] - sum
                 if val <= 0.0:
-                    raise np.linalg.LinAlgError("Matrix is not positive definite.")
+                    raise np.linalg.LinAlgError(
+                        f"Matrix is not positive definite: Non-positive diagonal element detected at index {i}: {val}"
+                    )
                 U[i, j] = np.sqrt(val)
             else:
                 U[i, j] = (A[i, j] - sum) / U[i, i]

@@ -7,8 +7,6 @@ import unittest
 import numpy as np
 import warp as wp
 
-from typing import List
-
 from newton._src.solvers.kamino.core.types import mat33f, vec3f
 
 # Module to be tested
@@ -87,7 +85,7 @@ class TestGeometryMath(unittest.TestCase):
 
     def test_make_contact_frame_znorm(self):
         # Create a normal vectors
-        test_normals: List[vec3f] = []
+        test_normals: list[vec3f] = []
 
         # Add normals for which to test contact frame creation
         test_normals.append(vec3f(1.0, 0.0, 0.0))
@@ -137,7 +135,7 @@ class TestGeometryMath(unittest.TestCase):
 
     def test_make_contact_frame_xnorm(self):
         # Create a normal vectors
-        test_normals: List[vec3f] = []
+        test_normals: list[vec3f] = []
 
         # Add normals for which to test contact frame creation
         test_normals.append(vec3f(1.0, 0.0, 0.0))

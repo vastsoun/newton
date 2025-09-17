@@ -19,10 +19,10 @@ from enum import IntEnum
 
 import numpy as np
 
-from .linear import ComputationInfo, LinearSolverType, NumPySolver
+from .linear import LinearSolverType, NumPySolver
 
 ###
-# Functions
+# Utilities
 ###
 
 
@@ -48,28 +48,26 @@ def compute_lambdas(v: np.ndarray, J: np.ndarray, u_plus: np.ndarray, epsilon: f
 
 
 ###
-# Solvers
+# ADMM Solver
 ###
 
 
-class ADMMMethod(IntEnum):
-    KKT = 0
-    PrimalSchur = 1
-    DualSchur = 2
+class ADMMResult(IntEnum):
+    SUCCESS = 0
+    MAXITER = 1
+    DIVERGE = 2
+    ERROR = 3
 
 
 class ADMMStatus:
-    def __init__(self, dtype: np.dtype = np.float64, converged: bool = False, iterations: int = 0, message: str = ""):
-        self.converged: bool = converged
-        self.iterations: int = iterations
-        self.info: ComputationInfo = ComputationInfo.Uninitialized
-        self.message: str = message
-        self.r_p: float = dtype.type(0)
-        self.r_d: float = dtype.type(0)
-        self.r_c: float = dtype.type(0)
-
-    def __str__(self) -> str:
-        return f"Converged: {self.converged}, Iterations: {self.iterations}, Info: {self.message}"
+    def __init__(self, dtype: np.dtype = np.float64):
+        self.status: ADMMResult = ADMMResult.ERROR
+        self.converged: bool = False
+        self.iterations: int = 0
+        self.r_p: float = dtype.type(np.inf)
+        self.r_d: float = dtype.type(np.inf)
+        self.r_c: float = dtype.type(np.inf)
+        self.r_i: float = dtype.type(np.inf)
 
 
 class ADMMInfo:
@@ -77,11 +75,13 @@ class ADMMInfo:
         self.r_p: np.ndarray = np.zeros(maxiter, dtype=dtype)
         self.r_d: np.ndarray = np.zeros(maxiter, dtype=dtype)
         self.r_c: np.ndarray = np.zeros(maxiter, dtype=dtype)
+        self.r_i: np.ndarray = np.zeros(maxiter, dtype=dtype)
 
     def reset(self):
         self.r_p.fill(0)
         self.r_d.fill(0)
         self.r_c.fill(0)
+        self.r_i.fill(0)
 
 
 class ADMMSolver:
@@ -91,6 +91,8 @@ class ADMMSolver:
         primal_tolerance: float = 1e-6,
         dual_tolerance: float = 1e-6,
         compl_tolerance: float = 1e-6,
+        iter_tolerance: float = 0.0,
+        diverge_tolerance: float = 1e-1,
         eta: float = 1e-5,
         rho: float = 1.0,
         omega: float = 1.0,
@@ -106,18 +108,22 @@ class ADMMSolver:
         self.ncts: int = 0
 
         # Settings
-        self.primal_tolerance = self.dtype(primal_tolerance)
-        self.dual_tolerance = self.dtype(dual_tolerance)
-        self.compl_tolerance = self.dtype(compl_tolerance)
-        self.eta = self.dtype(eta)
-        self.rho = self.dtype(rho)
-        self.omega = self.dtype(omega)
-        self.maxiter = maxiter
+        eps = float(np.finfo(self.dtype).eps)
+        self.primal_tolerance: float = self.dtype(max(primal_tolerance, eps))
+        self.dual_tolerance: float = self.dtype(max(dual_tolerance, eps))
+        self.compl_tolerance: float = self.dtype(max(compl_tolerance, eps))
+        self.iter_tolerance: float = self.dtype(iter_tolerance)
+        self.diverge_tolerance: float = self.dtype(diverge_tolerance)
+        self.eta: float = self.dtype(eta)
+        self.rho: float = self.dtype(rho)
+        self.omega: float = self.dtype(omega)
+        self.maxiter: int = maxiter
 
         # Residuals
         self.r_p: np.ndarray | None = None
         self.r_d: np.ndarray | None = None
         self.r_c: np.ndarray | None = None
+        self.r_i: np.ndarray | None = None
 
         # Linear system solver
         self.kkt_solver: LinearSolverType = kkt_solver or NumPySolver(dtype=self.dtype)
@@ -158,6 +164,13 @@ class ADMMSolver:
     # Internal operations
     ###
 
+    def _set_tolerance_dtype(self):
+        eps = np.finfo(self.dtype).eps
+        self.primal_tolerance = self.dtype.type(max(self.primal_tolerance, eps))
+        self.dual_tolerance = self.dtype.type(max(self.dual_tolerance, eps))
+        self.compl_tolerance = self.dtype.type(max(self.compl_tolerance, eps))
+        self.iter_tolerance = self.dtype.type(max(self.iter_tolerance, eps))
+
     def _update_state(self):
         """Update the ADMM state vectors: primal, slack and dual variables."""
         self.x[:] = self.omega * self.x + (self.dtype.type(1) - self.omega) * self.y_p
@@ -166,34 +179,58 @@ class ADMMSolver:
 
     def _compute_residuals(self, iter: int):
         """Compute the residuals for the current state."""
+        # eps = np.finfo(self.dtype).eps
         self.r_p = self.x - self.y
         self.r_d = self.eta * (self.x - self.x_p) + self.rho * (self.y - self.y_p)
         self.r_c = np.dot(self.x, self.z)
+        self.r_i = self.y - self.y_p
         self.status.r_p = np.max(np.abs(self.r_p))
         self.status.r_d = np.max(np.abs(self.r_d))
         self.status.r_c = np.max(np.abs(self.r_c))
+        # self.status.r_i = np.max(np.abs(self.r_i))
+        # self.status.r_i = np.max(np.abs(self.r_i)) / np.max(np.abs(self.y_p))
+        # self.status.r_i = np.max(np.abs(self.r_i)) / (eps + np.max(np.abs(self.y_p)))
+        self.status.r_i = np.max(np.abs(self.r_i)) / (self.dtype.type(1) + np.max(np.abs(self.y)))
         self.info.r_p[iter] = self.status.r_p
         self.info.r_d[iter] = self.status.r_d
         self.info.r_c[iter] = self.status.r_c
+        self.info.r_i[iter] = self.status.r_i
 
     def _has_converged(self, iter: int) -> bool:
         """Check if the solver has converged based on the current iteration."""
-        return (
+        meets_tolerances: bool = (
             iter > 0
             and self.status.r_p < self.primal_tolerance
             and self.status.r_d < self.dual_tolerance
             and self.status.r_c < self.compl_tolerance
         )
+        has_stagnated: bool = iter > 0 and self.status.r_i < self.iter_tolerance
+        return meets_tolerances or has_stagnated
 
     def _update_previous(self):
         self.x_p[:] = self.x
         self.y_p[:] = self.y
         self.z_p[:] = self.z
 
+    def _set_result(self):
+        if self.status.converged:
+            self.status.status = ADMMResult.SUCCESS
+        elif self.status.iterations >= self.maxiter:
+            if (
+                self.status.r_p > self.diverge_tolerance
+                or self.status.r_d > self.diverge_tolerance
+                or self.status.r_c > self.diverge_tolerance
+                or self.status.r_i > self.diverge_tolerance
+            ):
+                self.status.status = ADMMResult.DIVERGE
+            else:
+                self.status.status = ADMMResult.MAXITER
+
     def _truncate_info(self):
         self.info.r_p = self.info.r_p[: self.status.iterations]
         self.info.r_d = self.info.r_d[: self.status.iterations]
         self.info.r_c = self.info.r_c[: self.status.iterations]
+        self.info.r_i = self.info.r_i[: self.status.iterations]
 
     ###
     # Public API
@@ -208,6 +245,8 @@ class ADMMSolver:
         v_star: np.ndarray,
     ) -> ADMMStatus:
         self.dtype = M.dtype
+        self._set_tolerance_dtype()
+
         self.status = ADMMStatus(dtype=self.dtype)
         self.info = ADMMInfo(maxiter=self.maxiter, dtype=self.dtype)
 
@@ -253,6 +292,7 @@ class ADMMSolver:
                 break
             self._update_previous()
 
+        self._set_result()
         self._truncate_info()
         self.lambdas = self.y.copy()
         self.v_plus = self.z.copy()
@@ -269,6 +309,8 @@ class ADMMSolver:
         v_star: np.ndarray,
     ) -> ADMMStatus:
         self.dtype = M.dtype
+        self._set_tolerance_dtype()
+
         self.status = ADMMStatus(dtype=self.dtype)
         self.info = ADMMInfo(maxiter=self.maxiter, dtype=self.dtype)
 
@@ -309,6 +351,7 @@ class ADMMSolver:
                 break
             self._update_previous()
 
+        self._set_result()
         self._truncate_info()
         self.lambdas = self.y.copy()
         self.v_plus = self.z.copy()
@@ -328,6 +371,8 @@ class ADMMSolver:
         use_preconditioning: bool = False,
     ) -> ADMMStatus:
         self.dtype = D.dtype
+        self._set_tolerance_dtype()
+
         self.status = ADMMStatus(dtype=self.dtype)
         self.info = ADMMInfo(maxiter=self.maxiter, dtype=self.dtype)
 
@@ -366,6 +411,7 @@ class ADMMSolver:
                 break
             self._update_previous()
 
+        self._set_result()
         self._truncate_info()
         if use_preconditioning:
             self.lambdas = S @ self.y
@@ -407,4 +453,13 @@ class ADMMSolver:
         plt.ylabel("r_c")
         plt.grid(True)
         plt.savefig(os.path.join(path, f"admm_info_res_compl{suffix}.png"))
+        plt.close()
+
+        plt.figure(figsize=(8, 4))
+        plt.plot(self.info.r_i)
+        plt.title("ADMM Iter. Residual")
+        plt.xlabel("Iteration")
+        plt.ylabel("r_i")
+        plt.grid(True)
+        plt.savefig(os.path.join(path, f"admm_info_res_iter{suffix}.png"))
         plt.close()

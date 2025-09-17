@@ -136,6 +136,7 @@ class SolutionMetrics(ConstrainedDynamicsMetrics):
     primal_residual_inf: float = np.inf
     dual_residual_inf: float = np.inf
     compl_residual_inf: float = np.inf
+    iter_residual_inf: float = np.inf
 
 
 ###
@@ -176,6 +177,7 @@ class BenchmarkMetrics:
             "primal_residual_inf",
             "dual_residual_inf",
             "compl_residual_inf",
+            "iter_residual_inf",
             "primal_error_abs",
             "primal_error_rel",
             "dual_error_abs",
@@ -217,6 +219,7 @@ class BenchmarkMetrics:
             "primal_residual_inf": fmt(d.primal_residual_inf),
             "dual_residual_inf": fmt(d.dual_residual_inf),
             "compl_residual_inf": fmt(d.compl_residual_inf),
+            "iter_residual_inf": fmt(d.iter_residual_inf),
             "primal_error_abs": fmt(d.primal_error_abs),
             "primal_error_rel": fmt(d.primal_error_rel),
             "dual_error_abs": fmt(d.dual_error_abs),
@@ -552,6 +555,7 @@ def make_benchmark_metrics(
     metrics.data.primal_residual_inf = status.r_p
     metrics.data.dual_residual_inf = status.r_d
     metrics.data.compl_residual_inf = status.r_c
+    metrics.data.iter_residual_inf = status.r_i
 
     # Compute the CRBD performance metrics
     metrics.data.primal_error_abs = primal_dynamics_error_inf(problem.crbd, solution.crbd)
@@ -566,7 +570,7 @@ def make_benchmark_metrics(
 
 
 def solve_benchmark_problem(
-    problem: BenchmarkProblem, admm: linalg.ADMMSolver, methods: SolutionMethods
+    problem: BenchmarkProblem, admm: linalg.ADMMSolver, methods: SolutionMethods, save_info: bool = False
 ) -> list[BenchmarkMetrics]:
     """Solve a ConstrainedDynamicsProblem using an ADMM solver."""
 
@@ -599,6 +603,10 @@ def solve_benchmark_problem(
         solution_kkt = make_benchmark_solution(admm, kkt_info)
         metrics.append(make_benchmark_metrics(time_kkt, status_kkt, problem, solution_kkt))
 
+        # Optionally save convergence plots
+        if save_info:
+            admm.save_info(path=PLOT_OUTPUT_PATH, suffix="_kkt")
+
     # Solve as primal Schur-complement system
     if methods.schur_primal:
         start_schur_prim = time.perf_counter()
@@ -621,6 +629,10 @@ def solve_benchmark_problem(
         )
         solution_schur_prim = make_benchmark_solution(admm, schur_prim_info)
         metrics.append(make_benchmark_metrics(time_schur_prim, status_schur_prim, problem, solution_schur_prim))
+
+        # Optionally save convergence plots
+        if save_info:
+            admm.save_info(path=PLOT_OUTPUT_PATH, suffix="_schur_prim")
 
     # Solve as dual Schur-complement system w/o preconditioning
     if methods.schur_dual:
@@ -648,23 +660,27 @@ def solve_benchmark_problem(
         solution_schur_dual = make_benchmark_solution(admm, schur_dual_info)
         metrics.append(make_benchmark_metrics(time_schur_dual, status_schur_dual, problem, solution_schur_dual))
 
-    # Solve as dual Schur-complement system with preconditioning
-    start_schur_dual_prec = time.perf_counter()
-    status_schur_dual_prec = admm.solve_schur_dual(
-        D=problem.crbd.D,
-        v_f=problem.crbd.v_f,
-        v_star=problem.crbd.v_star,
-        u_minus=problem.crbd.u_minus,
-        invM=problem.crbd.invM,
-        J=problem.crbd.J,
-        h=problem.crbd.h,
-        use_preconditioning=True,
-    )
-    time_schur_dual_prec = time.perf_counter() - start_schur_dual_prec
-    msg.debug(f"ADMM.solve_schur_dual (prec) took {time_schur_dual_prec:.6f} seconds")
+        # Optionally save convergence plots
+        if save_info:
+            admm.save_info(path=PLOT_OUTPUT_PATH, suffix="_schur_dual")
 
-    # Generate the benchmark solution and metrics for the dual Schur-complement solve with preconditioning
+    # Solve as dual Schur-complement system with preconditioning
     if methods.schur_dual_prec:
+        start_schur_dual_prec = time.perf_counter()
+        status_schur_dual_prec = admm.solve_schur_dual(
+            D=problem.crbd.D,
+            v_f=problem.crbd.v_f,
+            v_star=problem.crbd.v_star,
+            u_minus=problem.crbd.u_minus,
+            invM=problem.crbd.invM,
+            J=problem.crbd.J,
+            h=problem.crbd.h,
+            use_preconditioning=True,
+        )
+        time_schur_dual_prec = time.perf_counter() - start_schur_dual_prec
+        msg.debug(f"ADMM.solve_schur_dual (prec) took {time_schur_dual_prec:.6f} seconds")
+
+        # Generate the benchmark solution and metrics for the dual Schur-complement solve with preconditioning
         schur_dual_prec_info = SolutionInfo(
             dtype=admm.dtype,
             solver_name=solver_name,
@@ -675,6 +691,10 @@ def solve_benchmark_problem(
         metrics.append(
             make_benchmark_metrics(time_schur_dual_prec, status_schur_dual_prec, problem, solution_schur_dual_prec)
         )
+
+        # Optionally save convergence plots
+        if save_info:
+            admm.save_info(path=PLOT_OUTPUT_PATH, suffix="_schur_dual_prec")
 
     # Return all metrics for this problem
     return metrics
@@ -775,6 +795,8 @@ if __name__ == "__main__":
         primal_tolerance=1e-6,
         dual_tolerance=1e-6,
         compl_tolerance=1e-6,
+        iter_tolerance=1e-6,
+        diverge_tolerance=1e-1,
         eta=1e-3,
         rho=1.0,
         omega=1.0,
@@ -783,7 +805,8 @@ if __name__ == "__main__":
 
     # Configure the linear system solver
     # admm.kkt_solver = linalg.NumPySolver()
-    # admm.schur_solver = linalg.NumPySolver()
+    admm.schur_solver = linalg.NumPySolver()
+    # admm.schur_solver = linalg.LLTStdSolver()
 
     # Configure the solution methods to be used
     methods = SolutionMethods(
@@ -813,7 +836,7 @@ if __name__ == "__main__":
     )
 
     # Solve the benchmark problem using the ADMM solver
-    metrics = solve_benchmark_problem(problem, admm, methods)
+    metrics = solve_benchmark_problem(problem, admm, methods, True)
     for m in metrics:
         print(f"\n{m}\n")
 
@@ -887,6 +910,7 @@ if __name__ == "__main__":
     #     solution_data["primal_residual_inf"][s, p] = metric.data.primal_residual_inf
     #     solution_data["dual_residual_inf"][s, p] = metric.data.dual_residual_inf
     #     solution_data["compl_residual_inf"][s, p] = metric.data.compl_residual_inf
+    #     solution_data["iter_residual_inf"][s, p] = metric.data.iter_residual_inf
     #     solution_data["primal_error_abs"][s, p] = metric.data.primal_error_abs
     #     solution_data["primal_error_rel"][s, p] = metric.data.primal_error_rel
     #     solution_data["dual_error_abs"][s, p] = metric.data.dual_error_abs

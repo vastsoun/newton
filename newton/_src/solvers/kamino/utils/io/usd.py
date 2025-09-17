@@ -4,12 +4,13 @@
 
 import uuid
 from collections.abc import Iterable
-from typing import Any, Union
+from typing import Any
 
 import numpy as np
 import warp as wp
 
 import newton._src.solvers.kamino.utils.logger as msg
+from newton._src.core.types import nparray
 from newton._src.solvers.kamino.core.bodies import RigidBodyDescriptor
 from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.core.geometry import CollisionGeometryDescriptor, GeometryDescriptor
@@ -210,7 +211,7 @@ class USDImporter:
         attr = self._get_attribute(prim, name)
         return attr.IsValid() and attr.HasAuthoredValue()
 
-    def _parse_float(self, prim, name, default=None) -> Union[float, None]:
+    def _parse_float(self, prim, name, default=None) -> float | None:
         attr = self._get_attribute(prim, name)
         if not attr or not attr.HasAuthoredValue():
             return default
@@ -237,7 +238,7 @@ class USDImporter:
     def _from_gfquat(gfquat) -> wp.quat:
         return wp.normalize(wp.quat(*gfquat.imaginary, gfquat.real))
 
-    def _parse_quat(self, prim, name, default=None) -> Union[np.array, None]:
+    def _parse_quat(self, prim, name, default=None) -> nparray | None:
         attr = self._get_attribute(prim, name)
         if not attr or not attr.HasAuthoredValue():
             return default
@@ -251,7 +252,7 @@ class USDImporter:
             return quat
         return default
 
-    def _parse_vec(self, prim, name, default=None) -> Union[np.array, None]:
+    def _parse_vec(self, prim, name, default=None) -> nparray | None:
         attr = self._get_attribute(prim, name)
         if not attr or not attr.HasAuthoredValue():
             return default
@@ -260,7 +261,7 @@ class USDImporter:
             return np.array(val, dtype=np.float32)
         return default
 
-    def _parse_generic(self, prim, name, default=None) -> Union[Any, None]:
+    def _parse_generic(self, prim, name, default=None) -> Any | None:
         attr = self._get_attribute(prim, name)
         if not attr or not attr.HasAuthoredValue():
             return default
@@ -297,7 +298,7 @@ class USDImporter:
         material_prim,
         distance_unit: float = 1.0,
         mass_unit: float = 1.0,
-    ) -> Union[MaterialDescriptor, None]:
+    ) -> MaterialDescriptor | None:
         """
         Parses a material prim and returns a MaterialDescriptor.
 
@@ -366,9 +367,9 @@ class USDImporter:
         distance_unit: float = 1.0,
         rotation_unit: float = 1.0,
         mass_unit: float = 1.0,
-        offset_xform: Union[wp.transform, None] = None,
+        offset_xform: wp.transform | None = None,
         only_load_enabled_rigid_bodies: bool = True,
-    ) -> Union[RigidBodyDescriptor, None]:
+    ) -> RigidBodyDescriptor | None:
         # Skip this body if it is not enable and we are only loading enabled rigid bodies
         if not rigid_body_spec.rigidBodyEnabled and only_load_enabled_rigid_bodies:
             return None
@@ -492,7 +493,7 @@ class USDImporter:
                 return True
         return False
 
-    def _get_joint_dof_hint(self, prim) -> Union[JointDoFType, None]:
+    def _get_joint_dof_hint(self, prim) -> JointDoFType | None:
         """Queries the custom data for a DoF type hints."""
         dofs = None
         cdata = prim.GetCustomData()
@@ -722,7 +723,7 @@ class USDImporter:
         distance_unit: float = 1.0,
         rotation_unit: float = 1.0,
         only_load_enabled_joints: bool = True,
-    ) -> Union[JointDescriptor, None]:
+    ) -> JointDescriptor | None:
         # Skip this body if it is not enable and we are only loading enabled rigid bodies
         if not joint_spec.jointEnabled and only_load_enabled_joints:
             return None
@@ -932,7 +933,7 @@ class USDImporter:
         material_index_map: dict[str, int],
         distance_unit: float = 1.0,
         rotation_unit: float = 1.0,
-    ) -> Union[CollisionGeometryDescriptor, GeometryDescriptor, None]:
+    ) -> CollisionGeometryDescriptor | GeometryDescriptor | None:
         """
         Parses a geometry prim and returns a GeometryDescriptor.
         """
@@ -1088,9 +1089,9 @@ class USDImporter:
         self,
         source: str,
         root_path: str = "/",
-        xform: Union[Transform, None] = None,
-        ignore_paths: Union[list[str], None] = None,
-        builder: Union[ModelBuilder, None] = None,
+        xform: Transform | None = None,
+        ignore_paths: list[str] | None = None,
+        builder: ModelBuilder | None = None,
         apply_up_axis_from_stage: bool = True,
         only_load_enabled_rigid_bodies: bool = True,
         only_load_enabled_joints: bool = True,

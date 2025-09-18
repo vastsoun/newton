@@ -73,7 +73,26 @@ class IndirectSolverMetrics(LinearSolverMetrics):
 
 
 @dataclass
+class ConstrainedDynamicsInfo:
+    # Problem dimensions
+    nbd: int = 0
+    ncts: int = 0
+    nvars: int = 0
+    # Problem properties
+    jacobian_rank: int = 0
+    mass_ratio: float = 0.0
+    constraint_density: float = 0.0
+    # Derived properties
+    rcond_M: float = 0.0
+    rcond_J: float = 0.0
+    rcond_D: float = 0.0
+    jacobian_rank_ratio: float = 0.0
+
+
+@dataclass
 class ConstrainedDynamicsProblem:
+    # System info
+    info: ConstrainedDynamicsInfo | None = None
     # Primal forward dynamics
     M: np.ndarray | None = None
     invM: np.ndarray | None = None
@@ -741,6 +760,62 @@ def symmetry_info(A: np.ndarray, name: str = "A", title: str = "A", eps: float =
     )
 
 
+def make_summary_table(
+    solvers: list[str],
+    solved: np.ndarray,
+    converged: np.ndarray,
+) -> str:
+    # Ensure input shapes are correct
+    if solved.ndim != 2 or converged.ndim != 2:
+        raise ValueError("Input arrays must be 2-dimensional.")
+    if solved.shape != converged.shape:
+        raise ValueError("Input arrays must have the same shape.")
+    if solved.shape[0] != len(solvers):
+        raise ValueError("Number of solvers must match the number of rows in input arrays.")
+
+    # Compute total number of problems and solvers
+    num_problems = solved.shape[1]
+
+    # Compute a summary of the number of problems solved by each solver
+    solved = np.sum(solved, axis=1)
+    solved_pc = 100.0 * solved / float(num_problems)
+
+    # Compute a summary of the number of problems in which each solver converged
+    converged = np.sum(converged, axis=1)
+    converged_pc = 100.0 * converged / float(num_problems)
+
+    # Prepare title, columns, and rows
+    columns = ["Solver", "Solved", "Solved %", "Converged", "Converged %"]
+    rows: list[list[str]] = []
+    for i, sid in enumerate(solvers):
+        rows.append(
+            [
+                sid,
+                str(int(solved[i])),
+                f"{solved_pc[i]:.1f}%",
+                str(int(converged[i])),
+                f"{converged_pc[i]:.1f}%",
+            ]
+        )
+
+    # Compute column widths
+    widths = [len(c) for c in columns]
+    for r in rows:
+        for j, val in enumerate(r):
+            widths[j] = max(widths[j], len(val))
+
+    # Build header, separator, and data rows
+    header = " | ".join(columns[j].center(widths[j]) for j in range(len(columns)))
+    rule = "-+-".join("-" * widths[j] for j in range(len(columns)))
+    lines = [rule, header, rule]
+    for r in rows:
+        lines.append(" | ".join(val.rjust(widths[j]) for j, val in enumerate(r)))
+    lines.append(rule)
+
+    # Return the formatted table as a string
+    return "\n".join(lines)
+
+
 ###
 # Constants
 ###
@@ -787,8 +862,14 @@ if __name__ == "__main__":
     datafile = h5py.File(HDF5_DATASET_PATH, "r")
 
     # Select the numpy data type for computations
-    np_dtype = np.float64
-    # np_dtype = np.float32
+    # np_dtype = np.float64
+    np_dtype = np.float32
+
+    # CONFIGURATIONS
+    sample: bool = True
+    dataset: bool = False
+    summary: bool = False
+    profiles: bool = False
 
     ###
     # Solver set-up
@@ -805,152 +886,170 @@ if __name__ == "__main__":
         eta=1e-3,
         rho=1.0,
         omega=1.0,
-        maxiter=1000,
+        maxiter=200,
     )
 
     # Configure the linear system solver
-    admm.kkt_solver = linalg.NumPySolver()
-    admm.schur_solver = linalg.NumPySolver()
+    # admm.kkt_solver = linalg.NumPySolver()
     # admm.kkt_solver = linalg.LDLTScipySolver()
-    # admm.schur_solver = linalg.LLTScipySolver()
+    # admm.schur_solver = linalg.NumPySolver()
+    # admm.schur_solver = linalg.SciPySolver()
+    # admm.schur_solver = linalg.LUSciPySolver()
+    # admm.schur_solver = linalg.LLTSciPySolver()
+    # admm.schur_solver = linalg.LDLTSciPySolver()
     # admm.schur_solver = linalg.LLTStdSolver()
+    admm.schur_solver = linalg.LDLTEigen3Solver()
 
     # Configure the solution methods to be used
     methods = SolutionMethods(
-        kkt=True,
+        kkt=False,
         schur_primal=True,
         schur_dual=True,
         schur_dual_prec=True,
     )
 
     ###
-    # Single-problem demo
+    # Single sample problem
     ###
 
-    # Retrieve target data frames
-    SAMPLE = 0
-    fpath = f"{PROBLEM_TYPE}/{PROBLEM_NAME}/{PROBLEM_CATEGORY}/{SAMPLE}/DualProblem"
-    dataframe = datafile[fpath]
+    if sample:
+        # Retrieve target data frames
+        SAMPLE = 0
+        fpath = f"{PROBLEM_TYPE}/{PROBLEM_NAME}/{PROBLEM_CATEGORY}/{SAMPLE}/DualProblem"
+        dataframe = datafile[fpath]
 
-    # Load the problem data into a container
-    msg.info(f"Loading problem data from '{dataframe.name}'...")
-    problem = make_benchmark_problem(
-        name=fpath,
-        problem=load_dualproblem_data(dataframe=dataframe, dtype=np_dtype),
-        ensure_symmetric=False,
-        save_matrix_info=False,
-        save_symmetry_info=False,
-    )
-
-    # Solve the benchmark problem using the ADMM solver
-    metrics = solve_benchmark_problem(problem, admm, methods, True)
-    for m in metrics:
-        print(f"\n{m}\n")
-
-    ###
-    # Multiple-problems demo
-    ###
-
-    # Find and print all DualProblem paths
-    search_scope = f"{PROBLEM_TYPE}/{PROBLEM_NAME}/{PROBLEM_CATEGORY}"
-    # search_scope = f"{PROBLEM_TYPE}/{PROBLEM_NAME}"
-    msg.info(f"Searching for DualProblem paths in scope '{search_scope}'...")
-    problem_paths = find_dualproblem_paths(datafile=datafile, scope=search_scope)
-    msg.info(f"Found {len(problem_paths)} DualProblem path(s).")
-    # for path in problem_paths:
-    #     print(f"- {path}")
-
-    # Iterate over all found DualProblem paths
-    metrics: list[BenchmarkMetrics] = []
-    msg.info("Iterating over all found DualProblem paths...")
-    for path in problem_paths:
-        pdata = load_dualproblem_data(dataframe=datafile[path], dtype=np_dtype)
+        # Load the problem data into a container
+        msg.info(f"Loading problem data from '{dataframe.name}'...")
         problem = make_benchmark_problem(
-            name=path,
-            problem=pdata,
+            name=fpath,
+            problem=load_dualproblem_data(dataframe=dataframe, dtype=np_dtype),
             ensure_symmetric=False,
             save_matrix_info=False,
             save_symmetry_info=False,
         )
-        metrics.extend(solve_benchmark_problem(problem, admm, methods))
-    # for m in metrics:
-    #     print(f"\n{m}\n")
 
-    # Iterate over all collected metrics and collect a list of unique solver IDs
-    solvers = set()
-    for m in metrics:
-        sid = m._solverid()
-        solvers.add(sid)
-    solvers = sorted(solvers)
-    msg.info(f"Collected metrics for {len(solvers)} unique solver ID(s).")
-    # for s in solvers:
-    #     print(f"- {s}")
+        # Solve the benchmark problem using the ADMM solver
+        metrics = solve_benchmark_problem(problem, admm, methods, True)
+        for m in metrics:
+            print(f"\n{m}\n")
 
-    # Print summary of all collected metrics
-    num_solvers = len(solvers)
-    num_problems = len(problem_paths)
-    msg.info(f"num_solvers = {num_solvers}")
-    msg.info(f"num_problems = {num_problems}")
+    ###
+    # Benchmark problems
+    ###
+
+    if dataset:
+        # Find and print all DualProblem paths
+        search_scope = f"{PROBLEM_TYPE}/{PROBLEM_NAME}/{PROBLEM_CATEGORY}"
+        # search_scope = f"{PROBLEM_TYPE}/{PROBLEM_NAME}"
+        msg.info(f"Searching for DualProblem paths in scope '{search_scope}'...")
+        problem_paths = find_dualproblem_paths(datafile=datafile, scope=search_scope)
+        msg.info(f"Found {len(problem_paths)} DualProblem path(s).")
+        # for path in problem_paths:
+        #     print(f"- {path}")
+
+        # Iterate over all found DualProblem paths
+        metrics: list[BenchmarkMetrics] = []
+        msg.info("Iterating over all found DualProblem paths...")
+        for path in problem_paths:
+            pdata = load_dualproblem_data(dataframe=datafile[path], dtype=np_dtype)
+            problem = make_benchmark_problem(
+                name=path,
+                problem=pdata,
+                ensure_symmetric=False,
+                save_matrix_info=False,
+                save_symmetry_info=False,
+            )
+            metrics.extend(solve_benchmark_problem(problem, admm, methods))
+        # for m in metrics:
+        #     print(f"\n{m}\n")
+
+        # Iterate over all collected metrics and collect a list of unique solver IDs
+        solvers = set()
+        for m in metrics:
+            sid = m._solverid()
+            solvers.add(sid)
+        solvers = sorted(solvers)
+        msg.info(f"Collected metrics for {len(solvers)} unique solver ID(s).")
+        # for s in solvers:
+        #     print(f"- {s}")
+
+        # Print summary of all collected metrics
+        num_solvers = len(solvers)
+        num_problems = len(problem_paths)
+        msg.info(f"num_solvers = {num_solvers}")
+        msg.info(f"num_problems = {num_problems}")
+
+        ###
+        # Performance metrics
+        ###
+
+        # Create a dictionary of 2D arrays for each metric
+        metric_names = BenchmarkMetrics._metrics()
+        solutions: dict[str, np.ndarray] = {
+            metric: np.empty((num_solvers, num_problems), dtype=float) for metric in metric_names
+        }
+
+        # Populate the metric data arrays
+        msg.info("Populating metric data arrays...")
+        for metric in metrics:
+            s = solvers.index(metric._solverid())
+            p = problem_paths.index(metric.pname) if metric.pname in problem_paths else -1
+            if p < 0:
+                msg.error("Problem name '%s' not found in problem paths.", metric.pname)
+                continue
+            solutions["success"][s, p] = 1.0 if metric.data.success else 0.0
+            solutions["converged"][s, p] = 1.0 if metric.data.converged else 0.0
+            solutions["iterations"][s, p] = float(metric.data.iterations)
+            solutions["total_time"][s, p] = metric.data.total_time
+            solutions["iteration_time"][s, p] = metric.data.iteration_time
+            solutions["primal_residual_inf"][s, p] = metric.data.primal_residual_inf
+            solutions["dual_residual_inf"][s, p] = metric.data.dual_residual_inf
+            solutions["compl_residual_inf"][s, p] = metric.data.compl_residual_inf
+            solutions["iter_residual_inf"][s, p] = metric.data.iter_residual_inf
+            solutions["primal_error_abs"][s, p] = metric.data.primal_error_abs
+            solutions["primal_error_rel"][s, p] = metric.data.primal_error_rel
+            solutions["dual_error_abs"][s, p] = metric.data.dual_error_abs
+            solutions["dual_error_rel"][s, p] = metric.data.dual_error_rel
+            solutions["kkt_error_abs"][s, p] = metric.data.kkt_error_abs
+            solutions["kkt_error_rel"][s, p] = metric.data.kkt_error_rel
+
+    ###
+    # Performance summary
+    ###
+
+    if dataset and summary:
+        # Print a coarse summary of solver success rates
+        msg.info("SUMMARY:\n%s", make_summary_table(solvers, solutions["success"], solutions["converged"]))
 
     ###
     # Performance profiles
     ###
 
-    # Create a dictionary of 2D arrays for each metric
-    metric_names = BenchmarkMetrics._metrics()
-    solutions: dict[str, np.ndarray] = {
-        metric: np.empty((num_solvers, num_problems), dtype=float) for metric in metric_names
-    }
-
-    # Populate the metric data arrays
-    msg.info("Populating metric data arrays...")
-    for metric in metrics:
-        s = solvers.index(metric._solverid())
-        p = problem_paths.index(metric.pname) if metric.pname in problem_paths else -1
-        if p < 0:
-            msg.error("Problem name '%s' not found in problem paths.", metric.pname)
-            continue
-        solutions["success"][s, p] = 1.0 if metric.data.success else 0.0
-        solutions["converged"][s, p] = 1.0 if metric.data.converged else np.inf
-        solutions["iterations"][s, p] = float(metric.data.iterations)
-        solutions["total_time"][s, p] = metric.data.total_time
-        solutions["iteration_time"][s, p] = metric.data.iteration_time
-        solutions["primal_residual_inf"][s, p] = metric.data.primal_residual_inf
-        solutions["dual_residual_inf"][s, p] = metric.data.dual_residual_inf
-        solutions["compl_residual_inf"][s, p] = metric.data.compl_residual_inf
-        solutions["iter_residual_inf"][s, p] = metric.data.iter_residual_inf
-        solutions["primal_error_abs"][s, p] = metric.data.primal_error_abs
-        solutions["primal_error_rel"][s, p] = metric.data.primal_error_rel
-        solutions["dual_error_abs"][s, p] = metric.data.dual_error_abs
-        solutions["dual_error_rel"][s, p] = metric.data.dual_error_rel
-        solutions["kkt_error_abs"][s, p] = metric.data.kkt_error_abs
-        solutions["kkt_error_rel"][s, p] = metric.data.kkt_error_rel
-
-    # Compute performance profiles for selected metrics
-    msg.info("Computing performance profiles...")
-    successes = solutions["success"]
-    pp_total_time = PerformanceProfile(data=solutions["total_time"], success=successes, taumax=np.inf)
-    pp_iteration_time = PerformanceProfile(data=solutions["iteration_time"], success=successes, taumax=np.inf)
-    pp_dual_residual_inf = PerformanceProfile(data=solutions["dual_residual_inf"], success=successes, taumax=np.inf)
-    pp_primal_error_abs = PerformanceProfile(data=solutions["primal_error_abs"], success=successes, taumax=np.inf)
-    pp_primal_error_rel = PerformanceProfile(data=solutions["primal_error_rel"], success=successes, taumax=np.inf)
-    pp_dual_error_abs = PerformanceProfile(data=solutions["dual_error_abs"], success=successes, taumax=np.inf)
-    pp_dual_error_rel = PerformanceProfile(data=solutions["dual_error_rel"], success=successes, taumax=np.inf)
-    pp_kkt_error_abs = PerformanceProfile(data=solutions["kkt_error_abs"], success=successes, taumax=np.inf)
-    pp_kkt_error_rel = PerformanceProfile(data=solutions["kkt_error_rel"], success=successes, taumax=np.inf)
-
-    # Render performance profiles to files
-    msg.info("Rendering performance profiles plots...")
-    solvers_list = list(solvers)
-    pp_total_time.plot(solvers_list, title="Total Time")
-    pp_iteration_time.plot(solvers_list, title="Iteration Time")
-    pp_dual_residual_inf.plot(solvers_list, title="Dual Residual Infinity-Norm")
-    pp_primal_error_abs.plot(solvers_list, title="Primal System Absolute Error")
-    pp_primal_error_rel.plot(solvers_list, title="Primal System Relative Error")
-    pp_dual_error_abs.plot(solvers_list, title="Dual System Absolute Error")
-    pp_dual_error_rel.plot(solvers_list, title="Dual System Relative Error")
-    pp_kkt_error_abs.plot(solvers_list, title="KKT System Absolute Error")
-    pp_kkt_error_rel.plot(solvers_list, title="KKT System Relative Error")
+    if dataset and profiles:
+        # Compute performance profiles for selected metrics
+        msg.info("Computing performance profiles...")
+        successes = solutions["success"]
+        pp_total_time = PerformanceProfile(data=solutions["total_time"], success=successes, taumax=np.inf)
+        pp_iteration_time = PerformanceProfile(data=solutions["iteration_time"], success=successes, taumax=np.inf)
+        pp_dual_residual_inf = PerformanceProfile(data=solutions["dual_residual_inf"], success=successes, taumax=np.inf)
+        pp_primal_error_abs = PerformanceProfile(data=solutions["primal_error_abs"], success=successes, taumax=np.inf)
+        pp_primal_error_rel = PerformanceProfile(data=solutions["primal_error_rel"], success=successes, taumax=np.inf)
+        pp_dual_error_abs = PerformanceProfile(data=solutions["dual_error_abs"], success=successes, taumax=np.inf)
+        pp_dual_error_rel = PerformanceProfile(data=solutions["dual_error_rel"], success=successes, taumax=np.inf)
+        pp_kkt_error_abs = PerformanceProfile(data=solutions["kkt_error_abs"], success=successes, taumax=np.inf)
+        pp_kkt_error_rel = PerformanceProfile(data=solutions["kkt_error_rel"], success=successes, taumax=np.inf)
+        # Render performance profiles to files
+        msg.info("Rendering performance profiles plots...")
+        solvers_list = list(solvers)
+        pp_total_time.plot(solvers_list, title="Total Time")
+        pp_iteration_time.plot(solvers_list, title="Iteration Time")
+        pp_dual_residual_inf.plot(solvers_list, title="Dual Residual")
+        pp_primal_error_abs.plot(solvers_list, title="Primal Absolute Error")
+        pp_primal_error_rel.plot(solvers_list, title="Primal Relative Error")
+        pp_dual_error_abs.plot(solvers_list, title="Dual Absolute Error")
+        pp_dual_error_rel.plot(solvers_list, title="Dual Relative Error")
+        pp_kkt_error_abs.plot(solvers_list, title="KKT Absolute Error")
+        pp_kkt_error_rel.plot(solvers_list, title="KKT Relative Error")
 
     # TODO:
     #   - Add collection of problem properties

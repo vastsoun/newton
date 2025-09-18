@@ -72,16 +72,26 @@ class ADMMStatus:
 
 class ADMMInfo:
     def __init__(self, maxiter: int = 0, dtype: np.dtype = np.float64):
+        self.r_linsys_abs: np.ndarray = np.zeros(maxiter, dtype=dtype)
+        self.r_linsys_rel: np.ndarray = np.zeros(maxiter, dtype=dtype)
         self.r_p: np.ndarray = np.zeros(maxiter, dtype=dtype)
         self.r_d: np.ndarray = np.zeros(maxiter, dtype=dtype)
         self.r_c: np.ndarray = np.zeros(maxiter, dtype=dtype)
         self.r_i: np.ndarray = np.zeros(maxiter, dtype=dtype)
+        self.norm_x: np.ndarray = np.zeros(maxiter, dtype=dtype)
+        self.norm_y: np.ndarray = np.zeros(maxiter, dtype=dtype)
+        self.norm_z: np.ndarray = np.zeros(maxiter, dtype=dtype)
 
     def reset(self):
+        self.r_linsys_abs.fill(0)
+        self.r_linsys_rel.fill(0)
         self.r_p.fill(0)
         self.r_d.fill(0)
         self.r_c.fill(0)
         self.r_i.fill(0)
+        self.norm_x.fill(0)
+        self.norm_y.fill(0)
+        self.norm_z.fill(0)
 
 
 class ADMMSolver:
@@ -185,6 +195,16 @@ class ADMMSolver:
             return False
         return True
 
+    def _store_kkt_solver_error(self, iter: int):
+        """Store the linear solver errors for the current iteration."""
+        self.info.r_linsys_abs[iter] = self.kkt_solver.error_abs
+        self.info.r_linsys_rel[iter] = self.kkt_solver.error_rel
+
+    def _store_schur_solver_error(self, iter: int):
+        """Store the linear solver errors for the current iteration."""
+        self.info.r_linsys_abs[iter] = self.schur_solver.error_abs
+        self.info.r_linsys_rel[iter] = self.schur_solver.error_rel
+
     def _update_state(self):
         """Update the ADMM state vectors: primal, slack and dual variables."""
         self.x[:] = self.omega * self.x + (self.dtype.type(1) - self.omega) * self.y_p
@@ -201,14 +221,14 @@ class ADMMSolver:
         self.status.r_p = np.max(np.abs(self.r_p))
         self.status.r_d = np.max(np.abs(self.r_d))
         self.status.r_c = np.max(np.abs(self.r_c))
-        # self.status.r_i = np.max(np.abs(self.r_i))
-        # self.status.r_i = np.max(np.abs(self.r_i)) / np.max(np.abs(self.y_p))
-        # self.status.r_i = np.max(np.abs(self.r_i)) / (eps + np.max(np.abs(self.y_p)))
         self.status.r_i = np.max(np.abs(self.r_i)) / (self.dtype.type(1) + np.max(np.abs(self.y)))
         self.info.r_p[iter] = self.status.r_p
         self.info.r_d[iter] = self.status.r_d
         self.info.r_c[iter] = self.status.r_c
         self.info.r_i[iter] = self.status.r_i
+        self.info.norm_x[iter] = np.max(np.abs(self.x))
+        self.info.norm_y[iter] = np.max(np.abs(self.y))
+        self.info.norm_z[iter] = np.max(np.abs(self.z))
 
     def _check_converged(self, iter: int) -> bool:
         """Check if the solver has converged based on the current iteration."""
@@ -297,12 +317,13 @@ class ADMMSolver:
 
             self.v[:] = -v_star + self.eta * self.x_p + self.rho * self.y_p + self.z_p
             self.k[: self.ncts] = self.v
-            self.ux[:] = self.kkt_solver.solve(b=self.k)
+            self.ux[:] = self.kkt_solver.solve(b=self.k, compute_error=True)
             self.x[:] = -self.ux[: self.ncts]
             if not self._check_state():
                 break
 
             self._update_state()
+            self._store_kkt_solver_error(i)
             self._compute_residuals(i)
             if self._check_converged(i):
                 break
@@ -357,12 +378,13 @@ class ADMMSolver:
 
             self.v[:] = -v_star + self.eta * self.x_p + self.rho * self.y_p + self.z_p
             self.p[:] = self.w + r_epsilon * (J.T @ self.v)
-            self.u[:] = self.schur_solver.solve(b=self.p)
+            self.u[:] = self.schur_solver.solve(b=self.p, compute_error=True)
             self.x[:] = r_epsilon * (self.v - J @ self.u)
             if not self._check_state():
                 break
 
             self._update_state()
+            self._store_schur_solver_error(i)
             self._compute_residuals(i)
             if self._check_converged(i):
                 break
@@ -419,11 +441,12 @@ class ADMMSolver:
             self.status.iterations += 1
 
             self.d[:] = self.v + self.eta * self.x_p + self.rho * self.y_p + self.z_p
-            self.x[:] = self.schur_solver.solve(b=self.d)
+            self.x[:] = self.schur_solver.solve(b=self.d, compute_error=True)
             if not self._check_state():
                 break
 
             self._update_state()
+            self._store_schur_solver_error(i)
             self._compute_residuals(i)
             if self._check_converged(i):
                 break
@@ -445,6 +468,24 @@ class ADMMSolver:
         import os  # noqa: PLC0415
 
         import matplotlib.pyplot as plt  # noqa: PLC0415
+
+        plt.figure(figsize=(8, 4))
+        plt.plot(self.info.r_linsys_abs)
+        plt.title("ADMM Linear Solver Abs. Error")
+        plt.xlabel("Iteration")
+        plt.ylabel("Abs. Error")
+        plt.grid(True)
+        plt.savefig(os.path.join(path, f"admm_info_linsys_abs{suffix}.png"))
+        plt.close()
+
+        plt.figure(figsize=(8, 4))
+        plt.plot(self.info.r_linsys_rel)
+        plt.title("ADMM Linear Solver Rel. Error")
+        plt.xlabel("Iteration")
+        plt.ylabel("Rel. Error")
+        plt.grid(True)
+        plt.savefig(os.path.join(path, f"admm_info_linsys_rel{suffix}.png"))
+        plt.close()
 
         plt.figure(figsize=(8, 4))
         plt.plot(self.info.r_p)
@@ -480,4 +521,31 @@ class ADMMSolver:
         plt.ylabel("r_i")
         plt.grid(True)
         plt.savefig(os.path.join(path, f"admm_info_res_iter{suffix}.png"))
+        plt.close()
+
+        plt.figure(figsize=(8, 4))
+        plt.plot(self.info.norm_x)
+        plt.title("ADMM Primal Variable Norm")
+        plt.xlabel("Iteration")
+        plt.ylabel("||x||_inf")
+        plt.grid(True)
+        plt.savefig(os.path.join(path, f"admm_info_norm_x{suffix}.png"))
+        plt.close()
+
+        plt.figure(figsize=(8, 4))
+        plt.plot(self.info.norm_y)
+        plt.title("ADMM Slack Variable Norm")
+        plt.xlabel("Iteration")
+        plt.ylabel("||y||_inf")
+        plt.grid(True)
+        plt.savefig(os.path.join(path, f"admm_info_norm_y{suffix}.png"))
+        plt.close()
+
+        plt.figure(figsize=(8, 4))
+        plt.plot(self.info.norm_z)
+        plt.title("ADMM Dual Variable Norm")
+        plt.xlabel("Iteration")
+        plt.ylabel("||z||_inf")
+        plt.grid(True)
+        plt.savefig(os.path.join(path, f"admm_info_norm_z{suffix}.png"))
         plt.close()

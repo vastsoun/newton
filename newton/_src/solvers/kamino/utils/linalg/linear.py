@@ -563,7 +563,7 @@ class LinearSolver(ABC):
         norm_x = np.linalg.norm(x, ord=np.inf)
         norm_b = np.linalg.norm(b, ord=np.inf)
         norm_A = np.linalg.norm(A, ord=np.inf)
-        denom = max(norm_A * norm_x + norm_b, eps)
+        denom = max(norm_A * norm_x, norm_b, eps)
         self._error_abs = linsys_error_inf(A, b, x)
         self._error_rel = self._error_abs / denom
 

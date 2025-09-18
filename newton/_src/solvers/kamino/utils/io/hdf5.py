@@ -1029,7 +1029,7 @@ class DualProblemData:
         # self.mu = simulator.problem.data.mu.numpy().astype(dtype)
 
         # Construct a list of generalized inverse mass matrices of each world
-        from newton._src.solvers.kamino.tests.utils.make import (
+        from newton._src.solvers.kamino.tests.utils.make import (  # noqa: PLC0415
             make_generalized_mass_matrices,
             make_inverse_generalized_mass_matrices,
         )
@@ -1068,6 +1068,34 @@ class DualProblemData:
         self.w_j = simulator.model_data.bodies.w_j_i.numpy().astype(dtype)
         self.w_l = simulator.model_data.bodies.w_l_i.numpy().astype(dtype)
         self.w_c = simulator.model_data.bodies.w_c_i.numpy().astype(dtype)
+
+
+# NumPy-based container for the SystemInfo data loaded from HDF5
+class SystemInfoData:
+    def __init__(self, dataset=None, dtype=float, itype=int):
+        # Problem properties
+        self.jacobian_rank: int = 0
+        self.mass_ratio: float = 0.0
+        self.constraint_density: float = 0.0
+        # Load data if dataset is provided
+        if dataset is not None:
+            self.load(dataset, dtype, itype)
+
+    def __repr__(self):
+        return f"SystemInfoData(\
+            \njacobian_rank={self.jacobian_rank}\
+            \nmass_ratio={self.mass_ratio}\
+            \nconstraint_density={self.constraint_density})"
+
+    def load(self, dataset, dtype=float, itype=int):
+        self.jacobian_rank = dataset["jacobian_rank"][()].astype(itype)
+        self.mass_ratio = dataset["mass_ratio"][()].astype(dtype)
+        self.constraint_density = dataset["constraint_density"][()].astype(dtype)
+
+    def store(self, dataset, namespace: str = ""):
+        dataset[namespace + "/jacobian_rank"] = self.jacobian_rank.astype(float)
+        dataset[namespace + "/mass_ratio"] = self.mass_ratio.astype(float)
+        dataset[namespace + "/constraint_density"] = self.constraint_density.astype(float)
 
 
 ###

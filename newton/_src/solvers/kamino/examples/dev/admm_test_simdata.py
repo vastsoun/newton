@@ -129,6 +129,7 @@ class SolutionInfo:
 
 @dataclass
 class SolutionMetrics(ConstrainedDynamicsMetrics):
+    success: bool = False
     converged: bool = False
     iterations: int = 0
     total_time: float = np.inf
@@ -170,6 +171,7 @@ class BenchmarkMetrics:
     def _metrics() -> list[str]:
         """Ordered metric columns to display per solver group."""
         return [
+            "success",
             "converged",
             "iterations",
             "total_time",
@@ -212,6 +214,7 @@ class BenchmarkMetrics:
             return str(v)
 
         return {
+            "success": fmt(d.success),
             "converged": fmt(d.converged),
             "iterations": fmt(d.iterations),
             "total_time": fmt(d.total_time),
@@ -548,6 +551,7 @@ def make_benchmark_metrics(
     metrics = BenchmarkMetrics(pname=problem.name, info=solution.info, data=SolutionMetrics())
 
     # Set the basic solution metrics
+    metrics.data.success = status.result <= linalg.ADMMResult.MAXITER
     metrics.data.converged = status.converged
     metrics.data.iterations = status.iterations
     metrics.data.total_time = time
@@ -805,8 +809,8 @@ if __name__ == "__main__":
 
     # Configure the linear system solver
     # admm.kkt_solver = linalg.NumPySolver()
-    admm.schur_solver = linalg.NumPySolver()
-    # admm.schur_solver = linalg.LLTStdSolver()
+    # admm.schur_solver = linalg.NumPySolver()
+    admm.schur_solver = linalg.LLTStdSolver()
 
     # Configure the solution methods to be used
     methods = SolutionMethods(
@@ -903,6 +907,7 @@ if __name__ == "__main__":
     #     if p < 0:
     #         msg.error("Problem name '%s' not found in problem paths.", metric.pname)
     #         continue
+    #     solution_data["success"][s, p] = 1.0 if metric.data.success else 0.0
     #     solution_data["converged"][s, p] = 1.0 if metric.data.converged else 0.0
     #     solution_data["iterations"][s, p] = float(metric.data.iterations)
     #     solution_data["total_time"][s, p] = metric.data.total_time

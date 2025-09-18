@@ -61,7 +61,7 @@ class ADMMResult(IntEnum):
 
 class ADMMStatus:
     def __init__(self, dtype: np.dtype = np.float64):
-        self.status: ADMMResult = ADMMResult.ERROR
+        self.result: ADMMResult = ADMMResult.ERROR
         self.converged: bool = False
         self.iterations: int = 0
         self.r_p: float = dtype.type(np.inf)
@@ -214,7 +214,7 @@ class ADMMSolver:
 
     def _set_result(self):
         if self.status.converged:
-            self.status.status = ADMMResult.SUCCESS
+            self.status.result = ADMMResult.SUCCESS
         elif self.status.iterations >= self.maxiter:
             if (
                 self.status.r_p > self.diverge_tolerance
@@ -222,9 +222,9 @@ class ADMMSolver:
                 or self.status.r_c > self.diverge_tolerance
                 or self.status.r_i > self.diverge_tolerance
             ):
-                self.status.status = ADMMResult.DIVERGE
+                self.status.result = ADMMResult.DIVERGE
             else:
-                self.status.status = ADMMResult.MAXITER
+                self.status.result = ADMMResult.MAXITER
 
     def _truncate_info(self):
         self.info.r_p = self.info.r_p[: self.status.iterations]

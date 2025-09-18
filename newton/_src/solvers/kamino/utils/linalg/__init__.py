@@ -17,6 +17,7 @@
 
 from .admm import (
     ADMMInfo,
+    ADMMResult,
     ADMMSolver,
     ADMMStatus,
     compute_lambdas,
@@ -72,6 +73,7 @@ from .matrix import (
 
 __all__ = [
     "ADMMInfo",
+    "ADMMResult",
     "ADMMSolver",
     "ADMMStatus",
     "ComputationInfo",

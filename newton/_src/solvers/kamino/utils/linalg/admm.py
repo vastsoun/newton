@@ -93,6 +93,7 @@ class ADMMSolver:
         compl_tolerance: float = 1e-6,
         iter_tolerance: float = 0.0,
         diverge_tolerance: float = 1e-1,
+        maxvalue: float = 1e20,
         eta: float = 1e-5,
         rho: float = 1.0,
         omega: float = 1.0,
@@ -109,11 +110,13 @@ class ADMMSolver:
 
         # Settings
         eps = float(np.finfo(self.dtype).eps)
+        dtmax = float(np.finfo(self.dtype).max)
         self.primal_tolerance: float = self.dtype(max(primal_tolerance, eps))
         self.dual_tolerance: float = self.dtype(max(dual_tolerance, eps))
         self.compl_tolerance: float = self.dtype(max(compl_tolerance, eps))
         self.iter_tolerance: float = self.dtype(iter_tolerance)
         self.diverge_tolerance: float = self.dtype(diverge_tolerance)
+        self.maxvalue: float = self.dtype(min(maxvalue, dtmax))
         self.eta: float = self.dtype(eta)
         self.rho: float = self.dtype(rho)
         self.omega: float = self.dtype(omega)
@@ -165,11 +168,22 @@ class ADMMSolver:
     ###
 
     def _set_tolerance_dtype(self):
+        """Ensure that all tolerances are of the correct dtype and at least equal to the corresponding machine epsilon."""
         eps = np.finfo(self.dtype).eps
         self.primal_tolerance = self.dtype.type(max(self.primal_tolerance, eps))
         self.dual_tolerance = self.dtype.type(max(self.dual_tolerance, eps))
         self.compl_tolerance = self.dtype.type(max(self.compl_tolerance, eps))
         self.iter_tolerance = self.dtype.type(max(self.iter_tolerance, eps))
+
+    def _check_state(self) -> bool:
+        """Check and correct the ADMM state vectors: primal, slack and dual variables."""
+        x_valid = np.all(np.isfinite(self.x)) and np.all(np.abs(self.x) < self.maxvalue)
+        y_valid = np.all(np.isfinite(self.y)) and np.all(np.abs(self.y) < self.maxvalue)
+        z_valid = np.all(np.isfinite(self.z)) and np.all(np.abs(self.z) < self.maxvalue)
+        if not (x_valid and y_valid and z_valid):
+            self.status.result = ADMMResult.ERROR
+            return False
+        return True
 
     def _update_state(self):
         """Update the ADMM state vectors: primal, slack and dual variables."""
@@ -196,7 +210,7 @@ class ADMMSolver:
         self.info.r_c[iter] = self.status.r_c
         self.info.r_i[iter] = self.status.r_i
 
-    def _has_converged(self, iter: int) -> bool:
+    def _check_converged(self, iter: int) -> bool:
         """Check if the solver has converged based on the current iteration."""
         meets_tolerances: bool = (
             iter > 0
@@ -205,7 +219,8 @@ class ADMMSolver:
             and self.status.r_c < self.compl_tolerance
         )
         has_stagnated: bool = iter > 0 and self.status.r_i < self.iter_tolerance
-        return meets_tolerances or has_stagnated
+        self.status.converged = meets_tolerances or has_stagnated
+        return self.status.converged
 
     def _update_previous(self):
         self.x_p[:] = self.x
@@ -284,11 +299,12 @@ class ADMMSolver:
             self.k[: self.ncts] = self.v
             self.ux[:] = self.kkt_solver.solve(b=self.k)
             self.x[:] = -self.ux[: self.ncts]
+            if not self._check_state():
+                break
 
             self._update_state()
             self._compute_residuals(i)
-            if self._has_converged(i):
-                self.status.converged = True
+            if self._check_converged(i):
                 break
             self._update_previous()
 
@@ -343,11 +359,12 @@ class ADMMSolver:
             self.p[:] = self.w + r_epsilon * (J.T @ self.v)
             self.u[:] = self.schur_solver.solve(b=self.p)
             self.x[:] = r_epsilon * (self.v - J @ self.u)
+            if not self._check_state():
+                break
 
             self._update_state()
             self._compute_residuals(i)
-            if self._has_converged(i):
-                self.status.converged = True
+            if self._check_converged(i):
                 break
             self._update_previous()
 
@@ -403,11 +420,12 @@ class ADMMSolver:
 
             self.d[:] = self.v + self.eta * self.x_p + self.rho * self.y_p + self.z_p
             self.x[:] = self.schur_solver.solve(b=self.d)
+            if not self._check_state():
+                break
 
             self._update_state()
             self._compute_residuals(i)
-            if self._has_converged(i):
-                self.status.converged = True
+            if self._check_converged(i):
                 break
             self._update_previous()
 

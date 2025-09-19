@@ -370,6 +370,7 @@ class PerformanceProfile:
         # Attempt to import matplotlib
         try:
             import matplotlib.pyplot as plt  # noqa: PLC0415
+            from cycler import cycler  # noqa: PLC0415
         except Exception as exc:  # pragma: no cover - optional dependency
             msg.error(f"`matplotlib` is required to plot profiles: {exc}")
             return
@@ -383,14 +384,26 @@ class PerformanceProfile:
         # Apply an optional style
         context_mgr = plt.style.context(style) if style else _nullcontext()
         with context_mgr:
-            fig, ax = plt.subplots()
+            # 60 styles = 10 colors x 6 dash styles
+            colors = list(plt.cm.tab10.colors)  # 10 high-contrast colors
+            dash_styles = ["-", "--", "-.", ":", (0, (3, 1, 1, 1)), (0, (1, 5))]  # 6 clear linestyles
+            prop = cycler(linestyle=dash_styles) * cycler(color=colors)
+            plt.rcParams["lines.linewidth"] = 1.8  # consistent, readable width
+
+            # Create the figure and axis
+            fig, ax = plt.subplots(figsize=(8, 8), dpi=120)
+
+            # Set up a prop cycle with distinct colors and linestyles
+            ax.set_prop_cycle(prop)
 
             # Plot step profiles
+            lines = []
             for s in range(num_solvers):
                 xy = self._rho_s[s]
                 x = xy[0, :]
                 y = xy[1, :]
-                ax.step(x, y, where="post", label=solver_names[s])
+                (line,) = ax.step(x, y, where="post", label=solver_names[s])
+                lines.append(line)
 
             # Axes scales and limits
             if xscale == "log2":
@@ -413,8 +426,34 @@ class PerformanceProfile:
             ax.set_xlabel(xtitle)
             ax.set_ylabel(ytitle)
             ax.set_title(title)
-            ax.legend(loc=legend_loc)
-            ax.grid(True, which="both", linestyle=":", linewidth=0.8, alpha=0.6)
+            ax.grid(True, which="both", linestyle=":", linewidth=0.8, alpha=0.25)
+            legend = ax.legend(loc=legend_loc, fancybox=True, shadow=True)
 
-            fig.tight_layout()
+            map_legend_to_ax = {}  # Will map legend lines to original lines.
+            pickradius = 5  # Points (Pt). How close the click needs to be to trigger an event.
+            for legend_line, ax_line in zip(legend.get_lines(), lines, strict=False):
+                legend_line.set_picker(pickradius)  # Enable picking on the legend line.
+                map_legend_to_ax[legend_line] = ax_line
+
+            def on_pick(event):
+                # On the pick event, find the original line corresponding to the legend
+                # proxy line, and toggle its visibility.
+                legend_line = event.artist
+                # Do nothing if the source of the event is not a legend line.
+                if legend_line not in map_legend_to_ax:
+                    return
+                ax_line = map_legend_to_ax[legend_line]
+                visible = not ax_line.get_visible()
+                ax_line.set_visible(visible)
+                # Change the alpha on the line in the legend, so we can see what lines
+                # have been toggled.
+                legend_line.set_alpha(1.0 if visible else 0.2)
+                fig.canvas.draw()
+
+            fig.canvas.mpl_connect("pick_event", on_pick)
+            # Works even if the legend is draggable. This is independent from picking legend lines.
+            legend.set_draggable(True)
+
+            # fig.tight_layout()
+
             plt.show()

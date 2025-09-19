@@ -830,57 +830,57 @@ def make_solvers(admm: linalg.ADMMSolver) -> list[tuple[linalg.ADMMSolver, Solut
     admm_llt_sp.schur_solver = linalg.LLTSciPySolver()
     variants.append((admm_llt_sp, methods_llt_sp))
 
-    admm_ldlt_sp = copy.deepcopy(admm)
-    methods_ldlt_sp = SolutionMethods()
-    admm_ldlt_sp.kkt_solver = linalg.LDLTSciPySolver()
-    admm_ldlt_sp.schur_solver = linalg.LDLTSciPySolver()
-    variants.append((admm_ldlt_sp, methods_ldlt_sp))
+    # admm_ldlt_sp = copy.deepcopy(admm)
+    # methods_ldlt_sp = SolutionMethods()
+    # admm_ldlt_sp.kkt_solver = linalg.LDLTSciPySolver()
+    # admm_ldlt_sp.schur_solver = linalg.LDLTSciPySolver()
+    # variants.append((admm_ldlt_sp, methods_ldlt_sp))
 
-    admm_lu_sp = copy.deepcopy(admm)
-    methods_lu_sp = SolutionMethods()
-    admm_lu_sp.kkt_solver = linalg.LUSciPySolver()
-    admm_lu_sp.schur_solver = linalg.LUSciPySolver()
-    variants.append((admm_lu_sp, methods_lu_sp))
+    # admm_lu_sp = copy.deepcopy(admm)
+    # methods_lu_sp = SolutionMethods()
+    # admm_lu_sp.kkt_solver = linalg.LUSciPySolver()
+    # admm_lu_sp.schur_solver = linalg.LUSciPySolver()
+    # variants.append((admm_lu_sp, methods_lu_sp))
 
-    admm_cg = copy.deepcopy(admm)
-    methods_cg = SolutionMethods(kkt=False)
-    admm_cg.schur_solver = linalg.ConjugateGradientSolver(atol=1e-7, rtol=1e-7, epsilon=1e-7, max_iterations=1000)
-    variants.append((admm_cg, methods_cg))
+    # admm_cg = copy.deepcopy(admm)
+    # methods_cg = SolutionMethods(kkt=False)
+    # admm_cg.schur_solver = linalg.ConjugateGradientSolver(atol=1e-7, rtol=1e-7, epsilon=1e-7, max_iterations=1000)
+    # variants.append((admm_cg, methods_cg))
 
-    admm_minres = copy.deepcopy(admm)
-    methods_minres = SolutionMethods()
-    admm_minres.kkt_solver = linalg.MinimumResidualSolver(atol=1e-6, rtol=1e-6, epsilon=1e-6, max_iterations=1000)
-    admm_minres.schur_solver = linalg.MinimumResidualSolver(atol=1e-6, rtol=1e-6, epsilon=1e-6, max_iterations=1000)
-    variants.append((admm_minres, methods_minres))
+    # admm_minres = copy.deepcopy(admm)
+    # methods_minres = SolutionMethods()
+    # admm_minres.kkt_solver = linalg.MinimumResidualSolver(atol=1e-6, rtol=1e-6, epsilon=1e-6, max_iterations=1000)
+    # admm_minres.schur_solver = linalg.MinimumResidualSolver(atol=1e-6, rtol=1e-6, epsilon=1e-6, max_iterations=1000)
+    # variants.append((admm_minres, methods_minres))
 
-    admm_llt_std = copy.deepcopy(admm)
-    methods_llt_std = SolutionMethods(kkt=False)
-    admm_llt_std.schur_solver = linalg.LLTStdSolver()
-    variants.append((admm_llt_std, methods_llt_std))
+    # admm_llt_std = copy.deepcopy(admm)
+    # methods_llt_std = SolutionMethods(kkt=False)
+    # admm_llt_std.schur_solver = linalg.LLTStdSolver()
+    # variants.append((admm_llt_std, methods_llt_std))
 
-    admm_ldlt_nopiv = copy.deepcopy(admm)
-    methods_ldlt_nopiv = SolutionMethods()
-    admm_ldlt_nopiv.kkt_solver = linalg.LDLTNoPivotSolver()
-    admm_ldlt_nopiv.schur_solver = linalg.LDLTNoPivotSolver()
-    variants.append((admm_ldlt_nopiv, methods_ldlt_nopiv))
+    # admm_ldlt_nopiv = copy.deepcopy(admm)
+    # methods_ldlt_nopiv = SolutionMethods()
+    # admm_ldlt_nopiv.kkt_solver = linalg.LDLTNoPivotSolver()
+    # admm_ldlt_nopiv.schur_solver = linalg.LDLTNoPivotSolver()
+    # variants.append((admm_ldlt_nopiv, methods_ldlt_nopiv))
 
-    admm_ldlt_blocked = copy.deepcopy(admm)
-    methods_ldlt_blocked = SolutionMethods()
-    admm_ldlt_blocked.kkt_solver = linalg.LDLTBlockedSolver()
-    admm_ldlt_blocked.schur_solver = linalg.LDLTBlockedSolver()
-    variants.append((admm_ldlt_blocked, methods_ldlt_blocked))
+    # admm_ldlt_blocked = copy.deepcopy(admm)
+    # methods_ldlt_blocked = SolutionMethods()
+    # admm_ldlt_blocked.kkt_solver = linalg.LDLTBlockedSolver()
+    # admm_ldlt_blocked.schur_solver = linalg.LDLTBlockedSolver()
+    # variants.append((admm_ldlt_blocked, methods_ldlt_blocked))
 
-    admm_ldlt_eigen3 = copy.deepcopy(admm)
-    methods_ldlt_eigen3 = SolutionMethods()
-    admm_ldlt_eigen3.kkt_solver = linalg.LDLTEigen3Solver()
-    admm_ldlt_eigen3.schur_solver = linalg.LDLTEigen3Solver()
-    variants.append((admm_ldlt_eigen3, methods_ldlt_eigen3))
+    # admm_ldlt_eigen3 = copy.deepcopy(admm)
+    # methods_ldlt_eigen3 = SolutionMethods()
+    # admm_ldlt_eigen3.kkt_solver = linalg.LDLTEigen3Solver()
+    # admm_ldlt_eigen3.schur_solver = linalg.LDLTEigen3Solver()
+    # variants.append((admm_ldlt_eigen3, methods_ldlt_eigen3))
 
-    admm_lu_nopiv = copy.deepcopy(admm)
-    methods_lu_nopiv = SolutionMethods()
-    admm_lu_nopiv.kkt_solver = linalg.LUNoPivotSolver()
-    admm_lu_nopiv.schur_solver = linalg.LUNoPivotSolver()
-    variants.append((admm_lu_nopiv, methods_lu_nopiv))
+    # admm_lu_nopiv = copy.deepcopy(admm)
+    # methods_lu_nopiv = SolutionMethods()
+    # admm_lu_nopiv.kkt_solver = linalg.LUNoPivotSolver()
+    # admm_lu_nopiv.schur_solver = linalg.LUNoPivotSolver()
+    # variants.append((admm_lu_nopiv, methods_lu_nopiv))
 
     return variants
 
@@ -953,7 +953,6 @@ def make_summary_table(
     # Prepare title, columns, and rows
     columns = [
         "Solver",
-        "(#) Problems",
         "(#) Solved",
         "(%) Solved",
         "(#) Converged",
@@ -961,12 +960,12 @@ def make_summary_table(
         "(#) Errors",
         "(%) Errors",
     ]
+    nprobs = str(int(num_problems))
     rows: list[list[str]] = []
     for i, sid in enumerate(solvers):
         rows.append(
             [
                 sid,
-                str(int(num_problems)),
                 str(int(solved[i])),
                 f"{solved_pc[i]:.1f}%",
                 str(int(converged[i])),
@@ -982,10 +981,13 @@ def make_summary_table(
         for j, val in enumerate(r):
             widths[j] = max(widths[j], len(val))
 
-    # Build header, separator, and data rows
+    # Build title, header, separator, and data rows
+    title = f"Solver Performance Summary: {nprobs} problems"
+    total_width = sum(widths) + 3 * (len(columns) - 1)
+    title = title.center(total_width)
     header = " | ".join(columns[j].center(widths[j]) for j in range(len(columns)))
     rule = "-+-".join("-" * widths[j] for j in range(len(columns)))
-    lines = [rule, header, rule]
+    lines = [title, rule, header, rule]
     for r in rows:
         lines.append(" | ".join(val.rjust(widths[j]) for j, val in enumerate(r)))
     lines.append(rule)
@@ -1205,7 +1207,7 @@ if __name__ == "__main__":
     if dataset and summary:
         # Print a coarse summary of solver success rates
         msg.info(
-            "SUMMARY:\n%s",
+            "SUMMARY:\n\n%s",
             make_summary_table(solver_names, solutions["error"], solutions["success"], solutions["converged"]),
         )
 
@@ -1217,8 +1219,6 @@ if __name__ == "__main__":
         # Compute performance profiles for selected metrics
         msg.info("Computing performance profiles...")
         successes = solutions["success"]
-        pp_total_time = PerformanceProfile(data=solutions["total_time"], success=successes, taumax=np.inf)
-        pp_iteration_time = PerformanceProfile(data=solutions["iteration_time"], success=successes, taumax=np.inf)
         pp_dual_residual_inf = PerformanceProfile(data=solutions["dual_residual_inf"], success=successes, taumax=np.inf)
         pp_primal_error_abs = PerformanceProfile(data=solutions["primal_error_abs"], success=successes, taumax=np.inf)
         pp_primal_error_rel = PerformanceProfile(data=solutions["primal_error_rel"], success=successes, taumax=np.inf)
@@ -1226,12 +1226,12 @@ if __name__ == "__main__":
         pp_dual_error_rel = PerformanceProfile(data=solutions["dual_error_rel"], success=successes, taumax=np.inf)
         pp_kkt_error_abs = PerformanceProfile(data=solutions["kkt_error_abs"], success=successes, taumax=np.inf)
         pp_kkt_error_rel = PerformanceProfile(data=solutions["kkt_error_rel"], success=successes, taumax=np.inf)
+        pp_iteration_time = PerformanceProfile(data=solutions["iteration_time"], success=successes, taumax=np.inf)
+        pp_total_time = PerformanceProfile(data=solutions["total_time"], success=successes, taumax=np.inf)
 
         # Render performance profiles to files
         msg.info("Rendering performance profiles plots...")
         solvers_list = list(solver_names)
-        pp_total_time.plot(solvers_list, title="Total Time")
-        pp_iteration_time.plot(solvers_list, title="Iteration Time")
         pp_dual_residual_inf.plot(solvers_list, title="Dual Residual")
         pp_primal_error_abs.plot(solvers_list, title="Primal Absolute Error")
         pp_primal_error_rel.plot(solvers_list, title="Primal Relative Error")
@@ -1239,6 +1239,8 @@ if __name__ == "__main__":
         pp_dual_error_rel.plot(solvers_list, title="Dual Relative Error")
         pp_kkt_error_abs.plot(solvers_list, title="KKT Absolute Error")
         pp_kkt_error_rel.plot(solvers_list, title="KKT Relative Error")
+        pp_iteration_time.plot(solvers_list, title="Iteration Time")
+        pp_total_time.plot(solvers_list, title="Total Time")
 
     # TODO:
     #   - Add collection of linysys performance in each problem to create linsys performance profiles

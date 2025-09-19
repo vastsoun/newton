@@ -43,6 +43,8 @@ __all__ = [
 DEFAULT_MATRIX_SYMMETRY_EPS = 1e-10
 """A global constant to configure the tolerance on matrix symmetry checks."""
 
+MAXLOG_FP64 = 709.782
+"""Maximum log value for float64 to avoid overflow in exp()."""
 
 ###
 # Types
@@ -61,6 +63,19 @@ class MatrixSign(IntEnum):
 ###
 # Utilities
 ###
+
+
+def _safe_slogdet(A: np.ndarray) -> tuple[float, float, float]:
+    sign, logabsdet = np.linalg.slogdet(A)
+    sign = float(sign)
+    logabsdet = float(logabsdet)
+    if sign != 0.0 and logabsdet < MAXLOG_FP64:
+        det = sign * np.exp(logabsdet)
+    elif sign == 0.0:
+        det = 0.0
+    else:
+        det = np.inf
+    return sign, logabsdet, det
 
 
 def _make_tolerance(tol: float | None = None, dtype: np.dtype = np.float64):
@@ -240,21 +255,25 @@ class SquareSymmetricMatrixProperties:
 
         # Matrix properties
         self.rank: int = 0
-        """The matrix rank compute using `numpy.linalg.matrix_rank()`."""
-        self.det: float = np.inf
-        """The matrix determinant compute using `numpy.linalg.det()`."""
+        """The matrix rank computed using `numpy.linalg.matrix_rank()`."""
         self.trace: float = np.inf
-        """The matrix trace compute using `numpy.trace()`."""
+        """The matrix trace computed using `numpy.trace()`."""
         self.cond: float = np.inf
-        """The matrix condition number compute using `numpy.linalg.cond()`."""
+        """The matrix condition number computed using `numpy.linalg.cond()`."""
+        self.signdet: float = np.inf
+        """The matrix determinant sign computed using `numpy.linalg.slogdet()`."""
+        self.logabsdet: float = np.inf
+        """The matrix log absolute determinant computed using `numpy.linalg.slogdet()`."""
+        self.det: float = np.inf
+        """The matrix determinant computed as `sign * exp(logabsdet)`."""
 
         # Matrix norms
         self.norm_l1: float = np.inf
-        """The L1-norm compute using `numpy.linalg.norm()`."""
+        """The L1-norm computed using `numpy.linalg.norm()`."""
         self.norm_l2: float = np.inf
-        """The L2-norm compute using `numpy.linalg.norm()`."""
+        """The L2-norm computed using `numpy.linalg.norm()`."""
         self.norm_inf: float = np.inf
-        """The infinity norm compute using `numpy.linalg.norm()`."""
+        """The infinity norm computed using `numpy.linalg.norm()`."""
 
         # Spectral properties
         self.lambda_min: float = np.inf
@@ -343,9 +362,11 @@ class SquareSymmetricMatrixProperties:
         # Extract additional properties using numpy operations
         self.dim = self.matrix.shape[0]
         self.rank = np.linalg.matrix_rank(self.matrix)
-        self.det = np.linalg.det(self.matrix)
         self.trace = np.trace(self.matrix)
         self.cond = np.linalg.cond(self.matrix)
+
+        # Compute the determinant from the signed log-determinant
+        self.signdet, self.logabsdet, self.det = _safe_slogdet(self.matrix)
 
         # Compute matrix norms
         self.norm_l1 = np.linalg.norm(self.matrix, ord=1)
@@ -390,10 +411,12 @@ class SquareSymmetricMatrixProperties:
             f"  mean: {self.mean}\n"
             f"   std: {self.std}\n"
             f"Basics:\n"
-            f"   rank: {self.rank}\n"
-            f"    det: {self.det}\n"
-            f"  trace: {self.trace}\n"
-            f"   cond: {self.cond}\n"
+            f"     rank: {self.rank}\n"
+            f"    trace: {self.trace}\n"
+            f"     cond: {self.cond}\n"
+            f"sign(det): {self.signdet}\n"
+            f" log|det|: {self.logabsdet}\n"
+            f"      det: {self.det}\n"
             f"Norms:\n"
             f"    l1: {self.norm_l1}\n"
             f"    l2: {self.norm_l2}\n"

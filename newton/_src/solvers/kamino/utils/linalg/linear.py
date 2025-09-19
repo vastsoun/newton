@@ -422,10 +422,11 @@ def minimum_residual(
 ) -> LinearSolution:
     _check_system_compatibility(A, b)
     x_0 = _check_initial_guess(A, x_0)
-    epsilon = A.dtype.type(epsilon)
     atol, rtol = _make_tolerances(atol, rtol, A.dtype)
+    eps = np.finfo(A.dtype).eps
+    epsilon = A.dtype.type(epsilon)
+    epsilon = max(epsilon, eps)
 
-    n = A.shape[0]
     r = b - A @ x_0
     p0 = r.copy()
     s0 = A @ p0
@@ -433,8 +434,8 @@ def minimum_residual(
     s1 = s0.copy()
     x_p = x_0.copy()
     x_n = x_0.copy()
-    p2 = np.zeros(n)
-    s2 = np.zeros(n)
+    p2 = np.zeros_like(x_0)
+    s2 = np.zeros_like(x_0)
 
     solution = LinearSolution()
     if record_errors:
@@ -517,8 +518,10 @@ class LinearSolver(ABC):
 
         # Initialize internal solution meta-data
         self._info: ComputationInfo = ComputationInfo.Uninitialized  # TODO: currently not used
-        self._error_abs: float | None = None
-        self._error_rel: float | None = None
+        self._compute_error_abs: float = np.inf
+        self._compute_error_rel: float = np.inf
+        self._solve_error_abs: float = np.inf
+        self._solve_error_rel: float = np.inf
 
         # Declare internal solver data
         self._matrix: np.ndarray | None = None
@@ -537,12 +540,20 @@ class LinearSolver(ABC):
         return self._info
 
     @property
-    def error_abs(self) -> float | None:
-        return self._error_abs
+    def compute_error_abs(self) -> float:
+        return self._compute_error_abs
 
     @property
-    def error_rel(self) -> float | None:
-        return self._error_rel
+    def compute_error_rel(self) -> float:
+        return self._compute_error_rel
+
+    @property
+    def solve_error_abs(self) -> float:
+        return self._solve_error_abs
+
+    @property
+    def solve_error_rel(self) -> float:
+        return self._solve_error_rel
 
     @property
     def matrix(self) -> np.ndarray | None:
@@ -564,8 +575,8 @@ class LinearSolver(ABC):
         norm_b = np.linalg.norm(b, ord=np.inf)
         norm_A = np.linalg.norm(A, ord=np.inf)
         denom = max(norm_A * norm_x, norm_b, eps)
-        self._error_abs = linsys_error_inf(A, b, x)
-        self._error_rel = self._error_abs / denom
+        self._solve_error_abs = linsys_error_inf(A, b, x)
+        self._solve_error_rel = self._solve_error_abs / denom
 
     ###
     # Implementation API
@@ -599,8 +610,8 @@ class LinearSolver(ABC):
         if compute_error:
             self._compute_solve_error(self._matrix, self._rhs, x)
         else:
-            self._error_abs = None
-            self._error_rel = None
+            self._solve_error_abs = np.inf
+            self._solve_error_rel = np.inf
 
     def solve(self, b: np.ndarray, compute_error: bool = False, **kwargs) -> np.ndarray:
         """Solves the linear system `A@x = b`"""
@@ -685,10 +696,6 @@ class DirectSolver(LinearSolver):
         self._has_unpacked: bool = False
         self._success: bool = False
 
-        # Declare additional internal data
-        self._factorization_error_abs: float | None = None
-        self._factorization_error_rel: float | None = None
-
         # Initialize base class members
         super().__init__(
             A=A,
@@ -709,14 +716,6 @@ class DirectSolver(LinearSolver):
     def sign(self) -> MatrixSign:
         return self._sign
 
-    @property
-    def factorization_error_abs(self) -> float | None:
-        return self._factorization_error_abs
-
-    @property
-    def factorization_error_rel(self) -> float | None:
-        return self._factorization_error_rel
-
     ###
     # Internals
     ###
@@ -730,8 +729,8 @@ class DirectSolver(LinearSolver):
         """Computes the matrix factorization error."""
         A_rec = self.reconstructed()
         norm_A = np.linalg.norm(A, ord=np.inf)
-        self._factorization_error_abs = np.linalg.norm(A - A_rec, ord=np.inf)
-        self._factorization_error_rel = self._factorization_error_abs / norm_A if norm_A > 0 else np.inf
+        self._compute_error_abs = np.linalg.norm(A - A_rec, ord=np.inf)
+        self._compute_error_rel = self._compute_error_abs / norm_A if norm_A > 0 else np.inf
 
     ###
     # Implementation API
@@ -794,13 +793,13 @@ class DirectSolver(LinearSolver):
         if compute_error or check_error:
             self._compute_factorization_errors(A)
             if check_error:
-                if self._factorization_error_rel > self._ftol:
+                if self._compute_error_rel > self._ftol:
                     raise ValueError(
-                        f"L∞ matrix factorization error {self._factorization_error_rel} exceeds tolerance {self._ftol}."
+                        f"L∞ matrix factorization error {self._compute_error_rel} exceeds tolerance {self._ftol}."
                     )
         else:
-            self._factorization_error_abs = None
-            self._factorization_error_rel = None
+            self._compute_error_abs = np.inf
+            self._compute_error_rel = np.inf
 
     ###
     # Public API
@@ -838,7 +837,7 @@ class NumPySolver(LinearSolver):
         super().__init__(A=A, atol=atol, rtol=rtol, dtype=dtype)
 
     @override
-    def _compute_impl(self, A: np.ndarray) -> None:
+    def _compute_impl(self, A: np.ndarray, **kwargs) -> None:
         pass  # No-op for NumPy solver
 
     @override
@@ -862,7 +861,7 @@ class SciPySolver(LinearSolver):
         super().__init__(A=A, atol=atol, rtol=rtol, dtype=dtype)
 
     @override
-    def _compute_impl(self, A: np.ndarray) -> None:
+    def _compute_impl(self, A: np.ndarray, **kwargs) -> None:
         pass  # No-op for NumPy solver
 
     @override

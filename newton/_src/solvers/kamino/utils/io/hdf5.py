@@ -1088,12 +1088,12 @@ class SystemInfoData:
             \nconstraint_density={self.constraint_density})"
 
     def load(self, dataset, dtype=float, itype=int):
-        self.jacobian_rank = dataset["jacobian_rank"][()].astype(itype)
+        self.jacobian_rank = dataset["rankJ"][()].astype(itype)
         self.mass_ratio = dataset["mass_ratio"][()].astype(dtype)
         self.constraint_density = dataset["constraint_density"][()].astype(dtype)
 
     def store(self, dataset, namespace: str = ""):
-        dataset[namespace + "/jacobian_rank"] = self.jacobian_rank.astype(float)
+        dataset[namespace + "/rankJ"] = self.jacobian_rank.astype(float)
         dataset[namespace + "/mass_ratio"] = self.mass_ratio.astype(float)
         dataset[namespace + "/constraint_density"] = self.constraint_density.astype(float)
 

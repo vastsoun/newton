@@ -139,7 +139,7 @@ def eigenvalues_from_distribution(
 
 def random_symmetric_matrix(
     dim: int,
-    dtype: np.dtype = np.float32,
+    dtype: np.dtype = np.float64,
     scale: float | None = None,
     seed: int | None = None,
     rank: int | None = None,
@@ -151,7 +151,7 @@ def random_symmetric_matrix(
 
     Args:
     - dim (int): The size of the matrix.
-    - dtype (data-type, optional): Data type of the matrix (default is float32).
+    - dtype (data-type, optional): Data type of the matrix (default is float64).
     - scale (float, optional): Scale factor for the matrix (default is 1.0).
     - seed (int, optional): Seed for the random number generator.
     - rank (int, optional): Rank of the matrix (must be <= dim).
@@ -171,19 +171,21 @@ def random_symmetric_matrix(
 
     # Set a default unit scale if unspecified
     if scale is None:
-        scale = dtype.type(1)
-        sqrt_scale = dtype.type(1)
+        scale = 1.0
+        sqrt_scale = 1.0
     # Otherwise, check if scale is a float
     else:
         if not isinstance(scale, float):
             raise TypeError("scale must be a float.")
         sqrt_scale = np.sqrt(scale)
+    scale = dtype(scale)
+    sqrt_scale = dtype(sqrt_scale)
 
     # Generate a symmetric matrix of random rank and eigenvalues, if unspecified
     if eigenvalues is None and rank is None:
         X = scale * rng.standard_normal((dim, dim)).astype(dtype)
         # Make a symmetric matrix from the source random matrix
-        A = dtype.type(0.5) * (X + X.T)
+        A = dtype(0.5) * (X + X.T)
 
     # If eigenvalues are specified these take precedence
     elif eigenvalues is not None:
@@ -200,7 +202,7 @@ def random_symmetric_matrix(
         # A = X * D * X^T
         A = scale * (X @ D @ X.T)
         # Additional step to ensure symmetry
-        A = dtype.type(0.5) * (A + A.T)
+        A = dtype(0.5) * (A + A.T)
 
     # Otherwise generate a symmetric matrix of specified rank
     elif rank is not None:
@@ -211,7 +213,7 @@ def random_symmetric_matrix(
         # Make a rank-deficient symmetric matrix
         A = X @ X.T
         # Additional step to ensure symmetry
-        A = dtype.type(0.5) * (A + A.T)
+        A = dtype(0.5) * (A + A.T)
 
     # Optionally return both final and source matrices
     if return_source:
@@ -221,7 +223,7 @@ def random_symmetric_matrix(
 
 def random_spd_matrix(
     dim: int,
-    dtype: np.dtype = np.float32,
+    dtype: np.dtype = np.float64,
     scale: float | None = None,
     seed: int | None = None,
     return_source: bool = False,
@@ -231,7 +233,7 @@ def random_spd_matrix(
 
     Args:
     - n (int): The size of the matrix.
-    - dtype (data-type, optional): Data type of the matrix (default is float32).
+    - dtype (data-type, optional): Data type of the matrix (default is float64).
     - scale (float, optional): Scale factor for the matrix (default is 1.0).
     - seed (int, optional): Seed for the random number generator.
     - return_source (bool, optional): Whether to return the source matrix (default is False).
@@ -249,21 +251,24 @@ def random_spd_matrix(
 
     # Set a default unit scale if unspecified
     if scale is None:
-        scale = dtype.type(1)
-        sqrt_scale = dtype.type(1)
+        scale = 1.0
+        sqrt_scale = 1.0
+    # Otherwise, check if scale is a float
     else:
         if not isinstance(scale, float):
             raise TypeError("scale must be a float.")
         sqrt_scale = np.sqrt(scale)
+    scale = dtype(scale)
+    sqrt_scale = dtype(sqrt_scale)
 
     # Generate a random matrix
     X = sqrt_scale * rng.standard_normal((dim, dim)).astype(dtype)
 
     # Construct symmetric positive definite matrix: A.T @ A + dim * I
-    A = X.T @ X + scale * float(dim) * np.eye(dim, dtype=dtype)
+    A = X.T @ X + scale * np.eye(dim, dtype=dtype)
 
     # Ensure the matrix is symmetric
-    A = dtype.type(0.5) * (A + A.T)
+    A = dtype(0.5) * (A + A.T)
 
     # Optionally return both final and source matrices
     if return_source:
@@ -272,7 +277,7 @@ def random_spd_matrix(
 
 
 def random_rhs_for_matrix(
-    A: np.ndarray, scale: float = 1.0, seed: int | None = None, return_source: bool = False
+    A: np.ndarray, scale: float | None = None, seed: int | None = None, return_source: bool = False
 ) -> np.ndarray | tuple[np.ndarray, np.ndarray]:
     """
     Generate a random RHS vector b that is in the range space of A.
@@ -293,9 +298,17 @@ def random_rhs_for_matrix(
     # Initialize the random number generator
     rng = np.random.default_rng(seed)
 
+    # Set a default unit scale if unspecified
+    if scale is None:
+        scale = 1.0
+    # Otherwise, check if scale is a float
+    else:
+        if not isinstance(scale, float):
+            raise TypeError("scale must be a float.")
+    scale = A.dtype(scale)
+
     # Generate a random vector x and compute b = A @ x
-    n = A.shape[0]
-    x = scale * rng.standard_normal(n).astype(A.dtype)
+    x = scale * rng.standard_normal((A.shape[1],)).astype(A.dtype)
     b = A @ x
 
     # Optionally return both final and source vectors

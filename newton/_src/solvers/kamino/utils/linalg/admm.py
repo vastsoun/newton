@@ -72,8 +72,10 @@ class ADMMStatus:
 
 class ADMMInfo:
     def __init__(self, maxiter: int = 0, dtype: np.dtype = np.float64):
-        self.r_linsys_abs: np.ndarray = np.zeros(maxiter, dtype=dtype)
-        self.r_linsys_rel: np.ndarray = np.zeros(maxiter, dtype=dtype)
+        self.r_linsys_compute_abs: np.ndarray = np.zeros(maxiter, dtype=dtype)
+        self.r_linsys_compute_rel: np.ndarray = np.zeros(maxiter, dtype=dtype)
+        self.r_linsys_solve_abs: np.ndarray = np.zeros(maxiter, dtype=dtype)
+        self.r_linsys_solve_rel: np.ndarray = np.zeros(maxiter, dtype=dtype)
         self.r_p: np.ndarray = np.zeros(maxiter, dtype=dtype)
         self.r_d: np.ndarray = np.zeros(maxiter, dtype=dtype)
         self.r_c: np.ndarray = np.zeros(maxiter, dtype=dtype)
@@ -83,8 +85,10 @@ class ADMMInfo:
         self.norm_z: np.ndarray = np.zeros(maxiter, dtype=dtype)
 
     def reset(self):
-        self.r_linsys_abs.fill(0)
-        self.r_linsys_rel.fill(0)
+        self.r_linsys_compute_abs.fill(0)
+        self.r_linsys_compute_rel.fill(0)
+        self.r_linsys_solve_abs.fill(0)
+        self.r_linsys_solve_rel.fill(0)
         self.r_p.fill(0)
         self.r_d.fill(0)
         self.r_c.fill(0)
@@ -178,7 +182,9 @@ class ADMMSolver:
     ###
 
     def _set_tolerance_dtype(self):
-        """Ensure that all tolerances are of the correct dtype and at least equal to the corresponding machine epsilon."""
+        """
+        Ensure that all tolerances are of the correct dtype and at least equal to the corresponding machine epsilon.
+        """
         eps = np.finfo(self.dtype).eps
         self.primal_tolerance = self.dtype.type(max(self.primal_tolerance, eps))
         self.dual_tolerance = self.dtype.type(max(self.dual_tolerance, eps))
@@ -197,13 +203,17 @@ class ADMMSolver:
 
     def _store_kkt_solver_error(self, iter: int):
         """Store the linear solver errors for the current iteration."""
-        self.info.r_linsys_abs[iter] = self.kkt_solver.error_abs
-        self.info.r_linsys_rel[iter] = self.kkt_solver.error_rel
+        self.info.r_linsys_compute_abs[iter] = self.kkt_solver.compute_error_abs
+        self.info.r_linsys_compute_rel[iter] = self.kkt_solver.compute_error_rel
+        self.info.r_linsys_solve_abs[iter] = self.kkt_solver.solve_error_abs
+        self.info.r_linsys_solve_rel[iter] = self.kkt_solver.solve_error_rel
 
     def _store_schur_solver_error(self, iter: int):
         """Store the linear solver errors for the current iteration."""
-        self.info.r_linsys_abs[iter] = self.schur_solver.error_abs
-        self.info.r_linsys_rel[iter] = self.schur_solver.error_rel
+        self.info.r_linsys_compute_abs[iter] = self.schur_solver.compute_error_abs
+        self.info.r_linsys_compute_rel[iter] = self.schur_solver.compute_error_rel
+        self.info.r_linsys_solve_abs[iter] = self.schur_solver.solve_error_abs
+        self.info.r_linsys_solve_rel[iter] = self.schur_solver.solve_error_rel
 
     def _update_state(self):
         """Update the ADMM state vectors: primal, slack and dual variables."""
@@ -221,7 +231,7 @@ class ADMMSolver:
         self.status.r_p = np.max(np.abs(self.r_p))
         self.status.r_d = np.max(np.abs(self.r_d))
         self.status.r_c = np.max(np.abs(self.r_c))
-        self.status.r_i = np.max(np.abs(self.r_i)) / (self.dtype.type(1) + np.max(np.abs(self.y)))
+        self.status.r_i = np.max(np.abs(self.r_i))
         self.info.r_p[iter] = self.status.r_p
         self.info.r_d[iter] = self.status.r_d
         self.info.r_c[iter] = self.status.r_c
@@ -262,10 +272,17 @@ class ADMMSolver:
                 self.status.result = ADMMResult.MAXITER
 
     def _truncate_info(self):
+        self.info.r_linsys_compute_abs = self.info.r_linsys_compute_abs[: self.status.iterations]
+        self.info.r_linsys_compute_rel = self.info.r_linsys_compute_rel[: self.status.iterations]
+        self.info.r_linsys_solve_abs = self.info.r_linsys_solve_abs[: self.status.iterations]
+        self.info.r_linsys_solve_rel = self.info.r_linsys_solve_rel[: self.status.iterations]
         self.info.r_p = self.info.r_p[: self.status.iterations]
         self.info.r_d = self.info.r_d[: self.status.iterations]
         self.info.r_c = self.info.r_c[: self.status.iterations]
         self.info.r_i = self.info.r_i[: self.status.iterations]
+        self.info.norm_x = self.info.norm_x[: self.status.iterations]
+        self.info.norm_y = self.info.norm_y[: self.status.iterations]
+        self.info.norm_z = self.info.norm_z[: self.status.iterations]
 
     ###
     # Public API
@@ -310,7 +327,7 @@ class ADMMSolver:
         self.K[: self.ncts, self.ncts :] = J
         self.K[: self.ncts, : self.ncts] = -(self.eta + self.rho) * np.eye(self.ncts, dtype=self.dtype)
 
-        self.kkt_solver.compute(A=self.K)
+        self.kkt_solver.compute(A=self.K, compute_error=True)
 
         for i in range(self.maxiter):
             self.status.iterations += 1
@@ -371,7 +388,7 @@ class ADMMSolver:
         self.p = np.zeros_like(self.w)
         self.P = M + r_epsilon * (J.T @ J)
 
-        self.schur_solver.compute(A=self.P)
+        self.schur_solver.compute(A=self.P, compute_error=True)
 
         for i in range(self.maxiter):
             self.status.iterations += 1
@@ -435,7 +452,7 @@ class ADMMSolver:
             self.D = S @ self.D @ S
         self.D += (self.eta + self.rho) * np.eye(D.shape[0])
 
-        self.schur_solver.compute(A=self.D)
+        self.schur_solver.compute(A=self.D, compute_error=True)
 
         for i in range(self.maxiter):
             self.status.iterations += 1
@@ -470,21 +487,39 @@ class ADMMSolver:
         import matplotlib.pyplot as plt  # noqa: PLC0415
 
         plt.figure(figsize=(8, 4))
-        plt.plot(self.info.r_linsys_abs)
-        plt.title("ADMM Linear Solver Abs. Error")
+        plt.plot(self.info.r_linsys_compute_abs)
+        plt.title("ADMM LinearSolver Compute Abs. Error")
         plt.xlabel("Iteration")
         plt.ylabel("Abs. Error")
         plt.grid(True)
-        plt.savefig(os.path.join(path, f"admm_info_linsys_abs{suffix}.png"))
+        plt.savefig(os.path.join(path, f"admm_info_linsys_compute_abs{suffix}.png"))
         plt.close()
 
         plt.figure(figsize=(8, 4))
-        plt.plot(self.info.r_linsys_rel)
-        plt.title("ADMM Linear Solver Rel. Error")
+        plt.plot(self.info.r_linsys_compute_rel)
+        plt.title("ADMM LinearSolver Compute Rel. Error")
         plt.xlabel("Iteration")
         plt.ylabel("Rel. Error")
         plt.grid(True)
-        plt.savefig(os.path.join(path, f"admm_info_linsys_rel{suffix}.png"))
+        plt.savefig(os.path.join(path, f"admm_info_linsys_compute_rel{suffix}.png"))
+        plt.close()
+
+        plt.figure(figsize=(8, 4))
+        plt.plot(self.info.r_linsys_solve_abs)
+        plt.title("ADMM LinearSolver Solve Abs. Error")
+        plt.xlabel("Iteration")
+        plt.ylabel("Abs. Error")
+        plt.grid(True)
+        plt.savefig(os.path.join(path, f"admm_info_linsys_solve_abs{suffix}.png"))
+        plt.close()
+
+        plt.figure(figsize=(8, 4))
+        plt.plot(self.info.r_linsys_solve_rel)
+        plt.title("ADMM LinearSolver Solve Rel. Error")
+        plt.xlabel("Iteration")
+        plt.ylabel("Rel. Error")
+        plt.grid(True)
+        plt.savefig(os.path.join(path, f"admm_info_linsys_solve_rel{suffix}.png"))
         plt.close()
 
         plt.figure(figsize=(8, 4))

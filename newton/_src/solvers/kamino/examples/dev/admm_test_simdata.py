@@ -15,6 +15,7 @@
 
 """TODO"""
 
+import copy
 import os
 import time
 from dataclasses import dataclass
@@ -48,23 +49,13 @@ class LinearSystemSolution:
 
 @dataclass
 class LinearSolverMetrics:
-    error_abs: float = np.inf
-    error_rel: float = np.inf
-    solved: bool = False
-
-
-@dataclass
-class DirectSolverMetrics(LinearSolverMetrics):
-    factorization_error_abs: float = np.inf
-    factorization_error_rel: float = np.inf
-
-
-@dataclass
-class IndirectSolverMetrics(LinearSolverMetrics):
-    residual_abs: float = np.inf
-    residual_rel: float = np.inf
+    compute_error_abs: float = np.inf
+    compute_error_rel: float = np.inf
+    solve_error_abs: float = np.inf
+    solve_error_rel: float = np.inf
     iterations: int = 0
     converged: bool = False
+    solved: bool = False
 
 
 ###
@@ -83,10 +74,27 @@ class ConstrainedDynamicsInfo:
     mass_ratio: float = 0.0
     constraint_density: float = 0.0
     # Derived properties
-    rcond_M: float = 0.0
-    rcond_J: float = 0.0
-    rcond_D: float = 0.0
     jacobian_rank_ratio: float = 0.0
+    props_J: linalg.RectangularMatrixProperties | None = None
+    props_M: linalg.SquareSymmetricMatrixProperties | None = None
+    props_D: linalg.SquareSymmetricMatrixProperties | None = None
+
+    def __str__(self) -> str:
+        return (
+            "\nDIMENSIONS:-----------------------------------------------\n"
+            f"  nbd: {self.nbd}\n"
+            f" ncts: {self.ncts}\n"
+            f"nvars: {self.nvars}\n"
+            "\nPROPERTIES:-----------------------------------------------\n"
+            f"      Jacobian rank: {self.jacobian_rank}\n"
+            f"         Mass ratio: {self.mass_ratio:.7g}\n"
+            f" Constraint density: {self.constraint_density:.7g}\n"
+            f"Jacobian rank ratio: {self.jacobian_rank_ratio:.7g}\n"
+            "\nMATRIX PROPERTIES:----------------------------------------\n\n"
+            f"Jacobian properties:\n{self.props_J}\n"
+            f"Mass matrix properties:\n{self.props_M}\n"
+            f"Delassus matrix properties:\n{self.props_D}\n"
+        )
 
 
 @dataclass
@@ -115,6 +123,11 @@ class ConstrainedDynamicsSolution:
 
 @dataclass
 class ConstrainedDynamicsMetrics:
+    # Solution norms
+    norm_lambdas: float = np.inf
+    norm_v_plus: float = np.inf
+    norm_u_plus: float = np.inf
+    norm_ux: float = np.inf
     # Primal system error
     primal_error_abs: float = np.inf
     primal_error_rel: float = np.inf
@@ -149,6 +162,7 @@ class SolutionInfo:
 
 @dataclass
 class SolutionMetrics(ConstrainedDynamicsMetrics):
+    error: bool = False
     success: bool = False
     converged: bool = False
     iterations: int = 0
@@ -191,6 +205,7 @@ class BenchmarkMetrics:
     def _metrics() -> list[str]:
         """Ordered metric columns to display per solver group."""
         return [
+            "error",
             "success",
             "converged",
             "iterations",
@@ -206,6 +221,8 @@ class BenchmarkMetrics:
             "dual_error_rel",
             "kkt_error_abs",
             "kkt_error_rel",
+            "norm_lambdas",
+            "norm_u_plus",
         ]
 
     def _solverid(self) -> str:
@@ -221,19 +238,19 @@ class BenchmarkMetrics:
         d = self.data or SolutionMetrics()
 
         def fmt(v: Any) -> str:
-            if isinstance(v, float):
+            if isinstance(v, float | np.floating | np.float32 | np.float64):
                 # Format using dtype precision if available; fall back to 6 significant digits
                 try:
-                    dt = np.dtype(self.info.dtype) if (self.info and self.info.dtype is not None) else None
-                    if dt is not None and np.issubdtype(dt, np.floating):
-                        sig = int(np.finfo(dt).precision)
-                        sig = max(1, min(sig, 12))  # clamp for readability
-                        return f"{v:.{sig}g}"
+                    if int(abs(v)) >= 100:
+                        return f"{v:.{max(1, min(np.finfo(np.dtype(self.info.dtype)).precision + 1, 4))}e}"
+                    else:
+                        return f"{v:.{max(1, min(np.finfo(np.dtype(self.info.dtype)).precision + 1, 12))}g}"
                 except Exception:
-                    return f"{v:.6g}"
+                    return f"{v:.6e}"
             return str(v)
 
         return {
+            "error": fmt(d.error),
             "success": fmt(d.success),
             "converged": fmt(d.converged),
             "iterations": fmt(d.iterations),
@@ -249,6 +266,8 @@ class BenchmarkMetrics:
             "dual_error_rel": fmt(d.dual_error_rel),
             "kkt_error_abs": fmt(d.kkt_error_abs),
             "kkt_error_rel": fmt(d.kkt_error_rel),
+            "norm_lambdas": fmt(d.norm_lambdas),
+            "norm_u_plus": fmt(d.norm_u_plus),
         }
 
     def to_table(self) -> str:
@@ -324,7 +343,7 @@ def primal_dynamics_residual(
     problem: ConstrainedDynamicsProblem,
     solution: ConstrainedDynamicsSolution,
 ) -> np.ndarray:
-    return problem.M @ (solution.u_plus - problem.u_minus) - problem.J.T @ solution.lambdas + problem.h
+    return problem.M @ (solution.u_plus - problem.u_minus) - problem.J.T @ solution.lambdas - problem.h
 
 
 def primal_dynamics_error_inf(
@@ -382,7 +401,31 @@ def get_solver_typename(solver: Any) -> str:
     return name
 
 
-def find_dualproblem_paths(datafile: h5py.File, scope: str | None) -> list[str]:
+def build_frame_path(
+    problem_type: str | None = None,
+    problem_name: str | None = None,
+    problem_category: str | None = None,
+    problem_sample: int | None = None,
+) -> str:
+    """
+    Build hierarchical path: TYPE[/NAME[/CATEGORY[/SAMPLE]]].
+    - If problem_type is None, return "".
+    - If problem_name is None, skip category and problem_sample.
+    - If problem_category is None, skip problem_sample.
+    """
+    if problem_type is None:
+        return "/"
+    parts = [problem_type]
+    if problem_name is not None:
+        parts.append(problem_name)
+        if problem_category is not None:
+            parts.append(problem_category)
+            if problem_sample is not None:
+                parts.append(str(problem_sample))
+    return "/".join(parts)
+
+
+def find_problem_paths(datafile: h5py.File, scope: str | None, exclude: list[str] | None) -> list[str]:
     """Recursively find all paths ending with '/DualProblem' in an HDF5 file."""
 
     # Initialize an empty list to store found paths
@@ -390,11 +433,16 @@ def find_dualproblem_paths(datafile: h5py.File, scope: str | None) -> list[str]:
 
     # Define a visitor function for HDF5 traversal
     def _visitor(name: str, obj):
-        # Ensure the terminal component is exactly 'DualProblem'
-        if name.rsplit("/", 1)[-1] == "DualProblem":
+        split = name.rsplit("/")
+        if exclude is not None:
+            for ex in exclude:
+                if ex in split:
+                    return
+        # Append the path if it contains 'DualProblem' as the last component
+        if split[-1] == "DualProblem":
             # Accept both groups and datasets named 'DualProblem'
             if isinstance(obj, h5py.Group | h5py.Dataset):
-                paths.append(obj.name)  # absolute path
+                paths.append(obj.parent.name)  # absolute path
 
     # Traverse the HDF5 file structure, optionally within a specific scope
     if scope is not None:
@@ -412,25 +460,44 @@ def find_dualproblem_paths(datafile: h5py.File, scope: str | None) -> list[str]:
     return paths
 
 
-def load_dualproblem_data(dataframe: h5py.Group, dtype: type = np.float64) -> ConstrainedDynamicsProblem:
+def load_problem_data(dataframe: h5py.Group, dtype: type = np.float64) -> ConstrainedDynamicsProblem:
     """Load a DualProblem dataset from an HDF5 group into a ConstrainedDynamicsProblem container."""
 
     # Load the DualProblem data into the HDF5 data-frame container
-    pdata = hdf5.DualProblemData()
-    pdata.load(dataset=dataframe, dtype=dtype)
+    dp_data = hdf5.DualProblemData()
+    dp_data.load(dataset=dataframe["DualProblem"], dtype=dtype)
+
+    # Load system info data into the HDF5 data-frame container
+    si_data = hdf5.SystemInfoData()
+    si_data.load(dataset=dataframe["info"], dtype=dtype)
+
+    # Construct the problem info container
+    info = ConstrainedDynamicsInfo(
+        nbd=dp_data.info.nbd,
+        ncts=dp_data.info.nd,
+        nvars=dp_data.info.nbd + dp_data.info.nd,
+        jacobian_rank=si_data.jacobian_rank,
+        mass_ratio=si_data.mass_ratio,
+        constraint_density=si_data.constraint_density,
+        jacobian_rank_ratio=si_data.jacobian_rank / dp_data.info.nd if dp_data.info.nd > 0 else np.inf,
+        props_J=linalg.RectangularMatrixProperties(dp_data.J),
+        props_M=linalg.SquareSymmetricMatrixProperties(dp_data.M),
+        props_D=linalg.SquareSymmetricMatrixProperties(dp_data.D),
+    )
 
     # Construct the problem quantities from the HDF5 data
-    M = pdata.M
-    invM = pdata.invM
-    J = pdata.J
-    h = dtype(pdata.dt) * pdata.h
-    u_minus = pdata.u_minus
-    v_star = pdata.v_i + pdata.v_b
-    D = pdata.D
-    v_f = pdata.v_f - v_star
+    M = dp_data.M
+    invM = dp_data.invM
+    J = dp_data.J
+    h = dtype(dp_data.dt) * dp_data.h
+    u_minus = dp_data.u_minus
+    v_star = dp_data.v_i + dp_data.v_b
+    D = dp_data.D
+    v_f = dp_data.v_f - v_star
 
     # Pack quantities into the problem container
     return ConstrainedDynamicsProblem(
+        info=info,
         M=M,
         invM=invM,
         J=J,
@@ -474,8 +541,7 @@ def make_kkt_system(
 
     # Optionally ensure symmetry of the KKT matrix
     if ensure_symmetric:
-        dtype = K.dtype
-        K = dtype.type(0.5) * (K + K.T)
+        K = K.dtype.type(0.5) * (K + K.T)
 
     # Optionally compute matrix properties
     if save_matrix_info:
@@ -503,14 +569,13 @@ def make_dual_system(
 
     # Assemble the dual system matrix and rhs
     D = problem.D
-    d = -problem.v_f
+    d = -(problem.v_f + problem.v_star)
     msg.debug("D: norm=%s, shape=%s, dtype=%s", np.linalg.norm(D), D.shape, D.dtype)
     msg.debug("d: norm=%s, shape=%s, dtype=%s", np.linalg.norm(d), d.shape, d.dtype)
 
     # Optionally ensure symmetry of the dual system matrix
     if ensure_symmetric:
-        dtype = D.dtype
-        D = dtype.type(0.5) * (D + D.T)
+        D = D.dtype.type(0.5) * (D + D.T)
 
     # Optionally compute matrix properties
     if save_matrix_info:
@@ -570,7 +635,14 @@ def make_benchmark_metrics(
     # Create a new metrics container
     metrics = BenchmarkMetrics(pname=problem.name, info=solution.info, data=SolutionMetrics())
 
-    # Set the basic solution metrics
+    # First set wether there was an error
+    metrics.data.error = status.result == linalg.ADMMResult.ERROR
+
+    # If there was an error, return early so that all other metrics remain at infinity
+    if metrics.data.error:
+        return metrics
+
+    # Set the solution metrics
     metrics.data.success = status.result <= linalg.ADMMResult.MAXITER
     metrics.data.converged = status.converged
     metrics.data.iterations = status.iterations
@@ -580,6 +652,15 @@ def make_benchmark_metrics(
     metrics.data.dual_residual_inf = status.r_d
     metrics.data.compl_residual_inf = status.r_c
     metrics.data.iter_residual_inf = status.r_i
+
+    # Compute true constraint-space velocity
+    v_plus = problem.dual.A @ solution.crbd.lambdas - problem.dual.b
+
+    # Compute solution norms
+    metrics.data.norm_lambdas = np.linalg.norm(solution.crbd.lambdas, ord=np.inf)
+    metrics.data.norm_u_plus = np.linalg.norm(solution.crbd.u_plus, ord=np.inf)
+    metrics.data.norm_v_plus = np.linalg.norm(v_plus, ord=np.inf)
+    metrics.data.norm_ux = np.linalg.norm(solution.kkt.x, ord=np.inf)
 
     # Compute the CRBD performance metrics
     metrics.data.primal_error_abs = primal_dynamics_error_inf(problem.crbd, solution.crbd)
@@ -724,6 +805,86 @@ def solve_benchmark_problem(
     return metrics
 
 
+def make_solvers(admm: linalg.ADMMSolver) -> list[tuple[linalg.ADMMSolver, SolutionMethods]]:
+    variants: list[tuple[linalg.ADMMSolver, SolutionMethods]] = []
+
+    admm_np = copy.deepcopy(admm)
+    methods_np = SolutionMethods()
+    admm_np.kkt_solver = linalg.NumPySolver()
+    admm_np.schur_solver = linalg.NumPySolver()
+    variants.append((admm_np, methods_np))
+
+    admm_sp = copy.deepcopy(admm)
+    methods_sp = SolutionMethods()
+    admm_sp.kkt_solver = linalg.SciPySolver()
+    admm_sp.schur_solver = linalg.SciPySolver()
+    variants.append((admm_sp, methods_sp))
+
+    admm_llt_np = copy.deepcopy(admm)
+    methods_llt_np = SolutionMethods(kkt=False)
+    admm_llt_np.schur_solver = linalg.LLTNumPySolver()
+    variants.append((admm_llt_np, methods_llt_np))
+
+    admm_llt_sp = copy.deepcopy(admm)
+    methods_llt_sp = SolutionMethods(kkt=False)
+    admm_llt_sp.schur_solver = linalg.LLTSciPySolver()
+    variants.append((admm_llt_sp, methods_llt_sp))
+
+    admm_ldlt_sp = copy.deepcopy(admm)
+    methods_ldlt_sp = SolutionMethods()
+    admm_ldlt_sp.kkt_solver = linalg.LDLTSciPySolver()
+    admm_ldlt_sp.schur_solver = linalg.LDLTSciPySolver()
+    variants.append((admm_ldlt_sp, methods_ldlt_sp))
+
+    admm_lu_sp = copy.deepcopy(admm)
+    methods_lu_sp = SolutionMethods()
+    admm_lu_sp.kkt_solver = linalg.LUSciPySolver()
+    admm_lu_sp.schur_solver = linalg.LUSciPySolver()
+    variants.append((admm_lu_sp, methods_lu_sp))
+
+    admm_cg = copy.deepcopy(admm)
+    methods_cg = SolutionMethods(kkt=False)
+    admm_cg.schur_solver = linalg.ConjugateGradientSolver(atol=1e-7, rtol=1e-7, epsilon=1e-7, max_iterations=1000)
+    variants.append((admm_cg, methods_cg))
+
+    admm_minres = copy.deepcopy(admm)
+    methods_minres = SolutionMethods()
+    admm_minres.kkt_solver = linalg.MinimumResidualSolver(atol=1e-6, rtol=1e-6, epsilon=1e-6, max_iterations=1000)
+    admm_minres.schur_solver = linalg.MinimumResidualSolver(atol=1e-6, rtol=1e-6, epsilon=1e-6, max_iterations=1000)
+    variants.append((admm_minres, methods_minres))
+
+    admm_llt_std = copy.deepcopy(admm)
+    methods_llt_std = SolutionMethods(kkt=False)
+    admm_llt_std.schur_solver = linalg.LLTStdSolver()
+    variants.append((admm_llt_std, methods_llt_std))
+
+    admm_ldlt_nopiv = copy.deepcopy(admm)
+    methods_ldlt_nopiv = SolutionMethods()
+    admm_ldlt_nopiv.kkt_solver = linalg.LDLTNoPivotSolver()
+    admm_ldlt_nopiv.schur_solver = linalg.LDLTNoPivotSolver()
+    variants.append((admm_ldlt_nopiv, methods_ldlt_nopiv))
+
+    admm_ldlt_blocked = copy.deepcopy(admm)
+    methods_ldlt_blocked = SolutionMethods()
+    admm_ldlt_blocked.kkt_solver = linalg.LDLTBlockedSolver()
+    admm_ldlt_blocked.schur_solver = linalg.LDLTBlockedSolver()
+    variants.append((admm_ldlt_blocked, methods_ldlt_blocked))
+
+    admm_ldlt_eigen3 = copy.deepcopy(admm)
+    methods_ldlt_eigen3 = SolutionMethods()
+    admm_ldlt_eigen3.kkt_solver = linalg.LDLTEigen3Solver()
+    admm_ldlt_eigen3.schur_solver = linalg.LDLTEigen3Solver()
+    variants.append((admm_ldlt_eigen3, methods_ldlt_eigen3))
+
+    admm_lu_nopiv = copy.deepcopy(admm)
+    methods_lu_nopiv = SolutionMethods()
+    admm_lu_nopiv.kkt_solver = linalg.LUNoPivotSolver()
+    admm_lu_nopiv.schur_solver = linalg.LUNoPivotSolver()
+    variants.append((admm_lu_nopiv, methods_lu_nopiv))
+
+    return variants
+
+
 ###
 # Utilities
 ###
@@ -762,6 +923,7 @@ def symmetry_info(A: np.ndarray, name: str = "A", title: str = "A", eps: float =
 
 def make_summary_table(
     solvers: list[str],
+    errors: np.ndarray,
     solved: np.ndarray,
     converged: np.ndarray,
 ) -> str:
@@ -776,6 +938,10 @@ def make_summary_table(
     # Compute total number of problems and solvers
     num_problems = solved.shape[1]
 
+    # Compute a summary of the number of errors encountered by each solver
+    errors = np.sum(errors, axis=1)
+    errors_pc = 100.0 * errors / float(num_problems)
+
     # Compute a summary of the number of problems solved by each solver
     solved = np.sum(solved, axis=1)
     solved_pc = 100.0 * solved / float(num_problems)
@@ -785,16 +951,28 @@ def make_summary_table(
     converged_pc = 100.0 * converged / float(num_problems)
 
     # Prepare title, columns, and rows
-    columns = ["Solver", "Solved", "Solved %", "Converged", "Converged %"]
+    columns = [
+        "Solver",
+        "(#) Problems",
+        "(#) Solved",
+        "(%) Solved",
+        "(#) Converged",
+        "(%) Converged",
+        "(#) Errors",
+        "(%) Errors",
+    ]
     rows: list[list[str]] = []
     for i, sid in enumerate(solvers):
         rows.append(
             [
                 sid,
+                str(int(num_problems)),
                 str(int(solved[i])),
                 f"{solved_pc[i]:.1f}%",
                 str(int(converged[i])),
                 f"{converged_pc[i]:.1f}%",
+                str(int(errors[i])),
+                f"{errors_pc[i]:.1f}%",
             ]
         )
 
@@ -820,21 +998,33 @@ def make_summary_table(
 # Constants
 ###
 
-
+# Problem type to load; set to None to load all types
+# PROBLEM_TYPE = None
 # PROBLEM_TYPE = "Primitive"
 # PROBLEM_TYPE = "Robotics"
 PROBLEM_TYPE = "Animatronics"
 
+# Problem name to load; set to None to load all problems
+# PROBLEM_NAME = None
+# PROBLEM_NAME = "box_on_plane"
 # PROBLEM_NAME = "boxes_hinged"
 # PROBLEM_NAME = "fourbar_free"
 PROBLEM_NAME = "walker"
 
+# Sample category to load; set to None to load all categories
+# PROBLEM_CATEGORY = None
 # PROBLEM_CATEGORY = "IndependentJoints"
 # PROBLEM_CATEGORY = "RedundantJoints"
 PROBLEM_CATEGORY = "SingleContact"
 # PROBLEM_CATEGORY = "SparseContacts"
 # PROBLEM_CATEGORY = "DenseConstraints"
 
+# Sample index to load; set to None to load all samples
+# PROBLEM_SAMPLE = None
+PROBLEM_SAMPLE = 0
+
+# List of keys to exclude when searching for problems
+EXCLUDE = ["Unconstrained"]
 
 # Retrieve the path to the data directory
 DATA_DIR_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../data"))
@@ -866,17 +1056,18 @@ if __name__ == "__main__":
     np_dtype = np.float32
 
     # CONFIGURATIONS
-    sample: bool = True
-    dataset: bool = False
-    summary: bool = False
-    profiles: bool = False
+    sample: bool = False
+    info: bool = True
+    dataset: bool = True
+    summary: bool = True
+    profiles: bool = True
 
     ###
     # Solver set-up
     ###
 
     # Create and configure the ADMM solver
-    admm = linalg.ADMMSolver(
+    admm_0 = linalg.ADMMSolver(
         dtype=np_dtype,
         primal_tolerance=1e-6,
         dual_tolerance=1e-6,
@@ -886,27 +1077,11 @@ if __name__ == "__main__":
         eta=1e-3,
         rho=1.0,
         omega=1.0,
-        maxiter=200,
+        maxiter=1000,
     )
 
-    # Configure the linear system solver
-    # admm.kkt_solver = linalg.NumPySolver()
-    # admm.kkt_solver = linalg.LDLTScipySolver()
-    # admm.schur_solver = linalg.NumPySolver()
-    # admm.schur_solver = linalg.SciPySolver()
-    # admm.schur_solver = linalg.LUSciPySolver()
-    # admm.schur_solver = linalg.LLTSciPySolver()
-    # admm.schur_solver = linalg.LDLTSciPySolver()
-    # admm.schur_solver = linalg.LLTStdSolver()
-    admm.schur_solver = linalg.LDLTEigen3Solver()
-
-    # Configure the solution methods to be used
-    methods = SolutionMethods(
-        kkt=False,
-        schur_primal=True,
-        schur_dual=True,
-        schur_dual_prec=True,
-    )
+    # Generate a list of solver variants to benchmark
+    solvers = make_solvers(admm_0)
 
     ###
     # Single sample problem
@@ -914,22 +1089,33 @@ if __name__ == "__main__":
 
     if sample:
         # Retrieve target data frames
-        SAMPLE = 0
-        fpath = f"{PROBLEM_TYPE}/{PROBLEM_NAME}/{PROBLEM_CATEGORY}/{SAMPLE}/DualProblem"
+        fpath = build_frame_path(PROBLEM_TYPE, PROBLEM_NAME, PROBLEM_CATEGORY, PROBLEM_SAMPLE)
+        msg.info(f"Retrieving data frame at path '{fpath}'...")
         dataframe = datafile[fpath]
 
         # Load the problem data into a container
         msg.info(f"Loading problem data from '{dataframe.name}'...")
         problem = make_benchmark_problem(
             name=fpath,
-            problem=load_dualproblem_data(dataframe=dataframe, dtype=np_dtype),
+            problem=load_problem_data(dataframe=dataframe, dtype=np_dtype),
             ensure_symmetric=False,
             save_matrix_info=False,
             save_symmetry_info=False,
         )
 
-        # Solve the benchmark problem using the ADMM solver
-        metrics = solve_benchmark_problem(problem, admm, methods, True)
+        # Print problem info
+        if info:
+            msg.info("Problem info:\n%s", problem.crbd.info)
+
+        # Initialize a list to store benchmark metrics
+        metrics: list[BenchmarkMetrics] = []
+
+        # Iterate over all solver variants
+        msg.info(f"Solving problem '{problem.name}'...")
+        for admm, methods in solvers:
+            metrics.extend(solve_benchmark_problem(problem, admm, methods, True))
+
+        # Print all collected metrics
         for m in metrics:
             print(f"\n{m}\n")
 
@@ -939,11 +1125,10 @@ if __name__ == "__main__":
 
     if dataset:
         # Find and print all DualProblem paths
-        search_scope = f"{PROBLEM_TYPE}/{PROBLEM_NAME}/{PROBLEM_CATEGORY}"
-        # search_scope = f"{PROBLEM_TYPE}/{PROBLEM_NAME}"
+        search_scope = build_frame_path(PROBLEM_TYPE, PROBLEM_NAME, PROBLEM_CATEGORY)
         msg.info(f"Searching for DualProblem paths in scope '{search_scope}'...")
-        problem_paths = find_dualproblem_paths(datafile=datafile, scope=search_scope)
-        msg.info(f"Found {len(problem_paths)} DualProblem path(s).")
+        problem_paths = find_problem_paths(datafile=datafile, scope=search_scope, exclude=EXCLUDE)
+        msg.info(f"Found {len(problem_paths)} paths containing DualProblem data.")
         # for path in problem_paths:
         #     print(f"- {path}")
 
@@ -951,30 +1136,29 @@ if __name__ == "__main__":
         metrics: list[BenchmarkMetrics] = []
         msg.info("Iterating over all found DualProblem paths...")
         for path in problem_paths:
-            pdata = load_dualproblem_data(dataframe=datafile[path], dtype=np_dtype)
             problem = make_benchmark_problem(
                 name=path,
-                problem=pdata,
+                problem=load_problem_data(dataframe=datafile[path], dtype=np_dtype),
                 ensure_symmetric=False,
                 save_matrix_info=False,
                 save_symmetry_info=False,
             )
-            metrics.extend(solve_benchmark_problem(problem, admm, methods))
+            for admm, methods in solvers:
+                metrics.extend(solve_benchmark_problem(problem, admm, methods, False))
         # for m in metrics:
         #     print(f"\n{m}\n")
 
         # Iterate over all collected metrics and collect a list of unique solver IDs
-        solvers = set()
+        solver_names = set()
         for m in metrics:
-            sid = m._solverid()
-            solvers.add(sid)
-        solvers = sorted(solvers)
-        msg.info(f"Collected metrics for {len(solvers)} unique solver ID(s).")
-        # for s in solvers:
-        #     print(f"- {s}")
+            solver_names.add(m._solverid())
+        solver_names = sorted(solver_names)
+        msg.info(f"Collected metrics for {len(solver_names)} unique solver ID(s).")
+        for s in solver_names:
+            print(f"- {s}")
 
         # Print summary of all collected metrics
-        num_solvers = len(solvers)
+        num_solvers = len(solver_names)
         num_problems = len(problem_paths)
         msg.info(f"num_solvers = {num_solvers}")
         msg.info(f"num_problems = {num_problems}")
@@ -992,11 +1176,12 @@ if __name__ == "__main__":
         # Populate the metric data arrays
         msg.info("Populating metric data arrays...")
         for metric in metrics:
-            s = solvers.index(metric._solverid())
+            s = solver_names.index(metric._solverid())
             p = problem_paths.index(metric.pname) if metric.pname in problem_paths else -1
             if p < 0:
                 msg.error("Problem name '%s' not found in problem paths.", metric.pname)
                 continue
+            solutions["error"][s, p] = 1.0 if metric.data.error else 0.0
             solutions["success"][s, p] = 1.0 if metric.data.success else 0.0
             solutions["converged"][s, p] = 1.0 if metric.data.converged else 0.0
             solutions["iterations"][s, p] = float(metric.data.iterations)
@@ -1019,7 +1204,10 @@ if __name__ == "__main__":
 
     if dataset and summary:
         # Print a coarse summary of solver success rates
-        msg.info("SUMMARY:\n%s", make_summary_table(solvers, solutions["success"], solutions["converged"]))
+        msg.info(
+            "SUMMARY:\n%s",
+            make_summary_table(solver_names, solutions["error"], solutions["success"], solutions["converged"]),
+        )
 
     ###
     # Performance profiles
@@ -1038,9 +1226,10 @@ if __name__ == "__main__":
         pp_dual_error_rel = PerformanceProfile(data=solutions["dual_error_rel"], success=successes, taumax=np.inf)
         pp_kkt_error_abs = PerformanceProfile(data=solutions["kkt_error_abs"], success=successes, taumax=np.inf)
         pp_kkt_error_rel = PerformanceProfile(data=solutions["kkt_error_rel"], success=successes, taumax=np.inf)
+
         # Render performance profiles to files
         msg.info("Rendering performance profiles plots...")
-        solvers_list = list(solvers)
+        solvers_list = list(solver_names)
         pp_total_time.plot(solvers_list, title="Total Time")
         pp_iteration_time.plot(solvers_list, title="Iteration Time")
         pp_dual_residual_inf.plot(solvers_list, title="Dual Residual")
@@ -1052,7 +1241,7 @@ if __name__ == "__main__":
         pp_kkt_error_rel.plot(solvers_list, title="KKT Relative Error")
 
     # TODO:
-    #   - Add collection of problem properties
+    #   - Add collection of linysys performance in each problem to create linsys performance profiles
     #   - Create metric-vs-problem_size plots for each metric
 
     # Close the HDF5 data file

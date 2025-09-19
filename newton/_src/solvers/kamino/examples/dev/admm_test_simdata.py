@@ -808,27 +808,27 @@ def solve_benchmark_problem(
 def make_solvers(admm: linalg.ADMMSolver) -> list[tuple[linalg.ADMMSolver, SolutionMethods]]:
     variants: list[tuple[linalg.ADMMSolver, SolutionMethods]] = []
 
-    admm_np = copy.deepcopy(admm)
-    methods_np = SolutionMethods()
-    admm_np.kkt_solver = linalg.NumPySolver()
-    admm_np.schur_solver = linalg.NumPySolver()
-    variants.append((admm_np, methods_np))
+    # admm_np = copy.deepcopy(admm)
+    # methods_np = SolutionMethods()
+    # admm_np.kkt_solver = linalg.NumPySolver()
+    # admm_np.schur_solver = linalg.NumPySolver()
+    # variants.append((admm_np, methods_np))
 
-    admm_sp = copy.deepcopy(admm)
-    methods_sp = SolutionMethods()
-    admm_sp.kkt_solver = linalg.SciPySolver()
-    admm_sp.schur_solver = linalg.SciPySolver()
-    variants.append((admm_sp, methods_sp))
+    # admm_sp = copy.deepcopy(admm)
+    # methods_sp = SolutionMethods()
+    # admm_sp.kkt_solver = linalg.SciPySolver()
+    # admm_sp.schur_solver = linalg.SciPySolver()
+    # variants.append((admm_sp, methods_sp))
 
-    admm_llt_np = copy.deepcopy(admm)
-    methods_llt_np = SolutionMethods(kkt=False)
-    admm_llt_np.schur_solver = linalg.LLTNumPySolver()
-    variants.append((admm_llt_np, methods_llt_np))
+    # admm_llt_np = copy.deepcopy(admm)
+    # methods_llt_np = SolutionMethods(kkt=False)
+    # admm_llt_np.schur_solver = linalg.LLTNumPySolver()
+    # variants.append((admm_llt_np, methods_llt_np))
 
-    admm_llt_sp = copy.deepcopy(admm)
-    methods_llt_sp = SolutionMethods(kkt=False)
-    admm_llt_sp.schur_solver = linalg.LLTSciPySolver()
-    variants.append((admm_llt_sp, methods_llt_sp))
+    # admm_llt_sp = copy.deepcopy(admm)
+    # methods_llt_sp = SolutionMethods(kkt=False)
+    # admm_llt_sp.schur_solver = linalg.LLTSciPySolver()
+    # variants.append((admm_llt_sp, methods_llt_sp))
 
     # admm_ldlt_sp = copy.deepcopy(admm)
     # methods_ldlt_sp = SolutionMethods()
@@ -842,10 +842,10 @@ def make_solvers(admm: linalg.ADMMSolver) -> list[tuple[linalg.ADMMSolver, Solut
     # admm_lu_sp.schur_solver = linalg.LUSciPySolver()
     # variants.append((admm_lu_sp, methods_lu_sp))
 
-    # admm_cg = copy.deepcopy(admm)
-    # methods_cg = SolutionMethods(kkt=False)
-    # admm_cg.schur_solver = linalg.ConjugateGradientSolver(atol=1e-7, rtol=1e-7, epsilon=1e-7, max_iterations=1000)
-    # variants.append((admm_cg, methods_cg))
+    admm_cg = copy.deepcopy(admm)
+    methods_cg = SolutionMethods(kkt=False)
+    admm_cg.schur_solver = linalg.ConjugateGradientSolver(atol=1e-7, rtol=1e-7, epsilon=1e-7, max_iterations=1000)
+    variants.append((admm_cg, methods_cg))
 
     # admm_minres = copy.deepcopy(admm)
     # methods_minres = SolutionMethods()
@@ -853,34 +853,34 @@ def make_solvers(admm: linalg.ADMMSolver) -> list[tuple[linalg.ADMMSolver, Solut
     # admm_minres.schur_solver = linalg.MinimumResidualSolver(atol=1e-6, rtol=1e-6, epsilon=1e-6, max_iterations=1000)
     # variants.append((admm_minres, methods_minres))
 
-    # admm_llt_std = copy.deepcopy(admm)
-    # methods_llt_std = SolutionMethods(kkt=False)
-    # admm_llt_std.schur_solver = linalg.LLTStdSolver()
-    # variants.append((admm_llt_std, methods_llt_std))
+    admm_llt_std = copy.deepcopy(admm)
+    methods_llt_std = SolutionMethods(kkt=False)
+    admm_llt_std.schur_solver = linalg.LLTStdSolver()
+    variants.append((admm_llt_std, methods_llt_std))
 
-    # admm_ldlt_nopiv = copy.deepcopy(admm)
-    # methods_ldlt_nopiv = SolutionMethods()
-    # admm_ldlt_nopiv.kkt_solver = linalg.LDLTNoPivotSolver()
-    # admm_ldlt_nopiv.schur_solver = linalg.LDLTNoPivotSolver()
-    # variants.append((admm_ldlt_nopiv, methods_ldlt_nopiv))
+    admm_ldlt_nopiv = copy.deepcopy(admm)
+    methods_ldlt_nopiv = SolutionMethods()
+    admm_ldlt_nopiv.kkt_solver = linalg.LDLTNoPivotSolver()
+    admm_ldlt_nopiv.schur_solver = linalg.LDLTNoPivotSolver()
+    variants.append((admm_ldlt_nopiv, methods_ldlt_nopiv))
 
-    # admm_ldlt_blocked = copy.deepcopy(admm)
-    # methods_ldlt_blocked = SolutionMethods()
-    # admm_ldlt_blocked.kkt_solver = linalg.LDLTBlockedSolver()
-    # admm_ldlt_blocked.schur_solver = linalg.LDLTBlockedSolver()
-    # variants.append((admm_ldlt_blocked, methods_ldlt_blocked))
+    admm_ldlt_blocked = copy.deepcopy(admm)
+    methods_ldlt_blocked = SolutionMethods()
+    admm_ldlt_blocked.kkt_solver = linalg.LDLTBlockedSolver()
+    admm_ldlt_blocked.schur_solver = linalg.LDLTBlockedSolver()
+    variants.append((admm_ldlt_blocked, methods_ldlt_blocked))
 
-    # admm_ldlt_eigen3 = copy.deepcopy(admm)
-    # methods_ldlt_eigen3 = SolutionMethods()
-    # admm_ldlt_eigen3.kkt_solver = linalg.LDLTEigen3Solver()
-    # admm_ldlt_eigen3.schur_solver = linalg.LDLTEigen3Solver()
-    # variants.append((admm_ldlt_eigen3, methods_ldlt_eigen3))
+    admm_ldlt_eigen3 = copy.deepcopy(admm)
+    methods_ldlt_eigen3 = SolutionMethods()
+    admm_ldlt_eigen3.kkt_solver = linalg.LDLTEigen3Solver()
+    admm_ldlt_eigen3.schur_solver = linalg.LDLTEigen3Solver()
+    variants.append((admm_ldlt_eigen3, methods_ldlt_eigen3))
 
-    # admm_lu_nopiv = copy.deepcopy(admm)
-    # methods_lu_nopiv = SolutionMethods()
-    # admm_lu_nopiv.kkt_solver = linalg.LUNoPivotSolver()
-    # admm_lu_nopiv.schur_solver = linalg.LUNoPivotSolver()
-    # variants.append((admm_lu_nopiv, methods_lu_nopiv))
+    admm_lu_nopiv = copy.deepcopy(admm)
+    methods_lu_nopiv = SolutionMethods()
+    admm_lu_nopiv.kkt_solver = linalg.LUNoPivotSolver()
+    admm_lu_nopiv.schur_solver = linalg.LUNoPivotSolver()
+    variants.append((admm_lu_nopiv, methods_lu_nopiv))
 
     return variants
 
@@ -996,6 +996,86 @@ def make_summary_table(
     return "\n".join(lines)
 
 
+def make_rankings_table(solvers: list[str], rankings: dict[str, tuple[np.ndarray, np.ndarray]]) -> str:
+    # Determine metric order
+    keys = list(rankings.keys())
+
+    # Helper formatter
+    def fmt(v: Any) -> str:
+        try:
+            if isinstance(v, np.integer | int):
+                return str(int(v))
+            if isinstance(v, np.floating | float):
+                if abs(float(v) - round(float(v))) < 1e-12:
+                    return str(int(round(float(v))))
+                return f"{float(v):.4g}"
+            return str(v)
+        except Exception:
+            return str(v)
+
+    # Build rows
+    rows: list[list[str]] = []
+    for i, sid in enumerate(solvers):
+        row: list[str] = [sid]
+        for m in keys:
+            r0, r1 = rankings[m]
+            v0 = r0[i] if i < len(r0) else np.nan
+            v1 = r1[i] if i < len(r1) else np.nan
+            row.append(fmt(v0))
+            row.append(fmt(v1))
+        rows.append(row)
+
+    # Build submetrics
+    submetrics = ["tau=1", "rho=1"]
+    submetrics_cell = submetrics[0] + "  |  " + submetrics[1]
+    submetrics_cell_width = len(submetrics_cell)
+    max_metric_width = max(len(m) for m in keys)  # w/o space padding
+    max_solver_width = max(len(s) for s in solvers)  # w/o space padding
+
+    # Compute column widths
+    column_width = max(submetrics_cell_width, max_metric_width)
+    subcolumn_width = max(len(sm) for sm in submetrics) + 2
+
+    # Build headers columns
+    header_columns = ["Solvers", *keys]
+    headers_widths = [max_solver_width] + [column_width for _ in range(len(keys))]
+    subheaders_widths = [max_solver_width] + [subcolumn_width for _ in range(2 * len(keys))]
+    total_width = sum(headers_widths) + 3 * (len(header_columns) - 1)
+
+    # Build header: 'Solvers' plus each metric name spanning two data columns
+    header_cells = ["Solvers".center(max_solver_width)]
+    for m in keys:
+        header_cells.append(m.center(column_width))
+    header = " | ".join(header_cells)
+
+    # Build subheaders:
+    subheader_cells = [" ".center(max_solver_width)]
+    for _ in keys:
+        subheader_cells.append(submetrics_cell.center(column_width))
+    subheader = " | ".join(subheader_cells)
+
+    # Build rules
+    rule_header = "-+-".join("-" * w for w in headers_widths)
+    rule_header = "-+-".join("-" * w for w in headers_widths)
+    rule_middle = max_solver_width * " " + " |-" + "-+-".join("-" * w for w in headers_widths[1:])
+    rule_body = "-+-".join("-" * w for w in subheaders_widths)
+
+    # Build table string
+    title = "Solver Rankings"
+    lines = [
+        title.center(total_width),
+        rule_header,
+        header,
+        rule_middle,
+        subheader,
+        rule_body,
+    ]
+    for row in rows:
+        lines.append(" | ".join(row[j].rjust(subheaders_widths[j]) for j in range(len(subheaders_widths))))
+    lines.append(rule_body)
+    return "\n".join(lines)
+
+
 ###
 # Constants
 ###
@@ -1017,9 +1097,10 @@ PROBLEM_NAME = "walker"
 # PROBLEM_CATEGORY = None
 # PROBLEM_CATEGORY = "IndependentJoints"
 # PROBLEM_CATEGORY = "RedundantJoints"
-PROBLEM_CATEGORY = "SingleContact"
+# PROBLEM_CATEGORY = "SingleContact"
 # PROBLEM_CATEGORY = "SparseContacts"
-# PROBLEM_CATEGORY = "DenseConstraints"
+# PROBLEM_CATEGORY = "DenseContacts"
+PROBLEM_CATEGORY = "DenseConstraints"
 
 # Sample index to load; set to None to load all samples
 # PROBLEM_SAMPLE = None
@@ -1035,7 +1116,7 @@ DATA_DIR_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../data
 HDF5_DATASET_PATH = f"{DATA_DIR_PATH}/hdf5/simdata.hdf5"
 
 # Set path for generated plots
-PLOT_OUTPUT_PATH = f"{DATA_DIR_PATH}/plots/simdata/{PROBLEM_NAME}"
+PLOT_OUTPUT_PATH = f"{DATA_DIR_PATH}/plots/simdata"
 
 ###
 # Main function
@@ -1216,9 +1297,12 @@ if __name__ == "__main__":
     ###
 
     if dataset and profiles:
+        # Extract success array and solver list
+        successes = solutions["success"]
+        solvers_list = list(solver_names)
+
         # Compute performance profiles for selected metrics
         msg.info("Computing performance profiles...")
-        successes = solutions["success"]
         pp_dual_residual_inf = PerformanceProfile(data=solutions["dual_residual_inf"], success=successes, taumax=np.inf)
         pp_primal_error_abs = PerformanceProfile(data=solutions["primal_error_abs"], success=successes, taumax=np.inf)
         pp_primal_error_rel = PerformanceProfile(data=solutions["primal_error_rel"], success=successes, taumax=np.inf)
@@ -1229,18 +1313,36 @@ if __name__ == "__main__":
         pp_iteration_time = PerformanceProfile(data=solutions["iteration_time"], success=successes, taumax=np.inf)
         pp_total_time = PerformanceProfile(data=solutions["total_time"], success=successes, taumax=np.inf)
 
+        # Compute rankings for each metric
+        msg.info("Computing rankings for each metric...")
+        rankings: dict[str, tuple[np.ndarray, np.ndarray]] = {}
+        rankings["dual_residual_abs"] = pp_dual_residual_inf.rankings()
+        rankings["primal_error_abs"] = pp_primal_error_abs.rankings()
+        rankings["primal_error_rel"] = pp_primal_error_rel.rankings()
+        rankings["dual_error_abs"] = pp_dual_error_abs.rankings()
+        rankings["dual_error_rel"] = pp_dual_error_rel.rankings()
+        rankings["kkt_error_abs"] = pp_kkt_error_abs.rankings()
+        rankings["kkt_error_rel"] = pp_kkt_error_rel.rankings()
+        rankings["iteration_time"] = pp_iteration_time.rankings()
+        rankings["total_time"] = pp_total_time.rankings()
+
+        # Render rankings table
+        rankings_table = make_rankings_table(solvers_list, rankings)
+        msg.info("RANKINGS:\n%s", rankings_table)
+
         # Render performance profiles to files
         msg.info("Rendering performance profiles plots...")
-        solvers_list = list(solver_names)
-        pp_dual_residual_inf.plot(solvers_list, title="Dual Residual")
-        pp_primal_error_abs.plot(solvers_list, title="Primal Absolute Error")
-        pp_primal_error_rel.plot(solvers_list, title="Primal Relative Error")
-        pp_dual_error_abs.plot(solvers_list, title="Dual Absolute Error")
-        pp_dual_error_rel.plot(solvers_list, title="Dual Relative Error")
-        pp_kkt_error_abs.plot(solvers_list, title="KKT Absolute Error")
-        pp_kkt_error_rel.plot(solvers_list, title="KKT Relative Error")
-        pp_iteration_time.plot(solvers_list, title="Iteration Time")
-        pp_total_time.plot(solvers_list, title="Total Time")
+        pp_path = os.path.join(PLOT_OUTPUT_PATH, "perfprof")
+        os.makedirs(pp_path, exist_ok=True)
+        pp_dual_residual_inf.plot(solvers_list, title="Dual Residual", path=os.path.join(pp_path, "dual_residual_inf.png"))
+        pp_primal_error_abs.plot(solvers_list, title="Primal Absolute Error", path=os.path.join(pp_path, "primal_error_abs.png"))
+        pp_primal_error_rel.plot(solvers_list, title="Primal Relative Error", path=os.path.join(pp_path, "primal_error_rel.png"))
+        pp_dual_error_abs.plot(solvers_list, title="Dual Absolute Error", path=os.path.join(pp_path, "dual_error_abs.png"))
+        pp_dual_error_rel.plot(solvers_list, title="Dual Relative Error", path=os.path.join(pp_path, "dual_error_rel.png"))
+        pp_kkt_error_abs.plot(solvers_list, title="KKT Absolute Error", path=os.path.join(pp_path, "kkt_error_abs.png"))
+        pp_kkt_error_rel.plot(solvers_list, title="KKT Relative Error", path=os.path.join(pp_path, "kkt_error_rel.png"))
+        pp_iteration_time.plot(solvers_list, title="Iteration Time", path=os.path.join(pp_path, "iteration_time.png"))
+        pp_total_time.plot(solvers_list, title="Total Time", path=os.path.join(pp_path, "total_time.png"))
 
     # TODO:
     #   - Add collection of linysys performance in each problem to create linsys performance profiles

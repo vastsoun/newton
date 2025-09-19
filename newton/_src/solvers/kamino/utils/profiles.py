@@ -334,6 +334,60 @@ class PerformanceProfile:
         self._valid = True
         return True
 
+    def rankings(self) -> tuple[np.ndarray, np.ndarray]:
+        """
+        Compute solver rankings at tau = 1.0 and at rho = 1.0.
+
+        Returns:
+            tuple[np.ndarray, np.ndarray]: A pair of 1D integer arrays with length equal to the number of solvers.
+                - First array: rankings based on rho at tau = 1.0 (higher is better).
+                - Second array: rankings based on the smallest tau at which rho = 1.0 (lower is better).
+
+        Notes:
+            Rankings are dense: solvers with the same value share the same rank, and
+            the next rank is incremented accordingly. Solvers that do not achieve the
+            target value are ranked as -1.
+        """
+        # Ensure a valid profile has been computed before summarizing
+        if not self._valid:
+            return "Data is invalid: cannot generate rankings."
+
+        # Names default to indices
+        num_solvers = len(self._rho_s)
+
+        # Extract the indices of the best and worst solvers at tau = 1.0 and tau = tau_max
+        rankings_tau_1 = np.full((num_solvers,), -1, dtype=int)  # Best solver at tau = 1.0
+        rankings_rho_1 = np.full((num_solvers,), -1, dtype=int)  # First solver to reach rho = 1.0
+
+        # rho_s is stored as a 2xK array: [taus; rhos]
+        # Collect rho(1.0) for each solver (fraction of problems where it was best)
+        rhos_at_tau_1 = np.empty((num_solvers,), dtype=float)
+        for s in range(num_solvers):
+            taus = self._rho_s[s][0, :]
+            rhos = self._rho_s[s][1, :]
+            idx = np.where(np.isclose(taus, 1.0, atol=EPSILON * 8, rtol=0.0))[0]
+            rhos_at_tau_1[s] = float(rhos[idx[0]]) if idx.size else 0.0
+
+        # Dense ranking: higher is better; rank 1 = best
+        unique_vals = np.unique(rhos_at_tau_1)[::-1]
+        for rank, val in enumerate(unique_vals, start=1):
+            rankings_tau_1[rhos_at_tau_1 == val] = rank
+
+        # Collect tau where rho first reaches 1.0 for each solver (how fast it solves all problems)
+        taus_at_rho_1 = np.empty((num_solvers,), dtype=float)
+        for s in range(num_solvers):
+            taus = self._rho_s[s][0, :]
+            rhos = self._rho_s[s][1, :]
+            idx = np.where(np.isclose(rhos, 1.0, atol=EPSILON * 8, rtol=0.0))[0]
+            taus_at_rho_1[s] = float(taus[idx[0]]) if idx.size else np.inf
+        # Dense ranking: lower is better; rank 1 = best
+        unique_vals = np.unique(taus_at_rho_1)
+        for rank, val in enumerate(unique_vals, start=1):
+            rankings_rho_1[taus_at_rho_1 == val] = rank
+
+        # Return the computed rankings
+        return rankings_tau_1, rankings_rho_1
+
     def plot(
         self,
         names: list[str] | None = None,
@@ -346,6 +400,8 @@ class PerformanceProfile:
         yscale: str = "linear",
         legend_loc: str = "lower right",
         style: str | None = None,
+        show: bool = True,
+        path: str | None = None,
     ) -> None:
         """
         Generates a 2D plot to visualize the performance profile using Matplotlib.
@@ -399,9 +455,8 @@ class PerformanceProfile:
             # Plot step profiles
             lines = []
             for s in range(num_solvers):
-                xy = self._rho_s[s]
-                x = xy[0, :]
-                y = xy[1, :]
+                x = self._rho_s[s][0, :]
+                y = self._rho_s[s][1, :]
                 (line,) = ax.step(x, y, where="post", label=solver_names[s])
                 lines.append(line)
 
@@ -455,5 +510,9 @@ class PerformanceProfile:
             legend.set_draggable(True)
 
             # fig.tight_layout()
+            if path is not None:
+                plt.savefig(path, bbox_inches="tight")
+                msg.info(f"Profile plot saved to: {path}")
 
-            plt.show()
+            if show:
+                plt.show()

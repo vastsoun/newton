@@ -398,7 +398,6 @@ class PerformanceProfile:
         ylim: tuple[float, float] | None = None,
         xscale: str = "log2",
         yscale: str = "linear",
-        legend_loc: str = "lower right",
         style: str | None = None,
         show: bool = True,
         path: str | None = None,
@@ -447,7 +446,7 @@ class PerformanceProfile:
             plt.rcParams["lines.linewidth"] = 1.8  # consistent, readable width
 
             # Create the figure and axis
-            fig, ax = plt.subplots(figsize=(8, 8), dpi=120)
+            fig, ax = plt.subplots(figsize=(10, 8), dpi=300)
 
             # Set up a prop cycle with distinct colors and linestyles
             ax.set_prop_cycle(prop)
@@ -482,7 +481,7 @@ class PerformanceProfile:
             ax.set_ylabel(ytitle)
             ax.set_title(title)
             ax.grid(True, which="both", linestyle=":", linewidth=0.8, alpha=0.25)
-            legend = ax.legend(loc=legend_loc, fancybox=True, shadow=True)
+            legend = ax.legend(bbox_to_anchor=(1.05, 0.5), loc="center left", fancybox=True, shadow=True)
 
             map_legend_to_ax = {}  # Will map legend lines to original lines.
             pickradius = 5  # Points (Pt). How close the click needs to be to trigger an event.
@@ -516,3 +515,5 @@ class PerformanceProfile:
 
             if show:
                 plt.show()
+
+            plt.close(fig)

@@ -18,7 +18,7 @@
 import copy
 import os
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import h5py
@@ -162,16 +162,23 @@ class SolutionInfo:
 
 @dataclass
 class SolutionMetrics(ConstrainedDynamicsMetrics):
+    # Overall solver status
     error: bool = False
     success: bool = False
     converged: bool = False
     iterations: int = 0
+    # Computation timings
     total_time: float = np.inf
     iteration_time: float = np.inf
+    # Residuals of the last ADMM iteration
     primal_residual_abs: float = np.inf
     dual_residual_abs: float = np.inf
     compl_residual_abs: float = np.inf
     iter_residual_abs: float = np.inf
+    # Performance of the last linear system solver
+    linsys_min: LinearSolverMetrics = field(default_factory=LinearSolverMetrics)
+    linsys_max: LinearSolverMetrics = field(default_factory=LinearSolverMetrics)
+    linsys_mean: LinearSolverMetrics = field(default_factory=LinearSolverMetrics)
 
 
 ###
@@ -222,6 +229,48 @@ class BenchmarkMetrics:
             "norm_u_plus",
         ]
 
+    @staticmethod
+    def _metrics_linsys_compute() -> list[str]:
+        """Ordered metric columns to display per solver group."""
+        return [
+            "compute_error_abs_min",
+            "compute_error_abs_max",
+            "compute_error_abs_mean",
+            "compute_error_rel_min",
+            "compute_error_rel_max",
+            "compute_error_rel_mean",
+        ]
+
+    @staticmethod
+    def _metrics_linsys_solve() -> list[str]:
+        """Ordered metric columns to display per solver group."""
+        return [
+            "solve_error_abs_min",
+            "solve_error_abs_max",
+            "solve_error_abs_mean",
+            "solve_error_rel_min",
+            "solve_error_rel_max",
+            "solve_error_rel_mean",
+        ]
+
+    @staticmethod
+    def _metrics_linsys_all() -> list[str]:
+        """Ordered metric columns to display per solver group."""
+        return BenchmarkMetrics._metrics_linsys_compute() + BenchmarkMetrics._metrics_linsys_solve()
+
+    @staticmethod
+    def fmt(v: Any, dtyp: np.dtype) -> str:
+        if isinstance(v, float | np.floating | np.float32 | np.float64):
+            # Format using dtype precision if available; fall back to 6 significant digits
+            try:
+                if int(abs(v)) >= 100:
+                    return f"{v:.{max(1, min(np.finfo(np.dtype(dtyp)).precision + 1, 4))}e}"
+                else:
+                    return f"{v:.{max(1, min(np.finfo(np.dtype(dtyp)).precision + 1, 12))}g}"
+            except Exception:
+                return f"{v:.6e}"
+        return str(v)
+
     def _solverid(self, separator: str = " / ") -> str:
         """Concatenate info fields to a final solver name."""
         if self.info is None:
@@ -232,36 +281,86 @@ class BenchmarkMetrics:
 
     def _values(self) -> dict[str, str]:
         """Map of metric name -> stringified value for this instance."""
-        d = self.data or SolutionMetrics()
-
-        def fmt(v: Any) -> str:
-            if isinstance(v, float | np.floating | np.float32 | np.float64):
-                # Format using dtype precision if available; fall back to 6 significant digits
-                try:
-                    if int(abs(v)) >= 100:
-                        return f"{v:.{max(1, min(np.finfo(np.dtype(self.info.dtype)).precision + 1, 4))}e}"
-                    else:
-                        return f"{v:.{max(1, min(np.finfo(np.dtype(self.info.dtype)).precision + 1, 12))}g}"
-                except Exception:
-                    return f"{v:.6e}"
-            return str(v)
-
+        if self.info is None:
+            raise ValueError("BenchmarkMetrics info is not set.")
+        if self.data is None:
+            raise ValueError("BenchmarkMetrics data is not set.")
         return {
-            "error": fmt(d.error),
-            "success": fmt(d.success),
-            "converged": fmt(d.converged),
-            "iterations": fmt(d.iterations),
-            "total_time": fmt(d.total_time),
-            "iteration_time": fmt(d.iteration_time),
-            "dual_residual_abs": fmt(d.dual_residual_abs),
-            "primal_error_abs": fmt(d.primal_error_abs),
-            "primal_error_rel": fmt(d.primal_error_rel),
-            "dual_error_abs": fmt(d.dual_error_abs),
-            "dual_error_rel": fmt(d.dual_error_rel),
-            "kkt_error_abs": fmt(d.kkt_error_abs),
-            "kkt_error_rel": fmt(d.kkt_error_rel),
-            "norm_lambdas": fmt(d.norm_lambdas),
-            "norm_u_plus": fmt(d.norm_u_plus),
+            "error": self.fmt(self.data.error, self.info.dtype),
+            "success": self.fmt(self.data.success, self.info.dtype),
+            "converged": self.fmt(self.data.converged, self.info.dtype),
+            "iterations": self.fmt(self.data.iterations, self.info.dtype),
+            "total_time": self.fmt(self.data.total_time, self.info.dtype),
+            "iteration_time": self.fmt(self.data.iteration_time, self.info.dtype),
+            "dual_residual_abs": self.fmt(self.data.dual_residual_abs, self.info.dtype),
+            "primal_error_abs": self.fmt(self.data.primal_error_abs, self.info.dtype),
+            "primal_error_rel": self.fmt(self.data.primal_error_rel, self.info.dtype),
+            "dual_error_abs": self.fmt(self.data.dual_error_abs, self.info.dtype),
+            "dual_error_rel": self.fmt(self.data.dual_error_rel, self.info.dtype),
+            "kkt_error_abs": self.fmt(self.data.kkt_error_abs, self.info.dtype),
+            "kkt_error_rel": self.fmt(self.data.kkt_error_rel, self.info.dtype),
+            "norm_lambdas": self.fmt(self.data.norm_lambdas, self.info.dtype),
+            "norm_u_plus": self.fmt(self.data.norm_u_plus, self.info.dtype),
+        }
+
+    def _values_linsys_compute(self) -> dict[str, str]:
+        """Map of metric name -> stringified value for this instance."""
+        if self.info is None:
+            raise ValueError("BenchmarkMetrics info is not set.")
+        if self.data is None:
+            raise ValueError("BenchmarkMetrics data is not set.")
+        return {
+            "error": self.fmt(self.data.error, self.info.dtype),
+            "success": self.fmt(self.data.success, self.info.dtype),
+            "converged": self.fmt(self.data.converged, self.info.dtype),
+            "compute_error_abs_min": self.fmt(self.data.linsys_min.compute_error_abs, self.info.dtype),
+            "compute_error_abs_max": self.fmt(self.data.linsys_max.compute_error_abs, self.info.dtype),
+            "compute_error_abs_mean": self.fmt(self.data.linsys_mean.compute_error_abs, self.info.dtype),
+            "compute_error_rel_min": self.fmt(self.data.linsys_min.compute_error_rel, self.info.dtype),
+            "compute_error_rel_max": self.fmt(self.data.linsys_max.compute_error_rel, self.info.dtype),
+            "compute_error_rel_mean": self.fmt(self.data.linsys_mean.compute_error_rel, self.info.dtype),
+        }
+
+    def _values_linsys_solve(self) -> dict[str, str]:
+        """Map of metric name -> stringified value for this instance."""
+        if self.info is None:
+            raise ValueError("BenchmarkMetrics info is not set.")
+        if self.data is None:
+            raise ValueError("BenchmarkMetrics data is not set.")
+        return {
+            "error": self.fmt(self.data.error, self.info.dtype),
+            "success": self.fmt(self.data.success, self.info.dtype),
+            "converged": self.fmt(self.data.converged, self.info.dtype),
+            "solve_error_abs_min": self.fmt(self.data.linsys_min.solve_error_abs, self.info.dtype),
+            "solve_error_abs_max": self.fmt(self.data.linsys_max.solve_error_abs, self.info.dtype),
+            "solve_error_abs_mean": self.fmt(self.data.linsys_mean.solve_error_abs, self.info.dtype),
+            "solve_error_rel_min": self.fmt(self.data.linsys_min.solve_error_rel, self.info.dtype),
+            "solve_error_rel_max": self.fmt(self.data.linsys_max.solve_error_rel, self.info.dtype),
+            "solve_error_rel_mean": self.fmt(self.data.linsys_mean.solve_error_rel, self.info.dtype),
+        }
+
+    def _values_linsys_all(self) -> dict[str, str]:
+        """Map of metric name -> stringified value for this instance."""
+        if self.info is None:
+            raise ValueError("BenchmarkMetrics info is not set.")
+        if self.data is None:
+            raise ValueError("BenchmarkMetrics data is not set.")
+        return {
+            "error": self.fmt(self.data.error, self.info.dtype),
+            "success": self.fmt(self.data.success, self.info.dtype),
+            "converged": self.fmt(self.data.converged, self.info.dtype),
+            "compute_error_abs_min": self.fmt(self.data.linsys_min.compute_error_abs, self.info.dtype),
+            "compute_error_abs_max": self.fmt(self.data.linsys_max.compute_error_abs, self.info.dtype),
+            "compute_error_abs_mean": self.fmt(self.data.linsys_mean.compute_error_abs, self.info.dtype),
+            "compute_error_rel_min": self.fmt(self.data.linsys_min.compute_error_rel, self.info.dtype),
+            "compute_error_rel_max": self.fmt(self.data.linsys_max.compute_error_rel, self.info.dtype),
+            "compute_error_rel_mean": self.fmt(self.data.linsys_mean.compute_error_rel, self.info.dtype),
+            "solve_error_abs_min": self.fmt(self.data.linsys_min.solve_error_abs, self.info.dtype),
+            "solve_error_abs_max": self.fmt(self.data.linsys_max.solve_error_abs, self.info.dtype),
+            "solve_error_abs_mean": self.fmt(self.data.linsys_mean.solve_error_abs, self.info.dtype),
+            "solve_error_rel_min": self.fmt(self.data.linsys_min.solve_error_rel, self.info.dtype),
+            "solve_error_rel_max": self.fmt(self.data.linsys_max.solve_error_rel, self.info.dtype),
+            "solve_error_rel_mean": self.fmt(self.data.linsys_mean.solve_error_rel, self.info.dtype),
         }
 
     def to_table(self) -> str:
@@ -628,6 +727,7 @@ def make_benchmark_solution(admm: linalg.ADMMSolver, info: SolutionInfo) -> Benc
 
 def make_benchmark_metrics(
     time: float,
+    info: linalg.ADMMInfo,
     status: linalg.ADMMStatus,
     problem: BenchmarkProblem,
     solution: BenchmarkSolution,
@@ -637,6 +737,25 @@ def make_benchmark_metrics(
 
     # First set wether there was an error
     metrics.data.error = status.result == linalg.ADMMResult.ERROR
+
+    # Set the linear system solver metrics
+    # NOTE: These are capture regardless of whether the solve was successful or not
+    metrics.data.linsys_min.compute_error_abs = np.min(info.r_linsys_compute_abs)
+    metrics.data.linsys_min.compute_error_rel = np.min(info.r_linsys_compute_rel)
+    metrics.data.linsys_min.solve_error_abs = np.min(info.r_linsys_solve_abs)
+    metrics.data.linsys_min.solve_error_rel = np.min(info.r_linsys_solve_rel)
+    metrics.data.linsys_max.compute_error_abs = np.max(info.r_linsys_compute_abs)
+    metrics.data.linsys_max.compute_error_rel = np.max(info.r_linsys_compute_rel)
+    metrics.data.linsys_max.solve_error_abs = np.max(info.r_linsys_solve_abs)
+    metrics.data.linsys_max.solve_error_rel = np.max(info.r_linsys_solve_rel)
+    # NOTE: Only compute mean linsys performance if there was no error,
+    # because if there was, then the solver had diverged and the mean errors
+    # would be meaningless (usually very large values).
+    if not metrics.data.error:
+        metrics.data.linsys_mean.compute_error_abs = np.mean(info.r_linsys_compute_abs)
+        metrics.data.linsys_mean.compute_error_rel = np.mean(info.r_linsys_compute_rel)
+        metrics.data.linsys_mean.solve_error_abs = np.mean(info.r_linsys_solve_abs)
+        metrics.data.linsys_mean.solve_error_rel = np.mean(info.r_linsys_solve_rel)
 
     # If there was an error, return early so that all other metrics remain at infinity
     if metrics.data.error:
@@ -705,8 +824,9 @@ def solve_benchmark_problem(
             method_name="KKT",
             linear_solver=get_solver_typename(admm.kkt_solver),
         )
-        solution_kkt = make_benchmark_solution(admm, kkt_info)
-        metrics.append(make_benchmark_metrics(time_kkt, status_kkt, problem, solution_kkt))
+        metrics.append(
+            make_benchmark_metrics(time_kkt, admm.info, status_kkt, problem, make_benchmark_solution(admm, kkt_info))
+        )
 
         # Optionally save convergence plots
         if save_info_path is not None:
@@ -732,8 +852,11 @@ def solve_benchmark_problem(
             method_name="Schur-Primal",
             linear_solver=get_solver_typename(admm.schur_solver),
         )
-        solution_schur_prim = make_benchmark_solution(admm, schur_prim_info)
-        metrics.append(make_benchmark_metrics(time_schur_prim, status_schur_prim, problem, solution_schur_prim))
+        metrics.append(
+            make_benchmark_metrics(
+                time_schur_prim, admm.info, status_schur_prim, problem, make_benchmark_solution(admm, schur_prim_info)
+            )
+        )
 
         # Optionally save convergence plots
         if save_info_path is not None:
@@ -762,8 +885,11 @@ def solve_benchmark_problem(
             method_name="Schur-Dual",
             linear_solver=get_solver_typename(admm.schur_solver),
         )
-        solution_schur_dual = make_benchmark_solution(admm, schur_dual_info)
-        metrics.append(make_benchmark_metrics(time_schur_dual, status_schur_dual, problem, solution_schur_dual))
+        metrics.append(
+            make_benchmark_metrics(
+                time_schur_dual, admm.info, status_schur_dual, problem, make_benchmark_solution(admm, schur_dual_info)
+            )
+        )
 
         # Optionally save convergence plots
         if save_info_path is not None:
@@ -792,9 +918,14 @@ def solve_benchmark_problem(
             method_name="Schur-Dual-Prec",
             linear_solver=get_solver_typename(admm.schur_solver),
         )
-        solution_schur_dual_prec = make_benchmark_solution(admm, schur_dual_prec_info)
         metrics.append(
-            make_benchmark_metrics(time_schur_dual_prec, status_schur_dual_prec, problem, solution_schur_dual_prec)
+            make_benchmark_metrics(
+                time_schur_dual_prec,
+                admm.info,
+                status_schur_dual_prec,
+                problem,
+                make_benchmark_solution(admm, schur_dual_prec_info),
+            )
         )
 
         # Optionally save convergence plots
@@ -858,39 +989,39 @@ def make_solvers(admm: linalg.ADMMSolver) -> list[tuple[linalg.ADMMSolver, Solut
     admm_llt_std.schur_solver = linalg.LLTStdSolver()
     variants.append((admm_llt_std, methods_llt_std))
 
-    # admm_ldlt_nopiv = copy.deepcopy(admm)
-    # methods_ldlt_nopiv = SolutionMethods()
-    # admm_ldlt_nopiv.kkt_solver = linalg.LDLTNoPivotSolver()
-    # admm_ldlt_nopiv.schur_solver = linalg.LDLTNoPivotSolver()
-    # variants.append((admm_ldlt_nopiv, methods_ldlt_nopiv))
+    admm_ldlt_nopiv = copy.deepcopy(admm)
+    methods_ldlt_nopiv = SolutionMethods()
+    admm_ldlt_nopiv.kkt_solver = linalg.LDLTNoPivotSolver()
+    admm_ldlt_nopiv.schur_solver = linalg.LDLTNoPivotSolver()
+    variants.append((admm_ldlt_nopiv, methods_ldlt_nopiv))
 
-    # admm_ldlt_blocked = copy.deepcopy(admm)
-    # methods_ldlt_blocked = SolutionMethods()
-    # admm_ldlt_blocked.kkt_solver = linalg.LDLTBlockedSolver()
-    # admm_ldlt_blocked.schur_solver = linalg.LDLTBlockedSolver()
-    # variants.append((admm_ldlt_blocked, methods_ldlt_blocked))
+    admm_ldlt_blocked = copy.deepcopy(admm)
+    methods_ldlt_blocked = SolutionMethods()
+    admm_ldlt_blocked.kkt_solver = linalg.LDLTBlockedSolver()
+    admm_ldlt_blocked.schur_solver = linalg.LDLTBlockedSolver()
+    variants.append((admm_ldlt_blocked, methods_ldlt_blocked))
 
-    # admm_ldlt_eigen3 = copy.deepcopy(admm)
-    # methods_ldlt_eigen3 = SolutionMethods()
-    # admm_ldlt_eigen3.kkt_solver = linalg.LDLTEigen3Solver()
-    # admm_ldlt_eigen3.schur_solver = linalg.LDLTEigen3Solver()
-    # variants.append((admm_ldlt_eigen3, methods_ldlt_eigen3))
+    admm_ldlt_eigen3 = copy.deepcopy(admm)
+    methods_ldlt_eigen3 = SolutionMethods()
+    admm_ldlt_eigen3.kkt_solver = linalg.LDLTEigen3Solver()
+    admm_ldlt_eigen3.schur_solver = linalg.LDLTEigen3Solver()
+    variants.append((admm_ldlt_eigen3, methods_ldlt_eigen3))
 
-    # admm_lu_nopiv = copy.deepcopy(admm)
-    # methods_lu_nopiv = SolutionMethods()
-    # admm_lu_nopiv.kkt_solver = linalg.LUNoPivotSolver()
-    # admm_lu_nopiv.schur_solver = linalg.LUNoPivotSolver()
-    # variants.append((admm_lu_nopiv, methods_lu_nopiv))
+    admm_lu_nopiv = copy.deepcopy(admm)
+    methods_lu_nopiv = SolutionMethods()
+    admm_lu_nopiv.kkt_solver = linalg.LUNoPivotSolver()
+    admm_lu_nopiv.schur_solver = linalg.LUNoPivotSolver()
+    variants.append((admm_lu_nopiv, methods_lu_nopiv))
 
     return variants
 
 
 def make_benchmark_performance_data(
-    solutions: list[BenchmarkMetrics], problems: list[str], output_path: str
+    metrics: list[BenchmarkMetrics], problems: list[str], output_path: str
 ) -> dict[str, Any]:
     # Iterate over all collected metrics and collect a list of unique solver IDs
     solvers = set()
-    for m in solutions:
+    for m in metrics:
         solvers.add(m._solverid())
     solvers = sorted(solvers)
 
@@ -908,25 +1039,25 @@ def make_benchmark_performance_data(
     }
 
     # Populate the metric data arrays
-    for solution in solutions:
-        s = solvers.index(solution._solverid())
-        p = problems.index(solution.pname) if solution.pname in problems else -1
+    for m in metrics:
+        s = solvers.index(m._solverid())
+        p = problems.index(m.pname) if m.pname in problems else -1
         if p < 0:
-            msg.error("Problem name '%s' not found in problem paths.", solution.pname)
+            msg.error("Problem name '%s' not found in problem paths.", m.pname)
             continue
-        perfdata["error"][s, p] = 1.0 if solution.data.error else 0.0
-        perfdata["success"][s, p] = 1.0 if solution.data.success else 0.0
-        perfdata["converged"][s, p] = 1.0 if solution.data.converged else 0.0
-        perfdata["iterations"][s, p] = float(solution.data.iterations)
-        perfdata["total_time"][s, p] = float(solution.data.total_time)
-        perfdata["iteration_time"][s, p] = float(solution.data.iteration_time)
-        perfdata["dual_residual_abs"][s, p] = float(solution.data.dual_residual_abs)
-        perfdata["primal_error_abs"][s, p] = float(solution.data.primal_error_abs)
-        perfdata["primal_error_rel"][s, p] = float(solution.data.primal_error_rel)
-        perfdata["dual_error_abs"][s, p] = float(solution.data.dual_error_abs)
-        perfdata["dual_error_rel"][s, p] = float(solution.data.dual_error_rel)
-        perfdata["kkt_error_abs"][s, p] = float(solution.data.kkt_error_abs)
-        perfdata["kkt_error_rel"][s, p] = float(solution.data.kkt_error_rel)
+        perfdata["error"][s, p] = 1.0 if m.data.error else 0.0
+        perfdata["success"][s, p] = 1.0 if m.data.success else 0.0
+        perfdata["converged"][s, p] = 1.0 if m.data.converged else 0.0
+        perfdata["iterations"][s, p] = float(m.data.iterations)
+        perfdata["total_time"][s, p] = float(m.data.total_time)
+        perfdata["iteration_time"][s, p] = float(m.data.iteration_time)
+        perfdata["dual_residual_abs"][s, p] = float(m.data.dual_residual_abs)
+        perfdata["primal_error_abs"][s, p] = float(m.data.primal_error_abs)
+        perfdata["primal_error_rel"][s, p] = float(m.data.primal_error_rel)
+        perfdata["dual_error_abs"][s, p] = float(m.data.dual_error_abs)
+        perfdata["dual_error_rel"][s, p] = float(m.data.dual_error_rel)
+        perfdata["kkt_error_abs"][s, p] = float(m.data.kkt_error_abs)
+        perfdata["kkt_error_rel"][s, p] = float(m.data.kkt_error_rel)
 
     # Append solver names and problem names to the solutions dictionary
     perfdata["solvers"] = list(solvers)
@@ -939,19 +1070,102 @@ def make_benchmark_performance_data(
     return perfdata
 
 
-def make_performance_profiles(perfdata: dict[str, Any], show: bool = False, path: str | None = None):
+def make_benchmark_linsys_performance_data(
+    metrics: list[BenchmarkMetrics], problems: list[str], output_path: str
+) -> dict[str, Any]:
+    # Iterate over all collected metrics and collect a list of unique solver IDs
+    linsys_solvers = set()
+    methods_per_solver: dict[str, set[str]] = {}
+    for m in metrics:
+        linsys_solvers.add(m.info.linear_solver)
+        if m.info.linear_solver not in methods_per_solver:
+            methods_per_solver[m.info.linear_solver] = set()
+        methods_per_solver[m.info.linear_solver].add(m.info.method_name)
+    linsys_solvers = sorted(linsys_solvers)
+
+    # Extract a list of solution methods that are common between all solvers
+    methods = set.intersection(*(methods_per_solver[solver] for solver in linsys_solvers))
+    methods = sorted(methods)
+
+    # For each problem, add each method as a separate entry
+    linsys_problems = []
+    for p in problems:
+        for m in methods:
+            linsys_problems.append(p + "/" + m)
+    print(f"linsys_problems: {linsys_problems}")
+
+    # Extract the list of performance metric names
+    # NOTE: this excludes the "norm_lambdas" and "norm_u_plus" entries
+    metric_names = BenchmarkMetrics._metrics_linsys_all()
+    print(f"metric_names: {metric_names}")
+
+    # Create a dictionary of 2D arrays for each performance metric
+    num_linsys_solvers = len(linsys_solvers)
+    num_linsys_problems = len(linsys_problems)
+    print(f"num_linsys_solvers: {num_linsys_solvers}")
+    print(f"num_linsys_problems: {num_linsys_problems}")
+    perfdata: dict[str, np.ndarray] = {
+        metric: np.empty((num_linsys_solvers, num_linsys_problems), dtype=float) for metric in metric_names
+    }
+
+    # Populate the metric data arrays
+    for m in metrics:
+        if m.info.method_name not in methods:
+            continue
+        s = linsys_solvers.index(m.info.linear_solver)
+        pname = m.pname + "/" + m.info.method_name
+        p = linsys_problems.index(pname) if pname in linsys_problems else -1
+        if p < 0:
+            msg.error("Problem name '%s' not found in problem paths.", pname)
+            continue
+        perfdata["compute_error_abs_min"][s, p] = float(m.data.linsys_min.compute_error_abs)
+        perfdata["compute_error_abs_max"][s, p] = float(m.data.linsys_max.compute_error_abs)
+        perfdata["compute_error_abs_mean"][s, p] = float(m.data.linsys_mean.compute_error_abs)
+        perfdata["compute_error_rel_min"][s, p] = float(m.data.linsys_min.compute_error_rel)
+        perfdata["compute_error_rel_max"][s, p] = float(m.data.linsys_max.compute_error_rel)
+        perfdata["compute_error_rel_mean"][s, p] = float(m.data.linsys_mean.compute_error_rel)
+        perfdata["solve_error_abs_min"][s, p] = float(m.data.linsys_min.solve_error_abs)
+        perfdata["solve_error_abs_max"][s, p] = float(m.data.linsys_max.solve_error_abs)
+        perfdata["solve_error_abs_mean"][s, p] = float(m.data.linsys_mean.solve_error_abs)
+        perfdata["solve_error_rel_min"][s, p] = float(m.data.linsys_min.solve_error_rel)
+        perfdata["solve_error_rel_max"][s, p] = float(m.data.linsys_max.solve_error_rel)
+        perfdata["solve_error_rel_mean"][s, p] = float(m.data.linsys_mean.solve_error_rel)
+
+    # Append solver names and problem names to the solutions dictionary
+    perfdata["solvers"] = list(linsys_solvers)
+    perfdata["problems"] = linsys_problems
+
+    # Save the metric data arrays as binary a NumPy file
+    np.save(os.path.join(output_path, "perfdata_linsys.npy"), perfdata)
+
+    # Return the populated metrics dictionary
+    return perfdata
+
+
+def make_performance_profiles(
+    perfdata: dict[str, Any],
+    success_key: str | None = None,
+    exclude: list[str] | None = None,
+    show: bool = False,
+    path: str | None = None,
+) -> dict[str, PerformanceProfile]:
     # Initialize profiles and rankings containers
     profiles: dict[str, PerformanceProfile] = {}
 
-    # Extract the dictionary keys and remove "solvers", "problems", "success", "converged", and "error"
-    excluded = ["solvers", "problems", "success", "converged", "error"]
+    # Extract the dictionary keys and remove the excluded ones
     metric_keys = list(perfdata.keys())
-    for key in excluded:
-        metric_keys.remove(key)
+    if exclude is not None:
+        for key in exclude:
+            metric_keys.remove(key)
+    metric_keys.remove("solvers")
+    metric_keys.remove("problems")
 
     # Compute performance profiles for selected metrics and store them in the profiles dictionary
+    success = None
+    if success_key is not None and success_key in metric_keys:
+        success = perfdata[success_key]
     for key in metric_keys:
-        profiles[key] = PerformanceProfile(data=perfdata[key], success=perfdata["success"], taumax=np.inf)
+        profiles[key] = PerformanceProfile(data=perfdata[key], success=success, taumax=np.inf)
 
     # Create output directory if it doesn't exist
     if path is not None:
@@ -1088,7 +1302,7 @@ def make_rankings_table(solvers: list[str], rankings: dict[str, tuple[np.ndarray
 
     # Compute column widths
     column_width = max(submetrics_cell_width, max_metric_width)
-    subcolumn_width = max(len(sm) for sm in submetrics) + 2
+    subcolumn_width = max(max(len(sm) for sm in submetrics) + 2, column_width // 2 - 1)
 
     # Build headers columns
     header_columns = ["Solvers", *keys]
@@ -1190,9 +1404,9 @@ PROBLEM_NAME = "boxes_nunchaku"
 # PROBLEM_CATEGORY = "IndependentJoints"
 # PROBLEM_CATEGORY = "RedundantJoints"
 # PROBLEM_CATEGORY = "SingleContact"
-# PROBLEM_CATEGORY = "SparseContacts"
+PROBLEM_CATEGORY = "SparseContacts"
 # PROBLEM_CATEGORY = "DenseContacts"
-PROBLEM_CATEGORY = "DenseConstraints"
+# PROBLEM_CATEGORY = "DenseConstraints"
 
 # Sample index to load; set to None to load all samples
 # PROBLEM_SAMPLE = None
@@ -1261,7 +1475,7 @@ if __name__ == "__main__":
     solvers = make_solvers(admm_0)
 
     ###
-    # Single sample problem
+    # Run on sample problem
     ###
 
     if sample:
@@ -1307,7 +1521,7 @@ if __name__ == "__main__":
         print(solvers_str, file=open(os.path.join(SAMPLE_OUTPUT_PATH, "solvers.txt"), "w"))
 
     ###
-    # Benchmark problems
+    # Run on benchmark dataset
     ###
 
     if dataset:
@@ -1335,21 +1549,41 @@ if __name__ == "__main__":
                 metrics.extend(solve_benchmark_problem(problem, admm, methods, None))
 
         # Extract performance data from the collected benchmark metrics
-        msg.info("Extracting performance data from collected benchmark metrics...")
+        msg.info("Extracting ADMM solver performance data from collected benchmark metrics...")
         perfdata = make_benchmark_performance_data(metrics, problems=problem_paths, output_path=DATASET_OUTPUT_PATH)
+
+        # Extract performance data from the collected benchmark metrics
+        msg.info("Extracting linear system solver performance data from collected benchmark metrics...")
+        perfdat_linsys = make_benchmark_linsys_performance_data(
+            metrics, problems=problem_paths, output_path=DATASET_OUTPUT_PATH
+        )
 
         # Print a coarse summary of solver success rates
         summary_str = make_summary_table(perfdata)
         msg.info("SUMMARY:\n\n%s", summary_str)
         print(summary_str, file=open(os.path.join(DATASET_OUTPUT_PATH, "summary.txt"), "w"))
 
+        # # Print a coarse summary of solver success rates
+        # summary_linsys_compute_str = make_linsys_compute_summary_table(perfdat_linsys)
+        # msg.info("SUMMARY:\n\n%s", summary_linsys_compute_str)
+        # print(summary_linsys_compute_str, file=open(os.path.join(DATASET_OUTPUT_PATH, "summary_linsys_compute.txt"), "w"))
+
+        # # Print a coarse summary of solver success rates
+        # summary_linsys_solve_str = make_linsys_solve_summary_table(perfdat_linsys)
+        # msg.info("SUMMARY:\n\n%s", summary_linsys_solve_str)
+        # print(summary_linsys_solve_str, file=open(os.path.join(DATASET_OUTPUT_PATH, "summary_linsys_solve.txt"), "w"))
+
         if profiles:
             # Create output directories
-            os.makedirs(PERFPROF_OUTPUT_PATH, exist_ok=True)
+            os.makedirs(PERFPROF_OUTPUT_PATH + "/admm", exist_ok=True)
+            os.makedirs(PERFPROF_OUTPUT_PATH + "/linsys", exist_ok=True)
 
             # Compute performance profiles for selected metrics
             msg.info("Computing performance profiles...")
-            profiles = make_performance_profiles(perfdata, show=False, path=PERFPROF_OUTPUT_PATH)
+            excluded = ["success", "converged", "error"]
+            profiles = make_performance_profiles(
+                perfdata, exclude=excluded, success_key="success", show=False, path=PERFPROF_OUTPUT_PATH + "/admm"
+            )
 
             # Compute rankings for each metric
             msg.info("Computing performance profile rankings for each metric...")
@@ -1359,6 +1593,25 @@ if __name__ == "__main__":
             rankings_str = make_rankings_table(perfdata["solvers"], rankings)
             msg.info("RANKINGS:\n%s", rankings_str)
             print(rankings_str, file=open(os.path.join(DATASET_OUTPUT_PATH, "rankings.txt"), "w"))
+
+            # Compute performance profiles for selected metrics
+            msg.info("Computing linear-system solver performance profiles...")
+            profiles_linsys = make_performance_profiles(
+                perfdat_linsys, show=False, path=PERFPROF_OUTPUT_PATH + "/linsys"
+            )
+
+            # Compute rankings for each metric
+            msg.info("Computing linear-system solver performance profile rankings for each metric...")
+            rankings_linsys = make_perfprof_rankings(profiles_linsys)
+
+            # Render rankings table
+            rankings_linsys_str = make_rankings_table(perfdat_linsys["solvers"], rankings_linsys)
+            msg.info("RANKINGS:\n%s", rankings_linsys_str)
+            print(rankings_linsys_str, file=open(os.path.join(DATASET_OUTPUT_PATH, "rankings_linsys.txt"), "w"))
+
+    ###
+    # Benchmark problems
+    ###
 
     # TODO:
     #   - Add collection of linysys performance in each problem to create linsys performance profiles

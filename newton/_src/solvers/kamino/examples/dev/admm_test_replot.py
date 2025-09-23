@@ -44,10 +44,10 @@ PROBLEM_NAME = "walker"
 # PROBLEM_CATEGORY = None
 # PROBLEM_CATEGORY = "IndependentJoints"
 # PROBLEM_CATEGORY = "RedundantJoints"
-PROBLEM_CATEGORY = "SingleContact"
+# PROBLEM_CATEGORY = "SingleContact"
 # PROBLEM_CATEGORY = "SparseContacts"
 # PROBLEM_CATEGORY = "DenseContacts"
-# PROBLEM_CATEGORY = "DenseConstraints"
+PROBLEM_CATEGORY = "DenseConstraints"
 
 
 # Retrieve the path to the data directory
@@ -69,7 +69,7 @@ PERFPROF_OUTPUT_PATH = f"{PROFDATA_OUTPUT_PATH}/perfprof"
 
 if __name__ == "__main__":
     # Set global numpy configurations
-    np.set_printoptions(linewidth=20000, precision=10, threshold=10000, suppress=True)  # Suppress scientific notation
+    np.set_printoptions(linewidth=20000, precision=12, threshold=10000, suppress=True)  # Suppress scientific notation
     msg.set_log_level(msg.LogLevel.INFO)
 
     # Revise the root output path to replace 'None' with 'all'
@@ -116,7 +116,7 @@ if __name__ == "__main__":
 
     # Compute performance profiles for selected metrics
     msg.info("Computing performance profiles...")
-    excluded = ["success", "converged", "error"]
+    excluded = ["success", "converged", "error", "primal_error_rel", "dual_error_rel", "kkt_error_rel"]
     profiles = bm.make_performance_profiles(
         perfdata, exclude=excluded, success_key="success", show=False, path=PERFPROF_OUTPUT_PATH + "/admm"
     )
@@ -127,15 +127,20 @@ if __name__ == "__main__":
 
     # Compute overall rankings (average over all metrics)
     msg.info("Computing overall performance profile rankings for linear-system solvers...")
-    rankings["total"] = bm.compute_total_perfprof_rankings(
+    rankings["total"] = bm.make_total_perfprof_rankings(
         rankings=rankings,
         keep_metrics=["dual_residual_abs", "primal_error_abs", "dual_error_abs", "kkt_error_abs"],
     )
 
     # Render rankings table
-    rankings_str = bm.make_rankings_table(perfdata["solvers"], rankings)
-    msg.info("RANKINGS:\n%s", rankings_str)
-    print(rankings_str, file=open(os.path.join(PROFDATA_OUTPUT_PATH, "rankings.txt"), "w"))
+    rankings_tbl_str = bm.make_rankings_table(perfdata["solvers"], rankings)
+    msg.info("RANKINGS (TABLE):\n%s", rankings_tbl_str)
+    print(rankings_tbl_str, file=open(os.path.join(PROFDATA_OUTPUT_PATH, "rankings_table.txt"), "w"))
+
+    # Render rankings lists
+    rankings_lst_str = bm.make_rho1_rankings_list(perfdata["solvers"], rankings)
+    msg.info("RANKINGS (LISTS):\n\n%s", rankings_lst_str)
+    print(rankings_lst_str, file=open(os.path.join(PROFDATA_OUTPUT_PATH, "rankings_list.txt"), "w"))
 
     ###
     # Generate performance profiles and rankings for linear-system solvers
@@ -146,7 +151,17 @@ if __name__ == "__main__":
 
     # Compute performance profiles for selected metrics
     msg.info("Computing linear-system solver performance profiles...")
-    profiles_linsys = bm.make_performance_profiles(perfdata_linsys, show=False, path=PERFPROF_OUTPUT_PATH + "/linsys")
+    excluded = [
+        "compute_error_rel_min",
+        "compute_error_rel_max",
+        "compute_error_rel_mean",
+        "solve_error_rel_min",
+        "solve_error_rel_max",
+        "solve_error_rel_mean",
+    ]
+    profiles_linsys = bm.make_performance_profiles(
+        perfdata_linsys, exclude=excluded, show=False, path=PERFPROF_OUTPUT_PATH + "/linsys"
+    )
 
     # Compute rankings for each metric
     msg.info("Computing linear-system solver performance profile rankings for each metric...")
@@ -154,15 +169,20 @@ if __name__ == "__main__":
 
     # Compute overall rankings (average over all metrics)
     msg.info("Computing overall performance profile rankings for linear-system solvers...")
-    rankings_linsys["total"] = bm.compute_total_perfprof_rankings(
+    rankings_linsys["total"] = bm.make_total_perfprof_rankings(
         rankings=rankings_linsys,
         keep_metrics=["compute_error_abs_min", "compute_error_abs_max", "solve_error_abs_min", "solve_error_abs_max"],
     )
 
     # Render rankings table
-    rankings_linsys_str = bm.make_rankings_table(perfdata_linsys["solvers"], rankings_linsys)
-    msg.info("RANKINGS:\n%s", rankings_linsys_str)
-    print(rankings_linsys_str, file=open(os.path.join(PROFDATA_OUTPUT_PATH, "rankings_linsys.txt"), "w"))
+    rankings_linsys_tbl_str = bm.make_rankings_table(perfdata_linsys["solvers"], rankings_linsys)
+    msg.info("RANKINGS (TABLE):\n%s", rankings_linsys_tbl_str)
+    print(rankings_linsys_tbl_str, file=open(os.path.join(PROFDATA_OUTPUT_PATH, "rankings_linsys.txt"), "w"))
+
+    # Render rankings lists
+    rankings_linsys_lst_str = bm.make_rho1_rankings_list(perfdata_linsys["solvers"], rankings_linsys)
+    msg.info("RANKINGS (LISTS):\n\n%s", rankings_linsys_lst_str)
+    print(rankings_linsys_lst_str, file=open(os.path.join(PROFDATA_OUTPUT_PATH, "rankings_linsys_list.txt"), "w"))
 
     # Close the HDF5 data file
     msg.info("Done.")

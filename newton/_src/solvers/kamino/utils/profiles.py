@@ -53,7 +53,7 @@ from . import logger as msg
 ###
 
 # Local numeric constants (analogs of the C++ constants)
-EPSILON: float = np.finfo(float).eps
+EPSILON: float = float(np.finfo(float).eps)
 EPSILON_2: float = float(0.5 * EPSILON)
 
 
@@ -272,12 +272,11 @@ class PerformanceProfile:
             samples[mask] = ppfixmin + samples[mask] * ppfixscaling
 
         # Per-problem minima across solvers
-        t_p_min = samples.min(axis=0)
-        self._t_p_min = t_p_min
+        self._t_p_min = samples.min(axis=0)
 
         # Performance ratios r_ps = t_ps / min_s t_ps when successful, else inf
         with np.errstate(divide="ignore", invalid="ignore"):
-            r_ps = np.where(success_ps > 0.0, samples / t_p_min[None, :], np.inf)
+            r_ps = np.where(success_ps > 0.0, samples / self._t_p_min[None, :], np.inf)
 
         # Minimal ratio (before filtering non-finite)
         self._r_min = float(np.nanmin(r_ps))
@@ -334,14 +333,14 @@ class PerformanceProfile:
         self._valid = True
         return True
 
-    def rankings(self) -> tuple[np.ndarray, np.ndarray]:
+    def rankings(self) -> dict[str, tuple[np.ndarray, np.ndarray, bool]]:
         """
-        Compute solver rankings at tau = 1.0 and at rho = 1.0.
+        Compute solver rankings at tau=1.0 and at rho=1.0.
 
         Returns:
             tuple[np.ndarray, np.ndarray]: A pair of 1D integer arrays with length equal to the number of solvers.
-                - First array: rankings based on rho at tau = 1.0 (higher is better).
-                - Second array: rankings based on the smallest tau at which rho = 1.0 (lower is better).
+                - First array: rankings based on rho at tau=1.0 (higher is better).
+                - Second array: rankings based on the smallest tau at which rho=1.0 (lower is better).
 
         Notes:
             Rankings are dense: solvers with the same value share the same rank, and
@@ -360,33 +359,35 @@ class PerformanceProfile:
         rankings_rho_1 = np.full((num_solvers,), -1, dtype=int)  # First solver to reach rho = 1.0
 
         # rho_s is stored as a 2xK array: [taus; rhos]
-        # Collect rho(1.0) for each solver (fraction of problems where it was best)
+        # Collect rho(1.0) for each solver
+        # (fraction of problems where it performed best)
         rhos_at_tau_1 = np.empty((num_solvers,), dtype=float)
         for s in range(num_solvers):
             taus = self._rho_s[s][0, :]
             rhos = self._rho_s[s][1, :]
-            idx = np.where(np.isclose(taus, 1.0, atol=EPSILON * 8, rtol=0.0))[0]
-            rhos_at_tau_1[s] = float(rhos[idx[0]]) if idx.size else 0.0
+            rhos_at_tau_1[s] = float(rhos[0])
 
         # Dense ranking: higher is better; rank 1 = best
         unique_vals = np.unique(rhos_at_tau_1)[::-1]
         for rank, val in enumerate(unique_vals, start=1):
             rankings_tau_1[rhos_at_tau_1 == val] = rank
 
-        # Collect tau where rho first reaches 1.0 for each solver (how fast it solves all problems)
+        # Collect tau where rho first reaches 1.0 for each solver
+        # (the factor by which it is close to the best solver on all problems)
         taus_at_rho_1 = np.empty((num_solvers,), dtype=float)
         for s in range(num_solvers):
             taus = self._rho_s[s][0, :]
             rhos = self._rho_s[s][1, :]
-            idx = np.where(np.isclose(rhos, 1.0, atol=EPSILON * 8, rtol=0.0))[0]
+            idx = np.where(np.isclose(rhos, 1.0, atol=EPSILON, rtol=0.0))[0]
             taus_at_rho_1[s] = float(taus[idx[0]]) if idx.size else np.inf
+
         # Dense ranking: lower is better; rank 1 = best
         unique_vals = np.unique(taus_at_rho_1)
         for rank, val in enumerate(unique_vals, start=1):
             rankings_rho_1[taus_at_rho_1 == val] = rank
 
-        # Return the computed rankings
-        return rankings_tau_1, rankings_rho_1
+        # Return the computed rankings together with the associated values
+        return {"rho@tau=1": (rankings_tau_1, rhos_at_tau_1, False), "tau@rho=1": (rankings_rho_1, taus_at_rho_1, True)}
 
     def plot(
         self,
@@ -504,14 +505,13 @@ class PerformanceProfile:
                 legend_line.set_alpha(1.0 if visible else 0.2)
                 fig.canvas.draw()
 
-            fig.canvas.mpl_connect("pick_event", on_pick)
             # Works even if the legend is draggable. This is independent from picking legend lines.
+            fig.canvas.mpl_connect("pick_event", on_pick)
             legend.set_draggable(True)
 
-            # fig.tight_layout()
             if path is not None:
                 plt.savefig(path, bbox_inches="tight")
-                msg.info(f"Profile plot saved to: {path}")
+                msg.debug(f"Profile plot saved to: {path}")
 
             if show:
                 plt.show()

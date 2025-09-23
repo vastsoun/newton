@@ -1372,7 +1372,8 @@ def make_performance_profiles(
     if success_key is not None and success_key in metric_keys:
         success = perfdata[success_key]
     for key in metric_keys:
-        profiles[key] = PerformanceProfile(data=perfdata[key], success=success, taumax=np.inf)
+        is_error_metric = "residual" in key.lower() or "error" in key.lower()
+        profiles[key] = PerformanceProfile(data=perfdata[key], success=success, taumax=np.inf, ppfix=is_error_metric)
 
     # Create output directory if it doesn't exist
     if path is not None:
@@ -1387,21 +1388,26 @@ def make_performance_profiles(
     return profiles
 
 
-def make_perfprof_rankings(profiles: dict[str, PerformanceProfile]) -> dict[str, tuple[np.ndarray, np.ndarray]]:
-    rankings: dict[str, tuple[np.ndarray, np.ndarray]] = {}
+def make_perfprof_rankings(
+    profiles: dict[str, PerformanceProfile],
+) -> dict[str, dict[str, tuple[np.ndarray, np.ndarray, bool]]]:
+    rankings: dict[str, dict[str, tuple[np.ndarray, np.ndarray, bool]]] = {}
     keys = list(profiles.keys())
     for key in keys:
         rankings[key] = profiles[key].rankings()
     return rankings
 
 
-def compute_total_perfprof_rankings(
-    rankings: dict[str, tuple[np.ndarray, np.ndarray]],
+def make_total_perfprof_rankings(
+    rankings: dict[str, dict[str, tuple[np.ndarray, np.ndarray, bool]]],
     exclude_metrics: list[str] | None = None,
     keep_metrics: list[str] | None = None,
-) -> tuple[np.ndarray, np.ndarray]:
+    exclude_stats: list[str] | None = None,
+    keep_stats: list[str] | None = None,
+) -> dict[str, tuple[np.ndarray, np.ndarray, bool]]:
     # Extract the dictionary keys and remove the excluded ones and those not in the kept ones
     metrics = list(rankings.keys())
+    num_metrics = len(metrics)
     if exclude_metrics is not None:
         for key in list(metrics):
             if key in exclude_metrics:
@@ -1410,19 +1416,52 @@ def compute_total_perfprof_rankings(
         for key in list(metrics):
             if key not in keep_metrics:
                 metrics.remove(key)
-    # Compute total rankings across all metrics
-    rho1_total_rankings = np.zeros_like(rankings[metrics[0]][0]).astype(float)
-    tau1_total_rankings = np.zeros_like(rankings[metrics[0]][1]).astype(float)
-    for m in metrics:
-        r0, r1 = rankings[m]
-        rho1_total_rankings += r0
-        tau1_total_rankings += r1
-    rho1_total_rankings /= float(len(metrics))
-    tau1_total_rankings /= float(len(metrics))
-    tau1_total_rankings = np.round(rho1_total_rankings).astype(int)
-    tau1_total_rankings = np.round(tau1_total_rankings).astype(int)
-    # Return the dictionary of performance profile rankings
-    return (rho1_total_rankings, tau1_total_rankings)
+
+    # Filter the statistics to include
+    stats = ["rho@tau=1", "tau@rho=1"]
+    if exclude_stats is not None:
+        for key in list(stats):
+            if key in exclude_stats:
+                stats.remove(key)
+    if keep_stats is not None:
+        for key in list(stats):
+            if key not in keep_stats:
+                stats.remove(key)
+
+    # Initialize total rankings containers
+    total_rankings: dict[str, tuple[np.ndarray, np.ndarray, bool]] = {}
+
+    # Retrieve the number of solvers
+    num_solvers = rankings[metrics[0]][stats[0]][0].shape[0]
+    points = np.zeros((num_solvers, len(stats)), dtype=float)
+    for stat in stats:
+        # Retrieve the index of the current statistic
+        stat_idx = stats.index(stat)
+
+        # Accumulate points for each solver and statistic
+        for key in metrics:
+            _, p, _ = rankings[key][stat]
+            for s in range(num_solvers):
+                points[s, stat_idx] += p[s]
+
+        # Determine if lower values are better for this statistic
+        stat_lower_is_better: bool = rankings[metrics[0]][stat][2]
+
+        # Sort the points to determine rankings
+        stat_sorted_indices = np.argsort(points[:, stat_idx])
+        if not stat_lower_is_better:
+            stat_sorted_indices = stat_sorted_indices[::-1]
+
+        # Assign ranks based on sorted indices
+        stat_ranks = np.empty(num_solvers, dtype=int)
+        for rank, idx in enumerate(stat_sorted_indices):
+            stat_ranks[idx] = rank + 1
+
+        # Store the rankings for this statistic
+        total_rankings[stat] = (stat_ranks, points[:, stat_idx] / float(num_metrics), stat_lower_is_better)
+
+    # Return the dictionary of performance profile rankings per statistic
+    return total_rankings
 
 
 def make_summary_table(perfdata: dict[str, Any]) -> str:
@@ -1501,61 +1540,58 @@ def make_summary_table(perfdata: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def make_rankings_table(solvers: list[str], rankings: dict[str, tuple[np.ndarray, np.ndarray]]) -> str:
+def make_rankings_table(solvers: list[str], rankings: dict[str, dict[str, tuple[np.ndarray, np.ndarray, bool]]]) -> str:
     # Determine metric order
-    keys = list(rankings.keys())
-
-    # Helper formatter
-    def fmt(v: Any) -> str:
-        try:
-            if isinstance(v, np.integer | int):
-                return str(int(v))
-            if isinstance(v, np.floating | float):
-                if abs(float(v) - round(float(v))) < 1e-12:
-                    return str(int(round(float(v))))
-                return f"{float(v):.4g}"
-            return str(v)
-        except Exception:
-            return str(v)
+    metrics = list(rankings.keys())
 
     # Build rows
     rows: list[list[str]] = []
+    max_row_width = 0
     for i, sid in enumerate(solvers):
         row: list[str] = [sid]
-        for m in keys:
-            r0, r1 = rankings[m]
-            v0 = r0[i] if i < len(r0) else np.nan
-            v1 = r1[i] if i < len(r1) else np.nan
-            row.append(fmt(v0))
-            row.append(fmt(v1))
+        for m in metrics:
+            stat_keys = rankings[m].keys()
+            for sk in stat_keys:
+                ranks, points, _ = rankings[m][sk]
+                row.append(f"{ranks[i]} ({points[i]:.2g})")
+                max_row_width = max(max_row_width, len(row[-1]))
         rows.append(row)
+    if max_row_width % 2:
+        max_row_width += 1
 
     # Build submetrics
-    submetrics = ["tau=1", "rho=1"]
+    submetrics = ["rho@tau=1", "tau@rho=1"]
     submetrics_cell = submetrics[0] + "  |  " + submetrics[1]
     submetrics_cell_width = len(submetrics_cell)
-    max_metric_width = max(len(m) for m in keys)  # w/o space padding
+    if submetrics_cell_width % 2:
+        submetrics_cell_width += 1
+    max_metric_width = max(len(m) for m in metrics)  # w/o space padding
+    if max_metric_width % 2:
+        max_metric_width += 1
     max_solver_width = max(len(s) for s in solvers)  # w/o space padding
 
     # Compute column widths
-    column_width = max(submetrics_cell_width, max_metric_width)
-    subcolumn_width = max(max(len(sm) for sm in submetrics) + 2, column_width // 2 - 1)
+    column_width = max(submetrics_cell_width, max_metric_width, 2 * max_row_width + 3)
+    subcolumn_width = max(*(len(sm) for sm in submetrics), column_width // 2 - 2, max_row_width)
 
     # Build headers columns
-    header_columns = ["Solvers", *keys]
-    headers_widths = [max_solver_width] + [column_width for _ in range(len(keys))]
-    subheaders_widths = [max_solver_width] + [subcolumn_width for _ in range(2 * len(keys))]
+    header_columns = ["Solvers", *metrics]
+    headers_widths = [max_solver_width] + [column_width for _ in range(len(metrics))]
+    subheaders_widths = [max_solver_width]
+    for _ in range(len(metrics)):
+        subheaders_widths.append(subcolumn_width)
+        subheaders_widths.append(subcolumn_width)
     total_width = sum(headers_widths) + 3 * (len(header_columns) - 1)
 
     # Build header: 'Solvers' plus each metric name spanning two data columns
     header_cells = ["Solvers".center(max_solver_width)]
-    for m in keys:
+    for m in metrics:
         header_cells.append(m.center(column_width))
     header = " | ".join(header_cells)
 
     # Build subheaders:
     subheader_cells = [" ".center(max_solver_width)]
-    for _ in keys:
+    for _ in metrics:
         subheader_cells.append(submetrics_cell.center(column_width))
     subheader = " | ".join(subheader_cells)
 
@@ -1576,8 +1612,30 @@ def make_rankings_table(solvers: list[str], rankings: dict[str, tuple[np.ndarray
         rule_body,
     ]
     for row in rows:
-        lines.append(" | ".join(row[j].rjust(subheaders_widths[j]) for j in range(len(subheaders_widths))))
+        lines.append(" | ".join(row[j].ljust(subheaders_widths[j]) for j in range(len(subheaders_widths))))
     lines.append(rule_body)
+    return "\n".join(lines)
+
+
+def make_rho1_rankings_list(
+    solvers: list[str],
+    rankings: dict[str, dict[str, tuple[np.ndarray, np.ndarray, bool]]],
+) -> str:
+    # Extract metric names
+    num_solvers = len(solvers)
+    metrics = list(rankings.keys())
+    # Initialize titles and lines containers
+    lines: list[str] = []
+    # Iterate over metrics (outer dict)
+    for metric in metrics:
+        lines.append(f"rho@tau=1 {metric} rankings:")
+        r, p, _ = rankings[metric]["rho@tau=1"]
+        for i in range(num_solvers):
+            # Find solver with rank i+1
+            for j, rank in enumerate(r):
+                if rank == i + 1:
+                    lines.append(f"{rank}. {solvers[j]} ({100.0 * p[j]:.4g}%)")
+        lines.append("\n")
     return "\n".join(lines)
 
 

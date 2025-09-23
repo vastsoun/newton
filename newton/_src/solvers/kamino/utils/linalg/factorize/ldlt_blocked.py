@@ -47,7 +47,7 @@ def ldlt_blocked_lower(
     if n % block_size != 0:
         raise ValueError("Block size must divide the matrix size evenly.")
 
-    L = np.eye(n)
+    L = np.eye(n, dtype=A.dtype)
     D = np.zeros_like(A)
 
     for k in range(0, n, block_size):
@@ -117,7 +117,7 @@ def ldlt_blocked_upper(
     if n % block_size != 0:
         raise ValueError("Block size must divide the matrix size evenly.")
 
-    U = np.eye(n)
+    U = np.eye(n, dtype=A.dtype)
     D = np.zeros_like(A)
 
     for k in range(0, n, block_size):

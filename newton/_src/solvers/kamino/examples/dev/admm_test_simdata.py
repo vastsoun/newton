@@ -47,10 +47,10 @@ PROBLEM_NAME = "walker"
 # PROBLEM_CATEGORY = None
 # PROBLEM_CATEGORY = "IndependentJoints"
 # PROBLEM_CATEGORY = "RedundantJoints"
-PROBLEM_CATEGORY = "SingleContact"
+# PROBLEM_CATEGORY = "SingleContact"
 # PROBLEM_CATEGORY = "SparseContacts"
 # PROBLEM_CATEGORY = "DenseContacts"
-# PROBLEM_CATEGORY = "DenseConstraints"
+PROBLEM_CATEGORY = "DenseConstraints"
 
 # Sample index to load; set to None to load all samples
 # PROBLEM_SAMPLE = None
@@ -58,7 +58,7 @@ PROBLEM_SAMPLE = 0
 
 # Maximum number of samples to load; set to None to load all samples
 # MAX_PROBLEM_SAMPLES = None
-MAX_PROBLEM_SAMPLES = 50
+MAX_PROBLEM_SAMPLES = 400
 
 # List of keys to exclude when searching for problems
 EXCLUDE = ["Unconstrained"]

@@ -40,15 +40,15 @@ PROBLEM_TYPE = "Animatronics"
 # PROBLEM_NAME = "boxes_hinged"
 # PROBLEM_NAME = "boxes_nunchaku"
 # PROBLEM_NAME = "fourbar_free"
-# PROBLEM_NAME = "walker"
-PROBLEM_NAME = "a1000"
+PROBLEM_NAME = "walker"
+# PROBLEM_NAME = "a1000"
 
 # Sample category to load; set to None to load all categories
 # PROBLEM_CATEGORY = None
 # PROBLEM_CATEGORY = "IndependentJoints"
 # PROBLEM_CATEGORY = "RedundantJoints"
-# PROBLEM_CATEGORY = "SingleContact"
-PROBLEM_CATEGORY = "SparseContacts"
+PROBLEM_CATEGORY = "SingleContact"
+# PROBLEM_CATEGORY = "SparseContacts"
 # PROBLEM_CATEGORY = "DenseContacts"
 # PROBLEM_CATEGORY = "DenseConstraints"
 
@@ -265,14 +265,6 @@ if __name__ == "__main__":
             rankings_linsys_str = bm.make_rankings_table(perfdata_linsys["solvers"], rankings_linsys)
             msg.info("RANKINGS:\n%s", rankings_linsys_str)
             print(rankings_linsys_str, file=open(os.path.join(DATASET_OUTPUT_PATH, "rankings_linsys.txt"), "w"))
-
-    ###
-    # Benchmark problems
-    ###
-
-    # TODO:
-    #   - Add collection of linysys performance in each problem to create linsys performance profiles
-    #   - Create table of solver performance summarized over each problem name and category w/ properties
 
     # Close the HDF5 data file
     datafile.close()

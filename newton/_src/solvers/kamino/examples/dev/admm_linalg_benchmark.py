@@ -548,7 +548,7 @@ def forward_kinematics_residual(
     problem: ConstrainedDynamicsProblem,
     solution: ConstrainedDynamicsSolution,
 ) -> np.ndarray:
-    return problem.J @ solution.u_plus - problem.v_star
+    return problem.J @ solution.u_plus + problem.v_star
 
 
 def forward_kinematics_error_inf(

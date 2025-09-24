@@ -179,6 +179,9 @@ class ConstrainedDynamicsMetrics:
     norm_v_plus: float = np.inf
     norm_u_plus: float = np.inf
     norm_ux: float = np.inf
+    # Forward kinematics error
+    kinematics_error_abs: float = np.inf
+    kinematics_error_rel: float = np.inf
     # Primal system error
     primal_error_abs: float = np.inf
     primal_error_rel: float = np.inf
@@ -270,6 +273,8 @@ class BenchmarkMetrics:
             "total_time",
             "iteration_time",
             "dual_residual_abs",
+            "kinematics_error_abs",
+            "kinematics_error_rel",
             "primal_error_abs",
             "primal_error_rel",
             "dual_error_abs",
@@ -344,6 +349,8 @@ class BenchmarkMetrics:
             "total_time": self.fmt(self.data.total_time, self.info.dtype),
             "iteration_time": self.fmt(self.data.iteration_time, self.info.dtype),
             "dual_residual_abs": self.fmt(self.data.dual_residual_abs, self.info.dtype),
+            "kinematics_error_abs": self.fmt(self.data.kinematics_error_abs, self.info.dtype),
+            "kinematics_error_rel": self.fmt(self.data.kinematics_error_rel, self.info.dtype),
             "primal_error_abs": self.fmt(self.data.primal_error_abs, self.info.dtype),
             "primal_error_rel": self.fmt(self.data.primal_error_rel, self.info.dtype),
             "dual_error_abs": self.fmt(self.data.dual_error_abs, self.info.dtype),
@@ -534,6 +541,53 @@ def primal_dynamics_error_l2_rel(
     denom = max(norm_h, norm_J * norm_lambdas, norm_M * max(norm_u_plus, norm_u_minus), eps)
     r = primal_dynamics_residual(problem, solution)
     r_norm = np.linalg.norm(r)
+    return r_norm / denom
+
+
+def forward_kinematics_residual(
+    problem: ConstrainedDynamicsProblem,
+    solution: ConstrainedDynamicsSolution,
+) -> np.ndarray:
+    return problem.J @ solution.u_plus - problem.v_star
+
+
+def forward_kinematics_error_inf(
+    problem: ConstrainedDynamicsProblem,
+    solution: ConstrainedDynamicsSolution,
+) -> float:
+    return np.max(np.abs(forward_kinematics_residual(problem, solution)))
+
+
+def forward_kinematics_error_l2(
+    problem: ConstrainedDynamicsProblem,
+    solution: ConstrainedDynamicsSolution,
+) -> float:
+    return np.max(np.abs(forward_kinematics_residual(problem, solution)))
+
+
+def forward_kinematics_error_inf_rel(
+    problem: ConstrainedDynamicsProblem,
+    solution: ConstrainedDynamicsSolution,
+) -> float:
+    eps = np.finfo(problem.M.dtype).eps
+    norm_J = np.linalg.norm(problem.M, ord=np.inf)
+    norm_u_plus = np.linalg.norm(solution.u_plus, ord=np.inf)
+    norm_v_star = np.linalg.norm(problem.v_star, ord=np.inf)
+    denom = max(norm_J * norm_u_plus, norm_v_star, eps)
+    r_norm = forward_kinematics_error_inf(problem, solution)
+    return r_norm / denom
+
+
+def forward_kinematics_error_l2_rel(
+    problem: ConstrainedDynamicsProblem,
+    solution: ConstrainedDynamicsSolution,
+) -> float:
+    eps = np.finfo(problem.M.dtype).eps
+    norm_J = np.linalg.norm(problem.J)
+    norm_u_plus = np.linalg.norm(solution.u_plus)
+    norm_v_star = np.linalg.norm(problem.v_star)
+    denom = max(norm_J * norm_u_plus, norm_v_star, eps)
+    r_norm = forward_kinematics_error_l2(problem, solution)
     return r_norm / denom
 
 
@@ -839,6 +893,8 @@ def make_benchmark_metrics(
     metrics.data.norm_ux = np.linalg.norm(solution.kkt.x, ord=np.inf)
 
     # Compute the CRBD performance metrics
+    metrics.data.kinematics_error_abs = forward_kinematics_error_inf(problem.crbd, solution.crbd)
+    metrics.data.kinematics_error_rel = forward_kinematics_error_inf_rel(problem.crbd, solution.crbd)
     metrics.data.primal_error_abs = primal_dynamics_error_inf(problem.crbd, solution.crbd)
     metrics.data.primal_error_rel = primal_dynamics_error_inf_rel(problem.crbd, solution.crbd)
     metrics.data.dual_error_abs = linsys_error_inf(problem.dual.A, problem.dual.b, solution.dual.x)
@@ -1113,6 +1169,8 @@ def make_benchmark_performance_data(
         perfdata["total_time"][s, p] = float(m.data.total_time)
         perfdata["iteration_time"][s, p] = float(m.data.iteration_time)
         perfdata["dual_residual_abs"][s, p] = float(m.data.dual_residual_abs)
+        perfdata["kinematics_error_abs"][s, p] = float(m.data.kinematics_error_abs)
+        perfdata["kinematics_error_rel"][s, p] = float(m.data.kinematics_error_rel)
         perfdata["primal_error_abs"][s, p] = float(m.data.primal_error_abs)
         perfdata["primal_error_rel"][s, p] = float(m.data.primal_error_rel)
         perfdata["dual_error_abs"][s, p] = float(m.data.dual_error_abs)

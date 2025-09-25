@@ -125,13 +125,13 @@ class PADMMSettings:
     A class to hold the PADMM solver settings.
     """
     def __init__(self):
-        self.primal_tolerance: float = 1e-4
+        self.primal_tolerance: float = 1e-6
         """The tolerance applied to the primal residuals."""
-        self.dual_tolerance: float = 1e-4
+        self.dual_tolerance: float = 1e-6
         """The tolerance applied to the dual residuals."""
-        self.compl_tolerance: float = 1e-4
+        self.compl_tolerance: float = 1e-6
         """The tolerance applied to the complementarity residuals."""
-        self.eta: float = 1e-3
+        self.eta: float = 1e-5
         """The proximal regularization parameter. Must be greater than zero."""
         self.rho_0: float = 1.0
         """The initial value of the penalty parameter. Must be greater than zero."""
@@ -141,7 +141,7 @@ class PADMMSettings:
         """The primal-dual residual threshold used to determine when penalty updates are needed."""
         self.tau_inc: float = 1.5
         """The factor by which the penalty is increased when the primal-dual residual exceeds the threshold."""
-        self.max_iterations: int = 200
+        self.max_iterations: int = 1000
         """The maximum number of solver iterations."""
         self.penalty_update_freq: int = 1
         """The frequency of penalty updates. If zero, no updates are performed."""
@@ -1575,6 +1575,47 @@ def _collect_solver_convergence_info(
 
 
 @wp.kernel
+def _apply_dual_preconditioner_to_state(
+    # Inputs:
+    problem_dim: wp.array(dtype=int32),
+    problem_vio: wp.array(dtype=int32),
+    problem_P: wp.array(dtype=float32),
+    # Outputs:
+    solver_x: wp.array(dtype=float32),
+    solver_y: wp.array(dtype=float32),
+    solver_z: wp.array(dtype=float32),
+):
+    # Retrieve the thread index
+    wid, tid = wp.tid()
+
+    # Retrieve the number of active constraints in the world
+    ncts = problem_dim[wid]
+
+    # Skip if row index exceed the problem size
+    if tid >= ncts:
+        return
+
+    # Retrieve the vector index offset of the world
+    vio = problem_vio[wid]
+
+    # Compute the global index of the vector entry
+    v_i = vio + tid
+
+    # Retrieve the i-th entries of the target vectors
+    x_i = solver_x[v_i]
+    y_i = solver_y[v_i]
+    z_i = solver_z[v_i]
+
+    # Retrieve the i-th entry of the diagonal preconditioner
+    P_i = problem_P[v_i]
+
+    # Store the preconditioned i-th entry of the vector
+    solver_x[v_i] = P_i * x_i
+    solver_y[v_i] = P_i * y_i
+    solver_z[v_i] = P_i * z_i
+
+
+@wp.kernel
 def _compute_final_desaxce_correction(
     problem_nc: wp.array(dtype=int32),
     problem_cio: wp.array(dtype=int32),
@@ -2185,6 +2226,22 @@ class PADMMDualSolver:
         ###
         # Solution post-processing
         ###
+
+        # TODO
+        wp.launch(
+            kernel=_apply_dual_preconditioner_to_state,
+            dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
+            inputs=[
+                # Inputs:
+                problem.data.dim,
+                problem.data.vio,
+                problem.data.P,
+                # Outputs:
+                self._data.state.x,
+                self._data.state.y,
+                self._data.state.z,
+            ]
+        )
 
         # Update the De Saxce correction from terminal PADMM dual variables
         wp.launch(

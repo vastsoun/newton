@@ -449,7 +449,7 @@ class Simulator:
         # Integrate the bodies state and update the next state buffer
         integrate_semi_implicit_euler(self._model, self._data.state, self._data.s_n)
 
-        # # Copy the integrated state to the previous and current body states
+        # Copy the integrated state to the previous and current body states
         self._data.forward()
 
         # TODO: How can buffer flipping work with CUDA graph capture?

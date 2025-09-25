@@ -448,8 +448,13 @@ class ADMMSolver:
         if use_preconditioning:
             S = np.sqrt(np.reciprocal(np.abs(self.D.diagonal())))
             S = np.diag(S)
+            # print("Raw:   D: ", np.linalg.norm(self.D))
+            # print("Raw: v_f: ", np.linalg.norm(self.v))
             self.v = S @ self.v
             self.D = S @ self.D @ S
+            # print("Preconditioner    S: ", np.linalg.norm(S))
+            # print("Preconditioned:   D: ", np.linalg.norm(self.D))
+            # print("Preconditioned: v_f: ", np.linalg.norm(self.v))
         self.D += (self.eta + self.rho) * np.eye(D.shape[0])
 
         self.schur_solver.compute(A=self.D, compute_error=True)

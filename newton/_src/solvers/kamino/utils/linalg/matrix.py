@@ -142,10 +142,8 @@ class RectangularMatrixProperties:
         """The matrix rank compute using `numpy.linalg.matrix_rank()`."""
 
         # Matrix norms
-        self.norm_l1: float = np.inf
-        """The L1-norm compute using `numpy.linalg.norm()`."""
-        self.norm_l2: float = np.inf
-        """The L2-norm compute using `numpy.linalg.norm()`."""
+        self.norm_fro: float = np.inf
+        """The Frobenius norm compute using `numpy.linalg.norm()`."""
         self.norm_inf: float = np.inf
         """The infinity norm compute using `numpy.linalg.norm()`."""
 
@@ -198,8 +196,7 @@ class RectangularMatrixProperties:
         self.rank = np.linalg.matrix_rank(self.matrix)
 
         # Compute matrix norms
-        self.norm_l1 = np.linalg.norm(self.matrix, ord=1)
-        self.norm_l2 = np.linalg.norm(self.matrix, ord=2)
+        self.norm_fro = np.linalg.norm(self.matrix, ord='fro')
         self.norm_inf = np.linalg.norm(self.matrix, ord=np.inf)
 
         # Extract the matrix singular values
@@ -221,8 +218,7 @@ class RectangularMatrixProperties:
             f"Basics:\n"
             f"   rank: {self.rank}\n"
             f"Norms:\n"
-            f"    l1: {self.norm_l1}\n"
-            f"    l2: {self.norm_l2}\n"
+            f"   fro: {self.norm_fro}\n"
             f"   inf: {self.norm_inf}\n"
             f"SVD:\n"
             f"   sigma min: {self.sigma_min}\n"
@@ -268,10 +264,8 @@ class SquareSymmetricMatrixProperties:
         """The matrix determinant computed as `sign * exp(logabsdet)`."""
 
         # Matrix norms
-        self.norm_l1: float = np.inf
-        """The L1-norm computed using `numpy.linalg.norm()`."""
-        self.norm_l2: float = np.inf
-        """The L2-norm computed using `numpy.linalg.norm()`."""
+        self.norm_fro: float = np.inf
+        """The Frobenius norm computed using `numpy.linalg.norm()`."""
         self.norm_inf: float = np.inf
         """The infinity norm computed using `numpy.linalg.norm()`."""
 
@@ -369,8 +363,7 @@ class SquareSymmetricMatrixProperties:
         self.signdet, self.logabsdet, self.det = _safe_slogdet(self.matrix)
 
         # Compute matrix norms
-        self.norm_l1 = np.linalg.norm(self.matrix, ord=1)
-        self.norm_l2 = np.linalg.norm(self.matrix, ord=2)
+        self.norm_fro = np.linalg.norm(self.matrix, ord='fro')
         self.norm_inf = np.linalg.norm(self.matrix, ord=np.inf)
 
         # Extract the matrix eigenvalues
@@ -418,8 +411,7 @@ class SquareSymmetricMatrixProperties:
             f" log|det|: {self.logabsdet}\n"
             f"      det: {self.det}\n"
             f"Norms:\n"
-            f"    l1: {self.norm_l1}\n"
-            f"    l2: {self.norm_l2}\n"
+            f"   fro: {self.norm_fro}\n"
             f"   inf: {self.norm_inf}\n"
             f"Spectral:\n"
             f"   lambda min: {self.lambda_min}\n"

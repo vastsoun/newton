@@ -161,7 +161,6 @@ class Simulator:
         # TODO: Make the solver parameters configurable
         self._dual_solver = PADMMDualSolver(
             model=self._model,
-            state=self._data.state,
             limits=self._limits,
             contacts=self._collision_detector.contacts,
             collect_info=True,  # TODO: Make this configurable

@@ -16,7 +16,7 @@ from newton._src.solvers.kamino.utils.io import hdf5
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
 from newton._src.solvers.kamino.simulation.simulator import Simulator
 from newton._src.solvers.kamino.utils.print import print_progress_bar
-from newton._src.solvers.kamino.utils.profile import get_device_info
+from newton._src.solvers.kamino.utils.device import get_device_info
 from newton._src.solvers.kamino.models import get_primitives_usd_assets_path
 from newton._src.solvers.kamino.models.builders import (
     build_boxes_hinged
@@ -397,7 +397,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--mode",
         choices=["hdf5", "viewer"],
-        default="hdf5",
+        default="viewer",
         help="Simulation mode: 'hdf5' for data collection, 'viewer' for live visualization"
     )
     parser.add_argument("--clear-cache", action="store_true", default=True, help="Clear warp cache")

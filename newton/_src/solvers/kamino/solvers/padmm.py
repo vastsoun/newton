@@ -26,6 +26,7 @@ from enum import IntEnum
 from typing import List
 from warp.context import Devicelike
 from newton._src.solvers.kamino.core.types import int32, float32, vec3f
+from newton._src.solvers.kamino.core.math import FLOAT32_EPS
 from newton._src.solvers.kamino.core.model import ModelSize, ModelData, Model
 from newton._src.solvers.kamino.kinematics.limits import Limits
 from newton._src.solvers.kamino.geometry.contacts import Contacts
@@ -1264,6 +1265,7 @@ def _update_dual_variables_and_compute_primal_dual_residuals(
     # Inputs:
     problem_dim: wp.array(dtype=int32),
     problem_vio: wp.array(dtype=int32),
+    problem_P: wp.array(dtype=float32),
     solver_config: wp.array(dtype=PADMMConfig),
     solver_penalty: wp.array(dtype=PADMMPenalty),
     solver_status: wp.array(dtype=PADMMStatus),
@@ -1300,6 +1302,9 @@ def _update_dual_variables_and_compute_primal_dual_residuals(
     # Compute the index offset of the vector block of the world
     tio = vio + tid
 
+    # Retrieve
+    P_i = problem_P[tio]
+
     # Retrieve the solver state inputs
     x = solver_x[tio]
     x_p = solver_x_p[tio]
@@ -1311,10 +1316,12 @@ def _update_dual_variables_and_compute_primal_dual_residuals(
     solver_z[tio] = z_p + rho * (y - x)
 
     # Compute the primal residual as the concensus of the primal and slack variable
-    solver_r_p[tio] = x - y
+    solver_r_p[tio] = P_i * (x - y)
+    # solver_r_p[tio] = x - y
 
     # Compute the dual residual using the ADMM-specific shortcut
-    solver_r_d[tio] = rho * (y - y_p) + eta * (x - x_p)
+    solver_r_d[tio] = (1.0 / (P_i + FLOAT32_EPS)) * (rho * (y - y_p) + eta * (x - x_p))
+    # solver_r_d[tio] = rho * (y - y_p) + eta * (x - x_p)
 
 
 # TODO: Break this up to two kernels launched simultaneously (1x for limits, 1x for contacts)?
@@ -1479,6 +1486,7 @@ def _collect_solver_convergence_info(
     problem_mu: wp.array(dtype=float32),
     problem_v_f: wp.array(dtype=float32),
     problem_D: wp.array(dtype=float32),
+    problem_P: wp.array(dtype=float32),
     solver_state_y: wp.array(dtype=float32),
     solver_state_y_p: wp.array(dtype=float32),
     solver_config: wp.array(dtype=PADMMConfig),
@@ -1519,7 +1527,7 @@ def _collect_solver_convergence_info(
     status = solver_status[wid]
 
     # Retrieve parameters
-    iter = status.iterations
+    iter = status.iterations - 1
 
     # Compute additional info
     njc = ncts - (nl + 3 * nc)
@@ -1759,7 +1767,6 @@ class PADMMDualSolver:
     def __init__(
             self,
             model: Model | None = None,
-            state: ModelData | None = None,
             limits: Limits | None = None,
             contacts: Contacts | None = None,
             settings: List[PADMMSettings] | PADMMSettings | None = None,
@@ -1784,7 +1791,6 @@ class PADMMDualSolver:
         if model is not None:
             self.allocate(
                 model=model,
-                state=state,
                 limits=limits,
                 contacts=contacts,
                 settings=settings,
@@ -1826,7 +1832,6 @@ class PADMMDualSolver:
     def allocate(
         self,
         model: Model | None = None,
-        state: ModelData | None = None,
         limits: Limits | None = None,
         contacts: Contacts | None = None,
         settings: List[PADMMSettings] | PADMMSettings | None = None,
@@ -1838,11 +1843,6 @@ class PADMMDualSolver:
             raise ValueError("A model of type `Model` must be provided to allocate the Delassus operator.")
         elif not isinstance(model, Model):
             raise ValueError("Invalid model provided. Must be an instance of `Model`.")
-
-        # Ensure the state container is valid if provided
-        if state is not None:
-            if not isinstance(state, ModelData):
-                raise ValueError("Invalid state container provided. Must be an instance of `ModelData`.")
 
         # Ensure the limits container is valid if provided
         if limits is not None:
@@ -1925,6 +1925,120 @@ class PADMMDualSolver:
         # Compute Choleky/LDLT factorization of the Delassus matrix
         problem._delassus.factorize(reset_to_zero=True)
 
+        # ###
+        # # TODO
+        # ###
+
+        # wp.launch(
+        #     kernel=_compute_velocity_bias,
+        #     dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
+        #     inputs=[
+        #         # Inputs:
+        #         problem.data.dim,
+        #         problem.data.vio,
+        #         problem.data.v_f,
+        #         self._data.config,
+        #         self._data.penalty,
+        #         self._data.status,
+        #         self._data.state.s,
+        #         self._data.state.x_p,
+        #         self._data.state.y_p,
+        #         self._data.state.z_p,
+        #         # Outputs:
+        #         self._data.state.v,
+        #     ]
+        # )
+        # np_dtype = np.float32
+        # dim_np = problem.data.dim.numpy()[0]
+        # v_np = self._data.state.v.numpy()[:dim_np].astype(np_dtype)
+        # v_f_np = problem.data.v_f.numpy()[:dim_np].astype(np_dtype)
+        # print(f"v_f_np (init): {v_f_np}")
+        # print(f"v_np (init): {v_np}")
+        # self._data.state.x.zero_()
+        # problem._delassus.solve(v=self._data.state.v, x=self._data.state.x)
+        # x_np = self._data.state.x.numpy()[:dim_np].astype(np_dtype)
+        # print(f"x_np (init): {x_np}")
+        # wp.launch(
+        #     kernel=_apply_overrelaxation_and_compute_projection_argument,
+        #     dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
+        #     inputs=[
+        #         # Inputs:
+        #         problem.data.dim,
+        #         problem.data.vio,
+        #         self._data.config,
+        #         self._data.penalty,
+        #         self._data.status,
+        #         self._data.state.y_p,
+        #         self._data.state.z_p,
+        #         # Outputs:
+        #         self._data.state.x,
+        #         self._data.state.y,
+        #     ]
+        # )
+        # y_np = self._data.state.y.numpy()[:dim_np].astype(np_dtype)
+        # print(f"y_np (init): {y_np}")
+        # wp.launch(
+        #     kernel=_project_to_feasible_cone,
+        #     dim=(self._size.num_worlds, self._size.max_of_max_unilaterals),
+        #     inputs=[
+        #         # Inputs:
+        #         problem.data.nl,
+        #         problem.data.nc,
+        #         problem.data.cio,
+        #         problem.data.lcgo,
+        #         problem.data.ccgo,
+        #         problem.data.vio,
+        #         problem.data.mu,
+        #         self._data.status,
+        #         # Outputs:
+        #         self._data.state.y,
+        #     ]
+        # )
+        # y_np = self._data.state.y.numpy()[:dim_np].astype(np_dtype)
+        # z_np = self._data.state.z.numpy()[:dim_np].astype(np_dtype)
+        # print(f"y_np (proj): {y_np}")
+        # print(f"z_np (proj): {z_np}\n")
+
+        # # TODO:
+        # rho_0 = self.settings[0].rho_0
+        # norm_v_f_l2 = np.linalg.norm(v_f_np)
+        # norm_x_l2 = np.linalg.norm(x_np)
+        # norm_y_l2 = np.linalg.norm(y_np)
+        # norm_xmy_l2 = np.linalg.norm(x_np - y_np)
+        # norm_r0_l2 = norm_xmy_l2 / norm_y_l2
+        # norm_r1_l2 = norm_xmy_l2 / norm_x_l2
+        # alpha_l2 = norm_x_l2 / norm_y_l2
+        # r_pd_0_l2 = norm_r0_l2 / rho_0
+
+        # norm_v_f_inf = np.linalg.norm(v_f_np, ord=np.inf)
+        # norm_x_inf = np.linalg.norm(x_np, ord=np.inf)
+        # norm_y_inf = np.linalg.norm(y_np, ord=np.inf)
+        # norm_xmy_inf = np.linalg.norm(x_np - y_np, ord=np.inf)
+        # norm_r0_inf = norm_xmy_inf / norm_y_inf
+        # norm_r1_inf = norm_xmy_inf / norm_x_inf
+        # alpha_inf = norm_x_inf / norm_y_inf
+        # r_pd_0_inf = norm_r0_inf / rho_0
+
+        # print(f"rho_0 : {rho_0}\n")
+
+        # print(f"||v_f||_2 : {norm_v_f_l2}")
+        # print(f"||x||_2 : {norm_x_l2}")
+        # print(f"||y||_2 : {norm_y_l2}")
+        # print(f"||x - y||_2 : {norm_xmy_l2}")
+        # print(f"||x - y||_2 / ||y||_2 : {norm_r0_l2}")
+        # print(f"||x - y||_2 / ||x||_2 : {norm_r1_l2}")
+        # print(f"alpha_l2 = ||x||_2 / ||y||_2 : {alpha_l2}")
+        # print(f"r_pd_0_l2 = ||x - y||_2 / (rho * ||y||_2) : {r_pd_0_l2}\n")
+
+        # print(f"||v_f||_inf : {norm_v_f_inf}")
+        # print(f"||x||_inf : {norm_x_inf}")
+        # print(f"||y||_inf : {norm_y_inf}")
+        # print(f"||x - y||_inf : {norm_xmy_inf}")
+        # print(f"||x - y||_inf / ||y||_inf : {norm_r0_inf}")
+        # print(f"||x - y||_inf / ||x||_inf : {norm_r1_inf}")
+        # print(f"alpha_inf = ||x||_inf / ||y||_inf : {alpha_inf}")
+        # print(f"r_pd_0_inf = ||x - y||_inf / (rho * ||y||_inf) : {r_pd_0_inf}\n")
+
         # # SANITY CHECK
         # np_dtype = np.float32
         # maxdim_np = problem.data.maxdim.numpy()[0]
@@ -1999,7 +2113,7 @@ class PADMMDualSolver:
             # TODO: We should do this in-place
             # wp.copy(self._data.state.x, self._data.state.v)
             # problem._delassus.solve_inplace(x=self._data.state.x)
-            self._data.state.x.zero_()
+            # self._data.state.x.zero_()
             problem._delassus.solve(v=self._data.state.v, x=self._data.state.x)
 
             # maxdim_np = problem.data.maxdim.numpy()[0]
@@ -2105,6 +2219,7 @@ class PADMMDualSolver:
                     # Inputs:
                     problem.data.dim,
                     problem.data.vio,
+                    problem.data.P,
                     self._data.config,
                     self._data.penalty,
                     self._data.status,
@@ -2187,6 +2302,7 @@ class PADMMDualSolver:
                         problem.data.mu,
                         problem.data.v_f,
                         problem.data.D,
+                        problem.data.P,
                         self._data.state.y,
                         self._data.state.y_p,
                         self._data.config,

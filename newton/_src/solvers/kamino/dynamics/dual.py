@@ -125,6 +125,12 @@ class DualProblemData:
         # Constraints info
         ###
 
+        self.njc: wp.array(dtype=int32) | None = None
+        """
+        The number of active joint constraints in each world.\n
+        Shape of ``(num_worlds,)`` and type :class:`int32`.
+        """
+
         self.nl: wp.array(dtype=int32) | None = None
         """
         The number of active limit constraints in each world.\n
@@ -645,12 +651,14 @@ def _build_free_velocity(
 
 
 @wp.kernel
-def _build_dual_preconditioner(
+def _build_dual_preconditioner_all_constraints(
     # Inputs:
     problem_maxdim: wp.array(dtype=int32),
     problem_dim: wp.array(dtype=int32),
     problem_mio: wp.array(dtype=int32),
     problem_vio: wp.array(dtype=int32),
+    problem_njc: wp.array(dtype=int32),
+    problem_nl: wp.array(dtype=int32),
     problem_D: wp.array(dtype=float32),
     # Outputs:
     problem_P: wp.array(dtype=float32),
@@ -674,11 +682,35 @@ def _build_dual_preconditioner(
     # Retrieve the vector index offset of the world
     vio = problem_vio[wid]
 
-    # Retrieve the diagonal entry of the Delassus matrix
-    D_ii = problem_D[mio + maxncts * tid + tid]
+    # Retrieve the number of active joint and limit constraints of the world
+    njc = problem_njc[wid]
+    nl = problem_nl[wid]
+    njlc = njc + nl
 
-    # Compute the corresponding Jacobi preconditioner entry
-    problem_P[vio + tid] = wp.sqrt(1.0 / (wp.abs(D_ii) + FLOAT32_EPS))
+    # TODO
+    if tid < njlc:
+        # Retrieve the diagonal entry of the Delassus matrix
+        D_ii = problem_D[mio + maxncts * tid + tid]
+        # Compute the corresponding Jacobi preconditioner entry
+        problem_P[vio + tid] = wp.sqrt(1.0 / (wp.abs(D_ii) + FLOAT32_EPS))
+    else:
+        # Compute the contact constraint index
+        ccid = tid - njlc
+        # Only the thread of the first contact constraint dimension computes the preconditioner
+        if ccid % 3 == 0:
+            # Retrieve the diagonal entries of the Delassus matrix for the contact constraint set
+            D_kk_0 = problem_D[mio + maxncts * tid + tid]
+            D_kk_1 = problem_D[mio + maxncts * tid + tid + 1]
+            D_kk_2 = problem_D[mio + maxncts * tid + tid + 2]
+            # Compute the effective diagonal entry
+            # D_kk = (D_kk_0 + D_kk_1 + D_kk_2) / 3.0
+            # D_kk = wp.min(vec3f(D_kk_0, D_kk_1, D_kk_2))
+            D_kk = wp.max(vec3f(D_kk_0, D_kk_1, D_kk_2))
+            # Compute the corresponding Jacobi preconditioner entry
+            P_k = wp.sqrt(1.0 / (wp.abs(D_kk) + FLOAT32_EPS))
+            problem_P[vio + tid] = P_k
+            problem_P[vio + tid + 1] = P_k
+            problem_P[vio + tid + 2] = P_k
 
 
 @wp.kernel
@@ -1004,7 +1036,7 @@ def build_dual_preconditioner(problem: DualProblem):
     Builds the diagonal preconditioner according to the current Delassus operator.
     """
     wp.launch(
-        _build_dual_preconditioner,
+        _build_dual_preconditioner_all_constraints,
         dim=(problem._size.num_worlds, problem._size.max_of_max_total_cts),
         inputs=[
             # Inputs:
@@ -1012,6 +1044,8 @@ def build_dual_preconditioner(problem: DualProblem):
             problem.data.dim,
             problem.data.mio,
             problem.data.vio,
+            problem.data.njc,
+            problem.data.nl,
             problem.data.D,
             # Outputs:
             problem.data.P,
@@ -1025,7 +1059,7 @@ def apply_dual_preconditioner_to_dual(problem: DualProblem):
     """
     wp.launch(
         _apply_dual_preconditioner_to_matrix,
-        dim=(problem._size.num_worlds, problem._size.max_of_max_total_cts),
+        dim=(problem._size.num_worlds, problem.delassus._max_of_max_total_D_size),
         inputs=[
             # Inputs:
             problem.data.maxdim,
@@ -1279,6 +1313,7 @@ class DualProblem:
 
         # Capture references to the model, state info arrays
         # TODO: How to handle the case where state is None?
+        self.data.njc = model.info.num_joint_cts
         self.data.nl = state.info.num_limits
         self.data.nc = state.info.num_contacts
         self.data.lio = model.info.limits_offset

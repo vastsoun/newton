@@ -264,8 +264,8 @@ def run_hdf5_mode(clear_warp_cache=True, use_cuda_graph=False, verbose=False):
                 # msg.warning(f"[{i}]: nl: {sim.model_data.info.num_limits.numpy()[0]}")
                 # msg.warning(f"[{i}]: nc: {sim.model_data.info.num_contacts.numpy()[0]}")
                 msg.warning(f"[{i}]: solver.iterations : {status[0][1]}")
-                msg.warning(f"[{i}]: admm_info_r_dual:\n{sim._dual_solver.data.info.r_dual.numpy()}")
-                save_solver_info(sim._dual_solver, path=os.path.join(PADMM_INFO_PATH, f"padmm_solver_info_{i}.pdf"))
+                # msg.warning(f"[{i}]: admm_info_r_dual:\n{sim._dual_solver.data.info.r_dual.numpy()}")
+                # save_solver_info(sim._dual_solver, path=os.path.join(PADMM_INFO_PATH, f"padmm_solver_info_{i}.pdf"))
 
                 # msg.warning(f"cgeoms.offset :\n{sim.model.cgeoms.offset}")
                 # msg.warning(f"cgeoms.pose :\n{sim.model_data.cgeoms.pose}")

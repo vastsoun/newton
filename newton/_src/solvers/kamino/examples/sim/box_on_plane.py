@@ -8,23 +8,23 @@ import warp as wp
 
 import newton
 import newton.examples
+
 import newton._src.solvers.kamino.utils.logger as msg
-from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.core.types import float32, vec6f
-from newton._src.solvers.kamino.examples import (
-    get_examples_data_hdf5_path,
-    print_frame,
-)
-from newton._src.solvers.kamino.models import get_primitives_usd_assets_path
-from newton._src.solvers.kamino.models.builders import (
-    add_ground_geom,
-    build_boxes_fourbar,
-)
-from newton._src.solvers.kamino.simulation.simulator import Simulator
+from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.utils.io import hdf5
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
+from newton._src.solvers.kamino.simulation.simulator import Simulator
 from newton._src.solvers.kamino.utils.print import print_progress_bar
 from newton._src.solvers.kamino.utils.device import get_device_info
+from newton._src.solvers.kamino.models import get_primitives_usd_assets_path
+from newton._src.solvers.kamino.models.builders import (
+    build_box_on_plane
+)
+from newton._src.solvers.kamino.examples import (
+    get_examples_data_hdf5_path,
+    print_frame
+)
 
 
 ###
@@ -45,20 +45,24 @@ def _control_callback(
     """
     # Set world index
     wid = int(0)
-    jid = int(0)
+    bid = int(0)
 
     # Define the time window for the active external force profile
     t_start = float32(2.0)
-    t_end = float32(2.5)
+    t_end = float32(7.0)
 
     # Get the current time
     t = state_time_t[wid]
 
     # Apply a time-dependent external force
     if t > t_start and t < t_end:
-        state_joints_tau_j[jid] = 0.1
+        m = float32(2.0)  # Mass of the box
+        g = float32(9.81)  # Gravitational acceleration
+        mu = float32(0.7)  # Friction coefficient
+        f_ext = 1.1 * m * g * mu  # Magnitude of the external force
+        state_bodies_w_e_i[bid] = vec6f(f_ext, 0.0, 0.0, 0.0, 0.0, 0.0)
     else:
-        state_joints_tau_j[jid] = 0.0
+        state_bodies_w_e_i[bid] = vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
 
 
 ###
@@ -88,18 +92,20 @@ def control_callback(sim: Simulator):
 ###
 
 # Set the path to the external USD assets
-USD_MODEL_PATH = os.path.join(get_primitives_usd_assets_path(), "boxes_fourbar.usda")
+USD_MODEL_PATH = os.path.join(get_primitives_usd_assets_path(), "box_on_plane.usda")
 
 # Set the path to the generated HDF5 dataset file
-RENDER_DATASET_PATH = os.path.join(get_examples_data_hdf5_path(), "fourbar_free.hdf5")
+RENDER_DATASET_PATH = os.path.join(get_examples_data_hdf5_path(), "box_on_plane.hdf5")
 
 
 ###
 # Main function
 ###
 
-def run_hdf5_mode(clear_warp_cache=True, use_cuda_graph=False, load_from_usd=False, verbose=False):
+def run_hdf5_mode(clear_warp_cache=True, use_cuda_graph=False, load_from_usd=True, verbose=False):
     """Run the simulation in HDF5 mode to save data to file."""
+    # Application options
+
     # Clear the warp caches
     if clear_warp_cache:
         wp.clear_kernel_cache()
@@ -118,7 +124,6 @@ def run_hdf5_mode(clear_warp_cache=True, use_cuda_graph=False, load_from_usd=Fal
     device = wp.get_device(device)
 
     # Enable verbose output
-    verbose = False
     msg.set_log_level(msg.LogLevel.INFO)
 
     # Determine if using CUDA graphs
@@ -130,26 +135,11 @@ def run_hdf5_mode(clear_warp_cache=True, use_cuda_graph=False, load_from_usd=Fal
     if load_from_usd:
         msg.info("Constructing builder from imported USD ...")
         importer = USDImporter()
-        builder: ModelBuilder = importer.import_from(source=USD_MODEL_PATH)
+        builder: ModelBuilder = importer.import_from(source=USD_MODEL_PATH, load_static_geometry=True)
     else:
         msg.info("Constructing builder using generator ...")
         builder = ModelBuilder()
-        build_boxes_fourbar(builder=builder, z_offset=0.2, ground=False)
-
-    # # Apply an offset to the whole model
-    # r_offset = vec3f(0.0, 0.0, 0.0)
-    # R_offset = R_z(1.0) @ R_y(1.0) @ R_x(1.0)
-    # q_offset = wp.quat_from_matrix(R_offset)
-    # offset = transformf(r_offset, q_offset)
-    # offset_builder(builder=builder, offset=offset)
-
-    # v_bias = vec3f(0.0, 0.0, 0.0)
-    # omega_bias = vec3f(0.0, 0.0, 1.0)
-    # u_bias = screw(v_bias, omega_bias)
-    # add_velocity_bias(builder=builder, bias=u_bias)
-
-    # Add a static collision layer and geometry for the plane
-    add_ground_geom(builder)
+        build_box_on_plane(builder=builder, z_offset=0.0, ground=True)
 
     # Set gravity
     builder.gravity.enabled = True
@@ -203,7 +193,7 @@ def run_hdf5_mode(clear_warp_cache=True, use_cuda_graph=False, load_from_usd=Fal
     # Create a dataset file and renderer
     msg.info("Creating the HDF5 renderer...")
     datafile = h5py.File(RENDER_DATASET_PATH, 'w')
-    renderer = hdf5.DatasetRenderer(sysname="fourbar_free", datafile=datafile, dt=sim.dt)
+    renderer = hdf5.DatasetRenderer(sysname="boxes_hinged", datafile=datafile, dt=sim.dt)
 
     # Store the initial state of the system
     sdata.update_from(simulator=sim)
@@ -226,8 +216,6 @@ def run_hdf5_mode(clear_warp_cache=True, use_cuda_graph=False, load_from_usd=Fal
                         sim.step()
                 wp.synchronize()
 
-                # status = sim._dual_solver.data.status.numpy()
-                # msg.warning(f"[{i}]: solver.iterations : {status[0][1]}")
                 sdata.update_from(simulator=sim)
                 cdata.update_from(simulator=sim)
                 pdata.update_from(simulator=sim)
@@ -239,10 +227,10 @@ def run_hdf5_mode(clear_warp_cache=True, use_cuda_graph=False, load_from_usd=Fal
     renderer.save()
 
 
-class BoxesFourbarExample:
-    """ViewerGL example class for boxes fourbar simulation."""
+class BoxesHingedExample:
+    """ViewerGL example class for boxes hinged simulation."""
 
-    def __init__(self, viewer, load_from_usd=False):
+    def __init__(self, viewer, load_from_usd=True):
         self.fps = 60
         self.frame_dt = 1.0 / self.fps
         self.sim_time = 0.0
@@ -259,14 +247,11 @@ class BoxesFourbarExample:
         if load_from_usd:
             msg.info("Constructing builder from imported USD ...")
             importer = USDImporter()
-            builder: ModelBuilder = importer.import_from(source=USD_MODEL_PATH)
+            builder: ModelBuilder = importer.import_from(source=USD_MODEL_PATH, load_static_geometry=True)
         else:
             msg.info("Constructing builder using generator ...")
             builder = ModelBuilder()
-            build_boxes_fourbar(builder=builder, z_offset=0.2, ground=False)
-
-        # Add a static collision layer and geometry for the plane
-        add_ground_geom(builder)
+            build_box_on_plane(builder=builder, z_offset=0.0, ground=True)
 
         # Set gravity
         builder.gravity.enabled = True
@@ -289,8 +274,6 @@ class BoxesFourbarExample:
             wp.array([wp.vec3(1.0, 0.5, 0.0)], dtype=wp.vec3),  # Orange
             wp.array([wp.vec3(0.6, 0.2, 0.8)], dtype=wp.vec3),  # Purple
         ]
-
-        # No need for custom ground color - using newton's standard ground plane
 
         # Initialize the simulator with a warm-up step
         self.sim.reset()
@@ -369,7 +352,7 @@ class BoxesFourbarExample:
 
                     # Log the box shape
                     self.viewer.log_shapes(
-                        f"/fourbar/box_{i+1}",
+                        f"/box_on_plane/box_{i+1}",
                         newton.GeoType.BOX,
                         half_extents,
                         wp.array([transform], dtype=wp.transform),
@@ -389,19 +372,17 @@ class BoxesFourbarExample:
             ground_transform = wp.transform(ground_pos, ground_quat)
 
             # Convert ground plane dimensions to half-extents
-            # Kamino: BoxShape(20.0, 20.0, 1.0) = full dimensions
-            # Newton: expects (10.0, 10.0, 0.5) = half-extents
             ground_half_extents = (
-                self.ground_info['dimensions'][0]/2,  # 20.0 -> 10.0
-                self.ground_info['dimensions'][1]/2,  # 20.0 -> 10.0
-                self.ground_info['dimensions'][2]/2   # 1.0 -> 0.5
+                self.ground_info['dimensions'][0]/2,
+                self.ground_info['dimensions'][1]/2,
+                self.ground_info['dimensions'][2]/2
             )
 
             # Ground plane color (gray)
             ground_color = wp.array([wp.vec3(0.7, 0.7, 0.7)], dtype=wp.vec3)
 
             self.viewer.log_shapes(
-                "/fourbar/ground",
+                "/box_on_plane/ground",
                 newton.GeoType.BOX,
                 ground_half_extents,
                 wp.array([ground_transform], dtype=wp.transform),
@@ -416,7 +397,7 @@ class BoxesFourbarExample:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Boxes fourbar simulation example")
+    parser = argparse.ArgumentParser(description="Boxes hinged simulation example")
     parser.add_argument(
         "--mode",
         choices=["hdf5", "viewer"],
@@ -425,7 +406,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--clear-cache", action="store_true", default=True, help="Clear warp cache")
     parser.add_argument("--cuda-graph", action="store_true", help="Use CUDA graphs")
-    parser.add_argument("--load-from-usd", action="store_true", help="Load model from USD file")
+    parser.add_argument("--load-from-usd", action="store_true", default=False, help="Load model from USD file")
     parser.add_argument("--verbose", action="store_true", help="Enable verbose output")
 
     # Add viewer arguments when in viewer mode
@@ -467,14 +448,14 @@ if __name__ == "__main__":
             raise ValueError(f"Invalid viewer: {args.viewer}")
 
         # Create and run example
-        example = BoxesFourbarExample(viewer, load_from_usd=args.load_from_usd)
+        example = BoxesHingedExample(viewer, load_from_usd=args.load_from_usd)
 
-        # Set initial camera position for better view of the fourbar mechanism
+        # Set initial camera position for better view of the hinged boxes
         if hasattr(viewer, 'set_camera'):
-            # Position camera to get a good view of the fourbar mechanism
-            camera_pos = wp.vec3(0.161, -1.449, 0.303)
-            pitch = -8.5
-            yaw = -261.3
+            # Position camera to get a good view of the hinged mechanism
+            camera_pos = wp.vec3(2.0, 2.0, 0.5)
+            pitch = -5.0
+            yaw = 180.0 + 45.0
             viewer.set_camera(camera_pos, pitch, yaw)
 
         newton.examples.run(example)

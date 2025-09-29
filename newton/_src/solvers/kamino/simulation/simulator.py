@@ -166,7 +166,7 @@ class Simulator:
             model=self._model,
             limits=self._limits,
             contacts=self._collision_detector.contacts,
-            collect_info=True,  # TODO: Make this configurable
+            collect_info=False,  # TODO: Make this configurable
             device=self._device,
         )
 

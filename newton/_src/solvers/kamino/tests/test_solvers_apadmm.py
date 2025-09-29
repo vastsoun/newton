@@ -96,6 +96,8 @@ def save_solver_info(solver: APADMMDualSolver, path: str | None = None, verbose:
     status = solver.data.status.numpy()
     iterations = [status[w][1] for w in range(nw)]
     offsets_np = solver.data.info.offsets.numpy()
+    num_restarts_np = extract_info_vectors(offsets_np, solver.data.info.num_restarts.numpy(), iterations)
+    num_rho_updates_np = extract_info_vectors(offsets_np, solver.data.info.num_rho_updates.numpy(), iterations)
     a_np = extract_info_vectors(offsets_np, solver.data.info.a.numpy(), iterations)
     norm_s_np = extract_info_vectors(offsets_np, solver.data.info.norm_s.numpy(), iterations)
     norm_x_np = extract_info_vectors(offsets_np, solver.data.info.norm_x.numpy(), iterations)
@@ -120,6 +122,8 @@ def save_solver_info(solver: APADMMDualSolver, path: str | None = None, verbose:
     if verbose:
         for w in range(nw):
             print(f"[World {w}] =======================================================================")
+            print(f"solver.info.num_restarts: {num_restarts_np[w]}")
+            print(f"solver.info.num_rho_updates: {num_rho_updates_np[w]}")
             print(f"solver.info.a: {a_np[w]}")
             print(f"solver.info.norm_s: {norm_s_np[w]}")
             print(f"solver.info.norm_x: {norm_x_np[w]}")
@@ -143,6 +147,8 @@ def save_solver_info(solver: APADMMDualSolver, path: str | None = None, verbose:
 
     # List of (label, data) for plotting
     info_list = [
+        ("num_restarts", num_restarts_np),
+        ("num_rho_updates", num_rho_updates_np),
         ("a", a_np),
         ("norm_s", norm_s_np),
         ("norm_x", norm_x_np),

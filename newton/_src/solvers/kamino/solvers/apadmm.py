@@ -119,6 +119,8 @@ class APADMMStatus:
     """The total acceleration residual according to the appropriate metric norm (currently the infinity norm)."""
     restart: int32
     """A flag indicating whether the solver has converged (1) or not (0)."""
+    num_restarts: int32
+    """The number of acceleration restarts performed by the solver."""
 
 
 @wp.struct
@@ -153,7 +155,7 @@ class APADMMSettings:
         """The tolerance used to determine when to restart gradient acceleration."""
         self.eta: float = 1e-5
         """The proximal regularization parameter. Must be greater than zero."""
-        self.rho_0: float = 0.01
+        self.rho_0: float = 1.0
         """The initial value of the penalty parameter. Must be greater than zero."""
         self.a_0: float = 1.0
         """The initial value of the acceleration parameter. Must be greater than zero."""
@@ -365,6 +367,12 @@ class APADMMInfo:
         self.offsets: wp.array(dtype=int32) | None = None
         """The residuals index offset of each world."""
 
+        self.num_restarts: wp.array(dtype=int32) | None = None
+        """The number of acceleration restarts performed by each world."""
+
+        self.num_rho_updates: wp.array(dtype=int32) | None = None
+        """The number of penalty updates performed by each world."""
+
         self.a: wp.array(dtype=float32) | None = None
         """The current PADMM acceleration variables."""
 
@@ -450,6 +458,8 @@ class APADMMInfo:
 
         # Allocate the in-device solver info data arrays
         self.offsets = wp.array(offsets, dtype=int32)
+        self.num_restarts = wp.zeros(maxsize, dtype=int32)
+        self.num_rho_updates = wp.zeros(maxsize, dtype=int32)
         self.a = wp.zeros(maxsize, dtype=float32)
         self.norm_s = wp.zeros(maxsize, dtype=float32)
         self.norm_x = wp.zeros(maxsize, dtype=float32)
@@ -477,6 +487,8 @@ class APADMMInfo:
         self.v_aug.zero_()
         self.s.zero_()
         self.a.zero_()
+        self.num_restarts.zero_()
+        self.num_rho_updates.zero_()
         self.norm_s.zero_()
         self.norm_x.zero_()
         self.norm_y.zero_()
@@ -1198,6 +1210,7 @@ def _initialize_solver(
     s.r_a = FLOAT32_MAX
     s.r_a_p = FLOAT32_MAX
     s.restart = int(0)
+    s.num_restarts = int(0)
     solver_status[wid] = s
 
     # Initialize penalty
@@ -1797,6 +1810,7 @@ def _compute_infnorm_residuals_serially(
     # Check if acceleration restart is needed
     if status.r_a >= config.restart_tolerance * status.r_a_p:
         status.restart = 1
+        status.num_restarts += 1
         # wp.printf("[%i]: Restarting acceleration! (r_a: %f, r_a_p: %f)\n", status.iterations, status.r_a, status.r_a_p)
         # wp.printf("[%i]: eps_r: %f\n", status.iterations, config.restart_tolerance)
         status.r_a = status.r_a_p / config.restart_tolerance
@@ -1850,7 +1864,7 @@ def _update_state_with_acceleration(
     vid = vio + tid
 
     # Only apply acceleration if not restarting
-    if status.restart > 0:
+    if status.restart == 0:
         # Retrieve the previous and current states
         a = solver_state_a[wid]
         y = solver_state_y[vid]
@@ -1907,8 +1921,10 @@ def _collect_solver_convergence_info(
     solver_info_v_plus: wp.array(dtype=float32),
     solver_info_v_aug: wp.array(dtype=float32),
     solver_info_s: wp.array(dtype=float32),
-    solver_info_a: wp.array(dtype=float32),
     solver_info_offset: wp.array(dtype=int32),
+    solver_info_num_restarts: wp.array(dtype=int32),
+    solver_info_num_rho_updates: wp.array(dtype=int32),
+    solver_info_a: wp.array(dtype=float32),
     solver_info_norm_s: wp.array(dtype=float32),
     solver_info_norm_x: wp.array(dtype=float32),
     solver_info_norm_y: wp.array(dtype=float32),
@@ -2006,6 +2022,8 @@ def _collect_solver_convergence_info(
     iio = rio + iter
 
     # Store the convergence information in the solver info arrays
+    solver_info_num_restarts[iio] = status.num_restarts
+    solver_info_num_rho_updates[iio] = penalty.rho_updates
     solver_info_a[iio] = solver_state_a[wid]
     solver_info_norm_s[iio] = norm_s
     solver_info_norm_x[iio] = norm_x
@@ -2400,7 +2418,7 @@ class APADMMDualSolver:
                     self._data.state.s,
                 ]
             )
-            # msg.warning(f"[{i}]: s :\n{self._data.state.s}")
+            # # msg.warning(f"[{i}]: s :\n{self._data.state.s}")
 
             # Compute the total velocity bias
             wp.launch(
@@ -2611,8 +2629,10 @@ class APADMMDualSolver:
                         self._data.info.v_plus,
                         self._data.info.v_aug,
                         self._data.info.s,
-                        self._data.info.a,
                         self._data.info.offsets,
+                        self._data.info.num_restarts,
+                        self._data.info.num_rho_updates,
+                        self._data.info.a,
                         self._data.info.norm_s,
                         self._data.info.norm_x,
                         self._data.info.norm_y,

@@ -133,7 +133,7 @@ class PADMMSettings:
         """The tolerance applied to the complementarity residuals."""
         self.eta: float = 1e-5
         """The proximal regularization parameter. Must be greater than zero."""
-        self.rho_0: float = 0.1
+        self.rho_0: float = 1.0
         """The initial value of the penalty parameter. Must be greater than zero."""
         self.omega: float = 1.0
         """The over-relaxation factor. Must be in the range [0.0, 2.0]."""

@@ -332,8 +332,10 @@ class BoxesFourbarExample:
 
     def simulate(self):
         """Run simulation substeps."""
-        for _ in range(self.sim_substeps):
+        for i in range(self.sim_substeps):
             self.sim.step()
+            status = self.sim._dual_solver.data.status.numpy()
+            msg.warning(f"[{i}]: solver.iterations : {status[0][1]}")
 
     def step(self):
         """Step the simulation."""

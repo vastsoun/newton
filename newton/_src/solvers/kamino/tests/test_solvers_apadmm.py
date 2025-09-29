@@ -38,7 +38,7 @@ from newton._src.solvers.kamino.tests.utils.print import print_model_info
 
 
 # Module to be tested
-from newton._src.solvers.kamino.solvers.padmm import PADMMSettings, PADMMDualSolver
+from newton._src.solvers.kamino.solvers.apadmm import APADMMSettings, APADMMDualSolver
 
 
 ###
@@ -64,7 +64,7 @@ def print_problem_summary(problem: DualProblem):
     print(f"problem.data.D (shape): {problem.data.D.shape}")
 
 
-def print_solver_summary(solver: PADMMDualSolver):
+def print_solver_summary(solver: APADMMDualSolver):
     print("PADMM Solver Summary:")
     print("solver.size.num_worlds: ", solver.size.num_worlds)
     print("solver.size.max_limits: ", solver.size.sum_of_max_limits)
@@ -91,7 +91,7 @@ def print_solver_summary(solver: PADMMDualSolver):
     print("solver.data.solution.lambdas:", solver.data.solution.lambdas.shape)
 
 
-def save_solver_info(solver: PADMMDualSolver, path: str | None = None, verbose: bool = False):
+def save_solver_info(solver: APADMMDualSolver, path: str | None = None, verbose: bool = False):
     nw = solver.size.num_worlds
     status = solver.data.status.numpy()
     iterations = [status[w][1] for w in range(nw)]
@@ -154,7 +154,7 @@ def save_solver_info(solver: PADMMDualSolver, path: str | None = None, verbose: 
             ax.grid(True)
     plt.tight_layout()
     if path is None:
-        plt.savefig(os.path.dirname(os.path.realpath(__file__)) + "/data/padmm_solver_info.pdf", format="pdf", dpi=300, bbox_inches="tight")
+        plt.savefig(os.path.dirname(os.path.realpath(__file__)) + "/data/apadmm_solver_info.pdf", format="pdf", dpi=300, bbox_inches="tight")
     else:
         plt.savefig(path, format="pdf", dpi=300, bbox_inches="tight")
 
@@ -193,7 +193,7 @@ class TestPADMMDualSolver(unittest.TestCase):
 
         # Set ad-hoc configurations
         builder.gravity.enabled = True
-        u_0 = screw(vec3f(+10.0, 0.0, 0.0), vec3f(0.0, 0.0, 0.0))
+        u_0 = screw(vec3f(+0.0, 0.0, 0.0), vec3f(0.0, 0.0, 0.0))
         for body in builder.bodies:
             body.u_i_0 = u_0
 
@@ -237,17 +237,18 @@ class TestPADMMDualSolver(unittest.TestCase):
             print("\n")  # Print a newline for better readability
 
         # Define custom solver settings
-        settings = PADMMSettings()
+        settings = APADMMSettings()
         settings.primal_tolerance = 1e-6
         settings.dual_tolerance = 1e-6
         settings.compl_tolerance = 1e-6
+        settings.restart_tolerance = 0.999
         settings.eta = 1e-5
-        settings.rho_0 = 3.0  # 9.7  # 2.7
+        settings.rho_0 = 0.01  # 9.7  # 2.7
         settings.omega = 1.0  # 1.99
         settings.max_iterations = 500
 
         # Create the ADMM solver
-        solver = PADMMDualSolver(
+        solver = APADMMDualSolver(
             model=model,
             limits=limits,
             contacts=detector.contacts,

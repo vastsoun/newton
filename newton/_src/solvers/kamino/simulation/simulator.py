@@ -18,6 +18,7 @@ from newton._src.solvers.kamino.kinematics.jacobians import DenseSystemJacobians
 from newton._src.solvers.kamino.linalg.cholesky import SequentialCholeskyFactorizer
 from newton._src.solvers.kamino.dynamics.dual import DualProblem
 from newton._src.solvers.kamino.solvers.padmm import PADMMDualSolver
+from newton._src.solvers.kamino.solvers.apadmm import APADMMDualSolver
 
 from newton._src.solvers.kamino.core.time import advance_time
 from newton._src.solvers.kamino.core.bodies import update_body_inertias, update_body_wrenches
@@ -34,6 +35,8 @@ __all__ = [
     "Simulator"
 ]
 
+SOLVER_TYPE = APADMMDualSolver
+# SOLVER_TYPE = PADMMDualSolver
 
 ###
 # Module configs
@@ -159,7 +162,7 @@ class Simulator:
 
         # Allocate the dual solver data on the device
         # TODO: Make the solver parameters configurable
-        self._dual_solver = PADMMDualSolver(
+        self._dual_solver = SOLVER_TYPE(
             model=self._model,
             limits=self._limits,
             contacts=self._collision_detector.contacts,
@@ -255,7 +258,7 @@ class Simulator:
         return self._dual_problem
 
     @property
-    def solver(self) -> PADMMDualSolver:
+    def solver(self) -> SOLVER_TYPE:
         return self._dual_solver
 
     @property

@@ -96,12 +96,20 @@ def save_solver_info(solver: APADMMDualSolver, path: str | None = None, verbose:
     status = solver.data.status.numpy()
     iterations = [status[w][1] for w in range(nw)]
     offsets_np = solver.data.info.offsets.numpy()
+    norm_s_np = extract_info_vectors(offsets_np, solver.data.info.norm_s.numpy(), iterations)
+    norm_x_np = extract_info_vectors(offsets_np, solver.data.info.norm_x.numpy(), iterations)
+    norm_y_np = extract_info_vectors(offsets_np, solver.data.info.norm_y.numpy(), iterations)
+    norm_z_np = extract_info_vectors(offsets_np, solver.data.info.norm_z.numpy(), iterations)
     f_ccp_np = extract_info_vectors(offsets_np, solver.data.info.f_ccp.numpy(), iterations)
     f_ncp_np = extract_info_vectors(offsets_np, solver.data.info.f_ncp.numpy(), iterations)
-    r_iter_np = extract_info_vectors(offsets_np, solver.data.info.r_iter.numpy(), iterations)
+    r_dx_np = extract_info_vectors(offsets_np, solver.data.info.r_dx.numpy(), iterations)
+    r_dy_np = extract_info_vectors(offsets_np, solver.data.info.r_dy.numpy(), iterations)
+    r_dz_np = extract_info_vectors(offsets_np, solver.data.info.r_dz.numpy(), iterations)
     r_primal_np = extract_info_vectors(offsets_np, solver.data.info.r_primal.numpy(), iterations)
     r_dual_np = extract_info_vectors(offsets_np, solver.data.info.r_dual.numpy(), iterations)
     r_compl_np = extract_info_vectors(offsets_np, solver.data.info.r_compl.numpy(), iterations)
+    r_pd_np = extract_info_vectors(offsets_np, solver.data.info.r_pd.numpy(), iterations)
+    r_dp_np = extract_info_vectors(offsets_np, solver.data.info.r_dp.numpy(), iterations)
     r_ncp_primal_np = extract_info_vectors(offsets_np, solver.data.info.r_ncp_primal.numpy(), iterations)
     r_ncp_dual_np = extract_info_vectors(offsets_np, solver.data.info.r_ncp_dual.numpy(), iterations)
     r_ncp_compl_np = extract_info_vectors(offsets_np, solver.data.info.r_ncp_compl.numpy(), iterations)
@@ -110,12 +118,20 @@ def save_solver_info(solver: APADMMDualSolver, path: str | None = None, verbose:
     if verbose:
         for w in range(nw):
             print(f"[World {w}] =======================================================================")
+            print(f"solver.info.norm_s: {norm_s_np[w]}")
+            print(f"solver.info.norm_x: {norm_x_np[w]}")
+            print(f"solver.info.norm_y: {norm_y_np[w]}")
+            print(f"solver.info.norm_z: {norm_z_np[w]}")
             print(f"solver.info.f_ccp: {f_ccp_np[w]}")
             print(f"solver.info.f_ncp: {f_ncp_np[w]}")
-            print(f"solver.info.r_iter: {r_iter_np[w]}")
+            print(f"solver.info.r_dx: {r_dx_np[w]}")
+            print(f"solver.info.r_dy: {r_dy_np[w]}")
+            print(f"solver.info.r_dz: {r_dz_np[w]}")
             print(f"solver.info.r_primal: {r_primal_np[w]}")
             print(f"solver.info.r_dual: {r_dual_np[w]}")
             print(f"solver.info.r_compl: {r_compl_np[w]}")
+            print(f"solver.info.r_pd: {r_pd_np[w]}")
+            print(f"solver.info.r_dp: {r_dp_np[w]}")
             print(f"solver.info.r_ncp_primal: {r_ncp_primal_np[w]}")
             print(f"solver.info.r_ncp_dual: {r_ncp_dual_np[w]}")
             print(f"solver.info.r_ncp_compl: {r_ncp_compl_np[w]}")
@@ -123,12 +139,20 @@ def save_solver_info(solver: APADMMDualSolver, path: str | None = None, verbose:
 
     # List of (label, data) for plotting
     info_list = [
+        ("norm_s", norm_s_np),
+        ("norm_x", norm_x_np),
+        ("norm_y", norm_y_np),
+        ("norm_z", norm_z_np),
         ("f_ccp", f_ccp_np),
         ("f_ncp", f_ncp_np),
-        ("r_iter", r_iter_np),
+        ("r_dx", r_dx_np),
+        ("r_dy", r_dy_np),
+        ("r_dz", r_dz_np),
         ("r_primal", r_primal_np),
         ("r_dual", r_dual_np),
         ("r_compl", r_compl_np),
+        ("r_pd", r_pd_np),
+        ("r_dp", r_dp_np),
         ("r_ncp_primal", r_ncp_primal_np),
         ("r_ncp_dual", r_ncp_dual_np),
         ("r_ncp_compl", r_ncp_compl_np),
@@ -193,7 +217,7 @@ class TestPADMMDualSolver(unittest.TestCase):
 
         # Set ad-hoc configurations
         builder.gravity.enabled = True
-        u_0 = screw(vec3f(+1.0, 0.0, 0.0), vec3f(0.0, 0.0, 0.0))
+        u_0 = screw(vec3f(+10.0, 0.0, 0.0), vec3f(0.0, 0.0, 0.0))
         for body in builder.bodies:
             body.u_i_0 = u_0
 
@@ -311,9 +335,6 @@ class TestPADMMDualSolver(unittest.TestCase):
                 L = eig_max + settings.eta
                 m = max(eig_min, 0.0) + settings.eta
                 kappa_D = L / m
-                # magic = 0.391
-                # magic = 0.48192
-                # rmagic = 1.0 / magic
                 rho_0 = np.pow(kappa_D, 1.0)
                 rho_1 = np.sqrt(L * m)
                 rho_opt = rho_1 * rho_0
@@ -324,10 +345,6 @@ class TestPADMMDualSolver(unittest.TestCase):
 
                 # # Regularized preconditioned Delassus
                 # D_p_reg = D_p + I_np
-
-                # Compute the true dual solution and error
-                v_plus_true = np.matmul(D, lambdas_wp_np[w]) + v_f_wp_np[w]
-                error_dual_abs = np.linalg.norm(v_plus_true, ord=np.inf)
 
                 # TODO
                 min_P = np.min(P_wp_np[w])
@@ -387,15 +404,21 @@ class TestPADMMDualSolver(unittest.TestCase):
                 print(f"r_p: {status[w][2]}")
                 print(f"r_d: {status[w][3]}")
                 print(f"r_c: {status[w][4]}")
-                print("---------")
-                print(f"v_plus: {v_plus_true}")
-                print(f"error_dual: {error_dual_abs}")
             print("\n")  # Print a newline for better readability
+
+        # Recover original Delassus matrix and v_f from preconditioned versions
+        D_true = np.diag(np.reciprocal(P_wp_np[w])) @ D @ np.diag(np.reciprocal(P_wp_np[w]))
+        v_f_true = np.diag(np.reciprocal(P_wp_np[w])) @ v_f_wp_np[w]
 
         # Extract solver explicit solution
         v_plus_np = extract_problem_vector(problem.delassus, solver.data.info.v_plus.numpy(), only_active_dims=only_active_dims)
         v_aug_np = extract_problem_vector(problem.delassus, solver.data.info.v_aug.numpy(), only_active_dims=only_active_dims)
         s_np = extract_problem_vector(problem.delassus, solver.data.info.s.numpy(), only_active_dims=only_active_dims)
+        # Compute the true dual solution and error
+        v_plus_true = np.matmul(D_true, lambdas_wp_np[w]) + v_f_true
+        # error_dual_abs = np.linalg.norm(v_plus_true - v_plus_wp_np[w], ord=np.inf)
+
+        # Print solution/info/true values
         if self.verbose:
             print("\n")  # Print a newline for better readability
             for w in range(nw):
@@ -408,6 +431,7 @@ class TestPADMMDualSolver(unittest.TestCase):
                 print(f"    info:  v_aug: {v_aug_np[w]}")
                 print(f"solution: v_plus: {v_plus_wp_np[w]}")
                 print(f"    info: v_plus: {v_plus_np[w]}")
+                print(f"    true: v_plus: {v_plus_true}")
             print("\n")  # Print a newline for better readability
 
         # Extract solver info

@@ -19,19 +19,17 @@ References
 - [2] https://arxiv.org/pdf/2405.17020
 """
 
-import numpy as np
 import warp as wp
 
 from enum import IntEnum
 from typing import List
 from warp.context import Devicelike
 from newton._src.solvers.kamino.core.types import int32, float32, vec3f
-from newton._src.solvers.kamino.core.math import FLOAT32_EPS
+from newton._src.solvers.kamino.core.math import FLOAT32_EPS, FLOAT32_MAX
 from newton._src.solvers.kamino.core.model import ModelSize, ModelData, Model
 from newton._src.solvers.kamino.kinematics.limits import Limits
 from newton._src.solvers.kamino.geometry.contacts import Contacts
 from newton._src.solvers.kamino.dynamics.dual import DualProblem
-from newton._src.solvers.kamino.utils.linalg import SquareSymmetricMatrixProperties
 import newton._src.solvers.kamino.utils.logger as msg
 
 
@@ -279,6 +277,11 @@ class PADMMInfo:
         size: ModelSize | None = None,
         max_iters: int | None = None,
     ):
+        self.lambdas: wp.array(dtype=float32) | None = None
+        """
+        The constraint reactions (i.e. impulses) of each world.\n
+        """
+
         self.v_plus: wp.array(dtype=float32) | None = None
         """
         The post-event constraint-space velocities of each world.\n
@@ -300,14 +303,32 @@ class PADMMInfo:
         self.offsets: wp.array(dtype=int32) | None = None
         """The residuals index offset of each world."""
 
+        self.norm_s: wp.array(dtype=float32) | None = None
+        """The per-solve history of the L2 norm of the De Saxce correction variables."""
+
+        self.norm_x: wp.array(dtype=float32) | None = None
+        """The per-solve history of the L2 norm of the primal variables."""
+
+        self.norm_y: wp.array(dtype=float32) | None = None
+        """The per-solve history of the L2 norm of the slack variables."""
+
+        self.norm_z: wp.array(dtype=float32) | None = None
+        """The per-solve history of the L2 norm of the dual variables."""
+
         self.f_ccp: wp.array(dtype=float32) | None = None
         """The per-solve history of the CCP optimization objective."""
 
         self.f_ncp: wp.array(dtype=float32) | None = None
         """The per-solve history of the NCP optimization objective."""
 
-        self.r_iter: wp.array(dtype=int32) | None = None
-        """The per-solve history of the iterate residual."""
+        self.r_dx: wp.array(dtype=float32) | None = None
+        """The per-solve history of the primal iterate residual."""
+
+        self.r_dy: wp.array(dtype=float32) | None = None
+        """The per-solve history of the slack iterate residual."""
+
+        self.r_dz: wp.array(dtype=float32) | None = None
+        """The per-solve history of the dual iterate residual."""
 
         self.r_primal: wp.array(dtype=float32) | None = None
         """The per-solve history of PADMM primal residuals."""
@@ -317,6 +338,12 @@ class PADMMInfo:
 
         self.r_compl: wp.array(dtype=float32) | None = None
         """The per-solve history of PADMM complementarity residuals."""
+
+        self.r_pd: wp.array(dtype=float32) | None = None
+        """The per-solve history of PADMM primal-dual residuals ratio."""
+
+        self.r_dp: wp.array(dtype=float32) | None = None
+        """The per-solve history of PADMM dual-primal residuals ratio."""
 
         self.r_ncp_primal: wp.array(dtype=float32) | None = None
         """The per-solve history of NCP primal residuals."""
@@ -344,6 +371,7 @@ class PADMMInfo:
             raise TypeError("max_iters must be a positive integer specifying the maximum number of iterations.")
 
         # Allocate intermediate arrays
+        self.lambdas = wp.zeros(size.sum_of_max_total_cts, dtype=float32)
         self.v_plus = wp.zeros(size.sum_of_max_total_cts, dtype=float32)
         self.v_aug = wp.zeros(size.sum_of_max_total_cts, dtype=float32)
         self.s = wp.zeros(size.sum_of_max_total_cts, dtype=float32)
@@ -354,27 +382,44 @@ class PADMMInfo:
 
         # Allocate the in-device solver info data arrays
         self.offsets = wp.array(offsets, dtype=int32)
-        self.r_iter = wp.zeros(maxsize, dtype=float32)
+        self.norm_s = wp.zeros(maxsize, dtype=float32)
+        self.norm_x = wp.zeros(maxsize, dtype=float32)
+        self.norm_y = wp.zeros(maxsize, dtype=float32)
+        self.norm_z = wp.zeros(maxsize, dtype=float32)
+        self.r_dx = wp.zeros(maxsize, dtype=float32)
+        self.r_dy = wp.zeros(maxsize, dtype=float32)
+        self.r_dz = wp.zeros(maxsize, dtype=float32)
         self.f_ccp = wp.zeros(maxsize, dtype=float32)
         self.f_ncp = wp.zeros(maxsize, dtype=float32)
         self.r_primal = wp.zeros(maxsize, dtype=float32)
         self.r_dual = wp.zeros(maxsize, dtype=float32)
         self.r_compl = wp.zeros(maxsize, dtype=float32)
+        self.r_pd = wp.zeros(maxsize, dtype=float32)
+        self.r_dp = wp.zeros(maxsize, dtype=float32)
         self.r_ncp_primal = wp.zeros(maxsize, dtype=float32)
         self.r_ncp_dual = wp.zeros(maxsize, dtype=float32)
         self.r_ncp_compl = wp.zeros(maxsize, dtype=float32)
         self.r_ncp_natmap = wp.zeros(maxsize, dtype=float32)
 
     def zero(self):
+        self.lambdas.zero_()
         self.v_plus.zero_()
         self.v_aug.zero_()
         self.s.zero_()
+        self.norm_s.zero_()
+        self.norm_x.zero_()
+        self.norm_y.zero_()
+        self.norm_z.zero_()
         self.f_ccp.zero_()
         self.f_ncp.zero_()
-        self.r_iter.zero_()
+        self.r_dx.zero_()
+        self.r_dy.zero_()
+        self.r_dz.zero_()
         self.r_primal.zero_()
         self.r_dual.zero_()
         self.r_compl.zero_()
+        self.r_pd.zero_()
+        self.r_dp.zero_()
         self.r_ncp_primal.zero_()
         self.r_ncp_dual.zero_()
         self.r_ncp_compl.zero_()
@@ -486,6 +531,43 @@ def project_to_coulomb_dual_cone(x: vec3f, mu: float32, epsilon: float32 = 0.0) 
 
 
 @wp.func
+def compute_inf_norm(
+    dim: int32,
+    vio: int32,
+    x: wp.array(dtype=float32),
+) -> float32:
+    norm = float(0.0)
+    for i in range(dim):
+        norm = wp.max(norm, wp.abs(x[vio + i]))
+    return norm
+
+
+@wp.func
+def compute_l1_norm(
+    dim: int32,
+    vio: int32,
+    x: wp.array(dtype=float32),
+) -> float32:
+    sum = float(0.0)
+    for i in range(dim):
+        sum += wp.abs(x[vio + i])
+    return sum
+
+
+@wp.func
+def compute_l2_norm(
+    dim: int32,
+    vio: int32,
+    x: wp.array(dtype=float32),
+) -> float32:
+    sum = float(0.0)
+    for i in range(dim):
+        x_i = x[vio + i]
+        sum += x_i * x_i
+    return wp.sqrt(sum)
+
+
+@wp.func
 def compute_dot_product(
     dim: int32,
     vio: int32,
@@ -569,12 +651,29 @@ def compute_vector_sum(
 
 
 @wp.func
+def compute_cwise_vec_mul(
+    dim: int32,
+    vio: int32,
+    a: wp.array(dtype=float32),
+    x: wp.array(dtype=float32),
+    y: wp.array(dtype=float32),
+):
+    """
+    Computes the coefficient-wise vector-vector product `y =  a * x`.\n
+    """
+    for i in range(dim):
+        v_i = vio + i
+        y[v_i] = a[v_i] * x[v_i]
+
+
+@wp.func
 def compute_gemv(
     maxdim: int32,
     dim: int32,
     vio: int32,
     mio: int32,
     sigma: float32,
+    P: wp.array(dtype=float32),
     A: wp.array(dtype=float32),
     x: wp.array(dtype=float32),
     b: wp.array(dtype=float32),
@@ -615,7 +714,7 @@ def compute_gemv(
             x_j = x[vio + j]
             b_i += A[m_i + j] * x_j
         b_i -= sigma * x[v_i]
-        c[v_i] = b_i
+        c[v_i] = (1.0 / P[v_i]) * b_i
 
 
 @wp.func
@@ -669,8 +768,8 @@ def compute_desaxce_corrections(
 
         # Store De Saxce correction for this block
         s[v_k] = 0.0
-        s[v_k] = 0.0
-        s[v_k] = mu_k * vt_norm_k
+        s[v_k + 1] = 0.0
+        s[v_k + 2] = mu_k * vt_norm_k
 
 
 @wp.func
@@ -929,37 +1028,69 @@ def compute_ncp_natural_map_residual(
 
 
 @wp.func
-def compute_iterate_residual(
+def compute_preconditioned_iterate_residual(
     ncts: int32,
     vio: int32,
-    y: wp.array(dtype=float32),
-    y_p: wp.array(dtype=float32)
+    P: wp.array(dtype=float32),
+    x: wp.array(dtype=float32),
+    x_p: wp.array(dtype=float32)
 ) -> float32:
     """
-    Computes the iterate residual as: `r_iter := || y - y_p ||_inf`
+    Computes the iterate residual as: `r_dx := || P @ (x - x_p) ||_inf`
 
     Args:
         ncts (int32): The number of active constraints in the world.
         vio (int32): The vector index offset (i.e. start index) for the constraints.
-        y (wp.array(dtype=float32)):
+        x (wp.array(dtype=float32)):
             The current solution vector.
-        y_p (wp.array(dtype=float32)):
+        x_p (wp.array(dtype=float32)):
             The previous solution vector.
 
     Returns:
         float32: The maximum iterate residual across all active constraints, computed as the infinity norm.
     """
     # Initialize the iterate residual
-    r_iter = float(0.0)
-
+    r_dx = float(0.0)
     for i in range(ncts):
         # Compute the index offset of the vector block of the world
         v_i = vio + i
         # Update the iterate and proximal-point residuals
-        r_iter = wp.max(r_iter, wp.abs(y[v_i] - y_p[v_i]))
-
+        r_dx = wp.max(r_dx, P[v_i] * wp.abs(x[v_i] - x_p[v_i]))
     # Return the maximum iterate residual
-    return r_iter
+    return r_dx
+
+
+@wp.func
+def compute_inverse_preconditioned_iterate_residual(
+    ncts: int32,
+    vio: int32,
+    P: wp.array(dtype=float32),
+    x: wp.array(dtype=float32),
+    x_p: wp.array(dtype=float32)
+) -> float32:
+    """
+    Computes the iterate residual as: `r_dx := || P^{-1} @ (x - x_p) ||_inf`
+
+    Args:
+        ncts (int32): The number of active constraints in the world.
+        vio (int32): The vector index offset (i.e. start index) for the constraints.
+        x (wp.array(dtype=float32)):
+            The current solution vector.
+        x_p (wp.array(dtype=float32)):
+            The previous solution vector.
+
+    Returns:
+        float32: The maximum iterate residual across all active constraints, computed as the infinity norm.
+    """
+    # Initialize the iterate residual
+    r_dx = float(0.0)
+    for i in range(ncts):
+        # Compute the index offset of the vector block of the world
+        v_i = vio + i
+        # Update the iterate and proximal-point residuals
+        r_dx = wp.max(r_dx, (1.0 / P[v_i]) * wp.abs(x[v_i] - x_p[v_i]))
+    # Return the maximum iterate residual
+    return r_dx
 
 
 ###
@@ -978,6 +1109,9 @@ def _initialize_solver(
     # Retrive the world index as thread index
     wid = wp.tid()
 
+    # Retrieve the solver configuration
+    config = solver_config[wid]
+
     # Initialize status
     s = solver_status[wid]
     s.iterations = int(0)
@@ -990,7 +1124,7 @@ def _initialize_solver(
     # Initialize penalty
     # NOTE: Currently only fixed penalty is used
     p = solver_penalty[wid]
-    p.rho = solver_config[wid].rho_0
+    p.rho = config.rho_0
     p.rho_p = float(0.0)
     p.rho_updates = int(0)
     solver_penalty[wid] = p
@@ -1187,10 +1321,10 @@ def _apply_overrelaxation_and_compute_projection_argument(
     x = solver_x[tio]
     y = solver_y[tio]
 
-    # x = omega * x + (1 - omega) * y_p;
+    # Compute the over-relaxation update
     x = omega * x + (1.0 - omega) * y_p
 
-    # y = x - (1.0 / rho) * z_p;
+    # Compute argument for the projection operator
     y = x - (1.0 / rho) * z_p
 
     # Store the updated values back to the solver state
@@ -1307,21 +1441,19 @@ def _update_dual_variables_and_compute_primal_dual_residuals(
 
     # Retrieve the solver state inputs
     x = solver_x[tio]
-    x_p = solver_x_p[tio]
     y = solver_y[tio]
+    x_p = solver_x_p[tio]
     y_p = solver_y_p[tio]
     z_p = solver_z_p[tio]
 
-    # z = z_p - rho * (x - y)
+    # Compute the dual variable update
     solver_z[tio] = z_p + rho * (y - x)
 
     # Compute the primal residual as the concensus of the primal and slack variable
     solver_r_p[tio] = P_i * (x - y)
-    # solver_r_p[tio] = x - y
 
     # Compute the dual residual using the ADMM-specific shortcut
     solver_r_d[tio] = (1.0 / P_i) * (rho * (y - y_p) + eta * (x - x_p))
-    # solver_r_d[tio] = rho * (y - y_p) + eta * (x - x_p)
 
 
 # TODO: Break this up to two kernels launched simultaneously (1x for limits, 1x for contacts)?
@@ -1459,14 +1591,6 @@ def _compute_infnorm_residuals_serially(
        r_c_max <= eps_c:
         status.converged = 1
 
-    # # Check and store convergence state
-    # if (status.iterations > 1 and
-    #    r_p_max <= eps_p and
-    #    r_d_max <= eps_d and
-    #    r_c_max <= eps_c) or \
-    #    nu == 0:
-    #     status.converged = 1
-
     # Store the updated status
     solver_status[wid] = status
 
@@ -1487,22 +1611,36 @@ def _collect_solver_convergence_info(
     problem_v_f: wp.array(dtype=float32),
     problem_D: wp.array(dtype=float32),
     problem_P: wp.array(dtype=float32),
+    solver_state_s: wp.array(dtype=float32),
+    solver_state_x: wp.array(dtype=float32),
+    solver_state_x_p: wp.array(dtype=float32),
     solver_state_y: wp.array(dtype=float32),
     solver_state_y_p: wp.array(dtype=float32),
+    solver_state_z: wp.array(dtype=float32),
+    solver_state_z_p: wp.array(dtype=float32),
     solver_config: wp.array(dtype=PADMMConfig),
     solver_penalty: wp.array(dtype=PADMMPenalty),
     solver_status: wp.array(dtype=PADMMStatus),
     # Outputs:
+    solver_info_lambdas: wp.array(dtype=float32),
     solver_info_v_plus: wp.array(dtype=float32),
     solver_info_v_aug: wp.array(dtype=float32),
     solver_info_s: wp.array(dtype=float32),
     solver_info_offset: wp.array(dtype=int32),
+    solver_info_norm_s: wp.array(dtype=float32),
+    solver_info_norm_x: wp.array(dtype=float32),
+    solver_info_norm_y: wp.array(dtype=float32),
+    solver_info_norm_z: wp.array(dtype=float32),
     solver_info_f_ccp: wp.array(dtype=float32),
     solver_info_f_ncp: wp.array(dtype=float32),
-    solver_info_r_iter: wp.array(dtype=float32),
+    solver_info_r_dx: wp.array(dtype=float32),
+    solver_info_r_dy: wp.array(dtype=float32),
+    solver_info_r_dz: wp.array(dtype=float32),
     solver_info_r_primal: wp.array(dtype=float32),
     solver_info_r_dual: wp.array(dtype=float32),
     solver_info_r_compl: wp.array(dtype=float32),
+    solver_info_r_pd: wp.array(dtype=float32),
+    solver_info_r_dp: wp.array(dtype=float32),
     solver_info_r_ncp_primal: wp.array(dtype=float32),
     solver_info_r_ncp_dual: wp.array(dtype=float32),
     solver_info_r_ncp_compl: wp.array(dtype=float32),
@@ -1535,45 +1673,68 @@ def _collect_solver_convergence_info(
     # Compute total diagonal regularization applied to the Delassus matrix
     sigma = config.eta + penalty.rho
 
-    # 1. Compute the post-event constraint-space velocity from the current solution: v_plus = v_f + D @ lambda
-    compute_gemv(maxncts, ncts, vio, mio, sigma, problem_D, solver_state_y, problem_v_f, solver_info_v_plus)
+    # Compute and store the norms of the current solution state
+    norm_s = compute_l2_norm(ncts, vio, solver_state_s)
+    norm_x = compute_l2_norm(ncts, vio, solver_state_x)
+    norm_y = compute_l2_norm(ncts, vio, solver_state_y)
+    norm_z = compute_l2_norm(ncts, vio, solver_state_z)
 
-    # 2. Compute the De Saxce correction for each contact as: s = G(v_plus)
+    # Compute (division safe) residual ratios
+    r_pd = status.r_p / (status.r_d + FLOAT32_EPS)
+    r_dp = status.r_d / (status.r_p + FLOAT32_EPS)
+
+    # Compute the post-event constraint-space velocity from the current solution: v_plus = v_f + D @ lambda
+    compute_cwise_vec_mul(ncts, vio, problem_P, solver_state_y, solver_info_lambdas)
+
+    # Compute the post-event constraint-space velocity from the current solution: v_plus = v_f + D @ lambda
+    compute_gemv(maxncts, ncts, vio, mio, sigma, problem_P, problem_D, solver_state_y, problem_v_f, solver_info_v_plus)
+
+    # Compute the De Saxce correction for each contact as: s = G(v_plus)
     compute_desaxce_corrections(nc, cio, vio, ccgo, problem_mu, solver_info_v_plus, solver_info_s)
 
-    # 3. Compute the CCP optimization objective as: f_ccp = 0.5 * lambda.dot(v_plus + v_f)
-    f_ccp = 0.5 * compute_double_dot_product(ncts, vio, solver_state_y, solver_info_v_plus, problem_v_f)
+    # Compute the CCP optimization objective as: f_ccp = 0.5 * lambda.dot(v_plus + v_f)
+    f_ccp = 0.5 * compute_double_dot_product(ncts, vio, solver_info_lambdas, solver_info_v_plus, problem_v_f)
 
-    # 4. Compute the NCP optimization objective as:  f_ncp = f_ccp + lambda.dot(s)
-    f_ncp = compute_dot_product(ncts, vio, solver_state_y, solver_info_s)
+    # Compute the NCP optimization objective as:  f_ncp = f_ccp + lambda.dot(s)
+    f_ncp = compute_dot_product(ncts, vio, solver_info_lambdas, solver_info_s)
     f_ncp += f_ccp
 
-    # 5. Compute the augmented post-event constraint-space velocity as: v_aug = v_plus + s
+    # Compute the augmented post-event constraint-space velocity as: v_aug = v_plus + s
     compute_vector_sum(ncts, vio, solver_info_v_plus, solver_info_s, solver_info_v_aug)
 
-    # 6. Compute the NCP primal residual as: r_p := || lambda - proj_K(lambda) ||_inf
-    r_ncp_p = compute_ncp_primal_residual(nl, nc, vio, lcgo, ccgo, cio, problem_mu, solver_state_y)
+    # Compute the NCP primal residual as: r_p := || lambda - proj_K(lambda) ||_inf
+    r_ncp_p = compute_ncp_primal_residual(nl, nc, vio, lcgo, ccgo, cio, problem_mu, solver_info_lambdas)
 
-    # 7. Compute the NCP dual residual as: r_d := || v_plus + s - proj_dual_K(v_plus + s)  ||_inf
+    # Compute the NCP dual residual as: r_d := || v_plus + s - proj_dual_K(v_plus + s)  ||_inf
     r_ncp_d = compute_ncp_dual_residual(njc, nl, nc, vio, lcgo, ccgo, cio, problem_mu, solver_info_v_aug)
 
-    # 8. Compute the NCP complementarity (lambda _|_ (v_plus + s)) residual as r_c := || lambda.dot(v_plus + s) ||_inf
-    r_ncp_c = compute_ncp_complementarity_residual(nl, nc, vio, lcgo, ccgo, solver_info_v_aug, solver_state_y)
+    # Compute the NCP complementarity (lambda _|_ (v_plus + s)) residual as r_c := || lambda.dot(v_plus + s) ||_inf
+    r_ncp_c = compute_ncp_complementarity_residual(nl, nc, vio, lcgo, ccgo, solver_info_v_aug, solver_info_lambdas)
 
-    # 9. Compute the natural-map residuals as: r_natmap = || lambda - proj_K(lambda - (v + s)) ||_inf
-    r_ncp_natmap = compute_ncp_natural_map_residual(nl, nc, vio, lcgo, ccgo, cio, problem_mu, solver_info_v_aug, solver_state_y)
+    # Compute the natural-map residuals as: r_natmap = || lambda - proj_K(lambda - (v + s)) ||_inf
+    r_ncp_natmap = compute_ncp_natural_map_residual(nl, nc, vio, lcgo, ccgo, cio, problem_mu, solver_info_v_aug, solver_info_lambdas)
 
-    # 10. Compute the iterate residual as: r_iter := || y - y_p ||_inf
-    r_iter = compute_iterate_residual(ncts, vio, solver_state_y, solver_state_y_p)
+    # Compute the iterate residual as: r_iter := || y - y_p ||_inf
+    r_dx = compute_preconditioned_iterate_residual(ncts, vio, problem_P, solver_state_x, solver_state_x_p)
+    r_dy = compute_preconditioned_iterate_residual(ncts, vio, problem_P, solver_state_y, solver_state_y_p)
+    r_dz = compute_inverse_preconditioned_iterate_residual(ncts, vio, problem_P, solver_state_z, solver_state_z_p)
 
     # Compute index offset for the info of the current iteration
     iio = rio + iter
 
     # Store the convergence information in the solver info arrays
-    solver_info_r_iter[iio] = r_iter
+    solver_info_norm_s[iio] = norm_s
+    solver_info_norm_x[iio] = norm_x
+    solver_info_norm_y[iio] = norm_y
+    solver_info_norm_z[iio] = norm_z
+    solver_info_r_dx[iio] = r_dx
+    solver_info_r_dy[iio] = r_dy
+    solver_info_r_dz[iio] = r_dz
     solver_info_r_primal[iio] = status.r_p
     solver_info_r_dual[iio] = status.r_d
     solver_info_r_compl[iio] = status.r_c
+    solver_info_r_pd[iio] = r_pd
+    solver_info_r_dp[iio] = r_dp
     solver_info_r_ncp_primal[iio] = r_ncp_p
     solver_info_r_ncp_dual[iio] = r_ncp_d
     solver_info_r_ncp_compl[iio] = r_ncp_c
@@ -1620,7 +1781,7 @@ def _apply_dual_preconditioner_to_state(
     # Store the preconditioned i-th entry of the vector
     solver_x[v_i] = P_i * x_i
     solver_y[v_i] = P_i * y_i
-    solver_z[v_i] = P_i * z_i
+    solver_z[v_i] = (1.0 / P_i) * z_i
 
 
 @wp.kernel
@@ -2303,22 +2464,36 @@ class PADMMDualSolver:
                         problem.data.v_f,
                         problem.data.D,
                         problem.data.P,
+                        self._data.state.s,
+                        self._data.state.x,
+                        self._data.state.x_p,
                         self._data.state.y,
                         self._data.state.y_p,
+                        self._data.state.z,
+                        self._data.state.z_p,
                         self._data.config,
                         self._data.penalty,
                         self._data.status,
                         # Outputs:
+                        self._data.info.lambdas,
                         self._data.info.v_plus,
                         self._data.info.v_aug,
                         self._data.info.s,
                         self._data.info.offsets,
+                        self._data.info.norm_s,
+                        self._data.info.norm_x,
+                        self._data.info.norm_y,
+                        self._data.info.norm_z,
                         self._data.info.f_ccp,
                         self._data.info.f_ncp,
-                        self._data.info.r_iter,
+                        self._data.info.r_dx,
+                        self._data.info.r_dy,
+                        self._data.info.r_dz,
                         self._data.info.r_primal,
                         self._data.info.r_dual,
                         self._data.info.r_compl,
+                        self._data.info.r_pd,
+                        self._data.info.r_dp,
                         self._data.info.r_ncp_primal,
                         self._data.info.r_ncp_dual,
                         self._data.info.r_ncp_compl,

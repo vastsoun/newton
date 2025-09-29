@@ -1197,6 +1197,96 @@ def _compute_velocity_bias(
 
 
 @wp.kernel
+def _apply_overrelaxation(
+    # Inputs
+    problem_dim: wp.array(dtype=int32),
+    problem_vio: wp.array(dtype=int32),
+    solver_config: wp.array(dtype=APADMMConfig),
+    solver_status: wp.array(dtype=APADMMStatus),
+    solver_y_p: wp.array(dtype=float32),
+    # Outputs
+    solver_x: wp.array(dtype=float32),
+):
+    # Retrieve the thread indices as the world and constraint index
+    wid, tid = wp.tid()
+
+    # Retrieve the total number of active constraints in the world
+    ncts = problem_dim[wid]
+
+    # Retrieve the solver status
+    status = solver_status[wid]
+
+    # Skip if row index exceed the problem size or if the solver has already converged
+    if tid >= ncts or status.converged > 0:
+        return
+
+    # Retrieve the index offset of the vector block of the world
+    vio = problem_vio[wid]
+
+    # Retrive the relaxation factor
+    omega = solver_config[wid].omega
+
+    # Compute the index offset of the vector block of the world
+    tio = vio + tid
+
+    # Retrive the solver state variables
+    y_p = solver_y_p[tio]
+    x = solver_x[tio]
+
+    # x = omega * x + (1 - omega) * y_p;
+    x = omega * x + (1.0 - omega) * y_p
+
+    # Store the updated values back to the solver state
+    solver_x[tio] = x
+
+
+@wp.kernel
+def _compute_projection_argument(
+    # Inputs
+    problem_dim: wp.array(dtype=int32),
+    problem_vio: wp.array(dtype=int32),
+    solver_penalty: wp.array(dtype=APADMMPenalty),
+    solver_status: wp.array(dtype=APADMMStatus),
+    solver_z_p: wp.array(dtype=float32),
+    solver_x: wp.array(dtype=float32),
+    # Outputs
+    solver_y: wp.array(dtype=float32),
+):
+    # Retrieve the thread indices as the world and constraint index
+    wid, tid = wp.tid()
+
+    # Retrieve the total number of active constraints in the world
+    ncts = problem_dim[wid]
+
+    # Retrieve the solver status
+    status = solver_status[wid]
+
+    # Skip if row index exceed the problem size or if the solver has already converged
+    if tid >= ncts or status.converged > 0:
+        return
+
+    # Retrieve the index offset of the vector block of the world
+    vio = problem_vio[wid]
+
+    # Capture the ALM penalty
+    rho = solver_penalty[wid].rho
+
+    # Compute the index offset of the vector block of the world
+    tio = vio + tid
+
+    # Retrive the solver state variables
+    z_p = solver_z_p[tio]
+    x = solver_x[tio]
+    y = solver_y[tio]
+
+    # y = x - (1.0 / rho) * z_p;
+    y = x - (1.0 / rho) * z_p
+
+    # Store the updated values back to the solver state
+    solver_y[tio] = y
+
+
+@wp.kernel
 def _apply_overrelaxation_and_compute_projection_argument(
     # Inputs
     problem_dim: wp.array(dtype=int32),
@@ -1363,8 +1453,8 @@ def _update_dual_variables_and_compute_primal_dual_residuals(
 
     # Retrieve the solver state inputs
     x = solver_x[tio]
-    x_p = solver_x_p[tio]
     y = solver_y[tio]
+    x_p = solver_x_p[tio]
     y_p = solver_y_p[tio]
     z_p = solver_z_p[tio]
 
@@ -1823,6 +1913,7 @@ def _compute_solution_vectors(
     problem_dim: wp.array(dtype=int32),
     problem_vio: wp.array(dtype=int32),
     solver_s: wp.array(dtype=float32),
+    solver_x: wp.array(dtype=float32),
     solver_y: wp.array(dtype=float32),
     solver_z: wp.array(dtype=float32),
     # Outputs:
@@ -1848,13 +1939,13 @@ def _compute_solution_vectors(
     # Retrieve the solver state
     z = solver_z[tio]
     s = solver_s[tio]
-    y = solver_y[tio]
+    x = solver_x[tio]
 
     # Update constraint velocity: v_plus = z - s;
     solver_v_plus[tio] = z - s
 
     # Update constraint reactions: lambda = y
-    solver_lambdas[tio] = y
+    solver_lambdas[tio] = x
 
 
 ###
@@ -2216,6 +2307,23 @@ class APADMMDualSolver:
         # NOTE: The high-level solver loop iterates over the maximum number of iterations configured for each world
         for i in range(self._max_iters):
 
+            # Compute the argument to the projection operator
+            wp.launch(
+                kernel=_compute_projection_argument,
+                dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
+                inputs=[
+                    # Inputs:
+                    problem.data.dim,
+                    problem.data.vio,
+                    self._data.penalty,
+                    self._data.status,
+                    self._data.state.z_p,
+                    self._data.state.x_p,
+                    # Outputs:
+                    self._data.state.y,
+                ]
+            )
+
             # Project to the feasible set defined by the cone K := R^{njd} x R_+^{nld} x K_{mu}^{nc}
             wp.launch(
                 kernel=_project_to_feasible_cone,
@@ -2268,7 +2376,7 @@ class APADMMDualSolver:
                     self._data.status,
                     self._data.state.s,
                     self._data.state.x_p,
-                    self._data.state.y_p,
+                    self._data.state.y,
                     self._data.state.z_p,
                     # Outputs:
                     self._data.state.v,
@@ -2307,24 +2415,40 @@ class APADMMDualSolver:
             # x_wp = wp.from_numpy(x_np.astype(np.float32))
             # wp.copy(self._data.state.x, x_wp)
 
-            # Apply over-relaxation and compute the argument to the projection operator
-            wp.launch(
-                kernel=_apply_overrelaxation_and_compute_projection_argument,
-                dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
-                inputs=[
-                    # Inputs:
-                    problem.data.dim,
-                    problem.data.vio,
-                    self._data.config,
-                    self._data.penalty,
-                    self._data.status,
-                    self._data.state.y_p,
-                    self._data.state.z_p,
-                    # Outputs:
-                    self._data.state.x,
-                    self._data.state.y,
-                ]
-            )
+            # # Apply over-relaxation
+            # wp.launch(
+            #     kernel=_apply_overrelaxation,
+            #     dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
+            #     inputs=[
+            #         # Inputs:
+            #         problem.data.dim,
+            #         problem.data.vio,
+            #         self._data.config,
+            #         self._data.status,
+            #         self._data.state.y_p,
+            #         # Outputs:
+            #         self._data.state.x,
+            #     ]
+            # )
+
+            # # Apply over-relaxation and compute the argument to the projection operator
+            # wp.launch(
+            #     kernel=_apply_overrelaxation_and_compute_projection_argument,
+            #     dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
+            #     inputs=[
+            #         # Inputs:
+            #         problem.data.dim,
+            #         problem.data.vio,
+            #         self._data.config,
+            #         self._data.penalty,
+            #         self._data.status,
+            #         self._data.state.y_p,
+            #         self._data.state.z_p,
+            #         # Outputs:
+            #         self._data.state.x,
+            #         self._data.state.y,
+            #     ]
+            # )
             # msg.warning(f"[{i}]: x :\n{self._data.state.x}")
             # msg.warning(f"[{i}]: y :\n{self._data.state.y}")
 
@@ -2582,6 +2706,7 @@ class APADMMDualSolver:
                 problem.data.dim,
                 problem.data.vio,
                 self._data.state.s,
+                self._data.state.x,
                 self._data.state.y,
                 self._data.state.z,
                 # Outputs:

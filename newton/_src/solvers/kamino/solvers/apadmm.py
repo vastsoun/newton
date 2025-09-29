@@ -2120,7 +2120,6 @@ def _compute_solution_vectors(
     problem_dim: wp.array(dtype=int32),
     problem_vio: wp.array(dtype=int32),
     solver_s: wp.array(dtype=float32),
-    solver_x: wp.array(dtype=float32),
     solver_y: wp.array(dtype=float32),
     solver_z: wp.array(dtype=float32),
     # Outputs:
@@ -2146,13 +2145,13 @@ def _compute_solution_vectors(
     # Retrieve the solver state
     z = solver_z[tio]
     s = solver_s[tio]
-    x = solver_x[tio]
+    y = solver_y[tio]
 
     # Update constraint velocity: v_plus = z - s;
     solver_v_plus[tio] = z - s
 
     # Update constraint reactions: lambda = y
-    solver_lambdas[tio] = x
+    solver_lambdas[tio] = y
 
 
 ###
@@ -2696,7 +2695,6 @@ class APADMMDualSolver:
                 problem.data.dim,
                 problem.data.vio,
                 self._data.state.s,
-                self._data.state.x,
                 self._data.state.y,
                 self._data.state.z,
                 # Outputs:

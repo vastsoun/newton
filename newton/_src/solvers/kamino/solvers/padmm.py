@@ -94,6 +94,7 @@ class PADMMStatus:
     """A flag indicating whether the solver has converged (1) or not (0)."""
     iterations: int32
     """The number of iterations performed by the solver."""
+
     r_p: float32
     """The total primal residual according to the appropriate metric norm (currently the infinity norm)."""
     r_d: float32
@@ -226,11 +227,11 @@ class PADMMResiduals:
     """
     def __init__(self, size: ModelSize | None = None):
         self.r_primal: wp.array(dtype=float32) | None = None
-        """The PADMM primal residuals."""
+        """The PADMM primal residual vector."""
         self.r_dual: wp.array(dtype=float32) | None = None
-        """The PADMM dual residuals."""
+        """The PADMM dual residual vector."""
         self.r_compl: wp.array(dtype=float32) | None = None
-        """The PADMM complementarity residuals."""
+        """The PADMM complementarity residual vector."""
 
         # Perform memory allocations if size is specified
         if size is not None:

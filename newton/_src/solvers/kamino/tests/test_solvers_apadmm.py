@@ -96,6 +96,7 @@ def save_solver_info(solver: APADMMDualSolver, path: str | None = None, verbose:
     status = solver.data.status.numpy()
     iterations = [status[w][1] for w in range(nw)]
     offsets_np = solver.data.info.offsets.numpy()
+    a_np = extract_info_vectors(offsets_np, solver.data.info.a.numpy(), iterations)
     norm_s_np = extract_info_vectors(offsets_np, solver.data.info.norm_s.numpy(), iterations)
     norm_x_np = extract_info_vectors(offsets_np, solver.data.info.norm_x.numpy(), iterations)
     norm_y_np = extract_info_vectors(offsets_np, solver.data.info.norm_y.numpy(), iterations)
@@ -110,6 +111,7 @@ def save_solver_info(solver: APADMMDualSolver, path: str | None = None, verbose:
     r_compl_np = extract_info_vectors(offsets_np, solver.data.info.r_compl.numpy(), iterations)
     r_pd_np = extract_info_vectors(offsets_np, solver.data.info.r_pd.numpy(), iterations)
     r_dp_np = extract_info_vectors(offsets_np, solver.data.info.r_dp.numpy(), iterations)
+    r_comb_np = extract_info_vectors(offsets_np, solver.data.info.r_comb.numpy(), iterations)
     r_ncp_primal_np = extract_info_vectors(offsets_np, solver.data.info.r_ncp_primal.numpy(), iterations)
     r_ncp_dual_np = extract_info_vectors(offsets_np, solver.data.info.r_ncp_dual.numpy(), iterations)
     r_ncp_compl_np = extract_info_vectors(offsets_np, solver.data.info.r_ncp_compl.numpy(), iterations)
@@ -118,6 +120,7 @@ def save_solver_info(solver: APADMMDualSolver, path: str | None = None, verbose:
     if verbose:
         for w in range(nw):
             print(f"[World {w}] =======================================================================")
+            print(f"solver.info.a: {a_np[w]}")
             print(f"solver.info.norm_s: {norm_s_np[w]}")
             print(f"solver.info.norm_x: {norm_x_np[w]}")
             print(f"solver.info.norm_y: {norm_y_np[w]}")
@@ -132,6 +135,7 @@ def save_solver_info(solver: APADMMDualSolver, path: str | None = None, verbose:
             print(f"solver.info.r_compl: {r_compl_np[w]}")
             print(f"solver.info.r_pd: {r_pd_np[w]}")
             print(f"solver.info.r_dp: {r_dp_np[w]}")
+            print(f"solver.info.r_comb: {r_comb_np[w]}")
             print(f"solver.info.r_ncp_primal: {r_ncp_primal_np[w]}")
             print(f"solver.info.r_ncp_dual: {r_ncp_dual_np[w]}")
             print(f"solver.info.r_ncp_compl: {r_ncp_compl_np[w]}")
@@ -139,6 +143,7 @@ def save_solver_info(solver: APADMMDualSolver, path: str | None = None, verbose:
 
     # List of (label, data) for plotting
     info_list = [
+        ("a", a_np),
         ("norm_s", norm_s_np),
         ("norm_x", norm_x_np),
         ("norm_y", norm_y_np),
@@ -153,6 +158,7 @@ def save_solver_info(solver: APADMMDualSolver, path: str | None = None, verbose:
         ("r_compl", r_compl_np),
         ("r_pd", r_pd_np),
         ("r_dp", r_dp_np),
+        ("r_comb", r_comb_np),
         ("r_ncp_primal", r_ncp_primal_np),
         ("r_ncp_dual", r_ncp_dual_np),
         ("r_ncp_compl", r_ncp_compl_np),
@@ -267,7 +273,7 @@ class TestPADMMDualSolver(unittest.TestCase):
         settings.compl_tolerance = 1e-6
         settings.restart_tolerance = 0.999
         settings.eta = 1e-5
-        settings.rho_0 = 0.01  # 9.7  # 2.7
+        settings.rho_0 = 1.0  # 9.7  # 2.7
         settings.omega = 1.0  # 1.99
         settings.max_iterations = 500
 

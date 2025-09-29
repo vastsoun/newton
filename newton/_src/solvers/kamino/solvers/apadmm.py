@@ -19,7 +19,6 @@ References
 - [2] https://arxiv.org/pdf/2405.17020
 """
 
-import numpy as np
 import warp as wp
 
 from enum import IntEnum
@@ -106,6 +105,13 @@ class APADMMStatus:
     """The total dual residual according to the appropriate metric norm (currently the infinity norm)."""
     r_c: float32
     """The total complementarity residual according to the appropriate metric norm (currently the infinity norm)."""
+
+    r_dx: float32
+    """The L2-norm of the primal iterate residual ||(x - x_p)||_2."""
+    r_dy: float32
+    """The L2-norm of the slack iterate residual ||(y - y_p)||_2."""
+    r_dz: float32
+    """The L2-norm of the dual iterate residual ||(z - z_p)||_2."""
 
     r_a: float32
     """The total acceleration residual according to the appropriate metric norm (currently the infinity norm)."""
@@ -194,31 +200,37 @@ class APADMMState:
         """The De Saxce correction vector."""
 
         self.v: wp.array(dtype=float32) | None = None
-        """The total velocity bias vector computed from the PADMM state and proximal parameters rho and eta."""
+        """The total velocity bias vector computed from the APADMM state and proximal parameters rho and eta."""
 
         self.x: wp.array(dtype=float32) | None = None
-        """The current PADMM primal variables."""
+        """The current APADMM primal variables."""
 
         self.x_p: wp.array(dtype=float32) | None = None
-        """The previous PADMM primal variables."""
+        """The previous APADMM primal variables."""
 
         self.y: wp.array(dtype=float32) | None = None
-        """The current PADMM slack variables."""
+        """The current APADMM slack variables."""
 
         self.y_p: wp.array(dtype=float32) | None = None
-        """The previous PADMM slack variables."""
+        """The previous APADMM slack variables."""
+
+        self.y_hat: wp.array(dtype=float32) | None = None
+        """The auxiliary APADMM slack variables."""
 
         self.z: wp.array(dtype=float32) | None = None
-        """The current PADMM dual variables."""
+        """The current APADMM dual variables."""
 
         self.z_p: wp.array(dtype=float32) | None = None
-        """The previous PADMM dual variables."""
+        """The previous APADMM dual variables."""
+
+        self.z_hat: wp.array(dtype=float32) | None = None
+        """The auxiliary APADMM dual variables."""
 
         self.a: wp.array(dtype=float32) | None = None
-        """The current PADMM acceleration variables."""
+        """The current APADMM acceleration variables."""
 
         self.a_p: wp.array(dtype=float32) | None = None
-        """The previous PADMM acceleration variables."""
+        """The previous APADMM acceleration variables."""
 
         # Perform memory allocations if size is specified
         if size is not None:
@@ -231,8 +243,10 @@ class APADMMState:
         self.x_p = wp.zeros(size.sum_of_max_total_cts, dtype=float32)
         self.y = wp.zeros(size.sum_of_max_total_cts, dtype=float32)
         self.y_p = wp.zeros(size.sum_of_max_total_cts, dtype=float32)
+        self.y_hat = wp.zeros(size.sum_of_max_total_cts, dtype=float32)
         self.z = wp.zeros(size.sum_of_max_total_cts, dtype=float32)
         self.z_p = wp.zeros(size.sum_of_max_total_cts, dtype=float32)
+        self.z_hat = wp.zeros(size.sum_of_max_total_cts, dtype=float32)
         self.a = wp.zeros(size.num_worlds, dtype=float32)
         self.a_p = wp.zeros(size.num_worlds, dtype=float32)
 
@@ -243,8 +257,10 @@ class APADMMState:
         self.x_p.zero_()
         self.y.zero_()
         self.y_p.zero_()
+        self.y_hat.zero_()
         self.z.zero_()
         self.z_p.zero_()
+        self.z_hat.zero_()
         self.a.fill_(1.0)
         self.a_p.fill_(1.0)
 
@@ -255,7 +271,7 @@ class APADMMResiduals:
     """
     def __init__(self, size: ModelSize | None = None):
         self.r_primal: wp.array(dtype=float32) | None = None
-        """The APADMM primal residuals vector"""
+        """The APADMM primal residual vector."""
         self.r_dual: wp.array(dtype=float32) | None = None
         """The APADMM dual residual vector."""
         self.r_compl: wp.array(dtype=float32) | None = None
@@ -278,6 +294,14 @@ class APADMMResiduals:
         self.r_dx = wp.zeros(size.sum_of_max_total_cts, dtype=float32)
         self.r_dy = wp.zeros(size.sum_of_max_total_cts, dtype=float32)
         self.r_dz = wp.zeros(size.sum_of_max_total_cts, dtype=float32)
+
+    def zero(self):
+        self.r_primal.zero_()
+        self.r_dual.zero_()
+        self.r_compl.zero_()
+        self.r_dx.zero_()
+        self.r_dy.zero_()
+        self.r_dz.zero_()
 
 
 class APADMMSolution:
@@ -1168,6 +1192,9 @@ def _initialize_solver(
     s.r_p = float(0.0)
     s.r_d = float(0.0)
     s.r_c = float(0.0)
+    s.r_dx = float(0.0)
+    s.r_dy = float(0.0)
+    s.r_dz = float(0.0)
     s.r_a = FLOAT32_MAX
     s.r_a_p = FLOAT32_MAX
     s.restart = int(0)
@@ -1238,7 +1265,7 @@ def _compute_desaxce_correction(
     problem_vio: wp.array(dtype=int32),
     problem_mu: wp.array(dtype=float32),
     solver_status: wp.array(dtype=APADMMStatus),
-    solver_z_p: wp.array(dtype=float32),
+    solver_z_hat: wp.array(dtype=float32),
     # Outputs:
     solver_s: wp.array(dtype=float32),
 ):
@@ -1271,8 +1298,8 @@ def _compute_desaxce_correction(
     cio_k = cio + cid
 
     # Compute the norm of the tangential components
-    vtx = solver_z_p[ccio_k]
-    vty = solver_z_p[ccio_k + 1]
+    vtx = solver_z_hat[ccio_k]
+    vty = solver_z_hat[ccio_k + 1]
     vt_norm = wp.sqrt(vtx*vtx + vty*vty)
 
     # Store De Saxce correction for this block
@@ -1292,8 +1319,8 @@ def _compute_velocity_bias(
     solver_status: wp.array(dtype=APADMMStatus),
     solver_s: wp.array(dtype=float32),
     solver_x_p: wp.array(dtype=float32),
-    solver_y_p: wp.array(dtype=float32),
-    solver_z_p: wp.array(dtype=float32),
+    solver_y_hat: wp.array(dtype=float32),
+    solver_z_hat: wp.array(dtype=float32),
     # Outputs:
     solver_v: wp.array(dtype=float32)
 ):
@@ -1324,11 +1351,11 @@ def _compute_velocity_bias(
     v_f = problem_v_f[tio]
     s = solver_s[tio]
     x_p = solver_x_p[tio]
-    y_p = solver_y_p[tio]
-    z_p = solver_z_p[tio]
+    y_hat = solver_y_hat[tio]
+    z_hat = solver_z_hat[tio]
 
-    # v = - v_f - s + eta * x_p + rho * y_p + z_p
-    solver_v[tio] = - v_f - s + eta * x_p + rho * y_p + z_p
+    # Compute the total velocity bias for the tio-th constraint
+    solver_v[tio] = - v_f - s + eta * x_p + rho * y_hat + z_hat
 
 
 @wp.kernel
@@ -1382,7 +1409,7 @@ def _compute_projection_argument(
     problem_vio: wp.array(dtype=int32),
     solver_penalty: wp.array(dtype=APADMMPenalty),
     solver_status: wp.array(dtype=APADMMStatus),
-    solver_z_p: wp.array(dtype=float32),
+    solver_z_hat: wp.array(dtype=float32),
     solver_x: wp.array(dtype=float32),
     # Outputs
     solver_y: wp.array(dtype=float32),
@@ -1410,15 +1437,11 @@ def _compute_projection_argument(
     tio = vio + tid
 
     # Retrive the solver state variables
-    z_p = solver_z_p[tio]
+    z_hat = solver_z_hat[tio]
     x = solver_x[tio]
-    y = solver_y[tio]
 
-    # y = x - (1.0 / rho) * z_p;
-    y = x - (1.0 / rho) * z_p
-
-    # Store the updated values back to the solver state
-    solver_y[tio] = y
+    # Compute and store the updated values back to the solver state
+    solver_y[tio] = x - (1.0 / rho) * z_hat
 
 
 @wp.kernel
@@ -1549,15 +1572,16 @@ def _update_dual_variables_and_compute_primal_dual_residuals(
     solver_penalty: wp.array(dtype=APADMMPenalty),
     solver_status: wp.array(dtype=APADMMStatus),
     solver_x: wp.array(dtype=float32),
-    solver_x_p: wp.array(dtype=float32),
     solver_y: wp.array(dtype=float32),
-    solver_y_p: wp.array(dtype=float32),
-    solver_z_p: wp.array(dtype=float32),
+    solver_x_p: wp.array(dtype=float32),
+    solver_y_hat: wp.array(dtype=float32),
+    solver_z_hat: wp.array(dtype=float32),
     # Outputs:
     solver_z: wp.array(dtype=float32),
     solver_r_prim: wp.array(dtype=float32),
     solver_r_dual: wp.array(dtype=float32),
     solver_r_dx: wp.array(dtype=float32),
+    solver_r_dy: wp.array(dtype=float32),
     solver_r_dz: wp.array(dtype=float32),
 ):
     # Retrieve the thread indices as the world and constraint index
@@ -1590,22 +1614,23 @@ def _update_dual_variables_and_compute_primal_dual_residuals(
     x = solver_x[tio]
     y = solver_y[tio]
     x_p = solver_x_p[tio]
-    y_p = solver_y_p[tio]
-    z_p = solver_z_p[tio]
+    y_hat = solver_y_hat[tio]
+    z_hat = solver_z_hat[tio]
 
-    # Compute the dual variable update
-    z = z_p + rho * (y - x)
+    # Compute and store the dual variable update
+    z = z_hat + rho * (y - x)
     solver_z[tio] = z
 
     # Compute the primal residual as the concensus of the primal and slack variable
     solver_r_prim[tio] = P_i * (x - y)
 
     # Compute the dual residual using the ADMM-specific shortcut
-    solver_r_dual[tio] = (1.0 / P_i) * (rho * (y - y_p) + eta * (x - x_p))
+    solver_r_dual[tio] = (1.0 / P_i) * (eta * (x - x_p) + rho * (y - y_hat))
 
     # Compute the combined residual terms
     solver_r_dx[tio] = P_i * (x - x_p)
-    solver_r_dz[tio] = P_i * (z - z_p)
+    solver_r_dy[tio] = P_i * (y - y_hat)
+    solver_r_dz[tio] = (1.0 / P_i) * (z - z_hat)
 
 
 # TODO: Break this up to two kernels launched simultaneously (1x for limits, 1x for contacts)?
@@ -1686,6 +1711,7 @@ def _compute_infnorm_residuals_serially(
     solver_r_d: wp.array(dtype=float32),
     solver_r_c: wp.array(dtype=float32),
     solver_r_dx: wp.array(dtype=float32),
+    solver_r_dy: wp.array(dtype=float32),
     solver_r_dz: wp.array(dtype=float32),
     solver_state_a_p: wp.array(dtype=float32),
     # Outputs:
@@ -1731,14 +1757,17 @@ def _compute_infnorm_residuals_serially(
     r_p_max = float(0.0)
     r_d_max = float(0.0)
     r_dx_l2_sum = float(0.0)
+    r_dy_l2_sum = float(0.0)
     r_dz_l2_sum = float(0.0)
     for j in range(ncts):
         rio_j = vio + j
         r_p_max = wp.max(r_p_max, wp.abs(solver_r_p[rio_j]))
         r_d_max = wp.max(r_d_max, wp.abs(solver_r_d[rio_j]))
         r_dx = solver_r_dx[rio_j]
+        r_dy = solver_r_dy[rio_j]
         r_dz = solver_r_dz[rio_j]
         r_dx_l2_sum += r_dx * r_dx
+        r_dy_l2_sum += r_dy * r_dy
         r_dz_l2_sum += r_dz * r_dz
 
     # Compute the infinity-norm of the complementarity residuals
@@ -1751,7 +1780,10 @@ def _compute_infnorm_residuals_serially(
     status.r_p = r_p_max
     status.r_d = r_d_max
     status.r_c = r_c_max
-    status.r_a = rho * wp.sqrt(r_dx_l2_sum) + (1.0 / rho) * wp.sqrt(r_dz_l2_sum)
+    status.r_dx = wp.sqrt(r_dx_l2_sum)
+    status.r_dy = wp.sqrt(r_dy_l2_sum)
+    status.r_dz = wp.sqrt(r_dz_l2_sum)
+    status.r_a = rho * status.r_dy + (1.0 / rho) * status.r_dz
     # wp.printf("[%i]: r_a_p: %f\n", status.iterations, status.r_a_p)
     # wp.printf("[%i]: r_a: %f\n", status.iterations, status.r_a)
 
@@ -1778,14 +1810,6 @@ def _compute_infnorm_residuals_serially(
         # wp.printf("[%i]: Accelerating with a_k+1: %f\n", status.iterations, solver_state_a[wid])
     status.r_a_p = status.r_a
 
-    # # Check and store convergence state
-    # if (status.iterations > 1 and
-    #    r_p_max <= eps_p and
-    #    r_d_max <= eps_d and
-    #    r_c_max <= eps_c) or \
-    #    nu == 0:
-    #     status.converged = 1
-
     # Store the updated status
     solver_status[wid] = status
 
@@ -1797,12 +1821,14 @@ def _update_state_with_acceleration(
     problem_vio: wp.array(dtype=int32),
     solver_status: wp.array(dtype=APADMMStatus),
     solver_state_a: wp.array(dtype=float32),
+    solver_state_y: wp.array(dtype=float32),
+    solver_state_z: wp.array(dtype=float32),
     solver_state_a_p: wp.array(dtype=float32),
-    solver_state_x_p: wp.array(dtype=float32),
+    solver_state_y_p: wp.array(dtype=float32),
     solver_state_z_p: wp.array(dtype=float32),
     # Outputs:
-    solver_state_x: wp.array(dtype=float32),
-    solver_state_z: wp.array(dtype=float32),
+    solver_state_y_hat: wp.array(dtype=float32),
+    solver_state_z_hat: wp.array(dtype=float32),
 ):
     # Retrieve the thread indices as the world and constraint index
     wid, tid = wp.tid()
@@ -1814,7 +1840,7 @@ def _update_state_with_acceleration(
     status = solver_status[wid]
 
     # Skip if row index exceed the problem size or if the solver has already converged
-    if tid >= ncts or status.converged > 0 or status.restart > 0:
+    if tid >= ncts or status.converged > 0:
         return
 
     # Retrieve the index offset of the vector block of the world
@@ -1823,24 +1849,30 @@ def _update_state_with_acceleration(
     # Compute the index offset of the vector block of the world
     vid = vio + tid
 
-    # Retrieve the previous and current states
-    a = solver_state_a[wid]
-    x = solver_state_x[vid]
-    z = solver_state_z[vid]
-    a_p = solver_state_a_p[wid]
-    x_p = solver_state_x_p[vid]
-    z_p = solver_state_z_p[vid]
+    # Only apply acceleration if not restarting
+    if status.restart > 0:
+        # Retrieve the previous and current states
+        a = solver_state_a[wid]
+        y = solver_state_y[vid]
+        z = solver_state_z[vid]
+        a_p = solver_state_a_p[wid]
+        y_p = solver_state_y_p[vid]
+        z_p = solver_state_z_p[vid]
 
-    # Compute the current acceleration factor
-    factor = (a_p - 1.0) / a
+        # Compute the current acceleration factor
+        factor = (a_p - 1.0) / a
 
-    # Update the primal and dual variables with Nesterov acceleration
-    x += x_p + factor * (x - x_p)
-    z += z_p + factor * (z - z_p)
+        # Update the primal and dual variables with Nesterov acceleration
+        y_hat_new = y + factor * (y - y_p)
+        z_hat_new = z + factor * (z - z_p)
 
-    # Store the updated states
-    solver_state_x[vid] = x
-    solver_state_z[vid] = z
+        # Store the updated states
+        solver_state_y_hat[vid] = y_hat_new
+        solver_state_z_hat[vid] = z_hat_new
+    else:
+        # If restarting, just copy the current states
+        solver_state_y_hat[vid] = solver_state_y_p[vid]
+        solver_state_z_hat[vid] = solver_state_z_p[vid]
 
 
 @wp.kernel
@@ -1859,6 +1891,7 @@ def _collect_solver_convergence_info(
     problem_v_f: wp.array(dtype=float32),
     problem_D: wp.array(dtype=float32),
     problem_P: wp.array(dtype=float32),
+    solver_state_a: wp.array(dtype=float32),
     solver_state_s: wp.array(dtype=float32),
     solver_state_x: wp.array(dtype=float32),
     solver_state_x_p: wp.array(dtype=float32),
@@ -1874,6 +1907,7 @@ def _collect_solver_convergence_info(
     solver_info_v_plus: wp.array(dtype=float32),
     solver_info_v_aug: wp.array(dtype=float32),
     solver_info_s: wp.array(dtype=float32),
+    solver_info_a: wp.array(dtype=float32),
     solver_info_offset: wp.array(dtype=int32),
     solver_info_norm_s: wp.array(dtype=float32),
     solver_info_norm_x: wp.array(dtype=float32),
@@ -1889,6 +1923,7 @@ def _collect_solver_convergence_info(
     solver_info_r_compl: wp.array(dtype=float32),
     solver_info_r_pd: wp.array(dtype=float32),
     solver_info_r_dp: wp.array(dtype=float32),
+    solver_info_r_comb: wp.array(dtype=float32),
     solver_info_r_ncp_primal: wp.array(dtype=float32),
     solver_info_r_ncp_dual: wp.array(dtype=float32),
     solver_info_r_ncp_compl: wp.array(dtype=float32),
@@ -1971,6 +2006,7 @@ def _collect_solver_convergence_info(
     iio = rio + iter
 
     # Store the convergence information in the solver info arrays
+    solver_info_a[iio] = solver_state_a[wid]
     solver_info_norm_s[iio] = norm_s
     solver_info_norm_x[iio] = norm_x
     solver_info_norm_y[iio] = norm_y
@@ -1983,6 +2019,7 @@ def _collect_solver_convergence_info(
     solver_info_r_compl[iio] = status.r_c
     solver_info_r_pd[iio] = r_pd
     solver_info_r_dp[iio] = r_dp
+    solver_info_r_comb[iio] = status.r_a
     solver_info_r_ncp_primal[iio] = r_ncp_p
     solver_info_r_ncp_dual[iio] = r_ncp_d
     solver_info_r_ncp_compl[iio] = r_ncp_c
@@ -2336,136 +2373,6 @@ class APADMMDualSolver:
         # Compute Choleky/LDLT factorization of the Delassus matrix
         problem._delassus.factorize(reset_to_zero=True)
 
-        # ###
-        # # TODO
-        # ###
-
-        # wp.launch(
-        #     kernel=_compute_velocity_bias,
-        #     dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
-        #     inputs=[
-        #         # Inputs:
-        #         problem.data.dim,
-        #         problem.data.vio,
-        #         problem.data.v_f,
-        #         self._data.config,
-        #         self._data.penalty,
-        #         self._data.status,
-        #         self._data.state.s,
-        #         self._data.state.x_p,
-        #         self._data.state.y_p,
-        #         self._data.state.z_p,
-        #         # Outputs:
-        #         self._data.state.v,
-        #     ]
-        # )
-        # np_dtype = np.float32
-        # dim_np = problem.data.dim.numpy()[0]
-        # v_np = self._data.state.v.numpy()[:dim_np].astype(np_dtype)
-        # v_f_np = problem.data.v_f.numpy()[:dim_np].astype(np_dtype)
-        # print(f"v_f_np (init): {v_f_np}")
-        # print(f"v_np (init): {v_np}")
-        # self._data.state.x.zero_()
-        # problem._delassus.solve(v=self._data.state.v, x=self._data.state.x)
-        # x_np = self._data.state.x.numpy()[:dim_np].astype(np_dtype)
-        # print(f"x_np (init): {x_np}")
-        # wp.launch(
-        #     kernel=_apply_overrelaxation_and_compute_projection_argument,
-        #     dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
-        #     inputs=[
-        #         # Inputs:
-        #         problem.data.dim,
-        #         problem.data.vio,
-        #         self._data.config,
-        #         self._data.penalty,
-        #         self._data.status,
-        #         self._data.state.y_p,
-        #         self._data.state.z_p,
-        #         # Outputs:
-        #         self._data.state.x,
-        #         self._data.state.y,
-        #     ]
-        # )
-        # y_np = self._data.state.y.numpy()[:dim_np].astype(np_dtype)
-        # print(f"y_np (init): {y_np}")
-        # wp.launch(
-        #     kernel=_project_to_feasible_cone,
-        #     dim=(self._size.num_worlds, self._size.max_of_max_unilaterals),
-        #     inputs=[
-        #         # Inputs:
-        #         problem.data.nl,
-        #         problem.data.nc,
-        #         problem.data.cio,
-        #         problem.data.lcgo,
-        #         problem.data.ccgo,
-        #         problem.data.vio,
-        #         problem.data.mu,
-        #         self._data.status,
-        #         # Outputs:
-        #         self._data.state.y,
-        #     ]
-        # )
-        # y_np = self._data.state.y.numpy()[:dim_np].astype(np_dtype)
-        # z_np = self._data.state.z.numpy()[:dim_np].astype(np_dtype)
-        # print(f"y_np (proj): {y_np}")
-        # print(f"z_np (proj): {z_np}\n")
-
-        # # TODO:
-        # rho_0 = self.settings[0].rho_0
-        # norm_v_f_l2 = np.linalg.norm(v_f_np)
-        # norm_x_l2 = np.linalg.norm(x_np)
-        # norm_y_l2 = np.linalg.norm(y_np)
-        # norm_xmy_l2 = np.linalg.norm(x_np - y_np)
-        # norm_r0_l2 = norm_xmy_l2 / norm_y_l2
-        # norm_r1_l2 = norm_xmy_l2 / norm_x_l2
-        # alpha_l2 = norm_x_l2 / norm_y_l2
-        # r_pd_0_l2 = norm_r0_l2 / rho_0
-
-        # norm_v_f_inf = np.linalg.norm(v_f_np, ord=np.inf)
-        # norm_x_inf = np.linalg.norm(x_np, ord=np.inf)
-        # norm_y_inf = np.linalg.norm(y_np, ord=np.inf)
-        # norm_xmy_inf = np.linalg.norm(x_np - y_np, ord=np.inf)
-        # norm_r0_inf = norm_xmy_inf / norm_y_inf
-        # norm_r1_inf = norm_xmy_inf / norm_x_inf
-        # alpha_inf = norm_x_inf / norm_y_inf
-        # r_pd_0_inf = norm_r0_inf / rho_0
-
-        # print(f"rho_0 : {rho_0}\n")
-
-        # print(f"||v_f||_2 : {norm_v_f_l2}")
-        # print(f"||x||_2 : {norm_x_l2}")
-        # print(f"||y||_2 : {norm_y_l2}")
-        # print(f"||x - y||_2 : {norm_xmy_l2}")
-        # print(f"||x - y||_2 / ||y||_2 : {norm_r0_l2}")
-        # print(f"||x - y||_2 / ||x||_2 : {norm_r1_l2}")
-        # print(f"alpha_l2 = ||x||_2 / ||y||_2 : {alpha_l2}")
-        # print(f"r_pd_0_l2 = ||x - y||_2 / (rho * ||y||_2) : {r_pd_0_l2}\n")
-
-        # print(f"||v_f||_inf : {norm_v_f_inf}")
-        # print(f"||x||_inf : {norm_x_inf}")
-        # print(f"||y||_inf : {norm_y_inf}")
-        # print(f"||x - y||_inf : {norm_xmy_inf}")
-        # print(f"||x - y||_inf / ||y||_inf : {norm_r0_inf}")
-        # print(f"||x - y||_inf / ||x||_inf : {norm_r1_inf}")
-        # print(f"alpha_inf = ||x||_inf / ||y||_inf : {alpha_inf}")
-        # print(f"r_pd_0_inf = ||x - y||_inf / (rho * ||y||_inf) : {r_pd_0_inf}\n")
-
-        # # SANITY CHECK
-        # np_dtype = np.float32
-        # maxdim_np = problem.data.maxdim.numpy()[0]
-        # dim_np = problem.data.dim.numpy()[0]
-        # D_np = problem._delassus.data.D.numpy().reshape(maxdim_np, maxdim_np)[:dim_np, :dim_np].astype(np_dtype)
-        # # v_np = self._data.state.v.numpy()[:dim_np].astype(np_dtype)
-        # D_np_props = SquareSymmetricMatrixProperties(D_np)
-        # msg.info(f"Delassus Properties:\n{D_np_props}")
-        # try:
-        #     L_np = np.linalg.cholesky(D_np)
-        # except np.linalg.LinAlgError:
-        #     D_np_props = SquareSymmetricMatrixProperties(D_np)
-        #     # msg.error(f"Delassus Properties:\n{D_np_props}")
-        #     # raise ValueError("Augmented Delassus matrix is not positive definite!")
-        #     # return
-
         # Reset the solver info to zero if collection is enabled
         if self._collect_info:
             self._data.info.zero()
@@ -2476,42 +2383,6 @@ class APADMMDualSolver:
 
         # NOTE: The high-level solver loop iterates over the maximum number of iterations configured for each world
         for i in range(self._max_iters):
-
-            # Compute the argument to the projection operator
-            wp.launch(
-                kernel=_compute_projection_argument,
-                dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
-                inputs=[
-                    # Inputs:
-                    problem.data.dim,
-                    problem.data.vio,
-                    self._data.penalty,
-                    self._data.status,
-                    self._data.state.z_p,
-                    self._data.state.x_p,
-                    # Outputs:
-                    self._data.state.y,
-                ]
-            )
-
-            # Project to the feasible set defined by the cone K := R^{njd} x R_+^{nld} x K_{mu}^{nc}
-            wp.launch(
-                kernel=_project_to_feasible_cone,
-                dim=(self._size.num_worlds, self._size.max_of_max_unilaterals),
-                inputs=[
-                    # Inputs:
-                    problem.data.nl,
-                    problem.data.nc,
-                    problem.data.cio,
-                    problem.data.lcgo,
-                    problem.data.ccgo,
-                    problem.data.vio,
-                    problem.data.mu,
-                    self._data.status,
-                    # Outputs:
-                    self._data.state.y,
-                ]
-            )
 
             # Compute De Saxce correction from the previous dual variables
             wp.launch(
@@ -2525,7 +2396,7 @@ class APADMMDualSolver:
                     problem.data.vio,
                     problem.data.mu,
                     self._data.status,
-                    self._data.state.z_p,
+                    self._data.state.z_hat,
                     # Outputs:
                     self._data.state.s,
                 ]
@@ -2546,8 +2417,8 @@ class APADMMDualSolver:
                     self._data.status,
                     self._data.state.s,
                     self._data.state.x_p,
-                    self._data.state.y,
-                    self._data.state.z_p,
+                    self._data.state.y_hat,
+                    self._data.state.z_hat,
                     # Outputs:
                     self._data.state.v,
                 ]
@@ -2563,115 +2434,43 @@ class APADMMDualSolver:
             # self._data.state.x.zero_()
             problem._delassus.solve(v=self._data.state.v, x=self._data.state.x)
 
-            # maxdim_np = problem.data.maxdim.numpy()[0]
-            # dim_np = problem.data.dim.numpy()[0]
-            # D_np = problem._delassus.data.D.numpy().reshape(maxdim_np, maxdim_np)[:dim_np, :dim_np].astype(np.float32)
-            # v_np = self._data.state.v.numpy()[:dim_np].astype(np.float32)
-
-            # D_np_scale = np.max(np.abs(D_np))
-            # v_np_scaled = (1.0 / D_np_scale) * v_np
-            # D_np_scaled = (1.0 / D_np_scale) * D_np
-            # D_np_scaled += np.eye(dim_np, dtype=np.float32) * (self.settings[0].eta + self.settings[0].rho_0)
-
-            # try:
-            #     # Perform Cholesky decomposition if A is positive definite
-            #     L_np = np.linalg.cholesky(D_np)
-            # except np.linalg.LinAlgError:
-            #     D_np_props = SquareSymmetricMatrixProperties(D_np)
-            #     msg.error(f"Delassus Properties:\n{D_np_props}")
-            #     break
-
-            # x_np = np.linalg.solve(D_np_scaled, v_np_scaled)
-            # x_wp = wp.from_numpy(x_np.astype(np.float32))
-            # wp.copy(self._data.state.x, x_wp)
-
-            # # Apply over-relaxation
-            # wp.launch(
-            #     kernel=_apply_overrelaxation,
-            #     dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
-            #     inputs=[
-            #         # Inputs:
-            #         problem.data.dim,
-            #         problem.data.vio,
-            #         self._data.config,
-            #         self._data.status,
-            #         self._data.state.y_p,
-            #         # Outputs:
-            #         self._data.state.x,
-            #     ]
-            # )
-
-            # # Apply over-relaxation and compute the argument to the projection operator
-            # wp.launch(
-            #     kernel=_apply_overrelaxation_and_compute_projection_argument,
-            #     dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
-            #     inputs=[
-            #         # Inputs:
-            #         problem.data.dim,
-            #         problem.data.vio,
-            #         self._data.config,
-            #         self._data.penalty,
-            #         self._data.status,
-            #         self._data.state.y_p,
-            #         self._data.state.z_p,
-            #         # Outputs:
-            #         self._data.state.x,
-            #         self._data.state.y,
-            #     ]
-            # )
+            # Apply over-relaxation and compute the argument to the projection operator
+            wp.launch(
+                kernel=_compute_projection_argument,
+                dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
+                inputs=[
+                    # Inputs:
+                    problem.data.dim,
+                    problem.data.vio,
+                    self._data.penalty,
+                    self._data.status,
+                    self._data.state.z_hat,
+                    self._data.state.x,
+                    # Outputs:
+                    self._data.state.y,
+                ]
+            )
             # msg.warning(f"[{i}]: x :\n{self._data.state.x}")
             # msg.warning(f"[{i}]: y :\n{self._data.state.y}")
 
-            # # Project to the feasible set defined by the cone K := R^{njd} x R_+^{nld} x K_{mu}^{nc}
-            # wp.launch(
-            #     kernel=_project_to_feasible_cone,
-            #     dim=(self._size.num_worlds, self._size.max_of_max_unilaterals),
-            #     inputs=[
-            #         # Inputs:
-            #         problem.data.nl,
-            #         problem.data.nc,
-            #         problem.data.cio,
-            #         problem.data.lcgo,
-            #         problem.data.ccgo,
-            #         problem.data.vio,
-            #         problem.data.mu,
-            #         self._data.status,
-            #         # Outputs:
-            #         self._data.state.y,
-            #     ]
-            # )
-            # v_f = problem.data.v_f.numpy()
-            # v = self._data.state.v.numpy()
-            # x = self._data.state.x.numpy()
-            # x_p = self._data.state.x_p.numpy()
-            # y = self._data.state.y.numpy()
-            # y_p = self._data.state.y_p.numpy()
-            # z = self._data.state.z.numpy()
-            # z_p = self._data.state.z_p.numpy()
-            # dx = x - x_p
-            # dy = y - y_p
-            # dz = z - z_p
-            # dxy = x - y
-            # dxy_p = x_p - y_p
-            # print(f"[{i}]: v_f: {np.linalg.norm(v_f)}")
-            # print(f"[{i}]: v: {np.linalg.norm(v)}")
-            # print("-----------------------------------")
-            # print(f"[{i}]: x_p: {np.linalg.norm(x_p)}")
-            # print(f"[{i}]: y_p: {np.linalg.norm(y_p)}")
-            # print(f"[{i}]: z_p: {np.linalg.norm(z_p)}")
-            # print("-----------------------------------")
-            # print(f"[{i}]: x: {np.linalg.norm(x)}")
-            # print(f"[{i}]: y: {np.linalg.norm(y)}")
-            # print(f"[{i}]: z: {np.linalg.norm(z)}")
-            # print("-----------------------------------")
-            # print(f"[{i}]: dx: {np.linalg.norm(dx)}")
-            # print(f"[{i}]: dy: {np.linalg.norm(dy)}")
-            # print(f"[{i}]: dz: {np.linalg.norm(dz)}")
-            # print("-----------------------------------")
-            # print(f"[{i}]: dxy: {np.linalg.norm(dxy)}")
-            # print(f"[{i}]: dxy_p: {np.linalg.norm(dxy_p)}")
-            # print("\n")
-
+            # Project to the feasible set defined by the cone K := R^{njd} x R_+^{nld} x K_{mu}^{nc}
+            wp.launch(
+                kernel=_project_to_feasible_cone,
+                dim=(self._size.num_worlds, self._size.max_of_max_unilaterals),
+                inputs=[
+                    # Inputs:
+                    problem.data.nl,
+                    problem.data.nc,
+                    problem.data.cio,
+                    problem.data.lcgo,
+                    problem.data.ccgo,
+                    problem.data.vio,
+                    problem.data.mu,
+                    self._data.status,
+                    # Outputs:
+                    self._data.state.y,
+                ]
+            )
             # msg.warning(f"[{i}]: y (projected):\n{self._data.state.y}\n\n\n")
 
             # Update the dual variables and compute primal-dual residuals from the current state
@@ -2687,15 +2486,16 @@ class APADMMDualSolver:
                     self._data.penalty,
                     self._data.status,
                     self._data.state.x,
-                    self._data.state.x_p,
                     self._data.state.y,
-                    self._data.state.y_p,
-                    self._data.state.z_p,
+                    self._data.state.x_p,
+                    self._data.state.y_hat,
+                    self._data.state.z_hat,
                     # Outputs:
                     self._data.state.z,
                     self._data.residuals.r_primal,
                     self._data.residuals.r_dual,
                     self._data.residuals.r_dx,
+                    self._data.residuals.r_dy,
                     self._data.residuals.r_dz,
                 ]
             )
@@ -2737,6 +2537,7 @@ class APADMMDualSolver:
                     self._data.residuals.r_dual,
                     self._data.residuals.r_compl,
                     self._data.residuals.r_dx,
+                    self._data.residuals.r_dy,
                     self._data.residuals.r_dz,
                     self._data.state.a_p,
                     # Outputs:
@@ -2756,12 +2557,14 @@ class APADMMDualSolver:
                     problem.data.vio,
                     self._data.status,
                     self._data.state.a,
+                    self._data.state.y,
+                    self._data.state.z,
                     self._data.state.a_p,
-                    self._data.state.x_p,
+                    self._data.state.y_p,
                     self._data.state.z_p,
                     # Outputs:
-                    self._data.state.x,
-                    self._data.state.z,
+                    self._data.state.y_hat,
+                    self._data.state.z_hat,
                 ]
             )
 
@@ -2793,6 +2596,7 @@ class APADMMDualSolver:
                         problem.data.v_f,
                         problem.data.D,
                         problem.data.P,
+                        self._data.state.a,
                         self._data.state.s,
                         self._data.state.x,
                         self._data.state.x_p,
@@ -2808,6 +2612,7 @@ class APADMMDualSolver:
                         self._data.info.v_plus,
                         self._data.info.v_aug,
                         self._data.info.s,
+                        self._data.info.a,
                         self._data.info.offsets,
                         self._data.info.norm_s,
                         self._data.info.norm_x,
@@ -2823,6 +2628,7 @@ class APADMMDualSolver:
                         self._data.info.r_compl,
                         self._data.info.r_pd,
                         self._data.info.r_dp,
+                        self._data.info.r_comb,
                         self._data.info.r_ncp_primal,
                         self._data.info.r_ncp_dual,
                         self._data.info.r_ncp_compl,

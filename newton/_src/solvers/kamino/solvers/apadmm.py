@@ -117,6 +117,9 @@ class APADMMStatus:
     """The total acceleration residual according to the appropriate metric norm (currently the infinity norm)."""
     r_a_p: float32
     """The total acceleration residual according to the appropriate metric norm (currently the infinity norm)."""
+    r_a_pp: float32
+    """The total acceleration residual according to the appropriate metric norm (currently the infinity norm)."""
+
     restart: int32
     """A flag indicating whether the solver has converged (1) or not (0)."""
     num_restarts: int32
@@ -421,6 +424,9 @@ class APADMMInfo:
         self.r_comb: wp.array(dtype=float32) | None = None
         """The per-solve history of PADMM combined residuals."""
 
+        self.r_comb_ratio: wp.array(dtype=float32) | None = None
+        """The per-solve history of PADMM combined residuals ratio."""
+
         self.r_ncp_primal: wp.array(dtype=float32) | None = None
         """The per-solve history of NCP primal residuals."""
 
@@ -476,6 +482,7 @@ class APADMMInfo:
         self.r_pd = wp.zeros(maxsize, dtype=float32)
         self.r_dp = wp.zeros(maxsize, dtype=float32)
         self.r_comb = wp.zeros(maxsize, dtype=float32)
+        self.r_comb_ratio = wp.zeros(maxsize, dtype=float32)
         self.r_ncp_primal = wp.zeros(maxsize, dtype=float32)
         self.r_ncp_dual = wp.zeros(maxsize, dtype=float32)
         self.r_ncp_compl = wp.zeros(maxsize, dtype=float32)
@@ -504,6 +511,7 @@ class APADMMInfo:
         self.r_pd.zero_()
         self.r_dp.zero_()
         self.r_comb.zero_()
+        self.r_comb_ratio.zero_()
         self.r_ncp_primal.zero_()
         self.r_ncp_dual.zero_()
         self.r_ncp_compl.zero_()
@@ -1209,6 +1217,7 @@ def _initialize_solver(
     s.r_dz = float(0.0)
     s.r_a = FLOAT32_MAX
     s.r_a_p = FLOAT32_MAX
+    s.r_a_pp = FLOAT32_MAX
     s.restart = int(0)
     s.num_restarts = int(0)
     solver_status[wid] = s
@@ -1822,6 +1831,7 @@ def _compute_infnorm_residuals_serially(
         # Update the acceleration variable using the formula from Goldstein et al. (2014)
         solver_state_a[wid] = (1.0 + wp.sqrt(1.0 + 4.0 * a_p * a_p)) / 2.0
         # wp.printf("[%i]: Accelerating with a_k+1: %f\n", status.iterations, solver_state_a[wid])
+    status.r_a_pp = status.r_a_p
     status.r_a_p = status.r_a
 
     # Store the updated status
@@ -1875,6 +1885,7 @@ def _update_state_with_acceleration(
 
         # Compute the current acceleration factor
         factor = (a_p - 1.0) / a
+        wp.printf("[%d]: factor: %f\n", status.iterations, factor)
 
         # Update the primal and dual variables with Nesterov acceleration
         y_hat_new = y + factor * (y - y_p)
@@ -1884,6 +1895,7 @@ def _update_state_with_acceleration(
         solver_state_y_hat[vid] = y_hat_new
         solver_state_z_hat[vid] = z_hat_new
     else:
+        wp.printf("[%d]: restart!\n", status.iterations)
         # If restarting, just copy the current states
         solver_state_y_hat[vid] = solver_state_y_p[vid]
         solver_state_z_hat[vid] = solver_state_z_p[vid]
@@ -1940,6 +1952,7 @@ def _collect_solver_convergence_info(
     solver_info_r_pd: wp.array(dtype=float32),
     solver_info_r_dp: wp.array(dtype=float32),
     solver_info_r_comb: wp.array(dtype=float32),
+    solver_info_r_comb_ratio: wp.array(dtype=float32),
     solver_info_r_ncp_primal: wp.array(dtype=float32),
     solver_info_r_ncp_dual: wp.array(dtype=float32),
     solver_info_r_ncp_compl: wp.array(dtype=float32),
@@ -2038,6 +2051,7 @@ def _collect_solver_convergence_info(
     solver_info_r_pd[iio] = r_pd
     solver_info_r_dp[iio] = r_dp
     solver_info_r_comb[iio] = status.r_a
+    solver_info_r_comb_ratio[iio] = status.r_a / (status.r_a_pp)
     solver_info_r_ncp_primal[iio] = r_ncp_p
     solver_info_r_ncp_dual[iio] = r_ncp_d
     solver_info_r_ncp_compl[iio] = r_ncp_c
@@ -2648,6 +2662,7 @@ class APADMMDualSolver:
                         self._data.info.r_pd,
                         self._data.info.r_dp,
                         self._data.info.r_comb,
+                        self._data.info.r_comb_ratio,
                         self._data.info.r_ncp_primal,
                         self._data.info.r_ncp_dual,
                         self._data.info.r_ncp_compl,

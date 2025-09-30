@@ -114,6 +114,7 @@ def save_solver_info(solver: APADMMDualSolver, path: str | None = None, verbose:
     r_pd_np = extract_info_vectors(offsets_np, solver.data.info.r_pd.numpy(), iterations)
     r_dp_np = extract_info_vectors(offsets_np, solver.data.info.r_dp.numpy(), iterations)
     r_comb_np = extract_info_vectors(offsets_np, solver.data.info.r_comb.numpy(), iterations)
+    r_comb_ratio_np = extract_info_vectors(offsets_np, solver.data.info.r_comb_ratio.numpy(), iterations)
     r_ncp_primal_np = extract_info_vectors(offsets_np, solver.data.info.r_ncp_primal.numpy(), iterations)
     r_ncp_dual_np = extract_info_vectors(offsets_np, solver.data.info.r_ncp_dual.numpy(), iterations)
     r_ncp_compl_np = extract_info_vectors(offsets_np, solver.data.info.r_ncp_compl.numpy(), iterations)
@@ -140,6 +141,7 @@ def save_solver_info(solver: APADMMDualSolver, path: str | None = None, verbose:
             print(f"solver.info.r_pd: {r_pd_np[w]}")
             print(f"solver.info.r_dp: {r_dp_np[w]}")
             print(f"solver.info.r_comb: {r_comb_np[w]}")
+            print(f"solver.info.r_comb_ratio: {r_comb_ratio_np[w]}")
             print(f"solver.info.r_ncp_primal: {r_ncp_primal_np[w]}")
             print(f"solver.info.r_ncp_dual: {r_ncp_dual_np[w]}")
             print(f"solver.info.r_ncp_compl: {r_ncp_compl_np[w]}")
@@ -165,6 +167,7 @@ def save_solver_info(solver: APADMMDualSolver, path: str | None = None, verbose:
         ("r_pd", r_pd_np),
         ("r_dp", r_dp_np),
         ("r_comb", r_comb_np),
+        ("r_comb_ratio", r_comb_ratio_np),
         ("r_ncp_primal", r_ncp_primal_np),
         ("r_ncp_dual", r_ncp_dual_np),
         ("r_ncp_compl", r_ncp_compl_np),
@@ -217,10 +220,10 @@ class TestPADMMDualSolver(unittest.TestCase):
         max_world_contacts = 12
 
         # Construct the model description using model builders for different systems
-        builder, _, _ = make_single_builder(build_func=build_box_on_plane)
+        # builder, _, _ = make_single_builder(build_func=build_box_on_plane)
         # builder, _, _ = make_single_builder(build_func=build_boxes_hinged, ground=True)
         # builder, _, _ = make_single_builder(build_func=build_boxes_nunchaku)
-        # builder, _, _ = make_single_builder(build_func=build_boxes_fourbar)
+        builder, _, _ = make_single_builder(build_func=build_boxes_fourbar)
         # builder, _, _ = make_homogeneous_builder(num_worlds=4, build_func=build_box_on_plane)
         # builder, _, _ = make_homogeneous_builder(num_worlds=4, build_func=build_boxes_hinged)
         # builder, _, _ = make_homogeneous_builder(num_worlds=4, build_func=build_boxes_nunchaku)

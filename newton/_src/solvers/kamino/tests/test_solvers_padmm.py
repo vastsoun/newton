@@ -280,16 +280,6 @@ class TestPADMMDualSolver(unittest.TestCase):
             device=self.default_device
         )
 
-        # # Optional verbose output
-        # if self.verbose:
-        #     print("\n")  # Print a newline for better readability
-        #     print_solver_summary(solver)
-        #     print("\n")  # Print a newline for better readability
-
-        # TODO:
-        # 1. Interface to set the solver parameters
-        # 2. How to make running solver only when constraints are active?
-
         # Solve the example problem
         solver.solve(problem=problem)
 
@@ -338,13 +328,6 @@ class TestPADMMDualSolver(unittest.TestCase):
                 rho_1 = np.sqrt(L * m)
                 rho_opt = rho_1 * rho_0
 
-                # # Compute the preconditioned Delassus and v_f
-                # D_p = np.diag(P_wp_np[w]) @ D @ np.diag(P_wp_np[w])
-                # v_p = np.diag(P_wp_np[w]) @ v_f_wp_np[w]
-
-                # # Regularized preconditioned Delassus
-                # D_p_reg = D_p + I_np
-
                 # TODO
                 min_P = np.min(P_wp_np[w])
                 max_P = np.max(P_wp_np[w])
@@ -372,8 +355,6 @@ class TestPADMMDualSolver(unittest.TestCase):
                 print(f"L: {L}")
                 print(f"m: {m}")
                 print(f"kappa_D: {kappa_D}")
-                # print(f"magic: {magic}")
-                # print(f"rmagic: {rmagic}")
                 print(f"rho_0: {rho_0}")
                 print(f"rho_1: {rho_1}")
                 print(f"rho_opt: {rho_opt}")
@@ -381,9 +362,6 @@ class TestPADMMDualSolver(unittest.TestCase):
                 print(f"rho_p_max: {rho_p_max}")
                 print(f"rho_p_mean: {rho_p_mean}")
                 print(f"rho_p_norm: {rho_p_norm}")
-                # print(f"D_p:\n{D_p}")
-                # print(f"D_p_reg:\n{D_p_reg}")
-                # print(f"v_p:\n{v_p}")
                 print("---------")
                 print(f"s: {s_wp_np[w]}")
                 print(f"v: {v_wp_np[w]}")
@@ -437,22 +415,6 @@ class TestPADMMDualSolver(unittest.TestCase):
         if self.savefig:
             print("Generating solver info plots...")
             save_solver_info(solver)
-
-        # # Apply the solution to the model state
-        # with wp.ScopedTimer("compute_constraint_body_wrenches", active=self.verbose):
-        #     compute_constraint_body_wrenches(
-        #         model=model,
-        #         state=state,
-        #         limits=limits,
-        #         contacts=detector.contacts._data,
-        #         jacobians=jacobians._data,
-        #         lambdas_offsets=problem.data.vio,
-        #         lambdas_data=solver.data.solution.lambdas,
-        #     )
-        # if self.verbose:
-        #     print("PADMM: model_data.bodies.w_j_i:\n", state.bodies.w_j_i.numpy())
-        #     print("PADMM: model_data.bodies.w_l_i:\n", state.bodies.w_l_i.numpy())
-        #     print("PADMM: model_data.bodies.w_c_i:\n", state.bodies.w_c_i.numpy())
 
     # def test_02_padmm_solve_boxes_hinged(self):
     #     """

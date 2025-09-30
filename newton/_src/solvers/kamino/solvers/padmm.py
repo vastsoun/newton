@@ -12,11 +12,14 @@ Notes
 ----
 - ADMM is based on the Augmented Lagrangian Method (ALM).
 - Proximal ADMM introduces an additional proximal regularization term to the optimization objective.
+- Uses (optional) over-relaxation factor to improve convergence.
+- Uses (optional) adaptive penalty updates based on the primal-dual residual balancing.
 
 References
 ----
 - [1] https://arxiv.org/abs/2504.19771
 - [2] https://arxiv.org/pdf/2405.17020
+- [3] https://onlinelibrary.wiley.com/doi/full/10.1002/nme.6693
 """
 
 import warp as wp
@@ -25,12 +28,11 @@ from enum import IntEnum
 from typing import List
 from warp.context import Devicelike
 from newton._src.solvers.kamino.core.types import int32, float32, vec3f
-from newton._src.solvers.kamino.core.math import FLOAT32_EPS, FLOAT32_MAX
-from newton._src.solvers.kamino.core.model import ModelSize, ModelData, Model
+from newton._src.solvers.kamino.core.math import FLOAT32_EPS
+from newton._src.solvers.kamino.core.model import ModelSize, Model
 from newton._src.solvers.kamino.kinematics.limits import Limits
 from newton._src.solvers.kamino.geometry.contacts import Contacts
 from newton._src.solvers.kamino.dynamics.dual import DualProblem
-import newton._src.solvers.kamino.utils.logger as msg
 
 
 ###
@@ -2087,136 +2089,6 @@ class PADMMDualSolver:
         # Compute Choleky/LDLT factorization of the Delassus matrix
         problem._delassus.factorize(reset_to_zero=True)
 
-        # ###
-        # # TODO
-        # ###
-
-        # wp.launch(
-        #     kernel=_compute_velocity_bias,
-        #     dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
-        #     inputs=[
-        #         # Inputs:
-        #         problem.data.dim,
-        #         problem.data.vio,
-        #         problem.data.v_f,
-        #         self._data.config,
-        #         self._data.penalty,
-        #         self._data.status,
-        #         self._data.state.s,
-        #         self._data.state.x_p,
-        #         self._data.state.y_p,
-        #         self._data.state.z_p,
-        #         # Outputs:
-        #         self._data.state.v,
-        #     ]
-        # )
-        # np_dtype = np.float32
-        # dim_np = problem.data.dim.numpy()[0]
-        # v_np = self._data.state.v.numpy()[:dim_np].astype(np_dtype)
-        # v_f_np = problem.data.v_f.numpy()[:dim_np].astype(np_dtype)
-        # print(f"v_f_np (init): {v_f_np}")
-        # print(f"v_np (init): {v_np}")
-        # self._data.state.x.zero_()
-        # problem._delassus.solve(v=self._data.state.v, x=self._data.state.x)
-        # x_np = self._data.state.x.numpy()[:dim_np].astype(np_dtype)
-        # print(f"x_np (init): {x_np}")
-        # wp.launch(
-        #     kernel=_apply_overrelaxation_and_compute_projection_argument,
-        #     dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
-        #     inputs=[
-        #         # Inputs:
-        #         problem.data.dim,
-        #         problem.data.vio,
-        #         self._data.config,
-        #         self._data.penalty,
-        #         self._data.status,
-        #         self._data.state.y_p,
-        #         self._data.state.z_p,
-        #         # Outputs:
-        #         self._data.state.x,
-        #         self._data.state.y,
-        #     ]
-        # )
-        # y_np = self._data.state.y.numpy()[:dim_np].astype(np_dtype)
-        # print(f"y_np (init): {y_np}")
-        # wp.launch(
-        #     kernel=_project_to_feasible_cone,
-        #     dim=(self._size.num_worlds, self._size.max_of_max_unilaterals),
-        #     inputs=[
-        #         # Inputs:
-        #         problem.data.nl,
-        #         problem.data.nc,
-        #         problem.data.cio,
-        #         problem.data.lcgo,
-        #         problem.data.ccgo,
-        #         problem.data.vio,
-        #         problem.data.mu,
-        #         self._data.status,
-        #         # Outputs:
-        #         self._data.state.y,
-        #     ]
-        # )
-        # y_np = self._data.state.y.numpy()[:dim_np].astype(np_dtype)
-        # z_np = self._data.state.z.numpy()[:dim_np].astype(np_dtype)
-        # print(f"y_np (proj): {y_np}")
-        # print(f"z_np (proj): {z_np}\n")
-
-        # # TODO:
-        # rho_0 = self.settings[0].rho_0
-        # norm_v_f_l2 = np.linalg.norm(v_f_np)
-        # norm_x_l2 = np.linalg.norm(x_np)
-        # norm_y_l2 = np.linalg.norm(y_np)
-        # norm_xmy_l2 = np.linalg.norm(x_np - y_np)
-        # norm_r0_l2 = norm_xmy_l2 / norm_y_l2
-        # norm_r1_l2 = norm_xmy_l2 / norm_x_l2
-        # alpha_l2 = norm_x_l2 / norm_y_l2
-        # r_pd_0_l2 = norm_r0_l2 / rho_0
-
-        # norm_v_f_inf = np.linalg.norm(v_f_np, ord=np.inf)
-        # norm_x_inf = np.linalg.norm(x_np, ord=np.inf)
-        # norm_y_inf = np.linalg.norm(y_np, ord=np.inf)
-        # norm_xmy_inf = np.linalg.norm(x_np - y_np, ord=np.inf)
-        # norm_r0_inf = norm_xmy_inf / norm_y_inf
-        # norm_r1_inf = norm_xmy_inf / norm_x_inf
-        # alpha_inf = norm_x_inf / norm_y_inf
-        # r_pd_0_inf = norm_r0_inf / rho_0
-
-        # print(f"rho_0 : {rho_0}\n")
-
-        # print(f"||v_f||_2 : {norm_v_f_l2}")
-        # print(f"||x||_2 : {norm_x_l2}")
-        # print(f"||y||_2 : {norm_y_l2}")
-        # print(f"||x - y||_2 : {norm_xmy_l2}")
-        # print(f"||x - y||_2 / ||y||_2 : {norm_r0_l2}")
-        # print(f"||x - y||_2 / ||x||_2 : {norm_r1_l2}")
-        # print(f"alpha_l2 = ||x||_2 / ||y||_2 : {alpha_l2}")
-        # print(f"r_pd_0_l2 = ||x - y||_2 / (rho * ||y||_2) : {r_pd_0_l2}\n")
-
-        # print(f"||v_f||_inf : {norm_v_f_inf}")
-        # print(f"||x||_inf : {norm_x_inf}")
-        # print(f"||y||_inf : {norm_y_inf}")
-        # print(f"||x - y||_inf : {norm_xmy_inf}")
-        # print(f"||x - y||_inf / ||y||_inf : {norm_r0_inf}")
-        # print(f"||x - y||_inf / ||x||_inf : {norm_r1_inf}")
-        # print(f"alpha_inf = ||x||_inf / ||y||_inf : {alpha_inf}")
-        # print(f"r_pd_0_inf = ||x - y||_inf / (rho * ||y||_inf) : {r_pd_0_inf}\n")
-
-        # # SANITY CHECK
-        # np_dtype = np.float32
-        # maxdim_np = problem.data.maxdim.numpy()[0]
-        # dim_np = problem.data.dim.numpy()[0]
-        # D_np = problem._delassus.data.D.numpy().reshape(maxdim_np, maxdim_np)[:dim_np, :dim_np].astype(np_dtype)
-        # # v_np = self._data.state.v.numpy()[:dim_np].astype(np_dtype)
-        # D_np_props = SquareSymmetricMatrixProperties(D_np)
-        # msg.info(f"Delassus Properties:\n{D_np_props}")
-        # try:
-        #     L_np = np.linalg.cholesky(D_np)
-        # except np.linalg.LinAlgError:
-        #     D_np_props = SquareSymmetricMatrixProperties(D_np)
-        #     # msg.error(f"Delassus Properties:\n{D_np_props}")
-        #     # raise ValueError("Augmented Delassus matrix is not positive definite!")
-        #     # return
-
         # Reset the solver info to zero if collection is enabled
         if self._collect_info:
             self._data.info.zero()
@@ -2278,28 +2150,6 @@ class PADMMDualSolver:
             # self._data.state.x.zero_()
             problem._delassus.solve(v=self._data.state.v, x=self._data.state.x)
 
-            # maxdim_np = problem.data.maxdim.numpy()[0]
-            # dim_np = problem.data.dim.numpy()[0]
-            # D_np = problem._delassus.data.D.numpy().reshape(maxdim_np, maxdim_np)[:dim_np, :dim_np].astype(np.float32)
-            # v_np = self._data.state.v.numpy()[:dim_np].astype(np.float32)
-
-            # D_np_scale = np.max(np.abs(D_np))
-            # v_np_scaled = (1.0 / D_np_scale) * v_np
-            # D_np_scaled = (1.0 / D_np_scale) * D_np
-            # D_np_scaled += np.eye(dim_np, dtype=np.float32) * (self.settings[0].eta + self.settings[0].rho_0)
-
-            # try:
-            #     # Perform Cholesky decomposition if A is positive definite
-            #     L_np = np.linalg.cholesky(D_np)
-            # except np.linalg.LinAlgError:
-            #     D_np_props = SquareSymmetricMatrixProperties(D_np)
-            #     msg.error(f"Delassus Properties:\n{D_np_props}")
-            #     break
-
-            # x_np = np.linalg.solve(D_np_scaled, v_np_scaled)
-            # x_wp = wp.from_numpy(x_np.astype(np.float32))
-            # wp.copy(self._data.state.x, x_wp)
-
             # Apply over-relaxation and compute the argument to the projection operator
             wp.launch(
                 kernel=_apply_overrelaxation_and_compute_projection_argument,
@@ -2339,38 +2189,6 @@ class PADMMDualSolver:
                     self._data.state.y,
                 ]
             )
-            # v_f = problem.data.v_f.numpy()
-            # v = self._data.state.v.numpy()
-            # x = self._data.state.x.numpy()
-            # x_p = self._data.state.x_p.numpy()
-            # y = self._data.state.y.numpy()
-            # y_p = self._data.state.y_p.numpy()
-            # z = self._data.state.z.numpy()
-            # z_p = self._data.state.z_p.numpy()
-            # dx = x - x_p
-            # dy = y - y_p
-            # dz = z - z_p
-            # dxy = x - y
-            # dxy_p = x_p - y_p
-            # print(f"[{i}]: v_f: {np.linalg.norm(v_f)}")
-            # print(f"[{i}]: v: {np.linalg.norm(v)}")
-            # print("-----------------------------------")
-            # print(f"[{i}]: x_p: {np.linalg.norm(x_p)}")
-            # print(f"[{i}]: y_p: {np.linalg.norm(y_p)}")
-            # print(f"[{i}]: z_p: {np.linalg.norm(z_p)}")
-            # print("-----------------------------------")
-            # print(f"[{i}]: x: {np.linalg.norm(x)}")
-            # print(f"[{i}]: y: {np.linalg.norm(y)}")
-            # print(f"[{i}]: z: {np.linalg.norm(z)}")
-            # print("-----------------------------------")
-            # print(f"[{i}]: dx: {np.linalg.norm(dx)}")
-            # print(f"[{i}]: dy: {np.linalg.norm(dy)}")
-            # print(f"[{i}]: dz: {np.linalg.norm(dz)}")
-            # print("-----------------------------------")
-            # print(f"[{i}]: dxy: {np.linalg.norm(dxy)}")
-            # print(f"[{i}]: dxy_p: {np.linalg.norm(dxy_p)}")
-            # print("\n")
-
             # msg.warning(f"[{i}]: y (projected):\n{self._data.state.y}\n\n\n")
 
             # Update the dual variables and compute primal-dual residuals from the current state
@@ -2519,7 +2337,7 @@ class PADMMDualSolver:
         # Solution post-processing
         ###
 
-        # TODO
+        # Apply the dual preconditioner to recover the final PADMM state
         wp.launch(
             kernel=_apply_dual_preconditioner_to_state,
             dim=(self._size.num_worlds, self._size.max_of_max_total_cts),

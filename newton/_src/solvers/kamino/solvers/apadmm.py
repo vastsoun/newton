@@ -6,17 +6,25 @@ Provides a forward dynamics solver for constrained rigid multi-body systems usin
 the Alternating Direction Method of Multipliers (ADMM). This implementation realizes
 the Proximal ADMM algorithm described in [1] and is based on the work of J. Carpentier
 et al in [2]. It solves the Lagrange dual of the constrained forward dynamics problem
-in constraint reactions (i.e. impulses) and post-event constraint-space velocities.
+in constraint reactions (i.e. impulses) and post-event constraint-space velocities. The
+diagonal preconditioner strategy described in [3] is also implemented to improve
+numerical conditioning. This version also incorporates Nesterov-style gradient
+acceleration with adaptive restarts based on the work of O'Donoghue and Candes in [4].
 
 Notes
 ----
 - ADMM is based on the Augmented Lagrangian Method (ALM).
 - Proximal ADMM introduces an additional proximal regularization term to the optimization objective.
+- Uses (optional) over-relaxation factor to improve convergence.
+- Uses (optional) adaptive penalty updates based on the primal-dual residual balancing.
+- Uses (optional) Nesterov-style gradient acceleration with adaptive restarts.
 
 References
 ----
 - [1] https://arxiv.org/abs/2504.19771
 - [2] https://arxiv.org/pdf/2405.17020
+- [3] https://onlinelibrary.wiley.com/doi/full/10.1002/nme.6693
+- [4] https://epubs.siam.org/doi/abs/10.1137/120896219
 """
 
 import warp as wp
@@ -26,11 +34,10 @@ from typing import List
 from warp.context import Devicelike
 from newton._src.solvers.kamino.core.types import int32, float32, vec3f
 from newton._src.solvers.kamino.core.math import FLOAT32_EPS, FLOAT32_MAX
-from newton._src.solvers.kamino.core.model import ModelSize, ModelData, Model
+from newton._src.solvers.kamino.core.model import ModelSize, Model
 from newton._src.solvers.kamino.kinematics.limits import Limits
 from newton._src.solvers.kamino.geometry.contacts import Contacts
 from newton._src.solvers.kamino.dynamics.dual import DualProblem
-import newton._src.solvers.kamino.utils.logger as msg
 
 
 ###
@@ -114,11 +121,11 @@ class APADMMStatus:
     """The L2-norm of the dual iterate residual ||(z - z_p)||_2."""
 
     r_a: float32
-    """The total acceleration residual according to the appropriate metric norm (currently the infinity norm)."""
+    """The L2 norm of the combined primal-dual residual used for acceleration restarts."""
     r_a_p: float32
-    """The total acceleration residual according to the appropriate metric norm (currently the infinity norm)."""
+    """The previous total acceleration residual."""
     r_a_pp: float32
-    """The total acceleration residual according to the appropriate metric norm (currently the infinity norm)."""
+    """The auxiliary cache of previous total acceleration residual."""
 
     restart: int32
     """A flag indicating whether the solver has converged (1) or not (0)."""
@@ -1806,8 +1813,6 @@ def _compute_infnorm_residuals_serially(
     status.r_dy = wp.sqrt(r_dy_l2_sum)
     status.r_dz = wp.sqrt(r_dz_l2_sum)
     status.r_a = rho * status.r_dy + (1.0 / rho) * status.r_dz
-    # wp.printf("[%i]: r_a_p: %f\n", status.iterations, status.r_a_p)
-    # wp.printf("[%i]: r_a: %f\n", status.iterations, status.r_a)
 
     # Check and store convergence state
     if status.iterations > 1 and \
@@ -1820,17 +1825,12 @@ def _compute_infnorm_residuals_serially(
     if status.r_a >= config.restart_tolerance * status.r_a_p:
         status.restart = 1
         status.num_restarts += 1
-        # wp.printf("[%i]: Restarting acceleration! (r_a: %f, r_a_p: %f)\n", status.iterations, status.r_a, status.r_a_p)
-        # wp.printf("[%i]: eps_r: %f\n", status.iterations, config.restart_tolerance)
         status.r_a = status.r_a_p / config.restart_tolerance
-        # wp.printf("[%i]: Restarting at r_a: %f, r_a_p: %f\n", status.iterations, status.r_a, status.r_a_p)
         solver_state_a[wid] = float(config.a_0)
     else:
         status.restart = 0
         a_p = solver_state_a_p[wid]
-        # Update the acceleration variable using the formula from Goldstein et al. (2014)
         solver_state_a[wid] = (1.0 + wp.sqrt(1.0 + 4.0 * a_p * a_p)) / 2.0
-        # wp.printf("[%i]: Accelerating with a_k+1: %f\n", status.iterations, solver_state_a[wid])
     status.r_a_pp = status.r_a_p
     status.r_a_p = status.r_a
 
@@ -1885,7 +1885,6 @@ def _update_state_with_acceleration(
 
         # Compute the current acceleration factor
         factor = (a_p - 1.0) / a
-        wp.printf("[%d]: factor: %f\n", status.iterations, factor)
 
         # Update the primal and dual variables with Nesterov acceleration
         y_hat_new = y + factor * (y - y_p)
@@ -1895,8 +1894,7 @@ def _update_state_with_acceleration(
         solver_state_y_hat[vid] = y_hat_new
         solver_state_z_hat[vid] = z_hat_new
     else:
-        wp.printf("[%d]: restart!\n", status.iterations)
-        # If restarting, just copy the current states
+        # If restarting, reset the auxiliary primal-dual state to the previous-step values
         solver_state_y_hat[vid] = solver_state_y_p[vid]
         solver_state_z_hat[vid] = solver_state_z_p[vid]
 
@@ -2688,7 +2686,7 @@ class APADMMDualSolver:
         # Solution post-processing
         ###
 
-        # TODO
+        # Apply the dual preconditioner to recover the final PADMM state
         wp.launch(
             kernel=_apply_dual_preconditioner_to_state,
             dim=(self._size.num_worlds, self._size.max_of_max_total_cts),

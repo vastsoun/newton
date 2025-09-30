@@ -3,6 +3,7 @@
 ###########################################################################
 
 from .padmm import PADMMSettings, PADMMDualSolver
+from .apadmm import APADMMSettings, APADMMDualSolver
 
 ###
 # Module interface
@@ -11,4 +12,6 @@ from .padmm import PADMMSettings, PADMMDualSolver
 __all__ = [
     "PADMMSettings",
     "PADMMDualSolver",
+    "APADMMSettings",
+    "APADMMDualSolver",
 ]

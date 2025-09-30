@@ -296,16 +296,6 @@ class TestPADMMDualSolver(unittest.TestCase):
             device=self.default_device
         )
 
-        # # Optional verbose output
-        # if self.verbose:
-        #     print("\n")  # Print a newline for better readability
-        #     print_solver_summary(solver)
-        #     print("\n")  # Print a newline for better readability
-
-        # TODO:
-        # 1. Interface to set the solver parameters
-        # 2. How to make running solver only when constraints are active?
-
         # Solve the example problem
         solver.solve(problem=problem)
 
@@ -354,13 +344,6 @@ class TestPADMMDualSolver(unittest.TestCase):
                 rho_1 = np.sqrt(L * m)
                 rho_opt = rho_1 * rho_0
 
-                # # Compute the preconditioned Delassus and v_f
-                # D_p = np.diag(P_wp_np[w]) @ D @ np.diag(P_wp_np[w])
-                # v_p = np.diag(P_wp_np[w]) @ v_f_wp_np[w]
-
-                # # Regularized preconditioned Delassus
-                # D_p_reg = D_p + I_np
-
                 # TODO
                 min_P = np.min(P_wp_np[w])
                 max_P = np.max(P_wp_np[w])
@@ -388,8 +371,6 @@ class TestPADMMDualSolver(unittest.TestCase):
                 print(f"L: {L}")
                 print(f"m: {m}")
                 print(f"kappa_D: {kappa_D}")
-                # print(f"magic: {magic}")
-                # print(f"rmagic: {rmagic}")
                 print(f"rho_0: {rho_0}")
                 print(f"rho_1: {rho_1}")
                 print(f"rho_opt: {rho_opt}")
@@ -397,9 +378,6 @@ class TestPADMMDualSolver(unittest.TestCase):
                 print(f"rho_p_max: {rho_p_max}")
                 print(f"rho_p_mean: {rho_p_mean}")
                 print(f"rho_p_norm: {rho_p_norm}")
-                # print(f"D_p:\n{D_p}")
-                # print(f"D_p_reg:\n{D_p_reg}")
-                # print(f"v_p:\n{v_p}")
                 print("---------")
                 print(f"s: {s_wp_np[w]}")
                 print(f"v: {v_wp_np[w]}")
@@ -453,283 +431,6 @@ class TestPADMMDualSolver(unittest.TestCase):
         if self.savefig:
             print("Generating solver info plots...")
             save_solver_info(solver)
-
-        # # Apply the solution to the model state
-        # with wp.ScopedTimer("compute_constraint_body_wrenches", active=self.verbose):
-        #     compute_constraint_body_wrenches(
-        #         model=model,
-        #         state=state,
-        #         limits=limits,
-        #         contacts=detector.contacts._data,
-        #         jacobians=jacobians._data,
-        #         lambdas_offsets=problem.data.vio,
-        #         lambdas_data=solver.data.solution.lambdas,
-        #     )
-        # if self.verbose:
-        #     print("PADMM: model_data.bodies.w_j_i:\n", state.bodies.w_j_i.numpy())
-        #     print("PADMM: model_data.bodies.w_l_i:\n", state.bodies.w_l_i.numpy())
-        #     print("PADMM: model_data.bodies.w_c_i:\n", state.bodies.w_c_i.numpy())
-
-    # def test_02_padmm_solve_boxes_hinged(self):
-    #     """
-    #     Tests the Proximal ADMM solver on a simple box-on-plane problem with four contacts and the body at rest and undisturbed.
-    #     """
-    #     # Model constants
-    #     max_world_contacts = 12
-
-    #     # Construct the model description using model builders for different systems
-    #     builder, _, _ = make_single_builder(build_func=build_box_on_plane)
-    #     # builder, _, _ = make_single_builder(build_func=build_boxes_hinged)
-    #     # builder, _, _ = make_single_builder(build_func=build_boxes_nunchaku)
-    #     # builder, _, _ = make_single_builder(build_func=build_boxes_fourbar)
-    #     # builder, _, _ = make_homogeneous_builder(num_worlds=4, build_func=build_box_on_plane)
-    #     # builder, _, _ = make_homogeneous_builder(num_worlds=4, build_func=build_boxes_hinged)
-    #     # builder, _, _ = make_homogeneous_builder(num_worlds=4, build_func=build_boxes_nunchaku)
-    #     # builder, _, _ = make_homogeneous_builder(num_worlds=4, build_func=build_boxes_fourbar)
-    #     # builder, _, _ = make_heterogeneous_builder()
-
-    #     # Define parameter ranges
-    #     # u_0_range = np.linspace(0.1, 10.0, 10, dtype=float)
-    #     # rho_0_range = np.linspace(0.1, 10.0, 10, dtype=float)
-    #     u_0_range = np.linspace(0.1, 5.0, int((5.0 - 0.1)/0.1) + 1, dtype=float)
-    #     rho_0_range = np.linspace(0.01, 5.0, int((5.0 - 0.01)/0.01) + 1, dtype=float)
-    #     # n_u_0 = 100
-    #     # n_u_0 = 50
-    #     # u_0_range = np.linspace(1.0, 50.0, n_u_0, dtype=float)
-    #     # rho_0_range = np.linspace(1.0, 20.0, int((20.0 - 1.0)/0.1) + 1, dtype=float)
-    #     # n_u_0 = 100
-    #     # u_0_range = np.linspace(1.0, 100.0, n_u_0, dtype=float)
-    #     # rho_0_range = np.linspace(0.01, 20.0, int((20.0 - 0.01)/0.01) + 1, dtype=float)
-
-    #     # Prepare storage for results
-    #     n_u_0 = u_0_range.shape[0]
-    #     n_rho = rho_0_range.shape[0]
-    #     v_f_norm = np.zeros((n_u_0,), dtype=float)
-    #     r_pd_min_norm = np.zeros((n_u_0, n_rho), dtype=float)
-    #     r_pd_max_norm = np.zeros((n_u_0, n_rho), dtype=float)
-    #     r_pd_mean_norm = np.zeros((n_u_0, n_rho), dtype=float)
-    #     r_p_final_norm = np.zeros((n_u_0, n_rho), dtype=float)
-    #     r_d_final_norm = np.zeros((n_u_0, n_rho), dtype=float)
-    #     r_c_final_norm = np.zeros((n_u_0, n_rho), dtype=float)
-    #     iterations = np.zeros((n_u_0, n_rho), dtype=int)
-    #     print("u_0_range:\n", u_0_range)
-    #     print("rho_0_range:\n", rho_0_range)
-
-    #     #
-    #     for i in range(n_u_0):
-    #         for j in range(n_rho):
-    #             # Set ad-hoc configurations
-    #             builder.gravity.enabled = True
-    #             for b in builder.bodies:
-    #                 b.u_i_0 = screw(vec3f(u_0_range[i], 0.0, 0.0), vec3f(0.0, 0.0, 0.0))
-
-    #             # Create the model and containers from the builder
-    #             model, state, limits, detector, jacobians = make_containers(
-    #                 builder=builder,
-    #                 max_world_contacts=max_world_contacts,
-    #                 device=self.default_device
-    #             )
-
-    #             # Update the containers
-    #             update_containers(model=model, state=state, limits=limits, detector=detector, jacobians=jacobians)
-
-    #             # Create the Delassus operator
-    #             problem = DualProblem(
-    #                 model=model,
-    #                 state=state,
-    #                 limits=limits,
-    #                 contacts=detector.contacts,
-    #                 factorizer=SequentialCholeskyFactorizer,
-    #                 device=self.default_device
-    #             )
-
-    #             # Build the dual problem
-    #             problem.build(
-    #                 model=model,
-    #                 state=state,
-    #                 limits=limits.data,
-    #                 contacts=detector.contacts.data,
-    #                 jacobians=jacobians.data
-    #             )
-
-    #             # Define custom solver settings
-    #             settings = PADMMSettings()
-    #             settings.primal_tolerance = 1e-6
-    #             settings.dual_tolerance = 1e-6
-    #             settings.compl_tolerance = 1e-6
-    #             settings.eta = 1e-5
-    #             settings.rho_0 = rho_0_range[j]
-    #             settings.max_iterations = 500
-
-    #             # Create the ADMM solver
-    #             solver = PADMMDualSolver(
-    #                 model=model,
-    #                 limits=limits,
-    #                 contacts=detector.contacts,
-    #                 settings=settings,
-    #                 collect_info=True,
-    #                 device=self.default_device
-    #             )
-
-    #             # Solve the example problem
-    #             solver.solve(problem=problem)
-
-    #             # Extract numpy arrays from the solver state and solution
-    #             only_active_dims = True
-    #             status = solver.data.status.numpy()
-    #             iters_ij = status[0][1]
-    #             v_f_wp_np = extract_problem_vector(problem.delassus, problem.data.v_f.numpy(), only_active_dims=only_active_dims)
-    #             r_p_info_np = solver.data.info.r_primal.numpy()[:iters_ij]
-    #             r_d_info_np = solver.data.info.r_dual.numpy()[:iters_ij]
-    #             # print(f"[i={i}, j={j}] iters_ij: {iters_ij}")
-    #             # print(f"[i={i}, j={j}] r_p_info_np: {r_p_info_np}")
-    #             # print(f"[i={i}, j={j}] r_d_info_np: {r_d_info_np}")
-    #             r_pd_info_np = np.divide(
-    #                 r_p_info_np,
-    #                 r_d_info_np,
-    #                 out=np.full_like(r_p_info_np, np.inf, dtype=float),
-    #                 where=r_d_info_np > np.finfo(float).eps
-    #             )
-    #             # print(f"[i={i}, j={j}] r_pd_info_np: {r_pd_info_np}\n\n")
-
-    #             # Store results
-    #             r_pd_min_norm[i][j] = np.min(r_pd_info_np)
-    #             r_pd_max_norm[i][j] = np.max(r_pd_info_np)
-    #             r_pd_mean_norm[i][j] = np.mean(r_pd_info_np)
-    #             r_p_final_norm[i][j] = status[0][2]
-    #             r_d_final_norm[i][j] = status[0][3]
-    #             r_c_final_norm[i][j] = status[0][4]
-    #             iterations[i][j] = iters_ij
-
-    #             # Capture v_f norm (same for all j)
-    #             v_f_norm[i] = np.linalg.norm(v_f_wp_np[0])
-
-    #     # Print matrices
-    #     print("v_f_norm:\n", v_f_norm)
-    #     # print("iterations:\n", iterations)
-    #     # print("r_pd_min_norm:\n", r_pd_min_norm)
-    #     # print("r_pd_max_norm:\n", r_pd_max_norm)
-    #     # print("r_pd_mean_norm:\n", r_pd_mean_norm)
-
-    #     # Find the smallest value iterations for each value of rho_0
-    #     best_iterations = np.min(iterations, axis=1)
-    #     best_indices = np.argmin(iterations, axis=1)
-    #     print(f"best_iterations:\n{best_iterations}")
-    #     print(f"best_indices:\n{best_indices}")
-
-    #     # rho_0 value (column) that yielded the minimal iterations for each u_0 (row)
-    #     best_rho_0 = np.take(rho_0_range, best_indices)
-    #     best_r_pd_min_norm = np.take(r_pd_min_norm, best_indices)
-    #     best_r_pd_max_norm = np.take(r_pd_max_norm, best_indices)
-    #     print(f"best_rho_0:\n{best_rho_0}\n")
-
-    #     print(f"Best avg rho_0: {np.mean(best_rho_0)}")
-    #     print(f"Best rho_0 in: [{np.min(best_rho_0)}, {np.max(best_rho_0)}]")
-    #     print(f"Best rho_0 has r_pd in: [{np.min(best_r_pd_min_norm)}, {np.max(best_r_pd_max_norm)}]")
-
-    #     # print(f"iterations:\n{iterations}")
-    #     # print(f"r_p_final_norm:\n{r_p_final_norm}")
-    #     # print(f"r_d_final_norm:\n{r_d_final_norm}")
-    #     # print(f"r_c_final_norm:\n{r_c_final_norm}")
-    #     # print(f"r_pd_min_norm:\n{r_pd_min_norm}")
-    #     # print(f"r_pd_max_norm:\n{r_pd_max_norm}")
-    #     # print(f"r_pd_mean_norm:\n{r_pd_mean_norm}")
-
-    #     # Create 2D heatmap plot with X=v_f_norm, Y=rho_0, Z=iterations
-    #     plt.figure(figsize=(10, 8))
-    #     plt.imshow(iterations.T, origin='lower', aspect='auto', extent=[v_f_norm[0], v_f_norm[-1], rho_0_range[0], rho_0_range[-1]], cmap='viridis')
-    #     plt.colorbar(label='Iterations to Converge')
-    #     plt.scatter(v_f_norm, best_rho_0, color='red', label='Best rho_0 per v_f', marker='x')
-    #     plt.xlabel('Free-velocity L2 Norm (v_f)')
-    #     plt.ylabel('ADMM Penalty Parameter (rho_0)')
-    #     plt.title('PADMM Solver Convergence Analysis')
-    #     plt.legend()
-    #     plt.grid(False)
-    #     if self.savefig:
-    #         plt.savefig(os.path.dirname(os.path.realpath(__file__)) + "/data/padmm_solver_rho0_v_f_heatmap_iters.pdf", format="pdf", dpi=300, bbox_inches="tight")
-    #     if self.verbose:
-    #         plt.show()
-    #     plt.close()
-
-    #     # Create 2D heatmap plot with X=v_f_norm, Y=rho_0, Z=r_p_norm
-    #     plt.figure(figsize=(10, 8))
-    #     plt.imshow(np.log10(r_p_final_norm).T, origin='lower', aspect='auto', extent=[v_f_norm[0], v_f_norm[-1], rho_0_range[0], rho_0_range[-1]], cmap='viridis')
-    #     plt.colorbar(label='Final Primal Residual Norm')
-    #     plt.scatter(v_f_norm, best_rho_0, color='red', label='Best rho_0 per v_f', marker='x')
-    #     plt.xlabel('Free-velocity L2 Norm (v_f)')
-    #     plt.ylabel('ADMM Penalty Parameter (rho_0)')
-    #     plt.title('PADMM Solver Primal Residual Analysis')
-    #     plt.legend()
-    #     plt.grid(False)
-    #     if self.savefig:
-    #         plt.savefig(os.path.dirname(os.path.realpath(__file__)) + "/data/padmm_solver_rho0_v_f_r_p_heatmap.pdf", format="pdf", dpi=300, bbox_inches="tight")
-    #     if self.verbose:
-    #         plt.show()
-    #     plt.close()
-
-    #     # Create 2D heatmap plot with X=v_f_norm, Y=rho_0, Z=r_d_norm
-    #     plt.figure(figsize=(10, 8))
-    #     plt.imshow(np.log10(r_d_final_norm).T, origin='lower', aspect='auto', extent=[v_f_norm[0], v_f_norm[-1], rho_0_range[0], rho_0_range[-1]], cmap='viridis')
-    #     plt.colorbar(label='Final Dual Residual Norm')
-    #     plt.scatter(v_f_norm, best_rho_0, color='red', label='Best rho_0 per v_f', marker='x')
-    #     plt.xlabel('Free-velocity L2 Norm (v_f)')
-    #     plt.ylabel('ADMM Penalty Parameter (rho_0)')
-    #     plt.title('PADMM Solver Dual Residual Analysis')
-    #     plt.legend()
-    #     plt.grid(False)
-    #     if self.savefig:
-    #         plt.savefig(os.path.dirname(os.path.realpath(__file__)) + "/data/padmm_solver_rho0_v_f_r_d_heatmap.pdf", format="pdf", dpi=300, bbox_inches="tight")
-    #     if self.verbose:
-    #         plt.show()
-    #     plt.close()
-
-    #     # Create 2D heatmap plot with X=v_f_norm, Y=rho_0, Z=r_pd_min_norm
-    #     plt.figure(figsize=(10, 8))
-    #     plt.imshow(np.log10(r_pd_min_norm).T, origin='lower', aspect='auto', extent=[v_f_norm[0], v_f_norm[-1], rho_0_range[0], rho_0_range[-1]], cmap='viridis')
-    #     plt.colorbar(label='Min Primal/Dual Residual Ratio')
-    #     plt.scatter(v_f_norm, best_rho_0, color='red', label='Best rho_0 per v_f', marker='x')
-    #     plt.xlabel('Free-velocity L2 Norm (v_f)')
-    #     plt.ylabel('ADMM Penalty Parameter (rho_0)')
-    #     plt.title('PADMM Solver Min Primal-Dual Residual Ratio Analysis')
-    #     plt.legend()
-    #     plt.grid(False)
-    #     if self.savefig:
-    #         plt.savefig(os.path.dirname(os.path.realpath(__file__)) + "/data/padmm_solver_rho0_v_f_r_pd_min_heatmap.pdf", format="pdf", dpi=300, bbox_inches="tight")
-    #     if self.verbose:
-    #         plt.show()
-    #     plt.close()
-
-    #     # Create 2D heatmap plot with X=v_f_norm, Y=rho_0, Z=r_pd_max_norm
-    #     plt.figure(figsize=(10, 8))
-    #     plt.imshow(np.log10(r_pd_max_norm).T, origin='lower', aspect='auto', extent=[v_f_norm[0], v_f_norm[-1], rho_0_range[0], rho_0_range[-1]], cmap='viridis')
-    #     plt.colorbar(label='Max Primal/Dual Residual Ratio')
-    #     plt.scatter(v_f_norm, best_rho_0, color='red', label='Best rho_0 per v_f', marker='x')
-    #     plt.xlabel('Free-velocity L2 Norm (v_f)')
-    #     plt.ylabel('ADMM Penalty Parameter (rho_0)')
-    #     plt.title('PADMM Solver Max Primal-Dual Residual Ratio Analysis')
-    #     plt.legend()
-    #     plt.grid(False)
-    #     if self.savefig:
-    #         plt.savefig(os.path.dirname(os.path.realpath(__file__)) + "/data/padmm_solver_rho0_v_f_r_pd_max_heatmap.pdf", format="pdf", dpi=300, bbox_inches="tight")
-    #     if self.verbose:
-    #         plt.show()
-    #     plt.close()
-
-    #     # Create 2D heatmap plot with X=v_f_norm, Y=rho_0, Z=r_pd_mean_norm
-    #     plt.figure(figsize=(10, 8))
-    #     plt.imshow(np.log10(r_pd_mean_norm).T, origin='lower', aspect='auto', extent=[v_f_norm[0], v_f_norm[-1], rho_0_range[0], rho_0_range[-1]], cmap='viridis')
-    #     plt.colorbar(label='Mean Primal/Dual Residual Ratio')
-    #     plt.scatter(v_f_norm, best_rho_0, color='red', label='Best rho_0 per v_f', marker='x')
-    #     plt.xlabel('Free-velocity L2 Norm (v_f)')
-    #     plt.ylabel('ADMM Penalty Parameter (rho_0)')
-    #     plt.title('PADMM Solver Mean Primal-Dual Residual Ratio Analysis')
-    #     plt.legend()
-    #     plt.grid(False)
-    #     if self.savefig:
-    #         plt.savefig(os.path.dirname(os.path.realpath(__file__)) + "/data/padmm_solver_rho0_v_f_r_pd_mean_heatmap.pdf", format="pdf", dpi=300, bbox_inches="tight")
-    #     if self.verbose:
-    #         plt.show()
-    #     plt.close()
 
 
 ###

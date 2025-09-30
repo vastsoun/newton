@@ -1378,7 +1378,7 @@ class DualProblem:
             reset_to_zero=reset_to_zero,
         )
 
-        # TODO: remove this later
+        # TODO: make this optional
         # Build the non-linear generalized force vector
         build_nonlinear_generalized_force(model, state, self._data)
 
@@ -1409,13 +1409,6 @@ class DualProblem:
             ],
         )
 
-        # # Build and apply the Delassus diagonal preconditioner
-        # maxncts = self.data.maxdim.numpy()[0]
-        # ncts = self.data.dim.numpy()[0]
-        # print("Raw v: ", np.linalg.norm(self.data.v_f.numpy()[:ncts]))
-        # print("Raw D: ", np.linalg.norm(self.data.D.numpy().reshape((maxncts, maxncts))[:ncts, :ncts]))
+        # Build and apply the Delassus diagonal preconditioner
         build_dual_preconditioner(self)
         apply_dual_preconditioner_to_dual(self)
-        # print("Preconditioner P: ", np.linalg.norm(self.data.P.numpy()[:ncts]))
-        # print("Preconditioner v: ", np.linalg.norm(self.data.v_f.numpy()[:ncts]))
-        # print("Preconditioner D: ", np.linalg.norm(self.data.D.numpy().reshape((maxncts, maxncts))[:ncts, :ncts]))

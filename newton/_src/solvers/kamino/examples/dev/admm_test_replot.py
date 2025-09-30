@@ -44,10 +44,10 @@ PROBLEM_NAME = "walker"
 # PROBLEM_CATEGORY = None
 # PROBLEM_CATEGORY = "IndependentJoints"
 # PROBLEM_CATEGORY = "RedundantJoints"
-PROBLEM_CATEGORY = "SingleContact"
+# PROBLEM_CATEGORY = "SingleContact"
 # PROBLEM_CATEGORY = "SparseContacts"
 # PROBLEM_CATEGORY = "DenseContacts"
-# PROBLEM_CATEGORY = "DenseConstraints"
+PROBLEM_CATEGORY = "DenseConstraints"
 
 
 # Retrieve the path to the data directory

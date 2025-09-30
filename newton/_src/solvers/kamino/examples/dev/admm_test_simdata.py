@@ -100,8 +100,8 @@ if __name__ == "__main__":
 
     # CONFIGURATIONS
     sample: bool = True
-    dataset: bool = False
-    profiles: bool = False
+    dataset: bool = True
+    profiles: bool = True
 
     # Revise the root output path to replace 'None' with 'all'
     BENCHMARK_OUTPUT_PATH = BENCHMARK_OUTPUT_PATH.replace("None", "all")

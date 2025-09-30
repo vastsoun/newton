@@ -207,7 +207,7 @@ class TestPADMMDualSolver(unittest.TestCase):
     def setUp(self):
         self.verbose = True  # Set to True for detailed output
         self.savefig = True  # Set to True to generate solver info plots
-        self.default_device = wp.get_device()
+        self.default_device = wp.get_device("cuda:0")
 
     def tearDown(self):
         self.default_device = None
@@ -236,196 +236,198 @@ class TestPADMMDualSolver(unittest.TestCase):
         for body in builder.bodies:
             body.u_i_0 = u_0
 
-        # Create the model and containers from the builder
-        model, state, limits, detector, jacobians = make_containers(
-            builder=builder,
-            max_world_contacts=max_world_contacts,
-            device=self.default_device
-        )
+        # Launch the entire test within the device scope
+        with wp.ScopedDevice(self.default_device):
+            # Create the model and containers from the builder
+            model, state, limits, detector, jacobians = make_containers(
+                builder=builder,
+                max_world_contacts=max_world_contacts,
+                device=self.default_device
+            )
 
-        # Update the containers
-        update_containers(model=model, state=state, limits=limits, detector=detector, jacobians=jacobians)
-        if self.verbose:
-            print("\n")  # Print a newline for better readability
-            print_model_info(model)
-            print("\n")  # Print a newline for better readability
+            # Update the containers
+            update_containers(model=model, state=state, limits=limits, detector=detector, jacobians=jacobians)
+            if self.verbose:
+                print("\n")  # Print a newline for better readability
+                print_model_info(model)
+                print("\n")  # Print a newline for better readability
 
-        # Create the Delassus operator
-        problem = DualProblem(
-            model=model,
-            state=state,
-            limits=limits,
-            contacts=detector.contacts,
-            factorizer=SequentialCholeskyFactorizer,
-            device=self.default_device
-        )
+            # Create the Delassus operator
+            problem = DualProblem(
+                model=model,
+                state=state,
+                limits=limits,
+                contacts=detector.contacts,
+                factorizer=SequentialCholeskyFactorizer,
+                device=self.default_device
+            )
 
-        # Build the dual problem
-        problem.build(
-            model=model,
-            state=state,
-            limits=limits.data,
-            contacts=detector.contacts.data,
-            jacobians=jacobians.data
-        )
+            # Build the dual problem
+            problem.build(
+                model=model,
+                state=state,
+                limits=limits.data,
+                contacts=detector.contacts.data,
+                jacobians=jacobians.data
+            )
 
-        # Optional verbose output
-        if self.verbose:
-            print("\n")  # Print a newline for better readability
-            print_problem_summary(problem)
-            print("\n")  # Print a newline for better readability
+            # Optional verbose output
+            if self.verbose:
+                print("\n")  # Print a newline for better readability
+                print_problem_summary(problem)
+                print("\n")  # Print a newline for better readability
 
-        # Define custom solver settings
-        settings = APADMMSettings()
-        settings.primal_tolerance = 1e-6
-        settings.dual_tolerance = 1e-6
-        settings.compl_tolerance = 1e-6
-        settings.restart_tolerance = 0.999
-        settings.eta = 1e-5
-        settings.rho_0 = 1.0  # 9.7  # 2.7
-        settings.omega = 1.0  # 1.99
-        settings.max_iterations = 500
+            # Define custom solver settings
+            settings = APADMMSettings()
+            settings.primal_tolerance = 1e-6
+            settings.dual_tolerance = 1e-6
+            settings.compl_tolerance = 1e-6
+            settings.restart_tolerance = 0.999
+            settings.eta = 1e-5
+            settings.rho_0 = 1.0  # 9.7  # 2.7
+            settings.omega = 1.0  # 1.99
+            settings.max_iterations = 150
 
-        # Create the ADMM solver
-        solver = APADMMDualSolver(
-            model=model,
-            limits=limits,
-            contacts=detector.contacts,
-            settings=settings,
-            collect_info=True,
-            device=self.default_device
-        )
+            # Create the ADMM solver
+            solver = APADMMDualSolver(
+                model=model,
+                limits=limits,
+                contacts=detector.contacts,
+                settings=settings,
+                collect_info=True,
+                device=self.default_device
+            )
 
-        # Solve the example problem
-        solver.solve(problem=problem)
+            # Solve the example problem
+            solver.solve(problem=problem)
 
-        # Extract numpy arrays from the solver state and solution
-        only_active_dims = True
-        D_wp_np = extract_delassus(problem.delassus, only_active_dims=only_active_dims)
-        v_i_wp_np = extract_problem_vector(problem.delassus, problem.data.v_i.numpy(), only_active_dims=only_active_dims)
-        v_b_wp_np = extract_problem_vector(problem.delassus, problem.data.v_b.numpy(), only_active_dims=only_active_dims)
-        v_f_wp_np = extract_problem_vector(problem.delassus, problem.data.v_f.numpy(), only_active_dims=only_active_dims)
-        P_wp_np = extract_problem_vector(problem.delassus, problem.data.P.numpy(), only_active_dims=only_active_dims)
-        s_wp_np = extract_problem_vector(problem.delassus, solver.data.state.s.numpy(), only_active_dims=only_active_dims)
-        v_wp_np = extract_problem_vector(problem.delassus, solver.data.state.v.numpy(), only_active_dims=only_active_dims)
-        x_wp_np = extract_problem_vector(problem.delassus, solver.data.state.x.numpy(), only_active_dims=only_active_dims)
-        y_wp_np = extract_problem_vector(problem.delassus, solver.data.state.y.numpy(), only_active_dims=only_active_dims)
-        z_wp_np = extract_problem_vector(problem.delassus, solver.data.state.z.numpy(), only_active_dims=only_active_dims)
-        v_plus_wp_np = extract_problem_vector(problem.delassus, solver.data.solution.v_plus.numpy(), only_active_dims=only_active_dims)
-        lambdas_wp_np = extract_problem_vector(problem.delassus, solver.data.solution.lambdas.numpy(), only_active_dims=only_active_dims)
-        r_primal_wp_np = extract_problem_vector(problem.delassus, solver.data.residuals.r_primal.numpy(), only_active_dims=only_active_dims)
-        r_dual_wp_np = extract_problem_vector(problem.delassus, solver.data.residuals.r_dual.numpy(), only_active_dims=only_active_dims)
-        r_compl_wp_np = extract_problem_vector(problem.delassus, solver.data.residuals.r_compl.numpy(), only_active_dims=only_active_dims)
+            # Extract numpy arrays from the solver state and solution
+            only_active_dims = True
+            D_wp_np = extract_delassus(problem.delassus, only_active_dims=only_active_dims)
+            v_i_wp_np = extract_problem_vector(problem.delassus, problem.data.v_i.numpy(), only_active_dims=only_active_dims)
+            v_b_wp_np = extract_problem_vector(problem.delassus, problem.data.v_b.numpy(), only_active_dims=only_active_dims)
+            v_f_wp_np = extract_problem_vector(problem.delassus, problem.data.v_f.numpy(), only_active_dims=only_active_dims)
+            P_wp_np = extract_problem_vector(problem.delassus, problem.data.P.numpy(), only_active_dims=only_active_dims)
+            s_wp_np = extract_problem_vector(problem.delassus, solver.data.state.s.numpy(), only_active_dims=only_active_dims)
+            v_wp_np = extract_problem_vector(problem.delassus, solver.data.state.v.numpy(), only_active_dims=only_active_dims)
+            x_wp_np = extract_problem_vector(problem.delassus, solver.data.state.x.numpy(), only_active_dims=only_active_dims)
+            y_wp_np = extract_problem_vector(problem.delassus, solver.data.state.y.numpy(), only_active_dims=only_active_dims)
+            z_wp_np = extract_problem_vector(problem.delassus, solver.data.state.z.numpy(), only_active_dims=only_active_dims)
+            v_plus_wp_np = extract_problem_vector(problem.delassus, solver.data.solution.v_plus.numpy(), only_active_dims=only_active_dims)
+            lambdas_wp_np = extract_problem_vector(problem.delassus, solver.data.solution.lambdas.numpy(), only_active_dims=only_active_dims)
+            r_primal_wp_np = extract_problem_vector(problem.delassus, solver.data.residuals.r_primal.numpy(), only_active_dims=only_active_dims)
+            r_dual_wp_np = extract_problem_vector(problem.delassus, solver.data.residuals.r_dual.numpy(), only_active_dims=only_active_dims)
+            r_compl_wp_np = extract_problem_vector(problem.delassus, solver.data.residuals.r_compl.numpy(), only_active_dims=only_active_dims)
 
-        # Retrieve the number of worlds in the model
-        nw = model.info.num_worlds
+            # Retrieve the number of worlds in the model
+            nw = model.info.num_worlds
 
-        # Optional verbose output
-        if self.verbose:
-            status = solver.data.status.numpy()
-            print("\n")  # Print a newline for better readability
-            for w in range(nw):
-                # Reconstruct the ADMM regularization matrix
-                dtype = D_wp_np[w].dtype
+            # Optional verbose output
+            if self.verbose:
+                status = solver.data.status.numpy()
+                print("\n")  # Print a newline for better readability
+                for w in range(nw):
+                    # Reconstruct the ADMM regularization matrix
+                    dtype = D_wp_np[w].dtype
 
-                # Recover D from D_reg
-                I_np = dtype.type(settings.eta + settings.rho_0) * np.eye(D_wp_np[w].shape[0], dtype=dtype)
-                D = D_wp_np[w] - I_np
+                    # Recover D from D_reg
+                    I_np = dtype.type(settings.eta + settings.rho_0) * np.eye(D_wp_np[w].shape[0], dtype=dtype)
+                    D = D_wp_np[w] - I_np
 
-                # eigevalues of preconditioned D
-                norm_v_f = np.linalg.norm(v_f_wp_np[w])
-                eigvals = np.linalg.eigvalsh(D)
-                eig_min = np.min(eigvals)
-                eig_max = np.max(eigvals)
-                L = eig_max + settings.eta
-                m = max(eig_min, 0.0) + settings.eta
-                kappa_D = L / m
-                rho_0 = np.pow(kappa_D, 1.0)
-                rho_1 = np.sqrt(L * m)
-                rho_opt = rho_1 * rho_0
+                    # eigevalues of preconditioned D
+                    norm_v_f = np.linalg.norm(v_f_wp_np[w])
+                    eigvals = np.linalg.eigvalsh(D)
+                    eig_min = np.min(eigvals)
+                    eig_max = np.max(eigvals)
+                    L = eig_max + settings.eta
+                    m = max(eig_min, 0.0) + settings.eta
+                    kappa_D = L / m
+                    rho_0 = np.pow(kappa_D, 1.0)
+                    rho_1 = np.sqrt(L * m)
+                    rho_opt = rho_1 * rho_0
 
-                # TODO
-                min_P = np.min(P_wp_np[w])
-                max_P = np.max(P_wp_np[w])
-                mean_P = np.mean(P_wp_np[w])
-                norm_P = np.linalg.norm(P_wp_np[w])
-                rho_p_min = settings.rho_0 / (min_P * min_P)
-                rho_p_max = settings.rho_0 / (max_P * max_P)
-                rho_p_mean = settings.rho_0 / (mean_P * mean_P)
-                rho_p_norm = settings.rho_0 / (norm_P * norm_P)
-                # Print all solver data
-                print(f"[World {w}] =======================================================================")
-                print(f"D_reg:\n{D_wp_np[w]}")
-                print(f"D:\n{D}")
-                print(f"v_i:\n{v_i_wp_np[w]}")
-                print(f"v_b:\n{v_b_wp_np[w]}")
-                print(f"v_f:\n{v_f_wp_np[w]}")
-                print(f"P:\n{P_wp_np[w]}")
-                print(f"norm_v_f: {norm_v_f}")
-                print(f"min(P): {min_P}")
-                print(f"max(P): {max_P}")
-                print(f"mean(P): {mean_P}")
-                print(f"norm(P): {norm_P}")
-                print(f"eig_max: {eig_max}")
-                print(f"eig_min: {eig_min}")
-                print(f"L: {L}")
-                print(f"m: {m}")
-                print(f"kappa_D: {kappa_D}")
-                print(f"rho_0: {rho_0}")
-                print(f"rho_1: {rho_1}")
-                print(f"rho_opt: {rho_opt}")
-                print(f"rho_p_min: {rho_p_min}")
-                print(f"rho_p_max: {rho_p_max}")
-                print(f"rho_p_mean: {rho_p_mean}")
-                print(f"rho_p_norm: {rho_p_norm}")
-                print("---------")
-                print(f"s: {s_wp_np[w]}")
-                print(f"v: {v_wp_np[w]}")
-                print(f"x: {x_wp_np[w]}")
-                print(f"y: {y_wp_np[w]}")
-                print(f"z: {z_wp_np[w]}")
-                print("---------")
-                print(f" v_plus: {v_plus_wp_np[w]}")
-                print(f"lambdas: {lambdas_wp_np[w]}")
-                print("---------")
-                print(f"r_primal: {r_primal_wp_np[w]}")
-                print(f"  r_dual: {r_dual_wp_np[w]}")
-                print(f" r_compl: {r_compl_wp_np[w]}")
-                print("---------")
-                print(f"iterations: {status[w][1]}")
-                print(f"converged: {status[w][0]}")
-                print(f"r_p: {status[w][2]}")
-                print(f"r_d: {status[w][3]}")
-                print(f"r_c: {status[w][4]}")
-            print("\n")  # Print a newline for better readability
+                    # TODO
+                    min_P = np.min(P_wp_np[w])
+                    max_P = np.max(P_wp_np[w])
+                    mean_P = np.mean(P_wp_np[w])
+                    norm_P = np.linalg.norm(P_wp_np[w])
+                    rho_p_min = settings.rho_0 / (min_P * min_P)
+                    rho_p_max = settings.rho_0 / (max_P * max_P)
+                    rho_p_mean = settings.rho_0 / (mean_P * mean_P)
+                    rho_p_norm = settings.rho_0 / (norm_P * norm_P)
+                    # Print all solver data
+                    print(f"[World {w}] =======================================================================")
+                    print(f"D_reg:\n{D_wp_np[w]}")
+                    print(f"D:\n{D}")
+                    print(f"v_i:\n{v_i_wp_np[w]}")
+                    print(f"v_b:\n{v_b_wp_np[w]}")
+                    print(f"v_f:\n{v_f_wp_np[w]}")
+                    print(f"P:\n{P_wp_np[w]}")
+                    print(f"norm_v_f: {norm_v_f}")
+                    print(f"min(P): {min_P}")
+                    print(f"max(P): {max_P}")
+                    print(f"mean(P): {mean_P}")
+                    print(f"norm(P): {norm_P}")
+                    print(f"eig_max: {eig_max}")
+                    print(f"eig_min: {eig_min}")
+                    print(f"L: {L}")
+                    print(f"m: {m}")
+                    print(f"kappa_D: {kappa_D}")
+                    print(f"rho_0: {rho_0}")
+                    print(f"rho_1: {rho_1}")
+                    print(f"rho_opt: {rho_opt}")
+                    print(f"rho_p_min: {rho_p_min}")
+                    print(f"rho_p_max: {rho_p_max}")
+                    print(f"rho_p_mean: {rho_p_mean}")
+                    print(f"rho_p_norm: {rho_p_norm}")
+                    print("---------")
+                    print(f"s: {s_wp_np[w]}")
+                    print(f"v: {v_wp_np[w]}")
+                    print(f"x: {x_wp_np[w]}")
+                    print(f"y: {y_wp_np[w]}")
+                    print(f"z: {z_wp_np[w]}")
+                    print("---------")
+                    print(f" v_plus: {v_plus_wp_np[w]}")
+                    print(f"lambdas: {lambdas_wp_np[w]}")
+                    print("---------")
+                    print(f"r_primal: {r_primal_wp_np[w]}")
+                    print(f"  r_dual: {r_dual_wp_np[w]}")
+                    print(f" r_compl: {r_compl_wp_np[w]}")
+                    print("---------")
+                    print(f"iterations: {status[w][1]}")
+                    print(f"converged: {status[w][0]}")
+                    print(f"r_p: {status[w][2]}")
+                    print(f"r_d: {status[w][3]}")
+                    print(f"r_c: {status[w][4]}")
+                print("\n")  # Print a newline for better readability
 
-        # Recover original Delassus matrix and v_f from preconditioned versions
-        D_true = np.diag(np.reciprocal(P_wp_np[w])) @ D @ np.diag(np.reciprocal(P_wp_np[w]))
-        v_f_true = np.diag(np.reciprocal(P_wp_np[w])) @ v_f_wp_np[w]
+            # Recover original Delassus matrix and v_f from preconditioned versions
+            D_true = np.diag(np.reciprocal(P_wp_np[w])) @ D @ np.diag(np.reciprocal(P_wp_np[w]))
+            v_f_true = np.diag(np.reciprocal(P_wp_np[w])) @ v_f_wp_np[w]
 
-        # Extract solver explicit solution
-        v_plus_np = extract_problem_vector(problem.delassus, solver.data.info.v_plus.numpy(), only_active_dims=only_active_dims)
-        v_aug_np = extract_problem_vector(problem.delassus, solver.data.info.v_aug.numpy(), only_active_dims=only_active_dims)
-        s_np = extract_problem_vector(problem.delassus, solver.data.info.s.numpy(), only_active_dims=only_active_dims)
-        # Compute the true dual solution and error
-        v_plus_true = np.matmul(D_true, lambdas_wp_np[w]) + v_f_true
-        # error_dual_abs = np.linalg.norm(v_plus_true - v_plus_wp_np[w], ord=np.inf)
+            # Extract solver explicit solution
+            v_plus_np = extract_problem_vector(problem.delassus, solver.data.info.v_plus.numpy(), only_active_dims=only_active_dims)
+            v_aug_np = extract_problem_vector(problem.delassus, solver.data.info.v_aug.numpy(), only_active_dims=only_active_dims)
+            s_np = extract_problem_vector(problem.delassus, solver.data.info.s.numpy(), only_active_dims=only_active_dims)
+            # Compute the true dual solution and error
+            v_plus_true = np.matmul(D_true, lambdas_wp_np[w]) + v_f_true
+            # error_dual_abs = np.linalg.norm(v_plus_true - v_plus_wp_np[w], ord=np.inf)
 
-        # Print solution/info/true values
-        if self.verbose:
-            print("\n")  # Print a newline for better readability
-            for w in range(nw):
-                print(f"[World {w}] =======================================================================")
-                print(f"   state:      s: {s_wp_np[w]}")
-                print(f"    info:      s: {s_np[w]}")
-                print(f"   state:      y: {y_wp_np[w]}")
-                print(f"solution: lambda: {lambdas_wp_np[w]}")
-                print(f"   state:      z: {z_wp_np[w]}")
-                print(f"    info:  v_aug: {v_aug_np[w]}")
-                print(f"solution: v_plus: {v_plus_wp_np[w]}")
-                print(f"    info: v_plus: {v_plus_np[w]}")
-                print(f"    true: v_plus: {v_plus_true}")
-            print("\n")  # Print a newline for better readability
+            # Print solution/info/true values
+            if self.verbose:
+                print("\n")  # Print a newline for better readability
+                for w in range(nw):
+                    print(f"[World {w}] =======================================================================")
+                    print(f"   state:      s: {s_wp_np[w]}")
+                    print(f"    info:      s: {s_np[w]}")
+                    print(f"   state:      y: {y_wp_np[w]}")
+                    print(f"solution: lambda: {lambdas_wp_np[w]}")
+                    print(f"   state:      z: {z_wp_np[w]}")
+                    print(f"    info:  v_aug: {v_aug_np[w]}")
+                    print(f"solution: v_plus: {v_plus_wp_np[w]}")
+                    print(f"    info: v_plus: {v_plus_np[w]}")
+                    print(f"    true: v_plus: {v_plus_true}")
+                print("\n")  # Print a newline for better readability
 
         # Extract solver info
         if self.savefig:

@@ -1821,16 +1821,16 @@ def _compute_infnorm_residuals_serially(
        r_c_max <= eps_c:
         status.converged = 1
 
-    # Check if acceleration restart is needed
-    if status.r_a >= config.restart_tolerance * status.r_a_p:
+    # Restart acceleration if the residuals are not decreasing sufficiently
+    if status.r_a < config.restart_tolerance * status.r_a_p:
+        status.restart = 0
+        a_p = solver_state_a_p[wid]
+        solver_state_a[wid] = (1.0 + wp.sqrt(1.0 + 4.0 * a_p * a_p)) / 2.0
+    else:
         status.restart = 1
         status.num_restarts += 1
         status.r_a = status.r_a_p / config.restart_tolerance
         solver_state_a[wid] = float(config.a_0)
-    else:
-        status.restart = 0
-        a_p = solver_state_a_p[wid]
-        solver_state_a[wid] = (1.0 + wp.sqrt(1.0 + 4.0 * a_p * a_p)) / 2.0
     status.r_a_pp = status.r_a_p
     status.r_a_p = status.r_a
 

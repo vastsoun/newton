@@ -1,16 +1,30 @@
-###########################################################################
-# KAMINO: Euler Integrators
-###########################################################################
+# SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""
+KAMINO: Euler Integrators
+"""
 
 from __future__ import annotations
 
 import warp as wp
 
-from newton._src.solvers.kamino.core.types import int32, float32, vec3f, vec4f, mat33f, transformf, vec6f
-from newton._src.solvers.kamino.core.math import screw, screw_linear, screw_angular, quat_box_plus
+from newton._src.solvers.kamino.core.math import quat_box_plus, screw, screw_angular, screw_linear
 from newton._src.solvers.kamino.core.model import Model, ModelData
 from newton._src.solvers.kamino.core.state import State
-
+from newton._src.solvers.kamino.core.types import float32, int32, mat33f, transformf, vec3f, vec4f, vec6f
 
 ###
 # Module interface
@@ -30,6 +44,7 @@ wp.set_module_options({"enable_backward": False})
 ###
 # Functions
 ###
+
 
 @wp.func
 def semi_implicit_euler_with_logmap(
@@ -70,6 +85,7 @@ def semi_implicit_euler_with_logmap(
 ###
 # Kernels
 ###
+
 
 @wp.kernel
 def _integrate_semi_implicit_euler(
@@ -130,6 +146,7 @@ def _integrate_semi_implicit_euler(
 # Launchers
 ###
 
+
 def integrate_semi_implicit_euler(model: Model, state: ModelData, s_n: State):
     wp.launch(
         _integrate_semi_implicit_euler,
@@ -148,5 +165,5 @@ def integrate_semi_implicit_euler(model: Model, state: ModelData, s_n: State):
             # Outputs:
             s_n.q_i,
             s_n.u_i,
-        ]
+        ],
     )

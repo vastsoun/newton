@@ -1,6 +1,21 @@
-###########################################################################
-# KAMINO: UNIT TESTS: Input/Output: OpenUSD
-###########################################################################
+# SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""
+KAMINO: UNIT TESTS: Input/Output: OpenUSD
+"""
 
 import os
 import unittest
@@ -9,9 +24,9 @@ import numpy as np
 import warp as wp
 
 import newton._src.solvers.kamino.utils.logger as msg
-from newton._src.solvers.kamino.core.shapes import ShapeType
-from newton._src.solvers.kamino.core.joints import JointActuationType, JointDoFType
 from newton._src.solvers.kamino.core.builder import ModelBuilder
+from newton._src.solvers.kamino.core.joints import JointActuationType, JointDoFType
+from newton._src.solvers.kamino.core.shapes import ShapeType
 from newton._src.solvers.kamino.models import (
     get_examples_usd_assets_path,
     get_primitives_usd_assets_path,
@@ -20,23 +35,18 @@ from newton._src.solvers.kamino.models import (
 from newton._src.solvers.kamino.models.builders import (
     build_box_on_plane,
     build_box_pendulum,
+    build_boxes_fourbar,
     build_boxes_hinged,
     build_boxes_nunchaku,
-    build_boxes_fourbar
 )
 
 # Test utilities
 from newton._src.solvers.kamino.tests.utils.checks import (
-    lists_equal,
-    arrays_equal,
-    matrices_equal,
-    vectors_equal,
-    assert_builders_equal
+    assert_builders_equal,
 )
 
 # Module to be tested
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
-
 
 ###
 # Helper functions
@@ -57,8 +67,8 @@ TEST_USD_ASSETS_PATH = get_tests_usd_assets_path()
 # Tests
 ###
 
-class TestOpenUSD(unittest.TestCase):
 
+class TestOpenUSD(unittest.TestCase):
     def setUp(self):
         self.default_device = wp.get_device()
         self.verbose = False  # Set to True for verbose output
@@ -619,7 +629,9 @@ class TestOpenUSD(unittest.TestCase):
         # Construct a builer from imported USD asset
         usd_asset_filename = os.path.join(PRIMITIVE_USD_ASSETS_PATH, "box_on_plane.usda")
         importer = USDImporter()
-        builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename, load_static_geometry=False, load_materials=False)
+        builder_usd: ModelBuilder = importer.import_from(
+            source=usd_asset_filename, load_static_geometry=False, load_materials=False
+        )
 
         # Construct a reference builder using the primitive generators
         builder_ref = ModelBuilder()
@@ -639,7 +651,9 @@ class TestOpenUSD(unittest.TestCase):
         # Construct a builer from imported USD asset
         usd_asset_filename = os.path.join(PRIMITIVE_USD_ASSETS_PATH, "box_pendulum.usda")
         importer = USDImporter()
-        builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename, load_static_geometry=False, load_materials=False)
+        builder_usd: ModelBuilder = importer.import_from(
+            source=usd_asset_filename, load_static_geometry=False, load_materials=False
+        )
 
         # Construct a reference builder using the primitive generators
         builder_ref = ModelBuilder()
@@ -659,7 +673,9 @@ class TestOpenUSD(unittest.TestCase):
         # Construct a builer from imported USD asset
         usd_asset_filename = os.path.join(PRIMITIVE_USD_ASSETS_PATH, "boxes_hinged.usda")
         importer = USDImporter()
-        builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename, load_static_geometry=False, load_materials=False)
+        builder_usd: ModelBuilder = importer.import_from(
+            source=usd_asset_filename, load_static_geometry=False, load_materials=False
+        )
 
         # Construct a reference builder using the primitive generators
         builder_ref = ModelBuilder()
@@ -679,7 +695,9 @@ class TestOpenUSD(unittest.TestCase):
         # Construct a builer from imported USD asset
         usd_asset_filename = os.path.join(PRIMITIVE_USD_ASSETS_PATH, "boxes_nunchaku.usda")
         importer = USDImporter()
-        builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename, load_static_geometry=False, load_materials=False)
+        builder_usd: ModelBuilder = importer.import_from(
+            source=usd_asset_filename, load_static_geometry=False, load_materials=False
+        )
 
         # Construct a reference builder using the primitive generators
         builder_ref = ModelBuilder()
@@ -694,7 +712,9 @@ class TestOpenUSD(unittest.TestCase):
         # Construct a builer from imported USD asset
         usd_asset_filename = os.path.join(PRIMITIVE_USD_ASSETS_PATH, "boxes_fourbar.usda")
         importer = USDImporter()
-        builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename, load_static_geometry=False, load_materials=False)
+        builder_usd: ModelBuilder = importer.import_from(
+            source=usd_asset_filename, load_static_geometry=False, load_materials=False
+        )
 
         # Construct a reference builder using the primitive generators
         builder_ref = ModelBuilder()

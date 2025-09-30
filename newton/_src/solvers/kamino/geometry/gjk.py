@@ -1,30 +1,37 @@
-###########################################################################
-# KAMINO: Collision Detection: GJK Operations
-###########################################################################
+# SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""
+KAMINO: Collision Detection: GJK Operations
+"""
 
 from __future__ import annotations
 
 import warp as wp
 
-from newton._src.solvers.kamino.core.types import int32, float32, vec3f, mat43f
-
 from newton._src.solvers.kamino.core.shapes import (
-    SHAPE_EMPTY,
-    SHAPE_SPHERE,
-    SHAPE_CYLINDER,
-    SHAPE_CONE,
-    SHAPE_CAPSULE,
     SHAPE_BOX,
-    SHAPE_ELLIPSOID,
-    SHAPE_PLANE,
+    SHAPE_CAPSULE,
     SHAPE_CONVEX,
-    SHAPE_MESH,
-    SHAPE_SDF
+    SHAPE_CYLINDER,
+    SHAPE_ELLIPSOID,
+    SHAPE_SPHERE,
 )
-
-from newton._src.solvers.kamino.geometry.types import FLOAT_MIN, FLOAT_MAX
+from newton._src.solvers.kamino.core.types import int32, mat43f, vec3f
 from newton._src.solvers.kamino.geometry.math import gjk_normalize, orthonormal
-
+from newton._src.solvers.kamino.geometry.types import FLOAT_MAX, FLOAT_MIN
 
 ###
 # Module configs
@@ -37,13 +44,9 @@ wp.set_module_options({"enable_backward": False})
 # Functions
 ###
 
+
 @wp.func
-def gjk_support_geom(
-   geom: Geom,
-   shapeid: int32,
-   dir: vec3f,
-   verts: wp.array(dtype=vec3f)
-):
+def gjk_support_geom(geom: Geom, shapeid: int32, dir: vec3f, verts: wp.array(dtype=vec3f)):
     local_dir = wp.transpose(geom.rot) @ dir
 
     if shapeid == SHAPE_SPHERE:
@@ -114,9 +117,9 @@ def gjk_support(
 
 
 def get_gjk(
-  geomtype1: int,
-  geomtype2: int,
-  gjk_iterations: int,
+    geomtype1: int,
+    geomtype2: int,
+    gjk_iterations: int,
 ):
     # determines if two objects intersect, returns simplex and normal
     @wp.func

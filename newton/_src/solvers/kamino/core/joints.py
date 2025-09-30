@@ -1,14 +1,28 @@
-###########################################################################
-# KAMINO: Joint Model Types & Containers
-###########################################################################
+# SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""
+KAMINO: Joint Model Types & Containers
+"""
 
 from __future__ import annotations
 
 import sys
-import warp as wp
-
 from enum import IntEnum
-from typing import List
+
+import warp as wp
 
 if sys.version_info >= (3, 12):
     from typing import override
@@ -20,26 +34,21 @@ else:
         def override(func):
             return func
 
+
 from .types import (
-    int32, float32,
-    vec3f, vec6f,
+    float32,
+    int32,
     mat33f,
     transformf,
+    vec3f,
+    vec6f,
 )
-
 
 ###
 # Module interface
 ###
 
-__all__ = [
-    "JointConnectionType",
-    "JointDoFType",
-    "JointActuationType",
-    "JointDescriptor",
-    "JointsModel",
-    "JointsData"
-]
+__all__ = ["JointActuationType", "JointConnectionType", "JointDescriptor", "JointDoFType", "JointsData", "JointsModel"]
 
 
 ###
@@ -94,10 +103,12 @@ JOINT_FORCE_CONTROLLED = wp.constant(1)
 # Enumerations
 ###
 
+
 class JointActuationType(IntEnum):
     """
     An enumeration of the joint actuation types.
     """
+
     PASSIVE = JOINT_PASSIVE
     """Passive joint type, i.e. not actuated."""
     FORCE = JOINT_FORCE_CONTROLLED
@@ -118,6 +129,7 @@ class JointConnectionType(IntEnum):
     """
     An enumeration of the joint connection types.
     """
+
     UNARY = JOINT_UNARY
     """Unary joint connection type, connecting a body to the world."""
     BINARY = JOINT_BINARY
@@ -138,6 +150,7 @@ class JointDoFType(IntEnum):
     """
     An enumeration of the joint degrees of freedom (DoF) types.
     """
+
     FREE = JOINT_FREE
     """6-DoF free-floating joint, with 6 rotational and translational DoFs, {R_x, R_y, R_z, T_x, T_y, T_z}."""
     REVOLUTE = JOINT_REVOLUTE
@@ -242,10 +255,12 @@ class JointDoFType(IntEnum):
 # Containers
 ###
 
+
 class JointDescriptor:
     """
     A container to describe a single joint in the model builder.
     """
+
     def __init__(self):
         self.name: str | None = None
         """Name of the joint."""
@@ -301,16 +316,16 @@ class JointDescriptor:
         self.X_j: mat33f = mat33f()
         """The constant axes matrix of the joint."""
 
-        self.q_j_min: List[float] | float | None = None
+        self.q_j_min: list[float] | float | None = None
         """Minimum configuration limits of the joint."""
 
-        self.q_j_max: List[float] | float | None = None
+        self.q_j_max: list[float] | float | None = None
         """Maximum configuration limits of the joint."""
 
-        self.dq_j_max: List[float] | float | None = None
+        self.dq_j_max: list[float] | float | None = None
         """Maximum velocity limits of the joint."""
 
-        self.tau_j_max: List[float] | float | None = None
+        self.tau_j_max: list[float] | float | None = None
         """Maximum effort limits of the joint."""
 
     def __repr__(self):
@@ -345,6 +360,7 @@ class JointsModel:
     """
     An SoA-based container to hold time-invariant model data of a joint system.
     """
+
     def __init__(self):
         self.num_joints: int32 = 0
         """Total number of joints in the model (host-side)."""
@@ -468,6 +484,7 @@ class JointsData:
     """
     An SoA-based container to hold time-varying data of a joint system.
     """
+
     def __init__(self):
         self.num_joints: int32 = 0
         """Total number of joints in the model (host-side)."""
@@ -542,6 +559,7 @@ class JointsData:
 ###
 # Kernels
 ###
+
 
 @wp.kernel
 def _reset_joints_state(
@@ -626,13 +644,14 @@ def _reset_joints_state(
 # Launchers
 ###
 
+
 def reset_joints_state(
     model: JointsModel,
     state: JointsData,
     cts_offsets: wp.array(dtype=int32),
     dofs_offsets: wp.array(dtype=int32),
     body_q: wp.array(dtype=transformf),
-    body_u: wp.array(dtype=vec6f)
+    body_u: wp.array(dtype=vec6f),
 ):
     """
     Reset the current state to the initial state defined in the model.

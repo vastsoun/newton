@@ -1,15 +1,28 @@
-###########################################################################
-# KAMINO: Material Model Types & Containers
-###########################################################################
+# SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""
+KAMINO: Material Model Types & Containers
+"""
 
 from __future__ import annotations
 
 import numpy as np
 import warp as wp
 
-from typing import List
-
-from .types import float32, Descriptor
+from .types import Descriptor, float32
 
 ###
 # Module interface
@@ -20,9 +33,9 @@ __all__ = [
     "DEFAULT_FRICTION",
     "DEFAULT_RESTITUTION",
     "MaterialDescriptor",
-    "MaterialPairProperties",
     "MaterialManager",
-    "MaterialPairsModel"
+    "MaterialPairProperties",
+    "MaterialPairsModel",
 ]
 
 ###
@@ -42,10 +55,12 @@ DEFAULT_RESTITUTION = 0.0
 # Containers
 ###
 
+
 class MaterialDescriptor(Descriptor):
     """
     A container to represent a managed material.
     """
+
     def __init__(
         self,
         name: str = "",
@@ -99,6 +114,7 @@ class MaterialPairProperties:
         static_friction (`float`): The coefficient of static surface friction, according to the Coulomb friction model.
         dynamic_friction (`float`): The coefficient of dynamic surface friction, according to the Coulomb friction model.
     """
+
     def __init__(
         self,
         restitution: float = DEFAULT_RESTITUTION,
@@ -114,6 +130,7 @@ class MaterialManager:
     """
     A class to manage materials used in simulations, including their properties and pair-wise interactions.
     """
+
     def __init__(
         self,
         default_material: MaterialDescriptor | None = None,
@@ -130,8 +147,8 @@ class MaterialManager:
             default_dynamic_friction (float): The default restitution coefficient for material pairs. Defaults to `DEFAULT_RESTITUTION`.
         """
         # Declare the materials and material-pairs lists
-        self._materials: List[MaterialDescriptor] = []
-        self._pair_properties: List[List[MaterialPairProperties]] = []
+        self._materials: list[MaterialDescriptor] = []
+        self._pair_properties: list[list[MaterialPairProperties]] = []
 
         # Construct the default material if not provided
         if default_material is None:
@@ -147,8 +164,8 @@ class MaterialManager:
             material_pair=MaterialPairProperties(
                 restitution=default_restitution,
                 static_friction=default_static_friction,
-                dynamic_friction=default_dynamic_friction
-            )
+                dynamic_friction=default_dynamic_friction,
+            ),
         )
 
     @property
@@ -159,14 +176,14 @@ class MaterialManager:
         return len(self._materials)
 
     @property
-    def materials(self) -> List[MaterialDescriptor]:
+    def materials(self) -> list[MaterialDescriptor]:
         """
         Returns the list of materials managed by this MaterialManager.
         """
         return self._materials
 
     @property
-    def pairs(self) -> List[List[MaterialPairProperties]]:
+    def pairs(self) -> list[list[MaterialPairProperties]]:
         """
         Returns the list of material-pair properties managed by this MaterialManager.
         """
@@ -217,10 +234,7 @@ class MaterialManager:
         return material.mid
 
     def register_pair(
-        self,
-        first: MaterialDescriptor,
-        second: MaterialDescriptor,
-        material_pair: MaterialPairProperties
+        self, first: MaterialDescriptor, second: MaterialDescriptor, material_pair: MaterialPairProperties
     ):
         # Register the first material if it is not already registered
         if first.name not in [m.name for m in self.materials]:
@@ -231,18 +245,9 @@ class MaterialManager:
             self.register(second)
 
         # Configure the material pair properties
-        self.configure_pair(
-            first=first.name,
-            second=second.name,
-            material_pair=material_pair
-        )
+        self.configure_pair(first=first.name, second=second.name, material_pair=material_pair)
 
-    def configure_pair(
-        self,
-        first: int | str,
-        second: int | str,
-        material_pair: MaterialPairProperties
-    ):
+    def configure_pair(self, first: int | str, second: int | str, material_pair: MaterialPairProperties):
         # Get indices of the materials
         mid1 = self.index(first)
         mid2 = self.index(second)
@@ -363,7 +368,7 @@ class MaterialManager:
         return friction
 
 
-class MaterialPairsModel():
+class MaterialPairsModel:
     def __init__(self):
         self.num_pairs: int = 0
         """Total number of material pairs in the model."""

@@ -1,17 +1,31 @@
-###########################################################################
-# KAMINO: Data Types
-###########################################################################
+# SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""
+KAMINO: Data Types
+"""
 
 from __future__ import annotations
 
 import sys
 import uuid
+from enum import IntEnum
+from typing import Literal
 
 import numpy as np
 import warp as wp
-
-from typing import Literal, List, Tuple
-from enum import IntEnum
 
 if sys.version_info >= (3, 12):
     from typing import override
@@ -34,12 +48,12 @@ wp.set_module_options({"enable_backward": False})
 # Generics
 ###
 
-Vec3 = List[float]
-Vec4 = List[float]
-Vec6 = List[float]
-Quat = List[float]
-Mat33 = List[float]
-Transform = Tuple[Vec3, Quat]
+Vec3 = list[float]
+Vec4 = list[float]
+Vec6 = list[float]
+Quat = list[float]
+Mat33 = list[float]
+Transform = tuple[Vec3, Quat]
 
 
 ###
@@ -64,6 +78,7 @@ float64 = wp.float64
 ###
 # Vectors
 ###
+
 
 class vec1i(wp.types.vector(length=1, dtype=int32)):
     pass
@@ -124,6 +139,7 @@ class vec14f(wp.types.vector(length=14, dtype=float32)):
 ###
 # Matrices
 ###
+
 
 class mat22f(wp.types.matrix(shape=(2, 2), dtype=float32)):
     pass
@@ -201,6 +217,7 @@ class mat83f(wp.types.matrix(shape=(8, 3), dtype=float32)):
 # Quaternions
 ###
 
+
 class quatf(wp.types.quaternion(dtype=float32)):
     pass
 
@@ -208,6 +225,7 @@ class quatf(wp.types.quaternion(dtype=float32)):
 ###
 # Transforms
 ###
+
 
 class transformf(wp.types.transformation(dtype=float32)):
     pass
@@ -217,8 +235,10 @@ class transformf(wp.types.transformation(dtype=float32)):
 # Axis
 ###
 
+
 class Axis(IntEnum):
     """Enum for representing the three axes in 3D space."""
+
     X = 0
     Y = 1
     Z = 2
@@ -264,7 +284,7 @@ class Axis(IntEnum):
     def __hash__(self):
         return hash(self.name)
 
-    def to_vector(self) -> Tuple[float, float, float]:
+    def to_vector(self) -> tuple[float, float, float]:
         if self == Axis.X:
             return (1.0, 0.0, 0.0)
         elif self == Axis.Y:
@@ -293,7 +313,7 @@ AxisType = Axis | Literal["X", "Y", "Z"] | Literal[0, 1, 2] | int | str
 
 def axis_to_vec3(axis: AxisType | Vec3) -> vec3f:
     """Convert an axis representation to a 3D vector."""
-    if isinstance(axis, (List, Tuple, np.ndarray)):
+    if isinstance(axis, list | tuple | np.ndarray):
         return vec3f(*axis)
     elif wp.types.type_is_vector(type(axis)):
         return vec3f(*axis)
@@ -303,7 +323,7 @@ def axis_to_vec3(axis: AxisType | Vec3) -> vec3f:
 
 def axis_to_mat33(axis: AxisType | Vec3) -> mat33f:
     """Convert an axis representation to a 3x3 matrix."""
-    if isinstance(axis, (List, Tuple, np.ndarray)):
+    if isinstance(axis, list | tuple | np.ndarray):
         return mat33f(*axis)
     elif wp.types.type_is_vector(type(axis)):
         return mat33f(*axis)
@@ -315,12 +335,14 @@ def axis_to_mat33(axis: AxisType | Vec3) -> mat33f:
 # Descriptor
 ###
 
+
 class Descriptor:
     """
     Base class for descriptor objects.
 
     A descriptor object is one with a designated name and a unique identifier (UID).
     """
+
     def __init__(self, name: str, uid: str | None = None):
         # Instance name
         self.name: str = name
@@ -336,9 +358,4 @@ class Descriptor:
         self.uid: str = uid
 
     def __repr__(self):
-        return (
-            f"Descriptor(\n"
-            f"name={self.name},\n"
-            f"uid={self.uid}\n"
-            f")"
-        )
+        return f"Descriptor(\nname={self.name},\nuid={self.uid}\n)"

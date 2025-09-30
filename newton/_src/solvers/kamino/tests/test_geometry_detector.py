@@ -1,38 +1,52 @@
-###########################################################################
-# KAMINO: UNIT TESTS
-###########################################################################
+# SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""
+KAMINO: UNIT TESTS
+"""
 
 import unittest
+
 import numpy as np
 import warp as wp
 
-from newton._src.solvers.kamino.models.builders import build_boxes_nunchaku
-from newton._src.solvers.kamino.models.utils import make_homogeneous_builder
-
 # Modules to be tested
 from newton._src.solvers.kamino.core.geometry import update_collision_geometries_state
+from newton._src.solvers.kamino.geometry.broadphase import nxn_broadphase
 from newton._src.solvers.kamino.geometry.collisions import Collisions
 from newton._src.solvers.kamino.geometry.contacts import Contacts
-from newton._src.solvers.kamino.geometry.broadphase import nxn_broadphase
-from newton._src.solvers.kamino.geometry.primitives import primitive_narrowphase
 from newton._src.solvers.kamino.geometry.detector import CollisionDetector
-
+from newton._src.solvers.kamino.geometry.primitives import primitive_narrowphase
+from newton._src.solvers.kamino.models.builders import build_boxes_nunchaku
+from newton._src.solvers.kamino.models.utils import make_homogeneous_builder
 
 ###
 # Tests
 ###
 
-class TestGeometryCollisionDetector(unittest.TestCase):
 
+class TestGeometryCollisionDetector(unittest.TestCase):
     def setUp(self):
         self.verbose = False  # Set to True for detailed output
         self.default_device = wp.get_device()
 
         # Set the common build function and geometry parameters
         self.build_func = build_boxes_nunchaku
-        self.num_collisions = 3     # NOTE: specialized to build_boxes_nunchaku
-        self.num_contacts = 9       # NOTE: specialized to build_boxes_nunchaku
-        self.max_contacts = 12   # NOTE: This is specialized to the nunchaku model
+        self.num_collisions = 3  # NOTE: specialized to build_boxes_nunchaku
+        self.num_contacts = 9  # NOTE: specialized to build_boxes_nunchaku
+        self.max_contacts = 12  # NOTE: This is specialized to the nunchaku model
         if self.verbose:
             print("")
             print(f"build_func: {self.build_func.__name__}")
@@ -94,13 +108,23 @@ class TestGeometryCollisionDetector(unittest.TestCase):
         if self.verbose:
             print(f"collisions.cmodel.num_model_geom_pairs: {collisions.cmodel.num_model_geom_pairs}")
             print(f"collisions.cmodel.num_world_geom_pairs: {collisions.cmodel.num_world_geom_pairs}")
-            print(f"collisions.cmodel.model_num_pairs (size={len(collisions.cmodel.model_num_pairs)}): {collisions.cmodel.model_num_pairs}")
-            print(f"collisions.cmodel.world_num_pairs (size={len(collisions.cmodel.world_num_pairs)}): {collisions.cmodel.world_num_pairs}")
+            print(
+                f"collisions.cmodel.model_num_pairs (size={len(collisions.cmodel.model_num_pairs)}): {collisions.cmodel.model_num_pairs}"
+            )
+            print(
+                f"collisions.cmodel.world_num_pairs (size={len(collisions.cmodel.world_num_pairs)}): {collisions.cmodel.world_num_pairs}"
+            )
             print(f"collisions.cmodel.wid (size={len(collisions.cmodel.wid)}): {collisions.cmodel.wid}")
             print(f"collisions.cmodel.pairid (size={len(collisions.cmodel.pairid)}): {collisions.cmodel.pairid}")
-            print(f"collisions.cmodel.geom_pair (size={len(collisions.cmodel.geom_pair)}):\n{collisions.cmodel.geom_pair}")
-            print(f"collisions.cdata.model_num_collisions (size={len(collisions.cdata.model_num_collisions)}): {collisions.cdata.model_num_collisions}")
-            print(f"collisions.cdata.world_num_collisions (size={len(collisions.cdata.world_num_collisions)}): {collisions.cdata.world_num_collisions}")
+            print(
+                f"collisions.cmodel.geom_pair (size={len(collisions.cmodel.geom_pair)}):\n{collisions.cmodel.geom_pair}"
+            )
+            print(
+                f"collisions.cdata.model_num_collisions (size={len(collisions.cdata.model_num_collisions)}): {collisions.cdata.model_num_collisions}"
+            )
+            print(
+                f"collisions.cdata.world_num_collisions (size={len(collisions.cdata.world_num_collisions)}): {collisions.cdata.world_num_collisions}"
+            )
             print(f"collisions.cdata.wid (size={len(collisions.cdata.wid)}): {collisions.cdata.wid}")
             print(f"collisions.cdata.geom_pair (size={len(collisions.cdata.geom_pair)}):\n{collisions.cdata.geom_pair}")
 
@@ -159,7 +183,9 @@ class TestGeometryCollisionDetector(unittest.TestCase):
         state = model.data()
 
         # Create a collision detector
-        detector = CollisionDetector(builder=builder, default_max_contacts=self.max_contacts, device=self.default_device)
+        detector = CollisionDetector(
+            builder=builder, default_max_contacts=self.max_contacts, device=self.default_device
+        )
 
         # Peroform collision detection
         with wp.ScopedTimer("detector.collide"):

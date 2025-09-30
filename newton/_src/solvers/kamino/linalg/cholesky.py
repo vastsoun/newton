@@ -1,40 +1,54 @@
-###########################################################################
-# KAMINO: Cholesky factorization module
-###########################################################################
+# SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""
+KAMINO: Cholesky factorization module
+"""
 
 from __future__ import annotations
 
-import warp as wp
-
-from typing import List, Union
-from functools import lru_cache
 from abc import ABC, abstractmethod
-from warp.context import Devicelike
-from newton._src.solvers.kamino.core.types import int32, float32
-from newton._src.solvers.kamino.core.math import FLOAT32_EPS
+from functools import cache
 
+import warp as wp
+from warp.context import Devicelike
+
+from newton._src.solvers.kamino.core.math import FLOAT32_EPS
+from newton._src.solvers.kamino.core.types import float32, int32
 
 ###
 # Module interface
 ###
 
 __all__ = [
-    "cholesky_sequential_factorize",
-    "cholesky_sequential_solve_forward",
-    "cholesky_sequential_solve_backward",
-    "cholesky_sequential_solve",
-    "cholesky_sequential_solve_inplace",
+    "BlockedCholeskyFactorizer",
+    "CholeskyData",
+    "CholeskyFactorizer",
+    "CholeskyFactorizerBase",
+    "SequentialCholeskyFactorizer",
     "cholesky_blocked_factorize",
     "cholesky_blocked_solve",
     "cholesky_blocked_solve_inplace",
+    "cholesky_sequential_factorize",
+    "cholesky_sequential_solve",
+    "cholesky_sequential_solve_backward",
+    "cholesky_sequential_solve_forward",
+    "cholesky_sequential_solve_inplace",
     "make_cholesky_blocked_factorize_kernel",
-    "make_cholesky_blocked_solve_kernel",
     "make_cholesky_blocked_solve_inplace_kernel",
-    "CholeskyData",
-    "CholeskyFactorizerBase",
-    "SequentialCholeskyFactorizer",
-    "BlockedCholeskyFactorizer",
-    "CholeskyFactorizer",
+    "make_cholesky_blocked_solve_kernel",
 ]
 
 
@@ -49,6 +63,7 @@ wp.set_module_options({"enable_backward": False})
 # Kernels
 ###
 
+
 @wp.kernel
 def _cholesky_sequential_factorize(
     # Inputs:
@@ -57,7 +72,7 @@ def _cholesky_sequential_factorize(
     mio_in: wp.array(dtype=int32),
     A_in: wp.array(dtype=float32),
     # Outputs:
-    L_out: wp.array(dtype=float32)
+    L_out: wp.array(dtype=float32),
 ):
     # Retrieve the thread index
     tid = wp.tid()
@@ -123,7 +138,7 @@ def _cholesky_sequential_solve_forward(
     L_in: wp.array(dtype=float32),
     b_in: wp.array(dtype=float32),
     # Outputs:
-    y_out: wp.array(dtype=float32)
+    y_out: wp.array(dtype=float32),
 ):
     # Retrieve the thread index
     tid = wp.tid()
@@ -156,7 +171,7 @@ def _cholesky_sequential_solve_backward(
     L_in: wp.array(dtype=float32),
     y_in: wp.array(dtype=float32),
     # Outputs:
-    x_out: wp.array(dtype=float32)
+    x_out: wp.array(dtype=float32),
 ):
     # Retrieve the thread index
     tid = wp.tid()
@@ -190,7 +205,7 @@ def _cholesky_sequential_solve(
     b_in: wp.array(dtype=float32),
     # Outputs:
     y_out: wp.array(dtype=float32),
-    x_out: wp.array(dtype=float32)
+    x_out: wp.array(dtype=float32),
 ):
     # Retrieve the thread index
     tid = wp.tid()
@@ -266,7 +281,7 @@ def _cholesky_sequential_solve_inplace(
         x_inout[vio + i] = sum_i / LT_ii
 
 
-@lru_cache(maxsize=None)
+@cache
 def make_cholesky_blocked_factorize_kernel(block_size: int):
     @wp.kernel
     def cholesky_blocked_factorize_kernel(
@@ -279,7 +294,6 @@ def make_cholesky_blocked_factorize_kernel(block_size: int):
     ):
         # Retrieve the thread index and thread-block configuration
         tid, tid_block = wp.tid()
-        num_threads_per_block = wp.block_dim()
 
         # Retrieve the matrix block dimensions and size
         dim = dim_in[tid]
@@ -358,7 +372,7 @@ def make_cholesky_blocked_factorize_kernel(block_size: int):
     return cholesky_blocked_factorize_kernel
 
 
-@lru_cache(maxsize=None)
+@cache
 def make_cholesky_blocked_solve_kernel(block_size: int):
     @wp.kernel
     def cholesky_blocked_solve_kernel(
@@ -373,7 +387,6 @@ def make_cholesky_blocked_solve_kernel(block_size: int):
     ):
         # Retrieve the thread index and thread-block configuration
         tid, tid_block = wp.tid()
-        num_threads_per_block = wp.block_dim()
 
         # Retrieve the matrix block dimensions and size
         dim = dim_in[tid]
@@ -417,7 +430,7 @@ def make_cholesky_blocked_solve_kernel(block_size: int):
     return cholesky_blocked_solve_kernel
 
 
-@lru_cache(maxsize=None)
+@cache
 def make_cholesky_blocked_solve_inplace_kernel(block_size: int):
     @wp.kernel
     def cholesky_blocked_solve_inplace_kernel(
@@ -430,7 +443,6 @@ def make_cholesky_blocked_solve_inplace_kernel(block_size: int):
     ):
         # Retrieve the thread index and thread-block configuration
         tid, tid_block = wp.tid()
-        num_threads_per_block = wp.block_dim()
 
         # Retrieve the matrix block dimensions and size
         dim = dim_in[tid]
@@ -479,13 +491,14 @@ def make_cholesky_blocked_solve_inplace_kernel(block_size: int):
 # Launchers
 ###
 
+
 def cholesky_sequential_factorize(
     num_blocks: int,
     maxdim: wp.array(dtype=int32),
     dim: wp.array(dtype=int32),
     mio: wp.array(dtype=int32),
     A: wp.array(dtype=float32),
-    L: wp.array(dtype=float32)
+    L: wp.array(dtype=float32),
 ):
     """
     Launches the sequential Cholesky factorization kernel for a block partitioned matrix.
@@ -497,11 +510,7 @@ def cholesky_sequential_factorize(
         A (wp.array): The flat input array containing the input matrix blocks to be factorized.
         L (wp.array): The flat output array containing the Cholesky factorization of each matrix block.
     """
-    wp.launch(
-        kernel=_cholesky_sequential_factorize,
-        dim=num_blocks,
-        inputs=[maxdim, dim, mio, A, L]
-    )
+    wp.launch(kernel=_cholesky_sequential_factorize, dim=num_blocks, inputs=[maxdim, dim, mio, A, L])
 
 
 def cholesky_sequential_solve_forward(
@@ -512,7 +521,7 @@ def cholesky_sequential_solve_forward(
     vio: wp.array(dtype=int32),
     L: wp.array(dtype=float32),
     b: wp.array(dtype=float32),
-    y: wp.array(dtype=float32)
+    y: wp.array(dtype=float32),
 ):
     """
     Launches the sequential forward solve kernel using the Cholesky factorization of a block partitioned matrix.
@@ -526,11 +535,7 @@ def cholesky_sequential_solve_forward(
         b (wp.array): The flat input array containing the stacked right-hand side vectors.
         y (wp.array): The output array where the intermediate result will be stored.
     """
-    wp.launch(
-        kernel=_cholesky_sequential_solve_forward,
-        dim=num_blocks,
-        inputs=[maxdim, dim, mio, vio, L, b, y]
-    )
+    wp.launch(kernel=_cholesky_sequential_solve_forward, dim=num_blocks, inputs=[maxdim, dim, mio, vio, L, b, y])
 
 
 def cholesky_sequential_solve_backward(
@@ -541,7 +546,7 @@ def cholesky_sequential_solve_backward(
     vio: wp.array(dtype=int32),
     L: wp.array(dtype=float32),
     y: wp.array(dtype=float32),
-    x: wp.array(dtype=float32)
+    x: wp.array(dtype=float32),
 ):
     """
     Launches the sequential backward solve kernel using the Cholesky factorization of a block partitioned matrix.
@@ -555,11 +560,7 @@ def cholesky_sequential_solve_backward(
         y (wp.array): The flat input array containing the intermediate result from the forward solve.
         x (wp.array): The output array where the solution to the linear system `A @ x = b` will be stored.
     """
-    wp.launch(
-        kernel=_cholesky_sequential_solve_backward,
-        dim=num_blocks,
-        inputs=[maxdim, dim, mio, vio, L, y, x]
-    )
+    wp.launch(kernel=_cholesky_sequential_solve_backward, dim=num_blocks, inputs=[maxdim, dim, mio, vio, L, y, x])
 
 
 def cholesky_sequential_solve(
@@ -571,9 +572,9 @@ def cholesky_sequential_solve(
     L: wp.array(dtype=float32),
     b: wp.array(dtype=float32),
     y: wp.array(dtype=float32),
-    x: wp.array(dtype=float32)
+    x: wp.array(dtype=float32),
 ):
-    """"
+    """ "
     Launches the sequential solve kernel using the Cholesky factorization of a block partitioned matrix.
 
     Args:
@@ -586,11 +587,7 @@ def cholesky_sequential_solve(
         y (wp.array): The output array where the intermediate result will be stored.
         x (wp.array): The output array where the solution to the linear system `A @ x = b` will be stored.
     """
-    wp.launch(
-        kernel=_cholesky_sequential_solve,
-        dim=num_blocks,
-        inputs=[maxdim, dim, mio, vio, L, b, y, x]
-    )
+    wp.launch(kernel=_cholesky_sequential_solve, dim=num_blocks, inputs=[maxdim, dim, mio, vio, L, b, y, x])
 
 
 def cholesky_sequential_solve_inplace(
@@ -600,7 +597,7 @@ def cholesky_sequential_solve_inplace(
     mio: wp.array(dtype=int32),
     vio: wp.array(dtype=int32),
     L: wp.array(dtype=float32),
-    x: wp.array(dtype=float32)
+    x: wp.array(dtype=float32),
 ):
     """
     Launches the sequential in-place solve kernel using the Cholesky factorization of a block partitioned matrix.
@@ -627,7 +624,7 @@ def cholesky_blocked_factorize(
     A: wp.array2d(dtype=float32),
     L: wp.array2d(dtype=float32),
     kernel,
-    block_dim: int = 128
+    block_dim: int = 128,
 ):
     """
     Launches the blocked Cholesky factorization kernel for a block partitioned matrix.
@@ -641,13 +638,7 @@ def cholesky_blocked_factorize(
         kernel: The kernel function to use for the blocked factorization.
         block_dim (int): The dimension of the thread block to use for the kernel launch.
     """
-    wp.launch_tiled(
-        kernel=kernel,
-        dim=num_blocks,
-        inputs=[dim, rio, A],
-        outputs=[L],
-        block_dim=block_dim
-    )
+    wp.launch_tiled(kernel=kernel, dim=num_blocks, inputs=[dim, rio, A], outputs=[L], block_dim=block_dim)
 
 
 def cholesky_blocked_solve(
@@ -659,7 +650,7 @@ def cholesky_blocked_solve(
     y: wp.array(dtype=float32),
     x: wp.array(dtype=float32),
     kernel,
-    block_dim: int = 64
+    block_dim: int = 64,
 ):
     """
     Launches the blocked Cholesky solve kernel for a block partitioned matrix.
@@ -675,13 +666,7 @@ def cholesky_blocked_solve(
         kernel: The kernel function to use for the blocked solve.
         block_dim (int): The dimension of the thread block to use for the kernel launch.
     """
-    wp.launch_tiled(
-        kernel=kernel,
-        dim=num_blocks,
-        inputs=[dim, rio, L, b],
-        outputs=[y, x],
-        block_dim=block_dim
-    )
+    wp.launch_tiled(kernel=kernel, dim=num_blocks, inputs=[dim, rio, L, b], outputs=[y, x], block_dim=block_dim)
 
 
 def cholesky_blocked_solve_inplace(
@@ -691,7 +676,7 @@ def cholesky_blocked_solve_inplace(
     L: wp.array2d(dtype=float32),
     x: wp.array(dtype=float32),
     kernel,
-    block_dim: int = 64
+    block_dim: int = 64,
 ):
     """
     Launches the blocked Cholesky in-place solve kernel for a block partitioned matrix.
@@ -705,27 +690,24 @@ def cholesky_blocked_solve_inplace(
         kernel: The kernel function to use for the blocked in-place solve.
         block_dim (int): The dimension of the thread block to use for the kernel launch.
     """
-    wp.launch_tiled(
-        kernel=kernel,
-        dim=num_blocks,
-        inputs=[dim, rio, L, x],
-        block_dim=block_dim
-    )
+    wp.launch_tiled(kernel=kernel, dim=num_blocks, inputs=[dim, rio, L, x], block_dim=block_dim)
 
 
 ###
 # Containers
 ###
 
+
 class CholeskyData:
     """
     A container to hold the data of multiple Cholesky factorization matrix blocks.
     """
+
     def __init__(self):
         self.num_blocks: int = 0
         """Host-side cache of the number of matrix blocks in the Cholesky factorization."""
 
-        self.dimensions: List[int] = []
+        self.dimensions: list[int] = []
         """Host-side cache of the dimensions of each symmetric positive-definite matrix block."""
 
         self.msize: int = 0
@@ -757,6 +739,7 @@ class CholeskyData:
 # Factorizers
 ###
 
+
 class CholeskyFactorizerBase(ABC):
     """
     The base class to manage Cholesky factorizations of one or several matrix blocks.\n
@@ -764,7 +747,7 @@ class CholeskyFactorizerBase(ABC):
     """
 
     @staticmethod
-    def _check_dims(dims: List[int]) -> List[int]:
+    def _check_dims(dims: list[int]) -> list[int]:
         if isinstance(dims, int):
             dims = [dims]
         elif isinstance(dims, list):
@@ -774,7 +757,7 @@ class CholeskyFactorizerBase(ABC):
             raise TypeError("Dimensions must be an integer or a list of integers.")
         return dims
 
-    def __init__(self, dims: List[int] | None = None, allocate_info=True, device: Devicelike = None):
+    def __init__(self, dims: list[int] | None = None, allocate_info=True, device: Devicelike = None):
         """
         Creates a new Cholesky factorization container.\n
 
@@ -811,7 +794,7 @@ class CholeskyFactorizerBase(ABC):
         return self._data.num_blocks
 
     @property
-    def dimensions(self) -> List[int]:
+    def dimensions(self) -> list[int]:
         """
         Returns the total capacity of the Cholesky factorization memory allocation.
         """
@@ -896,7 +879,7 @@ class CholeskyFactorizerBase(ABC):
     def _allocate(self):
         pass
 
-    def allocate(self, dims: List[int], allocate_info=True, device: Devicelike = None):
+    def allocate(self, dims: list[int], allocate_info=True, device: Devicelike = None):
         """
         Allocates the Cholesky factorization data on the specified device.
         """
@@ -931,8 +914,8 @@ class CholeskyFactorizerBase(ABC):
             if allocate_info:
                 self._data.maxdim = wp.array(self._data.dimensions, dtype=int32)
                 self._data.dim = wp.array(self._data.dimensions, dtype=int32)
-                self._data.mio = wp.array(mat_offsets[:self._data.num_blocks], dtype=int32)
-                self._data.vio = wp.array(vec_offsets[:self._data.num_blocks], dtype=int32)
+                self._data.mio = wp.array(mat_offsets[: self._data.num_blocks], dtype=int32)
+                self._data.vio = wp.array(vec_offsets[: self._data.num_blocks], dtype=int32)
 
         # Call the implementation-specific allocation method for post-processing
         self._allocate()
@@ -998,12 +981,10 @@ class SequentialCholeskyFactorizer(CholeskyFactorizerBase):
     This parallelizes the factorization and solve operations over each block\n
     and supports heterogeneous matrix block sizes.\n
     """
-    def __init__(
-        self,
-        dims: List[int] = [],
-        allocate_info=True,
-        device: Devicelike = None
-    ):
+
+    def __init__(self, dims: list[int] | None = None, allocate_info=True, device: Devicelike = None):
+        if dims is None:
+            dims = []
         super().__init__(dims=dims, allocate_info=allocate_info, device=device)
 
     def _allocate(self):
@@ -1021,17 +1002,21 @@ class SequentialCholeskyFactorizer(CholeskyFactorizerBase):
             dim=self._data.dim,
             mio=self._data.mio,
             A=A,
-            L=self._data.L
+            L=self._data.L,
         )
 
     def solve(self, b: wp.array(dtype=float32), x: wp.array(dtype=float32)):
         # Ensure that the right-hand-side vector matches the allocated size
         if b.shape[0] > self.data.vsize:
-            raise ValueError(f"Right-hand-side vector `b` is larger (shape={b.shape}) than the allocated size of {self.data.vsize}.")
+            raise ValueError(
+                f"Right-hand-side vector `b` is larger (shape={b.shape}) than the allocated size of {self.data.vsize}."
+            )
 
         # Ensure that the solution vector matches the allocated size
         if x.shape[0] > self.data.vsize:
-            raise ValueError(f"Solution vector is `x` larger (shape={x.shape}) than the allocated size of {self.data.vsize}.")
+            raise ValueError(
+                f"Solution vector is `x` larger (shape={x.shape}) than the allocated size of {self.data.vsize}."
+            )
 
         # Solve the system L * y = b and L^T * x = y
         cholesky_sequential_solve(
@@ -1043,13 +1028,15 @@ class SequentialCholeskyFactorizer(CholeskyFactorizerBase):
             L=self._data.L,
             b=b,
             y=self._data.y,
-            x=x
+            x=x,
         )
 
     def solve_inplace(self, x: wp.array(dtype=float32)):
         # Ensure that the solution vector matches the allocated size
         if x.shape[0] > self.data.vsize:
-            raise ValueError(f"Solution vector is `x` larger (shape={x.shape}) than the allocated size of {self.data.vsize}.")
+            raise ValueError(
+                f"Solution vector is `x` larger (shape={x.shape}) than the allocated size of {self.data.vsize}."
+            )
 
         # Solve the system L * y = x and L^T * x = y
         cholesky_sequential_solve_inplace(
@@ -1059,7 +1046,7 @@ class SequentialCholeskyFactorizer(CholeskyFactorizerBase):
             mio=self._data.mio,
             vio=self._data.vio,
             L=self._data.L,
-            x=x
+            x=x,
         )
 
 
@@ -1069,16 +1056,19 @@ class BlockedCholeskyFactorizer(CholeskyFactorizerBase):
     This implementation currently only supports homogeneous matrix block sizes,\n
     and can thus parallelize over both each outer and inner matrix blocks.\n
     """
+
     def __init__(
         self,
-        dims: List[int] = [],
+        dims: list[int] | None = None,
         block_size: int = 16,
         solve_block_dim: int = 64,
         factortize_block_dim: int = 128,
         allocate_info=True,
-        device: Devicelike = None
+        device: Devicelike = None,
     ):
         # Initialize the base class with the specified capacity and size
+        if dims is None:
+            dims = []
         super().__init__(dims=dims, allocate_info=allocate_info, device=device)
 
         # Cache the block size
@@ -1113,7 +1103,9 @@ class BlockedCholeskyFactorizer(CholeskyFactorizerBase):
         Sets the block dimension used for the blocked Cholesky factorization.
         """
         if value <= 0:
-            raise ValueError(f"Invalid block dimension for blocked Cholesky factorization: {value}. Must be greater than zero.")
+            raise ValueError(
+                f"Invalid block dimension for blocked Cholesky factorization: {value}. Must be greater than zero."
+            )
         self._factortize_block_dim = value
 
     @property
@@ -1138,7 +1130,9 @@ class BlockedCholeskyFactorizer(CholeskyFactorizerBase):
         mbdim = self._data.dimensions[0]
         for i in range(1, self._data.num_blocks):
             if self._data.dimensions[i] != mbdim:
-                raise ValueError(f"Blocked Cholesky factorization requires all dimensions to be the same: {self._data.dimensions}.")
+                raise ValueError(
+                    f"Blocked Cholesky factorization requires all dimensions to be the same: {self._data.dimensions}."
+                )
 
         # Compute and cache the necessary matrix-vector reshaping info
         # required by the blocked Cholesky factorization kernels
@@ -1161,17 +1155,21 @@ class BlockedCholeskyFactorizer(CholeskyFactorizerBase):
             A=A.reshape(self._mshape),
             L=self._data.L.reshape(self._mshape),
             kernel=self._factorize_kernel,
-            block_dim=self.factortize_block_dim
+            block_dim=self.factortize_block_dim,
         )
 
     def solve(self, b: wp.array(dtype=float32), x: wp.array(dtype=float32)):
         # Ensure that the right-hand-side vector matches the allocated size
         if b.shape[0] > self.data.vsize:
-            raise ValueError(f"Right-hand-side vector `b` is larger (shape={b.shape}) than the allocated size of {self.data.vsize}.")
+            raise ValueError(
+                f"Right-hand-side vector `b` is larger (shape={b.shape}) than the allocated size of {self.data.vsize}."
+            )
 
         # Ensure that the solution vector matches the allocated size
         if x.shape[0] > self.data.vsize:
-            raise ValueError(f"Solution vector is `x` larger (shape={x.shape}) than the allocated size of {self.data.vsize}.")
+            raise ValueError(
+                f"Solution vector is `x` larger (shape={x.shape}) than the allocated size of {self.data.vsize}."
+            )
 
         # Solve the system L * y = b and L^T * x = y
         cholesky_blocked_solve(
@@ -1183,11 +1181,13 @@ class BlockedCholeskyFactorizer(CholeskyFactorizerBase):
             y=self._data.y.reshape(self._vshape),
             x=x.reshape(self._vshape),
             kernel=self._solve_kernel,
-            block_dim=self.solve_block_dim
+            block_dim=self.solve_block_dim,
         )
 
     def solve_inplace(self, x: wp.array(dtype=float32)):
-        raise NotImplementedError("In-place solve is not yet implemented for BlockedCholeskyFactorization (it is a WIP)")
+        raise NotImplementedError(
+            "In-place solve is not yet implemented for BlockedCholeskyFactorization (it is a WIP)"
+        )
 
         # # Ensure that the solution vector matches the allocated size
         # if x.shape[0] > self.data.vsize:
@@ -1205,5 +1205,5 @@ class BlockedCholeskyFactorizer(CholeskyFactorizerBase):
         # )
 
 
-CholeskyFactorizer = Union[SequentialCholeskyFactorizer, BlockedCholeskyFactorizer, None]
+CholeskyFactorizer = SequentialCholeskyFactorizer | BlockedCholeskyFactorizer | None
 """A type alias for the Cholesky factorizer, which can be either a sequential or blocked implementation."""

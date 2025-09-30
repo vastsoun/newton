@@ -1,26 +1,53 @@
-###########################################################################
-# KAMINO: Kinematics: Joints
-###########################################################################
+# SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""
+KAMINO: Kinematics: Joints
+"""
 
 from __future__ import annotations
 
+from typing import Any
+
 import warp as wp
 
-from typing import Any
+from newton._src.solvers.kamino.core.joints import JointDoFType
+from newton._src.solvers.kamino.core.math import (
+    quat_apply,
+    quat_conj,
+    quat_log,
+    quat_product,
+    screw,
+    screw_angular,
+    screw_linear,
+)
+from newton._src.solvers.kamino.core.model import Model, ModelData
 from newton._src.solvers.kamino.core.types import (
-    int32, float32,
-    vec1i, vec2i, vec3i, vec4i, vec5i, vec6i,
-    vec3f, vec6f,
+    float32,
+    int32,
     mat33f,
     transformf,
+    vec1i,
+    vec2i,
+    vec3f,
+    vec3i,
+    vec4i,
+    vec5i,
+    vec6f,
+    vec6i,
 )
-from newton._src.solvers.kamino.core.math import (
-    screw_linear, screw_angular, screw,
-    quat_product, quat_conj, quat_apply, quat_log
-)
-from newton._src.solvers.kamino.core.joints import JointDoFType
-from newton._src.solvers.kamino.core.model import Model, ModelData
-
 
 ###
 # Module interface
@@ -94,22 +121,24 @@ S_dofs_free = wp.constant(vec6i(0, 1, 2, 3, 4, 5))
 # Functions
 ###
 
+
 def make_store_joint_state_func(cst_selection: Any, dof_selection: Any):
     """
     Generates functions to store the joint state according to the
     constraint and DoF dimensions specific to the type of joint.
     """
+
     @wp.func
     def store_joint_state(
         # Inputs:
-        cio_j: int32,   # Index offset of the joint constraints dimensions
-        dio_j: int32,   # Index offset of the joint DoF dimensions
-        r_j: vec6f,     # 6D vector of the joint-local relative pose
-        dr_j: vec6f,     # 6D vector ofthe joint-local relative twist
+        cio_j: int32,  # Index offset of the joint constraints dimensions
+        dio_j: int32,  # Index offset of the joint DoF dimensions
+        r_j: vec6f,  # 6D vector of the joint-local relative pose
+        dr_j: vec6f,  # 6D vector ofthe joint-local relative twist
         # Outputs:
-        r_j_out: wp.array(dtype=float32),   # Flat array of joint constraint residuals
-        dr_j_out: wp.array(dtype=float32),   # Flat array of joint constraint residuals
-        q_j_out: wp.array(dtype=float32),   # Flat array of joint DoF coordinates
+        r_j_out: wp.array(dtype=float32),  # Flat array of joint constraint residuals
+        dr_j_out: wp.array(dtype=float32),  # Flat array of joint constraint residuals
+        q_j_out: wp.array(dtype=float32),  # Flat array of joint DoF coordinates
         dq_j_out: wp.array(dtype=float32),  # Flat array of joint DoF velocities
     ):
         # Compute the number of constraints and dofs
@@ -158,6 +187,7 @@ store_joint_state_free = make_store_joint_state_func([], S_dofs_free)
 ###
 # Kernels
 ###
+
 
 @wp.kernel
 def _compute_joints_state(
@@ -258,56 +288,49 @@ def _compute_joints_state(
     # Store the joint state depending the kinematic (i.e. DoF) type
     if dof_type_j == int(JointDoFType.REVOLUTE.value):
         store_joint_state_revolute(
-            cio_j, dio_j, r_j, dr_j,
-            state_joint_r_j, state_joint_dr_j, state_joint_q_j, state_joint_dq_j
+            cio_j, dio_j, r_j, dr_j, state_joint_r_j, state_joint_dr_j, state_joint_q_j, state_joint_dq_j
         )
 
     elif dof_type_j == int(JointDoFType.PRISMATIC.value):
         store_joint_state_prismatic(
-            cio_j, dio_j, r_j, dr_j,
-            state_joint_r_j, state_joint_dr_j, state_joint_q_j, state_joint_dq_j
+            cio_j, dio_j, r_j, dr_j, state_joint_r_j, state_joint_dr_j, state_joint_q_j, state_joint_dq_j
         )
 
     elif dof_type_j == int(JointDoFType.CYLINDRICAL.value):
         store_joint_state_cylindrical(
-            cio_j, dio_j, r_j, dr_j,
-            state_joint_r_j, state_joint_dr_j, state_joint_q_j, state_joint_dq_j
+            cio_j, dio_j, r_j, dr_j, state_joint_r_j, state_joint_dr_j, state_joint_q_j, state_joint_dq_j
         )
 
     elif dof_type_j == int(JointDoFType.UNIVERSAL.value):
         store_joint_state_universal(
-            cio_j, dio_j, r_j, dr_j,
-            state_joint_r_j, state_joint_dr_j, state_joint_q_j, state_joint_dq_j
+            cio_j, dio_j, r_j, dr_j, state_joint_r_j, state_joint_dr_j, state_joint_q_j, state_joint_dq_j
         )
 
     elif dof_type_j == int(JointDoFType.SPHERICAL.value):
         store_joint_state_spherical(
-            cio_j, dio_j, r_j, dr_j,
-            state_joint_r_j, state_joint_dr_j, state_joint_q_j, state_joint_dq_j
+            cio_j, dio_j, r_j, dr_j, state_joint_r_j, state_joint_dr_j, state_joint_q_j, state_joint_dq_j
         )
 
     elif dof_type_j == int(JointDoFType.CARTESIAN.value):
         store_joint_state_cartesian(
-            cio_j, dio_j, r_j, dr_j,
-            state_joint_r_j, state_joint_dr_j, state_joint_q_j, state_joint_dq_j
+            cio_j, dio_j, r_j, dr_j, state_joint_r_j, state_joint_dr_j, state_joint_q_j, state_joint_dq_j
         )
 
     elif dof_type_j == int(JointDoFType.FIXED.value):
         store_joint_state_fixed(
-            cio_j, dio_j, r_j, dr_j,
-            state_joint_r_j, state_joint_dr_j, state_joint_q_j, state_joint_dq_j
+            cio_j, dio_j, r_j, dr_j, state_joint_r_j, state_joint_dr_j, state_joint_q_j, state_joint_dq_j
         )
 
     elif dof_type_j == int(JointDoFType.FREE.value):
         store_joint_state_free(
-            cio_j, dio_j, r_j, dr_j,
-            state_joint_r_j, state_joint_dr_j, state_joint_q_j, state_joint_dq_j
+            cio_j, dio_j, r_j, dr_j, state_joint_r_j, state_joint_dr_j, state_joint_q_j, state_joint_dq_j
         )
 
 
 ###
 # Launchers
 ###
+
 
 def compute_joints_state(model: Model, state: ModelData):
     wp.launch(
@@ -334,5 +357,5 @@ def compute_joints_state(model: Model, state: ModelData):
             state.joints.dr_j,
             state.joints.q_j,
             state.joints.dq_j,
-        ]
+        ],
     )

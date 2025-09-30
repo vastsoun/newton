@@ -1,29 +1,43 @@
-###########################################################################
-# KAMINO: UNIT TESTS
-###########################################################################
+# SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""
+KAMINO: UNIT TESTS
+"""
 
 import unittest
+
 import numpy as np
 import warp as wp
 
+# Module to be tested
+from newton._src.solvers.kamino.geometry.collisions import Collisions, make_collision_pairs
 from newton._src.solvers.kamino.models.builders import (
     build_boxes_nunchaku,
 )
 from newton._src.solvers.kamino.models.utils import (
-    make_single_builder,
     make_homogeneous_builder,
+    make_single_builder,
 )
-
-# Module to be tested
-from newton._src.solvers.kamino.geometry.collisions import make_collision_pairs, Collisions
-
 
 ###
 # Tests
 ###
 
-class TestGeometryCollisions(unittest.TestCase):
 
+class TestGeometryCollisions(unittest.TestCase):
     def setUp(self):
         self.verbose = False  # Set to True for detailed output
         self.default_device = wp.get_device()
@@ -118,13 +132,23 @@ class TestGeometryCollisions(unittest.TestCase):
         if self.verbose:
             print(f"collisions.cmodel.num_model_geom_pairs: {collisions.cmodel.num_model_geom_pairs}")
             print(f"collisions.cmodel.num_world_geom_pairs: {collisions.cmodel.num_world_geom_pairs}")
-            print(f"collisions.cmodel.model_num_pairs (size={len(collisions.cmodel.model_num_pairs)}):\n{collisions.cmodel.model_num_pairs}")
-            print(f"collisions.cmodel.world_num_pairs (size={len(collisions.cmodel.world_num_pairs)}):\n{collisions.cmodel.world_num_pairs}")
+            print(
+                f"collisions.cmodel.model_num_pairs (size={len(collisions.cmodel.model_num_pairs)}):\n{collisions.cmodel.model_num_pairs}"
+            )
+            print(
+                f"collisions.cmodel.world_num_pairs (size={len(collisions.cmodel.world_num_pairs)}):\n{collisions.cmodel.world_num_pairs}"
+            )
             print(f"collisions.cmodel.wid (size={len(collisions.cmodel.wid)}):\n{collisions.cmodel.wid}")
             print(f"collisions.cmodel.pairid (size={len(collisions.cmodel.pairid)}):\n{collisions.cmodel.pairid}")
-            print(f"collisions.cmodel.geom_pair (size={len(collisions.cmodel.geom_pair)}):\n{collisions.cmodel.geom_pair}")
-            print(f"collisions.cdata.model_num_collisions (size={len(collisions.cdata.model_num_collisions)}):\n{collisions.cdata.model_num_collisions}")
-            print(f"collisions.cdata.world_num_collisions (size={len(collisions.cdata.world_num_collisions)}):\n{collisions.cdata.world_num_collisions}")
+            print(
+                f"collisions.cmodel.geom_pair (size={len(collisions.cmodel.geom_pair)}):\n{collisions.cmodel.geom_pair}"
+            )
+            print(
+                f"collisions.cdata.model_num_collisions (size={len(collisions.cdata.model_num_collisions)}):\n{collisions.cdata.model_num_collisions}"
+            )
+            print(
+                f"collisions.cdata.world_num_collisions (size={len(collisions.cdata.world_num_collisions)}):\n{collisions.cdata.world_num_collisions}"
+            )
             print(f"collisions.cdata.wid (size={len(collisions.cdata.wid)}):\n{collisions.cdata.wid}")
             print(f"collisions.cdata.geom_pair (size={len(collisions.cdata.geom_pair)}):\n{collisions.cdata.geom_pair}")
 

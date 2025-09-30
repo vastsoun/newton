@@ -1,16 +1,30 @@
-###########################################################################
-# KAMINO: Shape Types & Containers
-###########################################################################
+# SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""
+KAMINO: Shape Types & Containers
+"""
 
 from __future__ import annotations
 
 import sys
+from abc import ABC, abstractmethod
+from enum import IntEnum
+
 import numpy as np
 import warp as wp
-
-from enum import IntEnum
-from typing import List, Union
-from abc import ABC, abstractmethod
 
 if sys.version_info >= (3, 12):
     from typing import override
@@ -22,27 +36,27 @@ else:
         def override(func):
             return func
 
-from .types import vec4f, Descriptor
 
+from .types import Descriptor, vec4f
 
 ###
 # Module interface
 ###
 
 __all__ = [
-    "ShapeType",
-    "ShapeDescriptor",
-    "EmptyShape",
-    "SphereShape",
-    "CylinderShape",
-    "ConeShape",
-    "CapsuleShape",
     "BoxShape",
-    "EllipsoidShape",
-    "PlaneShape",
+    "CapsuleShape",
+    "ConeShape",
     "ConvexShape",
+    "CylinderShape",
+    "EllipsoidShape",
+    "EmptyShape",
     "MeshShape",
-    "SDFShape"
+    "PlaneShape",
+    "SDFShape",
+    "ShapeDescriptor",
+    "ShapeType",
+    "SphereShape",
 ]
 
 
@@ -95,10 +109,12 @@ SHAPE_SDF = wp.constant(10)
 # Containers
 ###
 
+
 class ShapeType(IntEnum):
     """
     An enumeration of the different shape types.
     """
+
     EMPTY = SHAPE_EMPTY
     SPHERE = SHAPE_SPHERE
     CYLINDER = SHAPE_CYLINDER
@@ -113,7 +129,6 @@ class ShapeType(IntEnum):
 
 
 class ShapeDescriptor(ABC, Descriptor):
-
     @staticmethod
     def _num_params_of(shape_id: int) -> int:
         """
@@ -147,11 +162,7 @@ class ShapeDescriptor(ABC, Descriptor):
                 raise ValueError(f"ShapeDescriptor: Unknown shape type ID: {shape_id}")
         return nparams
 
-    def __init__(
-            self,
-            typeid: int,
-            name: str = "",
-            uid: str | None = None):
+    def __init__(self, typeid: int, name: str = "", uid: str | None = None):
         super().__init__(name, uid)
         self._typeid: int = typeid
         self._nparams = ShapeDescriptor._num_params_of(typeid)
@@ -184,6 +195,7 @@ class ShapeDescriptor(ABC, Descriptor):
 # Primitive Shapes
 ###
 
+
 class EmptyShape(ShapeDescriptor):
     def __init__(self, name: str = "empty", uuid: str | None = None):
         super().__init__(ShapeType.EMPTY, name)
@@ -200,13 +212,7 @@ class SphereShape(ShapeDescriptor):
 
     @override
     def __repr__(self):
-        return (
-            f"SphereShape(\n"
-            f"name: {self.name},\n"
-            f"uid: {self.uid},\n"
-            f"radius: {self.radius}\n"
-            f")"
-        )
+        return f"SphereShape(\nname: {self.name},\nuid: {self.uid},\nradius: {self.radius}\n)"
 
     @property
     def params(self) -> vec4f:
@@ -221,14 +227,7 @@ class CylinderShape(ShapeDescriptor):
 
     @override
     def __repr__(self):
-        return (
-            f"CylinderShape(\n"
-            f"name: {self.name},\n"
-            f"uid: {self.uid},\n"
-            f"radius: {self.radius},\n"
-            f"height: {self.height}\n"
-            f")"
-        )
+        return f"CylinderShape(\nname: {self.name},\nuid: {self.uid},\nradius: {self.radius},\nheight: {self.height}\n)"
 
     @property
     def params(self) -> vec4f:
@@ -243,14 +242,7 @@ class ConeShape(ShapeDescriptor):
 
     @override
     def __repr__(self):
-        return (
-            f"ConeShape(\n"
-            f"name: {self.name},\n"
-            f"uid: {self.uid},\n"
-            f"radius: {self.radius},\n"
-            f"height: {self.height}\n"
-            f")"
-        )
+        return f"ConeShape(\nname: {self.name},\nuid: {self.uid},\nradius: {self.radius},\nheight: {self.height}\n)"
 
     @property
     def params(self) -> vec4f:
@@ -265,14 +257,7 @@ class CapsuleShape(ShapeDescriptor):
 
     @override
     def __repr__(self):
-        return (
-            f"CapsuleShape(\n"
-            f"name: {self.name},\n"
-            f"uid: {self.uid},\n"
-            f"radius: {self.radius},\n"
-            f"height: {self.height}\n"
-            f")"
-        )
+        return f"CapsuleShape(\nname: {self.name},\nuid: {self.uid},\nradius: {self.radius},\nheight: {self.height}\n)"
 
     @property
     def params(self) -> vec4f:
@@ -312,15 +297,7 @@ class EllipsoidShape(ShapeDescriptor):
 
     @override
     def __repr__(self):
-        return (
-            f"EllipsoidShape(\n"
-            f"name: {self.name},\n"
-            f"uid: {self.uid},\n"
-            f"a: {self.a},\n"
-            f"b: {self.b},\n"
-            f"c: {self.c}\n"
-            f")"
-        )
+        return f"EllipsoidShape(\nname: {self.name},\nuid: {self.uid},\na: {self.a},\nb: {self.b},\nc: {self.c}\n)"
 
     @property
     def params(self) -> vec4f:
@@ -328,7 +305,7 @@ class EllipsoidShape(ShapeDescriptor):
 
 
 class PlaneShape(ShapeDescriptor):
-    def __init__(self, normal: List[float], distance: float, name: str = "plane", uuid: str | None = None):
+    def __init__(self, normal: list[float], distance: float, name: str = "plane", uuid: str | None = None):
         super().__init__(ShapeType.PLANE, name)
         self.normal = normal
         self.distance = distance
@@ -336,12 +313,7 @@ class PlaneShape(ShapeDescriptor):
     @override
     def __repr__(self):
         return (
-            f"PlaneShape(\n"
-            f"name: {self.name},\n"
-            f"uid: {self.uid},\n"
-            f"normal: {self.normal},\n"
-            f"distance: {self.distance}\n"
-            f")"
+            f"PlaneShape(\nname: {self.name},\nuid: {self.uid},\nnormal: {self.normal},\ndistance: {self.distance}\n)"
         )
 
     @property
@@ -353,6 +325,7 @@ class PlaneShape(ShapeDescriptor):
 # Explicit Shapes
 ###
 
+
 # TODO: Define ConvexData class to hold references to unique convex meshes
 class ConvexShape(ShapeDescriptor):
     def __init__(self, sdf: np.ndarray, name: str = "convex"):
@@ -361,13 +334,7 @@ class ConvexShape(ShapeDescriptor):
 
     @override
     def __repr__(self):
-        return (
-            f"ConvexShape(\n"
-            f"name: {self.name},\n"
-            f"uid: {self.uid}\n"
-            f"params: {self.params}\n"
-            f")"
-        )
+        return f"ConvexShape(\nname: {self.name},\nuid: {self.uid}\nparams: {self.params}\n)"
 
     # TODO: What should these parameters be?
     @property
@@ -378,12 +345,13 @@ class ConvexShape(ShapeDescriptor):
 # TODO: Define MeshData class to hold references to unique meshes
 class MeshShape(ShapeDescriptor):
     def __init__(
-            self,
-            vertices: np.ndarray,
-            normals: np.ndarray | None = None,
-            triangles: np.ndarray | None = None,
-            triangle_normals: np.ndarray | None = None,
-            name: str = "mesh"):
+        self,
+        vertices: np.ndarray,
+        normals: np.ndarray | None = None,
+        triangles: np.ndarray | None = None,
+        triangle_normals: np.ndarray | None = None,
+        name: str = "mesh",
+    ):
         super().__init__(ShapeType.MESH, name)
         self.vertices = vertices
         self.normals = normals
@@ -418,13 +386,7 @@ class SDFShape(ShapeDescriptor):
 
     @override
     def __repr__(self):
-        return (
-            f"SDFShape(\n"
-            f"name: {self.name},\n"
-            f"uid: {self.uid},\n"
-            f"params: {self.params}\n"
-            f")"
-        )
+        return f"SDFShape(\nname: {self.name},\nuid: {self.uid},\nparams: {self.params}\n)"
 
     # TODO: What should these parameters be?
     @property
@@ -432,18 +394,18 @@ class SDFShape(ShapeDescriptor):
         return vec4f(0.0, 0.0, 0.0, 0.0)
 
 
-ShapeDescriptorType = Union[
-    None,
-    EmptyShape,
-    SphereShape,
-    CylinderShape,
-    ConeShape,
-    CapsuleShape,
-    BoxShape,
-    EllipsoidShape,
-    PlaneShape,
-    ConvexShape,
-    MeshShape,
-    SDFShape
-]
+ShapeDescriptorType = (
+    None
+    | EmptyShape
+    | SphereShape
+    | CylinderShape
+    | ConeShape
+    | CapsuleShape
+    | BoxShape
+    | EllipsoidShape
+    | PlaneShape
+    | ConvexShape
+    | MeshShape
+    | SDFShape
+)
 """Type that can be used to represent any shape descriptor, including primitive and explicit shapes."""

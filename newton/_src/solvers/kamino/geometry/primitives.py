@@ -1,19 +1,45 @@
-########################################################################################################################
-# KAMINO: Collision Detection: Narrow-phase operation for geometric primitives
-########################################################################################################################
+# SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""
+KAMINO: Collision Detection: Narrow-phase operation for geometric primitives
+"""
 
 from __future__ import annotations
 
 import warp as wp
 
-from newton._src.solvers.kamino.core.types import int32, float32, vec2i, vec2f, vec3f, vec4f, vec8f, mat33f, mat43f, mat83f, transformf
 from newton._src.solvers.kamino.core.math import FLOAT32_EPS, UNIT_Z
-from newton._src.solvers.kamino.core.shapes import ShapeType
 from newton._src.solvers.kamino.core.model import Model, ModelData
+from newton._src.solvers.kamino.core.shapes import ShapeType
+from newton._src.solvers.kamino.core.types import (
+    float32,
+    int32,
+    mat33f,
+    mat43f,
+    mat83f,
+    transformf,
+    vec2f,
+    vec2i,
+    vec3f,
+    vec4f,
+    vec8f,
+)
 from newton._src.solvers.kamino.geometry.collisions import Collisions
 from newton._src.solvers.kamino.geometry.contacts import Contacts
 from newton._src.solvers.kamino.geometry.math import make_contact_frame_znorm
-
 
 ###
 # Module configs
@@ -35,6 +61,7 @@ DEFAULT_MARGIN = FLOAT32_EPS
 ###
 # Geometry helper Types
 ###
+
 
 @wp.struct
 class Box:
@@ -88,6 +115,7 @@ def normalize_with_norm(x: vec3f):
 # Functions
 ###
 
+
 @wp.func
 def add_active_contact(
     # Inputs:
@@ -111,7 +139,7 @@ def add_active_contact(
     contact_body_B_out: wp.array(dtype=vec4f),
     contact_gapfunc_out: wp.array(dtype=vec4f),
     contact_frame_out: wp.array(dtype=mat33f),
-    contact_material_out: wp.array(dtype=vec2f)
+    contact_material_out: wp.array(dtype=vec2f),
 ):
     active = (distance_in - margin_in) < 0.0
     if active:
@@ -164,7 +192,7 @@ def sphere_sphere(
     contact_body_B_out: wp.array(dtype=vec4f),
     contact_gapfunc_out: wp.array(dtype=vec4f),
     contact_frame_out: wp.array(dtype=mat33f),
-    contact_material_out: wp.array(dtype=vec2f)
+    contact_material_out: wp.array(dtype=vec2f),
 ):
     dir = sphere2.pos - sphere1.pos
     dist = wp.length(dir)
@@ -235,7 +263,7 @@ def sphere_box(
     contact_body_B_out: wp.array(dtype=vec4f),
     contact_gapfunc_out: wp.array(dtype=vec4f),
     contact_frame_out: wp.array(dtype=mat33f),
-    contact_material_out: wp.array(dtype=vec2f)
+    contact_material_out: wp.array(dtype=vec2f),
 ):
     center = wp.transpose(box_in.rot) @ (sphere_in.pos - box_in.pos)
     clamped = wp.max(-box_in.size, wp.min(box_in.size, center))
@@ -408,7 +436,7 @@ def box_box(
     contact_body_B_out: wp.array(dtype=vec4f),
     contact_gapfunc_out: wp.array(dtype=vec4f),
     contact_frame_out: wp.array(dtype=mat33f),
-    contact_material_out: wp.array(dtype=vec2f)
+    contact_material_out: wp.array(dtype=vec2f),
 ):
     # Compute transforms between box's frames
     # wp.printf("b1: d: %f, w: %f, h: %f\n", box1_in.size[0], box1_in.size[1], box1_in.size[2])
@@ -860,6 +888,7 @@ def ellipsoid_ellipsoid():
 # Kernels
 ###
 
+
 @wp.kernel
 def _primitive_narrowphase(
     # Inputs
@@ -933,7 +962,7 @@ def _primitive_narrowphase(
             contacts_body_B_out,
             contacts_gapfunc_out,
             contacts_frame_out,
-            contacts_material_out
+            contacts_material_out,
         )
 
     elif sid1 == int32(ShapeType.SPHERE.value) and sid2 == int32(ShapeType.CYLINDER.value):
@@ -964,7 +993,7 @@ def _primitive_narrowphase(
             contacts_body_B_out,
             contacts_gapfunc_out,
             contacts_frame_out,
-            contacts_material_out
+            contacts_material_out,
         )
 
     elif sid1 == int32(ShapeType.SPHERE.value) and sid2 == int32(ShapeType.ELLIPSOID.value):
@@ -1025,7 +1054,7 @@ def _primitive_narrowphase(
             contacts_body_B_out,
             contacts_gapfunc_out,
             contacts_frame_out,
-            contacts_material_out
+            contacts_material_out,
         )
     elif sid1 == int32(ShapeType.BOX.value) and sid2 == int32(ShapeType.ELLIPSOID.value):
         box_ellipsoid()
@@ -1037,12 +1066,8 @@ def _primitive_narrowphase(
 # Kernel Launcher
 ###
 
-def primitive_narrowphase(
-    model: Model,
-    state: ModelData,
-    collisions: Collisions,
-    contacts: Contacts
-):
+
+def primitive_narrowphase(model: Model, state: ModelData, collisions: Collisions, contacts: Contacts):
     """
     Launches the narrow-phase collision detection kernel for primitive shapes.
 
@@ -1079,6 +1104,6 @@ def primitive_narrowphase(
             contacts.body_B,
             contacts.gapfunc,
             contacts.frame,
-            contacts.material
-        ]
+            contacts.material,
+        ],
     )

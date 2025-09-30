@@ -1,49 +1,55 @@
-###########################################################################
-# KAMINO: UNIT TESTS: SOLVERS: Proximal ADMM Dual Solver
-###########################################################################
+# SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""
+KAMINO: UNIT TESTS: SOLVERS: Accelerated Proximal ADMM Dual Solver
+"""
 
 import os
 import unittest
+
+import matplotlib.pyplot as plt
 import numpy as np
 import warp as wp
 
-import matplotlib.pyplot as plt
-
-from newton._src.solvers.kamino.core.math import vec3f, screw
-from newton._src.solvers.kamino.linalg.cholesky import SequentialCholeskyFactorizer
+from newton._src.solvers.kamino.core.math import screw, vec3f
 from newton._src.solvers.kamino.dynamics.dual import DualProblem
-from newton._src.solvers.kamino.simulation.simulator import compute_constraint_body_wrenches
+from newton._src.solvers.kamino.linalg.cholesky import SequentialCholeskyFactorizer
 from newton._src.solvers.kamino.models.builders import (
-    build_box_on_plane,
-    build_box_pendulum,
-    build_boxes_hinged,
-    build_boxes_nunchaku,
     build_boxes_fourbar,
 )
 from newton._src.solvers.kamino.models.utils import (
     make_single_builder,
-    make_homogeneous_builder,
-    make_heterogeneous_builder
 )
-from newton._src.solvers.kamino.models.builders import (
-    add_ground_geom,
-    add_velocity_bias,
-    offset_builder,
+
+# Module to be tested
+from newton._src.solvers.kamino.solvers.apadmm import APADMMDualSolver, APADMMSettings
+from newton._src.solvers.kamino.tests.utils.extract import (
+    extract_delassus,
+    extract_info_vectors,
+    extract_problem_vector,
 )
 
 # Test utilities
 from newton._src.solvers.kamino.tests.utils.make import make_containers, update_containers
-from newton._src.solvers.kamino.tests.utils.extract import extract_delassus, extract_problem_vector, extract_info_vectors
 from newton._src.solvers.kamino.tests.utils.print import print_model_info
-
-
-# Module to be tested
-from newton._src.solvers.kamino.solvers.apadmm import APADMMSettings, APADMMDualSolver
-
 
 ###
 # Helper functions
 ###
+
 
 def print_problem_summary(problem: DualProblem):
     print("Dual Problem Summary:")
@@ -181,11 +187,11 @@ def save_solver_info(solver: APADMMDualSolver, path: str | None = None, verbose:
     for row, (label, arr) in enumerate(info_list):
         for col in range(nw):
             ax = axes[row, col]
-            ax.plot(arr[col], label=f'{label}')
-            ax.set_xlabel('Iteration')
+            ax.plot(arr[col], label=f"{label}")
+            ax.set_xlabel("Iteration")
             ax.set_ylabel(label)
             if row == 0:
-                ax.set_title(f'World {col}')
+                ax.set_title(f"World {col}")
             if col == 0:
                 ax.set_ylabel(label)
             else:
@@ -193,7 +199,12 @@ def save_solver_info(solver: APADMMDualSolver, path: str | None = None, verbose:
             ax.grid(True)
     plt.tight_layout()
     if path is None:
-        plt.savefig(os.path.dirname(os.path.realpath(__file__)) + "/data/apadmm_solver_info.pdf", format="pdf", dpi=300, bbox_inches="tight")
+        plt.savefig(
+            os.path.dirname(os.path.realpath(__file__)) + "/data/apadmm_solver_info.pdf",
+            format="pdf",
+            dpi=300,
+            bbox_inches="tight",
+        )
     else:
         plt.savefig(path, format="pdf", dpi=300, bbox_inches="tight")
 
@@ -202,8 +213,8 @@ def save_solver_info(solver: APADMMDualSolver, path: str | None = None, verbose:
 # Tests
 ###
 
-class TestPADMMDualSolver(unittest.TestCase):
 
+class TestPADMMDualSolver(unittest.TestCase):
     def setUp(self):
         self.verbose = True  # Set to True for detailed output
         self.savefig = True  # Set to True to generate solver info plots
@@ -238,9 +249,7 @@ class TestPADMMDualSolver(unittest.TestCase):
 
         # Create the model and containers from the builder
         model, state, limits, detector, jacobians = make_containers(
-            builder=builder,
-            max_world_contacts=max_world_contacts,
-            device=self.default_device
+            builder=builder, max_world_contacts=max_world_contacts, device=self.default_device
         )
 
         # Update the containers
@@ -257,16 +266,12 @@ class TestPADMMDualSolver(unittest.TestCase):
             limits=limits,
             contacts=detector.contacts,
             factorizer=SequentialCholeskyFactorizer,
-            device=self.default_device
+            device=self.default_device,
         )
 
         # Build the dual problem
         problem.build(
-            model=model,
-            state=state,
-            limits=limits.data,
-            contacts=detector.contacts.data,
-            jacobians=jacobians.data
+            model=model, state=state, limits=limits.data, contacts=detector.contacts.data, jacobians=jacobians.data
         )
 
         # Optional verbose output
@@ -293,7 +298,7 @@ class TestPADMMDualSolver(unittest.TestCase):
             contacts=detector.contacts,
             settings=settings,
             collect_info=True,
-            device=self.default_device
+            device=self.default_device,
         )
 
         # Solve the example problem
@@ -302,20 +307,46 @@ class TestPADMMDualSolver(unittest.TestCase):
         # Extract numpy arrays from the solver state and solution
         only_active_dims = True
         D_wp_np = extract_delassus(problem.delassus, only_active_dims=only_active_dims)
-        v_i_wp_np = extract_problem_vector(problem.delassus, problem.data.v_i.numpy(), only_active_dims=only_active_dims)
-        v_b_wp_np = extract_problem_vector(problem.delassus, problem.data.v_b.numpy(), only_active_dims=only_active_dims)
-        v_f_wp_np = extract_problem_vector(problem.delassus, problem.data.v_f.numpy(), only_active_dims=only_active_dims)
+        v_i_wp_np = extract_problem_vector(
+            problem.delassus, problem.data.v_i.numpy(), only_active_dims=only_active_dims
+        )
+        v_b_wp_np = extract_problem_vector(
+            problem.delassus, problem.data.v_b.numpy(), only_active_dims=only_active_dims
+        )
+        v_f_wp_np = extract_problem_vector(
+            problem.delassus, problem.data.v_f.numpy(), only_active_dims=only_active_dims
+        )
         P_wp_np = extract_problem_vector(problem.delassus, problem.data.P.numpy(), only_active_dims=only_active_dims)
-        s_wp_np = extract_problem_vector(problem.delassus, solver.data.state.s.numpy(), only_active_dims=only_active_dims)
-        v_wp_np = extract_problem_vector(problem.delassus, solver.data.state.v.numpy(), only_active_dims=only_active_dims)
-        x_wp_np = extract_problem_vector(problem.delassus, solver.data.state.x.numpy(), only_active_dims=only_active_dims)
-        y_wp_np = extract_problem_vector(problem.delassus, solver.data.state.y.numpy(), only_active_dims=only_active_dims)
-        z_wp_np = extract_problem_vector(problem.delassus, solver.data.state.z.numpy(), only_active_dims=only_active_dims)
-        v_plus_wp_np = extract_problem_vector(problem.delassus, solver.data.solution.v_plus.numpy(), only_active_dims=only_active_dims)
-        lambdas_wp_np = extract_problem_vector(problem.delassus, solver.data.solution.lambdas.numpy(), only_active_dims=only_active_dims)
-        r_primal_wp_np = extract_problem_vector(problem.delassus, solver.data.residuals.r_primal.numpy(), only_active_dims=only_active_dims)
-        r_dual_wp_np = extract_problem_vector(problem.delassus, solver.data.residuals.r_dual.numpy(), only_active_dims=only_active_dims)
-        r_compl_wp_np = extract_problem_vector(problem.delassus, solver.data.residuals.r_compl.numpy(), only_active_dims=only_active_dims)
+        s_wp_np = extract_problem_vector(
+            problem.delassus, solver.data.state.s.numpy(), only_active_dims=only_active_dims
+        )
+        v_wp_np = extract_problem_vector(
+            problem.delassus, solver.data.state.v.numpy(), only_active_dims=only_active_dims
+        )
+        x_wp_np = extract_problem_vector(
+            problem.delassus, solver.data.state.x.numpy(), only_active_dims=only_active_dims
+        )
+        y_wp_np = extract_problem_vector(
+            problem.delassus, solver.data.state.y.numpy(), only_active_dims=only_active_dims
+        )
+        z_wp_np = extract_problem_vector(
+            problem.delassus, solver.data.state.z.numpy(), only_active_dims=only_active_dims
+        )
+        v_plus_wp_np = extract_problem_vector(
+            problem.delassus, solver.data.solution.v_plus.numpy(), only_active_dims=only_active_dims
+        )
+        lambdas_wp_np = extract_problem_vector(
+            problem.delassus, solver.data.solution.lambdas.numpy(), only_active_dims=only_active_dims
+        )
+        r_primal_wp_np = extract_problem_vector(
+            problem.delassus, solver.data.residuals.r_primal.numpy(), only_active_dims=only_active_dims
+        )
+        r_dual_wp_np = extract_problem_vector(
+            problem.delassus, solver.data.residuals.r_dual.numpy(), only_active_dims=only_active_dims
+        )
+        r_compl_wp_np = extract_problem_vector(
+            problem.delassus, solver.data.residuals.r_compl.numpy(), only_active_dims=only_active_dims
+        )
 
         # Retrieve the number of worlds in the model
         nw = model.info.num_worlds
@@ -404,8 +435,12 @@ class TestPADMMDualSolver(unittest.TestCase):
         v_f_true = np.diag(np.reciprocal(P_wp_np[w])) @ v_f_wp_np[w]
 
         # Extract solver explicit solution
-        v_plus_np = extract_problem_vector(problem.delassus, solver.data.info.v_plus.numpy(), only_active_dims=only_active_dims)
-        v_aug_np = extract_problem_vector(problem.delassus, solver.data.info.v_aug.numpy(), only_active_dims=only_active_dims)
+        v_plus_np = extract_problem_vector(
+            problem.delassus, solver.data.info.v_plus.numpy(), only_active_dims=only_active_dims
+        )
+        v_aug_np = extract_problem_vector(
+            problem.delassus, solver.data.info.v_aug.numpy(), only_active_dims=only_active_dims
+        )
         s_np = extract_problem_vector(problem.delassus, solver.data.info.s.numpy(), only_active_dims=only_active_dims)
         # Compute the true dual solution and error
         v_plus_true = np.matmul(D_true, lambdas_wp_np[w]) + v_f_true

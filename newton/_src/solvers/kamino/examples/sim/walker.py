@@ -1,3 +1,18 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import argparse
 import os
 import time
@@ -12,12 +27,7 @@ import newton.examples
 from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.core.types import float32, vec6f
 
-# Note: Keeping imports for potential use in commented code sections
-# from newton._src.solvers.kamino.models.builders import (
-#     add_ground_geom,
-#     add_velocity_bias,
-#     offset_builder,
-# )
+# from newton._src.solvers.kamino.models.builders import add_ground_geom, add_velocity_bias, offset_builder
 from newton._src.solvers.kamino.examples import get_examples_data_hdf5_path, get_examples_data_root_path, print_frame
 from newton._src.solvers.kamino.models import get_examples_usd_assets_path
 from newton._src.solvers.kamino.simulation.simulator import Simulator
@@ -25,10 +35,6 @@ from newton._src.solvers.kamino.utils.device import get_device_info
 from newton._src.solvers.kamino.utils.io import hdf5
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
 from newton._src.solvers.kamino.utils.print import print_progress_bar
-
-# Note: Keeping import for potential use in commented code sections
-from newton._src.solvers.kamino.tests.test_solvers_padmm import save_solver_info
-
 
 ###
 # Kernels
@@ -305,7 +311,7 @@ def run_hdf5_mode(clear_warp_cache=True, use_cuda_graph=False, verbose=False):
                 cdata.update_from(simulator=sim)
                 pdata.update_from(simulator=sim)
                 renderer.add_frame(system=sdata, contacts=cdata, problem=pdata)
-                print_progress_bar(i+1, ns, start_time, prefix="Progress", suffix="")
+                print_progress_bar(i + 1, ns, start_time, prefix="Progress", suffix="")
                 # if verbose:
                 #     print_frame(sim, i + 1)
 

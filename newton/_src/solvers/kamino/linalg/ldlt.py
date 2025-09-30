@@ -1,40 +1,41 @@
-###########################################################################
-# KAMINO: LDLT factorization module
-###########################################################################
+# SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""
+KAMINO: LDLT factorization module
+"""
 
 from __future__ import annotations
 
-import warp as wp
-
-from typing import List, Union
-from functools import lru_cache
 from abc import ABC, abstractmethod
-from warp.context import Devicelike
-from newton._src.solvers.kamino.core.types import int32, float32
-from newton._src.solvers.kamino.core.math import FLOAT32_EPS
 
+import warp as wp
+from warp.context import Devicelike
+
+from newton._src.solvers.kamino.core.types import float32, int32
 
 ###
 # Module interface
 ###
 
 __all__ = [
-    "ldlt_sequential_factorize",
-    "ldlt_sequential_solve_forward",
-    "ldlt_sequential_solve_backward",
-    "ldlt_sequential_solve",
-    "ldlt_sequential_solve_inplace",
-    "ldlt_blocked_factorize",
-    "ldlt_blocked_solve",
-    "ldlt_blocked_solve_inplace",
-    "make_ldlt_blocked_factorize_kernel",
-    "make_ldlt_blocked_solve_kernel",
-    "make_ldlt_blocked_solve_inplace_kernel",
+    "BlockedLDLTFactorizer",
     "LDLTData",
+    "LDLTFactorizer",
     "LDLTFactorizerBase",
     "SequentialLDLTFactorizer",
-    "BlockedLDLTFactorizer",
-    "LDLTFactorizer",
 ]
 
 
@@ -717,15 +718,17 @@ wp.set_module_options({"enable_backward": False})
 # Containers
 ###
 
+
 class LDLTData:
     """
     A container to hold the data of multiple LDLT factorization matrix blocks.
     """
+
     def __init__(self):
         self.num_blocks: int = 0
         """Host-side cache of the number of matrix blocks in the LDLT factorization."""
 
-        self.dimensions: List[int] = []
+        self.dimensions: list[int] = []
         """Host-side cache of the dimensions of each symmetric positive-definite matrix block."""
 
         self.msize: int = 0
@@ -760,6 +763,7 @@ class LDLTData:
 # Factorizers
 ###
 
+
 class LDLTFactorizerBase(ABC):
     """
     The base class to manage factorizations of one or several matrix blocks.\n
@@ -767,7 +771,7 @@ class LDLTFactorizerBase(ABC):
     """
 
     @staticmethod
-    def _check_dims(dims: List[int]) -> List[int]:
+    def _check_dims(dims: list[int]) -> list[int]:
         if isinstance(dims, int):
             dims = [dims]
         elif isinstance(dims, list):
@@ -777,7 +781,7 @@ class LDLTFactorizerBase(ABC):
             raise TypeError("Dimensions must be an integer or a list of integers.")
         return dims
 
-    def __init__(self, dims: List[int] | None = None, allocate_info=True, device: Devicelike = None):
+    def __init__(self, dims: list[int] | None = None, allocate_info=True, device: Devicelike = None):
         """
         Creates a new Cholesky factorization container.\n
 
@@ -814,7 +818,7 @@ class LDLTFactorizerBase(ABC):
         return self._data.num_blocks
 
     @property
-    def dimensions(self) -> List[int]:
+    def dimensions(self) -> list[int]:
         """
         Returns the total capacity of the LDLT factorization memory allocation.
         """
@@ -899,7 +903,7 @@ class LDLTFactorizerBase(ABC):
     def _allocate(self):
         pass
 
-    def allocate(self, dims: List[int], allocate_info=True, device: Devicelike = None):
+    def allocate(self, dims: list[int], allocate_info=True, device: Devicelike = None):
         """
         Allocates the LDLT factorization data on the specified device.
         """
@@ -935,8 +939,8 @@ class LDLTFactorizerBase(ABC):
             if allocate_info:
                 self._data.maxdim = wp.array(self._data.dimensions, dtype=int32)
                 self._data.dim = wp.array(self._data.dimensions, dtype=int32)
-                self._data.mio = wp.array(mat_offsets[:self._data.num_blocks], dtype=int32)
-                self._data.vio = wp.array(vec_offsets[:self._data.num_blocks], dtype=int32)
+                self._data.mio = wp.array(mat_offsets[: self._data.num_blocks], dtype=int32)
+                self._data.vio = wp.array(vec_offsets[: self._data.num_blocks], dtype=int32)
 
         # Call the implementation-specific allocation method for post-processing
         self._allocate()
@@ -1002,12 +1006,8 @@ class SequentialLDLTFactorizer(LDLTFactorizerBase):
     This parallelizes the factorization and solve operations over each block\n
     and supports heterogeneous matrix block sizes.\n
     """
-    def __init__(
-        self,
-        dims: List[int] = [],
-        allocate_info=True,
-        device: Devicelike = None
-    ):
+
+    def __init__(self, dims: list[int] | None = None, allocate_info=True, device: Devicelike = None):
         super().__init__(dims=dims, allocate_info=allocate_info, device=device)
 
     def _allocate(self):
@@ -1025,17 +1025,21 @@ class SequentialLDLTFactorizer(LDLTFactorizerBase):
             dim=self._data.dim,
             mio=self._data.mio,
             A=A,
-            L=self._data.L
+            L=self._data.L,
         )
 
     def solve(self, b: wp.array(dtype=float32), x: wp.array(dtype=float32)):
         # Ensure that the right-hand-side vector matches the allocated size
         if b.shape[0] > self.data.vsize:
-            raise ValueError(f"Right-hand-side vector `b` is larger (shape={b.shape}) than the allocated size of {self.data.vsize}.")
+            raise ValueError(
+                f"Right-hand-side vector `b` is larger (shape={b.shape}) than the allocated size of {self.data.vsize}."
+            )
 
         # Ensure that the solution vector matches the allocated size
         if x.shape[0] > self.data.vsize:
-            raise ValueError(f"Solution vector is `x` larger (shape={x.shape}) than the allocated size of {self.data.vsize}.")
+            raise ValueError(
+                f"Solution vector is `x` larger (shape={x.shape}) than the allocated size of {self.data.vsize}."
+            )
 
         # Solve the system U.T * y = b and U * x = y
         ldlt_sequential_solve(
@@ -1047,13 +1051,15 @@ class SequentialLDLTFactorizer(LDLTFactorizerBase):
             L=self._data.L,
             b=b,
             y=self._data.y,
-            x=x
+            x=x,
         )
 
     def solve_inplace(self, x: wp.array(dtype=float32)):
         # Ensure that the solution vector matches the allocated size
         if x.shape[0] > self.data.vsize:
-            raise ValueError(f"Solution vector is `x` larger (shape={x.shape}) than the allocated size of {self.data.vsize}.")
+            raise ValueError(
+                f"Solution vector is `x` larger (shape={x.shape}) than the allocated size of {self.data.vsize}."
+            )
 
         # Solve the system U.T * y = b, D * z = y and U * x = z
         ldlt_sequential_solve_inplace(
@@ -1063,7 +1069,7 @@ class SequentialLDLTFactorizer(LDLTFactorizerBase):
             mio=self._data.mio,
             vio=self._data.vio,
             L=self._data.L,
-            x=x
+            x=x,
         )
 
 
@@ -1073,14 +1079,15 @@ class BlockedLDLTFactorizer(LDLTFactorizerBase):
     This implementation currently only supports homogeneous matrix block sizes,\n
     and can thus parallelize over both each outer and inner matrix blocks.\n
     """
+
     def __init__(
         self,
-        dims: List[int] = [],
+        dims: list[int] | None = None,
         block_size: int = 16,
         solve_block_dim: int = 64,
         factortize_block_dim: int = 128,
         allocate_info=True,
-        device: Devicelike = None
+        device: Devicelike = None,
     ):
         # Initialize the base class with the specified capacity and size
         super().__init__(dims=dims, allocate_info=allocate_info, device=device)
@@ -1117,7 +1124,9 @@ class BlockedLDLTFactorizer(LDLTFactorizerBase):
         Sets the block dimension used for the blocked LDLT factorization.
         """
         if value <= 0:
-            raise ValueError(f"Invalid block dimension for blocked LDLT factorization: {value}. Must be greater than zero.")
+            raise ValueError(
+                f"Invalid block dimension for blocked LDLT factorization: {value}. Must be greater than zero."
+            )
         self._factortize_block_dim = value
 
     @property
@@ -1142,7 +1151,9 @@ class BlockedLDLTFactorizer(LDLTFactorizerBase):
         mbdim = self._data.dimensions[0]
         for i in range(1, self._data.num_blocks):
             if self._data.dimensions[i] != mbdim:
-                raise ValueError(f"Blocked LDLT factorization requires all dimensions to be the same: {self._data.dimensions}.")
+                raise ValueError(
+                    f"Blocked LDLT factorization requires all dimensions to be the same: {self._data.dimensions}."
+                )
 
         # Compute and cache the necessary matrix-vector reshaping info
         # required by the blocked LDLT factorization kernels
@@ -1165,17 +1176,21 @@ class BlockedLDLTFactorizer(LDLTFactorizerBase):
             A=A.reshape(self._mshape),
             L=self._data.L.reshape(self._mshape),
             kernel=self._factorize_kernel,
-            block_dim=self.factortize_block_dim
+            block_dim=self.factortize_block_dim,
         )
 
     def solve(self, b: wp.array(dtype=float32), x: wp.array(dtype=float32)):
         # Ensure that the right-hand-side vector matches the allocated size
         if b.shape[0] > self.data.vsize:
-            raise ValueError(f"Right-hand-side vector `b` is larger (shape={b.shape}) than the allocated size of {self.data.vsize}.")
+            raise ValueError(
+                f"Right-hand-side vector `b` is larger (shape={b.shape}) than the allocated size of {self.data.vsize}."
+            )
 
         # Ensure that the solution vector matches the allocated size
         if x.shape[0] > self.data.vsize:
-            raise ValueError(f"Solution vector is `x` larger (shape={x.shape}) than the allocated size of {self.data.vsize}.")
+            raise ValueError(
+                f"Solution vector is `x` larger (shape={x.shape}) than the allocated size of {self.data.vsize}."
+            )
 
         # Solve the system U.T * y = b, D * z = y and U * x = z
         ldlt_blocked_solve(
@@ -1187,7 +1202,7 @@ class BlockedLDLTFactorizer(LDLTFactorizerBase):
             y=self._data.y.reshape(self._vshape),
             x=x.reshape(self._vshape),
             kernel=self._solve_kernel,
-            block_dim=self.solve_block_dim
+            block_dim=self.solve_block_dim,
         )
 
     def solve_inplace(self, x: wp.array(dtype=float32)):
@@ -1209,5 +1224,5 @@ class BlockedLDLTFactorizer(LDLTFactorizerBase):
         # )
 
 
-LDLTFactorizer = Union[SequentialLDLTFactorizer, BlockedLDLTFactorizer, None]
+LDLTFactorizer = SequentialLDLTFactorizer | BlockedLDLTFactorizer | None
 """A type alias for the LDLT factorizer, which can be either a sequential or blocked implementation."""

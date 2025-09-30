@@ -42,8 +42,8 @@ def _load_csv(path: Path) -> np.ndarray:
 
 class TestUtilsLinAlgProfiles(unittest.TestCase):
     def setUp(self):
-        self.verbose = True  # Set to True for verbose output
-        self.plots = True  # Set to True to generate plots
+        self.verbose = False  # Set to True for verbose output
+        self.plots = False  # Set to True to generate plots
 
         # Configure logger
         if self.verbose:

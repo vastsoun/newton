@@ -1,20 +1,36 @@
-###########################################################################
-# KAMINO: UNIT TESTS
-###########################################################################
+# SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""
+KAMINO: UNIT TESTS
+"""
 
 import unittest
+
 import numpy as np
 import warp as wp
 
-from newton._src.solvers.kamino.core.types import List, vec3f, mat33f
+from newton._src.solvers.kamino.core.types import mat33f, vec3f
 
 # Module to be tested
-from newton._src.solvers.kamino.geometry.math import make_contact_frame_znorm, make_contact_frame_xnorm
-
+from newton._src.solvers.kamino.geometry.math import make_contact_frame_xnorm, make_contact_frame_znorm
 
 ###
 # Kernels
 ###
+
 
 @wp.kernel
 def _compute_contact_frame_znorm(
@@ -41,6 +57,7 @@ def _compute_contact_frame_xnorm(
 ###
 # Launchers
 ###
+
 
 def compute_contact_frame_znorm(
     normal: wp.array(dtype=vec3f),
@@ -72,8 +89,8 @@ def compute_contact_frame_xnorm(
 # Tests
 ###
 
-class TestGeometryMath(unittest.TestCase):
 
+class TestGeometryMath(unittest.TestCase):
     def setUp(self):
         self.verbose = False  # Set to True for verbose output
         self.default_device = wp.get_device()
@@ -83,7 +100,7 @@ class TestGeometryMath(unittest.TestCase):
 
     def test_make_contact_frame_znorm(self):
         # Create a normal vectors
-        test_normals: List[vec3f] = []
+        test_normals: list[vec3f] = []
 
         # Add normals for which to test contact frame creation
         test_normals.append(vec3f(1.0, 0.0, 0.0))
@@ -112,16 +129,28 @@ class TestGeometryMath(unittest.TestCase):
             self.assertTrue(np.isclose(det, 1.0, atol=1e-6))
 
         # Check each primtive frame
-        self.assertTrue(np.allclose(frames_np[0], np.array([[0.0, 0.0, 1.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]), atol=1e-6))
-        self.assertTrue(np.allclose(frames_np[1], np.array([[1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, -1.0, 0.0]]), atol=1e-6))
-        self.assertTrue(np.allclose(frames_np[2], np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]), atol=1e-6))
-        self.assertTrue(np.allclose(frames_np[3], np.array([[0.0, 0.0, -1.0], [1.0, 0.0, 0.0], [0.0, -1.0, 0.0]]), atol=1e-6))
-        self.assertTrue(np.allclose(frames_np[4], np.array([[1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]]), atol=1e-6))
-        self.assertTrue(np.allclose(frames_np[5], np.array([[1.0, 0.0, 0.0], [0.0, -1.0, 0.0], [0.0, 0.0, -1.0]]), atol=1e-6))
+        self.assertTrue(
+            np.allclose(frames_np[0], np.array([[0.0, 0.0, 1.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]), atol=1e-6)
+        )
+        self.assertTrue(
+            np.allclose(frames_np[1], np.array([[1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, -1.0, 0.0]]), atol=1e-6)
+        )
+        self.assertTrue(
+            np.allclose(frames_np[2], np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]), atol=1e-6)
+        )
+        self.assertTrue(
+            np.allclose(frames_np[3], np.array([[0.0, 0.0, -1.0], [1.0, 0.0, 0.0], [0.0, -1.0, 0.0]]), atol=1e-6)
+        )
+        self.assertTrue(
+            np.allclose(frames_np[4], np.array([[1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]]), atol=1e-6)
+        )
+        self.assertTrue(
+            np.allclose(frames_np[5], np.array([[1.0, 0.0, 0.0], [0.0, -1.0, 0.0], [0.0, 0.0, -1.0]]), atol=1e-6)
+        )
 
     def test_make_contact_frame_xnorm(self):
         # Create a normal vectors
-        test_normals: List[vec3f] = []
+        test_normals: list[vec3f] = []
 
         # Add normals for which to test contact frame creation
         test_normals.append(vec3f(1.0, 0.0, 0.0))

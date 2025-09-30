@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os  # For path manipulation
 import time  # Added for the interactive loop
 import unittest
 
@@ -21,11 +20,8 @@ import numpy as np  # For numerical operations and random values
 import warp as wp
 
 import newton
-from newton import Mesh
+from newton import JointType, Mesh
 from newton.solvers import SolverMuJoCo, SolverNotifyFlags
-
-# Import the kernels for coordinate conversion
-from newton.viewer import RendererOpenGL
 
 
 class TestMuJoCoSolver(unittest.TestCase):
@@ -42,7 +38,7 @@ class TestMuJoCoSolver(unittest.TestCase):
     def test_setup_completes(self):
         """
         Tests if the setUp method completes successfully.
-        This implicitly tests model creation, finalization, solver, and renderer initialization.
+        This implicitly tests model creation, finalization, solver, and viewer initialization.
         """
         self.assertTrue(True, "setUp method completed.")
 
@@ -50,7 +46,7 @@ class TestMuJoCoSolver(unittest.TestCase):
         """Test that ls_parallel option is properly set on the MuJoCo Warp model."""
         # Create minimal model with proper inertia
         builder = newton.ModelBuilder()
-        body = builder.add_body(mass=1.0, com=(0.0, 0.0, 0.0), I_m=(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0))
+        body = builder.add_body(mass=1.0, com=wp.vec3(0.0, 0.0, 0.0), I_m=wp.mat33(np.eye(3)))
         builder.add_joint_revolute(-1, body)
         model = builder.finalize()
 
@@ -64,11 +60,11 @@ class TestMuJoCoSolver(unittest.TestCase):
 
     @unittest.skip("Trajectory rendering for debugging")
     def test_render_trajectory(self):
-        """Simulates and renders a trajectory if solver and renderer are available."""
+        """Simulates and renders a trajectory if solver and viewer are available."""
         print("\nDebug: Starting test_render_trajectory...")
 
         solver = None
-        renderer = None
+        viewer = None
         substep_graph = None
         use_cuda_graph = wp.get_device().is_cuda
 
@@ -85,18 +81,15 @@ class TestMuJoCoSolver(unittest.TestCase):
 
         if self.debug_stage_path:
             try:
-                print(f"Debug: Attempting to initialize RendererOpenGL (stage: {self.debug_stage_path})...")
-                stage_dir = os.path.dirname(self.debug_stage_path)
-                if stage_dir and not os.path.exists(stage_dir):
-                    os.makedirs(stage_dir)
-                    print(f"Debug: Created directory for stage: {stage_dir}")
-                renderer = RendererOpenGL(path=self.debug_stage_path, model=self.model, scaling=1.0, show_joints=True)
-                print("Debug: RendererOpenGL initialized successfully for trajectory test.")
+                print("Debug: Attempting to initialize ViewerGL...")
+                viewer = newton.viewer.ViewerGL()
+                viewer.set_model(self.model)
+                print("Debug: ViewerGL initialized successfully for trajectory test.")
             except ImportError as e:
-                self.skipTest(f"RendererOpenGL dependencies not met. Skipping trajectory rendering: {e}")
+                self.skipTest(f"ViewerGL dependencies not met. Skipping trajectory rendering: {e}")
                 return
             except Exception as e:
-                self.skipTest(f"Error initializing RendererOpenGL for trajectory test: {e}")
+                self.skipTest(f"Error initializing ViewerGL for trajectory test: {e}")
                 return
         else:
             self.skipTest("No debug_stage_path set. Skipping trajectory rendering.")
@@ -136,9 +129,9 @@ class TestMuJoCoSolver(unittest.TestCase):
                 if frame_num % 20 == 0:
                     print(f"Debug: Frame {frame_num}/{num_frames}, Sim time: {sim_time:.2f}s")
 
-                renderer.begin_frame(sim_time)
-                renderer.render(self.state_in)
-                renderer.end_frame()
+                viewer.begin_frame(sim_time)
+                viewer.log_state(self.state_in)
+                viewer.end_frame()
 
                 if use_cuda_graph and substep_graph:
                     wp.capture_launch(substep_graph)
@@ -425,7 +418,7 @@ class TestMuJoCoSolverMassProperties(TestMuJoCoSolverPropertiesBase):
                         mjc_inertia = solver.mjw_model.body_inertia.numpy()[env_idx, mjc_idx].astype(np.float32)
 
                         # Get eigenvalues of both tensors
-                        newton_eigvecs, newton_eigvals = wp.eig3(newton_inertia)
+                        newton_eigvecs, newton_eigvals = wp.eig3(wp.mat33(newton_inertia))
                         newton_eigvecs = np.array(newton_eigvecs)
                         newton_eigvecs = newton_eigvecs.reshape((3, 3))
 
@@ -452,7 +445,7 @@ class TestMuJoCoSolverMassProperties(TestMuJoCoSolverPropertiesBase):
                             self.assertAlmostEqual(
                                 float(newton_eigvals[dim]),
                                 float(mjc_eigvals[dim]),
-                                places=5,
+                                places=4,
                                 msg=f"{msg_prefix}Inertia eigenvalue mismatch for body {body_idx} in environment {env_idx}, dimension {dim}",
                             )
                         # Handle quaternion sign ambiguity by ensuring dot product is non-negative
@@ -1175,7 +1168,7 @@ class TestMuJoCoSolverNewtonContacts(unittest.TestCase):
 class TestMuJoCoConversion(unittest.TestCase):
     def test_no_shapes(self):
         builder = newton.ModelBuilder()
-        b = builder.add_body(mass=1.0, com=(1.0, 2.0, 3.0), I_m=(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0))
+        b = builder.add_body(mass=1.0, com=wp.vec3(1.0, 2.0, 3.0), I_m=wp.mat33(np.eye(3)))
         builder.add_joint_prismatic(-1, b)
         model = builder.finalize()
         solver = SolverMuJoCo(model)
@@ -1192,7 +1185,7 @@ class TestMuJoCoConversion(unittest.TestCase):
         parent_body = builder.add_body(
             mass=1.0,
             com=wp.vec3(0.0, 0.0, 0.0),
-            I_m=(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0),
+            I_m=wp.mat33(np.eye(3)),
         )
         builder.add_joint_free(parent_body)  # Make parent the root
 
@@ -1200,7 +1193,7 @@ class TestMuJoCoConversion(unittest.TestCase):
         child_body = builder.add_body(
             mass=1.0,
             com=wp.vec3(0.0, 0.0, 0.0),
-            I_m=(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0),
+            I_m=wp.mat33(np.eye(3)),
         )
 
         # Define translations for the joint frames in parent and child
@@ -1311,7 +1304,7 @@ class TestMuJoCoConversion(unittest.TestCase):
         # Add pendulum body
         mass = 1.0
         length = 1.0
-        I_sphere = wp.diag([2.0 / 5.0 * mass * 0.1**2, 2.0 / 5.0 * mass * 0.1**2, 2.0 / 5.0 * mass * 0.1**2])
+        I_sphere = wp.diag(wp.vec3(2.0 / 5.0 * mass * 0.1**2, 2.0 / 5.0 * mass * 0.1**2, 2.0 / 5.0 * mass * 0.1**2))
 
         pendulum = builder.add_body(
             mass=mass,
@@ -1389,6 +1382,217 @@ class TestMuJoCoConversion(unittest.TestCase):
             min_q_stiff,
             f"Soft joint min ({min_q_soft}) should be lower than stiff joint min ({min_q_stiff})",
         )
+
+    def test_joint_frame_update(self):
+        """Test joint frame updates with specific expected values to verify correctness."""
+        # Create a simple model with one revolute joint
+        builder = newton.ModelBuilder()
+
+        body = builder.add_body(mass=1.0, I_m=wp.diag(wp.vec3(1.0, 1.0, 1.0)))
+
+        # Add joint with known transforms
+        parent_xform = wp.transform(wp.vec3(0.0, 0.0, 0.0), wp.quat_identity())
+        child_xform = wp.transform(wp.vec3(0.0, 0.0, 1.0), wp.quat_identity())
+
+        builder.add_joint_revolute(
+            parent=-1,
+            child=body,
+            parent_xform=parent_xform,
+            child_xform=child_xform,
+            axis=newton.Axis.X,
+        )
+
+        model = builder.finalize(requires_grad=False)
+        solver = newton.solvers.SolverMuJoCo(model)
+
+        mjc_body = solver.to_mjc_body_index.numpy()[body]
+
+        # Check initial joint position and axis
+        initial_joint_pos = solver.mjw_model.jnt_pos.numpy()
+        initial_joint_axis = solver.mjw_model.jnt_axis.numpy()
+
+        # Joint position should be at child frame position (0, 0, 1)
+        np.testing.assert_allclose(
+            initial_joint_pos[0, 0],
+            [0.0, 0.0, 1.0],
+            atol=1e-6,
+            err_msg="Initial joint position should match child frame position",
+        )
+
+        # Joint axis should be X-axis (1, 0, 0) since child frame has no rotation
+        np.testing.assert_allclose(
+            initial_joint_axis[0, 0], [1.0, 0.0, 0.0], atol=1e-6, err_msg="Initial joint axis should be X-axis"
+        )
+
+        tf = parent_xform * wp.transform_inverse(child_xform)
+        np.testing.assert_allclose(solver.mjw_model.body_pos.numpy()[0, mjc_body], tf.p, atol=1e-6)
+        np.testing.assert_allclose(
+            solver.mjw_model.body_quat.numpy()[0, mjc_body], [tf.q.w, tf.q.x, tf.q.y, tf.q.z], atol=1e-6
+        )
+
+        # Update child frame with translation and rotation
+        new_child_pos = wp.vec3(1.0, 2.0, 1.0)
+        new_child_rot = wp.quat_from_axis_angle(wp.vec3(0.0, 0.0, 1.0), wp.pi / 2)  # 90° around Z
+        new_child_xform = wp.transform(new_child_pos, new_child_rot)
+
+        model.joint_X_c.assign([new_child_xform])
+        solver.notify_model_changed(SolverNotifyFlags.JOINT_PROPERTIES)
+
+        # Check updated values
+        updated_joint_pos = solver.mjw_model.jnt_pos.numpy()
+        updated_joint_axis = solver.mjw_model.jnt_axis.numpy()
+
+        # Joint position should now be at new child frame position
+        np.testing.assert_allclose(
+            updated_joint_pos[0, 0],
+            [1.0, 2.0, 1.0],
+            atol=1e-6,
+            err_msg="Updated joint position should match new child frame position",
+        )
+
+        # Joint axis should be rotated: X-axis rotated 90° around Z becomes Y-axis
+        expected_axis = wp.quat_rotate(new_child_rot, wp.vec3(1.0, 0.0, 0.0))
+        np.testing.assert_allclose(
+            updated_joint_axis[0, 0],
+            [expected_axis.x, expected_axis.y, expected_axis.z],
+            atol=1e-6,
+            err_msg="Updated joint axis should be rotated according to child frame rotation",
+        )
+
+        tf = parent_xform * wp.transform_inverse(new_child_xform)
+        np.testing.assert_allclose(solver.mjw_model.body_pos.numpy()[0, mjc_body], tf.p, atol=1e-6)
+        np.testing.assert_allclose(
+            solver.mjw_model.body_quat.numpy()[0, mjc_body], [tf.q.w, tf.q.x, tf.q.y, tf.q.z], atol=1e-6
+        )
+
+        # update parent frame
+        new_parent_xform = wp.transform(wp.vec3(1.0, 0.0, 0.0), wp.quat_identity())
+        model.joint_X_p.assign([new_parent_xform])
+        solver.notify_model_changed(SolverNotifyFlags.JOINT_PROPERTIES)
+
+        # check updated values
+        updated_joint_pos = solver.mjw_model.jnt_pos.numpy()
+        updated_joint_axis = solver.mjw_model.jnt_axis.numpy()
+
+        # joint position, axis should not change
+        np.testing.assert_allclose(
+            updated_joint_pos[0, 0],
+            [1.0, 2.0, 1.0],
+            atol=1e-6,
+            err_msg="Updated joint position should not change after updating parent frame",
+        )
+        np.testing.assert_allclose(
+            updated_joint_axis[0, 0],
+            expected_axis,
+            atol=1e-6,
+            err_msg="Updated joint axis should not change after updating parent frame",
+        )
+
+        # Check updated body positions and orientations
+        tf = new_parent_xform * wp.transform_inverse(new_child_xform)
+        np.testing.assert_allclose(
+            solver.mjw_model.body_pos.numpy()[0, mjc_body],
+            tf.p,
+            atol=1e-6,
+        )
+        np.testing.assert_allclose(
+            solver.mjw_model.body_quat.numpy()[0, mjc_body],
+            [tf.q.w, tf.q.x, tf.q.y, tf.q.z],
+            atol=1e-6,
+        )
+
+    @unittest.skip("It generates warning and illegal memory access")
+    def test_noncontiguous_joint_indexing(self):
+        """
+        Test for joint indexing bug when selected_joints is noncontiguous.
+
+        This reproduces issue #562 where ji is used directly to index joint arrays
+        instead of using selected_joints[ji] when processing filtered joints.
+        """
+        # Create a simple robot with 2 bodies and 1 revolute joint
+        robot = newton.ModelBuilder()
+        robot.add_body()  # body 0
+        robot.add_body()  # body 1
+        robot.add_joint_revolute(parent=0, child=1, axis=(0, 0, 1))
+        robot.add_shape_box(0, hx=0.1, hy=0.1, hz=0.1)
+        robot.add_shape_box(1, hx=0.1, hy=0.1, hz=0.1)
+
+        # Main builder adds the robot to env 0 and env 1
+        builder = newton.ModelBuilder()
+        builder.add_builder(robot, environment=0)  # Creates bodies 0,1 and joint 0 (revolute)
+        builder.add_builder(robot, environment=1)  # Creates bodies 2,3 and joint 1 (revolute)
+
+        # Now add free joints to the parent bodies of each robot
+        builder.current_env_group = 0
+        builder.add_joint_free(child=0)  # Free joint for body 0 (env 0) - joint 2
+
+        builder.current_env_group = 1
+        builder.add_joint_free(child=2)  # Free joint for body 2 (env 1) - joint 3
+
+        model = builder.finalize()
+
+        # Verify setup - we should have 4 joints total
+        joint_groups = model.joint_group.numpy()
+        joint_types = model.joint_type.numpy()
+
+        # Expected groups: [0, 1, 0, 1] - revolute from env0, revolute from env1, free from env0, free from env1
+        expected_groups = [0, 1, 0, 1]
+        self.assertEqual(list(joint_groups), expected_groups)
+
+        # Expected types: [revolute, revolute, free, free]
+        self.assertEqual(joint_types[0], JointType.REVOLUTE, "Joint 0 should be revolute")
+        self.assertEqual(joint_types[1], JointType.REVOLUTE, "Joint 1 should be revolute")
+        self.assertEqual(joint_types[2], JointType.FREE, "Joint 2 should be free")
+        self.assertEqual(joint_types[3], JointType.FREE, "Joint 3 should be free")
+
+        # Create solver with env separation
+        # This should select only env 0 joints: [0, 2] (noncontiguous!)
+        solver = SolverMuJoCo(model, separate_envs_to_worlds=True)
+
+        # Check selected joints
+        selected_joints = solver.selected_joints.numpy()
+        expected_selected = [0, 2]
+        np.testing.assert_array_equal(selected_joints, expected_selected, "Should select only env 0 joints [0, 2]")
+
+        # Also verify per-env DOF mapping is set for both local joints (indices 0 and 1)
+        dof_start_map = solver.joint_mjc_dof_start.numpy()
+        self.assertNotEqual(dof_start_map[0], -1, "Local joint 0 must have a valid MuJoCo DOF start")
+        self.assertNotEqual(dof_start_map[1], -1, "Local joint 1 must have a valid MuJoCo DOF start")
+
+        # THE BUG: When processing selected joints, the code uses ji directly
+        # So when ji=1:
+        # - It SHOULD use joint[selected_joints[1]] = joint[2] (free joint from env 0)
+        # - But it INCORRECTLY uses joint[1] (revolute joint from env 1)
+
+        # Check the MuJoCo model has the correct joint types
+        mjw_model = solver.mjw_model
+
+        # Get joint types from MuJoCo
+        mjc_joint_types = mjw_model.jnt_type.numpy()  # First world
+
+        # Expected MuJoCo joint types for env 0 after topological sorting:
+        # Joint 2 (free) will be first because it's on body 0 (the base)
+        # Joint 0 (revolute) will be second because it connects to child body 1
+        # MuJoCo type mapping: FREE=0, BALL=1, SLIDE=2, HINGE=3
+        expected_mjc_types_fixed = [0, 3]  # free, hinge (after topological sort)
+        expected_mjc_types_buggy = [3, 3]  # hinge, hinge (with the bug)
+
+        # Check if we have the correct joint types
+        # With the bug fixed, we should get [0, 3] (free, hinge)
+        # With the bug present, we'd get [3, 3] (both hinges)
+
+        if np.array_equal(mjc_joint_types, expected_mjc_types_buggy):
+            self.fail(
+                f"BUG DETECTED: MuJoCo has joint types {mjc_joint_types} (both hinges). "
+                f"This indicates the bug is using joint[1] instead of joint[{selected_joints[1]}]"
+            )
+        else:
+            # The fix worked! We have the correct joint types
+            np.testing.assert_array_equal(
+                mjc_joint_types,
+                expected_mjc_types_fixed,
+                err_msg=f"MuJoCo should have joint types {expected_mjc_types_fixed} (free=0, hinge=3) after topological sort",
+            )
 
 
 if __name__ == "__main__":

@@ -1,8 +1,24 @@
-###########################################################################
-# KAMINO: UNIT TESTS: MATH: CHOLESKY
-###########################################################################
+# SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""
+KAMINO: UNIT TESTS: MATH: CHOLESKY
+"""
 
 import unittest
+
 import numpy as np
 import warp as wp
 
@@ -10,30 +26,29 @@ from newton._src.solvers.kamino.core.types import float32
 
 # Module to be tested
 from newton._src.solvers.kamino.linalg.cholesky import (
-    cholesky_sequential_factorize,
-    cholesky_sequential_solve_forward,
-    cholesky_sequential_solve_backward,
-    cholesky_sequential_solve,
-    cholesky_sequential_solve_inplace,
+    BlockedCholeskyFactorizer,
+    SequentialCholeskyFactorizer,
     cholesky_blocked_factorize,
     cholesky_blocked_solve,
+    cholesky_sequential_factorize,
+    cholesky_sequential_solve,
+    cholesky_sequential_solve_backward,
+    cholesky_sequential_solve_forward,
+    cholesky_sequential_solve_inplace,
     make_cholesky_blocked_factorize_kernel,
     make_cholesky_blocked_solve_kernel,
-    SequentialCholeskyFactorizer,
-    BlockedCholeskyFactorizer,
 )
+from newton._src.solvers.kamino.tests.utils.print import print_error_stats
 
 # Test utilities
 from newton._src.solvers.kamino.tests.utils.random import RandomProblemCholesky
-from newton._src.solvers.kamino.tests.utils.print import print_error_stats
-
 
 ###
 # Tests
 ###
 
-class TestMathCholesky(unittest.TestCase):
 
+class TestMathCholesky(unittest.TestCase):
     def setUp(self):
         # Configs
         self.default_device = wp.get_device()
@@ -54,7 +69,7 @@ class TestMathCholesky(unittest.TestCase):
             np_dtype=np.float32,
             wp_dtype=float32,
             device=self.default_device,
-            verbose=self.verbose
+            verbose=self.verbose,
         )
 
         # Construct warp arrays
@@ -67,7 +82,7 @@ class TestMathCholesky(unittest.TestCase):
             dim=problem.dim_wp,
             mio=problem.mio_wp,
             A=problem.A_wp,
-            L=L_wp
+            L=L_wp,
         )
 
         # Check results for the single block
@@ -105,7 +120,7 @@ class TestMathCholesky(unittest.TestCase):
             np_dtype=np.float32,
             wp_dtype=float32,
             device=self.default_device,
-            verbose=self.verbose
+            verbose=self.verbose,
         )
 
         # Construct warp arrays
@@ -118,7 +133,7 @@ class TestMathCholesky(unittest.TestCase):
             dim=problem.dim_wp,
             mio=problem.mio_wp,
             A=problem.A_wp,
-            L=L_wp
+            L=L_wp,
         )
 
         # Convert the warp array to numpy for verification
@@ -164,7 +179,7 @@ class TestMathCholesky(unittest.TestCase):
             np_dtype=np.float32,
             wp_dtype=float32,
             device=self.default_device,
-            verbose=self.verbose
+            verbose=self.verbose,
         )
 
         # Construct warp arrays
@@ -179,7 +194,7 @@ class TestMathCholesky(unittest.TestCase):
             dim=problem.dim_wp,
             mio=problem.mio_wp,
             A=problem.A_wp,
-            L=L_wp
+            L=L_wp,
         )
 
         # Solve the system using the warp-based Cholesky solve
@@ -191,7 +206,7 @@ class TestMathCholesky(unittest.TestCase):
             vio=problem.vio_wp,
             L=L_wp,
             b=problem.b_wp,
-            y=y_wp
+            y=y_wp,
         )
 
         # Solve the backward system using the warp-based Cholesky solve
@@ -203,7 +218,7 @@ class TestMathCholesky(unittest.TestCase):
             vio=problem.vio_wp,
             L=L_wp,
             y=y_wp,
-            x=x_wp
+            x=x_wp,
         )
 
         # Convert the warp arrays to numpy for verification
@@ -243,7 +258,7 @@ class TestMathCholesky(unittest.TestCase):
             np_dtype=np.float32,
             wp_dtype=float32,
             device=self.default_device,
-            verbose=self.verbose
+            verbose=self.verbose,
         )
 
         # Construct warp arrays
@@ -258,7 +273,7 @@ class TestMathCholesky(unittest.TestCase):
             dim=problem.dim_wp,
             mio=problem.mio_wp,
             A=problem.A_wp,
-            L=L_wp
+            L=L_wp,
         )
 
         # Solve the forward system using the warp-based Cholesky solve
@@ -270,7 +285,7 @@ class TestMathCholesky(unittest.TestCase):
             vio=problem.vio_wp,
             L=L_wp,
             b=problem.b_wp,
-            y=y_wp
+            y=y_wp,
         )
 
         # Solve the backward system using the warp-based Cholesky solve
@@ -282,7 +297,7 @@ class TestMathCholesky(unittest.TestCase):
             vio=problem.vio_wp,
             L=L_wp,
             y=y_wp,
-            x=x_wp
+            x=x_wp,
         )
 
         # Convert the warp arrays to numpy for verification
@@ -293,8 +308,8 @@ class TestMathCholesky(unittest.TestCase):
         for i in range(problem.num_blocks):
             dim_i = problem.dim_wp.numpy()[i]
             vio_i = problem.vio_wp.numpy()[i]
-            y_wp_np_i = y_wp_np[vio_i:vio_i + dim_i]
-            x_wp_np_i = x_wp_np[vio_i:vio_i + dim_i]
+            y_wp_np_i = y_wp_np[vio_i : vio_i + dim_i]
+            x_wp_np_i = x_wp_np[vio_i : vio_i + dim_i]
 
             # Check results for the single block
             if self.verbose:
@@ -329,7 +344,7 @@ class TestMathCholesky(unittest.TestCase):
             np_dtype=np.float32,
             wp_dtype=float32,
             device=self.default_device,
-            verbose=self.verbose
+            verbose=self.verbose,
         )
 
         # Construct warp arrays
@@ -344,7 +359,7 @@ class TestMathCholesky(unittest.TestCase):
             dim=problem.dim_wp,
             mio=problem.mio_wp,
             A=problem.A_wp,
-            L=L_wp
+            L=L_wp,
         )
 
         # Solve the system using the warp-based Cholesky solve
@@ -357,7 +372,7 @@ class TestMathCholesky(unittest.TestCase):
             L=L_wp,
             b=problem.b_wp,
             y=y_wp,
-            x=x_wp
+            x=x_wp,
         )
 
         # Convert the warp arrays to numpy for verification
@@ -397,7 +412,7 @@ class TestMathCholesky(unittest.TestCase):
             np_dtype=np.float32,
             wp_dtype=float32,
             device=self.default_device,
-            verbose=self.verbose
+            verbose=self.verbose,
         )
 
         # Construct warp arrays
@@ -412,7 +427,7 @@ class TestMathCholesky(unittest.TestCase):
             dim=problem.dim_wp,
             mio=problem.mio_wp,
             A=problem.A_wp,
-            L=L_wp
+            L=L_wp,
         )
 
         # Solve the forward system using the warp-based Cholesky solve
@@ -425,7 +440,7 @@ class TestMathCholesky(unittest.TestCase):
             L=L_wp,
             b=problem.b_wp,
             y=y_wp,
-            x=x_wp
+            x=x_wp,
         )
 
         # Convert the warp arrays to numpy for verification
@@ -436,8 +451,8 @@ class TestMathCholesky(unittest.TestCase):
         for i in range(problem.num_blocks):
             dim_i = problem.dim_wp.numpy()[i]
             vio_i = problem.vio_wp.numpy()[i]
-            y_wp_np_i = y_wp_np[vio_i:vio_i + dim_i]
-            x_wp_np_i = x_wp_np[vio_i:vio_i + dim_i]
+            y_wp_np_i = y_wp_np[vio_i : vio_i + dim_i]
+            x_wp_np_i = x_wp_np[vio_i : vio_i + dim_i]
 
             # Check results for the single block
             if self.verbose:
@@ -472,7 +487,7 @@ class TestMathCholesky(unittest.TestCase):
             np_dtype=np.float32,
             wp_dtype=float32,
             device=self.default_device,
-            verbose=self.verbose
+            verbose=self.verbose,
         )
 
         # Construct warp arrays
@@ -487,7 +502,7 @@ class TestMathCholesky(unittest.TestCase):
             dim=problem.dim_wp,
             mio=problem.mio_wp,
             A=problem.A_wp,
-            L=L_wp
+            L=L_wp,
         )
 
         # Solve the system using the warp-based Cholesky solve
@@ -498,7 +513,7 @@ class TestMathCholesky(unittest.TestCase):
             mio=problem.mio_wp,
             vio=problem.vio_wp,
             L=L_wp,
-            x=x_wp
+            x=x_wp,
         )
 
         # Check results for the single block
@@ -524,7 +539,7 @@ class TestMathCholesky(unittest.TestCase):
             np_dtype=np.float32,
             wp_dtype=float32,
             device=self.default_device,
-            verbose=self.verbose
+            verbose=self.verbose,
         )
 
         # Construct warp arrays
@@ -539,7 +554,7 @@ class TestMathCholesky(unittest.TestCase):
             dim=problem.dim_wp,
             mio=problem.mio_wp,
             A=problem.A_wp,
-            L=L_wp
+            L=L_wp,
         )
 
         # Solve the forward system using the warp-based Cholesky solve
@@ -550,7 +565,7 @@ class TestMathCholesky(unittest.TestCase):
             mio=problem.mio_wp,
             vio=problem.vio_wp,
             L=L_wp,
-            x=x_wp
+            x=x_wp,
         )
 
         # Convert the warp arrays to numpy for verification
@@ -560,7 +575,7 @@ class TestMathCholesky(unittest.TestCase):
         for i in range(problem.num_blocks):
             dim_i = problem.dim_wp.numpy()[i]
             vio_i = problem.vio_wp.numpy()[i]
-            x_wp_np_i = x_wp_np[vio_i:vio_i + dim_i]
+            x_wp_np_i = x_wp_np[vio_i : vio_i + dim_i]
 
             # Check results for the single block
             if self.verbose:
@@ -584,7 +599,7 @@ class TestMathCholesky(unittest.TestCase):
             np_dtype=np.float32,
             wp_dtype=float32,
             device=self.default_device,
-            verbose=self.verbose
+            verbose=self.verbose,
         )
 
         # Construct warp arrays for the solution vector
@@ -641,7 +656,7 @@ class TestMathCholesky(unittest.TestCase):
             np_dtype=np.float32,
             wp_dtype=float32,
             device=self.default_device,
-            verbose=self.verbose
+            verbose=self.verbose,
         )
 
         # Construct warp arrays for the solution vector
@@ -663,7 +678,7 @@ class TestMathCholesky(unittest.TestCase):
         for i in range(problem.num_blocks):
             dim_i = problem.dim_wp.numpy()[i]
             vio_i = problem.vio_wp.numpy()[i]
-            x_wp_np_i = x_wp_np[vio_i:vio_i + dim_i]
+            x_wp_np_i = x_wp_np[vio_i : vio_i + dim_i]
 
             # Check results for the single block
             if self.verbose:
@@ -687,7 +702,7 @@ class TestMathCholesky(unittest.TestCase):
         for i in range(problem.num_blocks):
             dim_i = problem.dim_wp.numpy()[i]
             vio_i = problem.vio_wp.numpy()[i]
-            x_wp_np_i = x_wp_np[vio_i:vio_i + dim_i]
+            x_wp_np_i = x_wp_np[vio_i : vio_i + dim_i]
 
             # Check results for the single block
             if self.verbose:
@@ -715,7 +730,7 @@ class TestMathCholesky(unittest.TestCase):
             np_dtype=np.float32,
             wp_dtype=float32,
             device=self.default_device,
-            verbose=self.verbose
+            verbose=self.verbose,
         )
 
         # Construct warp arrays
@@ -735,7 +750,7 @@ class TestMathCholesky(unittest.TestCase):
             A=problem.A_wp.reshape(mat_shape),
             L=L_wp.reshape(mat_shape),
             kernel=factorize_kernel,
-            block_dim=block_dim
+            block_dim=block_dim,
         )
 
         # Convert the warp arrays to numpy for verification
@@ -781,7 +796,7 @@ class TestMathCholesky(unittest.TestCase):
             np_dtype=np.float32,
             wp_dtype=float32,
             device=self.default_device,
-            verbose=self.verbose
+            verbose=self.verbose,
         )
 
         # Construct warp arrays
@@ -803,7 +818,7 @@ class TestMathCholesky(unittest.TestCase):
             A=problem.A_wp.reshape(mat_shape),
             L=L_wp.reshape(mat_shape),
             kernel=factorize_kernel,
-            block_dim=block_dim
+            block_dim=block_dim,
         )
 
         # Convert the warp arrays to numpy for verification
@@ -854,7 +869,7 @@ class TestMathCholesky(unittest.TestCase):
             np_dtype=np.float32,
             wp_dtype=float32,
             device=self.default_device,
-            verbose=self.verbose
+            verbose=self.verbose,
         )
 
         # Construct warp arrays
@@ -878,7 +893,7 @@ class TestMathCholesky(unittest.TestCase):
             A=problem.A_wp.reshape(mat_shape),
             L=L_wp.reshape(mat_shape),
             kernel=factorize_kernel,
-            block_dim=block_dim
+            block_dim=block_dim,
         )
 
         # Solve the system using the warp-based Cholesky solve
@@ -891,7 +906,7 @@ class TestMathCholesky(unittest.TestCase):
             y=y_wp.reshape(vec_shape),
             x=x_wp.reshape(vec_shape),
             kernel=solve_kernel,
-            block_dim=block_dim
+            block_dim=block_dim,
         )
 
         # Convert the warp arrays to numpy for verification
@@ -937,7 +952,7 @@ class TestMathCholesky(unittest.TestCase):
             np_dtype=np.float32,
             wp_dtype=float32,
             device=self.default_device,
-            verbose=self.verbose
+            verbose=self.verbose,
         )
 
         # Construct warp arrays
@@ -964,7 +979,7 @@ class TestMathCholesky(unittest.TestCase):
             A=problem.A_wp.reshape(mat_shape),
             L=L_wp.reshape(mat_shape),
             kernel=factorize_kernel,
-            block_dim=block_dim
+            block_dim=block_dim,
         )
 
         # Solve the system using the warp-based Cholesky solve
@@ -977,7 +992,7 @@ class TestMathCholesky(unittest.TestCase):
             y=y_wp.reshape(vec_shape),
             x=x_wp.reshape(vec_shape),
             kernel=solve_kernel,
-            block_dim=block_dim
+            block_dim=block_dim,
         )
 
         # Convert the warp arrays to numpy for verification
@@ -988,8 +1003,8 @@ class TestMathCholesky(unittest.TestCase):
         for i in range(problem.num_blocks):
             dim_i = problem.dim_wp.numpy()[i]
             vio_i = problem.vio_wp.numpy()[i]
-            y_wp_np_i = y_wp_np[vio_i:vio_i + dim_i]
-            x_wp_np_i = x_wp_np[vio_i:vio_i + dim_i]
+            y_wp_np_i = y_wp_np[vio_i : vio_i + dim_i]
+            x_wp_np_i = x_wp_np[vio_i : vio_i + dim_i]
 
             # Check results for the single block
             if self.verbose:
@@ -1029,7 +1044,7 @@ class TestMathCholesky(unittest.TestCase):
             np_dtype=np.float32,
             wp_dtype=float32,
             device=self.default_device,
-            verbose=self.verbose
+            verbose=self.verbose,
         )
 
         # Construct warp arrays
@@ -1101,7 +1116,7 @@ class TestMathCholesky(unittest.TestCase):
             np_dtype=np.float32,
             wp_dtype=float32,
             device=self.default_device,
-            verbose=self.verbose
+            verbose=self.verbose,
         )
 
         # Construct warp arrays
@@ -1127,7 +1142,7 @@ class TestMathCholesky(unittest.TestCase):
         for i in range(problem.num_blocks):
             dim_i = problem.dim_wp.numpy()[i]
             vio_i = problem.vio_wp.numpy()[i]
-            x_wp_np_i = x_wp_np[vio_i:vio_i + dim_i]
+            x_wp_np_i = x_wp_np[vio_i : vio_i + dim_i]
 
             # Check results for the single block
             if self.verbose:

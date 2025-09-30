@@ -1,186 +1,258 @@
-###########################################################################
-# KAMINO
-###########################################################################
+# SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
-from .core.types import (
-    Vec3, Vec4, Vec6, Quat, Mat33, Transform,
-    uint8, uint16, uint32, uint64,
-    int8, int16, int32, int64,
-    float16, float32, float64,
-    vec2i, vec6i,
-    vec2f, vec3f, vec4f, vec6f, vec7f, vec14f,
-    mat22f, mat33f, mat44f, mat66f,
-    mat62f, mat63f, mat64f, mat65f,
-    mat26f, mat36f, mat46f, mat56f,
-    transformf,
-)
+"""
+KAMINO
+"""
 
 from .core import math
-
-from .core.time import (
-    TimeModel,
-    TimeData,
+from .core.bodies import RigidBodiesData, RigidBodiesModel, RigidBodyDescriptor
+from .core.builder import (
+    ModelBuilder,
+    WorldDescriptor,
 )
-
+from .core.control import (
+    Control,
+)
+from .core.geometry import (
+    CollisionGeometriesData,
+    CollisionGeometriesModel,
+    CollisionGeometryDescriptor,
+    GeometriesData,
+    GeometriesModel,
+    GeometryDescriptor,
+)
 from .core.gravity import (
-    GRAVITY_NAME_DEFAULT,
     GRAVITY_ACCEL_DEFAULT,
     GRAVITY_DIREC_DEFAULT,
+    GRAVITY_NAME_DEFAULT,
     GravityDescriptor,
-    GravityModel
+    GravityModel,
 )
-
-from .core.bodies import (
-    RigidBodyDescriptor,
-    RigidBodiesModel,
-    RigidBodiesData
-)
-
-from .core.joints import (
-    JointDoFType,
-    JointActuationType,
-    JointDescriptor,
-    JointsModel,
-    JointsData
-)
-
+from .core.joints import JointActuationType, JointDescriptor, JointDoFType, JointsData, JointsModel
 from .core.materials import (
     DEFAULT_FRICTION,
     DEFAULT_RESTITUTION,
     MaterialDescriptor,
-    MaterialPairProperties,
     MaterialManager,
-    MaterialPairsModel
+    MaterialPairProperties,
+    MaterialPairsModel,
 )
-
+from .core.model import (
+    Model,
+    ModelData,
+    ModelDataInfo,
+    ModelInfo,
+)
 from .core.shapes import (
-    ShapeType,
-    ShapeDescriptor,
-    EmptyShape,
-    SphereShape,
-    CylinderShape,
-    ConeShape,
-    CapsuleShape,
     BoxShape,
-    EllipsoidShape,
-    PlaneShape,
+    CapsuleShape,
+    ConeShape,
     ConvexShape,
+    CylinderShape,
+    EllipsoidShape,
+    EmptyShape,
     MeshShape,
-    SDFShape
+    PlaneShape,
+    SDFShape,
+    ShapeDescriptor,
+    ShapeType,
+    SphereShape,
 )
-
-from .core.geometry import (
-    GeometryDescriptor,
-    GeometriesModel,
-    GeometriesData,
-    CollisionGeometryDescriptor,
-    CollisionGeometriesModel,
-    CollisionGeometriesData,
-)
-
 from .core.state import (
     State,
 )
-
-from .core.control import (
-    Control,
+from .core.time import (
+    TimeData,
+    TimeModel,
 )
-
-from .core.model import (
-    ModelDataInfo,
-    ModelData,
-    ModelInfo,
-    Model,
+from .core.types import (
+    Mat33,
+    Quat,
+    Transform,
+    Vec3,
+    Vec4,
+    Vec6,
+    float16,
+    float32,
+    float64,
+    int8,
+    int16,
+    int32,
+    int64,
+    mat22f,
+    mat26f,
+    mat33f,
+    mat36f,
+    mat44f,
+    mat46f,
+    mat56f,
+    mat62f,
+    mat63f,
+    mat64f,
+    mat65f,
+    mat66f,
+    transformf,
+    uint8,
+    uint16,
+    uint32,
+    uint64,
+    vec2f,
+    vec2i,
+    vec3f,
+    vec4f,
+    vec6f,
+    vec6i,
+    vec7f,
+    vec14f,
 )
-
-from .core.builder import (
-    WorldDescriptor,
-    ModelBuilder,
+from .dynamics.delassus import (
+    DelassusOperator,
+    DelassusOperatorData,
 )
-
-from .geometry.collisions import (
-    CollisionsModel,
-    CollisionsData,
-    Collisions
+from .dynamics.dual import (
+    DualProblem,
+    DualProblemData,
 )
-
+from .geometry.collisions import Collisions, CollisionsData, CollisionsModel
 from .geometry.contacts import (
-    ContactsData,
     Contacts,
+    ContactsData,
 )
-
 from .geometry.detector import (
     CollisionDetector,
 )
-
 from .kinematics.jacobians import (
-    DenseSystemJacobiansData,
     DenseSystemJacobians,
+    DenseSystemJacobiansData,
 )
-
-from .dynamics.delassus import (
-    DelassusOperatorData,
-    DelassusOperator,
-)
-
-from .dynamics.dual import (
-    DualProblemData,
-    DualProblem,
-)
-
-from .solvers import padmm
-
 from .simulation import Simulator
-
-from .utils.print import (printmatrix, printvector)
-
-from .utils.sparse import (sparseview)
-
+from .solvers import padmm
 from .utils.io import hdf5
-
+from .utils.print import printmatrix, printvector
+from .utils.sparse import sparseview
 
 ###
 # Package interface
 ###
 
 __all__ = [
-    "__version__",
-    "Vec3", "Vec4", "Vec6", "Quat", "Mat33", "Transform",
-    "uint8", "uint16", "uint32", "uint64",
-    "int8", "int16", "int32", "int64",
-    "float16", "float32", "float64",
-    "vec2i", "vec6i",
-    "vec2f", "vec3f", "vec4f", "vec6f", "vec7f", "vec14f",
-    "mat22f", "mat33f", "mat44f", "mat66f",
-    "mat62f", "mat63f", "mat64f", "mat65f",
-    "mat26f", "mat36f", "mat46f", "mat56f",
-    "transformf",
-    "math",
-    "TimeModel", "TimeData",
-    "GRAVITY_NAME_DEFAULT", "GRAVITY_ACCEL_DEFAULT", "GRAVITY_DIREC_DEFAULT",
-    "GravityDescriptor", "GravityModel",
-    "RigidBodyDescriptor", "RigidBodiesModel", "RigidBodiesData",
-    "JointDoFType", "JointActuationType", "JointDescriptor", "JointsModel", "JointsData",
-    "DEFAULT_FRICTION", "DEFAULT_RESTITUTION",
-    "MaterialDescriptor", "MaterialPairProperties", "MaterialManager", "MaterialPairsModel",
-    "ShapeType", "ShapeDescriptor", "EmptyShape", "SphereShape", "CylinderShape",
-    "ConeShape", "CapsuleShape", "BoxShape", "EllipsoidShape", "PlaneShape",
-    "ConvexShape", "MeshShape", "SDFShape",
-    "GeometryDescriptor", "GeometriesModel", "GeometriesData",
-    "CollisionGeometryDescriptor", "CollisionGeometriesModel", "CollisionGeometriesData",
-    "State",
-    "Control",
-    "ModelDataInfo", "ModelData", "ModelInfo", "Model",
-    "WorldDescriptor", "ModelBuilder",
-    "CollisionsModel", "CollisionsData", "Collisions",
-    "ContactsData", "Contacts",
+    "DEFAULT_FRICTION",
+    "DEFAULT_RESTITUTION",
+    "GRAVITY_ACCEL_DEFAULT",
+    "GRAVITY_DIREC_DEFAULT",
+    "GRAVITY_NAME_DEFAULT",
+    "BoxShape",
+    "CapsuleShape",
     "CollisionDetector",
-    "DenseSystemJacobiansData", "DenseSystemJacobians",
-    "DelassusOperatorData", "DelassusOperator",
-    "DualProblemData", "DualProblem",
-    "padmm",
+    "CollisionGeometriesData",
+    "CollisionGeometriesModel",
+    "CollisionGeometryDescriptor",
+    "Collisions",
+    "CollisionsData",
+    "CollisionsModel",
+    "ConeShape",
+    "Contacts",
+    "ContactsData",
+    "Control",
+    "ConvexShape",
+    "CylinderShape",
+    "DelassusOperator",
+    "DelassusOperatorData",
+    "DenseSystemJacobians",
+    "DenseSystemJacobiansData",
+    "DualProblem",
+    "DualProblemData",
+    "EllipsoidShape",
+    "EmptyShape",
+    "GeometriesData",
+    "GeometriesModel",
+    "GeometryDescriptor",
+    "GravityDescriptor",
+    "GravityModel",
+    "JointActuationType",
+    "JointDescriptor",
+    "JointDoFType",
+    "JointsData",
+    "JointsModel",
+    "Mat33",
+    "MaterialDescriptor",
+    "MaterialManager",
+    "MaterialPairProperties",
+    "MaterialPairsModel",
+    "MeshShape",
+    "Model",
+    "ModelBuilder",
+    "ModelData",
+    "ModelDataInfo",
+    "ModelInfo",
+    "PlaneShape",
+    "Quat",
+    "RigidBodiesData",
+    "RigidBodiesModel",
+    "RigidBodyDescriptor",
+    "SDFShape",
+    "ShapeDescriptor",
+    "ShapeType",
     "Simulator",
-    "printmatrix", "printvector",
+    "SphereShape",
+    "State",
+    "TimeData",
+    "TimeModel",
+    "Transform",
+    "Vec3",
+    "Vec4",
+    "Vec6",
+    "WorldDescriptor",
+    "__version__",
+    "float16",
+    "float32",
+    "float64",
+    "hdf5",
+    "int8",
+    "int16",
+    "int32",
+    "int64",
+    "mat22f",
+    "mat26f",
+    "mat33f",
+    "mat36f",
+    "mat44f",
+    "mat46f",
+    "mat56f",
+    "mat62f",
+    "mat63f",
+    "mat64f",
+    "mat65f",
+    "mat66f",
+    "math",
+    "padmm",
+    "printmatrix",
+    "printvector",
     "sparseview",
-    "hdf5"
+    "transformf",
+    "uint8",
+    "uint16",
+    "uint32",
+    "uint64",
+    "vec2f",
+    "vec2i",
+    "vec3f",
+    "vec4f",
+    "vec6f",
+    "vec6i",
+    "vec7f",
+    "vec14f",
 ]

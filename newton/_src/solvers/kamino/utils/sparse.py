@@ -1,24 +1,40 @@
-###########################################################################
-# KAMINO: Utilities
-###########################################################################
+# SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
-import numpy as np
+"""
+KAMINO: Utilities
+"""
+
 import matplotlib.pyplot as plt
-from matplotlib.colors import Normalize
+import numpy as np
 from matplotlib.cm import ScalarMappable
-
+from matplotlib.colors import Normalize
 
 ###
 # Matrix Sparsity
 ###
 
+
 def sparseview(
-        matrix: np.ndarray,
-        title: str = "Matrix Sparsity",
-        tick_fontsize: int = 5,
-        max_ticks: int = 20,
-        grid: bool = False,
-        path: str = None):
+    matrix: np.ndarray,
+    title: str = "Matrix Sparsity",
+    tick_fontsize: int = 5,
+    max_ticks: int = 20,
+    grid: bool = False,
+    path: str | None = None,
+):
     """
     Visualize the sparsity pattern of a matrix.
     Zero entries are shown in red.
@@ -51,7 +67,7 @@ def sparseview(
     if np.any(non_zero_mask):
         norm = Normalize(vmin=matrix[non_zero_mask].min(), vmax=matrix[non_zero_mask].max())
         gray_values = norm(matrix)  # normalized to [0,1]
-        gray_image = np.stack([gray_values]*3, axis=-1)
+        gray_image = np.stack([gray_values] * 3, axis=-1)
         color_image[non_zero_mask] = gray_image[non_zero_mask]
 
     # Set exact zeros to red
@@ -59,7 +75,7 @@ def sparseview(
 
     # Plot the image
     fig, ax = plt.subplots()
-    im = ax.imshow(color_image, origin='upper')
+    ax.imshow(color_image, origin="upper")
 
     # Confgure figure tick labels
     xticks = get_sparse_ticks(matrix.shape[1], max_ticks)
@@ -70,14 +86,14 @@ def sparseview(
     ax.set_yticklabels(yticks, fontsize=tick_fontsize)
 
     # Minor ticks for grid alignment (optional)
-    ax.set_xticks(np.arange(matrix.shape[1]+1)-0.5, minor=True)
-    ax.set_yticks(np.arange(matrix.shape[0]+1)-0.5, minor=True)
+    ax.set_xticks(np.arange(matrix.shape[1] + 1) - 0.5, minor=True)
+    ax.set_yticks(np.arange(matrix.shape[0] + 1) - 0.5, minor=True)
     ax.grid(False)
-    ax.tick_params(which='minor', size=0)
+    ax.tick_params(which="minor", size=0)
 
     # Add colorbar only for the non-zero values
     if np.any(non_zero_mask):
-        sm = ScalarMappable(cmap='gray', norm=norm)
+        sm = ScalarMappable(cmap="gray", norm=norm)
         sm.set_array([])  # dummy array for colorbar
         cbar = plt.colorbar(sm, ax=ax)
         cbar.set_label("non-zero values")
@@ -88,11 +104,11 @@ def sparseview(
 
     # Set grid for better visibility
     if grid:
-        plt.grid(True, which='major', color='blue', linestyle='-', linewidth=0.1)
+        plt.grid(True, which="major", color="blue", linestyle="-", linewidth=0.1)
 
     # Save or show the plot
     if path:
-        plt.savefig(path, dpi=300, bbox_inches='tight')
+        plt.savefig(path, dpi=300, bbox_inches="tight")
         plt.close()
     else:
         plt.show()

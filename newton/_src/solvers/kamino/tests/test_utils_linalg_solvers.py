@@ -29,7 +29,7 @@ import newton._src.solvers.kamino.utils.logger as msg
 
 class TestUtilsLinAlgLinearSolvers(unittest.TestCase):
     def setUp(self):
-        self.verbose = True  # Set to True for verbose output
+        self.verbose = False  # Set to True for verbose output
         if self.verbose:
             msg.set_log_level(msg.LogLevel.DEBUG)
 

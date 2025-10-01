@@ -28,12 +28,10 @@ from newton._src.solvers.kamino.utils.logger import Logger
 
 
 class TestUtilsLogger(unittest.TestCase):
-    def setUp(self):
-        self.verbose = True  # Set to True for verbose output
-
     def test_new_logger(self):
         """Test use of the custom logger."""
         print("")  # Print a newline for better readability in the output
+        msg.set_log_level(msg.LogLevel.DEBUG)
         logger = Logger()
         log = logger.get()
         log.info("This is an info message.")
@@ -41,15 +39,18 @@ class TestUtilsLogger(unittest.TestCase):
         log.warning("This is a warning message.")
         log.error("This is an error message.")
         log.critical("This is a critical message.")
+        msg.set_log_level(msg.LogLevel.INFO)
 
     def test_default_logger(self):
         """Test use of the custom logger."""
         print("")  # Print a newline for better readability in the output
+        msg.set_log_level(msg.LogLevel.DEBUG)
         msg.info("This is an info message.")
         msg.debug("This is a debug message.")
         msg.warning("This is a warning message.")
         msg.error("This is an error message.")
         msg.critical("This is a critical message.")
+        msg.set_log_level(msg.LogLevel.INFO)
 
 
 ###

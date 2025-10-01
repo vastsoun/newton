@@ -1,39 +1,55 @@
-###########################################################################
-# KAMINO: High-level Simulation Interface
-###########################################################################
+# SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""
+KAMINO: High-level Simulation Interface
+"""
 
 from __future__ import annotations
 
 import warp as wp
-
 from warp.context import Devicelike
+
+from newton._src.solvers.kamino.core.bodies import update_body_inertias, update_body_wrenches
 from newton._src.solvers.kamino.core.builder import ModelBuilder
+from newton._src.solvers.kamino.core.control import Control
 from newton._src.solvers.kamino.core.model import Model, ModelData
 from newton._src.solvers.kamino.core.state import State
-from newton._src.solvers.kamino.core.control import Control
+from newton._src.solvers.kamino.core.time import advance_time
+from newton._src.solvers.kamino.dynamics.dual import DualProblem
+from newton._src.solvers.kamino.dynamics.wrenches import (
+    compute_constraint_body_wrenches,
+    compute_joint_dof_body_wrenches,
+)
 from newton._src.solvers.kamino.geometry.contacts import Contacts
 from newton._src.solvers.kamino.geometry.detector import CollisionDetector
-from newton._src.solvers.kamino.kinematics.limits import Limits
-from newton._src.solvers.kamino.kinematics.jacobians import DenseSystemJacobians
-from newton._src.solvers.kamino.linalg.cholesky import SequentialCholeskyFactorizer
-from newton._src.solvers.kamino.dynamics.dual import DualProblem
-from newton._src.solvers.kamino.solvers.padmm import PADMMDualSolver
-from newton._src.solvers.kamino.solvers.apadmm import APADMMDualSolver
-
-from newton._src.solvers.kamino.core.time import advance_time
-from newton._src.solvers.kamino.core.bodies import update_body_inertias, update_body_wrenches
-from newton._src.solvers.kamino.kinematics.joints import compute_joints_state
-from newton._src.solvers.kamino.kinematics.constraints import make_unilateral_constraints_info, update_constraints_info
-from newton._src.solvers.kamino.dynamics.wrenches import compute_constraint_body_wrenches, compute_joint_dof_body_wrenches
 from newton._src.solvers.kamino.integrators.euler import integrate_semi_implicit_euler
+from newton._src.solvers.kamino.kinematics.constraints import make_unilateral_constraints_info, update_constraints_info
+from newton._src.solvers.kamino.kinematics.jacobians import DenseSystemJacobians
+from newton._src.solvers.kamino.kinematics.joints import compute_joints_state
+from newton._src.solvers.kamino.kinematics.limits import Limits
+from newton._src.solvers.kamino.linalg.cholesky import SequentialCholeskyFactorizer
+
+# from newton._src.solvers.kamino.solvers.padmm import PADMMDualSolver
+from newton._src.solvers.kamino.solvers.apadmm import APADMMDualSolver
 
 ###
 # Module interface
 ###
 
-__all__ = [
-    "Simulator"
-]
+__all__ = ["Simulator"]
 
 SOLVER_TYPE = APADMMDualSolver
 # SOLVER_TYPE = PADMMDualSolver
@@ -48,6 +64,7 @@ wp.set_module_options({"enable_backward": False})
 ###
 # Simulator interface
 ###
+
 
 class SimulatorData:
     def __init__(self, model: Model, device: Devicelike = None):
@@ -93,13 +110,7 @@ class SimulatorData:
 
 
 class Simulator:
-    def __init__(
-        self,
-        builder: ModelBuilder,
-        dt: float = 0.001,
-        device: Devicelike = None,
-        shadow: bool = False
-    ):
+    def __init__(self, builder: ModelBuilder, dt: float = 0.001, device: Devicelike = None, shadow: bool = False):
         # Host-side time-keeping
         self._time: float = 0.0
         self._max_time: float = 0.0
@@ -133,11 +144,7 @@ class Simulator:
 
         # Construct the unilateral constraints members in the model info
         make_unilateral_constraints_info(
-            model=self._model,
-            state=self._data.state,
-            limits=self._limits,
-            contacts=self.contacts,
-            device=self._device
+            model=self._model, state=self._data.state, limits=self._limits, contacts=self.contacts, device=self._device
         )
 
         # Allocate Jacobians data on the device
@@ -425,7 +432,7 @@ class Simulator:
             contacts=self.contacts.data,
             jacobians=self._jacobians.data,
             lambdas_offsets=self._dual_problem.data.vio,
-            lambdas_data=self._dual_solver.data.solution.lambdas
+            lambdas_data=self._dual_solver.data.solution.lambdas,
         )
 
     def _forward_wrenches(self):

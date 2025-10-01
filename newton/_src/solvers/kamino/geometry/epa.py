@@ -1,20 +1,39 @@
-###########################################################################
-# KAMINO: Collision Detection: EPA Operations
-###########################################################################
+# SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""
+KAMINO: Collision Detection: EPA Operations
+"""
 
 from __future__ import annotations
 
 import warp as wp
 
 from newton._src.solvers.kamino.core.types import mat43f
-from newton._src.solvers.kamino.geometry.types import (
-    FLOAT_MAX, EPS_BEST_COUNT, TRIS_DIM,
-    matc3, vecc3, mat2c3,
-    VECI1, VECI2,
-)
-from newton._src.solvers.kamino.geometry.math import gjk_normalize
 from newton._src.solvers.kamino.geometry.gjk import gjk_support
-
+from newton._src.solvers.kamino.geometry.math import gjk_normalize
+from newton._src.solvers.kamino.geometry.types import (
+    EPS_BEST_COUNT,
+    FLOAT_MAX,
+    TRIS_DIM,
+    VECI1,
+    VECI2,
+    mat2c3,
+    matc3,
+    vecc3,
+)
 
 ###
 # Module configs
@@ -26,6 +45,7 @@ wp.set_module_options({"enable_backward": False})
 ###
 # Functions
 ###
+
 
 @wp.func
 def expand_polytope(count: int, prev_count: int, dists: vecc3, tris: mat2c3, p: matc3):
@@ -58,11 +78,11 @@ def expand_polytope(count: int, prev_count: int, dists: vecc3, tris: mat2c3, p: 
 
 
 def get_epa(
-  geomtype1: int,
-  geomtype2: int,
-  epa_iterations: int,
-  epa_exact_neg_distance: bool,
-  depth_extension: float,
+    geomtype1: int,
+    geomtype2: int,
+    epa_iterations: int,
+    epa_exact_neg_distance: bool,
+    depth_extension: float,
 ):
     # compute contact normal and depth
     @wp.func

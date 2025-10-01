@@ -1,20 +1,35 @@
-###########################################################################
-# KAMINO: UNIT TESTS: RANDOM DATA GENERATION
-###########################################################################
+# SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""
+KAMINO: UNIT TESTS: RANDOM DATA GENERATION
+"""
 
 import unittest
+
 import numpy as np
 
 # Module to be tested
 import newton._src.solvers.kamino.tests.utils.random as rand
 
-
 ###
 # Tests
 ###
 
-class TestRandomSymmetricMatrix(unittest.TestCase):
 
+class TestRandomSymmetricMatrix(unittest.TestCase):
     def setUp(self):
         self.verbose = True  # Set to True for verbose output
 
@@ -43,10 +58,7 @@ class TestRandomSymmetricMatrix(unittest.TestCase):
 
         # Check if the eigenvalues are close to the expected ones
         np.testing.assert_allclose(
-            sorted(actual_eigenvalues),
-            sorted(eigenvalues),
-            rtol=1e-5,
-            err_msg="Eigenvalues do not match."
+            sorted(actual_eigenvalues), sorted(eigenvalues), rtol=1e-5, err_msg="Eigenvalues do not match."
         )
 
     def test_invalid_eigenvalues(self):
@@ -63,17 +75,12 @@ class TestRandomSymmetricMatrix(unittest.TestCase):
 
 
 class TestRandomProblemCholesky(unittest.TestCase):
-
     def setUp(self):
         self.verbose = True  # Set to True for verbose output
 
     def test_generate_small_lower(self):
         dim = 10
-        problem = rand.RandomProblemCholesky(
-            dims=[dim],
-            seed=42,
-            upper=False
-        )
+        problem = rand.RandomProblemCholesky(dims=[dim], seed=42, upper=False)
         A, b = problem.A_np[0], problem.b_np[0]
 
         # Verify the shapes of A and b
@@ -82,11 +89,7 @@ class TestRandomProblemCholesky(unittest.TestCase):
 
     def test_generate_small_upper(self):
         dim = 10
-        problem = rand.RandomProblemCholesky(
-            dims=[dim],
-            seed=42,
-            upper=True
-        )
+        problem = rand.RandomProblemCholesky(dims=[dim], seed=42, upper=True)
         A, b = problem.A_np[0], problem.b_np[0]
 
         # Verify the shapes of A and b
@@ -95,17 +98,12 @@ class TestRandomProblemCholesky(unittest.TestCase):
 
 
 class TestRandomProblemLDLT(unittest.TestCase):
-
     def setUp(self):
         self.verbose = True  # Set to True for verbose output
 
     def test_generate_small_lower(self):
         dim = 10
-        problem = rand.RandomProblemLDLT(
-            dims=[dim],
-            seed=42,
-            lower=True
-        )
+        problem = rand.RandomProblemLDLT(dims=[dim], seed=42, lower=True)
         A, b = problem.A_np[0], problem.b_np[0]
 
         # Verify the shapes of A and b
@@ -114,11 +112,7 @@ class TestRandomProblemLDLT(unittest.TestCase):
 
     def test_generate_small_upper(self):
         dim = 10
-        problem = rand.RandomProblemLDLT(
-            dims=[dim],
-            seed=42,
-            lower=False
-        )
+        problem = rand.RandomProblemLDLT(dims=[dim], seed=42, lower=False)
         A, b = problem.A_np[0], problem.b_np[0]
 
         # Verify the shapes of A and b

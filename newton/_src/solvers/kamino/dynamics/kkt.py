@@ -1,29 +1,42 @@
-###########################################################################
-# KAMINO: DYNAMICS: KKT Operator
-###########################################################################
+# SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""
+KAMINO: DYNAMICS: KKT Operator
+"""
 
 from __future__ import annotations
 
 import warp as wp
-
-from typing import List
 from warp.context import Devicelike
-from newton._src.solvers.kamino.core.types import int32, float32, vec3f, mat33f
-from newton._src.solvers.kamino.core.model import ModelSize, ModelData, Model
-from newton._src.solvers.kamino.kinematics.limits import Limits
-from newton._src.solvers.kamino.geometry.contacts import Contacts
-from newton._src.solvers.kamino.linalg.ldlt import LDLTFactorizer
-from newton._src.solvers.kamino.kinematics.jacobians import DenseSystemJacobiansData
-from newton._src.solvers.kamino.kinematics.constraints import max_constraints_per_world
 
+from newton._src.solvers.kamino.core.model import Model, ModelData, ModelSize
+from newton._src.solvers.kamino.core.types import float32, int32
+from newton._src.solvers.kamino.geometry.contacts import Contacts
+from newton._src.solvers.kamino.kinematics.constraints import max_constraints_per_world
+from newton._src.solvers.kamino.kinematics.jacobians import DenseSystemJacobiansData
+from newton._src.solvers.kamino.kinematics.limits import Limits
+from newton._src.solvers.kamino.linalg.ldlt import LDLTFactorizer
 
 ###
 # Module interface
 ###
 
 __all__ = [
-    "KKTSystemState",
     "KKTSystem",
+    "KKTSystemState",
 ]
 
 
@@ -38,10 +51,12 @@ wp.set_module_options({"enable_backward": False})
 # Containers
 ###
 
+
 class KKTSystemState:
     """
     A container to hold the time-varying data of the KKT system.
     """
+
     def __init__(self):
         self.maxdim: wp.array(dtype=int32) | None = None
         """
@@ -251,10 +266,12 @@ class KKTSystemState:
 # Interfaces
 ###
 
+
 class KKTSystem:
     """
     A container to represent the KKT (Karush-Kuhn-Tucker) linear system.
     """
+
     def __init__(
         self,
         model: Model | None = None,
@@ -288,8 +305,8 @@ class KKTSystem:
         self._num_worlds: int = 0
         self._model_maxdims: int = 0
         self._model_maxsize: int = 0
-        self._world_maxdims: List[int] = []
-        self._world_maxsize: List[int] = []
+        self._world_maxdims: list[int] = []
+        self._world_maxsize: list[int] = []
         self._max_of_max_total_D_size: int = 0
 
         # Cache the requested device
@@ -435,11 +452,11 @@ class KKTSystem:
             self._data.vio = model.info.total_cts_offset
         else:
             vec_offsets = [0] + [sum(self._world_dims[:i]) for i in range(1, self._num_worlds + 1)]
-            self._data.vio = wp.array(vec_offsets[:self._num_worlds], dtype=int32, device=self._device)
+            self._data.vio = wp.array(vec_offsets[: self._num_worlds], dtype=int32, device=self._device)
 
         # Allocate the matrix index offsets (MIO) for each world
         mat_offsets = [0] + [sum(self._world_size[:i]) for i in range(1, self._num_worlds + 1)]
-        self._data.mio = wp.array(mat_offsets[:self._num_worlds], dtype=int32, device=self._device)
+        self._data.mio = wp.array(mat_offsets[: self._num_worlds], dtype=int32, device=self._device)
 
         # Optionally initialize the factorizer if one is specified
         if factorizer is not None:
@@ -459,13 +476,7 @@ class KKTSystem:
         """
         self._data.D.zero_()
 
-    def build(
-        self,
-        model: Model,
-        state: ModelData,
-        jacobians: DenseSystemJacobiansData,
-        reset_to_zero: bool = True
-    ):
+    def build(self, model: Model, state: ModelData, jacobians: DenseSystemJacobiansData, reset_to_zero: bool = True):
         """
         Builds the Delassus matrix using the provided Model, ModelData, and constraint Jacobians.
 
@@ -488,7 +499,9 @@ class KKTSystem:
 
         # Ensure the Jacobians are valid
         if jacobians is None or not isinstance(jacobians, DenseSystemJacobiansData):
-            raise ValueError("A valid Jacobians state of type `DenseSystemJacobiansData` must be provided to build the Delassus operator.")
+            raise ValueError(
+                "A valid Jacobians state of type `DenseSystemJacobiansData` must be provided to build the Delassus operator."
+            )
 
         # Ensure the Delassus matrix is allocated
         if self._data.D is None:
@@ -514,8 +527,8 @@ class KKTSystem:
                 self._data.dim,
                 self._data.mio,
                 # Outputs:
-                self._data.D
-            ]
+                self._data.D,
+            ],
         )
 
     def regularize(self, eta: wp.array):
@@ -530,14 +543,7 @@ class KKTSystem:
         wp.launch(
             kernel=_regularize_kkt_matrix_diagonal,
             dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
-            inputs=[
-                self._data.maxdim,
-                self._data.dim,
-                self._data.vio,
-                self._data.mio,
-                eta,
-                self._data.D
-            ]
+            inputs=[self._data.maxdim, self._data.dim, self._data.vio, self._data.mio, eta, self._data.D],
         )
 
     def factorize(self, reset_to_zero: bool = True):

@@ -1,22 +1,36 @@
-###########################################################################
-# KAMINO: Body Model Types & Containers
-###########################################################################
+# SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""
+KAMINO: Body Model Types & Containers
+"""
 
 from __future__ import annotations
 
 import warp as wp
 
-from .types import (int32, float32, vec6f, mat33f, transformf)
-
+from .types import float32, int32, mat33f, transformf, vec6f
 
 ###
 # Module interface
 ###
 
 __all__ = [
-    "RigidBodyDescriptor",
-    "RigidBodiesModel",
     "RigidBodiesData",
+    "RigidBodiesModel",
+    "RigidBodyDescriptor",
     "update_body_inertias",
     "update_body_wrenches",
 ]
@@ -33,10 +47,12 @@ wp.set_module_options({"enable_backward": False})
 # Rigid-Body Containers
 ###
 
+
 class RigidBodyDescriptor:
     """
     A container to describe a single rigid body in the model builder.
     """
+
     def __init__(self):
         self.name: str | None = None
         """Name of the body."""
@@ -81,6 +97,7 @@ class RigidBodiesModel:
     """
     An SoA-based container to hold time-invariant model data of a set of rigid body elements.
     """
+
     def __init__(self):
         self.num_bodies: int = 0
         """Total number of body elements in the model (host-side)."""
@@ -138,6 +155,7 @@ class RigidBodiesData:
     """
     An SoA-based container to hold time-varying data of a set of rigid body elements.
     """
+
     def __init__(self):
         self.num_bodies: int = 0
         """Total number of body elements in the model (host-side)."""
@@ -212,6 +230,7 @@ class RigidBodiesData:
 # Kernels
 ###
 
+
 @wp.kernel
 def _update_body_inertias(
     # Inputs:
@@ -272,6 +291,7 @@ def _update_body_wrenches(
 # Launchers
 ###
 
+
 def update_body_inertias(model: RigidBodiesModel, state: RigidBodiesData):
     wp.launch(
         _update_body_inertias,
@@ -284,7 +304,7 @@ def update_body_inertias(model: RigidBodiesModel, state: RigidBodiesData):
             # Outputs:
             state.I_i,
             state.inv_I_i,
-        ]
+        ],
     )
 
 
@@ -301,5 +321,5 @@ def update_body_wrenches(model: RigidBodiesModel, state: RigidBodiesData):
             state.w_e_i,
             # Outputs:
             state.w_i,
-        ]
+        ],
     )

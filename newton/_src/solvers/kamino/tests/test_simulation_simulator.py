@@ -1,33 +1,40 @@
-###########################################################################
-# KAMINO: UNIT TESTS
-###########################################################################
+# SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""
+KAMINO: UNIT TESTS
+"""
 
 import unittest
+
 import numpy as np
 import warp as wp
 
-from newton._src.solvers.kamino.models.builders import (
-    build_box_on_plane,
-    build_box_pendulum,
-    build_boxes_hinged,
-    build_boxes_nunchaku,
-)
 from newton._src.solvers.kamino.models.utils import (
-    make_single_builder,
-    make_homogeneous_builder,
-    make_heterogeneous_builder
+    make_heterogeneous_builder,
 )
 
 # Module to be tested
 from newton._src.solvers.kamino.simulation.simulator import Simulator
 
-
 ###
 # Tests
 ###
 
-class TestSimulator(unittest.TestCase):
 
+class TestSimulator(unittest.TestCase):
     def setUp(self):
         self.verbose = False  # Set to True for detailed output
         self.default_device = wp.get_device()
@@ -146,14 +153,30 @@ class TestSimulator(unittest.TestCase):
             print(f"[post-step]: sim._data.state.time.time: {sim._data.state.time.time}")
             print(f"[post-step]: sim._data.state.bodies.q_i:\n{sim._data.state.bodies.q_i}")
             print(f"[post-step]: sim._data.state.bodies.u_i:\n{sim._data.state.bodies.u_i}")
-            print(f"[post-step]: sim.collision_detector.collisions.cdata.model_num_collisions: {sim.collision_detector.collisions.cdata.model_num_collisions}")
-            print(f"[post-step]: sim.collision_detector.collisions.cdata.world_num_collisions: {sim.collision_detector.collisions.cdata.world_num_collisions}")
-            print(f"[post-step]: sim.collision_detector.collisions.cdata.wid: {sim.collision_detector.collisions.cdata.wid}")
-            print(f"[post-step]: sim.collision_detector.collisions.cdata.geom_pair:\n{sim.collision_detector.collisions.cdata.geom_pair}")
-            print(f"[post-step]: sim.collision_detector.contacts.model_max_contacts: {sim.collision_detector.contacts.model_max_contacts}")
-            print(f"[post-step]: sim.collision_detector.contacts.model_num_contacts: {sim.collision_detector.contacts.model_num_contacts}")
-            print(f"[post-step]: sim.collision_detector.contacts.world_max_contacts: {sim.collision_detector.contacts.world_max_contacts}")
-            print(f"[post-step]: sim.collision_detector.contacts.world_num_contacts: {sim.collision_detector.contacts.world_num_contacts}")
+            print(
+                f"[post-step]: sim.collision_detector.collisions.cdata.model_num_collisions: {sim.collision_detector.collisions.cdata.model_num_collisions}"
+            )
+            print(
+                f"[post-step]: sim.collision_detector.collisions.cdata.world_num_collisions: {sim.collision_detector.collisions.cdata.world_num_collisions}"
+            )
+            print(
+                f"[post-step]: sim.collision_detector.collisions.cdata.wid: {sim.collision_detector.collisions.cdata.wid}"
+            )
+            print(
+                f"[post-step]: sim.collision_detector.collisions.cdata.geom_pair:\n{sim.collision_detector.collisions.cdata.geom_pair}"
+            )
+            print(
+                f"[post-step]: sim.collision_detector.contacts.model_max_contacts: {sim.collision_detector.contacts.model_max_contacts}"
+            )
+            print(
+                f"[post-step]: sim.collision_detector.contacts.model_num_contacts: {sim.collision_detector.contacts.model_num_contacts}"
+            )
+            print(
+                f"[post-step]: sim.collision_detector.contacts.world_max_contacts: {sim.collision_detector.contacts.world_max_contacts}"
+            )
+            print(
+                f"[post-step]: sim.collision_detector.contacts.world_num_contacts: {sim.collision_detector.contacts.world_num_contacts}"
+            )
             print(f"[post-step]: sim.collision_detector.contacts.wid: {sim.collision_detector.contacts.wid}")
             print(f"[post-step]: sim.collision_detector.contacts.cid: {sim.collision_detector.contacts.cid}")
             print(f"[post-step]: sim.collision_detector.contacts.body_A:\n{sim.collision_detector.contacts.body_A}")

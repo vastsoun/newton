@@ -1,7 +1,21 @@
-###########################################################################
-# KAMINO: Accelerated Proximal ADMM DualProblem Solver
-###########################################################################
+# SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """
+KAMINO: Accelerated Proximal ADMM DualProblem Solver
+
 Provides a forward dynamics solver for constrained rigid multi-body systems using
 the Alternating Direction Method of Multipliers (ADMM). This implementation realizes
 the Proximal ADMM algorithm described in [1] and is based on the work of J. Carpentier
@@ -27,18 +41,17 @@ References
 - [4] https://epubs.siam.org/doi/abs/10.1137/120896219
 """
 
-import warp as wp
-
 from enum import IntEnum
-from typing import List
-from warp.context import Devicelike
-from newton._src.solvers.kamino.core.types import int32, float32, vec3f
-from newton._src.solvers.kamino.core.math import FLOAT32_EPS, FLOAT32_MAX
-from newton._src.solvers.kamino.core.model import ModelSize, Model
-from newton._src.solvers.kamino.kinematics.limits import Limits
-from newton._src.solvers.kamino.geometry.contacts import Contacts
-from newton._src.solvers.kamino.dynamics.dual import DualProblem
 
+import warp as wp
+from warp.context import Devicelike
+
+from newton._src.solvers.kamino.core.math import FLOAT32_EPS, FLOAT32_MAX
+from newton._src.solvers.kamino.core.model import Model, ModelSize
+from newton._src.solvers.kamino.core.types import float32, int32, vec3f
+from newton._src.solvers.kamino.dynamics.dual import DualProblem
+from newton._src.solvers.kamino.geometry.contacts import Contacts
+from newton._src.solvers.kamino.kinematics.limits import Limits
 
 ###
 # Module configs
@@ -51,10 +64,12 @@ wp.set_module_options({"enable_backward": False})
 # Types
 ###
 
+
 class APADMMPenaltyUpdate(IntEnum):
     """
     An enumeration of the penalty update methods used in PADMM.
     """
+
     FIXED = 0
     """Fixed penalty, no updates are performed."""
     LINEAR = 1
@@ -68,6 +83,7 @@ class APADMMConfig:
     """
     A data type to hold the APADMM solver configurations. Intended for in-device storage.
     """
+
     primal_tolerance: float32
     """The tolerance applied to the primal residuals."""
     dual_tolerance: float32
@@ -101,6 +117,7 @@ class APADMMStatus:
     """
     A data type to hold the APADMM solver status. Intended for in-device storage.
     """
+
     converged: int32
     """A flag indicating whether the solver has converged (1) or not (0)."""
     iterations: int32
@@ -138,6 +155,7 @@ class APADMMPenalty:
     """
     A data type to hold the APADMM solver penalty state. Intended for in-device storage.
     """
+
     rho_updates: int32
     """The number of penalty updates performed. Also equals the number of Delassus factorizations."""
     rho_p: float32
@@ -150,10 +168,12 @@ class APADMMPenalty:
 # Containers
 ###
 
+
 class APADMMSettings:
     """
     A class to hold the APADMM solver settings.
     """
+
     def __init__(self):
         self.primal_tolerance: float = 1e-6
         """The tolerance applied to the primal residuals."""
@@ -207,6 +227,7 @@ class APADMMState:
     """
     An interface container to the PADMM solver internal state arrays.
     """
+
     def __init__(self, size: ModelSize | None = None):
         self.s: wp.array(dtype=float32) | None = None
         """The De Saxce correction vector."""
@@ -281,6 +302,7 @@ class APADMMResiduals:
     """
     An interface container to the APADMM solver residuals arrays.
     """
+
     def __init__(self, size: ModelSize | None = None):
         self.r_primal: wp.array(dtype=float32) | None = None
         """The APADMM primal residual vector."""
@@ -320,6 +342,7 @@ class APADMMSolution:
     """
     An interface container to the APADMM solver solution arrays.
     """
+
     def __init__(self, size: ModelSize | None = None):
         self.lambdas: wp.array(dtype=float32) | None = None
         """The constraint reactions (i.e. impulses) solution array."""
@@ -346,6 +369,7 @@ class APADMMInfo:
     - This has a significant impact on solver performance and memory usage, so it
     is recommended to only enable this for testing and debugging purposes.
     """
+
     def __init__(
         self,
         size: ModelSize | None = None,
@@ -531,12 +555,9 @@ class APADMMData:
     An interface container to the APADMM solver data arrays.
     This high-level container bundles all solver data into a single object.
     """
+
     def __init__(
-        self,
-        size: ModelSize | None = None,
-        max_iters: int = 0,
-        collect_info: bool = False,
-        device: Devicelike = None
+        self, size: ModelSize | None = None, max_iters: int = 0, collect_info: bool = False, device: Devicelike = None
     ):
         self.config: wp.array(dtype=APADMMConfig) | None = None
         """The array of APADMM solver configurations. Shape is (nw,) and type :class:`APADMMConfig`."""
@@ -573,6 +594,7 @@ class APADMMData:
 # Functions
 ###
 
+
 @wp.func
 def project_to_coulomb_cone(x: vec3f, mu: float32, epsilon: float32 = 0.0) -> vec3f:
     """
@@ -587,14 +609,14 @@ def project_to_coulomb_cone(x: vec3f, mu: float32, epsilon: float32 = 0.0) -> ve
         vec3f: The vector projected onto the Coulomb cone.
     """
     xn = x[2]
-    xt_norm = wp.sqrt(x[0]*x[0] + x[1]*x[1])
+    xt_norm = wp.sqrt(x[0] * x[0] + x[1] * x[1])
     y = wp.vec3f(0.0)
-    if mu * xt_norm > - xn + epsilon:
+    if mu * xt_norm > -xn + epsilon:
         if xt_norm <= mu * xn + epsilon:
             y = x
         else:
             ys = (mu * xt_norm + xn) / (mu * mu + 1.0)
-            yts = (mu * ys / xt_norm)
+            yts = mu * ys / xt_norm
             y[0] = yts * x[0]
             y[1] = yts * x[1]
             y[2] = ys
@@ -615,14 +637,14 @@ def project_to_coulomb_dual_cone(x: vec3f, mu: float32, epsilon: float32 = 0.0) 
         vec3f: The vector projected onto the dual Coulomb cone.
     """
     xn = x[2]
-    xt_norm = wp.sqrt(x[0]*x[0] + x[1]*x[1])
+    xt_norm = wp.sqrt(x[0] * x[0] + x[1] * x[1])
     y = wp.vec3f(0.0)
-    if xt_norm > - mu * xn + epsilon:
+    if xt_norm > -mu * xn + epsilon:
         if mu * xt_norm <= xn + epsilon:
             y = x
         else:
             ys = (xt_norm + mu * xn) / (mu * mu + 1.0)
-            yts = (ys / xt_norm)
+            yts = ys / xt_norm
             y[0] = yts * x[0]
             y[1] = yts * x[1]
             y[2] = mu * ys
@@ -724,11 +746,7 @@ def compute_double_dot_product(
 
 @wp.func
 def compute_vector_sum(
-    dim: int32,
-    vio: int32,
-    x: wp.array(dtype=float32),
-    y: wp.array(dtype=float32),
-    z: wp.array(dtype=float32)
+    dim: int32, vio: int32, x: wp.array(dtype=float32), y: wp.array(dtype=float32), z: wp.array(dtype=float32)
 ):
     """
     Computes the sum of two vectors `x` and `y` and stores the result in vector `z`.\n
@@ -824,7 +842,7 @@ def compute_desaxce_corrections(
     ccgo: int32,
     mu: wp.array(dtype=float32),
     v_plus: wp.array(dtype=float32),
-    s: wp.array(dtype=float32)
+    s: wp.array(dtype=float32),
 ):
     """
     Computes the De Saxce correction for each active contact.
@@ -880,7 +898,7 @@ def compute_ncp_primal_residual(
     ccgo: int32,
     cio: int32,
     mu: wp.array(dtype=float32),
-    lambdas: wp.array(dtype=float32)
+    lambdas: wp.array(dtype=float32),
 ) -> float32:
     """
     Computes the NCP primal residual as: `r_p := || lambda - proj_K(lambda) ||_inf`, where:
@@ -946,7 +964,7 @@ def compute_ncp_dual_residual(
     ccgo: int32,
     cio: int32,
     mu: wp.array(dtype=float32),
-    v_aug: wp.array(dtype=float32)
+    v_aug: wp.array(dtype=float32),
 ) -> float32:
     """
     Computes the NCP dual residual as: `r_d := || v_aug - proj_K^*(v_aug) ||_inf`, where:
@@ -1022,7 +1040,7 @@ def compute_ncp_complementarity_residual(
     lcgo: int32,
     ccgo: int32,
     v_aug: wp.array(dtype=float32),
-    lambdas: wp.array(dtype=float32)
+    lambdas: wp.array(dtype=float32),
 ) -> float32:
     """
     Computes the NCP complementarity residual as `r_c := || lambda.dot(v_plus + s) ||_inf`
@@ -1079,7 +1097,7 @@ def compute_ncp_natural_map_residual(
     cio: int32,
     mu: wp.array(dtype=float32),
     v_aug: wp.array(dtype=float32),
-    lambdas: wp.array(dtype=float32)
+    lambdas: wp.array(dtype=float32),
 ) -> float32:
     """
     Computes the natural-map residuals as: `r_natmap = || lambda - proj_K(lambda - (v + s)) ||_inf`
@@ -1128,11 +1146,7 @@ def compute_ncp_natural_map_residual(
 
 @wp.func
 def compute_preconditioned_iterate_residual(
-    ncts: int32,
-    vio: int32,
-    P: wp.array(dtype=float32),
-    x: wp.array(dtype=float32),
-    x_p: wp.array(dtype=float32)
+    ncts: int32, vio: int32, P: wp.array(dtype=float32), x: wp.array(dtype=float32), x_p: wp.array(dtype=float32)
 ) -> float32:
     """
     Computes the iterate residual as: `r_dx := || P @ (x - x_p) ||_inf`
@@ -1161,11 +1175,7 @@ def compute_preconditioned_iterate_residual(
 
 @wp.func
 def compute_inverse_preconditioned_iterate_residual(
-    ncts: int32,
-    vio: int32,
-    P: wp.array(dtype=float32),
-    x: wp.array(dtype=float32),
-    x_p: wp.array(dtype=float32)
+    ncts: int32, vio: int32, P: wp.array(dtype=float32), x: wp.array(dtype=float32), x_p: wp.array(dtype=float32)
 ) -> float32:
     """
     Computes the iterate residual as: `r_dx := || P^{-1} @ (x - x_p) ||_inf`
@@ -1195,6 +1205,7 @@ def compute_inverse_preconditioned_iterate_residual(
 ###
 # Kernels
 ###
+
 
 # TODO: Make multiple initialization kernels for the different penalty update methods
 @wp.kernel
@@ -1329,7 +1340,7 @@ def _compute_desaxce_correction(
     # Compute the norm of the tangential components
     vtx = solver_z_hat[ccio_k]
     vty = solver_z_hat[ccio_k + 1]
-    vt_norm = wp.sqrt(vtx*vtx + vty*vty)
+    vt_norm = wp.sqrt(vtx * vtx + vty * vty)
 
     # Store De Saxce correction for this block
     solver_s[ccio_k] = 0.0
@@ -1351,7 +1362,7 @@ def _compute_velocity_bias(
     solver_y_hat: wp.array(dtype=float32),
     solver_z_hat: wp.array(dtype=float32),
     # Outputs:
-    solver_v: wp.array(dtype=float32)
+    solver_v: wp.array(dtype=float32),
 ):
     # Retrieve the thread indices as the world and constraint index
     wid, tid = wp.tid()
@@ -1384,7 +1395,7 @@ def _compute_velocity_bias(
     z_hat = solver_z_hat[tio]
 
     # Compute the total velocity bias for the tio-th constraint
-    solver_v[tio] = - v_f - s + eta * x_p + rho * y_hat + z_hat
+    solver_v[tio] = -v_f - s + eta * x_p + rho * y_hat + z_hat
 
 
 @wp.kernel
@@ -1746,7 +1757,6 @@ def _compute_infnorm_residuals_serially(
     # Outputs:
     solver_status: wp.array(dtype=APADMMStatus),
     solver_state_a: wp.array(dtype=float32),
-
 ):
     # Retrieve the thread index as the world index
     wid = wp.tid()
@@ -1815,10 +1825,7 @@ def _compute_infnorm_residuals_serially(
     status.r_a = rho * status.r_dy + (1.0 / rho) * status.r_dz
 
     # Check and store convergence state
-    if status.iterations > 1 and \
-       r_p_max <= eps_p and \
-       r_d_max <= eps_d and \
-       r_c_max <= eps_c:
+    if status.iterations > 1 and r_p_max <= eps_p and r_d_max <= eps_d and r_c_max <= eps_c:
         status.converged = 1
 
     # Restart acceleration if the residuals are not decreasing sufficiently
@@ -2022,7 +2029,9 @@ def _collect_solver_convergence_info(
     r_ncp_c = compute_ncp_complementarity_residual(nl, nc, vio, lcgo, ccgo, solver_info_v_aug, solver_info_lambdas)
 
     # Compute the natural-map residuals as: r_natmap = || lambda - proj_K(lambda - (v + s)) ||_inf
-    r_ncp_natmap = compute_ncp_natural_map_residual(nl, nc, vio, lcgo, ccgo, cio, problem_mu, solver_info_v_aug, solver_info_lambdas)
+    r_ncp_natmap = compute_ncp_natural_map_residual(
+        nl, nc, vio, lcgo, ccgo, cio, problem_mu, solver_info_v_aug, solver_info_lambdas
+    )
 
     # Compute the iterate residual as: r_iter := || y - y_p ||_inf
     r_dx = compute_preconditioned_iterate_residual(ncts, vio, problem_P, solver_state_x, solver_state_x_p)
@@ -2135,7 +2144,7 @@ def _compute_final_desaxce_correction(
     # Compute the norm of the tangential components
     vtx = solver_z[ccio_k]
     vty = solver_z[ccio_k + 1]
-    vt_norm = wp.sqrt(vtx*vtx + vty*vty)
+    vt_norm = wp.sqrt(vtx * vtx + vty * vty)
 
     # Store De Saxce correction for this block
     solver_s[ccio_k] = 0.0
@@ -2188,6 +2197,7 @@ def _compute_solution_vectors(
 # Solver
 ###
 
+
 class APADMMDualSolver:
     """
     A Proximal ADMM solver for constrained rigid multi-body systems.
@@ -2209,12 +2219,10 @@ class APADMMDualSolver:
 
     @staticmethod
     def _check_settings(
-        model: Model | None = None,
-        settings: List[APADMMSettings] | APADMMSettings | None = None
-    ) -> List[APADMMSettings]:
+        model: Model | None = None, settings: list[APADMMSettings] | APADMMSettings | None = None
+    ) -> list[APADMMSettings]:
         # If no settings are provided, use defaults
         if settings is None:
-
             # If no model is provided, use a single default settings object
             if model is None:
                 settings = [APADMMSettings()]
@@ -2241,16 +2249,16 @@ class APADMMDualSolver:
         return settings
 
     def __init__(
-            self,
-            model: Model | None = None,
-            limits: Limits | None = None,
-            contacts: Contacts | None = None,
-            settings: List[APADMMSettings] | APADMMSettings | None = None,
-            collect_info: bool = False,
-            device: Devicelike = None
+        self,
+        model: Model | None = None,
+        limits: Limits | None = None,
+        contacts: Contacts | None = None,
+        settings: list[APADMMSettings] | APADMMSettings | None = None,
+        collect_info: bool = False,
+        device: Devicelike = None,
     ):
         # Declare the internal solver settings cache
-        self._settings: List[APADMMSettings] = []
+        self._settings: list[APADMMSettings] = []
         self._max_iters: int = 0
         self._collect_info = False
 
@@ -2271,11 +2279,11 @@ class APADMMDualSolver:
                 contacts=contacts,
                 settings=settings,
                 collect_info=collect_info,
-                device=device
+                device=device,
             )
 
     @property
-    def settings(self) -> List[APADMMSettings]:
+    def settings(self) -> list[APADMMSettings]:
         """
         The host-side cache of the solver settings.\n
         They are used to construct the warp array of type `PADMMConfig` on the target device.
@@ -2310,9 +2318,9 @@ class APADMMDualSolver:
         model: Model | None = None,
         limits: Limits | None = None,
         contacts: Contacts | None = None,
-        settings: List[APADMMSettings] | APADMMSettings | None = None,
+        settings: list[APADMMSettings] | APADMMSettings | None = None,
         collect_info: bool = False,
-        device: Devicelike = None
+        device: Devicelike = None,
     ):
         # Ensure the model is valid
         if model is None:
@@ -2353,7 +2361,9 @@ class APADMMDualSolver:
         self._max_iters = max([s.max_iterations for s in self._settings])
 
         # Allocate memory in device global memory
-        self._data = APADMMData(size=self._size, max_iters=self._max_iters, collect_info=self._collect_info, device=self._device)
+        self._data = APADMMData(
+            size=self._size, max_iters=self._max_iters, collect_info=self._collect_info, device=self._device
+        )
 
         # Write algorithm configs into device memory
         configs = [s.to_config() for s in self._settings]
@@ -2373,12 +2383,7 @@ class APADMMDualSolver:
         wp.launch(
             kernel=_initialize_solver,
             dim=self._size.num_worlds,
-            inputs=[
-                self._data.config,
-                self._data.status,
-                self._data.penalty,
-                self._data.state.a_p
-            ]
+            inputs=[self._data.config, self._data.status, self._data.penalty, self._data.state.a_p],
         )
 
         # Add the diagonal proximal regularization to the Delassus matrix
@@ -2396,7 +2401,7 @@ class APADMMDualSolver:
                 self._data.status,
                 # Outputs:
                 problem.data.D,
-            ]
+            ],
         )
 
         # Compute Choleky/LDLT factorization of the Delassus matrix
@@ -2411,8 +2416,7 @@ class APADMMDualSolver:
         ###
 
         # NOTE: The high-level solver loop iterates over the maximum number of iterations configured for each world
-        for i in range(self._max_iters):
-
+        for _i in range(self._max_iters):
             # Compute De Saxce correction from the previous dual variables
             wp.launch(
                 kernel=_compute_desaxce_correction,
@@ -2428,7 +2432,7 @@ class APADMMDualSolver:
                     self._data.state.z_hat,
                     # Outputs:
                     self._data.state.s,
-                ]
+                ],
             )
             # # msg.warning(f"[{i}]: s :\n{self._data.state.s}")
 
@@ -2450,7 +2454,7 @@ class APADMMDualSolver:
                     self._data.state.z_hat,
                     # Outputs:
                     self._data.state.v,
-                ]
+                ],
             )
             # msg.warning(f"[{i}]: v :\n{self._data.state.v}")
 
@@ -2477,7 +2481,7 @@ class APADMMDualSolver:
                     self._data.state.x,
                     # Outputs:
                     self._data.state.y,
-                ]
+                ],
             )
             # msg.warning(f"[{i}]: x :\n{self._data.state.x}")
             # msg.warning(f"[{i}]: y :\n{self._data.state.y}")
@@ -2498,7 +2502,7 @@ class APADMMDualSolver:
                     self._data.status,
                     # Outputs:
                     self._data.state.y,
-                ]
+                ],
             )
             # msg.warning(f"[{i}]: y (projected):\n{self._data.state.y}\n\n\n")
 
@@ -2526,7 +2530,7 @@ class APADMMDualSolver:
                     self._data.residuals.r_dx,
                     self._data.residuals.r_dy,
                     self._data.residuals.r_dz,
-                ]
+                ],
             )
 
             # Compute complementarity residual from the current state
@@ -2572,7 +2576,7 @@ class APADMMDualSolver:
                     # Outputs:
                     self._data.status,
                     self._data.state.a,
-                ]
+                ],
             )
 
             # TODO: Add flag to make this optional
@@ -2594,12 +2598,11 @@ class APADMMDualSolver:
                     # Outputs:
                     self._data.state.y_hat,
                     self._data.state.z_hat,
-                ]
+                ],
             )
 
             # Optionally record internal solver info
             if self._collect_info:
-
                 # First reset the internal buffer arrays to zero
                 # to ensure we do not accumulate values across iterations
                 self.data.info.v_plus.zero_()
@@ -2665,7 +2668,7 @@ class APADMMDualSolver:
                         self._data.info.r_ncp_dual,
                         self._data.info.r_ncp_compl,
                         self._data.info.r_ncp_natmap,
-                    ]
+                    ],
                 )
 
             # Check if the solver has converged
@@ -2699,7 +2702,7 @@ class APADMMDualSolver:
                 self._data.state.x,
                 self._data.state.y,
                 self._data.state.z,
-            ]
+            ],
         )
 
         # Update the De Saxce correction from terminal PADMM dual variables
@@ -2716,7 +2719,7 @@ class APADMMDualSolver:
                 self._data.state.z,
                 # Outputs:
                 self._data.state.s,
-            ]
+            ],
         )
 
         # Update solution vectors from the terminal PADMM state
@@ -2733,5 +2736,5 @@ class APADMMDualSolver:
                 # Outputs:
                 self._data.solution.v_plus,
                 self._data.solution.lambdas,
-            ]
+            ],
         )

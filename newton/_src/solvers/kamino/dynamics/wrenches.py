@@ -1,24 +1,39 @@
-###########################################################################
-# KAMINO: Dynamics: Wrenches
-###########################################################################
+# SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""
+KAMINO: Dynamics: Wrenches
+"""
 
 from __future__ import annotations
 
 import warp as wp
 
-from newton._src.solvers.kamino.core.types import int32, float32, vec2i, vec3f, vec4f, vec6f, mat63f
 from newton._src.solvers.kamino.core.model import Model, ModelData
+from newton._src.solvers.kamino.core.types import float32, int32, mat63f, vec2i, vec3f, vec4f, vec6f
 from newton._src.solvers.kamino.geometry.contacts import ContactsData
-from newton._src.solvers.kamino.kinematics.limits import LimitsData
 from newton._src.solvers.kamino.kinematics.jacobians import DenseSystemJacobiansData
+from newton._src.solvers.kamino.kinematics.limits import LimitsData
 
 ###
 # Module interface
 ###
 
 __all__ = [
-    "compute_joint_dof_body_wrenches",
     "compute_constraint_body_wrenches",
+    "compute_joint_dof_body_wrenches",
 ]
 
 
@@ -32,6 +47,7 @@ wp.set_module_options({"enable_backward": False})
 ###
 # Kernels
 ###
+
 
 @wp.kernel
 def _compute_joint_dof_body_wrenches(
@@ -122,7 +138,7 @@ def _compute_joint_cts_body_wrenches(
     lambdas_offsets: wp.array(dtype=int32),
     lambdas_data: wp.array(dtype=float32),
     # Outputs:
-    state_bodies_w_j: wp.array(dtype=vec6f)
+    state_bodies_w_j: wp.array(dtype=vec6f),
 ):
     # Retrieve the thread index as the joint index
     jid = wp.tid()
@@ -197,7 +213,7 @@ def _compute_limit_cts_body_wrenches(
     lambdas_offsets: wp.array(dtype=int32),
     lambdas_data: wp.array(dtype=float32),
     # Outputs:
-    state_bodies_w_l: wp.array(dtype=vec6f)
+    state_bodies_w_l: wp.array(dtype=vec6f),
 ):
     # Retrieve the thread index
     tid = wp.tid()
@@ -242,7 +258,7 @@ def _compute_limit_cts_body_wrenches(
     # Extract the contact constraint Jacobian for the follower body
     JT_l_F = vec6f(0.0)
     dio_F = 6 * (bid_F - bio)
-    for j in range(3):
+    for _j in range(3):
         mio_lF = mio_l + dio_F
         for i in range(6):
             JT_l_F[i] = jacobian_cts_data[mio_lF + i]
@@ -286,7 +302,7 @@ def _compute_contact_cts_body_wrenches(
     lambdas_offsets: wp.array(dtype=int32),
     lambdas_data: wp.array(dtype=float32),
     # Outputs:
-    state_bodies_w_c: wp.array(dtype=vec6f)
+    state_bodies_w_c: wp.array(dtype=vec6f),
 ):
     # Retrieve the thread index
     tid = wp.tid()
@@ -364,6 +380,7 @@ def _compute_contact_cts_body_wrenches(
 # Launchers
 ###
 
+
 def compute_joint_dof_body_wrenches(model: Model, state: ModelData, jacobians: DenseSystemJacobiansData):
     """
     Update the actuation wrenches of the bodies based on the active joint torques.
@@ -420,8 +437,8 @@ def compute_constraint_body_wrenches(
             lambdas_offsets,
             lambdas_data,
             # Outputs:
-            state.bodies.w_j_i
-        ]
+            state.bodies.w_j_i,
+        ],
     )
 
     if limits is not None:
@@ -444,7 +461,7 @@ def compute_constraint_body_wrenches(
                 lambdas_data,
                 # Outputs:
                 state.bodies.w_l_i,
-            ]
+            ],
         )
 
     if contacts is not None:
@@ -468,5 +485,5 @@ def compute_constraint_body_wrenches(
                 lambdas_data,
                 # Outputs:
                 state.bodies.w_c_i,
-            ]
+            ],
         )

@@ -1,29 +1,42 @@
-###########################################################################
-# KAMINO: Collision containers use for broad-phase detection
-###########################################################################
+# SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""
+KAMINO: Collision containers use for broad-phase detection
+"""
 
 from __future__ import annotations
 
 import numpy as np
 import warp as wp
-
-from typing import List
 from warp.context import Devicelike
-from newton._src.solvers.kamino.core.types import int32, vec2i
-from newton._src.solvers.kamino.core.joints import JointDoFType
-from newton._src.solvers.kamino.core.builder import ModelBuilder
-from newton._src.solvers.kamino.utils import logger as msg
 
+from newton._src.solvers.kamino.core.builder import ModelBuilder
+from newton._src.solvers.kamino.core.joints import JointDoFType
+from newton._src.solvers.kamino.core.types import int32, vec2i
+from newton._src.solvers.kamino.utils import logger as msg
 
 ###
 # Module interface
 ###
 
 __all__ = [
-    "make_collision_pairs",
-    "CollisionsModel",
-    "CollisionsData",
     "Collisions",
+    "CollisionsData",
+    "CollisionsModel",
+    "make_collision_pairs",
 ]
 
 
@@ -37,6 +50,7 @@ wp.set_module_options({"enable_backward": False})
 ###
 # Functions
 ###
+
 
 def make_collision_pairs(builder: ModelBuilder, allow_neighbors: bool = False):
     """
@@ -75,11 +89,12 @@ def make_collision_pairs(builder: ModelBuilder, allow_neighbors: bool = False):
         world_wid = []
 
         # Iterate over each gid pair and filtering out pairs not viable for collision detection
-        for gid1, gid2 in zip(*np.triu_indices(ncg[wid], k=1)):  # k=1 skip diagonal to exclude self-collisions
-
+        for gid1_, gid2_ in zip(
+            *np.triu_indices(ncg[wid], k=1), strict=False
+        ):  # k=1 skip diagonal to exclude self-collisions
             # Convert the per-world local gids to model gid integers
-            gid1 = int(gid1) + ncg_offset
-            gid2 = int(gid2) + ncg_offset
+            gid1 = int(gid1_) + ncg_offset
+            gid2 = int(gid2_) + ncg_offset
 
             # Get references to the geometries
             geom1, geom2 = builder.collision_geoms[gid1], builder.collision_geoms[gid2]
@@ -100,24 +115,25 @@ def make_collision_pairs(builder: ModelBuilder, allow_neighbors: bool = False):
             are_collidable = ((geom1.group & geom2.collides) != 0) and ((geom2.group & geom1.collides) != 0)
             msg.debug(f"geom1.group: {geom1.group}, geom1.collides: {geom1.collides}")
             msg.debug(f"geom2.group: {geom2.group}, geom2.collides: {geom2.collides}")
-            msg.debug(f"collision pair ({gid1}, {gid2}): self-collision={is_self_collision}, same-world={in_same_world}, collidable={are_collidable}")
+            msg.debug(
+                f"collision pair ({gid1}, {gid2}): self-collision={is_self_collision}, same-world={in_same_world}, collidable={are_collidable}"
+            )
 
             # 5. Check for neighbor collision for fixed and DoF joints
             are_fixed_neighbors = False
             are_dof_neighbors = False
-            are_unary_neighbors = False
             for joint in builder.joints:
                 if (joint.bid_B == bid1 and joint.bid_F == bid2) or (joint.bid_B == bid2 and joint.bid_F == bid1):
                     if joint.dof_type == JointDoFType.FIXED:
                         are_fixed_neighbors = True
                     elif joint.bid_B < 0:
-                        are_unary_neighbors = True
+                        pass
                     else:
                         are_dof_neighbors = True
                     break
 
             # Assign pairid based on filtering results
-            if ((not is_self_collision) and (in_same_world) and (are_collidable) and (not are_fixed_neighbors)):
+            if (not is_self_collision) and (in_same_world) and (are_collidable) and (not are_fixed_neighbors):
                 pairid = -1
             else:
                 continue  # Skip this pair if it does not pass the filtering
@@ -149,6 +165,7 @@ def make_collision_pairs(builder: ModelBuilder, allow_neighbors: bool = False):
 # Containers
 ###
 
+
 class CollisionsModel:
     """
     A container to describe the collision model (TODO add more details).
@@ -167,11 +184,12 @@ class CollisionsModel:
           nxn_geom_pair, and indexed by  nxn_pairid
         - allows running BFS (NxN) collision detection on the pairs in parallel
     """
+
     def __init__(self):
         self.num_model_geom_pairs: int = 0
         """(host-side) Total number of collision pairs in the model across all worlds."""
 
-        self.num_world_geom_pairs: List[int] = [0]
+        self.num_world_geom_pairs: list[int] = [0]
         """(host-side) Number of collision pairs per world."""
 
         self.model_num_pairs: wp.array(dtype=int32) | None = None
@@ -209,10 +227,12 @@ class CollisionsData:
 # Interfaces
 ###
 
+
 class Collisions:
     """
     A container to hold and manage collision detection data.
     """
+
     def __init__(self, builder: ModelBuilder | None = None, device: Devicelike = None):
         # The device on which to allocate the collision data
         self.device = device
@@ -238,7 +258,6 @@ class Collisions:
 
         # Allocate the collision model data
         with wp.ScopedDevice(self.device):
-
             # Set the host-side number of collision pairs allocations
             self.cmodel.num_model_geom_pairs = len(model_nxn_geom_pair)
             self.cmodel.num_world_geom_pairs = world_nxn_num_geom_pairs

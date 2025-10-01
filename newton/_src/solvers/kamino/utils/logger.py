@@ -1,21 +1,30 @@
-###########################################################################
-# KAMINO: Utilities: Message Logging
-###########################################################################
-"""
-Copyright (c) 2025 Walt Disney Enterprises, Inc.
-Disney Research, Zurich. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
-Authors:
-    Josefine Klintberg (josefine.klintberg@disney.com)
-    Vassilios Tsounis (vassilios.tsounis@disney.com)
+"""
+KAMINO: Utilities: Message Logging
 """
 
 import logging
 from enum import IntEnum
+from typing import ClassVar
 
 
 class LogLevel(IntEnum):
     """Enumeration for log levels."""
+
     DEBUG = logging.DEBUG
     INFO = logging.INFO
     WARNING = logging.WARNING
@@ -38,10 +47,10 @@ class Logger(logging.Formatter):
     RESET = "\x1b[0m"
 
     # TODO: How to include the filename and line number in the log messages when called from the func wrappers?
-    LINE_FORMAT = ("[%(asctime)s][%(filename)s:%(lineno)d][%(levelname)s]: %(message)s")
+    LINE_FORMAT = "[%(asctime)s][%(filename)s:%(lineno)d][%(levelname)s]: %(message)s"
     """Line format for the log messages, including timestamp, filename, line number, log level, and message."""
 
-    FORMATS = {
+    FORMATS: ClassVar[dict[int, str]] = {
         logging.DEBUG: BLUE + LINE_FORMAT + RESET,
         logging.INFO: GREY + LINE_FORMAT + RESET,
         logging.WARNING: YELLOW + LINE_FORMAT + RESET,
@@ -79,7 +88,7 @@ LOGGER: Logger | None = None
 
 def get_default_logger() -> logging.Logger:
     """Initialize the global logger instance."""
-    global LOGGER
+    global LOGGER  # noqa: PLW0603
     if LOGGER is None:
         LOGGER = Logger()
     return LOGGER.get()

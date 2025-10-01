@@ -1,27 +1,37 @@
-###########################################################################
-# KAMINO: Kinematics: Limits
-###########################################################################
+# SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""
+KAMINO: Kinematics: Limits
+"""
 
 from __future__ import annotations
 
 import warp as wp
-
-from typing import List
 from warp.context import Devicelike
-from newton._src.solvers.kamino.core.types import (int32, float32, vec2i)
+
+from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.core.math import FLOAT32_MAX, FLOAT32_MIN
 from newton._src.solvers.kamino.core.model import Model, ModelData
-from newton._src.solvers.kamino.core.builder import ModelBuilder
-
+from newton._src.solvers.kamino.core.types import float32, int32, vec2i
 
 ###
 # Module interface
 ###
 
-__all__ = [
-    "LimitsData",
-    "Limits"
-]
+__all__ = ["Limits", "LimitsData"]
 
 
 ###
@@ -35,21 +45,22 @@ wp.set_module_options({"enable_backward": False})
 # Containers
 ###
 
+
 class LimitsData:
     """
     An SoA-based container to hold time-varying data of a set of active joint-limits.
 
     This container is intended as the final output of limit detectors and as input to solvers.
     """
-    def __init__(self):
 
+    def __init__(self):
         self.num_model_max_limits: int = 0
         """
         The maximum number of limits allocated across all worlds.\n
         This is cached on the host-side for managing data allocations and setting thread sizes in kernels.
         """
 
-        self.num_world_max_limits: List[int] = [0]
+        self.num_world_max_limits: list[int] = [0]
         """
         The maximum number of limits allocated per world.\n
         This is cached on the host-side for managing data allocations and setting thread sizes in kernels.
@@ -139,6 +150,7 @@ class LimitsData:
 # Kernels
 ###
 
+
 @wp.kernel
 def _detect_active_joint_configuration_limits(
     model_info_joint_dofs_offset: wp.array(dtype=int32),
@@ -218,10 +230,12 @@ def _detect_active_joint_configuration_limits(
 # Interfaces
 ###
 
+
 class Limits:
     """
     A container to hold and manage time-varying joint-limits.
     """
+
     def __init__(
         self,
         builder: ModelBuilder | None = None,
@@ -245,7 +259,7 @@ class Limits:
         return self._data.num_model_max_limits
 
     @property
-    def num_world_max_limits(self) -> List[int]:
+    def num_world_max_limits(self) -> list[int]:
         """
         The maximum number of limits allocated per world.
         """
@@ -366,7 +380,7 @@ class Limits:
         # as well as the limit capacities for each world. Corresponding sizes are defaulted to 0 (empty).
         model_max_limits = 0
         world_max_limits = [0] * builder.num_worlds
-        for j, joint in enumerate(builder.joints):
+        for _j, joint in enumerate(builder.joints):
             for dof in range(joint.num_dofs):
                 # Check if the joint has finite generalized coordinate limits
                 if joint.q_j_min[dof] > float(FLOAT32_MIN) or joint.q_j_max[dof] < float(FLOAT32_MAX):
@@ -479,5 +493,5 @@ class Limits:
                 self._data.dof,
                 self._data.side,
                 self._data.r_q,
-            ]
+            ],
         )

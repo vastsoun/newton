@@ -1,6 +1,21 @@
-###########################################################################
-# KAMINO: Constrained Rigid Multi-Body Model Containers
-###########################################################################
+# SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""
+KAMINO: Constrained Rigid Multi-Body Model Containers
+"""
 
 from __future__ import annotations
 
@@ -8,12 +23,10 @@ import math
 
 import warp as wp
 
-from typing import List
-from .geometry import GeometryDescriptor, CollisionGeometryDescriptor
-from .joints import JointDoFType, JointActuationType, JointDescriptor
-from .materials import MaterialDescriptor
 from .bodies import RigidBodyDescriptor
-
+from .geometry import CollisionGeometryDescriptor, GeometryDescriptor
+from .joints import JointActuationType, JointDescriptor, JointDoFType
+from .materials import MaterialDescriptor
 
 ###
 # Module interface
@@ -35,10 +48,12 @@ wp.set_module_options({"enable_backward": False})
 # Containers
 ###
 
+
 class WorldDescriptor:
     """
     A container to describe the problem dimensions and elements of a single world.
     """
+
     def __init__(self):
         ###
         # Entity Counts
@@ -126,28 +141,28 @@ class WorldDescriptor:
         This is equal to the sum of the constraints of all joints defined in the world.
         """
 
-        self.joint_dofs: List[int] = []
+        self.joint_dofs: list[int] = []
         """
         The list of of all joint DoFs.\n
         This list is ordered according the joint indices in the world,
         and the sum of all elements is equal to `num_joint_dofs`.\n
         """
 
-        self.joint_passive_dofs: List[int] = []
+        self.joint_passive_dofs: list[int] = []
         """
         The list of of all passive joint DoFs.\n
         This list is ordered according the joint indices in the world,
         and the sum of all elements is equal to `num_passive_joint_dofs`.\n
         """
 
-        self.joint_actuated_dofs: List[int] = []
+        self.joint_actuated_dofs: list[int] = []
         """
         The list of of all actuated joint DoFs.\n
         This list is ordered according the joint indices in the world,
         and the sum of all elements is equal to `num_actuated_joint_dofs`.\n
         """
 
-        self.joint_cts: List[int] = []
+        self.joint_cts: list[int] = []
         """
         The list of all joint constraints.\n
         This list is ordered according the joint indices in the world,
@@ -193,55 +208,55 @@ class WorldDescriptor:
         # Entity Identifiers
         ###
 
-        self.body_names: List[str] = []
+        self.body_names: list[str] = []
         """List of body names."""
 
-        self.body_uids: List[str] = []
+        self.body_uids: list[str] = []
         """List of body unique identifiers (UIDs)."""
 
-        self.joint_names: List[str] = []
+        self.joint_names: list[str] = []
         """List of joint names."""
 
-        self.joint_uids: List[str] = []
+        self.joint_uids: list[str] = []
         """List of joint unique identifiers (UIDs)."""
 
-        self.collision_geom_names: List[str] = []
+        self.collision_geom_names: list[str] = []
         """List of collision geometry names."""
 
-        self.collision_geom_uids: List[str] = []
+        self.collision_geom_uids: list[str] = []
         """List of collision geometry unique identifiers (UIDs)."""
 
-        self.physical_geom_names: List[str] = []
+        self.physical_geom_names: list[str] = []
         """List of physical geometry names."""
 
-        self.physical_geom_uids: List[str] = []
+        self.physical_geom_uids: list[str] = []
         """List of physical geometry unique identifiers (UIDs)."""
 
-        self.material_names: List[str] = []
+        self.material_names: list[str] = []
         """List of material names."""
 
-        self.material_uids: List[str] = []
+        self.material_uids: list[str] = []
         """List of material unique identifiers (UIDs)."""
 
-        self.unary_joint_names: List[str] = []
+        self.unary_joint_names: list[str] = []
         """List of unary joint names."""
 
-        self.fixed_joint_names: List[str] = []
+        self.fixed_joint_names: list[str] = []
         """List of fixed joint names."""
 
-        self.passive_joint_names: List[str] = []
+        self.passive_joint_names: list[str] = []
         """List of passive joint names."""
 
-        self.actuated_joint_names: List[str] = []
+        self.actuated_joint_names: list[str] = []
         """List of actuated joint names."""
 
-        self.physical_geometry_layers: List[str] = []
+        self.physical_geometry_layers: list[str] = []
         """List of physical geometry layers."""
 
-        self.collision_geometry_layers: List[str] = []
+        self.collision_geometry_layers: list[str] = []
         """List of collision geometry layers."""
 
-        self.collision_geometry_max_contacts: List[int] = []
+        self.collision_geometry_max_contacts: list[int] = []
         """List of maximum contacts prescribed for each collision geometry."""
 
         ###
@@ -349,7 +364,7 @@ class WorldDescriptor:
     def add_material(self, material: MaterialDescriptor):
         # Append material info
         self.num_materials += 1
-        self.num_material_pairs = 2 ** self.num_materials
+        self.num_material_pairs = 2**self.num_materials
         self.material_names.append(material.name)
         self.material_uids.append(material.uid)
 
@@ -370,7 +385,9 @@ class WorldDescriptor:
             raise ValueError(f"WorldDescriptor: Base body name '{body_name}' not found in body names.")
         # Ensure index is valid
         if body_idx < 0 or body_idx >= self.num_bodies:
-            raise ValueError(f"WorldDescriptor: Base body index '{body_idx}' out of range. Must be between 0 and {self.num_bodies - 1}.")
+            raise ValueError(
+                f"WorldDescriptor: Base body index '{body_idx}' out of range. Must be between 0 and {self.num_bodies - 1}."
+            )
         # Set base body info
         self.base_name = body_name
         self.base_idx = body_idx
@@ -382,7 +399,9 @@ class WorldDescriptor:
             raise ValueError(f"WorldDescriptor: Grounding joint name '{joint_name}' not found in joint names.")
         # Ensure index is valid
         if joint_idx < 0 or joint_idx >= self.num_joints:
-            raise ValueError(f"WorldDescriptor: Grounding joint index '{joint_idx}' out of range. Must be between 0 and {self.num_joints - 1}.")
+            raise ValueError(
+                f"WorldDescriptor: Grounding joint index '{joint_idx}' out of range. Must be between 0 and {self.num_joints - 1}."
+            )
         # Ensure joint is unary
         if joint_idx not in self.unary_joint_names:
             raise ValueError(f"WorldDescriptor: Joint '{joint_name}' is not a unary joint.")

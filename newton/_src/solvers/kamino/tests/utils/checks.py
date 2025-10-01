@@ -1,15 +1,32 @@
-###########################################################################
-# KAMINO: UNIT TESTS: COMPARISON UTILITIES
-###########################################################################
+# SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""
+KAMINO: UNIT TESTS: COMPARISON UTILITIES
+"""
 
 import unittest
-import numpy as np
-from newton._src.solvers.kamino.core.builder import ModelBuilder
 
+import numpy as np
+
+from newton._src.solvers.kamino.core.builder import ModelBuilder
 
 ###
 # Array-like comparisons
 ###
+
 
 def lists_equal(list1, list2) -> bool:
     return np.array_equal(list1, list2)
@@ -30,6 +47,7 @@ def vectors_equal(v1, v2, tolerance=1e-6) -> bool:
 ###
 # Container comparisons
 ###
+
 
 def assert_builders_equal(
     fixture: unittest.TestCase,
@@ -61,13 +79,34 @@ def assert_builders_equal(
         fixture.assertEqual(builder1.joints[j].dofs_offset, builder2.joints[j].dofs_offset)
         fixture.assertEqual(builder1.joints[j].bid_B, builder2.joints[j].bid_B)
         fixture.assertEqual(builder1.joints[j].bid_F, builder2.joints[j].bid_F)
-        fixture.assertTrue(vectors_equal(builder1.joints[j].B_r_Bj, builder2.joints[j].B_r_Bj), f"Joint {j} B_r_Bj mismatch:\nleft:\n{builder1.joints[j].B_r_Bj}\nright:\n{builder2.joints[j].B_r_Bj}")
-        fixture.assertTrue(vectors_equal(builder1.joints[j].F_r_Fj, builder2.joints[j].F_r_Fj), f"Joint {j} F_r_Fj mismatch:\nleft:\n{builder1.joints[j].F_r_Fj}\nright:\n{builder2.joints[j].F_r_Fj}")
-        fixture.assertTrue(matrices_equal(builder1.joints[j].X_j, builder2.joints[j].X_j), f"Joint {j} X_j mismatch:\nleft:\n{builder1.joints[j].X_j}\nright:\n{builder2.joints[j].X_j}")
-        fixture.assertTrue(arrays_equal(builder1.joints[j].q_j_min, builder2.joints[j].q_j_min), f"Joint {j} q_j_min mismatch:\nleft:\n{builder1.joints[j].q_j_min}\nright:\n{builder2.joints[j].q_j_min}")
-        fixture.assertTrue(arrays_equal(builder1.joints[j].q_j_max, builder2.joints[j].q_j_max), f"Joint {j} q_j_max mismatch:\nleft:\n{builder1.joints[j].q_j_max}\nright:\n{builder2.joints[j].q_j_max}")
-        fixture.assertTrue(arrays_equal(builder1.joints[j].dq_j_max, builder2.joints[j].dq_j_max), f"Joint {j} dq_j_max mismatch:\nleft:\n{builder1.joints[j].dq_j_max}\nright:\n{builder2.joints[j].dq_j_max}")
-        fixture.assertTrue(arrays_equal(builder1.joints[j].tau_j_max, builder2.joints[j].tau_j_max), f"Joint {j} tau_j_max mismatch:\nleft:\n{builder1.joints[j].tau_j_max}\nright:\n{builder2.joints[j].tau_j_max}")
+        fixture.assertTrue(
+            vectors_equal(builder1.joints[j].B_r_Bj, builder2.joints[j].B_r_Bj),
+            f"Joint {j} B_r_Bj mismatch:\nleft:\n{builder1.joints[j].B_r_Bj}\nright:\n{builder2.joints[j].B_r_Bj}",
+        )
+        fixture.assertTrue(
+            vectors_equal(builder1.joints[j].F_r_Fj, builder2.joints[j].F_r_Fj),
+            f"Joint {j} F_r_Fj mismatch:\nleft:\n{builder1.joints[j].F_r_Fj}\nright:\n{builder2.joints[j].F_r_Fj}",
+        )
+        fixture.assertTrue(
+            matrices_equal(builder1.joints[j].X_j, builder2.joints[j].X_j),
+            f"Joint {j} X_j mismatch:\nleft:\n{builder1.joints[j].X_j}\nright:\n{builder2.joints[j].X_j}",
+        )
+        fixture.assertTrue(
+            arrays_equal(builder1.joints[j].q_j_min, builder2.joints[j].q_j_min),
+            f"Joint {j} q_j_min mismatch:\nleft:\n{builder1.joints[j].q_j_min}\nright:\n{builder2.joints[j].q_j_min}",
+        )
+        fixture.assertTrue(
+            arrays_equal(builder1.joints[j].q_j_max, builder2.joints[j].q_j_max),
+            f"Joint {j} q_j_max mismatch:\nleft:\n{builder1.joints[j].q_j_max}\nright:\n{builder2.joints[j].q_j_max}",
+        )
+        fixture.assertTrue(
+            arrays_equal(builder1.joints[j].dq_j_max, builder2.joints[j].dq_j_max),
+            f"Joint {j} dq_j_max mismatch:\nleft:\n{builder1.joints[j].dq_j_max}\nright:\n{builder2.joints[j].dq_j_max}",
+        )
+        fixture.assertTrue(
+            arrays_equal(builder1.joints[j].tau_j_max, builder2.joints[j].tau_j_max),
+            f"Joint {j} tau_j_max mismatch:\nleft:\n{builder1.joints[j].tau_j_max}\nright:\n{builder2.joints[j].tau_j_max}",
+        )
     for k in range(builder1.num_collision_geoms):
         fixture.assertEqual(builder1.collision_geoms[k].wid, builder2.collision_geoms[k].wid)
         fixture.assertEqual(builder1.collision_geoms[k].gid, builder2.collision_geoms[k].gid)
@@ -75,7 +114,9 @@ def assert_builders_equal(
         fixture.assertEqual(builder1.collision_geoms[k].bid, builder2.collision_geoms[k].bid)
         fixture.assertEqual(builder1.collision_geoms[k].shape.typeid, builder2.collision_geoms[k].shape.typeid)
         fixture.assertEqual(builder1.collision_geoms[k].shape.nparams, builder2.collision_geoms[k].shape.nparams)
-        fixture.assertTrue(lists_equal(builder1.collision_geoms[k].shape.params, builder2.collision_geoms[k].shape.params))
+        fixture.assertTrue(
+            lists_equal(builder1.collision_geoms[k].shape.params, builder2.collision_geoms[k].shape.params)
+        )
         fixture.assertEqual(builder1.collision_geoms[k].mid, builder2.collision_geoms[k].mid)
         fixture.assertEqual(builder1.collision_geoms[k].max_contacts, builder2.collision_geoms[k].max_contacts)
         if not skip_colliders:

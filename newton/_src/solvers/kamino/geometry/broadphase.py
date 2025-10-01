@@ -1,16 +1,30 @@
-###########################################################################
-# KAMINO: Collision Detection: Brute-force (NxN) broad-phase
-###########################################################################
+# SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""
+KAMINO: Collision Detection: Brute-force (NxN) broad-phase
+"""
 
 from __future__ import annotations
 
 import warp as wp
 
-from newton._src.solvers.kamino.core.types import int32, float32, vec2i, mat83f, transformf
-from newton._src.solvers.kamino.core.geometry import CollisionGeometriesModel, CollisionGeometriesData
-from newton._src.solvers.kamino.geometry.collisions import CollisionsModel, CollisionsData
-from newton._src.solvers.kamino.core.bv import has_bs_overlap, has_aabb_overlap
-
+from newton._src.solvers.kamino.core.bv import has_aabb_overlap
+from newton._src.solvers.kamino.core.geometry import CollisionGeometriesData, CollisionGeometriesModel
+from newton._src.solvers.kamino.core.types import int32, mat83f, vec2i
+from newton._src.solvers.kamino.geometry.collisions import CollisionsData, CollisionsModel
 
 ###
 # Module configs
@@ -22,6 +36,7 @@ wp.set_module_options({"enable_backward": False})
 ###
 # Functions
 ###
+
 
 @wp.func
 def add_active_pair(
@@ -61,6 +76,7 @@ def add_active_pair(
 ###
 # Kernels
 ###
+
 
 @wp.kernel
 def _nxn_broadphase(
@@ -116,7 +132,10 @@ def _nxn_broadphase(
 # Kernel Launcher
 ###
 
-def nxn_broadphase(gmodel: CollisionGeometriesModel, gstate: CollisionGeometriesData, cmodel: CollisionsModel, cdata: CollisionsData):
+
+def nxn_broadphase(
+    gmodel: CollisionGeometriesModel, gstate: CollisionGeometriesData, cmodel: CollisionsModel, cdata: CollisionsData
+):
     # we need to figure out how to keep the overhead of this small - not launching anything
     # for pair types without collisions, as well as updating the launch dimensions.
     wp.launch(
@@ -135,6 +154,6 @@ def nxn_broadphase(gmodel: CollisionGeometriesModel, gstate: CollisionGeometries
             cdata.model_num_collisions,
             cdata.world_num_collisions,
             cdata.wid,
-            cdata.geom_pair
-        ]
+            cdata.geom_pair,
+        ],
     )

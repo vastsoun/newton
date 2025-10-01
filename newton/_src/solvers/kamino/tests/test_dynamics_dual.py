@@ -1,40 +1,45 @@
-###########################################################################
-# KAMINO: UNIT TESTS: DYNAMICS: DUAL PROBLEM
-###########################################################################
+# SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""
+KAMINO: UNIT TESTS: DYNAMICS: DUAL PROBLEM
+"""
 
 import unittest
+
 import numpy as np
 import warp as wp
 
+# Module to be tested
+from newton._src.solvers.kamino.dynamics.dual import DualProblem
 from newton._src.solvers.kamino.linalg.cholesky import SequentialCholeskyFactorizer
-from newton._src.solvers.kamino.models.builders import (
-    build_box_on_plane,
-    build_box_pendulum,
-    build_boxes_hinged,
-    build_boxes_nunchaku,
-    build_boxes_fourbar,
-)
 from newton._src.solvers.kamino.models.utils import (
-    make_single_builder,
-    make_homogeneous_builder,
-    make_heterogeneous_builder
+    make_heterogeneous_builder,
 )
+from newton._src.solvers.kamino.tests.utils.extract import extract_problem_vector
 
 # Test utilities
 from newton._src.solvers.kamino.tests.utils.make import make_containers, update_containers
-from newton._src.solvers.kamino.tests.utils.extract import extract_problem_vector
 from newton._src.solvers.kamino.tests.utils.print import print_model_info
-
-# Module to be tested
-from newton._src.solvers.kamino.dynamics.dual import DualProblem
-
 
 ###
 # Tests
 ###
 
-class TestDualProblem(unittest.TestCase):
 
+class TestDualProblem(unittest.TestCase):
     def setUp(self):
         self.verbose = False  # Set to True for detailed output
         self.default_device = wp.get_device()
@@ -55,9 +60,7 @@ class TestDualProblem(unittest.TestCase):
 
         # Create the model and containers from the builder
         model, state, limits, detector, jacobians = make_containers(
-            builder=builder,
-            max_world_contacts=max_world_contacts,
-            device=self.default_device
+            builder=builder, max_world_contacts=max_world_contacts, device=self.default_device
         )
 
         # Create the Delassus operator
@@ -67,7 +70,7 @@ class TestDualProblem(unittest.TestCase):
             limits=limits,
             contacts=detector.contacts,
             factorizer=SequentialCholeskyFactorizer,
-            device=self.default_device
+            device=self.default_device,
         )
 
         # Optional verbose output
@@ -121,9 +124,7 @@ class TestDualProblem(unittest.TestCase):
 
         # Create the model and containers from the builder
         model, state, limits, detector, jacobians = make_containers(
-            builder=builder,
-            max_world_contacts=max_world_contacts,
-            device=self.default_device
+            builder=builder, max_world_contacts=max_world_contacts, device=self.default_device
         )
 
         # Update the containers
@@ -138,16 +139,12 @@ class TestDualProblem(unittest.TestCase):
             limits=limits,
             contacts=detector.contacts,
             factorizer=SequentialCholeskyFactorizer,
-            device=self.default_device
+            device=self.default_device,
         )
 
         # Build the dual problem
         problem.build(
-            model=model,
-            state=state,
-            limits=limits.data,
-            contacts=detector.contacts.data,
-            jacobians=jacobians.data
+            model=model, state=state, limits=limits.data, contacts=detector.contacts.data, jacobians=jacobians.data
         )
 
         # Extract numpy arrays from the problem data

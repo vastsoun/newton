@@ -1552,6 +1552,7 @@ def _compute_infnorm_residuals_serially(
     solver_r_d: wp.array(dtype=float32),
     solver_r_c: wp.array(dtype=float32),
     # Outputs:
+    solver_done: wp.array(dtype=int32),
     solver_status: wp.array(dtype=PADMMStatus),
 ):
     # Retrieve the thread index as the world index
@@ -1584,6 +1585,9 @@ def _compute_infnorm_residuals_serially(
     eps_d = config.dual_tolerance
     eps_c = config.compl_tolerance
 
+    # Extract the maximum number of iterations
+    maxiters = config.max_iterations
+
     # Compute element-wise max over each residual vector to compute the infinity-norm
     r_p_max = float(0.0)
     r_d_max = float(0.0)
@@ -1606,6 +1610,10 @@ def _compute_infnorm_residuals_serially(
     # Check and store convergence state
     if status.iterations > 1 and r_p_max <= eps_p and r_d_max <= eps_d and r_c_max <= eps_c:
         status.converged = 1
+
+    # If converged or reached max iterations, decrement the number of active worlds
+    if status.converged or status.iterations >= maxiters:
+        solver_done[0] -= 1
 
     # Store the updated status
     solver_status[wid] = status
@@ -2071,11 +2079,18 @@ class PADMMDualSolver:
         self._data.state.zero()
 
     def initialize(self):
+        # Initialize solver status and penalty parameters from the set configurations
         wp.launch(
             kernel=_initialize_solver,
             dim=self._size.num_worlds,
             inputs=[self._data.config, self._data.status, self._data.penalty],
         )
+
+        # Initialize the global while condition flag
+        # NOTE: We use a single-element array that is initialized
+        # to number of worlds and decremented by each world that
+        # converges or reaches the maximum number of iterations
+        self._data.state.done.fill_(self._size.num_worlds)
 
     def update_regularization(self, problem: DualProblem):
         # Update the proximal regularization term in the Delassus matrix
@@ -2246,6 +2261,7 @@ class PADMMDualSolver:
                 self._data.residuals.r_dual,
                 self._data.residuals.r_compl,
                 # Outputs:
+                self._data.state.done,
                 self._data.status,
             ],
         )
@@ -2410,14 +2426,8 @@ class PADMMDualSolver:
         if self._collect_info:
             self._data.info.zero()
 
-        # NOTE: The high-level solver loop iterates over the maximum number of iterations configured for each world
-        for _i in range(self._max_iters):
-            # Execute a single PADMM iteration
-            self.step(problem)
+        # Iterate until convergence or maximum number of iterations is reached
+        wp.capture_while(self._data.state.done, while_body=self.step, problem=problem)
 
-            # Check if the solver has converged
-            # TODO: REMOVE THIS HACK ONCE skipping is implemented
-            status = self._data.status.numpy()
-            converged = status[0][0]
-            if converged > 0:
-                break
+        # Update the final solution from the terminal PADMM state
+        self.update_solution(problem)

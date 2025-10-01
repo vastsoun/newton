@@ -41,9 +41,8 @@ from newton._src.solvers.kamino.kinematics.jacobians import DenseSystemJacobians
 from newton._src.solvers.kamino.kinematics.joints import compute_joints_state
 from newton._src.solvers.kamino.kinematics.limits import Limits
 from newton._src.solvers.kamino.linalg.cholesky import SequentialCholeskyFactorizer
-
-# from newton._src.solvers.kamino.solvers.padmm import PADMMDualSolver
-from newton._src.solvers.kamino.solvers.apadmm import APADMMDualSolver
+from newton._src.solvers.kamino.solvers.apadmm import APADMMDualSolver  # noqa: F401
+from newton._src.solvers.kamino.solvers.padmm import PADMMDualSolver
 
 ###
 # Module interface
@@ -51,8 +50,8 @@ from newton._src.solvers.kamino.solvers.apadmm import APADMMDualSolver
 
 __all__ = ["Simulator"]
 
-SOLVER_TYPE = APADMMDualSolver
-# SOLVER_TYPE = PADMMDualSolver
+# SOLVER_TYPE = APADMMDualSolver
+SOLVER_TYPE = PADMMDualSolver
 
 ###
 # Module configs

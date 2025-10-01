@@ -182,7 +182,6 @@ def _build_delassus_elementwise(
     # Skip if indices exceed the problem size
     if i >= ncts or j >= ncts:
         return
-    # wp.printf("[wid: %d]: [tid: %d]: i= %d, j= %d\n", wid, tid, i, j)
 
     # Retrieve the world's matrix offsets
     dmio = delassus_mio[wid]
@@ -227,56 +226,21 @@ def _build_delassus_elementwise(
 
         # Angular term: dot(Jw_i.T * I_k, Jw_j)
         I_k = state_bodies_inv_I_i[bid_k]
-        # Jw_i_norm = wp.length(Jw_i)
-        # Jw_j_norm = wp.length(Jw_j)
-        # Jw_i_scaled = (1.0 / Jw_i_norm) * Jw_i if Jw_i_norm > 0 else Jw_i
-        # Jw_j_scaled = (1.0 / Jw_j_norm) * Jw_j if Jw_j_norm > 0 else Jw_j
-        # I_k_trace = wp.trace(I_k)
-        # I_k_scaled = (1.0 / I_k_trace) * I_k
-
-        # wp.printf("[wid: %d]: [tid: %d]: I_%d:\n", wid, tid, bid_k)
-        # print(I_k)
-        # wp.printf("[wid: %d]: [tid: %d]: Jw_%d:\n", wid, tid, i)
-        # print(Jw_i)
-        # wp.printf("[wid: %d]: [tid: %d]: Jw_%d:\n", wid, tid, j)
-        # print(Jw_j)
-        # print("\n\n\n")
-
-        # tmp = vec3f(0.0)
-        # for r in range(3):
-        #     for c in range(3):
-        #         tmp[r] += Jw_i[c] * I_k[c, r]  # tmp = I_k^T * Jw_i
-        # ang = wp.dot(tmp, Jw_j)
-
         ang_ij = float32(0.0)
         ang_ji = float32(0.0)
         for r in range(3):  # Loop over rows of A (and elements of v)
             for c in range(r, 3):  # Loop over upper triangular part of A (including diagonal)
                 ang_ij += Jw_i[r] * I_k[r, c] * Jw_j[c]
                 ang_ji += Jw_j[r] * I_k[r, c] * Jw_i[c]
-                # ang += Jw_i_scaled[r] * I_k[r, c] * Jw_j_scaled[c]
                 if r != c:
                     ang_ij += Jw_i[c] * I_k[r, c] * Jw_j[r]
                     ang_ji += Jw_j[c] * I_k[r, c] * Jw_i[r]
-                    # ang += Jw_i_scaled[c] * I_k[r, c] * Jw_j_scaled[r]
-        # ang *= Jw_i_norm * Jw_j_norm
-
-        # ang = float32(0.0)
-        # for r in range(3):  # Loop over rows of A (and elements of v)
-        #     for c in range(3):  # Loop over columns of A (and elements of u)
-        #         ang += Jw_i[r] * I_k[r, c] * Jw_j[c]
-        #         ang += Jw_i_scaled[r] * I_k[r, c] * Jw_j_scaled[c]
-        #         ang += Jw_i[r] * I_k_scaled[r, c] * Jw_j[c]
-        # ang *= I_k_trace
-        # ang *= Jw_i_norm * Jw_j_norm
 
         # Accumulate
         D_ij += lin_ij + ang_ij
         D_ji += lin_ji + ang_ji
 
-    # print("\n")
     # Store the result in the Delassus matrix
-    # delassus_D[dmio + maxncts * i + j] = D_ij
     delassus_D[dmio + maxncts * i + j] = 0.5 * (D_ij + D_ji)
 
 

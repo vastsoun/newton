@@ -28,7 +28,11 @@ from newton._src.solvers.kamino.core.math import screw, vec3f
 from newton._src.solvers.kamino.dynamics.dual import DualProblem
 from newton._src.solvers.kamino.linalg.cholesky import SequentialCholeskyFactorizer
 from newton._src.solvers.kamino.models.builders import (
-    build_boxes_fourbar,
+    build_box_on_plane,
+    build_box_pendulum,  # noqa: F401
+    build_boxes_fourbar,  # noqa: F401
+    build_boxes_hinged,  # noqa: F401
+    build_boxes_nunchaku,  # noqa: F401
 )
 from newton._src.solvers.kamino.models.utils import (
     make_single_builder,
@@ -231,10 +235,10 @@ class TestPADMMDualSolver(unittest.TestCase):
         max_world_contacts = 12
 
         # Construct the model description using model builders for different systems
-        # builder, _, _ = make_single_builder(build_func=build_box_on_plane)
+        builder, _, _ = make_single_builder(build_func=build_box_on_plane)
         # builder, _, _ = make_single_builder(build_func=build_boxes_hinged, ground=True)
         # builder, _, _ = make_single_builder(build_func=build_boxes_nunchaku)
-        builder, _, _ = make_single_builder(build_func=build_boxes_fourbar)
+        # builder, _, _ = make_single_builder(build_func=build_boxes_fourbar)
         # builder, _, _ = make_homogeneous_builder(num_worlds=4, build_func=build_box_on_plane)
         # builder, _, _ = make_homogeneous_builder(num_worlds=4, build_func=build_boxes_hinged)
         # builder, _, _ = make_homogeneous_builder(num_worlds=4, build_func=build_boxes_nunchaku)

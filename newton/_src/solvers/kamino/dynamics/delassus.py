@@ -15,9 +15,7 @@
 
 """
 KAMINO: Delassus Operator
-"""
 
-"""
 Provides containers and operations to respectively represent and compute Delassus operators.
 
 A Delassus operator is a symmetric matrix that represents the apparent inertia in the space

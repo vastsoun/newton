@@ -13,3 +13,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""KAMINO: Utilities"""
+
+from .profiles import (
+    PerformanceProfile,
+)
+
+###
+# Module API
+###
+
+__all__ = [
+    "PerformanceProfile",
+]

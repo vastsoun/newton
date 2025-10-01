@@ -29,7 +29,7 @@ from newton._src.solvers.kamino.core.inertia import (
 from newton._src.solvers.kamino.core.joints import JointActuationType, JointDoFType
 from newton._src.solvers.kamino.core.math import FLOAT32_MAX, FLOAT32_MIN, I_3
 from newton._src.solvers.kamino.core.shapes import BoxShape, SphereShape
-from newton._src.solvers.kamino.core.types import Axis, mat33f, transformf, vec3f, vec6f
+from newton._src.solvers.kamino.core.types import Axis, transformf, vec3f, vec6f
 
 ###
 # Module interface
@@ -640,7 +640,7 @@ def build_boxes_fourbar(
         print(f"r_j4: {r_j4}")
 
     # Joint axes matrix
-    X_j = mat33f(0, 0, 1, 1, 0, 0, 0, 1, 0)
+    X_j = Axis.Y.to_mat33()
 
     ###
     # Bodies

@@ -17,12 +17,9 @@
 KAMINO: Utilities: Linear Algebra: LDLT w/ Bunch-Kaufman pivoting
 """
 
-from typing import Any
-
 import numpy as np
 
-from newton._src.solvers.kamino.utils.linalg.factorizer import MatrixFactorizer, MatrixSign
-from newton._src.solvers.kamino.utils.linalg.matrix import (
+from ..matrix import (
     _make_tolerance,
     assert_is_square_matrix,
     assert_is_symmetric_matrix,
@@ -33,11 +30,10 @@ from newton._src.solvers.kamino.utils.linalg.matrix import (
 ###
 
 __all__ = [
-    "LDLTBunchKaufman",
-    "compute_ldlt_bk_lower",
-    "compute_ldlt_bk_lower_reconstruct",
-    "compute_ldlt_bk_lower_solve",
-    "unpack_ldlt_bk_lower",
+    "ldlt_bk_lower",
+    "ldlt_bk_lower_reconstruct",
+    "ldlt_bk_lower_solve",
+    "ldlt_bk_lower_unpack",
 ]
 
 
@@ -65,11 +61,11 @@ def _swap_rows_cols_sym(A, i, j):
 
 
 ###
-# Factorization
+# Factorize
 ###
 
 
-def compute_ldlt_bk_lower(
+def ldlt_bk_lower(
     A: np.ndarray,
     tol: float | None = None,
     itype: np.dtype = np.int64,
@@ -82,6 +78,7 @@ def compute_ldlt_bk_lower(
         assert_is_symmetric_matrix(A)
 
     tol = _make_tolerance(tol, dtype=A.dtype)
+    alpha = A.dtype.type(alpha)
 
     n = A.shape[0]
 
@@ -187,11 +184,11 @@ def compute_ldlt_bk_lower(
 
 
 ###
-# Linear systems
+# Solve
 ###
 
 
-def compute_ldlt_bk_lower_solve(
+def ldlt_bk_lower_solve(
     L: np.ndarray, D: np.ndarray, perm: np.ndarray, b: np.ndarray, tol: float | None = None
 ) -> np.ndarray:
     n = L.shape[0]
@@ -247,82 +244,24 @@ def compute_ldlt_bk_lower_solve(
 
 
 ###
-# Reconstruction
+# Reconstruct
 ###
 
 
-def compute_ldlt_bk_lower_reconstruct(L: np.ndarray, D: np.ndarray, perm: np.ndarray) -> np.ndarray:
+def ldlt_bk_lower_reconstruct(L: np.ndarray, D: np.ndarray, perm: np.ndarray) -> np.ndarray:
     S = L @ D @ L.T
     A_hat = np.zeros_like(S)
     A_hat[np.ix_(perm, perm)] = S
     return A_hat
 
 
-def unpack_ldlt_bk_lower(
+###
+# Unpack
+###
+
+
+def ldlt_bk_lower_unpack(
     matrix: np.ndarray, diagonals: np.ndarray, permutations: np.ndarray
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     P = np.eye(matrix.shape[0], dtype=matrix.dtype)[:, permutations]
     return matrix, diagonals, P
-
-
-###
-# Factorizer
-###
-
-
-class LDLTBunchKaufman(MatrixFactorizer):
-    def __init__(
-        self,
-        A: np.ndarray | None = None,
-        tol: float | None = None,
-        dtype: np.dtype | None = None,
-        itype: np.dtype | None = None,
-        upper: bool = False,
-        check_symmetry: bool = False,
-        compute_error: bool = False,
-    ):
-        # Declare internal data structures
-        self._diagonals: np.ndarray | None = None
-        self._permutations: np.ndarray | None = None
-
-        # Declare optional unpacked factors
-        self.L: np.ndarray | None = None
-        self.D: np.ndarray | None = None
-        self.P: np.ndarray | None = None
-
-        # Call the parent constructor
-        super().__init__(
-            A=A,
-            tol=tol,
-            dtype=dtype,
-            itype=itype,
-            upper=upper,
-            check_symmetry=check_symmetry,
-            compute_error=compute_error,
-        )
-
-    def _factorize_impl(self, A: np.ndarray) -> None:
-        try:
-            self._matrix, self._diagonals, self._permutations = compute_ldlt_bk_lower(
-                A=A, tol=self._tolerance, itype=self._itype, check_symmetry=False, use_zero_correction=True
-            )
-            print(f"LDLT BK: matrix:\n{self._matrix}\n")
-            print(f"LDLT BK: diagonals:\n{self._diagonals}\n")
-            print(f"LDLT BK: permutations:\n{self._permutations}\n")
-            self._sign = MatrixSign.PositiveDef  # TODO: parse D to determine sign
-        except np.linalg.LinAlgError as e:
-            raise np.linalg.LinAlgError(f"Cholesky factorization failed: {e!s}") from e
-
-    def _unpack_impl(self) -> None:
-        self.L, self.D, self.P = unpack_ldlt_bk_lower(self._matrix, self._diagonals, self._permutations)
-
-    def _get_unpacked_impl(self) -> Any:
-        return self.L, self.D, self.P
-
-    def _solve_inplace_impl(self, x: np.ndarray):
-        b = np.asarray(x, dtype=self._matrix.dtype, copy=True)
-        tmp = compute_ldlt_bk_lower_solve(self._matrix, self._diagonals, self._permutations, b, self._tolerance)
-        x[:] = tmp
-
-    def _reconstruct_impl(self) -> np.ndarray:
-        return compute_ldlt_bk_lower_reconstruct(self._matrix, self._diagonals, self._permutations)

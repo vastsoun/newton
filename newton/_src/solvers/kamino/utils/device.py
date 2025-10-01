@@ -13,9 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-KAMINO: Utilities: Profiling
-"""
+"""KAMINO: Utilities: CPU/GPU Warp Device Info"""
 
 from warp.context import Devicelike
 
@@ -47,4 +45,5 @@ def get_device_info(device: Devicelike) -> str:
 
 
 def get_device_memory_allocation_info(device: Devicelike) -> str:
+    # TODO: Add printing of mempool info when available in Warp
     return ""

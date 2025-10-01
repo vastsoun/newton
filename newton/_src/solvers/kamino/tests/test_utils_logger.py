@@ -13,18 +13,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-KAMINO: UNIT TESTS: Input/Output: OpenUSD
-"""
+"""Kamino: Tests for logging utilities"""
 
 import unittest
 
 import numpy as np
-import warp as wp
 
 import newton._src.solvers.kamino.utils.logger as msg
-
-# Module to be tested
 from newton._src.solvers.kamino.utils.logger import Logger
 
 ###
@@ -33,16 +28,10 @@ from newton._src.solvers.kamino.utils.logger import Logger
 
 
 class TestUtilsLogger(unittest.TestCase):
-    def setUp(self):
-        self.verbose = True  # Set to True for verbose output
-        self.default_device = wp.get_device()
-
-    def tearDown(self):
-        self.default_device = None
-
     def test_new_logger(self):
         """Test use of the custom logger."""
         print("")  # Print a newline for better readability in the output
+        msg.set_log_level(msg.LogLevel.DEBUG)
         logger = Logger()
         log = logger.get()
         log.info("This is an info message.")
@@ -50,15 +39,18 @@ class TestUtilsLogger(unittest.TestCase):
         log.warning("This is a warning message.")
         log.error("This is an error message.")
         log.critical("This is a critical message.")
+        msg.set_log_level(msg.LogLevel.INFO)
 
     def test_default_logger(self):
         """Test use of the custom logger."""
         print("")  # Print a newline for better readability in the output
+        msg.set_log_level(msg.LogLevel.DEBUG)
         msg.info("This is an info message.")
         msg.debug("This is a debug message.")
         msg.warning("This is a warning message.")
         msg.error("This is an error message.")
         msg.critical("This is a critical message.")
+        msg.set_log_level(msg.LogLevel.INFO)
 
 
 ###
@@ -68,12 +60,6 @@ class TestUtilsLogger(unittest.TestCase):
 if __name__ == "__main__":
     # Global numpy configurations
     np.set_printoptions(linewidth=500, precision=10, suppress=True)  # Suppress scientific notation
-
-    # Global warp configurations
-    wp.config.enable_backward = False
-    wp.config.verbose = False
-    wp.clear_kernel_cache()
-    wp.clear_lto_cache()
 
     # Run all tests
     unittest.main(verbosity=2)

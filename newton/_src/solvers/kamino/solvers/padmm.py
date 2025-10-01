@@ -196,7 +196,7 @@ class PADMMState:
 
     def __init__(self, size: ModelSize | None = None):
         self.done: wp.array(dtype=int32) | None = None
-        """The De Saxce correction vector."""
+        """A global flag indicating if the solver should terminate the solve operation."""
 
         self.s: wp.array(dtype=float32) | None = None
         """The De Saxce correction vector."""
@@ -238,7 +238,6 @@ class PADMMState:
         self.z_p = wp.zeros(size.sum_of_max_total_cts, dtype=float32)
 
     def zero(self):
-        self.done.zero_()
         self.s.zero_()
         self.v.zero_()
         self.x.zero_()
@@ -1552,7 +1551,7 @@ def _compute_infnorm_residuals_serially(
     solver_r_d: wp.array(dtype=float32),
     solver_r_c: wp.array(dtype=float32),
     # Outputs:
-    solver_done: wp.array(dtype=int32),
+    solver_state_done: wp.array(dtype=int32),
     solver_status: wp.array(dtype=PADMMStatus),
 ):
     # Retrieve the thread index as the world index
@@ -1613,7 +1612,7 @@ def _compute_infnorm_residuals_serially(
 
     # If converged or reached max iterations, decrement the number of active worlds
     if status.converged or status.iterations >= maxiters:
-        solver_done[0] -= 1
+        solver_state_done[0] -= 1
 
     # Store the updated status
     solver_status[wid] = status
@@ -2156,7 +2155,6 @@ class PADMMDualSolver:
         # TODO: We should do this in-place
         # wp.copy(self._data.state.x, self._data.state.v)
         # problem._delassus.solve_inplace(x=self._data.state.x)
-        self._data.state.x.zero_()
         problem._delassus.solve(v=self._data.state.v, x=self._data.state.x)
 
     def update_projection_to_feasible_set(self, problem: DualProblem):

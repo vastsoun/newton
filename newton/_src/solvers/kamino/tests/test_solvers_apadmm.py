@@ -200,7 +200,7 @@ def save_solver_info(solver: APADMMDualSolver, path: str | None = None, verbose:
     plt.tight_layout()
     if path is None:
         plt.savefig(
-            os.path.dirname(os.path.realpath(__file__)) + "/data/apadmm_solver_info.pdf",
+            os.path.dirname(os.path.realpath(__file__)) + "/output/apadmm_solver_info.pdf",
             format="pdf",
             dpi=300,
             bbox_inches="tight",

@@ -185,7 +185,7 @@ def save_solver_info(solver: PADMMDualSolver, path: str | None = None, verbose: 
     plt.tight_layout()
     if path is None:
         plt.savefig(
-            os.path.dirname(os.path.realpath(__file__)) + "/data/padmm_solver_info.pdf",
+            os.path.dirname(os.path.realpath(__file__)) + "/output/padmm_solver_info.pdf",
             format="pdf",
             dpi=300,
             bbox_inches="tight",
@@ -627,7 +627,7 @@ class TestPADMMDualSolver(unittest.TestCase):
     #     plt.legend()
     #     plt.grid(False)
     #     if self.savefig:
-    #         plt.savefig(os.path.dirname(os.path.realpath(__file__)) + "/data/padmm_solver_rho0_v_f_heatmap_iters.pdf", format="pdf", dpi=300, bbox_inches="tight")
+    #         plt.savefig(os.path.dirname(os.path.realpath(__file__)) + "/output/padmm_solver_rho0_v_f_heatmap_iters.pdf", format="pdf", dpi=300, bbox_inches="tight")
     #     if self.verbose:
     #         plt.show()
     #     plt.close()
@@ -643,7 +643,7 @@ class TestPADMMDualSolver(unittest.TestCase):
     #     plt.legend()
     #     plt.grid(False)
     #     if self.savefig:
-    #         plt.savefig(os.path.dirname(os.path.realpath(__file__)) + "/data/padmm_solver_rho0_v_f_r_p_heatmap.pdf", format="pdf", dpi=300, bbox_inches="tight")
+    #         plt.savefig(os.path.dirname(os.path.realpath(__file__)) + "/output/padmm_solver_rho0_v_f_r_p_heatmap.pdf", format="pdf", dpi=300, bbox_inches="tight")
     #     if self.verbose:
     #         plt.show()
     #     plt.close()
@@ -659,7 +659,7 @@ class TestPADMMDualSolver(unittest.TestCase):
     #     plt.legend()
     #     plt.grid(False)
     #     if self.savefig:
-    #         plt.savefig(os.path.dirname(os.path.realpath(__file__)) + "/data/padmm_solver_rho0_v_f_r_d_heatmap.pdf", format="pdf", dpi=300, bbox_inches="tight")
+    #         plt.savefig(os.path.dirname(os.path.realpath(__file__)) + "/output/padmm_solver_rho0_v_f_r_d_heatmap.pdf", format="pdf", dpi=300, bbox_inches="tight")
     #     if self.verbose:
     #         plt.show()
     #     plt.close()
@@ -675,7 +675,7 @@ class TestPADMMDualSolver(unittest.TestCase):
     #     plt.legend()
     #     plt.grid(False)
     #     if self.savefig:
-    #         plt.savefig(os.path.dirname(os.path.realpath(__file__)) + "/data/padmm_solver_rho0_v_f_r_pd_min_heatmap.pdf", format="pdf", dpi=300, bbox_inches="tight")
+    #         plt.savefig(os.path.dirname(os.path.realpath(__file__)) + "/output/padmm_solver_rho0_v_f_r_pd_min_heatmap.pdf", format="pdf", dpi=300, bbox_inches="tight")
     #     if self.verbose:
     #         plt.show()
     #     plt.close()
@@ -691,7 +691,7 @@ class TestPADMMDualSolver(unittest.TestCase):
     #     plt.legend()
     #     plt.grid(False)
     #     if self.savefig:
-    #         plt.savefig(os.path.dirname(os.path.realpath(__file__)) + "/data/padmm_solver_rho0_v_f_r_pd_max_heatmap.pdf", format="pdf", dpi=300, bbox_inches="tight")
+    #         plt.savefig(os.path.dirname(os.path.realpath(__file__)) + "/output/padmm_solver_rho0_v_f_r_pd_max_heatmap.pdf", format="pdf", dpi=300, bbox_inches="tight")
     #     if self.verbose:
     #         plt.show()
     #     plt.close()
@@ -707,7 +707,7 @@ class TestPADMMDualSolver(unittest.TestCase):
     #     plt.legend()
     #     plt.grid(False)
     #     if self.savefig:
-    #         plt.savefig(os.path.dirname(os.path.realpath(__file__)) + "/data/padmm_solver_rho0_v_f_r_pd_mean_heatmap.pdf", format="pdf", dpi=300, bbox_inches="tight")
+    #         plt.savefig(os.path.dirname(os.path.realpath(__file__)) + "/output/padmm_solver_rho0_v_f_r_pd_mean_heatmap.pdf", format="pdf", dpi=300, bbox_inches="tight")
     #     if self.verbose:
     #         plt.show()
     #     plt.close()

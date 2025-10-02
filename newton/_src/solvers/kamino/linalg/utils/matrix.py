@@ -101,12 +101,12 @@ def symmetry_error_norm_l2(A: np.ndarray) -> float:
     return np.linalg.norm(A - A.T, ord=2)
 
 
-def assert_is_square_matrix(A: np.ndarray) -> bool:
+def assert_is_square_matrix(A: np.ndarray):
     if not is_square_matrix(A):
         raise ValueError("Matrix is not square.")
 
 
-def assert_is_symmetric_matrix(A: np.ndarray) -> bool:
+def assert_is_symmetric_matrix(A: np.ndarray):
     eps = max(_make_tolerance(dtype=A.dtype), A.dtype.type(DEFAULT_MATRIX_SYMMETRY_EPS))
     if not is_symmetric_matrix(A, tol=eps):
         error = symmetry_error_norm_l2(A)

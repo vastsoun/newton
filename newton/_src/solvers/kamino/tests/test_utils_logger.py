@@ -39,7 +39,7 @@ class TestUtilsLogger(unittest.TestCase):
         log.warning("This is a warning message.")
         log.error("This is an error message.")
         log.critical("This is a critical message.")
-        msg.set_log_level(msg.LogLevel.INFO)
+        msg.reset_log_level()
 
     def test_default_logger(self):
         """Test use of the custom logger."""
@@ -50,7 +50,7 @@ class TestUtilsLogger(unittest.TestCase):
         msg.warning("This is a warning message.")
         msg.error("This is an error message.")
         msg.critical("This is a critical message.")
-        msg.set_log_level(msg.LogLevel.INFO)
+        msg.reset_log_level()
 
 
 ###

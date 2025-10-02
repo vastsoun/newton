@@ -318,7 +318,7 @@ def random_rhs_for_matrix(
     else:
         if not isinstance(scale, float):
             raise TypeError("scale must be a float.")
-    scale = A.dtype(scale)
+    scale = A.dtype.type(scale)
 
     # Generate a random vector x and compute b = A @ x
     x = scale * rng.standard_normal((A.shape[1],)).astype(A.dtype)

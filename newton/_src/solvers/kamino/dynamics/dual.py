@@ -22,7 +22,7 @@ from __future__ import annotations
 import warp as wp
 from warp.context import Devicelike
 
-from newton._src.solvers.kamino.core.math import UNIT_Z, screw, screw_angular, screw_linear
+from newton._src.solvers.kamino.core.math import FLOAT32_EPS, UNIT_Z, screw, screw_angular, screw_linear
 from newton._src.solvers.kamino.core.model import Model, ModelData, ModelSize
 from newton._src.solvers.kamino.core.types import (
     float32,
@@ -48,9 +48,13 @@ __all__ = [
     "DualProblemConfig",
     "DualProblemData",
     "DualProblemSettings",
+    "apply_dual_preconditioner_to_matrix",
+    "apply_dual_preconditioner_to_vector",
+    "build_dual_preconditioner",
     "build_free_velocity",
     "build_free_velocity_bias",
     "build_generalized_free_velocity",
+    "build_nonlinear_generalized_force",
 ]
 
 
@@ -135,6 +139,12 @@ class DualProblemData:
         # Constraints info
         ###
 
+        self.njc: wp.array(dtype=int32) | None = None
+        """
+        The number of active joint constraints in each world.\n
+        Shape of ``(num_worlds,)`` and type :class:`int32`.
+        """
+
         self.nl: wp.array(dtype=int32) | None = None
         """
         The number of active limit constraints in each world.\n
@@ -211,6 +221,12 @@ class DualProblemData:
         """
         The flat array of Delassus matrix blocks (constraint-space apparent inertia).\n
         Shape of ``(sum(nd_w * nd_w),)`` and type :class:`float32`.
+        """
+
+        self.P: wp.array(dtype=float32) | None = None
+        """
+        The flat array of Delassus diagonal preconditioner blocks.\n
+        Shape of ``(sum(nd_w),)`` and type :class:`float32`.
         """
 
         ###
@@ -648,6 +664,242 @@ def _build_free_velocity(
     problem_v_f[tio] = v_f_j + problem_v_b[tio]
 
 
+@wp.kernel
+def _build_dual_preconditioner_all_constraints(
+    # Inputs:
+    problem_maxdim: wp.array(dtype=int32),
+    problem_dim: wp.array(dtype=int32),
+    problem_mio: wp.array(dtype=int32),
+    problem_vio: wp.array(dtype=int32),
+    problem_njc: wp.array(dtype=int32),
+    problem_nl: wp.array(dtype=int32),
+    problem_D: wp.array(dtype=float32),
+    # Outputs:
+    problem_P: wp.array(dtype=float32),
+):
+    # Retrieve the thread index
+    wid, tid = wp.tid()
+
+    # Retrieve the number of active constraints in the world
+    ncts = problem_dim[wid]
+
+    # Skip if row index exceed the problem size
+    if tid >= ncts:
+        return
+
+    # Retrieve the maximum number of dimensions of the world
+    maxncts = problem_maxdim[wid]
+
+    # Retrieve the matrix index offset of the world
+    mio = problem_mio[wid]
+
+    # Retrieve the vector index offset of the world
+    vio = problem_vio[wid]
+
+    # Retrieve the number of active joint and limit constraints of the world
+    njc = problem_njc[wid]
+    nl = problem_nl[wid]
+    njlc = njc + nl
+
+    # TODO
+    if tid < njlc:
+        # Retrieve the diagonal entry of the Delassus matrix
+        D_ii = problem_D[mio + maxncts * tid + tid]
+        # Compute the corresponding Jacobi preconditioner entry
+        problem_P[vio + tid] = wp.sqrt(1.0 / (wp.abs(D_ii) + FLOAT32_EPS))
+    else:
+        # Compute the contact constraint index
+        ccid = tid - njlc
+        # Only the thread of the first contact constraint dimension computes the preconditioner
+        if ccid % 3 == 0:
+            # Retrieve the diagonal entries of the Delassus matrix for the contact constraint set
+            D_kk_0 = problem_D[mio + maxncts * tid + tid]
+            D_kk_1 = problem_D[mio + maxncts * tid + tid + 1]
+            D_kk_2 = problem_D[mio + maxncts * tid + tid + 2]
+            # Compute the effective diagonal entry
+            # D_kk = (D_kk_0 + D_kk_1 + D_kk_2) / 3.0
+            # D_kk = wp.min(vec3f(D_kk_0, D_kk_1, D_kk_2))
+            D_kk = wp.max(vec3f(D_kk_0, D_kk_1, D_kk_2))
+            # Compute the corresponding Jacobi preconditioner entry
+            P_k = wp.sqrt(1.0 / (wp.abs(D_kk) + FLOAT32_EPS))
+            problem_P[vio + tid] = P_k
+            problem_P[vio + tid + 1] = P_k
+            problem_P[vio + tid + 2] = P_k
+
+
+@wp.kernel
+def _apply_dual_preconditioner_to_matrix(
+    # Inputs:
+    problem_maxdim: wp.array(dtype=int32),
+    problem_dim: wp.array(dtype=int32),
+    problem_mio: wp.array(dtype=int32),
+    problem_vio: wp.array(dtype=int32),
+    problem_P: wp.array(dtype=float32),
+    # Outputs:
+    X: wp.array(dtype=float32),
+):
+    # Retrieve the thread index
+    wid, tid = wp.tid()
+
+    # Retrieve the number of active constraints in the world
+    ncts = problem_dim[wid]
+
+    # Compute i (row) and j (col) indices from the tid
+    i = tid // ncts
+    j = tid % ncts
+
+    # Skip if indices exceed the problem size
+    if i >= ncts or j >= ncts:
+        return
+
+    # Retrieve the maximum number of dimensions of the world
+    maxncts = problem_maxdim[wid]
+
+    # Retrieve the matrix index offset of the world
+    mio = problem_mio[wid]
+
+    # Retrieve the vector index offset of the world
+    vio = problem_vio[wid]
+
+    # Compute the global index of the matrix entry
+    m_ij = mio + maxncts * i + j
+
+    # Retrieve the i,j-th entry of the target matrix
+    X_ij = X[m_ij]
+
+    # Retrieve the i,j-th entries of the diagonal preconditioner
+    P_i = problem_P[vio + i]
+    P_j = problem_P[vio + j]
+
+    # Store the preconditioned i,j-th entry of the matrix
+    X[m_ij] = P_i * (P_j * X_ij)
+
+
+@wp.kernel
+def _apply_dual_preconditioner_to_vector(
+    # Inputs:
+    problem_dim: wp.array(dtype=int32),
+    problem_vio: wp.array(dtype=int32),
+    problem_P: wp.array(dtype=float32),
+    # Outputs:
+    x: wp.array(dtype=float32),
+):
+    # Retrieve the thread index
+    wid, tid = wp.tid()
+
+    # Retrieve the number of active constraints in the world
+    ncts = problem_dim[wid]
+
+    # Skip if row index exceed the problem size
+    if tid >= ncts:
+        return
+
+    # Retrieve the vector index offset of the world
+    vio = problem_vio[wid]
+
+    # Compute the global index of the vector entry
+    v_i = vio + tid
+
+    # Retrieve the i-th entry of the target vector
+    x_i = x[v_i]
+
+    # Retrieve the i-th entry of the diagonal preconditioner
+    P_i = problem_P[v_i]
+
+    # Store the preconditioned i-th entry of the vector
+    x[v_i] = P_i * x_i
+
+
+##
+# Generic linear-algebra operations
+##
+
+
+@wp.kernel
+def _mult_left_right_diag_matrix_with_matrix(
+    # Inputs:
+    maxdim: wp.array(dtype=int32),
+    dim: wp.array(dtype=int32),
+    mio: wp.array(dtype=int32),
+    vio: wp.array(dtype=int32),
+    D: wp.array(dtype=float32),
+    X: wp.array(dtype=float32),
+    # Outputs:
+    Y: wp.array(dtype=float32),
+):
+    # Retrieve the thread indices
+    wid, tid = wp.tid()
+
+    # Retrieve the number of active dimensions in the world
+    n = dim[wid]
+
+    # Compute i (row) and j (col) indices from the tid
+    i = tid // n
+    j = tid % n
+
+    # Skip if indices exceed the problem size
+    if i >= n or j >= n:
+        return
+
+    # Retrieve the maximum number of dimensions of the world
+    maxn = maxdim[wid]
+
+    # Retrieve the matrix index offset of the world
+    m_0 = mio[wid]
+
+    # Retrieve the vector index offset of the world
+    v_0 = vio[wid]
+
+    # Compute the global index of the matrix entry
+    m_ij = m_0 + maxn * i + j
+
+    # Retrieve the ij entry of the input matrix
+    X_ij = X[m_ij]
+
+    # Retrieve the i,j entries of the diagonal matrix
+    D_i = D[v_0 + i]
+    D_j = D[v_0 + j]
+
+    # Compute the i,j entry of the output matrix
+    Y[m_ij] = D_i * D_j * X_ij
+
+
+@wp.kernel
+def _mult_left_diag_matrix_with_vector(
+    # Inputs:
+    dim: wp.array(dtype=int32),
+    vio: wp.array(dtype=int32),
+    D: wp.array(dtype=float32),
+    x: wp.array(dtype=float32),
+    # Outputs:
+    y: wp.array(dtype=float32),
+):
+    # Retrieve the thread index
+    wid, tid = wp.tid()
+
+    # Retrieve the number of active constraints in the world
+    n = dim[wid]
+
+    # Skip if row index exceed the problem size
+    if tid >= n:
+        return
+
+    # Retrieve the vector index offset of the world
+    v_0 = vio[wid]
+
+    # Compute the global index of the vector entry
+    v_i = v_0 + tid
+
+    # Retrieve the i-th entry of the input vector
+    x_i = x[v_i]
+
+    # Retrieve the i-th entry of the diagonal matrix
+    D_i = D[v_i]
+
+    # Compute the i-th entry of the output vector
+    y[v_i] = D_i * x_i
+
+
 ###
 # Launchers
 ###
@@ -789,6 +1041,98 @@ def build_free_velocity(model: Model, state: ModelData, jacobians: DenseSystemJa
             problem.data.v_i,
             # Outputs:
             problem.data.v_f,
+        ],
+    )
+
+
+def build_dual_preconditioner(problem: DualProblem):
+    """
+    Builds the diagonal preconditioner according to the current Delassus operator.
+    """
+    wp.launch(
+        _build_dual_preconditioner_all_constraints,
+        dim=(problem._size.num_worlds, problem._size.max_of_max_total_cts),
+        inputs=[
+            # Inputs:
+            problem.data.maxdim,
+            problem.data.dim,
+            problem.data.mio,
+            problem.data.vio,
+            problem.data.njc,
+            problem.data.nl,
+            problem.data.D,
+            # Outputs:
+            problem.data.P,
+        ],
+    )
+
+
+def apply_dual_preconditioner_to_dual(problem: DualProblem):
+    """
+    Applies the diagonal preconditioner to the Delassus operator and free-velocity vector.
+    """
+    wp.launch(
+        _apply_dual_preconditioner_to_matrix,
+        dim=(problem._size.num_worlds, problem.delassus._max_of_max_total_D_size),
+        inputs=[
+            # Inputs:
+            problem.data.maxdim,
+            problem.data.dim,
+            problem.data.mio,
+            problem.data.vio,
+            problem.data.P,
+            # Outputs:
+            problem.data.D,
+        ],
+    )
+    wp.launch(
+        _apply_dual_preconditioner_to_vector,
+        dim=(problem._size.num_worlds, problem._size.max_of_max_total_cts),
+        inputs=[
+            # Inputs:
+            problem.data.dim,
+            problem.data.vio,
+            problem.data.P,
+            # Outputs:
+            problem.data.v_f,
+        ],
+    )
+
+
+def apply_dual_preconditioner_to_matrix(problem: DualProblem, X: wp.array(dtype=float32)):
+    """
+    Applies the diagonal preconditioner to a matrix.
+    """
+    wp.launch(
+        _apply_dual_preconditioner_to_matrix,
+        dim=(problem._size.num_worlds, problem._size.max_of_max_total_cts),
+        inputs=[
+            # Inputs:
+            problem.data.maxdim,
+            problem.data.dim,
+            problem.data.mio,
+            problem.data.vio,
+            problem.data.P,
+            # Outputs:
+            X,
+        ],
+    )
+
+
+def apply_dual_preconditioner_to_vector(problem: DualProblem, x: wp.array(dtype=float32)):
+    """
+    Applies the diagonal preconditioner to a vector.
+    """
+    wp.launch(
+        _apply_dual_preconditioner_to_vector,
+        dim=(problem._size.num_worlds, problem._size.max_of_max_total_cts),
+        inputs=[
+            # Inputs:
+            problem.data.dim,
+            problem.data.vio,
+            problem.data.P,
+            # Outputs:
+            x,
         ],
     )
 
@@ -983,6 +1327,7 @@ class DualProblem:
 
         # Capture references to the model, state info arrays
         # TODO: How to handle the case where state is None?
+        self.data.njc = model.info.num_joint_cts
         self.data.nl = state.info.num_limits
         self.data.nc = state.info.num_contacts
         self.data.lio = model.info.limits_offset
@@ -1011,6 +1356,7 @@ class DualProblem:
             self._data.v_i = wp.zeros(shape=(self._delassus.num_maxdims,), dtype=float32)
             self._data.v_f = wp.zeros(shape=(self._delassus.num_maxdims,), dtype=float32)
             self._data.mu = wp.zeros(shape=(contacts.num_model_max_contacts,), dtype=float32)
+            self._data.P = wp.ones(shape=(self._delassus.num_maxdims,), dtype=float32)
 
     def zero(self):
         self._data.h.zero_()  # TODO: remove these later
@@ -1019,6 +1365,7 @@ class DualProblem:
         self._data.v_i.zero_()
         self._data.v_f.zero_()
         self._data.mu.zero_()
+        self._data.P.fill_(1.0)
 
     def build(
         self,
@@ -1045,7 +1392,7 @@ class DualProblem:
             reset_to_zero=reset_to_zero,
         )
 
-        # TODO: remove this later
+        # TODO: make this optional
         # Build the non-linear generalized force vector
         build_nonlinear_generalized_force(model, state, self._data)
 
@@ -1075,3 +1422,7 @@ class DualProblem:
                 self._data.v_f,
             ],
         )
+
+        # Build and apply the Delassus diagonal preconditioner
+        build_dual_preconditioner(self)
+        apply_dual_preconditioner_to_dual(self)

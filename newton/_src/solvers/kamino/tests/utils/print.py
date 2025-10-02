@@ -27,6 +27,8 @@ from newton._src.solvers.kamino.core.model import Model, ModelData
 
 
 def print_model_size(model: Model):
+    print("Model Size:")
+
     # Print the host-side model size meta-data
     print(f"model.size.num_worlds: {model.size.num_worlds}")
 
@@ -46,6 +48,8 @@ def print_model_size(model: Model):
 
 
 def print_model_info(model: Model):
+    print("Model Info:")
+
     # Print the host-side model info meta-data
     print(f"model.info.num_worlds: {model.info.num_worlds}")
 
@@ -93,6 +97,7 @@ def print_model_info(model: Model):
 
 
 def print_model_constraint_info(model: Model):
+    print("Model Constraint Info:")
     print(f"model.info.max_limits: {model.info.max_limits}")
     print(f"model.info.max_contacts: {model.info.max_contacts}")
     print(f"model.info.num_joint_cts: {model.info.num_joint_cts}")

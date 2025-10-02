@@ -40,7 +40,7 @@ from newton._src.solvers.kamino.simulation.simulator import Simulator
 
 
 def test_output_path():
-    return os.path.dirname(os.path.realpath(__file__)) + "/data"
+    return os.path.dirname(os.path.realpath(__file__)) + "/output"
 
 
 ###

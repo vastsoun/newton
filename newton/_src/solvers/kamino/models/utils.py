@@ -42,11 +42,11 @@ __all__ = [
 ###
 
 
-def make_single_builder(build_func=build_boxes_nunchaku) -> tuple[ModelBuilder, list[int], list[int]]:
+def make_single_builder(build_func=build_boxes_nunchaku, **kwargs) -> tuple[ModelBuilder, list[int], list[int]]:
     num_jcts = []
     num_bodies = []
     builder = ModelBuilder()
-    build_func(builder)
+    build_func(builder, **kwargs)
     num_jcts.append(builder.world.num_joint_cts)
     num_bodies.append(builder.world.num_bodies)
     return builder, num_bodies, num_jcts

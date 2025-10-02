@@ -41,7 +41,8 @@ from newton._src.solvers.kamino.kinematics.jacobians import DenseSystemJacobians
 from newton._src.solvers.kamino.kinematics.joints import compute_joints_state
 from newton._src.solvers.kamino.kinematics.limits import Limits
 from newton._src.solvers.kamino.linalg.cholesky import SequentialCholeskyFactorizer
-from newton._src.solvers.kamino.solvers.padmm import PADMMDualSolver
+from newton._src.solvers.kamino.solvers.apadmm import APADMMDualSolver
+from newton._src.solvers.kamino.solvers.padmm import PADMMDualSolver  # noqa: F401
 
 ###
 # Module interface
@@ -49,6 +50,8 @@ from newton._src.solvers.kamino.solvers.padmm import PADMMDualSolver
 
 __all__ = ["Simulator"]
 
+SOLVER_TYPE = APADMMDualSolver
+# SOLVER_TYPE = PADMMDualSolver
 
 ###
 # Module configs
@@ -165,12 +168,11 @@ class Simulator:
 
         # Allocate the dual solver data on the device
         # TODO: Make the solver parameters configurable
-        self._dual_solver = PADMMDualSolver(
+        self._dual_solver = SOLVER_TYPE(
             model=self._model,
-            state=self._data.state,
             limits=self._limits,
             contacts=self._collision_detector.contacts,
-            collect_info=True,  # TODO: Make this configurable
+            collect_info=False,  # TODO: Make this configurable
             device=self._device,
         )
 
@@ -262,7 +264,7 @@ class Simulator:
         return self._dual_problem
 
     @property
-    def solver(self) -> PADMMDualSolver:
+    def solver(self) -> SOLVER_TYPE:
         return self._dual_solver
 
     @property
@@ -455,7 +457,7 @@ class Simulator:
         # Integrate the bodies state and update the next state buffer
         integrate_semi_implicit_euler(self._model, self._data.state, self._data.s_n)
 
-        # # Copy the integrated state to the previous and current body states
+        # Copy the integrated state to the previous and current body states
         self._data.forward()
 
         # TODO: How can buffer flipping work with CUDA graph capture?

@@ -17,15 +17,6 @@
 KAMINO: Utilities: Message Logging
 """
 
-"""
-Copyright (c) 2025 Walt Disney Enterprises, Inc.
-Disney Research, Zurich. All rights reserved.
-
-Authors:
-    Josefine Klintberg (josefine.klintberg@disney.com)
-    Vassilios Tsounis (vassilios.tsounis@disney.com)
-"""
-
 import logging
 from enum import IntEnum
 from typing import ClassVar

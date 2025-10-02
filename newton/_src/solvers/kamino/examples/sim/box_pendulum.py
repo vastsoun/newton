@@ -30,10 +30,10 @@ from newton._src.solvers.kamino.examples import get_examples_data_hdf5_path, pri
 from newton._src.solvers.kamino.models import get_primitives_usd_assets_path
 from newton._src.solvers.kamino.models.builders import build_box_pendulum_vertical
 from newton._src.solvers.kamino.simulation.simulator import Simulator
+from newton._src.solvers.kamino.utils.device import get_device_info
 from newton._src.solvers.kamino.utils.io import hdf5
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
 from newton._src.solvers.kamino.utils.print import print_progress_bar
-from newton._src.solvers.kamino.utils.profile import get_device_info
 
 ###
 # Kernels

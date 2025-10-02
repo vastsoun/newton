@@ -77,9 +77,6 @@ def _cholesky_sequential_factorize(
     # Retrieve the thread index
     tid = wp.tid()
 
-    # Define minimum value for diagonal elements
-    min_L_ii = wp.static(1000.0 * FLOAT32_EPS)
-
     # Retrieve the matrix start offset and dimension
     mio = mio_in[tid]
     maxn = maxdim_in[tid]
@@ -87,45 +84,24 @@ def _cholesky_sequential_factorize(
 
     # Compute the Cholesky factorization sequentially
     for i in range(n):
-        # Compute diagonal element L[i, i]
         m_i = mio + maxn * i
         m_ii = m_i + i
-        sum = A_in[m_ii]
-        for k in range(i):
-            L_ik = L_out[m_i + k]
-            sum -= L_ik * L_ik
-        sum = wp.max(sum, min_L_ii)
-        L_ii = wp.sqrt(sum)
-        L_out[m_ii] = L_ii
-
-        # Compute off-diagonal elements in column i
-        for j in range(i + 1, n):
+        A_ii = A_in[m_ii]
+        for j in range(i + 1):
             m_j = mio + maxn * j
-            m_ji = m_j + i
-            sum = A_in[m_ji]
-            for k in range(i):
-                m_jk = m_j + k
+            m_jj = m_j + j
+            m_ij = m_i + j
+            A_ij = A_in[m_ij]
+            L_jj = L_out[m_jj]
+            sum = float32(0.0)
+            for k in range(j):
                 m_ik = m_i + k
-                sum -= L_out[m_jk] * L_out[m_ik]
-            L_out[m_ji] = sum / L_ii
-
-    # for i in range(n):
-    #     m_i = mio + maxn * i
-    #     m_ii = m_i + i
-    #     for j in range(i + 1):
-    #         m_j = mio + maxn * j
-    #         m_jj = m_j + j
-    #         m_ij = m_i + j
-    #         sum = float32(0.0)
-    #         for k in range(j):
-    #             m_ik = m_i + k
-    #             m_jk = m_j + k
-    #             sum += L_out[m_ik] * L_out[m_jk]
-    #         if i == j:
-    #             val = A_in[m_ii] - sum
-    #             L_out[m_ij] = wp.sqrt(val)
-    #         else:
-    #             L_out[m_ij] = (A_in[m_ij] - sum) / L_out[m_jj]
+                m_jk = m_j + k
+                sum += L_out[m_ik] * L_out[m_jk]
+            if i == j:
+                L_out[m_ij] = wp.sqrt(wp.max(A_ii - sum, FLOAT32_EPS))
+            else:
+                L_out[m_ij] = (A_ij - sum) / L_jj
 
 
 @wp.kernel

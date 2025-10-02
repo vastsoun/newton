@@ -27,23 +27,14 @@ import newton.examples
 from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.core.types import float32, vec6f
 
-# Note: Keeping imports for potential use in commented code sections
-# from newton._src.solvers.kamino.models.builders import (
-#     add_ground_geom,
-#     add_velocity_bias,
-#     offset_builder,
-# )
+# from newton._src.solvers.kamino.models.builders import add_ground_geom, add_velocity_bias, offset_builder
 from newton._src.solvers.kamino.examples import get_examples_data_hdf5_path, get_examples_data_root_path, print_frame
 from newton._src.solvers.kamino.models import get_examples_usd_assets_path
 from newton._src.solvers.kamino.simulation.simulator import Simulator
+from newton._src.solvers.kamino.utils.device import get_device_info
 from newton._src.solvers.kamino.utils.io import hdf5
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
 from newton._src.solvers.kamino.utils.print import print_progress_bar
-from newton._src.solvers.kamino.utils.profile import get_device_info
-
-# Note: Keeping import for potential use in commented code sections
-# from newton._src.solvers.kamino.tests.test_solvers_padmm import save_solver_info
-
 
 ###
 # Kernels
@@ -276,9 +267,10 @@ def run_hdf5_mode(clear_warp_cache=True, use_cuda_graph=False, verbose=False):
                 wp.synchronize()
 
                 status = sim._dual_solver.data.status.numpy()
-                msg.warning(f"[{i}]: solver.iterations : {status[0][1]}")
                 # msg.warning(f"[{i}]: nl: {sim.model_data.info.num_limits.numpy()[0]}")
                 # msg.warning(f"[{i}]: nc: {sim.model_data.info.num_contacts.numpy()[0]}")
+                msg.warning(f"[{i}]: solver.iterations : {status[0][1]}")
+                # msg.warning(f"[{i}]: admm_info_r_dual:\n{sim._dual_solver.data.info.r_dual.numpy()}")
                 # save_solver_info(sim._dual_solver, path=os.path.join(PADMM_INFO_PATH, f"padmm_solver_info_{i}.pdf"))
 
                 # msg.warning(f"cgeoms.offset :\n{sim.model.cgeoms.offset}")
@@ -319,7 +311,7 @@ def run_hdf5_mode(clear_warp_cache=True, use_cuda_graph=False, verbose=False):
                 cdata.update_from(simulator=sim)
                 pdata.update_from(simulator=sim)
                 renderer.add_frame(system=sdata, contacts=cdata, problem=pdata)
-                print_progress_bar(i, ns, start_time, prefix="Progress", suffix="")
+                print_progress_bar(i + 1, ns, start_time, prefix="Progress", suffix="")
                 # if verbose:
                 #     print_frame(sim, i + 1)
 
@@ -531,7 +523,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--mode",
         choices=["hdf5", "viewer"],
-        default="viewer",
+        default="hdf5",
         help="Simulation mode: 'hdf5' for data collection, 'viewer' for live visualization",
     )
     parser.add_argument("--clear-cache", action="store_true", default=True, help="Clear warp cache")

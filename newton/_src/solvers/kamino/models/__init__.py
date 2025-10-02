@@ -32,7 +32,7 @@ __all__ = [
 
 
 def get_examples_usd_assets_path() -> str:
-    import os
+    import os  # noqa: PLC0415
 
     path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "assets/examples/usd")
     if not os.path.exists(path):
@@ -41,7 +41,7 @@ def get_examples_usd_assets_path() -> str:
 
 
 def get_primitives_usd_assets_path() -> str:
-    import os
+    import os  # noqa: PLC0415
 
     path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "assets/primitives")
     if not os.path.exists(path):
@@ -50,7 +50,7 @@ def get_primitives_usd_assets_path() -> str:
 
 
 def get_tests_usd_assets_path() -> str:
-    import os
+    import os  # noqa: PLC0415
 
     path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "assets/tests")
     if not os.path.exists(path):

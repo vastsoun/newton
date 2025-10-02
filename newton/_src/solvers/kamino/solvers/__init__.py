@@ -17,6 +17,7 @@
 KAMINO: Solvers Module
 """
 
+from .apadmm import APADMMDualSolver, APADMMSettings
 from .padmm import PADMMDualSolver, PADMMSettings
 
 ###
@@ -24,6 +25,8 @@ from .padmm import PADMMDualSolver, PADMMSettings
 ###
 
 __all__ = [
+    "APADMMDualSolver",
+    "APADMMSettings",
     "PADMMDualSolver",
     "PADMMSettings",
 ]

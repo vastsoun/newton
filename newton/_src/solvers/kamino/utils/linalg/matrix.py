@@ -13,9 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-KAMINO: Utilities: Linear Algebra: Matrix properties
-"""
+"""KAMINO: Utilities: Linear Algebra: Matrix properties"""
+
+from enum import IntEnum
 
 import numpy as np
 
@@ -26,6 +26,7 @@ import numpy as np
 __all__ = [
     "DEFAULT_MATRIX_SYMMETRY_EPS",
     "MatrixComparison",
+    "MatrixSign",
     "SquareSymmetricMatrixProperties",
     "assert_is_square_matrix",
     "assert_is_symmetric_matrix",
@@ -42,19 +43,49 @@ __all__ = [
 DEFAULT_MATRIX_SYMMETRY_EPS = 1e-10
 """A global constant to configure the tolerance on matrix symmetry checks."""
 
+MAXLOG_FP64 = 709.782
+"""Maximum log value for float64 to avoid overflow in exp()."""
+
+###
+# Types
+###
+
+
+class MatrixSign(IntEnum):
+    ZeroSign = 0
+    Indefinite = 1
+    PositiveSemiDef = 2
+    NegativeSemiDef = 3
+    PositiveDef = 4
+    NegativeDef = 5
+
 
 ###
 # Utilities
 ###
 
 
+def _safe_slogdet(A: np.ndarray) -> tuple[float, float, float]:
+    sign, logabsdet = np.linalg.slogdet(A)
+    sign = float(sign)
+    logabsdet = float(logabsdet)
+    if sign != 0.0 and logabsdet < MAXLOG_FP64:
+        det = sign * np.exp(logabsdet)
+    elif sign == 0.0:
+        det = 0.0
+    else:
+        det = np.inf
+    return sign, logabsdet, det
+
+
 def _make_tolerance(tol: float | None = None, dtype: np.dtype = np.float64):
+    eps = np.finfo(dtype).eps
     if tol is None:
-        tol = dtype.type(np.finfo(dtype).eps)
+        tol = dtype.type(eps)
     else:
         if not isinstance(tol, float | np.float32 | np.float64):
             raise ValueError("tolerance 'tol' must be a `float`, `np.float32`, or `np.float64` value.")
-    return dtype.type(tol)
+    return dtype.type(max(tol, eps))
 
 
 def is_square_matrix(A: np.ndarray) -> bool:
@@ -87,6 +118,115 @@ def assert_is_symmetric_matrix(A: np.ndarray) -> bool:
 ###
 
 
+class RectangularMatrixProperties:
+    def __init__(self, matrix: np.ndarray | None = None):
+        self.matrix: np.ndarray
+        """Reference to the original matrix."""
+
+        # Matrix statistics
+        self.min: float = np.inf
+        """The minimum element of the matrix."""
+        self.max: float = np.inf
+        """The maximum element of the matrix."""
+        self.mean: float = np.inf
+        """The mean of the matrix elements."""
+        self.std: float = np.inf
+        """The standard deviation of the matrix elements."""
+
+        # Matrix dimensions
+        self.shape: tuple[int, int] = (0, 0)
+        """The matrix shape (rows, cols)."""
+
+        # Matrix properties
+        self.rank: int = 0
+        """The matrix rank compute using `numpy.linalg.matrix_rank()`."""
+
+        # Matrix norms
+        self.norm_fro: float = np.inf
+        """The Frobenius norm compute using `numpy.linalg.norm()`."""
+        self.norm_inf: float = np.inf
+        """The infinity norm compute using `numpy.linalg.norm()`."""
+
+        # SVD properties
+        self.sigma_min: float = np.inf
+        """The smallest singular value."""
+        self.sigma_max: float = np.inf
+        """The largest singular value."""
+        self.sigma_cond: float = np.inf
+        """The condition number defined via the ratio of max/min singular values."""
+
+        # Caches
+        self.sigmas: np.ndarray | None = None
+        self.U: np.ndarray | None = None
+        self.Vt: np.ndarray | None = None
+
+        # Compute matrix properties if specified
+        if matrix is not None:
+            self.compute(matrix)
+
+    def compute(self, matrix: np.ndarray):
+        """
+        Compute the properties of the rectangular matrix.
+
+        Args:
+            matrix (np.ndarray): The input matrix to analyze.
+            tol (float, optional): The tolerance for numerical stability.
+
+        Raises:
+            TypeError: If the input matrix is not a numpy array.
+            ValueError: If the input matrix is not 2D.
+        """
+        # Check if the matrix is valid type and dimensions
+        if not isinstance(matrix, np.ndarray):
+            raise TypeError("Input must be a numpy array.")
+        if matrix.ndim != 2:
+            raise ValueError("Input must be a 2D matrix.")
+
+        # Capture the reference to the target matrix
+        self.matrix = matrix
+
+        # Then compute statistics over the coefficients
+        self.min = np.min(self.matrix)
+        self.max = np.max(self.matrix)
+        self.mean = np.mean(self.matrix)
+        self.std = np.std(self.matrix)
+
+        # Extract additional properties using numpy operations
+        self.shape = self.matrix.shape
+        self.rank = np.linalg.matrix_rank(self.matrix)
+
+        # Compute matrix norms
+        self.norm_fro = np.linalg.norm(self.matrix, ord="fro")
+        self.norm_inf = np.linalg.norm(self.matrix, ord=np.inf)
+
+        # Extract the matrix singular values
+        self.U, self.sigmas, self.Vt = np.linalg.svd(self.matrix, full_matrices=True, compute_uv=True, hermitian=False)
+        self.sigma_min = self.sigmas[-1]
+        self.sigma_max = self.sigmas[0]
+        self.sigma_cond = self.sigma_max / self.sigma_min
+
+    def __str__(self) -> str:
+        return (
+            f"Type:\n"
+            f"   shape: {self.matrix.shape}\n"
+            f"   dtype: {self.matrix.dtype}\n"
+            f"Statistics:\n"
+            f"   min: {self.min}\n"
+            f"   max: {self.max}\n"
+            f"  mean: {self.mean}\n"
+            f"   std: {self.std}\n"
+            f"Basics:\n"
+            f"   rank: {self.rank}\n"
+            f"Norms:\n"
+            f"   fro: {self.norm_fro}\n"
+            f"   inf: {self.norm_inf}\n"
+            f"SVD:\n"
+            f"   sigma min: {self.sigma_min}\n"
+            f"   sigma max: {self.sigma_max}\n"
+            f"  sigma cond: {self.sigma_cond}\n"
+        )
+
+
 class SquareSymmetricMatrixProperties:
     def __init__(self, matrix: np.ndarray | None = None, tol: float | None = None):
         self.matrix: np.ndarray
@@ -111,21 +251,23 @@ class SquareSymmetricMatrixProperties:
 
         # Matrix properties
         self.rank: int = 0
-        """The matrix rank compute using `numpy.linalg.matrix_rank()`."""
-        self.det: float = np.inf
-        """The matrix determinant compute using `numpy.linalg.det()`."""
+        """The matrix rank computed using `numpy.linalg.matrix_rank()`."""
         self.trace: float = np.inf
-        """The matrix trace compute using `numpy.trace()`."""
+        """The matrix trace computed using `numpy.trace()`."""
         self.cond: float = np.inf
-        """The matrix condition number compute using `numpy.linalg.cond()`."""
+        """The matrix condition number computed using `numpy.linalg.cond()`."""
+        self.signdet: float = np.inf
+        """The matrix determinant sign computed using `numpy.linalg.slogdet()`."""
+        self.logabsdet: float = np.inf
+        """The matrix log absolute determinant computed using `numpy.linalg.slogdet()`."""
+        self.det: float = np.inf
+        """The matrix determinant computed as `sign * exp(logabsdet)`."""
 
         # Matrix norms
-        self.norm_l1: float = np.inf
-        """The L1-norm compute using `numpy.linalg.norm()`."""
-        self.norm_l2: float = np.inf
-        """The L2-norm compute using `numpy.linalg.norm()`."""
+        self.norm_fro: float = np.inf
+        """The Frobenius norm computed using `numpy.linalg.norm()`."""
         self.norm_inf: float = np.inf
-        """The infinity norm compute using `numpy.linalg.norm()`."""
+        """The infinity norm computed using `numpy.linalg.norm()`."""
 
         # Spectral properties
         self.lambda_min: float = np.inf
@@ -158,8 +300,10 @@ class SquareSymmetricMatrixProperties:
         self.is_positive_semi_definite: bool = False
 
         # Caches
-        self.lambdas: np.ndarray = np.array([])
-        self.sigmas: np.ndarray = np.array([])
+        self.lambdas: np.ndarray | None = None
+        self.sigmas: np.ndarray | None = None
+        self.U: np.ndarray | None = None
+        self.Vt: np.ndarray | None = None
 
         # Compute matrix properties if specified
         if matrix is not None:
@@ -212,13 +356,14 @@ class SquareSymmetricMatrixProperties:
         # Extract additional properties using numpy operations
         self.dim = self.matrix.shape[0]
         self.rank = np.linalg.matrix_rank(self.matrix)
-        self.det = np.linalg.det(self.matrix)
         self.trace = np.trace(self.matrix)
         self.cond = np.linalg.cond(self.matrix)
 
+        # Compute the determinant from the signed log-determinant
+        self.signdet, self.logabsdet, self.det = _safe_slogdet(self.matrix)
+
         # Compute matrix norms
-        self.norm_l1 = np.linalg.norm(self.matrix, ord=1)
-        self.norm_l2 = np.linalg.norm(self.matrix, ord=2)
+        self.norm_fro = np.linalg.norm(self.matrix, ord="fro")
         self.norm_inf = np.linalg.norm(self.matrix, ord=np.inf)
 
         # Extract the matrix eigenvalues
@@ -228,12 +373,13 @@ class SquareSymmetricMatrixProperties:
         self.lambda_cond = self.lambda_max / self.lambda_min
 
         # Extract the matrix singular values
-        self.sigmas = np.linalg.svd(self.matrix, compute_uv=False, hermitian=False).real
+        self.U, self.sigmas, self.Vt = np.linalg.svd(self.matrix, full_matrices=True, compute_uv=True, hermitian=False)
         self.sigma_min = self.sigmas[-1]
         self.sigma_max = self.sigmas[0]
         self.sigma_cond = self.sigma_max / self.sigma_min
 
         # Compute the convexity parameters
+        # self.m = np.abs(self.lambda_min)
         self.m = max(0.0, self.lambda_min)
         self.L = np.abs(self.lambda_max)
         self.kappa = self.L / self.m if self.m > 0 else np.inf
@@ -258,13 +404,14 @@ class SquareSymmetricMatrixProperties:
             f"  mean: {self.mean}\n"
             f"   std: {self.std}\n"
             f"Basics:\n"
-            f"   rank: {self.rank}\n"
-            f"    det: {self.det}\n"
-            f"  trace: {self.trace}\n"
-            f"   cond: {self.cond}\n"
+            f"     rank: {self.rank}\n"
+            f"    trace: {self.trace}\n"
+            f"     cond: {self.cond}\n"
+            f"sign(det): {self.signdet}\n"
+            f" log|det|: {self.logabsdet}\n"
+            f"      det: {self.det}\n"
             f"Norms:\n"
-            f"    l1: {self.norm_l1}\n"
-            f"    l2: {self.norm_l2}\n"
+            f"   fro: {self.norm_fro}\n"
             f"   inf: {self.norm_inf}\n"
             f"Spectral:\n"
             f"   lambda min: {self.lambda_min}\n"
@@ -311,9 +458,9 @@ class MatrixComparison:
         symbol_B: str = "B",
     ):
         """Save error visualizations to the specified path."""
-        import os
+        import os  # noqa: PLC0415
 
-        from newton._src.solvers.kamino.utils.sparse import sparseview
+        from newton._src.solvers.kamino.utils.sparse import sparseview  # noqa: PLC0415
 
         os.makedirs(path, exist_ok=True)
         sparseview(self.A, title=f"{title} {name_A}", path=os.path.join(path, f"{symbol_A}.png"))

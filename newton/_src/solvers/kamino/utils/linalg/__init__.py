@@ -13,37 +13,117 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-KAMINO: Utilities: Linear Algebra
-"""
+"""KAMINO: Utilities: Linear Algebra"""
 
-from .admm import ADMMInfo, ADMMSolver, ADMMStatus
-from .cholesky import Cholesky
-from .ldlt_bk import LDLTBunchKaufman
-from .ldlt_blocked import LDLTBlocked
-from .ldlt_eigen3 import LDLTEigen3
-from .ldlt_nopivot import LDLTNoPivot
-from .matrix import MatrixComparison, SquareSymmetricMatrixProperties, is_square_matrix, is_symmetric_matrix
-
-FactorizerType = Cholesky | LDLTNoPivot | LDLTBunchKaufman | LDLTBlocked | LDLTEigen3
-
+from .admm import (
+    ADMMInfo,
+    ADMMResult,
+    ADMMSolver,
+    ADMMStatus,
+    compute_lambdas,
+    compute_u_plus,
+)
+from .eigval import (
+    GramIteration,
+    PowerIteration,
+)
+from .linear import (
+    ComputationInfo,
+    ConjugateGradientSolver,
+    DirectSolver,
+    GaussSeidelSolver,
+    IndirectSolver,
+    JacobiSolver,
+    LDLTBlockedSolver,
+    LDLTBunchKaufmanSolver,
+    LDLTEigen3Solver,
+    LDLTNoPivotSolver,
+    LDLTSciPySolver,
+    LinearSolution,
+    LinearSolver,
+    LinearSolverType,
+    LLTNumPySolver,
+    LLTSciPySolver,
+    LLTStdSolver,
+    LUNoPivotSolver,
+    LUSciPySolver,
+    MinimumResidualSolver,
+    NumPySolver,
+    SciPySolver,
+    SORSolver,
+    conjugate_gradient,
+    gauss_seidel,
+    jacobi,
+    minimum_residual,
+    successive_over_relaxation,
+)
+from .matrix import (
+    MatrixComparison,
+    MatrixSign,
+    RectangularMatrixProperties,
+    SquareSymmetricMatrixProperties,
+    is_square_matrix,
+    is_symmetric_matrix,
+)
+from .rand import (
+    ArrayLike,
+    eigenvalues_from_distribution,
+    random_rhs_for_matrix,
+    random_spd_matrix,
+    random_symmetric_matrix,
+)
 
 ###
 # Module API
 ###
 
+
 __all__ = [
     "ADMMInfo",
+    "ADMMResult",
     "ADMMSolver",
     "ADMMStatus",
-    "Cholesky",
-    "FactorizerType",
-    "LDLTBlocked",
-    "LDLTBunchKaufman",
-    "LDLTEigen3",
-    "LDLTNoPivot",
+    "ArrayLike",
+    "ComputationInfo",
+    "ConjugateGradientSolver",
+    "DirectSolver",
+    "GaussSeidelSolver",
+    "GramIteration",
+    "IndirectSolver",
+    "JacobiSolver",
+    "LDLTBlockedSolver",
+    "LDLTBunchKaufmanSolver",
+    "LDLTEigen3Solver",
+    "LDLTNoPivotSolver",
+    "LDLTSciPySolver",
+    "LLTNumPySolver",
+    "LLTSciPySolver",
+    "LLTStdSolver",
+    "LUNoPivotSolver",
+    "LUSciPySolver",
+    "LinearSolution",
+    "LinearSolver",
+    "LinearSolverType",
     "MatrixComparison",
+    "MatrixSign",
+    "MinimumResidualSolver",
+    "NumPySolver",
+    "PowerIteration",
+    "RectangularMatrixProperties",
+    "SORSolver",
+    "SciPySolver",
     "SquareSymmetricMatrixProperties",
+    "compute_lambdas",
+    "compute_u_plus",
+    "conjugate_gradient",
+    "eigenvalues_from_distribution",
+    "gauss_seidel",
     "is_square_matrix",
     "is_symmetric_matrix",
+    "jacobi",
+    "minimum_residual",
+    "random_rhs_for_matrix",
+    "random_spd_matrix",
+    "random_symmetric_matrix",
+    "successive_over_relaxation",
 ]

@@ -17,12 +17,9 @@
 KAMINO: Utilities: Linear Algebra: standard LDLT w/o pivoting
 """
 
-from typing import Any
-
 import numpy as np
 
-from newton._src.solvers.kamino.utils.linalg.factorizer import MatrixFactorizer, MatrixSign
-from newton._src.solvers.kamino.utils.linalg.matrix import (
+from ..matrix import (
     _make_tolerance,
     assert_is_square_matrix,
     assert_is_symmetric_matrix,
@@ -33,20 +30,21 @@ from newton._src.solvers.kamino.utils.linalg.matrix import (
 ###
 
 __all__ = [
-    "LDLTNoPivot",
-    "compute_ldlt_lower_reconstruct",
-    "compute_ldlt_lower_solve_inplace",
-    "compute_ldlt_nopivot_lower",
-    "compute_ldlt_upper_solve_inplace",
+    "ldlt_nopivot_lower",
+    "ldlt_nopivot_lower_reconstruct",
+    "ldlt_nopivot_lower_solve_inplace",
+    "ldlt_nopivot_upper",
+    "ldlt_nopivot_upper_reconstruct",
+    "ldlt_nopivot_upper_solve_inplace",
 ]
 
 
 ###
-# LDLT w/o pivoting
+# Factorize
 ###
 
 
-def compute_ldlt_nopivot_lower(
+def ldlt_nopivot_lower(
     A: np.ndarray, tol: float | None = None, check_symmetry: bool = True, use_zero_correction: bool = True
 ) -> tuple[np.ndarray, np.ndarray]:
     assert_is_square_matrix(A)
@@ -81,7 +79,47 @@ def compute_ldlt_nopivot_lower(
     return L, D
 
 
-def compute_ldlt_lower_solve_inplace(L: np.ndarray, D: np.ndarray, x: np.ndarray, *, unit_diagonal: bool = True):
+def ldlt_nopivot_upper(
+    A: np.ndarray, tol: float | None = None, check_symmetry: bool = True, use_zero_correction: bool = True
+) -> tuple[np.ndarray, np.ndarray]:
+    assert_is_square_matrix(A)
+    if check_symmetry:
+        assert_is_symmetric_matrix(A)
+
+    tol = _make_tolerance(tol, dtype=A.dtype)
+
+    n = A.shape[0]
+    U = np.eye(n, dtype=A.dtype)
+    D = np.zeros(n, dtype=A.dtype)
+    for k in range(n):
+        accum = A.dtype.type(0)
+        for s in range(k):
+            accum += (U[s, k] * U[s, k]) * D[s]
+        Dk = A[k, k] - accum
+        if np.abs(Dk) < tol:
+            if use_zero_correction:
+                Dk = tol
+            else:
+                raise np.linalg.LinAlgError(
+                    f"Zero (or tiny) pivot encountered at k={k}: D[k]={Dk}. "
+                    "Matrix may be indefinite or require pivoting (e.g., Bunch-Kaufman)."
+                )
+        D[k] = Dk
+        invDk = A.dtype.type(1) / Dk
+        for i in range(k + 1, n):
+            accum2 = A.dtype.type(0)
+            for j in range(k):
+                accum2 += U[j, i] * U[j, k] * D[j]
+            U[k, i] = (A[k, i] - accum2) * invDk
+    return U, D
+
+
+###
+# Solve
+###
+
+
+def ldlt_nopivot_lower_solve_inplace(L: np.ndarray, D: np.ndarray, x: np.ndarray, *, unit_diagonal: bool = True):
     """
     In-place solve for A x = b given LDLᵀ factorization A = L diag(D) Lᵀ.
     Overwrites x (initially b) with the solution.
@@ -133,7 +171,7 @@ def compute_ldlt_lower_solve_inplace(L: np.ndarray, D: np.ndarray, x: np.ndarray
     return x
 
 
-def compute_ldlt_upper_solve_inplace(U: np.ndarray, D: np.ndarray, x: np.ndarray, *, unit_diagonal: bool = True):
+def ldlt_nopivot_upper_solve_inplace(U: np.ndarray, D: np.ndarray, x: np.ndarray, *, unit_diagonal: bool = True):
     """
     In-place solve for A x = b given LDLᵀ factorization A = L diag(D) Lᵀ.
     Overwrites x (initially b) with the solution.
@@ -186,74 +224,13 @@ def compute_ldlt_upper_solve_inplace(U: np.ndarray, D: np.ndarray, x: np.ndarray
 
 
 ###
-# Reconstruction
+# Reconstruct
 ###
 
 
-def compute_ldlt_lower_reconstruct(L: np.ndarray, D: np.ndarray) -> np.ndarray:
+def ldlt_nopivot_lower_reconstruct(L: np.ndarray, D: np.ndarray) -> np.ndarray:
     return L @ np.diag(D) @ L.T
 
 
-def compute_ldlt_upper_reconstruct(U: np.ndarray, D: np.ndarray) -> np.ndarray:
+def ldlt_nopivot_upper_reconstruct(U: np.ndarray, D: np.ndarray) -> np.ndarray:
     return U @ np.diag(D) @ U.T
-
-
-###
-# Factorizer
-###
-
-
-class LDLTNoPivot(MatrixFactorizer):
-    def __init__(
-        self,
-        A: np.ndarray | None = None,
-        tol: float | None = None,
-        dtype: np.dtype | None = None,
-        itype: np.dtype | None = None,
-        upper: bool = False,
-        check_symmetry: bool = False,
-        compute_error: bool = False,
-    ):
-        # Declare internal data structures
-        self._diagonals: np.ndarray | None = None
-
-        # Declare optional unpacked factors
-        self.L: np.ndarray | None = None
-        self.D: np.ndarray | None = None
-
-        # Raise error if upper requested since it's not supported
-        if upper:
-            raise ValueError("Upper triangular form is not yet supported")
-
-        # Call the parent constructor
-        super().__init__(
-            A=A,
-            tol=tol,
-            dtype=dtype,
-            itype=itype,
-            upper=upper,
-            check_symmetry=check_symmetry,
-            compute_error=compute_error,
-        )
-
-    def _factorize_impl(self, A: np.ndarray) -> None:
-        try:
-            self._matrix, self._diagonals = compute_ldlt_nopivot_lower(
-                A=A, tol=self._tolerance, use_zero_correction=True
-            )
-            self._sign = MatrixSign.PositiveDef
-        except np.linalg.LinAlgError as e:
-            raise np.linalg.LinAlgError(f"Cholesky factorization failed: {e!s}") from e
-
-    def _unpack_impl(self) -> None:
-        self.L, self.D = self._matrix, np.diag(self._diagonals)
-
-    def _get_unpacked_impl(self) -> Any:
-        return self.L, self.D
-
-    def _solve_inplace_impl(self, x: np.ndarray):
-        compute_ldlt_lower_solve_inplace(self._matrix, self._diagonals, x)
-
-    def _reconstruct_impl(self) -> np.ndarray:
-        L, D = self.unpacked()
-        return L @ D @ L.T

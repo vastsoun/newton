@@ -107,7 +107,7 @@ class USDImporter:
         """
         if cls.Sdf is None:
             try:
-                from pxr import Sdf, Usd, UsdGeom, UsdPhysics
+                from pxr import Sdf, Usd, UsdGeom, UsdPhysics  # noqa: PLC0415
 
                 cls.Sdf = Sdf
                 cls.Usd = Usd

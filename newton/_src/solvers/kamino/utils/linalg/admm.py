@@ -13,87 +13,156 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-KAMINO: Utilities: Linear Algebra: ADMM solver in NumPy
-"""
+"""KAMINO: Utilities: Linear Algebra: ADMM constrained dynamics solver implemented in NumPy"""
+
+from enum import IntEnum
 
 import numpy as np
 
-from newton._src.solvers.kamino.utils.linalg.cholesky import Cholesky
-from newton._src.solvers.kamino.utils.linalg.ldlt_eigen3 import LDLTEigen3
+from .linear import LinearSolverType, NumPySolver
 
 ###
-# Solvers
+# Utilities
 ###
+
+
+def compute_u_plus(
+    u_minus: np.ndarray,
+    invM: np.ndarray,
+    J: np.ndarray,
+    h: np.ndarray,
+    lambdas: np.ndarray,
+) -> np.ndarray:
+    """
+    Compute the next-step generalized velocity vector given the problem and constraint reactions.
+    """
+    return u_minus + invM @ ((J.T @ lambdas) + h)
+
+
+def compute_lambdas(v: np.ndarray, J: np.ndarray, u_plus: np.ndarray, epsilon: float) -> np.ndarray:
+    """
+    Compute the constraint reactions vector given the problem and next-step generalized velocity.
+    """
+    r_epsilon = v.dtype.type(1) / v.dtype.type(epsilon)
+    return r_epsilon * (v - J @ u_plus)
+
+
+###
+# ADMM Solver
+###
+
+
+class ADMMResult(IntEnum):
+    SUCCESS = 0
+    MAXITER = 1
+    DIVERGE = 2
+    ERROR = 3
 
 
 class ADMMStatus:
-    def __init__(self, converged: bool = False, iterations: int = 0, message: str = ""):
-        self.message = message
-        self.converged: bool = converged
-        self.iterations: int = iterations
-        self.r_p: float = 0.0
-        self.r_d: float = 0.0
-        self.r_c: float = 0.0
-
-    def __str__(self) -> str:
-        return f"Converged: {self.converged}, Iterations: {self.iterations}, Info: {self.message}"
+    def __init__(self, dtype: np.dtype = np.float64):
+        self.result: ADMMResult = ADMMResult.ERROR
+        self.converged: bool = False
+        self.iterations: int = 0
+        self.r_p: float = dtype.type(np.inf)
+        self.r_d: float = dtype.type(np.inf)
+        self.r_c: float = dtype.type(np.inf)
+        self.r_i: float = dtype.type(np.inf)
 
 
 class ADMMInfo:
-    def __init__(self, maxiter: int = 0, dtype: np.dtype = np.float32):
+    def __init__(self, maxiter: int = 0, dtype: np.dtype = np.float64):
+        self.r_linsys_compute_abs: np.ndarray = np.zeros(maxiter, dtype=dtype)
+        self.r_linsys_compute_rel: np.ndarray = np.zeros(maxiter, dtype=dtype)
+        self.r_linsys_solve_abs: np.ndarray = np.zeros(maxiter, dtype=dtype)
+        self.r_linsys_solve_rel: np.ndarray = np.zeros(maxiter, dtype=dtype)
         self.r_p: np.ndarray = np.zeros(maxiter, dtype=dtype)
         self.r_d: np.ndarray = np.zeros(maxiter, dtype=dtype)
         self.r_c: np.ndarray = np.zeros(maxiter, dtype=dtype)
+        self.r_i: np.ndarray = np.zeros(maxiter, dtype=dtype)
+        self.norm_x: np.ndarray = np.zeros(maxiter, dtype=dtype)
+        self.norm_y: np.ndarray = np.zeros(maxiter, dtype=dtype)
+        self.norm_z: np.ndarray = np.zeros(maxiter, dtype=dtype)
 
     def reset(self):
-        self.r_p.fill(0.0)
-        self.r_d.fill(0.0)
-        self.r_c.fill(0.0)
+        self.r_linsys_compute_abs.fill(0)
+        self.r_linsys_compute_rel.fill(0)
+        self.r_linsys_solve_abs.fill(0)
+        self.r_linsys_solve_rel.fill(0)
+        self.r_p.fill(0)
+        self.r_d.fill(0)
+        self.r_c.fill(0)
+        self.r_i.fill(0)
+        self.norm_x.fill(0)
+        self.norm_y.fill(0)
+        self.norm_z.fill(0)
 
 
 class ADMMSolver:
     def __init__(
         self,
+        dtype: np.dtype = np.float64,
         primal_tolerance: float = 1e-6,
         dual_tolerance: float = 1e-6,
         compl_tolerance: float = 1e-6,
+        iter_tolerance: float = 0.0,
+        diverge_tolerance: float = 1e-1,
+        maxvalue: float = 1e20,
         eta: float = 1e-5,
         rho: float = 1.0,
         omega: float = 1.0,
         maxiter: int = 200,
+        kkt_solver: LinearSolverType | None = None,
+        schur_solver: LinearSolverType | None = None,
     ):
-        # Settings
-        self.primal_tolerance = primal_tolerance
-        self.dual_tolerance = dual_tolerance
-        self.compl_tolerance = compl_tolerance
-        self.eta = eta
-        self.rho = rho
-        self.omega = omega
-        self.maxiter = maxiter
-
         # Meta-data
-        self.status = ADMMStatus()
+        self.dtype: np.dtype = dtype
+        self.status: ADMMStatus | None = None
         self.info: ADMMInfo | None = None
+        self.nbd: int = 0
+        self.ncts: int = 0
+
+        # Settings
+        eps = float(np.finfo(self.dtype).eps)
+        dtmax = float(np.finfo(self.dtype).max)
+        self.primal_tolerance: float = self.dtype(max(primal_tolerance, eps))
+        self.dual_tolerance: float = self.dtype(max(dual_tolerance, eps))
+        self.compl_tolerance: float = self.dtype(max(compl_tolerance, eps))
+        self.iter_tolerance: float = self.dtype(iter_tolerance)
+        self.diverge_tolerance: float = self.dtype(diverge_tolerance)
+        self.maxvalue: float = self.dtype(min(maxvalue, dtmax))
+        self.eta: float = self.dtype(eta)
+        self.rho: float = self.dtype(rho)
+        self.omega: float = self.dtype(omega)
+        self.maxiter: int = maxiter
 
         # Residuals
-        self.r_p: float = 0.0
-        self.r_d: float = 0.0
-        self.r_c: float = 0.0
+        self.r_p: np.ndarray | None = None
+        self.r_d: np.ndarray | None = None
+        self.r_c: np.ndarray | None = None
+        self.r_i: np.ndarray | None = None
 
-        # Factorizers
-        self.llt = None
-        self.ldlt = None
+        # Linear system solver
+        self.kkt_solver: LinearSolverType = kkt_solver or NumPySolver(dtype=self.dtype)
+        self.schur_solver: LinearSolverType = schur_solver or NumPySolver(dtype=self.dtype)
 
-        # Schur Linear Problem
-        self.v: np.ndarray | None = None
-        self.D: np.ndarray | None = None
-        self.vp: np.ndarray | None = None
-        self.Dp: np.ndarray | None = None
-
-        # KKT Linear Problem
-        self.k: np.ndarray | None = None
+        # KKT linear problem
         self.K: np.ndarray | None = None
+        self.k: np.ndarray | None = None
+
+        # Primal Schur complement linear problem
+        self.P: np.ndarray | None = None
+        self.p: np.ndarray | None = None
+
+        # Dual Schur complement linear problem
+        self.D: np.ndarray | None = None
+        self.d: np.ndarray | None = None
+
+        # Intermediates
+        self.ux: np.ndarray | None = None
+        self.u: np.ndarray | None = None
+        self.w: np.ndarray | None = None
+        self.v: np.ndarray | None = None
 
         # State
         self.x: np.ndarray | None = None
@@ -108,176 +177,133 @@ class ADMMSolver:
         self.v_plus: np.ndarray | None = None
         self.lambdas: np.ndarray | None = None
 
-    def _factorize(self, mat: np.ndarray, use_cholesky: bool, use_ldlt: bool):
-        if use_cholesky:
-            try:
-                self.llt = Cholesky(mat)
-            except np.linalg.LinAlgError as e:
-                raise ValueError("Matrix is not positive definite!") from e
-        elif use_ldlt:
-            try:
-                self.ldlt = LDLTEigen3(mat)
-            except np.linalg.LinAlgError as e:
-                raise ValueError("Matrix is not positive definite!") from e
+    ###
+    # Internal operations
+    ###
 
-    def _solve_system(self, mat: np.ndarray, vec: np.ndarray, use_cholesky: bool, use_ldlt: bool) -> np.ndarray:
-        if use_cholesky:
-            return self.llt.solve(vec)
-        elif use_ldlt:
-            return self.ldlt.solve(vec)
-        else:
-            return np.linalg.solve(mat, vec)
+    def _set_tolerance_dtype(self):
+        """
+        Ensure that all tolerances are of the correct dtype and at least equal to the corresponding machine epsilon.
+        """
+        eps = np.finfo(self.dtype).eps
+        self.primal_tolerance = self.dtype.type(max(self.primal_tolerance, eps))
+        self.dual_tolerance = self.dtype.type(max(self.dual_tolerance, eps))
+        self.compl_tolerance = self.dtype.type(max(self.compl_tolerance, eps))
+        self.iter_tolerance = self.dtype.type(max(self.iter_tolerance, eps))
 
-    def _update_variables(self):
-        self.x = self.omega * self.x + (1.0 - self.omega) * self.y_p
-        self.y = self.x - (1.0 / self.rho) * self.z_p
-        self.z = self.z_p + self.rho * (self.y - self.x)
+    def _check_state(self) -> bool:
+        """Check and correct the ADMM state vectors: primal, slack and dual variables."""
+        x_valid = np.all(np.isfinite(self.x)) and np.all(np.abs(self.x) < self.maxvalue)
+        y_valid = np.all(np.isfinite(self.y)) and np.all(np.abs(self.y) < self.maxvalue)
+        z_valid = np.all(np.isfinite(self.z)) and np.all(np.abs(self.z) < self.maxvalue)
+        if not (x_valid and y_valid and z_valid):
+            self.status.result = ADMMResult.ERROR
+            return False
+        return True
+
+    def _store_kkt_solver_error(self, iter: int):
+        """Store the linear solver errors for the current iteration."""
+        self.info.r_linsys_compute_abs[iter] = self.kkt_solver.compute_error_abs
+        self.info.r_linsys_compute_rel[iter] = self.kkt_solver.compute_error_rel
+        self.info.r_linsys_solve_abs[iter] = self.kkt_solver.solve_error_abs
+        self.info.r_linsys_solve_rel[iter] = self.kkt_solver.solve_error_rel
+
+    def _store_schur_solver_error(self, iter: int):
+        """Store the linear solver errors for the current iteration."""
+        self.info.r_linsys_compute_abs[iter] = self.schur_solver.compute_error_abs
+        self.info.r_linsys_compute_rel[iter] = self.schur_solver.compute_error_rel
+        self.info.r_linsys_solve_abs[iter] = self.schur_solver.solve_error_abs
+        self.info.r_linsys_solve_rel[iter] = self.schur_solver.solve_error_rel
+
+    def _update_state(self):
+        """Update the ADMM state vectors: primal, slack and dual variables."""
+        self.x[:] = self.omega * self.x + (self.dtype.type(1) - self.omega) * self.y_p
+        self.y[:] = self.x - (self.dtype.type(1) / self.rho) * self.z_p
+        self.z[:] = self.z_p + self.rho * (self.y - self.x)
 
     def _compute_residuals(self, iter: int):
         """Compute the residuals for the current state."""
+        # eps = np.finfo(self.dtype).eps
         self.r_p = self.x - self.y
         self.r_d = self.eta * (self.x - self.x_p) + self.rho * (self.y - self.y_p)
         self.r_c = np.dot(self.x, self.z)
+        self.r_i = self.y - self.y_p
         self.status.r_p = np.max(np.abs(self.r_p))
         self.status.r_d = np.max(np.abs(self.r_d))
         self.status.r_c = np.max(np.abs(self.r_c))
+        self.status.r_i = np.max(np.abs(self.r_i))
         self.info.r_p[iter] = self.status.r_p
         self.info.r_d[iter] = self.status.r_d
         self.info.r_c[iter] = self.status.r_c
+        self.info.r_i[iter] = self.status.r_i
+        self.info.norm_x[iter] = np.max(np.abs(self.x))
+        self.info.norm_y[iter] = np.max(np.abs(self.y))
+        self.info.norm_z[iter] = np.max(np.abs(self.z))
 
-    def _has_converged(self, iter: int) -> bool:
+    def _check_converged(self, iter: int) -> bool:
         """Check if the solver has converged based on the current iteration."""
-        return (
+        meets_tolerances: bool = (
             iter > 0
             and self.status.r_p < self.primal_tolerance
             and self.status.r_d < self.dual_tolerance
             and self.status.r_c < self.compl_tolerance
         )
+        has_stagnated: bool = iter > 0 and self.status.r_i < self.iter_tolerance
+        self.status.converged = meets_tolerances or has_stagnated
+        return self.status.converged
 
     def _update_previous(self):
-        self.x_p = self.x.copy()
-        self.y_p = self.y.copy()
-        self.z_p = self.z.copy()
+        self.x_p[:] = self.x
+        self.y_p[:] = self.y
+        self.z_p[:] = self.z
 
-    def _truncate_residuals(self):
+    def _set_result(self):
+        if self.status.converged:
+            self.status.result = ADMMResult.SUCCESS
+        elif self.status.iterations >= self.maxiter:
+            if (
+                self.status.r_p > self.diverge_tolerance
+                or self.status.r_d > self.diverge_tolerance
+                or self.status.r_c > self.diverge_tolerance
+                or self.status.r_i > self.diverge_tolerance
+            ):
+                self.status.result = ADMMResult.DIVERGE
+            else:
+                self.status.result = ADMMResult.MAXITER
+
+    def _truncate_info(self):
+        self.info.r_linsys_compute_abs = self.info.r_linsys_compute_abs[: self.status.iterations]
+        self.info.r_linsys_compute_rel = self.info.r_linsys_compute_rel[: self.status.iterations]
+        self.info.r_linsys_solve_abs = self.info.r_linsys_solve_abs[: self.status.iterations]
+        self.info.r_linsys_solve_rel = self.info.r_linsys_solve_rel[: self.status.iterations]
         self.info.r_p = self.info.r_p[: self.status.iterations]
         self.info.r_d = self.info.r_d[: self.status.iterations]
         self.info.r_c = self.info.r_c[: self.status.iterations]
+        self.info.r_i = self.info.r_i[: self.status.iterations]
+        self.info.norm_x = self.info.norm_x[: self.status.iterations]
+        self.info.norm_y = self.info.norm_y[: self.status.iterations]
+        self.info.norm_z = self.info.norm_z[: self.status.iterations]
 
-    def solve_schur(
-        self, D: np.ndarray, v_f: np.ndarray, use_cholesky: bool = False, use_ldlt: bool = False
-    ) -> ADMMStatus:
-        self.info = ADMMInfo(maxiter=self.maxiter, dtype=D.dtype)
-
-        self.v = np.zeros_like(v_f)
-        self.D = np.copy(D)
-        self.D += (self.eta + self.rho) * np.eye(D.shape[0])
-        self._factorize(self.D, use_cholesky, use_ldlt)
-
-        self.x = np.zeros_like(v_f)
-        self.y = np.zeros_like(v_f)
-        self.z = np.zeros_like(v_f)
-        self.x_p = np.zeros_like(v_f)
-        self.y_p = np.zeros_like(v_f)
-        self.z_p = np.zeros_like(v_f)
-
-        self.u_plus = None
-        self.v_plus = np.zeros_like(v_f)
-        self.lambdas = np.zeros_like(v_f)
-
-        self.status = ADMMStatus()
-        for i in range(self.maxiter):
-            self.status.iterations += 1
-
-            self.v = -v_f + self.eta * self.x_p + self.rho * self.y_p + self.z_p
-
-            self.x = self._solve_system(self.D, self.v, use_cholesky, use_ldlt)
-
-            self._update_variables()
-            self._compute_residuals(i)
-            if self._has_converged(i):
-                self.status.converged = True
-                break
-            self._update_previous()
-
-        self._truncate_residuals()
-        self.v_plus = self.z.copy()
-        self.lambdas = self.y.copy()
-
-        return self.status
-
-    def solve_schur_preconditioned(
-        self, D: np.ndarray, v_f: np.ndarray, use_cholesky: bool = False, use_ldlt: bool = False
-    ) -> ADMMStatus:
-        self.info = ADMMInfo(maxiter=self.maxiter, dtype=D.dtype)
-
-        self.v = np.zeros_like(v_f)
-        self.vp = np.zeros_like(v_f)
-        self.Dp = np.copy(D)
-
-        S = np.sqrt(np.reciprocal(np.abs(self.Dp.diagonal())))
-        S = np.diag(S)
-
-        self.vp = S @ v_f
-        self.Dp = S @ self.Dp @ S
-        self.Dp += (self.eta + self.rho) * np.eye(self.Dp.shape[0])
-        self._factorize(self.Dp, use_cholesky, use_ldlt)
-
-        self.x = np.zeros_like(v_f)
-        self.y = np.zeros_like(v_f)
-        self.z = np.zeros_like(v_f)
-        self.x_p = np.zeros_like(v_f)
-        self.y_p = np.zeros_like(v_f)
-        self.z_p = np.zeros_like(v_f)
-
-        self.u_plus = None
-        self.v_plus = np.zeros_like(v_f)
-        self.lambdas = np.zeros_like(v_f)
-
-        self.status = ADMMStatus()
-        for i in range(self.maxiter):
-            self.status.iterations += 1
-
-            self.v = -self.vp + self.eta * self.x_p + self.rho * self.y_p + self.z_p
-
-            self.x = self._solve_system(self.Dp, self.v, use_cholesky, use_ldlt)
-
-            self._update_variables()
-            self._compute_residuals(i)
-            if self._has_converged(i):
-                self.status.converged = True
-                break
-            self._update_previous()
-
-        self._truncate_residuals()
-        self.v_plus = S @ self.z
-        self.lambdas = S @ self.y
-
-        return self.status
+    ###
+    # Public API
+    ###
 
     def solve_kkt(
-        self, M: np.ndarray, J: np.ndarray, h: np.ndarray, u_p: np.ndarray, v_star: np.ndarray, use_ldlt: bool = False
+        self,
+        M: np.ndarray,
+        J: np.ndarray,
+        h: np.ndarray,
+        u_minus: np.ndarray,
+        v_star: np.ndarray,
     ) -> ADMMStatus:
-        self.info = ADMMInfo(maxiter=self.maxiter, dtype=M.dtype)
+        self.dtype = M.dtype
+        self._set_tolerance_dtype()
 
-        nbd = M.shape[0]
-        ncts = J.shape[0]
+        self.status = ADMMStatus(dtype=self.dtype)
+        self.info = ADMMInfo(maxiter=self.maxiter, dtype=self.dtype)
 
-        kdim = nbd + ncts
-        self.K = np.zeros((kdim, kdim), dtype=M.dtype)
-        self.k = np.zeros((kdim,), dtype=M.dtype)
-
-        # self.K[:nbd, :nbd] = M
-        # self.K[:nbd, nbd:] = J.T
-        # self.K[nbd:, :nbd] = J
-        # self.K[nbd:, nbd:] = - (self.eta + self.rho) * np.eye(ncts, dtype=M.dtype)
-        # self.k[:nbd] = M @ u_p + h
-        self.K[:ncts, :ncts] = -(self.eta + self.rho) * np.eye(ncts, dtype=M.dtype)
-        self.K[:ncts, ncts:] = J
-        self.K[ncts:, :ncts] = J.T
-        self.K[ncts:, ncts:] = M
-        self.k[ncts:] = M @ u_p + h
-        self._factorize(self.K, False, use_ldlt)
+        self.w = np.zeros_like(u_minus)
+        self.v = np.zeros_like(v_star)
 
         self.x = np.zeros_like(v_star)
         self.y = np.zeros_like(v_star)
@@ -286,40 +312,220 @@ class ADMMSolver:
         self.y_p = np.zeros_like(v_star)
         self.z_p = np.zeros_like(v_star)
 
-        self.u_plus = np.zeros_like(u_p)
-        self.v_plus = np.zeros_like(v_star)
-        self.lambdas = np.zeros_like(v_star)
+        self.nbd = M.shape[0]
+        self.ncts = J.shape[0]
 
-        self.status = ADMMStatus()
+        kdim = self.nbd + self.ncts
+        self.ux = np.zeros((kdim,), dtype=self.dtype)
+        self.k = np.zeros((kdim,), dtype=self.dtype)
+        self.K = np.zeros((kdim, kdim), dtype=self.dtype)
+
+        self.w[:] = M @ u_minus + h
+        self.k[self.ncts :] = self.w
+        self.K[self.ncts :, self.ncts :] = M
+        self.K[self.ncts :, : self.ncts] = J.T
+        self.K[: self.ncts, self.ncts :] = J
+        self.K[: self.ncts, : self.ncts] = -(self.eta + self.rho) * np.eye(self.ncts, dtype=self.dtype)
+
+        self.kkt_solver.compute(A=self.K, compute_error=True)
+
         for i in range(self.maxiter):
             self.status.iterations += 1
 
-            # self.k[nbd:] = - v_star + self.eta * self.x_p + self.rho * self.y_p + self.z_p
-            self.k[:ncts] = -v_star + self.eta * self.x_p + self.rho * self.y_p + self.z_p
+            self.v[:] = -v_star + self.eta * self.x_p + self.rho * self.y_p + self.z_p
+            self.k[: self.ncts] = self.v
+            self.ux[:] = self.kkt_solver.solve(b=self.k, compute_error=True)
+            self.x[:] = -self.ux[: self.ncts]
+            if not self._check_state():
+                break
 
-            ux = self._solve_system(self.K, self.k, False, use_ldlt)
-
-            # self.u_plus = ux[:nbd]
-            # self.x = - ux[nbd:]
-            self.x = -ux[:ncts]
-            self.u_plus = ux[ncts:]
-
-            self._update_variables()
+            self._update_state()
+            self._store_kkt_solver_error(i)
             self._compute_residuals(i)
-            if self._has_converged(i):
-                self.status.converged = True
+            if self._check_converged(i):
                 break
             self._update_previous()
 
-        self._truncate_residuals()
+        self._set_result()
+        self._truncate_info()
         self.lambdas = self.y.copy()
+        self.v_plus = self.z.copy()
+        self.u_plus = self.ux[self.ncts :]
+
+        return self.status
+
+    def solve_schur_primal(
+        self,
+        M: np.ndarray,
+        J: np.ndarray,
+        h: np.ndarray,
+        u_minus: np.ndarray,
+        v_star: np.ndarray,
+    ) -> ADMMStatus:
+        self.dtype = M.dtype
+        self._set_tolerance_dtype()
+
+        self.status = ADMMStatus(dtype=self.dtype)
+        self.info = ADMMInfo(maxiter=self.maxiter, dtype=self.dtype)
+
+        self.u = np.zeros_like(u_minus)
+        self.w = np.zeros_like(u_minus)
+        self.v = np.zeros_like(v_star)
+
+        self.x = np.zeros_like(v_star)
+        self.y = np.zeros_like(v_star)
+        self.z = np.zeros_like(v_star)
+        self.x_p = np.zeros_like(v_star)
+        self.y_p = np.zeros_like(v_star)
+        self.z_p = np.zeros_like(v_star)
+
+        self.nbd = M.shape[0]
+        self.ncts = J.shape[0]
+
+        epsilon = self.eta + self.rho
+        r_epsilon = self.dtype.type(1) / epsilon
+        self.w = M @ u_minus + h
+        self.p = np.zeros_like(self.w)
+        self.P = M + r_epsilon * (J.T @ J)
+
+        self.schur_solver.compute(A=self.P, compute_error=True)
+
+        for i in range(self.maxiter):
+            self.status.iterations += 1
+
+            self.v[:] = -v_star + self.eta * self.x_p + self.rho * self.y_p + self.z_p
+            self.p[:] = self.w + r_epsilon * (J.T @ self.v)
+            self.u[:] = self.schur_solver.solve(b=self.p, compute_error=True)
+            self.x[:] = r_epsilon * (self.v - J @ self.u)
+            if not self._check_state():
+                break
+
+            self._update_state()
+            self._store_schur_solver_error(i)
+            self._compute_residuals(i)
+            if self._check_converged(i):
+                break
+            self._update_previous()
+
+        self._set_result()
+        self._truncate_info()
+        self.lambdas = self.y.copy()
+        self.v_plus = self.z.copy()
+        self.u_plus = self.u.copy()
+
+        return self.status
+
+    def solve_schur_dual(
+        self,
+        D: np.ndarray,
+        v_f: np.ndarray,
+        v_star: np.ndarray,
+        u_minus: np.ndarray,
+        invM: np.ndarray,
+        J: np.ndarray,
+        h: np.ndarray,
+        use_preconditioning: bool = False,
+    ) -> ADMMStatus:
+        self.dtype = D.dtype
+        self._set_tolerance_dtype()
+
+        self.status = ADMMStatus(dtype=self.dtype)
+        self.info = ADMMInfo(maxiter=self.maxiter, dtype=self.dtype)
+
+        self.x = np.zeros_like(v_f)
+        self.y = np.zeros_like(v_f)
+        self.z = np.zeros_like(v_f)
+        self.x_p = np.zeros_like(v_f)
+        self.y_p = np.zeros_like(v_f)
+        self.z_p = np.zeros_like(v_f)
+
+        self.nbd = J.shape[1]
+        self.ncts = J.shape[0]
+
+        self.v = -(v_star + v_f)
+        self.d = np.zeros_like(v_f)
+        self.D = np.copy(D)
+        if use_preconditioning:
+            S = np.sqrt(np.reciprocal(np.abs(self.D.diagonal())))
+            S = np.diag(S)
+            # print("Raw:   D: ", np.linalg.norm(self.D))
+            # print("Raw: v_f: ", np.linalg.norm(self.v))
+            self.v = S @ self.v
+            self.D = S @ self.D @ S
+            # print("Preconditioner    S: ", np.linalg.norm(S))
+            # print("Preconditioned:   D: ", np.linalg.norm(self.D))
+            # print("Preconditioned: v_f: ", np.linalg.norm(self.v))
+        self.D += (self.eta + self.rho) * np.eye(D.shape[0])
+
+        self.schur_solver.compute(A=self.D, compute_error=True)
+
+        for i in range(self.maxiter):
+            self.status.iterations += 1
+
+            self.d[:] = self.v + self.eta * self.x_p + self.rho * self.y_p + self.z_p
+            self.x[:] = self.schur_solver.solve(b=self.d, compute_error=True)
+            if not self._check_state():
+                break
+
+            self._update_state()
+            self._store_schur_solver_error(i)
+            self._compute_residuals(i)
+            if self._check_converged(i):
+                break
+            self._update_previous()
+
+        self._set_result()
+        self._truncate_info()
+        if use_preconditioning:
+            self.lambdas = S @ self.y
+            self.v_plus = S @ self.z
+        else:
+            self.lambdas = self.y.copy()
+            self.v_plus = self.z.copy()
+        self.u_plus = compute_u_plus(u_minus=u_minus, invM=invM, J=J, h=h, lambdas=self.lambdas)
 
         return self.status
 
     def save_info(self, path: str, suffix: str = ""):
-        import os
+        import os  # noqa: PLC0415
 
-        import matplotlib.pyplot as plt
+        import matplotlib.pyplot as plt  # noqa: PLC0415
+
+        plt.figure(figsize=(8, 4))
+        plt.plot(self.info.r_linsys_compute_abs)
+        plt.title("ADMM LinearSolver Compute Abs. Error")
+        plt.xlabel("Iteration")
+        plt.ylabel("Abs. Error")
+        plt.grid(True)
+        plt.savefig(os.path.join(path, f"admm_info_linsys_compute_abs{suffix}.png"))
+        plt.close()
+
+        plt.figure(figsize=(8, 4))
+        plt.plot(self.info.r_linsys_compute_rel)
+        plt.title("ADMM LinearSolver Compute Rel. Error")
+        plt.xlabel("Iteration")
+        plt.ylabel("Rel. Error")
+        plt.grid(True)
+        plt.savefig(os.path.join(path, f"admm_info_linsys_compute_rel{suffix}.png"))
+        plt.close()
+
+        plt.figure(figsize=(8, 4))
+        plt.plot(self.info.r_linsys_solve_abs)
+        plt.title("ADMM LinearSolver Solve Abs. Error")
+        plt.xlabel("Iteration")
+        plt.ylabel("Abs. Error")
+        plt.grid(True)
+        plt.savefig(os.path.join(path, f"admm_info_linsys_solve_abs{suffix}.png"))
+        plt.close()
+
+        plt.figure(figsize=(8, 4))
+        plt.plot(self.info.r_linsys_solve_rel)
+        plt.title("ADMM LinearSolver Solve Rel. Error")
+        plt.xlabel("Iteration")
+        plt.ylabel("Rel. Error")
+        plt.grid(True)
+        plt.savefig(os.path.join(path, f"admm_info_linsys_solve_rel{suffix}.png"))
+        plt.close()
 
         plt.figure(figsize=(8, 4))
         plt.plot(self.info.r_p)
@@ -346,4 +552,40 @@ class ADMMSolver:
         plt.ylabel("r_c")
         plt.grid(True)
         plt.savefig(os.path.join(path, f"admm_info_res_compl{suffix}.png"))
+        plt.close()
+
+        plt.figure(figsize=(8, 4))
+        plt.plot(self.info.r_i)
+        plt.title("ADMM Iter. Residual")
+        plt.xlabel("Iteration")
+        plt.ylabel("r_i")
+        plt.grid(True)
+        plt.savefig(os.path.join(path, f"admm_info_res_iter{suffix}.png"))
+        plt.close()
+
+        plt.figure(figsize=(8, 4))
+        plt.plot(self.info.norm_x)
+        plt.title("ADMM Primal Variable Norm")
+        plt.xlabel("Iteration")
+        plt.ylabel("||x||_inf")
+        plt.grid(True)
+        plt.savefig(os.path.join(path, f"admm_info_norm_x{suffix}.png"))
+        plt.close()
+
+        plt.figure(figsize=(8, 4))
+        plt.plot(self.info.norm_y)
+        plt.title("ADMM Slack Variable Norm")
+        plt.xlabel("Iteration")
+        plt.ylabel("||y||_inf")
+        plt.grid(True)
+        plt.savefig(os.path.join(path, f"admm_info_norm_y{suffix}.png"))
+        plt.close()
+
+        plt.figure(figsize=(8, 4))
+        plt.plot(self.info.norm_z)
+        plt.title("ADMM Dual Variable Norm")
+        plt.xlabel("Iteration")
+        plt.ylabel("||z||_inf")
+        plt.grid(True)
+        plt.savefig(os.path.join(path, f"admm_info_norm_z{suffix}.png"))
         plt.close()

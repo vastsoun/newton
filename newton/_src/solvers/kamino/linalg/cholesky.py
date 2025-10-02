@@ -270,6 +270,7 @@ def make_cholesky_blocked_factorize_kernel(block_size: int):
     ):
         # Retrieve the thread index and thread-block configuration
         tid, tid_block = wp.tid()
+        num_threads_per_block = wp.block_dim()
 
         # Retrieve the matrix block dimensions and size
         dim = dim_in[tid]

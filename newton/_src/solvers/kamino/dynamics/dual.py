@@ -1394,7 +1394,7 @@ class DualProblem:
 
         # TODO: make this optional
         # Build the non-linear generalized force vector
-        build_nonlinear_generalized_force(model, state, self._data)
+        # build_nonlinear_generalized_force(model, state, self._data)
 
         # Build the generalized free-velocity vector
         build_generalized_free_velocity(model, state, self._data)

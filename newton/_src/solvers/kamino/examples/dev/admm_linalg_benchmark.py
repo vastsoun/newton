@@ -26,6 +26,10 @@ import numpy as np
 
 import newton._src.solvers.kamino.utils.linalg as linalg
 import newton._src.solvers.kamino.utils.logger as msg
+from newton._src.solvers.kamino.linalg.utils import (
+    RectangularMatrixProperties,
+    SquareSymmetricMatrixProperties,
+)
 from newton._src.solvers.kamino.tests.utils.print import print_error_stats
 from newton._src.solvers.kamino.utils.io import hdf5
 from newton._src.solvers.kamino.utils.profiles import PerformanceProfile
@@ -126,9 +130,9 @@ class ConstrainedDynamicsInfo:
     constraint_density: float = 0.0
     # Derived properties
     jacobian_rank_ratio: float = 0.0
-    props_J: linalg.RectangularMatrixProperties | None = None
-    props_M: linalg.SquareSymmetricMatrixProperties | None = None
-    props_D: linalg.SquareSymmetricMatrixProperties | None = None
+    props_J: RectangularMatrixProperties | None = None
+    props_M: SquareSymmetricMatrixProperties | None = None
+    props_D: SquareSymmetricMatrixProperties | None = None
 
     def __str__(self) -> str:
         return (
@@ -677,9 +681,9 @@ def load_problem_data(dataframe: h5py.Group, dtype: type = np.float64) -> Constr
         mass_ratio=si_data.mass_ratio,
         constraint_density=si_data.constraint_density,
         jacobian_rank_ratio=si_data.jacobian_rank / dp_data.info.nd if dp_data.info.nd > 0 else np.inf,
-        props_J=linalg.RectangularMatrixProperties(dp_data.J),
-        props_M=linalg.SquareSymmetricMatrixProperties(dp_data.M),
-        props_D=linalg.SquareSymmetricMatrixProperties(dp_data.D),
+        props_J=RectangularMatrixProperties(dp_data.J),
+        props_M=SquareSymmetricMatrixProperties(dp_data.M),
+        props_D=SquareSymmetricMatrixProperties(dp_data.D),
     )
 
     # Construct the problem quantities from the HDF5 data
@@ -743,7 +747,7 @@ def make_kkt_system(
 
     # Optionally compute matrix properties
     if save_matrix_info:
-        properties_K = linalg.SquareSymmetricMatrixProperties(K)
+        properties_K = SquareSymmetricMatrixProperties(K)
         properties_K_str = str(properties_K)
         msg.debug("K properties: %s", properties_K_str)
         print(properties_K_str, file=open(os.path.join(path, "K_properties.txt"), "w"))
@@ -779,7 +783,7 @@ def make_dual_system(
 
     # Optionally compute matrix properties
     if save_matrix_info:
-        properties_D = linalg.SquareSymmetricMatrixProperties(D)
+        properties_D = SquareSymmetricMatrixProperties(D)
         properties_D_str = str(properties_D)
         msg.debug("D properties: %s", properties_D_str)
         print(properties_D_str, file=open(os.path.join(path, "D_properties.txt"), "w"))

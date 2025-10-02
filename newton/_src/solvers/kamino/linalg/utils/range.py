@@ -13,14 +13,47 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""TODO"""
+"""KAMINO: Linear Algebra Utilities: Operations to check if a rhs vector lies within the range of a matrix"""
 
 import numpy as np
 
-from .factorize.lu_nopivot import (
+from ...utils.linalg.factorize.lu_nopivot import (
     lu_nopiv,
     lu_nopiv_solve_forward_lower,
 )
+
+###
+# Module interface
+###
+
+__all__ = [
+    "in_range_via_gaussian_elimination",
+    "in_range_via_left_nullspace",
+    "in_range_via_lu",
+    "in_range_via_projection",
+    "in_range_via_rank",
+    "in_range_via_residual",
+]
+
+###
+# Utilities
+###
+
+
+def _svd_rank(s: np.ndarray, shape: tuple, rcond: float | None = None):
+    """
+    Determine numerical rank from singular values using a pinv-like threshold.
+    """
+    m, n = shape
+    if rcond is None:
+        rcond = float(np.finfo(s.dtype).eps)
+    tol = rcond * max(m, n) * (s[0] if s.size else 0.0)
+    return int(np.sum(s > tol)), float(tol)
+
+
+###
+# Functions
+###
 
 
 def in_range_via_rank(A: np.ndarray, b: np.ndarray) -> bool:
@@ -55,23 +88,12 @@ def in_range_via_residual(A: np.ndarray, b: np.ndarray) -> bool:
     return r_norm <= tol, r_norm, float(tol), x.ravel()
 
 
-def svd_rank(s: np.ndarray, shape: tuple, rcond: float | None = None):
-    """
-    Determine numerical rank from singular values using a pinv-like threshold.
-    """
-    m, n = shape
-    if rcond is None:
-        rcond = float(np.finfo(s.dtype).eps)
-    tol = rcond * max(m, n) * (s[0] if s.size else 0.0)
-    return int(np.sum(s > tol)), float(tol)
-
-
 def in_range_via_left_nullspace(U: np.ndarray, s: np.ndarray, b: np.ndarray, shape: tuple, rcond: float | None = None):
     """
     b is in range(A) iff U0^T b ≈ 0, where U0 are left singular vectors for zero sigmas.
     Returns (bool, residual_norm, tol).
     """
-    r, _ = svd_rank(s, shape, rcond)
+    r, _ = _svd_rank(s, shape, rcond)
 
     U0 = U[:, r:]  # left-nullspace basis (empty if full rank)
     if U0.size == 0:
@@ -90,7 +112,7 @@ def in_range_via_projection(U: np.ndarray, s: np.ndarray, b: np.ndarray, shape: 
     Project b onto span(U_r) and measure the leftover: ||(I - U_r U_r^T) b||.
     Returns (bool, distance_to_range, tol, b_proj).
     """
-    r, _ = svd_rank(s, shape, rcond)
+    r, _ = _svd_rank(s, shape, rcond)
 
     Ur = U[:, :r]
     b_proj = Ur @ (Ur.T @ b) if r > 0 else np.zeros_like(b)

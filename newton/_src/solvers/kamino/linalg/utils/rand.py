@@ -13,9 +13,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""KAMINO: Utilities: Linear Algebra: Random Data Generation"""
+"""KAMINO: Linear Algebra Utilities: Random matrix/rhs generation"""
 
 import numpy as np
+
+###
+# Module interface
+###
+
+__all__ = [
+    "ArrayLike",
+    "eigenvalues_from_distribution",
+    "random_rhs_for_matrix",
+    "random_spd_matrix",
+    "random_symmetric_matrix",
+]
+
 
 ###
 # Types

@@ -19,7 +19,7 @@ KAMINO: Utilities: Linear Algebra: standard LDLT w/o pivoting
 
 import numpy as np
 
-from ..matrix import (
+from ....linalg.utils.matrix import (
     _make_tolerance,
     assert_is_square_matrix,
     assert_is_symmetric_matrix,

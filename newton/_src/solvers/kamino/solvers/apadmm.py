@@ -2733,7 +2733,7 @@ class APADMMDualSolver:
         # Compute De Saxce correction from the previous dual variables
         self.update_desaxce_correction(problem)
 
-        # Compute the total velocity bias
+        # Compute the total velocity bias, i.e. rhs vector of the unconstrained linear system
         self.update_velocity_bias(problem)
 
         # Compute the unconstrained solution and store in the primal variables

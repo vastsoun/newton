@@ -144,7 +144,7 @@ class RandomProblemLLT:
         return (
             f"RandomProblemLLT("
             f"\nseed: {self.seed}"
-            f"\nblocks: {self.num_blocks}"
+            f"\nnum_blocks: {self.num_blocks}"
             f"\nnp_dtype: {self.np_dtype}"
             f"\nwp_dtype: {self.wp_dtype}"
             f"\ndims: {self.dims}"
@@ -160,6 +160,7 @@ class RandomProblemLLT:
             f"\nvio_wp: {self.vio_wp.numpy()}"
             f"\nA_wp (shape): {self.A_wp.shape}"
             f"\nb_wp (shape): {self.b_wp.shape}"
+            f"\n)"
         )
 
 

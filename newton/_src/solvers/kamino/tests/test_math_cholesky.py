@@ -713,12 +713,13 @@ class TestMathCholesky(unittest.TestCase):
         Tests the blocked Cholesky factorization kernel on a single problem.
         """
         # Constants
-        block_size = 16  # Block size for the blocked factorization
+        N = 12
+        block_size = 4  # Block size for the blocked factorization
         block_dim = 128
 
         # Create a single-instance problem
         problem = RandomProblemLLT(
-            dims=10,
+            dims=N,
             seed=self.seed,
             np_dtype=np.float32,
             wp_dtype=float32,

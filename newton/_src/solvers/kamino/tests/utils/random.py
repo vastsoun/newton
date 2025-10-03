@@ -38,13 +38,13 @@ class RandomProblemLLT:
         self,
         seed: int = 42,
         dims: list[int] | int | None = None,
+        maxdims: list[int] | int | None = None,
         A: list[np.ndarray] | None = None,
         b: list[np.ndarray] | None = None,
         np_dtype=np.float32,
         wp_dtype=float32,
         device: Devicelike = None,
         upper: bool = False,
-        verbose: bool = False,
     ):
         # Check input data to ensure they are indeed lists of numpy arrays
         if A is not None:
@@ -59,14 +59,31 @@ class RandomProblemLLT:
         if isinstance(dims, int):
             dims = [dims]
         elif isinstance(dims, list):
-            if not all(isinstance(d, int) for d in dims):
-                raise ValueError("All dimensions must be integers.")
+            if not all(isinstance(d, int) and d > 0 for d in dims):
+                raise ValueError("All dimensions must be positive integers.")
         else:
             raise TypeError("Dimensions must be an integer or a list of integers.")
+
+        # Ensure the max problem dimensions are valid if provided, otherwise set them to dims
+        if maxdims is not None:
+            if isinstance(maxdims, int):
+                maxdims = [maxdims] * len(dims)
+            elif isinstance(maxdims, list):
+                if not all(isinstance(md, int) and md > 0 for md in maxdims):
+                    raise ValueError("All max dimensions must be positive integers.")
+                if len(maxdims) != len(dims):
+                    raise ValueError("maxdims must have the same length as dims.")
+                if any(md < d for md, d in zip(maxdims, dims, strict=False)):
+                    raise ValueError("All maxdims must be greater than or equal to dims.")
+            else:
+                raise TypeError("maxdims must be an integer or a list of integers.")
+        else:
+            maxdims = dims
 
         # Cache the problem configurations
         self.num_blocks: int = len(dims)
         self.dims: list[int] = dims
+        self.maxdims: list[int] = maxdims
         self.seed: int = seed
         self.np_dtype = np_dtype
         self.wp_dtype = wp_dtype
@@ -80,25 +97,25 @@ class RandomProblemLLT:
         self.x_np: list[np.ndarray] = []
 
         # Declare the warp arrays of contatenated problem data
-        self.mio_wp: wp.array | None = None
-        self.vio_wp: wp.array | None = None
         self.maxdim_wp: wp.array | None = None
         self.dim_wp: wp.array | None = None
+        self.mio_wp: wp.array | None = None
+        self.vio_wp: wp.array | None = None
         self.A_wp: wp.array | None = None
         self.b_wp: wp.array | None = None
 
         # Initialize the flattened problem data
-        A_sizes = [n * n for n in self.dims]
+        A_sizes = [n * n for n in self.maxdims]
         A_offsets = [0] + [sum(A_sizes[:i]) for i in range(1, len(A_sizes) + 1)]
         A_flat_size = sum(A_sizes)
-        A_flat = np.ndarray(shape=(A_flat_size,), dtype=np_dtype)
-        b_sizes = list(self.dims)
+        A_flat = np.full(shape=(A_flat_size,), fill_value=np.inf, dtype=np_dtype)
+        b_sizes = list(self.maxdims)
         b_offsets = [0] + [sum(b_sizes[:i]) for i in range(1, len(b_sizes) + 1)]
         b_flat_size = sum(b_sizes)
-        b_flat = np.ndarray(shape=(b_flat_size,), dtype=np_dtype)
+        b_flat = np.full(shape=(b_flat_size,), fill_value=np.inf, dtype=np_dtype)
 
         # Generate randomized problem data
-        for i, n in enumerate(self.dims):
+        for i, (n, nmax) in enumerate(zip(self.dims, self.maxdims, strict=False)):
             # Generate a random SPD matrix if not provided
             if A is None:
                 A_mat = random_spd_matrix(dim=n, seed=self.seed, dtype=np_dtype)
@@ -125,18 +142,25 @@ class RandomProblemLLT:
             # Flatten the matrix and store it in the A_flat array
             A_start = A_offsets[len(self.A_np) - 1]
             A_end = A_offsets[len(self.A_np)]
-            A_flat[A_start:A_end] = A_mat.flat
+            # Fill the flattened array row-wise to account for dim <= maxdim
+            if n == nmax:
+                A_flat[A_start:A_end] = A_mat.flat
+            else:
+                for row in range(n):
+                    row_start = A_start + row * nmax
+                    row_end = row_start + n
+                    A_flat[row_start:row_end] = A_mat[row, 0:n]
             # Flatten the vector and store it in the b_flat array
             b_start = b_offsets[len(self.b_np) - 1]
-            b_end = b_offsets[len(self.b_np)]
+            b_end = b_start + n
             b_flat[b_start:b_end] = b_vec
 
         # Construct the warp arrays
         with wp.ScopedDevice(self.device):
+            self.maxdim_wp = wp.array(self.maxdims, dtype=int32)
+            self.dim_wp = wp.array(self.dims, dtype=int32)
             self.mio_wp = wp.array(A_offsets[: self.num_blocks], dtype=int32)
             self.vio_wp = wp.array(b_offsets[: self.num_blocks], dtype=int32)
-            self.maxdim_wp = wp.array(self.dims, dtype=int32)
-            self.dim_wp = wp.array(self.dims, dtype=int32)
             self.A_wp = wp.array(A_flat, dtype=float32)
             self.b_wp = wp.array(b_flat, dtype=float32)
 
@@ -148,6 +172,7 @@ class RandomProblemLLT:
             f"\nnp_dtype: {self.np_dtype}"
             f"\nwp_dtype: {self.wp_dtype}"
             f"\ndims: {self.dims}"
+            f"\nmaxdims: {self.maxdims}"
             f"\ndevice: {self.device}"
             f"\nA_np (shape): {[A.shape for A in self.A_np]}"
             f"\nb_np (shape): {[b.shape for b in self.b_np]}"
@@ -169,6 +194,7 @@ class RandomProblemLDLT:
         self,
         seed: int = 42,
         dims: list[int] | int | None = None,
+        maxdims: list[int] | int | None = None,
         ranks: list[int] | int | None = None,
         eigenvalues: ArrayLike = None,
         A: list[np.ndarray] | None = None,
@@ -177,7 +203,6 @@ class RandomProblemLDLT:
         wp_dtype=float32,
         device: Devicelike = None,
         lower: bool = True,
-        verbose: bool = False,
     ):
         # Check input data to ensure they are indeed lists of numpy arrays
         if A is not None:
@@ -196,6 +221,20 @@ class RandomProblemLDLT:
                 raise ValueError("All dimensions must be integers.")
         else:
             raise TypeError("Dimensions must be an integer or a list of integers.")
+
+        # Ensure the max problem dimensions are valid if provided, otherwise set them to dims
+        if maxdims is not None:
+            if isinstance(maxdims, int):
+                maxdims = [maxdims] * len(dims)
+            elif isinstance(maxdims, list):
+                if not all(isinstance(md, int) for md in maxdims):
+                    raise ValueError("All max dimensions must be integers.")
+                if len(maxdims) != len(dims):
+                    raise ValueError("maxdims must have the same length as dims.")
+            else:
+                raise TypeError("maxdims must be an integer or a list of integers.")
+        else:
+            maxdims = dims
 
         # Ensure the rank dimensions are valid
         if ranks is not None:
@@ -219,6 +258,7 @@ class RandomProblemLDLT:
         # Cache the problem configurations
         self.num_blocks: int = len(dims)
         self.dims: list[int] = dims
+        self.maxdims: list[int] = maxdims
         self.seed: int = seed
         self.np_dtype = np_dtype
         self.wp_dtype = wp_dtype
@@ -235,25 +275,25 @@ class RandomProblemLDLT:
         self.x_np: list[np.ndarray] = []
 
         # Declare the warp arrays of contatenated problem data
-        self.mio_wp: wp.array | None = None
-        self.vio_wp: wp.array | None = None
         self.maxdim_wp: wp.array | None = None
         self.dim_wp: wp.array | None = None
+        self.mio_wp: wp.array | None = None
+        self.vio_wp: wp.array | None = None
         self.A_wp: wp.array | None = None
         self.b_wp: wp.array | None = None
 
         # Initialize the flattened problem data
-        A_sizes = [n * n for n in self.dims]
+        A_sizes = [n * n for n in self.maxdims]
         A_offsets = [0] + [sum(A_sizes[:i]) for i in range(1, len(A_sizes) + 1)]
         A_flat_size = sum(A_sizes)
         A_flat = np.ndarray(shape=(A_flat_size,), dtype=np_dtype)
-        b_sizes = list(self.dims)
+        b_sizes = list(self.maxdims)
         b_offsets = [0] + [sum(b_sizes[:i]) for i in range(1, len(b_sizes) + 1)]
         b_flat_size = sum(b_sizes)
         b_flat = np.ndarray(shape=(b_flat_size,), dtype=np_dtype)
 
         # Generate randomized problem data
-        for i, n in enumerate(self.dims):
+        for i, (n, nmax) in enumerate(zip(self.dims, self.maxdims, strict=False)):
             # Generate a random SPD matrix if not provided
             if A is None:
                 A_mat = random_symmetric_matrix(
@@ -285,7 +325,14 @@ class RandomProblemLDLT:
             # Flatten the matrix and store it in the A_flat array
             A_start = A_offsets[len(self.A_np) - 1]
             A_end = A_offsets[len(self.A_np)]
-            A_flat[A_start:A_end] = A_mat.flat
+            # Fill the flattened array row-wise to account for dim <= maxdim
+            if n == nmax:
+                A_flat[A_start:A_end] = A_mat.flat
+            else:
+                for row in range(n):
+                    row_start = A_start + row * nmax
+                    row_end = row_start + n
+                    A_flat[row_start:row_end] = A_mat[row, 0:n]
             # Flatten the vector and store it in the b_flat array
             b_start = b_offsets[len(self.b_np) - 1]
             b_end = b_offsets[len(self.b_np)]
@@ -293,36 +340,39 @@ class RandomProblemLDLT:
 
         # Construct the warp arrays
         with wp.ScopedDevice(self.device):
+            self.maxdim_wp = wp.array(self.maxdims, dtype=int32)
+            self.dim_wp = wp.array(self.dims, dtype=int32)
             self.mio_wp = wp.array(A_offsets[: self.num_blocks], dtype=int32)
             self.vio_wp = wp.array(b_offsets[: self.num_blocks], dtype=int32)
-            self.maxdim_wp = wp.array(self.dims, dtype=int32)
-            self.dim_wp = wp.array(self.dims, dtype=int32)
             self.A_wp = wp.array(A_flat, dtype=float32)
             self.b_wp = wp.array(b_flat, dtype=float32)
 
-        # Optional verbose output
-        if verbose:
-            print("\n")
-            print(f"LDLTProblem.blocks: {self.num_blocks}")
-            print(f"LDLTProblem.dims: {self.dims}")
-            print(f"LDLTProblem.seed: {self.seed}")
-            print(f"LDLTProblem.np_dtype: {self.np_dtype}")
-            print(f"LDLTProblem.wp_dtype: {self.wp_dtype}")
-            print(f"LDLTProblem.device: {self.device}")
-            print(f"LDLTProblem.self.A_np (shape): {[A.shape for A in self.A_np]}")
-            print(f"LDLTProblem.self.b_np (shape): {[b.shape for b in self.b_np]}")
-            print(f"LDLTProblem.self.X_np (shape): {[X.shape for X in self.X_np]}")
-            print(f"LDLTProblem.self.D_np (shape): {[D.shape for D in self.D_np]}")
-            print(f"LDLTProblem.self.P_np (shape): {[P.shape for P in self.P_np]}")
-            print(f"LDLTProblem.self.y_np (shape): {[y.shape for y in self.y_np]}")
-            print(f"LDLTProblem.self.z_np (shape): {[z.shape for z in self.z_np]}")
-            print(f"LDLTProblem.self.x_np (shape): {[x.shape for x in self.x_np]}")
-            print(f"LDLTProblem.self.mio_wp: {self.mio_wp.numpy()}")
-            print(f"LDLTProblem.self.vio_wp: {self.vio_wp.numpy()}")
-            print(f"LDLTProblem.self.maxdim_wp: {self.maxdim_wp.numpy()}")
-            print(f"LDLTProblem.self.dim_wp: {self.dim_wp.numpy()}")
-            print(f"LDLTProblem.self.A_wp (shape): {self.A_wp.shape}")
-            print(f"LDLTProblem.self.b_wp (shape): {self.b_wp.shape}")
+    def __str__(self) -> str:
+        return (
+            f"RandomProblemLDLT("
+            f"\nseed: {self.seed}"
+            f"\nnum_blocks: {self.num_blocks}"
+            f"\nnp_dtype: {self.np_dtype}"
+            f"\nwp_dtype: {self.wp_dtype}"
+            f"\ndims: {self.dims}"
+            f"\nmaxdims: {self.maxdims}"
+            f"\ndevice: {self.device}"
+            f"\nA_np (shape): {[A.shape for A in self.A_np]}"
+            f"\nb_np (shape): {[b.shape for b in self.b_np]}"
+            f"\nX_np (shape): {[X.shape for X in self.X_np]}"
+            f"\nD_np (shape): {[D.shape for D in self.D_np]}"
+            f"\nP_np (shape): {[P.shape for P in self.P_np]}"
+            f"\nz_np (shape): {[z.shape for z in self.z_np]}"
+            f"\ny_np (shape): {[y.shape for y in self.y_np]}"
+            f"\nx_np (shape): {[x.shape for x in self.x_np]}"
+            f"\nmaxdim_wp: {self.maxdim_wp.numpy()}"
+            f"\ndim_wp: {self.dim_wp.numpy()}"
+            f"\nmio_wp: {self.mio_wp.numpy()}"
+            f"\nvio_wp: {self.vio_wp.numpy()}"
+            f"\nA_wp (shape): {self.A_wp.shape}"
+            f"\nb_wp (shape): {self.b_wp.shape}"
+            f"\n)"
+        )
 
 
 ###

@@ -282,6 +282,26 @@ class LLTSequentialSolver(DirectSolver):
             **kwargs,
         )
 
+    ###
+    # Properties
+    ###
+
+    @property
+    def L(self) -> wp.array:
+        if self._L is None:
+            raise ValueError("The factorization array has not been allocated!")
+        return self._L
+
+    @property
+    def y(self) -> wp.array:
+        if self._y is None:
+            raise ValueError("The intermediate result array has not been allocated!")
+        return self._y
+
+    ###
+    # Implementation
+    ###
+
     @override
     def _allocate_impl(self, A: DenseLinearOperatorData, **kwargs: dict[str, Any]) -> None:
         # Check the operator has info
@@ -344,9 +364,139 @@ class LLTSequentialSolver(DirectSolver):
         )
 
 
+class LLTBlockedSolver(DirectSolver):
+    """
+    A Blocked LLT (i.e. Cholesky) factorization class computing each matrix block with Tile-based parallelism.\n
+    """
+
+    def __init__(
+        self,
+        operator: DenseLinearOperatorData | None = None,
+        block_size: int = 16,
+        solve_block_dim: int = 64,
+        factortize_block_dim: int = 128,
+        atol: float | None = None,
+        rtol: float | None = None,
+        ftol: float | None = None,
+        dtype: Floatlike = float32,
+        device: Devicelike | None = None,
+        **kwargs: dict[str, Any],
+    ):
+        # Declare LLT-specific internal data
+        self._L: wp.array | None = None
+        """A flat array containing the Cholesky factorization of each matrix block."""
+        self._y: wp.array | None = None
+        """A flat array containing the intermediate results for the solve operation."""
+
+        # Cache the fixed block size
+        self._block_size: int = block_size
+
+        # Set default values for the kernel thread and block dimensions
+        self._factortize_block_dim: int = factortize_block_dim
+        self._solve_block_dim: int = solve_block_dim
+
+        # Create the factorization and solve kernels
+        self._factorize_kernel = factorize.make_llt_blocked_factorize_kernel(block_size)
+        self._solve_kernel = factorize.make_llt_blocked_solve_kernel(block_size)
+        self._solve_inplace_kernel = factorize.make_llt_blocked_solve_inplace_kernel(block_size)
+
+        # Initialize base class members
+        super().__init__(
+            operator=operator,
+            atol=atol,
+            rtol=rtol,
+            ftol=ftol,
+            dtype=dtype,
+            device=device,
+            **kwargs,
+        )
+
+    ###
+    # Properties
+    ###
+
+    @property
+    def L(self) -> wp.array:
+        if self._L is None:
+            raise ValueError("The factorization array has not been allocated!")
+        return self._L
+
+    @property
+    def y(self) -> wp.array:
+        if self._y is None:
+            raise ValueError("The intermediate result array has not been allocated!")
+        return self._y
+
+    ###
+    # Implementation
+    ###
+
+    @override
+    def _allocate_impl(self, A: DenseLinearOperatorData, **kwargs: dict[str, Any]) -> None:
+        # Check the operator has info
+        if A.info is None:
+            raise ValueError("The provided operator does not have any associated info!")
+
+        # Ensure that the underlying operator is compatible with LLT
+        if not isinstance(A.info, DenseSquareMultiLinearInfo):
+            raise ValueError("LLT factorization requires a square matrix.")
+
+        # Allocate the Cholesky factorization matrix and the
+        # intermediate result buffer on the specified device
+        with wp.ScopedDevice(self._device):
+            self._L = wp.zeros(shape=(self._operator.info.total_mat_size,), dtype=self._dtype)
+            self._y = wp.zeros(shape=(self._operator.info.total_vec_size,), dtype=self._dtype)
+
+    @override
+    def _factorize_impl(self, A: wp.array) -> None:
+        factorize.llt_blocked_factorize(
+            kernel=self._factorize_kernel,
+            num_blocks=self._operator.info.num_blocks,
+            block_dim=self._factortize_block_dim,
+            maxdim=self._operator.info.maxdim,
+            dim=self._operator.info.dim,
+            mio=self._operator.info.mio,
+            A=A,
+            L=self._L,
+        )
+
+    @override
+    def _reconstruct_impl(self, A: wp.array) -> None:
+        raise NotImplementedError("LLT matrix reconstruction is not yet implemented.")
+
+    @override
+    def _solve_impl(self, b: wp.array, x: wp.array) -> None:
+        # Solve the system L * y = b and L^T * x = y
+        factorize.llt_sequential_solve(
+            num_blocks=self._operator.info.num_blocks,
+            maxdim=self._operator.info.maxdim,
+            dim=self._operator.info.dim,
+            mio=self._operator.info.mio,
+            vio=self._operator.info.vio,
+            L=self._L,
+            b=b,
+            y=self._y,
+            x=x,
+            device=self._device,
+        )
+
+    @override
+    def _solve_inplace_impl(self, x: wp.array) -> None:
+        # Solve the system L * y = x and L^T * x = y
+        factorize.llt_sequential_solve_inplace(
+            num_blocks=self._operator.info.num_blocks,
+            maxdim=self._operator.info.maxdim,
+            dim=self._operator.info.dim,
+            mio=self._operator.info.mio,
+            vio=self._operator.info.vio,
+            L=self._L,
+            x=x,
+        )
+
+
 ###
 # Summary
 ###
 
-LinearSolverType = LLTSequentialSolver
+LinearSolverType = LLTSequentialSolver | LLTBlockedSolver
 """Type alias over all linear solvers."""

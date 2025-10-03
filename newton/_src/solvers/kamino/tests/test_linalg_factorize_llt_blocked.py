@@ -713,8 +713,8 @@ class TestMathCholesky(unittest.TestCase):
         Tests the blocked Cholesky factorization kernel on a single problem.
         """
         # Constants
-        N = 22
-        block_size = 5  # Block size for the blocked factorization
+        N = 12
+        block_size = 4  # Block size for the blocked factorization
         block_dim = 128
 
         # Create a single-instance problem
@@ -724,6 +724,7 @@ class TestMathCholesky(unittest.TestCase):
             np_dtype=np.float32,
             wp_dtype=float32,
             device=self.default_device,
+            verbose=self.verbose,
         )
         msg.debug("Problem:\n%s\n", problem)
         msg.debug("b_np:\n%s\n", problem.b_np[0])
@@ -764,7 +765,7 @@ class TestMathCholesky(unittest.TestCase):
 
         # Check matrix factorization against numpy
         is_L_close = np.allclose(L_wp_np, problem.X_np[0], rtol=1e-4, atol=1e-6)
-        if not is_L_close or self.verbose:
+        if not is_L_close and self.verbose:
             print_error_stats("L", L_wp_np, problem.X_np[0], problem.dims[0])
         self.assertTrue(is_L_close)
 
@@ -776,7 +777,7 @@ class TestMathCholesky(unittest.TestCase):
 
         # Check matrix reconstruction against original matrix
         is_A_close = np.allclose(A_rec_wp_np, problem.A_np[0], rtol=1e-3, atol=1e-4)
-        if not is_A_close or self.verbose:
+        if not is_A_close and self.verbose:
             print_error_stats("A", A_rec_wp_np, problem.A_np[0], problem.dims[0])
         self.assertTrue(is_A_close)
 

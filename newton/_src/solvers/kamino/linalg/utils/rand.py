@@ -238,6 +238,7 @@ def random_spd_matrix(
     dim: int,
     dtype: np.dtype = np.float64,
     scale: float | None = None,
+    eta: float | None = None,
     seed: int | None = None,
     return_source: bool = False,
 ) -> np.ndarray | tuple[np.ndarray, np.ndarray]:
@@ -274,11 +275,18 @@ def random_spd_matrix(
     scale = dtype(scale)
     sqrt_scale = dtype(sqrt_scale)
 
+    # Set a default diagonal regularizer `eta` value if unspecified
+    if eta is None:
+        eta = dim
+    elif not isinstance(eta, float):
+        raise TypeError("eta must be a float.")
+    eta = dtype(eta)
+
     # Generate a random matrix
     X = sqrt_scale * rng.standard_normal((dim, dim)).astype(dtype)
 
-    # Construct symmetric positive definite matrix: A.T @ A + dim * I
-    A = X.T @ X + scale * np.eye(dim, dtype=dtype)
+    # Construct symmetric positive definite matrix: A.T @ A + eta * I
+    A = X.T @ X + eta * np.eye(dim, dtype=dtype)
 
     # Ensure the matrix is symmetric
     A = dtype(0.5) * (A + A.T)

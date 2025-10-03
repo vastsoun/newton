@@ -55,19 +55,21 @@ def make_llt_blocked_factorize_kernel(block_size: int):
     @wp.kernel
     def llt_blocked_factorize_kernel(
         # Inputs:
-        dim_in: wp.array(dtype=int32),
-        rio_in: wp.array(dtype=int32),
-        A_in: wp.array2d(dtype=float32),
+        maxdim: wp.array(dtype=int32),
+        dim: wp.array(dtype=int32),
+        mio: wp.array(dtype=int32),
+        A: wp.array(dtype=float32),
         # Outputs:
-        L_out: wp.array2d(dtype=float32),
+        L: wp.array2d(dtype=float32),
     ):
         # Retrieve the thread index and thread-block configuration
         tid, tid_block = wp.tid()
         num_threads_per_block = wp.block_dim()
 
         # Retrieve the matrix block dimensions and size
-        dim = dim_in[tid]
-        rio = rio_in[tid]
+        maxdim = maxdim[tid]
+        dim = dim[tid]
+        mio = mio[tid]
 
         # Round up active_matrix_size to next multiple of block_size
         active_matrix_size = dim * dim
@@ -79,7 +81,7 @@ def make_llt_blocked_factorize_kernel(block_size: int):
 
             # Load current diagonal block A[k:end, k:end]
             # and update with contributions from previously computed blocks.
-            A_kk_tile = wp.tile_load(A_in, shape=(block_size, block_size), offset=(rio + k, k), storage="shared")
+            A_kk_tile = wp.tile_load(A, shape=(block_size, block_size), offset=(mio + k, k), storage="shared")
             # The following if pads the matrix if it is not divisible by block_size
             if k + block_size > active_matrix_size or k + block_size > active_matrix_size:
                 num_tile_elements = block_size * block_size
@@ -97,18 +99,18 @@ def make_llt_blocked_factorize_kernel(block_size: int):
 
             if k > 0:
                 for j in range(0, k, block_size):
-                    L_block = wp.tile_load(L_out, shape=(block_size, block_size), offset=(rio + k, j))
+                    L_block = wp.tile_load(L, shape=(block_size, block_size), offset=(mio + k, j))
                     L_block_T = wp.tile_transpose(L_block)
                     L_L_T_block = wp.tile_matmul(L_block, L_block_T)
                     A_kk_tile -= L_L_T_block
 
             # Compute the Cholesky factorization for the block
             L_kk_tile = wp.tile_cholesky(A_kk_tile)
-            wp.tile_store(L_out, L_kk_tile, offset=(rio + k, k))
+            wp.tile_store(L, L_kk_tile, offset=(mio + k, k))
 
             # Process the blocks below the current block
             for i in range(end, n, block_size):
-                A_ik_tile = wp.tile_load(A_in, shape=(block_size, block_size), offset=(rio + i, k), storage="shared")
+                A_ik_tile = wp.tile_load(A, shape=(block_size, block_size), offset=(mio + i, k), storage="shared")
                 # The following if pads the matrix if it is not divisible by block_size
                 if i + block_size > active_matrix_size or k + block_size > active_matrix_size:
                     num_tile_elements = block_size * block_size
@@ -126,8 +128,8 @@ def make_llt_blocked_factorize_kernel(block_size: int):
 
                 if k > 0:
                     for j in range(0, k, block_size):
-                        L_tile = wp.tile_load(L_out, shape=(block_size, block_size), offset=(rio + i, j))
-                        L_2_tile = wp.tile_load(L_out, shape=(block_size, block_size), offset=(rio + k, j))
+                        L_tile = wp.tile_load(L, shape=(block_size, block_size), offset=(mio + i, j))
+                        L_2_tile = wp.tile_load(L, shape=(block_size, block_size), offset=(mio + k, j))
                         L_T_tile = wp.tile_transpose(L_2_tile)
                         L_L_T_tile = wp.tile_matmul(L_tile, L_T_tile)
                         A_ik_tile -= L_L_T_tile
@@ -136,7 +138,7 @@ def make_llt_blocked_factorize_kernel(block_size: int):
                 tmp = wp.tile_lower_solve(L_kk_tile, t)
                 sol_tile = wp.tile_transpose(tmp)
 
-                wp.tile_store(L_out, sol_tile, offset=(rio + i, k))
+                wp.tile_store(L, sol_tile, offset=(mio + i, k))
 
     # Return the kernel function
     return llt_blocked_factorize_kernel
@@ -264,28 +266,30 @@ def make_llt_blocked_solve_inplace_kernel(block_size: int):
 
 def llt_blocked_factorize(
     kernel,
+    maxdim: wp.array(dtype=int32),
     dim: wp.array(dtype=int32),
-    rio: wp.array(dtype=int32),
-    A: wp.array2d(dtype=float32),
-    L: wp.array2d(dtype=float32),
+    mio: wp.array(dtype=int32),
+    A: wp.array(dtype=float32),
+    L: wp.array(dtype=float32),
     num_blocks: int = 1,
-    block_dim: int = 128,
+    block_dim: int = 128,  # TODO: Rename this to be clearer that this is the number of threads per TILE block and not matrix block
     device: Devicelike = None,
 ):
     """
     Launches the blocked Cholesky factorization kernel for a block partitioned matrix.
 
     Args:
-        num_blocks (int): The number of matrix blocks to process.
-        dim (wp.array): An array of shape `(num_blocks,)` containing the dimensions of each matrix block.
-        rio (wp.array): An array of shape `(num_blocks,)` containing the row index offsets of each matrix block.
-        A (wp.array2d): The flat input array containing the input matrix blocks to be factorized.
-        L (wp.array2d): The flat output array containing the Cholesky factorization of each matrix block.
         kernel: The kernel function to use for the blocked factorization.
+        num_blocks (int): The number of matrix blocks to process.
         block_dim (int): The dimension of the thread block to use for the kernel launch.
+        maxdim (wp.array): An array of shape `(num_blocks,)` containing the maximum dimensions of each matrix block.
+        dim (wp.array): An array of shape `(num_blocks,)` containing the active dimensions of each matrix block.
+        mio (wp.array): An array of shape `(num_blocks,)` containing the matrix index offset (mio) of each matrix block.
+        A (wp.array): The flat input array containing the input matrix blocks to be factorized.
+        L (wp.array): The flat output array containing the factorization of each matrix block.
     """
     wp.launch_tiled(
-        kernel=kernel, dim=num_blocks, inputs=[dim, rio, A], outputs=[L], block_dim=block_dim, device=device
+        kernel=kernel, dim=num_blocks, inputs=[maxdim, dim, mio, A], outputs=[L], block_dim=block_dim, device=device
     )
 
 

@@ -387,10 +387,8 @@ class LLTBlockedSolver(DirectSolver):
 
         # Cache the fixed block size
         self._block_size: int = block_size
-
-        # Set default values for the kernel thread and block dimensions
-        self._factortize_block_dim: int = factortize_block_dim
         self._solve_block_dim: int = solve_block_dim
+        self._factortize_block_dim: int = factortize_block_dim
 
         # Create the factorization and solve kernels
         self._factorize_kernel = factorize.make_llt_blocked_factorize_kernel(block_size)
@@ -450,7 +448,6 @@ class LLTBlockedSolver(DirectSolver):
             kernel=self._factorize_kernel,
             num_blocks=self._operator.info.num_blocks,
             block_dim=self._factortize_block_dim,
-            maxdim=self._operator.info.maxdim,
             dim=self._operator.info.dim,
             mio=self._operator.info.mio,
             A=A,
@@ -464,9 +461,10 @@ class LLTBlockedSolver(DirectSolver):
     @override
     def _solve_impl(self, b: wp.array, x: wp.array) -> None:
         # Solve the system L * y = b and L^T * x = y
-        factorize.llt_sequential_solve(
+        factorize.llt_blocked_solve(
+            kernel=self._solve_kernel,
             num_blocks=self._operator.info.num_blocks,
-            maxdim=self._operator.info.maxdim,
+            block_dim=self._solve_block_dim,
             dim=self._operator.info.dim,
             mio=self._operator.info.mio,
             vio=self._operator.info.vio,
@@ -479,15 +477,18 @@ class LLTBlockedSolver(DirectSolver):
 
     @override
     def _solve_inplace_impl(self, x: wp.array) -> None:
-        # Solve the system L * y = x and L^T * x = y
-        factorize.llt_sequential_solve_inplace(
+        # Solve the system L * y = b and L^T * x = y
+        factorize.llt_blocked_solve_inplace(
+            kernel=self._solve_inplace_kernel,
             num_blocks=self._operator.info.num_blocks,
-            maxdim=self._operator.info.maxdim,
+            block_dim=self._solve_block_dim,
             dim=self._operator.info.dim,
             mio=self._operator.info.mio,
             vio=self._operator.info.vio,
             L=self._L,
+            y=self._y,
             x=x,
+            device=self._device,
         )
 
 

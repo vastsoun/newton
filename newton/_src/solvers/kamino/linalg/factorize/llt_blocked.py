@@ -74,6 +74,35 @@ get_float32_array_offset_ptr = make_get_array_offset_ptr_func(wp.float32)
 """A Warp function to get the offset pointer of a float32 warp array."""
 
 
+# def make_tile_pad(block_size: int, dtype=float32):
+#     """Creates a function to pad a tile with identity values where the tile exceeds the matrix dimensions."""
+#     @wp.func
+#     def tile_pad(
+#         T: wp.tile(dtype=dtype, shape=(block_size, block_size)),
+#         i: int,
+#         j: int,
+#         n_i: int,
+#         n_j: int,
+#         tid_block: int,
+#         num_threads_per_block: int,
+#     ) -> None:
+#         """Pads a tile T with identity values where the tile exceeds the matrix dimensions."""
+#         if i + block_size > n_i or j + block_size > n_j:
+#             num_tile_elements = block_size * block_size
+#             num_iterations = (num_tile_elements + num_threads_per_block - 1) // num_threads_per_block
+#             for ii in range(num_iterations):
+#                 linear_index = tid_block + ii * num_threads_per_block
+#                 linear_index = linear_index % num_tile_elements
+#                 row = linear_index // block_size
+#                 col = linear_index % block_size
+#                 value = T[row, col]
+#                 if i + row >= n_i or j + col >= n_j:
+#                     value = wp.where(i + row == j + col, dtype(1), dtype(0))
+#                 T[row, col] = value
+
+#     return tile_pad
+
+
 ###
 # Kernels
 ###
@@ -236,9 +265,6 @@ def make_llt_blocked_solve_kernel(block_size: int):
         for i in range(n_i_padded - block_size, -1, -block_size):
             i_end = i + block_size
             rhs_tile = wp.tile_load(y_i, shape=(block_size, 1), offset=(i, 0))
-            # wp.printf("[tid=%d][tid_block=%d] @i=%d\n", tid, tid_block, i)
-            # print("\nrhs_tile (init):")
-            # print(rhs_tile)
             if i_end < n_i_padded:
                 for j in range(i_end, n_i_padded, block_size):
                     L_tile = wp.tile_load(L_i, shape=(block_size, block_size), offset=(j, i))
@@ -246,11 +272,7 @@ def make_llt_blocked_solve_kernel(block_size: int):
                     x_tile = wp.tile_load(x_i, shape=(block_size, 1), offset=(j, 0))
                     L_T_x_tile = wp.tile_matmul(L_T_tile, x_tile)
                     rhs_tile -= L_T_x_tile
-            # print("\nrhs_tile (sum):")
-            # print(rhs_tile)
             L_tile = wp.tile_load(L_i, shape=(block_size, block_size), offset=(i, i))
-            # print("\nL_tile:")
-            # print(L_tile)
 
             # The following if pads the matrix if it is not divisible by block_size
             if i + block_size > n_i:
@@ -265,13 +287,10 @@ def make_llt_blocked_solve_kernel(block_size: int):
                     if i + row >= n_i:
                         value = wp.where(i + row == i + col, float32(1), float32(0))
                     L_tile[row, col] = value
+            # wp.static(make_tile_pad(block_size=block_size, dtype=float32))(L_tile, i, i, n_i, n_i, tid_block, num_threads_per_block)
 
             L_T_tile = wp.tile_transpose(L_tile)
-            # print("\nL_T_tile:")
-            # print(L_T_tile)
             x_tile = wp.tile_upper_solve(L_T_tile, rhs_tile)
-            # print("\nx_tile:")
-            # print(x_tile)
             wp.tile_store(x_i, x_tile, offset=(i, 0))
 
     # Return the kernel function

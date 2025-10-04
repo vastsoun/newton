@@ -672,9 +672,9 @@ if __name__ == "__main__":
     wp.config.enable_backward = False
     wp.config.verbose = False
 
-    # # Clear caches
-    # wp.clear_kernel_cache()
-    # wp.clear_lto_cache()
+    # Clear caches
+    wp.clear_kernel_cache()
+    wp.clear_lto_cache()
 
     # TODO: How can we get these to work?
     # Ensure the AOT module is compiled for the current device

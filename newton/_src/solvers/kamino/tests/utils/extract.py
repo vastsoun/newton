@@ -120,12 +120,12 @@ def extract_delassus(delassus: DelassusOperator, only_active_dims: bool = False)
     for i in range(delassus.num_worlds):
         D_maxdim = maxdim_wp_np[i]
         D_start = mio_wp_np[i]
-        D_end = D_start + D_maxdim * D_maxdim
         if only_active_dims:
             D_dim = dim_wp_np[i]
         else:
             D_dim = D_maxdim
-        D_mat.append(D_wp_np[D_start:D_end].reshape((D_maxdim, D_maxdim))[:D_dim, :D_dim])
+        D_end = D_start + D_dim * D_dim
+        D_mat.append(D_wp_np[D_start:D_end].reshape((D_dim, D_dim)))
 
     # Return the list of Delassus matrices
     return D_mat

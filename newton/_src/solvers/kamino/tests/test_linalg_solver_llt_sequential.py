@@ -36,10 +36,10 @@ def get_matrix_block(index: int, flatmat: np.ndarray, dims: list[int], maxdims: 
     """Extract a specific matrix block from a flattened array of matrices."""
     if maxdims is None:
         maxdims = dims
-    mat_max_shape = (maxdims[index], maxdims[index])
+    mat_shape = (dims[index], dims[index])
     mat_start = sum(n * n for n in maxdims[:index])
-    mat_end = mat_start + maxdims[index] ** 2
-    return flatmat[mat_start:mat_end].reshape(mat_max_shape)[0 : dims[index], 0 : dims[index]]
+    mat_end = mat_start + dims[index] ** 2
+    return flatmat[mat_start:mat_end].reshape(mat_shape)
 
 
 def get_vector_block(index: int, flatvec: np.ndarray, dims: list[int], maxdims: list[int] | None = None) -> np.ndarray:

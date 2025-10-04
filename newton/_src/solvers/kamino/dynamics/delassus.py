@@ -158,7 +158,6 @@ def _build_delassus_elementwise(
     state_bodies_inv_I_i: wp.array(dtype=mat33f),
     jacobians_cts_offset: wp.array(dtype=int32),
     jacobians_cts_data: wp.array(dtype=float32),
-    delassus_maxdim: wp.array(dtype=int32),
     delassus_dim: wp.array(dtype=int32),
     delassus_mio: wp.array(dtype=int32),
     # Outputs:
@@ -172,7 +171,6 @@ def _build_delassus_elementwise(
     bio = model_info_bodies_offset[wid]
 
     # Retrieve the problem dimensions
-    maxncts = delassus_maxdim[wid]
     ncts = delassus_dim[wid]
 
     # Compute i (row) and j (col) indices from the tid
@@ -241,13 +239,12 @@ def _build_delassus_elementwise(
         D_ji += lin_ji + ang_ji
 
     # Store the result in the Delassus matrix
-    delassus_D[dmio + maxncts * i + j] = 0.5 * (D_ij + D_ji)
+    delassus_D[dmio + ncts * i + j] = 0.5 * (D_ij + D_ji)
 
 
 @wp.kernel
 def _regularize_delassus_diagonal(
     # Inputs:
-    delassus_maxdim: wp.array(dtype=int32),
     delassus_dim: wp.array(dtype=int32),
     delassus_vio: wp.array(dtype=int32),
     delassus_mio: wp.array(dtype=int32),
@@ -259,7 +256,6 @@ def _regularize_delassus_diagonal(
     wid, tid = wp.tid()
 
     # Retrieve the problem dimensions and matrix block index offset
-    maxdim = delassus_maxdim[wid]
     dim = delassus_dim[wid]
     vio = delassus_vio[wid]
     mio = delassus_mio[wid]
@@ -269,7 +265,7 @@ def _regularize_delassus_diagonal(
         return
 
     # Regularize the diagonal element
-    delassus_D[mio + maxdim * tid + tid] += eta[vio + tid]
+    delassus_D[mio + dim * tid + tid] += eta[vio + tid]
 
 
 ###
@@ -533,7 +529,6 @@ class DelassusOperator:
                 state.bodies.inv_I_i,
                 jacobians.J_cts_offsets,
                 jacobians.J_cts_data,
-                self._data.maxdim,
                 self._data.dim,
                 self._data.mio,
                 # Outputs:
@@ -553,7 +548,7 @@ class DelassusOperator:
         wp.launch(
             kernel=_regularize_delassus_diagonal,
             dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
-            inputs=[self._data.maxdim, self._data.dim, self._data.vio, self._data.mio, eta, self._data.D],
+            inputs=[self._data.dim, self._data.vio, self._data.mio, eta, self._data.D],
         )
 
     def factorize(self, reset_to_zero: bool = True):

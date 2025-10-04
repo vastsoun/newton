@@ -322,7 +322,6 @@ class LLTSequentialSolver(DirectSolver):
     def _factorize_impl(self, A: wp.array) -> None:
         factorize.llt_sequential_factorize(
             num_blocks=self._operator.info.num_blocks,
-            maxdim=self._operator.info.maxdim,
             dim=self._operator.info.dim,
             mio=self._operator.info.mio,
             A=A,
@@ -339,7 +338,6 @@ class LLTSequentialSolver(DirectSolver):
         # Solve the system L * y = b and L^T * x = y
         factorize.llt_sequential_solve(
             num_blocks=self._operator.info.num_blocks,
-            maxdim=self._operator.info.maxdim,
             dim=self._operator.info.dim,
             mio=self._operator.info.mio,
             vio=self._operator.info.vio,
@@ -355,7 +353,6 @@ class LLTSequentialSolver(DirectSolver):
         # Solve the system L * y = x and L^T * x = y
         factorize.llt_sequential_solve_inplace(
             num_blocks=self._operator.info.num_blocks,
-            maxdim=self._operator.info.maxdim,
             dim=self._operator.info.dim,
             mio=self._operator.info.mio,
             vio=self._operator.info.vio,

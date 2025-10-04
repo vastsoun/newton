@@ -67,7 +67,6 @@ wp.set_module_options({"enable_backward": False})
 @wp.kernel
 def _cholesky_sequential_factorize(
     # Inputs:
-    maxdim_in: wp.array(dtype=int32),
     dim_in: wp.array(dtype=int32),
     mio_in: wp.array(dtype=int32),
     A_in: wp.array(dtype=float32),
@@ -79,16 +78,15 @@ def _cholesky_sequential_factorize(
 
     # Retrieve the matrix start offset and dimension
     mio = mio_in[tid]
-    maxn = maxdim_in[tid]
     n = dim_in[tid]
 
     # Compute the Cholesky factorization sequentially
     for i in range(n):
-        m_i = mio + maxn * i
+        m_i = mio + n * i
         m_ii = m_i + i
         A_ii = A_in[m_ii]
         for j in range(i + 1):
-            m_j = mio + maxn * j
+            m_j = mio + n * j
             m_jj = m_j + j
             m_ij = m_i + j
             A_ij = A_in[m_ij]
@@ -107,7 +105,6 @@ def _cholesky_sequential_factorize(
 @wp.kernel
 def _cholesky_sequential_solve_forward(
     # Inputs:
-    maxdim_in: wp.array(dtype=int32),
     dim_in: wp.array(dtype=int32),
     mio_in: wp.array(dtype=int32),
     vio_in: wp.array(dtype=int32),
@@ -122,12 +119,11 @@ def _cholesky_sequential_solve_forward(
     # Retrieve the start offsets and problem dimension
     mio = mio_in[tid]
     vio = vio_in[tid]
-    maxn = maxdim_in[tid]
     n = dim_in[tid]
 
     # Forward substitution to solve L * y = b
     for i in range(n):
-        m_i = mio + maxn * i
+        m_i = mio + n * i
         m_ii = m_i + i
         L_ii = L_in[m_ii]
         sum_i = b_in[vio + i]
@@ -140,7 +136,6 @@ def _cholesky_sequential_solve_forward(
 @wp.kernel
 def _cholesky_sequential_solve_backward(
     # Inputs:
-    maxdim_in: wp.array(dtype=int32),
     dim_in: wp.array(dtype=int32),
     mio_in: wp.array(dtype=int32),
     vio_in: wp.array(dtype=int32),
@@ -155,17 +150,16 @@ def _cholesky_sequential_solve_backward(
     # Retrieve the start offsets and problem dimension
     mio = mio_in[tid]
     vio = vio_in[tid]
-    maxn = maxdim_in[tid]
     n = dim_in[tid]
 
     # Backward substitution to solve L^T * x = y
     for i in range(n - 1, -1, -1):
-        m_i = mio + maxn * i
+        m_i = mio + n * i
         m_ii = m_i + i
         LT_ii = L_in[m_ii]
         sum_i = y_in[vio + i]
         for j in range(i + 1, n):
-            m_ji = mio + maxn * j + i
+            m_ji = mio + n * j + i
             sum_i -= L_in[m_ji] * x_out[vio + j]
         x_out[vio + i] = sum_i / LT_ii
 
@@ -173,7 +167,6 @@ def _cholesky_sequential_solve_backward(
 @wp.kernel
 def _cholesky_sequential_solve(
     # Inputs:
-    maxdim_in: wp.array(dtype=int32),
     dim_in: wp.array(dtype=int32),
     mio_in: wp.array(dtype=int32),
     vio_in: wp.array(dtype=int32),
@@ -189,12 +182,11 @@ def _cholesky_sequential_solve(
     # Retrieve the start offsets and problem dimension
     mio = mio_in[tid]
     vio = vio_in[tid]
-    maxn = maxdim_in[tid]
     n = dim_in[tid]
 
     # Forward substitution to solve L * y = b
     for i in range(n):
-        m_i = mio + maxn * i
+        m_i = mio + n * i
         m_ii = m_i + i
         L_ii = L_in[m_ii]
         sum_i = b_in[vio + i]
@@ -205,12 +197,12 @@ def _cholesky_sequential_solve(
 
     # Backward substitution to solve L^T * x = y
     for i in range(n - 1, -1, -1):
-        m_i = mio + maxn * i
+        m_i = mio + n * i
         m_ii = m_i + i
         LT_ii = L_in[m_ii]
         sum_i = y_out[vio + i]
         for j in range(i + 1, n):
-            m_ji = mio + maxn * j + i
+            m_ji = mio + n * j + i
             sum_i -= L_in[m_ji] * x_out[vio + j]
         x_out[vio + i] = sum_i / LT_ii
 
@@ -218,7 +210,6 @@ def _cholesky_sequential_solve(
 @wp.kernel
 def _cholesky_sequential_solve_inplace(
     # Inputs:
-    maxdim_in: wp.array(dtype=int32),
     dim_in: wp.array(dtype=int32),
     mio_in: wp.array(dtype=int32),
     vio_in: wp.array(dtype=int32),
@@ -231,12 +222,11 @@ def _cholesky_sequential_solve_inplace(
     # Retrieve the start offsets and problem dimension
     mio = mio_in[tid]
     vio = vio_in[tid]
-    maxn = maxdim_in[tid]
     n = dim_in[tid]
 
     # Forward substitution to solve L * y = b
     for i in range(n):
-        m_i = mio + maxn * i
+        m_i = mio + n * i
         m_ii = m_i + i
         L_ii = L_in[m_ii]
         sum_i = x_inout[vio + i]
@@ -247,12 +237,12 @@ def _cholesky_sequential_solve_inplace(
 
     # Backward substitution to solve L^T * x = y
     for i in range(n - 1, -1, -1):
-        m_i = mio + maxn * i
+        m_i = mio + n * i
         m_ii = m_i + i
         LT_ii = L_in[m_ii]
         sum_i = x_inout[vio + i]
         for j in range(i + 1, n):
-            m_ji = mio + maxn * j + i
+            m_ji = mio + n * j + i
             sum_i -= L_in[m_ji] * x_inout[vio + j]
         x_inout[vio + i] = sum_i / LT_ii
 
@@ -471,7 +461,6 @@ def make_cholesky_blocked_solve_inplace_kernel(block_size: int):
 
 def cholesky_sequential_factorize(
     num_blocks: int,
-    maxdim: wp.array(dtype=int32),
     dim: wp.array(dtype=int32),
     mio: wp.array(dtype=int32),
     A: wp.array(dtype=float32),
@@ -487,12 +476,11 @@ def cholesky_sequential_factorize(
         A (wp.array): The flat input array containing the input matrix blocks to be factorized.
         L (wp.array): The flat output array containing the Cholesky factorization of each matrix block.
     """
-    wp.launch(kernel=_cholesky_sequential_factorize, dim=num_blocks, inputs=[maxdim, dim, mio, A, L])
+    wp.launch(kernel=_cholesky_sequential_factorize, dim=num_blocks, inputs=[dim, mio, A, L])
 
 
 def cholesky_sequential_solve_forward(
     num_blocks: int,
-    maxdim: wp.array(dtype=int32),
     dim: wp.array(dtype=int32),
     mio: wp.array(dtype=int32),
     vio: wp.array(dtype=int32),
@@ -512,12 +500,11 @@ def cholesky_sequential_solve_forward(
         b (wp.array): The flat input array containing the stacked right-hand side vectors.
         y (wp.array): The output array where the intermediate result will be stored.
     """
-    wp.launch(kernel=_cholesky_sequential_solve_forward, dim=num_blocks, inputs=[maxdim, dim, mio, vio, L, b, y])
+    wp.launch(kernel=_cholesky_sequential_solve_forward, dim=num_blocks, inputs=[dim, mio, vio, L, b, y])
 
 
 def cholesky_sequential_solve_backward(
     num_blocks: int,
-    maxdim: wp.array(dtype=int32),
     dim: wp.array(dtype=int32),
     mio: wp.array(dtype=int32),
     vio: wp.array(dtype=int32),
@@ -537,12 +524,11 @@ def cholesky_sequential_solve_backward(
         y (wp.array): The flat input array containing the intermediate result from the forward solve.
         x (wp.array): The output array where the solution to the linear system `A @ x = b` will be stored.
     """
-    wp.launch(kernel=_cholesky_sequential_solve_backward, dim=num_blocks, inputs=[maxdim, dim, mio, vio, L, y, x])
+    wp.launch(kernel=_cholesky_sequential_solve_backward, dim=num_blocks, inputs=[dim, mio, vio, L, y, x])
 
 
 def cholesky_sequential_solve(
     num_blocks: int,
-    maxdim: wp.array(dtype=int32),
     dim: wp.array(dtype=int32),
     mio: wp.array(dtype=int32),
     vio: wp.array(dtype=int32),
@@ -564,12 +550,11 @@ def cholesky_sequential_solve(
         y (wp.array): The output array where the intermediate result will be stored.
         x (wp.array): The output array where the solution to the linear system `A @ x = b` will be stored.
     """
-    wp.launch(kernel=_cholesky_sequential_solve, dim=num_blocks, inputs=[maxdim, dim, mio, vio, L, b, y, x])
+    wp.launch(kernel=_cholesky_sequential_solve, dim=num_blocks, inputs=[dim, mio, vio, L, b, y, x])
 
 
 def cholesky_sequential_solve_inplace(
     num_blocks: int,
-    maxdim: wp.array(dtype=int32),
     dim: wp.array(dtype=int32),
     mio: wp.array(dtype=int32),
     vio: wp.array(dtype=int32),
@@ -590,7 +575,7 @@ def cholesky_sequential_solve_inplace(
     wp.launch(
         kernel=_cholesky_sequential_solve_inplace,
         dim=num_blocks,
-        inputs=[maxdim, dim, mio, vio, L, x],
+        inputs=[dim, mio, vio, L, x],
     )
 
 
@@ -975,7 +960,6 @@ class SequentialCholeskyFactorizer(CholeskyFactorizerBase):
         # Perform the Cholesky factorization
         cholesky_sequential_factorize(
             num_blocks=self._data.num_blocks,
-            maxdim=self._data.maxdim,
             dim=self._data.dim,
             mio=self._data.mio,
             A=A,
@@ -998,7 +982,6 @@ class SequentialCholeskyFactorizer(CholeskyFactorizerBase):
         # Solve the system L * y = b and L^T * x = y
         cholesky_sequential_solve(
             num_blocks=self._data.num_blocks,
-            maxdim=self._data.maxdim,
             dim=self._data.dim,
             mio=self._data.mio,
             vio=self._data.vio,
@@ -1018,7 +1001,6 @@ class SequentialCholeskyFactorizer(CholeskyFactorizerBase):
         # Solve the system L * y = x and L^T * x = y
         cholesky_sequential_solve_inplace(
             num_blocks=self._data.num_blocks,
-            maxdim=self._data.maxdim,
             dim=self._data.dim,
             mio=self._data.mio,
             vio=self._data.vio,

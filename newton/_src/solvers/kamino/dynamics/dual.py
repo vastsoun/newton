@@ -667,7 +667,6 @@ def _build_free_velocity(
 @wp.kernel
 def _build_dual_preconditioner_all_constraints(
     # Inputs:
-    problem_maxdim: wp.array(dtype=int32),
     problem_dim: wp.array(dtype=int32),
     problem_mio: wp.array(dtype=int32),
     problem_vio: wp.array(dtype=int32),
@@ -687,9 +686,6 @@ def _build_dual_preconditioner_all_constraints(
     if tid >= ncts:
         return
 
-    # Retrieve the maximum number of dimensions of the world
-    maxncts = problem_maxdim[wid]
-
     # Retrieve the matrix index offset of the world
     mio = problem_mio[wid]
 
@@ -704,7 +700,7 @@ def _build_dual_preconditioner_all_constraints(
     # TODO
     if tid < njlc:
         # Retrieve the diagonal entry of the Delassus matrix
-        D_ii = problem_D[mio + maxncts * tid + tid]
+        D_ii = problem_D[mio + ncts * tid + tid]
         # Compute the corresponding Jacobi preconditioner entry
         problem_P[vio + tid] = wp.sqrt(1.0 / (wp.abs(D_ii) + FLOAT32_EPS))
     else:
@@ -713,9 +709,9 @@ def _build_dual_preconditioner_all_constraints(
         # Only the thread of the first contact constraint dimension computes the preconditioner
         if ccid % 3 == 0:
             # Retrieve the diagonal entries of the Delassus matrix for the contact constraint set
-            D_kk_0 = problem_D[mio + maxncts * tid + tid]
-            D_kk_1 = problem_D[mio + maxncts * tid + tid + 1]
-            D_kk_2 = problem_D[mio + maxncts * tid + tid + 2]
+            D_kk_0 = problem_D[mio + ncts * tid + tid]
+            D_kk_1 = problem_D[mio + ncts * tid + tid + 1]
+            D_kk_2 = problem_D[mio + ncts * tid + tid + 2]
             # Compute the effective diagonal entry
             # D_kk = (D_kk_0 + D_kk_1 + D_kk_2) / 3.0
             # D_kk = wp.min(vec3f(D_kk_0, D_kk_1, D_kk_2))
@@ -730,7 +726,6 @@ def _build_dual_preconditioner_all_constraints(
 @wp.kernel
 def _apply_dual_preconditioner_to_matrix(
     # Inputs:
-    problem_maxdim: wp.array(dtype=int32),
     problem_dim: wp.array(dtype=int32),
     problem_mio: wp.array(dtype=int32),
     problem_vio: wp.array(dtype=int32),
@@ -752,9 +747,6 @@ def _apply_dual_preconditioner_to_matrix(
     if i >= ncts or j >= ncts:
         return
 
-    # Retrieve the maximum number of dimensions of the world
-    maxncts = problem_maxdim[wid]
-
     # Retrieve the matrix index offset of the world
     mio = problem_mio[wid]
 
@@ -762,7 +754,7 @@ def _apply_dual_preconditioner_to_matrix(
     vio = problem_vio[wid]
 
     # Compute the global index of the matrix entry
-    m_ij = mio + maxncts * i + j
+    m_ij = mio + ncts * i + j
 
     # Retrieve the i,j-th entry of the target matrix
     X_ij = X[m_ij]
@@ -818,7 +810,6 @@ def _apply_dual_preconditioner_to_vector(
 @wp.kernel
 def _mult_left_right_diag_matrix_with_matrix(
     # Inputs:
-    maxdim: wp.array(dtype=int32),
     dim: wp.array(dtype=int32),
     mio: wp.array(dtype=int32),
     vio: wp.array(dtype=int32),
@@ -841,9 +832,6 @@ def _mult_left_right_diag_matrix_with_matrix(
     if i >= n or j >= n:
         return
 
-    # Retrieve the maximum number of dimensions of the world
-    maxn = maxdim[wid]
-
     # Retrieve the matrix index offset of the world
     m_0 = mio[wid]
 
@@ -851,7 +839,7 @@ def _mult_left_right_diag_matrix_with_matrix(
     v_0 = vio[wid]
 
     # Compute the global index of the matrix entry
-    m_ij = m_0 + maxn * i + j
+    m_ij = m_0 + n * i + j
 
     # Retrieve the ij entry of the input matrix
     X_ij = X[m_ij]
@@ -1054,7 +1042,6 @@ def build_dual_preconditioner(problem: DualProblem):
         dim=(problem._size.num_worlds, problem._size.max_of_max_total_cts),
         inputs=[
             # Inputs:
-            problem.data.maxdim,
             problem.data.dim,
             problem.data.mio,
             problem.data.vio,
@@ -1076,7 +1063,6 @@ def apply_dual_preconditioner_to_dual(problem: DualProblem):
         dim=(problem._size.num_worlds, problem.delassus._max_of_max_total_D_size),
         inputs=[
             # Inputs:
-            problem.data.maxdim,
             problem.data.dim,
             problem.data.mio,
             problem.data.vio,
@@ -1108,7 +1094,6 @@ def apply_dual_preconditioner_to_matrix(problem: DualProblem, X: wp.array(dtype=
         dim=(problem._size.num_worlds, problem._size.max_of_max_total_cts),
         inputs=[
             # Inputs:
-            problem.data.maxdim,
             problem.data.dim,
             problem.data.mio,
             problem.data.vio,

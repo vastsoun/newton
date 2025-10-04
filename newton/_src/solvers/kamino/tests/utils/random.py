@@ -141,15 +141,13 @@ class RandomProblemLLT:
             self.x_np.append(x_vec)
             # Flatten the matrix and store it in the A_flat array
             A_start = A_offsets[len(self.A_np) - 1]
-            A_end = A_offsets[len(self.A_np)]
             # Fill the flattened array row-wise to account for dim <= maxdim
             if n == nmax:
+                A_end = A_offsets[len(self.A_np)]
                 A_flat[A_start:A_end] = A_mat.flat
             else:
-                for row in range(n):
-                    row_start = A_start + row * nmax
-                    row_end = row_start + n
-                    A_flat[row_start:row_end] = A_mat[row, 0:n]
+                A_end = A_start + n * n
+                A_flat[A_start:A_end] = A_mat.flat
             # Flatten the vector and store it in the b_flat array
             b_start = b_offsets[len(self.b_np) - 1]
             b_end = b_start + n
@@ -324,15 +322,13 @@ class RandomProblemLDLT:
             self.x_np.append(x_vec)
             # Flatten the matrix and store it in the A_flat array
             A_start = A_offsets[len(self.A_np) - 1]
-            A_end = A_offsets[len(self.A_np)]
             # Fill the flattened array row-wise to account for dim <= maxdim
             if n == nmax:
+                A_end = A_offsets[len(self.A_np)]
                 A_flat[A_start:A_end] = A_mat.flat
             else:
-                for row in range(n):
-                    row_start = A_start + row * nmax
-                    row_end = row_start + n
-                    A_flat[row_start:row_end] = A_mat[row, 0:n]
+                A_end = A_start + n * n
+                A_flat[A_start:A_end] = A_mat.flat
             # Flatten the vector and store it in the b_flat array
             b_start = b_offsets[len(self.b_np) - 1]
             b_end = b_offsets[len(self.b_np)]

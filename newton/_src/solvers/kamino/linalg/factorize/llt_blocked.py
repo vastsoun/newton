@@ -197,6 +197,7 @@ def make_llt_blocked_solve_kernel(block_size: int):
     ):
         # Retrieve the thread index and thread-block configuration
         tid, tid_block = wp.tid()
+        num_threads_per_block = wp.block_dim()
 
         # Retrieve the matrix block dimensions and size
         n_i = dim[tid]
@@ -235,6 +236,9 @@ def make_llt_blocked_solve_kernel(block_size: int):
         for i in range(n_i_padded - block_size, -1, -block_size):
             i_end = i + block_size
             rhs_tile = wp.tile_load(y_i, shape=(block_size, 1), offset=(i, 0))
+            # wp.printf("[tid=%d][tid_block=%d] @i=%d\n", tid, tid_block, i)
+            # print("\nrhs_tile (init):")
+            # print(rhs_tile)
             if i_end < n_i_padded:
                 for j in range(i_end, n_i_padded, block_size):
                     L_tile = wp.tile_load(L_i, shape=(block_size, block_size), offset=(j, i))
@@ -242,8 +246,32 @@ def make_llt_blocked_solve_kernel(block_size: int):
                     x_tile = wp.tile_load(x_i, shape=(block_size, 1), offset=(j, 0))
                     L_T_x_tile = wp.tile_matmul(L_T_tile, x_tile)
                     rhs_tile -= L_T_x_tile
+            # print("\nrhs_tile (sum):")
+            # print(rhs_tile)
             L_tile = wp.tile_load(L_i, shape=(block_size, block_size), offset=(i, i))
-            x_tile = wp.tile_upper_solve(wp.tile_transpose(L_tile), rhs_tile)
+            # print("\nL_tile:")
+            # print(L_tile)
+
+            # The following if pads the matrix if it is not divisible by block_size
+            if i + block_size > n_i:
+                num_tile_elements = block_size * block_size
+                num_iterations = (num_tile_elements + num_threads_per_block - 1) // num_threads_per_block
+                for ii in range(num_iterations):
+                    linear_index = tid_block + ii * num_threads_per_block
+                    linear_index = linear_index % num_tile_elements
+                    row = linear_index // block_size
+                    col = linear_index % block_size
+                    value = L_tile[row, col]
+                    if i + row >= n_i:
+                        value = wp.where(i + row == i + col, float32(1), float32(0))
+                    L_tile[row, col] = value
+
+            L_T_tile = wp.tile_transpose(L_tile)
+            # print("\nL_T_tile:")
+            # print(L_T_tile)
+            x_tile = wp.tile_upper_solve(L_T_tile, rhs_tile)
+            # print("\nx_tile:")
+            # print(x_tile)
             wp.tile_store(x_i, x_tile, offset=(i, 0))
 
     # Return the kernel function
@@ -265,6 +293,7 @@ def make_llt_blocked_solve_inplace_kernel(block_size: int):
     ):
         # Retrieve the thread index and thread-block configuration
         tid, tid_block = wp.tid()
+        num_threads_per_block = wp.block_dim()
 
         # Retrieve the matrix block dimensions and size
         n_i = dim[tid]
@@ -309,6 +338,21 @@ def make_llt_blocked_solve_inplace_kernel(block_size: int):
                     L_T_x_tile = wp.tile_matmul(L_T_tile, x_tile)
                     rhs_tile -= L_T_x_tile
             L_tile = wp.tile_load(L_i, shape=(block_size, block_size), offset=(i, i))
+
+            # The following if pads the matrix if it is not divisible by block_size
+            if i + block_size > n_i:
+                num_tile_elements = block_size * block_size
+                num_iterations = (num_tile_elements + num_threads_per_block - 1) // num_threads_per_block
+                for ii in range(num_iterations):
+                    linear_index = tid_block + ii * num_threads_per_block
+                    linear_index = linear_index % num_tile_elements
+                    row = linear_index // block_size
+                    col = linear_index % block_size
+                    value = L_tile[row, col]
+                    if i + row >= n_i:
+                        value = wp.where(i + row == i + col, float32(1), float32(0))
+                    L_tile[row, col] = value
+
             x_tile = wp.tile_upper_solve(wp.tile_transpose(L_tile), rhs_tile)
             wp.tile_store(x_i, x_tile, offset=(i, 0))
 

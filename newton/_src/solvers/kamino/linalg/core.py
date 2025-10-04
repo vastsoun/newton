@@ -13,7 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""KAMINO: Linear Algebra: Core types and utilities for multi-linear systems"""
+"""
+KAMINO: Linear Algebra: Core types and utilities for multi-linear systems
+
+This module provides data structures and utilities for managing multiple
+independent linear systems, including rectangular and square systems.
+"""
 
 from dataclasses import dataclass
 
@@ -21,7 +26,7 @@ import numpy as np
 import warp as wp
 from warp.context import Devicelike
 
-from ..core.types import Floatlike, Intlike, float32, int32
+from ..core.types import Floatlike, Intlike, VecIntlike, float32, int32
 from ..utils import logger as msg
 
 ###
@@ -161,7 +166,7 @@ class DenseRectangularMultiLinearInfo:
         device: Devicelike = None,
     ) -> None:
         """
-        Allocates the TODO data on the specified device.
+        Constructs and allocates the data of the rectangular multi-linear system info on the specified device.
         """
         # Ensure the problem dimensions are valid and cache them
         self.dimensions = self._check_dimensions(dimensions)
@@ -209,6 +214,72 @@ class DenseRectangularMultiLinearInfo:
             self.mio = wp.array(mat_offsets[: self.num_blocks], dtype=self.itype)
             self.rvio = wp.array(rhs_offsets[: self.num_blocks], dtype=self.itype)
             self.ivio = wp.array(inp_offsets[: self.num_blocks], dtype=self.itype)
+
+    def assign(
+        self,
+        maxdim: wp.array,
+        dim: wp.array,
+        mio: wp.array,
+        rvio: wp.array,
+        ivio: wp.array,
+        dtype: Floatlike = float32,
+        device: Devicelike = None,
+    ) -> None:
+        """
+        Assigns the data of the square multi-linear system info from externally allocated arrays.
+        """
+        # Ensure the problem dimensions are valid and cache them
+        self.dimensions = self._check_dimensions(maxdim.list())
+
+        # Ensure the dtype and itype are valid
+        if not issubclass(dtype, Floatlike):
+            raise TypeError("Invalid dtype. Expected Floatlike type, e.g. `wp.float32` or `wp.float64`.")
+        if not issubclass(maxdim.dtype, VecIntlike):
+            raise TypeError(
+                "Invalid dtype of `maxdim` argument. Expected integer vector type, e.g. `wp.vec2i` or `wp.vec2l`."
+            )
+        if not issubclass(dim.dtype, VecIntlike):
+            raise TypeError(
+                "Invalid dtype of `dim` argument. Expected integer vector type, e.g. `wp.vec2i` or `wp.vec2l`."
+            )
+        if not issubclass(mio.dtype, Intlike):
+            raise TypeError("Invalid dtype of `mio` argument. Expected Intlike type, e.g. `wp.int32` or `wp.int64`.")
+        if not issubclass(rvio.dtype, Intlike):
+            raise TypeError("Invalid dtype of `rvio` argument. Expected Intlike type, e.g. `wp.int32` or `wp.int64`.")
+        if not issubclass(ivio.dtype, Intlike):
+            raise TypeError("Invalid dtype of `ivio` argument. Expected Intlike type, e.g. `wp.int32` or `wp.int64`.")
+
+        # Cache the data type information
+        self.dtype = dtype
+        self.itype = maxdim.dtype
+
+        # Override the device identifier if specified, otherwise use the current device
+        if device is not None:
+            self.device = device
+
+        # Compute the allocation sizes and offsets for the flat data arrays
+        mat_sizes = [m * n for m, n in self.dimensions]
+        mat_flat_size = sum(mat_sizes)
+        max_mat_rows = max(m for m, _ in self.dimensions)
+        max_mat_cols = max(n for _, n in self.dimensions)
+        rhs_sizes = [m for m, _ in self.dimensions]
+        rhs_flat_size = sum(rhs_sizes)
+        inp_sizes = [n for _, n in self.dimensions]
+        inp_flat_size = sum(inp_sizes)
+
+        # Update the allocation meta-data the specified system dimensions
+        self.num_blocks = len(self.dimensions)
+        self.max_dimensions = (max_mat_rows, max_mat_cols)
+        self.total_mat_size = mat_flat_size
+        self.total_rhs_size = rhs_flat_size
+        self.total_inp_size = inp_flat_size
+
+        # Capture references the rectangular multi-linear system info data on the specified device
+        self.maxdim = maxdim
+        self.dim = dim
+        self.mio = mio
+        self.rvio = rvio
+        self.ivio = ivio
 
     def is_matrix_compatible(self, A: wp.array) -> bool:
         """Checks if the provided matrix data array is compatible with the specified info structure."""
@@ -336,7 +407,7 @@ class DenseSquareMultiLinearInfo:
         self, dimensions: list[int], dtype: Floatlike = float32, itype: Intlike = int32, device: Devicelike = None
     ) -> None:
         """
-        Allocates the TODO data on the specified device.
+        Constructs and allocates the data of the square multi-linear system info on the specified device.
         """
         # Ensure the problem dimensions are valid and cache them
         self.dimensions = self._check_dimensions(dimensions)
@@ -376,7 +447,6 @@ class DenseSquareMultiLinearInfo:
 
     def assign(
         self,
-        dimensions: list[int],
         maxdim: wp.array,
         dim: wp.array,
         mio: wp.array,
@@ -385,22 +455,22 @@ class DenseSquareMultiLinearInfo:
         device: Devicelike = None,
     ) -> None:
         """
-        Allocates the TODO data on the specified device.
+        Assigns the data of the square multi-linear system info from externally allocated arrays.
         """
         # Ensure the problem dimensions are valid and cache them
-        self.dimensions = self._check_dimensions(dimensions)
+        self.dimensions = self._check_dimensions(maxdim.numpy().astype(int).tolist())
 
         # Ensure the dtype and itype are valid
         if not issubclass(dtype, Floatlike):
             raise TypeError("Invalid dtype. Expected Floatlike type, e.g. `wp.float32` or `wp.float64`.")
         if not issubclass(maxdim.dtype, Intlike):
-            raise TypeError("Invalid itype in `maxdim` argument. Expected Intlike type, e.g. `wp.int32` or `wp.int64`.")
+            raise TypeError("Invalid dtype of `maxdim` argument. Expected Intlike type, e.g. `wp.int32` or `wp.int64`.")
         if not issubclass(dim.dtype, Intlike):
-            raise TypeError("Invalid itype in `dim` argument. Expected Intlike type, e.g. `wp.int32` or `wp.int64`.")
+            raise TypeError("Invalid dtype of `dim` argument. Expected Intlike type, e.g. `wp.int32` or `wp.int64`.")
         if not issubclass(mio.dtype, Intlike):
-            raise TypeError("Invalid itype in `mio` argument. Expected Intlike type, e.g. `wp.int32` or `wp.int64`.")
+            raise TypeError("Invalid dtype of `mio` argument. Expected Intlike type, e.g. `wp.int32` or `wp.int64`.")
         if not issubclass(vio.dtype, Intlike):
-            raise TypeError("Invalid itype in `vio` argument. Expected Intlike type, e.g. `wp.int32` or `wp.int64`.")
+            raise TypeError("Invalid dtype of `vio` argument. Expected Intlike type, e.g. `wp.int32` or `wp.int64`.")
 
         # Cache the data type information
         self.dtype = dtype

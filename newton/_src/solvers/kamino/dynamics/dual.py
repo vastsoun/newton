@@ -22,9 +22,9 @@ from __future__ import annotations
 import warp as wp
 from warp.context import Devicelike
 
-from newton._src.solvers.kamino.core.math import FLOAT32_EPS, UNIT_Z, screw, screw_angular, screw_linear
-from newton._src.solvers.kamino.core.model import Model, ModelData, ModelSize
-from newton._src.solvers.kamino.core.types import (
+from ..core.math import FLOAT32_EPS, UNIT_Z, screw, screw_angular, screw_linear
+from ..core.model import Model, ModelData, ModelSize
+from ..core.types import (
     float32,
     int32,
     mat33f,
@@ -33,13 +33,10 @@ from newton._src.solvers.kamino.core.types import (
     vec4f,
     vec6f,
 )
-
 from ..dynamics.delassus import DelassusOperator
 from ..geometry.contacts import Contacts, ContactsData
 from ..kinematics.jacobians import DenseSystemJacobians, DenseSystemJacobiansData
 from ..kinematics.limits import Limits, LimitsData
-
-# from ..linalg.cholesky import CholeskyFactorizer
 from ..linalg import LinearSolverType
 
 ###
@@ -236,7 +233,6 @@ class DualProblemData:
         # Auxiliary vectors
         ###
 
-        # TODO: remove these later
         self.h: wp.array(dtype=vec6f) | None = None
         """
         The array of non-linear generalized forces vectors.\n
@@ -803,92 +799,6 @@ def _apply_dual_preconditioner_to_vector(
 
     # Store the preconditioned i-th entry of the vector
     x[v_i] = P_i * x_i
-
-
-##
-# Generic linear-algebra operations
-##
-
-
-@wp.kernel
-def _mult_left_right_diag_matrix_with_matrix(
-    # Inputs:
-    dim: wp.array(dtype=int32),
-    mio: wp.array(dtype=int32),
-    vio: wp.array(dtype=int32),
-    D: wp.array(dtype=float32),
-    X: wp.array(dtype=float32),
-    # Outputs:
-    Y: wp.array(dtype=float32),
-):
-    # Retrieve the thread indices
-    wid, tid = wp.tid()
-
-    # Retrieve the number of active dimensions in the world
-    n = dim[wid]
-
-    # Compute i (row) and j (col) indices from the tid
-    i = tid // n
-    j = tid % n
-
-    # Skip if indices exceed the problem size
-    if i >= n or j >= n:
-        return
-
-    # Retrieve the matrix index offset of the world
-    m_0 = mio[wid]
-
-    # Retrieve the vector index offset of the world
-    v_0 = vio[wid]
-
-    # Compute the global index of the matrix entry
-    m_ij = m_0 + n * i + j
-
-    # Retrieve the ij entry of the input matrix
-    X_ij = X[m_ij]
-
-    # Retrieve the i,j entries of the diagonal matrix
-    D_i = D[v_0 + i]
-    D_j = D[v_0 + j]
-
-    # Compute the i,j entry of the output matrix
-    Y[m_ij] = D_i * D_j * X_ij
-
-
-@wp.kernel
-def _mult_left_diag_matrix_with_vector(
-    # Inputs:
-    dim: wp.array(dtype=int32),
-    vio: wp.array(dtype=int32),
-    D: wp.array(dtype=float32),
-    x: wp.array(dtype=float32),
-    # Outputs:
-    y: wp.array(dtype=float32),
-):
-    # Retrieve the thread index
-    wid, tid = wp.tid()
-
-    # Retrieve the number of active constraints in the world
-    n = dim[wid]
-
-    # Skip if row index exceed the problem size
-    if tid >= n:
-        return
-
-    # Retrieve the vector index offset of the world
-    v_0 = vio[wid]
-
-    # Compute the global index of the vector entry
-    v_i = v_0 + tid
-
-    # Retrieve the i-th entry of the input vector
-    x_i = x[v_i]
-
-    # Retrieve the i-th entry of the diagonal matrix
-    D_i = D[v_i]
-
-    # Compute the i-th entry of the output vector
-    y[v_i] = D_i * x_i
 
 
 ###

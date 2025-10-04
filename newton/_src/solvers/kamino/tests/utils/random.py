@@ -268,8 +268,8 @@ class RandomProblemLDLT:
         self.X_np: list[np.ndarray] = []
         self.D_np: list[np.ndarray] = []
         self.P_np: list[np.ndarray] = []
-        self.y_np: list[np.ndarray] = []
         self.z_np: list[np.ndarray] = []
+        self.y_np: list[np.ndarray] = []
         self.x_np: list[np.ndarray] = []
 
         # Declare the warp arrays of contatenated problem data
@@ -308,17 +308,17 @@ class RandomProblemLDLT:
             X_mat, D_mat, P_mat = scipy.linalg.ldl(A_mat, lower=lower)
             # Compute final and intermediate reference solutions
             if lower:
-                y_vec, z_vec, x_vec = _solve_ldlt_lower_numpy(X_mat, D_mat, P_mat, b_vec)
+                z_vec, y_vec, x_vec = _solve_ldlt_lower_numpy(X_mat, D_mat, P_mat, b_vec)
             else:
-                y_vec, z_vec, x_vec = _solve_ldlt_upper_numpy(X_mat, D_mat, P_mat, b_vec)
+                z_vec, y_vec, x_vec = _solve_ldlt_upper_numpy(X_mat, D_mat, P_mat, b_vec)
             # Store the reference data
             self.A_np.append(A_mat)
             self.b_np.append(b_vec)
             self.X_np.append(X_mat)
             self.D_np.append(D_mat)
             self.P_np.append(P_mat)
-            self.y_np.append(y_vec)
             self.z_np.append(z_vec)
+            self.y_np.append(y_vec)
             self.x_np.append(x_vec)
             # Flatten the matrix and store it in the A_flat array
             A_start = A_offsets[len(self.A_np) - 1]
@@ -423,11 +423,12 @@ def _solve_ldlt_lower_numpy(
     Returns:
         np.ndarray: The solution vector x.
     """
-    z = scipy.linalg.solve_triangular(L, b, lower=True)
+    PL = L[P, :]
+    z = scipy.linalg.solve_triangular(PL, b[P], lower=True)
     y = z / np.diag(D)
-    x = scipy.linalg.solve_triangular(L.T, y, lower=False)
+    x = scipy.linalg.solve_triangular(PL.T, y, lower=False)
     x = x[np.argsort(P)]
-    return y, z, x
+    return z, y, x
 
 
 def _solve_ldlt_upper_numpy(
@@ -445,8 +446,9 @@ def _solve_ldlt_upper_numpy(
     Returns:
         np.ndarray: The solution vector x.
     """
-    z = scipy.linalg.solve_triangular(U.T, b, lower=True)
+    PU = U[P, :]
+    z = scipy.linalg.solve_triangular(PU.T, b[P], lower=True)
     y = z / np.diag(D)
-    x = scipy.linalg.solve_triangular(U, y, lower=False)
+    x = scipy.linalg.solve_triangular(PU, y, lower=False)
     x = x[np.argsort(P)]
-    return y, z, x
+    return z, y, x

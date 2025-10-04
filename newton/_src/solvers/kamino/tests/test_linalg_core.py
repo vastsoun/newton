@@ -37,12 +37,14 @@ class TestLinAlgCoreMakeTolerance(unittest.TestCase):
         # Configs
         self.seed = 42
         self.default_device = wp.get_device()
-        self.verbose = True  # Set to True for verbose output
+        self.verbose = False  # Set to True for verbose output
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
             print("\n")  # Add newline before test output for better readability
             msg.set_log_level(msg.LogLevel.DEBUG)
+        else:
+            msg.set_log_level(msg.LogLevel.WARNING)
 
     def tearDown(self):
         self.default_device = None
@@ -97,12 +99,14 @@ class TestLinAlgCoreDenseMultiLinearRectangularInfo(unittest.TestCase):
         # Configs
         self.seed = 42
         self.default_device = wp.get_device()
-        self.verbose = True  # Set to True for verbose output
+        self.verbose = False  # Set to True for verbose output
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
             print("\n")  # Add newline before test output for better readability
             msg.set_log_level(msg.LogLevel.DEBUG)
+        else:
+            msg.set_log_level(msg.LogLevel.WARNING)
 
     def tearDown(self):
         self.default_device = None
@@ -209,12 +213,14 @@ class TestLinAlgCoreDenseMultiLinearSquareInfo(unittest.TestCase):
         # Configs
         self.seed = 42
         self.default_device = wp.get_device()
-        self.verbose = True  # Set to True for verbose output
+        self.verbose = False  # Set to True for verbose output
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
             print("\n")  # Add newline before test output for better readability
             msg.set_log_level(msg.LogLevel.DEBUG)
+        else:
+            msg.set_log_level(msg.LogLevel.WARNING)
 
     def tearDown(self):
         self.default_device = None
@@ -304,7 +310,7 @@ class TestLinAlgCoreDenseMultiLinearSquareInfo(unittest.TestCase):
 
 if __name__ == "__main__":
     # Global numpy configurations
-    np.set_printoptions(linewidth=500, precision=10, suppress=True)  # Suppress scientific notation
+    np.set_printoptions(linewidth=10000, precision=10, threshold=10000, suppress=True)  # Suppress scientific notation
 
     # Initialize Warp
     wp.init()
@@ -312,6 +318,8 @@ if __name__ == "__main__":
     # Global warp configurations
     wp.config.enable_backward = False
     wp.config.verbose = False
+
+    # Clear Warp caches
     wp.clear_kernel_cache()
     wp.clear_lto_cache()
 

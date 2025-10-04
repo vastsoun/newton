@@ -80,7 +80,7 @@ class TestRandomProblemCholesky(unittest.TestCase):
 
     def test_generate_small_lower(self):
         dim = 10
-        problem = rand.RandomProblemCholesky(dims=[dim], seed=42, upper=False)
+        problem = rand.RandomProblemLLT(dims=[dim], seed=42, upper=False)
         A, b = problem.A_np[0], problem.b_np[0]
 
         # Verify the shapes of A and b
@@ -89,7 +89,7 @@ class TestRandomProblemCholesky(unittest.TestCase):
 
     def test_generate_small_upper(self):
         dim = 10
-        problem = rand.RandomProblemCholesky(dims=[dim], seed=42, upper=True)
+        problem = rand.RandomProblemLLT(dims=[dim], seed=42, upper=True)
         A, b = problem.A_np[0], problem.b_np[0]
 
         # Verify the shapes of A and b
@@ -126,7 +126,7 @@ class TestRandomProblemLDLT(unittest.TestCase):
 
 if __name__ == "__main__":
     # Global numpy configurations
-    np.set_printoptions(linewidth=10000, precision=10, suppress=True)  # Suppress scientific notation
+    np.set_printoptions(linewidth=10000, precision=10, threshold=10000, suppress=True)  # Suppress scientific notation
 
     # Run all tests
     unittest.main(verbosity=2)

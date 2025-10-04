@@ -14,26 +14,24 @@
 # limitations under the License.
 
 """
-KAMINO: Delassus Operator
+Provides containers to represent and operate Delassus operators.
 
-Provides containers and operations to respectively represent and compute Delassus operators.
+A Delassus operator is a symmetric semi-positive-definite matrix that
+represents the apparent inertia within the space defined by the set of
+active constraints imposed on a constrained rigid multi-body system.
 
-A Delassus operator is a symmetric matrix that represents the apparent inertia in the space
-defined by the set of active constraints imposed on a constrained rigid multi-body system.
-
-This module provides building-blocks to compute the Delassus operator in parallel across
-multiple worlds represented within a :class:`Model`. A set of Warp kernels that compute the
-Delassus matrix using various parallelization strategies The :class:`DelassusOperatorData` data
-structure to bundle the necessary data arrays, either by allocation or by references to
-existing arrays provided by the user. The :class:`DelassusOperator` class provides a
-high-level interface to encapsulate both the data representations as well as the relevant
-operations involving the Delassus operator. It provides methods to allocate the necessary
-data arrays, build the Delassus matrix given the current state of the model and the active
-constraints, add diagonal regularization, and solve linear systems of the form `D @ x = v`
-given arrays holding the right-hand-side (rhs) vectors v.
+This module thus provides building-blocks to realize Delassus operators across multiple
+worlds contained in a :class:`Model`. The :class:`DelassusOperator` class provides a
+high-level interface to encapsulate both the data representation as well as the
+relevant operations. It provides methods to allocate the necessary data arrays, build
+the Delassus matrix given the current state of the model and the active constraints,
+add diagonal regularization, and solve linear systems of the form `D @ x = v` given
+arrays holding the right-hand-side (rhs) vectors v. Moreover, it supports the use of
+different linear solvers as a back-end for performing the aforementioned linear system
+solve. Construction of the Delassus operator is realized using a set of Warp kernels
+that parallelize the computation using various strategies.
 
 Typical usage example:
-
     # Create a model builder and add bodies, joints, geoms, etc.
     builder = ModelBuilder()
     ...
@@ -45,7 +43,11 @@ Typical usage example:
     limits = Limits(builder)
     contacts = Contacts(builder)
     jacobians = DenseSystemJacobians(model, limits, contacts)
-    factorizer = CholeskyFactorizer(model)
+
+    # Define a linear solver type to use as a back-end for the
+    # Delassus operator computations such as factorization and
+    # solving the linear system when a rhs vector is provided
+    linear_solver = LLTBlockedSolver
     ...
 
     # Build the Jacobians for the model and active limits and contacts
@@ -54,22 +56,21 @@ Typical usage example:
 
     # Create a Delassus operator and build it using the current model state
     # and active unilateral constraints (i.e. for limits and contacts).
-    delassus = DelassusOperator(model, limits, contacts, factorizer)
+    delassus = DelassusOperator(model, limits, contacts, linear_solver)
     delassus.build(model, state, jacobians)
 
     # Add diagonal regularization the Delassus matrix
     eta = ...
-    delassus.regularize(eta=)
+    delassus.regularize(eta=eta)
 
     # Factorize the Delassus matrix using the Cholesky factorization
-    delassus.factorize()
+    delassus.compute()
 
     # Solve a linear system using the Delassus operator
     rhs = ...
-    delassus.solve(rhs)
+    solution = ...
+    delassus.solve(b=rhs, x=solution)
 """
-
-from __future__ import annotations
 
 import warp as wp
 from warp.context import Devicelike
@@ -80,8 +81,6 @@ from ..geometry.contacts import Contacts
 from ..kinematics.constraints import max_constraints_per_world
 from ..kinematics.jacobians import DenseSystemJacobiansData
 from ..kinematics.limits import Limits
-
-# from ..linalg.cholesky import CholeskyFactorizer
 from ..linalg import DenseLinearOperatorData, DenseSquareMultiLinearInfo, LinearSolverType
 
 ###
@@ -90,7 +89,6 @@ from ..linalg import DenseLinearOperatorData, DenseSquareMultiLinearInfo, Linear
 
 __all__ = [
     "DelassusOperator",
-    "DelassusOperatorData",
 ]
 
 
@@ -99,51 +97,6 @@ __all__ = [
 ###
 
 wp.set_module_options({"enable_backward": False})
-
-
-###
-# Containers
-###
-
-
-class DelassusOperatorData:
-    """
-    A container to hold the time-varying data of the Delassus operator.
-    """
-
-    def __init__(self):
-        self.maxdim: wp.array(dtype=int32) | None = None
-        """
-        The max dimensions of the symmetric Delassus matrix of each world.\n
-        This is equal to the sum of the maximum constraints in each world: joints, max limits, and max contacts.\n
-        Shape of ``(num_worlds,)`` and type :class:`int32`.
-        """
-
-        self.dim: wp.array(dtype=int32) | None = None
-        """
-        The active dimensions of the symmetric Delassus matrix of each world.\n
-        This is equal to the sum of all active constraint in each world: joints, limits, and contact.\n
-        Shape of ``(num_worlds,)`` and type :class:`int32`.
-        """
-
-        self.mio: wp.array(dtype=int32) | None = None
-        """
-        The matrix index offsets (MIO) of the Delassus matrix block of each world.\n
-        Shape of ``(num_worlds,)`` and type :class:`int32`.
-        """
-
-        self.vio: wp.array(dtype=int32) | None = None
-        """
-        The vector index offsets (VIO) of the active constraints in each world.\n
-        Shape of ``(num_worlds,)`` and type :class:`int32`.
-        """
-
-        self.D: wp.array(dtype=float32) | None = None
-        """
-        The flat Delassus matrix (constraint-space apparent inertia).\n
-        Shape of ``(sum(maxdim_w * maxdim_w),)`` and type :class:`float32`.\n
-        `maxdim_w` is the maximum dimensions of the Delassus matrix block of each world.
-        """
 
 
 ###
@@ -286,7 +239,6 @@ class DelassusOperator:
         state: ModelData | None = None,
         limits: Limits | None = None,
         contacts: Contacts | None = None,
-        # factorizer: CholeskyFactorizer = None,
         solver: LinearSolverType = None,
         device: Devicelike = None,
     ):
@@ -325,11 +277,9 @@ class DelassusOperator:
         self._size: ModelSize | None = None
 
         # Initialize the Delassus state container
-        # self._data: DelassusOperatorData = DelassusOperatorData()
         self._operator: DenseLinearOperatorData | None = None
 
         # Declare the optional Cholesky factorization
-        # self._factorizer: CholeskyFactorizer = None
         self._solver: LinearSolverType | None = None
 
         # Allocate the Delassus operator data if at least the model is provided
@@ -339,7 +289,6 @@ class DelassusOperator:
                 state=state,
                 limits=limits,
                 contacts=contacts,
-                # factorizer=factorizer,
                 solver=solver,
                 device=device,
             )
@@ -367,21 +316,6 @@ class DelassusOperator:
         This is the sum over the sizes of all matrix blocks.
         """
         return self._model_maxsize
-
-    # @property
-    # def data(self) -> DelassusOperatorData:
-    #     """
-    #     Returns a reference to the flat Delassus matrix array.
-    #     """
-    #     return self._data
-
-    # @property
-    # def factorizer(self) -> CholeskyFactorizer:
-    #     """
-    #     The Cholesky factorization object for the Delassus operator.
-    #     This is used to perform the factorization of the Delassus matrix.
-    #     """
-    #     return self._factorizer
 
     @property
     def operator(self) -> DenseLinearOperatorData:
@@ -418,7 +352,6 @@ class DelassusOperator:
         state: ModelData,
         limits: Limits | None = None,
         contacts: Contacts | None = None,
-        # factorizer: CholeskyFactorizer = None,
         solver: LinearSolverType = None,
         device: Devicelike = None,
     ):
@@ -479,7 +412,6 @@ class DelassusOperator:
             print("Using model and state info to initialize Delassus info arrays")
             mat_offsets = [0] + [sum(self._world_size[:i]) for i in range(1, self._num_worlds + 1)]
             self._operator.info.assign(
-                dimensions=maxdims,
                 maxdim=model.info.max_total_cts,
                 dim=state.info.num_total_cts,
                 vio=model.info.total_cts_offset,
@@ -490,48 +422,10 @@ class DelassusOperator:
         else:
             self._operator.info.allocate(dimensions=maxdims, dtype=float32, itype=int32, device=self._device)
 
-        # # First allocate the Delassus matrix data array given the total maximum size
-        # self._data.D = wp.zeros(shape=(self._model_maxsize,), dtype=float32, device=self._device)
-
-        # # If the model info contains the maximum total constraints array use that,
-        # # otherwise allocate a new array with the world dimensions.
-        # if model.info.max_total_cts is not None:
-        #     self._data.maxdim = model.info.max_total_cts
-        # else:
-        #     self._data.maxdim = wp.array(self._world_dims, dtype=int32, device=self._device)
-
-        # # If the state info contains the total active constraints array
-        # # use that, otherwise allocate a new array with zeros.
-        # if state is not None:
-        #     self._data.dim = state.info.num_total_cts
-        # else:
-        #     self._data.dim = wp.zeros(shape=(self._num_worlds,), dtype=int32, device=self._device)
-
-        # # If the model info contains the total constraints offset array use that,
-        # # otherwise allocate a new array with the world offsets.
-        # if model.info.total_cts_offset is not None:
-        #     self._data.vio = model.info.total_cts_offset
-        # else:
-        #     vec_offsets = [0] + [sum(self._world_dims[:i]) for i in range(1, self._num_worlds + 1)]
-        #     self._data.vio = wp.array(vec_offsets[: self._num_worlds], dtype=int32, device=self._device)
-
-        # # Allocate the matrix index offsets (MIO) for each world
-        # mat_offsets = [0] + [sum(self._world_size[:i]) for i in range(1, self._num_worlds + 1)]
-        # self._data.mio = wp.array(mat_offsets[: self._num_worlds], dtype=int32, device=self._device)
-
-        # # Optionally initialize the factorizer if one is specified
-        # if factorizer is not None:
-        #     # NOTE: Since the dimensions of the factorizer are the same as the Delassus operator,
-        #     # we can re-use the same info arrays, and propagate them by reference to the factorizer.
-        #     # This is possible by passing `allocate_info=False` to the factorizer constructor.
-        #     self._factorizer = factorizer(dims=self._world_dims, allocate_info=False, device=self._device)
-        #     self._factorizer._data.maxdim = self._data.maxdim
-        #     self._factorizer._data.dim = self._data.dim
-        #     self._factorizer._data.mio = self._data.mio
-        #     self._factorizer._data.vio = self._data.vio
-
         # Optionally initialize the linear system solver if one is specified
         if solver is not None:
+            if not issubclass(solver, LinearSolverType):
+                raise ValueError("Invalid solver provided. Must be a subclass of `LinearSolverType`.")
             self._solver = solver(operator=self._operator, device=self._device)
 
     def zero(self):
@@ -632,7 +526,6 @@ class DelassusOperator:
             self._solver.reset()
 
         # Perform the Cholesky factorization
-        # self._factorizer.factorize(self._data.D)
         self._solver.compute(A=self._operator.mat)
 
     def solve(self, v: wp.array, x: wp.array):
@@ -656,7 +549,6 @@ class DelassusOperator:
             raise ValueError("A linear system solver is not available. Allocate with solver=LINEAR_SOLVER_TYPE.")
 
         # Solve the linear system using the factorized matrix
-        # return self._factorizer.solve(b=v, x=x)
         return self._solver.solve(b=v, x=x)
 
     def solve_inplace(self, x: wp.array):
@@ -680,5 +572,4 @@ class DelassusOperator:
             raise ValueError("A linear system solver is not available. Allocate with solver=LINEAR_SOLVER_TYPE.")
 
         # Solve the linear system in-place
-        # return self._factorizer.solve_inplace(x=x)
         return self._solver.solve_inplace(x=x)

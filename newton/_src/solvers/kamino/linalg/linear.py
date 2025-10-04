@@ -13,7 +13,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""KAMINO: Linear Algebra: Linear system solvers"""
+"""
+Linear system solvers for multiple independent linear systems.
+
+This module provides interfaces for and implementations of linear
+system solvers, that can solve multiple independent linear systems
+in parallel, with support for both rectangular and square systems.
+Depending on the particular solver implementation, both inter- and
+intra-system parallelism may be exploited.
+"""
 
 from abc import ABC, abstractmethod
 from typing import Any
@@ -30,7 +38,11 @@ from .core import DenseLinearOperatorData, DenseSquareMultiLinearInfo, make_dtyp
 ###
 
 __all__ = [
+    "DirectSolver",
+    "LLTBlockedSolver",
     "LLTSequentialSolver",
+    "LinearSolver",
+    "LinearSolverType",
 ]
 
 
@@ -144,7 +156,7 @@ class LinearSolver(ABC):
         self._allocate_impl(operator, **kwargs)
 
     def reset(self) -> None:
-        """Sets the internal operator matrix data to zero."""
+        """Resets the internal solver data (e.g. possibly to zeros)."""
         self._reset_impl()
 
     def compute(self, A: wp.array, **kwargs: dict[str, Any]) -> None:

@@ -76,7 +76,7 @@ float64 = wp.float64
 
 Floatlike = float16 | float32 | float64
 Intlike = int16 | int32 | int64
-
+VecIntlike = wp.vec2s | wp.vec2i | wp.vec2l
 
 ###
 # Vectors

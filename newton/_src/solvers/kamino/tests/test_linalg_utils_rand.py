@@ -43,12 +43,14 @@ class TestLinAlgUtilsRandomMatrixSymmetric(unittest.TestCase):
         # Configs
         self.seed = 42
         self.default_device = wp.get_device()
-        self.verbose = True  # Set to True for verbose output
+        self.verbose = False  # Set to True for verbose output
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
             print("\n")  # Add newline before test output for better readability
             msg.set_log_level(msg.LogLevel.DEBUG)
+        else:
+            msg.set_log_level(msg.LogLevel.WARNING)
 
     def tearDown(self):
         self.default_device = None
@@ -247,12 +249,14 @@ class TestLinAlgUtilsRandomMatrixSPD(unittest.TestCase):
         # Configs
         self.seed = 42
         self.default_device = wp.get_device()
-        self.verbose = True  # Set to True for verbose output
+        self.verbose = False  # Set to True for verbose output
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
             print("\n")  # Add newline before test output for better readability
             msg.set_log_level(msg.LogLevel.DEBUG)
+        else:
+            msg.set_log_level(msg.LogLevel.WARNING)
 
     def tearDown(self):
         self.default_device = None
@@ -379,12 +383,14 @@ class TestLinAlgUtilsRandomRhsVectors(unittest.TestCase):
         # Configs
         self.seed = 42
         self.default_device = wp.get_device()
-        self.verbose = True  # Set to True for verbose output
+        self.verbose = False  # Set to True for verbose output
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
             print("\n")  # Add newline before test output for better readability
             msg.set_log_level(msg.LogLevel.DEBUG)
+        else:
+            msg.set_log_level(msg.LogLevel.WARNING)
 
     def tearDown(self):
         self.default_device = None

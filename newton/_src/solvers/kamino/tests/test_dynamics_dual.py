@@ -24,7 +24,7 @@ import warp as wp
 
 # Module to be tested
 from newton._src.solvers.kamino.dynamics.dual import DualProblem
-from newton._src.solvers.kamino.linalg.cholesky import SequentialCholeskyFactorizer
+from newton._src.solvers.kamino.linalg import LLTSequentialSolver
 from newton._src.solvers.kamino.models.utils import (
     make_heterogeneous_builder,
 )
@@ -69,7 +69,7 @@ class TestDualProblem(unittest.TestCase):
             state=state,
             limits=limits,
             contacts=detector.contacts,
-            factorizer=SequentialCholeskyFactorizer,
+            solver=LLTSequentialSolver,
             device=self.default_device,
         )
 
@@ -138,7 +138,7 @@ class TestDualProblem(unittest.TestCase):
             state=state,
             limits=limits,
             contacts=detector.contacts,
-            factorizer=SequentialCholeskyFactorizer,
+            solver=LLTSequentialSolver,
             device=self.default_device,
         )
 

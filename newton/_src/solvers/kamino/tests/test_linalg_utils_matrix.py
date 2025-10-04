@@ -19,7 +19,7 @@ import unittest
 
 import numpy as np
 
-import newton._src.solvers.kamino.utils.linalg as linalg
+import newton._src.solvers.kamino.linalg as linalg
 import newton._src.solvers.kamino.utils.logger as msg
 
 ###
@@ -38,8 +38,8 @@ class TestUtilsLinAlgMatrix(unittest.TestCase):
             msg.reset_log_level()
 
     def test_01_spd_matrix_properties(self):
-        A = linalg.random_spd_matrix(dim=10, dtype=np.float32, scale=4.0, seed=42)
-        A_props = linalg.SquareSymmetricMatrixProperties(A)
+        A = linalg.utils.rand.random_spd_matrix(dim=10, dtype=np.float32, scale=4.0, seed=42)
+        A_props = linalg.utils.matrix.SquareSymmetricMatrixProperties(A)
         msg.debug(f"A (shape: {A.shape}, dtype: {A.dtype}):\n{A}\n") if self.verbose else None
         msg.debug(f"A properties:\n{A_props}\n") if self.verbose else None
         msg.debug(f"cond(A): {np.linalg.cond(A)}\n") if self.verbose else None

@@ -13,28 +13,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-KAMINO: Math Module
-"""
+"""The Kamino Linear Algebra Module"""
 
-from .cholesky import (
-    BlockedCholeskyFactorizer,
-    SequentialCholeskyFactorizer,
-    cholesky_blocked_factorize,
-    cholesky_blocked_solve,
-    cholesky_blocked_solve_inplace,
-    cholesky_sequential_factorize,
-    cholesky_sequential_solve,
-    cholesky_sequential_solve_backward,
-    cholesky_sequential_solve_forward,
-    cholesky_sequential_solve_inplace,
-)
+from . import utils as utils
 from .core import (
     DenseLinearOperatorData,
     DenseRectangularMultiLinearInfo,
     DenseSquareMultiLinearInfo,
 )
 from .linear import (
+    DirectSolver,
+    LinearSolver,
     LinearSolverType,
     LLTBlockedSolver,
     LLTSequentialSolver,
@@ -45,20 +34,13 @@ from .linear import (
 ###
 
 __all__ = [
-    "BlockedCholeskyFactorizer",
     "DenseLinearOperatorData",
     "DenseRectangularMultiLinearInfo",
     "DenseSquareMultiLinearInfo",
+    "DirectSolver",
     "LLTBlockedSolver",
     "LLTSequentialSolver",
+    "LinearSolver",
     "LinearSolverType",
-    "SequentialCholeskyFactorizer",
-    "cholesky_blocked_factorize",
-    "cholesky_blocked_solve",
-    "cholesky_blocked_solve_inplace",
-    "cholesky_sequential_factorize",
-    "cholesky_sequential_solve",
-    "cholesky_sequential_solve_backward",
-    "cholesky_sequential_solve_forward",
-    "cholesky_sequential_solve_inplace",
+    "utils",
 ]

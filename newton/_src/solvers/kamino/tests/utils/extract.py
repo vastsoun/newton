@@ -13,14 +13,36 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-KAMINO: UNIT TESTS: GENERAL UTILITIES
-"""
+"""Utilities for extracting data from Kamino data structures"""
 
 import numpy as np
 
-from newton._src.solvers.kamino.dynamics.delassus import DelassusOperator
-from newton._src.solvers.kamino.kinematics.jacobians import DenseSystemJacobians
+from ...dynamics.delassus import DelassusOperator
+from ...kinematics.jacobians import DenseSystemJacobians
+
+###
+# Helper functions
+###
+
+
+def get_matrix_block(index: int, flatmat: np.ndarray, dims: list[int], maxdims: list[int] | None = None) -> np.ndarray:
+    """Extract a specific matrix block from a flattened array of matrices."""
+    if maxdims is None:
+        maxdims = dims
+    mat_shape = (dims[index], dims[index])
+    mat_start = sum(n * n for n in maxdims[:index])
+    mat_end = mat_start + dims[index] ** 2
+    return flatmat[mat_start:mat_end].reshape(mat_shape)
+
+
+def get_vector_block(index: int, flatvec: np.ndarray, dims: list[int], maxdims: list[int] | None = None) -> np.ndarray:
+    """Extract a specific matrix block from a flattened array of matrices."""
+    if maxdims is None:
+        maxdims = dims
+    vec_start = sum(maxdims[:index])
+    vec_end = vec_start + dims[index]
+    return flatvec[vec_start:vec_end]
+
 
 ###
 # Helper functions
@@ -29,7 +51,7 @@ from newton._src.solvers.kamino.kinematics.jacobians import DenseSystemJacobians
 
 def extract_active_constraint_dims(delassus: DelassusOperator) -> list[int]:
     # Extract the active constraint dimensions
-    active_dim_np = delassus.data.dim.numpy()
+    active_dim_np = delassus.info.dim.numpy()
     active_dims = [int(active_dim_np[i]) for i in range(len(active_dim_np))]
     return active_dims
 

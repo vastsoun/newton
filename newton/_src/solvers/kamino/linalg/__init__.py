@@ -29,6 +29,16 @@ from .cholesky import (
     cholesky_sequential_solve_forward,
     cholesky_sequential_solve_inplace,
 )
+from .core import (
+    DenseLinearOperatorData,
+    DenseRectangularMultiLinearInfo,
+    DenseSquareMultiLinearInfo,
+)
+from .linear import (
+    LinearSolverType,
+    LLTBlockedSolver,
+    LLTSequentialSolver,
+)
 
 ###
 # Module interface
@@ -36,6 +46,12 @@ from .cholesky import (
 
 __all__ = [
     "BlockedCholeskyFactorizer",
+    "DenseLinearOperatorData",
+    "DenseRectangularMultiLinearInfo",
+    "DenseSquareMultiLinearInfo",
+    "LLTBlockedSolver",
+    "LLTSequentialSolver",
+    "LinearSolverType",
     "SequentialCholeskyFactorizer",
     "cholesky_blocked_factorize",
     "cholesky_blocked_solve",

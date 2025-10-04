@@ -26,7 +26,9 @@ import warp as wp
 
 from newton._src.solvers.kamino.core.math import screw, vec3f
 from newton._src.solvers.kamino.dynamics.dual import DualProblem
-from newton._src.solvers.kamino.linalg.cholesky import SequentialCholeskyFactorizer
+
+# from newton._src.solvers.kamino.linalg.cholesky import SequentialCholeskyFactorizer
+from newton._src.solvers.kamino.linalg import LLTBlockedSolver
 from newton._src.solvers.kamino.models.builders import (
     build_box_on_plane,
     build_box_pendulum,  # noqa: F401
@@ -269,7 +271,8 @@ class TestPADMMDualSolver(unittest.TestCase):
             state=state,
             limits=limits,
             contacts=detector.contacts,
-            factorizer=SequentialCholeskyFactorizer,
+            # factorizer=SequentialCholeskyFactorizer,
+            solver=LLTBlockedSolver,
             device=self.default_device,
         )
 

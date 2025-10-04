@@ -2413,7 +2413,7 @@ class APADMMDualSolver:
         )
 
         # Compute Choleky/LDLT factorization of the Delassus matrix
-        problem._delassus.factorize(reset_to_zero=True)
+        problem._delassus.compute(reset_to_zero=True)
 
     def update_desaxce_correction(self, problem: DualProblem):
         wp.launch(

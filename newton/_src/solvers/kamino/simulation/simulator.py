@@ -40,7 +40,9 @@ from newton._src.solvers.kamino.kinematics.constraints import make_unilateral_co
 from newton._src.solvers.kamino.kinematics.jacobians import DenseSystemJacobians
 from newton._src.solvers.kamino.kinematics.joints import compute_joints_state
 from newton._src.solvers.kamino.kinematics.limits import Limits
-from newton._src.solvers.kamino.linalg.cholesky import SequentialCholeskyFactorizer
+
+# from newton._src.solvers.kamino.linalg.cholesky import SequentialCholeskyFactorizer
+from newton._src.solvers.kamino.linalg import LLTBlockedSolver
 from newton._src.solvers.kamino.solvers.apadmm import APADMMDualSolver
 from newton._src.solvers.kamino.solvers.padmm import PADMMDualSolver  # noqa: F401
 
@@ -161,7 +163,8 @@ class Simulator:
             state=self._data.state,
             limits=self._limits,
             contacts=self._collision_detector.contacts,
-            factorizer=SequentialCholeskyFactorizer,  # TODO: Make this configurable
+            # factorizer=SequentialCholeskyFactorizer,  # TODO: Make this configurable
+            solver=LLTBlockedSolver,  # TODO: Make this configurable
             # TODO: settings=None,
             device=self._device,
         )

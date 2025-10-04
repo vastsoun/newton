@@ -107,6 +107,10 @@ class LinearSolver(ABC):
         raise NotImplementedError("An allocation operation is not implemented.")
 
     @abstractmethod
+    def _reset_impl(self, A: wp.array, **kwargs: dict[str, Any]) -> None:
+        raise NotImplementedError("A reset operation is not implemented.")
+
+    @abstractmethod
     def _compute_impl(self, A: wp.array, **kwargs: dict[str, Any]) -> None:
         raise NotImplementedError("A compute operation is not implemented.")
 
@@ -138,6 +142,10 @@ class LinearSolver(ABC):
         self._dtype = operator.info.dtype
         self._set_tolerance_dtype()
         self._allocate_impl(operator, **kwargs)
+
+    def reset(self) -> None:
+        """Sets the internal operator matrix data to zero."""
+        self._reset_impl()
 
     def compute(self, A: wp.array, **kwargs: dict[str, Any]) -> None:
         """Ingest matrix data and pre-compute any rhs-independent intermediate data."""
@@ -319,6 +327,12 @@ class LLTSequentialSolver(DirectSolver):
             self._y = wp.zeros(shape=(self._operator.info.total_vec_size,), dtype=self._dtype)
 
     @override
+    def _reset_impl(self) -> None:
+        self._L.zero_()
+        self._y.zero_()
+        self._has_factors = False
+
+    @override
     def _factorize_impl(self, A: wp.array) -> None:
         factorize.llt_sequential_factorize(
             num_blocks=self._operator.info.num_blocks,
@@ -441,6 +455,12 @@ class LLTBlockedSolver(DirectSolver):
         with wp.ScopedDevice(self._device):
             self._L = wp.zeros(shape=(self._operator.info.total_mat_size,), dtype=self._dtype)
             self._y = wp.zeros(shape=(self._operator.info.total_vec_size,), dtype=self._dtype)
+
+    @override
+    def _reset_impl(self) -> None:
+        self._L.zero_()
+        self._y.zero_()
+        self._has_factors = False
 
     @override
     def _factorize_impl(self, A: wp.array) -> None:

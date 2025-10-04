@@ -33,11 +33,14 @@ from newton._src.solvers.kamino.core.types import (
     vec4f,
     vec6f,
 )
-from newton._src.solvers.kamino.dynamics.delassus import DelassusOperator
-from newton._src.solvers.kamino.geometry.contacts import Contacts, ContactsData
-from newton._src.solvers.kamino.kinematics.jacobians import DenseSystemJacobians, DenseSystemJacobiansData
-from newton._src.solvers.kamino.kinematics.limits import Limits, LimitsData
-from newton._src.solvers.kamino.linalg.cholesky import CholeskyFactorizer
+
+from ..dynamics.delassus import DelassusOperator
+from ..geometry.contacts import Contacts, ContactsData
+from ..kinematics.jacobians import DenseSystemJacobians, DenseSystemJacobiansData
+from ..kinematics.limits import Limits, LimitsData
+
+# from ..linalg.cholesky import CholeskyFactorizer
+from ..linalg import LinearSolverType
 
 ###
 # Module interface
@@ -1165,7 +1168,8 @@ class DualProblem:
         state: ModelData | None = None,
         limits: Limits | None = None,
         contacts: Contacts | None = None,
-        factorizer: CholeskyFactorizer = None,
+        # factorizer: CholeskyFactorizer = None,
+        solver: LinearSolverType | None = None,
         settings: list[DualProblemSettings] | DualProblemSettings | None = None,
         device: Devicelike = None,
     ):
@@ -1184,6 +1188,7 @@ class DualProblem:
             contacts (Contacts, optional): The contacts container to use for the dual problem.
             device (Devicelike, optional): The device to allocate the dual problem on. Defaults to None.
             factorizer (CholeskyFactorizer, optional): The factorizer to use for the Delassus operator. Defaults to None.
+            solver (LinearSolverType, optional): The linear solver to use for the Delassus operator. Defaults to None.
         """
         # Cache the requested device
         self._device: Devicelike = device
@@ -1207,7 +1212,8 @@ class DualProblem:
                 state=state,
                 limits=limits,
                 contacts=contacts,
-                factorizer=factorizer,
+                # factorizer=factorizer,
+                solver=solver,
                 settings=settings,
                 device=device,
             )
@@ -1259,7 +1265,8 @@ class DualProblem:
         state: ModelData | None = None,
         limits: Limits | None = None,
         contacts: Contacts | None = None,
-        factorizer: CholeskyFactorizer = None,
+        # factorizer: CholeskyFactorizer = None,
+        solver: LinearSolverType | None = None,
         settings: list[DualProblemSettings] | DualProblemSettings | None = None,
         device: Devicelike = None,
     ):
@@ -1303,7 +1310,13 @@ class DualProblem:
         # Allocate the Delassus operator first since it will already process the necessary
         # model and contacts allocation sizes and will create some of the necessary arrays
         self._delassus = DelassusOperator(
-            model=model, state=state, limits=limits, contacts=contacts, factorizer=factorizer, device=device
+            # model=model, state=state, limits=limits, contacts=contacts, factorizer=factorizer, device=device
+            model=model,
+            state=state,
+            limits=limits,
+            contacts=contacts,
+            solver=solver,
+            device=device,
         )
 
         # Update the cache of the maximal problem dimensions
@@ -1321,12 +1334,18 @@ class DualProblem:
         self.data.lcgo = state.info.limit_cts_group_offset
         self.data.ccgo = state.info.contact_cts_group_offset
 
+        # # Capture references to arrays already create by the Delassus operator
+        # self._data.maxdim = self._delassus.data.maxdim
+        # self._data.dim = self._delassus.data.dim
+        # self._data.mio = self._delassus.data.mio
+        # self._data.vio = self._delassus.data.vio
+        # self._data.D = self._delassus.data.D
         # Capture references to arrays already create by the Delassus operator
-        self._data.maxdim = self._delassus.data.maxdim
-        self._data.dim = self._delassus.data.dim
-        self._data.mio = self._delassus.data.mio
-        self._data.vio = self._delassus.data.vio
-        self._data.D = self._delassus.data.D
+        self._data.maxdim = self._delassus.info.maxdim
+        self._data.dim = self._delassus.info.dim
+        self._data.mio = self._delassus.info.mio
+        self._data.vio = self._delassus.info.vio
+        self._data.D = self._delassus.D
 
         # Store the specified settings
         num_worlds = model.info.num_worlds if model is not None else 1

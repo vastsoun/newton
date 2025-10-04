@@ -74,13 +74,15 @@ from __future__ import annotations
 import warp as wp
 from warp.context import Devicelike
 
-from newton._src.solvers.kamino.core.model import Model, ModelData, ModelSize
-from newton._src.solvers.kamino.core.types import float32, int32, mat33f, vec3f
-from newton._src.solvers.kamino.geometry.contacts import Contacts
-from newton._src.solvers.kamino.kinematics.constraints import max_constraints_per_world
-from newton._src.solvers.kamino.kinematics.jacobians import DenseSystemJacobiansData
-from newton._src.solvers.kamino.kinematics.limits import Limits
-from newton._src.solvers.kamino.linalg.cholesky import CholeskyFactorizer
+from ..core.model import Model, ModelData, ModelSize
+from ..core.types import float32, int32, mat33f, vec3f
+from ..geometry.contacts import Contacts
+from ..kinematics.constraints import max_constraints_per_world
+from ..kinematics.jacobians import DenseSystemJacobiansData
+from ..kinematics.limits import Limits
+
+# from ..linalg.cholesky import CholeskyFactorizer
+from ..linalg import DenseLinearOperatorData, DenseSquareMultiLinearInfo, LinearSolverType
 
 ###
 # Module interface
@@ -284,7 +286,8 @@ class DelassusOperator:
         state: ModelData | None = None,
         limits: Limits | None = None,
         contacts: Contacts | None = None,
-        factorizer: CholeskyFactorizer = None,
+        # factorizer: CholeskyFactorizer = None,
+        solver: LinearSolverType = None,
         device: Devicelike = None,
     ):
         """
@@ -322,10 +325,12 @@ class DelassusOperator:
         self._size: ModelSize | None = None
 
         # Initialize the Delassus state container
-        self._data: DelassusOperatorData = DelassusOperatorData()
+        # self._data: DelassusOperatorData = DelassusOperatorData()
+        self._operator: DenseLinearOperatorData | None = None
 
         # Declare the optional Cholesky factorization
-        self._factorizer: CholeskyFactorizer = None
+        # self._factorizer: CholeskyFactorizer = None
+        self._solver: LinearSolverType | None = None
 
         # Allocate the Delassus operator data if at least the model is provided
         if model is not None:
@@ -334,7 +339,8 @@ class DelassusOperator:
                 state=state,
                 limits=limits,
                 contacts=contacts,
-                factorizer=factorizer,
+                # factorizer=factorizer,
+                solver=solver,
                 device=device,
             )
 
@@ -362,20 +368,49 @@ class DelassusOperator:
         """
         return self._model_maxsize
 
+    # @property
+    # def data(self) -> DelassusOperatorData:
+    #     """
+    #     Returns a reference to the flat Delassus matrix array.
+    #     """
+    #     return self._data
+
+    # @property
+    # def factorizer(self) -> CholeskyFactorizer:
+    #     """
+    #     The Cholesky factorization object for the Delassus operator.
+    #     This is used to perform the factorization of the Delassus matrix.
+    #     """
+    #     return self._factorizer
+
     @property
-    def data(self) -> DelassusOperatorData:
+    def operator(self) -> DenseLinearOperatorData:
         """
         Returns a reference to the flat Delassus matrix array.
         """
-        return self._data
+        return self._operator
 
     @property
-    def factorizer(self) -> CholeskyFactorizer:
+    def solver(self) -> LinearSolverType:
         """
-        The Cholesky factorization object for the Delassus operator.
+        The linear solver object for the Delassus operator.
         This is used to perform the factorization of the Delassus matrix.
         """
-        return self._factorizer
+        return self._solver
+
+    @property
+    def info(self) -> DenseSquareMultiLinearInfo:
+        """
+        Returns a reference to the flat Delassus matrix array.
+        """
+        return self._operator.info
+
+    @property
+    def D(self) -> wp.array:
+        """
+        Returns a reference to the flat Delassus matrix array.
+        """
+        return self._operator.mat
 
     def allocate(
         self,
@@ -383,7 +418,8 @@ class DelassusOperator:
         state: ModelData,
         limits: Limits | None = None,
         contacts: Contacts | None = None,
-        factorizer: CholeskyFactorizer = None,
+        # factorizer: CholeskyFactorizer = None,
+        solver: LinearSolverType = None,
         device: Devicelike = None,
     ):
         """
@@ -435,52 +471,75 @@ class DelassusOperator:
         if device is not None:
             self._device = device
 
-        # First allocate the Delassus matrix data array given the total maximum size
-        self._data.D = wp.zeros(shape=(self._model_maxsize,), dtype=float32, device=self._device)
-
-        # If the model info contains the maximum total constraints array use that,
-        # otherwise allocate a new array with the world dimensions.
-        if model.info.max_total_cts is not None:
-            self._data.maxdim = model.info.max_total_cts
+        # Construct the Delassus operator data structure
+        self._operator = DenseLinearOperatorData()
+        self._operator.info = DenseSquareMultiLinearInfo()
+        self._operator.mat = wp.zeros(shape=(self._model_maxsize,), dtype=float32, device=self._device)
+        if (model.info is not None) and (state.info is not None):
+            print("Using model and state info to initialize Delassus info arrays")
+            mat_offsets = [0] + [sum(self._world_size[:i]) for i in range(1, self._num_worlds + 1)]
+            self._operator.info.assign(
+                dimensions=maxdims,
+                maxdim=model.info.max_total_cts,
+                dim=state.info.num_total_cts,
+                vio=model.info.total_cts_offset,
+                mio=wp.array(mat_offsets[: self._num_worlds], dtype=int32, device=self._device),
+                dtype=float32,
+                device=self._device,
+            )
         else:
-            self._data.maxdim = wp.array(self._world_dims, dtype=int32, device=self._device)
+            self._operator.info.allocate(dimensions=maxdims, dtype=float32, itype=int32, device=self._device)
 
-        # If the state info contains the total active constraints array
-        # use that, otherwise allocate a new array with zeros.
-        if state is not None:
-            self._data.dim = state.info.num_total_cts
-        else:
-            self._data.dim = wp.zeros(shape=(self._num_worlds,), dtype=int32, device=self._device)
+        # # First allocate the Delassus matrix data array given the total maximum size
+        # self._data.D = wp.zeros(shape=(self._model_maxsize,), dtype=float32, device=self._device)
 
-        # If the model info contains the total constraints offset array use that,
-        # otherwise allocate a new array with the world offsets.
-        if model.info.total_cts_offset is not None:
-            self._data.vio = model.info.total_cts_offset
-        else:
-            vec_offsets = [0] + [sum(self._world_dims[:i]) for i in range(1, self._num_worlds + 1)]
-            self._data.vio = wp.array(vec_offsets[: self._num_worlds], dtype=int32, device=self._device)
+        # # If the model info contains the maximum total constraints array use that,
+        # # otherwise allocate a new array with the world dimensions.
+        # if model.info.max_total_cts is not None:
+        #     self._data.maxdim = model.info.max_total_cts
+        # else:
+        #     self._data.maxdim = wp.array(self._world_dims, dtype=int32, device=self._device)
 
-        # Allocate the matrix index offsets (MIO) for each world
-        mat_offsets = [0] + [sum(self._world_size[:i]) for i in range(1, self._num_worlds + 1)]
-        self._data.mio = wp.array(mat_offsets[: self._num_worlds], dtype=int32, device=self._device)
+        # # If the state info contains the total active constraints array
+        # # use that, otherwise allocate a new array with zeros.
+        # if state is not None:
+        #     self._data.dim = state.info.num_total_cts
+        # else:
+        #     self._data.dim = wp.zeros(shape=(self._num_worlds,), dtype=int32, device=self._device)
 
-        # Optionally initialize the factorizer if one is specified
-        if factorizer is not None:
-            # NOTE: Since the dimensions of the factorizer are the same as the Delassus operator,
-            # we can re-use the same info arrays, and propagate them by reference to the factorizer.
-            # This is possible by passing `allocate_info=False` to the factorizer constructor.
-            self._factorizer = factorizer(dims=self._world_dims, allocate_info=False, device=self._device)
-            self._factorizer._data.maxdim = self._data.maxdim
-            self._factorizer._data.dim = self._data.dim
-            self._factorizer._data.mio = self._data.mio
-            self._factorizer._data.vio = self._data.vio
+        # # If the model info contains the total constraints offset array use that,
+        # # otherwise allocate a new array with the world offsets.
+        # if model.info.total_cts_offset is not None:
+        #     self._data.vio = model.info.total_cts_offset
+        # else:
+        #     vec_offsets = [0] + [sum(self._world_dims[:i]) for i in range(1, self._num_worlds + 1)]
+        #     self._data.vio = wp.array(vec_offsets[: self._num_worlds], dtype=int32, device=self._device)
+
+        # # Allocate the matrix index offsets (MIO) for each world
+        # mat_offsets = [0] + [sum(self._world_size[:i]) for i in range(1, self._num_worlds + 1)]
+        # self._data.mio = wp.array(mat_offsets[: self._num_worlds], dtype=int32, device=self._device)
+
+        # # Optionally initialize the factorizer if one is specified
+        # if factorizer is not None:
+        #     # NOTE: Since the dimensions of the factorizer are the same as the Delassus operator,
+        #     # we can re-use the same info arrays, and propagate them by reference to the factorizer.
+        #     # This is possible by passing `allocate_info=False` to the factorizer constructor.
+        #     self._factorizer = factorizer(dims=self._world_dims, allocate_info=False, device=self._device)
+        #     self._factorizer._data.maxdim = self._data.maxdim
+        #     self._factorizer._data.dim = self._data.dim
+        #     self._factorizer._data.mio = self._data.mio
+        #     self._factorizer._data.vio = self._data.vio
+
+        # Optionally initialize the linear system solver if one is specified
+        if solver is not None:
+            self._solver = solver(operator=self._operator, device=self._device)
 
     def zero(self):
         """
         Sets all values of the Delassus matrix to zero.
         This is useful for resetting the operator before recomputing it.
         """
-        self._data.D.zero_()
+        self._operator.mat.zero_()
 
     def build(self, model: Model, state: ModelData, jacobians: DenseSystemJacobiansData, reset_to_zero: bool = True):
         """
@@ -510,12 +569,12 @@ class DelassusOperator:
             )
 
         # Ensure the Delassus matrix is allocated
-        if self._data.D is None:
+        if self._operator.mat is None:
             raise ValueError("Delassus matrix is not allocated. Call allocate() first.")
 
         # Initialze the Delassus matrix to zero
         if reset_to_zero:
-            self._data.D.zero_()
+            self.zero()
 
         # Build the Delassus matrix parrallelized element-wise
         wp.launch(
@@ -529,10 +588,10 @@ class DelassusOperator:
                 state.bodies.inv_I_i,
                 jacobians.J_cts_offsets,
                 jacobians.J_cts_data,
-                self._data.dim,
-                self._data.mio,
+                self._operator.info.dim,
+                self._operator.info.mio,
                 # Outputs:
-                self._data.D,
+                self._operator.mat,
             ],
         )
 
@@ -548,10 +607,10 @@ class DelassusOperator:
         wp.launch(
             kernel=_regularize_delassus_diagonal,
             dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
-            inputs=[self._data.dim, self._data.vio, self._data.mio, eta, self._data.D],
+            inputs=[self._operator.info.dim, self._operator.info.vio, self._operator.info.mio, eta, self._operator.mat],
         )
 
-    def factorize(self, reset_to_zero: bool = True):
+    def compute(self, reset_to_zero: bool = True):
         """
         Factorizes the Delassus matrix using the Cholesky factorization.\n
         Returns True if the factorization was successful, False otherwise.
@@ -561,19 +620,20 @@ class DelassusOperator:
             This is useful for ensuring that the matrix is in a clean state before factorization.
         """
         # Ensure the Delassus matrix is allocated
-        if self._data.D is None:
+        if self._operator.mat is None:
             raise ValueError("Delassus matrix is not allocated. Call allocate() first.")
 
-        # Ensure the factorizer is available if factorization is requested
-        if self._factorizer is None:
-            raise ValueError("Cholesky factorizer is not available. Allocate with factorizer=CholeskyFactorizer.")
+        # Ensure the solver is available if pre-computation is requested
+        if self._solver is None:
+            raise ValueError("A linear system solver is not available. Allocate with solver=LINEAR_SOLVER_TYPE.")
 
         # Optionally initialize the factorization matrix before factorizing
         if reset_to_zero:
-            self.factorizer.zero()
+            self._solver.reset()
 
         # Perform the Cholesky factorization
-        self._factorizer.factorize(self._data.D)
+        # self._factorizer.factorize(self._data.D)
+        self._solver.compute(A=self._operator.mat)
 
     def solve(self, v: wp.array, x: wp.array):
         """
@@ -588,15 +648,16 @@ class DelassusOperator:
             ValueError: If a factorizer has not been configured set.
         """
         # Ensure the Delassus matrix is allocated
-        if self._data.D is None:
+        if self._operator.mat is None:
             raise ValueError("Delassus matrix is not allocated. Call allocate() first.")
 
-        # Ensure the factorizer is available if solving is requested
-        if self._factorizer is None:
-            raise ValueError("Cholesky factorizer is not available. Allocate with factorizer=CholeskyFactorizer.")
+        # Ensure the solver is available if solving is requested
+        if self._solver is None:
+            raise ValueError("A linear system solver is not available. Allocate with solver=LINEAR_SOLVER_TYPE.")
 
         # Solve the linear system using the factorized matrix
-        return self._factorizer.solve(b=v, x=x)
+        # return self._factorizer.solve(b=v, x=x)
+        return self._solver.solve(b=v, x=x)
 
     def solve_inplace(self, x: wp.array):
         """
@@ -611,12 +672,13 @@ class DelassusOperator:
             ValueError: If a factorizer has not been configured set.
         """
         # Ensure the Delassus matrix is allocated
-        if self._data.D is None:
+        if self._operator.mat is None:
             raise ValueError("Delassus matrix is not allocated. Call allocate() first.")
 
-        # Ensure the factorizer is available if solving is requested
-        if self._factorizer is None:
-            raise ValueError("Cholesky factorizer is not available. Allocate with factorizer=CholeskyFactorizer.")
+        # Ensure the solvers is available if solving in-place is requested
+        if self._solver is None:
+            raise ValueError("A linear system solver is not available. Allocate with solver=LINEAR_SOLVER_TYPE.")
 
         # Solve the linear system in-place
-        return self._factorizer.solve_inplace(x=x)
+        # return self._factorizer.solve_inplace(x=x)
+        return self._solver.solve_inplace(x=x)

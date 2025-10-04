@@ -374,6 +374,60 @@ class DenseSquareMultiLinearInfo:
             self.mio = wp.array(mat_offsets[: self.num_blocks], dtype=self.itype)
             self.vio = wp.array(vec_offsets[: self.num_blocks], dtype=self.itype)
 
+    def assign(
+        self,
+        dimensions: list[int],
+        maxdim: wp.array,
+        dim: wp.array,
+        mio: wp.array,
+        vio: wp.array,
+        dtype: Floatlike = float32,
+        device: Devicelike = None,
+    ) -> None:
+        """
+        Allocates the TODO data on the specified device.
+        """
+        # Ensure the problem dimensions are valid and cache them
+        self.dimensions = self._check_dimensions(dimensions)
+
+        # Ensure the dtype and itype are valid
+        if not issubclass(dtype, Floatlike):
+            raise TypeError("Invalid dtype. Expected Floatlike type, e.g. `wp.float32` or `wp.float64`.")
+        if not issubclass(maxdim.dtype, Intlike):
+            raise TypeError("Invalid itype in `maxdim` argument. Expected Intlike type, e.g. `wp.int32` or `wp.int64`.")
+        if not issubclass(dim.dtype, Intlike):
+            raise TypeError("Invalid itype in `dim` argument. Expected Intlike type, e.g. `wp.int32` or `wp.int64`.")
+        if not issubclass(mio.dtype, Intlike):
+            raise TypeError("Invalid itype in `mio` argument. Expected Intlike type, e.g. `wp.int32` or `wp.int64`.")
+        if not issubclass(vio.dtype, Intlike):
+            raise TypeError("Invalid itype in `vio` argument. Expected Intlike type, e.g. `wp.int32` or `wp.int64`.")
+
+        # Cache the data type information
+        self.dtype = dtype
+        self.itype = maxdim.dtype
+
+        # Override the device identifier if specified, otherwise use the current device
+        if device is not None:
+            self.device = device
+
+        # Compute the allocation sizes and offsets for the flat data arrays
+        mat_sizes = [n * n for n in self.dimensions]
+        mat_flat_size = sum(mat_sizes)
+        vec_sizes = self.dimensions
+        vec_flat_size = sum(vec_sizes)
+
+        # Update the allocation meta-data the specified system dimensions
+        self.num_blocks = len(self.dimensions)
+        self.max_dimension = max(self.dimensions)
+        self.total_mat_size = mat_flat_size
+        self.total_vec_size = vec_flat_size
+
+        # Capture references the multi-linear square system info data on the specified device
+        self.maxdim = maxdim
+        self.dim = dim
+        self.mio = mio
+        self.vio = vio
+
     def is_matrix_compatible(self, A: wp.array) -> bool:
         """Checks if the provided matrix data array is compatible with the specified info structure."""
         return A.dtype == self.dtype and A.size >= self.total_mat_size
@@ -420,6 +474,9 @@ class DenseLinearOperatorData:
 
     mat: wp.array | None = None
     """The flat data array containing the matrix blocks."""
+
+    def zero(self) -> None:
+        self.mat.zero_()
 
 
 ###

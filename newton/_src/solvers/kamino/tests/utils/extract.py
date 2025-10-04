@@ -110,10 +110,10 @@ def extract_dofs_jacobians(
 
 
 def extract_delassus(delassus: DelassusOperator, only_active_dims: bool = False) -> list[np.ndarray]:
-    maxdim_wp_np = delassus.data.maxdim.numpy()
-    dim_wp_np = delassus.data.dim.numpy()
-    mio_wp_np = delassus.data.mio.numpy()
-    D_wp_np = delassus.data.D.numpy()
+    maxdim_wp_np = delassus.info.maxdim.numpy()
+    dim_wp_np = delassus.info.dim.numpy()
+    mio_wp_np = delassus.info.mio.numpy()
+    D_wp_np = delassus.D.numpy()
 
     # Extract each Delassus matrix for each world
     D_mat: list[np.ndarray] = []
@@ -134,9 +134,9 @@ def extract_delassus(delassus: DelassusOperator, only_active_dims: bool = False)
 def extract_problem_vector(
     delassus: DelassusOperator, vector: np.ndarray, only_active_dims: bool = False
 ) -> list[np.ndarray]:
-    maxdim_wp_np = delassus.data.maxdim.numpy()
-    dim_wp_np = delassus.data.dim.numpy()
-    vio_wp_np = delassus.data.vio.numpy()
+    maxdim_wp_np = delassus.info.maxdim.numpy()
+    dim_wp_np = delassus.info.dim.numpy()
+    vio_wp_np = delassus.info.vio.numpy()
 
     # Extract each vector for each world
     vectors_np: list[np.ndarray] = []

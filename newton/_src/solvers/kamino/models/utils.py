@@ -17,8 +17,8 @@
 KAMINO: MODELS: MODEL BUILDER UTILITIES
 """
 
-from newton._src.solvers.kamino.core import ModelBuilder
-from newton._src.solvers.kamino.models.builders import (
+from ..core import ModelBuilder
+from ..models.builders import (
     build_box_on_plane,
     build_box_pendulum,
     build_boxes_fourbar,

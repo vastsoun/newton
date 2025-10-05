@@ -41,12 +41,12 @@ from enum import IntEnum
 import warp as wp
 from warp.context import Devicelike
 
-from newton._src.solvers.kamino.core.math import FLOAT32_EPS
-from newton._src.solvers.kamino.core.model import Model, ModelSize
-from newton._src.solvers.kamino.core.types import float32, int32, vec3f
-from newton._src.solvers.kamino.dynamics.dual import DualProblem
-from newton._src.solvers.kamino.geometry.contacts import Contacts
-from newton._src.solvers.kamino.kinematics.limits import Limits
+from ..core.math import FLOAT32_EPS
+from ..core.model import Model, ModelSize
+from ..core.types import float32, int32, vec3f
+from ..dynamics.dual import DualProblem
+from ..geometry.contacts import Contacts
+from ..kinematics.limits import Limits
 
 ###
 # Module configs

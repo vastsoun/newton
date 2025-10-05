@@ -21,15 +21,15 @@ import math
 
 import warp as wp
 
-from newton._src.solvers.kamino.core import ModelBuilder
-from newton._src.solvers.kamino.core.inertia import (
+from ..core import ModelBuilder
+from ..core.inertia import (
     solid_cuboid_body_moment_of_inertia,
     solid_sphere_body_moment_of_inertia,
 )
-from newton._src.solvers.kamino.core.joints import JointActuationType, JointDoFType
-from newton._src.solvers.kamino.core.math import FLOAT32_MAX, FLOAT32_MIN, I_3
-from newton._src.solvers.kamino.core.shapes import BoxShape, SphereShape
-from newton._src.solvers.kamino.core.types import Axis, transformf, vec3f, vec6f
+from ..core.joints import JointActuationType, JointDoFType
+from ..core.math import FLOAT32_MAX, FLOAT32_MIN, I_3
+from ..core.shapes import BoxShape, SphereShape
+from ..core.types import Axis, transformf, vec3f, vec6f
 
 ###
 # Module interface

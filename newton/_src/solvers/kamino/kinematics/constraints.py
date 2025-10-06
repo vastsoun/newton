@@ -22,10 +22,10 @@ from __future__ import annotations
 import warp as wp
 from warp.context import Devicelike
 
-from newton._src.solvers.kamino.core.model import Model, ModelData
-from newton._src.solvers.kamino.core.types import int32
-from newton._src.solvers.kamino.geometry.contacts import Contacts
-from newton._src.solvers.kamino.kinematics.limits import Limits
+from ..core.model import Model, ModelData
+from ..core.types import int32
+from ..geometry.contacts import Contacts
+from ..kinematics.limits import Limits
 
 ###
 # Module interface

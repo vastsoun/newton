@@ -24,13 +24,13 @@ import numpy as np
 import scipy.linalg
 
 from ...core.types import override
-from . import factorize
-from .matrix import (
+from ...linalg.utils.matrix import (
     MatrixSign,
     _make_tolerance,
     assert_is_square_matrix,
     assert_is_symmetric_matrix,
 )
+from . import factorize
 
 ###
 # Types

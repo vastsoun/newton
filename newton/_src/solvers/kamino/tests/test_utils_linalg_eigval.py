@@ -76,6 +76,10 @@ class TestUtilsLinAlgEigval(unittest.TestCase):
             f"\n  lambda_min(A): {self.lambdas_A.min()}\n"
         )
 
+    def tearDown(self):
+        if self.verbose:
+            msg.reset_log_level()
+
     def test_01_power_iteration(self):
         pi = linalg.PowerIteration(atol=self.atol, rtol=self.rtol, max_iterations=1000)
         lambdas_pi_max = pi.largest(self.A)

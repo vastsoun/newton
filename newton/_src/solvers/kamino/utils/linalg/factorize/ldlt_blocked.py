@@ -19,7 +19,7 @@ KAMINO: Utilities: Linear Algebra: Block LDLT
 
 import numpy as np
 
-from ..matrix import (
+from ....linalg.utils.matrix import (
     assert_is_square_matrix,
     assert_is_symmetric_matrix,
 )

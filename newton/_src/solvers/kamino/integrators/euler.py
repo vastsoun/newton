@@ -21,10 +21,10 @@ from __future__ import annotations
 
 import warp as wp
 
-from newton._src.solvers.kamino.core.math import quat_box_plus, screw, screw_angular, screw_linear
-from newton._src.solvers.kamino.core.model import Model, ModelData
-from newton._src.solvers.kamino.core.state import State
-from newton._src.solvers.kamino.core.types import float32, int32, mat33f, transformf, vec3f, vec4f, vec6f
+from ..core.math import quat_box_plus, screw, screw_angular, screw_linear
+from ..core.model import Model, ModelData
+from ..core.state import State
+from ..core.types import float32, int32, mat33f, transformf, vec3f, vec4f, vec6f
 
 ###
 # Module interface

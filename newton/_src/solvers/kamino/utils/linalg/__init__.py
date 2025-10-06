@@ -57,21 +57,6 @@ from .linear import (
     minimum_residual,
     successive_over_relaxation,
 )
-from .matrix import (
-    MatrixComparison,
-    MatrixSign,
-    RectangularMatrixProperties,
-    SquareSymmetricMatrixProperties,
-    is_square_matrix,
-    is_symmetric_matrix,
-)
-from .rand import (
-    ArrayLike,
-    eigenvalues_from_distribution,
-    random_rhs_for_matrix,
-    random_spd_matrix,
-    random_symmetric_matrix,
-)
 
 ###
 # Module API
@@ -83,7 +68,6 @@ __all__ = [
     "ADMMResult",
     "ADMMSolver",
     "ADMMStatus",
-    "ArrayLike",
     "ComputationInfo",
     "ConjugateGradientSolver",
     "DirectSolver",
@@ -104,26 +88,16 @@ __all__ = [
     "LinearSolution",
     "LinearSolver",
     "LinearSolverType",
-    "MatrixComparison",
-    "MatrixSign",
     "MinimumResidualSolver",
     "NumPySolver",
     "PowerIteration",
-    "RectangularMatrixProperties",
     "SORSolver",
     "SciPySolver",
-    "SquareSymmetricMatrixProperties",
     "compute_lambdas",
     "compute_u_plus",
     "conjugate_gradient",
-    "eigenvalues_from_distribution",
     "gauss_seidel",
-    "is_square_matrix",
-    "is_symmetric_matrix",
     "jacobi",
     "minimum_residual",
-    "random_rhs_for_matrix",
-    "random_spd_matrix",
-    "random_symmetric_matrix",
     "successive_over_relaxation",
 ]

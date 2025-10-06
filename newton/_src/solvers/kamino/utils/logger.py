@@ -97,7 +97,13 @@ def get_default_logger() -> logging.Logger:
 def set_log_level(level: LogLevel):
     """Set the logging level for the default logger."""
     get_default_logger().setLevel(level)
-    get_default_logger().info(f"Log level set to: {logging.getLevelName(level)}")
+    get_default_logger().debug(f"Log level set to: {logging.getLevelName(level)}")
+
+
+def reset_log_level():
+    """Reset the logging level for the default logger to WARNING."""
+    get_default_logger().setLevel(logging.WARNING)
+    get_default_logger().debug(f"Log level reset to: {logging.getLevelName(logging.WARNING)}")
 
 
 def info(msg: str, *args, **kwargs):

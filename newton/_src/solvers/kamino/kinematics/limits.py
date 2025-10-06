@@ -22,10 +22,10 @@ from __future__ import annotations
 import warp as wp
 from warp.context import Devicelike
 
-from newton._src.solvers.kamino.core.builder import ModelBuilder
-from newton._src.solvers.kamino.core.math import FLOAT32_MAX, FLOAT32_MIN
-from newton._src.solvers.kamino.core.model import Model, ModelData
-from newton._src.solvers.kamino.core.types import float32, int32, vec2i
+from ..core.builder import ModelBuilder
+from ..core.math import FLOAT32_MAX, FLOAT32_MIN
+from ..core.model import Model, ModelData
+from ..core.types import float32, int32, vec2i
 
 ###
 # Module interface

@@ -22,8 +22,8 @@ import ctypes
 import h5py
 import numpy as np
 
-from newton._src.solvers.kamino.core.builder import WorldDescriptor
-from newton._src.solvers.kamino.core.joints import (
+from ...core.builder import WorldDescriptor
+from ...core.joints import (
     JOINT_CARTESIAN,
     JOINT_CYLINDRICAL,
     JOINT_FIXED,
@@ -35,7 +35,7 @@ from newton._src.solvers.kamino.core.joints import (
     JOINT_SPHERICAL,
     JOINT_UNIVERSAL,
 )
-from newton._src.solvers.kamino.simulation.simulator import Simulator
+from ...simulation.simulator import Simulator
 
 ###
 # Helper functions

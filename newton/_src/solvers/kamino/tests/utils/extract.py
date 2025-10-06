@@ -13,14 +13,36 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-KAMINO: UNIT TESTS: GENERAL UTILITIES
-"""
+"""Utilities for extracting data from Kamino data structures"""
 
 import numpy as np
 
-from newton._src.solvers.kamino.dynamics.delassus import DelassusOperator
-from newton._src.solvers.kamino.kinematics.jacobians import DenseSystemJacobians
+from ...dynamics.delassus import DelassusOperator
+from ...kinematics.jacobians import DenseSystemJacobians
+
+###
+# Helper functions
+###
+
+
+def get_matrix_block(index: int, flatmat: np.ndarray, dims: list[int], maxdims: list[int] | None = None) -> np.ndarray:
+    """Extract a specific matrix block from a flattened array of matrices."""
+    if maxdims is None:
+        maxdims = dims
+    mat_shape = (dims[index], dims[index])
+    mat_start = sum(n * n for n in maxdims[:index])
+    mat_end = mat_start + dims[index] ** 2
+    return flatmat[mat_start:mat_end].reshape(mat_shape)
+
+
+def get_vector_block(index: int, flatvec: np.ndarray, dims: list[int], maxdims: list[int] | None = None) -> np.ndarray:
+    """Extract a specific matrix block from a flattened array of matrices."""
+    if maxdims is None:
+        maxdims = dims
+    vec_start = sum(maxdims[:index])
+    vec_end = vec_start + dims[index]
+    return flatvec[vec_start:vec_end]
+
 
 ###
 # Helper functions
@@ -29,7 +51,7 @@ from newton._src.solvers.kamino.kinematics.jacobians import DenseSystemJacobians
 
 def extract_active_constraint_dims(delassus: DelassusOperator) -> list[int]:
     # Extract the active constraint dimensions
-    active_dim_np = delassus.data.dim.numpy()
+    active_dim_np = delassus.info.dim.numpy()
     active_dims = [int(active_dim_np[i]) for i in range(len(active_dim_np))]
     return active_dims
 
@@ -110,22 +132,22 @@ def extract_dofs_jacobians(
 
 
 def extract_delassus(delassus: DelassusOperator, only_active_dims: bool = False) -> list[np.ndarray]:
-    maxdim_wp_np = delassus.data.maxdim.numpy()
-    dim_wp_np = delassus.data.dim.numpy()
-    mio_wp_np = delassus.data.mio.numpy()
-    D_wp_np = delassus.data.D.numpy()
+    maxdim_wp_np = delassus.info.maxdim.numpy()
+    dim_wp_np = delassus.info.dim.numpy()
+    mio_wp_np = delassus.info.mio.numpy()
+    D_wp_np = delassus.D.numpy()
 
     # Extract each Delassus matrix for each world
     D_mat: list[np.ndarray] = []
     for i in range(delassus.num_worlds):
         D_maxdim = maxdim_wp_np[i]
         D_start = mio_wp_np[i]
-        D_end = D_start + D_maxdim * D_maxdim
         if only_active_dims:
             D_dim = dim_wp_np[i]
         else:
             D_dim = D_maxdim
-        D_mat.append(D_wp_np[D_start:D_end].reshape((D_maxdim, D_maxdim))[:D_dim, :D_dim])
+        D_end = D_start + D_dim * D_dim
+        D_mat.append(D_wp_np[D_start:D_end].reshape((D_dim, D_dim)))
 
     # Return the list of Delassus matrices
     return D_mat
@@ -134,9 +156,9 @@ def extract_delassus(delassus: DelassusOperator, only_active_dims: bool = False)
 def extract_problem_vector(
     delassus: DelassusOperator, vector: np.ndarray, only_active_dims: bool = False
 ) -> list[np.ndarray]:
-    maxdim_wp_np = delassus.data.maxdim.numpy()
-    dim_wp_np = delassus.data.dim.numpy()
-    vio_wp_np = delassus.data.vio.numpy()
+    maxdim_wp_np = delassus.info.maxdim.numpy()
+    dim_wp_np = delassus.info.dim.numpy()
+    vio_wp_np = delassus.info.vio.numpy()
 
     # Extract each vector for each world
     vectors_np: list[np.ndarray] = []

@@ -46,12 +46,12 @@ from enum import IntEnum
 import warp as wp
 from warp.context import Devicelike
 
-from newton._src.solvers.kamino.core.math import FLOAT32_EPS, FLOAT32_MAX
-from newton._src.solvers.kamino.core.model import Model, ModelSize
-from newton._src.solvers.kamino.core.types import float32, int32, vec3f
-from newton._src.solvers.kamino.dynamics.dual import DualProblem
-from newton._src.solvers.kamino.geometry.contacts import Contacts
-from newton._src.solvers.kamino.kinematics.limits import Limits
+from ..core.math import FLOAT32_EPS, FLOAT32_MAX
+from ..core.model import Model, ModelSize
+from ..core.types import float32, int32, vec3f
+from ..dynamics.dual import DualProblem
+from ..geometry.contacts import Contacts
+from ..kinematics.limits import Limits
 
 ###
 # Module configs
@@ -789,7 +789,6 @@ def compute_cwise_vec_mul(
 
 @wp.func
 def compute_gemv(
-    maxdim: int32,
     dim: int32,
     vio: int32,
     mio: int32,
@@ -829,7 +828,7 @@ def compute_gemv(
     x_j = float(0.0)
     for i in range(dim):
         v_i = vio + i
-        m_i = mio + maxdim * i
+        m_i = mio + dim * i
         b_i = b[v_i]
         for j in range(dim):
             x_j = x[vio + j]
@@ -1259,7 +1258,6 @@ def _initialize_solver(
 @wp.kernel
 def _update_delassus_proximal_regularization(
     # Inputs:
-    problem_maxdim: wp.array(dtype=int32),
     problem_dim: wp.array(dtype=int32),
     problem_mio: wp.array(dtype=int32),
     solver_config: wp.array(dtype=APADMMConfig),
@@ -1281,9 +1279,6 @@ def _update_delassus_proximal_regularization(
     if tid >= ncts or status.converged > 0:
         return
 
-    # Retrieve the maximum number of dimensions of the world
-    maxdim = problem_maxdim[wid]
-
     # Retrieve the matrix index offset of the world
     mio = problem_mio[wid]
 
@@ -1297,7 +1292,7 @@ def _update_delassus_proximal_regularization(
     eta = cfg.eta
 
     # Add the proximal regularization to the diagonal of the Delassus matrix
-    D[mio + maxdim * tid + tid] += eta + (rho - rho_p)
+    D[mio + ncts * tid + tid] += eta + (rho - rho_p)
 
 
 @wp.kernel
@@ -1926,7 +1921,6 @@ def _collect_solver_convergence_info(
     problem_cio: wp.array(dtype=int32),
     problem_lcgo: wp.array(dtype=int32),
     problem_ccgo: wp.array(dtype=int32),
-    problem_maxdim: wp.array(dtype=int32),
     problem_dim: wp.array(dtype=int32),
     problem_vio: wp.array(dtype=int32),
     problem_mio: wp.array(dtype=int32),
@@ -1981,7 +1975,6 @@ def _collect_solver_convergence_info(
     # Retrieve the world-specific data
     nl = problem_nl[wid]
     nc = problem_nc[wid]
-    maxncts = problem_maxdim[wid]
     ncts = problem_dim[wid]
     cio = problem_cio[wid]
     lcgo = problem_lcgo[wid]
@@ -2016,7 +2009,7 @@ def _collect_solver_convergence_info(
     compute_cwise_vec_mul(ncts, vio, problem_P, solver_state_y, solver_info_lambdas)
 
     # Compute the post-event constraint-space velocity from the current solution: v_plus = v_f + D @ lambda
-    compute_gemv(maxncts, ncts, vio, mio, sigma, problem_P, problem_D, solver_state_y, problem_v_f, solver_info_v_plus)
+    compute_gemv(ncts, vio, mio, sigma, problem_P, problem_D, solver_state_y, problem_v_f, solver_info_v_plus)
 
     # Compute the De Saxce correction for each contact as: s = G(v_plus)
     compute_desaxce_corrections(nc, cio, vio, ccgo, problem_mu, solver_info_v_plus, solver_info_s)
@@ -2409,7 +2402,6 @@ class APADMMDualSolver:
             dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
             inputs=[
                 # Inputs:
-                problem.data.maxdim,
                 problem.data.dim,
                 problem.data.mio,
                 self._data.config,
@@ -2421,7 +2413,7 @@ class APADMMDualSolver:
         )
 
         # Compute Choleky/LDLT factorization of the Delassus matrix
-        problem._delassus.factorize(reset_to_zero=True)
+        problem._delassus.compute(reset_to_zero=True)
 
     def update_desaxce_correction(self, problem: DualProblem):
         wp.launch(
@@ -2621,7 +2613,6 @@ class APADMMDualSolver:
                 problem.data.cio,
                 problem.data.lcgo,
                 problem.data.ccgo,
-                problem.data.maxdim,
                 problem.data.dim,
                 problem.data.vio,
                 problem.data.mio,
@@ -2733,7 +2724,7 @@ class APADMMDualSolver:
         # Compute De Saxce correction from the previous dual variables
         self.update_desaxce_correction(problem)
 
-        # Compute the total velocity bias
+        # Compute the total velocity bias, i.e. rhs vector of the unconstrained linear system
         self.update_velocity_bias(problem)
 
         # Compute the unconstrained solution and store in the primal variables

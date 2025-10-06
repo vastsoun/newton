@@ -22,9 +22,9 @@ from __future__ import annotations
 import warp as wp
 from warp.context import Devicelike
 
-from newton._src.solvers.kamino.core.math import FLOAT32_EPS, UNIT_Z, screw, screw_angular, screw_linear
-from newton._src.solvers.kamino.core.model import Model, ModelData, ModelSize
-from newton._src.solvers.kamino.core.types import (
+from ..core.math import FLOAT32_EPS, UNIT_Z, screw, screw_angular, screw_linear
+from ..core.model import Model, ModelData, ModelSize
+from ..core.types import (
     float32,
     int32,
     mat33f,
@@ -33,11 +33,11 @@ from newton._src.solvers.kamino.core.types import (
     vec4f,
     vec6f,
 )
-from newton._src.solvers.kamino.dynamics.delassus import DelassusOperator
-from newton._src.solvers.kamino.geometry.contacts import Contacts, ContactsData
-from newton._src.solvers.kamino.kinematics.jacobians import DenseSystemJacobians, DenseSystemJacobiansData
-from newton._src.solvers.kamino.kinematics.limits import Limits, LimitsData
-from newton._src.solvers.kamino.linalg.cholesky import CholeskyFactorizer
+from ..dynamics.delassus import DelassusOperator
+from ..geometry.contacts import Contacts, ContactsData
+from ..kinematics.jacobians import DenseSystemJacobians, DenseSystemJacobiansData
+from ..kinematics.limits import Limits, LimitsData
+from ..linalg import LinearSolverType
 
 ###
 # Module interface
@@ -233,7 +233,6 @@ class DualProblemData:
         # Auxiliary vectors
         ###
 
-        # TODO: remove these later
         self.h: wp.array(dtype=vec6f) | None = None
         """
         The array of non-linear generalized forces vectors.\n
@@ -667,7 +666,6 @@ def _build_free_velocity(
 @wp.kernel
 def _build_dual_preconditioner_all_constraints(
     # Inputs:
-    problem_maxdim: wp.array(dtype=int32),
     problem_dim: wp.array(dtype=int32),
     problem_mio: wp.array(dtype=int32),
     problem_vio: wp.array(dtype=int32),
@@ -687,9 +685,6 @@ def _build_dual_preconditioner_all_constraints(
     if tid >= ncts:
         return
 
-    # Retrieve the maximum number of dimensions of the world
-    maxncts = problem_maxdim[wid]
-
     # Retrieve the matrix index offset of the world
     mio = problem_mio[wid]
 
@@ -704,7 +699,7 @@ def _build_dual_preconditioner_all_constraints(
     # TODO
     if tid < njlc:
         # Retrieve the diagonal entry of the Delassus matrix
-        D_ii = problem_D[mio + maxncts * tid + tid]
+        D_ii = problem_D[mio + ncts * tid + tid]
         # Compute the corresponding Jacobi preconditioner entry
         problem_P[vio + tid] = wp.sqrt(1.0 / (wp.abs(D_ii) + FLOAT32_EPS))
     else:
@@ -713,9 +708,9 @@ def _build_dual_preconditioner_all_constraints(
         # Only the thread of the first contact constraint dimension computes the preconditioner
         if ccid % 3 == 0:
             # Retrieve the diagonal entries of the Delassus matrix for the contact constraint set
-            D_kk_0 = problem_D[mio + maxncts * tid + tid]
-            D_kk_1 = problem_D[mio + maxncts * tid + tid + 1]
-            D_kk_2 = problem_D[mio + maxncts * tid + tid + 2]
+            D_kk_0 = problem_D[mio + ncts * tid + tid]
+            D_kk_1 = problem_D[mio + ncts * tid + tid + 1]
+            D_kk_2 = problem_D[mio + ncts * tid + tid + 2]
             # Compute the effective diagonal entry
             # D_kk = (D_kk_0 + D_kk_1 + D_kk_2) / 3.0
             # D_kk = wp.min(vec3f(D_kk_0, D_kk_1, D_kk_2))
@@ -730,7 +725,6 @@ def _build_dual_preconditioner_all_constraints(
 @wp.kernel
 def _apply_dual_preconditioner_to_matrix(
     # Inputs:
-    problem_maxdim: wp.array(dtype=int32),
     problem_dim: wp.array(dtype=int32),
     problem_mio: wp.array(dtype=int32),
     problem_vio: wp.array(dtype=int32),
@@ -752,9 +746,6 @@ def _apply_dual_preconditioner_to_matrix(
     if i >= ncts or j >= ncts:
         return
 
-    # Retrieve the maximum number of dimensions of the world
-    maxncts = problem_maxdim[wid]
-
     # Retrieve the matrix index offset of the world
     mio = problem_mio[wid]
 
@@ -762,7 +753,7 @@ def _apply_dual_preconditioner_to_matrix(
     vio = problem_vio[wid]
 
     # Compute the global index of the matrix entry
-    m_ij = mio + maxncts * i + j
+    m_ij = mio + ncts * i + j
 
     # Retrieve the i,j-th entry of the target matrix
     X_ij = X[m_ij]
@@ -808,96 +799,6 @@ def _apply_dual_preconditioner_to_vector(
 
     # Store the preconditioned i-th entry of the vector
     x[v_i] = P_i * x_i
-
-
-##
-# Generic linear-algebra operations
-##
-
-
-@wp.kernel
-def _mult_left_right_diag_matrix_with_matrix(
-    # Inputs:
-    maxdim: wp.array(dtype=int32),
-    dim: wp.array(dtype=int32),
-    mio: wp.array(dtype=int32),
-    vio: wp.array(dtype=int32),
-    D: wp.array(dtype=float32),
-    X: wp.array(dtype=float32),
-    # Outputs:
-    Y: wp.array(dtype=float32),
-):
-    # Retrieve the thread indices
-    wid, tid = wp.tid()
-
-    # Retrieve the number of active dimensions in the world
-    n = dim[wid]
-
-    # Compute i (row) and j (col) indices from the tid
-    i = tid // n
-    j = tid % n
-
-    # Skip if indices exceed the problem size
-    if i >= n or j >= n:
-        return
-
-    # Retrieve the maximum number of dimensions of the world
-    maxn = maxdim[wid]
-
-    # Retrieve the matrix index offset of the world
-    m_0 = mio[wid]
-
-    # Retrieve the vector index offset of the world
-    v_0 = vio[wid]
-
-    # Compute the global index of the matrix entry
-    m_ij = m_0 + maxn * i + j
-
-    # Retrieve the ij entry of the input matrix
-    X_ij = X[m_ij]
-
-    # Retrieve the i,j entries of the diagonal matrix
-    D_i = D[v_0 + i]
-    D_j = D[v_0 + j]
-
-    # Compute the i,j entry of the output matrix
-    Y[m_ij] = D_i * D_j * X_ij
-
-
-@wp.kernel
-def _mult_left_diag_matrix_with_vector(
-    # Inputs:
-    dim: wp.array(dtype=int32),
-    vio: wp.array(dtype=int32),
-    D: wp.array(dtype=float32),
-    x: wp.array(dtype=float32),
-    # Outputs:
-    y: wp.array(dtype=float32),
-):
-    # Retrieve the thread index
-    wid, tid = wp.tid()
-
-    # Retrieve the number of active constraints in the world
-    n = dim[wid]
-
-    # Skip if row index exceed the problem size
-    if tid >= n:
-        return
-
-    # Retrieve the vector index offset of the world
-    v_0 = vio[wid]
-
-    # Compute the global index of the vector entry
-    v_i = v_0 + tid
-
-    # Retrieve the i-th entry of the input vector
-    x_i = x[v_i]
-
-    # Retrieve the i-th entry of the diagonal matrix
-    D_i = D[v_i]
-
-    # Compute the i-th entry of the output vector
-    y[v_i] = D_i * x_i
 
 
 ###
@@ -1054,7 +955,6 @@ def build_dual_preconditioner(problem: DualProblem):
         dim=(problem._size.num_worlds, problem._size.max_of_max_total_cts),
         inputs=[
             # Inputs:
-            problem.data.maxdim,
             problem.data.dim,
             problem.data.mio,
             problem.data.vio,
@@ -1076,7 +976,6 @@ def apply_dual_preconditioner_to_dual(problem: DualProblem):
         dim=(problem._size.num_worlds, problem.delassus._max_of_max_total_D_size),
         inputs=[
             # Inputs:
-            problem.data.maxdim,
             problem.data.dim,
             problem.data.mio,
             problem.data.vio,
@@ -1108,7 +1007,6 @@ def apply_dual_preconditioner_to_matrix(problem: DualProblem, X: wp.array(dtype=
         dim=(problem._size.num_worlds, problem._size.max_of_max_total_cts),
         inputs=[
             # Inputs:
-            problem.data.maxdim,
             problem.data.dim,
             problem.data.mio,
             problem.data.vio,
@@ -1180,7 +1078,8 @@ class DualProblem:
         state: ModelData | None = None,
         limits: Limits | None = None,
         contacts: Contacts | None = None,
-        factorizer: CholeskyFactorizer = None,
+        # factorizer: CholeskyFactorizer = None,
+        solver: LinearSolverType | None = None,
         settings: list[DualProblemSettings] | DualProblemSettings | None = None,
         device: Devicelike = None,
     ):
@@ -1199,6 +1098,7 @@ class DualProblem:
             contacts (Contacts, optional): The contacts container to use for the dual problem.
             device (Devicelike, optional): The device to allocate the dual problem on. Defaults to None.
             factorizer (CholeskyFactorizer, optional): The factorizer to use for the Delassus operator. Defaults to None.
+            solver (LinearSolverType, optional): The linear solver to use for the Delassus operator. Defaults to None.
         """
         # Cache the requested device
         self._device: Devicelike = device
@@ -1222,7 +1122,8 @@ class DualProblem:
                 state=state,
                 limits=limits,
                 contacts=contacts,
-                factorizer=factorizer,
+                # factorizer=factorizer,
+                solver=solver,
                 settings=settings,
                 device=device,
             )
@@ -1274,7 +1175,8 @@ class DualProblem:
         state: ModelData | None = None,
         limits: Limits | None = None,
         contacts: Contacts | None = None,
-        factorizer: CholeskyFactorizer = None,
+        # factorizer: CholeskyFactorizer = None,
+        solver: LinearSolverType | None = None,
         settings: list[DualProblemSettings] | DualProblemSettings | None = None,
         device: Devicelike = None,
     ):
@@ -1318,7 +1220,13 @@ class DualProblem:
         # Allocate the Delassus operator first since it will already process the necessary
         # model and contacts allocation sizes and will create some of the necessary arrays
         self._delassus = DelassusOperator(
-            model=model, state=state, limits=limits, contacts=contacts, factorizer=factorizer, device=device
+            # model=model, state=state, limits=limits, contacts=contacts, factorizer=factorizer, device=device
+            model=model,
+            state=state,
+            limits=limits,
+            contacts=contacts,
+            solver=solver,
+            device=device,
         )
 
         # Update the cache of the maximal problem dimensions
@@ -1336,12 +1244,18 @@ class DualProblem:
         self.data.lcgo = state.info.limit_cts_group_offset
         self.data.ccgo = state.info.contact_cts_group_offset
 
+        # # Capture references to arrays already create by the Delassus operator
+        # self._data.maxdim = self._delassus.data.maxdim
+        # self._data.dim = self._delassus.data.dim
+        # self._data.mio = self._delassus.data.mio
+        # self._data.vio = self._delassus.data.vio
+        # self._data.D = self._delassus.data.D
         # Capture references to arrays already create by the Delassus operator
-        self._data.maxdim = self._delassus.data.maxdim
-        self._data.dim = self._delassus.data.dim
-        self._data.mio = self._delassus.data.mio
-        self._data.vio = self._delassus.data.vio
-        self._data.D = self._delassus.data.D
+        self._data.maxdim = self._delassus.info.maxdim
+        self._data.dim = self._delassus.info.dim
+        self._data.mio = self._delassus.info.mio
+        self._data.vio = self._delassus.info.vio
+        self._data.D = self._delassus.D
 
         # Store the specified settings
         num_worlds = model.info.num_worlds if model is not None else 1
@@ -1394,7 +1308,7 @@ class DualProblem:
 
         # TODO: make this optional
         # Build the non-linear generalized force vector
-        build_nonlinear_generalized_force(model, state, self._data)
+        # build_nonlinear_generalized_force(model, state, self._data)
 
         # Build the generalized free-velocity vector
         build_generalized_free_velocity(model, state, self._data)

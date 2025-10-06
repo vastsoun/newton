@@ -21,9 +21,9 @@ from __future__ import annotations
 
 import warp as wp
 
-from newton._src.solvers.kamino.core.math import FLOAT32_MAX, FLOAT32_MIN
-from newton._src.solvers.kamino.core.shapes import ShapeType
-from newton._src.solvers.kamino.core.types import float32, int32, mat83f, transformf, vec3f, vec4f, vec8f
+from .math import FLOAT32_MAX, FLOAT32_MIN
+from .shapes import ShapeType
+from .types import float32, int32, mat83f, transformf, vec3f, vec4f, vec8f
 
 ###
 # Module interface

@@ -26,7 +26,7 @@ import numpy as np
 import warp as wp
 from warp.context import Devicelike
 
-from ..core.types import Floatlike, Intlike, VecIntlike, float32, int32
+from ..core.types import FloatType, IntType, VecIntlike, float32, int32
 from ..utils import logger as msg
 
 ###
@@ -100,10 +100,10 @@ class DenseRectangularMultiLinearInfo:
     This is equal to `sum(maxdim[i][0] for i in range(num_blocks))`.
     """
 
-    dtype: Floatlike = float32
+    dtype: FloatType = float32
     """The data type of the underlying matrix and vector data arrays."""
 
-    itype: Intlike = int32
+    itype: IntType = int32
     """The integer type used for indexing the underlying data arrays."""
 
     device: Devicelike | None = None
@@ -161,8 +161,8 @@ class DenseRectangularMultiLinearInfo:
     def allocate(
         self,
         dimensions: list[tuple[int, int]],
-        dtype: Floatlike = float32,
-        itype: Intlike = int32,
+        dtype: FloatType = float32,
+        itype: IntType = int32,
         device: Devicelike = None,
     ) -> None:
         """
@@ -172,10 +172,10 @@ class DenseRectangularMultiLinearInfo:
         self.dimensions = self._check_dimensions(dimensions)
 
         # Ensure the dtype and itype are valid
-        if not issubclass(dtype, Floatlike):
-            raise TypeError("Invalid dtype. Expected Floatlike type, e.g. `wp.float32` or `wp.float64`.")
-        if not issubclass(itype, Intlike):
-            raise TypeError("Invalid itype. Expected Intlike type, e.g. `wp.int32` or `wp.int64`.")
+        if not issubclass(dtype, FloatType):
+            raise TypeError("Invalid dtype. Expected FloatType type, e.g. `wp.float32` or `wp.float64`.")
+        if not issubclass(itype, IntType):
+            raise TypeError("Invalid itype. Expected IntType type, e.g. `wp.int32` or `wp.int64`.")
         self.dtype = dtype
         self.itype = itype
 
@@ -222,7 +222,7 @@ class DenseRectangularMultiLinearInfo:
         mio: wp.array,
         rvio: wp.array,
         ivio: wp.array,
-        dtype: Floatlike = float32,
+        dtype: FloatType = float32,
         device: Devicelike = None,
     ) -> None:
         """
@@ -232,8 +232,8 @@ class DenseRectangularMultiLinearInfo:
         self.dimensions = self._check_dimensions(maxdim.list())
 
         # Ensure the dtype and itype are valid
-        if not issubclass(dtype, Floatlike):
-            raise TypeError("Invalid dtype. Expected Floatlike type, e.g. `wp.float32` or `wp.float64`.")
+        if not issubclass(dtype, FloatType):
+            raise TypeError("Invalid dtype. Expected FloatType type, e.g. `wp.float32` or `wp.float64`.")
         if not issubclass(maxdim.dtype, VecIntlike):
             raise TypeError(
                 "Invalid dtype of `maxdim` argument. Expected integer vector type, e.g. `wp.vec2i` or `wp.vec2l`."
@@ -242,12 +242,12 @@ class DenseRectangularMultiLinearInfo:
             raise TypeError(
                 "Invalid dtype of `dim` argument. Expected integer vector type, e.g. `wp.vec2i` or `wp.vec2l`."
             )
-        if not issubclass(mio.dtype, Intlike):
-            raise TypeError("Invalid dtype of `mio` argument. Expected Intlike type, e.g. `wp.int32` or `wp.int64`.")
-        if not issubclass(rvio.dtype, Intlike):
-            raise TypeError("Invalid dtype of `rvio` argument. Expected Intlike type, e.g. `wp.int32` or `wp.int64`.")
-        if not issubclass(ivio.dtype, Intlike):
-            raise TypeError("Invalid dtype of `ivio` argument. Expected Intlike type, e.g. `wp.int32` or `wp.int64`.")
+        if not issubclass(mio.dtype, IntType):
+            raise TypeError("Invalid dtype of `mio` argument. Expected IntType type, e.g. `wp.int32` or `wp.int64`.")
+        if not issubclass(rvio.dtype, IntType):
+            raise TypeError("Invalid dtype of `rvio` argument. Expected IntType type, e.g. `wp.int32` or `wp.int64`.")
+        if not issubclass(ivio.dtype, IntType):
+            raise TypeError("Invalid dtype of `ivio` argument. Expected IntType type, e.g. `wp.int32` or `wp.int64`.")
 
         # Cache the data type information
         self.dtype = dtype
@@ -357,10 +357,10 @@ class DenseSquareMultiLinearInfo:
     This is equal to `sum(maxdim[i][1] for i in range(num_blocks))`.
     """
 
-    dtype: Floatlike = float32
+    dtype: FloatType = float32
     """The data type of the underlying matrix and vector data arrays."""
 
-    itype: Intlike = int32
+    itype: IntType = int32
     """The integer type used for indexing the underlying data arrays."""
 
     device: Devicelike | None = None
@@ -404,7 +404,7 @@ class DenseSquareMultiLinearInfo:
         return dims
 
     def allocate(
-        self, dimensions: list[int], dtype: Floatlike = float32, itype: Intlike = int32, device: Devicelike = None
+        self, dimensions: list[int], dtype: FloatType = float32, itype: IntType = int32, device: Devicelike = None
     ) -> None:
         """
         Constructs and allocates the data of the square multi-linear system info on the specified device.
@@ -413,10 +413,10 @@ class DenseSquareMultiLinearInfo:
         self.dimensions = self._check_dimensions(dimensions)
 
         # Ensure the dtype and itype are valid
-        if not issubclass(dtype, Floatlike):
-            raise TypeError("Invalid dtype. Expected Floatlike type, e.g. `wp.float32` or `wp.float64`.")
-        if not issubclass(itype, Intlike):
-            raise TypeError("Invalid itype. Expected Intlike type, e.g. `wp.int32` or `wp.int64`.")
+        if not issubclass(dtype, FloatType):
+            raise TypeError("Invalid dtype. Expected FloatType type, e.g. `wp.float32` or `wp.float64`.")
+        if not issubclass(itype, IntType):
+            raise TypeError("Invalid itype. Expected IntType type, e.g. `wp.int32` or `wp.int64`.")
         self.dtype = dtype
         self.itype = itype
 
@@ -451,7 +451,7 @@ class DenseSquareMultiLinearInfo:
         dim: wp.array,
         mio: wp.array,
         vio: wp.array,
-        dtype: Floatlike = float32,
+        dtype: FloatType = float32,
         device: Devicelike = None,
     ) -> None:
         """
@@ -461,16 +461,16 @@ class DenseSquareMultiLinearInfo:
         self.dimensions = self._check_dimensions(maxdim.numpy().astype(int).tolist())
 
         # Ensure the dtype and itype are valid
-        if not issubclass(dtype, Floatlike):
-            raise TypeError("Invalid dtype. Expected Floatlike type, e.g. `wp.float32` or `wp.float64`.")
-        if not issubclass(maxdim.dtype, Intlike):
-            raise TypeError("Invalid dtype of `maxdim` argument. Expected Intlike type, e.g. `wp.int32` or `wp.int64`.")
-        if not issubclass(dim.dtype, Intlike):
-            raise TypeError("Invalid dtype of `dim` argument. Expected Intlike type, e.g. `wp.int32` or `wp.int64`.")
-        if not issubclass(mio.dtype, Intlike):
-            raise TypeError("Invalid dtype of `mio` argument. Expected Intlike type, e.g. `wp.int32` or `wp.int64`.")
-        if not issubclass(vio.dtype, Intlike):
-            raise TypeError("Invalid dtype of `vio` argument. Expected Intlike type, e.g. `wp.int32` or `wp.int64`.")
+        if not issubclass(dtype, FloatType):
+            raise TypeError("Invalid dtype. Expected FloatType type, e.g. `wp.float32` or `wp.float64`.")
+        if not issubclass(maxdim.dtype, IntType):
+            raise TypeError("Invalid dtype of `maxdim` argument. Expected IntType type, e.g. `wp.int32` or `wp.int64`.")
+        if not issubclass(dim.dtype, IntType):
+            raise TypeError("Invalid dtype of `dim` argument. Expected IntType type, e.g. `wp.int32` or `wp.int64`.")
+        if not issubclass(mio.dtype, IntType):
+            raise TypeError("Invalid dtype of `mio` argument. Expected IntType type, e.g. `wp.int32` or `wp.int64`.")
+        if not issubclass(vio.dtype, IntType):
+            raise TypeError("Invalid dtype of `vio` argument. Expected IntType type, e.g. `wp.int32` or `wp.int64`.")
 
         # Cache the data type information
         self.dtype = dtype
@@ -554,10 +554,10 @@ class DenseLinearOperatorData:
 ###
 
 
-def make_dtype_tolerance(tol: Floatlike | float | None = None, dtype: Floatlike = float32) -> Floatlike:
+def make_dtype_tolerance(tol: FloatType | float | None = None, dtype: FloatType = float32) -> FloatType:
     # First ensure the specified dtype is a valid warp type
-    if not issubclass(dtype, Floatlike):
-        raise ValueError("data type 'dtype' must be a Floatlike, e.g. a `wp.float32` or `wp.float64` value etc.")
+    if not issubclass(dtype, FloatType):
+        raise ValueError("data type 'dtype' must be a FloatType, e.g. a `wp.float32` or `wp.float64` value etc.")
 
     # Extract machine epsilon for the specified dtype
     eps = float(np.finfo(wp.dtype_to_numpy(dtype)).eps)
@@ -568,10 +568,10 @@ def make_dtype_tolerance(tol: Floatlike | float | None = None, dtype: Floatlike 
 
     # Otherwise ensure the provided tolerance is valid and converted to the requested dtype
     else:
-        # Ensure the provided tolerance is a valid Floatlike value
-        if not isinstance(tol, Floatlike | float):
+        # Ensure the provided tolerance is a valid FloatType value
+        if not isinstance(tol, FloatType | float):
             raise ValueError(
-                "tolerance 'tol' must be a Floatlike, i.e. a `float`, `wp.float32`, or `wp.float64` value."
+                "tolerance 'tol' must be a FloatType, i.e. a `float`, `wp.float32`, or `wp.float64` value."
             )
 
         # Ensure the provided tolerance is positive and non-zero

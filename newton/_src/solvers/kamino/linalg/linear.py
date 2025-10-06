@@ -29,7 +29,7 @@ from typing import Any
 import warp as wp
 from warp.context import Devicelike
 
-from ..core.types import Floatlike, float32, override
+from ..core.types import FloatType, float32, override
 from . import factorize
 from .core import DenseLinearOperatorData, DenseSquareMultiLinearInfo, make_dtype_tolerance
 
@@ -61,7 +61,7 @@ class LinearSolver(ABC):
         operator: DenseLinearOperatorData | None = None,
         atol: float | None = None,
         rtol: float | None = None,
-        dtype: Floatlike = float32,
+        dtype: FloatType = float32,
         device: Devicelike | None = None,
         **kwargs: dict[str, Any],
     ):
@@ -95,7 +95,7 @@ class LinearSolver(ABC):
         return self._operator
 
     @property
-    def dtype(self) -> Floatlike:
+    def dtype(self) -> FloatType:
         return self._dtype
 
     @property
@@ -191,7 +191,7 @@ class DirectSolver(LinearSolver):
         atol: float | None = None,
         rtol: float | None = None,
         ftol: float | None = None,
-        dtype: Floatlike = float32,
+        dtype: FloatType = float32,
         device: Devicelike | None = None,
         **kwargs: dict[str, Any],
     ):
@@ -281,7 +281,7 @@ class LLTSequentialSolver(DirectSolver):
         atol: float | None = None,
         rtol: float | None = None,
         ftol: float | None = None,
-        dtype: Floatlike = float32,
+        dtype: FloatType = float32,
         device: Devicelike | None = None,
         **kwargs: dict[str, Any],
     ):
@@ -401,7 +401,7 @@ class LLTBlockedSolver(DirectSolver):
         atol: float | None = None,
         rtol: float | None = None,
         ftol: float | None = None,
-        dtype: Floatlike = float32,
+        dtype: FloatType = float32,
         device: Devicelike | None = None,
         **kwargs: dict[str, Any],
     ):

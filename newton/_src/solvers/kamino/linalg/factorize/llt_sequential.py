@@ -209,7 +209,7 @@ def llt_sequential_solve(
     x: wp.array(dtype=float32),
     device: Devicelike = None,
 ):
-    """ "
+    """
     Launches the sequential solve kernel using the Cholesky factorization of a block partitioned matrix.
 
     Args:

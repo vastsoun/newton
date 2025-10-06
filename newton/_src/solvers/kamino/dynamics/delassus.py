@@ -409,7 +409,6 @@ class DelassusOperator:
         self._operator.info = DenseSquareMultiLinearInfo()
         self._operator.mat = wp.zeros(shape=(self._model_maxsize,), dtype=float32, device=self._device)
         if (model.info is not None) and (state.info is not None):
-            print("Using model and state info to initialize Delassus info arrays")
             mat_offsets = [0] + [sum(self._world_size[:i]) for i in range(1, self._num_worlds + 1)]
             self._operator.info.assign(
                 maxdim=model.info.max_total_cts,
@@ -424,7 +423,7 @@ class DelassusOperator:
 
         # Optionally initialize the linear system solver if one is specified
         if solver is not None:
-            if not issubclass(solver, LinearSolverType):
+            if not isinstance(solver, LinearSolverType):
                 raise ValueError("Invalid solver provided. Must be a subclass of `LinearSolverType`.")
             self._solver = solver(operator=self._operator, device=self._device)
 

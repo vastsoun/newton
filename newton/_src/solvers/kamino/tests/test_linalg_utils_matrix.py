@@ -19,8 +19,8 @@ import unittest
 
 import numpy as np
 
-# Module to be tested
-import newton._src.solvers.kamino.utils.linalg as linalg
+import newton._src.solvers.kamino.linalg as linalg
+import newton._src.solvers.kamino.utils.logger as msg
 
 ###
 # Tests
@@ -30,14 +30,20 @@ import newton._src.solvers.kamino.utils.linalg as linalg
 class TestUtilsLinAlgMatrix(unittest.TestCase):
     def setUp(self):
         self.verbose = False  # Set to True for verbose output
+        if self.verbose:
+            msg.set_log_level(msg.LogLevel.DEBUG)
+
+    def tearDown(self):
+        if self.verbose:
+            msg.reset_log_level()
 
     def test_01_spd_matrix_properties(self):
-        A = linalg.random_spd_matrix(dim=10, dtype=np.float32, scale=4.0, seed=42)
-        A_props = linalg.SquareSymmetricMatrixProperties(A)
-        print(f"A (shape: {A.shape}, dtype: {A.dtype}):\n{A}\n") if self.verbose else None
-        print(f"A properties:\n{A_props}\n") if self.verbose else None
-        print(f"cond(A): {np.linalg.cond(A)}\n") if self.verbose else None
-        print(f"det(A): {np.linalg.det(A)}\n") if self.verbose else None
+        A = linalg.utils.rand.random_spd_matrix(dim=10, dtype=np.float32, scale=4.0, seed=42)
+        A_props = linalg.utils.matrix.SquareSymmetricMatrixProperties(A)
+        msg.debug(f"A (shape: {A.shape}, dtype: {A.dtype}):\n{A}\n") if self.verbose else None
+        msg.debug(f"A properties:\n{A_props}\n") if self.verbose else None
+        msg.debug(f"cond(A): {np.linalg.cond(A)}\n") if self.verbose else None
+        msg.debug(f"det(A): {np.linalg.det(A)}\n") if self.verbose else None
         self.assertAlmostEqual(A_props.cond, np.linalg.cond(A), places=6)
 
 

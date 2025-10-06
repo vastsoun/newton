@@ -184,11 +184,11 @@ def run_hdf5_mode(clear_warp_cache=True, use_cuda_graph=False, verbose=False):
     # Set gravity
     builder.gravity.enabled = False
 
-    # Print the collision masking of each geom
-    for i in range(len(builder.collision_geoms)):
-        msg.info(
-            f"builder.cgeom{i}: group={builder.collision_geoms[i].group}, collides={builder.collision_geoms[i].collides}"
-        )
+    # # Print the collision masking of each geom
+    # for i in range(len(builder.collision_geoms)):
+    #     msg.info(
+    #         f"builder.cgeom{i}: group={builder.collision_geoms[i].group}, collides={builder.collision_geoms[i].collides}"
+    #     )
 
     # Create a simulator
     msg.info("Building the simulator...")
@@ -211,7 +211,7 @@ def run_hdf5_mode(clear_warp_cache=True, use_cuda_graph=False, verbose=False):
     # NOTE: This compiles and loads the warp kernels prior to execution
     msg.info("Warming up the simulator...")
     if use_cuda_graph:
-        print("Running with CUDA graphs...")
+        msg.info("Running with CUDA graphs...")
         wp.capture_launch(reset_graph)
         wp.capture_launch(step_graph)
     else:
@@ -223,39 +223,39 @@ def run_hdf5_mode(clear_warp_cache=True, use_cuda_graph=False, verbose=False):
     # Print application info
     msg.info("%s", get_device_info(device))
 
-    # Construct and configure the data containers
-    msg.info("Setting up HDF5 data containers...")
-    sdata = hdf5.RigidBodySystemData()
-    sdata.configure(simulator=sim)
-    cdata = hdf5.ContactsData()
-    pdata = hdf5.DualProblemData()
-    pdata.configure(simulator=sim)
+    # # Construct and configure the data containers
+    # msg.info("Setting up HDF5 data containers...")
+    # sdata = hdf5.RigidBodySystemData()
+    # sdata.configure(simulator=sim)
+    # cdata = hdf5.ContactsData()
+    # pdata = hdf5.DualProblemData()
+    # pdata.configure(simulator=sim)
 
-    # Create the output directory if it does not exist
-    render_dir = os.path.dirname(RENDER_DATASET_PATH)
-    if not os.path.exists(render_dir):
-        os.makedirs(render_dir)
+    # # Create the output directory if it does not exist
+    # render_dir = os.path.dirname(RENDER_DATASET_PATH)
+    # if not os.path.exists(render_dir):
+    #     os.makedirs(render_dir)
 
-    # Create the directory for PADMM info
-    if not os.path.exists(PADMM_INFO_PATH):
-        os.makedirs(PADMM_INFO_PATH)
+    # # Create the directory for PADMM info
+    # if not os.path.exists(PADMM_INFO_PATH):
+    #     os.makedirs(PADMM_INFO_PATH)
 
-    # Create a dataset file and renderer
-    msg.info("Creating the HDF5 renderer...")
-    datafile = h5py.File(RENDER_DATASET_PATH, "w")
-    renderer = hdf5.DatasetRenderer(sysname="walker", datafile=datafile, dt=sim.dt)
+    # # Create a dataset file and renderer
+    # msg.info("Creating the HDF5 renderer...")
+    # datafile = h5py.File(RENDER_DATASET_PATH, "w")
+    # renderer = hdf5.DatasetRenderer(sysname="walker", datafile=datafile, dt=sim.dt)
 
-    # Store the initial state of the system
-    sdata.update_from(simulator=sim)
-    cdata.update_from(simulator=sim)
-    renderer.add_frame(system=sdata, contacts=cdata)
-    if verbose:
-        print_frame(sim, 0)
+    # # Store the initial state of the system
+    # sdata.update_from(simulator=sim)
+    # cdata.update_from(simulator=sim)
+    # renderer.add_frame(system=sdata, contacts=cdata)
+    # if verbose:
+    #     print_frame(sim, 0)
 
     # Step the simulation and collect frames
-    ns = 3000  # TODO: 25000
+    ns = 300  # TODO: 25000
     msg.info(f"Collecting ns={ns} frames...")
-    start_time = time.time()
+    # start_time = time.time()
     with wp.ScopedTimer("sim.step", active=True):
         with wp.ScopedDevice(device):
             for i in range(ns):
@@ -266,74 +266,74 @@ def run_hdf5_mode(clear_warp_cache=True, use_cuda_graph=False, verbose=False):
                         sim.step()
                 wp.synchronize()
 
-                status = sim._dual_solver.data.status.numpy()
-                # msg.warning(f"[{i}]: nl: {sim.model_data.info.num_limits.numpy()[0]}")
-                # msg.warning(f"[{i}]: nc: {sim.model_data.info.num_contacts.numpy()[0]}")
-                msg.warning(f"[{i}]: solver.iterations : {status[0][1]}")
-                # msg.warning(f"[{i}]: admm_info_r_dual:\n{sim._dual_solver.data.info.r_dual.numpy()}")
-                # save_solver_info(sim._dual_solver, path=os.path.join(PADMM_INFO_PATH, f"padmm_solver_info_{i}.pdf"))
+                # status = sim._dual_solver.data.status.numpy()
+                # # msg.warning(f"[{i}]: nl: {sim.model_data.info.num_limits.numpy()[0]}")
+                # # msg.warning(f"[{i}]: nc: {sim.model_data.info.num_contacts.numpy()[0]}")
+                # msg.warning(f"[{i}]: solver.iterations : {status[0][1]}")
+                # # msg.warning(f"[{i}]: admm_info_r_dual:\n{sim._dual_solver.data.info.r_dual.numpy()}")
+                # # save_solver_info(sim._dual_solver, path=os.path.join(PADMM_INFO_PATH, f"padmm_solver_info_{i}.pdf"))
 
-                # msg.warning(f"cgeoms.offset :\n{sim.model.cgeoms.offset}")
-                # msg.warning(f"cgeoms.pose :\n{sim.model_data.cgeoms.pose}")
-                # msg.warning(f"collisions.model_num_collisions :\n{sim.collision_detector.collisions.cdata.model_num_collisions}")
-                # msg.warning(f"collisions.geom_pair :\n{sim.collision_detector.collisions.cdata.geom_pair}")
-                # msg.warning(f"contacts.model_num_collisions :\n{sim.contacts.data.model_num_contacts}")
-                # msg.warning(f"contacts.gapfunc :\n{sim.contacts.data.gapfunc}")
+                # # msg.warning(f"cgeoms.offset :\n{sim.model.cgeoms.offset}")
+                # # msg.warning(f"cgeoms.pose :\n{sim.model_data.cgeoms.pose}")
+                # # msg.warning(f"collisions.model_num_collisions :\n{sim.collision_detector.collisions.cdata.model_num_collisions}")
+                # # msg.warning(f"collisions.geom_pair :\n{sim.collision_detector.collisions.cdata.geom_pair}")
+                # # msg.warning(f"contacts.model_num_collisions :\n{sim.contacts.data.model_num_contacts}")
+                # # msg.warning(f"contacts.gapfunc :\n{sim.contacts.data.gapfunc}")
 
-                # maxdim_np = sim._dual_problem.data.maxdim.numpy()
-                # dim_np = sim._dual_problem.data.dim.numpy()
-                # v_f_np = sim._dual_problem.data.v_f.numpy()
-                # D_np = sim._dual_problem.delassus.data.D.numpy()
-                # L_np = sim._dual_problem.delassus.factorizer.data.L.numpy()
-                # y_np = sim._dual_problem.delassus.factorizer.data.y.numpy()
-                lambda_np = sim._dual_solver.data.solution.lambdas.numpy()
-                u_np = sim.model_data.bodies.u_i.numpy()
-                q_np = sim.model_data.bodies.q_i.numpy()
+                # # maxdim_np = sim._dual_problem.data.maxdim.numpy()
+                # # dim_np = sim._dual_problem.data.dim.numpy()
+                # # v_f_np = sim._dual_problem.data.v_f.numpy()
+                # # D_np = sim._dual_problem.delassus.data.D.numpy()
+                # # L_np = sim._dual_problem.delassus.factorizer.data.L.numpy()
+                # # y_np = sim._dual_problem.delassus.factorizer.data.y.numpy()
+                # lambda_np = sim._dual_solver.data.solution.lambdas.numpy()
+                # u_np = sim.model_data.bodies.u_i.numpy()
+                # q_np = sim.model_data.bodies.q_i.numpy()
 
-                # is_v_f_finite = np.isfinite(v_f_np).all()
-                # is_D_finite = np.isfinite(D_np).all()
-                # is_L_finite = np.isfinite(L_np).all()
-                # is_y_finite = np.isfinite(y_np).all()
-                is_lambda_valid = np.all(np.abs(lambda_np) < 1e1)
-                is_u_valid = np.all(np.abs(u_np) < 1e2)
-                is_q_valid = np.all(np.abs(q_np) < 1e2)
-                is_q_finite = np.isfinite(q_np).all()
-                # if not is_v_f_finite:
-                #     msg.error("v_f is not finite!")
-                # if not is_D_finite:
-                #     msg.error("D is not finite!")
-                # if not is_L_finite:
-                #     msg.error("L is not finite!")
-                # if not is_y_finite:
-                #     msg.error("y is not finite!")
+                # # is_v_f_finite = np.isfinite(v_f_np).all()
+                # # is_D_finite = np.isfinite(D_np).all()
+                # # is_L_finite = np.isfinite(L_np).all()
+                # # is_y_finite = np.isfinite(y_np).all()
+                # is_lambda_valid = np.all(np.abs(lambda_np) < 1e1)
+                # is_u_valid = np.all(np.abs(u_np) < 1e2)
+                # is_q_valid = np.all(np.abs(q_np) < 1e2)
+                # is_q_finite = np.isfinite(q_np).all()
+                # # if not is_v_f_finite:
+                # #     msg.error("v_f is not finite!")
+                # # if not is_D_finite:
+                # #     msg.error("D is not finite!")
+                # # if not is_L_finite:
+                # #     msg.error("L is not finite!")
+                # # if not is_y_finite:
+                # #     msg.error("y is not finite!")
 
-                sdata.update_from(simulator=sim)
-                cdata.update_from(simulator=sim)
-                pdata.update_from(simulator=sim)
-                renderer.add_frame(system=sdata, contacts=cdata, problem=pdata)
-                print_progress_bar(i + 1, ns, start_time, prefix="Progress", suffix="")
-                # if verbose:
-                #     print_frame(sim, i + 1)
+                # sdata.update_from(simulator=sim)
+                # cdata.update_from(simulator=sim)
+                # pdata.update_from(simulator=sim)
+                # renderer.add_frame(system=sdata, contacts=cdata, problem=pdata)
+                # print_progress_bar(i + 1, ns, start_time, prefix="Progress", suffix="")
+                # # if verbose:
+                # #     print_frame(sim, i + 1)
 
-                if not is_lambda_valid:
-                    msg.error("lambda is not valid!")
-                    break
+                # if not is_lambda_valid:
+                #     msg.error("lambda is not valid!")
+                #     break
 
-                if not is_u_valid:
-                    msg.error("u_i is not valid!")
-                    break
+                # if not is_u_valid:
+                #     msg.error("u_i is not valid!")
+                #     break
 
-                if not is_q_valid:
-                    msg.error("q_i is not valid!")
-                    break
+                # if not is_q_valid:
+                #     msg.error("q_i is not valid!")
+                #     break
 
-                if not is_q_finite:
-                    msg.error("q_i is not finite!")
-                    break
+                # if not is_q_finite:
+                #     msg.error("q_i is not finite!")
+                #     break
 
-    # Save the dataset
-    msg.info("Saving all frames to HDF5...")
-    renderer.save()
+    # # Save the dataset
+    # msg.info("Saving all frames to HDF5...")
+    # renderer.save()
 
 
 class WalkerExample:
@@ -527,7 +527,7 @@ if __name__ == "__main__":
         help="Simulation mode: 'hdf5' for data collection, 'viewer' for live visualization",
     )
     parser.add_argument("--clear-cache", action="store_true", default=True, help="Clear warp cache")
-    parser.add_argument("--cuda-graph", action="store_true", help="Use CUDA graphs")
+    parser.add_argument("--cuda-graph", action="store_true", default=True, help="Use CUDA graphs")
     parser.add_argument("--verbose", action="store_true", help="Enable verbose output")
 
     # Add viewer arguments when in viewer mode

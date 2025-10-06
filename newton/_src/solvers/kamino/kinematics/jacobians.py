@@ -24,10 +24,10 @@ from typing import Any
 import warp as wp
 from warp.context import Devicelike
 
-from newton._src.solvers.kamino.core.joints import JointDoFType
-from newton._src.solvers.kamino.core.math import I_6
-from newton._src.solvers.kamino.core.model import Model, ModelData
-from newton._src.solvers.kamino.core.types import (
+from ..core.joints import JointDoFType
+from ..core.math import I_6
+from ..core.model import Model, ModelData
+from ..core.types import (
     float32,
     int32,
     mat33f,
@@ -38,8 +38,8 @@ from newton._src.solvers.kamino.core.types import (
     vec3f,
     vec4f,
 )
-from newton._src.solvers.kamino.geometry.contacts import Contacts, ContactsData
-from newton._src.solvers.kamino.kinematics.joints import (
+from ..geometry.contacts import Contacts, ContactsData
+from ..kinematics.joints import (
     S_cts_cartesian,
     S_cts_cylindrical,
     S_cts_fixed,
@@ -55,7 +55,7 @@ from newton._src.solvers.kamino.kinematics.joints import (
     S_dofs_spherical,
     S_dofs_universal,
 )
-from newton._src.solvers.kamino.kinematics.limits import Limits, LimitsData
+from ..kinematics.limits import Limits, LimitsData
 
 ###
 # Module interface

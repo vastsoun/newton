@@ -52,6 +52,10 @@ class TestUtilsLinAlgProfiles(unittest.TestCase):
         # Data directory (contains perfprof.csv)
         self.data_dir = Path(__file__).parent / "data"
 
+    def tearDown(self):
+        if self.verbose:
+            msg.reset_log_level()
+
     def test_01_perfprof_minimal_data(self):
         # ns = 2 solvers, np = 1 problem
         ns, np_ = 2, 1

@@ -21,11 +21,11 @@ from __future__ import annotations
 
 import warp as wp
 
-from newton._src.solvers.kamino.core.model import Model, ModelData
-from newton._src.solvers.kamino.core.types import float32, int32, mat63f, vec2i, vec3f, vec4f, vec6f
-from newton._src.solvers.kamino.geometry.contacts import ContactsData
-from newton._src.solvers.kamino.kinematics.jacobians import DenseSystemJacobiansData
-from newton._src.solvers.kamino.kinematics.limits import LimitsData
+from ..core.model import Model, ModelData
+from ..core.types import float32, int32, mat63f, vec2i, vec3f, vec4f, vec6f
+from ..geometry.contacts import ContactsData
+from ..kinematics.jacobians import DenseSystemJacobiansData
+from ..kinematics.limits import LimitsData
 
 ###
 # Module interface

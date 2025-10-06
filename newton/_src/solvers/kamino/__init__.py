@@ -120,7 +120,6 @@ from .core.types import (
 )
 from .dynamics.delassus import (
     DelassusOperator,
-    DelassusOperatorData,
 )
 from .dynamics.dual import (
     DualProblem,

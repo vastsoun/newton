@@ -19,7 +19,7 @@ KAMINO: Utilities: Linear Algebra: LDLT based on that of Eigen3
 
 import numpy as np
 
-from ..matrix import (
+from ....linalg.utils.matrix import (
     MatrixSign,
     _make_tolerance,
     assert_is_square_matrix,

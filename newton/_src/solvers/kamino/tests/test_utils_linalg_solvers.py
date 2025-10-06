@@ -78,6 +78,10 @@ class TestUtilsLinAlgLinearSolvers(unittest.TestCase):
         self.x_ref = np.linalg.solve(self.A, self.b)
         msg.debug(f"x_ref {self.x_ref.shape}, {self.x_ref.dtype}:\n{self.x_ref}\n")
 
+    def tearDown(self):
+        if self.verbose:
+            msg.reset_log_level()
+
     def test_01_defaulted_numpy_solver(self):
         solver = linalg.NumPySolver()
         solver.compute(self.A)

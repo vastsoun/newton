@@ -13,11 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-KAMINO: Dual Dynamics Module
-"""
+"""The Kamino Dynamics Module"""
 
-from .delassus import DelassusOperator, DelassusOperatorData
+from .delassus import DelassusOperator
 from .dual import DualProblem, DualProblemData, DualProblemSettings
 
 ###
@@ -26,7 +24,6 @@ from .dual import DualProblem, DualProblemData, DualProblemSettings
 
 __all__ = [
     "DelassusOperator",
-    "DelassusOperatorData",
     "DualProblem",
     "DualProblemData",
     "DualProblemSettings",

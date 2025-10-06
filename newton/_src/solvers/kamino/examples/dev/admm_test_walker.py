@@ -22,14 +22,13 @@ import numpy as np
 from scipy import linalg
 
 import newton._src.solvers.kamino.utils.logger as msg
-from newton._src.solvers.kamino.tests.utils.print import print_error_stats
-from newton._src.solvers.kamino.utils.io import hdf5
-from newton._src.solvers.kamino.utils.linalg import (
-    ADMMSolver,
+from newton._src.solvers.kamino.linalg.utils import (
     RectangularMatrixProperties,
     SquareSymmetricMatrixProperties,
-    compute_u_plus,
 )
+from newton._src.solvers.kamino.tests.utils.print import print_error_stats
+from newton._src.solvers.kamino.utils.io import hdf5
+from newton._src.solvers.kamino.utils.linalg import ADMMSolver, compute_u_plus
 from newton._src.solvers.kamino.utils.sparse import sparseview
 
 ###
@@ -331,7 +330,9 @@ if __name__ == "__main__":
     print(f"ADMM P properties:\n{properties_P_admm}")
 
     # As dual Schur complement system
-    status = admm.solve_schur_dual(D, v_f, v_star, u_minus, invM, J, h, use_cholesky=False, use_ldlt=False, use_preconditioning=False)
+    status = admm.solve_schur_dual(
+        D, v_f, v_star, u_minus, invM, J, h, use_cholesky=False, use_ldlt=False, use_preconditioning=False
+    )
     admm.save_info(path=PLOT_OUTPUT_PATH, suffix="_schur_dual")
     x_admm_schur_dual = admm.lambdas
     u_admm_schur_dual = admm.u_plus
@@ -351,7 +352,9 @@ if __name__ == "__main__":
     print(f"ADMM D properties:\n{properties_D_admm}")
 
     # As dual Schur complement system w/ preconditioning
-    status = admm.solve_schur_dual(D, v_f, v_star, u_minus, invM, J, h, use_cholesky=False, use_ldlt=False, use_preconditioning=True)
+    status = admm.solve_schur_dual(
+        D, v_f, v_star, u_minus, invM, J, h, use_cholesky=False, use_ldlt=False, use_preconditioning=True
+    )
     admm.save_info(path=PLOT_OUTPUT_PATH, suffix="_schur_dual_prec")
     x_admm_schur_dual_prec = admm.lambdas
     u_admm_schur_dual_prec = admm.u_plus
@@ -424,30 +427,62 @@ if __name__ == "__main__":
     rel_res_kkt_ux_np_l2 = res_kkt_ux_np_l2 / k_norm_l2 if k_norm_l2 > 0 else res_kkt_ux_np_l2
     rel_res_kkt_ux_sp_l2 = res_kkt_ux_sp_l2 / k_norm_l2 if k_norm_l2 > 0 else res_kkt_ux_sp_l2
     rel_res_kkt_ux_admm_kkt_l2 = res_kkt_ux_admm_kkt_l2 / k_norm_l2 if k_norm_l2 > 0 else res_kkt_ux_admm_kkt_l2
-    rel_res_kkt_ux_admm_schur_prim_l2 = res_kkt_ux_admm_schur_prim_l2 / k_norm_l2 if k_norm_l2 > 0 else res_kkt_ux_admm_schur_prim_l2
-    rel_res_kkt_ux_admm_schur_dual_l2 = res_kkt_ux_admm_schur_dual_l2 / k_norm_l2 if k_norm_l2 > 0 else res_kkt_ux_admm_schur_dual_l2
-    rel_res_kkt_ux_admm_schur_dual_prec_l2 = res_kkt_ux_admm_schur_dual_prec_l2 / k_norm_l2 if k_norm_l2 > 0 else res_kkt_ux_admm_schur_dual_prec_l2
+    rel_res_kkt_ux_admm_schur_prim_l2 = (
+        res_kkt_ux_admm_schur_prim_l2 / k_norm_l2 if k_norm_l2 > 0 else res_kkt_ux_admm_schur_prim_l2
+    )
+    rel_res_kkt_ux_admm_schur_dual_l2 = (
+        res_kkt_ux_admm_schur_dual_l2 / k_norm_l2 if k_norm_l2 > 0 else res_kkt_ux_admm_schur_dual_l2
+    )
+    rel_res_kkt_ux_admm_schur_dual_prec_l2 = (
+        res_kkt_ux_admm_schur_dual_prec_l2 / k_norm_l2 if k_norm_l2 > 0 else res_kkt_ux_admm_schur_dual_prec_l2
+    )
 
     rel_res_kkt_ux_np_infnorm = res_kkt_ux_np_infnorm / k_norm_inf if k_norm_inf > 0 else res_kkt_ux_np_infnorm
     rel_res_kkt_ux_sp_infnorm = res_kkt_ux_sp_infnorm / k_norm_inf if k_norm_inf > 0 else res_kkt_ux_sp_infnorm
-    rel_res_kkt_ux_admm_kkt_infnorm = res_kkt_ux_admm_kkt_infnorm / k_norm_inf if k_norm_inf > 0 else res_kkt_ux_admm_kkt_infnorm
-    rel_res_kkt_ux_admm_schur_prim_infnorm = res_kkt_ux_admm_schur_prim_infnorm / k_norm_inf if k_norm_inf > 0 else res_kkt_ux_admm_schur_prim_infnorm
-    rel_res_kkt_ux_admm_schur_dual_infnorm = res_kkt_ux_admm_schur_dual_infnorm / k_norm_inf if k_norm_inf > 0 else res_kkt_ux_admm_schur_dual_infnorm
-    rel_res_kkt_ux_admm_schur_dual_prec_infnorm = res_kkt_ux_admm_schur_dual_prec_infnorm / k_norm_inf if k_norm_inf > 0 else res_kkt_ux_admm_schur_dual_prec_infnorm
+    rel_res_kkt_ux_admm_kkt_infnorm = (
+        res_kkt_ux_admm_kkt_infnorm / k_norm_inf if k_norm_inf > 0 else res_kkt_ux_admm_kkt_infnorm
+    )
+    rel_res_kkt_ux_admm_schur_prim_infnorm = (
+        res_kkt_ux_admm_schur_prim_infnorm / k_norm_inf if k_norm_inf > 0 else res_kkt_ux_admm_schur_prim_infnorm
+    )
+    rel_res_kkt_ux_admm_schur_dual_infnorm = (
+        res_kkt_ux_admm_schur_dual_infnorm / k_norm_inf if k_norm_inf > 0 else res_kkt_ux_admm_schur_dual_infnorm
+    )
+    rel_res_kkt_ux_admm_schur_dual_prec_infnorm = (
+        res_kkt_ux_admm_schur_dual_prec_infnorm / k_norm_inf
+        if k_norm_inf > 0
+        else res_kkt_ux_admm_schur_dual_prec_infnorm
+    )
 
     rel_res_dual_x_np_l2 = res_dual_x_np_l2 / d_norm_l2 if d_norm_l2 > 0 else res_dual_x_np_l2
     rel_res_dual_x_sp_l2 = res_dual_x_sp_l2 / d_norm_l2 if d_norm_l2 > 0 else res_dual_x_sp_l2
     rel_res_dual_x_admm_kkt_l2 = res_dual_x_admm_kkt_l2 / d_norm_l2 if d_norm_l2 > 0 else res_dual_x_admm_kkt_l2
-    rel_res_dual_x_admm_schur_prim_l2 = res_dual_x_admm_schur_prim_l2 / d_norm_l2 if d_norm_l2 > 0 else res_dual_x_admm_schur_prim_l2
-    rel_res_dual_x_admm_schur_dual_l2 = res_dual_x_admm_schur_dual_l2 / d_norm_l2 if d_norm_l2 > 0 else res_dual_x_admm_schur_dual_l2
-    rel_res_dual_x_admm_schur_dual_prec_l2 = res_dual_x_admm_schur_dual_prec_l2 / d_norm_l2 if d_norm_l2 > 0 else res_dual_x_admm_schur_dual_prec_l2
+    rel_res_dual_x_admm_schur_prim_l2 = (
+        res_dual_x_admm_schur_prim_l2 / d_norm_l2 if d_norm_l2 > 0 else res_dual_x_admm_schur_prim_l2
+    )
+    rel_res_dual_x_admm_schur_dual_l2 = (
+        res_dual_x_admm_schur_dual_l2 / d_norm_l2 if d_norm_l2 > 0 else res_dual_x_admm_schur_dual_l2
+    )
+    rel_res_dual_x_admm_schur_dual_prec_l2 = (
+        res_dual_x_admm_schur_dual_prec_l2 / d_norm_l2 if d_norm_l2 > 0 else res_dual_x_admm_schur_dual_prec_l2
+    )
 
     rel_res_dual_x_np_infnorm = res_dual_x_np_infnorm / d_norm_inf if d_norm_inf > 0 else res_dual_x_np_infnorm
     rel_res_dual_x_sp_infnorm = res_dual_x_sp_infnorm / d_norm_inf if d_norm_inf > 0 else res_dual_x_sp_infnorm
-    rel_res_dual_x_admm_kkt_infnorm = res_dual_x_admm_kkt_infnorm / d_norm_inf if d_norm_inf > 0 else res_dual_x_admm_kkt_infnorm
-    rel_res_dual_x_admm_schur_prim_infnorm = res_dual_x_admm_schur_prim_infnorm / d_norm_inf if d_norm_inf > 0 else res_dual_x_admm_schur_prim_infnorm
-    rel_res_dual_x_admm_schur_dual_infnorm = res_dual_x_admm_schur_dual_infnorm / d_norm_inf if d_norm_inf > 0 else res_dual_x_admm_schur_dual_infnorm
-    rel_res_dual_x_admm_schur_dual_prec_infnorm = res_dual_x_admm_schur_dual_prec_infnorm / d_norm_inf if d_norm_inf > 0 else res_dual_x_admm_schur_dual_prec_infnorm
+    rel_res_dual_x_admm_kkt_infnorm = (
+        res_dual_x_admm_kkt_infnorm / d_norm_inf if d_norm_inf > 0 else res_dual_x_admm_kkt_infnorm
+    )
+    rel_res_dual_x_admm_schur_prim_infnorm = (
+        res_dual_x_admm_schur_prim_infnorm / d_norm_inf if d_norm_inf > 0 else res_dual_x_admm_schur_prim_infnorm
+    )
+    rel_res_dual_x_admm_schur_dual_infnorm = (
+        res_dual_x_admm_schur_dual_infnorm / d_norm_inf if d_norm_inf > 0 else res_dual_x_admm_schur_dual_infnorm
+    )
+    rel_res_dual_x_admm_schur_dual_prec_infnorm = (
+        res_dual_x_admm_schur_dual_prec_infnorm / d_norm_inf
+        if d_norm_inf > 0
+        else res_dual_x_admm_schur_dual_prec_infnorm
+    )
 
     ###
     # Summary of solving the KKT system

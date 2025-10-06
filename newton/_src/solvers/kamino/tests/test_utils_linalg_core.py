@@ -192,6 +192,10 @@ class TestUtilsLinAlgLinearSolver(unittest.TestCase):
             f"\n  lambda(A): {self.lambda_A}\n"
         )
 
+    def tearDown(self):
+        if self.verbose:
+            msg.reset_log_level()
+
     def test_01_defaulted_linear_solver(self):
         solver = TestLinearSolver()
 

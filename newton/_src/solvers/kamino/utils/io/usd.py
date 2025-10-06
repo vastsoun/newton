@@ -24,22 +24,21 @@ from typing import Any
 import numpy as np
 import warp as wp
 
-import newton._src.solvers.kamino.utils.logger as msg
-from newton._src.core.types import nparray
-from newton._src.solvers.kamino.core.bodies import RigidBodyDescriptor
-from newton._src.solvers.kamino.core.builder import ModelBuilder
-from newton._src.solvers.kamino.core.geometry import CollisionGeometryDescriptor, GeometryDescriptor
-from newton._src.solvers.kamino.core.gravity import GravityDescriptor
-from newton._src.solvers.kamino.core.joints import JointActuationType, JointDescriptor, JointDoFType
-from newton._src.solvers.kamino.core.materials import (
+from .....core.types import nparray
+from ...core.bodies import RigidBodyDescriptor
+from ...core.builder import ModelBuilder
+from ...core.geometry import CollisionGeometryDescriptor, GeometryDescriptor
+from ...core.gravity import GravityDescriptor
+from ...core.joints import JointActuationType, JointDescriptor, JointDoFType
+from ...core.materials import (
     DEFAULT_DENSITY,
     DEFAULT_FRICTION,
     DEFAULT_RESTITUTION,
     MaterialDescriptor,
     MaterialPairProperties,
 )
-from newton._src.solvers.kamino.core.math import I_3, screw
-from newton._src.solvers.kamino.core.shapes import (
+from ...core.math import I_3, screw
+from ...core.shapes import (
     BoxShape,
     CapsuleShape,
     ConeShape,
@@ -51,7 +50,8 @@ from newton._src.solvers.kamino.core.shapes import (
     # SDFShape
     SphereShape,
 )
-from newton._src.solvers.kamino.core.types import Axis, AxisType, Transform, quatf, transformf, vec3f
+from ...core.types import Axis, AxisType, Transform, quatf, transformf, vec3f
+from ...utils import logger as msg
 
 ###
 # Helper Functions

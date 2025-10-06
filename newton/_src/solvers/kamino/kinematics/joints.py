@@ -23,8 +23,8 @@ from typing import Any
 
 import warp as wp
 
-from newton._src.solvers.kamino.core.joints import JointDoFType
-from newton._src.solvers.kamino.core.math import (
+from ..core.joints import JointDoFType
+from ..core.math import (
     quat_apply,
     quat_conj,
     quat_log,
@@ -33,8 +33,8 @@ from newton._src.solvers.kamino.core.math import (
     screw_angular,
     screw_linear,
 )
-from newton._src.solvers.kamino.core.model import Model, ModelData
-from newton._src.solvers.kamino.core.types import (
+from ..core.model import Model, ModelData
+from ..core.types import (
     float32,
     int32,
     mat33f,

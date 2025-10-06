@@ -26,11 +26,12 @@ intra-system parallelism may be exploited.
 from abc import ABC, abstractmethod
 from typing import Any
 
+import numpy as np
 import warp as wp
 from warp.context import Devicelike
 
 from ..core.types import FloatType, float32, override
-from . import factorize
+from . import conjugate, factorize
 from .core import DenseLinearOperatorData, DenseSquareMultiLinearInfo, make_dtype_tolerance
 
 ###
@@ -38,6 +39,7 @@ from .core import DenseLinearOperatorData, DenseSquareMultiLinearInfo, make_dtyp
 ###
 
 __all__ = [
+    "ConjugateGradientSolver",
     "DirectSolver",
     "LLTBlockedSolver",
     "LLTSequentialSolver",
@@ -178,6 +180,9 @@ class LinearSolver(ABC):
         if not self._operator.info.is_input_compatible(x):
             raise ValueError("The provided flat input vector data array does not have enough memory!")
         self._solve_inplace_impl(x=x, **kwargs)
+
+    def _solve_inplace_impl(self, x: wp.array, **kwargs: dict[str, Any]) -> None:
+        raise NotImplementedError("A solve-in-place operation is not implemented.")
 
 
 class DirectSolver(LinearSolver):
@@ -528,5 +533,122 @@ class LLTBlockedSolver(DirectSolver):
 # Summary
 ###
 
-LinearSolverType = LLTSequentialSolver | LLTBlockedSolver
+
+class ConjugateGradientSolver(LinearSolver):
+    """
+    A wrapper around the batched Conjugate Gradient implementation in `conjugate.cg`.
+
+    This solves multiple independent SPD systems using a batched operator.
+    """
+
+    def __init__(
+        self,
+        operator: DenseLinearOperatorData | None = None,
+        atol: float | None = None,
+        rtol: float | None = None,
+        dtype: FloatType = float32,
+        device: Devicelike | None = None,
+        **kwargs: dict[str, Any],
+    ):
+        # Iterative-solver specific buffers
+        self._A_op = None
+        self._env_active: wp.array | None = None
+        self._atol_sq: wp.array | None = None
+        self._num_envs: int = 0
+        self._max_dim: int = 0
+
+        # Solve metadata caches (device arrays)
+        self._last_iter: wp.array | None = None
+        self._last_resid_sq: wp.array | None = None
+
+        super().__init__(
+            operator=operator,
+            atol=atol,
+            rtol=rtol,
+            dtype=dtype,
+            device=device,
+            **kwargs,
+        )
+
+    @override
+    def _allocate_impl(self, operator: DenseLinearOperatorData, **kwargs: dict[str, Any]) -> None:
+        if operator.info is None:
+            raise ValueError("The provided operator does not have any associated info!")
+        if not isinstance(operator.info, DenseSquareMultiLinearInfo):
+            raise ValueError("ConjugateGradientSolver requires a square matrix operator.")
+
+        dim_values = set(operator.info.maxdim.numpy().tolist())
+        if len(dim_values) > 1:
+            raise ValueError(f"ConjugateGradientSolver requires all blocks to have the same dimension ({dim_values}).")
+
+        # Cache env count and per-env padded dimension
+        self._num_envs = operator.info.num_blocks
+        self._max_dim = int(operator.info.maxdim.numpy()[0])
+
+        with wp.ScopedDevice(self._device):
+            self._env_active = wp.full(operator.info.num_blocks, True, dtype=wp.bool)
+            # Initialize absolute tolerance from dtype if not provided; store squared
+            self._set_tolerance_dtype()
+            atol_val = self._atol if self._atol is not None else make_dtype_tolerance(None, dtype=self._dtype)
+            print(f"atol: {atol_val}")
+            self._atol_sq = wp.full(operator.info.num_blocks, float(atol_val) ** 2, dtype=self._dtype)
+
+        self._A_op = conjugate.make_dense_square_matrix_operator(
+            A=operator.mat.reshape((self._num_envs, self._max_dim * self._max_dim)),
+            active_dims=self._operator.info.dim,
+            max_dims=self._max_dim,
+            matrix_stride=self._max_dim,
+        )
+
+        self.solver = conjugate.CGSolver(
+            A=self._A_op,
+            active_dims=self._operator.info.dim,
+            env_active=self._env_active,
+            atol_sq=self._atol_sq,
+            maxiter=None,
+            M=None,
+            callback=None,
+            check_every=0,
+            use_cuda_graph=True,
+        )
+
+    @override
+    def _reset_impl(self, A: wp.array | None = None, **kwargs: dict[str, Any]) -> None:
+        self._last_iter = None
+        self._last_resid_sq = None
+
+    @override
+    def _compute_impl(self, A: wp.array, **kwargs: dict[str, Any]) -> None:
+        pass
+        # $print(f"Linear solve(): active_dims={self._operator.info.dim}, maxdims={self._operator.info.maxdim}")
+        # TODO: check that data remains in same place
+
+    @override
+    def _solve_impl(self, b: wp.array, x: wp.array, **kwargs: dict[str, Any]) -> None:
+        if self._A_op is None:
+            raise ValueError("ConjugateGradientSolver.compute(A) must be called before solve().")
+
+        zero_x = bool(kwargs.get("zero_x"))
+        if zero_x:
+            x.zero_()
+
+        self._last_iter, self._last_resid_sq, _ = self.solver.solve(
+            b=b.reshape((self._num_envs, self._max_dim)),
+            x=x.reshape((self._num_envs, self._max_dim)),
+        )
+
+    def solve_metadata(self) -> dict[str, Any]:
+        if self._last_iter is None or self._last_resid_sq is None:
+            raise ValueError("No solve metadata available; call solve() first.")
+        # Host summaries
+        iters = self._last_iter.numpy()
+        resid_sq = self._last_resid_sq.numpy()
+        return {
+            "final_iteration": int(iters.max() if len(iters) > 0 else 0),
+            "residual_norm": float(np.sqrt(resid_sq.max() if len(resid_sq) > 0 else 0.0)),
+            "atol": float(np.sqrt(self._atol_sq.numpy().max() if self._atol_sq is not None else 0.0)),
+        }
+
+
+LinearSolverType = LLTSequentialSolver | LLTBlockedSolver | ConjugateGradientSolver
 """Type alias over all linear solvers."""

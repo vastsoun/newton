@@ -2416,7 +2416,12 @@ class PADMMDualSolver:
             self._data.info.zero()
 
         # Iterate until convergence or maximum number of iterations is reached
-        wp.capture_while(self._data.state.done, while_body=self.step, problem=problem)
+        run_all_iter = True
+        if run_all_iter:
+            for _ in range(self._max_iters):
+                self.step(problem)
+        else:
+            wp.capture_while(self._data.state.done, while_body=self.step, problem=problem)
 
         # Update the final solution from the terminal PADMM state
         self.update_solution(problem)

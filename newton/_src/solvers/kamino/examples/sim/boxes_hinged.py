@@ -237,7 +237,7 @@ def run_hdf5_mode(clear_warp_cache=True, use_cuda_graph=False, load_from_usd=Tru
 class BoxesHingedExample:
     """ViewerGL example class for boxes hinged simulation."""
 
-    def __init__(self, viewer, load_from_usd=True):
+    def __init__(self, viewer, load_from_usd=True, use_cuda_graph=False):
         self.fps = 60
         self.frame_dt = 1.0 / self.fps
         self.sim_time = 0.0
@@ -245,6 +245,15 @@ class BoxesHingedExample:
         self.sim_dt = self.frame_dt / self.sim_substeps
 
         self.viewer = viewer
+        self.use_cuda_graph = use_cuda_graph
+
+        # Print CUDA graph usage status in a prominent way
+        msg.warning("="*80)
+        if use_cuda_graph:
+            msg.warning("CUDA GRAPH ENABLED - Using CUDA graph optimization")
+        else:
+            msg.warning("CUDA GRAPH DISABLED - Not using CUDA graph optimization")
+        msg.warning("="*80)
 
         # Get the default warp device
         device = wp.get_preferred_device()
@@ -285,8 +294,8 @@ class BoxesHingedExample:
         # Initialize the simulator with a warm-up step
         self.sim.reset()
 
-        # Don't capture graphs initially to avoid CUDA stream conflicts
-        self.graph = None
+        # Capture CUDA graph if requested and available
+        self.capture()
 
     def extract_geometry_info(self):
         """Extract geometry information from the kamino simulator."""
@@ -315,10 +324,13 @@ class BoxesHingedExample:
                     self.box_dimensions.append((params[0], params[1], params[2]))
 
     def capture(self):
-        """Capture CUDA graph if available."""
-        # For now, disable CUDA graph capture to avoid stream conflicts
-        # This can be re-enabled later if needed with proper stream management
-        self.graph = None
+        """Capture CUDA graph if requested and available."""
+        if self.use_cuda_graph and wp.get_device().is_cuda:
+            with wp.ScopedCapture() as capture:
+                self.simulate()
+            self.graph = capture.graph
+        else:
+            self.graph = None
 
     def simulate(self):
         """Run simulation substeps."""
@@ -456,7 +468,7 @@ if __name__ == "__main__":
             raise ValueError(f"Invalid viewer: {args.viewer}")
 
         # Create and run example
-        example = BoxesHingedExample(viewer, load_from_usd=args.load_from_usd)
+        example = BoxesHingedExample(viewer, load_from_usd=args.load_from_usd, use_cuda_graph=args.cuda_graph)
 
         # Set initial camera position for better view of the hinged boxes
         if hasattr(viewer, "set_camera"):

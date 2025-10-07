@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Unit tests for the LLTSequentialSolver from linalg/linear.py"""
+"""Unit tests for the ConjugateGradientSolver from linalg/conjugate.py"""
 
 import unittest
 
@@ -74,14 +74,17 @@ class TestLinalgCG(unittest.TestCase):
 
                 x_wp_np = x_wp.numpy()
 
+                if self.verbose:
+                    print("Iterations:", cg_solver.solve_metadata()["final_iteration"])
                 for block_idx, block_act in enumerate(problem.dims):
                     x_found = get_vector_block(block_idx, x_wp_np, problem.dims, problem.maxdims)[:block_act]
                     is_x_close = np.allclose(x_found, problem.x_np[block_idx][:block_act], rtol=1e-3, atol=1e-4)
-                    if self.verbose and sum(problem_params["maxdims"]) < 20:
-                        print("x:")
-                        print(x_found)
-                        print("x_goal:")
-                        print(problem.x_np[block_idx])
+                    if self.verbose:
+                        if sum(problem_params["maxdims"]) < 20:
+                            print("x:")
+                            print(x_found)
+                            print("x_goal:")
+                            print(problem.x_np[block_idx])
                         print_error_stats("x", x_found, problem.x_np[block_idx], problem.dims[block_idx])
                     self.assertTrue(is_x_close)
 
@@ -90,7 +93,6 @@ if __name__ == "__main__":
     # Global numpy configurations
     np.set_printoptions(linewidth=20000, precision=10, threshold=20000, suppress=True)  # Suppress scientific notation
 
-    # Initialize Warp
     wp.init()
 
     # Global warp configurations

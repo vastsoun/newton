@@ -24,13 +24,13 @@ import warp as wp
 from warp.context import Devicelike
 from warp.optim.linear import LinearOperator, cg, cr
 
-from ..core.types import Floatlike
+from ..core.types import FloatType
 from .core import DenseLinearOperatorData
 from .linear import LinearSolver
 
 __all__ = [
     "ConjugateGradientSolver",
-    # "ConjugateResidualSolver",
+    "ConjugateResidualSolver",
 ]
 
 
@@ -130,13 +130,16 @@ class ConjugateSolver(LinearSolver):
         operator: DenseLinearOperatorData | None = None,
         atol: float | None = None,
         rtol: float | None = None,
-        dtype: Floatlike = wp.float32,
+        dtype: FloatType = wp.float32,
         device: Devicelike | None = None,
         max_iter: int = 0,
         **kwargs: dict[str, Any],
     ):
-        self._max_iter = max_iter
+        if operator is not None:
+            self._max_iter = max_iter or int(1.4 * max(operator.info.maxdim.numpy().tolist()))  # use problem dimension
+        # TODO: handle effect of subsequent allocate on max iteration count
         self._A = None
+        self._solve_retval = None
         super().__init__(operator, atol, rtol, dtype, device, **kwargs)  # initializes _device and _operator
 
     @classmethod
@@ -155,9 +158,6 @@ class ConjugateSolver(LinearSolver):
         self._A_op = make_linear_operator(
             operator.mat, mi.maxdim, mi.mio, mi.vio, mi.dim, dtype=self.dtype, device=self.device
         )
-
-    def _callback(self):
-        pass
 
     def _reset_impl(self) -> None:
         self._b.zero_()
@@ -181,8 +181,14 @@ class ConjugateSolver(LinearSolver):
 
         self._assign_active(b, self._b)
 
-        self._solver_func()(
-            self._A_op, self._b, x, tol=float(self._rtol), atol=float(self._atol), maxiter=self._max_iter, check_every=0
+        self._solve_retval = self._solver_func()(
+            self._A_op,
+            self._b,
+            x,
+            tol=float(self._rtol),
+            atol=float(self._atol),
+            maxiter=self._max_iter,
+            check_every=0,
         )
 
     def _solve_inplace_impl(self, x: wp.array) -> None:
@@ -191,7 +197,25 @@ class ConjugateSolver(LinearSolver):
 
         self._assign_active(x, self._b)
         x.zero_()
-        self._solver_func()(self._A_op, self._b, x, tol=self._rtol**2)
+        self._solver_func()(
+            self._A_op,
+            self._b,
+            x,
+            tol=float(self._rtol),
+            atol=float(self._atol),
+            maxiter=self._max_iter,
+            check_every=0,
+        )
+
+    def solve_metadata(self):
+        if self._solve_retval is None:
+            raise ValueError("Must call solve() before solve_metadata()")
+        final, res_sq, abs_tol_sq = self._solve_retval
+        return {
+            "final_iteration": final.numpy()[0],
+            "residual_norm": res_sq.numpy()[0] ** 0.5,
+            "absolute_tolerance": abs_tol_sq.numpy()[0] ** 0.5,
+        }
 
 
 class ConjugateGradientSolver(ConjugateSolver):

@@ -18,18 +18,14 @@ from newton._src.solvers.kamino.simulation.simulator import Simulator
 from newton._src.solvers.kamino.utils.print import print_progress_bar
 from newton._src.solvers.kamino.utils.device import get_device_info
 from newton._src.solvers.kamino.models import get_primitives_usd_assets_path
-from newton._src.solvers.kamino.models.builders import (
-    build_box_on_plane
-)
-from newton._src.solvers.kamino.examples import (
-    get_examples_data_hdf5_path,
-    print_frame
-)
+from newton._src.solvers.kamino.models.builders import build_box_on_plane
+from newton._src.solvers.kamino.examples import get_examples_data_hdf5_path, print_frame
 
 
 ###
 # Kernels
 ###
+
 
 @wp.kernel
 def _control_callback(
@@ -69,6 +65,7 @@ def _control_callback(
 # Launchers
 ###
 
+
 def control_callback(sim: Simulator):
     """
     A control callback function
@@ -83,7 +80,7 @@ def control_callback(sim: Simulator):
             sim.model_data.joints.dq_j,
             sim.model_data.joints.tau_j,
             sim.model_data.bodies.w_e_i,
-        ]
+        ],
     )
 
 
@@ -101,6 +98,7 @@ RENDER_DATASET_PATH = os.path.join(get_examples_data_hdf5_path(), "box_on_plane.
 ###
 # Main function
 ###
+
 
 def run_hdf5_mode(clear_warp_cache=True, use_cuda_graph=False, load_from_usd=True, verbose=False):
     """Run the simulation in HDF5 mode to save data to file."""
@@ -192,7 +190,7 @@ def run_hdf5_mode(clear_warp_cache=True, use_cuda_graph=False, load_from_usd=Tru
 
     # Create a dataset file and renderer
     msg.info("Creating the HDF5 renderer...")
-    datafile = h5py.File(RENDER_DATASET_PATH, 'w')
+    datafile = h5py.File(RENDER_DATASET_PATH, "w")
     renderer = hdf5.DatasetRenderer(sysname="boxes_hinged", datafile=datafile, dt=sim.dt)
 
     # Store the initial state of the system
@@ -220,7 +218,7 @@ def run_hdf5_mode(clear_warp_cache=True, use_cuda_graph=False, load_from_usd=Tru
                 cdata.update_from(simulator=sim)
                 pdata.update_from(simulator=sim)
                 renderer.add_frame(system=sdata, contacts=cdata, problem=pdata)
-                print_progress_bar(i, ns, start_time, prefix='Progress', suffix='')
+                print_progress_bar(i, ns, start_time, prefix="Progress", suffix="")
 
     # Save the dataset
     msg.info("Saving all frames to HDF5...")
@@ -230,7 +228,7 @@ def run_hdf5_mode(clear_warp_cache=True, use_cuda_graph=False, load_from_usd=Tru
 class BoxesHingedExample:
     """ViewerGL example class for boxes hinged simulation."""
 
-    def __init__(self, viewer, load_from_usd=True):
+    def __init__(self, viewer, load_from_usd=True, use_cuda_graph=False):
         self.fps = 60
         self.frame_dt = 1.0 / self.fps
         self.sim_time = 0.0
@@ -238,6 +236,7 @@ class BoxesHingedExample:
         self.sim_dt = self.frame_dt / self.sim_substeps
 
         self.viewer = viewer
+        self.use_cuda_graph = use_cuda_graph
 
         # Get the default warp device
         device = wp.get_preferred_device()
@@ -278,8 +277,8 @@ class BoxesHingedExample:
         # Initialize the simulator with a warm-up step
         self.sim.reset()
 
-        # Don't capture graphs initially to avoid CUDA stream conflicts
-        self.graph = None
+        # Capture CUDA graph if requested and available
+        self.capture()
 
     def extract_geometry_info(self):
         """Extract geometry information from the kamino simulator."""
@@ -300,18 +299,21 @@ class BoxesHingedExample:
                 if bid == -1:  # Ground plane (static body)
                     # Ground plane: params = [depth, width, height, 0]
                     self.ground_info = {
-                        'dimensions': (params[0], params[1], params[2]),  # depth, width, height
-                        'offset': offset  # position and orientation
+                        "dimensions": (params[0], params[1], params[2]),  # depth, width, height
+                        "offset": offset,  # position and orientation
                     }
                 else:  # Regular box bodies
                     # Box dimensions: params = [depth, width, height, 0]
                     self.box_dimensions.append((params[0], params[1], params[2]))
 
     def capture(self):
-        """Capture CUDA graph if available."""
-        # For now, disable CUDA graph capture to avoid stream conflicts
-        # This can be re-enabled later if needed with proper stream management
-        self.graph = None
+        """Capture CUDA graph if requested and available."""
+        if self.use_cuda_graph and wp.get_device().is_cuda:
+            with wp.ScopedCapture() as capture:
+                self.simulate()
+            self.graph = capture.graph
+        else:
+            self.graph = None
 
     def simulate(self):
         """Run simulation substeps."""
@@ -348,11 +350,11 @@ class BoxesHingedExample:
                     # Convert kamino full dimensions to newton half-extents
                     # Kamino: BoxShape(depth, width, height) = full dimensions
                     # Newton: expects (half_depth, half_width, half_height)
-                    half_extents = (dimensions[0]/2, dimensions[1]/2, dimensions[2]/2)
+                    half_extents = (dimensions[0] / 2, dimensions[1] / 2, dimensions[2] / 2)
 
                     # Log the box shape
                     self.viewer.log_shapes(
-                        f"/box_on_plane/box_{i+1}",
+                        f"/box_on_plane/box_{i + 1}",
                         newton.GeoType.BOX,
                         half_extents,
                         wp.array([transform], dtype=wp.transform),
@@ -365,17 +367,18 @@ class BoxesHingedExample:
 
         # Render the ground plane from kamino
         if self.ground_info:
-            ground_offset = self.ground_info['offset']
+            ground_offset = self.ground_info["offset"]
             ground_pos = wp.vec3(float(ground_offset[0]), float(ground_offset[1]), float(ground_offset[2]))
-            ground_quat = wp.quat(float(ground_offset[3]), float(ground_offset[4]),
-                                float(ground_offset[5]), float(ground_offset[6]))
+            ground_quat = wp.quat(
+                float(ground_offset[3]), float(ground_offset[4]), float(ground_offset[5]), float(ground_offset[6])
+            )
             ground_transform = wp.transform(ground_pos, ground_quat)
 
             # Convert ground plane dimensions to half-extents
             ground_half_extents = (
-                self.ground_info['dimensions'][0]/2,
-                self.ground_info['dimensions'][1]/2,
-                self.ground_info['dimensions'][2]/2
+                self.ground_info["dimensions"][0] / 2,
+                self.ground_info["dimensions"][1] / 2,
+                self.ground_info["dimensions"][2] / 2,
             )
 
             # Ground plane color (gray)
@@ -402,7 +405,7 @@ if __name__ == "__main__":
         "--mode",
         choices=["hdf5", "viewer"],
         default="viewer",
-        help="Simulation mode: 'hdf5' for data collection, 'viewer' for live visualization"
+        help="Simulation mode: 'hdf5' for data collection, 'viewer' for live visualization",
     )
     parser.add_argument("--clear-cache", action="store_true", default=True, help="Clear warp cache")
     parser.add_argument("--cuda-graph", action="store_true", help="Use CUDA graphs")
@@ -424,7 +427,7 @@ if __name__ == "__main__":
             clear_warp_cache=args.clear_cache,
             use_cuda_graph=args.cuda_graph,
             load_from_usd=args.load_from_usd,
-            verbose=args.verbose
+            verbose=args.verbose,
         )
     elif args.mode == "viewer":
         msg.info("Running in ViewerGL mode...")
@@ -448,10 +451,10 @@ if __name__ == "__main__":
             raise ValueError(f"Invalid viewer: {args.viewer}")
 
         # Create and run example
-        example = BoxesHingedExample(viewer, load_from_usd=args.load_from_usd)
+        example = BoxesHingedExample(viewer, load_from_usd=args.load_from_usd, use_cuda_graph=args.cuda_graph)
 
         # Set initial camera position for better view of the hinged boxes
-        if hasattr(viewer, 'set_camera'):
+        if hasattr(viewer, "set_camera"):
             # Position camera to get a good view of the hinged mechanism
             camera_pos = wp.vec3(2.0, 2.0, 0.5)
             pitch = -5.0

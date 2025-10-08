@@ -20,12 +20,12 @@ import unittest
 import numpy as np
 import warp as wp
 
-from ..core.types import float32
-from ..linalg.conjugate import ConjugateGradientSolver
-from ..linalg.core import DenseLinearOperatorData, DenseSquareMultiLinearInfo
-from .utils.extract import get_vector_block
-from .utils.print import print_error_stats
-from .utils.random import RandomProblemLLT
+from newton._src.solvers.kamino.core.types import float32
+from newton._src.solvers.kamino.linalg.conjugate import ConjugateGradientSolver
+from newton._src.solvers.kamino.linalg.core import DenseLinearOperatorData, DenseSquareMultiLinearInfo
+from newton._src.solvers.kamino.tests.utils.extract import get_vector_block
+from newton._src.solvers.kamino.tests.utils.print import print_error_stats
+from newton._src.solvers.kamino.tests.utils.random import RandomProblemLLT
 
 
 class TestLinalgCG(unittest.TestCase):

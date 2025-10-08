@@ -1,10 +1,24 @@
-###########################################################################
-# KAMINO: MODELS: MODEL BUILDER UTILITIES
-###########################################################################
+# SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
+"""
+KAMINO: MODELS: MODEL BUILDER UTILITIES
+"""
 
-from newton._src.solvers.kamino.core import ModelBuilder
-from newton._src.solvers.kamino.models.builders import (
+from ..core import ModelBuilder
+from ..models.builders import (
     build_box_on_plane,
     build_box_pendulum,
     build_boxes_fourbar,
@@ -28,11 +42,11 @@ __all__ = [
 ###
 
 
-def make_single_builder(build_func=build_boxes_nunchaku) -> tuple[ModelBuilder, list[int], list[int]]:
+def make_single_builder(build_func=build_boxes_nunchaku, **kwargs) -> tuple[ModelBuilder, list[int], list[int]]:
     num_jcts = []
     num_bodies = []
     builder = ModelBuilder()
-    build_func(builder)
+    build_func(builder, **kwargs)
     num_jcts.append(builder.world.num_joint_cts)
     num_bodies.append(builder.world.num_bodies)
     return builder, num_bodies, num_jcts

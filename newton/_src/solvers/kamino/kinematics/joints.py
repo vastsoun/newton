@@ -1,6 +1,21 @@
-###########################################################################
-# KAMINO: Kinematics: Joints
-###########################################################################
+# SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""
+KAMINO: Kinematics: Joints
+"""
 
 from __future__ import annotations
 
@@ -8,8 +23,8 @@ from typing import Any
 
 import warp as wp
 
-from newton._src.solvers.kamino.core.joints import JointDoFType
-from newton._src.solvers.kamino.core.math import (
+from ..core.joints import JointDoFType
+from ..core.math import (
     quat_apply,
     quat_conj,
     quat_log,
@@ -18,8 +33,8 @@ from newton._src.solvers.kamino.core.math import (
     screw_angular,
     screw_linear,
 )
-from newton._src.solvers.kamino.core.model import Model, ModelData
-from newton._src.solvers.kamino.core.types import (
+from ..core.model import Model, ModelData
+from ..core.types import (
     float32,
     int32,
     mat33f,

@@ -1,32 +1,48 @@
-###########################################################################
-# KAMINO: High-level Simulation Interface
-###########################################################################
+# SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""
+KAMINO: High-level Simulation Interface
+"""
 
 from __future__ import annotations
 
 import warp as wp
 from warp.context import Devicelike
 
-from newton._src.solvers.kamino.core.bodies import update_body_inertias, update_body_wrenches
-from newton._src.solvers.kamino.core.builder import ModelBuilder
-from newton._src.solvers.kamino.core.control import Control
-from newton._src.solvers.kamino.core.model import Model, ModelData
-from newton._src.solvers.kamino.core.state import State
-from newton._src.solvers.kamino.core.time import advance_time
-from newton._src.solvers.kamino.dynamics.dual import DualProblem
-from newton._src.solvers.kamino.dynamics.wrenches import (
+from ..core.bodies import update_body_inertias, update_body_wrenches
+from ..core.builder import ModelBuilder
+from ..core.control import Control
+from ..core.model import Model, ModelData
+from ..core.state import State
+from ..core.time import advance_time
+from ..dynamics.dual import DualProblem
+from ..dynamics.wrenches import (
     compute_constraint_body_wrenches,
     compute_joint_dof_body_wrenches,
 )
-from newton._src.solvers.kamino.geometry.contacts import Contacts
-from newton._src.solvers.kamino.geometry.detector import CollisionDetector
-from newton._src.solvers.kamino.integrators.euler import integrate_semi_implicit_euler
-from newton._src.solvers.kamino.kinematics.constraints import make_unilateral_constraints_info, update_constraints_info
-from newton._src.solvers.kamino.kinematics.jacobians import DenseSystemJacobians
-from newton._src.solvers.kamino.kinematics.joints import compute_joints_state
-from newton._src.solvers.kamino.kinematics.limits import Limits
-from newton._src.solvers.kamino.linalg.cholesky import SequentialCholeskyFactorizer
-from newton._src.solvers.kamino.solvers.padmm import PADMMDualSolver
+from ..geometry.contacts import Contacts
+from ..geometry.detector import CollisionDetector
+from ..integrators.euler import integrate_semi_implicit_euler
+from ..kinematics.constraints import make_unilateral_constraints_info, update_constraints_info
+from ..kinematics.jacobians import DenseSystemJacobians
+from ..kinematics.joints import compute_joints_state
+from ..kinematics.limits import Limits
+from ..linalg import LLTBlockedSolver
+from ..solvers.apadmm import APADMMDualSolver
+from ..solvers.padmm import PADMMDualSolver  # noqa: F401
 
 ###
 # Module interface
@@ -34,6 +50,8 @@ from newton._src.solvers.kamino.solvers.padmm import PADMMDualSolver
 
 __all__ = ["Simulator"]
 
+SOLVER_TYPE = APADMMDualSolver
+# SOLVER_TYPE = PADMMDualSolver
 
 ###
 # Module configs
@@ -143,19 +161,18 @@ class Simulator:
             state=self._data.state,
             limits=self._limits,
             contacts=self._collision_detector.contacts,
-            factorizer=SequentialCholeskyFactorizer,  # TODO: Make this configurable
+            solver=LLTBlockedSolver,  # TODO: Make this configurable
             # TODO: settings=None,
             device=self._device,
         )
 
         # Allocate the dual solver data on the device
         # TODO: Make the solver parameters configurable
-        self._dual_solver = PADMMDualSolver(
+        self._dual_solver = SOLVER_TYPE(
             model=self._model,
-            state=self._data.state,
             limits=self._limits,
             contacts=self._collision_detector.contacts,
-            collect_info=True,  # TODO: Make this configurable
+            collect_info=False,  # TODO: Make this configurable
             device=self._device,
         )
 
@@ -247,7 +264,7 @@ class Simulator:
         return self._dual_problem
 
     @property
-    def solver(self) -> PADMMDualSolver:
+    def solver(self) -> SOLVER_TYPE:
         return self._dual_solver
 
     @property
@@ -440,7 +457,7 @@ class Simulator:
         # Integrate the bodies state and update the next state buffer
         integrate_semi_implicit_euler(self._model, self._data.state, self._data.s_n)
 
-        # # Copy the integrated state to the previous and current body states
+        # Copy the integrated state to the previous and current body states
         self._data.forward()
 
         # TODO: How can buffer flipping work with CUDA graph capture?

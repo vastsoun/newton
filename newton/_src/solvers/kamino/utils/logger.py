@@ -1,13 +1,20 @@
-###########################################################################
-# KAMINO: Utilities: Message Logging
-###########################################################################
-"""
-Copyright (c) 2025 Walt Disney Enterprises, Inc.
-Disney Research, Zurich. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
-Authors:
-    Josefine Klintberg (josefine.klintberg@disney.com)
-    Vassilios Tsounis (vassilios.tsounis@disney.com)
+"""
+KAMINO: Utilities: Message Logging
 """
 
 import logging
@@ -90,7 +97,13 @@ def get_default_logger() -> logging.Logger:
 def set_log_level(level: LogLevel):
     """Set the logging level for the default logger."""
     get_default_logger().setLevel(level)
-    get_default_logger().info(f"Log level set to: {logging.getLevelName(level)}")
+    get_default_logger().debug(f"Log level set to: {logging.getLevelName(level)}")
+
+
+def reset_log_level():
+    """Reset the logging level for the default logger to WARNING."""
+    get_default_logger().setLevel(logging.WARNING)
+    get_default_logger().debug(f"Log level reset to: {logging.getLevelName(logging.WARNING)}")
 
 
 def info(msg: str, *args, **kwargs):

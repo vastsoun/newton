@@ -1,6 +1,21 @@
-###########################################################################
-# KAMINO: UNIT TESTS: DYNAMICS: DELASSUS
-###########################################################################
+# SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""
+KAMINO: UNIT TESTS: DYNAMICS: DELASSUS
+"""
 
 import unittest
 
@@ -15,7 +30,7 @@ from newton._src.solvers.kamino.dynamics.delassus import DelassusOperator
 from newton._src.solvers.kamino.geometry.contacts import Contacts
 from newton._src.solvers.kamino.kinematics.constraints import max_constraints_per_world
 from newton._src.solvers.kamino.kinematics.limits import Limits
-from newton._src.solvers.kamino.linalg.cholesky import SequentialCholeskyFactorizer
+from newton._src.solvers.kamino.linalg import LLTSequentialSolver
 from newton._src.solvers.kamino.models.builders import (
     build_boxes_fourbar,
     build_boxes_nunchaku,
@@ -57,14 +72,13 @@ def check_delassus_allocations(
     expected_max_constraint_dims = max_constraints_per_world(model, limits, contacts)
     num_worlds = len(expected_max_constraint_dims)
     expected_D_sizes = [expected_max_constraint_dims[i] * expected_max_constraint_dims[i] for i in range(num_worlds)]
-    delassus_maxdim_np = delassus.data.maxdim.numpy()
+    delassus_maxdim_np = delassus.info.maxdim.numpy()
     fixture.assertEqual(
         len(delassus_maxdim_np), num_worlds, "Number of Delassus operator blocks does not match the number of worlds"
     )
     D_maxdims = [int(delassus_maxdim_np[i]) for i in range(num_worlds)]
     D_sizes = [D_maxdims[i] * D_maxdims[i] for i in range(num_worlds)]
     D_sizes_sum = sum(D_sizes)
-    v_sizes_sum = sum(expected_max_constraint_dims)
 
     for i in range(num_worlds):
         fixture.assertEqual(
@@ -77,29 +91,25 @@ def check_delassus_allocations(
         )
 
     # Check Delassus operator data sizes
-    fixture.assertEqual(delassus.data.maxdim.size, num_worlds)
-    fixture.assertEqual(delassus.data.dim.size, num_worlds)
-    fixture.assertEqual(delassus.data.mio.size, num_worlds)
-    fixture.assertEqual(delassus.data.vio.size, num_worlds)
-    fixture.assertEqual(delassus.data.D.size, D_sizes_sum)
-
-    # Check factorizer data sizes
-    fixture.assertEqual(delassus.factorizer.data.L.size, D_sizes_sum)
-    fixture.assertEqual(delassus.factorizer.data.y.size, v_sizes_sum)
+    fixture.assertEqual(delassus.info.maxdim.size, num_worlds)
+    fixture.assertEqual(delassus.info.dim.size, num_worlds)
+    fixture.assertEqual(delassus.info.mio.size, num_worlds)
+    fixture.assertEqual(delassus.info.vio.size, num_worlds)
+    fixture.assertEqual(delassus.D.size, D_sizes_sum)
 
     # Check if the factorizer info data to the same as the Delassus info data
-    fixture.assertEqual(delassus.data.maxdim.ptr, delassus.factorizer.data.maxdim.ptr)
-    fixture.assertEqual(delassus.data.dim.ptr, delassus.factorizer.data.dim.ptr)
-    fixture.assertEqual(delassus.data.mio.ptr, delassus.factorizer.data.mio.ptr)
-    fixture.assertEqual(delassus.data.vio.ptr, delassus.factorizer.data.vio.ptr)
+    fixture.assertEqual(delassus.info.maxdim.ptr, delassus.solver.operator.info.maxdim.ptr)
+    fixture.assertEqual(delassus.info.dim.ptr, delassus.solver.operator.info.dim.ptr)
+    fixture.assertEqual(delassus.info.mio.ptr, delassus.solver.operator.info.mio.ptr)
+    fixture.assertEqual(delassus.info.vio.ptr, delassus.solver.operator.info.vio.ptr)
 
 
 def print_delassus_info(delassus: DelassusOperator) -> None:
-    print(f"delassus.data.maxdim: {delassus.data.maxdim}")
-    print(f"delassus.data.dim: {delassus.data.dim}")
-    print(f"delassus.data.mio: {delassus.data.mio}")
-    print(f"delassus.data.vio: {delassus.data.vio}")
-    print(f"delassus.data.D: {delassus.data.D.shape}")
+    print(f"delassus.info.maxdim: {delassus.info.maxdim}")
+    print(f"delassus.info.dim: {delassus.info.dim}")
+    print(f"delassus.info.mio: {delassus.info.mio}")
+    print(f"delassus.info.vio: {delassus.info.vio}")
+    print(f"delassus.D: {delassus.D.shape}")
 
 
 ###
@@ -137,7 +147,7 @@ class TestDelassusOperator(unittest.TestCase):
             limits=limits,
             contacts=detector.contacts,
             device=self.default_device,
-            factorizer=SequentialCholeskyFactorizer,
+            solver=LLTSequentialSolver,
         )
 
         # Compare expected to allocated dimensions and sizes
@@ -171,7 +181,7 @@ class TestDelassusOperator(unittest.TestCase):
             limits=limits,
             contacts=detector.contacts,
             device=self.default_device,
-            factorizer=SequentialCholeskyFactorizer,
+            solver=LLTSequentialSolver,
         )
 
         # Compare expected to allocated dimensions and sizes
@@ -204,7 +214,7 @@ class TestDelassusOperator(unittest.TestCase):
             limits=limits,
             contacts=detector.contacts,
             device=self.default_device,
-            factorizer=SequentialCholeskyFactorizer,
+            solver=LLTSequentialSolver,
         )
 
         # Compare expected to allocated dimensions and sizes
@@ -241,7 +251,7 @@ class TestDelassusOperator(unittest.TestCase):
             limits=limits,
             contacts=detector.contacts,
             device=self.default_device,
-            factorizer=SequentialCholeskyFactorizer,
+            solver=LLTSequentialSolver,
         )
 
         # Build the Delassus operator from the current data
@@ -297,7 +307,7 @@ class TestDelassusOperator(unittest.TestCase):
             limits=limits,
             contacts=detector.contacts,
             device=self.default_device,
-            factorizer=SequentialCholeskyFactorizer,
+            solver=LLTSequentialSolver,
         )
 
         # Build the Delassus operator from the current data
@@ -366,7 +376,7 @@ class TestDelassusOperator(unittest.TestCase):
             limits=limits,
             contacts=detector.contacts,
             device=self.default_device,
-            factorizer=SequentialCholeskyFactorizer,
+            solver=LLTSequentialSolver,
         )
 
         # Build the Delassus operator from the current data
@@ -435,7 +445,7 @@ class TestDelassusOperator(unittest.TestCase):
             limits=limits,
             contacts=detector.contacts,
             device=self.default_device,
-            factorizer=SequentialCholeskyFactorizer,
+            solver=LLTSequentialSolver,
         )
 
         # Build the Delassus operator from the current data
@@ -523,7 +533,7 @@ class TestDelassusOperator(unittest.TestCase):
             limits=limits,
             contacts=detector.contacts,
             device=self.default_device,
-            factorizer=SequentialCholeskyFactorizer,
+            solver=LLTSequentialSolver,
         )
 
         # Build the Delassus operator from the current data
@@ -540,14 +550,14 @@ class TestDelassusOperator(unittest.TestCase):
         delassus.regularize(eta=eta_wp)
 
         # Factorize the Delassus matrix
-        delassus.factorize(reset_to_zero=True)
+        delassus.compute(reset_to_zero=True)
 
         # Extract Delassus data as numpy arrays
         D_np = extract_delassus(delassus, only_active_dims=True)
 
         # For each world, generate a random right-hand side vector
         num_worlds = delassus.num_worlds
-        vio_np = delassus.data.vio.numpy()
+        vio_np = delassus.info.vio.numpy()
         v_f_np = np.zeros(shape=(delassus._model_maxdims,), dtype=np.float32)
         for w in range(num_worlds):
             v_f_w = random_rhs_for_matrix(D_np[w])

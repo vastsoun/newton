@@ -1,20 +1,35 @@
-###########################################################################
-# KAMINO: MODELS: MODEL BUILDER FUNCTIONS
-###########################################################################
+# SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""
+KAMINO: MODELS: MODEL BUILDER FUNCTIONS
+"""
 
 import math
 
 import warp as wp
 
-from newton._src.solvers.kamino.core import ModelBuilder
-from newton._src.solvers.kamino.core.inertia import (
+from ..core import ModelBuilder
+from ..core.inertia import (
     solid_cuboid_body_moment_of_inertia,
     solid_sphere_body_moment_of_inertia,
 )
-from newton._src.solvers.kamino.core.joints import JointActuationType, JointDoFType
-from newton._src.solvers.kamino.core.math import FLOAT32_MAX, FLOAT32_MIN, I_3
-from newton._src.solvers.kamino.core.shapes import BoxShape, SphereShape
-from newton._src.solvers.kamino.core.types import Axis, mat33f, transformf, vec3f, vec6f
+from ..core.joints import JointActuationType, JointDoFType
+from ..core.math import FLOAT32_MAX, FLOAT32_MIN, I_3
+from ..core.shapes import BoxShape, SphereShape
+from ..core.types import Axis, transformf, vec3f, vec6f
 
 ###
 # Module interface
@@ -625,7 +640,7 @@ def build_boxes_fourbar(
         print(f"r_j4: {r_j4}")
 
     # Joint axes matrix
-    X_j = mat33f(0, 0, 1, 1, 0, 0, 0, 1, 0)
+    X_j = Axis.Y.to_mat33()
 
     ###
     # Bodies

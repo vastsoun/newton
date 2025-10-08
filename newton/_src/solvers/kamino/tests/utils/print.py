@@ -1,6 +1,21 @@
-###########################################################################
-# KAMINO: UNIT TESTS: GENERAL UTILITIES
-###########################################################################
+# SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""
+KAMINO: UNIT TESTS: GENERAL UTILITIES
+"""
 
 import numpy as np
 
@@ -12,6 +27,8 @@ from newton._src.solvers.kamino.core.model import Model, ModelData
 
 
 def print_model_size(model: Model):
+    print("Model Size:")
+
     # Print the host-side model size meta-data
     print(f"model.size.num_worlds: {model.size.num_worlds}")
 
@@ -31,6 +48,8 @@ def print_model_size(model: Model):
 
 
 def print_model_info(model: Model):
+    print("Model Info:")
+
     # Print the host-side model info meta-data
     print(f"model.info.num_worlds: {model.info.num_worlds}")
 
@@ -78,6 +97,7 @@ def print_model_info(model: Model):
 
 
 def print_model_constraint_info(model: Model):
+    print("Model Constraint Info:")
     print(f"model.info.max_limits: {model.info.max_limits}")
     print(f"model.info.max_contacts: {model.info.max_contacts}")
     print(f"model.info.num_joint_cts: {model.info.num_joint_cts}")

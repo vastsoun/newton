@@ -1,7 +1,21 @@
-###########################################################################
-# KAMINO: Proximal ADMM DualProblem Solver
-###########################################################################
+# SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """
+KAMINO: Proximal ADMM DualProblem Solver
+
 Provides a forward dynamics solver for constrained rigid multi-body systems using
 the Alternating Direction Method of Multipliers (ADMM). This implementation realizes
 the Proximal ADMM algorithm described in [1] and is based on the work of J. Carpentier
@@ -12,11 +26,14 @@ Notes
 ----
 - ADMM is based on the Augmented Lagrangian Method (ALM).
 - Proximal ADMM introduces an additional proximal regularization term to the optimization objective.
+- Uses (optional) over-relaxation factor to improve convergence.
+- Uses (optional) adaptive penalty updates based on the primal-dual residual balancing.
 
 References
 ----
 - [1] https://arxiv.org/abs/2504.19771
 - [2] https://arxiv.org/pdf/2405.17020
+- [3] https://onlinelibrary.wiley.com/doi/full/10.1002/nme.6693
 """
 
 from enum import IntEnum
@@ -24,11 +41,12 @@ from enum import IntEnum
 import warp as wp
 from warp.context import Devicelike
 
-from newton._src.solvers.kamino.core.model import Model, ModelData, ModelSize
-from newton._src.solvers.kamino.core.types import float32, int32, vec3f
-from newton._src.solvers.kamino.dynamics.dual import DualProblem
-from newton._src.solvers.kamino.geometry.contacts import Contacts
-from newton._src.solvers.kamino.kinematics.limits import Limits
+from ..core.math import FLOAT32_EPS
+from ..core.model import Model, ModelSize
+from ..core.types import float32, int32, vec3f
+from ..dynamics.dual import DualProblem
+from ..geometry.contacts import Contacts
+from ..kinematics.limits import Limits
 
 ###
 # Module configs
@@ -95,6 +113,7 @@ class PADMMStatus:
     """A flag indicating whether the solver has converged (1) or not (0)."""
     iterations: int32
     """The number of iterations performed by the solver."""
+
     r_p: float32
     """The total primal residual according to the appropriate metric norm (currently the infinity norm)."""
     r_d: float32
@@ -128,13 +147,13 @@ class PADMMSettings:
     """
 
     def __init__(self):
-        self.primal_tolerance: float = 1e-4
+        self.primal_tolerance: float = 1e-6
         """The tolerance applied to the primal residuals."""
-        self.dual_tolerance: float = 1e-4
+        self.dual_tolerance: float = 1e-6
         """The tolerance applied to the dual residuals."""
-        self.compl_tolerance: float = 1e-4
+        self.compl_tolerance: float = 1e-6
         """The tolerance applied to the complementarity residuals."""
-        self.eta: float = 1e-3
+        self.eta: float = 1e-5
         """The proximal regularization parameter. Must be greater than zero."""
         self.rho_0: float = 1.0
         """The initial value of the penalty parameter. Must be greater than zero."""
@@ -176,6 +195,9 @@ class PADMMState:
     """
 
     def __init__(self, size: ModelSize | None = None):
+        self.done: wp.array(dtype=int32) | None = None
+        """A global flag indicating if the solver should terminate the solve operation."""
+
         self.s: wp.array(dtype=float32) | None = None
         """The De Saxce correction vector."""
 
@@ -205,6 +227,7 @@ class PADMMState:
             self.allocate(size)
 
     def allocate(self, size: ModelSize):
+        self.done = wp.zeros(1, dtype=int32)
         self.s = wp.zeros(size.sum_of_max_total_cts, dtype=float32)
         self.v = wp.zeros(size.sum_of_max_total_cts, dtype=float32)
         self.x = wp.zeros(size.sum_of_max_total_cts, dtype=float32)
@@ -232,11 +255,11 @@ class PADMMResiduals:
 
     def __init__(self, size: ModelSize | None = None):
         self.r_primal: wp.array(dtype=float32) | None = None
-        """The PADMM primal residuals."""
+        """The PADMM primal residual vector."""
         self.r_dual: wp.array(dtype=float32) | None = None
-        """The PADMM dual residuals."""
+        """The PADMM dual residual vector."""
         self.r_compl: wp.array(dtype=float32) | None = None
-        """The PADMM complementarity residuals."""
+        """The PADMM complementarity residual vector."""
 
         # Perform memory allocations if size is specified
         if size is not None:
@@ -285,6 +308,11 @@ class PADMMInfo:
         size: ModelSize | None = None,
         max_iters: int | None = None,
     ):
+        self.lambdas: wp.array(dtype=float32) | None = None
+        """
+        The constraint reactions (i.e. impulses) of each world.\n
+        """
+
         self.v_plus: wp.array(dtype=float32) | None = None
         """
         The post-event constraint-space velocities of each world.\n
@@ -306,14 +334,32 @@ class PADMMInfo:
         self.offsets: wp.array(dtype=int32) | None = None
         """The residuals index offset of each world."""
 
+        self.norm_s: wp.array(dtype=float32) | None = None
+        """The per-solve history of the L2 norm of the De Saxce correction variables."""
+
+        self.norm_x: wp.array(dtype=float32) | None = None
+        """The per-solve history of the L2 norm of the primal variables."""
+
+        self.norm_y: wp.array(dtype=float32) | None = None
+        """The per-solve history of the L2 norm of the slack variables."""
+
+        self.norm_z: wp.array(dtype=float32) | None = None
+        """The per-solve history of the L2 norm of the dual variables."""
+
         self.f_ccp: wp.array(dtype=float32) | None = None
         """The per-solve history of the CCP optimization objective."""
 
         self.f_ncp: wp.array(dtype=float32) | None = None
         """The per-solve history of the NCP optimization objective."""
 
-        self.r_iter: wp.array(dtype=int32) | None = None
-        """The per-solve history of the iterate residual."""
+        self.r_dx: wp.array(dtype=float32) | None = None
+        """The per-solve history of the primal iterate residual."""
+
+        self.r_dy: wp.array(dtype=float32) | None = None
+        """The per-solve history of the slack iterate residual."""
+
+        self.r_dz: wp.array(dtype=float32) | None = None
+        """The per-solve history of the dual iterate residual."""
 
         self.r_primal: wp.array(dtype=float32) | None = None
         """The per-solve history of PADMM primal residuals."""
@@ -323,6 +369,12 @@ class PADMMInfo:
 
         self.r_compl: wp.array(dtype=float32) | None = None
         """The per-solve history of PADMM complementarity residuals."""
+
+        self.r_pd: wp.array(dtype=float32) | None = None
+        """The per-solve history of PADMM primal-dual residuals ratio."""
+
+        self.r_dp: wp.array(dtype=float32) | None = None
+        """The per-solve history of PADMM dual-primal residuals ratio."""
 
         self.r_ncp_primal: wp.array(dtype=float32) | None = None
         """The per-solve history of NCP primal residuals."""
@@ -350,6 +402,7 @@ class PADMMInfo:
             raise TypeError("max_iters must be a positive integer specifying the maximum number of iterations.")
 
         # Allocate intermediate arrays
+        self.lambdas = wp.zeros(size.sum_of_max_total_cts, dtype=float32)
         self.v_plus = wp.zeros(size.sum_of_max_total_cts, dtype=float32)
         self.v_aug = wp.zeros(size.sum_of_max_total_cts, dtype=float32)
         self.s = wp.zeros(size.sum_of_max_total_cts, dtype=float32)
@@ -360,27 +413,44 @@ class PADMMInfo:
 
         # Allocate the in-device solver info data arrays
         self.offsets = wp.array(offsets, dtype=int32)
-        self.r_iter = wp.zeros(maxsize, dtype=float32)
+        self.norm_s = wp.zeros(maxsize, dtype=float32)
+        self.norm_x = wp.zeros(maxsize, dtype=float32)
+        self.norm_y = wp.zeros(maxsize, dtype=float32)
+        self.norm_z = wp.zeros(maxsize, dtype=float32)
+        self.r_dx = wp.zeros(maxsize, dtype=float32)
+        self.r_dy = wp.zeros(maxsize, dtype=float32)
+        self.r_dz = wp.zeros(maxsize, dtype=float32)
         self.f_ccp = wp.zeros(maxsize, dtype=float32)
         self.f_ncp = wp.zeros(maxsize, dtype=float32)
         self.r_primal = wp.zeros(maxsize, dtype=float32)
         self.r_dual = wp.zeros(maxsize, dtype=float32)
         self.r_compl = wp.zeros(maxsize, dtype=float32)
+        self.r_pd = wp.zeros(maxsize, dtype=float32)
+        self.r_dp = wp.zeros(maxsize, dtype=float32)
         self.r_ncp_primal = wp.zeros(maxsize, dtype=float32)
         self.r_ncp_dual = wp.zeros(maxsize, dtype=float32)
         self.r_ncp_compl = wp.zeros(maxsize, dtype=float32)
         self.r_ncp_natmap = wp.zeros(maxsize, dtype=float32)
 
     def zero(self):
+        self.lambdas.zero_()
         self.v_plus.zero_()
         self.v_aug.zero_()
         self.s.zero_()
+        self.norm_s.zero_()
+        self.norm_x.zero_()
+        self.norm_y.zero_()
+        self.norm_z.zero_()
         self.f_ccp.zero_()
         self.f_ncp.zero_()
-        self.r_iter.zero_()
+        self.r_dx.zero_()
+        self.r_dy.zero_()
+        self.r_dz.zero_()
         self.r_primal.zero_()
         self.r_dual.zero_()
         self.r_compl.zero_()
+        self.r_pd.zero_()
+        self.r_dp.zero_()
         self.r_ncp_primal.zero_()
         self.r_ncp_dual.zero_()
         self.r_ncp_compl.zero_()
@@ -490,6 +560,43 @@ def project_to_coulomb_dual_cone(x: vec3f, mu: float32, epsilon: float32 = 0.0) 
 
 
 @wp.func
+def compute_inf_norm(
+    dim: int32,
+    vio: int32,
+    x: wp.array(dtype=float32),
+) -> float32:
+    norm = float(0.0)
+    for i in range(dim):
+        norm = wp.max(norm, wp.abs(x[vio + i]))
+    return norm
+
+
+@wp.func
+def compute_l1_norm(
+    dim: int32,
+    vio: int32,
+    x: wp.array(dtype=float32),
+) -> float32:
+    sum = float(0.0)
+    for i in range(dim):
+        sum += wp.abs(x[vio + i])
+    return sum
+
+
+@wp.func
+def compute_l2_norm(
+    dim: int32,
+    vio: int32,
+    x: wp.array(dtype=float32),
+) -> float32:
+    sum = float(0.0)
+    for i in range(dim):
+        x_i = x[vio + i]
+        sum += x_i * x_i
+    return wp.sqrt(sum)
+
+
+@wp.func
 def compute_dot_product(
     dim: int32,
     vio: int32,
@@ -569,12 +676,28 @@ def compute_vector_sum(
 
 
 @wp.func
+def compute_cwise_vec_mul(
+    dim: int32,
+    vio: int32,
+    a: wp.array(dtype=float32),
+    x: wp.array(dtype=float32),
+    y: wp.array(dtype=float32),
+):
+    """
+    Computes the coefficient-wise vector-vector product `y =  a * x`.\n
+    """
+    for i in range(dim):
+        v_i = vio + i
+        y[v_i] = a[v_i] * x[v_i]
+
+
+@wp.func
 def compute_gemv(
-    maxdim: int32,
     dim: int32,
     vio: int32,
     mio: int32,
     sigma: float32,
+    P: wp.array(dtype=float32),
     A: wp.array(dtype=float32),
     x: wp.array(dtype=float32),
     b: wp.array(dtype=float32),
@@ -609,13 +732,13 @@ def compute_gemv(
     x_j = float(0.0)
     for i in range(dim):
         v_i = vio + i
-        m_i = mio + maxdim * i
+        m_i = mio + dim * i
         b_i = b[v_i]
         for j in range(dim):
             x_j = x[vio + j]
             b_i += A[m_i + j] * x_j
         b_i -= sigma * x[v_i]
-        c[v_i] = b_i
+        c[v_i] = (1.0 / P[v_i]) * b_i
 
 
 @wp.func
@@ -669,8 +792,8 @@ def compute_desaxce_corrections(
 
         # Store De Saxce correction for this block
         s[v_k] = 0.0
-        s[v_k] = 0.0
-        s[v_k] = mu_k * vt_norm_k
+        s[v_k + 1] = 0.0
+        s[v_k + 2] = mu_k * vt_norm_k
 
 
 @wp.func
@@ -929,34 +1052,61 @@ def compute_ncp_natural_map_residual(
 
 
 @wp.func
-def compute_iterate_residual(
-    ncts: int32, vio: int32, y: wp.array(dtype=float32), y_p: wp.array(dtype=float32)
+def compute_preconditioned_iterate_residual(
+    ncts: int32, vio: int32, P: wp.array(dtype=float32), x: wp.array(dtype=float32), x_p: wp.array(dtype=float32)
 ) -> float32:
     """
-    Computes the iterate residual as: `r_iter := || y - y_p ||_inf`
+    Computes the iterate residual as: `r_dx := || P @ (x - x_p) ||_inf`
 
     Args:
         ncts (int32): The number of active constraints in the world.
         vio (int32): The vector index offset (i.e. start index) for the constraints.
-        y (wp.array(dtype=float32)):
+        x (wp.array(dtype=float32)):
             The current solution vector.
-        y_p (wp.array(dtype=float32)):
+        x_p (wp.array(dtype=float32)):
             The previous solution vector.
 
     Returns:
         float32: The maximum iterate residual across all active constraints, computed as the infinity norm.
     """
     # Initialize the iterate residual
-    r_iter = float(0.0)
-
+    r_dx = float(0.0)
     for i in range(ncts):
         # Compute the index offset of the vector block of the world
         v_i = vio + i
         # Update the iterate and proximal-point residuals
-        r_iter = wp.max(r_iter, wp.abs(y[v_i] - y_p[v_i]))
-
+        r_dx = wp.max(r_dx, P[v_i] * wp.abs(x[v_i] - x_p[v_i]))
     # Return the maximum iterate residual
-    return r_iter
+    return r_dx
+
+
+@wp.func
+def compute_inverse_preconditioned_iterate_residual(
+    ncts: int32, vio: int32, P: wp.array(dtype=float32), x: wp.array(dtype=float32), x_p: wp.array(dtype=float32)
+) -> float32:
+    """
+    Computes the iterate residual as: `r_dx := || P^{-1} @ (x - x_p) ||_inf`
+
+    Args:
+        ncts (int32): The number of active constraints in the world.
+        vio (int32): The vector index offset (i.e. start index) for the constraints.
+        x (wp.array(dtype=float32)):
+            The current solution vector.
+        x_p (wp.array(dtype=float32)):
+            The previous solution vector.
+
+    Returns:
+        float32: The maximum iterate residual across all active constraints, computed as the infinity norm.
+    """
+    # Initialize the iterate residual
+    r_dx = float(0.0)
+    for i in range(ncts):
+        # Compute the index offset of the vector block of the world
+        v_i = vio + i
+        # Update the iterate and proximal-point residuals
+        r_dx = wp.max(r_dx, (1.0 / P[v_i]) * wp.abs(x[v_i] - x_p[v_i]))
+    # Return the maximum iterate residual
+    return r_dx
 
 
 ###
@@ -976,6 +1126,9 @@ def _initialize_solver(
     # Retrive the world index as thread index
     wid = wp.tid()
 
+    # Retrieve the solver configuration
+    config = solver_config[wid]
+
     # Initialize status
     s = solver_status[wid]
     s.iterations = int(0)
@@ -988,7 +1141,7 @@ def _initialize_solver(
     # Initialize penalty
     # NOTE: Currently only fixed penalty is used
     p = solver_penalty[wid]
-    p.rho = solver_config[wid].rho_0
+    p.rho = config.rho_0
     p.rho_p = float(0.0)
     p.rho_updates = int(0)
     solver_penalty[wid] = p
@@ -997,7 +1150,6 @@ def _initialize_solver(
 @wp.kernel
 def _update_delassus_proximal_regularization(
     # Inputs:
-    problem_maxdim: wp.array(dtype=int32),
     problem_dim: wp.array(dtype=int32),
     problem_mio: wp.array(dtype=int32),
     solver_config: wp.array(dtype=PADMMConfig),
@@ -1019,9 +1171,6 @@ def _update_delassus_proximal_regularization(
     if tid >= ncts or status.converged > 0:
         return
 
-    # Retrieve the maximum number of dimensions of the world
-    maxdim = problem_maxdim[wid]
-
     # Retrieve the matrix index offset of the world
     mio = problem_mio[wid]
 
@@ -1035,7 +1184,7 @@ def _update_delassus_proximal_regularization(
     eta = cfg.eta
 
     # Add the proximal regularization to the diagonal of the Delassus matrix
-    D[mio + maxdim * tid + tid] += eta + (rho - rho_p)
+    D[mio + ncts * tid + tid] += eta + (rho - rho_p)
 
 
 @wp.kernel
@@ -1185,10 +1334,10 @@ def _apply_overrelaxation_and_compute_projection_argument(
     x = solver_x[tio]
     y = solver_y[tio]
 
-    # x = omega * x + (1 - omega) * y_p;
+    # Compute the over-relaxation update
     x = omega * x + (1.0 - omega) * y_p
 
-    # y = x - (1.0 / rho) * z_p;
+    # Compute argument for the projection operator
     y = x - (1.0 / rho) * z_p
 
     # Store the updated values back to the solver state
@@ -1263,6 +1412,7 @@ def _update_dual_variables_and_compute_primal_dual_residuals(
     # Inputs:
     problem_dim: wp.array(dtype=int32),
     problem_vio: wp.array(dtype=int32),
+    problem_P: wp.array(dtype=float32),
     solver_config: wp.array(dtype=PADMMConfig),
     solver_penalty: wp.array(dtype=PADMMPenalty),
     solver_status: wp.array(dtype=PADMMStatus),
@@ -1299,21 +1449,24 @@ def _update_dual_variables_and_compute_primal_dual_residuals(
     # Compute the index offset of the vector block of the world
     tio = vio + tid
 
+    # Retrieve
+    P_i = problem_P[tio]
+
     # Retrieve the solver state inputs
     x = solver_x[tio]
-    x_p = solver_x_p[tio]
     y = solver_y[tio]
+    x_p = solver_x_p[tio]
     y_p = solver_y_p[tio]
     z_p = solver_z_p[tio]
 
-    # z = z_p - rho * (x - y)
+    # Compute the dual variable update
     solver_z[tio] = z_p + rho * (y - x)
 
     # Compute the primal residual as the concensus of the primal and slack variable
-    solver_r_p[tio] = x - y
+    solver_r_p[tio] = P_i * (x - y)
 
     # Compute the dual residual using the ADMM-specific shortcut
-    solver_r_d[tio] = rho * (y - y_p) + eta * (x - x_p)
+    solver_r_d[tio] = (1.0 / P_i) * (rho * (y - y_p) + eta * (x - x_p))
 
 
 # TODO: Break this up to two kernels launched simultaneously (1x for limits, 1x for contacts)?
@@ -1393,6 +1546,7 @@ def _compute_infnorm_residuals_serially(
     solver_r_d: wp.array(dtype=float32),
     solver_r_c: wp.array(dtype=float32),
     # Outputs:
+    solver_state_done: wp.array(dtype=int32),
     solver_status: wp.array(dtype=PADMMStatus),
 ):
     # Retrieve the thread index as the world index
@@ -1425,6 +1579,9 @@ def _compute_infnorm_residuals_serially(
     eps_d = config.dual_tolerance
     eps_c = config.compl_tolerance
 
+    # Extract the maximum number of iterations
+    maxiters = config.max_iterations
+
     # Compute element-wise max over each residual vector to compute the infinity-norm
     r_p_max = float(0.0)
     r_d_max = float(0.0)
@@ -1448,13 +1605,9 @@ def _compute_infnorm_residuals_serially(
     if status.iterations > 1 and r_p_max <= eps_p and r_d_max <= eps_d and r_c_max <= eps_c:
         status.converged = 1
 
-    # # Check and store convergence state
-    # if (status.iterations > 1 and
-    #    r_p_max <= eps_p and
-    #    r_d_max <= eps_d and
-    #    r_c_max <= eps_c) or \
-    #    nu == 0:
-    #     status.converged = 1
+    # If converged or reached max iterations, decrement the number of active worlds
+    if status.converged or status.iterations >= maxiters:
+        solver_state_done[0] -= 1
 
     # Store the updated status
     solver_status[wid] = status
@@ -1468,29 +1621,43 @@ def _collect_solver_convergence_info(
     problem_cio: wp.array(dtype=int32),
     problem_lcgo: wp.array(dtype=int32),
     problem_ccgo: wp.array(dtype=int32),
-    problem_maxdim: wp.array(dtype=int32),
     problem_dim: wp.array(dtype=int32),
     problem_vio: wp.array(dtype=int32),
     problem_mio: wp.array(dtype=int32),
     problem_mu: wp.array(dtype=float32),
     problem_v_f: wp.array(dtype=float32),
     problem_D: wp.array(dtype=float32),
+    problem_P: wp.array(dtype=float32),
+    solver_state_s: wp.array(dtype=float32),
+    solver_state_x: wp.array(dtype=float32),
+    solver_state_x_p: wp.array(dtype=float32),
     solver_state_y: wp.array(dtype=float32),
     solver_state_y_p: wp.array(dtype=float32),
+    solver_state_z: wp.array(dtype=float32),
+    solver_state_z_p: wp.array(dtype=float32),
     solver_config: wp.array(dtype=PADMMConfig),
     solver_penalty: wp.array(dtype=PADMMPenalty),
     solver_status: wp.array(dtype=PADMMStatus),
     # Outputs:
+    solver_info_lambdas: wp.array(dtype=float32),
     solver_info_v_plus: wp.array(dtype=float32),
     solver_info_v_aug: wp.array(dtype=float32),
     solver_info_s: wp.array(dtype=float32),
     solver_info_offset: wp.array(dtype=int32),
+    solver_info_norm_s: wp.array(dtype=float32),
+    solver_info_norm_x: wp.array(dtype=float32),
+    solver_info_norm_y: wp.array(dtype=float32),
+    solver_info_norm_z: wp.array(dtype=float32),
     solver_info_f_ccp: wp.array(dtype=float32),
     solver_info_f_ncp: wp.array(dtype=float32),
-    solver_info_r_iter: wp.array(dtype=float32),
+    solver_info_r_dx: wp.array(dtype=float32),
+    solver_info_r_dy: wp.array(dtype=float32),
+    solver_info_r_dz: wp.array(dtype=float32),
     solver_info_r_primal: wp.array(dtype=float32),
     solver_info_r_dual: wp.array(dtype=float32),
     solver_info_r_compl: wp.array(dtype=float32),
+    solver_info_r_pd: wp.array(dtype=float32),
+    solver_info_r_dp: wp.array(dtype=float32),
     solver_info_r_ncp_primal: wp.array(dtype=float32),
     solver_info_r_ncp_dual: wp.array(dtype=float32),
     solver_info_r_ncp_compl: wp.array(dtype=float32),
@@ -1502,7 +1669,6 @@ def _collect_solver_convergence_info(
     # Retrieve the world-specific data
     nl = problem_nl[wid]
     nc = problem_nc[wid]
-    maxncts = problem_maxdim[wid]
     ncts = problem_dim[wid]
     cio = problem_cio[wid]
     lcgo = problem_lcgo[wid]
@@ -1515,7 +1681,7 @@ def _collect_solver_convergence_info(
     status = solver_status[wid]
 
     # Retrieve parameters
-    iter = status.iterations
+    iter = status.iterations - 1
 
     # Compute additional info
     njc = ncts - (nl + 3 * nc)
@@ -1523,53 +1689,117 @@ def _collect_solver_convergence_info(
     # Compute total diagonal regularization applied to the Delassus matrix
     sigma = config.eta + penalty.rho
 
-    # 1. Compute the post-event constraint-space velocity from the current solution: v_plus = v_f + D @ lambda
-    compute_gemv(maxncts, ncts, vio, mio, sigma, problem_D, solver_state_y, problem_v_f, solver_info_v_plus)
+    # Compute and store the norms of the current solution state
+    norm_s = compute_l2_norm(ncts, vio, solver_state_s)
+    norm_x = compute_l2_norm(ncts, vio, solver_state_x)
+    norm_y = compute_l2_norm(ncts, vio, solver_state_y)
+    norm_z = compute_l2_norm(ncts, vio, solver_state_z)
 
-    # 2. Compute the De Saxce correction for each contact as: s = G(v_plus)
+    # Compute (division safe) residual ratios
+    r_pd = status.r_p / (status.r_d + FLOAT32_EPS)
+    r_dp = status.r_d / (status.r_p + FLOAT32_EPS)
+
+    # Compute the post-event constraint-space velocity from the current solution: v_plus = v_f + D @ lambda
+    compute_cwise_vec_mul(ncts, vio, problem_P, solver_state_y, solver_info_lambdas)
+
+    # Compute the post-event constraint-space velocity from the current solution: v_plus = v_f + D @ lambda
+    compute_gemv(ncts, vio, mio, sigma, problem_P, problem_D, solver_state_y, problem_v_f, solver_info_v_plus)
+
+    # Compute the De Saxce correction for each contact as: s = G(v_plus)
     compute_desaxce_corrections(nc, cio, vio, ccgo, problem_mu, solver_info_v_plus, solver_info_s)
 
-    # 3. Compute the CCP optimization objective as: f_ccp = 0.5 * lambda.dot(v_plus + v_f)
-    f_ccp = 0.5 * compute_double_dot_product(ncts, vio, solver_state_y, solver_info_v_plus, problem_v_f)
+    # Compute the CCP optimization objective as: f_ccp = 0.5 * lambda.dot(v_plus + v_f)
+    f_ccp = 0.5 * compute_double_dot_product(ncts, vio, solver_info_lambdas, solver_info_v_plus, problem_v_f)
 
-    # 4. Compute the NCP optimization objective as:  f_ncp = f_ccp + lambda.dot(s)
-    f_ncp = compute_dot_product(ncts, vio, solver_state_y, solver_info_s)
+    # Compute the NCP optimization objective as:  f_ncp = f_ccp + lambda.dot(s)
+    f_ncp = compute_dot_product(ncts, vio, solver_info_lambdas, solver_info_s)
     f_ncp += f_ccp
 
-    # 5. Compute the augmented post-event constraint-space velocity as: v_aug = v_plus + s
+    # Compute the augmented post-event constraint-space velocity as: v_aug = v_plus + s
     compute_vector_sum(ncts, vio, solver_info_v_plus, solver_info_s, solver_info_v_aug)
 
-    # 6. Compute the NCP primal residual as: r_p := || lambda - proj_K(lambda) ||_inf
-    r_ncp_p = compute_ncp_primal_residual(nl, nc, vio, lcgo, ccgo, cio, problem_mu, solver_state_y)
+    # Compute the NCP primal residual as: r_p := || lambda - proj_K(lambda) ||_inf
+    r_ncp_p = compute_ncp_primal_residual(nl, nc, vio, lcgo, ccgo, cio, problem_mu, solver_info_lambdas)
 
-    # 7. Compute the NCP dual residual as: r_d := || v_plus + s - proj_dual_K(v_plus + s)  ||_inf
+    # Compute the NCP dual residual as: r_d := || v_plus + s - proj_dual_K(v_plus + s)  ||_inf
     r_ncp_d = compute_ncp_dual_residual(njc, nl, nc, vio, lcgo, ccgo, cio, problem_mu, solver_info_v_aug)
 
-    # 8. Compute the NCP complementarity (lambda _|_ (v_plus + s)) residual as r_c := || lambda.dot(v_plus + s) ||_inf
-    r_ncp_c = compute_ncp_complementarity_residual(nl, nc, vio, lcgo, ccgo, solver_info_v_aug, solver_state_y)
+    # Compute the NCP complementarity (lambda _|_ (v_plus + s)) residual as r_c := || lambda.dot(v_plus + s) ||_inf
+    r_ncp_c = compute_ncp_complementarity_residual(nl, nc, vio, lcgo, ccgo, solver_info_v_aug, solver_info_lambdas)
 
-    # 9. Compute the natural-map residuals as: r_natmap = || lambda - proj_K(lambda - (v + s)) ||_inf
+    # Compute the natural-map residuals as: r_natmap = || lambda - proj_K(lambda - (v + s)) ||_inf
     r_ncp_natmap = compute_ncp_natural_map_residual(
-        nl, nc, vio, lcgo, ccgo, cio, problem_mu, solver_info_v_aug, solver_state_y
+        nl, nc, vio, lcgo, ccgo, cio, problem_mu, solver_info_v_aug, solver_info_lambdas
     )
 
-    # 10. Compute the iterate residual as: r_iter := || y - y_p ||_inf
-    r_iter = compute_iterate_residual(ncts, vio, solver_state_y, solver_state_y_p)
+    # Compute the iterate residual as: r_iter := || y - y_p ||_inf
+    r_dx = compute_preconditioned_iterate_residual(ncts, vio, problem_P, solver_state_x, solver_state_x_p)
+    r_dy = compute_preconditioned_iterate_residual(ncts, vio, problem_P, solver_state_y, solver_state_y_p)
+    r_dz = compute_inverse_preconditioned_iterate_residual(ncts, vio, problem_P, solver_state_z, solver_state_z_p)
 
     # Compute index offset for the info of the current iteration
     iio = rio + iter
 
     # Store the convergence information in the solver info arrays
-    solver_info_r_iter[iio] = r_iter
+    solver_info_norm_s[iio] = norm_s
+    solver_info_norm_x[iio] = norm_x
+    solver_info_norm_y[iio] = norm_y
+    solver_info_norm_z[iio] = norm_z
+    solver_info_r_dx[iio] = r_dx
+    solver_info_r_dy[iio] = r_dy
+    solver_info_r_dz[iio] = r_dz
     solver_info_r_primal[iio] = status.r_p
     solver_info_r_dual[iio] = status.r_d
     solver_info_r_compl[iio] = status.r_c
+    solver_info_r_pd[iio] = r_pd
+    solver_info_r_dp[iio] = r_dp
     solver_info_r_ncp_primal[iio] = r_ncp_p
     solver_info_r_ncp_dual[iio] = r_ncp_d
     solver_info_r_ncp_compl[iio] = r_ncp_c
     solver_info_r_ncp_natmap[iio] = r_ncp_natmap
     solver_info_f_ccp[iio] = f_ccp
     solver_info_f_ncp[iio] = f_ncp
+
+
+@wp.kernel
+def _apply_dual_preconditioner_to_state(
+    # Inputs:
+    problem_dim: wp.array(dtype=int32),
+    problem_vio: wp.array(dtype=int32),
+    problem_P: wp.array(dtype=float32),
+    # Outputs:
+    solver_x: wp.array(dtype=float32),
+    solver_y: wp.array(dtype=float32),
+    solver_z: wp.array(dtype=float32),
+):
+    # Retrieve the thread index
+    wid, tid = wp.tid()
+
+    # Retrieve the number of active constraints in the world
+    ncts = problem_dim[wid]
+
+    # Skip if row index exceed the problem size
+    if tid >= ncts:
+        return
+
+    # Retrieve the vector index offset of the world
+    vio = problem_vio[wid]
+
+    # Compute the global index of the vector entry
+    v_i = vio + tid
+
+    # Retrieve the i-th entries of the target vectors
+    x_i = solver_x[v_i]
+    y_i = solver_y[v_i]
+    z_i = solver_z[v_i]
+
+    # Retrieve the i-th entry of the diagonal preconditioner
+    P_i = problem_P[v_i]
+
+    # Store the preconditioned i-th entry of the vector
+    solver_x[v_i] = P_i * x_i
+    solver_y[v_i] = P_i * y_i
+    solver_z[v_i] = (1.0 / P_i) * z_i
 
 
 @wp.kernel
@@ -1715,7 +1945,6 @@ class PADMMDualSolver:
     def __init__(
         self,
         model: Model | None = None,
-        state: ModelData | None = None,
         limits: Limits | None = None,
         contacts: Contacts | None = None,
         settings: list[PADMMSettings] | PADMMSettings | None = None,
@@ -1740,7 +1969,6 @@ class PADMMDualSolver:
         if model is not None:
             self.allocate(
                 model=model,
-                state=state,
                 limits=limits,
                 contacts=contacts,
                 settings=settings,
@@ -1782,7 +2010,6 @@ class PADMMDualSolver:
     def allocate(
         self,
         model: Model | None = None,
-        state: ModelData | None = None,
         limits: Limits | None = None,
         contacts: Contacts | None = None,
         settings: list[PADMMSettings] | PADMMSettings | None = None,
@@ -1794,11 +2021,6 @@ class PADMMDualSolver:
             raise ValueError("A model of type `Model` must be provided to allocate the Delassus operator.")
         elif not isinstance(model, Model):
             raise ValueError("Invalid model provided. Must be an instance of `Model`.")
-
-        # Ensure the state container is valid if provided
-        if state is not None:
-            if not isinstance(state, ModelData):
-                raise ValueError("Invalid state container provided. Must be an instance of `ModelData`.")
 
         # Ensure the limits container is valid if provided
         if limits is not None:
@@ -1842,30 +2064,33 @@ class PADMMDualSolver:
         with wp.ScopedDevice(self._device):
             self._data.config = wp.array(configs, dtype=PADMMConfig)
 
-    def solve(self, problem: DualProblem):
-        ###
-        # Solver preparation
-        ###
+    # TODO(team): We should think about how to introduce an optional systematic warm-starting mechanism here
 
+    def coldstart(self):
         # Initialize state arrays to zero
-        # TODO(team): We should think about how to introduce an optional systematic warm-starting mechanism here
         self._data.state.zero()
 
-        # Initialize the solver status and ALM penalty parameter
+    def initialize(self):
+        # Initialize solver status and penalty parameters from the set configurations
         wp.launch(
             kernel=_initialize_solver,
             dim=self._size.num_worlds,
             inputs=[self._data.config, self._data.status, self._data.penalty],
         )
 
-        # Add the diagonal proximal regularization to the Delassus matrix
-        # D_{eta,rho} := D + (eta + rho) * I_{nd}
+        # Initialize the global while condition flag
+        # NOTE: We use a single-element array that is initialized
+        # to number of worlds and decremented by each world that
+        # converges or reaches the maximum number of iterations
+        self._data.state.done.fill_(self._size.num_worlds)
+
+    def update_regularization(self, problem: DualProblem):
+        # Update the proximal regularization term in the Delassus matrix
         wp.launch(
             kernel=_update_delassus_proximal_regularization,
             dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
             inputs=[
                 # Inputs:
-                problem.data.maxdim,
                 problem.data.dim,
                 problem.data.mio,
                 self._data.config,
@@ -1877,307 +2102,243 @@ class PADMMDualSolver:
         )
 
         # Compute Choleky/LDLT factorization of the Delassus matrix
-        problem._delassus.factorize(reset_to_zero=True)
+        problem._delassus.compute(reset_to_zero=True)
 
-        # # SANITY CHECK
-        # np_dtype = np.float32
-        # maxdim_np = problem.data.maxdim.numpy()[0]
-        # dim_np = problem.data.dim.numpy()[0]
-        # D_np = problem._delassus.data.D.numpy().reshape(maxdim_np, maxdim_np)[:dim_np, :dim_np].astype(np_dtype)
-        # # v_np = self._data.state.v.numpy()[:dim_np].astype(np_dtype)
-        # D_np_props = SquareSymmetricMatrixProperties(D_np)
-        # msg.info(f"Delassus Properties:\n{D_np_props}")
-        # try:
-        #     L_np = np.linalg.cholesky(D_np)
-        # except np.linalg.LinAlgError:
-        #     D_np_props = SquareSymmetricMatrixProperties(D_np)
-        #     # msg.error(f"Delassus Properties:\n{D_np_props}")
-        #     # raise ValueError("Augmented Delassus matrix is not positive definite!")
-        #     # return
+    def update_desaxce_correction(self, problem: DualProblem):
+        wp.launch(
+            kernel=_compute_desaxce_correction,
+            dim=(self._size.num_worlds, self._size.max_of_max_contacts),
+            inputs=[
+                # Inputs:
+                problem.data.nc,
+                problem.data.cio,
+                problem.data.ccgo,
+                problem.data.vio,
+                problem.data.mu,
+                self._data.status,
+                self._data.state.z_p,
+                # Outputs:
+                self._data.state.s,
+            ],
+        )
 
-        # Reset the solver info to zero if collection is enabled
-        if self._collect_info:
-            self._data.info.zero()
+    def update_velocity_bias(self, problem: DualProblem):
+        wp.launch(
+            kernel=_compute_velocity_bias,
+            dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
+            inputs=[
+                # Inputs:
+                problem.data.dim,
+                problem.data.vio,
+                problem.data.v_f,
+                self._data.config,
+                self._data.penalty,
+                self._data.status,
+                self._data.state.s,
+                self._data.state.x_p,
+                self._data.state.y_p,
+                self._data.state.z_p,
+                # Outputs:
+                self._data.state.v,
+            ],
+        )
 
-        ###
-        # Main solver loop
-        ###
+    def update_unconstrained_solution(self, problem: DualProblem):
+        # TODO: We should do this in-place
+        # wp.copy(self._data.state.x, self._data.state.v)
+        # problem._delassus.solve_inplace(x=self._data.state.x)
+        problem._delassus.solve(v=self._data.state.v, x=self._data.state.x)
 
-        # NOTE: The high-level solver loop iterates over the maximum number of iterations configured for each world
-        for _i in range(self._max_iters):
-            # Compute De Saxce correction from the previous dual variables
-            wp.launch(
-                kernel=_compute_desaxce_correction,
-                dim=(self._size.num_worlds, self._size.max_of_max_contacts),
-                inputs=[
-                    # Inputs:
-                    problem.data.nc,
-                    problem.data.cio,
-                    problem.data.ccgo,
-                    problem.data.vio,
-                    problem.data.mu,
-                    self._data.status,
-                    self._data.state.z_p,
-                    # Outputs:
-                    self._data.state.s,
-                ],
-            )
-            # msg.warning(f"[{i}]: s :\n{self._data.state.s}")
+    def update_projection_to_feasible_set(self, problem: DualProblem):
+        # Apply over-relaxation and compute the argument to the projection operator
+        wp.launch(
+            kernel=_apply_overrelaxation_and_compute_projection_argument,
+            dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
+            inputs=[
+                # Inputs:
+                problem.data.dim,
+                problem.data.vio,
+                self._data.config,
+                self._data.penalty,
+                self._data.status,
+                self._data.state.y_p,
+                self._data.state.z_p,
+                # Outputs:
+                self._data.state.x,
+                self._data.state.y,
+            ],
+        )
 
-            # Compute the total velocity bias
-            wp.launch(
-                kernel=_compute_velocity_bias,
-                dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
-                inputs=[
-                    # Inputs:
-                    problem.data.dim,
-                    problem.data.vio,
-                    problem.data.v_f,
-                    self._data.config,
-                    self._data.penalty,
-                    self._data.status,
-                    self._data.state.s,
-                    self._data.state.x_p,
-                    self._data.state.y_p,
-                    self._data.state.z_p,
-                    # Outputs:
-                    self._data.state.v,
-                ],
-            )
-            # msg.warning(f"[{i}]: v :\n{self._data.state.v}")
+        # Project to the feasible set defined by the cone K := R^{njd} x R_+^{nld} x K_{mu}^{nc}
+        wp.launch(
+            kernel=_project_to_feasible_cone,
+            dim=(self._size.num_worlds, self._size.max_of_max_unilaterals),
+            inputs=[
+                # Inputs:
+                problem.data.nl,
+                problem.data.nc,
+                problem.data.cio,
+                problem.data.lcgo,
+                problem.data.ccgo,
+                problem.data.vio,
+                problem.data.mu,
+                self._data.status,
+                # Outputs:
+                self._data.state.y,
+            ],
+        )
 
-            # Compute the unconstrained solution and store in the primal variables
-            # TODO: Somehow skip these operations if the problem is already solved !!!!!!!!!!
-            # TODO: What is a better initialization method here?
-            # TODO: We should do this in-place
-            # wp.copy(self._data.state.x, self._data.state.v)
-            # problem._delassus.solve_inplace(x=self._data.state.x)
-            self._data.state.x.zero_()
-            problem._delassus.solve(v=self._data.state.v, x=self._data.state.x)
+    def update_dual_variables_and_residuals(self, problem: DualProblem):
+        # Update the dual variables and compute primal-dual residuals from the current state
+        # NOTE: These are combined into a single kernel to reduce kernel launch overhead
+        wp.launch(
+            kernel=_update_dual_variables_and_compute_primal_dual_residuals,
+            dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
+            inputs=[
+                # Inputs:
+                problem.data.dim,
+                problem.data.vio,
+                problem.data.P,
+                self._data.config,
+                self._data.penalty,
+                self._data.status,
+                self._data.state.x,
+                self._data.state.x_p,
+                self._data.state.y,
+                self._data.state.y_p,
+                self._data.state.z_p,
+                # Outputs:
+                self._data.state.z,
+                self._data.residuals.r_primal,
+                self._data.residuals.r_dual,
+            ],
+        )
 
-            # maxdim_np = problem.data.maxdim.numpy()[0]
-            # dim_np = problem.data.dim.numpy()[0]
-            # D_np = problem._delassus.data.D.numpy().reshape(maxdim_np, maxdim_np)[:dim_np, :dim_np].astype(np.float32)
-            # v_np = self._data.state.v.numpy()[:dim_np].astype(np.float32)
+        # Compute complementarity residual from the current state
+        wp.launch(
+            kernel=_compute_complementarity_residuals,
+            dim=(self._size.num_worlds, self._size.max_of_max_unilaterals),
+            inputs=[
+                # Inputs:
+                problem.data.nl,
+                problem.data.nc,
+                problem.data.cio,
+                problem.data.uio,
+                problem.data.lcgo,
+                problem.data.ccgo,
+                self._data.status,
+                self._data.state.x,
+                self._data.state.z,
+                # Outputs:
+                self._data.residuals.r_compl,
+            ],
+        )
 
-            # D_np_scale = np.max(np.abs(D_np))
-            # v_np_scaled = (1.0 / D_np_scale) * v_np
-            # D_np_scaled = (1.0 / D_np_scale) * D_np
-            # D_np_scaled += np.eye(dim_np, dtype=np.float32) * (self.settings[0].eta + self.settings[0].rho_0)
+    def update_convergence_check(self, problem: DualProblem):
+        # Compute infinity-norm of all residuals and check for convergence
+        wp.launch(
+            kernel=_compute_infnorm_residuals_serially,
+            dim=self._size.num_worlds,
+            inputs=[
+                # Inputs:
+                problem.data.nl,
+                problem.data.nc,
+                problem.data.uio,
+                problem.data.dim,
+                problem.data.vio,
+                self._data.config,
+                self._data.residuals.r_primal,
+                self._data.residuals.r_dual,
+                self._data.residuals.r_compl,
+                # Outputs:
+                self._data.state.done,
+                self._data.status,
+            ],
+        )
 
-            # try:
-            #     # Perform Cholesky decomposition if A is positive definite
-            #     L_np = np.linalg.cholesky(D_np)
-            # except np.linalg.LinAlgError:
-            #     D_np_props = SquareSymmetricMatrixProperties(D_np)
-            #     msg.error(f"Delassus Properties:\n{D_np_props}")
-            #     break
+    def update_solver_info(self, problem: DualProblem):
+        # First reset the internal buffer arrays to zero
+        # to ensure we do not accumulate values across iterations
+        self.data.info.v_plus.zero_()
+        self.data.info.v_aug.zero_()
+        self._data.info.s.zero_()
 
-            # x_np = np.linalg.solve(D_np_scaled, v_np_scaled)
-            # x_wp = wp.from_numpy(x_np.astype(np.float32))
-            # wp.copy(self._data.state.x, x_wp)
+        # Collect convergence information from the current state
+        wp.launch(
+            kernel=_collect_solver_convergence_info,
+            dim=self._size.num_worlds,
+            inputs=[
+                # Inputs:
+                problem.data.nl,
+                problem.data.nc,
+                problem.data.cio,
+                problem.data.lcgo,
+                problem.data.ccgo,
+                problem.data.dim,
+                problem.data.vio,
+                problem.data.mio,
+                problem.data.mu,
+                problem.data.v_f,
+                problem.data.D,
+                problem.data.P,
+                self._data.state.s,
+                self._data.state.x,
+                self._data.state.x_p,
+                self._data.state.y,
+                self._data.state.y_p,
+                self._data.state.z,
+                self._data.state.z_p,
+                self._data.config,
+                self._data.penalty,
+                self._data.status,
+                # Outputs:
+                self._data.info.lambdas,
+                self._data.info.v_plus,
+                self._data.info.v_aug,
+                self._data.info.s,
+                self._data.info.offsets,
+                self._data.info.norm_s,
+                self._data.info.norm_x,
+                self._data.info.norm_y,
+                self._data.info.norm_z,
+                self._data.info.f_ccp,
+                self._data.info.f_ncp,
+                self._data.info.r_dx,
+                self._data.info.r_dy,
+                self._data.info.r_dz,
+                self._data.info.r_primal,
+                self._data.info.r_dual,
+                self._data.info.r_compl,
+                self._data.info.r_pd,
+                self._data.info.r_dp,
+                self._data.info.r_ncp_primal,
+                self._data.info.r_ncp_dual,
+                self._data.info.r_ncp_compl,
+                self._data.info.r_ncp_natmap,
+            ],
+        )
 
-            # Apply over-relaxation and compute the argument to the projection operator
-            wp.launch(
-                kernel=_apply_overrelaxation_and_compute_projection_argument,
-                dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
-                inputs=[
-                    # Inputs:
-                    problem.data.dim,
-                    problem.data.vio,
-                    self._data.config,
-                    self._data.penalty,
-                    self._data.status,
-                    self._data.state.y_p,
-                    self._data.state.z_p,
-                    # Outputs:
-                    self._data.state.x,
-                    self._data.state.y,
-                ],
-            )
-            # msg.warning(f"[{i}]: x :\n{self._data.state.x}")
-            # msg.warning(f"[{i}]: y :\n{self._data.state.y}")
+    def update_previous_state(self):
+        wp.copy(self._data.state.x_p, self._data.state.x)
+        wp.copy(self._data.state.y_p, self._data.state.y)
+        wp.copy(self._data.state.z_p, self._data.state.z)
 
-            # Project to the feasible set defined by the cone K := R^{njd} x R_+^{nld} x K_{mu}^{nc}
-            wp.launch(
-                kernel=_project_to_feasible_cone,
-                dim=(self._size.num_worlds, self._size.max_of_max_unilaterals),
-                inputs=[
-                    # Inputs:
-                    problem.data.nl,
-                    problem.data.nc,
-                    problem.data.cio,
-                    problem.data.lcgo,
-                    problem.data.ccgo,
-                    problem.data.vio,
-                    problem.data.mu,
-                    self._data.status,
-                    # Outputs:
-                    self._data.state.y,
-                ],
-            )
-            # v_f = problem.data.v_f.numpy()
-            # v = self._data.state.v.numpy()
-            # x = self._data.state.x.numpy()
-            # x_p = self._data.state.x_p.numpy()
-            # y = self._data.state.y.numpy()
-            # y_p = self._data.state.y_p.numpy()
-            # z = self._data.state.z.numpy()
-            # z_p = self._data.state.z_p.numpy()
-            # dx = x - x_p
-            # dy = y - y_p
-            # dz = z - z_p
-            # dxy = x - y
-            # dxy_p = x_p - y_p
-            # print(f"[{i}]: v_f: {np.linalg.norm(v_f)}")
-            # print(f"[{i}]: v: {np.linalg.norm(v)}")
-            # print("-----------------------------------")
-            # print(f"[{i}]: x_p: {np.linalg.norm(x_p)}")
-            # print(f"[{i}]: y_p: {np.linalg.norm(y_p)}")
-            # print(f"[{i}]: z_p: {np.linalg.norm(z_p)}")
-            # print("-----------------------------------")
-            # print(f"[{i}]: x: {np.linalg.norm(x)}")
-            # print(f"[{i}]: y: {np.linalg.norm(y)}")
-            # print(f"[{i}]: z: {np.linalg.norm(z)}")
-            # print("-----------------------------------")
-            # print(f"[{i}]: dx: {np.linalg.norm(dx)}")
-            # print(f"[{i}]: dy: {np.linalg.norm(dy)}")
-            # print(f"[{i}]: dz: {np.linalg.norm(dz)}")
-            # print("-----------------------------------")
-            # print(f"[{i}]: dxy: {np.linalg.norm(dxy)}")
-            # print(f"[{i}]: dxy_p: {np.linalg.norm(dxy_p)}")
-            # print("\n")
-
-            # msg.warning(f"[{i}]: y (projected):\n{self._data.state.y}\n\n\n")
-
-            # Update the dual variables and compute primal-dual residuals from the current state
-            wp.launch(
-                kernel=_update_dual_variables_and_compute_primal_dual_residuals,
-                dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
-                inputs=[
-                    # Inputs:
-                    problem.data.dim,
-                    problem.data.vio,
-                    self._data.config,
-                    self._data.penalty,
-                    self._data.status,
-                    self._data.state.x,
-                    self._data.state.x_p,
-                    self._data.state.y,
-                    self._data.state.y_p,
-                    self._data.state.z_p,
-                    # Outputs:
-                    self._data.state.z,
-                    self._data.residuals.r_primal,
-                    self._data.residuals.r_dual,
-                ],
-            )
-
-            # Compute complementarity residual from the current state
-            wp.launch(
-                kernel=_compute_complementarity_residuals,
-                dim=(self._size.num_worlds, self._size.max_of_max_unilaterals),
-                inputs=[
-                    # Inputs:
-                    problem.data.nl,
-                    problem.data.nc,
-                    problem.data.cio,
-                    problem.data.uio,
-                    problem.data.lcgo,
-                    problem.data.ccgo,
-                    self._data.status,
-                    self._data.state.x,
-                    self._data.state.z,
-                    # Outputs:
-                    self._data.residuals.r_compl,
-                ],
-            )
-
-            # Compute infinity-norm of all residuals and check for convergence
-            wp.launch(
-                kernel=_compute_infnorm_residuals_serially,
-                dim=self._size.num_worlds,
-                inputs=[
-                    # Inputs:
-                    problem.data.nl,
-                    problem.data.nc,
-                    problem.data.uio,
-                    problem.data.dim,
-                    problem.data.vio,
-                    self._data.config,
-                    self._data.residuals.r_primal,
-                    self._data.residuals.r_dual,
-                    self._data.residuals.r_compl,
-                    # Outputs:
-                    self._data.status,
-                ],
-            )
-
-            # Optionally record internal solver info
-            if self._collect_info:
-                # First reset the internal buffer arrays to zero
-                # to ensure we do not accumulate values across iterations
-                self.data.info.v_plus.zero_()
-                self.data.info.v_aug.zero_()
-                self._data.info.s.zero_()
-
-                # Collect convergence information from the current state
-                wp.launch(
-                    kernel=_collect_solver_convergence_info,
-                    dim=self._size.num_worlds,
-                    inputs=[
-                        # Inputs:
-                        problem.data.nl,
-                        problem.data.nc,
-                        problem.data.cio,
-                        problem.data.lcgo,
-                        problem.data.ccgo,
-                        problem.data.maxdim,
-                        problem.data.dim,
-                        problem.data.vio,
-                        problem.data.mio,
-                        problem.data.mu,
-                        problem.data.v_f,
-                        problem.data.D,
-                        self._data.state.y,
-                        self._data.state.y_p,
-                        self._data.config,
-                        self._data.penalty,
-                        self._data.status,
-                        # Outputs:
-                        self._data.info.v_plus,
-                        self._data.info.v_aug,
-                        self._data.info.s,
-                        self._data.info.offsets,
-                        self._data.info.f_ccp,
-                        self._data.info.f_ncp,
-                        self._data.info.r_iter,
-                        self._data.info.r_primal,
-                        self._data.info.r_dual,
-                        self._data.info.r_compl,
-                        self._data.info.r_ncp_primal,
-                        self._data.info.r_ncp_dual,
-                        self._data.info.r_ncp_compl,
-                        self._data.info.r_ncp_natmap,
-                    ],
-                )
-
-            # Check if the solver has converged
-            # TODO: REMOVE THIS HACK ONCE skipping is implemented
-            status = self._data.status.numpy()
-            converged = status[0][0]
-            if converged > 0:
-                break
-
-            # TODO: Skip these somehow if the problem is already solved
-            # Update caches of previous state variables
-            wp.copy(self._data.state.x_p, self._data.state.x)
-            wp.copy(self._data.state.y_p, self._data.state.y)
-            wp.copy(self._data.state.z_p, self._data.state.z)
-
-        ###
-        # Solution post-processing
-        ###
+    def update_solution(self, problem: DualProblem):
+        # Apply the dual preconditioner to recover the final PADMM state
+        wp.launch(
+            kernel=_apply_dual_preconditioner_to_state,
+            dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
+            inputs=[
+                # Inputs:
+                problem.data.dim,
+                problem.data.vio,
+                problem.data.P,
+                # Outputs:
+                self._data.state.x,
+                self._data.state.y,
+                self._data.state.z,
+            ],
+        )
 
         # Update the De Saxce correction from terminal PADMM dual variables
         wp.launch(
@@ -2212,3 +2373,50 @@ class PADMMDualSolver:
                 self._data.solution.lambdas,
             ],
         )
+
+    def step(self, problem: DualProblem):
+        # Compute De Saxce correction from the previous dual variables
+        self.update_desaxce_correction(problem)
+
+        # Compute the total velocity bias, i.e. rhs vector of the unconstrained linear system
+        self.update_velocity_bias(problem)
+
+        # Compute the unconstrained solution and store in the primal variables
+        self.update_unconstrained_solution(problem)
+
+        # Project the over-relaxed primal variables to the feasible set
+        self.update_projection_to_feasible_set(problem)
+
+        # Update the dual variables and compute residuals from the current state
+        self.update_dual_variables_and_residuals(problem)
+
+        # Compute infinity-norm of all residuals and check for convergence
+        self.update_convergence_check(problem)
+
+        # Optionally record internal solver info
+        if self._collect_info:
+            self.update_solver_info(problem)
+
+        # Update caches of previous state variables
+        self.update_previous_state()
+
+    def solve(self, problem: DualProblem):
+        # Cold-start the solver state
+        self.coldstart()
+
+        # Initialize the solver status and ALM penalty parameter
+        self.initialize()
+
+        # Add the diagonal proximal regularization to the Delassus matrix
+        # D_{eta,rho} := D + (eta + rho) * I_{nd}
+        self.update_regularization(problem)
+
+        # Reset the solver info to zero if collection is enabled
+        if self._collect_info:
+            self._data.info.zero()
+
+        # Iterate until convergence or maximum number of iterations is reached
+        wp.capture_while(self._data.state.done, while_body=self.step, problem=problem)
+
+        # Update the final solution from the terminal PADMM state
+        self.update_solution(problem)

@@ -1,14 +1,29 @@
-###########################################################################
-# KAMINO: Bounding Volumes Module
-###########################################################################
+# SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""
+KAMINO: Bounding Volumes Module
+"""
 
 from __future__ import annotations
 
 import warp as wp
 
-from newton._src.solvers.kamino.core.math import FLOAT32_MAX, FLOAT32_MIN
-from newton._src.solvers.kamino.core.shapes import ShapeType
-from newton._src.solvers.kamino.core.types import float32, int32, mat83f, transformf, vec3f, vec4f, vec8f
+from .math import FLOAT32_MAX, FLOAT32_MIN
+from .shapes import ShapeType
+from .types import float32, int32, mat83f, transformf, vec3f, vec4f, vec8f
 
 ###
 # Module interface

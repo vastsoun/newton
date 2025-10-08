@@ -423,7 +423,7 @@ class DelassusOperator:
 
         # Optionally initialize the linear system solver if one is specified
         if solver is not None:
-            if not isinstance(solver, LinearSolverType):
+            if not issubclass(solver, LinearSolverType):
                 raise ValueError("Invalid solver provided. Must be a subclass of `LinearSolverType`.")
             self._solver = solver(operator=self._operator, device=self._device)
 

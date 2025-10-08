@@ -138,7 +138,12 @@ from .kinematics.jacobians import (
     DenseSystemJacobiansData,
 )
 from .simulation import Simulator
-from .solvers import padmm
+from .solvers import (
+    APADMMDualSolver,
+    APADMMSettings,
+    PADMMDualSolver,
+    PADMMSettings,
+)
 from .utils.io import hdf5
 from .utils.print import printmatrix, printvector
 from .utils.sparse import sparseview
@@ -153,6 +158,8 @@ __all__ = [
     "GRAVITY_ACCEL_DEFAULT",
     "GRAVITY_DIREC_DEFAULT",
     "GRAVITY_NAME_DEFAULT",
+    "APADMMDualSolver",
+    "APADMMSettings",
     "BoxShape",
     "CapsuleShape",
     "CollisionDetector",
@@ -197,6 +204,8 @@ __all__ = [
     "ModelData",
     "ModelDataInfo",
     "ModelInfo",
+    "PADMMDualSolver",
+    "PADMMSettings",
     "PlaneShape",
     "Quat",
     "RigidBodiesData",
@@ -237,7 +246,6 @@ __all__ = [
     "mat65f",
     "mat66f",
     "math",
-    "padmm",
     "printmatrix",
     "printvector",
     "sparseview",

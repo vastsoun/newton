@@ -13,9 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-KAMINO: Constrained Rigid Multi-Body Model Containers
-"""
+"""Provides a host-side container to summarily describe a Kamino simulation world."""
 
 from __future__ import annotations
 
@@ -403,7 +401,7 @@ class WorldDescriptor:
                 f"WorldDescriptor: Grounding joint index '{joint_idx}' out of range. Must be between 0 and {self.num_joints - 1}."
             )
         # Ensure joint is unary
-        if joint_idx not in self.unary_joint_names:
+        if joint_name not in self.unary_joint_names:
             raise ValueError(f"WorldDescriptor: Joint '{joint_name}' is not a unary joint.")
         # Set grounding joint info
         self.grounding_name = joint_name

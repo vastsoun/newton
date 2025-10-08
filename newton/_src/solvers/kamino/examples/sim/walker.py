@@ -339,7 +339,7 @@ def run_hdf5_mode(clear_warp_cache=True, use_cuda_graph=False, verbose=False):
 class WalkerExample:
     """ViewerGL example class for walker simulation."""
 
-    def __init__(self, viewer):
+    def __init__(self, viewer, use_cuda_graph=False):
         self.fps = 60
         self.frame_dt = 1.0 / self.fps
         self.sim_time = 0.0
@@ -347,6 +347,7 @@ class WalkerExample:
         self.sim_dt = self.frame_dt / self.sim_substeps
 
         self.viewer = viewer
+        self.use_cuda_graph = use_cuda_graph
 
         # Get the default warp device
         device = wp.get_preferred_device()
@@ -392,8 +393,8 @@ class WalkerExample:
         # Initialize the simulator with a warm-up step
         self.sim.reset()
 
-        # Don't capture graphs initially to avoid CUDA stream conflicts
-        self.graph = None
+        # Capture CUDA graph if requested and available
+        self.capture()
 
     def extract_geometry_info(self):
         """Extract geometry information from the kamino simulator."""
@@ -414,10 +415,13 @@ class WalkerExample:
             self.geometry_info.append(geom_info)
 
     def capture(self):
-        """Capture CUDA graph if available."""
-        # For now, disable CUDA graph capture to avoid stream conflicts
-        # This can be re-enabled later if needed with proper stream management
-        self.graph = None
+        """Capture CUDA graph if requested and available."""
+        if self.use_cuda_graph and wp.get_device().is_cuda:
+            with wp.ScopedCapture() as capture:
+                self.simulate()
+            self.graph = capture.graph
+        else:
+            self.graph = None
 
     def simulate(self):
         """Run simulation substeps."""
@@ -523,7 +527,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--mode",
         choices=["hdf5", "viewer"],
-        default="hdf5",
+        default="viewer",
         help="Simulation mode: 'hdf5' for data collection, 'viewer' for live visualization",
     )
     parser.add_argument("--clear-cache", action="store_true", default=True, help="Clear warp cache")
@@ -564,7 +568,7 @@ if __name__ == "__main__":
             raise ValueError(f"Invalid viewer: {args.viewer}")
 
         # Create and run example
-        example = WalkerExample(viewer)
+        example = WalkerExample(viewer, use_cuda_graph=args.cuda_graph)
 
         # Set initial camera position for better view of the walker
         if hasattr(viewer, "set_camera"):

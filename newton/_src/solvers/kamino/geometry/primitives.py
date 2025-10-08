@@ -152,8 +152,8 @@ def add_active_contact(
                 bid_B_in = bid_2_in
             # The colliders compute the contact point in the middle, and thus to get the
             # per-geom contact points we need to offset by the penetration depth along the normal
-            position_A_in = position_in + 0.5 * wp.abs(distance_in) * normal_in
-            position_B_in = position_in - 0.5 * wp.abs(distance_in) * normal_in
+            position_A_in = position_in + 0.5 * distance_in * normal_in
+            position_B_in = position_in - 0.5 * distance_in * normal_in
             # Store the active contact output data
             contact_wid_out[mcid] = wid_in
             contact_cid_out[mcid] = wcid
@@ -422,8 +422,8 @@ def box_box(
 
             # This collider computes the contact point in the middle, and thus to get the
             # per-geom contact we need to offset the contact point by the penetration depth
-            pos_A = contact_pos + contact_normal * wp.abs(contact_dist) * 0.5
-            pos_B = contact_pos - contact_normal * wp.abs(contact_dist) * 0.5
+            pos_A = contact_pos + contact_normal * contact_dist * 0.5
+            pos_B = contact_pos - contact_normal * contact_dist * 0.5
 
             # Store contact data
             contact_wid_out[mcid] = wid_in

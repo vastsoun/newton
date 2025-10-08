@@ -17,11 +17,6 @@
 
 import numpy as np
 
-from ...utils.linalg.factorize.lu_nopivot import (
-    lu_nopiv,
-    lu_nopiv_solve_forward_lower,
-)
-
 ###
 # Module interface
 ###
@@ -29,7 +24,6 @@ from ...utils.linalg.factorize.lu_nopivot import (
 __all__ = [
     "in_range_via_gaussian_elimination",
     "in_range_via_left_nullspace",
-    "in_range_via_lu",
     "in_range_via_projection",
     "in_range_via_rank",
     "in_range_via_residual",
@@ -190,36 +184,3 @@ def in_range_via_gaussian_elimination(A: np.ndarray, b: np.ndarray, tol: float =
     rank_Ab = rank_from_row_echelon(UAb, tol)
 
     return (rank_A == rank_Ab), (rank_A, rank_Ab), UAb
-
-
-def in_range_via_lu(A: np.ndarray, b: np.ndarray, tol: float = 1e-12):
-    """
-    Decide if b ∈ R(A) using the LU viewpoint:
-      - Perform *no-pivot* LU (i.e., Gaussian elimination steps).
-      - Apply the same row ops to b via y = L^{-1} b (forward-sub).
-      - Inspect rows where U is (numerically) zero:
-            if such a row has |y_i| > tol, then [A|b] has larger rank ⇒ b ∉ R(A).
-
-    Returns:
-        in_range: bool
-        ranks: (rank(A), rank([A|b]))
-        debug: dict with L, U, y
-    """
-    L, U = lu_nopiv(A, tol=tol)
-    y = lu_nopiv_solve_forward_lower(L, b)
-
-    # Helper: row is (numerically) zero if all entries ≤ tol in magnitude
-    def zero_row(row):
-        return np.all(np.abs(row) <= tol)
-
-    m = U.shape[0]
-    zero_mask = np.array([zero_row(U[i, :]) for i in range(m)], dtype=bool)
-    rank_A = int(np.sum(~zero_mask))
-
-    # If a zero row in U has a nonzero y_i, then the augmented rank increases.
-    inconsistent = any(
-        z and (abs(y[i]) > tol if np.ndim(y) == 1 else np.any(np.abs(y[i, :]) > tol)) for i, z in enumerate(zero_mask)
-    )
-    rank_Ab = rank_A + (1 if inconsistent else 0)
-
-    return (not inconsistent), (rank_A, rank_Ab), {"L": L, "U": U, "y": y}

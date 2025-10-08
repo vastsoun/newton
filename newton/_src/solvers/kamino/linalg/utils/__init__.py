@@ -33,7 +33,6 @@ from .rand import (
 from .range import (
     in_range_via_gaussian_elimination,
     in_range_via_left_nullspace,
-    in_range_via_lu,
     in_range_via_projection,
     in_range_via_rank,
     in_range_via_residual,

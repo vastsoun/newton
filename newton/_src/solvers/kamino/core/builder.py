@@ -551,12 +551,9 @@ class ModelBuilder:
         # Check if the world index is valid
         self._check_world_index(world_index)
 
-        # Check if the layer name already exists
-        if name in self._worlds[world_index].collision_geometry_layers:
-            raise ValueError(f"Layer name '{name}' already exists.")
-
-        # Append the new layer name to the list of layers
-        self._worlds[world_index].collision_geometry_layers.append(name)
+        # Append the new layer name to the list of layers if it does not already exist
+        if name not in self._worlds[world_index].collision_geometry_layers:
+            self._worlds[world_index].collision_geometry_layers.append(name)
 
     def add_physical_layer(self, name: str, world_index: int = 0):
         """Add a new physical geometry layer to the model."""

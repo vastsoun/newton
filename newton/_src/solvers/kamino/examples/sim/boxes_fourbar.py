@@ -448,7 +448,7 @@ if __name__ == "__main__":
         help="Simulation mode: 'hdf5' for data collection, 'viewer' for live visualization",
     )
     parser.add_argument("--clear-cache", action="store_true", default=True, help="Clear warp cache")
-    parser.add_argument("--cuda-graph", action="store_true", help="Use CUDA graphs")
+    parser.add_argument("--cuda-graph", action="store_true", default=True, help="Use CUDA graphs")
     parser.add_argument("--load-from-usd", action="store_true", help="Load model from USD file")
     parser.add_argument("--verbose", action="store_true", help="Enable verbose output")
 
@@ -501,4 +501,4 @@ if __name__ == "__main__":
             yaw = -261.3
             viewer.set_camera(camera_pos, pitch, yaw)
 
-        newton.examples.run(example)
+        newton.examples.run(example, args)

@@ -578,4 +578,4 @@ if __name__ == "__main__":
             yaw = 130.0
             viewer.set_camera(camera_pos, pitch, yaw)
 
-        newton.examples.run(example)
+        newton.examples.run(example, args)

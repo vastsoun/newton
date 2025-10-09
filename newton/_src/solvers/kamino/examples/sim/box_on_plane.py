@@ -7,20 +7,18 @@ import numpy as np
 import warp as wp
 
 import newton
-import newton.examples
-
 import newton._src.solvers.kamino.utils.logger as msg
-from newton._src.solvers.kamino.core.types import float32, vec6f
+import newton.examples
 from newton._src.solvers.kamino.core.builder import ModelBuilder
-from newton._src.solvers.kamino.utils.io import hdf5
-from newton._src.solvers.kamino.utils.io.usd import USDImporter
-from newton._src.solvers.kamino.simulation.simulator import Simulator
-from newton._src.solvers.kamino.utils.print import print_progress_bar
-from newton._src.solvers.kamino.utils.device import get_device_info
+from newton._src.solvers.kamino.core.types import float32, vec6f
+from newton._src.solvers.kamino.examples import get_examples_data_hdf5_path, print_frame
 from newton._src.solvers.kamino.models import get_primitives_usd_assets_path
 from newton._src.solvers.kamino.models.builders import build_box_on_plane
-from newton._src.solvers.kamino.examples import get_examples_data_hdf5_path, print_frame
-
+from newton._src.solvers.kamino.simulation.simulator import Simulator
+from newton._src.solvers.kamino.utils.device import get_device_info
+from newton._src.solvers.kamino.utils.io import hdf5
+from newton._src.solvers.kamino.utils.io.usd import USDImporter
+from newton._src.solvers.kamino.utils.print import print_progress_bar
 
 ###
 # Kernels
@@ -461,4 +459,4 @@ if __name__ == "__main__":
             yaw = 180.0 + 45.0
             viewer.set_camera(camera_pos, pitch, yaw)
 
-        newton.examples.run(example)
+        newton.examples.run(example, args)

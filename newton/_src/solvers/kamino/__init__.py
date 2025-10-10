@@ -133,6 +133,7 @@ from .geometry.contacts import (
 from .geometry.detector import (
     CollisionDetector,
 )
+from .kinematics.forward_kinematics import ForwardKinematicsSolver
 from .kinematics.jacobians import (
     DenseSystemJacobians,
     DenseSystemJacobiansData,
@@ -176,6 +177,7 @@ __all__ = [
     "DualProblemData",
     "EllipsoidShape",
     "EmptyShape",
+    "ForwardKinematicsSolver",
     "GeometriesData",
     "GeometriesModel",
     "GeometryDescriptor",

@@ -292,7 +292,7 @@ def _update_body_wrenches(
 ###
 
 
-def update_body_inertias(model: RigidBodiesModel, state: RigidBodiesData):
+def update_body_inertias(model: RigidBodiesModel, data: RigidBodiesData):
     wp.launch(
         _update_body_inertias,
         dim=model.num_bodies,
@@ -300,26 +300,26 @@ def update_body_inertias(model: RigidBodiesModel, state: RigidBodiesData):
             # Inputs:
             model.i_I_i,
             model.inv_i_I_i,
-            state.q_i,
+            data.q_i,
             # Outputs:
-            state.I_i,
-            state.inv_I_i,
+            data.I_i,
+            data.inv_I_i,
         ],
     )
 
 
-def update_body_wrenches(model: RigidBodiesModel, state: RigidBodiesData):
+def update_body_wrenches(model: RigidBodiesModel, data: RigidBodiesData):
     wp.launch(
         _update_body_wrenches,
         dim=model.num_bodies,
         inputs=[
             # Inputs:
-            state.w_a_i,
-            state.w_j_i,
-            state.w_l_i,
-            state.w_c_i,
-            state.w_e_i,
+            data.w_a_i,
+            data.w_j_i,
+            data.w_l_i,
+            data.w_c_i,
+            data.w_e_i,
             # Outputs:
-            state.w_i,
+            data.w_i,
         ],
     )

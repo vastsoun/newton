@@ -53,7 +53,6 @@ def make_simulator(nw: int, model_build_func, device=None) -> Simulator:
 
     # Run only the parts of the simulation pipeline that are needed for the test
     sim._collide()
-    sim._clear_constraint_wrenches()
     sim._forward_intermediate()
     sim._forward_kinematics()
 
@@ -63,10 +62,10 @@ def make_simulator(nw: int, model_build_func, device=None) -> Simulator:
     return sim
 
 
-def make_generalized_mass_matrices(model: Model, state: ModelData) -> list[np.ndarray]:
+def make_generalized_mass_matrices(model: Model, data: ModelData) -> list[np.ndarray]:
     # Extract the masses and inertias as numpy arrays
     m_i = model.bodies.m_i.numpy()
-    I_i = state.bodies.I_i.numpy()
+    I_i = data.bodies.I_i.numpy()
 
     # Initialize a list to hold the generalized mass matrices
     M_np: list[np.ndarray] = []
@@ -87,10 +86,10 @@ def make_generalized_mass_matrices(model: Model, state: ModelData) -> list[np.nd
     return M_np
 
 
-def make_inverse_generalized_mass_matrices(model: Model, state: ModelData) -> list[np.ndarray]:
+def make_inverse_generalized_mass_matrices(model: Model, data: ModelData) -> list[np.ndarray]:
     # Extract the inverse masses and inertias as numpy arrays
     inv_m_i = model.bodies.inv_m_i.numpy()
-    inv_I_i = state.bodies.inv_I_i.numpy()
+    inv_I_i = data.bodies.inv_I_i.numpy()
 
     # Initialize a list to hold the inverse generalized mass matrices
     invM_np: list[np.ndarray] = []
@@ -121,8 +120,8 @@ def make_containers(
     model.time.dt.fill_(wp.float32(dt))
     model.time.inv_dt.fill_(wp.float32(1.0 / dt))
 
-    # Create a model state container
-    state = model.data(device=device)
+    # Create a model data container
+    data = model.data(device=device)
 
     # Create the limits container
     limits = Limits(builder=builder, device=device)
@@ -131,38 +130,38 @@ def make_containers(
     detector = CollisionDetector(builder=builder, default_max_contacts=max_world_contacts, device=device)
 
     # Construct the unilateral constraints members in the model info
-    make_unilateral_constraints_info(model, state, limits, detector.contacts, device=device)
+    make_unilateral_constraints_info(model, data, limits, detector.contacts, device=device)
 
     # Create the Jacobians container
     jacobians = DenseSystemJacobians(model=model, limits=limits, contacts=detector.contacts, device=device)
 
-    # Return the model, state, detector, and jacobians
-    return model, state, limits, detector, jacobians
+    # Return the model, data, detector, and jacobians
+    return model, data, limits, detector, jacobians
 
 
 def update_containers(
-    model: Model, state: ModelData, limits: Limits, detector: CollisionDetector, jacobians: DenseSystemJacobians
+    model: Model, data: ModelData, limits: Limits, detector: CollisionDetector, jacobians: DenseSystemJacobians
 ) -> None:
     # Update body inertias according to the current state of the bodies
-    update_body_inertias(model=model.bodies, state=state.bodies)
+    update_body_inertias(model=model.bodies, data=data.bodies)
     wp.synchronize()
 
     # Update joint states according to the state of the bodies
-    compute_joints_state(model=model, state=state)
+    compute_joints_state(model=model, data=data)
     wp.synchronize()
 
     # Run joint-limit detection to generate active limits
-    limits.detect(model, state)
+    limits.detect(model, data=data)
     wp.synchronize()
 
     # Run collision detection to generate active contacts
-    detector.collide(model, state)
+    detector.collide(model, data=data)
     wp.synchronize()
 
     # Update the constraint state info
-    update_constraints_info(model=model, state=state)
+    update_constraints_info(model=model, data=data)
     wp.synchronize()
 
     # Build the dense system Jacobians
-    jacobians.build(model=model, state=state, limits=limits.data, contacts=detector.contacts.data)
+    jacobians.build(model=model, data=data, limits=limits.data, contacts=detector.contacts.data)
     wp.synchronize()

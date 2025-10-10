@@ -98,7 +98,7 @@ class CollisionDetector:
         """
         return self._world_max_contacts
 
-    def collide(self, model: Model, state: ModelData):  # TODO: change to state.State
+    def collide(self, model: Model, data: ModelData):  # TODO: change to state.State
         """
         Perform collision detection for the a model with the specific state.
         """
@@ -112,10 +112,10 @@ class CollisionDetector:
         self.contacts.clear()
 
         # Upate geometries states from the states of the bodies
-        update_collision_geometries_state(state.bodies.q_i, model.cgeoms, state.cgeoms)
+        update_collision_geometries_state(data.bodies.q_i, model.cgeoms, data.cgeoms)
 
         # Perform the broad-phase collision detection to generate collision pairs
-        nxn_broadphase(model.cgeoms, state.cgeoms, self.collisions.cmodel, self.collisions.cdata)
+        nxn_broadphase(model.cgeoms, data.cgeoms, self.collisions.cmodel, self.collisions.cdata)
 
         # Perform the narrow-phase collision detection to generate active contacts
-        primitive_narrowphase(model, state, self.collisions, self.contacts)
+        primitive_narrowphase(model, data, self.collisions, self.contacts)

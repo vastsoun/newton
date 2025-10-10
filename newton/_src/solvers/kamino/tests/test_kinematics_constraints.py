@@ -38,7 +38,7 @@ from newton._src.solvers.kamino.models.utils import (
 # Test utilities
 from newton._src.solvers.kamino.tests.utils.print import (
     print_model_constraint_info,
-    print_model_state_info,
+    print_model_data_info,
 )
 
 ###
@@ -74,8 +74,8 @@ class TestKinematicsConstraints(unittest.TestCase):
         # Create the model from the builder
         model: Model = builder.finalize(device=self.default_device)
 
-        # Create a model state
-        state = model.data(device=self.default_device)
+        # Create a model data
+        data = model.data(device=self.default_device)
 
         # Create a  limits container
         limits = Limits(builder=builder, device=self.default_device)
@@ -102,7 +102,7 @@ class TestKinematicsConstraints(unittest.TestCase):
         # Create the constraints info
         make_unilateral_constraints_info(
             model=model,
-            state=state,
+            data=data,
             limits=limits,
             contacts=contacts,
             device=self.default_device,
@@ -110,7 +110,7 @@ class TestKinematicsConstraints(unittest.TestCase):
         if self.verbose:
             print(f"model.size:\n{model.size}")
             print_model_constraint_info(model)
-            print_model_state_info(state)
+            print_model_data_info(data)
 
     def test_02_homogeneous_model_make_constraints(self):
         """
@@ -126,8 +126,8 @@ class TestKinematicsConstraints(unittest.TestCase):
         # Create the model from the builder
         model: Model = builder.finalize(device=self.default_device)
 
-        # Create a model state
-        state = model.data(device=self.default_device)
+        # Create a model data
+        data = model.data(device=self.default_device)
 
         # Create a  limits container
         limits = Limits(builder=builder, device=self.default_device)
@@ -154,14 +154,14 @@ class TestKinematicsConstraints(unittest.TestCase):
         # Create the constraints info
         make_unilateral_constraints_info(
             model=model,
-            state=state,
+            data=data,
             limits=limits,
             contacts=contacts,
             device=self.default_device,
         )
         if self.verbose:
             print_model_constraint_info(model)
-            print_model_state_info(state)
+            print_model_data_info(data)
 
         # Extract numpy arrays from the model info
         model_max_limits = model.size.sum_of_max_limits
@@ -221,8 +221,8 @@ class TestKinematicsConstraints(unittest.TestCase):
         # Create the model from the builder
         model: Model = builder.finalize(device=self.default_device)
 
-        # Create a model state
-        state = model.data(device=self.default_device)
+        # Create a model data
+        data = model.data(device=self.default_device)
 
         # Create a  limits container
         limits = Limits(builder=builder, device=self.default_device)
@@ -249,22 +249,22 @@ class TestKinematicsConstraints(unittest.TestCase):
         # Create the constraints info
         make_unilateral_constraints_info(
             model=model,
-            state=state,
+            data=data,
             limits=limits,
             contacts=contacts,
             device=self.default_device,
         )
         if self.verbose:
             print_model_constraint_info(model)
-            print_model_state_info(state)
-            print("state.info.num_limits.ptr: ", state.info.num_limits.ptr)
+            print_model_data_info(data)
+            print("data.info.num_limits.ptr: ", data.info.num_limits.ptr)
             print("limits.world_num_limits.ptr: ", limits.world_num_limits.ptr)
-            print("state.info.num_contacts.ptr: ", state.info.num_contacts.ptr)
+            print("data.info.num_contacts.ptr: ", data.info.num_contacts.ptr)
             print("contacts.world_num_contacts.ptr: ", contacts.world_num_contacts.ptr)
 
-        # Check if the state info entity counters point to the same arrays as the limits and contacts containers
-        self.assertTrue(state.info.num_limits.ptr, limits.world_num_limits.ptr)
-        self.assertTrue(state.info.num_contacts.ptr, contacts.world_num_contacts.ptr)
+        # Check if the data info entity counters point to the same arrays as the limits and contacts containers
+        self.assertTrue(data.info.num_limits.ptr, limits.world_num_limits.ptr)
+        self.assertTrue(data.info.num_contacts.ptr, contacts.world_num_contacts.ptr)
 
 
 ###

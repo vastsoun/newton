@@ -59,14 +59,14 @@ class TestDualProblem(unittest.TestCase):
         builder, _, _ = make_heterogeneous_builder()
 
         # Create the model and containers from the builder
-        model, state, limits, detector, jacobians = make_containers(
+        model, data, limits, detector, jacobians = make_containers(
             builder=builder, max_world_contacts=max_world_contacts, device=self.default_device
         )
 
         # Create the Delassus operator
         problem = DualProblem(
             model=model,
-            state=state,
+            data=data,
             limits=limits,
             contacts=detector.contacts,
             solver=LLTSequentialSolver,
@@ -123,19 +123,19 @@ class TestDualProblem(unittest.TestCase):
         num_worlds = builder.num_worlds
 
         # Create the model and containers from the builder
-        model, state, limits, detector, jacobians = make_containers(
+        model, data, limits, detector, jacobians = make_containers(
             builder=builder, max_world_contacts=max_world_contacts, device=self.default_device
         )
 
         # Update the containers
-        update_containers(model=model, state=state, limits=limits, detector=detector, jacobians=jacobians)
+        update_containers(model=model, data=data, limits=limits, detector=detector, jacobians=jacobians)
         if self.verbose:
             print_model_info(model)
 
         # Create the Delassus operator
         problem = DualProblem(
             model=model,
-            state=state,
+            data=data,
             limits=limits,
             contacts=detector.contacts,
             solver=LLTSequentialSolver,
@@ -144,7 +144,7 @@ class TestDualProblem(unittest.TestCase):
 
         # Build the dual problem
         problem.build(
-            model=model, state=state, limits=limits.data, contacts=detector.contacts.data, jacobians=jacobians.data
+            model=model, data=data, limits=limits.data, contacts=detector.contacts.data, jacobians=jacobians.data
         )
 
         # Extract numpy arrays from the problem data

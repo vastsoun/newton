@@ -39,7 +39,7 @@ Typical usage example:
     # Create a model from the builder and construct additional
     # containers to hold joint-limits, contacts, Jacobians
     model = builder.finalize()
-    state = model.data()
+    data = model.data()
     limits = Limits(builder)
     contacts = Contacts(builder)
     jacobians = DenseSystemJacobians(model, limits, contacts)
@@ -51,13 +51,13 @@ Typical usage example:
     ...
 
     # Build the Jacobians for the model and active limits and contacts
-    jacobians.build(model, state, limits, contacts)
+    jacobians.build(model, data, limits, contacts)
     ...
 
-    # Create a Delassus operator and build it using the current model state
+    # Create a Delassus operator and build it using the current model data
     # and active unilateral constraints (i.e. for limits and contacts).
     delassus = DelassusOperator(model, limits, contacts, linear_solver)
-    delassus.build(model, state, jacobians)
+    delassus.build(model, data, jacobians)
 
     # Add diagonal regularization the Delassus matrix
     eta = ...
@@ -236,7 +236,7 @@ class DelassusOperator:
     def __init__(
         self,
         model: Model | None = None,
-        state: ModelData | None = None,
+        data: ModelData | None = None,
         limits: Limits | None = None,
         contacts: Contacts | None = None,
         solver: LinearSolverType = None,
@@ -256,7 +256,7 @@ class DelassusOperator:
 
         Args:
             model (Model): The model container for which the Delassus operator is built.
-            state (ModelData, optional): The model state container holding the state info and data.
+            data (ModelData, optional): The model data container holding the state info and data.
             limits (Limits, optional): The container holding the allocated joint-limit data.
             contacts (Contacts, optional): The container holding the allocated contacts data.
             device (Devicelike, optional): The device identifier for the Delassus operator. Defaults to None.
@@ -276,7 +276,7 @@ class DelassusOperator:
         # Declare the model size cache
         self._size: ModelSize | None = None
 
-        # Initialize the Delassus state container
+        # Initialize the Delassus data container
         self._operator: DenseLinearOperatorData | None = None
 
         # Declare the optional Cholesky factorization
@@ -286,7 +286,7 @@ class DelassusOperator:
         if model is not None:
             self.allocate(
                 model=model,
-                state=state,
+                data=data,
                 limits=limits,
                 contacts=contacts,
                 solver=solver,
@@ -349,7 +349,7 @@ class DelassusOperator:
     def allocate(
         self,
         model: Model,
-        state: ModelData,
+        data: ModelData,
         limits: Limits | None = None,
         contacts: Contacts | None = None,
         solver: LinearSolverType = None,
@@ -371,10 +371,10 @@ class DelassusOperator:
         elif not isinstance(model, Model):
             raise ValueError("Invalid model provided. Must be an instance of `Model`.")
 
-        # Ensure the state container is valid if provided
-        if state is not None:
-            if not isinstance(state, ModelData):
-                raise ValueError("Invalid state container provided. Must be an instance of `ModelData`.")
+        # Ensure the data container is valid if provided
+        if data is not None:
+            if not isinstance(data, ModelData):
+                raise ValueError("Invalid data container provided. Must be an instance of `ModelData`.")
 
         # Ensure the limits container is valid if provided
         if limits is not None:
@@ -408,11 +408,11 @@ class DelassusOperator:
         self._operator = DenseLinearOperatorData()
         self._operator.info = DenseSquareMultiLinearInfo()
         self._operator.mat = wp.zeros(shape=(self._model_maxsize,), dtype=float32, device=self._device)
-        if (model.info is not None) and (state.info is not None):
+        if (model.info is not None) and (data.info is not None):
             mat_offsets = [0] + [sum(self._world_size[:i]) for i in range(1, self._num_worlds + 1)]
             self._operator.info.assign(
                 maxdim=model.info.max_total_cts,
-                dim=state.info.num_total_cts,
+                dim=data.info.num_total_cts,
                 vio=model.info.total_cts_offset,
                 mio=wp.array(mat_offsets[: self._num_worlds], dtype=int32, device=self._device),
                 dtype=float32,
@@ -434,31 +434,31 @@ class DelassusOperator:
         """
         self._operator.mat.zero_()
 
-    def build(self, model: Model, state: ModelData, jacobians: DenseSystemJacobiansData, reset_to_zero: bool = True):
+    def build(self, model: Model, data: ModelData, jacobians: DenseSystemJacobiansData, reset_to_zero: bool = True):
         """
         Builds the Delassus matrix using the provided Model, ModelData, and constraint Jacobians.
 
         Args:
             model (Model): The model for which the Delassus operator is built.
-            state (ModelData): The current state of the model.
+            data (ModelData): The current data of the model.
             reset_to_zero (bool, optional): If True, resets the Delassus matrix to zero before building. Defaults to True.
 
         Raises:
-            ValueError: If the model, state, or Jacobians are not valid.
+            ValueError: If the model, data, or Jacobians are not valid.
             ValueError: If the Delassus matrix is not allocated.
         """
         # Ensure the model is valid
         if model is None or not isinstance(model, Model):
             raise ValueError("A valid model of type `Model` must be provided to build the Delassus operator.")
 
-        # Ensure the state is valid
-        if state is None or not isinstance(state, ModelData):
-            raise ValueError("A valid model state of type `ModelData` must be provided to build the Delassus operator.")
+        # Ensure the data is valid
+        if data is None or not isinstance(data, ModelData):
+            raise ValueError("A valid model data of type `ModelData` must be provided to build the Delassus operator.")
 
         # Ensure the Jacobians are valid
         if jacobians is None or not isinstance(jacobians, DenseSystemJacobiansData):
             raise ValueError(
-                "A valid Jacobians state of type `DenseSystemJacobiansData` must be provided to build the Delassus operator."
+                "A valid Jacobians data of type `DenseSystemJacobiansData` must be provided to build the Delassus operator."
             )
 
         # Ensure the Delassus matrix is allocated
@@ -478,7 +478,7 @@ class DelassusOperator:
                 model.info.num_bodies,
                 model.info.bodies_offset,
                 model.bodies.inv_m_i,
-                state.bodies.inv_I_i,
+                data.bodies.inv_I_i,
                 jacobians.J_cts_offsets,
                 jacobians.J_cts_data,
                 self._operator.info.dim,

@@ -192,12 +192,14 @@ store_joint_state_free = make_store_joint_state_func([], S_dofs_free)
 @wp.kernel
 def _compute_joints_state(
     # Inputs:
-    model_info_joint_cts_offset: wp.array(dtype=int32),
+    model_info_joint_coords_offset: wp.array(dtype=int32),
     model_info_joint_dofs_offset: wp.array(dtype=int32),
+    model_info_joint_cts_offset: wp.array(dtype=int32),
     model_joint_wid: wp.array(dtype=int32),
     model_joint_dof_type: wp.array(dtype=int32),
-    model_joint_cts_offset: wp.array(dtype=int32),
+    model_joint_coords_offset: wp.array(dtype=int32),
     model_joint_dofs_offset: wp.array(dtype=int32),
+    model_joint_cts_offset: wp.array(dtype=int32),
     model_joint_bid_B: wp.array(dtype=int32),
     model_joint_bid_F: wp.array(dtype=int32),
     model_joint_B_r_Bj: wp.array(dtype=vec3f),
@@ -223,8 +225,9 @@ def _compute_joints_state(
     # Retrieve the joint model data
     wid_j = model_joint_wid[jid]
     dof_type_j = model_joint_dof_type[jid]
-    cio_j = model_joint_cts_offset[jid]
+    qio_j = model_joint_coords_offset[jid]
     dio_j = model_joint_dofs_offset[jid]
+    cio_j = model_joint_cts_offset[jid]
     bid_B = model_joint_bid_B[jid]
     bid_F = model_joint_bid_F[jid]
     B_r_Bj = model_joint_B_r_Bj[jid]
@@ -232,12 +235,14 @@ def _compute_joints_state(
     X_j = model_joint_X_j[jid]
 
     # Retrieve the index offsets of the joint's constraint and DoF dimensions
-    jcio = model_info_joint_cts_offset[wid_j]
+    jqio = model_info_joint_coords_offset[wid_j]
     jdio = model_info_joint_dofs_offset[wid_j]
+    jcio = model_info_joint_cts_offset[wid_j]
 
     # Append the index offsets of the world's joint blocks
-    cio_j += jcio
+    qio_j += jqio
     dio_j += jdio
+    cio_j += jcio
 
     # If the base body is the world (bid=-1), use the identity transform (frame of the world's origin)
     T_B_j = wp.transform_identity()
@@ -286,42 +291,42 @@ def _compute_joints_state(
     state_joint_p_j[jid] = T_j_B
 
     # Store the joint state depending the kinematic (i.e. DoF) type
-    if dof_type_j == int(JointDoFType.REVOLUTE.value):
+    if dof_type_j == JointDoFType.REVOLUTE:
         store_joint_state_revolute(
             cio_j, dio_j, r_j, dr_j, state_joint_r_j, state_joint_dr_j, state_joint_q_j, state_joint_dq_j
         )
 
-    elif dof_type_j == int(JointDoFType.PRISMATIC.value):
+    elif dof_type_j == JointDoFType.PRISMATIC:
         store_joint_state_prismatic(
             cio_j, dio_j, r_j, dr_j, state_joint_r_j, state_joint_dr_j, state_joint_q_j, state_joint_dq_j
         )
 
-    elif dof_type_j == int(JointDoFType.CYLINDRICAL.value):
+    elif dof_type_j == JointDoFType.CYLINDRICAL:
         store_joint_state_cylindrical(
             cio_j, dio_j, r_j, dr_j, state_joint_r_j, state_joint_dr_j, state_joint_q_j, state_joint_dq_j
         )
 
-    elif dof_type_j == int(JointDoFType.UNIVERSAL.value):
+    elif dof_type_j == JointDoFType.UNIVERSAL:
         store_joint_state_universal(
             cio_j, dio_j, r_j, dr_j, state_joint_r_j, state_joint_dr_j, state_joint_q_j, state_joint_dq_j
         )
 
-    elif dof_type_j == int(JointDoFType.SPHERICAL.value):
+    elif dof_type_j == JointDoFType.SPHERICAL:
         store_joint_state_spherical(
             cio_j, dio_j, r_j, dr_j, state_joint_r_j, state_joint_dr_j, state_joint_q_j, state_joint_dq_j
         )
 
-    elif dof_type_j == int(JointDoFType.CARTESIAN.value):
+    elif dof_type_j == JointDoFType.CARTESIAN:
         store_joint_state_cartesian(
             cio_j, dio_j, r_j, dr_j, state_joint_r_j, state_joint_dr_j, state_joint_q_j, state_joint_dq_j
         )
 
-    elif dof_type_j == int(JointDoFType.FIXED.value):
+    elif dof_type_j == JointDoFType.FIXED:
         store_joint_state_fixed(
             cio_j, dio_j, r_j, dr_j, state_joint_r_j, state_joint_dr_j, state_joint_q_j, state_joint_dq_j
         )
 
-    elif dof_type_j == int(JointDoFType.FREE.value):
+    elif dof_type_j == JointDoFType.FREE:
         store_joint_state_free(
             cio_j, dio_j, r_j, dr_j, state_joint_r_j, state_joint_dr_j, state_joint_q_j, state_joint_dq_j
         )
@@ -332,30 +337,32 @@ def _compute_joints_state(
 ###
 
 
-def compute_joints_state(model: Model, state: ModelData):
+def compute_joints_state(model: Model, data: ModelData):
     wp.launch(
         _compute_joints_state,
         dim=model.size.sum_of_num_joints,
         inputs=[
             # Inputs:
-            model.info.joint_cts_offset,
+            model.info.joint_coords_offset,
             model.info.joint_dofs_offset,
+            model.info.joint_cts_offset,
             model.joints.wid,
             model.joints.dof_type,
-            model.joints.cts_offset,
+            model.joints.coords_offset,
             model.joints.dofs_offset,
+            model.joints.cts_offset,
             model.joints.bid_B,
             model.joints.bid_F,
             model.joints.B_r_Bj,
             model.joints.F_r_Fj,
             model.joints.X_j,
-            state.bodies.q_i,
-            state.bodies.u_i,
+            data.bodies.q_i,
+            data.bodies.u_i,
             # Outputs:
-            state.joints.p_j,
-            state.joints.r_j,
-            state.joints.dr_j,
-            state.joints.q_j,
-            state.joints.dq_j,
+            data.joints.p_j,
+            data.joints.r_j,
+            data.joints.dr_j,
+            data.joints.q_j,
+            data.joints.dq_j,
         ],
     )

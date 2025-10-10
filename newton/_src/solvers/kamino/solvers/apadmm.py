@@ -41,6 +41,7 @@ References
 - [4] https://epubs.siam.org/doi/abs/10.1137/120896219
 """
 
+from dataclasses import dataclass
 from enum import IntEnum
 
 import warp as wp
@@ -169,38 +170,38 @@ class APADMMPenalty:
 ###
 
 
+@dataclass
 class APADMMSettings:
     """
-    A class to hold the APADMM solver settings.
+    A dataclass to hold the APADMM solver settings.
     """
 
-    def __init__(self):
-        self.primal_tolerance: float = 1e-6
-        """The tolerance applied to the primal residuals."""
-        self.dual_tolerance: float = 1e-6
-        """The tolerance applied to the dual residuals."""
-        self.compl_tolerance: float = 1e-6
-        """The tolerance applied to the complementarity residuals."""
-        self.restart_tolerance: float = 0.999
-        """The tolerance used to determine when to restart gradient acceleration."""
-        self.eta: float = 1e-5
-        """The proximal regularization parameter. Must be greater than zero."""
-        self.rho_0: float = 1.0
-        """The initial value of the penalty parameter. Must be greater than zero."""
-        self.a_0: float = 1.0
-        """The initial value of the acceleration parameter. Must be greater than zero."""
-        self.omega: float = 1.0
-        """The over-relaxation factor. Must be in the range [0.0, 2.0]."""
-        self.alpha: float = 10.0
-        """The primal-dual residual threshold used to determine when penalty updates are needed."""
-        self.tau_inc: float = 1.5
-        """The factor by which the penalty is increased when the primal-dual residual exceeds the threshold."""
-        self.max_iterations: int = 200
-        """The maximum number of solver iterations."""
-        self.penalty_update_freq: int = 1
-        """The frequency of penalty updates. If zero, no updates are performed."""
-        self.penalty_update_method: APADMMPenaltyUpdate = APADMMPenaltyUpdate.FIXED
-        """The method used to update the penalty parameter. Defaults to fixed penalty (i.e. not adaptive)."""
+    primal_tolerance: float = 1e-6
+    """The tolerance applied to the primal residuals."""
+    dual_tolerance: float = 1e-6
+    """The tolerance applied to the dual residuals."""
+    compl_tolerance: float = 1e-6
+    """The tolerance applied to the complementarity residuals."""
+    restart_tolerance: float = 0.999
+    """The tolerance used to determine when to restart gradient acceleration."""
+    eta: float = 1e-5
+    """The proximal regularization parameter. Must be greater than zero."""
+    rho_0: float = 1.0
+    """The initial value of the penalty parameter. Must be greater than zero."""
+    a_0: float = 1.0
+    """The initial value of the acceleration parameter. Must be greater than zero."""
+    omega: float = 1.0
+    """The over-relaxation factor. Must be in the range [0.0, 2.0]."""
+    alpha: float = 10.0
+    """The primal-dual residual threshold used to determine when penalty updates are needed."""
+    tau_inc: float = 1.5
+    """The factor by which the penalty is increased when the primal-dual residual exceeds the threshold."""
+    max_iterations: int = 200
+    """The maximum number of solver iterations."""
+    penalty_update_freq: int = 1
+    """The frequency of penalty updates. If zero, no updates are performed."""
+    penalty_update_method: APADMMPenaltyUpdate = APADMMPenaltyUpdate.FIXED
+    """The method used to update the penalty parameter. Defaults to fixed penalty (i.e. not adaptive)."""
 
     def to_config(self) -> APADMMConfig:
         """

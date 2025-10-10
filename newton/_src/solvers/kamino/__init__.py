@@ -137,7 +137,11 @@ from .kinematics.jacobians import (
     DenseSystemJacobians,
     DenseSystemJacobiansData,
 )
-from .simulation import Simulator
+from .simulation import (
+    Simulator,
+    SimulatorData,
+    SimulatorSettings,
+)
 from .solvers import (
     APADMMDualSolver,
     APADMMSettings,
@@ -215,6 +219,8 @@ __all__ = [
     "ShapeDescriptor",
     "ShapeType",
     "Simulator",
+    "SimulatorData",
+    "SimulatorSettings",
     "SphereShape",
     "State",
     "TimeData",

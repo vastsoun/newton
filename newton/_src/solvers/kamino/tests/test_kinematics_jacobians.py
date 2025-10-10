@@ -44,7 +44,7 @@ from newton._src.solvers.kamino.models.utils import (
 # Test utilities
 from newton._src.solvers.kamino.tests.utils.print import (
     print_model_constraint_info,
-    print_model_state_info,
+    print_model_data_info,
 )
 
 ###
@@ -239,7 +239,7 @@ def _set_fourbar_body_states(
 ###
 
 
-def set_fourbar_body_states(model: Model, state: ModelData):
+def set_fourbar_body_states(model: Model, data: ModelData):
     wp.launch(
         _set_fourbar_body_states,
         dim=3,  # Set to three because we only need to set the first three joints
@@ -249,8 +249,8 @@ def set_fourbar_body_states(model: Model, state: ModelData):
             model.joints.B_r_Bj,
             model.joints.F_r_Fj,
             model.joints.X_j,
-            state.bodies.q_i,
-            state.bodies.u_i,
+            data.bodies.q_i,
+            data.bodies.u_i,
         ],
     )
 
@@ -641,7 +641,7 @@ class TestKinematicsJacobians(unittest.TestCase):
         model = builder.finalize(device=self.default_device)
 
         # Create a model state container
-        state = model.data(device=self.default_device)
+        data = model.data(device=self.default_device)
 
         # Construct and allocate the limits container
         limits = Limits(builder=builder, device=self.default_device)
@@ -654,7 +654,7 @@ class TestKinematicsJacobians(unittest.TestCase):
         # Create the constraints info
         make_unilateral_constraints_info(
             model=model,
-            state=state,
+            data=data,
             limits=limits,
             contacts=detector.contacts,
             device=self.default_device,
@@ -662,7 +662,7 @@ class TestKinematicsJacobians(unittest.TestCase):
         if self.verbose:
             print("")  # Add a newline for better readability
             print_model_constraint_info(model)
-            print_model_state_info(state)
+            print_model_data_info(data)
 
         # Create the Jacobians container
         jacobians = DenseSystemJacobians(
@@ -671,45 +671,45 @@ class TestKinematicsJacobians(unittest.TestCase):
         wp.synchronize()
 
         # Perturn the fourbar bodies in poses that trigger the joint limits
-        set_fourbar_body_states(model=model, state=state)
+        set_fourbar_body_states(model=model, data=data)
         wp.synchronize()
         if self.verbose:
-            print("state.bodies.q_i:\n", state.bodies.q_i)
-            print("state.bodies.u_i:\n", state.bodies.u_i)
+            print("data.bodies.q_i:\n", data.bodies.q_i)
+            print("data.bodies.u_i:\n", data.bodies.u_i)
 
         # Compute the joints state
-        compute_joints_state(model=model, state=state)
+        compute_joints_state(model=model, data=data)
         wp.synchronize()
         if self.verbose:
-            print("state.joints.p_j:\n", state.joints.p_j)
-            print("state.joints.r_j:\n", state.joints.r_j)
-            print("state.joints.dr_j:\n", state.joints.dr_j)
-            print("state.joints.q_j:\n", state.joints.q_j)
-            print("state.joints.dq_j:\n", state.joints.dq_j)
+            print("data.joints.p_j:\n", data.joints.p_j)
+            print("data.joints.r_j:\n", data.joints.r_j)
+            print("data.joints.dr_j:\n", data.joints.dr_j)
+            print("data.joints.q_j:\n", data.joints.q_j)
+            print("data.joints.dq_j:\n", data.joints.dq_j)
 
         # Run limit detection to generate active limits
-        limits.detect(model, state)
+        limits.detect(model, data)
         wp.synchronize()
         if self.verbose:
             print(f"limits.world_num_limits: {limits.world_num_limits}")
-            print(f"state.info.num_limits: {state.info.num_limits}")
+            print(f"data.info.num_limits: {data.info.num_limits}")
 
         # Run collision detection to generate active contacts
-        detector.collide(model, state)
+        detector.collide(model, data)
         wp.synchronize()
         if self.verbose:
             print(f"contacts.world_num_contacts: {detector.contacts.world_num_contacts}")
-            print(f"state.info.num_contacts: {state.info.num_contacts}")
+            print(f"data.info.num_contacts: {data.info.num_contacts}")
 
         # Update the constraints info
-        update_constraints_info(model=model, state=state)
+        update_constraints_info(model=model, data=data)
         if self.verbose:
             print("")  # Add a newline for better readability
-            print_model_state_info(state)
+            print_model_data_info(data)
         wp.synchronize()
 
         # Build the dense system Jacobians
-        jacobians.build(model=model, state=state, limits=limits.data, contacts=detector.contacts.data)
+        jacobians.build(model=model, data=data, limits=limits.data, contacts=detector.contacts.data)
         wp.synchronize()
 
         # Reshape the flat actuation Jacobian as a matrix
@@ -760,7 +760,7 @@ class TestKinematicsJacobians(unittest.TestCase):
         model = builder.finalize(device=self.default_device)
 
         # Create a model state container
-        state = model.data(device=self.default_device)
+        data = model.data(device=self.default_device)
 
         # Construct and allocate the limits container
         limits = Limits(builder=builder, device=self.default_device)
@@ -773,7 +773,7 @@ class TestKinematicsJacobians(unittest.TestCase):
         # Create the constraints info
         make_unilateral_constraints_info(
             model=model,
-            state=state,
+            data=data,
             limits=limits,
             contacts=detector.contacts,
             device=self.default_device,
@@ -781,7 +781,7 @@ class TestKinematicsJacobians(unittest.TestCase):
         if self.verbose:
             print("")  # Add a newline for better readability
             print_model_constraint_info(model)
-            print_model_state_info(state)
+            print_model_data_info(data)
 
         # Create the Jacobians container
         jacobians = DenseSystemJacobians(
@@ -790,45 +790,45 @@ class TestKinematicsJacobians(unittest.TestCase):
         wp.synchronize()
 
         # Perturn the fourbar bodies in poses that trigger the joint limits
-        set_fourbar_body_states(model=model, state=state)
+        set_fourbar_body_states(model=model, data=data)
         wp.synchronize()
         if self.verbose:
-            print("state.bodies.q_i:\n", state.bodies.q_i)
-            print("state.bodies.u_i:\n", state.bodies.u_i)
+            print("data.bodies.q_i:\n", data.bodies.q_i)
+            print("data.bodies.u_i:\n", data.bodies.u_i)
 
         # Compute the joints state
-        compute_joints_state(model=model, state=state)
+        compute_joints_state(model=model, data=data)
         wp.synchronize()
         if self.verbose:
-            print("state.joints.p_j:\n", state.joints.p_j)
-            print("state.joints.r_j:\n", state.joints.r_j)
-            print("state.joints.dr_j:\n", state.joints.dr_j)
-            print("state.joints.q_j:\n", state.joints.q_j)
-            print("state.joints.dq_j:\n", state.joints.dq_j)
+            print("data.joints.p_j:\n", data.joints.p_j)
+            print("data.joints.r_j:\n", data.joints.r_j)
+            print("data.joints.dr_j:\n", data.joints.dr_j)
+            print("data.joints.q_j:\n", data.joints.q_j)
+            print("data.joints.dq_j:\n", data.joints.dq_j)
 
         # Run limit detection to generate active limits
-        limits.detect(model, state)
+        limits.detect(model, data)
         wp.synchronize()
         if self.verbose:
             print(f"limits.world_num_limits: {limits.world_num_limits}")
-            print(f"state.info.num_limits: {state.info.num_limits}")
+            print(f"data.info.num_limits: {data.info.num_limits}")
 
         # Run collision detection to generate active contacts
-        detector.collide(model, state)
+        detector.collide(model, data)
         wp.synchronize()
         if self.verbose:
             print(f"contacts.world_num_contacts: {detector.contacts.world_num_contacts}")
-            print(f"state.info.num_contacts: {state.info.num_contacts}")
+            print(f"data.info.num_contacts: {data.info.num_contacts}")
 
         # Update the constraints info
-        update_constraints_info(model=model, state=state)
+        update_constraints_info(model=model, data=data)
         if self.verbose:
             print("")  # Add a newline for better readability
-            print_model_state_info(state)
+            print_model_data_info(data)
         wp.synchronize()
 
         # Build the dense system Jacobians
-        jacobians.build(model=model, state=state, limits=limits.data, contacts=detector.contacts.data)
+        jacobians.build(model=model, data=data, limits=limits.data, contacts=detector.contacts.data)
         wp.synchronize()
 
         # Extract the Jacobian matrices
@@ -849,7 +849,7 @@ class TestKinematicsJacobians(unittest.TestCase):
         model = builder.finalize(device=self.default_device)
 
         # Create a model state container
-        state = model.data(device=self.default_device)
+        data = model.data(device=self.default_device)
 
         # Construct and allocate the limits container
         limits = Limits(builder=builder, device=self.default_device)
@@ -862,7 +862,7 @@ class TestKinematicsJacobians(unittest.TestCase):
         # Create the constraints info
         make_unilateral_constraints_info(
             model=model,
-            state=state,
+            data=data,
             limits=limits,
             contacts=detector.contacts,
             device=self.default_device,
@@ -870,7 +870,7 @@ class TestKinematicsJacobians(unittest.TestCase):
         if self.verbose:
             print("")  # Add a newline for better readability
             print_model_constraint_info(model)
-            print_model_state_info(state)
+            print_model_data_info(data)
 
         # Create the Jacobians container
         jacobians = DenseSystemJacobians(
@@ -879,45 +879,45 @@ class TestKinematicsJacobians(unittest.TestCase):
         wp.synchronize()
 
         # Perturn the fourbar bodies in poses that trigger the joint limits
-        set_fourbar_body_states(model=model, state=state)
+        set_fourbar_body_states(model=model, data=data)
         wp.synchronize()
         if self.verbose:
-            print("state.bodies.q_i:\n", state.bodies.q_i)
-            print("state.bodies.u_i:\n", state.bodies.u_i)
+            print("data.bodies.q_i:\n", data.bodies.q_i)
+            print("data.bodies.u_i:\n", data.bodies.u_i)
 
         # Compute the joints state
-        compute_joints_state(model=model, state=state)
+        compute_joints_state(model=model, data=data)
         wp.synchronize()
         if self.verbose:
-            print("state.joints.p_j:\n", state.joints.p_j)
-            print("state.joints.r_j:\n", state.joints.r_j)
-            print("state.joints.dr_j:\n", state.joints.dr_j)
-            print("state.joints.q_j:\n", state.joints.q_j)
-            print("state.joints.dq_j:\n", state.joints.dq_j)
+            print("data.joints.p_j:\n", data.joints.p_j)
+            print("data.joints.r_j:\n", data.joints.r_j)
+            print("data.joints.dr_j:\n", data.joints.dr_j)
+            print("data.joints.q_j:\n", data.joints.q_j)
+            print("data.joints.dq_j:\n", data.joints.dq_j)
 
         # Run limit detection to generate active limits
-        limits.detect(model, state)
+        limits.detect(model, data)
         wp.synchronize()
         if self.verbose:
             print(f"limits.world_num_limits: {limits.world_num_limits}")
-            print(f"state.info.num_limits: {state.info.num_limits}")
+            print(f"data.info.num_limits: {data.info.num_limits}")
 
         # Run collision detection to generate active contacts
-        detector.collide(model, state)
+        detector.collide(model, data)
         wp.synchronize()
         if self.verbose:
             print(f"contacts.world_num_contacts: {detector.contacts.world_num_contacts}")
-            print(f"state.info.num_contacts: {state.info.num_contacts}")
+            print(f"data.info.num_contacts: {data.info.num_contacts}")
 
         # Update the constraints info
-        update_constraints_info(model=model, state=state)
+        update_constraints_info(model=model, data=data)
         if self.verbose:
             print("")  # Add a newline for better readability
-            print_model_state_info(state)
+            print_model_data_info(data)
         wp.synchronize()
 
         # Build the dense system Jacobians
-        jacobians.build(model=model, state=state, limits=limits.data, contacts=detector.contacts.data)
+        jacobians.build(model=model, data=data, limits=limits.data, contacts=detector.contacts.data)
         wp.synchronize()
 
         # Extract the Jacobian matrices

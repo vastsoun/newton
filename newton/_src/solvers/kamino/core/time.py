@@ -19,6 +19,7 @@ KAMINO: Time Module
 
 from __future__ import annotations
 
+import numpy as np
 import warp as wp
 
 from .types import float32, int32
@@ -64,7 +65,7 @@ class TimeModel:
         Shape of ``(num_worlds,)`` and type :class:`float32`.
         """
 
-    def set_timestep(self, dt: float):
+    def set_uniform_timestep(self, dt: float):
         """
         Set the time-step size for each world.
 
@@ -73,6 +74,28 @@ class TimeModel:
         """
         self.dt.fill_(dt)
         self.inv_dt.fill_(1.0 / dt)
+
+    def set_timesteps(self, dt: list[float] | np.ndarray):
+        """
+        Set the time-step size for each world.
+
+        Args:
+            dt (float): The time-step size to set.
+        """
+        # Ensure that the length of the input matches the number of worlds
+        if len(dt) != self.dt.size:
+            raise ValueError(f"Invalid dt size: {len(dt)}. Expected: {self.dt.size}.")
+        # If the input is a list, convert it to a numpy array
+        if isinstance(dt, list):
+            dt = np.array(dt, dtype=np.float32)
+        # Ensure that the input is a numpy array of the correct dtype
+        if not isinstance(dt, np.ndarray):
+            raise TypeError(f"Invalid dt type: {type(dt)}. Expected: np.ndarray.")
+        if dt.dtype != np.float32:
+            raise TypeError(f"Invalid dt dtype: {dt.dtype}. Expected: np.float32.")
+        # Assign the values to the internal arrays
+        self.dt.assign(dt)
+        self.inv_dt.assign(1.0 / dt)
 
 
 class TimeData:

@@ -381,10 +381,19 @@ def _compute_contact_cts_body_wrenches(
 ###
 
 
-def compute_joint_dof_body_wrenches(model: Model, state: ModelData, jacobians: DenseSystemJacobiansData):
+def compute_joint_dof_body_wrenches(
+    model: Model, data: ModelData, jacobians: DenseSystemJacobiansData, reset_to_zero: bool = True
+) -> None:
     """
     Update the actuation wrenches of the bodies based on the active joint torques.
     """
+    # First clear the previous actuation wrenches, because the kernel computing them
+    # uses an atomic add to accumulate contributions from each joint DoF, and thus
+    # assumes the target array is zeroed out before each call
+    if reset_to_zero:
+        data.bodies.w_a_i.zero_()
+
+    # Then compute the body wrenches resulting from the current generalized actuation forces
     wp.launch(
         _compute_joint_dof_body_wrenches,
         dim=model.size.sum_of_num_joints,
@@ -398,50 +407,57 @@ def compute_joint_dof_body_wrenches(model: Model, state: ModelData, jacobians: D
             model.joints.wid,
             model.joints.bid_B,
             model.joints.bid_F,
-            state.joints.tau_j,
+            data.joints.tau_j,
             jacobians.J_dofs_offsets,
             jacobians.J_dofs_data,
             # Outputs:
-            state.bodies.w_a_i,
+            data.bodies.w_a_i,
         ],
     )
 
 
 def compute_constraint_body_wrenches(
     model: Model,
-    state: ModelData,
+    data: ModelData,
     limits: LimitsData,
     contacts: ContactsData,
     jacobians: DenseSystemJacobiansData,
     lambdas_offsets: wp.array(dtype=int32),
     lambdas_data: wp.array(dtype=float32),
+    reset_to_zero: bool = True,
 ):
     """
     Launches the kernels to compute the body-wise constraint wrenches.
     """
-    wp.launch(
-        _compute_joint_cts_body_wrenches,
-        dim=model.size.sum_of_num_joints,
-        inputs=[
-            # Inputs:
-            model.info.num_body_dofs,
-            model.info.bodies_offset,
-            model.time.inv_dt,
-            model.joints.wid,
-            model.joints.num_cts,
-            model.joints.cts_offset,
-            model.joints.bid_B,
-            model.joints.bid_F,
-            jacobians.J_cts_offsets,
-            jacobians.J_cts_data,
-            lambdas_offsets,
-            lambdas_data,
-            # Outputs:
-            state.bodies.w_j_i,
-        ],
-    )
+
+    if model.size.sum_of_num_joints > 0:
+        if reset_to_zero:
+            data.bodies.w_j_i.zero_()
+        wp.launch(
+            _compute_joint_cts_body_wrenches,
+            dim=model.size.sum_of_num_joints,
+            inputs=[
+                # Inputs:
+                model.info.num_body_dofs,
+                model.info.bodies_offset,
+                model.time.inv_dt,
+                model.joints.wid,
+                model.joints.num_cts,
+                model.joints.cts_offset,
+                model.joints.bid_B,
+                model.joints.bid_F,
+                jacobians.J_cts_offsets,
+                jacobians.J_cts_data,
+                lambdas_offsets,
+                lambdas_data,
+                # Outputs:
+                data.bodies.w_j_i,
+            ],
+        )
 
     if limits is not None:
+        if reset_to_zero:
+            data.bodies.w_l_i.zero_()
         wp.launch(
             _compute_limit_cts_body_wrenches,
             dim=limits.num_model_max_limits,
@@ -449,7 +465,7 @@ def compute_constraint_body_wrenches(
                 # Inputs:
                 model.info.num_body_dofs,
                 model.info.bodies_offset,
-                state.info.limit_cts_group_offset,
+                data.info.limit_cts_group_offset,
                 model.time.inv_dt,
                 limits.model_num_limits,
                 limits.wid,
@@ -460,11 +476,13 @@ def compute_constraint_body_wrenches(
                 lambdas_offsets,
                 lambdas_data,
                 # Outputs:
-                state.bodies.w_l_i,
+                data.bodies.w_l_i,
             ],
         )
 
     if contacts is not None:
+        if reset_to_zero:
+            data.bodies.w_c_i.zero_()
         wp.launch(
             _compute_contact_cts_body_wrenches,
             dim=contacts.num_model_max_contacts,
@@ -472,7 +490,7 @@ def compute_constraint_body_wrenches(
                 # Inputs:
                 model.info.num_body_dofs,
                 model.info.bodies_offset,
-                state.info.contact_cts_group_offset,
+                data.info.contact_cts_group_offset,
                 model.time.inv_dt,
                 contacts.model_num_contacts,
                 contacts.wid,
@@ -484,6 +502,6 @@ def compute_constraint_body_wrenches(
                 lambdas_offsets,
                 lambdas_data,
                 # Outputs:
-                state.bodies.w_c_i,
+                data.bodies.w_c_i,
             ],
         )

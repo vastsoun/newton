@@ -252,12 +252,12 @@ class TestPADMMDualSolver(unittest.TestCase):
             body.u_i_0 = u_0
 
         # Create the model and containers from the builder
-        model, state, limits, detector, jacobians = make_containers(
+        model, data, limits, detector, jacobians = make_containers(
             builder=builder, max_world_contacts=max_world_contacts, device=self.default_device
         )
 
         # Update the containers
-        update_containers(model=model, state=state, limits=limits, detector=detector, jacobians=jacobians)
+        update_containers(model=model, data=data, limits=limits, detector=detector, jacobians=jacobians)
         if self.verbose:
             print("\n")  # Print a newline for better readability
             print_model_info(model)
@@ -266,7 +266,7 @@ class TestPADMMDualSolver(unittest.TestCase):
         # Create the Delassus operator
         problem = DualProblem(
             model=model,
-            state=state,
+            data=data,
             limits=limits,
             contacts=detector.contacts,
             solver=LLTBlockedSolver,
@@ -275,7 +275,7 @@ class TestPADMMDualSolver(unittest.TestCase):
 
         # Build the dual problem
         problem.build(
-            model=model, state=state, limits=limits.data, contacts=detector.contacts.data, jacobians=jacobians.data
+            model=model, data=data, limits=limits.data, contacts=detector.contacts.data, jacobians=jacobians.data
         )
 
         # Optional verbose output

@@ -24,7 +24,7 @@ def Xform "Robot"
         {
             # Body Frame
             quatf xformOp:orient = (1, 0, 0, 0)
-            double3 xformOp:translate = (0, 0, 0)
+            double3 xformOp:translate = (-0.0155601, -0.0848459, -0.00574446)
             uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient"]
 
             # Body Velocities
@@ -32,10 +32,10 @@ def Xform "Robot"
             vector3f physics:angularVelocity = (0, 0, 0)
 
             # Mass Properties
-            float physics:mass = 1.0
-            float3 physics:diagonalInertia = (1, 1, 1)
+            float physics:mass = 0.2262
+            float3 physics:diagonalInertia = (1.44825e-05, 0.000123861, 0.000124459)
             point3f physics:centerOfMass = (0, 0, 0)
-            quatf physics:principalAxes = (1, 0, 0, 0)
+            quatf physics:principalAxes = (0.181822, -0.340445, 0.916765, -0.102857)
         }
 
         def Xform "body_1" (
@@ -44,7 +44,7 @@ def Xform "Robot"
         {
             # Body Frame
             quatf xformOp:orient = (1, 0, 0, 0)
-            double3 xformOp:translate = (1, 0, 0)
+            double3 xformOp:translate = (0.0413202, -0.0281047, 0.0230962)
             uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient"]
 
             # Body Velocities
@@ -52,10 +52,10 @@ def Xform "Robot"
             vector3f physics:angularVelocity = (0, 0, 0)
 
             # Mass Properties
-            float physics:mass = 1.0
-            float3 physics:diagonalInertia = (1, 1, 1)
+            float physics:mass = 0.2262
+            float3 physics:diagonalInertia = (1.44825e-05, 0.000123861, 0.000124459)
             point3f physics:centerOfMass = (0, 0, 0)
-            quatf physics:principalAxes = (1, 0, 0, 0)
+            quatf physics:principalAxes = (0.181822, -0.340445, 0.916765, -0.102857)
         }
     }
 
@@ -72,10 +72,10 @@ def Xform "Robot"
 
             uniform token physics:axis = "X"
 
-            point3f physics:localPos0 = (0, 0, 0)
-            point3f physics:localPos1 = (-0.5, 0, 0)
-            quatf physics:localRot0 = (1, 0, 0, 0)
-            quatf physics:localRot1 = (1, 0, 0, 0)
+            point3f physics:localPos0 = (0.0284401, 0.0283706, 0.0144203)
+            point3f physics:localPos1 = (-0.0284401, -0.0283706, -0.0144203)
+            quatf physics:localRot0 = (0.910634, -0.0921648, -0.21039, 0.343494)
+            quatf physics:localRot1 = (0.910634, -0.0921648, -0.21039, 0.343494)
 
             float physics:lowerLimit = -1  # NOTE: The presence of these properties enables the UsdPhysics.JointLimit(...) attribute
             float physics:upperLimit = 1

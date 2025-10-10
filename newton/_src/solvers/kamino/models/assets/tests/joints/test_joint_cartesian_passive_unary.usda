@@ -24,7 +24,7 @@ def Xform "Robot"
         {
             # Body Frame
             quatf xformOp:orient = (1, 0, 0, 0)
-            double3 xformOp:translate = (1, 0, 0)
+            double3 xformOp:translate = (0.0277918, -0.0131508, 0.0258479)
             uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient"]
 
             # Body Velocities
@@ -32,10 +32,10 @@ def Xform "Robot"
             vector3f physics:angularVelocity = (0, 0, 0)
 
             # Mass Properties
-            float physics:mass = 1.0
-            float3 physics:diagonalInertia = (1, 1, 1)
+            float physics:mass = 0.192816
+            float3 physics:diagonalInertia = (1.29682e-05, 7.14078e-05, 7.18623e-05)
             point3f physics:centerOfMass = (0, 0, 0)
-            quatf physics:principalAxes = (1, 0, 0, 0)
+            quatf physics:principalAxes = (0.891551, -0.241196, -0.380002, -0.0505894)
         }
     }
 
@@ -59,10 +59,10 @@ def Xform "Robot"
 
             rel physics:body1 = </Robot/RigidBodies/body_1>
 
-            point3f physics:localPos0 = (0, 0, 0)
-            point3f physics:localPos1 = (-0.5, 0, 0)
-            quatf physics:localRot0 = (1, 0, 0, 0)
-            quatf physics:localRot1 = (1, 0, 0, 0)
+            point3f physics:localPos0 = (-0.0106149, 0.000104522, 0.0236799)
+            point3f physics:localPos1 = (-0.0384068, 0.0132553, -0.00216804)
+            quatf physics:localRot0 = (-3.99312e-06, 0.904622, 0.158661, -0.395583)
+            quatf physics:localRot1 = (-3.99312e-06, 0.904622, 0.158661, -0.395583)
 
             bool physics:collisionEnabled = 0
 

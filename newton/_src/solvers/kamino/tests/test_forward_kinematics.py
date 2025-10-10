@@ -3,13 +3,18 @@
 ###########################################################################
 
 import hashlib
+import os
 import unittest
 
 import numpy as np
 import warp as wp
 
+from newton._src.solvers.kamino.core.joints import JointActuationType, JointDoFType
+from newton._src.solvers.kamino.core.types import mat33f, vec3f
 from newton._src.solvers.kamino.kinematics.forward_kinematics import ForwardKinematicsSolver
+from newton._src.solvers.kamino.models import get_examples_usd_assets_path
 from newton._src.solvers.kamino.tests.test_utils_diff_check import diff_check, run_test_single_joint_examples
+from newton._src.solvers.kamino.utils.io.usd import USDImporter
 
 ###
 # Module configs
@@ -73,6 +78,64 @@ class JacobianCheckForwardKinematics(unittest.TestCase):
             )
 
         success = run_test_single_joint_examples(test_function, test_name, device=self.default_device)
+        self.assertTrue(success)
+
+
+class WalkerRandomPosesCheckForwardKinematics(unittest.TestCase):
+    def setUp(self):
+        self.default_device = wp.get_device()
+
+    def tearDown(self):
+        self.default_device = None
+
+    def test_walker_FK_random_poses(self):
+        # Initialize RNG
+        test_name = "Walker FK random poses check"
+        seed = int(hashlib.sha256(test_name.encode("utf8")).hexdigest(), 16)
+        rng = np.random.default_rng(seed)
+
+        # Load model and add fixed joint on pelvis
+        model_path = os.path.join(get_examples_usd_assets_path(), "walker/walker_floating_with_boxes.usda")
+        builder = USDImporter().import_from(model_path)
+        builder.add_joint(
+            JointActuationType.PASSIVE,
+            JointDoFType.FIXED,
+            -1,
+            0,
+            builder.bodies[0].q_i_0[:3],
+            vec3f(0.0, 0.0, 0.0),
+            mat33f(np.identity(3)),
+            name="Fixed pelvis",
+        )
+        model = builder.finalize(device=self.default_device, requires_grad=False)
+
+        # Generate (random) controls
+        num_poses = 50
+        num_controls = model.info.num_actuated_joint_dofs.numpy()[0]
+        theta_max = np.radians(10.0)  # Angles too far from the initial pose lead to singularities
+        p_control_random = rng.uniform(-theta_max, theta_max, (num_poses, num_controls))
+
+        # Convert to generalized positions (adding zeros for the passive joint dofs)
+        num_gen_pos = model.info.num_joint_dofs.numpy()[0]
+        gen_pos_random = np.zeros((num_poses, num_gen_pos))
+        actuated_dofs_offet = model.joints.actuated_dofs_offset.numpy()
+        for id_gen_pos in range(num_gen_pos):
+            id_control = actuated_dofs_offet[id_gen_pos]
+            if id_control >= 0:
+                gen_pos_random[:, id_gen_pos] = p_control_random[:, id_control]
+
+        # Run forward kinematics on all random poses
+        model_data = model.data(device=self.default_device)
+        solver = ForwardKinematicsSolver(model)
+        success_flags = []
+        for i in range(num_poses):
+            model_data.joints.q_j.assign(gen_pos_random[i, :])
+            solver.solve_fk(model_data, reset_state=True)
+            success_flags.append(solver.newton_success.numpy()[0])
+
+        success = np.sum(success_flags) == num_poses
+        if not success:
+            print(f"{test_name} failed, {np.sum(success_flags)}/{num_poses} poses successful")
         self.assertTrue(success)
 
 

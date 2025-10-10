@@ -59,43 +59,58 @@ def run_test_single_joint_examples(
     # Resolve path of data folder
     data_dir = os.path.join(get_tests_usd_assets_path(), "joints")
 
-    if unary_joints or not binary_joints:
-        print("run_test_single_joint_examples: no unary joint tests available currently, will test binary joints")
-
     # List file paths of examples
-    file_paths = [
-        os.path.join(data_dir, "test_joint_cartesian_passive.usda"),
-        os.path.join(data_dir, "test_joint_cylindrical_passive.usda"),
-        os.path.join(data_dir, "test_joint_fixed.usda"),
-        os.path.join(data_dir, "test_joint_prismatic_passive.usda"),
-        os.path.join(data_dir, "test_joint_revolute_passive.usda"),
-        os.path.join(data_dir, "test_joint_spherical.usda"),
-        os.path.join(data_dir, "test_joint_universal_passive.usda"),
-    ]
-    joint_type_names = ["cartesian", "cylindrical", "fixed", "prismatic", "revolute", "spherical", "universal"]
+    file_paths = []
+    if unary_joints:
+        file_paths.extend(
+            [
+                os.path.join(data_dir, "test_joint_cartesian_passive_unary.usda"),
+                os.path.join(data_dir, "test_joint_cylindrical_passive_unary.usda"),
+                os.path.join(data_dir, "test_joint_fixed_unary.usda"),
+                os.path.join(data_dir, "test_joint_prismatic_passive_unary.usda"),
+                os.path.join(data_dir, "test_joint_revolute_passive_unary.usda"),
+                os.path.join(data_dir, "test_joint_spherical_unary.usda"),
+                os.path.join(data_dir, "test_joint_universal_passive_unary.usda"),
+            ]
+        )
+    if binary_joints:
+        file_paths.extend(
+            [
+                os.path.join(data_dir, "test_joint_cartesian_passive.usda"),
+                os.path.join(data_dir, "test_joint_cylindrical_passive.usda"),
+                os.path.join(data_dir, "test_joint_fixed.usda"),
+                os.path.join(data_dir, "test_joint_prismatic_passive.usda"),
+                os.path.join(data_dir, "test_joint_revolute_passive.usda"),
+                os.path.join(data_dir, "test_joint_spherical.usda"),
+                os.path.join(data_dir, "test_joint_universal_passive.usda"),
+            ]
+        )
 
     # Load and test all examples
     success = True
-    for file_path, joint_type_name in zip(file_paths, joint_type_names, strict=True):
+    for file_path in file_paths:
         importer = USDImporter()
         builder = importer.import_from(source=file_path)
+        file_stem_split = os.path.basename(file_path).split(".")[0].split("_")
+        is_unary = file_stem_split[-1] == "unary"
+        joint_type_name = file_stem_split[2]
 
-        # Binary passive joint
-        if binary_joints and passive_joints:
+        # Passive joint
+        if passive_joints:
             model = builder.finalize(device, False)
             single_test_sucess = test_fun(model)
             success &= single_test_sucess
             if not single_test_sucess:
-                print(f"{test_name} failed for binary {joint_type_name} joint")
+                print(f"{test_name} failed for {'u' if is_unary else 'bi'}nary {joint_type_name} joint")
 
-        # Binary actuator
-        if binary_joints and actuators:
+        # Actuator
+        if actuators:
             builder.joints[0].act_type = JointActuationType.FORCE
             model = builder.finalize(device, False)
             single_test_sucess = test_fun(model)
             success &= single_test_sucess
             if not single_test_sucess:
-                print(f"{test_name} failed for binary {joint_type_name} actuator")
+                print(f"{test_name} failed for {'u' if is_unary else 'bi'}nary {joint_type_name} actuator")
     return success
 
 

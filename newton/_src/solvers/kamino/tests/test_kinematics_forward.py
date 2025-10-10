@@ -1,6 +1,21 @@
-###########################################################################
-# KAMINO: UNIT TESTS: KINEMATICS: FORWARD KINEMATICS
-###########################################################################
+# SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""
+KAMINO: UNIT TESTS: KINEMATICS: FORWARD (Forward Kinematics module)
+"""
 
 import hashlib
 import os
@@ -12,9 +27,9 @@ import warp as wp
 from newton._src.solvers.kamino.core.joints import JointActuationType, JointDoFType
 from newton._src.solvers.kamino.core.model import Model
 from newton._src.solvers.kamino.core.types import mat33f, vec3f
-from newton._src.solvers.kamino.kinematics.forward_kinematics import ForwardKinematicsSolver
+from newton._src.solvers.kamino.kinematics.forward import ForwardKinematicsSolver
 from newton._src.solvers.kamino.models import get_examples_usd_assets_path
-from newton._src.solvers.kamino.tests.test_utils_diff_check import diff_check, run_test_single_joint_examples
+from newton._src.solvers.kamino.tests.utils.diff_check import diff_check, run_test_single_joint_examples
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
 
 ###

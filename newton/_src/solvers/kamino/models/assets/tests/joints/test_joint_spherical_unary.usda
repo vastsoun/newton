@@ -24,7 +24,7 @@ def Xform "Robot"
         {
             # Body Frame
             quatf xformOp:orient = (1, 0, 0, 0)
-            double3 xformOp:translate = (1, 0, 0)
+            double3 xformOp:translate = (0.0221895, 0.0480183, -0.0262788)
             uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient"]
 
             # Body Velocities
@@ -32,10 +32,10 @@ def Xform "Robot"
             vector3f physics:angularVelocity = (0, 0, 0)
 
             # Mass Properties
-            float physics:mass = 1.0
-            float3 physics:diagonalInertia = (1, 1, 1)
+            float physics:mass = 0.193009
+            float3 physics:diagonalInertia = (1.25415e-05, 7.25474e-05, 7.25474e-05)
             point3f physics:centerOfMass = (0, 0, 0)
-            quatf physics:principalAxes = (1, 0, 0, 0)
+            quatf physics:principalAxes = (-0.421016, 0.17955, 0.348782, 0.817837)
         }
     }
 
@@ -49,8 +49,8 @@ def Xform "Robot"
 
             uniform token physics:axis = "X"
 
-            point3f physics:localPos0 = (0, 0, 0)
-            point3f physics:localPos1 = (-0.5, 0, 0)
+            point3f physics:localPos0 = (-0.00612828, 0.0205591, 0.00234884)
+            point3f physics:localPos1 = (-0.0283177, -0.0274592, 0.0286276)
             quatf physics:localRot0 = (1, 0, 0, 0)
             quatf physics:localRot1 = (1, 0, 0, 0)
 

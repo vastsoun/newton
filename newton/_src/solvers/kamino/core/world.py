@@ -403,7 +403,7 @@ class WorldDescriptor:
                 f"WorldDescriptor: Grounding joint index '{joint_idx}' out of range. Must be between 0 and {self.num_joints - 1}."
             )
         # Ensure joint is unary
-        if joint_idx not in self.unary_joint_names:
+        if joint_name not in self.unary_joint_names:
             raise ValueError(f"WorldDescriptor: Joint '{joint_name}' is not a unary joint.")
         # Set grounding joint info
         self.grounding_name = joint_name

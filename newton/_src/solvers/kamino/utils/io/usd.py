@@ -437,7 +437,9 @@ class USDImporter:
         # Extract the mass, center of mass, diagonal inertia, and principal axes from the prim
         m_i = mass_unit * self._parse_float(rigid_body_prim, "physics:mass")
         i_r_com_i = distance_unit * self._parse_vec(rigid_body_prim, "physics:centerOfMass")
-        i_I_i_diag = mass_unit * self._parse_vec(rigid_body_prim, "physics:diagonalInertia")
+        i_I_i_diag = (
+            mass_unit * distance_unit * distance_unit * self._parse_vec(rigid_body_prim, "physics:diagonalInertia")
+        )
         i_q_i_pa = self._parse_quat(rigid_body_prim, "physics:principalAxes")
         msg.info(f"m_i: {m_i}")
         msg.info(f"i_r_com_i: {i_r_com_i}")

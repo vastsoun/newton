@@ -504,6 +504,11 @@ def create_tile_based_kernels(TILE_SIZE_CTS: wp.int32, TILE_SIZE_VRS: wp.int32):
             tile_out_3d_clipped = wp.tile_map(clip_to_one, tile_out_3d)
             wp.tile_store(pattern_T_pattern, tile_out_3d_clipped, offset=(wd_id, i * TILE_SIZE_VRS, j * TILE_SIZE_VRS))
 
+    @wp.func
+    def _isnan(x: wp.float32) -> wp.int32:
+        """Calls wp.isnan and converts the result to int32"""
+        return wp.int32(wp.isnan(x))
+
     @wp.kernel
     def _eval_max_constraint(
         # Inputs
@@ -520,7 +525,7 @@ def create_tile_based_kernels(TILE_SIZE_CTS: wp.int32, TILE_SIZE_VRS: wp.int32):
         if wd_id < constraints.shape[0] and i * TILE_SIZE_CTS < constraints.shape[1]:
             segment = wp.tile_load(constraints, shape=(1, TILE_SIZE_CTS), offset=(wd_id, i * TILE_SIZE_CTS))
             segment_max = wp.tile_max(wp.tile_map(wp.abs, segment))[0]
-            segment_has_nan = wp.int32(wp.tile_max(wp.tile_map(wp.isnan, segment))[0])
+            segment_has_nan = wp.tile_max(wp.tile_map(_isnan, segment))[0]
 
             if tid == 0:
                 if segment_has_nan:

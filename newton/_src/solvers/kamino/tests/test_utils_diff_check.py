@@ -10,6 +10,7 @@ from collections.abc import Callable
 import numpy as np
 from warp.context import Devicelike
 
+from newton._src.solvers.kamino.core.joints import JointActuationType
 from newton._src.solvers.kamino.models import get_tests_usd_assets_path
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
 
@@ -62,40 +63,39 @@ def run_test_single_joint_examples(
         print("run_test_single_joint_examples: no unary joint tests available currently, will test binary joints")
 
     # List file paths of examples
-    file_paths = []
-    if passive_joints:
-        file_paths.extend(
-            [
-                os.path.join(data_dir, "test_joint_cartesian_passive.usda"),
-                os.path.join(data_dir, "test_joint_cylindrical_passive.usda"),
-                os.path.join(data_dir, "test_joint_prismatic_passive.usda"),
-                os.path.join(data_dir, "test_joint_revolute_passive.usda"),
-                os.path.join(data_dir, "test_joint_spherical.usda"),
-                os.path.join(data_dir, "test_joint_universal_passive.usda"),
-            ]
-        )  # Note: lacking passive fixed joint
-    if actuators:
-        file_paths.extend(
-            [
-                os.path.join(data_dir, "test_joint_cartesian_actuated.usda"),
-                os.path.join(data_dir, "test_joint_cylindrical_actuated.usda"),
-                os.path.join(data_dir, "test_joint_prismatic_actuated.usda"),
-                os.path.join(data_dir, "test_joint_revolute_actuated.usda"),
-                os.path.join(data_dir, "test_joint_universal_actuated.usda"),
-            ]
-        )  # Note: lacking actuated spherical & fixed joints
+    file_paths = [
+        os.path.join(data_dir, "test_joint_cartesian_passive.usda"),
+        os.path.join(data_dir, "test_joint_cylindrical_passive.usda"),
+        os.path.join(data_dir, "test_joint_fixed.usda"),
+        os.path.join(data_dir, "test_joint_prismatic_passive.usda"),
+        os.path.join(data_dir, "test_joint_revolute_passive.usda"),
+        os.path.join(data_dir, "test_joint_spherical.usda"),
+        os.path.join(data_dir, "test_joint_universal_passive.usda"),
+    ]
+    joint_type_names = ["cartesian", "cylindrical", "fixed", "prismatic", "revolute", "spherical", "universal"]
 
     # Load and test all examples
     success = True
-    for file_path in file_paths:
+    for file_path, joint_type_name in zip(file_paths, joint_type_names, strict=True):
         importer = USDImporter()
         builder = importer.import_from(source=file_path)
-        model = builder.finalize(device, False)
-        single_test_sucess = test_fun(model)
-        success &= single_test_sucess
-        if not single_test_sucess:
-            example_name = os.path.basename(file_path).split(".")[0]
-            print(f"{test_name} failed for {example_name}")
+
+        # Binary passive joint
+        if binary_joints and passive_joints:
+            model = builder.finalize(device, False)
+            single_test_sucess = test_fun(model)
+            success &= single_test_sucess
+            if not single_test_sucess:
+                print(f"{test_name} failed for binary {joint_type_name} joint")
+
+        # Binary actuator
+        if binary_joints and actuators:
+            builder.joints[0].act_type = JointActuationType.FORCE
+            model = builder.finalize(device, False)
+            single_test_sucess = test_fun(model)
+            success &= single_test_sucess
+            if not single_test_sucess:
+                print(f"{test_name} failed for binary {joint_type_name} actuator")
     return success
 
 

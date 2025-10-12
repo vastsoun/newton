@@ -21,6 +21,7 @@ from dataclasses import dataclass
 
 import numpy as np
 import warp as wp
+from matplotlib import pyplot as plt
 from warp.context import Devicelike
 
 from ..core.model import Model
@@ -263,6 +264,7 @@ class AnimationJointReference:
         input: np.ndarray | None = None,
         rate: int | list[int] = 1,
         loop: bool | list[bool] = True,
+        use_fd: bool = False,
         device: Devicelike = None,
     ):
         """
@@ -288,7 +290,14 @@ class AnimationJointReference:
 
         # If a model is provided, allocate the controller data
         if model is not None:
-            self.allocate(model=model, input=input, rate=rate, loop=loop, device=device)
+            self.allocate(
+                model=model,
+                input=input,
+                rate=rate,
+                loop=loop,
+                use_fd=use_fd,
+                device=device,
+            )
 
     ###
     # Properties
@@ -321,6 +330,7 @@ class AnimationJointReference:
         input: np.ndarray,
         rate: int | list[int] = 1,
         loop: bool | list[bool] = True,
+        use_fd: bool = False,
         device: Devicelike = None,
     ) -> None:
         """
@@ -392,8 +402,36 @@ class AnimationJointReference:
         if input.shape[1] >= 2 * num_actuated_dofs:
             dq_j_ref_np = input[:, num_actuated_dofs : 2 * num_actuated_dofs].astype(np.float32)
         else:
-            # TODO: Add option to compute finite-difference-based velocities
-            dq_j_ref_np = np.zeros_like(q_j_ref_np)
+            # Use finite-differences to estimate velocities if requested
+            if use_fd:
+                # Compute raw finite-difference velocities
+                dq_j_ref_np = np.zeros_like(q_j_ref_np)
+                dq_j_ref_np[1:] = np.diff(q_j_ref_np, axis=0)
+                # Apply a simple moving average filter to smooth out the velocities
+                kernel_size = 5
+                kernel = np.ones(kernel_size) / kernel_size
+                for i in range(num_actuated_dofs):
+                    dq_j_ref_np[:, i] = np.convolve(dq_j_ref_np[:, i], kernel, mode="same")
+
+            # Otherwise, default to zero velocities
+            else:
+                dq_j_ref_np = np.zeros_like(q_j_ref_np)
+
+        # Plot the input data for verification
+        fig, axs = plt.subplots(2, 1, figsize=(10, 6))
+        for i in range(num_actuated_dofs):
+            axs[0].plot(q_j_ref_np[:, i], label=f"Joint {i}")
+            axs[1].plot(dq_j_ref_np[:, i], label=f"Joint {i}")
+        axs[0].set_title("Reference Joint Positions")
+        axs[0].set_xlabel("Frame")
+        axs[0].set_ylabel("Position")
+        axs[0].legend()
+        axs[1].set_title("Reference Joint Velocities")
+        axs[1].set_xlabel("Frame")
+        axs[1].set_ylabel("Velocity")
+        axs[1].legend()
+        plt.tight_layout()
+        plt.show()
 
         # Create the rate and loop arrays
         # TODO: Allow different rates/looping per world

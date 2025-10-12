@@ -86,7 +86,7 @@ class TestAnimationJointReference(unittest.TestCase):
 
         # Create a joint-space animation reference generator
         animation = AnimationJointReference(
-            model=model, input=animation_np, rate=rate, loop=loop, device=self.default_device
+            model=model, input=animation_np, rate=rate, loop=loop, use_fd=True, device=self.default_device
         )
         self.assertIsNotNone(animation)
         self.assertIsNotNone(animation.data)

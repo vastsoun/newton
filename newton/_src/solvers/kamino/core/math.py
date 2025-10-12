@@ -63,6 +63,15 @@ UNIT_Y = wp.constant(vec3f(0.0, 1.0, 0.0))
 UNIT_Z = wp.constant(vec3f(0.0, 0.0, 1.0))
 """ 3D unit vector for the Z axis """
 
+PI = wp.constant(3.141592653589793)
+"""Convenience constant for PI"""
+
+TWO_PI = wp.constant(6.283185307179586)
+"""Convenience constant for 2 * PI"""
+
+HALF_PI = wp.constant(1.5707963267948966)
+"""Convenience constant for PI / 2"""
+
 COS_PI_6 = wp.constant(0.8660254037844387)
 """Convenience constant for cos(PI / 6)"""
 

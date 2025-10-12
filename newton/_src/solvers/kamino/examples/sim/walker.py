@@ -46,7 +46,7 @@ wp.set_module_options({"enable_backward": False})
 
 
 @wp.kernel
-def _control_callback(
+def _test_control_callback(
     model_dt: wp.array(dtype=float32),
     state_t: wp.array(dtype=float32),
     state_w_e_i: wp.array(dtype=vec6f),
@@ -68,7 +68,7 @@ def _control_callback(
 
     # Apply a time-dependent external force
     if t > t_start and t < t_end:
-        control_tau_j[jid] = 0.1
+        control_tau_j[jid] = 0.1 * wp.sin(1.0 * 6.28318 * (t - t_start))
     else:
         control_tau_j[jid] = 0.0
 
@@ -78,12 +78,12 @@ def _control_callback(
 ###
 
 
-def control_callback(sim: Simulator):
+def test_control_callback(sim: Simulator):
     """
     A control callback function
     """
     wp.launch(
-        _control_callback,
+        _test_control_callback,
         dim=1,
         inputs=[
             sim.model.time.dt,
@@ -230,15 +230,17 @@ class WalkerExample:
         # Set solver settings
         settings = SimulatorSettings()
         settings.dt = 0.001
-        settings.solver.primal_tolerance = 1e-6
-        settings.solver.dual_tolerance = 1e-6
-        settings.solver.compl_tolerance = 1e-6
+        settings.problem.alpha = 0.1
+        settings.solver.primal_tolerance = 1e-4
+        settings.solver.dual_tolerance = 1e-4
+        settings.solver.compl_tolerance = 1e-4
+        settings.solver.max_iterations = 200
         settings.solver.rho_0 = 0.05
 
         # Create a simulator
         msg.info("Building the simulator...")
         self.sim = Simulator(builder=builder, settings=settings, device=device)
-        self.sim.set_control_callback(control_callback)
+        # self.sim.set_control_callback(test_control_callback)
 
         # Load animation data for walker
         NUMPY_ANIMATION_PATH = os.path.join(get_examples_usd_assets_path(), "walker/walker_animation_100fps.npy")
@@ -247,14 +249,14 @@ class WalkerExample:
 
         # Create a joint-space animation reference generator
         self.animation = AnimationJointReference(
-            model=self.sim.model, input=animation_np, rate=1, loop=False, device=device
+            model=self.sim.model, input=animation_np, rate=1, loop=False, use_fd=False, device=device
         )
 
         # Create a joint-space PID controller
         njaq = self.sim.model.size.sum_of_num_actuated_joint_dofs
         K_p = 1.0 * np.ones(njaq, dtype=np.float32)
-        K_d = 0.1 * np.ones(njaq, dtype=np.float32)
-        K_i = 0.0 * np.ones(njaq, dtype=np.float32)
+        K_d = 0.01 * np.ones(njaq, dtype=np.float32)
+        K_i = 0.001 * np.ones(njaq, dtype=np.float32)
         decimation = 1 * np.ones(self.sim.model.size.num_worlds, dtype=np.int32)
         self.controller = JointSpacePIDController(
             model=self.sim.model, K_p=K_p, K_i=K_i, K_d=K_d, decimation=decimation, device=device

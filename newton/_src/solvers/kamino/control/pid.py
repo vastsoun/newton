@@ -247,26 +247,33 @@ def _compute_jointspace_pid_control(
         K_i = controller_K_i[actuator_dof_index]
         K_d = controller_K_d[actuator_dof_index]
         integrator = controller_integrator[actuator_dof_index]
-        wp.printf(
-            "[step=%d][aid=%d]: K_p: %f, K_i: %f, K_d: %f, q_j_err: %f, dq_j_err: %f\n",
-            step,
-            actuator_dof_index,
-            K_p,
-            K_i,
-            K_d,
-            q_j_ref - q_j,
-            dq_j_ref - dq_j,
-        )
+
+        # Compute tracking errors
+        q_j_err = q_j_ref - q_j
+        dq_j_err = dq_j_ref - dq_j
 
         # Update the integrator state with anti-windup clamping
-        integrator += (q_j_ref - q_j) * dt
+        integrator += q_j_err * dt
         integrator = wp.clamp(integrator, -tau_j_max, tau_j_max)
 
         # Compute the Feed-Forward + PID control generalized forces
-        tau_j_c = tau_j_ref + K_p * (q_j_ref - q_j) + K_d * (dq_j_ref - dq_j) + K_i * integrator
+        tau_j_c = tau_j_ref + K_p * q_j_err + K_d * dq_j_err + K_i * integrator
 
         # Clamp the generalized control forces to the joint limits
         tau_j_c = wp.clamp(tau_j_c, -tau_j_max, tau_j_max)
+        # wp.printf(
+        #     "[step=%d][aid=%d]: q_j: %f, dq_j: %f, q_j_ref: %f, dq_j_ref: %f, q_j_err: %f, dq_j_err: %f, integrator: %f, tau_j_c: %f\n",
+        #     step,
+        #     actuator_dof_index,
+        #     q_j,
+        #     dq_j,
+        #     q_j_ref,
+        #     dq_j_ref,
+        #     q_j_err,
+        #     dq_j_err,
+        #     integrator,
+        #     tau_j_c,
+        # )
 
         # Store the updated integrator state and actuator control forces
         controller_integrator[actuator_dof_index] = integrator

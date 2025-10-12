@@ -230,15 +230,22 @@ class BoxPendulumExample:
 
         # Create a joint-space PID controller
         njq = self.sim.model.size.sum_of_num_joint_dofs
-        K_p = 20.0 * np.ones(njq, dtype=np.float32)
-        K_i = 0.1 * np.ones(njq, dtype=np.float32)
-        K_d = 2.0 * np.sqrt(K_p)  # Critical damping
-        decimation = 10 * np.ones(self.sim.model.size.num_worlds, dtype=np.int32)  # Control every 10 steps
+        # K_p = 20.0 * np.ones(njq, dtype=np.float32)
+        # K_i = 0.1 * np.ones(njq, dtype=np.float32)
+        # K_d = 2.0 * np.sqrt(K_p)  # Critical damping
+        K_p = 0.0 * np.ones(njq, dtype=np.float32)
+        K_i = 0.0 * np.ones(njq, dtype=np.float32)
+        # K_d = 2.0 * np.sqrt(K_p)  # Critical damping
+        K_d = 60.0 * np.ones(njq, dtype=np.float32)
+        decimation = 1 * np.ones(self.sim.model.size.num_worlds, dtype=np.int32)  # Control every 10 steps
         self.controller = JointSpacePIDController(
             model=self.sim.model, K_p=K_p, K_i=K_i, K_d=K_d, decimation=decimation, device=device
         )
-        self.controller.reset(state=self.sim.data.state_n)
-        self.controller.set_references(q_j_ref=np.full(njq, -0.5 * math.pi, dtype=np.float32))
+        self.controller.reset(model=self.sim.model, state=self.sim.data.state_n)
+        # q_j_ref = np.full(njq, -0.5 * math.pi, dtype=np.float32)
+        q_j_ref = np.zeros(njq, dtype=np.float32)
+        dq_j_ref = np.full(njq, 1.0, dtype=np.float32)
+        self.controller.set_references(q_j_ref=q_j_ref, dq_j_ref=dq_j_ref)
 
         # Define a callback function to wrap the execution of the controller
         def jointspace_pid_control_callback(simulator: Simulator):

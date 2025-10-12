@@ -19,6 +19,8 @@ KAMINO: Dual dynamics
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import warp as wp
 from warp.context import Devicelike
 
@@ -86,20 +88,23 @@ class DualProblemConfig:
     """Contact penetration margin used for unilateral contact constraints"""
 
 
+@dataclass
 class DualProblemSettings:
     """
     A struct to hold configuration parameters of a dual problem.
     """
 
-    def __init__(self, alpha: float = 0.01, beta: float = 0.01, gamma: float = 0.01, delta: float = 1.0e-6):
-        self.alpha: float = alpha
-        """Baumgarte stabilization parameter for bilateral joint constraints."""
-        self.beta: float = beta
-        """Baumgarte stabilization parameter for unilateral joint limit constraints."""
-        self.gamma: float = gamma
-        """Baumgarte stabilization parameter for unilateral contact constraints."""
-        self.delta: float = delta
-        """Contact penetration margin used for unilateral contact constraints"""
+    alpha: float = 0.01
+    """Baumgarte stabilization parameter for bilateral joint constraints."""
+
+    beta: float = 0.01
+    """Baumgarte stabilization parameter for unilateral joint limit constraints."""
+
+    gamma: float = 0.01
+    """Baumgarte stabilization parameter for unilateral contact constraints."""
+
+    delta: float = 1.0e-6
+    """Contact penetration margin used for unilateral contact constraints"""
 
     def to_config(self) -> DualProblemConfig:
         """

@@ -431,7 +431,7 @@ class Simulator:
         Since the joint states are derived quantities of the body states, this
         function computes the joint states based on the initial body states.
         """
-        compute_joints_state(self._model, self._data.solver)
+        compute_joints_state(self._model, self._data.solver, self._data.state_p)
 
     def _reset_joints_wrenches(self):
         """
@@ -513,7 +513,7 @@ class Simulator:
         Updates intermediate quantities required for the forward dynamics solve.
         """
         update_body_inertias(self._model.bodies, self._data.solver.bodies)
-        compute_joints_state(self._model, self._data.solver)
+        compute_joints_state(self._model, self._data.solver, self._data.state_p)
 
     def _forward_kinematics(self):
         """

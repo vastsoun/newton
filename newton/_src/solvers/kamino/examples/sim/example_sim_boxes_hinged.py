@@ -136,10 +136,11 @@ def run_headless(use_cuda_graph=False, load_from_usd=False):
     # Set solver settings
     settings = SimulatorSettings()
     settings.dt = 0.001
-    settings.solver.primal_tolerance = 1e-4
-    settings.solver.dual_tolerance = 1e-4
-    settings.solver.compl_tolerance = 1e-4
-    settings.solver.rho_0 = 0.1
+    settings.solver.primal_tolerance = 1e-6
+    settings.solver.dual_tolerance = 1e-6
+    settings.solver.compl_tolerance = 1e-6
+    settings.solver.max_iterations = 200
+    settings.solver.rho_0 = 1.0
 
     # Create a simulator
     msg.info("Building the simulator...")
@@ -218,10 +219,11 @@ class BoxesHingedExample:
         # Set solver settings
         settings = SimulatorSettings()
         settings.dt = 0.001
-        settings.solver.primal_tolerance = 1e-4
-        settings.solver.dual_tolerance = 1e-4
-        settings.solver.compl_tolerance = 1e-4
-        settings.solver.rho_0 = 0.1
+        settings.solver.primal_tolerance = 1e-6
+        settings.solver.dual_tolerance = 1e-6
+        settings.solver.compl_tolerance = 1e-6
+        settings.solver.max_iterations = 200
+        settings.solver.rho_0 = 1.0
 
         # Create a simulator
         msg.info("Building the simulator...")

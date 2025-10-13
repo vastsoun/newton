@@ -23,7 +23,7 @@ import warp as wp
 
 from .bv import aabb_geom, bs_geom
 from .shapes import ShapeDescriptorType
-from .types import float32, int32, mat83f, transformf, uint32, vec4f
+from .types import float32, int32, mat83f, transformf, uint32, uint64, vec4f
 
 ###
 # Module interface
@@ -138,6 +138,14 @@ class GeometriesModel:
         """
         Shape index of each geometry element.\n
         Shape of ``(num_geoms,)`` and type :class:`int32`.
+        """
+
+        self.ptr: wp.array(dtype=uint64) | None = None
+        """
+        Pointer to the source data of the shape.\n
+        For primitive shapes this is `0` indicating NULL, otherwise it points to
+        the shape data, which can correspond to a mesh, heightfield, or SDF.\n
+        Shape of ``(num_geoms,)`` and type :class:`uint32`.
         """
 
         self.params: wp.array(dtype=vec4f) | None = None

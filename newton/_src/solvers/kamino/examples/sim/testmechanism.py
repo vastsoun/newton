@@ -23,10 +23,7 @@ import warp as wp
 import newton
 import newton._src.solvers.kamino.utils.logger as msg
 import newton.examples
-from newton._src.solvers.kamino.control.animation import AnimationJointReference
-from newton._src.solvers.kamino.control.pid import JointSpacePIDController
 from newton._src.solvers.kamino.core.builder import ModelBuilder
-from newton._src.solvers.kamino.core.types import float32, vec6f
 from newton._src.solvers.kamino.models import get_examples_usd_assets_path
 from newton._src.solvers.kamino.models.builders import add_ground_geom, offset_builder
 from newton._src.solvers.kamino.simulation.simulator import Simulator, SimulatorSettings
@@ -41,66 +38,11 @@ wp.set_module_options({"enable_backward": False})
 
 
 ###
-# Kernels
-###
-
-
-@wp.kernel
-def _test_control_callback(
-    model_dt: wp.array(dtype=float32),
-    state_t: wp.array(dtype=float32),
-    state_w_e_i: wp.array(dtype=vec6f),
-    control_tau_j: wp.array(dtype=float32),
-):
-    """
-    An example control callback kernel.
-    """
-    # Set world index
-    wid = int(0)
-    jid = int(1)
-
-    # Define the time window for the active external force profile
-    t_start = float32(0.0)
-    t_end = float32(5.0)
-
-    # Get the current time
-    t = state_t[wid]
-
-    # Apply a time-dependent external force
-    if t > t_start and t < t_end:
-        control_tau_j[jid] = 0.1 * wp.sin(1.0 * 6.28318 * (t - t_start))
-    else:
-        control_tau_j[jid] = 0.0
-
-
-###
-# Launchers
-###
-
-
-def test_control_callback(sim: Simulator):
-    """
-    A control callback function
-    """
-    wp.launch(
-        _test_control_callback,
-        dim=1,
-        inputs=[
-            sim.model.time.dt,
-            sim.data.solver.time.time,
-            sim.data.solver.bodies.w_e_i,
-            sim.data.control_n.tau_j,
-        ],
-    )
-
-
-###
 # Constants
 ###
 
 # Set the path to the external USD assets
-# USD_MODEL_PATH = os.path.join(get_examples_usd_assets_path(), "walker/walker_floating_with_boxes.usda")
-USD_MODEL_PATH = os.path.join(get_examples_usd_assets_path(), "walker/walker_floating_with_meshes.usda")
+USD_MODEL_PATH = os.path.join(get_examples_usd_assets_path(), "testmechanism/testmechanism_alljoints_v2.usda")
 
 
 ###
@@ -146,15 +88,16 @@ def run_headless(use_cuda_graph=False):
     # Set solver settings
     settings = SimulatorSettings()
     settings.dt = 0.001
-    settings.solver.primal_tolerance = 1e-4
-    settings.solver.dual_tolerance = 1e-4
-    settings.solver.compl_tolerance = 1e-4
-    settings.solver.rho_0 = 1.0
+    settings.problem.alpha = 0.1
+    settings.solver.primal_tolerance = 1e-6
+    settings.solver.dual_tolerance = 1e-6
+    settings.solver.compl_tolerance = 1e-6
+    settings.solver.max_iterations = 200
+    settings.solver.rho_0 = 0.1
 
     # Create a simulator
     msg.info("Building the simulator...")
     sim = Simulator(builder=builder, settings=settings, device=device)
-    # sim.set_control_callback(control_callback)
 
     # Capture graphs for simulator ops: reset and step
     use_cuda_graph &= can_use_cuda_graph
@@ -182,7 +125,7 @@ def run_headless(use_cuda_graph=False):
             sim.reset()
 
     # Step the simulation and collect frames
-    ns = 100  # TODO: 25000
+    ns = 10000
     msg.info(f"Collecting ns={ns} frames...")
     start_time = time.time()
     with wp.ScopedDevice(device):
@@ -195,8 +138,8 @@ def run_headless(use_cuda_graph=False):
             print_progress_bar(i, ns, start_time, prefix="Progress", suffix="")
 
 
-class WalkerExample:
-    """ViewerGL example class for walker simulation."""
+class TestmechanismExample:
+    """ViewerGL example class for testmechanism simulation."""
 
     def __init__(self, viewer, use_cuda_graph=False):
         self.fps = 60
@@ -212,82 +155,35 @@ class WalkerExample:
         device = wp.get_preferred_device()
         device = wp.get_device(device)
 
-        # Create a single-instance system (always load from USD for walker)
+        # Create a single-instance system (always load from USD for testmechanism)
         msg.info("Constructing builder from imported USD ...")
         importer = USDImporter()
         self.builder: ModelBuilder = importer.import_from(source=USD_MODEL_PATH)
 
         # Offset the model to place it above the ground
         # NOTE: The USD model is centered at the origin
-        offset = wp.transformf(0.0, 0.0, 0.25, 0.0, 0.0, 0.0, 1.0)
+        offset = wp.transformf(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0)
         offset_builder(builder=self.builder, offset=offset)
 
         # # Add a static collision layer and geometry for the plane
         # add_ground_geom(builder=self.builder, group=1, collides=1)
 
         # Set gravity
-        self.builder.gravity.enabled = False
+        self.builder.gravity.enabled = True
 
         # Set solver settings
         settings = SimulatorSettings()
         settings.dt = 0.001
         settings.problem.alpha = 0.1
-        settings.solver.primal_tolerance = 1e-4
-        settings.solver.dual_tolerance = 1e-4
-        settings.solver.compl_tolerance = 1e-4
+        settings.solver.primal_tolerance = 1e-6
+        settings.solver.dual_tolerance = 1e-6
+        settings.solver.compl_tolerance = 1e-6
         settings.solver.max_iterations = 200
-        settings.solver.rho_0 = 0.05
+        settings.solver.rho_0 = 0.1
 
         # Create a simulator
         msg.info("Building the simulator...")
         self.sim = Simulator(builder=self.builder, settings=settings, device=device)
-        # self.sim.set_control_callback(test_control_callback)
-
-        # Load animation data for walker
-        NUMPY_ANIMATION_PATH = os.path.join(get_examples_usd_assets_path(), "walker/walker_animation_100fps.npy")
-        animation_np = np.load(NUMPY_ANIMATION_PATH, allow_pickle=True)
-        msg.debug(f"animation_np (shape={animation_np.shape}):\n{animation_np}\n")
-
-        # Create a joint-space animation reference generator
-        self.animation = AnimationJointReference(
-            model=self.sim.model, input=animation_np, rate=10, loop=False, use_fd=True, device=device
-        )
-
-        # Create a joint-space PID controller
-        njaq = self.sim.model.size.sum_of_num_actuated_joint_dofs
-        K_p = 10.0 * np.ones(njaq, dtype=np.float32)
-        K_d = 0.1 * np.ones(njaq, dtype=np.float32)
-        K_i = 0.01 * np.ones(njaq, dtype=np.float32)
-        decimation = 1 * np.ones(self.sim.model.size.num_worlds, dtype=np.int32)
-        self.controller = JointSpacePIDController(
-            model=self.sim.model, K_p=K_p, K_i=K_i, K_d=K_d, decimation=decimation, device=device
-        )
-
-        # Initialize the controller and animation
-        self.controller.reset(model=self.sim.model, state=self.sim.data.state_n)
-        self.animation.reset(q_j_ref_out=self.controller.data.q_j_ref, dq_j_ref_out=self.controller.data.dq_j_ref)
-
-        # Define a callback function to reset the controller
-        def reset_jointspace_pid_control_callback(simulator: Simulator):
-            self.controller.reset(
-                model=simulator.model,
-                state=simulator.data.state_n,
-            )
-            self.animation.reset(q_j_ref_out=self.controller.data.q_j_ref, dq_j_ref_out=self.controller.data.dq_j_ref)
-
-        # Define a callback function to wrap the execution of the controller
-        def compute_jointspace_pid_control_callback(simulator: Simulator):
-            self.animation.step(q_j_ref_out=self.controller.data.q_j_ref, dq_j_ref_out=self.controller.data.dq_j_ref)
-            self.controller.compute(
-                model=simulator.model,
-                state=simulator.data.state_n,
-                time=simulator.data.solver.time,
-                control=simulator.data.control_n,
-            )
-
-        # # Set the reference tracking generation & control callbacks into the simulator
-        self.sim.set_reset_callback(reset_jointspace_pid_control_callback)
-        self.sim.set_control_callback(compute_jointspace_pid_control_callback)
 
         # Don't set a newton model - we'll render everything manually using log_shapes
         self.viewer.set_model(None)
@@ -295,7 +191,7 @@ class WalkerExample:
         # Extract geometry information from the kamino simulator
         self.extract_geometry_info()
 
-        # Define colors for different parts of the walker
+        # Define colors for different parts of the testmechanism
         self.body_colors = [
             wp.array([wp.vec3(0.9, 0.1, 0.3)], dtype=wp.vec3),  # Crimson Red
             wp.array([wp.vec3(0.1, 0.7, 0.9)], dtype=wp.vec3),  # Cyan Blue
@@ -409,7 +305,7 @@ class WalkerExample:
                         half_extents = (params[0] / 2, params[1] / 2, params[2] / 2)
 
                         self.viewer.log_shapes(
-                            f"/walker/body_{bid}_geom_{i}",
+                            f"/testmechanism/body_{bid}_geom_{i}",
                             newton.GeoType.BOX,
                             half_extents,
                             wp.array([final_transform], dtype=wp.transform),
@@ -419,7 +315,7 @@ class WalkerExample:
                         radius = params[0]
 
                         self.viewer.log_shapes(
-                            f"/walker/body_{bid}_geom_{i}",
+                            f"/testmechanism/body_{bid}_geom_{i}",
                             newton.GeoType.SPHERE,
                             radius,
                             wp.array([final_transform], dtype=wp.transform),
@@ -430,7 +326,7 @@ class WalkerExample:
                         half_height = params[1] / 2
 
                         self.viewer.log_shapes(
-                            f"/walker/body_{bid}_geom_{i}",
+                            f"/testmechanism/body_{bid}_geom_{i}",
                             newton.GeoType.CAPSULE,
                             (radius, half_height),
                             wp.array([final_transform], dtype=wp.transform),
@@ -438,7 +334,7 @@ class WalkerExample:
                         )
                     elif sid == 9:  # MESH shape (SHAPE_MESH = 9)
                         self.viewer.log_shapes(
-                            name=f"/walker/body_{bid}_geom_{i}",
+                            name=f"/testmechanism/body_{bid}_geom_{i}",
                             geo_type=newton.GeoType.MESH,
                             geo_scale=1.0,
                             xforms=wp.array([final_transform], dtype=wp.transform),
@@ -473,7 +369,7 @@ class WalkerExample:
             ground_color = wp.array([wp.vec3(0.7, 0.7, 0.7)], dtype=wp.vec3)
 
             self.viewer.log_shapes(
-                "/walker/ground",
+                "/testmechanism/ground",
                 newton.GeoType.BOX,
                 ground_half_extents,
                 wp.array([ground_transform], dtype=wp.transform),
@@ -539,14 +435,14 @@ if __name__ == "__main__":
             raise ValueError(f"Invalid viewer: {args.viewer}")
 
         # Create and run example
-        example = WalkerExample(viewer, use_cuda_graph=args.cuda_graph)
+        example = TestmechanismExample(viewer, use_cuda_graph=args.cuda_graph)
 
-        # Set initial camera position for better view of the walker
+        # Set initial camera position for better view of the testmechanism
         if hasattr(viewer, "set_camera"):
-            # Position camera to get a good view of the walker
-            camera_pos = wp.vec3(0.6, 0.6, 0.3)
-            pitch = -10.0
-            yaw = 225.0
+            # Position camera to get a good view of the testmechanism
+            camera_pos = wp.vec3(0.2, 0.2, 0.15)
+            pitch = -20.0
+            yaw = 215.0
             viewer.set_camera(camera_pos, pitch, yaw)
 
         newton.examples.run(example, args)

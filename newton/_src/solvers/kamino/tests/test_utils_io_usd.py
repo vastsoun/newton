@@ -737,7 +737,7 @@ class TestOpenUSD(unittest.TestCase):
         self.assertEqual(builder_usd.num_bodies, 10)
         self.assertEqual(builder_usd.num_joints, 14)
         self.assertEqual(builder_usd.num_physical_geoms, 0)
-        self.assertEqual(builder_usd.num_collision_geoms, 0)  # NOTE: This is because we cannot load meshes yet
+        self.assertEqual(builder_usd.num_collision_geoms, 10)
         self.assertEqual(builder_usd.num_materials, 1)
         self.assertEqual(builder_usd.joints[0].act_type, JointActuationType.PASSIVE)
         self.assertEqual(builder_usd.joints[0].dof_type, JointDoFType.FIXED)
@@ -768,7 +768,7 @@ class TestOpenUSD(unittest.TestCase):
         self.assertEqual(builder_usd.joints[13].act_type, JointActuationType.PASSIVE)
         self.assertEqual(builder_usd.joints[13].dof_type, JointDoFType.CARTESIAN)
 
-    def test_import_model_walker(self):
+    def test_import_model_walker_with_boxes(self):
         """Test importing the Walker demo model from a USD file"""
         print("")  # Add a newline for better readability
         usd_asset_filename = os.path.join(EXAMPLES_USD_ASSETS_PATH, "walker/walker_floating_with_boxes.usda")
@@ -778,6 +778,17 @@ class TestOpenUSD(unittest.TestCase):
         self.assertEqual(builder_usd.num_bodies, 31)
         self.assertEqual(builder_usd.num_joints, 36)
         self.assertEqual(builder_usd.num_collision_geoms, 3)
+
+    def test_import_model_walker_with_meshes(self):
+        """Test importing the Walker demo model from a USD file"""
+        print("")  # Add a newline for better readability
+        usd_asset_filename = os.path.join(EXAMPLES_USD_ASSETS_PATH, "walker/walker_floating_with_meshes.usda")
+        importer = USDImporter()
+        builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
+        # Check the loaded contents
+        self.assertEqual(builder_usd.num_bodies, 31)
+        self.assertEqual(builder_usd.num_joints, 36)
+        self.assertEqual(builder_usd.num_collision_geoms, 31)
 
 
 ###

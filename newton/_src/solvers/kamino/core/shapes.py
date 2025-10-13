@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import sys
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
 from enum import IntEnum
 
 import numpy as np
@@ -37,6 +38,8 @@ else:
             return func
 
 
+from ....core.types import Vec2, Vec3, nparray
+from ....geometry.types import MESH_MAXHULLVERT, Mesh
 from .types import Descriptor, vec4f
 
 ###
@@ -115,17 +118,28 @@ class ShapeType(IntEnum):
     An enumeration of the different shape types.
     """
 
-    EMPTY = SHAPE_EMPTY
-    SPHERE = SHAPE_SPHERE
-    CYLINDER = SHAPE_CYLINDER
-    CONE = SHAPE_CONE
-    CAPSULE = SHAPE_CAPSULE
-    BOX = SHAPE_BOX
-    ELLIPSOID = SHAPE_ELLIPSOID
-    PLANE = SHAPE_PLANE
-    CONVEX = SHAPE_CONVEX
-    MESH = SHAPE_MESH
-    SDF = SHAPE_SDF
+    EMPTY = 0
+    """The empty shape type, which has no parameters and is used to represent the absence of a shape."""
+    SPHERE = 1
+    """The 1-parameter sphere shape type. Parameters: radius."""
+    CYLINDER = 2
+    """The 2-parameter cylinder shape type. Parameters: radius, height."""
+    CONE = 3
+    """The 2-parameter cone shape type. Parameters: radius, height."""
+    CAPSULE = 4
+    """The 2-parameter capsule shape type. Parameters: radius, height."""
+    BOX = 5
+    """The 3-parameter box shape type. Parameters: depth, width, height."""
+    ELLIPSOID = 6
+    """The 3-parameter ellipsoid shape type. Parameters: a, b, c."""
+    PLANE = 7
+    """The 4-parameter plane shape type. Parameters: normal_x, normal_y, normal_z, distance."""
+    CONVEX = 8
+    """The n-parameter convex shape type. Parameters: vertices, normals, etc."""
+    MESH = 9
+    """The n-parameter mesh shape type. Parameters: vertices, normals, triangles, triangle_normals."""
+    SDF = 10
+    """The n-parameter signed-distance-field shape type. Parameters: sdf data, etc."""
 
 
 class ShapeDescriptor(ABC, Descriptor):
@@ -201,6 +215,7 @@ class EmptyShape(ShapeDescriptor):
         super().__init__(ShapeType.EMPTY, name)
 
     @property
+    @override
     def params(self) -> vec4f:
         return vec4f()
 
@@ -215,6 +230,7 @@ class SphereShape(ShapeDescriptor):
         return f"SphereShape(\nname: {self.name},\nuid: {self.uid},\nradius: {self.radius}\n)"
 
     @property
+    @override
     def params(self) -> vec4f:
         return vec4f(self.radius, 0.0, 0.0, 0.0)
 
@@ -230,6 +246,7 @@ class CylinderShape(ShapeDescriptor):
         return f"CylinderShape(\nname: {self.name},\nuid: {self.uid},\nradius: {self.radius},\nheight: {self.height}\n)"
 
     @property
+    @override
     def params(self) -> vec4f:
         return vec4f(self.radius, self.height, 0.0, 0.0)
 
@@ -245,6 +262,7 @@ class ConeShape(ShapeDescriptor):
         return f"ConeShape(\nname: {self.name},\nuid: {self.uid},\nradius: {self.radius},\nheight: {self.height}\n)"
 
     @property
+    @override
     def params(self) -> vec4f:
         return vec4f(self.radius, self.height, 0.0, 0.0)
 
@@ -260,6 +278,7 @@ class CapsuleShape(ShapeDescriptor):
         return f"CapsuleShape(\nname: {self.name},\nuid: {self.uid},\nradius: {self.radius},\nheight: {self.height}\n)"
 
     @property
+    @override
     def params(self) -> vec4f:
         return vec4f(self.radius, self.height, 0.0, 0.0)
 
@@ -284,6 +303,7 @@ class BoxShape(ShapeDescriptor):
         )
 
     @property
+    @override
     def params(self) -> vec4f:
         return vec4f(self.depth, self.width, self.height, 0.0)
 
@@ -300,6 +320,7 @@ class EllipsoidShape(ShapeDescriptor):
         return f"EllipsoidShape(\nname: {self.name},\nuid: {self.uid},\na: {self.a},\nb: {self.b},\nc: {self.c}\n)"
 
     @property
+    @override
     def params(self) -> vec4f:
         return vec4f(self.a, self.b, self.c, 0.0)
 
@@ -317,6 +338,7 @@ class PlaneShape(ShapeDescriptor):
         )
 
     @property
+    @override
     def params(self) -> vec4f:
         return vec4f(self.normal[0], self.normal[1], self.normal[2], self.distance)
 
@@ -338,25 +360,35 @@ class ConvexShape(ShapeDescriptor):
 
     # TODO: What should these parameters be?
     @property
+    @override
     def params(self) -> vec4f:
         return vec4f(0.0, 0.0, 0.0, 0.0)
 
 
-# TODO: Define MeshData class to hold references to unique meshes
 class MeshShape(ShapeDescriptor):
     def __init__(
         self,
-        vertices: np.ndarray,
-        normals: np.ndarray | None = None,
-        triangles: np.ndarray | None = None,
-        triangle_normals: np.ndarray | None = None,
+        vertices: Sequence[Vec3] | nparray,
+        indices: Sequence[int] | nparray,
+        normals: Sequence[Vec3] | nparray | None = None,
+        uvs: Sequence[Vec2] | nparray | None = None,
+        color: Vec3 | None = None,
+        maxhullvert: int = MESH_MAXHULLVERT,
+        compute_inertia: bool = True,
+        is_solid: bool = True,
         name: str = "mesh",
     ):
         super().__init__(ShapeType.MESH, name)
-        self.vertices = vertices
-        self.normals = normals
-        self.triangles = triangles
-        self.triangle_normals = triangle_normals
+        self._data: Mesh = Mesh(
+            vertices=vertices,
+            indices=indices,
+            normals=normals,
+            uvs=uvs,
+            compute_inertia=compute_inertia,
+            is_solid=is_solid,
+            maxhullvert=maxhullvert,
+            color=color,
+        )
 
     @override
     def __repr__(self):
@@ -365,15 +397,16 @@ class MeshShape(ShapeDescriptor):
             f"name: {self.name},\n"
             f"uid: {self.uid},\n"
             f"params: {self.params},\n"
-            f"vertices: {self.vertices.shape},\n"
-            f"normals: {self.normals.shape if self.normals is not None else None},\n"
-            f"triangles: {self.triangles.shape if self.triangles is not None else None},\n"
-            f"triangle_normals: {self.triangle_normals.shape if self.triangle_normals is not None else None}\n"
+            # f"vertices: {self.vertices.shape},\n"
+            # f"normals: {self.normals.shape if self.normals is not None else None},\n"
+            # f"triangles: {self.triangles.shape if self.triangles is not None else None},\n"
+            # f"triangle_normals: {self.triangle_normals.shape if self.triangle_normals is not None else None}\n"
             f")"
         )
 
     # TODO: What should these parameters be?
     @property
+    @override
     def params(self) -> vec4f:
         return vec4f(0.0, 0.0, 0.0, 0.0)
 
@@ -390,6 +423,7 @@ class SDFShape(ShapeDescriptor):
 
     # TODO: What should these parameters be?
     @property
+    @override
     def params(self) -> vec4f:
         return vec4f(0.0, 0.0, 0.0, 0.0)
 

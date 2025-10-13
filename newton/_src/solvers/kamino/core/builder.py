@@ -42,7 +42,7 @@ from .joints import (
 from .materials import MaterialDescriptor, MaterialManager, MaterialPairProperties, MaterialPairsModel
 from .math import FLOAT32_EPS, FLOAT32_MAX, FLOAT32_MIN
 from .model import Model, ModelInfo
-from .shapes import ShapeDescriptorType
+from .shapes import ShapeDescriptorType, ShapeType
 from .time import TimeModel
 from .types import Axis, float32, int32, mat33f, transformf, uint32, vec3f, vec4f, vec6f
 from .world import WorldDescriptor
@@ -875,7 +875,8 @@ class ModelBuilder:
 
         # If there are no collision geometries indicate this `-1`s
         if not has_cgeoms:
-            return -1, [-1] * self.num_worlds
+            # return -1, [-1] * self.num_worlds
+            return 0, [0] * self.num_worlds
 
         # Else proceed to calculate the maximum number of contacts
         model_max_contacts = 0
@@ -979,6 +980,7 @@ class ModelBuilder:
         cgeoms_lid = []
         cgeoms_bid = []
         cgeoms_sid = []
+        cgeoms_ptr = []
         cgeoms_params = []
         cgeoms_offset = []
         cgeoms_group = []
@@ -1085,6 +1087,7 @@ class ModelBuilder:
 
         # A helper function to collect model collision geometries data
         def collect_collision_geometry_model_data():
+            finalized_meshes = {}
             for geom in self._cgeoms:
                 cgeoms_wid.append(geom.wid)
                 cgeoms_gid.append(geom.gid)
@@ -1096,6 +1099,23 @@ class ModelBuilder:
                 cgeoms_mid.append(geom.mid)
                 cgeoms_group.append(geom.group)
                 cgeoms_collides.append(geom.collides)
+
+                # TODO: Clean this up
+                # build list of ids for geometry sources (meshes, sdfs)
+                # do not duplicate meshes
+                if geom.shape.typeid in (ShapeType.MESH, ShapeType.SDF):
+                    cgeom_hash = hash(geom)  # avoid repeated hash computations
+                    # If the geometry has a Mesh or SDF source,
+                    # finalize it and retrieve the mesh pointer/index
+                    if geom:
+                        if cgeom_hash not in finalized_meshes:
+                            finalized_meshes[cgeom_hash] = geom.shape._data.finalize(device=device)
+                        cgeoms_ptr.append(finalized_meshes[cgeom_hash])
+                        print("Adding Mesh/SDF ptr:", finalized_meshes[cgeom_hash])
+
+                    # add null pointer
+                    else:
+                        cgeoms_ptr.append(0)
 
         # A helper function to collect model physical geometries data
         def collect_physical_geometry_model_data():
@@ -1282,6 +1302,7 @@ class ModelBuilder:
             model.cgeoms.lid = wp.array(cgeoms_lid, dtype=int32)
             model.cgeoms.bid = wp.array(cgeoms_bid, dtype=int32)
             model.cgeoms.sid = wp.array(cgeoms_sid, dtype=int32)
+            model.cgeoms.ptr = wp.array(cgeoms_ptr, dtype=wp.uint64)
             model.cgeoms.params = wp.array(cgeoms_params, dtype=vec4f, requires_grad=requires_grad)
             model.cgeoms.offset = wp.array(cgeoms_offset, dtype=transformf, requires_grad=requires_grad)
             model.cgeoms.mid = wp.array(cgeoms_mid, dtype=int32)

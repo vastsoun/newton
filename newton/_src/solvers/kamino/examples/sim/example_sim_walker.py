@@ -250,7 +250,7 @@ class WalkerExample:
 
         # Create a joint-space animation reference generator
         self.animation = AnimationJointReference(
-            model=self.sim.model, input=animation_np, rate=10, loop=False, use_fd=True, device=device
+            model=self.sim.model, input=animation_np, rate=1, loop=False, use_fd=True, device=device
         )
 
         # Create a joint-space PID controller
@@ -312,6 +312,9 @@ class WalkerExample:
 
         # Capture CUDA graph if requested and available
         self.capture()
+
+        # Block until the user is ready
+        input("Press Enter to continue...")
 
     def extract_geometry_info(self):
         """Extract geometry information from the kamino simulator."""

@@ -285,6 +285,9 @@ class BoxesHingedExample:
         # Capture CUDA graph if requested and available
         self.capture()
 
+        # Block until the user is ready
+        input("Press Enter to continue...")
+
     def extract_geometry_info(self):
         """Extract geometry information from the kamino simulator."""
         # Get collision geometry information from the simulator

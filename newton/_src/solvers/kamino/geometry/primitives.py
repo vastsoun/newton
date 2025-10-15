@@ -375,7 +375,7 @@ def box_box(
 ):
     # Use the tested collision calculation from collision_primitive.py
     contact_dists, contact_positions, contact_normals = collide_box_box(
-        box1_in.pos, box1_in.rot, box1_in.size, box2_in.pos, box2_in.rot, box2_in.size
+        box1_in.pos, box1_in.rot, box1_in.size, box2_in.pos, box2_in.rot, box2_in.size, margin
     )
 
     # Count valid contacts (those with finite distance)

@@ -19,26 +19,15 @@ KAMINO: Joint Model Types & Containers
 
 from __future__ import annotations
 
-import sys
 from enum import IntEnum
 
 import warp as wp
-
-if sys.version_info >= (3, 12):
-    from typing import override
-else:
-    try:
-        from typing_extensions import override
-    except ImportError:
-        # Fallback no-op decorator if typing_extensions is not available
-        def override(func):
-            return func
-
 
 from .types import (
     float32,
     int32,
     mat33f,
+    override,
     transformf,
     vec3f,
     vec6f,

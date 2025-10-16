@@ -13,9 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-KAMINO
-"""
+"""KAMINO"""
 
 from .core import math
 from .core.bodies import RigidBodiesData, RigidBodiesModel, RigidBodyDescriptor
@@ -79,6 +77,9 @@ from .core.time import (
     TimeModel,
 )
 from .core.types import (
+    ArrayLike,
+    FloatArrayLike,
+    IntArrayLike,
     Mat33,
     Quat,
     Transform,
@@ -164,6 +165,7 @@ __all__ = [
     "GRAVITY_NAME_DEFAULT",
     "APADMMDualSolver",
     "APADMMSettings",
+    "ArrayLike",
     "BoxShape",
     "CapsuleShape",
     "CollisionDetector",
@@ -187,11 +189,13 @@ __all__ = [
     "DualProblemData",
     "EllipsoidShape",
     "EmptyShape",
+    "FloatArrayLike",
     "GeometriesData",
     "GeometriesModel",
     "GeometryDescriptor",
     "GravityDescriptor",
     "GravityModel",
+    "IntArrayLike",
     "JointActuationType",
     "JointDescriptor",
     "JointDoFType",

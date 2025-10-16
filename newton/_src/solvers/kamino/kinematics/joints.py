@@ -35,7 +35,6 @@ from ..core.math import (
     screw_linear,
 )
 from ..core.model import Model, ModelData
-from ..core.state import State
 from ..core.types import (
     float32,
     int32,
@@ -359,7 +358,20 @@ def _compute_joints_state(
 ###
 
 
-def compute_joints_state(model: Model, state_p: State, data: ModelData) -> None:
+def compute_joints_state(model: Model, q_j_p: wp.array, data: ModelData) -> None:
+    """
+    Computes the states of the joints based on the current body states.
+
+    The states of the joint includes both the generalized coordinates and velocities
+    corresponding to the joint's degrees of freedom (DoFs), as well as the residuals
+    of the joint constraints.
+
+    Args:
+        model: The model containing the joint definitions.
+        q_j_p: Flat array of the previous joint DoF coordinates (used for continuity of revolute joints).
+        data: The model data containing the current body states and where the joint states will be stored.
+
+    """
     wp.launch(
         _compute_joints_state,
         dim=model.size.sum_of_num_joints,
@@ -380,7 +392,7 @@ def compute_joints_state(model: Model, state_p: State, data: ModelData) -> None:
             model.joints.X_j,
             data.bodies.q_i,
             data.bodies.u_i,
-            state_p.q_j,
+            q_j_p,
             # Outputs:
             data.joints.p_j,
             data.joints.r_j,

@@ -18,11 +18,10 @@
 import numpy as np
 import scipy.linalg
 import warp as wp
-from warp.context import Devicelike
+from warp._src.context import Devicelike
 
-from newton._src.solvers.kamino.core.types import float32, int32
+from newton._src.solvers.kamino.core.types import FloatArrayLike, float32, int32
 from newton._src.solvers.kamino.linalg.utils.rand import (
-    ArrayLike,
     random_rhs_for_matrix,
     random_spd_matrix,
     random_symmetric_matrix,
@@ -194,7 +193,7 @@ class RandomProblemLDLT:
         dims: list[int] | int | None = None,
         maxdims: list[int] | int | None = None,
         ranks: list[int] | int | None = None,
-        eigenvalues: ArrayLike = None,
+        eigenvalues: FloatArrayLike | None = None,
         A: list[np.ndarray] | None = None,
         b: list[np.ndarray] | None = None,
         np_dtype=np.float32,

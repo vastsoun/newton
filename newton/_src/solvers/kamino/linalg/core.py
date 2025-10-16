@@ -24,7 +24,7 @@ from dataclasses import dataclass
 
 import numpy as np
 import warp as wp
-from warp.context import Devicelike
+from warp._src.context import Devicelike
 
 from ..core.types import FloatType, IntType, VecIntType, float32, int32
 from ..utils import logger as msg

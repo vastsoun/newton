@@ -22,7 +22,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import warp as wp
-from warp.context import Devicelike
+from warp._src.context import Devicelike
 
 from ..core.math import FLOAT32_EPS, UNIT_Z, screw, screw_angular, screw_linear
 from ..core.model import Model, ModelData, ModelSize
@@ -105,6 +105,22 @@ class DualProblemSettings:
 
     delta: float = 1.0e-6
     """Contact penetration margin used for unilateral contact constraints"""
+
+    use_preconditioning: bool = True
+    """Set to True to enable preconditioning of the dual problem."""
+
+    def check(self) -> None:
+        """
+        Validate the settings.
+        """
+        if self.alpha < 0.0:
+            raise ValueError(f"Invalid alpha: {self.alpha}. Must be non-negative.")
+        if self.beta < 0.0:
+            raise ValueError(f"Invalid beta: {self.beta}. Must be non-negative.")
+        if self.gamma < 0.0:
+            raise ValueError(f"Invalid gamma: {self.gamma}. Must be non-negative.")
+        if self.delta < 0.0:
+            raise ValueError(f"Invalid delta: {self.delta}. Must be non-negative.")
 
     def to_config(self) -> DualProblemConfig:
         """
@@ -1255,7 +1271,7 @@ class DualProblem:
 
         # Store the specified settings
         num_worlds = model.info.num_worlds if model is not None else 1
-        self._settings: list[DualProblemSettings] = self._check_settings(settings, num_worlds)
+        self._settings = self._check_settings(settings, num_worlds)
 
         # Allocate memory for the remaining dual problem quantities
         with wp.ScopedDevice(device):
@@ -1333,6 +1349,7 @@ class DualProblem:
             ],
         )
 
-        # Build and apply the Delassus diagonal preconditioner
-        build_dual_preconditioner(self)
-        apply_dual_preconditioner_to_dual(self)
+        # Optionally build and apply the Delassus diagonal preconditioner
+        if any(s.use_preconditioning for s in self._settings):
+            build_dual_preconditioner(self)
+            apply_dual_preconditioner_to_dual(self)

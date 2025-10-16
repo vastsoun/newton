@@ -17,25 +17,18 @@
 
 import numpy as np
 
+from ...core.types import FloatArrayLike
+
 ###
 # Module interface
 ###
 
 __all__ = [
-    "ArrayLike",
     "eigenvalues_from_distribution",
     "random_rhs_for_matrix",
     "random_spd_matrix",
     "random_symmetric_matrix",
 ]
-
-
-###
-# Types
-###
-
-ArrayLike = np.ndarray | list[int] | list[float] | list[list[int]] | list[list[float]]
-"""An Array-like structure for aliasing various data types compatible with numpy."""
 
 
 ###
@@ -156,7 +149,7 @@ def random_symmetric_matrix(
     scale: float | None = None,
     seed: int | None = None,
     rank: int | None = None,
-    eigenvalues: ArrayLike | None = None,
+    eigenvalues: FloatArrayLike | None = None,
     return_source: bool = False,
 ) -> np.ndarray | tuple[np.ndarray, np.ndarray]:
     """

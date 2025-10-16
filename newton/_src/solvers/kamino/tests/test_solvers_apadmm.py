@@ -294,6 +294,7 @@ class TestPADMMDualSolver(unittest.TestCase):
         settings.rho_0 = 1.0  # 9.7  # 2.7
         settings.omega = 1.0  # 1.99
         settings.max_iterations = 500
+        settings.use_acceleration = True
 
         # Create the ADMM solver
         solver = APADMMDualSolver(

@@ -23,7 +23,6 @@ import warp as wp
 
 from ..core.math import quat_box_plus, screw, screw_angular, screw_linear
 from ..core.model import Model, ModelData
-from ..core.state import State
 from ..core.types import float32, int32, mat33f, transformf, vec3f, vec4f, vec6f
 
 ###
@@ -88,42 +87,39 @@ def semi_implicit_euler_with_logmap(
 
 
 @wp.kernel
-def _integrate_semi_implicit_euler(
-    # Model inputs:
-    model_dt_in: wp.array(dtype=float32),
-    model_gravity_in: wp.array(dtype=vec4f),
-    model_bodies_wid_in: wp.array(dtype=int32),
-    model_bodies_inv_m_in: wp.array(dtype=float32),
-    model_bodies_I_in: wp.array(dtype=mat33f),
-    model_bodies_inv_I_in: wp.array(dtype=mat33f),
-    # State inputs:
-    state_bodies_q_in: wp.array(dtype=transformf),
-    state_bodies_u_in: wp.array(dtype=vec6f),
-    state_bodies_w_in: wp.array(dtype=vec6f),
-    # State outputs:
-    state_bodies_q_out: wp.array(dtype=transformf),
-    state_bodies_u_out: wp.array(dtype=vec6f),
+def _integrate_semi_implicit_euler_inplace(
+    # Inputs:
+    model_dt: wp.array(dtype=float32),
+    model_gravity: wp.array(dtype=vec4f),
+    model_bodies_wid: wp.array(dtype=int32),
+    model_bodies_inv_m: wp.array(dtype=float32),
+    model_bodies_I: wp.array(dtype=mat33f),
+    model_bodies_inv_I: wp.array(dtype=mat33f),
+    state_bodies_w: wp.array(dtype=vec6f),
+    # Outputs:
+    state_bodies_q: wp.array(dtype=transformf),
+    state_bodies_u: wp.array(dtype=vec6f),
 ):
     # Retrieve the thread index
     tid = wp.tid()
 
     # Retrive the world index
-    wid = model_bodies_wid_in[tid]
+    wid = model_bodies_wid[tid]
 
     # Retrieve the time step and gravity vector
-    dt = model_dt_in[wid]
-    gv = model_gravity_in[wid]
+    dt = model_dt[wid]
+    gv = model_gravity[wid]
     g = gv.w * vec3f(gv.x, gv.y, gv.z)
 
     # Retrieve the model data
-    inv_m_i = model_bodies_inv_m_in[tid]
-    I_i = model_bodies_I_in[tid]
-    inv_I_i = model_bodies_inv_I_in[tid]
+    inv_m_i = model_bodies_inv_m[tid]
+    I_i = model_bodies_I[tid]
+    inv_I_i = model_bodies_inv_I[tid]
 
     # Retrieve the current state of the body
-    q_i = state_bodies_q_in[tid]
-    u_i = state_bodies_u_in[tid]
-    w_i = state_bodies_w_in[tid]
+    q_i = state_bodies_q[tid]
+    u_i = state_bodies_u[tid]
+    w_i = state_bodies_w[tid]
 
     # Compute the next pose and twist
     q_i_n, u_i_n = semi_implicit_euler_with_logmap(
@@ -137,9 +133,9 @@ def _integrate_semi_implicit_euler(
         w_i,
     )
 
-    # Store the computed next pose and twist in the output arrays
-    state_bodies_q_out[tid] = q_i_n
-    state_bodies_u_out[tid] = u_i_n
+    # Store the computed next pose and twist
+    state_bodies_q[tid] = q_i_n
+    state_bodies_u[tid] = u_i_n
 
 
 ###
@@ -147,9 +143,9 @@ def _integrate_semi_implicit_euler(
 ###
 
 
-def integrate_semi_implicit_euler(model: Model, data: ModelData, state: State):
+def integrate_semi_implicit_euler(model: Model, data: ModelData):
     wp.launch(
-        _integrate_semi_implicit_euler,
+        _integrate_semi_implicit_euler_inplace,
         dim=model.size.sum_of_num_bodies,
         inputs=[
             # Inputs:
@@ -159,11 +155,9 @@ def integrate_semi_implicit_euler(model: Model, data: ModelData, state: State):
             model.bodies.inv_m_i,
             data.bodies.I_i,
             data.bodies.inv_I_i,
-            data.bodies.q_i,
-            data.bodies.u_i,
             data.bodies.w_i,
             # Outputs:
-            state.q_i,
-            state.u_i,
+            data.bodies.q_i,
+            data.bodies.u_i,
         ],
     )

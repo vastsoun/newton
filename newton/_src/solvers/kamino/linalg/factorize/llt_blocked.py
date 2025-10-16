@@ -19,7 +19,7 @@ from ctypes import sizeof
 from functools import cache
 
 import warp as wp
-from warp.context import Devicelike
+from warp._src.context import Devicelike
 
 from ...core.types import float32, int32
 

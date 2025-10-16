@@ -23,7 +23,7 @@ import uuid  # TODO: remove this import
 
 import numpy as np
 import warp as wp
-from warp.context import Devicelike
+from warp._src.context import Devicelike
 
 from .bodies import RigidBodiesModel, RigidBodyDescriptor
 from .geometry import (

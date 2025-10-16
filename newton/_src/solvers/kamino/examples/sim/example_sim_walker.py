@@ -120,67 +120,13 @@ def run_headless(use_cuda_graph=False):
     device = wp.get_device(device)
     msg.info(f"device: {device}")
 
-    # # TODO: REMOVE THIS
-    # use_cuda_graph = False
+    # TODO: REMOVE THIS
+    use_cuda_graph = False
 
-    # # Determine if using CUDA graphs
-    # can_use_cuda_graph = device.is_cuda and wp.is_mempool_enabled(device)
-    # msg.info(f"use_cuda_graph: {use_cuda_graph}")
-    # msg.info(f"can_use_cuda_graph: {can_use_cuda_graph}")
-
-    # # Create a single-instance system
-    # msg.info("Constructing builder from imported USD ...")
-    # importer = USDImporter()
-    # builder: ModelBuilder = importer.import_from(source=BOX_USD_MODEL_PATH)
-
-    # # Offset the model to place it above the ground
-    # # NOTE: The USD model is centered at the origin
-    # offset = wp.transformf(0.0, 0.0, 0.25, 0.0, 0.0, 0.0, 1.0)
-    # offset_builder(builder=builder, offset=offset)
-
-    # # Add a static collision layer and geometry for the plane
-    # add_ground_geom(builder, group=1, collides=1)
-
-    # # Set gravity
-    # builder.gravity.enabled = True
-
-    # # Set solver settings
-    # settings = SimulatorSettings()
-    # settings.dt = 0.001
-    # settings.solver.primal_tolerance = 1e-4
-    # settings.solver.dual_tolerance = 1e-4
-    # settings.solver.compl_tolerance = 1e-4
-    # settings.solver.rho_0 = 1.0
-
-    # # Create a simulator
-    # msg.info("Building the simulator...")
-    # sim = Simulator(builder=builder, settings=settings, device=device)
-    # # sim.set_control_callback(control_callback)
-
-    # # Capture graphs for simulator ops: reset and step
-    # use_cuda_graph &= can_use_cuda_graph
-    # reset_graph = None
-    # step_graph = None
-    # if use_cuda_graph:
-    #     with wp.ScopedCapture(device) as reset_capture:
-    #         sim.reset()
-    #     reset_graph = reset_capture.graph
-    #     with wp.ScopedCapture(device) as step_capture:
-    #         sim.step()
-    #     step_graph = step_capture.graph
-
-    # # Warm-start the simulator before rendering
-    # # NOTE: This compiles and loads the warp kernels prior to execution
-    # msg.info("Warming up the simulator...")
-    # if use_cuda_graph:
-    #     msg.info("Running with CUDA graphs...")
-    #     wp.capture_launch(reset_graph)
-    #     wp.capture_launch(step_graph)
-    # else:
-    #     msg.info("Running with kernels...")
-    #     with wp.ScopedDevice(device):
-    #         sim.step()
-    #         sim.reset()
+    # Determine if using CUDA graphs
+    can_use_cuda_graph = device.is_cuda and wp.is_mempool_enabled(device)
+    msg.info(f"use_cuda_graph: {use_cuda_graph}")
+    msg.info(f"can_use_cuda_graph: {can_use_cuda_graph}")
 
     # Create a single-instance system (always load from USD for walker)
     msg.info("Constructing builder from imported USD ...")
@@ -238,20 +184,12 @@ def run_headless(use_cuda_graph=False):
         device=device,
     )
 
-    # Create a joint-space PID controller configuration arrays
-    njaq = sim.model.size.sum_of_num_actuated_joint_dofs
-    K_p = np.zeros(njaq, dtype=np.float32)
-    K_d = np.zeros(njaq, dtype=np.float32)
-    K_i = np.zeros(njaq, dtype=np.float32)
-    decimation = 1 * np.ones(sim.model.size.num_worlds, dtype=np.int32)
-
-    # Set a single joint controller
-    aj = 2
-    K_p[aj] = 10.0
-    K_d[aj] = 0.0
-    K_i[aj] = 0.0
-
     # Create a joint-space PID controller
+    njaq = sim.model.size.sum_of_num_actuated_joint_dofs
+    K_p = 80.0 * np.ones(njaq, dtype=np.float32)
+    K_d = 0.1 * np.ones(njaq, dtype=np.float32)
+    K_i = 0.01 * np.ones(njaq, dtype=np.float32)
+    decimation = 1 * np.ones(sim.model.size.num_worlds, dtype=np.int32)
     controller = JointSpacePIDController(
         model=sim.model, K_p=K_p, K_i=K_i, K_d=K_d, decimation=decimation, device=device
     )
@@ -262,24 +200,16 @@ def run_headless(use_cuda_graph=False):
 
     # Define a callback function to reset the controller
     def reset_jointspace_pid_control_callback(simulator: Simulator):
-        controller.reset(
-            model=simulator.model,
-            state=simulator.data.state_n,
-        )
+        controller.reset(model=simulator.model, state=simulator.data.state_n)
         animation.reset(q_j_ref_out=controller.data.q_j_ref, dq_j_ref_out=controller.data.dq_j_ref)
-        animation.data.frame.fill_(100)
 
     # Define a callback function to wrap the execution of the controller
     def compute_jointspace_pid_control_callback(simulator: Simulator):
-        animation.extract(
+        animation.step(
+            time=simulator.data.solver.time,
             q_j_ref_out=controller.data.q_j_ref,
             dq_j_ref_out=controller.data.dq_j_ref,
         )
-        # animation.step(
-        #     time=simulator.data.solver.time,
-        #     q_j_ref_out=controller.data.q_j_ref,
-        #     dq_j_ref_out=controller.data.dq_j_ref,
-        # )
         controller.compute(
             model=simulator.model,
             state=simulator.data.state_n,
@@ -291,32 +221,40 @@ def run_headless(use_cuda_graph=False):
     sim.set_reset_callback(reset_jointspace_pid_control_callback)
     sim.set_control_callback(compute_jointspace_pid_control_callback)
 
-    # Warm-up the simulator before execution
-    sim.step()
-    sim.reset()
+    # Capture graphs for simulator ops: reset and step
+    use_cuda_graph &= can_use_cuda_graph
+    reset_graph = None
+    step_graph = None
+    if use_cuda_graph:
+        with wp.ScopedCapture(device) as reset_capture:
+            sim.reset()
+        reset_graph = reset_capture.graph
+        with wp.ScopedCapture(device) as step_capture:
+            sim.step()
+        step_graph = step_capture.graph
+
+    # Warm-start the simulator before rendering
+    # NOTE: This compiles and loads the warp kernels prior to execution
+    msg.info("Warming up the simulator...")
+    if use_cuda_graph:
+        msg.info("Running with CUDA graphs...")
+        wp.capture_launch(reset_graph)
+        wp.capture_launch(step_graph)
+    else:
+        msg.info("Running with kernels...")
+        with wp.ScopedDevice(device):
+            sim.step()
+            sim.reset()
 
     # Step the simulation and collect frames
-    ns = 1
+    ns = 10000
     msg.warning(f"Collecting ns={ns} frames...")
+    start_time = time.time()
     with wp.ScopedDevice(device):
         for i in range(ns):
             sim.step()
-            # sim._forward_intermediate()
             wp.synchronize()
-
-            # Print data
-            msg.info(f"[{i}]: q_i_p:\n{sim.data.state_p.q_i.numpy().flatten()}")
-            msg.info(f"[{i}]: q_i_n:\n{sim.data.state_n.q_i.numpy().flatten()}\n")
-            msg.info(f"[{i}]: u_i_p:\n{sim.data.state_p.u_i.numpy().flatten()}")
-            msg.info(f"[{i}]: u_i_n:\n{sim.data.state_n.u_i.numpy().flatten()}\n")
-            msg.info(f"[{i}]: w_i_p:\n{sim.data.state_p.w_i.numpy().flatten()}")
-            msg.info(f"[{i}]: w_i_n:\n{sim.data.state_n.w_i.numpy().flatten()}\n")
-            msg.info(f"[{i}]: q_j_p:\n{sim.data.state_p.q_j.numpy().flatten()}")
-            msg.info(f"[{i}]: q_j_n:\n{sim.data.state_n.q_j.numpy().flatten()}\n")
-            msg.info(f"[{i}]: dq_j_p:\n{sim.data.state_p.dq_j.numpy().flatten()}")
-            msg.info(f"[{i}]: dq_j_n:\n{sim.data.state_n.dq_j.numpy().flatten()}\n")
-            msg.info(f"[{i}]: tau_j_p:\n{sim.data.control_p.tau_j.numpy().flatten()}")
-            msg.info(f"[{i}]: tau_j_n:\n{sim.data.control_n.tau_j.numpy().flatten()}\n")
+            print_progress_bar(i, ns, start_time, prefix="Progress", suffix="")
 
 
 class WalkerExample:
@@ -422,17 +360,13 @@ class WalkerExample:
         K_p = 80.0 * np.ones(njaq, dtype=np.float32)
         K_d = 0.1 * np.ones(njaq, dtype=np.float32)
         K_i = 0.01 * np.ones(njaq, dtype=np.float32)
-        # K_p = np.zeros(njaq, dtype=np.float32)
-        # K_d = np.zeros(njaq, dtype=np.float32)
-        # K_i = np.zeros(njaq, dtype=np.float32)
-        # K_p[self.aj] = 1.0
-        # K_d[self.aj] = 0.0
-        # K_i[self.aj] = 0.0
-        self.aj = 2
         decimation = 1 * np.ones(self.sim.model.size.num_worlds, dtype=np.int32)
         self.controller = JointSpacePIDController(
             model=self.sim.model, K_p=K_p, K_i=K_i, K_d=K_d, decimation=decimation, device=device
         )
+
+        # Set a single joint controller for plotting
+        self.aj = 2
 
         # Initialize the controller and animation
         self.controller.reset(model=self.sim.model, state=self.sim.data.state_n)
@@ -440,19 +374,11 @@ class WalkerExample:
 
         # Define a callback function to reset the controller
         def reset_jointspace_pid_control_callback(simulator: Simulator):
-            self.controller.reset(
-                model=simulator.model,
-                state=simulator.data.state_n,
-            )
+            self.controller.reset(model=simulator.model, state=simulator.data.state_n)
             self.animation.reset(q_j_ref_out=self.controller.data.q_j_ref, dq_j_ref_out=self.controller.data.dq_j_ref)
-            # self.animation.data.frame.fill_(100)
 
         # Define a callback function to wrap the execution of the controller
         def compute_jointspace_pid_control_callback(simulator: Simulator):
-            # self.animation.extract(
-            #     q_j_ref_out=self.controller.data.q_j_ref,
-            #     dq_j_ref_out=self.controller.data.dq_j_ref,
-            # )
             self.animation.step(
                 time=simulator.data.solver.time,
                 q_j_ref_out=self.controller.data.q_j_ref,
@@ -761,9 +687,6 @@ if __name__ == "__main__":
         aid = example.aj
 
         # Plot the measured vs reference joint positions
-        # ax0min = np.min(example.log_q_j[: example.sim_steps, aid])
-        # ax0max = np.max(example.log_q_j[: example.sim_steps, aid])
-        # axs[0].vlines(example.log_time[: example.sim_steps], ax0min, ax0max, color='grey', linestyle='--', zorder=-1)
         axs[0].step(example.log_time[: example.sim_steps], example.log_q_j[: example.sim_steps, aid], label="Measured")
         axs[0].step(
             example.log_time[: example.sim_steps],
@@ -777,9 +700,6 @@ if __name__ == "__main__":
         axs[0].grid()
 
         # Plot the measured vs reference joint velocities
-        # ax1min = np.min(example.log_dq_j[: example.sim_steps, aid])
-        # ax1max = np.max(example.log_dq_j[: example.sim_steps, aid])
-        # axs[1].vlines(example.log_time[: example.sim_steps], ax1min, ax1max, color='grey', linestyle='--', zorder=-1)
         axs[1].step(example.log_time[: example.sim_steps], example.log_dq_j[: example.sim_steps, aid], label="Measured")
         axs[1].step(
             example.log_time[: example.sim_steps],
@@ -793,9 +713,6 @@ if __name__ == "__main__":
         axs[1].grid()
 
         # Plot the control torques
-        # ax3min = np.min(example.log_tau_j[: example.sim_steps, aid])
-        # ax3max = np.max(example.log_tau_j[: example.sim_steps, aid])
-        # axs[2].vlines(example.log_time[: example.sim_steps], ax3min, ax3max, color='grey', linestyle='--', zorder=-1)
         axs[2].step(
             example.log_time[: example.sim_steps], example.log_tau_j[: example.sim_steps, aid], label="Control Torque"
         )

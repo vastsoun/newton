@@ -22,7 +22,7 @@ from __future__ import annotations
 from typing import Any
 
 import warp as wp
-from warp.context import Devicelike
+from warp._src.context import Devicelike
 
 from ..core.joints import JointDoFType
 from ..core.math import I_6

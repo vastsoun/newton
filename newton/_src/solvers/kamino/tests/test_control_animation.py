@@ -98,8 +98,8 @@ class TestAnimationJointReference(unittest.TestCase):
         self.assertEqual(animation.data.loop.numpy()[0], 1 if loop else 0)
         self.assertEqual(animation.data.rate.shape, (1,))
         self.assertEqual(animation.data.rate.numpy()[0], rate)
-        self.assertEqual(animation.data.step.shape, (1,))
-        self.assertEqual(animation.data.step.numpy()[0], 0)
+        self.assertEqual(animation.data.frame.shape, (1,))
+        self.assertEqual(animation.data.frame.numpy()[0], 0)
 
         # Check that the internal numpy arrays match the input data
         np.testing.assert_array_almost_equal(animation.data.q_j_ref.numpy(), animation_np, decimal=6)
@@ -111,7 +111,7 @@ class TestAnimationJointReference(unittest.TestCase):
 
         # Retrieve the reference at the initial step (0)
         animation.reset(q_j_ref_out=q_j_ref_out, dq_j_ref_out=dq_j_ref_out)
-        np.testing.assert_array_equal(animation.data.step.numpy(), np.array([0], dtype=np.int32))
+        np.testing.assert_array_equal(animation.data.frame.numpy(), np.array([0], dtype=np.int32))
         np.testing.assert_array_almost_equal(q_j_ref_out.numpy(), animation_np[0, :], decimal=6)
         np.testing.assert_array_almost_equal(dq_j_ref_out.numpy(), np.zeros(njad, dtype=np.float32), decimal=6)
 
@@ -120,13 +120,13 @@ class TestAnimationJointReference(unittest.TestCase):
         for step in range(1, num_steps + 1):
             animation.step(q_j_ref_out=q_j_ref_out, dq_j_ref_out=dq_j_ref_out)
             expected_step = (rate * step) % animation.sequence_length  # Loop around if exceeding number of frames
-            np.testing.assert_array_equal(animation.data.step.numpy(), np.array([expected_step], dtype=np.int32))
+            np.testing.assert_array_equal(animation.data.frame.numpy(), np.array([expected_step], dtype=np.int32))
             np.testing.assert_array_almost_equal(q_j_ref_out.numpy(), animation_np[expected_step, :], decimal=6)
             np.testing.assert_array_almost_equal(dq_j_ref_out.numpy(), np.zeros(njad, dtype=np.float32), decimal=6)
 
         # Reset the reference at the initial step (0)
         animation.reset(q_j_ref_out=q_j_ref_out, dq_j_ref_out=dq_j_ref_out)
-        np.testing.assert_array_equal(animation.data.step.numpy(), np.array([0], dtype=np.int32))
+        np.testing.assert_array_equal(animation.data.frame.numpy(), np.array([0], dtype=np.int32))
         np.testing.assert_array_almost_equal(q_j_ref_out.numpy(), animation_np[0, :], decimal=6)
         np.testing.assert_array_almost_equal(dq_j_ref_out.numpy(), np.zeros(njad, dtype=np.float32), decimal=6)
 
@@ -135,7 +135,7 @@ class TestAnimationJointReference(unittest.TestCase):
         for step in range(1, num_steps + 1):
             animation.step(q_j_ref_out=q_j_ref_out, dq_j_ref_out=dq_j_ref_out)
             expected_step = (rate * step) % animation.sequence_length  # Loop around if exceeding number of frames
-            np.testing.assert_array_equal(animation.data.step.numpy(), np.array([expected_step], dtype=np.int32))
+            np.testing.assert_array_equal(animation.data.frame.numpy(), np.array([expected_step], dtype=np.int32))
             np.testing.assert_array_almost_equal(q_j_ref_out.numpy(), animation_np[expected_step, :], decimal=6)
             np.testing.assert_array_almost_equal(dq_j_ref_out.numpy(), np.zeros(njad, dtype=np.float32), decimal=6)
 

@@ -20,7 +20,7 @@ KAMINO: Kinematics: Constraints
 from __future__ import annotations
 
 import warp as wp
-from warp.context import Devicelike
+from warp._src.context import Devicelike
 
 from ..core.model import Model, ModelData
 from ..core.types import int32

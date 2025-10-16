@@ -45,7 +45,7 @@ from dataclasses import dataclass
 from enum import IntEnum
 
 import warp as wp
-from warp.context import Devicelike
+from warp._src.context import Devicelike
 
 from ..core.math import FLOAT32_EPS, FLOAT32_MAX
 from ..core.model import Model, ModelSize
@@ -202,6 +202,41 @@ class APADMMSettings:
     """The frequency of penalty updates. If zero, no updates are performed."""
     penalty_update_method: APADMMPenaltyUpdate = APADMMPenaltyUpdate.FIXED
     """The method used to update the penalty parameter. Defaults to fixed penalty (i.e. not adaptive)."""
+    use_acceleration: bool = True
+    """Set to True to enable Nesterov-type gradient acceleration."""
+
+    def check(self):
+        """
+        Check the validity of the settings.
+        """
+        if self.primal_tolerance < 0.0:
+            raise ValueError(f"Invalid primal tolerance: {self.primal_tolerance}. Must be non-negative.")
+        if self.dual_tolerance < 0.0:
+            raise ValueError(f"Invalid dual tolerance: {self.dual_tolerance}. Must be non-negative.")
+        if self.compl_tolerance < 0.0:
+            raise ValueError(f"Invalid complementarity tolerance: {self.compl_tolerance}. Must be non-negative.")
+        if not (0.0 <= self.restart_tolerance < 1.0):
+            raise ValueError(f"Invalid restart tolerance: {self.restart_tolerance}. Must be in the range [0.0, 1.0).")
+        if self.eta <= 0.0:
+            raise ValueError(f"Invalid proximal parameter: {self.eta}. Must be greater than zero.")
+        if self.rho_0 <= 0.0:
+            raise ValueError(f"Invalid initial penalty: {self.rho_0}. Must be greater than zero.")
+        if self.a_0 <= 0.0:
+            raise ValueError(f"Invalid initial acceleration parameter: {self.a_0}. Must be greater than zero.")
+        if not (0.0 <= self.omega <= 2.0):
+            raise ValueError(f"Invalid over-relaxation factor: {self.omega}. Must be in the range [0.0, 2.0].")
+        if self.alpha <= 1.0:
+            raise ValueError(f"Invalid penalty threshold: {self.alpha}. Must be greater than one.")
+        if self.tau_inc <= 1.0:
+            raise ValueError(f"Invalid penalty increase factor: {self.tau_inc}. Must be greater than one.")
+        if self.max_iterations <= 0:
+            raise ValueError(f"Invalid maximum iterations: {self.max_iterations}. Must be a positive integer.")
+        if self.penalty_update_freq < 0:
+            raise ValueError(f"Invalid penalty update frequency: {self.penalty_update_freq}. Must be non-negative.")
+        if not isinstance(self.penalty_update_method, APADMMPenaltyUpdate):
+            raise TypeError(
+                f"Invalid penalty update method: {self.penalty_update_method}. Must be an instance of APADMMPenaltyUpdate."
+            )
 
     def to_config(self) -> APADMMConfig:
         """
@@ -1837,6 +1872,7 @@ def _compute_infnorm_residuals_serially(
         solver_state_done[0] -= 1
 
     # Restart acceleration if the residuals are not decreasing sufficiently
+    # TODO: Use a warp function that is wrapped with wp.static for conditionally compiling this
     if status.r_a < config.restart_tolerance * status.r_a_p:
         status.restart = 0
         a_p = solver_state_a_p[wid]
@@ -2665,7 +2701,10 @@ class APADMMDualSolver:
         )
 
     def update_previous_state(self):
+        # TODO: do this only if acceleration is enabled
         wp.copy(self._data.state.a_p, self._data.state.a)
+
+        # Cache previous state variables
         wp.copy(self._data.state.x_p, self._data.state.x)
         wp.copy(self._data.state.y_p, self._data.state.y)
         wp.copy(self._data.state.z_p, self._data.state.z)
@@ -2740,8 +2779,13 @@ class APADMMDualSolver:
         # Compute infinity-norm of all residuals and check for convergence
         self.update_convergence_check(problem)
 
-        # Update Nesterov acceleration states from the current iteration
-        self.update_acceleration(problem)
+        # Optionally update Nesterov acceleration states from the current iteration
+        if any(s.use_acceleration for s in self._settings):
+            self.update_acceleration(problem)
+        else:
+            # If acceleration is disabled, update the auxiliary state to the current
+            wp.copy(self._data.state.y_hat, self._data.state.y)
+            wp.copy(self._data.state.z_hat, self._data.state.z)
 
         # Optionally record internal solver info
         if self._collect_info:

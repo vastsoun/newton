@@ -39,7 +39,7 @@ References
 from enum import IntEnum
 
 import warp as wp
-from warp.context import Devicelike
+from warp._src.context import Devicelike
 
 from ..core.math import FLOAT32_EPS
 from ..core.model import Model, ModelSize

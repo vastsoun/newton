@@ -21,14 +21,14 @@ from dataclasses import dataclass
 
 import numpy as np
 import warp as wp
-from warp.context import Devicelike
+from warp._src.context import Devicelike
 
 from ..core.control import Control
 from ..core.joints import JointActuationType
 from ..core.model import Model
 from ..core.state import State
 from ..core.time import TimeData
-from ..core.types import float32, int32
+from ..core.types import FloatArrayLike, IntArrayLike, float32, int32
 
 ###
 # Module interface
@@ -38,6 +38,8 @@ from ..core.types import float32, int32
 __all__ = [
     "JointSpacePIDController",
     "PIDControllerData",
+    "compute_jointspace_pid_control",
+    "reset_jointspace_pid_references",
 ]
 
 
@@ -51,10 +53,6 @@ wp.set_module_options({"enable_backward": False})
 ###
 # Types
 ###
-
-
-ArrayLike = np.ndarray | list[float]
-"""An Array-like structure for aliasing various data types compatible with numpy."""
 
 
 @dataclass
@@ -226,11 +224,9 @@ def _compute_jointspace_pid_control(
 
         # Compute the actuator index in the controller vectors
         actuator_dof_index = actuated_dofs_offset + dof
-        # wp.printf("[step=%d][jid=%d]: dof_index: %d, actuator_dof_index: %d\n", step, jid, dof_index, actuator_dof_index)
 
         # Retrieve the maximum limit of the generalized actuator forces
         tau_j_max = model_joints_tau_j_max[joint_dof_index]
-        # wp.printf("[step=%d][jid=%d]: dof_index: %d, tau_j_max: %f\n", step, jid, dof_index, tau_j_max)
 
         # Retrieve the current joint state
         q_j = state_joints_q_j[joint_dof_index]
@@ -256,26 +252,9 @@ def _compute_jointspace_pid_control(
         integrator = wp.clamp(integrator, -tau_j_max, tau_j_max)
 
         # Compute the Feed-Forward + PID control generalized forces
+        # NOTE: We also clamp the final control forces to avoid exceeding actuator limits
         tau_j_c = tau_j_ref + K_p * q_j_err + K_d * dq_j_err + K_i * integrator
-
-        # Clamp the generalized control forces to the joint limits
         tau_j_c = wp.clamp(tau_j_c, -tau_j_max, tau_j_max)
-        # wp.printf(
-        #     "[step=%d][aid=%d]: q_j: %f, dq_j: %f, q_j_ref: %f, dq_j_ref: %f, q_j_err: %f, dq_j_err: %f, integrator: %f, tau_j_c: %f\n",
-        #     step,
-        #     actuator_dof_index,
-        #     q_j,
-        #     dq_j,
-        #     q_j_ref,
-        #     dq_j_ref,
-        #     q_j_err,
-        #     dq_j_err,
-        #     integrator,
-        #     tau_j_c,
-        # )
-
-        # TODO: CORRECTION WITH DAMPING
-        # tau_j_c += -dt * 1.0 * K_p * dq_j  # small damping to improve stability
 
         # Store the updated integrator state and actuator control forces
         controller_integrator[actuator_dof_index] = integrator
@@ -372,10 +351,10 @@ class JointSpacePIDController:
     def __init__(
         self,
         model: Model | None = None,
-        K_p: ArrayLike | None = None,
-        K_i: ArrayLike | None = None,
-        K_d: ArrayLike | None = None,
-        decimation: ArrayLike | None = None,
+        K_p: FloatArrayLike | None = None,
+        K_i: FloatArrayLike | None = None,
+        K_d: FloatArrayLike | None = None,
+        decimation: IntArrayLike | None = None,
         device: Devicelike = None,
     ):
         """
@@ -384,10 +363,10 @@ class JointSpacePIDController:
         Args:
             model (Model | None): Model used to size and allocate controller buffers.
                 If None, call ``allocate()`` later.
-            K_p (ArrayLike | None): Proportional gains per actuated joint DoF.
-            K_i (ArrayLike | None): Integral gains per actuated joint DoF.
-            K_d (ArrayLike | None): Derivative gains per actuated joint DoF.
-            decimation (ArrayLike | None): Control decimation for each world
+            K_p (FloatArrayLike | None): Proportional gains per actuated joint DoF.
+            K_i (FloatArrayLike | None): Integral gains per actuated joint DoF.
+            K_d (FloatArrayLike | None): Derivative gains per actuated joint DoF.
+            decimation (IntArrayLike | None): Control decimation for each world
                 expressed as a multiple of simulation steps.
             device (Devicelike | None): Device to use for allocations and execution.
         """
@@ -425,10 +404,10 @@ class JointSpacePIDController:
     def allocate(
         self,
         model: Model,
-        K_p: ArrayLike | None = None,
-        K_i: ArrayLike | None = None,
-        K_d: ArrayLike | None = None,
-        decimation: ArrayLike | None = None,
+        K_p: FloatArrayLike | None = None,
+        K_i: FloatArrayLike | None = None,
+        K_d: FloatArrayLike | None = None,
+        decimation: IntArrayLike | None = None,
         device: Devicelike = None,
     ) -> None:
         """
@@ -498,15 +477,15 @@ class JointSpacePIDController:
         self._data.integrator.zero_()
 
     def set_references(
-        self, q_j_ref: ArrayLike, dq_j_ref: ArrayLike | None = None, tau_j_ref: ArrayLike | None = None
+        self, q_j_ref: FloatArrayLike, dq_j_ref: FloatArrayLike | None = None, tau_j_ref: FloatArrayLike | None = None
     ) -> None:
         """
         Set the controller reference trajectories.
 
         Args:
-            q_j_ref (ArrayLike): The reference actuator joint positions.
-            dq_j_ref (ArrayLike | None): The reference actuator joint velocities.
-            tau_j_ref (ArrayLike | None): The feedforward actuator joint torques.
+            q_j_ref (FloatArrayLike): The reference actuator joint positions.
+            dq_j_ref (FloatArrayLike | None): The reference actuator joint velocities.
+            tau_j_ref (FloatArrayLike | None): The feedforward actuator joint torques.
         """
         if len(q_j_ref) != len(self._data.q_j_ref):
             raise ValueError(f"q_j_ref must have length {len(self._data.q_j_ref)}, but has length {len(q_j_ref)}")

@@ -19,7 +19,7 @@ KAMINO: UNIT TESTS: GENERAL UTILITIES
 
 import numpy as np
 import warp as wp
-from warp.context import Devicelike
+from warp._src.context import Devicelike
 
 from newton._src.solvers.kamino.core.bodies import update_body_inertias
 from newton._src.solvers.kamino.core.builder import ModelBuilder
@@ -147,7 +147,7 @@ def update_containers(
     wp.synchronize()
 
     # Update joint states according to the state of the bodies
-    compute_joints_state(model=model, data=data)
+    compute_joints_state(model=model, data=data, q_j_p=wp.zeros_like(data.joints.q_j))
     wp.synchronize()
 
     # Run joint-limit detection to generate active limits

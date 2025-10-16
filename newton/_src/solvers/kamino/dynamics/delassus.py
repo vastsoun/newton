@@ -73,7 +73,7 @@ Typical usage example:
 """
 
 import warp as wp
-from warp.context import Devicelike
+from warp._src.context import Devicelike
 
 from ..core.model import Model, ModelData, ModelSize
 from ..core.types import float32, int32, mat33f, vec3f

@@ -22,7 +22,7 @@ from dataclasses import dataclass
 import numpy as np
 import warp as wp
 from matplotlib import pyplot as plt
-from warp.context import Devicelike
+from warp._src.context import Devicelike
 
 from ..core.model import Model
 from ..core.time import TimeData

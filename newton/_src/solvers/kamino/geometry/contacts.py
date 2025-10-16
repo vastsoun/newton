@@ -20,7 +20,7 @@ KAMINO: Discrete Contact Containers & Operations
 from __future__ import annotations
 
 import warp as wp
-from warp.context import Devicelike
+from warp._src.context import Devicelike
 
 from newton._src.solvers.kamino.core.types import int32, mat33f, mat63f, vec2f, vec4f
 

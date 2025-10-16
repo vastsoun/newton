@@ -21,7 +21,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 
 import warp as wp
-from warp.context import Devicelike
+from warp._src.context import Devicelike
 
 from ..core.bodies import update_body_inertias, update_body_wrenches
 from ..core.builder import ModelBuilder
@@ -88,6 +88,15 @@ class SimulatorSettings:
     linear_solver_type: type[LinearSolver] = LLTBlockedSolver
     """The type of linear solver to use for the dynamics problem."""
 
+    def check(self) -> None:
+        """
+        Checks the validity of the settings.
+        """
+        if self.dt <= 0.0:
+            raise ValueError(f"Invalid time-step: {self.dt}. Must be a positive value.")
+        self.problem.check()
+        self.solver.check()
+
 
 class SimulatorData:
     """
@@ -124,7 +133,7 @@ class SimulatorData:
         self.state_p.copy_from(self.state_n)
         self.control_p.copy_from(self.control_n)
 
-    def synchronize_next(self):
+    def update_next(self):
         """
         Synchronizes the next state with the internal solver state data.
 
@@ -132,18 +141,12 @@ class SimulatorData:
         This is necessary since the integrator updates the next state in-place,
         while all joint and body wrenches attributes are updated by the solver.
         """
-        pass
-        # # First update the internal solver state from the next state,
-        # # since the integrator updates the next state in-place
-        # wp.copy(self.solver.bodies.q_i, self.state_n.q_i)
-        # wp.copy(self.solver.bodies.u_i, self.state_n.u_i)
-
-        # # Then update the remaining body and joint attributes
-        # # of the next state from the internal solver state
-        # wp.copy(self.state_n.w_i, self.solver.bodies.w_i)
-        # wp.copy(self.state_n.q_j, self.solver.joints.q_j)
-        # wp.copy(self.state_n.dq_j, self.solver.joints.dq_j)
-        # wp.copy(self.state_n.lambda_j, self.solver.joints.lambda_j)
+        wp.copy(self.state_n.q_i, self.solver.bodies.q_i)
+        wp.copy(self.state_n.u_i, self.solver.bodies.u_i)
+        wp.copy(self.state_n.w_i, self.solver.bodies.w_i)
+        wp.copy(self.state_n.q_j, self.solver.joints.q_j)
+        wp.copy(self.state_n.dq_j, self.solver.joints.dq_j)
+        wp.copy(self.state_n.lambda_j, self.solver.joints.lambda_j)
 
 
 ###
@@ -192,9 +195,8 @@ class Simulator:
         if settings is None:
             settings = SimulatorSettings()
 
-        # Ensure the time-step is positive
-        if settings.dt <= 0.0:
-            raise ValueError(f"Invalid time-step: {settings.dt}. Must be a positive value.")
+        # Validate the settings
+        settings.check()
 
         # Host-side time-keeping
         self._time: float = 0.0
@@ -202,8 +204,8 @@ class Simulator:
         self._steps: int = 0
         self._max_steps: int = 0
 
-        # Cache the time-step use for the simulation
-        self._dt: float = settings.dt
+        # Cache the solver settings
+        self._settings: SimulatorSettings = settings
 
         # Cache the target device use for the simulation
         self._device: Devicelike = device
@@ -218,7 +220,7 @@ class Simulator:
         self._model = builder.finalize(device=self._device)
 
         # Configure model time-steps
-        self._model.time.set_uniform_timestep(self._dt)
+        self._model.time.set_uniform_timestep(self._settings.dt)
 
         # Allocate system data on the device
         self._data = SimulatorData(model=self._model, device=self._device)
@@ -432,7 +434,7 @@ class Simulator:
         Since the joint states are derived quantities of the body states, this
         function computes the joint states based on the initial body states.
         """
-        compute_joints_state(model=self._model, state_p=self._data.state_p, data=self._data.solver)
+        compute_joints_state(model=self._model, q_j_p=self._data.state_p.q_j, data=self._data.solver)
 
     def _reset_joints_wrenches(self):
         """
@@ -599,29 +601,22 @@ class Simulator:
         self._data.update_previous()
 
         # Integrate the state of the system (i.e. of the bodies) to compute the next state
-        integrate_semi_implicit_euler(model=self._model, data=self._data.solver, state=self._data.state_n)
-
-        # TODO: avoid zig-zag copies by making euler only use model and data
-        wp.copy(self._data.solver.bodies.q_i, self._data.state_n.q_i)
-        wp.copy(self._data.solver.bodies.u_i, self._data.state_n.u_i)
+        integrate_semi_implicit_euler(model=self._model, data=self._data.solver)
 
         # Update the joint states based on the updated body states
         # NOTE: We use the previous state `state_p` for post-processing
         # purposes, e.g. account for roll-over of revolute joints etc
-        compute_joints_state(model=self._model, state_p=self._data.state_p, data=self._data.solver)
+        compute_joints_state(model=self._model, q_j_p=self._data.state_p.q_j, data=self._data.solver)
 
-        # TODO
-        wp.copy(self._data.state_n.w_i, self._data.solver.bodies.w_i)
-        wp.copy(self._data.state_n.q_j, self._data.solver.joints.q_j)
-        wp.copy(self._data.state_n.dq_j, self._data.solver.joints.dq_j)
-        wp.copy(self._data.state_n.lambda_j, self._data.solver.joints.lambda_j)
+        # Update the next-step state from the internal solver state
+        self._data.update_next()
 
     def _advance_time(self):
         """
         Updates simulation time-keeping (i.e. physical time and discrete steps).
         """
         self._steps += 1
-        self._time += self._dt
+        self._time += self._settings.dt
         advance_time(self._model.time, self._data.solver.time)
 
     ###

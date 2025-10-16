@@ -147,7 +147,7 @@ def _integrate_semi_implicit_euler(
 ###
 
 
-def integrate_semi_implicit_euler(model: Model, state: ModelData, s_n: State):
+def integrate_semi_implicit_euler(model: Model, data: ModelData, state: State):
     wp.launch(
         _integrate_semi_implicit_euler,
         dim=model.size.sum_of_num_bodies,
@@ -157,13 +157,13 @@ def integrate_semi_implicit_euler(model: Model, state: ModelData, s_n: State):
             model.gravity.vector,
             model.bodies.wid,
             model.bodies.inv_m_i,
-            state.bodies.I_i,
-            state.bodies.inv_I_i,
-            state.bodies.q_i,
-            state.bodies.u_i,
-            state.bodies.w_i,
+            data.bodies.I_i,
+            data.bodies.inv_I_i,
+            data.bodies.q_i,
+            data.bodies.u_i,
+            data.bodies.w_i,
             # Outputs:
-            s_n.q_i,
-            s_n.u_i,
+            state.q_i,
+            state.u_i,
         ],
     )

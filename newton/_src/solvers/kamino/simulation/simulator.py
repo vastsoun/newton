@@ -132,17 +132,18 @@ class SimulatorData:
         This is necessary since the integrator updates the next state in-place,
         while all joint and body wrenches attributes are updated by the solver.
         """
-        # First update the internal solver state from the next state,
-        # since the integrator updates the next state in-place
-        wp.copy(self.solver.bodies.q_i, self.state_n.q_i)
-        wp.copy(self.solver.bodies.u_i, self.state_n.u_i)
+        pass
+        # # First update the internal solver state from the next state,
+        # # since the integrator updates the next state in-place
+        # wp.copy(self.solver.bodies.q_i, self.state_n.q_i)
+        # wp.copy(self.solver.bodies.u_i, self.state_n.u_i)
 
-        # Then update the remaining body and joint attributes
-        # of the next state from the internal solver state
-        wp.copy(self.state_n.w_i, self.solver.bodies.w_i)
-        wp.copy(self.state_n.q_j, self.solver.joints.q_j)
-        wp.copy(self.state_n.dq_j, self.solver.joints.dq_j)
-        wp.copy(self.state_n.lambda_j, self.solver.joints.lambda_j)
+        # # Then update the remaining body and joint attributes
+        # # of the next state from the internal solver state
+        # wp.copy(self.state_n.w_i, self.solver.bodies.w_i)
+        # wp.copy(self.state_n.q_j, self.solver.joints.q_j)
+        # wp.copy(self.state_n.dq_j, self.solver.joints.dq_j)
+        # wp.copy(self.state_n.lambda_j, self.solver.joints.lambda_j)
 
 
 ###
@@ -431,7 +432,7 @@ class Simulator:
         Since the joint states are derived quantities of the body states, this
         function computes the joint states based on the initial body states.
         """
-        compute_joints_state(self._model, self._data.solver, self._data.state_p)
+        compute_joints_state(model=self._model, state_p=self._data.state_p, data=self._data.solver)
 
     def _reset_joints_wrenches(self):
         """
@@ -512,8 +513,7 @@ class Simulator:
         """
         Updates intermediate quantities required for the forward dynamics solve.
         """
-        update_body_inertias(self._model.bodies, self._data.solver.bodies)
-        compute_joints_state(self._model, self._data.solver, self._data.state_p)
+        update_body_inertias(model=self._model.bodies, data=self._data.solver.bodies)
 
     def _forward_kinematics(self):
         """
@@ -574,7 +574,7 @@ class Simulator:
         Solves the forward dynamics sub-problem to compute constraint reactions
         and total effective body wrenches applied to each body of the system.
         """
-        # Update intermediate quantities
+        # # Update intermediate quantities
         self._forward_intermediate()
 
         # Update the kinematics
@@ -593,8 +593,28 @@ class Simulator:
         """
         Solves the time integration sub-problem to compute the next state of the system.
         """
+
+        # Update the caches of the previous-step state and control data from the updated next-step
+        # NOTE: This needs to happen before the time-integrator updates the next-state in-place
+        self._data.update_previous()
+
         # Integrate the state of the system (i.e. of the bodies) to compute the next state
-        integrate_semi_implicit_euler(self._model, self._data.solver, self._data.state_n)
+        integrate_semi_implicit_euler(model=self._model, data=self._data.solver, state=self._data.state_n)
+
+        # TODO: avoid zig-zag copies by making euler only use model and data
+        wp.copy(self._data.solver.bodies.q_i, self._data.state_n.q_i)
+        wp.copy(self._data.solver.bodies.u_i, self._data.state_n.u_i)
+
+        # Update the joint states based on the updated body states
+        # NOTE: We use the previous state `state_p` for post-processing
+        # purposes, e.g. account for roll-over of revolute joints etc
+        compute_joints_state(model=self._model, state_p=self._data.state_p, data=self._data.solver)
+
+        # TODO
+        wp.copy(self._data.state_n.w_i, self._data.solver.bodies.w_i)
+        wp.copy(self._data.state_n.q_j, self._data.solver.joints.q_j)
+        wp.copy(self._data.state_n.dq_j, self._data.solver.joints.dq_j)
+        wp.copy(self._data.state_n.lambda_j, self._data.solver.joints.lambda_j)
 
     def _advance_time(self):
         """
@@ -659,15 +679,8 @@ class Simulator:
         # Run the mid-step callback if it has been set
         self._run_midstep_callback()
 
-        # Update the caches of the previous-step state and control data from the updated next-step
-        # NOTE: This needs to happen before the time-integrator updates the next-state in-place
-        self._data.update_previous()
-
         # Solve the time integration sub-problem to compute the next state of the system
         self._integrate()
-
-        # Synchronize the next-state s_n and internal solver data so that they are consistent
-        self._data.synchronize_next()
 
         # Run the post-step callback if it has been set
         self._run_poststep_callback()

@@ -17,6 +17,7 @@ import argparse
 import os
 import time
 
+import matplotlib.pyplot as plt
 import numpy as np
 import warp as wp
 
@@ -99,8 +100,8 @@ def test_control_callback(sim: Simulator):
 ###
 
 # Set the path to the external USD assets
-# USD_MODEL_PATH = os.path.join(get_examples_usd_assets_path(), "walker/walker_floating_with_boxes.usda")
-USD_MODEL_PATH = os.path.join(get_examples_usd_assets_path(), "walker/walker_floating_with_meshes.usda")
+BOX_USD_MODEL_PATH = os.path.join(get_examples_usd_assets_path(), "walker/walker_floating_with_boxes.usda")
+MESH_USD_MODEL_PATH = os.path.join(get_examples_usd_assets_path(), "walker/walker_floating_with_meshes.usda")
 
 
 ###
@@ -119,80 +120,203 @@ def run_headless(use_cuda_graph=False):
     device = wp.get_device(device)
     msg.info(f"device: {device}")
 
-    # TODO: REMOVE THIS
-    use_cuda_graph = False
+    # # TODO: REMOVE THIS
+    # use_cuda_graph = False
 
-    # Determine if using CUDA graphs
-    can_use_cuda_graph = device.is_cuda and wp.is_mempool_enabled(device)
-    msg.info(f"use_cuda_graph: {use_cuda_graph}")
-    msg.info(f"can_use_cuda_graph: {can_use_cuda_graph}")
+    # # Determine if using CUDA graphs
+    # can_use_cuda_graph = device.is_cuda and wp.is_mempool_enabled(device)
+    # msg.info(f"use_cuda_graph: {use_cuda_graph}")
+    # msg.info(f"can_use_cuda_graph: {can_use_cuda_graph}")
 
-    # Create a single-instance system
+    # # Create a single-instance system
+    # msg.info("Constructing builder from imported USD ...")
+    # importer = USDImporter()
+    # builder: ModelBuilder = importer.import_from(source=BOX_USD_MODEL_PATH)
+
+    # # Offset the model to place it above the ground
+    # # NOTE: The USD model is centered at the origin
+    # offset = wp.transformf(0.0, 0.0, 0.25, 0.0, 0.0, 0.0, 1.0)
+    # offset_builder(builder=builder, offset=offset)
+
+    # # Add a static collision layer and geometry for the plane
+    # add_ground_geom(builder, group=1, collides=1)
+
+    # # Set gravity
+    # builder.gravity.enabled = True
+
+    # # Set solver settings
+    # settings = SimulatorSettings()
+    # settings.dt = 0.001
+    # settings.solver.primal_tolerance = 1e-4
+    # settings.solver.dual_tolerance = 1e-4
+    # settings.solver.compl_tolerance = 1e-4
+    # settings.solver.rho_0 = 1.0
+
+    # # Create a simulator
+    # msg.info("Building the simulator...")
+    # sim = Simulator(builder=builder, settings=settings, device=device)
+    # # sim.set_control_callback(control_callback)
+
+    # # Capture graphs for simulator ops: reset and step
+    # use_cuda_graph &= can_use_cuda_graph
+    # reset_graph = None
+    # step_graph = None
+    # if use_cuda_graph:
+    #     with wp.ScopedCapture(device) as reset_capture:
+    #         sim.reset()
+    #     reset_graph = reset_capture.graph
+    #     with wp.ScopedCapture(device) as step_capture:
+    #         sim.step()
+    #     step_graph = step_capture.graph
+
+    # # Warm-start the simulator before rendering
+    # # NOTE: This compiles and loads the warp kernels prior to execution
+    # msg.info("Warming up the simulator...")
+    # if use_cuda_graph:
+    #     msg.info("Running with CUDA graphs...")
+    #     wp.capture_launch(reset_graph)
+    #     wp.capture_launch(step_graph)
+    # else:
+    #     msg.info("Running with kernels...")
+    #     with wp.ScopedDevice(device):
+    #         sim.step()
+    #         sim.reset()
+
+    # Create a single-instance system (always load from USD for walker)
     msg.info("Constructing builder from imported USD ...")
     importer = USDImporter()
-    builder: ModelBuilder = importer.import_from(source=USD_MODEL_PATH)
+    builder: ModelBuilder = importer.import_from(source=MESH_USD_MODEL_PATH)
+    # builder: ModelBuilder = importer.import_from(source=BOX_USD_MODEL_PATH)
+    msg.warning("total mass: %f", builder.world.mass_total)
+    msg.warning("total diag inertia: %f", builder.world.inertia_total)
 
     # Offset the model to place it above the ground
     # NOTE: The USD model is centered at the origin
-    offset = wp.transformf(0.0, 0.0, 0.25, 0.0, 0.0, 0.0, 1.0)
+    offset = wp.transformf(0.0, 0.0, 0.265, 0.0, 0.0, 0.0, 1.0)
     offset_builder(builder=builder, offset=offset)
 
-    # Add a static collision layer and geometry for the plane
-    add_ground_geom(builder, group=1, collides=1)
-
     # Set gravity
-    builder.gravity.enabled = True
+    builder.gravity.enabled = False
 
     # Set solver settings
     settings = SimulatorSettings()
     settings.dt = 0.001
-    settings.solver.primal_tolerance = 1e-4
-    settings.solver.dual_tolerance = 1e-4
-    settings.solver.compl_tolerance = 1e-4
-    settings.solver.rho_0 = 1.0
+    settings.problem.alpha = 0.0
+    settings.solver.primal_tolerance = 1e-6
+    settings.solver.dual_tolerance = 1e-6
+    settings.solver.compl_tolerance = 1e-6
+    settings.solver.max_iterations = 200
+    settings.solver.rho_0 = 0.05
+    msg.warning(f"settings.dt: {settings.dt}")
+
+    # Problem dimensions
+    njaq = builder.world.num_actuated_joint_coords
 
     # Create a simulator
     msg.info("Building the simulator...")
     sim = Simulator(builder=builder, settings=settings, device=device)
-    # sim.set_control_callback(control_callback)
 
-    # Capture graphs for simulator ops: reset and step
-    use_cuda_graph &= can_use_cuda_graph
-    reset_graph = None
-    step_graph = None
-    if use_cuda_graph:
-        with wp.ScopedCapture(device) as reset_capture:
-            sim.reset()
-        reset_graph = reset_capture.graph
-        with wp.ScopedCapture(device) as step_capture:
-            sim.step()
-        step_graph = step_capture.graph
+    # Load animation data for walker
+    NUMPY_ANIMATION_PATH = os.path.join(get_examples_usd_assets_path(), "walker/walker_animation_100fps.npy")
+    animation_np = np.load(NUMPY_ANIMATION_PATH, allow_pickle=True)
+    msg.debug(f"animation_np (shape={animation_np.shape}):\n{animation_np}\n")
 
-    # Warm-start the simulator before rendering
-    # NOTE: This compiles and loads the warp kernels prior to execution
-    msg.info("Warming up the simulator...")
-    if use_cuda_graph:
-        msg.info("Running with CUDA graphs...")
-        wp.capture_launch(reset_graph)
-        wp.capture_launch(step_graph)
-    else:
-        msg.info("Running with kernels...")
-        with wp.ScopedDevice(device):
-            sim.step()
-            sim.reset()
+    # Compute animation time step and rate
+    animation_dt = 0.01  # 100 fps
+    animation_rate = int(round(animation_dt / settings.dt))
+    msg.warning(f"animation_dt: {animation_dt}")
+    msg.warning(f"animation_rate: {animation_rate}")
+
+    # Create a joint-space animation reference generator
+    animation = AnimationJointReference(
+        model=sim.model,
+        input=animation_np,
+        rate=animation_rate,
+        loop=False,
+        use_fd=True,
+        fd_dt=animation_dt,
+        device=device,
+    )
+
+    # Create a joint-space PID controller configuration arrays
+    njaq = sim.model.size.sum_of_num_actuated_joint_dofs
+    K_p = np.zeros(njaq, dtype=np.float32)
+    K_d = np.zeros(njaq, dtype=np.float32)
+    K_i = np.zeros(njaq, dtype=np.float32)
+    decimation = 1 * np.ones(sim.model.size.num_worlds, dtype=np.int32)
+
+    # Set a single joint controller
+    aj = 2
+    K_p[aj] = 10.0
+    K_d[aj] = 0.0
+    K_i[aj] = 0.0
+
+    # Create a joint-space PID controller
+    controller = JointSpacePIDController(
+        model=sim.model, K_p=K_p, K_i=K_i, K_d=K_d, decimation=decimation, device=device
+    )
+
+    # Initialize the controller and animation
+    controller.reset(model=sim.model, state=sim.data.state_n)
+    animation.reset(q_j_ref_out=controller.data.q_j_ref, dq_j_ref_out=controller.data.dq_j_ref)
+
+    # Define a callback function to reset the controller
+    def reset_jointspace_pid_control_callback(simulator: Simulator):
+        controller.reset(
+            model=simulator.model,
+            state=simulator.data.state_n,
+        )
+        animation.reset(q_j_ref_out=controller.data.q_j_ref, dq_j_ref_out=controller.data.dq_j_ref)
+        animation.data.frame.fill_(100)
+
+    # Define a callback function to wrap the execution of the controller
+    def compute_jointspace_pid_control_callback(simulator: Simulator):
+        animation.extract(
+            q_j_ref_out=controller.data.q_j_ref,
+            dq_j_ref_out=controller.data.dq_j_ref,
+        )
+        # animation.step(
+        #     time=simulator.data.solver.time,
+        #     q_j_ref_out=controller.data.q_j_ref,
+        #     dq_j_ref_out=controller.data.dq_j_ref,
+        # )
+        controller.compute(
+            model=simulator.model,
+            state=simulator.data.state_n,
+            time=simulator.data.solver.time,
+            control=simulator.data.control_n,
+        )
+
+    # Set the reference tracking generation & control callbacks into the simulator
+    sim.set_reset_callback(reset_jointspace_pid_control_callback)
+    sim.set_control_callback(compute_jointspace_pid_control_callback)
+
+    # Warm-up the simulator before execution
+    sim.step()
+    sim.reset()
 
     # Step the simulation and collect frames
-    ns = 100  # TODO: 25000
-    msg.info(f"Collecting ns={ns} frames...")
-    start_time = time.time()
+    ns = 1
+    msg.warning(f"Collecting ns={ns} frames...")
     with wp.ScopedDevice(device):
         for i in range(ns):
-            if use_cuda_graph:
-                wp.capture_launch(step_graph)
-            else:
-                sim.step()
+            sim.step()
+            # sim._forward_intermediate()
             wp.synchronize()
-            print_progress_bar(i, ns, start_time, prefix="Progress", suffix="")
+
+            # Print data
+            msg.info(f"[{i}]: q_i_p:\n{sim.data.state_p.q_i.numpy().flatten()}")
+            msg.info(f"[{i}]: q_i_n:\n{sim.data.state_n.q_i.numpy().flatten()}\n")
+            msg.info(f"[{i}]: u_i_p:\n{sim.data.state_p.u_i.numpy().flatten()}")
+            msg.info(f"[{i}]: u_i_n:\n{sim.data.state_n.u_i.numpy().flatten()}\n")
+            msg.info(f"[{i}]: w_i_p:\n{sim.data.state_p.w_i.numpy().flatten()}")
+            msg.info(f"[{i}]: w_i_n:\n{sim.data.state_n.w_i.numpy().flatten()}\n")
+            msg.info(f"[{i}]: q_j_p:\n{sim.data.state_p.q_j.numpy().flatten()}")
+            msg.info(f"[{i}]: q_j_n:\n{sim.data.state_n.q_j.numpy().flatten()}\n")
+            msg.info(f"[{i}]: dq_j_p:\n{sim.data.state_p.dq_j.numpy().flatten()}")
+            msg.info(f"[{i}]: dq_j_n:\n{sim.data.state_n.dq_j.numpy().flatten()}\n")
+            msg.info(f"[{i}]: tau_j_p:\n{sim.data.control_p.tau_j.numpy().flatten()}")
+            msg.info(f"[{i}]: tau_j_n:\n{sim.data.control_n.tau_j.numpy().flatten()}\n")
 
 
 class WalkerExample:
@@ -201,9 +325,17 @@ class WalkerExample:
     def __init__(self, viewer, use_cuda_graph=False):
         self.fps = 60
         self.frame_dt = 1.0 / self.fps
+        self.sim_dt = 0.001
+        self.sim_substeps = int(self.frame_dt / self.sim_dt)
+        self.max_sim_steps = 1000
+        msg.warning("fps: %f", self.fps)
+        msg.warning("frame_dt: %f", self.frame_dt)
+        msg.warning("sim_dt: %f", self.sim_dt)
+        msg.warning("sim_substeps: %d", self.sim_substeps)
+        msg.warning("max_sim_steps: %d", self.max_sim_steps)
+
         self.sim_time = 0.0
-        self.sim_substeps = 10
-        self.sim_dt = self.frame_dt / self.sim_substeps
+        self.sim_steps = 0
 
         self.viewer = viewer
         self.use_cuda_graph = use_cuda_graph
@@ -215,28 +347,46 @@ class WalkerExample:
         # Create a single-instance system (always load from USD for walker)
         msg.info("Constructing builder from imported USD ...")
         importer = USDImporter()
-        self.builder: ModelBuilder = importer.import_from(source=USD_MODEL_PATH)
+        # self.builder: ModelBuilder = importer.import_from(source=MESH_USD_MODEL_PATH)
+        self.builder: ModelBuilder = importer.import_from(source=BOX_USD_MODEL_PATH)
+        msg.warning("total mass: %f", self.builder.world.mass_total)
+        msg.warning("total diag inertia: %f", self.builder.world.inertia_total)
 
         # Offset the model to place it above the ground
         # NOTE: The USD model is centered at the origin
-        offset = wp.transformf(0.0, 0.0, 0.25, 0.0, 0.0, 0.0, 1.0)
+        offset = wp.transformf(0.0, 0.0, 0.265, 0.0, 0.0, 0.0, 1.0)
         offset_builder(builder=self.builder, offset=offset)
 
-        # # Add a static collision layer and geometry for the plane
-        # add_ground_geom(builder=self.builder, group=1, collides=1)
+        # Add a static collision layer and geometry for the plane
+        add_ground_geom(builder=self.builder, group=1, collides=1)
 
         # Set gravity
-        self.builder.gravity.enabled = False
+        self.builder.gravity.enabled = True
 
         # Set solver settings
         settings = SimulatorSettings()
-        settings.dt = 0.001
+        settings.dt = self.sim_dt
         settings.problem.alpha = 0.1
-        settings.solver.primal_tolerance = 1e-4
-        settings.solver.dual_tolerance = 1e-4
-        settings.solver.compl_tolerance = 1e-4
+        settings.solver.primal_tolerance = 1e-6
+        settings.solver.dual_tolerance = 1e-6
+        settings.solver.compl_tolerance = 1e-6
         settings.solver.max_iterations = 200
         settings.solver.rho_0 = 0.05
+
+        # Problem dimensions
+        njaq = self.builder.world.num_actuated_joint_coords
+        njad = self.builder.world.num_actuated_joint_dofs
+
+        # Array of actuated joint indices
+        self.actuated_joints = np.array([0, 1, 5, 6, 10, 15, 18, 19, 23, 24, 28, 33], dtype=np.int32)
+
+        # Data logging arrays
+        self.log_time = np.zeros(self.max_sim_steps, dtype=np.float32)
+        self.log_q_j = np.zeros((self.max_sim_steps, njaq), dtype=np.float32)
+        self.log_dq_j = np.zeros((self.max_sim_steps, njaq), dtype=np.float32)
+        self.log_tau_j = np.zeros((self.max_sim_steps, njaq), dtype=np.float32)
+        self.log_q_j_ref = np.zeros((self.max_sim_steps, njaq), dtype=np.float32)
+        self.log_dq_j_ref = np.zeros((self.max_sim_steps, njad), dtype=np.float32)
 
         # Create a simulator
         msg.info("Building the simulator...")
@@ -248,16 +398,37 @@ class WalkerExample:
         animation_np = np.load(NUMPY_ANIMATION_PATH, allow_pickle=True)
         msg.debug(f"animation_np (shape={animation_np.shape}):\n{animation_np}\n")
 
+        #
+        animation_dt = 0.01  # 100 fps
+        animation_rate = int(round(animation_dt / settings.dt))
+        msg.warning(f"animation_dt: {animation_dt}")
+        msg.warning(f"animation_rate: {animation_rate}")
+
+        # TODO: Compute rate and fd_dt from animation frame-rate
         # Create a joint-space animation reference generator
         self.animation = AnimationJointReference(
-            model=self.sim.model, input=animation_np, rate=1, loop=False, use_fd=True, device=device
+            model=self.sim.model,
+            input=animation_np,
+            rate=animation_rate,
+            loop=False,
+            use_fd=True,
+            fd_dt=animation_dt,
+            device=device,
         )
+        # self.animation.plot()
 
         # Create a joint-space PID controller
         njaq = self.sim.model.size.sum_of_num_actuated_joint_dofs
-        K_p = 10.0 * np.ones(njaq, dtype=np.float32)
+        K_p = 80.0 * np.ones(njaq, dtype=np.float32)
         K_d = 0.1 * np.ones(njaq, dtype=np.float32)
         K_i = 0.01 * np.ones(njaq, dtype=np.float32)
+        # K_p = np.zeros(njaq, dtype=np.float32)
+        # K_d = np.zeros(njaq, dtype=np.float32)
+        # K_i = np.zeros(njaq, dtype=np.float32)
+        # K_p[self.aj] = 1.0
+        # K_d[self.aj] = 0.0
+        # K_i[self.aj] = 0.0
+        self.aj = 2
         decimation = 1 * np.ones(self.sim.model.size.num_worlds, dtype=np.int32)
         self.controller = JointSpacePIDController(
             model=self.sim.model, K_p=K_p, K_i=K_i, K_d=K_d, decimation=decimation, device=device
@@ -274,16 +445,27 @@ class WalkerExample:
                 state=simulator.data.state_n,
             )
             self.animation.reset(q_j_ref_out=self.controller.data.q_j_ref, dq_j_ref_out=self.controller.data.dq_j_ref)
+            # self.animation.data.frame.fill_(100)
 
         # Define a callback function to wrap the execution of the controller
         def compute_jointspace_pid_control_callback(simulator: Simulator):
-            self.animation.step(q_j_ref_out=self.controller.data.q_j_ref, dq_j_ref_out=self.controller.data.dq_j_ref)
+            # self.animation.extract(
+            #     q_j_ref_out=self.controller.data.q_j_ref,
+            #     dq_j_ref_out=self.controller.data.dq_j_ref,
+            # )
+            self.animation.step(
+                time=simulator.data.solver.time,
+                q_j_ref_out=self.controller.data.q_j_ref,
+                dq_j_ref_out=self.controller.data.dq_j_ref,
+            )
             self.controller.compute(
                 model=simulator.model,
                 state=simulator.data.state_n,
                 time=simulator.data.solver.time,
                 control=simulator.data.control_n,
             )
+            # msg.warning("nc: %d", simulator.collision_detector.contacts.world_num_contacts.numpy()[0])
+            # msg.warning("nl: %d", simulator.limits.data.world_num_limits.numpy()[0])
 
         # # Set the reference tracking generation & control callbacks into the simulator
         self.sim.set_reset_callback(reset_jointspace_pid_control_callback)
@@ -309,12 +491,13 @@ class WalkerExample:
 
         # Initialize the simulator with a warm-up step
         self.sim.reset()
+        self.log_data()
 
         # Capture CUDA graph if requested and available
         self.capture()
 
-        # Block until the user is ready
-        input("Press Enter to continue...")
+        # # Block until the user is ready
+        # input("Press Enter to continue...")
 
     def extract_geometry_info(self):
         """Extract geometry information from the kamino simulator."""
@@ -351,10 +534,23 @@ class WalkerExample:
         else:
             self.graph = None
 
+    def log_data(self):
+        if self.sim_steps >= self.max_sim_steps:
+            msg.warning("Maximum simulation steps reached, skipping data logging.")
+            return
+        self.log_time[self.sim_steps] = self.sim.data.solver.time.time.numpy()[0]
+        self.log_q_j[self.sim_steps, :] = self.sim.data.state_n.q_j.numpy()[self.actuated_joints]
+        self.log_dq_j[self.sim_steps, :] = self.sim.data.state_n.dq_j.numpy()[self.actuated_joints]
+        self.log_tau_j[self.sim_steps, :] = self.sim.data.control_n.tau_j.numpy()[self.actuated_joints]
+        self.log_q_j_ref[self.sim_steps, :] = self.controller.data.q_j_ref.numpy()
+        self.log_dq_j_ref[self.sim_steps, :] = self.controller.data.dq_j_ref.numpy()
+
     def simulate(self):
         """Run simulation substeps."""
         for _ in range(self.sim_substeps):
             self.sim.step()
+            self.sim_steps += 1
+            self.log_data()
 
     def step(self):
         """Step the simulation."""
@@ -505,7 +701,11 @@ if __name__ == "__main__":
     parser.add_argument("--device", type=str, help="Compute device")
     parser.add_argument("--output-path", type=str, help="Output path for USD viewer")
     parser.add_argument("--num-frames", type=int, default=1000, help="Number of frames for null/USD viewer")
+    parser.add_argument("--test", action="store_true", default=False, help="Run tests")
     args = parser.parse_args()
+
+    # Set global numpy configurations
+    np.set_printoptions(linewidth=20000, precision=6, threshold=10000, suppress=True)  # Suppress scientific notation
 
     # Clear warp cache if requested
     if args.clear_cache:
@@ -553,3 +753,58 @@ if __name__ == "__main__":
             viewer.set_camera(camera_pos, pitch, yaw)
 
         newton.examples.run(example, args)
+
+        # Plot logged data after the viewer is closed
+        fig, axs = plt.subplots(3, 1, figsize=(10, 10), sharex=True)
+
+        # Select a joint to plot (e.g., joint ID 1)
+        aid = example.aj
+
+        # Plot the measured vs reference joint positions
+        # ax0min = np.min(example.log_q_j[: example.sim_steps, aid])
+        # ax0max = np.max(example.log_q_j[: example.sim_steps, aid])
+        # axs[0].vlines(example.log_time[: example.sim_steps], ax0min, ax0max, color='grey', linestyle='--', zorder=-1)
+        axs[0].step(example.log_time[: example.sim_steps], example.log_q_j[: example.sim_steps, aid], label="Measured")
+        axs[0].step(
+            example.log_time[: example.sim_steps],
+            example.log_q_j_ref[: example.sim_steps, aid],
+            label="Reference",
+            linestyle="--",
+        )
+        axs[0].set_ylabel("Actuator Position (rad)")
+        axs[0].legend()
+        axs[0].set_title(f"Actuator {aid} Position Tracking")
+        axs[0].grid()
+
+        # Plot the measured vs reference joint velocities
+        # ax1min = np.min(example.log_dq_j[: example.sim_steps, aid])
+        # ax1max = np.max(example.log_dq_j[: example.sim_steps, aid])
+        # axs[1].vlines(example.log_time[: example.sim_steps], ax1min, ax1max, color='grey', linestyle='--', zorder=-1)
+        axs[1].step(example.log_time[: example.sim_steps], example.log_dq_j[: example.sim_steps, aid], label="Measured")
+        axs[1].step(
+            example.log_time[: example.sim_steps],
+            example.log_dq_j_ref[: example.sim_steps, aid],
+            label="Reference",
+            linestyle="--",
+        )
+        axs[1].set_ylabel("Actuator Velocity (rad/s)")
+        axs[1].legend()
+        axs[1].set_title(f"Actuator {aid} Velocity Tracking")
+        axs[1].grid()
+
+        # Plot the control torques
+        # ax3min = np.min(example.log_tau_j[: example.sim_steps, aid])
+        # ax3max = np.max(example.log_tau_j[: example.sim_steps, aid])
+        # axs[2].vlines(example.log_time[: example.sim_steps], ax3min, ax3max, color='grey', linestyle='--', zorder=-1)
+        axs[2].step(
+            example.log_time[: example.sim_steps], example.log_tau_j[: example.sim_steps, aid], label="Control Torque"
+        )
+        axs[2].set_xlabel("Time (s)")
+        axs[2].set_ylabel("Torque (Nm)")
+        axs[2].legend()
+        axs[2].set_title(f"Actuator {aid} Control Torque")
+        axs[2].grid()
+
+        # Show plots
+        plt.tight_layout()
+        plt.show()

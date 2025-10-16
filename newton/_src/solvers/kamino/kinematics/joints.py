@@ -359,7 +359,7 @@ def _compute_joints_state(
 ###
 
 
-def compute_joints_state(model: Model, data: ModelData, state_p: State) -> None:
+def compute_joints_state(model: Model, state_p: State, data: ModelData) -> None:
     wp.launch(
         _compute_joints_state,
         dim=model.size.sum_of_num_joints,

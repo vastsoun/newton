@@ -446,13 +446,13 @@ def _build_joint_jacobians(
     W_j_B = wrench_matrix_from_points(r_j, r_B_j)
     W_j_F = wrench_matrix_from_points(r_j, r_F_j)
 
-    # Expand the joint axes and orientation matrices to 6D
-    X_bar_j = expand6d(X_j)
-    R_bar_j = expand6d(R_j)
+    # Compute the effective projector to joint frame and expand to 6D
+    R_X_j = R_j @ X_j
+    R_X_bar_j = expand6d(R_X_j)
 
     # Compute the extended jacobians, i.e. without the selection-matrix multiplication
-    JT_B_j = -W_j_B @ R_bar_j @ X_bar_j  # Reaction is on the Base body body ; (6 x 6)
-    JT_F_j = W_j_F @ R_bar_j @ X_bar_j  # Action is on the Follower body    ; (6 x 6)
+    JT_B_j = -W_j_B @ R_X_bar_j  # Reaction is on the Base body body ; (6 x 6)
+    JT_F_j = W_j_F @ R_X_bar_j  # Action is on the Follower body    ; (6 x 6)
 
     # Store the constraint Jacobian block
     store_joint_cts_jacobian(dof_type, cjmio, cio, nbd, bio, bid_B, bid_F, JT_B_j, JT_F_j, jacobian_cts_data)

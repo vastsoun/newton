@@ -77,7 +77,7 @@ def _compute_joint_dof_body_wrenches(
     bid_F_j = model_joints_bid_F[jid]
     bid_B_j = model_joints_bid_B[jid]
 
-    # Retrieve the size and index offset of the joint constraint
+    # Retrieve the size and index offset of the joint DoFs
     d_j = model_joints_num_dofs[jid]
     dio_j = model_joints_dofs_offset[jid]
 
@@ -87,17 +87,16 @@ def _compute_joint_dof_body_wrenches(
     # Retrieve the element index offset of the bodies of the world
     bio = model_info_bodies_offset[wid]
 
-    # Retrieve the constraint block index offsets of the
-    # Jacobian matrix and multipliers vector of the world
-    vio = model_info_joint_dofs_offset[wid]
+    # Retrieve the DoF block index offsets of the world's actuation
+    # Jacobian matrix and generalized joint actuation force vector
     mio = jacobian_dofs_offsets[wid]
+    vio = model_info_joint_dofs_offset[wid]
 
     # Append offsets to the current joint's DoFs
     vio += dio_j
     mio += nbd * dio_j
 
-    # Compute and store the joint constraint wrench for the Follower body
-    # NOTE: We need to scale by the time-step because the lambdas are impulses
+    # Compute and store the joint actuation wrench for the Follower body
     w_j_F = vec6f(0.0)
     dio_F = 6 * (bid_F_j - bio)
     for j in range(d_j):
@@ -108,8 +107,7 @@ def _compute_joint_dof_body_wrenches(
             w_j_F[i] += jacobian_dofs_data[mio_j + i] * tau_j
     wp.atomic_add(state_bodies_w_a, bid_F_j, w_j_F)
 
-    # Compute and store the joint constraint wrench for the Base body if bid_B >= 0
-    # NOTE: We need to scale by the time-step because the lambdas are impulses
+    # Compute and store the joint actuation wrench for the Base body if bid_B >= 0
     if bid_B_j >= 0:
         w_j_B = vec6f(0.0)
         dio_B = 6 * (bid_B_j - bio)

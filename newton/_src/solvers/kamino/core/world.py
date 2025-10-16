@@ -362,7 +362,7 @@ class WorldDescriptor:
         self.mass_min = min(self.mass_min, body.m_i)
         self.mass_max = max(self.mass_max, body.m_i)
         self.mass_total += body.m_i
-        self.inertia_total += float(body.i_I_i[0, 0]) + float(body.i_I_i[1, 1]) + float(body.i_I_i[2, 2])
+        self.inertia_total += 3.0 * body.m_i + float(body.i_I_i[0, 0] + body.i_I_i[1, 1] + body.i_I_i[2, 2])
 
     def add_joint(self, joint: JointDescriptor):
         # Append joint info

@@ -25,6 +25,7 @@ from matplotlib import pyplot as plt
 from warp.context import Devicelike
 
 from ..core.model import Model
+from ..core.time import TimeData
 from ..core.types import float32, int32
 
 ###
@@ -122,9 +123,9 @@ class AnimationJointReferenceData:
     Shape is ``(num_worlds,)`` and dtype is :class:`int32`.
     """
 
-    step: wp.array | None = None
+    frame: wp.array | None = None
     """
-    Integer step index indicating the current frame of the animation sequence that is active.\n
+    Integer index indicating the active frame of the animation sequence.\n
     Shape is ``(num_worlds,)`` and dtype is :class:`int32`.
     """
 
@@ -135,7 +136,7 @@ class AnimationJointReferenceData:
 
 
 @wp.kernel
-def _set_initial_animation_references(
+def _extract_initial_animation_references(
     # Inputs
     num_actuated_joint_dofs: wp.array(dtype=int32),
     actuated_joint_dofs_offset: wp.array(dtype=int32),
@@ -170,11 +171,12 @@ def _set_initial_animation_references(
 @wp.kernel
 def _advance_animation_step(
     # Inputs
+    time_steps: wp.array(dtype=int32),
     animation_loop: wp.array(dtype=int32),
     animation_rate: wp.array(dtype=int32),
     animation_length: wp.array(dtype=int32),
     # Outputs
-    animation_step: wp.array(dtype=int32),
+    animation_frame: wp.array(dtype=int32),
 ):
     """
     A kernel to compute joint-space PID control torques for force-actuated joints.
@@ -187,22 +189,29 @@ def _advance_animation_step(
     rate = animation_rate[wid]
     length = animation_length[wid]
 
-    # Retrieve the current step index for this world
-    step = animation_step[wid]
+    # Retrieve the current step (i.e. discrete-time index) for this world
+    step = time_steps[wid]
 
-    # Advance the step index by the configured rate
-    step += rate
+    # Check if we need to advance the animation frame
+    if step % rate != 0:
+        return
 
-    # If looping is enabled, wrap the step index around
+    # Retrieve the current frame index for this world
+    frame = animation_frame[wid]
+
+    # Advance the frame index
+    frame += 1
+
+    # If looping is enabled, wrap the frame index around
     if loop:
-        step %= length
-    # Otherwise, clamp the step index to the last frame
+        frame %= length
+    # Otherwise, clamp the frame index to the last frame
     else:
-        if step >= length:
-            step = length - 1
+        if frame >= length:
+            frame = length - 1
 
     # Update the active reference arrays
-    animation_step[wid] = step
+    animation_frame[wid] = frame
 
 
 # TODO: Make the 2D arrays as flattened 1D arrays to handle arbitrary layouts
@@ -265,6 +274,7 @@ class AnimationJointReference:
         rate: int | list[int] = 1,
         loop: bool | list[bool] = True,
         use_fd: bool = False,
+        fd_dt: float = np.inf,
         device: Devicelike = None,
     ):
         """
@@ -296,6 +306,7 @@ class AnimationJointReference:
                 rate=rate,
                 loop=loop,
                 use_fd=use_fd,
+                fd_dt=fd_dt,
                 device=device,
             )
 
@@ -331,6 +342,7 @@ class AnimationJointReference:
         rate: int | list[int] = 1,
         loop: bool | list[bool] = True,
         use_fd: bool = False,
+        fd_dt: float = np.inf,
         device: Devicelike = None,
     ) -> None:
         """
@@ -367,71 +379,61 @@ class AnimationJointReference:
             raise ValueError("Input data must be a 2D numpy array.")
 
         # Get the number of actuated coordinates and DoFs
-        num_actuated_coords = model.size.sum_of_num_actuated_joint_coords
-        num_actuated_dofs = model.size.sum_of_num_actuated_joint_dofs
+        total_num_actuated_coords = model.size.sum_of_num_actuated_joint_coords
+        total_num_actuated_dofs = model.size.sum_of_num_actuated_joint_dofs
+        max_num_actuated_dofs = model.size.max_of_num_actuated_joint_dofs
 
         # Check if there are any actuated DoFs
-        if num_actuated_dofs == 0:
+        if total_num_actuated_dofs == 0:
             raise ValueError("Model has no actuated DoFs.")
 
         # Ensure the model has only 1-DoF actuated joints
-        if num_actuated_coords != num_actuated_dofs:
+        if total_num_actuated_coords != total_num_actuated_dofs:
             raise ValueError(
-                f"Model has {num_actuated_coords} actuated coordinates but {num_actuated_dofs} actuated DoFs. "
-                "AnimationJointReference is currently incompatible with multi-DoF actuated joints."
+                f"Model has {total_num_actuated_coords} actuated coordinates but {total_num_actuated_dofs} actuated "
+                "DoFs. AnimationJointReference is currently incompatible with multi-DoF actuated joints."
             )
 
         # Check that input data matches the number of actuated DoFs
-        if input.shape[1] != num_actuated_dofs and input.shape[0] != num_actuated_dofs:
+        if input.shape[1] != max_num_actuated_dofs and input.shape[0] != max_num_actuated_dofs:
             raise ValueError(
-                f"Input data has shape {input.shape} which does not match the number of actuated DoFs ({num_actuated_dofs})."
+                f"Input data has shape {input.shape} which does not match the "
+                f"per-world number of actuated DoFs ({max_num_actuated_dofs})."
             )
 
         # We assume the input is organized as (sequence_length, num_actuated_dofs)
         # Transpose the input if necessary in order to match the assumed shape
-        if input.shape[0] == num_actuated_dofs or input.shape[0] == 2 * num_actuated_dofs:
+        if input.shape[0] == max_num_actuated_dofs or input.shape[0] == 2 * max_num_actuated_dofs:
             input = input.T
 
         # Cache the model dimensions meta-data
         self._num_worlds = model.size.num_worlds
-        self._max_of_num_actuated_dofs = model.size.max_of_num_actuated_joint_dofs
+        self._max_of_num_actuated_dofs = max_num_actuated_dofs
         self._sequence_length = input.shape[0]
 
         # Extract the reference joint positions and velocities
-        q_j_ref_np = input[:, :num_actuated_dofs].astype(np.float32)
-        if input.shape[1] >= 2 * num_actuated_dofs:
-            dq_j_ref_np = input[:, num_actuated_dofs : 2 * num_actuated_dofs].astype(np.float32)
+        q_j_ref_np = input[:, :max_num_actuated_dofs].astype(np.float32)
+        if input.shape[1] >= 2 * max_num_actuated_dofs:
+            dq_j_ref_np = input[:, max_num_actuated_dofs : 2 * max_num_actuated_dofs].astype(np.float32)
         else:
             # Use finite-differences to estimate velocities if requested
             if use_fd:
                 # Compute raw finite-difference velocities
                 dq_j_ref_np = np.zeros_like(q_j_ref_np)
-                dq_j_ref_np[1:] = np.diff(q_j_ref_np, axis=0)
+                dq_j_ref_np[1:] = np.diff(q_j_ref_np, axis=0) / fd_dt
+
+                # Set the first velocity to match the second
+                dq_j_ref_np[0] = dq_j_ref_np[1]
+
                 # Apply a simple moving average filter to smooth out the velocities
                 kernel_size = 5
                 kernel = np.ones(kernel_size) / kernel_size
-                for i in range(num_actuated_dofs):
+                for i in range(max_num_actuated_dofs):
                     dq_j_ref_np[:, i] = np.convolve(dq_j_ref_np[:, i], kernel, mode="same")
 
             # Otherwise, default to zero velocities
             else:
                 dq_j_ref_np = np.zeros_like(q_j_ref_np)
-
-        # Plot the input data for verification
-        fig, axs = plt.subplots(2, 1, figsize=(10, 6))
-        for i in range(num_actuated_dofs):
-            axs[0].plot(q_j_ref_np[:, i], label=f"Joint {i}")
-            axs[1].plot(dq_j_ref_np[:, i], label=f"Joint {i}")
-        axs[0].set_title("Reference Joint Positions")
-        axs[0].set_xlabel("Frame")
-        axs[0].set_ylabel("Position")
-        axs[0].legend()
-        axs[1].set_title("Reference Joint Velocities")
-        axs[1].set_xlabel("Frame")
-        axs[1].set_ylabel("Velocity")
-        axs[1].legend()
-        plt.tight_layout()
-        plt.show()
 
         # Create the rate and loop arrays
         # TODO: Allow different rates/looping per world
@@ -453,8 +455,29 @@ class AnimationJointReference:
                 length=wp.array(length_np, dtype=int32),
                 rate=wp.array(rate_np, dtype=int32),
                 loop=wp.array(loop_np, dtype=int32),
-                step=wp.zeros(self._num_worlds, dtype=int32),
+                frame=wp.zeros(self._num_worlds, dtype=int32),
             )
+
+    def plot(self) -> None:
+        # Extract numpy arrays for plotting
+        q_j_ref_np = self._data.q_j_ref.numpy()
+        dq_j_ref_np = self._data.dq_j_ref.numpy()
+
+        # Plot the input data for verification
+        _, axs = plt.subplots(2, 1, figsize=(10, 6))
+        for i in range(self._max_of_num_actuated_dofs):
+            axs[0].plot(q_j_ref_np[:, i], label=f"Joint {i}")
+            axs[1].plot(dq_j_ref_np[:, i], label=f"Joint {i}")
+        axs[0].set_title("Reference Joint Positions")
+        axs[0].set_xlabel("Frame")
+        axs[0].set_ylabel("Position")
+        axs[0].legend()
+        axs[1].set_title("Reference Joint Velocities")
+        axs[1].set_xlabel("Frame")
+        axs[1].set_ylabel("Velocity")
+        axs[1].legend()
+        plt.tight_layout()
+        plt.show()
 
     # TODO: Make the enabled flag a list to allow different settings per world
     def loop(self, enabled=True) -> None:
@@ -474,9 +497,9 @@ class AnimationJointReference:
         """
         if self._data is None:
             raise ValueError("Controller data is not allocated. Call allocate() first.")
-        self._data.step.fill_(0)
+        self._data.frame.fill_(0)
         wp.launch(
-            _set_initial_animation_references,
+            _extract_initial_animation_references,
             dim=(self._num_worlds, self._max_of_num_actuated_dofs),
             inputs=[
                 self._data.num_actuated_joint_dofs,
@@ -489,7 +512,32 @@ class AnimationJointReference:
             device=self._device,
         )
 
-    def step(self, q_j_ref_out: wp.array, dq_j_ref_out: wp.array) -> None:
+    def extract(self, q_j_ref_out: wp.array, dq_j_ref_out: wp.array) -> None:
+        """
+        Extract the reference arrays from the animation sequence at the current time-step.
+
+        Args:
+            q_j_ref_out (wp.array): Output array for the reference joint positions.
+            dq_j_ref_out (wp.array): Output array for the reference joint velocities.
+        """
+        wp.launch(
+            _extract_animation_references,
+            dim=(self._num_worlds, self._max_of_num_actuated_dofs),
+            inputs=[
+                # Inputs:
+                self._data.num_actuated_joint_dofs,
+                self._data.actuated_joint_dofs_offset,
+                self._data.frame,
+                self._data.q_j_ref,
+                self._data.dq_j_ref,
+                # Outputs:
+                q_j_ref_out,
+                dq_j_ref_out,
+            ],
+            device=self._device,
+        )
+
+    def step(self, time: TimeData, q_j_ref_out: wp.array, dq_j_ref_out: wp.array) -> None:
         """
         Advance the animation sequence by the configured rate and copy the results to the output arrays.
 
@@ -504,11 +552,12 @@ class AnimationJointReference:
             dim=self._num_worlds,
             inputs=[
                 # Inputs:
+                time.steps,
                 self._data.loop,
                 self._data.rate,
                 self._data.length,
                 # Outputs:
-                self._data.step,
+                self._data.frame,
             ],
             device=self._device,
         )
@@ -521,7 +570,7 @@ class AnimationJointReference:
                 # Inputs:
                 self._data.num_actuated_joint_dofs,
                 self._data.actuated_joint_dofs_offset,
-                self._data.step,
+                self._data.frame,
                 self._data.q_j_ref,
                 self._data.dq_j_ref,
                 # Outputs:

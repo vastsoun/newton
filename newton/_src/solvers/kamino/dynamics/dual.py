@@ -296,11 +296,11 @@ def gravity_plus_coriolis_wrench(
     omega_i: vec3f,
 ) -> vec6f:
     """
-    Compute the gravitational+inertial wrench on a body.
+    Compute the gravitational + Coriolis wrench acting on a body.
     """
     f_gi_i = m_i * g
     tau_gi_i = -wp.skew(omega_i) @ (I_i @ omega_i)
-    return vec6f(f_gi_i.x, f_gi_i.y, f_gi_i.z, tau_gi_i.x, tau_gi_i.y, tau_gi_i.z)
+    return screw(f_gi_i, tau_gi_i)
 
 
 @wp.func

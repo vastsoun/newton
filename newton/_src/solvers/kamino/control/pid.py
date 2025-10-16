@@ -202,7 +202,6 @@ def _compute_jointspace_pid_control(
     # Retrieve the time step and current time
     dt = model_time_dt[wid]
 
-    # TODO: Enable this
     # Decimate the simulation time-step by the control
     # decimation to get the effective control time-step
     dt *= float32(decimation)
@@ -223,19 +222,19 @@ def _compute_jointspace_pid_control(
     # Iterate over the DoFs of the joint
     for dof in range(num_dofs):
         # Compute the DoF index in the global DoF vector
-        dof_index = dofs_offset + dof
+        joint_dof_index = dofs_offset + dof
 
         # Compute the actuator index in the controller vectors
         actuator_dof_index = actuated_dofs_offset + dof
         # wp.printf("[step=%d][jid=%d]: dof_index: %d, actuator_dof_index: %d\n", step, jid, dof_index, actuator_dof_index)
 
         # Retrieve the maximum limit of the generalized actuator forces
-        tau_j_max = model_joints_tau_j_max[dof_index]
+        tau_j_max = model_joints_tau_j_max[joint_dof_index]
         # wp.printf("[step=%d][jid=%d]: dof_index: %d, tau_j_max: %f\n", step, jid, dof_index, tau_j_max)
 
         # Retrieve the current joint state
-        q_j = state_joints_q_j[dof_index]
-        dq_j = state_joints_dq_j[dof_index]
+        q_j = state_joints_q_j[joint_dof_index]
+        dq_j = state_joints_dq_j[joint_dof_index]
 
         # Retrieve the current controller references
         q_j_ref = controller_q_j_ref[actuator_dof_index]
@@ -275,9 +274,12 @@ def _compute_jointspace_pid_control(
         #     tau_j_c,
         # )
 
+        # TODO: CORRECTION WITH DAMPING
+        # tau_j_c += -dt * 1.0 * K_p * dq_j  # small damping to improve stability
+
         # Store the updated integrator state and actuator control forces
         controller_integrator[actuator_dof_index] = integrator
-        control_tau_j[dof_index] = tau_j_c
+        control_tau_j[joint_dof_index] = tau_j_c
 
 
 ###

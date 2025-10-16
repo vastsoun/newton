@@ -104,6 +104,7 @@ class TimeData:
     """
 
     def __init__(self):
+        # TODO: Make this uint64
         self.steps: wp.array(dtype=int32) | None = None
         """
         The current number of simulation steps of each world.\n

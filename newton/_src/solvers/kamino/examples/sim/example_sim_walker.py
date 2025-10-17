@@ -20,6 +20,7 @@ import time
 import matplotlib.pyplot as plt
 import numpy as np
 import warp as wp
+from scipy.interpolate import interp1d
 
 import newton
 import newton._src.solvers.kamino.utils.logger as msg
@@ -93,6 +94,42 @@ def test_control_callback(sim: Simulator):
             sim.data.control_n.tau_j,
         ],
     )
+
+
+###
+# Functions
+###
+
+
+def upsample_with_scipy(
+    data: np.ndarray,
+    dt_in: float,
+    dt_out: float,
+    t0: float = 0.0,
+    t_start: float | None = None,
+    t_end: float | None = None,
+    extrapolate: bool = False,
+):
+    N, M = data.shape
+    if t_start is None:
+        t_start = t0
+    if t_end is None:
+        t_end = t0 + (N - 1) * dt_in
+
+    t_original = t0 + dt_in * np.arange(N)
+    K = int(np.floor((t_end - t_start) / dt_out)) + 1
+    t_new = t_start + dt_out * np.arange(K)
+
+    f = interp1d(
+        t_original,
+        data,
+        axis=0,
+        kind="linear",
+        bounds_error=False,
+        fill_value=("extrapolate" if extrapolate else (data[0], data[-1])),
+    )
+    y_new = f(t_new)
+    return t_new, y_new
 
 
 ###
@@ -336,24 +373,31 @@ class WalkerExample:
         animation_np = np.load(NUMPY_ANIMATION_PATH, allow_pickle=True)
         msg.debug(f"animation_np (shape={animation_np.shape}):\n{animation_np}\n")
 
-        #
+        # Compute animation time step and rate
         animation_dt = 0.01  # 100 fps
         animation_rate = int(round(animation_dt / settings.dt))
         msg.warning(f"animation_dt: {animation_dt}")
         msg.warning(f"animation_rate: {animation_rate}")
 
-        # TODO: Compute rate and fd_dt from animation frame-rate
+        # Linearly-interpolate to match the simulation time step
+        _, animation_np = upsample_with_scipy(
+            data=animation_np,
+            dt_in=animation_dt,
+            dt_out=self.sim_dt,
+            extrapolate=False,
+        )
+
         # Create a joint-space animation reference generator
         self.animation = AnimationJointReference(
             model=self.sim.model,
             input=animation_np,
-            rate=animation_rate,
+            rate=1,
             loop=False,
             use_fd=True,
-            fd_dt=animation_dt,
+            fd_dt=self.sim_dt,
             device=device,
         )
-        # self.animation.plot()
+        self.animation.plot()
 
         # Create a joint-space PID controller
         njaq = self.sim.model.size.sum_of_num_actuated_joint_dofs

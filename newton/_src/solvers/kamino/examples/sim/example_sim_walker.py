@@ -20,7 +20,6 @@ import time
 import matplotlib.pyplot as plt
 import numpy as np
 import warp as wp
-from scipy.interpolate import interp1d
 
 import newton
 import newton._src.solvers.kamino.utils.logger as msg
@@ -28,109 +27,11 @@ import newton.examples
 from newton._src.solvers.kamino.control.animation import AnimationJointReference
 from newton._src.solvers.kamino.control.pid import JointSpacePIDController
 from newton._src.solvers.kamino.core.builder import ModelBuilder
-from newton._src.solvers.kamino.core.types import float32, vec6f
 from newton._src.solvers.kamino.models import get_examples_usd_assets_path
 from newton._src.solvers.kamino.models.builders import add_ground_geom, offset_builder
 from newton._src.solvers.kamino.simulation.simulator import Simulator, SimulatorSettings
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
 from newton._src.solvers.kamino.utils.print import print_progress_bar
-
-###
-# Module configs
-###
-
-wp.set_module_options({"enable_backward": False})
-
-
-###
-# Kernels
-###
-
-
-@wp.kernel
-def _test_control_callback(
-    model_dt: wp.array(dtype=float32),
-    state_t: wp.array(dtype=float32),
-    state_w_e_i: wp.array(dtype=vec6f),
-    control_tau_j: wp.array(dtype=float32),
-):
-    """
-    An example control callback kernel.
-    """
-    # Set world index
-    wid = int(0)
-    jid = int(1)
-
-    # Define the time window for the active external force profile
-    t_start = float32(0.0)
-    t_end = float32(5.0)
-
-    # Get the current time
-    t = state_t[wid]
-
-    # Apply a time-dependent external force
-    if t > t_start and t < t_end:
-        control_tau_j[jid] = 0.1 * wp.sin(1.0 * 6.28318 * (t - t_start))
-    else:
-        control_tau_j[jid] = 0.0
-
-
-###
-# Launchers
-###
-
-
-def test_control_callback(sim: Simulator):
-    """
-    A control callback function
-    """
-    wp.launch(
-        _test_control_callback,
-        dim=1,
-        inputs=[
-            sim.model.time.dt,
-            sim.data.solver.time.time,
-            sim.data.solver.bodies.w_e_i,
-            sim.data.control_n.tau_j,
-        ],
-    )
-
-
-###
-# Functions
-###
-
-
-def upsample_with_scipy(
-    data: np.ndarray,
-    dt_in: float,
-    dt_out: float,
-    t0: float = 0.0,
-    t_start: float | None = None,
-    t_end: float | None = None,
-    extrapolate: bool = False,
-):
-    N, M = data.shape
-    if t_start is None:
-        t_start = t0
-    if t_end is None:
-        t_end = t0 + (N - 1) * dt_in
-
-    t_original = t0 + dt_in * np.arange(N)
-    K = int(np.floor((t_end - t_start) / dt_out)) + 1
-    t_new = t_start + dt_out * np.arange(K)
-
-    f = interp1d(
-        t_original,
-        data,
-        axis=0,
-        kind="linear",
-        bounds_error=False,
-        fill_value=("extrapolate" if extrapolate else (data[0], data[-1])),
-    )
-    y_new = f(t_new)
-    return t_new, y_new
-
 
 ###
 # Constants
@@ -142,162 +43,15 @@ MESH_USD_MODEL_PATH = os.path.join(get_examples_usd_assets_path(), "walker/walke
 
 
 ###
-# Main function
+# Example class
 ###
-
-
-def run_headless(use_cuda_graph=False):
-    """Run the simulation in headless mode."""
-
-    # Set global numpy configurations
-    np.set_printoptions(linewidth=20000, precision=6, threshold=10000, suppress=True)  # Suppress scientific notation
-
-    # Get the default warp device
-    device = wp.get_preferred_device()
-    device = wp.get_device(device)
-    msg.info(f"device: {device}")
-
-    # TODO: REMOVE THIS
-    use_cuda_graph = False
-
-    # Determine if using CUDA graphs
-    can_use_cuda_graph = device.is_cuda and wp.is_mempool_enabled(device)
-    msg.info(f"use_cuda_graph: {use_cuda_graph}")
-    msg.info(f"can_use_cuda_graph: {can_use_cuda_graph}")
-
-    # Create a single-instance system (always load from USD for walker)
-    msg.info("Constructing builder from imported USD ...")
-    importer = USDImporter()
-    builder: ModelBuilder = importer.import_from(source=MESH_USD_MODEL_PATH)
-    # builder: ModelBuilder = importer.import_from(source=BOX_USD_MODEL_PATH)
-    msg.warning("total mass: %f", builder.world.mass_total)
-    msg.warning("total diag inertia: %f", builder.world.inertia_total)
-
-    # Offset the model to place it above the ground
-    # NOTE: The USD model is centered at the origin
-    offset = wp.transformf(0.0, 0.0, 0.265, 0.0, 0.0, 0.0, 1.0)
-    offset_builder(builder=builder, offset=offset)
-
-    # Set gravity
-    builder.gravity.enabled = False
-
-    # Set solver settings
-    settings = SimulatorSettings()
-    settings.dt = 0.001
-    settings.problem.alpha = 0.0
-    settings.solver.primal_tolerance = 1e-6
-    settings.solver.dual_tolerance = 1e-6
-    settings.solver.compl_tolerance = 1e-6
-    settings.solver.max_iterations = 200
-    settings.solver.rho_0 = 0.05
-    msg.warning(f"settings.dt: {settings.dt}")
-
-    # Problem dimensions
-    njaq = builder.world.num_actuated_joint_coords
-
-    # Create a simulator
-    msg.info("Building the simulator...")
-    sim = Simulator(builder=builder, settings=settings, device=device)
-
-    # Load animation data for walker
-    NUMPY_ANIMATION_PATH = os.path.join(get_examples_usd_assets_path(), "walker/walker_animation_100fps.npy")
-    animation_np = np.load(NUMPY_ANIMATION_PATH, allow_pickle=True)
-    msg.debug(f"animation_np (shape={animation_np.shape}):\n{animation_np}\n")
-
-    # Compute animation time step and rate
-    animation_dt = 0.01  # 100 fps
-    animation_rate = int(round(animation_dt / settings.dt))
-    msg.warning(f"animation_dt: {animation_dt}")
-    msg.warning(f"animation_rate: {animation_rate}")
-
-    # Create a joint-space animation reference generator
-    animation = AnimationJointReference(
-        model=sim.model,
-        input=animation_np,
-        rate=animation_rate,
-        loop=False,
-        use_fd=True,
-        fd_dt=animation_dt,
-        device=device,
-    )
-
-    # Create a joint-space PID controller
-    njaq = sim.model.size.sum_of_num_actuated_joint_dofs
-    K_p = 80.0 * np.ones(njaq, dtype=np.float32)
-    K_d = 0.1 * np.ones(njaq, dtype=np.float32)
-    K_i = 0.01 * np.ones(njaq, dtype=np.float32)
-    decimation = 1 * np.ones(sim.model.size.num_worlds, dtype=np.int32)
-    controller = JointSpacePIDController(
-        model=sim.model, K_p=K_p, K_i=K_i, K_d=K_d, decimation=decimation, device=device
-    )
-
-    # Initialize the controller and animation
-    controller.reset(model=sim.model, state=sim.data.state_n)
-    animation.reset(q_j_ref_out=controller.data.q_j_ref, dq_j_ref_out=controller.data.dq_j_ref)
-
-    # Define a callback function to reset the controller
-    def reset_jointspace_pid_control_callback(simulator: Simulator):
-        controller.reset(model=simulator.model, state=simulator.data.state_n)
-        animation.reset(q_j_ref_out=controller.data.q_j_ref, dq_j_ref_out=controller.data.dq_j_ref)
-
-    # Define a callback function to wrap the execution of the controller
-    def compute_jointspace_pid_control_callback(simulator: Simulator):
-        animation.step(
-            time=simulator.data.solver.time,
-            q_j_ref_out=controller.data.q_j_ref,
-            dq_j_ref_out=controller.data.dq_j_ref,
-        )
-        controller.compute(
-            model=simulator.model,
-            state=simulator.data.state_n,
-            time=simulator.data.solver.time,
-            control=simulator.data.control_n,
-        )
-
-    # Set the reference tracking generation & control callbacks into the simulator
-    sim.set_reset_callback(reset_jointspace_pid_control_callback)
-    sim.set_control_callback(compute_jointspace_pid_control_callback)
-
-    # Capture graphs for simulator ops: reset and step
-    use_cuda_graph &= can_use_cuda_graph
-    reset_graph = None
-    step_graph = None
-    if use_cuda_graph:
-        with wp.ScopedCapture(device) as reset_capture:
-            sim.reset()
-        reset_graph = reset_capture.graph
-        with wp.ScopedCapture(device) as step_capture:
-            sim.step()
-        step_graph = step_capture.graph
-
-    # Warm-start the simulator before rendering
-    # NOTE: This compiles and loads the warp kernels prior to execution
-    msg.info("Warming up the simulator...")
-    if use_cuda_graph:
-        msg.info("Running with CUDA graphs...")
-        wp.capture_launch(reset_graph)
-        wp.capture_launch(step_graph)
-    else:
-        msg.info("Running with kernels...")
-        with wp.ScopedDevice(device):
-            sim.step()
-            sim.reset()
-
-    # Step the simulation and collect frames
-    ns = 10000
-    msg.warning(f"Collecting ns={ns} frames...")
-    start_time = time.time()
-    with wp.ScopedDevice(device):
-        for i in range(ns):
-            sim.step()
-            wp.synchronize()
-            print_progress_bar(i, ns, start_time, prefix="Progress", suffix="")
 
 
 class WalkerExample:
     """ViewerGL example class for walker simulation."""
 
-    def __init__(self, viewer, use_cuda_graph=False):
+    def __init__(self, viewer, device, use_cuda_graph=False):
+        # Initialize target frames per second and corresponding time-steps
         self.fps = 60
         self.frame_dt = 1.0 / self.fps
         self.sim_dt = 0.001
@@ -309,15 +63,16 @@ class WalkerExample:
         msg.warning("sim_substeps: %d", self.sim_substeps)
         msg.warning("max_sim_steps: %d", self.max_sim_steps)
 
+        # Initialize internal time-keeping
         self.sim_time = 0.0
         self.sim_steps = 0
 
+        # Cache a reference to the viewr
         self.viewer = viewer
-        self.use_cuda_graph = use_cuda_graph
 
-        # Get the default warp device
-        device = wp.get_preferred_device()
-        device = wp.get_device(device)
+        # Cache the device and graph configuration
+        self.device = device
+        self.use_cuda_graph = use_cuda_graph
 
         # Create a single-instance system (always load from USD for walker)
         msg.info("Constructing builder from imported USD ...")
@@ -379,25 +134,18 @@ class WalkerExample:
         msg.warning(f"animation_dt: {animation_dt}")
         msg.warning(f"animation_rate: {animation_rate}")
 
-        # Linearly-interpolate to match the simulation time step
-        _, animation_np = upsample_with_scipy(
-            data=animation_np,
-            dt_in=animation_dt,
-            dt_out=self.sim_dt,
-            extrapolate=False,
-        )
-
         # Create a joint-space animation reference generator
         self.animation = AnimationJointReference(
             model=self.sim.model,
-            input=animation_np,
+            data=animation_np,
+            data_dt=animation_dt,
+            target_dt=settings.dt,
+            decimation=1,
             rate=1,
             loop=False,
             use_fd=True,
-            fd_dt=self.sim_dt,
             device=device,
         )
-        self.animation.plot()
 
         # Create a joint-space PID controller
         njaq = self.sim.model.size.sum_of_num_actuated_joint_dofs
@@ -408,9 +156,6 @@ class WalkerExample:
         self.controller = JointSpacePIDController(
             model=self.sim.model, K_p=K_p, K_i=K_i, K_d=K_d, decimation=decimation, device=device
         )
-
-        # Set a single joint controller for plotting
-        self.aj = 2
 
         # Initialize the controller and animation
         self.controller.reset(model=self.sim.model, state=self.sim.data.state_n)
@@ -459,15 +204,14 @@ class WalkerExample:
             wp.array([wp.vec3(0.5, 0.5, 0.5)], dtype=wp.vec3),  # Gray
         ]
 
-        # Initialize the simulator with a warm-up step
-        self.sim.reset()
-        self.log_data()
+        # Declare and initialize the optional computation graphs
+        # NOTE: These are used for most efficient GPU runtime
+        self.reset_graph = None
+        self.step_graph = None
+        self.simulate_graph = None
 
         # Capture CUDA graph if requested and available
         self.capture()
-
-        # # Block until the user is ready
-        # input("Press Enter to continue...")
 
     def extract_geometry_info(self):
         """Extract geometry information from the kamino simulator."""
@@ -497,12 +241,35 @@ class WalkerExample:
 
     def capture(self):
         """Capture CUDA graph if requested and available."""
-        if self.use_cuda_graph and wp.get_device().is_cuda:
-            with wp.ScopedCapture() as capture:
+
+        # Capture graphs for simulator ops: reset and step
+        if self.use_cuda_graph:
+            with wp.ScopedCapture(self.device) as reset_capture:
+                self.sim.reset()
+            self.reset_graph = reset_capture.graph
+            with wp.ScopedCapture(device) as step_capture:
+                self.sim.step()
+            self.step_graph = step_capture.graph
+            with wp.ScopedCapture() as sim_capture:
                 self.simulate()
-            self.graph = capture.graph
+            self.simulate_graph = sim_capture.graph
+
+        # Warm-start the simulator before rendering
+        # NOTE: This compiles and loads the warp kernels prior to execution
+        msg.info("Warming up the simulator...")
+        if self.use_cuda_graph:
+            msg.info("Running with CUDA graphs...")
+            wp.capture_launch(self.reset_graph)
+            wp.capture_launch(self.step_graph)
         else:
-            self.graph = None
+            msg.info("Running with kernels...")
+            with wp.ScopedDevice(device):
+                self.sim.step()
+                self.sim.reset()
+
+        # Initialize the logging data only in kernel-mode
+        if not self.use_cuda_graph:
+            self.log_data()
 
     def log_data(self):
         if self.sim_steps >= self.max_sim_steps:
@@ -520,12 +287,27 @@ class WalkerExample:
         for _ in range(self.sim_substeps):
             self.sim.step()
             self.sim_steps += 1
-            self.log_data()
+            if not self.use_cuda_graph:
+                self.log_data()
+
+    def reset(self):
+        """Reset the simulation."""
+        if self.reset_graph:
+            wp.capture_launch(self.reset_graph)
+        else:
+            self.sim.reset()
+
+    def step_once(self):
+        """Run the simulation for a single time-step."""
+        if self.step_graph:
+            wp.capture_launch(self.step_graph)
+        else:
+            self.sim.step()
 
     def step(self):
         """Step the simulation."""
-        if self.graph:
-            wp.capture_launch(self.graph)
+        if self.simulate_graph:
+            wp.capture_launch(self.simulate_graph)
         else:
             self.simulate()
 
@@ -655,22 +437,96 @@ class WalkerExample:
         """Test function for compatibility."""
         pass
 
+    def plot(self, actuator_dof_index=0):
+        # First plot the animation sequence references
+        self.animation.plot()
+
+        # Plot logged data after the viewer is closed
+        _, axs = plt.subplots(3, 1, figsize=(10, 10), sharex=True)
+
+        # Plot the measured vs reference joint positions
+        axs[0].step(
+            example.log_time[: example.sim_steps],
+            example.log_q_j[: example.sim_steps, actuator_dof_index],
+            label="Measured",
+        )
+        axs[0].step(
+            example.log_time[: example.sim_steps],
+            example.log_q_j_ref[: example.sim_steps, actuator_dof_index],
+            label="Reference",
+            linestyle="--",
+        )
+        axs[0].set_ylabel("Actuator Position (rad)")
+        axs[0].legend()
+        axs[0].set_title(f"Actuator DoF {actuator_dof_index} Position Tracking")
+        axs[0].grid()
+
+        # Plot the measured vs reference joint velocities
+        axs[1].step(
+            example.log_time[: example.sim_steps],
+            example.log_dq_j[: example.sim_steps, actuator_dof_index],
+            label="Measured",
+        )
+        axs[1].step(
+            example.log_time[: example.sim_steps],
+            example.log_dq_j_ref[: example.sim_steps, actuator_dof_index],
+            label="Reference",
+            linestyle="--",
+        )
+        axs[1].set_ylabel("Actuator Velocity (rad/s)")
+        axs[1].legend()
+        axs[1].set_title(f"Actuator DoF {actuator_dof_index} Velocity Tracking")
+        axs[1].grid()
+
+        # Plot the control torques
+        axs[2].step(
+            example.log_time[: example.sim_steps],
+            example.log_tau_j[: example.sim_steps, actuator_dof_index],
+            label="Control Torque",
+        )
+        axs[2].set_xlabel("Time (s)")
+        axs[2].set_ylabel("Torque (Nm)")
+        axs[2].legend()
+        axs[2].set_title(f"Actuator DoF {actuator_dof_index} Control Torque")
+        axs[2].grid()
+
+        # Show plots
+        plt.tight_layout()
+        plt.show()
+
+
+###
+# Execution functions
+###
+
+
+def run_headless(example: WalkerExample, num_steps: int = 25000, progress: bool = True):
+    """Run the simulation in headless mode for a fixed number of steps."""
+    example.reset()
+    msg.info(f"Running for {num_steps} steps...")
+    start_time = time.time()
+    with wp.ScopedDevice(device):
+        for i in range(num_steps):
+            example.step_once()
+            wp.synchronize()
+            if progress:
+                print_progress_bar(i, num_steps + 1, start_time, prefix="Progress", suffix="")
+
+
+###
+# Main function
+###
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Walker simulation example")
-    parser.add_argument(
-        "--mode",
-        choices=["headless", "viewer"],
-        default="viewer",
-        help="Simulation mode: 'headless' for brute-force simulation, 'viewer' for live visualization",
-    )
-    parser.add_argument("--clear-cache", action="store_true", default=False, help="Clear warp cache")
-    parser.add_argument("--cuda-graph", action="store_true", default=True, help="Use CUDA graphs")
     parser.add_argument("--viewer", choices=["gl", "usd", "rerun", "null"], default="gl", help="Viewer type")
-    parser.add_argument("--headless", action="store_true", help="Run in headless mode")
-    parser.add_argument("--device", type=str, help="Compute device")
-    parser.add_argument("--output-path", type=str, help="Output path for USD viewer")
+    parser.add_argument("--device", type=str, help="The compute device to use")
+    parser.add_argument("--headless", action="store_true", default=True, help="Run in headless mode")
     parser.add_argument("--num-frames", type=int, default=1000, help="Number of frames for null/USD viewer")
+    parser.add_argument("--output-path", type=str, help="Output path for USD viewer")
+    parser.add_argument("--cuda-graph", action="store_true", default=False, help="Use CUDA graphs")
+    parser.add_argument("--clear-cache", action="store_true", default=False, help="Clear warp cache")
     parser.add_argument("--test", action="store_true", default=False, help="Run tests")
     args = parser.parse_args()
 
@@ -683,36 +539,52 @@ if __name__ == "__main__":
         wp.clear_lto_cache()
 
     # TODO: Make optional
+    # Set the verbosity of the global message logger
     msg.set_log_level(msg.LogLevel.INFO)
 
-    # Execute based on mode
-    if args.mode == "headless":
+    # Set device if specified, otherwise use Warp's default
+    if args.device:
+        device = wp.get_device(args.device)
+        wp.set_device(device)
+    else:
+        device = wp.get_preferred_device()
+        device = wp.get_device(device)
+
+    # Determine if CUDA graphs should be used for execution
+    can_use_cuda_graph = device.is_cuda and wp.is_mempool_enabled(device)
+    use_cuda_graph = can_use_cuda_graph & args.cuda_graph
+    msg.info(f"can_use_cuda_graph: {can_use_cuda_graph}")
+    msg.info(f"use_cuda_graph: {use_cuda_graph}")
+
+    # Run a brute-force similation loop if headless
+    if args.headless:
         msg.info("Running in headless mode...")
-        run_headless(use_cuda_graph=args.cuda_graph)
+        viewer = newton.viewer.ViewerNull(num_frames=args.num_frames)
+        example = WalkerExample(viewer, device=device, use_cuda_graph=use_cuda_graph)
+        run_headless(example, num_steps=args.num_frames * example.sim_substeps, progress=True)
 
-    elif args.mode == "viewer":
-        msg.info("Running in ViewerGL mode...")
-
-        # Set device if specified
-        if args.device:
-            wp.set_device(args.device)
-
+    # Otherwise launch using a Newton viewer
+    else:
         # Create viewer based on type
         if args.viewer == "gl":
-            viewer = newton.viewer.ViewerGL(headless=args.headless)
+            msg.info("Running in OpenGL render mode...")
+            viewer = newton.viewer.ViewerGL(headless=False)
         elif args.viewer == "usd":
             if args.output_path is None:
                 raise ValueError("--output-path is required when using usd viewer")
+            msg.info("Running in OpenUSD render  mode...")
             viewer = newton.viewer.ViewerUSD(output_path=args.output_path, num_frames=args.num_frames)
         elif args.viewer == "rerun":
+            msg.info("Running in ReRun render  mode...")
             viewer = newton.viewer.ViewerRerun()
         elif args.viewer == "null":
+            msg.info("Running in Null render  mode...")
             viewer = newton.viewer.ViewerNull(num_frames=args.num_frames)
         else:
             raise ValueError(f"Invalid viewer: {args.viewer}")
 
         # Create and run example
-        example = WalkerExample(viewer, use_cuda_graph=args.cuda_graph)
+        example = WalkerExample(viewer, device=device, use_cuda_graph=use_cuda_graph)
 
         # Set initial camera position for better view of the walker
         if hasattr(viewer, "set_camera"):
@@ -722,50 +594,8 @@ if __name__ == "__main__":
             yaw = 225.0
             viewer.set_camera(camera_pos, pitch, yaw)
 
+        # Launch the example using Newton's built-in runtime
         newton.examples.run(example, args)
 
         # Plot logged data after the viewer is closed
-        fig, axs = plt.subplots(3, 1, figsize=(10, 10), sharex=True)
-
-        # Select a joint to plot (e.g., joint ID 1)
-        aid = example.aj
-
-        # Plot the measured vs reference joint positions
-        axs[0].step(example.log_time[: example.sim_steps], example.log_q_j[: example.sim_steps, aid], label="Measured")
-        axs[0].step(
-            example.log_time[: example.sim_steps],
-            example.log_q_j_ref[: example.sim_steps, aid],
-            label="Reference",
-            linestyle="--",
-        )
-        axs[0].set_ylabel("Actuator Position (rad)")
-        axs[0].legend()
-        axs[0].set_title(f"Actuator {aid} Position Tracking")
-        axs[0].grid()
-
-        # Plot the measured vs reference joint velocities
-        axs[1].step(example.log_time[: example.sim_steps], example.log_dq_j[: example.sim_steps, aid], label="Measured")
-        axs[1].step(
-            example.log_time[: example.sim_steps],
-            example.log_dq_j_ref[: example.sim_steps, aid],
-            label="Reference",
-            linestyle="--",
-        )
-        axs[1].set_ylabel("Actuator Velocity (rad/s)")
-        axs[1].legend()
-        axs[1].set_title(f"Actuator {aid} Velocity Tracking")
-        axs[1].grid()
-
-        # Plot the control torques
-        axs[2].step(
-            example.log_time[: example.sim_steps], example.log_tau_j[: example.sim_steps, aid], label="Control Torque"
-        )
-        axs[2].set_xlabel("Time (s)")
-        axs[2].set_ylabel("Torque (Nm)")
-        axs[2].legend()
-        axs[2].set_title(f"Actuator {aid} Control Torque")
-        axs[2].grid()
-
-        # Show plots
-        plt.tight_layout()
-        plt.show()
+        example.plot()

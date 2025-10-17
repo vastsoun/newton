@@ -452,15 +452,18 @@ class USDImporter:
             raise ValueError(f"Rigid body '{path}' has no mass defined. Please set the mass using 'physics:mass'.")
         if i_r_com_i is None:
             raise ValueError(
-                f"Rigid body '{path}' has no center of mass defined. Please set the center of mass using 'physics:centerOfMass'."
+                f"Rigid body '{path}' has no center of mass defined. "
+                "Please set the center of mass using 'physics:centerOfMass'."
             )
         if i_I_i_diag is None:
             raise ValueError(
-                f"Rigid body '{path}' has no diagonal inertia defined. Please set the diagonal inertia using 'physics:diagonalInertia'."
+                f"Rigid body '{path}' has no diagonal inertia defined. "
+                "Please set the diagonal inertia using 'physics:diagonalInertia'."
             )
         if i_q_i_pa is None:
             raise ValueError(
-                f"Rigid body '{path}' has no principal axes defined. Please set the principal axes using 'physics:principalAxes'."
+                f"Rigid body '{path}' has no principal axes defined. "
+                "Please set the principal axes using 'physics:principalAxes'."
             )
 
         # Check each property to ensure they are valid
@@ -1187,9 +1190,9 @@ class USDImporter:
                 mass_unit = self.UsdPhysics.GetStageKilogramsPerUnit(stage)
         except Exception as e:
             msg.error(f"Failed to get mass unit: {e}")
-        msg.warning(f"distance_unit: {distance_unit}")
-        msg.warning(f"rotation_unit: {rotation_unit}")
-        msg.warning(f"mass_unit: {mass_unit}")
+        msg.debug(f"distance_unit: {distance_unit}")
+        msg.debug(f"rotation_unit: {rotation_unit}")
+        msg.debug(f"mass_unit: {mass_unit}")
 
         ###
         # Preparation

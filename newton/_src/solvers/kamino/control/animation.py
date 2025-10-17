@@ -21,7 +21,7 @@ from dataclasses import dataclass
 
 import numpy as np
 import warp as wp
-from matplotlib import pyplot as plt
+from scipy.interpolate import interp1d
 from warp._src.context import Devicelike
 
 from ..core.model import Model
@@ -56,6 +56,24 @@ class AnimationJointReferenceData:
     """
     Container of animation references for actuated joints.
 
+    By default, the animation reference is allocated such that all worlds share
+    the same reference data, but can progress and/or loop independently.
+
+    The animation references are organized as 2D arrays where each column corresponds to
+    an actuated joint DoF and each row corresponds to a frame in the animation sequence.
+
+    Progression through the animation sequence is controlled via the ``frame`` attribute,
+    which indicates the current frame index that is active for each world, from which
+    actuator joint coordinates and velocities are extracted. In addition, to control the
+    progression along the reference sequence, each world has its own ``rate`` and
+    ``decimation`` attributes. The ``rate`` attribute (defaults to 1) determines the number
+    of frames by which to advance the active frame at each step, while the ``decimation``
+    attribute determines how many steps to wait until the frame index should be updated.
+    These attributes effectively allow for both slowing down and speeding up the
+    animation's progression relative to the simulation time-step. Finally, the ``loop``
+    attribute specifies whether the animation should restart from the beginning after
+    reaching the end, or stop at the last frame.
+
     Attributes:
         num_actuated_joint_dofs: wp.array
             The number of actuated joint DoFs per world.
@@ -69,14 +87,12 @@ class AnimationJointReferenceData:
             Flag indicating whether the animation should loop.
         rate: wp.array
             The rate at which to progress the animation sequence.
+        decimation: wp.array
+            The decimation factor for extracting references from the animation sequence.
         length: wp.array
             The length of the animation sequence.
-        step: wp.array
-            The current step index in the animation sequence.
-
-    Note:
-        By default, the animation reference is allocated such that all worlds share
-        the same reference data, but can progress and/or loop independently.
+        frame: wp.array
+            The current frame index in the animation sequence that is active.
     """
 
     num_actuated_joint_dofs: wp.array | None = None
@@ -103,24 +119,30 @@ class AnimationJointReferenceData:
     Shape is ``(max_of_num_actuated_joint_dofs, sequence_length)`` and dtype is :class:`float32`.
     """
 
+    length: wp.array | None = None
+    """
+    Integer length of the animation sequence.\n
+    Shape is ``(num_worlds,)`` and dtype is :class:`int32`.
+    """
+
+    decimation: wp.array | None = None
+    """
+    Integer decimation factor by which references are extracted from the animation sequence.\n
+    Shape is ``(num_worlds,)`` and dtype is :class:`int32`.
+    """
+
+    rate: wp.array | None = None
+    """
+    Integer rate by which to progress the active frame of the animation sequence at each step.\n
+    Shape is ``(num_worlds,)`` and dtype is :class:`int32`.
+    """
+
     loop: wp.array | None = None
     """
     Integer flag to indicate if the animation should loop.\n
     Shape is ``(num_worlds,)`` and dtype is :class:`int32`.\n
     If `1`, the animation will restart from the beginning after reaching the end.\n
     If `0`, the animation will stop at the last frame.
-    """
-
-    rate: wp.array | None = None
-    """
-    Integer rate by which to progress the active frame of the animation sequence.\n
-    Shape is ``(num_worlds,)`` and dtype is :class:`int32`.
-    """
-
-    length: wp.array | None = None
-    """
-    Integer length of the animation sequence.\n
-    Shape is ``(num_worlds,)`` and dtype is :class:`int32`.
     """
 
     frame: wp.array | None = None
@@ -136,45 +158,13 @@ class AnimationJointReferenceData:
 
 
 @wp.kernel
-def _extract_initial_animation_references(
-    # Inputs
-    num_actuated_joint_dofs: wp.array(dtype=int32),
-    actuated_joint_dofs_offset: wp.array(dtype=int32),
-    animation_q_j_ref: wp.array2d(dtype=float32),
-    animation_dq_j_ref: wp.array2d(dtype=float32),
-    # Outputs
-    q_j_ref_active: wp.array(dtype=float32),
-    dq_j_ref_active: wp.array(dtype=float32),
-):
-    """
-    A kernel to compute joint-space PID control torques for force-actuated joints.
-    """
-    # Retrieve the the world and DoF index from the thread indices
-    wid, qid = wp.tid()
-
-    # Retrieve the number of actuated DoFs and offset for this world
-    num_ajq = num_actuated_joint_dofs[wid]
-    ajq_offset = actuated_joint_dofs_offset[wid]
-
-    # Ensure we are within the valid range of actuated DoFs for this world
-    if qid >= num_ajq:
-        return
-
-    # Compute the global DoF index
-    dof_index = ajq_offset + qid
-
-    # Update the active reference arrays
-    q_j_ref_active[dof_index] = animation_q_j_ref[0, qid]
-    dq_j_ref_active[dof_index] = animation_dq_j_ref[0, qid]
-
-
-@wp.kernel
-def _advance_animation_step(
+def _advance_animation_frame(
     # Inputs
     time_steps: wp.array(dtype=int32),
-    animation_loop: wp.array(dtype=int32),
-    animation_rate: wp.array(dtype=int32),
     animation_length: wp.array(dtype=int32),
+    animation_decimation: wp.array(dtype=int32),
+    animation_rate: wp.array(dtype=int32),
+    animation_loop: wp.array(dtype=int32),
     # Outputs
     animation_frame: wp.array(dtype=int32),
 ):
@@ -185,22 +175,23 @@ def _advance_animation_step(
     wid = wp.tid()
 
     # Retrieve the animation sequence info
-    loop = animation_loop[wid]
-    rate = animation_rate[wid]
     length = animation_length[wid]
+    decimation = animation_decimation[wid]
+    rate = animation_rate[wid]
+    loop = animation_loop[wid]
 
     # Retrieve the current step (i.e. discrete-time index) for this world
     step = time_steps[wid]
 
     # Check if we need to advance the animation frame
-    if step % rate != 0:
+    if step % decimation != 0:
         return
 
     # Retrieve the current frame index for this world
     frame = animation_frame[wid]
 
     # Advance the frame index
-    frame += 1
+    frame += rate
 
     # If looping is enabled, wrap the frame index around
     if loop:
@@ -220,7 +211,7 @@ def _extract_animation_references(
     # Inputs
     num_actuated_joint_dofs: wp.array(dtype=int32),
     actuated_joint_dofs_offset: wp.array(dtype=int32),
-    animation_step: wp.array(dtype=int32),
+    animation_frame: wp.array(dtype=int32),
     animation_q_j_ref: wp.array2d(dtype=float32),
     animation_dq_j_ref: wp.array2d(dtype=float32),
     # Outputs
@@ -242,15 +233,14 @@ def _extract_animation_references(
         return
 
     # Retrieve the current step index for this world
-    step = animation_step[wid]
+    frame = animation_frame[wid]
 
     # Compute the global DoF index
-    dof_index = ajq_offset + qid
+    actuator_dof_index = ajq_offset + qid
 
     # Update the active reference arrays
-    animation_step[wid] = step
-    q_j_ref_active[dof_index] = animation_q_j_ref[step, qid]
-    dq_j_ref_active[dof_index] = animation_dq_j_ref[step, qid]
+    q_j_ref_active[actuator_dof_index] = animation_q_j_ref[frame, qid]
+    dq_j_ref_active[actuator_dof_index] = animation_dq_j_ref[frame, qid]
 
 
 ###
@@ -260,30 +250,35 @@ def _extract_animation_references(
 
 class AnimationJointReference:
     """
-    Interface for joint-based animation reference tracking.
-
-    Args:
-        model: The simulation model.
-        device: The device to store the reference data on.
+    A module for managing and operating joint-space references from an animation.
     """
 
     def __init__(
         self,
         model: Model | None = None,
-        input: np.ndarray | None = None,
+        data: np.ndarray | None = None,
+        data_dt: float | None = None,
+        target_dt: float | None = None,
+        decimation: int | list[int] = 1,
         rate: int | list[int] = 1,
         loop: bool | list[bool] = True,
         use_fd: bool = False,
-        fd_dt: float = np.inf,
         device: Devicelike = None,
     ):
         """
-        A simple PID controller in joint space.
+        Initialize the animation joint reference interface.
 
         Args:
             model (Model | None): Model used to size and allocate controller buffers.
                 If None, call ``allocate()`` later.
-            input (np.ndarray | None): Optional input data to initialize the animation references.
+            data (np.ndarray | None): The input animation reference data as a 2D numpy array.
+            data_dt (float | None): The time-step between frames in the input data.
+            target_dt (float | None): The desired time-step between frames in the animation reference.
+                If None, defaults to ``data_dt``.
+            decimation (int | list[int]): Decimation factor by which to extract references from the animation sequence.
+            rate (int | list[int]): Rate at which to progress the animation sequence.
+            loop (bool | list[bool]): Flag indicating whether the animation should loop.
+            use_fd (bool): Whether to compute finite-difference velocities from the input coordinates.
             device (Devicelike | None): Device to use for allocations and execution.
         """
 
@@ -302,11 +297,13 @@ class AnimationJointReference:
         if model is not None:
             self.allocate(
                 model=model,
-                input=input,
+                data=data,
+                data_dt=data_dt,
+                target_dt=target_dt,
+                decimation=decimation,
                 rate=rate,
                 loop=loop,
                 use_fd=use_fd,
-                fd_dt=fd_dt,
                 device=device,
             )
 
@@ -326,10 +323,103 @@ class AnimationJointReference:
 
     @property
     def data(self) -> AnimationJointReferenceData:
-        """The internal controller data."""
-        if self._data is None:
-            raise ValueError("Controller data is not allocated. Call allocate() first.")
+        """The internal animation reference data."""
+        self._assert_has_data()
         return self._data
+
+    ###
+    # Internals
+    ###
+
+    def _assert_has_data(self) -> None:
+        """Check if the internal animation data has been allocated."""
+        if self._data is None:
+            raise ValueError("Animation reference data is not allocated. Call allocate() first.")
+
+    def _upsample_reference_coordinates(
+        self,
+        q_ref: np.ndarray,
+        dt_in: float,
+        dt_out: float,
+        t0: float = 0.0,
+        t_start: float | None = None,
+        t_end: float | None = None,
+        extrapolate: bool = False,
+    ) -> np.ndarray:
+        """
+        Upsample the given reference joint coordinates from the input time-step to the output time-step.
+
+        Args:
+            q_ref (np.ndarray): Reference joint positions of shape (sequence_length, num_actuated_dofs).
+            dt_in (float): Input time step between frames.
+            dt_out (float): Output time step between frames.
+            t0 (float): Initial time corresponding to the first frame.
+            t_start (float | None): Start time for the up-sampled reference. If None, uses t0.
+            t_end (float | None): End time for the up-sampled reference. If None, uses the last input frame time.
+            extrapolate (bool): Whether to allow extrapolation beyond the input time range.
+
+        Returns:
+            np.ndarray: Up-sampled reference joint positions of shape (new_sequence_length, num_actuated_dofs).
+        """
+
+        # Extract the number of samples
+        num_samples, _ = q_ref.shape
+        if t_start is None:
+            t_start = t0
+        if t_end is None:
+            t_end = t0 + (num_samples - 1) * dt_in
+
+        # Construct time-sample sequences for the original and new references
+        t_original = t0 + dt_in * np.arange(num_samples)
+        num_samples_new = int(np.floor((t_end - t_start) / dt_out)) + 1
+        t_new = t_start + dt_out * np.arange(num_samples_new)
+
+        # Create the up-sampling interpolation function
+        upsample_func = interp1d(
+            t_original,
+            q_ref,
+            axis=0,
+            kind="linear",
+            bounds_error=False,
+            fill_value=("extrapolate" if extrapolate else (q_ref[0], q_ref[-1])),
+        )
+
+        # Evaluate the up-sampling function at the new time samples
+        # to compute the up-sampled joint coordinate references
+        return upsample_func(t_new)
+
+    def _compute_finite_difference_velocities(self, q_ref: np.ndarray, dt: float) -> np.ndarray:
+        """
+        Compute finite-difference velocities for the given reference positions.
+
+        Args:
+            q_ref (np.ndarray): Reference joint positions of shape (sequence_length, num_actuated_dofs).
+            dt (float): Time step between frames.
+
+        Returns:
+            np.ndarray: Reference joint velocities of shape (sequence_length, num_actuated_dofs).
+        """
+
+        # TODO: Try this instead (it might be more robust):
+        # _compute_finite_difference_velocities = staticmethod(lambda q_ref_np, dt: np.gradient(q_ref_np, dt, axis=0))
+
+        # First allocate and initialize the output array
+        dq_j_ref = np.zeros_like(q_ref)
+
+        # Compute forward finite-difference velocities for the reference positions
+        dq_j_ref[1:] = np.diff(q_ref, axis=0) / dt
+
+        # Set the first velocity to match the second
+        dq_j_ref[0] = dq_j_ref[1]
+
+        # Apply a simple moving average filter to smooth out the velocities
+        kernel_size = 5
+        kernel = np.ones(kernel_size) / kernel_size
+        for i in range(q_ref.shape[1]):
+            dq_j_ref[:, i] = np.convolve(dq_j_ref[:, i], kernel, mode="same")
+
+        # Return the computed reference joint velocities
+        return dq_j_ref
 
     ###
     # Operations
@@ -338,11 +428,13 @@ class AnimationJointReference:
     def allocate(
         self,
         model: Model,
-        input: np.ndarray,
+        data: np.ndarray,
+        data_dt: float,
+        target_dt: float | None = None,
+        decimation: int | list[int] = 1,
         rate: int | list[int] = 1,
         loop: bool | list[bool] = True,
         use_fd: bool = False,
-        fd_dt: float = np.inf,
         device: Devicelike = None,
     ) -> None:
         """
@@ -369,13 +461,13 @@ class AnimationJointReference:
             raise ValueError("Model is not valid. Cannot allocate controller data.")
 
         # Retrieve the shape of the input data
-        if input is None:
+        if data is None:
             raise ValueError("Input data must be provided for allocation.")
 
         # Ensure input array is valid
-        if not isinstance(input, np.ndarray):
+        if not isinstance(data, np.ndarray):
             raise ValueError("Input data must be a numpy array.")
-        if input.ndim != 2:
+        if data.ndim != 2:
             raise ValueError("Input data must be a 2D numpy array.")
 
         # Get the number of actuated coordinates and DoFs
@@ -395,51 +487,64 @@ class AnimationJointReference:
             )
 
         # Check that input data matches the number of actuated DoFs
-        if input.shape[1] != max_num_actuated_dofs and input.shape[0] != max_num_actuated_dofs:
+        if data.shape[1] != max_num_actuated_dofs and data.shape[0] != max_num_actuated_dofs:
             raise ValueError(
-                f"Input data has shape {input.shape} which does not match the "
+                f"Input data has shape {data.shape} which does not match the "
                 f"per-world number of actuated DoFs ({max_num_actuated_dofs})."
             )
 
         # We assume the input is organized as (sequence_length, num_actuated_dofs)
         # Transpose the input if necessary in order to match the assumed shape
-        if input.shape[0] == max_num_actuated_dofs or input.shape[0] == 2 * max_num_actuated_dofs:
-            input = input.T
+        if data.shape[0] == max_num_actuated_dofs or data.shape[0] == 2 * max_num_actuated_dofs:
+            data = data.T
+
+        # Ensure the target time-step is valid
+        if data_dt <= 0.0:
+            raise ValueError("Target time-step must be positive.")
+
+        # Check the target time-step input and set it to the animation dt if not provided
+        if target_dt is None:
+            target_dt = data_dt
+
+        # Ensure decimation, rate, and loop are lists matching the number of worlds
+        if isinstance(decimation, int):
+            decimation = [decimation] * model.size.num_worlds
+        if isinstance(rate, int):
+            rate = [rate] * model.size.num_worlds
+        if isinstance(loop, bool):
+            loop = [loop] * model.size.num_worlds
+
+        # Optionally upsample the input data with linearly-interpolation to match the target time-step
+        if target_dt < data_dt:
+            data = self._upsample_reference_coordinates(
+                q_ref=data,
+                dt_in=data_dt,
+                dt_out=target_dt,
+                extrapolate=False,
+            )
 
         # Cache the model dimensions meta-data
         self._num_worlds = model.size.num_worlds
         self._max_of_num_actuated_dofs = max_num_actuated_dofs
-        self._sequence_length = input.shape[0]
+        self._sequence_length = data.shape[0]
 
         # Extract the reference joint positions and velocities
-        q_j_ref_np = input[:, :max_num_actuated_dofs].astype(np.float32)
-        if input.shape[1] >= 2 * max_num_actuated_dofs:
-            dq_j_ref_np = input[:, max_num_actuated_dofs : 2 * max_num_actuated_dofs].astype(np.float32)
+        q_j_ref_np = data[:, :max_num_actuated_dofs].astype(np.float32)
+        if data.shape[1] >= 2 * max_num_actuated_dofs:
+            dq_j_ref_np = data[:, max_num_actuated_dofs : 2 * max_num_actuated_dofs].astype(np.float32)
         else:
-            # Use finite-differences to estimate velocities if requested
+            # Optionally use finite-differences to estimate velocities if requested
             if use_fd:
-                # Compute raw finite-difference velocities
-                dq_j_ref_np = np.zeros_like(q_j_ref_np)
-                dq_j_ref_np[1:] = np.diff(q_j_ref_np, axis=0) / fd_dt
-
-                # Set the first velocity to match the second
-                dq_j_ref_np[0] = dq_j_ref_np[1]
-
-                # Apply a simple moving average filter to smooth out the velocities
-                kernel_size = 5
-                kernel = np.ones(kernel_size) / kernel_size
-                for i in range(max_num_actuated_dofs):
-                    dq_j_ref_np[:, i] = np.convolve(dq_j_ref_np[:, i], kernel, mode="same")
-
+                dq_j_ref_np = self._compute_finite_difference_velocities(q_j_ref_np, target_dt)
             # Otherwise, default to zero velocities
             else:
                 dq_j_ref_np = np.zeros_like(q_j_ref_np)
 
         # Create the rate and loop arrays
-        # TODO: Allow different rates/looping per world
         length_np = np.array([q_j_ref_np.shape[0]] * self._num_worlds, dtype=np.int32)
-        rate_np = rate * np.ones(self._num_worlds, dtype=np.int32)
-        loop_np = (1 if loop else 0) * np.ones(self._num_worlds, dtype=np.int32)
+        decimation_np = np.array(decimation, dtype=np.int32)
+        rate_np = np.array(rate, dtype=np.int32)
+        loop_np = np.array([1 if _l else 0 for _l in loop], dtype=np.int32)
 
         # Override the device if provided
         if device is not None:
@@ -453,12 +558,15 @@ class AnimationJointReference:
                 q_j_ref=wp.array(q_j_ref_np, dtype=float32),
                 dq_j_ref=wp.array(dq_j_ref_np, dtype=float32),
                 length=wp.array(length_np, dtype=int32),
+                decimation=wp.array(decimation_np, dtype=int32),
                 rate=wp.array(rate_np, dtype=int32),
                 loop=wp.array(loop_np, dtype=int32),
                 frame=wp.zeros(self._num_worlds, dtype=int32),
             )
 
     def plot(self) -> None:
+        from matplotlib import pyplot as plt  # noqa: PLC0415
+
         # Extract numpy arrays for plotting
         q_j_ref_np = self._data.q_j_ref.numpy()
         dq_j_ref_np = self._data.dq_j_ref.numpy()
@@ -479,47 +587,60 @@ class AnimationJointReference:
         plt.tight_layout()
         plt.show()
 
-    # TODO: Make the enabled flag a list to allow different settings per world
-    def loop(self, enabled=True) -> None:
+    def loop(self, enabled: bool | list[bool] = True) -> None:
         """
         Enable or disable looping of the animation sequence.
 
         Args:
-            enabled (bool): If True, enable looping. If False, disable looping.
+            enabled (bool | list[bool]): If True, enable looping. If False, disable looping.
         """
+        # Ensure the animation data container is allocated
         if self._data is None:
             raise ValueError("Controller data is not allocated. Call allocate() first.")
-        self._data.loop.fill(1 if enabled else 0)
 
-    def reset(self, q_j_ref_out: wp.array, dq_j_ref_out: wp.array) -> None:
+        # Check if a single value or list is provided and set the loop flags accordingly
+        if isinstance(enabled, list):
+            if len(enabled) != self._num_worlds:
+                raise ValueError("Length of 'enabled' list must match the number of worlds.")
+            enabled_array = np.array([1 if e else 0 for e in enabled], dtype=np.int32)
+            self._data.loop.assign(enabled_array)
+        else:
+            self._data.loop = wp.array([1 if enabled else 0] * self._num_worlds, dtype=int32)
+
+    def advance(self, time: TimeData) -> None:
         """
-        Reset the animation sequence to the beginning and sets the initial references into the output arrays.
+        Advances the animation sequence frame index according to the configured
+        decimation and rate, in accordance with the current simulation time-step.
+
+        Args:
+            time (TimeData): The time data container holding the current simulation time.
         """
-        if self._data is None:
-            raise ValueError("Controller data is not allocated. Call allocate() first.")
-        self._data.frame.fill_(0)
+        self._assert_has_data()
         wp.launch(
-            _extract_initial_animation_references,
-            dim=(self._num_worlds, self._max_of_num_actuated_dofs),
+            _advance_animation_frame,
+            dim=self._num_worlds,
             inputs=[
-                self._data.num_actuated_joint_dofs,
-                self._data.actuated_joint_dofs_offset,
-                self._data.q_j_ref,
-                self._data.dq_j_ref,
-                q_j_ref_out,
-                dq_j_ref_out,
+                # Inputs:
+                time.steps,
+                self._data.length,
+                self._data.decimation,
+                self._data.rate,
+                self._data.loop,
+                # Outputs:
+                self._data.frame,
             ],
             device=self._device,
         )
 
     def extract(self, q_j_ref_out: wp.array, dq_j_ref_out: wp.array) -> None:
         """
-        Extract the reference arrays from the animation sequence at the current time-step.
+        Extract the reference arrays from the animation sequence at the current frame index.
 
         Args:
             q_j_ref_out (wp.array): Output array for the reference joint positions.
             dq_j_ref_out (wp.array): Output array for the reference joint velocities.
         """
+        self._assert_has_data()
         wp.launch(
             _extract_animation_references,
             dim=(self._num_worlds, self._max_of_num_actuated_dofs),
@@ -536,46 +657,32 @@ class AnimationJointReference:
             ],
             device=self._device,
         )
+
+    def reset(self, q_j_ref_out: wp.array, dq_j_ref_out: wp.array) -> None:
+        """
+        Reset the active frame index of the animation sequence to zero
+        and sets the extracts the initial references into the output arrays.
+
+        Args:
+            q_j_ref_out (wp.array): Output array for the reference joint positions.
+            dq_j_ref_out (wp.array): Output array for the reference joint velocities.
+        """
+        self._assert_has_data()
+        self._data.frame.fill_(0)
+        self.extract(q_j_ref_out, dq_j_ref_out)
 
     def step(self, time: TimeData, q_j_ref_out: wp.array, dq_j_ref_out: wp.array) -> None:
         """
-        Advance the animation sequence by the configured rate and copy the results to the output arrays.
+        Advances the animation sequence by the configured decimation and
+        rate, and extracts the reference arrays at the active frame index.
+
+        This is a convenience method that effectively combines
+        ``advance()`` and ``extract()`` into a single operation.
 
         Args:
+            time (TimeData): The time data container holding the current simulation time.
             q_j_ref_out (wp.array): Output array for the reference joint positions.
             dq_j_ref_out (wp.array): Output array for the reference joint velocities.
         """
-
-        # First launch a kernel to advance the animation step index
-        wp.launch(
-            _advance_animation_step,
-            dim=self._num_worlds,
-            inputs=[
-                # Inputs:
-                time.steps,
-                self._data.loop,
-                self._data.rate,
-                self._data.length,
-                # Outputs:
-                self._data.frame,
-            ],
-            device=self._device,
-        )
-
-        # Next launch a kernel to update the active reference arrays
-        wp.launch(
-            _extract_animation_references,
-            dim=(self._num_worlds, self._max_of_num_actuated_dofs),
-            inputs=[
-                # Inputs:
-                self._data.num_actuated_joint_dofs,
-                self._data.actuated_joint_dofs_offset,
-                self._data.frame,
-                self._data.q_j_ref,
-                self._data.dq_j_ref,
-                # Outputs:
-                q_j_ref_out,
-                dq_j_ref_out,
-            ],
-            device=self._device,
-        )
+        self.advance(time)
+        self.extract(q_j_ref_out, dq_j_ref_out)

@@ -267,9 +267,11 @@ def _compute_jointspace_pid_control(
 
 
 def reset_jointspace_pid_references(
-    controller: PIDControllerData,
+    # Inputs:
     model: Model,
     state: State,
+    # Outputs:
+    controller: PIDControllerData,
 ) -> None:
     """
     A kernel launcher to compute joint-space PID control torques for force-actuated joints.
@@ -297,10 +299,10 @@ def reset_jointspace_pid_references(
 
 def compute_jointspace_pid_control(
     # Inputs:
-    controller: PIDControllerData,
     model: Model,
     state: State,
     time: TimeData,
+    controller: PIDControllerData,
     # Outputs:
     control: Control,
 ) -> None:
@@ -467,9 +469,9 @@ class JointSpacePIDController:
 
         # First reset the references to the current state
         reset_jointspace_pid_references(
-            controller=self._data,
             model=model,
             state=state,
+            controller=self._data,
         )
 
         # Then zero the integrator and feedforward torques
@@ -523,9 +525,9 @@ class JointSpacePIDController:
             tau_j_ref (wp.array): The feedforward actuator joint torques.
         """
         compute_jointspace_pid_control(
-            controller=self._data,
             model=model,
             state=state,
             time=time,
+            controller=self._data,
             control=control,
         )

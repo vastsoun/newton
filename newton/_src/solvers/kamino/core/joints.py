@@ -13,9 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-KAMINO: Joint Model Types & Containers
-"""
+"""KAMINO: Joint Model Types & Containers"""
 
 from __future__ import annotations
 
@@ -499,77 +497,112 @@ class JointsData:
         self.num_joints: int32 = 0
         """Total number of joints in the model (host-side)."""
 
-        self.p_j: wp.array(dtype=transformf) | None = None
+        self.p_j: wp.array | None = None
         """
         Array of joint frame pose transforms in world coordinates.\n
         Shape of ``(num_joints,)`` and type :class:`transformf`.
         """
 
-        self.r_j: wp.array(dtype=float32) | None = None
+        self.r_j: wp.array | None = None
         """
         Flat array of joint constraint residuals.\n
         Shape of ``(sum(m_j),)`` and type :class:`float32`,\n
         where ``m_j`` is the number of constraints of joint ``j``.
         """
 
-        self.dr_j: wp.array(dtype=float32) | None = None
+        self.dr_j: wp.array | None = None
         """
         Flat array of joint constraint residual time-derivatives.\n
         Shape of ``(sum(m_j),)`` and type :class:`float32`,\n
         where ``m_j`` is the number of constraints of joint ``j``.
         """
 
-        self.lambda_j: wp.array(dtype=float32) | None = None
+        self.lambda_j: wp.array | None = None
         """
         Flat array of joint constraint Lagrange multipliers.\n
         Shape of ``(sum(m_j),)`` and type :class:`float32`,\n
         where ``m_j`` is the number of constraints of joint ``j``.
         """
 
-        self.q_j: wp.array(dtype=float32) | None = None
+        self.q_j: wp.array | None = None
         """
         Flat array of generalized coordinates of the joints.\n
         Shape of ``(sum(c_j),)`` and type :class:`float32`,\n
         where ``c_j`` is the number of coordinates of joint ``j``.
         """
 
-        self.dq_j: wp.array(dtype=float32) | None = None
+        self.dq_j: wp.array | None = None
         """
         Flat array of generalized velocities of the joints.\n
         Shape of ``(sum(d_j),)`` and type :class:`float32`,\n
         where ``d_j`` is the number of DoFs of joint ``j``.
         """
 
-        self.tau_j: wp.array(dtype=float32) | None = None
+        self.tau_j: wp.array | None = None
         """
         Flat array of generalized forces of the joints.\n
         Shape of ``(sum(d_j),)`` and type :class:`float32`,\n
         where ``d_j`` is the number of DoFs of joint ``j``.
         """
 
-        self.j_w_j: wp.array(dtype=vec6f) | None = None
+        self.j_w_j: wp.array | None = None
         """
         Array of total wrenches applied by each joint.\n
         Shape of ``(num_joints,)`` and type :class:`vec6f`.
         """
 
-        self.j_w_c_j: wp.array(dtype=vec6f) | None = None
+        self.j_w_c_j: wp.array | None = None
         """
         Array of constraint wrenches applied by each joint.\n
         Shape of ``(num_joints,)`` and type :class:`vec6f`.
         """
 
-        self.j_w_a_j: wp.array(dtype=vec6f) | None = None
+        self.j_w_a_j: wp.array | None = None
         """
         Flat array of actuation wrenches applied by each joint.\n
         Shape of ``(num_joints,)`` and type :class:`vec6f`.
         """
 
-        self.j_w_l_j: wp.array(dtype=vec6f) | None = None
+        self.j_w_l_j: wp.array | None = None
         """
         Flat array of joint limit wrench applied by each joint.\n
         Shape of ``(num_joints,)`` and type :class:`vec6f`.
         """
+
+    def clear_residuals(self):
+        """
+        Reset all joint state variables to zero.
+        """
+        self.r_j.zero_()
+        self.dr_j.zero_()
+
+    def clear_state(self):
+        """
+        Reset all joint state variables to zero.
+        """
+        self.q_j.zero_()
+        self.dq_j.zero_()
+
+    def clear_constraint_reactions(self):
+        """
+        Reset all joint constraint reactions to zero.
+        """
+        self.lambda_j.zero_()
+
+    def clear_actuation_forces(self):
+        """
+        Reset all joint actuation forces to zero.
+        """
+        self.tau_j.zero_()
+
+    def clear_wrenches(self):
+        """
+        Reset all joint wrenches to zero.
+        """
+        self.j_w_j.zero_()
+        self.j_w_c_j.zero_()
+        self.j_w_a_j.zero_()
+        self.j_w_l_j.zero_()
 
 
 ###

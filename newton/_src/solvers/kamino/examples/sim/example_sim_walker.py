@@ -50,7 +50,7 @@ MESH_USD_MODEL_PATH = os.path.join(get_examples_usd_assets_path(), "walker/walke
 class WalkerExample:
     """ViewerGL example class for walker simulation."""
 
-    def __init__(self, viewer, device, use_cuda_graph=False):
+    def __init__(self, viewer, device, use_cuda_graph: bool = False, logging: bool = True):
         # Initialize target frames per second and corresponding time-steps
         self.fps = 60
         self.frame_dt = 1.0 / self.fps
@@ -70,9 +70,10 @@ class WalkerExample:
         # Cache a reference to the viewr
         self.viewer = viewer
 
-        # Cache the device and graph configuration
+        # Cache the device and other internal flags
         self.device = device
-        self.use_cuda_graph = use_cuda_graph
+        self.use_cuda_graph: bool = use_cuda_graph
+        self.logging: bool = logging
 
         # Create a single-instance system (always load from USD for walker)
         msg.info("Constructing builder from imported USD ...")
@@ -157,10 +158,6 @@ class WalkerExample:
             model=self.sim.model, K_p=K_p, K_i=K_i, K_d=K_d, decimation=decimation, device=device
         )
 
-        # Initialize the controller and animation
-        self.controller.reset(model=self.sim.model, state=self.sim.data.state_n)
-        self.animation.reset(q_j_ref_out=self.controller.data.q_j_ref, dq_j_ref_out=self.controller.data.dq_j_ref)
-
         # Define a callback function to reset the controller
         def reset_jointspace_pid_control_callback(simulator: Simulator):
             self.controller.reset(model=simulator.model, state=simulator.data.state_n)
@@ -179,8 +176,6 @@ class WalkerExample:
                 time=simulator.data.solver.time,
                 control=simulator.data.control_n,
             )
-            # msg.warning("nc: %d", simulator.collision_detector.contacts.world_num_contacts.numpy()[0])
-            # msg.warning("nl: %d", simulator.limits.data.world_num_limits.numpy()[0])
 
         # # Set the reference tracking generation & control callbacks into the simulator
         self.sim.set_reset_callback(reset_jointspace_pid_control_callback)
@@ -213,6 +208,12 @@ class WalkerExample:
         # Capture CUDA graph if requested and available
         self.capture()
 
+        # Warm-start the simulator before rendering
+        # NOTE: This compiles and loads the warp kernels prior to execution
+        msg.info("Warming up simulator...")
+        self.step_once()
+        self.reset()
+
     def extract_geometry_info(self):
         """Extract geometry information from the kamino simulator."""
         # Get collision geometry information from the simulator
@@ -241,40 +242,26 @@ class WalkerExample:
 
     def capture(self):
         """Capture CUDA graph if requested and available."""
-
-        # Capture graphs for simulator ops: reset and step
         if self.use_cuda_graph:
+            msg.info("Running with CUDA graphs...")
             with wp.ScopedCapture(self.device) as reset_capture:
                 self.sim.reset()
             self.reset_graph = reset_capture.graph
-            with wp.ScopedCapture(device) as step_capture:
+            with wp.ScopedCapture(self.device) as step_capture:
                 self.sim.step()
             self.step_graph = step_capture.graph
-            with wp.ScopedCapture() as sim_capture:
+            with wp.ScopedCapture(self.device) as sim_capture:
                 self.simulate()
             self.simulate_graph = sim_capture.graph
-
-        # Warm-start the simulator before rendering
-        # NOTE: This compiles and loads the warp kernels prior to execution
-        msg.info("Warming up the simulator...")
-        if self.use_cuda_graph:
-            msg.info("Running with CUDA graphs...")
-            wp.capture_launch(self.reset_graph)
-            wp.capture_launch(self.step_graph)
         else:
             msg.info("Running with kernels...")
-            with wp.ScopedDevice(device):
-                self.sim.step()
-                self.sim.reset()
-
-        # Initialize the logging data only in kernel-mode
-        if not self.use_cuda_graph:
-            self.log_data()
 
     def log_data(self):
         if self.sim_steps >= self.max_sim_steps:
             msg.warning("Maximum simulation steps reached, skipping data logging.")
             return
+        # msg.warning(f"[s={self.sim_steps}] step: {self.sim.data.solver.time.steps.numpy()[0]}")
+        # msg.warning(f"[s={self.sim_steps}] frame: {self.animation.data.frame.numpy()[0]}")
         self.log_time[self.sim_steps] = self.sim.data.solver.time.time.numpy()[0]
         self.log_q_j[self.sim_steps, :] = self.sim.data.state_n.q_j.numpy()[self.actuated_joints]
         self.log_dq_j[self.sim_steps, :] = self.sim.data.state_n.dq_j.numpy()[self.actuated_joints]
@@ -284,10 +271,10 @@ class WalkerExample:
 
     def simulate(self):
         """Run simulation substeps."""
-        for _ in range(self.sim_substeps):
+        for _i in range(self.sim_substeps):
             self.sim.step()
             self.sim_steps += 1
-            if not self.use_cuda_graph:
+            if not self.use_cuda_graph and self.logging:
                 self.log_data()
 
     def reset(self):
@@ -296,6 +283,10 @@ class WalkerExample:
             wp.capture_launch(self.reset_graph)
         else:
             self.sim.reset()
+        self.sim_steps = 0
+        self.sim_time = 0.0
+        if not self.use_cuda_graph and self.logging:
+            self.log_data()
 
     def step_once(self):
         """Run the simulation for a single time-step."""
@@ -303,6 +294,10 @@ class WalkerExample:
             wp.capture_launch(self.step_graph)
         else:
             self.sim.step()
+        self.sim_steps += 1
+        self.sim_time += self.sim_dt
+        if not self.use_cuda_graph and self.logging:
+            self.log_data()
 
     def step(self):
         """Step the simulation."""
@@ -310,7 +305,6 @@ class WalkerExample:
             wp.capture_launch(self.simulate_graph)
         else:
             self.simulate()
-
         self.sim_time += self.frame_dt
 
     def render(self):
@@ -437,7 +431,7 @@ class WalkerExample:
         """Test function for compatibility."""
         pass
 
-    def plot(self, actuator_dof_index=0):
+    def plot(self, actuator_dof_index=2):
         # First plot the animation sequence references
         self.animation.plot()
 
@@ -502,15 +496,13 @@ class WalkerExample:
 
 def run_headless(example: WalkerExample, num_steps: int = 25000, progress: bool = True):
     """Run the simulation in headless mode for a fixed number of steps."""
-    example.reset()
     msg.info(f"Running for {num_steps} steps...")
     start_time = time.time()
-    with wp.ScopedDevice(device):
-        for i in range(num_steps):
-            example.step_once()
-            wp.synchronize()
-            if progress:
-                print_progress_bar(i, num_steps + 1, start_time, prefix="Progress", suffix="")
+    for i in range(num_steps):
+        example.step_once()
+        wp.synchronize()
+        if progress:
+            print_progress_bar(i + 1, num_steps, start_time, prefix="Progress", suffix="")
 
 
 ###
@@ -561,7 +553,7 @@ if __name__ == "__main__":
         msg.info("Running in headless mode...")
         viewer = newton.viewer.ViewerNull(num_frames=args.num_frames)
         example = WalkerExample(viewer, device=device, use_cuda_graph=use_cuda_graph)
-        run_headless(example, num_steps=args.num_frames * example.sim_substeps, progress=True)
+        run_headless(example, num_steps=args.num_frames, progress=True)
 
     # Otherwise launch using a Newton viewer
     else:
@@ -597,5 +589,5 @@ if __name__ == "__main__":
         # Launch the example using Newton's built-in runtime
         newton.examples.run(example, args)
 
-        # Plot logged data after the viewer is closed
-        example.plot()
+    # Plot logged data after the viewer is closed
+    example.plot()

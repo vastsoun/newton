@@ -406,50 +406,51 @@ class Simulator:
         self._steps = 0
         self._data.solver.time.zero()
 
-    def _reset_bodies_state(self):
+    def _reset_bodies(self):
         """
         Resets the state of all bodies to the initial states defined in the model.
         """
-        wp.copy(self._data.state_p.q_i, self._model.bodies.q_i_0)
-        wp.copy(self._data.state_p.u_i, self._model.bodies.u_i_0)
-        wp.copy(self._data.state_n.q_i, self._model.bodies.q_i_0)
-        wp.copy(self._data.state_n.u_i, self._model.bodies.u_i_0)
+        # First set the active body states to the initial states defined in the model
+        wp.copy(self._data.solver.bodies.q_i, self._model.bodies.q_i_0)
+        wp.copy(self._data.solver.bodies.u_i, self._model.bodies.u_i_0)
 
-    def _reset_bodies_wrenches(self):
-        """
-        Resets all body wrenches to zero.
-        """
-        self._data.solver.bodies.w_i.zero_()
-        self._data.solver.bodies.w_a_i.zero_()
-        self._data.solver.bodies.w_j_i.zero_()
-        self._data.solver.bodies.w_l_i.zero_()
-        self._data.solver.bodies.w_c_i.zero_()
-        self._data.solver.bodies.w_e_i.zero_()
+        # Then update the in-world-frame body inertias from the body states
+        update_body_inertias(model=self._model.bodies, data=self._data.solver.bodies)
 
-    def _reset_joints_state(self):
-        """
-        Resets the state of all joints to the initial states defined in the model.
+        # Finally, clear all body wrenches by setting them to zero
+        self._data.solver.bodies.clear_all_wrenches()
 
-        Note:
-        Since the joint states are derived quantities of the body states, this
-        function computes the joint states based on the initial body states.
+    def _reset_joints(self):
         """
-        compute_joints_state(model=self._model, q_j_p=self._data.state_p.q_j, data=self._data.solver)
+        Resets the state of all joints according to the initial state of the bodies.
+        """
+        # First clear all joint states (i.e. generalized coordinates and velocities) to zeros
+        # NOTE: We do this so that the previous state is always zeroed out on reset. This is
+        # necessary as the `compute_joints_state()` operation will use the previous joint state
+        # to detect roll-over for rotational coordinates/DoFs.
+        self._data.solver.joints.clear_state()
 
-    def _reset_joints_wrenches(self):
+        # Then compute the initial joint states based on the body states
+        compute_joints_state(model=self._model, q_j_p=self._data.solver.joints.q_j, data=self._data.solver)
+
+        # Finally, clear all joint constraint reactions,
+        # actuation forces, and wrenches, setting them to zero
+        self._data.solver.joints.clear_constraint_reactions()
+        self._data.solver.joints.clear_actuation_forces()
+        self._data.solver.joints.clear_wrenches()
+
+    def _reset_states_and_controls(self):
         """
-        Resets all joint wrenches and generalized control and constraint forces to zero.
+        Resets all state and control data to match the internal solver state.
         """
-        self._data.solver.joints.lambda_j.zero_()
-        self._data.solver.joints.tau_j.zero_()
-        self._data.solver.joints.j_w_j.zero_()
-        self._data.solver.joints.j_w_a_j.zero_()
-        self._data.solver.joints.j_w_l_j.zero_()
-        self._data.solver.joints.j_w_c_j.zero_()
-        self._data.state_p.lambda_j.zero_()
-        self._data.state_n.lambda_j.zero_()
-        self._data.control_p.tau_j.zero_()
+        # First clear the next-step control inputs so they correctly propagate to the previous-step
         self._data.control_n.tau_j.zero_()
+
+        # Then update the next-step state from the internal solver state
+        self._data.update_next()
+
+        # Finally, update the previous-step state and control from the next-step values
+        self._data.update_previous()
 
     def _run_reset_callback(self):
         """
@@ -631,12 +632,14 @@ class Simulator:
         self._reset_time()
 
         # First reset the states of all bodies
-        self._reset_bodies_state()
-        self._reset_bodies_wrenches()
+        self._reset_bodies()
 
-        # Reset the state of all joints
-        self._reset_joints_state()
-        self._reset_joints_wrenches()
+        # Then reset the state of all joints
+        self._reset_joints()
+
+        # Finally, reset all state and control
+        # data to match the internal solver state
+        self._reset_states_and_controls()
 
         # Update the kinematics
         # NOTE: This constructs the system Jacobians, which ensures

@@ -27,6 +27,7 @@ import newton.examples
 from newton._src.solvers.kamino.control.animation import AnimationJointReference
 from newton._src.solvers.kamino.control.pid import JointSpacePIDController
 from newton._src.solvers.kamino.core.builder import ModelBuilder
+from newton._src.solvers.kamino.examples import get_examples_output_path
 from newton._src.solvers.kamino.models import get_examples_usd_assets_path
 from newton._src.solvers.kamino.models.builders import add_ground_geom, offset_builder
 from newton._src.solvers.kamino.simulation.simulator import Simulator, SimulatorSettings
@@ -431,62 +432,79 @@ class WalkerExample:
         """Test function for compatibility."""
         pass
 
-    def plot(self, actuator_dof_index=2):
+    def plot(self, path: str | None = None, show: bool = False):
         # First plot the animation sequence references
-        self.animation.plot()
+        animation_path = os.path.join(path, "animation_references.png") if path is not None else None
+        self.animation.plot(path=animation_path, show=show)
 
-        # Plot logged data after the viewer is closed
-        _, axs = plt.subplots(3, 1, figsize=(10, 10), sharex=True)
+        # Then plot the joint tracking results
+        for j in range(len(self.actuated_joints)):
+            # Set the output path for the current joint
+            tracking_path = os.path.join(path, f"tracking_joint_{j}.png") if path is not None else None
 
-        # Plot the measured vs reference joint positions
-        axs[0].step(
-            example.log_time[: example.sim_steps],
-            example.log_q_j[: example.sim_steps, actuator_dof_index],
-            label="Measured",
-        )
-        axs[0].step(
-            example.log_time[: example.sim_steps],
-            example.log_q_j_ref[: example.sim_steps, actuator_dof_index],
-            label="Reference",
-            linestyle="--",
-        )
-        axs[0].set_ylabel("Actuator Position (rad)")
-        axs[0].legend()
-        axs[0].set_title(f"Actuator DoF {actuator_dof_index} Position Tracking")
-        axs[0].grid()
+            # Plot logged data after the viewer is closed
+            _, axs = plt.subplots(3, 1, figsize=(10, 10), sharex=True)
 
-        # Plot the measured vs reference joint velocities
-        axs[1].step(
-            example.log_time[: example.sim_steps],
-            example.log_dq_j[: example.sim_steps, actuator_dof_index],
-            label="Measured",
-        )
-        axs[1].step(
-            example.log_time[: example.sim_steps],
-            example.log_dq_j_ref[: example.sim_steps, actuator_dof_index],
-            label="Reference",
-            linestyle="--",
-        )
-        axs[1].set_ylabel("Actuator Velocity (rad/s)")
-        axs[1].legend()
-        axs[1].set_title(f"Actuator DoF {actuator_dof_index} Velocity Tracking")
-        axs[1].grid()
+            # Plot the measured vs reference joint positions
+            axs[0].step(
+                example.log_time[: example.sim_steps],
+                example.log_q_j[: example.sim_steps, j],
+                label="Measured",
+            )
+            axs[0].step(
+                example.log_time[: example.sim_steps],
+                example.log_q_j_ref[: example.sim_steps, j],
+                label="Reference",
+                linestyle="--",
+            )
+            axs[0].set_ylabel("Actuator Position (rad)")
+            axs[0].legend()
+            axs[0].set_title(f"Actuator DoF {j} Position Tracking")
+            axs[0].grid()
 
-        # Plot the control torques
-        axs[2].step(
-            example.log_time[: example.sim_steps],
-            example.log_tau_j[: example.sim_steps, actuator_dof_index],
-            label="Control Torque",
-        )
-        axs[2].set_xlabel("Time (s)")
-        axs[2].set_ylabel("Torque (Nm)")
-        axs[2].legend()
-        axs[2].set_title(f"Actuator DoF {actuator_dof_index} Control Torque")
-        axs[2].grid()
+            # Plot the measured vs reference joint velocities
+            axs[1].step(
+                example.log_time[: example.sim_steps],
+                example.log_dq_j[: example.sim_steps, j],
+                label="Measured",
+            )
+            axs[1].step(
+                example.log_time[: example.sim_steps],
+                example.log_dq_j_ref[: example.sim_steps, j],
+                label="Reference",
+                linestyle="--",
+            )
+            axs[1].set_ylabel("Actuator Velocity (rad/s)")
+            axs[1].legend()
+            axs[1].set_title(f"Actuator DoF {j} Velocity Tracking")
+            axs[1].grid()
 
-        # Show plots
-        plt.tight_layout()
-        plt.show()
+            # Plot the control torques
+            axs[2].step(
+                example.log_time[: example.sim_steps],
+                example.log_tau_j[: example.sim_steps, j],
+                label="Control Torque",
+            )
+            axs[2].set_xlabel("Time (s)")
+            axs[2].set_ylabel("Torque (Nm)")
+            axs[2].legend()
+            axs[2].set_title(f"Actuator DoF {j} Control Torque")
+            axs[2].grid()
+
+            # Adjust layout
+            plt.tight_layout()
+
+            # Save the figure if a path is provided
+            if tracking_path is not None:
+                plt.savefig(tracking_path, dpi=300)
+
+            # Show the figure if requested
+            # NOTE: This will block execution until the plot window is closed
+            if show:
+                plt.show()
+
+            # Close the current figure to free memory
+            plt.close()
 
 
 ###
@@ -519,6 +537,7 @@ if __name__ == "__main__":
     parser.add_argument("--output-path", type=str, help="Output path for USD viewer")
     parser.add_argument("--cuda-graph", action="store_true", default=False, help="Use CUDA graphs")
     parser.add_argument("--clear-cache", action="store_true", default=False, help="Clear warp cache")
+    parser.add_argument("--show-plots", action="store_true", default=False, help="Show plots after simulation")
     parser.add_argument("--test", action="store_true", default=False, help="Run tests")
     args = parser.parse_args()
 
@@ -590,4 +609,6 @@ if __name__ == "__main__":
         newton.examples.run(example, args)
 
     # Plot logged data after the viewer is closed
-    example.plot()
+    OUTPUT_PLOT_PATH = os.path.join(get_examples_output_path(), "walker")
+    os.makedirs(OUTPUT_PLOT_PATH, exist_ok=True)
+    example.plot(path=OUTPUT_PLOT_PATH, show=args.show_plots)

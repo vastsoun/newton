@@ -564,7 +564,7 @@ class AnimationJointReference:
                 frame=wp.zeros(self._num_worlds, dtype=int32),
             )
 
-    def plot(self) -> None:
+    def plot(self, path: str | None = None, show: bool = False) -> None:
         from matplotlib import pyplot as plt  # noqa: PLC0415
 
         # Extract numpy arrays for plotting
@@ -585,7 +585,15 @@ class AnimationJointReference:
         axs[1].set_ylabel("Velocity")
         axs[1].legend()
         plt.tight_layout()
-        plt.show()
+
+        # Save the figure if a path is provided
+        if path is not None:
+            plt.savefig(path, dpi=300)
+
+        # Show the figure if requested
+        # NOTE: This will block execution until the plot window is closed
+        if show:
+            plt.show()
 
     def loop(self, enabled: bool | list[bool] = True) -> None:
         """

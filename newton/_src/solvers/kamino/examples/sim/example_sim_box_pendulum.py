@@ -14,7 +14,7 @@
 # limitations under the License.
 
 import argparse
-import math
+import math  # noqa: F401
 import os
 import time
 

@@ -172,7 +172,7 @@ def save_solver_info(solver: PADMMDualSolver, path: str | None = None, verbose: 
     # Plot all info as subplots: rows=info_list, cols=worlds
     n_rows = len(info_list)
     n_cols = nw
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(4 * n_cols, 2.5 * n_rows), squeeze=False)
+    _fig, axes = plt.subplots(n_rows, n_cols, figsize=(4 * n_cols, 2.5 * n_rows), squeeze=False)
     for row, (label, arr) in enumerate(info_list):
         for col in range(nw):
             ax = axes[row, col]

@@ -59,7 +59,7 @@ class TestDualProblem(unittest.TestCase):
         builder, _, _ = make_heterogeneous_builder()
 
         # Create the model and containers from the builder
-        model, data, limits, detector, jacobians = make_containers(
+        model, data, limits, detector, _jacobians = make_containers(
             builder=builder, max_world_contacts=max_world_contacts, device=self.default_device
         )
 

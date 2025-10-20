@@ -13,34 +13,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-KAMINO: Shape Types & Containers
-"""
+"""KAMINO: Shape Types & Containers"""
 
 from __future__ import annotations
 
-import sys
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from enum import IntEnum
 
-import numpy as np
 import warp as wp
 
-if sys.version_info >= (3, 12):
-    from typing import override
-else:
-    try:
-        from typing_extensions import override
-    except ImportError:
-        # Fallback no-op decorator if typing_extensions is not available
-        def override(func):
-            return func
-
-
-from ....core.types import Vec2, Vec3, nparray
-from ....geometry.types import MESH_MAXHULLVERT, Mesh
-from .types import Descriptor, vec4f
+from ....core.types import Mat33, Vec2, Vec3, nparray
+from ....geometry.types import MESH_MAXHULLVERT, SDF, Mesh
+from .types import Descriptor, mat33f, override, vec3f, vec4f
 
 ###
 # Module interface
@@ -50,7 +35,6 @@ __all__ = [
     "BoxShape",
     "CapsuleShape",
     "ConeShape",
-    "ConvexShape",
     "CylinderShape",
     "EllipsoidShape",
     "EmptyShape",
@@ -68,44 +52,6 @@ __all__ = [
 ###
 
 wp.set_module_options({"enable_backward": False})
-
-
-###
-# Constants
-###
-
-SHAPE_EMPTY = wp.constant(0)
-"""The empty shape type, which has no parameters and is used to represent the absence of a shape."""
-
-SHAPE_SPHERE = wp.constant(1)
-"""The 1-parameter sphere shape type. Parameters: radius."""
-
-SHAPE_CYLINDER = wp.constant(2)
-"""The 2-parameter cylinder shape type. Parameters: radius, height."""
-
-SHAPE_CONE = wp.constant(3)
-"""The 2-parameter cone shape type. Parameters: radius, height."""
-
-SHAPE_CAPSULE = wp.constant(4)
-"""The 2-parameter capsule shape type. Parameters: radius, height."""
-
-SHAPE_BOX = wp.constant(5)
-"""The 3-parameter box shape type. Parameters: depth, width, height."""
-
-SHAPE_ELLIPSOID = wp.constant(6)
-"""The 3-parameter ellipsoid shape type. Parameters: a, b, c."""
-
-SHAPE_PLANE = wp.constant(7)
-"""The 4-parameter plane shape type. Parameters: normal_x, normal_y, normal_z, distance."""
-
-SHAPE_CONVEX = wp.constant(8)
-"""The n-parameter convex shape type. Parameters: vertices, normals, etc."""
-
-SHAPE_MESH = wp.constant(9)
-"""The n-parameter mesh shape type. Parameters: vertices, normals, triangles, triangle_normals."""
-
-SHAPE_SDF = wp.constant(10)
-"""The n-parameter signed-distance-field shape type. Parameters: sdf data, etc."""
 
 
 ###
@@ -134,70 +80,67 @@ class ShapeType(IntEnum):
     """The 3-parameter ellipsoid shape type. Parameters: a, b, c."""
     PLANE = 7
     """The 4-parameter plane shape type. Parameters: normal_x, normal_y, normal_z, distance."""
-    CONVEX = 8
-    """The n-parameter convex shape type. Parameters: vertices, normals, etc."""
-    MESH = 9
+    MESH = 8
     """The n-parameter mesh shape type. Parameters: vertices, normals, triangles, triangle_normals."""
-    SDF = 10
+    SDF = 9
     """The n-parameter signed-distance-field shape type. Parameters: sdf data, etc."""
+    HFIELD = 10
+    """The n-parameter height-field shape type. Parameters: height field data, etc."""
+
+    @override
+    def __str__(self):
+        """Returns a string representation of the shape type."""
+        return f"ShapeType.{self.name} ({self.value})"
+
+    @override
+    def __repr__(self):
+        """Returns a string representation of the shape type."""
+        return self.__str__()
+
+    @property
+    def num_params(self) -> int:
+        """
+        The number of parameters that describe the shape type.
+        """
+        if self.value == self.EMPTY:
+            return 0
+        elif self.value == self.SPHERE:
+            return 1
+        elif self.value == self.CYLINDER:
+            return 2
+        elif self.value == self.CONE:
+            return 2
+        elif self.value == self.CAPSULE:
+            return 2
+        elif self.value == self.BOX:
+            return 3
+        elif self.value == self.ELLIPSOID:
+            return 3
+        elif self.value == self.PLANE:
+            return 4
+        elif self.value in {self.HFIELD, self.MESH, self.SDF}:
+            return -1  # Indicates variable number of parameters
+        else:
+            raise ValueError(f"Unknown joint DoF type: {self.value}")
 
 
 class ShapeDescriptor(ABC, Descriptor):
-    @staticmethod
-    def _num_params_of(shape_id: int) -> int:
-        """
-        Returns the number of parameters given a shape ID.
-        """
-        nparams = None
-        match shape_id:
-            case ShapeType.EMPTY:
-                nparams = 0
-            case ShapeType.SPHERE:
-                nparams = 1
-            case ShapeType.CYLINDER:
-                nparams = 2
-            case ShapeType.CONE:
-                nparams = 2
-            case ShapeType.CAPSULE:
-                nparams = 2
-            case ShapeType.BOX:
-                nparams = 3
-            case ShapeType.ELLIPSOID:
-                nparams = 3
-            case ShapeType.PLANE:
-                nparams = 4
-            case ShapeType.CONVEX:
-                nparams = -1
-            case ShapeType.MESH:
-                nparams = -1
-            case ShapeType.SDF:
-                nparams = -1
-            case _:
-                raise ValueError(f"ShapeDescriptor: Unknown shape type ID: {shape_id}")
-        return nparams
+    """Abstract base class for all shape descriptors."""
 
-    def __init__(self, typeid: int, name: str = "", uid: str | None = None):
+    def __init__(self, type: ShapeType, name: str = "", uid: str | None = None):
         super().__init__(name, uid)
-        self._typeid: int = typeid
-        self._nparams = ShapeDescriptor._num_params_of(typeid)
+        self._type: ShapeType = type
 
     def __repr__(self):
-        return (
-            f"ShapeDescriptor(\n"
-            f"name: {self.name},\n"
-            f"uid: {self.uid},\n"
-            f"typeid: {self.typeid},\n"
-            f"nparams: {self.nparams}\n"
-            f")"
-        )
+        return f"ShapeDescriptor(\ntype: {self.type},\nname: {self.name},\nuid: {self.uid},\n)"
 
     @property
-    def typeid(self) -> int:
-        return self._typeid
+    def type(self) -> ShapeType:
+        return self._type
 
     @property
-    def nparams(self) -> int:
-        return self._nparams
+    def num_params(self) -> int:
+        return self._type.num_params
 
     @property
     @abstractmethod
@@ -211,8 +154,8 @@ class ShapeDescriptor(ABC, Descriptor):
 
 
 class EmptyShape(ShapeDescriptor):
-    def __init__(self, name: str = "empty", uuid: str | None = None):
-        super().__init__(ShapeType.EMPTY, name)
+    def __init__(self, name: str = "empty", uid: str | None = None):
+        super().__init__(ShapeType.EMPTY, name, uid)
 
     @property
     @override
@@ -221,9 +164,9 @@ class EmptyShape(ShapeDescriptor):
 
 
 class SphereShape(ShapeDescriptor):
-    def __init__(self, radius: float, name: str = "sphere", uuid: str | None = None):
-        super().__init__(ShapeType.SPHERE, name)
-        self.radius = radius
+    def __init__(self, radius: float, name: str = "sphere", uid: str | None = None):
+        super().__init__(ShapeType.SPHERE, name, uid)
+        self.radius: float = radius
 
     @override
     def __repr__(self):
@@ -236,10 +179,10 @@ class SphereShape(ShapeDescriptor):
 
 
 class CylinderShape(ShapeDescriptor):
-    def __init__(self, radius: float, height: float, name: str = "cylinder", uuid: str | None = None):
-        super().__init__(ShapeType.CYLINDER, name)
-        self.radius = radius
-        self.height = height
+    def __init__(self, radius: float, height: float, name: str = "cylinder", uid: str | None = None):
+        super().__init__(ShapeType.CYLINDER, name, uid)
+        self.radius: float = radius
+        self.height: float = height
 
     @override
     def __repr__(self):
@@ -252,10 +195,10 @@ class CylinderShape(ShapeDescriptor):
 
 
 class ConeShape(ShapeDescriptor):
-    def __init__(self, radius: float, height: float, name: str = "cone", uuid: str | None = None):
-        super().__init__(ShapeType.CONE, name)
-        self.radius = radius
-        self.height = height
+    def __init__(self, radius: float, height: float, name: str = "cone", uid: str | None = None):
+        super().__init__(ShapeType.CONE, name, uid)
+        self.radius: float = radius
+        self.height: float = height
 
     @override
     def __repr__(self):
@@ -268,10 +211,10 @@ class ConeShape(ShapeDescriptor):
 
 
 class CapsuleShape(ShapeDescriptor):
-    def __init__(self, radius: float, height: float, name: str = "capsule", uuid: str | None = None):
-        super().__init__(ShapeType.CAPSULE, name)
-        self.radius = radius
-        self.height = height
+    def __init__(self, radius: float, height: float, name: str = "capsule", uid: str | None = None):
+        super().__init__(ShapeType.CAPSULE, name, uid)
+        self.radius: float = radius
+        self.height: float = height
 
     @override
     def __repr__(self):
@@ -284,11 +227,11 @@ class CapsuleShape(ShapeDescriptor):
 
 
 class BoxShape(ShapeDescriptor):
-    def __init__(self, depth: float, width: float, height: float, name: str = "box", uuid: str | None = None):
-        super().__init__(ShapeType.BOX, name)
-        self.depth = depth
-        self.width = width
-        self.height = height
+    def __init__(self, depth: float, width: float, height: float, name: str = "box", uid: str | None = None):
+        super().__init__(ShapeType.BOX, name, uid)
+        self.depth: float = depth
+        self.width: float = width
+        self.height: float = height
 
     @override
     def __repr__(self):
@@ -309,11 +252,11 @@ class BoxShape(ShapeDescriptor):
 
 
 class EllipsoidShape(ShapeDescriptor):
-    def __init__(self, a: float, b: float, c: float, name: str = "ellipsoid", uuid: str | None = None):
-        super().__init__(ShapeType.ELLIPSOID, name)
-        self.a = a
-        self.b = b
-        self.c = c
+    def __init__(self, a: float, b: float, c: float, name: str = "ellipsoid", uid: str | None = None):
+        super().__init__(ShapeType.ELLIPSOID, name, uid)
+        self.a: float = a
+        self.b: float = b
+        self.c: float = c
 
     @override
     def __repr__(self):
@@ -326,10 +269,10 @@ class EllipsoidShape(ShapeDescriptor):
 
 
 class PlaneShape(ShapeDescriptor):
-    def __init__(self, normal: list[float], distance: float, name: str = "plane", uuid: str | None = None):
-        super().__init__(ShapeType.PLANE, name)
-        self.normal = normal
-        self.distance = distance
+    def __init__(self, normal: Vec3, distance: float, name: str = "plane", uid: str | None = None):
+        super().__init__(ShapeType.PLANE, name, uid)
+        self.normal: Vec3 = normal
+        self.distance: float = distance
 
     @override
     def __repr__(self):
@@ -348,24 +291,14 @@ class PlaneShape(ShapeDescriptor):
 ###
 
 
-# TODO: Define ConvexData class to hold references to unique convex meshes
-class ConvexShape(ShapeDescriptor):
-    def __init__(self, sdf: np.ndarray, name: str = "convex"):
-        super().__init__(ShapeType.CONVEX, name)
-        pass
-
-    @override
-    def __repr__(self):
-        return f"ConvexShape(\nname: {self.name},\nuid: {self.uid}\nparams: {self.params}\n)"
-
-    # TODO: What should these parameters be?
-    @property
-    @override
-    def params(self) -> vec4f:
-        return vec4f(0.0, 0.0, 0.0, 0.0)
-
-
 class MeshShape(ShapeDescriptor):
+    """
+    A shape descriptor for mesh shapes.
+
+    This class is a lightweight wrapper around the newton.Mesh geometry type,
+    that provides the necessary interfacing to be used with the Kamino solver.
+    """
+
     def __init__(
         self,
         vertices: Sequence[Vec3] | nparray,
@@ -377,8 +310,9 @@ class MeshShape(ShapeDescriptor):
         compute_inertia: bool = True,
         is_solid: bool = True,
         name: str = "mesh",
+        uid: str | None = None,
     ):
-        super().__init__(ShapeType.MESH, name)
+        super().__init__(ShapeType.MESH, name, uid)
         self._data: Mesh = Mesh(
             vertices=vertices,
             indices=indices,
@@ -397,40 +331,113 @@ class MeshShape(ShapeDescriptor):
             f"name: {self.name},\n"
             f"uid: {self.uid},\n"
             f"params: {self.params},\n"
-            # f"vertices: {self.vertices.shape},\n"
-            # f"normals: {self.normals.shape if self.normals is not None else None},\n"
-            # f"triangles: {self.triangles.shape if self.triangles is not None else None},\n"
-            # f"triangle_normals: {self.triangle_normals.shape if self.triangle_normals is not None else None}\n"
+            f"vertices: {self._data.vertices.shape},\n"
+            f"indices: {self._data.indices.shape},\n"
+            f"normals: {self._data._normals.shape if self._data._normals is not None else None},\n"
             f")"
         )
 
-    # TODO: What should these parameters be?
     @property
     @override
     def params(self) -> vec4f:
-        return vec4f(0.0, 0.0, 0.0, 0.0)
+        return vec4f(0.0)
+
+    @property
+    def data(self) -> Mesh:
+        return self._data
+
+    @property
+    def vertices(self) -> nparray:
+        return self._data.vertices
+
+    @property
+    def indices(self) -> nparray:
+        return self._data.indices
+
+    @property
+    def normals(self) -> nparray | None:
+        return self._data._normals
+
+    @property
+    def uvs(self) -> nparray | None:
+        return self._data._uvs
+
+    @property
+    def color(self) -> Vec3 | None:
+        return self._data._color
 
 
-# TODO: Define SDFData class to hold references to unique SDFs
 class SDFShape(ShapeDescriptor):
-    def __init__(self, sdf: np.ndarray, name: str = "sdf"):
-        super().__init__(ShapeType.SDF, name)
-        pass
+    """
+    A shape descriptor for SDF shapes.
+
+    This class is a lightweight wrapper around the newton.SDF geometry type,
+    that provides the necessary interfacing to be used with the Kamino solver.
+    """
+
+    def __init__(
+        self,
+        volume: wp.Volume | None = None,
+        mass: float = 1.0,
+        com: Vec3 | None = None,
+        inertia: Mat33 | None = None,
+        name: str = "sdf",
+        uid: str | None = None,
+    ):
+        super().__init__(ShapeType.SDF, name, uid)
+        self._data: SDF = SDF(
+            volume=volume,
+            mass=mass,
+            com=com,
+            I=inertia,
+        )
 
     @override
     def __repr__(self):
-        return f"SDFShape(\nname: {self.name},\nuid: {self.uid},\nparams: {self.params}\n)"
+        return (
+            f"SDFShape(\n"
+            f"name: {self.name},\n"
+            f"uid: {self.uid},\n"
+            f"params: {self.params},\n"
+            f"mass: {self._data.mass},\n"
+            f"com: {self._data.com},\n"
+            f"I:\n{self._data.I},\n"
+            f")"
+        )
 
-    # TODO: What should these parameters be?
     @property
     @override
     def params(self) -> vec4f:
-        return vec4f(0.0, 0.0, 0.0, 0.0)
+        return vec4f(0.0)
+
+    @property
+    def data(self) -> SDF:
+        return self._data
+
+    @property
+    def volume(self) -> wp.Volume:
+        return self._data.volume
+
+    @property
+    def mass(self) -> float:
+        return self._data.mass
+
+    @property
+    def com(self) -> vec3f:
+        return self._data.com
+
+    @property
+    def inertia(self) -> mat33f:
+        return self._data.I
+
+
+###
+# Aliases
+###
 
 
 ShapeDescriptorType = (
-    None
-    | EmptyShape
+    EmptyShape
     | SphereShape
     | CylinderShape
     | ConeShape
@@ -438,8 +445,7 @@ ShapeDescriptorType = (
     | BoxShape
     | EllipsoidShape
     | PlaneShape
-    | ConvexShape
     | MeshShape
     | SDFShape
 )
-"""Type that can be used to represent any shape descriptor, including primitive and explicit shapes."""
+"""A type union that can represent any shape descriptor, including primitive and explicit shapes."""

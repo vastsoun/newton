@@ -500,7 +500,7 @@ class TestOpenUSD(unittest.TestCase):
         self.assertEqual(builder_usd.collision_geoms[0].gid, 0)
         self.assertEqual(builder_usd.collision_geoms[0].lid, 0)
         self.assertEqual(builder_usd.collision_geoms[0].bid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].shape.typeid, ShapeType.CAPSULE)
+        self.assertEqual(builder_usd.collision_geoms[0].shape.type, ShapeType.CAPSULE)
         self.assertAlmostEqual(builder_usd.collision_geoms[0].shape.radius, 0.1)
         self.assertAlmostEqual(builder_usd.collision_geoms[0].shape.height, 2.2)
         self.assertEqual(builder_usd.collision_geoms[0].mid, 0)
@@ -522,7 +522,7 @@ class TestOpenUSD(unittest.TestCase):
         self.assertEqual(builder_usd.collision_geoms[0].gid, 0)
         self.assertEqual(builder_usd.collision_geoms[0].lid, 0)
         self.assertEqual(builder_usd.collision_geoms[0].bid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].shape.typeid, ShapeType.CONE)
+        self.assertEqual(builder_usd.collision_geoms[0].shape.type, ShapeType.CONE)
         self.assertAlmostEqual(builder_usd.collision_geoms[0].shape.radius, 0.1)
         self.assertAlmostEqual(builder_usd.collision_geoms[0].shape.height, 2.2)
         self.assertEqual(builder_usd.collision_geoms[0].mid, 0)
@@ -544,7 +544,7 @@ class TestOpenUSD(unittest.TestCase):
         self.assertEqual(builder_usd.collision_geoms[0].gid, 0)
         self.assertEqual(builder_usd.collision_geoms[0].lid, 0)
         self.assertEqual(builder_usd.collision_geoms[0].bid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].shape.typeid, ShapeType.CYLINDER)
+        self.assertEqual(builder_usd.collision_geoms[0].shape.type, ShapeType.CYLINDER)
         self.assertAlmostEqual(builder_usd.collision_geoms[0].shape.radius, 0.1)
         self.assertAlmostEqual(builder_usd.collision_geoms[0].shape.height, 2.2)
         self.assertEqual(builder_usd.collision_geoms[0].mid, 0)
@@ -566,7 +566,7 @@ class TestOpenUSD(unittest.TestCase):
         self.assertEqual(builder_usd.collision_geoms[0].gid, 0)
         self.assertEqual(builder_usd.collision_geoms[0].lid, 0)
         self.assertEqual(builder_usd.collision_geoms[0].bid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].shape.typeid, ShapeType.SPHERE)
+        self.assertEqual(builder_usd.collision_geoms[0].shape.type, ShapeType.SPHERE)
         self.assertAlmostEqual(builder_usd.collision_geoms[0].shape.radius, 0.11)
         self.assertEqual(builder_usd.collision_geoms[0].mid, 0)
         self.assertEqual(builder_usd.collision_geoms[0].group, 1)
@@ -587,7 +587,7 @@ class TestOpenUSD(unittest.TestCase):
         self.assertEqual(builder_usd.collision_geoms[0].gid, 0)
         self.assertEqual(builder_usd.collision_geoms[0].lid, 0)
         self.assertEqual(builder_usd.collision_geoms[0].bid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].shape.typeid, ShapeType.ELLIPSOID)
+        self.assertEqual(builder_usd.collision_geoms[0].shape.type, ShapeType.ELLIPSOID)
         self.assertAlmostEqual(builder_usd.collision_geoms[0].shape.a, 0.11)
         self.assertAlmostEqual(builder_usd.collision_geoms[0].shape.b, 0.22)
         self.assertAlmostEqual(builder_usd.collision_geoms[0].shape.c, 0.33)
@@ -610,7 +610,7 @@ class TestOpenUSD(unittest.TestCase):
         self.assertEqual(builder_usd.collision_geoms[0].gid, 0)
         self.assertEqual(builder_usd.collision_geoms[0].lid, 0)
         self.assertEqual(builder_usd.collision_geoms[0].bid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].shape.typeid, ShapeType.BOX)
+        self.assertEqual(builder_usd.collision_geoms[0].shape.type, ShapeType.BOX)
         self.assertAlmostEqual(builder_usd.collision_geoms[0].shape.depth, 0.22)
         self.assertAlmostEqual(builder_usd.collision_geoms[0].shape.width, 0.44)
         self.assertAlmostEqual(builder_usd.collision_geoms[0].shape.height, 0.66)
@@ -736,8 +736,8 @@ class TestOpenUSD(unittest.TestCase):
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 10)
         self.assertEqual(builder_usd.num_joints, 14)
-        self.assertEqual(builder_usd.num_physical_geoms, 0)
-        self.assertEqual(builder_usd.num_collision_geoms, 10)
+        self.assertEqual(builder_usd.num_physical_geoms, 10)
+        self.assertEqual(builder_usd.num_collision_geoms, 0)
         self.assertEqual(builder_usd.num_materials, 1)
         self.assertEqual(builder_usd.joints[0].act_type, JointActuationType.PASSIVE)
         self.assertEqual(builder_usd.joints[0].dof_type, JointDoFType.FIXED)
@@ -778,6 +778,7 @@ class TestOpenUSD(unittest.TestCase):
         self.assertEqual(builder_usd.num_bodies, 31)
         self.assertEqual(builder_usd.num_joints, 36)
         self.assertEqual(builder_usd.num_collision_geoms, 3)
+        self.assertEqual(builder_usd.num_physical_geoms, 0)
 
     def test_import_model_walker_with_meshes(self):
         """Test importing the Walker demo model from a USD file"""
@@ -788,7 +789,8 @@ class TestOpenUSD(unittest.TestCase):
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 31)
         self.assertEqual(builder_usd.num_joints, 36)
-        self.assertEqual(builder_usd.num_collision_geoms, 31)
+        self.assertEqual(builder_usd.num_collision_geoms, 0)
+        self.assertEqual(builder_usd.num_physical_geoms, 31)
 
 
 ###

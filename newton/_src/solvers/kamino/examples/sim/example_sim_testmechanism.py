@@ -24,6 +24,7 @@ import newton
 import newton._src.solvers.kamino.utils.logger as msg
 import newton.examples
 from newton._src.solvers.kamino.core.builder import ModelBuilder
+from newton._src.solvers.kamino.core.shapes import ShapeType
 from newton._src.solvers.kamino.models import get_examples_usd_assets_path
 from newton._src.solvers.kamino.models.builders import add_ground_geom, offset_builder
 from newton._src.solvers.kamino.simulation.simulator import Simulator, SimulatorSettings
@@ -212,17 +213,17 @@ class Example:
     def extract_geometry_info(self):
         """Extract geometry information from the kamino simulator."""
         # Get collision geometry information from the simulator
-        cgeom_model = self.sim.model.cgeoms
+        pgeom_model = self.sim.model.pgeoms
 
         self.geometry_info = []
         self.ground_info = None
 
         # Extract geometry info from collision geometries
-        for i in range(cgeom_model.num_geoms):
-            bid = cgeom_model.bid.numpy()[i]  # Body ID (-1 for static/ground)
-            sid = cgeom_model.sid.numpy()[i]  # Shape ID
-            params = cgeom_model.params.numpy()[i]  # Shape parameters
-            offset = cgeom_model.offset.numpy()[i]  # Geometry offset
+        for i in range(pgeom_model.num_geoms):
+            bid = pgeom_model.bid.numpy()[i]  # Body ID (-1 for static/ground)
+            sid = pgeom_model.sid.numpy()[i]  # Shape ID
+            params = pgeom_model.params.numpy()[i]  # Shape parameters
+            offset = pgeom_model.offset.numpy()[i]  # Geometry offset
 
             if bid == -1:  # Ground plane (static body)
                 # Ground plane: params = [depth, width, height, 0]
@@ -257,6 +258,10 @@ class Example:
             self.simulate()
 
         self.sim_time += self.frame_dt
+
+    def test(self):
+        """Test function for compatibility."""
+        pass
 
     def render(self):
         """Render the current frame."""
@@ -300,7 +305,7 @@ class Example:
                     color = self.body_colors[color_idx]
 
                     # Render based on shape type
-                    if sid == 5:  # BOX shape (SHAPE_BOX = 5)
+                    if sid == ShapeType.BOX:  # BOX shape (SHAPE_BOX = 5)
                         # Convert kamino full dimensions to newton half-extents
                         half_extents = (params[0] / 2, params[1] / 2, params[2] / 2)
 
@@ -311,7 +316,7 @@ class Example:
                             wp.array([final_transform], dtype=wp.transform),
                             color,
                         )
-                    elif sid == 1:  # SPHERE shape (SHAPE_SPHERE = 1)
+                    elif sid == ShapeType.SPHERE:  # SPHERE shape (SHAPE_SPHERE = 1)
                         radius = params[0]
 
                         self.viewer.log_shapes(
@@ -321,7 +326,7 @@ class Example:
                             wp.array([final_transform], dtype=wp.transform),
                             color,
                         )
-                    elif sid == 2:  # CAPSULE shape (SHAPE_CAPSULE = 2)
+                    elif sid == ShapeType.CAPSULE:  # CAPSULE shape (SHAPE_CAPSULE = 2)
                         radius = params[0]
                         half_height = params[1] / 2
 
@@ -332,7 +337,7 @@ class Example:
                             wp.array([final_transform], dtype=wp.transform),
                             color,
                         )
-                    elif sid == 9:  # MESH shape (SHAPE_MESH = 9)
+                    elif sid == ShapeType.MESH:  # MESH shape (SHAPE_MESH = 9)
                         self.viewer.log_shapes(
                             name=f"/testmechanism/body_{bid}_geom_{i}",
                             geo_type=newton.GeoType.MESH,
@@ -340,7 +345,7 @@ class Example:
                             xforms=wp.array([final_transform], dtype=wp.transform),
                             geo_is_solid=True,
                             colors=color,
-                            geo_src=self.builder.collision_geoms[gid].shape._data,
+                            geo_src=self.builder.physical_geoms[gid].shape._data,
                         )
 
         except Exception as e:
@@ -376,10 +381,6 @@ class Example:
             )
 
         self.viewer.end_frame()
-
-    def test(self):
-        """Test function for compatibility."""
-        pass
 
 
 if __name__ == "__main__":

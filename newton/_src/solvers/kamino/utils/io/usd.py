@@ -45,7 +45,6 @@ from ...core.shapes import (
     ConeShape,
     CylinderShape,
     EllipsoidShape,
-    # ConvexShape,
     MeshShape,
     PlaneShape,
     # SDFShape
@@ -219,6 +218,25 @@ class USDImporter:
         if cdata is not None:
             override_default = cdata.get("overrideDefault", False)
         return override_default
+
+    @staticmethod
+    def _make_faces_from_counts(indices: nparray, counts: Iterable[int], prim_path: str) -> nparray:
+        faces = []
+        face_id = 0
+        for count in counts:
+            if count == 3:
+                faces.append(indices[face_id : face_id + 3])
+            elif count == 4:
+                faces.append(indices[face_id : face_id + 3])
+                faces.append(indices[[face_id, face_id + 2, face_id + 3]])
+            elif True:
+                msg.error(
+                    f"Error while parsing USD mesh {prim_path}: "
+                    f"encountered polygon with {count} vertices, but only triangles and quads are supported."
+                )
+                continue
+            face_id += count
+        return np.array(faces, dtype=np.int32).flatten()
 
     def _get_attribute(self, prim, name) -> Any:
         return prim.GetAttribute(name)
@@ -954,6 +972,7 @@ class USDImporter:
         material_index_map: dict[str, int],
         distance_unit: float = 1.0,
         rotation_unit: float = 1.0,
+        meshes_are_collidable: bool = False,
     ) -> CollisionGeometryDescriptor | GeometryDescriptor | None:
         """
         Parses a geometry prim and returns a GeometryDescriptor.
@@ -1005,6 +1024,7 @@ class USDImporter:
 
         # Construct the shape descriptor based on the geometry type
         shape = None
+        is_mesh_shape = False
         if geom_type == self.UsdPhysics.ObjectType.CapsuleShape:
             # TODO: axis = geom_spec.axis, how can we use this?
             shape = CapsuleShape(radius=geom_spec.radius, height=2.0 * geom_spec.halfHeight)
@@ -1039,49 +1059,29 @@ class USDImporter:
                 shape = EllipsoidShape(a=a, b=b, c=c)
 
         elif geom_type == self.UsdPhysics.ObjectType.MeshShape:
-            # msg.warning(f"Mesh shapes are not yet supported. Geom '{name}' ({geom_prim.GetPath()}) will be ignored.")
-            # return None  # TODO: Implement mesh shapes
+            # Retrieve the mesh data from the USD mesh prim
             usd_mesh = self.UsdGeom.Mesh(geom_prim)
+            usd_mesh_path = usd_mesh.GetPath()
+
+            # Extract mandatory mesh attributes
             points = np.array(usd_mesh.GetPointsAttr().Get(), dtype=np.float32)
+            indices = np.array(usd_mesh.GetFaceVertexIndicesAttr().Get(), dtype=np.float32)
+            counts = usd_mesh.GetFaceVertexCountsAttr().Get()
+
+            # Extract optional normals attribute if defined
             normals = (
                 np.array(usd_mesh.GetNormalsAttr().Get(), dtype=np.float32)
                 if usd_mesh.GetNormalsAttr().IsDefined()
                 else None
             )
-            indices = np.array(usd_mesh.GetFaceVertexIndicesAttr().Get(), dtype=np.float32)
-            counts = usd_mesh.GetFaceVertexCountsAttr().Get()
-            # subdivision_type = usd_mesh.GetSubdivisionSchemeAttr().Get()
-            # orientation = usd_mesh.GetOrientationAttr().Get()
 
-            faces = []
-            face_id = 0
-            for count in counts:
-                if count == 3:
-                    faces.append(indices[face_id : face_id + 3])
-                elif count == 4:
-                    faces.append(indices[face_id : face_id + 3])
-                    faces.append(indices[[face_id, face_id + 2, face_id + 3]])
-                elif True:
-                    msg.error(
-                        f"Error while parsing USD mesh {usd_mesh.GetPath()}: "
-                        f"encountered polygon with {count} vertices, but only triangles and quads are supported."
-                    )
-                    continue
-                face_id += count
-            faces = np.array(faces, dtype=np.int32).flatten()
-            faces = np.array(faces, dtype=np.int32)
-
-            # print(f"usd_mesh: {usd_mesh}")
-            # print(f"points (shape={points.shape}):\n{points}\n")
-            # print(f"normals (shape={normals.shape if normals is not None else None}):\n{normals}\n")
-            # print(f"indices (shape={indices.shape}):\n{indices}\n")
-            # print(f"counts (len={len(counts)}):\n{counts}\n")
-            # print(f"subdivision_type: {subdivision_type}")
-            # print(f"orientation: {orientation}")
-            # print(f"faces (shape={faces.shape}):\n{faces}\n")
+            # Extract triangle face indices from the mesh data
+            # NOTE: This handles both triangle and quad meshes
+            faces = self._make_faces_from_counts(indices, counts, usd_mesh_path)
 
             # Create the mesh shape (i.e. wrapper around newton.geometry.Mesh)
             shape = MeshShape(vertices=points, indices=faces, normals=normals, maxhullvert=MESH_MAXHULLVERT)
+            is_mesh_shape = True
         else:
             raise ValueError(
                 f"Unsupported geometry type: {geom_type}. Supported types are: {self.supported_usd_geom_types}."
@@ -1105,7 +1105,7 @@ class USDImporter:
         ###
 
         # Promote the GeometryDescriptor to a CollisionGeometryDescriptor if it's collidable
-        if geom_spec.collisionEnabled:
+        if geom_spec.collisionEnabled and ((meshes_are_collidable and is_mesh_shape) or not is_mesh_shape):
             descriptor = CollisionGeometryDescriptor(base=descriptor)
 
             # Query the geom prim for the maximum number of contacts hint
@@ -1160,6 +1160,7 @@ class USDImporter:
         load_materials: bool = True,
         enable_self_collisions: bool = True,
         collapse_fixed_joints: bool = False,
+        meshes_are_collidable: bool = False,
     ) -> ModelBuilder:
         """
         Parses an OpenUSD file.
@@ -1416,6 +1417,7 @@ class USDImporter:
                         material_index_map=material_index_map,
                         distance_unit=distance_unit,
                         rotation_unit=rotation_unit,
+                        meshes_are_collidable=meshes_are_collidable,
                     )
                     if geom_desc is not None:
                         # Skip static geometry if not requested

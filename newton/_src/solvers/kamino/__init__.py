@@ -133,13 +133,13 @@ from .geometry.contacts import (
 from .geometry.detector import (
     CollisionDetector,
 )
-from .kinematics.forward import ForwardKinematicsSolver
 from .kinematics.jacobians import (
     DenseSystemJacobians,
     DenseSystemJacobiansData,
 )
 from .simulation import Simulator
 from .solvers import padmm
+from .solvers.fk import ForwardKinematicsSolver
 from .utils.io import hdf5, usd
 from .utils.print import printmatrix, printvector
 from .utils.sparse import sparseview

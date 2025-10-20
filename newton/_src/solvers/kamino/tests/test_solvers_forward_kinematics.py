@@ -14,7 +14,7 @@
 # limitations under the License.
 
 """
-KAMINO: UNIT TESTS: KINEMATICS: FORWARD (Forward Kinematics module)
+KAMINO: UNIT TESTS: SOLVERS: FORWARD KINEMATICS
 """
 
 import hashlib
@@ -27,8 +27,8 @@ import warp as wp
 from newton._src.solvers.kamino.core.joints import JointActuationType, JointDoFType
 from newton._src.solvers.kamino.core.model import Model
 from newton._src.solvers.kamino.core.types import mat33f, vec3f
-from newton._src.solvers.kamino.kinematics.forward import ForwardKinematicsSolver
 from newton._src.solvers.kamino.models import get_examples_usd_assets_path
+from newton._src.solvers.kamino.solvers.fk import ForwardKinematicsSolver
 from newton._src.solvers.kamino.tests.utils.diff_check import diff_check, run_test_single_joint_examples
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
 

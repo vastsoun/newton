@@ -27,6 +27,7 @@ import newton.examples
 from newton._src.solvers.kamino.control.animation import AnimationJointReference
 from newton._src.solvers.kamino.control.pid import JointSpacePIDController
 from newton._src.solvers.kamino.core.builder import ModelBuilder
+from newton._src.solvers.kamino.core.shapes import ShapeType
 from newton._src.solvers.kamino.examples import get_examples_output_path
 from newton._src.solvers.kamino.models import get_examples_usd_assets_path
 from newton._src.solvers.kamino.models.builders import add_ground_geom, offset_builder
@@ -350,7 +351,7 @@ class Example:
                     color = self.body_colors[color_idx]
 
                     # Render based on shape type
-                    if sid == 5:  # BOX shape (SHAPE_BOX = 5)
+                    if sid == ShapeType.BOX:  # BOX shape (SHAPE_BOX = 5)
                         # Convert kamino full dimensions to newton half-extents
                         half_extents = (params[0] / 2, params[1] / 2, params[2] / 2)
 
@@ -361,7 +362,7 @@ class Example:
                             wp.array([final_transform], dtype=wp.transform),
                             color,
                         )
-                    elif sid == 1:  # SPHERE shape (SHAPE_SPHERE = 1)
+                    elif sid == ShapeType.SPHERE:  # SPHERE shape (SHAPE_SPHERE = 1)
                         radius = params[0]
 
                         self.viewer.log_shapes(
@@ -371,7 +372,7 @@ class Example:
                             wp.array([final_transform], dtype=wp.transform),
                             color,
                         )
-                    elif sid == 2:  # CAPSULE shape (SHAPE_CAPSULE = 2)
+                    elif sid == ShapeType.CAPSULE:  # CAPSULE shape (SHAPE_CAPSULE = 2)
                         radius = params[0]
                         half_height = params[1] / 2
 
@@ -382,7 +383,7 @@ class Example:
                             wp.array([final_transform], dtype=wp.transform),
                             color,
                         )
-                    elif sid == 9:  # MESH shape (SHAPE_MESH = 9)
+                    elif sid == ShapeType.MESH:  # MESH shape (SHAPE_MESH = 9)
                         self.viewer.log_shapes(
                             name=f"/walker/body_{bid}_geom_{i}",
                             geo_type=newton.GeoType.MESH,

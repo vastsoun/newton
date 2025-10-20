@@ -47,6 +47,7 @@ wp.set_module_options({"enable_backward": False})
 class JacobianCheckForwardKinematics(unittest.TestCase):
     def setUp(self):
         self.default_device = wp.get_device()
+        self.has_cuda = self.default_device.is_cuda
 
     def tearDown(self):
         self.default_device = None
@@ -57,7 +58,7 @@ class JacobianCheckForwardKinematics(unittest.TestCase):
         seed = int(hashlib.sha256(test_name.encode("utf8")).hexdigest(), 16)
         rng = np.random.default_rng(seed)
 
-        def test_function(model):
+        def test_function(model: Model):
             assert model.size.num_worlds == 1  # For simplicity we assume a single world
 
             # Generate (random) state
@@ -71,7 +72,7 @@ class JacobianCheckForwardKinematics(unittest.TestCase):
             state.joints.q_j.assign(rng.uniform(-1.0, 1.0, num_joints_q_j).astype("float32"))
 
             # Evaluate analytic Jacobian
-            solver = ForwardKinematicsSolver(model)
+            solver = ForwardKinematicsSolver(model=model)
             pos_control_transforms = solver.eval_position_control_transformations(state)
             jacobian = solver.eval_kinematic_constraints_jacobian(state, pos_control_transforms)
 
@@ -103,6 +104,7 @@ def simulate_random_poses(
     min_controls: np.ndarray,
     max_controls: np.ndarray,
     rng: np.random._generator.Generator,
+    use_graph: bool = False,
     verbose: bool = False,
 ):
     num_controls = model.size.sum_of_num_actuated_joint_dofs
@@ -135,7 +137,7 @@ def simulate_random_poses(
     success_flags = []
     for i in range(num_poses):
         model_data.joints.q_j.assign(gen_pos_random[i, :])
-        solver.solve_fk(model_data, reset_state=True, verbose=verbose)
+        solver.solve_fk(model_data, reset_state=True, verbose=verbose, use_graph=use_graph)
         success_flags.append(solver.newton_success.numpy()[0])
 
     success = np.sum(success_flags) == num_poses
@@ -147,6 +149,7 @@ def simulate_random_poses(
 class TestMechanismRandomPosesCheckForwardKinematics(unittest.TestCase):
     def setUp(self):
         self.default_device = wp.get_device()
+        self.has_cuda = self.default_device.is_cuda
         self.verbose = False
 
     def tearDown(self):
@@ -167,7 +170,7 @@ class TestMechanismRandomPosesCheckForwardKinematics(unittest.TestCase):
         num_poses = 30
         theta_max = np.radians(180.0)
         success = simulate_random_poses(
-            model, num_poses, np.array([-theta_max]), np.array([theta_max]), rng, self.verbose
+            model, num_poses, np.array([-theta_max]), np.array([theta_max]), rng, self.has_cuda, self.verbose
         )
         self.assertTrue(success)
 
@@ -175,6 +178,7 @@ class TestMechanismRandomPosesCheckForwardKinematics(unittest.TestCase):
 class WalkerRandomPosesCheckForwardKinematics(unittest.TestCase):
     def setUp(self):
         self.default_device = wp.get_device()
+        self.has_cuda = self.default_device.is_cuda
         self.verbose = False
 
     def tearDown(self):
@@ -211,6 +215,7 @@ class WalkerRandomPosesCheckForwardKinematics(unittest.TestCase):
             np.array(num_controls * [-theta_max]),
             np.array(num_controls * [theta_max]),
             rng,
+            self.has_cuda,
             self.verbose,
         )
         self.assertTrue(success)
@@ -219,6 +224,7 @@ class WalkerRandomPosesCheckForwardKinematics(unittest.TestCase):
 class HeterogenousModelRandomPosesCheckForwardKinematics(unittest.TestCase):
     def setUp(self):
         self.default_device = wp.get_device()
+        self.has_cuda = self.default_device.is_cuda
         self.verbose = False
 
     def tearDown(self):
@@ -253,7 +259,7 @@ class HeterogenousModelRandomPosesCheckForwardKinematics(unittest.TestCase):
         theta_max_test_mech = np.radians(180.0)
         theta_max_walker = np.radians(10.0)
         max_controls = np.array([theta_max_test_mech] + builder1.num_actuated_joint_dofs * [theta_max_walker])
-        success = simulate_random_poses(model, num_poses, -max_controls, max_controls, rng, self.verbose)
+        success = simulate_random_poses(model, num_poses, -max_controls, max_controls, rng, self.has_cuda, self.verbose)
         self.assertTrue(success)
 
 

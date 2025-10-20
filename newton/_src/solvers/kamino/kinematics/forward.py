@@ -24,9 +24,10 @@ from functools import cache
 
 import numpy as np
 import warp as wp
-from warp.context import Devicelike
+from warp._src.context import Devicelike
 
-from newton._src.solvers.kamino.core.math import (
+from ..core.joints import JointActuationType, JointDoFType
+from ..core.math import (
     G_of,
     quat_exp,
     quat_left_jacobian_inverse,
@@ -37,8 +38,6 @@ from newton._src.solvers.kamino.core.math import (
     unit_quat_conj_apply_jacobian,
     unit_quat_conj_to_rotation_matrix,
 )
-
-from ..core.joints import JointActuationType, JointDoFType
 from ..core.model import Model, ModelData
 from ..linalg.factorize.llt_blocked_semi_sparse import SemiSparseBlockCholeskySolverBatched
 
@@ -96,17 +95,17 @@ def _eval_position_control_transformations(
         q = wp.quatf(0.0, 0.0, 0.0, 1.0)
 
         # In the actuated case, set translation/rotation as per joint generalized coordinates
-        if act_type_j == int(JointActuationType.FORCE.value):
-            if dof_type_j == int(JointDoFType.CARTESIAN.value):
+        if act_type_j == int(JointActuationType.FORCE):
+            if dof_type_j == int(JointDoFType.CARTESIAN):
                 t[0] = joints_q_j[offset_q_j]
                 t[1] = joints_q_j[offset_q_j + 1]
                 t[2] = joints_q_j[offset_q_j + 2]
-            elif dof_type_j == int(JointDoFType.CYLINDRICAL.value):
+            elif dof_type_j == int(JointDoFType.CYLINDRICAL):
                 t[0] = joints_q_j[offset_q_j]
                 q = wp.quat_from_axis_angle(wp.vec3f(X[0, 0], X[1, 0], X[2, 0]), joints_q_j[offset_q_j + 1])
-            elif dof_type_j == int(JointDoFType.FIXED.value):
+            elif dof_type_j == int(JointDoFType.FIXED):
                 pass  # No dofs to apply
-            elif dof_type_j == int(JointDoFType.FREE.value):
+            elif dof_type_j == int(JointDoFType.FREE):
                 t[0] = joints_q_j[offset_q_j]
                 t[1] = joints_q_j[offset_q_j + 1]
                 t[2] = joints_q_j[offset_q_j + 2]
@@ -114,16 +113,16 @@ def _eval_position_control_transformations(
                 theta_loc = wp.vec3f(joints_q_j[offset_q_j + 3], joints_q_j[offset_q_j + 4], joints_q_j[offset_q_j + 5])
                 q_loc = quat_exp(theta_loc)
                 q = q_X * q_loc * wp.quat_inverse(q_X)
-            elif dof_type_j == int(JointDoFType.PRISMATIC.value):
+            elif dof_type_j == int(JointDoFType.PRISMATIC):
                 t[0] = joints_q_j[offset_q_j]
-            elif dof_type_j == int(JointDoFType.REVOLUTE.value):
+            elif dof_type_j == int(JointDoFType.REVOLUTE):
                 q = wp.quat_from_axis_angle(wp.vec3f(X[0, 0], X[1, 0], X[2, 0]), joints_q_j[offset_q_j])
-            elif dof_type_j == int(JointDoFType.SPHERICAL.value):
+            elif dof_type_j == int(JointDoFType.SPHERICAL):
                 q_X = wp.quat_from_matrix(X)
                 theta_loc = wp.vec3f(joints_q_j[offset_q_j], joints_q_j[offset_q_j + 1], joints_q_j[offset_q_j + 2])
                 q_loc = quat_exp(theta_loc)
                 q = q_X * q_loc * wp.quat_inverse(q_X)
-            elif dof_type_j == int(JointDoFType.UNIVERSAL.value):
+            elif dof_type_j == int(JointDoFType.UNIVERSAL):
                 q_x = wp.quat_from_axis_angle(wp.vec3f(X[0, 0], X[1, 0], X[2, 0]), joints_q_j[offset_q_j])
                 q_y = wp.quat_from_axis_angle(wp.vec3f(X[0, 1], X[1, 1], X[2, 1]), joints_q_j[offset_q_j + 1])
                 q = q_x * q_y
@@ -259,9 +258,7 @@ def create_eval_joint_constraints_kernel(has_universal_joints: bool):
                 # Check for a passive universal joint
                 dof_type_j = joints_dof_type[jt_id_tot]
                 act_type_j = joints_act_type[jt_id_tot]
-                if dof_type_j != int(JointDoFType.UNIVERSAL.value) or act_type_j != int(
-                    JointActuationType.PASSIVE.value
-                ):
+                if dof_type_j != int(JointDoFType.UNIVERSAL) or act_type_j != int(JointActuationType.PASSIVE):
                     return
 
                 # Compute constraint (dot product between x axis on base and y axis on follower)
@@ -432,9 +429,7 @@ def create_eval_joint_constraints_jacobian_kernel(has_universal_joints: bool):
                 # Check for a passive universal joint
                 dof_type_j = joints_dof_type[jt_id_tot]
                 act_type_j = joints_act_type[jt_id_tot]
-                if dof_type_j != int(JointDoFType.UNIVERSAL.value) or act_type_j != int(
-                    JointActuationType.PASSIVE.value
-                ):
+                if dof_type_j != int(JointDoFType.UNIVERSAL) or act_type_j != int(JointActuationType.PASSIVE):
                     return
 
                 # Compute constraint Jacobian (cross product between x axis on base and y axis on follower)
@@ -907,45 +902,45 @@ class ForwardKinematicsSolver:
             for jt_id_loc in range(num_joints[wd_id]):
                 jt_id_tot = first_joint_id[wd_id] + jt_id_loc  # Joint id among all joints
                 act_type = act_types[jt_id_tot]
-                if act_type == JointActuationType.FORCE.value:  # Actuator: select all six constraints
+                if act_type == JointActuationType.FORCE:  # Actuator: select all six constraints
                     for i in range(6):
                         constraint_full_to_red_map[wd_id, 6 * jt_id_loc + i] = ct_count + i
                     ct_count += 6
                 else:
                     dof_type = dof_types[jt_id_tot]
-                    if dof_type == JointDoFType.CARTESIAN.value:
+                    if dof_type == JointDoFType.CARTESIAN:
                         for i in range(3):
                             constraint_full_to_red_map[wd_id, 6 * jt_id_loc + 3 + i] = ct_count + i
                         ct_count += 3
-                    elif dof_type == JointDoFType.CYLINDRICAL.value:
+                    elif dof_type == JointDoFType.CYLINDRICAL:
                         constraint_full_to_red_map[wd_id, 6 * jt_id_loc + 1] = ct_count
                         constraint_full_to_red_map[wd_id, 6 * jt_id_loc + 2] = ct_count + 1
                         constraint_full_to_red_map[wd_id, 6 * jt_id_loc + 4] = ct_count + 2
                         constraint_full_to_red_map[wd_id, 6 * jt_id_loc + 5] = ct_count + 3
                         ct_count += 4
-                    elif dof_type == JointDoFType.FIXED.value:
+                    elif dof_type == JointDoFType.FIXED:
                         for i in range(6):
                             constraint_full_to_red_map[wd_id, 6 * jt_id_loc + i] = ct_count + i
                         ct_count += 6
-                    elif dof_type == JointDoFType.FREE.value:
+                    elif dof_type == JointDoFType.FREE:
                         pass
-                    elif dof_type == JointDoFType.PRISMATIC.value:
+                    elif dof_type == JointDoFType.PRISMATIC:
                         constraint_full_to_red_map[wd_id, 6 * jt_id_loc + 1] = ct_count
                         constraint_full_to_red_map[wd_id, 6 * jt_id_loc + 2] = ct_count + 1
                         for i in range(3):
                             constraint_full_to_red_map[wd_id, 6 * jt_id_loc + 3 + i] = ct_count + 2 + i
                         ct_count += 5
-                    elif dof_type == JointDoFType.REVOLUTE.value:
+                    elif dof_type == JointDoFType.REVOLUTE:
                         for i in range(3):
                             constraint_full_to_red_map[wd_id, 6 * jt_id_loc + i] = ct_count + i
                         constraint_full_to_red_map[wd_id, 6 * jt_id_loc + 4] = ct_count + 3
                         constraint_full_to_red_map[wd_id, 6 * jt_id_loc + 5] = ct_count + 4
                         ct_count += 5
-                    elif dof_type == JointDoFType.SPHERICAL.value:
+                    elif dof_type == JointDoFType.SPHERICAL:
                         for i in range(3):
                             constraint_full_to_red_map[wd_id, 6 * jt_id_loc + i] = ct_count + i
                         ct_count += 3
-                    elif dof_type == JointDoFType.UNIVERSAL.value:
+                    elif dof_type == JointDoFType.UNIVERSAL:
                         for i in range(3):
                             constraint_full_to_red_map[wd_id, 6 * jt_id_loc + i] = ct_count + i
                         constraint_full_to_red_map[wd_id, 6 * jt_id_loc + 5] = ct_count + 3
@@ -1069,8 +1064,6 @@ class ForwardKinematicsSolver:
             block_dim=64,
         )
         sparsity_pattern_lhs = sparsity_pattern_lhs_wp.numpy().astype("int32")
-        # sparsity_pattern_lhs_check = (sparsity_pattern.transpose((0, 2, 1)) @ sparsity_pattern).clip(max=1)
-        # assert(np.max(np.abs(sparsity_pattern_lhs - sparsity_pattern_lhs_check)) == 0)
 
         # Initialize linear solver
         self.linear_solver = SemiSparseBlockCholeskySolverBatched(

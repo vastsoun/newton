@@ -23,7 +23,7 @@ import os
 from collections.abc import Callable
 
 import numpy as np
-from warp.context import Devicelike
+from warp._src.context import Devicelike
 
 from newton._src.solvers.kamino.core.joints import JointActuationType
 from newton._src.solvers.kamino.models import get_tests_usd_assets_path

@@ -14,7 +14,7 @@
 # limitations under the License.
 
 """
-KAMINO: Kinematics: Forward (Forward Kinematics module)
+KAMINO: Solvers: Forward Kinematics
 """
 
 from __future__ import annotations

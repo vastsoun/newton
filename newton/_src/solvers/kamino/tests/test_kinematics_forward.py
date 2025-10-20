@@ -137,8 +137,8 @@ def simulate_random_poses(
     success_flags = []
     for i in range(num_poses):
         model_data.joints.q_j.assign(gen_pos_random[i, :])
-        solver.solve_fk(model_data, reset_state=True, verbose=verbose, use_graph=use_graph)
-        success_flags.append(solver.newton_success.numpy()[0])
+        status = solver.solve_fk(model_data, reset_state=True, use_graph=use_graph, verbose=verbose, return_status=True)
+        success_flags.append(status.success.min() == 1)
 
     success = np.sum(success_flags) == num_poses
     if not success:

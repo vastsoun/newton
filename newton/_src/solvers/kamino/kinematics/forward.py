@@ -20,6 +20,7 @@ KAMINO: Kinematics: Forward (Forward Kinematics module)
 from __future__ import annotations
 
 import sys
+from dataclasses import dataclass
 from functools import cache
 
 import numpy as np
@@ -826,6 +827,28 @@ def _newton_check(
 ###
 
 
+@dataclass
+class ForwardKinematicsSolverStatus:
+    """
+    Class containing detailed data on the success/failure status of a forward kinematics solve
+
+    Attributes
+    ----------
+    iterations : np.ndarray
+        the number of Newton iterations run per world
+    max_constraints : np.ndarray
+        the maximal kinematic constraint residual per world
+    success : np.ndarray
+        the solver success flag per world (i.e., constraint residual below tolerance within max iterations)
+    """
+
+    iterations: np.ndarray(dtype="int32")
+
+    max_constraints: np.ndarray(dtype="float32")
+
+    success: np.ndarray(dtype="int32")
+
+
 class ForwardKinematicsSolver:
     """
     Forward Kinematics solver class
@@ -1473,12 +1496,13 @@ class ForwardKinematicsSolver:
     def solve_fk(
         self,
         state: ModelData,
-        verbose: bool = False,
         reset_state: bool = True,
         max_newton_iterations: wp.int32 = 30,
         max_line_search_iterations: wp.int32 = 20,
         tolerance: wp.float32 = 1e-6,
         use_graph: bool = True,
+        verbose: bool = False,
+        return_status: bool = False,
     ):
         """
         Convenience function (non graph-capturable) solving forward kinematics with Gauss-Newton. More specifically,
@@ -1491,8 +1515,6 @@ class ForwardKinematicsSolver:
             provides the generalized coordinates to solve for, and the initial guess for body states if reset_state
             is False. The computed rigid body states will be updated into this state.
             Must be allocated on the same device as the underlying model.
-        verbose : bool, optional
-            whether to write a status message at the end (default: False)
         reset_state : bool, optional
             whether to reset the state to initial states, to use as initial guess (default: True)
         max_newton_iterations : int, optional
@@ -1504,6 +1526,15 @@ class ForwardKinematicsSolver:
         use_graph : bool, optional
             whether to use graph capture internally to accelerate multiple calls to this function. Can be turned
             off for profiling individual kernels (default: True)
+        verbose : bool, optional
+            whether to write a status message at the end (default: False)
+        return_status : bool, optional
+            whether to return the detailed solver status (default: False)
+
+        Returns
+        -------
+        solver_status : ForwardKinematicsSolverStatus, optional
+            the detailed solver status with success flag, number of iterations and constraint residual per world
         """
 
         # Initialize joint positions and rigid body poses
@@ -1525,13 +1556,20 @@ class ForwardKinematicsSolver:
             self._run_fk_solve()
 
         # Status message
-        if verbose:
-            num_success = self.newton_success.numpy().sum()
-            num_iterations = self.newton_iteration.numpy().max()
-            max_constraint = np.max(self.max_constraint.numpy())
-            sys.__stdout__.write(f"Newton success for {num_success}/{self.num_worlds} worlds; ")
-            sys.__stdout__.write(f"num iterations={num_iterations}; ")
-            sys.__stdout__.write(f"max constraint={max_constraint}\n")
+        if verbose or return_status:
+            success = self.newton_success.numpy()
+            iterations = self.newton_iteration.numpy()
+            max_constraints = self.max_constraint.numpy()
+            if verbose:
+                sys.__stdout__.write(f"Newton success for {success.sum()}/{self.num_worlds} worlds; ")
+                sys.__stdout__.write(f"num iterations={iterations.max()}; ")
+                sys.__stdout__.write(f"max constraint={max_constraints.max()}\n")
 
         # Write out result
         self._write_state(state)
+
+        # Return solver status
+        if return_status:
+            return ForwardKinematicsSolverStatus(
+                iterations=iterations, max_constraints=max_constraints, success=success
+            )

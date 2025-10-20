@@ -758,26 +758,13 @@ def _apply_line_search_step(
 
 
 @wp.kernel
-def _increment_iteration(
-    # Inputs
-    iteration: wp.array(dtype=wp.int32, shape=(1,)),  # Iteration count (in/out)
-):
-    """
-    A kernel incrementing the iteration index
-    """
-    i = wp.tid()  # Thread index (= 0, this kernel should be called on a single thread)
-    if i == 0:
-        iteration[0] += 1
-
-
-@wp.kernel
 def _line_search_check(
     # Inputs
     val_0: wp.array(dtype=wp.float32),  # Merit function value at 0, per world
     grad_0: wp.array(dtype=wp.float32),  # Merit function gradient at 0, per world
     alpha: wp.array(dtype=wp.float32),  # Step size per world (in/out)
     val_alpha: wp.array(dtype=wp.float32),  # Merit function value at alpha, per world
-    iteration: wp.array(dtype=wp.int32, shape=(1,)),  # Iteration count
+    iteration: wp.array(dtype=wp.int32),  # Iteration count, per world
     max_iterations: wp.array(dtype=wp.int32, shape=(1,)),  # Max iterations
     # Outputs
     line_search_success: wp.array(dtype=wp.int32),  # Convergence per world
@@ -789,11 +776,12 @@ def _line_search_check(
     line_search_loop_condition must be zero-initialized
     """
     wd_id = wp.tid()  # Thread index (= world index)
-    if wd_id < val_0.shape[0]:
+    if wd_id < val_0.shape[0] and line_search_success[wd_id] == 0:
+        iteration[wd_id] += 1
         line_search_success[wd_id] = int(
             wp.isfinite(val_alpha[wd_id]) and val_alpha[wd_id] <= val_0[wd_id] + 1e-4 * alpha[wd_id] * grad_0[wd_id]
         )
-        continue_loop_world = iteration[0] < max_iterations[0] and not line_search_success[wd_id]
+        continue_loop_world = iteration[wd_id] < max_iterations[0] and not line_search_success[wd_id]
         if continue_loop_world:
             alpha[wd_id] *= 0.5
         wp.atomic_max(line_search_loop_condition, 0, int(continue_loop_world))
@@ -804,7 +792,7 @@ def _newton_check(
     # Inputs
     max_constraint: wp.array(dtype=wp.float32),  # Max absolute constraint per world
     tolerance: wp.array(dtype=wp.float32, shape=(1,)),  # Tolerance on max constraint
-    iteration: wp.array(dtype=wp.int32, shape=(1,)),  # Iteration count
+    iteration: wp.array(dtype=wp.int32),  # Iteration count, per world
     max_iterations: wp.array(dtype=wp.int32, shape=(1,)),  # Max iterations
     line_search_success: wp.array(dtype=wp.int32),  # Per-world line search success flag
     # Outputs
@@ -818,18 +806,19 @@ def _newton_check(
     newton_loop_condition must be zero-initialized
     """
     wd_id = wp.tid()  # Thread index (= world index)
-    if wd_id < max_constraint.shape[0]:
+    if wd_id < max_constraint.shape[0] and newton_skip[wd_id] == 0:
+        iteration[wd_id] += 1
         max_constraint_wd = max_constraint[wd_id]
         is_finite = wp.isfinite(max_constraint_wd)
         newton_success[wd_id] = int(is_finite and max_constraint_wd <= tolerance[0])
-        newton_continue = int(
-            iteration[0] < max_iterations[0]
+        newton_continue_world = int(
+            iteration[wd_id] < max_iterations[0]
             and not newton_success[wd_id]
             and is_finite  # Abort when encountering NaN / Inf values
             and line_search_success[wd_id]
         )  # Abort in case of line search failure
-        newton_skip[wd_id] = 1 - newton_continue
-        wp.atomic_max(newton_loop_condition, 0, newton_continue)
+        newton_skip[wd_id] = 1 - newton_continue_world
+        wp.atomic_max(newton_loop_condition, 0, newton_continue_world)
 
 
 ###
@@ -966,7 +955,7 @@ class ForwardKinematicsSolver:
 
             # Line search
             self.max_line_search_iterations = wp.array(dtype=wp.int32, shape=(1,))  # Max iterations
-            self.line_search_iteration = wp.array(dtype=wp.int32, shape=(1,))  # Iteration count
+            self.line_search_iteration = wp.array(dtype=wp.int32, shape=(self.num_worlds,))  # Iteration count
             self.line_search_loop_condition = wp.array(dtype=wp.int32, shape=(1,))  # Loop condition
             self.line_search_success = wp.array(dtype=wp.int32, shape=(self.num_worlds,))  # Convergence, per world
             self.val_0 = wp.array(dtype=wp.float32, shape=(self.num_worlds,))  # Merit function value at 0, per world
@@ -979,7 +968,7 @@ class ForwardKinematicsSolver:
 
             # Gauss-Newton
             self.max_newton_iterations = wp.array(dtype=wp.int32, shape=(1,))  # Max iterations
-            self.newton_iteration = wp.array(dtype=wp.int32, shape=(1,))  # Iteration count
+            self.newton_iteration = wp.array(dtype=wp.int32, shape=(self.num_worlds,))  # Iteration count
             self.newton_loop_condition = wp.array(dtype=wp.int32, shape=(1,))  # Loop condition
             self.newton_success = wp.array(dtype=wp.int32, shape=(self.num_worlds,))  # Convergence per world
             self.newton_skip = wp.array(dtype=wp.int32, shape=(self.num_worlds,))  # Flag to stop iterating per world
@@ -1251,7 +1240,6 @@ class ForwardKinematicsSolver:
         self._eval_merit_function(self.constraints, self.val_alpha)
 
         # Check decrease and update step
-        wp.launch(_increment_iteration, dim=(1,), inputs=[self.line_search_iteration])
         self.line_search_loop_condition.zero_()
         wp.launch(
             _line_search_check,
@@ -1325,7 +1313,6 @@ class ForwardKinematicsSolver:
         self._eval_max_constraint(self.constraints, self.max_constraint)
 
         # Check convergence
-        wp.launch(_increment_iteration, dim=(1,), inputs=[self.newton_iteration])
         self.newton_loop_condition.zero_()
         wp.launch(
             _newton_check,
@@ -1369,7 +1356,7 @@ class ForwardKinematicsSolver:
         self._eval_position_control_transformations(self.joints_q_j, self.pos_control_transforms)
 
         # Reset iteration count and success/continuation flags
-        self.newton_iteration.zero_()
+        self.newton_iteration.fill_(-1)  # The initial loop condition check will increment this to zero
         self.newton_success.zero_()
         self.newton_skip.zero_()
 
@@ -1540,7 +1527,7 @@ class ForwardKinematicsSolver:
         # Status message
         if verbose:
             num_success = self.newton_success.numpy().sum()
-            num_iterations = self.newton_iteration.numpy()[0]
+            num_iterations = self.newton_iteration.numpy().max()
             max_constraint = np.max(self.max_constraint.numpy())
             sys.__stdout__.write(f"Newton success for {num_success}/{self.num_worlds} worlds; ")
             sys.__stdout__.write(f"num iterations={num_iterations}; ")

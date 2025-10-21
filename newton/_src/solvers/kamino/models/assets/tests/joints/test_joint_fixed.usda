@@ -1,7 +1,7 @@
 #usda 1.0
 (
     doc = """Authored manually for testing purposes."""
-    defaultPrim = "test_joint_revolute_passive"
+    defaultPrim = "test_joint_fixed"
     timeCodesPerSecond = 1000
     kilogramsPerUnit = 1
     metersPerUnit = 1
@@ -24,7 +24,7 @@ def Xform "Robot"
         {
             # Body Frame
             quatf xformOp:orient = (1, 0, 0, 0)
-            double3 xformOp:translate = (-0.0580082, 0.00433066, 0.00151059)
+            double3 xformOp:translate = (-0.05, 0, 0)
             uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient"]
 
             # Body Velocities
@@ -32,10 +32,10 @@ def Xform "Robot"
             vector3f physics:angularVelocity = (0, 0, 0)
 
             # Mass Properties
-            float physics:mass = 0.228447
-            float3 physics:diagonalInertia = (1.45422e-05, 0.000130947, 0.000131568)
-            point3f physics:centerOfMass = (0, 0, 0)
-            quatf physics:principalAxes = (0.216622, -0.365389, 0.904163, 0.0453333)
+            float physics:mass = 0.1872
+			float3 physics:diagonalInertia = (1.248e-05, 6.24e-05, 6.24e-05)
+			point3f physics:centerOfMass = (0, 0, 0)
+			quatf physics:principalAxes = (0.859903, -0.281874, -0.404403, 0.132562)
         }
 
         def Xform "body_1" (
@@ -44,7 +44,7 @@ def Xform "Robot"
         {
             # Body Frame
             quatf xformOp:orient = (1, 0, 0, 0)
-            double3 xformOp:translate = (0.00841418, 0.0170561, 0.0250432)
+            double3 xformOp:translate = (0.00889736, 0.0229802, -0.0126245)
             uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient"]
 
             # Body Velocities
@@ -52,31 +52,28 @@ def Xform "Robot"
             vector3f physics:angularVelocity = (0, 0, 0)
 
             # Mass Properties
-            float physics:mass = 0.228447
-            float3 physics:diagonalInertia = (1.45422e-05, 0.000130947, 0.000131568)
-            point3f physics:centerOfMass = (0, 0, 0)
-            quatf physics:principalAxes = (0.962133, 0.122309, -0.172458, -0.172042)
+            float physics:mass = 0.1872
+			float3 physics:diagonalInertia = (1.248e-05, 6.24e-05, 6.24e-05)
+			point3f physics:centerOfMass = (0, 0, 0)
+			quatf physics:principalAxes = (0.797479, 0.546428, 0.144599, -0.211034)
         }
     }
 
     def Scope "Joints"
     {
-        def PhysicsRevoluteJoint "passive_revolute_joint"
+        def PhysicsFixedJoint "passive_fixed_joint"
         {
             bool physics:jointEnabled = 1
 
             rel physics:body0 = </Robot/RigidBodies/body_0>
             rel physics:body1 = </Robot/RigidBodies/body_1>
 
-            uniform token physics:axis = "Y"
+            uniform token physics:axis = "X"
 
-            point3f physics:localPos0 = (0.0281016, 0.0277628, 0.0146162)
-            point3f physics:localPos1 = (-0.0383208, 0.0150373, -0.00891642)
-            quatf physics:localRot0 = (0.510989, 0.283121, -0.776741, 0.235387)
-            quatf physics:localRot1 = (0.510989, 0.283121, -0.776741, 0.235387)
-
-            float physics:lowerLimit = -90  # NOTE: The presence of these properties enables the UsdPhysics.JointLimit(...) attribute
-            float physics:upperLimit = 90
+            point3f physics:localPos0 = (0.0318885, 0.0227982, 0.0310381)
+            point3f physics:localPos1 = (-0.0270088, -0.00018202, 0.0436626)
+            quatf physics:localRot0 = (1, 0, 0, 0)
+            quatf physics:localRot1 = (1, 0, 0, 0)
 
             bool physics:collisionEnabled = 0
         }

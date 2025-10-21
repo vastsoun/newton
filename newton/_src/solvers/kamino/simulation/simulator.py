@@ -21,7 +21,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 
 import warp as wp
-from warp._src.context import Devicelike
+from warp.context import Devicelike
 
 from ..core.bodies import update_body_inertias, update_body_wrenches
 from ..core.builder import ModelBuilder

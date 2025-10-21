@@ -20,7 +20,7 @@ KAMINO: Constrained Rigid Multi-Body Model Containers
 from __future__ import annotations
 
 import warp as wp
-from warp._src.context import Devicelike
+from warp.context import Devicelike
 
 from .bodies import RigidBodiesData, RigidBodiesModel
 from .control import Control

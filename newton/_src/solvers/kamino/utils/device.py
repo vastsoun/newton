@@ -15,7 +15,7 @@
 
 """KAMINO: Utilities: CPU/GPU Warp Device Info"""
 
-from warp._src.context import Devicelike
+from warp.context import Devicelike
 
 
 def get_device_info(device: Devicelike) -> str:

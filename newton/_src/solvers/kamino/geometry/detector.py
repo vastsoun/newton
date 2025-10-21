@@ -20,7 +20,7 @@ KAMINO: Collision Detector Interface
 from __future__ import annotations
 
 import warp as wp
-from warp._src.context import Devicelike
+from warp.context import Devicelike
 
 from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.core.geometry import update_collision_geometries_state

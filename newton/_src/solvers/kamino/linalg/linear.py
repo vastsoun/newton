@@ -27,7 +27,7 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 import warp as wp
-from warp._src.context import Devicelike
+from warp.context import Devicelike
 
 from ..core.types import FloatType, float32, override
 from . import factorize

@@ -20,7 +20,7 @@ KAMINO: Kinematics: Limits
 from __future__ import annotations
 
 import warp as wp
-from warp._src.context import Devicelike
+from warp.context import Devicelike
 
 from ..core.builder import ModelBuilder
 from ..core.math import FLOAT32_MAX, FLOAT32_MIN

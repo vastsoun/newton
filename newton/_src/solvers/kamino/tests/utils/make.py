@@ -19,7 +19,7 @@ KAMINO: UNIT TESTS: GENERAL UTILITIES
 
 import numpy as np
 import warp as wp
-from warp._src.context import Devicelike
+from warp.context import Devicelike
 
 from newton._src.solvers.kamino.core.bodies import update_body_inertias
 from newton._src.solvers.kamino.core.builder import ModelBuilder

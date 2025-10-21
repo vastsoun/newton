@@ -18,7 +18,7 @@
 import numpy as np
 import scipy.linalg
 import warp as wp
-from warp._src.context import Devicelike
+from warp.context import Devicelike
 
 from newton._src.solvers.kamino.core.types import FloatArrayLike, float32, int32
 from newton._src.solvers.kamino.linalg.utils.rand import (

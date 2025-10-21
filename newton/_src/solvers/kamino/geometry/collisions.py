@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import numpy as np
 import warp as wp
-from warp._src.context import Devicelike
+from warp.context import Devicelike
 
 from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.core.joints import JointDoFType

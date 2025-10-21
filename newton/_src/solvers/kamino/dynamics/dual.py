@@ -22,7 +22,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import warp as wp
-from warp._src.context import Devicelike
+from warp.context import Devicelike
 
 from ..core.math import FLOAT32_EPS, UNIT_Z, screw, screw_angular, screw_linear
 from ..core.model import Model, ModelData, ModelSize

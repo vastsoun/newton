@@ -48,7 +48,7 @@ MESH_USD_MODEL_PATH = os.path.join(get_examples_usd_assets_path(), "walker/walke
 ###
 
 
-class WalkerExample:
+class Example:
     """ViewerGL example class for walker simulation."""
 
     def __init__(self, viewer, device, use_cuda_graph: bool = False, logging: bool = True):
@@ -512,7 +512,7 @@ class WalkerExample:
 ###
 
 
-def run_headless(example: WalkerExample, num_steps: int = 25000, progress: bool = True):
+def run_headless(example: Example, num_steps: int = 25000, progress: bool = True):
     """Run the simulation in headless mode for a fixed number of steps."""
     msg.info(f"Running for {num_steps} steps...")
     start_time = time.time()
@@ -532,7 +532,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Walker simulation example")
     parser.add_argument("--viewer", choices=["gl", "usd", "rerun", "null"], default="gl", help="Viewer type")
     parser.add_argument("--device", type=str, help="The compute device to use")
-    parser.add_argument("--headless", action="store_true", default=True, help="Run in headless mode")
+    parser.add_argument("--headless", action="store_true", default=False, help="Run in headless mode")
     parser.add_argument("--num-frames", type=int, default=1000, help="Number of frames for null/USD viewer")
     parser.add_argument("--output-path", type=str, help="Output path for USD viewer")
     parser.add_argument("--cuda-graph", action="store_true", default=False, help="Use CUDA graphs")
@@ -571,7 +571,7 @@ if __name__ == "__main__":
     if args.headless:
         msg.info("Running in headless mode...")
         viewer = newton.viewer.ViewerNull(num_frames=args.num_frames)
-        example = WalkerExample(viewer, device=device, use_cuda_graph=use_cuda_graph)
+        example = Example(viewer, device=device, use_cuda_graph=use_cuda_graph)
         run_headless(example, num_steps=args.num_frames, progress=True)
 
     # Otherwise launch using a Newton viewer
@@ -595,7 +595,7 @@ if __name__ == "__main__":
             raise ValueError(f"Invalid viewer: {args.viewer}")
 
         # Create and run example
-        example = WalkerExample(viewer, device=device, use_cuda_graph=use_cuda_graph)
+        example = Example(viewer, device=device, use_cuda_graph=use_cuda_graph)
 
         # Set initial camera position for better view of the walker
         if hasattr(viewer, "set_camera"):

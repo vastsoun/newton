@@ -164,8 +164,8 @@ def run_headless(use_cuda_graph=False, load_from_usd=True):
     msg.info("Warming up the simulator...")
     if use_cuda_graph:
         print("Running with CUDA graphs...")
-        wp.capture_launch(reset_graph)
         wp.capture_launch(step_graph)
+        wp.capture_launch(reset_graph)
     else:
         msg.info("Running with kernels...")
         with wp.ScopedDevice(device):
@@ -186,7 +186,7 @@ def run_headless(use_cuda_graph=False, load_from_usd=True):
             print_progress_bar(i, ns, start_time, prefix="Progress", suffix="")
 
 
-class BoxPendulumExample:
+class Example:
     """ViewerGL example class for box pendulum simulation."""
 
     def __init__(self, viewer, load_from_usd=True, use_cuda_graph=False):
@@ -272,9 +272,6 @@ class BoxPendulumExample:
 
         # Capture CUDA graph if requested and available
         self.capture()
-
-        # Block until the user is ready
-        input("Press Enter to continue...")
 
     def extract_geometry_info(self):
         """Extract geometry information from the kamino simulator."""
@@ -411,6 +408,7 @@ if __name__ == "__main__":
     parser.add_argument("--device", type=str, help="Compute device")
     parser.add_argument("--output-path", type=str, help="Output path for USD viewer")
     parser.add_argument("--num-frames", type=int, default=1000, help="Number of frames for null/USD viewer")
+    parser.add_argument("--test", action="store_true", default=False, help="Run tests")
     args = parser.parse_args()
 
     # Clear warp cache if requested
@@ -445,7 +443,7 @@ if __name__ == "__main__":
             raise ValueError(f"Invalid viewer: {args.viewer}")
 
         # Create and run example
-        example = BoxPendulumExample(viewer, load_from_usd=args.load_from_usd, use_cuda_graph=args.cuda_graph)
+        example = Example(viewer, load_from_usd=args.load_from_usd, use_cuda_graph=args.cuda_graph)
 
         # Set initial camera position for better view of the pendulum
         if hasattr(viewer, "set_camera"):

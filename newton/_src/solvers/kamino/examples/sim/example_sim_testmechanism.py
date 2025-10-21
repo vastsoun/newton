@@ -116,8 +116,8 @@ def run_headless(use_cuda_graph=False):
     msg.info("Warming up the simulator...")
     if use_cuda_graph:
         msg.info("Running with CUDA graphs...")
-        wp.capture_launch(reset_graph)
         wp.capture_launch(step_graph)
+        wp.capture_launch(reset_graph)
     else:
         msg.info("Running with kernels...")
         with wp.ScopedDevice(device):
@@ -138,7 +138,7 @@ def run_headless(use_cuda_graph=False):
             print_progress_bar(i, ns, start_time, prefix="Progress", suffix="")
 
 
-class TestmechanismExample:
+class Example:
     """ViewerGL example class for testmechanism simulation."""
 
     def __init__(self, viewer, use_cuda_graph=False):
@@ -208,9 +208,6 @@ class TestmechanismExample:
 
         # Capture CUDA graph if requested and available
         self.capture()
-
-        # Block until the user is ready
-        input("Press Enter to continue...")
 
     def extract_geometry_info(self):
         """Extract geometry information from the kamino simulator."""
@@ -348,7 +345,6 @@ class TestmechanismExample:
 
         except Exception as e:
             print(f"Error accessing body poses: {e}")
-            # print(f"Available attributes: {dir(self.sim.model_data.bodies)}")
 
         # Render the ground plane from kamino
         if self.ground_info:
@@ -401,6 +397,7 @@ if __name__ == "__main__":
     parser.add_argument("--device", type=str, help="Compute device")
     parser.add_argument("--output-path", type=str, help="Output path for USD viewer")
     parser.add_argument("--num-frames", type=int, default=1000, help="Number of frames for null/USD viewer")
+    parser.add_argument("--test", action="store_true", default=False, help="Run tests")
     args = parser.parse_args()
 
     # Clear warp cache if requested
@@ -438,7 +435,7 @@ if __name__ == "__main__":
             raise ValueError(f"Invalid viewer: {args.viewer}")
 
         # Create and run example
-        example = TestmechanismExample(viewer, use_cuda_graph=args.cuda_graph)
+        example = Example(viewer, use_cuda_graph=args.cuda_graph)
 
         # Set initial camera position for better view of the testmechanism
         if hasattr(viewer, "set_camera"):

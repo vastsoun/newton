@@ -99,10 +99,7 @@ def _reset_jointspace_pid_references(
     controller_dq_j_ref: wp.array(dtype=float32),
 ):
     """
-    A kernel to compute joint-space PID control torques for force-actuated joints.
-    """
-    """
-    A kernel to compute joint-space PID control torques for force-actuated joints.
+    A kernel to reset motion references of the joint-space controller.
     """
     # Retrieve the the joint index from the thread indices
     jid = wp.tid()
@@ -363,7 +360,7 @@ class JointSpacePIDController:
         A simple PID controller in joint space.
 
         Args:
-            model (Model | None): Model used to size and allocate controller buffers.
+            model (Model | None): The model container describing the system to be simulated.
                 If None, call ``allocate()`` later.
             K_p (FloatArrayLike | None): Proportional gains per actuated joint DoF.
             K_i (FloatArrayLike | None): Integral gains per actuated joint DoF.
@@ -406,14 +403,29 @@ class JointSpacePIDController:
     def allocate(
         self,
         model: Model,
-        K_p: FloatArrayLike | None = None,
-        K_i: FloatArrayLike | None = None,
-        K_d: FloatArrayLike | None = None,
+        K_p: FloatArrayLike,
+        K_i: FloatArrayLike,
+        K_d: FloatArrayLike,
         decimation: IntArrayLike | None = None,
         device: Devicelike = None,
     ) -> None:
         """
-        Allocate the controller data.
+        Allocates all internal data arrays of the controller.
+
+        Args:
+            model (Model): The model container describing the system to be simulated.
+            K_p (FloatArrayLike): Proportional gains per actuated joint DoF.
+            K_i (FloatArrayLike): Integral gains per actuated joint DoF.
+            K_d (FloatArrayLike): Derivative gains per actuated joint DoF.
+            decimation (IntArrayLike | None): Control decimation for each world expressed
+                as a multiple of simulation steps. Defaults to 1 for all worlds if None.
+            device (Devicelike | None): Device to use for allocations and execution.
+
+        Raises:
+            ValueError: If the model has no actuated DoFs.
+            ValueError: If the model has multi-DoF actuated joints.
+            ValueError: If the length of any gain array does not match the number of actuated DoFs.
+            ValueError: If the length of the decimation array does not match the number of worlds.
         """
 
         # Get the number of actuated coordinates and DoFs
@@ -464,7 +476,15 @@ class JointSpacePIDController:
 
     def reset(self, model: Model, state: State) -> None:
         """
-        Reset the controller state.
+        Reset the internal state of the controller.
+
+        The motion references are reset to the current generalized
+        joint states `q_j` and `dq_j`, while feedforward generalized
+        forces `tau_j` and the integrator are set to zeros.
+
+        Args:
+            model (Model): The model container holding the time-invariant parameters of the simulation.
+            state (State): The current state of the system to which the references will be reset.
         """
 
         # First reset the references to the current state
@@ -485,9 +505,9 @@ class JointSpacePIDController:
         Set the controller reference trajectories.
 
         Args:
-            q_j_ref (FloatArrayLike): The reference actuator joint positions.
-            dq_j_ref (FloatArrayLike | None): The reference actuator joint velocities.
-            tau_j_ref (FloatArrayLike | None): The feedforward actuator joint torques.
+            q_j_ref (FloatArrayLike): The reference generalized actuator positions.
+            dq_j_ref (FloatArrayLike | None): The reference generalized actuator velocities.
+            tau_j_ref (FloatArrayLike | None): The feedforward generalized actuator forces.
         """
         if len(q_j_ref) != len(self._data.q_j_ref):
             raise ValueError(f"q_j_ref must have length {len(self._data.q_j_ref)}, but has length {len(q_j_ref)}")
@@ -518,11 +538,10 @@ class JointSpacePIDController:
         Compute the control torques.
 
         Args:
-            model (Model): The model.
-            data (ModelData): The model data.
-            q_j_ref (wp.array): The reference actuator joint positions.
-            dq_j_ref (wp.array): The reference actuator joint velocities.
-            tau_j_ref (wp.array): The feedforward actuator joint torques.
+            model (Model): The input model container holding the time-invariant parameters of the simulation.
+            state (State): The input state container holding the current state of the simulation.
+            time (TimeData): The input time data container holding the current simulation time and steps.
+            control (Control): The output control container where the computed control torques will be stored.
         """
         compute_jointspace_pid_control(
             model=model,

@@ -762,7 +762,7 @@ class Model:
         # Return the constructed model data container
         return data
 
-    def state(self, requires_grad=None, device: Devicelike = None) -> State:
+    def state(self, requires_grad: bool = False, device: Devicelike = None) -> State:
         """
         Creates a compact state container with the initial state of the model entities.
 
@@ -790,7 +790,7 @@ class Model:
         # Return the constructed state container
         return s
 
-    def control(self, requires_grad=None, device: Devicelike = None) -> Control:
+    def control(self, requires_grad: bool = False, device: Devicelike = None) -> Control:
         """
         Creates a compact control container with the initial state of the model entities.
 

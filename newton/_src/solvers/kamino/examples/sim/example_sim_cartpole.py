@@ -16,9 +16,11 @@
 import argparse
 import os
 import time
+from dataclasses import dataclass
 
-import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt  # noqa: F401
 import numpy as np
+import torch
 import warp as wp
 
 import newton
@@ -27,10 +29,11 @@ import newton.examples
 from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.core.math import TWO_PI
 from newton._src.solvers.kamino.core.shapes import ShapeType
-from newton._src.solvers.kamino.core.types import float32, vec6f
+from newton._src.solvers.kamino.core.types import float32, uint32, vec3f, vec6f
 from newton._src.solvers.kamino.examples import get_examples_output_path
 from newton._src.solvers.kamino.models import get_primitives_usd_assets_path
 from newton._src.solvers.kamino.models.builders import build_cartpole
+from newton._src.solvers.kamino.models.utils import make_homogeneous_builder
 from newton._src.solvers.kamino.simulation.simulator import Simulator, SimulatorSettings
 from newton._src.solvers.kamino.utils.print import print_progress_bar
 
@@ -40,6 +43,22 @@ from newton._src.solvers.kamino.utils.print import print_progress_bar
 
 # Set the path to the external USD assets
 USD_MODEL_PATH = os.path.join(get_primitives_usd_assets_path(), "cartpole.usda")
+
+
+###
+# RL Interfaces
+###
+
+
+@dataclass
+class CartpoleStates:
+    q_j: torch.Tensor | None = None
+    dq_j: torch.Tensor | None = None
+
+
+@dataclass
+class CartpoleActions:
+    tau_j: torch.Tensor | None = None
 
 
 ###
@@ -57,8 +76,8 @@ def _test_control_callback(
     """
     An example control callback kernel.
     """
-    # Set world index
-    wid = int(0)
+    # Retrieve the world index from the thread ID
+    wid = wp.tid()
 
     # Define the time window for the active external force profile
     t_start = float32(1.0)
@@ -67,11 +86,14 @@ def _test_control_callback(
     # Get the current time
     t = state_t[wid]
 
+    # Compute the first actuated joint index for the current world
+    aid = wid * 2 + 0
+
     # Apply a time-dependent external force
     if t > t_start and t < t_end:
-        control_tau_j[0] = 0.1 * wp.sin(1.0 * TWO_PI * (t - t_start))
+        control_tau_j[aid] = 0.1 * wp.sin(1.0 * TWO_PI * (t - t_start)) * wp.randf(uint32(wid), -1.0, 1.0)
     else:
-        control_tau_j[0] = 0.0
+        control_tau_j[aid] = 0.0
 
 
 ###
@@ -85,7 +107,7 @@ def test_control_callback(sim: Simulator):
     """
     wp.launch(
         _test_control_callback,
-        dim=1,
+        dim=sim.model.size.num_worlds,
         inputs=[
             sim.model.time.dt,
             sim.data.solver.time.time,
@@ -103,13 +125,13 @@ def test_control_callback(sim: Simulator):
 class CartpoleExample:
     """ViewerGL example class for cartpole simulation."""
 
-    def __init__(self, viewer, device, use_cuda_graph: bool = False, logging: bool = True):
+    def __init__(self, num_worlds: int, viewer, device, use_cuda_graph: bool = False, logging: bool = True):
         # Initialize target frames per second and corresponding time-steps
         self.fps = 60
         self.frame_dt = 1.0 / self.fps
         self.sim_dt = 0.001
         self.sim_substeps = int(self.frame_dt / self.sim_dt)
-        self.max_sim_steps = 5000
+        self.max_sim_steps = 10000
         msg.warning("fps: %f", self.fps)
         msg.warning("frame_dt: %f", self.frame_dt)
         msg.warning("sim_dt: %f", self.sim_dt)
@@ -130,10 +152,7 @@ class CartpoleExample:
 
         # Create a single-instance system (always load from USD)
         msg.info("Constructing builder from imported USD ...")
-        self.builder = ModelBuilder()
-        build_cartpole(builder=self.builder)
-        # importer = USDImporter()
-        # self.builder: ModelBuilder = importer.import_from(source=USD_MODEL_PATH)
+        self.builder: ModelBuilder = make_homogeneous_builder(num_worlds=num_worlds, build_func=build_cartpole)[0]
         msg.warning("total mass: %f", self.builder.world.mass_total)
         msg.warning("total diag inertia: %f", self.builder.world.inertia_total)
 
@@ -150,14 +169,14 @@ class CartpoleExample:
         settings.solver.max_iterations = 200
         settings.solver.rho_0 = 0.05
 
-        # Array of actuated joint indices
-        self.actuated_joints = np.array([0], dtype=np.int32)
+        # Retrive the number of joints per world
+        nj = self.builder.world.num_joints
 
         # Data logging arrays
-        self.log_time = np.zeros(self.max_sim_steps, dtype=np.float32)
-        self.log_q_j = np.zeros((self.max_sim_steps, 1), dtype=np.float32)
-        self.log_dq_j = np.zeros((self.max_sim_steps, 1), dtype=np.float32)
-        self.log_tau_j = np.zeros((self.max_sim_steps, 1), dtype=np.float32)
+        self.log_time = np.zeros((num_worlds, self.max_sim_steps), dtype=np.float32)
+        self.log_q_j = np.zeros((num_worlds, self.max_sim_steps, nj), dtype=np.float32)
+        self.log_dq_j = np.zeros((num_worlds, self.max_sim_steps, nj), dtype=np.float32)
+        self.log_tau_j = np.zeros((num_worlds, self.max_sim_steps, nj), dtype=np.float32)
 
         # Create a simulator
         msg.info("Building the simulator...")
@@ -197,6 +216,33 @@ class CartpoleExample:
         self.step_once()
         self.reset()
 
+        # Declare a PyTorch data interface for the current state and controls data
+        self.states: CartpoleStates | None = None
+        self.actions: CartpoleActions | None = None
+
+        # Initialize RL interfaces
+        self.make_rl_interface()
+
+    def make_rl_interface(self):
+        """
+        Constructs data interfaces for batched MDP states and actions.
+
+        Notes:
+        - Each torch.Tensor wraps the underlying kamino simulator data arrays without copying.
+        """
+        # Retrieve the batched system dimensions
+        num_worlds = self.sim.model.size.num_worlds
+        num_joint_dofs = self.sim.model.size.max_of_num_actuated_joint_dofs
+
+        # Construct state and action tensors wrapping the underlying simulator data
+        self.states = CartpoleStates(
+            q_j=wp.to_torch(self.sim.data.state_n.q_j).reshape(num_worlds, num_joint_dofs),
+            dq_j=wp.to_torch(self.sim.data.state_n.dq_j).reshape(num_worlds, num_joint_dofs),
+        )
+        self.actions = CartpoleActions(
+            tau_j=wp.to_torch(self.sim.data.control_n.tau_j).reshape(num_worlds, num_joint_dofs),
+        )
+
     def extract_geometry_info(self):
         """Extract geometry information from the kamino simulator."""
         # Get collision geometry information from the simulator
@@ -207,6 +253,7 @@ class CartpoleExample:
 
         # Extract geometry info from collision geometries
         for i in range(cgeom_model.num_geoms):
+            wid = cgeom_model.wid.numpy()[i]  # World ID
             bid = cgeom_model.bid.numpy()[i]  # Body ID (-1 for static/ground)
             sid = cgeom_model.sid.numpy()[i]  # Shape ID
             params = cgeom_model.params.numpy()[i]  # Shape parameters
@@ -220,7 +267,14 @@ class CartpoleExample:
                 }
             else:  # Regular box bodies
                 # Store geometry information for rendering
-                geom_info = {"geom_id": i, "body_id": bid, "shape_id": sid, "params": params, "offset": offset}
+                geom_info = {
+                    "world_id": wid,
+                    "geom_id": i,
+                    "body_id": bid,
+                    "shape_id": sid,
+                    "params": params,
+                    "offset": offset,
+                }
                 self.geometry_info.append(geom_info)
 
     def capture(self):
@@ -243,10 +297,10 @@ class CartpoleExample:
         if self.sim_steps >= self.max_sim_steps:
             msg.warning("Maximum simulation steps reached, skipping data logging.")
             return
-        self.log_time[self.sim_steps] = self.sim.data.solver.time.time.numpy()[0]
-        self.log_q_j[self.sim_steps, :] = self.sim.data.state_n.q_j.numpy()[self.actuated_joints]
-        self.log_dq_j[self.sim_steps, :] = self.sim.data.state_n.dq_j.numpy()[self.actuated_joints]
-        self.log_tau_j[self.sim_steps, :] = self.sim.data.control_n.tau_j.numpy()[self.actuated_joints]
+        self.log_time[:, self.sim_steps] = self.sim.data.solver.time.time.numpy()
+        # self.log_q_j[self.sim_steps, :] = self.sim.data.state_n.q_j.numpy()
+        # self.log_dq_j[self.sim_steps, :] = self.sim.data.state_n.dq_j.numpy()
+        # self.log_tau_j[self.sim_steps, :] = self.sim.data.control_n.tau_j.numpy()
 
     def simulate(self):
         """Run simulation substeps."""
@@ -285,6 +339,13 @@ class CartpoleExample:
         else:
             self.simulate()
         self.sim_time += self.frame_dt
+        msg.warning(
+            "[t={%f}] q_j:\n{%s}\ndq_j:\n{%s}\ntau_j:\n{%s}\n\n",
+            self.sim_time,
+            self.states.q_j,
+            self.states.dq_j,
+            self.actions.tau_j,
+        )
 
     def render(self):
         """Render the current frame."""
@@ -292,10 +353,13 @@ class CartpoleExample:
 
         # Extract body poses from the kamino simulator
         try:
+            # TODO: How to make this a 2D grid in XY instead of lining them all along Y?
+            world_spacing = vec3f(0.0, 1.0, 0.0)
             body_poses = self.sim.model_data.bodies.q_i.numpy()
 
             # Render each geometry using log_shapes
             for i, geom_info in enumerate(self.geometry_info):
+                wid = geom_info["world_id"]
                 gid = geom_info["geom_id"]
                 bid = geom_info["body_id"]
                 sid = geom_info["shape_id"]
@@ -311,7 +375,7 @@ class CartpoleExample:
                     # Convert kamino transformf to warp transform
                     pose = body_poses[bid]
                     # kamino transformf has [x, y, z, qx, qy, qz, qw] format
-                    position = wp.vec3(float(pose[0]), float(pose[1]), float(pose[2]))
+                    position = wp.vec3(float(pose[0]), float(pose[1]), float(pose[2])) + float(wid) * world_spacing
                     quaternion = wp.quat(float(pose[3]), float(pose[4]), float(pose[5]), float(pose[6]))
                     body_transform = wp.transform(position, quaternion)
 
@@ -418,62 +482,63 @@ class CartpoleExample:
         pass
 
     def plot(self, path: str | None = None, show: bool = False):
-        # Then plot the joint tracking results
-        for j in range(len(self.actuated_joints)):
-            # Set the output path for the current joint
-            tracking_path = os.path.join(path, f"state_joint_{j}.png") if path is not None else None
+        pass
+        # # Then plot the joint tracking results
+        # for j in range(len(self.sim.model.size.max_of_num_joint_dofs)):
+        #     # Set the output path for the current joint
+        #     figure_path = os.path.join(path, f"states_{j}.png") if path is not None else None
 
-            # Plot logged data after the viewer is closed
-            _, axs = plt.subplots(3, 1, figsize=(10, 10), sharex=True)
+        #     # Plot logged data after the viewer is closed
+        #     _, axs = plt.subplots(3, 1, figsize=(10, 10), sharex=True)
 
-            # Plot the measured vs reference joint positions
-            axs[0].step(
-                example.log_time[: example.sim_steps],
-                example.log_q_j[: example.sim_steps, j],
-                label="Measured",
-            )
-            axs[0].set_ylabel("Actuator Position (m)")
-            axs[0].legend()
-            axs[0].set_title(f"Actuator DoF {j} Position")
-            axs[0].grid()
+        #     # Plot the measured vs reference joint positions
+        #     axs[0].step(
+        #         example.log_time[: example.sim_steps],
+        #         example.log_q_j[: example.sim_steps, j],
+        #         label="Measured",
+        #     )
+        #     axs[0].set_ylabel("Actuator Position (m)")
+        #     axs[0].legend()
+        #     axs[0].set_title(f"Actuator DoF {j} Position")
+        #     axs[0].grid()
 
-            # Plot the measured vs reference joint velocities
-            axs[1].step(
-                example.log_time[: example.sim_steps],
-                example.log_dq_j[: example.sim_steps, j],
-                label="Measured",
-            )
-            axs[1].set_ylabel("Actuator Velocity (m/s)")
-            axs[1].legend()
-            axs[1].set_title(f"Actuator DoF {j} Velocity")
-            axs[1].grid()
+        #     # Plot the measured vs reference joint velocities
+        #     axs[1].step(
+        #         example.log_time[: example.sim_steps],
+        #         example.log_dq_j[: example.sim_steps, j],
+        #         label="Measured",
+        #     )
+        #     axs[1].set_ylabel("Actuator Velocity (m/s)")
+        #     axs[1].legend()
+        #     axs[1].set_title(f"Actuator DoF {j} Velocity")
+        #     axs[1].grid()
 
-            # Plot the control torques
-            axs[2].step(
-                example.log_time[: example.sim_steps],
-                example.log_tau_j[: example.sim_steps, j],
-                label="Control Torque",
-            )
-            axs[2].set_xlabel("Time (s)")
-            axs[2].set_ylabel("Force (N)")
-            axs[2].legend()
-            axs[2].set_title(f"Actuator DoF {j} Control Force")
-            axs[2].grid()
+        #     # Plot the control torques
+        #     axs[2].step(
+        #         example.log_time[: example.sim_steps],
+        #         example.log_tau_j[: example.sim_steps, j],
+        #         label="Control Torque",
+        #     )
+        #     axs[2].set_xlabel("Time (s)")
+        #     axs[2].set_ylabel("Force (N)")
+        #     axs[2].legend()
+        #     axs[2].set_title(f"Actuator DoF {j} Control Force")
+        #     axs[2].grid()
 
-            # Adjust layout
-            plt.tight_layout()
+        #     # Adjust layout
+        #     plt.tight_layout()
 
-            # Save the figure if a path is provided
-            if tracking_path is not None:
-                plt.savefig(tracking_path, dpi=300)
+        #     # Save the figure if a path is provided
+        #     if figure_path is not None:
+        #         plt.savefig(figure_path, dpi=300)
 
-            # Show the figure if requested
-            # NOTE: This will block execution until the plot window is closed
-            if show:
-                plt.show()
+        #     # Show the figure if requested
+        #     # NOTE: This will block execution until the plot window is closed
+        #     if show:
+        #         plt.show()
 
-            # Close the current figure to free memory
-            plt.close()
+        #     # Close the current figure to free memory
+        #     plt.close()
 
 
 ###
@@ -502,6 +567,7 @@ if __name__ == "__main__":
     parser.add_argument("--viewer", choices=["gl", "usd", "rerun", "null"], default="gl", help="Viewer type")
     parser.add_argument("--device", type=str, help="The compute device to use")
     parser.add_argument("--headless", action="store_true", default=False, help="Run in headless mode")
+    parser.add_argument("--num-worlds", type=int, default=3, help="Number of worlds to simulate in parallel")
     parser.add_argument("--num-frames", type=int, default=1000, help="Number of frames for null/USD viewer")
     parser.add_argument("--output-path", type=str, help="Output path for USD viewer")
     parser.add_argument("--cuda-graph", action="store_true", default=False, help="Use CUDA graphs")
@@ -540,7 +606,7 @@ if __name__ == "__main__":
     if args.headless:
         msg.info("Running in headless mode...")
         viewer = newton.viewer.ViewerNull(num_frames=args.num_frames)
-        example = CartpoleExample(viewer, device=device, use_cuda_graph=use_cuda_graph)
+        example = CartpoleExample(args.num_worlds, viewer, device=device, use_cuda_graph=use_cuda_graph)
         run_headless(example, num_steps=args.num_frames, progress=True)
 
     # Otherwise launch using a Newton viewer
@@ -564,14 +630,14 @@ if __name__ == "__main__":
             raise ValueError(f"Invalid viewer: {args.viewer}")
 
         # Create and run example
-        example = CartpoleExample(viewer, device=device, use_cuda_graph=use_cuda_graph)
+        example = CartpoleExample(args.num_worlds, viewer, device=device, use_cuda_graph=use_cuda_graph)
 
         # Set initial camera position for better view of the cartpole
         if hasattr(viewer, "set_camera"):
             # Position camera to get a good view of the cartpole
-            camera_pos = wp.vec3(1.0, 1.0, 0.3)
+            camera_pos = wp.vec3(2.0, 2.0, 0.3)
             pitch = -10.0
-            yaw = 225.0
+            yaw = 205.0
             viewer.set_camera(camera_pos, pitch, yaw)
 
         # Launch the example using Newton's built-in runtime

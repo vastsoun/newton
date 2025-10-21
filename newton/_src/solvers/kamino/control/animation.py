@@ -452,6 +452,7 @@ class AnimationJointReference:
             device (Devicelike | None): Device to use for allocations. If None, uses the existing device.
         Raises:
             ValueError: If the model is not valid or actuated DoFs are not properly configured.
+            ValueError: If the input data is not a valid 2D numpy array.
 
         Note:
             The model must have only 1-DoF actuated joints for this controller to be compatible.

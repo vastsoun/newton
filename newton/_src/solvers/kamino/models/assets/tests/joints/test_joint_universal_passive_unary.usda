@@ -18,26 +18,6 @@ def Xform "Robot"
 {
     def Scope "RigidBodies"
     {
-        def Xform "body_0" (
-            prepend apiSchemas = ["PhysicsRigidBodyAPI", "PhysicsMassAPI"]
-        )
-        {
-            # Body Frame
-            quatf xformOp:orient = (1, 0, 0, 0)
-            double3 xformOp:translate = (-0.0443459, -0.00564078, -0.00325617)
-            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient"]
-
-            # Body Velocities
-            vector3f physics:linearVelocity = (0, 0, 0)
-            vector3f physics:angularVelocity = (0, 0, 0)
-
-            # Mass Properties
-            float physics:mass = 0.202599
-            float3 physics:diagonalInertia = (1.31518e-05, 8.59479e-05, 8.6375e-05)
-            point3f physics:centerOfMass = (0, 0, 0)
-            quatf physics:principalAxes = (-0.0439297, -0.36854, 0.743602, 0.556152)
-        }
-
         def Xform "body_1" (
             prepend apiSchemas = ["PhysicsRigidBodyAPI", "PhysicsMassAPI"]
         )
@@ -77,10 +57,9 @@ def Xform "Robot"
         {
             bool physics:jointEnabled = 1
 
-            rel physics:body0 = </Robot/RigidBodies/body_0>
             rel physics:body1 = </Robot/RigidBodies/body_1>
 
-            point3f physics:localPos0 = (0.0340146, 0.0280267, 0.0161785)
+            point3f physics:localPos0 = (-0.0103314, 0.0223859, 0.0129223)
             point3f physics:localPos1 = (-0.0296803, -0.0330647, 0.0151671)
             quatf physics:localRot0 = (-0.220973, 0.448949, 0.477656, 0.722122)
             quatf physics:localRot1 = (-0.220973, 0.448949, 0.477656, 0.722122)

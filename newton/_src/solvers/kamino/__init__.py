@@ -149,7 +149,7 @@ from .solvers import (
     PADMMDualSolver,
     PADMMSettings,
 )
-from .utils.io import hdf5
+from .utils.io import hdf5, usd
 from .utils.print import printmatrix, printvector
 from .utils.sparse import sparseview
 
@@ -190,6 +190,7 @@ __all__ = [
     "EllipsoidShape",
     "EmptyShape",
     "FloatArrayLike",
+    "ForwardKinematicsSolver",
     "GeometriesData",
     "GeometriesModel",
     "GeometryDescriptor",
@@ -264,6 +265,7 @@ __all__ = [
     "uint16",
     "uint32",
     "uint64",
+    "usd",
     "vec2f",
     "vec2i",
     "vec3f",

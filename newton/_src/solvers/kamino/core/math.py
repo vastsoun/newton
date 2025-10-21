@@ -373,6 +373,76 @@ def quat_box_plus(q: quatf, v: vec3f) -> quatf:
     return quat_product(quat_exp(v), q)
 
 
+@wp.func
+def quat_from_x_rot(angle_rad: float32) -> quatf:
+    """
+    Computes a unit quaternion corresponding to rotation by given angle about the x axis
+    """
+    return wp.quatf(wp.sin(0.5 * angle_rad), 0.0, 0.0, wp.cos(0.5 * angle_rad))
+
+
+@wp.func
+def quat_from_y_rot(angle_rad: float32) -> quatf:
+    """
+    Computes a unit quaternion corresponding to rotation by given angle about the y axis
+    """
+    return wp.quatf(0.0, wp.sin(0.5 * angle_rad), 0.0, wp.cos(0.5 * angle_rad))
+
+
+@wp.func
+def quat_from_z_rot(angle_rad: float32) -> quatf:
+    """
+    Computes a unit quaternion corresponding to rotation by given angle about the z axis
+    """
+    return wp.quatf(0.0, 0.0, wp.sin(0.5 * angle_rad), wp.cos(0.5 * angle_rad))
+
+
+@wp.func
+def quat_left_jacobian_inverse(q: quatf) -> mat33f:
+    """
+    Computes the left-Jacobian inverse of the quaternion log map
+    """
+    p = quat_positive(q)
+    pv = quat_imaginary(p)
+    pv_norm_sq = wp.dot(pv, pv)
+    pw_sq = p.w * p.w
+    pv_norm = wp.sqrt(pv_norm_sq)
+
+    # Check if the norm of the imaginary part is infinitesimal
+    if pv_norm_sq > FLOAT32_EPS:
+        # Regular solution for larger angles
+        c0 = 2.0 * wp.atan(pv_norm / (p.w + wp.sqrt(pw_sq + pv_norm_sq))) / pv_norm
+        c1 = (1.0 - c0 * p.w) / pv_norm_sq
+    else:
+        # Taylor expansion solution for small angles
+        c1 = wp.static(1.0 / 3.0) / pw_sq
+        c0 = (1.0 - c1 * pv_norm_sq) / p.w
+
+    return wp.identity(3, dtype=float32) - wp.skew(c0 * pv) + wp.skew(c1 * pv) * wp.skew(pv)
+
+
+@wp.func
+def quat_normalized_apply(q: quatf, v: vec3f) -> vec3f:
+    """
+    Combines quaternion normalization and applying a unit quaternion to a vector
+    """
+    qv = quat_imaginary(q)
+    s = wp.dot(q, q)
+    uv_s = (2.0 / s) * wp.cross(qv, v)
+    return v + q[3] * uv_s + wp.cross(qv, uv_s)
+
+
+@wp.func
+def quat_conj_normalized_apply(q: quatf, v: vec3f) -> vec3f:
+    """
+    Combines quaternion conjugation, normalization and applying a unit quaternion to a vector
+    """
+    qv = quat_imaginary(q)
+    s = wp.dot(q, q)
+    uv_s = (2.0 / s) * wp.cross(qv, v)
+    return v - q[3] * uv_s + wp.cross(qv, uv_s)
+
+
 ###
 # Unit Quaternions
 ###

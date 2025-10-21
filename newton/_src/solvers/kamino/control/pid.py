@@ -172,7 +172,7 @@ def _compute_jointspace_pid_control(
     control_tau_j: wp.array(dtype=float32),
 ):
     """
-    A kernel to compute joint-space PID control torques for force-actuated joints.
+    A kernel to compute joint-space PID control outputs for force-actuated joints.
     """
     # Retrieve the the joint index from the thread indices
     jid = wp.tid()
@@ -271,7 +271,7 @@ def reset_jointspace_pid_references(
     controller: PIDControllerData,
 ) -> None:
     """
-    A kernel launcher to compute joint-space PID control torques for force-actuated joints.
+    A kernel launcher to reset joint-space PID controller motion references.
     """
     wp.launch(
         _reset_jointspace_pid_references,
@@ -304,7 +304,7 @@ def compute_jointspace_pid_control(
     control: Control,
 ) -> None:
     """
-    A kernel launcher to compute joint-space PID control torques for force-actuated joints.
+    A kernel launcher to compute joint-space PID control outputs for force-actuated joints.
     """
     wp.launch(
         _compute_jointspace_pid_control,
@@ -345,6 +345,8 @@ def compute_jointspace_pid_control(
 class JointSpacePIDController:
     """
     A simple PID controller in joint space.
+
+    This controller currently only supports single-DoF force-actuated joints.
     """
 
     def __init__(

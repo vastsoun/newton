@@ -18,7 +18,6 @@ import os
 import time
 from dataclasses import dataclass
 
-import matplotlib.pyplot as plt  # noqa: F401
 import numpy as np
 import torch
 import warp as wp
@@ -30,7 +29,6 @@ from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.core.math import TWO_PI
 from newton._src.solvers.kamino.core.shapes import ShapeType
 from newton._src.solvers.kamino.core.types import float32, uint32, vec3f, vec6f
-from newton._src.solvers.kamino.examples import get_examples_output_path
 from newton._src.solvers.kamino.models import get_primitives_usd_assets_path
 from newton._src.solvers.kamino.models.builders import build_cartpole
 from newton._src.solvers.kamino.models.utils import make_homogeneous_builder
@@ -481,65 +479,6 @@ class CartpoleExample:
         """Test function for compatibility."""
         pass
 
-    def plot(self, path: str | None = None, show: bool = False):
-        pass
-        # # Then plot the joint tracking results
-        # for j in range(len(self.sim.model.size.max_of_num_joint_dofs)):
-        #     # Set the output path for the current joint
-        #     figure_path = os.path.join(path, f"states_{j}.png") if path is not None else None
-
-        #     # Plot logged data after the viewer is closed
-        #     _, axs = plt.subplots(3, 1, figsize=(10, 10), sharex=True)
-
-        #     # Plot the measured vs reference joint positions
-        #     axs[0].step(
-        #         example.log_time[: example.sim_steps],
-        #         example.log_q_j[: example.sim_steps, j],
-        #         label="Measured",
-        #     )
-        #     axs[0].set_ylabel("Actuator Position (m)")
-        #     axs[0].legend()
-        #     axs[0].set_title(f"Actuator DoF {j} Position")
-        #     axs[0].grid()
-
-        #     # Plot the measured vs reference joint velocities
-        #     axs[1].step(
-        #         example.log_time[: example.sim_steps],
-        #         example.log_dq_j[: example.sim_steps, j],
-        #         label="Measured",
-        #     )
-        #     axs[1].set_ylabel("Actuator Velocity (m/s)")
-        #     axs[1].legend()
-        #     axs[1].set_title(f"Actuator DoF {j} Velocity")
-        #     axs[1].grid()
-
-        #     # Plot the control torques
-        #     axs[2].step(
-        #         example.log_time[: example.sim_steps],
-        #         example.log_tau_j[: example.sim_steps, j],
-        #         label="Control Torque",
-        #     )
-        #     axs[2].set_xlabel("Time (s)")
-        #     axs[2].set_ylabel("Force (N)")
-        #     axs[2].legend()
-        #     axs[2].set_title(f"Actuator DoF {j} Control Force")
-        #     axs[2].grid()
-
-        #     # Adjust layout
-        #     plt.tight_layout()
-
-        #     # Save the figure if a path is provided
-        #     if figure_path is not None:
-        #         plt.savefig(figure_path, dpi=300)
-
-        #     # Show the figure if requested
-        #     # NOTE: This will block execution until the plot window is closed
-        #     if show:
-        #         plt.show()
-
-        #     # Close the current figure to free memory
-        #     plt.close()
-
 
 ###
 # Execution functions
@@ -642,8 +581,3 @@ if __name__ == "__main__":
 
         # Launch the example using Newton's built-in runtime
         newton.examples.run(example, args)
-
-    # Plot logged data after the viewer is closed
-    OUTPUT_PLOT_PATH = os.path.join(get_examples_output_path(), "cartpole")
-    os.makedirs(OUTPUT_PLOT_PATH, exist_ok=True)
-    example.plot(path=OUTPUT_PLOT_PATH, show=args.show_plots)

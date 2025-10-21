@@ -17,9 +17,12 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import warp as wp
 
 
+@dataclass
 class State:
     """
     Represents the time-varying state of a :class:`Model` in a simulation.
@@ -53,48 +56,47 @@ class State:
     - Subscripts ``_j`` denote joint-indexed quantities, e.g. :attr:`q_j`, :attr:`dq_j`, :attr:`lambda_j`.
     """
 
-    def __init__(self):
-        self.q_i: wp.array | None = None
-        """
-        Array of absolute body CoM poses expressed in world coordinates.\n
-        Each element is a 7D transform consisting of a 3D position + 4D unit quaternion.\n
-        Shape is ``(num_bodies,)`` and dtype is :class:`transformf`.
-        """
+    q_i: wp.array | None = None
+    """
+    Array of absolute body CoM poses expressed in world coordinates.\n
+    Each element is a 7D transform consisting of a 3D position + 4D unit quaternion.\n
+    Shape is ``(num_bodies,)`` and dtype is :class:`transformf`.
+    """
 
-        self.u_i: wp.array | None = None
-        """
-        Array of absolute body CoM twists expressed in world coordinates.\n
-        Each element is a 6D vector comprising a 3D linear + 3D angular components.\n
-        Shape is ``(num_bodies,)`` and dtype is :class:`vec6f`.
-        """
+    u_i: wp.array | None = None
+    """
+    Array of absolute body CoM twists expressed in world coordinates.\n
+    Each element is a 6D vector comprising a 3D linear + 3D angular components.\n
+    Shape is ``(num_bodies,)`` and dtype is :class:`vec6f`.
+    """
 
-        self.w_i: wp.array | None = None
-        """
-        Array of body CoM wrenches expressed in world coordinates.\n
-        Each element is a 6D vector comprising a 3D linear + 3D angular components.\n
-        Shape is ``(num_bodies,)`` and dtype is :class:`vec6f`.
-        """
+    w_i: wp.array | None = None
+    """
+    Array of body CoM wrenches expressed in world coordinates.\n
+    Each element is a 6D vector comprising a 3D linear + 3D angular components.\n
+    Shape is ``(num_bodies,)`` and dtype is :class:`vec6f`.
+    """
 
-        self.q_j: wp.array | None = None
-        """
-        Array of generalized joint coordinates.\n
-        Shape is ``(sum(c_j),)`` and dtype is :class:`float32`,\n
-        where ``c_j`` is the number of coordinates encoding the configuration of each joint ``j``.
-        """
+    q_j: wp.array | None = None
+    """
+    Array of generalized joint coordinates.\n
+    Shape is ``(sum(c_j),)`` and dtype is :class:`float32`,\n
+    where ``c_j`` is the number of coordinates encoding the configuration of each joint ``j``.
+    """
 
-        self.dq_j: wp.array | None = None
-        """
-        Array of generalized joint velocities.\n
-        Shape is ``(sum(d_j),)`` and dtype is :class:`float32`,\n
-        where ``d_j`` is the number of DoFs defining the velocity of each joint ``j``.
-        """
+    dq_j: wp.array | None = None
+    """
+    Array of generalized joint velocities.\n
+    Shape is ``(sum(d_j),)`` and dtype is :class:`float32`,\n
+    where ``d_j`` is the number of DoFs defining the velocity of each joint ``j``.
+    """
 
-        self.lambda_j: wp.array | None = None
-        """
-        Array of generalized joint constraint forces.\n
-        Shape is ``(sum(m_j),)`` and dtype is :class:`float32`,\n
-        where ``m_j`` is the number of constraints enforced by each joint ``j``.
-        """
+    lambda_j: wp.array | None = None
+    """
+    Array of generalized joint constraint forces.\n
+    Shape is ``(sum(m_j),)`` and dtype is :class:`float32`,\n
+    where ``m_j`` is the number of constraints enforced by each joint ``j``.
+    """
 
     def copy_to(self, other: State) -> None:
         """

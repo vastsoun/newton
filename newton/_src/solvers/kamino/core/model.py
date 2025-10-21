@@ -779,13 +779,14 @@ class Model:
 
         # Create a new state container with the initial state of the model entities on the specified device
         with wp.ScopedDevice(device=device):
-            s = State()
-            s.q_i = wp.clone(self.bodies.q_i_0, requires_grad=requires_grad)
-            s.u_i = wp.clone(self.bodies.u_i_0, requires_grad=requires_grad)
-            s.w_i = wp.zeros_like(self.bodies.u_i_0, requires_grad=requires_grad)
-            s.q_j = wp.zeros(shape=self.size.sum_of_num_joint_coords, dtype=float32, requires_grad=requires_grad)
-            s.dq_j = wp.zeros(shape=self.size.sum_of_num_joint_dofs, dtype=float32, requires_grad=requires_grad)
-            s.lambda_j = wp.zeros(shape=self.size.sum_of_num_joint_cts, dtype=float32, requires_grad=requires_grad)
+            s = State(
+                q_i=wp.clone(self.bodies.q_i_0, requires_grad=requires_grad),
+                u_i=wp.clone(self.bodies.u_i_0, requires_grad=requires_grad),
+                w_i=wp.zeros_like(self.bodies.u_i_0, requires_grad=requires_grad),
+                q_j=wp.zeros(shape=self.size.sum_of_num_joint_coords, dtype=float32, requires_grad=requires_grad),
+                dq_j=wp.zeros(shape=self.size.sum_of_num_joint_dofs, dtype=float32, requires_grad=requires_grad),
+                lambda_j=wp.zeros(shape=self.size.sum_of_num_joint_cts, dtype=float32, requires_grad=requires_grad),
+            )
 
         # Return the constructed state container
         return s
@@ -807,8 +808,9 @@ class Model:
 
         # Create a new control container on the specified device
         with wp.ScopedDevice(device=device):
-            c = Control()
-            c.tau_j = wp.zeros(shape=self.size.sum_of_num_joint_dofs, dtype=float32, requires_grad=requires_grad)
+            c = Control(
+                tau_j=wp.zeros(shape=self.size.sum_of_num_joint_dofs, dtype=float32, requires_grad=requires_grad)
+            )
 
         # Return the constructed control container
         return c

@@ -24,7 +24,6 @@ from .matrix import (
     is_symmetric_matrix,
 )
 from .rand import (
-    ArrayLike,
     eigenvalues_from_distribution,
     random_rhs_for_matrix,
     random_spd_matrix,
@@ -43,7 +42,6 @@ from .range import (
 ###
 
 __all__ = [
-    "ArrayLike",
     "MatrixComparison",
     "MatrixSign",
     "RectangularMatrixProperties",

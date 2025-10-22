@@ -14,11 +14,12 @@
 # limitations under the License.
 
 """
-KAMINO: Time Module
+Defines containers for time-keeping across heterogeneous worlds simulated in parallel.
 """
 
 from __future__ import annotations
 
+import numpy as np
 import warp as wp
 
 from .types import float32, int32
@@ -52,27 +53,61 @@ class TimeModel:
     """
 
     def __init__(self):
-        self.dt: wp.array(dtype=float32) | None = None
+        self.dt: wp.array | None = None
         """
         The discrete time-step size of each world.\n
-        Shape of ``(num_worlds,)`` and type :class:`float32`.
+        Shape of ``(num_worlds,)`` and type :class:`float`.
         """
 
-        self.inv_dt: wp.array(dtype=float32) | None = None
+        self.inv_dt: wp.array | None = None
         """
         The inverse of the discrete time-step size of each world.\n
-        Shape of ``(num_worlds,)`` and type :class:`float32`.
+        Shape of ``(num_worlds,)`` and type :class:`float`.
         """
 
-    def set_timestep(self, dt: float):
+    def set_uniform_timestep(self, dt: float):
         """
-        Set the time-step size for each world.
+        Sets a uniform discrete time-step for all worlds.
 
         Args:
             dt (float): The time-step size to set.
         """
+        # Ensure that the provided time-step is a floating-point value
+        if not isinstance(dt, float):
+            raise TypeError(f"Invalid dt type: {type(dt)}. Expected: float.")
+
+        # Ensure that the provided time-step is positive
+        if dt <= 0.0:
+            raise ValueError(f"Invalid dt value: {dt}. Expected: positive float.")
+
+        # Assign the target time-step uniformly to all worlds
         self.dt.fill_(dt)
         self.inv_dt.fill_(1.0 / dt)
+
+    def set_timesteps(self, dt: list[float] | np.ndarray):
+        """
+        Sets the discrete time-step of each world explicitly.
+
+        Args:
+            dt (list[float] | np.ndarray): An iterable collection of time-steps over all worlds.
+        """
+        # Ensure that the length of the input matches the number of worlds
+        if len(dt) != self.dt.size:
+            raise ValueError(f"Invalid dt size: {len(dt)}. Expected: {self.dt.size}.")
+
+        # If the input is a list, convert it to a numpy array
+        if isinstance(dt, list):
+            dt = np.array(dt, dtype=np.float32)
+
+        # Ensure that the input is a numpy array of the correct dtype
+        if not isinstance(dt, np.ndarray):
+            raise TypeError(f"Invalid dt type: {type(dt)}. Expected: np.ndarray.")
+        if dt.dtype != np.float32:
+            raise TypeError(f"Invalid dt dtype: {dt.dtype}. Expected: np.float32.")
+
+        # Assign the values to the internal arrays
+        self.dt.assign(dt)
+        self.inv_dt.assign(1.0 / dt)
 
 
 class TimeData:
@@ -81,16 +116,16 @@ class TimeData:
     """
 
     def __init__(self):
-        self.steps: wp.array(dtype=int32) | None = None
+        self.steps: wp.array | None = None
         """
         The current number of simulation steps of each world.\n
-        Shape of ``(num_worlds,)`` and type :class:`int32`.
+        Shape of ``(num_worlds,)`` and type :class:`int`.
         """
 
-        self.time: wp.array(dtype=float32) | None = None
+        self.time: wp.array | None = None
         """
         The current simulation time of each world.\n
-        Shape of ``(num_worlds,)`` and type :class:`float32`.
+        Shape of ``(num_worlds,)`` and type :class:`float`.
         """
 
     def zero(self):
@@ -111,7 +146,7 @@ def _advance_time(
     # Inputs
     dt: wp.array(dtype=float32),
     # Outputs
-    steps: wp.array(dtype=int32),
+    steps: wp.array(dtype=int32),  # TODO: Make this uint64
     time: wp.array(dtype=float32),
 ):
     """

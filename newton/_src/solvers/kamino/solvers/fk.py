@@ -25,7 +25,7 @@ from functools import cache
 
 import numpy as np
 import warp as wp
-from warp._src.context import Devicelike
+from warp.context import Devicelike
 
 from ..core.joints import JointActuationType, JointDoFType
 from ..core.math import (

@@ -134,7 +134,7 @@ def _set_joint_follower_body_state(
 ###
 
 
-def set_joint_follower_body_state(model: Model, state: ModelData):
+def set_joint_follower_body_state(model: Model, data: ModelData):
     wp.launch(
         _set_joint_follower_body_state,
         dim=model.size.sum_of_num_joints,
@@ -144,8 +144,8 @@ def set_joint_follower_body_state(model: Model, state: ModelData):
             model.joints.B_r_Bj,
             model.joints.F_r_Fj,
             model.joints.X_j,
-            state.bodies.q_i,
-            state.bodies.u_i,
+            data.bodies.q_i,
+            data.bodies.u_i,
         ],
     )
 
@@ -243,13 +243,13 @@ class TestKinematicsLimits(unittest.TestCase):
 
         # Create the model and state
         model = builder.finalize(device=self.default_device)
-        state = model.data(device=self.default_device)
+        data = model.data(device=self.default_device)
 
         # Set the state of the Follower body to a known state
-        set_joint_follower_body_state(model, state)
+        set_joint_follower_body_state(model, data)
 
         # Update the state of the joints
-        compute_joints_state(model, state)
+        compute_joints_state(model=model, q_j_p=wp.zeros_like(data.joints.q_j), data=data)
 
         # Optional verbose output
         if self.verbose:
@@ -257,13 +257,13 @@ class TestKinematicsLimits(unittest.TestCase):
             print("model.joints.q_j_max: ", model.joints.q_j_max)
             print("model.joints.dq_j_max: ", model.joints.dq_j_max)
             print("model.joints.tau_j_max: ", model.joints.tau_j_max)
-            print("state.bodies.q_i:\n", state.bodies.q_i)
-            print("state.bodies.u_i:\n", state.bodies.u_i)
-            print("state.joints.p_j:\n", state.joints.p_j)
-            print("state.joints.r_j: ", state.joints.r_j)
-            print("state.joints.dr_j: ", state.joints.dr_j)
-            print("state.joints.q_j: ", state.joints.q_j)
-            print("state.joints.dq_j: ", state.joints.dq_j)
+            print("data.bodies.q_i:\n", data.bodies.q_i)
+            print("data.bodies.u_i:\n", data.bodies.u_i)
+            print("data.joints.p_j:\n", data.joints.p_j)
+            print("data.joints.r_j: ", data.joints.r_j)
+            print("data.joints.dr_j: ", data.joints.dr_j)
+            print("data.joints.q_j: ", data.joints.q_j)
+            print("data.joints.dq_j: ", data.joints.dq_j)
 
         # Create a Limits container
         limits = Limits(builder=builder, device=self.default_device)
@@ -287,7 +287,7 @@ class TestKinematicsLimits(unittest.TestCase):
             print("[before]: limits.r_tau:", limits.r_tau)
 
         # Check for active joint limits
-        limits.detect(model, state)
+        limits.detect(model, data)
 
         # Optional verbose output
         if self.verbose:

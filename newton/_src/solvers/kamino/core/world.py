@@ -13,9 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-KAMINO: Constrained Rigid Multi-Body Model Containers
-"""
+"""Provides a host-side container to summarily describe a Kamino simulation world."""
 
 from __future__ import annotations
 
@@ -106,7 +104,7 @@ class WorldDescriptor:
         """
 
         ###
-        # DoF & Constraint Counts
+        # Coordinates, DoFs & Constraints Counts
         ###
 
         self.num_body_dofs: int = 0
@@ -115,10 +113,23 @@ class WorldDescriptor:
         This is always equal to `6 * num_bodies`.
         """
 
+        self.num_joint_coords: int = 0
+        """
+        The total number of joint coordinates.\n
+        This is equal to the sum of the coordinates of all joints in the world.
+        """
+
         self.num_joint_dofs: int = 0
         """
         The total number of joint DoFs.\n
         This is equal to the sum of the DoFs of all joints in the world.
+        """
+
+        self.num_passive_joint_coords: int = 0
+        """
+        The number of passive joint joint coordinates.\n
+        This is equal to the sum of the coordinates of all passive joints defined
+        in the world, and is always less than or equal to `num_joint_coords`.\n
         """
 
         self.num_passive_joint_dofs: int = 0
@@ -126,6 +137,13 @@ class WorldDescriptor:
         The number of passive joint joint DoFs.\n
         This is equal to the sum of the DoFs of all passive joints defined
         in the world, and is always less than or equal to `num_joint_dofs`.\n
+        """
+
+        self.num_actuated_joint_coords: int = 0
+        """
+        The number of actuated joint coordinates.\n
+        This is equal to the sum of the coordinates of all actuated joints defined
+        in the world, and is always less than or equal to `num_joint_coords`.\n
         """
 
         self.num_actuated_joint_dofs: int = 0
@@ -141,6 +159,13 @@ class WorldDescriptor:
         This is equal to the sum of the constraints of all joints defined in the world.
         """
 
+        self.joint_coords: list[int] = []
+        """
+        The list of of all joint coordinates.\n
+        This list is ordered according the joint indices in the world,
+        and the sum of all elements is equal to `num_joint_coords`.\n
+        """
+
         self.joint_dofs: list[int] = []
         """
         The list of of all joint DoFs.\n
@@ -148,11 +173,25 @@ class WorldDescriptor:
         and the sum of all elements is equal to `num_joint_dofs`.\n
         """
 
+        self.joint_passive_coords: list[int] = []
+        """
+        The list of of all passive joint coordinates.\n
+        This list is ordered according the joint indices in the world,
+        and the sum of all elements is equal to `num_passive_joint_coords`.\n
+        """
+
         self.joint_passive_dofs: list[int] = []
         """
         The list of of all passive joint DoFs.\n
         This list is ordered according the joint indices in the world,
         and the sum of all elements is equal to `num_passive_joint_dofs`.\n
+        """
+
+        self.joint_actuated_coords: list[int] = []
+        """
+        The list of of all actuated joint coordinates.\n
+        This list is ordered according the joint indices in the world,
+        and the sum of all elements is equal to `num_actuated_joint_coords`.\n
         """
 
         self.joint_actuated_dofs: list[int] = []
@@ -192,11 +231,20 @@ class WorldDescriptor:
         self.body_dofs_idx_offset: int = 0
         """Index offset of the world's body DoFs w.r.t the entire model."""
 
+        self.joint_coords_idx_offset: int = 0
+        """Index offset of the world's joint coordinates w.r.t the entire model."""
+
         self.joint_dofs_idx_offset: int = 0
         """Index offset of the world's joint DoFs w.r.t the entire model."""
 
+        self.passive_joint_coords_idx_offset: int = 0
+        """Index offset of the world's passive joint coordinates w.r.t the entire model."""
+
         self.passive_joint_dofs_idx_offset: int = 0
         """Index offset of the world's passive joint DoFs w.r.t the entire model."""
+
+        self.actuated_joint_coords_idx_offset: int = 0
+        """Index offset of the world's actuated joint coordinates w.r.t the entire model."""
 
         self.actuated_joint_dofs_idx_offset: int = 0
         """Index offset of the world's actuated joint DoFs w.r.t the entire model."""
@@ -314,15 +362,17 @@ class WorldDescriptor:
         self.mass_min = min(self.mass_min, body.m_i)
         self.mass_max = max(self.mass_max, body.m_i)
         self.mass_total += body.m_i
-        self.inertia_total += float(body.i_I_i[0, 0]) + float(body.i_I_i[1, 1]) + float(body.i_I_i[2, 2])
+        self.inertia_total += 3.0 * body.m_i + float(body.i_I_i[0, 0] + body.i_I_i[1, 1] + body.i_I_i[2, 2])
 
     def add_joint(self, joint: JointDescriptor):
         # Append joint info
         self.num_joints += 1
-        self.num_joint_cts += joint.num_cts
+        self.num_joint_coords += joint.num_coords
         self.num_joint_dofs += joint.num_dofs
-        self.joint_cts.append(joint.num_cts)
+        self.num_joint_cts += joint.num_cts
+        self.joint_coords.append(joint.num_coords)
         self.joint_dofs.append(joint.num_dofs)
+        self.joint_cts.append(joint.num_cts)
         self.joint_names.append(joint.name)
         self.joint_uids.append(joint.uid)
 
@@ -338,13 +388,17 @@ class WorldDescriptor:
         if joint.act_type == JointActuationType.PASSIVE:
             self.has_passive_dofs = True
             self.num_passive_joints += 1
+            self.num_passive_joint_coords += joint.num_coords
             self.num_passive_joint_dofs += joint.num_dofs
+            self.joint_passive_coords.append(joint.num_coords)
             self.joint_passive_dofs.append(joint.num_dofs)
             self.passive_joint_names.append(joint.name)
         else:
             self.has_actuated_dofs = True
             self.num_actuated_joints += 1
+            self.num_actuated_joint_coords += joint.num_coords
             self.num_actuated_joint_dofs += joint.num_dofs
+            self.joint_actuated_coords.append(joint.num_coords)
             self.joint_actuated_dofs.append(joint.num_dofs)
             self.actuated_joint_names.append(joint.name)
 

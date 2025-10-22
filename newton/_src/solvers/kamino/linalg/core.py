@@ -26,7 +26,7 @@ import numpy as np
 import warp as wp
 from warp.context import Devicelike
 
-from ..core.types import FloatType, IntType, VecIntlike, float32, int32
+from ..core.types import FloatType, IntType, VecIntType, float32, int32
 from ..utils import logger as msg
 
 ###
@@ -234,11 +234,11 @@ class DenseRectangularMultiLinearInfo:
         # Ensure the dtype and itype are valid
         if not issubclass(dtype, FloatType):
             raise TypeError("Invalid dtype. Expected FloatType type, e.g. `wp.float32` or `wp.float64`.")
-        if not issubclass(maxdim.dtype, VecIntlike):
+        if not issubclass(maxdim.dtype, VecIntType):
             raise TypeError(
                 "Invalid dtype of `maxdim` argument. Expected integer vector type, e.g. `wp.vec2i` or `wp.vec2l`."
             )
-        if not issubclass(dim.dtype, VecIntlike):
+        if not issubclass(dim.dtype, VecIntType):
             raise TypeError(
                 "Invalid dtype of `dim` argument. Expected integer vector type, e.g. `wp.vec2i` or `wp.vec2l`."
             )

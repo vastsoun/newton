@@ -133,17 +133,17 @@ class TestDelassusOperator(unittest.TestCase):
         builder, _, _ = make_single_builder()
 
         # Create the model and containers from the builder
-        model, state, limits, detector, jacobians = make_containers(
+        model, data, limits, detector, jacobians = make_containers(
             builder=builder, max_world_contacts=max_world_contacts, device=self.default_device
         )
 
         # Update the containers
-        update_containers(model=model, state=state, limits=limits, detector=detector, jacobians=jacobians)
+        update_containers(model=model, data=data, limits=limits, detector=detector, jacobians=jacobians)
 
         # Create the Delassus operator
         delassus = DelassusOperator(
             model=model,
-            state=state,
+            data=data,
             limits=limits,
             contacts=detector.contacts,
             device=self.default_device,
@@ -167,17 +167,17 @@ class TestDelassusOperator(unittest.TestCase):
         builder, _, _ = make_homogeneous_builder(num_worlds)
 
         # Create the model and containers from the builder
-        model, state, limits, detector, jacobians = make_containers(
+        model, data, limits, detector, jacobians = make_containers(
             builder=builder, max_world_contacts=max_world_contacts, device=self.default_device
         )
 
         # Update the containers
-        update_containers(model=model, state=state, limits=limits, detector=detector, jacobians=jacobians)
+        update_containers(model=model, data=data, limits=limits, detector=detector, jacobians=jacobians)
 
         # Create the Delassus operator
         delassus = DelassusOperator(
             model=model,
-            state=state,
+            data=data,
             limits=limits,
             contacts=detector.contacts,
             device=self.default_device,
@@ -200,17 +200,17 @@ class TestDelassusOperator(unittest.TestCase):
         builder, _, _ = make_heterogeneous_builder()
 
         # Create the model and containers from the builder
-        model, state, limits, detector, jacobians = make_containers(
+        model, data, limits, detector, jacobians = make_containers(
             builder=builder, max_world_contacts=max_world_contacts, device=self.default_device
         )
 
         # Update the containers
-        update_containers(model=model, state=state, limits=limits, detector=detector, jacobians=jacobians)
+        update_containers(model=model, data=data, limits=limits, detector=detector, jacobians=jacobians)
 
         # Create the Delassus operator
         delassus = DelassusOperator(
             model=model,
-            state=state,
+            data=data,
             limits=limits,
             contacts=detector.contacts,
             device=self.default_device,
@@ -237,17 +237,17 @@ class TestDelassusOperator(unittest.TestCase):
         num_bodies = [builder.num_bodies]
 
         # Create the model and containers from the builder
-        model, state, limits, detector, jacobians = make_containers(
+        model, data, limits, detector, jacobians = make_containers(
             builder=builder, max_world_contacts=max_world_contacts, device=self.default_device
         )
 
         # Update the containers
-        update_containers(model=model, state=state, limits=limits, detector=detector, jacobians=jacobians)
+        update_containers(model=model, data=data, limits=limits, detector=detector, jacobians=jacobians)
 
         # Create the Delassus operator
         delassus = DelassusOperator(
             model=model,
-            state=state,
+            data=data,
             limits=limits,
             contacts=detector.contacts,
             device=self.default_device,
@@ -255,7 +255,7 @@ class TestDelassusOperator(unittest.TestCase):
         )
 
         # Build the Delassus operator from the current data
-        delassus.build(model=model, state=state, jacobians=jacobians.data, reset_to_zero=True)
+        delassus.build(model=model, data=data, jacobians=jacobians.data, reset_to_zero=True)
 
         # Extract the active constraint dimensions
         active_dims = extract_active_constraint_dims(delassus)
@@ -268,7 +268,7 @@ class TestDelassusOperator(unittest.TestCase):
         D_np = extract_delassus(delassus, only_active_dims=True)
 
         # Construct a list of generalized inverse mass matrices of each world
-        invM_np = make_inverse_generalized_mass_matrices(model, state)
+        invM_np = make_inverse_generalized_mass_matrices(model, data)
 
         # For each world, compute the Delassus matrix using numpy and
         # compare it with the one from the Delassus operator class
@@ -293,17 +293,17 @@ class TestDelassusOperator(unittest.TestCase):
         builder, num_bodies, _ = make_homogeneous_builder(num_worlds=num_worlds, build_func=build_boxes_nunchaku)
 
         # Create the model and containers from the builder
-        model, state, limits, detector, jacobians = make_containers(
+        model, data, limits, detector, jacobians = make_containers(
             builder=builder, max_world_contacts=max_world_contacts, device=self.default_device
         )
 
         # Update the containers
-        update_containers(model=model, state=state, limits=limits, detector=detector, jacobians=jacobians)
+        update_containers(model=model, data=data, limits=limits, detector=detector, jacobians=jacobians)
 
         # Create the Delassus operator
         delassus = DelassusOperator(
             model=model,
-            state=state,
+            data=data,
             limits=limits,
             contacts=detector.contacts,
             device=self.default_device,
@@ -311,7 +311,7 @@ class TestDelassusOperator(unittest.TestCase):
         )
 
         # Build the Delassus operator from the current data
-        delassus.build(model=model, state=state, jacobians=jacobians.data, reset_to_zero=True)
+        delassus.build(model=model, data=data, jacobians=jacobians.data, reset_to_zero=True)
 
         # Extract the active constraint dimensions
         active_dims = extract_active_constraint_dims(delassus)
@@ -323,7 +323,7 @@ class TestDelassusOperator(unittest.TestCase):
         D_np = extract_delassus(delassus, only_active_dims=True)
 
         # Construct a list of generalized inverse mass matrices of each world
-        invM_np = make_inverse_generalized_mass_matrices(model, state)
+        invM_np = make_inverse_generalized_mass_matrices(model, data)
 
         # Optional verbose output
         if self.verbose:
@@ -362,17 +362,17 @@ class TestDelassusOperator(unittest.TestCase):
         builder, num_bodies, _ = make_heterogeneous_builder()
 
         # Create the model and containers from the builder
-        model, state, limits, detector, jacobians = make_containers(
+        model, data, limits, detector, jacobians = make_containers(
             builder=builder, max_world_contacts=max_world_contacts, device=self.default_device
         )
 
         # Update the containers
-        update_containers(model=model, state=state, limits=limits, detector=detector, jacobians=jacobians)
+        update_containers(model=model, data=data, limits=limits, detector=detector, jacobians=jacobians)
 
         # Create the Delassus operator
         delassus = DelassusOperator(
             model=model,
-            state=state,
+            data=data,
             limits=limits,
             contacts=detector.contacts,
             device=self.default_device,
@@ -380,7 +380,7 @@ class TestDelassusOperator(unittest.TestCase):
         )
 
         # Build the Delassus operator from the current data
-        delassus.build(model=model, state=state, jacobians=jacobians.data, reset_to_zero=True)
+        delassus.build(model=model, data=data, jacobians=jacobians.data, reset_to_zero=True)
 
         # Extract the active constraint dimensions
         active_dims = extract_active_constraint_dims(delassus)
@@ -392,7 +392,7 @@ class TestDelassusOperator(unittest.TestCase):
         D_np = extract_delassus(delassus, only_active_dims=True)
 
         # Construct a list of generalized inverse mass matrices of each world
-        invM_np = make_inverse_generalized_mass_matrices(model, state)
+        invM_np = make_inverse_generalized_mass_matrices(model, data)
 
         # Optional verbose output
         if self.verbose:
@@ -431,17 +431,17 @@ class TestDelassusOperator(unittest.TestCase):
         builder, _, _ = make_heterogeneous_builder()
 
         # Create the model and containers from the builder
-        model, state, limits, detector, jacobians = make_containers(
+        model, data, limits, detector, jacobians = make_containers(
             builder=builder, max_world_contacts=max_world_contacts, device=self.default_device
         )
 
         # Update the containers
-        update_containers(model=model, state=state, limits=limits, detector=detector, jacobians=jacobians)
+        update_containers(model=model, data=data, limits=limits, detector=detector, jacobians=jacobians)
 
         # Create the Delassus operator
         delassus = DelassusOperator(
             model=model,
-            state=state,
+            data=data,
             limits=limits,
             contacts=detector.contacts,
             device=self.default_device,
@@ -449,7 +449,7 @@ class TestDelassusOperator(unittest.TestCase):
         )
 
         # Build the Delassus operator from the current data
-        delassus.build(model=model, state=state, jacobians=jacobians.data, reset_to_zero=True)
+        delassus.build(model=model, data=data, jacobians=jacobians.data, reset_to_zero=True)
 
         # Extract the active constraint dimensions
         active_dims = extract_active_constraint_dims(delassus)
@@ -510,12 +510,12 @@ class TestDelassusOperator(unittest.TestCase):
         builder, _, _ = make_heterogeneous_builder()
 
         # Create the model and containers from the builder
-        model, state, limits, detector, jacobians = make_containers(
+        model, data, limits, detector, jacobians = make_containers(
             builder=builder, max_world_contacts=max_world_contacts, device=self.default_device
         )
 
         # Update the containers
-        update_containers(model=model, state=state, limits=limits, detector=detector, jacobians=jacobians)
+        update_containers(model=model, data=data, limits=limits, detector=detector, jacobians=jacobians)
         if self.verbose:
             print("")  # Print a newline for better readability
             print(f"model.info.num_joint_cts: {model.info.num_joint_cts}")
@@ -523,13 +523,13 @@ class TestDelassusOperator(unittest.TestCase):
             print(f"limits.data.world_num_limits: {limits.data.world_num_limits}")
             print(f"contacts.data.world_max_contacts: {detector.contacts.data.world_max_contacts}")
             print(f"contacts.data.world_num_contacts: {detector.contacts.data.world_num_contacts}")
-            print(f"state.info.num_total_cts: {state.info.num_total_cts}")
+            print(f"data.info.num_total_cts: {data.info.num_total_cts}")
             print("")  # Print a newline for better readability
 
         # Create the Delassus operator
         delassus = DelassusOperator(
             model=model,
-            state=state,
+            data=data,
             limits=limits,
             contacts=detector.contacts,
             device=self.default_device,
@@ -537,7 +537,7 @@ class TestDelassusOperator(unittest.TestCase):
         )
 
         # Build the Delassus operator from the current data
-        delassus.build(model=model, state=state, jacobians=jacobians.data, reset_to_zero=True)
+        delassus.build(model=model, data=data, jacobians=jacobians.data, reset_to_zero=True)
 
         # Extract the active constraint dimensions
         active_dims = extract_active_constraint_dims(delassus)

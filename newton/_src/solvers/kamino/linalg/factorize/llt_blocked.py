@@ -74,6 +74,9 @@ get_float32_array_offset_ptr = make_get_array_offset_ptr_func(wp.float32)
 """A Warp function to get the offset pointer of a float32 warp array."""
 
 
+# @wp.func
+# def tile_sum_func(a: wp.tile(dtype=float, shape=(TILE_M, TILE_N))):
+#     return wp.tile_sum(a) * 0.5
 # def make_tile_pad(block_size: int, dtype=float32):
 #     """Creates a function to pad a tile with identity values where the tile exceeds the matrix dimensions."""
 #     @wp.func

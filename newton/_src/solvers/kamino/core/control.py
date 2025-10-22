@@ -13,21 +13,50 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-KAMINO: Model Control Containers
-"""
+"""Defines the Control container for Kamino."""
+
+from __future__ import annotations
 
 import warp as wp
 
 
 class Control:
     """
-    The compact time-varying control data for a :class:`Model`.
-    The compact control data includes controllable generalized forces of the joints.
-    The exact attributes depend on the contents of the model.
-    Control objects should generally be created using the :func:`Model.control()` function.
+    Time-varying control data for a :class:`Model`.
+
+    Time-varying control data currently consists of generalized joint actuation forces, with
+    the intention that external actuator models or controllers will populate these attributes.
+
+    The exact attributes depend on the contents of the model. Control objects
+    should generally be created using the :func:`kamino.Model.control()` function.
+
+    We adopt the following notational conventions for the control attributes:
+    - Generalized joint actuation forces are denoted by ``tau``
+    - Subscripts ``_j`` denote joint-indexed quantities, e.g. :attr:`tau_j`.
     """
 
     def __init__(self):
         self.tau_j: wp.array | None = None
-        """Array of joint control forces with shape ``(sum(nqd_w),)`` and type :class:`float`."""
+        """
+        Array of generalized joint actuation forces.\n
+        Shape is ``(sum(d_j),)`` and dtype is :class:`float32`,\n
+        where ``d_j`` is the number of DoFs of each joint ``j``.
+        """
+
+    def copy_to(self, other: Control) -> None:
+        """
+        Copies the State data to another State object.
+
+        Args:
+            other: The target State object to copy data into.
+        """
+        wp.copy(other.tau_j, self.tau_j)
+
+    def copy_from(self, other: Control) -> None:
+        """
+        Copies the State data from another State object.
+
+        Args:
+            other: The source State object to copy data from.
+        """
+        wp.copy(self.tau_j, other.tau_j)

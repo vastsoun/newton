@@ -13,9 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-KAMINO: Data Types
-"""
+"""The core data types used throughout Kamino."""
 
 from __future__ import annotations
 
@@ -74,9 +72,16 @@ float16 = wp.float16
 float32 = wp.float32
 float64 = wp.float64
 
+
+###
+# Unions
+###
+
+
 FloatType = float16 | float32 | float64
 IntType = int16 | int32 | int64
-VecIntlike = wp.vec2s | wp.vec2i | wp.vec2l
+VecIntType = wp.vec2s | wp.vec2i | wp.vec2l
+
 
 ###
 # Vectors
@@ -362,3 +367,19 @@ class Descriptor:
 
     def __repr__(self):
         return f"Descriptor(\nname={self.name},\nuid={self.uid}\n)"
+
+
+###
+# Utilities
+###
+
+ArrayLike = np.ndarray | list[int] | list[float] | list[list[int]] | list[list[float]]
+"""An Array-like structure for aliasing various data types compatible with numpy."""
+
+
+FloatArrayLike = np.ndarray | list[float] | list[list[float]]
+"""An Array-like structure for aliasing various floating-point data types compatible with numpy."""
+
+
+IntArrayLike = np.ndarray | list[int] | list[list[int]]
+"""An Array-like structure for aliasing various integer data types compatible with numpy."""

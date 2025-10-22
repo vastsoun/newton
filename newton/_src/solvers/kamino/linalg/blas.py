@@ -19,6 +19,13 @@ import warp as wp
 
 from ..core.types import float32, int32
 
+###
+# Module configs
+###
+
+wp.set_module_options({"enable_backward": False})
+
+
 ##
 # Kernels
 ##

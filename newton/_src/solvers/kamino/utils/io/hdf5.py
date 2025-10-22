@@ -23,18 +23,7 @@ import h5py
 import numpy as np
 
 from ...core.builder import WorldDescriptor
-from ...core.joints import (
-    JOINT_CARTESIAN,
-    JOINT_CYLINDRICAL,
-    JOINT_FIXED,
-    JOINT_FORCE_CONTROLLED,
-    JOINT_FREE,
-    JOINT_PASSIVE,
-    JOINT_PRISMATIC,
-    JOINT_REVOLUTE,
-    JOINT_SPHERICAL,
-    JOINT_UNIVERSAL,
-)
+from ...core.joints import JointActuationType, JointDoFType
 from ...simulation.simulator import Simulator
 
 ###
@@ -46,30 +35,32 @@ from ...simulation.simulator import Simulator
 
 def joint_dof_name_from_id(dofid: int) -> str:
     name = "Unknown"
-    if dofid == int(JOINT_FREE):
+    if dofid == JointDoFType.FREE:
         name = "Free"
-    elif dofid == int(JOINT_REVOLUTE):
+    elif dofid == JointDoFType.REVOLUTE:
         name = "Revolute"
-    elif dofid == int(JOINT_PRISMATIC):
+    elif dofid == JointDoFType.PRISMATIC:
         name = "Prismatic"
-    elif dofid == int(JOINT_CYLINDRICAL):
+    elif dofid == JointDoFType.CYLINDRICAL:
         name = "Cylindrical"
-    elif dofid == int(JOINT_UNIVERSAL):
+    elif dofid == JointDoFType.UNIVERSAL:
         name = "Universal"
-    elif dofid == int(JOINT_SPHERICAL):
+    elif dofid == JointDoFType.SPHERICAL:
         name = "Spherical"
-    elif dofid == int(JOINT_CARTESIAN):
+    elif dofid == JointDoFType.GIMBAL:
+        name = "Gimbal"
+    elif dofid == JointDoFType.CARTESIAN:
         name = "Cartesian"
-    elif dofid == int(JOINT_FIXED):
+    elif dofid == JointDoFType.FIXED:
         name = "Fixed"
     return name
 
 
 def joint_type_name_from_id(typeid: int) -> str:
     name = "Unknown"
-    if typeid == int(JOINT_PASSIVE):
+    if typeid == JointActuationType.PASSIVE:
         name = "Passive"
-    elif typeid == int(JOINT_FORCE_CONTROLLED):
+    elif typeid == JointActuationType.FORCE:
         name = "ForceControlled"
     return name
 

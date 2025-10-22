@@ -172,7 +172,7 @@ def save_solver_info(solver: PADMMDualSolver, path: str | None = None, verbose: 
     # Plot all info as subplots: rows=info_list, cols=worlds
     n_rows = len(info_list)
     n_cols = nw
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(4 * n_cols, 2.5 * n_rows), squeeze=False)
+    _fig, axes = plt.subplots(n_rows, n_cols, figsize=(4 * n_cols, 2.5 * n_rows), squeeze=False)
     for row, (label, arr) in enumerate(info_list):
         for col in range(nw):
             ax = axes[row, col]
@@ -237,12 +237,12 @@ class TestPADMMDualSolver(unittest.TestCase):
             body.u_i_0 = u_0
 
         # Create the model and containers from the builder
-        model, state, limits, detector, jacobians = make_containers(
+        model, data, limits, detector, jacobians = make_containers(
             builder=builder, max_world_contacts=max_world_contacts, device=self.default_device
         )
 
         # Update the containers
-        update_containers(model=model, state=state, limits=limits, detector=detector, jacobians=jacobians)
+        update_containers(model=model, data=data, limits=limits, detector=detector, jacobians=jacobians)
         if self.verbose:
             print("\n")  # Print a newline for better readability
             print_model_info(model)
@@ -251,7 +251,7 @@ class TestPADMMDualSolver(unittest.TestCase):
         # Create the Delassus operator
         problem = DualProblem(
             model=model,
-            state=state,
+            data=data,
             limits=limits,
             contacts=detector.contacts,
             solver=LLTBlockedSolver,
@@ -260,7 +260,7 @@ class TestPADMMDualSolver(unittest.TestCase):
 
         # Build the dual problem
         problem.build(
-            model=model, state=state, limits=limits.data, contacts=detector.contacts.data, jacobians=jacobians.data
+            model=model, data=data, limits=limits.data, contacts=detector.contacts.data, jacobians=jacobians.data
         )
 
         # Optional verbose output

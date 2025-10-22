@@ -74,7 +74,7 @@ def sparseview(
     color_image[zero_mask] = [1, 0, 0]
 
     # Plot the image
-    fig, ax = plt.subplots()
+    _fig, ax = plt.subplots()
     ax.imshow(color_image, origin="upper")
 
     # Confgure figure tick labels

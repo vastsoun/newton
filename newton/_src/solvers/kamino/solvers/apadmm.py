@@ -41,6 +41,7 @@ References
 - [4] https://epubs.siam.org/doi/abs/10.1137/120896219
 """
 
+from dataclasses import dataclass
 from enum import IntEnum
 
 import warp as wp
@@ -169,38 +170,73 @@ class APADMMPenalty:
 ###
 
 
+@dataclass
 class APADMMSettings:
     """
-    A class to hold the APADMM solver settings.
+    A dataclass to hold the APADMM solver settings.
     """
 
-    def __init__(self):
-        self.primal_tolerance: float = 1e-6
-        """The tolerance applied to the primal residuals."""
-        self.dual_tolerance: float = 1e-6
-        """The tolerance applied to the dual residuals."""
-        self.compl_tolerance: float = 1e-6
-        """The tolerance applied to the complementarity residuals."""
-        self.restart_tolerance: float = 0.999
-        """The tolerance used to determine when to restart gradient acceleration."""
-        self.eta: float = 1e-5
-        """The proximal regularization parameter. Must be greater than zero."""
-        self.rho_0: float = 1.0
-        """The initial value of the penalty parameter. Must be greater than zero."""
-        self.a_0: float = 1.0
-        """The initial value of the acceleration parameter. Must be greater than zero."""
-        self.omega: float = 1.0
-        """The over-relaxation factor. Must be in the range [0.0, 2.0]."""
-        self.alpha: float = 10.0
-        """The primal-dual residual threshold used to determine when penalty updates are needed."""
-        self.tau_inc: float = 1.5
-        """The factor by which the penalty is increased when the primal-dual residual exceeds the threshold."""
-        self.max_iterations: int = 200
-        """The maximum number of solver iterations."""
-        self.penalty_update_freq: int = 1
-        """The frequency of penalty updates. If zero, no updates are performed."""
-        self.penalty_update_method: APADMMPenaltyUpdate = APADMMPenaltyUpdate.FIXED
-        """The method used to update the penalty parameter. Defaults to fixed penalty (i.e. not adaptive)."""
+    primal_tolerance: float = 1e-6
+    """The tolerance applied to the primal residuals."""
+    dual_tolerance: float = 1e-6
+    """The tolerance applied to the dual residuals."""
+    compl_tolerance: float = 1e-6
+    """The tolerance applied to the complementarity residuals."""
+    restart_tolerance: float = 0.999
+    """The tolerance used to determine when to restart gradient acceleration."""
+    eta: float = 1e-5
+    """The proximal regularization parameter. Must be greater than zero."""
+    rho_0: float = 1.0
+    """The initial value of the penalty parameter. Must be greater than zero."""
+    a_0: float = 1.0
+    """The initial value of the acceleration parameter. Must be greater than zero."""
+    omega: float = 1.0
+    """The over-relaxation factor. Must be in the range [0.0, 2.0]."""
+    alpha: float = 10.0
+    """The primal-dual residual threshold used to determine when penalty updates are needed."""
+    tau_inc: float = 1.5
+    """The factor by which the penalty is increased when the primal-dual residual exceeds the threshold."""
+    max_iterations: int = 200
+    """The maximum number of solver iterations."""
+    penalty_update_freq: int = 1
+    """The frequency of penalty updates. If zero, no updates are performed."""
+    penalty_update_method: APADMMPenaltyUpdate = APADMMPenaltyUpdate.FIXED
+    """The method used to update the penalty parameter. Defaults to fixed penalty (i.e. not adaptive)."""
+    use_acceleration: bool = True
+    """Set to True to enable Nesterov-type gradient acceleration."""
+
+    def check(self):
+        """
+        Check the validity of the settings.
+        """
+        if self.primal_tolerance < 0.0:
+            raise ValueError(f"Invalid primal tolerance: {self.primal_tolerance}. Must be non-negative.")
+        if self.dual_tolerance < 0.0:
+            raise ValueError(f"Invalid dual tolerance: {self.dual_tolerance}. Must be non-negative.")
+        if self.compl_tolerance < 0.0:
+            raise ValueError(f"Invalid complementarity tolerance: {self.compl_tolerance}. Must be non-negative.")
+        if not (0.0 <= self.restart_tolerance < 1.0):
+            raise ValueError(f"Invalid restart tolerance: {self.restart_tolerance}. Must be in the range [0.0, 1.0).")
+        if self.eta <= 0.0:
+            raise ValueError(f"Invalid proximal parameter: {self.eta}. Must be greater than zero.")
+        if self.rho_0 <= 0.0:
+            raise ValueError(f"Invalid initial penalty: {self.rho_0}. Must be greater than zero.")
+        if self.a_0 <= 0.0:
+            raise ValueError(f"Invalid initial acceleration parameter: {self.a_0}. Must be greater than zero.")
+        if not (0.0 <= self.omega <= 2.0):
+            raise ValueError(f"Invalid over-relaxation factor: {self.omega}. Must be in the range [0.0, 2.0].")
+        if self.alpha <= 1.0:
+            raise ValueError(f"Invalid penalty threshold: {self.alpha}. Must be greater than one.")
+        if self.tau_inc <= 1.0:
+            raise ValueError(f"Invalid penalty increase factor: {self.tau_inc}. Must be greater than one.")
+        if self.max_iterations <= 0:
+            raise ValueError(f"Invalid maximum iterations: {self.max_iterations}. Must be a positive integer.")
+        if self.penalty_update_freq < 0:
+            raise ValueError(f"Invalid penalty update frequency: {self.penalty_update_freq}. Must be non-negative.")
+        if not isinstance(self.penalty_update_method, APADMMPenaltyUpdate):
+            raise TypeError(
+                f"Invalid penalty update method: {self.penalty_update_method}. Must be an instance of APADMMPenaltyUpdate."
+            )
 
     def to_config(self) -> APADMMConfig:
         """
@@ -1836,6 +1872,7 @@ def _compute_infnorm_residuals_serially(
         solver_state_done[0] -= 1
 
     # Restart acceleration if the residuals are not decreasing sufficiently
+    # TODO: Use a warp function that is wrapped with wp.static for conditionally compiling this
     if status.r_a < config.restart_tolerance * status.r_a_p:
         status.restart = 0
         a_p = solver_state_a_p[wid]
@@ -2664,7 +2701,10 @@ class APADMMDualSolver:
         )
 
     def update_previous_state(self):
+        # TODO: do this only if acceleration is enabled
         wp.copy(self._data.state.a_p, self._data.state.a)
+
+        # Cache previous state variables
         wp.copy(self._data.state.x_p, self._data.state.x)
         wp.copy(self._data.state.y_p, self._data.state.y)
         wp.copy(self._data.state.z_p, self._data.state.z)
@@ -2739,8 +2779,13 @@ class APADMMDualSolver:
         # Compute infinity-norm of all residuals and check for convergence
         self.update_convergence_check(problem)
 
-        # Update Nesterov acceleration states from the current iteration
-        self.update_acceleration(problem)
+        # Optionally update Nesterov acceleration states from the current iteration
+        if any(s.use_acceleration for s in self._settings):
+            self.update_acceleration(problem)
+        else:
+            # If acceleration is disabled, update the auxiliary state to the current
+            wp.copy(self._data.state.y_hat, self._data.state.y)
+            wp.copy(self._data.state.z_hat, self._data.state.z)
 
         # Optionally record internal solver info
         if self._collect_info:

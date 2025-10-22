@@ -210,37 +210,37 @@ def store_joint_cts_jacobian(
     Stores the constraints Jacobian block of a joint into the provided flat data array at the given offset.
     """
 
-    if dof_type == int(JointDoFType.REVOLUTE.value):
+    if dof_type == JointDoFType.REVOLUTE:
         store_joint_cts_jacobian_revolute(
             J_cts_offset, cts_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_cts_data
         )
 
-    elif dof_type == int(JointDoFType.PRISMATIC.value):
+    elif dof_type == JointDoFType.PRISMATIC:
         store_joint_cts_jacobian_prismatic(
             J_cts_offset, cts_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_cts_data
         )
 
-    elif dof_type == int(JointDoFType.CYLINDRICAL.value):
+    elif dof_type == JointDoFType.CYLINDRICAL:
         store_joint_cts_jacobian_cylindrical(
             J_cts_offset, cts_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_cts_data
         )
 
-    elif dof_type == int(JointDoFType.UNIVERSAL.value):
+    elif dof_type == JointDoFType.UNIVERSAL:
         store_joint_cts_jacobian_universal(
             J_cts_offset, cts_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_cts_data
         )
 
-    elif dof_type == int(JointDoFType.SPHERICAL.value):
+    elif dof_type == JointDoFType.SPHERICAL:
         store_joint_cts_jacobian_spherical(
             J_cts_offset, cts_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_cts_data
         )
 
-    elif dof_type == int(JointDoFType.CARTESIAN.value):
+    elif dof_type == JointDoFType.CARTESIAN:
         store_joint_cts_jacobian_cartesian(
             J_cts_offset, cts_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_cts_data
         )
 
-    elif dof_type == int(JointDoFType.FIXED.value):
+    elif dof_type == JointDoFType.FIXED:
         store_joint_cts_jacobian_fixed(
             J_cts_offset, cts_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_cts_data
         )
@@ -263,37 +263,37 @@ def store_joint_dofs_jacobian(
     Stores the DoFs Jacobian block of a joint into the provided flat data array at the given offset.
     """
 
-    if dof_type == int(JointDoFType.REVOLUTE.value):
+    if dof_type == JointDoFType.REVOLUTE:
         store_joint_dofs_jacobian_revolute(
             J_dofs_offset, dofs_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_dofs_data
         )
 
-    elif dof_type == int(JointDoFType.PRISMATIC.value):
+    elif dof_type == JointDoFType.PRISMATIC:
         store_joint_dofs_jacobian_prismatic(
             J_dofs_offset, dofs_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_dofs_data
         )
 
-    elif dof_type == int(JointDoFType.CYLINDRICAL.value):
+    elif dof_type == JointDoFType.CYLINDRICAL:
         store_joint_dofs_jacobian_cylindrical(
             J_dofs_offset, dofs_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_dofs_data
         )
 
-    elif dof_type == int(JointDoFType.UNIVERSAL.value):
+    elif dof_type == JointDoFType.UNIVERSAL:
         store_joint_dofs_jacobian_universal(
             J_dofs_offset, dofs_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_dofs_data
         )
 
-    elif dof_type == int(JointDoFType.SPHERICAL.value):
+    elif dof_type == JointDoFType.SPHERICAL:
         store_joint_dofs_jacobian_spherical(
             J_dofs_offset, dofs_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_dofs_data
         )
 
-    elif dof_type == int(JointDoFType.CARTESIAN.value):
+    elif dof_type == JointDoFType.CARTESIAN:
         store_joint_dofs_jacobian_cartesian(
             J_dofs_offset, dofs_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_dofs_data
         )
 
-    elif dof_type == int(JointDoFType.FREE.value):
+    elif dof_type == JointDoFType.FREE:
         store_joint_dofs_jacobian_free(
             J_dofs_offset, dofs_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_dofs_data
         )
@@ -409,7 +409,6 @@ def _build_joint_jacobians(
     """
     # Retrieve the thread index as the joint index
     jid = wp.tid()
-    # wp.printf("jid: %d\n", jid)
 
     # Retrive the joint model data
     wid = model_joints_wid[jid]
@@ -441,36 +440,19 @@ def _build_joint_jacobians(
     T_F_j = state_bodies_q[bid_F]
     r_B_j = wp.transform_get_translation(T_B_j)
     r_F_j = wp.transform_get_translation(T_F_j)
-    # print("r_B_j:")
-    # print(r_B_j)
-    # print("r_F_j:")
-    # print(r_F_j)
 
     # Compute the wrench matrices
     # TODO: Since the lever-arm is a relative position, can we just use B_r_Bj and F_r_Fj instead?
     W_j_B = wrench_matrix_from_points(r_j, r_B_j)
     W_j_F = wrench_matrix_from_points(r_j, r_F_j)
-    # print("W_j_B:")
-    # print(W_j_B)
-    # print("W_j_F:")
-    # print(W_j_F)
 
-    # Expand the joint axes and orientation matrices to 6D
-    X_bar_j = expand6d(X_j)
-    R_bar_j = expand6d(R_j)
-    # print("X_bar_j:")
-    # print(X_bar_j)
-    # print("R_bar_j:")
-    # print(R_bar_j)
+    # Compute the effective projector to joint frame and expand to 6D
+    R_X_j = R_j @ X_j
+    R_X_bar_j = expand6d(R_X_j)
 
     # Compute the extended jacobians, i.e. without the selection-matrix multiplication
-    JT_B_j = -W_j_B @ R_bar_j @ X_bar_j  # Reaction is on the Base body body ; (6 x 6)
-    JT_F_j = W_j_F @ R_bar_j @ X_bar_j  # Action is on the Follower body    ; (6 x 6)
-    # print("JT_B_j:")
-    # print(JT_B_j)
-    # print("JT_F_j:")
-    # print(JT_F_j)
-    # print("\n\n\n")
+    JT_B_j = -W_j_B @ R_X_bar_j  # Reaction is on the Base body body ; (6 x 6)
+    JT_F_j = W_j_F @ R_X_bar_j  # Action is on the Follower body    ; (6 x 6)
 
     # Store the constraint Jacobian block
     store_joint_cts_jacobian(dof_type, cjmio, cio, nbd, bio, bid_B, bid_F, JT_B_j, JT_F_j, jacobian_cts_data)
@@ -637,7 +619,7 @@ def _build_contact_jacobians(
 
 def build_joint_jacobians(
     model: Model,
-    state: ModelData,
+    data: ModelData,
     jacobian_cts_offsets: wp.array,
     jacobian_cts_data: wp.array,
     jacobian_dofs_offsets: wp.array,
@@ -664,8 +646,8 @@ def build_joint_jacobians(
             model.joints.bid_B,
             model.joints.bid_F,
             model.joints.X_j,
-            state.joints.p_j,
-            state.bodies.q_i,
+            data.joints.p_j,
+            data.bodies.q_i,
             jacobian_cts_offsets,
             jacobian_dofs_offsets,
             # Outputs:
@@ -677,7 +659,7 @@ def build_joint_jacobians(
 
 def build_limit_jacobians(
     model: Model,
-    state: ModelData,
+    data: ModelData,
     limits: LimitsData,
     jacobian_cts_offsets: wp.array,
     jacobian_cts_data: wp.array,
@@ -697,7 +679,7 @@ def build_limit_jacobians(
             # Inputs:
             model.info.num_body_dofs,
             model.info.bodies_offset,
-            state.info.limit_cts_group_offset,
+            data.info.limit_cts_group_offset,
             limits.model_num_limits,
             limits.wid,
             limits.lid,
@@ -715,7 +697,7 @@ def build_limit_jacobians(
 
 def build_contact_jacobians(
     model: Model,
-    state: ModelData,
+    data: ModelData,
     contacts: ContactsData,
     jacobian_cts_offsets: wp.array,
     jacobian_cts_data: wp.array,
@@ -733,8 +715,8 @@ def build_contact_jacobians(
             # Inputs:
             model.info.num_body_dofs,
             model.info.bodies_offset,
-            state.info.contact_cts_group_offset,
-            state.bodies.q_i,
+            data.info.contact_cts_group_offset,
+            data.bodies.q_i,
             contacts.model_num_contacts,
             contacts.wid,
             contacts.cid,
@@ -750,7 +732,7 @@ def build_contact_jacobians(
 
 def build_jacobians(
     model: Model,
-    state: ModelData,
+    data: ModelData,
     limits: LimitsData | None,
     contacts: ContactsData | None,
     jacobian_cts_offsets: wp.array,
@@ -779,8 +761,8 @@ def build_jacobians(
             model.joints.bid_B,
             model.joints.bid_F,
             model.joints.X_j,
-            state.joints.p_j,
-            state.bodies.q_i,
+            data.joints.p_j,
+            data.bodies.q_i,
             jacobian_cts_offsets,
             jacobian_dofs_offsets,
             # Outputs:
@@ -800,7 +782,7 @@ def build_jacobians(
                 # Inputs:
                 model.info.num_body_dofs,
                 model.info.bodies_offset,
-                state.info.limit_cts_group_offset,
+                data.info.limit_cts_group_offset,
                 limits.model_num_limits,
                 limits.wid,
                 limits.lid,
@@ -826,8 +808,8 @@ def build_jacobians(
                 # Inputs:
                 model.info.num_body_dofs,
                 model.info.bodies_offset,
-                state.info.contact_cts_group_offset,
-                state.bodies.q_i,
+                data.info.contact_cts_group_offset,
+                data.bodies.q_i,
                 contacts.model_num_contacts,
                 contacts.wid,
                 contacts.cid,
@@ -897,7 +879,7 @@ class DenseSystemJacobians:
         contacts: Contacts | None = None,
         device: Devicelike = None,
     ):
-        # Decalare and initialize the Jacobian state data container
+        # Decalare and initialize the Jacobian data container
         self._data = DenseSystemJacobiansData()
 
         # If a model is provided, allocate the Jacobians data
@@ -963,15 +945,15 @@ class DenseSystemJacobians:
             self._data.J_dofs_data = wp.zeros(shape=(total_J_dofs_size,), dtype=float32)
 
     def build(
-        self, model: Model, state: ModelData, limits: LimitsData, contacts: ContactsData, reset_to_zero: bool = True
+        self, model: Model, data: ModelData, limits: LimitsData, contacts: ContactsData, reset_to_zero: bool = True
     ):
         """
         Builds the system DoF and constraint Jacobians for the given
-        data of the provided model, state, limits and contacts containers.
+        data of the provided model, data, limits and contacts containers.
         """
         build_jacobians(
             model=model,
-            state=state,
+            data=data,
             limits=limits,
             contacts=contacts,
             jacobian_cts_offsets=self._data.J_cts_offsets,

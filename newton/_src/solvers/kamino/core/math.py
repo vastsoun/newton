@@ -63,6 +63,15 @@ UNIT_Y = wp.constant(vec3f(0.0, 1.0, 0.0))
 UNIT_Z = wp.constant(vec3f(0.0, 0.0, 1.0))
 """ 3D unit vector for the Z axis """
 
+PI = wp.constant(3.141592653589793)
+"""Convenience constant for PI"""
+
+TWO_PI = wp.constant(6.283185307179586)
+"""Convenience constant for 2 * PI"""
+
+HALF_PI = wp.constant(1.5707963267948966)
+"""Convenience constant for PI / 2"""
+
 COS_PI_6 = wp.constant(0.8660254037844387)
 """Convenience constant for cos(PI / 6)"""
 
@@ -252,128 +261,6 @@ def quat_apply(q: quatf, v: vec3f) -> vec3f:
 
 
 @wp.func
-def unit_quat_apply(q: quatf, v: vec3f) -> vec3f:
-    """
-    Applies a unit quaternion to a vector (making use of the unit norm assumption to simplify the result)
-    """
-    qv = quat_imaginary(q)
-    uv = 2.0 * wp.cross(qv, v)
-    return v + q.w * uv + wp.cross(qv, uv)
-
-
-@wp.func
-def unit_quat_conj_apply(q: quatf, v: vec3f) -> vec3f:
-    """
-    Applies a the conjugate of a unit quaternion to a vector (making use of the unit norm assumption to simplify
-    the result)
-    """
-    qv = quat_imaginary(q)
-    uv = 2.0 * wp.cross(qv, v)
-    return v - q.w * uv + wp.cross(qv, uv)
-
-
-@wp.func
-def unit_quat_to_rotation_matrix(q: quatf) -> mat33f:
-    """
-    Converts a unit quaternion to a rotation matrix (making use of the unit norm assumption to simplfy the result)
-    """
-    xx = 2.0 * q.x * q.x
-    xy = 2.0 * q.x * q.y
-    xz = 2.0 * q.x * q.z
-    wx = 2.0 * q.w * q.x
-    yy = 2.0 * q.y * q.y
-    yz = 2.0 * q.y * q.z
-    wy = 2.0 * q.w * q.y
-    zz = 2.0 * q.z * q.z
-    wz = 2.0 * q.w * q.z
-    return mat33f(1.0 - yy - zz, xy - wz, xz + wy, xy + wz, 1.0 - xx - zz, yz - wx, xz - wy, yz + wx, 1.0 - xx - yy)
-
-
-@wp.func
-def unit_quat_conj_to_rotation_matrix(q: quatf) -> mat33f:
-    """
-    Converts the conjugate of a unit quaternion to a rotation matrix (making use of the unit norm assumption
-    to simplfy the result); this is simply the transpose of unit_quat_to_rotation_matrix(q)
-    """
-    xx = 2.0 * q.x * q.x
-    xy = 2.0 * q.x * q.y
-    xz = 2.0 * q.x * q.z
-    wx = 2.0 * q.w * q.x
-    yy = 2.0 * q.y * q.y
-    yz = 2.0 * q.y * q.z
-    wy = 2.0 * q.w * q.y
-    zz = 2.0 * q.z * q.z
-    wz = 2.0 * q.w * q.z
-    return mat33f(1.0 - yy - zz, xy + wz, xz - wy, xy - wz, 1.0 - xx - zz, yz + wx, xz + wy, yz - wx, 1.0 - xx - yy)
-
-
-@wp.func
-def unit_quat_apply_jacobian(q: quatf, v: vec3f) -> mat34f:
-    """
-    Returns the Jacobian of unit_quat_apply(q, v) with respect to q
-    """
-    xX = 2.0 * q.x * v[0]
-    xY = 2.0 * q.x * v[1]
-    xZ = 2.0 * q.x * v[2]
-    yX = 2.0 * q.y * v[0]
-    yY = 2.0 * q.y * v[1]
-    yZ = 2.0 * q.y * v[2]
-    zX = 2.0 * q.z * v[0]
-    zY = 2.0 * q.z * v[1]
-    zZ = 2.0 * q.z * v[2]
-    wX = 2.0 * q.w * v[0]
-    wY = 2.0 * q.w * v[1]
-    wZ = 2.0 * q.w * v[2]
-    return mat34f(
-        yY + zZ,
-        -2.0 * yX + xY + wZ,
-        -2.0 * zX + xZ - wY,
-        yZ - zY,
-        -2.0 * xY + yX - wZ,
-        xX + zZ,
-        -2.0 * zY + yZ + wX,
-        zX - xZ,
-        -2.0 * xZ + zX + wY,
-        -2.0 * yZ + zY - wX,
-        xX + yY,
-        xY - yX,
-    )
-
-
-@wp.func
-def unit_quat_conj_apply_jacobian(q: quatf, v: vec3f) -> mat34f:
-    """
-    Returns the Jacobian of unit_quat_conj_apply(q, v) with respect to q
-    """
-    xX = 2.0 * q.x * v[0]
-    xY = 2.0 * q.x * v[1]
-    xZ = 2.0 * q.x * v[2]
-    yX = 2.0 * q.y * v[0]
-    yY = 2.0 * q.y * v[1]
-    yZ = 2.0 * q.y * v[2]
-    zX = 2.0 * q.z * v[0]
-    zY = 2.0 * q.z * v[1]
-    zZ = 2.0 * q.z * v[2]
-    wX = 2.0 * q.w * v[0]
-    wY = 2.0 * q.w * v[1]
-    wZ = 2.0 * q.w * v[2]
-    return mat34f(
-        yY + zZ,
-        -2.0 * yX + xY - wZ,
-        -2.0 * zX + xZ + wY,
-        zY - yZ,
-        -2.0 * xY + yX + wZ,
-        xX + zZ,
-        -2.0 * zY + yZ - wX,
-        xZ - zX,
-        -2.0 * xZ + zX - wY,
-        -2.0 * yZ + zY + wX,
-        xX + yY,
-        yX - xY,
-    )
-
-
-@wp.func
 def quat_derivative(q: quatf, omega: vec3f) -> quatf:
     """
     Computes the quaternion derivative from a quaternion and angular velocity.
@@ -554,6 +441,133 @@ def quat_conj_normalized_apply(q: quatf, v: vec3f) -> vec3f:
     s = wp.dot(q, q)
     uv_s = (2.0 / s) * wp.cross(qv, v)
     return v - q[3] * uv_s + wp.cross(qv, uv_s)
+
+
+###
+# Unit Quaternions
+###
+
+
+@wp.func
+def unit_quat_apply(q: quatf, v: vec3f) -> vec3f:
+    """
+    Applies a unit quaternion to a vector (making use of the unit norm assumption to simplify the result)
+    """
+    qv = quat_imaginary(q)
+    uv = 2.0 * wp.cross(qv, v)
+    return v + q.w * uv + wp.cross(qv, uv)
+
+
+@wp.func
+def unit_quat_conj_apply(q: quatf, v: vec3f) -> vec3f:
+    """
+    Applies a the conjugate of a unit quaternion to a vector (making use of the unit norm assumption to simplify
+    the result)
+    """
+    qv = quat_imaginary(q)
+    uv = 2.0 * wp.cross(qv, v)
+    return v - q.w * uv + wp.cross(qv, uv)
+
+
+@wp.func
+def unit_quat_to_rotation_matrix(q: quatf) -> mat33f:
+    """
+    Converts a unit quaternion to a rotation matrix (making use of the unit norm assumption to simplfy the result)
+    """
+    xx = 2.0 * q.x * q.x
+    xy = 2.0 * q.x * q.y
+    xz = 2.0 * q.x * q.z
+    wx = 2.0 * q.w * q.x
+    yy = 2.0 * q.y * q.y
+    yz = 2.0 * q.y * q.z
+    wy = 2.0 * q.w * q.y
+    zz = 2.0 * q.z * q.z
+    wz = 2.0 * q.w * q.z
+    return mat33f(1.0 - yy - zz, xy - wz, xz + wy, xy + wz, 1.0 - xx - zz, yz - wx, xz - wy, yz + wx, 1.0 - xx - yy)
+
+
+@wp.func
+def unit_quat_conj_to_rotation_matrix(q: quatf) -> mat33f:
+    """
+    Converts the conjugate of a unit quaternion to a rotation matrix (making use of the unit norm assumption
+    to simplfy the result); this is simply the transpose of unit_quat_to_rotation_matrix(q)
+    """
+    xx = 2.0 * q.x * q.x
+    xy = 2.0 * q.x * q.y
+    xz = 2.0 * q.x * q.z
+    wx = 2.0 * q.w * q.x
+    yy = 2.0 * q.y * q.y
+    yz = 2.0 * q.y * q.z
+    wy = 2.0 * q.w * q.y
+    zz = 2.0 * q.z * q.z
+    wz = 2.0 * q.w * q.z
+    return mat33f(1.0 - yy - zz, xy + wz, xz - wy, xy - wz, 1.0 - xx - zz, yz + wx, xz + wy, yz - wx, 1.0 - xx - yy)
+
+
+@wp.func
+def unit_quat_apply_jacobian(q: quatf, v: vec3f) -> mat34f:
+    """
+    Returns the Jacobian of unit_quat_apply(q, v) with respect to q
+    """
+    xX = 2.0 * q.x * v[0]
+    xY = 2.0 * q.x * v[1]
+    xZ = 2.0 * q.x * v[2]
+    yX = 2.0 * q.y * v[0]
+    yY = 2.0 * q.y * v[1]
+    yZ = 2.0 * q.y * v[2]
+    zX = 2.0 * q.z * v[0]
+    zY = 2.0 * q.z * v[1]
+    zZ = 2.0 * q.z * v[2]
+    wX = 2.0 * q.w * v[0]
+    wY = 2.0 * q.w * v[1]
+    wZ = 2.0 * q.w * v[2]
+    return mat34f(
+        yY + zZ,
+        -2.0 * yX + xY + wZ,
+        -2.0 * zX + xZ - wY,
+        yZ - zY,
+        -2.0 * xY + yX - wZ,
+        xX + zZ,
+        -2.0 * zY + yZ + wX,
+        zX - xZ,
+        -2.0 * xZ + zX + wY,
+        -2.0 * yZ + zY - wX,
+        xX + yY,
+        xY - yX,
+    )
+
+
+@wp.func
+def unit_quat_conj_apply_jacobian(q: quatf, v: vec3f) -> mat34f:
+    """
+    Returns the Jacobian of unit_quat_conj_apply(q, v) with respect to q
+    """
+    xX = 2.0 * q.x * v[0]
+    xY = 2.0 * q.x * v[1]
+    xZ = 2.0 * q.x * v[2]
+    yX = 2.0 * q.y * v[0]
+    yY = 2.0 * q.y * v[1]
+    yZ = 2.0 * q.y * v[2]
+    zX = 2.0 * q.z * v[0]
+    zY = 2.0 * q.z * v[1]
+    zZ = 2.0 * q.z * v[2]
+    wX = 2.0 * q.w * v[0]
+    wY = 2.0 * q.w * v[1]
+    wZ = 2.0 * q.w * v[2]
+    return mat34f(
+        yY + zZ,
+        -2.0 * yX + xY - wZ,
+        -2.0 * zX + xZ + wY,
+        zY - yZ,
+        -2.0 * xY + yX + wZ,
+        xX + zZ,
+        -2.0 * zY + yZ - wX,
+        xZ - zX,
+        -2.0 * xZ + zX - wY,
+        -2.0 * yZ + zY + wX,
+        xX + yY,
+        yX - xY,
+    )
 
 
 ###

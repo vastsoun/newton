@@ -13,48 +13,47 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-KAMINO: UNIT TESTS: CORE: BUILDER
-"""
+"""Unit tests for the JointSpacePIDController class."""
 
 import unittest
 
 import numpy as np
 import warp as wp
 
-# Moduel to be tested
-from newton._src.solvers.kamino.core.joints import JointDoFType
+import newton._src.solvers.kamino.utils.logger as msg
+from newton._src.solvers.kamino.control.pid import JointSpacePIDController
 
 ###
 # Tests
 ###
 
 
-class TestCoreJoints(unittest.TestCase):
+class TestJointSpacePIDController(unittest.TestCase):
     def setUp(self):
-        self.verbose = False  # Set to True to enable verbose output
+        # Configs
+        self.seed = 42
         self.default_device = wp.get_device()
+        self.verbose = False  # Set to True for verbose output
+
+        # Set debug-level logging to print verbose test output to console
+        if self.verbose:
+            print("\n")  # Add newline before test output for better readability
+            msg.set_log_level(msg.LogLevel.DEBUG)
+        else:
+            msg.set_log_level(msg.LogLevel.WARNING)
 
     def tearDown(self):
         self.default_device = None
-
-    def test_joint_dof_type_enum(self):
-        doftype = JointDoFType.REVOLUTE
-
-        # Optional verbose output
         if self.verbose:
-            print("")  # Add a newline for better readability
-            print(f"doftype: {doftype}")
-            print(f"doftype.value: {doftype.value}")
-            print(f"doftype.name: {doftype.name}")
-            print(f"doftype.num_cts: {doftype.num_cts}")
-            print(f"doftype.num_dofs: {doftype.num_dofs}")
+            msg.reset_log_level()
 
-        # Check the enum values
-        self.assertEqual(doftype.value, JointDoFType.REVOLUTE)
-        self.assertEqual(doftype.name, "REVOLUTE")
-        self.assertEqual(doftype.num_cts, 5)
-        self.assertEqual(doftype.num_dofs, 1)
+    def test_make_default(self):
+        # Create a default PID controller
+        controller = JointSpacePIDController()
+        # Check default values
+        self.assertIsNotNone(controller)
+        self.assertEqual(controller.device, None)
+        self.assertEqual(controller._data, None)
 
 
 ###

@@ -75,10 +75,10 @@ class TestSimulator(unittest.TestCase):
 
         # Optional verbose output
         if self.verbose:
-            print(f"[before]: sim._data.state.bodies.w_i:\n{sim._data.state.bodies.q_i}")
-            print(f"[after]:  sim._data.state.bodies.w_i:\n{sim._data.state.bodies.q_i}")
-            print(f"[before]: sim._data.state.bodies.I_i:\n{sim._data.state.bodies.u_i}")
-            print(f"[after]:  sim._data.state.bodies.I_i:\n{sim._data.state.bodies.u_i}")
+            print(f"[before]: sim._data.solver.bodies.w_i:\n{sim._data.solver.bodies.q_i}")
+            print(f"[after]:  sim._data.solver.bodies.w_i:\n{sim._data.solver.bodies.q_i}")
+            print(f"[before]: sim._data.solver.bodies.I_i:\n{sim._data.solver.bodies.u_i}")
+            print(f"[after]:  sim._data.solver.bodies.I_i:\n{sim._data.solver.bodies.u_i}")
 
         # TODO: What to test here?
 
@@ -92,14 +92,14 @@ class TestSimulator(unittest.TestCase):
         # Rest the simulator
         if self.verbose:
             print(f"[before]: sim.model.summary.num_bodies: {sim.model.size.sum_of_num_bodies}")
-            print(f"[before]: sim._data.state.bodies.w_i:\n{sim._data.state.bodies.w_i}")
-            print(f"[before]: sim._data.state.bodies.I_i:\n{sim._data.state.bodies.I_i}")
-            print(f"[before]: sim._data.state.bodies.inv_I_i:\n{sim._data.state.bodies.inv_I_i}\n")
+            print(f"[before]: sim._data.solver.bodies.w_i:\n{sim._data.solver.bodies.w_i}")
+            print(f"[before]: sim._data.solver.bodies.I_i:\n{sim._data.solver.bodies.I_i}")
+            print(f"[before]: sim._data.solver.bodies.inv_I_i:\n{sim._data.solver.bodies.inv_I_i}\n")
         sim._forward()
         if self.verbose:
-            print(f"[after]: sim._data.state.bodies.w_i:\n{sim._data.state.bodies.w_i}")
-            print(f"[after]: sim._data.state.bodies.I_i:\n{sim._data.state.bodies.I_i}")
-            print(f"[after]: sim._data.state.bodies.inv_I_i:\n{sim._data.state.bodies.inv_I_i}\n")
+            print(f"[after]: sim._data.solver.bodies.w_i:\n{sim._data.solver.bodies.w_i}")
+            print(f"[after]: sim._data.solver.bodies.I_i:\n{sim._data.solver.bodies.I_i}")
+            print(f"[after]: sim._data.solver.bodies.inv_I_i:\n{sim._data.solver.bodies.inv_I_i}\n")
 
     def test_simulator_advance_time(self):
         # Construct the model description using model builders for different systems
@@ -110,18 +110,18 @@ class TestSimulator(unittest.TestCase):
 
         # Rest the simulator
         if self.verbose:
-            print(f"[before]: sim._data.state.time.steps: {sim._data.state.time.steps}")
-            print(f"[before]: sim._data.state.time.time: {sim._data.state.time.time}")
+            print(f"[before]: sim._data.solver.time.steps: {sim._data.solver.time.steps}")
+            print(f"[before]: sim._data.solver.time.time: {sim._data.solver.time.time}")
         sim._advance_time()
         sim._advance_time()
         sim._advance_time()
         if self.verbose:
-            print(f"[after]: sim._data.state.time.steps: {sim._data.state.time.steps}")
-            print(f"[after]: sim._data.state.time.time: {sim._data.state.time.time}")
+            print(f"[after]: sim._data.solver.time.steps: {sim._data.solver.time.steps}")
+            print(f"[after]: sim._data.solver.time.time: {sim._data.solver.time.time}")
 
         # Capture and check the time state
-        steps = sim._data.state.time.steps.numpy()
-        times = sim._data.state.time.time.numpy()
+        steps = sim._data.solver.time.steps.numpy()
+        times = sim._data.solver.time.time.numpy()
         for i in range(1, sim.model.size.num_worlds):
             self.assertEqual(steps[i], np.int32(3))
             self.assertEqual(times[i], np.float32(0.003))
@@ -138,47 +138,55 @@ class TestSimulator(unittest.TestCase):
 
         # Rest the simulator
         if self.verbose:
-            print(f"[pre-step]: sim._data.state.time.steps: {sim._data.state.time.steps}")
-            print(f"[pre-step]: sim._data.state.time.time: {sim._data.state.time.time}")
-            print(f"[pre-step]: sim._data.state.bodies.q_i:\n{sim._data.state.bodies.q_i}")
-            print(f"[pre-step]: sim._data.state.bodies.u_i:\n{sim._data.state.bodies.u_i}")
+            print(f"[pre-step]: sim._data.solver.time.steps: {sim._data.solver.time.steps}")
+            print(f"[pre-step]: sim._data.solver.time.time: {sim._data.solver.time.time}")
+            print(f"[pre-step]: sim._data.solver.bodies.q_i:\n{sim._data.solver.bodies.q_i}")
+            print(f"[pre-step]: sim._data.solver.bodies.u_i:\n{sim._data.solver.bodies.u_i}")
         with wp.ScopedTimer("step", active=self.verbose):
             for _ in range(ns):
                 sim.step()
 
         if self.verbose:
-            print(f"[post-step]: sim._data.s_n.q_i:\n{sim._data.s_n.q_i}")
-            print(f"[post-step]: sim._data.s_n.u_i:\n{sim._data.s_n.u_i}")
-            print(f"[post-step]: sim._data.state.time.steps: {sim._data.state.time.steps}")
-            print(f"[post-step]: sim._data.state.time.time: {sim._data.state.time.time}")
-            print(f"[post-step]: sim._data.state.bodies.q_i:\n{sim._data.state.bodies.q_i}")
-            print(f"[post-step]: sim._data.state.bodies.u_i:\n{sim._data.state.bodies.u_i}")
+            print(f"[post-step]: sim._data.state_n.q_i:\n{sim._data.state_n.q_i}")
+            print(f"[post-step]: sim._data.state_n.u_i:\n{sim._data.state_n.u_i}")
+            print(f"[post-step]: sim._data.solver.time.steps: {sim._data.solver.time.steps}")
+            print(f"[post-step]: sim._data.solver.time.time: {sim._data.solver.time.time}")
+            print(f"[post-step]: sim._data.solver.bodies.q_i:\n{sim._data.solver.bodies.q_i}")
+            print(f"[post-step]: sim._data.solver.bodies.u_i:\n{sim._data.solver.bodies.u_i}")
             print(
-                f"[post-step]: sim.collision_detector.collisions.cdata.model_num_collisions: {sim.collision_detector.collisions.cdata.model_num_collisions}"
+                f"[post-step]: sim.collision_detector.collisions.cdata.model_num_collisions:\n"
+                f"{sim.collision_detector.collisions.cdata.model_num_collisions}"
             )
             print(
-                f"[post-step]: sim.collision_detector.collisions.cdata.world_num_collisions: {sim.collision_detector.collisions.cdata.world_num_collisions}"
+                f"[post-step]: sim.collision_detector.collisions.cdata.world_num_collisions:\n"
+                f"{sim.collision_detector.collisions.cdata.world_num_collisions}"
             )
             print(
-                f"[post-step]: sim.collision_detector.collisions.cdata.wid: {sim.collision_detector.collisions.cdata.wid}"
+                f"[post-step]: sim.collision_detector.collisions.cdata.wid:\n"
+                f"{sim.collision_detector.collisions.cdata.wid}"
             )
             print(
-                f"[post-step]: sim.collision_detector.collisions.cdata.geom_pair:\n{sim.collision_detector.collisions.cdata.geom_pair}"
+                f"[post-step]: sim.collision_detector.collisions.cdata.geom_pair:\n"
+                f"{sim.collision_detector.collisions.cdata.geom_pair}"
             )
             print(
-                f"[post-step]: sim.collision_detector.contacts.model_max_contacts: {sim.collision_detector.contacts.model_max_contacts}"
+                f"[post-step]: sim.collision_detector.contacts.model_max_contacts:\n"
+                f"{sim.collision_detector.contacts.model_max_contacts}"
             )
             print(
-                f"[post-step]: sim.collision_detector.contacts.model_num_contacts: {sim.collision_detector.contacts.model_num_contacts}"
+                f"[post-step]: sim.collision_detector.contacts.model_num_contacts:\n"
+                f"{sim.collision_detector.contacts.model_num_contacts}"
             )
             print(
-                f"[post-step]: sim.collision_detector.contacts.world_max_contacts: {sim.collision_detector.contacts.world_max_contacts}"
+                f"[post-step]: sim.collision_detector.contacts.world_max_contacts:\n"
+                f"{sim.collision_detector.contacts.world_max_contacts}"
             )
             print(
-                f"[post-step]: sim.collision_detector.contacts.world_num_contacts: {sim.collision_detector.contacts.world_num_contacts}"
+                f"[post-step]: sim.collision_detector.contacts.world_num_contacts:\n"
+                f"{sim.collision_detector.contacts.world_num_contacts}"
             )
-            print(f"[post-step]: sim.collision_detector.contacts.wid: {sim.collision_detector.contacts.wid}")
-            print(f"[post-step]: sim.collision_detector.contacts.cid: {sim.collision_detector.contacts.cid}")
+            print(f"[post-step]: sim.collision_detector.contacts.wid:\n{sim.collision_detector.contacts.wid}")
+            print(f"[post-step]: sim.collision_detector.contacts.cid:\n{sim.collision_detector.contacts.cid}")
             print(f"[post-step]: sim.collision_detector.contacts.body_A:\n{sim.collision_detector.contacts.body_A}")
             print(f"[post-step]: sim.collision_detector.contacts.body_B:\n{sim.collision_detector.contacts.body_B}")
             print(f"[post-step]: sim.collision_detector.contacts.gapfunc:\n{sim.collision_detector.contacts.gapfunc}")

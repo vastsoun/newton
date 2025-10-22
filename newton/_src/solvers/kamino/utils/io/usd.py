@@ -39,14 +39,15 @@ from ...core.materials import (
 )
 from ...core.math import I_3, screw
 from ...core.shapes import (
+    MESH_MAXHULLVERT,
     BoxShape,
     CapsuleShape,
     ConeShape,
     CylinderShape,
     EllipsoidShape,
-    PlaneShape,
     # ConvexShape,
-    # MeshShape,
+    MeshShape,
+    PlaneShape,
     # SDFShape
     SphereShape,
 )
@@ -326,7 +327,7 @@ class USDImporter:
 
         # Retrieve the namespace path of the prim
         path = str(material_prim.GetPath())
-        msg.info(f"path: {path}")
+        msg.debug(f"path: {path}")
 
         # Define and check for the required APIs
         req_api = ["PhysicsMaterialAPI"]
@@ -344,8 +345,8 @@ class USDImporter:
         # Retrieve the name and UID of the rigid body from the prim
         name = self._get_prim_name(material_prim)
         uid = self._get_prim_uid(material_prim)
-        msg.info(f"name: {name}")
-        msg.info(f"uid: {uid}")
+        msg.debug(f"name: {name}")
+        msg.debug(f"uid: {uid}")
 
         ###
         # Material Properties
@@ -357,10 +358,10 @@ class USDImporter:
         restitution = self._parse_float(material_prim, "physics:restitution", default=DEFAULT_RESTITUTION)
         static_friction = self._parse_float(material_prim, "physics:staticFriction", default=DEFAULT_FRICTION)
         dynamic_friction = self._parse_float(material_prim, "physics:dynamicFriction", default=DEFAULT_FRICTION)
-        msg.info(f"density: {density}")
-        msg.info(f"restitution: {restitution}")
-        msg.info(f"static_friction: {static_friction}")
-        msg.info(f"dynamic_friction: {dynamic_friction}")
+        msg.debug(f"density: {density}")
+        msg.debug(f"restitution: {restitution}")
+        msg.debug(f"static_friction: {static_friction}")
+        msg.debug(f"dynamic_friction: {dynamic_friction}")
 
         ###
         # MaterialDescriptor
@@ -408,8 +409,8 @@ class USDImporter:
         # Retrieve the name and UID of the rigid body from the prim
         name = self._get_prim_name(rigid_body_prim)
         uid = self._get_prim_uid(rigid_body_prim)
-        msg.info(f"name: {name}")
-        msg.info(f"uid: {uid}")
+        msg.debug(f"name: {name}")
+        msg.debug(f"uid: {uid}")
 
         ###
         # PhysicsRigidBodyAPI
@@ -426,9 +427,9 @@ class USDImporter:
         # NOTE: They are transformed to world coordiates since the RigidBodyAPI specifies them in local body coordinates
         v_i = wp.transform_vector(body_xform, distance_unit * vec3f(rigid_body_spec.linearVelocity))
         omega_i = wp.transform_vector(body_xform, rotation_unit * vec3f(rigid_body_spec.angularVelocity))
-        msg.info(f"body_xform: {body_xform}")
-        msg.info(f"omega_i: {omega_i}")
-        msg.info(f"v_i: {v_i}")
+        msg.debug(f"body_xform: {body_xform}")
+        msg.debug(f"omega_i: {omega_i}")
+        msg.debug(f"v_i: {v_i}")
 
         ###
         # PhysicsMassAPI
@@ -441,25 +442,28 @@ class USDImporter:
             mass_unit * distance_unit * distance_unit * self._parse_vec(rigid_body_prim, "physics:diagonalInertia")
         )
         i_q_i_pa = self._parse_quat(rigid_body_prim, "physics:principalAxes")
-        msg.info(f"m_i: {m_i}")
-        msg.info(f"i_r_com_i: {i_r_com_i}")
-        msg.info(f"i_I_i_diag: {i_I_i_diag}")
-        msg.info(f"i_q_i_pa: {i_q_i_pa}")
+        msg.debug(f"m_i: {m_i}")
+        msg.debug(f"i_r_com_i: {i_r_com_i}")
+        msg.debug(f"i_I_i_diag: {i_I_i_diag}")
+        msg.debug(f"i_q_i_pa: {i_q_i_pa}")
 
         # Check if the required properties are defined
         if m_i is None:
             raise ValueError(f"Rigid body '{path}' has no mass defined. Please set the mass using 'physics:mass'.")
         if i_r_com_i is None:
             raise ValueError(
-                f"Rigid body '{path}' has no center of mass defined. Please set the center of mass using 'physics:centerOfMass'."
+                f"Rigid body '{path}' has no center of mass defined. "
+                "Please set the center of mass using 'physics:centerOfMass'."
             )
         if i_I_i_diag is None:
             raise ValueError(
-                f"Rigid body '{path}' has no diagonal inertia defined. Please set the diagonal inertia using 'physics:diagonalInertia'."
+                f"Rigid body '{path}' has no diagonal inertia defined. "
+                "Please set the diagonal inertia using 'physics:diagonalInertia'."
             )
         if i_q_i_pa is None:
             raise ValueError(
-                f"Rigid body '{path}' has no principal axes defined. Please set the principal axes using 'physics:principalAxes'."
+                f"Rigid body '{path}' has no principal axes defined. "
+                "Please set the principal axes using 'physics:principalAxes'."
             )
 
         # Check each property to ensure they are valid
@@ -471,20 +475,20 @@ class USDImporter:
         i_q_i_pa = wp.normalize(quatf(i_q_i_pa))
         R_i_pa = wp.quat_to_matrix(i_q_i_pa)
         i_I_i = R_i_pa @ i_I_i_diag @ wp.transpose(R_i_pa)
-        msg.info(f"i_I_i_diag:\n{i_I_i_diag}")
-        msg.info(f"i_q_i_pa: {i_q_i_pa}")
-        msg.info(f"R_i_pa:\n{R_i_pa}")
-        msg.info(f"i_I_i:\n{i_I_i}")
+        msg.debug(f"i_I_i_diag:\n{i_I_i_diag}")
+        msg.debug(f"i_q_i_pa: {i_q_i_pa}")
+        msg.debug(f"R_i_pa:\n{R_i_pa}")
+        msg.debug(f"i_I_i:\n{i_I_i}")
 
         # Compute the center of mass in world coordinates
         r_com_i = wp.transform_point(body_xform, vec3f(i_r_com_i))
-        msg.info(f"r_com_i: {r_com_i}")
+        msg.debug(f"r_com_i: {r_com_i}")
 
         # Construc the initial pose and twist of the body in world coordinates
         q_i_0 = transformf(r_com_i, body_xform.q)
         u_i_0 = screw(v_i, omega_i)
-        msg.info(f"q_i_0: {q_i_0}")
-        msg.info(f"u_i_0: {u_i_0}")
+        msg.debug(f"q_i_0: {q_i_0}")
+        msg.debug(f"u_i_0: {u_i_0}")
 
         ###
         # RigidBodyDescriptor
@@ -752,8 +756,8 @@ class USDImporter:
         # Retrieve the name and UID of the joint from the prim
         name = self._get_prim_name(joint_prim)
         uid = self._get_prim_uid(joint_prim)
-        msg.info(f"name: {name}")
-        msg.info(f"uid: {uid}")
+        msg.debug(f"name: {name}")
+        msg.debug(f"uid: {uid}")
 
         ###
         # PhysicsJoint Common Properties
@@ -771,10 +775,10 @@ class USDImporter:
         F_r_Fj = distance_unit * vec3f(joint_spec.localPose1Position)
         B_q_Bj = self._from_gfquat(joint_spec.localPose0Orientation)
         F_q_Fj = self._from_gfquat(joint_spec.localPose1Orientation)
-        msg.info(f"B_r_Bj: {B_r_Bj}")
-        msg.info(f"F_r_Fj: {F_r_Fj}")
-        msg.info(f"B_q_Bj: {B_q_Bj}")
-        msg.info(f"F_q_Fj: {F_q_Fj}")
+        msg.debug(f"B_r_Bj: {B_r_Bj}")
+        msg.debug(f"F_r_Fj: {F_r_Fj}")
+        msg.debug(f"B_q_Bj: {B_q_Bj}")
+        msg.debug(f"F_q_Fj: {F_q_Fj}")
 
         # Check if body0 is specified
         if (not joint_spec.body0) and joint_spec.body1:
@@ -791,8 +795,8 @@ class USDImporter:
             # Both bodies are specified, and (0,1) are mapped to (B,F)
             bid_B = body_index_map[str(joint_spec.body0)]
             bid_F = body_index_map[str(joint_spec.body1)]
-        msg.info(f"bid_B: {bid_B}")
-        msg.info(f"bid_F: {bid_F}")
+        msg.debug(f"bid_B: {bid_B}")
+        msg.debug(f"bid_F: {bid_F}")
 
         ###
         # PhysicsJoint Specific Properties
@@ -912,12 +916,12 @@ class USDImporter:
             raise ValueError(
                 f"Unsupported joint type: {joint_type}. Supported types are: {self.supported_usd_joint_types}."
             )
-        msg.info(f"dof_type: {dof_type}")
-        msg.info(f"act_type: {act_type}")
-        msg.info(f"X_j:\n{X_j}")
-        msg.info(f"q_j_min: {q_j_min}")
-        msg.info(f"q_j_max: {q_j_max}")
-        msg.info(f"tau_j_max: {tau_j_max}")
+        msg.debug(f"dof_type: {dof_type}")
+        msg.debug(f"act_type: {act_type}")
+        msg.debug(f"X_j:\n{X_j}")
+        msg.debug(f"q_j_min: {q_j_min}")
+        msg.debug(f"q_j_max: {q_j_max}")
+        msg.debug(f"tau_j_max: {tau_j_max}")
 
         ###
         # JointDescriptor
@@ -962,8 +966,8 @@ class USDImporter:
         # Retrieve the name and UID of the geometry from the prim
         name = self._get_prim_name(geom_prim)
         uid = self._get_prim_uid(geom_prim)
-        msg.info(f"[Geom]: name: {name}")
-        msg.info(f"[{name}]: uid: {uid}")
+        msg.debug(f"[Geom]: name: {name}")
+        msg.debug(f"[{name}]: uid: {uid}")
 
         ###
         # PhysicsGeom Common Properties
@@ -973,14 +977,14 @@ class USDImporter:
         # NOTE: If a rigid body is not associated with the geom, the body index (bid) is
         # set to `-1` indicating that the geom belongs to the world, i.e. it is a static
         bid = body_index_map.get(str(geom_spec.rigidBody), -1)
-        msg.info(f"[{name}]: bid: {bid}")
+        msg.debug(f"[{name}]: bid: {bid}")
 
         # Extract the relative poses of the geom w.r.t the rigid body frame
         i_r_ig = distance_unit * vec3f(geom_spec.localPos)
         i_q_ig = self._from_gfquat(geom_spec.localRot)
         i_T_ig = transformf(i_r_ig, i_q_ig)
-        msg.info(f"[{name}]: i_r_ig: {i_r_ig}")
-        msg.info(f"[{name}]: i_q_ig: {i_q_ig}")
+        msg.debug(f"[{name}]: i_r_ig: {i_r_ig}")
+        msg.debug(f"[{name}]: i_q_ig: {i_q_ig}")
 
         ###
         # Layer Properties
@@ -997,7 +1001,7 @@ class USDImporter:
         # Retrive the geom scale
         # TODO: materials = geom_spec.materials
         scale = np.array(geom_spec.localScale)
-        msg.info(f"[{name}]: scale: {scale}")
+        msg.debug(f"[{name}]: scale: {scale}")
 
         # Construct the shape descriptor based on the geometry type
         shape = None
@@ -1035,14 +1039,54 @@ class USDImporter:
                 shape = EllipsoidShape(a=a, b=b, c=c)
 
         elif geom_type == self.UsdPhysics.ObjectType.MeshShape:
-            msg.warning(f"Mesh shapes are not yet supported. Geom '{name}' ({geom_prim.GetPath()}) will be ignored.")
-            return None  # TODO: Implement mesh shapes
+            # msg.warning(f"Mesh shapes are not yet supported. Geom '{name}' ({geom_prim.GetPath()}) will be ignored.")
+            # return None  # TODO: Implement mesh shapes
+            usd_mesh = self.UsdGeom.Mesh(geom_prim)
+            points = np.array(usd_mesh.GetPointsAttr().Get(), dtype=np.float32)
+            normals = (
+                np.array(usd_mesh.GetNormalsAttr().Get(), dtype=np.float32)
+                if usd_mesh.GetNormalsAttr().IsDefined()
+                else None
+            )
+            indices = np.array(usd_mesh.GetFaceVertexIndicesAttr().Get(), dtype=np.float32)
+            counts = usd_mesh.GetFaceVertexCountsAttr().Get()
+            # subdivision_type = usd_mesh.GetSubdivisionSchemeAttr().Get()
+            # orientation = usd_mesh.GetOrientationAttr().Get()
 
+            faces = []
+            face_id = 0
+            for count in counts:
+                if count == 3:
+                    faces.append(indices[face_id : face_id + 3])
+                elif count == 4:
+                    faces.append(indices[face_id : face_id + 3])
+                    faces.append(indices[[face_id, face_id + 2, face_id + 3]])
+                elif True:
+                    msg.error(
+                        f"Error while parsing USD mesh {usd_mesh.GetPath()}: "
+                        f"encountered polygon with {count} vertices, but only triangles and quads are supported."
+                    )
+                    continue
+                face_id += count
+            faces = np.array(faces, dtype=np.int32).flatten()
+            faces = np.array(faces, dtype=np.int32)
+
+            # print(f"usd_mesh: {usd_mesh}")
+            # print(f"points (shape={points.shape}):\n{points}\n")
+            # print(f"normals (shape={normals.shape if normals is not None else None}):\n{normals}\n")
+            # print(f"indices (shape={indices.shape}):\n{indices}\n")
+            # print(f"counts (len={len(counts)}):\n{counts}\n")
+            # print(f"subdivision_type: {subdivision_type}")
+            # print(f"orientation: {orientation}")
+            # print(f"faces (shape={faces.shape}):\n{faces}\n")
+
+            # Create the mesh shape (i.e. wrapper around newton.geometry.Mesh)
+            shape = MeshShape(vertices=points, indices=faces, normals=normals, maxhullvert=MESH_MAXHULLVERT)
         else:
             raise ValueError(
                 f"Unsupported geometry type: {geom_type}. Supported types are: {self.supported_usd_geom_types}."
             )
-        msg.info(f"[{name}]: shape: {shape}")
+        msg.debug(f"[{name}]: shape: {shape}")
 
         ###
         # Base GeometryDescriptor
@@ -1072,26 +1116,26 @@ class USDImporter:
             materials = geom_spec.materials
             if len(materials) > 0:
                 descriptor.mid = material_index_map.get(str(materials[0]), 0)
-            msg.info(f"[{name}]: material_index_map: {material_index_map}")
-            msg.info(f"[{name}]: materials: {materials}")
-            msg.info(f"[{name}]: mid: {descriptor.mid}")
+            msg.debug(f"[{name}]: material_index_map: {material_index_map}")
+            msg.debug(f"[{name}]: materials: {materials}")
+            msg.debug(f"[{name}]: mid: {descriptor.mid}")
 
             # Assign collision group/filters if specified
             collision_group_paths = geom_spec.collisionGroups
             filtered_collisions_paths = geom_spec.filteredCollisions
-            msg.info(f"[{name}]: collision_group_paths: {collision_group_paths}")
-            msg.info(f"[{name}]: filtered_collisions_paths: {filtered_collisions_paths}")
+            msg.debug(f"[{name}]: collision_group_paths: {collision_group_paths}")
+            msg.debug(f"[{name}]: filtered_collisions_paths: {filtered_collisions_paths}")
             collision_groups = []
             for collision_group_path in collision_group_paths:
                 collision_groups.append(cgroup_index_map.get(str(collision_group_path), 0))
             geom_group = min(collision_groups) if len(collision_groups) > 0 else 1
-            msg.info(f"[{name}]: collision_groups: {collision_groups}")
-            msg.info(f"[{name}]: geom_group: {geom_group}")
+            msg.debug(f"[{name}]: collision_groups: {collision_groups}")
+            msg.debug(f"[{name}]: geom_group: {geom_group}")
             geom_collides = geom_group
             for cgroup in collision_groups:
                 if cgroup != geom_group:
                     geom_collides += cgroup
-            msg.info(f"[{name}]: geom_collides: {geom_collides}")
+            msg.debug(f"[{name}]: geom_collides: {geom_collides}")
             descriptor.group = geom_group
             descriptor.collides = geom_collides
 
@@ -1146,9 +1190,9 @@ class USDImporter:
                 mass_unit = self.UsdPhysics.GetStageKilogramsPerUnit(stage)
         except Exception as e:
             msg.error(f"Failed to get mass unit: {e}")
-        msg.info(f"distance_unit: {distance_unit}")
-        msg.info(f"rotation_unit: {rotation_unit}")
-        msg.info(f"mass_unit: {mass_unit}")
+        msg.debug(f"distance_unit: {distance_unit}")
+        msg.debug(f"rotation_unit: {rotation_unit}")
+        msg.debug(f"mass_unit: {mass_unit}")
 
         ###
         # Preparation
@@ -1178,7 +1222,7 @@ class USDImporter:
             # Retrive the phusics sene path and description
             paths, scene_descs = ret_dict[self.UsdPhysics.ObjectType.Scene]
             path, scene_desc = paths[0], scene_descs[0]
-            msg.info(f"Found PhysicsScene at {path}")
+            msg.debug(f"Found PhysicsScene at {path}")
             if len(paths) > 1:
                 msg.error("Multiple PhysicsScene prims found in the USD file. Only the first prim will be considered.")
 
@@ -1187,7 +1231,7 @@ class USDImporter:
             gravity.acceleration = distance_unit * scene_desc.gravityMagnitude
             gravity.direction = vec3f(scene_desc.gravityDirection)
             builder.set_gravity(gravity)
-            msg.info(f"World gravity: {gravity}")
+            msg.debug(f"World gravity: {gravity}")
 
             # Set the world up-axis based on the gravity direction
             up_axis = Axis.from_any(int(np.argmax(np.abs(scene_desc.gravityDirection))))
@@ -1199,17 +1243,17 @@ class USDImporter:
         if apply_up_axis_from_stage:
             builder.set_up_axis(up_axis)
             axis_xform = wp.transform_identity()
-            msg.info(f"Using stage up axis {up_axis} as builder up axis")
+            msg.debug(f"Using stage up axis {up_axis} as builder up axis")
         else:
             axis_xform = wp.transform(vec3f(0.0), quat_between_axes(up_axis, builder.up_axis))
-            msg.info(f"Rotating stage to align its up axis {up_axis} with builder up axis {builder.up_axis}")
+            msg.debug(f"Rotating stage to align its up axis {up_axis} with builder up axis {builder.up_axis}")
 
         # Set the world offset transform based on the provided xform
         if xform is None:
             world_xform = axis_xform
         else:
             world_xform = wp.transform(*xform) * axis_xform
-        msg.info(f"World offset transform: {world_xform}")
+        msg.debug(f"World offset transform: {world_xform}")
 
         ###
         # Materials
@@ -1225,7 +1269,7 @@ class USDImporter:
             if self.UsdPhysics.ObjectType.RigidBodyMaterial in ret_dict:
                 prim_paths, rigid_body_material_specs = ret_dict[self.UsdPhysics.ObjectType.RigidBodyMaterial]
                 for prim_path, material_spec in zip(prim_paths, rigid_body_material_specs, strict=False):
-                    msg.info(f"Parsing material @'{prim_path}': {material_spec}")
+                    msg.debug(f"Parsing material @'{prim_path}': {material_spec}")
                     material_desc = self._parse_material(
                         material_prim=stage.GetPrimAtPath(prim_path),
                         distance_unit=distance_unit,
@@ -1234,10 +1278,10 @@ class USDImporter:
                     if material_desc is not None:
                         has_default_override = self._get_material_default_override(stage.GetPrimAtPath(prim_path))
                         if has_default_override:
-                            msg.info(f"Overriding default material with:\n{material_desc}\n")
+                            msg.debug(f"Overriding default material with:\n{material_desc}\n")
                             builder.set_default_material(material=material_desc)
                         else:
-                            msg.info(f"Adding material '{builder.num_materials}':\n{material_desc}\n")
+                            msg.debug(f"Adding material '{builder.num_materials}':\n{material_desc}\n")
                             material_index_map[str(prim_path)] = builder.add_material(material=material_desc)
             msg.debug(f"material_index_map: {material_index_map}")
 
@@ -1246,7 +1290,7 @@ class USDImporter:
             for i, first in enumerate(builder.materials.materials):
                 for j, second in enumerate(builder.materials.materials):
                     if i <= j:  # Avoid duplicate pairs
-                        msg.info(f"Generating material pair properties for '{first.name}' and '{second.name}'")
+                        msg.debug(f"Generating material pair properties for '{first.name}' and '{second.name}'")
                         material_pair = self._material_pair_properties_from(first, second)
                         msg.debug(f"material_pair: {material_pair}")
                         builder.set_material_pair(
@@ -1265,7 +1309,7 @@ class USDImporter:
         if self.UsdPhysics.ObjectType.CollisionGroup in ret_dict:
             prim_paths, collision_group_specs = ret_dict[self.UsdPhysics.ObjectType.CollisionGroup]
             for prim_path, collision_group_spec in zip(prim_paths, collision_group_specs, strict=False):
-                msg.info(f"Parsing collision group @'{prim_path}': {collision_group_spec}")
+                msg.debug(f"Parsing collision group @'{prim_path}': {collision_group_spec}")
                 cgroup_index_map[str(prim_path)] = cgroup_count + 1
                 cgroup_count += 1
         msg.debug(f"cgroup_count: {cgroup_count}")
@@ -1283,7 +1327,7 @@ class USDImporter:
         if self.UsdPhysics.ObjectType.RigidBody in ret_dict:
             prim_paths, rigid_body_specs = ret_dict[self.UsdPhysics.ObjectType.RigidBody]
             for prim_path, rigid_body_spec in zip(prim_paths, rigid_body_specs, strict=False):
-                msg.info(f"Parsing rigid body @'{prim_path}'")
+                msg.debug(f"Parsing rigid body @'{prim_path}'")
                 rigid_body_desc = self._parse_rigid_body(
                     only_load_enabled_rigid_bodies=only_load_enabled_rigid_bodies,
                     rigid_body_prim=stage.GetPrimAtPath(prim_path),
@@ -1294,7 +1338,7 @@ class USDImporter:
                     mass_unit=mass_unit,
                 )
                 if rigid_body_desc is not None:
-                    msg.info(f"Adding body '{builder.num_bodies}':\n{rigid_body_desc}\n")
+                    msg.debug(f"Adding body '{builder.num_bodies}':\n{rigid_body_desc}\n")
                     body_index_map[str(prim_path)] = builder.add_rigid_body_descriptor(descriptor=rigid_body_desc)
         msg.debug(f"body_index_map: {body_index_map}")
 
@@ -1319,7 +1363,7 @@ class USDImporter:
             joint_paths, joint_specs = ret_dict[joint_type]
             for prim_path, joint_spec in zip(joint_paths, joint_specs, strict=False):
                 if prim_path == joint_prim_path:
-                    msg.info(f"Parsing joint @'{prim_path}' of type '{joint_type_name}'")
+                    msg.debug(f"Parsing joint @'{prim_path}' of type '{joint_type_name}'")
                     joint_desc = self._parse_joint(
                         only_load_enabled_joints=only_load_enabled_joints,
                         joint_prim=stage.GetPrimAtPath(prim_path),
@@ -1330,7 +1374,7 @@ class USDImporter:
                         rotation_unit=rotation_unit,
                     )
                     if joint_desc is not None:
-                        msg.info(f"Adding joint '{builder.num_joints}':\n{joint_desc}\n")
+                        msg.debug(f"Adding joint '{builder.num_joints}':\n{joint_desc}\n")
                         builder.add_joint_descriptor(descriptor=joint_desc)
                     break  # Stop after the first match
 
@@ -1362,7 +1406,7 @@ class USDImporter:
             geom_paths, geom_specs = ret_dict[geom_type]
             for prim_path, geom_spec in zip(geom_paths, geom_specs, strict=False):
                 if prim_path == geom_prim_path:
-                    msg.info(f"Parsing geometry @'{prim_path}' of type '{geom_type_name}'")
+                    msg.debug(f"Parsing geometry @'{prim_path}' of type '{geom_type_name}'")
                     geom_desc = self._parse_geom(
                         geom_prim=stage.GetPrimAtPath(prim_path),
                         geom_spec=geom_spec,
@@ -1379,10 +1423,10 @@ class USDImporter:
                             continue
                         # Append geometry descriptor to appropriate entity
                         if type(geom_desc) is CollisionGeometryDescriptor:
-                            msg.info(f"Adding collision geom '{builder.num_collision_geoms}':\n{geom_desc}\n")
+                            msg.debug(f"Adding collision geom '{builder.num_collision_geoms}':\n{geom_desc}\n")
                             builder.add_collision_geometry_descriptor(descriptor=geom_desc)
                         elif type(geom_desc) is GeometryDescriptor:
-                            msg.info(f"Adding physical geom '{builder.num_physical_geoms}':\n{geom_desc}\n")
+                            msg.debug(f"Adding physical geom '{builder.num_physical_geoms}':\n{geom_desc}\n")
                             builder.add_physical_geometry_descriptor(descriptor=geom_desc)
                     break  # Stop after the first match
 

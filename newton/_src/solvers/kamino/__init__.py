@@ -13,9 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-KAMINO
-"""
+"""KAMINO"""
 
 from .core import math
 from .core.bodies import RigidBodiesData, RigidBodiesModel, RigidBodyDescriptor
@@ -79,6 +77,9 @@ from .core.time import (
     TimeModel,
 )
 from .core.types import (
+    ArrayLike,
+    FloatArrayLike,
+    IntArrayLike,
     Mat33,
     Quat,
     Transform,
@@ -137,9 +138,17 @@ from .kinematics.jacobians import (
     DenseSystemJacobians,
     DenseSystemJacobiansData,
 )
-from .simulation import Simulator
-from .solvers import padmm
-from .solvers.fk import ForwardKinematicsSolver
+from .simulation import (
+    Simulator,
+    SimulatorData,
+    SimulatorSettings,
+)
+from .solvers import (
+    APADMMDualSolver,
+    APADMMSettings,
+    PADMMDualSolver,
+    PADMMSettings,
+)
 from .utils.io import hdf5, usd
 from .utils.print import printmatrix, printvector
 from .utils.sparse import sparseview
@@ -154,6 +163,9 @@ __all__ = [
     "GRAVITY_ACCEL_DEFAULT",
     "GRAVITY_DIREC_DEFAULT",
     "GRAVITY_NAME_DEFAULT",
+    "APADMMDualSolver",
+    "APADMMSettings",
+    "ArrayLike",
     "BoxShape",
     "CapsuleShape",
     "CollisionDetector",
@@ -177,12 +189,14 @@ __all__ = [
     "DualProblemData",
     "EllipsoidShape",
     "EmptyShape",
+    "FloatArrayLike",
     "ForwardKinematicsSolver",
     "GeometriesData",
     "GeometriesModel",
     "GeometryDescriptor",
     "GravityDescriptor",
     "GravityModel",
+    "IntArrayLike",
     "JointActuationType",
     "JointDescriptor",
     "JointDoFType",
@@ -199,6 +213,8 @@ __all__ = [
     "ModelData",
     "ModelDataInfo",
     "ModelInfo",
+    "PADMMDualSolver",
+    "PADMMSettings",
     "PlaneShape",
     "Quat",
     "RigidBodiesData",
@@ -208,6 +224,8 @@ __all__ = [
     "ShapeDescriptor",
     "ShapeType",
     "Simulator",
+    "SimulatorData",
+    "SimulatorSettings",
     "SphereShape",
     "State",
     "TimeData",
@@ -239,7 +257,6 @@ __all__ = [
     "mat65f",
     "mat66f",
     "math",
-    "padmm",
     "printmatrix",
     "printvector",
     "sparseview",

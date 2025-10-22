@@ -154,47 +154,47 @@ def print_model_joints(model: Model, offsets=True, parameters=True, limits=True)
         print(f"model.joints.tau_j_max: {model.joints.tau_j_max}")
 
 
-def print_model_state_info(state: ModelData):
-    print("state.info.num_total_cts: ", state.info.num_total_cts)
-    print("state.info.num_limits: ", state.info.num_limits)
-    print("state.info.num_limit_cts: ", state.info.num_limit_cts)
-    print("state.info.limit_cts_group_offset: ", state.info.limit_cts_group_offset)
-    print("state.info.num_contacts: ", state.info.num_contacts)
-    print("state.info.num_contact_cts: ", state.info.num_contact_cts)
-    print("state.info.contact_cts_group_offset: ", state.info.contact_cts_group_offset)
+def print_model_data_info(data: ModelData):
+    print("data.info.num_total_cts: ", data.info.num_total_cts)
+    print("data.info.num_limits: ", data.info.num_limits)
+    print("data.info.num_limit_cts: ", data.info.num_limit_cts)
+    print("data.info.limit_cts_group_offset: ", data.info.limit_cts_group_offset)
+    print("data.info.num_contacts: ", data.info.num_contacts)
+    print("data.info.num_contact_cts: ", data.info.num_contact_cts)
+    print("data.info.contact_cts_group_offset: ", data.info.contact_cts_group_offset)
 
 
-def print_model_state(state: ModelData, info=True):
+def print_model_state(data: ModelData, info=True):
     # Print the state info
     if info:
-        print_model_state_info(state)
+        print_model_data_info(data)
     # Print body state data
-    print(f"state.bodies.I_i: {state.bodies.I_i}")
-    print(f"state.bodies.inv_I_i: {state.bodies.inv_I_i}")
-    print(f"state.bodies.q_i: {state.bodies.q_i}")
-    print(f"state.bodies.u_i: {state.bodies.u_i}")
-    print(f"state.bodies.w_i: {state.bodies.w_i}")
-    print(f"state.bodies.w_a_i: {state.bodies.w_a_i}")
-    print(f"state.bodies.w_j_i: {state.bodies.w_j_i}")
-    print(f"state.bodies.w_l_i: {state.bodies.w_l_i}")
-    print(f"state.bodies.w_c_i: {state.bodies.w_c_i}")
-    print(f"state.bodies.w_e_i: {state.bodies.w_e_i}")
+    print(f"data.bodies.I_i: {data.bodies.I_i}")
+    print(f"data.bodies.inv_I_i: {data.bodies.inv_I_i}")
+    print(f"data.bodies.q_i: {data.bodies.q_i}")
+    print(f"data.bodies.u_i: {data.bodies.u_i}")
+    print(f"data.bodies.w_i: {data.bodies.w_i}")
+    print(f"data.bodies.w_a_i: {data.bodies.w_a_i}")
+    print(f"data.bodies.w_j_i: {data.bodies.w_j_i}")
+    print(f"data.bodies.w_l_i: {data.bodies.w_l_i}")
+    print(f"data.bodies.w_c_i: {data.bodies.w_c_i}")
+    print(f"data.bodies.w_e_i: {data.bodies.w_e_i}")
     # Print joint state data
-    print(f"state.joints.p_j: {state.joints.p_j}")
-    print(f"state.joints.r_j: {state.joints.r_j}")
-    print(f"state.joints.dr_j: {state.joints.dr_j}")
-    print(f"state.joints.lambda_j: {state.joints.lambda_j}")
-    print(f"state.joints.q_j: {state.joints.q_j}")
-    print(f"state.joints.dq_j: {state.joints.dq_j}")
-    print(f"state.joints.tau_j: {state.joints.tau_j}")
-    print(f"state.joints.j_w_j: {state.joints.j_w_j}")
-    print(f"state.joints.j_w_c_j: {state.joints.j_w_c_j}")
-    print(f"state.joints.j_w_a_j: {state.joints.j_w_a_j}")
-    print(f"state.joints.j_w_l_j: {state.joints.j_w_l_j}")
+    print(f"data.joints.p_j: {data.joints.p_j}")
+    print(f"data.joints.r_j: {data.joints.r_j}")
+    print(f"data.joints.dr_j: {data.joints.dr_j}")
+    print(f"data.joints.lambda_j: {data.joints.lambda_j}")
+    print(f"data.joints.q_j: {data.joints.q_j}")
+    print(f"data.joints.dq_j: {data.joints.dq_j}")
+    print(f"data.joints.tau_j: {data.joints.tau_j}")
+    print(f"data.joints.j_w_j: {data.joints.j_w_j}")
+    print(f"data.joints.j_w_c_j: {data.joints.j_w_c_j}")
+    print(f"data.joints.j_w_a_j: {data.joints.j_w_a_j}")
+    print(f"data.joints.j_w_l_j: {data.joints.j_w_l_j}")
     # Print the geometry state data
-    print(f"state.cgeoms.pose: {state.cgeoms.pose}")
-    print(f"state.cgeoms.aabb: {state.cgeoms.aabb}")
-    print(f"state.cgeoms.radius: {state.cgeoms.radius}")
+    print(f"data.cgeoms.pose: {data.cgeoms.pose}")
+    print(f"data.cgeoms.aabb: {data.cgeoms.aabb}")
+    print(f"data.cgeoms.radius: {data.cgeoms.radius}")
 
 
 ###

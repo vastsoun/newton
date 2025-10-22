@@ -15,8 +15,19 @@
 
 import os
 
-import newton._src.solvers.kamino.utils.logger as msg
-from newton._src.solvers.kamino.simulation.simulator import Simulator
+from ..simulation.simulator import Simulator
+from ..utils import logger as msg
+
+###
+# Example path utilities
+###
+
+
+def get_examples_output_path() -> str:
+    path = os.path.dirname(os.path.realpath(__file__)) + "/output"
+    if not os.path.exists(path):
+        os.makedirs(path)
+    return path
 
 
 def get_examples_data_root_path() -> str:
@@ -38,6 +49,11 @@ def get_examples_data_npy_path() -> str:
     if not os.path.exists(path):
         os.makedirs(path)
     return path
+
+
+###
+# Printing utilities
+###
 
 
 def print_frame(sim: Simulator, i: int, pfunc=msg.debug):

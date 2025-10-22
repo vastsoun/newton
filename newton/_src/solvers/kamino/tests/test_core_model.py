@@ -38,9 +38,9 @@ from newton._src.solvers.kamino.models.utils import (
 )
 from newton._src.solvers.kamino.tests.utils.print import (
     print_model_bodies,
+    print_model_data_info,
     print_model_info,
     print_model_joints,
-    print_model_state_info,
 )
 
 ###
@@ -73,7 +73,7 @@ class TestModel(unittest.TestCase):
         state = model.data()
         if self.verbose:
             print("")  # Add a newline for better readability
-            print_model_state_info(state)
+            print_model_data_info(state)
 
         # Check the model info entries
         self.assertEqual(model.size.sum_of_num_bodies, len(bids))
@@ -109,7 +109,7 @@ class TestModel(unittest.TestCase):
         state = model.data()
         if self.verbose:
             print("")  # Add a newline for better readability
-            print_model_state_info(state)
+            print_model_data_info(state)
 
         # Check the model info entries
         self.assertEqual(model.size.sum_of_num_bodies, total_nb)
@@ -134,7 +134,7 @@ class TestModel(unittest.TestCase):
         state = model.data()
         if self.verbose:
             print("")  # Add a newline for better readability
-            print_model_state_info(state)
+            print_model_data_info(state)
 
         # Check the model info entries
         self.assertEqual(model.size.sum_of_num_bodies, num_worlds * 2)
@@ -162,7 +162,7 @@ class TestModel(unittest.TestCase):
         state = model.data()
         if self.verbose:
             print("")  # Add a newline for better readability
-            print_model_state_info(state)
+            print_model_data_info(state)
 
         # Check the model info entries
         self.assertEqual(model.info.num_worlds, num_worlds)

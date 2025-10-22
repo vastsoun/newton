@@ -1,3 +1,18 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import argparse
 import os
 import time
@@ -7,19 +22,24 @@ import numpy as np
 import warp as wp
 
 import newton
-import newton.examples
-
 import newton._src.solvers.kamino.utils.logger as msg
-from newton._src.solvers.kamino.core.types import float32, vec6f
+import newton.examples
 from newton._src.solvers.kamino.core.builder import ModelBuilder
-from newton._src.solvers.kamino.utils.io import hdf5
-from newton._src.solvers.kamino.utils.io.usd import USDImporter
-from newton._src.solvers.kamino.simulation.simulator import Simulator
-from newton._src.solvers.kamino.utils.print import print_progress_bar
-from newton._src.solvers.kamino.utils.device import get_device_info
+from newton._src.solvers.kamino.core.types import float32, vec6f
+from newton._src.solvers.kamino.examples import get_examples_data_hdf5_path, print_frame
 from newton._src.solvers.kamino.models import get_primitives_usd_assets_path
 from newton._src.solvers.kamino.models.builders import build_box_on_plane
-from newton._src.solvers.kamino.examples import get_examples_data_hdf5_path, print_frame
+from newton._src.solvers.kamino.simulation.simulator import Simulator, SimulatorSettings
+from newton._src.solvers.kamino.utils.device import get_device_info
+from newton._src.solvers.kamino.utils.io import hdf5
+from newton._src.solvers.kamino.utils.io.usd import USDImporter
+from newton._src.solvers.kamino.utils.print import print_progress_bar
+
+###
+# Module configs
+###
+
+wp.set_module_options({"enable_backward": False})
 
 
 ###
@@ -29,12 +49,10 @@ from newton._src.solvers.kamino.examples import get_examples_data_hdf5_path, pri
 
 @wp.kernel
 def _control_callback(
-    model_time_dt: wp.array(dtype=float32),
-    state_time_t: wp.array(dtype=float32),
-    state_joints_q_j: wp.array(dtype=float32),
-    state_joints_dq_j: wp.array(dtype=float32),
-    state_joints_tau_j: wp.array(dtype=float32),
-    state_bodies_w_e_i: wp.array(dtype=vec6f),
+    model_dt: wp.array(dtype=float32),
+    state_t: wp.array(dtype=float32),
+    state_w_e_i: wp.array(dtype=vec6f),
+    control_tau_j: wp.array(dtype=float32),
 ):
     """
     An example control callback kernel.
@@ -48,7 +66,7 @@ def _control_callback(
     t_end = float32(7.0)
 
     # Get the current time
-    t = state_time_t[wid]
+    t = state_t[wid]
 
     # Apply a time-dependent external force
     if t > t_start and t < t_end:
@@ -56,9 +74,9 @@ def _control_callback(
         g = float32(9.81)  # Gravitational acceleration
         mu = float32(0.7)  # Friction coefficient
         f_ext = 1.1 * m * g * mu  # Magnitude of the external force
-        state_bodies_w_e_i[bid] = vec6f(f_ext, 0.0, 0.0, 0.0, 0.0, 0.0)
+        state_w_e_i[bid] = vec6f(f_ext, 0.0, 0.0, 0.0, 0.0, 0.0)
     else:
-        state_bodies_w_e_i[bid] = vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+        state_w_e_i[bid] = vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
 
 
 ###
@@ -75,11 +93,9 @@ def control_callback(sim: Simulator):
         dim=1,
         inputs=[
             sim.model.time.dt,
-            sim.model_data.time.time,
-            sim.model_data.joints.q_j,
-            sim.model_data.joints.dq_j,
-            sim.model_data.joints.tau_j,
-            sim.model_data.bodies.w_e_i,
+            sim.data.solver.time.time,
+            sim.data.solver.bodies.w_e_i,
+            sim.data.control_n.tau_j,
         ],
     )
 
@@ -102,17 +118,6 @@ RENDER_DATASET_PATH = os.path.join(get_examples_data_hdf5_path(), "box_on_plane.
 
 def run_hdf5_mode(clear_warp_cache=True, use_cuda_graph=False, load_from_usd=True, verbose=False):
     """Run the simulation in HDF5 mode to save data to file."""
-    # Application options
-
-    # Clear the warp caches
-    if clear_warp_cache:
-        wp.clear_kernel_cache()
-        wp.clear_lto_cache()
-
-    # Warp configs
-    # wp.config.verify_fp = True
-    # wp.config.verbose = True
-    # wp.config.verbose_warnings = True
 
     # Set global numpy configurations
     np.set_printoptions(linewidth=20000, precision=6, threshold=10000, suppress=True)  # Suppress scientific notation
@@ -142,9 +147,17 @@ def run_hdf5_mode(clear_warp_cache=True, use_cuda_graph=False, load_from_usd=Tru
     # Set gravity
     builder.gravity.enabled = True
 
+    # Set solver settings
+    settings = SimulatorSettings()
+    settings.dt = 0.001
+    settings.solver.primal_tolerance = 1e-6
+    settings.solver.dual_tolerance = 1e-6
+    settings.solver.compl_tolerance = 1e-6
+    settings.solver.rho_0 = 0.1
+
     # Create a simulator
     msg.info("Building the simulator...")
-    sim = Simulator(builder=builder, device=device)
+    sim = Simulator(builder=builder, settings=settings, device=device)
     sim.set_control_callback(control_callback)
 
     # Capture graphs for simulator ops: reset and step
@@ -164,8 +177,8 @@ def run_hdf5_mode(clear_warp_cache=True, use_cuda_graph=False, load_from_usd=Tru
     msg.info("Warming up the simulator...")
     if use_cuda_graph:
         print("Running with CUDA graphs...")
-        wp.capture_launch(reset_graph)
         wp.capture_launch(step_graph)
+        wp.capture_launch(reset_graph)
     else:
         msg.info("Running with kernels...")
         with wp.ScopedDevice(device):
@@ -210,8 +223,7 @@ def run_hdf5_mode(clear_warp_cache=True, use_cuda_graph=False, load_from_usd=Tru
                 if use_cuda_graph:
                     wp.capture_launch(step_graph)
                 else:
-                    with wp.ScopedDevice(device):
-                        sim.step()
+                    sim.step()
                 wp.synchronize()
 
                 sdata.update_from(simulator=sim)
@@ -225,7 +237,7 @@ def run_hdf5_mode(clear_warp_cache=True, use_cuda_graph=False, load_from_usd=Tru
     renderer.save()
 
 
-class BoxesHingedExample:
+class Example:
     """ViewerGL example class for boxes hinged simulation."""
 
     def __init__(self, viewer, load_from_usd=True, use_cuda_graph=False):
@@ -255,9 +267,17 @@ class BoxesHingedExample:
         # Set gravity
         builder.gravity.enabled = True
 
+        # Set solver settings
+        settings = SimulatorSettings()
+        settings.dt = 0.001
+        settings.solver.primal_tolerance = 1e-4
+        settings.solver.dual_tolerance = 1e-4
+        settings.solver.compl_tolerance = 1e-4
+        settings.solver.rho_0 = 0.1
+
         # Create a simulator
         msg.info("Building the simulator...")
-        self.sim = Simulator(builder=builder, device=device)
+        self.sim = Simulator(builder=builder, settings=settings, device=device)
         self.sim.set_control_callback(control_callback)
 
         # Don't set a newton model - we'll render everything manually using log_shapes
@@ -407,28 +427,28 @@ if __name__ == "__main__":
         default="viewer",
         help="Simulation mode: 'hdf5' for data collection, 'viewer' for live visualization",
     )
-    parser.add_argument("--clear-cache", action="store_true", default=True, help="Clear warp cache")
-    parser.add_argument("--cuda-graph", action="store_true", help="Use CUDA graphs")
+    parser.add_argument("--clear-cache", action="store_true", default=False, help="Clear warp cache")
+    parser.add_argument("--cuda-graph", action="store_true", default=True, help="Use CUDA graphs")
     parser.add_argument("--load-from-usd", action="store_true", default=False, help="Load model from USD file")
     parser.add_argument("--verbose", action="store_true", help="Enable verbose output")
-
-    # Add viewer arguments when in viewer mode
     parser.add_argument("--viewer", choices=["gl", "usd", "rerun", "null"], default="gl", help="Viewer type")
     parser.add_argument("--headless", action="store_true", help="Run in headless mode")
     parser.add_argument("--device", type=str, help="Compute device")
     parser.add_argument("--output-path", type=str, help="Output path for USD viewer")
     parser.add_argument("--num-frames", type=int, default=1000, help="Number of frames for null/USD viewer")
-
+    parser.add_argument("--test", action="store_true", default=False, help="Run tests")
     args = parser.parse_args()
 
+    # Clear warp cache if requested
+    if args.clear_cache:
+        wp.clear_kernel_cache()
+        wp.clear_lto_cache()
+
+    # Execute based on mode
     if args.mode == "hdf5":
         msg.info("Running in HDF5 mode...")
-        run_hdf5_mode(
-            clear_warp_cache=args.clear_cache,
-            use_cuda_graph=args.cuda_graph,
-            load_from_usd=args.load_from_usd,
-            verbose=args.verbose,
-        )
+        run_hdf5_mode(use_cuda_graph=args.cuda_graph, load_from_usd=args.load_from_usd)
+
     elif args.mode == "viewer":
         msg.info("Running in ViewerGL mode...")
 
@@ -451,7 +471,7 @@ if __name__ == "__main__":
             raise ValueError(f"Invalid viewer: {args.viewer}")
 
         # Create and run example
-        example = BoxesHingedExample(viewer, load_from_usd=args.load_from_usd, use_cuda_graph=args.cuda_graph)
+        example = Example(viewer, load_from_usd=args.load_from_usd, use_cuda_graph=args.cuda_graph)
 
         # Set initial camera position for better view of the hinged boxes
         if hasattr(viewer, "set_camera"):
@@ -461,4 +481,4 @@ if __name__ == "__main__":
             yaw = 180.0 + 45.0
             viewer.set_camera(camera_pos, pitch, yaw)
 
-        newton.examples.run(example)
+        newton.examples.run(example, args)

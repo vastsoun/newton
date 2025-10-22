@@ -133,7 +133,7 @@ def _set_joint_follower_body_state(
 ###
 
 
-def set_joint_follower_body_state(model: Model, state: ModelData):
+def set_joint_follower_body_state(model: Model, data: ModelData):
     wp.launch(
         _set_joint_follower_body_state,
         dim=model.size.sum_of_num_joints,
@@ -143,8 +143,8 @@ def set_joint_follower_body_state(model: Model, state: ModelData):
             model.joints.B_r_Bj,
             model.joints.F_r_Fj,
             model.joints.X_j,
-            state.bodies.q_i,
-            state.bodies.u_i,
+            data.bodies.q_i,
+            data.bodies.u_i,
         ],
     )
 
@@ -168,28 +168,28 @@ class TestKinematicsJoints(unittest.TestCase):
 
         # Create the model and state
         model = builder.finalize(device=self.default_device)
-        state = model.data(device=self.default_device)
+        data = model.data(device=self.default_device)
 
         # Set the state of the Follower body to a known state
-        set_joint_follower_body_state(model, state)
+        set_joint_follower_body_state(model, data)
         if self.verbose:
-            print("state.bodies.q_i:\n", state.bodies.q_i)
-            print("state.bodies.u_i:\n", state.bodies.u_i)
+            print("data.bodies.q_i:\n", data.bodies.q_i)
+            print("data.bodies.u_i:\n", data.bodies.u_i)
 
         # Update the state of the joints
-        compute_joints_state(model, state)
+        compute_joints_state(model=model, q_j_p=wp.zeros_like(data.joints.q_j), data=data)
         if self.verbose:
-            print("state.joints.p_j:\n", state.joints.p_j)
-            print("state.joints.r_j:\n", state.joints.r_j)
-            print("state.joints.dr_j:\n", state.joints.dr_j)
-            print("state.joints.q_j:\n", state.joints.q_j)
-            print("state.joints.dq_j:\n", state.joints.dq_j)
+            print("data.joints.p_j:\n", data.joints.p_j)
+            print("data.joints.r_j:\n", data.joints.r_j)
+            print("data.joints.dr_j:\n", data.joints.dr_j)
+            print("data.joints.q_j:\n", data.joints.q_j)
+            print("data.joints.dq_j:\n", data.joints.dq_j)
 
         # Check the joint state values
-        r_j_np = state.joints.r_j.numpy()
-        dr_j_np = state.joints.dr_j.numpy()
-        q_j_np = state.joints.q_j.numpy()
-        dq_j_np = state.joints.dq_j.numpy()
+        r_j_np = data.joints.r_j.numpy()
+        dr_j_np = data.joints.dr_j.numpy()
+        q_j_np = data.joints.q_j.numpy()
+        dq_j_np = data.joints.dq_j.numpy()
         self.assertAlmostEqual(q_j_np[0], Q_X_J, places=6)
         self.assertAlmostEqual(r_j_np[0], J_DR_J[0], places=6)
         self.assertAlmostEqual(r_j_np[1], J_DR_J[1], places=6)
@@ -209,31 +209,31 @@ class TestKinematicsJoints(unittest.TestCase):
 
         # Create the model and state
         model = builder.finalize(device=self.default_device)
-        state = model.data(device=self.default_device)
+        data = model.data(device=self.default_device)
 
         # Set the state of the Follower body to a known state
-        set_joint_follower_body_state(model, state)
+        set_joint_follower_body_state(model, data)
         if self.verbose:
-            print("state.bodies.q_i:\n", state.bodies.q_i)
-            print("state.bodies.u_i:\n", state.bodies.u_i)
+            print("data.bodies.q_i:\n", data.bodies.q_i)
+            print("data.bodies.u_i:\n", data.bodies.u_i)
 
         # Update the state of the joints
-        compute_joints_state(model, state)
+        compute_joints_state(model=model, q_j_p=wp.zeros_like(data.joints.q_j), data=data)
         if self.verbose:
-            print("state.joints.p_j:\n", state.joints.p_j)
-            print("state.joints.r_j:\n", state.joints.r_j)
-            print("state.joints.dr_j:\n", state.joints.dr_j)
-            print("state.joints.q_j:\n", state.joints.q_j)
-            print("state.joints.dq_j:\n", state.joints.dq_j)
+            print("data.joints.p_j:\n", data.joints.p_j)
+            print("data.joints.r_j:\n", data.joints.r_j)
+            print("data.joints.dr_j:\n", data.joints.dr_j)
+            print("data.joints.q_j:\n", data.joints.q_j)
+            print("data.joints.dq_j:\n", data.joints.dq_j)
 
         # Check the joint state values
         nj = model.size.sum_of_num_joints
         cio_j_np = model.joints.cts_offset.numpy()
-        r_j_np = state.joints.r_j.numpy()
-        dr_j_np = state.joints.dr_j.numpy()
+        r_j_np = data.joints.r_j.numpy()
+        dr_j_np = data.joints.dr_j.numpy()
         dio_j_np = model.joints.dofs_offset.numpy()
-        q_j_np = state.joints.q_j.numpy()
-        dq_j_np = state.joints.dq_j.numpy()
+        q_j_np = data.joints.q_j.numpy()
+        dq_j_np = data.joints.dq_j.numpy()
         for j in range(nj):
             self.assertAlmostEqual(q_j_np[dio_j_np[j] + 0], Q_X_J, places=6)
             self.assertAlmostEqual(r_j_np[cio_j_np[j] + 0], J_DR_J[0], places=6)

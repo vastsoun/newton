@@ -436,7 +436,7 @@ class Limits:
     def detect(
         self,
         model: Model,
-        state: ModelData,
+        data: ModelData,
     ):
         """
         Detects the active joint limits in the model and updates the limits data.
@@ -450,10 +450,10 @@ class Limits:
             raise ValueError("Limits: model must be specified for detection (got None)")
         elif not isinstance(model, Model):
             raise TypeError("Limits: model must be an instance of Model")
-        if state is None:
-            raise ValueError("Limits: state must be specified for detection (got None)")
-        elif not isinstance(state, ModelData):
-            raise TypeError("Limits: state must be an instance of ModelData")
+        if data is None:
+            raise ValueError("Limits: data must be specified for detection (got None)")
+        elif not isinstance(data, ModelData):
+            raise TypeError("Limits: data must be an instance of ModelData")
 
         # Ensure the limits data is allocated
         if self._data.model_max_limits is None:
@@ -480,7 +480,7 @@ class Limits:
                 model.joints.bid_F,
                 model.joints.q_j_min,
                 model.joints.q_j_max,
-                state.joints.q_j,
+                data.joints.q_j,
                 self._data.model_max_limits,
                 self._data.world_max_limits,
                 # Outputs:

@@ -13,14 +13,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-KAMINO: Simulation Module
-"""
+"""The Kamino Control Module"""
 
-from .simulator import Simulator, SimulatorData, SimulatorSettings
+from .animation import AnimationJointReference, AnimationJointReferenceData
+from .pid import JointSpacePIDController, PIDControllerData
 
 ###
 # Module interface
 ###
 
-__all__ = ["Simulator", "SimulatorData", "SimulatorSettings"]
+__all__ = [
+    "AnimationJointReference",
+    "AnimationJointReferenceData",
+    "JointSpacePIDController",
+    "PIDControllerData",
+]

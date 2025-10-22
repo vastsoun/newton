@@ -19,6 +19,8 @@ KAMINO: Dual dynamics
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import warp as wp
 from warp.context import Devicelike
 
@@ -86,20 +88,39 @@ class DualProblemConfig:
     """Contact penetration margin used for unilateral contact constraints"""
 
 
+@dataclass
 class DualProblemSettings:
     """
     A struct to hold configuration parameters of a dual problem.
     """
 
-    def __init__(self, alpha: float = 0.0, beta: float = 0.0, gamma: float = 0.0, delta: float = 1.0e-6):
-        self.alpha: float = alpha
-        """Baumgarte stabilization parameter for bilateral joint constraints."""
-        self.beta: float = beta
-        """Baumgarte stabilization parameter for unilateral joint limit constraints."""
-        self.gamma: float = gamma
-        """Baumgarte stabilization parameter for unilateral contact constraints."""
-        self.delta: float = delta
-        """Contact penetration margin used for unilateral contact constraints"""
+    alpha: float = 0.01
+    """Baumgarte stabilization parameter for bilateral joint constraints."""
+
+    beta: float = 0.01
+    """Baumgarte stabilization parameter for unilateral joint limit constraints."""
+
+    gamma: float = 0.01
+    """Baumgarte stabilization parameter for unilateral contact constraints."""
+
+    delta: float = 1.0e-6
+    """Contact penetration margin used for unilateral contact constraints"""
+
+    use_preconditioning: bool = True
+    """Set to True to enable preconditioning of the dual problem."""
+
+    def check(self) -> None:
+        """
+        Validate the settings.
+        """
+        if self.alpha < 0.0:
+            raise ValueError(f"Invalid alpha: {self.alpha}. Must be non-negative.")
+        if self.beta < 0.0:
+            raise ValueError(f"Invalid beta: {self.beta}. Must be non-negative.")
+        if self.gamma < 0.0:
+            raise ValueError(f"Invalid gamma: {self.gamma}. Must be non-negative.")
+        if self.delta < 0.0:
+            raise ValueError(f"Invalid delta: {self.delta}. Must be non-negative.")
 
     def to_config(self) -> DualProblemConfig:
         """
@@ -291,11 +312,11 @@ def gravity_plus_coriolis_wrench(
     omega_i: vec3f,
 ) -> vec6f:
     """
-    Compute the gravitational+inertial wrench on a body.
+    Compute the gravitational + Coriolis wrench acting on a body.
     """
     f_gi_i = m_i * g
     tau_gi_i = -wp.skew(omega_i) @ (I_i @ omega_i)
-    return vec6f(f_gi_i.x, f_gi_i.y, f_gi_i.z, tau_gi_i.x, tau_gi_i.y, tau_gi_i.z)
+    return screw(f_gi_i, tau_gi_i)
 
 
 @wp.func
@@ -335,7 +356,7 @@ def _build_nonlinear_generalized_force(
     # Retrieve the body index as the thread index
     bid = wp.tid()
 
-    # Retrieve the body model and state data
+    # Retrieve the body model and data
     wid = model_bodies_wid[bid]
     m_i = model_bodies_m_i[bid]
     I_i = state_bodies_I_i[bid]
@@ -379,7 +400,7 @@ def _build_generalized_free_velocity(
     # Retrieve the body index as the thread index
     bid = wp.tid()
 
-    # Retrieve the body model and state data
+    # Retrieve the body model and data
     wid = model_bodies_wid[bid]
     m_i = model_bodies_m_i[bid]
     I_i = state_bodies_I_i[bid]
@@ -806,7 +827,7 @@ def _apply_dual_preconditioner_to_vector(
 ###
 
 
-def build_nonlinear_generalized_force(model: Model, state: ModelData, problem: DualProblemData):
+def build_nonlinear_generalized_force(model: Model, data: ModelData, problem: DualProblemData):
     """
     Builds the generalized free-velocity vector (i.e. unconstrained) `u_f`.
     """
@@ -819,17 +840,17 @@ def build_nonlinear_generalized_force(model: Model, state: ModelData, problem: D
             model.gravity.vector,
             model.bodies.wid,
             model.bodies.m_i,
-            state.bodies.u_i,
-            state.bodies.I_i,
-            state.bodies.w_e_i,
-            state.bodies.w_a_i,
+            data.bodies.u_i,
+            data.bodies.I_i,
+            data.bodies.w_e_i,
+            data.bodies.w_a_i,
             # Outputs:
             problem.h,
         ],
     )
 
 
-def build_generalized_free_velocity(model: Model, state: ModelData, problem: DualProblemData):
+def build_generalized_free_velocity(model: Model, data: ModelData, problem: DualProblemData):
     """
     Builds the generalized free-velocity vector (i.e. unconstrained) `u_f`.
     """
@@ -843,11 +864,11 @@ def build_generalized_free_velocity(model: Model, state: ModelData, problem: Dua
             model.bodies.wid,
             model.bodies.m_i,
             model.bodies.inv_m_i,
-            state.bodies.u_i,
-            state.bodies.I_i,
-            state.bodies.inv_I_i,
-            state.bodies.w_e_i,
-            state.bodies.w_a_i,
+            data.bodies.u_i,
+            data.bodies.I_i,
+            data.bodies.inv_I_i,
+            data.bodies.w_e_i,
+            data.bodies.w_a_i,
             # Outputs:
             problem.u_f,
         ],
@@ -855,28 +876,30 @@ def build_generalized_free_velocity(model: Model, state: ModelData, problem: Dua
 
 
 def build_free_velocity_bias(
-    model: Model, state: ModelData, limits: LimitsData, contacts: ContactsData, problem: DualProblemData
+    model: Model, data: ModelData, limits: LimitsData, contacts: ContactsData, problem: DualProblemData
 ):
     """
     Builds the joint constraint section of the free-velocity vector.
     """
-    wp.launch(
-        _build_free_velocity_bias_joints,
-        dim=model.size.sum_of_num_joints,
-        inputs=[
-            # Inputs:
-            model.info.joint_cts_offset,
-            model.time.inv_dt,
-            model.joints.wid,
-            model.joints.num_cts,
-            model.joints.cts_offset,
-            state.joints.r_j,
-            problem.config,
-            problem.vio,
-            # Outputs:
-            problem.v_b,
-        ],
-    )
+
+    if model.size.sum_of_num_joints > 0:
+        wp.launch(
+            _build_free_velocity_bias_joints,
+            dim=model.size.sum_of_num_joints,
+            inputs=[
+                # Inputs:
+                model.info.joint_cts_offset,
+                model.time.inv_dt,
+                model.joints.wid,
+                model.joints.num_cts,
+                model.joints.cts_offset,
+                data.joints.r_j,
+                problem.config,
+                problem.vio,
+                # Outputs:
+                problem.v_b,
+            ],
+        )
 
     if limits is not None:
         wp.launch(
@@ -885,7 +908,7 @@ def build_free_velocity_bias(
             inputs=[
                 # Inputs:
                 model.time.inv_dt,
-                state.info.limit_cts_group_offset,
+                data.info.limit_cts_group_offset,
                 limits.model_num_limits,
                 limits.wid,
                 limits.lid,
@@ -905,7 +928,7 @@ def build_free_velocity_bias(
                 # Inputs:
                 model.time.inv_dt,
                 model.info.contacts_offset,
-                state.info.contact_cts_group_offset,
+                data.info.contact_cts_group_offset,
                 contacts.model_num_contacts,
                 contacts.wid,
                 contacts.cid,
@@ -921,7 +944,7 @@ def build_free_velocity_bias(
         )
 
 
-def build_free_velocity(model: Model, state: ModelData, jacobians: DenseSystemJacobians, problem: DualProblem):
+def build_free_velocity(model: Model, data: ModelData, jacobians: DenseSystemJacobians, problem: DualProblem):
     """
     Builds the joint constraint section of the free-velocity vector.
     """
@@ -932,7 +955,7 @@ def build_free_velocity(model: Model, state: ModelData, jacobians: DenseSystemJa
             # Inputs:
             model.info.num_bodies,
             model.info.bodies_offset,
-            state.bodies.u_i,
+            data.bodies.u_i,
             jacobians.data.J_cts_offsets,
             jacobians.data.J_cts_data,
             problem.data.dim,
@@ -1075,10 +1098,9 @@ class DualProblem:
     def __init__(
         self,
         model: Model | None = None,
-        state: ModelData | None = None,
+        data: ModelData | None = None,
         limits: Limits | None = None,
         contacts: Contacts | None = None,
-        # factorizer: CholeskyFactorizer = None,
         solver: LinearSolverType | None = None,
         settings: list[DualProblemSettings] | DualProblemSettings | None = None,
         device: Devicelike = None,
@@ -1097,7 +1119,6 @@ class DualProblem:
             model (Model, optional): The model to build the dual problem for.
             contacts (Contacts, optional): The contacts container to use for the dual problem.
             device (Devicelike, optional): The device to allocate the dual problem on. Defaults to None.
-            factorizer (CholeskyFactorizer, optional): The factorizer to use for the Delassus operator. Defaults to None.
             solver (LinearSolverType, optional): The linear solver to use for the Delassus operator. Defaults to None.
         """
         # Cache the requested device
@@ -1113,16 +1134,15 @@ class DualProblem:
         """The Delassus operator interface container."""
 
         self._data: DualProblemData = DualProblemData()
-        """The dual problem state data container bundling are relevant memory allocations."""
+        """The dual problem data container bundling are relevant memory allocations."""
 
-        # Allocate the dual problem state if a model is provided
+        # Allocate the dual problem data if a model is provided
         if model is not None:
             self.allocate(
                 model=model,
-                state=state,
+                data=data,
                 limits=limits,
                 contacts=contacts,
-                # factorizer=factorizer,
                 solver=solver,
                 settings=settings,
                 device=device,
@@ -1165,28 +1185,27 @@ class DualProblem:
     @property
     def data(self) -> DualProblemData:
         """
-        Returns the dual problem state data container.
+        Returns the dual problem data container.
         """
         return self._data
 
     def allocate(
         self,
         model: Model,
-        state: ModelData | None = None,
+        data: ModelData | None = None,
         limits: Limits | None = None,
         contacts: Contacts | None = None,
-        # factorizer: CholeskyFactorizer = None,
         solver: LinearSolverType | None = None,
         settings: list[DualProblemSettings] | DualProblemSettings | None = None,
         device: Devicelike = None,
     ):
         """
-        Allocates the dual problem state for the given model and required contact allocations.
+        Allocates the dual problem data for the given model and required contact allocations.
 
         Args:
             model (Model, optional): The model to build the dual problem for.
             contacts (Contacts, optional): The contacts container to use for the dual problem.
-            factorizer (CholeskyFactorizer, optional): The factorizer to use for the Delassus operator.
+            solver (LinearSolverType, optional): The linear solver to use for the Delassus operator. Defaults to None.
             settings (List[DualProblemSettings] | DualProblemSettings, optional): The settings for the dual problem.
             device (Devicelike, optional): The device to allocate the dual problem on. Defaults to None.
         """
@@ -1196,10 +1215,10 @@ class DualProblem:
         elif not isinstance(model, Model):
             raise ValueError("Invalid model provided. Must be an instance of `Model`.")
 
-        # Ensure the state container is valid if provided
-        if state is not None:
-            if not isinstance(state, ModelData):
-                raise ValueError("Invalid state container provided. Must be an instance of `ModelData`.")
+        # Ensure the data container is valid if provided
+        if data is not None:
+            if not isinstance(data, ModelData):
+                raise ValueError("Invalid data container provided. Must be an instance of `ModelData`.")
 
         # Ensure the limits container is valid if provided
         if limits is not None:
@@ -1220,9 +1239,8 @@ class DualProblem:
         # Allocate the Delassus operator first since it will already process the necessary
         # model and contacts allocation sizes and will create some of the necessary arrays
         self._delassus = DelassusOperator(
-            # model=model, state=state, limits=limits, contacts=contacts, factorizer=factorizer, device=device
             model=model,
-            state=state,
+            data=data,
             limits=limits,
             contacts=contacts,
             solver=solver,
@@ -1233,23 +1251,17 @@ class DualProblem:
         self._data.num_worlds = self._delassus.num_worlds
         self._data.num_maxdims = self._delassus.num_maxdims
 
-        # Capture references to the model, state info arrays
-        # TODO: How to handle the case where state is None?
+        # Capture references to the mode and data info arrays
+        # TODO: How to handle the case where data is None?
         self.data.njc = model.info.num_joint_cts
-        self.data.nl = state.info.num_limits
-        self.data.nc = state.info.num_contacts
+        self.data.nl = data.info.num_limits
+        self.data.nc = data.info.num_contacts
         self.data.lio = model.info.limits_offset
         self.data.cio = model.info.contacts_offset
         self.data.uio = model.info.unilaterals_offset
-        self.data.lcgo = state.info.limit_cts_group_offset
-        self.data.ccgo = state.info.contact_cts_group_offset
+        self.data.lcgo = data.info.limit_cts_group_offset
+        self.data.ccgo = data.info.contact_cts_group_offset
 
-        # # Capture references to arrays already create by the Delassus operator
-        # self._data.maxdim = self._delassus.data.maxdim
-        # self._data.dim = self._delassus.data.dim
-        # self._data.mio = self._delassus.data.mio
-        # self._data.vio = self._delassus.data.vio
-        # self._data.D = self._delassus.data.D
         # Capture references to arrays already create by the Delassus operator
         self._data.maxdim = self._delassus.info.maxdim
         self._data.dim = self._delassus.info.dim
@@ -1259,7 +1271,7 @@ class DualProblem:
 
         # Store the specified settings
         num_worlds = model.info.num_worlds if model is not None else 1
-        self._settings: list[DualProblemSettings] = self._check_settings(settings, num_worlds)
+        self._settings = self._check_settings(settings, num_worlds)
 
         # Allocate memory for the remaining dual problem quantities
         with wp.ScopedDevice(device):
@@ -1284,14 +1296,14 @@ class DualProblem:
     def build(
         self,
         model: Model,
-        state: ModelData,
+        data: ModelData,
         limits: LimitsData,
         contacts: ContactsData,
         jacobians: DenseSystemJacobiansData,
         reset_to_zero: bool = True,
     ):
         """
-        Builds the dual problem for the given model, state, limits and contacts data.
+        Builds the dual problem for the given model, data, limits and contacts data.
         """
         # Initialize problem data
         if reset_to_zero:
@@ -1301,20 +1313,20 @@ class DualProblem:
         # NOTE: We build this first since it will update the arrays of active constraints
         self._delassus.build(
             model=model,
-            state=state,
+            data=data,
             jacobians=jacobians,
             reset_to_zero=reset_to_zero,
         )
 
         # TODO: make this optional
         # Build the non-linear generalized force vector
-        # build_nonlinear_generalized_force(model, state, self._data)
+        # build_nonlinear_generalized_force(model, data, self._data)
 
         # Build the generalized free-velocity vector
-        build_generalized_free_velocity(model, state, self._data)
+        build_generalized_free_velocity(model, data, self._data)
 
         # Build the free-velocity bias terms
-        build_free_velocity_bias(model, state, limits, contacts, self._data)
+        build_free_velocity_bias(model, data, limits, contacts, self._data)
 
         # Build the free-velocity vector
         wp.launch(
@@ -1324,7 +1336,7 @@ class DualProblem:
                 # Inputs:
                 model.info.num_bodies,
                 model.info.bodies_offset,
-                state.bodies.u_i,
+                data.bodies.u_i,
                 jacobians.J_cts_offsets,
                 jacobians.J_cts_data,
                 self._data.dim,
@@ -1337,6 +1349,7 @@ class DualProblem:
             ],
         )
 
-        # Build and apply the Delassus diagonal preconditioner
-        build_dual_preconditioner(self)
-        apply_dual_preconditioner_to_dual(self)
+        # Optionally build and apply the Delassus diagonal preconditioner
+        if any(s.use_preconditioning for s in self._settings):
+            build_dual_preconditioner(self)
+            apply_dual_preconditioner_to_dual(self)

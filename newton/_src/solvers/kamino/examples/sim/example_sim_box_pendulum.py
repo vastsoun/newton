@@ -14,26 +14,31 @@
 # limitations under the License.
 
 import argparse
+import math  # noqa: F401
 import os
 import time
 
-import h5py
 import numpy as np
 import warp as wp
 
 import newton
 import newton._src.solvers.kamino.utils.logger as msg
 import newton.examples
+from newton._src.solvers.kamino.control.pid import JointSpacePIDController
 from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.core.types import float32, vec6f
-from newton._src.solvers.kamino.examples import get_examples_data_hdf5_path, print_frame
 from newton._src.solvers.kamino.models import get_primitives_usd_assets_path
-from newton._src.solvers.kamino.models.builders import build_boxes_hinged
-from newton._src.solvers.kamino.simulation.simulator import Simulator
-from newton._src.solvers.kamino.utils.device import get_device_info
-from newton._src.solvers.kamino.utils.io import hdf5
+from newton._src.solvers.kamino.models.builders import build_box_pendulum_vertical
+from newton._src.solvers.kamino.simulation.simulator import Simulator, SimulatorSettings
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
 from newton._src.solvers.kamino.utils.print import print_progress_bar
+
+###
+# Module configs
+###
+
+wp.set_module_options({"enable_backward": False})
+
 
 ###
 # Kernels
@@ -41,33 +46,30 @@ from newton._src.solvers.kamino.utils.print import print_progress_bar
 
 
 @wp.kernel
-def _control_callback(
-    model_time_dt: wp.array(dtype=float32),
-    state_time_t: wp.array(dtype=float32),
-    state_joints_q_j: wp.array(dtype=float32),
-    state_joints_dq_j: wp.array(dtype=float32),
-    state_joints_tau_j: wp.array(dtype=float32),
-    state_bodies_w_e_i: wp.array(dtype=vec6f),
+def _test_control_callback(
+    model_dt: wp.array(dtype=float32),
+    state_t: wp.array(dtype=float32),
+    state_w_e_i: wp.array(dtype=vec6f),
+    control_tau_j: wp.array(dtype=float32),
 ):
     """
     An example control callback kernel.
     """
     # Set world index
     wid = int(0)
-    jid = int(0)
 
     # Define the time window for the active external force profile
-    t_start = float32(2.0)
-    t_end = float32(2.5)
+    t_start = float32(1.0)
+    t_end = float32(3.0)
 
     # Get the current time
-    t = state_time_t[wid]
+    t = state_t[wid]
 
     # Apply a time-dependent external force
     if t > t_start and t < t_end:
-        state_joints_tau_j[jid] = -3.0
+        control_tau_j[0] = 1.0
     else:
-        state_joints_tau_j[jid] = 0.0
+        control_tau_j[0] = 0.0
 
 
 ###
@@ -75,20 +77,18 @@ def _control_callback(
 ###
 
 
-def control_callback(sim: Simulator):
+def test_control_callback(sim: Simulator):
     """
     A control callback function
     """
     wp.launch(
-        _control_callback,
+        _test_control_callback,
         dim=1,
         inputs=[
             sim.model.time.dt,
-            sim.model_data.time.time,
-            sim.model_data.joints.q_j,
-            sim.model_data.joints.dq_j,
-            sim.model_data.joints.tau_j,
-            sim.model_data.bodies.w_e_i,
+            sim.data.solver.time.time,
+            sim.data.solver.bodies.w_e_i,
+            sim.data.control_n.tau_j,
         ],
     )
 
@@ -98,10 +98,7 @@ def control_callback(sim: Simulator):
 ###
 
 # Set the path to the external USD assets
-USD_MODEL_PATH = os.path.join(get_primitives_usd_assets_path(), "boxes_hinged.usda")
-
-# Set the path to the generated HDF5 dataset file
-RENDER_DATASET_PATH = os.path.join(get_examples_data_hdf5_path(), "boxes_hinged.hdf5")
+USD_MODEL_PATH = os.path.join(get_primitives_usd_assets_path(), "box_pendulum.usda")
 
 
 ###
@@ -109,19 +106,8 @@ RENDER_DATASET_PATH = os.path.join(get_examples_data_hdf5_path(), "boxes_hinged.
 ###
 
 
-def run_hdf5_mode(clear_warp_cache=True, use_cuda_graph=False, load_from_usd=True, verbose=False):
-    """Run the simulation in HDF5 mode to save data to file."""
-    # Application options
-
-    # Clear the warp caches
-    if clear_warp_cache:
-        wp.clear_kernel_cache()
-        wp.clear_lto_cache()
-
-    # Warp configs
-    # wp.config.verify_fp = True
-    # wp.config.verbose = True
-    # wp.config.verbose_warnings = True
+def run_headless(use_cuda_graph=False, load_from_usd=True):
+    """Run the simulation in headless mode."""
 
     # Set global numpy configurations
     np.set_printoptions(linewidth=20000, precision=6, threshold=10000, suppress=True)  # Suppress scientific notation
@@ -129,9 +115,6 @@ def run_hdf5_mode(clear_warp_cache=True, use_cuda_graph=False, load_from_usd=Tru
     # Get the default warp device
     device = wp.get_preferred_device()
     device = wp.get_device(device)
-
-    # Enable verbose output
-    msg.set_log_level(msg.LogLevel.INFO)
 
     # Determine if using CUDA graphs
     can_use_cuda_graph = device.is_cuda and wp.is_mempool_enabled(device)
@@ -146,15 +129,23 @@ def run_hdf5_mode(clear_warp_cache=True, use_cuda_graph=False, load_from_usd=Tru
     else:
         msg.info("Constructing builder using generator ...")
         builder = ModelBuilder()
-        build_boxes_hinged(builder=builder, z_offset=0.0, ground=True)
+        build_box_pendulum_vertical(builder=builder, z_offset=0.7, ground=True)
 
     # Set gravity
     builder.gravity.enabled = True
 
+    # Set solver settings
+    settings = SimulatorSettings()
+    settings.dt = 0.001
+    settings.solver.primal_tolerance = 1e-6
+    settings.solver.dual_tolerance = 1e-6
+    settings.solver.compl_tolerance = 1e-6
+    settings.solver.rho_0 = 0.1
+
     # Create a simulator
     msg.info("Building the simulator...")
-    sim = Simulator(builder=builder, device=device)
-    sim.set_control_callback(control_callback)
+    sim = Simulator(builder=builder, settings=settings, device=device)
+    sim.set_control_callback(test_control_callback)
 
     # Capture graphs for simulator ops: reset and step
     use_cuda_graph &= can_use_cuda_graph
@@ -173,69 +164,30 @@ def run_hdf5_mode(clear_warp_cache=True, use_cuda_graph=False, load_from_usd=Tru
     msg.info("Warming up the simulator...")
     if use_cuda_graph:
         print("Running with CUDA graphs...")
-        wp.capture_launch(reset_graph)
         wp.capture_launch(step_graph)
+        wp.capture_launch(reset_graph)
     else:
         msg.info("Running with kernels...")
         with wp.ScopedDevice(device):
             sim.step()
             sim.reset()
 
-    # Print application info
-    msg.info("%s", get_device_info(device))
-
-    # Construct and configure the data containers
-    msg.info("Setting up HDF5 data containers...")
-    sdata = hdf5.RigidBodySystemData()
-    sdata.configure(simulator=sim)
-    cdata = hdf5.ContactsData()
-    pdata = hdf5.DualProblemData()
-    pdata.configure(simulator=sim)
-
-    # Create the output directory if it does not exist
-    render_dir = os.path.dirname(RENDER_DATASET_PATH)
-    if not os.path.exists(render_dir):
-        os.makedirs(render_dir)
-
-    # Create a dataset file and renderer
-    msg.info("Creating the HDF5 renderer...")
-    datafile = h5py.File(RENDER_DATASET_PATH, "w")
-    renderer = hdf5.DatasetRenderer(sysname="boxes_hinged", datafile=datafile, dt=sim.dt)
-
-    # Store the initial state of the system
-    sdata.update_from(simulator=sim)
-    cdata.update_from(simulator=sim)
-    renderer.add_frame(system=sdata, contacts=cdata)
-    if verbose:
-        print_frame(sim, 0)
-
     # Step the simulation and collect frames
     ns = 10000
     msg.info(f"Collecting ns={ns} frames...")
     start_time = time.time()
-    with wp.ScopedTimer("sim.step", active=True):
-        with wp.ScopedDevice(device):
-            for i in range(ns):
-                if use_cuda_graph:
-                    wp.capture_launch(step_graph)
-                else:
-                    with wp.ScopedDevice(device):
-                        sim.step()
-                wp.synchronize()
-
-                sdata.update_from(simulator=sim)
-                cdata.update_from(simulator=sim)
-                pdata.update_from(simulator=sim)
-                renderer.add_frame(system=sdata, contacts=cdata, problem=pdata)
-                print_progress_bar(i, ns, start_time, prefix="Progress", suffix="")
-
-    # Save the dataset
-    msg.info("Saving all frames to HDF5...")
-    renderer.save()
+    with wp.ScopedDevice(device):
+        for i in range(ns):
+            if use_cuda_graph:
+                wp.capture_launch(step_graph)
+            else:
+                sim.step()
+            wp.synchronize()
+            print_progress_bar(i, ns, start_time, prefix="Progress", suffix="")
 
 
-class BoxesHingedExample:
-    """ViewerGL example class for boxes hinged simulation."""
+class Example:
+    """ViewerGL example class for box pendulum simulation."""
 
     def __init__(self, viewer, load_from_usd=True, use_cuda_graph=False):
         self.fps = 60
@@ -259,15 +211,52 @@ class BoxesHingedExample:
         else:
             msg.info("Constructing builder using generator ...")
             builder = ModelBuilder()
-            build_boxes_hinged(builder=builder, z_offset=0.0, ground=True)
+            build_box_pendulum_vertical(builder=builder, z_offset=0.7, ground=True)
 
         # Set gravity
         builder.gravity.enabled = True
 
+        # Set solver settings
+        settings = SimulatorSettings()
+        settings.dt = 0.001
+        settings.solver.primal_tolerance = 1e-4
+        settings.solver.dual_tolerance = 1e-4
+        settings.solver.compl_tolerance = 1e-4
+        settings.solver.rho_0 = 0.1
+
         # Create a simulator
         msg.info("Building the simulator...")
-        self.sim = Simulator(builder=builder, device=device)
-        self.sim.set_control_callback(control_callback)
+        self.sim = Simulator(builder=builder, settings=settings, device=device)
+
+        # Create a joint-space PID controller
+        njq = self.sim.model.size.sum_of_num_joint_dofs
+        # K_p = 20.0 * np.ones(njq, dtype=np.float32)
+        # K_i = 0.1 * np.ones(njq, dtype=np.float32)
+        # K_d = 2.0 * np.sqrt(K_p)  # Critical damping
+        K_p = 0.0 * np.ones(njq, dtype=np.float32)
+        K_i = 0.0 * np.ones(njq, dtype=np.float32)
+        # K_d = 2.0 * np.sqrt(K_p)  # Critical damping
+        K_d = 60.0 * np.ones(njq, dtype=np.float32)
+        decimation = 1 * np.ones(self.sim.model.size.num_worlds, dtype=np.int32)  # Control every 10 steps
+        self.controller = JointSpacePIDController(
+            model=self.sim.model, K_p=K_p, K_i=K_i, K_d=K_d, decimation=decimation, device=device
+        )
+        self.controller.reset(model=self.sim.model, state=self.sim.data.state_n)
+        # q_j_ref = np.full(njq, -0.5 * math.pi, dtype=np.float32)
+        q_j_ref = np.zeros(njq, dtype=np.float32)
+        dq_j_ref = np.full(njq, 1.0, dtype=np.float32)
+        self.controller.set_references(q_j_ref=q_j_ref, dq_j_ref=dq_j_ref)
+
+        # Define a callback function to wrap the execution of the controller
+        def jointspace_pid_control_callback(simulator: Simulator):
+            self.controller.compute(
+                model=simulator.model,
+                state=simulator.data.state_n,
+                time=simulator.data.solver.time,
+                control=simulator.data.control_n,
+            )
+
+        self.sim.set_control_callback(jointspace_pid_control_callback)
 
         # Don't set a newton model - we'll render everything manually using log_shapes
         self.viewer.set_model(None)
@@ -275,13 +264,8 @@ class BoxesHingedExample:
         # Extract geometry information from the kamino simulator
         self.extract_geometry_info()
 
-        # Define diverse colors for each box
-        self.box_colors = [
-            wp.array([wp.vec3(0.9, 0.1, 0.3)], dtype=wp.vec3),  # Crimson Red
-            wp.array([wp.vec3(0.1, 0.7, 0.9)], dtype=wp.vec3),  # Cyan Blue
-            wp.array([wp.vec3(1.0, 0.5, 0.0)], dtype=wp.vec3),  # Orange
-            wp.array([wp.vec3(0.6, 0.2, 0.8)], dtype=wp.vec3),  # Purple
-        ]
+        # Define colors for the pendulum box
+        self.box_color = wp.array([wp.vec3(0.9, 0.1, 0.3)], dtype=wp.vec3)  # Crimson Red
 
         # Initialize the simulator with a warm-up step
         self.sim.reset()
@@ -326,7 +310,7 @@ class BoxesHingedExample:
 
     def simulate(self):
         """Run simulation substeps."""
-        for _ in range(self.sim_substeps):
+        for _i in range(self.sim_substeps):
             self.sim.step()
 
     def step(self):
@@ -346,8 +330,8 @@ class BoxesHingedExample:
         try:
             body_poses = self.sim.model_data.bodies.q_i.numpy()
 
-            # Render each box using log_shapes
-            for i, (dimensions, color) in enumerate(zip(self.box_dimensions, self.box_colors, strict=False)):
+            # Render the pendulum box using log_shapes
+            for i, dimensions in enumerate(self.box_dimensions):
                 if i < len(body_poses):
                     # Convert kamino transformf to warp transform
                     pose = body_poses[i]
@@ -363,11 +347,11 @@ class BoxesHingedExample:
 
                     # Log the box shape
                     self.viewer.log_shapes(
-                        f"/hinged/box_{i + 1}",
+                        f"/pendulum/box_{i + 1}",
                         newton.GeoType.BOX,
                         half_extents,
                         wp.array([transform], dtype=wp.transform),
-                        color,
+                        self.box_color,
                     )
 
         except Exception as e:
@@ -394,7 +378,7 @@ class BoxesHingedExample:
             ground_color = wp.array([wp.vec3(0.7, 0.7, 0.7)], dtype=wp.vec3)
 
             self.viewer.log_shapes(
-                "/hinged/ground",
+                "/pendulum/ground",
                 newton.GeoType.BOX,
                 ground_half_extents,
                 wp.array([ground_transform], dtype=wp.transform),
@@ -409,35 +393,34 @@ class BoxesHingedExample:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Boxes hinged simulation example")
+    parser = argparse.ArgumentParser(description="Box pendulum simulation example")
     parser.add_argument(
         "--mode",
-        choices=["hdf5", "viewer"],
+        choices=["headless", "viewer"],
         default="viewer",
-        help="Simulation mode: 'hdf5' for data collection, 'viewer' for live visualization",
+        help="Simulation mode: 'headless' for raw simulation, 'viewer' for live visualization",
     )
-    parser.add_argument("--clear-cache", action="store_true", default=True, help="Clear warp cache")
-    parser.add_argument("--cuda-graph", action="store_true", help="Use CUDA graphs")
+    parser.add_argument("--clear-cache", action="store_true", default=False, help="Clear warp cache")
+    parser.add_argument("--cuda-graph", action="store_true", default=True, help="Use CUDA graphs")
     parser.add_argument("--load-from-usd", action="store_true", default=True, help="Load model from USD file")
-    parser.add_argument("--verbose", action="store_true", help="Enable verbose output")
-
-    # Add viewer arguments when in viewer mode
     parser.add_argument("--viewer", choices=["gl", "usd", "rerun", "null"], default="gl", help="Viewer type")
     parser.add_argument("--headless", action="store_true", help="Run in headless mode")
     parser.add_argument("--device", type=str, help="Compute device")
     parser.add_argument("--output-path", type=str, help="Output path for USD viewer")
     parser.add_argument("--num-frames", type=int, default=1000, help="Number of frames for null/USD viewer")
-
+    parser.add_argument("--test", action="store_true", default=False, help="Run tests")
     args = parser.parse_args()
 
-    if args.mode == "hdf5":
+    # Clear warp cache if requested
+    if args.clear_cache:
+        wp.clear_kernel_cache()
+        wp.clear_lto_cache()
+
+    # Execute based on mode
+    if args.mode == "headless":
         msg.info("Running in HDF5 mode...")
-        run_hdf5_mode(
-            clear_warp_cache=args.clear_cache,
-            use_cuda_graph=args.cuda_graph,
-            load_from_usd=args.load_from_usd,
-            verbose=args.verbose,
-        )
+        run_headless(use_cuda_graph=args.cuda_graph, load_from_usd=args.load_from_usd)
+
     elif args.mode == "viewer":
         msg.info("Running in ViewerGL mode...")
 
@@ -460,14 +443,14 @@ if __name__ == "__main__":
             raise ValueError(f"Invalid viewer: {args.viewer}")
 
         # Create and run example
-        example = BoxesHingedExample(viewer, load_from_usd=args.load_from_usd, use_cuda_graph=args.cuda_graph)
+        example = Example(viewer, load_from_usd=args.load_from_usd, use_cuda_graph=args.cuda_graph)
 
-        # Set initial camera position for better view of the hinged boxes
+        # Set initial camera position for better view of the pendulum
         if hasattr(viewer, "set_camera"):
-            # Position camera to get a good view of the hinged mechanism
-            camera_pos = wp.vec3(0.5, -1.5, 0.8)
-            pitch = -15.0
-            yaw = 90.0
+            # Position camera to get a good view of the pendulum
+            camera_pos = wp.vec3(0.0, -2.0, 1.0)
+            pitch = -10.0
+            yaw = 90  # Changed to -90 degrees to look left
             viewer.set_camera(camera_pos, pitch, yaw)
 
-        newton.examples.run(example)
+        newton.examples.run(example, args)

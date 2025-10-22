@@ -76,7 +76,7 @@ def max_constraints_per_world(
 
 def make_unilateral_constraints_info(
     model: Model,
-    state: ModelData,
+    data: ModelData,
     limits: Limits | None = None,
     contacts: Contacts | None = None,
     device: Devicelike = None,
@@ -86,7 +86,7 @@ def make_unilateral_constraints_info(
 
     Args:
         model (Model): The model container holding time-invariant data.
-        state (ModelData): The state container holding time-varying data.
+        data (ModelData): The solver container holding time-varying data.
         limits (Limits, optional): The limits container holding the joint-limit data.
         contacts (Contacts, optional): The contacts container holding the contact data.
     """
@@ -95,9 +95,9 @@ def make_unilateral_constraints_info(
     if not isinstance(model, Model):
         raise TypeError("`model` must be an instance of `Model`")
 
-    # Ensure the state is valid
-    if not isinstance(state, ModelData):
-        raise TypeError("`state` must be an instance of `ModelData`")
+    # Ensure the data is valid
+    if not isinstance(data, ModelData):
+        raise TypeError("`data` must be an instance of `ModelData`")
 
     # Device is not specified, use the model's device
     if device is None:
@@ -121,14 +121,14 @@ def make_unilateral_constraints_info(
         model.size.sum_of_max_limits = limits.num_model_max_limits
         model.size.max_of_max_limits = max(limits.num_world_max_limits)
         model.info.max_limits = limits.world_max_limits
-        state.info.num_limits = limits.world_num_limits
+        data.info.num_limits = limits.world_num_limits
     else:
         world_maxnl = [0] * num_worlds
         model.size.sum_of_max_limits = 0
         model.size.max_of_max_limits = 0
         with wp.ScopedDevice(device):
             model.info.max_limits = wp.zeros(shape=(num_worlds,), dtype=int32)
-            state.info.num_limits = wp.zeros(shape=(num_worlds,), dtype=int32)
+            data.info.num_limits = wp.zeros(shape=(num_worlds,), dtype=int32)
 
     # If a contacts container is provided, ensure it is valid
     # and then assign the entity counters to the model info.
@@ -139,14 +139,14 @@ def make_unilateral_constraints_info(
         model.size.sum_of_max_contacts = contacts.num_model_max_contacts
         model.size.max_of_max_contacts = max(contacts.num_world_max_contacts)
         model.info.max_contacts = contacts.world_max_contacts
-        state.info.num_contacts = contacts.world_num_contacts
+        data.info.num_contacts = contacts.world_num_contacts
     else:
         world_maxnc = [0] * num_worlds
         model.size.sum_of_max_contacts = 0
         model.size.max_of_max_contacts = 0
         with wp.ScopedDevice(device):
             model.info.max_contacts = wp.zeros(shape=(num_worlds,), dtype=int32)
-            state.info.num_contacts = wp.zeros(shape=(num_worlds,), dtype=int32)
+            data.info.num_contacts = wp.zeros(shape=(num_worlds,), dtype=int32)
 
     # Compute the maximum number of unilateral entities (limits and contacts) per world
     world_max_unilaterals: list[int] = [nl + nc for nl, nc in zip(world_maxnl, world_maxnc, strict=False)]
@@ -199,11 +199,11 @@ def make_unilateral_constraints_info(
         model.info.unilateral_cts_offset = wp.array(world_ucio[:num_worlds], dtype=int32)
 
         # Initialize the active constraint counters to zero
-        state.info.num_total_cts = wp.zeros(shape=(num_worlds,), dtype=int32)
-        state.info.num_limit_cts = wp.zeros(shape=(num_worlds,), dtype=int32)
-        state.info.limit_cts_group_offset = wp.zeros(shape=(num_worlds,), dtype=int32)
-        state.info.num_contact_cts = wp.zeros(shape=(num_worlds,), dtype=int32)
-        state.info.contact_cts_group_offset = wp.zeros(shape=(num_worlds,), dtype=int32)
+        data.info.num_total_cts = wp.zeros(shape=(num_worlds,), dtype=int32)
+        data.info.num_limit_cts = wp.zeros(shape=(num_worlds,), dtype=int32)
+        data.info.limit_cts_group_offset = wp.zeros(shape=(num_worlds,), dtype=int32)
+        data.info.num_contact_cts = wp.zeros(shape=(num_worlds,), dtype=int32)
+        data.info.contact_cts_group_offset = wp.zeros(shape=(num_worlds,), dtype=int32)
 
 
 ###
@@ -218,11 +218,11 @@ def _update_constraints_info(
     model_info_num_limits: wp.array(dtype=int32),
     model_info_num_contacts: wp.array(dtype=int32),
     # Outputs:
-    model_info_num_total_cts: wp.array(dtype=int32),
-    model_info_num_limit_cts: wp.array(dtype=int32),
-    model_info_num_contact_cts: wp.array(dtype=int32),
-    model_info_limit_cts_group_offset: wp.array(dtype=int32),
-    model_info_contact_cts_group_offset: wp.array(dtype=int32),
+    data_info_num_total_cts: wp.array(dtype=int32),
+    data_info_num_limit_cts: wp.array(dtype=int32),
+    data_info_num_contact_cts: wp.array(dtype=int32),
+    data_info_limit_cts_group_offset: wp.array(dtype=int32),
+    data_info_contact_cts_group_offset: wp.array(dtype=int32),
 ):
     # Retrieve the thread index as the world index
     wid = wp.tid()
@@ -245,11 +245,11 @@ def _update_constraints_info(
     ccgo = njc + nlc
 
     # Store the state info for this world
-    model_info_num_total_cts[wid] = ncts
-    model_info_num_limit_cts[wid] = nlc
-    model_info_num_contact_cts[wid] = ncc
-    model_info_limit_cts_group_offset[wid] = lcgo
-    model_info_contact_cts_group_offset[wid] = ccgo
+    data_info_num_total_cts[wid] = ncts
+    data_info_num_limit_cts[wid] = nlc
+    data_info_num_contact_cts[wid] = ncc
+    data_info_limit_cts_group_offset[wid] = lcgo
+    data_info_contact_cts_group_offset[wid] = ccgo
 
 
 ###
@@ -259,10 +259,10 @@ def _update_constraints_info(
 
 def update_constraints_info(
     model: Model,
-    state: ModelData,
+    data: ModelData,
 ):
     """
-    Builds the dual problem info for the given model, state, limits and contacts.
+    Updates the active constraints info for the given model and current data.
     """
     wp.launch(
         _update_constraints_info,
@@ -270,13 +270,13 @@ def update_constraints_info(
         inputs=[
             # Inputs:
             model.info.num_joint_cts,
-            state.info.num_limits,
-            state.info.num_contacts,
+            data.info.num_limits,
+            data.info.num_contacts,
             # Outputs:
-            state.info.num_total_cts,
-            state.info.num_limit_cts,
-            state.info.num_contact_cts,
-            state.info.limit_cts_group_offset,
-            state.info.contact_cts_group_offset,
+            data.info.num_total_cts,
+            data.info.num_limit_cts,
+            data.info.num_contact_cts,
+            data.info.limit_cts_group_offset,
+            data.info.contact_cts_group_offset,
         ],
     )

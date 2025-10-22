@@ -66,26 +66,39 @@ class ShapeType(IntEnum):
 
     EMPTY = 0
     """The empty shape type, which has no parameters and is used to represent the absence of a shape."""
+
     SPHERE = 1
     """The 1-parameter sphere shape type. Parameters: radius."""
+
     CYLINDER = 2
     """The 2-parameter cylinder shape type. Parameters: radius, height."""
+
     CONE = 3
     """The 2-parameter cone shape type. Parameters: radius, height."""
+
     CAPSULE = 4
     """The 2-parameter capsule shape type. Parameters: radius, height."""
+
     BOX = 5
     """The 3-parameter box shape type. Parameters: depth, width, height."""
+
     ELLIPSOID = 6
     """The 3-parameter ellipsoid shape type. Parameters: a, b, c."""
+
     PLANE = 7
     """The 4-parameter plane shape type. Parameters: normal_x, normal_y, normal_z, distance."""
+
     MESH = 8
     """The n-parameter mesh shape type. Parameters: vertices, normals, triangles, triangle_normals."""
-    SDF = 9
-    """The n-parameter signed-distance-field shape type. Parameters: sdf data, etc."""
+
+    CONVEX = 9
+    """The n-parameter height-field shape type. Parameters: height field data, etc."""
+
     HFIELD = 10
     """The n-parameter height-field shape type. Parameters: height field data, etc."""
+
+    SDF = 11
+    """The n-parameter signed-distance-field shape type. Parameters: sdf data, etc."""
 
     @override
     def __str__(self):
@@ -118,10 +131,10 @@ class ShapeType(IntEnum):
             return 3
         elif self.value == self.PLANE:
             return 4
-        elif self.value in {self.HFIELD, self.MESH, self.SDF}:
+        elif self.value in {self.MESH, self.CONVEX, self.HFIELD, self.SDF}:
             return -1  # Indicates variable number of parameters
         else:
-            raise ValueError(f"Unknown joint DoF type: {self.value}")
+            raise ValueError(f"Unknown shape type value: {self.value}")
 
 
 class ShapeDescriptor(ABC, Descriptor):
@@ -157,10 +170,14 @@ class EmptyShape(ShapeDescriptor):
     def __init__(self, name: str = "empty", uid: str | None = None):
         super().__init__(ShapeType.EMPTY, name, uid)
 
+    @override
+    def __repr__(self):
+        return f"EmptyShape(\nname: {self.name},\nuid: {self.uid}\n)"
+
     @property
     @override
     def params(self) -> vec4f:
-        return vec4f()
+        return vec4f(0.0)
 
 
 class SphereShape(ShapeDescriptor):
@@ -309,10 +326,21 @@ class MeshShape(ShapeDescriptor):
         maxhullvert: int = MESH_MAXHULLVERT,
         compute_inertia: bool = True,
         is_solid: bool = True,
+        is_convex: bool = False,
         name: str = "mesh",
         uid: str | None = None,
     ):
-        super().__init__(ShapeType.MESH, name, uid)
+        # Determine the mesh shape type, and adapt default name if necessary
+        if is_convex:
+            shape_type = ShapeType.CONVEX
+            name = "convex" if name == "mesh" else name
+        else:
+            shape_type = ShapeType.MESH
+
+        # Initialize the base shape descriptor
+        super().__init__(shape_type, name, uid)
+
+        # Create the underlying mesh data container
         self._data: Mesh = Mesh(
             vertices=vertices,
             indices=indices,
@@ -327,7 +355,9 @@ class MeshShape(ShapeDescriptor):
     @override
     def __repr__(self):
         return (
-            f"MeshShape(\n"
+            "MeshShape(\n"
+            if self.type == ShapeType.MESH
+            else "ConvexShape(\n"
             f"name: {self.name},\n"
             f"uid: {self.uid},\n"
             f"params: {self.params},\n"
@@ -365,6 +395,22 @@ class MeshShape(ShapeDescriptor):
     @property
     def color(self) -> Vec3 | None:
         return self._data._color
+
+
+class HFieldShape(ShapeDescriptor):
+    def __init__(self, name: str = "hfield", uid: str | None = None):
+        super().__init__(ShapeType.HFIELD, name, uid)
+        # TODO: Remove this when HFieldShape is implemented
+        raise NotImplementedError("HFieldShape is not yet implemented.")
+
+    @override
+    def __repr__(self):
+        return f"HFieldShape(\nname: {self.name},\nuid: {self.uid}\n)"
+
+    @property
+    @override
+    def params(self) -> vec4f:
+        return vec4f(0.0)
 
 
 class SDFShape(ShapeDescriptor):
@@ -446,6 +492,7 @@ ShapeDescriptorType = (
     | EllipsoidShape
     | PlaneShape
     | MeshShape
+    | HFieldShape
     | SDFShape
 )
 """A type union that can represent any shape descriptor, including primitive and explicit shapes."""

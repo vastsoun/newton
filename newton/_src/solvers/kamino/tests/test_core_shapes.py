@@ -88,14 +88,19 @@ class TestShapeType(unittest.TestCase):
         self.assertEqual(type, 8)
         self.assertEqual(type.num_params, -1)
 
-    def test_09_sdf_shape(self):
-        type = ShapeType.SDF
+    def test_09_convex_shape(self):
+        type = ShapeType.CONVEX
         self.assertEqual(type, 9)
         self.assertEqual(type.num_params, -1)
 
     def test_10_hfield_shape(self):
         type = ShapeType.HFIELD
         self.assertEqual(type, 10)
+        self.assertEqual(type.num_params, -1)
+
+    def test_11_sdf_shape(self):
+        type = ShapeType.SDF
+        self.assertEqual(type, 11)
         self.assertEqual(type.num_params, -1)
 
 
@@ -197,7 +202,34 @@ class TestShapeDescriptors(unittest.TestCase):
         self.assertTrue(np.array_equal(shape.vertices, np.array(vertices)))
         self.assertTrue(np.array_equal(shape.indices, np.array(indices).flatten()))
 
-    def test_09_sdf_shape(self):
+    def test_09_convex_shape(self):
+        # Create a mesh shape
+        vertices = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+        indices = [(0, 1, 2)]
+        shape = MeshShape(vertices, indices, is_convex=True)
+        # Check default values
+        self.assertEqual(shape.name, "convex")
+        self.assertEqual(shape.type, ShapeType.CONVEX)
+        self.assertEqual(shape.num_params, -1)
+        self.assertEqual(shape.params, vec4f(0.0))
+        self.assertTrue(np.array_equal(shape.vertices, np.array(vertices)))
+        self.assertTrue(np.array_equal(shape.indices, np.array(indices).flatten()))
+
+    # TODO: Re-enable when HFieldShape is implemented
+    # def test_10_hfield_shape(self):
+    #     # Create a height-field shape
+    #     vertices = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+    #     indices = [(0, 1, 2)]
+    #     shape = HFieldShape(vertices, indices)
+    #     # Check default values
+    #     self.assertEqual(shape.name, "hfield")
+    #     self.assertEqual(shape.type, ShapeType.HFIELD)
+    #     self.assertEqual(shape.num_params, -1)
+    #     self.assertEqual(shape.params, vec4f(0.0))
+    #     self.assertTrue(np.array_equal(shape.vertices, np.array(vertices)))
+    #     self.assertTrue(np.array_equal(shape.indices, np.array(indices).flatten()))
+
+    def test_11_sdf_shape(self):
         # Create an SDF shape
         volume = np.zeros((10, 10, 10), dtype=np.float32)
         shape = SDFShape(volume)

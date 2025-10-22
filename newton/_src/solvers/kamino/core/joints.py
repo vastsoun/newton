@@ -557,7 +557,7 @@ class JointsData:
         """
         Total wrench applied by each joint, expressed
         in and about the corresponding joint frame.\n
-        It's direction follows the convention that
+        Its direction follows the convention that
         joints act on the follower by the base body.\n
         Shape of ``(num_joints,)`` and type :class:`vec6`.
         """
@@ -566,7 +566,7 @@ class JointsData:
         """
         Actuation wrench applied by each joint, expressed
         in and about the corresponding joint frame.\n
-        It's direction follows the convention that
+        Its direction follows the convention that
         joints act on the follower by the base body.\n
         Shape of ``(num_joints,)`` and type :class:`vec6`.
         """
@@ -575,7 +575,7 @@ class JointsData:
         """
         Constraint wrench applied by each joint, expressed
         in and about the corresponding joint frame.\n
-        It's direction follows the convention that
+        Its direction follows the convention that
         joints act on the follower by the base body.\n
         Shape of ``(num_joints,)`` and type :class:`vec6`.
         """
@@ -584,7 +584,7 @@ class JointsData:
         """
         Joint-limit wrench applied by each joint, expressed
         in and about the corresponding joint frame.\n
-        It's direction follows the convention that
+        Its direction follows the convention that
         joints act on the follower by the base body.\n
         Shape of ``(num_joints,)`` and type :class:`vec6`.
         """

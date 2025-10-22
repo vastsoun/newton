@@ -67,7 +67,7 @@ class TimeModel:
 
     def set_uniform_timestep(self, dt: float):
         """
-        Sets a uniform discrete-time step size for all worlds.
+        Sets a uniform discrete time-step for all worlds.
 
         Args:
             dt (float): The time-step size to set.
@@ -86,7 +86,7 @@ class TimeModel:
 
     def set_timesteps(self, dt: list[float] | np.ndarray):
         """
-        Sets the discrete-time step sizes of each world explicitly.
+        Sets the discrete time-step of each world explicitly.
 
         Args:
             dt (list[float] | np.ndarray): An iterable collection of time-steps over all worlds.

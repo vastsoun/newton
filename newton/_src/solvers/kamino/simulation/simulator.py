@@ -297,7 +297,7 @@ class Simulator:
 
     @property
     def dt(self) -> float:
-        return self._dt
+        return self._settings.dt
 
     @property
     def model(self) -> Model:

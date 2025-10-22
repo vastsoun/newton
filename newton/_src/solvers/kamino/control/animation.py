@@ -269,15 +269,19 @@ class AnimationJointReference:
         Initialize the animation joint reference interface.
 
         Args:
-            model (Model | None): Model used to size and allocate controller buffers.
-                If None, call ``allocate()`` later.
+            model (Model | None): The model container used to determine the required allocation sizes.
+                If None, calling ``allocate()`` later can be used for deferred allocation.
             data (np.ndarray | None): The input animation reference data as a 2D numpy array.
+                If None, calling ``allocate()`` later can be used for deferred allocation.
             data_dt (float | None): The time-step between frames in the input data.
             target_dt (float | None): The desired time-step between frames in the animation reference.
                 If None, defaults to ``data_dt``.
-            decimation (int | list[int]): Decimation factor by which to extract references from the animation sequence.
-            rate (int | list[int]): Rate at which to progress the animation sequence.
-            loop (bool | list[bool]): Flag indicating whether the animation should loop.
+            decimation (int | list[int]): Decimation factor(s) defining the rate at which the animation
+                frame index is updated w.r.t the simulation step. If a list of integers, then frame
+                progression can proceed independently in each world. Defaults to 1 for all worlds.
+            rate (int | list[int]): Rate(s) by which to progress the animation frame index each time
+                the simulation step matches the set decimation. Defaults to 1 for all worlds.
+            loop (bool | list[bool]): Flag(s) indicating whether the animation should loop.
             use_fd (bool): Whether to compute finite-difference velocities from the input coordinates.
             device (Devicelike | None): Device to use for allocations and execution.
         """
@@ -336,8 +340,8 @@ class AnimationJointReference:
         if self._data is None:
             raise ValueError("Animation reference data is not allocated. Call allocate() first.")
 
+    @staticmethod
     def _upsample_reference_coordinates(
-        self,
         q_ref: np.ndarray,
         dt_in: float,
         dt_out: float,
@@ -388,7 +392,8 @@ class AnimationJointReference:
         # to compute the up-sampled joint coordinate references
         return upsample_func(t_new)
 
-    def _compute_finite_difference_velocities(self, q_ref: np.ndarray, dt: float) -> np.ndarray:
+    @staticmethod
+    def _compute_finite_difference_velocities(q_ref: np.ndarray, dt: float) -> np.ndarray:
         """
         Compute finite-difference velocities for the given reference positions.
 
@@ -441,15 +446,20 @@ class AnimationJointReference:
         Allocate the animation joint reference data.
 
         Args:
-            model (Model): The simulation model used to size the controller data.
-            input (np.ndarray | None): Optional input data to initialize the animation references.
-            rate (int | list[int]): Rate at which to progress the animation sequence.\n
-                If a single integer is provided, it is applied to all worlds.\n
-                If a list is provided, its length must match the number of worlds.
-            loop (bool | list[bool]): Flag indicating whether the animation should loop.\n
-                If a single boolean is provided, it is applied to all worlds.\n
-                If a list is provided, its length must match the number of worlds.
-            device (Devicelike | None): Device to use for allocations. If None, uses the existing device.
+            model (Model): The model container used to determine the required allocation sizes.
+            data (np.ndarray): The input animation reference data as a 2D numpy array.
+            data_dt (float): The time-step between frames in the input data.
+            target_dt (float | None): The desired time-step between frames in the animation reference.
+                If None, defaults to ``data_dt``.
+            decimation (int | list[int]): Decimation factor(s) defining the rate at which the animation
+                frame index is updated w.r.t the simulation step. If a list of integers, then frame
+                progression can proceed independently in each world. Defaults to 1 for all worlds.
+            rate (int | list[int]): Rate(s) by which to progress the animation frame index each time
+                the simulation step matches the set decimation. Defaults to 1 for all worlds.
+            loop (bool | list[bool]): Flag(s) indicating whether the animation should loop.
+            use_fd (bool): Whether to compute finite-difference velocities from the input coordinates.
+            device (Devicelike | None): Device to use for allocations and execution.
+
         Raises:
             ValueError: If the model is not valid or actuated DoFs are not properly configured.
             ValueError: If the input data is not a valid 2D numpy array.

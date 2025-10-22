@@ -21,6 +21,7 @@ from dataclasses import dataclass
 import numpy as np
 import torch
 import warp as wp
+from warp.context import Devicelike
 
 import newton
 import newton._src.solvers.kamino.utils.logger as msg
@@ -123,18 +124,13 @@ def test_control_callback(sim: Simulator):
 class CartpoleExample:
     """ViewerGL example class for cartpole simulation."""
 
-    def __init__(self, num_worlds: int, viewer, device, use_cuda_graph: bool = False):
+    def __init__(self, num_worlds: int, viewer, device: Devicelike, use_cuda_graph: bool = False):
         # Initialize target frames per second and corresponding time-steps
         self.fps = 60
         self.frame_dt = 1.0 / self.fps
         self.sim_dt = 0.001
         self.sim_substeps = int(self.frame_dt / self.sim_dt)
         self.max_sim_steps = 10000
-        msg.warning("fps: %f", self.fps)
-        msg.warning("frame_dt: %f", self.frame_dt)
-        msg.warning("sim_dt: %f", self.sim_dt)
-        msg.warning("sim_substeps: %d", self.sim_substeps)
-        msg.warning("max_sim_steps: %d", self.max_sim_steps)
 
         # Initialize internal time-keeping
         self.sim_time = 0.0
@@ -150,8 +146,6 @@ class CartpoleExample:
         # Create a single-instance system (always load from USD)
         msg.info("Constructing builder from imported USD ...")
         self.builder: ModelBuilder = make_homogeneous_builder(num_worlds=num_worlds, build_func=build_cartpole)[0]
-        msg.warning("total mass: %f", self.builder.world.mass_total)
-        msg.warning("total diag inertia: %f", self.builder.world.inertia_total)
 
         # Set gravity
         self.builder.gravity.enabled = True
@@ -278,13 +272,13 @@ class CartpoleExample:
         """Capture CUDA graph if requested and available."""
         if self.use_cuda_graph:
             msg.info("Running with CUDA graphs...")
-            with wp.ScopedCapture(self.device) as reset_capture:
+            with wp.ScopedCapture(device=self.device) as reset_capture:
                 self.sim.reset()
             self.reset_graph = reset_capture.graph
-            with wp.ScopedCapture(self.device) as step_capture:
+            with wp.ScopedCapture(device=self.device) as step_capture:
                 self.sim.step()
             self.step_graph = step_capture.graph
-            with wp.ScopedCapture(self.device) as sim_capture:
+            with wp.ScopedCapture(device=self.device) as sim_capture:
                 self.simulate()
             self.simulate_graph = sim_capture.graph
         else:
@@ -482,13 +476,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Cartpole simulation example")
     parser.add_argument("--viewer", choices=["gl", "usd", "rerun", "null"], default="gl", help="Viewer type")
     parser.add_argument("--device", type=str, help="The compute device to use")
-    parser.add_argument("--headless", action="store_true", default=False, help="Run in headless mode")
+    parser.add_argument("--headless", action="store_true", default=True, help="Run in headless mode")
     parser.add_argument("--num-worlds", type=int, default=3, help="Number of worlds to simulate in parallel")
     parser.add_argument("--num-frames", type=int, default=1000, help="Number of frames for null/USD viewer")
     parser.add_argument("--output-path", type=str, help="Output path for USD viewer")
-    parser.add_argument("--cuda-graph", action="store_true", default=False, help="Use CUDA graphs")
+    parser.add_argument("--cuda-graph", action="store_true", default=True, help="Use CUDA graphs")
     parser.add_argument("--clear-cache", action="store_true", default=False, help="Clear warp cache")
-    parser.add_argument("--show-plots", action="store_true", default=False, help="Show plots after simulation")
     parser.add_argument("--test", action="store_true", default=False, help="Run tests")
     args = parser.parse_args()
 
@@ -510,7 +503,6 @@ if __name__ == "__main__":
         wp.set_device(device)
     else:
         device = wp.get_preferred_device()
-        device = wp.get_device(device)
 
     # Determine if CUDA graphs should be used for execution
     can_use_cuda_graph = device.is_cuda and wp.is_mempool_enabled(device)

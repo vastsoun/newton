@@ -123,7 +123,7 @@ def test_control_callback(sim: Simulator):
 class CartpoleExample:
     """ViewerGL example class for cartpole simulation."""
 
-    def __init__(self, num_worlds: int, viewer, device, use_cuda_graph: bool = False, logging: bool = True):
+    def __init__(self, num_worlds: int, viewer, device, use_cuda_graph: bool = False):
         # Initialize target frames per second and corresponding time-steps
         self.fps = 60
         self.frame_dt = 1.0 / self.fps
@@ -146,7 +146,6 @@ class CartpoleExample:
         # Cache the device and other internal flags
         self.device = device
         self.use_cuda_graph: bool = use_cuda_graph
-        self.logging: bool = logging
 
         # Create a single-instance system (always load from USD)
         msg.info("Constructing builder from imported USD ...")
@@ -291,22 +290,11 @@ class CartpoleExample:
         else:
             msg.info("Running with kernels...")
 
-    def log_data(self):
-        if self.sim_steps >= self.max_sim_steps:
-            msg.warning("Maximum simulation steps reached, skipping data logging.")
-            return
-        self.log_time[:, self.sim_steps] = self.sim.data.solver.time.time.numpy()
-        # self.log_q_j[self.sim_steps, :] = self.sim.data.state_n.q_j.numpy()
-        # self.log_dq_j[self.sim_steps, :] = self.sim.data.state_n.dq_j.numpy()
-        # self.log_tau_j[self.sim_steps, :] = self.sim.data.control_n.tau_j.numpy()
-
     def simulate(self):
         """Run simulation substeps."""
         for _i in range(self.sim_substeps):
             self.sim.step()
             self.sim_steps += 1
-            if not self.use_cuda_graph and self.logging:
-                self.log_data()
 
     def reset(self):
         """Reset the simulation."""
@@ -316,8 +304,6 @@ class CartpoleExample:
             self.sim.reset()
         self.sim_steps = 0
         self.sim_time = 0.0
-        if not self.use_cuda_graph and self.logging:
-            self.log_data()
 
     def step_once(self):
         """Run the simulation for a single time-step."""
@@ -327,8 +313,6 @@ class CartpoleExample:
             self.sim.step()
         self.sim_steps += 1
         self.sim_time += self.sim_dt
-        if not self.use_cuda_graph and self.logging:
-            self.log_data()
 
     def step(self):
         """Step the simulation."""
@@ -337,13 +321,6 @@ class CartpoleExample:
         else:
             self.simulate()
         self.sim_time += self.frame_dt
-        msg.warning(
-            "[t={%f}] q_j:\n{%s}\ndq_j:\n{%s}\ntau_j:\n{%s}\n\n",
-            self.sim_time,
-            self.states.q_j,
-            self.states.dq_j,
-            self.actions.tau_j,
-        )
 
     def render(self):
         """Render the current frame."""

@@ -145,7 +145,7 @@ class GeometriesModel:
         Pointer to the source data of the shape.\n
         For primitive shapes this is `0` indicating NULL, otherwise it points to
         the shape data, which can correspond to a mesh, heightfield, or SDF.\n
-        Shape of ``(num_geoms,)`` and type :class:`uint32`.
+        Shape of ``(num_geoms,)`` and type :class:`uint64`.
         """
 
         self.params: wp.array(dtype=vec4f) | None = None

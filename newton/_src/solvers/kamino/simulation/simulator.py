@@ -42,7 +42,7 @@ from ..kinematics.jacobians import DenseSystemJacobians
 from ..kinematics.joints import compute_joints_state
 from ..kinematics.limits import Limits
 from ..linalg import LinearSolver, LLTBlockedSolver
-from ..solvers.apadmm import PADMMDualSolver, PADMMSettings
+from ..solvers.padmm import PADMMDualSolver, PADMMSettings
 
 ###
 # Module interface
@@ -82,8 +82,11 @@ class SimulatorSettings:
     solver: PADMMSettings = field(default_factory=PADMMSettings)
     """The settings for the dynamics solver."""
 
-    solver_info: bool = False
-    """Whether to collect solver info at each step."""
+    use_solver_acceleration: bool = True
+    """Set to True to enable Nesterov-type acceleration (i.e. APADMM) instead of standard PADMM."""
+
+    collect_solver_info: bool = False
+    """Set to True to collect solver convergence and performance info at each simulation step."""
 
     linear_solver_type: type[LinearSolver] = LLTBlockedSolver
     """The type of linear solver to use for the dynamics problem."""
@@ -255,7 +258,8 @@ class Simulator:
             limits=self._limits,
             contacts=self._collision_detector.contacts,
             settings=settings.solver,
-            collect_info=settings.solver_info,
+            use_acceleration=settings.use_solver_acceleration,
+            collect_info=settings.collect_solver_info,
             device=self._device,
         )
 

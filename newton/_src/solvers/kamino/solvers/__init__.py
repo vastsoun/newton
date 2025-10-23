@@ -13,20 +13,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-KAMINO: Solvers Module
-"""
+"""Numerical Solvers for Constraint Rigid Multi-Body Kinematics & Dynamics"""
 
-# from .apadmm import APADMMDualSolver, APADMMSettings
-# from .padmm import PADMMDualSolver, PADMMSettings
+from .fk import ForwardKinematicsSolver, ForwardKinematicsSolverStatus
+from .padmm import PADMMDualSolver, PADMMSettings
 
 ###
 # Module interface
 ###
 
-# __all__ = [
-#     "APADMMDualSolver",
-#     "APADMMSettings",
-#     "PADMMDualSolver",
-#     "PADMMSettings",
-# ]
+__all__ = [
+    "ForwardKinematicsSolver",
+    "ForwardKinematicsSolverStatus",
+    "PADMMDualSolver",
+    "PADMMSettings",
+]

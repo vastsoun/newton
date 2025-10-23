@@ -24,11 +24,12 @@ import warp as wp
 from ..core import ModelBuilder
 from ..core.inertia import (
     solid_cuboid_body_moment_of_inertia,
+    solid_cylinder_body_moment_of_inertia,
     solid_sphere_body_moment_of_inertia,
 )
 from ..core.joints import JointActuationType, JointDoFType
 from ..core.math import FLOAT32_MAX, FLOAT32_MIN, I_3
-from ..core.shapes import BoxShape, SphereShape
+from ..core.shapes import BoxShape, CylinderShape, SphereShape
 from ..core.types import Axis, transformf, vec3f, vec6f
 
 ###
@@ -276,6 +277,82 @@ def build_box_pendulum_vertical(builder: ModelBuilder, z_offset: float = 0.7, gr
     # Add a collision layer and geometries
     builder.add_collision_layer("primary")
     gids.append(builder.add_collision_geometry(body_id=bid0, shape=BoxShape(d, w, h)))
+
+    # Add a static collision layer and geometry for the plane
+    if ground:
+        builder.add_collision_layer("world")
+        gids.append(
+            builder.add_collision_geometry(
+                body_id=-1,
+                shape=BoxShape(20.0, 20.0, 1.0),
+                offset=transformf(0.0, 0.0, -0.5, 0.0, 0.0, 0.0, 1.0),
+            )
+        )
+
+    # Return the lists of element indices
+    return bids, jids, gids
+
+
+def build_cartpole(builder: ModelBuilder, z_offset: float = 0.0, ground: bool = False) -> BuilderInfo:
+    # Create lists of BIDs, JIDs and GIDs
+    bids = []
+    jids = []
+    gids = []
+
+    # Model constants
+    m = 1.0
+    dims_cart = (0.1, 0.1, 0.1)
+    dims_pendulum = (0.02, 0.4)
+    z_0 = z_offset  # Initial z offset for the body
+
+    # Add box cart body
+    z_0_cart = z_0
+    bid0 = builder.add_body(
+        m_i=m,
+        i_I_i=solid_cuboid_body_moment_of_inertia(m, *dims_cart),
+        q_i_0=transformf(0.0, 0.0, z_0_cart, 0.0, 0.0, 0.0, 1.0),
+        u_i_0=vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+    )
+    bids.append(bid0)
+
+    # Add box pendulum body
+    z_0_pendulum = 0.5 * dims_pendulum[1] + z_0_cart
+    bid1 = builder.add_body(
+        m_i=m,
+        i_I_i=solid_cylinder_body_moment_of_inertia(m, *dims_pendulum),
+        q_i_0=transformf(0.0, 0.0, z_0_pendulum, 0.0, 0.0, 0.0, 1.0),
+        u_i_0=vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+    )
+    bids.append(bid1)
+
+    # Add a prismatic joint for the cart
+    jid0 = builder.add_joint(
+        dof_type=JointDoFType.PRISMATIC,
+        act_type=JointActuationType.FORCE,
+        bid_B=-1,
+        bid_F=bid0,
+        B_r_Bj=vec3f(0.0, 0.0, z_0),
+        F_r_Fj=vec3f(0.0, 0.0, z_0_cart),
+        X_j=Axis.X.to_mat33(),
+    )
+    jids.append(jid0)
+
+    # Add a revolute joint for the pendulum
+    jid0 = builder.add_joint(
+        dof_type=JointDoFType.REVOLUTE,
+        act_type=JointActuationType.FORCE,
+        bid_B=bid0,
+        bid_F=bid1,
+        B_r_Bj=vec3f(0.0, 0.0, 0.0),
+        F_r_Fj=vec3f(0.0, 0.0, -0.5 * dims_pendulum[1]),
+        X_j=Axis.Y.to_mat33(),
+    )
+    jids.append(jid0)
+
+    # Add a collision layer and geometries
+    builder.add_collision_layer("primary")
+    gids.append(builder.add_collision_geometry(body_id=bid0, shape=BoxShape(*dims_cart)))
+    gids.append(builder.add_collision_geometry(body_id=bid1, shape=CylinderShape(*dims_pendulum)))
 
     # Add a static collision layer and geometry for the plane
     if ground:

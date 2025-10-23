@@ -762,7 +762,7 @@ class Model:
         # Return the constructed model data container
         return data
 
-    def state(self, requires_grad=None, device: Devicelike = None) -> State:
+    def state(self, requires_grad: bool = False, device: Devicelike = None) -> State:
         """
         Creates a compact state container with the initial state of the model entities.
 
@@ -779,18 +779,19 @@ class Model:
 
         # Create a new state container with the initial state of the model entities on the specified device
         with wp.ScopedDevice(device=device):
-            s = State()
-            s.q_i = wp.clone(self.bodies.q_i_0, requires_grad=requires_grad)
-            s.u_i = wp.clone(self.bodies.u_i_0, requires_grad=requires_grad)
-            s.w_i = wp.zeros_like(self.bodies.u_i_0, requires_grad=requires_grad)
-            s.q_j = wp.zeros(shape=self.size.sum_of_num_joint_coords, dtype=float32, requires_grad=requires_grad)
-            s.dq_j = wp.zeros(shape=self.size.sum_of_num_joint_dofs, dtype=float32, requires_grad=requires_grad)
-            s.lambda_j = wp.zeros(shape=self.size.sum_of_num_joint_cts, dtype=float32, requires_grad=requires_grad)
+            s = State(
+                q_i=wp.clone(self.bodies.q_i_0, requires_grad=requires_grad),
+                u_i=wp.clone(self.bodies.u_i_0, requires_grad=requires_grad),
+                w_i=wp.zeros_like(self.bodies.u_i_0, requires_grad=requires_grad),
+                q_j=wp.zeros(shape=self.size.sum_of_num_joint_coords, dtype=float32, requires_grad=requires_grad),
+                dq_j=wp.zeros(shape=self.size.sum_of_num_joint_dofs, dtype=float32, requires_grad=requires_grad),
+                lambda_j=wp.zeros(shape=self.size.sum_of_num_joint_cts, dtype=float32, requires_grad=requires_grad),
+            )
 
         # Return the constructed state container
         return s
 
-    def control(self, requires_grad=None, device: Devicelike = None) -> Control:
+    def control(self, requires_grad: bool = False, device: Devicelike = None) -> Control:
         """
         Creates a compact control container with the initial state of the model entities.
 
@@ -807,8 +808,9 @@ class Model:
 
         # Create a new control container on the specified device
         with wp.ScopedDevice(device=device):
-            c = Control()
-            c.tau_j = wp.zeros(shape=self.size.sum_of_num_joint_dofs, dtype=float32, requires_grad=requires_grad)
+            c = Control(
+                tau_j=wp.zeros(shape=self.size.sum_of_num_joint_dofs, dtype=float32, requires_grad=requires_grad)
+            )
 
         # Return the constructed control container
         return c

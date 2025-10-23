@@ -17,9 +17,12 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import warp as wp
 
 
+@dataclass
 class Control:
     """
     Time-varying control data for a :class:`Model`.
@@ -35,13 +38,12 @@ class Control:
     - Subscripts ``_j`` denote joint-indexed quantities, e.g. :attr:`tau_j`.
     """
 
-    def __init__(self):
-        self.tau_j: wp.array | None = None
-        """
-        Array of generalized joint actuation forces.\n
-        Shape is ``(sum(d_j),)`` and dtype is :class:`float32`,\n
-        where ``d_j`` is the number of DoFs of each joint ``j``.
-        """
+    tau_j: wp.array | None = None
+    """
+    Array of generalized joint actuation forces.\n
+    Shape is ``(sum(d_j),)`` and dtype is :class:`float32`,\n
+    where ``d_j`` is the number of DoFs of each joint ``j``.
+    """
 
     def copy_to(self, other: Control) -> None:
         """

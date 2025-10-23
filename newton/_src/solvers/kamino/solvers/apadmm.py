@@ -1434,50 +1434,6 @@ def _compute_velocity_bias(
 
 
 @wp.kernel
-def _apply_overrelaxation(
-    # Inputs
-    problem_dim: wp.array(dtype=int32),
-    problem_vio: wp.array(dtype=int32),
-    solver_config: wp.array(dtype=APADMMConfig),
-    solver_status: wp.array(dtype=APADMMStatus),
-    solver_y_p: wp.array(dtype=float32),
-    # Outputs
-    solver_x: wp.array(dtype=float32),
-):
-    # Retrieve the thread indices as the world and constraint index
-    wid, tid = wp.tid()
-
-    # Retrieve the total number of active constraints in the world
-    ncts = problem_dim[wid]
-
-    # Retrieve the solver status
-    status = solver_status[wid]
-
-    # Skip if row index exceed the problem size or if the solver has already converged
-    if tid >= ncts or status.converged > 0:
-        return
-
-    # Retrieve the index offset of the vector block of the world
-    vio = problem_vio[wid]
-
-    # Retrive the relaxation factor
-    omega = solver_config[wid].omega
-
-    # Compute the index offset of the vector block of the world
-    tio = vio + tid
-
-    # Retrive the solver state variables
-    y_p = solver_y_p[tio]
-    x = solver_x[tio]
-
-    # x = omega * x + (1 - omega) * y_p;
-    x = omega * x + (1.0 - omega) * y_p
-
-    # Store the updated values back to the solver state
-    solver_x[tio] = x
-
-
-@wp.kernel
 def _compute_projection_argument(
     # Inputs
     problem_dim: wp.array(dtype=int32),
@@ -2471,6 +2427,19 @@ class APADMMDualSolver:
         )
 
     def update_velocity_bias(self, problem: DualProblem):
+        """
+        TODO
+        """
+
+        # TODO
+        if any(s.use_acceleration for s in self._settings):
+            y_p = self._data.state.y_hat
+            z_p = self._data.state.z_hat
+        else:
+            y_p = self._data.state.y_p
+            z_p = self._data.state.z_p
+
+        # TODO
         wp.launch(
             kernel=_compute_velocity_bias,
             dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
@@ -2484,8 +2453,8 @@ class APADMMDualSolver:
                 self._data.status,
                 self._data.state.s,
                 self._data.state.x_p,
-                self._data.state.y_hat,
-                self._data.state.z_hat,
+                y_p,
+                z_p,
                 # Outputs:
                 self._data.state.v,
             ],
@@ -2498,22 +2467,42 @@ class APADMMDualSolver:
         problem._delassus.solve(v=self._data.state.v, x=self._data.state.x)
 
     def update_projection_to_feasible_set(self, problem: DualProblem):
-        # Apply over-relaxation and compute the argument to the projection operator
-        wp.launch(
-            kernel=_compute_projection_argument,
-            dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
-            inputs=[
-                # Inputs:
-                problem.data.dim,
-                problem.data.vio,
-                self._data.penalty,
-                self._data.status,
-                self._data.state.z_hat,
-                self._data.state.x,
-                # Outputs:
-                self._data.state.y,
-            ],
-        )
+        if any(s.use_acceleration for s in self._settings):
+            # Apply over-relaxation and compute the argument to the projection operator
+            wp.launch(
+                kernel=_compute_projection_argument,
+                dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
+                inputs=[
+                    # Inputs:
+                    problem.data.dim,
+                    problem.data.vio,
+                    self._data.penalty,
+                    self._data.status,
+                    self._data.state.z_hat,
+                    self._data.state.x,
+                    # Outputs:
+                    self._data.state.y,
+                ],
+            )
+        else:
+            # Apply over-relaxation and compute the argument to the projection operator
+            wp.launch(
+                kernel=_apply_overrelaxation_and_compute_projection_argument,
+                dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
+                inputs=[
+                    # Inputs:
+                    problem.data.dim,
+                    problem.data.vio,
+                    self._data.config,
+                    self._data.penalty,
+                    self._data.status,
+                    self._data.state.y_p,
+                    self._data.state.z_p,
+                    # Outputs:
+                    self._data.state.x,
+                    self._data.state.y,
+                ],
+            )
 
         # Project to the feasible set defined by the cone K := R^{njd} x R_+^{nld} x K_{mu}^{nc}
         wp.launch(
@@ -2535,6 +2524,14 @@ class APADMMDualSolver:
         )
 
     def update_dual_variables_and_residuals(self, problem: DualProblem):
+        # TODO
+        if any(s.use_acceleration for s in self._settings):
+            y_p = self._data.state.y_hat
+            z_p = self._data.state.z_hat
+        else:
+            y_p = self._data.state.y_p
+            z_p = self._data.state.z_p
+
         # Update the dual variables and compute primal-dual residuals from the current state
         # NOTE: These are combined into a single kernel to reduce kernel launch overhead
         wp.launch(
@@ -2551,8 +2548,8 @@ class APADMMDualSolver:
                 self._data.state.x,
                 self._data.state.y,
                 self._data.state.x_p,
-                self._data.state.y_hat,
-                self._data.state.z_hat,
+                y_p,
+                z_p,
                 # Outputs:
                 self._data.state.z,
                 self._data.residuals.r_primal,
@@ -2701,8 +2698,9 @@ class APADMMDualSolver:
         )
 
     def update_previous_state(self):
-        # TODO: do this only if acceleration is enabled
-        wp.copy(self._data.state.a_p, self._data.state.a)
+        # Cache the previous acceleration state if acceleration is enabled
+        if any(s.use_acceleration for s in self._settings):
+            wp.copy(self._data.state.a_p, self._data.state.a)
 
         # Cache previous state variables
         wp.copy(self._data.state.x_p, self._data.state.x)
@@ -2782,10 +2780,10 @@ class APADMMDualSolver:
         # Optionally update Nesterov acceleration states from the current iteration
         if any(s.use_acceleration for s in self._settings):
             self.update_acceleration(problem)
-        else:
-            # If acceleration is disabled, update the auxiliary state to the current
-            wp.copy(self._data.state.y_hat, self._data.state.y)
-            wp.copy(self._data.state.z_hat, self._data.state.z)
+        # else:
+        #     # If acceleration is disabled, update the auxiliary state to the current
+        #     wp.copy(self._data.state.y_hat, self._data.state.y)
+        #     wp.copy(self._data.state.z_hat, self._data.state.z)
 
         # Optionally record internal solver info
         if self._collect_info:

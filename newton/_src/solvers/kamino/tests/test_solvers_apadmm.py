@@ -294,7 +294,7 @@ class TestPADMMDualSolver(unittest.TestCase):
         settings.rho_0 = 1.0  # 9.7  # 2.7
         settings.omega = 1.0  # 1.99
         settings.max_iterations = 500
-        settings.use_acceleration = True
+        settings.use_acceleration = False
 
         # Create the ADMM solver
         solver = APADMMDualSolver(
@@ -481,11 +481,11 @@ if __name__ == "__main__":
     # Global numpy configurations
     np.set_printoptions(linewidth=1000, precision=10, threshold=10000, suppress=True)  # Suppress scientific notation
 
-    # Global warp configurations
-    wp.config.enable_backward = False
-    wp.config.verbose = False
-    wp.clear_kernel_cache()
-    wp.clear_lto_cache()
+    # # Global warp configurations
+    # wp.config.enable_backward = False
+    # wp.config.verbose = False
+    # wp.clear_kernel_cache()
+    # wp.clear_lto_cache()
 
     # Run all tests
     unittest.main(verbosity=2)

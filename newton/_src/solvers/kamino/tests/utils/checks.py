@@ -115,7 +115,7 @@ def assert_builders_equal(
         fixture.assertEqual(builder1.collision_geoms[k].shape.type, builder2.collision_geoms[k].shape.type)
         fixture.assertEqual(builder1.collision_geoms[k].shape.num_params, builder2.collision_geoms[k].shape.num_params)
         fixture.assertTrue(
-            lists_equal(builder1.collision_geoms[k].shape.params, builder2.collision_geoms[k].shape.params)
+            lists_equal(builder1.collision_geoms[k].shape.paramsvec, builder2.collision_geoms[k].shape.paramsvec)
         )
         fixture.assertEqual(builder1.collision_geoms[k].mid, builder2.collision_geoms[k].mid)
         fixture.assertEqual(builder1.collision_geoms[k].max_contacts, builder2.collision_geoms[k].max_contacts)

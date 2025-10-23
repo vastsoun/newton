@@ -18,13 +18,13 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from enum import IntEnum
 
 import warp as wp
 
 from ....core.types import Mat33, Vec2, Vec3, nparray
-from ....geometry.types import GeoType, MESH_MAXHULLVERT, SDF, Mesh
+from ....geometry.types import MESH_MAXHULLVERT, SDF, GeoType, Mesh
 from .types import Descriptor, mat33f, override, vec3f, vec4f
 
 ###
@@ -136,7 +136,7 @@ class ShapeType(IntEnum):
         else:
             raise ValueError(f"Unknown shape type value: {self.value}")
 
-	def to_newton(self) -> GeoType:
+    def to_newton(self) -> GeoType:
         """
         Convert the shape type to the corresponding Newton shape type.
         """
@@ -162,15 +162,21 @@ class ShapeType(IntEnum):
                 type = GeoType.CONVEX_MESH
             case ShapeType.MESH:
                 type = GeoType.MESH
-            # case ShapeType.HFIELD:
-            #     type = GeoType.HFIELD
+            case ShapeType.HFIELD:
+                type = GeoType.HFIELD
             case ShapeType.SDF:
                 type = GeoType.SDF
             case _:
                 raise ValueError(f"Unknown ShapeType value: {self.value}")
-
         return type
-            
+
+
+ShapeParamsLike = None | float | Iterable[float]
+"""A type union that can represent any shape parameters, including None, single float, or iterable of floats."""
+
+ShapeDataLike = None | Mesh | SDF
+"""A type union that can represent any shape data, including None, Mesh, and SDF."""
+
 
 class ShapeDescriptor(ABC, Descriptor):
     """Abstract base class for all shape descriptors."""
@@ -192,8 +198,18 @@ class ShapeDescriptor(ABC, Descriptor):
 
     @property
     @abstractmethod
-    def params(self) -> vec4f:
-        return vec4f()
+    def paramsvec(self) -> vec4f:
+        return vec4f(0.0)
+
+    @property
+    @abstractmethod
+    def params(self) -> ShapeParamsLike:
+        return None
+
+    @property
+    @abstractmethod
+    def data(self) -> ShapeDataLike:
+        return None
 
 
 ###
@@ -211,8 +227,18 @@ class EmptyShape(ShapeDescriptor):
 
     @property
     @override
-    def params(self) -> vec4f:
+    def paramsvec(self) -> vec4f:
         return vec4f(0.0)
+
+    @property
+    @override
+    def params(self) -> ShapeParamsLike:
+        return None
+
+    @property
+    @override
+    def data(self) -> None:
+        return None
 
 
 class SphereShape(ShapeDescriptor):
@@ -226,8 +252,18 @@ class SphereShape(ShapeDescriptor):
 
     @property
     @override
-    def params(self) -> vec4f:
+    def paramsvec(self) -> vec4f:
         return vec4f(self.radius, 0.0, 0.0, 0.0)
+
+    @property
+    @override
+    def params(self) -> float:
+        return self.radius
+
+    @property
+    @override
+    def data(self) -> None:
+        return None
 
 
 class CylinderShape(ShapeDescriptor):
@@ -242,8 +278,18 @@ class CylinderShape(ShapeDescriptor):
 
     @property
     @override
-    def params(self) -> vec4f:
+    def paramsvec(self) -> vec4f:
         return vec4f(self.radius, self.height, 0.0, 0.0)
+
+    @property
+    @override
+    def params(self) -> tuple[float, float]:
+        return (self.radius, self.height)
+
+    @property
+    @override
+    def data(self) -> None:
+        return None
 
 
 class ConeShape(ShapeDescriptor):
@@ -258,8 +304,18 @@ class ConeShape(ShapeDescriptor):
 
     @property
     @override
-    def params(self) -> vec4f:
+    def paramsvec(self) -> vec4f:
         return vec4f(self.radius, self.height, 0.0, 0.0)
+
+    @property
+    @override
+    def params(self) -> tuple[float, float]:
+        return (self.radius, self.height)
+
+    @property
+    @override
+    def data(self) -> None:
+        return None
 
 
 class CapsuleShape(ShapeDescriptor):
@@ -274,8 +330,18 @@ class CapsuleShape(ShapeDescriptor):
 
     @property
     @override
-    def params(self) -> vec4f:
+    def paramsvec(self) -> vec4f:
         return vec4f(self.radius, self.height, 0.0, 0.0)
+
+    @property
+    @override
+    def params(self) -> tuple[float, float]:
+        return (self.radius, self.height)
+
+    @property
+    @override
+    def data(self) -> None:
+        return None
 
 
 class BoxShape(ShapeDescriptor):
@@ -299,8 +365,18 @@ class BoxShape(ShapeDescriptor):
 
     @property
     @override
-    def params(self) -> vec4f:
+    def paramsvec(self) -> vec4f:
         return vec4f(self.depth, self.width, self.height, 0.0)
+
+    @property
+    @override
+    def params(self) -> tuple[float, float, float]:
+        return (self.depth, self.width, self.height)
+
+    @property
+    @override
+    def data(self) -> None:
+        return None
 
 
 class EllipsoidShape(ShapeDescriptor):
@@ -316,8 +392,18 @@ class EllipsoidShape(ShapeDescriptor):
 
     @property
     @override
-    def params(self) -> vec4f:
+    def paramsvec(self) -> vec4f:
         return vec4f(self.a, self.b, self.c, 0.0)
+
+    @property
+    @override
+    def params(self) -> tuple[float, float, float]:
+        return (self.a, self.b, self.c)
+
+    @property
+    @override
+    def data(self) -> None:
+        return None
 
 
 class PlaneShape(ShapeDescriptor):
@@ -334,8 +420,18 @@ class PlaneShape(ShapeDescriptor):
 
     @property
     @override
-    def params(self) -> vec4f:
+    def paramsvec(self) -> vec4f:
         return vec4f(self.normal[0], self.normal[1], self.normal[2], self.distance)
+
+    @property
+    @override
+    def params(self) -> tuple[float, float, float, float]:
+        return (self.normal[0], self.normal[1], self.normal[2], self.distance)
+
+    @property
+    @override
+    def data(self) -> None:
+        return None
 
 
 ###
@@ -395,7 +491,6 @@ class MeshShape(ShapeDescriptor):
             else "ConvexShape(\n"
             f"name: {self.name},\n"
             f"uid: {self.uid},\n"
-            f"params: {self.params},\n"
             f"vertices: {self._data.vertices.shape},\n"
             f"indices: {self._data.indices.shape},\n"
             f"normals: {self._data._normals.shape if self._data._normals is not None else None},\n"
@@ -404,10 +499,16 @@ class MeshShape(ShapeDescriptor):
 
     @property
     @override
-    def params(self) -> vec4f:
+    def paramsvec(self) -> vec4f:
         return vec4f(0.0)
 
     @property
+    @override
+    def params(self) -> None:
+        return None
+
+    @property
+    @override
     def data(self) -> Mesh:
         return self._data
 
@@ -479,7 +580,6 @@ class SDFShape(ShapeDescriptor):
             f"SDFShape(\n"
             f"name: {self.name},\n"
             f"uid: {self.uid},\n"
-            f"params: {self.params},\n"
             f"mass: {self._data.mass},\n"
             f"com: {self._data.com},\n"
             f"I:\n{self._data.I},\n"
@@ -488,10 +588,16 @@ class SDFShape(ShapeDescriptor):
 
     @property
     @override
-    def params(self) -> vec4f:
+    def paramsvec(self) -> vec4f:
         return vec4f(0.0)
 
     @property
+    @override
+    def params(self) -> None:
+        return None
+
+    @property
+    @override
     def data(self) -> SDF:
         return self._data
 

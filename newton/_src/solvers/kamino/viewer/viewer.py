@@ -91,48 +91,15 @@ class ViewerKamino(ViewerGL):
             # Choose color based on body ID
             color = self.body_colors[cgeom.bid % len(self.body_colors)]
 
-            def _vec_to_tuple(v):
-                if isinstance(v, wp.vec4):
-                    return (v.x, v.y, v.z, v.w)
-                if isinstance(v, wp.vec3):
-                    return (v.x, v.y, v.z)
-                elif isinstance(v, wp.vec2):
-                    return (v.x, v.y)
-                else:
-                    return tuple(v.tolist())
-
-            # Extract geometry parameters based on shape type
-            geom_params = None
-            geom_src = None
-            geom_params = None
-            params = cgeom.shape.params
-            num_params = cgeom.shape._num_params_of(cgeom.shape.typeid)
-            if cgeom.shape.typeid == ShapeType.SPHERE:
-                geom_params = params[0]
-            elif cgeom.shape.typeid == ShapeType.CYLINDER:
-                geom_params = (params[0], 0.5 * params[1])
-            elif cgeom.shape.typeid == ShapeType.CONE:
-                geom_params = (params[0], 0.5 * params[1])
-            elif cgeom.shape.typeid == ShapeType.CAPSULE:
-                geom_params = (params[0], 0.5 * params[1])
-            elif cgeom.shape.typeid == ShapeType.BOX:
-                geom_params = _vec_to_tuple(0.5 * params[:num_params])
-            elif cgeom.shape.typeid == ShapeType.ELLIPSOID:
-                geom_params = _vec_to_tuple(params[:num_params])
-            # elif cgeom.shape.typeid in {ShapeType.MESH, ShapeType.CONVEX}:
-            elif cgeom.shape.typeid == ShapeType.MESH:
-                geom_params = 1.0
-                geom_src = self._collision_geometry[cgeom.gid].shape._data
-
             # Update the geometry data
             self.log_shapes(
                 name=f"/body_{cgeom.bid}/geom_{i}",
-                geo_type=ShapeType(cgeom.shape.typeid).to_newton(),
-                geo_scale=geom_params,
+                geo_type=cgeom.shape.type.to_newton(),
+                geo_scale=cgeom.shape.params,
                 xforms=wp.array([geom_transform], dtype=wp.transform),
                 geo_is_solid=True,
                 colors=color,
-                geo_src=geom_src,
+                geo_src=cgeom.shape.data,
             )
 
         # End the new frame

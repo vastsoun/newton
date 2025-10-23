@@ -167,7 +167,7 @@ class ShapeType(IntEnum):
             case ShapeType.SDF:
                 type = GeoType.SDF
             case _:
-                raise ValueError(f"Unknown ShapeType value: {self.value}")
+                raise ValueError(f"Unknown ShapeType value: {type}")
         return type
 
 
@@ -210,6 +210,10 @@ class ShapeDescriptor(ABC, Descriptor):
     @abstractmethod
     def data(self) -> ShapeDataLike:
         return None
+
+    @property
+    def is_solid(self) -> bool:
+        return True
 
 
 ###
@@ -504,8 +508,8 @@ class MeshShape(ShapeDescriptor):
 
     @property
     @override
-    def params(self) -> None:
-        return None
+    def params(self) -> float:
+        return 1.0
 
     @property
     @override

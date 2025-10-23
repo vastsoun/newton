@@ -25,7 +25,6 @@ import newton
 import newton._src.solvers.kamino.utils.logger as msg
 import newton.examples
 from newton._src.solvers.kamino.core.builder import ModelBuilder
-from newton._src.solvers.kamino.core.shapes import ShapeType
 from newton._src.solvers.kamino.core.types import float32, vec6f
 from newton._src.solvers.kamino.models import get_primitives_usd_assets_path
 from newton._src.solvers.kamino.models.builders import add_ground_geom, build_boxes_fourbar

@@ -66,6 +66,41 @@ class ViewerKamino(ViewerGL):
         self._collision_geometry: list[CollisionGeometryDescriptor] = builder.collision_geoms
         self._physical_geometry: list[GeometryDescriptor] = builder.physical_geoms
 
+    def render_geometry(self, body_poses: wp.array, geom: GeometryDescriptor, scope: str):
+        # Handle the case of static geometry (bid < 0)
+        if geom.bid < 0:
+            body_transform = wp.transform_identity()
+        else:
+            body_transform = wp.transform(*body_poses[geom.bid])
+
+        # Combine body and offset transforms
+        geom_transform = wp.transform_multiply(body_transform, geom.offset)
+
+        # Choose color based on body ID
+        color = self.body_colors[geom.bid % len(self.body_colors)]
+
+        # Convert shape parameters to Newton format w/ half-extents
+        params = geom.shape.params
+        if geom.shape.type == ShapeType.CYLINDER:
+            params = (params[0], 0.5 * params[1])
+        elif geom.shape.type == ShapeType.CONE:
+            params = (params[0], 0.5 * params[1])
+        elif geom.shape.type == ShapeType.CAPSULE:
+            params = (params[0], 0.5 * params[1])
+        elif geom.shape.type == ShapeType.BOX:
+            params = (0.5 * params[0], 0.5 * params[1], 0.5 * params[2])
+
+        # Update the geometry data
+        self.log_shapes(
+            name=f"/body_{geom.bid}/{scope}/{geom.gid}-{geom.name}",
+            geo_type=geom.shape.type.to_newton(),
+            geo_scale=params,
+            xforms=wp.array([geom_transform], dtype=wp.transform),
+            geo_is_solid=geom.shape.is_solid,
+            colors=color,
+            geo_src=geom.shape.data,
+        )
+
     def render_frame(self):
         # Begin a new frame
         self.begin_frame(self._simulator.time)
@@ -73,34 +108,17 @@ class ViewerKamino(ViewerGL):
         # Extract body poses from the kamino simulator
         body_poses = self._simulator.state.q_i.numpy()
 
-        # Render each geometry using log_shapes
-        for i, cgeom in enumerate(self._collision_geometry):
-            # Skip Empty/None shapes
-            if cgeom.shape.typeid == ShapeType.EMPTY:
+        # Render each collision geom
+        for cgeom in self._collision_geometry:
+            if cgeom.shape.type == ShapeType.EMPTY:
                 continue
+            self.render_geometry(body_poses, cgeom, scope="collision")
 
-            # Handle the case of static geometry (bid < 0)
-            if cgeom.bid < 0:
-                body_transform = wp.transform_identity()
-            else:
-                body_transform = wp.transform(*body_poses[cgeom.bid])
-
-            # Combine body and offset transforms
-            geom_transform = wp.transform_multiply(body_transform, cgeom.offset)
-
-            # Choose color based on body ID
-            color = self.body_colors[cgeom.bid % len(self.body_colors)]
-
-            # Update the geometry data
-            self.log_shapes(
-                name=f"/body_{cgeom.bid}/geom_{i}",
-                geo_type=cgeom.shape.type.to_newton(),
-                geo_scale=cgeom.shape.params,
-                xforms=wp.array([geom_transform], dtype=wp.transform),
-                geo_is_solid=True,
-                colors=color,
-                geo_src=cgeom.shape.data,
-            )
+        # Render each physical geom
+        for pgeom in self._physical_geometry:
+            if pgeom.shape.type == ShapeType.EMPTY:
+                continue
+            self.render_geometry(body_poses, pgeom, scope="physical")
 
         # End the new frame
         self.end_frame()

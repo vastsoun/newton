@@ -39,7 +39,7 @@ from newton._src.solvers.kamino.models.utils import (
 )
 
 # Module to be tested
-from newton._src.solvers.kamino.solvers.apadmm import APADMMDualSolver, APADMMSettings
+from newton._src.solvers.kamino.solvers.apadmm import PADMMDualSolver, PADMMSettings
 from newton._src.solvers.kamino.tests.utils.extract import (
     extract_delassus,
     extract_info_vectors,
@@ -74,7 +74,7 @@ def print_problem_summary(problem: DualProblem):
     print(f"problem.data.D (shape): {problem.data.D.shape}")
 
 
-def print_solver_summary(solver: APADMMDualSolver):
+def print_solver_summary(solver: PADMMDualSolver):
     print("PADMM Solver Summary:")
     print("solver.size.num_worlds: ", solver.size.num_worlds)
     print("solver.size.max_limits: ", solver.size.sum_of_max_limits)
@@ -101,7 +101,7 @@ def print_solver_summary(solver: APADMMDualSolver):
     print("solver.data.solution.lambdas:", solver.data.solution.lambdas.shape)
 
 
-def save_solver_info(solver: APADMMDualSolver, path: str | None = None, verbose: bool = False):
+def save_solver_info(solver: PADMMDualSolver, path: str | None = None, verbose: bool = False):
     nw = solver.size.num_worlds
     status = solver.data.status.numpy()
     iterations = [status[w][1] for w in range(nw)]
@@ -285,7 +285,7 @@ class TestPADMMDualSolver(unittest.TestCase):
             print("\n")  # Print a newline for better readability
 
         # Define custom solver settings
-        settings = APADMMSettings()
+        settings = PADMMSettings()
         settings.primal_tolerance = 1e-6
         settings.dual_tolerance = 1e-6
         settings.compl_tolerance = 1e-6
@@ -296,12 +296,12 @@ class TestPADMMDualSolver(unittest.TestCase):
         settings.max_iterations = 500
 
         # Create the ADMM solver
-        solver = APADMMDualSolver(
+        solver = PADMMDualSolver(
             model=model,
             limits=limits,
             contacts=detector.contacts,
             settings=settings,
-            use_acceleration=True,
+            use_acceleration=False,
             collect_info=True,
             device=self.default_device,
         )

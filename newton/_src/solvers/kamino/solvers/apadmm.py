@@ -14,7 +14,7 @@
 # limitations under the License.
 
 """
-KAMINO: Accelerated Proximal ADMM DualProblem Solver
+KAMINO: Proximal ADMM DualProblem Solver
 
 Provides a forward dynamics solver for constrained rigid multi-body systems using
 the Alternating Direction Method of Multipliers (ADMM). This implementation realizes
@@ -66,7 +66,7 @@ wp.set_module_options({"enable_backward": False})
 ###
 
 
-class APADMMPenaltyUpdate(IntEnum):
+class PADMMPenaltyUpdate(IntEnum):
     """
     An enumeration of the penalty update methods used in PADMM.
     """
@@ -80,9 +80,9 @@ class APADMMPenaltyUpdate(IntEnum):
 
 
 @wp.struct
-class APADMMConfig:
+class PADMMConfig:
     """
-    A data type to hold the APADMM solver configurations. Intended for in-device storage.
+    A data type to hold the PADMM solver configurations. Intended for in-device storage.
     """
 
     primal_tolerance: float32
@@ -114,9 +114,9 @@ class APADMMConfig:
 
 
 @wp.struct
-class APADMMStatus:
+class PADMMStatus:
     """
-    A data type to hold the APADMM solver status. Intended for in-device storage.
+    A data type to hold the PADMM solver status. Intended for in-device storage.
     """
 
     converged: int32
@@ -152,9 +152,9 @@ class APADMMStatus:
 
 
 @wp.struct
-class APADMMPenalty:
+class PADMMPenalty:
     """
-    A data type to hold the APADMM solver penalty state. Intended for in-device storage.
+    A data type to hold the PADMM solver penalty state. Intended for in-device storage.
     """
 
     rho_updates: int32
@@ -171,9 +171,9 @@ class APADMMPenalty:
 
 
 @dataclass
-class APADMMSettings:
+class PADMMSettings:
     """
-    A dataclass to hold the APADMM solver settings.
+    A dataclass to hold the PADMM solver settings.
     """
 
     primal_tolerance: float = 1e-6
@@ -200,7 +200,7 @@ class APADMMSettings:
     """The maximum number of solver iterations."""
     penalty_update_freq: int = 1
     """The frequency of penalty updates. If zero, no updates are performed."""
-    penalty_update_method: APADMMPenaltyUpdate = APADMMPenaltyUpdate.FIXED
+    penalty_update_method: PADMMPenaltyUpdate = PADMMPenaltyUpdate.FIXED
     """The method used to update the penalty parameter. Defaults to fixed penalty (i.e. not adaptive)."""
 
     def check(self):
@@ -231,16 +231,16 @@ class APADMMSettings:
             raise ValueError(f"Invalid maximum iterations: {self.max_iterations}. Must be a positive integer.")
         if self.penalty_update_freq < 0:
             raise ValueError(f"Invalid penalty update frequency: {self.penalty_update_freq}. Must be non-negative.")
-        if not isinstance(self.penalty_update_method, APADMMPenaltyUpdate):
+        if not isinstance(self.penalty_update_method, PADMMPenaltyUpdate):
             raise TypeError(
-                f"Invalid penalty update method: {self.penalty_update_method}. Must be an instance of APADMMPenaltyUpdate."
+                f"Invalid penalty update method: {self.penalty_update_method}. Must be an instance of PADMMPenaltyUpdate."
             )
 
-    def to_config(self) -> APADMMConfig:
+    def to_config(self) -> PADMMConfig:
         """
-        Convert the settings to a APADMMConfig object.
+        Convert the settings to a PADMMConfig object.
         """
-        config = APADMMConfig()
+        config = PADMMConfig()
         config.primal_tolerance = self.primal_tolerance
         config.dual_tolerance = self.dual_tolerance
         config.compl_tolerance = self.compl_tolerance
@@ -257,7 +257,7 @@ class APADMMSettings:
         return config
 
 
-class APADMMState:
+class PADMMState:
     """
     An interface container to the PADMM solver internal state arrays.
     """
@@ -270,37 +270,37 @@ class APADMMState:
         """The De Saxce correction vector."""
 
         self.v: wp.array(dtype=float32) | None = None
-        """The total velocity bias vector computed from the APADMM state and proximal parameters rho and eta."""
+        """The total velocity bias vector computed from the PADMM state and proximal parameters rho and eta."""
 
         self.x: wp.array(dtype=float32) | None = None
-        """The current APADMM primal variables."""
+        """The current PADMM primal variables."""
 
         self.x_p: wp.array(dtype=float32) | None = None
-        """The previous APADMM primal variables."""
+        """The previous PADMM primal variables."""
 
         self.y: wp.array(dtype=float32) | None = None
-        """The current APADMM slack variables."""
+        """The current PADMM slack variables."""
 
         self.y_p: wp.array(dtype=float32) | None = None
-        """The previous APADMM slack variables."""
+        """The previous PADMM slack variables."""
 
         self.y_hat: wp.array(dtype=float32) | None = None
-        """The auxiliary APADMM slack variables."""
+        """The auxiliary PADMM slack variables."""
 
         self.z: wp.array(dtype=float32) | None = None
-        """The current APADMM dual variables."""
+        """The current PADMM dual variables."""
 
         self.z_p: wp.array(dtype=float32) | None = None
-        """The previous APADMM dual variables."""
+        """The previous PADMM dual variables."""
 
         self.z_hat: wp.array(dtype=float32) | None = None
-        """The auxiliary APADMM dual variables."""
+        """The auxiliary PADMM dual variables."""
 
         self.a: wp.array(dtype=float32) | None = None
-        """The current APADMM acceleration variables."""
+        """The current PADMM acceleration variables."""
 
         self.a_p: wp.array(dtype=float32) | None = None
-        """The previous APADMM acceleration variables."""
+        """The previous PADMM acceleration variables."""
 
         # Perform memory allocations if size is specified
         if size is not None:
@@ -336,24 +336,24 @@ class APADMMState:
         self.a_p.fill_(1.0)
 
 
-class APADMMResiduals:
+class PADMMResiduals:
     """
-    An interface container to the APADMM solver residuals arrays.
+    An interface container to the PADMM solver residuals arrays.
     """
 
     def __init__(self, size: ModelSize | None = None):
         self.r_primal: wp.array(dtype=float32) | None = None
-        """The APADMM primal residual vector."""
+        """The PADMM primal residual vector."""
         self.r_dual: wp.array(dtype=float32) | None = None
-        """The APADMM dual residual vector."""
+        """The PADMM dual residual vector."""
         self.r_compl: wp.array(dtype=float32) | None = None
-        """The APADMM complementarity residual vector."""
+        """The PADMM complementarity residual vector."""
         self.r_dx: wp.array(dtype=float32) | None = None
-        """The APADMM primal iterate residual vector."""
+        """The PADMM primal iterate residual vector."""
         self.r_dy: wp.array(dtype=float32) | None = None
-        """The APADMM slack iterate residual vector."""
+        """The PADMM slack iterate residual vector."""
         self.r_dz: wp.array(dtype=float32) | None = None
-        """The APADMM dual iterate residual vector."""
+        """The PADMM dual iterate residual vector."""
 
         # Perform memory allocations if size is specified
         if size is not None:
@@ -376,9 +376,9 @@ class APADMMResiduals:
         self.r_dz.zero_()
 
 
-class APADMMSolution:
+class PADMMSolution:
     """
-    An interface container to the APADMM solver solution arrays.
+    An interface container to the PADMM solver solution arrays.
     """
 
     def __init__(self, size: ModelSize | None = None):
@@ -396,9 +396,9 @@ class APADMMSolution:
         self.v_plus = wp.zeros(size.sum_of_max_total_cts, dtype=float32)
 
 
-class APADMMInfo:
+class PADMMInfo:
     """
-    A container to hold the APADMM solver convergence info arrays.
+    A container to hold the PADMM solver convergence info arrays.
 
     Notes:
     - The length of the arrays is determined by the maximum number of iterations
@@ -588,28 +588,28 @@ class APADMMInfo:
 
 
 # An interface container to the solver data
-class APADMMData:
+class PADMMData:
     """
-    An interface container to the APADMM solver data arrays.
+    An interface container to the PADMM solver data arrays.
     This high-level container bundles all solver data into a single object.
     """
 
     def __init__(
         self, size: ModelSize | None = None, max_iters: int = 0, collect_info: bool = False, device: Devicelike = None
     ):
-        self.config: wp.array(dtype=APADMMConfig) | None = None
-        """The array of APADMM solver configurations. Shape is (nw,) and type :class:`APADMMConfig`."""
-        self.status: wp.array(dtype=APADMMStatus) | None = None
-        """The array of APADMM solver status. Shape is (nw,) and type :class:`PADMMStatus`."""
-        self.penalty: wp.array(dtype=APADMMPenalty) | None = None
-        """The array of APADMM solver penalty parameters. Shape is (nw,) and type :class:`APADMMPenalty`."""
-        self.state: APADMMState | None = None
+        self.config: wp.array(dtype=PADMMConfig) | None = None
+        """The array of PADMM solver configurations. Shape is (nw,) and type :class:`PADMMConfig`."""
+        self.status: wp.array(dtype=PADMMStatus) | None = None
+        """The array of PADMM solver status. Shape is (nw,) and type :class:`PADMMStatus`."""
+        self.penalty: wp.array(dtype=PADMMPenalty) | None = None
+        """The array of PADMM solver penalty parameters. Shape is (nw,) and type :class:`PADMMPenalty`."""
+        self.state: PADMMState | None = None
         """The PADMM internal solver state."""
-        self.residuals: APADMMResiduals | None = None
+        self.residuals: PADMMResiduals | None = None
         """The PADMM residuals."""
-        self.solution: APADMMSolution | None = None
+        self.solution: PADMMSolution | None = None
         """The PADMM solution."""
-        self.info: APADMMInfo | None = None
+        self.info: PADMMInfo | None = None
         """The (optional) PADMM convergence info."""
 
         # Perform memory allocations if size is specified
@@ -618,14 +618,14 @@ class APADMMData:
 
     def allocate(self, size: ModelSize, max_iters: int = 0, collect_info: bool = False, device: Devicelike = None):
         with wp.ScopedDevice(device):
-            self.config = wp.zeros(shape=(size.num_worlds,), dtype=APADMMConfig)
-            self.status = wp.zeros(shape=(size.num_worlds,), dtype=APADMMStatus)
-            self.penalty = wp.zeros(shape=(size.num_worlds,), dtype=APADMMPenalty)
-            self.state = APADMMState(size)
-            self.residuals = APADMMResiduals(size)
-            self.solution = APADMMSolution(size)
+            self.config = wp.zeros(shape=(size.num_worlds,), dtype=PADMMConfig)
+            self.status = wp.zeros(shape=(size.num_worlds,), dtype=PADMMStatus)
+            self.penalty = wp.zeros(shape=(size.num_worlds,), dtype=PADMMPenalty)
+            self.state = PADMMState(size)
+            self.residuals = PADMMResiduals(size)
+            self.solution = PADMMSolution(size)
             if collect_info and max_iters > 0:
-                self.info = APADMMInfo(size=size, max_iters=max_iters)
+                self.info = PADMMInfo(size=size, max_iters=max_iters)
 
 
 ###
@@ -1248,10 +1248,10 @@ def compute_inverse_preconditioned_iterate_residual(
 @wp.kernel
 def _initialize_solver(
     # Inputs:
-    solver_config: wp.array(dtype=APADMMConfig),
+    solver_config: wp.array(dtype=PADMMConfig),
     # Outputs:
-    solver_status: wp.array(dtype=APADMMStatus),
-    solver_penalty: wp.array(dtype=APADMMPenalty),
+    solver_status: wp.array(dtype=PADMMStatus),
+    solver_penalty: wp.array(dtype=PADMMPenalty),
     solver_state_a_p: wp.array(dtype=float32),
 ):
     # Retrive the world index as thread index
@@ -1294,9 +1294,9 @@ def _update_delassus_proximal_regularization(
     # Inputs:
     problem_dim: wp.array(dtype=int32),
     problem_mio: wp.array(dtype=int32),
-    solver_config: wp.array(dtype=APADMMConfig),
-    solver_penalty: wp.array(dtype=APADMMPenalty),
-    solver_status: wp.array(dtype=APADMMStatus),
+    solver_config: wp.array(dtype=PADMMConfig),
+    solver_penalty: wp.array(dtype=PADMMPenalty),
+    solver_status: wp.array(dtype=PADMMStatus),
     # Outputs:
     D: wp.array(dtype=float32),
 ):
@@ -1337,8 +1337,8 @@ def _compute_desaxce_correction(
     problem_ccgo: wp.array(dtype=int32),
     problem_vio: wp.array(dtype=int32),
     problem_mu: wp.array(dtype=float32),
-    solver_status: wp.array(dtype=APADMMStatus),
-    solver_z_hat: wp.array(dtype=float32),
+    solver_status: wp.array(dtype=PADMMStatus),
+    solver_z_p: wp.array(dtype=float32),
     # Outputs:
     solver_s: wp.array(dtype=float32),
 ):
@@ -1371,8 +1371,8 @@ def _compute_desaxce_correction(
     cio_k = cio + cid
 
     # Compute the norm of the tangential components
-    vtx = solver_z_hat[ccio_k]
-    vty = solver_z_hat[ccio_k + 1]
+    vtx = solver_z_p[ccio_k]
+    vty = solver_z_p[ccio_k + 1]
     vt_norm = wp.sqrt(vtx * vtx + vty * vty)
 
     # Store De Saxce correction for this block
@@ -1387,13 +1387,13 @@ def _compute_velocity_bias(
     problem_dim: wp.array(dtype=int32),
     problem_vio: wp.array(dtype=int32),
     problem_v_f: wp.array(dtype=float32),
-    solver_config: wp.array(dtype=APADMMConfig),
-    solver_penalty: wp.array(dtype=APADMMPenalty),
-    solver_status: wp.array(dtype=APADMMStatus),
+    solver_config: wp.array(dtype=PADMMConfig),
+    solver_penalty: wp.array(dtype=PADMMPenalty),
+    solver_status: wp.array(dtype=PADMMStatus),
     solver_s: wp.array(dtype=float32),
     solver_x_p: wp.array(dtype=float32),
-    solver_y_hat: wp.array(dtype=float32),
-    solver_z_hat: wp.array(dtype=float32),
+    solver_y_p: wp.array(dtype=float32),
+    solver_z_p: wp.array(dtype=float32),
     # Outputs:
     solver_v: wp.array(dtype=float32),
 ):
@@ -1424,11 +1424,11 @@ def _compute_velocity_bias(
     v_f = problem_v_f[tio]
     s = solver_s[tio]
     x_p = solver_x_p[tio]
-    y_hat = solver_y_hat[tio]
-    z_hat = solver_z_hat[tio]
+    y_p = solver_y_p[tio]
+    z_p = solver_z_p[tio]
 
     # Compute the total velocity bias for the tio-th constraint
-    solver_v[tio] = -v_f - s + eta * x_p + rho * y_hat + z_hat
+    solver_v[tio] = -v_f - s + eta * x_p + rho * y_p + z_p
 
 
 @wp.kernel
@@ -1436,8 +1436,8 @@ def _compute_projection_argument(
     # Inputs
     problem_dim: wp.array(dtype=int32),
     problem_vio: wp.array(dtype=int32),
-    solver_penalty: wp.array(dtype=APADMMPenalty),
-    solver_status: wp.array(dtype=APADMMStatus),
+    solver_penalty: wp.array(dtype=PADMMPenalty),
+    solver_status: wp.array(dtype=PADMMStatus),
     solver_z_hat: wp.array(dtype=float32),
     solver_x: wp.array(dtype=float32),
     # Outputs
@@ -1478,9 +1478,9 @@ def _apply_overrelaxation_and_compute_projection_argument(
     # Inputs
     problem_dim: wp.array(dtype=int32),
     problem_vio: wp.array(dtype=int32),
-    solver_config: wp.array(dtype=APADMMConfig),
-    solver_penalty: wp.array(dtype=APADMMPenalty),
-    solver_status: wp.array(dtype=APADMMStatus),
+    solver_config: wp.array(dtype=PADMMConfig),
+    solver_penalty: wp.array(dtype=PADMMPenalty),
+    solver_status: wp.array(dtype=PADMMStatus),
     solver_y_p: wp.array(dtype=float32),
     solver_z_p: wp.array(dtype=float32),
     # Outputs
@@ -1540,7 +1540,7 @@ def _project_to_feasible_cone(
     problem_ccgo: wp.array(dtype=int32),
     problem_vio: wp.array(dtype=int32),
     problem_mu: wp.array(dtype=float32),
-    solver_status: wp.array(dtype=APADMMStatus),
+    solver_status: wp.array(dtype=PADMMStatus),
     # Outputs:
     solver_y: wp.array(dtype=float32),
 ):
@@ -1597,9 +1597,9 @@ def _update_dual_variables_and_compute_primal_dual_residuals(
     problem_dim: wp.array(dtype=int32),
     problem_vio: wp.array(dtype=int32),
     problem_P: wp.array(dtype=float32),
-    solver_config: wp.array(dtype=APADMMConfig),
-    solver_penalty: wp.array(dtype=APADMMPenalty),
-    solver_status: wp.array(dtype=APADMMStatus),
+    solver_config: wp.array(dtype=PADMMConfig),
+    solver_penalty: wp.array(dtype=PADMMPenalty),
+    solver_status: wp.array(dtype=PADMMStatus),
     solver_x: wp.array(dtype=float32),
     solver_y: wp.array(dtype=float32),
     solver_x_p: wp.array(dtype=float32),
@@ -1672,7 +1672,7 @@ def _compute_complementarity_residuals(
     problem_uio: wp.array(dtype=int32),
     problem_lcgo: wp.array(dtype=int32),
     problem_ccgo: wp.array(dtype=int32),
-    solver_status: wp.array(dtype=APADMMStatus),
+    solver_status: wp.array(dtype=PADMMStatus),
     solver_x: wp.array(dtype=float32),
     solver_z: wp.array(dtype=float32),
     # Outputs:
@@ -1734,13 +1734,13 @@ def _compute_infnorm_residuals_serially(
     problem_uio: wp.array(dtype=int32),
     problem_dim: wp.array(dtype=int32),
     problem_vio: wp.array(dtype=int32),
-    solver_config: wp.array(dtype=APADMMConfig),
+    solver_config: wp.array(dtype=PADMMConfig),
     solver_r_p: wp.array(dtype=float32),
     solver_r_d: wp.array(dtype=float32),
     solver_r_c: wp.array(dtype=float32),
     # Outputs:
     solver_state_done: wp.array(dtype=int32),
-    solver_status: wp.array(dtype=APADMMStatus),
+    solver_status: wp.array(dtype=PADMMStatus),
 ):
     # Retrieve the thread index as the world index
     wid = wp.tid()
@@ -1814,8 +1814,8 @@ def _compute_infnorm_residuals_serially_accel(
     problem_uio: wp.array(dtype=int32),
     problem_dim: wp.array(dtype=int32),
     problem_vio: wp.array(dtype=int32),
-    solver_config: wp.array(dtype=APADMMConfig),
-    solver_params: wp.array(dtype=APADMMPenalty),
+    solver_config: wp.array(dtype=PADMMConfig),
+    solver_params: wp.array(dtype=PADMMPenalty),
     solver_r_p: wp.array(dtype=float32),
     solver_r_d: wp.array(dtype=float32),
     solver_r_c: wp.array(dtype=float32),
@@ -1826,7 +1826,7 @@ def _compute_infnorm_residuals_serially_accel(
     # Outputs:
     solver_state_done: wp.array(dtype=int32),
     solver_state_a: wp.array(dtype=float32),
-    solver_status: wp.array(dtype=APADMMStatus),
+    solver_status: wp.array(dtype=PADMMStatus),
 ):
     # Retrieve the thread index as the world index
     wid = wp.tid()
@@ -1928,7 +1928,7 @@ def _update_state_with_acceleration(
     # Inputs:
     problem_dim: wp.array(dtype=int32),
     problem_vio: wp.array(dtype=int32),
-    solver_status: wp.array(dtype=APADMMStatus),
+    solver_status: wp.array(dtype=PADMMStatus),
     solver_state_a: wp.array(dtype=float32),
     solver_state_y: wp.array(dtype=float32),
     solver_state_z: wp.array(dtype=float32),
@@ -2007,9 +2007,9 @@ def _collect_solver_convergence_info(
     solver_state_y_p: wp.array(dtype=float32),
     solver_state_z: wp.array(dtype=float32),
     solver_state_z_p: wp.array(dtype=float32),
-    solver_config: wp.array(dtype=APADMMConfig),
-    solver_penalty: wp.array(dtype=APADMMPenalty),
-    solver_status: wp.array(dtype=APADMMStatus),
+    solver_config: wp.array(dtype=PADMMConfig),
+    solver_penalty: wp.array(dtype=PADMMPenalty),
+    solver_status: wp.array(dtype=PADMMStatus),
     # Outputs:
     solver_info_lambdas: wp.array(dtype=float32),
     solver_info_v_plus: wp.array(dtype=float32),
@@ -2274,7 +2274,7 @@ def _compute_solution_vectors(
 ###
 
 
-class APADMMDualSolver:
+class PADMMDualSolver:
     """
     A Proximal ADMM solver for constrained rigid multi-body systems.
 
@@ -2295,31 +2295,31 @@ class APADMMDualSolver:
 
     @staticmethod
     def _check_settings(
-        model: Model | None = None, settings: list[APADMMSettings] | APADMMSettings | None = None
-    ) -> list[APADMMSettings]:
+        model: Model | None = None, settings: list[PADMMSettings] | PADMMSettings | None = None
+    ) -> list[PADMMSettings]:
         # If no settings are provided, use defaults
         if settings is None:
             # If no model is provided, use a single default settings object
             if model is None:
-                settings = [APADMMSettings()]
+                settings = [PADMMSettings()]
 
             # If a model is provided, create a list of default settings
             # objects based on the number of worlds in the model
             else:
                 num_worlds = model.info.num_worlds
-                settings = [APADMMSettings()] * num_worlds
+                settings = [PADMMSettings()] * num_worlds
 
         # If a single settings object is provided, convert it to a list
-        elif isinstance(settings, APADMMSettings):
+        elif isinstance(settings, PADMMSettings):
             settings = [settings] * (model.info.num_worlds if model else 1)
 
         # If a list of settings is provided, ensure it matches the number
-        # of worlds and that all settings are instances of APADMMSettings
+        # of worlds and that all settings are instances of PADMMSettings
         elif isinstance(settings, list):
             if model is not None and len(settings) != model.info.num_worlds:
                 raise ValueError(f"Expected {model.info.num_worlds} settings, got {len(settings)}")
-            if not all(isinstance(s, APADMMSettings) for s in settings):
-                raise TypeError("All settings must be instances of APADMMSettings")
+            if not all(isinstance(s, PADMMSettings) for s in settings):
+                raise TypeError("All settings must be instances of PADMMSettings")
 
         # Return the validated settings
         return settings
@@ -2329,13 +2329,13 @@ class APADMMDualSolver:
         model: Model | None = None,
         limits: Limits | None = None,
         contacts: Contacts | None = None,
-        settings: list[APADMMSettings] | APADMMSettings | None = None,
+        settings: list[PADMMSettings] | PADMMSettings | None = None,
         use_acceleration: bool = True,
         collect_info: bool = False,
         device: Devicelike = None,
     ):
         # Declare the internal solver settings cache
-        self._settings: list[APADMMSettings] = []
+        self._settings: list[PADMMSettings] = []
         self._max_iters: int = 0
         self._use_acceleration: bool = False
         self._collect_info: bool = False
@@ -2344,7 +2344,7 @@ class APADMMDualSolver:
         self._size: ModelSize | None = None
 
         # Declare the solver data container
-        self._data: APADMMData | None = None
+        self._data: PADMMData | None = None
 
         # Cache the requested device
         self._device = device
@@ -2362,7 +2362,7 @@ class APADMMDualSolver:
             )
 
     @property
-    def settings(self) -> list[APADMMSettings]:
+    def settings(self) -> list[PADMMSettings]:
         """
         The host-side cache of the solver settings.\n
         They are used to construct the warp array of type `PADMMConfig` on the target device.
@@ -2377,7 +2377,7 @@ class APADMMDualSolver:
         return self._size
 
     @property
-    def data(self) -> APADMMData:
+    def data(self) -> PADMMData:
         """
         The solver data container. This is a high-level container that bundles all solver data into a single object.
         """
@@ -2397,7 +2397,7 @@ class APADMMDualSolver:
         model: Model | None = None,
         limits: Limits | None = None,
         contacts: Contacts | None = None,
-        settings: list[APADMMSettings] | APADMMSettings | None = None,
+        settings: list[PADMMSettings] | PADMMSettings | None = None,
         use_acceleration: bool = True,
         collect_info: bool = False,
         device: Devicelike = None,
@@ -2445,14 +2445,14 @@ class APADMMDualSolver:
         self._max_iters = max([s.max_iterations for s in self._settings])
 
         # Allocate memory in device global memory
-        self._data = APADMMData(
+        self._data = PADMMData(
             size=self._size, max_iters=self._max_iters, collect_info=self._collect_info, device=self._device
         )
 
         # Write algorithm configs into device memory
         configs = [s.to_config() for s in self._settings]
         with wp.ScopedDevice(self._device):
-            self._data.config = wp.array(configs, dtype=APADMMConfig)
+            self._data.config = wp.array(configs, dtype=PADMMConfig)
 
     # TODO(team): We should think about how to introduce an optional systematic warm-starting mechanism here
 
@@ -2867,7 +2867,6 @@ class APADMMDualSolver:
         )
 
     def update_previous_state(self):
-        # Cache previous state variables
         wp.copy(self._data.state.x_p, self._data.state.x)
         wp.copy(self._data.state.y_p, self._data.state.y)
         wp.copy(self._data.state.z_p, self._data.state.z)
@@ -2972,7 +2971,7 @@ class APADMMDualSolver:
         # Compute the unconstrained solution and store in the primal variables
         self.update_unconstrained_solution(problem)
 
-        # Project the over-relaxed primal variables to the feasible set
+        # Compute the argument to the projection operator with over-relaxation
         self.update_projection_argument(problem)
 
         # Project the over-relaxed primal variables to the feasible set

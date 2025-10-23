@@ -36,6 +36,7 @@ References
 - [3] https://onlinelibrary.wiley.com/doi/full/10.1002/nme.6693
 """
 
+from dataclasses import dataclass
 from enum import IntEnum
 
 import warp as wp
@@ -141,34 +142,34 @@ class PADMMPenalty:
 ###
 
 
+@dataclass
 class PADMMSettings:
     """
-    A class to hold the PADMM solver settings.
+    A dataclass to hold the PADMM solver settings.
     """
 
-    def __init__(self):
-        self.primal_tolerance: float = 1e-6
-        """The tolerance applied to the primal residuals."""
-        self.dual_tolerance: float = 1e-6
-        """The tolerance applied to the dual residuals."""
-        self.compl_tolerance: float = 1e-6
-        """The tolerance applied to the complementarity residuals."""
-        self.eta: float = 1e-5
-        """The proximal regularization parameter. Must be greater than zero."""
-        self.rho_0: float = 1.0
-        """The initial value of the penalty parameter. Must be greater than zero."""
-        self.omega: float = 1.0
-        """The over-relaxation factor. Must be in the range [0.0, 2.0]."""
-        self.alpha: float = 10.0
-        """The primal-dual residual threshold used to determine when penalty updates are needed."""
-        self.tau_inc: float = 1.5
-        """The factor by which the penalty is increased when the primal-dual residual exceeds the threshold."""
-        self.max_iterations: int = 200
-        """The maximum number of solver iterations."""
-        self.penalty_update_freq: int = 1
-        """The frequency of penalty updates. If zero, no updates are performed."""
-        self.penalty_update_method: PADMMPenaltyUpdate = PADMMPenaltyUpdate.FIXED
-        """The method used to update the penalty parameter. Defaults to fixed penalty (i.e. not adaptive)."""
+    primal_tolerance: float = 1e-6
+    """The tolerance applied to the primal residuals."""
+    dual_tolerance: float = 1e-6
+    """The tolerance applied to the dual residuals."""
+    compl_tolerance: float = 1e-6
+    """The tolerance applied to the complementarity residuals."""
+    eta: float = 1e-5
+    """The proximal regularization parameter. Must be greater than zero."""
+    rho_0: float = 1.0
+    """The initial value of the penalty parameter. Must be greater than zero."""
+    omega: float = 1.0
+    """The over-relaxation factor. Must be in the range [0.0, 2.0]."""
+    alpha: float = 10.0
+    """The primal-dual residual threshold used to determine when penalty updates are needed."""
+    tau_inc: float = 1.5
+    """The factor by which the penalty is increased when the primal-dual residual exceeds the threshold."""
+    max_iterations: int = 200
+    """The maximum number of solver iterations."""
+    penalty_update_freq: int = 1
+    """The frequency of penalty updates. If zero, no updates are performed."""
+    penalty_update_method: PADMMPenaltyUpdate = PADMMPenaltyUpdate.FIXED
+    """The method used to update the penalty parameter. Defaults to fixed penalty (i.e. not adaptive)."""
 
     def to_config(self) -> PADMMConfig:
         """
@@ -1954,7 +1955,7 @@ class PADMMDualSolver:
         # Declare the internal solver settings cache
         self._settings: list[PADMMSettings] = []
         self._max_iters: int = 0
-        self._collect_info = False
+        self._collect_info: bool = False
 
         # Declare the model size cache
         self._size: ModelSize | None = None
@@ -2123,6 +2124,9 @@ class PADMMDualSolver:
         )
 
     def update_velocity_bias(self, problem: DualProblem):
+        """
+        TODO
+        """
         wp.launch(
             kernel=_compute_velocity_bias,
             dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
@@ -2189,6 +2193,27 @@ class PADMMDualSolver:
             ],
         )
 
+    def update_complementarity_residuals(self, problem: DualProblem):
+        # Compute complementarity residual from the current state
+        wp.launch(
+            kernel=_compute_complementarity_residuals,
+            dim=(self._size.num_worlds, self._size.max_of_max_unilaterals),
+            inputs=[
+                # Inputs:
+                problem.data.nl,
+                problem.data.nc,
+                problem.data.cio,
+                problem.data.uio,
+                problem.data.lcgo,
+                problem.data.ccgo,
+                self._data.status,
+                self._data.state.x,
+                self._data.state.z,
+                # Outputs:
+                self._data.residuals.r_compl,
+            ],
+        )
+
     def update_dual_variables_and_residuals(self, problem: DualProblem):
         # Update the dual variables and compute primal-dual residuals from the current state
         # NOTE: These are combined into a single kernel to reduce kernel launch overhead
@@ -2216,24 +2241,7 @@ class PADMMDualSolver:
         )
 
         # Compute complementarity residual from the current state
-        wp.launch(
-            kernel=_compute_complementarity_residuals,
-            dim=(self._size.num_worlds, self._size.max_of_max_unilaterals),
-            inputs=[
-                # Inputs:
-                problem.data.nl,
-                problem.data.nc,
-                problem.data.cio,
-                problem.data.uio,
-                problem.data.lcgo,
-                problem.data.ccgo,
-                self._data.status,
-                self._data.state.x,
-                self._data.state.z,
-                # Outputs:
-                self._data.residuals.r_compl,
-            ],
-        )
+        self.update_complementarity_residuals(problem)
 
     def update_convergence_check(self, problem: DualProblem):
         # Compute infinity-norm of all residuals and check for convergence

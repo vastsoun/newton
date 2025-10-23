@@ -142,12 +142,13 @@ from .simulation import (
     SimulatorData,
     SimulatorSettings,
 )
-from .solvers import (
-    APADMMDualSolver,
-    APADMMSettings,
-    PADMMDualSolver,
-    PADMMSettings,
-)
+
+# from .solvers import (
+#     APADMMDualSolver,
+#     APADMMSettings,
+#     PADMMDualSolver,
+#     PADMMSettings,
+# )
 from .utils.io import hdf5, usd
 from .utils.print import printmatrix, printvector
 from .utils.sparse import sparseview
@@ -162,8 +163,8 @@ __all__ = [
     "GRAVITY_ACCEL_DEFAULT",
     "GRAVITY_DIREC_DEFAULT",
     "GRAVITY_NAME_DEFAULT",
-    "APADMMDualSolver",
-    "APADMMSettings",
+    # "APADMMDualSolver",
+    # "APADMMSettings",
     "ArrayLike",
     "BoxShape",
     "CapsuleShape",
@@ -211,8 +212,8 @@ __all__ = [
     "ModelData",
     "ModelDataInfo",
     "ModelInfo",
-    "PADMMDualSolver",
-    "PADMMSettings",
+    # "PADMMDualSolver",
+    # "PADMMSettings",
     "PlaneShape",
     "Quat",
     "RigidBodiesData",

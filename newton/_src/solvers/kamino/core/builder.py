@@ -566,8 +566,8 @@ class ModelBuilder:
 
     def add_collision_geometry(
         self,
-        body_id: int,
-        shape: ShapeDescriptorType,
+        body_id: int = -1,
+        shape: ShapeDescriptorType | None = None,
         layer: int | str = 0,
         offset: transformf | None = None,
         material: str | int | None = None,
@@ -993,6 +993,7 @@ class ModelBuilder:
         pgeoms_lid = []
         pgeoms_bid = []
         pgeoms_sid = []
+        pgeoms_ptr = []
         pgeoms_params = []
         pgeoms_offset = []
 
@@ -1085,48 +1086,50 @@ class ModelBuilder:
                 joints_qd_j_max.extend(joint.dq_j_max)
                 joints_tau_j_max.extend(joint.tau_j_max)
 
+        # A helper function to create geometry pointers
+        # NOTE: This also finalizes the mesh/SDF/HField data on the device
+        def make_geometry_source_pointer(geom: GeometryDescriptor, mesh_geoms: dict, device) -> int:
+            # Append to data pointers array of the shape has a Mesh, SDF or HField source
+            if geom.shape.type in (ShapeType.MESH, ShapeType.CONVEX, ShapeType.HFIELD, ShapeType.SDF):
+                geom_hash = hash(geom)  # avoid repeated hash computations
+                # If the geometry has a Mesh, SDF or HField source,
+                # finalize it and retrieve the mesh pointer/index
+                if geom_hash not in mesh_geoms:
+                    mesh_geoms[geom_hash] = geom.shape.data.finalize(device=device)
+                # Return the mesh data pointer/index
+                return mesh_geoms[geom_hash]
+            # Otherwise, append a null (i.e. zero-valued) pointer
+            else:
+                return 0
+
         # A helper function to collect model collision geometries data
         def collect_collision_geometry_model_data():
-            finalized_meshes = {}
+            cgeom_meshes = {}
             for geom in self._cgeoms:
                 cgeoms_wid.append(geom.wid)
                 cgeoms_gid.append(geom.gid)
                 cgeoms_lid.append(geom.lid)
                 cgeoms_bid.append(geom.bid)
-                cgeoms_sid.append(geom.shape.typeid)
+                cgeoms_sid.append(geom.shape.type.value)
                 cgeoms_params.append(geom.shape.params)
                 cgeoms_offset.append(geom.offset)
                 cgeoms_mid.append(geom.mid)
                 cgeoms_group.append(geom.group)
                 cgeoms_collides.append(geom.collides)
-
-                # TODO: Clean this up
-                # build list of ids for geometry sources (meshes, sdfs)
-                # do not duplicate meshes
-                if geom.shape.typeid in (ShapeType.MESH, ShapeType.SDF):
-                    cgeom_hash = hash(geom)  # avoid repeated hash computations
-                    # If the geometry has a Mesh or SDF source,
-                    # finalize it and retrieve the mesh pointer/index
-                    if geom:
-                        if cgeom_hash not in finalized_meshes:
-                            finalized_meshes[cgeom_hash] = geom.shape._data.finalize(device=device)
-                        cgeoms_ptr.append(finalized_meshes[cgeom_hash])
-                        print("Adding Mesh/SDF ptr:", finalized_meshes[cgeom_hash])
-
-                    # add null pointer
-                    else:
-                        cgeoms_ptr.append(0)
+                cgeoms_ptr.append(make_geometry_source_pointer(geom, cgeom_meshes, device))
 
         # A helper function to collect model physical geometries data
         def collect_physical_geometry_model_data():
+            pgeom_meshes = {}
             for geom in self._pgeoms:
                 pgeoms_wid.append(geom.wid)
                 pgeoms_gid.append(geom.gid)
                 pgeoms_lid.append(geom.lid)
                 pgeoms_bid.append(geom.bid)
-                pgeoms_sid.append(geom.shape.typeid)
-                cgeoms_params.append(geom.shape.params)
+                pgeoms_sid.append(geom.shape.type.value)
+                pgeoms_params.append(geom.shape.params)
                 pgeoms_offset.append(geom.offset)
+                pgeoms_ptr.append(make_geometry_source_pointer(geom, pgeom_meshes, device))
 
         # A helper function to collect model material-pairs data
         def collect_material_pairs_model_data():
@@ -1317,6 +1320,7 @@ class ModelBuilder:
             model.pgeoms.lid = wp.array(pgeoms_lid, dtype=int32)
             model.pgeoms.bid = wp.array(pgeoms_bid, dtype=int32)
             model.pgeoms.sid = wp.array(pgeoms_sid, dtype=int32)
+            model.pgeoms.ptr = wp.array(pgeoms_ptr, dtype=wp.uint64)
             model.pgeoms.params = wp.array(pgeoms_params, dtype=vec4f, requires_grad=requires_grad)
             model.pgeoms.offset = wp.array(pgeoms_offset, dtype=transformf, requires_grad=requires_grad)
 

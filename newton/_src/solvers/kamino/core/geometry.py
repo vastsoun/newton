@@ -23,7 +23,7 @@ import warp as wp
 
 from .bv import aabb_geom, bs_geom
 from .shapes import ShapeDescriptorType
-from .types import float32, int32, mat83f, transformf, uint32, uint64, vec4f
+from .types import float32, int32, mat83f, override, transformf, uint32, uint64, vec4f
 
 ###
 # Module interface
@@ -53,11 +53,13 @@ wp.set_module_options({"enable_backward": False})
 
 class GeometryDescriptor:
     """
-    A container to describe a generic geometry element.
+    A container to describe a generic geometry entity.
 
-    A geometry element is an abstraction to represent the composition of a shape, with a pose w.r.t the world frame of a scene.
-    Each geometry element is assigned to a single body, and is organized into one of the distinct geometry sets called 'layers'.
-    The geometry descriptor bundles the unique object identifiers of the element, indices to the asscociated body and layer,
+    A geometry entity is an abstraction to represent the composition of a
+    shape, with a pose w.r.t the world frame of a scene. Each geometry entity
+    is assigned to a single body, and is organized into one of the distinct
+    geometry sets called 'layers'. Each geometry descriptor bundles the unique
+    object identifiers of the entity, indices to the associated body and layer,
     the offset pose w.r.t. the body, and a shape descriptor.
     """
 
@@ -80,12 +82,13 @@ class GeometryDescriptor:
         self.bid: int = -1
         """Body index of the geometry element."""
 
-        self.offset: transformf = transformf()
-        """Offset pose of the geometry element w.r.t. its corresponding body, of type :class:`transformf`."""
-
         self.shape: ShapeDescriptorType | None = None
         """Definition of the shape of the geometry element of type :class:`ShapeDescriptorType`."""
 
+        self.offset: transformf = transformf()
+        """Offset pose of the geometry element w.r.t. its corresponding body, of type :class:`transformf`."""
+
+    @override
     def __repr__(self):
         return (
             f"GeometryDescriptor(\n"
@@ -95,8 +98,8 @@ class GeometryDescriptor:
             f"gid: {self.gid},\n"
             f"lid: {self.lid},\n"
             f"bid: {self.bid},\n"
-            f"offset: {self.offset},\n"
             f"shape: {self.shape}\n"
+            f"offset: {self.offset},\n"
             f")"
         )
 
@@ -219,6 +222,7 @@ class CollisionGeometryDescriptor(GeometryDescriptor):
         self.offset = base.offset
         self.shape = base.shape
 
+    @override
     def __repr__(self):
         return (
             f"CollisionGeometryDescriptor(\n"

@@ -24,6 +24,7 @@ import newton
 import newton._src.solvers.kamino.utils.logger as msg
 import newton.examples
 from newton._src.solvers.kamino.core.builder import ModelBuilder
+from newton._src.solvers.kamino.core.shapes import ShapeType
 from newton._src.solvers.kamino.core.types import float32, vec6f
 from newton._src.solvers.kamino.models import get_primitives_usd_assets_path
 from newton._src.solvers.kamino.models.builders import build_boxes_hinged
@@ -265,7 +266,7 @@ class Example:
             params = cgeom_model.params.numpy()[i]  # Shape parameters
             offset = cgeom_model.offset.numpy()[i]  # Geometry offset
 
-            if sid == 5:  # BOX shape (SHAPE_BOX = 5)
+            if sid == ShapeType.BOX:  # BOX shape (SHAPE_BOX = 5)
                 if bid == -1:  # Ground plane (static body)
                     # Ground plane: params = [depth, width, height, 0]
                     self.ground_info = {

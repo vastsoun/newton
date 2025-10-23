@@ -1285,7 +1285,7 @@ def _compute_velocity_bias(
     y_p = solver_y_p[tio]
     z_p = solver_z_p[tio]
 
-    # v = - v_f - s + eta * x_p + rho * y_p + z_p
+    # Compute the total velocity bias for the tio-th constraint
     solver_v[tio] = -v_f - s + eta * x_p + rho * y_p + z_p
 
 
@@ -2149,7 +2149,7 @@ class PADMMDualSolver:
         # problem._delassus.solve_inplace(x=self._data.state.x)
         problem._delassus.solve(v=self._data.state.v, x=self._data.state.x)
 
-    def update_projection_to_feasible_set(self, problem: DualProblem):
+    def update_projection_argument(self, problem: DualProblem):
         # Apply over-relaxation and compute the argument to the projection operator
         wp.launch(
             kernel=_apply_overrelaxation_and_compute_projection_argument,
@@ -2169,6 +2169,7 @@ class PADMMDualSolver:
             ],
         )
 
+    def update_projection_to_feasible_set(self, problem: DualProblem):
         # Project to the feasible set defined by the cone K := R^{njd} x R_+^{nld} x K_{mu}^{nc}
         wp.launch(
             kernel=_project_to_feasible_cone,
@@ -2383,6 +2384,9 @@ class PADMMDualSolver:
 
         # Compute the unconstrained solution and store in the primal variables
         self.update_unconstrained_solution(problem)
+
+        # Compute the argument to the projection operator with over-relaxation
+        self.update_projection_argument(problem)
 
         # Project the over-relaxed primal variables to the feasible set
         self.update_projection_to_feasible_set(problem)

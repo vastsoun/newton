@@ -202,8 +202,6 @@ class APADMMSettings:
     """The frequency of penalty updates. If zero, no updates are performed."""
     penalty_update_method: APADMMPenaltyUpdate = APADMMPenaltyUpdate.FIXED
     """The method used to update the penalty parameter. Defaults to fixed penalty (i.e. not adaptive)."""
-    use_acceleration: bool = True
-    """Set to True to enable Nesterov-type gradient acceleration."""
 
     def check(self):
         """
@@ -1737,6 +1735,86 @@ def _compute_infnorm_residuals_serially(
     problem_dim: wp.array(dtype=int32),
     problem_vio: wp.array(dtype=int32),
     solver_config: wp.array(dtype=APADMMConfig),
+    solver_r_p: wp.array(dtype=float32),
+    solver_r_d: wp.array(dtype=float32),
+    solver_r_c: wp.array(dtype=float32),
+    # Outputs:
+    solver_state_done: wp.array(dtype=int32),
+    solver_status: wp.array(dtype=APADMMStatus),
+):
+    # Retrieve the thread index as the world index
+    wid = wp.tid()
+
+    # Retrieve the solver status
+    status = solver_status[wid]
+
+    # Skip this step if already converged
+    if status.converged:
+        return
+
+    # Update iteration counter
+    status.iterations += 1
+
+    # Capture the size of the residuals arrays
+    nl = problem_nl[wid]
+    nc = problem_nc[wid]
+    ncts = problem_dim[wid]
+
+    # Retrieve the solver configurations
+    config = solver_config[wid]
+
+    # Retrieve the index offsets of the vector block and unilateral elements
+    vio = problem_vio[wid]
+    uio = problem_uio[wid]
+
+    # Extract the solver tolerances
+    eps_p = config.primal_tolerance
+    eps_d = config.dual_tolerance
+    eps_c = config.compl_tolerance
+
+    # Extract the maximum number of iterations
+    maxiters = config.max_iterations
+
+    # Compute element-wise max over each residual vector to compute the infinity-norm
+    r_p_max = float(0.0)
+    r_d_max = float(0.0)
+    for j in range(ncts):
+        rio_j = vio + j
+        r_p_max = wp.max(r_p_max, wp.abs(solver_r_p[rio_j]))
+        r_d_max = wp.max(r_d_max, wp.abs(solver_r_d[rio_j]))
+
+    # Compute the infinity-norm of the complementarity residuals
+    nu = nl + nc
+    r_c_max = float(0.0)
+    for j in range(nu):
+        r_c_max = wp.max(r_c_max, wp.abs(solver_r_c[uio + j]))
+
+    # Store the scalar metric residuals in the solver status
+    status.r_p = r_p_max
+    status.r_d = r_d_max
+    status.r_c = r_c_max
+
+    # Check and store convergence state
+    if status.iterations > 1 and r_p_max <= eps_p and r_d_max <= eps_d and r_c_max <= eps_c:
+        status.converged = 1
+
+    # If converged or reached max iterations, decrement the number of active worlds
+    if status.converged or status.iterations >= maxiters:
+        solver_state_done[0] -= 1
+
+    # Store the updated status
+    solver_status[wid] = status
+
+
+@wp.kernel
+def _compute_infnorm_residuals_serially_accel(
+    # Inputs:
+    problem_nl: wp.array(dtype=int32),
+    problem_nc: wp.array(dtype=int32),
+    problem_uio: wp.array(dtype=int32),
+    problem_dim: wp.array(dtype=int32),
+    problem_vio: wp.array(dtype=int32),
+    solver_config: wp.array(dtype=APADMMConfig),
     solver_params: wp.array(dtype=APADMMPenalty),
     solver_r_p: wp.array(dtype=float32),
     solver_r_d: wp.array(dtype=float32),
@@ -2252,13 +2330,15 @@ class APADMMDualSolver:
         limits: Limits | None = None,
         contacts: Contacts | None = None,
         settings: list[APADMMSettings] | APADMMSettings | None = None,
+        use_acceleration: bool = True,
         collect_info: bool = False,
         device: Devicelike = None,
     ):
         # Declare the internal solver settings cache
         self._settings: list[APADMMSettings] = []
         self._max_iters: int = 0
-        self._collect_info = False
+        self._use_acceleration: bool = False
+        self._collect_info: bool = False
 
         # Declare the model size cache
         self._size: ModelSize | None = None
@@ -2276,6 +2356,7 @@ class APADMMDualSolver:
                 limits=limits,
                 contacts=contacts,
                 settings=settings,
+                use_acceleration=use_acceleration,
                 collect_info=collect_info,
                 device=device,
             )
@@ -2317,6 +2398,7 @@ class APADMMDualSolver:
         limits: Limits | None = None,
         contacts: Contacts | None = None,
         settings: list[APADMMSettings] | APADMMSettings | None = None,
+        use_acceleration: bool = True,
         collect_info: bool = False,
         device: Devicelike = None,
     ):
@@ -2335,6 +2417,10 @@ class APADMMDualSolver:
         if contacts is not None:
             if not isinstance(contacts, Contacts):
                 raise ValueError("Invalid contacts container provided. Must be an instance of `Contacts`.")
+
+        # Override the current acceleration flag if specified at allocation time
+        if use_acceleration != self._use_acceleration:
+            self._use_acceleration = use_acceleration
 
         # Override the current info collection flag if specified at allocation time
         if collect_info != self._collect_info:
@@ -2420,6 +2506,24 @@ class APADMMDualSolver:
                 problem.data.vio,
                 problem.data.mu,
                 self._data.status,
+                self._data.state.z_p,
+                # Outputs:
+                self._data.state.s,
+            ],
+        )
+
+    def update_desaxce_correction_accel(self, problem: DualProblem):
+        wp.launch(
+            kernel=_compute_desaxce_correction,
+            dim=(self._size.num_worlds, self._size.max_of_max_contacts),
+            inputs=[
+                # Inputs:
+                problem.data.nc,
+                problem.data.cio,
+                problem.data.ccgo,
+                problem.data.vio,
+                problem.data.mu,
+                self._data.status,
                 self._data.state.z_hat,
                 # Outputs:
                 self._data.state.s,
@@ -2430,16 +2534,6 @@ class APADMMDualSolver:
         """
         TODO
         """
-
-        # TODO
-        if any(s.use_acceleration for s in self._settings):
-            y_p = self._data.state.y_hat
-            z_p = self._data.state.z_hat
-        else:
-            y_p = self._data.state.y_p
-            z_p = self._data.state.z_p
-
-        # TODO
         wp.launch(
             kernel=_compute_velocity_bias,
             dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
@@ -2453,8 +2547,32 @@ class APADMMDualSolver:
                 self._data.status,
                 self._data.state.s,
                 self._data.state.x_p,
-                y_p,
-                z_p,
+                self._data.state.y_p,
+                self._data.state.z_p,
+                # Outputs:
+                self._data.state.v,
+            ],
+        )
+
+    def update_velocity_bias_accel(self, problem: DualProblem):
+        """
+        TODO
+        """
+        wp.launch(
+            kernel=_compute_velocity_bias,
+            dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
+            inputs=[
+                # Inputs:
+                problem.data.dim,
+                problem.data.vio,
+                problem.data.v_f,
+                self._data.config,
+                self._data.penalty,
+                self._data.status,
+                self._data.state.s,
+                self._data.state.x_p,
+                self._data.state.y_hat,
+                self._data.state.z_hat,
                 # Outputs:
                 self._data.state.v,
             ],
@@ -2466,44 +2584,45 @@ class APADMMDualSolver:
         # problem._delassus.solve_inplace(x=self._data.state.x)
         problem._delassus.solve(v=self._data.state.v, x=self._data.state.x)
 
-    def update_projection_to_feasible_set(self, problem: DualProblem):
-        if any(s.use_acceleration for s in self._settings):
-            # Apply over-relaxation and compute the argument to the projection operator
-            wp.launch(
-                kernel=_compute_projection_argument,
-                dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
-                inputs=[
-                    # Inputs:
-                    problem.data.dim,
-                    problem.data.vio,
-                    self._data.penalty,
-                    self._data.status,
-                    self._data.state.z_hat,
-                    self._data.state.x,
-                    # Outputs:
-                    self._data.state.y,
-                ],
-            )
-        else:
-            # Apply over-relaxation and compute the argument to the projection operator
-            wp.launch(
-                kernel=_apply_overrelaxation_and_compute_projection_argument,
-                dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
-                inputs=[
-                    # Inputs:
-                    problem.data.dim,
-                    problem.data.vio,
-                    self._data.config,
-                    self._data.penalty,
-                    self._data.status,
-                    self._data.state.y_p,
-                    self._data.state.z_p,
-                    # Outputs:
-                    self._data.state.x,
-                    self._data.state.y,
-                ],
-            )
+    def update_projection_argument(self, problem: DualProblem):
+        # Apply over-relaxation and compute the argument to the projection operator
+        wp.launch(
+            kernel=_apply_overrelaxation_and_compute_projection_argument,
+            dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
+            inputs=[
+                # Inputs:
+                problem.data.dim,
+                problem.data.vio,
+                self._data.config,
+                self._data.penalty,
+                self._data.status,
+                self._data.state.y_p,
+                self._data.state.z_p,
+                # Outputs:
+                self._data.state.x,
+                self._data.state.y,
+            ],
+        )
 
+    def update_projection_argument_accel(self, problem: DualProblem):
+        # Apply over-relaxation and compute the argument to the projection operator
+        wp.launch(
+            kernel=_compute_projection_argument,
+            dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
+            inputs=[
+                # Inputs:
+                problem.data.dim,
+                problem.data.vio,
+                self._data.penalty,
+                self._data.status,
+                self._data.state.z_hat,
+                self._data.state.x,
+                # Outputs:
+                self._data.state.y,
+            ],
+        )
+
+    def update_projection_to_feasible_set(self, problem: DualProblem):
         # Project to the feasible set defined by the cone K := R^{njd} x R_+^{nld} x K_{mu}^{nc}
         wp.launch(
             kernel=_project_to_feasible_cone,
@@ -2523,43 +2642,7 @@ class APADMMDualSolver:
             ],
         )
 
-    def update_dual_variables_and_residuals(self, problem: DualProblem):
-        # TODO
-        if any(s.use_acceleration for s in self._settings):
-            y_p = self._data.state.y_hat
-            z_p = self._data.state.z_hat
-        else:
-            y_p = self._data.state.y_p
-            z_p = self._data.state.z_p
-
-        # Update the dual variables and compute primal-dual residuals from the current state
-        # NOTE: These are combined into a single kernel to reduce kernel launch overhead
-        wp.launch(
-            kernel=_update_dual_variables_and_compute_primal_dual_residuals,
-            dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
-            inputs=[
-                # Inputs:
-                problem.data.dim,
-                problem.data.vio,
-                problem.data.P,
-                self._data.config,
-                self._data.penalty,
-                self._data.status,
-                self._data.state.x,
-                self._data.state.y,
-                self._data.state.x_p,
-                y_p,
-                z_p,
-                # Outputs:
-                self._data.state.z,
-                self._data.residuals.r_primal,
-                self._data.residuals.r_dual,
-                self._data.residuals.r_dx,
-                self._data.residuals.r_dy,
-                self._data.residuals.r_dz,
-            ],
-        )
-
+    def update_complementarity_residuals(self, problem: DualProblem):
         # Compute complementarity residual from the current state
         wp.launch(
             kernel=_compute_complementarity_residuals,
@@ -2580,10 +2663,96 @@ class APADMMDualSolver:
             ],
         )
 
+    def update_dual_variables_and_residuals(self, problem: DualProblem):
+        # Update the dual variables and compute primal-dual residuals from the current state
+        # NOTE: These are combined into a single kernel to reduce kernel launch overhead
+        wp.launch(
+            kernel=_update_dual_variables_and_compute_primal_dual_residuals,
+            dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
+            inputs=[
+                # Inputs:
+                problem.data.dim,
+                problem.data.vio,
+                problem.data.P,
+                self._data.config,
+                self._data.penalty,
+                self._data.status,
+                self._data.state.x,
+                self._data.state.y,
+                self._data.state.x_p,
+                self._data.state.y_p,
+                self._data.state.z_p,
+                # Outputs:
+                self._data.state.z,
+                self._data.residuals.r_primal,
+                self._data.residuals.r_dual,
+                self._data.residuals.r_dx,
+                self._data.residuals.r_dy,
+                self._data.residuals.r_dz,
+            ],
+        )
+
+        # Compute complementarity residual from the current state
+        self.update_complementarity_residuals(problem)
+
+    def update_dual_variables_and_residuals_accel(self, problem: DualProblem):
+        # Update the dual variables and compute primal-dual residuals from the current state
+        # NOTE: These are combined into a single kernel to reduce kernel launch overhead
+        wp.launch(
+            kernel=_update_dual_variables_and_compute_primal_dual_residuals,
+            dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
+            inputs=[
+                # Inputs:
+                problem.data.dim,
+                problem.data.vio,
+                problem.data.P,
+                self._data.config,
+                self._data.penalty,
+                self._data.status,
+                self._data.state.x,
+                self._data.state.y,
+                self._data.state.x_p,
+                self._data.state.y_hat,
+                self._data.state.z_hat,
+                # Outputs:
+                self._data.state.z,
+                self._data.residuals.r_primal,
+                self._data.residuals.r_dual,
+                self._data.residuals.r_dx,
+                self._data.residuals.r_dy,
+                self._data.residuals.r_dz,
+            ],
+        )
+
+        # Compute complementarity residual from the current state
+        self.update_complementarity_residuals(problem)
+
     def update_convergence_check(self, problem: DualProblem):
         # Compute infinity-norm of all residuals and check for convergence
         wp.launch(
             kernel=_compute_infnorm_residuals_serially,
+            dim=self._size.num_worlds,
+            inputs=[
+                # Inputs:
+                problem.data.nl,
+                problem.data.nc,
+                problem.data.uio,
+                problem.data.dim,
+                problem.data.vio,
+                self._data.config,
+                self._data.residuals.r_primal,
+                self._data.residuals.r_dual,
+                self._data.residuals.r_compl,
+                # Outputs:
+                self._data.state.done,
+                self._data.status,
+            ],
+        )
+
+    def update_convergence_check_accel(self, problem: DualProblem):
+        # Compute infinity-norm of all residuals and check for convergence
+        wp.launch(
+            kernel=_compute_infnorm_residuals_serially_accel,
             dim=self._size.num_worlds,
             inputs=[
                 # Inputs:
@@ -2698,14 +2867,17 @@ class APADMMDualSolver:
         )
 
     def update_previous_state(self):
-        # Cache the previous acceleration state if acceleration is enabled
-        if any(s.use_acceleration for s in self._settings):
-            wp.copy(self._data.state.a_p, self._data.state.a)
-
         # Cache previous state variables
         wp.copy(self._data.state.x_p, self._data.state.x)
         wp.copy(self._data.state.y_p, self._data.state.y)
         wp.copy(self._data.state.z_p, self._data.state.z)
+
+    def update_previous_state_accel(self):
+        # Cache the previous acceleration state if acceleration is enabled
+        wp.copy(self._data.state.a_p, self._data.state.a)
+
+        # Cache previous state variables
+        self.update_previous_state()
 
     def update_solution(self, problem: DualProblem):
         # Apply the dual preconditioner to recover the final PADMM state
@@ -2758,6 +2930,38 @@ class APADMMDualSolver:
             ],
         )
 
+    def step_accel(self, problem: DualProblem):
+        # Compute De Saxce correction from the previous dual variables
+        self.update_desaxce_correction_accel(problem)
+
+        # Compute the total velocity bias, i.e. rhs vector of the unconstrained linear system
+        self.update_velocity_bias_accel(problem)
+
+        # Compute the unconstrained solution and store in the primal variables
+        self.update_unconstrained_solution(problem)
+
+        # Project the over-relaxed primal variables to the feasible set
+        self.update_projection_argument_accel(problem)
+
+        # Project the over-relaxed primal variables to the feasible set
+        self.update_projection_to_feasible_set(problem)
+
+        # Update the dual variables and compute residuals from the current state
+        self.update_dual_variables_and_residuals_accel(problem)
+
+        # Compute infinity-norm of all residuals and check for convergence
+        self.update_convergence_check_accel(problem)
+
+        # Optionally update Nesterov acceleration states from the current iteration
+        self.update_acceleration(problem)
+
+        # Optionally record internal solver info
+        if self._collect_info:
+            self.update_solver_info(problem)
+
+        # Update caches of previous state variables
+        self.update_previous_state_accel()
+
     def step(self, problem: DualProblem):
         # Compute De Saxce correction from the previous dual variables
         self.update_desaxce_correction(problem)
@@ -2769,6 +2973,9 @@ class APADMMDualSolver:
         self.update_unconstrained_solution(problem)
 
         # Project the over-relaxed primal variables to the feasible set
+        self.update_projection_argument(problem)
+
+        # Project the over-relaxed primal variables to the feasible set
         self.update_projection_to_feasible_set(problem)
 
         # Update the dual variables and compute residuals from the current state
@@ -2776,14 +2983,6 @@ class APADMMDualSolver:
 
         # Compute infinity-norm of all residuals and check for convergence
         self.update_convergence_check(problem)
-
-        # Optionally update Nesterov acceleration states from the current iteration
-        if any(s.use_acceleration for s in self._settings):
-            self.update_acceleration(problem)
-        # else:
-        #     # If acceleration is disabled, update the auxiliary state to the current
-        #     wp.copy(self._data.state.y_hat, self._data.state.y)
-        #     wp.copy(self._data.state.z_hat, self._data.state.z)
 
         # Optionally record internal solver info
         if self._collect_info:
@@ -2808,7 +3007,10 @@ class APADMMDualSolver:
             self._data.info.zero()
 
         # Iterate until convergence or maximum number of iterations is reached
-        wp.capture_while(self._data.state.done, while_body=self.step, problem=problem)
+        if self._use_acceleration:
+            wp.capture_while(self._data.state.done, while_body=self.step_accel, problem=problem)
+        else:
+            wp.capture_while(self._data.state.done, while_body=self.step, problem=problem)
 
         # Update the final solution from the terminal PADMM state
         self.update_solution(problem)

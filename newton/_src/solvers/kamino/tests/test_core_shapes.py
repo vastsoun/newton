@@ -35,7 +35,7 @@ from newton._src.solvers.kamino.core.shapes import (
     ShapeType,
     SphereShape,
 )
-from newton._src.solvers.kamino.core.types import mat33f, vec3f, vec4f
+from newton._src.solvers.kamino.core.types import mat33f, vec3f
 
 ###
 # Tests
@@ -111,7 +111,7 @@ class TestShapeDescriptors(unittest.TestCase):
         # Check default values
         self.assertEqual(shape.type, ShapeType.EMPTY)
         self.assertEqual(shape.num_params, 0)
-        self.assertEqual(shape.params, vec4f(0.0))
+        self.assertEqual(shape.params, None)
         self.assertEqual(shape.name, "empty")
         self.assertIsInstance(shape.uid, str)
 
@@ -123,7 +123,7 @@ class TestShapeDescriptors(unittest.TestCase):
         self.assertEqual(shape.name, "sphere")
         self.assertEqual(shape.type, ShapeType.SPHERE)
         self.assertEqual(shape.num_params, 1)
-        self.assertEqual(shape.params, vec4f(radius, 0.0, 0.0, 0.0))
+        self.assertEqual(shape.params, radius)
 
     def test_02_cylinder_shape(self):
         # Create a cylinder shape
@@ -134,7 +134,7 @@ class TestShapeDescriptors(unittest.TestCase):
         self.assertEqual(shape.name, "cylinder")
         self.assertEqual(shape.type, ShapeType.CYLINDER)
         self.assertEqual(shape.num_params, 2)
-        self.assertEqual(shape.params, vec4f(radius, height, 0.0, 0.0))
+        self.assertEqual(shape.params, (radius, height))
 
     def test_03_cone_shape(self):
         # Create a cone shape
@@ -145,7 +145,7 @@ class TestShapeDescriptors(unittest.TestCase):
         self.assertEqual(shape.name, "cone")
         self.assertEqual(shape.type, ShapeType.CONE)
         self.assertEqual(shape.num_params, 2)
-        self.assertEqual(shape.params, vec4f(radius, height, 0.0, 0.0))
+        self.assertEqual(shape.params, (radius, height))
 
     def test_04_capsule_shape(self):
         # Create a capsule shape
@@ -156,7 +156,7 @@ class TestShapeDescriptors(unittest.TestCase):
         self.assertEqual(shape.name, "capsule")
         self.assertEqual(shape.type, ShapeType.CAPSULE)
         self.assertEqual(shape.num_params, 2)
-        self.assertEqual(shape.params, vec4f(radius, height, 0.0, 0.0))
+        self.assertEqual(shape.params, (radius, height))
 
     def test_05_box_shape(self):
         # Create a box shape
@@ -166,7 +166,7 @@ class TestShapeDescriptors(unittest.TestCase):
         self.assertEqual(shape.name, "box")
         self.assertEqual(shape.type, ShapeType.BOX)
         self.assertEqual(shape.num_params, 3)
-        self.assertEqual(shape.params, vec4f(*dimensions, 0.0))
+        self.assertEqual(shape.params, dimensions)
 
     def test_06_ellipsoid_shape(self):
         # Create an ellipsoid shape
@@ -176,7 +176,7 @@ class TestShapeDescriptors(unittest.TestCase):
         self.assertEqual(shape.name, "ellipsoid")
         self.assertEqual(shape.type, ShapeType.ELLIPSOID)
         self.assertEqual(shape.num_params, 3)
-        self.assertEqual(shape.params, vec4f(*radii, 0.0))
+        self.assertEqual(shape.params, radii)
 
     def test_07_plane_shape(self):
         # Create a plane shape
@@ -187,7 +187,7 @@ class TestShapeDescriptors(unittest.TestCase):
         self.assertEqual(shape.name, "plane")
         self.assertEqual(shape.type, ShapeType.PLANE)
         self.assertEqual(shape.num_params, 4)
-        self.assertEqual(shape.params, vec4f(*normal, distance))
+        self.assertEqual(shape.params, (*normal, distance))
 
     def test_08_mesh_shape(self):
         # Create a mesh shape
@@ -198,7 +198,7 @@ class TestShapeDescriptors(unittest.TestCase):
         self.assertEqual(shape.name, "mesh")
         self.assertEqual(shape.type, ShapeType.MESH)
         self.assertEqual(shape.num_params, -1)
-        self.assertEqual(shape.params, vec4f(0.0))
+        self.assertEqual(shape.params, None)
         self.assertTrue(np.array_equal(shape.vertices, np.array(vertices)))
         self.assertTrue(np.array_equal(shape.indices, np.array(indices).flatten()))
 
@@ -211,7 +211,7 @@ class TestShapeDescriptors(unittest.TestCase):
         self.assertEqual(shape.name, "convex")
         self.assertEqual(shape.type, ShapeType.CONVEX)
         self.assertEqual(shape.num_params, -1)
-        self.assertEqual(shape.params, vec4f(0.0))
+        self.assertEqual(shape.params, None)
         self.assertTrue(np.array_equal(shape.vertices, np.array(vertices)))
         self.assertTrue(np.array_equal(shape.indices, np.array(indices).flatten()))
 
@@ -225,7 +225,7 @@ class TestShapeDescriptors(unittest.TestCase):
     #     self.assertEqual(shape.name, "hfield")
     #     self.assertEqual(shape.type, ShapeType.HFIELD)
     #     self.assertEqual(shape.num_params, -1)
-    #     self.assertEqual(shape.params, vec4f(0.0))
+    #     self.assertEqual(shape.params, None)
     #     self.assertTrue(np.array_equal(shape.vertices, np.array(vertices)))
     #     self.assertTrue(np.array_equal(shape.indices, np.array(indices).flatten()))
 
@@ -237,7 +237,7 @@ class TestShapeDescriptors(unittest.TestCase):
         self.assertEqual(shape.name, "sdf")
         self.assertEqual(shape.type, ShapeType.SDF)
         self.assertEqual(shape.num_params, -1)
-        self.assertEqual(shape.params, vec4f(0.0))
+        self.assertEqual(shape.params, None)
         self.assertEqual(shape.mass, 1.0)
         self.assertEqual(shape.com, vec3f(0.0))
         self.assertEqual(shape.inertia, mat33f(np.eye(3)))

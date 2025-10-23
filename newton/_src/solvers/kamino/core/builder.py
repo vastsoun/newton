@@ -1111,7 +1111,7 @@ class ModelBuilder:
                 cgeoms_lid.append(geom.lid)
                 cgeoms_bid.append(geom.bid)
                 cgeoms_sid.append(geom.shape.type.value)
-                cgeoms_params.append(geom.shape.params)
+                cgeoms_params.append(geom.shape.paramsvec)
                 cgeoms_offset.append(geom.offset)
                 cgeoms_mid.append(geom.mid)
                 cgeoms_group.append(geom.group)
@@ -1127,7 +1127,7 @@ class ModelBuilder:
                 pgeoms_lid.append(geom.lid)
                 pgeoms_bid.append(geom.bid)
                 pgeoms_sid.append(geom.shape.type.value)
-                pgeoms_params.append(geom.shape.params)
+                pgeoms_params.append(geom.shape.paramsvec)
                 pgeoms_offset.append(geom.offset)
                 pgeoms_ptr.append(make_geometry_source_pointer(geom, pgeom_meshes, device))
 

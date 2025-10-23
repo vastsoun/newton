@@ -21,15 +21,15 @@ from __future__ import annotations
 
 import warp as wp
 
-from newton._src.geometry.collision_primitive import (
+from ....geometry.collision_primitive import (
     collide_box_box,
     collide_sphere_box,
     collide_sphere_sphere,
 )
-from newton._src.solvers.kamino.core.math import FLOAT32_EPS
-from newton._src.solvers.kamino.core.model import Model, ModelData
-from newton._src.solvers.kamino.core.shapes import ShapeType
-from newton._src.solvers.kamino.core.types import (
+from ..core.math import FLOAT32_EPS
+from ..core.model import Model, ModelData
+from ..core.shapes import ShapeType
+from ..core.types import (
     float32,
     int32,
     mat33f,
@@ -39,9 +39,9 @@ from newton._src.solvers.kamino.core.types import (
     vec3f,
     vec4f,
 )
-from newton._src.solvers.kamino.geometry.collisions import Collisions
-from newton._src.solvers.kamino.geometry.contacts import Contacts
-from newton._src.solvers.kamino.geometry.math import make_contact_frame_znorm
+from ..geometry.collisions import Collisions
+from ..geometry.contacts import Contacts
+from ..geometry.math import make_contact_frame_znorm
 
 ###
 # Module configs
@@ -150,10 +150,15 @@ def add_active_contact(
             else:
                 bid_A_in = bid_1_in
                 bid_B_in = bid_2_in
+
+            # Compute absolute penetration distance
+            distance_abs = wp.abs(distance_in)
+
             # The colliders compute the contact point in the middle, and thus to get the
             # per-geom contact points we need to offset by the penetration depth along the normal
-            position_A_in = position_in + 0.5 * distance_in * normal_in
-            position_B_in = position_in - 0.5 * distance_in * normal_in
+            position_A_in = position_in + 0.5 * distance_abs * normal_in
+            position_B_in = position_in - 0.5 * distance_abs * normal_in
+
             # Store the active contact output data
             contact_wid_out[mcid] = wid_in
             contact_cid_out[mcid] = wcid
@@ -411,7 +416,9 @@ def box_box(
             # Get contact data
             contact_pos = vec3f(contact_positions[i, 0], contact_positions[i, 1], contact_positions[i, 2])
             contact_normal = vec3f(contact_normals[i, 0], contact_normals[i, 1], contact_normals[i, 2])
-            contact_dist = contact_dists[i]
+            # TODO: Why are these half-distances?
+            contact_dist = 2.0 * contact_dists[i]
+            contact_dist_abs = wp.abs(contact_dist)
 
             # Adjust normal direction based on body assignment
             if box2_in.bid < 0:
@@ -422,8 +429,8 @@ def box_box(
 
             # This collider computes the contact point in the middle, and thus to get the
             # per-geom contact we need to offset the contact point by the penetration depth
-            pos_A = contact_pos + contact_normal * contact_dist * 0.5
-            pos_B = contact_pos - contact_normal * contact_dist * 0.5
+            pos_A = contact_pos + 0.5 * contact_normal * contact_dist_abs
+            pos_B = contact_pos - 0.5 * contact_normal * contact_dist_abs
 
             # Store contact data
             contact_wid_out[mcid] = wid_in
@@ -506,7 +513,7 @@ def _primitive_narrowphase(
     sid2 = geom_sid_in[gid2]
 
     # TODO(team): static loop unrolling to remove unnecessary branching
-    if sid1 == int32(ShapeType.SPHERE.value) and sid2 == int32(ShapeType.SPHERE.value):
+    if sid1 == ShapeType.SPHERE and sid2 == ShapeType.SPHERE:
         sphere_sphere(
             model_max_contacts,
             world_max_contacts,

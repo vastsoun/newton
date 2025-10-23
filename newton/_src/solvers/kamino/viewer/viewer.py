@@ -71,7 +71,6 @@ class ViewerKamino(ViewerGL):
         self.begin_frame(self._simulator.time)
 
         # Extract body poses from the kamino simulator
-        # try:
         body_poses = self._simulator.state.q_i.numpy()
 
         # Render each geometry using log_shapes
@@ -80,54 +79,61 @@ class ViewerKamino(ViewerGL):
             if cgeom.shape.typeid == ShapeType.EMPTY:
                 continue
 
-            # Extract shape info
-            if cgeom.bid < len(body_poses):
-                # Convert kamino transformf to warp transform
-                pose = body_poses[cgeom.bid]
-                # kamino transformf has [x, y, z, qx, qy, qz, qw] format
-                position = wp.vec3(float(pose[0]), float(pose[1]), float(pose[2]))
-                quaternion = wp.quat(float(pose[3]), float(pose[4]), float(pose[5]), float(pose[6]))
-                body_transform = wp.transform(position, quaternion)
+            # Handle the case of static geometry (bid < 0)
+            if cgeom.bid < 0:
+                body_transform = wp.transform_identity()
+            else:
+                body_transform = wp.transform(*body_poses[cgeom.bid])
 
-                # Combine body and offset transforms
-                geom_transform = wp.transform_multiply(body_transform, cgeom.offset)
+            # Combine body and offset transforms
+            geom_transform = wp.transform_multiply(body_transform, cgeom.offset)
 
-                # Choose color based on body ID
-                color = self.body_colors[cgeom.bid % len(self.body_colors)]
+            # Choose color based on body ID
+            color = self.body_colors[cgeom.bid % len(self.body_colors)]
 
-                # Extract geometry parameters based on shape type
-                geom_params = None
-                geom_src = None
-                geom_params = None
-                params = cgeom.shape.params
-                num_params = cgeom.shape._num_params_of(cgeom.shape.typeid)
-                if cgeom.shape.typeid == ShapeType.SPHERE:
-                    geom_params = params[0]
-                elif cgeom.shape.typeid == ShapeType.CYLINDER:
-                    geom_params = (params[0], 0.5 * params[1])
-                elif cgeom.shape.typeid == ShapeType.CONE:
-                    geom_params = (params[0], 0.5 * params[1])
-                elif cgeom.shape.typeid == ShapeType.CAPSULE:
-                    geom_params = (params[0], 0.5 * params[1])
-                elif cgeom.shape.typeid == ShapeType.BOX:
-                    geom_params = 0.5 * params[:num_params]
-                elif cgeom.shape.typeid == ShapeType.ELLIPSOID:
-                    geom_params = params[:num_params]
-                # elif cgeom.shape.typeid in {ShapeType.MESH, ShapeType.CONVEX}:
-                elif cgeom.shape.typeid == ShapeType.MESH:
-                    geom_params = 1.0
-                    geom_src = self._collision_geometry[cgeom.gid].shape._data
+            def _vec_to_tuple(v):
+                if isinstance(v, wp.vec4):
+                    return (v.x, v.y, v.z, v.w)
+                if isinstance(v, wp.vec3):
+                    return (v.x, v.y, v.z)
+                elif isinstance(v, wp.vec2):
+                    return (v.x, v.y)
+                else:
+                    return tuple(v.tolist())
 
-                # Update the geometry data
-                self.log_shapes(
-                    name=f"/body_{cgeom.bid}/geom_{i}",
-                    geo_type=ShapeType(cgeom.shape.typeid).to_newton(),
-                    geo_scale=geom_params,
-                    xforms=wp.array([geom_transform], dtype=wp.transform),
-                    geo_is_solid=True,
-                    colors=color,
-                    geo_src=geom_src,
-                )
+            # Extract geometry parameters based on shape type
+            geom_params = None
+            geom_src = None
+            geom_params = None
+            params = cgeom.shape.params
+            num_params = cgeom.shape._num_params_of(cgeom.shape.typeid)
+            if cgeom.shape.typeid == ShapeType.SPHERE:
+                geom_params = params[0]
+            elif cgeom.shape.typeid == ShapeType.CYLINDER:
+                geom_params = (params[0], 0.5 * params[1])
+            elif cgeom.shape.typeid == ShapeType.CONE:
+                geom_params = (params[0], 0.5 * params[1])
+            elif cgeom.shape.typeid == ShapeType.CAPSULE:
+                geom_params = (params[0], 0.5 * params[1])
+            elif cgeom.shape.typeid == ShapeType.BOX:
+                geom_params = _vec_to_tuple(0.5 * params[:num_params])
+            elif cgeom.shape.typeid == ShapeType.ELLIPSOID:
+                geom_params = _vec_to_tuple(params[:num_params])
+            # elif cgeom.shape.typeid in {ShapeType.MESH, ShapeType.CONVEX}:
+            elif cgeom.shape.typeid == ShapeType.MESH:
+                geom_params = 1.0
+                geom_src = self._collision_geometry[cgeom.gid].shape._data
+
+            # Update the geometry data
+            self.log_shapes(
+                name=f"/body_{cgeom.bid}/geom_{i}",
+                geo_type=ShapeType(cgeom.shape.typeid).to_newton(),
+                geo_scale=geom_params,
+                xforms=wp.array([geom_transform], dtype=wp.transform),
+                geo_is_solid=True,
+                colors=color,
+                geo_src=geom_src,
+            )
 
         # End the new frame
         self.end_frame()

@@ -19,14 +19,13 @@ import time
 
 import numpy as np
 import warp as wp
+from warp.context import Devicelike
 
 import newton
 import newton._src.solvers.kamino.utils.logger as msg
 import newton.examples
 from newton._src.solvers.kamino.core.builder import ModelBuilder
-from newton._src.solvers.kamino.core.shapes import ShapeType
 from newton._src.solvers.kamino.models import get_examples_usd_assets_path
-from newton._src.solvers.kamino.models.builders import add_ground_geom, offset_builder
 from newton._src.solvers.kamino.simulation.simulator import Simulator, SimulatorSettings
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
 from newton._src.solvers.kamino.utils.print import print_progress_bar
@@ -48,132 +47,41 @@ USD_MODEL_PATH = os.path.join(get_examples_usd_assets_path(), "testmechanism/tes
 
 
 ###
-# Main function
+# Example class
 ###
-
-
-def run_headless(use_cuda_graph=False):
-    """Run the simulation in headless mode."""
-
-    # Set global numpy configurations
-    np.set_printoptions(linewidth=20000, precision=6, threshold=10000, suppress=True)  # Suppress scientific notation
-
-    # Get the default warp device
-    device = wp.get_preferred_device()
-    device = wp.get_device(device)
-    msg.info(f"device: {device}")
-
-    # TODO: REMOVE THIS
-    use_cuda_graph = False
-
-    # Determine if using CUDA graphs
-    can_use_cuda_graph = device.is_cuda and wp.is_mempool_enabled(device)
-    msg.info(f"use_cuda_graph: {use_cuda_graph}")
-    msg.info(f"can_use_cuda_graph: {can_use_cuda_graph}")
-
-    # Create a single-instance system
-    msg.info("Constructing builder from imported USD ...")
-    importer = USDImporter()
-    builder: ModelBuilder = importer.import_from(source=USD_MODEL_PATH)
-
-    # Offset the model to place it above the ground
-    # NOTE: The USD model is centered at the origin
-    offset = wp.transformf(0.0, 0.0, 0.25, 0.0, 0.0, 0.0, 1.0)
-    offset_builder(builder=builder, offset=offset)
-
-    # Add a static collision layer and geometry for the plane
-    add_ground_geom(builder, group=1, collides=1)
-
-    # Set gravity
-    builder.gravity.enabled = True
-
-    # Set solver settings
-    settings = SimulatorSettings()
-    settings.dt = 0.001
-    settings.problem.alpha = 0.1
-    settings.solver.primal_tolerance = 1e-6
-    settings.solver.dual_tolerance = 1e-6
-    settings.solver.compl_tolerance = 1e-6
-    settings.solver.max_iterations = 200
-    settings.solver.rho_0 = 0.1
-
-    # Create a simulator
-    msg.info("Building the simulator...")
-    sim = Simulator(builder=builder, settings=settings, device=device)
-
-    # Capture graphs for simulator ops: reset and step
-    use_cuda_graph &= can_use_cuda_graph
-    reset_graph = None
-    step_graph = None
-    if use_cuda_graph:
-        with wp.ScopedCapture(device) as reset_capture:
-            sim.reset()
-        reset_graph = reset_capture.graph
-        with wp.ScopedCapture(device) as step_capture:
-            sim.step()
-        step_graph = step_capture.graph
-
-    # Warm-start the simulator before rendering
-    # NOTE: This compiles and loads the warp kernels prior to execution
-    msg.info("Warming up the simulator...")
-    if use_cuda_graph:
-        msg.info("Running with CUDA graphs...")
-        wp.capture_launch(step_graph)
-        wp.capture_launch(reset_graph)
-    else:
-        msg.info("Running with kernels...")
-        with wp.ScopedDevice(device):
-            sim.step()
-            sim.reset()
-
-    # Step the simulation and collect frames
-    ns = 10000
-    msg.info(f"Collecting ns={ns} frames...")
-    start_time = time.time()
-    with wp.ScopedDevice(device):
-        for i in range(ns):
-            if use_cuda_graph:
-                wp.capture_launch(step_graph)
-            else:
-                sim.step()
-            wp.synchronize()
-            print_progress_bar(i, ns, start_time, prefix="Progress", suffix="")
 
 
 class Example:
     """ViewerGL example class for testmechanism simulation."""
 
-    def __init__(self, use_cuda_graph=False):
+    def __init__(self, device: Devicelike, use_cuda_graph=False, headless: bool = False):
+        # Initialize target frames per second and corresponding time-steps
         self.fps = 60
         self.frame_dt = 1.0 / self.fps
-        self.sim_time = 0.0
-        self.sim_substeps = 10
-        self.sim_dt = self.frame_dt / self.sim_substeps
-        self.use_cuda_graph = use_cuda_graph
+        self.sim_dt = 0.001
+        self.sim_substeps = int(self.frame_dt / self.sim_dt)
 
-        # Get the default warp device
-        device = wp.get_preferred_device()
-        device = wp.get_device(device)
+        # Initialize internal time-keeping
+        self.sim_time = 0.0
+        self.sim_steps = 0
+
+        # Cache the device and other internal flags
+        self.device = device
+        self.use_cuda_graph: bool = use_cuda_graph
 
         # Create a single-instance system (always load from USD for testmechanism)
         msg.info("Constructing builder from imported USD ...")
         importer = USDImporter()
         self.builder: ModelBuilder = importer.import_from(source=USD_MODEL_PATH)
-
-        # Offset the model to place it above the ground
-        # NOTE: The USD model is centered at the origin
-        offset = wp.transformf(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0)
-        offset_builder(builder=self.builder, offset=offset)
-
-        # # Add a static collision layer and geometry for the plane
-        # add_ground_geom(builder=self.builder, group=1, collides=1)
+        msg.warning("total mass: %f", self.builder.world.mass_total)
+        msg.warning("total diag inertia: %f", self.builder.world.inertia_total)
 
         # Set gravity
         self.builder.gravity.enabled = True
 
         # Set solver settings
         settings = SimulatorSettings()
-        settings.dt = 0.001
+        settings.dt = self.sim_dt
         settings.problem.alpha = 0.1
         settings.solver.primal_tolerance = 1e-6
         settings.solver.dual_tolerance = 1e-6
@@ -186,66 +94,120 @@ class Example:
         self.sim = Simulator(builder=self.builder, settings=settings, device=device)
 
         # Initialize the viewer
-        self.viewer = ViewerKamino(
-            builder=self.builder,
-            simulator=self.sim,
-        )
+        if not headless:
+            self.viewer = ViewerKamino(
+                builder=self.builder,
+                simulator=self.sim,
+            )
+        else:
+            self.viewer = None
 
-        # Initialize the simulator with a warm-up step
-        self.sim.reset()
+        # Declare and initialize the optional computation graphs
+        # NOTE: These are used for most efficient GPU runtime
+        self.reset_graph = None
+        self.step_graph = None
+        self.simulate_graph = None
 
         # Capture CUDA graph if requested and available
         self.capture()
 
+        # Warm-start the simulator before rendering
+        # NOTE: This compiles and loads the warp kernels prior to execution
+        msg.info("Warming up simulator...")
+        self.step_once()
+        self.reset()
+
     def capture(self):
         """Capture CUDA graph if requested and available."""
-        if self.use_cuda_graph and wp.get_device().is_cuda:
-            with wp.ScopedCapture() as capture:
+        if self.use_cuda_graph:
+            msg.info("Running with CUDA graphs...")
+            with wp.ScopedCapture(self.device) as reset_capture:
+                self.sim.reset()
+            self.reset_graph = reset_capture.graph
+            with wp.ScopedCapture(self.device) as step_capture:
+                self.sim.step()
+            self.step_graph = step_capture.graph
+            with wp.ScopedCapture(self.device) as sim_capture:
                 self.simulate()
-            self.graph = capture.graph
+            self.simulate_graph = sim_capture.graph
         else:
-            self.graph = None
+            msg.info("Running with kernels...")
 
     def simulate(self):
         """Run simulation substeps."""
-        for _ in range(self.sim_substeps):
+        for _i in range(self.sim_substeps):
             self.sim.step()
+            self.sim_steps += 1
+
+    def reset(self):
+        """Reset the simulation."""
+        if self.reset_graph:
+            wp.capture_launch(self.reset_graph)
+        else:
+            self.sim.reset()
+        self.sim_steps = 0
+        self.sim_time = 0.0
+
+    def step_once(self):
+        """Run the simulation for a single time-step."""
+        if self.step_graph:
+            wp.capture_launch(self.step_graph)
+        else:
+            self.sim.step()
+        self.sim_steps += 1
+        self.sim_time += self.sim_dt
 
     def step(self):
         """Step the simulation."""
-        if self.graph:
-            wp.capture_launch(self.graph)
+        if self.simulate_graph:
+            wp.capture_launch(self.simulate_graph)
         else:
             self.simulate()
-
         self.sim_time += self.frame_dt
 
     def render(self):
         """Render the current frame."""
-        self.viewer.render_frame()
+        if self.viewer:
+            self.viewer.render_frame()
 
     def test(self):
         """Test function for compatibility."""
         pass
 
 
+###
+# Execution functions
+###
+
+
+def run_headless(example: Example, num_steps: int = 25000, progress: bool = True):
+    """Run the simulation in headless mode for a fixed number of steps."""
+    msg.info(f"Running for {num_steps} steps...")
+    start_time = time.time()
+    for i in range(num_steps):
+        example.step_once()
+        wp.synchronize()
+        if progress:
+            print_progress_bar(i + 1, num_steps, start_time, prefix="Progress", suffix="")
+
+
+###
+# Main function
+###
+
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Walker simulation example")
-    parser.add_argument(
-        "--mode",
-        choices=["headless", "viewer"],
-        default="viewer",
-        help="Simulation mode: 'headless' for brute-force simulation, 'viewer' for live visualization",
-    )
-    parser.add_argument("--clear-cache", action="store_true", default=False, help="Clear warp cache")
+    parser = argparse.ArgumentParser(description="TestMechanism simulation example")
+    parser.add_argument("--headless", action="store_true", default=False, help="Run in headless mode")
+    parser.add_argument("--num-steps", type=int, default=1000, help="Number of steps for headless mode")
+    parser.add_argument("--device", type=str, help="The compute device to use")
     parser.add_argument("--cuda-graph", action="store_true", default=True, help="Use CUDA graphs")
-    parser.add_argument("--viewer", choices=["gl", "usd", "rerun", "null"], default="gl", help="Viewer type")
-    parser.add_argument("--headless", action="store_true", help="Run in headless mode")
-    parser.add_argument("--device", type=str, help="Compute device")
-    parser.add_argument("--output-path", type=str, help="Output path for USD viewer")
-    parser.add_argument("--num-frames", type=int, default=1000, help="Number of frames for null/USD viewer")
+    parser.add_argument("--clear-cache", action="store_true", default=False, help="Clear warp cache")
     parser.add_argument("--test", action="store_true", default=False, help="Run tests")
     args = parser.parse_args()
+
+    # Set global numpy configurations
+    np.set_printoptions(linewidth=20000, precision=6, threshold=10000, suppress=True)  # Suppress scientific notation
 
     # Clear warp cache if requested
     if args.clear_cache:
@@ -253,22 +215,35 @@ if __name__ == "__main__":
         wp.clear_lto_cache()
 
     # TODO: Make optional
+    # Set the verbosity of the global message logger
     msg.set_log_level(msg.LogLevel.INFO)
 
-    # Execute based on mode
-    if args.mode == "headless":
+    # Set device if specified, otherwise use Warp's default
+    if args.device:
+        device = wp.get_device(args.device)
+        wp.set_device(device)
+    else:
+        device = wp.get_preferred_device()
+
+    # Determine if CUDA graphs should be used for execution
+    can_use_cuda_graph = device.is_cuda and wp.is_mempool_enabled(device)
+    use_cuda_graph = can_use_cuda_graph & args.cuda_graph
+    msg.info(f"can_use_cuda_graph: {can_use_cuda_graph}")
+    msg.info(f"use_cuda_graph: {use_cuda_graph}")
+    msg.info(f"device: {device}")
+
+    # Run a brute-force similation loop if headless
+    if args.headless:
         msg.info("Running in headless mode...")
-        run_headless(use_cuda_graph=args.cuda_graph)
+        example = Example(device=device, use_cuda_graph=use_cuda_graph, headless=True)
+        run_headless(example, num_steps=args.num_steps, progress=True)
 
-    elif args.mode == "viewer":
-        msg.info("Running in ViewerGL mode...")
+    # Otherwise launch using a Newton viewer
+    else:
+        msg.info("Running in Viewer mode...")
 
-        # Set device if specified
-        if args.device:
-            wp.set_device(args.device)
-
-        # Create the example instance
-        example = Example(use_cuda_graph=args.cuda_graph)
+        # Create and run example
+        example = Example(device=device, use_cuda_graph=use_cuda_graph, headless=False)
 
         # Set initial camera position for better view of the testmechanism
         if hasattr(example.viewer, "set_camera"):
@@ -278,4 +253,5 @@ if __name__ == "__main__":
             yaw = 215.0
             example.viewer.set_camera(camera_pos, pitch, yaw)
 
+        # Launch the example using Newton's built-in runtime
         newton.examples.run(example, args)

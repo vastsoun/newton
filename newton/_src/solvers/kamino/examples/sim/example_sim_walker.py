@@ -20,6 +20,7 @@ import time
 import matplotlib.pyplot as plt
 import numpy as np
 import warp as wp
+from warp.context import Devicelike
 
 import newton
 import newton._src.solvers.kamino.utils.logger as msg
@@ -53,18 +54,13 @@ MESH_USD_MODEL_PATH = os.path.join(get_examples_usd_assets_path(), "walker/walke
 class Example:
     """ViewerGL example class for walker simulation."""
 
-    def __init__(self, device, use_cuda_graph: bool = False, logging: bool = True):
+    def __init__(self, device: Devicelike, use_cuda_graph: bool = False, logging: bool = True, headless: bool = False):
         # Initialize target frames per second and corresponding time-steps
         self.fps = 60
         self.frame_dt = 1.0 / self.fps
         self.sim_dt = 0.001
         self.sim_substeps = int(self.frame_dt / self.sim_dt)
-        self.max_sim_steps = 1000
-        msg.warning("fps: %f", self.fps)
-        msg.warning("frame_dt: %f", self.frame_dt)
-        msg.warning("sim_dt: %f", self.sim_dt)
-        msg.warning("sim_substeps: %d", self.sim_substeps)
-        msg.warning("max_sim_steps: %d", self.max_sim_steps)
+        self.max_log_steps = 10000
 
         # Initialize internal time-keeping
         self.sim_time = 0.0
@@ -112,22 +108,25 @@ class Example:
         self.actuated_joints = np.array([0, 1, 5, 6, 10, 15, 18, 19, 23, 24, 28, 33], dtype=np.int32)
 
         # Data logging arrays
-        self.log_time = np.zeros(self.max_sim_steps, dtype=np.float32)
-        self.log_q_j = np.zeros((self.max_sim_steps, njaq), dtype=np.float32)
-        self.log_dq_j = np.zeros((self.max_sim_steps, njaq), dtype=np.float32)
-        self.log_tau_j = np.zeros((self.max_sim_steps, njaq), dtype=np.float32)
-        self.log_q_j_ref = np.zeros((self.max_sim_steps, njaq), dtype=np.float32)
-        self.log_dq_j_ref = np.zeros((self.max_sim_steps, njad), dtype=np.float32)
+        self.log_time = np.zeros(self.max_log_steps, dtype=np.float32)
+        self.log_q_j = np.zeros((self.max_log_steps, njaq), dtype=np.float32)
+        self.log_dq_j = np.zeros((self.max_log_steps, njaq), dtype=np.float32)
+        self.log_tau_j = np.zeros((self.max_log_steps, njaq), dtype=np.float32)
+        self.log_q_j_ref = np.zeros((self.max_log_steps, njaq), dtype=np.float32)
+        self.log_dq_j_ref = np.zeros((self.max_log_steps, njad), dtype=np.float32)
 
         # Create a simulator
         msg.info("Building the simulator...")
         self.sim = Simulator(builder=self.builder, settings=settings, device=device)
 
         # Initialize the viewer
-        self.viewer = ViewerKamino(
-            builder=self.builder,
-            simulator=self.sim,
-        )
+        if not headless:
+            self.viewer = ViewerKamino(
+                builder=self.builder,
+                simulator=self.sim,
+            )
+        else:
+            self.viewer = None
 
         # Load animation data for walker
         NUMPY_ANIMATION_PATH = os.path.join(get_examples_usd_assets_path(), "walker/walker_animation_100fps.npy")
@@ -218,11 +217,9 @@ class Example:
             msg.info("Running with kernels...")
 
     def log_data(self):
-        if self.sim_steps >= self.max_sim_steps:
+        if self.sim_steps >= self.max_log_steps:
             msg.warning("Maximum simulation steps reached, skipping data logging.")
             return
-        # msg.warning(f"[s={self.sim_steps}] step: {self.sim.data.solver.time.steps.numpy()[0]}")
-        # msg.warning(f"[s={self.sim_steps}] frame: {self.animation.data.frame.numpy()[0]}")
         self.log_time[self.sim_steps] = self.sim.data.solver.time.time.numpy()[0]
         self.log_q_j[self.sim_steps, :] = self.sim.data.state_n.q_j.numpy()[self.actuated_joints]
         self.log_dq_j[self.sim_steps, :] = self.sim.data.state_n.dq_j.numpy()[self.actuated_joints]
@@ -270,7 +267,8 @@ class Example:
 
     def render(self):
         """Render the current frame."""
-        self.viewer.render_frame()
+        if self.viewer:
+            self.viewer.render_frame()
 
     def test(self):
         """Test function for compatibility."""
@@ -374,14 +372,13 @@ def run_headless(example: Example, num_steps: int = 25000, progress: bool = True
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Walker simulation example")
-    parser.add_argument("--viewer", choices=["gl", "usd", "rerun", "null"], default="gl", help="Viewer type")
-    parser.add_argument("--device", type=str, help="The compute device to use")
     parser.add_argument("--headless", action="store_true", default=False, help="Run in headless mode")
-    parser.add_argument("--num-frames", type=int, default=1000, help="Number of frames for null/USD viewer")
-    parser.add_argument("--output-path", type=str, help="Output path for USD viewer")
-    parser.add_argument("--cuda-graph", action="store_true", default=False, help="Use CUDA graphs")
+    parser.add_argument("--num-steps", type=int, default=1000, help="Number of steps for headless mode")
+    parser.add_argument("--device", type=str, help="The compute device to use")
+    parser.add_argument("--cuda-graph", action="store_true", default=True, help="Use CUDA graphs")
     parser.add_argument("--clear-cache", action="store_true", default=False, help="Clear warp cache")
-    parser.add_argument("--show-plots", action="store_true", default=False, help="Show plots after simulation")
+    parser.add_argument("--logging", action="store_true", default=False, help="Enable logging of simulation data")
+    parser.add_argument("--show-plots", action="store_true", default=False, help="Show plots of logging data")
     parser.add_argument("--test", action="store_true", default=False, help="Run tests")
     args = parser.parse_args()
 
@@ -403,43 +400,26 @@ if __name__ == "__main__":
         wp.set_device(device)
     else:
         device = wp.get_preferred_device()
-        device = wp.get_device(device)
 
     # Determine if CUDA graphs should be used for execution
     can_use_cuda_graph = device.is_cuda and wp.is_mempool_enabled(device)
     use_cuda_graph = can_use_cuda_graph & args.cuda_graph
     msg.info(f"can_use_cuda_graph: {can_use_cuda_graph}")
     msg.info(f"use_cuda_graph: {use_cuda_graph}")
+    msg.info(f"device: {device}")
 
     # Run a brute-force similation loop if headless
     if args.headless:
         msg.info("Running in headless mode...")
-        viewer = newton.viewer.ViewerNull(num_frames=args.num_frames)
-        example = Example(viewer, device=device, use_cuda_graph=use_cuda_graph)
-        run_headless(example, num_steps=args.num_frames, progress=True)
+        example = Example(device=device, use_cuda_graph=use_cuda_graph, logging=args.logging, headless=True)
+        run_headless(example, num_steps=args.num_steps, progress=True)
 
-    # Otherwise launch using a Newton viewer
+    # Otherwise launch using a debug viewer
     else:
-        # # Create viewer based on type
-        # if args.viewer == "gl":
-        #     msg.info("Running in OpenGL render mode...")
-        #     viewer = newton.viewer.ViewerGL(headless=False)
-        # elif args.viewer == "usd":
-        #     if args.output_path is None:
-        #         raise ValueError("--output-path is required when using usd viewer")
-        #     msg.info("Running in OpenUSD render  mode...")
-        #     viewer = newton.viewer.ViewerUSD(output_path=args.output_path, num_frames=args.num_frames)
-        # elif args.viewer == "rerun":
-        #     msg.info("Running in ReRun render  mode...")
-        #     viewer = newton.viewer.ViewerRerun()
-        # elif args.viewer == "null":
-        #     msg.info("Running in Null render  mode...")
-        #     viewer = newton.viewer.ViewerNull(num_frames=args.num_frames)
-        # else:
-        #     raise ValueError(f"Invalid viewer: {args.viewer}")
+        msg.info("Running in Viewer mode...")
 
         # Create and run example
-        example = Example(device=device, use_cuda_graph=use_cuda_graph)
+        example = Example(device=device, use_cuda_graph=use_cuda_graph, logging=args.logging, headless=False)
 
         # Set initial camera position for better view of the walker
         if hasattr(example.viewer, "set_camera"):
@@ -453,6 +433,7 @@ if __name__ == "__main__":
         newton.examples.run(example, args)
 
     # Plot logged data after the viewer is closed
-    OUTPUT_PLOT_PATH = os.path.join(get_examples_output_path(), "walker")
-    os.makedirs(OUTPUT_PLOT_PATH, exist_ok=True)
-    example.plot(path=OUTPUT_PLOT_PATH, show=args.show_plots)
+    if args.logging:
+        OUTPUT_PLOT_PATH = os.path.join(get_examples_output_path(), "walker")
+        os.makedirs(OUTPUT_PLOT_PATH, exist_ok=True)
+        example.plot(path=OUTPUT_PLOT_PATH, show=args.show_plots)

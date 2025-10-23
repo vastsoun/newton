@@ -17,22 +17,21 @@ import argparse
 import os
 import time
 
-import h5py
 import numpy as np
 import warp as wp
+from warp.context import Devicelike
 
 import newton
 import newton._src.solvers.kamino.utils.logger as msg
 import newton.examples
 from newton._src.solvers.kamino.core.builder import ModelBuilder
-from newton._src.solvers.kamino.core.shapes import ShapeType
+from newton._src.solvers.kamino.core.gravity import GRAVITY_ACCEL_DEFAULT
+from newton._src.solvers.kamino.core.materials import DEFAULT_FRICTION
 from newton._src.solvers.kamino.core.types import float32, vec6f
-from newton._src.solvers.kamino.examples import get_examples_data_hdf5_path, print_frame
+from newton._src.solvers.kamino.examples import get_examples_data_hdf5_path
 from newton._src.solvers.kamino.models import get_primitives_usd_assets_path
 from newton._src.solvers.kamino.models.builders import build_box_on_plane
 from newton._src.solvers.kamino.simulation.simulator import Simulator, SimulatorSettings
-from newton._src.solvers.kamino.utils.device import get_device_info
-from newton._src.solvers.kamino.utils.io import hdf5
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
 from newton._src.solvers.kamino.utils.print import print_progress_bar
 from newton._src.solvers.kamino.viewer import ViewerKamino
@@ -65,16 +64,16 @@ def _control_callback(
 
     # Define the time window for the active external force profile
     t_start = float32(2.0)
-    t_end = float32(7.0)
+    t_end = float32(6.0)
 
     # Get the current time
     t = state_t[wid]
 
     # Apply a time-dependent external force
     if t > t_start and t < t_end:
-        m = float32(2.0)  # Mass of the box
-        g = float32(9.81)  # Gravitational acceleration
-        mu = float32(0.7)  # Friction coefficient
+        m = float32(1.0)  # Mass of the box
+        g = float32(GRAVITY_ACCEL_DEFAULT)  # Gravitational acceleration
+        mu = float32(DEFAULT_FRICTION)  # Friction coefficient
         f_ext = 1.1 * m * g * mu  # Magnitude of the external force
         state_w_e_i[bid] = vec6f(f_ext, 0.0, 0.0, 0.0, 0.0, 0.0)
     else:
@@ -114,145 +113,27 @@ RENDER_DATASET_PATH = os.path.join(get_examples_data_hdf5_path(), "box_on_plane.
 
 
 ###
-# Main function
+# Example class
 ###
-
-
-def run_hdf5_mode(clear_warp_cache=True, use_cuda_graph=False, load_from_usd=True, verbose=False):
-    """Run the simulation in HDF5 mode to save data to file."""
-
-    # Set global numpy configurations
-    np.set_printoptions(linewidth=20000, precision=6, threshold=10000, suppress=True)  # Suppress scientific notation
-
-    # Get the default warp device
-    device = wp.get_preferred_device()
-    device = wp.get_device(device)
-
-    # Enable verbose output
-    msg.set_log_level(msg.LogLevel.INFO)
-
-    # Determine if using CUDA graphs
-    can_use_cuda_graph = device.is_cuda and wp.is_mempool_enabled(device)
-    msg.info(f"use_cuda_graph: {use_cuda_graph}")
-    msg.info(f"can_use_cuda_graph: {can_use_cuda_graph}")
-
-    # Create a single-instance system
-    if load_from_usd:
-        msg.info("Constructing builder from imported USD ...")
-        importer = USDImporter()
-        builder: ModelBuilder = importer.import_from(source=USD_MODEL_PATH, load_static_geometry=True)
-    else:
-        msg.info("Constructing builder using generator ...")
-        builder = ModelBuilder()
-        build_box_on_plane(builder=builder, z_offset=0.0, ground=True)
-
-    # Set gravity
-    builder.gravity.enabled = True
-
-    # Set solver settings
-    settings = SimulatorSettings()
-    settings.dt = 0.001
-    settings.solver.primal_tolerance = 1e-6
-    settings.solver.dual_tolerance = 1e-6
-    settings.solver.compl_tolerance = 1e-6
-    settings.solver.rho_0 = 0.1
-
-    # Create a simulator
-    msg.info("Building the simulator...")
-    sim = Simulator(builder=builder, settings=settings, device=device)
-    sim.set_control_callback(control_callback)
-
-    # Capture graphs for simulator ops: reset and step
-    use_cuda_graph &= can_use_cuda_graph
-    reset_graph = None
-    step_graph = None
-    if use_cuda_graph:
-        with wp.ScopedCapture(device) as reset_capture:
-            sim.reset()
-        reset_graph = reset_capture.graph
-        with wp.ScopedCapture(device) as step_capture:
-            sim.step()
-        step_graph = step_capture.graph
-
-    # Warm-start the simulator before rendering
-    # NOTE: This compiles and loads the warp kernels prior to execution
-    msg.info("Warming up the simulator...")
-    if use_cuda_graph:
-        print("Running with CUDA graphs...")
-        wp.capture_launch(step_graph)
-        wp.capture_launch(reset_graph)
-    else:
-        msg.info("Running with kernels...")
-        with wp.ScopedDevice(device):
-            sim.step()
-            sim.reset()
-
-    # Print application info
-    msg.info("%s", get_device_info(device))
-
-    # Construct and configure the data containers
-    msg.info("Setting up HDF5 data containers...")
-    sdata = hdf5.RigidBodySystemData()
-    sdata.configure(simulator=sim)
-    cdata = hdf5.ContactsData()
-    pdata = hdf5.DualProblemData()
-    pdata.configure(simulator=sim)
-
-    # Create the output directory if it does not exist
-    render_dir = os.path.dirname(RENDER_DATASET_PATH)
-    if not os.path.exists(render_dir):
-        os.makedirs(render_dir)
-
-    # Create a dataset file and renderer
-    msg.info("Creating the HDF5 renderer...")
-    datafile = h5py.File(RENDER_DATASET_PATH, "w")
-    renderer = hdf5.DatasetRenderer(sysname="boxes_hinged", datafile=datafile, dt=sim.dt)
-
-    # Store the initial state of the system
-    sdata.update_from(simulator=sim)
-    cdata.update_from(simulator=sim)
-    renderer.add_frame(system=sdata, contacts=cdata)
-    if verbose:
-        print_frame(sim, 0)
-
-    # Step the simulation and collect frames
-    ns = 10000
-    msg.info(f"Collecting ns={ns} frames...")
-    start_time = time.time()
-    with wp.ScopedTimer("sim.step", active=True):
-        with wp.ScopedDevice(device):
-            for i in range(ns):
-                if use_cuda_graph:
-                    wp.capture_launch(step_graph)
-                else:
-                    sim.step()
-                wp.synchronize()
-
-                sdata.update_from(simulator=sim)
-                cdata.update_from(simulator=sim)
-                pdata.update_from(simulator=sim)
-                renderer.add_frame(system=sdata, contacts=cdata, problem=pdata)
-                print_progress_bar(i, ns, start_time, prefix="Progress", suffix="")
-
-    # Save the dataset
-    msg.info("Saving all frames to HDF5...")
-    renderer.save()
 
 
 class Example:
     """ViewerGL example class for boxes hinged simulation."""
 
-    def __init__(self, load_from_usd=True, use_cuda_graph=False):
+    def __init__(self, device: Devicelike, use_cuda_graph=False, headless: bool = False, load_from_usd=False):
+        # Initialize target frames per second and corresponding time-steps
         self.fps = 60
         self.frame_dt = 1.0 / self.fps
-        self.sim_time = 0.0
-        self.sim_substeps = 10
-        self.sim_dt = self.frame_dt / self.sim_substeps
-        self.use_cuda_graph = use_cuda_graph
+        self.sim_dt = 0.001
+        self.sim_substeps = int(self.frame_dt / self.sim_dt)
 
-        # Get the default warp device
-        device = wp.get_preferred_device()
-        device = wp.get_device(device)
+        # Initialize internal time-keeping
+        self.sim_time = 0.0
+        self.sim_steps = 0
+
+        # Cache the device and other internal flags
+        self.device = device
+        self.use_cuda_graph: bool = use_cuda_graph
 
         # Create a single-instance system
         if load_from_usd:
@@ -281,101 +162,159 @@ class Example:
         self.sim.set_control_callback(control_callback)
 
         # Initialize the viewer
-        self.viewer = ViewerKamino(
-            builder=self.builder,
-            simulator=self.sim,
-        )
+        if not headless:
+            self.viewer = ViewerKamino(
+                builder=self.builder,
+                simulator=self.sim,
+            )
+        else:
+            self.viewer = None
 
-        # Initialize the simulator with a warm-up step
-        self.sim.reset()
+        # Declare and initialize the optional computation graphs
+        # NOTE: These are used for most efficient GPU runtime
+        self.reset_graph = None
+        self.step_graph = None
+        self.simulate_graph = None
 
         # Capture CUDA graph if requested and available
         self.capture()
 
+        # Warm-start the simulator before rendering
+        # NOTE: This compiles and loads the warp kernels prior to execution
+        msg.info("Warming up simulator...")
+        self.step_once()
+        self.reset()
+
     def capture(self):
         """Capture CUDA graph if requested and available."""
-        if self.use_cuda_graph and wp.get_device().is_cuda:
-            with wp.ScopedCapture() as capture:
+        if self.use_cuda_graph:
+            msg.info("Running with CUDA graphs...")
+            with wp.ScopedCapture(self.device) as reset_capture:
+                self.sim.reset()
+            self.reset_graph = reset_capture.graph
+            with wp.ScopedCapture(self.device) as step_capture:
+                self.sim.step()
+            self.step_graph = step_capture.graph
+            with wp.ScopedCapture(self.device) as sim_capture:
                 self.simulate()
-            self.graph = capture.graph
+            self.simulate_graph = sim_capture.graph
         else:
-            self.graph = None
+            msg.info("Running with kernels...")
 
     def simulate(self):
         """Run simulation substeps."""
-        for _ in range(self.sim_substeps):
+        for _i in range(self.sim_substeps):
             self.sim.step()
+            self.sim_steps += 1
+
+    def reset(self):
+        """Reset the simulation."""
+        if self.reset_graph:
+            wp.capture_launch(self.reset_graph)
+        else:
+            self.sim.reset()
+        self.sim_steps = 0
+        self.sim_time = 0.0
+
+    def step_once(self):
+        """Run the simulation for a single time-step."""
+        if self.step_graph:
+            wp.capture_launch(self.step_graph)
+        else:
+            self.sim.step()
+        self.sim_steps += 1
+        self.sim_time += self.sim_dt
 
     def step(self):
         """Step the simulation."""
-        if self.graph:
-            wp.capture_launch(self.graph)
+        if self.simulate_graph:
+            wp.capture_launch(self.simulate_graph)
         else:
             self.simulate()
         self.sim_time += self.frame_dt
 
     def render(self):
         """Render the current frame."""
-        self.viewer.render_frame()
+        if self.viewer:
+            self.viewer.render_frame()
 
     def test(self):
         """Test function for compatibility."""
         pass
 
 
+###
+# Execution functions
+###
+
+
+def run_headless(example: Example, num_steps: int = 25000, progress: bool = True):
+    """Run the simulation in headless mode for a fixed number of steps."""
+    msg.info(f"Running for {num_steps} steps...")
+    start_time = time.time()
+    for i in range(num_steps):
+        example.step_once()
+        wp.synchronize()
+        if progress:
+            print_progress_bar(i + 1, num_steps, start_time, prefix="Progress", suffix="")
+
+
+###
+# Main function
+###
+
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Boxes hinged simulation example")
-    parser.add_argument(
-        "--mode",
-        choices=["hdf5", "viewer"],
-        default="viewer",
-        help="Simulation mode: 'hdf5' for data collection, 'viewer' for live visualization",
-    )
-    parser.add_argument("--clear-cache", action="store_true", default=False, help="Clear warp cache")
-    parser.add_argument("--cuda-graph", action="store_true", default=True, help="Use CUDA graphs")
+    parser = argparse.ArgumentParser(description="Box-on-Plane simulation example")
+    parser.add_argument("--headless", action="store_true", default=False, help="Run in headless mode")
+    parser.add_argument("--num-steps", type=int, default=1000, help="Number of steps for headless mode")
     parser.add_argument("--load-from-usd", action="store_true", default=False, help="Load model from USD file")
-    parser.add_argument("--verbose", action="store_true", help="Enable verbose output")
-    parser.add_argument("--viewer", choices=["gl", "usd", "rerun", "null"], default="gl", help="Viewer type")
-    parser.add_argument("--headless", action="store_true", help="Run in headless mode")
-    parser.add_argument("--device", type=str, help="Compute device")
-    parser.add_argument("--output-path", type=str, help="Output path for USD viewer")
-    parser.add_argument("--num-frames", type=int, default=1000, help="Number of frames for null/USD viewer")
+    parser.add_argument("--device", type=str, help="The compute device to use")
+    parser.add_argument("--cuda-graph", action="store_true", default=True, help="Use CUDA graphs")
+    parser.add_argument("--clear-cache", action="store_true", default=False, help="Clear warp cache")
     parser.add_argument("--test", action="store_true", default=False, help="Run tests")
     args = parser.parse_args()
+
+    # Set global numpy configurations
+    np.set_printoptions(linewidth=20000, precision=6, threshold=10000, suppress=True)  # Suppress scientific notation
 
     # Clear warp cache if requested
     if args.clear_cache:
         wp.clear_kernel_cache()
         wp.clear_lto_cache()
 
-    # Execute based on mode
-    if args.mode == "hdf5":
-        msg.info("Running in HDF5 mode...")
-        run_hdf5_mode(use_cuda_graph=args.cuda_graph, load_from_usd=args.load_from_usd)
+    # TODO: Make optional
+    # Set the verbosity of the global message logger
+    msg.set_log_level(msg.LogLevel.INFO)
 
-    elif args.mode == "viewer":
-        msg.info("Running in ViewerGL mode...")
+    # Set device if specified, otherwise use Warp's default
+    if args.device:
+        device = wp.get_device(args.device)
+        wp.set_device(device)
+    else:
+        device = wp.get_preferred_device()
 
-        # Set device if specified
-        if args.device:
-            wp.set_device(args.device)
+    # Determine if CUDA graphs should be used for execution
+    can_use_cuda_graph = device.is_cuda and wp.is_mempool_enabled(device)
+    use_cuda_graph = can_use_cuda_graph & args.cuda_graph
+    msg.info(f"can_use_cuda_graph: {can_use_cuda_graph}")
+    msg.info(f"use_cuda_graph: {use_cuda_graph}")
+    msg.info(f"device: {device}")
 
-        # # Create viewer based on type
-        # if args.viewer == "gl":
-        #     viewer = newton.viewer.ViewerGL(headless=args.headless)
-        # elif args.viewer == "usd":
-        #     if args.output_path is None:
-        #         raise ValueError("--output-path is required when using usd viewer")
-        #     viewer = newton.viewer.ViewerUSD(output_path=args.output_path, num_frames=args.num_frames)
-        # elif args.viewer == "rerun":
-        #     viewer = newton.viewer.ViewerRerun()
-        # elif args.viewer == "null":
-        #     viewer = newton.viewer.ViewerNull(num_frames=args.num_frames)
-        # else:
-        #     raise ValueError(f"Invalid viewer: {args.viewer}")
+    # Run a brute-force similation loop if headless
+    if args.headless:
+        msg.info("Running in headless mode...")
+        example = Example(load_from_usd=args.load_from_usd, device=device, use_cuda_graph=use_cuda_graph, headless=True)
+        run_headless(example, num_steps=args.num_steps, progress=True)
+
+    # Otherwise launch using a Newton viewer
+    else:
+        msg.info("Running in Viewer mode...")
 
         # Create and run example
-        example = Example(load_from_usd=args.load_from_usd, use_cuda_graph=args.cuda_graph)
+        example = Example(
+            load_from_usd=args.load_from_usd, device=device, use_cuda_graph=use_cuda_graph, headless=False
+        )
 
         # Set initial camera position for better view of the hinged boxes
         if hasattr(example.viewer, "set_camera"):
@@ -385,4 +324,5 @@ if __name__ == "__main__":
             yaw = 180.0 + 45.0
             example.viewer.set_camera(camera_pos, pitch, yaw)
 
+        # Launch the example using Newton's built-in runtime
         newton.examples.run(example, args)

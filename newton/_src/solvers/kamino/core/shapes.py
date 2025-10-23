@@ -24,7 +24,7 @@ from enum import IntEnum
 import warp as wp
 
 from ....core.types import Mat33, Vec2, Vec3, nparray
-from ....geometry.types import MESH_MAXHULLVERT, SDF, Mesh
+from ....geometry.types import GeoType, MESH_MAXHULLVERT, SDF, Mesh
 from .types import Descriptor, mat33f, override, vec3f, vec4f
 
 ###
@@ -136,6 +136,41 @@ class ShapeType(IntEnum):
         else:
             raise ValueError(f"Unknown shape type value: {self.value}")
 
+	def to_newton(self) -> GeoType:
+        """
+        Convert the shape type to the corresponding Newton shape type.
+        """
+        type = None
+        match self:
+            case ShapeType.EMPTY:
+                type = GeoType.NONE
+            case ShapeType.SPHERE:
+                type = GeoType.SPHERE
+            case ShapeType.CYLINDER:
+                type = GeoType.CYLINDER
+            case ShapeType.CONE:
+                type = GeoType.CONE
+            case ShapeType.CAPSULE:
+                type = GeoType.CAPSULE
+            case ShapeType.BOX:
+                type = GeoType.BOX
+            case ShapeType.ELLIPSOID:
+                type = GeoType.ELLIPSOID
+            case ShapeType.PLANE:
+                type = GeoType.PLANE
+            case ShapeType.CONVEX:
+                type = GeoType.CONVEX_MESH
+            case ShapeType.MESH:
+                type = GeoType.MESH
+            # case ShapeType.HFIELD:
+            #     type = GeoType.HFIELD
+            case ShapeType.SDF:
+                type = GeoType.SDF
+            case _:
+                raise ValueError(f"Unknown ShapeType value: {self.value}")
+
+        return type
+            
 
 class ShapeDescriptor(ABC, Descriptor):
     """Abstract base class for all shape descriptors."""

@@ -229,7 +229,7 @@ class USDImporter:
             elif count == 4:
                 faces.append(indices[face_id : face_id + 3])
                 faces.append(indices[[face_id, face_id + 2, face_id + 3]])
-            elif True:
+            else:
                 msg.error(
                     f"Error while parsing USD mesh {prim_path}: "
                     f"encountered polygon with {count} vertices, but only triangles and quads are supported."

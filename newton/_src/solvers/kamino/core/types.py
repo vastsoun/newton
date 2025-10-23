@@ -346,27 +346,46 @@ def axis_to_mat33(axis: AxisType | Vec3) -> mat33f:
 
 class Descriptor:
     """
-    Base class for descriptor objects.
+    Base class for entity descriptor objects.
 
     A descriptor object is one with a designated name and a unique identifier (UID).
     """
 
+    @staticmethod
+    def _assert_valid_uid(uid: str) -> str:
+        """Check if a given UID string is valid."""
+        try:
+            val = uuid.UUID(uid, version=4)
+        except ValueError as err:
+            raise ValueError("Invalid UID string.") from err
+        return str(val)
+
     def __init__(self, name: str, uid: str | None = None):
         # Instance name
-        self.name: str = name
+        self._name: str = name
         # Instance UID
         if uid is None:
+            # Generate a new UID if none is provided
             uid = str(uuid.uuid4())
         else:
-            # Ensure the UID is a string
+            # Validate provided UID
             if not isinstance(uid, str):
                 raise TypeError("UID must be a string.")
-            # Ensure the UID is valid
-            # TODO: How to check if UUID is of type UUID4?
-        self.uid: str = uid
+            uid = Descriptor._assert_valid_uid(uid)
+        self._uid: str = Descriptor._assert_valid_uid(uid)
+
+    @property
+    def name(self) -> str:
+        """The name of the entity descriptor."""
+        return self._name
+
+    @property
+    def uid(self) -> str:
+        """The unique identifier (UID) of the entity descriptor."""
+        return self._uid
 
     def __repr__(self):
-        return f"Descriptor(\nname={self.name},\nuid={self.uid}\n)"
+        return f"Descriptor(\nname={self._name},\nuid={self._uid}\n)"
 
 
 ###

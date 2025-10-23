@@ -22,31 +22,225 @@ import unittest
 import numpy as np
 import warp as wp
 
-# Module to be tested
-from newton._src.solvers.kamino.core.shapes import ShapeDescriptor, ShapeType, SphereShape
+from newton._src.solvers.kamino.core.shapes import (
+    BoxShape,
+    CapsuleShape,
+    ConeShape,
+    CylinderShape,
+    EllipsoidShape,
+    EmptyShape,
+    MeshShape,
+    PlaneShape,
+    SDFShape,
+    ShapeType,
+    SphereShape,
+)
+from newton._src.solvers.kamino.core.types import mat33f, vec3f, vec4f
 
 ###
 # Tests
 ###
 
 
-class TestShapes(unittest.TestCase):
-    def test_sphere_type(self):
-        # Create a default-constructed surface material
-        sid = ShapeType.SPHERE
-        # Check default values
-        self.assertEqual(sid, 1)
-        self.assertEqual(ShapeDescriptor._num_params_of(sid), 1)
+class TestShapeType(unittest.TestCase):
+    def test_00_empty_shape(self):
+        type = ShapeType.EMPTY
+        self.assertEqual(type, 0)
+        self.assertEqual(type.num_params, 0)
 
-    def test_sphere_shape(self):
+    def test_01_sphere_shape(self):
+        type = ShapeType.SPHERE
+        self.assertEqual(type, 1)
+        self.assertEqual(type.num_params, 1)
+
+    def test_02_cylinder_shape(self):
+        type = ShapeType.CYLINDER
+        self.assertEqual(type, 2)
+        self.assertEqual(type.num_params, 2)
+
+    def test_03_cone_shape(self):
+        type = ShapeType.CONE
+        self.assertEqual(type, 3)
+        self.assertEqual(type.num_params, 2)
+
+    def test_04_capsule_shape(self):
+        type = ShapeType.CAPSULE
+        self.assertEqual(type, 4)
+        self.assertEqual(type.num_params, 2)
+
+    def test_05_box_shape(self):
+        type = ShapeType.BOX
+        self.assertEqual(type, 5)
+        self.assertEqual(type.num_params, 3)
+
+    def test_06_ellipsoid_shape(self):
+        type = ShapeType.ELLIPSOID
+        self.assertEqual(type, 6)
+        self.assertEqual(type.num_params, 3)
+
+    def test_07_plane_shape(self):
+        type = ShapeType.PLANE
+        self.assertEqual(type, 7)
+        self.assertEqual(type.num_params, 4)
+
+    def test_08_mesh_shape(self):
+        type = ShapeType.MESH
+        self.assertEqual(type, 8)
+        self.assertEqual(type.num_params, -1)
+
+    def test_09_convex_shape(self):
+        type = ShapeType.CONVEX
+        self.assertEqual(type, 9)
+        self.assertEqual(type.num_params, -1)
+
+    def test_10_hfield_shape(self):
+        type = ShapeType.HFIELD
+        self.assertEqual(type, 10)
+        self.assertEqual(type.num_params, -1)
+
+    def test_11_sdf_shape(self):
+        type = ShapeType.SDF
+        self.assertEqual(type, 11)
+        self.assertEqual(type.num_params, -1)
+
+
+class TestShapeDescriptors(unittest.TestCase):
+    def test_00_empty_shape(self):
+        # Create a default-constructed surface material
+        shape = EmptyShape()
+        # Check default values
+        self.assertEqual(shape.type, ShapeType.EMPTY)
+        self.assertEqual(shape.num_params, 0)
+        self.assertEqual(shape.params, vec4f(0.0))
+        self.assertEqual(shape.name, "empty")
+        self.assertIsInstance(shape.uid, str)
+
+    def test_01_sphere_shape(self):
         # Create a sphere shape
         radius = 1.0
-        sphere = SphereShape(radius)
+        shape = SphereShape(radius)
         # Check default values
-        self.assertEqual(sphere.name, "sphere")
-        self.assertEqual(sphere.typeid, ShapeType.SPHERE)
-        self.assertEqual(sphere.nparams, 1)
-        self.assertEqual(sphere.params[0], radius)
+        self.assertEqual(shape.name, "sphere")
+        self.assertEqual(shape.type, ShapeType.SPHERE)
+        self.assertEqual(shape.num_params, 1)
+        self.assertEqual(shape.params, vec4f(radius, 0.0, 0.0, 0.0))
+
+    def test_02_cylinder_shape(self):
+        # Create a cylinder shape
+        radius = 0.5
+        height = 2.0
+        shape = CylinderShape(radius, height)
+        # Check default values
+        self.assertEqual(shape.name, "cylinder")
+        self.assertEqual(shape.type, ShapeType.CYLINDER)
+        self.assertEqual(shape.num_params, 2)
+        self.assertEqual(shape.params, vec4f(radius, height, 0.0, 0.0))
+
+    def test_03_cone_shape(self):
+        # Create a cone shape
+        radius = 0.5
+        height = 2.0
+        shape = ConeShape(radius, height)
+        # Check default values
+        self.assertEqual(shape.name, "cone")
+        self.assertEqual(shape.type, ShapeType.CONE)
+        self.assertEqual(shape.num_params, 2)
+        self.assertEqual(shape.params, vec4f(radius, height, 0.0, 0.0))
+
+    def test_04_capsule_shape(self):
+        # Create a capsule shape
+        radius = 0.5
+        height = 2.0
+        shape = CapsuleShape(radius, height)
+        # Check default values
+        self.assertEqual(shape.name, "capsule")
+        self.assertEqual(shape.type, ShapeType.CAPSULE)
+        self.assertEqual(shape.num_params, 2)
+        self.assertEqual(shape.params, vec4f(radius, height, 0.0, 0.0))
+
+    def test_05_box_shape(self):
+        # Create a box shape
+        dimensions = (1.0, 2.0, 3.0)
+        shape = BoxShape(*dimensions)
+        # Check default values
+        self.assertEqual(shape.name, "box")
+        self.assertEqual(shape.type, ShapeType.BOX)
+        self.assertEqual(shape.num_params, 3)
+        self.assertEqual(shape.params, vec4f(*dimensions, 0.0))
+
+    def test_06_ellipsoid_shape(self):
+        # Create an ellipsoid shape
+        radii = (1.0, 2.0, 3.0)
+        shape = EllipsoidShape(*radii)
+        # Check default values
+        self.assertEqual(shape.name, "ellipsoid")
+        self.assertEqual(shape.type, ShapeType.ELLIPSOID)
+        self.assertEqual(shape.num_params, 3)
+        self.assertEqual(shape.params, vec4f(*radii, 0.0))
+
+    def test_07_plane_shape(self):
+        # Create a plane shape
+        normal = (0.0, 1.0, 0.0)
+        distance = 0.5
+        shape = PlaneShape(normal, distance)
+        # Check default values
+        self.assertEqual(shape.name, "plane")
+        self.assertEqual(shape.type, ShapeType.PLANE)
+        self.assertEqual(shape.num_params, 4)
+        self.assertEqual(shape.params, vec4f(*normal, distance))
+
+    def test_08_mesh_shape(self):
+        # Create a mesh shape
+        vertices = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+        indices = [(0, 1, 2)]
+        shape = MeshShape(vertices, indices)
+        # Check default values
+        self.assertEqual(shape.name, "mesh")
+        self.assertEqual(shape.type, ShapeType.MESH)
+        self.assertEqual(shape.num_params, -1)
+        self.assertEqual(shape.params, vec4f(0.0))
+        self.assertTrue(np.array_equal(shape.vertices, np.array(vertices)))
+        self.assertTrue(np.array_equal(shape.indices, np.array(indices).flatten()))
+
+    def test_09_convex_shape(self):
+        # Create a mesh shape
+        vertices = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+        indices = [(0, 1, 2)]
+        shape = MeshShape(vertices, indices, is_convex=True)
+        # Check default values
+        self.assertEqual(shape.name, "convex")
+        self.assertEqual(shape.type, ShapeType.CONVEX)
+        self.assertEqual(shape.num_params, -1)
+        self.assertEqual(shape.params, vec4f(0.0))
+        self.assertTrue(np.array_equal(shape.vertices, np.array(vertices)))
+        self.assertTrue(np.array_equal(shape.indices, np.array(indices).flatten()))
+
+    # TODO: Re-enable when HFieldShape is implemented
+    # def test_10_hfield_shape(self):
+    #     # Create a height-field shape
+    #     vertices = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+    #     indices = [(0, 1, 2)]
+    #     shape = HFieldShape(vertices, indices)
+    #     # Check default values
+    #     self.assertEqual(shape.name, "hfield")
+    #     self.assertEqual(shape.type, ShapeType.HFIELD)
+    #     self.assertEqual(shape.num_params, -1)
+    #     self.assertEqual(shape.params, vec4f(0.0))
+    #     self.assertTrue(np.array_equal(shape.vertices, np.array(vertices)))
+    #     self.assertTrue(np.array_equal(shape.indices, np.array(indices).flatten()))
+
+    def test_11_sdf_shape(self):
+        # Create an SDF shape
+        volume = np.zeros((10, 10, 10), dtype=np.float32)
+        shape = SDFShape(volume)
+        # Check default values
+        self.assertEqual(shape.name, "sdf")
+        self.assertEqual(shape.type, ShapeType.SDF)
+        self.assertEqual(shape.num_params, -1)
+        self.assertEqual(shape.params, vec4f(0.0))
+        self.assertEqual(shape.mass, 1.0)
+        self.assertEqual(shape.com, vec3f(0.0))
+        self.assertEqual(shape.inertia, mat33f(np.eye(3)))
 
 
 ###
@@ -55,10 +249,10 @@ class TestShapes(unittest.TestCase):
 
 if __name__ == "__main__":
     # Global numpy configurations
-    np.set_printoptions(linewidth=200, precision=3, suppress=True)  # Suppress scientific notation
+    np.set_printoptions(linewidth=2000, precision=10, threshold=20000, suppress=True)
 
     # Global warp configurations
-    wp.config.verbose = True
+    wp.config.verbose = False
     wp.clear_kernel_cache()
     wp.clear_lto_cache()
 

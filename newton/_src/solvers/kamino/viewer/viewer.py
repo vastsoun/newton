@@ -23,10 +23,11 @@ from ....viewer import ViewerGL
 from ..core.builder import ModelBuilder
 from ..core.geometry import CollisionGeometryDescriptor, GeometryDescriptor
 from ..core.shapes import ShapeType
+from ..core.types import vec3f
 from ..simulation.simulator import Simulator
 
 ###
-#
+# Interfaces
 ###
 
 
@@ -46,6 +47,9 @@ class ViewerKamino(ViewerGL):
         wp.array([wp.vec3(0.8, 0.2, 0.8)], dtype=wp.vec3),  # Magenta
         wp.array([wp.vec3(0.5, 0.5, 0.5)], dtype=wp.vec3),  # Gray
     ]
+
+    # Define the a static world spacing offset for multiple worlds
+    world_spacing: ClassVar[vec3f] = vec3f(0.0, 1.0, 0.0)
 
     def __init__(
         self,
@@ -73,8 +77,15 @@ class ViewerKamino(ViewerGL):
         else:
             body_transform = wp.transform(*body_poses[geom.bid])
 
+        # Retrieve the geometry ID as a float
+        wid = float(geom.wid)
+
+        # Apply world spacing based on world ID
+        offset_transform = wp.transform(self.world_spacing * wid, wp.quat_identity())
+
         # Combine body and offset transforms
         geom_transform = wp.transform_multiply(body_transform, geom.offset)
+        geom_transform = wp.transform_multiply(offset_transform, geom_transform)
 
         # Choose color based on body ID
         color = self.body_colors[geom.bid % len(self.body_colors)]

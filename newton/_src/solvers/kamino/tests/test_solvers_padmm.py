@@ -479,11 +479,11 @@ if __name__ == "__main__":
     # Global numpy configurations
     np.set_printoptions(linewidth=1000, precision=10, threshold=10000, suppress=True)  # Suppress scientific notation
 
-    # # Global warp configurations
-    # wp.config.enable_backward = False
-    # wp.config.verbose = False
-    # wp.clear_kernel_cache()
-    # wp.clear_lto_cache()
+    # Global warp configurations
+    wp.config.enable_backward = False
+    wp.config.verbose = False
+    wp.clear_kernel_cache()
+    wp.clear_lto_cache()
 
     # Run all tests
     unittest.main(verbosity=2)

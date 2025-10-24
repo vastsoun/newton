@@ -83,7 +83,7 @@ class SimulatorSettings:
     """The settings for the dynamics solver."""
 
     use_solver_acceleration: bool = True
-    """Set to True to enable Nesterov-type acceleration (i.e. APADMM) instead of standard PADMM."""
+    """Set to True to enable Nesterov-type acceleration, i.e. use APADMM instead of standard PADMM."""
 
     collect_solver_info: bool = False
     """Set to True to collect solver convergence and performance info at each simulation step."""

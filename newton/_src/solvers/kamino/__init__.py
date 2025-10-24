@@ -143,8 +143,8 @@ from .simulation import (
     SimulatorSettings,
 )
 from .solvers import (
-    PADMMDualSolver,
     PADMMSettings,
+    PADMMSolver,
 )
 from .utils.io import hdf5, usd
 from .utils.print import printmatrix, printvector
@@ -207,8 +207,8 @@ __all__ = [
     "ModelData",
     "ModelDataInfo",
     "ModelInfo",
-    "PADMMDualSolver",
     "PADMMSettings",
+    "PADMMSolver",
     "PlaneShape",
     "Quat",
     "RigidBodiesData",

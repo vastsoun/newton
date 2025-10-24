@@ -42,7 +42,7 @@ from ..kinematics.jacobians import DenseSystemJacobians
 from ..kinematics.joints import compute_joints_state
 from ..kinematics.limits import Limits
 from ..linalg import LinearSolver, LLTBlockedSolver
-from ..solvers.padmm import PADMMDualSolver, PADMMSettings
+from ..solvers.padmm import PADMMSettings, PADMMSolver
 
 ###
 # Module interface
@@ -253,7 +253,7 @@ class Simulator:
         )
 
         # Allocate the dual solver data on the device
-        self._dual_solver = PADMMDualSolver(
+        self._dual_solver = PADMMSolver(
             model=self._model,
             limits=self._limits,
             contacts=self._collision_detector.contacts,
@@ -352,7 +352,7 @@ class Simulator:
         return self._dual_problem
 
     @property
-    def solver(self) -> PADMMDualSolver:
+    def solver(self) -> PADMMSolver:
         return self._dual_solver
 
     @property

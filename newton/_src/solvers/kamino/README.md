@@ -41,6 +41,12 @@ A similar setup can be achieved via `conda|uv`. We've used the `*-dev` suffix to
 
 With the target environment enabled, we can proceed to install the necessary packages:
 
+#### APT (Only Required for Linux)
+On Linux platforms, e.g. Ubuntu, the following base APT packages must be installed:
+```bash
+sudo apt-get update
+sudo apt-get install -y libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libgl1-mesa-dev
+```
 
 #### Warp
 Warp can be installed from source (recommended) using:

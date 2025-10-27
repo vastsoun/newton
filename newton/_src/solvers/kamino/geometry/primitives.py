@@ -102,7 +102,7 @@ def make_sphere(pose: transformf, params: vec4f, gid: int32, bid: int32) -> Sphe
 
 
 ###
-# Functions
+# Utility Functions
 ###
 
 
@@ -161,6 +161,109 @@ def add_single_contact(
         contact_frame_out[mcid] = make_contact_frame_znorm(normal_in)
         contact_material_out[mcid][0] = friction_in
         contact_material_out[mcid][1] = restitution_in
+
+
+def make_add_multiple_contacts(MAX_CONTACTS: int):
+    # Define the function to add multiple contacts
+    @wp.func
+    def add_multiple_contacts(
+        # Inputs:
+        model_max_contacts_in: int32,
+        world_max_contacts_in: int32,
+        wid_in: int32,
+        bid_1_in: int32,
+        bid_2_in: int32,
+        margin_in: float32,
+        distances_in: wp.types.vector(MAX_CONTACTS, wp.float32),
+        positions_in: wp.types.matrix((MAX_CONTACTS, 3), wp.float32),
+        normal_in: wp.types.matrix((MAX_CONTACTS, 3), wp.float32),
+        friction_in: float32,
+        restitution_in: float32,
+        # Outputs:
+        contacts_model_num_out: wp.array(dtype=int32),
+        contacts_world_num_out: wp.array(dtype=int32),
+        contact_wid_out: wp.array(dtype=int32),
+        contact_cid_out: wp.array(dtype=int32),
+        contact_body_A_out: wp.array(dtype=vec4f),
+        contact_body_B_out: wp.array(dtype=vec4f),
+        contact_gapfunc_out: wp.array(dtype=vec4f),
+        contact_frame_out: wp.array(dtype=mat33f),
+        contact_material_out: wp.array(dtype=vec2f),
+    ):
+        # Count valid contacts (those with finite distance)
+        num_contacts = wp.int32(0)
+        for i in range(MAX_CONTACTS):
+            if distances_in[i] != wp.inf and distances_in[i] <= margin_in:
+                num_contacts += 1
+
+        # Skip operation if no contacts were detected
+        if num_contacts == 0:
+            return
+
+        # Assign body indices
+        if bid_2_in < 0:
+            bid_A = bid_2_in
+            bid_B = bid_1_in
+        else:
+            bid_A = bid_1_in
+            bid_B = bid_2_in
+
+        # Increment the active contact counter
+        mcio = wp.atomic_add(contacts_model_num_out, 0, num_contacts)
+        wcio = wp.atomic_add(contacts_world_num_out, wid_in, num_contacts)
+
+        # Retrieve the maximum number of contacts that can be stored for this geom pair
+        max_num_contacts = wp.min(wp.min(model_max_contacts_in - mcio, world_max_contacts_in - wcio), num_contacts)
+
+        # Add generated contacts data to the output arrays
+        contact_idx = wp.int32(0)
+        for i in range(8):
+            # Break if we've reached the maximum number of contacts for this geom pair
+            if contact_idx >= max_num_contacts:
+                break
+
+            # If contact is valid, store it
+            if distances_in[i] != wp.inf and distances_in[i] <= margin_in:
+                # Compute the global contact index
+                mcid = mcio + contact_idx
+
+                # Get contact data
+                dist = distances_in[i]
+                pos = vec3f(positions_in[i, 0], positions_in[i, 1], positions_in[i, 2])
+                normal = vec3f(normal_in[i, 0], normal_in[i, 1], normal_in[i, 2])
+                dist_abs = wp.abs(dist)
+
+                # Adjust normal direction based on body assignment
+                if bid_2_in < 0:
+                    normal = -normal
+
+                # Generate a contact frame
+                frame = make_contact_frame_znorm(normal)
+
+                # This collider computes the contact point in the middle, and thus to get the
+                # per-geom contact we need to offset the contact point by the penetration depth
+                pos_A = pos + normal * dist_abs
+                pos_B = pos - normal * dist_abs
+
+                # Store contact data
+                contact_wid_out[mcid] = wid_in
+                contact_cid_out[mcid] = wcio + contact_idx
+                contact_body_A_out[mcid] = vec4f(pos_A[0], pos_A[1], pos_A[2], float32(bid_A))
+                contact_body_B_out[mcid] = vec4f(pos_B[0], pos_B[1], pos_B[2], float32(bid_B))
+                contact_gapfunc_out[mcid] = vec4f(normal[0], normal[1], normal[2], 2.0 * dist)
+                contact_frame_out[mcid] = frame
+                contact_material_out[mcid] = vec2f(friction_in, restitution_in)
+
+                # Increment active contact index
+                contact_idx += 1
+
+    # Return the generated function
+    return add_multiple_contacts
+
+
+###
+# Primitive Colliders
+###
 
 
 @wp.func
@@ -358,10 +461,10 @@ def box_box(
     box1_in: Box,
     box2_in: Box,
     wid_in: int32,
-    margin: float32,
+    margin_in: float32,
     friction_in: float32,
     restitution_in: float32,
-    # Contacts out:
+    # Outputs:
     contacts_model_num_out: wp.array(dtype=int32),
     contacts_world_num_out: wp.array(dtype=int32),
     contact_wid_out: wp.array(dtype=int32),
@@ -374,75 +477,34 @@ def box_box(
 ):
     # Use the tested collision calculation from collision_primitive.py
     contact_dists, contact_positions, contact_normals = collide_box_box(
-        box1_in.pos, box1_in.rot, box1_in.size, box2_in.pos, box2_in.rot, box2_in.size, margin
+        box1_in.pos, box1_in.rot, box1_in.size, box2_in.pos, box2_in.rot, box2_in.size, margin_in
     )
 
-    # Count valid contacts (those with finite distance)
-    num_contacts = wp.int32(0)
-    for i in range(8):
-        if contact_dists[i] != wp.inf and contact_dists[i] <= margin:
-            num_contacts += 1
-
-    # Skip operation if no contacts were detected
-    if num_contacts == 0:
-        return
-
-    # Assign body indices
-    if box2_in.bid < 0:
-        bid_A = box2_in.bid
-        bid_B = box1_in.bid
-    else:
-        bid_A = box1_in.bid
-        bid_B = box2_in.bid
-
-    # Increment the active contact counter
-    mcio = wp.atomic_add(contacts_model_num_out, 0, num_contacts)
-    wcio = wp.atomic_add(contacts_world_num_out, wid_in, num_contacts)
-
-    # Retrieve the maximum number of contacts that can be stored for this geom pair
-    max_num_contacts = wp.min(wp.min(model_max_contacts_in - mcio, world_max_contacts_in - wcio), num_contacts)
-
-    # Add generated contacts data to the output arrays
-    contact_idx = wp.int32(0)
-    for i in range(8):
-        # Break if we've reached the maximum number of contacts for this geom pair
-        if contact_idx >= max_num_contacts:
-            break
-
-        # If contact is valid, store it
-        if contact_dists[i] != wp.inf and contact_dists[i] <= margin:
-            # Compute the global contact index
-            mcid = mcio + contact_idx
-
-            # Get contact data
-            dist = contact_dists[i]
-            pos = vec3f(contact_positions[i, 0], contact_positions[i, 1], contact_positions[i, 2])
-            normal = vec3f(contact_normals[i, 0], contact_normals[i, 1], contact_normals[i, 2])
-            dist_abs = wp.abs(dist)
-
-            # Adjust normal direction based on body assignment
-            if box2_in.bid < 0:
-                normal = -normal
-
-            # Generate a contact frame
-            frame = make_contact_frame_znorm(normal)
-
-            # This collider computes the contact point in the middle, and thus to get the
-            # per-geom contact we need to offset the contact point by the penetration depth
-            pos_A = pos + normal * dist_abs
-            pos_B = pos - normal * dist_abs
-
-            # Store contact data
-            contact_wid_out[mcid] = wid_in
-            contact_cid_out[mcid] = wcio + contact_idx
-            contact_body_A_out[mcid] = vec4f(pos_A[0], pos_A[1], pos_A[2], float32(bid_A))
-            contact_body_B_out[mcid] = vec4f(pos_B[0], pos_B[1], pos_B[2], float32(bid_B))
-            contact_gapfunc_out[mcid] = vec4f(normal[0], normal[1], normal[2], 2.0 * dist)
-            contact_frame_out[mcid] = frame
-            contact_material_out[mcid] = vec2f(friction_in, restitution_in)
-
-            # Increment active contact index
-            contact_idx += 1
+    # Add the active contacts to the global contacts arrays
+    wp.static(make_add_multiple_contacts(8))(
+        # Inputs:
+        model_max_contacts_in,
+        world_max_contacts_in,
+        wid_in,
+        box1_in.bid,
+        box2_in.bid,
+        margin_in,
+        contact_dists,
+        contact_positions,
+        contact_normals,
+        friction_in,
+        restitution_in,
+        # Outputs:
+        contacts_model_num_out,
+        contacts_world_num_out,
+        contact_wid_out,
+        contact_cid_out,
+        contact_body_A_out,
+        contact_body_B_out,
+        contact_gapfunc_out,
+        contact_frame_out,
+        contact_material_out,
+    )
 
 
 @wp.func

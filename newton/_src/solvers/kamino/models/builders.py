@@ -300,16 +300,17 @@ def build_cartpole(builder: ModelBuilder, z_offset: float = 0.0, ground: bool = 
     gids = []
 
     # Model constants
-    m = 1.0
+    m_cart = 1.0
     dims_cart = (0.1, 0.1, 0.1)
-    dims_pendulum = (0.02, 0.4)
+    m_pendulum = 0.2
+    dims_pendulum = (0.02, 0.75)
     z_0 = z_offset  # Initial z offset for the body
 
     # Add box cart body
     z_0_cart = z_0
     bid0 = builder.add_body(
-        m_i=m,
-        i_I_i=solid_cuboid_body_moment_of_inertia(m, *dims_cart),
+        m_i=m_cart,
+        i_I_i=solid_cuboid_body_moment_of_inertia(m_cart, *dims_cart),
         q_i_0=transformf(0.0, 0.0, z_0_cart, 0.0, 0.0, 0.0, 1.0),
         u_i_0=vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
     )
@@ -318,8 +319,8 @@ def build_cartpole(builder: ModelBuilder, z_offset: float = 0.0, ground: bool = 
     # Add box pendulum body
     z_0_pendulum = 0.5 * dims_pendulum[1] + z_0_cart
     bid1 = builder.add_body(
-        m_i=m,
-        i_I_i=solid_cylinder_body_moment_of_inertia(m, *dims_pendulum),
+        m_i=m_pendulum,
+        i_I_i=solid_cylinder_body_moment_of_inertia(m_pendulum, *dims_pendulum),
         q_i_0=transformf(0.0, 0.0, z_0_pendulum, 0.0, 0.0, 0.0, 1.0),
         u_i_0=vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
     )

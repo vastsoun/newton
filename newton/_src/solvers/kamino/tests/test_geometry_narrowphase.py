@@ -39,17 +39,30 @@ from newton._src.solvers.kamino.geometry.primitives import primitive_narrowphase
 
 
 def build_sphere_on_sphere(dz_0: float = 0.0) -> ModelBuilder:
+    """
+    Builds a simple model with two spheres positioned along the z-axis.
+
+    The first body (sphere 0) is placed below the second body (sphere 1) along the z-axis.
+
+    The spheres are initially separated by a distance dz_0 (negative for penetration, positive for separation).
+
+    Args:
+        dz_0 (float): Initial distance between the two spheres along the z-axis.
+
+    Returns:
+        ModelBuilder: The constructed model builder with two spheres.
+    """
     builder: ModelBuilder = ModelBuilder()
     bid0 = builder.add_body(
         m_i=1.0,
         i_I_i=mat33f(np.eye(3, dtype=np.float32)),
-        q_i_0=transformf(0.0, 0.0, 0.5 + 0.5 * dz_0, 0.0, 0.0, 0.0, 1.0),
+        q_i_0=transformf(0.0, 0.0, -0.5 - 0.5 * dz_0, 0.0, 0.0, 0.0, 1.0),
         u_i_0=vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
     )
     bid1 = builder.add_body(
         m_i=1.0,
         i_I_i=mat33f(np.eye(3, dtype=np.float32)),
-        q_i_0=transformf(0.0, 0.0, -0.5 - 0.5 * dz_0, 0.0, 0.0, 0.0, 1.0),
+        q_i_0=transformf(0.0, 0.0, 0.5 + 0.5 * dz_0, 0.0, 0.0, 0.0, 1.0),
         u_i_0=vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
     )
     builder.add_collision_layer("default")
@@ -59,17 +72,30 @@ def build_sphere_on_sphere(dz_0: float = 0.0) -> ModelBuilder:
 
 
 def build_box_on_box(dz_0: float = 0.0) -> ModelBuilder:
+    """
+    Builds a simple model with two boxes positioned along the z-axis.
+
+    The first body (box 0) is placed below the second body (box 1) along the z-axis.
+
+    The boxes are initially separated by a distance dz_0 (negative for penetration, positive for separation).
+
+    Args:
+        dz_0 (float): Initial distance between the two boxes along the z-axis.
+
+    Returns:
+        ModelBuilder: The constructed model builder with two boxes.
+    """
     builder: ModelBuilder = ModelBuilder()
     bid0 = builder.add_body(
         m_i=1.0,
         i_I_i=mat33f(np.eye(3, dtype=np.float32)),
-        q_i_0=transformf(0.0, 0.0, 0.5 + 0.5 * dz_0, 0.0, 0.0, 0.0, 1.0),
+        q_i_0=transformf(0.0, 0.0, -0.5 - 0.5 * dz_0, 0.0, 0.0, 0.0, 1.0),
         u_i_0=vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
     )
     bid1 = builder.add_body(
         m_i=1.0,
         i_I_i=mat33f(np.eye(3, dtype=np.float32)),
-        q_i_0=transformf(0.0, 0.0, -0.5 - 0.5 * dz_0, 0.0, 0.0, 0.0, 1.0),
+        q_i_0=transformf(0.0, 0.0, 0.5 + 0.5 * dz_0, 0.0, 0.0, 0.0, 1.0),
         u_i_0=vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
     )
     builder.add_collision_layer("default")
@@ -101,7 +127,8 @@ class TestGeometryContacts(unittest.TestCase):
 
     def test_01_sphere_on_sphere(self):
         # Define the initial body/geom separation distance
-        dz_0 = -0.1
+        # NOTE: This is the expected penetration depth (negative gap)
+        dz_0 = -0.01
 
         # Create and set up a model builder
         builder = build_sphere_on_sphere(dz_0=dz_0)
@@ -127,6 +154,18 @@ class TestGeometryContacts(unittest.TestCase):
         # Execute narrowphase for primitive shapes
         primitive_narrowphase(model, data, collisions, contacts)
 
+        # Check results
+        self.assertEqual(contacts.model_num_contacts.numpy()[0], 1)
+        self.assertEqual(contacts.world_num_contacts.numpy()[0], 1)
+        self.assertEqual(contacts.wid.numpy()[0], 0)
+        self.assertEqual(contacts.cid.numpy()[0], 0)
+        self.assertEqual(contacts.body_A.numpy()[0][3], 0)  # Body-A index
+        self.assertEqual(contacts.body_B.numpy()[0][3], 1)  # Body-B index
+        np.testing.assert_almost_equal(contacts.body_A.numpy()[0][0:3], [0.0, 0.0, -0.5 * dz_0])  # Body-A position
+        np.testing.assert_almost_equal(contacts.body_B.numpy()[0][0:3], [0.0, 0.0, 0.5 * dz_0])  # Body-B position
+        np.testing.assert_almost_equal(contacts.gapfunc.numpy()[0], [0.0, 0.0, 1.0, dz_0], decimal=6)
+        np.testing.assert_almost_equal(contacts.frame.numpy()[0], np.eye(3), decimal=6)
+
         # Optional verbose output
         msg.warning(f"bodies.q_i:\n{data.bodies.q_i}")
         msg.warning(f"contacts.model_num_contacts: {contacts.model_num_contacts}")
@@ -141,7 +180,7 @@ class TestGeometryContacts(unittest.TestCase):
 
     def test_02_box_on_box(self):
         # Define the initial body/geom separation distance
-        dz_0 = -0.1
+        dz_0 = -0.01
 
         # Create and set up a model builder
         builder = build_box_on_box(dz_0=dz_0)
@@ -167,6 +206,17 @@ class TestGeometryContacts(unittest.TestCase):
         # Execute narrowphase for primitive shapes
         primitive_narrowphase(model, data, collisions, contacts)
 
+        # Check results
+        self.assertEqual(contacts.model_num_contacts.numpy()[0], 4)
+        self.assertEqual(contacts.world_num_contacts.numpy()[0], 4)
+        for i in range(4):
+            self.assertEqual(contacts.wid.numpy()[i], 0)
+            self.assertEqual(contacts.cid.numpy()[i], i)
+            self.assertEqual(contacts.body_A.numpy()[i][3], 0)  # Body-A index
+            self.assertEqual(contacts.body_B.numpy()[i][3], 1)  # Body-B index
+            np.testing.assert_almost_equal(contacts.gapfunc.numpy()[i], [0.0, 0.0, 1.0, dz_0], decimal=6)
+            np.testing.assert_almost_equal(contacts.frame.numpy()[i], np.eye(3), decimal=6)
+
         # Optional verbose output
         msg.warning(f"bodies.q_i:\n{data.bodies.q_i}")
         msg.warning(f"contacts.model_num_contacts: {contacts.model_num_contacts}")
@@ -186,7 +236,7 @@ class TestGeometryContacts(unittest.TestCase):
 
 if __name__ == "__main__":
     # Global numpy configurations
-    np.set_printoptions(linewidth=20000, threshold=20000, precision=10, suppress=True)
+    np.set_printoptions(linewidth=20000, threshold=20000, precision=7, suppress=True)
 
     # Global warp configurations
     wp.config.verbose = False

@@ -13,9 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-KAMINO: Collision Detection: Narrow-phase operation for geometric primitives
-"""
+"""Narrow-phase collision detection operations on geometric primitives"""
 
 from __future__ import annotations
 

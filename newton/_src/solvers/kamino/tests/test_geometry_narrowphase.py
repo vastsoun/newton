@@ -146,7 +146,7 @@ class TestGeometryContacts(unittest.TestCase):
     def setUp(self):
         self.default_device = wp.get_device()
         self.max_contacts = 16  # Maximum number of contacts for the test
-        self.verbose = True  # Set to True for verbose output
+        self.verbose = False  # Set to True for verbose output
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
@@ -200,16 +200,16 @@ class TestGeometryContacts(unittest.TestCase):
         np.testing.assert_almost_equal(contacts.frame.numpy()[0], np.eye(3), decimal=6)
 
         # Optional verbose output
-        msg.warning(f"bodies.q_i:\n{data.bodies.q_i}")
-        msg.warning(f"contacts.model_num_contacts: {contacts.model_num_contacts}")
-        msg.warning(f"contacts.world_num_contacts: {contacts.world_num_contacts}")
-        msg.warning(f"contacts.wid: {contacts.wid}")
-        msg.warning(f"contacts.cid: {contacts.cid}")
-        msg.warning(f"contacts.body_A:\n{contacts.body_A}")
-        msg.warning(f"contacts.body_B:\n{contacts.body_B}")
-        msg.warning(f"contacts.gapfunc:\n{contacts.gapfunc}")
-        msg.warning(f"contacts.frame:\n{contacts.frame}")
-        msg.warning(f"contacts.material:\n{contacts.material}")
+        msg.info(f"bodies.q_i:\n{data.bodies.q_i}")
+        msg.info(f"contacts.model_num_contacts: {contacts.model_num_contacts}")
+        msg.info(f"contacts.world_num_contacts: {contacts.world_num_contacts}")
+        msg.info(f"contacts.wid: {contacts.wid}")
+        msg.info(f"contacts.cid: {contacts.cid}")
+        msg.info(f"contacts.body_A:\n{contacts.body_A}")
+        msg.info(f"contacts.body_B:\n{contacts.body_B}")
+        msg.info(f"contacts.gapfunc:\n{contacts.gapfunc}")
+        msg.info(f"contacts.frame:\n{contacts.frame}")
+        msg.info(f"contacts.material:\n{contacts.material}")
 
     def test_02_box_on_box(self):
         # Define the initial body/geom separation distance
@@ -251,16 +251,16 @@ class TestGeometryContacts(unittest.TestCase):
             np.testing.assert_almost_equal(contacts.frame.numpy()[i], np.eye(3), decimal=6)
 
         # Optional verbose output
-        msg.warning(f"bodies.q_i:\n{data.bodies.q_i}")
-        msg.warning(f"contacts.model_num_contacts: {contacts.model_num_contacts}")
-        msg.warning(f"contacts.world_num_contacts: {contacts.world_num_contacts}")
-        msg.warning(f"contacts.wid: {contacts.wid}")
-        msg.warning(f"contacts.cid: {contacts.cid}")
-        msg.warning(f"contacts.body_A:\n{contacts.body_A}")
-        msg.warning(f"contacts.body_B:\n{contacts.body_B}")
-        msg.warning(f"contacts.gapfunc:\n{contacts.gapfunc}")
-        msg.warning(f"contacts.frame:\n{contacts.frame}")
-        msg.warning(f"contacts.material:\n{contacts.material}")
+        msg.info(f"bodies.q_i:\n{data.bodies.q_i}")
+        msg.info(f"contacts.model_num_contacts: {contacts.model_num_contacts}")
+        msg.info(f"contacts.world_num_contacts: {contacts.world_num_contacts}")
+        msg.info(f"contacts.wid: {contacts.wid}")
+        msg.info(f"contacts.cid: {contacts.cid}")
+        msg.info(f"contacts.body_A:\n{contacts.body_A}")
+        msg.info(f"contacts.body_B:\n{contacts.body_B}")
+        msg.info(f"contacts.gapfunc:\n{contacts.gapfunc}")
+        msg.info(f"contacts.frame:\n{contacts.frame}")
+        msg.info(f"contacts.material:\n{contacts.material}")
 
     def test_03_box_on_sphere(self):
         # Define the initial body/geom separation distance
@@ -304,16 +304,16 @@ class TestGeometryContacts(unittest.TestCase):
         np.testing.assert_almost_equal(contacts.frame.numpy()[0], np.eye(3), decimal=6)
 
         # Optional verbose output
-        msg.warning(f"bodies.q_i:\n{data.bodies.q_i}")
-        msg.warning(f"contacts.model_num_contacts: {contacts.model_num_contacts}")
-        msg.warning(f"contacts.world_num_contacts: {contacts.world_num_contacts}")
-        msg.warning(f"contacts.wid: {contacts.wid}")
-        msg.warning(f"contacts.cid: {contacts.cid}")
-        msg.warning(f"contacts.body_A:\n{contacts.body_A}")
-        msg.warning(f"contacts.body_B:\n{contacts.body_B}")
-        msg.warning(f"contacts.gapfunc:\n{contacts.gapfunc}")
-        msg.warning(f"contacts.frame:\n{contacts.frame}")
-        msg.warning(f"contacts.material:\n{contacts.material}")
+        msg.info(f"bodies.q_i:\n{data.bodies.q_i}")
+        msg.info(f"contacts.model_num_contacts: {contacts.model_num_contacts}")
+        msg.info(f"contacts.world_num_contacts: {contacts.world_num_contacts}")
+        msg.info(f"contacts.wid: {contacts.wid}")
+        msg.info(f"contacts.cid: {contacts.cid}")
+        msg.info(f"contacts.body_A:\n{contacts.body_A}")
+        msg.info(f"contacts.body_B:\n{contacts.body_B}")
+        msg.info(f"contacts.gapfunc:\n{contacts.gapfunc}")
+        msg.info(f"contacts.frame:\n{contacts.frame}")
+        msg.info(f"contacts.material:\n{contacts.material}")
 
 
 ###

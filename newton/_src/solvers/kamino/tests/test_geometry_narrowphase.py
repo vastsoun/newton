@@ -157,6 +157,8 @@ class TestGeometryContacts(unittest.TestCase):
 
     def tearDown(self):
         self.default_device = None
+        if self.verbose:
+            msg.reset_log_level()
 
     def test_01_sphere_on_sphere(self):
         # Define the initial body/geom separation distance

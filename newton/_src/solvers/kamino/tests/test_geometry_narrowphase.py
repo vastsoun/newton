@@ -99,8 +99,41 @@ def build_box_on_box(dz_0: float = 0.0) -> ModelBuilder:
         u_i_0=vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
     )
     builder.add_collision_layer("default")
-    builder.add_collision_geometry(body_id=bid0, shape=BoxShape(1.0, 1.0, 1.0))
-    builder.add_collision_geometry(body_id=bid1, shape=BoxShape(2.0, 2.0, 1.0))
+    builder.add_collision_geometry(body_id=bid0, shape=BoxShape(2.0, 2.0, 1.0))
+    builder.add_collision_geometry(body_id=bid1, shape=BoxShape(1.0, 1.0, 1.0))
+    return builder
+
+
+def build_sphere_on_box(dz_0: float = 0.0) -> ModelBuilder:
+    """
+    Builds a simple model with a sphere positioned above a box along the z-axis.
+
+    The first body (box 0) is placed below the second body (sphere 1) along the z-axis.
+
+    The bodies are initially separated by a distance dz_0 (negative for penetration, positive for separation).
+
+    Args:
+        dz_0 (float): Initial distance between the two boxes along the z-axis.
+
+    Returns:
+        ModelBuilder: The constructed model builder with two boxes.
+    """
+    builder: ModelBuilder = ModelBuilder()
+    bid0 = builder.add_body(
+        m_i=1.0,
+        i_I_i=mat33f(np.eye(3, dtype=np.float32)),
+        q_i_0=transformf(0.0, 0.0, -0.5 - 0.5 * dz_0, 0.0, 0.0, 0.0, 1.0),
+        u_i_0=vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+    )
+    bid1 = builder.add_body(
+        m_i=1.0,
+        i_I_i=mat33f(np.eye(3, dtype=np.float32)),
+        q_i_0=transformf(0.0, 0.0, 0.5 + 0.5 * dz_0, 0.0, 0.0, 0.0, 1.0),
+        u_i_0=vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+    )
+    builder.add_collision_layer("default")
+    builder.add_collision_geometry(body_id=bid0, shape=SphereShape(0.5))
+    builder.add_collision_geometry(body_id=bid1, shape=BoxShape(1.0, 1.0, 1.0))
     return builder
 
 
@@ -159,8 +192,8 @@ class TestGeometryContacts(unittest.TestCase):
         self.assertEqual(contacts.world_num_contacts.numpy()[0], 1)
         self.assertEqual(contacts.wid.numpy()[0], 0)
         self.assertEqual(contacts.cid.numpy()[0], 0)
-        self.assertEqual(contacts.body_A.numpy()[0][3], 0)  # Body-A index
-        self.assertEqual(contacts.body_B.numpy()[0][3], 1)  # Body-B index
+        self.assertEqual(int(contacts.body_A.numpy()[0][3]), 0)  # Body-A index
+        self.assertEqual(int(contacts.body_B.numpy()[0][3]), 1)  # Body-B index
         np.testing.assert_almost_equal(contacts.body_A.numpy()[0][0:3], [0.0, 0.0, -0.5 * dz_0])  # Body-A position
         np.testing.assert_almost_equal(contacts.body_B.numpy()[0][0:3], [0.0, 0.0, 0.5 * dz_0])  # Body-B position
         np.testing.assert_almost_equal(contacts.gapfunc.numpy()[0], [0.0, 0.0, 1.0, dz_0], decimal=6)
@@ -212,10 +245,63 @@ class TestGeometryContacts(unittest.TestCase):
         for i in range(4):
             self.assertEqual(contacts.wid.numpy()[i], 0)
             self.assertEqual(contacts.cid.numpy()[i], i)
-            self.assertEqual(contacts.body_A.numpy()[i][3], 0)  # Body-A index
-            self.assertEqual(contacts.body_B.numpy()[i][3], 1)  # Body-B index
+            self.assertEqual(int(contacts.body_A.numpy()[i][3]), 0)  # Body-A index
+            self.assertEqual(int(contacts.body_B.numpy()[i][3]), 1)  # Body-B index
             np.testing.assert_almost_equal(contacts.gapfunc.numpy()[i], [0.0, 0.0, 1.0, dz_0], decimal=6)
             np.testing.assert_almost_equal(contacts.frame.numpy()[i], np.eye(3), decimal=6)
+
+        # Optional verbose output
+        msg.warning(f"bodies.q_i:\n{data.bodies.q_i}")
+        msg.warning(f"contacts.model_num_contacts: {contacts.model_num_contacts}")
+        msg.warning(f"contacts.world_num_contacts: {contacts.world_num_contacts}")
+        msg.warning(f"contacts.wid: {contacts.wid}")
+        msg.warning(f"contacts.cid: {contacts.cid}")
+        msg.warning(f"contacts.body_A:\n{contacts.body_A}")
+        msg.warning(f"contacts.body_B:\n{contacts.body_B}")
+        msg.warning(f"contacts.gapfunc:\n{contacts.gapfunc}")
+        msg.warning(f"contacts.frame:\n{contacts.frame}")
+        msg.warning(f"contacts.material:\n{contacts.material}")
+
+    def test_03_box_on_sphere(self):
+        # Define the initial body/geom separation distance
+        # NOTE: This is the expected penetration depth (negative gap)
+        dz_0 = -0.01
+
+        # Create and set up a model builder
+        builder = build_sphere_on_box(dz_0=dz_0)
+        num_worlds = builder.num_worlds
+
+        # Finalize the model and data
+        model = builder.finalize(self.default_device)
+        data = model.data()
+
+        # Update the state of the collision geometries
+        update_collision_geometries_state(data.bodies.q_i, model.cgeoms, data.cgeoms)
+
+        # Create collisions container
+        collisions = Collisions(builder=builder, device=self.default_device)
+
+        # Execute brute-force (NxN) broadphase
+        nxn_broadphase(model.cgeoms, data.cgeoms, collisions.cmodel, collisions.cdata)
+
+        # Create a contacts container
+        capacity = [self.max_contacts] * num_worlds  # Custom capacity for each world
+        contacts = Contacts(capacity=capacity, device=self.default_device)
+
+        # Execute narrowphase for primitive shapes
+        primitive_narrowphase(model, data, collisions, contacts)
+
+        # Check results
+        self.assertEqual(contacts.model_num_contacts.numpy()[0], 1)
+        self.assertEqual(contacts.world_num_contacts.numpy()[0], 1)
+        self.assertEqual(contacts.wid.numpy()[0], 0)
+        self.assertEqual(contacts.cid.numpy()[0], 0)
+        self.assertEqual(int(contacts.body_A.numpy()[0][3]), 0)  # Body-A index
+        self.assertEqual(int(contacts.body_B.numpy()[0][3]), 1)  # Body-B index
+        np.testing.assert_almost_equal(contacts.body_A.numpy()[0][0:3], [0.0, 0.0, -0.5 * dz_0])  # Body-A position
+        np.testing.assert_almost_equal(contacts.body_B.numpy()[0][0:3], [0.0, 0.0, 0.5 * dz_0])  # Body-B position
+        np.testing.assert_almost_equal(contacts.gapfunc.numpy()[0], [0.0, 0.0, 1.0, dz_0], decimal=6)
+        np.testing.assert_almost_equal(contacts.frame.numpy()[0], np.eye(3), decimal=6)
 
         # Optional verbose output
         msg.warning(f"bodies.q_i:\n{data.bodies.q_i}")

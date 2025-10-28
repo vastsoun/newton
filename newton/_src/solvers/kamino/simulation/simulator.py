@@ -42,7 +42,7 @@ from ..kinematics.jacobians import DenseSystemJacobians
 from ..kinematics.joints import compute_joints_state
 from ..kinematics.limits import Limits
 from ..linalg import LinearSolver, LLTBlockedSolver
-from ..solvers.apadmm import APADMMDualSolver, APADMMSettings
+from ..solvers.padmm import PADMMSettings, PADMMSolver
 
 ###
 # Module interface
@@ -79,11 +79,14 @@ class SimulatorSettings:
     problem: DualProblemSettings = field(default_factory=DualProblemSettings)
     """The settings for the dynamics problem."""
 
-    solver: APADMMSettings = field(default_factory=APADMMSettings)
+    solver: PADMMSettings = field(default_factory=PADMMSettings)
     """The settings for the dynamics solver."""
 
-    solver_info: bool = False
-    """Whether to collect solver info at each step."""
+    use_solver_acceleration: bool = True
+    """Set to True to enable Nesterov-type acceleration, i.e. use APADMM instead of standard PADMM."""
+
+    collect_solver_info: bool = False
+    """Set to True to collect solver convergence and performance info at each simulation step."""
 
     linear_solver_type: type[LinearSolver] = LLTBlockedSolver
     """The type of linear solver to use for the dynamics problem."""
@@ -250,12 +253,13 @@ class Simulator:
         )
 
         # Allocate the dual solver data on the device
-        self._dual_solver = APADMMDualSolver(
+        self._dual_solver = PADMMSolver(
             model=self._model,
             limits=self._limits,
             contacts=self._collision_detector.contacts,
             settings=settings.solver,
-            collect_info=settings.solver_info,
+            use_acceleration=settings.use_solver_acceleration,
+            collect_info=settings.collect_solver_info,
             device=self._device,
         )
 
@@ -348,7 +352,7 @@ class Simulator:
         return self._dual_problem
 
     @property
-    def solver(self) -> APADMMDualSolver:
+    def solver(self) -> PADMMSolver:
         return self._dual_solver
 
     @property

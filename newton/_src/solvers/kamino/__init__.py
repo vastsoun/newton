@@ -143,10 +143,8 @@ from .simulation import (
     SimulatorSettings,
 )
 from .solvers import (
-    APADMMDualSolver,
-    APADMMSettings,
-    PADMMDualSolver,
     PADMMSettings,
+    PADMMSolver,
 )
 from .utils.io import hdf5, usd
 from .utils.print import printmatrix, printvector
@@ -162,8 +160,6 @@ __all__ = [
     "GRAVITY_ACCEL_DEFAULT",
     "GRAVITY_DIREC_DEFAULT",
     "GRAVITY_NAME_DEFAULT",
-    "APADMMDualSolver",
-    "APADMMSettings",
     "ArrayLike",
     "BoxShape",
     "CapsuleShape",
@@ -211,8 +207,8 @@ __all__ = [
     "ModelData",
     "ModelDataInfo",
     "ModelInfo",
-    "PADMMDualSolver",
     "PADMMSettings",
+    "PADMMSolver",
     "PlaneShape",
     "Quat",
     "RigidBodiesData",

@@ -198,7 +198,7 @@ class TestShapeDescriptors(unittest.TestCase):
         self.assertEqual(shape.name, "mesh")
         self.assertEqual(shape.type, ShapeType.MESH)
         self.assertEqual(shape.num_params, -1)
-        self.assertEqual(shape.params, None)
+        self.assertEqual(shape.params, 1.0)
         self.assertTrue(np.array_equal(shape.vertices, np.array(vertices)))
         self.assertTrue(np.array_equal(shape.indices, np.array(indices).flatten()))
 
@@ -211,7 +211,7 @@ class TestShapeDescriptors(unittest.TestCase):
         self.assertEqual(shape.name, "convex")
         self.assertEqual(shape.type, ShapeType.CONVEX)
         self.assertEqual(shape.num_params, -1)
-        self.assertEqual(shape.params, None)
+        self.assertEqual(shape.params, 1.0)
         self.assertTrue(np.array_equal(shape.vertices, np.array(vertices)))
         self.assertTrue(np.array_equal(shape.indices, np.array(indices).flatten()))
 

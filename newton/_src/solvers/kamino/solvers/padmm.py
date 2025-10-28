@@ -30,9 +30,9 @@ Notes
 - ADMM is based on the Augmented Lagrangian Method (ALM) for dealing with set-inclusion
   (i.e. inequality) constraints, but introduces an alternating primal-dual descent/ascent scheme.
 - Proximal-ADMM introduces an additional proximal regularization term to the optimization objective.
-- Uses an (optional) over-relaxation update to improve convergence.
-- Uses an (optional) adaptive penalty updates based on the primal-dual residual balancing.
 - Uses (optional) Nesterov-style gradient acceleration with adaptive restarts.
+- Uses (optional) adaptive penalty updates based on primal-dual residual balancing.
+- Uses (optional) over-relaxation updates (not applicable to accelerated version).
 
 References
 ----

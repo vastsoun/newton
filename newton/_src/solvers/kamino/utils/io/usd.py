@@ -1167,7 +1167,8 @@ class USDImporter:
         only_load_enabled_joints: bool = True,
         load_static_geometry: bool = True,
         load_materials: bool = True,
-        enable_self_collisions: bool = True,
+        enable_self_collisions: bool = False,
+        enable_joint_collisions: bool = False,
         collapse_fixed_joints: bool = False,
         meshes_are_collidable: bool = False,
     ) -> ModelBuilder:

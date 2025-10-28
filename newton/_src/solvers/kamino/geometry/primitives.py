@@ -112,9 +112,10 @@ def add_single_contact(
     wid_in: int32,
     bid_1_in: int32,
     bid_2_in: int32,
+    margin_in: float32,
+    distance_in: float32,
     position_in: vec3f,
     normal_in: vec3f,
-    distance_in: float32,
     friction_in: float32,
     restitution_in: float32,
     # Outputs:
@@ -128,6 +129,10 @@ def add_single_contact(
     contact_frame_out: wp.array(dtype=mat33f),
     contact_material_out: wp.array(dtype=vec2f),
 ):
+    # Skip if the contact distance exceeds the specified margin
+    if (distance_in - margin_in) > 0.0:
+        return
+
     # TODO: This will cause problems if the number of contacts exceeds the maximum as we are
     # incrementing the contact counters and do not decrement if we've exceeded the maximum
     mcid = wp.atomic_add(contacts_model_num_out, 0, 1)
@@ -174,7 +179,7 @@ def make_add_multiple_contacts(MAX_CONTACTS: int):
         margin_in: float32,
         distances_in: wp.types.vector(MAX_CONTACTS, wp.float32),
         positions_in: wp.types.matrix((MAX_CONTACTS, 3), wp.float32),
-        normal_in: wp.types.matrix((MAX_CONTACTS, 3), wp.float32),
+        normals_in: wp.types.matrix((MAX_CONTACTS, 3), wp.float32),
         friction_in: float32,
         restitution_in: float32,
         # Outputs:
@@ -228,7 +233,7 @@ def make_add_multiple_contacts(MAX_CONTACTS: int):
                 # Get contact data
                 dist = distances_in[i]
                 pos = vec3f(positions_in[i, 0], positions_in[i, 1], positions_in[i, 2])
-                normal = vec3f(normal_in[i, 0], normal_in[i, 1], normal_in[i, 2])
+                normal = vec3f(normals_in[i, 0], normals_in[i, 1], normals_in[i, 2])
                 dist_abs = wp.abs(dist)
 
                 # Adjust normal direction based on body assignment
@@ -287,12 +292,7 @@ def sphere_sphere(
     contact_material_out: wp.array(dtype=vec2f),
 ):
     # Run the respective collider function to detect sphere-sphere contacts
-    dist, pos, normal = collide_sphere_sphere(sphere1.pos, sphere1.radius, sphere2.pos, sphere2.radius)
-    wp.printf("dist = %f, margin = %f, (dist - margin) = %f\n", dist, margin, dist - margin)
-
-    # Skip if the contact distance exceeds the specified margin
-    if (dist - margin) > 0.0:
-        return
+    distance, position, normal = collide_sphere_sphere(sphere1.pos, sphere1.radius, sphere2.pos, sphere2.radius)
 
     # Add the active contact to the global contacts arrays
     add_single_contact(
@@ -301,9 +301,10 @@ def sphere_sphere(
         wid,
         sphere1.bid,
         sphere2.bid,
-        pos,
+        margin,
+        distance,
+        position,
         normal,
-        dist,
         friction_in,
         restitution_in,
         contacts_model_num_out,
@@ -358,10 +359,6 @@ def sphere_box(
     # Use the tested collision calculation from collision_primitive.py
     dist, pos, normal = collide_sphere_box(sphere_in.pos, sphere_in.radius, box_in.pos, box_in.rot, box_in.size)
 
-    # Skip if the contact distance exceeds the specified margin
-    if (dist - margin) >= 0.0:
-        return
-
     # Add the active contact to the global contacts arrays
     add_single_contact(
         model_max_contacts_in,
@@ -369,9 +366,10 @@ def sphere_box(
         wid_in,
         sphere_in.bid,
         box_in.bid,
+        margin,
+        dist,
         pos,
         normal,
-        dist,
         friction_in,
         restitution_in,
         contacts_model_num_out,
@@ -474,7 +472,7 @@ def box_box(
     contact_material_out: wp.array(dtype=vec2f),
 ):
     # Use the tested collision calculation from collision_primitive.py
-    contact_dists, contact_positions, contact_normals = collide_box_box(
+    distances, positions, normals = collide_box_box(
         box1_in.pos, box1_in.rot, box1_in.size, box2_in.pos, box2_in.rot, box2_in.size, margin_in
     )
 
@@ -487,9 +485,9 @@ def box_box(
         box1_in.bid,
         box2_in.bid,
         margin_in,
-        contact_dists,
-        contact_positions,
-        contact_normals,
+        distances,
+        positions,
+        normals,
         friction_in,
         restitution_in,
         # Outputs:

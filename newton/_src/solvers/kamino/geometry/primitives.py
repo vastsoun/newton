@@ -24,6 +24,7 @@ from ....geometry.collision_primitive import (
     collide_sphere_box,
     collide_sphere_sphere,
 )
+from ..core.math import FLOAT32_EPS
 from ..core.model import Model, ModelData
 from ..core.shapes import ShapeType
 from ..core.types import (
@@ -51,7 +52,7 @@ wp.set_module_options({"enable_backward": False})
 # Constants
 ###
 
-DEFAULT_MARGIN = wp.constant(float32(0.0))
+DEFAULT_MARGIN = FLOAT32_EPS
 
 
 ###

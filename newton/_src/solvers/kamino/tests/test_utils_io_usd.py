@@ -170,7 +170,7 @@ class TestOpenUSD(unittest.TestCase):
     ###
 
     def test_import_joint_cylindrical_passive(self):
-        """Test importing a passive cylindical joint with limits from a USD file"""
+        """Test importing a passive cylindrical joint with limits from a USD file"""
         usd_asset_filename = os.path.join(TEST_USD_ASSETS_PATH, "joints/test_joint_cylindrical_passive.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
@@ -187,7 +187,7 @@ class TestOpenUSD(unittest.TestCase):
         self.assertEqual(builder_usd.joints[0].bid_F, 1)
 
     def test_import_joint_cylindrical_actuated(self):
-        """Test importing a actuated cylindical joint with limits from a USD file"""
+        """Test importing a actuated cylindrical joint with limits from a USD file"""
         usd_asset_filename = os.path.join(TEST_USD_ASSETS_PATH, "joints/test_joint_cylindrical_actuated.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
@@ -239,7 +239,7 @@ class TestOpenUSD(unittest.TestCase):
         self.assertEqual(builder_usd.joints[0].bid_F, 1)
 
     def test_import_joint_cartesian_passive(self):
-        """Test importing a passive cylindical joint with limits from a USD file"""
+        """Test importing a passive cylindrical joint with limits from a USD file"""
         usd_asset_filename = os.path.join(TEST_USD_ASSETS_PATH, "joints/test_joint_cartesian_passive.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
@@ -257,7 +257,7 @@ class TestOpenUSD(unittest.TestCase):
         self.assertEqual(builder_usd.joints[0].bid_F, 1)
 
     def test_import_joint_cartesian_actuated(self):
-        """Test importing a actuated cylindical joint with limits from a USD file"""
+        """Test importing a actuated cylindrical joint with limits from a USD file"""
         usd_asset_filename = os.path.join(TEST_USD_ASSETS_PATH, "joints/test_joint_cartesian_actuated.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
@@ -347,7 +347,7 @@ class TestOpenUSD(unittest.TestCase):
         self.assertEqual(builder_usd.joints[0].bid_F, 1)
 
     def test_import_joint_d6_cylindrical_passive(self):
-        """Test importing a passive cylindical joint with limits from a USD file"""
+        """Test importing a passive cylindrical joint with limits from a USD file"""
         usd_asset_filename = os.path.join(TEST_USD_ASSETS_PATH, "joints/test_joint_d6_cylindrical_passive.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
@@ -364,7 +364,7 @@ class TestOpenUSD(unittest.TestCase):
         self.assertEqual(builder_usd.joints[0].bid_F, 1)
 
     def test_import_joint_d6_cylindrical_actuated(self):
-        """Test importing a actuated cylindical joint with limits from a USD file"""
+        """Test importing a actuated cylindrical joint with limits from a USD file"""
         usd_asset_filename = os.path.join(TEST_USD_ASSETS_PATH, "joints/test_joint_d6_cylindrical_actuated.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
@@ -626,7 +626,7 @@ class TestOpenUSD(unittest.TestCase):
     def test_import_demo_box_on_plane(self):
         """Test importing the primitive box_on_plane model from a USD file"""
 
-        # Construct a builer from imported USD asset
+        # Construct a builder from imported USD asset
         usd_asset_filename = os.path.join(PRIMITIVE_USD_ASSETS_PATH, "box_on_plane.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(
@@ -648,7 +648,7 @@ class TestOpenUSD(unittest.TestCase):
     def test_import_demo_box_pendulum(self):
         """Test importing the primitive box_pendulum model from a USD file"""
 
-        # Construct a builer from imported USD asset
+        # Construct a builder from imported USD asset
         usd_asset_filename = os.path.join(PRIMITIVE_USD_ASSETS_PATH, "box_pendulum.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(
@@ -670,7 +670,7 @@ class TestOpenUSD(unittest.TestCase):
     def test_import_demo_boxes_hinged(self):
         """Test importing the primitive boxes_hinged model from a USD file"""
 
-        # Construct a builer from imported USD asset
+        # Construct a builder from imported USD asset
         usd_asset_filename = os.path.join(PRIMITIVE_USD_ASSETS_PATH, "boxes_hinged.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(
@@ -692,7 +692,7 @@ class TestOpenUSD(unittest.TestCase):
     def test_import_demo_boxes_nunchaku(self):
         """Test importing the primitive boxes_nunchaku model from a USD file"""
 
-        # Construct a builer from imported USD asset
+        # Construct a builder from imported USD asset
         usd_asset_filename = os.path.join(PRIMITIVE_USD_ASSETS_PATH, "boxes_nunchaku.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(
@@ -709,7 +709,7 @@ class TestOpenUSD(unittest.TestCase):
     def test_import_demo_boxes_fourbar(self):
         """Test importing the primitive boxes_fourbar model from a USD file"""
 
-        # Construct a builer from imported USD asset
+        # Construct a builder from imported USD asset
         usd_asset_filename = os.path.join(PRIMITIVE_USD_ASSETS_PATH, "boxes_fourbar.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(

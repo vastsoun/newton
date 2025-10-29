@@ -128,7 +128,7 @@ class TestGeometryMath(unittest.TestCase):
             det = np.linalg.det(frames_np[i])
             self.assertTrue(np.isclose(det, 1.0, atol=1e-6))
 
-        # Check each primtive frame
+        # Check each primitive frame
         self.assertTrue(
             np.allclose(frames_np[0], np.array([[0.0, 0.0, 1.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]), atol=1e-6)
         )

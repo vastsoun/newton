@@ -318,7 +318,7 @@ def create_blocked_cholesky_solve_kernel(block_size: int):
         Uses forward/backward substitution with block size optimization.
         """
 
-        batch_id, tid_block = wp.tid()
+        batch_id, _tid_block = wp.tid()
 
         if skip_computation[batch_id] != 0:
             return

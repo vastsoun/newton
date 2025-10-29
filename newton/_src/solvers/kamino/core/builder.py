@@ -235,7 +235,7 @@ class ModelBuilder:
         if not isinstance(q_i, transformf):
             raise TypeError(f"Invalid body pose type: {type(q_i)}. Must be `transformf`.")
 
-        # Extract the orientation quaterion
+        # Extract the orientation quaternion
         if not np.isclose(wp.length(q_i.q), 1.0, atol=float(FLOAT32_EPS)):
             raise ValueError(f"Invalid body pose orientation quaternion: {q_i.q}. Must be a unit quaternion.")
 
@@ -484,7 +484,7 @@ class ModelBuilder:
         joint.coords_offset = world.num_joint_coords
         joint.dofs_offset = world.num_joint_dofs
         joint.cts_offset = world.num_joint_cts
-        # NOTE: passive/actuated index offsets are set to -1 if not beloning to the respective category
+        # NOTE: passive/actuated index offsets are set to -1 if not belonging to the respective category
         # TODO: Is there a better way to handle this?
         joint.passive_coords_offset = world.num_passive_joint_coords if act_type == JointActuationType.PASSIVE else -1
         joint.passive_dofs_offset = world.num_passive_joint_dofs if act_type == JointActuationType.PASSIVE else -1

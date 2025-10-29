@@ -77,7 +77,7 @@ def sparseview(
     _fig, ax = plt.subplots()
     ax.imshow(color_image, origin="upper")
 
-    # Confgure figure tick labels
+    # Configure figure tick labels
     xticks = get_sparse_ticks(matrix.shape[1], max_ticks)
     yticks = get_sparse_ticks(matrix.shape[0], max_ticks)
     ax.set_xticks(xticks)

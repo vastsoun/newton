@@ -103,7 +103,7 @@ def _integrate_semi_implicit_euler_inplace(
     # Retrieve the thread index
     tid = wp.tid()
 
-    # Retrive the world index
+    # Retrieve the world index
     wid = model_bodies_wid[tid]
 
     # Retrieve the time step and gravity vector

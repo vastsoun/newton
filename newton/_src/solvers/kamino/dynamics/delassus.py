@@ -158,7 +158,7 @@ def _build_delassus_elementwise(
         # Body index (bid) of body k w.r.t the model
         bid_k = bio + k
         # DoF index offset (dio) of body k in the flattened Jacobian matrix
-        # NOTE: Equievalent to the column index in the matrix-form of the Jacobian matrix
+        # NOTE: Equivalent to the column index in the matrix-form of the Jacobian matrix
         dio_k = 6 * k
         # Jacobian index offsets
         jio_ik = cjmio + nbd * i + dio_k
@@ -296,7 +296,7 @@ class DelassusOperator:
     @property
     def num_worlds(self) -> int:
         """
-        Returns the number of worlds represented by the Delassus operater.
+        Returns the number of worlds represented by the Delassus operator.
         This is equal to the number of matrix blocks contained in the flat array.
         """
         return self._num_worlds
@@ -465,11 +465,11 @@ class DelassusOperator:
         if self._operator.mat is None:
             raise ValueError("Delassus matrix is not allocated. Call allocate() first.")
 
-        # Initialze the Delassus matrix to zero
+        # Initialize the Delassus matrix to zero
         if reset_to_zero:
             self.zero()
 
-        # Build the Delassus matrix parrallelized element-wise
+        # Build the Delassus matrix parallelized element-wise
         wp.launch(
             kernel=_build_delassus_elementwise,
             dim=(self._size.num_worlds, self._max_of_max_total_D_size),

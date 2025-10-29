@@ -42,6 +42,7 @@ from ..kinematics.jacobians import DenseSystemJacobians
 from ..kinematics.joints import compute_joints_state
 from ..kinematics.limits import Limits
 from ..linalg import LinearSolver, LLTBlockedSolver
+from ..solvers.fk import ForwardKinematicsSolver
 from ..solvers.padmm import PADMMSettings, PADMMSolver
 
 ###
@@ -252,8 +253,8 @@ class Simulator:
             device=self._device,
         )
 
-        # Allocate the dual solver data on the device
-        self._dual_solver = PADMMSolver(
+        # Allocate the forward dynamics solver on the device
+        self._fd_solver = PADMMSolver(
             model=self._model,
             limits=self._limits,
             contacts=self._collision_detector.contacts,
@@ -262,6 +263,9 @@ class Simulator:
             collect_info=settings.collect_solver_info,
             device=self._device,
         )
+
+        # Allocate the forward kinematics solver on the device
+        self._fk_solver = ForwardKinematicsSolver(model=self._model)
 
         # Initialize callbacks
         self._reset_cb: Callable[[Simulator], None] = None
@@ -353,7 +357,7 @@ class Simulator:
 
     @property
     def solver(self) -> PADMMSolver:
-        return self._dual_solver
+        return self._fd_solver
 
     @property
     def host(self) -> SimulatorData | None:
@@ -555,7 +559,7 @@ class Simulator:
         reactions and body wrenches effected through constraints.
         """
         # Solve the dual problem to compute the constraint reactions
-        self._dual_solver.solve(problem=self._dual_problem)
+        self._fd_solver.solve(problem=self._dual_problem)
 
         # Compute the effective body wrenches applied by the set of
         # active constraints from the respective reaction multipliers
@@ -566,7 +570,7 @@ class Simulator:
             contacts=self.contacts.data,
             jacobians=self._jacobians.data,
             lambdas_offsets=self._dual_problem.data.vio,
-            lambdas_data=self._dual_solver.data.solution.lambdas,
+            lambdas_data=self._fd_solver.data.solution.lambdas,
         )
 
     def _forward_wrenches(self):
@@ -652,6 +656,38 @@ class Simulator:
 
         # Run the reset callback if it has been set
         self._run_reset_callback()
+
+    def reset_state(self, state: State, worlds: wp.array = None):
+        """
+        Resets the simulation to a specific state.
+
+        Args:
+            state (State): The state to reset the simulation to.
+            worlds (wp.array, optional): An optional array of per-world reset flags.
+                If provided, only the worlds with active reset flags will be reset.
+        """
+        raise NotImplementedError("Simulator.reset_to() is not yet implemented.")
+
+    def reset_base_and_joints(
+        self, base_q: wp.array, base_u: wp.array, joint_q: wp.array, joint_dq: wp.array, worlds: wp.array = None
+    ):
+        """
+        Resets the simulation to the given state.
+
+        Args:
+            base_q (wp.array): Array of base body poses.\n
+                Expects shape of ``(num_worlds,)`` and type :class:`transform`.
+            base_u (wp.array): Array of base body twists.\n
+                Expects shape of ``(num_worlds,)`` and type :class:`vec6`.
+            joint_q (wp.array): Array of joint coordinates.\n
+                Expects shape of ``(sum_of_num_joint_coords,)`` and type :class:`float`.
+            joint_dq (wp.array): Array of joint velocities.\n
+                Expects shape of ``(sum_of_num_joint_dofs,)`` and type :class:`float`.
+            worlds (wp.array, optional): An optional array of per-world reset flags.\n
+                If provided, only the worlds with active reset flags will be reset.\n
+                Expects shape of ``(num_worlds,)`` and type :class:`int`.
+        """
+        raise NotImplementedError("Simulator.reset_to() is not yet implemented.")
 
     def step(self):
         """

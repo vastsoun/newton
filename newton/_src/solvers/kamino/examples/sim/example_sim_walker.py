@@ -53,13 +53,20 @@ MESH_USD_MODEL_PATH = os.path.join(get_examples_usd_assets_path(), "walker/walke
 class Example:
     """ViewerGL example class for walker simulation."""
 
-    def __init__(self, device: Devicelike, use_cuda_graph: bool = False, logging: bool = True, headless: bool = False):
+    def __init__(
+        self,
+        device: Devicelike,
+        use_cuda_graph: bool = False,
+        max_steps: int = 1000,
+        logging: bool = True,
+        headless: bool = False,
+    ):
         # Initialize target frames per second and corresponding time-steps
         self.fps = 60
         self.frame_dt = 1.0 / self.fps
         self.sim_dt = 0.001
         self.sim_substeps = int(self.frame_dt / self.sim_dt)
-        self.max_log_steps = 10000
+        self.max_steps = max_steps
 
         # Initialize internal time-keeping
         self.sim_time = 0.0
@@ -107,12 +114,12 @@ class Example:
         self.actuated_joints = np.array([0, 1, 5, 6, 10, 15, 18, 19, 23, 24, 28, 33], dtype=np.int32)
 
         # Data logging arrays
-        self.log_time = np.zeros(self.max_log_steps, dtype=np.float32)
-        self.log_q_j = np.zeros((self.max_log_steps, njaq), dtype=np.float32)
-        self.log_dq_j = np.zeros((self.max_log_steps, njaq), dtype=np.float32)
-        self.log_tau_j = np.zeros((self.max_log_steps, njaq), dtype=np.float32)
-        self.log_q_j_ref = np.zeros((self.max_log_steps, njaq), dtype=np.float32)
-        self.log_dq_j_ref = np.zeros((self.max_log_steps, njad), dtype=np.float32)
+        self.log_time = np.zeros(self.max_steps, dtype=np.float32)
+        self.log_q_j = np.zeros((self.max_steps, njaq), dtype=np.float32)
+        self.log_dq_j = np.zeros((self.max_steps, njaq), dtype=np.float32)
+        self.log_tau_j = np.zeros((self.max_steps, njaq), dtype=np.float32)
+        self.log_q_j_ref = np.zeros((self.max_steps, njaq), dtype=np.float32)
+        self.log_dq_j_ref = np.zeros((self.max_steps, njad), dtype=np.float32)
 
         # Create a simulator
         msg.info("Building the simulator...")
@@ -216,7 +223,7 @@ class Example:
             msg.info("Running with kernels...")
 
     def log_data(self):
-        if self.sim_steps >= self.max_log_steps:
+        if self.sim_steps >= self.max_steps:
             msg.warning("Maximum simulation steps reached, skipping data logging.")
             return
         self.log_time[self.sim_steps] = self.sim.data.solver.time.time.numpy()[0]
@@ -353,15 +360,15 @@ class Example:
 ###
 
 
-def run_headless(example: Example, num_steps: int = 25000, progress: bool = True):
+def run_headless(example: Example, progress: bool = True):
     """Run the simulation in headless mode for a fixed number of steps."""
-    msg.info(f"Running for {num_steps} steps...")
+    msg.info(f"Running for {example.max_steps} steps...")
     start_time = time.time()
-    for i in range(num_steps):
+    for i in range(example.max_steps):
         example.step_once()
         wp.synchronize()
         if progress:
-            print_progress_bar(i + 1, num_steps, start_time, prefix="Progress", suffix="")
+            print_progress_bar(i + 1, example.max_steps, start_time, prefix="Progress", suffix="")
 
 
 ###
@@ -407,19 +414,23 @@ if __name__ == "__main__":
     msg.info(f"use_cuda_graph: {use_cuda_graph}")
     msg.info(f"device: {device}")
 
+    # Create example instance
+    example = Example(
+        device=device,
+        use_cuda_graph=use_cuda_graph,
+        max_steps=args.num_steps,
+        logging=args.logging,
+        headless=args.headless,
+    )
+
     # Run a brute-force similation loop if headless
     if args.headless:
         msg.info("Running in headless mode...")
-        example = Example(device=device, use_cuda_graph=use_cuda_graph, logging=args.logging, headless=True)
-        run_headless(example, num_steps=args.num_steps, progress=True)
+        run_headless(example, progress=True)
 
     # Otherwise launch using a debug viewer
     else:
         msg.info("Running in Viewer mode...")
-
-        # Create and run example
-        example = Example(device=device, use_cuda_graph=use_cuda_graph, logging=args.logging, headless=False)
-
         # Set initial camera position for better view of the walker
         if hasattr(example.viewer, "set_camera"):
             # Position camera to get a good view of the walker

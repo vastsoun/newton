@@ -775,7 +775,7 @@ class DualProblemInfoData:
         self.il = None
         self.ic = None
         self.nbc = None
-        self.nd = None
+        self.ncts = None
         if dataset is not None:
             self.load(dataset, itype)
 
@@ -794,7 +794,7 @@ class DualProblemInfoData:
             \nil={self.il}, \
             \nic={self.ic}, \
             \nnbc={self.nbc}, \
-            \nnd={self.nd})"
+            \nnd={self.ncts})"
 
     def load(self, dataset, itype=np.int32):
         self.njdims = dataset["njdims"][:].astype(itype)
@@ -810,7 +810,7 @@ class DualProblemInfoData:
         self.il = dataset["il"][()].astype(itype)
         self.ic = dataset["ic"][()].astype(itype)
         self.nbc = dataset["nbc"][()].astype(itype)
-        self.nd = dataset["nd"][()].astype(itype)
+        self.ncts = dataset["ncts"][()].astype(itype)
 
     def store(self, dataset, namespace: str = ""):
         dataset[namespace + "/njdims"] = self.njdims[:].astype(np.int32)
@@ -826,7 +826,7 @@ class DualProblemInfoData:
         dataset[namespace + "/il"] = ctypes.c_long(self.il)
         dataset[namespace + "/ic"] = ctypes.c_long(self.ic)
         dataset[namespace + "/nbc"] = ctypes.c_long(self.nbc)
-        dataset[namespace + "/nd"] = ctypes.c_long(self.nd)
+        dataset[namespace + "/ncts"] = ctypes.c_long(self.ncts)
 
     def configure(self, simulator: Simulator, wid: int = 0, dtype=np.float64, itype=np.int32):
         # Update the problem info from the simulator model
@@ -843,7 +843,7 @@ class DualProblemInfoData:
         self.ij = 0
         self.il = self.njd
         self.ic = self.il + self.nld
-        self.nd = self.njd
+        self.ncts = self.njd
 
     def update_from(self, simulator: Simulator, wid: int = 0, dtype=np.float64, itype=np.int32):
         # Update the problem info from the simulator model
@@ -851,7 +851,7 @@ class DualProblemInfoData:
         self.nc = simulator.model_data.info.num_contacts.numpy().astype(itype)[wid]
         self.nld = simulator.model_data.info.num_limit_cts.numpy().astype(itype)[wid]
         self.ncd = simulator.model_data.info.num_contact_cts.numpy().astype(itype)[wid]
-        self.nd = simulator.model_data.info.num_total_cts.numpy().astype(itype)[wid]
+        self.ncts = simulator.model_data.info.num_total_cts.numpy().astype(itype)[wid]
         self.il = simulator.model_data.info.limit_cts_group_offset.numpy().astype(itype)[wid]
         self.ic = simulator.model_data.info.contact_cts_group_offset.numpy().astype(itype)[wid]
         self.nbc = 0
@@ -989,8 +989,8 @@ class DualProblemData:
         self.info = DualProblemInfoData()
         self.info.configure(simulator, wid=wid, dtype=dtype, itype=itype)
         # Initialize the problem definition
-        self.D = np.zeros((self.info.nd, self.info.nd), dtype=dtype)
-        self.v_f = np.zeros((self.info.nd,), dtype=dtype)
+        self.D = np.zeros((self.info.ncts, self.info.ncts), dtype=dtype)
+        self.v_f = np.zeros((self.info.ncts,), dtype=dtype)
         self.mu = np.zeros((self.info.nc,), dtype=dtype)
         # Initialize the system quantities
         self.dt = simulator.model.time.dt.numpy().astype(dtype)[wid]
@@ -1010,11 +1010,11 @@ class DualProblemData:
         self.r_l = np.zeros((self.info.nld,), dtype=dtype)
         self.r_c = np.zeros((self.info.ncd,), dtype=dtype)
         # Initialize the velocity biases
-        self.v_i = np.zeros((self.info.nd,), dtype=dtype)
-        self.v_b = np.zeros((self.info.nd,), dtype=dtype)
+        self.v_i = np.zeros((self.info.ncts,), dtype=dtype)
+        self.v_b = np.zeros((self.info.ncts,), dtype=dtype)
         # Initialize the solution variables
-        self.lambdas = np.zeros((self.info.nd,), dtype=dtype)
-        self.v_plus = np.zeros((self.info.nd,), dtype=dtype)
+        self.lambdas = np.zeros((self.info.ncts,), dtype=dtype)
+        self.v_plus = np.zeros((self.info.ncts,), dtype=dtype)
         # Initialize the constraint wrenches
         self.w_j = np.zeros((self.info.nb, 6), dtype=dtype)
         self.w_l = np.zeros((self.info.nb, 6), dtype=dtype)

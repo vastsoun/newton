@@ -24,7 +24,6 @@ from ....geometry.collision_primitive import (
     collide_sphere_box,
     collide_sphere_sphere,
 )
-from ..core.math import FLOAT32_EPS
 from ..core.model import Model, ModelData
 from ..core.shapes import ShapeType
 from ..core.types import (
@@ -52,7 +51,7 @@ wp.set_module_options({"enable_backward": False})
 # Constants
 ###
 
-DEFAULT_MARGIN = FLOAT32_EPS
+DEFAULT_MARGIN = wp.constant(float32(1e-5))
 
 
 ###
@@ -246,15 +245,15 @@ def make_add_multiple_contacts(MAX_CONTACTS: int):
 
                 # This collider computes the contact point in the middle, and thus to get the
                 # per-geom contact we need to offset the contact point by the penetration depth
-                pos_A = pos + normal * dist_abs
-                pos_B = pos - normal * dist_abs
+                pos_A = pos + 0.5 * normal * dist_abs
+                pos_B = pos - 0.5 * normal * dist_abs
 
                 # Store contact data
                 contact_wid_out[mcid] = wid_in
                 contact_cid_out[mcid] = wcio + contact_idx
                 contact_body_A_out[mcid] = vec4f(pos_A[0], pos_A[1], pos_A[2], float32(bid_A))
                 contact_body_B_out[mcid] = vec4f(pos_B[0], pos_B[1], pos_B[2], float32(bid_B))
-                contact_gapfunc_out[mcid] = vec4f(normal[0], normal[1], normal[2], 2.0 * dist)
+                contact_gapfunc_out[mcid] = vec4f(normal[0], normal[1], normal[2], dist)
                 contact_frame_out[mcid] = frame
                 contact_material_out[mcid] = vec2f(friction_in, restitution_in)
 
@@ -552,7 +551,7 @@ def _primitive_narrowphase(
     if tid >= col_model_num_pairs_in[0]:
         return
 
-    # Retrive the world index
+    # Retrieve the world index
     wid = col_wid_in[tid]
 
     # Retrieve the maximum number of contacts for this world

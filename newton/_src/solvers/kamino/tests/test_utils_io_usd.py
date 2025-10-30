@@ -57,9 +57,9 @@ class TestUSDImporter(unittest.TestCase):
         self.verbose = False  # Set to True for verbose output
 
         # Set the paths to the assets provided by the kamino package
-        self.EXAMPLES_USD_ASSETS_PATH = get_examples_usd_assets_path()
-        self.PRIMITIVE_USD_ASSETS_PATH = get_basics_usd_assets_path()
         self.TEST_USD_ASSETS_PATH = get_tests_usd_assets_path()
+        self.PRIMITIVE_USD_ASSETS_PATH = get_basics_usd_assets_path()
+        self.EXAMPLES_USD_ASSETS_PATH = get_examples_usd_assets_path()
 
     def tearDown(self):
         self.default_device = None
@@ -615,7 +615,7 @@ class TestUSDImporter(unittest.TestCase):
         """Test importing the primitive box_on_plane model from a USD file"""
 
         # Construct a builder from imported USD asset
-        usd_asset_filename = os.path.join(PRIMITIVE_USD_ASSETS_PATH, "box_on_plane.usda")
+        usd_asset_filename = os.path.join(self.PRIMITIVE_USD_ASSETS_PATH, "box_on_plane.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(
             source=usd_asset_filename, load_static_geometry=False, load_materials=False
@@ -637,7 +637,7 @@ class TestUSDImporter(unittest.TestCase):
         """Test importing the primitive box_pendulum model from a USD file"""
 
         # Construct a builder from imported USD asset
-        usd_asset_filename = os.path.join(PRIMITIVE_USD_ASSETS_PATH, "box_pendulum.usda")
+        usd_asset_filename = os.path.join(self.PRIMITIVE_USD_ASSETS_PATH, "box_pendulum.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(
             source=usd_asset_filename, load_static_geometry=False, load_materials=False
@@ -659,7 +659,7 @@ class TestUSDImporter(unittest.TestCase):
         """Test importing the primitive boxes_hinged model from a USD file"""
 
         # Construct a builder from imported USD asset
-        usd_asset_filename = os.path.join(PRIMITIVE_USD_ASSETS_PATH, "boxes_hinged.usda")
+        usd_asset_filename = os.path.join(self.PRIMITIVE_USD_ASSETS_PATH, "boxes_hinged.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(
             source=usd_asset_filename, load_static_geometry=False, load_materials=False
@@ -681,7 +681,7 @@ class TestUSDImporter(unittest.TestCase):
         """Test importing the primitive boxes_nunchaku model from a USD file"""
 
         # Construct a builder from imported USD asset
-        usd_asset_filename = os.path.join(PRIMITIVE_USD_ASSETS_PATH, "boxes_nunchaku.usda")
+        usd_asset_filename = os.path.join(self.PRIMITIVE_USD_ASSETS_PATH, "boxes_nunchaku.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(
             source=usd_asset_filename, load_static_geometry=False, load_materials=False
@@ -698,7 +698,7 @@ class TestUSDImporter(unittest.TestCase):
         """Test importing the primitive boxes_fourbar model from a USD file"""
 
         # Construct a builder from imported USD asset
-        usd_asset_filename = os.path.join(PRIMITIVE_USD_ASSETS_PATH, "boxes_fourbar.usda")
+        usd_asset_filename = os.path.join(self.PRIMITIVE_USD_ASSETS_PATH, "boxes_fourbar.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(
             source=usd_asset_filename, load_static_geometry=False, load_materials=False
@@ -717,8 +717,10 @@ class TestUSDImporter(unittest.TestCase):
 
     def test_import_model_testmechanism(self):
         """Test importing the TestMechanism demo model with all joint types from a USD file"""
+        if self.EXAMPLES_USD_ASSETS_PATH is None:
+            self.skipTest("EXAMPLES_USD_ASSETS_PATH is `None` - skipping `DR TestMechanism` import test.")
         print("")  # Add a newline for better readability
-        usd_asset_filename = os.path.join(EXAMPLES_USD_ASSETS_PATH, "testmechanism/testmechanism_alljoints_v2.usda")
+        usd_asset_filename = os.path.join(self.EXAMPLES_USD_ASSETS_PATH, "dr_testmech/dr_testmech.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
@@ -756,10 +758,26 @@ class TestUSDImporter(unittest.TestCase):
         self.assertEqual(builder_usd.joints[13].act_type, JointActuationType.PASSIVE)
         self.assertEqual(builder_usd.joints[13].dof_type, JointDoFType.CARTESIAN)
 
+    def test_import_model_walker(self):
+        """Test importing the Walker demo model from a USD file"""
+        if self.EXAMPLES_USD_ASSETS_PATH is None:
+            self.skipTest("EXAMPLES_USD_ASSETS_PATH is `None` - skipping `DR Legs` import test.")
+        print("")  # Add a newline for better readability
+        usd_asset_filename = os.path.join(self.EXAMPLES_USD_ASSETS_PATH, "dr_legs/dr_legs.usda")
+        importer = USDImporter()
+        builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
+        # Check the loaded contents
+        self.assertEqual(builder_usd.num_bodies, 31)
+        self.assertEqual(builder_usd.num_joints, 36)
+        self.assertEqual(builder_usd.num_collision_geoms, 31)
+        self.assertEqual(builder_usd.num_physical_geoms, 0)
+
     def test_import_model_walker_with_boxes(self):
         """Test importing the Walker demo model from a USD file"""
+        if self.EXAMPLES_USD_ASSETS_PATH is None:
+            self.skipTest("EXAMPLES_USD_ASSETS_PATH is `None` - skipping `DR Legs` import test.")
         print("")  # Add a newline for better readability
-        usd_asset_filename = os.path.join(EXAMPLES_USD_ASSETS_PATH, "walker/walker_floating_with_boxes.usda")
+        usd_asset_filename = os.path.join(self.EXAMPLES_USD_ASSETS_PATH, "dr_legs/dr_legs_with_boxes.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
@@ -768,10 +786,12 @@ class TestUSDImporter(unittest.TestCase):
         self.assertEqual(builder_usd.num_collision_geoms, 3)
         self.assertEqual(builder_usd.num_physical_geoms, 0)
 
-    def test_import_model_walker_with_meshes(self):
+    def test_import_model_walker_with_meshes_and_boxes(self):
         """Test importing the Walker demo model from a USD file"""
+        if self.EXAMPLES_USD_ASSETS_PATH is None:
+            self.skipTest("EXAMPLES_USD_ASSETS_PATH is `None` - skipping `DR Legs` import test.")
         print("")  # Add a newline for better readability
-        usd_asset_filename = os.path.join(EXAMPLES_USD_ASSETS_PATH, "walker/walker_floating_with_meshes.usda")
+        usd_asset_filename = os.path.join(self.EXAMPLES_USD_ASSETS_PATH, "dr_legs/dr_legs_with_meshes_and_boxes.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents

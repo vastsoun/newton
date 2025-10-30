@@ -68,7 +68,12 @@ class Example:
         self.use_cuda_graph: bool = use_cuda_graph
 
         # Set the path to the external USD assets
-        USD_MODEL_PATH = os.path.join(get_examples_usd_assets_path(), "dr_testmech/dr_testmech.usda")
+        EXAMPLE_ASSETS_PATH = get_examples_usd_assets_path()
+        if EXAMPLE_ASSETS_PATH is None:
+            raise FileNotFoundError(
+                "The USD assets path for example models is missing: `kamino-assets` may not be installed."
+            )
+        USD_MODEL_PATH = os.path.join(EXAMPLE_ASSETS_PATH, "dr_testmech/dr_testmech.usda")
 
         # Create a single-instance system (always load from USD for testmechanism)
         msg.info("Constructing builder from imported USD ...")
@@ -202,7 +207,6 @@ if __name__ == "__main__":
     parser.add_argument("--headless", action="store_true", default=False, help="Run in headless mode")
     parser.add_argument("--num-worlds", type=int, default=3, help="Number of worlds to simulate in parallel")
     parser.add_argument("--num-steps", type=int, default=1000, help="Number of steps for headless mode")
-    parser.add_argument("--load-from-usd", action="store_true", default=True, help="Load model from USD file")
     parser.add_argument("--device", type=str, help="The compute device to use")
     parser.add_argument("--cuda-graph", action="store_true", default=True, help="Use CUDA graphs")
     parser.add_argument("--clear-cache", action="store_true", default=False, help="Clear warp cache")
@@ -239,7 +243,6 @@ if __name__ == "__main__":
     example = Example(
         device=device,
         use_cuda_graph=use_cuda_graph,
-        load_from_usd=args.load_from_usd,
         num_worlds=args.num_worlds,
         max_steps=args.num_steps,
         headless=args.headless,

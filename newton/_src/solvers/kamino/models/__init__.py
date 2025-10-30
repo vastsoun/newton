@@ -13,9 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-KAMINO: MODELS: MODEL CONSTRUCTION UTILITIES & ASSETS
-"""
+"""Kamino model building and asset utilities"""
+
+import os
 
 from . import builders
 
@@ -31,18 +31,14 @@ __all__ = [
 ###
 
 
-def get_examples_usd_assets_path() -> str:
-    import os  # noqa: PLC0415
-
+def get_examples_usd_assets_path() -> str | None:
     path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "assets/examples/usd")
     if not os.path.exists(path):
-        raise FileNotFoundError(f"The USD assets path for example models does not exist: {path}")
+        return None
     return path
 
 
 def get_basics_usd_assets_path() -> str:
-    import os  # noqa: PLC0415
-
     path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "assets/basics")
     if not os.path.exists(path):
         raise FileNotFoundError(f"The USD assets path for basic models does not exist: {path}")
@@ -50,8 +46,6 @@ def get_basics_usd_assets_path() -> str:
 
 
 def get_tests_usd_assets_path() -> str:
-    import os  # noqa: PLC0415
-
     path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "assets/tests")
     if not os.path.exists(path):
         raise FileNotFoundError(f"The USD assets path for testing models does not exist: {path}")

@@ -67,9 +67,14 @@ class Example:
         self.logging: bool = logging
 
         # Set the path to the external USD assets
-        USD_MODEL_PATH = os.path.join(get_examples_usd_assets_path(), "dr_legs/dr_legs_with_meshes_and_boxes.usda")
+        EXAMPLE_ASSETS_PATH = get_examples_usd_assets_path()
+        if EXAMPLE_ASSETS_PATH is None:
+            raise FileNotFoundError(
+                "The USD assets path for example models is missing: `kamino-assets` may not be installed."
+            )
+        USD_MODEL_PATH = os.path.join(EXAMPLE_ASSETS_PATH, "dr_legs/dr_legs_with_meshes_and_boxes.usda")
 
-        # Create a single-instance system (always load from USD for walker)
+        # Create a model builder from the imported USD
         msg.info("Constructing builder from imported USD ...")
         importer = USDImporter()
         self.builder: ModelBuilder = importer.import_from(source=USD_MODEL_PATH)
@@ -125,8 +130,8 @@ class Example:
         else:
             self.viewer = None
 
-        # Load animation data for walker
-        NUMPY_ANIMATION_PATH = os.path.join(get_examples_usd_assets_path(), "walker/walker_animation_100fps.npy")
+        # Load animation data for dr_legs
+        NUMPY_ANIMATION_PATH = os.path.join(get_examples_usd_assets_path(), "dr_legs/dr_legs_animation_100fps.npy")
         animation_np = np.load(NUMPY_ANIMATION_PATH, allow_pickle=True)
         msg.debug(f"animation_np (shape={animation_np.shape}):\n{animation_np}\n")
 
@@ -434,6 +439,6 @@ if __name__ == "__main__":
 
     # Plot logged data after the viewer is closed
     if args.logging:
-        OUTPUT_PLOT_PATH = os.path.join(get_examples_output_path(), "walker")
+        OUTPUT_PLOT_PATH = os.path.join(get_examples_output_path(), "dr_legs")
         os.makedirs(OUTPUT_PLOT_PATH, exist_ok=True)
         example.plot(path=OUTPUT_PLOT_PATH, show=args.show_plots)

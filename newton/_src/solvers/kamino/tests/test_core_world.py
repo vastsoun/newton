@@ -22,7 +22,7 @@ import unittest
 import numpy as np
 import warp as wp
 
-# Moduel to be tested
+# Module to be tested
 
 ###
 # Tests

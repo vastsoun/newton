@@ -302,7 +302,7 @@ def store_joint_dofs_jacobian(
 @wp.func
 def wrench_matrix_from_points(r_j: vec3f, r_i: vec3f) -> mat66f:
     """
-    Generates a 6x6 wrench matrix from the absolute positions (in world coordiantes) of the joint and body.
+    Generates a 6x6 wrench matrix from the absolute positions (in world coordinates) of the joint and body.
 
     W_j = [I_3  , 0_3] , where S_ji is the skew-symmetric matrix of the vector r_ji = r_j - r_i.
           [S_ji , I_3]
@@ -330,7 +330,7 @@ def wrench_matrix_from_points(r_j: vec3f, r_i: vec3f) -> mat66f:
 @wp.func
 def contact_wrench_matrix_from_points(r_k: vec3f, r_i: vec3f) -> mat63f:
     """
-    Generates a 6x3 wrench matrix from the absolute positions (in world coordiantes) of the joint and body.
+    Generates a 6x3 wrench matrix from the absolute positions (in world coordinates) of the joint and body.
 
     W_ki = [ I_3  ] , where S_ki is the skew-symmetric matrix of the vector r_ki = r_k - r_i.
            [ S_ki ]
@@ -410,7 +410,7 @@ def _build_joint_jacobians(
     # Retrieve the thread index as the joint index
     jid = wp.tid()
 
-    # Retrive the joint model data
+    # Retrieve the joint model data
     wid = model_joints_wid[jid]
     dof_type = model_joints_dof_type[jid]
     cio = model_joints_cts_offset[jid]
@@ -423,16 +423,16 @@ def _build_joint_jacobians(
     nbd = model_info_num_body_dofs[wid]
     bio = model_info_bodies_offset[wid]
 
-    # Retrive the Jacobian block offset for this joint
+    # Retrieve the Jacobian block offset for this joint
     cjmio = jacobian_cts_offsets[wid]
     djmio = jacobian_dofs_offsets[wid]
 
-    # Retrive the pose transform of the joint
+    # Retrieve the pose transform of the joint
     T_j = state_joints_p[jid]
     r_j = wp.transform_get_translation(T_j)
     R_j = wp.quat_to_matrix(wp.transform_get_rotation(T_j))
 
-    # Retrive the pose transforms of each body
+    # Retrieve the pose transforms of each body
     # NOTE: If the base body is the world (bid=-1), use the identity transform (frame of the world's origin)
     T_B_j = wp.transform_identity()
     if bid_B > -1:
@@ -562,7 +562,7 @@ def _build_contact_jacobians(
     # contact index, i.e. C_k is the k-th contact entity
     cid_k = contacts_cid[cid]
 
-    # Retrive the the contact frame and body contact points
+    # Retrieve the the contact frame and body contact points
     R_k = contacts_frames[cid]
     body_A_k = contacts_body_A[cid]
     body_B_k = contacts_body_B[cid]
@@ -879,7 +879,7 @@ class DenseSystemJacobians:
         contacts: Contacts | None = None,
         device: Devicelike = None,
     ):
-        # Decalare and initialize the Jacobian data container
+        # Declare and initialize the Jacobian data container
         self._data = DenseSystemJacobiansData()
 
         # If a model is provided, allocate the Jacobians data

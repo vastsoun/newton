@@ -254,7 +254,7 @@ def _compute_joints_state(
         T_B_j = state_body_q_i[bid_B]
         u_B_j = state_body_u_i[bid_B]
 
-    # Retrive the Follower body frames and twists
+    # Retrieve the Follower body frames and twists
     T_F_j = state_body_q_i[bid_F]
     u_F_j = state_body_u_i[bid_F]
 

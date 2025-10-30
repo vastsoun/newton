@@ -442,7 +442,7 @@ class USDImporter:
             body_xform = wp.mul(distance_unit * offset_xform, body_xform)
 
         # Retrieve the linear and angular velocities
-        # NOTE: They are transformed to world coordiates since the RigidBodyAPI specifies them in local body coordinates
+        # NOTE: They are transformed to world coordinates since the RigidBodyAPI specifies them in local body coordinates
         v_i = wp.transform_vector(body_xform, distance_unit * vec3f(rigid_body_spec.linearVelocity))
         omega_i = wp.transform_vector(body_xform, rotation_unit * vec3f(rigid_body_spec.angularVelocity))
         msg.debug(f"body_xform: {body_xform}")
@@ -488,7 +488,7 @@ class USDImporter:
         # TODO: What should we check?
         # TODO: Should we handle massless bodies?
 
-        # Compute the moment of inertia matrix (in body-local coordiantes) from the diagonal inertia and principal axes
+        # Compute the moment of inertia matrix (in body-local coordinates) from the diagonal inertia and principal axes
         i_I_i_diag = wp.diag(vec3f(i_I_i_diag))
         i_q_i_pa = wp.normalize(quatf(i_q_i_pa))
         R_i_pa = wp.quat_to_matrix(i_q_i_pa)
@@ -502,7 +502,7 @@ class USDImporter:
         r_com_i = wp.transform_point(body_xform, vec3f(i_r_com_i))
         msg.debug(f"r_com_i: {r_com_i}")
 
-        # Construc the initial pose and twist of the body in world coordinates
+        # Construct the initial pose and twist of the body in world coordinates
         q_i_0 = transformf(r_com_i, body_xform.q)
         u_i_0 = screw(v_i, omega_i)
         msg.debug(f"q_i_0: {q_i_0}")
@@ -1017,7 +1017,7 @@ class USDImporter:
         # PhysicsGeom Shape Properties
         ###
 
-        # Retrive the geom scale
+        # Retrieve the geom scale
         # TODO: materials = geom_spec.materials
         scale = np.array(geom_spec.localScale)
         msg.debug(f"[{name}]: scale: {scale}")
@@ -1199,7 +1199,7 @@ class USDImporter:
         # Preparation
         ###
 
-        # Initialize the ingore paths as an empty list if it is None
+        # Initialize the ignore paths as an empty list if it is None
         # NOTE: This is required by the LoadUsdPhysicsFromRange method
         if ignore_paths is None:
             ignore_paths = []
@@ -1220,7 +1220,7 @@ class USDImporter:
 
         # Parse for PhysicsScene prims
         if self.UsdPhysics.ObjectType.Scene in ret_dict:
-            # Retrive the phusics sene path and description
+            # Retrieve the phusics sene path and description
             paths, scene_descs = ret_dict[self.UsdPhysics.ObjectType.Scene]
             path, scene_desc = paths[0], scene_descs[0]
             msg.debug(f"Found PhysicsScene at {path}")
@@ -1347,7 +1347,7 @@ class USDImporter:
         # Joints
         ###
 
-        # First construct lists of joint prim paths and their types tha
+        # First construct lists of joint prim paths and their types that
         # retain the order of the joints as specified in the USD file.
         joint_prim_paths = []
         joint_type_names = []

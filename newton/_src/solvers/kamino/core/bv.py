@@ -129,7 +129,7 @@ def has_bs_overlap(pose1: transformf, pose2: transformf, radius1: float32, radiu
 
 
 ###
-# Axis-Alinged Bounding-Box (AABB) Functions
+# AABB Functions
 ###
 
 

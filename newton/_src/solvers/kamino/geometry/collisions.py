@@ -176,11 +176,11 @@ class CollisionsModel:
         - nw is the number of worlds
         - ng_w is the number of geometries in each world
         - only ng_w*(ng_w-1)/2 pairs are possible in each world because geom self-collisions are excluded.
-        - thus the number of collison pairs per-world are ncp_w <= ng_w*(ng_w-1)
+        - thus the number of collision pairs per-world are ncp_w <= ng_w*(ng_w-1)
         - nxn_pairid indexes the collision pairs in the model (over all worlds)
         - nxn_geom_pair indexes the geometry pairs in the model (over all worlds)
         - nxn_pairid, nxn_geom_pair are constructed from the symmetric matrix of collision pairs
-          where the indices of non-zero entries in the upper/lower trianglular are represented as
+          where the indices of non-zero entries in the upper/lower triangular are represented as
           nxn_geom_pair, and indexed by  nxn_pairid
         - allows running BFS (NxN) collision detection on the pairs in parallel
     """

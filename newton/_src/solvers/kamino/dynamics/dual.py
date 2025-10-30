@@ -227,27 +227,27 @@ class DualProblemData:
         self.mio: wp.array(dtype=int32) | None = None
         """
         The matrix index offset of each Delassus matrix block.\n
-        Shape of ``(num_worlds,)`` and type :class:`int32`.
         This is applicable to `D` as well as to its (optional) factorizations.\n
+        Shape of ``(num_worlds,)`` and type :class:`int32`.
         """
 
         self.vio: wp.array(dtype=int32) | None = None
         """
         The vector index offset of each constraint dimension vector block.\n
-        Shape of ``(num_worlds,)`` and type :class:`int32`.\n
         This is applicable to `v_b`, `v_i` and `v_f`.\n
+        Shape of ``(num_worlds,)`` and type :class:`int32`.
         """
 
         self.D: wp.array(dtype=float32) | None = None
         """
         The flat array of Delassus matrix blocks (constraint-space apparent inertia).\n
-        Shape of ``(sum(nd_w * nd_w),)`` and type :class:`float32`.
+        Shape of ``(sum_of_max_total_delassus_size,)`` and type :class:`float32`.
         """
 
         self.P: wp.array(dtype=float32) | None = None
         """
         The flat array of Delassus diagonal preconditioner blocks.\n
-        Shape of ``(sum(nd_w),)`` and type :class:`float32`.
+        Shape of ``(sum_of_max_total_cts,)`` and type :class:`float32`.
         """
 
         ###
@@ -257,7 +257,7 @@ class DualProblemData:
         self.h: wp.array(dtype=vec6f) | None = None
         """
         The array of non-linear generalized forces vectors.\n
-        Shape of ``(sum(nb_w),)`` and type :class:`vec6f`.
+        Shape of ``(sum_of_num_body_dofs,)`` and type :class:`vec6f`.
         """
 
         ###
@@ -267,25 +267,25 @@ class DualProblemData:
         self.u_f: wp.array(dtype=vec6f) | None = None
         """
         The array of unconstrained generalized velocity vectors.\n
-        Shape of ``(sum(nb_w),)`` and type :class:`vec6f`.
+        Shape of ``(sum_of_num_body_dofs,)`` and type :class:`vec6f`.
         """
 
         self.v_b: wp.array(dtype=float32) | None = None
         """
         The stack of free-velocity statbilization biases vectors (in constraint-space).\n
-        Shape of ``(sum(nd_w),)`` and type :class:`float32`.
+        Shape of ``(sum_of_max_total_cts,)`` and type :class:`float32`.
         """
 
         self.v_i: wp.array(dtype=float32) | None = None
         """
         The stack of free-velocity impact biases vector (in constraint-space).\n
-        Shape of ``(sum(nd_w),)`` and type :class:`float32`.
+        Shape of ``(sum_of_max_total_cts,)`` and type :class:`float32`.
         """
 
         self.v_f: wp.array(dtype=float32) | None = None
         """
         The stack of free-velocity vector (constraint-space unconstrained velocity).\n
-        Shape of ``(sum(nd_w),)`` and type :class:`float32`.
+        Shape of ``(sum_of_max_total_cts,)`` and type :class:`float32`.
         """
 
         ###
@@ -295,7 +295,7 @@ class DualProblemData:
         self.mu: wp.array(dtype=float32) | None = None
         """
         The stack of friction coefficient vectors.\n
-        Shape of ``(sum(nc_w),)`` and type :class:`float32`.
+        Shape of ``(sum_of_max_contacts,)`` and type :class:`float32`.
         """
 
 
@@ -571,7 +571,7 @@ def _build_free_velocity_bias_contacts(
     # Compute the total contact index offset of the current contact
     cio_k = cio + cid_k
 
-    # Retrive the contact material properties
+    # Retrieve the contact material properties
     mu_k = material_k.x  # Friction coefficient
     epsilon_k = material_k.y  # Penetration reduction coefficient
 
@@ -646,7 +646,7 @@ def _build_free_velocity(
     nbd = 6 * nb
 
     # Compute the thread-specific index offset
-    tio = vio + tid
+    thread_offset = vio + tid
 
     # Append the column offset to the Jacobian index
     cjmio += nbd * tid
@@ -654,7 +654,7 @@ def _build_free_velocity(
     # Extract the cached impact bias scaling (i.e. restitution coefficient)
     # NOTE: This is a quick hack to avoid multiple kernels. The
     # proper way would be to perform this op only for contacts
-    epsilon_j = problem_v_i[tio]
+    epsilon_j = problem_v_i[thread_offset]
 
     # Buffers
     J_i = vec6f(0.0)
@@ -681,7 +681,7 @@ def _build_free_velocity(
         v_f_j += epsilon_j * wp.dot(J_i, u_i)
 
     # Store sum of velocity bias terms
-    problem_v_f[tio] = v_f_j + problem_v_b[tio]
+    problem_v_f[thread_offset] = v_f_j + problem_v_b[thread_offset]
 
 
 @wp.kernel

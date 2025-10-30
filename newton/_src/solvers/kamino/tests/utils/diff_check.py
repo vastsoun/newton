@@ -113,18 +113,18 @@ def run_test_single_joint_examples(
         # Passive joint
         if passive_joints:
             model = builder.finalize(device, False)
-            single_test_sucess = test_fun(model)
-            success &= single_test_sucess
-            if not single_test_sucess:
+            single_test_success = test_fun(model)
+            success &= single_test_success
+            if not single_test_success:
                 print(f"{test_name} failed for {'u' if is_unary else 'bi'}nary {joint_type_name} joint")
 
         # Actuator
         if actuators:
             builder.joints[0].act_type = JointActuationType.FORCE
             model = builder.finalize(device, False)
-            single_test_sucess = test_fun(model)
-            success &= single_test_sucess
-            if not single_test_sucess:
+            single_test_success = test_fun(model)
+            success &= single_test_success
+            if not single_test_success:
                 print(f"{test_name} failed for {'u' if is_unary else 'bi'}nary {joint_type_name} actuator")
     return success
 

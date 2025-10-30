@@ -95,7 +95,7 @@ class RandomProblemLLT:
         self.y_np: list[np.ndarray] = []
         self.x_np: list[np.ndarray] = []
 
-        # Declare the warp arrays of contatenated problem data
+        # Declare the warp arrays of concatenated problem data
         self.maxdim_wp: wp.array | None = None
         self.dim_wp: wp.array | None = None
         self.mio_wp: wp.array | None = None
@@ -271,7 +271,7 @@ class RandomProblemLDLT:
         self.y_np: list[np.ndarray] = []
         self.x_np: list[np.ndarray] = []
 
-        # Declare the warp arrays of contatenated problem data
+        # Declare the warp arrays of concatenated problem data
         self.maxdim_wp: wp.array | None = None
         self.dim_wp: wp.array | None = None
         self.mio_wp: wp.array | None = None

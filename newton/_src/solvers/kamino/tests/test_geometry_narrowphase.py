@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Unit tests for the collider finctions of narrow-phase collision detection"""
+"""Unit tests for the collider functions of narrow-phase collision detection"""
 
 import unittest
 

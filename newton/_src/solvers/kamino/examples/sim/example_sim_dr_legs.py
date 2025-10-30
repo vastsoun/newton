@@ -37,22 +37,11 @@ from newton._src.solvers.kamino.utils.print import print_progress_bar
 from newton._src.solvers.kamino.viewer import ViewerKamino
 
 ###
-# Constants
-###
-
-# Set the path to the external USD assets
-BOX_USD_MODEL_PATH = os.path.join(get_examples_usd_assets_path(), "walker/walker_floating_with_boxes.usda")
-MESH_USD_MODEL_PATH = os.path.join(get_examples_usd_assets_path(), "walker/walker_floating_with_meshes.usda")
-
-
-###
 # Example class
 ###
 
 
 class Example:
-    """ViewerGL example class for walker simulation."""
-
     def __init__(
         self,
         device: Devicelike,
@@ -77,11 +66,13 @@ class Example:
         self.use_cuda_graph: bool = use_cuda_graph
         self.logging: bool = logging
 
+        # Set the path to the external USD assets
+        USD_MODEL_PATH = os.path.join(get_examples_usd_assets_path(), "dr_legs/dr_legs_with_meshes_and_boxes.usda")
+
         # Create a single-instance system (always load from USD for walker)
         msg.info("Constructing builder from imported USD ...")
         importer = USDImporter()
-        # self.builder: ModelBuilder = importer.import_from(source=MESH_USD_MODEL_PATH)
-        self.builder: ModelBuilder = importer.import_from(source=BOX_USD_MODEL_PATH)
+        self.builder: ModelBuilder = importer.import_from(source=USD_MODEL_PATH)
         msg.warning("total mass: %f", self.builder.world.mass_total)
         msg.warning("total diag inertia: %f", self.builder.world.inertia_total)
 
@@ -377,7 +368,7 @@ def run_headless(example: Example, progress: bool = True):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Walker simulation example")
+    parser = argparse.ArgumentParser(description="DR Legs simulation example")
     parser.add_argument("--headless", action="store_true", default=False, help="Run in headless mode")
     parser.add_argument("--num-steps", type=int, default=1000, help="Number of steps for headless mode")
     parser.add_argument("--device", type=str, help="The compute device to use")
@@ -431,9 +422,8 @@ if __name__ == "__main__":
     # Otherwise launch using a debug viewer
     else:
         msg.info("Running in Viewer mode...")
-        # Set initial camera position for better view of the walker
+        # Set initial camera position for better view of the system
         if hasattr(example.viewer, "set_camera"):
-            # Position camera to get a good view of the walker
             camera_pos = wp.vec3(0.6, 0.6, 0.3)
             pitch = -10.0
             yaw = 225.0

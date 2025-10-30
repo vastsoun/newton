@@ -164,7 +164,7 @@ class TestDelassusOperator(unittest.TestCase):
         max_world_contacts = 12
 
         # Construct a homogeneous model description using model builders
-        builder, _, _ = make_homogeneous_builder(num_worlds)
+        builder = make_homogeneous_builder(num_worlds)
 
         # Create the model and containers from the builder
         model, data, limits, detector, jacobians = make_containers(
@@ -503,10 +503,10 @@ class TestDelassusOperator(unittest.TestCase):
         # builder, _, _ = make_single_builder(build_func=build_boxes_hinged)
         # builder, _, _ = make_single_builder(build_func=build_boxes_nunchaku)
         # builder, _, _ = make_single_builder(build_func=build_boxes_fourbar)
-        # builder, _, _ = make_homogeneous_builder(num_worlds=10, build_func=build_box_on_plane)
-        # builder, _, _ = make_homogeneous_builder(num_worlds=10, build_func=build_boxes_hinged)
-        # builder, _, _ = make_homogeneous_builder(num_worlds=10, build_func=build_boxes_nunchaku)
-        # builder, _, _ = make_homogeneous_builder(num_worlds=10, build_func=build_boxes_fourbar)
+        # builder = make_homogeneous_builder(num_worlds=10, build_func=build_box_on_plane)
+        # builder = make_homogeneous_builder(num_worlds=10, build_func=build_boxes_hinged)
+        # builder = make_homogeneous_builder(num_worlds=10, build_func=build_boxes_nunchaku)
+        # builder = make_homogeneous_builder(num_worlds=10, build_func=build_boxes_fourbar)
         builder, _, _ = make_heterogeneous_builder()
 
         # Create the model and containers from the builder

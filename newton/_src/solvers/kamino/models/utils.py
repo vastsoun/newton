@@ -52,22 +52,14 @@ def make_single_builder(build_func=build_boxes_nunchaku, **kwargs) -> tuple[Mode
     return builder, num_bodies, num_jcts
 
 
-def make_homogeneous_builder(
-    num_worlds: int, build_func=build_boxes_nunchaku
-) -> tuple[ModelBuilder, list[int], list[int]]:
-    num_jcts = []
-    num_bodies = []
+def make_homogeneous_builder(num_worlds: int, build_func=build_boxes_nunchaku) -> ModelBuilder:
     builder = ModelBuilder()
     build_func(builder)
-    num_jcts.append(builder.world.num_joint_cts)
-    num_bodies.append(builder.world.num_bodies)
     for _ in range(num_worlds - 1):
         other = ModelBuilder()
         build_func(other)
-        num_jcts.append(other.world.num_joint_cts)
-        num_bodies.append(other.world.num_bodies)
         builder.add_builder(other)
-    return builder, num_bodies, num_jcts
+    return builder
 
 
 def make_heterogeneous_builder() -> tuple[ModelBuilder, list[int], list[int]]:

@@ -185,13 +185,13 @@ def _detect_active_joint_configuration_limits(
     # Retrieve the index offset of the joint's DoFs w.r.t the world
     dio = model_joints_dofs_offset[jid]
 
-    # Retrive the DoF size of the joint
+    # Retrieve the DoF size of the joint
     d_j = model_joints_num_dofs[jid]
 
     # Extract the index offset of the world's joint DoFs w.r.t the model
     jdio = model_info_joint_dofs_offset[wid]
 
-    # Retrive the max limits of the model and world
+    # Retrieve the max limits of the model and world
     model_max_limits = limits_model_max[0]
     world_max_limits = limits_world_max[wid]
 

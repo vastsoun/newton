@@ -110,7 +110,7 @@ def _reset_jointspace_pid_references(
     # Retrieve the world index from the thread indices
     wid = model_joints_wid[jid]
 
-    # Only procceed for force actuated joints and at
+    # Only proceed for force actuated joints and at
     # simulation steps matching the control decimation
     if act_type != JointActuationType.FORCE:
         return
@@ -189,7 +189,7 @@ def _compute_jointspace_pid_control(
     # Retrieve the control decimation for the world
     decimation = controller_decimation[wid]
 
-    # Only procceed for force actuated joints and at
+    # Only proceed for force actuated joints and at
     # simulation steps matching the control decimation
     if act_type != JointActuationType.FORCE or step % decimation != 0:
         return

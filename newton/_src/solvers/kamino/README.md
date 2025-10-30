@@ -7,7 +7,7 @@ This project is currently in ALPHA development phase.
 
 At present time we discourage users of Newton from depending on it.
 
-Similarly, and due to limited bandwidth of the development team, we will NOT be accepting constributions from the community.
+Similarly, and due to limited bandwidth of the development team, we will NOT be accepting contributions from the community.
 
 A stable BETA version is planned for release during the spring of 2026.
 </div>
@@ -85,7 +85,7 @@ pyenv activate newton-dev
 pip install -U pip
 ```
 
-A similar setup can be achieved via `conda|uv`. We've used the `*-dev` suffix to denote environments were the packages will be installed from source, while this can be ommited when creating environments to test installations when installing from `pip` wheels.
+A similar setup can be achieved via `conda|uv`. We've used the `*-dev` suffix to denote environments were the packages will be installed from source, while this can be omitted when creating environments to test installations when installing from `pip` wheels.
 
 
 ### APT (Only Required for Linux)
@@ -120,7 +120,7 @@ pip install -e .[dev,extras,docs]
 ```
 
 **NOTE**:
-Many new features and fixes in Warp that are requested by Newton developers come quite often, so keeping up to date with Warp `main` can prove usefull.
+Many new features and fixes in Warp that are requested by Newton developers come quite often, so keeping up to date with Warp `main` can prove useful.
 
 
 ### MuJoCo Warp
@@ -129,7 +129,7 @@ MuJoCo Warp (a.k.a. MJWarp) can be installed from source using:
 pip install git+https://github.com/google-deepmind/mujoco_warp.git@main
 ```
 
-For development purposes, it can also be installed explicitely with optional dependencies from source using:
+For development purposes, it can also be installed explicitly with optional dependencies from source using:
 ```bash
 git clone git@github.com:google-deepmind/mujoco_warp.git
 cd mujoco_warp

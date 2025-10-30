@@ -175,7 +175,7 @@ class PerformanceProfile:
         self._valid: bool = False
         """
         Flag to indicate if last call to 'compute' was valid\n
-        This is also useful to check construction-time generation was succesful.
+        This is also useful to check construction-time generation was successful.
         """
 
         # Compute the performance profile if data is provided

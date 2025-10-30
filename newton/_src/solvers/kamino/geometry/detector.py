@@ -111,7 +111,7 @@ class CollisionDetector:
         self.collisions.clear()
         self.contacts.clear()
 
-        # Upate geometries states from the states of the bodies
+        # Update geometries states from the states of the bodies
         update_collision_geometries_state(data.bodies.q_i, model.cgeoms, data.cgeoms)
 
         # Perform the broad-phase collision detection to generate collision pairs

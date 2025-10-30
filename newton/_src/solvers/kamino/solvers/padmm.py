@@ -633,29 +633,29 @@ class PADMMState:
             solve, and decremented by one for each world that has converged.\n
             Shape of ``(1,)`` and type :class:`int`.
         s (wp.array): The De Saxce correction velocities `s = Gamma(v_plus)`.\n
-            Shape of ``(sum_of_num_total_cts,)`` and type :class:`float32`.
+            Shape of ``(sum_of_max_total_cts,)`` and type :class:`float32`.
         v (wp.array): The total bias velocity vector serving as the right-hand-side of the PADMM linear system.\n
-            Shape of ``(sum_of_num_total_cts,)`` and type :class:`float32`.
+            Shape of ``(sum_of_max_total_cts,)`` and type :class:`float32`.
         x (wp.array): The current PADMM primal variables.\n
-            Shape of ``(sum_of_num_total_cts,)`` and type :class:`float32`.
+            Shape of ``(sum_of_max_total_cts,)`` and type :class:`float32`.
         x_p (wp.array): The previous PADMM primal variables.\n
-            Shape of ``(sum_of_num_total_cts,)`` and type :class:`float32`.
+            Shape of ``(sum_of_max_total_cts,)`` and type :class:`float32`.
         y (wp.array): The current PADMM slack variables.\n
-            Shape of ``(sum_of_num_total_cts,)`` and type :class:`float32`.
+            Shape of ``(sum_of_max_total_cts,)`` and type :class:`float32`.
         y_p (wp.array): The previous PADMM slack variables.\n
-            Shape of ``(sum_of_num_total_cts,)`` and type :class:`float32`.
+            Shape of ``(sum_of_max_total_cts,)`` and type :class:`float32`.
         z (wp.array): The current PADMM dual variables.\n
-            Shape of ``(sum_of_num_total_cts,)`` and type :class:`float32`.
+            Shape of ``(sum_of_max_total_cts,)`` and type :class:`float32`.
         z_p (wp.array): The previous PADMM dual variables.\n
-            Shape of ``(sum_of_num_total_cts,)`` and type :class:`float32`.
+            Shape of ``(sum_of_max_total_cts,)`` and type :class:`float32`.
         y_hat (wp.array): The auxiliary PADMM slack variables used with gradient acceleration.\n
-            Shape of ``(sum_of_num_total_cts,)`` and type :class:`float32`.
+            Shape of ``(sum_of_max_total_cts,)`` and type :class:`float32`.
         z_hat (wp.array): The auxiliary PADMM dual variables used with gradient acceleration.\n
-            Shape of ``(sum_of_num_total_cts,)`` and type :class:`float32`.
+            Shape of ``(sum_of_max_total_cts,)`` and type :class:`float32`.
         a (wp.array): The current PADMM acceleration variables.\n
-            Shape of ``(sum_of_num_total_cts,)`` and type :class:`float32`.
+            Shape of ``(sum_of_max_total_cts,)`` and type :class:`float32`.
         a_p (wp.array): The previous PADMM acceleration variables.\n
-            Shape of ``(sum_of_num_total_cts,)`` and type :class:`float32`.
+            Shape of ``(sum_of_max_total_cts,)`` and type :class:`float32`.
     """
 
     def __init__(self, size: ModelSize | None = None):
@@ -679,62 +679,62 @@ class PADMMState:
         self.s: wp.array(dtype=float32) | None = None
         """
         The De Saxce correction velocities `s = Gamma(v_plus)`.\n
-        Shape of ``(sum_of_num_total_cts,)`` and type :class:`float32`.
+        Shape of ``(sum_of_max_total_cts,)`` and type :class:`float32`.
         """
 
         self.v: wp.array(dtype=float32) | None = None
         """
         The total bias velocity vector serving as the right-hand-side of the PADMM linear system.\n
         It is computed from the PADMM state and proximal parameters `eta` and `rho`.\n
-        Shape of ``(sum_of_num_total_cts,)`` and type :class:`float32`.
+        Shape of ``(sum_of_max_total_cts,)`` and type :class:`float32`.
         """
 
         self.x: wp.array(dtype=float32) | None = None
         """
         The current PADMM primal variables.
-        Shape of ``(sum_of_num_total_cts,)`` and type :class:`float32`.
+        Shape of ``(sum_of_max_total_cts,)`` and type :class:`float32`.
         """
 
         self.x_p: wp.array(dtype=float32) | None = None
         """
         The previous PADMM primal variables.
-        Shape of ``(sum_of_num_total_cts,)`` and type :class:`float32`.
+        Shape of ``(sum_of_max_total_cts,)`` and type :class:`float32`.
         """
 
         self.y: wp.array(dtype=float32) | None = None
         """
         The current PADMM slack variables.
-        Shape of ``(sum_of_num_total_cts,)`` and type :class:`float32`.
+        Shape of ``(sum_of_max_total_cts,)`` and type :class:`float32`.
         """
 
         self.y_p: wp.array(dtype=float32) | None = None
         """
         The previous PADMM slack variables.
-        Shape of ``(sum_of_num_total_cts,)`` and type :class:`float32`.
+        Shape of ``(sum_of_max_total_cts,)`` and type :class:`float32`.
         """
 
         self.z: wp.array(dtype=float32) | None = None
         """
         The current PADMM dual variables.
-        Shape of ``(sum_of_num_total_cts,)`` and type :class:`float32`.
+        Shape of ``(sum_of_max_total_cts,)`` and type :class:`float32`.
         """
 
         self.z_p: wp.array(dtype=float32) | None = None
         """
         The previous PADMM dual variables.
-        Shape of ``(sum_of_num_total_cts,)`` and type :class:`float32`.
+        Shape of ``(sum_of_max_total_cts,)`` and type :class:`float32`.
         """
 
         self.y_hat: wp.array(dtype=float32) | None = None
         """
         The auxiliary PADMM slack variables used with gradient acceleration.
-        Shape of ``(sum_of_num_total_cts,)`` and type :class:`float32`.
+        Shape of ``(sum_of_max_total_cts,)`` and type :class:`float32`.
         """
 
         self.z_hat: wp.array(dtype=float32) | None = None
         """
         The auxiliary PADMM dual variables used with gradient acceleration.
-        Shape of ``(sum_of_num_total_cts,)`` and type :class:`float32`.
+        Shape of ``(sum_of_max_total_cts,)`` and type :class:`float32`.
         """
 
         self.a: wp.array(dtype=float32) | None = None
@@ -812,18 +812,18 @@ class PADMMResiduals:
 
     Attributes:
         r_primal (wp.array): The PADMM primal residual vector, computed as `r_primal := x - y`.\n
-            Shape of ``(sum_of_num_total_cts,)`` and type :class:`float32`.
+            Shape of ``(sum_of_max_total_cts,)`` and type :class:`float32`.
         r_dual (wp.array): The PADMM dual residual vector, computed as `r_dual := eta * (x - x_p) + rho * (y - y_p)`.\n
-            Shape of ``(sum_of_num_total_cts,)`` and type :class:`float32`.
+            Shape of ``(sum_of_max_total_cts,)`` and type :class:`float32`.
         r_compl (wp.array): The PADMM complementarity residual vector, computed as `r_compl := [x_j.dot(z_j)]`,\n
             where `j` indexes each unilateral constraint set (i.e. 1D limits and 3D contacts).\n
             Shape of ``(sum_of_num_unilateral_cts,)`` and type :class:`float32`.
         r_dx (wp.array): The PADMM primal iterate residual vector, computed as `r_dx := x - x_p`.\n
-            Shape of ``(sum_of_num_total_cts,)`` and type :class:`float32`.
+            Shape of ``(sum_of_max_total_cts,)`` and type :class:`float32`.
         r_dy (wp.array): The PADMM slack iterate residual vector, computed as `r_dy := y - y_p`.\n
-            Shape of ``(sum_of_num_total_cts,)`` and type :class:`float32`.
+            Shape of ``(sum_of_max_total_cts,)`` and type :class:`float32`.
         r_dz (wp.array): The PADMM dual iterate residual vector, computed as `r_dz := z - z_p`.\n
-            Shape of ``(sum_of_num_total_cts,)`` and type :class:`float32`.
+            Shape of ``(sum_of_max_total_cts,)`` and type :class:`float32`.
     """
 
     def __init__(self, size: ModelSize | None = None):
@@ -839,13 +839,13 @@ class PADMMResiduals:
         self.r_primal: wp.array(dtype=float32) | None = None
         """
         The PADMM primal residual vector, computed as `r_primal := x - y`.\n
-        Shape of ``(sum_of_num_total_cts,)`` and type :class:`float32`.
+        Shape of ``(sum_of_max_total_cts,)`` and type :class:`float32`.
         """
 
         self.r_dual: wp.array(dtype=float32) | None = None
         """
         The PADMM dual residual vector, computed as `r_dual := eta * (x - x_p) + rho * (y - y_p)`.\n
-        Shape of ``(sum_of_num_total_cts,)`` and type :class:`float32`.
+        Shape of ``(sum_of_max_total_cts,)`` and type :class:`float32`.
         """
 
         self.r_compl: wp.array(dtype=float32) | None = None
@@ -858,19 +858,19 @@ class PADMMResiduals:
         self.r_dx: wp.array(dtype=float32) | None = None
         """
         The PADMM primal iterate residual vector, computed as `r_dx := x - x_p`.\n
-        Shape of ``(sum_of_num_total_cts,)`` and type :class:`float32`.
+        Shape of ``(sum_of_max_total_cts,)`` and type :class:`float32`.
         """
 
         self.r_dy: wp.array(dtype=float32) | None = None
         """
         The PADMM slack iterate residual vector, computed as `r_dy := y - y_p`.\n
-        Shape of ``(sum_of_num_total_cts,)`` and type :class:`float32`.
+        Shape of ``(sum_of_max_total_cts,)`` and type :class:`float32`.
         """
 
         self.r_dz: wp.array(dtype=float32) | None = None
         """
         The PADMM dual iterate residual vector, computed as `r_dz := z - z_p`.\n
-        Shape of ``(sum_of_num_total_cts,)`` and type :class:`float32`.
+        Shape of ``(sum_of_max_total_cts,)`` and type :class:`float32`.
         """
 
         # Perform memory allocations if model size is specified
@@ -909,9 +909,9 @@ class PADMMSolution:
 
     Attributes:
         lambdas (wp.array): The constraint reactions (i.e. impulses) solution array.\n
-            Shape of ``(sum_of_num_total_cts,)`` and type :class:`float32`.
+            Shape of ``(sum_of_max_total_cts,)`` and type :class:`float32`.
         v_plus (wp.array): The post-event constraint-space velocities solution array.
-            Shape of ``(sum_of_num_total_cts,)`` and type :class:`float32`.
+            Shape of ``(sum_of_max_total_cts,)`` and type :class:`float32`.
     """
 
     def __init__(self, size: ModelSize | None = None):
@@ -927,13 +927,13 @@ class PADMMSolution:
         self.lambdas: wp.array(dtype=float32) | None = None
         """
         The constraint reactions (i.e. impulses) solution array.\n
-        Shape of ``(sum_of_num_total_cts,)`` and type :class:`float32`.
+        Shape of ``(sum_of_max_total_cts,)`` and type :class:`float32`.
         """
 
         self.v_plus: wp.array(dtype=float32) | None = None
         """
         The post-event constraint-space velocities solution array.
-        Shape of ``(sum_of_num_total_cts,)`` and type :class:`float32`.
+        Shape of ``(sum_of_max_total_cts,)`` and type :class:`float32`.
         """
 
         # Perform memory allocations if model size is specified
@@ -964,16 +964,16 @@ class PADMMInfo:
 
     Attributes:
         lambdas (wp.array): The constraint reactions (i.e. impulses) of each world.\n
-            Shape of ``(sum_of_num_total_cts,)`` and type :class:`float32`.
+            Shape of ``(sum_of_max_total_cts,)`` and type :class:`float32`.
         v_plus (wp.array): The post-event constraint-space velocities of each world.\n
             This is computed using the current solution as: `v_plus := v_f + D @ lambdas`.\n
-            Shape of ``(sum_of_num_total_cts,)`` and type :class:`float32`.
+            Shape of ``(sum_of_max_total_cts,)`` and type :class:`float32`.
         v_aug (wp.array): The post-event augmented constraint-space velocities of each world.\n
             This is computed using the current solution as: `v_aug := v_plus + s`.\n
-            Shape of ``(sum_of_num_total_cts,)`` and type :class:`float32`.
+            Shape of ``(sum_of_max_total_cts,)`` and type :class:`float32`.
         s (wp.array): The De Saxce correction velocities of each world.\n
             This is computed using the current solution as: `s := Gamma(v_plus)`.\n
-            Shape of ``(sum_of_num_total_cts,)`` and type :class:`float32`.
+            Shape of ``(sum_of_max_total_cts,)`` and type :class:`float32`.
         offsets (wp.array): The residuals index offset of each world.\n
             Shape of ``(num_worlds,)`` and type :class:`int32`.
         num_restarts (wp.array): History of the number of acceleration restarts performed for each world.\n
@@ -1045,28 +1045,28 @@ class PADMMInfo:
         self.lambdas: wp.array(dtype=float32) | None = None
         """
         The constraint reactions (i.e. impulses) of each world.\n
-        Shape of ``(sum_of_num_total_cts,)`` and type :class:`float32`.
+        Shape of ``(sum_of_max_total_cts,)`` and type :class:`float32`.
         """
 
         self.v_plus: wp.array(dtype=float32) | None = None
         """
         The post-event constraint-space velocities of each world.\n
         This is computed using the current solution as: `v_plus := v_f + D @ lambdas`.\n
-        Shape of ``(sum_of_num_total_cts,)`` and type :class:`float32`.
+        Shape of ``(sum_of_max_total_cts,)`` and type :class:`float32`.
         """
 
         self.v_aug: wp.array(dtype=float32) | None = None
         """
         The post-event augmented constraint-space velocities of each world.\n
         This is computed using the current solution as: `v_aug := v_plus + s`.\n
-        Shape of ``(sum_of_num_total_cts,)`` and type :class:`float32`.
+        Shape of ``(sum_of_max_total_cts,)`` and type :class:`float32`.
         """
 
         self.s: wp.array(dtype=float32) | None = None
         """
         The De Saxce correction velocities of each world.\n
         This is computed using the current solution as: `s := Gamma(v_plus)`.\n
-        Shape of ``(sum_of_num_total_cts,)`` and type :class:`float32`.
+        Shape of ``(sum_of_max_total_cts,)`` and type :class:`float32`.
         """
 
         self.offsets: wp.array(dtype=int32) | None = None
@@ -2033,7 +2033,7 @@ def _initialize_solver(
     solver_penalty: wp.array(dtype=PADMMPenalty),
     solver_state_a_p: wp.array(dtype=float32),
 ):
-    # Retrive the world index as thread index
+    # Retrieve the world index as thread index
     wid = wp.tid()
 
     # Retrieve the solver configuration
@@ -2192,22 +2192,22 @@ def _compute_velocity_bias(
     # Retrieve the index offset of the vector block of the world
     vio = problem_vio[wid]
 
-    # Retrive solver parameters
+    # Retrieve solver parameters
     eta = solver_config[wid].eta
     rho = solver_penalty[wid].rho
 
     # Compute the index offset of the vector block of the world
-    tio = vio + tid
+    thread_offset = vio + tid
 
     # Retrieve the solver state
-    v_f = problem_v_f[tio]
-    s = solver_s[tio]
-    x_p = solver_x_p[tio]
-    y_p = solver_y_p[tio]
-    z_p = solver_z_p[tio]
+    v_f = problem_v_f[thread_offset]
+    s = solver_s[thread_offset]
+    x_p = solver_x_p[thread_offset]
+    y_p = solver_y_p[thread_offset]
+    z_p = solver_z_p[thread_offset]
 
-    # Compute the total velocity bias for the tio-th constraint
-    solver_v[tio] = -v_f - s + eta * x_p + rho * y_p + z_p
+    # Compute the total velocity bias for the thread_offset-th constraint
+    solver_v[thread_offset] = -v_f - s + eta * x_p + rho * y_p + z_p
 
 
 @wp.kernel
@@ -2242,14 +2242,14 @@ def _compute_projection_argument(
     rho = solver_penalty[wid].rho
 
     # Compute the index offset of the vector block of the world
-    tio = vio + tid
+    thread_offset = vio + tid
 
-    # Retrive the solver state variables
-    z_hat = solver_z_hat[tio]
-    x = solver_x[tio]
+    # Retrieve the solver state variables
+    z_hat = solver_z_hat[thread_offset]
+    x = solver_x[thread_offset]
 
     # Compute and store the updated values back to the solver state
-    solver_y[tio] = x - (1.0 / rho) * z_hat
+    solver_y[thread_offset] = x - (1.0 / rho) * z_hat
 
 
 @wp.kernel
@@ -2282,20 +2282,20 @@ def _apply_overrelaxation_and_compute_projection_argument(
     # Retrieve the index offset of the vector block of the world
     vio = problem_vio[wid]
 
-    # Retrive the relaxation factor
+    # Retrieve the relaxation factor
     omega = solver_config[wid].omega
 
     # Capture the ALM penalty
     rho = solver_penalty[wid].rho
 
     # Compute the index offset of the vector block of the world
-    tio = vio + tid
+    thread_offset = vio + tid
 
-    # Retrive the solver state variables
-    y_p = solver_y_p[tio]
-    z_p = solver_z_p[tio]
-    x = solver_x[tio]
-    y = solver_y[tio]
+    # Retrieve the solver state variables
+    y_p = solver_y_p[thread_offset]
+    z_p = solver_z_p[thread_offset]
+    x = solver_x[thread_offset]
+    y = solver_y[thread_offset]
 
     # Compute the over-relaxation update
     x = omega * x + (1.0 - omega) * y_p
@@ -2304,8 +2304,8 @@ def _apply_overrelaxation_and_compute_projection_argument(
     y = x - (1.0 / rho) * z_p
 
     # Store the updated values back to the solver state
-    solver_x[tio] = x
-    solver_y[tio] = y
+    solver_x[thread_offset] = x
+    solver_y[thread_offset] = y
 
 
 # TODO: Break this up to two kernels launched simultaneously (1x for limits, 1x for contacts)
@@ -2356,7 +2356,7 @@ def _project_to_feasible_cone(
         # Retrieve the limit constraint group offset of the world
         ccgo = problem_ccgo[wid]
         # Compute the index of the contact element in the unilaterals array
-        # NOTE: We need to substract the number of active limits
+        # NOTE: We need to subtract the number of active limits
         cid = uid - nl
         # Compute the index offset of the contact constraint
         ccio_j = vio + ccgo + 3 * cid
@@ -2413,32 +2413,32 @@ def _update_dual_variables_and_compute_primal_dual_residuals(
     rho = solver_penalty[wid].rho
 
     # Compute the index offset of the vector block of the world
-    tio = vio + tid
+    thread_offset = vio + tid
 
     # Retrieve
-    P_i = problem_P[tio]
+    P_i = problem_P[thread_offset]
 
     # Retrieve the solver state inputs
-    x = solver_x[tio]
-    y = solver_y[tio]
-    x_p = solver_x_p[tio]
-    y_hat = solver_y_hat[tio]
-    z_hat = solver_z_hat[tio]
+    x = solver_x[thread_offset]
+    y = solver_y[thread_offset]
+    x_p = solver_x_p[thread_offset]
+    y_hat = solver_y_hat[thread_offset]
+    z_hat = solver_z_hat[thread_offset]
 
     # Compute and store the dual variable update
     z = z_hat + rho * (y - x)
-    solver_z[tio] = z
+    solver_z[thread_offset] = z
 
-    # Compute the primal residual as the concensus of the primal and slack variable
-    solver_r_prim[tio] = P_i * (x - y)
+    # Compute the primal residual as the consensus of the primal and slack variable
+    solver_r_prim[thread_offset] = P_i * (x - y)
 
     # Compute the dual residual using the ADMM-specific shortcut
-    solver_r_dual[tio] = (1.0 / P_i) * (eta * (x - x_p) + rho * (y - y_hat))
+    solver_r_dual[thread_offset] = (1.0 / P_i) * (eta * (x - x_p) + rho * (y - y_hat))
 
     # Compute the combined residual terms
-    solver_r_dx[tio] = P_i * (x - x_p)
-    solver_r_dy[tio] = P_i * (y - y_hat)
-    solver_r_dz[tio] = (1.0 / P_i) * (z - z_hat)
+    solver_r_dx[thread_offset] = P_i * (x - x_p)
+    solver_r_dy[thread_offset] = P_i * (y - y_hat)
+    solver_r_dz[thread_offset] = (1.0 / P_i) * (z - z_hat)
 
 
 # TODO: Break this up to two kernels launched simultaneously (1x for limits, 1x for contacts)?
@@ -2494,7 +2494,7 @@ def _compute_complementarity_residuals(
         # Retrieve the limit constraint group offset of the world
         ccgo = problem_ccgo[wid]
         # Compute the index of the contact element in the unilaterals array
-        # NOTE: We need to substract the number of active limits
+        # NOTE: We need to subtract the number of active limits
         cid = uid - nl
         # Compute the index offset of the contact constraint
         ccio_j = vio + ccgo + 3 * cid
@@ -3031,21 +3031,21 @@ def _compute_solution_vectors(
         return
 
     # Retrieve the index offset of the vector block of the world
-    vio = problem_vio[wid]
+    vector_offset = problem_vio[wid]
 
     # Compute the index offset of the vector block of the world
-    tio = vio + tid
+    thread_offset = vector_offset + tid
 
     # Retrieve the solver state
-    z = solver_z[tio]
-    s = solver_s[tio]
-    y = solver_y[tio]
+    z = solver_z[thread_offset]
+    s = solver_s[thread_offset]
+    y = solver_y[thread_offset]
 
     # Update constraint velocity: v_plus = z - s;
-    solver_v_plus[tio] = z - s
+    solver_v_plus[thread_offset] = z - s
 
     # Update constraint reactions: lambda = y
-    solver_lambdas[tio] = y
+    solver_lambdas[thread_offset] = y
 
 
 ###

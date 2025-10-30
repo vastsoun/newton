@@ -241,7 +241,7 @@ class DualProblemData:
         self.D: wp.array(dtype=float32) | None = None
         """
         The flat array of Delassus matrix blocks (constraint-space apparent inertia).\n
-        Shape of ``(sum_of_max_total_cts,)`` and type :class:`float32`.
+        Shape of ``(sum_of_max_total_delassus_size,)`` and type :class:`float32`.
         """
 
         self.P: wp.array(dtype=float32) | None = None

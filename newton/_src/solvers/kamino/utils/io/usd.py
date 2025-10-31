@@ -1433,10 +1433,19 @@ class USDImporter:
         # Iterate over each pair of prim path and geom type-name to parse the geometry specifications
         for geom_prim_path, geom_type_name in zip(geom_prim_paths, geom_type_names, strict=False):
             geom_type = self.supported_usd_geom_types[self.supported_usd_geom_type_names.index(geom_type_name)]
+
+            # Extract the list of physics prim paths and descriptors for the given type
             geom_paths, geom_specs = ret_dict[geom_type]
+
+            # Iterate over physics geom descriptors until a match to the target geom prims is found
+            physics_geom_desc_found = False
             for prim_path, geom_spec in zip(geom_paths, geom_specs, strict=False):
                 if prim_path == geom_prim_path:
                     msg.debug(f"Parsing geometry @'{prim_path}' of type '{geom_type_name}'")
+                    # Mark the geometry descriptor as found
+                    physics_geom_desc_found = True
+
+                    # Parse the USD geom descriptor to construct a corresponding sim geometry descriptor
                     geom_desc = self._parse_geom(
                         geom_prim=stage.GetPrimAtPath(prim_path),
                         geom_spec=geom_spec,
@@ -1448,6 +1457,8 @@ class USDImporter:
                         rotation_unit=rotation_unit,
                         meshes_are_collidable=meshes_are_collidable,
                     )
+
+                    # If construction succeeded, append it to the model builder
                     if geom_desc is not None:
                         # Skip static geometry if not requested
                         if geom_desc.bid == -1 and not load_static_geometry:
@@ -1460,6 +1471,10 @@ class USDImporter:
                             msg.debug(f"Adding physical geom '{builder.num_physical_geoms}':\n{geom_desc}\n")
                             builder.add_physical_geometry_descriptor(descriptor=geom_desc)
                     break  # Stop after the first match
+
+            # Indicate to user that a UsdGeom has potentially not been marked for physics simulation
+            if not physics_geom_desc_found:
+                msg.warning(f"Failed to find UsdPhysics descriptor for geom prim '{geom_prim_path}'")
 
         ###
         # Post-processing

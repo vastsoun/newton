@@ -144,7 +144,9 @@ def Xform "cartpole"
 
     def Scope "StaticGeometry"
     {
-        def Cube "guide"
+        def Cube "rail" (
+            apiSchemas = ["PhysicsCollisionAPI"]
+        )
         {
             float3[] extent = [(-0.015, -4, -0.015), (0.015, 4, 0.015)]
             uniform token purpose = "guide"
@@ -158,6 +160,24 @@ def Xform "cartpole"
 
     def Scope "Collisions"
     {
+        def PhysicsCollisionGroup "Rail"
+        {
+            rel collection:colliders:includes = [
+                </cartpole/StaticGeometry/rail>,
+            ]
+        }
+        def PhysicsCollisionGroup "Cart"
+        {
+            rel collection:colliders:includes = [
+                </cartpole/RigidBodies/cart>,
+            ]
+        }
+        def PhysicsCollisionGroup "Pole"
+        {
+            rel collection:colliders:includes = [
+                </cartpole/RigidBodies/pole>,
+            ]
+        }
     }
 }
 

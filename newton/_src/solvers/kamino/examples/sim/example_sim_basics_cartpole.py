@@ -142,15 +142,20 @@ class Example:
 
         # Construct model builder
         if load_from_usd:
-            msg.info("Constructing builder from imported USD ...")
+            msg.notif("Constructing builder from imported USD ...")
             USD_MODEL_PATH = os.path.join(get_basics_usd_assets_path(), "cartpole.usda")
             importer = USDImporter()
             self.builder: ModelBuilder = importer.import_from(source=USD_MODEL_PATH, load_static_geometry=True)
         else:
-            msg.info("Constructing builder using model generator ...")
+            msg.notif("Constructing builder using model generator ...")
             self.builder: ModelBuilder = make_homogeneous_builder(num_worlds=num_worlds, build_func=build_cartpole)
-        msg.warning(f"self.builder.bodies: {self.builder.bodies}")
-        msg.warning(f"self.builder.joints: {self.builder.joints}")
+
+        # Demo of printing builder contents in debug logging mode
+        msg.info("self.builder.gravity:\n{%s}", self.builder.gravity)
+        msg.info("self.builder.bodies:\n{%s}", self.builder.bodies)
+        msg.info("self.builder.joints:\n{%s}", self.builder.joints)
+        msg.info("self.builder.collision_geoms:\n{%s}", self.builder.collision_geoms)
+        msg.info("self.builder.physical_geoms:\n{%s}", self.builder.physical_geoms)
 
         # Set gravity
         self.builder.gravity.enabled = True
@@ -166,7 +171,7 @@ class Example:
         settings.solver.rho_0 = 0.05
 
         # Create a simulator
-        msg.info("Building the simulator...")
+        msg.notif("Building the simulator...")
         self.sim = Simulator(builder=self.builder, settings=settings, device=device)
         self.sim.set_control_callback(test_control_callback)
 
@@ -190,7 +195,7 @@ class Example:
 
         # Warm-start the simulator before rendering
         # NOTE: This compiles and loads the warp kernels prior to execution
-        msg.info("Warming up simulator...")
+        msg.notif("Warming up simulator...")
         self.step_once()
         self.reset()
 
@@ -224,7 +229,7 @@ class Example:
     def capture(self):
         """Capture CUDA graph if requested and available."""
         if self.use_cuda_graph:
-            msg.info("Running with CUDA graphs...")
+            msg.notif("Running with CUDA graphs...")
             with wp.ScopedCapture(device=self.device) as reset_capture:
                 self.sim.reset()
             self.reset_graph = reset_capture.graph
@@ -235,7 +240,7 @@ class Example:
                 self.simulate()
             self.simulate_graph = sim_capture.graph
         else:
-            msg.info("Running with kernels...")
+            msg.notif("Running with kernels...")
 
     def simulate(self):
         """Run simulation substeps."""
@@ -287,9 +292,9 @@ class Example:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Cartpole simulation example")
     parser.add_argument("--headless", action="store_true", default=False, help="Run in headless mode")
-    parser.add_argument("--num-worlds", type=int, default=3, help="Number of worlds to simulate in parallel")
+    parser.add_argument("--num-worlds", type=int, default=1, help="Number of worlds to simulate in parallel")
     parser.add_argument("--num-steps", type=int, default=1000, help="Number of steps for headless mode")
-    parser.add_argument("--load-from-usd", action="store_true", default=True, help="Load model from USD file")
+    parser.add_argument("--load-from-usd", action="store_true", default=False, help="Load model from USD file")
     parser.add_argument("--device", type=str, help="The compute device to use")
     parser.add_argument("--cuda-graph", action="store_true", default=True, help="Use CUDA graphs")
     parser.add_argument("--clear-cache", action="store_true", default=False, help="Clear warp cache")
@@ -306,7 +311,7 @@ if __name__ == "__main__":
 
     # TODO: Make optional
     # Set the verbosity of the global message logger
-    msg.set_log_level(msg.LogLevel.INFO)
+    msg.set_log_level(msg.LogLevel.NOTIF)
 
     # Set device if specified, otherwise use Warp's default
     if args.device:
@@ -318,9 +323,9 @@ if __name__ == "__main__":
     # Determine if CUDA graphs should be used for execution
     can_use_cuda_graph = device.is_cuda and wp.is_mempool_enabled(device)
     use_cuda_graph = can_use_cuda_graph & args.cuda_graph
-    msg.info(f"can_use_cuda_graph: {can_use_cuda_graph}")
-    msg.info(f"use_cuda_graph: {use_cuda_graph}")
-    msg.info(f"device: {device}")
+    msg.notif(f"can_use_cuda_graph: {can_use_cuda_graph}")
+    msg.notif(f"use_cuda_graph: {use_cuda_graph}")
+    msg.notif(f"device: {device}")
 
     # Create example instance
     example = Example(
@@ -334,17 +339,17 @@ if __name__ == "__main__":
 
     # Run a brute-force similation loop if headless
     if args.headless:
-        msg.info("Running in headless mode...")
+        msg.notif("Running in headless mode...")
         run_headless(example, progress=True)
 
     # Otherwise launch using a debug viewer
     else:
-        msg.info("Running in Viewer mode...")
+        msg.notif("Running in Viewer mode...")
         # Set initial camera position for better view of the system
         if hasattr(example.viewer, "set_camera"):
             camera_pos = wp.vec3(2.0, 2.0, 0.3)
-            pitch = -10.0
-            yaw = 205.0
+            pitch = -5.0
+            yaw = 225.0
             example.viewer.set_camera(camera_pos, pitch, yaw)
 
         # Launch the example using Newton's built-in runtime

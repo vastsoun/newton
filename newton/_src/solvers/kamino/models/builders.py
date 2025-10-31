@@ -24,12 +24,11 @@ import warp as wp
 from ..core import ModelBuilder
 from ..core.inertia import (
     solid_cuboid_body_moment_of_inertia,
-    solid_cylinder_body_moment_of_inertia,
     solid_sphere_body_moment_of_inertia,
 )
 from ..core.joints import JointActuationType, JointDoFType
 from ..core.math import FLOAT32_MAX, FLOAT32_MIN, I_3
-from ..core.shapes import BoxShape, CylinderShape, SphereShape
+from ..core.shapes import BoxShape, SphereShape
 from ..core.types import Axis, transformf, vec3f, vec6f
 
 ###
@@ -70,20 +69,12 @@ def add_ground_geom(builder: ModelBuilder, group: int = 1, collides: int = 1) ->
 def offset_builder(builder: ModelBuilder, offset: transformf):
     """Offsets a model builder by a given transform."""
     for i in range(builder.num_bodies):
-        # Eigen::Ref<Math::Vector7> s_i(state.segment<7>(7 * i));
-        # Math::Matrix3 R_i = R_offset * R_of(s_i.segment<4>(3));
-        # Math::Vector3 r_i = r_offset + R_offset * s_i.segment<3>(0);
-        # s_i << r_i, to_quaternion(R_i);
         builder.bodies[i].q_i_0 = wp.mul(offset, builder.bodies[i].q_i_0)
 
 
 def add_velocity_bias(builder: ModelBuilder, bias: vec6f):
     """Offsets a model builder by a given transform."""
     for i in range(builder.num_bodies):
-        # Eigen::Ref<Math::Vector7> s_i(state.segment<7>(7 * i));
-        # Math::Matrix3 R_i = R_offset * R_of(s_i.segment<4>(3));
-        # Math::Vector3 r_i = r_offset + R_offset * s_i.segment<3>(0);
-        # s_i << r_i, to_quaternion(R_i);
         builder.bodies[i].u_i_0 += bias
 
 
@@ -301,68 +292,80 @@ def build_cartpole(builder: ModelBuilder, z_offset: float = 0.0, ground: bool = 
 
     # Model constants
     m_cart = 1.0
-    dims_cart = (0.1, 0.1, 0.1)
-    m_pendulum = 0.2
-    dims_pendulum = (0.02, 0.75)
+    m_pole = 0.2
+    dims_rail = (0.03, 8.0, 0.03)
+    dims_cart = (0.2, 0.5, 0.2)
+    dims_pole = (0.05, 0.05, 0.75)
     z_0 = z_offset  # Initial z offset for the body
 
     # Add box cart body
-    z_0_cart = z_0
     bid0 = builder.add_body(
+        name="cart",
         m_i=m_cart,
         i_I_i=solid_cuboid_body_moment_of_inertia(m_cart, *dims_cart),
-        q_i_0=transformf(0.0, 0.0, z_0_cart, 0.0, 0.0, 0.0, 1.0),
+        q_i_0=transformf(0.0, 0.0, z_0, 0.0, 0.0, 0.0, 1.0),
         u_i_0=vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
     )
     bids.append(bid0)
 
-    # Add box pendulum body
-    z_0_pendulum = 0.5 * dims_pendulum[1] + z_0_cart
+    # Add box pole body
+    x_0_pole = 0.5 * dims_pole[0] + 0.5 * dims_cart[0]
+    z_0_pole = 0.5 * dims_pole[2] + z_0
     bid1 = builder.add_body(
-        m_i=m_pendulum,
-        i_I_i=solid_cylinder_body_moment_of_inertia(m_pendulum, *dims_pendulum),
-        q_i_0=transformf(0.0, 0.0, z_0_pendulum, 0.0, 0.0, 0.0, 1.0),
+        name="pole",
+        m_i=m_pole,
+        i_I_i=solid_cuboid_body_moment_of_inertia(m_pole, *dims_pole),
+        q_i_0=transformf(x_0_pole, 0.0, z_0_pole, 0.0, 0.0, 0.0, 1.0),
         u_i_0=vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
     )
     bids.append(bid1)
 
     # Add a prismatic joint for the cart
     jid0 = builder.add_joint(
+        name="rail_to_cart",
         dof_type=JointDoFType.PRISMATIC,
         act_type=JointActuationType.FORCE,
         bid_B=-1,
         bid_F=bid0,
         B_r_Bj=vec3f(0.0, 0.0, z_0),
-        F_r_Fj=vec3f(0.0, 0.0, z_0_cart),
-        X_j=Axis.X.to_mat33(),
+        F_r_Fj=vec3f(0.0, 0.0, 0.0),
+        X_j=Axis.Y.to_mat33(),
     )
     jids.append(jid0)
 
     # Add a revolute joint for the pendulum
     jid0 = builder.add_joint(
+        name="cart_to_pole",
         dof_type=JointDoFType.REVOLUTE,
-        act_type=JointActuationType.FORCE,
+        act_type=JointActuationType.PASSIVE,
         bid_B=bid0,
         bid_F=bid1,
-        B_r_Bj=vec3f(0.0, 0.0, 0.0),
-        F_r_Fj=vec3f(0.0, 0.0, -0.5 * dims_pendulum[1]),
-        X_j=Axis.Y.to_mat33(),
+        B_r_Bj=vec3f(0.5 * dims_cart[0], 0.0, 0.0),
+        F_r_Fj=vec3f(-0.5 * dims_pole[0], 0.0, -0.5 * dims_pole[2]),
+        X_j=Axis.X.to_mat33(),
     )
     jids.append(jid0)
 
     # Add a collision layer and geometries
+    builder.add_collision_layer("world")
     builder.add_collision_layer("primary")
-    gids.append(builder.add_collision_geometry(body_id=bid0, shape=BoxShape(*dims_cart)))
-    gids.append(builder.add_collision_geometry(body_id=bid1, shape=CylinderShape(*dims_pendulum)))
+    gids.append(
+        builder.add_collision_geometry(name="rail", body_id=-1, shape=BoxShape(*dims_rail), group=1, collides=1)
+    )
+    gids.append(
+        builder.add_collision_geometry(name="cart", body_id=bid0, shape=BoxShape(*dims_cart), group=2, collides=2)
+    )
+    gids.append(
+        builder.add_collision_geometry(name="pole", body_id=bid1, shape=BoxShape(*dims_pole), group=3, collides=3)
+    )
 
     # Add a static collision layer and geometry for the plane
     if ground:
-        builder.add_collision_layer("world")
         gids.append(
             builder.add_collision_geometry(
                 body_id=-1,
                 shape=BoxShape(20.0, 20.0, 1.0),
-                offset=transformf(0.0, 0.0, -0.5, 0.0, 0.0, 0.0, 1.0),
+                offset=transformf(0.0, 0.0, -1.0, 0.0, 0.0, 0.0, 1.0),
             )
         )
 

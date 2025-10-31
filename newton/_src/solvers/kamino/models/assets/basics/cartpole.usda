@@ -48,12 +48,10 @@ def Xform "cartpole"
                     apiSchemas = ["PhysicsCollisionAPI"]
                 )
                 {
-                    float3[] extent = [(-0.1, -0.25, -0.1), (0.1, 0.25, 0.1)]
-                    uniform token purpose = "guide"
-                    double size = 1
+                    float3[] extent = [(-1, -1, -1), (1, 1, 1)]
                     quatd xformOp:orient = (1, 0, 0, 0)
-                    double3 xformOp:scale = (0.20000000298023224, 0.5, 0.20000000298023224)
                     double3 xformOp:translate = (0, 0, 0)
+                    double3 xformOp:scale = (0.1, 0.25, 0.1)
                     uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
                 }
             }
@@ -65,7 +63,7 @@ def Xform "cartpole"
         {
             # Body Frame
             quatd xformOp:orient = (1, 0, 0, 0)
-            double3 xformOp:translate = (0.125, 0, 0)
+            double3 xformOp:translate = (0.125, 0, 0.375)
             uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient"]
 
             # Body Velocities
@@ -74,9 +72,9 @@ def Xform "cartpole"
 
             # Mass Properties
             float physics:mass = 0.2
-            point3f physics:centerOfMass = (0, 0, 0.375)
-            float3 physics:diagonalInertia = (0.009416667, 0.009416667, 0.00008333333)
+            point3f physics:centerOfMass = (0, 0, 0)
             quatf physics:principalAxes = (1, 0, 0, 0)
+            float3 physics:diagonalInertia = (0.009416667, 0.009416667, 0.00008333333)
 
             def Scope "Geometry"
             {
@@ -84,12 +82,10 @@ def Xform "cartpole"
                     apiSchemas = ["PhysicsCollisionAPI"]
                 )
                 {
-                    float3[] extent = [(-0.025, -0.025, -0.375), (0.025, 0.025, 0.375)]
-                    uniform token purpose = "guide"
-                    double size = 1
+                    float3[] extent = [(-1, -1, -1), (1, 1, 1)]
                     quatd xformOp:orient = (1, 0, 0, 0)
-                    double3 xformOp:scale = (0.05000000074505806, 0.05000000074505806, 0.75)
-                    double3 xformOp:translate = (0, 0, 0.375)
+                    double3 xformOp:translate = (0, 0, 0)
+                    double3 xformOp:scale = (0.025, 0.025, 0.375)
                     uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
                 }
             }
@@ -98,7 +94,7 @@ def Xform "cartpole"
 
     def Scope "Joints"
     {
-        def PhysicsPrismaticJoint "slider_to_cart" (
+        def PhysicsPrismaticJoint "rail_to_cart" (
             apiSchemas = ["PhysicsDriveAPI:linear"]
         )
         {
@@ -125,8 +121,8 @@ def Xform "cartpole"
             uniform token physics:axis = "X"
             rel physics:body0 = </cartpole/RigidBodies/cart>
             rel physics:body1 = </cartpole/RigidBodies/pole>
-            point3f physics:localPos0 = (0.125, 0, 0)
-            point3f physics:localPos1 = (0, 0, 0)
+            point3f physics:localPos0 = (0.1, 0, 0)
+            point3f physics:localPos1 = (-0.025, 0, -0.375)
             quatf physics:localRot0 = (1, 0, 0, 0)
             quatf physics:localRot1 = (1, 0, 0, 0)
             float physics:lowerLimit = -inf
@@ -148,12 +144,10 @@ def Xform "cartpole"
             apiSchemas = ["PhysicsCollisionAPI"]
         )
         {
-            float3[] extent = [(-0.015, -4, -0.015), (0.015, 4, 0.015)]
-            uniform token purpose = "guide"
-            double size = 1
+            float3[] extent = [(-1, -1, -1), (1, 1, 1)]
             quatd xformOp:orient = (1, 0, 0, 0)
-            double3 xformOp:scale = (0.029999999329447746, 8, 0.029999999329447746)
             double3 xformOp:translate = (0, 0, 0)
+            double3 xformOp:scale = (0.015, 4.0, 0.015)
             uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
         }
     }

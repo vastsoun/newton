@@ -411,6 +411,15 @@ class USDImporter:
         # Retrieve the namespace path of the prim
         path = str(rigid_body_prim.GetPath())
 
+        # Check the applied schemas
+        has_rigid_body_api = "PhysicsRigidBodyAPI" in rigid_body_prim.GetAppliedSchemas()
+        has_mass_api = "PhysicsMassAPI" in rigid_body_prim.GetAppliedSchemas()
+
+        # If the prim is a rigid body but has no mass,
+        # skip it and treat it as static geometry
+        if has_rigid_body_api and not has_mass_api:
+            return None
+
         # Define and check for the required APIs
         req_api = ["PhysicsRigidBodyAPI", "PhysicsMassAPI"]
         for api in req_api:
@@ -824,6 +833,11 @@ class USDImporter:
             bid_F = body_index_map[str(joint_spec.body1)]
         msg.debug(f"bid_B: {bid_B}")
         msg.debug(f"bid_F: {bid_F}")
+
+        # Skip constructing this joint if both body indices are -1
+        # (i.e. indicating they are part of the world)
+        if bid_B == -1 and bid_F == -1:
+            return None
 
         ###
         # PhysicsJoint Specific Properties
@@ -1351,6 +1365,9 @@ class USDImporter:
                 if rigid_body_desc is not None:
                     msg.debug(f"Adding body '{builder.num_bodies}':\n{rigid_body_desc}\n")
                     body_index_map[str(prim_path)] = builder.add_rigid_body_descriptor(descriptor=rigid_body_desc)
+                else:
+                    msg.debug(f"Rigid body @'{prim_path}' not loaded. Will be treated as static geometry.")
+                    body_index_map[str(prim_path)] = -1  # Body not loaded, is statically part of the world
         msg.debug(f"body_index_map: {body_index_map}")
 
         ###
@@ -1387,6 +1404,8 @@ class USDImporter:
                     if joint_desc is not None:
                         msg.debug(f"Adding joint '{builder.num_joints}':\n{joint_desc}\n")
                         builder.add_joint_descriptor(descriptor=joint_desc)
+                    else:
+                        msg.debug(f"Joint @'{prim_path}' not loaded. Will be ignored.")
                     break  # Stop after the first match
 
         ###

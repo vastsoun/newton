@@ -290,7 +290,10 @@ class TestDelassusOperator(unittest.TestCase):
         max_world_contacts = 12
 
         # Construct a homogeneous model description using model builders
-        builder, num_bodies, _ = make_homogeneous_builder(num_worlds=num_worlds, build_func=build_boxes_nunchaku)
+        builder = make_homogeneous_builder(num_worlds=num_worlds, build_func=build_boxes_nunchaku)
+
+        # Create a list of number of bodies per world
+        num_bodies = [builder.num_bodies // num_worlds for _ in range(num_worlds)]
 
         # Create the model and containers from the builder
         model, data, limits, detector, jacobians = make_containers(

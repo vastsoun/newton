@@ -74,7 +74,7 @@ class Example:
             )
         USD_MODEL_PATH = os.path.join(EXAMPLE_ASSETS_PATH, "dr_testmech/dr_testmech.usda")
 
-        # Create a single-instance system (always load from USD for testmechanism)
+        # Create a single-instance system (always load from USD for DR Test Mechanism)
         msg.notif("Constructing builder from imported USD ...")
         importer = USDImporter()
         self.builder: ModelBuilder = importer.import_from(source=USD_MODEL_PATH)

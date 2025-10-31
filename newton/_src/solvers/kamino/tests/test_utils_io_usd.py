@@ -715,10 +715,10 @@ class TestUSDImporter(unittest.TestCase):
     # Reference models
     ###
 
-    def test_import_model_testmechanism(self):
-        """Test importing the TestMechanism demo model with all joint types from a USD file"""
+    def test_import_model_dr_testmech(self):
+        """Test importing the `DR Test Mechanism` example model with all joint types from a USD file"""
         if self.EXAMPLES_USD_ASSETS_PATH is None:
-            self.skipTest("EXAMPLES_USD_ASSETS_PATH is `None` - skipping `DR TestMechanism` import test.")
+            self.skipTest("EXAMPLES_USD_ASSETS_PATH is `None` - skipping `DR Test Mechanism` import test.")
         print("")  # Add a newline for better readability
         usd_asset_filename = os.path.join(self.EXAMPLES_USD_ASSETS_PATH, "dr_testmech/dr_testmech.usda")
         importer = USDImporter()
@@ -758,8 +758,8 @@ class TestUSDImporter(unittest.TestCase):
         self.assertEqual(builder_usd.joints[13].act_type, JointActuationType.PASSIVE)
         self.assertEqual(builder_usd.joints[13].dof_type, JointDoFType.CARTESIAN)
 
-    def test_import_model_walker(self):
-        """Test importing the Walker demo model from a USD file"""
+    def test_import_model_dr_legs(self):
+        """Test importing the `DR Legs` example model from a USD file"""
         if self.EXAMPLES_USD_ASSETS_PATH is None:
             self.skipTest("EXAMPLES_USD_ASSETS_PATH is `None` - skipping `DR Legs` import test.")
         print("")  # Add a newline for better readability
@@ -769,11 +769,11 @@ class TestUSDImporter(unittest.TestCase):
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 31)
         self.assertEqual(builder_usd.num_joints, 36)
-        self.assertEqual(builder_usd.num_collision_geoms, 31)
-        self.assertEqual(builder_usd.num_physical_geoms, 0)
+        self.assertEqual(builder_usd.num_collision_geoms, 0)
+        self.assertEqual(builder_usd.num_physical_geoms, 31)
 
-    def test_import_model_walker_with_boxes(self):
-        """Test importing the Walker demo model from a USD file"""
+    def test_import_model_dr_legs_with_boxes(self):
+        """Test importing the `DR Legs` example model from a USD file"""
         if self.EXAMPLES_USD_ASSETS_PATH is None:
             self.skipTest("EXAMPLES_USD_ASSETS_PATH is `None` - skipping `DR Legs` import test.")
         print("")  # Add a newline for better readability
@@ -786,8 +786,8 @@ class TestUSDImporter(unittest.TestCase):
         self.assertEqual(builder_usd.num_collision_geoms, 3)
         self.assertEqual(builder_usd.num_physical_geoms, 0)
 
-    def test_import_model_walker_with_meshes_and_boxes(self):
-        """Test importing the Walker demo model from a USD file"""
+    def test_import_model_dr_legs_with_meshes_and_boxes(self):
+        """Test importing the `DR Legs` example model from a USD file"""
         if self.EXAMPLES_USD_ASSETS_PATH is None:
             self.skipTest("EXAMPLES_USD_ASSETS_PATH is `None` - skipping `DR Legs` import test.")
         print("")  # Add a newline for better readability
@@ -797,7 +797,7 @@ class TestUSDImporter(unittest.TestCase):
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 31)
         self.assertEqual(builder_usd.num_joints, 36)
-        self.assertEqual(builder_usd.num_collision_geoms, 0)
+        self.assertEqual(builder_usd.num_collision_geoms, 3)
         self.assertEqual(builder_usd.num_physical_geoms, 31)
 
 

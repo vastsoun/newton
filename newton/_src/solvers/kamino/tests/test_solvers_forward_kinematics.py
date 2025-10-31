@@ -146,7 +146,7 @@ def simulate_random_poses(
     return success
 
 
-class TestMechanismRandomPosesCheckForwardKinematics(unittest.TestCase):
+class DRTestMechanismRandomPosesCheckForwardKinematics(unittest.TestCase):
     def setUp(self):
         self.default_device = wp.get_device()
         self.has_cuda = self.default_device.is_cuda
@@ -162,7 +162,10 @@ class TestMechanismRandomPosesCheckForwardKinematics(unittest.TestCase):
         rng = np.random.default_rng(seed)
 
         # Load model
-        model_path = os.path.join(get_examples_usd_assets_path(), "testmechanism/testmechanism_alljoints_v2.usda")
+        examples_path = get_examples_usd_assets_path()
+        if not examples_path:
+            self.skipTest("Examples USD assets path not found. Skipping test.")
+        model_path = os.path.join(examples_path, "dr_testmech/dr_testmech.usda")
         builder = USDImporter().import_from(model_path)
         model = builder.finalize(device=self.default_device, requires_grad=False)
 
@@ -175,7 +178,7 @@ class TestMechanismRandomPosesCheckForwardKinematics(unittest.TestCase):
         self.assertTrue(success)
 
 
-class WalkerRandomPosesCheckForwardKinematics(unittest.TestCase):
+class DRLegsRandomPosesCheckForwardKinematics(unittest.TestCase):
     def setUp(self):
         self.default_device = wp.get_device()
         self.has_cuda = self.default_device.is_cuda
@@ -184,14 +187,17 @@ class WalkerRandomPosesCheckForwardKinematics(unittest.TestCase):
     def tearDown(self):
         self.default_device = None
 
-    def test_walker_FK_random_poses(self):
+    def test_dr_legs_FK_random_poses(self):
         # Initialize RNG
-        test_name = "Walker FK random poses check"
+        test_name = "FK random poses check for dr_legs model"
         seed = int(hashlib.sha256(test_name.encode("utf8")).hexdigest(), 16)
         rng = np.random.default_rng(seed)
 
         # Load model and add fixed joint on pelvis
-        model_path = os.path.join(get_examples_usd_assets_path(), "walker/walker_floating_with_boxes.usda")
+        examples_path = get_examples_usd_assets_path()
+        if not examples_path:
+            self.skipTest("Examples USD assets path not found. Skipping test.")
+        model_path = os.path.join(examples_path, "dr_legs/dr_legs_with_boxes.usda")
         builder = USDImporter().import_from(model_path)
         builder.add_joint(
             JointActuationType.PASSIVE,
@@ -232,14 +238,17 @@ class HeterogenousModelRandomPosesCheckForwardKinematics(unittest.TestCase):
 
     def test_heterogenous_model_FK_random_poses(self):
         # Initialize RNG
-        test_name = "Heterogenous model (test mechanism + walker) FK random poses check"
+        test_name = "Heterogenous model (test mechanism + dr_legs) FK random poses check"
         seed = int(hashlib.sha256(test_name.encode("utf8")).hexdigest(), 16)
         rng = np.random.default_rng(seed)
 
         # Load models
-        model_path = os.path.join(get_examples_usd_assets_path(), "testmechanism/testmechanism_alljoints_v2.usda")
+        examples_path = get_examples_usd_assets_path()
+        if not examples_path:
+            self.skipTest("Examples USD assets path not found. Skipping test.")
+        model_path = os.path.join(examples_path, "dr_testmech/dr_testmech.usda")
         builder = USDImporter().import_from(model_path)
-        model_path1 = os.path.join(get_examples_usd_assets_path(), "walker/walker_floating_with_boxes.usda")
+        model_path1 = os.path.join(examples_path, "dr_legs/dr_legs_with_boxes.usda")
         builder1 = USDImporter().import_from(model_path1)
         builder1.add_joint(
             JointActuationType.PASSIVE,
@@ -257,8 +266,8 @@ class HeterogenousModelRandomPosesCheckForwardKinematics(unittest.TestCase):
         # Simulate random poses
         num_poses = 30
         theta_max_test_mech = np.radians(180.0)
-        theta_max_walker = np.radians(10.0)
-        max_controls = np.array([theta_max_test_mech] + builder1.num_actuated_joint_dofs * [theta_max_walker])
+        theta_max_dr_legs = np.radians(10.0)
+        max_controls = np.array([theta_max_test_mech] + builder1.num_actuated_joint_dofs * [theta_max_dr_legs])
         success = simulate_random_poses(model, num_poses, -max_controls, max_controls, rng, self.has_cuda, self.verbose)
         self.assertTrue(success)
 

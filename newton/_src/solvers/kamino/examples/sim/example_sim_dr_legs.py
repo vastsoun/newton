@@ -73,11 +73,11 @@ class Example:
         USD_MODEL_PATH = os.path.join(EXAMPLE_ASSETS_PATH, "dr_legs/dr_legs_with_meshes_and_boxes.usda")
 
         # Create a model builder from the imported USD
-        msg.info("Constructing builder from imported USD ...")
+        msg.notif("Constructing builder from imported USD ...")
         importer = USDImporter()
         self.builder: ModelBuilder = importer.import_from(source=USD_MODEL_PATH)
-        msg.warning("total mass: %f", self.builder.world.mass_total)
-        msg.warning("total diag inertia: %f", self.builder.world.inertia_total)
+        msg.info("total mass: %f", self.builder.world.mass_total)
+        msg.info("total diag inertia: %f", self.builder.world.inertia_total)
 
         # Offset the model to place it above the ground
         # NOTE: The USD model is centered at the origin
@@ -116,7 +116,7 @@ class Example:
         self.log_dq_j_ref = np.zeros((self.max_steps, njad), dtype=np.float32)
 
         # Create a simulator
-        msg.info("Building the simulator...")
+        msg.notif("Building the simulator...")
         self.sim = Simulator(builder=self.builder, settings=settings, device=device)
 
         # Initialize the viewer
@@ -131,13 +131,13 @@ class Example:
         # Load animation data for dr_legs
         NUMPY_ANIMATION_PATH = os.path.join(get_examples_usd_assets_path(), "dr_legs/dr_legs_animation_100fps.npy")
         animation_np = np.load(NUMPY_ANIMATION_PATH, allow_pickle=True)
-        msg.debug(f"animation_np (shape={animation_np.shape}):\n{animation_np}\n")
+        msg.debug("animation_np (shape={%s}):\n{%s}\n", animation_np.shape, animation_np)
 
         # Compute animation time step and rate
         animation_dt = 0.01  # 100 fps
         animation_rate = int(round(animation_dt / settings.dt))
-        msg.warning(f"animation_dt: {animation_dt}")
-        msg.warning(f"animation_rate: {animation_rate}")
+        msg.info(f"animation_dt: {animation_dt}")
+        msg.info(f"animation_rate: {animation_rate}")
 
         # Create a joint-space animation reference generator
         self.animation = AnimationJointReference(
@@ -196,7 +196,7 @@ class Example:
 
         # Warm-start the simulator before rendering
         # NOTE: This compiles and loads the warp kernels prior to execution
-        msg.info("Warming up simulator...")
+        msg.notif("Warming up simulator...")
         self.step_once()
         self.reset()
 
@@ -403,12 +403,12 @@ if __name__ == "__main__":
 
     # Run a brute-force similation loop if headless
     if args.headless:
-        msg.info("Running in headless mode...")
+        msg.notif("Running in headless mode...")
         run_headless(example, progress=True)
 
     # Otherwise launch using a debug viewer
     else:
-        msg.info("Running in Viewer mode...")
+        msg.notif("Running in Viewer mode...")
         # Set initial camera position for better view of the system
         if hasattr(example.viewer, "set_camera"):
             camera_pos = wp.vec3(0.6, 0.6, 0.3)

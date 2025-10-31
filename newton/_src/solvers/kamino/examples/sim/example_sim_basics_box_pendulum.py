@@ -264,7 +264,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Box-Pendulum simulation example")
     parser.add_argument("--num-worlds", type=int, default=1, help="Number of worlds to simulate in parallel")
     parser.add_argument("--num-steps", type=int, default=1000, help="Number of steps for headless mode")
-    parser.add_argument("--load-from-usd", action="store_true", default=False, help="Load model from USD file")
+    parser.add_argument("--load-from-usd", action="store_true", default=True, help="Load model from USD file")
     parser.add_argument("--headless", action="store_true", default=False, help="Run in headless mode")
     parser.add_argument("--device", type=str, help="The compute device to use")
     parser.add_argument("--cuda-graph", action="store_true", default=True, help="Use CUDA graphs")

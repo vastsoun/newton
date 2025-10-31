@@ -15,7 +15,6 @@
 
 import argparse
 import os
-import time
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -28,22 +27,12 @@ import newton.examples
 from newton._src.solvers.kamino.control.animation import AnimationJointReference
 from newton._src.solvers.kamino.control.pid import JointSpacePIDController
 from newton._src.solvers.kamino.core.builder import ModelBuilder
-from newton._src.solvers.kamino.examples import get_examples_output_path
+from newton._src.solvers.kamino.examples import get_examples_output_path, run_headless
 from newton._src.solvers.kamino.models import get_examples_usd_assets_path
 from newton._src.solvers.kamino.models.builders import add_ground_geom, offset_builder
 from newton._src.solvers.kamino.simulation.simulator import Simulator, SimulatorSettings
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
-from newton._src.solvers.kamino.utils.print import print_progress_bar
 from newton._src.solvers.kamino.viewer import ViewerKamino
-
-###
-# Constants
-###
-
-# Set the path to the external USD assets
-BOX_USD_MODEL_PATH = os.path.join(get_examples_usd_assets_path(), "walker/walker_floating_with_boxes.usda")
-MESH_USD_MODEL_PATH = os.path.join(get_examples_usd_assets_path(), "walker/walker_floating_with_meshes.usda")
-
 
 ###
 # Example class
@@ -51,8 +40,6 @@ MESH_USD_MODEL_PATH = os.path.join(get_examples_usd_assets_path(), "walker/walke
 
 
 class Example:
-    """ViewerGL example class for walker simulation."""
-
     def __init__(
         self,
         device: Devicelike,
@@ -77,13 +64,20 @@ class Example:
         self.use_cuda_graph: bool = use_cuda_graph
         self.logging: bool = logging
 
-        # Create a single-instance system (always load from USD for walker)
-        msg.info("Constructing builder from imported USD ...")
+        # Set the path to the external USD assets
+        EXAMPLE_ASSETS_PATH = get_examples_usd_assets_path()
+        if EXAMPLE_ASSETS_PATH is None:
+            raise FileNotFoundError(
+                "The USD assets path for example models is missing: `kamino-assets` may not be installed."
+            )
+        USD_MODEL_PATH = os.path.join(EXAMPLE_ASSETS_PATH, "dr_legs/dr_legs_with_meshes_and_boxes.usda")
+
+        # Create a model builder from the imported USD
+        msg.notif("Constructing builder from imported USD ...")
         importer = USDImporter()
-        # self.builder: ModelBuilder = importer.import_from(source=MESH_USD_MODEL_PATH)
-        self.builder: ModelBuilder = importer.import_from(source=BOX_USD_MODEL_PATH)
-        msg.warning("total mass: %f", self.builder.world.mass_total)
-        msg.warning("total diag inertia: %f", self.builder.world.inertia_total)
+        self.builder: ModelBuilder = importer.import_from(source=USD_MODEL_PATH)
+        msg.info("total mass: %f", self.builder.world.mass_total)
+        msg.info("total diag inertia: %f", self.builder.world.inertia_total)
 
         # Offset the model to place it above the ground
         # NOTE: The USD model is centered at the origin
@@ -122,7 +116,7 @@ class Example:
         self.log_dq_j_ref = np.zeros((self.max_steps, njad), dtype=np.float32)
 
         # Create a simulator
-        msg.info("Building the simulator...")
+        msg.notif("Building the simulator...")
         self.sim = Simulator(builder=self.builder, settings=settings, device=device)
 
         # Initialize the viewer
@@ -134,16 +128,16 @@ class Example:
         else:
             self.viewer = None
 
-        # Load animation data for walker
-        NUMPY_ANIMATION_PATH = os.path.join(get_examples_usd_assets_path(), "walker/walker_animation_100fps.npy")
+        # Load animation data for dr_legs
+        NUMPY_ANIMATION_PATH = os.path.join(get_examples_usd_assets_path(), "dr_legs/dr_legs_animation_100fps.npy")
         animation_np = np.load(NUMPY_ANIMATION_PATH, allow_pickle=True)
-        msg.debug(f"animation_np (shape={animation_np.shape}):\n{animation_np}\n")
+        msg.debug("animation_np (shape={%s}):\n{%s}\n", animation_np.shape, animation_np)
 
         # Compute animation time step and rate
         animation_dt = 0.01  # 100 fps
         animation_rate = int(round(animation_dt / settings.dt))
-        msg.warning(f"animation_dt: {animation_dt}")
-        msg.warning(f"animation_rate: {animation_rate}")
+        msg.info(f"animation_dt: {animation_dt}")
+        msg.info(f"animation_rate: {animation_rate}")
 
         # Create a joint-space animation reference generator
         self.animation = AnimationJointReference(
@@ -202,7 +196,7 @@ class Example:
 
         # Warm-start the simulator before rendering
         # NOTE: This compiles and loads the warp kernels prior to execution
-        msg.info("Warming up simulator...")
+        msg.notif("Warming up simulator...")
         self.step_once()
         self.reset()
 
@@ -356,28 +350,12 @@ class Example:
 
 
 ###
-# Execution functions
-###
-
-
-def run_headless(example: Example, progress: bool = True):
-    """Run the simulation in headless mode for a fixed number of steps."""
-    msg.info(f"Running for {example.max_steps} steps...")
-    start_time = time.time()
-    for i in range(example.max_steps):
-        example.step_once()
-        wp.synchronize()
-        if progress:
-            print_progress_bar(i + 1, example.max_steps, start_time, prefix="Progress", suffix="")
-
-
-###
 # Main function
 ###
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Walker simulation example")
+    parser = argparse.ArgumentParser(description="DR Legs simulation example")
     parser.add_argument("--headless", action="store_true", default=False, help="Run in headless mode")
     parser.add_argument("--num-steps", type=int, default=1000, help="Number of steps for headless mode")
     parser.add_argument("--device", type=str, help="The compute device to use")
@@ -425,15 +403,14 @@ if __name__ == "__main__":
 
     # Run a brute-force similation loop if headless
     if args.headless:
-        msg.info("Running in headless mode...")
+        msg.notif("Running in headless mode...")
         run_headless(example, progress=True)
 
     # Otherwise launch using a debug viewer
     else:
-        msg.info("Running in Viewer mode...")
-        # Set initial camera position for better view of the walker
+        msg.notif("Running in Viewer mode...")
+        # Set initial camera position for better view of the system
         if hasattr(example.viewer, "set_camera"):
-            # Position camera to get a good view of the walker
             camera_pos = wp.vec3(0.6, 0.6, 0.3)
             pitch = -10.0
             yaw = 225.0
@@ -444,6 +421,6 @@ if __name__ == "__main__":
 
     # Plot logged data after the viewer is closed
     if args.logging:
-        OUTPUT_PLOT_PATH = os.path.join(get_examples_output_path(), "walker")
+        OUTPUT_PLOT_PATH = os.path.join(get_examples_output_path(), "dr_legs")
         os.makedirs(OUTPUT_PLOT_PATH, exist_ok=True)
         example.plot(path=OUTPUT_PLOT_PATH, show=args.show_plots)

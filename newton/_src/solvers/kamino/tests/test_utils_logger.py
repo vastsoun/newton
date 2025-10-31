@@ -34,8 +34,8 @@ class TestUtilsLogger(unittest.TestCase):
         msg.set_log_level(msg.LogLevel.DEBUG)
         logger = Logger()
         log = logger.get()
-        log.info("This is an info message.")
         log.debug("This is a debug message.")
+        log.info("This is an info message.")
         log.warning("This is a warning message.")
         log.error("This is an error message.")
         log.critical("This is a critical message.")
@@ -45,8 +45,9 @@ class TestUtilsLogger(unittest.TestCase):
         """Test use of the custom logger."""
         print("")  # Print a newline for better readability in the output
         msg.set_log_level(msg.LogLevel.DEBUG)
-        msg.info("This is an info message.")
         msg.debug("This is a debug message.")
+        msg.info("This is an info message.")
+        msg.notif("This is a notification message.")
         msg.warning("This is a warning message.")
         msg.error("This is an error message.")
         msg.critical("This is a critical message.")

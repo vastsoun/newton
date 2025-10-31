@@ -13,9 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-KAMINO: UNIT TESTS: Input/Output: OpenUSD
-"""
+"""Unit tests for the USD importer utility."""
 
 import os
 import unittest
@@ -28,8 +26,8 @@ from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.core.joints import JointActuationType, JointDoFType
 from newton._src.solvers.kamino.core.shapes import ShapeType
 from newton._src.solvers.kamino.models import (
+    get_basics_usd_assets_path,
     get_examples_usd_assets_path,
-    get_primitives_usd_assets_path,
     get_tests_usd_assets_path,
 )
 from newton._src.solvers.kamino.models.builders import (
@@ -49,29 +47,19 @@ from newton._src.solvers.kamino.tests.utils.checks import (
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
 
 ###
-# Helper functions
-###
-
-
-###
-# Constants
-###
-
-# Set the paths to the assets provided by the kamino package
-EXAMPLES_USD_ASSETS_PATH = get_examples_usd_assets_path()
-PRIMITIVE_USD_ASSETS_PATH = get_primitives_usd_assets_path()
-TEST_USD_ASSETS_PATH = get_tests_usd_assets_path()
-
-
-###
 # Tests
 ###
 
 
-class TestOpenUSD(unittest.TestCase):
+class TestUSDImporter(unittest.TestCase):
     def setUp(self):
         self.default_device = wp.get_device()
         self.verbose = False  # Set to True for verbose output
+
+        # Set the paths to the assets provided by the kamino package
+        self.TEST_USD_ASSETS_PATH = get_tests_usd_assets_path()
+        self.PRIMITIVE_USD_ASSETS_PATH = get_basics_usd_assets_path()
+        self.EXAMPLES_USD_ASSETS_PATH = get_examples_usd_assets_path()
 
     def tearDown(self):
         self.default_device = None
@@ -82,7 +70,7 @@ class TestOpenUSD(unittest.TestCase):
 
     def test_import_joint_revolute_passive(self):
         """Test importing a passive revolute joint with limits from a USD file"""
-        usd_asset_filename = os.path.join(TEST_USD_ASSETS_PATH, "joints/test_joint_revolute_passive.usda")
+        usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "joints/test_joint_revolute_passive.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
@@ -99,7 +87,7 @@ class TestOpenUSD(unittest.TestCase):
 
     def test_import_joint_revolute_actuated(self):
         """Test importing a actuated revolute joint with limits from a USD file"""
-        usd_asset_filename = os.path.join(TEST_USD_ASSETS_PATH, "joints/test_joint_revolute_actuated.usda")
+        usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "joints/test_joint_revolute_actuated.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
@@ -116,7 +104,7 @@ class TestOpenUSD(unittest.TestCase):
 
     def test_import_joint_prismatic_passive(self):
         """Test importing a passive prismatic joint with limits from a USD file"""
-        usd_asset_filename = os.path.join(TEST_USD_ASSETS_PATH, "joints/test_joint_prismatic_passive.usda")
+        usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "joints/test_joint_prismatic_passive.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
@@ -133,7 +121,7 @@ class TestOpenUSD(unittest.TestCase):
 
     def test_import_joint_prismatic_actuated(self):
         """Test importing a actuated prismatic joint with limits from a USD file"""
-        usd_asset_filename = os.path.join(TEST_USD_ASSETS_PATH, "joints/test_joint_prismatic_actuated.usda")
+        usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "joints/test_joint_prismatic_actuated.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
@@ -150,7 +138,7 @@ class TestOpenUSD(unittest.TestCase):
 
     def test_import_joint_spherical(self):
         """Test importing a passive spherical joint with limits from a USD file"""
-        usd_asset_filename = os.path.join(TEST_USD_ASSETS_PATH, "joints/test_joint_spherical.usda")
+        usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "joints/test_joint_spherical.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
@@ -171,7 +159,7 @@ class TestOpenUSD(unittest.TestCase):
 
     def test_import_joint_cylindrical_passive(self):
         """Test importing a passive cylindrical joint with limits from a USD file"""
-        usd_asset_filename = os.path.join(TEST_USD_ASSETS_PATH, "joints/test_joint_cylindrical_passive.usda")
+        usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "joints/test_joint_cylindrical_passive.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
@@ -188,7 +176,7 @@ class TestOpenUSD(unittest.TestCase):
 
     def test_import_joint_cylindrical_actuated(self):
         """Test importing a actuated cylindrical joint with limits from a USD file"""
-        usd_asset_filename = os.path.join(TEST_USD_ASSETS_PATH, "joints/test_joint_cylindrical_actuated.usda")
+        usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "joints/test_joint_cylindrical_actuated.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
@@ -205,7 +193,7 @@ class TestOpenUSD(unittest.TestCase):
 
     def test_import_joint_universal_passive(self):
         """Test importing a passive universal joint with limits from a USD file"""
-        usd_asset_filename = os.path.join(TEST_USD_ASSETS_PATH, "joints/test_joint_universal_passive.usda")
+        usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "joints/test_joint_universal_passive.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
@@ -222,7 +210,7 @@ class TestOpenUSD(unittest.TestCase):
 
     def test_import_joint_universal_actuated(self):
         """Test importing a actuated universal joint with limits from a USD file"""
-        usd_asset_filename = os.path.join(TEST_USD_ASSETS_PATH, "joints/test_joint_universal_actuated.usda")
+        usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "joints/test_joint_universal_actuated.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
 
@@ -240,7 +228,7 @@ class TestOpenUSD(unittest.TestCase):
 
     def test_import_joint_cartesian_passive(self):
         """Test importing a passive cylindrical joint with limits from a USD file"""
-        usd_asset_filename = os.path.join(TEST_USD_ASSETS_PATH, "joints/test_joint_cartesian_passive.usda")
+        usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "joints/test_joint_cartesian_passive.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
 
@@ -258,7 +246,7 @@ class TestOpenUSD(unittest.TestCase):
 
     def test_import_joint_cartesian_actuated(self):
         """Test importing a actuated cylindrical joint with limits from a USD file"""
-        usd_asset_filename = os.path.join(TEST_USD_ASSETS_PATH, "joints/test_joint_cartesian_actuated.usda")
+        usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "joints/test_joint_cartesian_actuated.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
 
@@ -280,7 +268,7 @@ class TestOpenUSD(unittest.TestCase):
 
     def test_import_joint_d6_revolute_passive(self):
         """Test importing a passive revolute joint with limits from a USD file"""
-        usd_asset_filename = os.path.join(TEST_USD_ASSETS_PATH, "joints/test_joint_d6_revolute_passive.usda")
+        usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "joints/test_joint_d6_revolute_passive.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
@@ -297,7 +285,7 @@ class TestOpenUSD(unittest.TestCase):
 
     def test_import_joint_d6_revolute_actuated(self):
         """Test importing a actuated revolute joint with limits from a USD file"""
-        usd_asset_filename = os.path.join(TEST_USD_ASSETS_PATH, "joints/test_joint_d6_revolute_actuated.usda")
+        usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "joints/test_joint_d6_revolute_actuated.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
@@ -314,7 +302,7 @@ class TestOpenUSD(unittest.TestCase):
 
     def test_import_joint_d6_prismatic_passive(self):
         """Test importing a passive prismatic joint with limits from a USD file"""
-        usd_asset_filename = os.path.join(TEST_USD_ASSETS_PATH, "joints/test_joint_d6_prismatic_passive.usda")
+        usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "joints/test_joint_d6_prismatic_passive.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
@@ -331,7 +319,7 @@ class TestOpenUSD(unittest.TestCase):
 
     def test_import_joint_d6_prismatic_actuated(self):
         """Test importing a actuated prismatic joint with limits from a USD file"""
-        usd_asset_filename = os.path.join(TEST_USD_ASSETS_PATH, "joints/test_joint_d6_prismatic_actuated.usda")
+        usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "joints/test_joint_d6_prismatic_actuated.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
@@ -348,7 +336,7 @@ class TestOpenUSD(unittest.TestCase):
 
     def test_import_joint_d6_cylindrical_passive(self):
         """Test importing a passive cylindrical joint with limits from a USD file"""
-        usd_asset_filename = os.path.join(TEST_USD_ASSETS_PATH, "joints/test_joint_d6_cylindrical_passive.usda")
+        usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "joints/test_joint_d6_cylindrical_passive.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
@@ -365,7 +353,7 @@ class TestOpenUSD(unittest.TestCase):
 
     def test_import_joint_d6_cylindrical_actuated(self):
         """Test importing a actuated cylindrical joint with limits from a USD file"""
-        usd_asset_filename = os.path.join(TEST_USD_ASSETS_PATH, "joints/test_joint_d6_cylindrical_actuated.usda")
+        usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "joints/test_joint_d6_cylindrical_actuated.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
@@ -382,7 +370,7 @@ class TestOpenUSD(unittest.TestCase):
 
     def test_import_joint_d6_universal_passive(self):
         """Test importing a passive universal joint with limits from a USD file"""
-        usd_asset_filename = os.path.join(TEST_USD_ASSETS_PATH, "joints/test_joint_d6_universal_passive.usda")
+        usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "joints/test_joint_d6_universal_passive.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
@@ -399,7 +387,7 @@ class TestOpenUSD(unittest.TestCase):
 
     def test_import_joint_d6_universal_actuated(self):
         """Test importing a actuated universal joint with limits from a USD file"""
-        usd_asset_filename = os.path.join(TEST_USD_ASSETS_PATH, "joints/test_joint_d6_universal_actuated.usda")
+        usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "joints/test_joint_d6_universal_actuated.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
@@ -416,7 +404,7 @@ class TestOpenUSD(unittest.TestCase):
 
     def test_import_joint_d6_cartesian_passive(self):
         """Test importing a passive cartesian joint with limits from a USD file"""
-        usd_asset_filename = os.path.join(TEST_USD_ASSETS_PATH, "joints/test_joint_d6_cartesian_passive.usda")
+        usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "joints/test_joint_d6_cartesian_passive.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
@@ -433,7 +421,7 @@ class TestOpenUSD(unittest.TestCase):
 
     def test_importjoint__d6_cartesian_actuated(self):
         """Test importing a actuated cartesian joint with limits from a USD file"""
-        usd_asset_filename = os.path.join(TEST_USD_ASSETS_PATH, "joints/test_joint_d6_cartesian_actuated.usda")
+        usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "joints/test_joint_d6_cartesian_actuated.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
@@ -450,7 +438,7 @@ class TestOpenUSD(unittest.TestCase):
 
     def test_import_joint_d6_spherical_passive(self):
         """Test importing a passive spherical joint with limits from a USD file"""
-        usd_asset_filename = os.path.join(TEST_USD_ASSETS_PATH, "joints/test_joint_d6_spherical_passive.usda")
+        usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "joints/test_joint_d6_spherical_passive.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
@@ -467,7 +455,7 @@ class TestOpenUSD(unittest.TestCase):
 
     def test_import_joint_d6_spherical_actuated(self):
         """Test importing a actuated spherical joint with limits from a USD file"""
-        usd_asset_filename = os.path.join(TEST_USD_ASSETS_PATH, "joints/test_joint_d6_spherical_actuated.usda")
+        usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "joints/test_joint_d6_spherical_actuated.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
@@ -488,7 +476,7 @@ class TestOpenUSD(unittest.TestCase):
 
     def test_import_geom_capsule(self):
         """Test importing a body with geometric primitive capsule shape from a USD file"""
-        usd_asset_filename = os.path.join(TEST_USD_ASSETS_PATH, "geoms/test_geom_capsule.usda")
+        usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "geoms/test_geom_capsule.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
@@ -510,7 +498,7 @@ class TestOpenUSD(unittest.TestCase):
 
     def test_import_geom_cone(self):
         """Test importing a body with geometric primitive cone shape from a USD file"""
-        usd_asset_filename = os.path.join(TEST_USD_ASSETS_PATH, "geoms/test_geom_cone.usda")
+        usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "geoms/test_geom_cone.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
@@ -532,7 +520,7 @@ class TestOpenUSD(unittest.TestCase):
 
     def test_import_geom_cylinder(self):
         """Test importing a body with geometric primitive cylinder shape from a USD file"""
-        usd_asset_filename = os.path.join(TEST_USD_ASSETS_PATH, "geoms/test_geom_cylinder.usda")
+        usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "geoms/test_geom_cylinder.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
@@ -554,7 +542,7 @@ class TestOpenUSD(unittest.TestCase):
 
     def test_import_geom_sphere(self):
         """Test importing a body with geometric primitive sphere shape from a USD file"""
-        usd_asset_filename = os.path.join(TEST_USD_ASSETS_PATH, "geoms/test_geom_sphere.usda")
+        usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "geoms/test_geom_sphere.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
@@ -575,7 +563,7 @@ class TestOpenUSD(unittest.TestCase):
 
     def test_import_geom_ellipsoid(self):
         """Test importing a body with geometric primitive ellipsoid shape from a USD file"""
-        usd_asset_filename = os.path.join(TEST_USD_ASSETS_PATH, "geoms/test_geom_ellipsoid.usda")
+        usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "geoms/test_geom_ellipsoid.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
@@ -598,7 +586,7 @@ class TestOpenUSD(unittest.TestCase):
 
     def test_import_geom_box(self):
         """Test importing a body with geometric primitive box shape from a USD file"""
-        usd_asset_filename = os.path.join(TEST_USD_ASSETS_PATH, "geoms/test_geom_box.usda")
+        usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "geoms/test_geom_box.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
@@ -627,7 +615,7 @@ class TestOpenUSD(unittest.TestCase):
         """Test importing the primitive box_on_plane model from a USD file"""
 
         # Construct a builder from imported USD asset
-        usd_asset_filename = os.path.join(PRIMITIVE_USD_ASSETS_PATH, "box_on_plane.usda")
+        usd_asset_filename = os.path.join(self.PRIMITIVE_USD_ASSETS_PATH, "box_on_plane.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(
             source=usd_asset_filename, load_static_geometry=False, load_materials=False
@@ -649,7 +637,7 @@ class TestOpenUSD(unittest.TestCase):
         """Test importing the primitive box_pendulum model from a USD file"""
 
         # Construct a builder from imported USD asset
-        usd_asset_filename = os.path.join(PRIMITIVE_USD_ASSETS_PATH, "box_pendulum.usda")
+        usd_asset_filename = os.path.join(self.PRIMITIVE_USD_ASSETS_PATH, "box_pendulum.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(
             source=usd_asset_filename, load_static_geometry=False, load_materials=False
@@ -671,7 +659,7 @@ class TestOpenUSD(unittest.TestCase):
         """Test importing the primitive boxes_hinged model from a USD file"""
 
         # Construct a builder from imported USD asset
-        usd_asset_filename = os.path.join(PRIMITIVE_USD_ASSETS_PATH, "boxes_hinged.usda")
+        usd_asset_filename = os.path.join(self.PRIMITIVE_USD_ASSETS_PATH, "boxes_hinged.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(
             source=usd_asset_filename, load_static_geometry=False, load_materials=False
@@ -693,7 +681,7 @@ class TestOpenUSD(unittest.TestCase):
         """Test importing the primitive boxes_nunchaku model from a USD file"""
 
         # Construct a builder from imported USD asset
-        usd_asset_filename = os.path.join(PRIMITIVE_USD_ASSETS_PATH, "boxes_nunchaku.usda")
+        usd_asset_filename = os.path.join(self.PRIMITIVE_USD_ASSETS_PATH, "boxes_nunchaku.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(
             source=usd_asset_filename, load_static_geometry=False, load_materials=False
@@ -710,7 +698,7 @@ class TestOpenUSD(unittest.TestCase):
         """Test importing the primitive boxes_fourbar model from a USD file"""
 
         # Construct a builder from imported USD asset
-        usd_asset_filename = os.path.join(PRIMITIVE_USD_ASSETS_PATH, "boxes_fourbar.usda")
+        usd_asset_filename = os.path.join(self.PRIMITIVE_USD_ASSETS_PATH, "boxes_fourbar.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(
             source=usd_asset_filename, load_static_geometry=False, load_materials=False
@@ -727,10 +715,12 @@ class TestOpenUSD(unittest.TestCase):
     # Reference models
     ###
 
-    def test_import_model_testmechanism(self):
-        """Test importing the TestMechanism demo model with all joint types from a USD file"""
+    def test_import_model_dr_testmech(self):
+        """Test importing the `DR Test Mechanism` example model with all joint types from a USD file"""
+        if self.EXAMPLES_USD_ASSETS_PATH is None:
+            self.skipTest("EXAMPLES_USD_ASSETS_PATH is `None` - skipping `DR Test Mechanism` import test.")
         print("")  # Add a newline for better readability
-        usd_asset_filename = os.path.join(EXAMPLES_USD_ASSETS_PATH, "testmechanism/testmechanism_alljoints_v2.usda")
+        usd_asset_filename = os.path.join(self.EXAMPLES_USD_ASSETS_PATH, "dr_testmech/dr_testmech.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
@@ -768,10 +758,26 @@ class TestOpenUSD(unittest.TestCase):
         self.assertEqual(builder_usd.joints[13].act_type, JointActuationType.PASSIVE)
         self.assertEqual(builder_usd.joints[13].dof_type, JointDoFType.CARTESIAN)
 
-    def test_import_model_walker_with_boxes(self):
-        """Test importing the Walker demo model from a USD file"""
+    def test_import_model_dr_legs(self):
+        """Test importing the `DR Legs` example model from a USD file"""
+        if self.EXAMPLES_USD_ASSETS_PATH is None:
+            self.skipTest("EXAMPLES_USD_ASSETS_PATH is `None` - skipping `DR Legs` import test.")
         print("")  # Add a newline for better readability
-        usd_asset_filename = os.path.join(EXAMPLES_USD_ASSETS_PATH, "walker/walker_floating_with_boxes.usda")
+        usd_asset_filename = os.path.join(self.EXAMPLES_USD_ASSETS_PATH, "dr_legs/dr_legs.usda")
+        importer = USDImporter()
+        builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
+        # Check the loaded contents
+        self.assertEqual(builder_usd.num_bodies, 31)
+        self.assertEqual(builder_usd.num_joints, 36)
+        self.assertEqual(builder_usd.num_collision_geoms, 0)
+        self.assertEqual(builder_usd.num_physical_geoms, 31)
+
+    def test_import_model_dr_legs_with_boxes(self):
+        """Test importing the `DR Legs` example model from a USD file"""
+        if self.EXAMPLES_USD_ASSETS_PATH is None:
+            self.skipTest("EXAMPLES_USD_ASSETS_PATH is `None` - skipping `DR Legs` import test.")
+        print("")  # Add a newline for better readability
+        usd_asset_filename = os.path.join(self.EXAMPLES_USD_ASSETS_PATH, "dr_legs/dr_legs_with_boxes.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
@@ -780,16 +786,18 @@ class TestOpenUSD(unittest.TestCase):
         self.assertEqual(builder_usd.num_collision_geoms, 3)
         self.assertEqual(builder_usd.num_physical_geoms, 0)
 
-    def test_import_model_walker_with_meshes(self):
-        """Test importing the Walker demo model from a USD file"""
+    def test_import_model_dr_legs_with_meshes_and_boxes(self):
+        """Test importing the `DR Legs` example model from a USD file"""
+        if self.EXAMPLES_USD_ASSETS_PATH is None:
+            self.skipTest("EXAMPLES_USD_ASSETS_PATH is `None` - skipping `DR Legs` import test.")
         print("")  # Add a newline for better readability
-        usd_asset_filename = os.path.join(EXAMPLES_USD_ASSETS_PATH, "walker/walker_floating_with_meshes.usda")
+        usd_asset_filename = os.path.join(self.EXAMPLES_USD_ASSETS_PATH, "dr_legs/dr_legs_with_meshes_and_boxes.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 31)
         self.assertEqual(builder_usd.num_joints, 36)
-        self.assertEqual(builder_usd.num_collision_geoms, 0)
+        self.assertEqual(builder_usd.num_collision_geoms, 3)
         self.assertEqual(builder_usd.num_physical_geoms, 31)
 
 

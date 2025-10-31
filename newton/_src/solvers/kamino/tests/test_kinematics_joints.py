@@ -205,7 +205,7 @@ class TestKinematicsJoints(unittest.TestCase):
 
     def test_02_multiple_revolute_joints(self):
         # Construct the model description using the ModelBuilder
-        builder, _, _ = make_homogeneous_builder(num_worlds=4, build_func=build_revolute_joint_test_system)
+        builder = make_homogeneous_builder(num_worlds=4, build_func=build_revolute_joint_test_system)
 
         # Create the model and state
         model = builder.finalize(device=self.default_device)

@@ -60,7 +60,7 @@ class TestGeometryCollisionDetector(unittest.TestCase):
 
     def test_01_update_collision_geometry_state(self):
         # Create and set up a model builder
-        builder, _, _ = make_homogeneous_builder(num_worlds=3, build_func=self.build_func)
+        builder = make_homogeneous_builder(num_worlds=3, build_func=self.build_func)
 
         # Finalize the model
         model = builder.finalize(self.default_device)
@@ -80,7 +80,7 @@ class TestGeometryCollisionDetector(unittest.TestCase):
 
     def test_02_nxn_broadphase(self):
         # Create and set up a model builder
-        builder, _, _ = make_homogeneous_builder(num_worlds=4, build_func=self.build_func)
+        builder = make_homogeneous_builder(num_worlds=4, build_func=self.build_func)
         num_worlds = builder.num_worlds
 
         # Finalize the model
@@ -130,7 +130,7 @@ class TestGeometryCollisionDetector(unittest.TestCase):
 
     def test_03_primitive_narrowphase(self):
         # Create and set up a model builder
-        builder, _, _ = make_homogeneous_builder(num_worlds=4, build_func=self.build_func)
+        builder = make_homogeneous_builder(num_worlds=4, build_func=self.build_func)
         num_worlds = builder.num_worlds
 
         # Finalize the model
@@ -174,7 +174,7 @@ class TestGeometryCollisionDetector(unittest.TestCase):
 
     def test_04_collision_detector(self):
         # Create and set up a model builder
-        builder, _, _ = make_homogeneous_builder(num_worlds=10, build_func=self.build_func)
+        builder = make_homogeneous_builder(num_worlds=10, build_func=self.build_func)
 
         # Finalize the model
         model = builder.finalize(self.default_device)

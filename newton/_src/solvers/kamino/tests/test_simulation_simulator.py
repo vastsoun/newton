@@ -46,8 +46,8 @@ class TestSimulator(unittest.TestCase):
         # Construct the model description using model builders for different systems
         # builder, num_bodies, num_jcts = make_single_builder(build_func=build_box_on_plane)
         # builder, num_bodies, num_jcts = make_single_builder(build_func=build_boxes_nunchaku)
-        # builder, _, _ = make_homogeneous_builder(num_worlds=num_worlds, build_func=build_box_on_plane)
-        # builder, _, _ = make_homogeneous_builder(num_worlds=num_worlds, build_func=build_boxes_nunchaku)
+        # builder = make_homogeneous_builder(num_worlds=num_worlds, build_func=build_box_on_plane)
+        # builder = make_homogeneous_builder(num_worlds=num_worlds, build_func=build_boxes_nunchaku)
         builder, num_bodies, num_jcts = make_heterogeneous_builder()
 
         # Create a simulator

@@ -15,7 +15,6 @@
 
 import argparse
 import os
-import time
 
 import numpy as np
 import warp as wp
@@ -25,10 +24,13 @@ import newton
 import newton._src.solvers.kamino.utils.logger as msg
 import newton.examples
 from newton._src.solvers.kamino.core.builder import ModelBuilder
-from newton._src.solvers.kamino.models import get_examples_usd_assets_path
+from newton._src.solvers.kamino.core.types import float32
+from newton._src.solvers.kamino.examples import run_headless
+from newton._src.solvers.kamino.models import get_basics_usd_assets_path
+from newton._src.solvers.kamino.models.builders import build_boxes_hinged
+from newton._src.solvers.kamino.models.utils import make_homogeneous_builder
 from newton._src.solvers.kamino.simulation.simulator import Simulator, SimulatorSettings
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
-from newton._src.solvers.kamino.utils.print import print_progress_bar
 from newton._src.solvers.kamino.viewer import ViewerKamino
 
 ###
@@ -39,11 +41,53 @@ wp.set_module_options({"enable_backward": False})
 
 
 ###
-# Constants
+# Kernels
 ###
 
-# Set the path to the external USD assets
-USD_MODEL_PATH = os.path.join(get_examples_usd_assets_path(), "testmechanism/testmechanism_alljoints_v2.usda")
+
+@wp.kernel
+def _control_callback(
+    state_t: wp.array(dtype=float32),
+    control_tau_j: wp.array(dtype=float32),
+):
+    """
+    An example control callback kernel.
+    """
+    # Set world index
+    wid = int(0)
+    jid = int(0)
+
+    # Define the time window for the active external force profile
+    t_start = float32(2.0)
+    t_end = float32(2.5)
+
+    # Get the current time
+    t = state_t[wid]
+
+    # Apply a time-dependent external force
+    if t > t_start and t < t_end:
+        control_tau_j[jid] = -3.0
+    else:
+        control_tau_j[jid] = 0.0
+
+
+###
+# Launchers
+###
+
+
+def control_callback(sim: Simulator):
+    """
+    A control callback function
+    """
+    wp.launch(
+        _control_callback,
+        dim=1,
+        inputs=[
+            sim.data.solver.time.time,
+            sim.data.control_n.tau_j,
+        ],
+    )
 
 
 ###
@@ -52,14 +96,21 @@ USD_MODEL_PATH = os.path.join(get_examples_usd_assets_path(), "testmechanism/tes
 
 
 class Example:
-    """ViewerGL example class for testmechanism simulation."""
-
-    def __init__(self, device: Devicelike, use_cuda_graph=False, headless: bool = False):
+    def __init__(
+        self,
+        device: Devicelike,
+        num_worlds: int,
+        max_steps: int = 1000,
+        use_cuda_graph: bool = False,
+        load_from_usd: bool = False,
+        headless: bool = False,
+    ):
         # Initialize target frames per second and corresponding time-steps
         self.fps = 60
         self.frame_dt = 1.0 / self.fps
         self.sim_dt = 0.001
         self.sim_substeps = int(self.frame_dt / self.sim_dt)
+        self.max_steps = max_steps
 
         # Initialize internal time-keeping
         self.sim_time = 0.0
@@ -69,29 +120,32 @@ class Example:
         self.device = device
         self.use_cuda_graph: bool = use_cuda_graph
 
-        # Create a single-instance system (always load from USD for testmechanism)
-        msg.info("Constructing builder from imported USD ...")
-        importer = USDImporter()
-        self.builder: ModelBuilder = importer.import_from(source=USD_MODEL_PATH)
-        msg.warning("total mass: %f", self.builder.world.mass_total)
-        msg.warning("total diag inertia: %f", self.builder.world.inertia_total)
+        # Construct model builder
+        if load_from_usd:
+            msg.info("Constructing builder from imported USD ...")
+            USD_MODEL_PATH = os.path.join(get_basics_usd_assets_path(), "boxes_hinged.usda")
+            importer = USDImporter()
+            self.builder: ModelBuilder = importer.import_from(source=USD_MODEL_PATH, load_static_geometry=True)
+        else:
+            msg.info("Constructing builder using model generator ...")
+            self.builder: ModelBuilder = make_homogeneous_builder(num_worlds=num_worlds, build_func=build_boxes_hinged)
 
         # Set gravity
         self.builder.gravity.enabled = True
 
         # Set solver settings
         settings = SimulatorSettings()
-        settings.dt = self.sim_dt
-        settings.problem.alpha = 0.1
+        settings.dt = 0.001
         settings.solver.primal_tolerance = 1e-6
         settings.solver.dual_tolerance = 1e-6
         settings.solver.compl_tolerance = 1e-6
         settings.solver.max_iterations = 200
-        settings.solver.rho_0 = 0.1
+        settings.solver.rho_0 = 1.0
 
         # Create a simulator
         msg.info("Building the simulator...")
         self.sim = Simulator(builder=self.builder, settings=settings, device=device)
+        self.sim.set_control_callback(control_callback)
 
         # Initialize the viewer
         if not headless:
@@ -176,30 +230,16 @@ class Example:
 
 
 ###
-# Execution functions
-###
-
-
-def run_headless(example: Example, num_steps: int = 25000, progress: bool = True):
-    """Run the simulation in headless mode for a fixed number of steps."""
-    msg.info(f"Running for {num_steps} steps...")
-    start_time = time.time()
-    for i in range(num_steps):
-        example.step_once()
-        wp.synchronize()
-        if progress:
-            print_progress_bar(i + 1, num_steps, start_time, prefix="Progress", suffix="")
-
-
-###
 # Main function
 ###
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="TestMechanism simulation example")
-    parser.add_argument("--headless", action="store_true", default=False, help="Run in headless mode")
+    parser = argparse.ArgumentParser(description="Boxes-Hinged simulation example")
+    parser.add_argument("--num-worlds", type=int, default=1, help="Number of worlds to simulate in parallel")
     parser.add_argument("--num-steps", type=int, default=1000, help="Number of steps for headless mode")
+    parser.add_argument("--load-from-usd", action="store_true", default=True, help="Load model from USD file")
+    parser.add_argument("--headless", action="store_true", default=False, help="Run in headless mode")
     parser.add_argument("--device", type=str, help="The compute device to use")
     parser.add_argument("--cuda-graph", action="store_true", default=True, help="Use CUDA graphs")
     parser.add_argument("--clear-cache", action="store_true", default=False, help="Clear warp cache")
@@ -207,7 +247,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Set global numpy configurations
-    np.set_printoptions(linewidth=20000, precision=6, threshold=10000, suppress=True)  # Suppress scientific notation
+    np.set_printoptions(linewidth=20000, precision=10, threshold=10000, suppress=True)
 
     # Clear warp cache if requested
     if args.clear_cache:
@@ -232,25 +272,29 @@ if __name__ == "__main__":
     msg.info(f"use_cuda_graph: {use_cuda_graph}")
     msg.info(f"device: {device}")
 
+    # Create example instance
+    example = Example(
+        device=device,
+        use_cuda_graph=use_cuda_graph,
+        load_from_usd=args.load_from_usd,
+        num_worlds=args.num_worlds,
+        max_steps=args.num_steps,
+        headless=args.headless,
+    )
+
     # Run a brute-force similation loop if headless
     if args.headless:
         msg.info("Running in headless mode...")
-        example = Example(device=device, use_cuda_graph=use_cuda_graph, headless=True)
-        run_headless(example, num_steps=args.num_steps, progress=True)
+        run_headless(example, progress=True)
 
-    # Otherwise launch using a Newton viewer
+    # Otherwise launch using a debug viewer
     else:
         msg.info("Running in Viewer mode...")
-
-        # Create and run example
-        example = Example(device=device, use_cuda_graph=use_cuda_graph, headless=False)
-
-        # Set initial camera position for better view of the testmechanism
+        # Set initial camera position for better view of the system
         if hasattr(example.viewer, "set_camera"):
-            # Position camera to get a good view of the testmechanism
-            camera_pos = wp.vec3(0.2, 0.2, 0.15)
-            pitch = -20.0
-            yaw = 215.0
+            camera_pos = wp.vec3(0.5, -1.5, 0.8)
+            pitch = -15.0
+            yaw = 90.0
             example.viewer.set_camera(camera_pos, pitch, yaw)
 
         # Launch the example using Newton's built-in runtime

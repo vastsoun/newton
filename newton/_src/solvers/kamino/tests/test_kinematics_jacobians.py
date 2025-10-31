@@ -468,7 +468,7 @@ class TestKinematicsJacobians(unittest.TestCase):
         max_world_contacts = 12
 
         # Construct the model description using the ModelBuilder
-        builder, _, _ = make_homogeneous_builder(num_worlds=num_worlds, build_func=build_boxes_fourbar)
+        builder = make_homogeneous_builder(num_worlds=num_worlds, build_func=build_boxes_fourbar)
 
         # Create the model from the builder
         model = builder.finalize(device=self.default_device)
@@ -754,7 +754,7 @@ class TestKinematicsJacobians(unittest.TestCase):
         max_world_contacts = 12
 
         # Construct the model description using the ModelBuilder
-        builder, _, _ = make_homogeneous_builder(num_worlds=num_worlds, build_func=build_boxes_fourbar)
+        builder = make_homogeneous_builder(num_worlds=num_worlds, build_func=build_boxes_fourbar)
 
         # Create the model from the builder
         model = builder.finalize(device=self.default_device)

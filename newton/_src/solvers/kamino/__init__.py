@@ -147,8 +147,6 @@ from .solvers import (
     PADMMSolver,
 )
 from .utils.io import hdf5, usd
-from .utils.print import printmatrix, printvector
-from .utils.sparse import sparseview
 
 ###
 # Package interface
@@ -251,9 +249,6 @@ __all__ = [
     "mat65f",
     "mat66f",
     "math",
-    "printmatrix",
-    "printvector",
-    "sparseview",
     "transformf",
     "uint8",
     "uint16",

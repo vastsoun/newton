@@ -120,7 +120,7 @@ class TestKinematicsConstraints(unittest.TestCase):
         max_world_contacts = 20
 
         # Construct the model description using the ModelBuilder
-        builder, _, _ = make_homogeneous_builder(num_worlds=10, build_func=build_boxes_fourbar)
+        builder = make_homogeneous_builder(num_worlds=10, build_func=build_boxes_fourbar)
         num_worlds = builder.num_worlds
 
         # Create the model from the builder

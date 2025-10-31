@@ -442,7 +442,8 @@ class USDImporter:
             body_xform = wp.mul(distance_unit * offset_xform, body_xform)
 
         # Retrieve the linear and angular velocities
-        # NOTE: They are transformed to world coordinates since the RigidBodyAPI specifies them in local body coordinates
+        # NOTE: They are transformed to world coordinates since the
+        # RigidBodyAPI specifies them in local body coordinates
         v_i = wp.transform_vector(body_xform, distance_unit * vec3f(rigid_body_spec.linearVelocity))
         omega_i = wp.transform_vector(body_xform, rotation_unit * vec3f(rigid_body_spec.angularVelocity))
         msg.debug(f"body_xform: {body_xform}")
@@ -453,13 +454,21 @@ class USDImporter:
         # PhysicsMassAPI
         ###
 
+        # Define specialized unit scales
+        inertia_unit = mass_unit * distance_unit * distance_unit
+
+        # Define default values for mass properties
+        # TODO: What are better defaults?
+        m_i_default = 0.0
+        i_r_com_i_default = np.zeros(3, dtype=np.float32)
+        i_I_i_default = np.zeros((3, 3), dtype=np.float32)
+        i_q_i_pa_default = np.array([0.0, 0.0, 0.0, 1.0], dtype=np.float32)
+
         # Extract the mass, center of mass, diagonal inertia, and principal axes from the prim
-        m_i = mass_unit * self._parse_float(rigid_body_prim, "physics:mass")
-        i_r_com_i = distance_unit * self._parse_vec(rigid_body_prim, "physics:centerOfMass")
-        i_I_i_diag = (
-            mass_unit * distance_unit * distance_unit * self._parse_vec(rigid_body_prim, "physics:diagonalInertia")
-        )
-        i_q_i_pa = self._parse_quat(rigid_body_prim, "physics:principalAxes")
+        m_i = mass_unit * self._parse_float(rigid_body_prim, "physics:mass", default=m_i_default)
+        i_r_com_i = distance_unit * self._parse_vec(rigid_body_prim, "physics:centerOfMass", default=i_r_com_i_default)
+        i_I_i_diag = inertia_unit * self._parse_vec(rigid_body_prim, "physics:diagonalInertia", default=i_I_i_default)
+        i_q_i_pa = self._parse_quat(rigid_body_prim, "physics:principalAxes", default=i_q_i_pa_default)
         msg.debug(f"m_i: {m_i}")
         msg.debug(f"i_r_com_i: {i_r_com_i}")
         msg.debug(f"i_I_i_diag: {i_I_i_diag}")

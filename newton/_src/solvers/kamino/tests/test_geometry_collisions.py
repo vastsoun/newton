@@ -86,7 +86,7 @@ class TestGeometryCollisions(unittest.TestCase):
 
     def test_02_make_model_collision_pairs_multiple_world(self):
         # Create and set up a model builder
-        builder, _, _ = make_homogeneous_builder(num_worlds=3, build_func=self.build_func)
+        builder = make_homogeneous_builder(num_worlds=3, build_func=self.build_func)
         num_worlds = builder.num_worlds
 
         # Calculate the maximum number of geometry pairs
@@ -115,7 +115,7 @@ class TestGeometryCollisions(unittest.TestCase):
 
     def test_03_create_collisions_container(self):
         # Create and set up a model builder
-        builder, _, _ = make_homogeneous_builder(num_worlds=3, build_func=self.build_func)
+        builder = make_homogeneous_builder(num_worlds=3, build_func=self.build_func)
         num_worlds = builder.num_worlds
 
         # Calculate the maximum number of geometry pairs

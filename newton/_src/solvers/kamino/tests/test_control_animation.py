@@ -58,12 +58,16 @@ class TestAnimationJointReference(unittest.TestCase):
         self.assertEqual(animation.device, None)
         self.assertEqual(animation._data, None)
 
-    def test_01_make_with_walker_numpy_data(self):
-        # Set paths to Walker model and animation data
-        USD_MODEL_PATH = os.path.join(get_examples_usd_assets_path(), "walker/walker_floating_with_boxes.usda")
-        NUMPY_ANIMATION_PATH = os.path.join(get_examples_usd_assets_path(), "walker/walker_animation_100fps.npy")
+    def test_01_make_with_numpy_data(self):
+        EXAMPLES_USD_ASSETS_PATH = get_examples_usd_assets_path()
+        if EXAMPLES_USD_ASSETS_PATH is None:
+            self.skipTest("EXAMPLES_USD_ASSETS_PATH is `None` - skipping `DR Legs` import test.")
 
-        # Import USD model of Walker
+        # Set paths to model and animation data
+        USD_MODEL_PATH = os.path.join(EXAMPLES_USD_ASSETS_PATH, "dr_legs/dr_legs_with_boxes.usda")
+        NUMPY_ANIMATION_PATH = os.path.join(EXAMPLES_USD_ASSETS_PATH, "dr_legs/dr_legs_animation_100fps.npy")
+
+        # Import USD model of DR Legs
         importer = USDImporter()
         builder: ModelBuilder = importer.import_from(source=USD_MODEL_PATH)
         model = builder.finalize(device=self.default_device)
@@ -160,12 +164,16 @@ class TestAnimationJointReference(unittest.TestCase):
             np.testing.assert_array_almost_equal(q_j_ref_out.numpy(), animation_np[expected_step, :], decimal=6)
             np.testing.assert_array_almost_equal(dq_j_ref_out.numpy(), np.zeros(njad, dtype=np.float32), decimal=6)
 
-    def test_02_make_with_walker_numpy_data_and_decimation(self):
-        # Set paths to Walker model and animation data
-        USD_MODEL_PATH = os.path.join(get_examples_usd_assets_path(), "walker/walker_floating_with_boxes.usda")
-        NUMPY_ANIMATION_PATH = os.path.join(get_examples_usd_assets_path(), "walker/walker_animation_100fps.npy")
+    def test_02_make_with_numpy_data_and_decimation(self):
+        EXAMPLES_USD_ASSETS_PATH = get_examples_usd_assets_path()
+        if EXAMPLES_USD_ASSETS_PATH is None:
+            self.skipTest("EXAMPLES_USD_ASSETS_PATH is `None` - skipping `DR Legs` import test.")
 
-        # Import USD model of Walker
+        # Set paths to model and animation data
+        USD_MODEL_PATH = os.path.join(EXAMPLES_USD_ASSETS_PATH, "dr_legs/dr_legs_with_boxes.usda")
+        NUMPY_ANIMATION_PATH = os.path.join(EXAMPLES_USD_ASSETS_PATH, "dr_legs/dr_legs_animation_100fps.npy")
+
+        # Import USD model of DR Legs
         importer = USDImporter()
         builder: ModelBuilder = importer.import_from(source=USD_MODEL_PATH)
         model = builder.finalize(device=self.default_device)
@@ -300,12 +308,15 @@ class TestAnimationJointReference(unittest.TestCase):
             np.testing.assert_array_almost_equal(q_j_ref_out.numpy(), animation_np[expected, :], decimal=6)
             np.testing.assert_array_almost_equal(dq_j_ref_out.numpy(), np.zeros(njad, dtype=np.float32), decimal=6)
 
-    def test_03_make_with_walker_numpy_data_and_decimation_plus_rate(self):
-        # Set paths to Walker model and animation data
-        USD_MODEL_PATH = os.path.join(get_examples_usd_assets_path(), "walker/walker_floating_with_boxes.usda")
-        NUMPY_ANIMATION_PATH = os.path.join(get_examples_usd_assets_path(), "walker/walker_animation_100fps.npy")
+    def test_03_make_with_numpy_data_and_decimation_plus_rate(self):
+        EXAMPLES_USD_ASSETS_PATH = get_examples_usd_assets_path()
+        if EXAMPLES_USD_ASSETS_PATH is None:
+            self.skipTest("EXAMPLES_USD_ASSETS_PATH is `None` - skipping `DR Legs` import test.")
+        # Set paths to DR Legs model and animation data
+        USD_MODEL_PATH = os.path.join(EXAMPLES_USD_ASSETS_PATH, "dr_legs/dr_legs_with_boxes.usda")
+        NUMPY_ANIMATION_PATH = os.path.join(EXAMPLES_USD_ASSETS_PATH, "dr_legs/dr_legs_animation_100fps.npy")
 
-        # Import USD model of Walker
+        # Import USD model of DR Legs
         importer = USDImporter()
         builder: ModelBuilder = importer.import_from(source=USD_MODEL_PATH)
         model = builder.finalize(device=self.default_device)
@@ -440,12 +451,15 @@ class TestAnimationJointReference(unittest.TestCase):
             np.testing.assert_array_almost_equal(q_j_ref_out.numpy(), animation_np[expected, :], decimal=6)
             np.testing.assert_array_almost_equal(dq_j_ref_out.numpy(), np.zeros(njad, dtype=np.float32), decimal=6)
 
-    def test_04_make_with_walker_numpy_data_and_decimation_plus_rate_no_looping(self):
-        # Set paths to Walker model and animation data
-        USD_MODEL_PATH = os.path.join(get_examples_usd_assets_path(), "walker/walker_floating_with_boxes.usda")
-        NUMPY_ANIMATION_PATH = os.path.join(get_examples_usd_assets_path(), "walker/walker_animation_100fps.npy")
+    def test_04_make_with_numpy_data_and_decimation_plus_rate_no_looping(self):
+        EXAMPLES_USD_ASSETS_PATH = get_examples_usd_assets_path()
+        if EXAMPLES_USD_ASSETS_PATH is None:
+            self.skipTest("EXAMPLES_USD_ASSETS_PATH is `None` - skipping `DR Legs` import test.")
+        # Set paths to DR Legs model and animation data
+        USD_MODEL_PATH = os.path.join(EXAMPLES_USD_ASSETS_PATH, "dr_legs/dr_legs_with_boxes.usda")
+        NUMPY_ANIMATION_PATH = os.path.join(EXAMPLES_USD_ASSETS_PATH, "dr_legs/dr_legs_animation_100fps.npy")
 
-        # Import USD model of Walker
+        # Import USD model of DR Legs
         importer = USDImporter()
         builder: ModelBuilder = importer.import_from(source=USD_MODEL_PATH)
         model = builder.finalize(device=self.default_device)

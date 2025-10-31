@@ -122,7 +122,7 @@ class TestModel(unittest.TestCase):
         num_worlds = 4
 
         # Create a model builder
-        builder, _, _ = make_homogeneous_builder(num_worlds=num_worlds, build_func=build_boxes_hinged)
+        builder = make_homogeneous_builder(num_worlds=num_worlds, build_func=build_boxes_hinged)
 
         # Finalize the model
         model: Model = builder.finalize(self.default_device)

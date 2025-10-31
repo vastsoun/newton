@@ -27,7 +27,7 @@ from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.core.types import float32
 from newton._src.solvers.kamino.examples import run_headless
 from newton._src.solvers.kamino.models import get_basics_usd_assets_path
-from newton._src.solvers.kamino.models.builders import add_ground_geom, build_boxes_fourbar
+from newton._src.solvers.kamino.models.builders import build_boxes_fourbar
 from newton._src.solvers.kamino.models.utils import make_homogeneous_builder
 from newton._src.solvers.kamino.simulation.simulator import Simulator, SimulatorSettings
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
@@ -129,9 +129,6 @@ class Example:
         else:
             msg.info("Constructing builder using model generator ...")
             self.builder: ModelBuilder = make_homogeneous_builder(num_worlds=num_worlds, build_func=build_boxes_fourbar)
-
-        # Add a static collision layer and geometry for the plane
-        add_ground_geom(self.builder)
 
         # Set gravity
         self.builder.gravity.enabled = True
@@ -294,9 +291,9 @@ if __name__ == "__main__":
         msg.info("Running in Viewer mode...")
         # Set initial camera position for better view of the system
         if hasattr(example.viewer, "set_camera"):
-            camera_pos = wp.vec3(0.161, -1.449, 0.303)
-            pitch = -8.5
-            yaw = -261.3
+            camera_pos = wp.vec3(-0.2, -0.5, 0.1)
+            pitch = -5.0
+            yaw = 70.0
             example.viewer.set_camera(camera_pos, pitch, yaw)
 
         # Launch the example using Newton's built-in runtime

@@ -1009,17 +1009,26 @@ class USDImporter:
         name = self._get_prim_name(geom_prim)
         uid = self._get_prim_uid(geom_prim)
         msg.debug(f"[Geom]: name: {name}")
-        msg.debug(f"[{name}]: uid: {uid}")
+        msg.debug(f"[Geom]: uid: {uid}")
+
+        # Retrieve the name and index of the rigid body associated with the geom
+        # NOTE: If a rigid body is not associated with the geom, the body index (bid) is
+        # set to `-1` indicating that the geom belongs to the world, i.e. it is a static
+        bid = body_index_map.get(str(geom_spec.rigidBody), -1)
+        body_name = str(geom_spec.rigidBody) if bid > -1 else None
+        msg.debug(f"[Geom]: body_name: {body_name}")
+        msg.debug(f"[Geom]: body_index: {bid}")
+
+        # Prefix the geom name with the body name if associated,
+        # otherwise use the full prim path
+        if body_name is not None:
+            name = body_name + "/" + name
+        else:
+            name = str(geom_prim.GetPath())
 
         ###
         # PhysicsGeom Common Properties
         ###
-
-        # Retrieve the body index of the rigid body associated with the geom
-        # NOTE: If a rigid body is not associated with the geom, the body index (bid) is
-        # set to `-1` indicating that the geom belongs to the world, i.e. it is a static
-        bid = body_index_map.get(str(geom_spec.rigidBody), -1)
-        msg.debug(f"[{name}]: bid: {bid}")
 
         # Extract the relative poses of the geom w.r.t the rigid body frame
         i_r_ig = distance_unit * vec3f(geom_spec.localPos)

@@ -15,7 +15,6 @@
 
 import argparse
 import os
-import time
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -28,12 +27,11 @@ import newton.examples
 from newton._src.solvers.kamino.control.animation import AnimationJointReference
 from newton._src.solvers.kamino.control.pid import JointSpacePIDController
 from newton._src.solvers.kamino.core.builder import ModelBuilder
-from newton._src.solvers.kamino.examples import get_examples_output_path
+from newton._src.solvers.kamino.examples import get_examples_output_path, run_headless
 from newton._src.solvers.kamino.models import get_examples_usd_assets_path
 from newton._src.solvers.kamino.models.builders import add_ground_geom, offset_builder
 from newton._src.solvers.kamino.simulation.simulator import Simulator, SimulatorSettings
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
-from newton._src.solvers.kamino.utils.print import print_progress_bar
 from newton._src.solvers.kamino.viewer import ViewerKamino
 
 ###
@@ -349,22 +347,6 @@ class Example:
 
             # Close the current figure to free memory
             plt.close()
-
-
-###
-# Execution functions
-###
-
-
-def run_headless(example: Example, progress: bool = True):
-    """Run the simulation in headless mode for a fixed number of steps."""
-    msg.info(f"Running for {example.max_steps} steps...")
-    start_time = time.time()
-    for i in range(example.max_steps):
-        example.step_once()
-        wp.synchronize()
-        if progress:
-            print_progress_bar(i + 1, example.max_steps, start_time, prefix="Progress", suffix="")
 
 
 ###

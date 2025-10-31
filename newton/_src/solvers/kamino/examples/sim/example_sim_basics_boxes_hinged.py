@@ -15,7 +15,6 @@
 
 import argparse
 import os
-import time
 
 import numpy as np
 import warp as wp
@@ -26,12 +25,12 @@ import newton._src.solvers.kamino.utils.logger as msg
 import newton.examples
 from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.core.types import float32
+from newton._src.solvers.kamino.examples import run_headless
 from newton._src.solvers.kamino.models import get_basics_usd_assets_path
 from newton._src.solvers.kamino.models.builders import build_boxes_hinged
 from newton._src.solvers.kamino.models.utils import make_homogeneous_builder
 from newton._src.solvers.kamino.simulation.simulator import Simulator, SimulatorSettings
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
-from newton._src.solvers.kamino.utils.print import print_progress_bar
 from newton._src.solvers.kamino.viewer import ViewerKamino
 
 ###
@@ -228,22 +227,6 @@ class Example:
     def test(self):
         """Test function for compatibility."""
         pass
-
-
-###
-# Execution functions
-###
-
-
-def run_headless(example: Example, progress: bool = True):
-    """Run the simulation in headless mode for a fixed number of steps."""
-    msg.info(f"Running for {example.max_steps} steps...")
-    start_time = time.time()
-    for i in range(example.max_steps):
-        example.step_once()
-        wp.synchronize()
-        if progress:
-            print_progress_bar(i + 1, example.max_steps, start_time, prefix="Progress", suffix="")
 
 
 ###

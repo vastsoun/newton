@@ -15,7 +15,6 @@
 
 import argparse
 import os
-import time
 
 import numpy as np
 import warp as wp
@@ -25,10 +24,10 @@ import newton
 import newton._src.solvers.kamino.utils.logger as msg
 import newton.examples
 from newton._src.solvers.kamino.core.builder import ModelBuilder
+from newton._src.solvers.kamino.examples import run_headless
 from newton._src.solvers.kamino.models import get_examples_usd_assets_path
 from newton._src.solvers.kamino.simulation.simulator import Simulator, SimulatorSettings
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
-from newton._src.solvers.kamino.utils.print import print_progress_bar
 from newton._src.solvers.kamino.viewer import ViewerKamino
 
 ###
@@ -76,7 +75,7 @@ class Example:
         USD_MODEL_PATH = os.path.join(EXAMPLE_ASSETS_PATH, "dr_testmech/dr_testmech.usda")
 
         # Create a single-instance system (always load from USD for testmechanism)
-        msg.info("Constructing builder from imported USD ...")
+        msg.notif("Constructing builder from imported USD ...")
         importer = USDImporter()
         self.builder: ModelBuilder = importer.import_from(source=USD_MODEL_PATH)
         msg.warning("total mass: %f", self.builder.world.mass_total)
@@ -96,7 +95,7 @@ class Example:
         settings.solver.rho_0 = 0.1
 
         # Create a simulator
-        msg.info("Building the simulator...")
+        msg.notif("Building the simulator...")
         self.sim = Simulator(builder=self.builder, settings=settings, device=device)
 
         # Initialize the viewer
@@ -119,7 +118,7 @@ class Example:
 
         # Warm-start the simulator before rendering
         # NOTE: This compiles and loads the warp kernels prior to execution
-        msg.info("Warming up simulator...")
+        msg.notif("Warming up simulator...")
         self.step_once()
         self.reset()
 
@@ -179,22 +178,6 @@ class Example:
     def test(self):
         """Test function for compatibility."""
         pass
-
-
-###
-# Execution functions
-###
-
-
-def run_headless(example: Example, progress: bool = True):
-    """Run the simulation in headless mode for a fixed number of steps."""
-    msg.info(f"Running for {example.max_steps} steps...")
-    start_time = time.time()
-    for i in range(example.max_steps):
-        example.step_once()
-        wp.synchronize()
-        if progress:
-            print_progress_bar(i + 1, example.max_steps, start_time, prefix="Progress", suffix="")
 
 
 ###

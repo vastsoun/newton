@@ -365,7 +365,7 @@ class Simulator:
         return self._data
 
     ###
-    # Callbacks
+    # Configurations - Callbacks
     ###
 
     def set_reset_callback(self, callback: Callable[[Simulator], None]):
@@ -403,62 +403,103 @@ class Simulator:
         self._post_step_cb = callback
 
     ###
-    # Internals
+    # Operations
     ###
 
-    def _reset_time(self):
+    def reset(self):
         """
-        Resets the time and step count of the simulation.
+        Resets the simulation to the initial state defined in the model.
         """
-        self._time = 0.0
-        self._steps = 0
-        self._data.solver.time.zero()
+        self._reset_all_worlds_to_initial_state()
 
-    def _reset_bodies(self):
+    def reset_state(self, state: State, worlds: wp.array = None, use_constraint_forces: bool = False):
         """
-        Resets the state of all bodies to the initial states defined in the model.
+        Resets the simulation to a specific state.
+
+        Args:
+            state (State): The state to reset the simulation to.
+            worlds (wp.array, optional): An optional array of per-world reset flags.
+                If provided, only the worlds with active reset flags will be reset.
+            use_constraint_forces (bool): If True, also copies joint constraint forces
+                from the provided state in order to warm-start the constraint solver.
         """
-        # First set the active body states to the initial states defined in the model
-        wp.copy(self._data.solver.bodies.q_i, self._model.bodies.q_i_0)
-        wp.copy(self._data.solver.bodies.u_i, self._model.bodies.u_i_0)
+        if worlds is None:
+            self._reset_all_worlds_from_state(state, use_constraint_forces)
+        else:
+            self._reset_select_worlds_from_state(state, worlds, use_constraint_forces)
 
-        # Then update the in-world-frame body inertias from the body states
-        update_body_inertias(model=self._model.bodies, data=self._data.solver.bodies)
-
-        # Finally, clear all body wrenches by setting them to zero
-        self._data.solver.bodies.clear_all_wrenches()
-
-    def _reset_joints(self):
+    def reset_base_and_joints(
+        self, base_q: wp.array, base_u: wp.array, joint_q: wp.array, joint_dq: wp.array, worlds: wp.array = None
+    ):
         """
-        Resets the state of all joints according to the initial state of the bodies.
+        Resets the simulation to the given state.
+
+        Args:
+            base_q (wp.array): Array of base body poses.\n
+                Expects shape of ``(num_worlds,)`` and type :class:`transform`.
+            base_u (wp.array): Array of base body twists.\n
+                Expects shape of ``(num_worlds,)`` and type :class:`vec6`.
+            joint_q (wp.array): Array of joint coordinates.\n
+                Expects shape of ``(sum_of_num_joint_coords,)`` and type :class:`float`.
+            joint_dq (wp.array): Array of joint velocities.\n
+                Expects shape of ``(sum_of_num_joint_dofs,)`` and type :class:`float`.
+            worlds (wp.array, optional): An optional array of per-world reset flags.\n
+                If provided, only the worlds with active reset flags will be reset.\n
+                Expects shape of ``(num_worlds,)`` and type :class:`int`.
         """
-        # First clear all joint states (i.e. generalized coordinates and velocities) to zeros
-        # NOTE: We do this so that the previous state is always zeroed out on reset. This is
-        # necessary as the `compute_joints_state()` operation will use the previous joint state
-        # to detect roll-over for rotational coordinates/DoFs.
-        self._data.solver.joints.clear_state()
+        raise NotImplementedError("Simulator.reset_base_and_joints() is not yet implemented.")
 
-        # Then compute the initial joint states based on the body states
-        compute_joints_state(model=self._model, q_j_p=self._data.solver.joints.q_j, data=self._data.solver)
-
-        # Finally, clear all joint constraint reactions,
-        # actuation forces, and wrenches, setting them to zero
-        self._data.solver.joints.clear_constraint_reactions()
-        self._data.solver.joints.clear_actuation_forces()
-        self._data.solver.joints.clear_wrenches()
-
-    def _reset_states_and_controls(self):
+    def step(self):
         """
-        Resets all state and control data to match the internal solver state.
+        Advances the simulation by a single time-step.
         """
-        # First clear the next-step control inputs so they correctly propagate to the previous-step
-        self._data.control_n.tau_j.zero_()
+        # Run the control callback if it has been set
+        self._run_control_callback()
 
-        # Then update the next-step state from the internal solver state
-        self._data.update_next()
+        # Compute the body actuation wrenches based on the current control inputs
+        self._update_actuation_wrenches()
 
-        # Finally, update the previous-step state and control from the next-step values
-        self._data.update_previous()
+        # Run limit detection to generate active joint limits
+        self._check_limits()
+
+        # Run collision detection to generate for active contacts
+        self._collide()
+
+        # Update the constraint state info
+        self._update_constraint_info()
+
+        # Run the pre-step callback if it has been set
+        self._run_prestep_callback()
+
+        # Solve the forward dynamics sub-problem to compute constraint reactions and body wrenches
+        self._forward()
+
+        # Run the mid-step callback if it has been set
+        self._run_midstep_callback()
+
+        # Solve the time integration sub-problem to compute the next state of the system
+        self._integrate()
+
+        # Run the post-step callback if it has been set
+        self._run_poststep_callback()
+
+        # Update time-keeping (i.e. physical time and discrete steps)
+        self._advance_time()
+
+    def sync_host(self):
+        """
+        Updates the host-side data with the in-device data.
+        """
+        # Construct the host data if it does not exist
+        if self._host is None:
+            self._host = SimulatorData(model=self._model, device="cpu")
+        # Update the host data from the device data
+        # TODO: Implement the host data update
+        # self._host.solver = self._data.solver
+
+    ###
+    # Internals - Callback Operations
+    ###
 
     def _run_reset_callback(self):
         """
@@ -473,7 +514,12 @@ class Simulator:
         """
         if self._control_cb is not None:
             self._control_cb(self)
-            wp.copy(self._data.solver.joints.tau_j, self._data.control_n.tau_j)
+
+        # Copy the control torques to the solver state
+        # NOTE: This is always necessary in order to propagate the control
+        # inputs to the internal solver state regardless of whether they
+        # will be set via the callback or explicitly by the user.
+        wp.copy(self._data.solver.joints.tau_j, self._data.control_n.tau_j)
 
     def _run_prestep_callback(self):
         """
@@ -495,6 +541,163 @@ class Simulator:
         """
         if self._post_step_cb is not None:
             self._post_step_cb(self)
+
+    ###
+    # Internals - Reset Operations
+    ###
+
+    def _reset_time(self):
+        """
+        Resets the time and step count of the simulation.
+        """
+        self._time = 0.0
+        self._steps = 0
+        self._data.solver.time.zero()
+
+    def _reset_bodies_to_model_initial_state(self):
+        """
+        Resets the state of all bodies to the initial states defined in the model.
+        """
+        wp.copy(self._data.solver.bodies.q_i, self._model.bodies.q_i_0)
+        wp.copy(self._data.solver.bodies.u_i, self._model.bodies.u_i_0)
+
+    def _reset_bodies_data(self):
+        """
+        Resets the state of all bodies to the initial states defined in the model.
+        """
+        # Update the in-world-frame body inertias from the body states
+        update_body_inertias(model=self._model.bodies, data=self._data.solver.bodies)
+
+        # Clear all body wrenches by setting them to zero
+        self._data.solver.bodies.clear_all_wrenches()
+
+    def _reset_bodies(self):
+        """
+        Resets the state of all bodies to the initial states defined in the model.
+        """
+        # First set the active body states to the initial states defined in the model
+        self._reset_bodies_to_model_initial_state()
+
+        # Then reset all internal body data (i.e. inertias, wrenches etc)
+        self._reset_bodies_data()
+
+    def _reset_joints(self, reset_constraint_forces: bool = True):
+        """
+        Resets the state of all joints according to the initial state of the bodies.
+
+        Args:
+            reset_constraint_forces (bool): If True, also clears all joint constraint reactions,
+        """
+        # First clear all joint states (i.e. generalized coordinates and velocities) to zeros
+        # NOTE: We do this so that the previous state is always zeroed out on reset. This is
+        # necessary as the `compute_joints_state()` operation will use the previous joint state
+        # to detect roll-over for rotational coordinates/DoFs.
+        self._data.solver.joints.clear_state()
+
+        # Then compute the initial joint states based on the body states
+        compute_joints_state(model=self._model, q_j_p=self._data.solver.joints.q_j, data=self._data.solver)
+
+        # Finally, clear all joint constraint reactions,
+        # actuation forces, and wrenches, setting them to zero
+        if reset_constraint_forces:
+            self._data.solver.joints.clear_constraint_reactions()
+        self._data.solver.joints.clear_actuation_forces()
+        self._data.solver.joints.clear_wrenches()
+
+    def _reset_states_and_controls(self):
+        """
+        Resets all state and control data to match the internal solver state.
+        """
+        # First clear the next-step control inputs so they correctly propagate to the previous-step
+        self._data.control_n.tau_j.zero_()
+
+        # Then update the next-step state from the internal solver state
+        self._data.update_next()
+
+        # Finally, update the previous-step state and control from the next-step values
+        self._data.update_previous()
+
+    def _reset_all_worlds_to_initial_state(self):
+        """
+        Resets the simulation to the initial state defined in the model.
+        """
+        # Reset the time and step count
+        self._reset_time()
+
+        # First reset the states of all bodies
+        self._reset_bodies()
+
+        # Then reset the state of all joints
+        self._reset_joints()
+
+        # Finally, reset all state and control
+        # data to match the internal solver state
+        self._reset_states_and_controls()
+
+        # Update the kinematics
+        # NOTE: This constructs the system Jacobians, which ensures
+        # that control action can be applied on the first call to `step()`
+        self._forward_kinematics()
+
+        # Run the reset callback if it has been set
+        self._run_reset_callback()
+
+    def _reset_all_worlds_from_state(self, state: State, use_constraint_forces: bool = False):
+        """
+        Resets the simulation to a specific state.
+
+        Args:
+            state (State): The state to reset the simulation to.
+            use_constraint_forces (bool): If True, also copies joint constraint forces
+                from the provided state in order to warm-start the constraint solver.
+        """
+        # Reset the time and step count
+        self._reset_time()
+
+        # Copy the specified state into the internal solver state for bodies
+        wp.copy(self._data.solver.bodies.q_i, state.q_i)
+        wp.copy(self._data.solver.bodies.u_i, state.u_i)
+
+        # Then reset all internal body data (i.e. inertias, wrenches etc)
+        self._reset_bodies_data()
+
+        # Then reset the state of all joints
+        self._reset_joints(reset_constraint_forces=not use_constraint_forces)
+
+        # Optionally also copy joint constraint forces
+        # NOTE: Used to warm-start the constraint solver
+        if use_constraint_forces:
+            wp.copy(self._data.solver.joints.lambda_j, state.lambda_j)
+
+        # Finally, reset all state and control
+        # data to match the internal solver state
+        self._reset_states_and_controls()
+
+        # Update the kinematics
+        # NOTE: This constructs the system Jacobians, which ensures
+        # that control action can be applied on the first call to `step()`
+        self._forward_kinematics()
+
+        # Run the reset callback if it has been set
+        self._run_reset_callback()
+
+    def _reset_select_worlds_from_state(
+        self, state: State, worlds: wp.array = None, use_constraint_forces: bool = False
+    ):
+        """
+        Resets the simulation to a specific state.
+
+        Args:
+            state (State): The state to reset the simulation to.
+            worlds (wp.array): Array of per-world reset flags.
+            use_constraint_forces (bool): If True, also copies joint constraint forces
+                from the provided state in order to warm-start the constraint solver.
+        """
+        raise NotImplementedError("Simulator._reset_select_worlds_from_state() is not yet implemented.")
+
+    ###
+    # Internals - Update Operations
+    ###
 
     def _update_actuation_wrenches(self):
         """
@@ -628,111 +831,15 @@ class Simulator:
         self._time += self._settings.dt
         advance_time(self._model.time, self._data.solver.time)
 
-    ###
-    # Front-end Operations
-    ###
 
-    def reset(self):
-        """
-        Resets the simulation to the initial state defined in the model.
-        """
-        # Reset the time and step count
-        self._reset_time()
+###
+# Functions
+###
 
-        # First reset the states of all bodies
-        self._reset_bodies()
+###
+# Kernels
+###
 
-        # Then reset the state of all joints
-        self._reset_joints()
-
-        # Finally, reset all state and control
-        # data to match the internal solver state
-        self._reset_states_and_controls()
-
-        # Update the kinematics
-        # NOTE: This constructs the system Jacobians, which ensures
-        # that control action can be applied on the first call to `step()`
-        self._forward_kinematics()
-
-        # Run the reset callback if it has been set
-        self._run_reset_callback()
-
-    def reset_state(self, state: State, worlds: wp.array = None):
-        """
-        Resets the simulation to a specific state.
-
-        Args:
-            state (State): The state to reset the simulation to.
-            worlds (wp.array, optional): An optional array of per-world reset flags.
-                If provided, only the worlds with active reset flags will be reset.
-        """
-        raise NotImplementedError("Simulator.reset_to() is not yet implemented.")
-
-    def reset_base_and_joints(
-        self, base_q: wp.array, base_u: wp.array, joint_q: wp.array, joint_dq: wp.array, worlds: wp.array = None
-    ):
-        """
-        Resets the simulation to the given state.
-
-        Args:
-            base_q (wp.array): Array of base body poses.\n
-                Expects shape of ``(num_worlds,)`` and type :class:`transform`.
-            base_u (wp.array): Array of base body twists.\n
-                Expects shape of ``(num_worlds,)`` and type :class:`vec6`.
-            joint_q (wp.array): Array of joint coordinates.\n
-                Expects shape of ``(sum_of_num_joint_coords,)`` and type :class:`float`.
-            joint_dq (wp.array): Array of joint velocities.\n
-                Expects shape of ``(sum_of_num_joint_dofs,)`` and type :class:`float`.
-            worlds (wp.array, optional): An optional array of per-world reset flags.\n
-                If provided, only the worlds with active reset flags will be reset.\n
-                Expects shape of ``(num_worlds,)`` and type :class:`int`.
-        """
-        raise NotImplementedError("Simulator.reset_to() is not yet implemented.")
-
-    def step(self):
-        """
-        Advances the simulation by a single time-step.
-        """
-        # Run the control callback if it has been set
-        self._run_control_callback()
-
-        # Compute the body actuation wrenches based on the current control inputs
-        self._update_actuation_wrenches()
-
-        # Run limit detection to generate active joint limits
-        self._check_limits()
-
-        # Run collision detection to generate for active contacts
-        self._collide()
-
-        # Update the constraint state info
-        self._update_constraint_info()
-
-        # Run the pre-step callback if it has been set
-        self._run_prestep_callback()
-
-        # Solve the forward dynamics sub-problem to compute constraint reactions and body wrenches
-        self._forward()
-
-        # Run the mid-step callback if it has been set
-        self._run_midstep_callback()
-
-        # Solve the time integration sub-problem to compute the next state of the system
-        self._integrate()
-
-        # Run the post-step callback if it has been set
-        self._run_poststep_callback()
-
-        # Update time-keeping (i.e. physical time and discrete steps)
-        self._advance_time()
-
-    def sync_host(self):
-        """
-        Updates the host-side data with the in-device data.
-        """
-        # Construct the host data if it does not exist
-        if self._host is None:
-            self._host = SimulatorData(model=self._model, device="cpu")
-        # Update the host data from the device data
-        # TODO: Implement the host data update
-        # self._host.solver = self._data.solver
+###
+# Launchers
+###

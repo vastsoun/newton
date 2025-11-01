@@ -108,7 +108,7 @@ class TestCartpoleSimulator(unittest.TestCase):
         if self.verbose:
             msg.reset_log_level()
 
-    def test_multiple_cartpoles_all_from_initial_state(self):
+    def test_step_multiple_cartpoles_all_from_initial_state(self):
         """
         Test stepping multiple cartpole simulators initialized
         uniformly from the default initial state multiple times.
@@ -256,7 +256,7 @@ class TestCartpoleSimulator(unittest.TestCase):
         np.testing.assert_allclose(multi_sim.state.q_j.numpy(), multi_final_q_j)
         np.testing.assert_allclose(multi_sim.state.dq_j.numpy(), multi_final_dq_j)
 
-    def test_multiple_cartpoles_from_sampled_states(self):
+    def test_step_multiple_cartpoles_from_sampled_states(self):
         """
         Test stepping multiple cartpole simulators one but initialized from
         states collected from a single-instance simulator over multiple steps.

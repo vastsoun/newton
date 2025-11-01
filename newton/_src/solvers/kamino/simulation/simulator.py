@@ -193,8 +193,13 @@ class Simulator:
     ):
         """
         Initializes the simulator with the given model builder, time-step, and device.
-        """
 
+        Args:
+            builder (ModelBuilder): The model builder defining the model to be simulated.
+            settings (SimulatorSettings, optional): The simulator settings to use. If None, default settings are used.
+            device (Devicelike, optional): The device to run the simulation on. If None, the default device is used.
+            shadow (bool, optional): If True, maintains a host-side copy of the simulation data for easy access.
+        """
         # Use default settings if none are provided
         if settings is None:
             settings = SimulatorSettings()
@@ -289,78 +294,135 @@ class Simulator:
 
     @property
     def time(self) -> float:
+        """
+        Returns the current physical time of the simulation in seconds.
+        """
         return self._time
 
     @property
     def max_time(self) -> float:
+        """
+        Returns the maximum physical time of the simulation in seconds.
+        """
         return self._max_time
 
     @property
     def steps(self) -> int:
+        """
+        Returns the current number of simulation steps.
+        """
         return self._steps
 
     @property
     def max_steps(self) -> int:
+        """
+        Returns the maximum number of simulation steps.
+        """
         return self._max_steps
 
     @property
     def dt(self) -> float:
+        """
+        Returns the configured time-step of the simulation in seconds.
+        """
         return self._settings.dt
 
     @property
     def model(self) -> Model:
+        """
+        Returns the time-invariant simulation model data.
+        """
         return self._model
 
     @property
     def data(self) -> SimulatorData:
+        """
+        Returns the simulation data container.
+        """
         return self._data
 
     @property
     def model_data(self) -> ModelData:
+        """
+        Returns the time-varying internal solver data.
+        """
         return self._data.solver
 
     @property
     def state_previous(self) -> State:
+        """
+        Returns the previous state of the simulation.
+        """
         return self._data.state_p
 
     @property
     def state(self) -> State:
+        """
+        Returns the current state of the simulation.
+        """
         return self._data.state_n
 
     @property
     def control_previous(self) -> Control:
+        """
+        Returns the previous control inputs of the simulation.
+        """
         return self._data.control_p
 
     @property
     def control(self) -> Control:
+        """
+        Returns the current control inputs of the simulation.
+        """
         return self._data.control_n
 
     @property
     def limits(self) -> Limits:
+        """
+        Returns the joint limits manager.
+        """
         return self._limits
 
     @property
     def contacts(self) -> Contacts:
+        """
+        Returns the contact manager.
+        """
         return self._collision_detector.contacts
 
     @property
     def collision_detector(self) -> CollisionDetector:
+        """
+        Returns the collision detector.
+        """
         return self._collision_detector
 
     @property
     def jacobians(self) -> DenseSystemJacobians:
+        """
+        Returns the system Jacobians container.
+        """
         return self._jacobians
 
     @property
     def problem(self) -> DualProblem:
+        """
+        Returns the dual forward dynamics problem.
+        """
         return self._dual_problem
 
     @property
     def solver(self) -> PADMMSolver:
+        """
+        Returns the forward dynamics solver.
+        """
         return self._fd_solver
 
     @property
     def host(self) -> SimulatorData | None:
+        """
+        Returns the host-side shadow copy of the simulation data, if it exists.
+        """
         # return self._host
         return self._data
 
@@ -830,16 +892,3 @@ class Simulator:
         self._steps += 1
         self._time += self._settings.dt
         advance_time(self._model.time, self._data.solver.time)
-
-
-###
-# Functions
-###
-
-###
-# Kernels
-###
-
-###
-# Launchers
-###

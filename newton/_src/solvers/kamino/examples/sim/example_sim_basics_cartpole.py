@@ -26,8 +26,7 @@ import newton
 import newton._src.solvers.kamino.utils.logger as msg
 import newton.examples
 from newton._src.solvers.kamino.core.builder import ModelBuilder
-from newton._src.solvers.kamino.core.math import TWO_PI
-from newton._src.solvers.kamino.core.types import float32, uint32
+from newton._src.solvers.kamino.core.types import float32
 from newton._src.solvers.kamino.examples import run_headless
 from newton._src.solvers.kamino.models import get_basics_usd_assets_path
 from newton._src.solvers.kamino.models.builders import build_cartpole
@@ -77,17 +76,20 @@ def _test_control_callback(
 
     # Define the time window for the active external force profile
     t_start = float32(1.0)
-    t_end = float32(1.1)
+    t_end = float32(3.1)
 
     # Get the current time
     t = state_t[wid]
 
     # Apply a time-dependent external force
-    if t > t_start and t < t_end:
-        control_tau_j[wid * 2 + 0] = 0.1 * wp.sin(1.0 * TWO_PI * (t - t_start)) * wp.randf(uint32(wid), -1.0, 1.0)
-        control_tau_j[wid * 2 + 1] = 0.1 * wp.sin(1.0 * TWO_PI * (t - t_start)) * wp.randf(uint32(wid), -1.0, 1.0)
-    else:
+    if t >= 0.0 and t < t_start:
         control_tau_j[wid * 2 + 0] = 0.0
+        control_tau_j[wid * 2 + 1] = 0.0
+    elif t > t_start and t < t_end:
+        control_tau_j[wid * 2 + 0] = 10.0
+        control_tau_j[wid * 2 + 1] = 0.0
+    else:
+        control_tau_j[wid * 2 + 0] = -10.0
         control_tau_j[wid * 2 + 1] = 0.0
 
 
@@ -164,6 +166,7 @@ class Example:
         settings = SimulatorSettings()
         settings.dt = self.sim_dt
         settings.problem.alpha = 0.1
+        settings.problem.beta = 0.1
         settings.solver.primal_tolerance = 1e-6
         settings.solver.dual_tolerance = 1e-6
         settings.solver.compl_tolerance = 1e-6

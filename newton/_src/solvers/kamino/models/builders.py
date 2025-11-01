@@ -330,6 +330,8 @@ def build_cartpole(builder: ModelBuilder, z_offset: float = 0.0, ground: bool = 
         B_r_Bj=vec3f(0.0, 0.0, z_0),
         F_r_Fj=vec3f(0.0, 0.0, 0.0),
         X_j=Axis.Y.to_mat33(),
+        q_j_min=[-4.0],
+        q_j_max=[4.0],
     )
     jids.append(jid0)
 

@@ -270,6 +270,37 @@ def make_symmetric(A: mat33f) -> mat33f:
     return 0.5 * (A + wp.transpose(A))
 
 
+@wp.func
+def compute_body_inertial_properties(
+    p_i: transformf,
+    i_I_i: mat33f,
+    inv_i_I_i: mat33f,
+) -> tuple[mat33f, mat33f]:
+    """
+    Computes the inertial properties of a rigid body in world coordinates
+    given its pose and local moment of inertia and its inverse.
+
+    Args:
+        p_i (transformf): The absolute pose of the body in world coordinates.
+        i_I_i (mat33f): The local moment of inertia of the body.
+        inv_i_I_i (mat33f): The inverse of the local moment of inertia of the body.
+
+    Returns:
+        tuple[mat33f, mat33f]: The moment of inertia and its inverse in world coordinates.
+    """
+    # Compute the moment of inertia matrices in world coordinates
+    R_i = wp.quat_to_matrix(wp.transform_get_rotation(p_i))
+    I_i = R_i @ i_I_i @ wp.transpose(R_i)
+    inv_I_i = R_i @ inv_i_I_i @ wp.transpose(R_i)
+
+    # TODO: Ensure symmetry of the inertia matrices (to avoid numerical issues)
+    # I_i = make_symmetric(I_i)
+    # inv_I_i = make_symmetric(inv_I_i)
+
+    # Return the computed moment of inertia matrices in world coordinates
+    return I_i, inv_I_i
+
+
 ###
 # Kernels
 ###
@@ -294,14 +325,7 @@ def _update_body_inertias(
     inv_i_I_i = model_bodies_inv_i_I_i_in[bid]
 
     # Compute the moment of inertia matrices in world coordinates
-    R_i = wp.quat_to_matrix(wp.transform_get_rotation(p_i))
-    I_i = R_i @ i_I_i @ wp.transpose(R_i)
-    inv_I_i = R_i @ inv_i_I_i @ wp.transpose(R_i)
-
-    # TODO: Should we use this?
-    # # Ensure symmetry of the inertia matrices (to avoid numerical issues)
-    # I_i = make_symmetric(I_i)
-    # inv_I_i = make_symmetric(inv_I_i)
+    I_i, inv_I_i = compute_body_inertial_properties(p_i, i_I_i, inv_i_I_i)
 
     # Store results in the output arrays
     state_bodies_I_i_out[bid] = I_i

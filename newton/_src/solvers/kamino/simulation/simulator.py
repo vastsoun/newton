@@ -42,7 +42,7 @@ from ..kinematics.jacobians import DenseSystemJacobians
 from ..kinematics.joints import compute_joints_state
 from ..kinematics.limits import Limits
 from ..linalg import LinearSolver, LLTBlockedSolver
-from ..solvers.fk import ForwardKinematicsSolver
+from ..solvers.fk import ForwardKinematicsSolver  # noqa: F401
 from ..solvers.padmm import PADMMSettings, PADMMSolver
 
 ###
@@ -265,7 +265,7 @@ class Simulator:
         )
 
         # Allocate the forward kinematics solver on the device
-        self._fk_solver = ForwardKinematicsSolver(model=self._model)
+        # self._fk_solver = ForwardKinematicsSolver(model=self._model)
 
         # Initialize callbacks
         self._reset_cb: Callable[[Simulator], None] = None

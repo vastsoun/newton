@@ -94,7 +94,7 @@ class TestCartpoleSimulator(unittest.TestCase):
         # Configs
         self.seed = 42
         self.default_device = wp.get_device()
-        self.verbose = True  # Set to True for verbose output
+        self.verbose = False  # Set to True for verbose output
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
@@ -446,11 +446,11 @@ if __name__ == "__main__":
 
     # Global warp configurations
     wp.config.enable_backward = False
-    wp.config.verbose = True
-    wp.config.verify_fp = True
-    wp.config.mode = "debug"
-    # wp.clear_kernel_cache()
-    # wp.clear_lto_cache()
+    wp.config.verbose = False
+    wp.config.verify_fp = False
+    wp.config.mode = "release"
+    wp.clear_kernel_cache()
+    wp.clear_lto_cache()
 
     # Run all tests
     unittest.main(verbosity=2)

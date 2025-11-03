@@ -19,6 +19,8 @@ from __future__ import annotations
 
 import sys
 import uuid
+from collections.abc import Iterable
+from dataclasses import dataclass
 from enum import IntEnum
 from typing import Literal
 
@@ -344,6 +346,7 @@ def axis_to_mat33(axis: AxisType | Vec3) -> mat33f:
 ###
 
 
+@dataclass
 class Descriptor:
     """
     Base class for entity descriptor objects.
@@ -351,48 +354,51 @@ class Descriptor:
     A descriptor object is one with a designated name and a unique identifier (UID).
     """
 
+    name: str
+    """The name of the entity descriptor."""
+
+    uid: str | None = None
+    """The unique identifier (UID) of the entity descriptor."""
+
     @staticmethod
     def _assert_valid_uid(uid: str) -> str:
-        """Check if a given UID string is valid."""
+        """
+        Check if a given UID string is valid.
+
+        Args:
+            uid (str): The UID string to validate.
+
+        Returns:
+            str: The validated UID string.
+
+        Raises:
+            ValueError: If the UID string is not valid.
+        """
         try:
             val = uuid.UUID(uid, version=4)
         except ValueError as err:
             raise ValueError("Invalid UID string.") from err
         return str(val)
 
-    def __init__(self, name: str, uid: str | None = None):
-        # Instance name
-        self._name: str = name
-        # Instance UID
-        if uid is None:
+    def __post_init__(self):
+        """Post-initialization to handle UID generation and validation."""
+        if self.uid is None:
             # Generate a new UID if none is provided
-            uid = str(uuid.uuid4())
+            self.uid = str(uuid.uuid4())
         else:
-            # Validate provided UID
-            if not isinstance(uid, str):
-                raise TypeError("UID must be a string.")
-            uid = Descriptor._assert_valid_uid(uid)
-        self._uid: str = Descriptor._assert_valid_uid(uid)
-
-    @property
-    def name(self) -> str:
-        """The name of the entity descriptor."""
-        return self._name
-
-    @property
-    def uid(self) -> str:
-        """The unique identifier (UID) of the entity descriptor."""
-        return self._uid
+            # Otherwise, validate the provided UID
+            self.uid = self._assert_valid_uid(self.uid)
 
     def __repr__(self):
-        return f"Descriptor(\nname={self._name},\nuid={self._uid}\n)"
+        """Returns a human-readable string representation of the Descriptor."""
+        return f"Descriptor(\nname={self.name},\nuid={self.uid}\n)"
 
 
 ###
 # Utilities
 ###
 
-ArrayLike = np.ndarray | list[int] | list[float] | list[list[int]] | list[list[float]]
+ArrayLike = np.ndarray | list[int] | list[float] | list[list[int]] | list[list[float]] | Iterable[int] | Iterable[float]
 """An Array-like structure for aliasing various data types compatible with numpy."""
 
 

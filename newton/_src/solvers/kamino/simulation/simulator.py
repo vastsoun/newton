@@ -44,6 +44,7 @@ from ..kinematics.limits import Limits
 from ..linalg import LinearSolver, LLTBlockedSolver
 from ..solvers.fk import ForwardKinematicsSolver  # noqa: F401
 from ..solvers.padmm import PADMMSettings, PADMMSolver
+from .resets import reset_state_of_select_worlds
 
 ###
 # Module interface
@@ -175,7 +176,7 @@ class Simulator:
         builder = ModelBuilder()
 
         # Define the model components (e.g., bodies, joints, collision geometries etc.)
-        builder.add_body(...)
+        builder.add_rigid_body(...)
         builder.add_joint(...)
         builder.add_collision_geometry(...)
 
@@ -474,7 +475,7 @@ class Simulator:
         """
         self._reset_all_worlds_to_initial_state()
 
-    def reset_state(self, state: State, worlds: wp.array = None, use_constraint_forces: bool = False):
+    def reset_to_state(self, state: State, worlds: wp.array = None, use_constraint_forces: bool = False):
         """
         Resets the simulation to a specific state.
 
@@ -490,8 +491,8 @@ class Simulator:
         else:
             self._reset_select_worlds_from_state(state, worlds, use_constraint_forces)
 
-    def reset_base_and_joints(
-        self, base_q: wp.array, base_u: wp.array, joint_q: wp.array, joint_dq: wp.array, worlds: wp.array = None
+    def reset_to_base_and_actuators_state(
+        self, base_q: wp.array, base_u: wp.array, actuator_q: wp.array, actuator_dq: wp.array, worlds: wp.array = None
     ):
         """
         Resets the simulation to the given state.
@@ -501,14 +502,22 @@ class Simulator:
                 Expects shape of ``(num_worlds,)`` and type :class:`transform`.
             base_u (wp.array): Array of base body twists.\n
                 Expects shape of ``(num_worlds,)`` and type :class:`vec6`.
-            joint_q (wp.array): Array of joint coordinates.\n
-                Expects shape of ``(sum_of_num_joint_coords,)`` and type :class:`float`.
-            joint_dq (wp.array): Array of joint velocities.\n
-                Expects shape of ``(sum_of_num_joint_dofs,)`` and type :class:`float`.
+            actuator_q (wp.array): Array of actuated joint coordinates.\n
+                Expects shape of ``(sum_of_num_actuated_joint_coords,)`` and type :class:`float`.
+            actuator_dq (wp.array): Array of actuated joint velocities.\n
+                Expects shape of ``(sum_of_num_actuated_joint_dofs,)`` and type :class:`float`.
             worlds (wp.array, optional): An optional array of per-world reset flags.\n
                 If provided, only the worlds with active reset flags will be reset.\n
                 Expects shape of ``(num_worlds,)`` and type :class:`int`.
         """
+        # TODO:
+        # - Reset time of select worlds --> parallel over worlds
+        # - Reset all bodies of select worlds according to the delta transform
+        #   between current and target base pose --> parallel over bodies
+        #   --> TODO: Do we need to offset all bodies?
+        #   --> TODO: Can we just offset the model parameters instead? If yes, which?
+        # - Use the ForwardKinematics solver given specified joint coordinates and velocities to compute body states
+        # - Compute joint states from body states, parallel over joints
         raise NotImplementedError("Simulator.reset_base_and_joints() is not yet implemented.")
 
     def step(self):
@@ -698,7 +707,7 @@ class Simulator:
 
         # Update the kinematics
         # NOTE: This constructs the system Jacobians, which ensures
-        # that control action can be applied on the first call to `step()`
+        # that controls can be applied on the first call to `step()`
         self._forward_kinematics()
 
         # Run the reset callback if it has been set
@@ -737,7 +746,7 @@ class Simulator:
 
         # Update the kinematics
         # NOTE: This constructs the system Jacobians, which ensures
-        # that control action can be applied on the first call to `step()`
+        # that controls can be applied on the first call to `step()`
         self._forward_kinematics()
 
         # Run the reset callback if it has been set
@@ -755,7 +764,27 @@ class Simulator:
             use_constraint_forces (bool): If True, also copies joint constraint forces
                 from the provided state in order to warm-start the constraint solver.
         """
-        raise NotImplementedError("Simulator._reset_select_worlds_from_state() is not yet implemented.")
+
+        # Reset the worlds specified in the `worlds` array to the given state
+        reset_state_of_select_worlds(
+            model=self._model,
+            data=self._data.solver,
+            state=state,
+            worlds=worlds,
+            use_constraint_forces=use_constraint_forces,
+        )
+
+        # Finally, reset all state and control
+        # data to match the internal solver state
+        self._reset_states_and_controls()
+
+        # Update the kinematics
+        # NOTE: This constructs the system Jacobians, which ensures
+        # that controls can be applied on the first call to `step()`
+        self._forward_kinematics()
+
+        # Run the reset callback if it has been set
+        self._run_reset_callback()
 
     ###
     # Internals - Update Operations

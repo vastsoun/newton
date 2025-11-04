@@ -193,6 +193,9 @@ def build_revolute_joint_test_system(
         world_index=world_index,
     )
 
+    # Return the populated builder
+    return _builder
+
 
 ###
 # Builders for basic models

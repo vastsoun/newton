@@ -207,7 +207,7 @@ class TestHDF5(unittest.TestCase):
             return
 
         # Create a multi-instanced system
-        builder, _, _ = make_single_builder(build_func=build_boxes_nunchaku)
+        builder = make_single_builder(build_fn=build_boxes_nunchaku)
         # sim = Simulator(builder=builder, device=self.default_device, shadow=True)  # TODO: Use shadow=True to test shadow data
         sim = Simulator(builder=builder, device=self.default_device)
 

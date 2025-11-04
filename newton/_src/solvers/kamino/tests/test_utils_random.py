@@ -31,7 +31,7 @@ import newton._src.solvers.kamino.tests.utils.random as rand
 
 class TestRandomSymmetricMatrix(unittest.TestCase):
     def setUp(self):
-        self.verbose = True  # Set to True for verbose output
+        self.verbose = False  # Set to True for verbose output
 
     def test_matrix_symmetry(self):
         dim = 5
@@ -76,7 +76,7 @@ class TestRandomSymmetricMatrix(unittest.TestCase):
 
 class TestRandomProblemCholesky(unittest.TestCase):
     def setUp(self):
-        self.verbose = True  # Set to True for verbose output
+        self.verbose = False  # Set to True for verbose output
 
     def test_generate_small_lower(self):
         dim = 10
@@ -99,7 +99,7 @@ class TestRandomProblemCholesky(unittest.TestCase):
 
 class TestRandomProblemLDLT(unittest.TestCase):
     def setUp(self):
-        self.verbose = True  # Set to True for verbose output
+        self.verbose = False  # Set to True for verbose output
 
     def test_generate_small_lower(self):
         dim = 10

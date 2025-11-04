@@ -22,7 +22,6 @@ import numpy as np
 import warp as wp
 
 import newton._src.solvers.kamino.utils.logger as msg
-from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.core.types import float32
 from newton._src.solvers.kamino.examples import print_progress_bar
 from newton._src.solvers.kamino.models.builders import build_cartpole
@@ -94,7 +93,7 @@ class TestCartpoleSimulator(unittest.TestCase):
         # Configs
         self.seed = 42
         self.default_device = wp.get_device()
-        self.verbose = False  # Set to True for verbose output
+        self.verbose = True  # Set to True for verbose output
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
@@ -108,15 +107,14 @@ class TestCartpoleSimulator(unittest.TestCase):
         if self.verbose:
             msg.reset_log_level()
 
-    def test_step_multiple_cartpoles_all_from_initial_state(self):
+    def test_01_step_multiple_cartpoles_all_from_initial_state(self):
         """
         Test stepping multiple cartpole simulators initialized
         uniformly from the default initial state multiple times.
         """
 
         # Create a single-instance system
-        single_builder = ModelBuilder()
-        build_cartpole(single_builder)
+        single_builder = build_cartpole(ground=False)
         for i, body in enumerate(single_builder.bodies):
             msg.info(f"[single]: [builder]: body {i}: q_i: {body.q_i_0}")
             msg.info(f"[single]: [builder]: body {i}: u_i: {body.u_i_0}")
@@ -193,7 +191,7 @@ class TestCartpoleSimulator(unittest.TestCase):
         msg.info(f"[samples]: [multi] [final]: dq_j (shape={multi_final_dq_j.shape}):\n{multi_final_dq_j}\n")
 
         # Create a multi-instance system by replicating the single-instance builder
-        multi_builder = make_homogeneous_builder(num_worlds=num_worlds, build_func=build_cartpole)
+        multi_builder = make_homogeneous_builder(num_worlds=num_worlds, build_fn=build_cartpole, ground=False)
         for i, body in enumerate(multi_builder.bodies):
             msg.info(f"[multi]: [builder]: body {i}: bid: {body.bid}")
             msg.info(f"[multi]: [builder]: body {i}: q_i: {body.q_i_0}")
@@ -256,15 +254,14 @@ class TestCartpoleSimulator(unittest.TestCase):
         np.testing.assert_allclose(multi_sim.state.q_j.numpy(), multi_final_q_j)
         np.testing.assert_allclose(multi_sim.state.dq_j.numpy(), multi_final_dq_j)
 
-    def test_step_multiple_cartpoles_from_sampled_states(self):
+    def test_02_step_multiple_cartpoles_from_sampled_states(self):
         """
         Test stepping multiple cartpole simulators one but initialized from
         states collected from a single-instance simulator over multiple steps.
         """
 
         # Create a single-instance system
-        single_builder = ModelBuilder()
-        build_cartpole(single_builder)
+        single_builder = build_cartpole(ground=False)
         for i, body in enumerate(single_builder.bodies):
             msg.info(f"[single]: [builder]: body {i}: q_i: {body.q_i_0}")
             msg.info(f"[single]: [builder]: body {i}: u_i: {body.u_i_0}")
@@ -354,7 +351,7 @@ class TestCartpoleSimulator(unittest.TestCase):
         msg.info(f"[samples]: control tau_j (shape={sample_ctrl_tau_j.shape}):\n{sample_ctrl_tau_j}\n")
 
         # Create a multi-instance system by replicating the single-instance builder
-        multi_builder = make_homogeneous_builder(num_worlds=num_sample_steps, build_func=build_cartpole)
+        multi_builder = make_homogeneous_builder(num_worlds=num_sample_steps, build_fn=build_cartpole, ground=False)
         for i, body in enumerate(multi_builder.bodies):
             msg.info(f"[multi]: [builder]: body {i}: bid: {body.bid}")
             msg.info(f"[multi]: [builder]: body {i}: q_i: {body.q_i_0}")
@@ -434,6 +431,185 @@ class TestCartpoleSimulator(unittest.TestCase):
         np.testing.assert_allclose(multi_sim.state.q_j.numpy(), sample_next_q_j)
         np.testing.assert_allclose(multi_sim.state.dq_j.numpy(), sample_next_dq_j)
         np.testing.assert_allclose(multi_sim.data.control_n.tau_j.numpy(), sample_ctrl_tau_j)
+
+    # TODO: USE THIS TO TEST RESET METHOD
+    # def test_step_03_multiple_cartpoles_reset_from_sampled_states(self):
+    #     """
+    #     Test stepping multiple cartpole simulators one but initialized from
+    #     states collected from a single-instance simulator over multiple steps.
+    #     """
+
+    #     # Create a single-instance system
+    #     single_builder = build_cartpole(ground=False)
+    #     for i, body in enumerate(single_builder.bodies):
+    #         msg.info(f"[single]: [builder]: body {i}: q_i: {body.q_i_0}")
+    #         msg.info(f"[single]: [builder]: body {i}: u_i: {body.u_i_0}")
+
+    #     # Create simulator and check if the initial state is consistent with the contents of the builder
+    #     single_sim = Simulator(builder=single_builder, device=self.default_device)
+    #     single_sim.set_control_callback(test_control_callback)
+    #     self.assertEqual(single_sim.model.size.sum_of_num_bodies, 2)
+    #     self.assertEqual(single_sim.model.size.sum_of_num_joints, 2)
+    #     for i, b in enumerate(single_builder.bodies):
+    #         np.testing.assert_allclose(single_sim.model.bodies.q_i_0.numpy()[i], b.q_i_0)
+    #         np.testing.assert_allclose(single_sim.model.bodies.u_i_0.numpy()[i], b.u_i_0)
+    #         np.testing.assert_allclose(single_sim.state.q_i.numpy()[i], b.q_i_0)
+    #         np.testing.assert_allclose(single_sim.state.u_i.numpy()[i], b.u_i_0)
+
+    #     # Optional verbose output - enabled globally via self.verbose
+    #     msg.info(f"[single]: [init]: sim.model.size:\n{single_sim.model.size}\n\n")
+    #     msg.info(f"[single]: [init]: sim.model.state.q_i:\n{single_sim.state.q_i}\n\n")
+    #     msg.info(f"[single]: [init]: sim.model.state.u_i:\n{single_sim.state.u_i}\n\n")
+    #     msg.info(f"[single]: [init]: sim.model.state.q_j:\n{single_sim.state.q_j}\n\n")
+    #     msg.info(f"[single]: [init]: sim.model.state.dq_j:\n{single_sim.state.dq_j}\n\n")
+
+    #     # Define the total number of sample steps to collect, and the
+    #     # total number of execution steps from which to collect them
+    #     num_sample_steps = 37
+    #     num_skip_steps = 20
+    #     num_exec_steps = 1000
+
+    #     # Allocate arrays to hold the collected samples
+    #     num_bodies = single_sim.model.size.sum_of_num_bodies
+    #     num_joint_dofs = single_sim.model.size.sum_of_num_joint_dofs
+    #     sample_init_q_i = np.zeros((num_sample_steps, num_bodies, 7), dtype=np.float32)
+    #     sample_init_u_i = np.zeros((num_sample_steps, num_bodies, 6), dtype=np.float32)
+    #     sample_next_q_i = np.zeros((num_sample_steps, num_bodies, 7), dtype=np.float32)
+    #     sample_next_u_i = np.zeros((num_sample_steps, num_bodies, 6), dtype=np.float32)
+    #     sample_init_q_j = np.zeros((num_sample_steps, num_joint_dofs), dtype=np.float32)
+    #     sample_init_dq_j = np.zeros((num_sample_steps, num_joint_dofs), dtype=np.float32)
+    #     sample_next_q_j = np.zeros((num_sample_steps, num_joint_dofs), dtype=np.float32)
+    #     sample_next_dq_j = np.zeros((num_sample_steps, num_joint_dofs), dtype=np.float32)
+    #     sample_ctrl_tau_j = np.zeros((num_sample_steps, num_joint_dofs), dtype=np.float32)
+
+    #     # Run the simulation for the specified number of steps
+    #     sample_freq = max(1, num_exec_steps // num_sample_steps)
+    #     sample = 0
+    #     msg.info(f"[sample]: sampling {num_sample_steps} transitions over {num_exec_steps} simulator steps")
+    #     total_steps = num_skip_steps + num_exec_steps
+    #     start_time = time.time()
+    #     for step in range(total_steps):
+    #         # Execute a single simulation step
+    #         single_sim.step()
+    #         wp.synchronize()
+    #         if self.verbose:
+    #             print_progress_bar(step + 1, total_steps, start_time, prefix="Progress", suffix="")
+    #         # Collect the initial and next state samples at the specified frequency
+    #         if step >= num_skip_steps and step % sample_freq == 0:
+    #             sample_init_q_i[sample, :, :] = single_sim.state_previous.q_i.numpy().copy()
+    #             sample_init_u_i[sample, :, :] = single_sim.state_previous.u_i.numpy().copy()
+    #             sample_next_q_i[sample, :, :] = single_sim.state.q_i.numpy().copy()
+    #             sample_next_u_i[sample, :, :] = single_sim.state.u_i.numpy().copy()
+    #             sample_init_q_j[sample, :] = single_sim.state_previous.q_j.numpy().copy()
+    #             sample_init_dq_j[sample, :] = single_sim.state_previous.dq_j.numpy().copy()
+    #             sample_next_q_j[sample, :] = single_sim.state.q_j.numpy().copy()
+    #             sample_next_dq_j[sample, :] = single_sim.state.dq_j.numpy().copy()
+    #             sample_ctrl_tau_j[sample, :] = single_sim.data.control_n.tau_j.numpy().copy()
+    #             sample += 1
+
+    #     # Reshape samples for easier comparison later
+    #     sample_init_q_i = sample_init_q_i.reshape(-1, 7)
+    #     sample_init_u_i = sample_init_u_i.reshape(-1, 6)
+    #     sample_next_q_i = sample_next_q_i.reshape(-1, 7)
+    #     sample_next_u_i = sample_next_u_i.reshape(-1, 6)
+    #     sample_init_q_j = sample_init_q_j.reshape(-1)
+    #     sample_init_dq_j = sample_init_dq_j.reshape(-1)
+    #     sample_next_q_j = sample_next_q_j.reshape(-1)
+    #     sample_next_dq_j = sample_next_dq_j.reshape(-1)
+    #     sample_ctrl_tau_j = sample_ctrl_tau_j.reshape(-1)
+
+    #     # Optional verbose output
+    #     msg.info(f"[samples]: init q_i (shape={sample_init_q_i.shape}):\n{sample_init_q_i}\n")
+    #     msg.info(f"[samples]: init u_i (shape={sample_init_u_i.shape}):\n{sample_init_u_i}\n")
+    #     msg.info(f"[samples]: init q_j (shape={sample_init_q_j.shape}):\n{sample_init_q_j}\n")
+    #     msg.info(f"[samples]: init dq_j (shape={sample_init_dq_j.shape}):\n{sample_init_dq_j}\n")
+    #     msg.info(f"[samples]: next q_i (shape={sample_next_q_i.shape}):\n{sample_next_q_i}\n")
+    #     msg.info(f"[samples]: next u_i (shape={sample_next_u_i.shape}):\n{sample_next_u_i}\n")
+    #     msg.info(f"[samples]: next q_j (shape={sample_next_q_j.shape}):\n{sample_next_q_j}\n")
+    #     msg.info(f"[samples]: next dq_j (shape={sample_next_dq_j.shape}):\n{sample_next_dq_j}\n")
+    #     msg.info(f"[samples]: control tau_j (shape={sample_ctrl_tau_j.shape}):\n{sample_ctrl_tau_j}\n")
+
+    #     # Create a multi-instance system by replicating the single-instance builder
+    #     multi_builder = make_homogeneous_builder(num_worlds=num_sample_steps, build_fn=build_cartpole, ground=False)
+    #     for i, body in enumerate(multi_builder.bodies):
+    #         msg.info(f"[multi]: [builder]: body {i}: bid: {body.bid}")
+    #         msg.info(f"[multi]: [builder]: body {i}: q_i: {body.q_i_0}")
+    #         msg.info(f"[multi]: [builder]: body {i}: u_i: {body.u_i_0}")
+
+    #     # Create simulator and check if the initial state is consistent with the contents of the builder
+    #     multi_sim = Simulator(builder=multi_builder, device=self.default_device)
+    #     self.assertEqual(multi_sim.model.size.sum_of_num_bodies, 2 * num_sample_steps)
+    #     self.assertEqual(multi_sim.model.size.sum_of_num_joints, 2 * num_sample_steps)
+    #     for i, b in enumerate(multi_builder.bodies):
+    #         np.testing.assert_allclose(multi_sim.model.bodies.q_i_0.numpy()[i], b.q_i_0)
+    #         np.testing.assert_allclose(multi_sim.model.bodies.u_i_0.numpy()[i], b.u_i_0)
+    #         np.testing.assert_allclose(multi_sim.state_previous.q_i.numpy()[i], b.q_i_0)
+    #         np.testing.assert_allclose(multi_sim.state_previous.u_i.numpy()[i], b.u_i_0)
+    #         np.testing.assert_allclose(multi_sim.state.q_i.numpy()[i], b.q_i_0)
+    #         np.testing.assert_allclose(multi_sim.state.u_i.numpy()[i], b.u_i_0)
+
+    #     # Optional verbose output - enabled globally via self.verbose
+    #     msg.info(f"[multi]: [start]: sim.model.size:\n{multi_sim.model.size}\n\n")
+    #     msg.info(f"[multi]: [start]: sim.model.state.q_i:\n{multi_sim.state.q_i}\n\n")
+    #     msg.info(f"[multi]: [start]: sim.model.state.u_i:\n{multi_sim.state.u_i}\n\n")
+    #     msg.info(f"[multi]: [start]: sim.model.state.q_j:\n{multi_sim.state.q_j}\n\n")
+    #     msg.info(f"[multi]: [start]: sim.model.state.dq_j:\n{multi_sim.state.dq_j}\n\n")
+    #     msg.info(f"[multi]: [start]: sim.model.control.tau_j:\n{multi_sim.control.tau_j}\n\n")
+
+    #     # Set the sampled initial states into the multi-instance
+    #     # simulator as the time-invariant initial states of the model
+    #     multi_sim.model.bodies.q_i_0.assign(sample_init_q_i)
+    #     multi_sim.model.bodies.u_i_0.assign(sample_init_u_i)
+    #     np.testing.assert_allclose(multi_sim.model.bodies.q_i_0.numpy(), sample_init_q_i)
+    #     np.testing.assert_allclose(multi_sim.model.bodies.u_i_0.numpy(), sample_init_u_i)
+
+    #     # Reset the multi-instance simulator to load the new initial states
+    #     multi_sim.reset()
+    #     msg.info(f"[multi]: [reset]: sim.model.state_previous.q_i:\n{multi_sim.state_previous.q_i}\n\n")
+    #     msg.info(f"[multi]: [reset]: sim.model.state_previous.u_i:\n{multi_sim.state_previous.u_i}\n\n")
+    #     msg.info(f"[multi]: [reset]: sim.model.state_previous.q_j:\n{multi_sim.state_previous.q_j}\n\n")
+    #     msg.info(f"[multi]: [reset]: sim.model.state_previous.dq_j:\n{multi_sim.state_previous.dq_j}\n\n")
+    #     msg.info(f"[multi]: [reset]: sim.model.state.q_i:\n{multi_sim.state.q_i}\n\n")
+    #     msg.info(f"[multi]: [reset]: sim.model.state.u_i:\n{multi_sim.state.u_i}\n\n")
+    #     msg.info(f"[multi]: [reset]: sim.model.state.q_j:\n{multi_sim.state.q_j}\n\n")
+    #     msg.info(f"[multi]: [reset]: sim.model.state.dq_j:\n{multi_sim.state.dq_j}\n\n")
+    #     np.testing.assert_allclose(multi_sim.state_previous.q_i.numpy(), sample_init_q_i)
+    #     np.testing.assert_allclose(multi_sim.state_previous.u_i.numpy(), sample_init_u_i)
+    #     np.testing.assert_allclose(multi_sim.state.q_i.numpy(), sample_init_q_i)
+    #     np.testing.assert_allclose(multi_sim.state.u_i.numpy(), sample_init_u_i)
+    #     np.testing.assert_allclose(multi_sim.state_previous.q_j.numpy(), sample_init_q_j)
+    #     np.testing.assert_allclose(multi_sim.state_previous.dq_j.numpy(), sample_init_dq_j)
+    #     np.testing.assert_allclose(multi_sim.state.q_j.numpy(), sample_init_q_j)
+    #     np.testing.assert_allclose(multi_sim.state.dq_j.numpy(), sample_init_dq_j)
+
+    #     # Optional verbose output - enabled globally via self.verbose
+    #     msg.info(f"[multi]: [init]: sim.model.state.q_i:\n{multi_sim.state.q_i}\n\n")
+    #     msg.info(f"[multi]: [init]: sim.model.state.u_i:\n{multi_sim.state.u_i}\n\n")
+    #     msg.info(f"[multi]: [init]: sim.model.state.q_j:\n{multi_sim.state.q_j}\n\n")
+    #     msg.info(f"[multi]: [init]: sim.model.state.dq_j:\n{multi_sim.state.dq_j}\n\n")
+    #     msg.info(f"[multi]: [init]: sim.model.control.tau_j:\n{multi_sim.control.tau_j}\n\n")
+
+    #     # Step the multi-instance simulator once
+    #     multi_sim.step()
+    #     wp.synchronize()
+
+    #     # Optional verbose output - enabled globally via self.verbose
+    #     msg.info(f"[multi]: [next]: sim.model.state.q_i:\n{multi_sim.state.q_i}\n\n")
+    #     msg.info(f"[multi]: [next]: sim.model.state.u_i:\n{multi_sim.state.u_i}\n\n")
+    #     msg.info(f"[multi]: [next]: sim.model.state.q_j:\n{multi_sim.state.q_j}\n\n")
+    #     msg.info(f"[multi]: [next]: sim.model.state.dq_j:\n{multi_sim.state.dq_j}\n\n")
+
+    #     # Check that the next states match the collected samples
+    #     np.testing.assert_allclose(multi_sim.data.solver.joints.tau_j.numpy(), sample_ctrl_tau_j)
+    #     np.testing.assert_allclose(multi_sim.state_previous.q_i.numpy(), sample_init_q_i)
+    #     np.testing.assert_allclose(multi_sim.state_previous.u_i.numpy(), sample_init_u_i)
+    #     np.testing.assert_allclose(multi_sim.state.q_i.numpy(), sample_next_q_i)
+    #     np.testing.assert_allclose(multi_sim.state.u_i.numpy(), sample_next_u_i)
+    #     np.testing.assert_allclose(multi_sim.state_previous.q_j.numpy(), sample_init_q_j)
+    #     np.testing.assert_allclose(multi_sim.state_previous.dq_j.numpy(), sample_init_dq_j)
+    #     np.testing.assert_allclose(multi_sim.state.q_j.numpy(), sample_next_q_j)
+    #     np.testing.assert_allclose(multi_sim.state.dq_j.numpy(), sample_next_dq_j)
+    #     np.testing.assert_allclose(multi_sim.data.control_n.tau_j.numpy(), sample_ctrl_tau_j)
 
 
 ###

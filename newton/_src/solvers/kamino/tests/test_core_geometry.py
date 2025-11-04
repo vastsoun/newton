@@ -36,7 +36,7 @@ from newton._src.solvers.kamino.utils import logger as msg
 class TestGeometryDescriptor(unittest.TestCase):
     def setUp(self):
         self.default_device = wp.get_device()
-        self.verbose = True  # Set to True to enable verbose output
+        self.verbose = False  # Set to True to enable verbose output
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
@@ -105,7 +105,7 @@ class TestGeometryDescriptor(unittest.TestCase):
 class TestCollisionGeometryDescriptor(unittest.TestCase):
     def setUp(self):
         self.default_device = wp.get_device()
-        self.verbose = True  # Set to True to enable verbose output
+        self.verbose = False  # Set to True to enable verbose output
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:

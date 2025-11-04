@@ -158,7 +158,7 @@ def assert_model_matches_builder(test: unittest.TestCase, builder: ModelBuilder,
 class TestModelBuilder(unittest.TestCase):
     def setUp(self):
         self.default_device = wp.get_device()
-        self.verbose = True  # Set to True to enable verbose output
+        self.verbose = False  # Set to True to enable verbose output
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:

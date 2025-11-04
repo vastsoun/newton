@@ -52,22 +52,22 @@ def build_sphere_on_sphere(dz_0: float = 0.0) -> ModelBuilder:
     Returns:
         ModelBuilder: The constructed model builder with two spheres.
     """
-    builder: ModelBuilder = ModelBuilder()
-    bid0 = builder.add_body(
+    builder: ModelBuilder = ModelBuilder(default_world=True)
+    bid0 = builder.add_rigid_body(
         m_i=1.0,
         i_I_i=mat33f(np.eye(3, dtype=np.float32)),
         q_i_0=transformf(0.0, 0.0, -0.5 - 0.5 * dz_0, 0.0, 0.0, 0.0, 1.0),
         u_i_0=vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
     )
-    bid1 = builder.add_body(
+    bid1 = builder.add_rigid_body(
         m_i=1.0,
         i_I_i=mat33f(np.eye(3, dtype=np.float32)),
         q_i_0=transformf(0.0, 0.0, 0.5 + 0.5 * dz_0, 0.0, 0.0, 0.0, 1.0),
         u_i_0=vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
     )
     builder.add_collision_layer("default")
-    builder.add_collision_geometry(body_id=bid0, shape=SphereShape(0.5))
-    builder.add_collision_geometry(body_id=bid1, shape=SphereShape(0.5))
+    builder.add_collision_geometry(body=bid0, shape=SphereShape(0.5))
+    builder.add_collision_geometry(body=bid1, shape=SphereShape(0.5))
     return builder
 
 
@@ -85,22 +85,22 @@ def build_box_on_box(dz_0: float = 0.0) -> ModelBuilder:
     Returns:
         ModelBuilder: The constructed model builder with two boxes.
     """
-    builder: ModelBuilder = ModelBuilder()
-    bid0 = builder.add_body(
+    builder: ModelBuilder = ModelBuilder(default_world=True)
+    bid0 = builder.add_rigid_body(
         m_i=1.0,
         i_I_i=mat33f(np.eye(3, dtype=np.float32)),
         q_i_0=transformf(0.0, 0.0, -0.5 - 0.5 * dz_0, 0.0, 0.0, 0.0, 1.0),
         u_i_0=vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
     )
-    bid1 = builder.add_body(
+    bid1 = builder.add_rigid_body(
         m_i=1.0,
         i_I_i=mat33f(np.eye(3, dtype=np.float32)),
         q_i_0=transformf(0.0, 0.0, 0.5 + 0.5 * dz_0, 0.0, 0.0, 0.0, 1.0),
         u_i_0=vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
     )
     builder.add_collision_layer("default")
-    builder.add_collision_geometry(body_id=bid0, shape=BoxShape(2.0, 2.0, 1.0))
-    builder.add_collision_geometry(body_id=bid1, shape=BoxShape(1.0, 1.0, 1.0))
+    builder.add_collision_geometry(body=bid0, shape=BoxShape(2.0, 2.0, 1.0))
+    builder.add_collision_geometry(body=bid1, shape=BoxShape(1.0, 1.0, 1.0))
     return builder
 
 
@@ -118,22 +118,22 @@ def build_sphere_on_box(dz_0: float = 0.0) -> ModelBuilder:
     Returns:
         ModelBuilder: The constructed model builder with two boxes.
     """
-    builder: ModelBuilder = ModelBuilder()
-    bid0 = builder.add_body(
+    builder: ModelBuilder = ModelBuilder(default_world=True)
+    bid0 = builder.add_rigid_body(
         m_i=1.0,
         i_I_i=mat33f(np.eye(3, dtype=np.float32)),
         q_i_0=transformf(0.0, 0.0, -0.5 - 0.5 * dz_0, 0.0, 0.0, 0.0, 1.0),
         u_i_0=vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
     )
-    bid1 = builder.add_body(
+    bid1 = builder.add_rigid_body(
         m_i=1.0,
         i_I_i=mat33f(np.eye(3, dtype=np.float32)),
         q_i_0=transformf(0.0, 0.0, 0.5 + 0.5 * dz_0, 0.0, 0.0, 0.0, 1.0),
         u_i_0=vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
     )
     builder.add_collision_layer("default")
-    builder.add_collision_geometry(body_id=bid0, shape=SphereShape(0.5))
-    builder.add_collision_geometry(body_id=bid1, shape=BoxShape(1.0, 1.0, 1.0))
+    builder.add_collision_geometry(body=bid0, shape=SphereShape(0.5))
+    builder.add_collision_geometry(body=bid1, shape=BoxShape(1.0, 1.0, 1.0))
     return builder
 
 

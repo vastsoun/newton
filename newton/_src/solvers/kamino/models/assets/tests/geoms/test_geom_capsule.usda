@@ -14,7 +14,7 @@ def PhysicsScene "World"
     vector3f physics:gravityDirection = (0, 0, -1)
 }
 
-def Xform "Robot"
+def Xform "test_geom_capsule"
 {
     def Scope "RigidBodies"
     {
@@ -54,7 +54,7 @@ def Xform "Robot"
                     uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
                 }
 
-                def Capsule "physical_capsule"
+                def Capsule "visual_capsule"
                 {
                     double radius = 0.2
                     double height = 3.3

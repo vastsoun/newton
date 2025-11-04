@@ -29,7 +29,7 @@ from newton._src.solvers.kamino.control.pid import JointSpacePIDController
 from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.examples import get_examples_output_path, run_headless
 from newton._src.solvers.kamino.models import get_examples_usd_assets_path
-from newton._src.solvers.kamino.models.builders import add_ground_geom, offset_builder
+from newton._src.solvers.kamino.models.builders import add_body_pose_offset, add_ground_geom
 from newton._src.solvers.kamino.simulation.simulator import Simulator, SimulatorSettings
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
 from newton._src.solvers.kamino.viewer import ViewerKamino
@@ -76,19 +76,19 @@ class Example:
         msg.notif("Constructing builder from imported USD ...")
         importer = USDImporter()
         self.builder: ModelBuilder = importer.import_from(source=USD_MODEL_PATH)
-        msg.info("total mass: %f", self.builder.world.mass_total)
-        msg.info("total diag inertia: %f", self.builder.world.inertia_total)
+        msg.info("total mass: %f", self.builder.worlds[0].mass_total)
+        msg.info("total diag inertia: %f", self.builder.worlds[0].inertia_total)
 
         # Offset the model to place it above the ground
         # NOTE: The USD model is centered at the origin
         offset = wp.transformf(0.0, 0.0, 0.265, 0.0, 0.0, 0.0, 1.0)
-        offset_builder(builder=self.builder, offset=offset)
+        add_body_pose_offset(builder=self.builder, offset=offset)
 
         # Add a static collision layer and geometry for the plane
         add_ground_geom(builder=self.builder, group=1, collides=1)
 
         # Set gravity
-        self.builder.gravity.enabled = True
+        self.builder.gravity[0].enabled = True
 
         # Set solver settings
         settings = SimulatorSettings()
@@ -101,8 +101,8 @@ class Example:
         settings.solver.rho_0 = 0.05
 
         # Problem dimensions
-        njaq = self.builder.world.num_actuated_joint_coords
-        njad = self.builder.world.num_actuated_joint_dofs
+        njaq = self.builder.num_actuated_joint_coords
+        njad = self.builder.num_actuated_joint_dofs
 
         # Array of actuated joint indices
         self.actuated_joints = np.array([0, 1, 5, 6, 10, 15, 18, 19, 23, 24, 28, 33], dtype=np.int32)
@@ -361,7 +361,7 @@ if __name__ == "__main__":
     parser.add_argument("--device", type=str, help="The compute device to use")
     parser.add_argument("--cuda-graph", action="store_true", default=True, help="Use CUDA graphs")
     parser.add_argument("--clear-cache", action="store_true", default=False, help="Clear warp cache")
-    parser.add_argument("--logging", action="store_true", default=False, help="Enable logging of simulation data")
+    parser.add_argument("--logging", action="store_true", default=True, help="Enable logging of simulation data")
     parser.add_argument("--show-plots", action="store_true", default=False, help="Show plots of logging data")
     parser.add_argument("--test", action="store_true", default=False, help="Run tests")
     args = parser.parse_args()

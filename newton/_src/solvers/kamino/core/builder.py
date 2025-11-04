@@ -154,14 +154,29 @@ class ModelBuilder:
         return self._num_bdofs
 
     @property
+    def num_joint_coords(self) -> int:
+        """Returns the number of joint coordinates contained in the model."""
+        return self._num_jcoords
+
+    @property
     def num_joint_dofs(self) -> int:
         """Returns the number of joint degrees of freedom contained in the model."""
         return self._num_jdofs
 
     @property
+    def num_passive_joint_coords(self) -> int:
+        """Returns the number of passive joint coordinates contained in the model."""
+        return self._num_jpcoords
+
+    @property
     def num_passive_joint_dofs(self) -> int:
         """Returns the number of passive joint degrees of freedom contained in the model."""
         return self._num_jpdofs
+
+    @property
+    def num_actuated_joint_coords(self) -> int:
+        """Returns the number of actuated joint coordinates contained in the model."""
+        return self._num_jacoords
 
     @property
     def num_actuated_joint_dofs(self) -> int:
@@ -261,6 +276,9 @@ class ModelBuilder:
         if gravity is None:
             gravity = GravityDescriptor()
         self._gravity.append(gravity)
+
+        # Register the default material in the new world
+        self._worlds[-1].add_material(self._materials.default)
 
         # Update world counter
         self._num_worlds += 1

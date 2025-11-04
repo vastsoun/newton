@@ -26,7 +26,7 @@ import newton
 import newton._src.solvers.kamino.utils.logger as msg
 import newton.examples
 from newton._src.solvers.kamino.core.builder import ModelBuilder
-from newton._src.solvers.kamino.core.types import float32
+from newton._src.solvers.kamino.core.types import float32, uint32
 from newton._src.solvers.kamino.examples import run_headless
 from newton._src.solvers.kamino.models import get_basics_usd_assets_path
 from newton._src.solvers.kamino.models.builders import build_cartpole
@@ -83,7 +83,7 @@ def _test_control_callback(
 
     # Apply a time-dependent external force
     if t >= 0.0 and t < t_start:
-        control_tau_j[wid * 2 + 0] = 0.0
+        control_tau_j[wid * 2 + 0] = 1.0 * wp.randf(uint32(wid) + uint32(t), -1.0, 1.0)
         control_tau_j[wid * 2 + 1] = 0.0
     elif t > t_start and t < t_end:
         control_tau_j[wid * 2 + 0] = 10.0
@@ -125,6 +125,7 @@ class Example:
         max_steps: int = 1000,
         use_cuda_graph: bool = False,
         load_from_usd: bool = False,
+        ground: bool = True,
         headless: bool = False,
     ):
         # Initialize target frames per second and corresponding time-steps
@@ -147,10 +148,12 @@ class Example:
             msg.notif("Constructing builder from imported USD ...")
             USD_MODEL_PATH = os.path.join(get_basics_usd_assets_path(), "cartpole.usda")
             importer = USDImporter()
-            self.builder: ModelBuilder = importer.import_from(source=USD_MODEL_PATH, load_static_geometry=True)
+            self.builder: ModelBuilder = importer.import_from(source=USD_MODEL_PATH, load_static_geometry=ground)
         else:
             msg.notif("Constructing builder using model generator ...")
-            self.builder: ModelBuilder = make_homogeneous_builder(num_worlds=num_worlds, build_func=build_cartpole)
+            self.builder: ModelBuilder = make_homogeneous_builder(
+                num_worlds=num_worlds, build_fn=build_cartpole, ground=ground
+            )
 
         # Demo of printing builder contents in debug logging mode
         msg.info("self.builder.gravity:\n{%s}", self.builder.gravity)
@@ -158,9 +161,6 @@ class Example:
         msg.info("self.builder.joints:\n{%s}", self.builder.joints)
         msg.info("self.builder.collision_geoms:\n{%s}", self.builder.collision_geoms)
         msg.info("self.builder.physical_geoms:\n{%s}", self.builder.physical_geoms)
-
-        # Set gravity
-        self.builder.gravity.enabled = True
 
         # Set solver settings
         settings = SimulatorSettings()
@@ -295,9 +295,10 @@ class Example:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Cartpole simulation example")
     parser.add_argument("--headless", action="store_true", default=False, help="Run in headless mode")
-    parser.add_argument("--num-worlds", type=int, default=1, help="Number of worlds to simulate in parallel")
+    parser.add_argument("--num-worlds", type=int, default=3, help="Number of worlds to simulate in parallel")
     parser.add_argument("--num-steps", type=int, default=1000, help="Number of steps for headless mode")
     parser.add_argument("--load-from-usd", action="store_true", default=False, help="Load model from USD file")
+    parser.add_argument("--ground", action="store_true", default=False, help="Adds a ground plane to the simulation")
     parser.add_argument("--device", type=str, help="The compute device to use")
     parser.add_argument("--cuda-graph", action="store_true", default=True, help="Use CUDA graphs")
     parser.add_argument("--clear-cache", action="store_true", default=False, help="Clear warp cache")
@@ -337,6 +338,7 @@ if __name__ == "__main__":
         load_from_usd=args.load_from_usd,
         num_worlds=args.num_worlds,
         max_steps=args.num_steps,
+        ground=args.ground,
         headless=args.headless,
     )
 

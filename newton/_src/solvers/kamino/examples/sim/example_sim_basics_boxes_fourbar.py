@@ -128,10 +128,7 @@ class Example:
             self.builder: ModelBuilder = importer.import_from(source=USD_MODEL_PATH, load_static_geometry=True)
         else:
             msg.info("Constructing builder using model generator ...")
-            self.builder: ModelBuilder = make_homogeneous_builder(num_worlds=num_worlds, build_func=build_boxes_fourbar)
-
-        # Set gravity
-        self.builder.gravity.enabled = True
+            self.builder: ModelBuilder = make_homogeneous_builder(num_worlds=num_worlds, build_fn=build_boxes_fourbar)
 
         # Set solver settings
         settings = SimulatorSettings()
@@ -139,6 +136,7 @@ class Example:
         settings.solver.primal_tolerance = 1e-6
         settings.solver.dual_tolerance = 1e-6
         settings.solver.compl_tolerance = 1e-6
+        settings.solver.max_iterations = 200
         settings.solver.rho_0 = 0.1
 
         # Create a simulator

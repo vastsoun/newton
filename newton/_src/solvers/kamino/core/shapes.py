@@ -193,6 +193,12 @@ class ShapeDescriptor(ABC, Descriptor):
         super().__init__(name, uid)
         self._type: ShapeType = type
 
+    @override
+    def __hash__(self) -> int:
+        """Returns a hash of the ShapeDescriptor based on its name, uid, type and params."""
+        return hash((self.name, self.uid, self.type, self.params))
+
+    @override
     def __repr__(self):
         """Returns a human-readable string representation of the ShapeDescriptor."""
         return f"ShapeDescriptor(\ntype: {self.type},\nname: {self.name},\nuid: {self.uid},\n)"
@@ -594,6 +600,11 @@ class MeshShape(ShapeDescriptor):
         )
 
     @override
+    def __hash__(self) -> int:
+        """Returns a hash computed using the underlying newton.Mesh hash implementation."""
+        return self._data.__hash__()
+
+    @override
     def __repr__(self):
         """Returns a human-readable string representation of the MeshShape."""
         return (
@@ -712,6 +723,11 @@ class SDFShape(ShapeDescriptor):
             com=com,
             I=inertia,
         )
+
+    @override
+    def __hash__(self) -> int:
+        """Returns a hash computed using the underlying newton.SDF hash implementation."""
+        return self._data.__hash__()
 
     @override
     def __repr__(self):

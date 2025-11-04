@@ -389,6 +389,10 @@ class Descriptor:
             # Otherwise, validate the provided UID
             self.uid = self._assert_valid_uid(self.uid)
 
+    def __hash__(self):
+        """Returns a hash of the Descriptor based on its UID."""
+        return hash((self.name, self.uid))
+
     def __repr__(self):
         """Returns a human-readable string representation of the Descriptor."""
         return f"Descriptor(\nname={self.name},\nuid={self.uid}\n)"

@@ -128,6 +128,15 @@ class GeometryDescriptor(Descriptor):
     """
 
     @override
+    def __hash__(self):
+        """Returns a hash computed using the shape descriptor's hash implementation."""
+        # NOTE: The name-uid-based hash implementation is called if no shape is defined
+        if self.shape is None:
+            return super().__hash__()
+        # Otherwise, use the shape's hash implementation
+        return self.shape.__hash__()
+
+    @override
     def __repr__(self):
         """Returns a human-readable string representation of the GeometryDescriptor."""
         return (

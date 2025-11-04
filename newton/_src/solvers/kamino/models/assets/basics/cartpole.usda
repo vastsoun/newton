@@ -44,7 +44,7 @@ def Xform "cartpole"
 
             def Scope "Geometry"
             {
-                def Cube "collisions" (
+                def Cube "box" (
                     apiSchemas = ["PhysicsCollisionAPI"]
                 )
                 {
@@ -78,7 +78,7 @@ def Xform "cartpole"
 
             def Scope "Geometry"
             {
-                def Cube "collisions" (
+                def Cube "box" (
                     apiSchemas = ["PhysicsCollisionAPI"]
                 )
                 {

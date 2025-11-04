@@ -514,6 +514,7 @@ def build_cartpole(
         X_j=Axis.Y.to_mat33(),
         q_j_min=[-4.0],
         q_j_max=[4.0],
+        tau_j_max=[1000.0],
         world_index=world_index,
     )
 
@@ -532,22 +533,37 @@ def build_cartpole(
 
     # Add a collision layer and geometries
     _builder.add_collision_geometry(
-        name="rail", body=-1, shape=BoxShape(*dims_rail), group=1, collides=1, world_index=world_index
+        name="cart",
+        layer="primary",
+        body=bid0,
+        shape=BoxShape(*dims_cart),
+        group=2,
+        collides=2,
+        world_index=world_index,
     )
     _builder.add_collision_geometry(
-        name="cart", body=bid0, shape=BoxShape(*dims_cart), group=2, collides=2, world_index=world_index
+        name="pole",
+        layer="primary",
+        body=bid1,
+        shape=BoxShape(*dims_pole),
+        group=3,
+        collides=3,
+        world_index=world_index,
     )
     _builder.add_collision_geometry(
-        name="pole", body=bid1, shape=BoxShape(*dims_pole), group=3, collides=3, world_index=world_index
+        name="rail", layer="world", body=-1, shape=BoxShape(*dims_rail), group=1, collides=1, world_index=world_index
     )
 
     # Add a static collision layer and geometry for the plane
     if ground:
         _builder.add_collision_geometry(
             name="ground",
+            layer="world",
             body=-1,
             shape=BoxShape(20.0, 20.0, 1.0),
             offset=transformf(0.0, 0.0, -1.0, 0.0, 0.0, 0.0, 1.0),
+            group=1,
+            collides=1,
             world_index=world_index,
         )
 

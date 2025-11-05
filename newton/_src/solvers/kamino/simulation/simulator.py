@@ -475,7 +475,7 @@ class Simulator:
         """
         self._reset_all_worlds_to_initial_state()
 
-    def reset_to_state(self, state: State, worlds: wp.array = None, use_constraint_forces: bool = False):
+    def reset_to_state(self, state: State, worlds: wp.array = None, reset_constraints: bool = True):
         """
         Resets the simulation to a specific state.
 
@@ -483,13 +483,13 @@ class Simulator:
             state (State): The state to reset the simulation to.
             worlds (wp.array, optional): An optional array of per-world reset flags.
                 If provided, only the worlds with active reset flags will be reset.
-            use_constraint_forces (bool): If True, also copies joint constraint forces
+            reset_constraints (bool): If `False`, also copies joint constraint forces
                 from the provided state in order to warm-start the constraint solver.
         """
         if worlds is None:
-            self._reset_all_worlds_from_state(state, use_constraint_forces)
+            self._reset_all_worlds_from_state(state, reset_constraints)
         else:
-            self._reset_select_worlds_from_state(state, worlds, use_constraint_forces)
+            self._reset_select_worlds_from_state(state, worlds, reset_constraints)
 
     def reset_to_base_and_actuators_state(
         self, base_q: wp.array, base_u: wp.array, actuator_q: wp.array, actuator_dq: wp.array, worlds: wp.array = None
@@ -752,9 +752,7 @@ class Simulator:
         # Run the reset callback if it has been set
         self._run_reset_callback()
 
-    def _reset_select_worlds_from_state(
-        self, state: State, worlds: wp.array = None, use_constraint_forces: bool = False
-    ):
+    def _reset_select_worlds_from_state(self, state: State, worlds: wp.array = None, reset_constraints: bool = True):
         """
         Resets the simulation to a specific state.
 
@@ -771,7 +769,7 @@ class Simulator:
             data=self._data.solver,
             state=state,
             worlds=worlds,
-            use_constraint_forces=use_constraint_forces,
+            reset_constraints=reset_constraints,
         )
 
         # Finally, reset all state and control

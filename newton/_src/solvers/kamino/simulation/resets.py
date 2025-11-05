@@ -267,7 +267,7 @@ def reset_state_of_select_worlds(
     state: State,
     worlds: wp.array,
     data: ModelData,
-    reset_constraints: bool = False,
+    reset_constraints: bool = True,
 ):
     """
     Reset the state of the selected worlds given an array of per-world flags.
@@ -351,5 +351,9 @@ def reset_state_of_select_worlds(
             data.joints.q_j,
             data.joints.dq_j,
             data.joints.lambda_j,
+            data.joints.j_w_j,
+            data.joints.j_w_a_j,
+            data.joints.j_w_c_j,
+            data.joints.j_w_l_j,
         ],
     )

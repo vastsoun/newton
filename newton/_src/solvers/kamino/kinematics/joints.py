@@ -82,7 +82,7 @@ S_cts_prismatic = wp.constant(vec5i(1, 2, 3, 4, 5))
 S_cts_cylindrical = wp.constant(vec4i(1, 2, 4, 5))
 """Constraint column selection for 2-DoF cylindrical joints."""
 
-S_cts_universal = wp.constant(vec4i(2, 3, 4, 5))
+S_cts_universal = wp.constant(vec4i(0, 1, 2, 5))
 """Constraint column selection for 2-DoF universal joints."""
 
 S_cts_spherical = wp.constant(vec3i(0, 1, 2))
@@ -105,7 +105,7 @@ S_dofs_prismatic = wp.constant(vec1i(0))
 S_dofs_cylindrical = wp.constant(vec2i(0, 3))
 """DoF column selection for 2-DoF cylindrical joints."""
 
-S_dofs_universal = wp.constant(vec2i(0, 1))
+S_dofs_universal = wp.constant(vec2i(3, 4))
 """DoF column selection for 2-DoF universal joints."""
 
 S_dofs_spherical = wp.constant(vec3i(3, 4, 5))

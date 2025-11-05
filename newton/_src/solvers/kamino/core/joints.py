@@ -375,11 +375,29 @@ class JointDescriptor(Descriptor):
         """
         return self.act_type > JointActuationType.PASSIVE
 
+    def has_base_body(self, bid: int) -> bool:
+        """
+        Returns whether the joint has assigned the specified body as Base.
+
+        The body index `bid` must be given w.r.t the world.
+        """
+        return self.bid_B == bid
+
+    def has_follower_body(self, bid: int) -> bool:
+        """
+        Returns whether the joint has assigned the specified body as Follower.
+
+        The body index `bid` must be given w.r.t the world.
+        """
+        return self.bid_F == bid
+
     def is_connected_to_body(self, bid: int) -> bool:
         """
         Returns whether the joint is connected to the specified body.
+
+        The body index `bid` must be given w.r.t the world.
         """
-        return self.bid_B == bid or self.bid_F == bid
+        return self.has_base_body(bid) or self.has_follower_body(bid)
 
     ###
     # Operations

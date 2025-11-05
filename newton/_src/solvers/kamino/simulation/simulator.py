@@ -491,20 +491,14 @@ class Simulator:
         else:
             self._reset_select_worlds_from_state(state, worlds, reset_constraints)
 
-    def reset_to_base_and_actuators_state(
-        self, base_q: wp.array, base_u: wp.array, actuator_q: wp.array, actuator_dq: wp.array, worlds: wp.array = None
-    ):
+    def reset_to_actuators_state(self, actuators_q: wp.array, actuators_dq: wp.array, worlds: wp.array = None):
         """
         Resets the simulation to the given state.
 
         Args:
-            base_q (wp.array): Array of base body poses.\n
-                Expects shape of ``(num_worlds,)`` and type :class:`transform`.
-            base_u (wp.array): Array of base body twists.\n
-                Expects shape of ``(num_worlds,)`` and type :class:`vec6`.
-            actuator_q (wp.array): Array of actuated joint coordinates.\n
+            actuators_q (wp.array): Array of actuated joint coordinates.\n
                 Expects shape of ``(sum_of_num_actuated_joint_coords,)`` and type :class:`float`.
-            actuator_dq (wp.array): Array of actuated joint velocities.\n
+            actuators_dq (wp.array): Array of actuated joint velocities.\n
                 Expects shape of ``(sum_of_num_actuated_joint_dofs,)`` and type :class:`float`.
             worlds (wp.array, optional): An optional array of per-world reset flags.\n
                 If provided, only the worlds with active reset flags will be reset.\n
@@ -518,7 +512,36 @@ class Simulator:
         #   --> TODO: Can we just offset the model parameters instead? If yes, which?
         # - Use the ForwardKinematics solver given specified joint coordinates and velocities to compute body states
         # - Compute joint states from body states, parallel over joints
-        raise NotImplementedError("Simulator.reset_base_and_joints() is not yet implemented.")
+        raise NotImplementedError("Simulator.reset_to_actuators_state() is not yet implemented.")
+
+    def reset_to_base_and_actuators_state(
+        self, base_q: wp.array, base_u: wp.array, actuators_q: wp.array, actuators_dq: wp.array, worlds: wp.array = None
+    ):
+        """
+        Resets the simulation to the given state.
+
+        Args:
+            base_q (wp.array): Array of base body poses.\n
+                Expects shape of ``(num_worlds,)`` and type :class:`transform`.
+            base_u (wp.array): Array of base body twists.\n
+                Expects shape of ``(num_worlds,)`` and type :class:`vec6`.
+            actuators_q (wp.array): Array of actuated joint coordinates.\n
+                Expects shape of ``(sum_of_num_actuated_joint_coords,)`` and type :class:`float`.
+            actuators_dq (wp.array): Array of actuated joint velocities.\n
+                Expects shape of ``(sum_of_num_actuated_joint_dofs,)`` and type :class:`float`.
+            worlds (wp.array, optional): An optional array of per-world reset flags.\n
+                If provided, only the worlds with active reset flags will be reset.\n
+                Expects shape of ``(num_worlds,)`` and type :class:`int`.
+        """
+        # TODO:
+        # - Reset time of select worlds --> parallel over worlds
+        # - Reset all bodies of select worlds according to the delta transform
+        #   between current and target base pose --> parallel over bodies
+        #   --> TODO: Do we need to offset all bodies?
+        #   --> TODO: Can we just offset the model parameters instead? If yes, which?
+        # - Use the ForwardKinematics solver given specified joint coordinates and velocities to compute body states
+        # - Compute joint states from body states, parallel over joints
+        raise NotImplementedError("Simulator.reset_to_base_and_actuators_state() is not yet implemented.")
 
     def step(self):
         """

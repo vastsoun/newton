@@ -70,7 +70,7 @@ def make_homogeneous_builder(num_worlds: int, build_fn=build_boxes_nunchaku, **k
 
     builder = ModelBuilder(default_world=False)
     for _ in range(num_worlds):
-        builder.add_builder(build_fn(None, **kwargs))
+        builder.add_builder(build_fn(**kwargs))
     return builder
 
 

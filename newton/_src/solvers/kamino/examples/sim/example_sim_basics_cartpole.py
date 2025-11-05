@@ -29,7 +29,7 @@ from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.core.types import float32, uint32
 from newton._src.solvers.kamino.examples import run_headless
 from newton._src.solvers.kamino.models import get_basics_usd_assets_path
-from newton._src.solvers.kamino.models.builders import build_cartpole
+from newton._src.solvers.kamino.models.builders import add_ground_geom, build_cartpole
 from newton._src.solvers.kamino.models.utils import make_homogeneous_builder
 from newton._src.solvers.kamino.simulation.simulator import Simulator, SimulatorSettings
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
@@ -148,7 +148,13 @@ class Example:
             msg.notif("Constructing builder from imported USD ...")
             USD_MODEL_PATH = os.path.join(get_basics_usd_assets_path(), "cartpole.usda")
             importer = USDImporter()
-            self.builder: ModelBuilder = importer.import_from(source=USD_MODEL_PATH, load_static_geometry=ground)
+            # self.builder: ModelBuilder = importer.import_from(source=USD_MODEL_PATH, load_static_geometry=ground)
+            self.builder: ModelBuilder = make_homogeneous_builder(
+                num_worlds=num_worlds, build_fn=importer.import_from, load_static_geometry=True, source=USD_MODEL_PATH
+            )
+            if ground:
+                for w in range(num_worlds):
+                    add_ground_geom(self.builder, world_index=w)
         else:
             msg.notif("Constructing builder using model generator ...")
             self.builder: ModelBuilder = make_homogeneous_builder(

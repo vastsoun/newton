@@ -13,9 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""KAMINO: Joint Model Types & Containers"""
-
-from __future__ import annotations
+"""Provides definitions of core joint types & containers"""
 
 import math
 from dataclasses import dataclass, field
@@ -26,13 +24,9 @@ import warp as wp
 from .math import FLOAT32_MAX, FLOAT32_MIN
 from .types import (
     Descriptor,
-    float32,
-    int32,
     mat33f,
     override,
-    transformf,
     vec3f,
-    vec6f,
 )
 
 ###
@@ -100,35 +94,128 @@ class JointConnectionType(IntEnum):
 
 class JointDoFType(IntEnum):
     """
-    An enumeration of the joint degrees of freedom (DoF) types.
+    An enumeration of the joint degrees of freedom (DoF) types supported.
+
+    This class also provides property methods to query the number of:
+    - Generalized coordinates
+    - Degrees of Freedom (DoFs)
+    - Equality constraints
+
+    Conventions:
+    - Joints are indexed by `j`, and we often employ the subscript notation `*_j`.
+    - `R_x`, `R_y`, `R_z`: rotational DoFs about the local x, y, z axes respectively.
+    - `T_x`, `T_y`, `T_z`: translational DoFs along the local x, y, z axes respectively.
+    - `c_j` | `num_coords`: the number of generalized coordinates defined by joint `j`.
+    - `d_j` | `num_dofs`: the number of DoFs defined by joint `j`.
+    - `e_j` | `num_cts`: the number of equality constraints imposed by joint `j`.
     """
 
     FREE = 0
-    """6-DoF free-floating joint, with 6 rotational and translational DoFs, {R_x, R_y, R_z, T_x, T_y, T_z}."""
+    """
+    A 6-DoF free-floating joint, with 3 rotational + 3 translational DoFs,
+    along {`R_x`, `R_y`, `R_z`, `T_x`, `T_y`, `T_z`}.
+
+    Coordinates:
+        7D transform: 3D position + 4D unit quaternion
+    DoFs:
+        6D twist: 3D angular velocity + 3D linear velocity
+    Constraints:
+        None
+    """
 
     REVOLUTE = 1
-    """1-DoF revolute joint, with 1 rotational DoF, {R_x}."""
+    """
+    A 1-DoF revolute joint, with 1 rotational DoF along {`R_x`}.
+
+    Coordinates:
+        1D angle: {`R_x`}
+    DoFs:
+        1D angular velocity: {`R_x`}
+    Constraints:
+        5D vector: {`T_x`, `T_y`, `T_z`, `R_y`, `R_z`}
+    """
 
     PRISMATIC = 2
-    """1-DoF prismatic joint, with 1 translational DoF, {T_x}."""
+    """
+    A 1-DoF prismatic joint, with 1 translational DoF along {`T_x`}.
+
+    Coordinates:
+        1D distance: {`T_x`}
+    DoFs:
+        1D linear velocity: {`T_x`}
+    Constraints:
+        5D vector: {`T_y`, `T_z`, `R_x`, `R_y`, `R_z`}
+    """
 
     CYLINDRICAL = 3
-    """2-DoF cylindrical joint, with 1 rotational and 1 translational DoF, {R_x, T_x}."""
+    """
+    A 2-DoF cylindrical joint, with 1 rotational and 1 translational DoF along {`R_x`, `T_x`}.
+
+    Coordinates:
+        2D vector of angle {`R_x`} + 1D distance {`T_x`}
+    DoFs:
+        2D vector of angular velocity {`R_x`} + linear velocity {`T_x`}
+    """
 
     UNIVERSAL = 4
-    """2-DoF universal joint, with 2 rotational DoFs, {R_x, R_y}."""
+    """
+    A 2-DoF universal joint, with 2 rotational DoFs, {`R_x`, `R_y`}.
+
+    Coordinates:
+        2D angles: {`R_x`, `R_y`}
+    DoFs:
+        2D angular velocities: {`R_x`, `R_y`}
+    Constraints:
+        4D vector: {`T_x`, `T_y`, `T_z`, `R_z`}
+    """
 
     SPHERICAL = 5
-    """3-DoF spherical joint, with 3 rotational DoFs, {R_x, R_y, R_z}."""
+    """
+    A 3-DoF spherical joint, with 3 rotational DoFs along {`R_x`, `R_y`, `R_z`}.
+
+    Coordinates:
+        4D unit-quaternion to parameterize {`R_x`, `R_y`, `R_z`}
+    DoFs:
+        3D angular velocities: {`R_x`, `R_y`, `R_z`}
+    Constraints:
+        3D vector: {`T_x`, `T_y`, `T_z`}
+    """
 
     GIMBAL = 6
-    """3-DoF gimbal joint, with 3 rotational DoFs, {R_x, R_y, R_z}."""
+    """
+    A 3-DoF gimbal joint, with 3 rotational DoFs, {`R_x`, `R_y`, `R_z`}.
+
+    Coordinates:
+        3D euler angles: {`R_x`, `R_y`, `R_z`}
+    DoFs:
+        3D angular velocities: {`R_x`, `R_y`, `R_z`}
+    Constraints:
+        3D vector: {`T_x`, `T_y`, `T_z`}
+    """
 
     CARTESIAN = 7
-    """3-DoF Cartesian joint, with 3 translational DoFs, {T_x, T_y, T_z}."""
+    """
+    A 3-DoF Cartesian joint, with 3 translational DoFs, {`T_x`, `T_y`, `T_z`}.
+
+    Coordinates:
+        3D distances: {`T_x`, `T_y`, `T_z`}
+    DoFs:
+        3D linear velocities: {`T_x`, `T_y`, `T_z`}
+    Constraints:
+        3D vector: {`R_x`, `R_y`, `R_z`}
+    """
 
     FIXED = 8
-    """0-DoF fixed joint, with no relative motion between the bodies."""
+    """
+    A 0-DoF fixed joint, fully constraining the relative motion between the connected bodies.
+
+    Coordinates:
+        None
+    DoFs:
+        None
+    Constraints:
+        6D vector: {`T_x`, `T_y`, `T_z`, `R_x`, `R_y`, `R_z`}
+    """
 
     @override
     def __str__(self):
@@ -721,43 +808,49 @@ class JointsData:
     r_j: wp.array | None = None
     """
     Flat array of joint constraint residuals.\n
-    Shape of ``(sum(m_j),)`` and type :class:`float`,\n
-    where ``m_j`` is the number of constraints of joint ``j``.
+    Shape of ``(sum_of_num_joint_cts,)`` and type :class:`float`,\n
+    where `sum_of_num_joint_cts := sum(e_j)`, and ``e_j``
+    is the number of constraints of joint ``j``.
     """
 
     dr_j: wp.array | None = None
     """
     Flat array of joint constraint residual time-derivatives.\n
-    Shape of ``(sum(m_j),)`` and type :class:`float`,\n
-    where ``m_j`` is the number of constraints of joint ``j``.
+    Shape of ``(sum_of_num_joint_cts,)`` and type :class:`float`,\n
+    where `sum_of_num_joint_cts := sum(e_j)`, and ``e_j``
+    is the number of constraints of joint ``j``.
     """
 
     lambda_j: wp.array | None = None
     """
     Flat array of joint constraint Lagrange multipliers.\n
-    Shape of ``(sum(m_j),)`` and type :class:`float`,\n
-    where ``m_j`` is the number of constraints of joint ``j``.
+    Shape of ``(sum_of_num_joint_cts,)`` and type :class:`float`,\n
+    where `sum_of_num_joint_cts := sum(e_j)`, and ``e_j``
+    is the number of constraints of joint ``j``.
     """
 
     q_j: wp.array | None = None
     """
     Flat array of generalized coordinates of the joints.\n
-    Shape of ``(sum(c_j),)`` and type :class:`float`,\n
-    where ``c_j`` is the number of coordinates of joint ``j``.
+    Shape of ``(sum_of_num_joint_coords,)`` and type :class:`float`,\n
+    where `sum_of_num_joint_coords := sum(c_j)`, and ``c_j``
+    is the number of coordinates of joint ``j``.
     """
 
     dq_j: wp.array | None = None
     """
     Flat array of generalized velocities of the joints.\n
-    Shape of ``(sum(d_j),)`` and type :class:`float`,\n
-    where ``d_j`` is the number of DoFs of joint ``j``.
+    Shape of ``(sum_of_num_joint_dofs,)`` and type :class:`float`,\n
+    where `sum_of_num_joint_dofs := sum(d_j)`, and ``d_j``
+    is the number of DoFs of joint ``j``.
     """
 
     tau_j: wp.array | None = None
     """
     Flat array of generalized forces of the joints.\n
-    Shape of ``(sum(d_j),)`` and type :class:`float`,\n
-    where ``d_j`` is the number of DoFs of joint ``j``.
+    Shape of ``(sum_of_num_joint_dofs,)`` and type :class:`float`,\n
+    where `sum_of_num_joint_dofs := sum(d_j)`, and ``d_j``
+    is the number of DoFs of joint ``j``.
     """
 
     j_w_j: wp.array | None = None
@@ -835,142 +928,144 @@ class JointsData:
         self.j_w_l_j.zero_()
 
 
-###
-# Kernels
-###
+# ###
+# # Kernels
+# ###
 
 
-@wp.kernel
-def _reset_joints_state(
-    # Inputs:
-    model_joint_num_coords: wp.array(dtype=int32),
-    model_joint_num_dofs: wp.array(dtype=int32),
-    model_joint_num_cts: wp.array(dtype=int32),
-    model_joint_coords_offset: wp.array(dtype=int32),
-    model_joint_dofs_offset: wp.array(dtype=int32),
-    model_joint_cts_offset: wp.array(dtype=int32),
-    model_joint_wid: wp.array(dtype=int32),
-    model_joint_bid_B: wp.array(dtype=int32),
-    model_joint_B_r_Bj: wp.array(dtype=vec3f),
-    world_joint_coords_offsets: wp.array(dtype=int32),
-    world_joint_dofs_offsets: wp.array(dtype=int32),
-    world_joint_cts_offsets: wp.array(dtype=int32),
-    state_body_q: wp.array(dtype=transformf),
-    state_body_u: wp.array(dtype=vec6f),
-    # Outputs:
-    state_joint_p_j: wp.array(dtype=transformf),
-    state_joint_r_j: wp.array(dtype=float32),
-    state_joint_dr_j: wp.array(dtype=float32),
-    state_joint_q_j: wp.array(dtype=float32),
-    state_joint_dq_j: wp.array(dtype=float32),
-    state_joint_tau_j: wp.array(dtype=float32),
-):
-    """
-    Reset the current state to the initial state defined in the model.
-    """
-    # Retrieve the thread index
-    jid = wp.tid()
+# @wp.kernel
+# def _reset_joints_state(
+#     # Inputs:
+#     model_joint_num_coords: wp.array(dtype=int32),
+#     model_joint_num_dofs: wp.array(dtype=int32),
+#     model_joint_num_cts: wp.array(dtype=int32),
+#     model_joint_coords_offset: wp.array(dtype=int32),
+#     model_joint_dofs_offset: wp.array(dtype=int32),
+#     model_joint_cts_offset: wp.array(dtype=int32),
+#     model_joint_wid: wp.array(dtype=int32),
+#     model_joint_bid_B: wp.array(dtype=int32),
+#     model_joint_B_r_Bj: wp.array(dtype=vec3f),
+#     world_joint_coords_offsets: wp.array(dtype=int32),
+#     world_joint_dofs_offsets: wp.array(dtype=int32),
+#     world_joint_cts_offsets: wp.array(dtype=int32),
+#     state_body_q: wp.array(dtype=transformf),
+#     state_body_u: wp.array(dtype=vec6f),
+#     # Outputs:
+#     state_joint_p_j: wp.array(dtype=transformf),
+#     state_joint_r_j: wp.array(dtype=float32),
+#     state_joint_dr_j: wp.array(dtype=float32),
+#     state_joint_q_j: wp.array(dtype=float32),
+#     state_joint_dq_j: wp.array(dtype=float32),
+#     state_joint_tau_j: wp.array(dtype=float32),
+# ):
+#     """
+#     Reset the current state to the initial state defined in the model.
+#     """
+#     # Retrieve the thread index
+#     jid = wp.tid()
 
-    # Retrieve the joint model data
-    wid = model_joint_wid[jid]
-    c_j = model_joint_num_coords[jid]
-    d_j = model_joint_num_dofs[jid]
-    m_j = model_joint_num_cts[jid]
-    cio_j = model_joint_coords_offset[jid]
-    dio_j = model_joint_dofs_offset[jid]
-    mio_j = model_joint_cts_offset[jid]
-    bid_B_j = model_joint_bid_B[jid]
-    B_r_Bj = model_joint_B_r_Bj[jid]
+#     # Retrieve the joint model data
+#     wid = model_joint_wid[jid]
+#     c_j = model_joint_num_coords[jid]
+#     d_j = model_joint_num_dofs[jid]
+#     e_j = model_joint_num_cts[jid]
+#     cio_j = model_joint_coords_offset[jid]
+#     dio_j = model_joint_dofs_offset[jid]
+#     eio_j = model_joint_cts_offset[jid]
+#     bid_B_j = model_joint_bid_B[jid]
+#     B_r_Bj = model_joint_B_r_Bj[jid]
 
-    # Retrieve the coordinate, DoF, and constraint index offsets of the world
-    cio = world_joint_coords_offsets[wid]
-    dio = world_joint_dofs_offsets[wid]
-    mio = world_joint_cts_offsets[wid]
+#     # Retrieve the coordinate, DoF, and constraint index offsets of the world
+#     cio = world_joint_coords_offsets[wid]
+#     dio = world_joint_dofs_offsets[wid]
+#     eio = world_joint_cts_offsets[wid]
 
-    # If the base body is the world (bid=-1), use the identity transform (frame of the world's origin)
-    T_B_j = wp.transform_identity()
-    if bid_B_j > -1:
-        T_B_j = state_body_q[bid_B_j]
+#     # If the base body is the world (bid=-1), use the identity transform (frame of the world's origin)
+#     T_B_j = wp.transform_identity()
+#     if bid_B_j > -1:
+#         T_B_j = state_body_q[bid_B_j]
 
-    # Extract the state of the base body
-    r_B_j = wp.transform_get_translation(T_B_j)
-    q_B_j = wp.transform_get_rotation(T_B_j)
-    R_B_j = wp.quat_to_matrix(q_B_j)
+#     # Extract the state of the base body
+#     r_B_j = wp.transform_get_translation(T_B_j)
+#     q_B_j = wp.transform_get_rotation(T_B_j)
+#     R_B_j = wp.quat_to_matrix(q_B_j)
 
-    # Compute the initial pose of the joint frame
-    r_j = r_B_j + R_B_j @ B_r_Bj
-    T_j = wp.transformation(r_j, q_B_j, dtype=float32)
-    state_joint_p_j[jid] = T_j
+#     # Compute the initial pose of the joint frame
+#     r_j = r_B_j + R_B_j @ B_r_Bj
+#     T_j = wp.transformation(r_j, q_B_j, dtype=float32)
 
-    # TODO: Compute initial joint velocities
+#     # Store the initial joint pose
+#     state_joint_p_j[jid] = T_j
 
-    # Set the initial joint residuals and time-derivatives to zero
-    mio_j += mio
-    for j in range(m_j):
-        state_joint_r_j[dio_j + j] = 0.0
-        state_joint_dr_j[dio_j + j] = 0.0
+#     # TODO: Compute initial joint velocities
 
-    # Retrieve the initial generalized joint coordinates and velocities
-    # NOTE: Currently we are always resetting these to zero
-    # TODO: Copy entries from the model initial gencoords of joints
-    q_j = vec6f(0.0)
-    dq_j = vec6f(0.0)
-    tau_j = vec6f(0.0)
+#     # Set the initial joint residuals and time-derivatives to zero
+#     eio_j += eio
+#     for j in range(e_j):
+#         state_joint_r_j[eio_j + j] = 0.0
+#         state_joint_dr_j[eio_j + j] = 0.0
 
-    # Store the initial generalized joint coordinates
-    cio_j += cio
-    for j in range(c_j):
-        state_joint_q_j[cio_j + j] = q_j[j]
+#     # Retrieve the initial generalized joint coordinates and velocities
+#     # NOTE: Currently we are always resetting these to zero
+#     # TODO: Copy entries from the model initial gencoords of joints
+#     q_j = vec6f(0.0)
+#     dq_j = vec6f(0.0)
+#     tau_j = vec6f(0.0)
 
-    # Store the initial generalized joint velocities and forces
-    dio_j += dio
-    for j in range(d_j):
-        state_joint_dq_j[dio_j + j] = dq_j[j]
-        state_joint_tau_j[dio_j + j] = tau_j[j]
+#     # Store the initial generalized joint coordinates
+#     cio_j += cio
+#     for j in range(c_j):
+#         state_joint_q_j[cio_j + j] = q_j[j]
 
-
-###
-# Launchers
-###
+#     # Store the initial generalized joint velocities and forces
+#     dio_j += dio
+#     for j in range(d_j):
+#         state_joint_dq_j[dio_j + j] = dq_j[j]
+#         state_joint_tau_j[dio_j + j] = tau_j[j]
 
 
-def reset_joints_state(
-    world_joints_coords_offsets: wp.array(dtype=int32),
-    world_joints_dofs_offsets: wp.array(dtype=int32),
-    world_joints_cts_offsets: wp.array(dtype=int32),
-    bodies_state_q_i: wp.array(dtype=transformf),
-    bodies_state_u_i: wp.array(dtype=vec6f),
-    joints_model: JointsModel,
-    joints_data: JointsData,
-):
-    """
-    Reset the current state to the initial state defined in the model.
-    """
-    wp.launch(
-        _reset_joints_state,
-        dim=joints_model.num_joints,
-        inputs=[
-            # Inputs:
-            joints_model.num_coords,
-            joints_model.num_dofs,
-            joints_model.num_cts,
-            joints_model.coords_offset,
-            joints_model.dofs_offset,
-            joints_model.cts_offset,
-            joints_model.wid,
-            joints_model.bid_B,
-            joints_model.B_r_Bj,
-            world_joints_coords_offsets,
-            world_joints_dofs_offsets,
-            world_joints_cts_offsets,
-            bodies_state_q_i,
-            bodies_state_u_i,
-            # Outputs:
-            joints_data.p_j,
-            joints_data.r_j,
-            joints_data.dr_j,
-            joints_data.q_j,
-            joints_data.dq_j,
-            joints_data.tau_j,
-        ],
-    )
+# ###
+# # Launchers
+# ###
+
+
+# def reset_joints_state(
+#     world_joints_coords_offsets: wp.array(dtype=int32),
+#     world_joints_dofs_offsets: wp.array(dtype=int32),
+#     world_joints_cts_offsets: wp.array(dtype=int32),
+#     bodies_state_q_i: wp.array(dtype=transformf),
+#     bodies_state_u_i: wp.array(dtype=vec6f),
+#     joints_model: JointsModel,
+#     joints_data: JointsData,
+# ):
+#     """
+#     Reset the current state to the initial state defined in the model.
+#     """
+#     wp.launch(
+#         _reset_joints_state,
+#         dim=joints_model.num_joints,
+#         inputs=[
+#             # Inputs:
+#             joints_model.num_coords,
+#             joints_model.num_dofs,
+#             joints_model.num_cts,
+#             joints_model.coords_offset,
+#             joints_model.dofs_offset,
+#             joints_model.cts_offset,
+#             joints_model.wid,
+#             joints_model.bid_B,
+#             joints_model.B_r_Bj,
+#             world_joints_coords_offsets,
+#             world_joints_dofs_offsets,
+#             world_joints_cts_offsets,
+#             bodies_state_q_i,
+#             bodies_state_u_i,
+#             # Outputs:
+#             joints_data.p_j,
+#             joints_data.r_j,
+#             joints_data.dr_j,
+#             joints_data.q_j,
+#             joints_data.dq_j,
+#             joints_data.tau_j,
+#         ],
+#     )

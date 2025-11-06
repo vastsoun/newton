@@ -237,85 +237,85 @@ class JointDoFType(IntEnum):
     @property
     def num_coords(self) -> int:
         """
-        The number of generalized coordinates defined by the joint DoF type.
+        Returns the number of generalized coordinates defined by the joint DoF type.
         """
         if self.value == self.FREE:
-            return 7
+            return 7  # 3D position + 4D quaternion
         elif self.value == self.REVOLUTE:
-            return 1
+            return 1  # 1D angle
         elif self.value == self.PRISMATIC:
-            return 1
+            return 1  # 1D distance
         elif self.value == self.CYLINDRICAL:
-            return 2
+            return 2  # 2D vector of angle + distance
         elif self.value == self.UNIVERSAL:
-            return 2
+            return 2  # 2D angles
         elif self.value == self.SPHERICAL:
-            return 3  # TODO: 4
+            return 4  # 4D unit-quaternion
         elif self.value == self.GIMBAL:
-            return 3
+            return 3  # 3D euler angles
         elif self.value == self.CARTESIAN:
-            return 3
+            return 3  # 3D distances
         elif self.value == self.FIXED:
-            return 0
+            return 0  # None
         else:
             raise ValueError(f"Unknown joint DoF type: {self.value}")
 
     @property
     def num_dofs(self) -> int:
         """
-        The number of DoFs defined by the joint DoF type.
+        Returns the number of DoFs defined by the joint DoF type.
         """
         if self.value == self.FREE:
-            return 6
+            return 6  # 3D angular velocity + 3D linear velocity
         elif self.value == self.REVOLUTE:
-            return 1
+            return 1  # 1D angular velocity
         elif self.value == self.PRISMATIC:
-            return 1
+            return 1  # 1D linear velocity
         elif self.value == self.CYLINDRICAL:
-            return 2
+            return 2  # 1D angular velocity + 1D linear velocity
         elif self.value == self.UNIVERSAL:
-            return 2
+            return 2  # 2D angular velocities
         elif self.value == self.SPHERICAL:
-            return 3
+            return 3  # 3D angular velocities
         elif self.value == self.GIMBAL:
-            return 3
+            return 3  # 3D angular velocities
         elif self.value == self.CARTESIAN:
-            return 3
+            return 3  # 3D linear velocities
         elif self.value == self.FIXED:
-            return 0
+            return 0  # None
         else:
             raise ValueError(f"Unknown joint DoF type: {self.value}")
 
     @property
     def num_cts(self) -> int:
         """
-        The number of constraints defined by the joint DoF type.
+        Returns the number of constraints defined by the joint DoF type.
         """
         if self.value == self.FREE:
-            return 0
+            return 0  # None
         elif self.value == self.REVOLUTE:
-            return 5
+            return 5  # 5D vector for `{T_x, T_y, T_z, R_y, R_z}`
         elif self.value == self.PRISMATIC:
-            return 5
+            return 5  # 5D vector for `{T_x, T_y, T_z, R_y, R_z}`
         elif self.value == self.CYLINDRICAL:
-            return 4
+            return 4  # 4D vector for `{T_x, T_y, R_y, R_z}`
         elif self.value == self.UNIVERSAL:
-            return 4
+            return 4  # 4D vector for `{R_x, R_y, R_z, R_w}`
         elif self.value == self.SPHERICAL:
-            return 3
+            return 3  # 3D vector for `{R_x, R_y, R_z}`
         elif self.value == self.GIMBAL:
-            return 3
+            return 3  # 3D vector for `{R_x, R_y, R_z}`
         elif self.value == self.CARTESIAN:
-            return 3
+            return 3  # 3D vector for `{T_x, T_y, T_z}`
         elif self.value == self.FIXED:
-            return 6
+            return 6  # 6D vector for `{T_x, T_y, T_z, R_x, R_y, R_z}`
         else:
             raise ValueError(f"Unknown joint DoF type: {self.value}")
 
     @property
     def cts_axes(self) -> Vector[Any, Int]:
         """
-        Returns the constraint axes indices of the joint.
+        Returns the indices of the joint's constraint axes.
         """
         if self.value == self.FREE:
             return []  # Empty vector (TODO: wp.constant(vec0i()))
@@ -341,7 +341,7 @@ class JointDoFType(IntEnum):
     @property
     def dofs_axes(self) -> Vector[Any, Int]:
         """
-        Returns the DoF axes indices of the joint.
+        Returns the indices of the joint's DoF axes.
         """
         if self.value == self.FREE:
             return wp.constant(vec6i(0, 1, 2, 3, 4, 5))

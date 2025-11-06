@@ -71,45 +71,80 @@ wp.set_module_options({"enable_backward": False})
 
 
 @wp.func
+def map_to_joint_coords_free(j_r_j: vec3f, j_q_j: quatf) -> vec7f:
+    """Returns the full 7D representation of joint pose (3D translation + 4D rotation)."""
+    return vec7f(j_r_j[0], j_r_j[1], j_r_j[2], j_q_j.x, j_q_j.y, j_q_j.z, j_q_j.w)
+
+
+@wp.func
 def map_to_joint_coords_revolute(j_r_j: vec3f, j_q_j: quatf) -> vec1f:
+    """Returns the 1D rotation angle about the local X-axis."""
     j_p_j = quat_log(j_q_j)
     return vec1f(j_p_j[0])
 
 
 @wp.func
 def map_to_joint_coords_prismatic(j_r_j: vec3f, j_q_j: quatf) -> vec1f:
+    """Returns the 1D translation distance along the local X-axis."""
     return vec1f(j_r_j[0])
 
 
 @wp.func
 def map_to_joint_coords_cylindrical(j_r_j: vec3f, j_q_j: quatf) -> vec2f:
+    """Returns the 2D vector of translation and rotation about the local X-axis."""
     return vec2f(j_r_j[0], j_r_j[1])
 
 
 @wp.func
 def map_to_joint_coords_universal(j_r_j: vec3f, j_q_j: quatf) -> vec2f:
+    """Returns the 2D vector of joint angles for the two revolute DoFs."""
     j_theta_j = quat_log(j_q_j)
     return vec2f(j_theta_j[0], j_theta_j[1])
 
 
 @wp.func
-def map_to_joint_coords_spherical(j_r_j: vec3f, j_q_j: quatf) -> vec3f:
+def map_to_joint_coords_spherical(j_r_j: vec3f, j_q_j: quatf) -> quatf:
+    """Returns the 4D unit-quaternion representing the joint rotation."""
     return j_q_j
 
 
 @wp.func
 def map_to_joint_coords_gimbal(j_r_j: vec3f, j_q_j: quatf) -> vec3f:
+    """Returns the 3D XYZ Euler angles (roll, pitch, yaw)."""
     return quat_to_euler_xyz(j_q_j)
 
 
 @wp.func
 def map_to_joint_coords_cartesian(j_r_j: vec3f, j_q_j: quatf) -> vec3f:
+    """Returns the 3D translational."""
     return j_r_j
 
 
-@wp.func
-def map_to_joint_coords_free(j_r_j: vec3f, j_q_j: quatf) -> vec7f:
-    return vec7f(j_r_j[0], j_r_j[1], j_r_j[2], j_q_j.x, j_q_j.y, j_q_j.z, j_q_j.w)
+def get_joint_coords_mapping_function(dof_type: JointDoFType):
+    """
+    Retrieves the function to map joint relative poses to
+    joint coordinates based on the type of joint DoF.
+    """
+    if dof_type == JointDoFType.FREE:
+        return map_to_joint_coords_free
+    elif dof_type == JointDoFType.REVOLUTE:
+        return map_to_joint_coords_revolute
+    elif dof_type == JointDoFType.PRISMATIC:
+        return map_to_joint_coords_prismatic
+    elif dof_type == JointDoFType.CYLINDRICAL:
+        return map_to_joint_coords_cylindrical
+    elif dof_type == JointDoFType.UNIVERSAL:
+        return map_to_joint_coords_universal
+    elif dof_type == JointDoFType.SPHERICAL:
+        return map_to_joint_coords_spherical
+    elif dof_type == JointDoFType.GIMBAL:
+        return map_to_joint_coords_gimbal
+    elif dof_type == JointDoFType.CARTESIAN:
+        return map_to_joint_coords_cartesian
+    elif dof_type == JointDoFType.FIXED:
+        return None
+    else:
+        raise ValueError(f"Unknown joint DoF type: {dof_type}")
 
 
 ###
@@ -122,16 +157,17 @@ def make_write_joint_state_generic(dof_type: JointDoFType):
     Generates functions to store the joint state according to the
     constraint and DoF dimensions specific to the type of joint.
     """
-
     # Retrieve the joint constraint and DoF axes
     dof_axes = dof_type.dofs_axes
     cts_axes = dof_type.cts_axes
 
     # Retrieve the number of constraints and dofs
-    # num_coords = dof_type.num_coords
-    num_dof = dof_type.num_dofs
+    num_coords = dof_type.num_coords
+    num_dofs = dof_type.num_dofs
     num_cts = dof_type.num_cts
 
+    # Generate a joint type-specific function to write the
+    # computed joint state into the model data arrays
     @wp.func
     def write_joint_state_generic(
         # Inputs:
@@ -147,25 +183,34 @@ def make_write_joint_state_generic(dof_type: JointDoFType):
         q_j_out: wp.array(dtype=float32),  # Flat array of joint DoF coordinates
         dq_j_out: wp.array(dtype=float32),  # Flat array of joint DoF velocities
     ):
-        # Construct a 6D relative pose vector using a rotation vector
-        j_p_j = screw(j_r_j, quat_log(j_q_j))
+        # Only write the constraint residual and velocity if the joint defines constraints
+        # NOTE: This will be disabled for free joints
+        if wp.static(num_cts > 0):
+            # Construct a 6D relative pose vector using a rotation vector
+            j_p_j = screw(j_r_j, quat_log(j_q_j))
+            # Store the joint constraint residuals
+            for j in range(num_cts):
+                r_j_out[cts_offset + j] = j_p_j[cts_axes[j]]
+                dr_j_out[cts_offset + j] = j_u_j[cts_axes[j]]
 
-        # Store the joint constraint residuals
-        for j in range(num_cts):
-            r_j_out[cts_offset + j] = j_p_j[cts_axes[j]]
-            dr_j_out[cts_offset + j] = j_u_j[cts_axes[j]]
-
-        # Store the joint DoF coordinates and velocities
-        for j in range(num_dof):
-            q_j_out[coords_offset + j] = j_p_j[dof_axes[j]]
-            dq_j_out[dofs_offset + j] = j_u_j[dof_axes[j]]
+        # Only write the DoF coordinates and velocities if the joint defines DoFs
+        # NOTE: This will be disabled for fixed joints
+        if wp.static(num_dofs > 0):
+            # Map the joint relative pose to joint DoF coordinates
+            q_j = wp.static(get_joint_coords_mapping_function(dof_type))(j_r_j, j_q_j)
+            # Store the joint DoF coordinates
+            for j in range(num_coords):
+                q_j_out[coords_offset + j] = q_j[j]
+            # Store the joint DoF velocities
+            for j in range(num_dofs):
+                dq_j_out[dofs_offset + j] = j_u_j[dof_axes[j]]
 
     # Return the function
     return write_joint_state_generic
 
 
-write_joint_state_fixed = make_write_joint_state_generic(JointDoFType.FIXED)
-"""Function to store the joint state for 0-DoF fixed joints."""
+write_joint_state_free = make_write_joint_state_generic(JointDoFType.FREE)
+"""Function to store the joint state for 6-DoF free joints."""
 
 write_joint_state_revolute = make_write_joint_state_generic(JointDoFType.REVOLUTE)
 """Function to store the joint state for 1-DoF revolute joints."""
@@ -188,8 +233,8 @@ write_joint_state_gimbal = make_write_joint_state_generic(JointDoFType.GIMBAL)
 write_joint_state_cartesian = make_write_joint_state_generic(JointDoFType.CARTESIAN)
 """Function to store the joint state for 3-DoF cartesian joints."""
 
-write_joint_state_free = make_write_joint_state_generic(JointDoFType.FREE)
-"""Function to store the joint state for 6-DoF free joints."""
+write_joint_state_fixed = make_write_joint_state_generic(JointDoFType.FIXED)
+"""Function to store the joint state for 0-DoF fixed joints."""
 
 
 ###
@@ -251,8 +296,6 @@ def compute_joint_pose_and_relative_motion(
         tuple[transformf, vec6f, vec6f]: The absolute pose of the joint frame in world coordinates,
         and two 6D vectors encoding the relative motion of the bodies in the frame of the joint.
     """
-    # TODO: skip rotmat and rotate everything with quaternions
-
     # Extract the decomposed state of the Base body
     r_B_j = wp.transform_get_translation(T_B_j)
     q_B_j = wp.transform_get_rotation(T_B_j)
@@ -272,8 +315,7 @@ def compute_joint_pose_and_relative_motion(
 
     # Pre-compute transforms to joint-space
     X_j_T = wp.transpose(X_j)
-    R_B_j_T = wp.transpose(R_B_j)
-    X_j_T_R_B_j_T = X_j_T @ R_B_j_T
+    X_j_T_R_B_j_T = X_j_T @ wp.transpose(R_B_j)
 
     # Compute the relative pose between the representations of joint frame w.r.t. the two bodies
     # NOTE: The pose is decomposed into a translation vector `j_r_j` and a rotation quaternion `j_q_j`
@@ -317,10 +359,11 @@ def write_joint_state(
     Args:
         dof_type (int32): The type of joint DoF.
         cts_offset (int32): Index offset of the joint constraints.
-        coords_offset (int32): Index offset of the joint coordinates.
         dofs_offset (int32): Index offset of the joint DoFs.
-        r_j (vec6f): 6D vector of the joint-local relative pose.
-        dr_j (vec6f): 6D vector ofthe joint-local relative twist.
+        coords_offset (int32): Index offset of the joint coordinates.
+        j_r_j (vec3f): 3D vector of the joint-local relative translation.
+        j_q_j (quatf): 4D unit-quaternion of the joint-local relative rotation.
+        j_u_j (vec6f): 6D vector of the joint-local relative twist.
         data_r_j (wp.array): Flat array of joint constraint residuals.
         data_dr_j (wp.array): Flat array of joint constraint residuals.
         data_q_j (wp.array): Flat array of joint DoF coordinates.

@@ -45,9 +45,12 @@ class TestUtilsLinAlgProfiles(unittest.TestCase):
         self.verbose = False  # Set to True for verbose output
         self.plots = False  # Set to True to generate plots
 
-        # Configure logger
+        # Set debug-level logging to print verbose test output to console
         if self.verbose:
-            msg.set_log_level(msg.LogLevel.INFO)
+            print("\n")  # Add newline before test output for better readability
+            msg.set_log_level(msg.LogLevel.DEBUG)
+        else:
+            msg.set_log_level(msg.LogLevel.WARNING)
 
         # Data directory (contains perfprof.csv)
         self.data_dir = Path(__file__).parent / "data"

@@ -227,18 +227,18 @@ class TestPADMMSolver(unittest.TestCase):
         max_world_contacts = 12
 
         # Construct the model description using model builders for different systems
-        builder, _, _ = make_single_builder(build_func=build_box_on_plane)
-        # builder, _, _ = make_single_builder(build_func=build_boxes_hinged, ground=True)
-        # builder, _, _ = make_single_builder(build_func=build_boxes_nunchaku)
-        # builder, _, _ = make_single_builder(build_func=build_boxes_fourbar)
-        # builder = make_homogeneous_builder(num_worlds=4, build_func=build_box_on_plane)
-        # builder = make_homogeneous_builder(num_worlds=4, build_func=build_boxes_hinged)
-        # builder = make_homogeneous_builder(num_worlds=4, build_func=build_boxes_nunchaku)
-        # builder = make_homogeneous_builder(num_worlds=4, build_func=build_boxes_fourbar)
-        # builder, _, _ = make_heterogeneous_builder()
+        builder = make_single_builder(build_fn=build_box_on_plane)
+        # builder = make_single_builder(build_fn=build_boxes_hinged, ground=True)
+        # builder = make_single_builder(build_fn=build_boxes_nunchaku)
+        # builder = make_single_builder(build_fn=build_boxes_fourbar)
+        # builder = make_homogeneous_builder(num_worlds=4, build_fn=build_box_on_plane)
+        # builder = make_homogeneous_builder(num_worlds=4, build_fn=build_boxes_hinged)
+        # builder = make_homogeneous_builder(num_worlds=4, build_fn=build_boxes_nunchaku)
+        # builder = make_homogeneous_builder(num_worlds=4, build_fn=build_boxes_fourbar)
+        # builder = make_heterogeneous_builder()
 
         # Set ad-hoc configurations
-        builder.gravity.enabled = True
+        builder.gravity[0].enabled = True
         u_0 = screw(vec3f(+10.0, 0.0, 0.0), vec3f(0.0, 0.0, 0.0))
         for body in builder.bodies:
             body.u_i_0 = u_0
@@ -453,18 +453,18 @@ class TestPADMMSolver(unittest.TestCase):
         max_world_contacts = 12
 
         # Construct the model description using model builders for different systems
-        builder, _, _ = make_single_builder(build_func=build_box_on_plane)
-        # builder, _, _ = make_single_builder(build_func=build_boxes_hinged, ground=True)
-        # builder, _, _ = make_single_builder(build_func=build_boxes_nunchaku)
-        # builder, _, _ = make_single_builder(build_func=build_boxes_fourbar)
-        # builder = make_homogeneous_builder(num_worlds=4, build_func=build_box_on_plane)
-        # builder = make_homogeneous_builder(num_worlds=4, build_func=build_boxes_hinged)
-        # builder = make_homogeneous_builder(num_worlds=4, build_func=build_boxes_nunchaku)
-        # builder = make_homogeneous_builder(num_worlds=4, build_func=build_boxes_fourbar)
-        # builder, _, _ = make_heterogeneous_builder()
+        builder = make_single_builder(build_fn=build_box_on_plane)
+        # builder = make_single_builder(build_fn=build_boxes_hinged, ground=True)
+        # builder = make_single_builder(build_fn=build_boxes_nunchaku)
+        # builder = make_single_builder(build_fn=build_boxes_fourbar)
+        # builder = make_homogeneous_builder(num_worlds=4, build_fn=build_box_on_plane)
+        # builder = make_homogeneous_builder(num_worlds=4, build_fn=build_boxes_hinged)
+        # builder = make_homogeneous_builder(num_worlds=4, build_fn=build_boxes_nunchaku)
+        # builder = make_homogeneous_builder(num_worlds=4, build_fn=build_boxes_fourbar)
+        # builder = make_heterogeneous_builder()
 
         # Set ad-hoc configurations
-        builder.gravity.enabled = True
+        builder.gravity[0].enabled = True
         u_0 = screw(vec3f(+10.0, 0.0, 0.0), vec3f(0.0, 0.0, 0.0))
         for body in builder.bodies:
             body.u_i_0 = u_0

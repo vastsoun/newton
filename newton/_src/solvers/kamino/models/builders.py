@@ -13,9 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-KAMINO: MODELS: MODEL BUILDER FUNCTIONS
-"""
+"""Defines model builders and utilities for test models"""
 
 import math
 
@@ -24,12 +22,11 @@ import warp as wp
 from ..core import ModelBuilder
 from ..core.inertia import (
     solid_cuboid_body_moment_of_inertia,
-    solid_cylinder_body_moment_of_inertia,
     solid_sphere_body_moment_of_inertia,
 )
 from ..core.joints import JointActuationType, JointDoFType
 from ..core.math import FLOAT32_MAX, FLOAT32_MIN, I_3
-from ..core.shapes import BoxShape, CylinderShape, SphereShape
+from ..core.shapes import BoxShape, SphereShape
 from ..core.types import Axis, transformf, vec3f, vec6f
 
 ###
@@ -37,6 +34,8 @@ from ..core.types import Axis, transformf, vec3f, vec6f
 ###
 
 __all__ = [
+    "add_body_pose_offset",
+    "add_body_twist_offset",
     "add_ground_geom",
     "build_box_on_plane",
     "build_box_pendulum",
@@ -45,7 +44,6 @@ __all__ = [
     "build_boxes_hinged",
     "build_boxes_nunchaku",
     "build_boxes_nunchaku_vertical",
-    "offset_builder",
 ]
 
 
@@ -54,45 +52,92 @@ __all__ = [
 ###
 
 
-def add_ground_geom(builder: ModelBuilder, group: int = 1, collides: int = 1) -> int:
-    """Adds a static collision layer and geometry to a given builder to represent a flat ground plane."""
-    builder.add_collision_layer("world")
+def add_ground_geom(builder: ModelBuilder, group: int = 1, collides: int = 1, world_index: int = 0) -> int:
+    """
+    Adds a static collision layer and geometry to a given builder to represent a flat ground plane.
+
+    Args:
+        builder (ModelBuilder): The model builder to which the ground geom should be added.
+        group (int): The collision group for the ground geometry.
+        collides (int): The collision mask for the ground geometry.
+        world_index (int): The index of the world in the builder where the ground geom should be added.
+
+    Returns:
+        int: The ID of the added ground geometry.
+    """
+    builder.add_collision_layer("ground")
     gid = builder.add_collision_geometry(
-        body_id=-1,
+        name="ground",
+        body=-1,
         shape=BoxShape(20.0, 20.0, 1.0),
         offset=transformf(0.0, 0.0, -0.5, 0.0, 0.0, 0.0, 1.0),
         group=group,
         collides=collides,
+        world_index=world_index,
     )
     return gid
 
 
-def offset_builder(builder: ModelBuilder, offset: transformf):
-    """Offsets a model builder by a given transform."""
+def add_body_pose_offset(builder: ModelBuilder, offset: transformf):
+    """
+    Offsets a model builder by a given transform.
+
+    Args:
+        builder (ModelBuilder): The model builder to offset.
+        offset (transformf): The transform offset to apply to each body in the builder.
+    """
     for i in range(builder.num_bodies):
-        # Eigen::Ref<Math::Vector7> s_i(state.segment<7>(7 * i));
-        # Math::Matrix3 R_i = R_offset * R_of(s_i.segment<4>(3));
-        # Math::Vector3 r_i = r_offset + R_offset * s_i.segment<3>(0);
-        # s_i << r_i, to_quaternion(R_i);
         builder.bodies[i].q_i_0 = wp.mul(offset, builder.bodies[i].q_i_0)
 
 
-def add_velocity_bias(builder: ModelBuilder, bias: vec6f):
-    """Offsets a model builder by a given transform."""
+def add_body_twist_offset(builder: ModelBuilder, offset: vec6f):
+    """
+    Offsets a model builder by a given transform.
+
+    Args:
+        builder (ModelBuilder): The model builder to offset.
+        offset (vec6f): The twist offset to apply to each body in the builder.
+    """
     for i in range(builder.num_bodies):
-        # Eigen::Ref<Math::Vector7> s_i(state.segment<7>(7 * i));
-        # Math::Matrix3 R_i = R_offset * R_of(s_i.segment<4>(3));
-        # Math::Vector3 r_i = r_offset + R_offset * s_i.segment<3>(0);
-        # s_i << r_i, to_quaternion(R_i);
-        builder.bodies[i].u_i_0 += bias
+        builder.bodies[i].u_i_0 += offset
 
 
 ###
-# Builders for unit-tests
+# Builders for unit-test models
 ###
 
 
-def build_revolute_joint_test_system(builder: ModelBuilder):
+def build_revolute_joint_test_system(
+    builder: ModelBuilder | None = None,
+    new_world: bool = True,
+    world_index: int = 0,
+) -> ModelBuilder:
+    """
+    Constructs a simple two-body revolute joint test model.
+
+    Args:
+        builder (ModelBuilder | None): An optional model builder to populate.\n
+            If `None`, a new builder is created.
+        new_world (bool): Whether to create a new world in the builder for this model.\n
+            If `False`, the model is added to the existing world specified by `world_index`.\n
+            If `True`, a new world is created and added to the builder. In this case the `world_index`
+            argument is ignored, and the index of the newly created world will be used instead.
+        world_index (int): The index of the world to which the model should be added if `new_world` is False.\n
+            If `new_world` is True, this argument is ignored.
+
+    Returns:
+        ModelBuilder: The populated model builder.
+    """
+    # Create a new builder if none is provided
+    if builder is None:
+        _builder = ModelBuilder(default_world=False)
+    else:
+        _builder = builder
+
+    # Create a new world in the builder if requested or if a new builder was created
+    if new_world or builder is None:
+        world_index = _builder.add_world(name="box_on_plane")
+
     ###
     # Model parameters
     ###
@@ -117,23 +162,25 @@ def build_revolute_joint_test_system(builder: ModelBuilder):
     ###
 
     # Define the Base body
-    bid0 = builder.add_body(
+    bid0 = _builder.add_rigid_body(
         m_i=1.0,
         i_I_i=I_3,
         q_i_0=transformf(r_B_0, q_B_0),
         u_i_0=u_B_0,
+        world_index=world_index,
     )
 
     # Define the Follower body
-    bid1 = builder.add_body(
+    bid1 = _builder.add_rigid_body(
         m_i=1.0,
         i_I_i=I_3,
         q_i_0=transformf(r_F_0, q_F_0),
         u_i_0=u_F_0,
+        world_index=world_index,
     )
 
     # Define the joint between the two bodies
-    builder.add_joint(
+    _builder.add_joint(
         dof_type=JointDoFType.REVOLUTE,
         act_type=JointActuationType.FORCE,
         bid_B=bid0,
@@ -143,55 +190,114 @@ def build_revolute_joint_test_system(builder: ModelBuilder):
         X_j=X_j,
         q_j_min=[-0.25 * math.pi],
         q_j_max=[0.25 * math.pi],
+        world_index=world_index,
     )
 
+    # Return the populated builder
+    return _builder
+
 
 ###
-# Builders for primitives models
+# Builders for basic models
 ###
 
-BuilderInfo = tuple[list[int], list[int], list[int]]
 
+def build_box_on_plane(
+    builder: ModelBuilder | None = None,
+    z_offset: float = 0.0,
+    ground: bool = True,
+    new_world: bool = True,
+    world_index: int = 0,
+) -> ModelBuilder:
+    """
+    Constructs a basic model of free-floating box body and a ground plane geom.
 
-def build_box_on_plane(builder: ModelBuilder, z_offset: float = 0.0, ground: bool = True) -> BuilderInfo:
-    # Create lists of BIDs, JIDs and GIDs
-    bids = []
-    jids = []
-    gids = []
+    Args:
+        builder (ModelBuilder | None): An optional model builder to populate.\n
+            If `None`, a new builder is created.
+        z_offset (float): A vertical offset to apply to the initial position of the box.
+        ground (bool): Whether to add a static ground plane to the model.
+        new_world (bool): Whether to create a new world in the builder for this model.\n
+            If `False`, the model is added to the existing world specified by `world_index`.\n
+            If `True`, a new world is created and added to the builder. In this case the `world_index`
+            argument is ignored, and the index of the newly created world will be used instead.\n
+        world_index (int): The index of the world to which the model should be added if `new_world` is False.\n
+            If `new_world` is True, this argument is ignored.
+
+    Returns:
+        ModelBuilder: The populated model builder.
+    """
+    # Create a new builder if none is provided
+    if builder is None:
+        _builder = ModelBuilder(default_world=False)
+    else:
+        _builder = builder
+
+    # Create a new world in the builder if requested or if a new builder was created
+    if new_world or builder is None:
+        world_index = _builder.add_world(name="box_on_plane")
 
     # Add first body
-    bid0 = builder.add_body(
+    bid0 = _builder.add_rigid_body(
         m_i=1.0,
         i_I_i=solid_cuboid_body_moment_of_inertia(1.0, 0.2, 0.2, 0.2),
         q_i_0=transformf(0.0, 0.0, 0.1 + z_offset, 0.0, 0.0, 0.0, 1.0),
         u_i_0=vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+        world_index=world_index,
     )
-    bids.append(bid0)
 
     # Add a collision layer and geometries
-    builder.add_collision_layer("box")
-    gids.append(builder.add_collision_geometry(body_id=bid0, shape=BoxShape(0.2, 0.2, 0.2)))
+    _builder.add_collision_geometry(body=bid0, shape=BoxShape(0.2, 0.2, 0.2), world_index=world_index)
 
     # Add a static collision layer and geometry for the plane
     if ground:
-        builder.add_collision_layer("world")
-        gids.append(
-            builder.add_collision_geometry(
-                body_id=-1,
-                shape=BoxShape(20.0, 20.0, 1.0),
-                offset=transformf(0.0, 0.0, -0.5, 0.0, 0.0, 0.0, 1.0),
-            )
+        _builder.add_collision_geometry(
+            body=-1,
+            shape=BoxShape(20.0, 20.0, 1.0),
+            offset=transformf(0.0, 0.0, -0.5, 0.0, 0.0, 0.0, 1.0),
+            world_index=world_index,
         )
 
     # Return the lists of element indices
-    return bids, jids, gids
+    return _builder
 
 
-def build_box_pendulum(builder: ModelBuilder, z_offset: float = 0.7, ground: bool = True) -> BuilderInfo:
-    # Create lists of BIDs, JIDs and GIDs
-    bids = []
-    jids = []
-    gids = []
+def build_box_pendulum(
+    builder: ModelBuilder | None = None,
+    z_offset: float = 0.7,
+    ground: bool = True,
+    new_world: bool = True,
+    world_index: int = 0,
+) -> ModelBuilder:
+    """
+    Constructs a basic model of a single box pendulum body with a unary revolute joint.
+
+    This version initializes the pendulum in a horizontal configuration.
+
+    Args:
+        builder (ModelBuilder | None): An optional model builder to populate.\n
+            If `None`, a new builder is created.
+        z_offset (float): A vertical offset to apply to the initial position of the box.
+        ground (bool): Whether to add a static ground plane to the model.
+        new_world (bool): Whether to create a new world in the builder for this model.\n
+            If `False`, the model is added to the existing world specified by `world_index`.\n
+            If `True`, a new world is created and added to the builder. In this case the `world_index`
+            argument is ignored, and the index of the newly created world will be used instead.\n
+        world_index (int): The index of the world to which the model should be added if `new_world` is False.\n
+            If `new_world` is True, this argument is ignored.
+
+    Returns:
+        ModelBuilder: The populated model builder.
+    """
+    # Create a new builder if none is provided
+    if builder is None:
+        _builder = ModelBuilder(default_world=False)
+    else:
+        _builder = builder
+
+    # Create a new world in the builder if requested or if a new builder was created
+    if new_world or builder is None:
+        world_index = _builder.add_world(name="box_pendulum")
 
     # Model constants
     m = 1.0
@@ -201,16 +307,18 @@ def build_box_pendulum(builder: ModelBuilder, z_offset: float = 0.7, ground: boo
     z_0 = z_offset  # Initial z offset for the body
 
     # Add box pendulum body
-    bid0 = builder.add_body(
+    bid0 = _builder.add_rigid_body(
+        name="pendulum",
         m_i=m,
         i_I_i=solid_cuboid_body_moment_of_inertia(m, d, w, h),
         q_i_0=transformf(0.5 * d, 0.0, 0.5 * h + z_0, 0.0, 0.0, 0.0, 1.0),
         u_i_0=vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+        world_index=world_index,
     )
-    bids.append(bid0)
 
     # Add a joint between the two bodies
-    jid0 = builder.add_joint(
+    _builder.add_joint(
+        name="world_to_pendulum",
         dof_type=JointDoFType.REVOLUTE,
         act_type=JointActuationType.FORCE,
         bid_B=-1,
@@ -218,33 +326,67 @@ def build_box_pendulum(builder: ModelBuilder, z_offset: float = 0.7, ground: boo
         B_r_Bj=vec3f(0.0, 0.0, 0.5 * h + z_0),
         F_r_Fj=vec3f(-0.5 * d, 0.0, 0.0),
         X_j=Axis.Y.to_mat33(),
+        world_index=world_index,
     )
-    jids.append(jid0)
 
     # Add a collision layer and geometries
-    builder.add_collision_layer("primary")
-    gids.append(builder.add_collision_geometry(body_id=bid0, shape=BoxShape(d, w, h)))
+    _builder.add_collision_geometry(
+        name="box",
+        body=bid0,
+        shape=BoxShape(d, w, h),
+        world_index=world_index,
+    )
 
     # Add a static collision layer and geometry for the plane
     if ground:
-        builder.add_collision_layer("world")
-        gids.append(
-            builder.add_collision_geometry(
-                body_id=-1,
-                shape=BoxShape(20.0, 20.0, 1.0),
-                offset=transformf(0.0, 0.0, -0.5, 0.0, 0.0, 0.0, 1.0),
-            )
+        _builder.add_collision_geometry(
+            name="ground",
+            body=-1,
+            shape=BoxShape(20.0, 20.0, 1.0),
+            offset=transformf(0.0, 0.0, -0.5, 0.0, 0.0, 0.0, 1.0),
+            world_index=world_index,
         )
 
     # Return the lists of element indices
-    return bids, jids, gids
+    return _builder
 
 
-def build_box_pendulum_vertical(builder: ModelBuilder, z_offset: float = 0.7, ground: bool = True) -> BuilderInfo:
-    # Create lists of BIDs, JIDs and GIDs
-    bids = []
-    jids = []
-    gids = []
+def build_box_pendulum_vertical(
+    builder: ModelBuilder | None = None,
+    z_offset: float = 0.7,
+    ground: bool = True,
+    new_world: bool = True,
+    world_index: int = 0,
+) -> ModelBuilder:
+    """
+    Constructs a basic model of a single box pendulum body with a unary revolute joint.
+
+    This version initializes the pendulum in a vertical configuration.
+
+    Args:
+        builder (ModelBuilder | None): An optional model builder to populate.\n
+            If `None`, a new builder is created.
+        z_offset (float): A vertical offset to apply to the initial position of the box.
+        ground (bool): Whether to add a static ground plane to the model.
+        new_world (bool): Whether to create a new world in the builder for this model.\n
+            If `False`, the model is added to the existing world specified by `world_index`.\n
+            If `True`, a new world is created and added to the builder. In this case the `world_index`
+            argument is ignored, and the index of the newly created world will be used instead.\n
+        world_index (int): The index of the world to which the model should be added if `new_world` is False.\n
+            If `new_world` is True, this argument is ignored.
+
+    Returns:
+        ModelBuilder: The populated model builder.
+    """
+    # Create a new builder if none is provided
+    if builder is None:
+        _builder = ModelBuilder(default_world=False)
+    else:
+        _builder = builder
+
+    # Create a new world in the builder if requested or if a new builder was created
+    if new_world or builder is None:
+        world_index = _builder.add_world(name="box_pendulum_vertical")
 
     # Model constants
     m = 1.0
@@ -254,16 +396,18 @@ def build_box_pendulum_vertical(builder: ModelBuilder, z_offset: float = 0.7, gr
     z_0 = z_offset  # Initial z offset for the body
 
     # Add box pendulum body
-    bid0 = builder.add_body(
+    bid0 = _builder.add_rigid_body(
+        name="pendulum",
         m_i=m,
         i_I_i=solid_cuboid_body_moment_of_inertia(m, d, w, h),
         q_i_0=transformf(0.0, 0.0, -0.5 * h + z_0, 0.0, 0.0, 0.0, 1.0),
         u_i_0=vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+        world_index=world_index,
     )
-    bids.append(bid0)
 
     # Add a joint between the two bodies
-    jid0 = builder.add_joint(
+    _builder.add_joint(
+        name="world_to_pendulum",
         dof_type=JointDoFType.REVOLUTE,
         act_type=JointActuationType.FORCE,
         bid_B=-1,
@@ -271,109 +415,199 @@ def build_box_pendulum_vertical(builder: ModelBuilder, z_offset: float = 0.7, gr
         B_r_Bj=vec3f(0.0, 0.0, 0.0 + z_0),
         F_r_Fj=vec3f(0.0, 0.0, 0.5 * h),
         X_j=Axis.Y.to_mat33(),
+        world_index=world_index,
     )
-    jids.append(jid0)
 
     # Add a collision layer and geometries
-    builder.add_collision_layer("primary")
-    gids.append(builder.add_collision_geometry(body_id=bid0, shape=BoxShape(d, w, h)))
+    _builder.add_collision_geometry(
+        name="box",
+        body=bid0,
+        shape=BoxShape(d, w, h),
+        world_index=world_index,
+    )
 
     # Add a static collision layer and geometry for the plane
     if ground:
-        builder.add_collision_layer("world")
-        gids.append(
-            builder.add_collision_geometry(
-                body_id=-1,
-                shape=BoxShape(20.0, 20.0, 1.0),
-                offset=transformf(0.0, 0.0, -0.5, 0.0, 0.0, 0.0, 1.0),
-            )
+        _builder.add_collision_geometry(
+            name="ground",
+            body=-1,
+            shape=BoxShape(20.0, 20.0, 1.0),
+            offset=transformf(0.0, 0.0, -0.5, 0.0, 0.0, 0.0, 1.0),
+            world_index=world_index,
         )
 
     # Return the lists of element indices
-    return bids, jids, gids
+    return _builder
 
 
-def build_cartpole(builder: ModelBuilder, z_offset: float = 0.0, ground: bool = False) -> BuilderInfo:
-    # Create lists of BIDs, JIDs and GIDs
-    bids = []
-    jids = []
-    gids = []
+def build_cartpole(
+    builder: ModelBuilder | None = None,
+    z_offset: float = 0.0,
+    ground: bool = True,
+    new_world: bool = True,
+    world_index: int = 0,
+) -> ModelBuilder:
+    """
+    Constructs a basic model of a cartpole mounted onto a rail.
+
+    Args:
+        builder (ModelBuilder | None): An optional model builder to populate.\n
+            If `None`, a new builder is created.
+        z_offset (float): A vertical offset to apply to the initial position of the box.
+        ground (bool): Whether to add a static ground plane to the model.
+        new_world (bool): Whether to create a new world in the builder for this model.\n
+            If `False`, the model is added to the existing world specified by `world_index`.\n
+            If `True`, a new world is created and added to the builder. In this case the `world_index`
+            argument is ignored, and the index of the newly created world will be used instead.\n
+        world_index (int): The index of the world to which the model should be added if `new_world` is False.\n
+            If `new_world` is True, this argument is ignored.
+
+    Returns:
+        ModelBuilder: The populated model builder.
+    """
+    # Create a new builder if none is provided
+    if builder is None:
+        _builder = ModelBuilder(default_world=False)
+    else:
+        _builder = builder
+
+    # Create a new world in the builder if requested or if a new builder was created
+    if new_world or builder is None:
+        world_index = _builder.add_world(name="cartpole")
 
     # Model constants
-    m = 1.0
-    dims_cart = (0.1, 0.1, 0.1)
-    dims_pendulum = (0.02, 0.4)
+    m_cart = 1.0
+    m_pole = 0.2
+    dims_rail = (0.03, 8.0, 0.03)
+    dims_cart = (0.2, 0.5, 0.2)
+    dims_pole = (0.05, 0.05, 0.75)
     z_0 = z_offset  # Initial z offset for the body
 
     # Add box cart body
-    z_0_cart = z_0
-    bid0 = builder.add_body(
-        m_i=m,
-        i_I_i=solid_cuboid_body_moment_of_inertia(m, *dims_cart),
-        q_i_0=transformf(0.0, 0.0, z_0_cart, 0.0, 0.0, 0.0, 1.0),
+    bid0 = _builder.add_rigid_body(
+        name="cart",
+        m_i=m_cart,
+        i_I_i=solid_cuboid_body_moment_of_inertia(m_cart, *dims_cart),
+        q_i_0=transformf(0.0, 0.0, z_0, 0.0, 0.0, 0.0, 1.0),
         u_i_0=vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+        world_index=world_index,
     )
-    bids.append(bid0)
 
-    # Add box pendulum body
-    z_0_pendulum = 0.5 * dims_pendulum[1] + z_0_cart
-    bid1 = builder.add_body(
-        m_i=m,
-        i_I_i=solid_cylinder_body_moment_of_inertia(m, *dims_pendulum),
-        q_i_0=transformf(0.0, 0.0, z_0_pendulum, 0.0, 0.0, 0.0, 1.0),
+    # Add box pole body
+    x_0_pole = 0.5 * dims_pole[0] + 0.5 * dims_cart[0]
+    z_0_pole = 0.5 * dims_pole[2] + z_0
+    bid1 = _builder.add_rigid_body(
+        name="pole",
+        m_i=m_pole,
+        i_I_i=solid_cuboid_body_moment_of_inertia(m_pole, *dims_pole),
+        q_i_0=transformf(x_0_pole, 0.0, z_0_pole, 0.0, 0.0, 0.0, 1.0),
         u_i_0=vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+        world_index=world_index,
     )
-    bids.append(bid1)
 
     # Add a prismatic joint for the cart
-    jid0 = builder.add_joint(
+    _builder.add_joint(
+        name="rail_to_cart",
         dof_type=JointDoFType.PRISMATIC,
         act_type=JointActuationType.FORCE,
         bid_B=-1,
         bid_F=bid0,
         B_r_Bj=vec3f(0.0, 0.0, z_0),
-        F_r_Fj=vec3f(0.0, 0.0, z_0_cart),
-        X_j=Axis.X.to_mat33(),
+        F_r_Fj=vec3f(0.0, 0.0, 0.0),
+        X_j=Axis.Y.to_mat33(),
+        q_j_min=[-4.0],
+        q_j_max=[4.0],
+        tau_j_max=[1000.0],
+        world_index=world_index,
     )
-    jids.append(jid0)
 
     # Add a revolute joint for the pendulum
-    jid0 = builder.add_joint(
+    _builder.add_joint(
+        name="cart_to_pole",
         dof_type=JointDoFType.REVOLUTE,
-        act_type=JointActuationType.FORCE,
+        act_type=JointActuationType.PASSIVE,
         bid_B=bid0,
         bid_F=bid1,
-        B_r_Bj=vec3f(0.0, 0.0, 0.0),
-        F_r_Fj=vec3f(0.0, 0.0, -0.5 * dims_pendulum[1]),
-        X_j=Axis.Y.to_mat33(),
+        B_r_Bj=vec3f(0.5 * dims_cart[0], 0.0, 0.0),
+        F_r_Fj=vec3f(-0.5 * dims_pole[0], 0.0, -0.5 * dims_pole[2]),
+        X_j=Axis.X.to_mat33(),
+        world_index=world_index,
     )
-    jids.append(jid0)
 
     # Add a collision layer and geometries
-    builder.add_collision_layer("primary")
-    gids.append(builder.add_collision_geometry(body_id=bid0, shape=BoxShape(*dims_cart)))
-    gids.append(builder.add_collision_geometry(body_id=bid1, shape=CylinderShape(*dims_pendulum)))
+    _builder.add_collision_geometry(
+        name="cart",
+        layer="primary",
+        body=bid0,
+        shape=BoxShape(*dims_cart),
+        group=2,
+        collides=2,
+        world_index=world_index,
+    )
+    _builder.add_collision_geometry(
+        name="pole",
+        layer="primary",
+        body=bid1,
+        shape=BoxShape(*dims_pole),
+        group=3,
+        collides=3,
+        world_index=world_index,
+    )
+    _builder.add_collision_geometry(
+        name="rail", layer="world", body=-1, shape=BoxShape(*dims_rail), group=1, collides=1, world_index=world_index
+    )
 
     # Add a static collision layer and geometry for the plane
     if ground:
-        builder.add_collision_layer("world")
-        gids.append(
-            builder.add_collision_geometry(
-                body_id=-1,
-                shape=BoxShape(20.0, 20.0, 1.0),
-                offset=transformf(0.0, 0.0, -0.5, 0.0, 0.0, 0.0, 1.0),
-            )
+        _builder.add_collision_geometry(
+            name="ground",
+            layer="world",
+            body=-1,
+            shape=BoxShape(20.0, 20.0, 1.0),
+            offset=transformf(0.0, 0.0, -1.0, 0.0, 0.0, 0.0, 1.0),
+            group=1,
+            collides=1,
+            world_index=world_index,
         )
 
     # Return the lists of element indices
-    return bids, jids, gids
+    return _builder
 
 
-def build_boxes_hinged(builder: ModelBuilder, z_offset: float = 0.0, ground: bool = True) -> BuilderInfo:
-    # Create lists of BIDs, JIDs and GIDs
-    bids = []
-    jids = []
-    gids = []
+def build_boxes_hinged(
+    builder: ModelBuilder | None = None,
+    z_offset: float = 0.0,
+    ground: bool = True,
+    new_world: bool = True,
+    world_index: int = 0,
+) -> ModelBuilder:
+    """
+    Constructs a basic model of a two floating boxes connected via revolute joint.
+
+    Args:
+        builder (ModelBuilder | None): An optional model builder to populate.\n
+            If `None`, a new builder is created.
+        z_offset (float): A vertical offset to apply to the initial position of the box.
+        ground (bool): Whether to add a static ground plane to the model.
+        new_world (bool): Whether to create a new world in the builder for this model.\n
+            If `False`, the model is added to the existing world specified by `world_index`.\n
+            If `True`, a new world is created and added to the builder. In this case the `world_index`
+            argument is ignored, and the index of the newly created world will be used instead.\n
+        world_index (int): The index of the world to which the model should be added if `new_world` is False.\n
+            If `new_world` is True, this argument is ignored.
+
+    Returns:
+        ModelBuilder: The populated model builder.
+    """
+    # Create a new builder if none is provided
+    if builder is None:
+        _builder = ModelBuilder(default_world=False)
+    else:
+        _builder = builder
+
+    # Create a new world in the builder if requested or if a new builder was created
+    if new_world or builder is None:
+        world_index = _builder.add_world(name="boxes_hinged")
 
     # Model constants
     m_0 = 1.0
@@ -384,25 +618,28 @@ def build_boxes_hinged(builder: ModelBuilder, z_offset: float = 0.0, ground: boo
     z0 = z_offset  # Initial z offset for the bodies
 
     # Add first body
-    bid0 = builder.add_body(
+    bid0 = _builder.add_rigid_body(
+        name="base",
         m_i=m_0,
         i_I_i=solid_cuboid_body_moment_of_inertia(m_0, d, w, h),
         q_i_0=transformf(0.25, -0.05, 0.05 + z0, 0.0, 0.0, 0.0, 1.0),
         u_i_0=vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+        world_index=world_index,
     )
-    bids.append(bid0)
 
     # Add second body
-    bid1 = builder.add_body(
+    bid1 = _builder.add_rigid_body(
+        name="follower",
         m_i=m_1,
         i_I_i=solid_cuboid_body_moment_of_inertia(m_1, d, w, h),
         q_i_0=transformf(0.75, 0.05, 0.05 + z0, 0.0, 0.0, 0.0, 1.0),
         u_i_0=vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+        world_index=world_index,
     )
-    bids.append(bid1)
 
     # Add a joint between the two bodies
-    jid0 = builder.add_joint(
+    _builder.add_joint(
+        name="hinge",
         dof_type=JointDoFType.REVOLUTE,
         act_type=JointActuationType.FORCE,
         bid_B=bid0,
@@ -410,36 +647,70 @@ def build_boxes_hinged(builder: ModelBuilder, z_offset: float = 0.0, ground: boo
         B_r_Bj=vec3f(0.25, 0.05, 0.0),
         F_r_Fj=vec3f(-0.25, -0.05, 0.0),
         X_j=Axis.Y.to_mat33(),
+        world_index=world_index,
     )
-    jids.append(jid0)
 
     # Add a collision layer and geometries
-    builder.add_collision_layer("primary")
-    gids.append(builder.add_collision_geometry(body_id=bid0, shape=BoxShape(d, w, h), group=2, collides=3))
-    gids.append(builder.add_collision_geometry(body_id=bid1, shape=BoxShape(d, w, h), group=3, collides=5))
+    _builder.add_collision_geometry(
+        name="base/box", body=bid0, shape=BoxShape(d, w, h), group=2, collides=3, world_index=world_index
+    )
+    _builder.add_collision_geometry(
+        name="follower/box", body=bid1, shape=BoxShape(d, w, h), group=3, collides=5, world_index=world_index
+    )
 
     # Add a static collision layer and geometry for the plane
     if ground:
-        builder.add_collision_layer("world")
-        gids.append(
-            builder.add_collision_geometry(
-                body_id=-1,
-                shape=BoxShape(20.0, 20.0, 1.0),
-                offset=transformf(0.0, 0.0, -0.5, 0.0, 0.0, 0.0, 1.0),
-                group=1,
-                collides=7,
-            )
+        _builder.add_collision_geometry(
+            name="ground",
+            body=-1,
+            shape=BoxShape(20.0, 20.0, 1.0),
+            offset=transformf(0.0, 0.0, -0.5, 0.0, 0.0, 0.0, 1.0),
+            group=1,
+            collides=7,
+            world_index=world_index,
         )
 
     # Return the lists of element indices
-    return bids, jids, gids
+    return _builder
 
 
-def build_boxes_nunchaku(builder: ModelBuilder, z_offset: float = 0.0, ground: bool = True) -> BuilderInfo:
-    # Create lists of BIDs, JIDs and GIDs
-    bids = []
-    jids = []
-    gids = []
+def build_boxes_nunchaku(
+    builder: ModelBuilder | None = None,
+    z_offset: float = 0.0,
+    ground: bool = True,
+    new_world: bool = True,
+    world_index: int = 0,
+) -> ModelBuilder:
+    """
+    Constructs a basic model of a faux nunchaku consisting of
+    two boxes and one sphere connected via spherical joints.
+
+    This version initializes the nunchaku in a horizontal configuration.
+
+    Args:
+        builder (ModelBuilder | None): An optional model builder to populate.\n
+            If `None`, a new builder is created.
+        z_offset (float): A vertical offset to apply to the initial position of the box.
+        ground (bool): Whether to add a static ground plane to the model.
+        new_world (bool): Whether to create a new world in the builder for this model.\n
+            If `False`, the model is added to the existing world specified by `world_index`.\n
+            If `True`, a new world is created and added to the builder. In this case the `world_index`
+            argument is ignored, and the index of the newly created world will be used instead.\n
+        world_index (int): The index of the world to which the model should be added if `new_world` is False.\n
+            If `new_world` is True, this argument is ignored.
+
+    Returns:
+        ModelBuilder: The populated model builder.
+    """
+    # Create a new builder if none is provided
+    if builder is None:
+        _builder = ModelBuilder(default_world=False)
+    else:
+        _builder = builder
+
+    # Create a new world in the builder if requested or if a new builder was created
+    if new_world or builder is None:
+        world_index = _builder.add_world(name="boxes_nunchaku")
 
     # Model constants
     m_0 = 1.0
@@ -455,34 +726,38 @@ def build_boxes_nunchaku(builder: ModelBuilder, z_offset: float = 0.0, ground: b
     z_0 = z_offset
 
     # Add first body
-    bid0 = builder.add_body(
+    bid0 = _builder.add_rigid_body(
+        name="box_bottom",
         m_i=m_0,
         i_I_i=solid_cuboid_body_moment_of_inertia(m_0, d, w, h),
         q_i_0=transformf(0.5 * d, 0.0, 0.5 * h + z_0, 0.0, 0.0, 0.0, 1.0),
         u_i_0=vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+        world_index=world_index,
     )
-    bids.append(bid0)
 
     # Add second body
-    bid1 = builder.add_body(
+    bid1 = _builder.add_rigid_body(
+        name="sphere_middle",
         m_i=m_1,
         i_I_i=solid_sphere_body_moment_of_inertia(m_1, r),
         q_i_0=transformf(r + d, 0.0, r + z_0, 0.0, 0.0, 0.0, 1.0),
         u_i_0=vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+        world_index=world_index,
     )
-    bids.append(bid1)
 
     # Add third body
-    bid2 = builder.add_body(
+    bid2 = _builder.add_rigid_body(
+        name="box_top",
         m_i=m_2,
         i_I_i=solid_cuboid_body_moment_of_inertia(m_2, d, w, h),
         q_i_0=transformf(1.5 * d + 2.0 * r, 0.0, 0.5 * h + z_0, 0.0, 0.0, 0.0, 1.0),
         u_i_0=vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+        world_index=world_index,
     )
-    bids.append(bid2)
 
     # Add a joint between the first and second body
-    jid0 = builder.add_joint(
+    _builder.add_joint(
+        name="box_bottom_to_sphere_middle",
         dof_type=JointDoFType.SPHERICAL,
         act_type=JointActuationType.PASSIVE,
         bid_B=bid0,
@@ -490,11 +765,12 @@ def build_boxes_nunchaku(builder: ModelBuilder, z_offset: float = 0.0, ground: b
         B_r_Bj=vec3f(0.5 * d, 0.0, 0.0),
         F_r_Fj=vec3f(-r, 0.0, 0.0),
         X_j=I_3,
+        world_index=world_index,
     )
-    jids.append(jid0)
 
     # Add a joint between the second and third body
-    jid1 = builder.add_joint(
+    _builder.add_joint(
+        name="sphere_middle_to_box_top",
         dof_type=JointDoFType.SPHERICAL,
         act_type=JointActuationType.PASSIVE,
         bid_B=bid1,
@@ -502,37 +778,73 @@ def build_boxes_nunchaku(builder: ModelBuilder, z_offset: float = 0.0, ground: b
         B_r_Bj=vec3f(r, 0.0, 0.0),
         F_r_Fj=vec3f(-0.5 * d, 0.0, 0.0),
         X_j=I_3,
+        world_index=world_index,
     )
-    jids.append(jid1)
 
     # Add a collision layer and geometries
-    builder.add_collision_layer("primary")
-    gids.append(builder.add_collision_geometry(body_id=bid0, shape=BoxShape(d, w, h), group=2, collides=3))
-    gids.append(builder.add_collision_geometry(body_id=bid1, shape=SphereShape(r), group=3, collides=5))
-    gids.append(builder.add_collision_geometry(body_id=bid2, shape=BoxShape(d, w, h), group=2, collides=3))
+    _builder.add_collision_geometry(
+        name="box_bottom", body=bid0, shape=BoxShape(d, w, h), group=2, collides=3, world_index=world_index
+    )
+    _builder.add_collision_geometry(
+        name="sphere_middle", body=bid1, shape=SphereShape(r), group=3, collides=5, world_index=world_index
+    )
+    _builder.add_collision_geometry(
+        name="box_top", body=bid2, shape=BoxShape(d, w, h), group=2, collides=3, world_index=world_index
+    )
 
     # Add a static collision layer and geometry for the plane
     if ground:
-        builder.add_collision_layer("world")
-        gids.append(
-            builder.add_collision_geometry(
-                body_id=-1,
-                shape=BoxShape(20.0, 20.0, 1.0),
-                offset=transformf(0.0, 0.0, -0.5, 0.0, 0.0, 0.0, 1.0),
-                group=1,
-                collides=7,
-            )
+        _builder.add_collision_geometry(
+            name="ground",
+            body=-1,
+            shape=BoxShape(20.0, 20.0, 1.0),
+            offset=transformf(0.0, 0.0, -0.5, 0.0, 0.0, 0.0, 1.0),
+            group=1,
+            collides=7,
+            world_index=world_index,
         )
 
     # Return the lists of element indices
-    return bids, jids, gids
+    return _builder
 
 
-def build_boxes_nunchaku_vertical(builder: ModelBuilder, z_offset: float = 0.0, ground: bool = True) -> BuilderInfo:
-    # Create lists of BIDs, JIDs and GIDs
-    bids = []
-    jids = []
-    gids = []
+def build_boxes_nunchaku_vertical(
+    builder: ModelBuilder | None = None,
+    z_offset: float = 0.0,
+    ground: bool = True,
+    new_world: bool = True,
+    world_index: int = 0,
+) -> ModelBuilder:
+    """
+    Constructs a basic model of a faux nunchaku consisting of
+    two boxes and one sphere connected via spherical joints.
+
+    This version initializes the nunchaku in a vertical configuration.
+
+    Args:
+        builder (ModelBuilder | None): An optional model builder to populate.\n
+            If `None`, a new builder is created.
+        z_offset (float): A vertical offset to apply to the initial position of the box.
+        ground (bool): Whether to add a static ground plane to the model.
+        new_world (bool): Whether to create a new world in the builder for this model.\n
+            If `False`, the model is added to the existing world specified by `world_index`.\n
+            If `True`, a new world is created and added to the builder. In this case the `world_index`
+            argument is ignored, and the index of the newly created world will be used instead.\n
+        world_index (int): The index of the world to which the model should be added if `new_world` is False.\n
+            If `new_world` is True, this argument is ignored.
+
+    Returns:
+        ModelBuilder: The populated model builder.
+    """
+    # Create a new builder if none is provided
+    if builder is None:
+        _builder = ModelBuilder(default_world=False)
+    else:
+        _builder = builder
+
+    # Create a new world in the builder if requested or if a new builder was created
+    if new_world or builder is None:
+        world_index = _builder.add_world(name="boxes_nunchaku_vertical")
 
     # Model constants
     m_0 = 1.0
@@ -548,34 +860,38 @@ def build_boxes_nunchaku_vertical(builder: ModelBuilder, z_offset: float = 0.0, 
     z_0 = z_offset
 
     # Add first body
-    bid0 = builder.add_body(
+    bid0 = _builder.add_rigid_body(
+        name="box_bottom",
         m_i=m_0,
         i_I_i=solid_cuboid_body_moment_of_inertia(m_0, d, w, h),
         q_i_0=transformf(0.0, 0.0, 0.5 * h + z_0, 0.0, 0.0, 0.0, 1.0),
         u_i_0=vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+        world_index=world_index,
     )
-    bids.append(bid0)
 
     # Add second body
-    bid1 = builder.add_body(
+    bid1 = _builder.add_rigid_body(
+        name="sphere_middle",
         m_i=m_1,
         i_I_i=solid_sphere_body_moment_of_inertia(m_1, r),
         q_i_0=transformf(0.0, 0.0, h + r + z_0, 0.0, 0.0, 0.0, 1.0),
         u_i_0=vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+        world_index=world_index,
     )
-    bids.append(bid1)
 
     # Add third body
-    bid2 = builder.add_body(
+    bid2 = _builder.add_rigid_body(
+        name="box_top",
         m_i=m_2,
         i_I_i=solid_cuboid_body_moment_of_inertia(m_2, d, w, h),
         q_i_0=transformf(0.0, 0.0, 1.5 * h + 2.0 * r + z_0, 0.0, 0.0, 0.0, 1.0),
         u_i_0=vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+        world_index=world_index,
     )
-    bids.append(bid2)
 
     # Add a joint between the first and second body
-    jid0 = builder.add_joint(
+    _builder.add_joint(
+        name="box_bottom_to_sphere_middle",
         dof_type=JointDoFType.SPHERICAL,
         act_type=JointActuationType.PASSIVE,
         bid_B=bid0,
@@ -583,11 +899,12 @@ def build_boxes_nunchaku_vertical(builder: ModelBuilder, z_offset: float = 0.0, 
         B_r_Bj=vec3f(0.0, 0.0, 0.5 * h),
         F_r_Fj=vec3f(0.0, 0.0, -r),
         X_j=I_3,
+        world_index=world_index,
     )
-    jids.append(jid0)
 
     # Add a joint between the second and third body
-    jid1 = builder.add_joint(
+    _builder.add_joint(
+        name="sphere_middle_to_box_top",
         dof_type=JointDoFType.SPHERICAL,
         act_type=JointActuationType.PASSIVE,
         bid_B=bid1,
@@ -595,44 +912,76 @@ def build_boxes_nunchaku_vertical(builder: ModelBuilder, z_offset: float = 0.0, 
         B_r_Bj=vec3f(0.0, 0.0, r),
         F_r_Fj=vec3f(0.0, 0.0, -0.5 * h),
         X_j=I_3,
+        world_index=world_index,
     )
-    jids.append(jid1)
 
     # Add a collision layer and geometries
-    builder.add_collision_layer("primary")
-    gids.append(builder.add_collision_geometry(body_id=bid0, shape=BoxShape(d, w, h), group=2, collides=3))
-    gids.append(builder.add_collision_geometry(body_id=bid1, shape=SphereShape(r), group=3, collides=5))
-    gids.append(builder.add_collision_geometry(body_id=bid2, shape=BoxShape(d, w, h), group=2, collides=3))
+    _builder.add_collision_geometry(
+        name="box_bottom", body=bid0, shape=BoxShape(d, w, h), group=2, collides=3, world_index=world_index
+    )
+    _builder.add_collision_geometry(
+        name="sphere_middle", body=bid1, shape=SphereShape(r), group=3, collides=5, world_index=world_index
+    )
+    _builder.add_collision_geometry(
+        name="box_top", body=bid2, shape=BoxShape(d, w, h), group=2, collides=3, world_index=world_index
+    )
 
     # Add a static collision layer and geometry for the plane
     if ground:
-        builder.add_collision_layer("world")
-        gids.append(
-            builder.add_collision_geometry(
-                body_id=-1,
-                shape=BoxShape(20.0, 20.0, 1.0),
-                offset=transformf(0.0, 0.0, -0.5, 0.0, 0.0, 0.0, 1.0),
-                group=1,
-                collides=7,
-            )
+        _builder.add_collision_geometry(
+            name="ground",
+            body=-1,
+            shape=BoxShape(20.0, 20.0, 1.0),
+            offset=transformf(0.0, 0.0, -0.5, 0.0, 0.0, 0.0, 1.0),
+            group=1,
+            collides=7,
+            world_index=world_index,
         )
 
     # Return the lists of element indices
-    return bids, jids, gids
+    return _builder
 
 
 def build_boxes_fourbar(
-    builder: ModelBuilder,
+    builder: ModelBuilder | None = None,
     z_offset: float = 0.0,
     fixedbase: bool = False,
     limits: bool = True,
     ground: bool = True,
     verbose: bool = False,
-) -> BuilderInfo:
-    # Create lists of BIDs, JIDs and GIDs
-    bids = []
-    jids = []
-    gids = []
+    new_world: bool = True,
+    world_index: int = 0,
+) -> ModelBuilder:
+    """
+    Constructs a basic model of a faux nunchaku consisting of
+    two boxes and one sphere connected via spherical joints.
+
+    This version initializes the nunchaku in a vertical configuration.
+
+    Args:
+        builder (ModelBuilder | None): An optional model builder to populate.\n
+            If `None`, a new builder is created.
+        z_offset (float): A vertical offset to apply to the initial position of the box.
+        ground (bool): Whether to add a static ground plane to the model.
+        new_world (bool): Whether to create a new world in the builder for this model.\n
+            If `False`, the model is added to the existing world specified by `world_index`.\n
+            If `True`, a new world is created and added to the builder. In this case the `world_index`
+            argument is ignored, and the index of the newly created world will be used instead.\n
+        world_index (int): The index of the world to which the model should be added if `new_world` is False.\n
+            If `new_world` is True, this argument is ignored.
+
+    Returns:
+        ModelBuilder: The populated model builder.
+    """
+    # Create a new builder if none is provided
+    if builder is None:
+        _builder = ModelBuilder(default_world=False)
+    else:
+        _builder = builder
+
+    # Create a new world in the builder if requested or if a new builder was created
+    if new_world or builder is None:
+        world_index = _builder.add_world(name="boxes_fourbar")
 
     ###
     # Base Parameters
@@ -723,37 +1072,41 @@ def build_boxes_fourbar(
     # Bodies
     ###
 
-    bid1 = builder.add_body(
+    bid1 = _builder.add_rigid_body(
+        name="link_1",
         m_i=m_i,
         i_I_i=i_I_i_1,
         q_i_0=q_i_1,
         u_i_0=vec6f(0.0),
+        world_index=world_index,
     )
-    bids.append(bid1)
 
-    bid2 = builder.add_body(
+    bid2 = _builder.add_rigid_body(
+        name="link_2",
         m_i=m_i,
         i_I_i=i_I_i_2,
         q_i_0=q_i_2,
         u_i_0=vec6f(0.0),
+        world_index=world_index,
     )
-    bids.append(bid2)
 
-    bid3 = builder.add_body(
+    bid3 = _builder.add_rigid_body(
+        name="link_3",
         m_i=m_i,
         i_I_i=i_I_i_3,
         q_i_0=q_i_3,
         u_i_0=vec6f(0.0),
+        world_index=world_index,
     )
-    bids.append(bid3)
 
-    bid4 = builder.add_body(
+    bid4 = _builder.add_rigid_body(
+        name="link_4",
         m_i=m_i,
         i_I_i=i_I_i_4,
         q_i_0=q_i_4,
         u_i_0=vec6f(0.0),
+        world_index=world_index,
     )
-    bids.append(bid4)
 
     ###
     # Joints
@@ -767,7 +1120,8 @@ def build_boxes_fourbar(
         qmax = float(FLOAT32_MAX)
 
     if fixedbase:
-        jid1 = builder.add_joint(
+        _builder.add_joint(
+            name="world_to_link1",
             dof_type=JointDoFType.FIXED,
             act_type=JointActuationType.PASSIVE,
             bid_B=-1,
@@ -775,10 +1129,11 @@ def build_boxes_fourbar(
             B_r_Bj=vec3f(0.0),
             F_r_Fj=-r_b1,
             X_j=I_3,
+            world_index=world_index,
         )
-        jids.append(jid1)
 
-    jid1 = builder.add_joint(
+    _builder.add_joint(
+        name="link1_to_link2",
         dof_type=JointDoFType.REVOLUTE,
         act_type=JointActuationType.FORCE,
         bid_B=bid1,
@@ -788,10 +1143,11 @@ def build_boxes_fourbar(
         X_j=X_j,
         q_j_min=[qmin],
         q_j_max=[qmax],
+        world_index=world_index,
     )
-    jids.append(jid1)
 
-    jid2 = builder.add_joint(
+    _builder.add_joint(
+        name="link2_to_link3",
         dof_type=JointDoFType.REVOLUTE,
         act_type=JointActuationType.PASSIVE,
         bid_B=bid2,
@@ -801,10 +1157,11 @@ def build_boxes_fourbar(
         X_j=X_j,
         q_j_min=[qmin],
         q_j_max=[qmax],
+        world_index=world_index,
     )
-    jids.append(jid2)
 
-    jid3 = builder.add_joint(
+    _builder.add_joint(
+        name="link3_to_link4",
         dof_type=JointDoFType.REVOLUTE,
         act_type=JointActuationType.FORCE,
         bid_B=bid3,
@@ -814,10 +1171,11 @@ def build_boxes_fourbar(
         X_j=X_j,
         q_j_min=[qmin],
         q_j_max=[qmax],
+        world_index=world_index,
     )
-    jids.append(jid3)
 
-    jid4 = builder.add_joint(
+    _builder.add_joint(
+        name="link4_to_link1",
         dof_type=JointDoFType.REVOLUTE,
         act_type=JointActuationType.PASSIVE,
         bid_B=bid4,
@@ -827,30 +1185,28 @@ def build_boxes_fourbar(
         X_j=X_j,
         q_j_min=[qmin],
         q_j_max=[qmax],
+        world_index=world_index,
     )
-    jids.append(jid4)
 
     ###
     # Geometries
     ###
 
     # Add a collision layer and geometries
-    builder.add_collision_layer("primary")
-    gids.append(builder.add_collision_geometry(body_id=bid1, shape=BoxShape(d_1, w_1, h_1), group=1, collides=1))
-    gids.append(builder.add_collision_geometry(body_id=bid2, shape=BoxShape(d_2, w_2, h_2), group=1, collides=1))
-    gids.append(builder.add_collision_geometry(body_id=bid3, shape=BoxShape(d_3, w_3, h_3), group=1, collides=1))
-    gids.append(builder.add_collision_geometry(body_id=bid4, shape=BoxShape(d_4, w_4, h_4), group=1, collides=1))
+    _builder.add_collision_geometry(name="box_1", body=bid1, shape=BoxShape(d_1, w_1, h_1), world_index=world_index)
+    _builder.add_collision_geometry(name="box_2", body=bid2, shape=BoxShape(d_2, w_2, h_2), world_index=world_index)
+    _builder.add_collision_geometry(name="box_3", body=bid3, shape=BoxShape(d_3, w_3, h_3), world_index=world_index)
+    _builder.add_collision_geometry(name="box_4", body=bid4, shape=BoxShape(d_4, w_4, h_4), world_index=world_index)
 
     # Add a static collision layer and geometry for the plane
     if ground:
-        builder.add_collision_layer("world")
-        gids.append(
-            builder.add_collision_geometry(
-                body_id=-1,
-                shape=BoxShape(20.0, 20.0, 1.0),
-                offset=transformf(0.0, 0.0, -0.5, 0.0, 0.0, 0.0, 1.0),
-            )
+        _builder.add_collision_geometry(
+            name="ground",
+            body=-1,
+            shape=BoxShape(20.0, 20.0, 1.0),
+            offset=transformf(0.0, 0.0, -0.5, 0.0, 0.0, 0.0, 1.0),
+            world_index=world_index,
         )
 
     # Return the lists of element indices
-    return bids, jids, gids
+    return _builder

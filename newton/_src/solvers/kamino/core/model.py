@@ -13,11 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-KAMINO: Constrained Rigid Multi-Body Model Containers
-"""
+"""Constrained Rigid Multi-Body Model & Data Containers"""
 
-from __future__ import annotations
+from dataclasses import dataclass
 
 import warp as wp
 from warp.context import Devicelike
@@ -62,6 +60,7 @@ wp.set_module_options({"enable_backward": False})
 ###
 
 
+@dataclass
 class ModelSize:
     """
     A container to hold the summary size of memory allocations and thread dimensions.
@@ -70,127 +69,207 @@ class ModelSize:
     - The sums are used for memory allocations.
     - The maximums are used to define 2D thread shapes: (num_worlds, max_of_max_XXX)
     - Where `XXX` is the maximum number of limits, contacts, unilaterals, or constraints in any world.
+
+    Attributes:
+        num_worlds (int):
+            The number of worlds represented in the model.
+        sum_of_num_bodies (int):
+            The total number of bodies in the model across all worlds.
+        max_of_num_bodies (int):
+            The maximum number of bodies in any world.
+        sum_of_num_joints (int):
+            The total number of joints in the model across all worlds.
+        max_of_num_joints (int):
+            The maximum number of joints in any world.
+        sum_of_num_passive_joints (int):
+            The total number of passive joints in the model across all worlds.
+        max_of_num_passive_joints (int):
+            The maximum number of passive joints in any world.
+        sum_of_num_actuated_joints (int):
+            The total number of actuated joints in the model across all worlds.
+        max_of_num_actuated_joints (int):
+            The maximum number of actuated joints in any world.
+        sum_of_num_collision_geoms (int):
+            The total number of collision geometries in the model across all worlds.
+        max_of_num_collision_geoms (int):
+            The maximum number of collision geometries in any world.
+        sum_of_num_physical_geoms (int):
+            The total number of physical geometries in the model across all worlds.
+        max_of_num_physical_geoms (int):
+            The maximum number of physical geometries in any world.
+        sum_of_num_material_pairs (int):
+            The total number of material pairs in the model across all worlds.
+        max_of_num_material_pairs (int):
+            The maximum number of material pairs in any world.
+        sum_of_num_body_dofs (int):
+            The total number of body DoFs in the model across all worlds.
+        max_of_num_body_dofs (int):
+            The maximum number of body DoFs in any world.
+        sum_of_num_joint_coords (int):
+            The total number of joint coordinates in the model across all worlds.
+        max_of_num_joint_coords (int):
+            The maximum number of joint coordinates in any world.
+        sum_of_num_joint_dofs (int):
+            The total number of joint DoFs in the model across all worlds.
+        max_of_num_joint_dofs (int):
+            The maximum number of joint DoFs in any world.
+        sum_of_num_passive_joint_coords (int):
+            The total number of passive joint coordinates in the model across all worlds.
+        max_of_num_passive_joint_coords (int):
+            The maximum number of passive joint coordinates in any world.
+        sum_of_num_passive_joint_dofs (int):
+            The total number of passive joint DoFs in the model across all worlds.
+        max_of_num_passive_joint_dofs (int):
+            The maximum number of passive joint DoFs in any world.
+        sum_of_num_actuated_joint_coords (int):
+            The total number of actuated joint coordinates in the model across all worlds.
+        max_of_num_actuated_joint_coords (int):
+            The maximum number of actuated joint coordinates in any world.
+        sum_of_num_actuated_joint_dofs (int):
+            The total number of actuated joint DoFs in the model across all worlds.
+        max_of_num_actuated_joint_dofs (int):
+            The maximum number of actuated joint DoFs in any world.
+        sum_of_num_joint_cts (int):
+            The total number of joint constraints in the model across all worlds.
+        max_of_num_joint_cts (int):
+            The maximum number of joint constraints in any world.
+        sum_of_max_limits (int):
+            The total maximum number of limits allocated for the model across all worlds.
+        max_of_max_limits (int):
+            The maximum number of active limits of any world.
+        sum_of_max_contacts (int):
+            The total maximum number of contacts allocated for the model across all worlds.
+        max_of_max_contacts (int):
+            The maximum number of active contacts of any world.
+        sum_of_max_unilaterals (int):
+            The maximum number of active unilateral entities, i.e. joint-limits and contacts.
+        max_of_max_unilaterals (int):
+            The maximum number of active unilaterals of any world.
+        sum_of_max_total_cts (int):
+            The maximum number of active constraints.
+        max_of_max_total_cts (int):
+            The maximum number of active constraints of any world.
     """
 
-    def __init__(self):
-        self.num_worlds: int = 0
-        """The number of worlds represented in the model."""
+    num_worlds: int = 0
+    """The number of worlds represented in the model."""
 
-        self.sum_of_num_bodies: int = 0
-        """The total number of bodies in the model across all worlds."""
+    sum_of_num_bodies: int = 0
+    """The total number of bodies in the model across all worlds."""
 
-        self.max_of_num_bodies: int = 0
-        """The maximum number of bodies in any world."""
+    max_of_num_bodies: int = 0
+    """The maximum number of bodies in any world."""
 
-        self.sum_of_num_joints: int = 0
-        """The total number of joints in the model across all worlds."""
+    sum_of_num_joints: int = 0
+    """The total number of joints in the model across all worlds."""
 
-        self.max_of_num_joints: int = 0
-        """The maximum number of joints in any world."""
+    max_of_num_joints: int = 0
+    """The maximum number of joints in any world."""
 
-        self.sum_of_num_passive_joints: int = 0
-        """The total number of passive joints in the model across all worlds."""
+    sum_of_num_passive_joints: int = 0
+    """The total number of passive joints in the model across all worlds."""
 
-        self.max_of_num_passive_joints: int = 0
-        """The maximum number of passive joints in any world."""
+    max_of_num_passive_joints: int = 0
+    """The maximum number of passive joints in any world."""
 
-        self.sum_of_num_actuated_joints: int = 0
-        """The total number of actuated joints in the model across all worlds."""
+    sum_of_num_actuated_joints: int = 0
+    """The total number of actuated joints in the model across all worlds."""
 
-        self.max_of_num_actuated_joints: int = 0
-        """The maximum number of actuated joints in any world."""
+    max_of_num_actuated_joints: int = 0
+    """The maximum number of actuated joints in any world."""
 
-        self.sum_of_num_collision_geoms: int = 0
-        """The total number of collision geometries in the model across all worlds."""
+    sum_of_num_collision_geoms: int = 0
+    """The total number of collision geometries in the model across all worlds."""
 
-        self.max_of_num_collision_geoms: int = 0
-        """The maximum number of collision geometries in any world."""
+    max_of_num_collision_geoms: int = 0
+    """The maximum number of collision geometries in any world."""
 
-        self.sum_of_num_physical_geoms: int = 0
-        """The total number of physical geometries in the model across all worlds."""
+    sum_of_num_physical_geoms: int = 0
+    """The total number of physical geometries in the model across all worlds."""
 
-        self.max_of_num_physical_geoms: int = 0
-        """The maximum number of physical geometries in any world."""
+    max_of_num_physical_geoms: int = 0
+    """The maximum number of physical geometries in any world."""
 
-        self.sum_of_num_material_pairs: int = 0
-        """The total number of material pairs in the model across all worlds."""
+    sum_of_num_material_pairs: int = 0
+    """The total number of material pairs in the model across all worlds."""
 
-        self.max_of_num_material_pairs: int = 0
-        """The maximum number of material pairs in any world."""
+    max_of_num_material_pairs: int = 0
+    """The maximum number of material pairs in any world."""
 
-        self.sum_of_num_body_dofs: int = 0
-        """The total number of body DoFs in the model across all worlds."""
+    sum_of_num_body_dofs: int = 0
+    """The total number of body DoFs in the model across all worlds."""
 
-        self.max_of_num_body_dofs: int = 0
-        """The maximum number of body DoFs in any world."""
+    max_of_num_body_dofs: int = 0
+    """The maximum number of body DoFs in any world."""
 
-        self.sum_of_num_joint_coords: int = 0
-        """The total number of joint coordinates in the model across all worlds."""
+    sum_of_num_joint_coords: int = 0
+    """The total number of joint coordinates in the model across all worlds."""
 
-        self.max_of_num_joint_coords: int = 0
-        """The maximum number of joint coordinates in any world."""
+    max_of_num_joint_coords: int = 0
+    """The maximum number of joint coordinates in any world."""
 
-        self.sum_of_num_joint_dofs: int = 0
-        """The total number of joint DoFs in the model across all worlds."""
+    sum_of_num_joint_dofs: int = 0
+    """The total number of joint DoFs in the model across all worlds."""
 
-        self.max_of_num_joint_dofs: int = 0
-        """The maximum number of joint DoFs in any world."""
+    max_of_num_joint_dofs: int = 0
+    """The maximum number of joint DoFs in any world."""
 
-        self.sum_of_num_passive_joint_coords: int = 0
-        """The total number of passive joint coordinates in the model across all worlds."""
+    sum_of_num_passive_joint_coords: int = 0
+    """The total number of passive joint coordinates in the model across all worlds."""
 
-        self.max_of_num_passive_joint_coords: int = 0
-        """The maximum number of passive joint coordinates in any world."""
+    max_of_num_passive_joint_coords: int = 0
+    """The maximum number of passive joint coordinates in any world."""
 
-        self.sum_of_num_passive_joint_dofs: int = 0
-        """The total number of passive joint DoFs in the model across all worlds."""
+    sum_of_num_passive_joint_dofs: int = 0
+    """The total number of passive joint DoFs in the model across all worlds."""
 
-        self.max_of_num_passive_joint_dofs: int = 0
-        """The maximum number of passive joint DoFs in any world."""
+    max_of_num_passive_joint_dofs: int = 0
+    """The maximum number of passive joint DoFs in any world."""
 
-        self.sum_of_num_actuated_joint_coords: int = 0
-        """The total number of actuated joint coordinates in the model across all worlds."""
+    sum_of_num_actuated_joint_coords: int = 0
+    """The total number of actuated joint coordinates in the model across all worlds."""
 
-        self.max_of_num_actuated_joint_coords: int = 0
-        """The maximum number of actuated joint coordinates in any world."""
+    max_of_num_actuated_joint_coords: int = 0
+    """The maximum number of actuated joint coordinates in any world."""
 
-        self.sum_of_num_actuated_joint_dofs: int = 0
-        """The total number of actuated joint DoFs in the model across all worlds."""
+    sum_of_num_actuated_joint_dofs: int = 0
+    """The total number of actuated joint DoFs in the model across all worlds."""
 
-        self.max_of_num_actuated_joint_dofs: int = 0
-        """The maximum number of actuated joint DoFs in any world."""
+    max_of_num_actuated_joint_dofs: int = 0
+    """The maximum number of actuated joint DoFs in any world."""
 
-        self.sum_of_num_joint_cts: int = 0
-        """The total number of joint constraints in the model across all worlds."""
+    sum_of_num_joint_cts: int = 0
+    """The total number of joint constraints in the model across all worlds."""
 
-        self.max_of_num_joint_cts: int = 0
-        """The maximum number of joint constraints in any world."""
+    max_of_num_joint_cts: int = 0
+    """The maximum number of joint constraints in any world."""
 
-        self.sum_of_max_limits: int = 0
-        """The total maximum number of limits allocated for the model across all worlds."""
+    sum_of_max_limits: int = 0
+    """The total maximum number of limits allocated for the model across all worlds."""
 
-        self.max_of_max_limits: int = 0
-        """The maximum number of active limits of any world."""
+    max_of_max_limits: int = 0
+    """The maximum number of active limits of any world."""
 
-        self.sum_of_max_contacts: int = 0
-        """The total maximum number of contacts allocated for the model across all worlds."""
+    sum_of_max_contacts: int = 0
+    """The total maximum number of contacts allocated for the model across all worlds."""
 
-        self.max_of_max_contacts: int = 0
-        """The maximum number of active contacts of any world."""
+    max_of_max_contacts: int = 0
+    """The maximum number of active contacts of any world."""
 
-        self.sum_of_max_unilaterals: int = 0
-        """The maximum number of active unilateral entities, i.e. joint-limits and contacts."""
+    sum_of_max_unilaterals: int = 0
+    """The maximum number of active unilateral entities, i.e. joint-limits and contacts."""
 
-        self.max_of_max_unilaterals: int = 0
-        """The maximum number of active unilaterals of any world."""
+    max_of_max_unilaterals: int = 0
+    """The maximum number of active unilaterals of any world."""
 
-        self.sum_of_max_total_cts: int = 0
-        """The maximum number of active constraints."""
+    sum_of_max_total_cts: int = 0
+    """The maximum number of active constraints."""
 
-        self.max_of_max_total_cts: int = 0
-        """The maximum number of active constraints of any world."""
+    max_of_max_total_cts: int = 0
+    """The maximum number of active constraints of any world."""
 
     def __repr__(self):
+        """Returns a human-readable string representation of the ModelSize as a formatted table."""
         # List of (row title, sum attr, max attr)
         rows = [
             ("num_bodies", "sum_of_num_bodies", "max_of_num_bodies"),
@@ -235,388 +314,539 @@ class ModelSize:
         return "\n".join(lines)
 
 
+@dataclass
 class ModelInfo:
     """
     A container to hold the time-invariant information and meta-data of a model.
+
+    Attributes:
+        num_worlds (int): The number of worlds represented in the model.\n
+            This is a host-side cache and is not mirrored on-device.
+        num_bodies (wp.array): The total number of bodies in the model.\n
+            Shape of ``(num_worlds,)`` and type :class:`int`.
+        num_joints (wp.array): The total number of joints in the model.\n
+            Shape of ``(num_worlds,)`` and type :class:`int`.
+        num_passive_joints (wp.array): The total number of passive joints in the model.\n
+            Shape of ``(num_worlds,)`` and type :class:`int`.
+        num_actuated_joints (wp.array): The total number of actuated joints in the model.\n
+            Shape of ``(num_worlds,)`` and type :class:`int`.
+        num_collision_geoms (wp.array): The total number of collision geometries in the model.\n
+            Shape of ``(num_worlds,)`` and type :class:`int`.
+        num_physical_geoms (wp.array): The total number of physical geometries in the model.\n
+            Shape of ``(num_worlds,)`` and type :class:`int`.
+        max_limits (wp.array): The maximum number of limits allocated for the model.\n
+            Shape of ``(num_worlds,)`` and type :class:`int`.
+        max_contacts (wp.array): The maximum number of contacts allocated for the model.\n
+            Shape of ``(num_worlds,)`` and type :class:`int`.
+        num_body_dofs (wp.array): The total number of body DoFs in the model.\n
+            Shape of ``(num_worlds,)`` and type :class:`int`.
+        num_joint_coords (wp.array): The total number of joint coordinates in the model.\n
+            Shape of ``(num_worlds,)`` and type :class:`int`.
+        num_joint_dofs (wp.array): The total number of joint DoFs in the model.\n
+            Shape of ``(num_worlds,)`` and type :class:`int`.
+        num_passive_joint_coords (wp.array): The total number of passive joint coordinates in the model.\n
+            Shape of ``(num_worlds,)`` and type :class:`int`.
+        num_passive_joint_dofs (wp.array): The total number of passive joint DoFs in the model.\n
+            Shape of ``(num_worlds,)`` and type :class:`int`.
+        num_actuated_joint_coords (wp.array): The total number of actuated joint coordinates in the model.\n
+            Shape of ``(num_worlds,)`` and type :class:`int`.
+        num_actuated_joint_dofs (wp.array): The total number of actuated joint DoFs in the model.\n
+            Shape of ``(num_worlds,)`` and type :class:`int`.
+        num_joint_cts (wp.array): The total number of joint constraints in the model.\n
+            Shape of ``(num_worlds,)`` and type :class:`int`.
+        max_limit_cts (wp.array): The maximum number of active limit constraints of the model.\n
+            Shape of ``(num_worlds,)`` and type :class:`int`.
+        max_contact_cts (wp.array): The maximum number of active contact constraints of the model.\n
+            Shape of ``(num_worlds,)`` and type :class:`int`.
+        max_total_cts (wp.array): The maximum total number of active constraints of the model.\n
+            Shape of ``(num_worlds,)`` and type :class:`int`.
+        bodies_offset (wp.array): The body index offset of each world w.r.t the model.\n
+            Shape of ``(num_worlds,)`` and type :class:`int`.
+        joints_offset (wp.array): The joint index offset of each world w.r.t the model.\n
+            Shape of ``(num_worlds,)`` and type :class:`int`.
+        limits_offset (wp.array): The limit index offset of each world w.r.t the model.\n
+            Shape of ``(num_worlds,)`` and type :class:`int`.
+        contacts_offset (wp.array): The contact index offset of world w.r.t the model.\n
+            Shape of ``(num_worlds,)`` and type :class:`int`.
+        unilaterals_offset (wp.array): The unilateral index offset of each world w.r.t the model.\n
+            Shape of ``(num_worlds,)`` and type :class:`int`.
+        body_dofs_offset (wp.array): The body DoFs index offset of each world w.r.t the model.\n
+            Shape of ``(num_worlds,)`` and type :class:`int`.
+        joint_coords_offset (wp.array): The joint coordinates index offset of each world w.r.t the model.\n
+            Shape of ``(num_worlds,)`` and type :class:`int`.
+        joint_dofs_offset (wp.array): The joint DoFs index offset of each world w.r.t the model.\n
+            Shape of ``(num_worlds,)`` and type :class:`int`.
+        joint_passive_coords_offset (wp.array):
+            The passive joint coordinates index offset of each world w.r.t the model.\n
+            Shape of ``(num_worlds,)`` and type :class:`int`.
+        joint_passive_dofs_offset (wp.array):
+            The passive joint DoFs index offset of each world w.r.t the model.\n
+            Shape of ``(num_worlds,)`` and type :class:`int`.
+        joint_actuated_coords_offset (wp.array):
+            The actuated joint coordinates index offset of each world w.r.t the model.\n
+            Shape of ``(num_worlds,)`` and type :class:`int`.
+        joint_actuated_dofs_offset (wp.array): The actuated joint DoFs index offset of each world w.r.t the model.\n
+            Shape of ``(num_worlds,)`` and type :class:`int`.
+        joint_cts_offset (wp.array): The joint constraints index offset of each world w.r.t the model.\n
+            Shape of ``(num_worlds,)`` and type :class:`int`.
+        limit_cts_offset (wp.array): The limit constraints index offset of each world w.r.t the model.\n
+            Shape of ``(num_worlds,)`` and type :class:`int`.
+        contact_cts_offset (wp.array): The contact constraints index offset of each world w.r.t the model.\n
+            Shape of ``(num_worlds,)`` and type :class:`int`.
+        unilateral_cts_offset (wp.array): The unilateral constraints index offset of each world w.r.t the model.\n
+            Shape of ``(num_worlds,)`` and type :class:`int`.
+        total_cts_offset (wp.array): The index offset of the total constraints block of each world.\n
+            Shape of ``(num_worlds,)`` and type :class:`int`.
+        base_body_index (wp.array): The index of the base body assigned in each world w.r.t the model.\n
+            Shape of ``(num_worlds,)`` and type :class:`int`.
+        base_joint_index (wp.array): The index of the base joint assigned in each world w.r.t the model.\n
+            Shape of ``(num_worlds,)`` and type :class:`int`.
+        mass_min (wp.array): The minimum body mass in each world.\n
+            Shape of ``(num_worlds,)`` and type :class:`float`.
+        mass_max (wp.array): The maximum body mass in each world.\n
+            Shape of ``(num_worlds,)`` and type :class:`float`.
+        mass_total (wp.array): The total body mass in each world.\n
+            Shape of ``(num_worlds,)`` and type :class:`float`.
+        inertia_total (wp.array):  Total diagonal inertia over all bodies in each world.\n
+            Shape of ``(num_worlds,)`` and type :class:`float`.
     """
 
-    def __init__(self):
-        ###
-        # Host-side Summary Counts
-        ###
+    ###
+    # Host-side Summary Counts
+    ###
 
-        self.num_worlds: int = 0
-        """The number of worlds represented in the model."""
+    num_worlds: int = 0
+    """The number of worlds represented in the model."""
 
-        ###
-        # Entity Counts
-        ###
+    ###
+    # Entity Counts
+    ###
 
-        self.num_bodies: wp.array(dtype=int32) | None = None
-        """
-        The number of bodies in each world.\n
-        Shape of ``(num_worlds,)`` and type :class:`int32`.
-        """
+    num_bodies: wp.array | None = None
+    """
+    The number of bodies in each world.\n
+    Shape of ``(num_worlds,)`` and type :class:`int`.
+    """
 
-        self.num_joints: wp.array(dtype=int32) | None = None
-        """
-        The number of joints in each world.\n
-        Shape of ``(num_worlds,)`` and type :class:`int32`.
-        """
+    num_joints: wp.array | None = None
+    """
+    The number of joints in each world.\n
+    Shape of ``(num_worlds,)`` and type :class:`int`.
+    """
 
-        self.num_passive_joints: wp.array(dtype=int32) | None = None
-        """
-        The number of passive joints in each world.\n
-        Shape of ``(num_worlds,)`` and type :class:`int32`.
-        """
+    num_passive_joints: wp.array | None = None
+    """
+    The number of passive joints in each world.\n
+    Shape of ``(num_worlds,)`` and type :class:`int`.
+    """
 
-        self.num_actuated_joints: wp.array(dtype=int32) | None = None
-        """
-        The number of actuated joints in each world.\n
-        Shape of ``(num_worlds,)`` and type :class:`int32`.
-        """
+    num_actuated_joints: wp.array | None = None
+    """
+    The number of actuated joints in each world.\n
+    Shape of ``(num_worlds,)`` and type :class:`int`.
+    """
 
-        self.num_collision_geoms: wp.array(dtype=int32) | None = None
-        """
-        The number of collision geometries in each world.\n
-        Shape of ``(num_worlds,)`` and type :class:`int32`.
-        """
+    num_collision_geoms: wp.array | None = None
+    """
+    The number of collision geometries in each world.\n
+    Shape of ``(num_worlds,)`` and type :class:`int`.
+    """
 
-        self.num_physical_geoms: wp.array(dtype=int32) | None = None
-        """
-        The number of physical geometries in each world.\n
-        Shape of ``(num_worlds,)`` and type :class:`int32`.
-        """
+    num_physical_geoms: wp.array | None = None
+    """
+    The number of physical geometries in each world.\n
+    Shape of ``(num_worlds,)`` and type :class:`int`.
+    """
 
-        self.max_limits: wp.array(dtype=int32) | None = None
-        """
-        The maximum number of limits in each world.\n
-        Shape of ``(num_worlds,)`` and type :class:`int32`.
-        """
+    max_limits: wp.array | None = None
+    """
+    The maximum number of limits in each world.\n
+    Shape of ``(num_worlds,)`` and type :class:`int`.
+    """
 
-        self.max_contacts: wp.array(dtype=int32) | None = None
-        """
-        The maximum number of contacts in each world.\n
-        Shape of ``(num_worlds,)`` and type :class:`int32`.
-        """
+    max_contacts: wp.array | None = None
+    """
+    The maximum number of contacts in each world.\n
+    Shape of ``(num_worlds,)`` and type :class:`int`.
+    """
 
-        ###
-        # DoF Counts
-        ###
+    ###
+    # DoF Counts
+    ###
 
-        self.num_body_dofs: wp.array(dtype=int32) | None = None
-        """
-        The number of body DoFs of each world.\n
-        Shape of ``(num_worlds,)`` and type :class:`int32`.
-        """
+    num_body_dofs: wp.array | None = None
+    """
+    The number of body DoFs of each world.\n
+    Shape of ``(num_worlds,)`` and type :class:`int`.
+    """
 
-        self.num_joint_coords: wp.array(dtype=int32) | None = None
-        """
-        The number of joint coordinates of each world.\n
-        Shape of ``(num_worlds,)`` and type :class:`int32`.
-        """
+    num_joint_coords: wp.array | None = None
+    """
+    The number of joint coordinates of each world.\n
+    Shape of ``(num_worlds,)`` and type :class:`int`.
+    """
 
-        self.num_joint_dofs: wp.array(dtype=int32) | None = None
-        """
-        The number of joint DoFs of each world.\n
-        Shape of ``(num_worlds,)`` and type :class:`int32`.
-        """
+    num_joint_dofs: wp.array | None = None
+    """
+    The number of joint DoFs of each world.\n
+    Shape of ``(num_worlds,)`` and type :class:`int`.
+    """
 
-        self.num_passive_joint_coords: wp.array(dtype=int32) | None = None
-        """
-        The number of passive joint coordinates of each world.\n
-        Shape of ``(num_worlds,)`` and type :class:`int32`.
-        """
+    num_passive_joint_coords: wp.array | None = None
+    """
+    The number of passive joint coordinates of each world.\n
+    Shape of ``(num_worlds,)`` and type :class:`int`.
+    """
 
-        self.num_passive_joint_dofs: wp.array(dtype=int32) | None = None
-        """
-        The number of passive joint DoFs of each world.\n
-        Shape of ``(num_worlds,)`` and type :class:`int32`.
-        """
+    num_passive_joint_dofs: wp.array | None = None
+    """
+    The number of passive joint DoFs of each world.\n
+    Shape of ``(num_worlds,)`` and type :class:`int`.
+    """
 
-        self.num_actuated_joint_coords: wp.array(dtype=int32) | None = None
-        """
-        The number of actuated joint coordinates of each world.\n
-        Shape of ``(num_worlds,)`` and type :class:`int32`.
-        """
+    num_actuated_joint_coords: wp.array | None = None
+    """
+    The number of actuated joint coordinates of each world.\n
+    Shape of ``(num_worlds,)`` and type :class:`int`.
+    """
 
-        self.num_actuated_joint_dofs: wp.array(dtype=int32) | None = None
-        """
-        The number of actuated joint DoFs of each world.\n
-        Shape of ``(num_worlds,)`` and type :class:`int32`.
-        """
+    num_actuated_joint_dofs: wp.array | None = None
+    """
+    The number of actuated joint DoFs of each world.\n
+    Shape of ``(num_worlds,)`` and type :class:`int`.
+    """
 
-        ###
-        # Constraint Counts
-        ###
+    ###
+    # Constraint Counts
+    ###
 
-        self.num_joint_cts: wp.array(dtype=int32) | None = None
-        """
-        The number of joint constraints of each world.\n
-        Shape of ``(num_worlds,)`` and type :class:`int32`.
-        """
+    num_joint_cts: wp.array | None = None
+    """
+    The number of joint constraints of each world.\n
+    Shape of ``(num_worlds,)`` and type :class:`int`.
+    """
 
-        self.max_limit_cts: wp.array(dtype=int32) | None = None
-        """
-        The maximum number of active limit constraints of each world.\n
-        Shape of ``(num_worlds,)`` and type :class:`int32`.
-        """
+    max_limit_cts: wp.array | None = None
+    """
+    The maximum number of active limit constraints of each world.\n
+    Shape of ``(num_worlds,)`` and type :class:`int`.
+    """
 
-        self.max_contact_cts: wp.array(dtype=int32) | None = None
-        """
-        The maximum number of active contact constraints of each world.\n
-        Shape of ``(num_worlds,)`` and type :class:`int32`.
-        """
+    max_contact_cts: wp.array | None = None
+    """
+    The maximum number of active contact constraints of each world.\n
+    Shape of ``(num_worlds,)`` and type :class:`int`.
+    """
 
-        self.max_total_cts: wp.array(dtype=int32) | None = None
-        """
-        The maximum total number of active constraints of each world.\n
-        Shape of ``(num_worlds,)`` and type :class:`int32`.
-        """
+    max_total_cts: wp.array | None = None
+    """
+    The maximum total number of active constraints of each world.\n
+    Shape of ``(num_worlds,)`` and type :class:`int`.
+    """
 
-        ###
-        # Entity Offsets
-        ###
+    ###
+    # Entity Offsets
+    ###
 
-        self.bodies_offset: wp.array(dtype=int32) | None = None
-        """
-        The body index offset of each world w.r.t the model.\n
-        Shape of ``(num_worlds,)`` and type :class:`int32`.
-        """
+    bodies_offset: wp.array | None = None
+    """
+    The body index offset of each world w.r.t the model.\n
+    Shape of ``(num_worlds,)`` and type :class:`int`.
+    """
 
-        self.joints_offset: wp.array(dtype=int32) | None = None
-        """
-        The joint index offset of each world w.r.t the model.\n
-        Shape of ``(num_worlds,)`` and type :class:`int32`.
-        """
+    joints_offset: wp.array | None = None
+    """
+    The joint index offset of each world w.r.t the model.\n
+    Shape of ``(num_worlds,)`` and type :class:`int`.
+    """
 
-        self.limits_offset: wp.array(dtype=int32) | None = None
-        """
-        The limit index offset of each world w.r.t the model.\n
-        Shape of ``(num_worlds,)`` and type :class:`int32`.
-        """
+    limits_offset: wp.array | None = None
+    """
+    The limit index offset of each world w.r.t the model.\n
+    Shape of ``(num_worlds,)`` and type :class:`int`.
+    """
 
-        self.contacts_offset: wp.array(dtype=int32) | None = None
-        """
-        The contact index offset of world w.r.t the model.\n
-        Shape of ``(num_worlds,)`` and type :class:`int32`.
-        """
+    contacts_offset: wp.array | None = None
+    """
+    The contact index offset of world w.r.t the model.\n
+    Shape of ``(num_worlds,)`` and type :class:`int`.
+    """
 
-        self.unilaterals_offset: wp.array(dtype=int32) | None = None
-        """
-        The index offset of the unilaterals (limits + contacts) block of each world.\n
-        Shape of ``(num_worlds,)`` and type :class:`int32`.
-        """
+    unilaterals_offset: wp.array | None = None
+    """
+    The index offset of the unilaterals (limits + contacts) block of each world.\n
+    Shape of ``(num_worlds,)`` and type :class:`int`.
+    """
 
-        ###
-        # DoF Offsets
-        ###
+    ###
+    # DoF Offsets
+    ###
 
-        self.body_dofs_offset: wp.array(dtype=int32) | None = None
-        """
-        The index offset of the body DoF block of each world.\n
-        Shape of ``(num_worlds,)`` and type :class:`int32`.
-        """
+    body_dofs_offset: wp.array | None = None
+    """
+    The index offset of the body DoF block of each world.\n
+    Shape of ``(num_worlds,)`` and type :class:`int`.
+    """
 
-        self.joint_coords_offset: wp.array(dtype=int32) | None = None
-        """
-        The index offset of the joint coordinates block of each world.\n
-        Shape of ``(num_worlds,)`` and type :class:`int32`.
-        """
+    joint_coords_offset: wp.array | None = None
+    """
+    The index offset of the joint coordinates block of each world.\n
+    Shape of ``(num_worlds,)`` and type :class:`int`.
+    """
 
-        self.joint_dofs_offset: wp.array(dtype=int32) | None = None
-        """
-        The index offset of the joint DoF block of each world.\n
-        Shape of ``(num_worlds,)`` and type :class:`int32`.
-        """
+    joint_dofs_offset: wp.array | None = None
+    """
+    The index offset of the joint DoF block of each world.\n
+    Shape of ``(num_worlds,)`` and type :class:`int`.
+    """
 
-        self.joint_passive_coords_offset: wp.array(dtype=int32) | None = None
-        """
-        The index offset of the passive joint coordinates block of each world.\n
-        Shape of ``(num_worlds,)`` and type :class:`int32`.
-        """
+    joint_passive_coords_offset: wp.array | None = None
+    """
+    The index offset of the passive joint coordinates block of each world.\n
+    Shape of ``(num_worlds,)`` and type :class:`int`.
+    """
 
-        self.joint_passive_dofs_offset: wp.array(dtype=int32) | None = None
-        """
-        The index offset of the passive joint DoF block of each world.\n
-        Shape of ``(num_worlds,)`` and type :class:`int32`.
-        """
+    joint_passive_dofs_offset: wp.array | None = None
+    """
+    The index offset of the passive joint DoF block of each world.\n
+    Shape of ``(num_worlds,)`` and type :class:`int`.
+    """
 
-        self.joint_actuated_coords_offset: wp.array(dtype=int32) | None = None
-        """
-        The index offset of the actuated joint coordinates block of each world.\n
-        Shape of ``(num_worlds,)`` and type :class:`int32`.
-        """
+    joint_actuated_coords_offset: wp.array | None = None
+    """
+    The index offset of the actuated joint coordinates block of each world.\n
+    Shape of ``(num_worlds,)`` and type :class:`int`.
+    """
 
-        self.joint_actuated_dofs_offset: wp.array(dtype=int32) | None = None
-        """
-        The index offset of the actuated joint DoF block of each world.\n
-        Shape of ``(num_worlds,)`` and type :class:`int32`.
-        """
+    joint_actuated_dofs_offset: wp.array | None = None
+    """
+    The index offset of the actuated joint DoF block of each world.\n
+    Shape of ``(num_worlds,)`` and type :class:`int`.
+    """
 
-        ###
-        # Constraint Offsets
-        ###
+    ###
+    # Constraint Offsets
+    ###
 
-        self.joint_cts_offset: wp.array(dtype=int32) | None = None
-        """
-        The index offset of the joint constraints block of each world.\n
-        Shape of ``(num_worlds,)`` and type :class:`int32`.
-        """
+    joint_cts_offset: wp.array | None = None
+    """
+    The index offset of the joint constraints block of each world.\n
+    Shape of ``(num_worlds,)`` and type :class:`int`.
+    """
 
-        self.limit_cts_offset: wp.array(dtype=int32) | None = None
-        """
-        The index offset of the limit constraints block of each world.\n
-        Shape of ``(num_worlds,)`` and type :class:`int32`.
-        """
+    limit_cts_offset: wp.array | None = None
+    """
+    The index offset of the limit constraints block of each world.\n
+    Shape of ``(num_worlds,)`` and type :class:`int`.
+    """
 
-        self.contact_cts_offset: wp.array(dtype=int32) | None = None
-        """
-        The index offset of the contact constraints block of each world.\n
-        Shape of ``(num_worlds,)`` and type :class:`int32`.
-        """
+    contact_cts_offset: wp.array | None = None
+    """
+    The index offset of the contact constraints block of each world.\n
+    Shape of ``(num_worlds,)`` and type :class:`int`.
+    """
 
-        self.unilateral_cts_offset: wp.array(dtype=int32) | None = None
-        """
-        The index offset of the unilateral constraints block of each world.\n
-        Shape of ``(num_worlds,)`` and type :class:`int32`.
-        """
+    unilateral_cts_offset: wp.array | None = None
+    """
+    The index offset of the unilateral constraints block of each world.\n
+    Shape of ``(num_worlds,)`` and type :class:`int`.
+    """
 
-        self.total_cts_offset: wp.array(dtype=int32) | None = None
-        """
-        The index offset of the total constraints block of each world.\n
-        Shape of ``(num_worlds,)`` and type :class:`int32`.
-        """
+    total_cts_offset: wp.array | None = None
+    """
+    The index offset of the total constraints block of each world.\n
+    Shape of ``(num_worlds,)`` and type :class:`int`.
+    """
 
-        ###
-        # Inertial Properties
-        ###
+    ###
+    # Base Properties
+    ###
 
-        self.mass_min: wp.array(dtype=float32) | None = None
-        """
-        Smallest mass amongst all bodies in each world.
-        Shape of ``(num_worlds,)`` and type :class:`float32`.
-        """
+    base_body_index: wp.array | None = None
+    """
+    The index of the base body assigned in each world w.r.t the model.\n
+    Shape of ``(num_worlds,)`` and type :class:`int`.
+    """
 
-        self.mass_max: wp.array(dtype=float32) | None = None
-        """
-        Largest mass amongst all bodies in each world.
-        Shape of ``(num_worlds,)`` and type :class:`float32`.
-        """
+    base_joint_index: wp.array | None = None
+    """
+    The index of the base joint assigned in each world w.r.t the model.\n
+    Shape of ``(num_worlds,)`` and type :class:`int`.
+    """
 
-        self.mass_total: wp.array(dtype=float32) | None = None
-        """
-        Total mass over all bodies in each world.
-        Shape of ``(num_worlds,)`` and type :class:`float32`.
-        """
+    ###
+    # Inertial Properties
+    ###
 
-        self.inertia_total: wp.array(dtype=float32) | None = None
-        """
-        Total inertia over all bodies in each world.
-        Shape of ``(num_worlds,)`` and type :class:`float32`.
-        """
+    mass_min: wp.array | None = None
+    """
+    Smallest mass amongst all bodies in each world.\n
+    Shape of ``(num_worlds,)`` and type :class:`float`.
+    """
+
+    mass_max: wp.array | None = None
+    """
+    Largest mass amongst all bodies in each world.\n
+    Shape of ``(num_worlds,)`` and type :class:`float`.
+    """
+
+    mass_total: wp.array | None = None
+    """
+    Total mass over all bodies in each world.\n
+    Shape of ``(num_worlds,)`` and type :class:`float`.
+    """
+
+    inertia_total: wp.array | None = None
+    """
+    Total diagonal inertia over all bodies in each world.\n
+    Shape of ``(num_worlds,)`` and type :class:`float`.
+    """
 
 
+@dataclass
 class ModelDataInfo:
     """
-    A container to hold the time-varying information and meta-data of a model-state.
+    A container to hold the time-varying information about the set of active constraints.
     """
 
-    def __init__(self):
-        ###
-        # Total Constraints
-        ###
+    ###
+    # Total Constraints
+    ###
 
-        self.num_total_cts: wp.array(dtype=int32) | None = None
-        """
-        The total number of active constraints.\n
-        Shape of ``(num_worlds,)`` and type :class:`int32`.
-        """
+    num_total_cts: wp.array | None = None
+    """
+    The total number of active constraints.\n
+    Shape of ``(num_worlds,)`` and type :class:`int32`.
+    """
 
-        ###
-        # Limits
-        ###
+    ###
+    # Limits
+    ###
 
-        self.num_limits: wp.array(dtype=int32) | None = None
-        """
-        The number of active limits in each world.\n
-        Shape of ``(num_worlds,)`` and type :class:`int32`.
-        """
+    num_limits: wp.array | None = None
+    """
+    The number of active limits in each world.\n
+    Shape of ``(num_worlds,)`` and type :class:`int32`.
+    """
 
-        self.num_limit_cts: wp.array(dtype=int32) | None = None
-        """
-        The number of active limit constraints.\n
-        Shape of ``(num_worlds,)`` and type :class:`int32`.
-        """
+    num_limit_cts: wp.array | None = None
+    """
+    The number of active limit constraints.\n
+    Shape of ``(num_worlds,)`` and type :class:`int32`.
+    """
 
-        self.limit_cts_group_offset: wp.array(dtype=int32) | None = None
-        """
-        The index offset of the limit constraints group within the constraints block of each world.\n
-        Shape of ``(num_worlds,)`` and type :class:`int32`.
-        """
+    limit_cts_group_offset: wp.array | None = None
+    """
+    The index offset of the limit constraints group within the constraints block of each world.\n
+    Shape of ``(num_worlds,)`` and type :class:`int32`.
+    """
 
-        ###
-        # Contacts
-        ###
+    ###
+    # Contacts
+    ###
 
-        self.num_contacts: wp.array(dtype=int32) | None = None
-        """
-        The number of active contacts in each world.\n
-        Shape of ``(num_worlds,)`` and type :class:`int32`.
-        """
+    num_contacts: wp.array | None = None
+    """
+    The number of active contacts in each world.\n
+    Shape of ``(num_worlds,)`` and type :class:`int32`.
+    """
 
-        self.num_contact_cts: wp.array(dtype=int32) | None = None
-        """
-        The number of active contact constraints.\n
-        Shape of ``(num_worlds,)`` and type :class:`int32`.
-        """
+    num_contact_cts: wp.array | None = None
+    """
+    The number of active contact constraints.\n
+    Shape of ``(num_worlds,)`` and type :class:`int32`.
+    """
 
-        self.contact_cts_group_offset: wp.array(dtype=int32) | None = None
-        """
-        The index offset of the contact constraints group within the constraints block of each world.\n
-        Shape of ``(num_worlds,)`` and type :class:`int32`.
-        """
+    contact_cts_group_offset: wp.array | None = None
+    """
+    The index offset of the contact constraints group within the constraints block of each world.\n
+    Shape of ``(num_worlds,)`` and type :class:`int32`.
+    """
 
 
+@dataclass
 class ModelData:
     """
-    A container to hold the time-varying state of the model entities.
+    A container to hold the time-varying data of the model entities.
+
+    It includes all model-specific intermediate quantities used throughout the simulation, as needed
+    to update the state of rigid bodies, joints, geometries, active constraints and time-keeping.
+
+    Attributes:
+        info (ModelDataInfo): The info container holding information about the set of active constraints.
+        time (TimeData): Time state of the model, including the current simulation step and time.
+        bodies (RigidBodiesData): States of all rigid bodies in the model: poses, twists, wrenches,
+            and moments of inertia computed in world coordinates.
+        joints (JointsData): States of joints in the model: joint frames computed in world coordinates,
+            constraint residuals and reactions, and generalized (DoF) quantities.
+        cgeoms (CollisionGeometriesData): States of collision geometries in the model:
+            poses, AABBs etc. computed in world coordinates.
+        pgeoms (GeometriesData): States of physical geometries in the model: poses computed in world coordinates.
     """
 
-    def __init__(self):
-        self.info: ModelDataInfo | None = None
-        """The info container holding the information and meta-data of the model data."""
+    info: ModelDataInfo | None = None
+    """The info container holding information about the set of active constraints."""
 
-        self.time: TimeData | None = None
-        """Time state of the model, including the current simulation step and time."""
+    time: TimeData | None = None
+    """Time state of the model, including the current simulation step and time."""
 
-        self.bodies: RigidBodiesData | None = None
-        """
-        States of all rigid bodies in the model: poses, twists, wrenches,
-        and moments of inertia computed in world coordinates.
-        """
+    bodies: RigidBodiesData | None = None
+    """
+    States of all rigid bodies in the model: poses, twists, wrenches,
+    and moments of inertia computed in world coordinates.
+    """
 
-        self.joints: JointsData | None = None
-        """
-        States of joints in the model: joint frames computed in world coordinates,
-        constraint residuals and reactions, and generalized (DoF) quantities.
-        """
+    joints: JointsData | None = None
+    """
+    States of joints in the model: joint frames computed in world coordinates,
+    constraint residuals and reactions, and generalized (DoF) quantities.
+    """
 
-        self.cgeoms: CollisionGeometriesData | None = None
-        """States of collision geometries in the model: poses, AABBs etc. computed in world coordinates."""
+    cgeoms: CollisionGeometriesData | None = None
+    """States of collision geometries in the model: poses, AABBs etc. computed in world coordinates."""
 
-        self.pgeoms: GeometriesData | None = None
-        """States of physical geometries in the model: poses computed in world coordinates."""
+    pgeoms: GeometriesData | None = None
+    """States of physical geometries in the model: poses computed in world coordinates."""
 
 
 class Model:
     """
     A container to hold the time-invariant system model data.
+
+    Attributes:
+        device (Devicelike):
+            The device on which the model data is allocated.
+        requires_grad (bool):
+            Whether the model requires gradients for its state. Defaults to `False`.
+        size (ModelSize):
+            Host-side cache of the model summary sizes.\n
+            This is used for memory allocations and kernel thread dimensions.
+        worlds (list[WorldDescriptor]):
+            Host-side cache of the world descriptors.\n
+            This is used to construct the model and for memory allocations.
+        info (ModelInfo):
+            The model info container holding the information and meta-data of the model.
+        time (TimeModel):
+            The time model container holding time-step of each world.
+        gravity (GravityModel):
+            The gravity model container holding the gravity configurations for each world.
+        bodies (RigidBodiesModel):
+            The rigid bodies model container holding all rigid body entities in the model.
+        joints (JointsModel):
+            The joints model container holding all joint entities in the model.
+        cgeoms (CollisionGeometriesModel):
+            The collision geometries model container holding all collision geometry entities in the model.
+        pgeoms (GeometriesModel):
+            The physical geometries model container holding all physical geometry entities in the model.
+        mpairs (MaterialPairsModel):
+            The material pairs model container holding all material pairs in the model.
     """
 
     def __init__(self):
         self.device: Devicelike = None
-        """The device on which the model data is allocated."""
+        """The device on which the model data is allocated.\n
+        Defaults to `None`, indicating the default/preferred Warp device.
+        """
 
         self.requires_grad: bool = False
         """Whether the model requires gradients for its state. Defaults to `False`."""
@@ -659,119 +889,128 @@ class Model:
 
     def data(
         self,
-        skip_body_dofs: bool = False,
         unilateral_cts: bool = False,
         requires_grad: bool = False,
         device: Devicelike = None,
     ) -> ModelData:
         """
-        Create a model data container with the initial state of the model entities.
+        Creates a model data container with the initial state of the model entities.
 
-        Parameters
-        ----------
-        unilateral_cts : `bool`, optional
-            Whether to include unilateral constraints (limits and contacts) in the model data. Defaults to `True`.
-        requires_grad : `bool`
-            Whether the model data should require gradients. Defaults to `False`.
-        device : `Devicelike`, optional
-            The device to create the model data on. If not specified, the model's device is used.
+        Parameters:
+            skip_body_dofs (`bool`, optional):
+                Whether to skip initializing the body DoF state (poses and twists)
+                from the model's initial state. Defaults to `False`.
+            unilateral_cts (`bool`, optional):
+                Whether to include unilateral constraints (limits and contacts) in the model data. Defaults to `True`.
+            requires_grad (`bool`, optional):
+                Whether the model data should require gradients. Defaults to `False`.
+            device (`Devicelike`, optional):
+                The device to create the model data on. If not specified, the model's device is used.
+                Defaults to `None`. If not specified, the model's device is used.
         """
         # If no device is specified, use the model's device
         if device is None:
             device = self.device
 
+        # Retrieve entity counts
+        nw = self.size.num_worlds
+        nb = self.size.sum_of_num_bodies
+        nj = self.size.sum_of_num_joints
+        ncg = self.size.sum_of_num_collision_geoms
+        npg = self.size.sum_of_num_physical_geoms
+
+        # Retrieve the joint coordinate, DoF and constraint counts
+        njq = self.size.sum_of_num_joint_coords
+        njd = self.size.sum_of_num_joint_dofs
+        njc = self.size.sum_of_num_joint_cts
+
         # Construct the model data on the specified device
         with wp.ScopedDevice(device=device):
-            # Retrieve entity counts
-            nw = self.size.num_worlds
-            nb = self.size.sum_of_num_bodies
-            nj = self.size.sum_of_num_joints
-            ncg = self.size.sum_of_num_collision_geoms
-            npg = self.size.sum_of_num_physical_geoms
-
-            # Retrieve the joint coordinate, DoF and constraint counts
-            njq = self.size.sum_of_num_joint_coords
-            njd = self.size.sum_of_num_joint_dofs
-            njc = self.size.sum_of_num_joint_cts
-
-            # Construct the model data container
-            data = ModelData()
-
-            # Construct the model data info
-            # NOTE: By default, the model data info is initialized only with joint constraints.
-            data.info = ModelDataInfo()
-            data.info.num_total_cts = wp.zeros(shape=nw, dtype=int32)
-            wp.copy(data.info.num_total_cts, self.info.num_joint_cts)
+            # Create a new model data info with the total constraint
+            # counts initialized to the joint constraints count
+            info = ModelDataInfo(
+                num_total_cts=wp.clone(self.info.num_joint_cts),
+            )
 
             # If unilateral constraints are enabled, initialize the additional state info
             if unilateral_cts:
-                data.info.num_limits = wp.zeros(shape=nw, dtype=int32)
-                data.info.num_contacts = wp.zeros(shape=nw, dtype=int32)
-                data.info.num_limit_cts = wp.zeros(shape=nw, dtype=int32)
-                data.info.num_contact_cts = wp.zeros(shape=nw, dtype=int32)
-                data.info.limit_cts_group_offset = wp.zeros(shape=nw, dtype=int32)
-                data.info.contact_cts_group_offset = wp.zeros(shape=nw, dtype=int32)
+                info.num_limits = wp.zeros(shape=nw, dtype=int32)
+                info.num_contacts = wp.zeros(shape=nw, dtype=int32)
+                info.num_limit_cts = wp.zeros(shape=nw, dtype=int32)
+                info.num_contact_cts = wp.zeros(shape=nw, dtype=int32)
+                info.limit_cts_group_offset = wp.zeros(shape=nw, dtype=int32)
+                info.contact_cts_group_offset = wp.zeros(shape=nw, dtype=int32)
 
             # Construct the time state
-            data.time = TimeData()
-            data.time.steps = wp.zeros(shape=nw, dtype=int32, requires_grad=requires_grad)
-            data.time.time = wp.zeros(shape=nw, dtype=float32, requires_grad=requires_grad)
+            time = TimeData(
+                steps=wp.zeros(shape=nw, dtype=int32, requires_grad=requires_grad),
+                time=wp.zeros(shape=nw, dtype=float32, requires_grad=requires_grad),
+            )
 
             # Construct the rigid bodies state from the model's initial state
-            data.bodies = RigidBodiesData()
-            data.bodies.num_bodies = nb
-            data.bodies.I_i = wp.zeros(shape=nb, dtype=mat33f, requires_grad=requires_grad)
-            data.bodies.inv_I_i = wp.zeros(shape=nb, dtype=mat33f, requires_grad=requires_grad)
-            if not skip_body_dofs:
-                data.bodies.q_i = wp.clone(self.bodies.q_i_0, requires_grad=requires_grad)
-                data.bodies.u_i = wp.clone(self.bodies.u_i_0, requires_grad=requires_grad)
-            data.bodies.w_i = wp.zeros_like(self.bodies.u_i_0, requires_grad=requires_grad)
-            data.bodies.w_a_i = wp.zeros_like(self.bodies.u_i_0, requires_grad=requires_grad)
-            data.bodies.w_j_i = wp.zeros_like(self.bodies.u_i_0, requires_grad=requires_grad)
-            data.bodies.w_l_i = wp.zeros_like(self.bodies.u_i_0, requires_grad=requires_grad)
-            data.bodies.w_c_i = wp.zeros_like(self.bodies.u_i_0, requires_grad=requires_grad)
-            data.bodies.w_e_i = wp.zeros_like(self.bodies.u_i_0, requires_grad=requires_grad)
+            bodies = RigidBodiesData(
+                num_bodies=nb,
+                I_i=wp.zeros(shape=nb, dtype=mat33f, requires_grad=requires_grad),
+                inv_I_i=wp.zeros(shape=nb, dtype=mat33f, requires_grad=requires_grad),
+                q_i=wp.clone(self.bodies.q_i_0, requires_grad=requires_grad),
+                u_i=wp.clone(self.bodies.u_i_0, requires_grad=requires_grad),
+                w_i=wp.zeros_like(self.bodies.u_i_0, requires_grad=requires_grad),
+                w_a_i=wp.zeros_like(self.bodies.u_i_0, requires_grad=requires_grad),
+                w_j_i=wp.zeros_like(self.bodies.u_i_0, requires_grad=requires_grad),
+                w_l_i=wp.zeros_like(self.bodies.u_i_0, requires_grad=requires_grad),
+                w_c_i=wp.zeros_like(self.bodies.u_i_0, requires_grad=requires_grad),
+                w_e_i=wp.zeros_like(self.bodies.u_i_0, requires_grad=requires_grad),
+            )
 
             # Construct the joints state from the model's initial state
-            data.joints = JointsData()
-            data.joints.num_joints = nj
-            data.joints.p_j = wp.zeros(shape=nj, dtype=transformf, requires_grad=requires_grad)
-            data.joints.r_j = wp.zeros(shape=njc, dtype=float32, requires_grad=requires_grad)
-            data.joints.dr_j = wp.zeros(shape=njc, dtype=float32, requires_grad=requires_grad)
-            data.joints.lambda_j = wp.zeros(shape=njc, dtype=float32, requires_grad=requires_grad)
-            data.joints.q_j = wp.zeros(shape=njq, dtype=float32, requires_grad=requires_grad)
-            data.joints.dq_j = wp.zeros(shape=njd, dtype=float32, requires_grad=requires_grad)
-            data.joints.tau_j = wp.zeros(shape=njd, dtype=float32, requires_grad=requires_grad)
-            data.joints.j_w_j = wp.zeros(shape=nj, dtype=vec6f, requires_grad=requires_grad)
-            data.joints.j_w_c_j = wp.zeros(shape=nj, dtype=vec6f, requires_grad=requires_grad)
-            data.joints.j_w_a_j = wp.zeros(shape=nj, dtype=vec6f, requires_grad=requires_grad)
-            data.joints.j_w_l_j = wp.zeros(shape=nj, dtype=vec6f, requires_grad=requires_grad)
+            joints = JointsData(
+                num_joints=nj,
+                p_j=wp.zeros(shape=nj, dtype=transformf, requires_grad=requires_grad),
+                r_j=wp.zeros(shape=njc, dtype=float32, requires_grad=requires_grad),
+                dr_j=wp.zeros(shape=njc, dtype=float32, requires_grad=requires_grad),
+                lambda_j=wp.zeros(shape=njc, dtype=float32, requires_grad=requires_grad),
+                q_j=wp.zeros(shape=njq, dtype=float32, requires_grad=requires_grad),
+                dq_j=wp.zeros(shape=njd, dtype=float32, requires_grad=requires_grad),
+                tau_j=wp.zeros(shape=njd, dtype=float32, requires_grad=requires_grad),
+                j_w_j=wp.zeros(shape=nj, dtype=vec6f, requires_grad=requires_grad),
+                j_w_c_j=wp.zeros(shape=nj, dtype=vec6f, requires_grad=requires_grad),
+                j_w_a_j=wp.zeros(shape=nj, dtype=vec6f, requires_grad=requires_grad),
+                j_w_l_j=wp.zeros(shape=nj, dtype=vec6f, requires_grad=requires_grad),
+            )
 
             # Construct the collision geometries state from the model's initial state
-            data.cgeoms = CollisionGeometriesData()
-            data.cgeoms.num_geoms = ncg
-            data.cgeoms.pose = wp.zeros(shape=ncg, dtype=transformf, requires_grad=requires_grad)
-            data.cgeoms.aabb = wp.zeros(shape=ncg, dtype=mat83f, requires_grad=requires_grad)
-            data.cgeoms.radius = wp.zeros(shape=ncg, dtype=float32, requires_grad=requires_grad)
+            cgeoms = CollisionGeometriesData(
+                num_geoms=ncg,
+                pose=wp.zeros(shape=ncg, dtype=transformf, requires_grad=requires_grad),
+                aabb=wp.zeros(shape=ncg, dtype=mat83f, requires_grad=requires_grad),
+                radius=wp.zeros(shape=ncg, dtype=float32, requires_grad=requires_grad),
+            )
 
             # Construct the physical geometries state from the model's initial state
-            data.pgeoms = GeometriesData()
-            data.pgeoms.num_geoms = npg
-            data.pgeoms.pose = wp.zeros(shape=npg, dtype=transformf, requires_grad=requires_grad)
+            pgeoms = GeometriesData(
+                num_geoms=npg,
+                pose=wp.zeros(shape=npg, dtype=transformf, requires_grad=requires_grad),
+            )
 
-        # Return the constructed model data container
-        return data
+        # Assemble and return the new model data container
+        return ModelData(
+            info=info,
+            time=time,
+            bodies=bodies,
+            joints=joints,
+            cgeoms=cgeoms,
+            pgeoms=pgeoms,
+        )
 
     def state(self, requires_grad: bool = False, device: Devicelike = None) -> State:
         """
-        Creates a compact state container with the initial state of the model entities.
+        Creates state container initialized to the initial body state defined in the model.
 
-        Parameters
-        ----------
-        requires_grad : `bool`
-            Whether the state should require gradients. Defaults to `False`.
-        device : `Devicelike`, optional
-            The device to create the state on. If not specified, the model's device is used.
+        Parameters:
+            requires_grad (`bool`, optional):
+                Whether the state should require gradients. Defaults to `False`.
+            device (`Devicelike`, optional):
+                The device to create the state on. If not specified, the model's device is used.
         """
         # If no device is specified, use the model's device
         if device is None:
@@ -779,7 +1018,7 @@ class Model:
 
         # Create a new state container with the initial state of the model entities on the specified device
         with wp.ScopedDevice(device=device):
-            s = State(
+            state = State(
                 q_i=wp.clone(self.bodies.q_i_0, requires_grad=requires_grad),
                 u_i=wp.clone(self.bodies.u_i_0, requires_grad=requires_grad),
                 w_i=wp.zeros_like(self.bodies.u_i_0, requires_grad=requires_grad),
@@ -789,18 +1028,17 @@ class Model:
             )
 
         # Return the constructed state container
-        return s
+        return state
 
     def control(self, requires_grad: bool = False, device: Devicelike = None) -> Control:
         """
-        Creates a compact control container with the initial state of the model entities.
+        Creates a control container with all values initialized to zeros.
 
-        Parameters
-        ----------
-        requires_grad : `bool`
-            Whether the control container should require gradients. Defaults to `False`.
-        device : `Devicelike`, optional
-            The device to create the control container on. If not specified, the model's device is used.
+        Parameters:
+            requires_grad (`bool`, optional):
+                Whether the control container should require gradients. Defaults to `False`.
+            device (`Devicelike`, optional):
+                The device to create the control container on. If not specified, the model's device is used.
         """
         # If no device is specified, use the model's device
         if device is None:
@@ -808,9 +1046,9 @@ class Model:
 
         # Create a new control container on the specified device
         with wp.ScopedDevice(device=device):
-            c = Control(
+            control = Control(
                 tau_j=wp.zeros(shape=self.size.sum_of_num_joint_dofs, dtype=float32, requires_grad=requires_grad)
             )
 
         # Return the constructed control container
-        return c
+        return control

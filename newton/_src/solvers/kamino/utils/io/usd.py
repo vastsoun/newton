@@ -19,6 +19,7 @@ KAMINO: Utilities: Input/Output: OpenUSD
 
 import uuid
 from collections.abc import Iterable
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -411,6 +412,15 @@ class USDImporter:
         # Retrieve the namespace path of the prim
         path = str(rigid_body_prim.GetPath())
 
+        # Check the applied schemas
+        has_rigid_body_api = "PhysicsRigidBodyAPI" in rigid_body_prim.GetAppliedSchemas()
+        has_mass_api = "PhysicsMassAPI" in rigid_body_prim.GetAppliedSchemas()
+
+        # If the prim is a rigid body but has no mass,
+        # skip it and treat it as static geometry
+        if has_rigid_body_api and not has_mass_api:
+            return None
+
         # Define and check for the required APIs
         req_api = ["PhysicsRigidBodyAPI", "PhysicsMassAPI"]
         for api in req_api:
@@ -523,14 +533,14 @@ class USDImporter:
 
         # Construct and return the RigidBodyDescriptor
         # with the data imported from the USD prim
-        body_desc = RigidBodyDescriptor()
-        body_desc.name = name
-        body_desc.uid = uid
-        body_desc.m_i = m_i
-        body_desc.i_I_i = i_I_i
-        body_desc.q_i_0 = q_i_0
-        body_desc.u_i_0 = u_i_0
-        return body_desc
+        return RigidBodyDescriptor(
+            name=name,
+            uid=uid,
+            m_i=m_i,
+            i_I_i=i_I_i,
+            q_i_0=q_i_0,
+            u_i_0=u_i_0,
+        )
 
     def _has_joints(self, ret_dict: dict) -> bool:
         """
@@ -825,6 +835,11 @@ class USDImporter:
         msg.debug(f"bid_B: {bid_B}")
         msg.debug(f"bid_F: {bid_F}")
 
+        # Skip constructing this joint if both body indices are -1
+        # (i.e. indicating they are part of the world)
+        if bid_B == -1 and bid_F == -1:
+            return None
+
         ###
         # PhysicsJoint Specific Properties
         ###
@@ -956,20 +971,20 @@ class USDImporter:
 
         # Construct and return the RigidBodyDescriptor
         # with the data imported from the USD prim
-        joint_desc = JointDescriptor()
-        joint_desc.name = name
-        joint_desc.uid = uid
-        joint_desc.act_type = act_type
-        joint_desc.dof_type = dof_type
-        joint_desc.bid_B = bid_B
-        joint_desc.bid_F = bid_F
-        joint_desc.B_r_Bj = B_r_Bj
-        joint_desc.F_r_Fj = F_r_Fj
-        joint_desc.X_j = wp.quat_to_matrix(B_q_Bj) @ X_j
-        joint_desc.q_j_min = q_j_min
-        joint_desc.q_j_max = q_j_max
-        joint_desc.tau_j_max = tau_j_max
-        return joint_desc
+        return JointDescriptor(
+            name=name,
+            uid=uid,
+            act_type=act_type,
+            dof_type=dof_type,
+            bid_B=bid_B,
+            bid_F=bid_F,
+            B_r_Bj=B_r_Bj,
+            F_r_Fj=F_r_Fj,
+            X_j=wp.quat_to_matrix(B_q_Bj) @ X_j,
+            q_j_min=q_j_min,
+            q_j_max=q_j_max,
+            tau_j_max=tau_j_max,
+        )
 
     def _parse_geom(
         self,
@@ -995,17 +1010,26 @@ class USDImporter:
         name = self._get_prim_name(geom_prim)
         uid = self._get_prim_uid(geom_prim)
         msg.debug(f"[Geom]: name: {name}")
-        msg.debug(f"[{name}]: uid: {uid}")
+        msg.debug(f"[Geom]: uid: {uid}")
+
+        # Retrieve the name and index of the rigid body associated with the geom
+        # NOTE: If a rigid body is not associated with the geom, the body index (bid) is
+        # set to `-1` indicating that the geom belongs to the world, i.e. it is a static
+        bid = body_index_map.get(str(geom_spec.rigidBody), -1)
+        body_name = str(geom_spec.rigidBody) if bid > -1 else None
+        msg.debug(f"[Geom]: body_name: {body_name}")
+        msg.debug(f"[Geom]: body_index: {bid}")
+
+        # Prefix the geom name with the body name if associated,
+        # otherwise use the full prim path
+        if body_name is not None:
+            name = body_name + "/" + name
+        else:
+            name = str(geom_prim.GetPath())
 
         ###
         # PhysicsGeom Common Properties
         ###
-
-        # Retrieve the body index of the rigid body associated with the geom
-        # NOTE: If a rigid body is not associated with the geom, the body index (bid) is
-        # set to `-1` indicating that the geom belongs to the world, i.e. it is a static
-        bid = body_index_map.get(str(geom_spec.rigidBody), -1)
-        msg.debug(f"[{name}]: bid: {bid}")
 
         # Extract the relative poses of the geom w.r.t the rigid body frame
         i_r_ig = distance_unit * vec3f(geom_spec.localPos)
@@ -1020,7 +1044,10 @@ class USDImporter:
 
         # TODO: Define a mechanism to handle multiple layers,
         # each potentially holding multiple geometries.
-        lid = 0
+        if bid == -1:
+            layer = "world"  # World layer
+        else:
+            layer = "primary"  # Default to 1 for all other geometries
 
         ###
         # PhysicsGeom Shape Properties
@@ -1101,13 +1128,14 @@ class USDImporter:
         # Base GeometryDescriptor
         ###
 
-        descriptor = GeometryDescriptor()
-        descriptor.name = name
-        descriptor.uid = uid
-        descriptor.lid = lid
-        descriptor.bid = bid
-        descriptor.offset = i_T_ig
-        descriptor.shape = shape
+        descriptor = GeometryDescriptor(
+            name=name,
+            uid=uid,
+            layer=layer,
+            bid=bid,
+            offset=i_T_ig,
+            shape=shape,
+        )
 
         ###
         # Collision Properties
@@ -1167,7 +1195,8 @@ class USDImporter:
         only_load_enabled_joints: bool = True,
         load_static_geometry: bool = True,
         load_materials: bool = True,
-        enable_self_collisions: bool = True,
+        enable_self_collisions: bool = False,
+        enable_joint_collisions: bool = False,
         collapse_fixed_joints: bool = False,
         meshes_are_collidable: bool = False,
     ) -> ModelBuilder:
@@ -1181,6 +1210,13 @@ class USDImporter:
         # TODO: When does this case happen?
         else:
             stage = source
+
+        # Retrieve the default prim name to assign as the name of the world
+        if stage.HasDefaultPrim():
+            default_prim_name = stage.GetDefaultPrim().GetName()
+        else:
+            default_prim_name = Path(source).name if isinstance(source, str) else "world"
+        msg.debug(f"default_prim_name: {default_prim_name}")
 
         ###
         # Units
@@ -1218,7 +1254,8 @@ class USDImporter:
 
         # Create a new ModelBuilder if not provided
         if builder is None:
-            builder = ModelBuilder()
+            builder = ModelBuilder(default_world=False)
+            builder.add_world(name=default_prim_name)
 
         ###
         # World
@@ -1237,7 +1274,6 @@ class USDImporter:
                 msg.error("Multiple PhysicsScene prims found in the USD file. Only the first prim will be considered.")
 
             # Extract the world gravity from the physics scene
-            gravity = GravityDescriptor()
             gravity.acceleration = distance_unit * scene_desc.gravityMagnitude
             gravity.direction = vec3f(scene_desc.gravityDirection)
             builder.set_gravity(gravity)
@@ -1255,8 +1291,8 @@ class USDImporter:
             axis_xform = wp.transform_identity()
             msg.debug(f"Using stage up axis {up_axis} as builder up axis")
         else:
-            axis_xform = wp.transform(vec3f(0.0), quat_between_axes(up_axis, builder.up_axis))
-            msg.debug(f"Rotating stage to align its up axis {up_axis} with builder up axis {builder.up_axis}")
+            axis_xform = wp.transform(vec3f(0.0), quat_between_axes(up_axis, builder.up_axes[0]))
+            msg.debug(f"Rotating stage to align its up axis {up_axis} with builder up axis {builder.up_axes[0]}")
 
         # Set the world offset transform based on the provided xform
         if xform is None:
@@ -1297,8 +1333,8 @@ class USDImporter:
 
             # Generate material pair properties for each combination
             # NOTE: This applies the OpenUSD convention of using the average of the two properties
-            for i, first in enumerate(builder.materials.materials):
-                for j, second in enumerate(builder.materials.materials):
+            for i, first in enumerate(builder.materials):
+                for j, second in enumerate(builder.materials):
                     if i <= j:  # Avoid duplicate pairs
                         msg.debug(f"Generating material pair properties for '{first.name}' and '{second.name}'")
                         material_pair = self._material_pair_properties_from(first, second)
@@ -1349,7 +1385,10 @@ class USDImporter:
                 )
                 if rigid_body_desc is not None:
                     msg.debug(f"Adding body '{builder.num_bodies}':\n{rigid_body_desc}\n")
-                    body_index_map[str(prim_path)] = builder.add_rigid_body_descriptor(descriptor=rigid_body_desc)
+                    body_index_map[str(prim_path)] = builder.add_rigid_body_descriptor(body=rigid_body_desc)
+                else:
+                    msg.debug(f"Rigid body @'{prim_path}' not loaded. Will be treated as static geometry.")
+                    body_index_map[str(prim_path)] = -1  # Body not loaded, is statically part of the world
         msg.debug(f"body_index_map: {body_index_map}")
 
         ###
@@ -1385,7 +1424,9 @@ class USDImporter:
                     )
                     if joint_desc is not None:
                         msg.debug(f"Adding joint '{builder.num_joints}':\n{joint_desc}\n")
-                        builder.add_joint_descriptor(descriptor=joint_desc)
+                        builder.add_joint_descriptor(joint=joint_desc)
+                    else:
+                        msg.debug(f"Joint @'{prim_path}' not loaded. Will be ignored.")
                     break  # Stop after the first match
 
         ###
@@ -1413,10 +1454,19 @@ class USDImporter:
         # Iterate over each pair of prim path and geom type-name to parse the geometry specifications
         for geom_prim_path, geom_type_name in zip(geom_prim_paths, geom_type_names, strict=False):
             geom_type = self.supported_usd_geom_types[self.supported_usd_geom_type_names.index(geom_type_name)]
+
+            # Extract the list of physics prim paths and descriptors for the given type
             geom_paths, geom_specs = ret_dict[geom_type]
+
+            # Iterate over physics geom descriptors until a match to the target geom prims is found
+            physics_geom_desc_found = False
             for prim_path, geom_spec in zip(geom_paths, geom_specs, strict=False):
                 if prim_path == geom_prim_path:
                     msg.debug(f"Parsing geometry @'{prim_path}' of type '{geom_type_name}'")
+                    # Mark the geometry descriptor as found
+                    physics_geom_desc_found = True
+
+                    # Parse the USD geom descriptor to construct a corresponding sim geometry descriptor
                     geom_desc = self._parse_geom(
                         geom_prim=stage.GetPrimAtPath(prim_path),
                         geom_spec=geom_spec,
@@ -1428,6 +1478,8 @@ class USDImporter:
                         rotation_unit=rotation_unit,
                         meshes_are_collidable=meshes_are_collidable,
                     )
+
+                    # If construction succeeded, append it to the model builder
                     if geom_desc is not None:
                         # Skip static geometry if not requested
                         if geom_desc.bid == -1 and not load_static_geometry:
@@ -1435,11 +1487,15 @@ class USDImporter:
                         # Append geometry descriptor to appropriate entity
                         if type(geom_desc) is CollisionGeometryDescriptor:
                             msg.debug(f"Adding collision geom '{builder.num_collision_geoms}':\n{geom_desc}\n")
-                            builder.add_collision_geometry_descriptor(descriptor=geom_desc)
+                            builder.add_collision_geometry_descriptor(geom=geom_desc)
                         elif type(geom_desc) is GeometryDescriptor:
                             msg.debug(f"Adding physical geom '{builder.num_physical_geoms}':\n{geom_desc}\n")
-                            builder.add_physical_geometry_descriptor(descriptor=geom_desc)
+                            builder.add_physical_geometry_descriptor(geom=geom_desc)
                     break  # Stop after the first match
+
+            # Indicate to user that a UsdGeom has potentially not been marked for physics simulation
+            if not physics_geom_desc_found:
+                msg.warning(f"Failed to find UsdPhysics descriptor for geom prim '{geom_prim_path}'")
 
         ###
         # Post-processing
@@ -1462,7 +1518,7 @@ class USDImporter:
         msg.debug(f"Builder: Joints:\n{builder.joints}\n")
         msg.debug(f"Builder: Physical Geoms:\n{builder.physical_geoms}\n")
         msg.debug(f"Builder: Collision Geoms:\n{builder.collision_geoms}\n")
-        msg.debug(f"Builder: Materials:\n{builder.materials.materials}\n")
+        msg.debug(f"Builder: Materials:\n{builder.materials}\n")
 
         # Return the ModelBuilder populated from the parsed USD file
         return builder

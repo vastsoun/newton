@@ -69,7 +69,7 @@ class TestKinematicsConstraints(unittest.TestCase):
         max_world_contacts = 20
 
         # Construct the model description using the ModelBuilder
-        builder, _, _ = make_single_builder(build_func=build_boxes_fourbar)
+        builder = make_single_builder(build_fn=build_boxes_fourbar)
 
         # Create the model from the builder
         model: Model = builder.finalize(device=self.default_device)
@@ -85,7 +85,7 @@ class TestKinematicsConstraints(unittest.TestCase):
             print("limits.num_world_max_limits: ", limits.num_world_max_limits)
 
         # Extract the contact allocation capacities required by the model
-        required_model_max_contacts, required_world_max_contacts = builder.required_contact_capacity()
+        required_model_max_contacts, required_world_max_contacts = builder.required_contact_capacity
         if self.verbose:
             print("required_model_max_contacts: ", required_model_max_contacts)
             print("required_world_max_contacts: ", required_world_max_contacts)
@@ -120,7 +120,7 @@ class TestKinematicsConstraints(unittest.TestCase):
         max_world_contacts = 20
 
         # Construct the model description using the ModelBuilder
-        builder = make_homogeneous_builder(num_worlds=10, build_func=build_boxes_fourbar)
+        builder = make_homogeneous_builder(num_worlds=10, build_fn=build_boxes_fourbar)
         num_worlds = builder.num_worlds
 
         # Create the model from the builder
@@ -137,7 +137,7 @@ class TestKinematicsConstraints(unittest.TestCase):
             print("limits.num_world_max_limits: ", limits.num_world_max_limits)
 
         # Extract the contact allocation capacities required by the model
-        required_model_max_contacts, required_world_max_contacts = builder.required_contact_capacity()
+        required_model_max_contacts, required_world_max_contacts = builder.required_contact_capacity
         if self.verbose:
             print("required_model_max_contacts: ", required_model_max_contacts)
             print("required_world_max_contacts: ", required_world_max_contacts)
@@ -216,7 +216,7 @@ class TestKinematicsConstraints(unittest.TestCase):
         max_world_contacts = 20
 
         # Construct the model description using the ModelBuilder
-        builder, _, _ = make_heterogeneous_builder()
+        builder = make_heterogeneous_builder()
 
         # Create the model from the builder
         model: Model = builder.finalize(device=self.default_device)
@@ -232,7 +232,7 @@ class TestKinematicsConstraints(unittest.TestCase):
             print("limits.num_world_max_limits: ", limits.num_world_max_limits)
 
         # Extract the contact allocation capacities required by the model
-        required_model_max_contacts, required_world_max_contacts = builder.required_contact_capacity()
+        required_model_max_contacts, required_world_max_contacts = builder.required_contact_capacity
         if self.verbose:
             print("required_model_max_contacts: ", required_model_max_contacts)
             print("required_world_max_contacts: ", required_world_max_contacts)

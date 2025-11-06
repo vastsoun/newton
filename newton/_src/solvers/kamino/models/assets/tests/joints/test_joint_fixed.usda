@@ -14,7 +14,7 @@ def PhysicsScene "World"
     vector3f physics:gravityDirection = (0, 0, -1)
 }
 
-def Xform "Robot"
+def Xform "test_joint_fixed"
 {
     def Scope "RigidBodies"
     {
@@ -65,8 +65,8 @@ def Xform "Robot"
         {
             bool physics:jointEnabled = 1
 
-            rel physics:body0 = </Robot/RigidBodies/body_0>
-            rel physics:body1 = </Robot/RigidBodies/body_1>
+            rel physics:body0 = </test_joint_fixed/RigidBodies/body_0>
+            rel physics:body1 = </test_joint_fixed/RigidBodies/body_1>
 
             uniform token physics:axis = "X"
 

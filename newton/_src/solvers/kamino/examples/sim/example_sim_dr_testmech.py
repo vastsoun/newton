@@ -78,11 +78,8 @@ class Example:
         msg.notif("Constructing builder from imported USD ...")
         importer = USDImporter()
         self.builder: ModelBuilder = importer.import_from(source=USD_MODEL_PATH)
-        msg.warning("total mass: %f", self.builder.world.mass_total)
-        msg.warning("total diag inertia: %f", self.builder.world.inertia_total)
-
-        # Set gravity
-        self.builder.gravity.enabled = True
+        msg.warning("total mass: %f", self.builder.worlds[0].mass_total)
+        msg.warning("total diag inertia: %f", self.builder.worlds[0].inertia_total)
 
         # Set solver settings
         settings = SimulatorSettings()

@@ -134,10 +134,7 @@ class Example:
             self.builder: ModelBuilder = importer.import_from(source=USD_MODEL_PATH, load_static_geometry=True)
         else:
             msg.info("Constructing builder using model generator ...")
-            self.builder: ModelBuilder = make_homogeneous_builder(num_worlds=num_worlds, build_func=build_box_on_plane)
-
-        # Set gravity
-        self.builder.gravity.enabled = True
+            self.builder: ModelBuilder = make_homogeneous_builder(num_worlds=num_worlds, build_fn=build_box_on_plane)
 
         # Set solver settings
         settings = SimulatorSettings()

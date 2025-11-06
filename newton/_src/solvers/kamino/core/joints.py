@@ -17,11 +17,15 @@
 
 from __future__ import annotations
 
+import math
+from dataclasses import dataclass, field
 from enum import IntEnum
 
 import warp as wp
 
+from .math import FLOAT32_MAX, FLOAT32_MIN
 from .types import (
+    Descriptor,
     float32,
     int32,
     mat33f,
@@ -220,99 +224,199 @@ class JointDoFType(IntEnum):
 ###
 
 
-class JointDescriptor:
+@dataclass
+class JointDescriptor(Descriptor):
     """
     A container to describe a single joint in the model builder.
+
+    Attributes:
+        name (str): Name of the joint.
+        uid (int): Unique identifier of the joint.
+        act_type (JointActuationType): Actuation type of the joint.
+        dof_type (JointDoFType): DoF type of the joint.
+        bid_B (int): The Base body index of the joint (-1 for world, >=0 for bodies).
+        bid_F (int): The Follower body index of the joint (-1 for world, >=0 for bodies).
+        B_r_Bj (vec3f): The relative position of the joint in the base body coordinates.
+        F_r_Fj (vec3f): The relative position of the joint in the follower body coordinates.
+        X_j (mat33f): The constant axes matrix of the joint.
+        q_j_min (list[float] | float | None): Minimum configuration limits of the joint.
+        q_j_max (list[float] | float | None): Maximum configuration limits of the joint.
+        dq_j_max (list[float] | float | None): Maximum velocity limits of the joint.
+        tau_j_max (list[float] | float | None): Maximum effort limits of the joint.
     """
 
-    def __init__(self):
-        self.name: str | None = None
-        """Name of the joint."""
+    ###
+    # Attributes
+    ###
 
-        self.uid: str | None = None
-        """Unique identifier code (UID) of the joint."""
+    act_type: JointActuationType = JointActuationType.PASSIVE
+    """Actuation type of the joint."""
 
-        self.wid: int = 0
-        """Index of the world in which the joint is defined."""
+    dof_type: JointDoFType = JointDoFType.FREE
+    """DoF type of the joint."""
 
-        self.jid: int = -1
-        """Index of the joint w.r.t. the world."""
+    bid_B: int = -1
+    """The Base body index of the joint (-1 for world, >=0 for bodies)."""
 
-        self.act_type: JointActuationType = JointActuationType.PASSIVE
-        """Actuation type of the joint."""
+    bid_F: int = -1
+    """The Follower body index of the joint (-1 for world, >=0 for bodies)."""
 
-        self.dof_type: JointDoFType = JointDoFType.FREE
-        """DoF type of the joint."""
+    # TODO: Change this to a transformf
+    B_r_Bj: vec3f = field(default_factory=vec3f)
+    """The relative position of the joint in the base body coordinates."""
 
-        self.num_coords: int = -1
-        """Number of configuration coordinates of the joint."""
+    # TODO: Change this to a transformf
+    F_r_Fj: vec3f = field(default_factory=vec3f)
+    """The relative position of the joint in the follower body coordinates."""
 
-        self.num_dofs: int = -1
-        """Number of DoFs of the joint."""
+    # TODO: Remove this when body offsets become transforms
+    X_j: mat33f = field(default_factory=mat33f)
+    """The constant axes matrix of the joint."""
 
-        self.num_cts: int = -1
-        """Number of constraints of the joint."""
+    q_j_min: list[float] | float | None = None
+    """Minimum configuration limits of the joint."""
 
-        self.coords_offset: int = -1
-        """Index offset of this joint's coordinates among all joint coordinates in the world it belongs to."""
+    q_j_max: list[float] | float | None = None
+    """Maximum configuration limits of the joint."""
 
-        self.dofs_offset: int = -1
-        """Index offset of this joint's DoFs among all joint DoFs in the world it belongs to."""
+    dq_j_max: list[float] | float | None = None
+    """Maximum velocity limits of the joint."""
 
-        self.passive_coords_offset: int = -1
-        """Index offset of this joint's passive coordinates among all joint coordinates in the world it belongs to."""
+    tau_j_max: list[float] | float | None = None
+    """Maximum effort limits of the joint."""
 
-        self.passive_dofs_offset: int = -1
-        """Index offset of this joint's passive DoFs among all joint DoFs in the world it belongs to."""
+    ###
+    # Metadata - to be set by the WorldDescriptor when added
+    ###
 
-        self.actuated_coords_offset: int = -1
-        """Index offset of this joint's actuated coordinates among all joint coordinates in the world it belongs to."""
+    wid: int = -1
+    """
+    Index of the world to which the joint belongs.\n
+    Defaults to `-1`, indicating that the joint has not yet been added to a world.
+    """
 
-        self.actuated_dofs_offset: int = -1
-        """Index offset of this joint's actuated DoFs among all joint DoFs in the world it belongs to."""
+    jid: int = -1
+    """
+    Index of the joint w.r.t. its world.\n
+    Defaults to `-1`, indicating that the joint has not yet been added to a world.
+    """
 
-        self.cts_offset: int = -1
-        """Index offset of this joint's constraints among all joint constraints in the world it belongs to."""
+    coords_offset: int = -1
+    """Index offset of this joint's coordinates among all joint coordinates in the world it belongs to."""
 
-        self.bid_B: int = -1
-        """The Base body index of the joint (-1 for world, >=0 for bodies)."""
+    dofs_offset: int = -1
+    """Index offset of this joint's DoFs among all joint DoFs in the world it belongs to."""
 
-        self.bid_F: int = -1
-        """The Follower body index of the joint (-1 for world, >=0 for bodies)."""
+    passive_coords_offset: int = -1
+    """Index offset of this joint's passive coordinates among all joint coordinates in the world it belongs to."""
 
-        # TODO: Change this to a transformf
-        self.B_r_Bj: vec3f = vec3f()
-        """The relative position of the joint in the base body coordinates."""
+    passive_dofs_offset: int = -1
+    """Index offset of this joint's passive DoFs among all joint DoFs in the world it belongs to."""
 
-        # TODO: Change this to a transformf
-        self.F_r_Fj: vec3f = vec3f()
-        """The relative position of the joint in the follower body coordinates."""
+    actuated_coords_offset: int = -1
+    """Index offset of this joint's actuated coordinates among all joint coordinates in the world it belongs to."""
 
-        # TODO: Remove this when body offsets become transforms
-        self.X_j: mat33f = mat33f()
-        """The constant axes matrix of the joint."""
+    actuated_dofs_offset: int = -1
+    """Index offset of this joint's actuated DoFs among all joint DoFs in the world it belongs to."""
 
-        self.q_j_min: list[float] | float | None = None
-        """Minimum configuration limits of the joint."""
+    cts_offset: int = -1
+    """Index offset of this joint's constraints among all joint constraints in the world it belongs to."""
 
-        self.q_j_max: list[float] | float | None = None
-        """Maximum configuration limits of the joint."""
+    ###
+    # Properties
+    ###
 
-        self.dq_j_max: list[float] | float | None = None
-        """Maximum velocity limits of the joint."""
+    @property
+    def num_coords(self) -> int:
+        """
+        Returns the number of coordinates for this joint.
+        """
+        return self.dof_type.num_coords
 
-        self.tau_j_max: list[float] | float | None = None
-        """Maximum effort limits of the joint."""
+    @property
+    def num_dofs(self) -> int:
+        """
+        Returns the number of DoFs for this joint.
+        """
+        return self.dof_type.num_dofs
 
+    @property
+    def num_cts(self) -> int:
+        """
+        Returns the number of constraints for this joint.
+        """
+        return self.dof_type.num_cts
+
+    @property
+    def is_binary(self) -> bool:
+        """
+        Returns whether the joint is binary (i.e. connected to two bodies).
+        """
+        return self.bid_B != -1 and self.bid_F != -1
+
+    @property
+    def is_unary(self) -> bool:
+        """
+        Returns whether the joint is unary (i.e. connected to the world).
+        """
+        return self.bid_B == -1 or self.bid_F == -1
+
+    @property
+    def is_passive(self) -> bool:
+        """
+        Returns whether the joint is passive.
+        """
+        return self.act_type == JointActuationType.PASSIVE
+
+    @property
+    def is_actuated(self) -> bool:
+        """
+        Returns whether the joint is actuated.
+        """
+        return self.act_type > JointActuationType.PASSIVE
+
+    def is_connected_to_body(self, bid: int) -> bool:
+        """
+        Returns whether the joint is connected to the specified body.
+        """
+        return self.bid_B == bid or self.bid_F == bid
+
+    ###
+    # Operations
+    ###
+
+    def __post_init__(self):
+        """Post-initialization processing to validate and set up joint limits."""
+        # Ensure base descriptor post-init is called first
+        # NOTE: This ensures that the UID is properly set before proceeding
+        super().__post_init__()
+
+        # Set default values for joint limits if not provided
+        self.q_j_min = self._check_limits(self.q_j_min, self.num_coords, float(FLOAT32_MIN))
+        self.q_j_max = self._check_limits(self.q_j_max, self.num_coords, float(FLOAT32_MAX))
+        self.dq_j_max = self._check_limits(self.dq_j_max, self.num_dofs, float(FLOAT32_MAX))
+        self.tau_j_max = self._check_limits(self.tau_j_max, self.num_dofs, float(FLOAT32_MAX))
+
+    @override
     def __repr__(self):
+        """Returns a human-readable string representation of the JointDescriptor."""
         return (
             f"JointDescriptor(\n"
             f"name: {self.name},\n"
             f"uid: {self.uid},\n"
-            f"wid: {self.wid},\n"
-            f"jid: {self.jid},\n"
             f"act_type: {self.act_type},\n"
             f"dof_type: {self.dof_type},\n"
+            f"bid_B: {self.bid_B},\n"
+            f"bid_F: {self.bid_F},\n"
+            f"B_r_Bj: {self.B_r_Bj},\n"
+            f"F_r_Fj: {self.F_r_Fj},\n"
+            f"X_j:\n{self.X_j},\n"
+            f"q_j_min: {self.q_j_min},\n"
+            f"q_j_max: {self.q_j_max},\n"
+            f"dq_j_max: {self.dq_j_max},\n"
+            f"tau_j_max: {self.tau_j_max}\n"
+            f"wid: {self.wid},\n"
+            f"jid: {self.jid},\n"
             f"num_coords: {self.num_coords},\n"
             f"num_dofs: {self.num_dofs},\n"
             f"num_cts: {self.num_cts},\n"
@@ -323,274 +427,359 @@ class JointDescriptor:
             f"passive_dofs_offset: {self.passive_dofs_offset},\n"
             f"actuated_coords_offset: {self.actuated_coords_offset},\n"
             f"actuated_dofs_offset: {self.actuated_dofs_offset},\n"
-            f"bid_B: {self.bid_B},\n"
-            f"bid_F: {self.bid_F},\n"
-            f"B_r_Bj: {self.B_r_Bj},\n"
-            f"F_r_Fj: {self.F_r_Fj},\n"
-            f"X_j:\n{self.X_j},\n"
-            f"q_j_min: {self.q_j_min},\n"
-            f"q_j_max: {self.q_j_max},\n"
-            f"dq_j_max: {self.dq_j_max},\n"
-            f"tau_j_max: {self.tau_j_max}\n"
             f")"
         )
 
+    ###
+    # Operations - Internal
+    ###
 
+    @staticmethod
+    def _check_limits(
+        limits: list[float] | float | None, size: int, default: float = float(FLOAT32_MAX)
+    ) -> list[float]:
+        """
+        Processes a specified limit value to ensure it is a list of floats.
+
+        Notes:
+        - If the input is None, a list of default values is returned.
+        - If the input is a single float, it is converted to a list of the specified length.
+        - If the input is an empty list, a list of default values is returned.
+        - If the input is a non-empty list, it is validated to ensure it
+            contains only floats and matches the specified length.
+
+        Args:
+            limits (List[float] | float | None): The limits to be processed.
+            num_dofs (int): The number of degrees of freedom to determine the length of the output list.
+            default (float): The default value to use if limits is None or an empty list.
+
+        Returns:
+            List[float]: The processed list of limits.
+
+        Raises:
+            ValueError: If the length of the limits list does not match num_dofs.
+            TypeError: If the limits list contains non-float types.
+        """
+        if limits is None:
+            return [float(default) for _ in range(size)]
+
+        if isinstance(limits, float):
+            if limits == math.inf:
+                return [float(FLOAT32_MAX) for _ in range(size)]
+            elif limits == -math.inf:
+                return [float(FLOAT32_MIN) for _ in range(size)]
+            else:
+                return [limits] * size
+
+        if isinstance(limits, list):
+            if len(limits) == 0:
+                return [float(default) for _ in range(size)]
+
+            if len(limits) != size:
+                raise ValueError(f"Invalid limits length: {len(limits)} != {size}")
+
+            if all(isinstance(x, float) for x in limits):
+                return limits
+            else:
+                raise TypeError(
+                    f"Invalid limits type: All entries must be `float`, but got:\n{[type(x) for x in limits]}"
+                )
+
+
+@dataclass
 class JointsModel:
     """
-    An SoA-based container to hold time-invariant model data of a joint system.
+    An SoA-based container to hold time-invariant model data of joints.
+
+    Attributes:
+        num_joints (int): Total number of joints in the model.
+        wid (wp.array | None): World index of each joint.
+        jid (wp.array | None): Joint index w.r.t the world of each joint.
+        dof_type (wp.array | None): Joint DoF type ID of each joint.
+        act_type (wp.array | None): Joint actuation type ID of each joint.
+        bid_B (wp.array | None): Base body index of each joint w.r.t the model.\n
+            Equals `-1` for world, `>=0` for bodies.
+        bid_F (wp.array | None): Follower body index of each joint w.r.t the model.\n
+            Equals `-1` for world, `>=0` for bodies.
+        B_r_Bj (wp.array | None): Relative position of the joint,
+            expressed in and w.r.t the base body coordinate frame.
+        F_r_Fj (wp.array | None): Relative position of the joint,
+            expressed in and w.r.t the follower body coordinate frame.
+        X_j (wp.array | None): Joint axes matrix (local coordinates) of each joint.\n
+            Indicates the relative orientation of the the joint frame w.r.t the base body coordinate frame.
+        q_j_min (wp.array | None): Minimum joint position limits of each joint (as flat array).
+        q_j_max (wp.array | None): Maximum joint position limits of each joint (as flat array).
+        num_coords (wp.array | None): Number of configuration coordinates of each joint.
+        num_dofs (wp.array | None): Number of DoFs of each joint.
+        num_cts (wp.array | None): Number of constraints of each joint.
+        coords_offset (wp.array | None): Index offset of each joint's coordinates
+            w.r.t the start index of joint coordinates of the corresponding world.
+        dofs_offset (wp.array | None): Index offset of each joint's DoFs w.r.t
+            the start index of joint DoFs of the corresponding world.
+        passive_coords_offset (wp.array | None): Index offset of each joint's passive coordinates
+            w.r.t the start index of passive joint coordinates of the corresponding world.
+        passive_dofs_offset (wp.array | None): Index offset of each joint's passive DoFs
+            w.r.t the start index of passive joint DoFs of the corresponding world.
+        actuated_coords_offset (wp.array | None): Index offset of each joint's actuated coordinates
+            w.r.t the start index of actuated joint coordinates of the corresponding world.
+        actuated_dofs_offset (wp.array | None): Index offset of each joint's actuated DoFs w.r.t
+            the start index of actuated joint DoFs of the corresponding world.
+        cts_offset (wp.array | None): Index offset of each joint's constraints w.r.t
+            the start index of joint constraints of the corresponding world.
     """
 
-    def __init__(self):
-        self.num_joints: int = 0
-        """Total number of joints in the model (host-side)."""
+    num_joints: int = 0
+    """Total number of joints in the model (host-side)."""
 
-        self.wid: wp.array | None = None
-        """
-        Index each the world in which each joint is defined.\n
-        Shape of ``(num_joints,)`` and type :class:`int`.
-        """
+    wid: wp.array | None = None
+    """
+    Index each the world in which each joint is defined.\n
+    Shape of ``(num_joints,)`` and type :class:`int`.
+    """
 
-        self.jid: wp.array | None = None
-        """
-        Index of each joint w.r.t the world.\n
-        Shape of ``(num_joints,)`` and type :class:`int`.
-        """
+    jid: wp.array | None = None
+    """
+    Index of each joint w.r.t the world.\n
+    Shape of ``(num_joints,)`` and type :class:`int`.
+    """
 
-        self.dof_type: wp.array | None = None
-        """
-        Joint DoF type ID of each joint.\n
-        Shape of ``(num_joints,)`` and type :class:`int`.
-        """
+    dof_type: wp.array | None = None
+    """
+    Joint DoF type ID of each joint.\n
+    Shape of ``(num_joints,)`` and type :class:`int`.
+    """
 
-        self.act_type: wp.array | None = None
-        """
-        Joint actuation type ID of each joint.\n
-        Shape of ``(num_joints,)`` and type :class:`int`.
-        """
+    act_type: wp.array | None = None
+    """
+    Joint actuation type ID of each joint.\n
+    Shape of ``(num_joints,)`` and type :class:`int`.
+    """
 
-        self.num_coords: wp.array | None = None
-        """
-        Number of configuration coordinates of each joint.\n
-        Shape of ``(num_joints,)`` and type :class:`int`.
-        """
+    bid_B: wp.array | None = None
+    """
+    Base body index of each joint w.r.t the model.\n
+    Equals `-1` for world, `>=0` for bodies.\n
+    Shape of ``(num_joints,)`` and type :class:`int`.
+    """
 
-        self.num_dofs: wp.array | None = None
-        """
-        Number of DoFs of each joint.\n
-        Shape of ``(num_joints,)`` and type :class:`int`.
-        """
+    bid_F: wp.array | None = None
+    """
+    Follower body index of each joint w.r.t the model.\n
+    Equals `-1` for world, `>=0` for bodies.\n
+    Shape of ``(num_joints,)`` and type :class:`int`.
+    """
 
-        self.num_cts: wp.array | None = None
-        """
-        Number of constraints of each joint.\n
-        Shape of ``(num_joints,)`` and type :class:`int`.
-        """
+    B_r_Bj: wp.array | None = None
+    """
+    Relative position of the joint, expressed in and w.r.t the base body coordinate frame.\n
+    Shape of ``(num_joints, 3)`` and type :class:`vec3`.
+    """
 
-        self.coords_offset: wp.array | None = None
-        """
-        Index offset of each joint's coordinates w.r.t the start
-        index of joint coordinates of the corresponding world.\n
-        Shape of ``(num_joints,)`` and type :class:`int`.
-        """
+    F_r_Fj: wp.array | None = None
+    """
+    Relative position of the joint, expressed in and w.r.t the follower body coordinate frame.\n
+    Shape of ``(num_joints, 3)`` and type :class:`vec3`.
+    """
 
-        self.dofs_offset: wp.array | None = None
-        """
-        Index offset of each joint's DoFs w.r.t the start
-        index of joint DoFs of the corresponding world.\n
-        Shape of ``(num_joints,)`` and type :class:`int`.
-        """
+    X_j: wp.array | None = None
+    """
+    Joint axes matrix (local coordinates) of each joint.\n
+    Indicates the relative orientation of the the joint
+    frame w.r.t the base body coordinate frame.\n
+    Shape of ``(num_joints, 3, 3)`` and type :class:`mat33`.
+    """
 
-        self.passive_coords_offset: wp.array | None = None
-        """
-        Index offset of each joint's passive coordinates w.r.t the start
-        index of passive joint coordinates of the corresponding world.\n
-        Shape of ``(num_joints,)`` and type :class:`int`.
-        """
+    q_j_min: wp.array | None = None
+    """
+    Minimum joint position limits of each joint (as flat array).\n
+    Shape of ``(sum(c_j),)`` and type :class:`float`,\n
+    where ``c_j`` is the number of coordinates of joint ``j``.
+    """
 
-        self.passive_dofs_offset: wp.array | None = None
-        """
-        Index offset of each joint's passive DoFs w.r.t the start
-        index of passive joint DoFs of the corresponding world.\n
-        Shape of ``(num_joints,)`` and type :class:`int`.
-        """
+    q_j_max: wp.array | None = None
+    """
+    Maximum joint position limits of each joint (as flat array).\n
+    Shape of ``(sum(c_j),)`` and type :class:`float`,\n
+    where ``c_j`` is the number of coordinates of joint ``j``.
+    """
 
-        self.actuated_coords_offset: wp.array | None = None
-        """
-        Index offset of each joint's actuated coordinates w.r.t the start
-        index of actuated joint coordinates of the corresponding world.\n
-        Shape of ``(num_joints,)`` and type :class:`int`.
-        """
+    dq_j_max: wp.array | None = None
+    """
+    Maximum joint velocity limits of each joint (as flat array).\n
+    Shape of ``(sum(d_j),)`` and type :class:`float`,\n
+    where ``d_j`` is the number of DoFs of joint ``j``.
+    """
 
-        self.actuated_dofs_offset: wp.array | None = None
-        """
-        Index offset of each joint's actuated DoFs w.r.t the start
-        index of actuated joint DoFs of the corresponding world.\n
-        Shape of ``(num_joints,)`` and type :class:`int`.
-        """
+    tau_j_max: wp.array | None = None
+    """
+    Maximum joint torque limits of each joint (as flat array).\n
+    Shape of ``(sum(d_j),)`` and type :class:`float`,\n
+    where ``d_j`` is the number of DoFs of joint ``j``.
+    """
 
-        self.cts_offset: wp.array | None = None
-        """
-        Index offset of each joint's constraints w.r.t the start
-        index of joint constraints of the corresponding world.\n
-        Shape of ``(num_joints,)`` and type :class:`int`.
-        """
+    num_coords: wp.array | None = None
+    """
+    Number of configuration coordinates of each joint.\n
+    Shape of ``(num_joints,)`` and type :class:`int`.
+    """
 
-        self.bid_B: wp.array | None = None
-        """
-        Base body index of each joint (-1 for world, >=0 for bodies) w.r.t the model.\n
-        Shape of ``(num_joints,)`` and type :class:`int`.
-        """
+    num_dofs: wp.array | None = None
+    """
+    Number of DoFs of each joint.\n
+    Shape of ``(num_joints,)`` and type :class:`int`.
+    """
 
-        self.bid_F: wp.array | None = None
-        """
-        Follower body index of each joint (-1 for world, >=0 for bodies) w.r.t the model.\n
-        Shape of ``(num_joints,)`` and type :class:`int`.
-        """
+    num_cts: wp.array | None = None
+    """
+    Number of constraints of each joint.\n
+    Shape of ``(num_joints,)`` and type :class:`int`.
+    """
 
-        self.B_r_Bj: wp.array | None = None
-        """
-        Relative position of the joint, expressed in and w.r.t the base body coordinate frame.\n
-        Shape of ``(num_joints, 3)`` and type :class:`vec3`.
-        """
+    coords_offset: wp.array | None = None
+    """
+    Index offset of each joint's coordinates w.r.t the start
+    index of joint coordinates of the corresponding world.\n
+    Shape of ``(num_joints,)`` and type :class:`int`.
+    """
 
-        self.F_r_Fj: wp.array | None = None
-        """
-        Relative position of the joint, expressed in and w.r.t the follower body coordinate frame.\n
-        Shape of ``(num_joints, 3)`` and type :class:`vec3`.
-        """
+    dofs_offset: wp.array | None = None
+    """
+    Index offset of each joint's DoFs w.r.t the start
+    index of joint DoFs of the corresponding world.\n
+    Shape of ``(num_joints,)`` and type :class:`int`.
+    """
 
-        self.X_j: wp.array | None = None
-        """
-        Joint axes matrix (local coordinates) of each joint, indicates the relative
-        orientation of the the joint frame w.r.t the base body coordinate frame.\n
-        Shape of ``(num_joints, 3, 3)`` and type :class:`mat33`.
-        """
+    passive_coords_offset: wp.array | None = None
+    """
+    Index offset of each joint's passive coordinates w.r.t the start
+    index of passive joint coordinates of the corresponding world.\n
+    Shape of ``(num_joints,)`` and type :class:`int`.
+    """
 
-        self.q_j_min: wp.array | None = None
-        """
-        Minimum joint position limits of each joint (as flat array).\n
-        Shape of ``(sum(c_j),)`` and type :class:`float`,\n
-        where ``c_j`` is the number of coordinates of joint ``j``.
-        """
+    passive_dofs_offset: wp.array | None = None
+    """
+    Index offset of each joint's passive DoFs w.r.t the start
+    index of passive joint DoFs of the corresponding world.\n
+    Shape of ``(num_joints,)`` and type :class:`int`.
+    """
 
-        self.q_j_max: wp.array | None = None
-        """
-        Maximum joint position limits of each joint (as flat array).\n
-        Shape of ``(sum(c_j),)`` and type :class:`float`,\n
-        where ``c_j`` is the number of coordinates of joint ``j``.
-        """
+    actuated_coords_offset: wp.array | None = None
+    """
+    Index offset of each joint's actuated coordinates w.r.t the start
+    index of actuated joint coordinates of the corresponding world.\n
+    Shape of ``(num_joints,)`` and type :class:`int`.
+    """
 
-        self.dq_j_max: wp.array | None = None
-        """
-        Maximum joint velocity limits of each joint (as flat array).\n
-        Shape of ``(sum(d_j),)`` and type :class:`float`,\n
-        where ``d_j`` is the number of DoFs of joint ``j``.
-        """
+    actuated_dofs_offset: wp.array | None = None
+    """
+    Index offset of each joint's actuated DoFs w.r.t the start
+    index of actuated joint DoFs of the corresponding world.\n
+    Shape of ``(num_joints,)`` and type :class:`int`.
+    """
 
-        self.tau_j_max: wp.array | None = None
-        """
-        Maximum joint torque limits of each joint (as flat array).\n
-        Shape of ``(sum(d_j),)`` and type :class:`float`,\n
-        where ``d_j`` is the number of DoFs of joint ``j``.
-        """
+    cts_offset: wp.array | None = None
+    """
+    Index offset of each joint's constraints w.r.t the start
+    index of joint constraints of the corresponding world.\n
+    Shape of ``(num_joints,)`` and type :class:`int`.
+    """
 
 
+@dataclass
 class JointsData:
     """
     An SoA-based container to hold time-varying data of a joint system.
     """
 
-    def __init__(self):
-        self.num_joints: int = 0
-        """Total number of joints in the model (host-side)."""
+    num_joints: int = 0
+    """Total number of joints in the model (host-side)."""
 
-        self.p_j: wp.array | None = None
-        """
-        Array of joint frame pose transforms in world coordinates.\n
-        Shape of ``(num_joints,)`` and type :class:`transform`.
-        """
+    p_j: wp.array | None = None
+    """
+    Array of joint frame pose transforms in world coordinates.\n
+    Shape of ``(num_joints,)`` and type :class:`transform`.
+    """
 
-        self.r_j: wp.array | None = None
-        """
-        Flat array of joint constraint residuals.\n
-        Shape of ``(sum(m_j),)`` and type :class:`float`,\n
-        where ``m_j`` is the number of constraints of joint ``j``.
-        """
+    r_j: wp.array | None = None
+    """
+    Flat array of joint constraint residuals.\n
+    Shape of ``(sum(m_j),)`` and type :class:`float`,\n
+    where ``m_j`` is the number of constraints of joint ``j``.
+    """
 
-        self.dr_j: wp.array | None = None
-        """
-        Flat array of joint constraint residual time-derivatives.\n
-        Shape of ``(sum(m_j),)`` and type :class:`float`,\n
-        where ``m_j`` is the number of constraints of joint ``j``.
-        """
+    dr_j: wp.array | None = None
+    """
+    Flat array of joint constraint residual time-derivatives.\n
+    Shape of ``(sum(m_j),)`` and type :class:`float`,\n
+    where ``m_j`` is the number of constraints of joint ``j``.
+    """
 
-        self.lambda_j: wp.array | None = None
-        """
-        Flat array of joint constraint Lagrange multipliers.\n
-        Shape of ``(sum(m_j),)`` and type :class:`float`,\n
-        where ``m_j`` is the number of constraints of joint ``j``.
-        """
+    lambda_j: wp.array | None = None
+    """
+    Flat array of joint constraint Lagrange multipliers.\n
+    Shape of ``(sum(m_j),)`` and type :class:`float`,\n
+    where ``m_j`` is the number of constraints of joint ``j``.
+    """
 
-        self.q_j: wp.array | None = None
-        """
-        Flat array of generalized coordinates of the joints.\n
-        Shape of ``(sum(c_j),)`` and type :class:`float`,\n
-        where ``c_j`` is the number of coordinates of joint ``j``.
-        """
+    q_j: wp.array | None = None
+    """
+    Flat array of generalized coordinates of the joints.\n
+    Shape of ``(sum(c_j),)`` and type :class:`float`,\n
+    where ``c_j`` is the number of coordinates of joint ``j``.
+    """
 
-        self.dq_j: wp.array | None = None
-        """
-        Flat array of generalized velocities of the joints.\n
-        Shape of ``(sum(d_j),)`` and type :class:`float`,\n
-        where ``d_j`` is the number of DoFs of joint ``j``.
-        """
+    dq_j: wp.array | None = None
+    """
+    Flat array of generalized velocities of the joints.\n
+    Shape of ``(sum(d_j),)`` and type :class:`float`,\n
+    where ``d_j`` is the number of DoFs of joint ``j``.
+    """
 
-        self.tau_j: wp.array | None = None
-        """
-        Flat array of generalized forces of the joints.\n
-        Shape of ``(sum(d_j),)`` and type :class:`float`,\n
-        where ``d_j`` is the number of DoFs of joint ``j``.
-        """
+    tau_j: wp.array | None = None
+    """
+    Flat array of generalized forces of the joints.\n
+    Shape of ``(sum(d_j),)`` and type :class:`float`,\n
+    where ``d_j`` is the number of DoFs of joint ``j``.
+    """
 
-        self.j_w_j: wp.array | None = None
-        """
-        Total wrench applied by each joint, expressed
-        in and about the corresponding joint frame.\n
-        Its direction follows the convention that
-        joints act on the follower by the base body.\n
-        Shape of ``(num_joints,)`` and type :class:`vec6`.
-        """
+    j_w_j: wp.array | None = None
+    """
+    Total wrench applied by each joint, expressed
+    in and about the corresponding joint frame.\n
+    Its direction follows the convention that
+    joints act on the follower by the base body.\n
+    Shape of ``(num_joints,)`` and type :class:`vec6`.
+    """
 
-        self.j_w_a_j: wp.array | None = None
-        """
-        Actuation wrench applied by each joint, expressed
-        in and about the corresponding joint frame.\n
-        Its direction is defined by the convention that positive wrenches
-        in the joint frame are those inducing a positive change in the
-        twist of the follower body relative to the base body.\n
-        Shape of ``(num_joints,)`` and type :class:`vec6`.
-        """
+    j_w_a_j: wp.array | None = None
+    """
+    Actuation wrench applied by each joint, expressed
+    in and about the corresponding joint frame.\n
+    Its direction is defined by the convention that positive wrenches
+    in the joint frame are those inducing a positive change in the
+    twist of the follower body relative to the base body.\n
+    Shape of ``(num_joints,)`` and type :class:`vec6`.
+    """
 
-        self.j_w_c_j: wp.array | None = None
-        """
-        Constraint wrench applied by each joint, expressed
-        in and about the corresponding joint frame.\n
-        Its direction is defined by the convention that positive wrenches
-        in the joint frame are those inducing a positive change in the
-        twist of the follower body relative to the base body.\n
-        Shape of ``(num_joints,)`` and type :class:`vec6`.
-        """
+    j_w_c_j: wp.array | None = None
+    """
+    Constraint wrench applied by each joint, expressed
+    in and about the corresponding joint frame.\n
+    Its direction is defined by the convention that positive wrenches
+    in the joint frame are those inducing a positive change in the
+    twist of the follower body relative to the base body.\n
+    Shape of ``(num_joints,)`` and type :class:`vec6`.
+    """
 
-        self.j_w_l_j: wp.array | None = None
-        """
-        Joint-limit wrench applied by each joint, expressed
-        in and about the corresponding joint frame.\n
-        Its direction is defined by the convention that positive wrenches
-        in the joint frame are those inducing a positive change in the
-        twist of the follower body relative to the base body.\n
-        Shape of ``(num_joints,)`` and type :class:`vec6`.
-        """
+    j_w_l_j: wp.array | None = None
+    """
+    Joint-limit wrench applied by each joint, expressed
+    in and about the corresponding joint frame.\n
+    Its direction is defined by the convention that positive wrenches
+    in the joint frame are those inducing a positive change in the
+    twist of the follower body relative to the base body.\n
+    Shape of ``(num_joints,)`` and type :class:`vec6`.
+    """
 
     def clear_residuals(self):
         """

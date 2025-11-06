@@ -13,15 +13,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-KAMINO: Gravity Model Module
-"""
+"""The gravity descriptor and model used throughout Kamino"""
 
-from __future__ import annotations
+from dataclasses import dataclass
 
 import warp as wp
 
-from .types import Descriptor, vec3f, vec4f
+from .types import ArrayLike, Descriptor, override, vec3f, vec4f
 
 ###
 # Module interface
@@ -48,13 +46,16 @@ wp.set_module_options({"enable_backward": False})
 ###
 
 GRAVITY_NAME_DEFAULT = "Earth"
-"""The name of the default gravity descriptor."""
+"""The default gravity descriptor name, set as 'Earth'."""
 
 GRAVITY_ACCEL_DEFAULT = 9.8067
-"""The default gravitational acceleration in m/s^2."""
+"""
+The default gravitational acceleration in m/s^2.
+Equal to Earth's standard gravity of approximately 9.8067 m/s^2.
+"""
 
 GRAVITY_DIREC_DEFAULT = [0.0, 0.0, -1.0]
-"""The default direction of gravity, also defining the global default `up-axis` as +Z."""
+"""The default direction of gravity defined as -Z."""
 
 
 ###
@@ -65,15 +66,44 @@ GRAVITY_DIREC_DEFAULT = [0.0, 0.0, -1.0]
 class GravityDescriptor(Descriptor):
     """
     A container to describe a world's gravity.
+
+    Attributes:
+        name (str): The name of the gravity descriptor.
+        uid (str): The unique identifier of the gravity descriptor.
+        enabled (bool): Whether gravity is enabled.
+        acceleration (float): The gravitational acceleration magnitude in m/s^2.
+        direction (vec3f): The normalized direction vector of gravity.
     """
 
-    def __init__(self, name: str = GRAVITY_NAME_DEFAULT):
-        super().__init__(name)
-        self._enabled: bool = True
-        self._acceleration: float = float(GRAVITY_ACCEL_DEFAULT)
-        self._direction: vec3f = vec3f(GRAVITY_DIREC_DEFAULT)
+    def __init__(
+        self,
+        enabled: bool = True,
+        acceleration: float = GRAVITY_ACCEL_DEFAULT,
+        direction: ArrayLike = GRAVITY_DIREC_DEFAULT,
+        name: str = GRAVITY_NAME_DEFAULT,
+        uid: str | None = None,
+    ):
+        """
+        Initialize the gravity descriptor.
 
+        Args:
+            enabled (bool): Whether gravity is enabled.\n
+                Defaults to `True` to enable gravity by default.
+            acceleration (float): The gravitational acceleration magnitude in m/s^2.\n
+                Defaults to 9.8067 m/s^2 (Earth's gravity).
+            direction (vec3f): The normalized direction vector of gravity.\n
+                Defaults to pointing down the -Z axis.
+            name (str): The name of the gravity descriptor.
+            uid (str | None): Optional unique identifier of the gravity descriptor.
+        """
+        super().__init__(name, uid)
+        self._enabled: bool = enabled
+        self._acceleration: float = acceleration
+        self._direction: vec3f = wp.normalize(vec3f(direction))
+
+    @override
     def __repr__(self):
+        """Returns a human-readable string representation of the GravityDescriptor."""
         return (
             f"GravityDescriptor(\n"
             f"name={self.name},\n"
@@ -86,50 +116,62 @@ class GravityDescriptor(Descriptor):
 
     @property
     def enabled(self) -> bool:
+        """Returns whether gravity is enabled."""
         return self._enabled
 
     @enabled.setter
     def enabled(self, on: bool):
+        """Sets whether gravity is enabled."""
         self._enabled = on
 
     @property
     def acceleration(self) -> float:
+        """Returns the gravitational acceleration."""
         return self._acceleration
 
     @acceleration.setter
     def acceleration(self, g: float):
+        """Sets the gravitational acceleration."""
         self._acceleration = g
 
     @property
     def direction(self) -> vec3f:
+        """Returns the normalized direction vector of gravity."""
         return self._direction
 
     @direction.setter
     def direction(self, dir: vec3f):
+        """Sets the normalized direction vector of gravity."""
         self._direction = wp.normalize(dir)
 
     def dir_accel(self) -> vec4f:
+        """Returns the gravity direction and acceleration as compactly as a :class:`vec4f`."""
         return vec4f([self.direction[0], self.direction[1], self.direction[2], self.acceleration])
 
     def vector(self) -> vec4f:
+        """Returns the effective gravity vector and enabled flag compactly as a :class:`vec4f`."""
         g = vec3f(self.acceleration * self.direction)
         return vec4f([g[0], g[1], g[2], float(self.enabled)])
 
 
+@dataclass
 class GravityModel:
     """
     A container to hold the time-invariant gravity model data.
+
+    Attributes:
+        g_dir_acc (wp.array): The gravity direction and acceleration vector as ``[g_dir_x, g_dir_y, g_dir_z, g_accel]``.
+        vector (wp.array): The gravity vector defined as ``[g_x, g_y, g_z, enabled]``.
     """
 
-    def __init__(self):
-        self.g_dir_acc: wp.array(dtype=vec4f) | None = None
-        """
-        The gravity direction and acceleration vector.\n
-        Shape of ``(num_worlds,)`` and type :class:`vec4f`.
-        """
+    g_dir_acc: wp.array | None = None
+    """
+    The gravity direction and acceleration vector.\n
+    Shape of ``(num_worlds,)`` and type :class:`vec4f`.
+    """
 
-        self.vector: wp.array(dtype=vec4f) | None = None
-        """
-        The gravity vector defined as ``[g_x, g_y, g_z, enabled]``.\n
-        Shape of ``(num_worlds,)`` and type :class:`vec4f`.
-        """
+    vector: wp.array | None = None
+    """
+    The gravity vector defined as ``[g_x, g_y, g_z, enabled]``.\n
+    Shape of ``(num_worlds,)`` and type :class:`vec4f`.
+    """

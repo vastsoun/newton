@@ -26,11 +26,10 @@ import newton
 import newton._src.solvers.kamino.utils.logger as msg
 import newton.examples
 from newton._src.solvers.kamino.core.builder import ModelBuilder
-from newton._src.solvers.kamino.core.math import TWO_PI
 from newton._src.solvers.kamino.core.types import float32, uint32
 from newton._src.solvers.kamino.examples import run_headless
 from newton._src.solvers.kamino.models import get_basics_usd_assets_path
-from newton._src.solvers.kamino.models.builders import build_cartpole
+from newton._src.solvers.kamino.models.builders import add_ground_geom, build_cartpole
 from newton._src.solvers.kamino.models.utils import make_homogeneous_builder
 from newton._src.solvers.kamino.simulation.simulator import Simulator, SimulatorSettings
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
@@ -77,17 +76,20 @@ def _test_control_callback(
 
     # Define the time window for the active external force profile
     t_start = float32(1.0)
-    t_end = float32(1.1)
+    t_end = float32(3.1)
 
     # Get the current time
     t = state_t[wid]
 
     # Apply a time-dependent external force
-    if t > t_start and t < t_end:
-        control_tau_j[wid * 2 + 0] = 0.1 * wp.sin(1.0 * TWO_PI * (t - t_start)) * wp.randf(uint32(wid), -1.0, 1.0)
-        control_tau_j[wid * 2 + 1] = 0.1 * wp.sin(1.0 * TWO_PI * (t - t_start)) * wp.randf(uint32(wid), -1.0, 1.0)
+    if t >= 0.0 and t < t_start:
+        control_tau_j[wid * 2 + 0] = 1.0 * wp.randf(uint32(wid) + uint32(t), -1.0, 1.0)
+        control_tau_j[wid * 2 + 1] = 0.0
+    elif t > t_start and t < t_end:
+        control_tau_j[wid * 2 + 0] = 10.0
+        control_tau_j[wid * 2 + 1] = 0.0
     else:
-        control_tau_j[wid * 2 + 0] = 0.0
+        control_tau_j[wid * 2 + 0] = -10.0
         control_tau_j[wid * 2 + 1] = 0.0
 
 
@@ -123,6 +125,7 @@ class Example:
         max_steps: int = 1000,
         use_cuda_graph: bool = False,
         load_from_usd: bool = False,
+        ground: bool = True,
         headless: bool = False,
     ):
         # Initialize target frames per second and corresponding time-steps
@@ -142,23 +145,34 @@ class Example:
 
         # Construct model builder
         if load_from_usd:
-            msg.info("Constructing builder from imported USD ...")
+            msg.notif("Constructing builder from imported USD ...")
             USD_MODEL_PATH = os.path.join(get_basics_usd_assets_path(), "cartpole.usda")
             importer = USDImporter()
-            self.builder: ModelBuilder = importer.import_from(source=USD_MODEL_PATH, load_static_geometry=True)
+            # self.builder: ModelBuilder = importer.import_from(source=USD_MODEL_PATH, load_static_geometry=ground)
+            self.builder: ModelBuilder = make_homogeneous_builder(
+                num_worlds=num_worlds, build_fn=importer.import_from, load_static_geometry=True, source=USD_MODEL_PATH
+            )
+            if ground:
+                for w in range(num_worlds):
+                    add_ground_geom(self.builder, world_index=w)
         else:
-            msg.info("Constructing builder using model generator ...")
-            self.builder: ModelBuilder = make_homogeneous_builder(num_worlds=num_worlds, build_func=build_cartpole)
-        msg.warning(f"self.builder.bodies: {self.builder.bodies}")
-        msg.warning(f"self.builder.joints: {self.builder.joints}")
+            msg.notif("Constructing builder using model generator ...")
+            self.builder: ModelBuilder = make_homogeneous_builder(
+                num_worlds=num_worlds, build_fn=build_cartpole, ground=ground
+            )
 
-        # Set gravity
-        self.builder.gravity.enabled = True
+        # Demo of printing builder contents in debug logging mode
+        msg.info("self.builder.gravity:\n{%s}", self.builder.gravity)
+        msg.info("self.builder.bodies:\n{%s}", self.builder.bodies)
+        msg.info("self.builder.joints:\n{%s}", self.builder.joints)
+        msg.info("self.builder.collision_geoms:\n{%s}", self.builder.collision_geoms)
+        msg.info("self.builder.physical_geoms:\n{%s}", self.builder.physical_geoms)
 
         # Set solver settings
         settings = SimulatorSettings()
         settings.dt = self.sim_dt
         settings.problem.alpha = 0.1
+        settings.problem.beta = 0.1
         settings.solver.primal_tolerance = 1e-6
         settings.solver.dual_tolerance = 1e-6
         settings.solver.compl_tolerance = 1e-6
@@ -166,7 +180,7 @@ class Example:
         settings.solver.rho_0 = 0.05
 
         # Create a simulator
-        msg.info("Building the simulator...")
+        msg.notif("Building the simulator...")
         self.sim = Simulator(builder=self.builder, settings=settings, device=device)
         self.sim.set_control_callback(test_control_callback)
 
@@ -190,7 +204,7 @@ class Example:
 
         # Warm-start the simulator before rendering
         # NOTE: This compiles and loads the warp kernels prior to execution
-        msg.info("Warming up simulator...")
+        msg.notif("Warming up simulator...")
         self.step_once()
         self.reset()
 
@@ -224,7 +238,7 @@ class Example:
     def capture(self):
         """Capture CUDA graph if requested and available."""
         if self.use_cuda_graph:
-            msg.info("Running with CUDA graphs...")
+            msg.notif("Running with CUDA graphs...")
             with wp.ScopedCapture(device=self.device) as reset_capture:
                 self.sim.reset()
             self.reset_graph = reset_capture.graph
@@ -235,7 +249,7 @@ class Example:
                 self.simulate()
             self.simulate_graph = sim_capture.graph
         else:
-            msg.info("Running with kernels...")
+            msg.notif("Running with kernels...")
 
     def simulate(self):
         """Run simulation substeps."""
@@ -289,7 +303,8 @@ if __name__ == "__main__":
     parser.add_argument("--headless", action="store_true", default=False, help="Run in headless mode")
     parser.add_argument("--num-worlds", type=int, default=3, help="Number of worlds to simulate in parallel")
     parser.add_argument("--num-steps", type=int, default=1000, help="Number of steps for headless mode")
-    parser.add_argument("--load-from-usd", action="store_true", default=True, help="Load model from USD file")
+    parser.add_argument("--load-from-usd", action="store_true", default=False, help="Load model from USD file")
+    parser.add_argument("--ground", action="store_true", default=False, help="Adds a ground plane to the simulation")
     parser.add_argument("--device", type=str, help="The compute device to use")
     parser.add_argument("--cuda-graph", action="store_true", default=True, help="Use CUDA graphs")
     parser.add_argument("--clear-cache", action="store_true", default=False, help="Clear warp cache")
@@ -306,7 +321,7 @@ if __name__ == "__main__":
 
     # TODO: Make optional
     # Set the verbosity of the global message logger
-    msg.set_log_level(msg.LogLevel.INFO)
+    msg.set_log_level(msg.LogLevel.NOTIF)
 
     # Set device if specified, otherwise use Warp's default
     if args.device:
@@ -318,9 +333,9 @@ if __name__ == "__main__":
     # Determine if CUDA graphs should be used for execution
     can_use_cuda_graph = device.is_cuda and wp.is_mempool_enabled(device)
     use_cuda_graph = can_use_cuda_graph & args.cuda_graph
-    msg.info(f"can_use_cuda_graph: {can_use_cuda_graph}")
-    msg.info(f"use_cuda_graph: {use_cuda_graph}")
-    msg.info(f"device: {device}")
+    msg.notif(f"can_use_cuda_graph: {can_use_cuda_graph}")
+    msg.notif(f"use_cuda_graph: {use_cuda_graph}")
+    msg.notif(f"device: {device}")
 
     # Create example instance
     example = Example(
@@ -329,22 +344,23 @@ if __name__ == "__main__":
         load_from_usd=args.load_from_usd,
         num_worlds=args.num_worlds,
         max_steps=args.num_steps,
+        ground=args.ground,
         headless=args.headless,
     )
 
     # Run a brute-force similation loop if headless
     if args.headless:
-        msg.info("Running in headless mode...")
+        msg.notif("Running in headless mode...")
         run_headless(example, progress=True)
 
     # Otherwise launch using a debug viewer
     else:
-        msg.info("Running in Viewer mode...")
+        msg.notif("Running in Viewer mode...")
         # Set initial camera position for better view of the system
         if hasattr(example.viewer, "set_camera"):
             camera_pos = wp.vec3(2.0, 2.0, 0.3)
-            pitch = -10.0
-            yaw = 205.0
+            pitch = -5.0
+            yaw = 225.0
             example.viewer.set_camera(camera_pos, pitch, yaw)
 
         # Launch the example using Newton's built-in runtime

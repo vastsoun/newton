@@ -47,18 +47,18 @@ class Control:
 
     def copy_to(self, other: Control) -> None:
         """
-        Copies the State data to another State object.
+        Copies the Control data to another Control object.
 
         Args:
-            other: The target State object to copy data into.
+            other: The target Control object to copy data into.
         """
         wp.copy(other.tau_j, self.tau_j)
 
     def copy_from(self, other: Control) -> None:
         """
-        Copies the State data from another State object.
+        Copies the Control data from another Control object.
 
         Args:
-            other: The source State object to copy data from.
+            other: The source Control object to copy data from.
         """
         wp.copy(self.tau_j, other.tau_j)

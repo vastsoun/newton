@@ -68,7 +68,7 @@ class CollisionDetector:
         self._world_max_contacts: list[int] = [0]
 
         # Retrieve the required contact capacity required by the model
-        model_max_contacts, world_max_contacts = builder.required_contact_capacity()
+        model_max_contacts, world_max_contacts = builder.required_contact_capacity
 
         # Allocate the collisions and contacts containers if the model requires them (indicated by >= 0)
         if model_max_contacts >= 0:

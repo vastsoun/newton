@@ -14,7 +14,7 @@ def PhysicsScene "World"
     vector3f physics:gravityDirection = (0, 0, -1)
 }
 
-def Xform "Robot"
+def Xform "test_joint_d6_cartesian_actuated"
 {
     def Scope "RigidBodies"
     {
@@ -80,8 +80,8 @@ def Xform "Robot"
         {
             bool physics:jointEnabled = 1
 
-            rel physics:body0 = </Robot/RigidBodies/body_0>
-            rel physics:body1 = </Robot/RigidBodies/body_1>
+            rel physics:body0 = </test_joint_d6_cartesian_actuated/RigidBodies/body_0>
+            rel physics:body1 = </test_joint_d6_cartesian_actuated/RigidBodies/body_1>
 
             point3f physics:localPos0 = (0, 0, 0)
             point3f physics:localPos1 = (-0.5, 0, 0)

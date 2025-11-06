@@ -19,11 +19,14 @@ KAMINO: Geometry Model Types & Containers
 
 from __future__ import annotations
 
+import copy
+from dataclasses import dataclass, field
+
 import warp as wp
 
 from .bv import aabb_geom, bs_geom
 from .shapes import ShapeDescriptorType
-from .types import float32, int32, mat83f, override, transformf, uint32, uint64, vec4f
+from .types import Descriptor, float32, int32, mat83f, override, transformf, vec4f
 
 ###
 # Module interface
@@ -51,7 +54,8 @@ wp.set_module_options({"enable_backward": False})
 ###
 
 
-class GeometryDescriptor:
+@dataclass
+class GeometryDescriptor(Descriptor):
     """
     A container to describe a generic geometry entity.
 
@@ -61,123 +65,194 @@ class GeometryDescriptor:
     geometry sets called 'layers'. Each geometry descriptor bundles the unique
     object identifiers of the entity, indices to the associated body and layer,
     the offset pose w.r.t. the body, and a shape descriptor.
+
+    Attributes:
+        bid (int): Index of the body to which the geometry entity is attached.\n
+            Defaults to `-1`, indicating that the geometry has not yet been assigned to a body.\n
+            The value `-1` also indicates that the geometry, by default, is statically attached to the world.
+        shape (ShapeDescriptorType | None): Definition of the shape of the geometry entity.
+            See :class:`ShapeDescriptorType` for the list of supported shape types.
+        offset (transformf): Offset pose transform of the geometry entity w.r.t. its corresponding body.\n
+            Defaults to the identity transform with zero translation and identity rotation quaternion.
+        wid (int): Index of the world to which the body belongs.\n
+            Defaults to `-1`, indicating that the body has not yet been added to a world.
+        gid (int): Index of the geometry w.r.t. its world.\n
+            Defaults to `-1`, indicating that the geometry has not yet been added to a world.
+        lid (int): Index of the geometry layer to which the geometry entity is assigned.\n
+            Defaults to `-1`, indicating that the geometry has not yet been assigned to a layer.
     """
 
-    def __init__(self):
-        self.name: str | None = None
-        """Name of the geometry element."""
+    ###
+    # Attributes
+    ###
 
-        self.uid: str | None = None
-        """Unique identifier of the geometry element."""
+    bid: int = -1
+    """
+    Index of the body to which the geometry entity is attached.\n
+    Defaults to `-1`, indicating that the geometry has not yet been assigned to a body.\n
+    The value `-1` also indicates that the geometry, by default, is statically attached to the world.
+    """
 
-        self.wid: int = 0
-        """Index of the world to which the geometry element belongs."""
+    layer: str = "default"
+    """
+    Name of the geometry layer to which the geometry is assigned.\n
+    Defaults to the `default` layer.
+    """
 
-        self.gid: int = -1
-        """Geometry index of the geometry element."""
+    shape: ShapeDescriptorType | None = None
+    """Definition of the shape of the geometry entity of type :class:`ShapeDescriptorType`."""
 
-        self.lid: int = -1
-        """Layer index of the geometry element."""
+    offset: transformf = field(default_factory=transformf)
+    """Offset pose of the geometry entity w.r.t. its corresponding body, of type :class:`transformf`."""
 
-        self.bid: int = -1
-        """Body index of the geometry element."""
+    ###
+    # Metadata - to be set by the WorldDescriptor when added
+    ###
 
-        self.shape: ShapeDescriptorType | None = None
-        """Definition of the shape of the geometry element of type :class:`ShapeDescriptorType`."""
+    wid: int = -1
+    """
+    Index of the world to which the body belongs.\n
+    Defaults to `-1`, indicating that the body has not yet been added to a world.
+    """
 
-        self.offset: transformf = transformf()
-        """Offset pose of the geometry element w.r.t. its corresponding body, of type :class:`transformf`."""
+    gid: int = -1
+    """
+    Index of the geometry w.r.t. its world.\n
+    Defaults to `-1`, indicating that the geometry has not yet been added to a world.
+    """
+
+    lid: int = -1
+    """
+    Index of the geometry layer to which the geometry entity is assigned.\n
+    Defaults to `-1`, indicating that the geometry has not yet been assigned to a layer.
+    """
+
+    @override
+    def __hash__(self):
+        """Returns a hash computed using the shape descriptor's hash implementation."""
+        # NOTE: The name-uid-based hash implementation is called if no shape is defined
+        if self.shape is None:
+            return super().__hash__()
+        # Otherwise, use the shape's hash implementation
+        return self.shape.__hash__()
 
     @override
     def __repr__(self):
+        """Returns a human-readable string representation of the GeometryDescriptor."""
         return (
             f"GeometryDescriptor(\n"
             f"name: {self.name},\n"
             f"uid: {self.uid},\n"
-            f"wid: {self.wid},\n"
-            f"gid: {self.gid},\n"
             f"lid: {self.lid},\n"
             f"bid: {self.bid},\n"
             f"shape: {self.shape}\n"
             f"offset: {self.offset},\n"
+            f"wid: {self.wid},\n"
+            f"gid: {self.gid},\n"
             f")"
         )
 
 
+@dataclass
 class GeometriesModel:
     """
     An SoA-based container to hold time-invariant model data of a set of generic geometry elements.
+
+    Attributes:
+        num_geoms (int): The total number of geometry elements in the model (host-side).
+        wid (wp.array | None): World index each geometry element.\n
+            Shape of ``(num_geoms,)`` and type :class:`int`.
+        gid (wp.array | None): Geometry index of each geometry element w.r.t its world.\n
+            Shape of ``(num_geoms,)`` and type :class:`int32`.
+        lid (wp.array | None): Layer index of each geometry element w.r.t its body.\n
+            Shape of ``(num_geoms,)`` and type :class:`int`.
+        bid (wp.array | None): Body index of each geometry element.\n
+            Shape of ``(num_geoms,)`` and type :class:`int`.
+        sid (wp.array | None): Shape index of each geometry element.\n
+            Shape of ``(num_geoms,)`` and type :class:`int`.
+        ptr (wp.array | None): Pointer to the source data of the shape.\n
+            For primitive shapes this is `0` indicating NULL, otherwise it points to
+            the shape data, which can correspond to a mesh, heightfield, or SDF.\n
+            Shape of ``(num_geoms,)`` and type :class:`uint64`.
+        params (wp.array | None): Shape parameters of each geometry element if they are shape primitives.\n
+            Shape of ``(num_geoms,)`` and type :class:`vec4f`.
+        offset (wp.array | None): Offset poses of the geometry elements w.r.t. their corresponding bodies.\n
+            Shape of ``(num_geoms,)`` and type :class:`transformf`.
     """
 
-    def __init__(self):
-        self.num_geoms: int = 0
-        """Total number of geometry elements in the model (host-side)."""
+    num_geoms: int = 0
+    """Total number of geometry elements in the model (host-side)."""
 
-        self.wid: wp.array(dtype=int32) | None = None
-        """
-        World index each geometry element.\n
-        Shape of ``(num_geoms,)`` and type :class:`int32`.
-        """
+    wid: wp.array | None = None
+    """
+    World index each geometry element.\n
+    Shape of ``(num_geoms,)`` and type :class:`int`.
+    """
 
-        self.gid: wp.array(dtype=int32) | None = None
-        """
-        Geometry index of each geometry element w.r.t its world.\n
-        Shape of ``(num_geoms,)`` and type :class:`int32`.
-        """
+    gid: wp.array | None = None
+    """
+    Geometry index of each geometry element w.r.t its world.\n
+    Shape of ``(num_geoms,)`` and type :class:`int32`.
+    """
 
-        self.lid: wp.array(dtype=int32) | None = None
-        """
-        Layer index of each geometry element w.r.t its body.\n
-        Shape of ``(num_geoms,)`` and type :class:`int32`.
-        """
+    lid: wp.array | None = None
+    """
+    Layer index of each geometry element w.r.t its body.\n
+    Shape of ``(num_geoms,)`` and type :class:`int`.
+    """
 
-        self.bid: wp.array(dtype=int32) | None = None
-        """
-        Body index of each geometry element.\n
-        Shape of ``(num_geoms,)`` and type :class:`int32`.
-        """
+    bid: wp.array | None = None
+    """
+    Body index of each geometry element.\n
+    Shape of ``(num_geoms,)`` and type :class:`int`.
+    """
 
-        self.sid: wp.array(dtype=int32) | None = None
-        """
-        Shape index of each geometry element.\n
-        Shape of ``(num_geoms,)`` and type :class:`int32`.
-        """
+    sid: wp.array | None = None
+    """
+    Shape index of each geometry element.\n
+    Shape of ``(num_geoms,)`` and type :class:`int`.
+    """
 
-        self.ptr: wp.array(dtype=uint64) | None = None
-        """
-        Pointer to the source data of the shape.\n
-        For primitive shapes this is `0` indicating NULL, otherwise it points to
-        the shape data, which can correspond to a mesh, heightfield, or SDF.\n
-        Shape of ``(num_geoms,)`` and type :class:`uint64`.
-        """
+    ptr: wp.array | None = None
+    """
+    Pointer to the source data of the shape.\n
+    For primitive shapes this is `0` indicating NULL, otherwise it points to
+    the shape data, which can correspond to a mesh, heightfield, or SDF.\n
+    Shape of ``(num_geoms,)`` and type :class:`uint64`.
+    """
 
-        self.params: wp.array(dtype=vec4f) | None = None
-        """
-        Shape parameters of each geometry element if they are shape primitives.\n
-        Shape of ``(num_geoms,)`` and type :class:`vec4f`.
-        """
+    params: wp.array | None = None
+    """
+    Shape parameters of each geometry element if they are shape primitives.\n
+    Shape of ``(num_geoms,)`` and type :class:`vec4f`.
+    """
 
-        self.offset: wp.array(dtype=transformf) | None = None
-        """
-        Offset poses of the geometry elements w.r.t. their corresponding bodies.\n
-        Shape of ``(num_geoms,)`` and type :class:`transformf`.
-        """
+    offset: wp.array | None = None
+    """
+    Offset poses of the geometry elements w.r.t. their corresponding bodies.\n
+    Shape of ``(num_geoms,)`` and type :class:`transformf`.
+    """
 
 
+@dataclass
 class GeometriesData:
     """
     An SoA-based container to hold time-varying data of a set of generic geometry elements.
+
+    Attributes:
+        num_geoms (int32): The total number of geometry elements in the model (host-side).
+        pose (wp.array | None): The poses of the geometry elements in world coordinates.\n
+            Shape of ``(num_geoms,)`` and type :class:`transformf`.
     """
 
-    def __init__(self):
-        self.num_geoms: int32 = 0
-        """Total number of geometry elements in the model (host-side)."""
+    num_geoms: int32 = 0
+    """Total number of geometry elements in the model (host-side)."""
 
-        self.pose: wp.array(dtype=transformf) | None = None
-        """
-        The poses of the geometry elements in world coordinates.\n
-        Shape of ``(num_geoms,)`` and type :class:`transformf`.
-        """
+    pose: wp.array | None = None
+    """
+    The poses of the geometry elements in world coordinates.\n
+    Shape of ``(num_geoms,)`` and type :class:`transformf`.
+    """
 
 
 ###
@@ -187,49 +262,110 @@ class GeometriesData:
 
 class CollisionGeometryDescriptor(GeometryDescriptor):
     """
-    A container to describe a collision geometry element.
+    A container to describe a collision geometry entity.
 
-    Collision geometry elements are specializations of the base geometry elements,
-    which are extended to include additional properties relevant for collision detection.
+    Collision geometry are a specialization of the base geometry entity,
+    that are extended to include additional properties relevant for collision detection.
+
+    Attributes:
+        lid (int): Index of the geometry layer to which the geometry entity belongs.\n
+            Defaults to `-1`, indicating that the geometry has not yet been assigned to a layer.
+        bid (int): Index of the body to which the geometry entity is attached.\n
+            Defaults to `-1`, indicating that the geometry has not yet been assigned to a body.\n
+            The value `-1` also indicates that the geometry, by default, is statically attached to the world.
+        shape (ShapeDescriptorType | None): Definition of the shape of the geometry entity.
+            See :class:`ShapeDescriptorType` for the list of supported shape types.
+        offset (transformf): Offset pose transform of the geometry entity w.r.t. its corresponding body.\n
+            Defaults to the identity transform with zero translation and identity rotation quaternion.
+        wid (int): Index of the world to which the body belongs.\n
+            Defaults to `-1`, indicating that the body has not yet been added to a world.
+        gid (int): Index of the geometry w.r.t. its world.\n
+            Defaults to `-1`, indicating that the geometry has not yet been added to a world.
+        mid (int): The material index assigned to the collision geometry instance.\n
+            Defaults to `0` indicating the default material.
+        group (int): The collision group to which the collision geometry instance is assigned.\n
+            Defaults to the default group with value `1`.
+        collides (int): The collision group with which the collision geometry instance can collide.\n
+            Defaults to enabling collisions with the default group with value `1`.
+        max_contacts (int): The maximum number of contacts to generate for the collision geometry instance.\n
+            Defaults to `0`, indicating no limit is imposed on the number of contacts generated for this geometry.
     """
 
-    def __init__(self, base: GeometryDescriptor | None = None):
-        super().__init__()
+    def __init__(
+        self,
+        base: GeometryDescriptor | None = None,
+        mid: int = 0,
+        group: int = 1,
+        collides: int = 1,
+        max_contacts: int = 0,
+        **kwargs,
+    ):
+        """
+        Initializes a CollisionGeometryDescriptor instance.
 
-        # If a base descriptor is provided, copy its properties
-        if base is not None:
-            self.__dict__.update(base.__dict__)
+        Args:
+            base (GeometryDescriptor | None): An optional base :class:`GeometryDescriptor` instance to encapsulate.\n
+                If provided, the properties of the base descriptor will be copied to the new instance.
+            mid (int): The material index assigned to the collision geometry instance.\n
+                Defaults to `0` indicating the default material.
+            group (int): The collision group to which the collision geometry instance is assigned.\n
+                Defaults to the default group with value `1`.
+            collides (int): The collision group with which the collision geometry instance can collide.\n
+                Defaults to enabling collisions with the default group with value `1`.
+            max_contacts (int): The maximum number of contacts to generate for the collision geometry instance.\n
+                Defaults to `0`, indicating no limit is imposed on the number of contacts generated for this geometry.
+            **kwargs: Additional keyword arguments to initialize the base :class:`GeometryDescriptor`.\n
+                See :class:`GeometryDescriptor` for the list of supported properties.\n
+                WARNING: Any properties provided via keyword arguments will override those of the given base descriptor.
+        """
 
-        self.mid: int = 0
-        """The material index assigned to the collision geometry instance (0 = the default material)."""
+        # If no base descriptor is provided, create a new GeometryDescriptor with the given kwargs
+        if base is None:
+            _base = GeometryDescriptor(**kwargs)
 
-        self.group: int = 1
-        """The collision group to which the collision geometry instance is assigned (1 = the default group)."""
+        # NOTE: This will override any properties set from the base descriptor
+        else:
+            # NOTE: We use (shallow) copy to avoid modifying the original
+            # base descriptor object just in case it is used elsewhere
+            _base = copy.copy(base)
+            for key, value in kwargs.items():
+                setattr(_base, key, value)
 
-        self.collides: int = 1
-        """The collision group with which the collision geometry instance can collide (1 = the default group)."""
+        # Initialize the base GeometryDescriptor with any additional keyword arguments
+        super().__init__(**_base.__dict__)
 
-        self.max_contacts: int = 0
-        """The maximum number of contacts to generate for the collision geometry instance (0 = unlimited, default)."""
+        # Declare and initialize collision geometry-specific properties
+        self.mid: int = mid
+        """
+        The material index assigned to the collision geometry instance.\n
+        Defaults to `0` indicating the default material.
+        """
 
-    def copy_from(self, base: GeometryDescriptor):
-        self.name = base.name
-        self.uid = base.uid
-        self.wid = base.wid
-        self.gid = base.gid
-        self.lid = base.lid
-        self.bid = base.bid
-        self.offset = base.offset
-        self.shape = base.shape
+        self.group: int = group
+        """
+        The collision group to which the collision geometry instance is assigned.\n
+        Defaults to the default group with value `1`.
+        """
+
+        self.collides: int = collides
+        """
+        The collision group with which the collision geometry instance can collide.\n
+        Defaults to enabling collisions with the default group with value `1`.
+        """
+
+        self.max_contacts: int = max_contacts
+        """
+        The maximum number of contacts to generate for the collision geometry instance.\n
+        Defaults to `0`, indicating no limit is imposed on the number of contacts generated for this geometry.
+        """
 
     @override
     def __repr__(self):
+        """Returns a human-readable string representation of the CollisionGeometryDescriptor."""
         return (
             f"CollisionGeometryDescriptor(\n"
             f"name: {self.name},\n"
             f"uid: {self.uid},\n"
-            f"wid: {self.wid},\n"
-            f"gid: {self.gid},\n"
             f"lid: {self.lid},\n"
             f"bid: {self.bid},\n"
             f"offset: {self.offset},\n"
@@ -238,56 +374,68 @@ class CollisionGeometryDescriptor(GeometryDescriptor):
             f"group: {self.group},\n"
             f"collides: {self.collides},\n"
             f"max_contacts: {self.max_contacts}\n"
+            f"wid: {self.wid},\n"
+            f"gid: {self.gid},\n"
             f")"
         )
 
 
+@dataclass
 class CollisionGeometriesModel(GeometriesModel):
     """
     An SoA-based container to hold time-invariant model data of a set of collision geometry elements.
+
+    Attributes:
+        mid (wp.array | None): Material indices assigned to each collision geometry instance.\n
+            Shape of ``(num_geoms,)`` and type :class:`int`.
+        group (wp.array | None): Collision groups to which each collision geometry instance is assigned.\n
+            Shape of ``(num_geoms,)`` and type :class:`uint32`.
+        collides (wp.array | None): Collision groups with which each collision geometry can collide.\n
+            Shape of ``(num_geoms,)`` and type :class:`uint32`.
     """
 
-    def __init__(self):
-        super().__init__()
+    mid: wp.array | None = None
+    """
+    Material indices assigned to each collision geometry instance.\n
+    Shape of ``(num_geoms,)`` and type :class:`int`.
+    """
 
-        self.mid: wp.array(dtype=int32) | None = None
-        """
-        Material indices assigned to each collision geometry instance.\n
-        Shape of ``(num_geoms,)`` and type :class:`int32`.
-        """
+    group: wp.array | None = None
+    """
+    Collision groups to which each collision geometry instance is assigned.\n
+    Shape of ``(num_geoms,)`` and type :class:`uint32`.
+    """
 
-        self.group: wp.array(dtype=uint32) | None = None
-        """
-        Collision groups to which each collision geometry instance is assigned.\n
-        Shape of ``(num_geoms,)`` and type :class:`uint32`.
-        """
-
-        self.collides: wp.array(dtype=uint32) | None = None
-        """
-        Collision groups with which each collision geometry can collide.\n
-        Shape of ``(num_geoms,)`` and type :class:`uint32`.
-        """
+    collides: wp.array | None = None
+    """
+    Collision groups with which each collision geometry can collide.\n
+    Shape of ``(num_geoms,)`` and type :class:`uint32`.
+    """
 
 
+@dataclass
 class CollisionGeometriesData(GeometriesData):
     """
     An SoA-based container to hold time-varying data of a set of collision geometry elements.
+
+    Attributes:
+        aabb (wp.array | None): The vertices of the Axis-Aligned Bounding Box (AABB) of each collision geometry element.\n
+            Shape of ``(num_geoms,)`` and type :class:`mat83f`.
+        radius (wp.array | None): The radius of the Bounding Sphere (BS) of each collision geometry element.\n
+            Shape of ``(num_geoms,)`` and type :class:`float32`.
     """
 
-    def __init__(self):
-        super().__init__()
+    aabb: wp.array | None = None
+    """
+    The vertices of the Axis-Aligned Bounding Box (AABB) of each collision geometry element.\n
+    Shape of ``(num_geoms,)`` and type :class:`mat83f`.
+    """
 
-        self.aabb: wp.array(dtype=mat83f) | None = None
-        """
-        The vertices of the Axis-Aligned Bounding Box (AABB) of each collision geometry element.\n
-        Shape of ``(num_geoms,)`` and type :class:`mat83f`.
-        """
-
-        self.radius: wp.array(dtype=float32) | None = None
-        """
-        The radius of the Bounding Sphere (BS) of each collision geometry element.\n
-        Shape of ``(num_geoms,)`` and type :class:`float32`.
-        """
+    radius: wp.array | None = None
+    """
+    The radius of the Bounding Sphere (BS) of each collision geometry element.\n
+    Shape of ``(num_geoms,)`` and type :class:`float32`.
+    """
 
 
 ###

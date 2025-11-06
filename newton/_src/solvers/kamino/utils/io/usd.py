@@ -745,20 +745,21 @@ class USDImporter:
 
     def _parse_joint_spherical_from_d6(self, name, joint_prim, joint_spec, rotation_unit: float = 1.0):
         dof_type = JointDoFType.SPHERICAL
-        q_j_min = []
-        q_j_max = []
+        q_j_min = None
+        q_j_max = None
         tau_j_max = None
-        for limit in joint_spec.jointLimits:
-            dof = limit.first
-            if dof == self.UsdPhysics.JointDOF.RotX:
-                q_j_min.append(rotation_unit * limit.second.lower)
-                q_j_max.append(rotation_unit * limit.second.upper)
-            elif dof == self.UsdPhysics.JointDOF.RotY:
-                q_j_min.append(rotation_unit * limit.second.lower)
-                q_j_max.append(rotation_unit * limit.second.upper)
-            elif dof == self.UsdPhysics.JointDOF.RotZ:
-                q_j_min.append(rotation_unit * limit.second.lower)
-                q_j_max.append(rotation_unit * limit.second.upper)
+        # # TODO: How to handle spherical joint limits properly when the coords are quaternions?
+        # for limit in joint_spec.jointLimits:
+        #     dof = limit.first
+        #     if dof == self.UsdPhysics.JointDOF.RotX:
+        #         q_j_min.append(rotation_unit * limit.second.lower)
+        #         q_j_max.append(rotation_unit * limit.second.upper)
+        #     elif dof == self.UsdPhysics.JointDOF.RotY:
+        #         q_j_min.append(rotation_unit * limit.second.lower)
+        #         q_j_max.append(rotation_unit * limit.second.upper)
+        #     elif dof == self.UsdPhysics.JointDOF.RotZ:
+        #         q_j_min.append(rotation_unit * limit.second.lower)
+        #         q_j_max.append(rotation_unit * limit.second.upper)
         num_drives = len(joint_spec.jointDrives)
         if num_drives > 0:
             if num_drives != JointDoFType.SPHERICAL.num_dofs:

@@ -19,7 +19,7 @@ KAMINO: Constrained Rigid Multi-Body Model Builder
 
 from __future__ import annotations
 
-import uuid  # TODO: remove this import
+import copy
 
 import numpy as np
 import warp as wp
@@ -40,7 +40,7 @@ from .joints import (
     JointsModel,
 )
 from .materials import MaterialDescriptor, MaterialManager, MaterialPairProperties, MaterialPairsModel
-from .math import FLOAT32_EPS, FLOAT32_MAX, FLOAT32_MIN
+from .math import FLOAT32_EPS
 from .model import Model, ModelInfo
 from .shapes import ShapeDescriptorType, ShapeType
 from .time import TimeModel
@@ -73,9 +73,16 @@ class ModelBuilder:
     A class to facilitate construction of simulation models.
     """
 
-    def __init__(self):
+    def __init__(self, default_world: bool = False):
+        """
+        Initializes a new empty model builder.
+
+        Args:
+            default_world (bool): Whether to create a default world upon initialization.
+                If True, a default world will be created. Defaults to False.
+        """
         # Meta-data
-        self._num_worlds: int = 1
+        self._num_worlds: int = 0
         self._device: Devicelike = None
         self._requires_grad: bool = False
 
@@ -84,6 +91,7 @@ class ModelBuilder:
         self._num_joints: int = 0
         self._num_cgeoms: int = 0
         self._num_pgeoms: int = 0
+        self._num_materials: int = 0
         self._num_bdofs: int = 0
         self._num_jcoords: int = 0
         self._num_jdofs: int = 0
@@ -93,243 +101,192 @@ class ModelBuilder:
         self._num_jadofs: int = 0
         self._num_jcts: int = 0
 
-        # Model descriptors
-        self._up_axes: list[Axis] = [Axis.Z]
-        self._worlds: list[WorldDescriptor] = [WorldDescriptor()]
-        self._gravity: list[GravityDescriptor] = [GravityDescriptor()]
-        self._materials: list[MaterialManager] = [MaterialManager()]
+        # Declare per-world model descriptor sets
+        self._up_axes: list[Axis] = []
+        self._worlds: list[WorldDescriptor] = []
+        self._gravity: list[GravityDescriptor] = []
         self._bodies: list[RigidBodyDescriptor] = []
         self._joints: list[JointDescriptor] = []
         self._pgeoms: list[GeometryDescriptor] = []
         self._cgeoms: list[CollisionGeometryDescriptor] = []
 
-        # Initialize the default world descriptor with the default material
-        self.world.add_material(self.materials.default)
+        # Declare a global material manager
+        self._materials: MaterialManager = MaterialManager()
+        self._num_materials = 1
+
+        # Create a default world if requested
+        if default_world:
+            self.add_world()
 
     @property
     def num_worlds(self) -> int:
+        """Returns the number of worlds represented in the model."""
         return self._num_worlds
 
     @property
     def num_bodies(self) -> int:
+        """Returns the number of bodies contained in the model."""
         return self._num_bodies
 
     @property
     def num_joints(self) -> int:
+        """Returns the number of joints contained in the model."""
         return self._num_joints
 
     @property
     def num_collision_geoms(self) -> int:
+        """Returns the number of collision geometries contained in the model."""
         return self._num_cgeoms
 
     @property
     def num_physical_geoms(self) -> int:
+        """Returns the number of physical geometries contained in the model."""
         return self._num_pgeoms
 
     @property
     def num_materials(self) -> int:
-        return self._materials[0].num_materials
+        """Returns the number of materials contained in the model."""
+        return self._num_materials
 
     @property
     def num_body_dofs(self) -> int:
+        """Returns the number of body degrees of freedom contained in the model."""
         return self._num_bdofs
 
     @property
+    def num_joint_coords(self) -> int:
+        """Returns the number of joint coordinates contained in the model."""
+        return self._num_jcoords
+
+    @property
     def num_joint_dofs(self) -> int:
+        """Returns the number of joint degrees of freedom contained in the model."""
         return self._num_jdofs
 
     @property
+    def num_passive_joint_coords(self) -> int:
+        """Returns the number of passive joint coordinates contained in the model."""
+        return self._num_jpcoords
+
+    @property
     def num_passive_joint_dofs(self) -> int:
+        """Returns the number of passive joint degrees of freedom contained in the model."""
         return self._num_jpdofs
 
     @property
+    def num_actuated_joint_coords(self) -> int:
+        """Returns the number of actuated joint coordinates contained in the model."""
+        return self._num_jacoords
+
+    @property
     def num_actuated_joint_dofs(self) -> int:
+        """Returns the number of actuated joint degrees of freedom contained in the model."""
         return self._num_jadofs
 
     @property
     def num_joint_cts(self) -> int:
+        """Returns the number of joint contact points contained in the model."""
         return self._num_jcts
 
     @property
-    def world(self) -> WorldDescriptor:
-        return self._worlds[0]
+    def worlds(self) -> list[WorldDescriptor]:
+        """Returns the list of world descriptors contained in the model."""
+        return self._worlds
 
     @property
-    def up_axis(self) -> Axis:
-        return self._up_axes[0]
+    def up_axes(self) -> list[Axis]:
+        """Returns the list of up axes for each world contained in the model."""
+        return self._up_axes
 
     @property
-    def gravity(self) -> GravityDescriptor:
-        return self._gravity[0]
-
-    @property
-    def materials(self) -> MaterialManager:
-        return self._materials[0]
+    def gravity(self) -> list[GravityDescriptor]:
+        """Returns the list of gravity descriptors for each world contained in the model."""
+        return self._gravity
 
     @property
     def bodies(self) -> list[RigidBodyDescriptor]:
+        """Returns the list of body descriptors contained in the model."""
         return self._bodies
 
     @property
     def joints(self) -> list[JointDescriptor]:
+        """Returns the list of joint descriptors contained in the model."""
         return self._joints
 
     @property
     def collision_geoms(self) -> list[CollisionGeometryDescriptor]:
+        """Returns the list of collision geometry descriptors contained in the model."""
         return self._cgeoms
 
     @property
     def physical_geoms(self) -> list[GeometryDescriptor]:
+        """Returns the list of physical geometry descriptors contained in the model."""
         return self._pgeoms
 
-    ###
-    # Internal Functions
-    ###
+    @property
+    def materials(self) -> list[MaterialDescriptor]:
+        """Returns the list of material descriptors contained in the model."""
+        return self._materials.materials
 
-    @staticmethod
-    def _compute_inverse_inertia(i_I_i: mat33f) -> mat33f:
+    @property
+    def required_contact_capacity(self) -> tuple[int, list[int]]:
         """
-        Computes the inverse inertia matrix from the given inertia matrix.
-
-        Args:
-            i_I_i (mat33f): The inertia matrix to be inverted.
+        Returns the total contact capacities required by the model and each world.
 
         Returns:
-            mat33f: The inverse inertia matrix.
+            tuple[int, list[int]]: A tuple containing the total contact capacity and a list of per-world capacities.
         """
-        return mat33f(np.linalg.inv(np.ndarray(buffer=i_I_i, shape=(3, 3), dtype=np.float32)))
+        return self._compute_required_contact_capacity()
 
-    @staticmethod
-    def _check_body_inertia(m_i: float, i_I_i: mat33f):
+    ###
+    # Model Construction
+    ###
+
+    def add_world(
+        self,
+        name: str = "world",
+        uid: str | None = None,
+        up_axis: Axis | None = None,
+        gravity: GravityDescriptor | None = None,
+    ) -> int:
         """
-        Checks if the body inertia is valid.
+        Add a new world to the model.
 
         Args:
-            i_I_i (mat33f): The inertia matrix to be checked.
-
-        Raises:
-            ValueError: If the inertia matrix is not symmetric of positive definite.
-        """
-        # Convert to numpy array for easier checks
-        i_I_i_np = np.ndarray(buffer=i_I_i, shape=(3, 3), dtype=np.float32)
-
-        # Perform checks on the inertial properties
-        if m_i <= 0.0:
-            raise ValueError(f"Invalid body mass: {m_i}. Must be greater than 0.0")
-        if not np.allclose(i_I_i_np, i_I_i_np.T, atol=float(FLOAT32_EPS)):
-            raise ValueError(f"Invalid body inertia matrix:\n{i_I_i}\nMust be symmetric.")
-        if not np.all(np.linalg.eigvals(i_I_i_np) > 0.0):
-            raise ValueError(f"Invalid body inertia matrix:\n{i_I_i}\nMust be positive definite.")
-
-    @staticmethod
-    def _check_body_pose(q_i: transformf):
-        """
-        Checks if the body pose is valid.
-
-        Args:
-            q_i_0 (transformf): The pose of the body to be checked.
-
-        Raises:
-            ValueError: If the body pose is not a valid transformation.
-        """
-        if not isinstance(q_i, transformf):
-            raise TypeError(f"Invalid body pose type: {type(q_i)}. Must be `transformf`.")
-
-        # Extract the orientation quaternion
-        if not np.isclose(wp.length(q_i.q), 1.0, atol=float(FLOAT32_EPS)):
-            raise ValueError(f"Invalid body pose orientation quaternion: {q_i.q}. Must be a unit quaternion.")
-
-    def _check_world_index(self, world_index: int) -> WorldDescriptor:
-        """
-        Checks if the provided world index is valid.
-
-        Args:
-            world_index (int): The index of the world to be checked.
-
-        Raises:
-            ValueError: If the world index is out of range.
-        """
-        if world_index < 0 or world_index >= self._num_worlds:
-            raise ValueError(f"Invalid world index (wid): {world_index}. Must be between 0 and {self._num_worlds - 1}.")
-        return self._worlds[world_index]
-
-    @staticmethod
-    def _check_limits(
-        limits: list[float] | float | None, num_dofs: int, default: float = float(FLOAT32_MAX)
-    ) -> list[float]:
-        """
-        Processes a specified limit value to ensure it is a list of floats.
-
-        Notes:
-        - If the input is None, a list of default values is returned.
-        - If the input is a single float, it is converted to a list of the specified length.
-        - If the input is an empty list, a list of default values is returned.
-        - If the input is a non-empty list, it is validated to ensure it contains only floats and matches the specified length.
-
-        Args:
-            limits (List[float] | float | None): The limits to be processed.
-            num_dofs (int): The number of degrees of freedom to determine the length of the output list.
-            default (float): The default value to use if limits is None or an empty list.
+            name (str): The name of the world.
+            uid (str | None): The unique identifier of the world.\n
+                If None, a UUID will be generated.
+            up_axis (Axis | None): The up axis of the world.\n
+                If None, Axis.Z will be used.
+            gravity (GravityDescriptor | None): The gravity descriptor of the world.\n
+                If None, a default gravity descriptor will be used.
 
         Returns:
-            List[float]: The processed list of limits.
-
-        Raises:
-            ValueError: If the length of the limits list does not match num_dofs.
-            TypeError: If the limits list contains non-float types.
+            int: The index of the newly added world.
         """
-        if limits is None:
-            return [float(default) for _ in range(num_dofs)]
+        # Create a new world descriptor
+        self._worlds.append(WorldDescriptor(name=name, uid=uid, wid=self._num_worlds))
 
-        if isinstance(limits, float):
-            if limits == np.inf:
-                return [float(FLOAT32_MAX) for _ in range(num_dofs)]
-            elif limits == -np.inf:
-                return [float(FLOAT32_MIN) for _ in range(num_dofs)]
-            else:
-                return [limits] * num_dofs
+        # Set up axis
+        if up_axis is None:
+            up_axis = Axis.Z
+        self._up_axes.append(up_axis)
 
-        if isinstance(limits, list):
-            if len(limits) == 0:
-                return [float(default) for _ in range(num_dofs)]
+        # Set gravity
+        if gravity is None:
+            gravity = GravityDescriptor()
+        self._gravity.append(gravity)
 
-            if len(limits) != num_dofs:
-                raise ValueError(f"Invalid limits length: {len(limits)} != {num_dofs}")
+        # Register the default material in the new world
+        self._worlds[-1].add_material(self._materials.default)
 
-            if all(isinstance(x, float) for x in limits):
-                return limits
-            else:
-                raise TypeError(
-                    f"Invalid limits type: All entries must be `float`, but got:\n{[type(x) for x in limits]}"
-                )
+        # Update world counter
+        self._num_worlds += 1
 
-    ###
-    # Public API
-    ###
+        # Return the new world index
+        return self._worlds[-1].wid
 
-    def set_up_axis(self, axis: Axis, world_index: int = 0):
-        # Check if the world index is valid
-        self._check_world_index(world_index)
-
-        # Check if the axis is valid
-        if not isinstance(axis, Axis):
-            raise TypeError(f"ModelBuilder: Invalid axis type: {type(axis)}. Must be `Axis`.")
-
-        # Set the new up axis
-        self._up_axes[world_index] = axis
-
-    def set_gravity(self, gravity: GravityDescriptor, world_index: int = 0):
-        # Check if the world index is valid
-        self._check_world_index(world_index)
-
-        # Check if the gravity descriptor is valid
-        if not isinstance(gravity, GravityDescriptor):
-            raise TypeError(f"Invalid gravity descriptor type: {type(gravity)}. Must be `GravityDescriptor`.")
-
-        # Set the new gravity configurations
-        self._gravity[world_index] = gravity
-
-    def add_body(
+    def add_rigid_body(
         self,
         m_i: float,
         i_I_i: mat33f,
@@ -339,68 +296,71 @@ class ModelBuilder:
         uid: str | None = None,
         world_index: int = 0,
     ) -> int:
-        # Check if the world index is valid
-        world = self._check_world_index(world_index)
+        """
+        Add a rigid body to the model using explicit specifications.
 
-        # Get current bid from the number of bodies
-        bid = world.num_bodies
+        Args:
+            m_i (float): The mass of the body.
+            i_I_i (mat33f): The inertia tensor of the body.
+            q_i_0 (transformf): The initial pose of the body.
+            u_i_0 (vec6f): The initial velocity of the body.
+            name (str | None): The name of the body.
+            uid (str | None): The unique identifier of the body.
+            world_index (int): The index of the world to which the body will be added.\n
+                Defaults to the first world with index `0`.
 
-        # Generate identifiers if not provided
-        if name is None:
-            name = f"body_{bid}"
-        if uid is None:
-            uid = str(uuid.uuid4())
+        Returns:
+            int: The index of the newly added body.
+        """
+        # Create a rigid body descriptor from the provided specifications
+        # NOTE: Specifying a name is required by the base descriptor class,
+        # but we allow it to be optional here for convenience. Thus, we
+        # generate a default name if none is provided.
+        body = RigidBodyDescriptor(
+            name=name if name is not None else f"body_{self._num_bodies}",
+            uid=uid,
+            m_i=m_i,
+            i_I_i=i_I_i,
+            q_i_0=q_i_0,
+            u_i_0=u_i_0,
+        )
 
-        # Check if the body name and UID are unique
-        if name in world.body_names:
-            raise ValueError(f"Body name '{name}' already exists.")
-        if uid in world.body_uids:
-            raise ValueError(f"Body UID '{uid}' already exists.")
+        # Add the body descriptor to the model
+        return self.add_rigid_body_descriptor(body, world_index=world_index)
+
+    def add_rigid_body_descriptor(self, body: RigidBodyDescriptor, world_index: int = 0) -> int:
+        """
+        Add a body to the model using a descriptor object.
+
+        Args:
+            body (RigidBodyDescriptor): The body descriptor to be added.
+            world_index (int): The index of the world to which the body will be added.\n
+                Defaults to the first world with index `0`.
+
+        Returns:
+            int: The body index of the newly added body w.r.t its world.
+        """
+        # Check if the descriptor is valid
+        if not isinstance(body, RigidBodyDescriptor):
+            raise TypeError(f"Invalid body descriptor type: {type(body)}. Must be `RigidBodyDescriptor`.")
 
         # Check if body properties are valid
-        self._check_body_inertia(m_i, i_I_i)
-        self._check_body_pose(q_i_0)
+        self._check_body_inertia(body.m_i, body.i_I_i)
+        self._check_body_pose(body.q_i_0)
 
-        # Create the body model descriptor
-        body = RigidBodyDescriptor()
-        body.wid = world_index
-        body.name = name
-        body.uid = uid
-        body.bid = bid
-        body.m_i = m_i
-        body.i_I_i = i_I_i
-        body.q_i_0 = q_i_0
-        body.u_i_0 = u_i_0
+        # Check if the world index is valid
+        world = self._check_world_index(world_index)
 
         # Append body model data
         world.add_body(body)
         self._bodies.append(body)
 
-        # Update counter
+        # Update model-wide counters
         self._num_bodies += 1
         self._num_bdofs += 6
 
         # Return the new body index
-        return bid
-
-    def add_rigid_body_descriptor(self, descriptor: RigidBodyDescriptor, world_index: int = 0) -> int:
-        """
-        Add a body to the model by descriptor.
-        """
-        # Check if the descriptor is valid
-        if not isinstance(descriptor, RigidBodyDescriptor):
-            raise TypeError(f"Invalid body descriptor type: {type(descriptor)}. Must be `RigidBodyDescriptor`.")
-
-        # TODO: this seems wasteful to unpack and re-pack the descriptor, how can we avoid this?
-        return self.add_body(
-            m_i=descriptor.m_i,
-            i_I_i=descriptor.i_I_i,
-            q_i_0=descriptor.q_i_0,
-            u_i_0=descriptor.u_i_0,
-            name=descriptor.name,
-            uid=descriptor.uid,
-            world_index=world_index,
-        )
+        return body.bid
 
     def add_joint(
         self,
@@ -419,9 +379,29 @@ class ModelBuilder:
         uid: str | None = None,
         world_index: int = 0,
     ) -> int:
-        # Check if the world index is valid
-        world = self._check_world_index(world_index)
+        """
+        Add a joint to the model using explicit specifications.
 
+        Args:
+            act_type (JointActuationType): The actuation type of the joint.
+            dof_type (JointDoFType): The degree of freedom type of the joint.
+            bid_B (int): The index of the body on the "base" side of the joint.
+            bid_F (int): The index of the body on the "follower" side of the joint.
+            B_r_Bj (vec3f): The position of the joint in the base body frame.
+            F_r_Fj (vec3f): The position of the joint in the follower body frame.
+            X_j (mat33f): The orientation of the joint frame relative to the base body frame.
+            q_j_min (list[float] | float | None): The minimum joint coordinate limits.
+            q_j_max (list[float] | float | None): The maximum joint coordinate limits.
+            dq_j_max (list[float] | float | None): The maximum joint velocity limits.
+            tau_j_max (list[float] | float | None): The maximum joint effort limits.
+            name (str | None): The name of the joint.
+            uid (str | None): The unique identifier of the joint.
+            world_index (int): The index of the world to which the joint will be added.\n
+                Defaults to the first world with index `0`.
+
+        Returns:
+            int: The index of the newly added joint.
+        """
         # Check if the actuation type is valid
         if not isinstance(act_type, JointActuationType):
             raise TypeError(f"Invalid actuation type: {act_type}. Must be `JointActuationType`.")
@@ -430,145 +410,94 @@ class ModelBuilder:
         if not isinstance(dof_type, JointDoFType):
             raise TypeError(f"Invalid DoF type: {dof_type}. Must be `JointDoFType`.")
 
-        # Check if the body indices are valid
-        if bid_B < 0 and bid_F < 0:
-            raise ValueError(
-                f"Invalid body indices: bid_B={bid_B}, bid_F={bid_F}:\n\
-                - ==-1 indicates the world body, >=0 indicates finite rigid bodies\n\
-                - Base BIDs must be in [-1, {world.num_bodies - 1}]\n\
-                - Follower BIDs must be in [0, {world.num_bodies - 1}]"
-            )
-        if bid_B >= world.num_bodies or bid_F >= world.num_bodies:
-            raise ValueError(
-                f"Invalid body indices: bid_B={bid_B}, bid_F={bid_F}.\n\
-                - ==-1 indicates the world body, >=0 indicates finite rigid bodies\n\
-                - Base BIDs must be in [-1, {world.num_bodies - 1}]\n\
-                - Follower BIDs must be in [0, {world.num_bodies - 1}]"
-            )
+        # Create a joint descriptor from the provided specifications
+        # NOTE: Specifying a name is required by the base descriptor class,
+        # but we allow it to be optional here for convenience. Thus, we
+        # generate a default name if none is provided.
+        joint = JointDescriptor(
+            name=name if name is not None else f"joint_{self._num_joints}",
+            uid=uid,
+            act_type=act_type,
+            dof_type=dof_type,
+            bid_B=bid_B,
+            bid_F=bid_F,
+            B_r_Bj=B_r_Bj,
+            F_r_Fj=F_r_Fj,
+            X_j=X_j,
+            q_j_min=q_j_min,
+            q_j_max=q_j_max,
+            dq_j_max=dq_j_max,
+            tau_j_max=tau_j_max,
+        )
 
-        # Get current bid from the number of bodies
-        jid = world.num_joints
+        # Add the body descriptor to the model
+        return self.add_joint_descriptor(joint, world_index=world_index)
 
-        # Generate identifiers if not provided
-        if name is None:
-            name = f"joint_{jid}"
-        if uid is None:
-            uid = str(uuid.uuid4())
+    def add_joint_descriptor(self, joint: JointDescriptor, world_index: int = 0) -> int:
+        """
+        Add a joint to the model by descriptor.
 
-        # Check if the body name and UID are unique
-        if name in world.joint_names:
-            raise ValueError(f"Joint name '{name}' already exists.")
-        if uid in world.joint_uids:
-            raise ValueError(f"Joint UID '{uid}' already exists.")
+        Args:
+            joint (JointDescriptor): The joint descriptor to be added.
+            world_index (int): The index of the world to which the joint will be added.\n
+                Defaults to the first world with index `0`.
 
-        # Create the joint model descriptor
-        joint = JointDescriptor()
-        joint.wid = world_index
-        joint.name = name
-        joint.uid = uid
-        joint.jid = jid
-        joint.act_type = act_type
-        joint.dof_type = dof_type
-        joint.bid_B = bid_B
-        joint.bid_F = bid_F
-        joint.B_r_Bj = B_r_Bj
-        joint.F_r_Fj = F_r_Fj
-        joint.X_j = X_j
+        Returns:
+            int: The joint index of the newly added joint w.r.t its world.
+        """
+        # Check if the descriptor is valid
+        if not isinstance(joint, JointDescriptor):
+            raise TypeError(f"Invalid joint descriptor type: {type(joint)}. Must be `JointDescriptor`.")
 
-        # Retrieve joint dimensions from the DoF type
-        joint.num_coords = dof_type.num_coords
-        joint.num_dofs = dof_type.num_dofs
-        joint.num_cts = dof_type.num_cts
-
-        # Set the index offsets w.r.t the world
-        joint.coords_offset = world.num_joint_coords
-        joint.dofs_offset = world.num_joint_dofs
-        joint.cts_offset = world.num_joint_cts
-        # NOTE: passive/actuated index offsets are set to -1 if not belonging to the respective category
-        # TODO: Is there a better way to handle this?
-        joint.passive_coords_offset = world.num_passive_joint_coords if act_type == JointActuationType.PASSIVE else -1
-        joint.passive_dofs_offset = world.num_passive_joint_dofs if act_type == JointActuationType.PASSIVE else -1
-        joint.actuated_coords_offset = world.num_actuated_joint_coords if act_type > JointActuationType.PASSIVE else -1
-        joint.actuated_dofs_offset = world.num_actuated_joint_dofs if act_type > JointActuationType.PASSIVE else -1
-
-        # Set default values for joint limits if not provided
-        q_j_min = self._check_limits(q_j_min, joint.num_coords, float(FLOAT32_MIN))
-        q_j_max = self._check_limits(q_j_max, joint.num_coords, float(FLOAT32_MAX))
-        dq_j_max = self._check_limits(dq_j_max, joint.num_dofs, float(FLOAT32_MAX))
-        tau_j_max = self._check_limits(tau_j_max, joint.num_dofs, float(FLOAT32_MAX))
-
-        # Store the joint limits
-        joint.q_j_min = q_j_min
-        joint.q_j_max = q_j_max
-        joint.dq_j_max = dq_j_max
-        joint.tau_j_max = tau_j_max
+        # Check if the world index is valid
+        world = self._check_world_index(world_index)
 
         # Append joint model data
         world.add_joint(joint)
         self._joints.append(joint)
 
-        # Update counter
+        # Update model-wide counters
         self._num_joints += 1
         self._num_jcoords += joint.num_coords
         self._num_jdofs += joint.num_dofs
-        self._num_jpcoords += joint.num_coords if act_type == JointActuationType.PASSIVE else 0
-        self._num_jpdofs += joint.num_dofs if act_type == JointActuationType.PASSIVE else 0
-        self._num_jacoords += joint.num_coords if act_type > JointActuationType.PASSIVE else 0
-        self._num_jadofs += joint.num_dofs if act_type > JointActuationType.PASSIVE else 0
+        self._num_jpcoords += joint.num_coords if joint.is_passive else 0
+        self._num_jpdofs += joint.num_dofs if joint.is_passive else 0
+        self._num_jacoords += joint.num_coords if joint.is_actuated else 0
+        self._num_jadofs += joint.num_dofs if joint.is_actuated else 0
         self._num_jcts += joint.num_cts
 
         # Return the new joint index
-        return jid
-
-    def add_joint_descriptor(self, descriptor: JointDescriptor, world_index: int = 0) -> int:
-        """Add a joint to the model by descriptor."""
-        # Check if the descriptor is valid
-        if not isinstance(descriptor, JointDescriptor):
-            raise TypeError(f"Invalid joint descriptor type: {type(descriptor)}. Must be `JointDescriptor`.")
-        # TODO: this seems wasteful to unpack and re-pack the descriptor, how can we avoid this?
-        return self.add_joint(
-            act_type=descriptor.act_type,
-            dof_type=descriptor.dof_type,
-            bid_B=descriptor.bid_B,
-            bid_F=descriptor.bid_F,
-            B_r_Bj=descriptor.B_r_Bj,
-            F_r_Fj=descriptor.F_r_Fj,
-            X_j=descriptor.X_j,
-            q_j_min=descriptor.q_j_min,
-            q_j_max=descriptor.q_j_max,
-            dq_j_max=descriptor.dq_j_max,
-            tau_j_max=descriptor.tau_j_max,
-            name=descriptor.name,
-            uid=descriptor.uid,
-            world_index=world_index,
-        )
+        return joint.jid
 
     def add_collision_layer(self, name: str, world_index: int = 0):
-        """Add a new collision geometry layer to the model."""
-        # Check if the world index is valid
-        world = self._check_world_index(world_index)
+        """
+        Add a new collision geometry layer to the model.
 
-        # Append the new layer name to the list of layers if it does not already exist
-        if name not in world.collision_geometry_layers:
-            world.collision_geometry_layers.append(name)
+        Args:
+            name (str): The name of the collision geometry layer to be added.
+            world_index (int): The index of the world to which the layer will be added.\n
+                Defaults to the first world with index `0`.
+        """
+        world = self._check_world_index(world_index)
+        world.add_collision_layer(name)
 
     def add_physical_layer(self, name: str, world_index: int = 0):
-        """Add a new physical geometry layer to the model."""
-        # Check if the world index is valid
+        """
+        Add a new physical geometry layer to the model.
+
+        Args:
+            name (str): The name of the physical geometry layer to be added.
+            world_index (int): The index of the world to which the layer will be added.\n
+                Defaults to the first world with index `0`.
+        """
         world = self._check_world_index(world_index)
-
-        # Check if the layer name already exists
-        if name in world.physical_geometry_layers:
-            raise ValueError(f"Layer name '{name}' already exists.")
-
-        # Append the new layer name to the list of layers
-        world.physical_geometry_layers.append(name)
+        world.add_physical_layer(name)
 
     def add_collision_geometry(
         self,
-        body_id: int = -1,
+        body: int = -1,
+        layer: str = "default",
         shape: ShapeDescriptorType | None = None,
-        layer: int | str = 0,
         offset: transformf | None = None,
         material: str | int | None = None,
         max_contacts: int = 0,
@@ -578,165 +507,328 @@ class ModelBuilder:
         uid: str | None = None,
         world_index: int = 0,
     ) -> int:
+        """
+        Add a collision geometry to the model using explicit specifications.
+
+        Args:
+            body (int): The index of the body to which the geometry will be attached.\n
+                Defaults to -1 (world).
+            layer (str): The name of the collision geometry layer.\n
+                Defaults to "default".
+            shape (ShapeDescriptorType | None): The shape descriptor of the geometry.
+            offset (transformf | None): The local offset of the geometry relative to the body frame.
+            material (str | int | None): The name or index of the material assigned to the geometry.
+            max_contacts (int): The maximum number of contact points for the geometry.\n
+                Defaults to 0 (unlimited).
+            group (int): The collision group of the geometry.\n
+                Defaults to 1.
+            collides (int): The collision mask of the geometry.\n
+                Defaults to 1.
+            name (str | None): The name of the geometry.
+            uid (str | None): The unique identifier of the geometry.
+            world_index (int): The index of the world to which the geometry will be added.\n
+                Defaults to the first world with index `0`.
+
+        Returns:
+            int: The index of the newly added collision geometry.
+        """
+        # Set the default material if not provided
+        if material is None:
+            material = self._materials.default.name
+        # Otherwise, check if the material exists
+        else:
+            if not self._materials.has_material(material):
+                raise ValueError(
+                    f"Material '{material}' does not exist. "
+                    "Please add the material using `add_material()` before assigning it to a geometry."
+                )
+
+        # If the shape is already provided, check if it's valid
+        if shape is not None:
+            if not isinstance(shape, ShapeDescriptorType):
+                raise ValueError(
+                    f"Shape '{shape}' must be a valid type.\n"
+                    "See `ShapeDescriptorType` for the list of supported shapes."
+                )
+
+        # Create a joint descriptor from the provided specifications
+        # NOTE: Specifying a name is required by the base descriptor class,
+        # but we allow it to be optional here for convenience. Thus, we
+        # generate a default name if none is provided.
+        geom = CollisionGeometryDescriptor(
+            name=name if name is not None else f"cgeom_{self._num_cgeoms}",
+            uid=uid,
+            bid=body,
+            layer=layer,
+            offset=offset if offset is not None else transformf(),
+            shape=shape,
+            mid=self._materials.index(material),
+            group=group,
+            collides=collides,
+            max_contacts=max_contacts,
+        )
+
+        # Add the body descriptor to the model
+        return self.add_collision_geometry_descriptor(geom, world_index=world_index)
+
+    def add_collision_geometry_descriptor(self, geom: CollisionGeometryDescriptor, world_index: int = 0) -> int:
+        """
+        Add a collision geometry to the model by descriptor.
+
+        Args:
+            geom (CollisionGeometryDescriptor): The collision geometry descriptor to be added.
+            world_index (int): The index of the world to which the geometry will be added.\n
+                Defaults to the first world with index `0`.
+
+        Returns:
+            int: The geometry index of the newly added collision geometry w.r.t its world.
+        """
+        # Check if the descriptor is valid
+        if not isinstance(geom, CollisionGeometryDescriptor):
+            raise TypeError(
+                f"Invalid collision geometry descriptor type: {type(geom)}. Must be `CollisionGeometryDescriptor`."
+            )
+
         # Check if the world index is valid
         world = self._check_world_index(world_index)
 
-        # Get current bid from the number of bodies
-        cgid = world.num_collision_geoms
-
-        # Generate identifiers if not provided
-        if name is None:
-            name = f"cgeom_{cgid}"
-        if uid is None:
-            uid = str(uuid.uuid4())
-
-        # Set the default material if not provided
-        if material is None:
-            material = self.materials.default.name
-
-        # Check if the body name and UID are unique
-        name_exists = name in world.collision_geom_names
-        uid_exists = uid in world.collision_geom_uids
-        if name_exists and uid_exists:
-            raise ValueError(f"Geometry name '{name}' and UID '{uid}' already exists.")
-
-        # Retrieve the layer ID
-        layer_id = 0
-        if isinstance(layer, str):
-            if layer not in world.collision_geometry_layers:
-                raise ValueError(f"Layer name '{layer}' not found.")
-            layer_id = world.collision_geometry_layers.index(layer)
-        elif isinstance(layer, int):
-            if layer < 0 or layer >= len(world.collision_geometry_layers):
-                raise ValueError(f"Layer index '{layer}' out of range.")
-            layer_id = layer
-
-        # Create the collision geometry descriptor
-        geom = CollisionGeometryDescriptor()
-        geom.wid = world_index
-        geom.name = name
-        geom.uid = uid
-        geom.gid = cgid
-        geom.bid = body_id
-        geom.lid = layer_id
-        geom.offset = offset if offset is not None else transformf()
-        geom.shape = shape
-        geom.mid = self.materials.index(material)
-        geom.group = group
-        geom.collides = collides
-        geom.max_contacts = max_contacts
+        # If the geom material is not assigned, set it to the global default
+        if geom.mid < 0:
+            geom.mid = self._materials.default.mid
 
         # Append body model data
-        world.add_cgeom(geom)
+        world.add_collision_geom(geom)
         self._cgeoms.append(geom)
 
-        # Update counters
+        # Update model-wide counters
         self._num_cgeoms += 1
 
         # Return the new geometry index
-        return cgid
-
-    def add_collision_geometry_descriptor(self, descriptor: CollisionGeometryDescriptor, world_index: int = 0) -> int:
-        """Add a collision geometry to the model by descriptor."""
-        # Check if the descriptor is valid
-        if not isinstance(descriptor, CollisionGeometryDescriptor):
-            raise TypeError(
-                f"Invalid collision geometry descriptor type: {type(descriptor)}. "
-                "Must be `CollisionGeometryDescriptor`."
-            )
-        # TODO: this seems wasteful to unpack and re-pack the descriptor, how can we avoid this?
-        return self.add_collision_geometry(
-            body_id=descriptor.bid,
-            shape=descriptor.shape,
-            layer=descriptor.lid,
-            offset=descriptor.offset,
-            material=descriptor.mid,
-            max_contacts=descriptor.max_contacts,
-            group=descriptor.group,
-            collides=descriptor.collides,
-            name=descriptor.name,
-            uid=descriptor.uid,
-            world_index=world_index,
-        )
+        return geom.gid
 
     def add_physical_geometry(
         self,
-        body_id: int,
-        shape: ShapeDescriptorType,
-        layer: int | str = 0,
+        body: int = -1,
+        layer: str = "default",
+        shape: ShapeDescriptorType | None = None,
         offset: transformf | None = None,
         name: str | None = None,
         uid: str | None = None,
         world_index: int = 0,
     ) -> int:
+        """
+        Add a physical geometry to the model using explicit specifications.
+
+        Args:
+            body (int): The index of the body to which the geometry will be attached.\n
+                Defaults to -1 (world).
+            layer (str): The name of the physical geometry layer.\n
+                Defaults to "default".
+            shape (ShapeDescriptorType | None): The shape descriptor of the geometry.
+            offset (transformf | None): The local offset of the geometry relative to the body frame.
+            name (str | None): The name of the geometry.
+            uid (str | None): The unique identifier of the geometry.
+            world_index (int): The index of the world to which the geometry will be added.\n
+                Defaults to the first world with index `0`.
+
+        Returns:
+            int: The index of the newly added physical geometry.
+        """
+        # If the shape is already provided, check if it's valid
+        if shape is not None:
+            if not isinstance(shape, ShapeDescriptorType):
+                raise ValueError(
+                    f"Shape '{shape}' must be a valid type.\n"
+                    "See `ShapeDescriptorType` for the list of supported shapes."
+                )
+
+        # Create a joint descriptor from the provided specifications
+        # NOTE: Specifying a name is required by the base descriptor class,
+        # but we allow it to be optional here for convenience. Thus, we
+        # generate a default name if none is provided.
+        geom = GeometryDescriptor(
+            name=name if name is not None else f"cgeom_{self._num_cgeoms}",
+            uid=uid,
+            bid=body,
+            layer=layer,
+            offset=offset if offset is not None else transformf(),
+            shape=shape,
+        )
+
+        # Add the body descriptor to the model
+        return self.add_physical_geometry_descriptor(geom, world_index=world_index)
+
+    def add_physical_geometry_descriptor(self, geom: GeometryDescriptor, world_index: int = 0) -> int:
+        """
+        Add a physical geometry to the model by descriptor.
+
+        Args:
+            geom (GeometryDescriptor): The physical geometry descriptor to be added.
+            world_index (int): The index of the world to which the geometry will be added.\n
+                Defaults to the first world with index `0`.
+
+        Returns:
+            int: The geometry index of the newly added physical geometry w.r.t its world.
+        """
+        # Check if the descriptor is valid
+        if not isinstance(geom, GeometryDescriptor):
+            raise TypeError(f"Invalid physical geometry descriptor type: {type(geom)}. Must be `GeometryDescriptor`.")
+
         # Check if the world index is valid
         world = self._check_world_index(world_index)
 
-        # Get current bid from the number of bodies
-        pgid = world.num_physical_geoms
-
-        # Generate identifiers if not provided
-        if name is None:
-            name = f"pgeom_{pgid}"
-        if uid is None:
-            uid = str(uuid.uuid4())
-
-        # Check if the body name and UID are unique
-        name_exists = name in world.physical_geom_names
-        uid_exists = uid in world.physical_geom_uids
-        if name_exists and uid_exists:
-            raise ValueError(f"Geometry name '{name}' and UID '{uid}' already exists.")
-
-        # Retrieve the layer ID
-        layer_id = 0
-        if isinstance(layer, str):
-            if layer not in world.physical_geometry_layers:
-                raise ValueError(f"Layer name '{layer}' not found.")
-            layer_id = world.physical_geometry_layers.index(layer)
-        elif isinstance(layer, int):
-            if layer < 0 or layer >= len(world.physical_geometry_layers):
-                raise ValueError(f"Layer index '{layer}' out of range.")
-            layer_id = layer
-
-        # Create the collision geometry descriptor
-        geom = GeometryDescriptor()
-        geom.wid = world_index
-        geom.name = name
-        geom.uid = uid
-        geom.gid = pgid
-        geom.bid = body_id
-        geom.lid = layer_id
-        geom.offset = offset if offset is not None else transformf()
-        geom.shape = shape
-
         # Append body model data
-        world.add_pgeom(geom)
+        world.add_physical_geom(geom)
         self._pgeoms.append(geom)
 
-        # Update counters
+        # Update model-wide counters
         self._num_pgeoms += 1
 
         # Return the new geometry index
-        return pgid
+        return geom.gid
 
-    def add_physical_geometry_descriptor(self, descriptor: GeometryDescriptor, world_index: int = 0) -> int:
-        """Add a physical geometry to the model by descriptor."""
-        # Check if the descriptor is valid
-        if not isinstance(descriptor, GeometryDescriptor):
-            raise TypeError(
-                f"Invalid physical geometry descriptor type: {type(descriptor)}. Must be `GeometryDescriptor`."
-            )
+    def add_material(self, material: MaterialDescriptor, world_index: int = 0) -> int:
+        """
+        Add a material to the model.
 
-        # TODO: this seems wasteful to unpack and re-pack the descriptor, how can we avoid this?
-        return self.add_physical_geometry(
-            body_id=descriptor.bid,
-            shape=descriptor.shape,
-            layer=descriptor.lid,
-            offset=descriptor.offset,
-            name=descriptor.name,
-            uid=descriptor.uid,
-            world_index=world_index,
-        )
+        Args:
+            material (MaterialDescriptor): The material descriptor to be added.
+            world_index (int): The index of the world to which the material will be added.\n
+                Defaults to the first world with index `0`.
+        """
+        # Check if the world index is valid
+        world = self._check_world_index(world_index)
+
+        # Check if the material is valid
+        if not isinstance(material, MaterialDescriptor):
+            raise TypeError(f"Invalid material type: {type(material)}. Must be `MaterialDescriptor`.")
+
+        # Register the material in the material manager
+        world.add_material(material)
+
+        # Update model-wide counter
+        self._num_materials += 1
+
+        return self._materials.register(material)
+
+    def add_builder(self, other: ModelBuilder):
+        """
+        Extends the contents of the current ModelBuilder with those of another.
+
+        Each builder represents a distinct world, and this method allows for the
+        combination of multiple worlds into a single model. The method ensures that the
+        indices of the elements in the other builder are adjusted to account for the
+        existing elements in the current builder, preventing any index conflicts.
+
+        Arguments:
+            other (ModelBuilder): The other ModelBuilder whose contents are to be added to the current.
+
+        Raises:
+            ValueError: If the provided builder is not of type `ModelBuilder`.
+        """
+        # Check if the other builder is of valid type
+        if not isinstance(other, ModelBuilder):
+            raise ValueError(f"Invalid builder type: {type(other)}. Must be a ModelBuilder instance.")
+
+        # Make a deep copy of the other builder to avoid modifying the original
+        # TODO: How can we avoid this deep copy to improve performance
+        # while avoiding copying expensive data like meshes?
+        _other = copy.deepcopy(other)
+
+        # Append the other per-world descriptors
+        self._worlds.extend(_other._worlds)
+        self._gravity.extend(_other._gravity)
+        self._up_axes.extend(_other._up_axes)
+
+        # Append the other per-entity descriptors
+        self._bodies.extend(_other._bodies)
+        self._joints.extend(_other._joints)
+        self._cgeoms.extend(_other._cgeoms)
+        self._pgeoms.extend(_other._pgeoms)
+
+        # Append the other materials
+        self._materials.merge(_other._materials)
+
+        # Update the world index of the entities in the
+        # other builder and update model-wide counters
+        for w, world in enumerate(_other._worlds):
+            # Offset world index of the other builder's world
+            world.wid = self._num_worlds + w
+
+            # Offset world indices of the other builders entities
+            for body in self._bodies[self._num_bodies : self._num_bodies + world.num_bodies]:
+                body.wid = self._num_worlds + w
+            for joint in self._joints[self._num_joints : self._num_joints + world.num_joints]:
+                joint.wid = self._num_worlds + w
+            for cgeom in self._cgeoms[self._num_cgeoms : self._num_cgeoms + world.num_collision_geoms]:
+                cgeom.wid = self._num_worlds + w
+            for pgeom in self._pgeoms[self._num_pgeoms : self._num_pgeoms + world.num_physical_geoms]:
+                pgeom.wid = self._num_worlds + w
+
+            # Update model-wide counters
+            self._num_bodies += world.num_bodies
+            self._num_joints += world.num_joints
+            self._num_cgeoms += world.num_collision_geoms
+            self._num_pgeoms += world.num_physical_geoms
+            self._num_bdofs += 6 * world.num_bodies
+            self._num_jcoords += world.num_joint_coords
+            self._num_jdofs += world.num_joint_dofs
+            self._num_jpcoords += world.num_passive_joint_coords
+            self._num_jpdofs += world.num_passive_joint_dofs
+            self._num_jacoords += world.num_actuated_joint_coords
+            self._num_jadofs += world.num_actuated_joint_dofs
+            self._num_jcts += world.num_joint_cts
+
+        # Update the number of worlds
+        self._num_worlds += _other._num_worlds
+
+    ###
+    # Configurations
+    ###
+
+    def set_up_axis(self, axis: Axis, world_index: int = 0):
+        """
+        Set the up axis for a specific world.
+
+        Args:
+            axis (Axis): The new up axis to be set.
+            world_index (int): The index of the world for which to set the up axis.\n
+                Defaults to the first world with index `0`.
+
+        Raises:
+            TypeError: If the provided axis is not of type `Axis`.
+        """
+        # Check if the world index is valid
+        self._check_world_index(world_index)
+
+        # Check if the axis is valid
+        if not isinstance(axis, Axis):
+            raise TypeError(f"ModelBuilder: Invalid axis type: {type(axis)}. Must be `Axis`.")
+
+        # Set the new up axis
+        self._up_axes[world_index] = axis
+
+    def set_gravity(self, gravity: GravityDescriptor, world_index: int = 0):
+        """
+        Set the gravity descriptor for a specific world.
+
+        Args:
+            gravity (GravityDescriptor): The new gravity descriptor to be set.
+            world_index (int): The index of the world for which to set the gravity descriptor.\n
+                Defaults to the first world with index `0`.
+
+        Raises:
+            TypeError: If the provided gravity descriptor is not of type `GravityDescriptor`.
+        """
+        # Check if the world index is valid
+        self._check_world_index(world_index)
+
+        # Check if the gravity descriptor is valid
+        if not isinstance(gravity, GravityDescriptor):
+            raise TypeError(f"Invalid gravity descriptor type: {type(gravity)}. Must be `GravityDescriptor`.")
+
+        # Set the new gravity configurations
+        self._gravity[world_index] = gravity
 
     def set_default_material(self, material: MaterialDescriptor, world_index: int = 0):
         """
@@ -751,22 +843,10 @@ class ModelBuilder:
             raise TypeError(f"Invalid material type: {type(material)}. Must be `MaterialDescriptor`.")
 
         # Set the default material in the material manager
-        self.materials.default = material
+        self._materials.default = material
 
         # Reset the default material of the world
         world.set_material(material, 0)
-
-    def add_material(self, material: MaterialDescriptor, world_index: int = 0) -> int:
-        # Check if the world index is valid
-        world = self._check_world_index(world_index)
-
-        # Check if the material is valid
-        if not isinstance(material, MaterialDescriptor):
-            raise TypeError(f"Invalid material type: {type(material)}. Must be `MaterialDescriptor`.")
-
-        # Register the material in the material manager
-        world.add_material(material)
-        return self._materials[world_index].register(material)
 
     def set_material_pair(
         self,
@@ -775,6 +855,16 @@ class ModelBuilder:
         material_pair: MaterialPairProperties,
         world_index: int = 0,
     ):
+        """
+        Sets the material pair properties for two materials.
+
+        Args:
+            first (int | str | MaterialDescriptor): The first material (by index, name, or descriptor).
+            second (int | str | MaterialDescriptor): The second material (by index, name, or descriptor).
+            material_pair (MaterialPairProperties): The material pair properties to be set.
+            world_index (int): The index of the world for which to set the material pair properties.\n
+                Defaults to the first world with index `0`.
+        """
         # Check if the world index is valid
         self._check_world_index(world_index)
 
@@ -783,123 +873,116 @@ class ModelBuilder:
         second_id = second.name if isinstance(second, MaterialDescriptor) else second
 
         # Register the material pair in the material manager
-        self._materials[world_index].configure_pair(first=first_id, second=second_id, material_pair=material_pair)
+        self._materials.configure_pair(first=first_id, second=second_id, material_pair=material_pair)
 
-    def add_builder(self, other: ModelBuilder):
+    def set_base_body(self, body_name: str | None, body_index: int | None, world_index: int = 0):
         """
-        Extends the contents of the current ModelBuilder with those of another.
+        Set the base body for a specific world specified either by name or by index.
 
-        Each builder represents a distinct world, and this method allows for the
-        combination of multiple worlds into a single model. The method ensures that the
-        indices of the elements in the other builder are adjusted to account for the
-        existing elements in the current builder, preventing any index conflicts.
-
-        Arguments
-        ----
-            other (`ModelBuilder`): The other ModelBuilder instance to be added to the current one.
+        Args:
+            body_name (str | None): The name of the body to be set as the base body.
+            body_index (int | None): The index of the body to be set as the base body.
+            world_index (int): The index of the world for which to set the base body.\n
+                Defaults to the first world with index `0`.
         """
-        # Check if the other builder is of valid type
-        if not isinstance(other, ModelBuilder):
-            raise ValueError(f"Invalid builder type: {type(other)}. Must be a ModelBuilder instance.")
+        # Check if the world index is valid
+        world = self._check_world_index(world_index)
 
-        # Offset the indices of the other builders elements
-        for body in other.bodies:
-            body.wid = self._num_worlds
-        for joint in other.joints:
-            joint.wid = self._num_worlds
-            if joint.bid_B >= 0:
-                joint.bid_B += self._num_bodies
-            joint.bid_F += self._num_bodies
-        for cgeom in other.collision_geoms:
-            cgeom.wid = self._num_worlds
-            if cgeom.bid >= 0:
-                cgeom.bid += self._num_bodies
-        for pgeom in other.physical_geoms:
-            pgeom.wid = self._num_worlds
-            if pgeom.bid >= 0:
-                pgeom.bid += self._num_bodies
+        # Check that at least one of body_name or body_index is provided
+        if body_name is None and body_index is None:
+            raise ValueError("Either `body_name` (str) or `body_index` (int) must be provided to set the base body.")
 
-        # Set the element index offsets in the world descriptor of the other builder
-        other.world.bodies_idx_offset += self._num_bodies
-        other.world.joints_idx_offset += self._num_joints
-        other.world.collision_geoms_idx_offset += self._num_cgeoms
-        other.world.physical_geoms_idx_offset += self._num_pgeoms
-        other.world.body_dofs_idx_offset += self._num_bdofs
-        other.world.joint_coords_idx_offset += self._num_jcoords
-        other.world.joint_dofs_idx_offset += self._num_jdofs
-        other.world.passive_joint_coords_idx_offset += self._num_jpcoords
-        other.world.passive_joint_dofs_idx_offset += self._num_jpdofs
-        other.world.actuated_joint_coords_idx_offset += self._num_jacoords
-        other.world.actuated_joint_dofs_idx_offset += self._num_jadofs
-        other.world.joint_cts_idx_offset += self._num_jcts
-
-        # Update counters
-        self._num_bodies += len(other.bodies)
-        self._num_joints += len(other.joints)
-        self._num_cgeoms += len(other.collision_geoms)
-        self._num_pgeoms += len(other.physical_geoms)
-        self._num_bdofs += 6 * len(other.bodies)
-        self._num_jcoords += sum([j.num_coords for j in other.joints])
-        self._num_jdofs += sum([j.num_dofs for j in other.joints])
-        self._num_jpcoords += sum([j.num_coords for j in other.joints if j.act_type == JointActuationType.PASSIVE])
-        self._num_jpdofs += sum([j.num_dofs for j in other.joints if j.act_type == JointActuationType.PASSIVE])
-        self._num_jacoords += sum([j.num_coords for j in other.joints if j.act_type > JointActuationType.PASSIVE])
-        self._num_jadofs += sum([j.num_dofs for j in other.joints if j.act_type > JointActuationType.PASSIVE])
-        self._num_jcts += sum([j.num_cts for j in other.joints])
-
-        # Append the new model info
-        self._worlds.append(other.world)
-
-        # Append the new gravity descriptor
-        self._gravity.append(other.gravity)
-
-        # Append the new material manager
-        self._materials.append(other.materials)
-
-        # Append the new model elements
-        self._bodies.extend(other.bodies)
-        self._joints.extend(other.joints)
-        self._cgeoms.extend(other.collision_geoms)
-        self._pgeoms.extend(other.physical_geoms)
-
-        # Increment the number of worlds
-        self._num_worlds += 1
-
-    def required_contact_capacity(self):
-        # First check if there are any collision geometries
-        has_cgeoms = False
-        for world in self._worlds:
-            if world.num_collision_geoms > 0:
-                has_cgeoms = True
+        # Retrieve the body descriptor of the base body
+        base_body_descriptor = None
+        for body in self.bodies:
+            if body.wid == world_index and (body.bid == body_index or body.name == body_name):
+                base_body_descriptor = body
                 break
+        if base_body_descriptor is None:
+            raise ValueError(f"Failed to identify the base body in world `{world_index}`.")
 
-        # If there are no collision geometries indicate this `-1`s
-        if not has_cgeoms:
-            # return -1, [-1] * self.num_worlds
-            return 0, [0] * self.num_worlds
+        # Set the base body in the world descriptor
+        world.set_base_body(base_body_descriptor)
 
-        # Else proceed to calculate the maximum number of contacts
-        model_max_contacts = 0
-        world_max_contacts = []
+    def set_base_joint(self, joint_name: str | None, joint_index: int | None, world_index: int = 0):
+        """
+        Set the base joint for a specific world specified either by name or by index.
 
-        # Calculate the maximum number of contacts for the model and each world
-        for w in range(len(self._worlds)):
-            world_max_contacts.append(0)
-            for cgeom_maxnc in self._worlds[w].collision_geometry_max_contacts:
-                model_max_contacts += cgeom_maxnc
-                world_max_contacts[w] += cgeom_maxnc
+        Args:
+            joint_name (str | None): The name of the joint to be set as the base joint.
+            joint_index (int | None): The index of the joint to be set as the base joint.
+            world_index (int): The index of the world for which to set the base joint.\n
+                Defaults to the first world with index `0`.
+        """
+        # Check if the world index is valid
+        world = self._check_world_index(world_index)
 
-        # Handle the case where there is only one model descriptor but multiple worlds are set
-        if len(self._worlds) == 1 and self.num_worlds > 1:
-            world_max_contacts = [model_max_contacts] * self.num_worlds
-            model_max_contacts *= self.num_worlds
+        # Check that at least one of joint_name or joint_index is provided
+        if joint_name is None and joint_index is None:
+            raise ValueError("Either `joint_name` (str) or `joint_index` (int) must be provided to set the base joint.")
 
-        # Return the total number of contacts and the per-world max contacts
-        return model_max_contacts, world_max_contacts
+        # Retrieve the joint descriptor of the base joint
+        base_joint_descriptor = None
+        for joint in self.joints:
+            if joint.wid == world_index and (joint.jid == joint_index or joint.name == joint_name):
+                base_joint_descriptor = joint
+                break
+        if base_joint_descriptor is None:
+            raise ValueError(f"Failed to identify the base joint in world `{world_index}`.")
+
+        # Set the base joint in the world descriptor
+        world.set_base_joint(base_joint_descriptor)
+
+    ###
+    # Model Compilation
+    ###
 
     def finalize(self, device: Devicelike = None, requires_grad: bool = False) -> Model:
+        """
+        Constructs a Model object from the current ModelBuilder.
+
+        All description data contained in the builder is compiled into a Model
+        object, allocating the necessary data structures on the target device.
+
+        Args:
+            device (Devicelike): The target device for the model data.\n
+                If None, the default/preferred device will determined by Warp.
+            requires_grad (bool): Whether the model data should support gradients.\n
+                Defaults to False.
+
+        Returns:
+            Model: The constructed Model object containing the time-invariant simulation data.
+        """
         # Number of model worlds
         num_worlds = len(self._worlds)
+        if num_worlds == 0:
+            raise ValueError("ModelBuilder: Cannot finalize an empty model with zero worlds.")
+        if num_worlds != self._num_worlds:
+            raise ValueError(
+                f"ModelBuilder: Inconsistent number of worlds: expected {self._num_worlds}, but found {num_worlds}."
+            )
+
+        ###
+        # Pre-processing
+        ###
+
+        # First compute per-world offsets before proceeding
+        # NOTE: Computing world offsets only during the finalization step allows
+        # users to add entities in any manner. For example, users can import a model
+        # via USD, and then ad-hoc modify the model by adding bodies, joints, geoms, etc.
+        self._compute_world_offsets()
+
+        # Check that each world has a base body and joint set, and if not:
+        # - set the base body as the first body
+        # - set the base joint only if the base body has a unary joint connecting it to the world
+        for w, world in enumerate(self._worlds):
+            if not world.has_base_body:
+                world.set_base_body(self._bodies[world.bodies_idx_offset])
+            if not world.has_base_joint:
+                for joint in self._joints[world.joints_idx_offset : world.joints_idx_offset + world.num_joints]:
+                    if joint.wid == w and joint.is_unary and joint.is_connected_to_body(world.base_body_idx):
+                        world.set_base_joint(joint)
+                        break
 
         ###
         # Model data collection
@@ -930,6 +1013,8 @@ class ModelBuilder:
         info_jaqio = []
         info_jadio = []
         info_jcio = []
+        info_base_bid = []
+        info_base_jid = []
         info_mass_min = []
         info_mass_max = []
         info_mass_total = []
@@ -1040,6 +1125,8 @@ class ModelBuilder:
                 info_jaqio.append(world.actuated_joint_coords_idx_offset)
                 info_jadio.append(world.actuated_joint_dofs_idx_offset)
                 info_jcio.append(world.joint_cts_idx_offset)
+                info_base_bid.append((world.base_body_idx + world.bodies_idx_offset) if world.has_base_body else -1)
+                info_base_jid.append((world.base_joint_idx + world.joints_idx_offset) if world.has_base_joint else -1)
 
         # A helper function to collect model gravity data
         def collect_gravity_model_data():
@@ -1062,22 +1149,11 @@ class ModelBuilder:
         # A helper function to collect model joints data
         def collect_joint_model_data():
             for joint in self._joints:
+                world_bio = self._worlds[joint.wid].bodies_idx_offset
                 joints_wid.append(joint.wid)
                 joints_jid.append(joint.jid)
                 joints_dofid.append(joint.dof_type.value)
                 joints_actid.append(joint.act_type.value)
-                joints_c_j.append(joint.num_coords)
-                joints_d_j.append(joint.num_dofs)
-                joints_m_j.append(joint.num_cts)
-                joints_qio.append(joint.coords_offset)
-                joints_dio.append(joint.dofs_offset)
-                joints_pqio.append(joint.passive_coords_offset)
-                joints_pdio.append(joint.passive_dofs_offset)
-                joints_aqio.append(joint.actuated_coords_offset)
-                joints_adio.append(joint.actuated_dofs_offset)
-                joints_cio.append(joint.cts_offset)
-                joints_bid_B.append(joint.bid_B)
-                joints_bid_F.append(joint.bid_F)
                 joints_B_r_Bj.append(joint.B_r_Bj)
                 joints_F_r_Fj.append(joint.F_r_Fj)
                 joints_X_j.append(joint.X_j)
@@ -1085,6 +1161,18 @@ class ModelBuilder:
                 joints_q_j_max.extend(joint.q_j_max)
                 joints_qd_j_max.extend(joint.dq_j_max)
                 joints_tau_j_max.extend(joint.tau_j_max)
+                joints_c_j.append(joint.num_coords)
+                joints_d_j.append(joint.num_dofs)
+                joints_m_j.append(joint.num_cts)
+                joints_qio.append(joint.coords_offset)
+                joints_dio.append(joint.dofs_offset)
+                joints_cio.append(joint.cts_offset)
+                joints_pqio.append(joint.passive_coords_offset)
+                joints_pdio.append(joint.passive_dofs_offset)
+                joints_aqio.append(joint.actuated_coords_offset)
+                joints_adio.append(joint.actuated_dofs_offset)
+                joints_bid_B.append(joint.bid_B + world_bio if joint.bid_B >= 0 else -1)
+                joints_bid_F.append(joint.bid_F + world_bio if joint.bid_F >= 0 else -1)
 
         # A helper function to create geometry pointers
         # NOTE: This also finalizes the mesh/SDF/HField data on the device
@@ -1107,9 +1195,9 @@ class ModelBuilder:
             cgeom_meshes = {}
             for geom in self._cgeoms:
                 cgeoms_wid.append(geom.wid)
-                cgeoms_gid.append(geom.gid)
                 cgeoms_lid.append(geom.lid)
-                cgeoms_bid.append(geom.bid)
+                cgeoms_gid.append(geom.gid)
+                cgeoms_bid.append(geom.bid + self._worlds[geom.wid].bodies_idx_offset if geom.bid >= 0 else -1)
                 cgeoms_sid.append(geom.shape.type.value)
                 cgeoms_params.append(geom.shape.paramsvec)
                 cgeoms_offset.append(geom.offset)
@@ -1123,9 +1211,9 @@ class ModelBuilder:
             pgeom_meshes = {}
             for geom in self._pgeoms:
                 pgeoms_wid.append(geom.wid)
-                pgeoms_gid.append(geom.gid)
                 pgeoms_lid.append(geom.lid)
-                pgeoms_bid.append(geom.bid)
+                pgeoms_gid.append(geom.gid)
+                pgeoms_bid.append(geom.bid + self._worlds[geom.wid].bodies_idx_offset if geom.bid >= 0 else -1)
                 pgeoms_sid.append(geom.shape.type.value)
                 pgeoms_params.append(geom.shape.paramsvec)
                 pgeoms_offset.append(geom.offset)
@@ -1133,10 +1221,9 @@ class ModelBuilder:
 
         # A helper function to collect model material-pairs data
         def collect_material_pairs_model_data():
-            for mm in self._materials:
-                mpairs_rest.append(mm.restitution_matrix())
-                mpairs_static_fric.append(mm.static_friction_matrix())
-                mpairs_dynamic_fric.append(mm.dynamic_friction_matrix())
+            mpairs_rest.append(self._materials.restitution_matrix())
+            mpairs_static_fric.append(self._materials.static_friction_matrix())
+            mpairs_dynamic_fric.append(self._materials.dynamic_friction_matrix())
 
         # Collect model data
         collect_model_info_data()
@@ -1162,7 +1249,9 @@ class ModelBuilder:
         # NOTE This caches the info of each model on the host side
         model.worlds = self._worlds
 
+        ###
         # Set the host-side model size
+        ###
 
         # Compute the sum/max of model entities
         model.size.num_worlds = num_worlds
@@ -1178,8 +1267,8 @@ class ModelBuilder:
         model.size.max_of_num_collision_geoms = max([world.num_collision_geoms for world in self._worlds])
         model.size.sum_of_num_physical_geoms = self._num_pgeoms
         model.size.max_of_num_physical_geoms = max([world.num_physical_geoms for world in self._worlds])
-        model.size.sum_of_num_material_pairs = sum([world.num_material_pairs for world in self._worlds])
-        model.size.max_of_num_material_pairs = max([world.num_material_pairs for world in self._worlds])
+        model.size.sum_of_num_material_pairs = self._materials.num_material_pairs
+        model.size.max_of_num_material_pairs = self._materials.num_material_pairs
 
         # Compute the sum/max of model DoFs and constraints
         model.size.sum_of_num_body_dofs = self._num_bdofs
@@ -1211,125 +1300,274 @@ class ModelBuilder:
         model.size.sum_of_max_total_cts = model.size.sum_of_num_joint_cts
         model.size.max_of_max_total_cts = model.size.max_of_num_joint_cts
 
-        # Construct model info data
-        model.info = ModelInfo()
+        ###
+        # On-device data allocation
+        ###
 
         # Allocate the model data on the target device
         with wp.ScopedDevice(device):
             # Create the immutable model info arrays from the collected data
-            model.info.num_worlds = num_worlds
-            model.info.num_bodies = wp.array(info_nb, dtype=int32)
-            model.info.num_joints = wp.array(info_nj, dtype=int32)
-            model.info.num_passive_joints = wp.array(info_njp, dtype=int32)
-            model.info.num_actuated_joints = wp.array(info_nja, dtype=int32)
-            model.info.num_collision_geoms = wp.array(info_ncg, dtype=int32)
-            model.info.num_physical_geoms = wp.array(info_npg, dtype=int32)
-            model.info.num_body_dofs = wp.array(info_nbd, dtype=int32)
-            model.info.num_joint_coords = wp.array(info_njq, dtype=int32)
-            model.info.num_joint_dofs = wp.array(info_njd, dtype=int32)
-            model.info.num_passive_joint_coords = wp.array(info_njpq, dtype=int32)
-            model.info.num_passive_joint_dofs = wp.array(info_njpd, dtype=int32)
-            model.info.num_actuated_joint_coords = wp.array(info_njaq, dtype=int32)
-            model.info.num_actuated_joint_dofs = wp.array(info_njad, dtype=int32)
-            model.info.num_joint_cts = wp.array(info_njc, dtype=int32)
-            model.info.bodies_offset = wp.array(info_bio, dtype=int32)
-            model.info.joints_offset = wp.array(info_jio, dtype=int32)
-            model.info.body_dofs_offset = wp.array(info_bdio, dtype=int32)
-            model.info.joint_coords_offset = wp.array(info_jqio, dtype=int32)
-            model.info.joint_dofs_offset = wp.array(info_jdio, dtype=int32)
-            model.info.joint_passive_coords_offset = wp.array(info_jpqio, dtype=int32)
-            model.info.joint_passive_dofs_offset = wp.array(info_jpdio, dtype=int32)
-            model.info.joint_actuated_coords_offset = wp.array(info_jaqio, dtype=int32)
-            model.info.joint_actuated_dofs_offset = wp.array(info_jadio, dtype=int32)
-            model.info.joint_cts_offset = wp.array(info_jcio, dtype=int32)
-            model.info.mass_min = wp.array(info_mass_min, dtype=float32)
-            model.info.mass_max = wp.array(info_mass_max, dtype=float32)
-            model.info.mass_total = wp.array(info_mass_total, dtype=float32)
-            model.info.inertia_total = wp.array(info_inertia_total, dtype=float32)
-            # TODO: Should we also pre-allocate the model info for max limits, contacts and total here?
+            model.info = ModelInfo(
+                num_worlds=num_worlds,
+                num_bodies=wp.array(info_nb, dtype=int32),
+                num_joints=wp.array(info_nj, dtype=int32),
+                num_passive_joints=wp.array(info_njp, dtype=int32),
+                num_actuated_joints=wp.array(info_nja, dtype=int32),
+                num_collision_geoms=wp.array(info_ncg, dtype=int32),
+                num_physical_geoms=wp.array(info_npg, dtype=int32),
+                num_body_dofs=wp.array(info_nbd, dtype=int32),
+                num_joint_coords=wp.array(info_njq, dtype=int32),
+                num_joint_dofs=wp.array(info_njd, dtype=int32),
+                num_passive_joint_coords=wp.array(info_njpq, dtype=int32),
+                num_passive_joint_dofs=wp.array(info_njpd, dtype=int32),
+                num_actuated_joint_coords=wp.array(info_njaq, dtype=int32),
+                num_actuated_joint_dofs=wp.array(info_njad, dtype=int32),
+                num_joint_cts=wp.array(info_njc, dtype=int32),
+                bodies_offset=wp.array(info_bio, dtype=int32),
+                joints_offset=wp.array(info_jio, dtype=int32),
+                body_dofs_offset=wp.array(info_bdio, dtype=int32),
+                joint_coords_offset=wp.array(info_jqio, dtype=int32),
+                joint_dofs_offset=wp.array(info_jdio, dtype=int32),
+                joint_passive_coords_offset=wp.array(info_jpqio, dtype=int32),
+                joint_passive_dofs_offset=wp.array(info_jpdio, dtype=int32),
+                joint_actuated_coords_offset=wp.array(info_jaqio, dtype=int32),
+                joint_actuated_dofs_offset=wp.array(info_jadio, dtype=int32),
+                joint_cts_offset=wp.array(info_jcio, dtype=int32),
+                base_body_index=wp.array(info_base_bid, dtype=int32),
+                base_joint_index=wp.array(info_base_jid, dtype=int32),
+                mass_min=wp.array(info_mass_min, dtype=float32),
+                mass_max=wp.array(info_mass_max, dtype=float32),
+                mass_total=wp.array(info_mass_total, dtype=float32),
+                inertia_total=wp.array(info_inertia_total, dtype=float32),
+            )
 
             # Create the model time data
-            model.time = TimeModel()
-            model.time.dt = wp.zeros(num_worlds, dtype=float32)
-            model.time.inv_dt = wp.zeros(num_worlds, dtype=float32)
+            model.time = TimeModel(dt=wp.zeros(num_worlds, dtype=float32), inv_dt=wp.zeros(num_worlds, dtype=float32))
 
             # Construct model gravity data
-            model.gravity = GravityModel()
-            model.gravity.g_dir_acc = wp.array(gravity_g_dir_acc, dtype=vec4f)
-            model.gravity.vector = wp.array(gravity_vector, dtype=vec4f, requires_grad=requires_grad)
+            model.gravity = GravityModel(
+                g_dir_acc=wp.array(gravity_g_dir_acc, dtype=vec4f),
+                vector=wp.array(gravity_vector, dtype=vec4f, requires_grad=requires_grad),
+            )
 
             # Create the bodies model
-            model.bodies = RigidBodiesModel()
-            model.bodies.num_bodies = model.size.sum_of_num_bodies
-            model.bodies.wid = wp.array(bodies_wid, dtype=int32)
-            model.bodies.bid = wp.array(bodies_bid, dtype=int32)
-            model.bodies.m_i = wp.array(bodies_m_i, dtype=float32, requires_grad=requires_grad)
-            model.bodies.inv_m_i = wp.array(bodies_inv_m_i, dtype=float32, requires_grad=requires_grad)
-            model.bodies.i_I_i = wp.array(bodies_i_I_i, dtype=mat33f, requires_grad=requires_grad)
-            model.bodies.inv_i_I_i = wp.array(bodies_inv_i_I_i, dtype=mat33f, requires_grad=requires_grad)
-            model.bodies.q_i_0 = wp.array(bodies_q_i_0, dtype=transformf, requires_grad=requires_grad)
-            model.bodies.u_i_0 = wp.array(bodies_u_i_0, dtype=vec6f, requires_grad=requires_grad)
+            model.bodies = RigidBodiesModel(
+                num_bodies=model.size.sum_of_num_bodies,
+                wid=wp.array(bodies_wid, dtype=int32),
+                bid=wp.array(bodies_bid, dtype=int32),
+                m_i=wp.array(bodies_m_i, dtype=float32, requires_grad=requires_grad),
+                inv_m_i=wp.array(bodies_inv_m_i, dtype=float32, requires_grad=requires_grad),
+                i_I_i=wp.array(bodies_i_I_i, dtype=mat33f, requires_grad=requires_grad),
+                inv_i_I_i=wp.array(bodies_inv_i_I_i, dtype=mat33f, requires_grad=requires_grad),
+                q_i_0=wp.array(bodies_q_i_0, dtype=transformf, requires_grad=requires_grad),
+                u_i_0=wp.array(bodies_u_i_0, dtype=vec6f, requires_grad=requires_grad),
+            )
 
             # Create the joints model
-            model.joints = JointsModel()
-            model.joints.num_joints = model.size.sum_of_num_joints
-            model.joints.wid = wp.array(joints_wid, dtype=int32)
-            model.joints.jid = wp.array(joints_jid, dtype=int32)
-            model.joints.dof_type = wp.array(joints_dofid, dtype=int32)
-            model.joints.act_type = wp.array(joints_actid, dtype=int32)
-            model.joints.num_coords = wp.array(joints_c_j, dtype=int32)
-            model.joints.num_dofs = wp.array(joints_d_j, dtype=int32)
-            model.joints.num_cts = wp.array(joints_m_j, dtype=int32)
-            model.joints.coords_offset = wp.array(joints_qio, dtype=int32)
-            model.joints.dofs_offset = wp.array(joints_dio, dtype=int32)
-            model.joints.passive_coords_offset = wp.array(joints_pqio, dtype=int32)
-            model.joints.passive_dofs_offset = wp.array(joints_pdio, dtype=int32)
-            model.joints.actuated_coords_offset = wp.array(joints_aqio, dtype=int32)
-            model.joints.actuated_dofs_offset = wp.array(joints_adio, dtype=int32)
-            model.joints.cts_offset = wp.array(joints_cio, dtype=int32)
-            model.joints.bid_B = wp.array(joints_bid_B, dtype=int32)
-            model.joints.bid_F = wp.array(joints_bid_F, dtype=int32)
-            model.joints.B_r_Bj = wp.array(joints_B_r_Bj, dtype=vec3f, requires_grad=requires_grad)
-            model.joints.F_r_Fj = wp.array(joints_F_r_Fj, dtype=vec3f, requires_grad=requires_grad)
-            model.joints.X_j = wp.array(joints_X_j, dtype=mat33f, requires_grad=requires_grad)
-            model.joints.q_j_min = wp.array(joints_q_j_min, dtype=float32, requires_grad=requires_grad)
-            model.joints.q_j_max = wp.array(joints_q_j_max, dtype=float32, requires_grad=requires_grad)
-            model.joints.dq_j_max = wp.array(joints_qd_j_max, dtype=float32, requires_grad=requires_grad)
-            model.joints.tau_j_max = wp.array(joints_tau_j_max, dtype=float32, requires_grad=requires_grad)
+            model.joints = JointsModel(
+                num_joints=model.size.sum_of_num_joints,
+                wid=wp.array(joints_wid, dtype=int32),
+                jid=wp.array(joints_jid, dtype=int32),
+                dof_type=wp.array(joints_dofid, dtype=int32),
+                act_type=wp.array(joints_actid, dtype=int32),
+                num_coords=wp.array(joints_c_j, dtype=int32),
+                num_dofs=wp.array(joints_d_j, dtype=int32),
+                num_cts=wp.array(joints_m_j, dtype=int32),
+                coords_offset=wp.array(joints_qio, dtype=int32),
+                dofs_offset=wp.array(joints_dio, dtype=int32),
+                passive_coords_offset=wp.array(joints_pqio, dtype=int32),
+                passive_dofs_offset=wp.array(joints_pdio, dtype=int32),
+                actuated_coords_offset=wp.array(joints_aqio, dtype=int32),
+                actuated_dofs_offset=wp.array(joints_adio, dtype=int32),
+                cts_offset=wp.array(joints_cio, dtype=int32),
+                bid_B=wp.array(joints_bid_B, dtype=int32),
+                bid_F=wp.array(joints_bid_F, dtype=int32),
+                B_r_Bj=wp.array(joints_B_r_Bj, dtype=vec3f, requires_grad=requires_grad),
+                F_r_Fj=wp.array(joints_F_r_Fj, dtype=vec3f, requires_grad=requires_grad),
+                X_j=wp.array(joints_X_j, dtype=mat33f, requires_grad=requires_grad),
+                q_j_min=wp.array(joints_q_j_min, dtype=float32, requires_grad=requires_grad),
+                q_j_max=wp.array(joints_q_j_max, dtype=float32, requires_grad=requires_grad),
+                dq_j_max=wp.array(joints_qd_j_max, dtype=float32, requires_grad=requires_grad),
+                tau_j_max=wp.array(joints_tau_j_max, dtype=float32, requires_grad=requires_grad),
+            )
 
             # Create the collision geometries model
-            model.cgeoms = CollisionGeometriesModel()
-            model.cgeoms.num_geoms = model.size.sum_of_num_collision_geoms
-            model.cgeoms.wid = wp.array(cgeoms_wid, dtype=int32)
-            model.cgeoms.gid = wp.array(cgeoms_gid, dtype=int32)
-            model.cgeoms.lid = wp.array(cgeoms_lid, dtype=int32)
-            model.cgeoms.bid = wp.array(cgeoms_bid, dtype=int32)
-            model.cgeoms.sid = wp.array(cgeoms_sid, dtype=int32)
-            model.cgeoms.ptr = wp.array(cgeoms_ptr, dtype=wp.uint64)
-            model.cgeoms.params = wp.array(cgeoms_params, dtype=vec4f, requires_grad=requires_grad)
-            model.cgeoms.offset = wp.array(cgeoms_offset, dtype=transformf, requires_grad=requires_grad)
-            model.cgeoms.mid = wp.array(cgeoms_mid, dtype=int32)
-            model.cgeoms.group = wp.array(cgeoms_group, dtype=uint32)
-            model.cgeoms.collides = wp.array(cgeoms_collides, dtype=uint32)
+            model.cgeoms = CollisionGeometriesModel(
+                num_geoms=model.size.sum_of_num_collision_geoms,
+                wid=wp.array(cgeoms_wid, dtype=int32),
+                gid=wp.array(cgeoms_gid, dtype=int32),
+                lid=wp.array(cgeoms_lid, dtype=int32),
+                bid=wp.array(cgeoms_bid, dtype=int32),
+                sid=wp.array(cgeoms_sid, dtype=int32),
+                ptr=wp.array(cgeoms_ptr, dtype=wp.uint64),
+                params=wp.array(cgeoms_params, dtype=vec4f, requires_grad=requires_grad),
+                offset=wp.array(cgeoms_offset, dtype=transformf, requires_grad=requires_grad),
+                mid=wp.array(cgeoms_mid, dtype=int32),
+                group=wp.array(cgeoms_group, dtype=uint32),
+                collides=wp.array(cgeoms_collides, dtype=uint32),
+            )
 
             # Create the physical geometries model
-            model.pgeoms = GeometriesModel()
-            model.pgeoms.num_geoms = model.size.sum_of_num_physical_geoms
-            model.pgeoms.wid = wp.array(pgeoms_wid, dtype=int32)
-            model.pgeoms.gid = wp.array(pgeoms_gid, dtype=int32)
-            model.pgeoms.lid = wp.array(pgeoms_lid, dtype=int32)
-            model.pgeoms.bid = wp.array(pgeoms_bid, dtype=int32)
-            model.pgeoms.sid = wp.array(pgeoms_sid, dtype=int32)
-            model.pgeoms.ptr = wp.array(pgeoms_ptr, dtype=wp.uint64)
-            model.pgeoms.params = wp.array(pgeoms_params, dtype=vec4f, requires_grad=requires_grad)
-            model.pgeoms.offset = wp.array(pgeoms_offset, dtype=transformf, requires_grad=requires_grad)
+            model.pgeoms = GeometriesModel(
+                num_geoms=model.size.sum_of_num_physical_geoms,
+                wid=wp.array(pgeoms_wid, dtype=int32),
+                gid=wp.array(pgeoms_gid, dtype=int32),
+                lid=wp.array(pgeoms_lid, dtype=int32),
+                bid=wp.array(pgeoms_bid, dtype=int32),
+                sid=wp.array(pgeoms_sid, dtype=int32),
+                ptr=wp.array(pgeoms_ptr, dtype=wp.uint64),
+                params=wp.array(pgeoms_params, dtype=vec4f, requires_grad=requires_grad),
+                offset=wp.array(pgeoms_offset, dtype=transformf, requires_grad=requires_grad),
+            )
 
             # Create the material pairs model
-            model.mpairs = MaterialPairsModel()
-            model.mpairs.num_pairs = model.size.sum_of_num_material_pairs
-            model.mpairs.restitution = wp.array(mpairs_rest, dtype=float32)
-            model.mpairs.static_friction = wp.array(mpairs_static_fric, dtype=float32)
-            model.mpairs.dynamic_friction = wp.array(mpairs_dynamic_fric, dtype=float32)
+            model.mpairs = MaterialPairsModel(
+                num_pairs=model.size.sum_of_num_material_pairs,
+                restitution=wp.array(mpairs_rest, dtype=float32),
+                static_friction=wp.array(mpairs_static_fric, dtype=float32),
+                dynamic_friction=wp.array(mpairs_dynamic_fric, dtype=float32),
+            )
 
         # Return the constructed model data container
         return model
+
+    ###
+    # Internal Functions
+    ###
+
+    def _check_world_index(self, world_index: int) -> WorldDescriptor:
+        """
+        Checks if the provided world index is valid.
+
+        Args:
+            world_index (int): The index of the world to be checked.
+
+        Raises:
+            ValueError: If the world index is out of range.
+        """
+        if self._num_worlds == 0:
+            raise ValueError(
+                "Model does not contain any worlds. "
+                "Please add at least one using `add_world()` before adding model entities."
+            )
+        if world_index < 0 or world_index >= self._num_worlds:
+            raise ValueError(f"Invalid world index (wid): {world_index}. Must be between 0 and {self._num_worlds - 1}.")
+        return self._worlds[world_index]
+
+    def _compute_world_offsets(self):
+        """
+        Computes and sets the model offsets for each world in the model.
+        """
+        # Initialize the model offsets
+        bodies_idx_offset: int = 0
+        joints_idx_offset: int = 0
+        collision_geoms_idx_offset: int = 0
+        physical_geoms_idx_offset: int = 0
+        body_dofs_idx_offset: int = 0
+        joint_coords_idx_offset: int = 0
+        joint_dofs_idx_offset: int = 0
+        passive_joint_coords_idx_offset: int = 0
+        passive_joint_dofs_idx_offset: int = 0
+        actuated_joint_coords_idx_offset: int = 0
+        actuated_joint_dofs_idx_offset: int = 0
+        joint_cts_idx_offset: int = 0
+        # Iterate over each world and set their model offsets
+        for world in self._worlds:
+            # Set the offsets in the world descriptor to the current values
+            world.bodies_idx_offset = bodies_idx_offset
+            world.joints_idx_offset = joints_idx_offset
+            world.collision_geoms_idx_offset = collision_geoms_idx_offset
+            world.physical_geoms_idx_offset = physical_geoms_idx_offset
+            world.body_dofs_idx_offset = body_dofs_idx_offset
+            world.joint_coords_idx_offset = joint_coords_idx_offset
+            world.joint_dofs_idx_offset = joint_dofs_idx_offset
+            world.passive_joint_coords_idx_offset = passive_joint_coords_idx_offset
+            world.passive_joint_dofs_idx_offset = passive_joint_dofs_idx_offset
+            world.actuated_joint_coords_idx_offset = actuated_joint_coords_idx_offset
+            world.actuated_joint_dofs_idx_offset = actuated_joint_dofs_idx_offset
+            world.joint_cts_idx_offset = joint_cts_idx_offset
+            # Update the offsets for the next world
+            bodies_idx_offset += world.num_bodies
+            joints_idx_offset += world.num_joints
+            collision_geoms_idx_offset += world.num_collision_geoms
+            physical_geoms_idx_offset += world.num_physical_geoms
+            body_dofs_idx_offset += 6 * world.num_bodies
+            joint_coords_idx_offset += world.num_joint_coords
+            joint_dofs_idx_offset += world.num_joint_dofs
+            passive_joint_coords_idx_offset += world.num_passive_joint_coords
+            passive_joint_dofs_idx_offset += world.num_passive_joint_dofs
+            actuated_joint_coords_idx_offset += world.num_actuated_joint_coords
+            actuated_joint_dofs_idx_offset += world.num_actuated_joint_dofs
+            joint_cts_idx_offset += world.num_joint_cts
+
+    def _compute_required_contact_capacity(self) -> tuple[int, list[int]]:
+        # First check if there are any collision geometries
+        has_cgeoms = False
+        for world in self._worlds:
+            if world.num_collision_geoms > 0:
+                has_cgeoms = True
+                break
+
+        # If there are no collision geometries indicate this `-1`s
+        if not has_cgeoms:
+            # return -1, [-1] * self.num_worlds
+            return 0, [0] * self.num_worlds
+
+        # Else proceed to calculate the maximum number of contacts
+        model_max_contacts = 0
+        world_max_contacts = []
+
+        # Calculate the maximum number of contacts for the model and each world
+        for w in range(len(self._worlds)):
+            world_max_contacts.append(0)
+            for cgeom_maxnc in self._worlds[w].collision_geometry_max_contacts:
+                model_max_contacts += cgeom_maxnc
+                world_max_contacts[w] += cgeom_maxnc
+
+        # Handle the case where there is only one model descriptor but multiple worlds are set
+        if len(self._worlds) == 1 and self.num_worlds > 1:
+            world_max_contacts = [model_max_contacts] * self.num_worlds
+            model_max_contacts *= self.num_worlds
+
+        # Return the total number of contacts and the per-world max contacts
+        return model_max_contacts, world_max_contacts
+
+    @staticmethod
+    def _check_body_inertia(m_i: float, i_I_i: mat33f):
+        """
+        Checks if the body inertia is valid.
+
+        Args:
+            i_I_i (mat33f): The inertia matrix to be checked.
+
+        Raises:
+            ValueError: If the inertia matrix is not symmetric of positive definite.
+        """
+        # Convert to numpy array for easier checks
+        i_I_i_np = np.ndarray(buffer=i_I_i, shape=(3, 3), dtype=np.float32)
+
+        # Perform checks on the inertial properties
+        if m_i <= 0.0:
+            raise ValueError(f"Invalid body mass: {m_i}. Must be greater than 0.0")
+        if not np.allclose(i_I_i_np, i_I_i_np.T, atol=float(FLOAT32_EPS)):
+            raise ValueError(f"Invalid body inertia matrix:\n{i_I_i}\nMust be symmetric.")
+        if not np.all(np.linalg.eigvals(i_I_i_np) > 0.0):
+            raise ValueError(f"Invalid body inertia matrix:\n{i_I_i}\nMust be positive definite.")
+
+    @staticmethod
+    def _check_body_pose(q_i: transformf):
+        """
+        Checks if the body pose is valid.
+
+        Args:
+            q_i_0 (transformf): The pose of the body to be checked.
+
+        Raises:
+            ValueError: If the body pose is not a valid transformation.
+        """
+        if not isinstance(q_i, transformf):
+            raise TypeError(f"Invalid body pose type: {type(q_i)}. Must be `transformf`.")
+
+        # Extract the orientation quaternion
+        if not np.isclose(wp.length(q_i.q), 1.0, atol=float(FLOAT32_EPS)):
+            raise ValueError(f"Invalid body pose orientation quaternion: {q_i.q}. Must be a unit quaternion.")

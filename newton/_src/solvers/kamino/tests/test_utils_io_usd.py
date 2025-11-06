@@ -36,6 +36,7 @@ from newton._src.solvers.kamino.models.builders import (
     build_boxes_fourbar,
     build_boxes_hinged,
     build_boxes_nunchaku,
+    build_cartpole,
 )
 
 # Test utilities
@@ -58,11 +59,20 @@ class TestUSDImporter(unittest.TestCase):
 
         # Set the paths to the assets provided by the kamino package
         self.TEST_USD_ASSETS_PATH = get_tests_usd_assets_path()
-        self.PRIMITIVE_USD_ASSETS_PATH = get_basics_usd_assets_path()
+        self.BASICS_USD_ASSETS_PATH = get_basics_usd_assets_path()
         self.EXAMPLES_USD_ASSETS_PATH = get_examples_usd_assets_path()
+
+        # Set debug-level logging to print verbose test output to console
+        if self.verbose:
+            print("\n")  # Add newline before test output for better readability
+            msg.set_log_level(msg.LogLevel.DEBUG)
+        else:
+            msg.set_log_level(msg.LogLevel.WARNING)
 
     def tearDown(self):
         self.default_device = None
+        if self.verbose:
+            msg.reset_log_level()
 
     ###
     # Joints supported natively by USD
@@ -608,105 +618,101 @@ class TestUSDImporter(unittest.TestCase):
         self.assertEqual(builder_usd.collision_geoms[0].max_contacts, 10)
 
     ###
-    # Primitive models
+    # Basic models
     ###
 
-    def test_import_demo_box_on_plane(self):
-        """Test importing the primitive box_on_plane model from a USD file"""
+    def test_import_basic_box_on_plane(self):
+        """Test importing the basic box_on_plane model from a USD file"""
 
         # Construct a builder from imported USD asset
-        usd_asset_filename = os.path.join(self.PRIMITIVE_USD_ASSETS_PATH, "box_on_plane.usda")
+        usd_asset_filename = os.path.join(self.BASICS_USD_ASSETS_PATH, "box_on_plane.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(
             source=usd_asset_filename, load_static_geometry=False, load_materials=False
         )
 
-        # Construct a reference builder using the primitive generators
-        builder_ref = ModelBuilder()
-        build_box_on_plane(builder=builder_ref, ground=False)
-        # msg.debug(f"builder_ref: Rigid Bodies:\n{builder_ref.bodies}\n")
-        # msg.debug(f"builder_ref: Joints:\n{builder_ref.joints}\n")
-        # msg.debug(f"builder_ref: Physical Geoms:\n{builder_ref.physical_geoms}\n")
-        # msg.debug(f"builder_ref: Collision Geoms:\n{builder_ref.collision_geoms}\n")
-        # msg.debug(f"builder_ref: Materials:\n{builder_ref.materials.materials}\n")
+        # Construct a reference builder using the basics generators
+        builder_ref = build_box_on_plane(ground=False)
 
         # Check the loaded contents against the reference builder
         assert_builders_equal(self, builder_usd, builder_ref)
 
-    def test_import_demo_box_pendulum(self):
-        """Test importing the primitive box_pendulum model from a USD file"""
+    def test_import_basic_box_pendulum(self):
+        """Test importing the basic box_pendulum model from a USD file"""
 
         # Construct a builder from imported USD asset
-        usd_asset_filename = os.path.join(self.PRIMITIVE_USD_ASSETS_PATH, "box_pendulum.usda")
+        usd_asset_filename = os.path.join(self.BASICS_USD_ASSETS_PATH, "box_pendulum.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(
             source=usd_asset_filename, load_static_geometry=False, load_materials=False
         )
 
-        # Construct a reference builder using the primitive generators
-        builder_ref = ModelBuilder()
-        build_box_pendulum(builder=builder_ref, ground=False)
-        # msg.debug(f"builder_ref: Rigid Bodies:\n{builder_ref.bodies}\n")
-        # msg.debug(f"builder_ref: Joints:\n{builder_ref.joints}\n")
-        # msg.debug(f"builder_ref: Physical Geoms:\n{builder_ref.physical_geoms}\n")
-        # msg.debug(f"builder_ref: Collision Geoms:\n{builder_ref.collision_geoms}\n")
-        # msg.debug(f"builder_ref: Materials:\n{builder_ref.materials.materials}\n")
+        # Construct a reference builder using the basics generators
+        builder_ref = build_box_pendulum(ground=False)
 
         # Check the loaded contents against the reference builder
         assert_builders_equal(self, builder_usd, builder_ref)
 
-    def test_import_demo_boxes_hinged(self):
-        """Test importing the primitive boxes_hinged model from a USD file"""
+    def test_import_basic_boxes_hinged(self):
+        """Test importing the basic boxes_hinged model from a USD file"""
 
         # Construct a builder from imported USD asset
-        usd_asset_filename = os.path.join(self.PRIMITIVE_USD_ASSETS_PATH, "boxes_hinged.usda")
+        usd_asset_filename = os.path.join(self.BASICS_USD_ASSETS_PATH, "boxes_hinged.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(
             source=usd_asset_filename, load_static_geometry=False, load_materials=False
         )
 
-        # Construct a reference builder using the primitive generators
-        builder_ref = ModelBuilder()
-        build_boxes_hinged(builder=builder_ref, ground=False)
-        msg.debug(f"builder_ref: Rigid Bodies:\n{builder_ref.bodies}\n")
-        msg.debug(f"builder_ref: Joints:\n{builder_ref.joints}\n")
-        msg.debug(f"builder_ref: Physical Geoms:\n{builder_ref.physical_geoms}\n")
-        msg.debug(f"builder_ref: Collision Geoms:\n{builder_ref.collision_geoms}\n")
-        msg.debug(f"builder_ref: Materials:\n{builder_ref.materials.materials}\n")
+        # Construct a reference builder using the basics generators
+        builder_ref = build_boxes_hinged(ground=False)
 
         # Check the loaded contents against the reference builder
         assert_builders_equal(self, builder_usd, builder_ref, skip_colliders=True)
 
-    def test_import_demo_boxes_nunchaku(self):
-        """Test importing the primitive boxes_nunchaku model from a USD file"""
+    def test_import_basic_boxes_nunchaku(self):
+        """Test importing the basic boxes_nunchaku model from a USD file"""
 
         # Construct a builder from imported USD asset
-        usd_asset_filename = os.path.join(self.PRIMITIVE_USD_ASSETS_PATH, "boxes_nunchaku.usda")
+        usd_asset_filename = os.path.join(self.BASICS_USD_ASSETS_PATH, "boxes_nunchaku.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(
             source=usd_asset_filename, load_static_geometry=False, load_materials=False
         )
 
-        # Construct a reference builder using the primitive generators
-        builder_ref = ModelBuilder()
-        build_boxes_nunchaku(builder=builder_ref, ground=False)
+        # Construct a reference builder using the basics generators
+        builder_ref = build_boxes_nunchaku(ground=False)
 
         # Check the loaded contents against the reference builder
         assert_builders_equal(self, builder_usd, builder_ref, skip_colliders=True)
 
-    def test_import_demo_boxes_fourbar(self):
-        """Test importing the primitive boxes_fourbar model from a USD file"""
+    def test_import_basic_boxes_fourbar(self):
+        """Test importing the basic boxes_fourbar model from a USD file"""
 
         # Construct a builder from imported USD asset
-        usd_asset_filename = os.path.join(self.PRIMITIVE_USD_ASSETS_PATH, "boxes_fourbar.usda")
+        usd_asset_filename = os.path.join(self.BASICS_USD_ASSETS_PATH, "boxes_fourbar.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(
             source=usd_asset_filename, load_static_geometry=False, load_materials=False
         )
 
-        # Construct a reference builder using the primitive generators
-        builder_ref = ModelBuilder()
-        build_boxes_fourbar(builder=builder_ref, ground=False)
+        # Construct a reference builder using the basics generators
+        builder_ref = build_boxes_fourbar(ground=False)
+
+        # Check the loaded contents against the reference builder
+        assert_builders_equal(self, builder_usd, builder_ref)
+
+    def test_import_basic_cartpole(self):
+        """Test importing the basic cartpole model from a USD file"""
+
+        # Construct a builder from imported USD asset
+        usd_asset_filename = os.path.join(self.BASICS_USD_ASSETS_PATH, "cartpole.usda")
+        importer = USDImporter()
+        builder_usd: ModelBuilder = importer.import_from(
+            source=usd_asset_filename, load_static_geometry=True, load_materials=False
+        )
+
+        # Construct a reference builder using the basics generators
+        builder_ref = build_cartpole(ground=False)
 
         # Check the loaded contents against the reference builder
         assert_builders_equal(self, builder_usd, builder_ref)

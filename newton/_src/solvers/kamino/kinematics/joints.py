@@ -25,7 +25,7 @@ import warp as wp
 
 from ..core.joints import JointDoFType
 from ..core.math import (
-    TWO_PI,
+    TWO_PI,  # noqa: F401
     quat_apply,
     quat_conj,
     quat_log,
@@ -132,8 +132,9 @@ def make_store_joint_state_func(cst_selection: Any, dof_selection: Any):
     @wp.func
     def store_joint_state(
         # Inputs:
-        cio_j: int32,  # Index offset of the joint constraints dimensions
-        dio_j: int32,  # Index offset of the joint DoF dimensions
+        cio_j: int32,  # Index offset of the joint constraints
+        qio_j: int32,  # Index offset of the joint coordinates
+        dio_j: int32,  # Index offset of the joint DoFs
         r_j: vec6f,  # 6D vector of the joint-local relative pose
         dr_j: vec6f,  # 6D vector ofthe joint-local relative twist
         # Outputs:
@@ -153,7 +154,7 @@ def make_store_joint_state_func(cst_selection: Any, dof_selection: Any):
 
         # Store the joint DoF coordinates and velocities
         for j in range(num_dof):
-            q_j_out[dio_j + j] = r_j[dof_selection[j]]
+            q_j_out[qio_j + j] = r_j[dof_selection[j]]
             dq_j_out[dio_j + j] = dr_j[dof_selection[j]]
 
     # Return the function
@@ -185,6 +186,137 @@ store_joint_state_free = make_store_joint_state_func([], S_dofs_free)
 """Function to store the joint state for 6-DoF free joints."""
 
 
+@wp.func
+def compute_joint_pose_and_relative_motion(
+    T_B_j: transformf,
+    T_F_j: transformf,
+    u_B_j: vec6f,
+    u_F_j: vec6f,
+    B_r_Bj: vec3f,
+    F_r_Fj: vec3f,
+    X_j: mat33f,
+) -> tuple[transformf, vec6f, vec6f]:
+    """
+    Computes the relative motion of a joint given the states of its Base and Follower bodies.
+
+    Args:
+        T_B_j (transformf): The absolute pose of the Base body in world coordinates.
+        T_F_j (transformf): The absolute pose of the Follower body in world coordinates.
+        u_B_j (vec6f): The absolute twist of the Base body in world coordinates.
+        u_F_j (vec6f): The absolute twist of the Follower body in world coordinates.
+        B_r_Bj (vec3f): The position of the joint frame in the Base body's local coordinates.
+        F_r_Fj (vec3f): The position of the joint frame in the Follower body's local coordinates.
+        X_j (mat33f): The joint transformation matrix.
+
+    Returns:
+        tuple[transformf, vec6f, vec6f]: The absolute pose of the joint frame in world coordinates,
+        and two 6D vectors encoding the relative motion of the bodies in the frame of the joint.
+    """
+    # TODO: skip rotmat and rotate everything with quaternions
+
+    # Extract the decomposed state of the Base body
+    r_B_j = wp.transform_get_translation(T_B_j)
+    q_B_j = wp.transform_get_rotation(T_B_j)
+    R_B_j = wp.quat_to_matrix(q_B_j)
+    v_B_j = screw_linear(u_B_j)
+    omega_B_j = screw_angular(u_B_j)
+
+    # Extract the decomposed state of the Follower body
+    r_F_j = wp.transform_get_translation(T_F_j)
+    q_F_j = wp.transform_get_rotation(T_F_j)
+    v_F_j = screw_linear(u_F_j)
+    omega_F_j = screw_angular(u_F_j)
+
+    # Compute the pose of the joint frame via the Base body
+    r_j_B = r_B_j + R_B_j @ B_r_Bj
+    p_j = wp.transformation(r_j_B, q_B_j, dtype=float32)
+
+    # Pre-compute transforms to joint-space
+    X_j_T = wp.transpose(X_j)
+    R_B_j_T = wp.transpose(R_B_j)
+    X_j_T_R_B_j_T = X_j_T @ R_B_j_T
+
+    # Compute the 6D relative pose vector between the representations of joint frame w.r.t. the two bodies
+    q_B_j_conj = quat_conj(q_B_j)
+    r_j_t = X_j_T @ (quat_apply(q_B_j_conj, r_F_j + quat_apply(q_F_j, F_r_Fj) - r_B_j) - B_r_Bj)
+    r_j_r = X_j_T @ quat_log(quat_product(q_B_j_conj, q_F_j))
+    r_j = screw(r_j_t, r_j_r)
+
+    # Compute the 6D relative twist vector between the representations of joint frame w.r.t. the two bodies
+    # TODO: How can we simplify this expression and make it more efficient?
+    r_Bj = quat_apply(q_B_j, B_r_Bj)
+    r_Fj = quat_apply(q_F_j, F_r_Fj)
+    dr_j_t = X_j_T_R_B_j_T @ (v_F_j - v_B_j + wp.cross(omega_F_j, r_Fj) - wp.cross(omega_B_j, r_Bj))
+    dr_j_r = X_j_T_R_B_j_T @ (omega_F_j - omega_B_j)
+    dr_j = screw(dr_j_t, dr_j_r)
+
+    # Return the computed joint frame pose and relative motion vectors
+    return p_j, r_j, dr_j
+
+
+@wp.func
+def store_joint_residuals_and_motion(
+    # Inputs:
+    dof_type: int32,
+    cio_j: int32,
+    qio_j: int32,
+    dio_j: int32,
+    r_j: vec6f,
+    dr_j: vec6f,
+    # Outputs:
+    data_r_j: wp.array(dtype=float32),
+    data_dr_j: wp.array(dtype=float32),
+    data_q_j: wp.array(dtype=float32),
+    data_dq_j: wp.array(dtype=float32),
+):
+    """
+    Stores the joint constraint residuals and DoF motion based on the joint type.
+
+    Args:
+        dof_type (int32): The type of joint DoF.
+        cio_j (int32): Index offset of the joint constraints.
+        qio_j (int32): Index offset of the joint coordinates.
+        dio_j (int32): Index offset of the joint DoFs.
+        r_j (vec6f): 6D vector of the joint-local relative pose.
+        dr_j (vec6f): 6D vector ofthe joint-local relative twist.
+        data_r_j (wp.array): Flat array of joint constraint residuals.
+        data_dr_j (wp.array): Flat array of joint constraint residuals.
+        data_q_j (wp.array): Flat array of joint DoF coordinates.
+        data_dq_j (wp.array): Flat array of joint DoF velocities.
+    """
+    # TODO: Use wp.static to include conditionals at compile time based on the joint types present in the builder
+
+    if dof_type == JointDoFType.REVOLUTE:
+        # # TODO: How to clean this up?
+        # # Enforce continuity of revolute joint angles by adding or subtracting 2*PI as needed
+        # # to minimize the difference between the current angle and the previous angle
+        # r_j_rx = r_j[3]
+        # r_j_rx_corr = wp.round((q_j_p[qio_j] - r_j_rx) / TWO_PI) * TWO_PI
+        # r_j[3] += r_j_rx_corr
+        store_joint_state_revolute(cio_j, qio_j, dio_j, r_j, dr_j, data_r_j, data_dr_j, data_q_j, data_dq_j)
+
+    elif dof_type == JointDoFType.PRISMATIC:
+        store_joint_state_prismatic(cio_j, qio_j, dio_j, r_j, dr_j, data_r_j, data_dr_j, data_q_j, data_dq_j)
+
+    elif dof_type == JointDoFType.CYLINDRICAL:
+        store_joint_state_cylindrical(cio_j, qio_j, dio_j, r_j, dr_j, data_r_j, data_dr_j, data_q_j, data_dq_j)
+
+    elif dof_type == JointDoFType.UNIVERSAL:
+        store_joint_state_universal(cio_j, qio_j, dio_j, r_j, dr_j, data_r_j, data_dr_j, data_q_j, data_dq_j)
+
+    elif dof_type == JointDoFType.SPHERICAL:
+        store_joint_state_spherical(cio_j, qio_j, dio_j, r_j, dr_j, data_r_j, data_dr_j, data_q_j, data_dq_j)
+
+    elif dof_type == JointDoFType.CARTESIAN:
+        store_joint_state_cartesian(cio_j, qio_j, dio_j, r_j, dr_j, data_r_j, data_dr_j, data_q_j, data_dq_j)
+
+    elif dof_type == JointDoFType.FIXED:
+        store_joint_state_fixed(cio_j, qio_j, dio_j, r_j, dr_j, data_r_j, data_dr_j, data_q_j, data_dq_j)
+
+    elif dof_type == JointDoFType.FREE:
+        store_joint_state_free(cio_j, qio_j, dio_j, r_j, dr_j, data_r_j, data_dr_j, data_q_j, data_dq_j)
+
+
 ###
 # Kernels
 ###
@@ -208,25 +340,23 @@ def _compute_joints_state(
     model_joint_X_j: wp.array(dtype=mat33f),
     state_body_q_i: wp.array(dtype=transformf),
     state_body_u_i: wp.array(dtype=vec6f),
-    previous_q_j: wp.array(dtype=float32),
+    data_q_j_p: wp.array(dtype=float32),
     # Outputs:
-    state_joint_p_j: wp.array(dtype=transformf),
-    state_joint_r_j: wp.array(dtype=float32),
-    state_joint_dr_j: wp.array(dtype=float32),
-    state_joint_q_j: wp.array(dtype=float32),
-    state_joint_dq_j: wp.array(dtype=float32),
+    data_p_j: wp.array(dtype=transformf),
+    data_r_j: wp.array(dtype=float32),
+    data_dr_j: wp.array(dtype=float32),
+    data_q_j: wp.array(dtype=float32),
+    data_dq_j: wp.array(dtype=float32),
 ):
     """
     Reset the current state to the initial state defined in the model.
     """
-    # TODO: skip rotmat and rotate everything with quaternions
-
     # Retrieve the thread index
     jid = wp.tid()
 
     # Retrieve the joint model data
-    wid_j = model_joint_wid[jid]
-    dof_type_j = model_joint_dof_type[jid]
+    wid = model_joint_wid[jid]
+    dof_type = model_joint_dof_type[jid]
     qio_j = model_joint_coords_offset[jid]
     dio_j = model_joint_dofs_offset[jid]
     cio_j = model_joint_cts_offset[jid]
@@ -237,120 +367,46 @@ def _compute_joints_state(
     X_j = model_joint_X_j[jid]
 
     # Retrieve the index offsets of the joint's constraint and DoF dimensions
-    jqio = model_info_joint_coords_offset[wid_j]
-    jdio = model_info_joint_dofs_offset[wid_j]
-    jcio = model_info_joint_cts_offset[wid_j]
+    world_joint_qio = model_info_joint_coords_offset[wid]
+    world_joint_dio = model_info_joint_dofs_offset[wid]
+    world_joint_cio = model_info_joint_cts_offset[wid]
 
     # Append the index offsets of the world's joint blocks
-    qio_j += jqio
-    dio_j += jdio
-    cio_j += jcio
+    qio_j += world_joint_qio
+    dio_j += world_joint_dio
+    cio_j += world_joint_cio
 
-    # If the base body is the world (bid=-1), use the identity transform (frame of the world's origin)
-    T_B_j = wp.transform_identity()
+    # If the Base body is the world (bid=-1), use the identity transform (frame
+    # of the world's origin), otherwise retrieve the Base body's pose and twist
+    T_B_j = wp.transform_identity(dtype=float32)
     u_B_j = vec6f(0.0)
-    # TODO: Use wp.static to include conditionals at compile time based on the joint types present in the builder
     if bid_B > -1:
         T_B_j = state_body_q_i[bid_B]
         u_B_j = state_body_u_i[bid_B]
 
-    # Retrieve the Follower body frames and twists
+    # Retrieve the Follower body's pose and twist
     T_F_j = state_body_q_i[bid_F]
     u_F_j = state_body_u_i[bid_F]
 
-    # Extract the decomposed state of the Base body
-    r_B_j = wp.transform_get_translation(T_B_j)
-    q_B_j = wp.transform_get_rotation(T_B_j)
-    R_B_j = wp.quat_to_matrix(q_B_j)
-    v_B_j = screw_linear(u_B_j)
-    omega_B_j = screw_angular(u_B_j)
+    # Compute the joint frame pose and relative motion
+    p_j, r_j, dr_j = compute_joint_pose_and_relative_motion(T_B_j, T_F_j, u_B_j, u_F_j, B_r_Bj, F_r_Fj, X_j)
 
-    # Extract the decomposed state of the Follower body
-    r_F_j = wp.transform_get_translation(T_F_j)
-    q_F_j = wp.transform_get_rotation(T_F_j)
-    v_F_j = screw_linear(u_F_j)
-    omega_F_j = screw_angular(u_F_j)
+    # Store the absolute pose of the joint frame in world coordinates
+    data_p_j[jid] = p_j
 
-    # Compute the pose of the joint frame via the Base body
-    r_j_B = r_B_j + R_B_j @ B_r_Bj
-    T_j_B = wp.transformation(r_j_B, q_B_j, dtype=float32)
-
-    # Pre-compute transforms to joint-space
-    X_j_T = wp.transpose(X_j)
-    R_B_j_T = wp.transpose(R_B_j)
-    X_j_T_R_B_j_T = X_j_T @ R_B_j_T
-
-    # Compute the 6D relative pose vector between the representations of joint frame w.r.t. the two bodies
-    q_B_j_conj = quat_conj(q_B_j)
-    r_j_t = X_j_T @ (quat_apply(q_B_j_conj, r_F_j + quat_apply(q_F_j, F_r_Fj) - r_B_j) - B_r_Bj)
-    r_j_r = X_j_T @ quat_log(quat_product(q_B_j_conj, q_F_j))
-    r_j = screw(r_j_t, r_j_r)
-    # wp.printf("[jid=%d]: r_j: [%f, %f, %f, %f, %f, %f]\n", jid, r_j[0], r_j[1], r_j[2], r_j[3], r_j[4], r_j[5])
-
-    # Compute the 6D relative twist vector between the representations of joint frame w.r.t. the two bodies
-    # TODO: How can we simplify this expression and make it more efficient?
-    r_Bj = quat_apply(q_B_j, B_r_Bj)
-    r_Fj = quat_apply(q_F_j, F_r_Fj)
-    dr_j_t = X_j_T_R_B_j_T @ (v_F_j - v_B_j + wp.cross(omega_F_j, r_Fj) - wp.cross(omega_B_j, r_Bj))
-    dr_j_r = X_j_T_R_B_j_T @ (omega_F_j - omega_B_j)
-    dr_j = screw(dr_j_t, dr_j_r)
-    # wp.printf("[jid=%d]: dr_j: [%f, %f, %f, %f, %f, %f]\n", jid, dr_j[0], dr_j[1], dr_j[2], dr_j[3], dr_j[4], dr_j[5])
-
-    # diff_omega_j = omega_F_j - omega_B_j
-    # wp.printf("[jid=%d]: diff_omega_j: [%f, %f, %f, %f, %f, %f]\n", jid, diff_omega_j[0], diff_omega_j[1], diff_omega_j[2], diff_omega_j[3], diff_omega_j[4], diff_omega_j[5])
-
-    # Store the pose of the joint frame
-    state_joint_p_j[jid] = T_j_B
-
-    # TODO: Use wp.static to include conditionals at compile time based on the joint types present in the builder
-    # Store the joint state depending the kinematic (i.e. DoF) type
-    if dof_type_j == JointDoFType.REVOLUTE:
-        # TODO: How to clean this up?
-        # Enforce continuity of revolute joint angles by adding or subtracting 2*PI as needed
-        # to minimize the difference between the current angle and the previous angle
-        r_j_rx = r_j[3]
-        r_j_rx_corr = wp.round((previous_q_j[qio_j] - r_j_rx) / TWO_PI) * TWO_PI
-        r_j[3] += r_j_rx_corr
-        # wp.printf("[jid=%d]: r_j_rx: %f, r_j_rx_corr: %f, corrected: %f\n", jid, r_j_rx, r_j_rx_corr, r_j[3])
-
-        store_joint_state_revolute(
-            cio_j, dio_j, r_j, dr_j, state_joint_r_j, state_joint_dr_j, state_joint_q_j, state_joint_dq_j
-        )
-
-    elif dof_type_j == JointDoFType.PRISMATIC:
-        store_joint_state_prismatic(
-            cio_j, dio_j, r_j, dr_j, state_joint_r_j, state_joint_dr_j, state_joint_q_j, state_joint_dq_j
-        )
-
-    elif dof_type_j == JointDoFType.CYLINDRICAL:
-        store_joint_state_cylindrical(
-            cio_j, dio_j, r_j, dr_j, state_joint_r_j, state_joint_dr_j, state_joint_q_j, state_joint_dq_j
-        )
-
-    elif dof_type_j == JointDoFType.UNIVERSAL:
-        store_joint_state_universal(
-            cio_j, dio_j, r_j, dr_j, state_joint_r_j, state_joint_dr_j, state_joint_q_j, state_joint_dq_j
-        )
-
-    elif dof_type_j == JointDoFType.SPHERICAL:
-        store_joint_state_spherical(
-            cio_j, dio_j, r_j, dr_j, state_joint_r_j, state_joint_dr_j, state_joint_q_j, state_joint_dq_j
-        )
-
-    elif dof_type_j == JointDoFType.CARTESIAN:
-        store_joint_state_cartesian(
-            cio_j, dio_j, r_j, dr_j, state_joint_r_j, state_joint_dr_j, state_joint_q_j, state_joint_dq_j
-        )
-
-    elif dof_type_j == JointDoFType.FIXED:
-        store_joint_state_fixed(
-            cio_j, dio_j, r_j, dr_j, state_joint_r_j, state_joint_dr_j, state_joint_q_j, state_joint_dq_j
-        )
-
-    elif dof_type_j == JointDoFType.FREE:
-        store_joint_state_free(
-            cio_j, dio_j, r_j, dr_j, state_joint_r_j, state_joint_dr_j, state_joint_q_j, state_joint_dq_j
-        )
+    # Store the joint constraint residuals and motion
+    store_joint_residuals_and_motion(
+        dof_type,
+        cio_j,
+        qio_j,
+        dio_j,
+        r_j,
+        dr_j,
+        data_r_j,
+        data_dr_j,
+        data_q_j,
+        data_dq_j,
+    )
 
 
 ###

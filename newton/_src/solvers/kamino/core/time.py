@@ -17,7 +17,7 @@
 Defines containers for time-keeping across heterogeneous worlds simulated in parallel.
 """
 
-from __future__ import annotations
+from dataclasses import dataclass
 
 import numpy as np
 import warp as wp
@@ -47,23 +47,29 @@ wp.set_module_options({"enable_backward": False})
 ###
 
 
+@dataclass
 class TimeModel:
     """
     A container to hold the time-invariant gravity model data.
+
+    Attributes:
+        dt (wp.array | None): The discrete time-step size of each world.\n
+            Shape of ``(num_worlds,)`` and type :class:`float`.
+        inv_dt (wp.array | None): The inverse of the discrete time-step size of each world.\n
+            Shape of ``(num_worlds,)`` and type :class:`float`.
     """
 
-    def __init__(self):
-        self.dt: wp.array | None = None
-        """
-        The discrete time-step size of each world.\n
-        Shape of ``(num_worlds,)`` and type :class:`float`.
-        """
+    dt: wp.array | None = None
+    """
+    The discrete time-step size of each world.\n
+    Shape of ``(num_worlds,)`` and type :class:`float`.
+    """
 
-        self.inv_dt: wp.array | None = None
-        """
-        The inverse of the discrete time-step size of each world.\n
-        Shape of ``(num_worlds,)`` and type :class:`float`.
-        """
+    inv_dt: wp.array | None = None
+    """
+    The inverse of the discrete time-step size of each world.\n
+    Shape of ``(num_worlds,)`` and type :class:`float`.
+    """
 
     def set_uniform_timestep(self, dt: float):
         """
@@ -110,23 +116,29 @@ class TimeModel:
         self.inv_dt.assign(1.0 / dt)
 
 
+@dataclass
 class TimeData:
     """
     A container to hold the time-invariant gravity model data.
+
+    Attributes:
+        steps (wp.array | None): The current number of simulation steps of each world.\n
+            Shape of ``(num_worlds,)`` and type :class:`int`.
+        time (wp.array | None): The current simulation time of each world.\n
+            Shape of ``(num_worlds,)`` and type :class:`float`.
     """
 
-    def __init__(self):
-        self.steps: wp.array | None = None
-        """
-        The current number of simulation steps of each world.\n
-        Shape of ``(num_worlds,)`` and type :class:`int`.
-        """
+    steps: wp.array | None = None
+    """
+    The current number of simulation steps of each world.\n
+    Shape of ``(num_worlds,)`` and type :class:`int`.
+    """
 
-        self.time: wp.array | None = None
-        """
-        The current simulation time of each world.\n
-        Shape of ``(num_worlds,)`` and type :class:`float`.
-        """
+    time: wp.array | None = None
+    """
+    The current simulation time of each world.\n
+    Shape of ``(num_worlds,)`` and type :class:`float`.
+    """
 
     def zero(self):
         """

@@ -270,7 +270,7 @@ class TestKinematicsJacobians(unittest.TestCase):
 
     def test_01_allocate_single_dense_system_jacobians_only_joints(self):
         # Construct the model description using the ModelBuilder
-        builder, _, _ = make_single_builder(build_func=build_boxes_fourbar)
+        builder = make_single_builder(build_fn=build_boxes_fourbar)
 
         # Create the model from the builder
         model = builder.finalize(device=self.default_device)
@@ -306,7 +306,7 @@ class TestKinematicsJacobians(unittest.TestCase):
 
     def test_02_allocate_single_dense_system_jacobians_with_limits(self):
         # Construct the model description using the ModelBuilder
-        builder, _, _ = make_single_builder(build_func=build_boxes_fourbar)
+        builder = make_single_builder(build_fn=build_boxes_fourbar)
 
         # Create the model from the builder
         model = builder.finalize(device=self.default_device)
@@ -351,7 +351,7 @@ class TestKinematicsJacobians(unittest.TestCase):
         max_world_contacts = 12
 
         # Construct the model description using the ModelBuilder
-        builder, _, _ = make_single_builder(build_func=build_boxes_fourbar)
+        builder = make_single_builder(build_fn=build_boxes_fourbar)
 
         # Create the model from the builder
         model = builder.finalize(device=self.default_device)
@@ -363,7 +363,7 @@ class TestKinematicsJacobians(unittest.TestCase):
             print(f"model.size.sum_of_num_joint_dofs: {model.size.sum_of_num_joint_dofs}")
 
         # Extract the contact allocation capacities required by the model
-        required_model_max_contacts, required_world_max_contacts = builder.required_contact_capacity()
+        required_model_max_contacts, required_world_max_contacts = builder.required_contact_capacity
         if self.verbose:
             print("required_model_max_contacts: ", required_model_max_contacts)
             print("required_world_max_contacts: ", required_world_max_contacts)
@@ -405,7 +405,7 @@ class TestKinematicsJacobians(unittest.TestCase):
         max_world_contacts = 12
 
         # Construct the model description using the ModelBuilder
-        builder, _, _ = make_single_builder(build_func=build_boxes_fourbar)
+        builder = make_single_builder(build_fn=build_boxes_fourbar)
 
         # Create the model from the builder
         model = builder.finalize(device=self.default_device)
@@ -423,7 +423,7 @@ class TestKinematicsJacobians(unittest.TestCase):
             print("limits.num_world_max_limits: ", limits.num_world_max_limits)
 
         # Extract the contact allocation capacities required by the model
-        required_model_max_contacts, required_world_max_contacts = builder.required_contact_capacity()
+        required_model_max_contacts, required_world_max_contacts = builder.required_contact_capacity
         if self.verbose:
             print("required_model_max_contacts: ", required_model_max_contacts)
             print("required_world_max_contacts: ", required_world_max_contacts)
@@ -468,7 +468,7 @@ class TestKinematicsJacobians(unittest.TestCase):
         max_world_contacts = 12
 
         # Construct the model description using the ModelBuilder
-        builder = make_homogeneous_builder(num_worlds=num_worlds, build_func=build_boxes_fourbar)
+        builder = make_homogeneous_builder(num_worlds=num_worlds, build_fn=build_boxes_fourbar)
 
         # Create the model from the builder
         model = builder.finalize(device=self.default_device)
@@ -486,7 +486,7 @@ class TestKinematicsJacobians(unittest.TestCase):
             print("limits.num_world_max_limits: ", limits.num_world_max_limits)
 
         # Extract the contact allocation capacities required by the model
-        required_model_max_contacts, required_world_max_contacts = builder.required_contact_capacity()
+        required_model_max_contacts, required_world_max_contacts = builder.required_contact_capacity
         if self.verbose:
             print("required_model_max_contacts: ", required_model_max_contacts)
             print("required_world_max_contacts: ", required_world_max_contacts)
@@ -551,7 +551,7 @@ class TestKinematicsJacobians(unittest.TestCase):
         max_world_contacts = 12
 
         # Construct the model description using the ModelBuilder
-        builder, _, _ = make_heterogeneous_builder()
+        builder = make_heterogeneous_builder()
         num_worlds = builder.num_worlds
 
         # Create the model from the builder
@@ -570,7 +570,7 @@ class TestKinematicsJacobians(unittest.TestCase):
             print("limits.num_world_max_limits: ", limits.num_world_max_limits)
 
         # Extract the contact allocation capacities required by the model
-        required_model_max_contacts, required_world_max_contacts = builder.required_contact_capacity()
+        required_model_max_contacts, required_world_max_contacts = builder.required_contact_capacity
         if self.verbose:
             print("required_model_max_contacts: ", required_model_max_contacts)
             print("required_world_max_contacts: ", required_world_max_contacts)
@@ -635,7 +635,7 @@ class TestKinematicsJacobians(unittest.TestCase):
         max_world_contacts = 12
 
         # Construct the model description using the ModelBuilder
-        builder, _, _ = make_single_builder(build_func=build_boxes_fourbar)
+        builder = make_single_builder(build_fn=build_boxes_fourbar)
 
         # Create the model from the builder
         model = builder.finalize(device=self.default_device)
@@ -754,7 +754,7 @@ class TestKinematicsJacobians(unittest.TestCase):
         max_world_contacts = 12
 
         # Construct the model description using the ModelBuilder
-        builder = make_homogeneous_builder(num_worlds=num_worlds, build_func=build_boxes_fourbar)
+        builder = make_homogeneous_builder(num_worlds=num_worlds, build_fn=build_boxes_fourbar)
 
         # Create the model from the builder
         model = builder.finalize(device=self.default_device)
@@ -843,7 +843,7 @@ class TestKinematicsJacobians(unittest.TestCase):
         max_world_contacts = 12
 
         # Construct the model description using the ModelBuilder
-        builder, _, _ = make_heterogeneous_builder()
+        builder = make_heterogeneous_builder()
 
         # Create the model from the builder
         model = builder.finalize(device=self.default_device)

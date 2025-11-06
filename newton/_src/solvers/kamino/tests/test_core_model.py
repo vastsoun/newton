@@ -22,8 +22,6 @@ import unittest
 import numpy as np
 import warp as wp
 
-from newton._src.solvers.kamino.core.builder import ModelBuilder
-
 # Module to be tested
 from newton._src.solvers.kamino.core.model import Model
 
@@ -42,6 +40,7 @@ from newton._src.solvers.kamino.tests.utils.print import (
     print_model_info,
     print_model_joints,
 )
+from newton._src.solvers.kamino.utils import logger as msg
 
 ###
 # Tests
@@ -50,18 +49,24 @@ from newton._src.solvers.kamino.tests.utils.print import (
 
 class TestModel(unittest.TestCase):
     def setUp(self):
-        self.verbose = False  # Set to True for verbose output
         self.default_device = wp.get_device()
+        self.verbose = False  # Set to True for verbose output
+
+        # Set debug-level logging to print verbose test output to console
+        if self.verbose:
+            print("\n")  # Add newline before test output for better readability
+            msg.set_log_level(msg.LogLevel.DEBUG)
+        else:
+            msg.set_log_level(msg.LogLevel.WARNING)
 
     def tearDown(self):
         self.default_device = None
+        if self.verbose:
+            msg.reset_log_level()
 
     def test_01_single_model(self):
         # Create a model builder
-        builder = ModelBuilder()
-
-        # Construct a first model
-        bids, jids, gids = build_boxes_hinged(builder)
+        builder = build_boxes_hinged()
 
         # Finalize the model
         model: Model = builder.finalize(self.default_device)
@@ -76,28 +81,24 @@ class TestModel(unittest.TestCase):
             print_model_data_info(state)
 
         # Check the model info entries
-        self.assertEqual(model.size.sum_of_num_bodies, len(bids))
-        self.assertEqual(model.size.sum_of_num_joints, len(jids))
-        self.assertEqual(model.size.sum_of_num_collision_geoms, len(gids))
+        self.assertEqual(model.size.sum_of_num_bodies, builder.num_bodies)
+        self.assertEqual(model.size.sum_of_num_joints, builder.num_joints)
+        self.assertEqual(model.size.sum_of_num_collision_geoms, builder.num_collision_geoms)
         self.assertEqual(model.size.sum_of_num_physical_geoms, 0)
         self.assertEqual(model.device, self.default_device)
 
     def test_02_double_model(self):
         # Create a model builder
-        builder1 = ModelBuilder()
-        bids1, jids1, gids1 = build_boxes_hinged(builder1)
+        builder1 = build_boxes_hinged()
+        builder2 = build_boxes_nunchaku()
 
-        # Create a second model builder
-        builder2 = ModelBuilder()
-        bids2, jids2, gids2 = build_boxes_nunchaku(builder2)
+        # Compute the total number of elements from the two builders
+        total_nb = builder1.num_bodies + builder2.num_bodies
+        total_nj = builder1.num_joints + builder2.num_joints
+        total_ng = builder1.num_collision_geoms + builder2.num_collision_geoms
 
         # Add the second builder to the first one
         builder1.add_builder(builder2)
-
-        # Compute the total number of elements from the two builders
-        total_nb = len(bids1) + len(bids2)
-        total_nj = len(jids1) + len(jids2)
-        total_ng = len(gids1) + len(gids2)
 
         # Finalize the model
         model: Model = builder1.finalize(self.default_device)
@@ -106,10 +107,10 @@ class TestModel(unittest.TestCase):
             print_model_info(model)
 
         # Create a model state
-        state = model.data()
+        data = model.data()
         if self.verbose:
             print("")  # Add a newline for better readability
-            print_model_data_info(state)
+            print_model_data_info(data)
 
         # Check the model info entries
         self.assertEqual(model.size.sum_of_num_bodies, total_nb)
@@ -122,7 +123,7 @@ class TestModel(unittest.TestCase):
         num_worlds = 4
 
         # Create a model builder
-        builder = make_homogeneous_builder(num_worlds=num_worlds, build_func=build_boxes_hinged)
+        builder = make_homogeneous_builder(num_worlds=num_worlds, build_fn=build_boxes_hinged)
 
         # Finalize the model
         model: Model = builder.finalize(self.default_device)
@@ -145,7 +146,7 @@ class TestModel(unittest.TestCase):
 
     def test_04_hetereogeneous_model(self):
         # Create a model builder
-        builder, _, _ = make_heterogeneous_builder()
+        builder = make_heterogeneous_builder()
         num_worlds = builder.num_worlds
 
         # Finalize the model

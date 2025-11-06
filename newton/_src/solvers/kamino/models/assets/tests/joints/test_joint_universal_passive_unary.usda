@@ -1,7 +1,7 @@
 #usda 1.0
 (
     doc = """Authored manually for testing purposes."""
-    defaultPrim = "test_joint_universal_passive"
+    defaultPrim = "test_joint_universal_passive_unary"
     timeCodesPerSecond = 1000
     kilogramsPerUnit = 1
     metersPerUnit = 1
@@ -14,7 +14,7 @@ def PhysicsScene "World"
     vector3f physics:gravityDirection = (0, 0, -1)
 }
 
-def Xform "Robot"
+def Xform "test_joint_universal_passive_unary"
 {
     def Scope "RigidBodies"
     {
@@ -57,7 +57,7 @@ def Xform "Robot"
         {
             bool physics:jointEnabled = 1
 
-            rel physics:body1 = </Robot/RigidBodies/body_1>
+            rel physics:body1 = </test_joint_universal_passive_unary/RigidBodies/body_1>
 
             point3f physics:localPos0 = (-0.0103314, 0.0223859, 0.0129223)
             point3f physics:localPos1 = (-0.0296803, -0.0330647, 0.0151671)

@@ -55,8 +55,8 @@ class TestDualProblem(unittest.TestCase):
         max_world_contacts = 12
 
         # Construct the model description using model builders for different systems
-        # builder, _, _ = make_single_builder(build_func=build_box_on_plane)
-        builder, _, _ = make_heterogeneous_builder()
+        # builder = make_single_builder(build_fn=build_box_on_plane)
+        builder = make_heterogeneous_builder()
 
         # Create the model and containers from the builder
         model, data, limits, detector, _jacobians = make_containers(
@@ -118,8 +118,8 @@ class TestDualProblem(unittest.TestCase):
         max_world_contacts = 12
 
         # Construct the model description using model builders for different systems
-        # builder, _, _ = make_single_builder(build_func=build_box_on_plane)
-        builder, _, _ = make_heterogeneous_builder()
+        # builder = make_single_builder(build_fn=build_box_on_plane)
+        builder = make_heterogeneous_builder()
         num_worlds = builder.num_worlds
 
         # Create the model and containers from the builder

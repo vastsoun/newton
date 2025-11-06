@@ -13,19 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-KAMINO: UNIT TESTS: DYNAMICS: DELASSUS
-"""
+"""Unit tests for the DelassusOperator class"""
 
 import unittest
 
 import numpy as np
 import warp as wp
 
-from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.core.model import Model
-
-# Module to be tested
 from newton._src.solvers.kamino.dynamics.delassus import DelassusOperator
 from newton._src.solvers.kamino.geometry.contacts import Contacts
 from newton._src.solvers.kamino.kinematics.constraints import max_constraints_per_world
@@ -51,8 +46,6 @@ from newton._src.solvers.kamino.tests.utils.make import (
     make_inverse_generalized_mass_matrices,
     update_containers,
 )
-
-# Test utilities
 from newton._src.solvers.kamino.tests.utils.print import print_error_stats
 from newton._src.solvers.kamino.tests.utils.random import random_rhs_for_matrix
 
@@ -130,7 +123,7 @@ class TestDelassusOperator(unittest.TestCase):
         max_world_contacts = 12
 
         # Construct the model description using model builders for different systems
-        builder, _, _ = make_single_builder()
+        builder = make_single_builder()
 
         # Create the model and containers from the builder
         model, data, limits, detector, jacobians = make_containers(
@@ -197,7 +190,7 @@ class TestDelassusOperator(unittest.TestCase):
         max_world_contacts = 12
 
         # Create a heterogeneous model description using model builders
-        builder, _, _ = make_heterogeneous_builder()
+        builder = make_heterogeneous_builder()
 
         # Create the model and containers from the builder
         model, data, limits, detector, jacobians = make_containers(
@@ -230,10 +223,9 @@ class TestDelassusOperator(unittest.TestCase):
         max_world_contacts = 12
 
         # Construct the model description using model builders for different systems
-        # builder, num_bodies, _ = make_single_builder(build_func=build_boxes_fourbar)
-        builder = ModelBuilder()
-        # build_boxes_hinged(builder, z_offset=0.0, ground=False)
-        build_boxes_fourbar(builder, z_offset=0.0, ground=False)
+        # builder = make_single_builder(build_fn=build_boxes_fourbar)
+        # builder = build_boxes_hinged(z_offset=0.0, ground=False)
+        builder = build_boxes_fourbar(z_offset=0.0, ground=False)
         num_bodies = [builder.num_bodies]
 
         # Create the model and containers from the builder
@@ -290,7 +282,7 @@ class TestDelassusOperator(unittest.TestCase):
         max_world_contacts = 12
 
         # Construct a homogeneous model description using model builders
-        builder = make_homogeneous_builder(num_worlds=num_worlds, build_func=build_boxes_nunchaku)
+        builder = make_homogeneous_builder(num_worlds=num_worlds, build_fn=build_boxes_nunchaku)
 
         # Create a list of number of bodies per world
         num_bodies = [builder.num_bodies // num_worlds for _ in range(num_worlds)]
@@ -362,7 +354,8 @@ class TestDelassusOperator(unittest.TestCase):
         max_world_contacts = 12
 
         # Create a heterogeneous model description using model builders
-        builder, num_bodies, _ = make_heterogeneous_builder()
+        builder = make_heterogeneous_builder()
+        num_bodies = [world.num_bodies for world in builder.worlds]
 
         # Create the model and containers from the builder
         model, data, limits, detector, jacobians = make_containers(
@@ -431,7 +424,7 @@ class TestDelassusOperator(unittest.TestCase):
         max_world_contacts = 12
 
         # Create a heterogeneous model description using model builders
-        builder, _, _ = make_heterogeneous_builder()
+        builder = make_heterogeneous_builder()
 
         # Create the model and containers from the builder
         model, data, limits, detector, jacobians = make_containers(
@@ -495,22 +488,23 @@ class TestDelassusOperator(unittest.TestCase):
 
     def test_08_delassus_operator_factorize_and_solve_with_sequential_cholesky(self):
         """
-        Tests the factorization of a Delassus matrix and solving linear systems with randomly generated right-hand-side vectors.
+        Tests the factorization of a Delassus matrix and solving linear
+        systems with randomly generated right-hand-side vectors.
         """
         # Model constants
         max_world_contacts = 12
 
         # Create a heterogeneous model description using model builders
-        # builder, _, _ = make_single_builder(build_func=build_box_on_plane)
-        # builder, _, _ = make_single_builder(build_func=build_box_pendulum)
-        # builder, _, _ = make_single_builder(build_func=build_boxes_hinged)
-        # builder, _, _ = make_single_builder(build_func=build_boxes_nunchaku)
-        # builder, _, _ = make_single_builder(build_func=build_boxes_fourbar)
-        # builder = make_homogeneous_builder(num_worlds=10, build_func=build_box_on_plane)
-        # builder = make_homogeneous_builder(num_worlds=10, build_func=build_boxes_hinged)
-        # builder = make_homogeneous_builder(num_worlds=10, build_func=build_boxes_nunchaku)
-        # builder = make_homogeneous_builder(num_worlds=10, build_func=build_boxes_fourbar)
-        builder, _, _ = make_heterogeneous_builder()
+        # builder = make_single_builder(build_fn=build_box_on_plane)
+        # builder = make_single_builder(build_fn=build_box_pendulum)
+        # builder = make_single_builder(build_fn=build_boxes_hinged)
+        # builder = make_single_builder(build_fn=build_boxes_nunchaku)
+        # builder = make_single_builder(build_fn=build_boxes_fourbar)
+        # builder = make_homogeneous_builder(num_worlds=10, build_fn=build_box_on_plane)
+        # builder = make_homogeneous_builder(num_worlds=10, build_fn=build_boxes_hinged)
+        # builder = make_homogeneous_builder(num_worlds=10, build_fn=build_boxes_nunchaku)
+        # builder = make_homogeneous_builder(num_worlds=10, build_fn=build_boxes_fourbar)
+        builder = make_heterogeneous_builder()
 
         # Create the model and containers from the builder
         model, data, limits, detector, jacobians = make_containers(

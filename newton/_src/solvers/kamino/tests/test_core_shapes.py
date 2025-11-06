@@ -36,6 +36,7 @@ from newton._src.solvers.kamino.core.shapes import (
     SphereShape,
 )
 from newton._src.solvers.kamino.core.types import mat33f, vec3f
+from newton._src.solvers.kamino.utils import logger as msg
 
 ###
 # Tests
@@ -105,6 +106,22 @@ class TestShapeType(unittest.TestCase):
 
 
 class TestShapeDescriptors(unittest.TestCase):
+    def setUp(self):
+        self.default_device = wp.get_device()
+        self.verbose = False  # Set to True to enable verbose output
+
+        # Set debug-level logging to print verbose test output to console
+        if self.verbose:
+            print("\n")  # Add newline before test output for better readability
+            msg.set_log_level(msg.LogLevel.DEBUG)
+        else:
+            msg.set_log_level(msg.LogLevel.WARNING)
+
+    def tearDown(self):
+        self.default_device = None
+        if self.verbose:
+            msg.reset_log_level()
+
     def test_00_empty_shape(self):
         # Create a default-constructed surface material
         shape = EmptyShape()
@@ -115,6 +132,16 @@ class TestShapeDescriptors(unittest.TestCase):
         self.assertEqual(shape.name, "empty")
         self.assertIsInstance(shape.uid, str)
 
+        # Check hash function
+        shape_hash = hash(shape)
+        shape_hash2 = hash(shape)
+        base_hash = super(EmptyShape, shape).__hash__()
+        self.assertEqual(shape_hash, shape_hash2)
+        self.assertEqual(shape_hash, base_hash)
+        msg.info(f"EmptyShape hash: {shape_hash}")
+        msg.info(f"EmptyShape hash (2): {shape_hash2}")
+        msg.info(f"EmptyShape base hash: {base_hash}")
+
     def test_01_sphere_shape(self):
         # Create a sphere shape
         radius = 1.0
@@ -124,6 +151,16 @@ class TestShapeDescriptors(unittest.TestCase):
         self.assertEqual(shape.type, ShapeType.SPHERE)
         self.assertEqual(shape.num_params, 1)
         self.assertEqual(shape.params, radius)
+
+        # Check hash function
+        shape_hash = hash(shape)
+        shape_hash2 = hash(shape)
+        base_hash = super(SphereShape, shape).__hash__()
+        self.assertEqual(shape_hash, shape_hash2)
+        self.assertEqual(shape_hash, base_hash)
+        msg.info(f"SphereShape hash: {shape_hash}")
+        msg.info(f"SphereShape hash (2): {shape_hash2}")
+        msg.info(f"SphereShape base hash: {base_hash}")
 
     def test_02_cylinder_shape(self):
         # Create a cylinder shape
@@ -136,6 +173,16 @@ class TestShapeDescriptors(unittest.TestCase):
         self.assertEqual(shape.num_params, 2)
         self.assertEqual(shape.params, (radius, height))
 
+        # Check hash function
+        shape_hash = hash(shape)
+        shape_hash2 = hash(shape)
+        base_hash = super(CylinderShape, shape).__hash__()
+        self.assertEqual(shape_hash, shape_hash2)
+        self.assertEqual(shape_hash, base_hash)
+        msg.info(f"CylinderShape hash: {shape_hash}")
+        msg.info(f"CylinderShape hash (2): {shape_hash2}")
+        msg.info(f"CylinderShape base hash: {base_hash}")
+
     def test_03_cone_shape(self):
         # Create a cone shape
         radius = 0.5
@@ -146,6 +193,16 @@ class TestShapeDescriptors(unittest.TestCase):
         self.assertEqual(shape.type, ShapeType.CONE)
         self.assertEqual(shape.num_params, 2)
         self.assertEqual(shape.params, (radius, height))
+
+        # Check hash function
+        shape_hash = hash(shape)
+        shape_hash2 = hash(shape)
+        base_hash = super(ConeShape, shape).__hash__()
+        self.assertEqual(shape_hash, shape_hash2)
+        self.assertEqual(shape_hash, base_hash)
+        msg.info(f"ConeShape hash: {shape_hash}")
+        msg.info(f"ConeShape hash (2): {shape_hash2}")
+        msg.info(f"ConeShape base hash: {base_hash}")
 
     def test_04_capsule_shape(self):
         # Create a capsule shape
@@ -158,6 +215,16 @@ class TestShapeDescriptors(unittest.TestCase):
         self.assertEqual(shape.num_params, 2)
         self.assertEqual(shape.params, (radius, height))
 
+        # Check hash function
+        shape_hash = hash(shape)
+        shape_hash2 = hash(shape)
+        base_hash = super(CapsuleShape, shape).__hash__()
+        self.assertEqual(shape_hash, shape_hash2)
+        self.assertEqual(shape_hash, base_hash)
+        msg.info(f"CapsuleShape hash: {shape_hash}")
+        msg.info(f"CapsuleShape hash (2): {shape_hash2}")
+        msg.info(f"CapsuleShape base hash: {base_hash}")
+
     def test_05_box_shape(self):
         # Create a box shape
         dimensions = (1.0, 2.0, 3.0)
@@ -167,6 +234,16 @@ class TestShapeDescriptors(unittest.TestCase):
         self.assertEqual(shape.type, ShapeType.BOX)
         self.assertEqual(shape.num_params, 3)
         self.assertEqual(shape.params, dimensions)
+
+        # Check hash function
+        shape_hash = hash(shape)
+        shape_hash2 = hash(shape)
+        base_hash = super(BoxShape, shape).__hash__()
+        self.assertEqual(shape_hash, shape_hash2)
+        self.assertEqual(shape_hash, base_hash)
+        msg.info(f"BoxShape hash: {shape_hash}")
+        msg.info(f"BoxShape hash (2): {shape_hash2}")
+        msg.info(f"BoxShape base hash: {base_hash}")
 
     def test_06_ellipsoid_shape(self):
         # Create an ellipsoid shape
@@ -178,6 +255,16 @@ class TestShapeDescriptors(unittest.TestCase):
         self.assertEqual(shape.num_params, 3)
         self.assertEqual(shape.params, radii)
 
+        # Check hash function
+        shape_hash = hash(shape)
+        shape_hash2 = hash(shape)
+        base_hash = super(EllipsoidShape, shape).__hash__()
+        self.assertEqual(shape_hash, shape_hash2)
+        self.assertEqual(shape_hash, base_hash)
+        msg.info(f"EllipsoidShape hash: {shape_hash}")
+        msg.info(f"EllipsoidShape hash (2): {shape_hash2}")
+        msg.info(f"EllipsoidShape base hash: {base_hash}")
+
     def test_07_plane_shape(self):
         # Create a plane shape
         normal = (0.0, 1.0, 0.0)
@@ -188,6 +275,16 @@ class TestShapeDescriptors(unittest.TestCase):
         self.assertEqual(shape.type, ShapeType.PLANE)
         self.assertEqual(shape.num_params, 4)
         self.assertEqual(shape.params, (*normal, distance))
+
+        # Check hash function
+        shape_hash = hash(shape)
+        shape_hash2 = hash(shape)
+        base_hash = super(PlaneShape, shape).__hash__()
+        self.assertEqual(shape_hash, shape_hash2)
+        self.assertEqual(shape_hash, base_hash)
+        msg.info(f"PlaneShape hash: {shape_hash}")
+        msg.info(f"PlaneShape hash (2): {shape_hash2}")
+        msg.info(f"PlaneShape base hash: {base_hash}")
 
     def test_08_mesh_shape(self):
         # Create a mesh shape
@@ -202,6 +299,16 @@ class TestShapeDescriptors(unittest.TestCase):
         self.assertTrue(np.array_equal(shape.vertices, np.array(vertices)))
         self.assertTrue(np.array_equal(shape.indices, np.array(indices).flatten()))
 
+        # Check hash function
+        shape_hash = hash(shape)
+        shape_hash2 = hash(shape)
+        base_hash = super(MeshShape, shape).__hash__()
+        self.assertEqual(shape_hash, shape_hash2)
+        self.assertNotEqual(shape_hash, base_hash)
+        msg.info(f"MeshShape hash: {shape_hash}")
+        msg.info(f"MeshShape hash (2): {shape_hash2}")
+        msg.info(f"MeshShape base hash: {base_hash}")
+
     def test_09_convex_shape(self):
         # Create a mesh shape
         vertices = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
@@ -214,6 +321,16 @@ class TestShapeDescriptors(unittest.TestCase):
         self.assertEqual(shape.params, 1.0)
         self.assertTrue(np.array_equal(shape.vertices, np.array(vertices)))
         self.assertTrue(np.array_equal(shape.indices, np.array(indices).flatten()))
+
+        # Check hash function
+        shape_hash = hash(shape)
+        shape_hash2 = hash(shape)
+        base_hash = super(MeshShape, shape).__hash__()
+        self.assertEqual(shape_hash, shape_hash2)
+        self.assertNotEqual(shape_hash, base_hash)
+        msg.info(f"MeshShape hash: {shape_hash}")
+        msg.info(f"MeshShape hash (2): {shape_hash2}")
+        msg.info(f"MeshShape base hash: {base_hash}")
 
     # TODO: Re-enable when HFieldShape is implemented
     # def test_10_hfield_shape(self):
@@ -230,8 +347,10 @@ class TestShapeDescriptors(unittest.TestCase):
     #     self.assertTrue(np.array_equal(shape.indices, np.array(indices).flatten()))
 
     def test_11_sdf_shape(self):
+        if self.default_device.is_cpu:
+            self.skipTest("SDFShape tests are skipped on CPU device.")
         # Create an SDF shape
-        volume = np.zeros((10, 10, 10), dtype=np.float32)
+        volume = wp.Volume.allocate((-10, -10, -10), (10, 10, 10), voxel_size=0.5, device=self.default_device)
         shape = SDFShape(volume)
         # Check default values
         self.assertEqual(shape.name, "sdf")
@@ -241,6 +360,16 @@ class TestShapeDescriptors(unittest.TestCase):
         self.assertEqual(shape.mass, 1.0)
         self.assertEqual(shape.com, vec3f(0.0))
         self.assertEqual(shape.inertia, mat33f(np.eye(3)))
+
+        # Check hash function
+        shape_hash = hash(shape)
+        shape_hash2 = hash(shape)
+        base_hash = super(SDFShape, shape).__hash__()
+        self.assertEqual(shape_hash, shape_hash2)
+        self.assertNotEqual(shape_hash, base_hash)
+        msg.info(f"SDFShape hash: {shape_hash}")
+        msg.info(f"SDFShape hash (2): {shape_hash2}")
+        msg.info(f"SDFShape base hash: {base_hash}")
 
 
 ###

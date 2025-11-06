@@ -24,6 +24,7 @@ from ..core.builder import ModelBuilder
 from ..core.geometry import CollisionGeometryDescriptor, GeometryDescriptor
 from ..core.shapes import ShapeType
 from ..core.types import vec3f
+from ..core.world import WorldDescriptor
 from ..simulation.simulator import Simulator
 
 ###
@@ -49,7 +50,7 @@ class ViewerKamino(ViewerGL):
     ]
 
     # Define the a static world spacing offset for multiple worlds
-    world_spacing: ClassVar[vec3f] = vec3f(0.0, 1.0, 0.0)
+    world_spacing: ClassVar[vec3f] = vec3f(-2.0, 0.0, 0.0)
 
     def __init__(
         self,
@@ -67,15 +68,19 @@ class ViewerKamino(ViewerGL):
         self._simulator = simulator
 
         # Declare and initialize geometry info cache
+        self._worlds: list[WorldDescriptor] = builder.worlds
         self._collision_geometry: list[CollisionGeometryDescriptor] = builder.collision_geoms
         self._physical_geometry: list[GeometryDescriptor] = builder.physical_geoms
 
     def render_geometry(self, body_poses: wp.array, geom: GeometryDescriptor, scope: str):
+        # TODO: Fix this
+        bid = geom.bid + self._worlds[geom.wid].bodies_idx_offset if geom.bid >= 0 else -1
+
         # Handle the case of static geometry (bid < 0)
-        if geom.bid < 0:
+        if bid < 0:
             body_transform = wp.transform_identity()
         else:
-            body_transform = wp.transform(*body_poses[geom.bid])
+            body_transform = wp.transform(*body_poses[bid])
 
         # Retrieve the geometry ID as a float
         wid = float(geom.wid)
@@ -103,7 +108,7 @@ class ViewerKamino(ViewerGL):
 
         # Update the geometry data
         self.log_shapes(
-            name=f"/body_{geom.bid}/{scope}/{geom.gid}-{geom.name}",
+            name=f"/world_{geom.wid}/body_{geom.bid}/{scope}/{geom.gid}-{geom.name}",
             geo_type=geom.shape.type.to_newton(),
             geo_scale=params,
             xforms=wp.array([geom_transform], dtype=wp.transform),

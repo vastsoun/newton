@@ -130,11 +130,8 @@ class Example:
         else:
             msg.info("Constructing builder using model generator ...")
             self.builder: ModelBuilder = make_homogeneous_builder(
-                num_worlds=num_worlds, build_func=build_box_pendulum_vertical
+                num_worlds=num_worlds, build_fn=build_box_pendulum_vertical
             )
-
-        # Set gravity
-        self.builder.gravity.enabled = True
 
         # Set solver settings
         settings = SimulatorSettings()

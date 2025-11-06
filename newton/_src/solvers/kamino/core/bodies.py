@@ -312,14 +312,15 @@ def make_symmetric(A: mat33f) -> mat33f:
 
 
 @wp.func
-def compute_body_inertial_properties(
+def transform_body_inertial_properties(
     p_i: transformf,
     i_I_i: mat33f,
     inv_i_I_i: mat33f,
 ) -> tuple[mat33f, mat33f]:
     """
-    Computes the inertial properties of a rigid body in world coordinates
-    given its pose and local moment of inertia and its inverse.
+    Transforms the inertial properties of a rigid body, specified in
+    local coordinates, to world coordinates given its pose. The inertial
+    properties include the moment of inertia matrix and its inverse.
 
     Args:
         p_i (transformf): The absolute pose of the body in world coordinates.
@@ -366,7 +367,7 @@ def _update_body_inertias(
     inv_i_I_i = model_bodies_inv_i_I_i_in[bid]
 
     # Compute the moment of inertia matrices in world coordinates
-    I_i, inv_I_i = compute_body_inertial_properties(p_i, i_I_i, inv_i_I_i)
+    I_i, inv_I_i = transform_body_inertial_properties(p_i, i_I_i, inv_i_I_i)
 
     # Store results in the output arrays
     state_bodies_I_i_out[bid] = I_i

@@ -20,13 +20,20 @@ from dataclasses import dataclass, field
 from enum import IntEnum
 
 import warp as wp
+from warp._src.types import Vector
 
 from .math import FLOAT32_MAX, FLOAT32_MIN
 from .types import (
     Descriptor,
     mat33f,
     override,
+    vec1i,
+    vec2i,
     vec3f,
+    vec3i,
+    vec4i,
+    vec5i,
+    vec6i,
 )
 
 ###
@@ -302,6 +309,58 @@ class JointDoFType(IntEnum):
             return 3
         elif self.value == self.FIXED:
             return 6
+        else:
+            raise ValueError(f"Unknown joint DoF type: {self.value}")
+
+    @property
+    def cts_axes(self) -> Vector:
+        """
+        Returns the constraint axes indices of the joint.
+        """
+        if self.value == self.FREE:
+            return []  # Empty vector (TODO: wp.constant(vec0i()))
+        if self.value == self.REVOLUTE:
+            return wp.constant(vec5i(0, 1, 2, 4, 5))
+        elif self.value == self.PRISMATIC:
+            return wp.constant(vec5i(1, 2, 3, 4, 5))
+        elif self.value == self.CYLINDRICAL:
+            return wp.constant(vec4i(1, 2, 4, 5))
+        elif self.value == self.UNIVERSAL:
+            return wp.constant(vec4i(0, 1, 2, 5))
+        elif self.value == self.SPHERICAL:
+            return wp.constant(vec3i(0, 1, 2))
+        elif self.value == self.GIMBAL:
+            return wp.constant(vec3i(0, 1, 2))
+        elif self.value == self.CARTESIAN:
+            return wp.constant(vec3i(3, 4, 5))
+        elif self.value == self.FIXED:
+            return wp.constant(vec6i(0, 1, 2, 3, 4, 5))
+        else:
+            raise ValueError(f"Unknown joint DoF type: {self.value}")
+
+    @property
+    def dofs_axes(self) -> Vector:
+        """
+        Returns the DoF axes indices of the joint.
+        """
+        if self.value == self.FREE:
+            return wp.constant(vec6i(0, 1, 2, 3, 4, 5))
+        if self.value == self.REVOLUTE:
+            return wp.constant(vec1i(3))
+        elif self.value == self.PRISMATIC:
+            return wp.constant(vec1i(0))
+        elif self.value == self.CYLINDRICAL:
+            return wp.constant(vec2i(0, 3))
+        elif self.value == self.UNIVERSAL:
+            return wp.constant(vec2i(3, 4))
+        elif self.value == self.SPHERICAL:
+            return wp.constant(vec3i(3, 4, 5))
+        elif self.value == self.GIMBAL:
+            return wp.constant(vec3i(3, 4, 5))
+        elif self.value == self.CARTESIAN:
+            return wp.constant(vec3i(0, 1, 2))
+        elif self.value == self.FIXED:
+            return []  # Empty vector (TODO: wp.constant(vec0i()))
         else:
             raise ValueError(f"Unknown joint DoF type: {self.value}")
 

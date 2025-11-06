@@ -19,8 +19,6 @@ KAMINO: Kinematics: Joints
 
 from __future__ import annotations
 
-from typing import Any
-
 import warp as wp
 
 from ..core.joints import JointDoFType
@@ -42,14 +40,8 @@ from ..core.types import (
     mat33f,
     quatf,
     transformf,
-    vec1i,
-    vec2i,
     vec3f,
-    vec3i,
-    vec4i,
-    vec5i,
     vec6f,
-    vec6i,
 )
 
 ###
@@ -69,73 +61,24 @@ wp.set_module_options({"enable_backward": False})
 
 
 ###
-# Joint constraint selectors (as vectors of indices)
-###
-
-S_cts_fixed = wp.constant(vec6i(0, 1, 2, 3, 4, 5))
-"""Constraint column selection for 0-DoF fixed joints."""
-
-S_cts_revolute = wp.constant(vec5i(0, 1, 2, 4, 5))
-"""Constraint column selection for 1-DoF revolute joints."""
-
-S_cts_prismatic = wp.constant(vec5i(1, 2, 3, 4, 5))
-"""Constraint column selection for 1-Dof prismatic joints."""
-
-S_cts_cylindrical = wp.constant(vec4i(1, 2, 4, 5))
-"""Constraint column selection for 2-DoF cylindrical joints."""
-
-S_cts_universal = wp.constant(vec4i(0, 1, 2, 5))
-"""Constraint column selection for 2-DoF universal joints."""
-
-S_cts_spherical = wp.constant(vec3i(0, 1, 2))
-"""Constraint column selection for 3-DoF spherical joints."""
-
-S_cts_gimbal = wp.constant(vec3i(0, 1, 2))
-"""Constraint column selection for 3-DoF gimbal joints."""
-
-S_cts_cartesian = wp.constant(vec3i(3, 4, 5))
-"""Constraint column selection for 3-DoF cartesian joints."""
-
-
-###
-# Joint DoF selectors (as vectors of indices)
-###
-
-S_dofs_revolute = wp.constant(vec1i(3))
-"""DoF column selection for 1-DoF revolute joints."""
-
-S_dofs_prismatic = wp.constant(vec1i(0))
-"""DoF column selection for 1-DoF prismatic joints."""
-
-S_dofs_cylindrical = wp.constant(vec2i(0, 3))
-"""DoF column selection for 2-DoF cylindrical joints."""
-
-S_dofs_universal = wp.constant(vec2i(3, 4))
-"""DoF column selection for 2-DoF universal joints."""
-
-S_dofs_spherical = wp.constant(vec3i(3, 4, 5))
-"""DoF column selection for 3-DoF spherical joints."""
-
-S_dofs_gimbal = wp.constant(vec3i(3, 4, 5))
-"""DoF column selection for 3-DoF gimbal joints."""
-
-S_dofs_cartesian = wp.constant(vec3i(0, 1, 2))
-"""DoF column selection for 3-DoF cartesian joints."""
-
-S_dofs_free = wp.constant(vec6i(0, 1, 2, 3, 4, 5))
-"""DoF column selection for 6-DoF free joints."""
-
-
-###
 # Functions - State Writes
 ###
 
 
-def make_write_joint_state_generic(cst_selection: Any, dof_selection: Any):
+def make_write_joint_state_generic(dof_type: JointDoFType):
     """
     Generates functions to store the joint state according to the
     constraint and DoF dimensions specific to the type of joint.
     """
+
+    # Retrieve the joint constraint and DoF axes
+    dof_axes = dof_type.dofs_axes
+    cts_axes = dof_type.cts_axes
+
+    # Retrieve the number of constraints and dofs
+    # num_coords = dof_type.num_coords
+    num_dof = dof_type.num_dofs
+    num_cts = dof_type.num_cts
 
     @wp.func
     def write_joint_state_generic(
@@ -151,49 +94,45 @@ def make_write_joint_state_generic(cst_selection: Any, dof_selection: Any):
         q_j_out: wp.array(dtype=float32),  # Flat array of joint DoF coordinates
         dq_j_out: wp.array(dtype=float32),  # Flat array of joint DoF velocities
     ):
-        # Compute the number of constraints and dofs
-        num_cst = wp.static(len(cst_selection))
-        num_dof = wp.static(len(dof_selection))
-
         # Store the joint constraint residuals
-        for j in range(num_cst):
-            r_j_out[cts_offset + j] = j_p_j[cst_selection[j]]
-            dr_j_out[cts_offset + j] = j_u_j[cst_selection[j]]
+        for j in range(num_cts):
+            r_j_out[cts_offset + j] = j_p_j[cts_axes[j]]
+            dr_j_out[cts_offset + j] = j_u_j[cts_axes[j]]
 
         # Store the joint DoF coordinates and velocities
         for j in range(num_dof):
-            q_j_out[coords_offset + j] = j_p_j[dof_selection[j]]
-            dq_j_out[dofs_offset + j] = j_u_j[dof_selection[j]]
+            q_j_out[coords_offset + j] = j_p_j[dof_axes[j]]
+            dq_j_out[dofs_offset + j] = j_u_j[dof_axes[j]]
 
     # Return the function
     return write_joint_state_generic
 
 
-write_joint_state_fixed = make_write_joint_state_generic(S_cts_fixed, [])
+write_joint_state_fixed = make_write_joint_state_generic(JointDoFType.FIXED)
 """Function to store the joint state for 0-DoF fixed joints."""
 
-write_joint_state_revolute = make_write_joint_state_generic(S_cts_revolute, S_dofs_revolute)
+write_joint_state_revolute = make_write_joint_state_generic(JointDoFType.REVOLUTE)
 """Function to store the joint state for 1-DoF revolute joints."""
 
-write_joint_state_prismatic = make_write_joint_state_generic(S_cts_prismatic, S_dofs_prismatic)
+write_joint_state_prismatic = make_write_joint_state_generic(JointDoFType.PRISMATIC)
 """Function to store the joint state for 1-DoF prismatic joints."""
 
-write_joint_state_cylindrical = make_write_joint_state_generic(S_cts_cylindrical, S_dofs_cylindrical)
+write_joint_state_cylindrical = make_write_joint_state_generic(JointDoFType.CYLINDRICAL)
 """Function to store the joint state for 2-DoF cylindrical joints."""
 
-write_joint_state_universal = make_write_joint_state_generic(S_cts_universal, S_dofs_universal)
+write_joint_state_universal = make_write_joint_state_generic(JointDoFType.UNIVERSAL)
 """Function to store the joint state for 2-DoF universal joints."""
 
-write_joint_state_spherical = make_write_joint_state_generic(S_cts_spherical, S_dofs_spherical)
+write_joint_state_spherical = make_write_joint_state_generic(JointDoFType.SPHERICAL)
 """Function to store the joint state for 3-DoF spherical joints."""
 
-write_joint_state_gimbal = make_write_joint_state_generic(S_cts_gimbal, S_dofs_gimbal)
+write_joint_state_gimbal = make_write_joint_state_generic(JointDoFType.GIMBAL)
 """Function to store the joint state for 3-DoF gimbal joints."""
 
-write_joint_state_cartesian = make_write_joint_state_generic(S_cts_cartesian, S_dofs_cartesian)
+write_joint_state_cartesian = make_write_joint_state_generic(JointDoFType.CARTESIAN)
 """Function to store the joint state for 3-DoF cartesian joints."""
 
-write_joint_state_free = make_write_joint_state_generic([], S_dofs_free)
+write_joint_state_free = make_write_joint_state_generic(JointDoFType.FREE)
 """Function to store the joint state for 6-DoF free joints."""
 
 
@@ -212,9 +151,13 @@ def write_joint_state_universal_new(
     q_j_out: wp.array(dtype=float32),  # Flat array of joint DoF coordinates
     dq_j_out: wp.array(dtype=float32),  # Flat array of joint DoF velocities
 ):
-    # Compute the number of constraints and dofs
-    num_cst = wp.static(len(S_cts_universal))
-    num_dof = wp.static(len(S_dofs_universal))
+    # Retrieve the joint constraint and DoF axes
+    dof_axes = wp.static(JointDoFType.UNIVERSAL.dofs_axes)
+    cts_axes = wp.static(JointDoFType.UNIVERSAL.cts_axes)
+
+    # Retrieve the number of constraints and dofs
+    num_cts = wp.static(JointDoFType.UNIVERSAL.num_cts)
+    num_dof = wp.static(JointDoFType.UNIVERSAL.num_dofs)
     num_coord = wp.static(JointDoFType.UNIVERSAL.num_coords)
 
     # Convert the joint rotation quaternion to a rotation vector
@@ -224,13 +167,13 @@ def write_joint_state_universal_new(
     j_p_j = screw(j_r_j, j_theta_j)
 
     # Store the joint constraint residuals
-    for j in range(num_cst):
-        r_j_out[cts_offset + j] = j_p_j[S_cts_universal[j]]
-        dr_j_out[cts_offset + j] = j_u_j[S_cts_universal[j]]
+    for j in range(num_cts):
+        r_j_out[cts_offset + j] = j_p_j[cts_axes[j]]
+        dr_j_out[cts_offset + j] = j_u_j[cts_axes[j]]
 
     # Store the joint DoF velocities
     for j in range(num_dof):
-        dq_j_out[dofs_offset + j] = j_u_j[S_dofs_universal[j]]
+        dq_j_out[dofs_offset + j] = j_u_j[dof_axes[j]]
 
     # Store the joint DoF coordinates (i.e. XY components of the 3D rotation vector)
     for j in range(num_coord):
@@ -252,22 +195,26 @@ def write_joint_state_spherical_new(
     q_j_out: wp.array(dtype=float32),  # Flat array of joint DoF coordinates
     dq_j_out: wp.array(dtype=float32),  # Flat array of joint DoF velocities
 ):
-    # Compute the number of constraints and dofs
-    num_cst = wp.static(len(S_cts_universal))
-    num_dof = wp.static(len(S_dofs_universal))
+    # Retrieve the joint constraint and DoF axes
+    dof_axes = wp.static(JointDoFType.SPHERICAL.dofs_axes)
+    cts_axes = wp.static(JointDoFType.SPHERICAL.cts_axes)
+
+    # Retrieve the number of constraints and dofs
+    num_cts = wp.static(JointDoFType.SPHERICAL.num_cts)
+    num_dof = wp.static(JointDoFType.SPHERICAL.num_dofs)
     num_coord = wp.static(JointDoFType.SPHERICAL.num_coords)
 
     # Construct a 6D relative pose vector using a rotation vector
     j_p_j = screw(j_r_j, quat_log(j_q_j))
 
     # Store the joint constraint residuals
-    for j in range(num_cst):
-        r_j_out[cts_offset + j] = j_p_j[S_cts_universal[j]]
-        dr_j_out[cts_offset + j] = j_u_j[S_cts_universal[j]]
+    for j in range(num_cts):
+        r_j_out[cts_offset + j] = j_p_j[cts_axes[j]]
+        dr_j_out[cts_offset + j] = j_u_j[cts_axes[j]]
 
     # Store the joint DoF velocities
     for j in range(num_dof):
-        dq_j_out[dofs_offset + j] = j_u_j[S_dofs_universal[j]]
+        dq_j_out[dofs_offset + j] = j_u_j[dof_axes[j]]
 
     # Store the joint DoF coordinates (i.e. unit quaternion components)
     for j in range(num_coord):
@@ -289,9 +236,13 @@ def write_joint_state_gimbal_new(
     q_j_out: wp.array(dtype=float32),  # Flat array of joint DoF coordinates
     dq_j_out: wp.array(dtype=float32),  # Flat array of joint DoF velocities
 ):
-    # Compute the number of constraints and dofs
-    num_cst = wp.static(len(S_cts_universal))
-    num_dof = wp.static(len(S_dofs_universal))
+    # Retrieve the joint constraint and DoF axes
+    dof_axes = wp.static(JointDoFType.GIMBAL.dofs_axes)
+    cts_axes = wp.static(JointDoFType.GIMBAL.cts_axes)
+
+    # Retrieve the number of constraints and dofs
+    num_cts = wp.static(JointDoFType.GIMBAL.num_cts)
+    num_dof = wp.static(JointDoFType.GIMBAL.num_dofs)
     num_coord = wp.static(JointDoFType.GIMBAL.num_coords)
 
     # Convert the joint rotation quaternion to a rotation vector
@@ -301,13 +252,13 @@ def write_joint_state_gimbal_new(
     j_p_j = screw(j_r_j, quat_log(j_q_j))
 
     # Store the joint constraint residuals
-    for j in range(num_cst):
-        r_j_out[cts_offset + j] = j_p_j[S_cts_universal[j]]
-        dr_j_out[cts_offset + j] = j_u_j[S_cts_universal[j]]
+    for j in range(num_cts):
+        r_j_out[cts_offset + j] = j_p_j[cts_axes[j]]
+        dr_j_out[cts_offset + j] = j_u_j[cts_axes[j]]
 
     # Store the joint DoF velocities
     for j in range(num_dof):
-        dq_j_out[dofs_offset + j] = j_u_j[S_dofs_universal[j]]
+        dq_j_out[dofs_offset + j] = j_u_j[dof_axes[j]]
 
     # Store the joint DoF coordinates (i.e. 3D XYZ Euler angles)
     for j in range(num_coord):

@@ -32,7 +32,7 @@ from newton._src.solvers.kamino.core.joints import JointDoFType
 
 class TestCoreJoints(unittest.TestCase):
     def setUp(self):
-        self.verbose = False  # Set to True to enable verbose output
+        self.verbose = True  # Set to True to enable verbose output
         self.default_device = wp.get_device()
 
     def tearDown(self):
@@ -49,12 +49,16 @@ class TestCoreJoints(unittest.TestCase):
             print(f"doftype.name: {doftype.name}")
             print(f"doftype.num_cts: {doftype.num_cts}")
             print(f"doftype.num_dofs: {doftype.num_dofs}")
+            print(f"doftype.cts_axes: {doftype.cts_axes}")
+            print(f"doftype.dofs_axes: {doftype.dofs_axes}")
 
         # Check the enum values
         self.assertEqual(doftype.value, JointDoFType.REVOLUTE)
         self.assertEqual(doftype.name, "REVOLUTE")
         self.assertEqual(doftype.num_cts, 5)
         self.assertEqual(doftype.num_dofs, 1)
+        self.assertEqual(doftype.cts_axes, (0, 1, 2, 4, 5))
+        self.assertEqual(doftype.dofs_axes, (3,))
 
 
 ###

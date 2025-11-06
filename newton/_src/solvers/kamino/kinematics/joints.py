@@ -30,6 +30,7 @@ from ..core.math import (
     quat_conj,
     quat_log,
     quat_product,
+    quat_to_euler_xyz,
     screw,
     screw_angular,
     screw_linear,
@@ -39,6 +40,7 @@ from ..core.types import (
     float32,
     int32,
     mat33f,
+    quatf,
     transformf,
     vec1i,
     vec2i,
@@ -88,6 +90,9 @@ S_cts_universal = wp.constant(vec4i(0, 1, 2, 5))
 S_cts_spherical = wp.constant(vec3i(0, 1, 2))
 """Constraint column selection for 3-DoF spherical joints."""
 
+S_cts_gimbal = wp.constant(vec4i(0, 1, 2, 5))
+"""Constraint column selection for 3-DoF gimbal joints."""
+
 S_cts_cartesian = wp.constant(vec3i(3, 4, 5))
 """Constraint column selection for 3-DoF cartesian joints."""
 
@@ -110,6 +115,9 @@ S_dofs_universal = wp.constant(vec2i(3, 4))
 
 S_dofs_spherical = wp.constant(vec3i(3, 4, 5))
 """DoF column selection for 3-DoF spherical joints."""
+
+S_dofs_gimbal = wp.constant(vec3i(3, 4, 5))
+"""DoF column selection for 3-DoF gimbal joints."""
 
 S_dofs_cartesian = wp.constant(vec3i(0, 1, 2))
 """DoF column selection for 3-DoF cartesian joints."""
@@ -179,11 +187,131 @@ store_joint_state_universal = make_store_joint_state_func(S_cts_universal, S_dof
 store_joint_state_spherical = make_store_joint_state_func(S_cts_spherical, S_dofs_spherical)
 """Function to store the joint state for 3-DoF spherical joints."""
 
+store_joint_state_gimbal = make_store_joint_state_func(S_cts_gimbal, S_dofs_gimbal)
+"""Function to store the joint state for 3-DoF gimbal joints."""
+
 store_joint_state_cartesian = make_store_joint_state_func(S_cts_cartesian, S_dofs_cartesian)
 """Function to store the joint state for 3-DoF cartesian joints."""
 
 store_joint_state_free = make_store_joint_state_func([], S_dofs_free)
 """Function to store the joint state for 6-DoF free joints."""
+
+
+@wp.func
+def store_joint_state_universal_new(
+    # Inputs:
+    cio_j: int32,  # Index offset of the joint constraints
+    qio_j: int32,  # Index offset of the joint coordinates
+    dio_j: int32,  # Index offset of the joint DoFs
+    j_r_j: vec3f,  # 3D vector of the joint-local relative pose
+    j_q_j: quatf,  # 4D unit-quaternion of the joint-local relative pose
+    j_u_j: vec6f,  # 6D vector ofthe joint-local relative twist
+    # Outputs:
+    r_j_out: wp.array(dtype=float32),  # Flat array of joint constraint residuals
+    dr_j_out: wp.array(dtype=float32),  # Flat array of joint constraint residuals
+    q_j_out: wp.array(dtype=float32),  # Flat array of joint DoF coordinates
+    dq_j_out: wp.array(dtype=float32),  # Flat array of joint DoF velocities
+):
+    # Compute the number of constraints and dofs
+    num_cst = wp.static(len(S_cts_universal))
+    num_dof = wp.static(len(S_dofs_universal))
+    num_coord = wp.static(JointDoFType.UNIVERSAL.num_coords)
+
+    # Convert the joint rotation quaternion to a rotation vector
+    j_theta_j = quat_log(j_q_j)
+
+    # Construct a 6D relative pose vector using a rotation vector
+    j_p_j = screw(j_r_j, j_theta_j)
+
+    # Store the joint constraint residuals
+    for j in range(num_cst):
+        r_j_out[cio_j + j] = j_p_j[S_cts_universal[j]]
+        dr_j_out[cio_j + j] = j_u_j[S_cts_universal[j]]
+
+    # Store the joint DoF velocities
+    for j in range(num_dof):
+        dq_j_out[dio_j + j] = j_u_j[S_dofs_universal[j]]
+
+    # Store the joint DoF coordinates (i.e. XY components of the 3D rotation vector)
+    for j in range(num_coord):
+        q_j_out[qio_j + j] = j_theta_j[j]
+
+
+@wp.func
+def store_joint_state_spherical_new(
+    # Inputs:
+    cio_j: int32,  # Index offset of the joint constraints
+    qio_j: int32,  # Index offset of the joint coordinates
+    dio_j: int32,  # Index offset of the joint DoFs
+    j_r_j: vec3f,  # 3D vector of the joint-local relative pose
+    j_q_j: quatf,  # 4D unit-quaternion of the joint-local relative pose
+    j_u_j: vec6f,  # 6D vector ofthe joint-local relative twist
+    # Outputs:
+    r_j_out: wp.array(dtype=float32),  # Flat array of joint constraint residuals
+    dr_j_out: wp.array(dtype=float32),  # Flat array of joint constraint residuals
+    q_j_out: wp.array(dtype=float32),  # Flat array of joint DoF coordinates
+    dq_j_out: wp.array(dtype=float32),  # Flat array of joint DoF velocities
+):
+    # Compute the number of constraints and dofs
+    num_cst = wp.static(len(S_cts_universal))
+    num_dof = wp.static(len(S_dofs_universal))
+    num_coord = wp.static(JointDoFType.SPHERICAL.num_coords)
+
+    # Construct a 6D relative pose vector using a rotation vector
+    j_p_j = screw(j_r_j, quat_log(j_q_j))
+
+    # Store the joint constraint residuals
+    for j in range(num_cst):
+        r_j_out[cio_j + j] = j_p_j[S_cts_universal[j]]
+        dr_j_out[cio_j + j] = j_u_j[S_cts_universal[j]]
+
+    # Store the joint DoF velocities
+    for j in range(num_dof):
+        dq_j_out[dio_j + j] = j_u_j[S_dofs_universal[j]]
+
+    # Store the joint DoF coordinates (i.e. unit quaternion components)
+    for j in range(num_coord):
+        q_j_out[qio_j + j] = j_q_j[j]
+
+
+@wp.func
+def store_joint_state_gimbal_new(
+    # Inputs:
+    cio_j: int32,  # Index offset of the joint constraints
+    qio_j: int32,  # Index offset of the joint coordinates
+    dio_j: int32,  # Index offset of the joint DoFs
+    j_r_j: vec3f,  # 3D vector of the joint-local relative pose
+    j_q_j: quatf,  # 4D unit-quaternion of the joint-local relative pose
+    j_u_j: vec6f,  # 6D vector ofthe joint-local relative twist
+    # Outputs:
+    r_j_out: wp.array(dtype=float32),  # Flat array of joint constraint residuals
+    dr_j_out: wp.array(dtype=float32),  # Flat array of joint constraint residuals
+    q_j_out: wp.array(dtype=float32),  # Flat array of joint DoF coordinates
+    dq_j_out: wp.array(dtype=float32),  # Flat array of joint DoF velocities
+):
+    # Compute the number of constraints and dofs
+    num_cst = wp.static(len(S_cts_universal))
+    num_dof = wp.static(len(S_dofs_universal))
+    num_coord = wp.static(JointDoFType.GIMBAL.num_coords)
+
+    # Convert the joint rotation quaternion to a rotation vector
+    rpy = quat_to_euler_xyz(j_q_j)
+
+    # Construct a 6D relative pose vector using a rotation vector
+    j_p_j = screw(j_r_j, quat_log(j_q_j))
+
+    # Store the joint constraint residuals
+    for j in range(num_cst):
+        r_j_out[cio_j + j] = j_p_j[S_cts_universal[j]]
+        dr_j_out[cio_j + j] = j_u_j[S_cts_universal[j]]
+
+    # Store the joint DoF velocities
+    for j in range(num_dof):
+        dq_j_out[dio_j + j] = j_u_j[S_dofs_universal[j]]
+
+    # Store the joint DoF coordinates (i.e. 3D XYZ Euler angles)
+    for j in range(num_coord):
+        q_j_out[qio_j + j] = rpy[j]
 
 
 @wp.func
@@ -306,6 +434,9 @@ def store_joint_residuals_and_motion(
 
     elif dof_type == JointDoFType.SPHERICAL:
         store_joint_state_spherical(cio_j, qio_j, dio_j, r_j, dr_j, data_r_j, data_dr_j, data_q_j, data_dq_j)
+
+    elif dof_type == JointDoFType.GIMBAL:
+        store_joint_state_gimbal(cio_j, qio_j, dio_j, r_j, dr_j, data_r_j, data_dr_j, data_q_j, data_dq_j)
 
     elif dof_type == JointDoFType.CARTESIAN:
         store_joint_state_cartesian(cio_j, qio_j, dio_j, r_j, dr_j, data_r_j, data_dr_j, data_q_j, data_dq_j)

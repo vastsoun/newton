@@ -43,6 +43,7 @@ from ..kinematics.joints import (
     S_cts_cartesian,
     S_cts_cylindrical,
     S_cts_fixed,
+    S_cts_gimbal,
     S_cts_prismatic,
     S_cts_revolute,
     S_cts_spherical,
@@ -50,6 +51,7 @@ from ..kinematics.joints import (
     S_dofs_cartesian,
     S_dofs_cylindrical,
     S_dofs_free,
+    S_dofs_gimbal,
     S_dofs_prismatic,
     S_dofs_revolute,
     S_dofs_spherical,
@@ -168,6 +170,9 @@ store_joint_cts_jacobian_universal = make_store_joint_jacobian_func(S_cts_univer
 store_joint_cts_jacobian_spherical = make_store_joint_jacobian_func(S_cts_spherical)
 """Function to store the constraint Jacobian block for 3-DoF spherical joints."""
 
+store_joint_cts_jacobian_gimbal = make_store_joint_jacobian_func(S_cts_gimbal)
+"""Function to store the constraint Jacobian block for 3-DoF gimbal joints."""
+
 store_joint_cts_jacobian_cartesian = make_store_joint_jacobian_func(S_cts_cartesian)
 """Function to store the constraint Jacobian block for 3-DoF cartesian joints."""
 
@@ -185,6 +190,9 @@ store_joint_dofs_jacobian_universal = make_store_joint_jacobian_func(S_dofs_univ
 
 store_joint_dofs_jacobian_spherical = make_store_joint_jacobian_func(S_dofs_spherical)
 """Function to store the actuation Jacobian block for 3-DoF spherical joints."""
+
+store_joint_dofs_jacobian_gimbal = make_store_joint_jacobian_func(S_dofs_gimbal)
+"""Function to store the actuation Jacobian block for 3-DoF gimbal joints."""
 
 store_joint_dofs_jacobian_cartesian = make_store_joint_jacobian_func(S_dofs_cartesian)
 """Function to store the actuation Jacobian block for 3-DoF cartesian joints."""
@@ -232,6 +240,11 @@ def store_joint_cts_jacobian(
 
     elif dof_type == JointDoFType.SPHERICAL:
         store_joint_cts_jacobian_spherical(
+            J_cts_offset, cts_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_cts_data
+        )
+
+    elif dof_type == JointDoFType.GIMBAL:
+        store_joint_cts_jacobian_gimbal(
             J_cts_offset, cts_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_cts_data
         )
 
@@ -285,6 +298,11 @@ def store_joint_dofs_jacobian(
 
     elif dof_type == JointDoFType.SPHERICAL:
         store_joint_dofs_jacobian_spherical(
+            J_dofs_offset, dofs_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_dofs_data
+        )
+
+    elif dof_type == JointDoFType.GIMBAL:
+        store_joint_dofs_jacobian_gimbal(
             J_dofs_offset, dofs_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_dofs_data
         )
 
@@ -358,7 +376,8 @@ def contact_wrench_matrix_from_points(r_k: vec3f, r_i: vec3f) -> mat63f:
 @wp.func
 def expand6d(X: mat33f) -> mat66f:
     """
-    Expands a 3x3 rotation matrix to a 6x6 matrix operator by filling the upper left and lower right blocks with the input matrix.
+    Expands a 3x3 rotation matrix to a 6x6 matrix operator by filling
+    the upper left and lower right blocks with the input matrix.
 
     Args:
         X (mat33f): The 3x3 matrix to be expanded.

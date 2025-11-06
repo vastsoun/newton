@@ -398,6 +398,24 @@ def quat_from_z_rot(angle_rad: float32) -> quatf:
 
 
 @wp.func
+def quat_to_euler_xyz(q: quatf) -> vec3f:
+    """
+    Converts a unit quaternion to XYZ Euler angles (also known as Cardan angles).
+    """
+    rpy = vec3f(0.0)
+    R_20 = -2.0 * (q.x * q.z - q.w * q.y)
+    if wp.abs(R_20) < 1.0:
+        rpy[1] = wp.asin(-R_20)
+        rpy[0] = wp.atan2(2.0 * (q.y * q.z + q.w * q.x), q.w * q.w - q.x * q.x - q.y * q.y + q.z * q.z)
+        rpy[2] = wp.atan2(2.0 * (q.x * q.y + q.w * q.z), q.w * q.w + q.x * q.x - q.y * q.y - q.z * q.z)
+    else:  # Gimbal lock
+        rpy[0] = wp.atan2(-2.0 * (q.x * q.y - q.w * q.z), q.w * q.w - q.x * q.x + q.y * q.y - q.z * q.z)
+        rpy[1] = wp.half_pi if R_20 <= -1.0 else -wp.half_pi
+        rpy[2] = 0.0
+    return rpy
+
+
+@wp.func
 def quat_left_jacobian_inverse(q: quatf) -> mat33f:
     """
     Computes the left-Jacobian inverse of the quaternion log map

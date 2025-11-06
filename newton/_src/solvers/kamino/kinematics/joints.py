@@ -207,34 +207,6 @@ def make_write_joint_state_generic(dof_type: JointDoFType):
     return write_joint_state_generic
 
 
-write_joint_state_free = make_write_joint_state_generic(JointDoFType.FREE)
-"""Function to store the joint state for 6-DoF free joints."""
-
-write_joint_state_revolute = make_write_joint_state_generic(JointDoFType.REVOLUTE)
-"""Function to store the joint state for 1-DoF revolute joints."""
-
-write_joint_state_prismatic = make_write_joint_state_generic(JointDoFType.PRISMATIC)
-"""Function to store the joint state for 1-DoF prismatic joints."""
-
-write_joint_state_cylindrical = make_write_joint_state_generic(JointDoFType.CYLINDRICAL)
-"""Function to store the joint state for 2-DoF cylindrical joints."""
-
-write_joint_state_universal = make_write_joint_state_generic(JointDoFType.UNIVERSAL)
-"""Function to store the joint state for 2-DoF universal joints."""
-
-write_joint_state_spherical = make_write_joint_state_generic(JointDoFType.SPHERICAL)
-"""Function to store the joint state for 3-DoF spherical joints."""
-
-write_joint_state_gimbal = make_write_joint_state_generic(JointDoFType.GIMBAL)
-"""Function to store the joint state for 3-DoF gimbal joints."""
-
-write_joint_state_cartesian = make_write_joint_state_generic(JointDoFType.CARTESIAN)
-"""Function to store the joint state for 3-DoF cartesian joints."""
-
-write_joint_state_fixed = make_write_joint_state_generic(JointDoFType.FIXED)
-"""Function to store the joint state for 0-DoF fixed joints."""
-
-
 ###
 # Functions - Coordinate Correction
 ###
@@ -369,47 +341,47 @@ def write_joint_state(
     # TODO: Use wp.static to include conditionals at compile time based on the joint types present in the builder
 
     if dof_type == JointDoFType.REVOLUTE:
-        write_joint_state_revolute(
+        wp.static(make_write_joint_state_generic(JointDoFType.REVOLUTE))(
             cts_offset, dofs_offset, coords_offset, j_r_j, j_q_j, j_u_j, data_r_j, data_dr_j, data_q_j, data_dq_j
         )
 
     elif dof_type == JointDoFType.PRISMATIC:
-        write_joint_state_prismatic(
+        wp.static(make_write_joint_state_generic(JointDoFType.PRISMATIC))(
             cts_offset, dofs_offset, coords_offset, j_r_j, j_q_j, j_u_j, data_r_j, data_dr_j, data_q_j, data_dq_j
         )
 
     elif dof_type == JointDoFType.CYLINDRICAL:
-        write_joint_state_cylindrical(
+        wp.static(make_write_joint_state_generic(JointDoFType.CYLINDRICAL))(
             cts_offset, dofs_offset, coords_offset, j_r_j, j_q_j, j_u_j, data_r_j, data_dr_j, data_q_j, data_dq_j
         )
 
     elif dof_type == JointDoFType.UNIVERSAL:
-        write_joint_state_universal(
+        wp.static(make_write_joint_state_generic(JointDoFType.UNIVERSAL))(
             cts_offset, dofs_offset, coords_offset, j_r_j, j_q_j, j_u_j, data_r_j, data_dr_j, data_q_j, data_dq_j
         )
 
     elif dof_type == JointDoFType.SPHERICAL:
-        write_joint_state_spherical(
+        wp.static(make_write_joint_state_generic(JointDoFType.SPHERICAL))(
             cts_offset, dofs_offset, coords_offset, j_r_j, j_q_j, j_u_j, data_r_j, data_dr_j, data_q_j, data_dq_j
         )
 
     elif dof_type == JointDoFType.GIMBAL:
-        write_joint_state_gimbal(
+        wp.static(make_write_joint_state_generic(JointDoFType.GIMBAL))(
             cts_offset, dofs_offset, coords_offset, j_r_j, j_q_j, j_u_j, data_r_j, data_dr_j, data_q_j, data_dq_j
         )
 
     elif dof_type == JointDoFType.CARTESIAN:
-        write_joint_state_cartesian(
+        wp.static(make_write_joint_state_generic(JointDoFType.CARTESIAN))(
             cts_offset, dofs_offset, coords_offset, j_r_j, j_q_j, j_u_j, data_r_j, data_dr_j, data_q_j, data_dq_j
         )
 
     elif dof_type == JointDoFType.FIXED:
-        write_joint_state_fixed(
+        wp.static(make_write_joint_state_generic(JointDoFType.FIXED))(
             cts_offset, dofs_offset, coords_offset, j_r_j, j_q_j, j_u_j, data_r_j, data_dr_j, data_q_j, data_dq_j
         )
 
     elif dof_type == JointDoFType.FREE:
-        write_joint_state_free(
+        wp.static(make_write_joint_state_generic(JointDoFType.FREE))(
             cts_offset, dofs_offset, coords_offset, j_r_j, j_q_j, j_u_j, data_r_j, data_dr_j, data_q_j, data_dq_j
         )
 

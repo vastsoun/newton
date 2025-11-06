@@ -156,8 +156,8 @@ def set_joint_follower_body_state(model: Model, data: ModelData):
 
 class TestKinematicsJoints(unittest.TestCase):
     def setUp(self):
-        self.verbose = False  # Set to True for verbose output
         self.default_device = wp.get_device()
+        self.verbose = True  # Set to True for verbose output
 
     def tearDown(self):
         self.default_device = None

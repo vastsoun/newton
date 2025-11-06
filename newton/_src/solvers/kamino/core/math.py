@@ -31,6 +31,7 @@ from .types import (
     mat66f,
     quatf,
     vec3f,
+    vec4f,
     vec6f,
 )
 
@@ -280,7 +281,8 @@ def quat_derivative(q: quatf, omega: vec3f) -> quatf:
 @wp.func
 def quat_log(q: quatf) -> vec3f:
     """
-    Computes the logarithm of a quaternion using the stable 4 * atan() formulation to render a rotation vector.
+    Computes the logarithm of a quaternion using the stable
+    `4 * atan()` formulation to render a rotation vector.
     """
     p = quat_positive(q)
     pv = quat_imaginary(p)
@@ -302,6 +304,39 @@ def quat_log(q: quatf) -> vec3f:
 
     # Return the scaled imaginary part of the quaternion
     return c * pv
+
+
+@wp.func
+def quat_log_decomposed(q: quatf) -> vec4f:
+    """
+    Computes the logarithm of a quaternion using the stable
+    `4 * atan()` formulation to render an angle-axis vector.
+
+    The output is a vec4f with the following format:
+        - `a = [x, y, z, c]` is the angle-axis output
+        - `[x, y, z]` is the axis of rotation
+        - `c` is the angle.
+    """
+    p = quat_positive(q)
+    pv = quat_imaginary(p)
+    pv_norm_sq = wp.dot(pv, pv)
+    pw_sq = p.w * p.w
+    pv_norm = wp.sqrt(pv_norm_sq)
+
+    # Check if the norm of the imaginary part is infinitesimal
+    if pv_norm_sq > FLOAT32_EPS:
+        # Regular solution for larger angles
+        # Use more stable 4 * atan() formulation over the 2 * atan(pv_norm / pw)
+        # TODO: angle = 4.0 * wp.atan2(pv_norm, (p.w + wp.sqrt(pw_sq + pv_norm_sq)))
+        angle = 4.0 * wp.atan(pv_norm / (p.w + wp.sqrt(pw_sq + pv_norm_sq)))
+        c = angle / pv_norm
+    else:
+        # Taylor expansion solution for small angles
+        # For the alternative branch use the limit of angle / pv_norm for angle -> 0.0
+        c = (2.0 - wp.static(2.0 / 3.0) * (pv_norm_sq / pw_sq)) / p.w
+
+    # Return the scaled imaginary part of the quaternion
+    return vec4f(pv.x, pv.y, pv.z, c)
 
 
 @wp.func

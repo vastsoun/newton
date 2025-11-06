@@ -145,8 +145,6 @@ def _reset_joints_of_select_worlds(
     model_info_joint_cts_offset: wp.array(dtype=int32),
     model_joint_wid: wp.array(dtype=int32),
     model_joint_dof_type: wp.array(dtype=int32),
-    model_joint_num_coords: wp.array(dtype=int32),
-    model_joint_num_dofs: wp.array(dtype=int32),
     model_joint_num_cts: wp.array(dtype=int32),
     model_joint_coords_offset: wp.array(dtype=int32),
     model_joint_dofs_offset: wp.array(dtype=int32),
@@ -186,12 +184,10 @@ def _reset_joints_of_select_worlds(
 
     # Retrieve the joint model data
     dof_type = model_joint_dof_type[jid]
-    # num_coords = model_joint_num_coords[jid]
-    # num_dofs = model_joint_num_dofs[jid]
     num_cts = model_joint_num_cts[jid]
-    qio_j = model_joint_coords_offset[jid]
-    dio_j = model_joint_dofs_offset[jid]
-    cio_j = model_joint_cts_offset[jid]
+    coords_offset = model_joint_coords_offset[jid]
+    dofs_offset = model_joint_dofs_offset[jid]
+    cts_offset = model_joint_cts_offset[jid]
     bid_B = model_joint_bid_B[jid]
     bid_F = model_joint_bid_F[jid]
     B_r_Bj = model_joint_B_r_Bj[jid]
@@ -199,14 +195,9 @@ def _reset_joints_of_select_worlds(
     X_j = model_joint_X_j[jid]
 
     # Retrieve the index offsets of the joint's constraint and DoF dimensions
-    world_joint_qio = model_info_joint_coords_offset[wid]
-    world_joint_dio = model_info_joint_dofs_offset[wid]
-    world_joint_cio = model_info_joint_cts_offset[wid]
-
-    # Append the index offsets of the world's joint blocks
-    qio_j += world_joint_qio
-    dio_j += world_joint_dio
-    cio_j += world_joint_cio
+    world_joint_coords_offset = model_info_joint_coords_offset[wid]
+    world_joint_dofs_offset = model_info_joint_dofs_offset[wid]
+    world_joint_cts_offset = model_info_joint_cts_offset[wid]
 
     # If the Base body is the world (bid=-1), use the identity transform (frame
     # of the world's origin), otherwise retrieve the Base body's pose and twist
@@ -220,8 +211,13 @@ def _reset_joints_of_select_worlds(
     T_F_j = state_q_i[bid_F]
     u_F_j = state_u_i[bid_F]
 
+    # Append the index offsets of the world's joint blocks
+    coords_offset += world_joint_coords_offset
+    dofs_offset += world_joint_dofs_offset
+    cts_offset += world_joint_cts_offset
+
     # Compute the joint frame pose and relative motion
-    p_j, r_j, dr_j = compute_joint_pose_and_relative_motion(T_B_j, T_F_j, u_B_j, u_F_j, B_r_Bj, F_r_Fj, X_j)
+    p_j, j_r_j, j_q_j, j_u_j = compute_joint_pose_and_relative_motion(T_B_j, T_F_j, u_B_j, u_F_j, B_r_Bj, F_r_Fj, X_j)
 
     # Store the absolute pose of the joint frame in world coordinates
     data_p_j[jid] = p_j
@@ -229,11 +225,12 @@ def _reset_joints_of_select_worlds(
     # Store the joint constraint residuals and motion
     write_joint_state(
         dof_type,
-        cio_j,
-        qio_j,
-        dio_j,
-        r_j,
-        dr_j,
+        cts_offset,
+        dofs_offset,
+        coords_offset,
+        j_r_j,
+        j_q_j,
+        j_u_j,
         data_r_j,
         data_dr_j,
         data_q_j,
@@ -250,11 +247,11 @@ def _reset_joints_of_select_worlds(
     # If requested, reset the joint constraint reactions to zero
     if reset_constraints:
         for k in range(num_cts):
-            data_lambda_j[cio_j + k] = 0.0
+            data_lambda_j[cts_offset + k] = 0.0
     else:
         # Otherwise, copy the target constraint reactions from the target state
         for k in range(num_cts):
-            data_lambda_j[cio_j + k] = state_lambda_j[cio_j + k]
+            data_lambda_j[cts_offset + k] = state_lambda_j[cts_offset + k]
 
 
 ###
@@ -330,8 +327,6 @@ def reset_state_of_select_worlds(
             model.info.joint_cts_offset,
             model.joints.wid,
             model.joints.dof_type,
-            model.joints.num_coords,
-            model.joints.num_dofs,
             model.joints.num_cts,
             model.joints.coords_offset,
             model.joints.dofs_offset,

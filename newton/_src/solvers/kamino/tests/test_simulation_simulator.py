@@ -731,7 +731,7 @@ class TestCartpoleSimulator(unittest.TestCase):
         # Create an array of flags for the selected worlds to be reset
         mask = np.zeros(num_sample_steps, dtype=np.int32)
         mask[indices_to_reset] = 1
-        worlds = wp.array(mask, dtype=wp.int32, device=self.default_device)
+        world_mask = wp.array(mask, dtype=wp.int32, device=self.default_device)
 
         # Create expected full-state arrays after reset
         expected_init_q_i = np.zeros_like(sample_init_q_i)
@@ -793,7 +793,7 @@ class TestCartpoleSimulator(unittest.TestCase):
         control_0.tau_j.assign(sample_ctrl_tau_j.reshape(-1))
 
         # Reset the multi-instance simulator to load the new initial states
-        multi_sim.reset_to_state(state=state_0, worlds=worlds)
+        multi_sim.reset_to_state(state=state_0, world_mask=world_mask)
         msg.info(f"[multi]: [reset]: sim.model.state_previous.q_i:\n{multi_sim.state_previous.q_i}\n\n")
         msg.info(f"[multi]: [reset]: sim.model.state_previous.u_i:\n{multi_sim.state_previous.u_i}\n\n")
         msg.info(f"[multi]: [reset]: sim.model.state_previous.q_j:\n{multi_sim.state_previous.q_j}\n\n")

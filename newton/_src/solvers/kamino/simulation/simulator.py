@@ -475,7 +475,7 @@ class Simulator:
         """
         self._reset_all_worlds_to_initial_state()
 
-    def reset_to_state(self, state: State, world_masks: wp.array = None, reset_constraints: bool = True):
+    def reset_to_state(self, state: State, world_mask: wp.array = None, reset_constraints: bool = True):
         """
         Resets the simulation to a fully specified maximal-coordinate state.
 
@@ -484,18 +484,18 @@ class Simulator:
 
         Args:
             state (State): The state container from which the body states will be used to reset the simulation.
-            world_masks (wp.array): Array of per-world masks that indicate which worlds should be reset.\n
-                For each element 'w' in the array, if 'world_masks[w] != 0' then world 'w' will be reset,
+            world_mask (wp.array): Array of per-world masks that indicate which worlds should be reset.\n
+                For each element 'w' in the array, if 'world_mask[w] != 0' then world 'w' will be reset,
                 otherwise it will be left unchanged (i.e. skipped).
             reset_constraints (bool): If True, also copies joint constraint forces
                 from the provided state in order to warm-start the constraint solver.
         """
-        if world_masks is None:
+        if world_mask is None:
             self._reset_all_worlds_to_state(state, reset_constraints)
         else:
-            self._reset_select_worlds_to_state(state, world_masks, reset_constraints)
+            self._reset_select_worlds_to_state(state, world_mask, reset_constraints)
 
-    def reset_to_actuators_state(self, actuators_q: wp.array, actuators_dq: wp.array, world_masks: wp.array = None):
+    def reset_to_actuators_state(self, actuators_q: wp.array, actuators_dq: wp.array, world_mask: wp.array = None):
         """
         Resets the simulation to a specified state of the actuators (i.e. generalized coordinates and velocities).
 
@@ -514,8 +514,8 @@ class Simulator:
                 Expects shape of ``(sum_of_num_actuated_joint_coords,)`` and type :class:`float`.
             actuators_dq (wp.array): Array of actuated joint velocities.\n
                 Expects shape of ``(sum_of_num_actuated_joint_dofs,)`` and type :class:`float`.
-            world_masks (wp.array): Array of per-world masks that indicate which worlds should be reset.\n
-                For each element 'w' in the array, if 'world_masks[w] != 0' then world 'w' will be reset,
+            world_mask (wp.array): Array of per-world masks that indicate which worlds should be reset.\n
+                For each element 'w' in the array, if 'world_mask[w] != 0' then world 'w' will be reset,
                 otherwise it will be left unchanged (i.e. skipped).
         """
         # TODO:
@@ -555,8 +555,8 @@ class Simulator:
                 Expects shape of ``(sum_of_num_actuated_joint_coords,)`` and type :class:`float`.
             actuators_dq (wp.array): Array of actuated joint velocities.\n
                 Expects shape of ``(sum_of_num_actuated_joint_dofs,)`` and type :class:`float`.
-            world_masks (wp.array): Array of per-world masks that indicate which worlds should be reset.\n
-                For each element 'w' in the array, if 'world_masks[w] != 0' then world 'w' will be reset,
+            world_mask (wp.array): Array of per-world masks that indicate which worlds should be reset.\n
+                For each element 'w' in the array, if 'world_mask[w] != 0' then world 'w' will be reset,
                 otherwise it will be left unchanged (i.e. skipped).
         """
         # TODO:
@@ -803,14 +803,14 @@ class Simulator:
         # Run the reset callback if it has been set
         self._run_reset_callback()
 
-    def _reset_select_worlds_to_state(self, state: State, world_masks: wp.array = None, reset_constraints: bool = True):
+    def _reset_select_worlds_to_state(self, state: State, world_mask: wp.array = None, reset_constraints: bool = True):
         """
         Resets the simulation to a specific state.
 
         Args:
             state (State): The state container from which the body states will be used to reset the simulation.
-            world_masks (wp.array): Array of per-world masks that indicate which worlds should be reset.\n
-                For each element 'w' in the array, if 'world_masks[w] != 0' then world 'w' will be reset,
+            world_mask (wp.array): Array of per-world masks that indicate which worlds should be reset.\n
+                For each element 'w' in the array, if 'world_mask[w] != 0' then world 'w' will be reset,
                 otherwise it will be left unchanged (i.e. skipped).
             reset_constraints (bool): If True, also copies joint constraint forces
                 from the provided state in order to warm-start the constraint solver.
@@ -821,7 +821,7 @@ class Simulator:
             model=self._model,
             data=self._data.solver,
             state=state,
-            masks=world_masks,
+            mask=world_mask,
             reset_constraints=reset_constraints,
         )
 

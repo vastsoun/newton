@@ -717,7 +717,7 @@ class Simulator:
         self._data.solver.joints.clear_state()
 
         # Then compute the initial joint states based on the body states
-        compute_joints_state(model=self._model, q_j_p=self._data.solver.joints.q_j, data=self._data.solver)
+        compute_joints_state(model=self._model, q_j_ref=self._data.solver.joints.q_j, data=self._data.solver)
 
         # Finally, clear all joint constraint reactions,
         # actuation forces, and wrenches, setting them to zero
@@ -960,7 +960,7 @@ class Simulator:
         # Update the joint states based on the updated body states
         # NOTE: We use the previous state `state_p` for post-processing
         # purposes, e.g. account for roll-over of revolute joints etc
-        compute_joints_state(model=self._model, q_j_p=self._data.state_p.q_j, data=self._data.solver)
+        compute_joints_state(model=self._model, q_j_ref=self._data.state_p.q_j, data=self._data.solver)
 
         # Update the next-step state from the internal solver state
         self._data.update_next()

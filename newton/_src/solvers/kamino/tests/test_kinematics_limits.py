@@ -249,7 +249,7 @@ class TestKinematicsLimits(unittest.TestCase):
         set_joint_follower_body_state(model, data)
 
         # Update the state of the joints
-        compute_joints_state(model=model, q_j_p=wp.zeros_like(data.joints.q_j), data=data)
+        compute_joints_state(model=model, q_j_ref=wp.zeros_like(data.joints.q_j), data=data)
 
         # Optional verbose output
         if self.verbose:

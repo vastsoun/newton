@@ -177,7 +177,7 @@ class TestKinematicsJoints(unittest.TestCase):
             print("data.bodies.u_i:\n", data.bodies.u_i)
 
         # Update the state of the joints
-        compute_joints_state(model=model, q_j_p=wp.zeros_like(data.joints.q_j), data=data)
+        compute_joints_state(model=model, q_j_ref=wp.zeros_like(data.joints.q_j), data=data)
         if self.verbose:
             print("data.joints.p_j:\n", data.joints.p_j)
             print("data.joints.r_j:\n", data.joints.r_j)
@@ -218,7 +218,7 @@ class TestKinematicsJoints(unittest.TestCase):
             print("data.bodies.u_i:\n", data.bodies.u_i)
 
         # Update the state of the joints
-        compute_joints_state(model=model, q_j_p=wp.zeros_like(data.joints.q_j), data=data)
+        compute_joints_state(model=model, q_j_ref=wp.zeros_like(data.joints.q_j), data=data)
         if self.verbose:
             print("data.joints.p_j:\n", data.joints.p_j)
             print("data.joints.r_j:\n", data.joints.r_j)

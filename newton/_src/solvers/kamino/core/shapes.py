@@ -196,7 +196,7 @@ class ShapeDescriptor(ABC, Descriptor):
     @override
     def __hash__(self) -> int:
         """Returns a hash of the ShapeDescriptor based on its name, uid, type and params."""
-        return hash((self.name, self.uid, self.type, self.params))
+        return hash((self.type, self.params))
 
     @override
     def __repr__(self):

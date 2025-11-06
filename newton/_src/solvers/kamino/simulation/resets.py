@@ -52,7 +52,7 @@ wp.set_module_options({"enable_backward": False})
 @wp.kernel
 def _reset_time_of_select_worlds(
     # Inputs:
-    worlds: wp.array(dtype=int32),
+    masks: wp.array(dtype=int32),
     # Outputs:
     data_time: wp.array(dtype=float32),
     data_steps: wp.array(dtype=int32),
@@ -61,7 +61,7 @@ def _reset_time_of_select_worlds(
     wid = wp.tid()
 
     # Retrieve the reset flag for the corresponding world
-    world_has_reset = worlds[wid]
+    world_has_reset = masks[wid]
 
     # Skip resetting time if the world has not been marked for reset
     if not world_has_reset:
@@ -75,7 +75,7 @@ def _reset_time_of_select_worlds(
 @wp.kernel
 def _reset_bodies_of_select_worlds(
     # Inputs:
-    worlds: wp.array(dtype=int32),
+    masks: wp.array(dtype=int32),
     # Inputs:
     model_bid: wp.array(dtype=int32),
     model_i_I_i: wp.array(dtype=mat33f),
@@ -101,7 +101,7 @@ def _reset_bodies_of_select_worlds(
     wid = model_bid[bid]
 
     # Retrieve the reset flag for the corresponding world
-    world_has_reset = worlds[wid]
+    world_has_reset = masks[wid]
 
     # Skip resetting this body if the world has not been marked for reset
     if not world_has_reset:
@@ -139,7 +139,7 @@ def _reset_bodies_of_select_worlds(
 def _reset_joints_of_select_worlds(
     # Inputs:
     reset_constraints: bool,
-    worlds: wp.array(dtype=int32),
+    masks: wp.array(dtype=int32),
     model_info_joint_coords_offset: wp.array(dtype=int32),
     model_info_joint_dofs_offset: wp.array(dtype=int32),
     model_info_joint_cts_offset: wp.array(dtype=int32),
@@ -178,7 +178,7 @@ def _reset_joints_of_select_worlds(
     wid = model_joint_wid[jid]
 
     # Retrieve the reset flag for the corresponding world
-    world_has_reset = worlds[wid]
+    world_has_reset = masks[wid]
 
     # Skip resetting this joint if the world has not been marked for reset
     if not world_has_reset:
@@ -265,7 +265,7 @@ def _reset_joints_of_select_worlds(
 def reset_state_of_select_worlds(
     model: Model,
     state: State,
-    worlds: wp.array,
+    masks: wp.array,
     data: ModelData,
     reset_constraints: bool = True,
 ):
@@ -275,7 +275,7 @@ def reset_state_of_select_worlds(
     Args:
         model: Input model container holding the time-invariant data of the system.
         state: Input state container specifying the target state to be reset to.
-        worlds: Array of world indices to for which the reset should occur.
+        masks: Array of per-world flags indicating which worlds should be reset.
         data: Output solver data to be configured for the target state.
     """
     # Reset time
@@ -284,7 +284,7 @@ def reset_state_of_select_worlds(
         dim=model.size.num_worlds,
         inputs=[
             # Inputs:
-            worlds,
+            masks,
             # Outputs:
             data.time.time,
             data.time.steps,
@@ -297,7 +297,7 @@ def reset_state_of_select_worlds(
         dim=model.size.sum_of_num_bodies,
         inputs=[
             # Inputs:
-            worlds,
+            masks,
             model.bodies.wid,
             model.bodies.i_I_i,
             model.bodies.inv_i_I_i,
@@ -324,7 +324,7 @@ def reset_state_of_select_worlds(
         inputs=[
             # Inputs:
             reset_constraints,
-            worlds,
+            masks,
             model.info.joint_coords_offset,
             model.info.joint_dofs_offset,
             model.info.joint_cts_offset,

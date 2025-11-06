@@ -17,7 +17,7 @@
 
 import warp as wp
 
-from ..core.bodies import compute_body_inertial_properties
+from ..core.bodies import transform_body_inertial_properties
 from ..core.model import Model, ModelData
 from ..core.state import State
 from ..core.types import float32, int32, mat33f, transformf, vec3f, vec6f
@@ -119,7 +119,7 @@ def _reset_bodies_of_select_worlds(
     inv_i_I_i = model_inv_i_I_i[bid]
 
     # Compute the moment of inertia matrices in world coordinates
-    I_i, inv_I_i = compute_body_inertial_properties(q_i_0, i_I_i, inv_i_I_i)
+    I_i, inv_I_i = transform_body_inertial_properties(q_i_0, i_I_i, inv_i_I_i)
 
     # Store the reset state and inertial properties
     # in the output arrays and zero-out wrenches

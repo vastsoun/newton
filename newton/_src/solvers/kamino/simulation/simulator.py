@@ -477,7 +477,10 @@ class Simulator:
 
     def reset_to_state(self, state: State, worlds: wp.array = None, reset_constraints: bool = True):
         """
-        Resets the simulation to a specific state.
+        Resets the simulation to a fully specified maximal-coordinate state.
+
+        This operation therefore only uses the provided body poses and twists to reset the simulation,
+        while the joint states are subsequently computed as part of a forward kinematics update.
 
         Args:
             state (State): The state to reset the simulation to.
@@ -487,13 +490,23 @@ class Simulator:
                 from the provided state in order to warm-start the constraint solver.
         """
         if worlds is None:
-            self._reset_all_worlds_from_state(state, reset_constraints)
+            self._reset_all_worlds_to_state(state, reset_constraints)
         else:
-            self._reset_select_worlds_from_state(state, worlds, reset_constraints)
+            self._reset_select_worlds_to_state(state, worlds, reset_constraints)
 
     def reset_to_actuators_state(self, actuators_q: wp.array, actuators_dq: wp.array, worlds: wp.array = None):
         """
-        Resets the simulation to the given state.
+        Resets the simulation to a specified state of the actuators (i.e. generalized coordinates and velocities).
+
+        This operation serves as reduced-coordinate-like interface to reset the simulation based on
+        the states of only the actuated joints. It computes the corresponding body poses and twists
+        of all bodies, as well as the states of passive joints, using an iterative forward kinematics
+        solver. The resulting body poses and twists are then used to reset the state of the simulation.
+
+        This method is mostly intended for fixed-base systems, where the base body is connected to the
+        world via a unary joint. It can still be useful for floating-base systems, however, if only the
+        actuated joints need to be reset. In cases were the base body also needs to be reset, please use
+        the `reset_to_base_and_actuators_state()` method instead.
 
         Args:
             actuators_q (wp.array): Array of actuated joint coordinates.\n
@@ -518,7 +531,19 @@ class Simulator:
         self, base_q: wp.array, base_u: wp.array, actuators_q: wp.array, actuators_dq: wp.array, worlds: wp.array = None
     ):
         """
-        Resets the simulation to the given state.
+        Resets the simulation to a specified state of  base and actuators (i.e. generalized coordinates and velocities).
+
+        This operation serves as reduced-coordinate-like interface to reset the simulation based on
+        the states of only the base body and the actuated joints. It computes the corresponding body
+        poses and twists of all other bodies, as well as the states of passive joints, using an
+        iterative forward kinematics solver. The resulting body poses and twists are then used to
+        reset the state of the simulation.
+
+        This method is mostly intended for floating-base systems, where no joint is defined between
+        the world and the base body, or if the latter has been assigned a 6-DoF `FREE` joint. It can
+        still be useful for fixed-base systems, in cases where it is desired to reset the system to an
+        alternate fixture configuration. In this case, however, the `base_u` input will be ignored. If
+        the base body does need to be reset, please use the `reset_to_actuators_state()` method instead.
 
         Args:
             base_q (wp.array): Array of base body poses.\n
@@ -657,7 +682,9 @@ class Simulator:
 
     def _reset_bodies_data(self):
         """
-        Resets the state of all bodies to the initial states defined in the model.
+        Resets all internal solver data of bodies from the current reset state.
+
+        This includes updating the body inertias from the body states, and clearing all body wrenches.
         """
         # Update the in-world-frame body inertias from the body states
         update_body_inertias(model=self._model.bodies, data=self._data.solver.bodies)
@@ -665,9 +692,9 @@ class Simulator:
         # Clear all body wrenches by setting them to zero
         self._data.solver.bodies.clear_all_wrenches()
 
-    def _reset_bodies(self):
+    def _reset_bodies_state_and_data_to_initial(self):
         """
-        Resets the state of all bodies to the initial states defined in the model.
+        Resets the solver internal data of all bodies to the initial states defined in the model.
         """
         # First set the active body states to the initial states defined in the model
         self._reset_bodies_to_model_initial_state()
@@ -675,12 +702,12 @@ class Simulator:
         # Then reset all internal body data (i.e. inertias, wrenches etc)
         self._reset_bodies_data()
 
-    def _reset_joints(self, reset_constraint_forces: bool = True):
+    def _reset_joints_data(self, reset_constraints: bool = True):
         """
-        Resets the state of all joints according to the initial state of the bodies.
+        Resets all internal solver data of joints from the current reset state.
 
-        Args:
-            reset_constraint_forces (bool): If True, also clears all joint constraint reactions,
+        This includes updating the joint state from the body states,
+        and clearing all joint constraints, actuation and wrenches.
         """
         # First clear all joint states (i.e. generalized coordinates and velocities) to zeros
         # NOTE: We do this so that the previous state is always zeroed out on reset. This is
@@ -693,7 +720,7 @@ class Simulator:
 
         # Finally, clear all joint constraint reactions,
         # actuation forces, and wrenches, setting them to zero
-        if reset_constraint_forces:
+        if reset_constraints:
             self._data.solver.joints.clear_constraint_reactions()
         self._data.solver.joints.clear_actuation_forces()
         self._data.solver.joints.clear_wrenches()
@@ -719,10 +746,10 @@ class Simulator:
         self._reset_time()
 
         # First reset the states of all bodies
-        self._reset_bodies()
+        self._reset_bodies_state_and_data_to_initial()
 
         # Then reset the state of all joints
-        self._reset_joints()
+        self._reset_joints_data()
 
         # Finally, reset all state and control
         # data to match the internal solver state
@@ -736,13 +763,13 @@ class Simulator:
         # Run the reset callback if it has been set
         self._run_reset_callback()
 
-    def _reset_all_worlds_from_state(self, state: State, use_constraint_forces: bool = False):
+    def _reset_all_worlds_to_state(self, state: State, reset_constraints: bool = False):
         """
-        Resets the simulation to a specific state.
+        Resets all worlds of the simulation to a fully specified state.
 
         Args:
             state (State): The state to reset the simulation to.
-            use_constraint_forces (bool): If True, also copies joint constraint forces
+            reset_constraints (bool): If True, also copies joint constraint forces
                 from the provided state in order to warm-start the constraint solver.
         """
         # Reset the time and step count
@@ -756,11 +783,11 @@ class Simulator:
         self._reset_bodies_data()
 
         # Then reset the state of all joints
-        self._reset_joints(reset_constraint_forces=not use_constraint_forces)
+        self._reset_joints_data(reset_constraints=not reset_constraints)
 
         # Optionally also copy joint constraint forces
         # NOTE: Used to warm-start the constraint solver
-        if use_constraint_forces:
+        if reset_constraints:
             wp.copy(self._data.solver.joints.lambda_j, state.lambda_j)
 
         # Finally, reset all state and control
@@ -775,7 +802,7 @@ class Simulator:
         # Run the reset callback if it has been set
         self._run_reset_callback()
 
-    def _reset_select_worlds_from_state(self, state: State, worlds: wp.array = None, reset_constraints: bool = True):
+    def _reset_select_worlds_to_state(self, state: State, worlds: wp.array = None, reset_constraints: bool = True):
         """
         Resets the simulation to a specific state.
 

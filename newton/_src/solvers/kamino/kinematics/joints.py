@@ -40,8 +40,11 @@ from ..core.types import (
     mat33f,
     quatf,
     transformf,
+    vec1f,
+    vec2f,
     vec3f,
     vec6f,
+    vec7f,
 )
 
 ###
@@ -58,6 +61,53 @@ __all__ = [
 ###
 
 wp.set_module_options({"enable_backward": False})
+
+
+###
+# Functions - Coordinate Mappings
+###
+
+
+@wp.func
+def map_to_joint_coords_revolute(j_r_j: vec3f, j_q_j: quatf) -> vec1f:
+    j_p_j = quat_log(j_q_j)
+    return vec1f(j_p_j[0])
+
+
+@wp.func
+def map_to_joint_coords_prismatic(j_r_j: vec3f, j_q_j: quatf) -> vec1f:
+    return vec1f(j_r_j[0])
+
+
+@wp.func
+def map_to_joint_coords_cylindrical(j_r_j: vec3f, j_q_j: quatf) -> vec2f:
+    return vec2f(j_r_j[0], j_r_j[1])
+
+
+@wp.func
+def map_to_joint_coords_universal(j_r_j: vec3f, j_q_j: quatf) -> vec2f:
+    j_theta_j = quat_log(j_q_j)
+    return vec2f(j_theta_j[0], j_theta_j[1])
+
+
+@wp.func
+def map_to_joint_coords_spherical(j_r_j: vec3f, j_q_j: quatf) -> vec3f:
+    return j_q_j
+
+
+@wp.func
+def map_to_joint_coords_gimbal(j_r_j: vec3f, j_q_j: quatf) -> vec3f:
+    return quat_to_euler_xyz(j_q_j)
+
+
+@wp.func
+def map_to_joint_coords_cartesian(j_r_j: vec3f, j_q_j: quatf) -> vec3f:
+    return j_r_j
+
+
+@wp.func
+def map_to_joint_coords_free(j_r_j: vec3f, j_q_j: quatf) -> vec7f:
+    return vec7f(j_r_j[0], j_r_j[1], j_r_j[2], j_q_j.x, j_q_j.y, j_q_j.z, j_q_j.w)
 
 
 ###

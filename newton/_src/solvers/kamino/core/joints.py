@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from enum import IntEnum
 
 import warp as wp
-from warp._src.types import Vector
+from warp._src.types import Any, Int, Vector
 
 from .math import FLOAT32_MAX, FLOAT32_MIN
 from .types import (
@@ -313,7 +313,7 @@ class JointDoFType(IntEnum):
             raise ValueError(f"Unknown joint DoF type: {self.value}")
 
     @property
-    def cts_axes(self) -> Vector:
+    def cts_axes(self) -> Vector[Any, Int]:
         """
         Returns the constraint axes indices of the joint.
         """
@@ -339,7 +339,7 @@ class JointDoFType(IntEnum):
             raise ValueError(f"Unknown joint DoF type: {self.value}")
 
     @property
-    def dofs_axes(self) -> Vector:
+    def dofs_axes(self) -> Vector[Any, Int]:
         """
         Returns the DoF axes indices of the joint.
         """

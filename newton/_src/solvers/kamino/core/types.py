@@ -94,6 +94,10 @@ class vec1i(wp.types.vector(length=1, dtype=int32)):
     pass
 
 
+class vec1f(wp.types.vector(length=1, dtype=float32)):
+    pass
+
+
 class vec2i(wp.types.vector(length=2, dtype=int32)):
     pass
 

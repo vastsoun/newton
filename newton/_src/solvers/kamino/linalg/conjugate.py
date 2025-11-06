@@ -18,12 +18,12 @@ KAMINO: Conjugate gradient and conjugate residual solvers
 """
 
 import functools
+import math
 from collections.abc import Callable
 from typing import Any
 
 import warp as wp
 import warp.sparse as sparse
-from warp.types import type_length, type_scalar_type
 
 # __all__ = ["BatchedLinearOperator", "cg", "cr", "make_diag_matrix_operator", "make_dense_square_matrix_operator"]
 
@@ -622,8 +622,55 @@ def lt_mask(a: Any, b: Any):
     return wp.where(a < b, type(a)(1), type(a)(0))
 
 
+WP_NO_TILE_FULL = True  # TODO: remove w/ warp upgrade
+
+
+def make_dot_kernel(tile_size: int, maxdim: int):
+    second_tile_size = (maxdim + tile_size - 1) // tile_size
+
+    @wp.kernel(enable_backward=False)
+    def dot(
+        a: wp.array3d(dtype=Any),
+        b: wp.array3d(dtype=Any),
+        env_size: wp.array(dtype=wp.int32),
+        env_active: wp.array(dtype=wp.bool),
+        result: wp.array2d(dtype=Any),
+    ):
+        """Compute the dot products between the trailing-dim arrays in a and b using tiles and pairwise summation."""
+        col, env, _ = wp.tid()
+        if not env_active[env]:
+            return
+        n = env_size[env]
+
+        ts = wp.tile_zeros((second_tile_size,), dtype=wp.float32, storage="shared")
+        o_src = wp.int32(0)
+
+        for block in range(second_tile_size):
+            if o_src >= n:
+                break
+            ta = wp.tile_load(a[col, env], shape=tile_size, offset=o_src)
+            tb = wp.tile_load(b[col, env], shape=tile_size, offset=o_src)
+            # TODO: consider using ts[block] twice, look into += data race in wp
+            prod = wp.tile_map(wp.mul, ta, tb)
+            if o_src > n - tile_size:
+                if wp.static(WP_NO_TILE_FULL):
+                    thresh_scalar = wp.tile_zeros(1, dtype=a.dtype)
+                    thresh_scalar[0] = a.dtype(n - o_src)
+                    thresh = wp.tile_broadcast(thresh_scalar, (tile_size,))
+                else:
+                    thresh = wp.tile_full((tile_size,), a.dtype(n - o_src), dtype=a.dtype)
+                mask = wp.tile_map(lt_mask, wp.tile_arange(tile_size, dtype=a.dtype), thresh)
+                prod = wp.tile_map(wp.mul, prod, mask)
+            s = wp.tile_sum(prod)
+            ts[block] = s[0]
+            o_src += tile_size
+        wp.tile_store(result[col], wp.tile_sum(ts), offset=env)
+
+    return dot
+
+
 @functools.cache
-def _create_tiled_dot_kernels(tile_size):
+def create_tiled_dot_kernels(tile_size):
     @wp.kernel
     def block_dot_kernel(
         a: wp.array2d(dtype=Any),
@@ -696,7 +743,26 @@ class CGSolver:
         self.check_every = check_every
         self.use_cuda_graph = use_cuda_graph
 
+        self.dot_tile_size = min(2048, 2 ** math.ceil(math.log(241, 2)))
+        self.tiled_dot_kernel = make_dot_kernel(self.dot_tile_size, self.maxdims)
         self._allocate()
+
+    def compute_dot(self, a, b, col_offset=0):
+        block_dim = 256
+        if a.ndim == 2:
+            a = a.reshape((1, *a.shape))
+            b = b.reshape((1, *b.shape))
+
+        result = self.dot_product[col_offset:]
+
+        wp.launch(
+            self.tiled_dot_kernel,
+            dim=(a.shape[0], self.n_envs, block_dim),
+            block_dim=min(256, self.dot_tile_size//8),
+            inputs=[a, b, self.active_dims, self.env_active],
+            outputs=[result],
+            device=self.device,
+        )
 
     def _allocate(self):
         # Temp storage
@@ -707,14 +773,8 @@ class CGSolver:
         if self.maxiter is None:
             self.maxiter = wp.full(self.n_envs, self.maxdims, dtype=int)
 
-        self.tiled_dot = TiledDot(
-            max_length=self.maxdims,
-            active_dims=self.active_dims,
-            env_active=self.env_active,
-            device=self.device,
-            scalar_type=self.scalar_type,
-            n_cols=2,
-        )
+        # TODO: non-tiled variant for CPU
+        self.dot_product = wp.empty((2, self.n_envs), dtype=self.scalar_type, device=self.device)
 
         # (r, r) -- so we can compute r.z and r.r at once
         self.r_repeated = _repeat_first(self.r_and_z)
@@ -722,9 +782,9 @@ class CGSolver:
             # without preconditioner r == z
             # TODO: allocate r_and_z here
             self.r_and_z = self.r_repeated
-            self.rz_new = self.tiled_dot.col(0)[:, 0]
+            self.rz_new = self.dot_product[0]
         else:
-            self.rz_new = self.tiled_dot.col(1)[:, 0]
+            self.rz_new = self.dot_product[1]
 
         self.cur_iter = wp.empty(self.n_envs, dtype=wp.int32, device=self.device)
         self.conditions = wp.empty(self.n_envs + 1, dtype=wp.int32, device=self.device)
@@ -732,14 +792,14 @@ class CGSolver:
     def update_rr_rz(self, r, z, r_repeated):
         # z = M r
         if self.M is None:
-            self.tiled_dot.compute(r, r)
+            self.compute_dot(r, r)
         else:
             self.M.matvec(r, z, z, self.env_active, alpha=1.0, beta=0.0)
-            self.tiled_dot.compute(r_repeated, self.r_and_z)
+            self.compute_dot(r_repeated, self.r_and_z)
 
     def solve(self, b: wp.array, x: wp.array):
         r, z = self.r_and_z[0], self.r_and_z[1]
-        r_norm_sq = self.tiled_dot.col(0)[:, 0]
+        r_norm_sq = self.dot_product[0]
         p, Ap = self.p_and_Ap[0], self.p_and_Ap[1]
 
         # Not strictly necessary, but makes it more robust to user-provided BatchedLinearOperators
@@ -773,8 +833,8 @@ class CGSolver:
 
         # Ap = A * p;
         self.A.matvec(p, Ap, Ap, self.env_active, alpha=1, beta=0)
-        self.tiled_dot.compute(p, Ap, col_offset=1)
-        p_Ap = self.tiled_dot.col(1)[:, 0]
+        self.compute_dot(p, Ap, col_offset=1)
+        p_Ap = self.dot_product[1]
 
         wp.launch(
             kernel=_cg_kernel_1,

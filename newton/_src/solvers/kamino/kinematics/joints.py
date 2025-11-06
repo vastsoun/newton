@@ -26,9 +26,7 @@ from ..core.math import (
     TWO_PI,  # noqa: F401
     quat_apply,
     quat_conj,
-    quat_exp,
     quat_log,
-    quat_log_decomposed,
     quat_product,
     quat_to_euler_xyz,
     screw,
@@ -316,14 +314,13 @@ def compute_joint_pose_and_relative_motion(
     # Pre-compute transforms to joint-space
     X_j_T = wp.transpose(X_j)
     X_j_T_R_B_j_T = X_j_T @ wp.transpose(R_B_j)
+    q_X_j_T = wp.quat_from_matrix(X_j_T)
 
     # Compute the relative pose between the representations of joint frame w.r.t. the two bodies
     # NOTE: The pose is decomposed into a translation vector `j_r_j` and a rotation quaternion `j_q_j`
-    # TODO: How can we simplify this expression and make it more efficient?
     q_B_j_conj = quat_conj(q_B_j)
     j_r_j = X_j_T @ (quat_apply(q_B_j_conj, r_F_j + quat_apply(q_F_j, F_r_Fj) - r_B_j) - B_r_Bj)
-    a_j = quat_log_decomposed(quat_product(q_B_j_conj, q_F_j))
-    j_q_j = quat_exp(a_j[3] * (X_j_T @ a_j[0:3]))
+    j_q_j = q_X_j_T * quat_product(q_B_j_conj, q_F_j) * wp.quat_inverse(q_X_j_T)
 
     # Compute the 6D relative twist vector between the representations of joint frame w.r.t. the two bodies
     # TODO: How can we simplify this expression and make it more efficient?

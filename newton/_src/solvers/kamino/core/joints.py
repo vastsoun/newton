@@ -107,7 +107,22 @@ class JointConnectionType(IntEnum):
 
 class JointDoFType(IntEnum):
     """
-    An enumeration of the joint degrees of freedom (DoF) types supported.
+    An enumeration of the supported joint Degrees-of-Freedom (DoF) types.
+
+    Joint "DoFs" are defined as the local directions of admissible motion, and
+    thus  always equal `num_dofs = 6 - num_cts`, where `6` are the number of
+    DoFs for unconstrained rigid motions in SE(3) and `num_cts` is the number
+    of bilateral equality constraints imposed by the joint. Thus DoFs can be
+    intuited as corresponding to the velocity-level description of the motion.
+
+    Joint "coordinates" are defined as the variables used to parameterize the
+    space of configurations (i.e. translations and rotations) admissible by
+    the joint. Thus, the number of coordinates `num_coords` is generally not
+    equal to the number of DoFs `num_dofs`, i.e. `num_coords != num_dofs`,
+    since joints may use redundant or non-minimal parameterizations. For example,
+    a spherical joint has `num_dofs = 3` underlying DoFs (at velocity-level),
+    yet it is commonly parameterized using a 4D unit-quaternion, i.e.
+    `num_coords = 4` at configuration-level.
 
     This class also provides property methods to query the number of:
     - Generalized coordinates
@@ -115,17 +130,19 @@ class JointDoFType(IntEnum):
     - Equality constraints
 
     Conventions:
+    - Each joint connects a Base body `B` to a Follower body `F`.
+    - The relative motion of body `F' w.r.t. body `B` defines the positive direction of the joint's DoFs.
+    - `R_x`, `R_y`, `R_z`: denote rotational DoFs about the local x, y, z axes respectively.
+    - `T_x`, `T_y`, `T_z`: denote translational DoFs along the local x, y, z axes respectively.
     - Joints are indexed by `j`, and we often employ the subscript notation `*_j`.
-    - `R_x`, `R_y`, `R_z`: rotational DoFs about the local x, y, z axes respectively.
-    - `T_x`, `T_y`, `T_z`: translational DoFs along the local x, y, z axes respectively.
-    - `c_j` | `num_coords`: the number of generalized coordinates defined by joint `j`.
-    - `d_j` | `num_dofs`: the number of DoFs defined by joint `j`.
-    - `e_j` | `num_cts`: the number of equality constraints imposed by joint `j`.
+    - `c_j` | `num_coords`: denote the number of generalized coordinates defined by joint `j`.
+    - `d_j` | `num_dofs`: denote the number of DoFs defined by joint `j`.
+    - `e_j` | `num_cts`: denote the number of equality constraints imposed by joint `j`.
     """
 
     FREE = 0
     """
-    A 6-DoF free-floating joint, with 3 rotational + 3 translational DoFs,
+    A 6-DoF free-floating joint, with rotational + translational DoFs
     along {`R_x`, `R_y`, `R_z`, `T_x`, `T_y`, `T_z`}.
 
     Coordinates:
@@ -138,7 +155,7 @@ class JointDoFType(IntEnum):
 
     REVOLUTE = 1
     """
-    A 1-DoF revolute joint, with 1 rotational DoF along {`R_x`}.
+    A 1-DoF revolute joint, with rotational DoF along {`R_x`}.
 
     Coordinates:
         1D angle: {`R_x`}
@@ -150,7 +167,7 @@ class JointDoFType(IntEnum):
 
     PRISMATIC = 2
     """
-    A 1-DoF prismatic joint, with 1 translational DoF along {`T_x`}.
+    A 1-DoF prismatic joint, with translational DoF along {`T_x`}.
 
     Coordinates:
         1D distance: {`T_x`}
@@ -162,7 +179,7 @@ class JointDoFType(IntEnum):
 
     CYLINDRICAL = 3
     """
-    A 2-DoF cylindrical joint, with 1 rotational and 1 translational DoF along {`R_x`, `T_x`}.
+    A 2-DoF cylindrical joint, with rotational + translational DoFs along {`R_x`, `T_x`}.
 
     Coordinates:
         2D vector of angle {`R_x`} + 1D distance {`T_x`}
@@ -172,7 +189,13 @@ class JointDoFType(IntEnum):
 
     UNIVERSAL = 4
     """
-    A 2-DoF universal joint, with 2 rotational DoFs, {`R_x`, `R_y`}.
+    A 2-DoF universal joint, with rotational DoFs along {`R_x`, `R_y`}.
+
+    This universal joint is implemented as being equivalent to two consecutive
+    revolute joints, rotating an intermediate (virtual) body about `R_x` w.r.t
+    the Base body `B`, then rotating the Follower body `F` about `R_y` of the
+    intermediate body. Thus, this implementation necessarily assumes the first
+    rotation is always about `R_x` followed by the rotation about `R_y`.
 
     Coordinates:
         2D angles: {`R_x`, `R_y`}
@@ -184,7 +207,7 @@ class JointDoFType(IntEnum):
 
     SPHERICAL = 5
     """
-    A 3-DoF spherical joint, with 3 rotational DoFs along {`R_x`, `R_y`, `R_z`}.
+    A 3-DoF spherical joint, with rotational DoFs along {`R_x`, `R_y`, `R_z`}.
 
     Coordinates:
         4D unit-quaternion to parameterize {`R_x`, `R_y`, `R_z`}
@@ -196,7 +219,10 @@ class JointDoFType(IntEnum):
 
     GIMBAL = 6
     """
-    A 3-DoF gimbal joint, with 3 rotational DoFs, {`R_x`, `R_y`, `R_z`}.
+    A 3-DoF gimbal joint, with rotational DoFs along {`R_x`, `R_y`, `R_z`}.
+
+    **DISCLAIMER**: This joint is not yet fully supported, and currently behaves
+    identically to the SPHERICAL joint. We do not recommend using it at present time.
 
     Coordinates:
         3D euler angles: {`R_x`, `R_y`, `R_z`}
@@ -208,7 +234,7 @@ class JointDoFType(IntEnum):
 
     CARTESIAN = 7
     """
-    A 3-DoF Cartesian joint, with 3 translational DoFs, {`T_x`, `T_y`, `T_z`}.
+    A 3-DoF Cartesian joint, with translational DoFs along {`T_x`, `T_y`, `T_z`}.
 
     Coordinates:
         3D distances: {`T_x`, `T_y`, `T_z`}

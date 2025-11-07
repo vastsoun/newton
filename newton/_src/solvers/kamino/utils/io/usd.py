@@ -566,19 +566,24 @@ class USDImporter:
             dof_type = JointDoFType.CARTESIAN
         return dof_type
 
+    def _make_joint_default_limits(self, dof_type: JointDoFType) -> tuple[list[float], list[float], list[float]]:
+        num_dofs = dof_type.num_dofs
+        q_j_min = [-float(np.finfo(np.float32).max)] * num_dofs
+        q_j_max = [float(np.finfo(np.float32).max)] * num_dofs
+        tau_j_max = [float(np.finfo(np.float32).max)] * num_dofs
+        return q_j_min, q_j_max, tau_j_max
+
     def _parse_joint_revolute(self, joint_spec, rotation_unit: float = 1.0):
         dof_type = JointDoFType.REVOLUTE
         X_j = self.usd_axis_to_axis[joint_spec.axis].to_mat33()
-        q_j_min = None
-        q_j_max = None
-        tau_j_max = None
+        q_j_min, q_j_max, tau_j_max = self._make_joint_default_limits(dof_type)
         if joint_spec.limit.enabled:
-            q_j_min = rotation_unit * joint_spec.limit.lower
-            q_j_max = rotation_unit * joint_spec.limit.upper
+            q_j_min[0] = rotation_unit * joint_spec.limit.lower
+            q_j_max[0] = rotation_unit * joint_spec.limit.upper
         if joint_spec.drive.enabled:
             if not joint_spec.drive.acceleration:
                 act_type = JointActuationType.FORCE
-                tau_j_max = joint_spec.drive.forceLimit
+                tau_j_max[0] = joint_spec.drive.forceLimit
             else:
                 # TODO: Should we handle acceleration drives?
                 raise ValueError("Revolute acceleration drive actuators are not yet supported.")
@@ -589,16 +594,14 @@ class USDImporter:
     def _parse_joint_prismatic(self, joint_spec, distance_unit: float = 1.0):
         dof_type = JointDoFType.PRISMATIC
         X_j = self.usd_axis_to_axis[joint_spec.axis].to_mat33()
-        q_j_min = None
-        q_j_max = None
-        tau_j_max = None
+        q_j_min, q_j_max, tau_j_max = self._make_joint_default_limits(dof_type)
         if joint_spec.limit.enabled:
-            q_j_min = distance_unit * joint_spec.limit.lower
-            q_j_max = distance_unit * joint_spec.limit.upper
+            q_j_min[0] = distance_unit * joint_spec.limit.lower
+            q_j_max[0] = distance_unit * joint_spec.limit.upper
         if joint_spec.drive.enabled:
             if not joint_spec.drive.acceleration:
                 act_type = JointActuationType.FORCE
-                tau_j_max = joint_spec.drive.forceLimit
+                tau_j_max[0] = joint_spec.drive.forceLimit
             else:
                 # TODO: Should we handle acceleration drives?
                 raise ValueError("Prismatic acceleration drive actuators are not yet supported.")
@@ -609,14 +612,12 @@ class USDImporter:
     def _parse_joint_revolute_from_d6(self, name, joint_prim, joint_spec, joint_dof, rotation_unit: float = 1.0):
         dof_type = JointDoFType.REVOLUTE
         X_j = self.usd_dofs_to_axis[joint_dof].to_mat33()
-        q_j_min = []
-        q_j_max = []
-        tau_j_max = None
+        q_j_min, q_j_max, tau_j_max = self._make_joint_default_limits(dof_type)
         for limit in joint_spec.jointLimits:
             dof = limit.first
             if dof == joint_dof:
-                q_j_min.append(rotation_unit * limit.second.lower)
-                q_j_max.append(rotation_unit * limit.second.upper)
+                q_j_min[0] = rotation_unit * limit.second.lower
+                q_j_max[0] = rotation_unit * limit.second.upper
         num_drives = len(joint_spec.jointDrives)
         if num_drives > 0:
             if num_drives != 1:
@@ -625,7 +626,9 @@ class USDImporter:
                     "but revolute joints require exactly one drive."
                 )
             act_type = JointActuationType.FORCE
-            tau_j_max = joint_spec.jointDrives[0].second.forceLimit
+            for drive in joint_spec.jointDrives:
+                if drive.first == joint_dof:
+                    tau_j_max[0] = drive.second.forceLimit
         else:
             act_type = JointActuationType.PASSIVE
         return dof_type, act_type, X_j, q_j_min, q_j_max, tau_j_max
@@ -633,14 +636,12 @@ class USDImporter:
     def _parse_joint_prismatic_from_d6(self, name, joint_prim, joint_spec, joint_dof, distance_unit: float = 1.0):
         dof_type = JointDoFType.PRISMATIC
         X_j = self.usd_dofs_to_axis[joint_dof].to_mat33()
-        q_j_min = []
-        q_j_max = []
-        tau_j_max = None
+        q_j_min, q_j_max, tau_j_max = self._make_joint_default_limits(dof_type)
         for limit in joint_spec.jointLimits:
             dof = limit.first
             if dof == joint_dof:
-                q_j_min.append(distance_unit * limit.second.lower)
-                q_j_max.append(distance_unit * limit.second.upper)
+                q_j_min[0] = distance_unit * limit.second.lower
+                q_j_max[0] = distance_unit * limit.second.upper
         num_drives = len(joint_spec.jointDrives)
         if num_drives > 0:
             if num_drives != 1:
@@ -649,7 +650,9 @@ class USDImporter:
                     "but prismatic joints require exactly one drive."
                 )
             act_type = JointActuationType.FORCE
-            tau_j_max = joint_spec.jointDrives[0].second.forceLimit
+            for drive in joint_spec.jointDrives:
+                if drive.first == joint_dof:
+                    tau_j_max[0] = drive.second.forceLimit
         else:
             act_type = JointActuationType.PASSIVE
         return dof_type, act_type, X_j, q_j_min, q_j_max, tau_j_max
@@ -658,17 +661,15 @@ class USDImporter:
         self, name, joint_prim, joint_spec, distance_unit: float = 1.0, rotation_unit: float = 1.0
     ):
         dof_type = JointDoFType.CYLINDRICAL
-        q_j_min = []
-        q_j_max = []
-        tau_j_max = None
+        q_j_min, q_j_max, tau_j_max = self._make_joint_default_limits(dof_type)
         for limit in joint_spec.jointLimits:
             dof = limit.first
             if dof == self.UsdPhysics.JointDOF.TransX:
-                q_j_min.append(distance_unit * limit.second.lower)
-                q_j_max.append(distance_unit * limit.second.upper)
+                q_j_min[0] = distance_unit * limit.second.lower
+                q_j_max[0] = distance_unit * limit.second.upper
             elif dof == self.UsdPhysics.JointDOF.RotX:
-                q_j_min.append(rotation_unit * limit.second.lower)
-                q_j_max.append(rotation_unit * limit.second.upper)
+                q_j_min[1] = rotation_unit * limit.second.lower
+                q_j_max[1] = rotation_unit * limit.second.upper
         num_drives = len(joint_spec.jointDrives)
         if num_drives > 0:
             if num_drives != JointDoFType.CYLINDRICAL.num_dofs:
@@ -677,24 +678,27 @@ class USDImporter:
                     f"drives, but cylindrical joints require {JointDoFType.CYLINDRICAL.num_dofs} drives. "
                 )
             act_type = JointActuationType.FORCE
-            tau_j_max = [drive.second.forceLimit for drive in joint_spec.jointDrives]
+            for drive in joint_spec.jointDrives:
+                dof = drive.first
+                if dof == self.UsdPhysics.JointDOF.TransX:
+                    tau_j_max[0] = drive.second.forceLimit
+                elif dof == self.UsdPhysics.JointDOF.RotX:
+                    tau_j_max[1] = drive.second.forceLimit
         else:
             act_type = JointActuationType.PASSIVE
         return dof_type, act_type, q_j_min, q_j_max, tau_j_max
 
     def _parse_joint_universal_from_d6(self, name, joint_prim, joint_spec, rotation_unit: float = 1.0):
         dof_type = JointDoFType.UNIVERSAL
-        q_j_min = []
-        q_j_max = []
-        tau_j_max = None
+        q_j_min, q_j_max, tau_j_max = self._make_joint_default_limits(dof_type)
         for limit in joint_spec.jointLimits:
             dof = limit.first
             if dof == self.UsdPhysics.JointDOF.RotX:
-                q_j_min.append(rotation_unit * limit.second.lower)
-                q_j_max.append(rotation_unit * limit.second.upper)
+                q_j_min[0] = rotation_unit * limit.second.lower
+                q_j_max[0] = rotation_unit * limit.second.upper
             elif dof == self.UsdPhysics.JointDOF.RotY:
-                q_j_min.append(rotation_unit * limit.second.lower)
-                q_j_max.append(rotation_unit * limit.second.upper)
+                q_j_min[1] = rotation_unit * limit.second.lower
+                q_j_max[1] = rotation_unit * limit.second.upper
         num_drives = len(joint_spec.jointDrives)
         if num_drives > 0:
             if num_drives != JointDoFType.UNIVERSAL.num_dofs:
@@ -703,7 +707,12 @@ class USDImporter:
                     f"drives, but universal joints require {JointDoFType.UNIVERSAL.num_dofs} drives. "
                 )
             act_type = JointActuationType.FORCE
-            tau_j_max = [drive.second.forceLimit for drive in joint_spec.jointDrives]
+            for drive in joint_spec.jointDrives:
+                dof = drive.first
+                if dof == self.UsdPhysics.JointDOF.RotX:
+                    tau_j_max[0] = drive.second.forceLimit
+                elif dof == self.UsdPhysics.JointDOF.RotY:
+                    tau_j_max[1] = drive.second.forceLimit
         else:
             act_type = JointActuationType.PASSIVE
         return dof_type, act_type, q_j_min, q_j_max, tau_j_max
@@ -716,20 +725,18 @@ class USDImporter:
         distance_unit: float = 1.0,
     ):
         dof_type = JointDoFType.CARTESIAN
-        q_j_min = []
-        q_j_max = []
-        tau_j_max = None
+        q_j_min, q_j_max, tau_j_max = self._make_joint_default_limits(dof_type)
         for limit in joint_spec.jointLimits:
             dof = limit.first
             if dof == self.UsdPhysics.JointDOF.TransX:
-                q_j_min.append(distance_unit * limit.second.lower)
-                q_j_max.append(distance_unit * limit.second.upper)
+                q_j_min[0] = distance_unit * limit.second.lower
+                q_j_max[0] = distance_unit * limit.second.upper
             elif dof == self.UsdPhysics.JointDOF.TransY:
-                q_j_min.append(distance_unit * limit.second.lower)
-                q_j_max.append(distance_unit * limit.second.upper)
+                q_j_min[1] = distance_unit * limit.second.lower
+                q_j_max[1] = distance_unit * limit.second.upper
             elif dof == self.UsdPhysics.JointDOF.TransZ:
-                q_j_min.append(distance_unit * limit.second.lower)
-                q_j_max.append(distance_unit * limit.second.upper)
+                q_j_min[2] = distance_unit * limit.second.lower
+                q_j_max[2] = distance_unit * limit.second.upper
         num_drives = len(joint_spec.jointDrives)
         if num_drives > 0:
             if num_drives != JointDoFType.CARTESIAN.num_dofs:
@@ -738,28 +745,32 @@ class USDImporter:
                     f"drives, but cartesian joints require {JointDoFType.CARTESIAN.num_dofs} drives. "
                 )
             act_type = JointActuationType.FORCE
-            tau_j_max = [drive.second.forceLimit for drive in joint_spec.jointDrives]
+            for drive in joint_spec.jointDrives:
+                dof = drive.first
+                if dof == self.UsdPhysics.JointDOF.TransX:
+                    tau_j_max[0] = drive.second.forceLimit
+                elif dof == self.UsdPhysics.JointDOF.TransY:
+                    tau_j_max[1] = drive.second.forceLimit
+                elif dof == self.UsdPhysics.JointDOF.TransZ:
+                    tau_j_max[2] = drive.second.forceLimit
         else:
             act_type = JointActuationType.PASSIVE
         return dof_type, act_type, q_j_min, q_j_max, tau_j_max
 
     def _parse_joint_spherical_from_d6(self, name, joint_prim, joint_spec, rotation_unit: float = 1.0):
         dof_type = JointDoFType.SPHERICAL
-        q_j_min = None
-        q_j_max = None
-        tau_j_max = None
-        # # TODO: How to handle spherical joint limits properly when the coords are quaternions?
-        # for limit in joint_spec.jointLimits:
-        #     dof = limit.first
-        #     if dof == self.UsdPhysics.JointDOF.RotX:
-        #         q_j_min.append(rotation_unit * limit.second.lower)
-        #         q_j_max.append(rotation_unit * limit.second.upper)
-        #     elif dof == self.UsdPhysics.JointDOF.RotY:
-        #         q_j_min.append(rotation_unit * limit.second.lower)
-        #         q_j_max.append(rotation_unit * limit.second.upper)
-        #     elif dof == self.UsdPhysics.JointDOF.RotZ:
-        #         q_j_min.append(rotation_unit * limit.second.lower)
-        #         q_j_max.append(rotation_unit * limit.second.upper)
+        q_j_min, q_j_max, tau_j_max = self._make_joint_default_limits(dof_type)
+        for limit in joint_spec.jointLimits:
+            dof = limit.first
+            if dof == self.UsdPhysics.JointDOF.RotX:
+                q_j_min[0] = rotation_unit * limit.second.lower
+                q_j_max[0] = rotation_unit * limit.second.upper
+            elif dof == self.UsdPhysics.JointDOF.RotY:
+                q_j_min[1] = rotation_unit * limit.second.lower
+                q_j_max[1] = rotation_unit * limit.second.upper
+            elif dof == self.UsdPhysics.JointDOF.RotZ:
+                q_j_min[2] = rotation_unit * limit.second.lower
+                q_j_max[2] = rotation_unit * limit.second.upper
         num_drives = len(joint_spec.jointDrives)
         if num_drives > 0:
             if num_drives != JointDoFType.SPHERICAL.num_dofs:
@@ -768,7 +779,14 @@ class USDImporter:
                     f"drives, but spherical joints require {JointDoFType.SPHERICAL.num_dofs} drives. "
                 )
             act_type = JointActuationType.FORCE
-            tau_j_max = [drive.second.forceLimit for drive in joint_spec.jointDrives]
+            for drive in joint_spec.jointDrives:
+                dof = drive.first
+                if dof == self.UsdPhysics.JointDOF.RotX:
+                    tau_j_max[0] = drive.second.forceLimit
+                elif dof == self.UsdPhysics.JointDOF.RotY:
+                    tau_j_max[1] = drive.second.forceLimit
+                elif dof == self.UsdPhysics.JointDOF.RotZ:
+                    tau_j_max[2] = drive.second.forceLimit
         else:
             act_type = JointActuationType.PASSIVE
         return dof_type, act_type, q_j_min, q_j_max, tau_j_max

@@ -15,6 +15,7 @@
 
 """Unit tests for the USD importer utility."""
 
+import math
 import os
 import unittest
 
@@ -48,6 +49,13 @@ from newton._src.solvers.kamino.tests.utils.checks import (
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
 
 ###
+# Constants
+###
+
+FLOAT32_MAX = np.finfo(np.float32).max
+FLOAT32_MIN = np.finfo(np.float32).min
+
+###
 # Tests
 ###
 
@@ -78,6 +86,28 @@ class TestUSDImporter(unittest.TestCase):
     # Joints supported natively by USD
     ###
 
+    def test_import_joint_revolute_passive_unary(self):
+        """Test importing a passive revolute joint with limits from a USD file"""
+        usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "joints/test_joint_revolute_passive_unary.usda")
+        importer = USDImporter()
+        builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
+        # Check the loaded contents
+        self.assertEqual(builder_usd.num_bodies, 1)
+        self.assertEqual(builder_usd.num_joints, 1)
+        self.assertEqual(builder_usd.joints[0].act_type, JointActuationType.PASSIVE)
+        self.assertEqual(builder_usd.joints[0].dof_type, JointDoFType.REVOLUTE)
+        self.assertEqual(builder_usd.joints[0].wid, 0)
+        self.assertEqual(builder_usd.joints[0].jid, 0)
+        self.assertEqual(builder_usd.joints[0].cts_offset, 0)
+        self.assertEqual(builder_usd.joints[0].dofs_offset, 0)
+        self.assertEqual(builder_usd.joints[0].bid_B, -1)
+        self.assertEqual(builder_usd.joints[0].bid_F, 0)
+        self.assertEqual(len(builder_usd.joints[0].q_j_min), 1)
+        self.assertEqual(len(builder_usd.joints[0].q_j_max), 1)
+        self.assertEqual(len(builder_usd.joints[0].tau_j_max), 1)
+        self.assertEqual(builder_usd.joints[0].q_j_min, [-0.5 * math.pi])
+        self.assertEqual(builder_usd.joints[0].q_j_max, [0.5 * math.pi])
+
     def test_import_joint_revolute_passive(self):
         """Test importing a passive revolute joint with limits from a USD file"""
         usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "joints/test_joint_revolute_passive.usda")
@@ -94,6 +124,11 @@ class TestUSDImporter(unittest.TestCase):
         self.assertEqual(builder_usd.joints[0].dofs_offset, 0)
         self.assertEqual(builder_usd.joints[0].bid_B, 0)
         self.assertEqual(builder_usd.joints[0].bid_F, 1)
+        self.assertEqual(len(builder_usd.joints[0].q_j_min), 1)
+        self.assertEqual(len(builder_usd.joints[0].q_j_max), 1)
+        self.assertEqual(len(builder_usd.joints[0].tau_j_max), 1)
+        self.assertEqual(builder_usd.joints[0].q_j_min, [-0.5 * math.pi])
+        self.assertEqual(builder_usd.joints[0].q_j_max, [0.5 * math.pi])
 
     def test_import_joint_revolute_actuated(self):
         """Test importing a actuated revolute joint with limits from a USD file"""
@@ -111,6 +146,34 @@ class TestUSDImporter(unittest.TestCase):
         self.assertEqual(builder_usd.joints[0].dofs_offset, 0)
         self.assertEqual(builder_usd.joints[0].bid_B, 0)
         self.assertEqual(builder_usd.joints[0].bid_F, 1)
+        self.assertEqual(len(builder_usd.joints[0].q_j_min), 1)
+        self.assertEqual(len(builder_usd.joints[0].q_j_max), 1)
+        self.assertEqual(len(builder_usd.joints[0].tau_j_max), 1)
+        self.assertEqual(builder_usd.joints[0].q_j_min, [-0.5 * math.pi])
+        self.assertEqual(builder_usd.joints[0].q_j_max, [0.5 * math.pi])
+        self.assertEqual(builder_usd.joints[0].tau_j_max, [100.0])
+
+    def test_import_joint_prismatic_passive_unary(self):
+        """Test importing a passive prismatic joint with limits from a USD file"""
+        usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "joints/test_joint_prismatic_passive_unary.usda")
+        importer = USDImporter()
+        builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
+        # Check the loaded contents
+        self.assertEqual(builder_usd.num_bodies, 1)
+        self.assertEqual(builder_usd.num_joints, 1)
+        self.assertEqual(builder_usd.joints[0].act_type, JointActuationType.PASSIVE)
+        self.assertEqual(builder_usd.joints[0].dof_type, JointDoFType.PRISMATIC)
+        self.assertEqual(builder_usd.joints[0].wid, 0)
+        self.assertEqual(builder_usd.joints[0].jid, 0)
+        self.assertEqual(builder_usd.joints[0].cts_offset, 0)
+        self.assertEqual(builder_usd.joints[0].dofs_offset, 0)
+        self.assertEqual(builder_usd.joints[0].bid_B, -1)
+        self.assertEqual(builder_usd.joints[0].bid_F, 0)
+        self.assertEqual(len(builder_usd.joints[0].q_j_min), 1)
+        self.assertEqual(len(builder_usd.joints[0].q_j_max), 1)
+        self.assertEqual(len(builder_usd.joints[0].tau_j_max), 1)
+        self.assertEqual(builder_usd.joints[0].q_j_min, [-1.0])
+        self.assertEqual(builder_usd.joints[0].q_j_max, [1.0])
 
     def test_import_joint_prismatic_passive(self):
         """Test importing a passive prismatic joint with limits from a USD file"""
@@ -128,6 +191,11 @@ class TestUSDImporter(unittest.TestCase):
         self.assertEqual(builder_usd.joints[0].dofs_offset, 0)
         self.assertEqual(builder_usd.joints[0].bid_B, 0)
         self.assertEqual(builder_usd.joints[0].bid_F, 1)
+        self.assertEqual(len(builder_usd.joints[0].q_j_min), 1)
+        self.assertEqual(len(builder_usd.joints[0].q_j_max), 1)
+        self.assertEqual(len(builder_usd.joints[0].tau_j_max), 1)
+        self.assertEqual(builder_usd.joints[0].q_j_min, [-1.0])
+        self.assertEqual(builder_usd.joints[0].q_j_max, [1.0])
 
     def test_import_joint_prismatic_actuated(self):
         """Test importing a actuated prismatic joint with limits from a USD file"""
@@ -145,6 +213,34 @@ class TestUSDImporter(unittest.TestCase):
         self.assertEqual(builder_usd.joints[0].dofs_offset, 0)
         self.assertEqual(builder_usd.joints[0].bid_B, 0)
         self.assertEqual(builder_usd.joints[0].bid_F, 1)
+        self.assertEqual(len(builder_usd.joints[0].q_j_min), 1)
+        self.assertEqual(len(builder_usd.joints[0].q_j_max), 1)
+        self.assertEqual(len(builder_usd.joints[0].tau_j_max), 1)
+        self.assertEqual(builder_usd.joints[0].q_j_min, [-1.0])
+        self.assertEqual(builder_usd.joints[0].q_j_max, [1.0])
+        self.assertEqual(builder_usd.joints[0].tau_j_max, [100.0])
+
+    def test_import_joint_spherical_unary(self):
+        """Test importing a passive spherical joint with limits from a USD file"""
+        usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "joints/test_joint_spherical_unary.usda")
+        importer = USDImporter()
+        builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
+        # Check the loaded contents
+        self.assertEqual(builder_usd.num_bodies, 1)
+        self.assertEqual(builder_usd.num_joints, 1)
+        self.assertEqual(builder_usd.joints[0].act_type, JointActuationType.PASSIVE)
+        self.assertEqual(builder_usd.joints[0].dof_type, JointDoFType.SPHERICAL)
+        self.assertEqual(builder_usd.joints[0].wid, 0)
+        self.assertEqual(builder_usd.joints[0].jid, 0)
+        self.assertEqual(builder_usd.joints[0].cts_offset, 0)
+        self.assertEqual(builder_usd.joints[0].dofs_offset, 0)
+        self.assertEqual(builder_usd.joints[0].bid_B, -1)
+        self.assertEqual(builder_usd.joints[0].bid_F, 0)
+        self.assertEqual(len(builder_usd.joints[0].q_j_min), 3)
+        self.assertEqual(len(builder_usd.joints[0].q_j_max), 3)
+        self.assertEqual(len(builder_usd.joints[0].tau_j_max), 3)
+        self.assertEqual(builder_usd.joints[0].q_j_min, [FLOAT32_MIN, FLOAT32_MIN, FLOAT32_MIN])
+        self.assertEqual(builder_usd.joints[0].q_j_max, [FLOAT32_MAX, FLOAT32_MAX, FLOAT32_MAX])
 
     def test_import_joint_spherical(self):
         """Test importing a passive spherical joint with limits from a USD file"""
@@ -162,10 +258,37 @@ class TestUSDImporter(unittest.TestCase):
         self.assertEqual(builder_usd.joints[0].dofs_offset, 0)
         self.assertEqual(builder_usd.joints[0].bid_B, 0)
         self.assertEqual(builder_usd.joints[0].bid_F, 1)
+        self.assertEqual(len(builder_usd.joints[0].q_j_min), 3)
+        self.assertEqual(len(builder_usd.joints[0].q_j_max), 3)
+        self.assertEqual(len(builder_usd.joints[0].tau_j_max), 3)
+        self.assertEqual(builder_usd.joints[0].q_j_min, [FLOAT32_MIN, FLOAT32_MIN, FLOAT32_MIN])
+        self.assertEqual(builder_usd.joints[0].q_j_max, [FLOAT32_MAX, FLOAT32_MAX, FLOAT32_MAX])
 
     ###
     # Joints based on specializations of UsdPhysicsD6Joint
     ###
+
+    def test_import_joint_cylindrical_passive_unary(self):
+        """Test importing a passive cylindrical joint with limits from a USD file"""
+        usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "joints/test_joint_cylindrical_passive_unary.usda")
+        importer = USDImporter()
+        builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
+        # Check the loaded contents
+        self.assertEqual(builder_usd.num_bodies, 1)
+        self.assertEqual(builder_usd.num_joints, 1)
+        self.assertEqual(builder_usd.joints[0].act_type, JointActuationType.PASSIVE)
+        self.assertEqual(builder_usd.joints[0].dof_type, JointDoFType.CYLINDRICAL)
+        self.assertEqual(builder_usd.joints[0].wid, 0)
+        self.assertEqual(builder_usd.joints[0].jid, 0)
+        self.assertEqual(builder_usd.joints[0].cts_offset, 0)
+        self.assertEqual(builder_usd.joints[0].dofs_offset, 0)
+        self.assertEqual(builder_usd.joints[0].bid_B, -1)
+        self.assertEqual(builder_usd.joints[0].bid_F, 0)
+        self.assertEqual(len(builder_usd.joints[0].q_j_min), 2)
+        self.assertEqual(len(builder_usd.joints[0].q_j_max), 2)
+        self.assertEqual(len(builder_usd.joints[0].tau_j_max), 2)
+        self.assertEqual(builder_usd.joints[0].q_j_min, [-1, FLOAT32_MIN])
+        self.assertEqual(builder_usd.joints[0].q_j_max, [1, FLOAT32_MAX])
 
     def test_import_joint_cylindrical_passive(self):
         """Test importing a passive cylindrical joint with limits from a USD file"""
@@ -183,6 +306,11 @@ class TestUSDImporter(unittest.TestCase):
         self.assertEqual(builder_usd.joints[0].dofs_offset, 0)
         self.assertEqual(builder_usd.joints[0].bid_B, 0)
         self.assertEqual(builder_usd.joints[0].bid_F, 1)
+        self.assertEqual(len(builder_usd.joints[0].q_j_min), 2)
+        self.assertEqual(len(builder_usd.joints[0].q_j_max), 2)
+        self.assertEqual(len(builder_usd.joints[0].tau_j_max), 2)
+        self.assertEqual(builder_usd.joints[0].q_j_min, [-1, FLOAT32_MIN])
+        self.assertEqual(builder_usd.joints[0].q_j_max, [1, FLOAT32_MAX])
 
     def test_import_joint_cylindrical_actuated(self):
         """Test importing a actuated cylindrical joint with limits from a USD file"""
@@ -200,6 +328,34 @@ class TestUSDImporter(unittest.TestCase):
         self.assertEqual(builder_usd.joints[0].dofs_offset, 0)
         self.assertEqual(builder_usd.joints[0].bid_B, 0)
         self.assertEqual(builder_usd.joints[0].bid_F, 1)
+        self.assertEqual(len(builder_usd.joints[0].q_j_min), 2)
+        self.assertEqual(len(builder_usd.joints[0].q_j_max), 2)
+        self.assertEqual(len(builder_usd.joints[0].tau_j_max), 2)
+        self.assertEqual(builder_usd.joints[0].q_j_min, [-1, FLOAT32_MIN])
+        self.assertEqual(builder_usd.joints[0].q_j_max, [1, FLOAT32_MAX])
+        self.assertEqual(builder_usd.joints[0].tau_j_max, [100.0, 200.0])
+
+    def test_import_joint_universal_passive_unary(self):
+        """Test importing a passive universal joint with limits from a USD file"""
+        usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "joints/test_joint_universal_passive_unary.usda")
+        importer = USDImporter()
+        builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
+        # Check the loaded contents
+        self.assertEqual(builder_usd.num_bodies, 1)
+        self.assertEqual(builder_usd.num_joints, 1)
+        self.assertEqual(builder_usd.joints[0].act_type, JointActuationType.PASSIVE)
+        self.assertEqual(builder_usd.joints[0].dof_type, JointDoFType.UNIVERSAL)
+        self.assertEqual(builder_usd.joints[0].wid, 0)
+        self.assertEqual(builder_usd.joints[0].jid, 0)
+        self.assertEqual(builder_usd.joints[0].cts_offset, 0)
+        self.assertEqual(builder_usd.joints[0].dofs_offset, 0)
+        self.assertEqual(builder_usd.joints[0].bid_B, -1)
+        self.assertEqual(builder_usd.joints[0].bid_F, 0)
+        self.assertEqual(len(builder_usd.joints[0].q_j_min), 2)
+        self.assertEqual(len(builder_usd.joints[0].q_j_max), 2)
+        self.assertEqual(len(builder_usd.joints[0].tau_j_max), 2)
+        self.assertEqual(builder_usd.joints[0].q_j_min, [-0.5 * math.pi, -0.5 * math.pi])
+        self.assertEqual(builder_usd.joints[0].q_j_max, [0.5 * math.pi, 0.5 * math.pi])
 
     def test_import_joint_universal_passive(self):
         """Test importing a passive universal joint with limits from a USD file"""
@@ -217,6 +373,11 @@ class TestUSDImporter(unittest.TestCase):
         self.assertEqual(builder_usd.joints[0].dofs_offset, 0)
         self.assertEqual(builder_usd.joints[0].bid_B, 0)
         self.assertEqual(builder_usd.joints[0].bid_F, 1)
+        self.assertEqual(len(builder_usd.joints[0].q_j_min), 2)
+        self.assertEqual(len(builder_usd.joints[0].q_j_max), 2)
+        self.assertEqual(len(builder_usd.joints[0].tau_j_max), 2)
+        self.assertEqual(builder_usd.joints[0].q_j_min, [-0.5 * math.pi, -0.5 * math.pi])
+        self.assertEqual(builder_usd.joints[0].q_j_max, [0.5 * math.pi, 0.5 * math.pi])
 
     def test_import_joint_universal_actuated(self):
         """Test importing a actuated universal joint with limits from a USD file"""
@@ -235,6 +396,35 @@ class TestUSDImporter(unittest.TestCase):
         self.assertEqual(builder_usd.joints[0].dofs_offset, 0)
         self.assertEqual(builder_usd.joints[0].bid_B, 0)
         self.assertEqual(builder_usd.joints[0].bid_F, 1)
+        self.assertEqual(len(builder_usd.joints[0].q_j_min), 2)
+        self.assertEqual(len(builder_usd.joints[0].q_j_max), 2)
+        self.assertEqual(len(builder_usd.joints[0].tau_j_max), 2)
+        self.assertEqual(builder_usd.joints[0].q_j_min, [-0.5 * math.pi, -0.5 * math.pi])
+        self.assertEqual(builder_usd.joints[0].q_j_max, [0.5 * math.pi, 0.5 * math.pi])
+        self.assertEqual(builder_usd.joints[0].tau_j_max, [100.0, 200.0])
+
+    def test_import_joint_cartesian_passive_unary(self):
+        """Test importing a passive cylindrical joint with limits from a USD file"""
+        usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "joints/test_joint_cartesian_passive_unary.usda")
+        importer = USDImporter()
+        builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
+
+        # Check the loaded contents
+        self.assertEqual(builder_usd.num_bodies, 1)
+        self.assertEqual(builder_usd.num_joints, 1)
+        self.assertEqual(builder_usd.joints[0].act_type, JointActuationType.PASSIVE)
+        self.assertEqual(builder_usd.joints[0].dof_type, JointDoFType.CARTESIAN)
+        self.assertEqual(builder_usd.joints[0].wid, 0)
+        self.assertEqual(builder_usd.joints[0].jid, 0)
+        self.assertEqual(builder_usd.joints[0].cts_offset, 0)
+        self.assertEqual(builder_usd.joints[0].dofs_offset, 0)
+        self.assertEqual(builder_usd.joints[0].bid_B, -1)
+        self.assertEqual(builder_usd.joints[0].bid_F, 0)
+        self.assertEqual(len(builder_usd.joints[0].q_j_min), 3)
+        self.assertEqual(len(builder_usd.joints[0].q_j_max), 3)
+        self.assertEqual(len(builder_usd.joints[0].tau_j_max), 3)
+        self.assertEqual(builder_usd.joints[0].q_j_min, [-10.0, -20.0, -30.0])
+        self.assertEqual(builder_usd.joints[0].q_j_max, [10.0, 20.0, 30.0])
 
     def test_import_joint_cartesian_passive(self):
         """Test importing a passive cylindrical joint with limits from a USD file"""
@@ -253,6 +443,11 @@ class TestUSDImporter(unittest.TestCase):
         self.assertEqual(builder_usd.joints[0].dofs_offset, 0)
         self.assertEqual(builder_usd.joints[0].bid_B, 0)
         self.assertEqual(builder_usd.joints[0].bid_F, 1)
+        self.assertEqual(len(builder_usd.joints[0].q_j_min), 3)
+        self.assertEqual(len(builder_usd.joints[0].q_j_max), 3)
+        self.assertEqual(len(builder_usd.joints[0].tau_j_max), 3)
+        self.assertEqual(builder_usd.joints[0].q_j_min, [-10.0, -20.0, -30.0])
+        self.assertEqual(builder_usd.joints[0].q_j_max, [10.0, 20.0, 30.0])
 
     def test_import_joint_cartesian_actuated(self):
         """Test importing a actuated cylindrical joint with limits from a USD file"""
@@ -271,6 +466,12 @@ class TestUSDImporter(unittest.TestCase):
         self.assertEqual(builder_usd.joints[0].dofs_offset, 0)
         self.assertEqual(builder_usd.joints[0].bid_B, 0)
         self.assertEqual(builder_usd.joints[0].bid_F, 1)
+        self.assertEqual(len(builder_usd.joints[0].q_j_min), 3)
+        self.assertEqual(len(builder_usd.joints[0].q_j_max), 3)
+        self.assertEqual(len(builder_usd.joints[0].tau_j_max), 3)
+        self.assertEqual(builder_usd.joints[0].q_j_min, [-10.0, -20.0, -30.0])
+        self.assertEqual(builder_usd.joints[0].q_j_max, [10.0, 20.0, 30.0])
+        self.assertEqual(builder_usd.joints[0].tau_j_max, [100.0, 200.0, 300.0])
 
     ###
     # Joints based on UsdPhysicsD6Joint
@@ -292,6 +493,11 @@ class TestUSDImporter(unittest.TestCase):
         self.assertEqual(builder_usd.joints[0].dofs_offset, 0)
         self.assertEqual(builder_usd.joints[0].bid_B, 0)
         self.assertEqual(builder_usd.joints[0].bid_F, 1)
+        self.assertEqual(len(builder_usd.joints[0].q_j_min), 1)
+        self.assertEqual(len(builder_usd.joints[0].q_j_max), 1)
+        self.assertEqual(len(builder_usd.joints[0].tau_j_max), 1)
+        self.assertEqual(builder_usd.joints[0].q_j_min, [-math.pi])
+        self.assertEqual(builder_usd.joints[0].q_j_max, [math.pi])
 
     def test_import_joint_d6_revolute_actuated(self):
         """Test importing a actuated revolute joint with limits from a USD file"""
@@ -309,6 +515,12 @@ class TestUSDImporter(unittest.TestCase):
         self.assertEqual(builder_usd.joints[0].dofs_offset, 0)
         self.assertEqual(builder_usd.joints[0].bid_B, 0)
         self.assertEqual(builder_usd.joints[0].bid_F, 1)
+        self.assertEqual(len(builder_usd.joints[0].q_j_min), 1)
+        self.assertEqual(len(builder_usd.joints[0].q_j_max), 1)
+        self.assertEqual(len(builder_usd.joints[0].tau_j_max), 1)
+        self.assertEqual(builder_usd.joints[0].q_j_min, [-math.pi])
+        self.assertEqual(builder_usd.joints[0].q_j_max, [math.pi])
+        self.assertEqual(builder_usd.joints[0].tau_j_max, [100.0])
 
     def test_import_joint_d6_prismatic_passive(self):
         """Test importing a passive prismatic joint with limits from a USD file"""
@@ -326,6 +538,11 @@ class TestUSDImporter(unittest.TestCase):
         self.assertEqual(builder_usd.joints[0].dofs_offset, 0)
         self.assertEqual(builder_usd.joints[0].bid_B, 0)
         self.assertEqual(builder_usd.joints[0].bid_F, 1)
+        self.assertEqual(len(builder_usd.joints[0].q_j_min), 1)
+        self.assertEqual(len(builder_usd.joints[0].q_j_max), 1)
+        self.assertEqual(len(builder_usd.joints[0].tau_j_max), 1)
+        self.assertEqual(builder_usd.joints[0].q_j_min, [-10.0])
+        self.assertEqual(builder_usd.joints[0].q_j_max, [10.0])
 
     def test_import_joint_d6_prismatic_actuated(self):
         """Test importing a actuated prismatic joint with limits from a USD file"""
@@ -343,6 +560,12 @@ class TestUSDImporter(unittest.TestCase):
         self.assertEqual(builder_usd.joints[0].dofs_offset, 0)
         self.assertEqual(builder_usd.joints[0].bid_B, 0)
         self.assertEqual(builder_usd.joints[0].bid_F, 1)
+        self.assertEqual(len(builder_usd.joints[0].q_j_min), 1)
+        self.assertEqual(len(builder_usd.joints[0].q_j_max), 1)
+        self.assertEqual(len(builder_usd.joints[0].tau_j_max), 1)
+        self.assertEqual(builder_usd.joints[0].q_j_min, [-10.0])
+        self.assertEqual(builder_usd.joints[0].q_j_max, [10.0])
+        self.assertEqual(builder_usd.joints[0].tau_j_max, [100.0])
 
     def test_import_joint_d6_cylindrical_passive(self):
         """Test importing a passive cylindrical joint with limits from a USD file"""
@@ -360,6 +583,11 @@ class TestUSDImporter(unittest.TestCase):
         self.assertEqual(builder_usd.joints[0].dofs_offset, 0)
         self.assertEqual(builder_usd.joints[0].bid_B, 0)
         self.assertEqual(builder_usd.joints[0].bid_F, 1)
+        self.assertEqual(len(builder_usd.joints[0].q_j_min), 2)
+        self.assertEqual(len(builder_usd.joints[0].q_j_max), 2)
+        self.assertEqual(len(builder_usd.joints[0].tau_j_max), 2)
+        self.assertEqual(builder_usd.joints[0].q_j_min, [-1.0, FLOAT32_MIN])
+        self.assertEqual(builder_usd.joints[0].q_j_max, [1.0, FLOAT32_MAX])
 
     def test_import_joint_d6_cylindrical_actuated(self):
         """Test importing a actuated cylindrical joint with limits from a USD file"""
@@ -377,6 +605,12 @@ class TestUSDImporter(unittest.TestCase):
         self.assertEqual(builder_usd.joints[0].dofs_offset, 0)
         self.assertEqual(builder_usd.joints[0].bid_B, 0)
         self.assertEqual(builder_usd.joints[0].bid_F, 1)
+        self.assertEqual(len(builder_usd.joints[0].q_j_min), 2)
+        self.assertEqual(len(builder_usd.joints[0].q_j_max), 2)
+        self.assertEqual(len(builder_usd.joints[0].tau_j_max), 2)
+        self.assertEqual(builder_usd.joints[0].q_j_min, [-1.0, FLOAT32_MIN])
+        self.assertEqual(builder_usd.joints[0].q_j_max, [1.0, FLOAT32_MAX])
+        self.assertEqual(builder_usd.joints[0].tau_j_max, [100.0, 200.0])
 
     def test_import_joint_d6_universal_passive(self):
         """Test importing a passive universal joint with limits from a USD file"""
@@ -394,6 +628,11 @@ class TestUSDImporter(unittest.TestCase):
         self.assertEqual(builder_usd.joints[0].dofs_offset, 0)
         self.assertEqual(builder_usd.joints[0].bid_B, 0)
         self.assertEqual(builder_usd.joints[0].bid_F, 1)
+        self.assertEqual(len(builder_usd.joints[0].q_j_min), 2)
+        self.assertEqual(len(builder_usd.joints[0].q_j_max), 2)
+        self.assertEqual(len(builder_usd.joints[0].tau_j_max), 2)
+        self.assertEqual(builder_usd.joints[0].q_j_min, [-0.5 * math.pi, -0.5 * math.pi])
+        self.assertEqual(builder_usd.joints[0].q_j_max, [0.5 * math.pi, 0.5 * math.pi])
 
     def test_import_joint_d6_universal_actuated(self):
         """Test importing a actuated universal joint with limits from a USD file"""
@@ -411,6 +650,12 @@ class TestUSDImporter(unittest.TestCase):
         self.assertEqual(builder_usd.joints[0].dofs_offset, 0)
         self.assertEqual(builder_usd.joints[0].bid_B, 0)
         self.assertEqual(builder_usd.joints[0].bid_F, 1)
+        self.assertEqual(len(builder_usd.joints[0].q_j_min), 2)
+        self.assertEqual(len(builder_usd.joints[0].q_j_max), 2)
+        self.assertEqual(len(builder_usd.joints[0].tau_j_max), 2)
+        self.assertEqual(builder_usd.joints[0].q_j_min, [-0.5 * math.pi, -0.5 * math.pi])
+        self.assertEqual(builder_usd.joints[0].q_j_max, [0.5 * math.pi, 0.5 * math.pi])
+        self.assertEqual(builder_usd.joints[0].tau_j_max, [100.0, 200.0])
 
     def test_import_joint_d6_cartesian_passive(self):
         """Test importing a passive cartesian joint with limits from a USD file"""
@@ -428,6 +673,11 @@ class TestUSDImporter(unittest.TestCase):
         self.assertEqual(builder_usd.joints[0].dofs_offset, 0)
         self.assertEqual(builder_usd.joints[0].bid_B, 0)
         self.assertEqual(builder_usd.joints[0].bid_F, 1)
+        self.assertEqual(len(builder_usd.joints[0].q_j_min), 3)
+        self.assertEqual(len(builder_usd.joints[0].q_j_max), 3)
+        self.assertEqual(len(builder_usd.joints[0].tau_j_max), 3)
+        self.assertEqual(builder_usd.joints[0].q_j_min, [-10.0, -20.0, -30.0])
+        self.assertEqual(builder_usd.joints[0].q_j_max, [10.0, 20.0, 30.0])
 
     def test_importjoint__d6_cartesian_actuated(self):
         """Test importing a actuated cartesian joint with limits from a USD file"""
@@ -445,6 +695,12 @@ class TestUSDImporter(unittest.TestCase):
         self.assertEqual(builder_usd.joints[0].dofs_offset, 0)
         self.assertEqual(builder_usd.joints[0].bid_B, 0)
         self.assertEqual(builder_usd.joints[0].bid_F, 1)
+        self.assertEqual(len(builder_usd.joints[0].q_j_min), 3)
+        self.assertEqual(len(builder_usd.joints[0].q_j_max), 3)
+        self.assertEqual(len(builder_usd.joints[0].tau_j_max), 3)
+        self.assertEqual(builder_usd.joints[0].q_j_min, [-10.0, -20.0, -30.0])
+        self.assertEqual(builder_usd.joints[0].q_j_max, [10.0, 20.0, 30.0])
+        self.assertEqual(builder_usd.joints[0].tau_j_max, [100.0, 200.0, 300.0])
 
     def test_import_joint_d6_spherical_passive(self):
         """Test importing a passive spherical joint with limits from a USD file"""
@@ -462,6 +718,11 @@ class TestUSDImporter(unittest.TestCase):
         self.assertEqual(builder_usd.joints[0].dofs_offset, 0)
         self.assertEqual(builder_usd.joints[0].bid_B, 0)
         self.assertEqual(builder_usd.joints[0].bid_F, 1)
+        self.assertEqual(len(builder_usd.joints[0].q_j_min), 3)
+        self.assertEqual(len(builder_usd.joints[0].q_j_max), 3)
+        self.assertEqual(len(builder_usd.joints[0].tau_j_max), 3)
+        self.assertEqual(builder_usd.joints[0].q_j_min, [-math.pi, -math.pi, -math.pi])
+        self.assertEqual(builder_usd.joints[0].q_j_max, [math.pi, math.pi, math.pi])
 
     def test_import_joint_d6_spherical_actuated(self):
         """Test importing a actuated spherical joint with limits from a USD file"""
@@ -479,6 +740,12 @@ class TestUSDImporter(unittest.TestCase):
         self.assertEqual(builder_usd.joints[0].dofs_offset, 0)
         self.assertEqual(builder_usd.joints[0].bid_B, 0)
         self.assertEqual(builder_usd.joints[0].bid_F, 1)
+        self.assertEqual(len(builder_usd.joints[0].q_j_min), 3)
+        self.assertEqual(len(builder_usd.joints[0].q_j_max), 3)
+        self.assertEqual(len(builder_usd.joints[0].tau_j_max), 3)
+        self.assertEqual(builder_usd.joints[0].q_j_min, [-math.pi, -math.pi, -math.pi])
+        self.assertEqual(builder_usd.joints[0].q_j_max, [math.pi, math.pi, math.pi])
+        self.assertEqual(builder_usd.joints[0].tau_j_max, [100.0, 200.0, 300.0])
 
     ###
     # Primitive geometries/shapes

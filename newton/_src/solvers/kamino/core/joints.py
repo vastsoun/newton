@@ -27,13 +27,19 @@ from .types import (
     Descriptor,
     mat33f,
     override,
+    quatf,
+    transformf,
+    vec1f,
     vec1i,
+    vec2f,
     vec2i,
     vec3f,
     vec3i,
+    vec4f,
     vec4i,
     vec5i,
     vec6i,
+    vec7f,
 )
 
 ###
@@ -361,6 +367,58 @@ class JointDoFType(IntEnum):
             return wp.constant(vec3i(0, 1, 2))
         elif self.value == self.FIXED:
             return []  # Empty vector (TODO: wp.constant(vec0i()))
+        else:
+            raise ValueError(f"Unknown joint DoF type: {self.value}")
+
+    @property
+    def coords_storage_type(self) -> Any:
+        """
+        Returns the data type required to store the joint's generalized coordinates.
+        """
+        if self.value == self.FREE:
+            return vec7f
+        elif self.value == self.REVOLUTE:
+            return vec1f
+        elif self.value == self.PRISMATIC:
+            return vec1f
+        elif self.value == self.CYLINDRICAL:
+            return vec2f
+        elif self.value == self.UNIVERSAL:
+            return vec2f
+        elif self.value == self.SPHERICAL:
+            return vec4f
+        elif self.value == self.GIMBAL:
+            return vec3f
+        elif self.value == self.CARTESIAN:
+            return vec3f
+        elif self.value == self.FIXED:
+            return type(None)
+        else:
+            raise ValueError(f"Unknown joint DoF type: {self.value}")
+
+    @property
+    def coords_physical_type(self) -> Any:
+        """
+        Returns the data type required to store the joint's generalized coordinates.
+        """
+        if self.value == self.FREE:
+            return transformf
+        elif self.value == self.REVOLUTE:
+            return vec1f
+        elif self.value == self.PRISMATIC:
+            return vec1f
+        elif self.value == self.CYLINDRICAL:
+            return vec2f
+        elif self.value == self.UNIVERSAL:
+            return vec2f
+        elif self.value == self.SPHERICAL:
+            return quatf
+        elif self.value == self.GIMBAL:
+            return vec3f
+        elif self.value == self.CARTESIAN:
+            return vec3f
+        elif self.value == self.FIXED:
+            return type(None)
         else:
             raise ValueError(f"Unknown joint DoF type: {self.value}")
 

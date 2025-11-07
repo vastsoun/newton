@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import numpy as np
 import warp as wp
+from warp._src.types import Any, Float
 
 from .types import (
     float32,
@@ -89,6 +90,16 @@ I_6 = wp.constant(
     mat66f(1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1)
 )
 """ The 6x6 identity matrix."""
+
+
+###
+# General-purpose functions
+###
+
+
+@wp.func
+def squared_norm(x: Any) -> Float:
+    return wp.dot(x, x)
 
 
 ###

@@ -23,7 +23,8 @@ import warp as wp
 
 from ..core.joints import JointDoFType
 from ..core.math import (
-    TWO_PI,  # noqa: F401
+    FLOAT32_MAX,
+    TWO_PI,
     quat_apply,
     quat_conj,
     quat_log,
@@ -32,6 +33,7 @@ from ..core.math import (
     screw,
     screw_angular,
     screw_linear,
+    squared_norm,
 )
 from ..core.model import Model, ModelData
 from ..core.types import (
@@ -43,6 +45,7 @@ from ..core.types import (
     vec1f,
     vec2f,
     vec3f,
+    vec4f,
     vec6f,
     vec7f,
 )
@@ -61,6 +64,112 @@ __all__ = [
 ###
 
 wp.set_module_options({"enable_backward": False})
+
+
+###
+# Functions - Coordinate Correction
+###
+
+
+@wp.func
+def correct_rotational_coord(
+    q_j_in: float32, q_j_ref: float32 = float32(0.0), q_j_limit: float32 = FLOAT32_MAX
+) -> float32:
+    """
+    Corrects a rotational joint coordinate to be as close as possible to a reference coordinate.
+    """
+    q_j_in += wp.round((q_j_ref - q_j_in) / TWO_PI) * TWO_PI
+    q_j_in = wp.mod(q_j_in, q_j_limit)
+    return q_j_in
+
+
+@wp.func
+def correct_quat_vector_coord(q_j_in: vec4f, q_j_ref: vec4f) -> vec4f:
+    """
+    Corrects a quaternion joint coordinate to be as close as possible to a reference coordinate.
+
+    This ensures that the quaternion `q_j_in` is chosen such that it is
+    closer to the reference quaternion `q_j_ref`, accounting for the fact
+    that quaternions `q` and `-q` represent the same rotation.
+    """
+    if squared_norm(q_j_in + q_j_ref) < squared_norm(q_j_in - q_j_ref):
+        q_j_in *= -1.0
+    return q_j_in
+
+
+@wp.func
+def correct_joint_coord_free(q_j_in: vec7f, q_j_ref: vec7f) -> vec7f:
+    q_j_in[0:4] = correct_quat_vector_coord(q_j_in[0:4], q_j_ref[0:4])
+    return q_j_in
+
+
+@wp.func
+def correct_joint_coord_revolute(q_j_in: vec1f, q_j_ref: vec1f, q_j_limit: vec1f = vec1f(FLOAT32_MAX)) -> vec1f:
+    q_j_in[0] = correct_rotational_coord(q_j_in[0], q_j_ref[0], q_j_limit[0])
+    return q_j_in
+
+
+@wp.func
+def correct_joint_coord_prismatic(q_j_in: vec1f, q_j_ref: vec1f) -> vec1f:
+    return q_j_in
+
+
+@wp.func
+def correct_joint_coord_cylindrical(q_j_in: vec2f, q_j_ref: vec2f, q_j_limit: vec2f = vec2f(FLOAT32_MAX)) -> vec2f:
+    q_j_in[1] = correct_rotational_coord(q_j_in[1], q_j_ref[1], q_j_limit[1])
+    return q_j_in
+
+
+@wp.func
+def correct_joint_coord_universal(q_j_in: vec2f, q_j_ref: vec2f, q_j_limit: vec2f = vec2f(FLOAT32_MAX)) -> vec2f:
+    q_j_in[0] = correct_rotational_coord(q_j_in[0], q_j_ref[0], q_j_limit[0])
+    q_j_in[1] = correct_rotational_coord(q_j_in[1], q_j_ref[1], q_j_limit[1])
+    return q_j_in
+
+
+@wp.func
+def correct_joint_coord_spherical(q_j_in: vec4f, q_j_ref: vec4f) -> vec4f:
+    return correct_quat_vector_coord(q_j_in, q_j_ref)
+
+
+@wp.func
+def correct_joint_coord_gimbal(q_j_in: vec3f, q_j_ref: vec3f, q_j_limit: vec3f = vec3f(FLOAT32_MAX)) -> vec3f:
+    q_j_in[0] = correct_rotational_coord(q_j_in[0], q_j_ref[0], q_j_limit[0])
+    q_j_in[1] = correct_rotational_coord(q_j_in[1], q_j_ref[1], q_j_limit[1])
+    q_j_in[2] = correct_rotational_coord(q_j_in[2], q_j_ref[2], q_j_limit[2])
+    return q_j_in
+
+
+@wp.func
+def correct_joint_coord_cartesian(q_j_in: vec3f, q_j_ref: vec3f) -> vec3f:
+    return q_j_in
+
+
+def get_joint_coord_correction_function(dof_type: JointDoFType):
+    """
+    Retrieves the function to correct joint
+    coordinates based on the type of joint DoF.
+    """
+    if dof_type == JointDoFType.FREE:
+        return correct_joint_coord_free
+    elif dof_type == JointDoFType.REVOLUTE:
+        return correct_joint_coord_revolute
+    elif dof_type == JointDoFType.PRISMATIC:
+        return correct_joint_coord_prismatic
+    elif dof_type == JointDoFType.CYLINDRICAL:
+        return correct_joint_coord_cylindrical
+    elif dof_type == JointDoFType.UNIVERSAL:
+        return correct_joint_coord_universal
+    elif dof_type == JointDoFType.SPHERICAL:
+        return correct_joint_coord_spherical
+    elif dof_type == JointDoFType.GIMBAL:
+        return correct_joint_coord_gimbal
+    elif dof_type == JointDoFType.CARTESIAN:
+        return correct_joint_coord_cartesian
+    elif dof_type == JointDoFType.FIXED:
+        return None
+    else:
+        raise ValueError(f"Unknown joint DoF type: {dof_type}")
 
 
 ###
@@ -101,9 +210,9 @@ def map_to_joint_coords_universal(j_r_j: vec3f, j_q_j: quatf) -> vec2f:
 
 
 @wp.func
-def map_to_joint_coords_spherical(j_r_j: vec3f, j_q_j: quatf) -> quatf:
+def map_to_joint_coords_spherical(j_r_j: vec3f, j_q_j: quatf) -> vec4f:
     """Returns the 4D unit-quaternion representing the joint rotation."""
-    return j_q_j
+    return vec4f(j_q_j.x, j_q_j.y, j_q_j.z, j_q_j.w)
 
 
 @wp.func
@@ -150,7 +259,7 @@ def get_joint_coords_mapping_function(dof_type: JointDoFType):
 ###
 
 
-def make_write_joint_state_generic(dof_type: JointDoFType):
+def make_write_joint_state_generic(dof_type: JointDoFType, correct_coords: bool = True):
     """
     Generates functions to store the joint state according to the
     constraint and DoF dimensions specific to the type of joint.
@@ -164,10 +273,13 @@ def make_write_joint_state_generic(dof_type: JointDoFType):
     num_dofs = dof_type.num_dofs
     num_cts = dof_type.num_cts
 
+    # Define a vector type for the joint coordinates
+    _coordsvec = dof_type.coords_storage_type
+
     # Generate a joint type-specific function to write the
     # computed joint state into the model data arrays
     @wp.func
-    def write_joint_state_generic(
+    def _write_joint_state_generic(
         # Inputs:
         cts_offset: int32,  # Index offset of the joint constraints
         dofs_offset: int32,  # Index offset of the joint DoFs
@@ -175,6 +287,7 @@ def make_write_joint_state_generic(dof_type: JointDoFType):
         j_r_j: vec3f,  # 3D vector of the joint-local relative pose
         j_q_j: quatf,  # 4D unit-quaternion of the joint-local relative pose
         j_u_j: vec6f,  # 6D vector ofthe joint-local relative twist
+        q_j_ref_in: wp.array(dtype=float32),  # Reference joint coordinates for correction
         # Outputs:
         r_j_out: wp.array(dtype=float32),  # Flat array of joint constraint residuals
         dr_j_out: wp.array(dtype=float32),  # Flat array of joint constraint velocities
@@ -196,6 +309,14 @@ def make_write_joint_state_generic(dof_type: JointDoFType):
         if wp.static(num_dofs > 0):
             # Map the joint relative pose to joint DoF coordinates
             q_j = wp.static(get_joint_coords_mapping_function(dof_type))(j_r_j, j_q_j)
+
+            # Optionally generate code to correct the joint coordinates
+            if wp.static(correct_coords):
+                q_j_ref = _coordsvec()
+                for j in range(num_coords):
+                    q_j_ref[j] = q_j_ref_in[coords_offset + j]
+                q_j = wp.static(get_joint_coord_correction_function(dof_type))(q_j, q_j_ref)
+
             # Store the joint DoF coordinates
             for j in range(num_coords):
                 q_j_out[coords_offset + j] = q_j[j]
@@ -204,35 +325,7 @@ def make_write_joint_state_generic(dof_type: JointDoFType):
                 dq_j_out[dofs_offset + j] = j_u_j[dof_axes[j]]
 
     # Return the function
-    return write_joint_state_generic
-
-
-###
-# Functions - Coordinate Correction
-###
-
-
-# @wp.func
-# def correct_joint_coord_revolute(
-#     # Inputs:
-#     cio_j: int32,  # Index offset of the joint constraints
-#     qio_j: int32,  # Index offset of the joint coordinates
-#     dio_j: int32,  # Index offset of the joint DoFs
-#     j_r_j: vec3f,  # 3D vector of the joint-local relative pose
-#     j_q_j: quatf,  # 4D unit-quaternion of the joint-local relative pose
-#     j_u_j: vec6f,  # 6D vector ofthe joint-local relative twist
-#     # Outputs:
-#     r_j_out: wp.array(dtype=float32),  # Flat array of joint constraint residuals
-#     dr_j_out: wp.array(dtype=float32),  # Flat array of joint constraint residuals
-#     q_j_out: wp.array(dtype=float32),  # Flat array of joint DoF coordinates
-#     dq_j_out: wp.array(dtype=float32),  # Flat array of joint DoF velocities
-# ):
-#     # TODO: How to clean this up?
-#     # Enforce continuity of revolute joint angles by adding or subtracting 2*PI as needed
-#     # to minimize the difference between the current angle and the previous angle
-#     r_j_rx = r_j[3]
-#     r_j_rx_corr = wp.round((q_j_p[qio_j] - r_j_rx) / TWO_PI) * TWO_PI
-#     r_j[3] += r_j_rx_corr
+    return _write_joint_state_generic
 
 
 ###
@@ -316,6 +409,7 @@ def write_joint_state(
     j_r_j: vec3f,
     j_q_j: quatf,
     j_u_j: vec6f,
+    q_j_ref: wp.array(dtype=float32),
     # Outputs:
     data_r_j: wp.array(dtype=float32),
     data_dr_j: wp.array(dtype=float32),
@@ -342,47 +436,137 @@ def write_joint_state(
 
     if dof_type == JointDoFType.REVOLUTE:
         wp.static(make_write_joint_state_generic(JointDoFType.REVOLUTE))(
-            cts_offset, dofs_offset, coords_offset, j_r_j, j_q_j, j_u_j, data_r_j, data_dr_j, data_q_j, data_dq_j
+            cts_offset,
+            dofs_offset,
+            coords_offset,
+            j_r_j,
+            j_q_j,
+            j_u_j,
+            q_j_ref,
+            data_r_j,
+            data_dr_j,
+            data_q_j,
+            data_dq_j,
         )
 
     elif dof_type == JointDoFType.PRISMATIC:
         wp.static(make_write_joint_state_generic(JointDoFType.PRISMATIC))(
-            cts_offset, dofs_offset, coords_offset, j_r_j, j_q_j, j_u_j, data_r_j, data_dr_j, data_q_j, data_dq_j
+            cts_offset,
+            dofs_offset,
+            coords_offset,
+            j_r_j,
+            j_q_j,
+            j_u_j,
+            q_j_ref,
+            data_r_j,
+            data_dr_j,
+            data_q_j,
+            data_dq_j,
         )
 
     elif dof_type == JointDoFType.CYLINDRICAL:
         wp.static(make_write_joint_state_generic(JointDoFType.CYLINDRICAL))(
-            cts_offset, dofs_offset, coords_offset, j_r_j, j_q_j, j_u_j, data_r_j, data_dr_j, data_q_j, data_dq_j
+            cts_offset,
+            dofs_offset,
+            coords_offset,
+            j_r_j,
+            j_q_j,
+            j_u_j,
+            q_j_ref,
+            data_r_j,
+            data_dr_j,
+            data_q_j,
+            data_dq_j,
         )
 
     elif dof_type == JointDoFType.UNIVERSAL:
         wp.static(make_write_joint_state_generic(JointDoFType.UNIVERSAL))(
-            cts_offset, dofs_offset, coords_offset, j_r_j, j_q_j, j_u_j, data_r_j, data_dr_j, data_q_j, data_dq_j
+            cts_offset,
+            dofs_offset,
+            coords_offset,
+            j_r_j,
+            j_q_j,
+            j_u_j,
+            q_j_ref,
+            data_r_j,
+            data_dr_j,
+            data_q_j,
+            data_dq_j,
         )
 
     elif dof_type == JointDoFType.SPHERICAL:
         wp.static(make_write_joint_state_generic(JointDoFType.SPHERICAL))(
-            cts_offset, dofs_offset, coords_offset, j_r_j, j_q_j, j_u_j, data_r_j, data_dr_j, data_q_j, data_dq_j
+            cts_offset,
+            dofs_offset,
+            coords_offset,
+            j_r_j,
+            j_q_j,
+            j_u_j,
+            q_j_ref,
+            data_r_j,
+            data_dr_j,
+            data_q_j,
+            data_dq_j,
         )
 
     elif dof_type == JointDoFType.GIMBAL:
         wp.static(make_write_joint_state_generic(JointDoFType.GIMBAL))(
-            cts_offset, dofs_offset, coords_offset, j_r_j, j_q_j, j_u_j, data_r_j, data_dr_j, data_q_j, data_dq_j
+            cts_offset,
+            dofs_offset,
+            coords_offset,
+            j_r_j,
+            j_q_j,
+            j_u_j,
+            q_j_ref,
+            data_r_j,
+            data_dr_j,
+            data_q_j,
+            data_dq_j,
         )
 
     elif dof_type == JointDoFType.CARTESIAN:
         wp.static(make_write_joint_state_generic(JointDoFType.CARTESIAN))(
-            cts_offset, dofs_offset, coords_offset, j_r_j, j_q_j, j_u_j, data_r_j, data_dr_j, data_q_j, data_dq_j
+            cts_offset,
+            dofs_offset,
+            coords_offset,
+            j_r_j,
+            j_q_j,
+            j_u_j,
+            q_j_ref,
+            data_r_j,
+            data_dr_j,
+            data_q_j,
+            data_dq_j,
         )
 
     elif dof_type == JointDoFType.FIXED:
         wp.static(make_write_joint_state_generic(JointDoFType.FIXED))(
-            cts_offset, dofs_offset, coords_offset, j_r_j, j_q_j, j_u_j, data_r_j, data_dr_j, data_q_j, data_dq_j
+            cts_offset,
+            dofs_offset,
+            coords_offset,
+            j_r_j,
+            j_q_j,
+            j_u_j,
+            q_j_ref,
+            data_r_j,
+            data_dr_j,
+            data_q_j,
+            data_dq_j,
         )
 
     elif dof_type == JointDoFType.FREE:
         wp.static(make_write_joint_state_generic(JointDoFType.FREE))(
-            cts_offset, dofs_offset, coords_offset, j_r_j, j_q_j, j_u_j, data_r_j, data_dr_j, data_q_j, data_dq_j
+            cts_offset,
+            dofs_offset,
+            coords_offset,
+            j_r_j,
+            j_q_j,
+            j_u_j,
+            q_j_ref,
+            data_r_j,
+            data_dr_j,
+            data_q_j,
+            data_dq_j,
         )
 
 
@@ -409,7 +593,7 @@ def _compute_joints_state(
     model_joint_X_j: wp.array(dtype=mat33f),
     state_body_q_i: wp.array(dtype=transformf),
     state_body_u_i: wp.array(dtype=vec6f),
-    data_q_j_p: wp.array(dtype=float32),
+    q_j_ref: wp.array(dtype=float32),
     # Outputs:
     data_p_j: wp.array(dtype=transformf),
     data_r_j: wp.array(dtype=float32),
@@ -472,6 +656,7 @@ def _compute_joints_state(
         j_r_j,
         j_q_j,
         j_u_j,
+        q_j_ref,
         data_r_j,
         data_dr_j,
         data_q_j,
@@ -494,7 +679,7 @@ def compute_joints_state(model: Model, q_j_ref: wp.array, data: ModelData) -> No
 
     Args:
         model (`Model`): The model container holding the time-invariant data of the simulation.
-        q_j_p (`wp.array`): An array of reference joint DoF coordinates used for coordinate correction.\n
+        q_j_ref (`wp.array`): An array of reference joint DoF coordinates used for coordinate correction.\n
             Only used for revolute DoFs of the relevant joints to enforce angle continuity.\n
             Shape of ``(sum_of_num_joint_coords,)`` and type :class:`float`.
         data (`ModelData`): The solver data container holding the internal time-varying state of the simulation.

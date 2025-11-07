@@ -24,6 +24,7 @@ from warp._src.types import Any, Int, Vector
 
 from .math import FLOAT32_MAX, FLOAT32_MIN
 from .types import (
+    ArrayLike,
     Descriptor,
     mat33f,
     override,
@@ -495,8 +496,8 @@ class JointDescriptor(Descriptor):
         B_r_Bj (vec3f): The relative position of the joint in the base body coordinates.
         F_r_Fj (vec3f): The relative position of the joint in the follower body coordinates.
         X_j (mat33f): The constant axes matrix of the joint.
-        q_j_min (list[float] | float | None): Minimum configuration limits of the joint.
-        q_j_max (list[float] | float | None): Maximum configuration limits of the joint.
+        q_j_min (list[float] | float | None): Minimum DoF limits of the joint.
+        q_j_max (list[float] | float | None): Maximum DoF limits of the joint.
         dq_j_max (list[float] | float | None): Maximum velocity limits of the joint.
         tau_j_max (list[float] | float | None): Maximum effort limits of the joint.
     """
@@ -529,17 +530,87 @@ class JointDescriptor(Descriptor):
     X_j: mat33f = field(default_factory=mat33f)
     """The constant axes matrix of the joint."""
 
-    q_j_min: list[float] | float | None = None
-    """Minimum configuration limits of the joint."""
+    q_j_min: ArrayLike | float | None = None
+    """
+    Minimum DoF limits of the joint.
 
-    q_j_max: list[float] | float | None = None
-    """Maximum configuration limits of the joint."""
+    If `None`, then no limits are applied to the joint DoFs,
+    and the maximum limits default to `-inf` for lower limits.
 
-    dq_j_max: list[float] | float | None = None
-    """Maximum velocity limits of the joint."""
+    If specified as a single float value, it will
+    be applied uniformly to all DoFs of the joint.
 
-    tau_j_max: list[float] | float | None = None
-    """Maximum effort limits of the joint."""
+    If specified as a type conforming to the `ArrayLike`
+    union, then the number of elements must equal number of
+    DoFs of the joint, i.e. `num_dofs = dof_type.num_dofs`.
+
+    For rotational DoFs, limits are expected in radians,
+    while for translational DoFs, limits are expected in
+    the same units as the world units.
+
+    **Warning**:
+    These limits are dimensioned according to the number of `num_dofs`,
+    even though joint coordinates are actually dimensioned according to
+    `num_coords`. This is because some joints (e.g. SPHERICAL) may use
+    redundant or non-minimal parameterizations at configuration-level.
+    In order to support configuration-level limits regardless of the
+    underlying parameterization, a mapping is performed in the solver
+    that translates the limits from DoF space to coordinate space.
+    """
+
+    q_j_max: ArrayLike | float | None = None
+    """
+    Maximum DoF limits of the joint.
+
+    If `None`, then no limits are applied to the joint DoFs,
+    and the maximum limits default to `-inf` for lower limits.
+
+    If specified as a single float value, it will
+    be applied uniformly to all DoFs of the joint.
+
+    If specified as a type conforming to the `ArrayLike`
+    union, then the number of elements must equal number of
+    DoFs of the joint, i.e. `num_dofs = dof_type.num_dofs`.
+
+    **Warning**:
+    These limits are dimensioned according to the number of `num_dofs`,
+    even though joint coordinates are actually dimensioned according to
+    `num_coords`. This is because some joints (e.g. SPHERICAL) may use
+    redundant or non-minimal parameterizations at configuration-level.
+    In order to support configuration-level limits regardless of the
+    underlying parameterization, a mapping is performed in the solver
+    that translates the limits from DoF space to coordinate space.
+    """
+
+    dq_j_max: ArrayLike | float | None = None
+    """
+    Maximum velocity limits of the joint.
+
+    If `None`, then no limits are applied to the joint DoFs,
+    and the maximum limits default to `-inf` for lower limits.
+
+    If specified as a single float value, it will
+    be applied uniformly to all DoFs of the joint.
+
+    If specified as a type conforming to the `ArrayLike`
+    union, then the number of elements must equal number of
+    DoFs of the joint, i.e. `num_dofs = dof_type.num_dofs`.
+    """
+
+    tau_j_max: ArrayLike | float | None = None
+    """
+    Maximum effort (i.e. generalized force) limits of the joint.
+
+    If `None`, then no limits are applied to the joint DoFs,
+    and the maximum limits default to `-inf` for lower limits.
+
+    If specified as a single float value, it will
+    be applied uniformly to all DoFs of the joint.
+
+    If specified as a type conforming to the `ArrayLike`
+    union, then the number of elements must equal number of
+    DoFs of the joint, i.e. `num_dofs = dof_type.num_dofs`.
+    """
 
     ###
     # Metadata - to be set by the WorldDescriptor when added
@@ -666,8 +737,8 @@ class JointDescriptor(Descriptor):
         super().__post_init__()
 
         # Set default values for joint limits if not provided
-        self.q_j_min = self._check_limits(self.q_j_min, self.num_coords, float(FLOAT32_MIN))
-        self.q_j_max = self._check_limits(self.q_j_max, self.num_coords, float(FLOAT32_MAX))
+        self.q_j_min = self._check_limits(self.q_j_min, self.num_dofs, float(FLOAT32_MIN))
+        self.q_j_max = self._check_limits(self.q_j_max, self.num_dofs, float(FLOAT32_MAX))
         self.dq_j_max = self._check_limits(self.dq_j_max, self.num_dofs, float(FLOAT32_MAX))
         self.tau_j_max = self._check_limits(self.tau_j_max, self.num_dofs, float(FLOAT32_MAX))
 
@@ -709,9 +780,7 @@ class JointDescriptor(Descriptor):
     ###
 
     @staticmethod
-    def _check_limits(
-        limits: list[float] | float | None, size: int, default: float = float(FLOAT32_MAX)
-    ) -> list[float]:
+    def _check_limits(limits: ArrayLike | float | None, size: int, default: float = float(FLOAT32_MAX)) -> list[float]:
         """
         Processes a specified limit value to ensure it is a list of floats.
 
@@ -745,7 +814,7 @@ class JointDescriptor(Descriptor):
             else:
                 return [limits] * size
 
-        if isinstance(limits, list):
+        if isinstance(limits, ArrayLike):
             if len(limits) == 0:
                 return [float(default) for _ in range(size)]
 
@@ -753,6 +822,11 @@ class JointDescriptor(Descriptor):
                 raise ValueError(f"Invalid limits length: {len(limits)} != {size}")
 
             if all(isinstance(x, float) for x in limits):
+                for i in range(len(limits)):
+                    if limits[i] == math.inf:
+                        limits[i] = float(FLOAT32_MAX)
+                    elif limits[i] == -math.inf:
+                        limits[i] = float(FLOAT32_MIN)
                 return limits
             else:
                 raise TypeError(
@@ -865,16 +939,28 @@ class JointsModel:
 
     q_j_min: wp.array | None = None
     """
-    Minimum joint position limits of each joint (as flat array).\n
-    Shape of ``(sum(c_j),)`` and type :class:`float`,\n
-    where ``c_j`` is the number of coordinates of joint ``j``.
+    Minimum (a.k.a. lower) joint DoF limits of each joint (as flat array).\n
+
+    Limits are dimensioned according to the number of DoFs of each joint,
+    as opposed to the number of coordinates in order to handle cases such
+    where joints have more coordinates than DoFs (e.g. spherical joints).\n
+
+    Shape of ``(sum_of_num_joint_dofs,)`` and type :class:`float`,\n
+    where `sum_of_num_joint_dofs := sum(d_j)`, and ``d_j``
+    is the number of DoFs of joint ``j``.
     """
 
     q_j_max: wp.array | None = None
     """
-    Maximum joint position limits of each joint (as flat array).\n
-    Shape of ``(sum(c_j),)`` and type :class:`float`,\n
-    where ``c_j`` is the number of coordinates of joint ``j``.
+    Maximum (a.k.a. upper) joint DoF limits of each joint (as flat array).\n
+
+    Limits are dimensioned according to the number of DoFs of each joint,
+    as opposed to the number of coordinates in order to handle cases such
+    where joints have more coordinates than DoFs (e.g. spherical joints).\n
+
+    Shape of ``(sum_of_num_joint_dofs,)`` and type :class:`float`,\n
+    where `sum_of_num_joint_dofs := sum(d_j)`, and ``d_j``
+    is the number of DoFs of joint ``j``.
     """
 
     dq_j_max: wp.array | None = None

@@ -406,7 +406,7 @@ class Descriptor:
 # Utilities
 ###
 
-ArrayLike = np.ndarray | list[int] | list[float] | list[list[int]] | list[list[float]] | Iterable[int] | Iterable[float]
+ArrayLike = np.ndarray | list | tuple | Iterable
 """An Array-like structure for aliasing various data types compatible with numpy."""
 
 

@@ -67,14 +67,22 @@ wp.set_module_options({"enable_backward": False})
 
 
 ###
+# Constants
+###
+
+
+DEFAULT_LIMIT_V1F = vec1f(FLOAT32_MAX)
+DEFAULT_LIMIT_V2F = vec2f(FLOAT32_MAX)
+DEFAULT_LIMIT_V3F = vec3f(FLOAT32_MAX)
+
+
+###
 # Functions - Coordinate Correction
 ###
 
 
 @wp.func
-def correct_rotational_coord(
-    q_j_in: float32, q_j_ref: float32 = float32(0.0), q_j_limit: float32 = FLOAT32_MAX
-) -> float32:
+def correct_rotational_coord(q_j_in: float32, q_j_ref: float32 = 0.0, q_j_limit: float32 = FLOAT32_MAX) -> float32:
     """
     Corrects a rotational joint coordinate to be as close as possible to a reference coordinate.
     """
@@ -99,29 +107,34 @@ def correct_quat_vector_coord(q_j_in: vec4f, q_j_ref: vec4f) -> vec4f:
 
 @wp.func
 def correct_joint_coord_free(q_j_in: vec7f, q_j_ref: vec7f) -> vec7f:
+    """Corrects the orientation quaternion coordinate of a free joint."""
     q_j_in[0:4] = correct_quat_vector_coord(q_j_in[0:4], q_j_ref[0:4])
     return q_j_in
 
 
 @wp.func
-def correct_joint_coord_revolute(q_j_in: vec1f, q_j_ref: vec1f, q_j_limit: vec1f = vec1f(FLOAT32_MAX)) -> vec1f:
+def correct_joint_coord_revolute(q_j_in: vec1f, q_j_ref: vec1f, q_j_limit: vec1f = DEFAULT_LIMIT_V1F) -> vec1f:
+    """Corrects the rotational joint coordinate."""
     q_j_in[0] = correct_rotational_coord(q_j_in[0], q_j_ref[0], q_j_limit[0])
     return q_j_in
 
 
 @wp.func
 def correct_joint_coord_prismatic(q_j_in: vec1f, q_j_ref: vec1f) -> vec1f:
+    """No correction needed for prismatic coordinates."""
     return q_j_in
 
 
 @wp.func
-def correct_joint_coord_cylindrical(q_j_in: vec2f, q_j_ref: vec2f, q_j_limit: vec2f = vec2f(FLOAT32_MAX)) -> vec2f:
+def correct_joint_coord_cylindrical(q_j_in: vec2f, q_j_ref: vec2f, q_j_limit: vec2f = DEFAULT_LIMIT_V2F) -> vec2f:
+    """Corrects only the rotational joint coordinate."""
     q_j_in[1] = correct_rotational_coord(q_j_in[1], q_j_ref[1], q_j_limit[1])
     return q_j_in
 
 
 @wp.func
-def correct_joint_coord_universal(q_j_in: vec2f, q_j_ref: vec2f, q_j_limit: vec2f = vec2f(FLOAT32_MAX)) -> vec2f:
+def correct_joint_coord_universal(q_j_in: vec2f, q_j_ref: vec2f, q_j_limit: vec2f = DEFAULT_LIMIT_V2F) -> vec2f:
+    """Corrects each of the two rotational joint coordinates individually."""
     q_j_in[0] = correct_rotational_coord(q_j_in[0], q_j_ref[0], q_j_limit[0])
     q_j_in[1] = correct_rotational_coord(q_j_in[1], q_j_ref[1], q_j_limit[1])
     return q_j_in
@@ -129,11 +142,13 @@ def correct_joint_coord_universal(q_j_in: vec2f, q_j_ref: vec2f, q_j_limit: vec2
 
 @wp.func
 def correct_joint_coord_spherical(q_j_in: vec4f, q_j_ref: vec4f) -> vec4f:
+    """Corrects a quaternion joint coordinate to be as close as possible to a reference."""
     return correct_quat_vector_coord(q_j_in, q_j_ref)
 
 
 @wp.func
-def correct_joint_coord_gimbal(q_j_in: vec3f, q_j_ref: vec3f, q_j_limit: vec3f = vec3f(FLOAT32_MAX)) -> vec3f:
+def correct_joint_coord_gimbal(q_j_in: vec3f, q_j_ref: vec3f, q_j_limit: vec3f = DEFAULT_LIMIT_V3F) -> vec3f:
+    """Corrects each of the XYZ Euler angles individually."""
     q_j_in[0] = correct_rotational_coord(q_j_in[0], q_j_ref[0], q_j_limit[0])
     q_j_in[1] = correct_rotational_coord(q_j_in[1], q_j_ref[1], q_j_limit[1])
     q_j_in[2] = correct_rotational_coord(q_j_in[2], q_j_ref[2], q_j_limit[2])
@@ -142,6 +157,7 @@ def correct_joint_coord_gimbal(q_j_in: vec3f, q_j_ref: vec3f, q_j_limit: vec3f =
 
 @wp.func
 def correct_joint_coord_cartesian(q_j_in: vec3f, q_j_ref: vec3f) -> vec3f:
+    """No correction needed for Cartesian coordinates."""
     return q_j_in
 
 

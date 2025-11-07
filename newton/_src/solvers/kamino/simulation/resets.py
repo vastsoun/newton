@@ -154,10 +154,10 @@ def _reset_joints_of_select_worlds(
     model_joint_B_r_Bj: wp.array(dtype=vec3f),
     model_joint_F_r_Fj: wp.array(dtype=vec3f),
     model_joint_X_j: wp.array(dtype=mat33f),
+    model_joint_q_j_ref: wp.array(dtype=float32),
     state_q_i: wp.array(dtype=transformf),
     state_u_i: wp.array(dtype=vec6f),
     state_lambda_j: wp.array(dtype=float32),
-    q_j_ref: wp.array(dtype=float32),
     # Outputs:
     data_p_j: wp.array(dtype=transformf),
     data_r_j: wp.array(dtype=float32),
@@ -232,7 +232,7 @@ def _reset_joints_of_select_worlds(
         j_r_j,
         j_q_j,
         j_u_j,
-        q_j_ref,
+        model_joint_q_j_ref,
         data_r_j,
         data_dr_j,
         data_q_j,
@@ -338,10 +338,10 @@ def reset_state_of_select_worlds(
             model.joints.B_r_Bj,
             model.joints.F_r_Fj,
             model.joints.X_j,
+            model.joints.q_j_ref,
             state.q_i,
             state.u_i,
             state.lambda_j,
-            state.q_j,  # TODO: FIX THIS
             # Outputs:
             data.joints.p_j,
             data.joints.r_j,

@@ -448,6 +448,32 @@ class JointDoFType(IntEnum):
         else:
             raise ValueError(f"Unknown joint DoF type: {self.value}")
 
+    @property
+    def reference_coords(self) -> list[float]:
+        """
+        Returns the data type required to represent the joint's generalized coordinates.
+        """
+        if self.value == self.FREE:
+            return [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+        elif self.value == self.REVOLUTE:
+            return [0.0]
+        elif self.value == self.PRISMATIC:
+            return [0.0]
+        elif self.value == self.CYLINDRICAL:
+            return [0.0, 0.0]
+        elif self.value == self.UNIVERSAL:
+            return [0.0, 0.0]
+        elif self.value == self.SPHERICAL:
+            return [0.0, 0.0, 0.0, 1.0]
+        elif self.value == self.GIMBAL:
+            return [0.0, 0.0, 0.0]
+        elif self.value == self.CARTESIAN:
+            return [0.0, 0.0, 0.0]
+        elif self.value == self.FIXED:
+            return []
+        else:
+            raise ValueError(f"Unknown joint DoF type: {self.value}")
+
 
 ###
 # Containers
@@ -865,6 +891,16 @@ class JointsModel:
     where ``d_j`` is the number of DoFs of joint ``j``.
     """
 
+    q_j_ref: wp.array | None = None
+    """
+    The reference coordinates of each joint (as flat array),
+    indicating the "rest" or "neutral" position of each joint.\n
+    These are used for resetting joint positions when multi-turn
+    correction for revolute DoFs is enabled in the simulation.\n
+    Shape of ``(sum(c_j),)`` and type :class:`float`,\n
+    where ``c_j`` is the number of coordinates of joint ``j``.
+    """
+
     num_coords: wp.array | None = None
     """
     Number of configuration coordinates of each joint.\n
@@ -1042,11 +1078,16 @@ class JointsData:
         self.r_j.zero_()
         self.dr_j.zero_()
 
-    def clear_state(self):
+    def reset_state(self, q_j_ref: wp.array | None = None):
         """
         Reset all joint state variables to zero.
         """
-        self.q_j.zero_()
+        if q_j_ref is not None:
+            if q_j_ref.size != self.q_j.size:
+                raise ValueError(f"Invalid size of q_j_ref: {q_j_ref.size}. Expected: {self.q_j.size}.")
+            wp.copy(self.q_j, q_j_ref)
+        else:
+            self.q_j.zero_()
         self.dq_j.zero_()
 
     def clear_constraint_reactions(self):

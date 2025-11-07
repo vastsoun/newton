@@ -710,14 +710,8 @@ class Simulator:
         This includes updating the joint state from the body states,
         and clearing all joint constraints, actuation and wrenches.
         """
-        # First clear all joint states (i.e. generalized coordinates and velocities) to zeros
-        # NOTE: We do this so that the previous state is always zeroed out on reset. This is
-        # necessary as the `compute_joints_data()` operation will use the previous joint state
-        # to detect roll-over for rotational coordinates/DoFs.
-        self._data.solver.joints.clear_state()
-
         # Then compute the initial joint states based on the body states
-        compute_joints_data(model=self._model, q_j_ref=self._data.solver.joints.q_j, data=self._data.solver)
+        compute_joints_data(model=self._model, q_j_ref=self._model.joints.q_j_ref, data=self._data.solver)
 
         # Finally, clear all joint constraint reactions,
         # actuation forces, and wrenches, setting them to zero

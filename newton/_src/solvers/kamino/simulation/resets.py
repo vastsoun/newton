@@ -21,7 +21,7 @@ from ..core.bodies import transform_body_inertial_properties
 from ..core.model import Model, ModelData
 from ..core.state import State
 from ..core.types import float32, int32, mat33f, transformf, vec3f, vec6f
-from ..kinematics.joints import compute_joint_pose_and_relative_motion, write_joint_state
+from ..kinematics.joints import compute_joint_pose_and_relative_motion, write_joint_data
 
 ###
 # Module interface
@@ -157,6 +157,7 @@ def _reset_joints_of_select_worlds(
     state_q_i: wp.array(dtype=transformf),
     state_u_i: wp.array(dtype=vec6f),
     state_lambda_j: wp.array(dtype=float32),
+    q_j_ref: wp.array(dtype=float32),
     # Outputs:
     data_p_j: wp.array(dtype=transformf),
     data_r_j: wp.array(dtype=float32),
@@ -223,7 +224,7 @@ def _reset_joints_of_select_worlds(
     data_p_j[jid] = p_j
 
     # Store the joint constraint residuals and motion
-    write_joint_state(
+    write_joint_data(
         dof_type,
         cts_offset,
         dofs_offset,
@@ -231,6 +232,7 @@ def _reset_joints_of_select_worlds(
         j_r_j,
         j_q_j,
         j_u_j,
+        q_j_ref,
         data_r_j,
         data_dr_j,
         data_q_j,
@@ -248,8 +250,8 @@ def _reset_joints_of_select_worlds(
     if reset_constraints:
         for k in range(num_cts):
             data_lambda_j[cts_offset + k] = 0.0
+    # Otherwise, copy the target constraint reactions from the target state
     else:
-        # Otherwise, copy the target constraint reactions from the target state
         for k in range(num_cts):
             data_lambda_j[cts_offset + k] = state_lambda_j[cts_offset + k]
 
@@ -339,6 +341,7 @@ def reset_state_of_select_worlds(
             state.q_i,
             state.u_i,
             state.lambda_j,
+            state.q_j,  # TODO: FIX THIS
             # Outputs:
             data.joints.p_j,
             data.joints.r_j,

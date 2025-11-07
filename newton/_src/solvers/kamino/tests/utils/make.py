@@ -27,7 +27,7 @@ from newton._src.solvers.kamino.core.model import Model, ModelData
 from newton._src.solvers.kamino.geometry.detector import CollisionDetector
 from newton._src.solvers.kamino.kinematics.constraints import make_unilateral_constraints_info, update_constraints_info
 from newton._src.solvers.kamino.kinematics.jacobians import DenseSystemJacobians
-from newton._src.solvers.kamino.kinematics.joints import compute_joints_state
+from newton._src.solvers.kamino.kinematics.joints import compute_joints_data
 from newton._src.solvers.kamino.kinematics.limits import Limits
 from newton._src.solvers.kamino.simulation.simulator import Simulator
 
@@ -147,7 +147,7 @@ def update_containers(
     wp.synchronize()
 
     # Update joint states according to the state of the bodies
-    compute_joints_state(model=model, data=data, q_j_ref=wp.zeros_like(data.joints.q_j))
+    compute_joints_data(model=model, data=data, q_j_ref=wp.zeros_like(data.joints.q_j))
     wp.synchronize()
 
     # Run joint-limit detection to generate active limits

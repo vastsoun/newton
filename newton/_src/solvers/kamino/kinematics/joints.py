@@ -55,7 +55,7 @@ from ..core.types import (
 ###
 
 __all__ = [
-    "compute_joints_state",
+    "compute_joints_data",
 ]
 
 
@@ -259,7 +259,7 @@ def get_joint_coords_mapping_function(dof_type: JointDoFType):
 ###
 
 
-def make_write_joint_state_generic(dof_type: JointDoFType, correct_coords: bool = True):
+def make_write_joint_data(dof_type: JointDoFType, correct_coords: bool = True):
     """
     Generates functions to store the joint state according to the
     constraint and DoF dimensions specific to the type of joint.
@@ -279,7 +279,7 @@ def make_write_joint_state_generic(dof_type: JointDoFType, correct_coords: bool 
     # Generate a joint type-specific function to write the
     # computed joint state into the model data arrays
     @wp.func
-    def _write_joint_state_generic(
+    def _write_joint_data(
         # Inputs:
         cts_offset: int32,  # Index offset of the joint constraints
         dofs_offset: int32,  # Index offset of the joint DoFs
@@ -325,7 +325,7 @@ def make_write_joint_state_generic(dof_type: JointDoFType, correct_coords: bool 
                 dq_j_out[dofs_offset + j] = j_u_j[dof_axes[j]]
 
     # Return the function
-    return _write_joint_state_generic
+    return _write_joint_data
 
 
 ###
@@ -400,7 +400,7 @@ def compute_joint_pose_and_relative_motion(
 
 
 @wp.func
-def write_joint_state(
+def write_joint_data(
     # Inputs:
     dof_type: int32,
     cts_offset: int32,
@@ -435,7 +435,7 @@ def write_joint_state(
     # TODO: Use wp.static to include conditionals at compile time based on the joint types present in the builder
 
     if dof_type == JointDoFType.REVOLUTE:
-        wp.static(make_write_joint_state_generic(JointDoFType.REVOLUTE))(
+        wp.static(make_write_joint_data(JointDoFType.REVOLUTE))(
             cts_offset,
             dofs_offset,
             coords_offset,
@@ -450,7 +450,7 @@ def write_joint_state(
         )
 
     elif dof_type == JointDoFType.PRISMATIC:
-        wp.static(make_write_joint_state_generic(JointDoFType.PRISMATIC))(
+        wp.static(make_write_joint_data(JointDoFType.PRISMATIC))(
             cts_offset,
             dofs_offset,
             coords_offset,
@@ -465,7 +465,7 @@ def write_joint_state(
         )
 
     elif dof_type == JointDoFType.CYLINDRICAL:
-        wp.static(make_write_joint_state_generic(JointDoFType.CYLINDRICAL))(
+        wp.static(make_write_joint_data(JointDoFType.CYLINDRICAL))(
             cts_offset,
             dofs_offset,
             coords_offset,
@@ -480,7 +480,7 @@ def write_joint_state(
         )
 
     elif dof_type == JointDoFType.UNIVERSAL:
-        wp.static(make_write_joint_state_generic(JointDoFType.UNIVERSAL))(
+        wp.static(make_write_joint_data(JointDoFType.UNIVERSAL))(
             cts_offset,
             dofs_offset,
             coords_offset,
@@ -495,7 +495,7 @@ def write_joint_state(
         )
 
     elif dof_type == JointDoFType.SPHERICAL:
-        wp.static(make_write_joint_state_generic(JointDoFType.SPHERICAL))(
+        wp.static(make_write_joint_data(JointDoFType.SPHERICAL))(
             cts_offset,
             dofs_offset,
             coords_offset,
@@ -510,7 +510,7 @@ def write_joint_state(
         )
 
     elif dof_type == JointDoFType.GIMBAL:
-        wp.static(make_write_joint_state_generic(JointDoFType.GIMBAL))(
+        wp.static(make_write_joint_data(JointDoFType.GIMBAL))(
             cts_offset,
             dofs_offset,
             coords_offset,
@@ -525,7 +525,7 @@ def write_joint_state(
         )
 
     elif dof_type == JointDoFType.CARTESIAN:
-        wp.static(make_write_joint_state_generic(JointDoFType.CARTESIAN))(
+        wp.static(make_write_joint_data(JointDoFType.CARTESIAN))(
             cts_offset,
             dofs_offset,
             coords_offset,
@@ -540,7 +540,7 @@ def write_joint_state(
         )
 
     elif dof_type == JointDoFType.FIXED:
-        wp.static(make_write_joint_state_generic(JointDoFType.FIXED))(
+        wp.static(make_write_joint_data(JointDoFType.FIXED))(
             cts_offset,
             dofs_offset,
             coords_offset,
@@ -555,7 +555,7 @@ def write_joint_state(
         )
 
     elif dof_type == JointDoFType.FREE:
-        wp.static(make_write_joint_state_generic(JointDoFType.FREE))(
+        wp.static(make_write_joint_data(JointDoFType.FREE))(
             cts_offset,
             dofs_offset,
             coords_offset,
@@ -576,7 +576,7 @@ def write_joint_state(
 
 
 @wp.kernel
-def _compute_joints_state(
+def _compute_joints_data(
     # Inputs:
     model_info_joint_coords_offset: wp.array(dtype=int32),
     model_info_joint_dofs_offset: wp.array(dtype=int32),
@@ -648,7 +648,7 @@ def _compute_joints_state(
     data_p_j[jid] = p_j
 
     # Store the joint constraint residuals and motion
-    write_joint_state(
+    write_joint_data(
         dof_type,
         cts_offset,
         dofs_offset,
@@ -669,11 +669,11 @@ def _compute_joints_state(
 ###
 
 
-def compute_joints_state(model: Model, q_j_ref: wp.array, data: ModelData) -> None:
+def compute_joints_data(model: Model, q_j_ref: wp.array, data: ModelData) -> None:
     """
     Computes the states of the joints based on the current body states.
 
-    The joint state data to computed includes both the generalized coordinates and velocities
+    The computed joint state data includes both the generalized coordinates and velocities
     corresponding to the respective degrees of freedom (DoFs), as well as the constraint-space
     residuals and velocities of the applied bilateral constraints.
 
@@ -685,7 +685,7 @@ def compute_joints_state(model: Model, q_j_ref: wp.array, data: ModelData) -> No
         data (`ModelData`): The solver data container holding the internal time-varying state of the simulation.
     """
     wp.launch(
-        _compute_joints_state,
+        _compute_joints_data,
         dim=model.size.sum_of_num_joints,
         inputs=[
             # Inputs:

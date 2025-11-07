@@ -28,7 +28,7 @@ from newton._src.solvers.kamino.core.model import Model, ModelData
 from newton._src.solvers.kamino.core.types import float32, int32, mat33f, transformf, vec3f, vec6f
 
 # Module to be tested
-from newton._src.solvers.kamino.kinematics.joints import compute_joints_state
+from newton._src.solvers.kamino.kinematics.joints import compute_joints_data
 from newton._src.solvers.kamino.models.builders import build_revolute_joint_test_system
 from newton._src.solvers.kamino.models.utils import make_homogeneous_builder, make_single_builder
 
@@ -177,7 +177,7 @@ class TestKinematicsJoints(unittest.TestCase):
             print("data.bodies.u_i:\n", data.bodies.u_i)
 
         # Update the state of the joints
-        compute_joints_state(model=model, q_j_ref=wp.zeros_like(data.joints.q_j), data=data)
+        compute_joints_data(model=model, q_j_ref=wp.zeros_like(data.joints.q_j), data=data)
         if self.verbose:
             print("data.joints.p_j:\n", data.joints.p_j)
             print("data.joints.r_j:\n", data.joints.r_j)
@@ -218,7 +218,7 @@ class TestKinematicsJoints(unittest.TestCase):
             print("data.bodies.u_i:\n", data.bodies.u_i)
 
         # Update the state of the joints
-        compute_joints_state(model=model, q_j_ref=wp.zeros_like(data.joints.q_j), data=data)
+        compute_joints_data(model=model, q_j_ref=wp.zeros_like(data.joints.q_j), data=data)
         if self.verbose:
             print("data.joints.p_j:\n", data.joints.p_j)
             print("data.joints.r_j:\n", data.joints.r_j)

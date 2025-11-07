@@ -399,7 +399,7 @@ class JointDoFType(IntEnum):
     @property
     def coords_physical_type(self) -> Any:
         """
-        Returns the data type required to store the joint's generalized coordinates.
+        Returns the data type required to represent the joint's generalized coordinates.
         """
         if self.value == self.FREE:
             return transformf

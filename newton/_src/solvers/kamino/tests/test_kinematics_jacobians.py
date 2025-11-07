@@ -32,7 +32,7 @@ from newton._src.solvers.kamino.kinematics.constraints import make_unilateral_co
 
 # Module to be tested
 from newton._src.solvers.kamino.kinematics.jacobians import DenseSystemJacobians
-from newton._src.solvers.kamino.kinematics.joints import compute_joints_state
+from newton._src.solvers.kamino.kinematics.joints import compute_joints_data
 from newton._src.solvers.kamino.kinematics.limits import Limits
 from newton._src.solvers.kamino.models.builders import build_boxes_fourbar
 from newton._src.solvers.kamino.models.utils import (
@@ -678,7 +678,7 @@ class TestKinematicsJacobians(unittest.TestCase):
             print("data.bodies.u_i:\n", data.bodies.u_i)
 
         # Compute the joints state
-        compute_joints_state(model=model, q_j_ref=wp.zeros_like(data.joints.q_j), data=data)
+        compute_joints_data(model=model, q_j_ref=wp.zeros_like(data.joints.q_j), data=data)
         wp.synchronize()
         if self.verbose:
             print("data.joints.p_j:\n", data.joints.p_j)
@@ -797,7 +797,7 @@ class TestKinematicsJacobians(unittest.TestCase):
             print("data.bodies.u_i:\n", data.bodies.u_i)
 
         # Compute the joints state
-        compute_joints_state(model=model, q_j_ref=wp.zeros_like(data.joints.q_j), data=data)
+        compute_joints_data(model=model, q_j_ref=wp.zeros_like(data.joints.q_j), data=data)
         wp.synchronize()
         if self.verbose:
             print("data.joints.p_j:\n", data.joints.p_j)
@@ -886,7 +886,7 @@ class TestKinematicsJacobians(unittest.TestCase):
             print("data.bodies.u_i:\n", data.bodies.u_i)
 
         # Compute the joints state
-        compute_joints_state(model=model, q_j_ref=wp.zeros_like(data.joints.q_j), data=data)
+        compute_joints_data(model=model, q_j_ref=wp.zeros_like(data.joints.q_j), data=data)
         wp.synchronize()
         if self.verbose:
             print("data.joints.p_j:\n", data.joints.p_j)

@@ -39,7 +39,7 @@ from ..geometry.detector import CollisionDetector
 from ..integrators.euler import integrate_semi_implicit_euler
 from ..kinematics.constraints import make_unilateral_constraints_info, update_constraints_info
 from ..kinematics.jacobians import DenseSystemJacobians
-from ..kinematics.joints import compute_joints_state
+from ..kinematics.joints import compute_joints_data
 from ..kinematics.limits import Limits
 from ..linalg import LinearSolver, LLTBlockedSolver
 from ..solvers.fk import ForwardKinematicsSolver  # noqa: F401
@@ -712,12 +712,12 @@ class Simulator:
         """
         # First clear all joint states (i.e. generalized coordinates and velocities) to zeros
         # NOTE: We do this so that the previous state is always zeroed out on reset. This is
-        # necessary as the `compute_joints_state()` operation will use the previous joint state
+        # necessary as the `compute_joints_data()` operation will use the previous joint state
         # to detect roll-over for rotational coordinates/DoFs.
         self._data.solver.joints.clear_state()
 
         # Then compute the initial joint states based on the body states
-        compute_joints_state(model=self._model, q_j_ref=self._data.solver.joints.q_j, data=self._data.solver)
+        compute_joints_data(model=self._model, q_j_ref=self._data.solver.joints.q_j, data=self._data.solver)
 
         # Finally, clear all joint constraint reactions,
         # actuation forces, and wrenches, setting them to zero
@@ -960,7 +960,7 @@ class Simulator:
         # Update the joint states based on the updated body states
         # NOTE: We use the previous state `state_p` for post-processing
         # purposes, e.g. account for roll-over of revolute joints etc
-        compute_joints_state(model=self._model, q_j_ref=self._data.state_p.q_j, data=self._data.solver)
+        compute_joints_data(model=self._model, q_j_ref=self._data.state_p.q_j, data=self._data.solver)
 
         # Update the next-step state from the internal solver state
         self._data.update_next()

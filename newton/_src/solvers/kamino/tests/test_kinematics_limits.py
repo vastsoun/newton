@@ -26,7 +26,7 @@ import warp as wp
 from newton._src.solvers.kamino.core.math import quat_exp, screw, screw_angular, screw_linear
 from newton._src.solvers.kamino.core.model import Model, ModelData
 from newton._src.solvers.kamino.core.types import float32, int32, mat33f, transformf, vec3f, vec6f
-from newton._src.solvers.kamino.kinematics.joints import compute_joints_state
+from newton._src.solvers.kamino.kinematics.joints import compute_joints_data
 
 # Module to be tested
 from newton._src.solvers.kamino.kinematics.limits import Limits
@@ -249,7 +249,7 @@ class TestKinematicsLimits(unittest.TestCase):
         set_joint_follower_body_state(model, data)
 
         # Update the state of the joints
-        compute_joints_state(model=model, q_j_ref=wp.zeros_like(data.joints.q_j), data=data)
+        compute_joints_data(model=model, q_j_ref=wp.zeros_like(data.joints.q_j), data=data)
 
         # Optional verbose output
         if self.verbose:

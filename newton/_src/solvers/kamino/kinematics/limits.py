@@ -441,6 +441,7 @@ def detect_active_dof_limit(
 @wp.kernel
 def _detect_active_joint_configuration_limits(
     model_info_joint_dofs_offset: wp.array(dtype=int32),
+    model_info_joint_coords_offset: wp.array(dtype=int32),
     model_joint_wid: wp.array(dtype=int32),
     model_joint_dof_type: wp.array(dtype=int32),
     model_joint_dofs_offset: wp.array(dtype=int32),
@@ -475,13 +476,20 @@ def _detect_active_joint_configuration_limits(
     bid_B_j = model_joint_bid_B[jid]
     bid_F_j = model_joint_bid_F[jid]
 
-    # Extract the index offset of the world's joint DoFs w.r.t the model
-    world_dofs_offset = model_info_joint_dofs_offset[wid]
-    world_coords_offset = model_joint_coords_offset[wid]
-
     # Retrieve the max limits of the model and world
     model_max_limits = limits_model_max[0]
     world_max_limits = limits_world_max[wid]
+
+    # Skip the joint limits check if:
+    # - the DoF type is fixed
+    # - if the world has not limits allocated
+    # - if the model has not limits allocated
+    if dof_type_j == JointDoFType.FIXED or world_max_limits == 0 or model_max_limits == 0:
+        return
+
+    # Extract the index offset of the world's joint DoFs w.r.t the model
+    world_dofs_offset = model_info_joint_dofs_offset[wid]
+    world_coords_offset = model_info_joint_coords_offset[wid]
 
     # Compute total index offset of the joint's DoFs w.r.t the model
     dofs_offset_total = dofs_offset_j + world_dofs_offset
@@ -773,6 +781,7 @@ class Limits:
             inputs=[
                 # Inputs:
                 model.info.joint_dofs_offset,
+                model.info.joint_coords_offset,
                 model.joints.wid,
                 model.joints.dof_type,
                 model.joints.dofs_offset,

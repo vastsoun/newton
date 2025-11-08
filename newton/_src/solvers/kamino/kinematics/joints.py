@@ -275,7 +275,7 @@ def get_joint_coords_mapping_function(dof_type: JointDoFType):
 ###
 
 
-def make_write_joint_data(dof_type: JointDoFType, correct_coords: bool = True):
+def make_write_joint_data(dof_type: JointDoFType, correct_coords: bool = False):
     """
     Generates functions to store the joint state according to the
     constraint and DoF dimensions specific to the type of joint.

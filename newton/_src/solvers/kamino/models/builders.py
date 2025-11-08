@@ -26,7 +26,7 @@ from ..core.inertia import (
 )
 from ..core.joints import JointActuationType, JointDoFType
 from ..core.math import FLOAT32_MAX, FLOAT32_MIN, I_3
-from ..core.shapes import BoxShape, SphereShape
+from ..core.shapes import BoxShape, CylinderShape, SphereShape
 from ..core.types import Axis, transformf, vec3f, vec6f
 
 ###
@@ -107,26 +107,16 @@ def add_body_twist_offset(builder: ModelBuilder, offset: vec6f):
 ###
 
 
-def build_revolute_joint_test_system(
+def build_free_joint_test(
     builder: ModelBuilder | None = None,
+    z_offset: float = 0.0,
+    ground: bool = True,
     new_world: bool = True,
+    limits: bool = True,
     world_index: int = 0,
 ) -> ModelBuilder:
     """
-    Constructs a simple two-body revolute joint test model.
-
-    Args:
-        builder (ModelBuilder | None): An optional model builder to populate.\n
-            If `None`, a new builder is created.
-        new_world (bool): Whether to create a new world in the builder for this model.\n
-            If `False`, the model is added to the existing world specified by `world_index`.\n
-            If `True`, a new world is created and added to the builder. In this case the `world_index`
-            argument is ignored, and the index of the newly created world will be used instead.
-        world_index (int): The index of the world to which the model should be added if `new_world` is False.\n
-            If `new_world` is True, this argument is ignored.
-
-    Returns:
-        ModelBuilder: The populated model builder.
+    TODO
     """
     # Create a new builder if none is provided
     if builder is None:
@@ -136,64 +126,1203 @@ def build_revolute_joint_test_system(
 
     # Create a new world in the builder if requested or if a new builder was created
     if new_world or builder is None:
-        world_index = _builder.add_world(name="box_on_plane")
+        world_index = _builder.add_world(name="unary_free_joint_test")
 
-    ###
-    # Model parameters
-    ###
-
-    # Define the Base body pose and twist
-    r_B_0 = vec3f(0.0, 0.0, 0.0)
-    q_B_0 = wp.quat_identity()
-    u_B_0 = vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
-
-    # Define the joint parameters
-    B_r_Bj = vec3f(0.5, 0.0, 0.0)  # Offset of the joint frame in the Base body
-    F_r_Fj = vec3f(-0.5, 0.0, 0.0)  # Offset of the joint frame in the Follower body
-    X_j = Axis.Y.to_mat33()  # Joint axis in the Base body frame
-
-    # Define the Follower body pose and twist
-    r_F_0 = vec3f(1.0, 0.0, 0.0)
-    q_F_0 = wp.quat_identity()
-    u_F_0 = vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
-
-    ###
-    # Model definition
-    ###
-
-    # Define the Base body
-    bid0 = _builder.add_rigid_body(
+    # Define test system
+    bid_F = _builder.add_rigid_body(
+        name="follower",
         m_i=1.0,
         i_I_i=I_3,
-        q_i_0=transformf(r_B_0, q_B_0),
-        u_i_0=u_B_0,
+        q_i_0=transformf(0.0, 0.0, z_offset, 0.0, 0.0, 0.0, 1.0),
+        u_i_0=vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
         world_index=world_index,
     )
-
-    # Define the Follower body
-    bid1 = _builder.add_rigid_body(
-        m_i=1.0,
-        i_I_i=I_3,
-        q_i_0=transformf(r_F_0, q_F_0),
-        u_i_0=u_F_0,
-        world_index=world_index,
-    )
-
-    # Define the joint between the two bodies
     _builder.add_joint(
-        dof_type=JointDoFType.REVOLUTE,
+        name="world_to_follower_free",
+        dof_type=JointDoFType.FREE,
         act_type=JointActuationType.FORCE,
-        bid_B=bid0,
-        bid_F=bid1,
-        B_r_Bj=B_r_Bj,
-        F_r_Fj=F_r_Fj,
-        X_j=X_j,
-        q_j_min=[-0.25 * math.pi],
-        q_j_max=[0.25 * math.pi],
+        bid_B=-1,
+        bid_F=bid_F,
+        B_r_Bj=vec3f(0.0, 0.0, z_offset),
+        F_r_Fj=vec3f(0.0, 0.0, 0.0),
+        X_j=I_3,
+        q_j_min=[-2.0, -2.0, -2.0, -0.6 * math.pi, -0.6 * math.pi, -0.6 * math.pi] if limits else None,
+        q_j_max=[2.0, 2.0, 2.0, 0.6 * math.pi, 0.6 * math.pi, 0.6 * math.pi] if limits else None,
+        tau_j_max=[100.0, 100.0, 100.0, 100.0, 100.0, 100.0] if limits else None,
         world_index=world_index,
     )
+    _builder.add_collision_geometry(
+        name="follower/box",
+        body=bid_F,
+        shape=BoxShape(1.0, 1.0, 1.0),
+        world_index=world_index,
+    )
+
+    # Add a static collision layer and geometry for the plane
+    if ground:
+        _builder.add_collision_geometry(
+            body=-1,
+            shape=BoxShape(20.0, 20.0, 1.0),
+            offset=transformf(0.0, 0.0, -1.5, 0.0, 0.0, 0.0, 1.0),
+            world_index=world_index,
+        )
 
     # Return the populated builder
+    return _builder
+
+
+def build_unary_revolute_joint_test(
+    builder: ModelBuilder | None = None,
+    z_offset: float = 0.0,
+    new_world: bool = True,
+    limits: bool = True,
+    ground: bool = True,
+    world_index: int = 0,
+) -> ModelBuilder:
+    """
+    TODO
+    """
+    # Create a new builder if none is provided
+    if builder is None:
+        _builder = ModelBuilder(default_world=False)
+    else:
+        _builder = builder
+
+    # Create a new world in the builder if requested or if a new builder was created
+    if new_world or builder is None:
+        world_index = _builder.add_world(name="unary_revolute_joint_test")
+
+    # Define test system
+    bid_F = _builder.add_rigid_body(
+        name="follower",
+        m_i=1.0,
+        i_I_i=I_3,
+        q_i_0=transformf(vec3f(0.5, -0.25, z_offset), wp.quat_identity()),
+        u_i_0=vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+        world_index=world_index,
+    )
+    _builder.add_joint(
+        name="world_to_follower_revolute",
+        dof_type=JointDoFType.REVOLUTE,
+        act_type=JointActuationType.FORCE,
+        bid_B=-1,
+        bid_F=bid_F,
+        B_r_Bj=vec3f(0.0, -0.15, z_offset),
+        F_r_Fj=vec3f(-0.5, 0.1, 0.0),
+        X_j=Axis.Y.to_mat33(),
+        q_j_min=[-0.25 * math.pi] if limits else None,
+        q_j_max=[0.25 * math.pi] if limits else None,
+        world_index=world_index,
+    )
+    _builder.add_collision_geometry(
+        name="base/box",
+        body=-1,
+        shape=BoxShape(0.3, 0.3, 0.3),
+        world_index=world_index,
+        group=2,
+        collides=2,
+    )
+    _builder.add_collision_geometry(
+        name="follower/box",
+        body=bid_F,
+        shape=BoxShape(1.0, 0.2, 0.2),
+        world_index=world_index,
+    )
+
+    # Add a static collision layer and geometry for the plane
+    if ground:
+        _builder.add_collision_geometry(
+            body=-1,
+            shape=BoxShape(20.0, 20.0, 1.0),
+            offset=transformf(0.0, 0.0, -1.5, 0.0, 0.0, 0.0, 1.0),
+            world_index=world_index,
+        )
+
+    # Return the populated builder
+    return _builder
+
+
+def build_binary_revolute_joint_test(
+    builder: ModelBuilder | None = None,
+    z_offset: float = 0.0,
+    new_world: bool = True,
+    limits: bool = True,
+    ground: bool = True,
+    world_index: int = 0,
+) -> ModelBuilder:
+    """
+    TODO
+    """
+    # Create a new builder if none is provided
+    if builder is None:
+        _builder = ModelBuilder(default_world=False)
+    else:
+        _builder = builder
+
+    # Create a new world in the builder if requested or if a new builder was created
+    if new_world or builder is None:
+        world_index = _builder.add_world(name="binary_revolute_joint_test")
+
+    # Define test system
+    bid_B = _builder.add_rigid_body(
+        name="base",
+        m_i=1.0,
+        i_I_i=I_3,
+        q_i_0=transformf(vec3f(0.0, 0.0, z_offset), wp.quat_identity()),
+        u_i_0=vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+        world_index=world_index,
+    )
+    bid_F = _builder.add_rigid_body(
+        name="follower",
+        m_i=1.0,
+        i_I_i=I_3,
+        q_i_0=transformf(vec3f(0.5, -0.25, z_offset), wp.quat_identity()),
+        u_i_0=vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+        world_index=world_index,
+    )
+    _builder.add_joint(
+        name="world_to_base",
+        dof_type=JointDoFType.FIXED,
+        act_type=JointActuationType.PASSIVE,
+        bid_B=-1,
+        bid_F=bid_B,
+        B_r_Bj=vec3f(0.0, 0.0, z_offset),
+        F_r_Fj=vec3f(0.0, 0.0, 0.0),
+        X_j=Axis.Y.to_mat33(),
+        world_index=world_index,
+    )
+    _builder.add_joint(
+        name="base_to_follower_revolute",
+        dof_type=JointDoFType.REVOLUTE,
+        act_type=JointActuationType.FORCE,
+        bid_B=bid_B,
+        bid_F=bid_F,
+        B_r_Bj=vec3f(0.0, -0.15, z_offset),
+        F_r_Fj=vec3f(-0.5, 0.1, 0.0),
+        X_j=Axis.Y.to_mat33(),
+        q_j_min=[-0.25 * math.pi] if limits else None,
+        q_j_max=[0.25 * math.pi] if limits else None,
+        world_index=world_index,
+    )
+    _builder.add_collision_geometry(
+        name="base/box",
+        body=bid_B,
+        shape=BoxShape(0.3, 0.3, 0.3),
+        world_index=world_index,
+    )
+    _builder.add_collision_geometry(
+        name="follower/box",
+        body=bid_F,
+        shape=BoxShape(1.0, 0.2, 0.2),
+        world_index=world_index,
+    )
+
+    # Add a static collision layer and geometry for the plane
+    if ground:
+        _builder.add_collision_geometry(
+            body=-1,
+            shape=BoxShape(20.0, 20.0, 1.0),
+            offset=transformf(0.0, 0.0, -1.5, 0.0, 0.0, 0.0, 1.0),
+            world_index=world_index,
+        )
+
+    # Return the populated builder
+    return _builder
+
+
+def build_unary_prismatic_joint_test(
+    builder: ModelBuilder | None = None,
+    z_offset: float = 0.0,
+    new_world: bool = True,
+    limits: bool = True,
+    ground: bool = True,
+    world_index: int = 0,
+) -> ModelBuilder:
+    """
+    TODO
+    """
+    # Create a new builder if none is provided
+    if builder is None:
+        _builder = ModelBuilder(default_world=False)
+    else:
+        _builder = builder
+
+    # Create a new world in the builder if requested or if a new builder was created
+    if new_world or builder is None:
+        world_index = _builder.add_world(name="unary_prismatic_joint_test")
+
+    # Define test system
+    bid_F = _builder.add_rigid_body(
+        name="follower",
+        m_i=1.0,
+        i_I_i=I_3,
+        q_i_0=transformf(vec3f(0.0, 0.0, z_offset), wp.quat_identity()),
+        u_i_0=vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+        world_index=world_index,
+    )
+    _builder.add_joint(
+        name="world_to_follower_prismatic",
+        dof_type=JointDoFType.PRISMATIC,
+        act_type=JointActuationType.FORCE,
+        bid_B=-1,
+        bid_F=bid_F,
+        B_r_Bj=vec3f(0.0, 0.0, z_offset),
+        F_r_Fj=vec3f(0.0, 0.0, 0.0),
+        X_j=Axis.Z.to_mat33(),
+        q_j_min=[-0.5] if limits else None,
+        q_j_max=[0.5] if limits else None,
+        world_index=world_index,
+    )
+    _builder.add_collision_geometry(
+        name="base/box",
+        body=-1,
+        shape=BoxShape(0.05, 0.05, 1.0),
+        world_index=world_index,
+        group=2,
+        collides=2,
+    )
+    _builder.add_collision_geometry(
+        name="follower/box",
+        body=bid_F,
+        shape=BoxShape(0.1, 0.1, 0.1),
+        world_index=world_index,
+    )
+
+    # Add a static collision layer and geometry for the plane
+    if ground:
+        _builder.add_collision_geometry(
+            body=-1,
+            shape=BoxShape(20.0, 20.0, 1.0),
+            offset=transformf(0.0, 0.0, -1.5, 0.0, 0.0, 0.0, 1.0),
+            world_index=world_index,
+        )
+
+    # Return the populated builder
+    return _builder
+
+
+def build_binary_prismatic_joint_test(
+    builder: ModelBuilder | None = None,
+    z_offset: float = 0.0,
+    new_world: bool = True,
+    limits: bool = True,
+    ground: bool = True,
+    world_index: int = 0,
+) -> ModelBuilder:
+    """
+    TODO
+    """
+    # Create a new builder if none is provided
+    if builder is None:
+        _builder = ModelBuilder(default_world=False)
+    else:
+        _builder = builder
+
+    # Create a new world in the builder if requested or if a new builder was created
+    if new_world or builder is None:
+        world_index = _builder.add_world(name="binary_prismatic_joint_test")
+
+    # Define test system
+    bid_B = _builder.add_rigid_body(
+        name="base",
+        m_i=1.0,
+        i_I_i=I_3,
+        q_i_0=transformf(vec3f(0.0, 0.0, z_offset), wp.quat_identity()),
+        u_i_0=vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+        world_index=world_index,
+    )
+    bid_F = _builder.add_rigid_body(
+        name="follower",
+        m_i=1.0,
+        i_I_i=I_3,
+        q_i_0=transformf(vec3f(0.0, 0.0, z_offset), wp.quat_identity()),
+        u_i_0=vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+        world_index=world_index,
+    )
+    _builder.add_joint(
+        name="world_to_base",
+        dof_type=JointDoFType.FIXED,
+        act_type=JointActuationType.PASSIVE,
+        bid_B=-1,
+        bid_F=bid_B,
+        B_r_Bj=vec3f(0.0, 0.0, z_offset),
+        F_r_Fj=vec3f(0.0, 0.0, 0.0),
+        X_j=Axis.Y.to_mat33(),
+        world_index=world_index,
+    )
+    _builder.add_joint(
+        name="base_to_follower_prismatic",
+        dof_type=JointDoFType.PRISMATIC,
+        act_type=JointActuationType.FORCE,
+        bid_B=bid_B,
+        bid_F=bid_F,
+        B_r_Bj=vec3f(0.0, 0.0, z_offset),
+        F_r_Fj=vec3f(0.0, 0.0, 0.0),
+        X_j=Axis.Z.to_mat33(),
+        q_j_min=[-0.5] if limits else None,
+        q_j_max=[0.5] if limits else None,
+        world_index=world_index,
+    )
+    _builder.add_collision_geometry(
+        name="base/box",
+        body=bid_B,
+        shape=BoxShape(0.05, 0.05, 1.0),
+        world_index=world_index,
+        group=2,
+        collides=2,
+    )
+    _builder.add_collision_geometry(
+        name="follower/box",
+        body=bid_F,
+        shape=BoxShape(0.1, 0.1, 0.1),
+        world_index=world_index,
+    )
+
+    # Add a static collision layer and geometry for the plane
+    if ground:
+        _builder.add_collision_geometry(
+            body=-1,
+            shape=BoxShape(20.0, 20.0, 1.0),
+            offset=transformf(0.0, 0.0, -1.5, 0.0, 0.0, 0.0, 1.0),
+            world_index=world_index,
+        )
+
+    # Return the populated builder
+    return _builder
+
+
+def build_unary_cylindrical_joint_test(
+    builder: ModelBuilder | None = None,
+    z_offset: float = 0.0,
+    new_world: bool = True,
+    limits: bool = True,
+    ground: bool = True,
+    world_index: int = 0,
+) -> ModelBuilder:
+    """
+    TODO
+    """
+    # Create a new builder if none is provided
+    if builder is None:
+        _builder = ModelBuilder(default_world=False)
+    else:
+        _builder = builder
+
+    # Create a new world in the builder if requested or if a new builder was created
+    if new_world or builder is None:
+        world_index = _builder.add_world(name="unary_cylindrical_joint_test")
+
+    # Define test system
+    bid_F = _builder.add_rigid_body(
+        name="follower",
+        m_i=1.0,
+        i_I_i=I_3,
+        q_i_0=transformf(vec3f(0.0, 0.0, z_offset), wp.quat_identity()),
+        u_i_0=vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+        world_index=world_index,
+    )
+    _builder.add_joint(
+        name="world_to_follower_cylindrical",
+        dof_type=JointDoFType.CYLINDRICAL,
+        act_type=JointActuationType.FORCE,
+        bid_B=-1,
+        bid_F=bid_F,
+        B_r_Bj=vec3f(0.0, 0.0, z_offset),
+        F_r_Fj=vec3f(0.0, 0.0, 0.0),
+        X_j=Axis.Z.to_mat33(),
+        q_j_min=[-0.5, -0.6 * math.pi] if limits else None,
+        q_j_max=[0.5, 0.6 * math.pi] if limits else None,
+        world_index=world_index,
+    )
+    _builder.add_collision_geometry(
+        name="base/cylinder",
+        body=-1,
+        shape=CylinderShape(0.025, 1.0),
+        world_index=world_index,
+        group=2,
+        collides=2,
+    )
+    _builder.add_collision_geometry(
+        name="follower/box",
+        body=bid_F,
+        shape=BoxShape(0.1, 0.1, 0.1),
+        world_index=world_index,
+    )
+
+    # Add a static collision layer and geometry for the plane
+    if ground:
+        _builder.add_collision_geometry(
+            body=-1,
+            shape=BoxShape(20.0, 20.0, 1.0),
+            offset=transformf(0.0, 0.0, -1.5, 0.0, 0.0, 0.0, 1.0),
+            world_index=world_index,
+        )
+
+    # Return the populated builder
+    return _builder
+
+
+def build_binary_cylindrical_joint_test(
+    builder: ModelBuilder | None = None,
+    z_offset: float = 0.0,
+    new_world: bool = True,
+    limits: bool = True,
+    ground: bool = True,
+    world_index: int = 0,
+) -> ModelBuilder:
+    """
+    TODO
+    """
+    # Create a new builder if none is provided
+    if builder is None:
+        _builder = ModelBuilder(default_world=False)
+    else:
+        _builder = builder
+
+    # Create a new world in the builder if requested or if a new builder was created
+    if new_world or builder is None:
+        world_index = _builder.add_world(name="binary_cylindrical_joint_test")
+
+    # Define test system
+    bid_B = _builder.add_rigid_body(
+        name="base",
+        m_i=1.0,
+        i_I_i=I_3,
+        q_i_0=transformf(vec3f(0.0, 0.0, z_offset), wp.quat_identity()),
+        u_i_0=vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+        world_index=world_index,
+    )
+    bid_F = _builder.add_rigid_body(
+        name="follower",
+        m_i=1.0,
+        i_I_i=I_3,
+        q_i_0=transformf(vec3f(0.0, 0.0, z_offset), wp.quat_identity()),
+        u_i_0=vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+        world_index=world_index,
+    )
+    _builder.add_joint(
+        name="world_to_base",
+        dof_type=JointDoFType.FIXED,
+        act_type=JointActuationType.PASSIVE,
+        bid_B=-1,
+        bid_F=bid_B,
+        B_r_Bj=vec3f(0.0, 0.0, z_offset),
+        F_r_Fj=vec3f(0.0, 0.0, 0.0),
+        X_j=Axis.Y.to_mat33(),
+        world_index=world_index,
+    )
+    _builder.add_joint(
+        name="base_to_follower_cylindrical",
+        dof_type=JointDoFType.CYLINDRICAL,
+        act_type=JointActuationType.FORCE,
+        bid_B=bid_B,
+        bid_F=bid_F,
+        B_r_Bj=vec3f(0.0, 0.0, z_offset),
+        F_r_Fj=vec3f(0.0, 0.0, 0.0),
+        X_j=Axis.Z.to_mat33(),
+        q_j_min=[-0.5, -0.6 * math.pi] if limits else None,
+        q_j_max=[0.5, 0.6 * math.pi] if limits else None,
+        world_index=world_index,
+    )
+    _builder.add_collision_geometry(
+        name="base/cylinder",
+        body=bid_B,
+        shape=CylinderShape(0.025, 1.0),
+        world_index=world_index,
+    )
+    _builder.add_collision_geometry(
+        name="follower/box",
+        body=bid_F,
+        shape=BoxShape(0.1, 0.1, 0.1),
+        world_index=world_index,
+    )
+
+    # Add a static collision layer and geometry for the plane
+    if ground:
+        _builder.add_collision_geometry(
+            body=-1,
+            shape=BoxShape(20.0, 20.0, 1.0),
+            offset=transformf(0.0, 0.0, -1.5, 0.0, 0.0, 0.0, 1.0),
+            world_index=world_index,
+        )
+
+    # Return the populated builder
+    return _builder
+
+
+def build_unary_universal_joint_test(
+    builder: ModelBuilder | None = None,
+    z_offset: float = 0.0,
+    new_world: bool = True,
+    limits: bool = True,
+    ground: bool = True,
+    world_index: int = 0,
+) -> ModelBuilder:
+    """
+    TODO
+    """
+    # Create a new builder if none is provided
+    if builder is None:
+        _builder = ModelBuilder(default_world=False)
+    else:
+        _builder = builder
+
+    # Create a new world in the builder if requested or if a new builder was created
+    if new_world or builder is None:
+        world_index = _builder.add_world(name="unary_universal_joint_test")
+
+    # Define test system
+    bid_F = _builder.add_rigid_body(
+        name="follower",
+        m_i=1.0,
+        i_I_i=I_3,
+        q_i_0=transformf(vec3f(0.5, 0.0, z_offset), wp.quat_identity()),
+        u_i_0=vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+        world_index=world_index,
+    )
+    _builder.add_joint(
+        name="world_to_follower_universal",
+        dof_type=JointDoFType.UNIVERSAL,
+        act_type=JointActuationType.FORCE,
+        bid_B=-1,
+        bid_F=bid_F,
+        B_r_Bj=vec3f(0.25, -0.25, -0.25),
+        F_r_Fj=vec3f(-0.25, -0.25, -0.25),
+        X_j=Axis.X.to_mat33(),
+        q_j_min=[-0.6 * math.pi, -0.6 * math.pi] if limits else None,
+        q_j_max=[0.6 * math.pi, 0.6 * math.pi] if limits else None,
+        world_index=world_index,
+    )
+    _builder.add_collision_geometry(
+        name="base/box",
+        body=-1,
+        shape=BoxShape(0.5, 0.5, 0.5),
+        world_index=world_index,
+        group=2,
+        collides=2,
+    )
+    _builder.add_collision_geometry(
+        name="follower/box",
+        body=bid_F,
+        shape=BoxShape(0.5, 0.5, 0.5),
+        world_index=world_index,
+    )
+
+    # Add a static collision layer and geometry for the plane
+    if ground:
+        _builder.add_collision_geometry(
+            body=-1,
+            shape=BoxShape(20.0, 20.0, 1.0),
+            offset=transformf(0.0, 0.0, -1.5, 0.0, 0.0, 0.0, 1.0),
+            world_index=world_index,
+        )
+
+    # Return the populated builder
+    return _builder
+
+
+def build_binary_universal_joint_test(
+    builder: ModelBuilder | None = None,
+    z_offset: float = 0.0,
+    new_world: bool = True,
+    limits: bool = True,
+    ground: bool = True,
+    world_index: int = 0,
+) -> ModelBuilder:
+    """
+    TODO
+    """
+    # Create a new builder if none is provided
+    if builder is None:
+        _builder = ModelBuilder(default_world=False)
+    else:
+        _builder = builder
+
+    # Create a new world in the builder if requested or if a new builder was created
+    if new_world or builder is None:
+        world_index = _builder.add_world(name="binary_cylindrical_joint_test")
+
+    # Define test system
+    bid_B = _builder.add_rigid_body(
+        name="base",
+        m_i=1.0,
+        i_I_i=I_3,
+        q_i_0=transformf(vec3f(0.0, 0.0, z_offset), wp.quat_identity()),
+        u_i_0=vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+        world_index=world_index,
+    )
+    bid_F = _builder.add_rigid_body(
+        name="follower",
+        m_i=1.0,
+        i_I_i=I_3,
+        q_i_0=transformf(vec3f(0.5, 0.0, z_offset), wp.quat_identity()),
+        u_i_0=vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+        world_index=world_index,
+    )
+    _builder.add_joint(
+        name="world_to_base",
+        dof_type=JointDoFType.FIXED,
+        act_type=JointActuationType.PASSIVE,
+        bid_B=-1,
+        bid_F=bid_B,
+        B_r_Bj=vec3f(0.0, 0.0, z_offset),
+        F_r_Fj=vec3f(0.0, 0.0, 0.0),
+        X_j=Axis.Y.to_mat33(),
+        world_index=world_index,
+    )
+    _builder.add_joint(
+        name="base_to_follower_universal",
+        dof_type=JointDoFType.UNIVERSAL,
+        act_type=JointActuationType.FORCE,
+        bid_B=bid_B,
+        bid_F=bid_F,
+        B_r_Bj=vec3f(0.25, -0.25, -0.25),
+        F_r_Fj=vec3f(-0.25, -0.25, -0.25),
+        X_j=Axis.X.to_mat33(),
+        q_j_min=[-0.6 * math.pi, -0.6 * math.pi] if limits else None,
+        q_j_max=[0.6 * math.pi, 0.6 * math.pi] if limits else None,
+        world_index=world_index,
+    )
+    _builder.add_collision_geometry(
+        name="base/box",
+        body=bid_B,
+        shape=BoxShape(0.5, 0.5, 0.5),
+        world_index=world_index,
+    )
+    _builder.add_collision_geometry(
+        name="follower/box",
+        body=bid_F,
+        shape=BoxShape(0.5, 0.5, 0.5),
+        world_index=world_index,
+    )
+
+    # Add a static collision layer and geometry for the plane
+    if ground:
+        _builder.add_collision_geometry(
+            body=-1,
+            shape=BoxShape(20.0, 20.0, 1.0),
+            offset=transformf(0.0, 0.0, -1.5, 0.0, 0.0, 0.0, 1.0),
+            world_index=world_index,
+        )
+
+    # Return the populated builder
+    return _builder
+
+
+def build_unary_spherical_joint_test(
+    builder: ModelBuilder | None = None,
+    z_offset: float = 0.0,
+    new_world: bool = True,
+    limits: bool = True,
+    ground: bool = True,
+    world_index: int = 0,
+) -> ModelBuilder:
+    """
+    TODO
+    """
+    # Create a new builder if none is provided
+    if builder is None:
+        _builder = ModelBuilder(default_world=False)
+    else:
+        _builder = builder
+
+    # Create a new world in the builder if requested or if a new builder was created
+    if new_world or builder is None:
+        world_index = _builder.add_world(name="unary_spherical_joint_test")
+
+    # Define test system
+    bid_F = _builder.add_rigid_body(
+        name="follower",
+        m_i=1.0,
+        i_I_i=I_3,
+        q_i_0=transformf(vec3f(0.5, 0.0, z_offset), wp.quat_identity()),
+        u_i_0=vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+        world_index=world_index,
+    )
+    _builder.add_joint(
+        name="world_to_follower_spherical",
+        dof_type=JointDoFType.SPHERICAL,
+        act_type=JointActuationType.FORCE,
+        bid_B=-1,
+        bid_F=bid_F,
+        B_r_Bj=vec3f(0.25, -0.25, -0.25),
+        F_r_Fj=vec3f(-0.25, -0.25, -0.25),
+        X_j=Axis.X.to_mat33(),
+        q_j_min=[-0.6 * math.pi, -0.6 * math.pi, -0.6 * math.pi] if limits else None,
+        q_j_max=[0.6 * math.pi, 0.6 * math.pi, 0.6 * math.pi] if limits else None,
+        world_index=world_index,
+    )
+    _builder.add_collision_geometry(
+        name="base/box",
+        body=-1,
+        shape=BoxShape(0.5, 0.5, 0.5),
+        world_index=world_index,
+        group=2,
+        collides=2,
+    )
+    _builder.add_collision_geometry(
+        name="follower/box",
+        body=bid_F,
+        shape=BoxShape(0.5, 0.5, 0.5),
+        world_index=world_index,
+    )
+
+    # Add a static collision layer and geometry for the plane
+    if ground:
+        _builder.add_collision_geometry(
+            body=-1,
+            shape=BoxShape(20.0, 20.0, 1.0),
+            offset=transformf(0.0, 0.0, -1.5, 0.0, 0.0, 0.0, 1.0),
+            world_index=world_index,
+        )
+
+    # Return the populated builder
+    return _builder
+
+
+def build_binary_spherical_joint_test(
+    builder: ModelBuilder | None = None,
+    z_offset: float = 0.0,
+    new_world: bool = True,
+    limits: bool = True,
+    ground: bool = True,
+    world_index: int = 0,
+) -> ModelBuilder:
+    """
+    TODO
+    """
+    # Create a new builder if none is provided
+    if builder is None:
+        _builder = ModelBuilder(default_world=False)
+    else:
+        _builder = builder
+
+    # Create a new world in the builder if requested or if a new builder was created
+    if new_world or builder is None:
+        world_index = _builder.add_world(name="binary_spherical_joint_test")
+
+    # Define test system
+    bid_B = _builder.add_rigid_body(
+        name="base",
+        m_i=1.0,
+        i_I_i=I_3,
+        q_i_0=transformf(vec3f(0.0, 0.0, z_offset), wp.quat_identity()),
+        u_i_0=vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+        world_index=world_index,
+    )
+    bid_F = _builder.add_rigid_body(
+        name="follower",
+        m_i=1.0,
+        i_I_i=I_3,
+        q_i_0=transformf(vec3f(0.5, 0.0, z_offset), wp.quat_identity()),
+        u_i_0=vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+        world_index=world_index,
+    )
+    _builder.add_joint(
+        name="world_to_base",
+        dof_type=JointDoFType.FIXED,
+        act_type=JointActuationType.PASSIVE,
+        bid_B=-1,
+        bid_F=bid_B,
+        B_r_Bj=vec3f(0.0, 0.0, z_offset),
+        F_r_Fj=vec3f(0.0, 0.0, 0.0),
+        X_j=Axis.Y.to_mat33(),
+        world_index=world_index,
+    )
+    _builder.add_joint(
+        name="base_to_follower_spherical",
+        dof_type=JointDoFType.SPHERICAL,
+        act_type=JointActuationType.FORCE,
+        bid_B=bid_B,
+        bid_F=bid_F,
+        B_r_Bj=vec3f(0.25, -0.25, -0.25),
+        F_r_Fj=vec3f(-0.25, -0.25, -0.25),
+        X_j=Axis.X.to_mat33(),
+        q_j_min=[-0.6 * math.pi, -0.6 * math.pi, -0.6 * math.pi] if limits else None,
+        q_j_max=[0.6 * math.pi, 0.6 * math.pi, 0.6 * math.pi] if limits else None,
+        world_index=world_index,
+    )
+    _builder.add_collision_geometry(
+        name="base/box",
+        body=bid_B,
+        shape=BoxShape(0.5, 0.5, 0.5),
+        world_index=world_index,
+    )
+    _builder.add_collision_geometry(
+        name="follower/box",
+        body=bid_F,
+        shape=BoxShape(0.5, 0.5, 0.5),
+        world_index=world_index,
+    )
+
+    # Add a static collision layer and geometry for the plane
+    if ground:
+        _builder.add_collision_geometry(
+            body=-1,
+            shape=BoxShape(20.0, 20.0, 1.0),
+            offset=transformf(0.0, 0.0, -1.5, 0.0, 0.0, 0.0, 1.0),
+            world_index=world_index,
+        )
+
+    # Return the populated builder
+    return _builder
+
+
+def build_unary_gimbal_joint_test(
+    builder: ModelBuilder | None = None,
+    z_offset: float = 0.0,
+    new_world: bool = True,
+    limits: bool = True,
+    ground: bool = True,
+    world_index: int = 0,
+) -> ModelBuilder:
+    """
+    TODO
+    """
+    # Create a new builder if none is provided
+    if builder is None:
+        _builder = ModelBuilder(default_world=False)
+    else:
+        _builder = builder
+
+    # Create a new world in the builder if requested or if a new builder was created
+    if new_world or builder is None:
+        world_index = _builder.add_world(name="unary_gimbal_joint_test")
+
+    # Define test system
+    bid_F = _builder.add_rigid_body(
+        name="follower",
+        m_i=1.0,
+        i_I_i=I_3,
+        q_i_0=transformf(vec3f(0.5, 0.0, z_offset), wp.quat_identity()),
+        u_i_0=vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+        world_index=world_index,
+    )
+    _builder.add_joint(
+        name="world_to_follower_gimbal",
+        dof_type=JointDoFType.GIMBAL,
+        act_type=JointActuationType.FORCE,
+        bid_B=-1,
+        bid_F=bid_F,
+        B_r_Bj=vec3f(0.25, -0.25, -0.25),
+        F_r_Fj=vec3f(-0.25, -0.25, -0.25),
+        X_j=Axis.X.to_mat33(),
+        # q_j_min=[-0.4 * math.pi, -0.4 * math.pi, -0.4 * math.pi] if limits else None,
+        # q_j_max=[0.4 * math.pi, 0.4 * math.pi, 0.4 * math.pi] if limits else None,
+        world_index=world_index,
+    )
+    _builder.add_collision_geometry(
+        name="base/box",
+        body=-1,
+        shape=BoxShape(0.5, 0.5, 0.5),
+        world_index=world_index,
+        group=2,
+        collides=2,
+    )
+    _builder.add_collision_geometry(
+        name="follower/box",
+        body=bid_F,
+        shape=BoxShape(0.5, 0.5, 0.5),
+        world_index=world_index,
+    )
+
+    # Add a static collision layer and geometry for the plane
+    if ground:
+        _builder.add_collision_geometry(
+            body=-1,
+            shape=BoxShape(20.0, 20.0, 1.0),
+            offset=transformf(0.0, 0.0, -1.5, 0.0, 0.0, 0.0, 1.0),
+            world_index=world_index,
+        )
+
+    # Return the populated builder
+    return _builder
+
+
+def build_binary_gimbal_joint_test(
+    builder: ModelBuilder | None = None,
+    z_offset: float = 0.0,
+    new_world: bool = True,
+    limits: bool = True,
+    ground: bool = True,
+    world_index: int = 0,
+) -> ModelBuilder:
+    """
+    TODO
+    """
+    # Create a new builder if none is provided
+    if builder is None:
+        _builder = ModelBuilder(default_world=False)
+    else:
+        _builder = builder
+
+    # Create a new world in the builder if requested or if a new builder was created
+    if new_world or builder is None:
+        world_index = _builder.add_world(name="binary_gimbal_joint_test")
+
+    # Define test system
+    bid_B = _builder.add_rigid_body(
+        name="base",
+        m_i=1.0,
+        i_I_i=I_3,
+        q_i_0=transformf(vec3f(0.0, 0.0, z_offset), wp.quat_identity()),
+        u_i_0=vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+        world_index=world_index,
+    )
+    bid_F = _builder.add_rigid_body(
+        name="follower",
+        m_i=1.0,
+        i_I_i=I_3,
+        q_i_0=transformf(vec3f(0.5, 0.0, z_offset), wp.quat_identity()),
+        u_i_0=vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+        world_index=world_index,
+    )
+    _builder.add_joint(
+        name="world_to_base",
+        dof_type=JointDoFType.FIXED,
+        act_type=JointActuationType.PASSIVE,
+        bid_B=-1,
+        bid_F=bid_B,
+        B_r_Bj=vec3f(0.0, 0.0, z_offset),
+        F_r_Fj=vec3f(0.0, 0.0, 0.0),
+        X_j=Axis.Y.to_mat33(),
+        world_index=world_index,
+    )
+    _builder.add_joint(
+        name="base_to_follower_gimbal",
+        dof_type=JointDoFType.GIMBAL,
+        act_type=JointActuationType.FORCE,
+        bid_B=bid_B,
+        bid_F=bid_F,
+        B_r_Bj=vec3f(0.25, -0.25, -0.25),
+        F_r_Fj=vec3f(-0.25, -0.25, -0.25),
+        X_j=Axis.X.to_mat33(),
+        # q_j_min=[-0.4 * math.pi, -0.4 * math.pi, -0.4 * math.pi] if limits else None,
+        # q_j_max=[0.4 * math.pi, 0.4 * math.pi, 0.4 * math.pi] if limits else None,
+        world_index=world_index,
+    )
+    _builder.add_collision_geometry(
+        name="base/box",
+        body=bid_B,
+        shape=BoxShape(0.5, 0.5, 0.5),
+        world_index=world_index,
+    )
+    _builder.add_collision_geometry(
+        name="follower/box",
+        body=bid_F,
+        shape=BoxShape(0.5, 0.5, 0.5),
+        world_index=world_index,
+    )
+
+    # Add a static collision layer and geometry for the plane
+    if ground:
+        _builder.add_collision_geometry(
+            body=-1,
+            shape=BoxShape(20.0, 20.0, 1.0),
+            offset=transformf(0.0, 0.0, -1.5, 0.0, 0.0, 0.0, 1.0),
+            world_index=world_index,
+        )
+
+    # Return the populated builder
+    return _builder
+
+
+def build_unary_cartesian_joint_test(
+    builder: ModelBuilder | None = None,
+    z_offset: float = 0.0,
+    new_world: bool = True,
+    limits: bool = True,
+    ground: bool = True,
+    world_index: int = 0,
+) -> ModelBuilder:
+    """
+    TODO
+    """
+    # Create a new builder if none is provided
+    if builder is None:
+        _builder = ModelBuilder(default_world=False)
+    else:
+        _builder = builder
+
+    # Create a new world in the builder if requested or if a new builder was created
+    if new_world or builder is None:
+        world_index = _builder.add_world(name="unary_cartesian_joint_test")
+
+    # Define test system
+    bid_F = _builder.add_rigid_body(
+        name="follower",
+        m_i=1.0,
+        i_I_i=I_3,
+        q_i_0=transformf(vec3f(0.5, 0.0, z_offset), wp.quat_identity()),
+        u_i_0=vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+        world_index=world_index,
+    )
+    _builder.add_joint(
+        name="world_to_follower_cartesian",
+        dof_type=JointDoFType.CARTESIAN,
+        act_type=JointActuationType.FORCE,
+        bid_B=-1,
+        bid_F=bid_F,
+        B_r_Bj=vec3f(0.25, -0.25, -0.25),
+        F_r_Fj=vec3f(-0.25, -0.25, -0.25),
+        X_j=Axis.X.to_mat33(),
+        q_j_min=[-1.0, -1.0, -1.0] if limits else None,
+        q_j_max=[1.0, 1.0, 1.0] if limits else None,
+        world_index=world_index,
+    )
+    _builder.add_collision_geometry(
+        name="base/box",
+        body=-1,
+        shape=BoxShape(0.5, 0.5, 0.5),
+        world_index=world_index,
+        group=2,
+        collides=2,
+    )
+    _builder.add_collision_geometry(
+        name="follower/box",
+        body=bid_F,
+        shape=BoxShape(0.5, 0.5, 0.5),
+        world_index=world_index,
+    )
+
+    # Add a static collision layer and geometry for the plane
+    if ground:
+        _builder.add_collision_geometry(
+            body=-1,
+            shape=BoxShape(20.0, 20.0, 1.0),
+            offset=transformf(0.0, 0.0, -1.5, 0.0, 0.0, 0.0, 1.0),
+            world_index=world_index,
+        )
+
+    # Return the populated builder
+    return _builder
+
+
+def build_binary_cartesian_joint_test(
+    builder: ModelBuilder | None = None,
+    z_offset: float = 0.0,
+    new_world: bool = True,
+    limits: bool = True,
+    ground: bool = True,
+    world_index: int = 0,
+) -> ModelBuilder:
+    """
+    TODO
+    """
+    # Create a new builder if none is provided
+    if builder is None:
+        _builder = ModelBuilder(default_world=False)
+    else:
+        _builder = builder
+
+    # Create a new world in the builder if requested or if a new builder was created
+    if new_world or builder is None:
+        world_index = _builder.add_world(name="binary_gimbal_joint_test")
+
+    # Define test system
+    bid_B = _builder.add_rigid_body(
+        name="base",
+        m_i=1.0,
+        i_I_i=I_3,
+        q_i_0=transformf(vec3f(0.0, 0.0, z_offset), wp.quat_identity()),
+        u_i_0=vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+        world_index=world_index,
+    )
+    bid_F = _builder.add_rigid_body(
+        name="follower",
+        m_i=1.0,
+        i_I_i=I_3,
+        q_i_0=transformf(vec3f(0.5, 0.0, z_offset), wp.quat_identity()),
+        u_i_0=vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+        world_index=world_index,
+    )
+    _builder.add_joint(
+        name="world_to_base",
+        dof_type=JointDoFType.FIXED,
+        act_type=JointActuationType.PASSIVE,
+        bid_B=-1,
+        bid_F=bid_B,
+        B_r_Bj=vec3f(0.0, 0.0, z_offset),
+        F_r_Fj=vec3f(0.0, 0.0, 0.0),
+        X_j=Axis.Y.to_mat33(),
+        world_index=world_index,
+    )
+    _builder.add_joint(
+        name="base_to_follower_cartesian",
+        dof_type=JointDoFType.CARTESIAN,
+        act_type=JointActuationType.FORCE,
+        bid_B=bid_B,
+        bid_F=bid_F,
+        B_r_Bj=vec3f(0.25, -0.25, -0.25),
+        F_r_Fj=vec3f(-0.25, -0.25, -0.25),
+        X_j=Axis.X.to_mat33(),
+        q_j_min=[-1.0, -1.0, -1.0] if limits else None,
+        q_j_max=[1.0, 1.0, 1.0] if limits else None,
+        world_index=world_index,
+    )
+    _builder.add_collision_geometry(
+        name="base/box",
+        body=bid_B,
+        shape=BoxShape(0.5, 0.5, 0.5),
+        world_index=world_index,
+    )
+    _builder.add_collision_geometry(
+        name="follower/box",
+        body=bid_F,
+        shape=BoxShape(0.5, 0.5, 0.5),
+        world_index=world_index,
+    )
+
+    # Add a static collision layer and geometry for the plane
+    if ground:
+        _builder.add_collision_geometry(
+            body=-1,
+            shape=BoxShape(20.0, 20.0, 1.0),
+            offset=transformf(0.0, 0.0, -1.5, 0.0, 0.0, 0.0, 1.0),
+            world_index=world_index,
+        )
+
+    # Return the populated builder
+    return _builder
+
+
+def build_all_joints_test_model(
+    z_offset: float = 0.0,
+    ground: bool = False,
+) -> ModelBuilder:
+    """
+    Constructs a test-model builder containing a world for each joint type.
+
+    Args:
+        builder (ModelBuilder | None): An optional model builder to populate.\n
+            If `None`, a new builder is created.
+        z_offset (float): A vertical offset to apply to the initial position of the box.
+        ground (bool): Whether to add a static ground plane to the model.
+
+    Returns:
+        ModelBuilder: The populated model builder.
+    """
+    # Create a new builder to populate
+    _builder = ModelBuilder(default_world=False)
+
+    # Add a new world for each joint type
+    _builder.add_builder(build_free_joint_test(z_offset=z_offset, ground=ground))
+    _builder.add_builder(build_unary_revolute_joint_test(z_offset=z_offset, ground=ground))
+    _builder.add_builder(build_binary_revolute_joint_test(z_offset=z_offset, ground=ground))
+    _builder.add_builder(build_unary_prismatic_joint_test(z_offset=z_offset, ground=ground))
+    _builder.add_builder(build_binary_prismatic_joint_test(z_offset=z_offset, ground=ground))
+    _builder.add_builder(build_unary_cylindrical_joint_test(z_offset=z_offset, ground=ground))
+    _builder.add_builder(build_binary_cylindrical_joint_test(z_offset=z_offset, ground=ground))
+    _builder.add_builder(build_unary_universal_joint_test(z_offset=z_offset, ground=ground))
+    _builder.add_builder(build_binary_universal_joint_test(z_offset=z_offset, ground=ground))
+    _builder.add_builder(build_unary_spherical_joint_test(z_offset=z_offset, ground=ground))
+    _builder.add_builder(build_binary_spherical_joint_test(z_offset=z_offset, ground=ground))
+    _builder.add_builder(build_unary_gimbal_joint_test(z_offset=z_offset, ground=ground))
+    _builder.add_builder(build_binary_gimbal_joint_test(z_offset=z_offset, ground=ground))
+    _builder.add_builder(build_unary_cartesian_joint_test(z_offset=z_offset, ground=ground))
+    _builder.add_builder(build_binary_cartesian_joint_test(z_offset=z_offset, ground=ground))
+
+    # Return the lists of element indices
     return _builder
 
 

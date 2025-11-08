@@ -17,7 +17,7 @@
 KAMINO: Kinematics: Limits
 """
 
-from __future__ import annotations
+from dataclasses import dataclass, field
 
 import warp as wp
 from warp.context import Devicelike
@@ -62,6 +62,7 @@ wp.set_module_options({"enable_backward": False})
 ###
 
 
+@dataclass
 class LimitsData:
     """
     An SoA-based container to hold time-varying data of a set of active joint-limits.
@@ -69,97 +70,96 @@ class LimitsData:
     This container is intended as the final output of limit detectors and as input to solvers.
     """
 
-    def __init__(self):
-        self.num_model_max_limits: int = 0
-        """
-        The maximum number of limits allocated across all worlds.\n
-        This is cached on the host-side for managing data allocations and setting thread sizes in kernels.
-        """
+    num_model_max_limits: int = 0
+    """
+    The maximum number of limits allocated across all worlds.\n
+    This is cached on the host-side for managing data allocations and setting thread sizes in kernels.
+    """
 
-        self.num_world_max_limits: list[int] = [0]
-        """
-        The maximum number of limits allocated per world.\n
-        This is cached on the host-side for managing data allocations and setting thread sizes in kernels.
-        """
+    num_world_max_limits: list[int] = field(default_factory=list)
+    """
+    The maximum number of limits allocated per world.\n
+    This is cached on the host-side for managing data allocations and setting thread sizes in kernels.
+    """
 
-        self.model_max_limits: wp.array(dtype=int32) | None = None
-        """
-        The number of active limits per model.\n
-        Shape of ``(1,)`` and type :class:`int32`.
-        """
+    model_max_limits: wp.array | None = None
+    """
+    The number of active limits per model.\n
+    Shape of ``(1,)`` and type :class:`int32`.
+    """
 
-        self.model_num_limits: wp.array(dtype=int32) | None = None
-        """
-        The number of active limits per model.\n
-        Shape of ``(1,)`` and type :class:`int32`.
-        """
+    model_num_limits: wp.array | None = None
+    """
+    The number of active limits per model.\n
+    Shape of ``(1,)`` and type :class:`int32`.
+    """
 
-        self.world_max_limits: wp.array(dtype=int32) | None = None
-        """
-        The maximum number of limits per world.\n
-        Shape of ``(num_worlds,)`` and type :class:`int32`.
-        """
+    world_max_limits: wp.array | None = None
+    """
+    The maximum number of limits per world.\n
+    Shape of ``(num_worlds,)`` and type :class:`int32`.
+    """
 
-        self.world_num_limits: wp.array(dtype=int32) | None = None
-        """
-        The number of active limits per world.\n
-        Shape of ``(num_worlds,)`` and type :class:`int32`.
-        """
+    world_num_limits: wp.array | None = None
+    """
+    The number of active limits per world.\n
+    Shape of ``(num_worlds,)`` and type :class:`int32`.
+    """
 
-        self.wid: wp.array(dtype=int32) | None = None
-        """
-        The world index of each limit.\n
-        Shape of ``(num_limits,)`` and type :class:`int32`.
-        """
+    wid: wp.array | None = None
+    """
+    The world index of each limit.\n
+    Shape of ``(num_limits,)`` and type :class:`int32`.
+    """
 
-        self.lid: wp.array(dtype=int32) | None = None
-        """
-        The element index of each limit w.r.t its world.\n
-        Shape of ``(num_limits,)`` and type :class:`int32`.
-        """
+    lid: wp.array | None = None
+    """
+    The element index of each limit w.r.t its world.\n
+    Shape of ``(num_limits,)`` and type :class:`int32`.
+    """
 
-        self.jid: wp.array(dtype=int32) | None = None
-        """
-        The element index of the corresponding joint w.r.t the world.\n
-        Shape of ``(num_limits,)`` and type :class:`int32`.
-        """
+    jid: wp.array | None = None
+    """
+    The element index of the corresponding joint w.r.t the world.\n
+    Shape of ``(num_limits,)`` and type :class:`int32`.
+    """
 
-        self.bids: wp.array(dtype=vec2i) | None = None
-        """
-        The element indices of the interacting bodies w.r.t the model.\n
-        Shape of ``(num_limits,)`` and type :class:`vec2i`.
-        """
+    bids: wp.array | None = None
+    """
+    The element indices of the interacting bodies w.r.t the model.\n
+    Shape of ``(num_limits,)`` and type :class:`vec2i`.
+    """
 
-        self.dof: wp.array(dtype=int32) | None = None
-        """
-        The DoF indices along which limits are active w.r.t the world.\n
-        Shape of ``(num_limits,)`` and type :class:`int32`.
-        """
+    dof: wp.array | None = None
+    """
+    The DoF indices along which limits are active w.r.t the world.\n
+    Shape of ``(num_limits,)`` and type :class:`int32`.
+    """
 
-        self.side: wp.array(dtype=float32) | None = None
-        """
-        The direction (i.e. side) of the active limit.\n
-        `1.0` for active min limits, `-1.0` for active max limits.\n
-        Shape of ``(num_limits,)`` and type :class:`float32`.
-        """
+    side: wp.array | None = None
+    """
+    The direction (i.e. side) of the active limit.\n
+    `1.0` for active min limits, `-1.0` for active max limits.\n
+    Shape of ``(num_limits,)`` and type :class:`float32`.
+    """
 
-        self.r_q: wp.array(dtype=float32) | None = None
-        """
-        The amount of generalized coordinate violation per joint-limit.\n
-        Shape of ``(num_limits,)`` and type :class:`float32`.
-        """
+    r_q: wp.array | None = None
+    """
+    The amount of generalized coordinate violation per joint-limit.\n
+    Shape of ``(num_limits,)`` and type :class:`float32`.
+    """
 
-        self.r_dq: wp.array(dtype=float32) | None = None
-        """
-        The amount of generalized velocity violation per joint-limit.\n
-        Shape of ``(num_limits,)`` and type :class:`float32`.
-        """
+    r_dq: wp.array | None = None
+    """
+    The amount of generalized velocity violation per joint-limit.\n
+    Shape of ``(num_limits,)`` and type :class:`float32`.
+    """
 
-        self.r_tau: wp.array(dtype=float32) | None = None
-        """
-        The amount of generalized force violation per joint-limit.\n
-        Shape of ``(num_limits,)`` and type :class:`float32`.
-        """
+    r_tau: wp.array | None = None
+    """
+    The amount of generalized force violation per joint-limit.\n
+    Shape of ``(num_limits,)`` and type :class:`float32`.
+    """
 
 
 ###
@@ -418,8 +418,6 @@ def detect_active_dof_limit(
     exceeds_min = r_min < 0.0
     exceeds_max = r_max < 0.0
     if exceeds_min or exceeds_max:
-        # TODO: This will cause problems if the number of limits exceeds the maximum as we are
-        # incrementing the limits counters and do not decrement if we've exceeded the maximum
         mlid = wp.atomic_add(limits_model_num, 0, 1)
         wlid = wp.atomic_add(limits_world_num, wid, 1)
         if mlid < model_max_limits and wlid < world_max_limits:
@@ -496,8 +494,8 @@ def _detect_active_joint_configuration_limits(
     coords_offset_total = coords_offset_j + world_coords_offset
 
     # Read the joint DoF count, limits and coordinates mapped to DoF space
-    # NOTE: We need to map to DoF space to compare against the limits
-    # when the joint has non-minimal coordinates (e.g. spherical, free, etc.)
+    # NOTE: We need to map to DoF space to compare against the limits when
+    # the joint has non-minimal coordinates (e.g. spherical, free, etc.)
     d_j, q_j_min, q_j_max, q_j_map = read_joint_coords_map_and_limits(
         dof_type_j,
         dofs_offset_total,
@@ -553,9 +551,9 @@ class Limits:
         self._device = device
 
         # Declare and initialize the time-varying data container
-        self._data: LimitsData = LimitsData()
+        self._data: LimitsData | None = None
 
-        # Perofrm memory allocation if max_limits is specified
+        # Perform memory allocation if max_limits is specified
         if builder is not None:
             self.allocate(builder=builder, device=device)
 
@@ -564,6 +562,7 @@ class Limits:
         """
         The maximum number of limits allocated across all worlds.
         """
+        self._assert_has_data()
         return self._data.num_model_max_limits
 
     @property
@@ -571,6 +570,7 @@ class Limits:
         """
         The maximum number of limits allocated per world.
         """
+        self._assert_has_data()
         return self._data.num_world_max_limits
 
     @property
@@ -578,6 +578,7 @@ class Limits:
         """
         The time-varying limits data container.
         """
+        self._assert_has_data()
         return self._data
 
     @property
@@ -586,6 +587,7 @@ class Limits:
         The total number of maximum limits for the model.\n
         Shape of ``(1,)`` and type :class:`int32`.
         """
+        self._assert_has_data()
         return self._data.model_max_limits
 
     @property
@@ -594,6 +596,7 @@ class Limits:
         The total number of active limits for the model.\n
         Shape of ``(1,)`` and type :class:`int32`.
         """
+        self._assert_has_data()
         return self._data.model_num_limits
 
     @property
@@ -602,6 +605,7 @@ class Limits:
         The total number of maximum limits for the model.\n
         Shape of ``(num_worlds,)`` and type :class:`int32`.
         """
+        self._assert_has_data()
         return self._data.world_max_limits
 
     @property
@@ -610,6 +614,7 @@ class Limits:
         The total number of active limits for the model.\n
         Shape of ``(num_worlds,)`` and type :class:`int32`.
         """
+        self._assert_has_data()
         return self._data.world_num_limits
 
     @property
@@ -617,6 +622,7 @@ class Limits:
         """
         The world index of each limit.
         """
+        self._assert_has_data()
         return self._data.wid
 
     @property
@@ -624,6 +630,7 @@ class Limits:
         """
         The element index of each limit w.r.t its world.
         """
+        self._assert_has_data()
         return self._data.lid
 
     @property
@@ -631,6 +638,7 @@ class Limits:
         """
         The element index of the corresponding joint w.r.t the world.
         """
+        self._assert_has_data()
         return self._data.jid
 
     @property
@@ -638,6 +646,7 @@ class Limits:
         """
         The element indices of the interacting bodies w.r.t the model.
         """
+        self._assert_has_data()
         return self._data.bids
 
     @property
@@ -645,6 +654,7 @@ class Limits:
         """
         The DoF indices along which limits are active w.r.t the world.
         """
+        self._assert_has_data()
         return self._data.dof
 
     @property
@@ -653,6 +663,7 @@ class Limits:
         The direction (i.e. side) of the active limit.\n
         `1.0` for active min limits, `-1.0` for active max limits.
         """
+        self._assert_has_data()
         return self._data.side
 
     @property
@@ -660,6 +671,7 @@ class Limits:
         """
         The the amount of generalized coordinate violation per active joint-limit.
         """
+        self._assert_has_data()
         return self._data.r_q
 
     @property
@@ -667,6 +679,7 @@ class Limits:
         """
         The the amount of generalized velocity violation per active joint-limit.
         """
+        self._assert_has_data()
         return self._data.r_dq
 
     @property
@@ -674,6 +687,7 @@ class Limits:
         """
         The the amount of generalized force violation per active joint-limit.
         """
+        self._assert_has_data()
         return self._data.r_tau
 
     def allocate(self, builder: ModelBuilder, device: Devicelike = None):
@@ -702,21 +716,23 @@ class Limits:
 
         # Allocate the limits data on the specified device
         with wp.ScopedDevice(self._device):
-            self._data.num_model_max_limits = model_max_limits
-            self._data.num_world_max_limits = world_max_limits
-            self._data.model_max_limits = wp.array([model_max_limits], dtype=int32)
-            self._data.model_num_limits = wp.zeros(shape=1, dtype=int32)
-            self._data.world_max_limits = wp.array(world_max_limits, dtype=int32)
-            self._data.world_num_limits = wp.zeros(shape=len(world_max_limits), dtype=int32)
-            self._data.wid = wp.zeros(shape=self.num_model_max_limits, dtype=int32)
-            self._data.lid = wp.zeros(shape=self.num_model_max_limits, dtype=int32)
-            self._data.jid = wp.zeros(shape=self.num_model_max_limits, dtype=int32)
-            self._data.bids = wp.zeros(shape=self.num_model_max_limits, dtype=vec2i)
-            self._data.dof = wp.zeros(shape=self.num_model_max_limits, dtype=int32)
-            self._data.side = wp.zeros(shape=self.num_model_max_limits, dtype=float32)
-            self._data.r_q = wp.zeros(shape=self.num_model_max_limits, dtype=float32)
-            self._data.r_dq = wp.zeros(shape=self.num_model_max_limits, dtype=float32)
-            self._data.r_tau = wp.zeros(shape=self.num_model_max_limits, dtype=float32)
+            self._data = LimitsData(
+                num_model_max_limits=model_max_limits,
+                num_world_max_limits=world_max_limits,
+                model_max_limits=wp.array([model_max_limits], dtype=int32),
+                model_num_limits=wp.zeros(shape=1, dtype=int32),
+                world_max_limits=wp.array(world_max_limits, dtype=int32),
+                world_num_limits=wp.zeros(shape=len(world_max_limits), dtype=int32),
+                wid=wp.zeros(shape=model_max_limits, dtype=int32),
+                lid=wp.zeros(shape=model_max_limits, dtype=int32),
+                jid=wp.zeros(shape=model_max_limits, dtype=int32),
+                bids=wp.zeros(shape=model_max_limits, dtype=vec2i),
+                dof=wp.zeros(shape=model_max_limits, dtype=int32),
+                side=wp.zeros(shape=model_max_limits, dtype=float32),
+                r_q=wp.zeros(shape=model_max_limits, dtype=float32),
+                r_dq=wp.zeros(shape=model_max_limits, dtype=float32),
+                r_tau=wp.zeros(shape=model_max_limits, dtype=float32),
+            )
 
     def clear(self):
         """
@@ -805,3 +821,10 @@ class Limits:
                 self._data.r_q,
             ],
         )
+
+    def _assert_has_data(self):
+        """
+        Asserts that the limits data has been allocated.
+        """
+        if self._data is None:
+            raise ValueError("Limits: data has not been allocated. Please call 'allocate()' first.")

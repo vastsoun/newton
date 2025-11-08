@@ -21,12 +21,12 @@ import unittest
 import numpy as np
 import warp as wp
 
-import newton._src.solvers.kamino.utils.logger as msg
 from newton._src.solvers.kamino.core.types import float32
 from newton._src.solvers.kamino.examples import print_progress_bar
 from newton._src.solvers.kamino.models.builders import build_cartpole
 from newton._src.solvers.kamino.models.utils import make_homogeneous_builder
 from newton._src.solvers.kamino.simulation.simulator import Simulator
+from newton._src.solvers.kamino.utils import logger as msg
 
 ###
 # Kernels
@@ -93,7 +93,7 @@ class TestCartpoleSimulator(unittest.TestCase):
         # Configs
         self.seed = 42
         self.default_device = wp.get_device()
-        self.verbose = True  # Set to True for verbose output
+        self.verbose = False  # Set to True for verbose output
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:

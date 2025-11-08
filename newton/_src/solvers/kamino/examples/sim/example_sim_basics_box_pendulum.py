@@ -22,7 +22,6 @@ import warp as wp
 from warp.context import Devicelike
 
 import newton
-import newton._src.solvers.kamino.utils.logger as msg
 import newton.examples
 from newton._src.solvers.kamino.control.pid import JointSpacePIDController
 from newton._src.solvers.kamino.core.builder import ModelBuilder
@@ -32,6 +31,7 @@ from newton._src.solvers.kamino.models import get_basics_usd_assets_path
 from newton._src.solvers.kamino.models.builders import build_box_pendulum_vertical
 from newton._src.solvers.kamino.models.utils import make_homogeneous_builder
 from newton._src.solvers.kamino.simulation.simulator import Simulator, SimulatorSettings
+from newton._src.solvers.kamino.utils import logger as msg
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
 from newton._src.solvers.kamino.viewer import ViewerKamino
 
@@ -307,12 +307,12 @@ if __name__ == "__main__":
 
     # Run a brute-force similation loop if headless
     if args.headless:
-        msg.info("Running in headless mode...")
+        msg.notif("Running in headless mode...")
         run_headless(example, progress=True)
 
     # Otherwise launch using a debug viewer
     else:
-        msg.info("Running in Viewer mode...")
+        msg.notif("Running in Viewer mode...")
         # Set initial camera position for better view of the system
         if hasattr(example.viewer, "set_camera"):
             camera_pos = wp.vec3(0.0, -2.0, 1.0)

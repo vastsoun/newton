@@ -19,7 +19,7 @@ import unittest
 
 import numpy as np
 
-import newton._src.solvers.kamino.utils.logger as msg
+from newton._src.solvers.kamino.utils import logger as msg
 from newton._src.solvers.kamino.utils.logger import Logger
 
 ###

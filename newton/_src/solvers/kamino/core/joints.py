@@ -737,8 +737,14 @@ class JointDescriptor(Descriptor):
         super().__post_init__()
 
         # Check if DoF type + actuation type are compatible
+        if self.dof_type == JointDoFType.FREE and self.is_binary:
+            raise ValueError(
+                f"Invalid joint configuration: FREE joints cannot be binary (name={self.name}, uid={self.uid})."
+            )
         if self.act_type == JointActuationType.FORCE and self.dof_type == JointDoFType.FIXED:
-            raise ValueError("Invalid joint configuration: FIXED joints cannot be actuated.")
+            raise ValueError(
+                f"Invalid joint configuration: FIXED joints cannot be actuated (name={self.name}, uid={self.uid})."
+            )
 
         # Set default values for joint limits if not provided
         self.q_j_min = self._check_limits(self.q_j_min, self.num_dofs, float(FLOAT32_MIN))

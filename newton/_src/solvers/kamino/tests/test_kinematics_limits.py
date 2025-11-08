@@ -27,14 +27,10 @@ from newton._src.solvers.kamino.core.math import quat_exp, screw, screw_angular,
 from newton._src.solvers.kamino.core.model import Model, ModelData
 from newton._src.solvers.kamino.core.types import float32, int32, mat33f, transformf, vec3f, vec6f
 from newton._src.solvers.kamino.kinematics.joints import compute_joints_data
-
-# Module to be tested
 from newton._src.solvers.kamino.kinematics.limits import Limits
-from newton._src.solvers.kamino.models.builders import (
-    build_boxes_fourbar,
-    build_revolute_joint_test_system,
-)
+from newton._src.solvers.kamino.models import builders
 from newton._src.solvers.kamino.models.utils import make_homogeneous_builder
+from newton._src.solvers.kamino.utils import logger as msg
 
 ###
 # Module configs
@@ -157,13 +153,22 @@ def set_joint_follower_body_state(model: Model, data: ModelData):
 
 class TestKinematicsLimits(unittest.TestCase):
     def setUp(self):
-        self.verbose = False  # Set to True for detailed output
         self.default_device = wp.get_device()
+        self.verbose = False  # Set to True to enable verbose output
+
+        # Set debug-level logging to print verbose test output to console
+        if self.verbose:
+            msg.info("\n")  # Add newline before test output for better readability
+            msg.set_log_level(msg.LogLevel.DEBUG)
+        else:
+            msg.set_log_level(msg.LogLevel.WARNING)
 
     def tearDown(self):
         self.default_device = None
+        if self.verbose:
+            msg.reset_log_level()
 
-    def test_01_create_empty_limits_container(self):
+    def test_00_create_empty_limits_container(self):
         """
         Tests the creation of an empty Limits container (for deferred allocation).
         """
@@ -171,26 +176,14 @@ class TestKinematicsLimits(unittest.TestCase):
         limits = Limits(device=self.default_device)
 
         # Check the initial state of the limits
-        self.assertIsNone(limits.model_max_limits)
-        self.assertIsNone(limits.model_num_limits)
-        self.assertIsNone(limits.world_max_limits)
-        self.assertIsNone(limits.world_max_limits)
-        self.assertIsNone(limits.wid)
-        self.assertIsNone(limits.lid)
-        self.assertIsNone(limits.jid)
-        self.assertIsNone(limits.bids)
-        self.assertIsNone(limits.dof)
-        self.assertIsNone(limits.side)
-        self.assertIsNone(limits.r_q)
-        self.assertIsNone(limits.r_dq)
-        self.assertIsNone(limits.r_tau)
+        self.assertIsNone(limits._data)
 
-    def test_02_allocate_limits_container_from_homogeneous_builder(self):
+    def test_01_allocate_limits_container_from_homogeneous_builder(self):
         """
         Tests the allocation of a Limits container.
         """
         # Construct the model description using the ModelBuilder
-        builder = make_homogeneous_builder(num_worlds=3, build_fn=build_boxes_fourbar)
+        builder = make_homogeneous_builder(num_worlds=3, build_fn=builders.build_boxes_fourbar)
 
         # Create a Limits container
         limits = Limits(builder=builder, device=self.default_device)
@@ -219,26 +212,25 @@ class TestKinematicsLimits(unittest.TestCase):
         self.assertEqual(limits.world_num_limits.shape, (3,))
 
         # Optional verbose output
-        if self.verbose:
-            print("limits.num_model_max_limits:", limits.num_model_max_limits)
-            print("limits.num_world_max_limits:", limits.num_world_max_limits)
-            print("limits.model_max_limits:", limits.model_max_limits)
-            print("limits.model_num_limits:", limits.model_num_limits)
-            print("limits.world_max_limits:", limits.world_max_limits)
-            print("limits.world_num_limits:", limits.world_num_limits)
-            print("limits.wid:", limits.wid)
-            print("limits.lid:", limits.lid)
-            print("limits.jid:", limits.jid)
-            print("limits.bids:\n", limits.bids)
-            print("limits.dof:", limits.dof)
-            print("limits.side:", limits.side)
-            print("limits.r_q:", limits.r_q)
-            print("limits.r_dq:", limits.r_dq)
-            print("limits.r_tau:", limits.r_tau)
+        msg.info("limits.num_model_max_limits: %s", limits.num_model_max_limits)
+        msg.info("limits.num_world_max_limits: %s", limits.num_world_max_limits)
+        msg.info("limits.model_max_limits: %s", limits.model_max_limits)
+        msg.info("limits.model_num_limits: %s", limits.model_num_limits)
+        msg.info("limits.world_max_limits: %s", limits.world_max_limits)
+        msg.info("limits.world_num_limits: %s", limits.world_num_limits)
+        msg.info("limits.wid: %s", limits.wid)
+        msg.info("limits.lid: %s", limits.lid)
+        msg.info("limits.jid: %s", limits.jid)
+        msg.info("limits.bids:\n%s", limits.bids)
+        msg.info("limits.dof: %s", limits.dof)
+        msg.info("limits.side: %s", limits.side)
+        msg.info("limits.r_q: %s", limits.r_q)
+        msg.info("limits.r_dq: %s", limits.r_dq)
+        msg.info("limits.r_tau: %s", limits.r_tau)
 
-    def test_03_check_revolute_joint(self):
+    def test_02_check_revolute_joint(self):
         # Construct the model description using the ModelBuilder
-        builder = make_homogeneous_builder(num_worlds=4, build_fn=build_revolute_joint_test_system)
+        builder = make_homogeneous_builder(num_worlds=4, build_fn=builders.build_unary_revolute_joint_test)
         num_worlds = builder.num_worlds
 
         # Create the model and state
@@ -252,60 +244,57 @@ class TestKinematicsLimits(unittest.TestCase):
         compute_joints_data(model=model, q_j_ref=wp.zeros_like(data.joints.q_j), data=data)
 
         # Optional verbose output
-        if self.verbose:
-            print("model.joints.q_j_min: ", model.joints.q_j_min)
-            print("model.joints.q_j_max: ", model.joints.q_j_max)
-            print("model.joints.dq_j_max: ", model.joints.dq_j_max)
-            print("model.joints.tau_j_max: ", model.joints.tau_j_max)
-            print("data.bodies.q_i:\n", data.bodies.q_i)
-            print("data.bodies.u_i:\n", data.bodies.u_i)
-            print("data.joints.p_j:\n", data.joints.p_j)
-            print("data.joints.r_j: ", data.joints.r_j)
-            print("data.joints.dr_j: ", data.joints.dr_j)
-            print("data.joints.q_j: ", data.joints.q_j)
-            print("data.joints.dq_j: ", data.joints.dq_j)
+        msg.info("model.joints.q_j_min: %s", model.joints.q_j_min)
+        msg.info("model.joints.q_j_max: %s", model.joints.q_j_max)
+        msg.info("model.joints.dq_j_max: %s", model.joints.dq_j_max)
+        msg.info("model.joints.tau_j_max: %s", model.joints.tau_j_max)
+        msg.info("data.bodies.q_i:\n%s", data.bodies.q_i)
+        msg.info("data.bodies.u_i:\n%s", data.bodies.u_i)
+        msg.info("data.joints.p_j:\n%s", data.joints.p_j)
+        msg.info("data.joints.r_j: %s", data.joints.r_j)
+        msg.info("data.joints.dr_j: %s", data.joints.dr_j)
+        msg.info("data.joints.q_j: %s", data.joints.q_j)
+        msg.info("data.joints.dq_j: %s\n\n", data.joints.dq_j)
 
         # Create a Limits container
         limits = Limits(builder=builder, device=self.default_device)
 
         # Optional verbose output
-        if self.verbose:
-            print("[before]: limits.num_model_max_limits:", limits.num_model_max_limits)
-            print("[before]: limits.num_world_max_limits:", limits.num_world_max_limits)
-            print("[before]: limits.model_max_limits:", limits.model_max_limits)
-            print("[before]: limits.model_num_limits:", limits.model_num_limits)
-            print("[before]: limits.world_max_limits:", limits.world_max_limits)
-            print("[before]: limits.world_num_limits:", limits.world_num_limits)
-            print("[before]: limits.wid:", limits.wid)
-            print("[before]: limits.lid:", limits.lid)
-            print("[before]: limits.jid:", limits.jid)
-            print("[before]: limits.bids:\n", limits.bids)
-            print("[before]: limits.dof:", limits.dof)
-            print("[before]: limits.side:", limits.side)
-            print("[before]: limits.r_q:", limits.r_q)
-            print("[before]: limits.r_dq:", limits.r_dq)
-            print("[before]: limits.r_tau:", limits.r_tau)
+        msg.info("[before]: limits.num_model_max_limits: %s", limits.num_model_max_limits)
+        msg.info("[before]: limits.num_world_max_limits: %s", limits.num_world_max_limits)
+        msg.info("[before]: limits.model_max_limits: %s", limits.model_max_limits)
+        msg.info("[before]: limits.model_num_limits: %s", limits.model_num_limits)
+        msg.info("[before]: limits.world_max_limits: %s", limits.world_max_limits)
+        msg.info("[before]: limits.world_num_limits: %s", limits.world_num_limits)
+        msg.info("[before]: limits.wid: %s", limits.wid)
+        msg.info("[before]: limits.lid: %s", limits.lid)
+        msg.info("[before]: limits.jid: %s", limits.jid)
+        msg.info("[before]: limits.bids:\n%s", limits.bids)
+        msg.info("[before]: limits.dof: %s", limits.dof)
+        msg.info("[before]: limits.side: %s", limits.side)
+        msg.info("[before]: limits.r_q: %s", limits.r_q)
+        msg.info("[before]: limits.r_dq: %s", limits.r_dq)
+        msg.info("[before]: limits.r_tau: %s\n\n", limits.r_tau)
 
         # Check for active joint limits
         limits.detect(model, data)
 
         # Optional verbose output
-        if self.verbose:
-            print("[after]: limits.num_model_max_limits:", limits.num_model_max_limits)
-            print("[after]: limits.num_world_max_limits:", limits.num_world_max_limits)
-            print("[after]: limits.model_max_limits:", limits.model_max_limits)
-            print("[after]: limits.model_num_limits:", limits.model_num_limits)
-            print("[after]: limits.world_max_limits:", limits.world_max_limits)
-            print("[after]: limits.world_num_limits:", limits.world_num_limits)
-            print("[after]: limits.wid:", limits.wid)
-            print("[after]: limits.lid:", limits.lid)
-            print("[after]: limits.jid:", limits.jid)
-            print("[after]: limits.bids:\n", limits.bids)
-            print("[after]: limits.dof:", limits.dof)
-            print("[after]: limits.side:", limits.side)
-            print("[after]: limits.r_q:", limits.r_q)
-            print("[after]: limits.r_dq:", limits.r_dq)
-            print("[after]: limits.r_tau:", limits.r_tau)
+        msg.info("[after]: limits.num_model_max_limits: %s", limits.num_model_max_limits)
+        msg.info("[after]: limits.num_world_max_limits: %s", limits.num_world_max_limits)
+        msg.info("[after]: limits.model_max_limits: %s", limits.model_max_limits)
+        msg.info("[after]: limits.model_num_limits: %s", limits.model_num_limits)
+        msg.info("[after]: limits.world_max_limits: %s", limits.world_max_limits)
+        msg.info("[after]: limits.world_num_limits: %s", limits.world_num_limits)
+        msg.info("[after]: limits.wid: %s", limits.wid)
+        msg.info("[after]: limits.lid: %s", limits.lid)
+        msg.info("[after]: limits.jid: %s", limits.jid)
+        msg.info("[after]: limits.bids:\n%s", limits.bids)
+        msg.info("[after]: limits.dof: %s", limits.dof)
+        msg.info("[after]: limits.side: %s", limits.side)
+        msg.info("[after]: limits.r_q: %s", limits.r_q)
+        msg.info("[after]: limits.r_dq: %s", limits.r_dq)
+        msg.info("[after]: limits.r_tau: %s\n\n", limits.r_tau)
 
         # Check the limits
         limits_num_np = limits.world_num_limits.numpy()
@@ -334,7 +323,7 @@ class TestKinematicsLimits(unittest.TestCase):
 
 if __name__ == "__main__":
     # Global numpy configurations
-    np.set_printoptions(linewidth=500, precision=10, suppress=True)  # Suppress scientific notation
+    np.set_printoptions(linewidth=10000, precision=10, threshold=10000, suppress=True)  # Suppress scientific notation
 
     # Global warp configurations
     wp.config.enable_backward = False

@@ -23,7 +23,6 @@ import warp as wp
 from warp.context import Devicelike
 
 import newton
-import newton._src.solvers.kamino.utils.logger as msg
 import newton.examples
 from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.core.types import float32, uint32
@@ -32,6 +31,7 @@ from newton._src.solvers.kamino.models import get_basics_usd_assets_path
 from newton._src.solvers.kamino.models.builders import add_ground_geom, build_cartpole
 from newton._src.solvers.kamino.models.utils import make_homogeneous_builder
 from newton._src.solvers.kamino.simulation.simulator import Simulator, SimulatorSettings
+from newton._src.solvers.kamino.utils import logger as msg
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
 from newton._src.solvers.kamino.viewer import ViewerKamino
 

@@ -22,7 +22,6 @@ import warp as wp
 from warp.context import Devicelike
 
 import newton
-import newton._src.solvers.kamino.utils.logger as msg
 import newton.examples
 from newton._src.solvers.kamino.control.animation import AnimationJointReference
 from newton._src.solvers.kamino.control.pid import JointSpacePIDController
@@ -31,6 +30,7 @@ from newton._src.solvers.kamino.examples import get_examples_output_path, run_he
 from newton._src.solvers.kamino.models import get_examples_usd_assets_path
 from newton._src.solvers.kamino.models.builders import add_body_pose_offset, add_ground_geom
 from newton._src.solvers.kamino.simulation.simulator import Simulator, SimulatorSettings
+from newton._src.solvers.kamino.utils import logger as msg
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
 from newton._src.solvers.kamino.viewer import ViewerKamino
 

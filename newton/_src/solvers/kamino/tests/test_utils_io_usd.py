@@ -22,7 +22,6 @@ import unittest
 import numpy as np
 import warp as wp
 
-import newton._src.solvers.kamino.utils.logger as msg
 from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.core.joints import JointActuationType, JointDoFType
 from newton._src.solvers.kamino.core.shapes import ShapeType
@@ -44,6 +43,7 @@ from newton._src.solvers.kamino.models.builders import (
 from newton._src.solvers.kamino.tests.utils.checks import (
     assert_builders_equal,
 )
+from newton._src.solvers.kamino.utils import logger as msg
 
 # Module to be tested
 from newton._src.solvers.kamino.utils.io.usd import USDImporter

@@ -110,13 +110,27 @@ def add_body_twist_offset(builder: ModelBuilder, offset: vec6f):
 def build_free_joint_test(
     builder: ModelBuilder | None = None,
     z_offset: float = 0.0,
-    ground: bool = True,
     new_world: bool = True,
     limits: bool = True,
+    ground: bool = True,
     world_index: int = 0,
 ) -> ModelBuilder:
     """
-    TODO
+    Builds a world to test free joints.
+
+    This world consists of a single rigid body connected to the world via a unary
+    free joint, with optional limits applied to the joint degrees of freedom.
+
+    Args:
+        builder (ModelBuilder | None): An optional existing ModelBuilder to which the entities will be added.
+        z_offset (float): A vertical offset to apply to the rigid body position.
+        ground (bool): Whether to include a ground plane in the world.
+        new_world (bool): Whether to create a new world in the builder, to which entities will be added.\n
+            If `False`, the contents are added to the existing world specified by `world_index`.\n
+            If `True`, a new world is created and added to the builder. In this case the `world_index`
+            argument is ignored, and the index of the newly created world will be used instead.
+        limits (bool): Whether to enable limits on the joint degrees of freedom.
+        world_index (int): The index of the world in the builder where the test model should be added.
     """
     # Create a new builder if none is provided
     if builder is None:
@@ -180,7 +194,21 @@ def build_unary_revolute_joint_test(
     world_index: int = 0,
 ) -> ModelBuilder:
     """
-    TODO
+    Builds a world to test unary revolute joints.
+
+    This world consists of a single rigid body connected to the world via a unary
+    revolute joint, with optional limits applied to the joint degree of freedom.
+
+    Args:
+        builder (ModelBuilder | None): An optional existing ModelBuilder to which the entities will be added.
+        z_offset (float): A vertical offset to apply to the rigid body position.
+        ground (bool): Whether to include a ground plane in the world.
+        new_world (bool): Whether to create a new world in the builder, to which entities will be added.\n
+            If `False`, the contents are added to the existing world specified by `world_index`.\n
+            If `True`, a new world is created and added to the builder. In this case the `world_index`
+            argument is ignored, and the index of the newly created world will be used instead.
+        limits (bool): Whether to enable limits on the joint degree of freedom.
+        world_index (int): The index of the world in the builder where the test model should be added.
     """
     # Create a new builder if none is provided
     if builder is None:
@@ -251,7 +279,21 @@ def build_binary_revolute_joint_test(
     world_index: int = 0,
 ) -> ModelBuilder:
     """
-    TODO
+    Builds a world to test binary revolute joints.
+
+    This world consists of two rigid bodies connected via a binary revolute
+    joint, with optional limits applied to the joint degree of freedom.
+
+    Args:
+        builder (ModelBuilder | None): An optional existing ModelBuilder to which the entities will be added.
+        z_offset (float): A vertical offset to apply to the rigid body position.
+        ground (bool): Whether to include a ground plane in the world.
+        new_world (bool): Whether to create a new world in the builder, to which entities will be added.\n
+            If `False`, the contents are added to the existing world specified by `world_index`.\n
+            If `True`, a new world is created and added to the builder. In this case the `world_index`
+            argument is ignored, and the index of the newly created world will be used instead.
+        limits (bool): Whether to enable limits on the joint degree of freedom.
+        world_index (int): The index of the world in the builder where the test model should be added.
     """
     # Create a new builder if none is provided
     if builder is None:
@@ -339,7 +381,21 @@ def build_unary_prismatic_joint_test(
     world_index: int = 0,
 ) -> ModelBuilder:
     """
-    TODO
+    Builds a world to test unary prismatic joints.
+
+    This world consists of a single rigid body connected to the world via a unary
+    prismatic joint, with optional limits applied to the joint degree of freedom.
+
+    Args:
+        builder (ModelBuilder | None): An optional existing ModelBuilder to which the entities will be added.
+        z_offset (float): A vertical offset to apply to the rigid body position.
+        ground (bool): Whether to include a ground plane in the world.
+        new_world (bool): Whether to create a new world in the builder, to which entities will be added.\n
+            If `False`, the contents are added to the existing world specified by `world_index`.\n
+            If `True`, a new world is created and added to the builder. In this case the `world_index`
+            argument is ignored, and the index of the newly created world will be used instead.
+        limits (bool): Whether to enable limits on the joint degree of freedom.
+        world_index (int): The index of the world in the builder where the test model should be added.
     """
     # Create a new builder if none is provided
     if builder is None:
@@ -410,7 +466,21 @@ def build_binary_prismatic_joint_test(
     world_index: int = 0,
 ) -> ModelBuilder:
     """
-    TODO
+    Builds a world to test binary prismatic joints.
+
+    This world consists of two rigid bodies connected via a binary prismatic
+    joint, with optional limits applied to the joint degree of freedom.
+
+    Args:
+        builder (ModelBuilder | None): An optional existing ModelBuilder to which the entities will be added.
+        z_offset (float): A vertical offset to apply to the rigid body position.
+        ground (bool): Whether to include a ground plane in the world.
+        new_world (bool): Whether to create a new world in the builder, to which entities will be added.\n
+            If `False`, the contents are added to the existing world specified by `world_index`.\n
+            If `True`, a new world is created and added to the builder. In this case the `world_index`
+            argument is ignored, and the index of the newly created world will be used instead.
+        limits (bool): Whether to enable limits on the joint degree of freedom.
+        world_index (int): The index of the world in the builder where the test model should be added.
     """
     # Create a new builder if none is provided
     if builder is None:
@@ -500,7 +570,21 @@ def build_unary_cylindrical_joint_test(
     world_index: int = 0,
 ) -> ModelBuilder:
     """
-    TODO
+    Builds a world to test unary cylindrical joints.
+
+    This world consists of a single rigid body connected to the world via a unary
+    cylindrical joint, with optional limits applied to the joint degrees of freedom.
+
+    Args:
+        builder (ModelBuilder | None): An optional existing ModelBuilder to which the entities will be added.
+        z_offset (float): A vertical offset to apply to the rigid body position.
+        ground (bool): Whether to include a ground plane in the world.
+        new_world (bool): Whether to create a new world in the builder, to which entities will be added.\n
+            If `False`, the contents are added to the existing world specified by `world_index`.\n
+            If `True`, a new world is created and added to the builder. In this case the `world_index`
+            argument is ignored, and the index of the newly created world will be used instead.
+        limits (bool): Whether to enable limits on the joint degrees of freedom.
+        world_index (int): The index of the world in the builder where the test model should be added.
     """
     # Create a new builder if none is provided
     if builder is None:
@@ -571,7 +655,21 @@ def build_binary_cylindrical_joint_test(
     world_index: int = 0,
 ) -> ModelBuilder:
     """
-    TODO
+    Builds a world to test binary cylindrical joints.
+
+    This world consists of two rigid bodies connected via a binary cylindrical
+    joint, with optional limits applied to the joint degrees of freedom.
+
+    Args:
+        builder (ModelBuilder | None): An optional existing ModelBuilder to which the entities will be added.
+        z_offset (float): A vertical offset to apply to the rigid body position.
+        ground (bool): Whether to include a ground plane in the world.
+        new_world (bool): Whether to create a new world in the builder, to which entities will be added.\n
+            If `False`, the contents are added to the existing world specified by `world_index`.\n
+            If `True`, a new world is created and added to the builder. In this case the `world_index`
+            argument is ignored, and the index of the newly created world will be used instead.
+        limits (bool): Whether to enable limits on the joint degrees of freedom.
+        world_index (int): The index of the world in the builder where the test model should be added.
     """
     # Create a new builder if none is provided
     if builder is None:
@@ -659,7 +757,21 @@ def build_unary_universal_joint_test(
     world_index: int = 0,
 ) -> ModelBuilder:
     """
-    TODO
+    Builds a world to test unary universal joints.
+
+    This world consists of a single rigid body connected to the world via a unary
+    universal joint, with optional limits applied to the joint degrees of freedom.
+
+    Args:
+        builder (ModelBuilder | None): An optional existing ModelBuilder to which the entities will be added.
+        z_offset (float): A vertical offset to apply to the rigid body position.
+        ground (bool): Whether to include a ground plane in the world.
+        new_world (bool): Whether to create a new world in the builder, to which entities will be added.\n
+            If `False`, the contents are added to the existing world specified by `world_index`.\n
+            If `True`, a new world is created and added to the builder. In this case the `world_index`
+            argument is ignored, and the index of the newly created world will be used instead.
+        limits (bool): Whether to enable limits on the joint degrees of freedom.
+        world_index (int): The index of the world in the builder where the test model should be added.
     """
     # Create a new builder if none is provided
     if builder is None:
@@ -730,7 +842,21 @@ def build_binary_universal_joint_test(
     world_index: int = 0,
 ) -> ModelBuilder:
     """
-    TODO
+    Builds a world to test binary universal joints.
+
+    This world consists of two rigid bodies connected via a binary universal
+    joint, with optional limits applied to the joint degrees of freedom.
+
+    Args:
+        builder (ModelBuilder | None): An optional existing ModelBuilder to which the entities will be added.
+        z_offset (float): A vertical offset to apply to the rigid body position.
+        ground (bool): Whether to include a ground plane in the world.
+        new_world (bool): Whether to create a new world in the builder, to which entities will be added.\n
+            If `False`, the contents are added to the existing world specified by `world_index`.\n
+            If `True`, a new world is created and added to the builder. In this case the `world_index`
+            argument is ignored, and the index of the newly created world will be used instead.
+        limits (bool): Whether to enable limits on the joint degrees of freedom.
+        world_index (int): The index of the world in the builder where the test model should be added.
     """
     # Create a new builder if none is provided
     if builder is None:
@@ -818,7 +944,21 @@ def build_unary_spherical_joint_test(
     world_index: int = 0,
 ) -> ModelBuilder:
     """
-    TODO
+    Builds a world to test unary spherical joints.
+
+    This world consists of a single rigid body connected to the world via a unary
+    spherical joint, with optional limits applied to the joint degrees of freedom.
+
+    Args:
+        builder (ModelBuilder | None): An optional existing ModelBuilder to which the entities will be added.
+        z_offset (float): A vertical offset to apply to the rigid body position.
+        ground (bool): Whether to include a ground plane in the world.
+        new_world (bool): Whether to create a new world in the builder, to which entities will be added.\n
+            If `False`, the contents are added to the existing world specified by `world_index`.\n
+            If `True`, a new world is created and added to the builder. In this case the `world_index`
+            argument is ignored, and the index of the newly created world will be used instead.
+        limits (bool): Whether to enable limits on the joint degrees of freedom.
+        world_index (int): The index of the world in the builder where the test model should be added.
     """
     # Create a new builder if none is provided
     if builder is None:
@@ -889,7 +1029,21 @@ def build_binary_spherical_joint_test(
     world_index: int = 0,
 ) -> ModelBuilder:
     """
-    TODO
+    Builds a world to test binary spherical joints.
+
+    This world consists of two rigid bodies connected via a binary spherical
+    joint, with optional limits applied to the joint degrees of freedom.
+
+    Args:
+        builder (ModelBuilder | None): An optional existing ModelBuilder to which the entities will be added.
+        z_offset (float): A vertical offset to apply to the rigid body position.
+        ground (bool): Whether to include a ground plane in the world.
+        new_world (bool): Whether to create a new world in the builder, to which entities will be added.\n
+            If `False`, the contents are added to the existing world specified by `world_index`.\n
+            If `True`, a new world is created and added to the builder. In this case the `world_index`
+            argument is ignored, and the index of the newly created world will be used instead.
+        limits (bool): Whether to enable limits on the joint degrees of freedom.
+        world_index (int): The index of the world in the builder where the test model should be added.
     """
     # Create a new builder if none is provided
     if builder is None:
@@ -977,7 +1131,21 @@ def build_unary_gimbal_joint_test(
     world_index: int = 0,
 ) -> ModelBuilder:
     """
-    TODO
+    Builds a world to test unary gimbal joints.
+
+    This world consists of a single rigid body connected to the world via a unary
+    gimbal joint, with optional limits applied to the joint degrees of freedom.
+
+    Args:
+        builder (ModelBuilder | None): An optional existing ModelBuilder to which the entities will be added.
+        z_offset (float): A vertical offset to apply to the rigid body position.
+        ground (bool): Whether to include a ground plane in the world.
+        new_world (bool): Whether to create a new world in the builder, to which entities will be added.\n
+            If `False`, the contents are added to the existing world specified by `world_index`.\n
+            If `True`, a new world is created and added to the builder. In this case the `world_index`
+            argument is ignored, and the index of the newly created world will be used instead.
+        limits (bool): Whether to enable limits on the joint degrees of freedom.
+        world_index (int): The index of the world in the builder where the test model should be added.
     """
     # Create a new builder if none is provided
     if builder is None:
@@ -1048,7 +1216,21 @@ def build_binary_gimbal_joint_test(
     world_index: int = 0,
 ) -> ModelBuilder:
     """
-    TODO
+    Builds a world to test binary gimbal joints.
+
+    This world consists of two rigid bodies connected via a binary gimbal
+    joint, with optional limits applied to the joint degrees of freedom.
+
+    Args:
+        builder (ModelBuilder | None): An optional existing ModelBuilder to which the entities will be added.
+        z_offset (float): A vertical offset to apply to the rigid body position.
+        ground (bool): Whether to include a ground plane in the world.
+        new_world (bool): Whether to create a new world in the builder, to which entities will be added.\n
+            If `False`, the contents are added to the existing world specified by `world_index`.\n
+            If `True`, a new world is created and added to the builder. In this case the `world_index`
+            argument is ignored, and the index of the newly created world will be used instead.
+        limits (bool): Whether to enable limits on the joint degrees of freedom.
+        world_index (int): The index of the world in the builder where the test model should be added.
     """
     # Create a new builder if none is provided
     if builder is None:
@@ -1136,7 +1318,21 @@ def build_unary_cartesian_joint_test(
     world_index: int = 0,
 ) -> ModelBuilder:
     """
-    TODO
+    Builds a world to test unary cartesian joints.
+
+    This world consists of a single rigid body connected to the world via a unary
+    cartesian joint, with optional limits applied to the joint degrees of freedom.
+
+    Args:
+        builder (ModelBuilder | None): An optional existing ModelBuilder to which the entities will be added.
+        z_offset (float): A vertical offset to apply to the rigid body position.
+        ground (bool): Whether to include a ground plane in the world.
+        new_world (bool): Whether to create a new world in the builder, to which entities will be added.\n
+            If `False`, the contents are added to the existing world specified by `world_index`.\n
+            If `True`, a new world is created and added to the builder. In this case the `world_index`
+            argument is ignored, and the index of the newly created world will be used instead.
+        limits (bool): Whether to enable limits on the joint degrees of freedom.
+        world_index (int): The index of the world in the builder where the test model should be added.
     """
     # Create a new builder if none is provided
     if builder is None:
@@ -1207,7 +1403,21 @@ def build_binary_cartesian_joint_test(
     world_index: int = 0,
 ) -> ModelBuilder:
     """
-    TODO
+    Builds a world to test binary cartesian joints.
+
+    This world consists of two rigid bodies connected via a binary cartesian
+    joint, with optional limits applied to the joint degrees of freedom.
+
+    Args:
+        builder (ModelBuilder | None): An optional existing ModelBuilder to which the entities will be added.
+        z_offset (float): A vertical offset to apply to the rigid body position.
+        ground (bool): Whether to include a ground plane in the world.
+        new_world (bool): Whether to create a new world in the builder, to which entities will be added.\n
+            If `False`, the contents are added to the existing world specified by `world_index`.\n
+            If `True`, a new world is created and added to the builder. In this case the `world_index`
+            argument is ignored, and the index of the newly created world will be used instead.
+        limits (bool): Whether to enable limits on the joint degrees of freedom.
+        world_index (int): The index of the world in the builder where the test model should be added.
     """
     # Create a new builder if none is provided
     if builder is None:
@@ -1291,11 +1501,9 @@ def build_all_joints_test_model(
     ground: bool = False,
 ) -> ModelBuilder:
     """
-    Constructs a test-model builder containing a world for each joint type.
+    Constructs a model builder containing a world for each joint type.
 
     Args:
-        builder (ModelBuilder | None): An optional model builder to populate.\n
-            If `None`, a new builder is created.
         z_offset (float): A vertical offset to apply to the initial position of the box.
         ground (bool): Whether to add a static ground plane to the model.
 
@@ -1349,7 +1557,7 @@ def build_box_on_plane(
         new_world (bool): Whether to create a new world in the builder for this model.\n
             If `False`, the model is added to the existing world specified by `world_index`.\n
             If `True`, a new world is created and added to the builder. In this case the `world_index`
-            argument is ignored, and the index of the newly created world will be used instead.\n
+            argument is ignored, and the index of the newly created world will be used instead.
         world_index (int): The index of the world to which the model should be added if `new_world` is False.\n
             If `new_world` is True, this argument is ignored.
 

@@ -19,9 +19,11 @@ KAMINO: Kinematics: Joints
 
 from __future__ import annotations
 
+from functools import cache
+
 import warp as wp
 
-from ..core.joints import JointDoFType
+from ..core.joints import JointCorrectionMode, JointDoFType
 from ..core.math import (
     FLOAT32_MAX,
     TWO_PI,
@@ -74,6 +76,8 @@ wp.set_module_options({"enable_backward": False})
 DEFAULT_LIMIT_V1F = vec1f(FLOAT32_MAX)
 DEFAULT_LIMIT_V2F = vec2f(FLOAT32_MAX)
 DEFAULT_LIMIT_V3F = vec3f(FLOAT32_MAX)
+DEFAULT_LIMIT_V4F = vec4f(FLOAT32_MAX)
+DEFAULT_LIMIT_V7F = vec7f(FLOAT32_MAX)
 
 
 ###
@@ -106,7 +110,7 @@ def correct_quat_vector_coord(q_j_in: vec4f, q_j_ref: vec4f) -> vec4f:
 
 
 @wp.func
-def correct_joint_coord_free(q_j_in: vec7f, q_j_ref: vec7f) -> vec7f:
+def correct_joint_coord_free(q_j_in: vec7f, q_j_ref: vec7f, q_j_limit: vec7f = DEFAULT_LIMIT_V7F) -> vec7f:
     """Corrects the orientation quaternion coordinate of a free joint."""
     q_j_in[0:4] = correct_quat_vector_coord(q_j_in[0:4], q_j_ref[0:4])
     return q_j_in
@@ -120,7 +124,7 @@ def correct_joint_coord_revolute(q_j_in: vec1f, q_j_ref: vec1f, q_j_limit: vec1f
 
 
 @wp.func
-def correct_joint_coord_prismatic(q_j_in: vec1f, q_j_ref: vec1f) -> vec1f:
+def correct_joint_coord_prismatic(q_j_in: vec1f, q_j_ref: vec1f, q_j_limit: vec1f = DEFAULT_LIMIT_V1F) -> vec1f:
     """No correction needed for prismatic coordinates."""
     return q_j_in
 
@@ -141,7 +145,7 @@ def correct_joint_coord_universal(q_j_in: vec2f, q_j_ref: vec2f, q_j_limit: vec2
 
 
 @wp.func
-def correct_joint_coord_spherical(q_j_in: vec4f, q_j_ref: vec4f) -> vec4f:
+def correct_joint_coord_spherical(q_j_in: vec4f, q_j_ref: vec4f, q_j_limit: vec4f = DEFAULT_LIMIT_V4F) -> vec4f:
     """Corrects a quaternion joint coordinate to be as close as possible to a reference."""
     return correct_quat_vector_coord(q_j_in, q_j_ref)
 
@@ -156,7 +160,7 @@ def correct_joint_coord_gimbal(q_j_in: vec3f, q_j_ref: vec3f, q_j_limit: vec3f =
 
 
 @wp.func
-def correct_joint_coord_cartesian(q_j_in: vec3f, q_j_ref: vec3f) -> vec3f:
+def correct_joint_coord_cartesian(q_j_in: vec3f, q_j_ref: vec3f, q_j_limit: vec3f = DEFAULT_LIMIT_V3F) -> vec3f:
     """No correction needed for Cartesian coordinates."""
     return q_j_in
 
@@ -275,7 +279,7 @@ def get_joint_coords_mapping_function(dof_type: JointDoFType):
 ###
 
 
-def make_write_joint_data(dof_type: JointDoFType, correct_coords: bool = False):
+def make_typed_write_joint_data(dof_type: JointDoFType, correction: JointCorrectionMode = JointCorrectionMode.TWOPI):
     """
     Generates functions to store the joint state according to the
     constraint and DoF dimensions specific to the type of joint.
@@ -292,10 +296,13 @@ def make_write_joint_data(dof_type: JointDoFType, correct_coords: bool = False):
     # Define a vector type for the joint coordinates
     _coordsvec = dof_type.coords_storage_type
 
+    # Define the coordinate bound for correction
+    q_j_limit = _coordsvec(dof_type.coords_bound(correction)) if _coordsvec is not None else None
+
     # Generate a joint type-specific function to write the
     # computed joint state into the model data arrays
     @wp.func
-    def _write_joint_data(
+    def _write_typed_joint_data(
         # Inputs:
         cts_offset: int32,  # Index offset of the joint constraints
         dofs_offset: int32,  # Index offset of the joint DoFs
@@ -327,11 +334,11 @@ def make_write_joint_data(dof_type: JointDoFType, correct_coords: bool = False):
             q_j = wp.static(get_joint_coords_mapping_function(dof_type))(j_r_j, j_q_j)
 
             # Optionally generate code to correct the joint coordinates
-            if wp.static(correct_coords):
+            if wp.static(correction != JointCorrectionMode.NONE):
                 q_j_ref = _coordsvec()
                 for j in range(num_coords):
                     q_j_ref[j] = q_j_ref_in[coords_offset + j]
-                q_j = wp.static(get_joint_coord_correction_function(dof_type))(q_j, q_j_ref)
+                q_j = wp.static(get_joint_coord_correction_function(dof_type))(q_j, q_j_ref, q_j_limit)
 
             # Store the joint DoF coordinates
             for j in range(num_coords):
@@ -339,6 +346,186 @@ def make_write_joint_data(dof_type: JointDoFType, correct_coords: bool = False):
             # Store the joint DoF velocities
             for j in range(num_dofs):
                 dq_j_out[dofs_offset + j] = j_u_j[dof_axes[j]]
+
+    # Return the function
+    return _write_typed_joint_data
+
+
+def make_write_joint_data(correction: JointCorrectionMode = JointCorrectionMode.TWOPI):
+    """
+    Generates functions to store the joint state according to the
+    constraint and DoF dimensions specific to the type of joint.
+    """
+
+    @wp.func
+    def _write_joint_data(
+        # Inputs:
+        dof_type: int32,
+        cts_offset: int32,
+        dofs_offset: int32,
+        coords_offset: int32,
+        j_r_j: vec3f,
+        j_q_j: quatf,
+        j_u_j: vec6f,
+        q_j_ref: wp.array(dtype=float32),
+        # Outputs:
+        data_r_j: wp.array(dtype=float32),
+        data_dr_j: wp.array(dtype=float32),
+        data_q_j: wp.array(dtype=float32),
+        data_dq_j: wp.array(dtype=float32),
+    ):
+        """
+        Stores the joint constraint residuals and DoF motion based on the joint type.
+
+        Args:
+            dof_type (int32): The type of joint DoF.
+            cts_offset (int32): Index offset of the joint constraints.
+            dofs_offset (int32): Index offset of the joint DoFs.
+            coords_offset (int32): Index offset of the joint coordinates.
+            j_r_j (vec3f): 3D vector of the joint-local relative translation.
+            j_q_j (quatf): 4D unit-quaternion of the joint-local relative rotation.
+            j_u_j (vec6f): 6D vector of the joint-local relative twist.
+            data_r_j (wp.array): Flat array of joint constraint residuals.
+            data_dr_j (wp.array): Flat array of joint constraint residuals.
+            data_q_j (wp.array): Flat array of joint DoF coordinates.
+            data_dq_j (wp.array): Flat array of joint DoF velocities.
+        """
+        # TODO: Use wp.static to include conditionals at compile time based on the joint types present in the builder
+
+        if dof_type == JointDoFType.REVOLUTE:
+            wp.static(make_typed_write_joint_data(JointDoFType.REVOLUTE, correction))(
+                cts_offset,
+                dofs_offset,
+                coords_offset,
+                j_r_j,
+                j_q_j,
+                j_u_j,
+                q_j_ref,
+                data_r_j,
+                data_dr_j,
+                data_q_j,
+                data_dq_j,
+            )
+
+        elif dof_type == JointDoFType.PRISMATIC:
+            wp.static(make_typed_write_joint_data(JointDoFType.PRISMATIC))(
+                cts_offset,
+                dofs_offset,
+                coords_offset,
+                j_r_j,
+                j_q_j,
+                j_u_j,
+                q_j_ref,
+                data_r_j,
+                data_dr_j,
+                data_q_j,
+                data_dq_j,
+            )
+
+        elif dof_type == JointDoFType.CYLINDRICAL:
+            wp.static(make_typed_write_joint_data(JointDoFType.CYLINDRICAL, correction))(
+                cts_offset,
+                dofs_offset,
+                coords_offset,
+                j_r_j,
+                j_q_j,
+                j_u_j,
+                q_j_ref,
+                data_r_j,
+                data_dr_j,
+                data_q_j,
+                data_dq_j,
+            )
+
+        elif dof_type == JointDoFType.UNIVERSAL:
+            wp.static(make_typed_write_joint_data(JointDoFType.UNIVERSAL, correction))(
+                cts_offset,
+                dofs_offset,
+                coords_offset,
+                j_r_j,
+                j_q_j,
+                j_u_j,
+                q_j_ref,
+                data_r_j,
+                data_dr_j,
+                data_q_j,
+                data_dq_j,
+            )
+
+        elif dof_type == JointDoFType.SPHERICAL:
+            wp.static(make_typed_write_joint_data(JointDoFType.SPHERICAL))(
+                cts_offset,
+                dofs_offset,
+                coords_offset,
+                j_r_j,
+                j_q_j,
+                j_u_j,
+                q_j_ref,
+                data_r_j,
+                data_dr_j,
+                data_q_j,
+                data_dq_j,
+            )
+
+        elif dof_type == JointDoFType.GIMBAL:
+            wp.static(make_typed_write_joint_data(JointDoFType.GIMBAL, correction))(
+                cts_offset,
+                dofs_offset,
+                coords_offset,
+                j_r_j,
+                j_q_j,
+                j_u_j,
+                q_j_ref,
+                data_r_j,
+                data_dr_j,
+                data_q_j,
+                data_dq_j,
+            )
+
+        elif dof_type == JointDoFType.CARTESIAN:
+            wp.static(make_typed_write_joint_data(JointDoFType.CARTESIAN))(
+                cts_offset,
+                dofs_offset,
+                coords_offset,
+                j_r_j,
+                j_q_j,
+                j_u_j,
+                q_j_ref,
+                data_r_j,
+                data_dr_j,
+                data_q_j,
+                data_dq_j,
+            )
+
+        elif dof_type == JointDoFType.FIXED:
+            wp.static(make_typed_write_joint_data(JointDoFType.FIXED))(
+                cts_offset,
+                dofs_offset,
+                coords_offset,
+                j_r_j,
+                j_q_j,
+                j_u_j,
+                q_j_ref,
+                data_r_j,
+                data_dr_j,
+                data_q_j,
+                data_dq_j,
+            )
+
+        elif dof_type == JointDoFType.FREE:
+            wp.static(make_typed_write_joint_data(JointDoFType.FREE))(
+                cts_offset,
+                dofs_offset,
+                coords_offset,
+                j_r_j,
+                j_q_j,
+                j_u_j,
+                q_j_ref,
+                data_r_j,
+                data_dr_j,
+                data_q_j,
+                data_dq_j,
+            )
 
     # Return the function
     return _write_joint_data
@@ -415,269 +602,109 @@ def compute_joint_pose_and_relative_motion(
     return p_j, j_r_j, j_q_j, j_u_j
 
 
-@wp.func
-def write_joint_data(
-    # Inputs:
-    dof_type: int32,
-    cts_offset: int32,
-    dofs_offset: int32,
-    coords_offset: int32,
-    j_r_j: vec3f,
-    j_q_j: quatf,
-    j_u_j: vec6f,
-    q_j_ref: wp.array(dtype=float32),
-    # Outputs:
-    data_r_j: wp.array(dtype=float32),
-    data_dr_j: wp.array(dtype=float32),
-    data_q_j: wp.array(dtype=float32),
-    data_dq_j: wp.array(dtype=float32),
-):
-    """
-    Stores the joint constraint residuals and DoF motion based on the joint type.
-
-    Args:
-        dof_type (int32): The type of joint DoF.
-        cts_offset (int32): Index offset of the joint constraints.
-        dofs_offset (int32): Index offset of the joint DoFs.
-        coords_offset (int32): Index offset of the joint coordinates.
-        j_r_j (vec3f): 3D vector of the joint-local relative translation.
-        j_q_j (quatf): 4D unit-quaternion of the joint-local relative rotation.
-        j_u_j (vec6f): 6D vector of the joint-local relative twist.
-        data_r_j (wp.array): Flat array of joint constraint residuals.
-        data_dr_j (wp.array): Flat array of joint constraint residuals.
-        data_q_j (wp.array): Flat array of joint DoF coordinates.
-        data_dq_j (wp.array): Flat array of joint DoF velocities.
-    """
-    # TODO: Use wp.static to include conditionals at compile time based on the joint types present in the builder
-
-    if dof_type == JointDoFType.REVOLUTE:
-        wp.static(make_write_joint_data(JointDoFType.REVOLUTE))(
-            cts_offset,
-            dofs_offset,
-            coords_offset,
-            j_r_j,
-            j_q_j,
-            j_u_j,
-            q_j_ref,
-            data_r_j,
-            data_dr_j,
-            data_q_j,
-            data_dq_j,
-        )
-
-    elif dof_type == JointDoFType.PRISMATIC:
-        wp.static(make_write_joint_data(JointDoFType.PRISMATIC))(
-            cts_offset,
-            dofs_offset,
-            coords_offset,
-            j_r_j,
-            j_q_j,
-            j_u_j,
-            q_j_ref,
-            data_r_j,
-            data_dr_j,
-            data_q_j,
-            data_dq_j,
-        )
-
-    elif dof_type == JointDoFType.CYLINDRICAL:
-        wp.static(make_write_joint_data(JointDoFType.CYLINDRICAL))(
-            cts_offset,
-            dofs_offset,
-            coords_offset,
-            j_r_j,
-            j_q_j,
-            j_u_j,
-            q_j_ref,
-            data_r_j,
-            data_dr_j,
-            data_q_j,
-            data_dq_j,
-        )
-
-    elif dof_type == JointDoFType.UNIVERSAL:
-        wp.static(make_write_joint_data(JointDoFType.UNIVERSAL))(
-            cts_offset,
-            dofs_offset,
-            coords_offset,
-            j_r_j,
-            j_q_j,
-            j_u_j,
-            q_j_ref,
-            data_r_j,
-            data_dr_j,
-            data_q_j,
-            data_dq_j,
-        )
-
-    elif dof_type == JointDoFType.SPHERICAL:
-        wp.static(make_write_joint_data(JointDoFType.SPHERICAL))(
-            cts_offset,
-            dofs_offset,
-            coords_offset,
-            j_r_j,
-            j_q_j,
-            j_u_j,
-            q_j_ref,
-            data_r_j,
-            data_dr_j,
-            data_q_j,
-            data_dq_j,
-        )
-
-    elif dof_type == JointDoFType.GIMBAL:
-        wp.static(make_write_joint_data(JointDoFType.GIMBAL))(
-            cts_offset,
-            dofs_offset,
-            coords_offset,
-            j_r_j,
-            j_q_j,
-            j_u_j,
-            q_j_ref,
-            data_r_j,
-            data_dr_j,
-            data_q_j,
-            data_dq_j,
-        )
-
-    elif dof_type == JointDoFType.CARTESIAN:
-        wp.static(make_write_joint_data(JointDoFType.CARTESIAN))(
-            cts_offset,
-            dofs_offset,
-            coords_offset,
-            j_r_j,
-            j_q_j,
-            j_u_j,
-            q_j_ref,
-            data_r_j,
-            data_dr_j,
-            data_q_j,
-            data_dq_j,
-        )
-
-    elif dof_type == JointDoFType.FIXED:
-        wp.static(make_write_joint_data(JointDoFType.FIXED))(
-            cts_offset,
-            dofs_offset,
-            coords_offset,
-            j_r_j,
-            j_q_j,
-            j_u_j,
-            q_j_ref,
-            data_r_j,
-            data_dr_j,
-            data_q_j,
-            data_dq_j,
-        )
-
-    elif dof_type == JointDoFType.FREE:
-        wp.static(make_write_joint_data(JointDoFType.FREE))(
-            cts_offset,
-            dofs_offset,
-            coords_offset,
-            j_r_j,
-            j_q_j,
-            j_u_j,
-            q_j_ref,
-            data_r_j,
-            data_dr_j,
-            data_q_j,
-            data_dq_j,
-        )
-
-
 ###
 # Kernels
 ###
 
 
-@wp.kernel
-def _compute_joints_data(
-    # Inputs:
-    model_info_joint_coords_offset: wp.array(dtype=int32),
-    model_info_joint_dofs_offset: wp.array(dtype=int32),
-    model_info_joint_cts_offset: wp.array(dtype=int32),
-    model_joint_wid: wp.array(dtype=int32),
-    model_joint_dof_type: wp.array(dtype=int32),
-    model_joint_coords_offset: wp.array(dtype=int32),
-    model_joint_dofs_offset: wp.array(dtype=int32),
-    model_joint_cts_offset: wp.array(dtype=int32),
-    model_joint_bid_B: wp.array(dtype=int32),
-    model_joint_bid_F: wp.array(dtype=int32),
-    model_joint_B_r_Bj: wp.array(dtype=vec3f),
-    model_joint_F_r_Fj: wp.array(dtype=vec3f),
-    model_joint_X_j: wp.array(dtype=mat33f),
-    state_body_q_i: wp.array(dtype=transformf),
-    state_body_u_i: wp.array(dtype=vec6f),
-    q_j_ref: wp.array(dtype=float32),
-    # Outputs:
-    data_p_j: wp.array(dtype=transformf),
-    data_r_j: wp.array(dtype=float32),
-    data_dr_j: wp.array(dtype=float32),
-    data_q_j: wp.array(dtype=float32),
-    data_dq_j: wp.array(dtype=float32),
-):
+@cache
+def make_compute_joints_data_kernel(correction: JointCorrectionMode = JointCorrectionMode.TWOPI):
     """
-    Reset the current state to the initial state defined in the model.
+    Generates the kernel to compute the joint states based on the current body states.
     """
-    # Retrieve the thread index
-    jid = wp.tid()
 
-    # Retrieve the joint model data
-    wid = model_joint_wid[jid]
-    dof_type = model_joint_dof_type[jid]
-    coords_offset = model_joint_coords_offset[jid]
-    dofs_offset = model_joint_dofs_offset[jid]
-    cts_offset = model_joint_cts_offset[jid]
-    bid_B = model_joint_bid_B[jid]
-    bid_F = model_joint_bid_F[jid]
-    B_r_Bj = model_joint_B_r_Bj[jid]
-    F_r_Fj = model_joint_F_r_Fj[jid]
-    X_j = model_joint_X_j[jid]
+    @wp.kernel
+    def _compute_joints_data(
+        # Inputs:
+        model_info_joint_coords_offset: wp.array(dtype=int32),
+        model_info_joint_dofs_offset: wp.array(dtype=int32),
+        model_info_joint_cts_offset: wp.array(dtype=int32),
+        model_joint_wid: wp.array(dtype=int32),
+        model_joint_dof_type: wp.array(dtype=int32),
+        model_joint_coords_offset: wp.array(dtype=int32),
+        model_joint_dofs_offset: wp.array(dtype=int32),
+        model_joint_cts_offset: wp.array(dtype=int32),
+        model_joint_bid_B: wp.array(dtype=int32),
+        model_joint_bid_F: wp.array(dtype=int32),
+        model_joint_B_r_Bj: wp.array(dtype=vec3f),
+        model_joint_F_r_Fj: wp.array(dtype=vec3f),
+        model_joint_X_j: wp.array(dtype=mat33f),
+        state_body_q_i: wp.array(dtype=transformf),
+        state_body_u_i: wp.array(dtype=vec6f),
+        q_j_ref: wp.array(dtype=float32),
+        # Outputs:
+        data_p_j: wp.array(dtype=transformf),
+        data_r_j: wp.array(dtype=float32),
+        data_dr_j: wp.array(dtype=float32),
+        data_q_j: wp.array(dtype=float32),
+        data_dq_j: wp.array(dtype=float32),
+    ):
+        """
+        Reset the current state to the initial state defined in the model.
+        """
+        # Retrieve the thread index
+        jid = wp.tid()
 
-    # Retrieve the index offsets of the joint's constraint and DoF dimensions
-    world_joint_coords_offset = model_info_joint_coords_offset[wid]
-    world_joint_dofs_offset = model_info_joint_dofs_offset[wid]
-    world_joint_cts_offset = model_info_joint_cts_offset[wid]
+        # Retrieve the joint model data
+        wid = model_joint_wid[jid]
+        dof_type = model_joint_dof_type[jid]
+        coords_offset = model_joint_coords_offset[jid]
+        dofs_offset = model_joint_dofs_offset[jid]
+        cts_offset = model_joint_cts_offset[jid]
+        bid_B = model_joint_bid_B[jid]
+        bid_F = model_joint_bid_F[jid]
+        B_r_Bj = model_joint_B_r_Bj[jid]
+        F_r_Fj = model_joint_F_r_Fj[jid]
+        X_j = model_joint_X_j[jid]
 
-    # Append the index offsets of the world's joint blocks
-    coords_offset += world_joint_coords_offset
-    dofs_offset += world_joint_dofs_offset
-    cts_offset += world_joint_cts_offset
+        # Retrieve the index offsets of the joint's constraint and DoF dimensions
+        world_joint_coords_offset = model_info_joint_coords_offset[wid]
+        world_joint_dofs_offset = model_info_joint_dofs_offset[wid]
+        world_joint_cts_offset = model_info_joint_cts_offset[wid]
 
-    # If the Base body is the world (bid=-1), use the identity transform (frame
-    # of the world's origin), otherwise retrieve the Base body's pose and twist
-    T_B_j = wp.transform_identity(dtype=float32)
-    u_B_j = vec6f(0.0)
-    if bid_B > -1:
-        T_B_j = state_body_q_i[bid_B]
-        u_B_j = state_body_u_i[bid_B]
+        # Append the index offsets of the world's joint blocks
+        coords_offset += world_joint_coords_offset
+        dofs_offset += world_joint_dofs_offset
+        cts_offset += world_joint_cts_offset
 
-    # Retrieve the Follower body's pose and twist
-    T_F_j = state_body_q_i[bid_F]
-    u_F_j = state_body_u_i[bid_F]
+        # If the Base body is the world (bid=-1), use the identity transform (frame
+        # of the world's origin), otherwise retrieve the Base body's pose and twist
+        T_B_j = wp.transform_identity(dtype=float32)
+        u_B_j = vec6f(0.0)
+        if bid_B > -1:
+            T_B_j = state_body_q_i[bid_B]
+            u_B_j = state_body_u_i[bid_B]
 
-    # Compute the joint frame pose and relative motion
-    p_j, j_r_j, j_q_j, j_u_j = compute_joint_pose_and_relative_motion(T_B_j, T_F_j, u_B_j, u_F_j, B_r_Bj, F_r_Fj, X_j)
+        # Retrieve the Follower body's pose and twist
+        T_F_j = state_body_q_i[bid_F]
+        u_F_j = state_body_u_i[bid_F]
 
-    # Store the absolute pose of the joint frame in world coordinates
-    data_p_j[jid] = p_j
+        # Compute the joint frame pose and relative motion
+        p_j, j_r_j, j_q_j, j_u_j = compute_joint_pose_and_relative_motion(
+            T_B_j, T_F_j, u_B_j, u_F_j, B_r_Bj, F_r_Fj, X_j
+        )
 
-    # Store the joint constraint residuals and motion
-    write_joint_data(
-        dof_type,
-        cts_offset,
-        dofs_offset,
-        coords_offset,
-        j_r_j,
-        j_q_j,
-        j_u_j,
-        q_j_ref,
-        data_r_j,
-        data_dr_j,
-        data_q_j,
-        data_dq_j,
-    )
+        # Store the absolute pose of the joint frame in world coordinates
+        data_p_j[jid] = p_j
+
+        # Store the joint constraint residuals and motion
+        wp.static(make_write_joint_data(correction))(
+            dof_type,
+            cts_offset,
+            dofs_offset,
+            coords_offset,
+            j_r_j,
+            j_q_j,
+            j_u_j,
+            q_j_ref,
+            data_r_j,
+            data_dr_j,
+            data_q_j,
+            data_dq_j,
+        )
+
+    # Return the kernel
+    return _compute_joints_data
 
 
 ###
@@ -685,7 +712,12 @@ def _compute_joints_data(
 ###
 
 
-def compute_joints_data(model: Model, q_j_ref: wp.array, data: ModelData) -> None:
+def compute_joints_data(
+    model: Model,
+    q_j_ref: wp.array,
+    data: ModelData,
+    correction: JointCorrectionMode = JointCorrectionMode.TWOPI,
+) -> None:
     """
     Computes the states of the joints based on the current body states.
 
@@ -700,8 +732,14 @@ def compute_joints_data(model: Model, q_j_ref: wp.array, data: ModelData) -> Non
             Shape of ``(sum_of_num_joint_coords,)`` and type :class:`float`.
         data (`ModelData`): The solver data container holding the internal time-varying state of the simulation.
     """
+
+    # Generate the kernel to compute the joint states
+    # conditioned on the type coordinate correction
+    _kernel = make_compute_joints_data_kernel(correction)
+
+    # Launch the kernel to compute the joint states
     wp.launch(
-        _compute_joints_data,
+        _kernel,
         dim=model.size.sum_of_num_joints,
         inputs=[
             # Inputs:

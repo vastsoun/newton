@@ -25,6 +25,7 @@ import newton
 import newton.examples
 from newton._src.solvers.kamino.control.pid import JointSpacePIDController
 from newton._src.solvers.kamino.core.builder import ModelBuilder
+from newton._src.solvers.kamino.core.joints import JointCorrectionMode
 from newton._src.solvers.kamino.core.types import float32
 from newton._src.solvers.kamino.examples import run_headless
 from newton._src.solvers.kamino.models import get_basics_usd_assets_path
@@ -140,6 +141,7 @@ class Example:
         settings.solver.dual_tolerance = 1e-6
         settings.solver.compl_tolerance = 1e-6
         settings.solver.rho_0 = 0.1
+        settings.rotation_correction = JointCorrectionMode.INDEFINITE
 
         # Create a simulator
         msg.info("Building the simulator...")
@@ -233,6 +235,7 @@ class Example:
             self.sim.step()
         self.sim_steps += 1
         self.sim_time += self.sim_dt
+        msg.info("q_j: %s", self.sim.state.q_j)
 
     def step(self):
         """Step the simulation."""
@@ -241,6 +244,7 @@ class Example:
         else:
             self.simulate()
         self.sim_time += self.frame_dt
+        msg.info("q_j: %s", self.sim.state.q_j)
 
     def render(self):
         """Render the current frame."""

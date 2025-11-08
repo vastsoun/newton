@@ -22,7 +22,7 @@ from enum import IntEnum
 import warp as wp
 from warp._src.types import Any, Int, Vector
 
-from .math import FLOAT32_MAX, FLOAT32_MIN
+from .math import FLOAT32_MAX, FLOAT32_MIN, PI, TWO_PI
 from .types import (
     ArrayLike,
     Descriptor,
@@ -47,7 +47,15 @@ from .types import (
 # Module interface
 ###
 
-__all__ = ["JointActuationType", "JointConnectionType", "JointDescriptor", "JointDoFType", "JointsData", "JointsModel"]
+__all__ = [
+    "JointActuationType",
+    "JointConnectionType",
+    "JointCorrectionMode",
+    "JointDescriptor",
+    "JointDoFType",
+    "JointsData",
+    "JointsModel",
+]
 
 
 ###
@@ -103,6 +111,55 @@ class JointConnectionType(IntEnum):
     @override
     def __repr__(self):
         """Returns a string representation of the joint connection type."""
+        return self.__str__()
+
+
+class JointCorrectionMode(IntEnum):
+    """
+    An enumeration of the correction modes applicable to rotational joint coordinates.
+    """
+
+    TWOPI = 0
+    """
+    Rotational joint coordinates are computed to always lie within ``[-2*pi, 2*pi]``.\n
+    This is the default correction mode for all joints with rotational DoFs.
+    """
+
+    INDEFINITE = 1
+    """
+    Rotational joint coordinates are continuously accumulated and thus unbounded.\n
+    This means that joint coordinates can increase/decrease indefinitely over time,
+    but are limited to numerical precision limits (i.e. ``[-FLOAT32_MAX, FLOAT32_MAX]``).
+    """
+
+    NONE = -1
+    """
+    No joint coordinate correction is applied.\n
+    Rotational joint coordinates are computed to lie within ``[-pi, pi]``.
+    """
+
+    @property
+    def bound(self) -> float:
+        """
+        Returns the numerical bound imposed by the correction mode.
+        """
+        if self.value == self.TWOPI:
+            return float(TWO_PI)
+        elif self.value == self.INDEFINITE:
+            return float(FLOAT32_MAX)
+        elif self.value == self.NONE:
+            return float(PI)
+        else:
+            raise ValueError(f"Unknown joint correction mode: {self.value}")
+
+    @override
+    def __str__(self):
+        """Returns a string representation of the joint correction mode."""
+        return f"JointCorrectionMode.{self.name} ({self.value})"
+
+    @override
+    def __repr__(self):
+        """Returns a string representation of the joint correction mode."""
         return self.__str__()
 
 
@@ -419,7 +476,7 @@ class JointDoFType(IntEnum):
         elif self.value == self.CARTESIAN:
             return vec3f
         elif self.value == self.FIXED:
-            return type(None)
+            return None
         else:
             raise ValueError(f"Unknown joint DoF type: {self.value}")
 
@@ -445,7 +502,7 @@ class JointDoFType(IntEnum):
         elif self.value == self.CARTESIAN:
             return vec3f
         elif self.value == self.FIXED:
-            return type(None)
+            return None
         else:
             raise ValueError(f"Unknown joint DoF type: {self.value}")
 
@@ -470,6 +527,34 @@ class JointDoFType(IntEnum):
             return [0.0, 0.0, 0.0]
         elif self.value == self.CARTESIAN:
             return [0.0, 0.0, 0.0]
+        elif self.value == self.FIXED:
+            return []
+        else:
+            raise ValueError(f"Unknown joint DoF type: {self.value}")
+
+    def coords_bound(self, correction: JointCorrectionMode) -> list[float]:
+        """
+        Returns a list of numeric bounds for the generalized coordinates,
+        of the joint DoF type, imposed by the specified correction mode.
+        """
+        rotation_bound = correction.bound
+
+        if self.value == self.FREE:
+            return [FLOAT32_MAX] * 7
+        elif self.value == self.REVOLUTE:
+            return [rotation_bound]
+        elif self.value == self.PRISMATIC:
+            return [float(FLOAT32_MAX)]
+        elif self.value == self.CYLINDRICAL:
+            return [float(FLOAT32_MAX), rotation_bound]
+        elif self.value == self.UNIVERSAL:
+            return [rotation_bound, rotation_bound]
+        elif self.value == self.SPHERICAL:
+            return [float(FLOAT32_MAX)] * 4
+        elif self.value == self.GIMBAL:
+            return [rotation_bound] * 3
+        elif self.value == self.CARTESIAN:
+            return [float(FLOAT32_MAX)] * 3
         elif self.value == self.FIXED:
             return []
         else:

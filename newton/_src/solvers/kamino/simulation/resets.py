@@ -21,7 +21,7 @@ from ..core.bodies import transform_body_inertial_properties
 from ..core.model import Model, ModelData
 from ..core.state import State
 from ..core.types import float32, int32, mat33f, transformf, vec3f, vec6f
-from ..kinematics.joints import compute_joint_pose_and_relative_motion, write_joint_data
+from ..kinematics.joints import compute_joint_pose_and_relative_motion, make_write_joint_data
 
 ###
 # Module interface
@@ -224,7 +224,7 @@ def _reset_joints_of_select_worlds(
     data_p_j[jid] = p_j
 
     # Store the joint constraint residuals and motion
-    write_joint_data(
+    wp.static(make_write_joint_data())(
         dof_type,
         cts_offset,
         dofs_offset,

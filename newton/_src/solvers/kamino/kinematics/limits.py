@@ -23,9 +23,25 @@ import warp as wp
 from warp.context import Devicelike
 
 from ..core.builder import ModelBuilder
-from ..core.math import FLOAT32_MAX, FLOAT32_MIN
+from ..core.joints import JointDoFType
+from ..core.math import (
+    FLOAT32_MAX,
+    FLOAT32_MIN,
+    quat_log,
+)
 from ..core.model import Model, ModelData
-from ..core.types import float32, int32, vec2i
+from ..core.types import (
+    float32,
+    int32,
+    quatf,
+    vec1f,
+    vec2f,
+    vec2i,
+    vec3f,
+    vec4f,
+    vec6f,
+    vec7f,
+)
 
 ###
 # Module interface
@@ -147,6 +163,223 @@ class LimitsData:
 
 
 ###
+# Functions
+###
+
+
+@wp.func
+def map_to_joint_coords_to_dofs_free(q_j: vec7f) -> vec6f:
+    v_j = quat_log(quatf(q_j[3], q_j[4], q_j[5], q_j[6]))
+    return vec6f(q_j[0], q_j[1], q_j[2], v_j[0], v_j[1], v_j[2])
+
+
+@wp.func
+def map_to_joint_coords_to_dofs_revolute(q_j: vec1f) -> vec1f:
+    return q_j
+
+
+@wp.func
+def map_to_joint_coords_to_dofs_prismatic(q_j: vec1f) -> vec1f:
+    return q_j
+
+
+@wp.func
+def map_to_joint_coords_to_dofs_cylindrical(q_j: vec2f) -> vec2f:
+    return q_j
+
+
+@wp.func
+def map_to_joint_coords_to_dofs_universal(q_j: vec2f) -> vec2f:
+    return q_j
+
+
+@wp.func
+def map_to_joint_coords_to_dofs_spherical(q_j: vec4f) -> vec3f:
+    return quat_log(quatf(q_j[0], q_j[1], q_j[2], q_j[3]))
+
+
+@wp.func
+def map_to_joint_coords_to_dofs_gimbal(q_j: vec3f) -> vec3f:
+    return q_j
+
+
+@wp.func
+def map_to_joint_coords_to_dofs_cartesian(q_j: vec3f) -> vec3f:
+    return q_j
+
+
+def get_joint_coords_to_dofs_mapping_function(dof_type: JointDoFType):
+    """
+    Retrieves the function to map joint relative poses to
+    joint coordinates based on the type of joint DoF.
+    """
+    if dof_type == JointDoFType.FREE:
+        return map_to_joint_coords_to_dofs_free
+    elif dof_type == JointDoFType.REVOLUTE:
+        return map_to_joint_coords_to_dofs_revolute
+    elif dof_type == JointDoFType.PRISMATIC:
+        return map_to_joint_coords_to_dofs_prismatic
+    elif dof_type == JointDoFType.CYLINDRICAL:
+        return map_to_joint_coords_to_dofs_cylindrical
+    elif dof_type == JointDoFType.UNIVERSAL:
+        return map_to_joint_coords_to_dofs_universal
+    elif dof_type == JointDoFType.SPHERICAL:
+        return map_to_joint_coords_to_dofs_spherical
+    elif dof_type == JointDoFType.GIMBAL:
+        return map_to_joint_coords_to_dofs_gimbal
+    elif dof_type == JointDoFType.CARTESIAN:
+        return map_to_joint_coords_to_dofs_cartesian
+    elif dof_type == JointDoFType.FIXED:
+        return None
+    else:
+        raise ValueError(f"Unknown joint DoF type: {dof_type}")
+
+
+def make_read_joint_coords_map_and_limits(dof_type: JointDoFType):
+    """
+    Generates functions to store the joint state according to the
+    constraint and DoF dimensions specific to the type of joint.
+    """
+    # Retrieve the number of constraints and dofs
+    num_dofs = dof_type.num_dofs
+    num_coords = dof_type.num_coords
+
+    # Define a vector type for the joint coordinates
+    _coordsvec = dof_type.coords_storage_type
+
+    # Generate a joint type-specific function to write the
+    # computed joint state into the model data arrays
+    @wp.func
+    def _read_joint_coords_map_and_limits(
+        # Inputs:
+        dofs_offset: int32,  # Index offset of the joint DoFs
+        coords_offset: int32,  # Index offset of the joint coordinates
+        model_joint_q_j_min: wp.array(dtype=float32),
+        model_joint_q_j_max: wp.array(dtype=float32),
+        state_joints_q_j: wp.array(dtype=float32),
+    ) -> tuple[int32, vec6f, vec6f, vec6f]:
+        # Statically define the joint DoF counts
+        d_j = wp.static(num_dofs)
+
+        # Pre-allocate joint data
+        q_j_min = vec6f(0.0)
+        q_j_max = vec6f(0.0)
+        q_j_map = vec6f(0.0)
+        q_j = _coordsvec(0.0)
+
+        # Only write the DoF coordinates and velocities if the joint defines DoFs
+        # NOTE: This will be disabled for fixed joints
+        if wp.static(num_dofs > 0):
+            # Read the joint DoF limits
+            for j in range(num_dofs):
+                q_j_min[j] = model_joint_q_j_min[dofs_offset + j]
+                q_j_max[j] = model_joint_q_j_max[dofs_offset + j]
+
+            # Read the joint coordinates
+            for j in range(num_coords):
+                q_j[j] = state_joints_q_j[coords_offset + j]
+
+            # Map the joint coordinates to DoF space
+            q_j_map[0:num_dofs] = wp.static(get_joint_coords_to_dofs_mapping_function(dof_type))(q_j)
+
+        # Return the constructed joint DoF count, limits and mapped coordinates
+        return d_j, q_j_min, q_j_max, q_j_map
+
+    # Return the function
+    return _read_joint_coords_map_and_limits
+
+
+@wp.func
+def read_joint_coords_map_and_limits(
+    dof_type: int32,
+    dofs_offset: int32,
+    coords_offset: int32,
+    model_joint_q_j_min: wp.array(dtype=float32),
+    model_joint_q_j_max: wp.array(dtype=float32),
+    state_joints_q_j: wp.array(dtype=float32),
+) -> tuple[int32, vec6f, vec6f, vec6f]:
+    if dof_type == JointDoFType.REVOLUTE:
+        d_j, q_j_min, q_j_max, q_j_map = wp.static(make_read_joint_coords_map_and_limits(JointDoFType.REVOLUTE))(
+            dofs_offset,
+            coords_offset,
+            model_joint_q_j_min,
+            model_joint_q_j_max,
+            state_joints_q_j,
+        )
+
+    elif dof_type == JointDoFType.PRISMATIC:
+        d_j, q_j_min, q_j_max, q_j_map = wp.static(make_read_joint_coords_map_and_limits(JointDoFType.PRISMATIC))(
+            dofs_offset,
+            coords_offset,
+            model_joint_q_j_min,
+            model_joint_q_j_max,
+            state_joints_q_j,
+        )
+
+    elif dof_type == JointDoFType.CYLINDRICAL:
+        d_j, q_j_min, q_j_max, q_j_map = wp.static(make_read_joint_coords_map_and_limits(JointDoFType.CYLINDRICAL))(
+            dofs_offset,
+            coords_offset,
+            model_joint_q_j_min,
+            model_joint_q_j_max,
+            state_joints_q_j,
+        )
+
+    elif dof_type == JointDoFType.UNIVERSAL:
+        d_j, q_j_min, q_j_max, q_j_map = wp.static(make_read_joint_coords_map_and_limits(JointDoFType.UNIVERSAL))(
+            dofs_offset,
+            coords_offset,
+            model_joint_q_j_min,
+            model_joint_q_j_max,
+            state_joints_q_j,
+        )
+
+    elif dof_type == JointDoFType.SPHERICAL:
+        d_j, q_j_min, q_j_max, q_j_map = wp.static(make_read_joint_coords_map_and_limits(JointDoFType.SPHERICAL))(
+            dofs_offset,
+            coords_offset,
+            model_joint_q_j_min,
+            model_joint_q_j_max,
+            state_joints_q_j,
+        )
+
+    elif dof_type == JointDoFType.GIMBAL:
+        d_j, q_j_min, q_j_max, q_j_map = wp.static(make_read_joint_coords_map_and_limits(JointDoFType.GIMBAL))(
+            dofs_offset,
+            coords_offset,
+            model_joint_q_j_min,
+            model_joint_q_j_max,
+            state_joints_q_j,
+        )
+
+    elif dof_type == JointDoFType.CARTESIAN:
+        d_j, q_j_min, q_j_max, q_j_map = wp.static(make_read_joint_coords_map_and_limits(JointDoFType.CARTESIAN))(
+            dofs_offset,
+            coords_offset,
+            model_joint_q_j_min,
+            model_joint_q_j_max,
+            state_joints_q_j,
+        )
+
+    elif dof_type == JointDoFType.FREE:
+        d_j, q_j_min, q_j_max, q_j_map = wp.static(make_read_joint_coords_map_and_limits(JointDoFType.FREE))(
+            dofs_offset,
+            coords_offset,
+            model_joint_q_j_min,
+            model_joint_q_j_max,
+            state_joints_q_j,
+        )
+    else:
+        d_j = int32(0)
+        q_j_min = vec6f(0.0)
+        q_j_max = vec6f(0.0)
+        q_j_map = vec6f(0.0)
+
+    # Return the joint DoF count, limits and mapped coordinates
+    return d_j, q_j_min, q_j_max, q_j_map
+
+
+###
 # Kernels
 ###
 
@@ -154,13 +387,14 @@ class LimitsData:
 @wp.kernel
 def _detect_active_joint_configuration_limits(
     model_info_joint_dofs_offset: wp.array(dtype=int32),
-    model_joints_wid: wp.array(dtype=int32),
-    model_joints_num_dofs: wp.array(dtype=int32),
-    model_joints_dofs_offset: wp.array(dtype=int32),
-    model_joints_bid_B: wp.array(dtype=int32),
-    model_joints_bid_F: wp.array(dtype=int32),
-    model_joints_q_j_min: wp.array(dtype=float32),
-    model_joints_q_j_max: wp.array(dtype=float32),
+    model_joint_wid: wp.array(dtype=int32),
+    model_joint_dof_type: wp.array(dtype=int32),
+    model_joint_dofs_offset: wp.array(dtype=int32),
+    model_joint_coords_offset: wp.array(dtype=int32),
+    model_joint_bid_B: wp.array(dtype=int32),
+    model_joint_bid_F: wp.array(dtype=int32),
+    model_joint_q_j_min: wp.array(dtype=float32),
+    model_joint_q_j_max: wp.array(dtype=float32),
     state_joints_q_j: wp.array(dtype=float32),
     limits_model_max: wp.array(dtype=int32),
     limits_world_max: wp.array(dtype=int32),
@@ -180,32 +414,43 @@ def _detect_active_joint_configuration_limits(
     jid = wp.tid()
 
     # Retrieve the world index of the joint
-    wid = model_joints_wid[jid]
+    wid = model_joint_wid[jid]
 
     # Retrieve the index offset of the joint's DoFs w.r.t the world
-    dio = model_joints_dofs_offset[jid]
-
-    # Retrieve the DoF size of the joint
-    d_j = model_joints_num_dofs[jid]
+    dof_type_j = model_joint_dof_type[jid]
+    dofs_offset_j = model_joint_dofs_offset[jid]
+    coords_offset_j = model_joint_coords_offset[jid]
 
     # Extract the index offset of the world's joint DoFs w.r.t the model
-    jdio = model_info_joint_dofs_offset[wid]
+    world_dofs_offset = model_info_joint_dofs_offset[wid]
+    world_coords_offset = model_joint_coords_offset[wid]
 
     # Retrieve the max limits of the model and world
     model_max_limits = limits_model_max[0]
     world_max_limits = limits_world_max[wid]
 
     # Compute total index offset of the joint's DoFs w.r.t the model
-    doi_j = jdio + dio
+    dofs_offset_total = dofs_offset_j + world_dofs_offset
+    coords_offset_total = coords_offset_j + world_coords_offset
+
+    # Read the joint DoF count, limits and coordinates mapped to DoF space
+    # NOTE: We need to map to DoF space to compare against the limits
+    # when the joint has non-minimal coordinates (e.g. spherical, free, etc.)
+    d_j, q_j_min, q_j_max, q_j_map = read_joint_coords_map_and_limits(
+        dof_type_j,
+        dofs_offset_total,
+        coords_offset_total,
+        model_joint_q_j_min,
+        model_joint_q_j_max,
+        state_joints_q_j,
+    )
 
     # Iterate over each DoF and check if a limit is active
     for dof in range(d_j):
-        # Compute the total index offset of the current DoF w.r.t the model
-        dio_jd = doi_j + dof
         # Retrieve the state of the joint
-        q = state_joints_q_j[dio_jd]
-        qmin = model_joints_q_j_min[dio_jd]
-        qmax = model_joints_q_j_max[dio_jd]
+        q = q_j_map[dof]
+        qmin = q_j_min[dof]
+        qmax = q_j_max[dof]
         r_min = q - qmin
         r_max = qmax - q
         exceeds_min = r_min < 0.0
@@ -220,8 +465,8 @@ def _detect_active_joint_configuration_limits(
                 limits_wid[mlid] = wid
                 limits_lid[mlid] = wlid
                 limits_jid[mlid] = jid
-                limits_bids[mlid] = vec2i(model_joints_bid_B[jid], model_joints_bid_F[jid])
-                limits_dof[mlid] = dio + dof
+                limits_bids[mlid] = vec2i(model_joint_bid_B[jid], model_joint_bid_F[jid])
+                limits_dof[mlid] = dofs_offset_j + dof
                 limits_side[mlid] = 1.0 if exceeds_min else -1.0
                 limits_r_q[mlid] = r_min if exceeds_min else r_max
 
@@ -474,8 +719,9 @@ class Limits:
                 # Inputs:
                 model.info.joint_dofs_offset,
                 model.joints.wid,
-                model.joints.num_dofs,
+                model.joints.dof_type,
                 model.joints.dofs_offset,
+                model.joints.coords_offset,
                 model.joints.bid_B,
                 model.joints.bid_F,
                 model.joints.q_j_min,

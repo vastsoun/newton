@@ -169,49 +169,58 @@ class LimitsData:
 
 @wp.func
 def map_to_joint_coords_to_dofs_free(q_j: vec7f) -> vec6f:
+    """Maps free joint quaternion to a local axes-aligned rotation vector."""
     v_j = quat_log(quatf(q_j[3], q_j[4], q_j[5], q_j[6]))
     return vec6f(q_j[0], q_j[1], q_j[2], v_j[0], v_j[1], v_j[2])
 
 
 @wp.func
 def map_to_joint_coords_to_dofs_revolute(q_j: vec1f) -> vec1f:
+    """No mapping needed for revolute joints."""
     return q_j
 
 
 @wp.func
 def map_to_joint_coords_to_dofs_prismatic(q_j: vec1f) -> vec1f:
+    """No mapping needed for prismatic joints."""
     return q_j
 
 
 @wp.func
 def map_to_joint_coords_to_dofs_cylindrical(q_j: vec2f) -> vec2f:
+    """No mapping needed for cylindrical joints."""
     return q_j
 
 
 @wp.func
 def map_to_joint_coords_to_dofs_universal(q_j: vec2f) -> vec2f:
+    """No mapping needed for universal joints."""
     return q_j
 
 
 @wp.func
 def map_to_joint_coords_to_dofs_spherical(q_j: vec4f) -> vec3f:
+    """Maps quaternion coordinates of a spherical
+    joint to a local axes-aligned rotation vector."""
     return quat_log(quatf(q_j[0], q_j[1], q_j[2], q_j[3]))
 
 
 @wp.func
 def map_to_joint_coords_to_dofs_gimbal(q_j: vec3f) -> vec3f:
+    """No mapping needed for gimbal joints."""
     return q_j
 
 
 @wp.func
 def map_to_joint_coords_to_dofs_cartesian(q_j: vec3f) -> vec3f:
+    """No mapping needed for cartesian joints."""
     return q_j
 
 
 def get_joint_coords_to_dofs_mapping_function(dof_type: JointDoFType):
     """
-    Retrieves the function to map joint relative poses to
-    joint coordinates based on the type of joint DoF.
+    Retrieves the function to map joint
+    type-specific coordinates to DoF space.
     """
     if dof_type == JointDoFType.FREE:
         return map_to_joint_coords_to_dofs_free
@@ -237,8 +246,8 @@ def get_joint_coords_to_dofs_mapping_function(dof_type: JointDoFType):
 
 def make_read_joint_coords_map_and_limits(dof_type: JointDoFType):
     """
-    Generates functions to store the joint state according to the
-    constraint and DoF dimensions specific to the type of joint.
+    Generates a function to read the joint type-specific dof-count,
+    limits, and coordinates, and map the latter to DoF space.
     """
     # Retrieve the number of constraints and dofs
     num_dofs = dof_type.num_dofs
@@ -261,7 +270,7 @@ def make_read_joint_coords_map_and_limits(dof_type: JointDoFType):
         # Statically define the joint DoF counts
         d_j = wp.static(num_dofs)
 
-        # Pre-allocate joint data
+        # Pre-allocate joint data for the largest-case (6 DoFs)
         q_j_min = vec6f(0.0)
         q_j_max = vec6f(0.0)
         q_j_map = vec6f(0.0)
@@ -379,6 +388,51 @@ def read_joint_coords_map_and_limits(
     return d_j, q_j_min, q_j_max, q_j_map
 
 
+@wp.func
+def detect_active_dof_limit(
+    # Inputs:
+    model_max_limits: int32,
+    world_max_limits: int32,
+    wid: int32,
+    jid: int32,
+    dofid: int32,
+    bid_B: int32,
+    bid_F: int32,
+    q: float32,
+    qmin: float32,
+    qmax: float32,
+    # Outputs:
+    limits_model_num: wp.array(dtype=int32),
+    limits_world_num: wp.array(dtype=int32),
+    limits_wid: wp.array(dtype=int32),
+    limits_lid: wp.array(dtype=int32),
+    limits_jid: wp.array(dtype=int32),
+    limits_bids: wp.array(dtype=vec2i),
+    limits_dof: wp.array(dtype=int32),
+    limits_side: wp.array(dtype=float32),
+    limits_r_q: wp.array(dtype=float32),
+):
+    # Retrieve the state of the joint
+    r_min = q - qmin
+    r_max = qmax - q
+    exceeds_min = r_min < 0.0
+    exceeds_max = r_max < 0.0
+    if exceeds_min or exceeds_max:
+        # TODO: This will cause problems if the number of limits exceeds the maximum as we are
+        # incrementing the limits counters and do not decrement if we've exceeded the maximum
+        mlid = wp.atomic_add(limits_model_num, 0, 1)
+        wlid = wp.atomic_add(limits_world_num, wid, 1)
+        if mlid < model_max_limits and wlid < world_max_limits:
+            # Store the limit data
+            limits_wid[mlid] = wid
+            limits_lid[mlid] = wlid
+            limits_jid[mlid] = jid
+            limits_bids[mlid] = vec2i(bid_B, bid_F)
+            limits_dof[mlid] = dofid
+            limits_side[mlid] = 1.0 if exceeds_min else -1.0
+            limits_r_q[mlid] = r_min if exceeds_min else r_max
+
+
 ###
 # Kernels
 ###
@@ -413,13 +467,13 @@ def _detect_active_joint_configuration_limits(
     # This will be the index w.r.r the model
     jid = wp.tid()
 
-    # Retrieve the world index of the joint
+    # Retrieve the joint-specific model data
     wid = model_joint_wid[jid]
-
-    # Retrieve the index offset of the joint's DoFs w.r.t the world
     dof_type_j = model_joint_dof_type[jid]
     dofs_offset_j = model_joint_dofs_offset[jid]
     coords_offset_j = model_joint_coords_offset[jid]
+    bid_B_j = model_joint_bid_B[jid]
+    bid_F_j = model_joint_bid_F[jid]
 
     # Extract the index offset of the world's joint DoFs w.r.t the model
     world_dofs_offset = model_info_joint_dofs_offset[wid]
@@ -447,28 +501,29 @@ def _detect_active_joint_configuration_limits(
 
     # Iterate over each DoF and check if a limit is active
     for dof in range(d_j):
-        # Retrieve the state of the joint
-        q = q_j_map[dof]
-        qmin = q_j_min[dof]
-        qmax = q_j_max[dof]
-        r_min = q - qmin
-        r_max = qmax - q
-        exceeds_min = r_min < 0.0
-        exceeds_max = r_max < 0.0
-        if exceeds_min or exceeds_max:
-            # TODO: This will cause problems if the number of limits exceeds the maximum as we are
-            # incrementing the limits counters and do not decrement if we've exceeded the maximum
-            mlid = wp.atomic_add(limits_model_num, 0, 1)
-            wlid = wp.atomic_add(limits_world_num, wid, 1)
-            if mlid < model_max_limits and wlid < world_max_limits:
-                # Store the limit data
-                limits_wid[mlid] = wid
-                limits_lid[mlid] = wlid
-                limits_jid[mlid] = jid
-                limits_bids[mlid] = vec2i(model_joint_bid_B[jid], model_joint_bid_F[jid])
-                limits_dof[mlid] = dofs_offset_j + dof
-                limits_side[mlid] = 1.0 if exceeds_min else -1.0
-                limits_r_q[mlid] = r_min if exceeds_min else r_max
+        detect_active_dof_limit(
+            # Inputs:
+            model_max_limits,
+            world_max_limits,
+            wid,
+            jid,
+            dofs_offset_j + dof,
+            bid_B_j,
+            bid_F_j,
+            q_j_map[dof],
+            q_j_min[dof],
+            q_j_max[dof],
+            # Outputs:
+            limits_model_num,
+            limits_world_num,
+            limits_wid,
+            limits_lid,
+            limits_jid,
+            limits_bids,
+            limits_dof,
+            limits_side,
+            limits_r_q,
+        )
 
 
 ###

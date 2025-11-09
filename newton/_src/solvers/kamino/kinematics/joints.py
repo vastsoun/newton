@@ -32,6 +32,7 @@ from ..core.math import (
     quat_log,
     quat_product,
     quat_to_euler_xyz,
+    quat_to_vec4,
     screw,
     screw_angular,
     screw_linear,
@@ -200,6 +201,7 @@ def get_joint_coord_correction_function(dof_type: JointDoFType):
 @wp.func
 def map_to_joint_coords_free(j_r_j: vec3f, j_q_j: quatf) -> vec7f:
     """Returns the full 7D representation of joint pose (3D translation + 4D rotation)."""
+    # TODO: Is there a more efficient way to construct a vec7f?
     return vec7f(j_r_j[0], j_r_j[1], j_r_j[2], j_q_j.x, j_q_j.y, j_q_j.z, j_q_j.w)
 
 
@@ -219,25 +221,28 @@ def map_to_joint_coords_prismatic(j_r_j: vec3f, j_q_j: quatf) -> vec1f:
 @wp.func
 def map_to_joint_coords_cylindrical(j_r_j: vec3f, j_q_j: quatf) -> vec2f:
     """Returns the 2D vector of translation and rotation about the local X-axis."""
-    return vec2f(j_r_j[0], j_r_j[1])
+    j_p_j = quat_log(j_q_j)
+    return vec2f(j_r_j[0], j_p_j[0])
 
 
 @wp.func
 def map_to_joint_coords_universal(j_r_j: vec3f, j_q_j: quatf) -> vec2f:
     """Returns the 2D vector of joint angles for the two revolute DoFs."""
+    # TODO: Fix this so that the order of rotations is consistent
     j_theta_j = quat_log(j_q_j)
-    return vec2f(j_theta_j[0], j_theta_j[1])
+    return j_theta_j[0:2]
 
 
 @wp.func
 def map_to_joint_coords_spherical(j_r_j: vec3f, j_q_j: quatf) -> vec4f:
     """Returns the 4D unit-quaternion representing the joint rotation."""
-    return vec4f(j_q_j.x, j_q_j.y, j_q_j.z, j_q_j.w)
+    return quat_to_vec4(j_q_j)
 
 
 @wp.func
 def map_to_joint_coords_gimbal(j_r_j: vec3f, j_q_j: quatf) -> vec3f:
     """Returns the 3D XYZ Euler angles (roll, pitch, yaw)."""
+    # How can we make this safer?
     return quat_to_euler_xyz(j_q_j)
 
 

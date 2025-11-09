@@ -27,13 +27,14 @@ from ..core.joints import JointDoFType
 from ..core.math import (
     FLOAT32_MAX,
     FLOAT32_MIN,
+    quat_from_vec4,
     quat_log,
+    screw,
 )
 from ..core.model import Model, ModelData
 from ..core.types import (
     float32,
     int32,
-    quatf,
     vec1f,
     vec2f,
     vec2i,
@@ -170,8 +171,8 @@ class LimitsData:
 @wp.func
 def map_to_joint_coords_to_dofs_free(q_j: vec7f) -> vec6f:
     """Maps free joint quaternion to a local axes-aligned rotation vector."""
-    v_j = quat_log(quatf(q_j[3], q_j[4], q_j[5], q_j[6]))
-    return vec6f(q_j[0], q_j[1], q_j[2], v_j[0], v_j[1], v_j[2])
+    v_j = quat_log(quat_from_vec4(q_j[3:7]))
+    return screw(q_j[0:3], v_j)
 
 
 @wp.func
@@ -202,7 +203,7 @@ def map_to_joint_coords_to_dofs_universal(q_j: vec2f) -> vec2f:
 def map_to_joint_coords_to_dofs_spherical(q_j: vec4f) -> vec3f:
     """Maps quaternion coordinates of a spherical
     joint to a local axes-aligned rotation vector."""
-    return quat_log(quatf(q_j[0], q_j[1], q_j[2], q_j[3]))
+    return quat_log(quat_from_vec4(q_j))
 
 
 @wp.func

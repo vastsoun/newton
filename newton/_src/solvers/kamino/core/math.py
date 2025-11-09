@@ -229,6 +229,22 @@ def H_of(q: quatf) -> mat34f:
 
 
 @wp.func
+def quat_from_vec4(v: vec4f) -> quatf:
+    """
+    Convert a vec4f to a quaternion type.
+    """
+    return quatf(v[0], v[1], v[2], v[3])
+
+
+@wp.func
+def quat_to_vec4(q: quatf) -> vec4f:
+    """
+    Convert a quaternion type to a vec4f.
+    """
+    return vec4f(q.x, q.y, q.z, q.w)
+
+
+@wp.func
 def quat_conj(q: quatf) -> quatf:
     """
     Compute the conjugate of a quaternion.

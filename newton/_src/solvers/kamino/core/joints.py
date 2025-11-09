@@ -671,8 +671,8 @@ class JointDescriptor(Descriptor):
     """
     Maximum velocity limits of the joint.
 
-    If `None`, then no limits are applied to the joint DoFs,
-    and the maximum limits default to `-inf` for lower limits.
+    If `None`, then no limits are applied
+    to the joint's generalized velocities.
 
     If specified as a single float value, it will
     be applied uniformly to all DoFs of the joint.
@@ -686,8 +686,8 @@ class JointDescriptor(Descriptor):
     """
     Maximum effort (i.e. generalized force) limits of the joint.
 
-    If `None`, then no limits are applied to the joint DoFs,
-    and the maximum limits default to `-inf` for lower limits.
+    If `None`, then no limits are applied
+    to the joint's generalized forces.
 
     If specified as a single float value, it will
     be applied uniformly to all DoFs of the joint.

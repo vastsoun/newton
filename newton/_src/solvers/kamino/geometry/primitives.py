@@ -21,7 +21,10 @@ import warp as wp
 
 from ....geometry.collision_primitive import (
     collide_box_box,
+    collide_capsule_capsule,
     collide_sphere_box,
+    collide_sphere_capsule,
+    collide_sphere_cylinder,
     collide_sphere_sphere,
 )
 from ..core.model import Model, ModelData
@@ -77,6 +80,28 @@ class Sphere:
     radius: float32
 
 
+@wp.struct
+class Capsule:
+    bid: int32
+    gid: int32
+    pos: vec3f
+    rot: mat33f
+    axis: vec3f
+    radius: float32
+    half_length: float32
+
+
+@wp.struct
+class Cylinder:
+    bid: int32
+    gid: int32
+    pos: vec3f
+    rot: mat33f
+    axis: vec3f
+    radius: float32
+    half_height: float32
+
+
 @wp.func
 def make_box(pose: transformf, params: vec4f, gid: int32, bid: int32) -> Box:
     box = Box()
@@ -97,6 +122,36 @@ def make_sphere(pose: transformf, params: vec4f, gid: int32, bid: int32) -> Sphe
     sphere.rot = wp.quat_to_matrix(wp.transform_get_rotation(pose))
     sphere.radius = params[0]
     return sphere
+
+
+@wp.func
+def make_capsule(pose: transformf, params: vec4f, gid: int32, bid: int32) -> Capsule:
+    capsule = Capsule()
+    capsule.bid = bid
+    capsule.gid = gid
+    capsule.pos = wp.transform_get_translation(pose)
+    rot_mat = wp.quat_to_matrix(wp.transform_get_rotation(pose))
+    capsule.rot = rot_mat
+    # Capsule axis is along the local Z-axis
+    capsule.axis = vec3f(rot_mat[0, 2], rot_mat[1, 2], rot_mat[2, 2])
+    capsule.radius = params[0]
+    capsule.half_length = params[1] * 0.5
+    return capsule
+
+
+@wp.func
+def make_cylinder(pose: transformf, params: vec4f, gid: int32, bid: int32) -> Cylinder:
+    cylinder = Cylinder()
+    cylinder.bid = bid
+    cylinder.gid = gid
+    cylinder.pos = wp.transform_get_translation(pose)
+    rot_mat = wp.quat_to_matrix(wp.transform_get_rotation(pose))
+    cylinder.rot = rot_mat
+    # Cylinder axis is along the local Z-axis
+    cylinder.axis = vec3f(rot_mat[0, 2], rot_mat[1, 2], rot_mat[2, 2])
+    cylinder.radius = params[0]
+    cylinder.half_height = params[1] * 0.5
+    return cylinder
 
 
 ###
@@ -320,8 +375,60 @@ def sphere_sphere(
 
 
 @wp.func
-def sphere_cylinder():
-    pass
+def sphere_cylinder(
+    # Inputs:
+    model_max_contacts_in: int32,
+    world_max_contacts_in: int32,
+    sphere_in: Sphere,
+    cylinder_in: Cylinder,
+    wid_in: int32,
+    margin: float32,
+    friction_in: float32,
+    restitution_in: float32,
+    # Contacts out:
+    contacts_model_num_out: wp.array(dtype=int32),
+    contacts_world_num_out: wp.array(dtype=int32),
+    contact_wid_out: wp.array(dtype=int32),
+    contact_cid_out: wp.array(dtype=int32),
+    contact_body_A_out: wp.array(dtype=vec4f),
+    contact_body_B_out: wp.array(dtype=vec4f),
+    contact_gapfunc_out: wp.array(dtype=vec4f),
+    contact_frame_out: wp.array(dtype=mat33f),
+    contact_material_out: wp.array(dtype=vec2f),
+):
+    # Use the tested collision calculation from collision_primitive.py
+    dist, pos, normal = collide_sphere_cylinder(
+        sphere_in.pos,
+        sphere_in.radius,
+        cylinder_in.pos,
+        cylinder_in.axis,
+        cylinder_in.radius,
+        cylinder_in.half_height,
+    )
+
+    # Add the active contact to the global contacts arrays
+    add_single_contact(
+        model_max_contacts_in,
+        world_max_contacts_in,
+        wid_in,
+        sphere_in.bid,
+        cylinder_in.bid,
+        margin,
+        dist,
+        pos,
+        normal,
+        friction_in,
+        restitution_in,
+        contacts_model_num_out,
+        contacts_world_num_out,
+        contact_wid_out,
+        contact_cid_out,
+        contact_body_A_out,
+        contact_body_B_out,
+        contact_gapfunc_out,
+        contact_frame_out,
+        contact_material_out,
+    )
 
 
 @wp.func
@@ -330,8 +437,60 @@ def sphere_cone():
 
 
 @wp.func
-def sphere_capsule():
-    pass
+def sphere_capsule(
+    # Inputs:
+    model_max_contacts_in: int32,
+    world_max_contacts_in: int32,
+    sphere_in: Sphere,
+    capsule_in: Capsule,
+    wid_in: int32,
+    margin: float32,
+    friction_in: float32,
+    restitution_in: float32,
+    # Contacts out:
+    contacts_model_num_out: wp.array(dtype=int32),
+    contacts_world_num_out: wp.array(dtype=int32),
+    contact_wid_out: wp.array(dtype=int32),
+    contact_cid_out: wp.array(dtype=int32),
+    contact_body_A_out: wp.array(dtype=vec4f),
+    contact_body_B_out: wp.array(dtype=vec4f),
+    contact_gapfunc_out: wp.array(dtype=vec4f),
+    contact_frame_out: wp.array(dtype=mat33f),
+    contact_material_out: wp.array(dtype=vec2f),
+):
+    # Use the tested collision calculation from collision_primitive.py
+    dist, pos, normal = collide_sphere_capsule(
+        sphere_in.pos,
+        sphere_in.radius,
+        capsule_in.pos,
+        capsule_in.axis,
+        capsule_in.radius,
+        capsule_in.half_length,
+    )
+
+    # Add the active contact to the global contacts arrays
+    add_single_contact(
+        model_max_contacts_in,
+        world_max_contacts_in,
+        wid_in,
+        sphere_in.bid,
+        capsule_in.bid,
+        margin,
+        dist,
+        pos,
+        normal,
+        friction_in,
+        restitution_in,
+        contacts_model_num_out,
+        contacts_world_num_out,
+        contact_wid_out,
+        contact_cid_out,
+        contact_body_A_out,
+        contact_body_B_out,
+        contact_gapfunc_out,
+        contact_frame_out,
+        contact_material_out,
+    )
 
 
 @wp.func
@@ -435,8 +594,62 @@ def cone_ellipsoid():
 
 
 @wp.func
-def capsule_capsule():
-    pass
+def capsule_capsule(
+    # Inputs:
+    model_max_contacts_in: int32,
+    world_max_contacts_in: int32,
+    capsule1_in: Capsule,
+    capsule2_in: Capsule,
+    wid_in: int32,
+    margin: float32,
+    friction_in: float32,
+    restitution_in: float32,
+    # Contacts out:
+    contacts_model_num_out: wp.array(dtype=int32),
+    contacts_world_num_out: wp.array(dtype=int32),
+    contact_wid_out: wp.array(dtype=int32),
+    contact_cid_out: wp.array(dtype=int32),
+    contact_body_A_out: wp.array(dtype=vec4f),
+    contact_body_B_out: wp.array(dtype=vec4f),
+    contact_gapfunc_out: wp.array(dtype=vec4f),
+    contact_frame_out: wp.array(dtype=mat33f),
+    contact_material_out: wp.array(dtype=vec2f),
+):
+    # Use the tested collision calculation from collision_primitive.py
+    dist, pos, normal = collide_capsule_capsule(
+        capsule1_in.pos,
+        capsule1_in.axis,
+        capsule1_in.radius,
+        capsule1_in.half_length,
+        capsule2_in.pos,
+        capsule2_in.axis,
+        capsule2_in.radius,
+        capsule2_in.half_length,
+    )
+
+    # Add the active contact to the global contacts arrays
+    add_single_contact(
+        model_max_contacts_in,
+        world_max_contacts_in,
+        wid_in,
+        capsule1_in.bid,
+        capsule2_in.bid,
+        margin,
+        dist,
+        pos,
+        normal,
+        friction_in,
+        restitution_in,
+        contacts_model_num_out,
+        contacts_world_num_out,
+        contact_wid_out,
+        contact_cid_out,
+        contact_body_A_out,
+        contact_body_B_out,
+        contact_gapfunc_out,
+        contact_frame_out,
+        contact_material_out,
+    )
 
 
 @wp.func
@@ -594,13 +807,49 @@ def _primitive_narrowphase(
         )
 
     elif sid1 == int32(ShapeType.SPHERE.value) and sid2 == int32(ShapeType.CYLINDER.value):
-        sphere_cylinder()
+        sphere_cylinder(
+            model_max_contacts,
+            world_max_contacts,
+            make_sphere(geom_pose_in[gid1], geom_params_in[gid1], gid1, bid1),
+            make_cylinder(geom_pose_in[gid2], geom_params_in[gid2], gid2, bid2),
+            wid,
+            DEFAULT_MARGIN,
+            float32(0.7),
+            float32(0.0),
+            contacts_model_num_out,
+            contacts_world_num_out,
+            contacts_wid_out,
+            contacts_cid_out,
+            contacts_body_A_out,
+            contacts_body_B_out,
+            contacts_gapfunc_out,
+            contacts_frame_out,
+            contacts_material_out,
+        )
 
     elif sid1 == int32(ShapeType.SPHERE.value) and sid2 == int32(ShapeType.CONE.value):
         sphere_cone()
 
     elif sid1 == int32(ShapeType.SPHERE.value) and sid2 == int32(ShapeType.CAPSULE.value):
-        sphere_capsule()
+        sphere_capsule(
+            model_max_contacts,
+            world_max_contacts,
+            make_sphere(geom_pose_in[gid1], geom_params_in[gid1], gid1, bid1),
+            make_capsule(geom_pose_in[gid2], geom_params_in[gid2], gid2, bid2),
+            wid,
+            DEFAULT_MARGIN,
+            float32(0.7),
+            float32(0.0),
+            contacts_model_num_out,
+            contacts_world_num_out,
+            contacts_wid_out,
+            contacts_cid_out,
+            contacts_body_A_out,
+            contacts_body_B_out,
+            contacts_gapfunc_out,
+            contacts_frame_out,
+            contacts_material_out,
+        )
 
     elif sid1 == int32(ShapeType.SPHERE.value) and sid2 == int32(ShapeType.BOX.value):
         sphere_box(
@@ -654,7 +903,25 @@ def _primitive_narrowphase(
         cone_ellipsoid()
 
     elif sid1 == int32(ShapeType.CAPSULE.value) and sid2 == int32(ShapeType.CAPSULE.value):
-        capsule_capsule()
+        capsule_capsule(
+            model_max_contacts,
+            world_max_contacts,
+            make_capsule(geom_pose_in[gid1], geom_params_in[gid1], gid1, bid1),
+            make_capsule(geom_pose_in[gid2], geom_params_in[gid2], gid2, bid2),
+            wid,
+            DEFAULT_MARGIN,
+            float32(0.7),
+            float32(0.0),
+            contacts_model_num_out,
+            contacts_world_num_out,
+            contacts_wid_out,
+            contacts_cid_out,
+            contacts_body_A_out,
+            contacts_body_B_out,
+            contacts_gapfunc_out,
+            contacts_frame_out,
+            contacts_material_out,
+        )
 
     elif sid1 == int32(ShapeType.CAPSULE.value) and sid2 == int32(ShapeType.BOX.value):
         capsule_box()

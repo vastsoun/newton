@@ -125,7 +125,7 @@ class JointCorrectionMode(IntEnum):
     This is the default correction mode for all joints with rotational DoFs.
     """
 
-    INDEFINITE = 1
+    CONTINUOUS = 1
     """
     Rotational joint coordinates are continuously accumulated and thus unbounded.\n
     This means that joint coordinates can increase/decrease indefinitely over time,
@@ -145,7 +145,7 @@ class JointCorrectionMode(IntEnum):
         """
         if self.value == self.TWOPI:
             return float(TWO_PI)
-        elif self.value == self.INDEFINITE:
+        elif self.value == self.CONTINUOUS:
             return float(FLOAT32_MAX)
         elif self.value == self.NONE:
             return float(PI)

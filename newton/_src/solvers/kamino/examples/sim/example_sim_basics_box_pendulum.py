@@ -141,7 +141,7 @@ class Example:
         settings.solver.dual_tolerance = 1e-6
         settings.solver.compl_tolerance = 1e-6
         settings.solver.rho_0 = 0.1
-        settings.rotation_correction = JointCorrectionMode.INDEFINITE
+        settings.rotation_correction = JointCorrectionMode.CONTINUOUS
 
         # Create a simulator
         msg.info("Building the simulator...")

@@ -13,9 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-KAMINO: Kinematics: Limits
-"""
+"""Provides an data types, operations & interfaces for joint-limit detection."""
 
 from dataclasses import dataclass, field
 
@@ -85,25 +83,25 @@ class LimitsData:
 
     model_max_limits: wp.array | None = None
     """
-    The number of active limits per model.\n
+    The maximum number of limits allocated for the model across all worlds.\n
     Shape of ``(1,)`` and type :class:`int32`.
     """
 
     model_num_limits: wp.array | None = None
     """
-    The number of active limits per model.\n
+    The total number of active limits currently active in the model across all worlds.\n
     Shape of ``(1,)`` and type :class:`int32`.
     """
 
     world_max_limits: wp.array | None = None
     """
-    The maximum number of limits per world.\n
+    The maximum number of limits allocated per world.\n
     Shape of ``(num_worlds,)`` and type :class:`int32`.
     """
 
     world_num_limits: wp.array | None = None
     """
-    The number of active limits per world.\n
+    The total number of active limits currently active per world.\n
     Shape of ``(num_worlds,)`` and type :class:`int32`.
     """
 
@@ -169,51 +167,51 @@ class LimitsData:
 
 
 @wp.func
-def map_to_joint_coords_to_dofs_free(q_j: vec7f) -> vec6f:
+def map_joint_coords_to_dofs_free(q_j: vec7f) -> vec6f:
     """Maps free joint quaternion to a local axes-aligned rotation vector."""
     v_j = quat_log(quat_from_vec4(q_j[3:7]))
     return screw(q_j[0:3], v_j)
 
 
 @wp.func
-def map_to_joint_coords_to_dofs_revolute(q_j: vec1f) -> vec1f:
+def map_joint_coords_to_dofs_revolute(q_j: vec1f) -> vec1f:
     """No mapping needed for revolute joints."""
     return q_j
 
 
 @wp.func
-def map_to_joint_coords_to_dofs_prismatic(q_j: vec1f) -> vec1f:
+def map_joint_coords_to_dofs_prismatic(q_j: vec1f) -> vec1f:
     """No mapping needed for prismatic joints."""
     return q_j
 
 
 @wp.func
-def map_to_joint_coords_to_dofs_cylindrical(q_j: vec2f) -> vec2f:
+def map_joint_coords_to_dofs_cylindrical(q_j: vec2f) -> vec2f:
     """No mapping needed for cylindrical joints."""
     return q_j
 
 
 @wp.func
-def map_to_joint_coords_to_dofs_universal(q_j: vec2f) -> vec2f:
+def map_joint_coords_to_dofs_universal(q_j: vec2f) -> vec2f:
     """No mapping needed for universal joints."""
     return q_j
 
 
 @wp.func
-def map_to_joint_coords_to_dofs_spherical(q_j: vec4f) -> vec3f:
+def map_joint_coords_to_dofs_spherical(q_j: vec4f) -> vec3f:
     """Maps quaternion coordinates of a spherical
     joint to a local axes-aligned rotation vector."""
     return quat_log(quat_from_vec4(q_j))
 
 
 @wp.func
-def map_to_joint_coords_to_dofs_gimbal(q_j: vec3f) -> vec3f:
+def map_joint_coords_to_dofs_gimbal(q_j: vec3f) -> vec3f:
     """No mapping needed for gimbal joints."""
     return q_j
 
 
 @wp.func
-def map_to_joint_coords_to_dofs_cartesian(q_j: vec3f) -> vec3f:
+def map_joint_coords_to_dofs_cartesian(q_j: vec3f) -> vec3f:
     """No mapping needed for cartesian joints."""
     return q_j
 
@@ -224,21 +222,21 @@ def get_joint_coords_to_dofs_mapping_function(dof_type: JointDoFType):
     type-specific coordinates to DoF space.
     """
     if dof_type == JointDoFType.FREE:
-        return map_to_joint_coords_to_dofs_free
+        return map_joint_coords_to_dofs_free
     elif dof_type == JointDoFType.REVOLUTE:
-        return map_to_joint_coords_to_dofs_revolute
+        return map_joint_coords_to_dofs_revolute
     elif dof_type == JointDoFType.PRISMATIC:
-        return map_to_joint_coords_to_dofs_prismatic
+        return map_joint_coords_to_dofs_prismatic
     elif dof_type == JointDoFType.CYLINDRICAL:
-        return map_to_joint_coords_to_dofs_cylindrical
+        return map_joint_coords_to_dofs_cylindrical
     elif dof_type == JointDoFType.UNIVERSAL:
-        return map_to_joint_coords_to_dofs_universal
+        return map_joint_coords_to_dofs_universal
     elif dof_type == JointDoFType.SPHERICAL:
-        return map_to_joint_coords_to_dofs_spherical
+        return map_joint_coords_to_dofs_spherical
     elif dof_type == JointDoFType.GIMBAL:
-        return map_to_joint_coords_to_dofs_gimbal
+        return map_joint_coords_to_dofs_gimbal
     elif dof_type == JointDoFType.CARTESIAN:
-        return map_to_joint_coords_to_dofs_cartesian
+        return map_joint_coords_to_dofs_cartesian
     elif dof_type == JointDoFType.FIXED:
         return None
     else:

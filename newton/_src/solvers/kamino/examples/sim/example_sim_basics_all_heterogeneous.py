@@ -14,25 +14,19 @@
 # limitations under the License.
 
 import argparse
-import os
-from dataclasses import dataclass
 
 import numpy as np
-import torch
 import warp as wp
 from warp.context import Devicelike
 
 import newton
 import newton.examples
 from newton._src.solvers.kamino.core.builder import ModelBuilder
-from newton._src.solvers.kamino.core.types import float32, uint32
+from newton._src.solvers.kamino.core.types import float32
 from newton._src.solvers.kamino.examples import run_headless
-from newton._src.solvers.kamino.models import get_basics_usd_assets_path
-from newton._src.solvers.kamino.models.builders import add_ground_geom, build_cartpole
-from newton._src.solvers.kamino.models.utils import make_homogeneous_builder
+from newton._src.solvers.kamino.models.utils import make_heterogeneous_builder
 from newton._src.solvers.kamino.simulation.simulator import Simulator, SimulatorSettings
 from newton._src.solvers.kamino.utils import logger as msg
-from newton._src.solvers.kamino.utils.io.usd import USDImporter
 from newton._src.solvers.kamino.viewer import ViewerKamino
 
 ###
@@ -40,22 +34,6 @@ from newton._src.solvers.kamino.viewer import ViewerKamino
 ###
 
 wp.set_module_options({"enable_backward": False})
-
-
-###
-# RL Interfaces
-###
-
-
-@dataclass
-class CartpoleStates:
-    q_j: torch.Tensor | None = None
-    dq_j: torch.Tensor | None = None
-
-
-@dataclass
-class CartpoleActions:
-    tau_j: torch.Tensor | None = None
 
 
 ###
@@ -71,26 +49,21 @@ def _test_control_callback(
     """
     An example control callback kernel.
     """
-    # Retrieve the world index from the thread ID
-    wid = wp.tid()
+    # Set world index
+    wid = int(0)
 
     # Define the time window for the active external force profile
     t_start = float32(1.0)
-    t_end = float32(3.1)
+    t_end = float32(3.0)
 
     # Get the current time
     t = state_t[wid]
 
     # Apply a time-dependent external force
-    if t >= 0.0 and t < t_start:
-        control_tau_j[wid * 2 + 0] = 1.0 * wp.randf(uint32(wid) + uint32(t), -1.0, 1.0)
-        control_tau_j[wid * 2 + 1] = 0.0
-    elif t > t_start and t < t_end:
-        control_tau_j[wid * 2 + 0] = 10.0
-        control_tau_j[wid * 2 + 1] = 0.0
+    if t > t_start and t < t_end:
+        control_tau_j[0] = 1.0
     else:
-        control_tau_j[wid * 2 + 0] = -10.0
-        control_tau_j[wid * 2 + 1] = 0.0
+        control_tau_j[0] = 0.0
 
 
 ###
@@ -104,7 +77,7 @@ def test_control_callback(sim: Simulator):
     """
     wp.launch(
         _test_control_callback,
-        dim=sim.model.size.num_worlds,
+        dim=1,
         inputs=[
             sim.data.solver.time.time,
             sim.data.control_n.tau_j,
@@ -121,11 +94,8 @@ class Example:
     def __init__(
         self,
         device: Devicelike,
-        num_worlds: int,
         max_steps: int = 1000,
         use_cuda_graph: bool = False,
-        load_from_usd: bool = False,
-        ground: bool = True,
         headless: bool = False,
     ):
         # Initialize target frames per second and corresponding time-steps
@@ -144,45 +114,20 @@ class Example:
         self.use_cuda_graph: bool = use_cuda_graph
 
         # Construct model builder
-        if load_from_usd:
-            msg.notif("Constructing builder from imported USD ...")
-            USD_MODEL_PATH = os.path.join(get_basics_usd_assets_path(), "cartpole.usda")
-            importer = USDImporter()
-            # self.builder: ModelBuilder = importer.import_from(source=USD_MODEL_PATH, load_static_geometry=ground)
-            self.builder: ModelBuilder = make_homogeneous_builder(
-                num_worlds=num_worlds, build_fn=importer.import_from, load_static_geometry=True, source=USD_MODEL_PATH
-            )
-            if ground:
-                for w in range(num_worlds):
-                    add_ground_geom(self.builder, world_index=w)
-        else:
-            msg.notif("Constructing builder using model generator ...")
-            self.builder: ModelBuilder = make_homogeneous_builder(
-                num_worlds=num_worlds, build_fn=build_cartpole, ground=ground
-            )
-
-        # Demo of printing builder contents in debug logging mode
-        msg.info("self.builder.gravity:\n{%s}", self.builder.gravity)
-        msg.info("self.builder.bodies:\n{%s}", self.builder.bodies)
-        msg.info("self.builder.joints:\n{%s}", self.builder.joints)
-        msg.info("self.builder.collision_geoms:\n{%s}", self.builder.collision_geoms)
-        msg.info("self.builder.physical_geoms:\n{%s}", self.builder.physical_geoms)
+        msg.info("Constructing builder using model generator ...")
+        self.builder: ModelBuilder = make_heterogeneous_builder()
 
         # Set solver settings
         settings = SimulatorSettings()
-        settings.dt = self.sim_dt
-        settings.problem.alpha = 0.1
-        settings.problem.beta = 0.1
+        settings.dt = 0.001
         settings.solver.primal_tolerance = 1e-6
         settings.solver.dual_tolerance = 1e-6
         settings.solver.compl_tolerance = 1e-6
-        settings.solver.max_iterations = 200
-        settings.solver.rho_0 = 0.05
+        settings.solver.rho_0 = 0.1
 
         # Create a simulator
-        msg.notif("Building the simulator...")
+        msg.info("Building the simulator...")
         self.sim = Simulator(builder=self.builder, settings=settings, device=device)
-        self.sim.set_control_callback(test_control_callback)
 
         # Initialize the viewer
         if not headless:
@@ -208,48 +153,26 @@ class Example:
         self.step_once()
         self.reset()
 
-        # Declare a PyTorch data interface for the current state and controls data
-        self.states: CartpoleStates | None = None
-        self.actions: CartpoleActions | None = None
-
-        # Initialize RL interfaces
-        self.make_rl_interface()
-
-    def make_rl_interface(self):
-        """
-        Constructs data interfaces for batched MDP states and actions.
-
-        Notes:
-        - Each torch.Tensor wraps the underlying kamino simulator data arrays without copying.
-        """
-        # Retrieve the batched system dimensions
-        num_worlds = self.sim.model.size.num_worlds
-        num_joint_dofs = self.sim.model.size.max_of_num_joint_dofs
-
-        # Construct state and action tensors wrapping the underlying simulator data
-        self.states = CartpoleStates(
-            q_j=wp.to_torch(self.sim.data.state_n.q_j).reshape(num_worlds, num_joint_dofs),
-            dq_j=wp.to_torch(self.sim.data.state_n.dq_j).reshape(num_worlds, num_joint_dofs),
-        )
-        self.actions = CartpoleActions(
-            tau_j=wp.to_torch(self.sim.data.control_n.tau_j).reshape(num_worlds, num_joint_dofs),
-        )
+        # Block waiting for user input before starting simulation
+        if not headless:
+            msg.notif("Press ENTER to start the simulation...")
+            input()
 
     def capture(self):
         """Capture CUDA graph if requested and available."""
         if self.use_cuda_graph:
-            msg.notif("Running with CUDA graphs...")
-            with wp.ScopedCapture(device=self.device) as reset_capture:
+            msg.info("Running with CUDA graphs...")
+            with wp.ScopedCapture(self.device) as reset_capture:
                 self.sim.reset()
             self.reset_graph = reset_capture.graph
-            with wp.ScopedCapture(device=self.device) as step_capture:
+            with wp.ScopedCapture(self.device) as step_capture:
                 self.sim.step()
             self.step_graph = step_capture.graph
-            with wp.ScopedCapture(device=self.device) as sim_capture:
+            with wp.ScopedCapture(self.device) as sim_capture:
                 self.simulate()
             self.simulate_graph = sim_capture.graph
         else:
-            msg.notif("Running with kernels...")
+            msg.info("Running with kernels...")
 
     def simulate(self):
         """Run simulation substeps."""
@@ -299,12 +222,9 @@ class Example:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Cartpole simulation example")
-    parser.add_argument("--headless", action="store_true", default=False, help="Run in headless mode")
-    parser.add_argument("--num-worlds", type=int, default=3, help="Number of worlds to simulate in parallel")
+    parser = argparse.ArgumentParser(description="A demo of all supported joint types.")
     parser.add_argument("--num-steps", type=int, default=1000, help="Number of steps for headless mode")
-    parser.add_argument("--load-from-usd", action="store_true", default=False, help="Load model from USD file")
-    parser.add_argument("--ground", action="store_true", default=False, help="Adds a ground plane to the simulation")
+    parser.add_argument("--headless", action="store_true", default=False, help="Run in headless mode")
     parser.add_argument("--device", type=str, help="The compute device to use")
     parser.add_argument("--cuda-graph", action="store_true", default=True, help="Use CUDA graphs")
     parser.add_argument("--clear-cache", action="store_true", default=False, help="Clear warp cache")
@@ -321,7 +241,7 @@ if __name__ == "__main__":
 
     # TODO: Make optional
     # Set the verbosity of the global message logger
-    msg.set_log_level(msg.LogLevel.NOTIF)
+    msg.set_log_level(msg.LogLevel.INFO)
 
     # Set device if specified, otherwise use Warp's default
     if args.device:
@@ -333,18 +253,15 @@ if __name__ == "__main__":
     # Determine if CUDA graphs should be used for execution
     can_use_cuda_graph = device.is_cuda and wp.is_mempool_enabled(device)
     use_cuda_graph = can_use_cuda_graph & args.cuda_graph
-    msg.notif(f"can_use_cuda_graph: {can_use_cuda_graph}")
-    msg.notif(f"use_cuda_graph: {use_cuda_graph}")
-    msg.notif(f"device: {device}")
+    msg.info(f"can_use_cuda_graph: {can_use_cuda_graph}")
+    msg.info(f"use_cuda_graph: {use_cuda_graph}")
+    msg.info(f"device: {device}")
 
     # Create example instance
     example = Example(
         device=device,
         use_cuda_graph=use_cuda_graph,
-        load_from_usd=args.load_from_usd,
-        num_worlds=args.num_worlds,
         max_steps=args.num_steps,
-        ground=args.ground,
         headless=args.headless,
     )
 
@@ -358,9 +275,9 @@ if __name__ == "__main__":
         msg.notif("Running in Viewer mode...")
         # Set initial camera position for better view of the system
         if hasattr(example.viewer, "set_camera"):
-            camera_pos = wp.vec3(5.0, 5.0, 0.7)
-            pitch = -5.0
-            yaw = 220.0
+            camera_pos = wp.vec3(-6.4, -11.0, 1.5)
+            pitch = -1.5
+            yaw = 92.0
             example.viewer.set_camera(camera_pos, pitch, yaw)
 
         # Launch the example using Newton's built-in runtime

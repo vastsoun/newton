@@ -70,7 +70,7 @@ class Example:
             raise FileNotFoundError(
                 "The USD assets path for example models is missing: `kamino-assets` may not be installed."
             )
-        USD_MODEL_PATH = os.path.join(EXAMPLE_ASSETS_PATH, "dr_legs/dr_legs_with_meshes_and_boxes.usda")
+        USD_MODEL_PATH = os.path.join(EXAMPLE_ASSETS_PATH, "dr_legs/usd/dr_legs_with_meshes_and_boxes.usda")
 
         # Create a model builder from the imported USD
         msg.notif("Constructing builder from imported USD ...")
@@ -129,7 +129,9 @@ class Example:
             self.viewer = None
 
         # Load animation data for dr_legs
-        NUMPY_ANIMATION_PATH = os.path.join(get_examples_usd_assets_path(), "dr_legs/dr_legs_animation_100fps.npy")
+        NUMPY_ANIMATION_PATH = os.path.join(
+            get_examples_usd_assets_path(), "dr_legs/animation/dr_legs_animation_100fps.npy"
+        )
         animation_np = np.load(NUMPY_ANIMATION_PATH, allow_pickle=True)
         msg.debug("animation_np (shape={%s}):\n{%s}\n", animation_np.shape, animation_np)
 

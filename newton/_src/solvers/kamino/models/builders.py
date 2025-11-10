@@ -1779,8 +1779,8 @@ def build_box_pendulum_vertical(
 
 def build_cartpole(
     builder: ModelBuilder | None = None,
-    z_offset: float = 0.0,
-    ground: bool = True,
+    z_offset: float = 0.5,
+    ground: bool = False,
     new_world: bool = True,
     world_index: int = 0,
 ) -> ModelBuilder:
@@ -1891,7 +1891,14 @@ def build_cartpole(
         world_index=world_index,
     )
     _builder.add_collision_geometry(
-        name="rail", layer="world", body=-1, shape=BoxShape(*dims_rail), group=1, collides=1, world_index=world_index
+        name="rail",
+        layer="world",
+        body=-1,
+        shape=BoxShape(*dims_rail),
+        offset=transformf(0.0, 0.0, z_offset, 0.0, 0.0, 0.0, 1.0),
+        group=1,
+        collides=1,
+        world_index=world_index,
     )
 
     # Add a static collision layer and geometry for the plane
@@ -1901,7 +1908,7 @@ def build_cartpole(
             layer="world",
             body=-1,
             shape=BoxShape(20.0, 20.0, 1.0),
-            offset=transformf(0.0, 0.0, -1.0, 0.0, 0.0, 0.0, 1.0),
+            offset=transformf(0.0, 0.0, -0.5, 0.0, 0.0, 0.0, 1.0),
             group=1,
             collides=1,
             world_index=world_index,

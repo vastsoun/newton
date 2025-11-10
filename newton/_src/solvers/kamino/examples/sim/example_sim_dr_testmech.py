@@ -72,7 +72,7 @@ class Example:
             raise FileNotFoundError(
                 "The USD assets path for example models is missing: `kamino-assets` may not be installed."
             )
-        USD_MODEL_PATH = os.path.join(EXAMPLE_ASSETS_PATH, "dr_testmech/dr_testmech.usda")
+        USD_MODEL_PATH = os.path.join(EXAMPLE_ASSETS_PATH, "dr_testmech/usd/dr_testmech.usda")
 
         # Create a single-instance system (always load from USD for DR Test Mechanism)
         msg.notif("Constructing builder from imported USD ...")

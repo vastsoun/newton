@@ -26,6 +26,9 @@ from ....geometry.collision_primitive import (
     collide_capsule_box,
     collide_capsule_capsule,
     collide_plane_box,
+    collide_plane_capsule,
+    collide_plane_cylinder,
+    collide_plane_ellipsoid,
     collide_plane_sphere,
     collide_sphere_box,
     collide_sphere_capsule,
@@ -115,6 +118,15 @@ class Plane:
     pos: vec3f
 
 
+@wp.struct
+class Ellipsoid:
+    bid: int32
+    gid: int32
+    pos: vec3f
+    rot: mat33f
+    size: vec3f
+
+
 @wp.func
 def make_box(pose: transformf, params: vec4f, gid: int32, bid: int32) -> Box:
     box = Box()
@@ -177,6 +189,18 @@ def make_plane(pose: transformf, params: vec4f, gid: int32, bid: int32) -> Plane
     # Plane position is the transform translation
     plane.pos = wp.transform_get_translation(pose)
     return plane
+
+
+@wp.func
+def make_ellipsoid(pose: transformf, params: vec4f, gid: int32, bid: int32) -> Ellipsoid:
+    ellipsoid = Ellipsoid()
+    ellipsoid.bid = bid
+    ellipsoid.gid = gid
+    ellipsoid.pos = wp.transform_get_translation(pose)
+    ellipsoid.rot = wp.quat_to_matrix(wp.transform_get_rotation(pose))
+    # Ellipsoid size (radii) stored in params[0:3]
+    ellipsoid.size = vec3f(params[0], params[1], params[2])
+    return ellipsoid
 
 
 ###
@@ -913,6 +937,205 @@ def plane_box(
     )
 
 
+@wp.func
+def plane_ellipsoid(
+    # Inputs:
+    model_max_contacts_in: int32,
+    world_max_contacts_in: int32,
+    plane_in: Plane,
+    ellipsoid_in: Ellipsoid,
+    wid_in: int32,
+    margin: float32,
+    friction_in: float32,
+    restitution_in: float32,
+    # Contacts out:
+    contacts_model_num_out: wp.array(dtype=int32),
+    contacts_world_num_out: wp.array(dtype=int32),
+    contact_wid_out: wp.array(dtype=int32),
+    contact_cid_out: wp.array(dtype=int32),
+    contact_body_A_out: wp.array(dtype=vec4f),
+    contact_body_B_out: wp.array(dtype=vec4f),
+    contact_gapfunc_out: wp.array(dtype=vec4f),
+    contact_frame_out: wp.array(dtype=mat33f),
+    contact_material_out: wp.array(dtype=vec2f),
+):
+    # Use the tested collision calculation from collision_primitive.py
+    dist, pos, normal = collide_plane_ellipsoid(
+        plane_in.normal, plane_in.pos, ellipsoid_in.pos, ellipsoid_in.rot, ellipsoid_in.size
+    )
+
+    # Add the active contact to the global contacts arrays
+    add_single_contact(
+        model_max_contacts_in,
+        world_max_contacts_in,
+        wid_in,
+        plane_in.bid,
+        ellipsoid_in.bid,
+        margin,
+        dist,
+        pos,
+        normal,
+        friction_in,
+        restitution_in,
+        contacts_model_num_out,
+        contacts_world_num_out,
+        contact_wid_out,
+        contact_cid_out,
+        contact_body_A_out,
+        contact_body_B_out,
+        contact_gapfunc_out,
+        contact_frame_out,
+        contact_material_out,
+    )
+
+
+@wp.func
+def plane_capsule(
+    # Inputs:
+    model_max_contacts_in: int32,
+    world_max_contacts_in: int32,
+    plane_in: Plane,
+    capsule_in: Capsule,
+    wid_in: int32,
+    margin: float32,
+    friction_in: float32,
+    restitution_in: float32,
+    # Contacts out:
+    contacts_model_num_out: wp.array(dtype=int32),
+    contacts_world_num_out: wp.array(dtype=int32),
+    contact_wid_out: wp.array(dtype=int32),
+    contact_cid_out: wp.array(dtype=int32),
+    contact_body_A_out: wp.array(dtype=vec4f),
+    contact_body_B_out: wp.array(dtype=vec4f),
+    contact_gapfunc_out: wp.array(dtype=vec4f),
+    contact_frame_out: wp.array(dtype=mat33f),
+    contact_material_out: wp.array(dtype=vec2f),
+):
+    # Use the tested collision calculation from collision_primitive.py
+    # Note: collide_plane_capsule returns a contact frame, not individual normals
+    distances, positions, frame = collide_plane_capsule(
+        plane_in.normal, plane_in.pos, capsule_in.pos, capsule_in.axis, capsule_in.radius, capsule_in.half_length
+    )
+
+    # Manually add contacts since plane_capsule returns a contact frame instead of normals
+    # Count valid contacts
+    num_contacts = int32(0)
+    for i in range(2):
+        if distances[i] != wp.inf and distances[i] <= margin:
+            num_contacts += 1
+
+    if num_contacts == 0:
+        return
+
+    # Assign body indices
+    if capsule_in.bid < 0:
+        bid_A = capsule_in.bid
+        bid_B = plane_in.bid
+    else:
+        bid_A = plane_in.bid
+        bid_B = capsule_in.bid
+
+    # Increment the active contact counter
+    mcio = wp.atomic_add(contacts_model_num_out, 0, num_contacts)
+    wcio = wp.atomic_add(contacts_world_num_out, wid_in, num_contacts)
+
+    # Retrieve the maximum number of contacts that can be stored
+    max_num_contacts = wp.min(wp.min(model_max_contacts_in - mcio, world_max_contacts_in - wcio), num_contacts)
+
+    # Extract normal from the contact frame (first column)
+    normal = vec3f(frame[0, 0], frame[1, 0], frame[2, 0])
+
+    # Add generated contacts data to the output arrays
+    contact_idx = int32(0)
+    for i in range(2):
+        # Break if we've reached the maximum number of contacts
+        if contact_idx >= max_num_contacts:
+            break
+
+        # If contact is valid, store it
+        if distances[i] != wp.inf and distances[i] <= margin:
+            # Compute the global contact index
+            mcid = mcio + contact_idx
+
+            # Get contact data
+            dist = distances[i]
+            pos = vec3f(positions[i, 0], positions[i, 1], positions[i, 2])
+            dist_abs = wp.abs(dist)
+
+            # Adjust normal direction based on body assignment
+            contact_normal = normal
+            if capsule_in.bid < 0:
+                contact_normal = -contact_normal
+
+            # Offset contact point by penetration depth
+            pos_A = pos + 0.5 * contact_normal * dist_abs
+            pos_B = pos - 0.5 * contact_normal * dist_abs
+
+            # Store contact data
+            contact_wid_out[mcid] = wid_in
+            contact_cid_out[mcid] = wcio + contact_idx
+            contact_body_A_out[mcid] = vec4f(pos_A[0], pos_A[1], pos_A[2], float32(bid_A))
+            contact_body_B_out[mcid] = vec4f(pos_B[0], pos_B[1], pos_B[2], float32(bid_B))
+            contact_gapfunc_out[mcid] = vec4f(contact_normal[0], contact_normal[1], contact_normal[2], dist)
+            contact_frame_out[mcid] = frame
+            contact_material_out[mcid] = vec2f(friction_in, restitution_in)
+
+            # Increment active contact index
+            contact_idx += 1
+
+
+@wp.func
+def plane_cylinder(
+    # Inputs:
+    model_max_contacts_in: int32,
+    world_max_contacts_in: int32,
+    plane_in: Plane,
+    cylinder_in: Cylinder,
+    wid_in: int32,
+    margin: float32,
+    friction_in: float32,
+    restitution_in: float32,
+    # Contacts out:
+    contacts_model_num_out: wp.array(dtype=int32),
+    contacts_world_num_out: wp.array(dtype=int32),
+    contact_wid_out: wp.array(dtype=int32),
+    contact_cid_out: wp.array(dtype=int32),
+    contact_body_A_out: wp.array(dtype=vec4f),
+    contact_body_B_out: wp.array(dtype=vec4f),
+    contact_gapfunc_out: wp.array(dtype=vec4f),
+    contact_frame_out: wp.array(dtype=mat33f),
+    contact_material_out: wp.array(dtype=vec2f),
+):
+    # Use the tested collision calculation from collision_primitive.py
+    distances, positions, normal = collide_plane_cylinder(
+        plane_in.normal, plane_in.pos, cylinder_in.pos, cylinder_in.axis, cylinder_in.radius, cylinder_in.half_height
+    )
+
+    # Add the active contacts to the global contacts arrays (up to 4 contacts with shared normal)
+    wp.static(make_add_multiple_contacts(4, True))(
+        model_max_contacts_in,
+        world_max_contacts_in,
+        wid_in,
+        plane_in.bid,
+        cylinder_in.bid,
+        margin,
+        distances,
+        positions,
+        normal,
+        friction_in,
+        restitution_in,
+        contacts_model_num_out,
+        contacts_world_num_out,
+        contact_wid_out,
+        contact_cid_out,
+        contact_body_A_out,
+        contact_body_B_out,
+        contact_gapfunc_out,
+        contact_frame_out,
+        contact_material_out,
+    )
+
+
 ###
 # Kernels
 ###
@@ -1187,6 +1410,69 @@ def _primitive_narrowphase(
             world_max_contacts,
             make_plane(geom_pose_in[gid1], geom_params_in[gid1], gid1, bid1),
             make_box(geom_pose_in[gid2], geom_params_in[gid2], gid2, bid2),
+            wid,
+            DEFAULT_MARGIN,
+            float32(0.7),
+            float32(0.0),
+            contacts_model_num_out,
+            contacts_world_num_out,
+            contacts_wid_out,
+            contacts_cid_out,
+            contacts_body_A_out,
+            contacts_body_B_out,
+            contacts_gapfunc_out,
+            contacts_frame_out,
+            contacts_material_out,
+        )
+
+    elif sid1 == int32(ShapeType.PLANE.value) and sid2 == int32(ShapeType.ELLIPSOID.value):
+        plane_ellipsoid(
+            model_max_contacts,
+            world_max_contacts,
+            make_plane(geom_pose_in[gid1], geom_params_in[gid1], gid1, bid1),
+            make_ellipsoid(geom_pose_in[gid2], geom_params_in[gid2], gid2, bid2),
+            wid,
+            DEFAULT_MARGIN,
+            float32(0.7),
+            float32(0.0),
+            contacts_model_num_out,
+            contacts_world_num_out,
+            contacts_wid_out,
+            contacts_cid_out,
+            contacts_body_A_out,
+            contacts_body_B_out,
+            contacts_gapfunc_out,
+            contacts_frame_out,
+            contacts_material_out,
+        )
+
+    elif sid1 == int32(ShapeType.PLANE.value) and sid2 == int32(ShapeType.CAPSULE.value):
+        plane_capsule(
+            model_max_contacts,
+            world_max_contacts,
+            make_plane(geom_pose_in[gid1], geom_params_in[gid1], gid1, bid1),
+            make_capsule(geom_pose_in[gid2], geom_params_in[gid2], gid2, bid2),
+            wid,
+            DEFAULT_MARGIN,
+            float32(0.7),
+            float32(0.0),
+            contacts_model_num_out,
+            contacts_world_num_out,
+            contacts_wid_out,
+            contacts_cid_out,
+            contacts_body_A_out,
+            contacts_body_B_out,
+            contacts_gapfunc_out,
+            contacts_frame_out,
+            contacts_material_out,
+        )
+
+    elif sid1 == int32(ShapeType.PLANE.value) and sid2 == int32(ShapeType.CYLINDER.value):
+        plane_cylinder(
+            model_max_contacts,
+            world_max_contacts,
+            make_plane(geom_pose_in[gid1], geom_params_in[gid1], gid1, bid1),
+            make_cylinder(geom_pose_in[gid2], geom_params_in[gid2], gid2, bid2),
             wid,
             DEFAULT_MARGIN,
             float32(0.7),

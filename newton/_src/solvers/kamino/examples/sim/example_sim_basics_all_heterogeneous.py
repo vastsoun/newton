@@ -153,11 +153,6 @@ class Example:
         self.step_once()
         self.reset()
 
-        # Block waiting for user input before starting simulation
-        if not headless:
-            msg.notif("Press ENTER to start the simulation...")
-            input()
-
     def capture(self):
         """Capture CUDA graph if requested and available."""
         if self.use_cuda_graph:

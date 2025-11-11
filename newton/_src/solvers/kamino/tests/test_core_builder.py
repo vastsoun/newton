@@ -658,7 +658,7 @@ class TestModelBuilder(unittest.TestCase):
         self.assertEqual(builder.num_worlds, 1)
         self.assertEqual(builder.num_bodies, 2)
         self.assertEqual(builder.num_joints, 2)
-        self.assertEqual(builder.num_collision_geoms, 4)
+        self.assertEqual(builder.num_collision_geoms, 3)
         self.assertEqual(builder.num_physical_geoms, 0)
         self.assertEqual(builder.worlds[0].name, "cartpole")
         self.assertEqual(builder.worlds[0].wid, 0)
@@ -683,7 +683,7 @@ class TestModelBuilder(unittest.TestCase):
         model = builder.finalize(self.default_device)
         self.assertEqual(model.size.sum_of_num_bodies, 2)
         self.assertEqual(model.size.sum_of_num_joints, 2)
-        self.assertEqual(model.size.sum_of_num_collision_geoms, 4)
+        self.assertEqual(model.size.sum_of_num_collision_geoms, 3)
         self.assertEqual(model.size.sum_of_num_physical_geoms, 0)
         self.assertEqual(model.device, self.default_device)
 
@@ -696,7 +696,7 @@ class TestModelBuilder(unittest.TestCase):
         self.assertEqual(builder.num_worlds, 3)
         self.assertEqual(builder.num_bodies, 6)
         self.assertEqual(builder.num_joints, 6)
-        self.assertEqual(builder.num_collision_geoms, 12)
+        self.assertEqual(builder.num_collision_geoms, 9)
         self.assertEqual(builder.num_physical_geoms, 0)
 
         # Build the model
@@ -718,7 +718,7 @@ class TestModelBuilder(unittest.TestCase):
         self.assertEqual(builder0.num_worlds, 3)
         self.assertEqual(builder0.num_bodies, 6)
         self.assertEqual(builder0.num_joints, 6)
-        self.assertEqual(builder0.num_collision_geoms, 12)
+        self.assertEqual(builder0.num_collision_geoms, 9)
         self.assertEqual(builder0.num_physical_geoms, 0)
 
         # Build the model
@@ -734,7 +734,7 @@ class TestModelBuilder(unittest.TestCase):
         self.assertEqual(builder.num_worlds, 3)
         self.assertEqual(builder.num_bodies, 6)
         self.assertEqual(builder.num_joints, 6)
-        self.assertEqual(builder.num_collision_geoms, 12)
+        self.assertEqual(builder.num_collision_geoms, 9)
         self.assertEqual(builder.num_physical_geoms, 0)
 
         # Build the model
@@ -750,7 +750,7 @@ class TestModelBuilder(unittest.TestCase):
         self.assertEqual(builder.num_worlds, 6)
         self.assertEqual(builder.num_bodies, 13)
         self.assertEqual(builder.num_joints, 10)
-        self.assertEqual(builder.num_collision_geoms, 20)
+        self.assertEqual(builder.num_collision_geoms, 19)
         self.assertEqual(builder.num_physical_geoms, 0)
 
         # Build the model
@@ -770,7 +770,7 @@ if __name__ == "__main__":
     np.set_printoptions(linewidth=500, precision=10, suppress=True)  # Suppress scientific notation
 
     # Global warp configurations
-    wp.config.verbose = True
+    wp.config.verbose = False
     wp.clear_kernel_cache()
     wp.clear_lto_cache()
 

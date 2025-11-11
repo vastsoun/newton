@@ -979,7 +979,7 @@ class TestUSDImporter(unittest.TestCase):
         )
 
         # Construct a reference builder using the basics generators
-        builder_ref = build_cartpole(ground=False)
+        builder_ref = build_cartpole(z_offset=0.0, ground=False)
 
         # Check the loaded contents against the reference builder
         assert_builders_equal(self, builder_usd, builder_ref)
@@ -993,7 +993,7 @@ class TestUSDImporter(unittest.TestCase):
         if self.EXAMPLES_USD_ASSETS_PATH is None:
             self.skipTest("EXAMPLES_USD_ASSETS_PATH is `None` - skipping `DR Test Mechanism` import test.")
         print("")  # Add a newline for better readability
-        usd_asset_filename = os.path.join(self.EXAMPLES_USD_ASSETS_PATH, "dr_testmech/dr_testmech.usda")
+        usd_asset_filename = os.path.join(self.EXAMPLES_USD_ASSETS_PATH, "dr_testmech/usd/dr_testmech.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
@@ -1036,7 +1036,7 @@ class TestUSDImporter(unittest.TestCase):
         if self.EXAMPLES_USD_ASSETS_PATH is None:
             self.skipTest("EXAMPLES_USD_ASSETS_PATH is `None` - skipping `DR Legs` import test.")
         print("")  # Add a newline for better readability
-        usd_asset_filename = os.path.join(self.EXAMPLES_USD_ASSETS_PATH, "dr_legs/dr_legs.usda")
+        usd_asset_filename = os.path.join(self.EXAMPLES_USD_ASSETS_PATH, "dr_legs/usd/dr_legs.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
@@ -1050,7 +1050,7 @@ class TestUSDImporter(unittest.TestCase):
         if self.EXAMPLES_USD_ASSETS_PATH is None:
             self.skipTest("EXAMPLES_USD_ASSETS_PATH is `None` - skipping `DR Legs` import test.")
         print("")  # Add a newline for better readability
-        usd_asset_filename = os.path.join(self.EXAMPLES_USD_ASSETS_PATH, "dr_legs/dr_legs_with_boxes.usda")
+        usd_asset_filename = os.path.join(self.EXAMPLES_USD_ASSETS_PATH, "dr_legs/usd/dr_legs_with_boxes.usda")
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
@@ -1064,7 +1064,9 @@ class TestUSDImporter(unittest.TestCase):
         if self.EXAMPLES_USD_ASSETS_PATH is None:
             self.skipTest("EXAMPLES_USD_ASSETS_PATH is `None` - skipping `DR Legs` import test.")
         print("")  # Add a newline for better readability
-        usd_asset_filename = os.path.join(self.EXAMPLES_USD_ASSETS_PATH, "dr_legs/dr_legs_with_meshes_and_boxes.usda")
+        usd_asset_filename = os.path.join(
+            self.EXAMPLES_USD_ASSETS_PATH, "dr_legs/usd/dr_legs_with_meshes_and_boxes.usda"
+        )
         importer = USDImporter()
         builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents

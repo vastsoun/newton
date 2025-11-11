@@ -64,8 +64,8 @@ class TestAnimationJointReference(unittest.TestCase):
             self.skipTest("EXAMPLES_USD_ASSETS_PATH is `None` - skipping `DR Legs` import test.")
 
         # Set paths to model and animation data
-        USD_MODEL_PATH = os.path.join(EXAMPLES_USD_ASSETS_PATH, "dr_legs/dr_legs_with_boxes.usda")
-        NUMPY_ANIMATION_PATH = os.path.join(EXAMPLES_USD_ASSETS_PATH, "dr_legs/dr_legs_animation_100fps.npy")
+        USD_MODEL_PATH = os.path.join(EXAMPLES_USD_ASSETS_PATH, "dr_legs/usd/dr_legs_with_boxes.usda")
+        NUMPY_ANIMATION_PATH = os.path.join(EXAMPLES_USD_ASSETS_PATH, "dr_legs/animation/dr_legs_animation_100fps.npy")
 
         # Import USD model of DR Legs
         importer = USDImporter()
@@ -170,8 +170,8 @@ class TestAnimationJointReference(unittest.TestCase):
             self.skipTest("EXAMPLES_USD_ASSETS_PATH is `None` - skipping `DR Legs` import test.")
 
         # Set paths to model and animation data
-        USD_MODEL_PATH = os.path.join(EXAMPLES_USD_ASSETS_PATH, "dr_legs/dr_legs_with_boxes.usda")
-        NUMPY_ANIMATION_PATH = os.path.join(EXAMPLES_USD_ASSETS_PATH, "dr_legs/dr_legs_animation_100fps.npy")
+        USD_MODEL_PATH = os.path.join(EXAMPLES_USD_ASSETS_PATH, "dr_legs/usd/dr_legs_with_boxes.usda")
+        NUMPY_ANIMATION_PATH = os.path.join(EXAMPLES_USD_ASSETS_PATH, "dr_legs/animation/dr_legs_animation_100fps.npy")
 
         # Import USD model of DR Legs
         importer = USDImporter()
@@ -313,8 +313,8 @@ class TestAnimationJointReference(unittest.TestCase):
         if EXAMPLES_USD_ASSETS_PATH is None:
             self.skipTest("EXAMPLES_USD_ASSETS_PATH is `None` - skipping `DR Legs` import test.")
         # Set paths to DR Legs model and animation data
-        USD_MODEL_PATH = os.path.join(EXAMPLES_USD_ASSETS_PATH, "dr_legs/dr_legs_with_boxes.usda")
-        NUMPY_ANIMATION_PATH = os.path.join(EXAMPLES_USD_ASSETS_PATH, "dr_legs/dr_legs_animation_100fps.npy")
+        USD_MODEL_PATH = os.path.join(EXAMPLES_USD_ASSETS_PATH, "dr_legs/usd/dr_legs_with_boxes.usda")
+        NUMPY_ANIMATION_PATH = os.path.join(EXAMPLES_USD_ASSETS_PATH, "dr_legs/animation/dr_legs_animation_100fps.npy")
 
         # Import USD model of DR Legs
         importer = USDImporter()
@@ -456,8 +456,8 @@ class TestAnimationJointReference(unittest.TestCase):
         if EXAMPLES_USD_ASSETS_PATH is None:
             self.skipTest("EXAMPLES_USD_ASSETS_PATH is `None` - skipping `DR Legs` import test.")
         # Set paths to DR Legs model and animation data
-        USD_MODEL_PATH = os.path.join(EXAMPLES_USD_ASSETS_PATH, "dr_legs/dr_legs_with_boxes.usda")
-        NUMPY_ANIMATION_PATH = os.path.join(EXAMPLES_USD_ASSETS_PATH, "dr_legs/dr_legs_animation_100fps.npy")
+        USD_MODEL_PATH = os.path.join(EXAMPLES_USD_ASSETS_PATH, "dr_legs/usd/dr_legs_with_boxes.usda")
+        NUMPY_ANIMATION_PATH = os.path.join(EXAMPLES_USD_ASSETS_PATH, "dr_legs/animation/dr_legs_animation_100fps.npy")
 
         # Import USD model of DR Legs
         importer = USDImporter()
@@ -570,7 +570,7 @@ if __name__ == "__main__":
     np.set_printoptions(linewidth=500, precision=10, suppress=True)  # Suppress scientific notation
 
     # Global warp configurations
-    wp.config.verbose = True
+    wp.config.verbose = False
     wp.clear_kernel_cache()
     wp.clear_lto_cache()
 

@@ -39,22 +39,6 @@ from ..core.types import (
     vec4f,
 )
 from ..geometry.contacts import Contacts, ContactsData
-from ..kinematics.joints import (
-    S_cts_cartesian,
-    S_cts_cylindrical,
-    S_cts_fixed,
-    S_cts_prismatic,
-    S_cts_revolute,
-    S_cts_spherical,
-    S_cts_universal,
-    S_dofs_cartesian,
-    S_dofs_cylindrical,
-    S_dofs_free,
-    S_dofs_prismatic,
-    S_dofs_revolute,
-    S_dofs_spherical,
-    S_dofs_universal,
-)
 from ..kinematics.limits import Limits, LimitsData
 
 ###
@@ -91,7 +75,7 @@ W_C_I = wp.constant(mat63f(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0)
 ###
 
 
-def make_store_joint_jacobian_func(selection: Any):
+def make_store_joint_jacobian_func(axes: Any):
     """
     Generates a warp function to store body-pair Jacobian blocks into a target flat
     data array given a vector of Jacobian row indices (i.e. selection vector).
@@ -125,7 +109,7 @@ def make_store_joint_jacobian_func(selection: Any):
         """
         # Set the number of rows in the output Jacobian block
         # NOTE: This is evaluated statically at compile time
-        num_jac_rows = wp.static(len(selection))
+        num_jac_rows = wp.static(len(axes))
 
         # Append the row offset to the Jacobian matrix block offset
         # NOTE: This sets the adjusts the start index to the first target row
@@ -136,7 +120,7 @@ def make_store_joint_jacobian_func(selection: Any):
         for j in range(num_jac_rows):
             kj = J_offset_F + row_size * j
             for i in range(6):
-                J_data[kj + i] = JT_F_j[i, selection[j]]
+                J_data[kj + i] = JT_F_j[i, axes[j]]
 
         # If the base body is not the world (:= -1), store the respective Jacobian block
         if bid_B > -1:
@@ -144,53 +128,10 @@ def make_store_joint_jacobian_func(selection: Any):
             for j in range(num_jac_rows):
                 kj = J_offset_B + row_size * j
                 for i in range(6):
-                    J_data[kj + i] = JT_B_j[i, selection[j]]
+                    J_data[kj + i] = JT_B_j[i, axes[j]]
 
     # Return the function
     return store_joint_jacobian
-
-
-store_joint_cts_jacobian_fixed = make_store_joint_jacobian_func(S_cts_fixed)
-"""Function to store the constraint Jacobian block for 0-DoF fixed joints."""
-
-store_joint_cts_jacobian_revolute = make_store_joint_jacobian_func(S_cts_revolute)
-"""Function to store the constraint Jacobian block for 1-DoF revolute joints."""
-
-store_joint_cts_jacobian_prismatic = make_store_joint_jacobian_func(S_cts_prismatic)
-"""Function to store the constraint Jacobian block for 1-DoF prismatic joints."""
-
-store_joint_cts_jacobian_cylindrical = make_store_joint_jacobian_func(S_cts_cylindrical)
-"""Function to store the constraint Jacobian block for 2-DoF cylindrical joints."""
-
-store_joint_cts_jacobian_universal = make_store_joint_jacobian_func(S_cts_universal)
-"""Function to store the constraint Jacobian block for 2-DoF universal joints."""
-
-store_joint_cts_jacobian_spherical = make_store_joint_jacobian_func(S_cts_spherical)
-"""Function to store the constraint Jacobian block for 3-DoF spherical joints."""
-
-store_joint_cts_jacobian_cartesian = make_store_joint_jacobian_func(S_cts_cartesian)
-"""Function to store the constraint Jacobian block for 3-DoF cartesian joints."""
-
-store_joint_dofs_jacobian_revolute = make_store_joint_jacobian_func(S_dofs_revolute)
-"""Function to store the actuation Jacobian block for 1-DoF revolute joints."""
-
-store_joint_dofs_jacobian_prismatic = make_store_joint_jacobian_func(S_dofs_prismatic)
-"""Function to store the actuation Jacobian block for 1-DoF prismatic joints."""
-
-store_joint_dofs_jacobian_cylindrical = make_store_joint_jacobian_func(S_dofs_cylindrical)
-"""Function to store the actuation Jacobian block for 2-DoF cylindrical joints."""
-
-store_joint_dofs_jacobian_universal = make_store_joint_jacobian_func(S_dofs_universal)
-"""Function to store the actuation Jacobian block for 2-DoF universal joints."""
-
-store_joint_dofs_jacobian_spherical = make_store_joint_jacobian_func(S_dofs_spherical)
-"""Function to store the actuation Jacobian block for 3-DoF spherical joints."""
-
-store_joint_dofs_jacobian_cartesian = make_store_joint_jacobian_func(S_dofs_cartesian)
-"""Function to store the actuation Jacobian block for 3-DoF cartesian joints."""
-
-store_joint_dofs_jacobian_free = make_store_joint_jacobian_func(S_dofs_free)
-"""Function to store the actuation Jacobian block for 6-DoF free joints."""
 
 
 @wp.func
@@ -211,37 +152,42 @@ def store_joint_cts_jacobian(
     """
 
     if dof_type == JointDoFType.REVOLUTE:
-        store_joint_cts_jacobian_revolute(
+        wp.static(make_store_joint_jacobian_func(JointDoFType.REVOLUTE.cts_axes))(
             J_cts_offset, cts_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_cts_data
         )
 
     elif dof_type == JointDoFType.PRISMATIC:
-        store_joint_cts_jacobian_prismatic(
+        wp.static(make_store_joint_jacobian_func(JointDoFType.PRISMATIC.cts_axes))(
             J_cts_offset, cts_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_cts_data
         )
 
     elif dof_type == JointDoFType.CYLINDRICAL:
-        store_joint_cts_jacobian_cylindrical(
+        wp.static(make_store_joint_jacobian_func(JointDoFType.CYLINDRICAL.cts_axes))(
             J_cts_offset, cts_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_cts_data
         )
 
     elif dof_type == JointDoFType.UNIVERSAL:
-        store_joint_cts_jacobian_universal(
+        wp.static(make_store_joint_jacobian_func(JointDoFType.UNIVERSAL.cts_axes))(
             J_cts_offset, cts_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_cts_data
         )
 
     elif dof_type == JointDoFType.SPHERICAL:
-        store_joint_cts_jacobian_spherical(
+        wp.static(make_store_joint_jacobian_func(JointDoFType.SPHERICAL.cts_axes))(
+            J_cts_offset, cts_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_cts_data
+        )
+
+    elif dof_type == JointDoFType.GIMBAL:
+        wp.static(make_store_joint_jacobian_func(JointDoFType.GIMBAL.cts_axes))(
             J_cts_offset, cts_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_cts_data
         )
 
     elif dof_type == JointDoFType.CARTESIAN:
-        store_joint_cts_jacobian_cartesian(
+        wp.static(make_store_joint_jacobian_func(JointDoFType.CARTESIAN.cts_axes))(
             J_cts_offset, cts_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_cts_data
         )
 
     elif dof_type == JointDoFType.FIXED:
-        store_joint_cts_jacobian_fixed(
+        wp.static(make_store_joint_jacobian_func(JointDoFType.FIXED.cts_axes))(
             J_cts_offset, cts_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_cts_data
         )
 
@@ -264,37 +210,42 @@ def store_joint_dofs_jacobian(
     """
 
     if dof_type == JointDoFType.REVOLUTE:
-        store_joint_dofs_jacobian_revolute(
+        wp.static(make_store_joint_jacobian_func(JointDoFType.REVOLUTE.dofs_axes))(
             J_dofs_offset, dofs_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_dofs_data
         )
 
     elif dof_type == JointDoFType.PRISMATIC:
-        store_joint_dofs_jacobian_prismatic(
+        wp.static(make_store_joint_jacobian_func(JointDoFType.PRISMATIC.dofs_axes))(
             J_dofs_offset, dofs_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_dofs_data
         )
 
     elif dof_type == JointDoFType.CYLINDRICAL:
-        store_joint_dofs_jacobian_cylindrical(
+        wp.static(make_store_joint_jacobian_func(JointDoFType.CYLINDRICAL.dofs_axes))(
             J_dofs_offset, dofs_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_dofs_data
         )
 
     elif dof_type == JointDoFType.UNIVERSAL:
-        store_joint_dofs_jacobian_universal(
+        wp.static(make_store_joint_jacobian_func(JointDoFType.UNIVERSAL.dofs_axes))(
             J_dofs_offset, dofs_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_dofs_data
         )
 
     elif dof_type == JointDoFType.SPHERICAL:
-        store_joint_dofs_jacobian_spherical(
+        wp.static(make_store_joint_jacobian_func(JointDoFType.SPHERICAL.dofs_axes))(
+            J_dofs_offset, dofs_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_dofs_data
+        )
+
+    elif dof_type == JointDoFType.GIMBAL:
+        wp.static(make_store_joint_jacobian_func(JointDoFType.GIMBAL.dofs_axes))(
             J_dofs_offset, dofs_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_dofs_data
         )
 
     elif dof_type == JointDoFType.CARTESIAN:
-        store_joint_dofs_jacobian_cartesian(
+        wp.static(make_store_joint_jacobian_func(JointDoFType.CARTESIAN.dofs_axes))(
             J_dofs_offset, dofs_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_dofs_data
         )
 
     elif dof_type == JointDoFType.FREE:
-        store_joint_dofs_jacobian_free(
+        wp.static(make_store_joint_jacobian_func(JointDoFType.FREE.dofs_axes))(
             J_dofs_offset, dofs_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_dofs_data
         )
 
@@ -358,7 +309,8 @@ def contact_wrench_matrix_from_points(r_k: vec3f, r_i: vec3f) -> mat63f:
 @wp.func
 def expand6d(X: mat33f) -> mat66f:
     """
-    Expands a 3x3 rotation matrix to a 6x6 matrix operator by filling the upper left and lower right blocks with the input matrix.
+    Expands a 3x3 rotation matrix to a 6x6 matrix operator by filling
+    the upper left and lower right blocks with the input matrix.
 
     Args:
         X (mat33f): The 3x3 matrix to be expanded.

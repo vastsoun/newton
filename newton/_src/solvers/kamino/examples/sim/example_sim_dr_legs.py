@@ -22,7 +22,6 @@ import warp as wp
 from warp.context import Devicelike
 
 import newton
-import newton._src.solvers.kamino.utils.logger as msg
 import newton.examples
 from newton._src.solvers.kamino.control.animation import AnimationJointReference
 from newton._src.solvers.kamino.control.pid import JointSpacePIDController
@@ -31,6 +30,7 @@ from newton._src.solvers.kamino.examples import get_examples_output_path, run_he
 from newton._src.solvers.kamino.models import get_examples_usd_assets_path
 from newton._src.solvers.kamino.models.builders import add_body_pose_offset, add_ground_geom
 from newton._src.solvers.kamino.simulation.simulator import Simulator, SimulatorSettings
+from newton._src.solvers.kamino.utils import logger as msg
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
 from newton._src.solvers.kamino.viewer import ViewerKamino
 
@@ -70,7 +70,7 @@ class Example:
             raise FileNotFoundError(
                 "The USD assets path for example models is missing: `kamino-assets` may not be installed."
             )
-        USD_MODEL_PATH = os.path.join(EXAMPLE_ASSETS_PATH, "dr_legs/dr_legs_with_meshes_and_boxes.usda")
+        USD_MODEL_PATH = os.path.join(EXAMPLE_ASSETS_PATH, "dr_legs/usd/dr_legs_with_meshes_and_boxes.usda")
 
         # Create a model builder from the imported USD
         msg.notif("Constructing builder from imported USD ...")
@@ -129,7 +129,9 @@ class Example:
             self.viewer = None
 
         # Load animation data for dr_legs
-        NUMPY_ANIMATION_PATH = os.path.join(get_examples_usd_assets_path(), "dr_legs/dr_legs_animation_100fps.npy")
+        NUMPY_ANIMATION_PATH = os.path.join(
+            get_examples_usd_assets_path(), "dr_legs/animation/dr_legs_animation_100fps.npy"
+        )
         animation_np = np.load(NUMPY_ANIMATION_PATH, allow_pickle=True)
         msg.debug("animation_np (shape={%s}):\n{%s}\n", animation_np.shape, animation_np)
 

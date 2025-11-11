@@ -32,7 +32,7 @@ __all__ = [
 
 
 def get_examples_usd_assets_path() -> str | None:
-    path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "assets/examples/usd")
+    path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "assets/examples")
     if not os.path.exists(path):
         return None
     return path

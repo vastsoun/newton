@@ -95,19 +95,38 @@ class DualProblemSettings:
     """
 
     alpha: float = 0.01
-    """Baumgarte stabilization parameter for bilateral joint constraints."""
+    """
+    Global default Baumgarte stabilization parameter for bilateral joint constraints.\n
+    Must be in range ``[0, 1.0]``.\n
+    Defaults to ``0.01``.
+    """
 
     beta: float = 0.01
-    """Baumgarte stabilization parameter for unilateral joint limit constraints."""
+    """
+    Global default Baumgarte stabilization parameter for unilateral joint-limit constraints.\n
+    Must be in range ``[0, 1.0]``.\n
+    Defaults to ``0.01``.
+    """
 
     gamma: float = 0.01
-    """Baumgarte stabilization parameter for unilateral contact constraints."""
+    """
+    Global default Baumgarte stabilization parameter for unilateral contact constraints.\n
+    Must be in range ``[0, 1.0]``.\n
+    Defaults to ``0.01``.
+    """
 
     delta: float = 1.0e-6
-    """Contact penetration margin used for unilateral contact constraints"""
+    """
+    Contact penetration margin used for unilateral contact constraints.\n
+    Must be non-negative.\n
+    Defaults to ``1.0e-6``.
+    """
 
     use_preconditioning: bool = True
-    """Set to True to enable preconditioning of the dual problem."""
+    """
+    Set to ``True`` to enable preconditioning of the dual problem.
+    Defaults to ``True``.
+    """
 
     def check(self) -> None:
         """

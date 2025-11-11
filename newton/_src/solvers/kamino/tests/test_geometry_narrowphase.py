@@ -20,7 +20,6 @@ import unittest
 import numpy as np
 import warp as wp
 
-import newton._src.solvers.kamino.utils.logger as msg
 from newton._src.solvers.kamino.core import ModelBuilder
 from newton._src.solvers.kamino.core.geometry import update_collision_geometries_state
 from newton._src.solvers.kamino.core.shapes import (
@@ -32,6 +31,7 @@ from newton._src.solvers.kamino.geometry.broadphase import nxn_broadphase
 from newton._src.solvers.kamino.geometry.collisions import Collisions
 from newton._src.solvers.kamino.geometry.contacts import Contacts
 from newton._src.solvers.kamino.geometry.primitives import primitive_narrowphase
+from newton._src.solvers.kamino.utils import logger as msg
 
 ###
 # Builders

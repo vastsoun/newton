@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import numpy as np
 import warp as wp
+from warp._src.types import Any, Float
 
 from .types import (
     float32,
@@ -31,6 +32,7 @@ from .types import (
     mat66f,
     quatf,
     vec3f,
+    vec4f,
     vec6f,
 )
 
@@ -88,6 +90,16 @@ I_6 = wp.constant(
     mat66f(1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1)
 )
 """ The 6x6 identity matrix."""
+
+
+###
+# General-purpose functions
+###
+
+
+@wp.func
+def squared_norm(x: Any) -> Float:
+    return wp.dot(x, x)
 
 
 ###
@@ -217,6 +229,22 @@ def H_of(q: quatf) -> mat34f:
 
 
 @wp.func
+def quat_from_vec4(v: vec4f) -> quatf:
+    """
+    Convert a vec4f to a quaternion type.
+    """
+    return quatf(v[0], v[1], v[2], v[3])
+
+
+@wp.func
+def quat_to_vec4(q: quatf) -> vec4f:
+    """
+    Convert a quaternion type to a vec4f.
+    """
+    return vec4f(q.x, q.y, q.z, q.w)
+
+
+@wp.func
 def quat_conj(q: quatf) -> quatf:
     """
     Compute the conjugate of a quaternion.
@@ -280,7 +308,8 @@ def quat_derivative(q: quatf, omega: vec3f) -> quatf:
 @wp.func
 def quat_log(q: quatf) -> vec3f:
     """
-    Computes the logarithm of a quaternion using the stable 4 * atan() formulation to render a rotation vector.
+    Computes the logarithm of a quaternion using the stable
+    `4 * atan()` formulation to render a rotation vector.
     """
     p = quat_positive(q)
     pv = quat_imaginary(p)
@@ -302,6 +331,39 @@ def quat_log(q: quatf) -> vec3f:
 
     # Return the scaled imaginary part of the quaternion
     return c * pv
+
+
+@wp.func
+def quat_log_decomposed(q: quatf) -> vec4f:
+    """
+    Computes the logarithm of a quaternion using the stable
+    `4 * atan()` formulation to render an angle-axis vector.
+
+    The output is a vec4f with the following format:
+        - `a = [x, y, z, c]` is the angle-axis output
+        - `[x, y, z]` is the axis of rotation
+        - `c` is the angle.
+    """
+    p = quat_positive(q)
+    pv = quat_imaginary(p)
+    pv_norm_sq = wp.dot(pv, pv)
+    pw_sq = p.w * p.w
+    pv_norm = wp.sqrt(pv_norm_sq)
+
+    # Check if the norm of the imaginary part is infinitesimal
+    if pv_norm_sq > FLOAT32_EPS:
+        # Regular solution for larger angles
+        # Use more stable 4 * atan() formulation over the 2 * atan(pv_norm / pw)
+        # TODO: angle = 4.0 * wp.atan2(pv_norm, (p.w + wp.sqrt(pw_sq + pv_norm_sq)))
+        angle = 4.0 * wp.atan(pv_norm / (p.w + wp.sqrt(pw_sq + pv_norm_sq)))
+        c = angle / pv_norm
+    else:
+        # Taylor expansion solution for small angles
+        # For the alternative branch use the limit of angle / pv_norm for angle -> 0.0
+        c = (2.0 - wp.static(2.0 / 3.0) * (pv_norm_sq / pw_sq)) / p.w
+
+    # Return the scaled imaginary part of the quaternion
+    return vec4f(pv.x, pv.y, pv.z, c)
 
 
 @wp.func
@@ -395,6 +457,24 @@ def quat_from_z_rot(angle_rad: float32) -> quatf:
     Computes a unit quaternion corresponding to rotation by given angle about the z axis
     """
     return wp.quatf(0.0, 0.0, wp.sin(0.5 * angle_rad), wp.cos(0.5 * angle_rad))
+
+
+@wp.func
+def quat_to_euler_xyz(q: quatf) -> vec3f:
+    """
+    Converts a unit quaternion to XYZ Euler angles (also known as Cardan angles).
+    """
+    rpy = vec3f(0.0)
+    R_20 = -2.0 * (q.x * q.z - q.w * q.y)
+    if wp.abs(R_20) < 1.0:
+        rpy[1] = wp.asin(-R_20)
+        rpy[0] = wp.atan2(2.0 * (q.y * q.z + q.w * q.x), q.w * q.w - q.x * q.x - q.y * q.y + q.z * q.z)
+        rpy[2] = wp.atan2(2.0 * (q.x * q.y + q.w * q.z), q.w * q.w + q.x * q.x - q.y * q.y - q.z * q.z)
+    else:  # Gimbal lock
+        rpy[0] = wp.atan2(-2.0 * (q.x * q.y - q.w * q.z), q.w * q.w - q.x * q.x + q.y * q.y - q.z * q.z)
+        rpy[1] = wp.half_pi if R_20 <= -1.0 else -wp.half_pi
+        rpy[2] = 0.0
+    return rpy
 
 
 @wp.func

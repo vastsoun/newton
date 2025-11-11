@@ -94,6 +94,10 @@ class vec1i(wp.types.vector(length=1, dtype=int32)):
     pass
 
 
+class vec1f(wp.types.vector(length=1, dtype=float32)):
+    pass
+
+
 class vec2i(wp.types.vector(length=2, dtype=int32)):
     pass
 
@@ -402,7 +406,7 @@ class Descriptor:
 # Utilities
 ###
 
-ArrayLike = np.ndarray | list[int] | list[float] | list[list[int]] | list[list[float]] | Iterable[int] | Iterable[float]
+ArrayLike = np.ndarray | list | tuple | Iterable
 """An Array-like structure for aliasing various data types compatible with numpy."""
 
 

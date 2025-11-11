@@ -30,7 +30,6 @@ from warp.context import Devicelike
 from ..core.joints import JointActuationType, JointDoFType
 from ..core.math import (
     G_of,
-    quat_exp,
     quat_left_jacobian_inverse,
     quat_log,
     unit_quat_apply,
@@ -54,6 +53,19 @@ __all__ = ["ForwardKinematicsSolver"]
 ###
 
 wp.set_module_options({"enable_backward": False})
+
+
+###
+# Functions
+###
+
+
+@wp.func
+def read_quat_from_array(array: wp.array(dtype=wp.float32), offset: int) -> wp.quatf:
+    """
+    Utility function to read a quaternion from a flat array
+    """
+    return wp.quatf(array[offset], array[offset + 1], array[offset + 2], array[offset + 3])
 
 
 ###
@@ -96,34 +108,32 @@ def _eval_position_control_transformations(
         q = wp.quatf(0.0, 0.0, 0.0, 1.0)
 
         # In the actuated case, set translation/rotation as per joint generalized coordinates
-        if act_type_j == int(JointActuationType.FORCE):
-            if dof_type_j == int(JointDoFType.CARTESIAN):
+        if act_type_j == JointActuationType.FORCE:
+            if dof_type_j == JointDoFType.CARTESIAN:
                 t[0] = joints_q_j[offset_q_j]
                 t[1] = joints_q_j[offset_q_j + 1]
                 t[2] = joints_q_j[offset_q_j + 2]
-            elif dof_type_j == int(JointDoFType.CYLINDRICAL):
+            elif dof_type_j == JointDoFType.CYLINDRICAL:
                 t[0] = joints_q_j[offset_q_j]
                 q = wp.quat_from_axis_angle(wp.vec3f(X[0, 0], X[1, 0], X[2, 0]), joints_q_j[offset_q_j + 1])
-            elif dof_type_j == int(JointDoFType.FIXED):
+            elif dof_type_j == JointDoFType.FIXED:
                 pass  # No dofs to apply
-            elif dof_type_j == int(JointDoFType.FREE):
+            elif dof_type_j == JointDoFType.FREE:
                 t[0] = joints_q_j[offset_q_j]
                 t[1] = joints_q_j[offset_q_j + 1]
                 t[2] = joints_q_j[offset_q_j + 2]
                 q_X = wp.quat_from_matrix(X)
-                theta_loc = wp.vec3f(joints_q_j[offset_q_j + 3], joints_q_j[offset_q_j + 4], joints_q_j[offset_q_j + 5])
-                q_loc = quat_exp(theta_loc)
+                q_loc = read_quat_from_array(joints_q_j, offset_q_j + 3)
                 q = q_X * q_loc * wp.quat_inverse(q_X)
-            elif dof_type_j == int(JointDoFType.PRISMATIC):
+            elif dof_type_j == JointDoFType.PRISMATIC:
                 t[0] = joints_q_j[offset_q_j]
-            elif dof_type_j == int(JointDoFType.REVOLUTE):
+            elif dof_type_j == JointDoFType.REVOLUTE:
                 q = wp.quat_from_axis_angle(wp.vec3f(X[0, 0], X[1, 0], X[2, 0]), joints_q_j[offset_q_j])
-            elif dof_type_j == int(JointDoFType.SPHERICAL):
+            elif dof_type_j == JointDoFType.SPHERICAL:
                 q_X = wp.quat_from_matrix(X)
-                theta_loc = wp.vec3f(joints_q_j[offset_q_j], joints_q_j[offset_q_j + 1], joints_q_j[offset_q_j + 2])
-                q_loc = quat_exp(theta_loc)
+                q_loc = read_quat_from_array(joints_q_j, offset_q_j)
                 q = q_X * q_loc * wp.quat_inverse(q_X)
-            elif dof_type_j == int(JointDoFType.UNIVERSAL):
+            elif dof_type_j == JointDoFType.UNIVERSAL:
                 q_x = wp.quat_from_axis_angle(wp.vec3f(X[0, 0], X[1, 0], X[2, 0]), joints_q_j[offset_q_j])
                 q_y = wp.quat_from_axis_angle(wp.vec3f(X[0, 1], X[1, 1], X[2, 1]), joints_q_j[offset_q_j + 1])
                 q = q_x * q_y
@@ -996,7 +1006,7 @@ class ForwardKinematicsSolver:
             self.newton_success = wp.array(dtype=wp.int32, shape=(self.num_worlds,))  # Convergence per world
             self.newton_skip = wp.array(dtype=wp.int32, shape=(self.num_worlds,))  # Flag to stop iterating per world
             self.tolerance = wp.array(dtype=wp.float32, shape=(1,))  # Tolerance on max constraint
-            self.joints_q_j = wp.array(dtype=wp.float32, shape=(model.size.sum_of_num_joint_dofs,))  # Joint coordinates
+            self.joints_q_j = wp.array(dtype=wp.float32, shape=(model.size.sum_of_num_joint_coords,))  # Coordinates
             self.pos_control_transforms = wp.array(
                 dtype=wp.transformf, shape=(model.size.sum_of_num_joints,)
             )  # Position-control transformations at joints

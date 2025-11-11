@@ -304,7 +304,7 @@ if __name__ == "__main__":
     parser.add_argument("--num-worlds", type=int, default=3, help="Number of worlds to simulate in parallel")
     parser.add_argument("--num-steps", type=int, default=1000, help="Number of steps for headless mode")
     parser.add_argument("--load-from-usd", action="store_true", default=False, help="Load model from USD file")
-    parser.add_argument("--ground", action="store_true", default=False, help="Adds a ground plane to the simulation")
+    parser.add_argument("--ground", action="store_true", default=True, help="Adds a ground plane to the simulation")
     parser.add_argument("--device", type=str, help="The compute device to use")
     parser.add_argument("--cuda-graph", action="store_true", default=True, help="Use CUDA graphs")
     parser.add_argument("--clear-cache", action="store_true", default=False, help="Clear warp cache")

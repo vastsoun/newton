@@ -165,7 +165,7 @@ class DRTestMechanismRandomPosesCheckForwardKinematics(unittest.TestCase):
         examples_path = get_examples_usd_assets_path()
         if not examples_path:
             self.skipTest("Examples USD assets path not found. Skipping test.")
-        model_path = os.path.join(examples_path, "dr_testmech/dr_testmech.usda")
+        model_path = os.path.join(examples_path, "dr_testmech/usd/dr_testmech.usda")
         builder = USDImporter().import_from(model_path)
         model = builder.finalize(device=self.default_device, requires_grad=False)
 
@@ -197,7 +197,7 @@ class DRLegsRandomPosesCheckForwardKinematics(unittest.TestCase):
         examples_path = get_examples_usd_assets_path()
         if not examples_path:
             self.skipTest("Examples USD assets path not found. Skipping test.")
-        model_path = os.path.join(examples_path, "dr_legs/dr_legs_with_boxes.usda")
+        model_path = os.path.join(examples_path, "dr_legs/usd/dr_legs_with_boxes.usda")
         builder = USDImporter().import_from(model_path)
         builder.add_joint(
             JointActuationType.PASSIVE,
@@ -246,9 +246,9 @@ class HeterogenousModelRandomPosesCheckForwardKinematics(unittest.TestCase):
         examples_path = get_examples_usd_assets_path()
         if not examples_path:
             self.skipTest("Examples USD assets path not found. Skipping test.")
-        model_path = os.path.join(examples_path, "dr_testmech/dr_testmech.usda")
+        model_path = os.path.join(examples_path, "dr_testmech/usd/dr_testmech.usda")
         builder = USDImporter().import_from(model_path)
-        model_path1 = os.path.join(examples_path, "dr_legs/dr_legs_with_boxes.usda")
+        model_path1 = os.path.join(examples_path, "dr_legs/usd/dr_legs_with_boxes.usda")
         builder1 = USDImporter().import_from(model_path1)
         builder1.add_joint(
             JointActuationType.PASSIVE,

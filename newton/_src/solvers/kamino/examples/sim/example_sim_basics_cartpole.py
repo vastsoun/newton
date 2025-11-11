@@ -358,9 +358,9 @@ if __name__ == "__main__":
         msg.notif("Running in Viewer mode...")
         # Set initial camera position for better view of the system
         if hasattr(example.viewer, "set_camera"):
-            camera_pos = wp.vec3(5.0, 5.0, 0.7)
-            pitch = -5.0
-            yaw = 220.0
+            camera_pos = wp.vec3(5.0, 5.0, 1.5)
+            pitch = -10.0
+            yaw = 218.0
             example.viewer.set_camera(camera_pos, pitch, yaw)
 
         # Launch the example using Newton's built-in runtime

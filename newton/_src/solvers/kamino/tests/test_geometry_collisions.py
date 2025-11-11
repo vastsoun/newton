@@ -178,7 +178,7 @@ if __name__ == "__main__":
 
     # Global warp configurations
     wp.config.enable_backward = False
-    wp.config.verbose = True
+    wp.config.verbose = False
     wp.clear_kernel_cache()
     wp.clear_lto_cache()
 

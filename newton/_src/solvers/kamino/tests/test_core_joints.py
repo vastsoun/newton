@@ -75,7 +75,7 @@ if __name__ == "__main__":
     np.set_printoptions(linewidth=500, precision=10, suppress=True)  # Suppress scientific notation
 
     # Global warp configurations
-    wp.config.verbose = True
+    wp.config.verbose = False
     wp.clear_kernel_cache()
     wp.clear_lto_cache()
 

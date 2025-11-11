@@ -45,7 +45,7 @@ from ..kinematics.limits import Limits
 from ..linalg import LinearSolver, LLTBlockedSolver
 from ..solvers.fk import ForwardKinematicsSolver  # noqa: F401
 from ..solvers.padmm import PADMMSettings, PADMMSolver
-from .resets import reset_state_of_select_worlds
+from .resets import reset_select_worlds_to_initial_state, reset_select_worlds_to_state
 
 ###
 # Module interface
@@ -473,13 +473,16 @@ class Simulator:
     # Operations
     ###
 
-    def reset(self):
+    def reset(self, world_mask: wp.array | None = None, reset_constraints: bool = True):
         """
         Resets the simulation to the initial state defined in the model.
         """
-        self._reset_all_worlds_to_initial_state()
+        if world_mask is None:
+            self._reset_all_worlds_to_initial_state(reset_constraints)
+        else:
+            self._reset_select_worlds_to_initial_state(world_mask, reset_constraints)
 
-    def reset_to_state(self, state: State, world_mask: wp.array = None, reset_constraints: bool = True):
+    def reset_to_state(self, state: State, world_mask: wp.array | None = None, reset_constraints: bool = True):
         """
         Resets the simulation to a fully specified maximal-coordinate state.
 
@@ -499,7 +502,9 @@ class Simulator:
         else:
             self._reset_select_worlds_to_state(state, world_mask, reset_constraints)
 
-    def reset_to_actuators_state(self, actuators_q: wp.array, actuators_dq: wp.array, world_mask: wp.array = None):
+    def reset_to_actuators_state(
+        self, actuators_q: wp.array, actuators_dq: wp.array, world_mask: wp.array | None = None
+    ):
         """
         Resets the simulation to a specified state of the actuators (i.e. generalized coordinates and velocities).
 
@@ -742,7 +747,7 @@ class Simulator:
         # Finally, update the previous-step state and control from the next-step values
         self._data.update_previous()
 
-    def _reset_all_worlds_to_initial_state(self):
+    def _reset_all_worlds_to_initial_state(self, reset_constraints: bool = True):
         """
         Resets the simulation to the initial state defined in the model.
         """
@@ -753,7 +758,31 @@ class Simulator:
         self._reset_bodies_state_and_data_to_initial()
 
         # Then reset the state of all joints
-        self._reset_joints_data()
+        self._reset_joints_data(reset_constraints)
+
+        # Finally, reset all state and control
+        # data to match the internal solver state
+        self._reset_states_and_controls()
+
+        # Update the kinematics
+        # NOTE: This constructs the system Jacobians, which ensures
+        # that controls can be applied on the first call to `step()`
+        self._forward_kinematics()
+
+        # Run the reset callback if it has been set
+        self._run_reset_callback()
+
+    def _reset_select_worlds_to_initial_state(self, world_mask: wp.array | None = None, reset_constraints: bool = True):
+        """
+        Resets the simulation to the initial state defined in the model.
+        """
+        # Reset the worlds specified in the `world_mask` array to the given state
+        reset_select_worlds_to_initial_state(
+            model=self._model,
+            data=self._data.solver,
+            mask=world_mask,
+            reset_constraints=reset_constraints,
+        )
 
         # Finally, reset all state and control
         # data to match the internal solver state
@@ -806,7 +835,9 @@ class Simulator:
         # Run the reset callback if it has been set
         self._run_reset_callback()
 
-    def _reset_select_worlds_to_state(self, state: State, world_mask: wp.array = None, reset_constraints: bool = True):
+    def _reset_select_worlds_to_state(
+        self, state: State, world_mask: wp.array | None = None, reset_constraints: bool = True
+    ):
         """
         Resets the simulation to a specific state.
 
@@ -819,8 +850,8 @@ class Simulator:
                 from the provided state in order to warm-start the constraint solver.
         """
 
-        # Reset the worlds specified in the `worlds` array to the given state
-        reset_state_of_select_worlds(
+        # Reset the worlds specified in the `world_mask` array to the given state
+        reset_select_worlds_to_state(
             model=self._model,
             data=self._data.solver,
             state=state,

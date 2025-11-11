@@ -26,7 +26,7 @@ from .jacobians import (
     build_joint_jacobians,
     build_limit_jacobians,
 )
-from .joints import compute_joints_state
+from .joints import compute_joints_data
 from .limits import Limits, LimitsData
 
 ###
@@ -42,7 +42,7 @@ __all__ = [
     "build_jacobians",
     "build_joint_jacobians",
     "build_limit_jacobians",
-    "compute_joints_state",
+    "compute_joints_data",
     "make_unilateral_constraints_info",
     "update_constraints_info",
 ]

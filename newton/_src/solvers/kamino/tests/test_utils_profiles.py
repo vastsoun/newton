@@ -20,8 +20,8 @@ from pathlib import Path
 
 import numpy as np
 
-import newton._src.solvers.kamino.utils.logger as msg
 import newton._src.solvers.kamino.utils.profiles as profiles
+from newton._src.solvers.kamino.utils import logger as msg
 
 ###
 # Utilities

@@ -62,27 +62,27 @@ class JacobianCheckForwardKinematics(unittest.TestCase):
             assert model.size.num_worlds == 1  # For simplicity we assume a single world
 
             # Generate (random) state
-            state = model.data(device=self.default_device)
-            num_bodies_q_i = state.bodies.q_i.shape[0] * 7
+            data = model.data(device=self.default_device)
+            num_bodies_q_i = data.bodies.q_i.shape[0] * 7
             random_state = rng.uniform(-1.0, 1.0, num_bodies_q_i).astype("float32")
-            state.bodies.q_i.assign(random_state)
+            data.bodies.q_i.assign(random_state)
 
             # Generate (random) controls
-            num_joints_q_j = state.joints.q_j.shape[0]
-            state.joints.q_j.assign(rng.uniform(-1.0, 1.0, num_joints_q_j).astype("float32"))
+            num_joints_q_j = data.joints.q_j.shape[0]
+            data.joints.q_j.assign(rng.uniform(-1.0, 1.0, num_joints_q_j).astype("float32"))
 
             # Evaluate analytic Jacobian
             solver = ForwardKinematicsSolver(model=model)
-            pos_control_transforms = solver.eval_position_control_transformations(state)
-            jacobian = solver.eval_kinematic_constraints_jacobian(state, pos_control_transforms)
+            pos_control_transforms = solver.eval_position_control_transformations(data)
+            jacobian = solver.eval_kinematic_constraints_jacobian(data, pos_control_transforms)
 
             # Check against finite differences Jacobian
-            rb_state_init_np = state.bodies.q_i.numpy().flatten()  # Save current state of bodies
+            rb_state_init_np = data.bodies.q_i.numpy().flatten()  # Save current state of bodies
 
             def eval_constraints(rb_state_np):
-                state.bodies.q_i.assign(rb_state_np)
-                constraints = solver.eval_kinematic_constraints(state, pos_control_transforms)
-                state.bodies.q_i.assign(rb_state_init_np)  # Reset state
+                data.bodies.q_i.assign(rb_state_np)
+                constraints = solver.eval_kinematic_constraints(data, pos_control_transforms)
+                data.bodies.q_i.assign(rb_state_init_np)  # Reset state
                 return constraints.numpy()[0]
 
             return diff_check(

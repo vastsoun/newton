@@ -14,8 +14,6 @@
 # limitations under the License.
 
 import argparse
-import math  # noqa: F401
-import os
 
 import numpy as np
 import warp as wp
@@ -23,17 +21,12 @@ from warp.context import Devicelike
 
 import newton
 import newton.examples
-from newton._src.solvers.kamino.control.pid import JointSpacePIDController
 from newton._src.solvers.kamino.core.builder import ModelBuilder
-from newton._src.solvers.kamino.core.joints import JointCorrectionMode
 from newton._src.solvers.kamino.core.types import float32
 from newton._src.solvers.kamino.examples import run_headless
-from newton._src.solvers.kamino.models import get_basics_usd_assets_path
-from newton._src.solvers.kamino.models.builders import build_box_pendulum_vertical
-from newton._src.solvers.kamino.models.utils import make_homogeneous_builder
+from newton._src.solvers.kamino.models.utils import make_heterogeneous_builder
 from newton._src.solvers.kamino.simulation.simulator import Simulator, SimulatorSettings
 from newton._src.solvers.kamino.utils import logger as msg
-from newton._src.solvers.kamino.utils.io.usd import USDImporter
 from newton._src.solvers.kamino.viewer import ViewerKamino
 
 ###
@@ -101,10 +94,8 @@ class Example:
     def __init__(
         self,
         device: Devicelike,
-        num_worlds: int,
         max_steps: int = 1000,
         use_cuda_graph: bool = False,
-        load_from_usd: bool = False,
         headless: bool = False,
     ):
         # Initialize target frames per second and corresponding time-steps
@@ -123,16 +114,8 @@ class Example:
         self.use_cuda_graph: bool = use_cuda_graph
 
         # Construct model builder
-        if load_from_usd:
-            msg.info("Constructing builder from imported USD ...")
-            USD_MODEL_PATH = os.path.join(get_basics_usd_assets_path(), "box_pendulum.usda")
-            importer = USDImporter()
-            self.builder: ModelBuilder = importer.import_from(source=USD_MODEL_PATH, load_static_geometry=True)
-        else:
-            msg.info("Constructing builder using model generator ...")
-            self.builder: ModelBuilder = make_homogeneous_builder(
-                num_worlds=num_worlds, build_fn=build_box_pendulum_vertical
-            )
+        msg.info("Constructing builder using model generator ...")
+        self.builder: ModelBuilder = make_heterogeneous_builder()
 
         # Set solver settings
         settings = SimulatorSettings()
@@ -141,7 +124,6 @@ class Example:
         settings.solver.dual_tolerance = 1e-6
         settings.solver.compl_tolerance = 1e-6
         settings.solver.rho_0 = 0.1
-        settings.rotation_correction = JointCorrectionMode.CONTINUOUS
 
         # Create a simulator
         msg.info("Building the simulator...")
@@ -156,31 +138,6 @@ class Example:
         else:
             self.viewer = None
 
-        # Create a joint-space PID controller
-        njq = self.sim.model.size.sum_of_num_joint_dofs
-        K_p = 0.0 * np.ones(njq, dtype=np.float32)
-        K_i = 0.0 * np.ones(njq, dtype=np.float32)
-        K_d = 60.0 * np.ones(njq, dtype=np.float32)
-        decimation = 1 * np.ones(self.sim.model.size.num_worlds, dtype=np.int32)  # Control every 10 steps
-        self.controller = JointSpacePIDController(
-            model=self.sim.model, K_p=K_p, K_i=K_i, K_d=K_d, decimation=decimation, device=device
-        )
-        self.controller.reset(model=self.sim.model, state=self.sim.data.state_n)
-        q_j_ref = np.zeros(njq, dtype=np.float32)
-        dq_j_ref = np.full(njq, 1.0, dtype=np.float32)
-        self.controller.set_references(q_j_ref=q_j_ref, dq_j_ref=dq_j_ref)
-
-        # Define a callback function to wrap the execution of the controller
-        def jointspace_pid_control_callback(simulator: Simulator):
-            self.controller.compute(
-                model=simulator.model,
-                state=simulator.data.state_n,
-                time=simulator.data.solver.time,
-                control=simulator.data.control_n,
-            )
-
-        self.sim.set_control_callback(jointspace_pid_control_callback)
-
         # Declare and initialize the optional computation graphs
         # NOTE: These are used for most efficient GPU runtime
         self.reset_graph = None
@@ -192,9 +149,14 @@ class Example:
 
         # Warm-start the simulator before rendering
         # NOTE: This compiles and loads the warp kernels prior to execution
-        msg.info("Warming up simulator...")
+        msg.notif("Warming up simulator...")
         self.step_once()
         self.reset()
+
+        # Block waiting for user input before starting simulation
+        if not headless:
+            msg.notif("Press ENTER to start the simulation...")
+            input()
 
     def capture(self):
         """Capture CUDA graph if requested and available."""
@@ -235,7 +197,6 @@ class Example:
             self.sim.step()
         self.sim_steps += 1
         self.sim_time += self.sim_dt
-        msg.info("q_j: %s", self.sim.state.q_j)
 
     def step(self):
         """Step the simulation."""
@@ -244,7 +205,6 @@ class Example:
         else:
             self.simulate()
         self.sim_time += self.frame_dt
-        msg.info("q_j: %s", self.sim.state.q_j)
 
     def render(self):
         """Render the current frame."""
@@ -262,10 +222,8 @@ class Example:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Box-Pendulum simulation example")
-    parser.add_argument("--num-worlds", type=int, default=1, help="Number of worlds to simulate in parallel")
+    parser = argparse.ArgumentParser(description="A demo of all supported joint types.")
     parser.add_argument("--num-steps", type=int, default=1000, help="Number of steps for headless mode")
-    parser.add_argument("--load-from-usd", action="store_true", default=True, help="Load model from USD file")
     parser.add_argument("--headless", action="store_true", default=False, help="Run in headless mode")
     parser.add_argument("--device", type=str, help="The compute device to use")
     parser.add_argument("--cuda-graph", action="store_true", default=True, help="Use CUDA graphs")
@@ -303,8 +261,6 @@ if __name__ == "__main__":
     example = Example(
         device=device,
         use_cuda_graph=use_cuda_graph,
-        load_from_usd=args.load_from_usd,
-        num_worlds=args.num_worlds,
         max_steps=args.num_steps,
         headless=args.headless,
     )
@@ -319,9 +275,9 @@ if __name__ == "__main__":
         msg.notif("Running in Viewer mode...")
         # Set initial camera position for better view of the system
         if hasattr(example.viewer, "set_camera"):
-            camera_pos = wp.vec3(0.0, -2.0, 1.0)
-            pitch = -10.0
-            yaw = 90  # Changed to -90 degrees to look left
+            camera_pos = wp.vec3(-6.4, -11.0, 1.5)
+            pitch = -1.5
+            yaw = 92.0
             example.viewer.set_camera(camera_pos, pitch, yaw)
 
         # Launch the example using Newton's built-in runtime

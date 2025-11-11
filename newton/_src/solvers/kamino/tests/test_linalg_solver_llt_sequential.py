@@ -20,13 +20,13 @@ import unittest
 import numpy as np
 import warp as wp
 
-import newton._src.solvers.kamino.utils.logger as msg
 from newton._src.solvers.kamino.core.types import float32
 from newton._src.solvers.kamino.linalg.core import DenseLinearOperatorData, DenseSquareMultiLinearInfo
 from newton._src.solvers.kamino.linalg.linear import LLTSequentialSolver
 from newton._src.solvers.kamino.tests.utils.extract import get_matrix_block, get_vector_block
 from newton._src.solvers.kamino.tests.utils.print import print_error_stats
 from newton._src.solvers.kamino.tests.utils.random import RandomProblemLLT
+from newton._src.solvers.kamino.utils import logger as msg
 
 ###
 # Tests

@@ -20,8 +20,8 @@ import unittest
 import numpy as np
 import warp as wp
 
-import newton._src.solvers.kamino.utils.logger as msg
 from newton._src.solvers.kamino.control.pid import JointSpacePIDController
+from newton._src.solvers.kamino.utils import logger as msg
 
 ###
 # Tests

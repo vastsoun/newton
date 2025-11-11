@@ -20,12 +20,12 @@ import unittest
 import numpy as np
 import warp as wp
 
-import newton._src.solvers.kamino.utils.logger as msg
 from newton._src.solvers.kamino.linalg.core import (
     DenseRectangularMultiLinearInfo,
     DenseSquareMultiLinearInfo,
     make_dtype_tolerance,
 )
+from newton._src.solvers.kamino.utils import logger as msg
 
 ###
 # Tests

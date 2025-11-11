@@ -142,6 +142,36 @@ def _update_batch_condition(
     batch_condition[0] = 0
 
 
+def make_termination_kernel(n_envs):
+    @wp.kernel
+    def check_termination(
+        maxiter: wp.array(dtype=int),
+        cycle_size: int,
+        r_norm_sq: wp.array(dtype=Any),
+        atol_sq: wp.array(dtype=Any),
+        env_active: wp.array(dtype=wp.bool),
+        cur_iter: wp.array(dtype=int),
+        env_condition: wp.array(dtype=wp.int32),
+        batch_condition: wp.array(dtype=wp.int32),
+    ):
+        thread = wp.tid()
+        active = wp.tile_astype(wp.tile_load(env_active, (n_envs,)), wp.int32)
+        condition = wp.tile_load(env_condition, (n_envs,))
+        env_stepped = wp.tile_map(wp.mul, active, condition)
+        iter = env_stepped * cycle_size + wp.tile_load(cur_iter, (n_envs,))
+
+        wp.tile_store(cur_iter, iter)
+        cont_norm = wp.tile_astype(wp.tile_map(lt_mask, wp.tile_load(atol_sq, (n_envs,)), wp.tile_load(r_norm_sq, (n_envs,))), wp.int32)
+        cont_iter = wp.tile_map(lt_mask, iter, wp.tile_load(maxiter, (n_envs,)))
+        cont = wp.tile_map(wp.mul, wp.tile_map(wp.mul, cont_iter, cont_norm), env_stepped)
+        wp.tile_store(env_condition, cont)
+        batch_cont = wp.where(wp.tile_sum(cont)[0] > 0, 1, 0)
+        if thread == 0:
+            batch_condition[0] = batch_cont
+
+    return check_termination
+
+
 @wp.kernel
 def _dense_mv_kernel(
     A: wp.array2d(dtype=Any),
@@ -515,6 +545,7 @@ def _run_capturable_loop(
     check_every: int,
     use_cuda_graph: bool,
     cycle_size: int = 1,
+    termination_kernel = None,
 ):
     # TODO: check-every > 0 without python-space code
     assert check_every == 0
@@ -526,23 +557,32 @@ def _run_capturable_loop(
 
     env_condition, global_condition = conditions[:n_envs], conditions[n_envs:]
 
-    update_env_condition_launch = wp.launch(
-        _check_env_termination,
-        dim=n_envs,
+    update_condition_launch = wp.launch(
+        termination_kernel,
+        dim=(1, n_envs),
+        block_dim=n_envs,
         device=device,
         inputs=[maxiter, cycle_size, r_norm_sq, atol_sq, env_active, cur_iter],
-        outputs=[env_condition],
+        outputs=[env_condition, global_condition],
         record_cmd=True,
     )
+    # update_env_condition_launch = wp.launch(
+    #     _check_env_termination,
+    #     dim=n_envs,
+    #     device=device,
+    #     inputs=[maxiter, cycle_size, r_norm_sq, atol_sq, env_active, cur_iter],
+    #     outputs=[env_condition],
+    #     record_cmd=True,
+    # )
 
-    update_global_condition_launch = wp.launch(
-        _update_batch_condition,
-        dim=n_envs,
-        device=device,
-        inputs=[env_condition, n_envs],
-        outputs=[global_condition],
-        record_cmd=True,
-    )
+    # update_global_condition_launch = wp.launch(
+    #     _update_batch_condition,
+    #     dim=n_envs,
+    #     device=device,
+    #     inputs=[env_condition, n_envs],
+    #     outputs=[global_condition],
+    #     record_cmd=True,
+    # )
 
     if isinstance(callback, wp.Kernel):
         callback_launch = wp.launch(
@@ -552,8 +592,9 @@ def _run_capturable_loop(
         callback_launch = None
 
     # TODO: consider using a spinlock for fusing kernels
-    update_env_condition_launch.launch()
-    update_global_condition_launch.launch()
+    # update_env_condition_launch.launch()
+    # update_global_condition_launch.launch()
+    update_condition_launch.launch()
 
     if callback_launch is not None:
         callback_launch.launch()
@@ -561,8 +602,7 @@ def _run_capturable_loop(
     def do_cycle_with_condition():
         # print("Global cond:", global_condition.numpy())
         do_cycle()
-        update_env_condition_launch.launch()
-        update_global_condition_launch.launch()
+        update_condition_launch.launch()
         if callback_launch is not None:
             callback_launch.launch()
 
@@ -788,6 +828,7 @@ class CGSolver:
 
         self.cur_iter = wp.empty(self.n_envs, dtype=wp.int32, device=self.device)
         self.conditions = wp.empty(self.n_envs + 1, dtype=wp.int32, device=self.device)
+        self.termination_kernel = make_termination_kernel(self.n_envs)
 
     def update_rr_rz(self, r, z, r_repeated):
         # z = M r
@@ -826,6 +867,7 @@ class CGSolver:
             self.callback,
             self.check_every,
             self.use_cuda_graph,
+            termination_kernel=self.termination_kernel,
         )
 
     def do_iteration(self, p, Ap, rz_old, rz_new, z, x, r, r_norm_sq):

@@ -1779,8 +1779,8 @@ def build_box_pendulum_vertical(
 
 def build_cartpole(
     builder: ModelBuilder | None = None,
-    z_offset: float = 0.5,
-    ground: bool = False,
+    z_offset: float = 0.0,
+    ground: bool = True,
     new_world: bool = True,
     world_index: int = 0,
 ) -> ModelBuilder:
@@ -1818,21 +1818,20 @@ def build_cartpole(
     dims_rail = (0.03, 8.0, 0.03)
     dims_cart = (0.2, 0.5, 0.2)
     dims_pole = (0.05, 0.05, 0.75)
-    z_0 = z_offset  # Initial z offset for the body
 
     # Add box cart body
     bid0 = _builder.add_rigid_body(
         name="cart",
         m_i=m_cart,
         i_I_i=solid_cuboid_body_moment_of_inertia(m_cart, *dims_cart),
-        q_i_0=transformf(0.0, 0.0, z_0, 0.0, 0.0, 0.0, 1.0),
+        q_i_0=transformf(0.0, 0.0, z_offset, 0.0, 0.0, 0.0, 1.0),
         u_i_0=vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
         world_index=world_index,
     )
 
     # Add box pole body
     x_0_pole = 0.5 * dims_pole[0] + 0.5 * dims_cart[0]
-    z_0_pole = 0.5 * dims_pole[2] + z_0
+    z_0_pole = 0.5 * dims_pole[2] + z_offset
     bid1 = _builder.add_rigid_body(
         name="pole",
         m_i=m_pole,
@@ -1849,7 +1848,7 @@ def build_cartpole(
         act_type=JointActuationType.FORCE,
         bid_B=-1,
         bid_F=bid0,
-        B_r_Bj=vec3f(0.0, 0.0, z_0),
+        B_r_Bj=vec3f(0.0, 0.0, z_offset),
         F_r_Fj=vec3f(0.0, 0.0, 0.0),
         X_j=Axis.Y.to_mat33(),
         q_j_min=[-4.0],
@@ -1908,7 +1907,7 @@ def build_cartpole(
             layer="world",
             body=-1,
             shape=BoxShape(20.0, 20.0, 1.0),
-            offset=transformf(0.0, 0.0, -0.5, 0.0, 0.0, 0.0, 1.0),
+            offset=transformf(0.0, 0.0, -1.0 + z_offset, 0.0, 0.0, 0.0, 1.0),
             group=1,
             collides=1,
             world_index=world_index,

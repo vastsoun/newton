@@ -89,5 +89,5 @@ def make_heterogeneous_builder() -> ModelBuilder:
     builder.add_builder(build_boxes_hinged())
     builder.add_builder(build_box_pendulum())
     builder.add_builder(build_box_on_plane())
-    builder.add_builder(build_cartpole())
+    builder.add_builder(build_cartpole(z_offset=0.5))
     return builder

@@ -45,7 +45,7 @@ from ..linalg.factorize.llt_blocked_semi_sparse import SemiSparseBlockCholeskySo
 # Module interface
 ###
 
-__all__ = ["ForwardKinematicsSolver"]
+__all__ = ["ForwardKinematicsSolver", "ForwardKinematicsSolverSettings", "ForwardKinematicsSolverStatus"]
 
 
 ###
@@ -871,6 +871,37 @@ def _newton_check(
 
 
 @dataclass
+class ForwardKinematicsSolverSettings:
+    """
+    Host-side class to store settings for the forward kinematics solve.
+    """
+
+    max_newton_iterations: wp.int32 = 30
+    """Maximal number of Gauss-Newton iterations (default: 30).
+       Changes to this setting after the solver's initialization will have no effect."""
+
+    max_line_search_iterations: wp.int32 = 20
+    """Maximal line search iterations in the inner loop (default: 20).
+       Changes to this setting after the solver's initialization will have no effect."""
+
+    tolerance: wp.float32 = 1e-6
+    """Maximal absolute kinematic constraint value that is acceptable at the solution (default: 1e-6).
+       Changes to this setting after the solver's initialization will have no effect."""
+
+    reset_state: bool = True
+    """Whether to reset the state to initial states, to use as initial guess (default: True).
+       Changes to this setting after graph capture will have no effect."""
+
+    TILE_SIZE_CTS: wp.int32 = 8
+    """Tile size for kernels along the dimension of kinematic constraints (default: 8).
+       Changes to this setting after the solver's initialization will have no effect."""
+
+    TILE_SIZE_VRS: wp.int32 = 8
+    """Tile size for kernels along the dimension of rigid body pose variables (default: 8).
+       Changes to this setting after the solver's initialization will have no effect."""
+
+
+@dataclass
 class ForwardKinematicsSolverStatus:
     """
     Class containing detailed data on the success/failure status of a forward kinematics solve
@@ -897,10 +928,17 @@ class ForwardKinematicsSolver:
     Forward Kinematics solver class
     """
 
-    def __init__(self, model: Model, TILE_SIZE_CTS: wp.int32 = 8, TILE_SIZE_VRS: wp.int32 = 8):
+    def __init__(self, model: Model | None = None, settings: ForwardKinematicsSolverSettings | None = None):
         """
         Initializes the solver to solve forward kinematics for a given model.
-        Note: will use the same device as the model
+
+        Parameters
+        ----------
+        model : Model | None
+            Model for which to solve forward kinematics. If not provided, the finalize() method
+            must be called at a later time for deferred initialization (default: None).
+        settings : ForwardKinematicsSolverSettings | None
+            Solver settings. If not provided, default settings will be used (default: None).
         """
 
         self.model: Model | None = None
@@ -909,44 +947,77 @@ class ForwardKinematicsSolver:
         self.device: Devicelike = None
         """Device for data allocations"""
 
+        self.settings: ForwardKinematicsSolverSettings = ForwardKinematicsSolverSettings()
+        """Solver settings"""
+
         self.linear_solver: SemiSparseBlockCholeskySolverBatched | None = None
         """Semi-sparse Cholesky solver for the J^T * J linear system"""
 
         self.graph: wp.Graph | None = None
-        """Cuda graph for the forward kinematics solve"""
+        """Cuda graph for the convenience function with verbosity options"""
 
-        # Note: many other data members below, for internal use only (currently not documented)
+        # Note: there are many other internal data members below, which are not documented here
 
-        # Initialize model and device
+        # Set model and settings, and finalize if model was provided
         self.model = model
-        self.device = model.device
+        if settings is not None:
+            self.settings = settings
+        if model is not None:
+            self.finalize()
+
+    def finalize(self, model: Model | None = None, settings: ForwardKinematicsSolverSettings | None = None):
+        """
+        Finishes the solver initialization, performing necessary allocations and precomputations.
+        This method only needs to be called manually if a model was not provided in the constructor,
+        or to reset the solver for a new model.
+
+        Parameters
+        ----------
+        model : Model | None
+            Model for which to solve forward kinematics. If not provided, the model given to the
+            constructor will be used. Must be provided if not given to the constructor (default: None).
+        settings : ForwardKinematicsSolverSettings | None
+            Solver settings. If not provided, the settings given to the constructor, or if not, the
+            default settings will be used (default: None).
+        """
+
+        # Initialize the model and settings if provided
+        if model is not None:
+            self.model = model
+        if settings is not None:
+            self.settings = settings
+        if self.model is None:
+            raise ValueError("ForwardKinematicsSolver: error, provided model is None.")
+
+        # Initialize device
+        self.device = self.model.device
 
         # Retrieve / compute dimensions - Worlds
         self.num_worlds = self.model.size.num_worlds  # For convenience
 
         # Retrieve / compute dimensions - Bodies
-        num_bodies = model.info.num_bodies.numpy()  # Number of bodies per world
+        num_bodies = self.model.info.num_bodies.numpy()  # Number of bodies per world
         first_body_id = np.concatenate(([0], num_bodies.cumsum()))  # Index of first body per world
-        self.num_bodies_max = model.size.max_of_num_bodies  # Max number of bodies across worlds
+        self.num_bodies_max = self.model.size.max_of_num_bodies  # Max number of bodies across worlds
 
         # Retrieve / compute dimensions - States
         num_states = 7 * num_bodies  # Number of body states per world
-        self.num_states_tot = 7 * model.size.sum_of_num_bodies  # Number of body states for the whole model
+        self.num_states_tot = 7 * self.model.size.sum_of_num_bodies  # Number of body states for the whole model
         self.num_states_max = 7 * self.num_bodies_max  # Max state dimension across worlds
 
         # Retrieve / compute dimensions - Joints (main model)
-        num_joints_prev = model.info.num_joints.numpy()  # Number of joints per world
+        num_joints_prev = self.model.info.num_joints.numpy()  # Number of joints per world
         first_joint_id_prev = np.concatenate(([0], num_joints_prev.cumsum()))  # Index of first joint per world
 
         # Retrieve / compute dimensions - Actuated coordinates (main model)
         num_actuated_coords_prev = (
-            model.info.num_actuated_joint_coords.numpy()
+            self.model.info.num_actuated_joint_coords.numpy()
         )  # Number of actuated joint coordinates per world
         first_actuated_coord_prev = np.concatenate(
             ([0], num_actuated_coords_prev.cumsum())
         )  # Index of first actuated coordinate per world
         actuated_coord_offsets_prev = (
-            model.joints.actuated_coords_offset.numpy()
+            self.model.joints.actuated_coords_offset.numpy()
         )  # Index of first joint actuated coordinate, among actuated coordinates of a single world
         for wd_id in range(self.num_worlds):  # Convert into offsets among all actuated coordinates
             actuated_coord_offsets_prev[first_joint_id_prev[wd_id] : first_joint_id_prev[wd_id + 1]] += (
@@ -956,14 +1027,14 @@ class ForwardKinematicsSolver:
             # but we won't read these values below anyway.
 
         # Create a copy of the model's joints with added actuated free joints as needed to reset the base position/orientation
-        joints_dof_type_prev = model.joints.dof_type.numpy()
-        joints_act_type_prev = model.joints.act_type.numpy()
-        joints_bid_B_prev = model.joints.bid_B.numpy()
-        joints_bid_F_prev = model.joints.bid_F.numpy()
-        joints_B_r_Bj_prev = model.joints.B_r_Bj.numpy()
-        joints_F_r_Fj_prev = model.joints.F_r_Fj.numpy()
-        joints_X_j_prev = model.joints.X_j.numpy()
-        joints_num_coords_prev = model.joints.num_coords.numpy()
+        joints_dof_type_prev = self.model.joints.dof_type.numpy()
+        joints_act_type_prev = self.model.joints.act_type.numpy()
+        joints_bid_B_prev = self.model.joints.bid_B.numpy()
+        joints_bid_F_prev = self.model.joints.bid_F.numpy()
+        joints_B_r_Bj_prev = self.model.joints.B_r_Bj.numpy()
+        joints_F_r_Fj_prev = self.model.joints.F_r_Fj.numpy()
+        joints_X_j_prev = self.model.joints.X_j.numpy()
+        joints_num_coords_prev = self.model.joints.num_coords.numpy()
         joints_dof_type = []
         joints_act_type = []
         joints_bid_B = []
@@ -978,8 +1049,8 @@ class ForwardKinematicsSolver:
         for wd_id in range(self.num_worlds):
             # Retrieve base joint id if set
             base_joint_id = -1
-            if model.worlds[wd_id].has_base_joint:
-                base_joint_id = first_joint_id_prev[wd_id] + model.worlds[wd_id].base_joint_idx
+            if self.model.worlds[wd_id].has_base_joint:
+                base_joint_id = first_joint_id_prev[wd_id] + self.model.worlds[wd_id].base_joint_idx
 
             # Copy data for all kept joints
             world_joint_ids = [
@@ -1014,7 +1085,7 @@ class ForwardKinematicsSolver:
                 coord_offset = -7 * wd_id - 1  # We encode offsets in base_q negatively with i -> -i - 1
                 actuated_coords_map.extend(range(coord_offset, coord_offset - 7, -1))
             elif self.model.worlds[wd_id].has_base_body:  # Add an actuated free joint to the base body
-                base_body_id = first_body_id[wd_id] + model.worlds[wd_id].base_body_idx
+                base_body_id = first_body_id[wd_id] + self.model.worlds[wd_id].base_body_idx
                 joints_dof_type.append(JointDoFType.FREE)
                 joints_act_type.append(JointActuationType.FORCE)
                 joints_bid_B.append(-1)
@@ -1104,8 +1175,10 @@ class ForwardKinematicsSolver:
         self.num_constraints_max = np.max(num_constraints)
 
         # Retrieve / compute dimensions - Number of tiles (for kernels using Tile API)
-        self.num_tiles_constraints = (self.num_constraints_max + TILE_SIZE_CTS - 1) // TILE_SIZE_CTS
-        self.num_tiles_states = (self.num_states_max + TILE_SIZE_VRS - 1) // TILE_SIZE_VRS
+        self.num_tiles_constraints = (
+            self.num_constraints_max + self.settings.TILE_SIZE_CTS - 1
+        ) // self.settings.TILE_SIZE_CTS
+        self.num_tiles_states = (self.num_states_max + self.settings.TILE_SIZE_VRS - 1) // self.settings.TILE_SIZE_VRS
 
         # Data allocation or transfer from numpy to warp
         with wp.ScopedDevice(self.device):
@@ -1129,6 +1202,7 @@ class ForwardKinematicsSolver:
 
             # Line search
             self.max_line_search_iterations = wp.array(dtype=wp.int32, shape=(1,))  # Max iterations
+            self.max_line_search_iterations.fill_(self.settings.max_line_search_iterations)
             self.line_search_iteration = wp.array(dtype=wp.int32, shape=(self.num_worlds,))  # Iteration count
             self.line_search_loop_condition = wp.array(dtype=wp.int32, shape=(1,))  # Loop condition
             self.line_search_success = wp.array(dtype=wp.int32, shape=(self.num_worlds,))  # Convergence, per world
@@ -1137,16 +1211,18 @@ class ForwardKinematicsSolver:
                 dtype=wp.float32, shape=(self.num_worlds,)
             )  # Merit function gradient at 0, per world
             self.alpha = wp.array(dtype=wp.float32, shape=(self.num_worlds,))  # Step size, per world
-            self.bodies_q_alpha = wp.array(dtype=wp.transformf, shape=(model.size.sum_of_num_bodies,))  # New state
+            self.bodies_q_alpha = wp.array(dtype=wp.transformf, shape=(self.model.size.sum_of_num_bodies,))  # New state
             self.val_alpha = wp.array(dtype=wp.float32, shape=(self.num_worlds,))  # New merit function value, per world
 
             # Gauss-Newton
             self.max_newton_iterations = wp.array(dtype=wp.int32, shape=(1,))  # Max iterations
+            self.max_newton_iterations.fill_(self.settings.max_newton_iterations)
             self.newton_iteration = wp.array(dtype=wp.int32, shape=(self.num_worlds,))  # Iteration count
             self.newton_loop_condition = wp.array(dtype=wp.int32, shape=(1,))  # Loop condition
             self.newton_success = wp.array(dtype=wp.int32, shape=(self.num_worlds,))  # Convergence per world
             self.newton_skip = wp.array(dtype=wp.int32, shape=(self.num_worlds,))  # Flag to stop iterating per world
             self.tolerance = wp.array(dtype=wp.float32, shape=(1,))  # Tolerance on max constraint
+            self.tolerance.fill_(self.settings.tolerance)
             self.actuators_q = wp.array(dtype=wp.float32, shape=(self.num_actuated_coords,))  # Actuated coordinates
             self.pos_control_transforms = wp.array(
                 dtype=wp.transformf, shape=(self.num_joints_tot,)
@@ -1187,7 +1263,7 @@ class ForwardKinematicsSolver:
             self._eval_jacobian_T_constraints_kernel,
             self._eval_merit_function_kernel,
             self._eval_merit_function_gradient_kernel,
-        ) = create_tile_based_kernels(TILE_SIZE_CTS, TILE_SIZE_VRS)
+        ) = create_tile_based_kernels(self.settings.TILE_SIZE_CTS, self.settings.TILE_SIZE_VRS)
 
         # Compute sparsity pattern and initialize linear solver (running symbolic factorization)
 
@@ -1579,7 +1655,6 @@ class ForwardKinematicsSolver:
         base_q: wp.array(dtype=wp.transformf),
         actuators_q: wp.array(dtype=wp.float32),
         bodies_q: wp.array(dtype=wp.transformf),
-        reset_state: bool = True,
     ):
         """
         Graph-capturable function solving forward kinematics with Gauss-Newton. More specifically, solves for the
@@ -1595,14 +1670,12 @@ class ForwardKinematicsSolver:
             Array of actuated joint coordinates.
             Expects shape of ``(sum_of_num_actuated_joint_coords,)`` and type :class:`float`.
         bodies_q : wp.array
-            Array of rigid body poses, written out by the solver and read in as initial guess if reset_state is False.
+            Array of rigid body poses, written out by the solver and read in as initial guess if the reset_state
+            solver setting is False.
             Expects shape of ``(num_bodies,)`` and type :class:`transform`.
-        reset_state : bool, optional
-            Whether to reset the state to initial states, to use as initial guess (default: True).
-            This parameter will be baked into the graph in case of graph capture.
         """
         # Optionally reset state
-        if reset_state:
+        if self.settings.reset_state:
             wp.copy(bodies_q, self.model.bodies.q_i_0)
 
         # Compute position control transforms (independent of state, depends on controls only)
@@ -1641,18 +1714,14 @@ class ForwardKinematicsSolver:
         base_q: wp.array(dtype=wp.transformf),
         actuators_q: wp.array(dtype=wp.float32),
         bodies_q: wp.array(dtype=wp.transformf),
-        reset_state: bool = True,
-        max_newton_iterations: wp.int32 = 30,
-        max_line_search_iterations: wp.int32 = 20,
-        tolerance: wp.float32 = 1e-6,
-        use_graph: bool = True,
         verbose: bool = False,
         return_status: bool = False,
+        use_graph: bool = True,
     ):
         """
-        Convenience function (non graph-capturable) solving forward kinematics with Gauss-Newton. More specifically,
-        solves for the rigid body poses satisfying kinematic constraints, given the current actuator generalized
-        coordinates (i.e. position-control inputs)
+        Convenience function with verbosity options (non graph-capturable), solving forward kinematics with Gauss-Newton.
+        More specifically, solves for the rigid body poses satisfying kinematic constraints, given the current actuator
+        generalized coordinates (i.e. position-control inputs)
 
         Parameters
         ----------
@@ -1663,23 +1732,16 @@ class ForwardKinematicsSolver:
             Array of actuated joint coordinates.
             Expects shape of ``(sum_of_num_actuated_joint_coords,)`` and type :class:`float`.
         bodies_q : wp.array
-            Array of rigid body poses, written out by the solver and read in as initial guess if reset_state is False.
+            Array of rigid body poses, written out by the solver and read in as initial guess if the reset_state
+            solver setting is False.
             Expects shape of ``(num_bodies,)`` and type :class:`transform`.
-        reset_state : bool, optional
-            whether to reset the state to initial states, to use as initial guess (default: True)
-        max_newton_iterations : int, optional
-            maximal number of Gauss-Newton iterations (default: 30)
-        max_line_search_iterations : int, optional
-            maximal line search iterations in the inner loop (default: 20)
-        tolerance : float, optional
-            maximal absolute kinematic constraint value that is acceptable at the solution (default: 1e-6)
-        use_graph : bool, optional
-            whether to use graph capture internally to accelerate multiple calls to this function. Can be turned
-            off for profiling individual kernels (default: True)
         verbose : bool, optional
             whether to write a status message at the end (default: False)
         return_status : bool, optional
             whether to return the detailed solver status (default: False)
+        use_graph : bool, optional
+            whether to use graph capture internally to accelerate multiple calls to this function. Can be turned
+            off for profiling individual kernels (default: True)
 
         Returns
         -------
@@ -1690,20 +1752,15 @@ class ForwardKinematicsSolver:
         assert actuators_q.device == self.device
         assert bodies_q.device == self.device
 
-        # Read solver parameters
-        self.max_newton_iterations.fill_(max_newton_iterations)
-        self.max_line_search_iterations.fill_(max_line_search_iterations)
-        self.tolerance.fill_(tolerance)
-
         # Run solve (with or without graph)
         if use_graph:
             if self.graph is None:
                 wp.capture_begin(self.device)
-                self.run_fk_solve(base_q, actuators_q, bodies_q, reset_state)
+                self.run_fk_solve(base_q, actuators_q, bodies_q)
                 self.graph = wp.capture_end()
             wp.capture_launch(self.graph)
         else:
-            self.run_fk_solve(base_q, actuators_q, bodies_q, reset_state)
+            self.run_fk_solve(base_q, actuators_q, bodies_q)
 
         # Status message
         if verbose or return_status:

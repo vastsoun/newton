@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Provides an data types, operations & interfaces for joint-limit detection."""
+"""Provides data types, operations & interfaces for joint-limit detection."""
 
 from dataclasses import dataclass, field
 
@@ -72,18 +72,27 @@ class LimitsData:
     num_model_max_limits: int = 0
     """
     The maximum number of limits allocated across all worlds.\n
+    The number of allocated limits in the model is determined by the ModelBuilder when finalizing
+    a ``Model``, and is equal to the sum over all finite-valued limits defined by each joint.\n
+    The single entry is then less than or equal to the total ``num_joint_dofs`` of the entire model.\n
     This is cached on the host-side for managing data allocations and setting thread sizes in kernels.
     """
 
     num_world_max_limits: list[int] = field(default_factory=list)
     """
     The maximum number of limits allocated per world.\n
+    The number of allocated limits per world is determined by the ModelBuilder when finalizing a
+    ``Model``, and is equal to the sum over all finite-valued limits defined by each joint of each world.\n
+    Each entry is then less than or equal to the total ``num_joint_dofs`` of the corresponding world.\n
     This is cached on the host-side for managing data allocations and setting thread sizes in kernels.
     """
 
     model_max_limits: wp.array | None = None
     """
     The maximum number of limits allocated for the model across all worlds.\n
+    The number of allocated limits in the model is determined by the ModelBuilder when finalizing
+    a ``Model``, and is equal to the sum over all finite-valued limits defined by each joint.\n
+    The single entry is then less than or equal to the total ``num_joint_dofs`` of the entire model.\n
     Shape of ``(1,)`` and type :class:`int32`.
     """
 
@@ -96,6 +105,9 @@ class LimitsData:
     world_max_limits: wp.array | None = None
     """
     The maximum number of limits allocated per world.\n
+    The number of allocated limits per world is determined by the ModelBuilder when finalizing a
+    ``Model``, and is equal to the sum over all finite-valued limits defined by each joint of each world.\n
+    Each entry is then less than or equal to the total ``num_joint_dofs`` of the corresponding world.\n
     Shape of ``(num_worlds,)`` and type :class:`int32`.
     """
 

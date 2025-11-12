@@ -514,7 +514,7 @@ class Simulator:
 
         Args:
             state (State): The state container from which the body states will be used to reset the simulation.
-            world_mask (wp.array): Array of per-world masks that indicate which worlds should be reset.\n
+            world_mask (wp.array): Array of per-world flags that indicate which worlds should be reset.\n
                 For each element 'w' in the array, if 'world_mask[w] != 0' then world 'w' will be reset,
                 otherwise it will be left unchanged (i.e. skipped).
             reset_constraints (bool): If True, also copies joint constraint forces
@@ -556,7 +556,7 @@ class Simulator:
                 Expects shape of ``(sum_of_num_actuated_joint_coords,)`` and type :class:`float`.
             actuators_dq (wp.array): Array of actuated joint velocities.\n
                 Expects shape of ``(sum_of_num_actuated_joint_dofs,)`` and type :class:`float`.
-            world_mask (wp.array): Array of per-world masks that indicate which worlds should be reset.\n
+            world_mask (wp.array): Array of per-world flags that indicate which worlds should be reset.\n
                 For each element 'w' in the array, if 'world_mask[w] != 0' then world 'w' will be reset,
                 otherwise it will be left unchanged (i.e. skipped).
         """
@@ -614,7 +614,7 @@ class Simulator:
                 Expects shape of ``(sum_of_num_actuated_joint_coords,)`` and type :class:`float`.
             actuators_dq (wp.array): Array of actuated joint velocities.\n
                 Expects shape of ``(sum_of_num_actuated_joint_dofs,)`` and type :class:`float`.
-            world_mask (wp.array): Array of per-world masks that indicate which worlds should be reset.\n
+            world_mask (wp.array): Array of per-world flags that indicate which worlds should be reset.\n
                 For each element 'w' in the array, if 'world_mask[w] != 0' then world 'w' will be reset,
                 otherwise it will be left unchanged (i.e. skipped).
         """

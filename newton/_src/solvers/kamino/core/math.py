@@ -541,7 +541,7 @@ def unit_quat_apply(q: quatf, v: vec3f) -> vec3f:
 @wp.func
 def unit_quat_conj_apply(q: quatf, v: vec3f) -> vec3f:
     """
-    Applies a the conjugate of a unit quaternion to a vector (making use of the unit norm assumption to simplify
+    Applies the conjugate of a unit quaternion to a vector (making use of the unit norm assumption to simplify
     the result)
     """
     qv = quat_imaginary(q)

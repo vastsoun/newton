@@ -200,7 +200,7 @@ def _eval_unit_quaternion_constraints(
     # Inputs
     num_bodies: wp.array(dtype=wp.int32),  # Num bodies per world
     first_body_id: wp.array(dtype=wp.int32),  # First body id per world
-    bodies_q_i: wp.array(dtype=wp.transformf),  # Body poses
+    bodies_q: wp.array(dtype=wp.transformf),  # Body poses
     world_mask: wp.array(dtype=wp.int32),  # Per-world flag to perform the computation (0 = skip)
     # Outputs
     constraints: wp.array2d(dtype=wp.float32),  # Constraint vector per world
@@ -217,7 +217,7 @@ def _eval_unit_quaternion_constraints(
         rb_id_tot = first_body_id[wd_id] + rb_id_loc
 
         # Evaluate unit quaternion constraint
-        q = wp.transform_get_rotation(bodies_q_i[rb_id_tot])
+        q = wp.transform_get_rotation(bodies_q[rb_id_tot])
         constraints[wd_id, rb_id_loc] = wp.dot(q, q) - 1.0
 
 
@@ -240,7 +240,7 @@ def create_eval_joint_constraints_kernel(has_universal_joints: bool):
         joints_X: wp.array(dtype=wp.mat33f),  # Joint frame (local axes, valid both on base and follower)
         joints_B_r_B: wp.array(dtype=wp.vec3f),  # Joint local position on base body
         joints_F_r_F: wp.array(dtype=wp.vec3f),  # Joint local position on follower body
-        bodies_q_i: wp.array(dtype=wp.transformf),  # Body poses
+        bodies_q: wp.array(dtype=wp.transformf),  # Body poses
         pos_control_transforms: wp.array(dtype=wp.transformf),  # Joint position-control transformation
         ct_full_to_red_map: wp.array2d(dtype=wp.int32),  # Map from full to reduced constraint id (per world)
         world_mask: wp.array(dtype=wp.int32),  # Per-world flag to perform the computation (0 = skip)
@@ -288,11 +288,11 @@ def create_eval_joint_constraints_kernel(has_universal_joints: bool):
                 c_base = wp.vec3f(0.0, 0.0, 0.0)
                 q_base = wp.quatf(0.0, 0.0, 0.0, 1.0)
             else:
-                c_base = wp.transform_get_translation(bodies_q_i[base_id])
-                q_base = wp.transform_get_rotation(bodies_q_i[base_id])
+                c_base = wp.transform_get_translation(bodies_q[base_id])
+                q_base = wp.transform_get_rotation(bodies_q[base_id])
             follower_id = joints_bid_F[jt_id_tot]
-            c_follower = wp.transform_get_translation(bodies_q_i[follower_id])
-            q_follower = wp.transform_get_rotation(bodies_q_i[follower_id])
+            c_follower = wp.transform_get_translation(bodies_q[follower_id])
+            q_follower = wp.transform_get_rotation(bodies_q[follower_id])
 
             # Get position control transformation, in joint/body frame for translation/rotation part
             t_control_joint = wp.transform_get_translation(pos_control_transforms[jt_id_tot])
@@ -343,7 +343,7 @@ def _eval_unit_quaternion_constraints_jacobian(
     # Inputs
     num_bodies: wp.array(dtype=wp.int32),  # Num bodies per world
     first_body_id: wp.array(dtype=wp.int32),  # First body id per world
-    bodies_q_i: wp.array(dtype=wp.transformf),  # Body poses
+    bodies_q: wp.array(dtype=wp.transformf),  # Body poses
     world_mask: wp.array(dtype=wp.int32),  # Per-world flag to perform the computation (0 = skip)
     # Outputs
     constraints_jacobian: wp.array3d(dtype=wp.float32),  # Constraints Jacobian per world
@@ -361,7 +361,7 @@ def _eval_unit_quaternion_constraints_jacobian(
         rb_id_tot = first_body_id[wd_id] + rb_id_loc
 
         # Evaluate constraint Jacobian
-        q = wp.transform_get_rotation(bodies_q_i[rb_id_tot])
+        q = wp.transform_get_rotation(bodies_q[rb_id_tot])
         state_offset = 7 * rb_id_loc + 3
         constraints_jacobian[wd_id, rb_id_loc, state_offset] = 2.0 * q.x
         constraints_jacobian[wd_id, rb_id_loc, state_offset + 1] = 2.0 * q.y
@@ -389,7 +389,7 @@ def create_eval_joint_constraints_jacobian_kernel(has_universal_joints: bool):
         joints_X: wp.array(dtype=wp.mat33f),  # Joint frame (local axes, valid both on base and follower)
         joints_B_r_B: wp.array(dtype=wp.vec3f),  # Joint local position on base body
         joints_F_r_F: wp.array(dtype=wp.vec3f),  # Joint local position on follower body
-        bodies_q_i: wp.array(dtype=wp.transformf),  # Body poses
+        bodies_q: wp.array(dtype=wp.transformf),  # Body poses
         pos_control_transforms: wp.array(dtype=wp.transformf),  # Joint position-control transformation
         ct_full_to_red_map: wp.array2d(dtype=wp.int32),  # Map from full to reduced constraint id (per world)
         world_mask: wp.array(dtype=wp.int32),  # Per-world flag to perform the computation (0 = skip)
@@ -432,11 +432,11 @@ def create_eval_joint_constraints_jacobian_kernel(has_universal_joints: bool):
                 c_base = wp.vec3f(0.0, 0.0, 0.0)
                 q_base = wp.quatf(0.0, 0.0, 0.0, 1.0)
             else:
-                c_base = wp.transform_get_translation(bodies_q_i[base_id_tot])
-                q_base = wp.transform_get_rotation(bodies_q_i[base_id_tot])
+                c_base = wp.transform_get_translation(bodies_q[base_id_tot])
+                q_base = wp.transform_get_rotation(bodies_q[base_id_tot])
             follower_id_tot = joints_bid_F[jt_id_tot]
-            c_follower = wp.transform_get_translation(bodies_q_i[follower_id_tot])
-            q_follower = wp.transform_get_rotation(bodies_q_i[follower_id_tot])
+            c_follower = wp.transform_get_translation(bodies_q[follower_id_tot])
+            q_follower = wp.transform_get_rotation(bodies_q[follower_id_tot])
             base_id_loc = base_id_tot - first_body_id[wd_id]
             follower_id_loc = follower_id_tot - first_body_id[wd_id]
 
@@ -958,10 +958,10 @@ class ForwardKinematicsSolver:
 
         Parameters
         ----------
-        model : Model | None
+        model : Model, optional
             Model for which to solve forward kinematics. If not provided, the finalize() method
             must be called at a later time for deferred initialization (default: None).
-        settings : ForwardKinematicsSolverSettings | None
+        settings : ForwardKinematicsSolverSettings, optional
             Solver settings. If not provided, default settings will be used (default: None).
         """
 
@@ -997,10 +997,10 @@ class ForwardKinematicsSolver:
 
         Parameters
         ----------
-        model : Model | None
+        model : Model, optional
             Model for which to solve forward kinematics. If not provided, the model given to the
             constructor will be used. Must be provided if not given to the constructor (default: None).
-        settings : ForwardKinematicsSolverSettings | None
+        settings : ForwardKinematicsSolverSettings, optional
             Solver settings. If not provided, the settings given to the constructor, or if not, the
             default settings will be used (default: None).
         """
@@ -1399,7 +1399,7 @@ class ForwardKinematicsSolver:
 
     def _eval_kinematic_constraints(
         self,
-        bodies_q_i: wp.array(dtype=wp.transformf),
+        bodies_q: wp.array(dtype=wp.transformf),
         pos_control_transforms: wp.array(dtype=wp.transformf),
         world_mask: wp.array(dtype=wp.int32),
         constraints: wp.array2d(dtype=wp.float32),
@@ -1412,7 +1412,7 @@ class ForwardKinematicsSolver:
         wp.launch(
             _eval_unit_quaternion_constraints,
             dim=(self.num_worlds, self.num_bodies_max),
-            inputs=[self.model.info.num_bodies, self.first_body_id, bodies_q_i, world_mask, constraints],
+            inputs=[self.model.info.num_bodies, self.first_body_id, bodies_q, world_mask, constraints],
         )
         # Evaluate joint constraints
         wp.launch(
@@ -1428,7 +1428,7 @@ class ForwardKinematicsSolver:
                 self.joints_X_j,
                 self.joints_B_r_Bj,
                 self.joints_F_r_Fj,
-                bodies_q_i,
+                bodies_q,
                 pos_control_transforms,
                 self.constraint_full_to_red_map,
                 world_mask,
@@ -1452,7 +1452,7 @@ class ForwardKinematicsSolver:
 
     def _eval_kinematic_constraints_jacobian(
         self,
-        bodies_q_i: wp.array(dtype=wp.transformf),
+        bodies_q: wp.array(dtype=wp.transformf),
         pos_control_transforms: wp.array(dtype=wp.transformf),
         world_mask: wp.array(dtype=wp.int32),
         constraints_jacobian: wp.array3d(dtype=wp.float32),
@@ -1466,7 +1466,7 @@ class ForwardKinematicsSolver:
         wp.launch(
             _eval_unit_quaternion_constraints_jacobian,
             dim=(self.num_worlds, self.num_bodies_max),
-            inputs=[self.model.info.num_bodies, self.first_body_id, bodies_q_i, world_mask, constraints_jacobian],
+            inputs=[self.model.info.num_bodies, self.first_body_id, bodies_q, world_mask, constraints_jacobian],
         )
 
         # Evaluate joint constraints Jacobian
@@ -1484,7 +1484,7 @@ class ForwardKinematicsSolver:
                 self.joints_X_j,
                 self.joints_B_r_Bj,
                 self.joints_F_r_Fj,
-                bodies_q_i,
+                bodies_q,
                 pos_control_transforms,
                 self.constraint_full_to_red_map,
                 world_mask,

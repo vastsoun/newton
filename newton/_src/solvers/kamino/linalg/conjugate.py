@@ -25,8 +25,6 @@ from typing import Any
 import warp as wp
 import warp.sparse as sparse
 
-# __all__ = ["BatchedLinearOperator", "cg", "cr", "make_diag_matrix_operator", "make_dense_square_matrix_operator"]
-
 # No need to auto-generate adjoint code for linear solvers
 wp.set_module_options({"enable_backward": False})
 
@@ -161,7 +159,9 @@ def make_termination_kernel(n_envs):
         iter = env_stepped * cycle_size + wp.tile_load(cur_iter, (n_envs,))
 
         wp.tile_store(cur_iter, iter)
-        cont_norm = wp.tile_astype(wp.tile_map(lt_mask, wp.tile_load(atol_sq, (n_envs,)), wp.tile_load(r_norm_sq, (n_envs,))), wp.int32)
+        cont_norm = wp.tile_astype(
+            wp.tile_map(lt_mask, wp.tile_load(atol_sq, (n_envs,)), wp.tile_load(r_norm_sq, (n_envs,))), wp.int32
+        )
         cont_iter = wp.tile_map(lt_mask, iter, wp.tile_load(maxiter, (n_envs,)))
         cont = wp.tile_map(wp.mul, wp.tile_map(wp.mul, cont_iter, cont_norm), env_stepped)
         wp.tile_store(env_condition, cont)
@@ -545,7 +545,7 @@ def _run_capturable_loop(
     check_every: int,
     use_cuda_graph: bool,
     cycle_size: int = 1,
-    termination_kernel = None,
+    termination_kernel=None,
 ):
     # TODO: check-every > 0 without python-space code
     assert check_every == 0
@@ -616,15 +616,6 @@ def _run_capturable_loop(
                 break
 
     return cur_iter, r_norm_sq, atol_sq
-
-
-# TODO:
-# [x] sequential work for 1 col, 1 env
-# [x] sequential work for 1 col, several envs
-# [x] sequential work for several cols, several envs
-# [ ] tiled work for 1 col, 1 env
-# [ ] tiled work for 1 col, several envs
-# [ ] tiled work for several cols, several envs
 
 
 @wp.kernel
@@ -798,7 +789,7 @@ class CGSolver:
         wp.launch(
             self.tiled_dot_kernel,
             dim=(a.shape[0], self.n_envs, block_dim),
-            block_dim=min(256, self.dot_tile_size//8),
+            block_dim=min(256, self.dot_tile_size // 8),
             inputs=[a, b, self.active_dims, self.env_active],
             outputs=[result],
             device=self.device,

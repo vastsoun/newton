@@ -198,6 +198,16 @@ class USDImporter:
     ###
 
     @staticmethod
+    def _get_leaf_name(name: str) -> str:
+        """Retrieves the name of the prim from its path."""
+        return Path(name).name
+
+    @staticmethod
+    def _get_prim_path(prim) -> str:
+        """Retrieves the name of the prim from its path."""
+        return str(prim.GetPath())
+
+    @staticmethod
     def _get_prim_name(prim) -> str:
         """Retrieves the name of the prim from its path."""
         return str(prim.GetPath())[len(str(prim.GetParent().GetPath())) :].lstrip("/")
@@ -210,6 +220,15 @@ class USDImporter:
         if cdata is not None:
             uid = cdata.get("uuid", None)
         return uid if uid is not None else str(uuid.uuid4())
+
+    @staticmethod
+    def _get_prim_layer(prim) -> str | None:
+        """Queries the custom data for a unique identifier (UID)."""
+        layer = None
+        cdata = prim.GetCustomData()
+        if cdata is not None:
+            layer = cdata.get("layer", None)
+        return layer
 
     @staticmethod
     def _get_material_default_override(prim) -> bool:
@@ -1016,35 +1035,43 @@ class USDImporter:
         distance_unit: float = 1.0,
         rotation_unit: float = 1.0,
         meshes_are_collidable: bool = False,
+        prim_path_names: bool = False,
     ) -> CollisionGeometryDescriptor | GeometryDescriptor | None:
         """
         Parses a geometry prim and returns a GeometryDescriptor.
         """
-
         ###
         # Prim Identifiers
         ###
 
         # Retrieve the name and UID of the geometry from the prim
+        path = self._get_prim_path(geom_prim)
         name = self._get_prim_name(geom_prim)
         uid = self._get_prim_uid(geom_prim)
+        msg.debug(f"[Geom]: path: {path}")
         msg.debug(f"[Geom]: name: {name}")
         msg.debug(f"[Geom]: uid: {uid}")
 
         # Retrieve the name and index of the rigid body associated with the geom
         # NOTE: If a rigid body is not associated with the geom, the body index (bid) is
         # set to `-1` indicating that the geom belongs to the world, i.e. it is a static
-        bid = body_index_map.get(str(geom_spec.rigidBody), -1)
-        body_name = str(geom_spec.rigidBody) if bid > -1 else None
+        body_index = body_index_map.get(str(geom_spec.rigidBody), -1)
+        body_name = str(geom_spec.rigidBody) if body_index > -1 else "world"
         msg.debug(f"[Geom]: body_name: {body_name}")
-        msg.debug(f"[Geom]: body_index: {bid}")
+        msg.debug(f"[Geom]: body_index: {body_index}")
 
-        # Prefix the geom name with the body name if associated,
-        # otherwise use the full prim path
-        if body_name is not None:
-            name = body_name + "/" + name
+        # Attempt to get the layer the geometry belongs to
+        layer = self._get_prim_layer(geom_prim)
+        layer = layer if layer is not None else "default"
+        msg.debug(f"[Geom]: layer: {layer}")
+
+        # Use the explicit prim path as the geometry name if specified
+        if prim_path_names:
+            name = path
+        # Otherwise define the a condensed name based on the body and geometry layer
         else:
-            name = str(geom_prim.GetPath())
+            name = f"{self._get_leaf_name(body_name)}/{layer}/{name}"
+        msg.warning(f"[Geom]: name: {name}")
 
         ###
         # PhysicsGeom Common Properties
@@ -1056,17 +1083,6 @@ class USDImporter:
         i_T_ig = transformf(i_r_ig, i_q_ig)
         msg.debug(f"[{name}]: i_r_ig: {i_r_ig}")
         msg.debug(f"[{name}]: i_q_ig: {i_q_ig}")
-
-        ###
-        # Layer Properties
-        ###
-
-        # TODO: Define a mechanism to handle multiple layers,
-        # each potentially holding multiple geometries.
-        if bid == -1:
-            layer = "world"  # World layer
-        else:
-            layer = "primary"  # Default to 1 for all other geometries
 
         ###
         # PhysicsGeom Shape Properties
@@ -1151,7 +1167,7 @@ class USDImporter:
             name=name,
             uid=uid,
             layer=layer,
-            bid=bid,
+            bid=body_index,
             offset=i_T_ig,
             shape=shape,
         )

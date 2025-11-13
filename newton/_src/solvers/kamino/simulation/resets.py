@@ -269,13 +269,15 @@ def reset_select_worlds_to_initial_state(
     reset_constraints: bool = True,
 ):
     """
-    Reset the state of the selected worlds given an array of per-world flags.
+    Reset the state of the selected worlds to the initial state
+    defined in the model given an array of per-world flags.
 
     Args:
         model: Input model container holding the time-invariant data of the system.
         state: Input state container specifying the target state to be reset to.
         mask: Array of per-world flags indicating which worlds should be reset.
         data: Output solver data to be configured for the target state.
+        reset_constraints: Whether to reset joint constraint reactions to zero.
     """
     # Reset time
     wp.launch(

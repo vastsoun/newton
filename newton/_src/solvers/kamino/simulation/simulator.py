@@ -481,6 +481,14 @@ class Simulator:
     def reset(self, world_mask: wp.array | None = None, reset_constraints: bool = True):
         """
         Resets the simulation to the initial state defined in the model.
+
+        This operation also accepts an optional per-world mask that indicates
+        which worlds should be reset as well as a flag to indicate whether
+        joint constraint reactions should be reset to zero.
+
+        Args:
+            world_mask (wp.array): Array of per-world masks that indicate which worlds should be reset.\n
+            reset_constraints (bool): Whether to reset joint constraint reactions to zero.
         """
         # Run the pre-reset callback if it has been set
         self._run_pre_reset_callback()
@@ -491,7 +499,7 @@ class Simulator:
         else:
             self._reset_select_worlds_to_initial_state(world_mask, reset_constraints)
 
-        # Finally run the common post-reset processing operations
+        # Run the common post-reset processing operations
         self._reset_post_process()
 
         # Run the post-reset callback if it has been set
@@ -521,7 +529,7 @@ class Simulator:
         else:
             self._reset_select_worlds_to_state(state, world_mask, reset_constraints)
 
-        # Finally run the common post-reset processing operations
+        # Run the common post-reset processing operations
         self._reset_post_process()
 
         # Run the post-reset callback if it has been set
@@ -568,7 +576,7 @@ class Simulator:
         # Reset (optionally select) worlds to the specified actuators state
         # TODO
 
-        # Finally run the common post-reset processing operations
+        # Run the common post-reset processing operations
         self._reset_post_process()
 
         # Run the post-reset callback if it has been set
@@ -626,7 +634,7 @@ class Simulator:
         # Reset (optionally select) worlds to the specified base and actuators state
         # TODO
 
-        # Finally run the common post-reset processing operations
+        # Run the common post-reset processing operations
         self._reset_post_process()
 
         # Run the post-reset callback if it has been set
@@ -653,6 +661,7 @@ class Simulator:
         - No assumptions are made about the operations performed or the data associated with the custom
           reset function. It is the user's responsibility to ensure that the reset function correctly
           initializes the simulation state and any other necessary data.
+        - The pre- and post-reset callbacks will still be executed around the custom reset function.
         """
         # Run the pre-reset callback if it has been set
         self._run_pre_reset_callback()
@@ -660,7 +669,7 @@ class Simulator:
         # Reset the simulation using the provided custom reset function
         reset_fn(**kwargs)
 
-        # Finally run the common post-reset processing operations
+        # Run the common post-reset processing operations
         self._reset_post_process()
 
         # Run the post-reset callback if it has been set
@@ -875,6 +884,10 @@ class Simulator:
     def _reset_select_worlds_to_initial_state(self, world_mask: wp.array | None = None, reset_constraints: bool = True):
         """
         Resets the simulation to the initial state defined in the model.
+
+        Args:
+            world_mask (wp.array): Array of per-world masks that indicate which worlds should be reset.\n
+            reset_constraints (bool): Whether to reset joint constraint reactions to zero.
         """
         # Reset the worlds specified in the `world_mask` array to the given state
         reset_select_worlds_to_initial_state(

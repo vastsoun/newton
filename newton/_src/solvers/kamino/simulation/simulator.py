@@ -45,7 +45,7 @@ from ..kinematics.limits import Limits
 from ..linalg import LinearSolver, LLTBlockedSolver
 from ..solvers.fk import ForwardKinematicsSolver  # noqa: F401
 from ..solvers.padmm import PADMMSettings, PADMMSolver
-from .resets import reset_state_of_select_worlds
+from .resets import reset_select_worlds_to_initial_state, reset_select_worlds_to_state
 
 ###
 # Module interface
@@ -278,7 +278,8 @@ class Simulator:
         # self._fk_solver = ForwardKinematicsSolver(model=self._model)
 
         # Initialize callbacks
-        self._reset_cb: Callable[[Simulator], None] = None
+        self._pre_reset_cb: Callable[[Simulator], None] = None
+        self._post_reset_cb: Callable[[Simulator], None] = None
         self._control_cb: Callable[[Simulator], None] = None
         self._pre_step_cb: Callable[[Simulator], None] = None
         self._mid_step_cb: Callable[[Simulator], None] = None
@@ -435,13 +436,17 @@ class Simulator:
     # Configurations - Callbacks
     ###
 
-    def set_reset_callback(self, callback: Callable[[Simulator], None]):
+    def set_pre_reset_callback(self, callback: Callable[[Simulator], None]):
         """
-        Set a reset callback to be called at each call to `reset()`, that
-        should populate `data.c_n`, i.e. the control inputs for the current step,
-        based on the current and previous states and controls.
+        Set a reset callback to be called at the beginning of each call to `reset_*()` methods.
         """
-        self._reset_cb = callback
+        self._pre_reset_cb = callback
+
+    def set_post_reset_callback(self, callback: Callable[[Simulator], None]):
+        """
+        Set a reset callback to be called at the end of each call to to `reset_*()` methods.
+        """
+        self._post_reset_cb = callback
 
     def set_control_callback(self, callback: Callable[[Simulator], None]):
         """
@@ -473,13 +478,34 @@ class Simulator:
     # Operations
     ###
 
-    def reset(self):
+    def reset(self, world_mask: wp.array | None = None, reset_constraints: bool = True):
         """
         Resets the simulation to the initial state defined in the model.
-        """
-        self._reset_all_worlds_to_initial_state()
 
-    def reset_to_state(self, state: State, world_mask: wp.array = None, reset_constraints: bool = True):
+        This operation also accepts an optional per-world mask that indicates
+        which worlds should be reset as well as a flag to indicate whether
+        joint constraint reactions should be reset to zero.
+
+        Args:
+            world_mask (wp.array): Array of per-world masks that indicate which worlds should be reset.\n
+            reset_constraints (bool): Whether to reset joint constraint reactions to zero.
+        """
+        # Run the pre-reset callback if it has been set
+        self._run_pre_reset_callback()
+
+        # Reset (optionally select) worlds to the initial state of the model
+        if world_mask is None:
+            self._reset_all_worlds_to_initial_state(reset_constraints)
+        else:
+            self._reset_select_worlds_to_initial_state(world_mask, reset_constraints)
+
+        # Run the common post-reset processing operations
+        self._reset_post_process()
+
+        # Run the post-reset callback if it has been set
+        self._run_post_reset_callback()
+
+    def reset_to_state(self, state: State, world_mask: wp.array | None = None, reset_constraints: bool = True):
         """
         Resets the simulation to a fully specified maximal-coordinate state.
 
@@ -494,12 +520,24 @@ class Simulator:
             reset_constraints (bool): If True, also copies joint constraint forces
                 from the provided state in order to warm-start the constraint solver.
         """
+        # Run the pre-reset callback if it has been set
+        self._run_pre_reset_callback()
+
+        # Reset (optionally select) worlds to the specified state
         if world_mask is None:
             self._reset_all_worlds_to_state(state, reset_constraints)
         else:
             self._reset_select_worlds_to_state(state, world_mask, reset_constraints)
 
-    def reset_to_actuators_state(self, actuators_q: wp.array, actuators_dq: wp.array, world_mask: wp.array = None):
+        # Run the common post-reset processing operations
+        self._reset_post_process()
+
+        # Run the post-reset callback if it has been set
+        self._run_post_reset_callback()
+
+    def reset_to_actuators_state(
+        self, actuators_q: wp.array, actuators_dq: wp.array, world_mask: wp.array | None = None
+    ):
         """
         Resets the simulation to a specified state of the actuators (i.e. generalized coordinates and velocities).
 
@@ -532,8 +570,25 @@ class Simulator:
         # - Compute joint states from body states, parallel over joints
         raise NotImplementedError("Simulator.reset_to_actuators_state() is not yet implemented.")
 
+        # Run the pre-reset callback if it has been set
+        self._run_pre_reset_callback()
+
+        # Reset (optionally select) worlds to the specified actuators state
+        # TODO
+
+        # Run the common post-reset processing operations
+        self._reset_post_process()
+
+        # Run the post-reset callback if it has been set
+        self._run_post_reset_callback()
+
     def reset_to_base_and_actuators_state(
-        self, base_q: wp.array, base_u: wp.array, actuators_q: wp.array, actuators_dq: wp.array, worlds: wp.array = None
+        self,
+        base_q: wp.array,
+        base_u: wp.array,
+        actuators_q: wp.array,
+        actuators_dq: wp.array,
+        world_mask: wp.array = None,
     ):
         """
         Resets the simulation to a specified state of  base and actuators (i.e. generalized coordinates and velocities).
@@ -572,6 +627,53 @@ class Simulator:
         # - Use the ForwardKinematics solver given specified joint coordinates and velocities to compute body states
         # - Compute joint states from body states, parallel over joints
         raise NotImplementedError("Simulator.reset_to_base_and_actuators_state() is not yet implemented.")
+
+        # Run the pre-reset callback if it has been set
+        self._run_pre_reset_callback()
+
+        # Reset (optionally select) worlds to the specified base and actuators state
+        # TODO
+
+        # Run the common post-reset processing operations
+        self._reset_post_process()
+
+        # Run the post-reset callback if it has been set
+        self._run_post_reset_callback()
+
+    def reset_custom(
+        self,
+        reset_fn: Callable,
+        **kwargs,
+    ):
+        """
+        Resets the simulation using a completely custom user-specified reset function.
+
+        This operation assumes that the reset function `reset_fn` will set
+        the simulation state into the `Simulator.data.solver` container.
+
+        Args:
+            reset_fn (Callable): A user-defined function that performs the reset operation.\n
+            **kwargs: Additional keyword arguments to be passed to the custom reset function.
+
+        Notes:
+        - The custom reset function `reset_fn` must be graph-capturable if the `reset_custom()`
+          method is to be used within a CUDA graph.
+        - No assumptions are made about the operations performed or the data associated with the custom
+          reset function. It is the user's responsibility to ensure that the reset function correctly
+          initializes the simulation state and any other necessary data.
+        - The pre- and post-reset callbacks will still be executed around the custom reset function.
+        """
+        # Run the pre-reset callback if it has been set
+        self._run_pre_reset_callback()
+
+        # Reset the simulation using the provided custom reset function
+        reset_fn(**kwargs)
+
+        # Run the common post-reset processing operations
+        self._reset_post_process()
+
+        # Run the post-reset callback if it has been set
+        self._run_post_reset_callback()
 
     def step(self):
         """
@@ -625,16 +727,23 @@ class Simulator:
     # Internals - Callback Operations
     ###
 
-    def _run_reset_callback(self):
+    def _run_pre_reset_callback(self):
         """
-        Run the reset callback if it has been set.
+        Runs the pre-reset callback if it has been set.
         """
-        if self._reset_cb is not None:
-            self._reset_cb(self)
+        if self._pre_reset_cb is not None:
+            self._pre_reset_cb(self)
+
+    def _run_post_reset_callback(self):
+        """
+        Runs the post-reset callback if it has been set.
+        """
+        if self._post_reset_cb is not None:
+            self._post_reset_cb(self)
 
     def _run_control_callback(self):
         """
-        Run the control callback if it has been set.
+        Runs the control callback if it has been set.
         """
         if self._control_cb is not None:
             self._control_cb(self)
@@ -647,14 +756,14 @@ class Simulator:
 
     def _run_prestep_callback(self):
         """
-        Run the pre-step callback if it has been set.
+        Runs the pre-step callback if it has been set.
         """
         if self._pre_step_cb is not None:
             self._pre_step_cb(self)
 
     def _run_midstep_callback(self):
         """
-        Run the mid-step callback if it has been set.
+        Runs the mid-step callback if it has been set.
         """
         if self._mid_step_cb is not None:
             self._mid_step_cb(self)
@@ -742,7 +851,24 @@ class Simulator:
         # Finally, update the previous-step state and control from the next-step values
         self._data.update_previous()
 
-    def _reset_all_worlds_to_initial_state(self):
+    def _reset_post_process(self):
+        """
+        Resets solver internal data and calls reset callbacks.
+
+        This is a common operation that must be called after resetting bodies and joints,
+        that ensures that all state and control data are synchronized with the internal
+        solver state, and that intermediate quantities are updated accordingly.
+        """
+        # Finally, reset all state and control
+        # data to match the internal solver state
+        self._reset_states_and_controls()
+
+        # Update the kinematics
+        # NOTE: This constructs the system Jacobians, which ensures
+        # that controls can be applied on the first call to `step()`
+        self._forward_kinematics()
+
+    def _reset_all_worlds_to_initial_state(self, reset_constraints: bool = True):
         """
         Resets the simulation to the initial state defined in the model.
         """
@@ -753,19 +879,23 @@ class Simulator:
         self._reset_bodies_state_and_data_to_initial()
 
         # Then reset the state of all joints
-        self._reset_joints_data()
+        self._reset_joints_data(reset_constraints)
 
-        # Finally, reset all state and control
-        # data to match the internal solver state
-        self._reset_states_and_controls()
+    def _reset_select_worlds_to_initial_state(self, world_mask: wp.array | None = None, reset_constraints: bool = True):
+        """
+        Resets the simulation to the initial state defined in the model.
 
-        # Update the kinematics
-        # NOTE: This constructs the system Jacobians, which ensures
-        # that controls can be applied on the first call to `step()`
-        self._forward_kinematics()
-
-        # Run the reset callback if it has been set
-        self._run_reset_callback()
+        Args:
+            world_mask (wp.array): Array of per-world masks that indicate which worlds should be reset.\n
+            reset_constraints (bool): Whether to reset joint constraint reactions to zero.
+        """
+        # Reset the worlds specified in the `world_mask` array to the given state
+        reset_select_worlds_to_initial_state(
+            model=self._model,
+            data=self._data.solver,
+            mask=world_mask,
+            reset_constraints=reset_constraints,
+        )
 
     def _reset_all_worlds_to_state(self, state: State, reset_constraints: bool = False):
         """
@@ -794,19 +924,9 @@ class Simulator:
         if reset_constraints:
             wp.copy(self._data.solver.joints.lambda_j, state.lambda_j)
 
-        # Finally, reset all state and control
-        # data to match the internal solver state
-        self._reset_states_and_controls()
-
-        # Update the kinematics
-        # NOTE: This constructs the system Jacobians, which ensures
-        # that controls can be applied on the first call to `step()`
-        self._forward_kinematics()
-
-        # Run the reset callback if it has been set
-        self._run_reset_callback()
-
-    def _reset_select_worlds_to_state(self, state: State, world_mask: wp.array = None, reset_constraints: bool = True):
+    def _reset_select_worlds_to_state(
+        self, state: State, world_mask: wp.array | None = None, reset_constraints: bool = True
+    ):
         """
         Resets the simulation to a specific state.
 
@@ -819,26 +939,14 @@ class Simulator:
                 from the provided state in order to warm-start the constraint solver.
         """
 
-        # Reset the worlds specified in the `worlds` array to the given state
-        reset_state_of_select_worlds(
+        # Reset the worlds specified in the `world_mask` array to the given state
+        reset_select_worlds_to_state(
             model=self._model,
             data=self._data.solver,
             state=state,
             mask=world_mask,
             reset_constraints=reset_constraints,
         )
-
-        # Finally, reset all state and control
-        # data to match the internal solver state
-        self._reset_states_and_controls()
-
-        # Update the kinematics
-        # NOTE: This constructs the system Jacobians, which ensures
-        # that controls can be applied on the first call to `step()`
-        self._forward_kinematics()
-
-        # Run the reset callback if it has been set
-        self._run_reset_callback()
 
     ###
     # Internals - Update Operations

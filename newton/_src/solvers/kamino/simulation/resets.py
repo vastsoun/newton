@@ -28,7 +28,8 @@ from ..kinematics.joints import compute_joint_pose_and_relative_motion, make_wri
 ###
 
 __all__ = [
-    "reset_state_of_select_worlds",
+    "reset_select_worlds_to_initial_state",
+    "reset_select_worlds_to_state",
 ]
 
 
@@ -261,7 +262,104 @@ def _reset_joints_of_select_worlds(
 ###
 
 
-def reset_state_of_select_worlds(
+def reset_select_worlds_to_initial_state(
+    model: Model,
+    mask: wp.array,
+    data: ModelData,
+    reset_constraints: bool = True,
+):
+    """
+    Reset the state of the selected worlds to the initial state
+    defined in the model given an array of per-world flags.
+
+    Args:
+        model: Input model container holding the time-invariant data of the system.
+        state: Input state container specifying the target state to be reset to.
+        mask: Array of per-world flags indicating which worlds should be reset.
+        data: Output solver data to be configured for the target state.
+        reset_constraints: Whether to reset joint constraint reactions to zero.
+    """
+    # Reset time
+    wp.launch(
+        _reset_time_of_select_worlds,
+        dim=model.size.num_worlds,
+        inputs=[
+            # Inputs:
+            mask,
+            # Outputs:
+            data.time.time,
+            data.time.steps,
+        ],
+    )
+
+    # Reset bodies
+    wp.launch(
+        _reset_bodies_of_select_worlds,
+        dim=model.size.sum_of_num_bodies,
+        inputs=[
+            # Inputs:
+            mask,
+            model.bodies.wid,
+            model.bodies.i_I_i,
+            model.bodies.inv_i_I_i,
+            model.bodies.q_i_0,
+            model.bodies.u_i_0,
+            # Outputs:
+            data.bodies.q_i,
+            data.bodies.u_i,
+            data.bodies.I_i,
+            data.bodies.inv_I_i,
+            data.bodies.w_i,
+            data.bodies.w_a_i,
+            data.bodies.w_j_i,
+            data.bodies.w_l_i,
+            data.bodies.w_c_i,
+            data.bodies.w_e_i,
+        ],
+    )
+
+    # Reset joints
+    wp.launch(
+        _reset_joints_of_select_worlds,
+        dim=model.size.sum_of_num_joints,
+        inputs=[
+            # Inputs:
+            reset_constraints,
+            mask,
+            model.info.joint_coords_offset,
+            model.info.joint_dofs_offset,
+            model.info.joint_cts_offset,
+            model.joints.wid,
+            model.joints.dof_type,
+            model.joints.num_cts,
+            model.joints.coords_offset,
+            model.joints.dofs_offset,
+            model.joints.cts_offset,
+            model.joints.bid_B,
+            model.joints.bid_F,
+            model.joints.B_r_Bj,
+            model.joints.F_r_Fj,
+            model.joints.X_j,
+            model.joints.q_j_ref,
+            model.bodies.q_i_0,
+            model.bodies.u_i_0,
+            data.joints.lambda_j,
+            # Outputs:
+            data.joints.p_j,
+            data.joints.r_j,
+            data.joints.dr_j,
+            data.joints.q_j,
+            data.joints.dq_j,
+            data.joints.lambda_j,
+            data.joints.j_w_j,
+            data.joints.j_w_a_j,
+            data.joints.j_w_c_j,
+            data.joints.j_w_l_j,
+        ],
+    )
+
+
+def reset_select_worlds_to_state(
     model: Model,
     state: State,
     mask: wp.array,

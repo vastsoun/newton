@@ -1070,6 +1070,8 @@ class ForwardKinematicsSolver:
         num_joints = np.zeros(self.num_worlds, dtype="int")  # Number of joints per world
         self.num_joints_tot = 0  # Number of joints for all worlds
         actuated_coords_map = []  # Map of new actuated coordinates to these in the model or to the base coordinates
+        base_q_default = np.zeros(7 * self.num_worlds, dtype="float32")  # Default base pose
+        bodies_q_0 = self.model.bodies.q_i_0.numpy()
         for wd_id in range(self.num_worlds):
             # Retrieve base joint id if set
             base_joint_id = -1
@@ -1108,6 +1110,15 @@ class ForwardKinematicsSolver:
                 joints_num_actuated_coords.append(7)
                 coord_offset = -7 * wd_id - 1  # We encode offsets in base_q negatively with i -> -i - 1
                 actuated_coords_map.extend(range(coord_offset, coord_offset - 7, -1))
+                base_q_default[7 * wd_id : 7 * wd_id + 7] = [
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.1,
+                ]  # Default to zero of free joint
             elif self.model.worlds[wd_id].has_base_body:  # Add an actuated free joint to the base body
                 base_body_id = first_body_id[wd_id] + self.model.worlds[wd_id].base_body_idx
                 joints_dof_type.append(JointDoFType.FREE)
@@ -1123,6 +1134,7 @@ class ForwardKinematicsSolver:
                 # specifying the absolute base position and orientation
                 coord_offset = -7 * wd_id - 1  # We encode offsets in base_q negatively with i -> -i - 1
                 actuated_coords_map.extend(range(coord_offset, coord_offset - 7, -1))
+                base_q_default[7 * wd_id : 7 * wd_id + 7] = bodies_q_0[base_body_id]  # Default to initial body pose
 
             # Record number of joints
             num_joints_world = len(joints_dof_type) - self.num_joints_tot
@@ -1223,6 +1235,9 @@ class ForwardKinematicsSolver:
             self.joints_B_r_Bj = wp.from_numpy(joints_B_r_Bj, dtype=wp.vec3f)
             self.joints_F_r_Fj = wp.from_numpy(joints_F_r_Fj, dtype=wp.vec3f)
             self.joints_X_j = wp.from_numpy(joints_X_j, dtype=wp.mat33f)
+
+            # Default base state
+            self.base_q_default = wp.from_numpy(base_q_default, dtype=wp.transformf)
 
             # Line search
             self.max_line_search_iterations = wp.array(dtype=wp.int32, shape=(1,))  # Max iterations
@@ -1645,14 +1660,18 @@ class ForwardKinematicsSolver:
     ###
 
     def eval_position_control_transformations(
-        self, base_q: wp.array(dtype=wp.transformf), actuators_q: wp.array(dtype=wp.float32)
+        self, actuators_q: wp.array(dtype=wp.float32), base_q: wp.array(dtype=wp.transformf) | None = None
     ):
         """
-        Evaluates and returns position control transformations for a model given base pose and actuator coordinates
-        (intermediary quantity needed for the kinematic constraints/Jacobian evaluation).
+        Evaluates and returns position control transformations (an intermediary quantity needed for the
+        kinematic constraints/Jacobian evaluation) for a model given actuator coordinates, and optionally
+        the base pose (the default base pose is used if not provided).
         """
-        assert base_q.device == self.device
+        assert base_q is None or base_q.device == self.device
         assert actuators_q.device == self.device
+
+        if base_q is None:
+            base_q = self.base_q_default
 
         pos_control_transforms = wp.array(dtype=wp.transformf, shape=(self.num_joints_tot,), device=self.device)
         self._eval_position_control_transformations(base_q, actuators_q, pos_control_transforms)
@@ -1699,9 +1718,9 @@ class ForwardKinematicsSolver:
 
     def run_fk_solve(
         self,
-        base_q: wp.array(dtype=wp.transformf),
         actuators_q: wp.array(dtype=wp.float32),
         bodies_q: wp.array(dtype=wp.transformf),
+        base_q: wp.array(dtype=wp.transformf) | None = None,
         world_mask: wp.array(dtype=wp.int32) | None = None,
     ):
         """
@@ -1711,9 +1730,6 @@ class ForwardKinematicsSolver:
 
         Parameters
         ----------
-        base_q : wp.array
-            Pose of the base body for each world, in the frame of the base joint if it was set, or absolute otherwise.
-            Expects shape of ``(num_worlds,)`` and type :class:`transform`.
         actuators_q : wp.array
             Array of actuated joint coordinates.
             Expects shape of ``(sum_of_num_actuated_joint_coords,)`` and type :class:`float`.
@@ -1721,11 +1737,21 @@ class ForwardKinematicsSolver:
             Array of rigid body poses, written out by the solver and read in as initial guess if the reset_state
             solver setting is False.
             Expects shape of ``(num_bodies,)`` and type :class:`transform`.
+        base_q : wp.array, optional
+            Pose of the base body for each world, in the frame of the base joint if it was set, or absolute otherwise.
+            If not provided, will default to zero coordinates of the base joint, or the initial pose of the base body.
+            If no base body or joint was set for this model, will be ignored.
+            If this function is captured in a graph, must be either always or never provided.
+            Expects shape of ``(num_worlds,)`` and type :class:`transform`.
         world_mask : wp.array, optional
             Array of per-world flags that indicate which worlds should be processed (0 = leave that world unchanged).
             If not provided, all worlds will be processed (default: None).
-            If this function is captured in a graph, world_mask must be either always or never provided.
+            If this function is captured in a graph, must be either always or never provided.
         """
+        # Use default base pose if not provided
+        if base_q is None:
+            base_q = self.base_q_default
+
         # Compute position control transforms (independent of state, depends on controls only)
         self._eval_position_control_transformations(base_q, actuators_q, self.pos_control_transforms)
 
@@ -1766,9 +1792,9 @@ class ForwardKinematicsSolver:
 
     def solve_fk(
         self,
-        base_q: wp.array(dtype=wp.transformf),
         actuators_q: wp.array(dtype=wp.float32),
         bodies_q: wp.array(dtype=wp.transformf),
+        base_q: wp.array(dtype=wp.transformf) | None = None,
         world_mask: wp.array(dtype=wp.int32) | None = None,
         verbose: bool = False,
         return_status: bool = False,
@@ -1781,9 +1807,6 @@ class ForwardKinematicsSolver:
 
         Parameters
         ----------
-        base_q : wp.array
-            Pose of the base body for each world, in the frame of the base joint if it was set, or absolute otherwise.
-            Expects shape of ``(num_worlds,)`` and type :class:`transform`.
         actuators_q : wp.array
             Array of actuated joint coordinates.
             Expects shape of ``(sum_of_num_actuated_joint_coords,)`` and type :class:`float`.
@@ -1791,6 +1814,11 @@ class ForwardKinematicsSolver:
             Array of rigid body poses, written out by the solver and read in as initial guess if the reset_state
             solver setting is False.
             Expects shape of ``(num_bodies,)`` and type :class:`transform`.
+        base_q : wp.array, optional
+            Pose of the base body for each world, in the frame of the base joint if it was set, or absolute otherwise.
+            If not provided, will default to zero coordinates of the base joint, or the initial pose of the base body.
+            If no base body or joint was set for this model, will be ignored.
+            Expects shape of ``(num_worlds,)`` and type :class:`transform`.
         world_mask : wp.array, optional
             Array of per-world flags that indicate which worlds should be processed (0 = leave that world unchanged).
             If not provided, all worlds will be processed (default: None).
@@ -1807,7 +1835,7 @@ class ForwardKinematicsSolver:
         solver_status : ForwardKinematicsSolverStatus, optional
             the detailed solver status with success flag, number of iterations and constraint residual per world
         """
-        assert base_q.device == self.device
+        assert base_q is None or base_q.device == self.device
         assert actuators_q.device == self.device
         assert bodies_q.device == self.device
 
@@ -1815,11 +1843,11 @@ class ForwardKinematicsSolver:
         if use_graph:
             if self.graph is None:
                 wp.capture_begin(self.device)
-                self.run_fk_solve(base_q, actuators_q, bodies_q, world_mask)
+                self.run_fk_solve(actuators_q, bodies_q, base_q, world_mask)
                 self.graph = wp.capture_end()
             wp.capture_launch(self.graph)
         else:
-            self.run_fk_solve(base_q, actuators_q, bodies_q, world_mask)
+            self.run_fk_solve(actuators_q, bodies_q, base_q, world_mask)
 
         # Status message
         if verbose or return_status:

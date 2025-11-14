@@ -64,17 +64,13 @@ class JacobianCheckForwardKinematics(unittest.TestCase):
             bodies_q_np = rng.uniform(-1.0, 1.0, 7 * model.size.sum_of_num_bodies).astype("float32")
             bodies_q = wp.from_numpy(bodies_q_np, dtype=wp.transformf, device=model.device)
 
-            # Generate (random) base pose
-            base_q_np = rng.uniform(-1.0, 1.0, 7).astype("float32")
-            base_q = wp.from_numpy(base_q_np, dtype=wp.transformf, device=model.device)
-
             # Generate (random) actuated coordinates
             actuators_q_np = rng.uniform(-1.0, 1.0, model.size.sum_of_num_actuated_joint_coords).astype("float32")
             actuators_q = wp.from_numpy(actuators_q_np, dtype=wp.float32, device=model.device)
 
             # Evaluate analytic Jacobian
             solver = ForwardKinematicsSolver(model=model)
-            pos_control_transforms = solver.eval_position_control_transformations(base_q, actuators_q)
+            pos_control_transforms = solver.eval_position_control_transformations(actuators_q, None)
             jacobian = solver.eval_kinematic_constraints_jacobian(bodies_q, pos_control_transforms)
 
             # Check against finite differences Jacobian
@@ -161,7 +157,7 @@ def simulate_random_poses(
         base_q.assign(base_q_np[i])
         actuators_q.assign(actuators_q_np[i])
         status = solver.solve_fk(
-            base_q, actuators_q, bodies_q, use_graph=use_graph, verbose=verbose, return_status=True
+            actuators_q, bodies_q, base_q=base_q, use_graph=use_graph, verbose=verbose, return_status=True
         )
         success_flags.append(status.success.min() == 1)
 

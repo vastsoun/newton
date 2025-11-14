@@ -927,7 +927,7 @@ class ModelBuilder:
     # Model Compilation
     ###
 
-    def finalize(self, device: Devicelike = None, requires_grad: bool = False) -> Model:
+    def finalize(self, device: Devicelike = None, requires_grad: bool = False, base_auto: bool = True) -> Model:
         """
         Constructs a Model object from the current ModelBuilder.
 
@@ -939,6 +939,8 @@ class ModelBuilder:
                 If None, the default/preferred device will determined by Warp.
             requires_grad (bool): Whether the model data should support gradients.\n
                 Defaults to False.
+            base_auto (bool): Whether to automatically select a base body,
+                and if possible, a base joint, if neither was set.
 
         Returns:
             Model: The constructed Model object containing the time-invariant simulation data.
@@ -974,7 +976,7 @@ class ModelBuilder:
                         )
                 else:  # Set base body to be the follower of the base joint
                     world.set_base_body(follower_idx)
-            elif not world.has_base_body:
+            elif not world.has_base_body and base_auto:
                 world.set_base_body(0)  # Set the base body as the first body
                 for jt_idx, joint in enumerate(
                     self._joints[world.joints_idx_offset : world.joints_idx_offset + world.num_joints]

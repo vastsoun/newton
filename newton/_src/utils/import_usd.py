@@ -28,9 +28,8 @@ import warp as wp
 
 from ..core import quat_between_axes
 from ..core.types import Axis, Transform
-from ..geometry import MESH_MAXHULLVERT, Mesh, ShapeFlags, compute_sphere_inertia
+from ..geometry import MESH_MAXHULLVERT, ShapeFlags, compute_sphere_inertia
 from ..sim.builder import ModelBuilder
-from ..sim.joints import JointMode
 from ..sim.model import ModelAttributeFrequency
 from ..usd import utils as usd
 from ..usd.schema_resolver import PrimType, SchemaResolver, SchemaResolverManager
@@ -379,27 +378,12 @@ def parse_usd(
                     key=path_name,
                 )
             elif type_name == "mesh":
-                mesh = UsdGeom.Mesh(prim)
-                points = np.array(mesh.GetPointsAttr().Get(), dtype=np.float32)
-                indices = np.array(mesh.GetFaceVertexIndicesAttr().Get(), dtype=np.float32)
-                counts = mesh.GetFaceVertexCountsAttr().Get()
-                faces = []
-                face_id = 0
-                for count in counts:
-                    if count == 3:
-                        faces.append(indices[face_id : face_id + 3])
-                    elif count == 4:
-                        faces.append(indices[face_id : face_id + 3])
-                        faces.append(indices[[face_id, face_id + 2, face_id + 3]])
-                    else:
-                        continue
-                    face_id += count
-                m = Mesh(points, np.array(faces, dtype=np.int32).flatten())
+                mesh = usd.get_mesh(prim)
                 shape_id = builder.add_shape_mesh(
                     parent_body_id,
                     xform,
                     scale=scale,
-                    mesh=m,
+                    mesh=mesh,
                     cfg=visual_shape_cfg,
                     key=path_name,
                 )
@@ -547,13 +531,8 @@ def parse_usd(
             joint_params["armature"] = joint_armature
             joint_params["friction"] = joint_friction
             if joint_desc.drive.enabled:
-                # XXX take the target which is nonzero to decide between position vs. velocity target...
-                if joint_desc.drive.targetVelocity:
-                    joint_params["target"] = joint_desc.drive.targetVelocity
-                    joint_params["mode"] = JointMode.TARGET_VELOCITY
-                else:
-                    joint_params["target"] = joint_desc.drive.targetPosition
-                    joint_params["mode"] = JointMode.TARGET_POSITION
+                joint_params["target_vel"] = joint_desc.drive.targetVelocity
+                joint_params["target_pos"] = joint_desc.drive.targetPosition
 
                 joint_params["target_ke"] = joint_desc.drive.stiffness
                 joint_params["target_kd"] = joint_desc.drive.damping
@@ -588,7 +567,8 @@ def parse_usd(
                 builder.add_joint_prismatic(**joint_params)
             else:
                 if joint_desc.drive.enabled:
-                    joint_params["target"] *= DegreesToRadian
+                    joint_params["target_pos"] *= DegreesToRadian
+                    joint_params["target_vel"] *= DegreesToRadian
                     joint_params["target_kd"] /= DegreesToRadian / joint_drive_gains_scaling
                     joint_params["target_ke"] /= DegreesToRadian / joint_drive_gains_scaling
 
@@ -631,9 +611,9 @@ def parse_usd(
 
                 free_axis = limit_lower < limit_upper
 
-                def define_joint_mode(dof, joint_desc):
-                    target = 0.0  # TODO: parse target from state:*:physics:appliedForce usd attribute when no drive is present
-                    mode = JointMode.NONE
+                def define_joint_targets(dof, joint_desc):
+                    target_pos = 0.0  # TODO: parse target from state:*:physics:appliedForce usd attribute when no drive is present
+                    target_vel = 0.0
                     target_ke = 0.0
                     target_kd = 0.0
                     effort_limit = np.inf
@@ -641,18 +621,14 @@ def parse_usd(
                         if drive.first != dof:
                             continue
                         if drive.second.enabled:
-                            if drive.second.targetVelocity != 0.0:
-                                target = drive.second.targetVelocity
-                                mode = JointMode.TARGET_VELOCITY
-                            else:
-                                target = drive.second.targetPosition
-                                mode = JointMode.TARGET_POSITION
+                            target_vel = drive.second.targetVelocity
+                            target_pos = drive.second.targetPosition
                             target_ke = drive.second.stiffness
                             target_kd = drive.second.damping
                             effort_limit = drive.second.forceLimit
-                    return target, mode, target_ke, target_kd, effort_limit
+                    return target_pos, target_vel, target_ke, target_kd, effort_limit
 
-                target, mode, target_ke, target_kd, effort_limit = define_joint_mode(dof, joint_desc)
+                target_pos, target_vel, target_ke, target_kd, effort_limit = define_joint_targets(dof, joint_desc)
 
                 _trans_axes = {
                     UsdPhysics.JointDOF.TransX: (1.0, 0.0, 0.0),
@@ -712,8 +688,8 @@ def parse_usd(
                             limit_upper=limit_upper,
                             limit_ke=current_joint_limit_ke,
                             limit_kd=current_joint_limit_kd,
-                            target=target,
-                            mode=mode,
+                            target_pos=target_pos,
+                            target_vel=target_vel,
                             target_ke=target_ke,
                             target_kd=target_kd,
                             armature=joint_armature,
@@ -762,8 +738,8 @@ def parse_usd(
                             limit_upper=limit_upper * DegreesToRadian,
                             limit_ke=current_joint_limit_ke / DegreesToRadian / joint_drive_gains_scaling,
                             limit_kd=current_joint_limit_kd / DegreesToRadian / joint_drive_gains_scaling,
-                            target=target * DegreesToRadian,
-                            mode=mode,
+                            target_pos=target_pos * DegreesToRadian,
+                            target_vel=target_vel * DegreesToRadian,
                             target_ke=target_ke / DegreesToRadian / joint_drive_gains_scaling,
                             target_kd=target_kd / DegreesToRadian / joint_drive_gains_scaling,
                             armature=joint_armature,
@@ -1400,24 +1376,6 @@ def parse_usd(
                         half_height=shape_spec.halfHeight,
                     )
                 elif key == UsdPhysics.ObjectType.MeshShape:
-                    mesh = UsdGeom.Mesh(prim)
-                    points = np.array(mesh.GetPointsAttr().Get(), dtype=np.float32)
-                    indices = np.array(mesh.GetFaceVertexIndicesAttr().Get(), dtype=np.float32)
-                    counts = mesh.GetFaceVertexCountsAttr().Get()
-                    faces = []
-                    face_id = 0
-                    for count in counts:
-                        if count == 3:
-                            faces.append(indices[face_id : face_id + 3])
-                        elif count == 4:
-                            faces.append(indices[face_id : face_id + 3])
-                            faces.append(indices[[face_id, face_id + 2, face_id + 3]])
-                        elif verbose:
-                            print(
-                                f"Error while parsing USD mesh {path}: encountered polygon with {count} vertices, but only triangles and quads are supported."
-                            )
-                            continue
-                        face_id += count
                     # Resolve mesh hull vertex limit from schema with fallback to parameter
                     resolved_maxhullvert = R.get_value(
                         prim,
@@ -1426,10 +1384,11 @@ def parse_usd(
                         default=mesh_maxhullvert,
                         verbose=verbose,
                     )
-                    m = Mesh(points, np.array(faces, dtype=np.int32).flatten(), maxhullvert=resolved_maxhullvert)
+                    mesh = usd.get_mesh(prim)
+                    mesh.maxhullvert = resolved_maxhullvert
                     shape_id = builder.add_shape_mesh(
                         scale=scale,
-                        mesh=m,
+                        mesh=mesh,
                         **shape_params,
                     )
                     if not skip_mesh_approximation:

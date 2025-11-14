@@ -179,6 +179,7 @@ class Example:
                 control=simulator.data.control_n,
             )
 
+        # Set the reference tracking generation & control callbacks into the simulator
         self.sim.set_control_callback(jointspace_pid_control_callback)
 
         # Declare and initialize the optional computation graphs

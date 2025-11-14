@@ -1071,7 +1071,7 @@ class USDImporter:
         # Otherwise define the a condensed name based on the body and geometry layer
         else:
             name = f"{self._get_leaf_name(body_name)}/{layer}/{name}"
-        msg.warning(f"[Geom]: name: {name}")
+        msg.debug(f"[Geom]: name: {name}")
 
         ###
         # PhysicsGeom Common Properties

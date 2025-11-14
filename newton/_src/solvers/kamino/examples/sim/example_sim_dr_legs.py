@@ -183,8 +183,8 @@ class Example:
                 control=simulator.data.control_n,
             )
 
-        # # Set the reference tracking generation & control callbacks into the simulator
-        self.sim.set_reset_callback(reset_jointspace_pid_control_callback)
+        # Set the reference tracking generation & control callbacks into the simulator
+        self.sim.set_post_reset_callback(reset_jointspace_pid_control_callback)
         self.sim.set_control_callback(compute_jointspace_pid_control_callback)
 
         # Declare and initialize the optional computation graphs

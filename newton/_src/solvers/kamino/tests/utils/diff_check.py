@@ -25,7 +25,6 @@ from collections.abc import Callable
 import numpy as np
 from warp.context import Devicelike
 
-from newton._src.solvers.kamino.core.joints import JointActuationType
 from newton._src.solvers.kamino.models import get_tests_usd_assets_path
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
 
@@ -76,7 +75,7 @@ def run_test_single_joint_examples(
 
     # List file paths of examples
     file_paths = []
-    if unary_joints:
+    if unary_joints and passive_joints:
         file_paths.extend(
             [
                 os.path.join(data_dir, "test_joint_cartesian_passive_unary.usda"),
@@ -88,7 +87,7 @@ def run_test_single_joint_examples(
                 os.path.join(data_dir, "test_joint_universal_passive_unary.usda"),
             ]
         )
-    if binary_joints:
+    if binary_joints and passive_joints:
         file_paths.extend(
             [
                 os.path.join(data_dir, "test_joint_cartesian_passive.usda"),
@@ -100,6 +99,28 @@ def run_test_single_joint_examples(
                 os.path.join(data_dir, "test_joint_universal_passive.usda"),
             ]
         )
+    if unary_joints and actuators:
+        file_paths.extend(
+            [
+                os.path.join(data_dir, "test_joint_cartesian_actuated_unary.usda"),
+                os.path.join(data_dir, "test_joint_cylindrical_actuated_unary.usda"),
+                os.path.join(data_dir, "test_joint_prismatic_actuated_unary.usda"),
+                os.path.join(data_dir, "test_joint_revolute_actuated_unary.usda"),
+                os.path.join(data_dir, "test_joint_universal_actuated_unary.usda"),
+                # Note: missing actuated spherical and free
+            ]
+        )
+    if binary_joints and actuators:
+        file_paths.extend(
+            [
+                os.path.join(data_dir, "test_joint_cartesian_actuated.usda"),
+                os.path.join(data_dir, "test_joint_cylindrical_actuated.usda"),
+                os.path.join(data_dir, "test_joint_prismatic_actuated.usda"),
+                os.path.join(data_dir, "test_joint_revolute_actuated.usda"),
+                os.path.join(data_dir, "test_joint_universal_actuated.usda"),
+                # Note: missing actuated spherical and free
+            ]
+        )
 
     # Load and test all examples
     success = True
@@ -107,25 +128,18 @@ def run_test_single_joint_examples(
         importer = USDImporter()
         builder = importer.import_from(source=file_path)
         file_stem_split = os.path.basename(file_path).split(".")[0].split("_")
-        is_unary = file_stem_split[-1] == "unary"
-        joint_type_name = file_stem_split[2]
+        unary_binary_str = "unary" if file_stem_split[-1] == "unary" else "binary"
+        passive_actuated_str = (
+            "actuated" if len(file_stem_split) > 3 and file_stem_split[3] == "actuated" else "passive"
+        )
+        joint_type_str = file_stem_split[2]
 
-        # Passive joint
-        if passive_joints:
-            model = builder.finalize(device, False)
-            single_test_success = test_fun(model)
-            success &= single_test_success
-            if not single_test_success:
-                print(f"{test_name} failed for {'u' if is_unary else 'bi'}nary {joint_type_name} joint")
-
-        # Actuator
-        if actuators:
-            builder.joints[0].act_type = JointActuationType.FORCE
-            model = builder.finalize(device, False)
-            single_test_success = test_fun(model)
-            success &= single_test_success
-            if not single_test_success:
-                print(f"{test_name} failed for {'u' if is_unary else 'bi'}nary {joint_type_name} actuator")
+        # Run test
+        model = builder.finalize(device=device, requires_grad=False, base_auto=False)
+        single_test_success = test_fun(model)
+        success &= single_test_success
+        if not single_test_success:
+            print(f"{test_name} failed for {unary_binary_str} {passive_actuated_str} {joint_type_str} joint")
     return success
 
 

@@ -100,10 +100,10 @@ def _eval_fk_actuated_dofs_or_coords(
     model_base_dofs: wp.array(
         dtype=wp.float32
     ),  # Base dofs or coordinates of the main model (as a flat vector with 6 dofs or 7 coordinates per world)
-    model_actuators_dofs: wp.array(dtype=wp.float32),  # Actuated dofs/coords of the main model
+    model_actuated_dofs: wp.array(dtype=wp.float32),  # Actuated dofs/coords of the main model
     actuated_dofs_map: wp.array(dtype=wp.int32),  # Map of fk to main model actuated/base dofs/coords
     # Outputs
-    fk_actuators_dofs: wp.array(dtype=wp.float32),  # Actuated dofs or coordinates of the fk model
+    fk_actuated_dofs: wp.array(dtype=wp.float32),  # Actuated dofs or coordinates of the fk model
 ):
     """
     A kernel mapping actuated and base dofs/coordinates of the main model to actuated dofs/coordinates of the fk model,
@@ -117,13 +117,13 @@ def _eval_fk_actuated_dofs_or_coords(
     # Note: we use "dof" in variables naming to mean either dof or coordinate
     fk_dof_id = wp.tid()
 
-    if fk_dof_id < fk_actuators_dofs.shape[0]:
+    if fk_dof_id < fk_actuated_dofs.shape[0]:
         model_dof_id = actuated_dofs_map[fk_dof_id]
         if model_dof_id >= 0:
-            fk_actuators_dofs[fk_dof_id] = model_actuators_dofs[model_dof_id]
+            fk_actuated_dofs[fk_dof_id] = model_actuated_dofs[model_dof_id]
         else:  # Base dofs/coordinates are encoded as negative indices
             base_dof_id = -(model_dof_id + 1)  # Recover base dof/coord id
-            fk_actuators_dofs[fk_dof_id] = model_base_dofs[base_dof_id]
+            fk_actuated_dofs[fk_dof_id] = model_base_dofs[base_dof_id]
 
 
 @wp.kernel
@@ -521,7 +521,7 @@ def create_eval_joint_constraints_jacobian_kernel(has_universal_joints: bool):
 def create_tile_based_kernels(TILE_SIZE_CTS: wp.int32, TILE_SIZE_VRS: wp.int32):
     """
     Generates and returns all tile-based kernels in this module, given the tile size to use along the constraints
-    and variables (i.e. states) dimensions in the constraint vector, Jacobian, step vector etc.
+    and variables (i.e. body poses) dimensions in the constraint vector, Jacobian, step vector etc.
 
     These are _eval_pattern_T_pattern, _eval_max_constraint, _eval_jacobian_T_jacobian, eval_jacobian_T_constraints,
     _eval_merit_function, _eval_merit_function_gradient (returned in this order)
@@ -738,7 +738,7 @@ def create_tile_based_kernels(TILE_SIZE_CTS: wp.int32, TILE_SIZE_VRS: wp.int32):
     def _eval_merit_function_gradient(
         # Inputs
         step: wp.array2d(dtype=wp.float32),  # Step in variables per world
-        grad: wp.array2d(dtype=wp.float32),  # Gradient w.r.t. state per world
+        grad: wp.array2d(dtype=wp.float32),  # Gradient w.r.t. state (i.e. body poses) per world
         # Outputs
         merit_function_grad: wp.array(dtype=wp.float32),  # Merit function gradient per world
     ):
@@ -770,7 +770,7 @@ def create_tile_based_kernels(TILE_SIZE_CTS: wp.int32, TILE_SIZE_VRS: wp.int32):
 @wp.kernel
 def _eval_rhs(
     # Inputs
-    grad: wp.array2d(dtype=wp.float32),  # Merit function gradient w.r.t. state per world
+    grad: wp.array2d(dtype=wp.float32),  # Merit function gradient w.r.t. state (i.e. body poses) per world
     # Outputs
     rhs: wp.array2d(dtype=wp.float32),  # Gauss-Newton right-hand side per world
 ):
@@ -812,7 +812,7 @@ def _apply_line_search_step(
     bodies_q_alpha: wp.array(dtype=wp.transformf),  # Stepped states (line search result)
     line_search_success: wp.array(dtype=wp.int32),  # Per-world line search success flag
     # Outputs
-    bodies_q: wp.array(dtype=wp.transformf),  # Rigid body states
+    bodies_q: wp.array(dtype=wp.transformf),  # Output state (rigid body poses)
 ):
     """
     A kernel replacing the state with the line search result, in worlds where line search succeeded
@@ -902,7 +902,7 @@ def _eval_target_constraint_velocities(
         dtype=wp.int32
     ),  # Joint first actuated dof id, among all actuated dofs in all worlds
     ct_full_to_red_map: wp.array2d(dtype=wp.int32),  # Map from full to reduced constraint id (per world)
-    actuators_u: wp.array(dtype=wp.float32),  # Joint actuated dofs
+    actuators_u: wp.array(dtype=wp.float32),  # Actuated joint velocities
     world_mask: wp.array(dtype=wp.int32),  # Per-world flag to perform the computation (0 = skip)
     # Outputs:
     target_cts_u: wp.array2d(dtype=wp.float32),  # Target constraint velocities (assumed to be zero-initialized)
@@ -1127,9 +1127,9 @@ class ForwardKinematicsSolver:
         first_body_id = np.concatenate(([0], num_bodies.cumsum()))  # Index of first body per world
         self.num_bodies_max = self.model.size.max_of_num_bodies  # Max number of bodies across worlds
 
-        # Retrieve / compute dimensions - States
-        num_states = 7 * num_bodies  # Number of body states per world
-        self.num_states_tot = 7 * self.model.size.sum_of_num_bodies  # Number of body states for the whole model
+        # Retrieve / compute dimensions - States (i.e., body poses)
+        num_states = 7 * num_bodies  # Number of state dimensions per world
+        self.num_states_tot = 7 * self.model.size.sum_of_num_bodies  # State dimensions for the whole model
         self.num_states_max = 7 * self.num_bodies_max  # Max state dimension across worlds
 
         # Retrieve / compute dimensions - Joints (main model)
@@ -1581,7 +1581,7 @@ class ForwardKinematicsSolver:
         constraints: wp.array2d(dtype=wp.float32),
     ):
         """
-        Internal evaluator for the kinematic constraints vector, from body states and position-control transformations
+        Internal evaluator for the kinematic constraints vector, from body poses and position-control transformations
         """
 
         # Evaluate unit norm quaternion constraints
@@ -1634,7 +1634,7 @@ class ForwardKinematicsSolver:
         constraints_jacobian: wp.array3d(dtype=wp.float32),
     ):
         """
-        Internal evaluator for the kinematic constraints Jacobian with respect to body states, from body states
+        Internal evaluator for the kinematic constraints Jacobian with respect to body poses, from body poses
         and position-control transformations
         """
 
@@ -1901,7 +1901,7 @@ class ForwardKinematicsSolver:
     ):
         """
         Evaluates and returns position control transformations (an intermediary quantity needed for the
-        kinematic constraints/Jacobian evaluation) for a model given actuator coordinates, and optionally
+        kinematic constraints/Jacobian evaluation) for a model given actuated coordinates, and optionally
         the base pose (the default base pose is used if not provided).
         """
         assert base_q is None or base_q.device == self.device
@@ -2068,7 +2068,7 @@ class ForwardKinematicsSolver:
         if bodies_u is not None and base_u is None:
             base_u = self.base_u_default
 
-        # Compute position control transforms (independent of state, depends on controls only)
+        # Compute position control transforms (independent of body poses, depends on controls only)
         self._eval_position_control_transformations(base_q, actuators_q, self.pos_control_transforms)
 
         # Reset iteration count and success/continuation flags

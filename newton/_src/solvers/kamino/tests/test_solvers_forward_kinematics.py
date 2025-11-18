@@ -24,8 +24,10 @@ import unittest
 import numpy as np
 import warp as wp
 
-from newton._src.solvers.kamino.core.joints import JointActuationType, JointDoFType
+from newton._src.solvers.kamino.core.joints import JointActuationType, JointCorrectionMode, JointDoFType
 from newton._src.solvers.kamino.core.model import Model
+from newton._src.solvers.kamino.core.types import vec6f
+from newton._src.solvers.kamino.kinematics.joints import compute_joints_data
 from newton._src.solvers.kamino.models import get_examples_usd_assets_path
 from newton._src.solvers.kamino.solvers.fk import ForwardKinematicsSolver, ForwardKinematicsSolverSettings
 from newton._src.solvers.kamino.tests.utils.diff_check import diff_check, run_test_single_joint_examples
@@ -111,13 +113,98 @@ def get_actuators_q_quaternion_first_ids(model: Model):
     return quat_ids
 
 
+def compute_actuated_coords_and_dofs_offsets(model: Model):
+    """
+    Helper function computing the offsets and sizes needed to extract actuated joint coordinates
+    and dofs from all joint coordinates/dofs
+    Returns actuated_coords_offsets, actuated_coords_sizes, actuated_dofs_offsets, actuated_dofs_sizes
+    """
+    # Joints
+    num_joints = model.info.num_joints.numpy()  # Num joints per world
+    first_joint_id = np.concatenate(([0], num_joints.cumsum()))  # First joint id per world
+
+    # Joint coordinates
+    num_coords = model.info.num_joint_coords.numpy()  # Num coords per world
+    first_coord = np.concatenate(([0], num_coords.cumsum()))  # First coord id per world
+    coord_offsets = model.joints.coords_offset.numpy()  # First coord id per joint within world
+    for wd_id in range(model.size.num_worlds):  # Convert to first coord id per joint globally
+        coord_offsets[first_joint_id[wd_id] : first_joint_id[wd_id + 1]] += first_coord[wd_id]
+    joint_num_coords = model.joints.num_coords.numpy()  # Num coords per joint
+
+    # Joint dofs
+    num_dofs = model.info.num_joint_dofs.numpy()  # Num dofs per world
+    first_dof = np.concatenate(([0], num_dofs.cumsum()))  # First dof id per world
+    dof_offsets = model.joints.dofs_offset.numpy()  # First dof id per joint within world
+    for wd_id in range(model.size.num_worlds):  # Convert to first dof id per joint globally
+        dof_offsets[first_joint_id[wd_id] : first_joint_id[wd_id + 1]] += first_dof[wd_id]
+    joint_num_dofs = model.joints.num_dofs.numpy()  # Num dofs per joint
+
+    # Filter for actuators only
+    joint_is_actuator = model.joints.act_type.numpy() == JointActuationType.FORCE
+    actuated_coord_offsets = coord_offsets[joint_is_actuator]
+    actuated_coords_sizes = joint_num_coords[joint_is_actuator]
+    actuated_dof_offsets = dof_offsets[joint_is_actuator]
+    actuated_dofs_sizes = joint_num_dofs[joint_is_actuator]
+
+    return actuated_coord_offsets, actuated_coords_sizes, actuated_dof_offsets, actuated_dofs_sizes
+
+
+def extract_segments(array, offsets, sizes):
+    """
+    Helper function extracting from a flat array the segments with given offsets and sizes
+    and returning their concatenation
+    """
+    res = []
+    for i in range(len(offsets)):
+        res.extend(array[offsets[i] : offsets[i] + sizes[i]])
+    return np.array(res)
+
+
+def compute_constraint_residual_mask(model: Model):
+    """
+    Computes a boolean mask for constraint residuals, True for most constraints but False
+    for base joints (to filter out residuals for fixed base models if the base is reset
+    to a different pose) and passive universal joints (residual implementation is currently flawed)
+    """
+    # Precompute constraint offsets
+    num_joints = model.info.num_joints.numpy()  # Num joints per world
+    first_joint_id = np.concatenate(([0], num_joints.cumsum()))  # First joint id per world
+    num_cts = model.info.num_joint_cts.numpy()  # Num joint cts per world
+    first_ct_id = np.concatenate(([0], num_cts.cumsum()))  # First joint ct id per world
+    first_joint_ct_id = model.joints.cts_offset.numpy()  # First ct id per joint within world
+    for wd_id in range(model.size.num_worlds):  # Convert to first ct id per joint globally
+        first_joint_ct_id[first_joint_id[wd_id] : first_joint_id[wd_id + 1]] += first_ct_id[wd_id]
+    num_joint_cts = model.joints.num_cts.numpy()  # Num cts per joint
+
+    mask = np.array(model.size.sum_of_num_joint_cts * [True])
+
+    # Exclude base joints
+    for wd_id in range(model.size.num_worlds):
+        if not model.worlds[wd_id].has_base_joint:
+            continue
+        base_jt_id = first_joint_id[wd_id] + model.worlds[wd_id].base_joint_idx
+        ct_offset = first_joint_ct_id[base_jt_id]
+        mask[ct_offset : ct_offset + num_joint_cts[base_jt_id]] = False
+
+    # Exclude passive universal joints
+    act_types = model.joints.act_type.numpy()
+    dof_types = model.joints.dof_type.numpy()
+    for jt_id in range(model.size.sum_of_num_joints):
+        if act_types[jt_id] != JointActuationType.PASSIVE or dof_types[jt_id] != JointDoFType.UNIVERSAL:
+            continue
+        ct_offset = first_joint_ct_id[jt_id]
+        mask[ct_offset : ct_offset + num_joint_cts[jt_id]] = False
+
+    return mask
+
+
 def simulate_random_poses(
     model: Model,
     num_poses: int,
-    min_base_q: np.ndarray,
     max_base_q: np.ndarray,
-    min_actuators_q: np.ndarray,
     max_actuators_q: np.ndarray,
+    max_base_u: np.ndarray,
+    max_actuators_u: np.ndarray,
     rng: np.random._generator.Generator,
     use_graph: bool = False,
     verbose: bool = False,
@@ -125,18 +212,20 @@ def simulate_random_poses(
     # Check dimensions
     base_q_size = 7 * model.size.num_worlds
     actuators_q_size = model.size.sum_of_num_actuated_joint_dofs
-    assert len(min_base_q) == base_q_size
+    base_u_size = 6 * model.size.num_worlds
+    actuators_u_size = model.size.sum_of_num_actuated_joint_dofs
     assert len(max_base_q) == base_q_size
-    assert len(min_actuators_q) == actuators_q_size
     assert len(max_actuators_q) == actuators_q_size
+    assert len(max_base_u) == base_u_size
+    assert len(max_actuators_u) == actuators_u_size
 
     # Generate (random) base_q, actuators_q
     base_q_np = np.zeros((num_poses, base_q_size))
     for i in range(base_q_size):
-        base_q_np[:, i] = rng.uniform(min_base_q[i], max_base_q[i], num_poses)
+        base_q_np[:, i] = rng.uniform(-max_base_q[i], max_base_q[i], num_poses)
     actuators_q_np = np.zeros((num_poses, actuators_q_size))
     for i in range(actuators_q_size):
-        actuators_q_np[:, i] = rng.uniform(min_actuators_q[i], max_actuators_q[i], num_poses)
+        actuators_q_np[:, i] = rng.uniform(-max_actuators_q[i], max_actuators_q[i], num_poses)
 
     # Normalize quaternions in base_q, actuators_q
     for i in range(model.size.num_worlds):
@@ -145,25 +234,90 @@ def simulate_random_poses(
     for i in quat_ids:
         actuators_q_np[:, i : i + 4] /= np.linalg.norm(actuators_q_np[:, i : i + 4], axis=1)[:, None]
 
+    # Generate (random) base_u, actuators_u
+    base_u_np = np.zeros((num_poses, base_u_size))
+    for i in range(base_u_size):
+        base_u_np[:, i] = rng.uniform(-max_base_u[i], max_base_u[i], num_poses)
+    actuators_u_np = np.zeros((num_poses, actuators_u_size))
+    for i in range(actuators_u_size):
+        actuators_u_np[:, i] = rng.uniform(-max_actuators_u[i], max_actuators_u[i], num_poses)
+
+    # Precompute offset arrays for extracting actuator coordinates/dofs
+    actuated_coord_offsets, actuated_coords_sizes, actuated_dof_offsets, actuated_dofs_sizes = (
+        compute_actuated_coords_and_dofs_offsets(model)
+    )
+
+    # Precompute boolean mask for extracting relevant constraint residuals
+    residual_mask = compute_constraint_residual_mask(model)
+
     # Run forward kinematics on all random poses
     settings = ForwardKinematicsSolverSettings()
     settings.reset_state = True
     solver = ForwardKinematicsSolver(model, settings)
     success_flags = []
-    bodies_q = wp.array(shape=(model.size.sum_of_num_bodies), dtype=wp.transformf, device=model.device)
-    base_q = wp.array(shape=(model.size.num_worlds), dtype=wp.transformf, device=model.device)
-    actuators_q = wp.array(shape=(actuators_q_size), dtype=wp.float32, device=model.device)
-    for i in range(num_poses):
-        base_q.assign(base_q_np[i])
-        actuators_q.assign(actuators_q_np[i])
+    with wp.ScopedDevice(model.device):
+        bodies_q = wp.array(shape=(model.size.sum_of_num_bodies), dtype=wp.transformf)
+        base_q = wp.array(shape=(model.size.num_worlds), dtype=wp.transformf)
+        actuators_q = wp.array(shape=(actuators_q_size), dtype=wp.float32)
+        bodies_u = wp.array(shape=(model.size.sum_of_num_bodies), dtype=vec6f)
+        base_u = wp.array(shape=(model.size.num_worlds), dtype=vec6f)
+        actuators_u = wp.array(shape=(actuators_u_size), dtype=wp.float32)
+    data = model.data(device=model.device)
+    epsilon = 1e-2
+    for pose_id in range(num_poses):
+        # Run FK solve and check convergence
+        base_q.assign(base_q_np[pose_id])
+        actuators_q.assign(actuators_q_np[pose_id])
+        base_u.assign(base_u_np[pose_id])
+        actuators_u.assign(actuators_u_np[pose_id])
         status = solver.solve_fk(
-            actuators_q, bodies_q, base_q=base_q, use_graph=use_graph, verbose=verbose, return_status=True
+            actuators_q,
+            bodies_q,
+            base_q=base_q,
+            base_u=base_u,
+            actuators_u=actuators_u,
+            bodies_u=bodies_u,
+            use_graph=use_graph,
+            verbose=verbose,
+            return_status=True,
         )
-        success_flags.append(status.success.min() == 1)
+        if status.success.min() < 1:
+            success_flags.append(False)
+            continue
+        else:
+            success_flags.append(True)
+
+        # Update joints data from body states for validation
+        wp.copy(data.bodies.q_i, bodies_q)
+        wp.copy(data.bodies.u_i, bodies_u)
+        compute_joints_data(model, model.joints.q_j_ref, data, JointCorrectionMode.CONTINUOUS)
+
+        # Validate positions computation
+        residual_ct_pos = np.max(np.abs(data.joints.r_j.numpy()[residual_mask]))
+        if residual_ct_pos > epsilon:
+            print(f"Large constraint residual ({residual_ct_pos}) for pose {pose_id}")
+            success_flags[-1] = False
+        actuators_q_check = extract_segments(data.joints.q_j.numpy(), actuated_coord_offsets, actuated_coords_sizes)
+        residual_actuators_q = np.max(np.abs(actuators_q_check - actuators_q_np[pose_id]))
+        if residual_actuators_q > epsilon:
+            print(f"Large error on prescribed actuator coordinates ({residual_actuators_q}) for pose {pose_id}")
+            success_flags[-1] = False
+
+        # Validate velocities computation
+        residual_ct_vel = np.max(np.abs(data.joints.dr_j.numpy()[residual_mask]))
+        if residual_ct_vel > epsilon:
+            print(f"Large constraint velocity residual ({residual_ct_vel}) for pose {pose_id}")
+            success_flags[-1] = False
+        actuators_u_check = extract_segments(data.joints.dq_j.numpy(), actuated_dof_offsets, actuated_dofs_sizes)
+        residual_actuators_u = np.max(np.abs(actuators_u_check - actuators_u_np[pose_id]))
+        if residual_actuators_u > epsilon:
+            print(f"Large error on prescribed actuator velocities ({residual_actuators_u}) for pose {pose_id}")
+            success_flags[-1] = False
 
     success = np.sum(success_flags) == num_poses
     if not success:
-        print(f"Random poses simulation failed, {np.sum(success_flags)}/{num_poses} poses successful")
+        print(f"Random poses simulation & validation failed, {np.sum(success_flags)}/{num_poses} poses successful")
+
     return success
 
 
@@ -193,16 +347,17 @@ class DRTestMechanismRandomPosesCheckForwardKinematics(unittest.TestCase):
 
         # Simulate random poses
         num_poses = 30
-        theta_max = np.radians(100.0)
-        base_q_min = np.array(3 * [-0.2] + 4 * [-1.0])
         base_q_max = np.array(3 * [0.2] + 4 * [1.0])
+        actuators_q_max = np.radians([100.0])
+        base_u_max = np.array(3 * [0.1] + 3 * [0.5])
+        actuators_u_max = np.array([0.5])
         success = simulate_random_poses(
             model,
             num_poses,
-            base_q_min,
             base_q_max,
-            np.array([-theta_max]),
-            np.array([theta_max]),
+            actuators_q_max,
+            base_u_max,
+            actuators_u_max,
             rng,
             self.has_cuda,
             self.verbose,
@@ -237,16 +392,17 @@ class DRLegsRandomPosesCheckForwardKinematics(unittest.TestCase):
         # Simulate random poses
         num_poses = 30
         theta_max = np.radians(10.0)  # Angles too far from the initial pose lead to singularities
-        base_q_min = np.array(3 * [-0.2] + 4 * [-1.0])
         base_q_max = np.array(3 * [0.2] + 4 * [1.0])
-        num_actuator_coords = model.size.sum_of_num_actuated_joint_coords
+        actuators_q_max = np.array(model.size.sum_of_num_actuated_joint_coords * [theta_max])
+        base_u_max = np.array(3 * [0.5] + 3 * [0.5])
+        actuators_u_max = np.array(model.size.sum_of_num_actuated_joint_dofs * [0.5])
         success = simulate_random_poses(
             model,
             num_poses,
-            base_q_min,
             base_q_max,
-            np.array(num_actuator_coords * [-theta_max]),
-            np.array(num_actuator_coords * [theta_max]),
+            actuators_q_max,
+            base_u_max,
+            actuators_u_max,
             rng,
             self.has_cuda,
             self.verbose,
@@ -286,11 +442,12 @@ class HeterogenousModelRandomPosesCheckForwardKinematics(unittest.TestCase):
         num_poses = 30
         theta_max_test_mech = np.radians(100.0)
         theta_max_dr_legs = np.radians(10.0)
-        base_q_min = np.array(3 * [-0.2] + 4 * [-1.0] + 3 * [-0.2] + 4 * [-1.0])
         base_q_max = np.array(3 * [0.2] + 4 * [1.0] + 3 * [0.2] + 4 * [1.0])
-        max_controls = np.array([theta_max_test_mech] + builder1.num_actuated_joint_coords * [theta_max_dr_legs])
+        actuators_q_max = np.array([theta_max_test_mech] + builder1.num_actuated_joint_coords * [theta_max_dr_legs])
+        base_u_max = np.array(3 * [0.1] + 3 * [0.5] + 3 * [0.5] + 3 * [0.5])
+        actuators_u_max = np.array(model.size.sum_of_num_actuated_joint_dofs * [0.5])
         success = simulate_random_poses(
-            model, num_poses, base_q_min, base_q_max, -max_controls, max_controls, rng, self.has_cuda, self.verbose
+            model, num_poses, base_q_max, actuators_q_max, base_u_max, actuators_u_max, rng, self.has_cuda, self.verbose
         )
         self.assertTrue(success)
 

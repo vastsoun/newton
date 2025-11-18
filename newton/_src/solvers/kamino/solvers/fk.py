@@ -39,6 +39,7 @@ from ..core.math import (
     unit_quat_conj_to_rotation_matrix,
 )
 from ..core.model import Model
+from ..core.types import vec6f
 from ..linalg.factorize.llt_blocked_semi_sparse import SemiSparseBlockCholeskySolverBatched
 
 ###
@@ -94,34 +95,35 @@ def _reset_state(
 
 
 @wp.kernel
-def _eval_fk_actuated_coordinates(
+def _eval_fk_actuated_dofs_or_coords(
     # Inputs
-    model_base_q: wp.array(
+    model_base_dofs: wp.array(
         dtype=wp.float32
-    ),  # Base coordinates of the main model (as a flat vector with 7 coordinates per world)
-    model_actuators_q: wp.array(dtype=wp.float32),  # Actuated coordinates of the main model
-    actuated_coords_map: wp.array(dtype=wp.int32),  # Map of fk to main model actuated/base coordinates
+    ),  # Base dofs or coordinates of the main model (as a flat vector with 6 dofs or 7 coordinates per world)
+    model_actuators_dofs: wp.array(dtype=wp.float32),  # Actuated dofs/coords of the main model
+    actuated_dofs_map: wp.array(dtype=wp.int32),  # Map of fk to main model actuated/base dofs/coords
     # Outputs
-    fk_actuators_q: wp.array(dtype=wp.float32),  # Actuated coordinates of the fk model
+    fk_actuators_dofs: wp.array(dtype=wp.float32),  # Actuated dofs or coordinates of the fk model
 ):
     """
-    A kernel mapping actuated and base coordinates of the main model to actuated coordinates of the fk model,
+    A kernel mapping actuated and base dofs/coordinates of the main model to actuated dofs/coordinates of the fk model,
     which has a modified version of the joints, notably actuated free joints to control floating bases.
 
-    This uses a map from fk to model coordinates, that has >= 0 indices for fk coordinates that correspond to
-    main model actuated coordinates, and negative indices for base coordinates (base coordinate i is stored as -i - 1)
+    This uses a map from fk to model dofs/cords, that has >= 0 indices for fk dofs/coords that correspond to
+    main model actuated dofs/coords, and negative indices for base dofs/coords (base dof/coord i is stored as -i - 1)
     """
 
-    # Retrieve the thread index (= fk actuated coordinate index)
-    fk_coord_id = wp.tid()
+    # Retrieve the thread index (= fk actuated dof or coordinate index)
+    # Note: we use "dof" in variables naming to mean either dof or coordinate
+    fk_dof_id = wp.tid()
 
-    if fk_coord_id < fk_actuators_q.shape[0]:
-        model_coord_id = actuated_coords_map[fk_coord_id]
-        if model_coord_id >= 0:
-            fk_actuators_q[fk_coord_id] = model_actuators_q[model_coord_id]
-        else:  # Base coordinates are encoded as negative indices
-            base_coord_id = -(model_coord_id + 1)  # Recover base coordinate id
-            fk_actuators_q[fk_coord_id] = model_base_q[base_coord_id]
+    if fk_dof_id < fk_actuators_dofs.shape[0]:
+        model_dof_id = actuated_dofs_map[fk_dof_id]
+        if model_dof_id >= 0:
+            fk_actuators_dofs[fk_dof_id] = model_actuators_dofs[model_dof_id]
+        else:  # Base dofs/coordinates are encoded as negative indices
+            base_dof_id = -(model_dof_id + 1)  # Recover base dof/coord id
+            fk_actuators_dofs[fk_dof_id] = model_base_dofs[base_dof_id]
 
 
 @wp.kernel
@@ -131,7 +133,7 @@ def _eval_position_control_transformations(
     joints_act_type: wp.array(dtype=wp.int32),  # Joint actuation type (i.e. passive or actuated)
     actuated_coords_offset: wp.array(
         dtype=wp.int32
-    ),  # Joint first actuated coordinate id, amond all actuated coordinates in all worlds
+    ),  # Joint first actuated coordinate id, among all actuated coordinates in all worlds
     joints_X: wp.array(dtype=wp.mat33f),  # Joint frame (local axes, valid both on base and follower)
     actuators_q: wp.array(dtype=wp.float32),  # Actuated coordinates
     # Outputs
@@ -889,6 +891,107 @@ def _newton_check(
         wp.atomic_max(newton_loop_condition, 0, newton_continue_world)
 
 
+@wp.kernel
+def _eval_target_constraint_velocities(
+    # Inputs
+    num_joints: wp.array(dtype=wp.int32),  # Num joints per world
+    first_joint_id: wp.array(dtype=wp.int32),  # First joint id per world
+    joints_dof_type: wp.array(dtype=wp.int32),  # Joint dof type (i.e. revolute, spherical, ...)
+    joints_act_type: wp.array(dtype=wp.int32),  # Joint actuation type (i.e. passive or actuated)
+    actuated_dofs_offset: wp.array(
+        dtype=wp.int32
+    ),  # Joint first actuated dof id, among all actuated dofs in all worlds
+    ct_full_to_red_map: wp.array2d(dtype=wp.int32),  # Map from full to reduced constraint id (per world)
+    actuators_u: wp.array(dtype=wp.float32),  # Joint actuated dofs
+    world_mask: wp.array(dtype=wp.int32),  # Per-world flag to perform the computation (0 = skip)
+    # Outputs:
+    target_cts_u: wp.array2d(dtype=wp.float32),  # Target constraint velocities (assumed to be zero-initialized)
+):
+    """
+    A kernel computing the target constraint velocities, i.e. zero for passive constraints
+    and the prescribed dof velocity for actuated constraints.
+    """
+    # Retrieve the thread indices (= world index, joint index)
+    wd_id, jt_id_loc = wp.tid()
+
+    if wd_id < world_mask.shape[0] and world_mask[wd_id] != 0 and jt_id_loc < num_joints[wd_id]:
+        # Retrieve the joint model data
+        jt_id_tot = first_joint_id[wd_id] + jt_id_loc
+        if joints_act_type[jt_id_tot] != JointActuationType.FORCE:
+            return
+        dof_type_j = joints_dof_type[jt_id_tot]
+        offset_u_j = actuated_dofs_offset[jt_id_tot]
+        offset_cts_j = ct_full_to_red_map[wd_id, 6 * jt_id_loc]
+
+        if dof_type_j == JointDoFType.CARTESIAN:
+            target_cts_u[wd_id, offset_cts_j] = actuators_u[offset_u_j]
+            target_cts_u[wd_id, offset_cts_j + 1] = actuators_u[offset_u_j + 1]
+            target_cts_u[wd_id, offset_cts_j + 2] = actuators_u[offset_u_j + 2]
+        elif dof_type_j == JointDoFType.CYLINDRICAL:
+            target_cts_u[wd_id, offset_cts_j] = actuators_u[offset_u_j]
+            target_cts_u[wd_id, offset_cts_j + 3] = actuators_u[offset_u_j + 1]
+        elif dof_type_j == JointDoFType.FIXED:
+            pass  # No dofs to apply
+        elif dof_type_j == JointDoFType.FREE:
+            target_cts_u[wd_id, offset_cts_j] = actuators_u[offset_u_j]
+            target_cts_u[wd_id, offset_cts_j + 1] = actuators_u[offset_u_j + 1]
+            target_cts_u[wd_id, offset_cts_j + 2] = actuators_u[offset_u_j + 2]
+            target_cts_u[wd_id, offset_cts_j + 3] = actuators_u[offset_u_j + 3]
+            target_cts_u[wd_id, offset_cts_j + 4] = actuators_u[offset_u_j + 4]
+            target_cts_u[wd_id, offset_cts_j + 5] = actuators_u[offset_u_j + 5]
+        elif dof_type_j == JointDoFType.PRISMATIC:
+            target_cts_u[wd_id, offset_cts_j] = actuators_u[offset_u_j]
+        elif dof_type_j == JointDoFType.REVOLUTE:
+            target_cts_u[wd_id, offset_cts_j + 3] = actuators_u[offset_u_j]
+        elif dof_type_j == JointDoFType.SPHERICAL:
+            target_cts_u[wd_id, offset_cts_j + 3] = actuators_u[offset_u_j]
+            target_cts_u[wd_id, offset_cts_j + 4] = actuators_u[offset_u_j + 1]
+            target_cts_u[wd_id, offset_cts_j + 5] = actuators_u[offset_u_j + 2]
+        elif dof_type_j == JointDoFType.UNIVERSAL:
+            target_cts_u[wd_id, offset_cts_j + 3] = actuators_u[offset_u_j]
+            target_cts_u[wd_id, offset_cts_j + 4] = actuators_u[offset_u_j + 1]
+
+
+@wp.kernel
+def _eval_body_velocities(
+    # Inputs
+    num_bodies: wp.array(dtype=wp.int32),  # Number of bodies per world
+    first_body_id: wp.array(dtype=wp.int32),  # First body id per world
+    bodies_q: wp.array(dtype=wp.transformf),  # Body poses
+    bodies_q_dot: wp.array2d(dtype=wp.float32),  # Time derivative of body poses
+    world_mask: wp.array(dtype=wp.int32),  #  Per-world flag to perform the computation (0 = skip)
+    # Outputs
+    bodies_u: wp.array(dtype=vec6f),  # Body velocities (twists)
+):
+    """
+    A kernel computing the body velocities (twists) from the time derivative of body poses,
+    computing in particular angular velocities omega = G(q)q_dot
+    """
+    wd_id, rb_id_loc = wp.tid()  # Thread indices (= world index, body index)
+    if wd_id < world_mask.shape[0] and world_mask[wd_id] != 0 and rb_id_loc < num_bodies[wd_id]:
+        # Indices / offsets
+        rb_id_tot = first_body_id[wd_id] + rb_id_loc
+        offset_q_dot = 7 * rb_id_loc
+
+        # Copy linear velocity
+        bodies_u[rb_id_tot][0] = bodies_q_dot[wd_id, offset_q_dot]
+        bodies_u[rb_id_tot][1] = bodies_q_dot[wd_id, offset_q_dot + 1]
+        bodies_u[rb_id_tot][2] = bodies_q_dot[wd_id, offset_q_dot + 2]
+
+        # Compute angular velocities
+        q = wp.transform_get_rotation(bodies_q[rb_id_tot])
+        q_dot = wp.vec4f(
+            bodies_q_dot[wd_id, offset_q_dot + 3],
+            bodies_q_dot[wd_id, offset_q_dot + 4],
+            bodies_q_dot[wd_id, offset_q_dot + 5],
+            bodies_q_dot[wd_id, offset_q_dot + 6],
+        )
+        omega = 2.0 * (G_of(q) * q_dot)
+        bodies_u[rb_id_tot][3] = omega[0]
+        bodies_u[rb_id_tot][4] = omega[1]
+        bodies_u[rb_id_tot][5] = omega[2]
+
+
 ###
 # Classes
 ###
@@ -1050,6 +1153,23 @@ class ForwardKinematicsSolver:
             # Note: will currently produce garbage for passive joints (because for these the offsets are set to -1)
             # but we won't read these values below anyway.
 
+        # Retrieve / compute dimensions - Actuated dofs (main model)
+        num_actuated_dofs_prev = (
+            self.model.info.num_actuated_joint_dofs.numpy()
+        )  # Number of actuated joint dofs per world
+        first_actuated_dof_prev = np.concatenate(
+            ([0], num_actuated_dofs_prev.cumsum())
+        )  # Index of first actuated dof per world
+        actuated_dof_offsets_prev = (
+            self.model.joints.actuated_dofs_offset.numpy()
+        )  # Index of first joind actuated dof, among actuated dofs of a single world
+        for wd_id in range(self.num_worlds):  # Convert into offsets among all actuated dofs
+            actuated_dof_offsets_prev[first_joint_id_prev[wd_id] : first_joint_id_prev[wd_id + 1]] += (
+                first_actuated_dof_prev[wd_id]
+            )
+            # Note: will currently produce garbage for passive joints (because for these the offsets are set to -1)
+            # but we won't read these values below anyway.
+
         # Create a copy of the model's joints with added actuated free joints as needed to reset the base position/orientation
         joints_dof_type_prev = self.model.joints.dof_type.numpy()
         joints_act_type_prev = self.model.joints.act_type.numpy()
@@ -1059,6 +1179,7 @@ class ForwardKinematicsSolver:
         joints_F_r_Fj_prev = self.model.joints.F_r_Fj.numpy()
         joints_X_j_prev = self.model.joints.X_j.numpy()
         joints_num_coords_prev = self.model.joints.num_coords.numpy()
+        joints_num_dofs_prev = self.model.joints.num_dofs.numpy()
         joints_dof_type = []
         joints_act_type = []
         joints_bid_B = []
@@ -1067,9 +1188,11 @@ class ForwardKinematicsSolver:
         joints_F_r_Fj = []
         joints_X_j = []
         joints_num_actuated_coords = []  # Number of actuated coordinates per joint (0 for passive joints)
+        joints_num_actuated_dofs = []  # Number of actuated dofs per joint (0 for passive joints)
         num_joints = np.zeros(self.num_worlds, dtype="int")  # Number of joints per world
         self.num_joints_tot = 0  # Number of joints for all worlds
         actuated_coords_map = []  # Map of new actuated coordinates to these in the model or to the base coordinates
+        actuated_dofs_map = []  # Map of new actuated dofs to these in the model or to the base dofs
         base_q_default = np.zeros(7 * self.num_worlds, dtype="float32")  # Default base pose
         bodies_q_0 = self.model.bodies.q_i_0.numpy()
         for wd_id in range(self.num_worlds):
@@ -1095,8 +1218,14 @@ class ForwardKinematicsSolver:
                     joints_num_actuated_coords.append(num_coords_jt)
                     coord_offset = actuated_coord_offsets_prev[jt_id_prev]
                     actuated_coords_map.extend(range(coord_offset, coord_offset + num_coords_jt))
+
+                    num_dofs_jt = joints_num_dofs_prev[jt_id_prev]
+                    joints_num_actuated_dofs.append(num_dofs_jt)
+                    dof_offset = actuated_dof_offsets_prev[jt_id_prev]
+                    actuated_dofs_map.extend(range(dof_offset, dof_offset + num_dofs_jt))
                 else:
                     joints_num_actuated_coords.append(0)
+                    joints_num_actuated_dofs.append(0)
 
             # Add joint for base joint / base body
             if base_joint_id >= 0:  # Replace base joint with an actuated free joint
@@ -1119,6 +1248,9 @@ class ForwardKinematicsSolver:
                     0.0,
                     0.1,
                 ]  # Default to zero of free joint
+                joints_num_actuated_dofs.append(6)
+                dof_offset = -6 * wd_id - 1  # We encode offsets in base_u negatively with i -> -i - 1
+                actuated_dofs_map.extend(range(dof_offset, dof_offset - 6, -1))
             elif self.model.worlds[wd_id].has_base_body:  # Add an actuated free joint to the base body
                 base_body_id = first_body_id[wd_id] + self.model.worlds[wd_id].base_body_idx
                 joints_dof_type.append(JointDoFType.FREE)
@@ -1135,6 +1267,9 @@ class ForwardKinematicsSolver:
                 coord_offset = -7 * wd_id - 1  # We encode offsets in base_q negatively with i -> -i - 1
                 actuated_coords_map.extend(range(coord_offset, coord_offset - 7, -1))
                 base_q_default[7 * wd_id : 7 * wd_id + 7] = bodies_q_0[base_body_id]  # Default to initial body pose
+                joints_num_actuated_dofs.append(6)
+                dof_offset = -6 * wd_id - 1  # We encode offsets in base_u negatively with i -> -i - 1
+                actuated_dofs_map.extend(range(dof_offset, dof_offset - 6, -1))
 
             # Record number of joints
             num_joints_world = len(joints_dof_type) - self.num_joints_tot
@@ -1146,11 +1281,18 @@ class ForwardKinematicsSolver:
         self.num_joints_max = max(num_joints)  # Max number of joints across worlds
 
         # Retrieve / compute dimensions - Actuated coordinates (FK model)
-        joints_num_actuated_coords = np.array(joints_num_actuated_coords)  # Number of coordinates per joint
+        joints_num_actuated_coords = np.array(joints_num_actuated_coords)  # Number of actuated coordinates per joint
         actuated_coord_offsets = np.concatenate(
             ([0], joints_num_actuated_coords.cumsum())
         )  # First actuated coordinate offset per joint, among all actuated coordinates
         self.num_actuated_coords = actuated_coord_offsets[-1]
+
+        # Retrieve / compute dimensions - Actuated dofs (FK model)
+        joints_num_actuated_dofs = np.array(joints_num_actuated_dofs)  # Number of actuated dofs per joint
+        actuated_dof_offsets = np.concatenate(
+            ([0], joints_num_actuated_dofs.cumsum())
+        )  # First actuated dof offset per joint, among all actuated dofs
+        self.num_actuated_dofs = actuated_dof_offsets[-1]
 
         # Retrieve / compute dimensions - Constraints
         num_constraints = num_bodies.copy()  # Number of kinematic constraints per world (unit quat. + joints)
@@ -1224,6 +1366,8 @@ class ForwardKinematicsSolver:
             self.first_joint_id = wp.from_numpy(first_joint_id, dtype=wp.int32)
             self.actuated_coord_offsets = wp.from_numpy(actuated_coord_offsets, dtype=wp.int32)
             self.actuated_coords_map = wp.from_numpy(np.array(actuated_coords_map), dtype=wp.int32)
+            self.actuated_dof_offsets = wp.from_numpy(actuated_dof_offsets, dtype=wp.int32)
+            self.actuated_dofs_map = wp.from_numpy(np.array(actuated_dofs_map), dtype=wp.int32)
             self.num_states = wp.from_numpy(num_states, dtype=wp.int32)
             self.constraint_full_to_red_map = wp.from_numpy(constraint_full_to_red_map, dtype=wp.int32)
 
@@ -1238,6 +1382,7 @@ class ForwardKinematicsSolver:
 
             # Default base state
             self.base_q_default = wp.from_numpy(base_q_default, dtype=wp.transformf)
+            self.base_u_default = wp.zeros(shape=(self.num_worlds,), dtype=vec6f)
 
             # Line search
             self.max_line_search_iterations = wp.array(dtype=wp.int32, shape=(1,))  # Max iterations
@@ -1292,6 +1437,22 @@ class ForwardKinematicsSolver:
             self.step = wp.zeros(
                 dtype=wp.float32, shape=(self.num_worlds, self.num_states_max)
             )  # Step in state variables per world
+
+            # Velocity solver
+            self.actuators_u = wp.array(
+                dtype=wp.float32, shape=(self.num_actuated_dofs,)
+            )  # Velocities for actuated dofs of fk model
+            self.target_cts_u = wp.zeros(
+                dtype=wp.float32,
+                shape=(
+                    self.num_worlds,
+                    self.num_constraints_max,
+                ),
+            )  # Target velocity per constraint
+            self.bodies_q_dot = wp.array(
+                ptr=self.step.ptr, dtype=wp.float32, shape=(self.num_worlds, self.num_states_max)
+            )  # Time derivative of body poses (alias of self.step for data re-use)
+            # Note: we also re-use self.jacobian, self.lhs and self.rhs for the velocity solver
 
         # Initialize kernels that depend on static values
         self._eval_joint_constraints_kernel = create_eval_joint_constraints_kernel(has_universal_joints)
@@ -1388,7 +1549,7 @@ class ForwardKinematicsSolver:
         """
         # Compute actuators_q of fk model with modified joints
         wp.launch(
-            _eval_fk_actuated_coordinates,
+            _eval_fk_actuated_dofs_or_coords,
             dim=(self.num_actuated_coords,),
             inputs=[
                 wp.array(ptr=base_q.ptr, dtype=wp.float32, shape=(7 * self.num_worlds,)),
@@ -1655,6 +1816,82 @@ class ForwardKinematicsSolver:
             ],
         )
 
+    def _solve_for_body_velocities(
+        self,
+        pos_control_transforms: wp.array(dtype=wp.transformf),
+        base_u: wp.array(dtype=vec6f),
+        actuators_u: wp.array(dtype=wp.float32),
+        bodies_q: wp.array(dtype=wp.transformf),
+        bodies_u: wp.array(dtype=vec6f),
+        world_mask: wp.array(dtype=wp.int32),
+    ):
+        """
+        Internal function solving for body velocities, so that constraint velocities are zero,
+        except at actuated dofs and at the base joint, where they must match prescribed velocities.
+        """
+        # Compute actuators_u of fk model with modified joints
+        wp.launch(
+            _eval_fk_actuated_dofs_or_coords,
+            dim=(self.num_actuated_dofs,),
+            inputs=[
+                wp.array(ptr=base_u.ptr, dtype=wp.float32, shape=(6 * self.num_worlds,)),
+                actuators_u,
+                self.actuated_dofs_map,
+                self.actuators_u,
+            ],
+        )
+
+        # Compute target constraint velocities (prescribed for actuated dofs, zero for passive constraints)
+        self.target_cts_u.zero_()
+        wp.launch(
+            _eval_target_constraint_velocities,
+            dim=(
+                self.num_worlds,
+                self.num_joints_max,
+            ),
+            inputs=[
+                self.num_joints,
+                self.first_joint_id,
+                self.joints_dof_type,
+                self.joints_act_type,
+                self.actuated_dof_offsets,
+                self.constraint_full_to_red_map,
+                self.actuators_u,
+                world_mask,
+                self.target_cts_u,
+            ],
+        )
+
+        # Update constraints Jacobian
+        self._eval_kinematic_constraints_jacobian(bodies_q, pos_control_transforms, world_mask, self.jacobian)
+
+        # Evaluate system left-hand side (J^T * J) and right-hand side (J^T * targets_cts_u)
+        wp.launch_tiled(
+            self._eval_jacobian_T_jacobian_kernel,
+            dim=(self.num_worlds, self.num_tiles_states, self.num_tiles_states),
+            inputs=[self.jacobian, world_mask, self.lhs],
+            block_dim=64,
+        )
+        wp.launch_tiled(
+            self._eval_jacobian_T_constraints_kernel,
+            dim=(self.num_worlds, self.num_tiles_states),
+            inputs=[self.jacobian, self.target_cts_u, world_mask, self.rhs],
+            block_dim=64,
+        )
+
+        # Compute body velocities (system solve)
+        self.linear_solver.factorize(self.lhs, self.num_states, world_mask)
+        self.linear_solver.solve(
+            self.rhs.reshape((self.num_worlds, self.num_states_max, 1)),
+            self.bodies_q_dot.reshape((self.num_worlds, self.num_states_max, 1)),
+            world_mask,
+        )
+        wp.launch(
+            _eval_body_velocities,
+            dim=(self.num_worlds, self.num_bodies_max),
+            inputs=[self.model.info.num_bodies, self.first_body_id, bodies_q, self.bodies_q_dot, world_mask, bodies_u],
+        )
+
     ###
     # Exposed functions (overall solve_fk() function + constraints (Jacobian) evaluators for debugging)
     ###
@@ -1716,17 +1953,73 @@ class ForwardKinematicsSolver:
         self._eval_kinematic_constraints_jacobian(bodies_q, pos_control_transforms, world_mask, constraints_jacobian)
         return constraints_jacobian
 
+    def solve_for_body_velocities(
+        self,
+        pos_control_transforms: wp.array(dtype=wp.transformf),
+        actuators_u: wp.array(dtype=wp.float32),
+        bodies_q: wp.array(dtype=wp.transformf),
+        bodies_u: wp.array(dtype=vec6f),
+        base_u: wp.array(dtype=vec6f) | None = None,
+        world_mask: wp.array(dtype=wp.int32) | None = None,
+    ):
+        """
+        Graph-capturable function solving for body velocities as a post-processing to the FK solve.
+        More specifically, solves for body twists yielding zero constraint velocities, except at
+        actuated dofs and at the base joint, where velocities must match prescribed velocities.
+
+        Parameters
+        ----------
+        pos_control_transforms : wp.array
+            Array of position-control transforms, encoding actuated coordinates and base pose.
+            Expects shape of ``(num_fk_joints,)`` and type :class:`transform`
+        actuators_u : wp.array
+            Array of actuated joint velocities.
+            Expects shape of ``(sum_of_num_actuated_joint_dofs,)`` and type :class:`float`.
+        bodies_q : wp.array
+            Array of rigid body poses. Must be the solution of FK given the position-control transforms.
+            Expects shape of ``(num_bodies,)`` and type :class:`transform`.
+        bodies_u : wp.array
+            Array of rigid body velocities (twists), written out by the solver.
+            Expects shape of ``(num_bodies,)`` and type :class:`vec6`.
+        base_u : wp.array, optional
+            Velocity (twist) of the base body for each world, in the frame of the base joint if it was set, or
+            absolute otherwise.
+            If not provided, will default to zero. Ignored if no base body or joint was set for this model.
+            If this function is captured in a graph, must be either always or never provided.
+            Expects shape of ``(num_worlds,)`` and type :class:`vec6`.
+        world_mask : wp.array, optional
+            Array of per-world flags that indicate which worlds should be processed (0 = leave that world unchanged).
+            If not provided, all worlds will be processed.
+            If this function is captured in a graph, must be either always or never provided.
+        """
+        assert pos_control_transforms.device == self.device
+        assert actuators_u.device == self.device
+        assert bodies_q.device == self.device
+        assert bodies_u.device == self.device
+        assert base_u is None or base_u.device == self.device
+        assert world_mask is None or world_mask.device == self.device
+
+        # Use default base velocity if not provided
+        if base_u is None:
+            base_u = self.base_u_default
+
+        # Compute velocities
+        self._solve_for_body_velocities(pos_control_transforms, base_u, actuators_u, bodies_q, bodies_u, world_mask)
+
     def run_fk_solve(
         self,
         actuators_q: wp.array(dtype=wp.float32),
         bodies_q: wp.array(dtype=wp.transformf),
         base_q: wp.array(dtype=wp.transformf) | None = None,
+        actuators_u: wp.array(dtype=wp.float32) | None = None,
+        base_u: wp.array(dtype=vec6f) | None = None,
+        bodies_u: wp.array(dtype=vec6f) | None = None,
         world_mask: wp.array(dtype=wp.int32) | None = None,
     ):
         """
-        Graph-capturable function solving forward kinematics with Gauss-Newton. More specifically, solves for the
-        rigid body poses satisfying kinematic constraints, given the current actuator generalized coordinates
-        (i.e. position-control inputs) as well as the base pose in each world.
+        Graph-capturable function solving forward kinematics with Gauss-Newton.
+        More specifically, solves for the rigid body poses satisfying kinematic constraints, given actuated joint coordinates
+        and base pose. Optionally also solves for rigid body velocities given actuator and base body velocities.
 
         Parameters
         ----------
@@ -1743,14 +2036,37 @@ class ForwardKinematicsSolver:
             If no base body or joint was set for this model, will be ignored.
             If this function is captured in a graph, must be either always or never provided.
             Expects shape of ``(num_worlds,)`` and type :class:`transform`.
+        actuators_u : wp.array, optional
+            Array of actuated joint velocities.
+            Must be provided when solving for body velocities, i.e. if bodies_u is provided.
+            If this function is captured in a graph, must be either always or never provided.
+            Expects shape of ``(sum_of_num_actuated_joint_dofs,)`` and type :class:`float`.
+        base_u : wp.array, optional
+            Velocity (twist) of the base body for each world, in the frame of the base joint if it was set, or
+            absolute otherwise.
+            If not provided, will default to zero. Ignored if no base body or joint was set for this model.
+            If this function is captured in a graph, must be either always or never provided.
+            Expects shape of ``(num_worlds,)`` and type :class:`vec6`.
+        bodies_u : wp.array, optional
+            Array of rigid body velocities (twists), written out by the solver if provided.
+            If this function is captured in a graph, must be either always or never provided.
+            Expects shape of ``(num_bodies,)`` and type :class:`vec6`.
         world_mask : wp.array, optional
             Array of per-world flags that indicate which worlds should be processed (0 = leave that world unchanged).
-            If not provided, all worlds will be processed (default: None).
+            If not provided, all worlds will be processed.
             If this function is captured in a graph, must be either always or never provided.
         """
-        # Use default base pose if not provided
+        # Check that actuators_u are provided if we need to solve for bodies_u
+        if bodies_u is not None and actuators_u is None:
+            raise ValueError(
+                "run_fk_solve: actuators_u must be provided to solve for velocities (i.e. if bodies_u is provided)."
+            )
+
+        # Use default base state if not provided
         if base_q is None:
             base_q = self.base_q_default
+        if bodies_u is not None and base_u is None:
+            base_u = self.base_u_default
 
         # Compute position control transforms (independent of state, depends on controls only)
         self._eval_position_control_transformations(base_q, actuators_q, self.pos_control_transforms)
@@ -1790,11 +2106,20 @@ class ForwardKinematicsSolver:
         # Main loop
         wp.capture_while(self.newton_loop_condition, lambda: self._run_newton_iteration(bodies_q))
 
+        # Velocity solve, for worlds where FK ran and was successful
+        if bodies_u is not None:
+            self._solve_for_body_velocities(
+                self.pos_control_transforms, base_u, actuators_u, bodies_q, bodies_u, self.newton_success
+            )
+
     def solve_fk(
         self,
         actuators_q: wp.array(dtype=wp.float32),
         bodies_q: wp.array(dtype=wp.transformf),
         base_q: wp.array(dtype=wp.transformf) | None = None,
+        actuators_u: wp.array(dtype=wp.float32) | None = None,
+        base_u: wp.array(dtype=vec6f) | None = None,
+        bodies_u: wp.array(dtype=vec6f) | None = None,
         world_mask: wp.array(dtype=wp.int32) | None = None,
         verbose: bool = False,
         return_status: bool = False,
@@ -1802,8 +2127,8 @@ class ForwardKinematicsSolver:
     ):
         """
         Convenience function with verbosity options (non graph-capturable), solving forward kinematics with Gauss-Newton.
-        More specifically, solves for the rigid body poses satisfying kinematic constraints, given the current actuator
-        generalized coordinates (i.e. position-control inputs)
+        More specifically, solves for the rigid body poses satisfying kinematic constraints, given actuated joint coordinates
+        and base pose. Optionally also solves for rigid body velocities given actuator and base body velocities.
 
         Parameters
         ----------
@@ -1819,9 +2144,21 @@ class ForwardKinematicsSolver:
             If not provided, will default to zero coordinates of the base joint, or the initial pose of the base body.
             If no base body or joint was set for this model, will be ignored.
             Expects shape of ``(num_worlds,)`` and type :class:`transform`.
+        actuators_u : wp.array, optional
+            Array of actuated joint velocities.
+            Must be provided when solving for body velocities, i.e. if bodies_u is provided.
+            Expects shape of ``(sum_of_num_actuated_joint_dofs,)`` and type :class:`float`.
+        base_u : wp.array, optional
+            Velocity (twist) of the base body for each world, in the frame of the base joint if it was set, or
+            absolute otherwise.
+            If not provided, will default to zero. Ignored if no base body or joint was set for this model.
+            Expects shape of ``(num_worlds,)`` and type :class:`vec6`.
+        bodies_u : wp.array, optional
+            Array of rigid body velocities (twists), written out by the solver if provided.
+            Expects shape of ``(num_bodies,)`` and type :class:`vec6`.
         world_mask : wp.array, optional
             Array of per-world flags that indicate which worlds should be processed (0 = leave that world unchanged).
-            If not provided, all worlds will be processed (default: None).
+            If not provided, all worlds will be processed.
         verbose : bool, optional
             whether to write a status message at the end (default: False)
         return_status : bool, optional
@@ -1838,16 +2175,19 @@ class ForwardKinematicsSolver:
         assert base_q is None or base_q.device == self.device
         assert actuators_q.device == self.device
         assert bodies_q.device == self.device
+        assert base_u is None or base_u.device == self.device
+        assert actuators_u is None or actuators_u.device == self.device
+        assert bodies_u is None or bodies_u.device == self.device
 
         # Run solve (with or without graph)
         if use_graph:
             if self.graph is None:
                 wp.capture_begin(self.device)
-                self.run_fk_solve(actuators_q, bodies_q, base_q, world_mask)
+                self.run_fk_solve(actuators_q, bodies_q, base_q, actuators_u, base_u, bodies_u, world_mask)
                 self.graph = wp.capture_end()
             wp.capture_launch(self.graph)
         else:
-            self.run_fk_solve(actuators_q, bodies_q, base_q, world_mask)
+            self.run_fk_solve(actuators_q, bodies_q, base_q, actuators_u, base_u, bodies_u, world_mask)
 
         # Status message
         if verbose or return_status:

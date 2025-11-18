@@ -24,6 +24,7 @@ import warp as wp
 from newton._src.solvers.kamino.core.types import float32
 from newton._src.solvers.kamino.linalg.conjugate import (
     CGSolver,
+    CRSolver,
     make_dense_square_matrix_operator,
 )
 from newton._src.solvers.kamino.tests.utils.extract import get_vector_block
@@ -49,7 +50,7 @@ class TestLinalgConjugate(unittest.TestCase):
         }
         solvers = {
             "CG": CGSolver,
-            # "CR": CRSolver,
+            "CR": CRSolver,
         }
         for (problem_name, problem_params), (solver_name, solver) in itertools.product(
             problems.items(), solvers.items()

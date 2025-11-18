@@ -23,7 +23,6 @@ from collections.abc import Callable
 from typing import Any
 
 import warp as wp
-import warp.sparse as sparse
 
 # No need to auto-generate adjoint code for linear solvers
 wp.set_module_options({"enable_backward": False})
@@ -102,9 +101,6 @@ class BatchedLinearOperator:
         return wp.types.type_scalar_type(self.dtype)
 
 
-_Matrix = wp.array | sparse.BsrMatrix
-
-
 # Implementations
 # ---------------
 
@@ -140,6 +136,7 @@ def _update_batch_condition(
     batch_condition[0] = 0
 
 
+@functools.cache
 def make_termination_kernel(n_envs):
     @wp.kernel
     def check_termination(
@@ -399,7 +396,6 @@ def make_dense_square_matrix_operator(
     for multiple, differently sized square matrices."""
     dtype = A.dtype
     device = A.device
-    int_type = active_dims.dtype
 
     tile_size = block_dim if device.is_cuda else 1
     n = len(active_dims)
@@ -424,9 +420,6 @@ def make_dense_square_matrix_operator(
 
     shape = (n, max_dims, max_dims)
     return BatchedLinearOperator(shape=shape, dtype=dtype, device=device, matvec=matvec)
-
-
-# Remainder of module
 
 
 class TiledDot:
@@ -656,6 +649,7 @@ def lt_mask(a: Any, b: Any):
 WP_NO_TILE_FULL = True  # TODO: remove w/ warp upgrade
 
 
+@functools.cache
 def make_dot_kernel(tile_size: int, maxdim: int):
     second_tile_size = (maxdim + tile_size - 1) // tile_size
 
@@ -673,7 +667,7 @@ def make_dot_kernel(tile_size: int, maxdim: int):
             return
         n = env_size[env]
 
-        ts = wp.tile_zeros((second_tile_size,), dtype=wp.float32, storage="shared")
+        ts = wp.tile_zeros((second_tile_size,), dtype=a.dtype, storage="shared")
         o_src = wp.int32(0)
 
         for block in range(second_tile_size):
@@ -802,7 +796,7 @@ class CGSolver:
         self.residual = wp.empty((self.n_envs), dtype=self.scalar_type, device=self.device)
 
         if self.maxiter is None:
-            self.maxiter = wp.full(self.n_envs, self.maxdims, dtype=int)
+            self.maxiter = wp.full(self.n_envs, int(1.5 * self.maxdims), dtype=int)
 
         # TODO: non-tiled variant for CPU
         self.dot_product = wp.empty((2, self.n_envs), dtype=self.scalar_type, device=self.device)
@@ -951,9 +945,13 @@ class CRSolver:
 
         # (r, r) -- so we can compute r.z and r.r at once
         if self.M is None:
-            self.r_repeated = _repeat_first(self.r_and_z)
+            # For the unpreconditioned case, z == r and y == Ap
+            self.r_and_z = _repeat_first(self.r_and_z)
             self.y_and_Ap = _repeat_first(self.y_and_Ap)
-            # TODO: allocate r_and_z here
+
+        self.cur_iter = wp.empty(self.n_envs, dtype=wp.int32, device=self.device)
+        self.conditions = wp.empty(self.n_envs + 1, dtype=wp.int32, device=self.device)
+        self.termination_kernel = make_termination_kernel(self.n_envs)
 
         # Notations below follow roughly pseudo-code from https://en.wikipedia.org/wiki/Conjugate_residual_method
         # with z := M^-1 r and y := M^-1 Ap
@@ -1035,6 +1033,9 @@ class CRSolver:
             callback=self.callback,
             check_every=self.check_every,
             use_cuda_graph=self.use_cuda_graph,
+            cur_iter=self.cur_iter,
+            conditions=self.conditions,
+            termination_kernel=self.termination_kernel,
         )
 
 

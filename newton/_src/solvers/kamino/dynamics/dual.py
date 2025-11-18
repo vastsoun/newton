@@ -1129,6 +1129,7 @@ class DualProblem:
         limits: Limits | None = None,
         contacts: Contacts | None = None,
         solver: LinearSolverType | None = None,
+        solver_kwargs: dict[str, Any] | None = None,
         settings: list[DualProblemSettings] | DualProblemSettings | None = None,
         device: Devicelike = None,
     ):
@@ -1171,6 +1172,7 @@ class DualProblem:
                 limits=limits,
                 contacts=contacts,
                 solver=solver,
+                solver_kwargs=solver_kwargs,
                 settings=settings,
                 device=device,
             )
@@ -1230,6 +1232,7 @@ class DualProblem:
         limits: Limits | None = None,
         contacts: Contacts | None = None,
         solver: LinearSolverType | None = None,
+        solver_kwargs: dict[str, Any] | None = None,
         settings: list[DualProblemSettings] | DualProblemSettings | None = None,
         device: Devicelike = None,
     ):
@@ -1278,6 +1281,7 @@ class DualProblem:
             limits=limits,
             contacts=contacts,
             solver=solver,
+            solver_kwargs=solver_kwargs,
             device=device,
         )
 

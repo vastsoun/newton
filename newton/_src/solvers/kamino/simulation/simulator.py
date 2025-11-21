@@ -152,6 +152,9 @@ class SimulatorSettings:
     Defaults to `JointCorrectionMode.TWOPI`.
     """
 
+    linear_solver_maxiter: int = 0
+    """Maximum number of iterations for linear solver"""
+
     def check(self) -> None:
         """
         Checks the validity of the settings.
@@ -275,8 +278,8 @@ class Simulator:
 
         # Cache the solver settings
         self._settings: SimulatorSettings = settings
-        if issubclass(settings.linear_solver_type, IterativeSolver):
-            linear_solver_kwargs = {"maxiter": 1}
+        if issubclass(settings.linear_solver_type, IterativeSolver) and settings.linear_solver_maxiter != 0:
+            linear_solver_kwargs = {"maxiter": settings.linear_solver_maxiter}
         else:
             linear_solver_kwargs = {}
 

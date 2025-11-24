@@ -110,6 +110,9 @@ class Example:
         use_cuda_graph: bool = False,
         load_from_usd: bool = False,
         headless: bool = False,
+        record_video: bool = False,
+        video_folder: str = "./frames",
+        async_save: bool = False,
     ):
         # Initialize target frames per second and corresponding time-steps
         self.fps = 60
@@ -154,7 +157,13 @@ class Example:
             self.viewer = ViewerKamino(
                 builder=self.builder,
                 simulator=self.sim,
+                record_video=record_video,
+                video_folder=video_folder,
+                async_save=async_save,
             )
+            if record_video:
+                msg.info(f"Frame recording enabled ({'async' if async_save else 'sync'} mode)")
+                msg.info(f"Frames will be saved to: {video_folder}")
         else:
             self.viewer = None
 
@@ -246,6 +255,16 @@ if __name__ == "__main__":
     parser.add_argument("--cuda-graph", action="store_true", default=True, help="Use CUDA graphs")
     parser.add_argument("--clear-cache", action="store_true", default=False, help="Clear warp cache")
     parser.add_argument("--test", action="store_true", default=False, help="Run tests")
+    parser.add_argument(
+        "--record",
+        type=str,
+        choices=["sync", "async"],
+        default=None,
+        help="Enable frame recording: 'sync' for synchronous, 'async' for asynchronous (non-blocking)",
+    )
+    parser.add_argument(
+        "--record-folder", type=str, default="./frames", help="Folder to save recorded frames (default: ./frames)"
+    )
     args = parser.parse_args()
 
     # Set global numpy configurations
@@ -282,9 +301,12 @@ if __name__ == "__main__":
         num_worlds=args.num_worlds,
         max_steps=args.num_steps,
         headless=args.headless,
+        record_video=args.record is not None and not args.headless,
+        video_folder=args.record_folder,
+        async_save=args.record == "async",
     )
 
-    # Run a brute-force similation loop if headless
+    # Run a brute-force simulation loop if headless
     if args.headless:
         msg.notif("Running in headless mode...")
         run_headless(example, progress=True)

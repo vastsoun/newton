@@ -15,9 +15,12 @@
 
 """The customized debug viewer of Kamino"""
 
+import os
+import threading
 from typing import ClassVar
 
 import warp as wp
+from PIL import Image
 
 from ....viewer import ViewerGL
 from ..core.builder import ModelBuilder
@@ -49,7 +52,7 @@ class ViewerKamino(ViewerGL):
         wp.array([wp.vec3(0.5, 0.5, 0.5)], dtype=wp.vec3),  # Gray
     ]
 
-    # Define the a static world spacing offset for multiple worlds
+    # Define a static world spacing offset for multiple worlds
     world_spacing: ClassVar[vec3f] = vec3f(-2.0, 0.0, 0.0)
 
     def __init__(
@@ -60,7 +63,26 @@ class ViewerKamino(ViewerGL):
         height: int = 1080,
         vsync: bool = False,
         headless: bool = False,
+        record_video: bool = False,
+        video_folder: str | None = None,
+        skip_img_idx: int = 0,
+        async_save: bool = False,
     ):
+        """
+        Initialize the Kamino viewer.
+
+        Args:
+            builder: Model builder.
+            simulator: The simulator instance to visualize.
+            width: Window width in pixels.
+            height: Window height in pixels.
+            vsync: Enable vertical sync.
+            headless: Run without displaying a window.
+            record_video: Enable frame recording to disk.
+            video_folder: Directory to save recorded frames (default: "./frames").
+            skip_img_idx: Number of initial frames to skip before recording.
+            async_save: Save frames asynchronously in background threads.
+        """
         # Initialize the base viewer
         super().__init__(width=width, height=height, vsync=vsync, headless=headless)
 
@@ -71,6 +93,17 @@ class ViewerKamino(ViewerGL):
         self._worlds: list[WorldDescriptor] = builder.worlds
         self._collision_geometry: list[CollisionGeometryDescriptor] = builder.collision_geoms
         self._physical_geometry: list[GeometryDescriptor] = builder.physical_geoms
+
+        # Initialize video recording settings
+        self._record_video = record_video
+        self._video_folder = video_folder or "./frames"
+        self._async_save = async_save
+        self._skip_img_idx = skip_img_idx
+        self._img_idx = 0
+        self._frame_buffer = None
+
+        if self._record_video:
+            os.makedirs(self._video_folder, exist_ok=True)
 
     def render_geometry(self, body_poses: wp.array, geom: GeometryDescriptor, scope: str):
         # TODO: Fix this
@@ -117,7 +150,7 @@ class ViewerKamino(ViewerGL):
             geo_src=geom.shape.data,
         )
 
-    def render_frame(self):
+    def render_frame(self, stop_recording: bool = False):
         # Begin a new frame
         self.begin_frame(self._simulator.time)
 
@@ -138,3 +171,45 @@ class ViewerKamino(ViewerGL):
 
         # End the new frame
         self.end_frame()
+
+        # Capture frame if recording is enabled and not stopped
+        if self._record_video and not stop_recording:
+            # todo : think about if we should continue to step the _img_idx even when not recording
+            self._capture_frame()
+
+    def _capture_frame(self):
+        """
+        Capture and save a single frame from the viewer.
+
+        This method retrieves the current rendered frame, converts it to a PIL Image,
+        and saves it as a PNG file.
+        """
+        if self._img_idx >= self._skip_img_idx:
+            # Get frame from viewer as GPU array (height, width, 3) uint8
+            frame = self.get_frame(target_image=self._frame_buffer)
+
+            # Cache buffer for reuse to minimize allocations
+            if self._frame_buffer is None:
+                self._frame_buffer = frame
+
+            # Convert to numpy on CPU and PIL
+            frame_np = frame.numpy()
+            image = Image.fromarray(frame_np, mode="RGB")
+
+            # Generate filename with zero-padded frame number # todo : 05d is currently hardcoded
+            filename = os.path.join(self._video_folder, f"{self._img_idx - self._skip_img_idx:05d}.png")
+
+            # Save either asynchronously or synchronously
+            if self._async_save:
+                # Use non-daemon thread to save in background
+                # Each image has its own copy, so thread safety is maintained
+                threading.Thread(
+                    target=image.save,
+                    args=(filename,),
+                    daemon=False,  # make sure the thread completes even if main program exits todo can be challenged
+                ).start()
+            else:
+                # Synchronous save - blocks until complete
+                image.save(filename)
+
+        self._img_idx += 1

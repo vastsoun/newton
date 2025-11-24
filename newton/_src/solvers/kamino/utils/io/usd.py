@@ -816,6 +816,7 @@ class USDImporter:
         joint_spec,
         joint_type,
         body_index_map: dict[str, int],
+        stage,
         distance_unit: float = 1.0,
         rotation_unit: float = 1.0,
         only_load_enabled_joints: bool = True,
@@ -850,10 +851,29 @@ class USDImporter:
         F_r_Fj = distance_unit * vec3f(joint_spec.localPose1Position)
         B_q_Bj = self._from_gfquat(joint_spec.localPose0Orientation)
         F_q_Fj = self._from_gfquat(joint_spec.localPose1Orientation)
-        msg.debug(f"B_r_Bj: {B_r_Bj}")
-        msg.debug(f"F_r_Fj: {F_r_Fj}")
+        msg.debug(f"B_r_Bj (before COM correction): {B_r_Bj}")
+        msg.debug(f"F_r_Fj (before COM correction): {F_r_Fj}")
         msg.debug(f"B_q_Bj: {B_q_Bj}")
         msg.debug(f"F_q_Fj: {F_q_Fj}")
+
+        # Correct for COM offset
+        if joint_spec.body0:
+            body_B_prim = stage.GetPrimAtPath(joint_spec.body0)
+            i_r_com_B = distance_unit * self._parse_vec(
+                body_B_prim, "physics:centerOfMass", default=np.zeros(3, dtype=np.float32)
+            )
+            B_r_Bj = B_r_Bj - vec3f(i_r_com_B)
+            msg.debug(f"i_r_com_B: {i_r_com_B}")
+            msg.info(f"B_r_Bj (after COM correction): {B_r_Bj}")
+
+        if joint_spec.body1:
+            body_F_prim = stage.GetPrimAtPath(joint_spec.body1)
+            i_r_com_F = distance_unit * self._parse_vec(
+                body_F_prim, "physics:centerOfMass", default=np.zeros(3, dtype=np.float32)
+            )
+            F_r_Fj = F_r_Fj - vec3f(i_r_com_F)
+            msg.debug(f"i_r_com_F: {i_r_com_F}")
+            msg.debug(f"F_r_Fj (after COM correction): {F_r_Fj}")
 
         # Check if body0 is specified
         if (not joint_spec.body0) and joint_spec.body1:
@@ -1032,6 +1052,7 @@ class USDImporter:
         body_index_map: dict[str, int],
         cgroup_index_map: dict[str, int],
         material_index_map: dict[str, int],
+        stage,
         distance_unit: float = 1.0,
         rotation_unit: float = 1.0,
         meshes_are_collidable: bool = False,
@@ -1080,9 +1101,21 @@ class USDImporter:
         # Extract the relative poses of the geom w.r.t the rigid body frame
         i_r_ig = distance_unit * vec3f(geom_spec.localPos)
         i_q_ig = self._from_gfquat(geom_spec.localRot)
-        i_T_ig = transformf(i_r_ig, i_q_ig)
-        msg.debug(f"[{name}]: i_r_ig: {i_r_ig}")
+        msg.debug(f"[{name}]: i_r_ig (before COM correction): {i_r_ig}")
         msg.debug(f"[{name}]: i_q_ig: {i_q_ig}")
+
+        # Correct for COM offset
+        if geom_spec.rigidBody and body_index > -1:
+            body_prim = stage.GetPrimAtPath(geom_spec.rigidBody)
+            i_r_com = distance_unit * self._parse_vec(
+                body_prim, "physics:centerOfMass", default=np.zeros(3, dtype=np.float32)
+            )
+            i_r_ig = i_r_ig - vec3f(i_r_com)
+            msg.debug(f"[{name}]: i_r_com: {i_r_com}")
+            msg.debug(f"[{name}]: i_r_ig (after COM correction): {i_r_ig}")
+
+        # Construct the transform descriptor
+        i_T_ig = transformf(i_r_ig, i_q_ig)
 
         ###
         # PhysicsGeom Shape Properties
@@ -1454,6 +1487,7 @@ class USDImporter:
                         joint_spec=joint_spec,
                         joint_type=joint_type,
                         body_index_map=body_index_map,
+                        stage=stage,
                         distance_unit=distance_unit,
                         rotation_unit=rotation_unit,
                     )
@@ -1509,6 +1543,7 @@ class USDImporter:
                         body_index_map=body_index_map,
                         cgroup_index_map=cgroup_index_map,
                         material_index_map=material_index_map,
+                        stage=stage,
                         distance_unit=distance_unit,
                         rotation_unit=rotation_unit,
                         meshes_are_collidable=meshes_are_collidable,

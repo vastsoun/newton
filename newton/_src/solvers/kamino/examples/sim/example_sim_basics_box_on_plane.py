@@ -26,7 +26,7 @@ from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.core.gravity import GRAVITY_ACCEL_DEFAULT
 from newton._src.solvers.kamino.core.materials import DEFAULT_FRICTION
 from newton._src.solvers.kamino.core.types import float32, vec6f
-from newton._src.solvers.kamino.examples import run_headless
+from newton._src.solvers.kamino.examples import get_examples_output_path, run_headless
 from newton._src.solvers.kamino.models import get_basics_usd_assets_path
 from newton._src.solvers.kamino.models.builders import build_box_on_plane
 from newton._src.solvers.kamino.models.utils import make_homogeneous_builder
@@ -110,6 +110,8 @@ class Example:
         use_cuda_graph: bool = False,
         load_from_usd: bool = False,
         headless: bool = False,
+        record_video: bool = False,
+        async_save: bool = False,
     ):
         # Initialize target frames per second and corresponding time-steps
         self.fps = 60
@@ -151,9 +153,20 @@ class Example:
 
         # Initialize the viewer
         if not headless:
+            # Set up video recording folder
+            video_folder = None
+            if record_video:
+                video_folder = os.path.join(get_examples_output_path(), "box_on_plane/frames")
+                os.makedirs(video_folder, exist_ok=True)
+                msg.info(f"Frame recording enabled ({'async' if async_save else 'sync'} mode)")
+                msg.info(f"Frames will be saved to: {video_folder}")
+
             self.viewer = ViewerKamino(
                 builder=self.builder,
                 simulator=self.sim,
+                record_video=record_video,
+                video_folder=video_folder,
+                async_save=async_save,
             )
         else:
             self.viewer = None
@@ -230,6 +243,22 @@ class Example:
         """Test function for compatibility."""
         pass
 
+    def plot(self, path: str | None = None, keep_frames: bool = False):
+        """
+        Generate video from recorded frames.
+
+        Args:
+            path: Output directory path (uses video_folder if None)
+            keep_frames: If True, keep PNG frames after video creation
+        """
+        if self.viewer is None or not self.viewer._record_video:
+            return
+
+        output_dir = path if path is not None else self.viewer._video_folder
+        output_path = os.path.join(output_dir, "recording.mp4")
+
+        self.viewer.generate_video(output_filename=output_path, fps=self.fps, keep_frames=keep_frames)
+
 
 ###
 # Main function
@@ -246,6 +275,13 @@ if __name__ == "__main__":
     parser.add_argument("--cuda-graph", action="store_true", default=True, help="Use CUDA graphs")
     parser.add_argument("--clear-cache", action="store_true", default=False, help="Clear warp cache")
     parser.add_argument("--test", action="store_true", default=False, help="Run tests")
+    parser.add_argument(
+        "--record",
+        type=str,
+        choices=["sync", "async"],
+        default=None,
+        help="Enable frame recording: 'sync' for synchronous, 'async' for asynchronous (non-blocking)",
+    )
     args = parser.parse_args()
 
     # Set global numpy configurations
@@ -282,9 +318,11 @@ if __name__ == "__main__":
         num_worlds=args.num_worlds,
         max_steps=args.num_steps,
         headless=args.headless,
+        record_video=args.record is not None and not args.headless,
+        async_save=args.record == "async",
     )
 
-    # Run a brute-force similation loop if headless
+    # Run a brute-force simulation loop if headless
     if args.headless:
         msg.notif("Running in headless mode...")
         run_headless(example, progress=True)
@@ -301,3 +339,7 @@ if __name__ == "__main__":
 
         # Launch the example using Newton's built-in runtime
         newton.examples.run(example, args)
+
+    # Generate video from recorded frames after the viewer is closed
+    if args.record is not None and not args.headless:
+        example.plot(keep_frames=False)

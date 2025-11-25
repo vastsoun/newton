@@ -771,4 +771,5 @@ def compute_joints_data(
             data.joints.q_j,
             data.joints.dq_j,
         ],
+        device=model.device,
     )

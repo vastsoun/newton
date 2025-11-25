@@ -1501,6 +1501,7 @@ class ForwardKinematicsSolver:
             dim=(self.num_worlds, self.num_tiles_states, self.num_tiles_states),
             inputs=[sparsity_pattern_wp, sparsity_pattern_lhs_wp],
             block_dim=64,
+            device=self.device,
         )
         sparsity_pattern_lhs = sparsity_pattern_lhs_wp.numpy().astype("int32")
 
@@ -1532,10 +1533,13 @@ class ForwardKinematicsSolver:
             inputs=[
                 self.model.info.num_bodies,
                 self.first_body_id,
-                wp.array(ptr=self.model.bodies.q_i_0.ptr, dtype=wp.float32, shape=(self.num_states_tot,)),
+                wp.array(
+                    ptr=self.model.bodies.q_i_0.ptr, dtype=wp.float32, shape=(self.num_states_tot,), device=self.device
+                ),
                 world_mask,
-                wp.array(ptr=bodies_q.ptr, dtype=wp.float32, shape=(self.num_states_tot,)),
+                wp.array(ptr=bodies_q.ptr, dtype=wp.float32, shape=(self.num_states_tot,), device=self.device),
             ],
+            device=self.device,
         )
 
     def _eval_position_control_transformations(
@@ -1552,11 +1556,12 @@ class ForwardKinematicsSolver:
             _eval_fk_actuated_dofs_or_coords,
             dim=(self.num_actuated_coords,),
             inputs=[
-                wp.array(ptr=base_q.ptr, dtype=wp.float32, shape=(7 * self.num_worlds,)),
+                wp.array(ptr=base_q.ptr, dtype=wp.float32, shape=(7 * self.num_worlds,), device=self.device),
                 actuators_q,
                 self.actuated_coords_map,
                 self.actuators_q,
             ],
+            device=self.device,
         )
 
         # Compute position control transformations
@@ -1571,6 +1576,7 @@ class ForwardKinematicsSolver:
                 self.actuators_q,
                 pos_control_transforms,
             ],
+            device=self.device,
         )
 
     def _eval_kinematic_constraints(
@@ -1589,6 +1595,7 @@ class ForwardKinematicsSolver:
             _eval_unit_quaternion_constraints,
             dim=(self.num_worlds, self.num_bodies_max),
             inputs=[self.model.info.num_bodies, self.first_body_id, bodies_q, world_mask, constraints],
+            device=self.device,
         )
         # Evaluate joint constraints
         wp.launch(
@@ -1610,6 +1617,7 @@ class ForwardKinematicsSolver:
                 world_mask,
                 constraints,
             ],
+            device=self.device,
         )
 
     def _eval_max_constraint(
@@ -1624,6 +1632,7 @@ class ForwardKinematicsSolver:
             dim=(self.num_worlds, self.num_tiles_constraints),
             inputs=[constraints, max_constraint],
             block_dim=64,
+            device=self.device,
         )
 
     def _eval_kinematic_constraints_jacobian(
@@ -1643,6 +1652,7 @@ class ForwardKinematicsSolver:
             _eval_unit_quaternion_constraints_jacobian,
             dim=(self.num_worlds, self.num_bodies_max),
             inputs=[self.model.info.num_bodies, self.first_body_id, bodies_q, world_mask, constraints_jacobian],
+            device=self.device,
         )
 
         # Evaluate joint constraints Jacobian
@@ -1666,6 +1676,7 @@ class ForwardKinematicsSolver:
                 world_mask,
                 constraints_jacobian,
             ],
+            device=self.device,
         )
 
     def _eval_merit_function(self, constraints: wp.array2d(dtype=wp.float32), error: wp.array(dtype=wp.float32)):
@@ -1679,6 +1690,7 @@ class ForwardKinematicsSolver:
             dim=(self.num_worlds, self.num_tiles_constraints),
             inputs=[constraints, error],
             block_dim=64,
+            device=self.device,
         )
 
     def _eval_merit_function_gradient(
@@ -1697,6 +1709,7 @@ class ForwardKinematicsSolver:
             dim=(self.num_worlds, self.num_tiles_states),
             inputs=[step, grad, error_grad],
             block_dim=64,
+            device=self.device,
         )
 
     def _run_line_search_iteration(self, bodies_q: wp.array(dtype=wp.transformf)):
@@ -1710,12 +1723,15 @@ class ForwardKinematicsSolver:
             inputs=[
                 self.model.info.num_bodies,
                 self.first_body_id,
-                wp.array(ptr=bodies_q.ptr, dtype=wp.float32, shape=(self.num_states_tot,)),
+                wp.array(ptr=bodies_q.ptr, dtype=wp.float32, shape=(self.num_states_tot,), device=self.device),
                 self.alpha,
                 self.step,
                 self.line_search_mask,
-                wp.array(ptr=self.bodies_q_alpha.ptr, dtype=wp.float32, shape=(self.num_states_tot,)),
+                wp.array(
+                    ptr=self.bodies_q_alpha.ptr, dtype=wp.float32, shape=(self.num_states_tot,), device=self.device
+                ),
             ],
+            device=self.device,
         )
 
         # Evaluate new constraints and merit function (least squares norm of constraints)
@@ -1740,6 +1756,7 @@ class ForwardKinematicsSolver:
                 self.line_search_mask,
                 self.line_search_loop_condition,
             ],
+            device=self.device,
         )
 
     def _run_newton_iteration(self, bodies_q: wp.array(dtype=wp.transformf)):
@@ -1758,14 +1775,21 @@ class ForwardKinematicsSolver:
             dim=(self.num_worlds, self.num_tiles_states, self.num_tiles_states),
             inputs=[self.jacobian, self.newton_mask, self.lhs],
             block_dim=64,
+            device=self.device,
         )
         wp.launch_tiled(
             self._eval_jacobian_T_constraints_kernel,
             dim=(self.num_worlds, self.num_tiles_states),
             inputs=[self.jacobian, self.constraints, self.newton_mask, self.grad],
             block_dim=64,
+            device=self.device,
         )
-        wp.launch(_eval_rhs, dim=(self.num_worlds, self.num_states_max), inputs=[self.grad, self.rhs])
+        wp.launch(
+            _eval_rhs,
+            dim=(self.num_worlds, self.num_states_max),
+            inputs=[self.grad, self.rhs],
+            device=self.device,
+        )
 
         # Compute step (system solve)
         self.linear_solver.factorize(self.lhs, self.num_states, self.newton_mask)
@@ -1796,6 +1820,7 @@ class ForwardKinematicsSolver:
                 self.line_search_success,
                 bodies_q,
             ],
+            device=self.device,
         )
         self._eval_max_constraint(self.constraints, self.max_constraint)
 
@@ -1814,6 +1839,7 @@ class ForwardKinematicsSolver:
                 self.newton_mask,
                 self.newton_loop_condition,
             ],
+            device=self.device,
         )
 
     def _solve_for_body_velocities(
@@ -1834,11 +1860,12 @@ class ForwardKinematicsSolver:
             _eval_fk_actuated_dofs_or_coords,
             dim=(self.num_actuated_dofs,),
             inputs=[
-                wp.array(ptr=base_u.ptr, dtype=wp.float32, shape=(6 * self.num_worlds,)),
+                wp.array(ptr=base_u.ptr, dtype=wp.float32, shape=(6 * self.num_worlds,), device=self.device),
                 actuators_u,
                 self.actuated_dofs_map,
                 self.actuators_u,
             ],
+            device=self.device,
         )
 
         # Compute target constraint velocities (prescribed for actuated dofs, zero for passive constraints)
@@ -1860,6 +1887,7 @@ class ForwardKinematicsSolver:
                 world_mask,
                 self.target_cts_u,
             ],
+            device=self.device,
         )
 
         # Update constraints Jacobian
@@ -1871,12 +1899,14 @@ class ForwardKinematicsSolver:
             dim=(self.num_worlds, self.num_tiles_states, self.num_tiles_states),
             inputs=[self.jacobian, world_mask, self.lhs],
             block_dim=64,
+            device=self.device,
         )
         wp.launch_tiled(
             self._eval_jacobian_T_constraints_kernel,
             dim=(self.num_worlds, self.num_tiles_states),
             inputs=[self.jacobian, self.target_cts_u, world_mask, self.rhs],
             block_dim=64,
+            device=self.device,
         )
 
         # Compute body velocities (system solve)
@@ -1890,6 +1920,7 @@ class ForwardKinematicsSolver:
             _eval_body_velocities,
             dim=(self.num_worlds, self.num_bodies_max),
             inputs=[self.model.info.num_bodies, self.first_body_id, bodies_q, self.bodies_q_dot, world_mask, bodies_u],
+            device=self.device,
         )
 
     ###
@@ -2101,6 +2132,7 @@ class ForwardKinematicsSolver:
                 self.newton_mask,
                 self.newton_loop_condition,
             ],
+            device=self.device,
         )
 
         # Main loop

@@ -528,6 +528,7 @@ class SemiSparseBlockCholeskySolverBatched:
                     num_active_equations,
                     batch_mask,
                 ],
+                device=self.device,
             )
             A = self.A_swizzled
 
@@ -536,6 +537,7 @@ class SemiSparseBlockCholeskySolverBatched:
             dim=self.num_batches,
             inputs=[A, self.L, self.L_tile_pattern, num_active_equations, batch_mask],
             block_dim=self.num_threads_per_block_factorize,
+            device=self.device,
         )
 
     def solve(
@@ -561,6 +563,7 @@ class SemiSparseBlockCholeskySolverBatched:
                 reorder_rows_kernel_col_vector,
                 dim=[self.num_batches, self.max_num_equations],
                 inputs=[rhs, self.rhs_swizzled, self.ordering, self.num_active_equations, batch_mask],
+                device=self.device,
             )
 
             rhs = self.rhs_swizzled
@@ -571,6 +574,7 @@ class SemiSparseBlockCholeskySolverBatched:
             dim=self.num_batches,
             inputs=[self.L, self.L_tile_pattern, rhs, R, self.y, self.num_active_equations, batch_mask],
             block_dim=self.num_threads_per_block_solve,
+            device=self.device,
         )
 
         if self.enable_reordering:
@@ -579,4 +583,5 @@ class SemiSparseBlockCholeskySolverBatched:
                 reorder_rows_kernel_col_vector,
                 dim=[self.num_batches, self.max_num_equations],
                 inputs=[R, result, self.inverse_ordering, self.num_active_equations, batch_mask],
+                device=self.device,
             )

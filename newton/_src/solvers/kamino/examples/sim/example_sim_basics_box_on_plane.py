@@ -26,7 +26,7 @@ from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.core.gravity import GRAVITY_ACCEL_DEFAULT
 from newton._src.solvers.kamino.core.materials import DEFAULT_FRICTION
 from newton._src.solvers.kamino.core.types import float32, vec6f
-from newton._src.solvers.kamino.examples import run_headless
+from newton._src.solvers.kamino.examples import get_examples_output_path, run_headless
 from newton._src.solvers.kamino.models import get_basics_usd_assets_path
 from newton._src.solvers.kamino.models.builders import build_box_on_plane
 from newton._src.solvers.kamino.models.utils import make_homogeneous_builder
@@ -111,7 +111,6 @@ class Example:
         load_from_usd: bool = False,
         headless: bool = False,
         record_video: bool = False,
-        video_folder: str = "./frames",
         async_save: bool = False,
     ):
         # Initialize target frames per second and corresponding time-steps
@@ -154,6 +153,14 @@ class Example:
 
         # Initialize the viewer
         if not headless:
+            # Set up video recording folder
+            video_folder = None
+            if record_video:
+                video_folder = os.path.join(get_examples_output_path(), "box_on_plane/frames")
+                os.makedirs(video_folder, exist_ok=True)
+                msg.info(f"Frame recording enabled ({'async' if async_save else 'sync'} mode)")
+                msg.info(f"Frames will be saved to: {video_folder}")
+
             self.viewer = ViewerKamino(
                 builder=self.builder,
                 simulator=self.sim,
@@ -161,9 +168,6 @@ class Example:
                 video_folder=video_folder,
                 async_save=async_save,
             )
-            if record_video:
-                msg.info(f"Frame recording enabled ({'async' if async_save else 'sync'} mode)")
-                msg.info(f"Frames will be saved to: {video_folder}")
         else:
             self.viewer = None
 
@@ -262,9 +266,6 @@ if __name__ == "__main__":
         default=None,
         help="Enable frame recording: 'sync' for synchronous, 'async' for asynchronous (non-blocking)",
     )
-    parser.add_argument(
-        "--record-folder", type=str, default="./frames", help="Folder to save recorded frames (default: ./frames)"
-    )
     args = parser.parse_args()
 
     # Set global numpy configurations
@@ -302,7 +303,6 @@ if __name__ == "__main__":
         max_steps=args.num_steps,
         headless=args.headless,
         record_video=args.record is not None and not args.headless,
-        video_folder=args.record_folder,
         async_save=args.record == "async",
     )
 

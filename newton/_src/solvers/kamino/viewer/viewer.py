@@ -252,7 +252,7 @@ class ViewerKamino(ViewerGL):
             # Use imageio-ffmpeg to write video
             writer = ffmpeg.write_frames(
                 output_filename,
-                size=(self.renderer._screen_width, self.renderer._screen_height),  # Get size from first frame
+                size=(self.renderer._screen_width, self.renderer._screen_height),
                 fps=fps,
                 codec="libx264",
                 quality=5,  # set to default quality

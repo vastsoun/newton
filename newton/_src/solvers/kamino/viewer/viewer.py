@@ -255,6 +255,7 @@ class ViewerKamino(ViewerGL):
                 size=(self.renderer._screen_width, self.renderer._screen_height),
                 fps=fps,
                 codec="libx264",
+                macro_block_size=8,
                 quality=5,  # set to default quality
             )
             writer.send(None)  # Initialize the writer

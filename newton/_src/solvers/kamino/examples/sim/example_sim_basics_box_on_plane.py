@@ -243,6 +243,22 @@ class Example:
         """Test function for compatibility."""
         pass
 
+    def plot(self, path: str | None = None, keep_frames: bool = False):
+        """
+        Generate video from recorded frames.
+
+        Args:
+            path: Output directory path (uses video_folder if None)
+            keep_frames: If True, keep PNG frames after video creation
+        """
+        if self.viewer is None or not self.viewer._record_video:
+            return
+
+        output_dir = path if path is not None else self.viewer._video_folder
+        output_path = os.path.join(output_dir, "recording.mp4")
+
+        self.viewer.generate_video(output_filename=output_path, fps=self.fps, keep_frames=keep_frames)
+
 
 ###
 # Main function
@@ -323,3 +339,7 @@ if __name__ == "__main__":
 
         # Launch the example using Newton's built-in runtime
         newton.examples.run(example, args)
+
+    # Generate video from recorded frames after the viewer is closed
+    if args.record is not None and not args.headless:
+        example.plot(keep_frames=False)

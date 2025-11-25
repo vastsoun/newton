@@ -15,6 +15,7 @@
 
 """The customized debug viewer of Kamino"""
 
+import glob
 import os
 import threading
 from typing import ClassVar
@@ -29,6 +30,7 @@ from ..core.shapes import ShapeType
 from ..core.types import vec3f
 from ..core.world import WorldDescriptor
 from ..simulation.simulator import Simulator
+from ..utils import logger as msg
 
 ###
 # Interfaces
@@ -213,3 +215,67 @@ class ViewerKamino(ViewerGL):
                 image.save(filename)
 
         self._img_idx += 1
+
+    def generate_video(self, output_filename: str = "recording.mp4", fps: int = 60, keep_frames: bool = True) -> bool:
+        """
+        Generate MP4 video from recorded png frames using imageio-ffmpeg.
+
+        Args:
+            output_filename: Name of output video file (default: "recording.mp4")
+            fps: Frames per second for video (default: 60)
+            keep_frames: If True, keep png frames after video creation; if False, delete them (default: True)
+        """
+        # Try to import imageio-ffmpeg (optional dependency)
+        try:
+            import imageio_ffmpeg as ffmpeg  # noqa: PLC0415
+        except ImportError:
+            msg.warning("imageio-ffmpeg not installed. Frames saved but video not generated.")
+            msg.info("Install with: pip install imageio-ffmpeg")
+            return False
+        import numpy as np  # noqa: PLC0415
+
+        # Check if we have frames to process
+        if not self._record_video or self._img_idx <= self._skip_img_idx:
+            msg.warning("No frames recorded, cannot generate video")
+            return False
+
+        # Get sorted list of frame files
+        frame_files = sorted(glob.glob(os.path.join(self._video_folder, "*.png")))
+
+        if not frame_files:
+            msg.warning(f"No png frames found in {self._video_folder}")
+            return False
+
+        msg.info(f"Generating video from {len(frame_files)} frames...")
+
+        try:
+            # Use imageio-ffmpeg to write video
+            writer = ffmpeg.write_frames(
+                output_filename,
+                size=(self.renderer._screen_width, self.renderer._screen_height),  # Get size from first frame
+                fps=fps,
+                codec="libx264",
+                quality=5,  # set to default quality
+            )
+            writer.send(None)  # Initialize the writer
+
+            # Read each frame and send each frame from and to disk
+            for frame_path in frame_files:
+                img = Image.open(frame_path)
+                frame_array = np.array(img)
+                writer.send(frame_array)
+
+            writer.close()
+            msg.info(f"Video generated successfully: {output_filename}")
+
+            if not keep_frames:
+                msg.info("Deleting png frames...")
+                for frame_path in frame_files:
+                    os.remove(frame_path)
+                msg.info("Frames deleted")
+
+            return True
+
+        except Exception as e:
+            msg.warning(f"Failed to generate video: {e}")
+            return False

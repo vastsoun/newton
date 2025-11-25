@@ -70,6 +70,7 @@ torch-cu12 = [
 # Data IO dependencies
 data = [
     "h5py>=3.13.0", # for saving/loading HDF5 data
+    "imageio-ffmpeg>=0.6.0", # for video writing
 ]
 
 # Development and Testing

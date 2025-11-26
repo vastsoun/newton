@@ -55,8 +55,7 @@ class Example:
         self.fps = 60
         self.frame_dt = 1.0 / self.fps
         self.sim_dt = 0.001
-        self.sim_substeps = max(1, int(round(self.frame_dt / self.sim_dt)))
-        self.frame_dt = self.sim_substeps * self.sim_dt
+        self.sim_substeps = int(self.frame_dt / self.sim_dt)
         self.max_steps = max_steps
 
         # Initialize internal time-keeping

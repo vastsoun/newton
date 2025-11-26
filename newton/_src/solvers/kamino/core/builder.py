@@ -608,9 +608,9 @@ class ModelBuilder:
 
     def add_physical_geometry(
         self,
+        shape: ShapeDescriptorType,
         body: int = -1,
         layer: str = "default",
-        shape: ShapeDescriptorType | None = None,
         offset: transformf | None = None,
         name: str | None = None,
         uid: str | None = None,
@@ -620,11 +620,11 @@ class ModelBuilder:
         Add a physical geometry to the model using explicit specifications.
 
         Args:
+            shape (ShapeDescriptorType): The shape descriptor of the geometry.
             body (int): The index of the body to which the geometry will be attached.\n
                 Defaults to -1 (world).
             layer (str): The name of the physical geometry layer.\n
                 Defaults to "default".
-            shape (ShapeDescriptorType | None): The shape descriptor of the geometry.
             offset (transformf | None): The local offset of the geometry relative to the body frame.
             name (str | None): The name of the geometry.
             uid (str | None): The unique identifier of the geometry.
@@ -634,11 +634,7 @@ class ModelBuilder:
         Returns:
             int: The index of the newly added physical geometry.
         """
-        # Validate that shape is provided
-        if shape is None:
-            raise ValueError("Physical geometry shape must be provided.")
-
-        # Check if it's valid
+        # Check if shape is valid
         if not isinstance(shape, ShapeDescriptorType):
             raise ValueError(
                 f"Shape '{shape}' must be a valid type.\n"

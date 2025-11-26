@@ -151,7 +151,6 @@ class Example:
         """Step the simulation."""
         if self.simulate_graph:
             wp.capture_launch(self.simulate_graph)
-            self.sim_steps += self.sim_substeps
         else:
             self.simulate()
         self.sim_time += self.frame_dt

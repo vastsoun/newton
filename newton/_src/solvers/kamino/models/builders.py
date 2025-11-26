@@ -28,6 +28,7 @@ from ..core.joints import JointActuationType, JointDoFType
 from ..core.math import FLOAT32_MAX, FLOAT32_MIN, I_3
 from ..core.shapes import BoxShape, CylinderShape, SphereShape
 from ..core.types import Axis, transformf, vec3f, vec6f
+from ..utils.io.usd import USDImporter
 
 ###
 # Module interface
@@ -44,6 +45,7 @@ __all__ = [
     "build_boxes_hinged",
     "build_boxes_nunchaku",
     "build_boxes_nunchaku_vertical",
+    "build_usd_model",
 ]
 
 
@@ -2552,4 +2554,38 @@ def build_boxes_fourbar(
         )
 
     # Return the lists of element indices
+    return _builder
+
+
+def build_usd_model(
+    source: str,
+    load_static_geometry: bool = True,
+    ground: bool = True,
+) -> ModelBuilder:
+    """
+    Imports a USD model and optionally adds a ground plane.
+
+    Each call creates a new world with the USD model and optional ground plane.
+
+    Args:
+        source: Path to USD file
+        load_static_geometry: Whether to load static geometry from USD
+        ground: Whether to add a ground plane
+
+    Returns:
+        ModelBuilder with imported USD model and optional ground plane
+    """
+    # Import the USD model
+    importer = USDImporter()
+    _builder = importer.import_from(
+        source=source,
+        load_static_geometry=load_static_geometry,
+    )
+
+    ground_world_idx = _builder.num_worlds - 1
+
+    # Add ground plane
+    if ground:
+        add_ground_geom(builder=_builder, group=1, collides=1, world_index=ground_world_idx)
+
     return _builder

@@ -67,7 +67,7 @@ def add_ground_geom(builder: ModelBuilder, group: int = 1, collides: int = 1, wo
     Returns:
         int: The ID of the added ground geometry.
     """
-    builder.add_collision_layer("ground")
+    builder.add_collision_layer("ground", world_index=world_index)
     gid = builder.add_collision_geometry(
         name="ground",
         body=-1,

@@ -279,7 +279,7 @@ if __name__ == "__main__":
         headless=args.headless,
     )
 
-    # Run a brute-force similation loop if headless
+    # Run a brute-force simulation loop if headless
     if args.headless:
         msg.notif("Running in headless mode...")
         run_headless(example, progress=True)

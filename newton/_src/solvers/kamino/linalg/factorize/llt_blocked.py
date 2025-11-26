@@ -431,7 +431,8 @@ def llt_blocked_solve(
     Args:
         num_blocks (int): The number of matrix blocks to process.
         dim (wp.array): An array of shape `(num_blocks,)` containing the dimensions of each matrix block.
-        rio (wp.array): An array of shape `(num_blocks,)` containing the row index offsets of each matrix block.
+        mio (wp.array): An array of shape `(num_blocks,)` containing the matrix index offsets of each matrix block.
+        vio (wp.array): An array of shape `(num_blocks,)` containing the vector index offsets of each vector block.
         L (wp.array2d): The flat input array containing the Cholesky factorization of each matrix block.
         b (wp.array): The flat input array containing the stacked right-hand side vectors.
         y (wp.array): The output array where the intermediate result will be stored.
@@ -462,7 +463,8 @@ def llt_blocked_solve_inplace(
     Args:
         num_blocks (int): The number of matrix blocks to process.
         dim (wp.array): An array of shape `(num_blocks,)` containing the dimensions of each matrix block.
-        rio (wp.array): An array of shape `(num_blocks,)` containing the row index offsets of each matrix block.
+        mio (wp.array): An array of shape `(num_blocks,)` containing the matrix index offsets of each matrix block.
+        vio (wp.array): An array of shape `(num_blocks,)` containing the vector index offsets of each vector block.
         L (wp.array2d): The flat input array containing the Cholesky factorization of each matrix block.
         x (wp.array): The input/output array where the solution to the linear system `A @ x = b` will be stored in-place.
         kernel: The kernel function to use for the blocked in-place solve.

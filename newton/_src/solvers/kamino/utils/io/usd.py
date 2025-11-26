@@ -812,11 +812,11 @@ class USDImporter:
 
     def _parse_joint(
         self,
+        stage,
         joint_prim,
         joint_spec,
         joint_type,
         body_index_map: dict[str, int],
-        stage,
         distance_unit: float = 1.0,
         rotation_unit: float = 1.0,
         only_load_enabled_joints: bool = True,
@@ -1046,13 +1046,13 @@ class USDImporter:
 
     def _parse_geom(
         self,
+        stage,
         geom_prim,
         geom_type,
         geom_spec,
         body_index_map: dict[str, int],
         cgroup_index_map: dict[str, int],
         material_index_map: dict[str, int],
-        stage,
         distance_unit: float = 1.0,
         rotation_unit: float = 1.0,
         meshes_are_collidable: bool = False,
@@ -1482,12 +1482,12 @@ class USDImporter:
                 if prim_path == joint_prim_path:
                     msg.debug(f"Parsing joint @'{prim_path}' of type '{joint_type_name}'")
                     joint_desc = self._parse_joint(
+                        stage=stage,
                         only_load_enabled_joints=only_load_enabled_joints,
                         joint_prim=stage.GetPrimAtPath(prim_path),
                         joint_spec=joint_spec,
                         joint_type=joint_type,
                         body_index_map=body_index_map,
-                        stage=stage,
                         distance_unit=distance_unit,
                         rotation_unit=rotation_unit,
                     )
@@ -1537,13 +1537,13 @@ class USDImporter:
 
                     # Parse the USD geom descriptor to construct a corresponding sim geometry descriptor
                     geom_desc = self._parse_geom(
+                        stage=stage,
                         geom_prim=stage.GetPrimAtPath(prim_path),
                         geom_spec=geom_spec,
                         geom_type=geom_type,
                         body_index_map=body_index_map,
                         cgroup_index_map=cgroup_index_map,
                         material_index_map=material_index_map,
-                        stage=stage,
                         distance_unit=distance_unit,
                         rotation_unit=rotation_unit,
                         meshes_are_collidable=meshes_are_collidable,

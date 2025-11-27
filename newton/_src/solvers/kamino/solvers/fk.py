@@ -1161,7 +1161,7 @@ class ForwardKinematicsSolver:
             ([0], num_actuated_dofs_prev.cumsum())
         )  # Index of first actuated dof per world
         actuated_dof_offsets_prev = (
-            self.model.joints.actuated_dofs_offset.numpy()
+            self.model.joints.actuated_dofs_offset.numpy().copy()
         )  # Index of first joind actuated dof, among actuated dofs of a single world
         for wd_id in range(self.num_worlds):  # Convert into offsets among all actuated dofs
             actuated_dof_offsets_prev[first_joint_id_prev[wd_id] : first_joint_id_prev[wd_id + 1]] += (
@@ -2223,9 +2223,9 @@ class ForwardKinematicsSolver:
 
         # Status message
         if verbose or return_status:
-            success = self.newton_success.numpy()
-            iterations = self.newton_iteration.numpy()
-            max_constraints = self.max_constraint.numpy()
+            success = self.newton_success.numpy().copy()
+            iterations = self.newton_iteration.numpy().copy()
+            max_constraints = self.max_constraint.numpy().copy()
             num_active_worlds = self.num_worlds if world_mask is None else world_mask.sum()
             if verbose:
                 sys.__stdout__.write(f"Newton success for {success.sum()}/{num_active_worlds} worlds; ")

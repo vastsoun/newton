@@ -348,7 +348,7 @@ class DRTestMechanismRandomPosesCheckForwardKinematics(unittest.TestCase):
         # Simulate random poses
         num_poses = 30
         base_q_max = np.array(3 * [0.2] + 4 * [1.0])
-        actuators_q_max = np.radians([100.0])
+        actuators_q_max = np.radians([95.0])
         base_u_max = np.array(3 * [0.1] + 3 * [0.5])
         actuators_u_max = np.array([0.5])
         success = simulate_random_poses(

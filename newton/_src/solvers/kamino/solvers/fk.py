@@ -1043,11 +1043,11 @@ class ForwardKinematicsSolverStatus:
         the solver success flag per world (i.e., constraint residual below tolerance within max iterations)
     """
 
-    iterations: np.ndarray(dtype="int32")
+    iterations: np.ndarray(dtype=np.int32)
 
-    max_constraints: np.ndarray(dtype="float32")
+    max_constraints: np.ndarray(dtype=np.float32)
 
-    success: np.ndarray(dtype="int32")
+    success: np.ndarray(dtype=np.int32)
 
 
 class ForwardKinematicsSolver:
@@ -1189,11 +1189,11 @@ class ForwardKinematicsSolver:
         joints_X_j = []
         joints_num_actuated_coords = []  # Number of actuated coordinates per joint (0 for passive joints)
         joints_num_actuated_dofs = []  # Number of actuated dofs per joint (0 for passive joints)
-        num_joints = np.zeros(self.num_worlds, dtype="int")  # Number of joints per world
+        num_joints = np.zeros(self.num_worlds, dtype=np.int32)  # Number of joints per world
         self.num_joints_tot = 0  # Number of joints for all worlds
         actuated_coords_map = []  # Map of new actuated coordinates to these in the model or to the base coordinates
         actuated_dofs_map = []  # Map of new actuated dofs to these in the model or to the base dofs
-        base_q_default = np.zeros(7 * self.num_worlds, dtype="float32")  # Default base pose
+        base_q_default = np.zeros(7 * self.num_worlds, dtype=np.float32)  # Default base pose
         bodies_q_0 = self.model.bodies.q_i_0.numpy()
         for wd_id in range(self.num_worlds):
             # Retrieve base joint id if set
@@ -1257,9 +1257,9 @@ class ForwardKinematicsSolver:
                 joints_act_type.append(JointActuationType.FORCE)
                 joints_bid_B.append(-1)
                 joints_bid_F.append(base_body_id)
-                joints_B_r_Bj.append(np.zeros(3, dtype="float32"))
-                joints_F_r_Fj.append(np.zeros(3, dtype="float32"))
-                joints_X_j.append(np.eye(3, 3, dtype="float32"))
+                joints_B_r_Bj.append(np.zeros(3, dtype=np.float32))
+                joints_F_r_Fj.append(np.zeros(3, dtype=np.float32))
+                joints_X_j.append(np.eye(3, 3, dtype=np.float32))
                 joints_num_actuated_coords.append(7)
                 # Note: we rely on the initial body orientations being identity
                 # Only then will the corresponding joint coordinates be interpretable as
@@ -1297,7 +1297,7 @@ class ForwardKinematicsSolver:
         # Retrieve / compute dimensions - Constraints
         num_constraints = num_bodies.copy()  # Number of kinematic constraints per world (unit quat. + joints)
         has_universal_joints = False  # Whether the model has a least one passive universal joint
-        constraint_full_to_red_map = -1 * np.ones((self.num_worlds, 6 * self.num_joints_max), dtype="int32")
+        constraint_full_to_red_map = -1 * np.ones((self.num_worlds, 6 * self.num_joints_max), dtype=np.int32)
         for wd_id in range(self.num_worlds):
             ct_count = num_constraints[wd_id]
             for jt_id_loc in range(num_joints[wd_id]):

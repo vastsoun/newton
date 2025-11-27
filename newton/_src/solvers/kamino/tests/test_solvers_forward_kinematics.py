@@ -126,7 +126,7 @@ def compute_actuated_coords_and_dofs_offsets(model: Model):
     # Joint coordinates
     num_coords = model.info.num_joint_coords.numpy()  # Num coords per world
     first_coord = np.concatenate(([0], num_coords.cumsum()))  # First coord id per world
-    coord_offsets = model.joints.coords_offset.numpy()  # First coord id per joint within world
+    coord_offsets = model.joints.coords_offset.numpy().copy()  # First coord id per joint within world
     for wd_id in range(model.size.num_worlds):  # Convert to first coord id per joint globally
         coord_offsets[first_joint_id[wd_id] : first_joint_id[wd_id + 1]] += first_coord[wd_id]
     joint_num_coords = model.joints.num_coords.numpy()  # Num coords per joint
@@ -134,7 +134,7 @@ def compute_actuated_coords_and_dofs_offsets(model: Model):
     # Joint dofs
     num_dofs = model.info.num_joint_dofs.numpy()  # Num dofs per world
     first_dof = np.concatenate(([0], num_dofs.cumsum()))  # First dof id per world
-    dof_offsets = model.joints.dofs_offset.numpy()  # First dof id per joint within world
+    dof_offsets = model.joints.dofs_offset.numpy().copy()  # First dof id per joint within world
     for wd_id in range(model.size.num_worlds):  # Convert to first dof id per joint globally
         dof_offsets[first_joint_id[wd_id] : first_joint_id[wd_id + 1]] += first_dof[wd_id]
     joint_num_dofs = model.joints.num_dofs.numpy()  # Num dofs per joint
@@ -171,7 +171,7 @@ def compute_constraint_residual_mask(model: Model):
     first_joint_id = np.concatenate(([0], num_joints.cumsum()))  # First joint id per world
     num_cts = model.info.num_joint_cts.numpy()  # Num joint cts per world
     first_ct_id = np.concatenate(([0], num_cts.cumsum()))  # First joint ct id per world
-    first_joint_ct_id = model.joints.cts_offset.numpy()  # First ct id per joint within world
+    first_joint_ct_id = model.joints.cts_offset.numpy().copy()  # First ct id per joint within world
     for wd_id in range(model.size.num_worlds):  # Convert to first ct id per joint globally
         first_joint_ct_id[first_joint_id[wd_id] : first_joint_id[wd_id + 1]] += first_ct_id[wd_id]
     num_joint_cts = model.joints.num_cts.numpy()  # Num cts per joint

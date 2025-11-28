@@ -25,7 +25,6 @@ from .core.control import (
     Control,
 )
 from .core.geometry import (
-    CollisionGeometriesData,
     CollisionGeometriesModel,
     CollisionGeometryDescriptor,
     GeometriesData,
@@ -125,7 +124,6 @@ from .dynamics.dual import (
     DualProblem,
     DualProblemData,
 )
-from .geometry.collisions import Collisions, CollisionsData, CollisionsModel
 from .geometry.contacts import (
     Contacts,
     ContactsData,

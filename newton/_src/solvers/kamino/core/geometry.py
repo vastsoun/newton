@@ -17,23 +17,19 @@
 KAMINO: Geometry Model Types & Containers
 """
 
-from __future__ import annotations
-
 import copy
 from dataclasses import dataclass, field
 
 import warp as wp
 
-from .bv import aabb_geom, bs_geom
 from .shapes import ShapeDescriptorType
-from .types import Descriptor, float32, int32, mat83f, override, transformf, vec4f
+from .types import Descriptor, float32, int32, override, transformf
 
 ###
 # Module interface
 ###
 
 __all__ = [
-    "CollisionGeometriesData",
     "CollisionGeometriesModel",
     "CollisionGeometryDescriptor",
     "GeometriesData",
@@ -102,7 +98,7 @@ class GeometryDescriptor(Descriptor):
     shape: ShapeDescriptorType | None = None
     """Definition of the shape of the geometry entity of type :class:`ShapeDescriptorType`."""
 
-    offset: transformf = field(default_factory=transformf)
+    offset: transformf = field(default_factory=wp.transform_identity)
     """Offset pose of the geometry entity w.r.t. its corresponding body, of type :class:`transformf`."""
 
     ###
@@ -294,7 +290,7 @@ class CollisionGeometryDescriptor(GeometryDescriptor):
     def __init__(
         self,
         base: GeometryDescriptor | None = None,
-        mid: int = 0,
+        material: str | int | None = None,
         group: int = 1,
         collides: int = 1,
         max_contacts: int = 0,
@@ -334,11 +330,15 @@ class CollisionGeometryDescriptor(GeometryDescriptor):
         # Initialize the base GeometryDescriptor with any additional keyword arguments
         super().__init__(**_base.__dict__)
 
-        # Declare and initialize collision geometry-specific properties
-        self.mid: int = mid
+        ###
+        # Attributes
+        ###
+
+        self.material: str | int | None = material
         """
-        The material index assigned to the collision geometry instance.\n
-        Defaults to `0` indicating the default material.
+        The material assigned to the collision geometry instance.\n
+        Can be specified either as a string name or an integer index.\n
+        Defaults to `None`, indicating the default material.
         """
 
         self.group: int = group
@@ -357,6 +357,16 @@ class CollisionGeometryDescriptor(GeometryDescriptor):
         """
         The maximum number of contacts to generate for the collision geometry instance.\n
         Defaults to `0`, indicating no limit is imposed on the number of contacts generated for this geometry.
+        """
+
+        ###
+        # Metadata - to be set by the ModelBuilder when added
+        ###
+
+        self.mid: int = 0
+        """
+        The material index assigned to the collision geometry instance.\n
+        Defaults to `0` indicating the default material.
         """
 
     @override
@@ -413,31 +423,6 @@ class CollisionGeometriesModel(GeometriesModel):
     """
 
 
-@dataclass
-class CollisionGeometriesData(GeometriesData):
-    """
-    An SoA-based container to hold time-varying data of a set of collision geometry elements.
-
-    Attributes:
-        aabb (wp.array | None): The vertices of the Axis-Aligned Bounding Box (AABB) of each collision geometry element.\n
-            Shape of ``(num_geoms,)`` and type :class:`mat83f`.
-        radius (wp.array | None): The radius of the Bounding Sphere (BS) of each collision geometry element.\n
-            Shape of ``(num_geoms,)`` and type :class:`float32`.
-    """
-
-    aabb: wp.array | None = None
-    """
-    The vertices of the Axis-Aligned Bounding Box (AABB) of each collision geometry element.\n
-    Shape of ``(num_geoms,)`` and type :class:`mat83f`.
-    """
-
-    radius: wp.array | None = None
-    """
-    The radius of the Bounding Sphere (BS) of each collision geometry element.\n
-    Shape of ``(num_geoms,)`` and type :class:`float32`.
-    """
-
-
 ###
 # Kernels
 ###
@@ -452,6 +437,26 @@ def _update_geometries_state(
     # Outputs:
     geom_pose: wp.array(dtype=transformf),
 ):
+    """
+    A kernel to update poses of geometry entities in world
+    coordinates from the poses of their associated bodies.
+
+    **Inputs**:
+        body_pose (wp.array):
+            Array of per-body poses in world coordinates.\n
+            Shape of ``(num_bodies,)`` and type :class:`transformf`.
+        geom_bid (wp.array):
+            Array of per-geom body indices.\n
+            Shape of ``(num_geoms,)`` and type :class:`int32`.
+        geom_offset (wp.array):
+            Array of per-geom pose offsets w.r.t. their associated bodies.\n
+            Shape of ``(num_geoms,)`` and type :class:`transformf`.
+
+    **Outputs**:
+        geom_pose (wp.array):
+            Array of per-geom poses in world coordinates.\n
+            Shape of ``(num_geoms,)`` and type :class:`transformf`.
+    """
     # Retrieve the thread ID
     tid = wp.tid()
 
@@ -472,81 +477,6 @@ def _update_geometries_state(
 
     # Store the geometry element's pose
     geom_pose[tid] = T_g
-
-
-@wp.kernel
-def _update_aabb(
-    # Inputs:
-    geom_sid: wp.array(dtype=int32),
-    geom_params: wp.array(dtype=vec4f),
-    geom_pose: wp.array(dtype=transformf),
-    # Outputs:
-    geom_aabb: wp.array(dtype=mat83f),
-):
-    # Retrieve the thread ID
-    tid = wp.tid()
-
-    # Store the geometry element's pose
-    T_g = geom_pose[tid]
-
-    # Compute the geometry element's AABB based on its shape parameters
-    geom_aabb[tid] = aabb_geom(T_g, geom_params[tid], geom_sid[tid])
-
-
-@wp.kernel
-def _update_bs(
-    # Inputs:
-    geom_sid: wp.array(dtype=int32),
-    geom_params: wp.array(dtype=vec4f),
-    geom_pose: wp.array(dtype=transformf),
-    # Outputs:
-    geom_radius: wp.array(dtype=float32),
-):
-    # Retrieve the thread ID
-    tid = wp.tid()
-
-    # Store the geometry element's pose
-    T_g = geom_pose[tid]
-
-    # Compute the geometry element's radius based on its shape parameters
-    geom_radius[tid] = bs_geom(T_g, geom_params[tid], geom_sid[tid])
-
-
-@wp.kernel
-def _update_collision_geometries_state(
-    # Inputs:
-    geom_bid: wp.array(dtype=int32),
-    geom_sid: wp.array(dtype=int32),
-    geom_params: wp.array(dtype=vec4f),
-    geom_offset: wp.array(dtype=transformf),
-    body_pose: wp.array(dtype=transformf),
-    # Outputs:
-    geom_pose: wp.array(dtype=transformf),
-    geom_aabb: wp.array(dtype=mat83f),
-):
-    # Retrieve the thread ID
-    tid = wp.tid()
-
-    # Retrieve the geometry element's body index and pose
-    bid = geom_bid[tid]
-
-    # Retrieve the pose of the corresponding body
-    # TODO: How to handle the case when bid is -1?
-    T_b = wp.transform_identity(dtype=float32)
-    if bid > -1:
-        T_b = body_pose[bid]
-
-    # Retrieve the geometry element's offset pose w.r.t. the body
-    T_g_o = geom_offset[tid]
-
-    # Compute the geometry element's pose in world coordinates
-    T_g = wp.transform_multiply(T_b, T_g_o)
-
-    # Store the geometry element's pose
-    geom_pose[tid] = T_g
-
-    # Compute the geometry element's AABB based on its shape parameters
-    geom_aabb[tid] = aabb_geom(T_g, geom_params[tid], geom_sid[tid])
 
 
 ###
@@ -555,48 +485,27 @@ def _update_collision_geometries_state(
 
 
 def update_geometries_state(
-    body_poses: wp.array(dtype=transformf), geom_model: GeometriesModel, geom_data: GeometriesData
+    body_poses: wp.array,
+    geom_model: GeometriesModel,
+    geom_data: GeometriesData,
 ):
-    # we need to figure out how to keep the overhead of this small - not launching anything
-    # for pair types without collisions, as well as updating the launch dimensions.
+    """
+    Launches a kernel to update poses of geometry entities in
+    world coordinates from the poses of their associated bodies.
+
+    Args:
+        body_poses (wp.array):
+            The poses of the bodies in world coordinates.\n
+            Shape of ``(num_bodies,)`` and type :class:`transformf`.
+        geom_model (GeometriesModel):
+            The model container holding time-invariant geometry .
+        geom_data (GeometriesData):
+            The data container of the geometry elements.
+    """
     wp.launch(
         _update_geometries_state,
         dim=geom_model.num_geoms,
         inputs=[geom_model.bid, geom_model.offset, body_poses],
         outputs=[geom_data.pose],
-    )
-
-
-def update_aabb(geom_model: CollisionGeometriesModel, geom_data: CollisionGeometriesData):
-    # we need to figure out how to keep the overhead of this small - not launching anything
-    # for pair types without collisions, as well as updating the launch dimensions.
-    wp.launch(
-        _update_aabb,
-        dim=geom_model.num_geoms,
-        inputs=[geom_model.sid, geom_model.params, geom_data.pose],
-        outputs=[geom_data.aabb],
-    )
-
-
-def update_bounding_spheres(geom_model: CollisionGeometriesModel, geom_data: CollisionGeometriesData):
-    # we need to figure out how to keep the overhead of this small - not launching anything
-    # for pair types without collisions, as well as updating the launch dimensions.
-    wp.launch(
-        _update_bs,
-        dim=geom_model.num_geoms,
-        inputs=[geom_model.sid, geom_model.params, geom_data.pose],
-        outputs=[geom_data.radius],
-    )
-
-
-def update_collision_geometries_state(
-    body_poses: wp.array(dtype=transformf), geom_model: CollisionGeometriesModel, geom_data: CollisionGeometriesData
-):
-    # we need to figure out how to keep the overhead of this small - not launching anything
-    # for pair types without collisions, as well as updating the launch dimensions.
-    wp.launch(
-        _update_collision_geometries_state,
-        dim=geom_model.num_geoms,
-        inputs=[geom_model.bid, geom_model.sid, geom_model.params, geom_model.offset, body_poses],
-        outputs=[geom_data.pose, geom_data.aabb],
+        device=body_poses.device,
     )

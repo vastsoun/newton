@@ -16,22 +16,34 @@
 """
 Provides a unified interface for performing Collision Detection in Kamino.
 
-TODO: More detailed description
+Usage example:
+
+    # Create a model builder
+    builder = ModelBuilder()
+    # ... add bodies and collision geometries to the builder ...
+
+    # Create a collision detector with desired settings
+    settings = CollisionDetectorSettings(
+        pipeline=CollisionPipelineType.PRIMITIVE,
+        broadphase=BroadPhaseMode.EXPLICIT,
+        bvtype=BoundingVolumeType.AABB,
+    )
+
+    # Create the collision detector
+    detector = CollisionDetector(builder=builder, settings=settings, device="cuda:0")
 """
 
+from dataclasses import dataclass
 from enum import IntEnum
 
 import warp as wp
 from warp.context import Devicelike
 
 from ..core.builder import ModelBuilder
-from ..core.geometry import update_collision_geometries_state
 from ..core.model import Model, ModelData
 from ..core.types import override
-from ..geometry.broadphase import nxn_broadphase
-from ..geometry.collisions import Collisions
 from ..geometry.contacts import Contacts
-from ..geometry.primitives import primitive_narrowphase
+from ..geometry.primitive import BoundingVolumeType, CollisionPipelinePrimitive
 from ..geometry.unified import BroadPhaseMode, CollisionPipelineUnifiedKamino
 
 ###
@@ -46,7 +58,7 @@ wp.set_module_options({"enable_backward": False})
 ###
 
 
-class CollisionDetectorMode(IntEnum):
+class CollisionPipelineType(IntEnum):
     """Defines the collision detection pipelines supported in Kamino."""
 
     PRIMITIVE = 0
@@ -80,6 +92,37 @@ class CollisionDetectorMode(IntEnum):
 ###
 
 
+@dataclass
+class CollisionDetectorSettings:
+    """Defines the settings for configuring a CollisionDetector."""
+
+    max_contacts: int | None = None
+    """
+    The per-world maximum contacts to allocate.\n
+    If specified as integer value, it will override the
+    maximum contacts per world specified by the model.\n
+    Defaults to `None`.
+    """
+
+    pipeline: CollisionPipelineType = CollisionPipelineType.PRIMITIVE
+    """
+    The type of collision-detection pipeline to use, either `PRIMITIVE` or `UNIFIED`.\n
+    Defaults to `PRIMITIVE`.
+    """
+
+    broadphase: BroadPhaseMode = BroadPhaseMode.EXPLICIT
+    """
+    The broad-phase collision-detection to use (`NXN`, `SAP`, or `EXPLICIT`).\n
+    Defaults to `EXPLICIT`.
+    """
+
+    bvtype: BoundingVolumeType = BoundingVolumeType.AABB
+    """
+    The type of bounding volume to use in the broad-phase.\n
+    Defaults to `AABB`.
+    """
+
+
 class CollisionDetector:
     """
     Provides a Collision Detection (CD) front-end for Kamino.
@@ -102,9 +145,7 @@ class CollisionDetector:
     def __init__(
         self,
         builder: ModelBuilder | None = None,
-        default_max_contacts: int | None = None,
-        mode: CollisionDetectorMode = CollisionDetectorMode.PRIMITIVE,
-        broadphase: BroadPhaseMode = BroadPhaseMode.EXPLICIT,
+        settings: CollisionDetectorSettings | None = None,
         device: Devicelike = None,
     ):
         """
@@ -113,62 +154,35 @@ class CollisionDetector:
         Args:
             builder(ModelBuilder):
                 ModelBuilder instance containing the host-side model definition.
-            default_max_contacts(int | None):
-                Default maximum contacts per world (if not specified by builder).
             device(Devicelike):
                 The target Warp device for allocation and execution.\n
                 If `None`, uses the default device selected by Warp on the given platform.
-            mode(CollisionDetectorMode):
-                The type of collision-detection pipeline to use, either `PRIMITIVE` or `UNIFIED`.\n
-                Defaults to `PRIMITIVE`.
-            broadphase(BroadPhaseMode):
-                The type of broad phase collision detection to use for the UNIFIED pipeline.\n
-                May be `NXN`, `SAP`, or `EXPLICIT`, but (currently) ignored if using the `PRIMITIVE` pipeline.\n
-                Defaults to `EXPLICIT`.
+
         """
         # Cache the target device
-        self._device = device
+        self._device: Devicelike = device
 
-        # Cache the collision detector configuration
-        self._mode = mode
-        self._broadphase = broadphase
+        # Cache the collision detector settings
+        self._settings: CollisionDetectorSettings | None = settings
 
-        # Declare the collisions and contacts containers
-        self.collisions: Collisions | None = None
-        self.contacts: Contacts | None = None
+        # Declare the contacts container
+        self._contacts: Contacts | None = None
 
-        # Unified pipeline (only created if using UNIFIED mode)
-        self._unified_pipeline = None
+        # Declare the collision detection pipelines
+        self._unified_pipeline: CollisionPipelineUnifiedKamino | None = None
+        self._primitive_pipeline: CollisionPipelinePrimitive | None = None
 
-        # Declare the maximum number of contacts allocation caches
+        # Declare and initialize the caches of contacts allocation sizes
         self._model_max_contacts: int = 0
         self._world_max_contacts: list[int] = [0]
 
-        # Retrieve the required contact capacity required by the model
-        model_max_contacts, world_max_contacts = builder.required_contact_capacity
+        # Finalize the collision detector if a builder is provided
+        if builder is not None:
+            self.finalize(builder=builder, settings=settings, device=device)
 
-        # Allocate the collisions and contacts containers if the model requires them (indicated by >= 0)
-        if model_max_contacts >= 0:
-            # NOTE #1: collisions are the inputs/outputs of the broad phase (for PRIMITIVE pipeline)
-            if self._mode == CollisionDetectorMode.PRIMITIVE:
-                self.collisions = Collisions(builder=builder, device=device)
-
-            # NOTE #2: contacts are the outputs of the narrow phase
-            self.contacts = Contacts(
-                capacity=world_max_contacts, default_max_contacts=default_max_contacts, device=device
-            )
-
-            # Cache the maximum number of contacts allocated for the model
-            self._model_max_contacts: int = self.contacts.num_model_max_contacts
-            self._world_max_contacts: list[int] = self.contacts.num_world_max_contacts
-
-            # Initialize unified pipeline if requested
-            if self._mode == CollisionDetectorMode.UNIFIED:
-                self._unified_pipeline = CollisionPipelineUnifiedKamino(
-                    builder=builder,
-                    broadphase=self._broadphase,
-                    device=device,
-                )
+    ###
+    # Properties
+    ###
 
     @property
     def device(self) -> Devicelike:
@@ -176,9 +190,9 @@ class CollisionDetector:
         return self._device
 
     @property
-    def mode(self) -> CollisionDetectorMode:
-        """Returns the type of collision pipeline being used by the CollisionDetector."""
-        return self._mode
+    def settings(self) -> CollisionDetectorSettings:
+        """Returns the settings used to configure the CollisionDetector."""
+        return self._settings
 
     @property
     def model_max_contacts(self) -> int:
@@ -186,9 +200,94 @@ class CollisionDetector:
         return self._model_max_contacts
 
     @property
-    def world_max_contacts(self) -> int:
-        """Returns the maximum number of contacts allocated for each world in the model."""
+    def world_max_contacts(self) -> list[int]:
+        """Returns the maximum number of contacts allocated for each world."""
         return self._world_max_contacts
+
+    @property
+    def contacts(self) -> Contacts:
+        """Returns the Contacts container managed by the CollisionDetector."""
+        return self._contacts
+
+    ###
+    # Operations
+    ###
+
+    def finalize(
+        self,
+        builder: ModelBuilder,
+        settings: CollisionDetectorSettings | None = None,
+        device: Devicelike = None,
+    ):
+        """
+        Allocates CollisionDetector data on the target device.
+
+        Args:
+            builder(ModelBuilder):
+                ModelBuilder instance containing the host-side model definition.
+            settings(CollisionDetectorSettings):
+                Settings to configure the CollisionDetector.\n
+                If `None`, uses default settings.
+            device(Devicelike):
+                The target Warp device for allocation and execution.\n
+                If `None`, uses the default device selected by Warp on the given platform.
+        """
+        # Check that the builder is valid
+        if builder is None:
+            raise ValueError("Cannot finalize CollisionDetector: builder is None")
+        if not isinstance(builder, ModelBuilder):
+            raise TypeError(f"Cannot finalize CollisionDetector: expected ModelBuilder, got {type(builder)}")
+
+        # Override the settings if specified
+        if settings is not None:
+            self._settings = settings
+
+        # If no settings were configured, use default settings
+        if self._settings is None:
+            self._settings = CollisionDetectorSettings()
+
+        # Override the device if specified
+        if device is not None:
+            self._device = device
+
+        # Retrieve the required contact capacity required by the model
+        model_max_contacts, world_max_contacts = builder.required_contact_capacity
+
+        # Proceed with allocations only if the model allocates contacts
+        if model_max_contacts >= 0:
+            # Allocate the contacts container which will hold the generated contacts
+            self._contacts = Contacts(
+                default_max_contacts=self._settings.max_contacts, capacity=world_max_contacts, device=device
+            )
+
+            # Cache the maximum number of contacts allocated for the model
+            self._model_max_contacts: int = self._contacts.num_model_max_contacts
+            self._world_max_contacts: list[int] = self._contacts.num_world_max_contacts
+
+            # Initialize the configured collision detection pipeline
+            match self._settings.pipeline:
+                case CollisionPipelineType.PRIMITIVE:
+                    self._primitive_pipeline = CollisionPipelinePrimitive(
+                        device=device,
+                        builder=builder,
+                        broadphase=self._settings.broadphase,
+                        bvtype=self._settings.bvtype,
+                    )
+                case CollisionPipelineType.UNIFIED:
+                    self._unified_pipeline = CollisionPipelineUnifiedKamino(
+                        device=device,
+                        builder=builder,
+                        broadphase=self._settings.broadphase,
+                        # TODO: Add support for bvtype in unified pipeline
+                    )
+                case _:
+                    raise ValueError(f"Unsupported CollisionPipelineType: {self._settings.pipeline}")
+
+    def reset(self):
+        """
+        TODO
+        """
+        pass
 
     def collide(self, model: Model, data: ModelData):
         """
@@ -201,25 +300,29 @@ class CollisionDetector:
             model (Model): The Model instance containing the collision geometries
             data (ModelData): The ModelData instance containing the state of the geometries
         """
+        # Check that the contacts container is allocated
+        if self._contacts is None:
+            raise RuntimeError("Cannot perform collision detection: contacts container is not allocated")
+
+        # Check that the model and data are valid
+        if model is None:
+            raise ValueError("Cannot perform collision detection: model is None")
+        if not isinstance(model, Model):
+            raise TypeError(f"Cannot perform collision detection: expected Model, got {type(model)}")
+        if data is None:
+            raise ValueError("Cannot perform collision detection: data is None")
+        if not isinstance(data, ModelData):
+            raise TypeError(f"Cannot perform collision detection: expected ModelData, got {type(data)}")
+
         # Skip this operation if the model does not allocate contacts
-        # TODO: change this to check if the model has any cgeoms
         if self._model_max_contacts <= 0:
             return
 
-        if self._mode == CollisionDetectorMode.UNIFIED:
-            # Use the unified pipeline
-            self._unified_pipeline.collide(model, data, self.contacts)
-        else:
-            # Use the primitive pipeline (original behavior)
-            # Clear all current collision pairs and contacts
-            self.collisions.clear()
-            self.contacts.clear()
-
-            # Update geometries states from the states of the bodies
-            update_collision_geometries_state(data.bodies.q_i, model.cgeoms, data.cgeoms)
-
-            # Perform the broad-phase collision detection to generate collision pairs
-            nxn_broadphase(model.cgeoms, data.cgeoms, self.collisions.cmodel, self.collisions.cdata)
-
-            # Perform the narrow-phase collision detection to generate active contacts
-            primitive_narrowphase(model, data, self.collisions, self.contacts)
+        # Execute the configured collision detection pipeline
+        match self._settings.pipeline:
+            case CollisionPipelineType.PRIMITIVE:
+                self._primitive_pipeline.collide(model, data, self._contacts)
+            case CollisionPipelineType.UNIFIED:
+                self._unified_pipeline.collide(model, data, self._contacts)
+            case _:
+                raise ValueError(f"Unsupported CollisionPipelineType: {self._settings.pipeline}")

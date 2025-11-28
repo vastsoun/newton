@@ -17,14 +17,8 @@
 TODO
 """
 
-from .contacts import Contacts, ContactsData
-from .detector import (
-    CollisionDetector,
-    CollisionDetectorSettings,
-    CollisionPipelineType,
-)
-from .primitive import BoundingVolumeType, CollisionPipelinePrimitive
-from .unified import BroadPhaseMode, CollisionPipelineUnifiedKamino
+from .broadphase import BoundingVolumeType
+from .pipeline import CollisionPipelinePrimitive
 
 ###
 # Module interface
@@ -32,12 +26,5 @@ from .unified import BroadPhaseMode, CollisionPipelineUnifiedKamino
 
 __all__ = [
     "BoundingVolumeType",
-    "BroadPhaseMode",
-    "CollisionDetector",
-    "CollisionDetectorSettings",
     "CollisionPipelinePrimitive",
-    "CollisionPipelineType",
-    "CollisionPipelineUnifiedKamino",
-    "Contacts",
-    "ContactsData",
 ]

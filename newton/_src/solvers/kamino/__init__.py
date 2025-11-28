@@ -130,8 +130,11 @@ from .geometry.contacts import (
 )
 from .geometry.detector import (
     CollisionDetector,
-    CollisionDetectorMode,
+    CollisionDetectorSettings,
+    CollisionPipelineType,
 )
+from .geometry.primitive import BoundingVolumeType, CollisionPipelinePrimitive
+from .geometry.unified import BroadPhaseMode, CollisionPipelineUnifiedKamino
 from .kinematics.jacobians import (
     DenseSystemJacobians,
     DenseSystemJacobiansData,
@@ -158,13 +161,18 @@ __all__ = [
     "GRAVITY_DIREC_DEFAULT",
     "GRAVITY_NAME_DEFAULT",
     "ArrayLike",
+    "BoundingVolumeType",
     "BoxShape",
+    "BroadPhaseMode",
     "CapsuleShape",
     "CollisionDetector",
-    "CollisionDetectorMode",
+    "CollisionDetectorSettings",
     "CollisionGeometriesData",
     "CollisionGeometriesModel",
     "CollisionGeometryDescriptor",
+    "CollisionPipelinePrimitive",
+    "CollisionPipelineType",
+    "CollisionPipelineUnifiedKamino",
     "Collisions",
     "CollisionsData",
     "CollisionsModel",

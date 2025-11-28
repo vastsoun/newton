@@ -15,13 +15,11 @@
 
 """Narrow-phase collision detection operations on geometric primitives"""
 
-from __future__ import annotations
-
 from typing import Any
 
 import warp as wp
 
-from ....geometry.collision_primitive import (
+from .....geometry.collision_primitive import (
     collide_box_box,
     collide_capsule_box,
     collide_capsule_capsule,
@@ -35,9 +33,9 @@ from ....geometry.collision_primitive import (
     collide_sphere_cylinder,
     collide_sphere_sphere,
 )
-from ..core.model import Model, ModelData
-from ..core.shapes import ShapeType
-from ..core.types import (
+from ...core.model import Model, ModelData
+from ...core.shapes import ShapeType
+from ...core.types import (
     float32,
     int32,
     mat33f,
@@ -47,9 +45,8 @@ from ..core.types import (
     vec3f,
     vec4f,
 )
-from ..geometry.collisions import Collisions
-from ..geometry.contacts import Contacts
-from ..geometry.math import make_contact_frame_znorm
+from ...geometry.contacts import ContactsData, make_contact_frame_znorm
+from .broadphase import CollisionCandidatesData
 
 ###
 # Module configs
@@ -62,7 +59,7 @@ wp.set_module_options({"enable_backward": False})
 # Constants
 ###
 
-DEFAULT_MARGIN = wp.constant(float32(1e-5))
+DEFAULT_CONTACT_MARGIN = wp.constant(float32(1e-5))
 
 
 ###
@@ -908,9 +905,7 @@ def plane_box(
     contact_material_out: wp.array(dtype=vec2f),
 ):
     # Use the tested collision calculation from collision_primitive.py
-    distances, positions, normal = collide_plane_box(
-        plane_in.normal, plane_in.pos, box_in.pos, box_in.rot, box_in.size
-    )
+    distances, positions, normal = collide_plane_box(plane_in.normal, plane_in.pos, box_in.pos, box_in.rot, box_in.size)
 
     # Add the active contacts to the global contacts arrays (up to 4 contacts with shared normal)
     wp.static(make_add_multiple_contacts(4, True))(
@@ -1202,7 +1197,7 @@ def _primitive_narrowphase(
             make_sphere(geom_pose_in[gid1], geom_params_in[gid1], gid1, bid1),
             make_sphere(geom_pose_in[gid2], geom_params_in[gid2], gid2, bid2),
             wid,
-            DEFAULT_MARGIN,
+            DEFAULT_CONTACT_MARGIN,
             float32(0.7),
             float32(0.0),
             contacts_model_num_out,
@@ -1223,7 +1218,7 @@ def _primitive_narrowphase(
             make_sphere(geom_pose_in[gid1], geom_params_in[gid1], gid1, bid1),
             make_cylinder(geom_pose_in[gid2], geom_params_in[gid2], gid2, bid2),
             wid,
-            DEFAULT_MARGIN,
+            DEFAULT_CONTACT_MARGIN,
             float32(0.7),
             float32(0.0),
             contacts_model_num_out,
@@ -1247,7 +1242,7 @@ def _primitive_narrowphase(
             make_sphere(geom_pose_in[gid1], geom_params_in[gid1], gid1, bid1),
             make_capsule(geom_pose_in[gid2], geom_params_in[gid2], gid2, bid2),
             wid,
-            DEFAULT_MARGIN,
+            DEFAULT_CONTACT_MARGIN,
             float32(0.7),
             float32(0.0),
             contacts_model_num_out,
@@ -1268,7 +1263,7 @@ def _primitive_narrowphase(
             make_sphere(geom_pose_in[gid1], geom_params_in[gid1], gid1, bid1),
             make_box(geom_pose_in[gid2], geom_params_in[gid2], gid2, bid2),
             wid,
-            DEFAULT_MARGIN,
+            DEFAULT_CONTACT_MARGIN,
             float32(0.7),
             float32(0.0),
             contacts_model_num_out,
@@ -1319,7 +1314,7 @@ def _primitive_narrowphase(
             make_capsule(geom_pose_in[gid1], geom_params_in[gid1], gid1, bid1),
             make_capsule(geom_pose_in[gid2], geom_params_in[gid2], gid2, bid2),
             wid,
-            DEFAULT_MARGIN,
+            DEFAULT_CONTACT_MARGIN,
             float32(0.7),
             float32(0.0),
             contacts_model_num_out,
@@ -1340,7 +1335,7 @@ def _primitive_narrowphase(
             make_capsule(geom_pose_in[gid1], geom_params_in[gid1], gid1, bid1),
             make_box(geom_pose_in[gid2], geom_params_in[gid2], gid2, bid2),
             wid,
-            DEFAULT_MARGIN,
+            DEFAULT_CONTACT_MARGIN,
             float32(0.7),
             float32(0.0),
             contacts_model_num_out,
@@ -1364,7 +1359,7 @@ def _primitive_narrowphase(
             make_box(geom_pose_in[gid1], geom_params_in[gid1], gid1, bid1),
             make_box(geom_pose_in[gid2], geom_params_in[gid2], gid2, bid2),
             wid,
-            DEFAULT_MARGIN,
+            DEFAULT_CONTACT_MARGIN,
             float32(0.7),
             float32(0.0),
             contacts_model_num_out,
@@ -1390,7 +1385,7 @@ def _primitive_narrowphase(
             make_plane(geom_pose_in[gid1], geom_params_in[gid1], gid1, bid1),
             make_sphere(geom_pose_in[gid2], geom_params_in[gid2], gid2, bid2),
             wid,
-            DEFAULT_MARGIN,
+            DEFAULT_CONTACT_MARGIN,
             float32(0.7),
             float32(0.0),
             contacts_model_num_out,
@@ -1411,7 +1406,7 @@ def _primitive_narrowphase(
             make_plane(geom_pose_in[gid1], geom_params_in[gid1], gid1, bid1),
             make_box(geom_pose_in[gid2], geom_params_in[gid2], gid2, bid2),
             wid,
-            DEFAULT_MARGIN,
+            DEFAULT_CONTACT_MARGIN,
             float32(0.7),
             float32(0.0),
             contacts_model_num_out,
@@ -1432,7 +1427,7 @@ def _primitive_narrowphase(
             make_plane(geom_pose_in[gid1], geom_params_in[gid1], gid1, bid1),
             make_ellipsoid(geom_pose_in[gid2], geom_params_in[gid2], gid2, bid2),
             wid,
-            DEFAULT_MARGIN,
+            DEFAULT_CONTACT_MARGIN,
             float32(0.7),
             float32(0.0),
             contacts_model_num_out,
@@ -1453,7 +1448,7 @@ def _primitive_narrowphase(
             make_plane(geom_pose_in[gid1], geom_params_in[gid1], gid1, bid1),
             make_capsule(geom_pose_in[gid2], geom_params_in[gid2], gid2, bid2),
             wid,
-            DEFAULT_MARGIN,
+            DEFAULT_CONTACT_MARGIN,
             float32(0.7),
             float32(0.0),
             contacts_model_num_out,
@@ -1474,7 +1469,7 @@ def _primitive_narrowphase(
             make_plane(geom_pose_in[gid1], geom_params_in[gid1], gid1, bid1),
             make_cylinder(geom_pose_in[gid2], geom_params_in[gid2], gid2, bid2),
             wid,
-            DEFAULT_MARGIN,
+            DEFAULT_CONTACT_MARGIN,
             float32(0.7),
             float32(0.0),
             contacts_model_num_out,
@@ -1494,20 +1489,23 @@ def _primitive_narrowphase(
 ###
 
 
-def primitive_narrowphase(model: Model, state: ModelData, collisions: Collisions, contacts: Contacts):
+def primitive_narrowphase(model: Model, state: ModelData, candidates: CollisionCandidatesData, contacts: ContactsData):
     """
-    Launches the narrow-phase collision detection kernel for primitive shapes.
+    Launches the narrow-phase collision detection kernel optimized for primitive shapes.
 
-    Arguments
-    ------
-        model (Model): The model containing the collision geometries.
-        state (ModelData): The current state of the model.
-        collisions (Collisions): The collision container holding collision pairs.
-        contacts (Contacts): The contacts container to store detected contacts.
+    Args:
+        model (Model):
+            The model containing the collision geometries.
+        state (ModelData):
+            The current state of the model.
+        candidates (CollisionCandidatesData):
+            The collision container holding collision pairs.
+        contacts (ContactsData):
+            The contacts container to store detected contacts.
     """
     wp.launch(
         _primitive_narrowphase,
-        dim=collisions.cmodel.num_model_geom_pairs,
+        dim=candidates.num_model_geom_pairs,
         inputs=[
             # Inputs:
             model.cgeoms.bid,
@@ -1516,10 +1514,10 @@ def primitive_narrowphase(model: Model, state: ModelData, collisions: Collisions
             model.cgeoms.offset,
             model.cgeoms.mid,
             state.cgeoms.pose,
-            collisions.cdata.model_num_collisions,
-            collisions.cdata.world_num_collisions,
-            collisions.cdata.wid,
-            collisions.cdata.geom_pair,
+            candidates.model_num_collisions,
+            candidates.world_num_collisions,
+            candidates.wid,
+            candidates.geom_pair,
             contacts.model_max_contacts,
             contacts.world_max_contacts,
             # Outputs:

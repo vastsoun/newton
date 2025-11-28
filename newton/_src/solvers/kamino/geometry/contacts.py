@@ -17,12 +17,11 @@
 KAMINO: Discrete Contact Containers & Operations
 """
 
-from __future__ import annotations
-
 import warp as wp
 from warp.context import Devicelike
 
-from newton._src.solvers.kamino.core.types import int32, mat33f, mat63f, vec2f, vec4f
+from ..core.math import COS_PI_6, UNIT_X, UNIT_Y
+from ..core.types import int32, mat33f, mat63f, vec2f, vec3f, vec4f
 
 ###
 # Module interface
@@ -138,6 +137,35 @@ class ContactsData:
         The material properties of each contact (0: friction, 1: restitution).\n
         Shape of ``(num_model_max_contacts,)`` and type :class:`vec2f`.
         """
+
+
+###
+# Functions
+###
+
+
+@wp.func
+def make_contact_frame_znorm(n: vec3f) -> mat33f:
+    n = wp.normalize(n)
+    if wp.abs(wp.dot(n, UNIT_X)) < COS_PI_6:
+        e = UNIT_X
+    else:
+        e = UNIT_Y
+    o = wp.normalize(wp.cross(n, e))
+    t = wp.normalize(wp.cross(o, n))
+    return mat33f(t.x, o.x, n.x, t.y, o.y, n.y, t.z, o.z, n.z)
+
+
+@wp.func
+def make_contact_frame_xnorm(n: vec3f) -> mat33f:
+    n = wp.normalize(n)
+    if wp.abs(wp.dot(n, UNIT_X)) < COS_PI_6:
+        e = UNIT_X
+    else:
+        e = UNIT_Y
+    o = wp.normalize(wp.cross(n, e))
+    t = wp.normalize(wp.cross(o, n))
+    return mat33f(n.x, t.x, o.x, n.y, t.y, o.y, n.z, t.z, o.z)
 
 
 ###

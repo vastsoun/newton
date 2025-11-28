@@ -47,7 +47,7 @@ from newton._src.solvers.kamino.tests.utils.make import (
     update_containers,
 )
 from newton._src.solvers.kamino.tests.utils.print import print_error_stats
-from newton._src.solvers.kamino.tests.utils.random import random_rhs_for_matrix
+from newton._src.solvers.kamino.tests.utils.rand import random_rhs_for_matrix
 from newton._src.solvers.kamino.tests.utils.setup import setup_tests, test_settings
 
 ###

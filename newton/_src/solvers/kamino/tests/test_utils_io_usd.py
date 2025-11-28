@@ -38,14 +38,10 @@ from newton._src.solvers.kamino.models.builders import (
     build_boxes_nunchaku,
     build_cartpole,
 )
-
-# Test utilities
 from newton._src.solvers.kamino.tests.utils.checks import (
     assert_builders_equal,
 )
 from newton._src.solvers.kamino.utils import logger as msg
-
-# Module to be tested
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
 
 ###
@@ -75,7 +71,7 @@ class TestUSDImporter(unittest.TestCase):
             print("\n")  # Add newline before test output for better readability
             msg.set_log_level(msg.LogLevel.DEBUG)
         else:
-            msg.set_log_level(msg.LogLevel.WARNING)
+            msg.reset_log_level()
 
     def tearDown(self):
         self.default_device = None
@@ -759,7 +755,7 @@ class TestUSDImporter(unittest.TestCase):
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 1)
         self.assertEqual(builder_usd.num_joints, 0)
-        self.assertEqual(builder_usd.num_physical_geoms, 0)  # TODO: Figure out how to specify non-physics geoms
+        self.assertEqual(builder_usd.num_physical_geoms, 1)
         self.assertEqual(builder_usd.num_collision_geoms, 1)
         self.assertEqual(builder_usd.collision_geoms[0].wid, 0)
         self.assertEqual(builder_usd.collision_geoms[0].gid, 0)
@@ -781,7 +777,7 @@ class TestUSDImporter(unittest.TestCase):
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 1)
         self.assertEqual(builder_usd.num_joints, 0)
-        self.assertEqual(builder_usd.num_physical_geoms, 0)  # TODO: Figure out how to specify non-physics geoms
+        self.assertEqual(builder_usd.num_physical_geoms, 1)
         self.assertEqual(builder_usd.num_collision_geoms, 1)
         self.assertEqual(builder_usd.collision_geoms[0].wid, 0)
         self.assertEqual(builder_usd.collision_geoms[0].gid, 0)
@@ -803,7 +799,7 @@ class TestUSDImporter(unittest.TestCase):
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 1)
         self.assertEqual(builder_usd.num_joints, 0)
-        self.assertEqual(builder_usd.num_physical_geoms, 0)  # TODO: Figure out how to specify non-physics geoms
+        self.assertEqual(builder_usd.num_physical_geoms, 1)
         self.assertEqual(builder_usd.num_collision_geoms, 1)
         self.assertEqual(builder_usd.collision_geoms[0].wid, 0)
         self.assertEqual(builder_usd.collision_geoms[0].gid, 0)
@@ -825,7 +821,7 @@ class TestUSDImporter(unittest.TestCase):
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 1)
         self.assertEqual(builder_usd.num_joints, 0)
-        self.assertEqual(builder_usd.num_physical_geoms, 0)  # TODO: Figure out how to specify non-physics geoms
+        self.assertEqual(builder_usd.num_physical_geoms, 1)
         self.assertEqual(builder_usd.num_collision_geoms, 1)
         self.assertEqual(builder_usd.collision_geoms[0].wid, 0)
         self.assertEqual(builder_usd.collision_geoms[0].gid, 0)
@@ -846,7 +842,7 @@ class TestUSDImporter(unittest.TestCase):
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 1)
         self.assertEqual(builder_usd.num_joints, 0)
-        self.assertEqual(builder_usd.num_physical_geoms, 0)  # TODO: Figure out how to specify non-physics geoms
+        self.assertEqual(builder_usd.num_physical_geoms, 1)
         self.assertEqual(builder_usd.num_collision_geoms, 1)
         self.assertEqual(builder_usd.collision_geoms[0].wid, 0)
         self.assertEqual(builder_usd.collision_geoms[0].gid, 0)
@@ -869,7 +865,7 @@ class TestUSDImporter(unittest.TestCase):
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 1)
         self.assertEqual(builder_usd.num_joints, 0)
-        self.assertEqual(builder_usd.num_physical_geoms, 0)  # TODO: Figure out how to specify non-physics geoms
+        self.assertEqual(builder_usd.num_physical_geoms, 1)
         self.assertEqual(builder_usd.num_collision_geoms, 1)
         self.assertEqual(builder_usd.collision_geoms[0].wid, 0)
         self.assertEqual(builder_usd.collision_geoms[0].gid, 0)

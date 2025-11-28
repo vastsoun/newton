@@ -77,15 +77,23 @@ def read_quat_from_array(array: wp.array(dtype=wp.float32), offset: int) -> wp.q
 @wp.kernel
 def _reset_state(
     # Inputs
-    num_bodies: wp.array(dtype=wp.int32),  # Num bodies per world
-    first_body_id: wp.array(dtype=wp.int32),  # First body id per world
-    bodies_q_0_flat: wp.array(dtype=wp.float32),  # Reference state, flattened
-    world_mask: wp.array(dtype=wp.int32),  # Per-world flag to perform the operation (0 = skip)
+    num_bodies: wp.array(dtype=wp.int32),
+    first_body_id: wp.array(dtype=wp.int32),
+    bodies_q_0_flat: wp.array(dtype=wp.float32),
+    world_mask: wp.array(dtype=wp.int32),
     # Outputs
-    bodies_q_flat: wp.array(dtype=wp.float32),  # State to reset, flattened
+    bodies_q_flat: wp.array(dtype=wp.float32),
 ):
     """
     A kernel resetting the fk state (body poses) to the reference state
+
+    Inputs:
+        num_bodies: Num bodies per world
+        first_body_id: First body id per world
+        bodies_q_0_flat: Reference state, flattened
+        world_mask: Per-world flag to perform the operation (0 = skip)
+    Outputs:
+        bodies_q_flat: State to reset, flattened
     """
     wd_id, state_id_loc = wp.tid()  # Thread indices (= world index, state index)
     rb_id_loc = state_id_loc // 7
@@ -97,13 +105,11 @@ def _reset_state(
 @wp.kernel
 def _eval_fk_actuated_dofs_or_coords(
     # Inputs
-    model_base_dofs: wp.array(
-        dtype=wp.float32
-    ),  # Base dofs or coordinates of the main model (as a flat vector with 6 dofs or 7 coordinates per world)
-    model_actuated_dofs: wp.array(dtype=wp.float32),  # Actuated dofs/coords of the main model
-    actuated_dofs_map: wp.array(dtype=wp.int32),  # Map of fk to main model actuated/base dofs/coords
+    model_base_dofs: wp.array(dtype=wp.float32),
+    model_actuated_dofs: wp.array(dtype=wp.float32),
+    actuated_dofs_map: wp.array(dtype=wp.int32),
     # Outputs
-    fk_actuated_dofs: wp.array(dtype=wp.float32),  # Actuated dofs or coordinates of the fk model
+    fk_actuated_dofs: wp.array(dtype=wp.float32),
 ):
     """
     A kernel mapping actuated and base dofs/coordinates of the main model to actuated dofs/coordinates of the fk model,
@@ -111,6 +117,13 @@ def _eval_fk_actuated_dofs_or_coords(
 
     This uses a map from fk to model dofs/cords, that has >= 0 indices for fk dofs/coords that correspond to
     main model actuated dofs/coords, and negative indices for base dofs/coords (base dof/coord i is stored as -i - 1)
+
+    Inputs:
+        model_base_dofs: Base dofs or coordinates of the main model (as a flat vector with 6 dofs or 7 coordinates per world)
+        model_actuated_dofs: Actuated dofs/coords of the main model
+        actuated_dofs_map: Map of fk to main model actuated/base dofs/coords
+    Outputs:
+        fk_actuated_dofs: Actuated dofs or coordinates of the fk model
     """
 
     # Retrieve the thread index (= fk actuated dof or coordinate index)
@@ -129,15 +142,13 @@ def _eval_fk_actuated_dofs_or_coords(
 @wp.kernel
 def _eval_position_control_transformations(
     # Inputs
-    joints_dof_type: wp.array(dtype=wp.int32),  # Joint dof type (i.e. revolute, spherical, ...)
-    joints_act_type: wp.array(dtype=wp.int32),  # Joint actuation type (i.e. passive or actuated)
-    actuated_coords_offset: wp.array(
-        dtype=wp.int32
-    ),  # Joint first actuated coordinate id, among all actuated coordinates in all worlds
-    joints_X: wp.array(dtype=wp.mat33f),  # Joint frame (local axes, valid both on base and follower)
-    actuators_q: wp.array(dtype=wp.float32),  # Actuated coordinates
+    joints_dof_type: wp.array(dtype=wp.int32),
+    joints_act_type: wp.array(dtype=wp.int32),
+    actuated_coords_offset: wp.array(dtype=wp.int32),
+    joints_X: wp.array(dtype=wp.mat33f),
+    actuators_q: wp.array(dtype=wp.float32),
     # Outputs
-    pos_control_transforms: wp.array(dtype=wp.transformf),  # Joint position-control transformation
+    pos_control_transforms: wp.array(dtype=wp.transformf),
 ):
     """
     A kernel computing a transformation per joint corresponding to position-control parameters
@@ -146,6 +157,15 @@ def _eval_position_control_transformations(
 
     The translation part is expressed in joint frame (e.g., translation is along [1,0,0] for a prismatic joint)
     The rotation part is expressed in body frame (e.g., rotation is about X[:,0] for a revolute joint)
+
+    Inputs:
+        joints_dof_type: Joint dof type (i.e. revolute, spherical, ...)
+        joints_act_type: Joint actuation type (i.e. passive or actuated)
+        actuated_coords_offset: Joint first actuated coordinate id, among all actuated coordinates in all worlds
+        joints_X: Joint frame (local axes, valid both on base and follower)
+        actuators_q: Actuated coordinates
+    Outputs:
+        pos_control_transforms: Joint position-control transformation
     """
 
     # Retrieve the thread index (= joint index)
@@ -200,15 +220,24 @@ def _eval_position_control_transformations(
 @wp.kernel
 def _eval_unit_quaternion_constraints(
     # Inputs
-    num_bodies: wp.array(dtype=wp.int32),  # Num bodies per world
-    first_body_id: wp.array(dtype=wp.int32),  # First body id per world
-    bodies_q: wp.array(dtype=wp.transformf),  # Body poses
-    world_mask: wp.array(dtype=wp.int32),  # Per-world flag to perform the computation (0 = skip)
+    num_bodies: wp.array(dtype=wp.int32),
+    first_body_id: wp.array(dtype=wp.int32),
+    bodies_q: wp.array(dtype=wp.transformf),
+    world_mask: wp.array(dtype=wp.int32),
     # Outputs
-    constraints: wp.array2d(dtype=wp.float32),  # Constraint vector per world
+    constraints: wp.array2d(dtype=wp.float32),
 ):
     """
-    A kernel computing unit norm quaternion constraints for each body, written at the top of the constraints vector
+        A kernel computing unit norm quaternion constraints for each body, written at the top of the constraints vector
+
+        Inputs:
+            num_bodies: Num bodies per world
+            first_body_id: First body id per world
+            bodies_q: Body poses
+            world_mask: Per-world flag to perform the computation (0 = skip)
+        Outputs:
+            constraints: Constraint vector per world
+    ):
     """
 
     # Retrieve the thread indices (= world index, body index)
@@ -233,21 +262,21 @@ def create_eval_joint_constraints_kernel(has_universal_joints: bool):
     @wp.kernel
     def _eval_joint_constraints(
         # Inputs
-        num_joints: wp.array(dtype=wp.int32),  # Num joints per world
-        first_joint_id: wp.array(dtype=wp.int32),  # First joint id per world
-        joints_dof_type: wp.array(dtype=wp.int32),  # Joint dof type (i.e. revolute, spherical, ...)
-        joints_act_type: wp.array(dtype=wp.int32),  # Joint actuation type (i.e. passive or actuated)
-        joints_bid_B: wp.array(dtype=wp.int32),  # Joint base body id
-        joints_bid_F: wp.array(dtype=wp.int32),  # Joint follower body id
-        joints_X: wp.array(dtype=wp.mat33f),  # Joint frame (local axes, valid both on base and follower)
-        joints_B_r_B: wp.array(dtype=wp.vec3f),  # Joint local position on base body
-        joints_F_r_F: wp.array(dtype=wp.vec3f),  # Joint local position on follower body
-        bodies_q: wp.array(dtype=wp.transformf),  # Body poses
-        pos_control_transforms: wp.array(dtype=wp.transformf),  # Joint position-control transformation
-        ct_full_to_red_map: wp.array2d(dtype=wp.int32),  # Map from full to reduced constraint id (per world)
-        world_mask: wp.array(dtype=wp.int32),  # Per-world flag to perform the computation (0 = skip)
+        num_joints: wp.array(dtype=wp.int32),
+        first_joint_id: wp.array(dtype=wp.int32),
+        joints_dof_type: wp.array(dtype=wp.int32),
+        joints_act_type: wp.array(dtype=wp.int32),
+        joints_bid_B: wp.array(dtype=wp.int32),
+        joints_bid_F: wp.array(dtype=wp.int32),
+        joints_X: wp.array(dtype=wp.mat33f),
+        joints_B_r_B: wp.array(dtype=wp.vec3f),
+        joints_F_r_F: wp.array(dtype=wp.vec3f),
+        bodies_q: wp.array(dtype=wp.transformf),
+        pos_control_transforms: wp.array(dtype=wp.transformf),
+        ct_full_to_red_map: wp.array2d(dtype=wp.int32),
+        world_mask: wp.array(dtype=wp.int32),
         # Outputs
-        constraints: wp.array2d(dtype=wp.float32),  # Constraint vector per world
+        constraints: wp.array2d(dtype=wp.float32),
     ):
         """
         A kernel computing joint constraints with the log map formulation, first computing 6 constraints per
@@ -257,6 +286,23 @@ def create_eval_joint_constraints_kernel(has_universal_joints: bool):
         Note: the log map formulation doesn't allow to formulate passive universal joints. If such joints are
         present, the right number of (incorrect) constraints is first written with the log map, then the result
         is overwritten in a second pass with the correct constraints.
+
+        Inputs:
+            num_joints: Num joints per world
+            first_joint_id: First joint id per world
+            joints_dof_type: Joint dof type (i.e. revolute, spherical, ...)
+            joints_act_type: Joint actuation type (i.e. passive or actuated)
+            joints_bid_B: Joint base body id
+            joints_bid_F: Joint follower body id
+            joints_X: Joint frame (local axes, valid both on base and follower)
+            joints_B_r_B: Joint local position on base body
+            joints_F_r_F: Joint local position on follower body
+            bodies_q: Body poses
+            pos_control_transforms: Joint position-control transformation
+            ct_full_to_red_map: Map from full to reduced constraint id (per world)
+            world_mask: Per-world flag to perform the computation (0 = skip)
+        Outputs:
+            constraints: Constraint vector per world
         """
 
         # Retrieve the thread indices (= world index, joint index)
@@ -343,16 +389,24 @@ def create_eval_joint_constraints_kernel(has_universal_joints: bool):
 @wp.kernel
 def _eval_unit_quaternion_constraints_jacobian(
     # Inputs
-    num_bodies: wp.array(dtype=wp.int32),  # Num bodies per world
-    first_body_id: wp.array(dtype=wp.int32),  # First body id per world
-    bodies_q: wp.array(dtype=wp.transformf),  # Body poses
-    world_mask: wp.array(dtype=wp.int32),  # Per-world flag to perform the computation (0 = skip)
+    num_bodies: wp.array(dtype=wp.int32),
+    first_body_id: wp.array(dtype=wp.int32),
+    bodies_q: wp.array(dtype=wp.transformf),
+    world_mask: wp.array(dtype=wp.int32),
     # Outputs
-    constraints_jacobian: wp.array3d(dtype=wp.float32),  # Constraints Jacobian per world
+    constraints_jacobian: wp.array3d(dtype=wp.float32),
 ):
     """
     A kernel computing the Jacobian of unit norm quaternion constraints for each body, written at the top of the
     constraints Jacobian
+
+    Inputs:
+        num_bodies: Num bodies per world
+        first_body_id: First body id per world
+        bodies_q: Body poses
+        world_mask: Per-world flag to perform the computation (0 = skip)
+    Outputs:
+        constraints_jacobian: Constraints Jacobian per world
     """
 
     # Retrieve the thread indices (= world index, body index)
@@ -381,27 +435,45 @@ def create_eval_joint_constraints_jacobian_kernel(has_universal_joints: bool):
     @wp.kernel
     def _eval_joint_constraints_jacobian(
         # Inputs
-        num_joints: wp.array(dtype=wp.int32),  # Num joints per world
-        first_joint_id: wp.array(dtype=wp.int32),  # First joint id per world
-        first_body_id: wp.array(dtype=wp.int32),  # First body id per world
-        joints_dof_type: wp.array(dtype=wp.int32),  # Joint dof type (i.e. revolute, spherical, ...)
-        joints_act_type: wp.array(dtype=wp.int32),  # Joint actuation type (i.e. passive or actuated)
-        joints_bid_B: wp.array(dtype=wp.int32),  # Joint base body id
-        joints_bid_F: wp.array(dtype=wp.int32),  # Joint follower body id
-        joints_X: wp.array(dtype=wp.mat33f),  # Joint frame (local axes, valid both on base and follower)
-        joints_B_r_B: wp.array(dtype=wp.vec3f),  # Joint local position on base body
-        joints_F_r_F: wp.array(dtype=wp.vec3f),  # Joint local position on follower body
-        bodies_q: wp.array(dtype=wp.transformf),  # Body poses
-        pos_control_transforms: wp.array(dtype=wp.transformf),  # Joint position-control transformation
-        ct_full_to_red_map: wp.array2d(dtype=wp.int32),  # Map from full to reduced constraint id (per world)
-        world_mask: wp.array(dtype=wp.int32),  # Per-world flag to perform the computation (0 = skip)
+        num_joints: wp.array(dtype=wp.int32),
+        first_joint_id: wp.array(dtype=wp.int32),
+        first_body_id: wp.array(dtype=wp.int32),
+        joints_dof_type: wp.array(dtype=wp.int32),
+        joints_act_type: wp.array(dtype=wp.int32),
+        joints_bid_B: wp.array(dtype=wp.int32),
+        joints_bid_F: wp.array(dtype=wp.int32),
+        joints_X: wp.array(dtype=wp.mat33f),
+        joints_B_r_B: wp.array(dtype=wp.vec3f),
+        joints_F_r_F: wp.array(dtype=wp.vec3f),
+        bodies_q: wp.array(dtype=wp.transformf),
+        pos_control_transforms: wp.array(dtype=wp.transformf),
+        ct_full_to_red_map: wp.array2d(dtype=wp.int32),
+        world_mask: wp.array(dtype=wp.int32),
         # Outputs
-        constraints_jacobian: wp.array3d(dtype=wp.float32),  # Constraint Jacobian per world
+        constraints_jacobian: wp.array3d(dtype=wp.float32),
     ):
         """
         A kernel computing the Jacobian of the joint constraints.
         The Jacobian is assumed to have already been filled with zeros, at least in the coefficients that
         are always zero due to joint connectivity.
+
+        Inputs:
+            num_joints: Num joints per world
+            first_joint_id: First joint id per world
+            first_body_id: First body id per world
+            joints_dof_type: Joint dof type (i.e. revolute, spherical, ...)
+            joints_act_type: Joint actuation type (i.e. passive or actuated)
+            joints_bid_B: Joint base body id
+            joints_bid_F: Joint follower body id
+            joints_X: Joint frame (local axes, valid both on base and follower)
+            joints_B_r_B: Joint local position on base body
+            joints_F_r_F: Joint local position on follower body
+            bodies_q: Body poses
+            pos_control_transforms: Joint position-control transformation
+            ct_full_to_red_map: Map from full to reduced constraint id (per world)
+            world_mask: Per-world flag to perform the computation (0 = skip)
+        Outputs:
+            constraints_jacobian: Constraint Jacobian per world
         """
 
         # Retrieve the thread indices (= world index, joint index)
@@ -537,9 +609,9 @@ def create_tile_based_kernels(TILE_SIZE_CTS: wp.int32, TILE_SIZE_VRS: wp.int32):
     @wp.kernel
     def _eval_pattern_T_pattern(
         # Inputs
-        sparsity_pattern: wp.array3d(dtype=wp.float32),  # Jacobian sparsity pattern per world
+        sparsity_pattern: wp.array3d(dtype=wp.float32),
         # Outputs
-        pattern_T_pattern: wp.array3d(dtype=wp.float32),  # Jacobian^T * Jacobian sparsity pattern per world
+        pattern_T_pattern: wp.array3d(dtype=wp.float32),
     ):
         """
         A kernel computing the sparsity pattern of J^T * J given that of J, in each world
@@ -547,6 +619,11 @@ def create_tile_based_kernels(TILE_SIZE_CTS: wp.int32, TILE_SIZE_VRS: wp.int32):
         its transpose and clip values to [0, 1] to get the sparsity pattern of J^T * J
         Note: mostly redundant with _eval_jacobian_T_jacobian apart from the clipping, could possibly be removed
         (was initially written to take int32, but float32 is actually faster)
+
+        Inputs:
+            sparsity_pattern: Jacobian sparsity pattern per world
+        Outputs:
+            pattern_T_pattern: Jacobian^T * Jacobian sparsity pattern per world
         """
         wd_id, i, j = wp.tid()  # Thread indices (= world index, output tile indices)
 
@@ -588,13 +665,17 @@ def create_tile_based_kernels(TILE_SIZE_CTS: wp.int32, TILE_SIZE_VRS: wp.int32):
     @wp.kernel
     def _eval_max_constraint(
         # Inputs
-        constraints: wp.array2d(dtype=wp.float32),  # Constraint vector per world
+        constraints: wp.array2d(dtype=wp.float32),
         # Outputs
-        max_constraint: wp.array(dtype=wp.float32),  # Max absolute constraint per world
+        max_constraint: wp.array(dtype=wp.float32),
     ):
         """
         A kernel computing the max absolute constraint from the constraints vector, in each world.
-        max_constraint must be zero-initialized
+
+        Inputs:
+            constraints: Constraint vector per world
+        Outputs:
+            max_constraint: Max absolute constraint per world; must be zero-initialized
         """
         wd_id, i, tid = wp.tid()  # Thread indices (= world index, input tile index, thread index in block)
 
@@ -621,13 +702,19 @@ def create_tile_based_kernels(TILE_SIZE_CTS: wp.int32, TILE_SIZE_VRS: wp.int32):
     @wp.kernel
     def _eval_jacobian_T_jacobian(
         # Inputs
-        constraints_jacobian: wp.array3d(dtype=wp.float32),  # Constraint Jacobian per world
-        world_mask: wp.array(dtype=wp.int32),  # Per-world flag to perform the computation (0 = skip)
+        constraints_jacobian: wp.array3d(dtype=wp.float32),
+        world_mask: wp.array(dtype=wp.int32),
         # Outputs
-        jacobian_T_jacobian: wp.array3d(dtype=wp.float32),  # Jacobian^T * Jacobian per world
+        jacobian_T_jacobian: wp.array3d(dtype=wp.float32),
     ):
         """
         A kernel computing the matrix product J^T * J given the Jacobian J, in each world
+
+        Inputs:
+            constraints_jacobian: Constraint Jacobian per world
+            world_mask: Per-world flag to perform the computation (0 = skip)
+        Outputs:
+            jacobian_T_jacobian: Jacobian^T * Jacobian per world
         """
         wd_id, i, j = wp.tid()  # Thread indices (= world index, output tile indices)
 
@@ -664,14 +751,21 @@ def create_tile_based_kernels(TILE_SIZE_CTS: wp.int32, TILE_SIZE_VRS: wp.int32):
     @wp.kernel
     def _eval_jacobian_T_constraints(
         # Inputs
-        constraints_jacobian: wp.array3d(dtype=wp.float32),  # Constraint Jacobian per world
-        constraints: wp.array2d(dtype=wp.float32),  # Constraint vector per world
-        world_mask: wp.array(dtype=wp.int32),  # Per-world flag to perform the computation (0 = skip)
+        constraints_jacobian: wp.array3d(dtype=wp.float32),
+        constraints: wp.array2d(dtype=wp.float32),
+        world_mask: wp.array(dtype=wp.int32),
         # Outputs
-        jacobian_T_constraints: wp.array2d(dtype=wp.float32),  # Jacobian^T * Constraints per world
+        jacobian_T_constraints: wp.array2d(dtype=wp.float32),
     ):
         """
         A kernel computing the matrix product J^T * C given the Jacobian J and the constraints vector C, in each world
+
+        Inputs:
+            constraints_jacobian: Constraint Jacobian per world
+            constraints: Constraint vector per world
+            world_mask: Per-world flag to perform the computation (0 = skip)
+        Outputs:
+            jacobian_T_constraints: Jacobian^T * Constraints per world
         """
         wd_id, i = wp.tid()  # Thread indices (= world index, output tile index)
 
@@ -716,14 +810,18 @@ def create_tile_based_kernels(TILE_SIZE_CTS: wp.int32, TILE_SIZE_VRS: wp.int32):
     @wp.kernel
     def _eval_merit_function(
         # Inputs
-        constraints: wp.array2d(dtype=wp.float32),  # Constraint vector per world
+        constraints: wp.array2d(dtype=wp.float32),
         # Outputs
-        merit_function_val: wp.array(dtype=wp.float32),  # Merit function value per world
+        merit_function_val: wp.array(dtype=wp.float32),
     ):
         """
         A kernel computing the merit function, i.e. the least-squares error 1/2 * ||C||^2, from the constraints
         vector C, in each world
-        merit_function_val must be zero-initialized
+
+        Inputs:
+            constraints: Constraint vector per world
+        Outputs:
+            merit_function_val: Merit function value per world; must be zero-initialized
         """
         wd_id, i, tid = wp.tid()  # Thread indices (= world index, input tile index, thread index in block)
 
@@ -737,15 +835,20 @@ def create_tile_based_kernels(TILE_SIZE_CTS: wp.int32, TILE_SIZE_VRS: wp.int32):
     @wp.kernel
     def _eval_merit_function_gradient(
         # Inputs
-        step: wp.array2d(dtype=wp.float32),  # Step in variables per world
-        grad: wp.array2d(dtype=wp.float32),  # Gradient w.r.t. state (i.e. body poses) per world
+        step: wp.array2d(dtype=wp.float32),
+        grad: wp.array2d(dtype=wp.float32),
         # Outputs
-        merit_function_grad: wp.array(dtype=wp.float32),  # Merit function gradient per world
+        merit_function_grad: wp.array(dtype=wp.float32),
     ):
         """
         A kernel computing the merit function gradient w.r.t. line search step size, from the step direction
         and the gradient in state space (= dC_ds^T * C). This is simply the dot product between these two vectors.
-        merit_function_grad must be zero-initialized
+
+        Inputs:
+            step: Step in variables per world
+            grad: Gradient w.r.t. state (i.e. body poses) per world
+        Outputs:
+            merit_function_grad: Merit function gradient per world; must be zero-initialized
         """
         wd_id, i, tid = wp.tid()  # Thread indices (= world index, input tile index, thread index in block)
 
@@ -770,12 +873,17 @@ def create_tile_based_kernels(TILE_SIZE_CTS: wp.int32, TILE_SIZE_VRS: wp.int32):
 @wp.kernel
 def _eval_rhs(
     # Inputs
-    grad: wp.array2d(dtype=wp.float32),  # Merit function gradient w.r.t. state (i.e. body poses) per world
+    grad: wp.array2d(dtype=wp.float32),
     # Outputs
-    rhs: wp.array2d(dtype=wp.float32),  # Gauss-Newton right-hand side per world
+    rhs: wp.array2d(dtype=wp.float32),
 ):
     """
     A kernel computing rhs := -grad (where rhs has shape (num_worlds, num_states_max, 1))
+
+    Inputs:
+        grad: Merit function gradient w.r.t. state (i.e. body poses) per world
+    Outputs:
+        rhs: Gauss-Newton right-hand side per world
     """
     wd_id, state_id_loc = wp.tid()  # Thread indices (= world index, state index)
     if wd_id < grad.shape[0] and state_id_loc < grad.shape[1]:
@@ -785,17 +893,27 @@ def _eval_rhs(
 @wp.kernel
 def _eval_stepped_state(
     # Inputs
-    num_bodies: wp.array(dtype=wp.int32),  # Num bodies per world
-    first_body_id: wp.array(dtype=wp.int32),  # First body id per world
-    bodies_q_0_flat: wp.array(dtype=wp.float32),  # Previous state (for step size 0), flattened
-    alpha: wp.array(dtype=wp.float32),  # Step size per world
-    step: wp.array2d(dtype=wp.float32),  # Step direction per world
-    world_mask: wp.array(dtype=wp.int32),  # Per-world flag to perform the computation (0 = skip)
+    num_bodies: wp.array(dtype=wp.int32),
+    first_body_id: wp.array(dtype=wp.int32),
+    bodies_q_0_flat: wp.array(dtype=wp.float32),
+    alpha: wp.array(dtype=wp.float32),
+    step: wp.array2d(dtype=wp.float32),
+    world_mask: wp.array(dtype=wp.int32),
     # Outputs
-    bodies_q_alpha_flat: wp.array(dtype=wp.float32),  # New state (for step size alpha), flattened
+    bodies_q_alpha_flat: wp.array(dtype=wp.float32),
 ):
     """
     A kernel computing states_alpha := states_0 + alpha * step
+
+    Inputs:
+        num_bodies: Num bodies per world
+        first_body_id: First body id per world
+        bodies_q_0_flat: Previous state (for step size 0), flattened
+        alpha: Step size per world
+        step: Step direction per world
+        world_mask: Per-world flag to perform the computation (0 = skip)
+    Outputs:
+        bodies_q_alpha_flat: New state (for step size alpha), flattened
     """
     wd_id, state_id_loc = wp.tid()  # Thread indices (= world index, state index)
     rb_id_loc = state_id_loc // 7
@@ -807,17 +925,25 @@ def _eval_stepped_state(
 @wp.kernel
 def _apply_line_search_step(
     # Inputs
-    num_bodies: wp.array(dtype=wp.int32),  # Num bodies per world
-    first_body_id: wp.array(dtype=wp.int32),  # First body id per world
-    bodies_q_alpha: wp.array(dtype=wp.transformf),  # Stepped states (line search result)
-    line_search_success: wp.array(dtype=wp.int32),  # Per-world line search success flag
+    num_bodies: wp.array(dtype=wp.int32),
+    first_body_id: wp.array(dtype=wp.int32),
+    bodies_q_alpha: wp.array(dtype=wp.transformf),
+    line_search_success: wp.array(dtype=wp.int32),
     # Outputs
-    bodies_q: wp.array(dtype=wp.transformf),  # Output state (rigid body poses)
+    bodies_q: wp.array(dtype=wp.transformf),
 ):
     """
     A kernel replacing the state with the line search result, in worlds where line search succeeded
     Note: relies on the fact that the success flag is left at zero for worlds that don't run line search
     (otherwise would also need to check against line search mask)
+
+    Inputs
+        num_bodies: Num bodies per world
+        first_body_id: First body id per world
+        bodies_q_alpha: Stepped states (line search result)
+        line_search_success: Per-world line search success flag
+    Outputs
+        bodies_q: Output state (rigid body poses)
     """
     wd_id, rb_id_loc = wp.tid()  # Thread indices (= world index, body index)
     if wd_id < num_bodies.shape[0] and line_search_success[wd_id] != 0 and rb_id_loc < num_bodies[wd_id]:
@@ -828,21 +954,32 @@ def _apply_line_search_step(
 @wp.kernel
 def _line_search_check(
     # Inputs
-    val_0: wp.array(dtype=wp.float32),  # Merit function value at 0, per world
-    grad_0: wp.array(dtype=wp.float32),  # Merit function gradient at 0, per world
-    alpha: wp.array(dtype=wp.float32),  # Step size per world (in/out)
-    val_alpha: wp.array(dtype=wp.float32),  # Merit function value at alpha, per world
-    iteration: wp.array(dtype=wp.int32),  # Iteration count, per world
-    max_iterations: wp.array(dtype=wp.int32, shape=(1,)),  # Max iterations
+    val_0: wp.array(dtype=wp.float32),
+    grad_0: wp.array(dtype=wp.float32),
+    alpha: wp.array(dtype=wp.float32),
+    val_alpha: wp.array(dtype=wp.float32),
+    iteration: wp.array(dtype=wp.int32),
+    max_iterations: wp.array(dtype=wp.int32, shape=(1,)),
     # Outputs
-    line_search_success: wp.array(dtype=wp.int32),  # Convergence per world
-    line_search_mask: wp.array(dtype=wp.int32),  # Per-world flag to continue line search (0 = skip)
-    line_search_loop_condition: wp.array(dtype=wp.int32, shape=(1,)),  # Loop condition
+    line_search_success: wp.array(dtype=wp.int32),
+    line_search_mask: wp.array(dtype=wp.int32),
+    line_search_loop_condition: wp.array(dtype=wp.int32, shape=(1,)),
 ):
     """
     A kernel checking the sufficient decrease condition in line search in each world, and updating the looping
     condition (zero if max iterations reached, or all worlds successful)
-    line_search_loop_condition must be zero-initialized
+
+    Inputs:
+        val_0: Merit function value at 0, per world
+        grad_0: Merit function gradient at 0, per world
+        alpha: Step size per world (in/out)
+        val_alpha: Merit function value at alpha, per world
+        iteration: Iteration count, per world
+        max_iterations: Max iterations
+    Outputs:
+        line_search_success: Convergence per world
+        line_search_mask: Per-world flag to continue line search (0 = skip)
+        line_search_loop_condition: Loop condition; must be zero-initialized
     """
     wd_id = wp.tid()  # Thread index (= world index)
     if wd_id < val_0.shape[0] and line_search_mask[wd_id] != 0:
@@ -860,20 +997,30 @@ def _line_search_check(
 @wp.kernel
 def _newton_check(
     # Inputs
-    max_constraint: wp.array(dtype=wp.float32),  # Max absolute constraint per world
-    tolerance: wp.array(dtype=wp.float32, shape=(1,)),  # Tolerance on max constraint
-    iteration: wp.array(dtype=wp.int32),  # Iteration count, per world
-    max_iterations: wp.array(dtype=wp.int32, shape=(1,)),  # Max iterations
-    line_search_success: wp.array(dtype=wp.int32),  # Per-world line search success flag
+    max_constraint: wp.array(dtype=wp.float32),
+    tolerance: wp.array(dtype=wp.float32, shape=(1,)),
+    iteration: wp.array(dtype=wp.int32),
+    max_iterations: wp.array(dtype=wp.int32, shape=(1,)),
+    line_search_success: wp.array(dtype=wp.int32),
     # Outputs
-    newton_success: wp.array(dtype=wp.int32),  # Convergence per world
-    newton_mask: wp.array(dtype=wp.int32),  # Flag to keep iterating per world
-    newton_loop_condition: wp.array(dtype=wp.int32, shape=(1,)),  # Loop condition
+    newton_success: wp.array(dtype=wp.int32),
+    newton_mask: wp.array(dtype=wp.int32),
+    newton_loop_condition: wp.array(dtype=wp.int32, shape=(1,)),
 ):
     """
     A kernel checking the convergence (max constraint vs tolerance) in each world, and updating the looping
     condition (zero if max iterations reached, or all worlds successful)
-    newton_loop_condition must be zero-initialized
+
+    Inputs
+        max_constraint: Max absolute constraint per world
+        tolerance: Tolerance on max constraint
+        iteration: Iteration count, per world
+        max_iterations: Max iterations
+        line_search_success: Per-world line search success flag
+    Outputs
+        newton_success: Convergence per world
+        newton_mask: Flag to keep iterating per world
+        newton_loop_condition: Loop condition; must be zero-initialized
     """
     wd_id = wp.tid()  # Thread index (= world index)
     if wd_id < max_constraint.shape[0] and newton_mask[wd_id] != 0:
@@ -894,22 +1041,32 @@ def _newton_check(
 @wp.kernel
 def _eval_target_constraint_velocities(
     # Inputs
-    num_joints: wp.array(dtype=wp.int32),  # Num joints per world
-    first_joint_id: wp.array(dtype=wp.int32),  # First joint id per world
-    joints_dof_type: wp.array(dtype=wp.int32),  # Joint dof type (i.e. revolute, spherical, ...)
-    joints_act_type: wp.array(dtype=wp.int32),  # Joint actuation type (i.e. passive or actuated)
-    actuated_dofs_offset: wp.array(
-        dtype=wp.int32
-    ),  # Joint first actuated dof id, among all actuated dofs in all worlds
-    ct_full_to_red_map: wp.array2d(dtype=wp.int32),  # Map from full to reduced constraint id (per world)
-    actuators_u: wp.array(dtype=wp.float32),  # Actuated joint velocities
-    world_mask: wp.array(dtype=wp.int32),  # Per-world flag to perform the computation (0 = skip)
-    # Outputs:
-    target_cts_u: wp.array2d(dtype=wp.float32),  # Target constraint velocities (assumed to be zero-initialized)
+    num_joints: wp.array(dtype=wp.int32),
+    first_joint_id: wp.array(dtype=wp.int32),
+    joints_dof_type: wp.array(dtype=wp.int32),
+    joints_act_type: wp.array(dtype=wp.int32),
+    actuated_dofs_offset: wp.array(dtype=wp.int32),
+    ct_full_to_red_map: wp.array2d(dtype=wp.int32),
+    actuators_u: wp.array(dtype=wp.float32),
+    world_mask: wp.array(dtype=wp.int32),
+    # Outputs
+    target_cts_u: wp.array2d(dtype=wp.float32),
 ):
     """
     A kernel computing the target constraint velocities, i.e. zero for passive constraints
     and the prescribed dof velocity for actuated constraints.
+
+    Inputs:
+        num_joints: Num joints per world
+        first_joint_id: First joint id per world
+        joints_dof_type: Joint dof type (i.e. revolute, spherical, ...)
+        joints_act_type: Joint actuation type (i.e. passive or actuated)
+        actuated_dofs_offset: Joint first actuated dof id, among all actuated dofs in all worlds
+        ct_full_to_red_map: Map from full to reduced constraint id (per world)
+        actuators_u: Actuated joint velocities
+        world_mask: Per-world flag to perform the computation (0 = skip)
+    Outputs:
+        target_cts_u: Target constraint velocities (assumed to be zero-initialized)
     """
     # Retrieve the thread indices (= world index, joint index)
     wd_id, jt_id_loc = wp.tid()
@@ -955,17 +1112,26 @@ def _eval_target_constraint_velocities(
 @wp.kernel
 def _eval_body_velocities(
     # Inputs
-    num_bodies: wp.array(dtype=wp.int32),  # Number of bodies per world
-    first_body_id: wp.array(dtype=wp.int32),  # First body id per world
-    bodies_q: wp.array(dtype=wp.transformf),  # Body poses
-    bodies_q_dot: wp.array2d(dtype=wp.float32),  # Time derivative of body poses
-    world_mask: wp.array(dtype=wp.int32),  #  Per-world flag to perform the computation (0 = skip)
+    num_bodies: wp.array(dtype=wp.int32),
+    first_body_id: wp.array(dtype=wp.int32),
+    bodies_q: wp.array(dtype=wp.transformf),
+    bodies_q_dot: wp.array2d(dtype=wp.float32),
+    world_mask: wp.array(dtype=wp.int32),
     # Outputs
-    bodies_u: wp.array(dtype=vec6f),  # Body velocities (twists)
+    bodies_u: wp.array(dtype=vec6f),
 ):
     """
     A kernel computing the body velocities (twists) from the time derivative of body poses,
     computing in particular angular velocities omega = G(q)q_dot
+
+    Inputs:
+        num_bodies: Number of bodies per world
+        first_body_id: First body id per world
+        bodies_q: Body poses
+        bodies_q_dot: Time derivative of body poses
+        world_mask: Per-world flag to perform the computation (0 = skip)
+    Outputs:
+        bodies_u: Body velocities (twists)
     """
     wd_id, rb_id_loc = wp.tid()  # Thread indices (= world index, body index)
     if wd_id < world_mask.shape[0] and world_mask[wd_id] != 0 and rb_id_loc < num_bodies[wd_id]:

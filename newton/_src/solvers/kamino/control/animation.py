@@ -404,13 +404,16 @@ class AnimationJointReference:
         Returns:
             np.ndarray: Reference joint velocities of shape (sequence_length, num_actuated_dofs).
         """
-        # TODO: Add checks to handle cases with insufficient data points
-
         # TODO: Try this instead (it might be more robust):
         # _compute_finite_difference_velocities = staticmethod(lambda q_ref_np, dt: np.gradient(q_ref_np, dt, axis=0))
 
         # First allocate and initialize the output array
         dq_j_ref = np.zeros_like(q_ref)
+
+        # Guard against single-frame animations (constant set-points)
+        num_samples = q_ref.shape[0]
+        if num_samples < 2:
+            return dq_j_ref
 
         # Compute forward finite-difference velocities for the reference positions
         dq_j_ref[1:] = np.diff(q_ref, axis=0) / dt

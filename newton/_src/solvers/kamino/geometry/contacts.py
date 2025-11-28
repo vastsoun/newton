@@ -357,4 +357,5 @@ class Contacts:
         self._data.body_A.zero_()
         self._data.body_B.zero_()
         self._data.gapfunc.zero_()
+        self._data.frame.zero_()
         self._data.material.zero_()

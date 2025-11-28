@@ -608,9 +608,9 @@ class ModelBuilder:
 
     def add_physical_geometry(
         self,
+        shape: ShapeDescriptorType,
         body: int = -1,
         layer: str = "default",
-        shape: ShapeDescriptorType | None = None,
         offset: transformf | None = None,
         name: str | None = None,
         uid: str | None = None,
@@ -620,11 +620,11 @@ class ModelBuilder:
         Add a physical geometry to the model using explicit specifications.
 
         Args:
+            shape (ShapeDescriptorType): The shape descriptor of the geometry.
             body (int): The index of the body to which the geometry will be attached.\n
                 Defaults to -1 (world).
             layer (str): The name of the physical geometry layer.\n
                 Defaults to "default".
-            shape (ShapeDescriptorType | None): The shape descriptor of the geometry.
             offset (transformf | None): The local offset of the geometry relative to the body frame.
             name (str | None): The name of the geometry.
             uid (str | None): The unique identifier of the geometry.
@@ -634,13 +634,12 @@ class ModelBuilder:
         Returns:
             int: The index of the newly added physical geometry.
         """
-        # If the shape is already provided, check if it's valid
-        if shape is not None:
-            if not isinstance(shape, ShapeDescriptorType):
-                raise ValueError(
-                    f"Shape '{shape}' must be a valid type.\n"
-                    "See `ShapeDescriptorType` for the list of supported shapes."
-                )
+        # Check if shape is valid
+        if not isinstance(shape, ShapeDescriptorType):
+            raise ValueError(
+                f"Shape '{shape}' must be a valid type.\n"
+                "See `ShapeDescriptorType` for the list of supported shapes."
+            )
 
         # Create a joint descriptor from the provided specifications
         # NOTE: Specifying a name is required by the base descriptor class,

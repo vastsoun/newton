@@ -748,9 +748,9 @@ def _build_dual_preconditioner_all_constraints(
         # Only the thread of the first contact constraint dimension computes the preconditioner
         if ccid % 3 == 0:
             # Retrieve the diagonal entries of the Delassus matrix for the contact constraint set
-            D_kk_0 = problem_D[mio + ncts * tid + tid]
-            D_kk_1 = problem_D[mio + ncts * tid + tid + 1]
-            D_kk_2 = problem_D[mio + ncts * tid + tid + 2]
+            D_kk_0 = problem_D[mio + ncts * (tid + 0) + (tid + 0)]
+            D_kk_1 = problem_D[mio + ncts * (tid + 1) + (tid + 1)]
+            D_kk_2 = problem_D[mio + ncts * (tid + 2) + (tid + 2)]
             # Compute the effective diagonal entry
             # D_kk = (D_kk_0 + D_kk_1 + D_kk_2) / 3.0
             # D_kk = wp.min(vec3f(D_kk_0, D_kk_1, D_kk_2))

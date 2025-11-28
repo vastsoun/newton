@@ -171,7 +171,7 @@ class Example:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="DR Legs simulation example")
+    parser = argparse.ArgumentParser(description="Generic USD-based simulation example")
     parser.add_argument("--usd-model-path", type=str, required=True, help="Path to the USD model to simulate")
     parser.add_argument("--headless", action="store_true", default=False, help="Run in headless mode")
     parser.add_argument("--num-steps", type=int, default=1000, help="Number of steps for headless mode")
@@ -182,7 +182,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Set global numpy configurations
-    np.set_printoptions(linewidth=20000, precision=6, threshold=10000, suppress=True)  # Suppress scientific notation
+    np.set_printoptions(linewidth=20000, precision=6, threshold=10000, suppress=True)
 
     # Clear warp cache if requested
     if args.clear_cache:

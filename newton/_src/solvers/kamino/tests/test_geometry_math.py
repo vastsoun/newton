@@ -27,6 +27,9 @@ from newton._src.solvers.kamino.core.types import mat33f, vec3f
 # Module to be tested
 from newton._src.solvers.kamino.geometry.math import make_contact_frame_xnorm, make_contact_frame_znorm
 
+# Test utilities
+from newton._src.solvers.kamino.tests.utils.setup import setup_tests, test_settings
+
 ###
 # Kernels
 ###
@@ -92,8 +95,8 @@ def compute_contact_frame_xnorm(
 
 class TestGeometryMath(unittest.TestCase):
     def setUp(self):
-        self.verbose = False  # Set to True for verbose output
-        self.default_device = wp.get_device()
+        self.verbose = test_settings.verbose  # Set to True for verbose output
+        self.default_device = test_settings.device
 
     def tearDown(self):
         self.default_device = None
@@ -184,7 +187,8 @@ class TestGeometryMath(unittest.TestCase):
 ###
 
 if __name__ == "__main__":
-    wp.clear_kernel_cache()
-    wp.clear_lto_cache()
-    np.set_printoptions(linewidth=200, precision=3, suppress=True)  # Suppress scientific notation
+    # Test setup
+    setup_tests()
+
+    # Run all tests
     unittest.main(verbosity=2)

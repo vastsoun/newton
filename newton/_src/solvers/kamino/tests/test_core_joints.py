@@ -17,10 +17,8 @@
 
 import unittest
 
-import numpy as np
-import warp as wp
-
 from newton._src.solvers.kamino.core.joints import JointDoFType
+from newton._src.solvers.kamino.tests.utils.setup import setup_tests, test_settings
 from newton._src.solvers.kamino.utils import logger as msg
 
 ###
@@ -30,8 +28,8 @@ from newton._src.solvers.kamino.utils import logger as msg
 
 class TestCoreJoints(unittest.TestCase):
     def setUp(self):
-        self.default_device = wp.get_device()
-        self.verbose = False  # Set to True to enable verbose output
+        self.default_device = test_settings.device
+        self.verbose = test_settings.verbose  # Set to True to enable verbose output
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
@@ -71,13 +69,8 @@ class TestCoreJoints(unittest.TestCase):
 ###
 
 if __name__ == "__main__":
-    # Global numpy configurations
-    np.set_printoptions(linewidth=500, precision=10, suppress=True)  # Suppress scientific notation
-
-    # Global warp configurations
-    wp.config.verbose = False
-    wp.clear_kernel_cache()
-    wp.clear_lto_cache()
+    # Test setup
+    setup_tests()
 
     # Run all tests
     unittest.main(verbosity=2)

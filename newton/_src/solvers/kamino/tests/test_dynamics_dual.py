@@ -20,7 +20,6 @@ KAMINO: UNIT TESTS: DYNAMICS: DUAL PROBLEM
 import unittest
 
 import numpy as np
-import warp as wp
 
 # Module to be tested
 from newton._src.solvers.kamino.dynamics.dual import DualProblem
@@ -33,6 +32,7 @@ from newton._src.solvers.kamino.tests.utils.extract import extract_problem_vecto
 # Test utilities
 from newton._src.solvers.kamino.tests.utils.make import make_containers, update_containers
 from newton._src.solvers.kamino.tests.utils.print import print_model_info
+from newton._src.solvers.kamino.tests.utils.setup import setup_tests, test_settings
 
 ###
 # Tests
@@ -41,8 +41,8 @@ from newton._src.solvers.kamino.tests.utils.print import print_model_info
 
 class TestDualProblem(unittest.TestCase):
     def setUp(self):
-        self.verbose = False  # Set to True for detailed output
-        self.default_device = wp.get_device()
+        self.verbose = test_settings.verbose  # Set to True for detailed output
+        self.default_device = test_settings.device
 
     def tearDown(self):
         self.default_device = None
@@ -186,14 +186,8 @@ class TestDualProblem(unittest.TestCase):
 ###
 
 if __name__ == "__main__":
-    # Global numpy configurations
-    np.set_printoptions(linewidth=2000, precision=10, suppress=True)  # Suppress scientific notation
-
-    # Global warp configurations
-    wp.config.enable_backward = False
-    wp.config.verbose = False
-    wp.clear_kernel_cache()
-    wp.clear_lto_cache()
+    # Test setup
+    setup_tests()
 
     # Run all tests
     unittest.main(verbosity=2)

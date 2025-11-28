@@ -20,7 +20,6 @@ import os
 import unittest
 
 import numpy as np
-import warp as wp
 
 from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.core.joints import JointActuationType, JointDoFType
@@ -41,6 +40,7 @@ from newton._src.solvers.kamino.models.builders import (
 from newton._src.solvers.kamino.tests.utils.checks import (
     assert_builders_equal,
 )
+from newton._src.solvers.kamino.tests.utils.setup import setup_tests, test_settings
 from newton._src.solvers.kamino.utils import logger as msg
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
 
@@ -58,8 +58,8 @@ FLOAT32_MIN = np.finfo(np.float32).min
 
 class TestUSDImporter(unittest.TestCase):
     def setUp(self):
-        self.default_device = wp.get_device()
-        self.verbose = False  # Set to True for verbose output
+        self.default_device = test_settings.device
+        self.verbose = test_settings.verbose  # Set to True for verbose output
 
         # Set the paths to the assets provided by the kamino package
         self.TEST_USD_ASSETS_PATH = get_tests_usd_assets_path()
@@ -1077,14 +1077,8 @@ class TestUSDImporter(unittest.TestCase):
 ###
 
 if __name__ == "__main__":
-    # Global numpy configurations
-    np.set_printoptions(linewidth=500, precision=10, suppress=True)  # Suppress scientific notation
-
-    # Global warp configurations
-    wp.config.enable_backward = False
-    wp.config.verbose = False
-    wp.clear_kernel_cache()
-    wp.clear_lto_cache()
+    # Test setup
+    setup_tests()
 
     # Set global log-level
     # msg.set_log_level(msg.LogLevel.DEBUG)

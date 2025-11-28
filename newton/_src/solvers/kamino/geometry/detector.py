@@ -14,26 +14,25 @@
 # limitations under the License.
 
 """
-KAMINO: Collision Detector Interface
+Provides a unified interface for performing Collision Detection in Kamino.
+
+TODO: More detailed description
 """
 
-from __future__ import annotations
-
-from enum import Enum
+from enum import IntEnum
 
 import warp as wp
 from warp.context import Devicelike
 
-from newton._src.solvers.kamino.core.builder import ModelBuilder
-from newton._src.solvers.kamino.core.geometry import update_collision_geometries_state
-from newton._src.solvers.kamino.core.model import (
-    Model,
-    ModelData,  # TODO: change to state.State
-)
-from newton._src.solvers.kamino.geometry.broadphase import nxn_broadphase
-from newton._src.solvers.kamino.geometry.collisions import Collisions
-from newton._src.solvers.kamino.geometry.contacts import Contacts
-from newton._src.solvers.kamino.geometry.primitives import primitive_narrowphase
+from ..core.builder import ModelBuilder
+from ..core.geometry import update_collision_geometries_state
+from ..core.model import Model, ModelData
+from ..core.types import override
+from ..geometry.broadphase import nxn_broadphase
+from ..geometry.collisions import Collisions
+from ..geometry.contacts import Contacts
+from ..geometry.primitives import primitive_narrowphase
+from ..geometry.unified import BroadPhaseMode, CollisionPipelineUnifiedKamino
 
 ###
 # Module configs
@@ -43,66 +42,96 @@ wp.set_module_options({"enable_backward": False})
 
 
 ###
-# Collision Pipeline Type Enum
+# Types
 ###
 
 
-class CollisionPipelineType(Enum):
-    """Type of collision pipeline to use for Kamino collision detection."""
+class CollisionDetectorMode(IntEnum):
+    """Defines the collision detection pipelines supported in Kamino."""
 
-    PRIMITIVE = "primitive"
+    PRIMITIVE = 0
     """
-    Use Kamino's primitive collision pipeline with custom broad phase (NxN) and
-    narrow phase kernels. This is the original implementation with hand-coded
-    collision functions for primitive shape pairs.
+    Use the "fast" collision detection pipeline specialized for geometric
+    primitives using an "explicit" broad-phase on pre-computed collision
+    shape pairs and a narrow-phase using Newton's primitive colliders.
     """
 
-    UNIFIED = "unified"
+    UNIFIED = 1
     """
-    Use the unified collision pipeline that shares Newton's broad phase (NXN, SAP,
-    or EXPLICIT) and narrow phase (GJK/MPR via NarrowPhase class). This provides
-    access to more shape types and mesh collision support.
+    Use Newton's unified collision-detection pipeline using a configurable
+    broad-phase that supports `NXN`, `SAP`, or `EXPLICIT` modes, and a
+    unified GJK/MPR-based narrow-phase. This pipeline is more general and
+    supports arbitrary collision geometries, including meshes and SDFs.
     """
+
+    @override
+    def __str__(self):
+        """Returns a string representation of the collision detector mode."""
+        return f"CollisionDetectorMode.{self.name} ({self.value})"
+
+    @override
+    def __repr__(self):
+        """Returns a string representation of the collision detector mode."""
+        return self.__str__()
 
 
 ###
-# Collision Detector class
+# Interfaces
 ###
 
 
 class CollisionDetector:
     """
-    Collision Detection (CD) front-end interface.
+    Provides a Collision Detection (CD) front-end for Kamino.
 
     This class is responsible for performing collision detection as well
     as managing the collision containers and their memory allocations.
 
     Supports two collision pipeline types:
-    - PRIMITIVE: Original Kamino pipeline with custom collision kernels
-    - UNIFIED: Newton's unified pipeline with GJK/MPR narrow phase
+
+    - `PRIMITIVE`: A fast collision pipeline with specialized for geometric
+    primitives using an "explicit" broad-phase on pre-computed collision
+    shape pairs and a narrow-phase using Newton's primitive colliders.
+
+    - `UNIFIED`: Newton's unified collision-detection pipeline using a configurable
+    broad-phase that supports `NXN`, `SAP`, or `EXPLICIT` modes, and a unified
+    GJK/MPR-based narrow-phase. This pipeline is more general and supports arbitrary
+    collision geometries, including meshes and SDFs.
     """
 
     def __init__(
         self,
         builder: ModelBuilder | None = None,
         default_max_contacts: int | None = None,
+        mode: CollisionDetectorMode = CollisionDetectorMode.PRIMITIVE,
+        broadphase: BroadPhaseMode = BroadPhaseMode.EXPLICIT,
         device: Devicelike = None,
-        pipeline_type: CollisionPipelineType = CollisionPipelineType.PRIMITIVE,
-        broad_phase_mode: str = "explicit",
     ):
         """
         Initialize the CollisionDetector.
 
         Args:
-            builder: ModelBuilder instance containing the model definition
-            default_max_contacts: Default maximum contacts per world (if not specified by builder)
-            device: Device to allocate buffers on
-            pipeline_type: Type of collision pipeline to use (PRIMITIVE or UNIFIED)
-            broad_phase_mode: Broad phase mode for UNIFIED pipeline ("nxn", "sap", or "explicit")
+            builder(ModelBuilder):
+                ModelBuilder instance containing the host-side model definition.
+            default_max_contacts(int | None):
+                Default maximum contacts per world (if not specified by builder).
+            device(Devicelike):
+                The target Warp device for allocation and execution.\n
+                If `None`, uses the default device selected by Warp on the given platform.
+            mode(CollisionDetectorMode):
+                The type of collision-detection pipeline to use, either `PRIMITIVE` or `UNIFIED`.\n
+                Defaults to `PRIMITIVE`.
+            broadphase(BroadPhaseMode):
+                The type of broad phase collision detection to use for the UNIFIED pipeline.\n
+                May be `NXN`, `SAP`, or `EXPLICIT`, but (currently) ignored if using the `PRIMITIVE` pipeline.\n
+                Defaults to `EXPLICIT`.
         """
         # Cache the target device
         self._device = device
-        self._pipeline_type = pipeline_type
+
+        # Cache the collision detector configuration
+        self._mode = mode
+        self._broadphase = broadphase
 
         # Declare the collisions and contacts containers
         self.collisions: Collisions | None = None
@@ -121,7 +150,7 @@ class CollisionDetector:
         # Allocate the collisions and contacts containers if the model requires them (indicated by >= 0)
         if model_max_contacts >= 0:
             # NOTE #1: collisions are the inputs/outputs of the broad phase (for PRIMITIVE pipeline)
-            if pipeline_type == CollisionPipelineType.PRIMITIVE:
+            if self._mode == CollisionDetectorMode.PRIMITIVE:
                 self.collisions = Collisions(builder=builder, device=device)
 
             # NOTE #2: contacts are the outputs of the narrow phase
@@ -134,57 +163,50 @@ class CollisionDetector:
             self._world_max_contacts: list[int] = self.contacts.num_world_max_contacts
 
             # Initialize unified pipeline if requested
-            if pipeline_type == CollisionPipelineType.UNIFIED:
-                from newton._src.solvers.kamino.geometry.collision_pipeline_unified import (
-                    KaminoBroadPhaseMode,
-                    KaminoCollisionPipelineUnified,
-                )
-
-                # Map string to enum
-                broad_phase_map = {
-                    "nxn": KaminoBroadPhaseMode.NXN,
-                    "sap": KaminoBroadPhaseMode.SAP,
-                    "explicit": KaminoBroadPhaseMode.EXPLICIT,
-                }
-                bp_mode = broad_phase_map.get(broad_phase_mode.lower(), KaminoBroadPhaseMode.EXPLICIT)
-
-                self._unified_pipeline = KaminoCollisionPipelineUnified(
+            if self._mode == CollisionDetectorMode.UNIFIED:
+                self._unified_pipeline = CollisionPipelineUnifiedKamino(
                     builder=builder,
-                    broad_phase_mode=bp_mode,
+                    broadphase=self._broadphase,
                     device=device,
                 )
 
     @property
-    def pipeline_type(self) -> CollisionPipelineType:
-        """The type of collision pipeline being used."""
-        return self._pipeline_type
+    def device(self) -> Devicelike:
+        """Returns the device on which the CollisionDetector data is allocated and executes."""
+        return self._device
+
+    @property
+    def mode(self) -> CollisionDetectorMode:
+        """Returns the type of collision pipeline being used by the CollisionDetector."""
+        return self._mode
 
     @property
     def model_max_contacts(self) -> int:
-        """
-        The total maximum number of contacts allocated for the model across all worlds.
-        """
+        """Returns the total maximum number of contacts allocated for the model across all worlds."""
         return self._model_max_contacts
 
     @property
     def world_max_contacts(self) -> int:
-        """
-        The maximum number of contacts allocated for each world in the model.
-        """
+        """Returns the maximum number of contacts allocated for each world in the model."""
         return self._world_max_contacts
 
-    def collide(self, model: Model, data: ModelData):  # TODO: change to state.State
+    def collide(self, model: Model, data: ModelData):
         """
-        Perform collision detection for the a model with the specific state.
+        Executes collision detection given a model and its associated data.
 
-        Uses either the PRIMITIVE or UNIFIED pipeline depending on the configuration.
+        This operation will use the `PRIMITIVE` or `UNIFIED` pipeline depending on
+        the configuration set during the initialization of the CollisionDetector.
+
+        Args:
+            model (Model): The Model instance containing the collision geometries
+            data (ModelData): The ModelData instance containing the state of the geometries
         """
         # Skip this operation if the model does not allocate contacts
         # TODO: change this to check if the model has any cgeoms
         if self._model_max_contacts <= 0:
             return
 
-        if self._pipeline_type == CollisionPipelineType.UNIFIED:
+        if self._mode == CollisionDetectorMode.UNIFIED:
             # Use the unified pipeline
             self._unified_pipeline.collide(model, data, self.contacts)
         else:

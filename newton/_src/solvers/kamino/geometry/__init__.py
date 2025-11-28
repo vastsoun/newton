@@ -17,14 +17,10 @@
 KAMINO: Collisions Module
 """
 
-from .collision_pipeline_unified import (
-    KaminoBroadPhaseMode,
-    KaminoCollisionPipelineUnified,
-    KaminoContactWriterData,
-)
 from .collisions import Collisions, CollisionsData, CollisionsModel
 from .contacts import Contacts, ContactsData
-from .detector import CollisionDetector, CollisionPipelineType
+from .detector import CollisionDetector, CollisionDetectorMode
+from .unified import CollisionPipelineUnifiedKamino, ContactWriterDataKamino
 
 ###
 # Module interface
@@ -32,13 +28,12 @@ from .detector import CollisionDetector, CollisionPipelineType
 
 __all__ = [
     "CollisionDetector",
-    "CollisionPipelineType",
+    "CollisionDetectorMode",
+    "CollisionPipelineUnifiedKamino",
     "Collisions",
     "CollisionsData",
     "CollisionsModel",
+    "ContactWriterDataKamino",
     "Contacts",
     "ContactsData",
-    "KaminoBroadPhaseMode",
-    "KaminoCollisionPipelineUnified",
-    "KaminoContactWriterData",
 ]

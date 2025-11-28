@@ -36,7 +36,7 @@ from ..dynamics.wrenches import (
     compute_joint_dof_body_wrenches,
 )
 from ..geometry.contacts import Contacts
-from ..geometry.detector import CollisionDetector, CollisionPipelineType
+from ..geometry.detector import BroadPhaseMode, CollisionDetector, CollisionDetectorMode
 from ..integrators.euler import integrate_semi_implicit_euler
 from ..kinematics.constraints import make_unilateral_constraints_info, update_constraints_info
 from ..kinematics.jacobians import DenseSystemJacobians
@@ -97,11 +97,11 @@ class SimulatorSettings:
     rotation_correction: JointCorrectionMode = JointCorrectionMode.TWOPI
     """The rotation correction mode to use for rotational DoFs."""
 
-    collision_pipeline_type: CollisionPipelineType = CollisionPipelineType.UNIFIED
+    collision_detector_mode: CollisionDetectorMode = CollisionDetectorMode.UNIFIED
     """The type of collision pipeline to use (PRIMITIVE or UNIFIED)."""
 
-    collision_broad_phase_mode: str = "explicit"
-    """Broad phase mode for UNIFIED pipeline ("nxn", "sap", or "explicit")."""
+    collision_broadphase_mode: BroadPhaseMode = BroadPhaseMode.EXPLICIT
+    """Broad phase mode for UNIFIED pipeline (`NXN`, `SAP`, or `EXPLICIT`)."""
 
     def check(self) -> None:
         """
@@ -237,8 +237,8 @@ class Simulator:
         self._collision_detector = CollisionDetector(
             builder=builder,
             device=self._device,
-            pipeline_type=self._settings.collision_pipeline_type,
-            broad_phase_mode=self._settings.collision_broad_phase_mode,
+            mode=self._settings.collision_detector_mode,
+            broadphase=self._settings.collision_broadphase_mode,
         )
 
         # Model

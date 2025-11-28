@@ -132,7 +132,7 @@ from .geometry.contacts import (
 )
 from .geometry.detector import (
     CollisionDetector,
-    CollisionPipelineType,
+    CollisionDetectorMode,
 )
 from .kinematics.jacobians import (
     DenseSystemJacobians,
@@ -163,7 +163,7 @@ __all__ = [
     "BoxShape",
     "CapsuleShape",
     "CollisionDetector",
-    "CollisionPipelineType",
+    "CollisionDetectorMode",
     "CollisionGeometriesData",
     "CollisionGeometriesModel",
     "CollisionGeometryDescriptor",

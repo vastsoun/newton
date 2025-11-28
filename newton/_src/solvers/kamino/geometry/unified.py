@@ -14,31 +14,27 @@
 # limitations under the License.
 
 """
-KAMINO: Unified Collision Pipeline
+Provides a specialization of Newton's unified collision-detection pipeline for Kamino.
 
-This module provides a collision pipeline for Kamino that uses the same broad phase
-and narrow phase as Newton's CollisionPipelineUnified, but writes contacts directly
-in Kamino's format.
+This module provides interfaces and data-conversion specializations for Kamino that wraps
+the broad-phase and narrow-phase of Newton's CollisionPipelineUnified, writing generated
+contacts data directly into Kamino's respective format.
 """
-
-from __future__ import annotations
-
-from enum import IntEnum
 
 import warp as wp
 from warp.context import Devicelike
 
+# Newton
 from ....geometry.broad_phase_nxn import BroadPhaseAllPairs, BroadPhaseExplicit
 from ....geometry.broad_phase_sap import BroadPhaseSAP
 from ....geometry.collision_core import compute_tight_aabb_from_support
 from ....geometry.contact_data import ContactData
 from ....geometry.narrow_phase import NarrowPhase
-from ....geometry.support_function import (
-    GenericShapeData,
-    SupportMapDataProvider,
-    pack_mesh_ptr,
-)
+from ....geometry.support_function import GenericShapeData, SupportMapDataProvider, pack_mesh_ptr
 from ....geometry.types import GeoType
+from ....sim.collide_unified import BroadPhaseMode
+
+# Kamino
 from ..core.builder import ModelBuilder
 from ..core.geometry import update_collision_geometries_state
 from ..core.model import Model, ModelData
@@ -56,30 +52,12 @@ wp.set_module_options({"enable_backward": False})
 
 
 ###
-# Broad Phase Mode Enum
-###
-
-
-class KaminoBroadPhaseMode(IntEnum):
-    """Broad phase collision detection mode for Kamino."""
-
-    NXN = 0
-    """All-pairs broad phase with AABB checks (simple, O(N²) but good for small scenes)"""
-
-    SAP = 1
-    """Sweep and Prune broad phase with AABB sorting (faster for larger scenes, O(N log N))"""
-
-    EXPLICIT = 2
-    """Use precomputed shape pairs (most efficient when pairs are known ahead of time)"""
-
-
-###
-# Kamino Contact Writer Data Struct
+# Types
 ###
 
 
 @wp.struct
-class KaminoContactWriterData:
+class ContactWriterDataKamino:
     """Contact writer data for writing contacts directly in Kamino format."""
 
     # Contact limits
@@ -111,14 +89,14 @@ class KaminoContactWriterData:
 
 
 ###
-# Kamino Contact Writer Function
+# Functions
 ###
 
 
 @wp.func
-def write_contact_kamino_unified(
+def kamino_write_contact_unified(
     contact_data: ContactData,
-    writer_data: KaminoContactWriterData,
+    writer_data: ContactWriterDataKamino,
 ):
     """
     Write a contact to Kamino-compatible output arrays.
@@ -128,7 +106,7 @@ def write_contact_kamino_unified(
 
     Args:
         contact_data: ContactData struct from narrow phase containing contact information
-        writer_data: KaminoContactWriterData struct containing output arrays
+        writer_data: ContactWriterDataKamino struct containing output arrays
     """
     total_separation_needed = (
         contact_data.radius_eff_a + contact_data.radius_eff_b + contact_data.thickness_a + contact_data.thickness_b
@@ -209,12 +187,12 @@ def write_contact_kamino_unified(
 
 
 ###
-# AABB Computation Kernel
+# Kernels
 ###
 
 
 @wp.kernel
-def compute_kamino_shape_aabbs(
+def _kamino_compute_shape_aabbs(
     geom_pose: wp.array(dtype=transformf),
     geom_sid: wp.array(dtype=int32),
     geom_params: wp.array(dtype=vec4f),
@@ -305,7 +283,7 @@ def compute_kamino_shape_aabbs(
 
 
 @wp.kernel
-def prepare_kamino_geom_data_kernel(
+def _kamino_prepare_geom_data_kernel(
     geom_pose: wp.array(dtype=transformf),
     geom_sid: wp.array(dtype=int32),
     geom_params: wp.array(dtype=vec4f),
@@ -386,11 +364,11 @@ def prepare_kamino_geom_data_kernel(
 
 
 ###
-# Unified Collision Pipeline Class
+# Interfaces
 ###
 
 
-class KaminoCollisionPipelineUnified:
+class CollisionPipelineUnifiedKamino:
     """
     Unified collision pipeline for Kamino using Newton's broad phase and narrow phase.
 
@@ -405,7 +383,7 @@ class KaminoCollisionPipelineUnified:
     def __init__(
         self,
         builder: ModelBuilder,
-        broad_phase_mode: KaminoBroadPhaseMode = KaminoBroadPhaseMode.EXPLICIT,
+        broadphase: BroadPhaseMode = BroadPhaseMode.EXPLICIT,
         max_contacts_per_pair: int = 10,
         default_contact_margin: float = 1e-3,
         default_friction: float = 0.7,
@@ -413,7 +391,7 @@ class KaminoCollisionPipelineUnified:
         device: Devicelike = None,
     ):
         """
-        Initialize KaminoCollisionPipelineUnified.
+        Initialize CollisionPipelineUnifiedKamino.
 
         Args:
             builder: Kamino ModelBuilder (used to extract collision pair information)
@@ -424,8 +402,8 @@ class KaminoCollisionPipelineUnified:
             default_restitution: Default restitution coefficient
             device: Device to allocate buffers on
         """
-        self.device = device
-        self.broad_phase_mode = broad_phase_mode
+        self._device = device
+        self._broadphase = broadphase
         self.default_contact_margin = default_contact_margin
         self.default_friction = default_friction
         self.default_restitution = default_restitution
@@ -441,8 +419,8 @@ class KaminoCollisionPipelineUnified:
         self.max_contacts = self.shape_pairs_max * max_contacts_per_pair
 
         # Build shape pairs for EXPLICIT mode
-        if broad_phase_mode == KaminoBroadPhaseMode.EXPLICIT:
-            world_nxn_num_geom_pairs, model_nxn_geom_pair, _, _ = make_collision_pairs(builder)
+        if broadphase == BroadPhaseMode.EXPLICIT:
+            _, model_nxn_geom_pair, _, _ = make_collision_pairs(builder)
             self.shape_pairs_filtered = wp.array(model_nxn_geom_pair, dtype=vec2i, device=device)
             self.shape_pairs_max = len(model_nxn_geom_pair)
             self.max_contacts = self.shape_pairs_max * max_contacts_per_pair
@@ -484,11 +462,11 @@ class KaminoCollisionPipelineUnified:
             self.material_restitution = wp.full(1, default_restitution, dtype=float32, device=device)
 
         # Initialize broad phase
-        if self.broad_phase_mode == KaminoBroadPhaseMode.NXN:
+        if self._broadphase == BroadPhaseMode.NXN:
             self.nxn_broadphase = BroadPhaseAllPairs(self.geom_wid, shape_flags=None, device=device)
             self.sap_broadphase = None
             self.explicit_broadphase = None
-        elif self.broad_phase_mode == KaminoBroadPhaseMode.SAP:
+        elif self._broadphase == BroadPhaseMode.SAP:
             self.sap_broadphase = BroadPhaseSAP(self.geom_wid, shape_flags=None, device=device)
             self.nxn_broadphase = None
             self.explicit_broadphase = None
@@ -504,8 +482,21 @@ class KaminoCollisionPipelineUnified:
             device=device,
             shape_aabb_lower=self.shape_aabb_lower,
             shape_aabb_upper=self.shape_aabb_upper,
-            contact_writer_warp_func=write_contact_kamino_unified,
+            contact_writer_warp_func=kamino_write_contact_unified,
         )
+
+    ###
+    # Properties
+    ###
+
+    @property
+    def device(self) -> Devicelike:
+        """Returns the Warp device the pipeline operates on."""
+        return self._device
+
+    ###
+    # Operations
+    ###
 
     def collide(self, model: Model, state: ModelData, contacts: Contacts):
         """
@@ -527,7 +518,7 @@ class KaminoCollisionPipelineUnified:
 
         # Compute AABBs for all geometries
         wp.launch(
-            kernel=compute_kamino_shape_aabbs,
+            kernel=_kamino_compute_shape_aabbs,
             dim=self.num_geoms,
             inputs=[
                 state.cgeoms.pose,
@@ -541,11 +532,11 @@ class KaminoCollisionPipelineUnified:
                 self.shape_aabb_lower,
                 self.shape_aabb_upper,
             ],
-            device=self.device,
+            device=self._device,
         )
 
         # Run broad phase
-        if self.broad_phase_mode == KaminoBroadPhaseMode.NXN:
+        if self._broadphase == BroadPhaseMode.NXN:
             self.nxn_broadphase.launch(
                 self.shape_aabb_lower,
                 self.shape_aabb_upper,
@@ -555,9 +546,9 @@ class KaminoCollisionPipelineUnified:
                 self.num_geoms,
                 self.broad_phase_shape_pairs,
                 self.broad_phase_pair_count,
-                device=self.device,
+                device=self._device,
             )
-        elif self.broad_phase_mode == KaminoBroadPhaseMode.SAP:
+        elif self._broadphase == BroadPhaseMode.SAP:
             self.sap_broadphase.launch(
                 self.shape_aabb_lower,
                 self.shape_aabb_upper,
@@ -567,7 +558,7 @@ class KaminoCollisionPipelineUnified:
                 self.num_geoms,
                 self.broad_phase_shape_pairs,
                 self.broad_phase_pair_count,
-                device=self.device,
+                device=self._device,
             )
         else:  # EXPLICIT
             self.explicit_broadphase.launch(
@@ -578,12 +569,12 @@ class KaminoCollisionPipelineUnified:
                 len(self.shape_pairs_filtered),
                 self.broad_phase_shape_pairs,
                 self.broad_phase_pair_count,
-                device=self.device,
+                device=self._device,
             )
 
         # Prepare geometry data for narrow phase
         wp.launch(
-            kernel=prepare_kamino_geom_data_kernel,
+            kernel=_kamino_prepare_geom_data_kernel,
             dim=self.num_geoms,
             inputs=[
                 state.cgeoms.pose,
@@ -595,11 +586,12 @@ class KaminoCollisionPipelineUnified:
                 self.geom_transform,
                 self.geom_type,
             ],
-            device=self.device,
+            device=self._device,
         )
 
+        # TODO: Why does this need to happen in every collide call?
         # Create writer data struct
-        writer_data = KaminoContactWriterData()
+        writer_data = ContactWriterDataKamino()
         writer_data.contact_max = contacts.num_model_max_contacts
         writer_data.world_max_contacts = contacts.world_max_contacts
         writer_data.geom_bid = model.cgeoms.bid
@@ -629,23 +621,23 @@ class KaminoCollisionPipelineUnified:
             shape_contact_margin=self.geom_contact_margin,
             shape_collision_radius=self.geom_collision_radius,
             writer_data=writer_data,
-            device=self.device,
+            device=self._device,
         )
 
+    # TODO: Rework this and remove copy if possible
     def update_materials(self, model: Model):
         """
         Update material arrays from the model's material pairs.
 
         Args:
-            model: Kamino Model with material pairs
+            model (Model): The Kamino model containing material-pair properties.
         """
         if model.mpairs is not None and model.mpairs.num_pairs > 0:
             # Reallocate material arrays if needed
             if self.material_friction.shape[0] != model.mpairs.num_pairs:
-                self.material_friction = wp.zeros(model.mpairs.num_pairs, dtype=float32, device=self.device)
-                self.material_restitution = wp.zeros(model.mpairs.num_pairs, dtype=float32, device=self.device)
+                self.material_friction = wp.zeros(model.mpairs.num_pairs, dtype=float32, device=self._device)
+                self.material_restitution = wp.zeros(model.mpairs.num_pairs, dtype=float32, device=self._device)
 
             # Copy material properties
             wp.copy(self.material_friction, model.mpairs.dynamic_friction)
             wp.copy(self.material_restitution, model.mpairs.restitution)
-

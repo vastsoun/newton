@@ -720,16 +720,16 @@ class JointDescriptor(Descriptor):
     """Index offset of this joint's DoFs among all joint DoFs in the world it belongs to."""
 
     passive_coords_offset: int = -1
-    """Index offset of this joint's passive coordinates among all joint coordinates in the world it belongs to."""
+    """Index offset of this joint's passive coordinates among all passive joint coordinates in the world it belongs to."""
 
     passive_dofs_offset: int = -1
-    """Index offset of this joint's passive DoFs among all joint DoFs in the world it belongs to."""
+    """Index offset of this joint's passive DoFs among all passive joint DoFs in the world it belongs to."""
 
     actuated_coords_offset: int = -1
-    """Index offset of this joint's actuated coordinates among all joint coordinates in the world it belongs to."""
+    """Index offset of this joint's actuated coordinates among all actuated joint coordinates in the world it belongs to."""
 
     actuated_dofs_offset: int = -1
-    """Index offset of this joint's actuated DoFs among all joint DoFs in the world it belongs to."""
+    """Index offset of this joint's actuated DoFs among all actuated joint DoFs in the world it belongs to."""
 
     cts_offset: int = -1
     """Index offset of this joint's constraints among all joint constraints in the world it belongs to."""

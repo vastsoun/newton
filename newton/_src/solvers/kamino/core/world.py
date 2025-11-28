@@ -314,9 +314,10 @@ class WorldDescriptor(Descriptor):
     # Base Properties
     ###
 
-    base_body_name: str = ""
+    base_body_idx: int | None = None
     """
-    Name of the `base body`, i.e. the central node of the base-joint connectivity graph.\n
+    Index of the `base body` w.r.t. the world, i.e., index of the central node of the
+    body-joint connectivity graph.\n
 
     The `base body` is connected to the world through a `base joint`, which, if not specified
     is considered to be an implicit 6D free joint, indicating a floating-base system.
@@ -329,30 +330,31 @@ class WorldDescriptor(Descriptor):
     pose in the world, and can thus be assigned arbitrarily to any body in the system.
     """
 
-    base_body_idx: int = -1
-    """
-    Index of the base body w.r.t. the world, i.e. index of
-    the central node of the base-joint connectivity graph.\n
-    See `base_body_name` for more details.
-    """
-
-    base_joint_name: str = ""
-    """
-    Name of the base joint, i.e. the joint connecting the base body to the world.\n
-    See `base_body_name` for more details.
-    """
-
-    base_joint_idx: int = -1
+    base_joint_idx: int | None = None
     """
     Index of the base joint w.r.t. the world, i.e. the joint connecting the base body to the world.\n
-    See `base_joint_name` for more details.
+    See `base_body_idx` for more details.
     """
 
-    has_base_body: bool = False
-    """Whether the world has an assigned base body."""
+    @property
+    def has_base_body(self):
+        """Whether the world has an assigned base body."""
+        return self.base_body_idx is not None
 
-    has_base_joint: bool = False
-    """Whether the world has an assigned base joint."""
+    @property
+    def base_body_name(self):
+        """Name of the base body if set, otherwise empty string"""
+        return self.body_names[self.base_body_idx] if self.base_body_idx is not None else ""
+
+    @property
+    def has_base_joint(self):
+        """Whether the world has an assigned base joint."""
+        return self.base_joint_idx is not None
+
+    @property
+    def base_joint_name(self):
+        """Name of the base joint if set, otherwise empty string"""
+        return self.joint_names[self.base_joint_idx] if self.base_joint_idx is not None else ""
 
     has_passive_dofs: bool = False
     """Whether the world has passive DoFs."""
@@ -578,56 +580,40 @@ class WorldDescriptor(Descriptor):
         self.material_names[index] = material.name
         self.material_uids[index] = material.uid
 
-    def set_base_body(self, body: RigidBodyDescriptor):
-        if self.has_base_body:
+    def set_base_body(self, body_idx: int):
+        # Ensure no different base body was already set
+        if self.has_base_body and self.base_body_idx != body_idx:
             raise ValueError(
                 f"World '{self.name}' ({self.wid}) already has a base body "
-                f"assigned as '{self.base_body_name}' ({self.base_body_idx})."
+                f"assigned as '{self.body_names[self.base_body_idx]}' ({self.base_body_idx})."
             )
 
-        # Ensure name exists
-        if body.name not in self.body_names:
-            raise ValueError(f"Base body name '{body.name}' not found in body names.")
-        # Ensure UID exists
-        if body.uid not in self.body_uids:
-            raise ValueError(f"Base body UID '{body.uid}' not found in body UIDs.")
-
         # Ensure index is valid
-        if body.bid < 0 or body.bid >= self.num_bodies:
-            raise ValueError(f"Base body index '{body.bid}' out of range. Must be between 0 and {self.num_bodies - 1}.")
+        if body_idx < 0 or body_idx >= self.num_bodies:
+            raise ValueError(f"Base body index '{body_idx}' out of range. Must be between 0 and {self.num_bodies - 1}.")
 
-        # Set base body info
-        self.base_body_name = body.name
-        self.base_body_idx = body.bid
-        self.has_base_body = True
+        # Set base body index
+        self.base_body_idx = body_idx
 
-    def set_base_joint(self, joint: JointDescriptor):
-        if self.has_base_joint:
+    def set_base_joint(self, joint_idx: int):
+        # Ensure no different base joint was already set
+        if self.has_base_joint and self.base_joint_idx != joint_idx:
             raise ValueError(
                 f"World '{self.name}' ({self.wid}) already has a base joint "
-                f"assigned as '{self.base_joint_name}' ({self.base_joint_idx})."
+                f"assigned as '{self.joint_names[self.base_joint_idx]}' ({self.base_joint_idx})."
             )
 
-        # Ensure name exists
-        if joint.name not in self.joint_names:
-            raise ValueError(f"Base joint name '{joint.name}' not found in joint names.")
-        # Ensure UID exists
-        if joint.uid not in self.joint_uids:
-            raise ValueError(f"Base joint UID '{joint.uid}' not found in joint UIDs.")
-
         # Ensure index is valid
-        if joint.jid < 0 or joint.jid >= self.num_joints:
+        if joint_idx < 0 or joint_idx >= self.num_joints:
             raise ValueError(
-                f"Base joint index '{joint.jid}' out of range. Must be between 0 and {self.num_joints - 1}."
+                f"Base joint index '{joint_idx}' out of range. Must be between 0 and {self.num_joints - 1}."
             )
 
         # Ensure joint is unary
-        if not joint.is_unary:
-            raise ValueError(f"Joint '{joint.name}' is not a unary joint.")
-        if joint.name not in self.unary_joint_names:
-            raise ValueError(f"Joint '{joint.name}' not found in the registry of unary joints.")
+        if self.joint_names[joint_idx] not in self.unary_joint_names:
+            raise ValueError(
+                f"Base joint name '{self.joint_names[joint_idx]}' not found in the registry of unary joints."
+            )
 
-        # Set base joint info
-        self.base_joint_name = joint.name
-        self.base_joint_idx = joint.jid
-        self.has_base_joint = True
+        # Set base joint index
+        self.base_joint_idx = joint_idx

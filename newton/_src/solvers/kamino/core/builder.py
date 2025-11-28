@@ -874,69 +874,59 @@ class ModelBuilder:
         # Register the material pair in the material manager
         self._materials.configure_pair(first=first_id, second=second_id, material_pair=material_pair)
 
-    def set_base_body(self, body_name: str | None, body_index: int | None, world_index: int = 0):
+    def set_base_body(self, body_key: int | str, world_index: int = 0):
         """
         Set the base body for a specific world specified either by name or by index.
 
         Args:
-            body_name (str | None): The name of the body to be set as the base body.
-            body_index (int | None): The index of the body to be set as the base body.
+            body_key (int | str): Identifier of the body to be set as the base body.
+                Can be either the body's index (within the world) or its name.
             world_index (int): The index of the world for which to set the base body.\n
                 Defaults to the first world with index `0`.
         """
         # Check if the world index is valid
         world = self._check_world_index(world_index)
 
-        # Check that at least one of body_name or body_index is provided
-        if body_name is None and body_index is None:
-            raise ValueError("Either `body_name` (str) or `body_index` (int) must be provided to set the base body.")
+        # Find the body and set it as base in the world descriptor
+        if isinstance(body_key, int):
+            world.set_base_body(body_key)
+            return
+        elif isinstance(body_key, str):
+            for body in self.bodies:
+                if body.wid == world_index and body.name == body_key:
+                    world.set_base_body(body.bid)
+                    return
+        raise ValueError(f"Failed to identify the base body in world `{world_index} given key {body_key}`.")
 
-        # Retrieve the body descriptor of the base body
-        base_body_descriptor = None
-        for body in self.bodies:
-            if body.wid == world_index and (body.bid == body_index or body.name == body_name):
-                base_body_descriptor = body
-                break
-        if base_body_descriptor is None:
-            raise ValueError(f"Failed to identify the base body in world `{world_index}`.")
-
-        # Set the base body in the world descriptor
-        world.set_base_body(base_body_descriptor)
-
-    def set_base_joint(self, joint_name: str | None, joint_index: int | None, world_index: int = 0):
+    def set_base_joint(self, joint_key: int | str, world_index: int = 0):
         """
         Set the base joint for a specific world specified either by name or by index.
 
         Args:
-            joint_name (str | None): The name of the joint to be set as the base joint.
-            joint_index (int | None): The index of the joint to be set as the base joint.
+            joint_key (int | str): Identifier of the joint to be set as the base joint.
+                Can be either the joint's index (within the world) or its name.
             world_index (int): The index of the world for which to set the base joint.\n
                 Defaults to the first world with index `0`.
         """
         # Check if the world index is valid
         world = self._check_world_index(world_index)
 
-        # Check that at least one of joint_name or joint_index is provided
-        if joint_name is None and joint_index is None:
-            raise ValueError("Either `joint_name` (str) or `joint_index` (int) must be provided to set the base joint.")
-
-        # Retrieve the joint descriptor of the base joint
-        base_joint_descriptor = None
-        for joint in self.joints:
-            if joint.wid == world_index and (joint.jid == joint_index or joint.name == joint_name):
-                base_joint_descriptor = joint
-                break
-        if base_joint_descriptor is None:
-            raise ValueError(f"Failed to identify the base joint in world `{world_index}`.")
-
-        # Set the base joint in the world descriptor
-        world.set_base_joint(base_joint_descriptor)
+        # Find the joint and set it as base in the world descriptor
+        if isinstance(joint_key, int):
+            world.set_base_joint(joint_key)
+            return
+        elif isinstance(joint_key, str):
+            for joint in self.joints:
+                if joint.wid == world_index and joint.name == joint_key:
+                    world.set_base_joint(joint.jid)
+                    return
+        raise ValueError(f"Failed to identify the base joint in world `{world_index} given key {joint_key}`.")
 
     ###
     # Model Compilation
     ###
 
-    def finalize(self, device: Devicelike = None, requires_grad: bool = False) -> Model:
+    def finalize(self, device: Devicelike = None, requires_grad: bool = False, base_auto: bool = True) -> Model:
         """
         Constructs a Model object from the current ModelBuilder.
 
@@ -948,6 +938,8 @@ class ModelBuilder:
                 If None, the default/preferred device will determined by Warp.
             requires_grad (bool): Whether the model data should support gradients.\n
                 Defaults to False.
+            base_auto (bool): Whether to automatically select a base body,
+                and if possible, a base joint, if neither was set.
 
         Returns:
             Model: The constructed Model object containing the time-invariant simulation data.
@@ -971,16 +963,26 @@ class ModelBuilder:
         # via USD, and then ad-hoc modify the model by adding bodies, joints, geoms, etc.
         self._compute_world_offsets()
 
-        # Check that each world has a base body and joint set, and if not:
-        # - set the base body as the first body
-        # - set the base joint only if the base body has a unary joint connecting it to the world
+        # Validate base body/joint data for each world, and fill in missing data if possible
         for w, world in enumerate(self._worlds):
-            if not world.has_base_body:
-                world.set_base_body(self._bodies[world.bodies_idx_offset])
-            if not world.has_base_joint:
-                for joint in self._joints[world.joints_idx_offset : world.joints_idx_offset + world.num_joints]:
+            if world.has_base_joint:
+                joint_idx = world.joints_idx_offset + world.base_joint_idx
+                follower_idx = self._joints[joint_idx].bid_F  # Note: index among world bodies
+                if world.has_base_body:  # Ensure base joint & body are compatible if both were set
+                    if world.base_body_idx != follower_idx:
+                        raise ValueError(
+                            f"ModelBuilder: Inconsistent base body and base joint for world {world.name} ({w})"
+                        )
+                else:  # Set base body to be the follower of the base joint
+                    world.set_base_body(follower_idx)
+            elif not world.has_base_body and base_auto:
+                world.set_base_body(0)  # Set the base body as the first body
+                for jt_idx, joint in enumerate(
+                    self._joints[world.joints_idx_offset : world.joints_idx_offset + world.num_joints]
+                ):
                     if joint.wid == w and joint.is_unary and joint.is_connected_to_body(world.base_body_idx):
-                        world.set_base_joint(joint)
+                        # If we find a unary joint connecting the base body to the world, we set this as the base joint
+                        world.set_base_joint(jt_idx)
                         break
 
         ###

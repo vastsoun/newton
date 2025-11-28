@@ -25,6 +25,7 @@ import numpy as np
 import warp as wp
 from warp.context import Devicelike
 
+from ..utils import logger as msg
 from .bodies import RigidBodiesModel, RigidBodyDescriptor
 from .geometry import (
     CollisionGeometriesModel,
@@ -1434,6 +1435,109 @@ class ModelBuilder:
 
         # Return the constructed model data container
         return model
+
+    def make_collision_candidate_pairs(self, allow_neighbors: bool = False):
+        """
+        Construct the collision pair candidates for the given ModelBuilder instance.
+
+        Filtering steps:
+            1. filter out self-collisions
+            2. filter out same-body collisions
+            3. filter out collision between different worlds
+            4. filter out collisions according to the collision groupings
+            5. filter out neighbor collisions for fixed joints
+            6. (optional) filter out neighbor collisions for joints w/ DoF
+
+        Args:
+            builder (ModelBuilder): The model builder instance containing the worlds and geometries.
+            allow_neighbors (bool, optional): If True, allows neighbor collisions for joints with DoF.
+        """
+        # Retrieve the number of worlds
+        nw = self.num_worlds
+
+        # Extract the per-world info from the builder
+        ncg = [self._worlds[i].num_collision_geoms for i in range(nw)]
+
+        # Initialize the lists to store the collision candidate pairs and their properties of each world
+        world_nxn_num_geom_pairs = []
+        model_nxn_geom_pair = []
+        model_nxn_pairid = []
+        model_nxn_wid = []
+
+        # Iterate over each world and construct the collision geometry pairs info
+        ncg_offset = 0
+        for wid in range(nw):
+            # Initialize the lists to store the collision candidate pairs and their properties
+            world_geom_pair = []
+            world_pairid = []
+            world_wid = []
+
+            # Iterate over each gid pair and filtering out pairs not viable for collision detection
+            for gid1_, gid2_ in zip(
+                *np.triu_indices(ncg[wid], k=1), strict=False
+            ):  # k=1 skip diagonal to exclude self-collisions
+                # Convert the per-world local gids to model gid integers
+                gid1 = int(gid1_) + ncg_offset
+                gid2 = int(gid2_) + ncg_offset
+
+                # Get references to the geometries
+                geom1, geom2 = self.collision_geoms[gid1], self.collision_geoms[gid2]
+
+                # Get body indices of each geom
+                bid1, bid2 = geom1.bid, geom2.bid
+
+                # Get world indices of each geom
+                wid1, wid2 = geom1.wid, geom2.wid
+
+                # 2. Check for same-body collision
+                is_self_collision = bid1 == bid2
+
+                # 3. Check for different-world collision
+                in_same_world = wid1 == wid2
+
+                # 4. Check for collision according to the collision groupings
+                are_collidable = ((geom1.group & geom2.collides) != 0) and ((geom2.group & geom1.collides) != 0)
+
+                # 5. Check for neighbor collision for fixed and DoF joints
+                are_fixed_neighbors = False
+                are_dof_neighbors = False
+                for joint in self.joints:
+                    if (joint.bid_B == bid1 and joint.bid_F == bid2) or (joint.bid_B == bid2 and joint.bid_F == bid1):
+                        if joint.dof_type == JointDoFType.FIXED:
+                            are_fixed_neighbors = True
+                        elif joint.bid_B < 0:
+                            pass
+                        else:
+                            are_dof_neighbors = True
+                        break
+
+                # Assign pairid based on filtering results
+                if (not is_self_collision) and (in_same_world) and (are_collidable) and (not are_fixed_neighbors):
+                    pairid = -1
+                else:
+                    continue  # Skip this pair if it does not pass the filtering
+
+                # Apply final check for DoF neighbor collisions
+                if (not allow_neighbors) and are_dof_neighbors:
+                    continue  # Skip this pair if it does not pass the filtering
+
+                # Append the geometry pair and pairid to the lists
+                world_geom_pair.append((gid1, gid2))
+                world_pairid.append(pairid)
+                world_wid.append(wid)
+                msg.debug(f"Adding collision pair: (gid1, gid2): {(gid1, gid2)}")
+
+            # Append the world collision pairs to the model lists
+            world_nxn_num_geom_pairs.append(len(world_geom_pair))
+            model_nxn_geom_pair.extend(world_geom_pair)
+            model_nxn_pairid.extend(world_pairid)
+            model_nxn_wid.extend(world_wid)
+
+            # Update the geometry index offset for the next world
+            ncg_offset += ncg[wid]
+
+        # Return the model total collision pair candidates and their properties
+        return world_nxn_num_geom_pairs, model_nxn_geom_pair, model_nxn_pairid, model_nxn_wid
 
     ###
     # Internal Functions

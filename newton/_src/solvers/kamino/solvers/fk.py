@@ -1616,7 +1616,7 @@ class ForwardKinematicsSolver:
                 ),
             )  # Target velocity per constraint
             self.bodies_q_dot = wp.array(
-                ptr=self.step.ptr, dtype=wp.float32, shape=(self.num_worlds, self.num_states_max)
+                ptr=self.step.ptr, dtype=wp.float32, shape=(self.num_worlds, self.num_states_max), copy=False
             )  # Time derivative of body poses (alias of self.step for data re-use)
             # Note: we also re-use self.jacobian, self.lhs and self.rhs for the velocity solver
 
@@ -1700,10 +1700,16 @@ class ForwardKinematicsSolver:
                 self.model.info.num_bodies,
                 self.first_body_id,
                 wp.array(
-                    ptr=self.model.bodies.q_i_0.ptr, dtype=wp.float32, shape=(self.num_states_tot,), device=self.device
+                    ptr=self.model.bodies.q_i_0.ptr,
+                    dtype=wp.float32,
+                    shape=(self.num_states_tot,),
+                    device=self.device,
+                    copy=False,
                 ),
                 world_mask,
-                wp.array(ptr=bodies_q.ptr, dtype=wp.float32, shape=(self.num_states_tot,), device=self.device),
+                wp.array(
+                    ptr=bodies_q.ptr, dtype=wp.float32, shape=(self.num_states_tot,), device=self.device, copy=False
+                ),
             ],
             device=self.device,
         )
@@ -1722,7 +1728,9 @@ class ForwardKinematicsSolver:
             _eval_fk_actuated_dofs_or_coords,
             dim=(self.num_actuated_coords,),
             inputs=[
-                wp.array(ptr=base_q.ptr, dtype=wp.float32, shape=(7 * self.num_worlds,), device=self.device),
+                wp.array(
+                    ptr=base_q.ptr, dtype=wp.float32, shape=(7 * self.num_worlds,), device=self.device, copy=False
+                ),
                 actuators_q,
                 self.actuated_coords_map,
                 self.actuators_q,
@@ -1889,12 +1897,18 @@ class ForwardKinematicsSolver:
             inputs=[
                 self.model.info.num_bodies,
                 self.first_body_id,
-                wp.array(ptr=bodies_q.ptr, dtype=wp.float32, shape=(self.num_states_tot,), device=self.device),
+                wp.array(
+                    ptr=bodies_q.ptr, dtype=wp.float32, shape=(self.num_states_tot,), device=self.device, copy=False
+                ),
                 self.alpha,
                 self.step,
                 self.line_search_mask,
                 wp.array(
-                    ptr=self.bodies_q_alpha.ptr, dtype=wp.float32, shape=(self.num_states_tot,), device=self.device
+                    ptr=self.bodies_q_alpha.ptr,
+                    dtype=wp.float32,
+                    shape=(self.num_states_tot,),
+                    device=self.device,
+                    copy=False,
                 ),
             ],
             device=self.device,
@@ -2026,7 +2040,9 @@ class ForwardKinematicsSolver:
             _eval_fk_actuated_dofs_or_coords,
             dim=(self.num_actuated_dofs,),
             inputs=[
-                wp.array(ptr=base_u.ptr, dtype=wp.float32, shape=(6 * self.num_worlds,), device=self.device),
+                wp.array(
+                    ptr=base_u.ptr, dtype=wp.float32, shape=(6 * self.num_worlds,), device=self.device, copy=False
+                ),
                 actuators_u,
                 self.actuated_dofs_map,
                 self.actuators_u,

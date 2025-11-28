@@ -36,15 +36,12 @@ from ....sim.collide_unified import BroadPhaseMode
 
 # Kamino
 from ..core.builder import ModelBuilder
-from ..core.geometry import update_collision_geometries_state
+from ..core.geometry import update_geometries_state
 from ..core.model import Model, ModelData
 from ..core.shapes import ShapeType
 from ..core.types import float32, int32, mat33f, transformf, vec2f, vec2i, vec4f
-from ..geometry.collisions import make_collision_pairs
-from ..geometry.contacts import Contacts
-from ..geometry.math import make_contact_frame_znorm
+from ..geometry.contacts import Contacts, make_contact_frame_znorm
 
-###
 # Module configs
 ###
 
@@ -193,10 +190,10 @@ def kamino_write_contact_unified(
 
 @wp.kernel
 def _kamino_compute_shape_aabbs(
-    geom_pose: wp.array(dtype=transformf),
     geom_sid: wp.array(dtype=int32),
     geom_params: wp.array(dtype=vec4f),
     geom_ptr: wp.array(dtype=wp.uint64),
+    geom_pose: wp.array(dtype=transformf),
     geom_contact_margin: wp.array(dtype=float32),
     geom_collision_radius: wp.array(dtype=float32),
     # outputs
@@ -284,9 +281,9 @@ def _kamino_compute_shape_aabbs(
 
 @wp.kernel
 def _kamino_prepare_geom_data_kernel(
-    geom_pose: wp.array(dtype=transformf),
     geom_sid: wp.array(dtype=int32),
     geom_params: wp.array(dtype=vec4f),
+    geom_pose: wp.array(dtype=transformf),
     # Outputs
     geom_data: wp.array(dtype=wp.vec4),  # scale xyz, thickness w
     geom_transform: wp.array(dtype=wp.transform),  # world space transform
@@ -420,7 +417,7 @@ class CollisionPipelineUnifiedKamino:
 
         # Build shape pairs for EXPLICIT mode
         if broadphase == BroadPhaseMode.EXPLICIT:
-            _, model_nxn_geom_pair, _, _ = make_collision_pairs(builder)
+            _, model_nxn_geom_pair, _, _ = builder.make_collision_candidate_pairs()
             self.shape_pairs_filtered = wp.array(model_nxn_geom_pair, dtype=vec2i, device=device)
             self.shape_pairs_max = len(model_nxn_geom_pair)
             self.max_contacts = self.shape_pairs_max * max_contacts_per_pair
@@ -498,7 +495,7 @@ class CollisionPipelineUnifiedKamino:
     # Operations
     ###
 
-    def collide(self, model: Model, state: ModelData, contacts: Contacts):
+    def collide(self, model: Model, data: ModelData, contacts: Contacts):
         """
         Run the unified collision pipeline.
 
@@ -508,7 +505,7 @@ class CollisionPipelineUnifiedKamino:
             contacts: Output contacts container (will be cleared and populated)
         """
         # Update geometry poses from body states
-        update_collision_geometries_state(state.bodies.q_i, model.cgeoms, state.cgeoms)
+        update_geometries_state(data.bodies.q_i, model.cgeoms, data.cgeoms)
 
         # Clear contacts
         contacts.clear()
@@ -521,10 +518,10 @@ class CollisionPipelineUnifiedKamino:
             kernel=_kamino_compute_shape_aabbs,
             dim=self.num_geoms,
             inputs=[
-                state.cgeoms.pose,
                 model.cgeoms.sid,
                 model.cgeoms.params,
                 model.cgeoms.ptr,
+                data.cgeoms.pose,
                 self.geom_contact_margin,
                 self.geom_collision_radius,
             ],
@@ -577,9 +574,9 @@ class CollisionPipelineUnifiedKamino:
             kernel=_kamino_prepare_geom_data_kernel,
             dim=self.num_geoms,
             inputs=[
-                state.cgeoms.pose,
                 model.cgeoms.sid,
                 model.cgeoms.params,
+                data.cgeoms.pose,
             ],
             outputs=[
                 self.geom_data,

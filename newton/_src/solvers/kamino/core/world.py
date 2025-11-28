@@ -342,9 +342,19 @@ class WorldDescriptor(Descriptor):
         return self.base_body_idx is not None
 
     @property
+    def base_body_name(self):
+        """Name of the base body if set, otherwise empty string"""
+        return self.body_names[self.base_body_idx] if self.base_body_idx is not None else ""
+
+    @property
     def has_base_joint(self):
         """Whether the world has an assigned base joint."""
         return self.base_joint_idx is not None
+
+    @property
+    def base_joint_name(self):
+        """Name of the base joint if set, otherwise empty string"""
+        return self.joint_names[self.base_joint_idx] if self.base_joint_idx is not None else ""
 
     has_passive_dofs: bool = False
     """Whether the world has passive DoFs."""

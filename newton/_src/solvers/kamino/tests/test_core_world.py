@@ -555,15 +555,12 @@ class TestWorldDescriptor(unittest.TestCase):
         self.assertEqual(body_2.wid, world.wid)
 
         # Set body_0 as the base body
-        world.set_base_body(body_2)
-        self.assertEqual(world.base_body_name, body_2.name)
+        world.set_base_body(2)
         self.assertEqual(world.base_body_idx, body_2.bid)
         self.assertTrue(world.has_base_body)
 
         # Attempt to set an invalid body as the base body
-        body_3 = RigidBodyDescriptor(name="body_3", m_i=0.125)
-        msg.info(f"body_3: {body_3}")
-        self.assertRaises(ValueError, world.set_base_body, body_3)
+        self.assertRaises(ValueError, world.set_base_body, 3)
 
     def test_05_set_base_joint(self):
         world = WorldDescriptor(name="test_world", wid=42)
@@ -611,20 +608,12 @@ class TestWorldDescriptor(unittest.TestCase):
         self.assertEqual(joint_1.wid, world.wid)
 
         # Set joint_1 as the base joint
-        world.set_base_joint(joint_1)
-        self.assertEqual(world.base_joint_name, joint_1.name)
+        world.set_base_joint(1)
         self.assertEqual(world.base_joint_idx, joint_1.jid)
         self.assertTrue(world.has_base_joint)
 
         # Attempt to set an invalid joint as the base joint
-        joint_2 = JointDescriptor(
-            name="body_2_to_0",
-            dof_type=JointDoFType.REVOLUTE,
-            act_type=JointActuationType.PASSIVE,
-            bid_F=body_0.bid,
-        )
-        msg.info(f"joint_2: {joint_2}")
-        self.assertRaises(ValueError, world.set_base_joint, joint_2)
+        self.assertRaises(ValueError, world.set_base_joint, 2)
 
 
 ###

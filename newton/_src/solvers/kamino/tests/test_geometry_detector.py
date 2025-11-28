@@ -19,7 +19,6 @@ KAMINO: UNIT TESTS
 
 import unittest
 
-import numpy as np
 import warp as wp
 
 # Modules to be tested
@@ -32,6 +31,9 @@ from newton._src.solvers.kamino.geometry.primitives import primitive_narrowphase
 from newton._src.solvers.kamino.models.builders import build_boxes_nunchaku
 from newton._src.solvers.kamino.models.utils import make_homogeneous_builder
 
+# Test utilities
+from newton._src.solvers.kamino.tests.utils.setup import setup_tests, test_settings
+
 ###
 # Tests
 ###
@@ -39,8 +41,8 @@ from newton._src.solvers.kamino.models.utils import make_homogeneous_builder
 
 class TestGeometryCollisionDetector(unittest.TestCase):
     def setUp(self):
-        self.verbose = False  # Set to True for detailed output
-        self.default_device = wp.get_device()
+        self.verbose = test_settings.verbose  # Set to True for detailed output
+        self.default_device = test_settings.device
 
         # Set the common build function and geometry parameters
         self.build_func = build_boxes_nunchaku
@@ -213,14 +215,8 @@ class TestGeometryCollisionDetector(unittest.TestCase):
 ###
 
 if __name__ == "__main__":
-    # Global numpy configurations
-    np.set_printoptions(linewidth=500, precision=10, suppress=True)  # Suppress scientific notation
-
-    # Global warp configurations
-    wp.config.enable_backward = False
-    wp.config.verbose = False
-    wp.clear_kernel_cache()
-    wp.clear_lto_cache()
+    # Test setup
+    setup_tests()
 
     # Run all tests
     unittest.main(verbosity=2)

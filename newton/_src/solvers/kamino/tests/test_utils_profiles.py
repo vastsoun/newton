@@ -21,6 +21,7 @@ from pathlib import Path
 import numpy as np
 
 import newton._src.solvers.kamino.utils.profiles as profiles
+from newton._src.solvers.kamino.tests.utils.setup import setup_tests, test_settings
 from newton._src.solvers.kamino.utils import logger as msg
 
 ###
@@ -42,7 +43,7 @@ def _load_csv(path: Path) -> np.ndarray:
 
 class TestUtilsLinAlgProfiles(unittest.TestCase):
     def setUp(self):
-        self.verbose = False  # Set to True for verbose output
+        self.verbose = test_settings.verbose  # Set to True for verbose output
         self.plots = False  # Set to True to generate plots
 
         # Set debug-level logging to print verbose test output to console
@@ -135,8 +136,8 @@ class TestUtilsLinAlgProfiles(unittest.TestCase):
 ###
 
 if __name__ == "__main__":
-    # Global numpy configurations
-    np.set_printoptions(linewidth=2000, precision=10, threshold=10000, suppress=True)  # Suppress scientific notation
+    # Test setup
+    setup_tests()
 
     # Run all tests
     unittest.main(verbosity=2)

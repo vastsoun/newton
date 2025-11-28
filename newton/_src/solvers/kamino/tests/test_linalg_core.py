@@ -25,6 +25,7 @@ from newton._src.solvers.kamino.linalg.core import (
     DenseSquareMultiLinearInfo,
     make_dtype_tolerance,
 )
+from newton._src.solvers.kamino.tests.utils.setup import setup_tests, test_settings
 from newton._src.solvers.kamino.utils import logger as msg
 
 ###
@@ -36,8 +37,8 @@ class TestLinAlgCoreMakeTolerance(unittest.TestCase):
     def setUp(self):
         # Configs
         self.seed = 42
-        self.default_device = wp.get_device()
-        self.verbose = False  # Set to True for verbose output
+        self.default_device = test_settings.device
+        self.verbose = test_settings.verbose  # Set to True for verbose output
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
@@ -98,8 +99,8 @@ class TestLinAlgCoreDenseMultiLinearRectangularInfo(unittest.TestCase):
     def setUp(self):
         # Configs
         self.seed = 42
-        self.default_device = wp.get_device()
-        self.verbose = False  # Set to True for verbose output
+        self.default_device = test_settings.device
+        self.verbose = test_settings.verbose  # Set to True for verbose output
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
@@ -212,8 +213,8 @@ class TestLinAlgCoreDenseMultiLinearSquareInfo(unittest.TestCase):
     def setUp(self):
         # Configs
         self.seed = 42
-        self.default_device = wp.get_device()
-        self.verbose = False  # Set to True for verbose output
+        self.default_device = test_settings.device
+        self.verbose = test_settings.verbose  # Set to True for verbose output
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
@@ -309,19 +310,8 @@ class TestLinAlgCoreDenseMultiLinearSquareInfo(unittest.TestCase):
 ###
 
 if __name__ == "__main__":
-    # Global numpy configurations
-    np.set_printoptions(linewidth=10000, precision=10, threshold=10000, suppress=True)  # Suppress scientific notation
-
-    # Initialize Warp
-    wp.init()
-
-    # Global warp configurations
-    wp.config.enable_backward = False
-    wp.config.verbose = False
-
-    # Clear Warp caches
-    wp.clear_kernel_cache()
-    wp.clear_lto_cache()
+    # Test setup
+    setup_tests()
 
     # Run all tests
     unittest.main(verbosity=2)

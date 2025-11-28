@@ -18,7 +18,6 @@
 import unittest
 
 import numpy as np
-import warp as wp
 
 from newton._src.solvers.kamino.linalg.utils.matrix import (
     SquareSymmetricMatrixProperties,
@@ -31,6 +30,7 @@ from newton._src.solvers.kamino.linalg.utils.rand import (
     random_spd_matrix,
     random_symmetric_matrix,
 )
+from newton._src.solvers.kamino.tests.utils.setup import setup_tests, test_settings
 from newton._src.solvers.kamino.utils import logger as msg
 
 ###
@@ -42,8 +42,8 @@ class TestLinAlgUtilsRandomMatrixSymmetric(unittest.TestCase):
     def setUp(self):
         # Configs
         self.seed = 42
-        self.default_device = wp.get_device()
-        self.verbose = False  # Set to True for verbose output
+        self.default_device = test_settings.device
+        self.verbose = test_settings.verbose  # Set to True for verbose output
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
@@ -248,8 +248,8 @@ class TestLinAlgUtilsRandomMatrixSPD(unittest.TestCase):
     def setUp(self):
         # Configs
         self.seed = 42
-        self.default_device = wp.get_device()
-        self.verbose = False  # Set to True for verbose output
+        self.default_device = test_settings.device
+        self.verbose = test_settings.verbose  # Set to True for verbose output
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
@@ -382,8 +382,8 @@ class TestLinAlgUtilsRandomRhsVectors(unittest.TestCase):
     def setUp(self):
         # Configs
         self.seed = 42
-        self.default_device = wp.get_device()
-        self.verbose = False  # Set to True for verbose output
+        self.default_device = test_settings.device
+        self.verbose = test_settings.verbose  # Set to True for verbose output
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
@@ -531,17 +531,8 @@ class TestLinAlgUtilsRandomRhsVectors(unittest.TestCase):
 ###
 
 if __name__ == "__main__":
-    # Global numpy configurations
-    np.set_printoptions(linewidth=500, precision=10, suppress=True)  # Suppress scientific notation
-
-    # Initialize Warp
-    wp.init()
-
-    # Global warp configurations
-    wp.config.enable_backward = False
-    wp.config.verbose = False
-    wp.clear_kernel_cache()
-    wp.clear_lto_cache()
+    # Test setup
+    setup_tests()
 
     # Run all tests
     unittest.main(verbosity=2)

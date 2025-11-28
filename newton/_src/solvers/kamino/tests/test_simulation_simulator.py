@@ -26,6 +26,7 @@ from newton._src.solvers.kamino.examples import print_progress_bar
 from newton._src.solvers.kamino.models.builders import build_cartpole
 from newton._src.solvers.kamino.models.utils import make_homogeneous_builder
 from newton._src.solvers.kamino.simulation.simulator import Simulator
+from newton._src.solvers.kamino.tests.utils.setup import setup_tests, test_settings
 from newton._src.solvers.kamino.utils import logger as msg
 
 ###
@@ -92,8 +93,8 @@ class TestCartpoleSimulator(unittest.TestCase):
     def setUp(self):
         # Configs
         self.seed = 42
-        self.default_device = wp.get_device()
-        self.verbose = False  # Set to True for verbose output
+        self.default_device = test_settings.device
+        self.verbose = test_settings.verbose  # Set to True for verbose output
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
@@ -846,16 +847,8 @@ class TestCartpoleSimulator(unittest.TestCase):
 ###
 
 if __name__ == "__main__":
-    # Global numpy configurations
-    np.set_printoptions(linewidth=20000, precision=10, threshold=20000, suppress=True)  # Suppress scientific notation
-
-    # Global warp configurations
-    wp.config.enable_backward = False
-    wp.config.verbose = False
-    wp.config.verify_fp = False
-    wp.config.mode = "release"
-    wp.clear_kernel_cache()
-    wp.clear_lto_cache()
+    # Test setup
+    setup_tests()
 
     # Run all tests
     unittest.main(verbosity=2)

@@ -24,6 +24,9 @@ import numpy as np
 # Module to be tested
 import newton._src.solvers.kamino.tests.utils.random as rand
 
+# Test utilities
+from newton._src.solvers.kamino.tests.utils.setup import setup_tests, test_settings
+
 ###
 # Tests
 ###
@@ -31,7 +34,7 @@ import newton._src.solvers.kamino.tests.utils.random as rand
 
 class TestRandomSymmetricMatrix(unittest.TestCase):
     def setUp(self):
-        self.verbose = False  # Set to True for verbose output
+        self.verbose = test_settings.verbose  # Set to True for verbose output
 
     def test_matrix_symmetry(self):
         dim = 5
@@ -76,7 +79,7 @@ class TestRandomSymmetricMatrix(unittest.TestCase):
 
 class TestRandomProblemCholesky(unittest.TestCase):
     def setUp(self):
-        self.verbose = False  # Set to True for verbose output
+        self.verbose = test_settings.verbose  # Set to True for verbose output
 
     def test_generate_small_lower(self):
         dim = 10
@@ -99,7 +102,7 @@ class TestRandomProblemCholesky(unittest.TestCase):
 
 class TestRandomProblemLDLT(unittest.TestCase):
     def setUp(self):
-        self.verbose = False  # Set to True for verbose output
+        self.verbose = test_settings.verbose  # Set to True for verbose output
 
     def test_generate_small_lower(self):
         dim = 10
@@ -125,8 +128,8 @@ class TestRandomProblemLDLT(unittest.TestCase):
 ###
 
 if __name__ == "__main__":
-    # Global numpy configurations
-    np.set_printoptions(linewidth=10000, precision=10, threshold=10000, suppress=True)  # Suppress scientific notation
+    # Test setup
+    setup_tests()
 
     # Run all tests
     unittest.main(verbosity=2)

@@ -26,6 +26,7 @@ from newton._src.solvers.kamino.linalg.linear import LLTBlockedSolver
 from newton._src.solvers.kamino.tests.utils.extract import get_matrix_block, get_vector_block
 from newton._src.solvers.kamino.tests.utils.print import print_error_stats
 from newton._src.solvers.kamino.tests.utils.random import RandomProblemLLT
+from newton._src.solvers.kamino.tests.utils.setup import setup_tests, test_settings
 from newton._src.solvers.kamino.utils import logger as msg
 
 ###
@@ -37,8 +38,8 @@ class TestLinAlgLLTBlockedSolver(unittest.TestCase):
     def setUp(self):
         # Configs
         self.seed = 42
-        self.default_device = wp.get_device()
-        self.verbose = False  # Set to True for verbose output
+        self.default_device = test_settings.device
+        self.verbose = test_settings.verbose  # Set to True for verbose output
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
@@ -639,19 +640,8 @@ class TestLinAlgLLTBlockedSolver(unittest.TestCase):
 ###
 
 if __name__ == "__main__":
-    # Global numpy configurations
-    np.set_printoptions(linewidth=20000, precision=10, threshold=20000, suppress=True)  # Suppress scientific notation
-
-    # Initialize Warp
-    wp.init()
-
-    # Global warp configurations
-    wp.config.enable_backward = False
-    wp.config.verbose = False
-
-    # Clear caches
-    wp.clear_kernel_cache()
-    wp.clear_lto_cache()
+    # Test setup
+    setup_tests()
 
     # TODO: How can we get these to work?
     # Ensure the AOT module is compiled for the current device

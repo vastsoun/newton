@@ -46,6 +46,7 @@ from newton._src.solvers.kamino.tests.utils.print import (
     print_model_constraint_info,
     print_model_data_info,
 )
+from newton._src.solvers.kamino.tests.utils.setup import setup_tests, test_settings
 
 ###
 # Module configs
@@ -262,8 +263,8 @@ def set_fourbar_body_states(model: Model, data: ModelData):
 
 class TestKinematicsJacobians(unittest.TestCase):
     def setUp(self):
-        self.verbose = False  # Set to True for verbose output
-        self.default_device = wp.get_device()
+        self.verbose = test_settings.verbose  # Set to True for verbose output
+        self.default_device = test_settings.device
 
     def tearDown(self):
         self.default_device = None
@@ -933,14 +934,8 @@ class TestKinematicsJacobians(unittest.TestCase):
 ###
 
 if __name__ == "__main__":
-    # Global numpy configurations
-    np.set_printoptions(linewidth=1000, precision=6, threshold=10000, suppress=True)  # Suppress scientific notation
-
-    # Global warp configurations
-    wp.config.enable_backward = False
-    wp.config.verbose = False
-    wp.clear_kernel_cache()
-    wp.clear_lto_cache()
+    # Test setup
+    setup_tests()
 
     # Run all tests
     unittest.main(verbosity=2)

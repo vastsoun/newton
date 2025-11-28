@@ -20,7 +20,6 @@ KAMINO: UNIT TESTS: KINEMATICS: LIMITS
 import math
 import unittest
 
-import numpy as np
 import warp as wp
 
 from newton._src.solvers.kamino.core.math import quat_exp, screw, screw_angular, screw_linear
@@ -30,6 +29,7 @@ from newton._src.solvers.kamino.kinematics.joints import compute_joints_data
 from newton._src.solvers.kamino.kinematics.limits import Limits
 from newton._src.solvers.kamino.models import builders
 from newton._src.solvers.kamino.models.utils import make_homogeneous_builder
+from newton._src.solvers.kamino.tests.utils.setup import setup_tests, test_settings
 from newton._src.solvers.kamino.utils import logger as msg
 
 ###
@@ -153,8 +153,8 @@ def set_joint_follower_body_state(model: Model, data: ModelData):
 
 class TestKinematicsLimits(unittest.TestCase):
     def setUp(self):
-        self.default_device = wp.get_device()
-        self.verbose = False  # Set to True to enable verbose output
+        self.default_device = test_settings.device
+        self.verbose = test_settings.verbose  # Set to True to enable verbose output
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
@@ -322,14 +322,8 @@ class TestKinematicsLimits(unittest.TestCase):
 ###
 
 if __name__ == "__main__":
-    # Global numpy configurations
-    np.set_printoptions(linewidth=10000, precision=10, threshold=10000, suppress=True)  # Suppress scientific notation
-
-    # Global warp configurations
-    wp.config.enable_backward = False
-    wp.config.verbose = False
-    wp.clear_kernel_cache()
-    wp.clear_lto_cache()
+    # Test setup
+    setup_tests()
 
     # Run all tests
     unittest.main(verbosity=2)

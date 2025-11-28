@@ -22,7 +22,6 @@ import unittest
 
 import h5py
 import numpy as np
-import warp as wp
 
 # Module to be tested
 import newton._src.solvers.kamino.utils.io.hdf5 as hdf5
@@ -33,6 +32,9 @@ from newton._src.solvers.kamino.models.utils import (
     make_single_builder,
 )
 from newton._src.solvers.kamino.simulation.simulator import Simulator
+
+# Test utilities
+from newton._src.solvers.kamino.tests.utils.setup import setup_tests, test_settings
 
 ###
 # Helper functions
@@ -59,7 +61,7 @@ DEFAULT_OUTPUT_DATASET_PATH = test_output_path() + "/output.hdf5"
 class TestHDF5(unittest.TestCase):
     def setUp(self):
         self.dtype = np.float32
-        self.default_device = wp.get_device()
+        self.default_device = test_settings.device
         self.infilename = DEFAULT_INPUT_DATASET_PATH
         self.found_dataset = os.path.exists(self.infilename)
         self.datapath = "Primitive/boxes_nunchaku/DenseConstraints/0"
@@ -232,6 +234,8 @@ class TestHDF5(unittest.TestCase):
 ###
 
 if __name__ == "__main__":
-    np.set_printoptions(linewidth=200, precision=3, suppress=True)
-    wp.clear_kernel_cache()
+    # Test setup
+    setup_tests()
+
+    # Run all tests
     unittest.main(verbosity=2)

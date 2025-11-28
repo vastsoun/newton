@@ -13,9 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-KAMINO: Utilities: Input/Output: OpenUSD
-"""
+"""Provides mechanisms to import OpenUSD Physics models."""
 
 import uuid
 from collections.abc import Iterable
@@ -168,9 +166,8 @@ class USDImporter:
             "PhysicsJoint",
         )
 
-        # TODO: Add support for non-physics geoms
-        # Define the supported USD geom types
-        self.supported_usd_geom_types = (
+        # Define the supported UsdPhysics shape types
+        self.supported_usd_physics_shape_types = (
             self.UsdPhysics.ObjectType.CapsuleShape,
             self.UsdPhysics.ObjectType.Capsule1Shape,
             self.UsdPhysics.ObjectType.ConeShape,
@@ -180,6 +177,30 @@ class USDImporter:
             self.UsdPhysics.ObjectType.PlaneShape,
             self.UsdPhysics.ObjectType.SphereShape,
             self.UsdPhysics.ObjectType.MeshShape,
+        )
+        self.supported_usd_physics_shape_type_names = (
+            "Capsule",
+            "Capsule1",
+            "Cone",
+            "Cube",
+            "Cylinder",
+            "Cylinder1",
+            "Plane",
+            "Sphere",
+            "Mesh",
+        )
+
+        # Define the supported UsdPhysics shape types
+        self.supported_usd_geom_types = (
+            self.UsdGeom.Capsule,
+            self.UsdGeom.Capsule_1,
+            self.UsdGeom.Cone,
+            self.UsdGeom.Cube,
+            self.UsdGeom.Cylinder,
+            self.UsdGeom.Cylinder_1,
+            self.UsdGeom.Plane,
+            self.UsdGeom.Sphere,
+            self.UsdGeom.Mesh,
         )
         self.supported_usd_geom_type_names = (
             "Capsule",
@@ -231,6 +252,17 @@ class USDImporter:
         return layer
 
     @staticmethod
+    def _get_prim_parent_body(prim):
+        if prim is None:
+            return None
+        parent = prim.GetParent()
+        if not parent:
+            return None
+        if "PhysicsRigidBodyAPI" in parent.GetAppliedSchemas():
+            return parent
+        return USDImporter._get_prim_parent_body(parent)
+
+    @staticmethod
     def _get_material_default_override(prim) -> bool:
         """Queries the custom data to detect if the prim should override the default material."""
         override_default = False
@@ -238,6 +270,20 @@ class USDImporter:
         if cdata is not None:
             override_default = cdata.get("overrideDefault", False)
         return override_default
+
+    @staticmethod
+    def _align_geom_to_axis(axis: Axis, q: wp.quatf) -> wp.quatf:
+        R_g = wp.quat_to_matrix(q)
+        match axis:
+            case Axis.X:
+                R_g = R_g @ wp.mat33f(0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0)
+            case Axis.Y:
+                R_g = R_g @ wp.mat33f(0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0)
+            case Axis.Z:
+                pass  # No rotation needed
+            case _:
+                raise ValueError(f"Unsupported axis: {axis}. Supported axes are: X, Y, Z.")
+        return wp.quat_from_matrix(R_g)
 
     @staticmethod
     def _make_faces_from_counts(indices: nparray, counts: Iterable[int], prim_path: str) -> nparray:
@@ -265,6 +311,48 @@ class USDImporter:
         attr = self._get_attribute(prim, name)
         return attr.IsValid() and attr.HasAuthoredValue()
 
+    def _get_translation(self, prim, local: bool = True) -> wp.vec3f:
+        xform = self.UsdGeom.Xform(prim)
+        if local:
+            mat = np.array(xform.GetLocalTransformation(), dtype=np.float32)
+        else:
+            mat = np.array(xform.GetWorldTransformation(), dtype=np.float32)
+
+        pos = mat[3, :3]
+        return wp.vec3f(*pos)
+
+    def _get_rotation(self, prim, local: bool = True, invert_rotation: bool = True) -> wp.quatf:
+        xform = self.UsdGeom.Xform(prim)
+        if local:
+            mat = np.array(xform.GetLocalTransformation(), dtype=np.float32)
+        else:
+            mat = np.array(xform.GetWorldTransformation(), dtype=np.float32)
+        if invert_rotation:
+            rot = wp.quat_from_matrix(wp.mat33(mat[:3, :3].T.flatten()))
+        else:
+            rot = wp.quat_from_matrix(wp.mat33(mat[:3, :3].flatten()))
+        return wp.quatf(*rot)
+
+    def _get_transform(self, prim, local: bool = True, invert_rotation: bool = True) -> wp.transformf:
+        xform = self.UsdGeom.Xform(prim)
+        if local:
+            mat = np.array(xform.GetLocalTransformation(), dtype=np.float32)
+        else:
+            mat = np.array(xform.GetWorldTransformation(), dtype=np.float32)
+        if invert_rotation:
+            rot = wp.quat_from_matrix(wp.mat33(mat[:3, :3].T.flatten()))
+        else:
+            rot = wp.quat_from_matrix(wp.mat33(mat[:3, :3].flatten()))
+        pos = mat[3, :3]
+        return wp.transform(pos, rot)
+
+    def _get_scale(self, prim) -> wp.vec3f:
+        # first get local transform matrix
+        local_mat = np.array(self.UsdGeom.Xform(prim).GetLocalTransformation(), dtype=np.float32)
+        # then get scale from the matrix
+        scale = np.sqrt(np.sum(local_mat[:3, :3] ** 2, axis=0))
+        return wp.vec3f(*scale)
+
     def _parse_float(self, prim, name, default=None) -> float | None:
         attr = self._get_attribute(prim, name)
         if not attr or not attr.HasAuthoredValue():
@@ -289,7 +377,7 @@ class USDImporter:
         return ret
 
     @staticmethod
-    def _from_gfquat(gfquat) -> wp.quat:
+    def _from_gfquat(gfquat) -> wp.quatf:
         return wp.normalize(wp.quat(*gfquat.imaginary, gfquat.real))
 
     def _parse_quat(self, prim, name, default=None) -> nparray | None:
@@ -321,7 +409,7 @@ class USDImporter:
             return default
         return attr.Get()
 
-    def _parse_xform(self, prim) -> wp.transform:
+    def _parse_xform(self, prim) -> wp.transformf:
         xform = self.UsdGeom.Xform(prim)
         mat = np.array(xform.GetLocalTransformation(), dtype=np.float32)
         if self._invert_rotations:
@@ -421,7 +509,7 @@ class USDImporter:
         distance_unit: float = 1.0,
         rotation_unit: float = 1.0,
         mass_unit: float = 1.0,
-        offset_xform: wp.transform | None = None,
+        offset_xform: wp.transformf | None = None,
         only_load_enabled_rigid_bodies: bool = True,
     ) -> RigidBodyDescriptor | None:
         # Skip this body if it is not enable and we are only loading enabled rigid bodies
@@ -438,6 +526,7 @@ class USDImporter:
         # If the prim is a rigid body but has no mass,
         # skip it and treat it as static geometry
         if has_rigid_body_api and not has_mass_api:
+            msg.critical(f"rigid body prim ({path}) with no mass found; treating as static geometry")
             return None
 
         # Define and check for the required APIs
@@ -812,6 +901,7 @@ class USDImporter:
 
     def _parse_joint(
         self,
+        stage,
         joint_prim,
         joint_spec,
         joint_type,
@@ -850,10 +940,29 @@ class USDImporter:
         F_r_Fj = distance_unit * vec3f(joint_spec.localPose1Position)
         B_q_Bj = self._from_gfquat(joint_spec.localPose0Orientation)
         F_q_Fj = self._from_gfquat(joint_spec.localPose1Orientation)
-        msg.debug(f"B_r_Bj: {B_r_Bj}")
-        msg.debug(f"F_r_Fj: {F_r_Fj}")
+        msg.debug(f"B_r_Bj (before COM correction): {B_r_Bj}")
+        msg.debug(f"F_r_Fj (before COM correction): {F_r_Fj}")
         msg.debug(f"B_q_Bj: {B_q_Bj}")
         msg.debug(f"F_q_Fj: {F_q_Fj}")
+
+        # Correct for COM offset
+        if joint_spec.body0:
+            body_B_prim = stage.GetPrimAtPath(joint_spec.body0)
+            i_r_com_B = distance_unit * self._parse_vec(
+                body_B_prim, "physics:centerOfMass", default=np.zeros(3, dtype=np.float32)
+            )
+            B_r_Bj = B_r_Bj - vec3f(i_r_com_B)
+            msg.debug(f"i_r_com_B: {i_r_com_B}")
+            msg.debug(f"B_r_Bj (after COM correction): {B_r_Bj}")
+
+        if joint_spec.body1:
+            body_F_prim = stage.GetPrimAtPath(joint_spec.body1)
+            i_r_com_F = distance_unit * self._parse_vec(
+                body_F_prim, "physics:centerOfMass", default=np.zeros(3, dtype=np.float32)
+            )
+            F_r_Fj = F_r_Fj - vec3f(i_r_com_F)
+            msg.debug(f"i_r_com_F: {i_r_com_F}")
+            msg.debug(f"F_r_Fj (after COM correction): {F_r_Fj}")
 
         # Check if body0 is specified
         if (not joint_spec.body0) and joint_spec.body1:
@@ -1028,17 +1137,195 @@ class USDImporter:
         self,
         geom_prim,
         geom_type,
+        body_index_map: dict[str, int],
+        distance_unit: float = 1.0,
+        prim_path_names: bool = False,
+    ) -> CollisionGeometryDescriptor | GeometryDescriptor | None:
+        """
+        Parses a UsdGeom geometry prim and returns a GeometryDescriptor.
+        """
+        ###
+        # Prim Identifiers
+        ###
+
+        # Retrieve the name and UID of the geometry from the prim
+        path = self._get_prim_path(geom_prim)
+        name = self._get_prim_name(geom_prim)
+        uid = self._get_prim_uid(geom_prim)
+        msg.debug(f"[Geom]: path: {path}")
+        msg.debug(f"[Geom]: name: {name}")
+        msg.debug(f"[Geom]: uid: {uid}")
+
+        # Attempt to identify the parent rigid body of the geometry
+        body_prim = self._get_prim_parent_body(geom_prim)
+        body_name = None
+        if body_prim is not None:
+            msg.debug(f"[Geom]: Found parent rigid body prim: {body_prim.GetPath()}")
+            body_index = body_index_map.get(str(body_prim.GetPath()), -1)
+            body_name = self._get_prim_name(body_prim)
+        else:
+            msg.debug("[Geom]: No parent rigid body prim found.")
+            body_index = -1
+            body_name = "world"
+        msg.debug(f"[Geom]: body_index: {body_index}")
+        msg.debug(f"[Geom]: body_name: {body_name}")
+
+        # Attempt to get the layer the geometry belongs to
+        layer = self._get_prim_layer(geom_prim)
+        layer = layer if layer is not None else ("primary" if body_index > -1 else "world")
+        msg.debug(f"[Geom]: layer: {layer}")
+
+        # Use the explicit prim path as the geometry name if specified
+        if prim_path_names:
+            name = path
+        # Otherwise define the a condensed name based on the body and geometry layer
+        else:
+            name = f"{self._get_leaf_name(body_name)}/{layer}/{name}"
+        msg.debug(f"[Geom]: name: {name}")
+
+        ###
+        # PhysicsGeom Common Properties
+        ###
+
+        i_q_ig = self._get_rotation(geom_prim)
+        i_r_ig = distance_unit * self._get_translation(geom_prim)
+        # # Extract the relative poses of the geom w.r.t the rigid body frame
+        msg.debug(f"[{name}]: i_q_ig: {i_q_ig}")
+        msg.debug(f"[{name}]: i_r_ig (before COM correction): {i_r_ig}")
+
+        # Correct for COM offset
+        if body_prim and body_index > -1:
+            i_r_com = distance_unit * self._parse_vec(
+                body_prim, "physics:centerOfMass", default=np.zeros(3, dtype=np.float32)
+            )
+            i_r_ig = i_r_ig - vec3f(i_r_com)
+            msg.debug(f"[{name}]: i_r_com: {i_r_com}")
+            msg.debug(f"[{name}]: i_r_ig (after COM correction): {i_r_ig}")
+
+        # Construct the transform descriptor
+        i_T_ig = transformf(i_r_ig, i_q_ig)
+        msg.debug(f"[{name}]: i_T_ig: {i_T_ig}")
+
+        ###
+        # PhysicsGeom Shape Properties
+        ###
+
+        # Retrieve the geom scale
+        scale = self._get_scale(geom_prim)
+        msg.debug(f"[{name}]: scale: {scale}")
+
+        # Construct the shape descriptor based on the geometry type
+        shape = None
+        if geom_type == self.UsdGeom.Capsule:
+            capsule = self.UsdGeom.Capsule(geom_prim)
+            height = distance_unit * capsule.GetHeightAttr().Get()
+            radius = distance_unit * capsule.GetRadiusAttr().Get()
+            axis = Axis.from_string(capsule.GetAxisAttr().Get())
+            i_q_ig = self._align_geom_to_axis(axis, i_q_ig)
+            i_T_ig = transformf(i_r_ig, i_q_ig)
+            shape = CapsuleShape(radius=radius, height=height)
+
+        elif geom_type == self.UsdGeom.Capsule_1:
+            raise NotImplementedError("Capsule1 UsdGeom is not yet supported.")
+
+        elif geom_type == self.UsdGeom.Cone:
+            cone = self.UsdGeom.Cone(geom_prim)
+            height = distance_unit * cone.GetHeightAttr().Get()
+            radius = distance_unit * cone.GetRadiusAttr().Get()
+            axis = Axis.from_string(cone.GetAxisAttr().Get())
+            i_q_ig = self._align_geom_to_axis(axis, i_q_ig)
+            i_T_ig = transformf(i_r_ig, i_q_ig)
+            shape = ConeShape(radius=radius, height=height)
+
+        elif geom_type == self.UsdGeom.Cube:
+            d, w, h = distance_unit * scale
+            shape = BoxShape(depth=d, width=w, height=h)
+
+        elif geom_type == self.UsdGeom.Cylinder:
+            cylinder = self.UsdGeom.Cylinder(geom_prim)
+            height = distance_unit * cylinder.GetHeightAttr().Get()
+            radius = distance_unit * cylinder.GetRadiusAttr().Get()
+            axis = Axis.from_string(cylinder.GetAxisAttr().Get())
+            i_q_ig = self._align_geom_to_axis(axis, i_q_ig)
+            i_T_ig = transformf(i_r_ig, i_q_ig)
+            shape = CylinderShape(radius=radius, height=height)
+
+        elif geom_type == self.UsdGeom.Cylinder_1:
+            raise NotImplementedError("Cylinder1 UsdGeom is not yet supported.")
+
+        elif geom_type == self.UsdGeom.Plane:
+            plane = self.UsdGeom.Plane(geom_prim)
+            axis = Axis.from_string(plane.GetAxisAttr().Get())
+            shape = PlaneShape(normal=axis.to_vec3(), distance=0.0)
+
+        elif geom_type == self.UsdGeom.Sphere:
+            sphere = self.UsdGeom.Sphere(geom_prim)
+            radius = distance_unit * sphere.GetRadiusAttr().Get()
+            if np.all(scale[0:] == scale[0]):
+                shape = SphereShape(radius=radius)
+            else:
+                a, b, c = distance_unit * scale * radius
+                shape = EllipsoidShape(a=a, b=b, c=c)
+
+        elif geom_type == self.UsdGeom.Mesh:
+            # Retrieve the mesh data from the USD mesh prim
+            usd_mesh = self.UsdGeom.Mesh(geom_prim)
+            usd_mesh_path = usd_mesh.GetPath()
+
+            # Extract mandatory mesh attributes
+            points = np.array(usd_mesh.GetPointsAttr().Get(), dtype=np.float32)
+            indices = np.array(usd_mesh.GetFaceVertexIndicesAttr().Get(), dtype=np.float32)
+            counts = usd_mesh.GetFaceVertexCountsAttr().Get()
+
+            # Extract optional normals attribute if defined
+            normals = (
+                np.array(usd_mesh.GetNormalsAttr().Get(), dtype=np.float32)
+                if usd_mesh.GetNormalsAttr().IsDefined()
+                else None
+            )
+
+            # Extract triangle face indices from the mesh data
+            # NOTE: This handles both triangle and quad meshes
+            faces = self._make_faces_from_counts(indices, counts, usd_mesh_path)
+
+            # Create the mesh shape (i.e. wrapper around newton.geometry.Mesh)
+            shape = MeshShape(vertices=points, indices=faces, normals=normals, maxhullvert=MESH_MAXHULLVERT)
+        else:
+            raise ValueError(
+                f"Unsupported UsdGeom type: {geom_type}. Supported types: {self.supported_usd_geom_types}."
+            )
+        msg.debug(f"[{name}]: shape: {shape}")
+
+        ###
+        # GeometryDescriptor
+        ###
+
+        # Construct and return the GeometryDescriptor
+        # with the data imported from the USD prim
+        return GeometryDescriptor(
+            name=name,
+            uid=uid,
+            layer=layer,
+            bid=body_index,
+            offset=i_T_ig,
+            shape=shape,
+        )
+
+    def _parse_physics_geom(
+        self,
+        stage,
+        geom_prim,
+        geom_type,
         geom_spec,
         body_index_map: dict[str, int],
         cgroup_index_map: dict[str, int],
         material_index_map: dict[str, int],
         distance_unit: float = 1.0,
-        rotation_unit: float = 1.0,
         meshes_are_collidable: bool = False,
         prim_path_names: bool = False,
     ) -> CollisionGeometryDescriptor | GeometryDescriptor | None:
         """
-        Parses a geometry prim and returns a GeometryDescriptor.
+        Parses a UsdPhysics geometry prim and returns a GeometryDescriptor.
         """
         ###
         # Prim Identifiers
@@ -1062,7 +1349,7 @@ class USDImporter:
 
         # Attempt to get the layer the geometry belongs to
         layer = self._get_prim_layer(geom_prim)
-        layer = layer if layer is not None else "default"
+        layer = layer if layer is not None else ("primary" if body_index > -1 else "world")
         msg.debug(f"[Geom]: layer: {layer}")
 
         # Use the explicit prim path as the geometry name if specified
@@ -1080,9 +1367,21 @@ class USDImporter:
         # Extract the relative poses of the geom w.r.t the rigid body frame
         i_r_ig = distance_unit * vec3f(geom_spec.localPos)
         i_q_ig = self._from_gfquat(geom_spec.localRot)
-        i_T_ig = transformf(i_r_ig, i_q_ig)
-        msg.debug(f"[{name}]: i_r_ig: {i_r_ig}")
+        msg.debug(f"[{name}]: i_r_ig (before COM correction): {i_r_ig}")
         msg.debug(f"[{name}]: i_q_ig: {i_q_ig}")
+
+        # Correct for COM offset
+        if geom_spec.rigidBody and body_index > -1:
+            body_prim = stage.GetPrimAtPath(geom_spec.rigidBody)
+            i_r_com = distance_unit * self._parse_vec(
+                body_prim, "physics:centerOfMass", default=np.zeros(3, dtype=np.float32)
+            )
+            i_r_ig = i_r_ig - vec3f(i_r_com)
+            msg.debug(f"[{name}]: i_r_com: {i_r_com}")
+            msg.debug(f"[{name}]: i_r_ig (after COM correction): {i_r_ig}")
+
+        # Construct the transform descriptor
+        i_T_ig = transformf(i_r_ig, i_q_ig)
 
         ###
         # PhysicsGeom Shape Properties
@@ -1155,7 +1454,8 @@ class USDImporter:
             is_mesh_shape = True
         else:
             raise ValueError(
-                f"Unsupported geometry type: {geom_type}. Supported types are: {self.supported_usd_geom_types}."
+                f"Unsupported UsdPhysics shape type: {geom_type}. "
+                f"Supported types: {self.supported_usd_physics_shape_types}."
             )
         msg.debug(f"[{name}]: shape: {shape}")
 
@@ -1230,9 +1530,6 @@ class USDImporter:
         only_load_enabled_joints: bool = True,
         load_static_geometry: bool = True,
         load_materials: bool = True,
-        enable_self_collisions: bool = False,
-        enable_joint_collisions: bool = False,
-        collapse_fixed_joints: bool = False,
         meshes_are_collidable: bool = False,
     ) -> ModelBuilder:
         """
@@ -1449,6 +1746,7 @@ class USDImporter:
                 if prim_path == joint_prim_path:
                     msg.debug(f"Parsing joint @'{prim_path}' of type '{joint_type_name}'")
                     joint_desc = self._parse_joint(
+                        stage=stage,
                         only_load_enabled_joints=only_load_enabled_joints,
                         joint_prim=stage.GetPrimAtPath(prim_path),
                         joint_spec=joint_spec,
@@ -1469,91 +1767,101 @@ class USDImporter:
         ###
 
         # Traverse the stage to collect geometry prim paths and their types
-        geom_prim_paths = []
-        geom_type_names = []
         for prim in stage.Traverse():
-            if prim.GetTypeName() in self.supported_usd_geom_type_names:
-                geom_type_names.append(prim.GetTypeName())
-                geom_prim_paths.append(prim.GetPath())
-        msg.debug(f"geom_prim_paths: {geom_prim_paths}")
-        msg.debug(f"geom_type_names: {geom_type_names}")
+            # Skip non-geom prims
+            if not prim.IsA(self.UsdGeom.Gprim):
+                msg.debug(f"Skipping non-geom prim: {prim.GetPath()}")
+                continue
 
-        # Construct a list of geometry layers
-        # TODO: Define a mechanism to handle multiple layers
-        builder.add_collision_layer(name="primary")
-        builder.add_physical_layer(name="primary")
-        if load_static_geometry:
-            builder.add_collision_layer(name="world")
-            builder.add_physical_layer(name="world")
+            # Extract UsdGeom prim information
+            geom_prim_path = prim.GetPath()
+            typename = prim.GetTypeName()
+            schemas = prim.GetAppliedSchemas()
+            has_physics_schemas = "PhysicsCollisionAPI" in schemas or "PhysicsMeshCollisionAPI" in schemas
+            msg.debug(f"Geom prim: {geom_prim_path}, typename: {typename}, has_physics: {has_physics_schemas}")
 
-        # Iterate over each pair of prim path and geom type-name to parse the geometry specifications
-        for geom_prim_path, geom_type_name in zip(geom_prim_paths, geom_type_names, strict=False):
-            geom_type = self.supported_usd_geom_types[self.supported_usd_geom_type_names.index(geom_type_name)]
+            # Parse the geometry based on whether it is a UsdPhysics shape or a standard UsdGeom
+            # In either case, check that the geometry type is supported and retrieve the
+            # corresponding type to then parse the UsdGeom and constrict a geometry descriptor
+            geom_type = None
+            geom_desc = None
+            if has_physics_schemas:
+                if typename in self.supported_usd_physics_shape_type_names:
+                    geom_type_index = self.supported_usd_physics_shape_type_names.index(typename)
+                    geom_type = self.supported_usd_physics_shape_types[geom_type_index]
+                    msg.debug(f"Processing UsdPhysics shape prim '{geom_prim_path}' of type '{typename}'")
 
-            # Extract the list of physics prim paths and descriptors for the given type
-            geom_paths, geom_specs = ret_dict[geom_type]
+                    # Check that the geometry type exists in the UsdPhysics descriptors dictionary
+                    if geom_type in ret_dict:
+                        # Extract the list of physics prim paths and descriptors for the given type
+                        geom_paths, geom_specs = ret_dict[geom_type]
+                        msg.debug(f"Found {len(geom_paths)} geometry descriptors of type '{typename}'")
+                    else:
+                        msg.critical(f"No UsdPhysics shape descriptors found that match prim type '{typename}'")
+                        continue
 
-            # Iterate over physics geom descriptors until a match to the target geom prims is found
-            physics_geom_desc_found = False
-            for prim_path, geom_spec in zip(geom_paths, geom_specs, strict=False):
-                if prim_path == geom_prim_path:
-                    msg.debug(f"Parsing geometry @'{prim_path}' of type '{geom_type_name}'")
-                    # Mark the geometry descriptor as found
-                    physics_geom_desc_found = True
-
-                    # Parse the USD geom descriptor to construct a corresponding sim geometry descriptor
+                    # Iterate over physics geom descriptors until a match to the target geom prims is found
+                    for geom_path, geom_spec in zip(geom_paths, geom_specs, strict=False):
+                        if geom_path == geom_prim_path:
+                            # Parse the UsdPhysics geom descriptor to construct a corresponding sim geometry descriptor
+                            msg.debug(f"Parsing UsdPhysics shape  @'{geom_path}' of type '{typename}'")
+                            geom_desc = self._parse_physics_geom(
+                                stage=stage,
+                                geom_prim=prim,
+                                geom_spec=geom_spec,
+                                geom_type=geom_type,
+                                body_index_map=body_index_map,
+                                cgroup_index_map=cgroup_index_map,
+                                material_index_map=material_index_map,
+                                distance_unit=distance_unit,
+                                meshes_are_collidable=meshes_are_collidable,
+                            )
+                            break  # Stop after the first match
+                else:
+                    msg.warning(f"Skipping unsupported physics geom prim: {geom_prim_path} of type {typename}")
+                    continue
+            else:
+                if typename in self.supported_usd_geom_type_names:
+                    geom_type_index = self.supported_usd_geom_type_names.index(typename)
+                    geom_type = self.supported_usd_geom_types[geom_type_index]
+                    msg.debug(f"Parsing UsdGeom @'{geom_prim_path}' of type '{typename}'")
                     geom_desc = self._parse_geom(
-                        geom_prim=stage.GetPrimAtPath(prim_path),
-                        geom_spec=geom_spec,
+                        geom_prim=prim,
                         geom_type=geom_type,
                         body_index_map=body_index_map,
-                        cgroup_index_map=cgroup_index_map,
-                        material_index_map=material_index_map,
                         distance_unit=distance_unit,
-                        rotation_unit=rotation_unit,
-                        meshes_are_collidable=meshes_are_collidable,
+                        prim_path_names=False,
                     )
+                else:
+                    msg.warning(f"Skipping unsupported geom prim: {geom_prim_path} of type {typename}")
+                    continue
 
-                    # If construction succeeded, append it to the model builder
-                    if geom_desc is not None:
-                        # Skip static geometry if not requested
-                        if geom_desc.bid == -1 and not load_static_geometry:
-                            continue
-                        # Append geometry descriptor to appropriate entity
-                        if type(geom_desc) is CollisionGeometryDescriptor:
-                            msg.debug(f"Adding collision geom '{builder.num_collision_geoms}':\n{geom_desc}\n")
-                            builder.add_collision_geometry_descriptor(geom=geom_desc)
-                        elif type(geom_desc) is GeometryDescriptor:
-                            msg.debug(f"Adding physical geom '{builder.num_physical_geoms}':\n{geom_desc}\n")
-                            builder.add_physical_geometry_descriptor(geom=geom_desc)
-                    break  # Stop after the first match
+            # If construction succeeded, append it to the model builder
+            if geom_desc is not None:
+                # Skip static geometry if not requested
+                if geom_desc.bid == -1 and not load_static_geometry:
+                    continue
+                # Append geometry descriptor to appropriate entity
+                if type(geom_desc) is CollisionGeometryDescriptor:
+                    msg.debug("Adding collision geom '%d':\n%s\n", builder.num_collision_geoms, geom_desc)
+                    builder.add_collision_geometry_descriptor(geom=geom_desc)
+                elif type(geom_desc) is GeometryDescriptor:
+                    msg.debug("Adding physical geom '%d':\n%s\n", builder.num_physical_geoms, geom_desc)
+                    builder.add_physical_geometry_descriptor(geom=geom_desc)
 
             # Indicate to user that a UsdGeom has potentially not been marked for physics simulation
-            if not physics_geom_desc_found:
-                msg.warning(f"Failed to find UsdPhysics descriptor for geom prim '{geom_prim_path}'")
-
-        ###
-        # Post-processing
-        ###
-
-        # TODO: enable_self_collisions
-        # TODO: collapse_fixed_joints
-
-        # if collapse_fixed_joints:
-        #     collapse_results = builder.collapse_fixed_joints()
-        #     body_merged_parent = collapse_results["body_merged_parent"]
-        #     body_merged_transform = collapse_results["body_merged_transform"]
-        #     body_remap = collapse_results["body_remap"]
+            else:
+                msg.critical("Failed to parse geom prim '%s'", geom_prim_path)
 
         ###
         # Summary
         ###
 
-        msg.debug(f"Builder: Rigid Bodies:\n{builder.bodies}\n")
-        msg.debug(f"Builder: Joints:\n{builder.joints}\n")
-        msg.debug(f"Builder: Physical Geoms:\n{builder.physical_geoms}\n")
-        msg.debug(f"Builder: Collision Geoms:\n{builder.collision_geoms}\n")
-        msg.debug(f"Builder: Materials:\n{builder.materials}\n")
+        msg.debug("Builder: Rigid Bodies:\n%s\n", builder.bodies)
+        msg.debug("Builder: Joints:\n%s\n", builder.joints)
+        msg.debug("Builder: Physical Geoms:\n%s\n", builder.physical_geoms)
+        msg.debug("Builder: Collision Geoms:\n%s\n", builder.collision_geoms)
+        msg.debug("Builder: Materials:\n%s\n", builder.materials)
 
         # Return the ModelBuilder populated from the parsed USD file
         return builder

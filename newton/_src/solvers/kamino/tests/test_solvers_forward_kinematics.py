@@ -342,7 +342,7 @@ class DRTestMechanismRandomPosesCheckForwardKinematics(unittest.TestCase):
             self.skipTest("Examples USD assets path not found. Skipping test.")
         model_path = os.path.join(examples_path, "dr_testmech/usd/dr_testmech.usda")
         builder = USDImporter().import_from(model_path)
-        builder.set_base_joint(joint_name="base")
+        builder.set_base_joint("base")
         model = builder.finalize(device=self.default_device, requires_grad=False)
 
         # Simulate random poses
@@ -386,7 +386,7 @@ class DRLegsRandomPosesCheckForwardKinematics(unittest.TestCase):
             self.skipTest("Examples USD assets path not found. Skipping test.")
         model_path = os.path.join(examples_path, "dr_legs/usd/dr_legs_with_boxes.usda")
         builder = USDImporter().import_from(model_path)
-        builder.set_base_body(body_name="pelvis")
+        builder.set_base_body("pelvis")
         model = builder.finalize(device=self.default_device, requires_grad=False)
 
         # Simulate random poses
@@ -431,10 +431,10 @@ class HeterogenousModelRandomPosesCheckForwardKinematics(unittest.TestCase):
             self.skipTest("Examples USD assets path not found. Skipping test.")
         model_path = os.path.join(examples_path, "dr_testmech/usd/dr_testmech.usda")
         builder = USDImporter().import_from(model_path)
-        builder.set_base_joint(joint_name="base")
+        builder.set_base_joint("base")
         model_path1 = os.path.join(examples_path, "dr_legs/usd/dr_legs_with_boxes.usda")
         builder1 = USDImporter().import_from(model_path1)
-        builder1.set_base_body(body_name="pelvis")
+        builder1.set_base_body("pelvis")
         builder.add_builder(builder1)
         model = builder.finalize(device=self.default_device, requires_grad=False)
 

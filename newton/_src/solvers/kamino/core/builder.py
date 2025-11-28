@@ -875,53 +875,53 @@ class ModelBuilder:
         # Register the material pair in the material manager
         self._materials.configure_pair(first=first_id, second=second_id, material_pair=material_pair)
 
-    def set_base_body(self, body_name: str | None = None, body_index: int | None = None, world_index: int = 0):
+    def set_base_body(self, body_key: int | str, world_index: int = 0):
         """
         Set the base body for a specific world specified either by name or by index.
 
         Args:
-            body_name (str | None): The name of the body to be set as the base body.
-            body_index (int | None): The index of the body to be set as the base body.
+            body_key (int | str): Identifier of the body to be set as the base body.
+                Can be either the body's index (within the world) or its name.
             world_index (int): The index of the world for which to set the base body.\n
                 Defaults to the first world with index `0`.
         """
         # Check if the world index is valid
         world = self._check_world_index(world_index)
 
-        # Check that at least one of body_name or body_index is provided
-        if body_name is None and body_index is None:
-            raise ValueError("Either `body_name` (str) or `body_index` (int) must be provided to set the base body.")
-
         # Find the body and set it as base in the world descriptor
-        for body in self.bodies:
-            if body.wid == world_index and (body.bid == body_index or body.name == body_name):
-                world.set_base_body(body.bid)
-                return
-        raise ValueError(f"Failed to identify the base body in world `{world_index}`.")
+        if isinstance(body_key, int):
+            world.set_base_body(body_key)
+            return
+        elif isinstance(body_key, str):
+            for body in self.bodies:
+                if body.wid == world_index and body.name == body_key:
+                    world.set_base_body(body.bid)
+                    return
+        raise ValueError(f"Failed to identify the base body in world `{world_index} given key {body_key}`.")
 
-    def set_base_joint(self, joint_name: str | None = None, joint_index: int | None = None, world_index: int = 0):
+    def set_base_joint(self, joint_key: int | str, world_index: int = 0):
         """
         Set the base joint for a specific world specified either by name or by index.
 
         Args:
-            joint_name (str | None): The name of the joint to be set as the base joint.
-            joint_index (int | None): The index of the joint to be set as the base joint.
+            joint_key (int | str): Identifier of the joint to be set as the base joint.
+                Can be either the joint's index (within the world) or its name.
             world_index (int): The index of the world for which to set the base joint.\n
                 Defaults to the first world with index `0`.
         """
         # Check if the world index is valid
         world = self._check_world_index(world_index)
 
-        # Check that at least one of joint_name or joint_index is provided
-        if joint_name is None and joint_index is None:
-            raise ValueError("Either `joint_name` (str) or `joint_index` (int) must be provided to set the base joint.")
-
         # Find the joint and set it as base in the world descriptor
-        for joint in self.joints:
-            if joint.wid == world_index and (joint.jid == joint_index or joint.name == joint_name):
-                world.set_base_joint(joint.jid)
-                return
-        raise ValueError(f"Failed to identify the base joint in world `{world_index}`.")
+        if isinstance(joint_key, int):
+            world.set_base_joint(joint_key)
+            return
+        elif isinstance(joint_key, str):
+            for joint in self.joints:
+                if joint.wid == world_index and joint.name == joint_key:
+                    world.set_base_joint(joint.jid)
+                    return
+        raise ValueError(f"Failed to identify the base joint in world `{world_index} given key {joint_key}`.")
 
     ###
     # Model Compilation

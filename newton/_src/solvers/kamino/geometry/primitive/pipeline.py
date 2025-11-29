@@ -28,12 +28,9 @@ from .broadphase import (
     BoundingVolumeType,
     CollisionCandidatesData,
     CollisionCandidatesModel,
-    broadphase_explicit,
+    primitive_broadphase_explicit,
 )
 from .narrowphase import primitive_narrowphase
-
-# from ...utils import logger as msg
-
 
 ###
 # Interfaces
@@ -86,29 +83,29 @@ class CollisionPipelinePrimitive:
 
         # Construct collision pairs
         world_num_geom_pairs, model_geom_pair, model_pairid, model_wid = builder.make_collision_candidate_pairs()
+        model_num_geom_pairs = len(model_geom_pair)
 
         # Allocate the collision model data
-        with wp.ScopedDevice(self.device):
-            # Set the host-side number of collision pairs allocations
-            self._cmodel.num_model_geom_pairs = len(model_geom_pair)
-            self._cmodel.num_world_geom_pairs = world_num_geom_pairs
+        with wp.ScopedDevice(self._device):
+            # Allocate the time-invariant collision candidates model
+            self._cmodel = CollisionCandidatesModel(
+                num_model_geom_pairs=model_num_geom_pairs,
+                num_world_geom_pairs=world_num_geom_pairs,
+                model_num_pairs=wp.array([model_num_geom_pairs], dtype=int32),
+                world_num_pairs=wp.array(world_num_geom_pairs, dtype=int32),
+                wid=wp.array(model_wid, dtype=int32),
+                pairid=wp.array(model_pairid, dtype=int32),
+                geom_pair=wp.array(model_geom_pair, dtype=vec2i),
+            )
 
-            # Allocate the collision model data
-            self._cmodel.model_num_pairs = wp.array([self.cmodel.num_model_geom_pairs], dtype=int32)
-            self._cmodel.world_num_pairs = wp.array(self.cmodel.num_world_geom_pairs, dtype=int32)
-            self._cmodel.wid = wp.array(model_wid, dtype=int32)
-            self._cmodel.pairid = wp.array(model_pairid, dtype=int32)
-            self._cmodel.geom_pair = wp.array(model_geom_pair, dtype=vec2i)
-
-            # Allocate the collision state data
-            self._cdata.model_num_collisions = wp.zeros(shape=(1,), dtype=int32)
-            self._cdata.world_num_collisions = wp.zeros(shape=(num_worlds,), dtype=int32)
-            self._cdata.wid = wp.zeros(shape=(self.cmodel.num_model_geom_pairs,), dtype=int32)
-            self._cdata.geom_pair = wp.zeros(shape=(self.cmodel.num_model_geom_pairs,), dtype=vec2i)
-        """
-        TODO
-        """
-        pass
+            # Allocate the time-varying collision candidates data
+            self._cdata = CollisionCandidatesData(
+                num_model_geom_pairs=model_num_geom_pairs,
+                model_num_collisions=wp.zeros(shape=(1,), dtype=int32),
+                world_num_collisions=wp.zeros(shape=(num_worlds,), dtype=int32),
+                wid=wp.zeros(shape=(model_num_geom_pairs,), dtype=int32),
+                geom_pair=wp.zeros(shape=(model_num_geom_pairs,), dtype=vec2i),
+            )
 
     def reset(self):
         """
@@ -125,7 +122,15 @@ class CollisionPipelinePrimitive:
         contacts.clear()
 
         # Perform the broad-phase collision detection to generate candidate pairs
-        broadphase_explicit()
+        primitive_broadphase_explicit(
+            body_poses=data.bodies.q_i,
+            geoms_model=model.cgeoms,
+            geoms_data=data.cgeoms,
+            bv_type=self._bvtype,
+            bv_data=self._bvdata,
+            candidates_model=self._cmodel,
+            candidates_data=self._cdata,
+        )
 
         # Perform the narrow-phase collision detection to generate active contacts
         primitive_narrowphase(model, data, self._cdata, contacts)

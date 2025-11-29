@@ -33,9 +33,11 @@ from ...core.types import float32, int32, mat83f, override, transformf, vec2i, v
 ###
 
 __all__ = [
+    "BoundingVolumeType",
     "BoundingVolumesData",
     "CollisionCandidatesData",
     "CollisionCandidatesModel",
+    "primitive_broadphase_explicit",
 ]
 
 ###
@@ -725,6 +727,7 @@ def update_geoms_aabb(
         dim=geoms_model.num_geoms,
         inputs=[geoms_model.bid, geoms_model.sid, geoms_model.params, geoms_model.offset, body_poses],
         outputs=[geoms_data.pose, bv_data.aabb],
+        device=body_poses.device,
     )
 
 
@@ -776,6 +779,7 @@ def update_geoms_bs(
         dim=geoms_model.num_geoms,
         inputs=[geoms_model.bid, geoms_model.sid, geoms_model.params, geoms_model.offset, body_poses],
         outputs=[geoms_data.pose, bv_data.radius],
+        device=body_poses.device,
     )
 
 
@@ -808,10 +812,11 @@ def nxn_broadphase_bs(
             candidates_data.wid,
             candidates_data.geom_pair,
         ],
+        device=geoms_model.device,
     )
 
 
-def broadphase_explicit(
+def primitive_broadphase_explicit(
     # Inputs:
     body_poses: wp.array,
     geoms_model: CollisionGeometriesModel,

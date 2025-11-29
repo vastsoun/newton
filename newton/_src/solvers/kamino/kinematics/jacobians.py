@@ -33,10 +33,10 @@ from ..core.types import (
     mat33f,
     mat63f,
     mat66f,
+    quatf,
     transformf,
     vec2i,
     vec3f,
-    vec4f,
 )
 from ..geometry.contacts import Contacts, ContactsData
 from ..kinematics.limits import Limits, LimitsData
@@ -492,9 +492,10 @@ def _build_contact_jacobians(
     contacts_model_num: wp.array(dtype=int32),
     contacts_wid: wp.array(dtype=int32),
     contacts_cid: wp.array(dtype=int32),
-    contacts_body_A: wp.array(dtype=vec4f),
-    contacts_body_B: wp.array(dtype=vec4f),
-    contacts_frames: wp.array(dtype=mat33f),
+    contacts_bid_AB: wp.array(dtype=vec2i),
+    contacts_position_A: wp.array(dtype=vec3f),
+    contacts_position_B: wp.array(dtype=vec3f),
+    contacts_frame: wp.array(dtype=quatf),
     jacobian_cts_offsets: wp.array(dtype=int32),
     # Outputs:
     jacobian_cts_data: wp.array(dtype=float32),
@@ -514,13 +515,12 @@ def _build_contact_jacobians(
     # contact index, i.e. C_k is the k-th contact entity
     cid_k = contacts_cid[cid]
 
-    # Retrieve the the contact frame and body contact points
-    R_k = contacts_frames[cid]
-    body_A_k = contacts_body_A[cid]
-    body_B_k = contacts_body_B[cid]
-
-    # Retrieve the world index of the contact
+    # Retrieve the the contact-specific data
     wid = contacts_wid[cid]
+    q_k = contacts_frame[cid]
+    bid_AB_k = contacts_bid_AB[cid]
+    r_Ac_k = contacts_position_A[cid]
+    r_Bc_k = contacts_position_B[cid]
 
     # Retrieve the relevant model info for the world
     nbd = model_info_num_body_dofs[wid]
@@ -531,13 +531,12 @@ def _build_contact_jacobians(
     # Append the index offset for the contact Jacobian block in the constraint Jacobian
     cjmio += ccgo * nbd
 
-    # Extract the body ids
-    bid_A_k = int32(body_A_k[3])
-    bid_B_k = int32(body_B_k[3])
+    # Extract the individual body indices
+    bid_A_k = bid_AB_k[0]
+    bid_B_k = bid_AB_k[1]
 
-    # Extract the contact points on each body geom
-    r_Ac_k = vec3f(body_A_k[0], body_A_k[1], body_A_k[2])
-    r_Bc_k = vec3f(body_B_k[0], body_B_k[1], body_B_k[2])
+    # Compute the rotation matrix from the contact frame quaternion
+    R_k = wp.quat_to_matrix(q_k)  # (3 x 3)
 
     # Set the constraint index offset for this contact
     cio_k = 3 * cid_k
@@ -672,8 +671,9 @@ def build_contact_jacobians(
             contacts.model_num_contacts,
             contacts.wid,
             contacts.cid,
-            contacts.body_A,
-            contacts.body_B,
+            contacts.bid_AB,
+            contacts.position_A,
+            contacts.position_B,
             contacts.frame,
             jacobian_cts_offsets,
             # Outputs:
@@ -765,8 +765,9 @@ def build_jacobians(
                 contacts.model_num_contacts,
                 contacts.wid,
                 contacts.cid,
-                contacts.body_A,
-                contacts.body_B,
+                contacts.bid_AB,
+                contacts.position_A,
+                contacts.position_B,
                 contacts.frame,
                 jacobian_cts_offsets,
                 # Outputs:

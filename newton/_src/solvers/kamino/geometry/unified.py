@@ -39,7 +39,7 @@ from ..core.builder import ModelBuilder
 from ..core.geometry import update_geometries_state
 from ..core.model import Model, ModelData
 from ..core.shapes import ShapeType
-from ..core.types import float32, int32, mat33f, transformf, vec2f, vec2i, vec4f
+from ..core.types import float32, int32, quatf, transformf, vec2f, vec2i, vec3f, vec4f
 from ..geometry.contacts import Contacts, make_contact_frame_znorm
 
 # Module configs
@@ -58,7 +58,7 @@ class ContactWriterDataKamino:
     """Contact writer data for writing contacts directly in Kamino format."""
 
     # Contact limits
-    contact_max: int
+    model_max_contacts: int
     world_max_contacts: wp.array(dtype=int32)
 
     # Geometry information arrays
@@ -66,22 +66,25 @@ class ContactWriterDataKamino:
     geom_wid: wp.array(dtype=int32)  # World ID for each geometry
     geom_mid: wp.array(dtype=int32)  # Material ID for each geometry
 
+    # Per-shape contact margin
+    # TODO: Add this to GeometryDescriptor and GeometriesModel
+    geom_contact_margin: wp.array(dtype=float32)
+
     # Material properties (indexed by material pair)
     material_friction: wp.array(dtype=float32)
     material_restitution: wp.array(dtype=float32)
 
-    # Per-shape contact margin
-    geom_contact_margin: wp.array(dtype=float32)
-
     # Output arrays (Kamino Contacts format)
-    contacts_model_num: wp.array(dtype=int32)
-    contacts_world_num: wp.array(dtype=int32)
+    contacts_model_num_active: wp.array(dtype=int32)
+    contacts_world_num_active: wp.array(dtype=int32)
     contact_wid: wp.array(dtype=int32)
     contact_cid: wp.array(dtype=int32)
-    contact_body_A: wp.array(dtype=vec4f)
-    contact_body_B: wp.array(dtype=vec4f)
+    contact_gid_AB: wp.array(dtype=vec2i)
+    contact_bid_AB: wp.array(dtype=vec2i)
+    contact_position_A: wp.array(dtype=vec3f)
+    contact_position_B: wp.array(dtype=vec3f)
     contact_gapfunc: wp.array(dtype=vec4f)
-    contact_frame: wp.array(dtype=mat33f)
+    contact_frame: wp.array(dtype=quatf)
     contact_material: wp.array(dtype=vec2f)
 
 
@@ -132,36 +135,46 @@ def kamino_write_contact_unified(
 
     # Only write contact if within margin
     if d < margin:
-        # Get body and world IDs
+        # Retrieve the geom/body/material indices
+        gid_a = contact_data.shape_a
+        gid_b = contact_data.shape_b
         bid_a = writer_data.geom_bid[contact_data.shape_a]
         bid_b = writer_data.geom_bid[contact_data.shape_b]
-        wid = writer_data.geom_wid[contact_data.shape_a]  # Assume both geoms are in same world
+        mid_a = writer_data.geom_mid[contact_data.shape_a]
+        mid_b = writer_data.geom_mid[contact_data.shape_b]
 
-        # Get world max contacts for this world
-        world_max = writer_data.world_max_contacts[wid]
+        # TODO: Check this logic: Are we sure this is guaranteed by the broadphase?
+        # Assume both geoms are in same world
+        wid = writer_data.geom_wid[contact_data.shape_a]
+
+        # Retrieve the max contacts of the corresponding world
+        world_max_contacts = writer_data.world_max_contacts[wid]
 
         # Atomically increment contact counts
-        mcid = wp.atomic_add(writer_data.contacts_model_num, 0, 1)
-        wcid = wp.atomic_add(writer_data.contacts_world_num, wid, 1)
+        mcid = wp.atomic_add(writer_data.contacts_model_num_active, 0, 1)
+        wcid = wp.atomic_add(writer_data.contacts_world_num_active, wid, 1)
 
-        if mcid < writer_data.contact_max and wcid < world_max:
-            # Perform body assignment (static body is always body A)
+        # If within the max contact allocations, write the new contact
+        if mcid < writer_data.model_max_contacts and wcid < world_max_contacts:
+            # Perform A/B geom and body assignment,
+            # ensuring static bodies is always body A
+            # NOTE: We want the normal to always point from A to B,
+            # and hence body B to be the "effected" body in the contact
+            # so we have to ensure that bid_B is always non-negative
             if bid_b < 0:
-                bid_A = bid_b
-                bid_B = bid_a
+                gid_AB = vec2i(gid_b, gid_a)
+                bid_AB = vec2i(bid_b, bid_a)
                 normal = -contact_normal_a_to_b
                 pos_A = b_contact_world
                 pos_B = a_contact_world
             else:
-                bid_A = bid_a
-                bid_B = bid_b
+                gid_AB = vec2i(gid_a, gid_b)
+                bid_AB = vec2i(bid_a, bid_b)
                 normal = contact_normal_a_to_b
                 pos_A = a_contact_world
                 pos_B = b_contact_world
 
-            # Get material properties from material pair
-            mid_a = writer_data.geom_mid[contact_data.shape_a]
-            mid_b = writer_data.geom_mid[contact_data.shape_b]
+            # TODO: Change this to extract from material-pair data
             # Use average of material properties (simplified approach)
             # In a full implementation, you'd look up the material pair
             friction = float32(0.5) * (writer_data.material_friction[mid_a] + writer_data.material_friction[mid_b])
@@ -169,18 +182,30 @@ def kamino_write_contact_unified(
                 writer_data.material_restitution[mid_a] + writer_data.material_restitution[mid_b]
             )
 
+            # Generate the gap-function (normal.x, normal.y, normal.z, distance),
+            # contact frame (z-norm aligned with contact normal)
+            # and material (friction, restitution)
+            gapfunc = vec4f(normal[0], normal[1], normal[2], d)
+            q_frame = wp.quat_from_matrix(make_contact_frame_znorm(normal))
+            material = vec2f(friction, restitution)
+
             # Store contact data in Kamino format
             writer_data.contact_wid[mcid] = wid
             writer_data.contact_cid[mcid] = wcid
-            writer_data.contact_body_A[mcid] = vec4f(pos_A[0], pos_A[1], pos_A[2], float32(bid_A))
-            writer_data.contact_body_B[mcid] = vec4f(pos_B[0], pos_B[1], pos_B[2], float32(bid_B))
-            writer_data.contact_gapfunc[mcid] = vec4f(normal[0], normal[1], normal[2], d)
-            writer_data.contact_frame[mcid] = make_contact_frame_znorm(normal)
-            writer_data.contact_material[mcid] = vec2f(friction, restitution)
+            writer_data.contact_gid_AB[mcid] = gid_AB
+            writer_data.contact_bid_AB[mcid] = bid_AB
+            writer_data.contact_position_A[mcid] = pos_A
+            writer_data.contact_position_B[mcid] = pos_B
+            writer_data.contact_gapfunc[mcid] = gapfunc
+            writer_data.contact_frame[mcid] = q_frame
+            writer_data.contact_material[mcid] = material
+
+        # TODO: Isnt it possible that this will create 'bubbles' of unused contacts?
+        # TODO: We may need an flaging mechanism to indicate invalid contacts
+        # Otherwise roll-back the atomic add if we exceeded limits
         else:
-            # Rollback the atomic add if we exceeded limits
-            wp.atomic_sub(writer_data.contacts_model_num, 0, 1)
-            wp.atomic_sub(writer_data.contacts_world_num, wid, 1)
+            wp.atomic_sub(writer_data.contacts_model_num_active, 0, 1)
+            wp.atomic_sub(writer_data.contacts_world_num_active, wid, 1)
 
 
 ###
@@ -190,15 +215,16 @@ def kamino_write_contact_unified(
 
 @wp.kernel
 def _kamino_compute_shape_aabbs(
+    # Inputs:
     geom_sid: wp.array(dtype=int32),
     geom_params: wp.array(dtype=vec4f),
     geom_ptr: wp.array(dtype=wp.uint64),
     geom_pose: wp.array(dtype=transformf),
     geom_contact_margin: wp.array(dtype=float32),
     geom_collision_radius: wp.array(dtype=float32),
-    # outputs
-    aabb_lower: wp.array(dtype=wp.vec3),
-    aabb_upper: wp.array(dtype=wp.vec3),
+    # Outputs:
+    shape_aabb_lower: wp.array(dtype=wp.vec3),
+    shape_aabb_upper: wp.array(dtype=wp.vec3),
 ):
     """Compute axis-aligned bounding boxes for each Kamino geometry in world space.
 
@@ -257,8 +283,8 @@ def _kamino_compute_shape_aabbs(
         # Use conservative bounding sphere approach
         radius = geom_collision_radius[shape_id]
         half_extents = wp.vec3(radius, radius, radius)
-        aabb_lower[shape_id] = pos - half_extents - margin_vec
-        aabb_upper[shape_id] = pos + half_extents + margin_vec
+        shape_aabb_lower[shape_id] = pos - half_extents - margin_vec
+        shape_aabb_upper[shape_id] = pos + half_extents + margin_vec
     else:
         # Use support function to compute tight AABB
         shape_data = GenericShapeData()
@@ -274,9 +300,8 @@ def _kamino_compute_shape_aabbs(
 
         # Compute tight AABB using helper function
         aabb_min_world, aabb_max_world = compute_tight_aabb_from_support(shape_data, orientation, pos, data_provider)
-
-        aabb_lower[shape_id] = aabb_min_world - margin_vec
-        aabb_upper[shape_id] = aabb_max_world + margin_vec
+        shape_aabb_lower[shape_id] = aabb_min_world - margin_vec
+        shape_aabb_upper[shape_id] = aabb_max_world + margin_vec
 
 
 @wp.kernel
@@ -286,6 +311,7 @@ def _kamino_prepare_geom_data_kernel(
     geom_pose: wp.array(dtype=transformf),
     # Outputs
     geom_data: wp.array(dtype=wp.vec4),  # scale xyz, thickness w
+    # TODO: Why do we need this copy? Can we use geom_pose directly?
     geom_transform: wp.array(dtype=wp.transform),  # world space transform
     geom_type: wp.array(dtype=int32),  # Newton GeoType
 ):
@@ -296,11 +322,12 @@ def _kamino_prepare_geom_data_kernel(
     - Kamino uses full height, Newton uses half-height for capsule/cylinder/cone
     - Plane has different semantics (Kamino: normal+distance, Newton: half-width/length)
     """
-    idx = wp.tid()
+    # Retrieve the geometry index from the thread grid
+    gid = wp.tid()
 
     # Get Kamino shape type and params
-    sid = geom_sid[idx]
-    params = geom_params[idx]
+    sid = geom_sid[gid]
+    params = geom_params[gid]
     thickness = float32(0.0)
 
     # Convert Kamino ShapeType to Newton GeoType and transform params to Newton scale
@@ -316,48 +343,49 @@ def _kamino_prepare_geom_data_kernel(
     geo_type = int32(GeoType.BOX)
     scale = wp.vec3(params[0], params[1], params[2])
 
-    if sid == int32(ShapeType.SPHERE.value):
+    if sid == ShapeType.SPHERE:
         # Kamino: (radius, 0, 0, 0) -> Newton: (radius, ?, ?)
-        geo_type = int32(GeoType.SPHERE)
+        geo_type = GeoType.SPHERE
         scale = wp.vec3(params[0], 0.0, 0.0)
 
-    elif sid == int32(ShapeType.BOX.value):
+    elif sid == ShapeType.BOX:
         # Kamino: (depth, width, height) full size -> Newton: half-extents
-        geo_type = int32(GeoType.BOX)
+        geo_type = GeoType.BOX
         scale = wp.vec3(params[0] * 0.5, params[1] * 0.5, params[2] * 0.5)
 
-    elif sid == int32(ShapeType.CAPSULE.value):
+    elif sid == ShapeType.CAPSULE:
         # Kamino: (radius, height) full height -> Newton: (radius, half-height, ?)
-        geo_type = int32(GeoType.CAPSULE)
+        geo_type = GeoType.CAPSULE
         scale = wp.vec3(params[0], params[1] * 0.5, 0.0)
 
-    elif sid == int32(ShapeType.CYLINDER.value):
+    elif sid == ShapeType.CYLINDER:
         # Kamino: (radius, height) full height -> Newton: (radius, half-height, ?)
-        geo_type = int32(GeoType.CYLINDER)
+        geo_type = GeoType.CYLINDER
         scale = wp.vec3(params[0], params[1] * 0.5, 0.0)
 
-    elif sid == int32(ShapeType.CONE.value):
+    elif sid == ShapeType.CONE:
         # Kamino: (radius, height) full height -> Newton: (radius, half-height, ?)
-        geo_type = int32(GeoType.CONE)
+        geo_type = GeoType.CONE
         scale = wp.vec3(params[0], params[1] * 0.5, 0.0)
 
-    elif sid == int32(ShapeType.ELLIPSOID.value):
+    elif sid == ShapeType.ELLIPSOID:
         # Kamino: (a, b, c) semi-axes -> Newton: same
-        geo_type = int32(GeoType.ELLIPSOID)
+        geo_type = GeoType.ELLIPSOID
         scale = wp.vec3(params[0], params[1], params[2])
 
-    elif sid == int32(ShapeType.PLANE.value):
+    elif sid == ShapeType.PLANE:
         # Kamino: (normal_x, normal_y, normal_z, distance) infinite plane
         # Newton: (half_width, half_length, ?) finite plane
         # For infinite plane, use (0, 0, ?) to signal infinite
-        geo_type = int32(GeoType.PLANE)
+        geo_type = GeoType.PLANE
         scale = wp.vec3(0.0, 0.0, 0.0)  # Infinite plane
 
-    geom_type[idx] = geo_type
-    geom_data[idx] = wp.vec4(scale[0], scale[1], scale[2], thickness)
+    geom_type[gid] = geo_type
+    geom_data[gid] = wp.vec4(scale[0], scale[1], scale[2], thickness)
 
+    # TODO: Why do we need this copy? Can we use geom_pose directly?
     # World space transform is already computed in Kamino
-    geom_transform[idx] = geom_pose[idx]
+    geom_transform[gid] = geom_pose[gid]
 
 
 ###
@@ -475,7 +503,7 @@ class CollisionPipelineUnifiedKamino:
         # Initialize narrow phase with custom Kamino contact writer
         self.narrow_phase = NarrowPhase(
             max_candidate_pairs=self.shape_pairs_max,
-            max_triangle_pairs=1000000,
+            max_triangle_pairs=1000000,  # TODO: Make this configurable?
             device=device,
             shape_aabb_lower=self.shape_aabb_lower,
             shape_aabb_upper=self.shape_aabb_upper,
@@ -504,14 +532,14 @@ class CollisionPipelineUnifiedKamino:
             state: Current model state (ModelData)
             contacts: Output contacts container (will be cleared and populated)
         """
-        # Update geometry poses from body states
-        update_geometries_state(data.bodies.q_i, model.cgeoms, data.cgeoms)
-
         # Clear contacts
         contacts.clear()
 
         # Clear broad phase counter
         self.broad_phase_pair_count.zero_()
+
+        # Update geometry poses from body states
+        update_geometries_state(data.bodies.q_i, model.cgeoms, data.cgeoms)
 
         # Compute AABBs for all geometries
         wp.launch(
@@ -589,7 +617,7 @@ class CollisionPipelineUnifiedKamino:
         # TODO: Why does this need to happen in every collide call?
         # Create writer data struct
         writer_data = ContactWriterDataKamino()
-        writer_data.contact_max = contacts.num_model_max_contacts
+        writer_data.model_max_contacts = contacts.num_model_max_contacts
         writer_data.world_max_contacts = contacts.world_max_contacts
         writer_data.geom_bid = model.cgeoms.bid
         writer_data.geom_wid = model.cgeoms.wid
@@ -597,12 +625,14 @@ class CollisionPipelineUnifiedKamino:
         writer_data.material_friction = self.material_friction
         writer_data.material_restitution = self.material_restitution
         writer_data.geom_contact_margin = self.geom_contact_margin
-        writer_data.contacts_model_num = contacts.model_num_contacts
-        writer_data.contacts_world_num = contacts.world_num_contacts
+        writer_data.contacts_model_num_active = contacts.model_num_contacts
+        writer_data.contacts_world_num_active = contacts.world_num_contacts
         writer_data.contact_wid = contacts.wid
         writer_data.contact_cid = contacts.cid
-        writer_data.contact_body_A = contacts.body_A
-        writer_data.contact_body_B = contacts.body_B
+        writer_data.contact_gid_AB = contacts.gid_AB
+        writer_data.contact_bid_AB = contacts.bid_AB
+        writer_data.contact_position_A = contacts.position_A
+        writer_data.contact_position_B = contacts.position_B
         writer_data.contact_gapfunc = contacts.gapfunc
         writer_data.contact_frame = contacts.frame
         writer_data.contact_material = contacts.material

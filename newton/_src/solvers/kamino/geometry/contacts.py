@@ -14,20 +14,47 @@
 # limitations under the License.
 
 """
-KAMINO: Discrete Contact Containers & Operations
+Defines the representation of discrete contacts in Kamino.
+
+This module provides a set of data types and operations that define
+the data layout and conventions used to represent discrete contacts
+within the Kamino solver. It includes:
+
+- The :class:`ContactsData` dataclass defining the structure of contact data.
+
+- The :class:`ContactMode` enumeration defining the discrete contact modes
+and a member function that generates Warp functions to compute the contact
+mode based on local contact velocities.
+
+- Utility functions for constructing contact-local coordinate frames
+supporting both a Z-up and X-up convention.
+
+- The :class:`Contacts` container which provides a high-level interface to
+  manage contact data, including allocations, access, and common operations,
+  and fundamentally serves as the primary output of collision detectors
+  as well as a cache of contact data to warm-start physics solvers.
 """
+
+from dataclasses import dataclass, field
+from enum import IntEnum
 
 import warp as wp
 from warp.context import Devicelike
 
 from ..core.math import COS_PI_6, UNIT_X, UNIT_Y
-from ..core.types import int32, mat33f, mat63f, vec2f, vec3f, vec4f
+from ..core.types import float32, int32, mat33f, quatf, vec2f, vec2i, vec3f, vec4f
 
 ###
 # Module interface
 ###
 
-__all__ = ["Contacts", "ContactsData"]
+__all__ = [
+    "DEFAULT_MAX_WORLD_CONTACTS",
+    "Contacts",
+    "ContactsData",
+    "make_contact_frame_xnorm",
+    "make_contact_frame_znorm",
+]
 
 
 ###
@@ -41,18 +68,88 @@ wp.set_module_options({"enable_backward": False})
 # Constants
 ###
 
-MAX_WORLD_CONTACTS_DEFAULT = int(32)
+DEFAULT_MAX_WORLD_CONTACTS = 32
 """The default maximum number of contacts per world."""
 
-W_I = wp.constant(mat63f([1, 0, 0], [0, 1, 0], [0, 0, 1], [0, 0, 0], [0, 0, 0], [0, 0, 0]))
-"""The identity wrench matrix, used to initialize the contact wrench matrices."""
-
 
 ###
-# Containers
+# Types
 ###
 
 
+class ContactMode(IntEnum):
+    """An enumeration of discrete-contact modes."""
+
+    ###
+    # Contact Modes
+    ###
+
+    INACTIVE = -1
+    """Indicates that contact is inactive (i.e. separated)."""
+
+    OPENING = 0
+    """Indicates that contact was previously closed (i.e. STICKING or SLIDING) and is now opening."""
+
+    STICKING = 1
+    """Indicates that contact is persisting without relative tangential motion."""
+
+    SLIDING = 2
+    """Indicates that contact is persisting with relative tangential motion."""
+
+    ###
+    # Utility Constants
+    ###
+
+    DEFAULT_VN_MIN = 1e-3
+    """The minimum normal velocity threshold for determining contact mode."""
+
+    DEFAULT_VT_MIN = 1e-3
+    """The minimum tangential velocity threshold for determining contact mode."""
+
+    ###
+    # Utility Functions
+    ###
+
+    @staticmethod
+    def make_compute_mode_func(vn_tol: float = DEFAULT_VN_MIN, vt_tol: float = DEFAULT_VT_MIN):
+        # Ensure tolerances are non-negative
+        if vn_tol < 0.0:
+            raise ValueError("ContactMode: vn_tol must be non-negative")
+        if vt_tol < 0.0:
+            raise ValueError("ContactMode: vt_tol must be non-negative")
+
+        # Generate the compute mode function based on the specified tolerances
+        @wp.func
+        def _compute_mode(v: vec3f) -> int32:
+            """
+            Computes the discrete contact mode based on the contact velocity.
+
+            Args:
+                v (vec3f): The contact velocity expressed in the local contact frame.
+
+            Returns:
+                int32: The discrete contact mode as an integer value.
+            """
+            # Decompose the velocity into the normal and tangential components
+            v_N = v.z
+            v_T_norm = wp.sqrt(v.x * v.x + v.y * v.y)
+
+            # Determine the contact mode
+            mode = int32(ContactMode.OPENING)
+            if v_N <= float32(vn_tol):
+                if v_T_norm <= float32(vt_tol):
+                    mode = ContactMode.STICKING
+                else:
+                    mode = ContactMode.SLIDING
+
+            # Return the resulting contact mode integer
+            return mode
+
+        # Return the generated compute mode function
+        return _compute_mode
+
+
+@dataclass
 class ContactsData:
     """
     An SoA-based container to hold time-varying contact data of a set of contact elements.
@@ -60,83 +157,149 @@ class ContactsData:
     This container is intended as the final output of collision detectors and as input to solvers.
     """
 
-    def __init__(self):
-        self.num_model_max_contacts: int = 0
-        """
-        The maximum number of contacts allocated across all worlds.\n
-        This is cached on the host-side for managing data allocations and setting thread sizes in kernels.
-        """
+    @staticmethod
+    def _default_num_world_max_contacts() -> list[int]:
+        return [0]
 
-        self.num_world_max_contacts: list[int] = [0]
-        """
-        The maximum number of contacts allocated per world.\n
-        This is cached on the host-side for managing data allocations and setting thread sizes in kernels.
-        """
+    num_model_max_contacts: int = 0
+    """
+    A host-side cache of the maximum number of contacts allocated across all worlds.\n
+    Intended for managing data allocations and setting thread sizes in kernels.
+    """
 
-        self.model_max_contacts: wp.array(dtype=int32) | None = None
-        """
-        The number of active contacts per model.\n
-        Shape of ``(1,)`` and type :class:`int32`.
-        """
+    num_world_max_contacts: list[int] = field(default_factory=_default_num_world_max_contacts)
+    """
+    The host-side cache of the maximum number of contacts allocated per world.\n
+    Intended for managing data allocations and setting thread sizes in kernels.
+    """
 
-        self.model_num_contacts: wp.array(dtype=int32) | None = None
-        """
-        The number of active contacts per model.\n
-        Shape of ``(1,)`` and type :class:`int32`.
-        """
+    model_max_contacts: wp.array | None = None
+    """
+    The number of contacts pre-allocated across all worlds in the model.\n
+    Shape of ``(1,)`` and type :class:`int32`.
+    """
 
-        self.world_max_contacts: wp.array(dtype=int32) | None = None
-        """The maximum number of contacts per world.\n
-        Shape of ``(num_worlds,)`` and type :class:`int32`.
-        """
+    model_num_contacts: wp.array | None = None
+    """
+    The number of active contacts detected across all worlds in the model.\n
+    Shape of ``(1,)`` and type :class:`int32`.
+    """
 
-        self.world_num_contacts: wp.array(dtype=int32) | None = None
-        """
-        The number of active contacts per world.\n
-        Shape of ``(num_worlds,)`` and type :class:`int32`.
-        """
+    world_max_contacts: wp.array | None = None
+    """
+    The maximum number of contacts pre-allocated for each world.\n
+    Shape of ``(num_worlds,)`` and type :class:`int32`.
+    """
 
-        self.wid: wp.array(dtype=int32) | None = None
-        """
-        The world index of each contact.\n
-        Shape of ``(num_model_max_contacts,)`` and type :class:`int32`.
-        """
+    world_num_contacts: wp.array | None = None
+    """
+    The number of active contacts detected in each world.\n
+    Shape of ``(num_worlds,)`` and type :class:`int32`.
+    """
 
-        self.cid: wp.array(dtype=int32) | None = None
-        """
-        The contact index of each contact w.r.t its world.\n
-        Shape of ``(num_model_max_contacts,)`` and type :class:`int32`.
-        """
+    wid: wp.array | None = None
+    """
+    The world index of each active contact.\n
+    Shape of ``(num_model_max_contacts,)`` and type :class:`int32`.
+    """
 
-        self.body_A: wp.array(dtype=vec4f) | None = None
-        """
-        The position of each contact on corresponding body A and the body index (xyz: position, w: bid).\n
-        Shape of ``(num_model_max_contacts,)`` and type :class:`vec4f`.
-        """
+    cid: wp.array | None = None
+    """
+    The contact index of each active contact w.r.t its world.\n
+    Shape of ``(num_model_max_contacts,)`` and type :class:`int32`.
+    """
 
-        self.body_B: wp.array(dtype=vec4f) | None = None
-        """
-        The position of each contact on corresponding body B and the body index (xyz: position, w: bid).\n
-        Shape of ``(num_model_max_contacts,)`` and type :class:`vec4f`.
-        """
+    gid_AB: wp.array | None = None
+    """
+    The geometry indices of the geometry-pair AB associated with each active contact.\n
+    Shape of ``(num_model_max_contacts,)`` and type :class:`vec2i`.
+    """
 
-        self.gapfunc: wp.array(dtype=vec4f) | None = None
-        """
-        The gap-function signed-distance of each contact (xyz: normal, w: penetration).\n
-        Shape of ``(num_model_max_contacts,)`` and type :class:`vec4f`.
-        """
+    bid_AB: wp.array | None = None
+    """
+    The body indices of the body-pair AB associated with each activecontact.\n
+    Shape of ``(num_model_max_contacts,)`` and type :class:`vec2i`.
+    """
 
-        self.frame: wp.array(dtype=mat33f) | None = None
-        """
-        The contact frame of each contact (3x3 rotation matrix).\n
-        Shape of ``(num_model_max_contacts,)`` and type :class:`mat33f`.
-        """
+    position_A: wp.array | None = None
+    """
+    The position of each active contact on the associated body-A in world coordinates.\n
+    Shape of ``(num_model_max_contacts,)`` and type :class:`vec3f`.
+    """
 
-        self.material: wp.array(dtype=vec2f) | None = None
+    position_B: wp.array | None = None
+    """
+    The position of each active contact on the associated body-B in world coordinates.\n
+    Shape of ``(num_model_max_contacts,)`` and type :class:`vec3f`.
+    """
+
+    gapfunc: wp.array | None = None
+    """
+    The gap-function (i.e. signed-distance) of each active contact with format `(xyz: normal, w: penetration)`.\n
+    Shape of ``(num_model_max_contacts,)`` and type :class:`vec4f`.
+    """
+
+    frame: wp.array | None = None
+    """
+    The coordinate frame of each active contact as a rotation quaternion w.r.t the world.\n
+    Shape of ``(num_model_max_contacts,)`` and type :class:`quatf`.
+    """
+
+    material: wp.array | None = None
+    """
+    The material properties of each active contact with format `(0: friction, 1: restitution)`.\n
+    Shape of ``(num_model_max_contacts,)`` and type :class:`vec2f`.
+    """
+
+    key: wp.array | None = None
+    """
+    Integer key uniquely identifying each active contact.\n
+    The per-contact key assignment is implementation-dependent, but is typically
+    computed from the A/B geom-pair index as well as additional information such as:
+    - the triangle index
+    - shape-specific topological data
+    - contact index w.r.t the geom-pair\n
+    Shape of ``(num_model_max_contacts,)`` and type :class:`uint64`.
+    """
+
+    reaction: wp.array | None = None
+    """
+    The 3D contact reaction (force/impulse) expressed in the respective local contact frame.\n
+    This is to be set by solvers at each step, and also facilitates contact visualization and warm-starting.\n
+    Shape of ``(num_model_max_contacts,)`` and type :class:`vec3f`.
+    """
+
+    velocity: wp.array | None = None
+    """
+    The 3D contact velocity expressed in the respective local contact frame.\n
+    This is to be set by solvers at each step, and also facilitates contact visualization and warm-starting.\n
+    Shape of ``(num_model_max_contacts,)`` and type :class:`vec3f`.
+    """
+
+    mode: wp.array | None = None
+    """
+    The discrete contact mode expressed as an integer value.\n
+    The possible values correspond to those of the :class:`ContactMode`.\n
+    This is to be set by solvers at each step, and also facilitates contact visualization and warm-starting.\n
+    Shape of ``(num_model_max_contacts,)`` and type :class:`int32`.
+    """
+
+    def clear(self):
         """
-        The material properties of each contact (0: friction, 1: restitution).\n
-        Shape of ``(num_model_max_contacts,)`` and type :class:`vec2f`.
+        Clears the count of active contacts.
         """
+        self.model_num_contacts.zero_()
+        self.world_num_contacts.zero_()
+
+    def reset(self):
+        """
+        Clears the count of active contacts and resets data to sentinel values.
+        """
+        self.clear()
+        self.wid.fill_(-1)
+        self.cid.fill_(-1)
+        self.gid_AB.fill_(vec2i(-1, -1))
+        self.bid_AB.fill_(vec2i(-1, -1))
 
 
 ###
@@ -184,25 +347,29 @@ class Contacts:
         default_max_contacts: int | None = None,
         device: Devicelike = None,
     ):
-        # The device on which to allocate the contacts data
-        self.device = device
-
-        # Set the default maximum number of contacts per world
-        self._default_max_world_contacts: int = MAX_WORLD_CONTACTS_DEFAULT
+        # Declare and initialize the default maximum number of contacts per world
+        self._default_max_world_contacts: int = DEFAULT_MAX_WORLD_CONTACTS
         if default_max_contacts is not None:
             self._default_max_world_contacts = default_max_contacts
 
-        # Contacts data container
-        self._data: ContactsData = ContactsData()
+        # Cache the target device for all memory allocations
+        self._device: Devicelike = None
 
-        # Perofrm memory allocation if max_contacts is specified
+        # Declare the contacts data container
+        self._data: ContactsData | None = None
+
+        # If a capacity is specified, finalize the contacts data allocation
         if capacity is not None:
-            self.allocate(capacity=capacity, device=device)
+            self.finalize(capacity=capacity, device=device)
+
+    ###
+    # Properties
+    ###
 
     @property
     def default_max_world_contacts(self) -> int:
         """
-        The default maximum number of contacts per world.
+        Returns the default maximum number of contacts per world.\n
         This value is used when the capacity at allocation-time is unspecified or equals 0.
         """
         return self._default_max_world_contacts
@@ -216,108 +383,221 @@ class Contacts:
             max_contacts (int): The maximum number of contacts per world.
         """
         if max_contacts < 0:
-            raise ValueError("Contacts: max_contacts must be a non-negative integer")
+            raise ValueError("max_contacts must be a non-negative integer")
         self._default_max_world_contacts = max_contacts
+
+    @property
+    def device(self) -> Devicelike:
+        """
+        Returns the device on which the contacts data is allocated.
+        """
+        return self._device
 
     @property
     def data(self) -> ContactsData:
         """
         Returns the managed contacts data container.
         """
+        self._assert_has_data()
         return self._data
 
     @property
     def num_model_max_contacts(self) -> int:
         """
-        The maximum number of contacts allocated across all worlds.
+        Returns the host-side cache of the maximum number of contacts allocated across all worlds.\n
+        Intended for managing data allocations and setting thread sizes in kernels.
         """
+        self._assert_has_data()
         return self._data.num_model_max_contacts
 
     @property
     def num_world_max_contacts(self) -> list[int]:
         """
-        The maximum number of contacts allocated per world.
+        Returns the host-side cache of the maximum number of contacts allocated per world.\n
+        Intended for managing data allocations and setting thread sizes in kernels.
         """
+        self._assert_has_data()
         return self._data.num_world_max_contacts
 
     @property
     def model_max_contacts(self) -> wp.array:
         """
-        The total number of maximum contacts for the model. Shape of ``(1,)`` and type :class:`int32`.
+        Returns the number of active contacts per model.\n
+        Shape of ``(1,)`` and type :class:`int32`.
         """
+        self._assert_has_data()
         return self._data.model_max_contacts
 
     @property
     def model_num_contacts(self) -> wp.array:
         """
-        The total number of active contacts for the model. Shape of ``(1,)`` and type :class:`int32`.
+        Returns the number of active contacts detected across all worlds in the model.\n
+        Shape of ``(1,)`` and type :class:`int32`.
         """
+        self._assert_has_data()
         return self._data.model_num_contacts
 
     @property
     def world_max_contacts(self) -> wp.array:
         """
-        The total number of maximum contacts for the model. Shape of ``(1,)`` and type :class:`int32`.
+        Returns the maximum number of contacts pre-allocated for each world.\n
+        Shape of ``(num_worlds,)`` and type :class:`int32`.
         """
+        self._assert_has_data()
         return self._data.world_max_contacts
 
     @property
     def world_num_contacts(self) -> wp.array:
         """
-        The total number of active contacts for the model. Shape of ``(1,)`` and type :class:`int32`.
+        Returns the number of active contacts detected in each world.\n
+        Shape of ``(num_worlds,)`` and type :class:`int32`.
         """
+        self._assert_has_data()
         return self._data.world_num_contacts
 
     @property
     def wid(self) -> wp.array:
         """
-        The world index of each contact. Shape of ``(nc,)`` and type :class:`int32`.
+        REturns the world index of each active contact.\n
+        Shape of ``(num_model_max_contacts,)`` and type :class:`int32`.
         """
+        self._assert_has_data()
         return self._data.wid
 
     @property
     def cid(self) -> wp.array:
         """
-        The contact index of each contact w.r.t its world. Shape of ``(nc,)`` and type :class:`int32`.
+        Returns the contact index of each active contact w.r.t its world.\n
+        Shape of ``(num_model_max_contacts,)`` and type :class:`int32`.
         """
+        self._assert_has_data()
         return self._data.cid
 
     @property
-    def body_A(self) -> wp.array:
+    def gid_AB(self) -> wp.array:
         """
-        The position of the contact on body A and the body index (xyz: position, w: bid). Shape of ``(nc,)`` and type :class:`vec4f`.
+        Returns the geometry indices of the geometry-pair AB associated with each active contact.\n
+        Shape of ``(num_model_max_contacts,)`` and type :class:`vec2i`.
         """
-        return self._data.body_A
+        self._assert_has_data()
+        return self._data.gid_AB
 
     @property
-    def body_B(self) -> wp.array:
+    def bid_AB(self) -> wp.array:
         """
-        The position of the contact on body B and the body index (xyz: position, w: bid). Shape of ``(nc,)`` and type :class:`vec4f`.
+        Returns the body indices of the body-pair AB associated with each active contact.\n
+        Shape of ``(num_model_max_contacts,)`` and type :class:`vec2i`.
         """
-        return self._data.body_B
+        self._assert_has_data()
+        return self._data.bid_AB
+
+    @property
+    def position_A(self) -> wp.array:
+        """
+        Returns the position of each active contact on the associated body-A in world coordinates.\n
+        Shape of ``(num_model_max_contacts,)`` and type :class:`vec3f`.
+        """
+        self._assert_has_data()
+        return self._data.position_A
+
+    @property
+    def position_B(self) -> wp.array:
+        """
+        Returns the position of each active contact on the associated body-B in world coordinates.\n
+        Shape of ``(num_model_max_contacts,)`` and type :class:`vec3f`.
+        """
+        self._assert_has_data()
+        return self._data.position_B
 
     @property
     def gapfunc(self) -> wp.array:
         """
-        The contact gap-function signed-distance (xyz: normal, w: penetration). Shape of ``(nc,)`` and type :class:`vec4f`.
+        Returns the gap-function (i.e. signed-distance) of each
+        active contact with format `(xyz: normal, w: penetration)`.\n
+        Shape of ``(num_model_max_contacts,)`` and type :class:`vec4f`.
         """
+        self._assert_has_data()
         return self._data.gapfunc
 
     @property
     def frame(self) -> wp.array:
         """
-        The contact frame (3x3 rotation matrix). Shape of ``(nc,)`` and type :class:`mat33f`.
+        Returns the coordinate frame of each active contact as a rotation quaternion w.r.t the world.\n
+        Shape of ``(num_model_max_contacts,)`` and type :class:`quatf`.
         """
+        self._assert_has_data()
         return self._data.frame
 
     @property
     def material(self) -> wp.array:
         """
-        The contact material properties (0: friction, 1: restitution). Shape of ``(nc,)`` and type :class:`vec2f`.
+        Returns the material properties of each active contact with format `(0: friction, 1: restitution)`.\n
+        Shape of ``(num_model_max_contacts,)`` and type :class:`vec2f`.
         """
+        self._assert_has_data()
         return self._data.material
 
-    def allocate(self, capacity: int | list[int], device: Devicelike = None):
+    @property
+    def key(self) -> wp.array:
+        """
+        Returns the integer key uniquely identifying each active contact.\n
+        The per-contact key assignment is implementation-dependent, but is typically
+        computed from the A/B geom-pair index as well as additional information such as:
+        - the triangle index
+        - shape-specific topological data
+        - contact index w.r.t the geom-pair\n
+        Shape of ``(num_model_max_contacts,)`` and type :class:`uint64`.
+        """
+        self._assert_has_data()
+        return self._data.material
+
+    @property
+    def reaction(self) -> wp.array:
+        """
+        Returns the 3D contact reaction (force/impulse) expressed in the respective local contact frame.\n
+        This is to be set by solvers at each step, and also facilitates contact visualization and warm-starting.\n
+        Shape of ``(num_model_max_contacts,)`` and type :class:`vec3f`.
+        """
+        self._assert_has_data()
+        return self._data.reaction
+
+    @property
+    def velocity(self) -> wp.array:
+        """
+        Returns the 3D contact velocity expressed in the respective local contact frame.\n
+        This is to be set by solvers at each step, and also facilitates contact visualization and warm-starting.\n
+        Shape of ``(num_model_max_contacts,)`` and type :class:`vec3f`.
+        """
+        self._assert_has_data()
+        return self._data.velocity
+
+    @property
+    def mode(self) -> wp.array:
+        """
+        Returns the discrete contact mode expressed as an integer value.\n
+        The possible values correspond to those of the :class:`ContactMode`.\n
+        This is to be set by solvers at each step, and also facilitates contact visualization and warm-starting.\n
+        Shape of ``(num_model_max_contacts,)`` and type :class:`int32`.
+        """
+        self._assert_has_data()
+        return self._data.mode
+
+    ###
+    # Operations
+    ###
+
+    def finalize(self, capacity: int | list[int], device: Devicelike = None):
+        """
+        Finalizes the contacts data allocations based on the specified capacity.
+
+        Args:
+            capacity (int | list[int]):
+                The maximum number of contacts to allocate.\n
+                If an integer is provided, it specifies the capacity for a single world.\n
+                If a list of integers is provided, it specifies the capacity for each world.
+            device (Devicelike, optional):
+                The device on which to allocate the contacts data.
+        """
         # The memory allocation requires the total number of contacts (over multiple worlds)
         # as well as the contacts capacities for each world. Corresponding sizes are defaulted to 0 (empty).
         model_max_contacts = 0
@@ -326,10 +606,10 @@ class Contacts:
         # If the capacity is a list, this means we are allocating for multiple worlds
         if isinstance(capacity, list):
             if len(capacity) == 0:
-                raise ValueError("Contacts: capacity cannot be an empty list")
+                raise ValueError("`capacity` must be an non-empty list")
             for i in range(len(capacity)):
                 if capacity[i] < 0:
-                    raise ValueError(f"Contacts: capacity[{i}] must be a non-negative integer")
+                    raise ValueError(f"`capacity[{i}]` must be a non-negative integer")
                 if capacity[i] == 0:
                     capacity[i] = self._default_max_world_contacts
             model_max_contacts = sum(capacity)
@@ -338,52 +618,61 @@ class Contacts:
         # If the capacity is a single integer, this means we are allocating for a single world
         elif isinstance(capacity, int):
             if capacity < 0:
-                raise ValueError("Contacts: capacity must be a non-negative integer")
+                raise ValueError("`capacity` must be a non-negative integer")
             if capacity == 0:
                 capacity = self._default_max_world_contacts
             model_max_contacts = capacity
             world_max_contacts = [capacity]
 
         else:
-            raise TypeError("Contacts: capacity must be an integer or a list of integers")
+            raise TypeError("`capacity` must be an integer or a list of integers")
 
         # Override the device if specified
         if device is not None:
-            self.device = device
+            self._device = device
 
         # Allocate the contacts data on the specified device
-        with wp.ScopedDevice(self.device):
-            self._data.num_model_max_contacts = model_max_contacts
-            self._data.num_world_max_contacts = world_max_contacts
-            self._data.model_max_contacts = wp.array([model_max_contacts], dtype=int32)
-            self._data.model_num_contacts = wp.zeros(shape=1, dtype=int32)
-            self._data.world_max_contacts = wp.array(world_max_contacts, dtype=int32)
-            self._data.world_num_contacts = wp.zeros(shape=len(world_max_contacts), dtype=int32)
-            self._data.wid = wp.zeros(shape=self.num_model_max_contacts, dtype=int32)
-            self._data.cid = wp.zeros(shape=self.num_model_max_contacts, dtype=int32)
-            self._data.body_A = wp.zeros(shape=self.num_model_max_contacts, dtype=vec4f)
-            self._data.body_B = wp.zeros(shape=self.num_model_max_contacts, dtype=vec4f)
-            self._data.gapfunc = wp.zeros(shape=self.num_model_max_contacts, dtype=vec4f)
-            self._data.frame = wp.zeros(shape=self.num_model_max_contacts, dtype=mat33f)
-            self._data.material = wp.zeros(shape=self.num_model_max_contacts, dtype=vec2f)
+        with wp.ScopedDevice(self._device):
+            self._data = ContactsData(
+                num_model_max_contacts=model_max_contacts,
+                num_world_max_contacts=world_max_contacts,
+                model_max_contacts=wp.array([model_max_contacts], dtype=int32),
+                model_num_contacts=wp.zeros(shape=1, dtype=int32),
+                world_max_contacts=wp.array(world_max_contacts, dtype=int32),
+                world_num_contacts=wp.zeros(shape=len(world_max_contacts), dtype=int32),
+                wid=wp.full(value=-1, shape=(model_max_contacts,), dtype=int32),
+                cid=wp.full(value=-1, shape=(model_max_contacts,), dtype=int32),
+                gid_AB=wp.full(value=vec2i(-1, -1), shape=(model_max_contacts,), dtype=vec2i),
+                bid_AB=wp.full(value=vec2i(-1, -1), shape=(model_max_contacts,), dtype=vec2i),
+                position_A=wp.zeros(shape=(model_max_contacts,), dtype=vec3f),
+                position_B=wp.zeros(shape=(model_max_contacts,), dtype=vec3f),
+                gapfunc=wp.zeros(shape=(model_max_contacts,), dtype=vec4f),
+                frame=wp.zeros(shape=(model_max_contacts,), dtype=quatf),
+                material=wp.zeros(shape=(model_max_contacts,), dtype=vec2f),
+                key=wp.zeros(shape=(model_max_contacts,), dtype=wp.uint64),
+                reaction=wp.zeros(shape=(model_max_contacts,), dtype=vec3f),
+                velocity=wp.zeros(shape=(model_max_contacts,), dtype=vec3f),
+                mode=wp.full(value=ContactMode.INACTIVE, shape=(model_max_contacts,), dtype=int32),
+            )
 
     def clear(self):
         """
-        Clears the active contacts count.
+        Clears the count of active contacts.
         """
-        self._data.model_num_contacts.zero_()
-        self._data.world_num_contacts.zero_()
+        self._assert_has_data()
+        self._data.clear()
 
-    def zero(self):
+    def reset(self):
         """
-        Resets the contact data to zero.
+        Clears the count of active contacts and resets data to sentinel values.
         """
-        self._data.model_num_contacts.zero_()
-        self._data.world_num_contacts.zero_()
-        self._data.wid.zero_()
-        self._data.cid.zero_()
-        self._data.body_A.zero_()
-        self._data.body_B.zero_()
-        self._data.gapfunc.zero_()
-        self._data.frame.zero_()
-        self._data.material.zero_()
+        self._assert_has_data()
+        self._data.reset()
+
+    ###
+    # Internals
+    ###
+
+    def _assert_has_data(self):
+        if self._data is None:
+            raise RuntimeError("ContactsData has not been allocated. Call `finalize()` before accessing data.")

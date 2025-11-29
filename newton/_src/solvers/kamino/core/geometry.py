@@ -277,14 +277,17 @@ class CollisionGeometryDescriptor(GeometryDescriptor):
             Defaults to `-1`, indicating that the body has not yet been added to a world.
         gid (int): Index of the geometry w.r.t. its world.\n
             Defaults to `-1`, indicating that the geometry has not yet been added to a world.
-        mid (int): The material index assigned to the collision geometry instance.\n
-            Defaults to `0` indicating the default material.
+        material (str | int | None): The material assigned to the collision geometry instance.\n
+            Can be specified either as a string name or an integer index.\n
+            Defaults to `None`, indicating the default material.
         group (int): The collision group to which the collision geometry instance is assigned.\n
             Defaults to the default group with value `1`.
         collides (int): The collision group with which the collision geometry instance can collide.\n
             Defaults to enabling collisions with the default group with value `1`.
         max_contacts (int): The maximum number of contacts to generate for the collision geometry instance.\n
             Defaults to `0`, indicating no limit is imposed on the number of contacts generated for this geometry.
+        mid (int): The material index assigned to the collision geometry instance.\n
+            Defaults to `0` indicating the default material.
     """
 
     def __init__(
@@ -294,6 +297,7 @@ class CollisionGeometryDescriptor(GeometryDescriptor):
         group: int = 1,
         collides: int = 1,
         max_contacts: int = 0,
+        mid: int | None = None,
         **kwargs,
     ):
         """
@@ -363,10 +367,10 @@ class CollisionGeometryDescriptor(GeometryDescriptor):
         # Metadata - to be set by the ModelBuilder when added
         ###
 
-        self.mid: int = 0
+        self.mid: int | None = mid
         """
         The material index assigned to the collision geometry instance.\n
-        Defaults to `0` indicating the default material.
+        Defaults to `None` indicating that the default material will assigned.
         """
 
     @override
@@ -380,12 +384,13 @@ class CollisionGeometryDescriptor(GeometryDescriptor):
             f"bid: {self.bid},\n"
             f"offset: {self.offset},\n"
             f"shape: {self.shape},\n"
-            f"mid: {self.mid},\n"
+            f"material: {self.material},\n"
             f"group: {self.group},\n"
             f"collides: {self.collides},\n"
             f"max_contacts: {self.max_contacts}\n"
             f"wid: {self.wid},\n"
             f"gid: {self.gid},\n"
+            f"mid: {self.mid},\n"
             f")"
         )
 

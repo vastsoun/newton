@@ -563,6 +563,7 @@ class ModelBuilder:
             layer=layer,
             offset=offset if offset is not None else transformf(),
             shape=shape,
+            material=self._materials[material],
             mid=self._materials.index(material),
             group=group,
             collides=collides,
@@ -594,7 +595,7 @@ class ModelBuilder:
         world = self._check_world_index(world_index)
 
         # If the geom material is not assigned, set it to the global default
-        if geom.mid < 0:
+        if geom.mid is None:
             geom.mid = self._materials.default.mid
 
         # Append body model data

@@ -41,7 +41,12 @@ from ..core.materials import DEFAULT_FRICTION, DEFAULT_RESTITUTION
 from ..core.model import Model, ModelData
 from ..core.shapes import ShapeType
 from ..core.types import float32, int32, quatf, transformf, vec2f, vec2i, vec3f, vec4f
-from ..geometry.contacts import DEFAULT_GEOM_PAIR_MAX_CONTACTS, Contacts, make_contact_frame_znorm
+from ..geometry.contacts import (
+    DEFAULT_GEOM_PAIR_CONTACT_MARGIN,
+    DEFAULT_GEOM_PAIR_MAX_CONTACTS,
+    Contacts,
+    make_contact_frame_znorm,
+)
 
 ###
 # Module configs
@@ -60,17 +65,17 @@ class ContactWriterDataKamino:
     """Contact writer data for writing contacts directly in Kamino format."""
 
     # Contact limits
-    model_max_contacts: int
+    model_max_contacts: int32
     world_max_contacts: wp.array(dtype=int32)
+
+    # Global settings
+    default_margin: float32
 
     # Geometry information arrays
     geom_wid: wp.array(dtype=int32)  # World ID for each geometry
     geom_bid: wp.array(dtype=int32)  # Body ID for each geometry
     geom_mid: wp.array(dtype=int32)  # Material ID for each geometry
-
-    # Per-shape contact margin
-    # TODO: Add this to GeometryDescriptor and GeometriesModel
-    geom_contact_margin: wp.array(dtype=float32)
+    geom_margin: wp.array(dtype=float32)  # Contact margin for each geometry
 
     # Material properties (indexed by material pair)
     material_friction: wp.array(dtype=float32)
@@ -233,9 +238,9 @@ def write_contact_unified_kamino(
     d = distance - total_separation_needed
 
     # Use per-shape contact margin (max of both shapes)
-    margin_a = writer_data.geom_contact_margin[contact_data.shape_a]
-    margin_b = writer_data.geom_contact_margin[contact_data.shape_b]
-    margin = wp.max(margin_a, margin_b)
+    margin_a = writer_data.geom_margin[contact_data.shape_a]
+    margin_b = writer_data.geom_margin[contact_data.shape_b]
+    margin = wp.max(writer_data.default_margin, wp.max(margin_a, margin_b))
 
     # Only write contact if within margin
     if d < margin:
@@ -316,9 +321,11 @@ def write_contact_unified_kamino(
 @wp.kernel
 def _convert_geom_data_kamino_to_newton(
     # Inputs:
+    default_margin: float32,
     geom_sid: wp.array(dtype=int32),
     geom_params: wp.array(dtype=vec4f),
     # Outputs:
+    geom_margin: wp.array(dtype=float32),
     geom_type: wp.array(dtype=int32),
     geom_data: wp.array(dtype=vec4f),
 ):
@@ -339,6 +346,8 @@ def _convert_geom_data_kamino_to_newton(
     # Retrieve the geom-specific data
     sid = geom_sid[gid]
     params = geom_params[gid]
+    margin = geom_margin[gid]
+
     # NOTE: Thickness is not currently used in Kamino; set to zero
     thickness = float32(0.0)
 
@@ -346,8 +355,11 @@ def _convert_geom_data_kamino_to_newton(
     geo_type, scale = convert_kamino_shape_to_newton_geo(sid, params)
 
     # Store converted geometry data
+    # NOTE: the per-geom margin is overridden because
+    # the unified pipeline needs it during narrow-phase
     geom_type[gid] = geo_type
     geom_data[gid] = vec4f(scale[0], scale[1], scale[2], thickness)
+    geom_margin[gid] = wp.max(default_margin, margin)
 
 
 @wp.kernel
@@ -358,7 +370,7 @@ def _update_geom_poses_and_compute_aabbs(
     geom_bid: wp.array(dtype=int32),
     geom_ptr: wp.array(dtype=wp.uint64),
     geom_offset: wp.array(dtype=transformf),
-    geom_contact_margin: wp.array(dtype=float32),
+    geom_margin: wp.array(dtype=float32),
     geom_collision_radius: wp.array(dtype=float32),
     body_pose: wp.array(dtype=transformf),
     # Outputs:
@@ -396,7 +408,7 @@ def _update_geom_poses_and_compute_aabbs(
     geo_type = geom_type[gid]
     geo_data = geom_data[gid]
     bid = geom_bid[gid]
-    margin = geom_contact_margin[gid]
+    margin = geom_margin[gid]
     X_bg = geom_offset[gid]
 
     # Retrieve the pose of the corresponding body
@@ -477,7 +489,7 @@ class CollisionPipelineUnifiedKamino:
         max_contacts: int | None = None,
         max_contacts_per_pair: int = DEFAULT_GEOM_PAIR_MAX_CONTACTS,
         max_triangle_pairs: int = 1_000_000,
-        default_margin: float = 1e-5,
+        default_margin: float = DEFAULT_GEOM_PAIR_CONTACT_MARGIN,
         default_friction: float = DEFAULT_FRICTION,
         default_restitution: float = DEFAULT_RESTITUTION,
         device: Devicelike = None,
@@ -548,7 +560,6 @@ class CollisionPipelineUnifiedKamino:
             self.geom_data = wp.zeros(self._num_geoms, dtype=vec4f)
             self.geom_collision_group = wp.array(geom_collision_group_list, dtype=int32)
             self.geom_collision_radius = wp.zeros(self._num_geoms, dtype=float32)
-            self.geom_contact_margin = wp.full(self._num_geoms, default_margin, dtype=float32)
             self.shape_aabb_lower = wp.zeros(self._num_geoms, dtype=wp.vec3)
             self.shape_aabb_upper = wp.zeros(self._num_geoms, dtype=wp.vec3)
             self.broad_phase_pair_count = wp.zeros(1, dtype=wp.int32)
@@ -645,10 +656,12 @@ class CollisionPipelineUnifiedKamino:
             kernel=_convert_geom_data_kamino_to_newton,
             dim=self._num_geoms,
             inputs=[
+                self._default_margin,
                 model.cgeoms.sid,
                 model.cgeoms.params,
             ],
             outputs=[
+                model.cgeoms.margin,
                 self.geom_type,
                 self.geom_data,
             ],
@@ -692,7 +705,7 @@ class CollisionPipelineUnifiedKamino:
                 model.cgeoms.bid,
                 model.cgeoms.ptr,
                 model.cgeoms.offset,
-                self.geom_contact_margin,
+                model.cgeoms.margin,
                 self.geom_collision_radius,
                 data.bodies.q_i,
             ],
@@ -765,12 +778,13 @@ class CollisionPipelineUnifiedKamino:
         # NOTE: Unfortunately, we need to do this on every call in python,
         # but graph-capture ensures this actually happens only once
         writer_data = ContactWriterDataKamino()
-        writer_data.model_max_contacts = contacts.num_model_max_contacts
+        writer_data.model_max_contacts = int32(contacts.num_model_max_contacts)
         writer_data.world_max_contacts = contacts.world_max_contacts
+        writer_data.default_margin = float32(self._default_margin)
         writer_data.geom_bid = model.cgeoms.bid
         writer_data.geom_wid = model.cgeoms.wid
         writer_data.geom_mid = model.cgeoms.mid
-        writer_data.geom_contact_margin = self.geom_contact_margin
+        writer_data.geom_margin = model.cgeoms.margin
         writer_data.material_friction = self.material_friction
         writer_data.material_restitution = self.material_restitution
         writer_data.contacts_model_num_active = contacts.model_num_contacts
@@ -793,7 +807,7 @@ class CollisionPipelineUnifiedKamino:
             shape_data=self.geom_data,
             shape_transform=data.cgeoms.pose,
             shape_source=model.cgeoms.ptr,
-            shape_contact_margin=self.geom_contact_margin,
+            shape_contact_margin=model.cgeoms.margin,
             shape_collision_radius=self.geom_collision_radius,
             writer_data=writer_data,
             device=self._device,

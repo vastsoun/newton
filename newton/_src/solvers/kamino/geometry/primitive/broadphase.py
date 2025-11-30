@@ -245,7 +245,7 @@ def bs_plane(normal: vec3f, distance: float32) -> float32:
 
 
 @wp.func
-def bs_geom(sid: int32, params: vec4f) -> float32:
+def bs_geom(sid: int32, params: vec4f, margin: float32) -> float32:
     """
     Compute the radius of the Bounding Sphere (BS) of a geometry element.
 
@@ -258,17 +258,17 @@ def bs_geom(sid: int32, params: vec4f) -> float32:
     """
     r = float32(0.0)
     if sid == ShapeType.SPHERE:
-        r = bs_sphere(params[0])
+        r = bs_sphere(params[0] + margin)
     elif sid == ShapeType.CYLINDER:
-        r = bs_cylinder(params[0], params[1])
+        r = bs_cylinder(params[0] + margin, params[1] + margin)
     elif sid == ShapeType.CONE:
-        r = bs_cone(params[0], params[1])
+        r = bs_cone(params[0] + margin, params[1] + margin)
     elif sid == ShapeType.CAPSULE:
-        r = bs_capsule(params[0], params[1])
+        r = bs_capsule(params[0] + margin, params[1] + margin)
     elif sid == ShapeType.ELLIPSOID:
-        r = bs_ellipsoid(vec3f(params[0], params[1], params[2]))
+        r = bs_ellipsoid(vec3f(params[0] + margin, params[1] + margin, params[2] + margin))
     elif sid == ShapeType.BOX:
-        r = bs_box(vec3f(params[0], params[1], params[2]))
+        r = bs_box(vec3f(params[0] + margin, params[1] + margin, params[2] + margin))
     return r
 
 
@@ -353,10 +353,11 @@ def compute_tight_aabb_from_local_extents(pose: transformf, extents: vec3f) -> m
 
 
 @wp.func
-def aabb_sphere(pose: transformf, radius: float32) -> mat83f:
+def aabb_sphere(pose: transformf, radius: float32, margin: float32) -> mat83f:
     r_g = wp.transform_get_translation(pose)
-    min_corner = r_g - vec3f(radius, radius, radius)
-    max_corner = r_g + vec3f(radius, radius, radius)
+    extents = vec3f(radius + margin, radius + margin, radius + margin)
+    min_corner = r_g - extents
+    max_corner = r_g + extents
     # Generate 8 corners of the AABB
     aabb = mat83f(
         min_corner[0],
@@ -388,42 +389,43 @@ def aabb_sphere(pose: transformf, radius: float32) -> mat83f:
 
 
 @wp.func
-def aabb_cylinder(pose: transformf, radius: float32, height: float32) -> mat83f:
-    extents = vec3f(radius, radius, 0.5 * height)
+def aabb_cylinder(pose: transformf, radius: float32, height: float32, margin: float32) -> mat83f:
+    extents = vec3f(radius + margin, radius + margin, 0.5 * height + margin)
     return compute_tight_aabb_from_local_extents(pose, extents)
 
 
 @wp.func
-def aabb_cone(pose: transformf, radius: float32, height: float32) -> mat83f:
-    extents = vec3f(radius, radius, 0.5 * height)
+def aabb_cone(pose: transformf, radius: float32, height: float32, margin: float32) -> mat83f:
+    extents = vec3f(radius + margin, radius + margin, 0.5 * height + margin)
     return compute_tight_aabb_from_local_extents(pose, extents)
 
 
 @wp.func
-def aabb_capsule(pose: transformf, radius: float32, height: float32) -> mat83f:
-    extents = vec3f(radius, radius, 0.5 * height)
+def aabb_capsule(pose: transformf, radius: float32, height: float32, margin: float32) -> mat83f:
+    extents = vec3f(radius + margin, radius + margin, 0.5 * height + margin)
     return compute_tight_aabb_from_local_extents(pose, extents)
 
 
 @wp.func
-def aabb_ellipsoid(pose: transformf, abc: vec3f) -> mat83f:
-    return compute_tight_aabb_from_local_extents(pose, abc)
+def aabb_ellipsoid(pose: transformf, abc: vec3f, margin: float32) -> mat83f:
+    extents = vec3f(abc[0] + margin, abc[1] + margin, abc[2] + margin)
+    return compute_tight_aabb_from_local_extents(pose, extents)
 
 
 @wp.func
-def aabb_box(pose: transformf, size: vec3f) -> mat83f:
-    extents = 0.5 * size
+def aabb_box(pose: transformf, size: vec3f, margin: float32) -> mat83f:
+    extents = 0.5 * size + vec3f(margin, margin, margin)
     return compute_tight_aabb_from_local_extents(pose, extents)
 
 
 # TODO: Implement proper AABB for planes
 @wp.func
-def aabb_plane(pose: transformf, normal: vec3f, distance: float32) -> mat83f:
+def aabb_plane(pose: transformf, normal: vec3f, distance: float32, margin: float32) -> mat83f:
     return mat83f()
 
 
 @wp.func
-def aabb_geom(sid: int32, params: vec4f, pose: transformf) -> mat83f:
+def aabb_geom(sid: int32, params: vec4f, margin: float32, pose: transformf) -> mat83f:
     """
     Compute the Axis-Aligned Bounding Box (AABB) vertices of a geometry element.
 
@@ -437,17 +439,17 @@ def aabb_geom(sid: int32, params: vec4f, pose: transformf) -> mat83f:
     """
     aabb = mat83f()
     if sid == ShapeType.SPHERE:
-        aabb = aabb_sphere(pose, params[0])
+        aabb = aabb_sphere(pose, params[0], margin)
     elif sid == ShapeType.CYLINDER:
-        aabb = aabb_cylinder(pose, params[0], params[1])
+        aabb = aabb_cylinder(pose, params[0], params[1], margin)
     elif sid == ShapeType.CONE:
-        aabb = aabb_cone(pose, params[0], params[1])
+        aabb = aabb_cone(pose, params[0], params[1], margin)
     elif sid == ShapeType.CAPSULE:
-        aabb = aabb_capsule(pose, params[0], params[1])
+        aabb = aabb_capsule(pose, params[0], params[1], margin)
     elif sid == ShapeType.ELLIPSOID:
-        aabb = aabb_ellipsoid(pose, vec3f(params[0], params[1], params[2]))
+        aabb = aabb_ellipsoid(pose, vec3f(params[0], params[1], params[2]), margin)
     elif sid == ShapeType.BOX:
-        aabb = aabb_box(pose, vec3f(params[0], params[1], params[2]))
+        aabb = aabb_box(pose, vec3f(params[0], params[1], params[2]), margin)
     return aabb
 
 
@@ -545,9 +547,11 @@ def add_active_pair(
 @wp.kernel
 def _update_geometries_state_and_aabb(
     # Inputs:
+    default_margin: float32,
     geom_bid: wp.array(dtype=int32),
     geom_sid: wp.array(dtype=int32),
     geom_params: wp.array(dtype=vec4f),
+    geom_margin: wp.array(dtype=float32),
     geom_offset: wp.array(dtype=transformf),
     body_pose: wp.array(dtype=transformf),
     # Outputs:
@@ -576,6 +580,7 @@ def _update_geometries_state_and_aabb(
     sid = geom_sid[gid]
     X_bg = geom_offset[gid]
     params = geom_params[gid]
+    margin = geom_margin[gid]
 
     # Retrieve the pose of the corresponding body
     X_b = wp.transform_identity(dtype=float32)
@@ -586,7 +591,8 @@ def _update_geometries_state_and_aabb(
     X_g = wp.transform_multiply(X_b, X_bg)
 
     # Compute the geometry bounding volume AABB based on its shape parameters
-    aabb_g = aabb_geom(sid, params, X_g)
+    margin = wp.max(default_margin, margin)
+    aabb_g = aabb_geom(sid, params, margin, X_g)
 
     # Store the geometry pose and AABB
     geom_pose[gid] = X_g
@@ -596,9 +602,11 @@ def _update_geometries_state_and_aabb(
 @wp.kernel
 def _update_geometries_state_and_bs(
     # Inputs:
+    default_margin: float32,
     geom_bid: wp.array(dtype=int32),
     geom_sid: wp.array(dtype=int32),
     geom_params: wp.array(dtype=vec4f),
+    geom_margin: wp.array(dtype=float32),
     geom_offset: wp.array(dtype=transformf),
     body_pose: wp.array(dtype=transformf),
     # Outputs:
@@ -633,6 +641,7 @@ def _update_geometries_state_and_bs(
     sid = geom_sid[gid]
     X_bg = geom_offset[gid]
     params = geom_params[gid]
+    margin = geom_margin[gid]
 
     # Retrieve the pose of the corresponding body
     X_b = wp.transform_identity(dtype=float32)
@@ -643,7 +652,8 @@ def _update_geometries_state_and_bs(
     X_g = wp.transform_multiply(X_b, X_bg)
 
     # Compute the geometry bounding sphere radius based on its shape parameters
-    bs_g = bs_geom(sid, params)
+    margin = wp.max(default_margin, margin)
+    bs_g = bs_geom(sid, params, margin)
 
     # Store the geometry pose and bounding sphere radius
     geom_pose[gid] = X_g
@@ -829,6 +839,8 @@ def update_geoms_aabb(
     geoms_data: GeometriesData,
     # Outputs:
     bv_data: BoundingVolumesData,
+    # Options
+    default_margin: float | None = None,
 ):
     """
     Launches a kernel to update the state of each geometry and compute its Axis-Aligned Bounding Box (AABB).
@@ -842,7 +854,15 @@ def update_geoms_aabb(
     wp.launch(
         _update_geometries_state_and_aabb,
         dim=geoms_model.num_geoms,
-        inputs=[geoms_model.bid, geoms_model.sid, geoms_model.params, geoms_model.offset, body_poses],
+        inputs=[
+            float32(default_margin) if default_margin is not None else float32(0.0),
+            geoms_model.bid,
+            geoms_model.sid,
+            geoms_model.params,
+            geoms_model.margin,
+            geoms_model.offset,
+            body_poses,
+        ],
         outputs=[geoms_data.pose, bv_data.aabb],
         device=body_poses.device,
     )
@@ -893,6 +913,8 @@ def update_geoms_bs(
     geoms_data: GeometriesData,
     # Outputs:
     bv_data: BoundingVolumesData,
+    # Options
+    default_margin: float | None = None,
 ):
     """
     Launches a kernel to update the state of each geometry and compute its bounding sphere (BS).
@@ -906,7 +928,15 @@ def update_geoms_bs(
     wp.launch(
         _update_geometries_state_and_bs,
         dim=geoms_model.num_geoms,
-        inputs=[geoms_model.bid, geoms_model.sid, geoms_model.params, geoms_model.offset, body_poses],
+        inputs=[
+            float32(default_margin) if default_margin is not None else float32(0.0),
+            geoms_model.bid,
+            geoms_model.sid,
+            geoms_model.params,
+            geoms_model.margin,
+            geoms_model.offset,
+            body_poses,
+        ],
         outputs=[geoms_data.pose, bv_data.radius],
         device=body_poses.device,
     )
@@ -963,6 +993,8 @@ def primitive_broadphase_explicit(
     # Outputs:
     candidates_model: CollisionCandidatesModel,
     candidates_data: CollisionCandidatesData,
+    # Options
+    default_margin: float | None = None,
 ):
     """
     Runs explicit broad-phase collision detection between all geometry pairs
@@ -981,10 +1013,10 @@ def primitive_broadphase_explicit(
     # depending on the bounding volumes used
     match bv_type:
         case BoundingVolumeType.AABB:
-            update_geoms_aabb(body_poses, geoms_model, geoms_data, bv_data)
+            update_geoms_aabb(body_poses, geoms_model, geoms_data, bv_data, default_margin)
             nxn_broadphase_aabb(geoms_model, bv_data, candidates_model, candidates_data)
         case BoundingVolumeType.BS:
-            update_geoms_bs(body_poses, geoms_model, geoms_data, bv_data)
+            update_geoms_bs(body_poses, geoms_model, geoms_data, bv_data, default_margin)
             nxn_broadphase_bs(geoms_model, geoms_data, bv_data, candidates_model, candidates_data)
         case _:
             raise ValueError(f"Unsupported bounding volume type: {bv_type}")

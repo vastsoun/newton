@@ -85,6 +85,14 @@ Ignored for mesh-based collisions.\n
 Set to `8` (with box-box collisions being a prototypical case).
 """
 
+DEFAULT_GEOM_PAIR_CONTACT_MARGIN: float = 1e-5
+"""
+The global default for the per-geom-pair contact margin.\n
+Each effective contact margin for a geom-pair is computed as:
+``max(DEFAULT_GEOM_PAIR_CONTACT_MARGIN, max(geom1_margin, geom2_margin))``\n
+Set to `1e-5`.
+"""
+
 
 ###
 # Types

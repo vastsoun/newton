@@ -347,20 +347,27 @@ class CollisionGeometryDescriptor(GeometryDescriptor):
 
         self.group: int = group
         """
-        The collision group to which the collision geometry instance is assigned.\n
+        The collision group assigned to the collision geometry.\n
         Defaults to the default group with value `1`.
         """
 
         self.collides: int = collides
         """
-        The collision group with which the collision geometry instance can collide.\n
+        The collision groups with which the collision geometry can collide.\n
         Defaults to enabling collisions with the default group with value `1`.
         """
 
         self.max_contacts: int = max_contacts
         """
-        The maximum number of contacts to generate for the collision geometry instance.\n
+        The maximum number of contacts to generate for the collision geometry.\n
         Defaults to `0`, indicating no limit is imposed on the number of contacts generated for this geometry.
+        """
+
+        self.margin: float32 = 0.0
+        """
+        The collision detection margin to be used for the collision geometry.\n
+        Used in narrow-phase collision detection algorithms to improve robustness.\n
+        Defaults to `0.0`, indicating no additional margin is applied.
         """
 
         ###
@@ -369,7 +376,7 @@ class CollisionGeometryDescriptor(GeometryDescriptor):
 
         self.mid: int | None = mid
         """
-        The material index assigned to the collision geometry instance.\n
+        The material index assigned to the collision geometry.\n
         Defaults to `None` indicating that the default material will assigned.
         """
 
@@ -401,23 +408,30 @@ class CollisionGeometriesModel(GeometriesModel):
     An SoA-based container to hold time-invariant model data of a set of collision geometry elements.
 
     Attributes:
-        mid (wp.array | None): Material indices assigned to each collision geometry instance.\n
+        mid (wp.array | None):
+            Material index assigned to each collision geometry.\n
             Shape of ``(num_geoms,)`` and type :class:`int`.
-        group (wp.array | None): Collision groups to which each collision geometry instance is assigned.\n
+        group (wp.array | None):
+            Collision group to which each collision geometry is assigned.\n
             Shape of ``(num_geoms,)`` and type :class:`uint32`.
-        collides (wp.array | None): Collision groups with which each collision geometry can collide.\n
+        collides (wp.array | None):
+            Collision groups with which each collision geometry can collide.\n
             Shape of ``(num_geoms,)`` and type :class:`uint32`.
+        margin (wp.array | None):
+            Collision detection margin if each collision geometry.\n
+            Used in narrow-phase collision detection algorithms to improve robustness.\n
+            Shape of ``(num_geoms,)`` and type :class:`float32`.
     """
 
     mid: wp.array | None = None
     """
-    Material indices assigned to each collision geometry instance.\n
+    Material index assigned to each collision geometry.\n
     Shape of ``(num_geoms,)`` and type :class:`int`.
     """
 
     group: wp.array | None = None
     """
-    Collision groups to which each collision geometry instance is assigned.\n
+    Collision group assigned to each collision geometry.\n
     Shape of ``(num_geoms,)`` and type :class:`uint32`.
     """
 
@@ -425,6 +439,13 @@ class CollisionGeometriesModel(GeometriesModel):
     """
     Collision groups with which each collision geometry can collide.\n
     Shape of ``(num_geoms,)`` and type :class:`uint32`.
+    """
+
+    margin: wp.array | None = None
+    """
+    Collision detection margin if each collision geometry.\n
+    Used in narrow-phase collision detection algorithms to improve robustness.\n
+    Shape of ``(num_geoms,)`` and type :class:`float32`.
     """
 
 
@@ -462,26 +483,25 @@ def _update_geometries_state(
             Array of per-geom poses in world coordinates.\n
             Shape of ``(num_geoms,)`` and type :class:`transformf`.
     """
-    # Retrieve the thread ID
-    tid = wp.tid()
+    # Retrieve the geometry index from the thread grid
+    gid = wp.tid()
 
-    # Retrieve the geometry element's body index and pose
-    bid = geom_bid[tid]
+    # Retrieve the body index associated with the geometry
+    bid = geom_bid[gid]
 
     # Retrieve the pose of the corresponding body
-    # TODO: How to handle the case when bid is -1?
-    T_b = wp.transform_identity(dtype=float32)
+    X_b = wp.transform_identity(dtype=float32)
     if bid > -1:
-        T_b = body_pose[bid]
+        X_b = body_pose[bid]
 
-    # Retrieve the geometry element's offset pose w.r.t. the body
-    T_g_o = geom_offset[tid]
+    # Retrieve the geometry offset pose w.r.t. the body
+    X_bg = geom_offset[gid]
 
-    # Compute the geometry element's pose in world coordinates
-    T_g = wp.transform_multiply(T_b, T_g_o)
+    # Compute the geometry pose in world coordinates
+    X_g = wp.transform_multiply(X_b, X_bg)
 
-    # Store the geometry element's pose
-    geom_pose[tid] = T_g
+    # Store the updated geometry pose
+    geom_pose[gid] = X_g
 
 
 ###

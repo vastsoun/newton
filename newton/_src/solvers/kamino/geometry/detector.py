@@ -42,7 +42,7 @@ from warp.context import Devicelike
 from ..core.builder import ModelBuilder
 from ..core.model import Model, ModelData
 from ..core.types import override
-from ..geometry.contacts import DEFAULT_GEOM_PAIR_MAX_CONTACTS, Contacts
+from ..geometry.contacts import DEFAULT_GEOM_PAIR_CONTACT_MARGIN, DEFAULT_GEOM_PAIR_MAX_CONTACTS, Contacts
 from ..geometry.primitive import BoundingVolumeType, CollisionPipelinePrimitive
 from ..geometry.unified import BroadPhaseMode, CollisionPipelineUnifiedKamino
 
@@ -96,7 +96,7 @@ class CollisionPipelineType(IntEnum):
 class CollisionDetectorSettings:
     """Defines the settings for configuring a CollisionDetector."""
 
-    pipeline: CollisionPipelineType = CollisionPipelineType.PRIMITIVE
+    pipeline: CollisionPipelineType = CollisionPipelineType.UNIFIED
     """
     The type of collision-detection pipeline to use, either `PRIMITIVE` or `UNIFIED`.\n
     Defaults to `PRIMITIVE`.
@@ -137,7 +137,7 @@ class CollisionDetectorSettings:
     Defaults to `1_000_000`.
     """
 
-    default_contact_margin: float = 1e-5
+    default_contact_margin: float = DEFAULT_GEOM_PAIR_CONTACT_MARGIN
     """
     The default per-geom contact margin used in the narrow-phase.\n
     Used when a collision geometry does not specify a contact margin.\n

@@ -62,13 +62,6 @@ wp.set_module_options({"enable_backward": False})
 
 
 ###
-# Constants
-###
-
-DEFAULT_CONTACT_MARGIN = wp.constant(float32(1e-5))
-
-
-###
 # Geometry helper Types
 ###
 
@@ -1256,10 +1249,12 @@ def plane_cylinder(
 @wp.kernel
 def _primitive_narrowphase(
     # Inputs
+    default_margin: float32,
     geom_bid: wp.array(dtype=int32),
     geom_sid: wp.array(dtype=int32),
     geom_mid: wp.array(dtype=int32),
     geom_params: wp.array(dtype=vec4f),
+    geom_margin: wp.array(dtype=float32),
     geom_pose: wp.array(dtype=transformf),
     candidate_model_num_pairs: wp.array(dtype=int32),
     candidate_wid: wp.array(dtype=int32),
@@ -1304,6 +1299,7 @@ def _primitive_narrowphase(
     sid1 = geom_sid[gid1]
     # mid1 = geom_mid[gid1]
     params1 = geom_params[gid1]
+    margin1 = geom_margin[gid1]
     pose1 = geom_pose[gid1]
 
     # Retrieve the data of the second geom
@@ -1312,11 +1308,13 @@ def _primitive_narrowphase(
     sid2 = geom_sid[gid2]
     # mid2 = geom_mid[gid2]
     params2 = geom_params[gid2]
+    margin2 = geom_margin[gid1]
     pose2 = geom_pose[gid2]
 
-    # TODO: compute the contact margin based on the shapes involved
-    # based on some heuristic or user-defined settings
-    contact_margin_12 = DEFAULT_CONTACT_MARGIN
+    # Compute the effective geom-pair contact margin based
+    # on those of the two geoms and the global default
+    # TODO: How can we support negative margins here?
+    contact_margin_12 = wp.max(default_margin, wp.max(margin1, margin2))
 
     # TODO: retrieve the material properties from the material table using mid1 and mid2
     mu_12 = float32(0.7)
@@ -1648,7 +1646,13 @@ def _primitive_narrowphase(
 ###
 
 
-def primitive_narrowphase(model: Model, data: ModelData, candidates: CollisionCandidatesData, contacts: ContactsData):
+def primitive_narrowphase(
+    model: Model,
+    data: ModelData,
+    candidates: CollisionCandidatesData,
+    contacts: ContactsData,
+    default_margin: float | None = None,
+):
     """
     Launches the narrow-phase collision detection kernel optimized for primitive shapes.
 
@@ -1661,15 +1665,28 @@ def primitive_narrowphase(model: Model, data: ModelData, candidates: CollisionCa
             The collision container holding collision pairs.
         contacts (ContactsData):
             The contacts container to store detected contacts.
+        default_margin (float | None):
+            The default contact margin to override those specified by collision geometries.\n
+            If None, `0.0` is used.
     """
+    # Set default contact margin if not provided
+    if default_margin is None:
+        default_margin = 0.0
+    # Check if the default contact margin is valid
+    if not isinstance(default_margin, float):
+        raise TypeError("default_margin must be of type `float`")
+
+    # Launch the narrow-phase primitive collision detection kernel
     wp.launch(
         _primitive_narrowphase,
         dim=candidates.num_model_geom_pairs,
         inputs=[
+            float32(default_margin),
             model.cgeoms.bid,
             model.cgeoms.sid,
             model.cgeoms.mid,
             model.cgeoms.params,
+            model.cgeoms.margin,
             data.cgeoms.pose,
             candidates.model_num_collisions,
             candidates.wid,

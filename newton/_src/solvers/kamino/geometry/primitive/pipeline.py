@@ -27,7 +27,7 @@ from .....sim.collide_unified import BroadPhaseMode
 from ...core.builder import ModelBuilder
 from ...core.model import Model, ModelData
 from ...core.types import float32, int32, mat83f, vec2i
-from ..contacts import Contacts
+from ..contacts import DEFAULT_GEOM_PAIR_CONTACT_MARGIN, Contacts
 from .broadphase import (
     BoundingVolumesData,
     BoundingVolumeType,
@@ -55,7 +55,7 @@ class CollisionPipelinePrimitive:
         builder: ModelBuilder | None = None,
         broadphase: BroadPhaseMode = BroadPhaseMode.EXPLICIT,
         bvtype: BoundingVolumeType = BoundingVolumeType.AABB,
-        default_margin: float = 1e-5,
+        default_margin: float = DEFAULT_GEOM_PAIR_CONTACT_MARGIN,
         device: Devicelike = None,
     ):
         """
@@ -175,7 +175,8 @@ class CollisionPipelinePrimitive:
             bv_data=self._bvdata,
             candidates_model=self._cmodel,
             candidates_data=self._cdata,
+            default_margin=self._default_margin,
         )
 
         # Perform the narrow-phase collision detection to generate active contacts
-        primitive_narrowphase(model, data, self._cdata, contacts)
+        primitive_narrowphase(model, data, self._cdata, contacts, default_margin=self._default_margin)

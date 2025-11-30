@@ -55,6 +55,15 @@ from ...geometry.contacts import ContactsData, make_contact_frame_znorm
 from .broadphase import CollisionCandidatesData
 
 ###
+# Module interface
+###
+
+__all__ = [
+    "primitive_narrowphase",
+]
+
+
+###
 # Module configs
 ###
 
@@ -1659,8 +1668,8 @@ def primitive_narrowphase(
     Args:
         model (Model):
             The model containing the collision geometries.
-        state (ModelData):
-            The current state of the model.
+        data (ModelData):
+            The data containing the current state of the geometries.
         candidates (CollisionCandidatesData):
             The collision container holding collision pairs.
         contacts (ContactsData):

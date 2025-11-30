@@ -27,7 +27,7 @@ from newton._src.solvers.kamino.core.math import quat_exp, screw, screw_angular,
 from newton._src.solvers.kamino.core.model import Model, ModelData
 from newton._src.solvers.kamino.core.types import float32, int32, mat33f, transformf, vec3f, vec6f
 from newton._src.solvers.kamino.geometry.contacts import Contacts
-from newton._src.solvers.kamino.geometry.detector import CollisionDetector
+from newton._src.solvers.kamino.geometry.detector import CollisionDetector, CollisionDetectorSettings
 from newton._src.solvers.kamino.kinematics.constraints import make_unilateral_constraints_info, update_constraints_info
 
 # Module to be tested
@@ -362,16 +362,13 @@ class TestKinematicsJacobians(unittest.TestCase):
             print(f"model.size.sum_of_num_joint_cts: {model.size.sum_of_num_joint_cts}")
             print(f"model.size.sum_of_num_joint_dofs: {model.size.sum_of_num_joint_dofs}")
 
-        # Extract the contact allocation capacities required by the model
-        required_model_max_contacts, required_world_max_contacts = builder.required_contact_capacity
+        # Set the contact allocation capacities
+        required_world_max_contacts = [max_world_contacts] * builder.num_worlds
         if self.verbose:
-            print("required_model_max_contacts: ", required_model_max_contacts)
             print("required_world_max_contacts: ", required_world_max_contacts)
 
         # Construct and allocate the contacts container
-        contacts = Contacts(
-            capacity=required_world_max_contacts, default_max_contacts=max_world_contacts, device=self.default_device
-        )
+        contacts = Contacts(capacity=required_world_max_contacts, device=self.default_device)
         if self.verbose:
             print("contacts.default_max_world_contacts: ", contacts.default_max_world_contacts)
             print("contacts.num_model_max_contacts: ", contacts.num_model_max_contacts)
@@ -422,16 +419,13 @@ class TestKinematicsJacobians(unittest.TestCase):
             print("limits.num_model_max_limits: ", limits.num_model_max_limits)
             print("limits.num_world_max_limits: ", limits.num_world_max_limits)
 
-        # Extract the contact allocation capacities required by the model
-        required_model_max_contacts, required_world_max_contacts = builder.required_contact_capacity
+        # Set the contact allocation capacities
+        required_world_max_contacts = [max_world_contacts] * builder.num_worlds
         if self.verbose:
-            print("required_model_max_contacts: ", required_model_max_contacts)
             print("required_world_max_contacts: ", required_world_max_contacts)
 
         # Construct and allocate the contacts container
-        contacts = Contacts(
-            capacity=required_world_max_contacts, device=self.default_device, default_max_contacts=max_world_contacts
-        )
+        contacts = Contacts(capacity=required_world_max_contacts, device=self.default_device)
         if self.verbose:
             print("contacts.default_max_world_contacts: ", contacts.default_max_world_contacts)
             print("contacts.num_model_max_contacts: ", contacts.num_model_max_contacts)
@@ -485,19 +479,17 @@ class TestKinematicsJacobians(unittest.TestCase):
             print("limits.num_model_max_limits: ", limits.num_model_max_limits)
             print("limits.num_world_max_limits: ", limits.num_world_max_limits)
 
-        # Extract the contact allocation capacities required by the model
-        required_model_max_contacts, required_world_max_contacts = builder.required_contact_capacity
+        # Set the contact allocation capacities
+        required_world_max_contacts = [max_world_contacts] * builder.num_worlds
         if self.verbose:
-            print("required_model_max_contacts: ", required_model_max_contacts)
             print("required_world_max_contacts: ", required_world_max_contacts)
 
         # Construct and allocate the contacts container
-        contacts = Contacts(
-            capacity=required_world_max_contacts, device=self.default_device, default_max_contacts=max_world_contacts
-        )
+        contacts = Contacts(capacity=required_world_max_contacts, device=self.default_device)
         if self.verbose:
             print("contacts.default_max_world_contacts: ", contacts.default_max_world_contacts)
             print("contacts.num_model_max_contacts: ", contacts.num_model_max_contacts)
+            print("contacts.num_world_max_contacts: ", contacts.num_world_max_contacts)
             print("contacts.num_world_max_contacts: ", contacts.num_world_max_contacts)
 
         # Create the Jacobians container
@@ -569,16 +561,13 @@ class TestKinematicsJacobians(unittest.TestCase):
             print("limits.num_model_max_limits: ", limits.num_model_max_limits)
             print("limits.num_world_max_limits: ", limits.num_world_max_limits)
 
-        # Extract the contact allocation capacities required by the model
-        required_model_max_contacts, required_world_max_contacts = builder.required_contact_capacity
+        # Set the contact allocation capacities
+        required_world_max_contacts = [max_world_contacts] * builder.num_worlds
         if self.verbose:
-            print("required_model_max_contacts: ", required_model_max_contacts)
             print("required_world_max_contacts: ", required_world_max_contacts)
 
         # Construct and allocate the contacts container
-        contacts = Contacts(
-            capacity=required_world_max_contacts, device=self.default_device, default_max_contacts=max_world_contacts
-        )
+        contacts = Contacts(capacity=required_world_max_contacts, device=self.default_device)
         if self.verbose:
             print("contacts.default_max_world_contacts: ", contacts.default_max_world_contacts)
             print("contacts.num_model_max_contacts: ", contacts.num_model_max_contacts)
@@ -647,9 +636,8 @@ class TestKinematicsJacobians(unittest.TestCase):
         limits = Limits(builder=builder, device=self.default_device)
 
         # Create the collision detector
-        detector = CollisionDetector(
-            builder=builder, default_max_contacts=max_world_contacts, device=self.default_device
-        )
+        settings = CollisionDetectorSettings(max_contacts_per_world=max_world_contacts, pipeline="primitive")
+        detector = CollisionDetector(model=model, builder=builder, settings=settings, device=self.default_device)
 
         # Create the constraints info
         make_unilateral_constraints_info(
@@ -766,9 +754,8 @@ class TestKinematicsJacobians(unittest.TestCase):
         limits = Limits(builder=builder, device=self.default_device)
 
         # Create the collision detector
-        detector = CollisionDetector(
-            builder=builder, default_max_contacts=max_world_contacts, device=self.default_device
-        )
+        settings = CollisionDetectorSettings(max_contacts_per_world=max_world_contacts, pipeline="primitive")
+        detector = CollisionDetector(model=model, builder=builder, settings=settings, device=self.default_device)
 
         # Create the constraints info
         make_unilateral_constraints_info(
@@ -855,9 +842,8 @@ class TestKinematicsJacobians(unittest.TestCase):
         limits = Limits(builder=builder, device=self.default_device)
 
         # Create the collision detector
-        detector = CollisionDetector(
-            builder=builder, default_max_contacts=max_world_contacts, device=self.default_device
-        )
+        settings = CollisionDetectorSettings(max_contacts_per_world=max_world_contacts, pipeline="primitive")
+        detector = CollisionDetector(model=model, builder=builder, settings=settings, device=self.default_device)
 
         # Create the constraints info
         make_unilateral_constraints_info(

@@ -137,6 +137,7 @@ class CollisionCandidatesModel:
     Shape of ``(sum_of_num_candidate_pairs,)`` and type :class:`int32`.
     """
 
+    # TODO: Rename to `key` and use as key for sorting
     pairid: wp.array | None = None
     """
     Index of each the collision pair.\n

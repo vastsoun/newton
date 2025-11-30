@@ -629,8 +629,7 @@ class ModelBuilder:
         # Check if shape is valid
         if not isinstance(shape, ShapeDescriptorType):
             raise ValueError(
-                f"Shape '{shape}' must be a valid type.\n"
-                "See `ShapeDescriptorType` for the list of supported shapes."
+                f"Shape '{shape}' must be a valid type.\nSee `ShapeDescriptorType` for the list of supported shapes."
             )
 
         # Create a joint descriptor from the provided specifications
@@ -1430,6 +1429,29 @@ class ModelBuilder:
         # Return the constructed model data container
         return model
 
+    def compute_required_contact_capacity(
+        self,
+        max_contacts_per_pair: int,
+        max_contacts_per_world: int | None = None,
+    ) -> tuple[int, list[int]]:
+        # First check if there are any collision geometries
+        if self._num_cgeoms == 0:
+            return 0, [0] * self.num_worlds
+
+        # Compute the maximum possible number of geom pairs per world
+        world_max_contacts = [0] * self.num_worlds
+        for w, world in enumerate(self._worlds):
+            world_num_geom_pairs = (world.num_collision_geoms * (world.num_collision_geoms - 1)) // 2
+            world_max_contacts[w] = world_num_geom_pairs * max_contacts_per_pair
+
+        # Override the per-world maximum contacts if specified in the settings
+        if max_contacts_per_world is not None:
+            for w in range(self.num_worlds):
+                world_max_contacts[w] = max_contacts_per_world
+
+        # Return the per-world maximum contacts list
+        return sum(world_max_contacts), world_max_contacts
+
     def make_collision_candidate_pairs(self, allow_neighbors: bool = False):
         """
         Construct the collision pair candidates for the given ModelBuilder instance.
@@ -1513,7 +1535,7 @@ class ModelBuilder:
 
                 # Assign pairid based on filtering results
                 if (not is_self_collision) and (in_same_world) and (are_collidable) and (not are_fixed_neighbors):
-                    pairid = -1
+                    pairid = -1  # TODO: Compute as geom-pair key
                 else:
                     continue  # Skip this pair if it does not pass the filtering
 

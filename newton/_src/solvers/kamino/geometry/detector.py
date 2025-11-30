@@ -96,19 +96,19 @@ class CollisionPipelineType(IntEnum):
 class CollisionDetectorSettings:
     """Defines the settings for configuring a CollisionDetector."""
 
-    pipeline: CollisionPipelineType = CollisionPipelineType.UNIFIED
+    pipeline: str | CollisionPipelineType = CollisionPipelineType.PRIMITIVE
     """
     The type of collision-detection pipeline to use, either `PRIMITIVE` or `UNIFIED`.\n
     Defaults to `PRIMITIVE`.
     """
 
-    broadphase: BroadPhaseMode = BroadPhaseMode.EXPLICIT
+    broadphase: str | BroadPhaseMode = BroadPhaseMode.EXPLICIT
     """
     The broad-phase collision-detection to use (`NXN`, `SAP`, or `EXPLICIT`).\n
     Defaults to `EXPLICIT`.
     """
 
-    bvtype: BoundingVolumeType = BoundingVolumeType.AABB
+    bvtype: str | BoundingVolumeType = BoundingVolumeType.AABB
     """
     The type of bounding volume to use in the broad-phase.\n
     Defaults to `AABB`.
@@ -143,6 +143,15 @@ class CollisionDetectorSettings:
     Used when a collision geometry does not specify a contact margin.\n
     Defaults to `1e-5`.
     """
+
+    def __post_init__(self):
+        """Post-initialization processing to convert string enums to their respective types."""
+        if isinstance(self.pipeline, str):
+            self.pipeline = CollisionPipelineType[self.pipeline.upper()]
+        if isinstance(self.broadphase, str):
+            self.broadphase = BroadPhaseMode[self.broadphase.upper()]
+        if isinstance(self.bvtype, str):
+            self.bvtype = BoundingVolumeType[self.bvtype.upper()]
 
 
 class CollisionDetector:
@@ -287,7 +296,11 @@ class CollisionDetector:
             self._device = model.device
 
         # Compute the maximum number of contacts required for the model and each world
-        world_max_contacts = self._compute_per_world_max_contacts(builder)
+        # NOTE: This is a conservative estimate based on the maximum per-world geom-pairs
+        _, world_max_contacts = builder.compute_required_contact_capacity(
+            max_contacts_per_pair=self._settings.max_contacts_per_pair,
+            max_contacts_per_world=self._settings.max_contacts_per_world,
+        )
         self._model_max_contacts = sum(world_max_contacts)
         self._world_max_contacts = world_max_contacts
 
@@ -358,37 +371,3 @@ class CollisionDetector:
                 self._unified_pipeline.collide(model, data, self._contacts)
             case _:
                 raise ValueError(f"Unsupported CollisionPipelineType: {self._settings.pipeline}")
-
-    ###
-    # Internals
-    ###
-
-    def _compute_per_world_max_contacts(self, builder: ModelBuilder) -> list[int]:
-        """
-        Computes the per-world maximum contacts required by the model.
-
-        Args:
-            builder(ModelBuilder):
-                ModelBuilder instance containing the host-side model definition.
-        Returns:
-            list[int]: A list of maximum contacts required for each world.
-        """
-        # First check if there are any collision geometries
-        num_worlds = builder.num_worlds
-        num_model_cgeoms = len(builder.collision_geoms)
-        if num_model_cgeoms == 0:
-            return 0, [0] * num_worlds
-
-        # Compute the maximum possible number of geom pairs (worst-case, needed for NXN/SAP)
-        world_max_contacts = [0] * num_worlds
-        for w, world in enumerate(builder.worlds):
-            world_num_geom_pairs = (world.num_collision_geoms * (world.num_collision_geoms - 1)) // 2
-            world_max_contacts[w] = world_num_geom_pairs * self._settings.max_contacts_per_pair
-
-        # Override the per-world maximum contacts if specified in the settings
-        if self._settings.max_contacts_per_world is not None:
-            for w in range(num_worlds):
-                world_max_contacts[w] = self._settings.max_contacts_per_world
-
-        # Retrurn the per-world maximum contacts list
-        return world_max_contacts

@@ -49,7 +49,9 @@ from ..core.types import float32, int32, mat33f, quatf, vec2f, vec2i, vec3f, vec
 ###
 
 __all__ = [
-    "DEFAULT_MAX_WORLD_CONTACTS",
+    "DEFAULT_GEOM_PAIR_MAX_CONTACTS",
+    "DEFAULT_WORLD_MAX_CONTACTS",
+    "ContactMode",
     "Contacts",
     "ContactsData",
     "make_contact_frame_xnorm",
@@ -68,8 +70,20 @@ wp.set_module_options({"enable_backward": False})
 # Constants
 ###
 
-DEFAULT_MAX_WORLD_CONTACTS = 32
-"""The default maximum number of contacts per world."""
+DEFAULT_WORLD_MAX_CONTACTS = 128
+"""
+The global default for maximum number of contacts per world.\n
+Used when allocating contact data without a specified capacity.\n
+Set to `128`.
+"""
+
+DEFAULT_GEOM_PAIR_MAX_CONTACTS = 8
+"""
+The global default for maximum number of contacts per geom-pair.\n
+Used when allocating contact data without a specified capacity.\n
+Ignored for mesh-based collisions.\n
+Set to `8` (with box-box collisions being a prototypical case).
+"""
 
 
 ###
@@ -338,7 +352,11 @@ def make_contact_frame_xnorm(n: vec3f) -> mat33f:
 
 class Contacts:
     """
-    A container to hold and manage time-varying contacts.
+    Provides a high-level interface to manage contact data,
+    including allocations, access, and common operations.
+
+    This container provides the primary output of collision detectors
+    as well as a cache of contact data to warm-start physics solvers.
     """
 
     def __init__(
@@ -348,7 +366,7 @@ class Contacts:
         device: Devicelike = None,
     ):
         # Declare and initialize the default maximum number of contacts per world
-        self._default_max_world_contacts: int = DEFAULT_MAX_WORLD_CONTACTS
+        self._default_max_world_contacts: int = DEFAULT_WORLD_MAX_CONTACTS
         if default_max_contacts is not None:
             self._default_max_world_contacts = default_max_contacts
 

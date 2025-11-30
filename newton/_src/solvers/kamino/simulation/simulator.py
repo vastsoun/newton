@@ -230,24 +230,26 @@ class Simulator:
         # Cache the target device use for the simulation
         self._device: Devicelike = device
 
-        # Joint Limits
-        self._limits = Limits(builder=builder, device=self._device)
-
-        # Collision Detection
-        self._collision_detector = CollisionDetector(
-            builder=builder,
-            device=self._device,
-            settings=self._settings.collision_detector,
-        )
-
-        # Model
+        # Finalize the model from the builder on the specified
+        # device, allocating all necessary model data structures
         self._model = builder.finalize(device=self._device)
 
         # Configure model time-steps
         self._model.time.set_uniform_timestep(self._settings.dt)
 
-        # Allocate system data on the device
+        # Allocate time-varying simulation data
         self._data = SimulatorData(model=self._model, device=self._device)
+
+        # Allocate a joint-limits interface
+        self._limits = Limits(builder=builder, device=self._device)
+
+        # Allocate collision detection and contacts interface
+        self._collision_detector = CollisionDetector(
+            builder=builder,
+            model=self._model,
+            device=self._device,
+            settings=self._settings.collision_detector,
+        )
 
         # Construct the unilateral constraints members in the model info
         make_unilateral_constraints_info(

@@ -42,7 +42,7 @@ from warp.context import Devicelike
 from ..core.builder import ModelBuilder
 from ..core.model import Model, ModelData
 from ..core.types import override
-from ..geometry.contacts import Contacts
+from ..geometry.contacts import DEFAULT_GEOM_PAIR_MAX_CONTACTS, Contacts
 from ..geometry.primitive import BoundingVolumeType, CollisionPipelinePrimitive
 from ..geometry.unified import BroadPhaseMode, CollisionPipelineUnifiedKamino
 
@@ -96,14 +96,6 @@ class CollisionPipelineType(IntEnum):
 class CollisionDetectorSettings:
     """Defines the settings for configuring a CollisionDetector."""
 
-    max_contacts: int | None = None
-    """
-    The per-world maximum contacts to allocate.\n
-    If specified as integer value, it will override the
-    maximum contacts per world specified by the model.\n
-    Defaults to `None`.
-    """
-
     pipeline: CollisionPipelineType = CollisionPipelineType.PRIMITIVE
     """
     The type of collision-detection pipeline to use, either `PRIMITIVE` or `UNIFIED`.\n
@@ -120,6 +112,36 @@ class CollisionDetectorSettings:
     """
     The type of bounding volume to use in the broad-phase.\n
     Defaults to `AABB`.
+    """
+
+    max_contacts_per_world: int | None = None
+    """
+    The per-world maximum contacts allocation override.\n
+    If specified, it will override the per-world maximum number of contacts
+    computed according to the candidate geom-pairs represented in the model.\n
+    Defaults to `None`, allowing contact allocations to occur according to the model.
+    """
+
+    max_contacts_per_pair: int = DEFAULT_GEOM_PAIR_MAX_CONTACTS
+    """
+    The maximum number of contacts to generate per candidate geom-pair.\n
+    Used to compute the total maximum contacts allocated for the model,
+    in conjunction with the total number of candidate geom-pairs.\n
+    Defaults to `DEFAULT_GEOM_PAIR_MAX_CONTACTS` (`10`).
+    """
+
+    max_triangle_pairs: int = 1_000_000
+    """
+    The maximum number of triangle-primitive shape pairs to consider in the narrow-phase.\n
+    Used only when the model contains triangle meshes or heightfields.\n
+    Defaults to `1_000_000`.
+    """
+
+    default_contact_margin: float = 1e-5
+    """
+    The default per-geom contact margin used in the narrow-phase.\n
+    Used when a collision geometry does not specify a contact margin.\n
+    Defaults to `1e-5`.
     """
 
 
@@ -144,6 +166,7 @@ class CollisionDetector:
 
     def __init__(
         self,
+        model: Model | None = None,
         builder: ModelBuilder | None = None,
         settings: CollisionDetectorSettings | None = None,
         device: Devicelike = None,
@@ -177,8 +200,8 @@ class CollisionDetector:
         self._world_max_contacts: list[int] = [0]
 
         # Finalize the collision detector if a builder is provided
-        if builder is not None:
-            self.finalize(builder=builder, settings=settings, device=device)
+        if builder is not None and model is not None:
+            self.finalize(builder=builder, model=model, settings=settings, device=device)
 
     ###
     # Properties
@@ -215,6 +238,7 @@ class CollisionDetector:
 
     def finalize(
         self,
+        model: Model,
         builder: ModelBuilder,
         settings: CollisionDetectorSettings | None = None,
         device: Devicelike = None,
@@ -238,56 +262,65 @@ class CollisionDetector:
         if not isinstance(builder, ModelBuilder):
             raise TypeError(f"Cannot finalize CollisionDetector: expected ModelBuilder, got {type(builder)}")
 
+        # Check that the model is valid
+        if model is None:
+            raise ValueError("Cannot finalize CollisionDetector: model is None")
+        if not isinstance(model, Model):
+            raise TypeError(f"Cannot finalize CollisionDetector: expected Model, got {type(model)}")
+
         # Override the settings if specified
         if settings is not None:
+            if not isinstance(settings, CollisionDetectorSettings):
+                raise TypeError(
+                    f"Cannot finalize CollisionDetector: expected CollisionDetectorSettings, got {type(settings)}"
+                )
             self._settings = settings
-
-        # If no settings were configured, use default settings
-        if self._settings is None:
+        # Otherwise use default settings
+        else:
             self._settings = CollisionDetectorSettings()
 
-        # Override the device if specified
+        # Override the device if specified explicitly
         if device is not None:
             self._device = device
+        # Otherwise, use the device of the model
+        else:
+            self._device = model.device
 
-        # Retrieve the required contact capacity required by the model
-        model_max_contacts, world_max_contacts = builder.required_contact_capacity
+        # Compute the maximum number of contacts required for the model and each world
+        world_max_contacts = self._compute_per_world_max_contacts(builder)
+        self._model_max_contacts = sum(world_max_contacts)
+        self._world_max_contacts = world_max_contacts
 
-        # Proceed with allocations only if the model allocates contacts
-        if model_max_contacts >= 0:
+        # Proceed with allocations only if the model admits contacts, which
+        # occurs when collision geometries defined in the builder and model
+        if self._model_max_contacts > 0:
             # Allocate the contacts container which will hold the generated contacts
-            self._contacts = Contacts(
-                default_max_contacts=self._settings.max_contacts, capacity=world_max_contacts, device=device
-            )
-
-            # Cache the maximum number of contacts allocated for the model
-            self._model_max_contacts: int = self._contacts.num_model_max_contacts
-            self._world_max_contacts: list[int] = self._contacts.num_world_max_contacts
+            self._contacts = Contacts(capacity=self._world_max_contacts, device=self._device)
 
             # Initialize the configured collision detection pipeline
             match self._settings.pipeline:
                 case CollisionPipelineType.PRIMITIVE:
                     self._primitive_pipeline = CollisionPipelinePrimitive(
-                        device=device,
+                        device=self._device,
+                        model=model,
                         builder=builder,
                         broadphase=self._settings.broadphase,
                         bvtype=self._settings.bvtype,
+                        default_margin=self._settings.default_contact_margin,
                     )
                 case CollisionPipelineType.UNIFIED:
                     self._unified_pipeline = CollisionPipelineUnifiedKamino(
-                        device=device,
+                        device=self._device,
+                        model=model,
                         builder=builder,
                         broadphase=self._settings.broadphase,
                         # TODO: Add support for bvtype in unified pipeline
+                        default_margin=self._settings.default_contact_margin,
+                        max_triangle_pairs=self._settings.max_triangle_pairs,
+                        max_contacts_per_pair=self._settings.max_contacts_per_pair,
                     )
                 case _:
                     raise ValueError(f"Unsupported CollisionPipelineType: {self._settings.pipeline}")
-
-    def reset(self):
-        """
-        TODO
-        """
-        pass
 
     def collide(self, model: Model, data: ModelData):
         """
@@ -326,3 +359,37 @@ class CollisionDetector:
                 self._unified_pipeline.collide(model, data, self._contacts)
             case _:
                 raise ValueError(f"Unsupported CollisionPipelineType: {self._settings.pipeline}")
+
+    ###
+    # Internals
+    ###
+
+    def _compute_per_world_max_contacts(self, builder: ModelBuilder) -> list[int]:
+        """
+        Computes the per-world maximum contacts required by the model.
+
+        Args:
+            builder(ModelBuilder):
+                ModelBuilder instance containing the host-side model definition.
+        Returns:
+            list[int]: A list of maximum contacts required for each world.
+        """
+        # First check if there are any collision geometries
+        num_worlds = builder.num_worlds
+        num_model_cgeoms = len(builder.collision_geoms)
+        if num_model_cgeoms == 0:
+            return 0, [0] * num_worlds
+
+        # Compute the maximum possible number of geom pairs (worst-case, needed for NXN/SAP)
+        world_max_contacts = [0] * num_worlds
+        for w, world in enumerate(builder.worlds):
+            world_num_geom_pairs = (world.num_collision_geoms * (world.num_collision_geoms - 1)) // 2
+            world_max_contacts[w] = world_num_geom_pairs * self._settings.max_contacts_per_pair
+
+        # Override the per-world maximum contacts if specified in the settings
+        if self._settings.max_contacts_per_world is not None:
+            for w in range(num_worlds):
+                world_max_contacts[w] = self._settings.max_contacts_per_world
+
+        # Retrurn the per-world maximum contacts list
+        return world_max_contacts

@@ -302,7 +302,6 @@ class CollisionDetector:
                 case CollisionPipelineType.PRIMITIVE:
                     self._primitive_pipeline = CollisionPipelinePrimitive(
                         device=self._device,
-                        model=model,
                         builder=builder,
                         broadphase=self._settings.broadphase,
                         bvtype=self._settings.bvtype,

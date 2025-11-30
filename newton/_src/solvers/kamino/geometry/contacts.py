@@ -105,20 +105,20 @@ class ContactMode(IntEnum):
     """Indicates that contact was previously closed (i.e. STICKING or SLIDING) and is now opening."""
 
     STICKING = 1
-    """Indicates that contact is persisting without relative tangential motion."""
+    """Indicates that contact is persisting (i.e. closed) without relative tangential motion."""
 
     SLIDING = 2
-    """Indicates that contact is persisting with relative tangential motion."""
+    """Indicates that contact is persisting (i.e. closed) with relative tangential motion."""
 
     ###
     # Utility Constants
     ###
 
     DEFAULT_VN_MIN = 1e-3
-    """The minimum normal velocity threshold for determining contact mode."""
+    """The minimum normal velocity threshold for determining contact open or closed modes."""
 
     DEFAULT_VT_MIN = 1e-3
-    """The minimum tangential velocity threshold for determining contact mode."""
+    """The minimum tangential velocity threshold for determining contact stick or slip modes."""
 
     ###
     # Utility Functions

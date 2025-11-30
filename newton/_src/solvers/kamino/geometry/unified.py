@@ -462,14 +462,11 @@ def _update_geom_poses_and_compute_aabbs(
 
 class CollisionPipelineUnifiedKamino:
     """
-    Unified collision pipeline for Kamino using Newton's broad phase and narrow phase.
+    A specialization of the Newton's unified collision detection pipeline for Kamino.
 
     This pipeline uses the same broad phase algorithms (NXN, SAP, EXPLICIT) and narrow phase
     (NarrowPhase with GJK/MPR) as Newton's CollisionPipelineUnified, but writes contacts
     directly in Kamino's format using a custom contact writer.
-
-    This is an alternative to the existing KaminoCollisionPipeline and primitive_narrowphase
-    which use Kamino's own collision detection kernels.
     """
 
     def __init__(
@@ -486,7 +483,7 @@ class CollisionPipelineUnifiedKamino:
         device: Devicelike = None,
     ):
         """
-        Initialize CollisionPipelineUnifiedKamino.
+        Initialize an instance of Kamino's wrapper of the unified collision detection pipeline.
 
         Args:
             builder (ModelBuilder): Kamino ModelBuilder (used to extract collision pair information)
@@ -639,7 +636,7 @@ class CollisionPipelineUnifiedKamino:
         """
         Converts Kamino geometry data to the Newton format.
 
-        This function only needs to be called once during initialization.
+        This operation needs to be called only once during initialization.
 
         Args:
             model (Model): The model container holding the time-invariant parameters of the simulation.

@@ -13,7 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""TODO"""
+"""
+A collision detection pipeline optimized for primitive shapes.
+
+This pipeline uses an `EXPLICIT` broad-phase operating on pre-computed
+geometry pairs and a narrow-phase based on the primitive colliders of Newton.
+"""
 
 import warp as wp
 from warp.context import Devicelike
@@ -21,7 +26,7 @@ from warp.context import Devicelike
 from .....sim.collide_unified import BroadPhaseMode
 from ...core.builder import ModelBuilder
 from ...core.model import Model, ModelData
-from ...core.types import int32, vec2i
+from ...core.types import float32, int32, mat83f, vec2i
 from ..contacts import Contacts
 from .broadphase import (
     BoundingVolumesData,
@@ -39,36 +44,66 @@ from .narrowphase import primitive_narrowphase
 
 class CollisionPipelinePrimitive:
     """
-    TODO
+    A collision detection pipeline optimized for primitive shapes.
+
+    This pipeline uses an `EXPLICIT` broad-phase operating on pre-computed
+    geometry pairs and a narrow-phase based on the primitive colliders of Newton.
     """
 
     def __init__(
         self,
         builder: ModelBuilder | None = None,
         broadphase: BroadPhaseMode = BroadPhaseMode.EXPLICIT,
-        bvtype: BoundingVolumeType | None = None,
+        bvtype: BoundingVolumeType = BoundingVolumeType.AABB,
+        default_margin: float = 1e-5,
         device: Devicelike = None,
     ):
         """
-        TODO
-        """
-        # TODO
-        self._device: Devicelike = None
-        self._broadphase: BroadPhaseMode = BroadPhaseMode.EXPLICIT
-        self._bvtype: BoundingVolumeType = BoundingVolumeType.AABB
+        Initialize an instance of Kamino's optimized primitive collision detection pipeline.
 
-        # TODO
+        Args:
+            builder (ModelBuilder | None): Optional model builder to pre-compute collision pairs.
+            broadphase (BroadPhaseMode): Broad-phase collision detection algorithm to use.
+            bvtype (BoundingVolumeType): Type of bounding volume to use in broad-phase.
+            default_margin (float): Default collision margin for geometries.
+            device (Devicelike): Device on which to allocate data and perform computations.
+        """
+        # Cache pipeline settings
+        self._device: Devicelike = device
+        self._broadphase: BroadPhaseMode = broadphase
+        self._bvtype: BoundingVolumeType = bvtype
+        self._default_margin: float = default_margin
+
+        # Declare the internal data containers
         self._cmodel: CollisionCandidatesModel | None = None
         self._cdata: CollisionCandidatesData | None = None
         self._bvdata: BoundingVolumesData | None = None
 
-        # TODO
+        # If a builder is provided, proceed to finalize all data allocations
         if builder is not None:
             self.finalize(builder, bvtype, device)
 
+    ###
+    # Properties
+    ###
+
+    @property
+    def device(self) -> Devicelike:
+        """Returns the Warp device the pipeline operates on."""
+        return self._device
+
+    ###
+    # Operations
+    ###
+
     def finalize(self, builder: ModelBuilder, bvtype: BoundingVolumeType | None = None, device: Devicelike = None):
         """
-        TODO
+        Finalizes the collision detection pipeline by allocating all necessary data structures.
+
+        Args:
+            builder (ModelBuilder): The model builder used to pre-compute collision pairs.
+            bvtype (BoundingVolumeType | None): Optional bounding volume type to override the default.
+            device (Devicelike): The Warp device on which the pipeline will operate.
         """
         # Override the device if specified
         if device is not None:
@@ -80,6 +115,7 @@ class CollisionPipelinePrimitive:
 
         # Retrieve the number of world
         num_worlds = builder.num_worlds
+        num_geoms = len(builder.collision_geoms)
 
         # Construct collision pairs
         world_num_geom_pairs, model_geom_pair, model_pairid, model_wid = builder.make_collision_candidate_pairs()
@@ -87,6 +123,16 @@ class CollisionPipelinePrimitive:
 
         # Allocate the collision model data
         with wp.ScopedDevice(self._device):
+            # Allocate the bounding volumes data
+            self._bvdata = BoundingVolumesData()
+            match self._bvtype:
+                case BoundingVolumeType.AABB:
+                    self._bvdata.aabb = wp.zeros(shape=(num_geoms,), dtype=mat83f)
+                case BoundingVolumeType.BS:
+                    self._bvdata.radius = wp.zeros(shape=(num_geoms,), dtype=float32)
+                case _:
+                    raise ValueError(f"Unsupported BoundingVolumeType: {self._bvtype}")
+
             # Allocate the time-invariant collision candidates model
             self._cmodel = CollisionCandidatesModel(
                 num_model_geom_pairs=model_num_geom_pairs,
@@ -107,15 +153,14 @@ class CollisionPipelinePrimitive:
                 geom_pair=wp.zeros(shape=(model_num_geom_pairs,), dtype=vec2i),
             )
 
-    def reset(self):
-        """
-        TODO
-        """
-        pass
-
     def collide(self, model: Model, data: ModelData, contacts: Contacts):
         """
-        TODO
+        Runs the unified collision detection pipeline to generate discrete contacts.
+
+        Args:
+            model (Model): The model container holding the time-invariant parameters of the simulation.
+            data (ModelData): The data container holding the time-varying state of the simulation.
+            contacts (Contacts): Output contacts container (will be cleared and populated)
         """
         # Clear all active collision candidates and contacts
         self._cdata.clear()

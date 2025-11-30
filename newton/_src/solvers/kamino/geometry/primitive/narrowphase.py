@@ -13,7 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Narrow-phase collision detection operations on geometric primitives"""
+"""
+Provides a narrow-phase Collision Detection (CD) backend optimized for geometric primitives.
+
+This narrow-phase CD back-end uses the primitive colliders of Newton to compute
+discrete contacts, but conforms to the data layout and required by Kamino.
+"""
 
 from typing import Any
 
@@ -813,11 +818,11 @@ def capsule_box(
         capsule1.bid,
         box2.bid,
         margin,
+        friction,
+        restitution,
         distances,
         positions,
         normals,
-        friction,
-        restitution,
         contact_model_num,
         contact_world_num,
         contact_wid,
@@ -868,7 +873,6 @@ def box_box(
 
     # Add the active contacts to the global contacts arrays (up to 8 contacts with per-contact normals)
     wp.static(make_add_multiple_contacts(8, False))(
-        # Inputs:
         model_max_contacts,
         world_max_contacts,
         wid,
@@ -877,11 +881,11 @@ def box_box(
         box1.bid,
         box2.bid,
         margin,
+        friction,
+        restitution,
         distances,
         positions,
         normals,
-        friction,
-        restitution,
         contact_model_num,
         contact_world_num,
         contact_wid,
@@ -1003,11 +1007,11 @@ def plane_box(
         plane1.bid,
         box2.bid,
         margin,
+        friction,
+        restitution,
         distances,
         positions,
         normal,
-        friction,
-        restitution,
         contact_model_num,
         contact_world_num,
         contact_wid,
@@ -1225,11 +1229,11 @@ def plane_cylinder(
         plane1.bid,
         cylinder2.bid,
         margin,
+        friction,
+        restitution,
         distances,
         positions,
         normal,
-        friction,
-        restitution,
         contact_model_num,
         contact_world_num,
         contact_wid,

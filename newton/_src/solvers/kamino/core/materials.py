@@ -22,6 +22,7 @@ from dataclasses import dataclass
 import numpy as np
 import warp as wp
 
+from ..utils import logger as msg
 from .types import Descriptor, override
 
 ###
@@ -335,6 +336,7 @@ class MaterialManager:
 
         # Add the new material to the list of materials
         self.materials.append(material)
+        msg.debug("Registered new material:\n%s", material)
 
         # Add placeholder entries in the material pair properties list
         # NOTE: These are initialized to None and are to be set when the material pair is registered
@@ -369,6 +371,7 @@ class MaterialManager:
 
         # Configure the material pair properties
         self.configure_pair(first=first.name, second=second.name, material_pair=material_pair)
+        msg.debug("Registered new material pair: %s - %s", first.name, second.name)
 
     def configure_pair(self, first: int | str, second: int | str, material_pair: MaterialPairProperties):
         """
@@ -388,6 +391,7 @@ class MaterialManager:
 
         # Set the material pair properties
         self._pair_properties[mid1][mid2] = self._pair_properties[mid2][mid1] = material_pair
+        msg.debug("Configured material pair: %s - %s", self.materials[mid1].name, self.materials[mid2].name)
 
     def merge(self, other: "MaterialManager"):
         """
@@ -484,7 +488,7 @@ class MaterialManager:
         N = len(self.materials)
 
         # Initialize the restitution matrix
-        restitution = np.full((N, N), DEFAULT_RESTITUTION, dtype=np.float32)
+        restitution = np.full((N, N), self._pair_properties[0][0].restitution, dtype=np.float32)
 
         # Fill the matrix with the restitution coefficients
         for i in range(N):
@@ -493,8 +497,7 @@ class MaterialManager:
                 if self._pair_properties[i][j] is not None:
                     restitution[i, j] = self._pair_properties[i][j].restitution
                 else:
-                    # Raise an error if the material pair properties are not set
-                    raise ValueError(
+                    msg.debug(
                         f"Material-pair properties not set for materials:"
                         f"({self.materials[i].name}, {self.materials[j].name})"
                     )
@@ -513,7 +516,7 @@ class MaterialManager:
         N = len(self.materials)
 
         # Initialize the friction matrix
-        friction = np.full((N, N), DEFAULT_FRICTION, dtype=np.float32)
+        friction = np.full((N, N), self._pair_properties[0][0].static_friction, dtype=np.float32)
 
         # Fill the matrix with the friction coefficients
         for i in range(N):
@@ -522,8 +525,7 @@ class MaterialManager:
                 if self._pair_properties[i][j] is not None:
                     friction[i, j] = self._pair_properties[i][j].static_friction
                 else:
-                    # Raise an error if the material pair properties are not set
-                    raise ValueError(
+                    msg.debug(
                         f"Material-pair properties not set for materials:"
                         f"({self.materials[i].name}, {self.materials[j].name})"
                     )
@@ -542,7 +544,7 @@ class MaterialManager:
         N = len(self.materials)
 
         # Initialize the friction matrix
-        friction = np.full((N, N), DEFAULT_FRICTION, dtype=np.float32)
+        friction = np.full((N, N), self._pair_properties[0][0].dynamic_friction, dtype=np.float32)
 
         # Fill the matrix with the friction coefficients
         for i in range(N):
@@ -551,8 +553,7 @@ class MaterialManager:
                 if self._pair_properties[i][j] is not None:
                     friction[i, j] = self._pair_properties[i][j].dynamic_friction
                 else:
-                    # Raise an error if the material pair properties are not set
-                    raise ValueError(
+                    msg.debug(
                         f"Material-pair properties not set for materials:"
                         f"({self.materials[i].name}, {self.materials[j].name})"
                     )

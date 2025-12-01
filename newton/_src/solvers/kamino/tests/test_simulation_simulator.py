@@ -94,6 +94,7 @@ class TestCartpoleSimulator(unittest.TestCase):
         self.seed = 42
         self.default_device = wp.get_device()
         self.verbose = False  # Set to True for verbose output
+        self.progress = False  # Set to True for progress output
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
@@ -159,7 +160,7 @@ class TestCartpoleSimulator(unittest.TestCase):
             # Execute a single simulation step
             single_sim.step()
             wp.synchronize()
-            if self.verbose:
+            if self.verbose or self.progress:
                 print_progress_bar(step + 1, num_steps, start_time, prefix="Progress", suffix="")
 
         # Collect the initial and final states
@@ -239,7 +240,7 @@ class TestCartpoleSimulator(unittest.TestCase):
             # Execute a single simulation step
             multi_sim.step()
             wp.synchronize()
-            if self.verbose:
+            if self.verbose or self.progress:
                 print_progress_bar(step + 1, num_steps, start_time, prefix="Progress", suffix="")
 
         # Optional verbose output - enabled globally via self.verbose
@@ -293,12 +294,14 @@ class TestCartpoleSimulator(unittest.TestCase):
         # Allocate arrays to hold the collected samples
         num_bodies = single_sim.model.size.sum_of_num_bodies
         num_joint_dofs = single_sim.model.size.sum_of_num_joint_dofs
+        num_joint_cts = single_sim.model.size.sum_of_num_joint_cts
         sample_init_q_i = np.zeros((num_sample_steps, num_bodies, 7), dtype=np.float32)
         sample_init_u_i = np.zeros((num_sample_steps, num_bodies, 6), dtype=np.float32)
         sample_next_q_i = np.zeros((num_sample_steps, num_bodies, 7), dtype=np.float32)
         sample_next_u_i = np.zeros((num_sample_steps, num_bodies, 6), dtype=np.float32)
         sample_init_q_j = np.zeros((num_sample_steps, num_joint_dofs), dtype=np.float32)
         sample_init_dq_j = np.zeros((num_sample_steps, num_joint_dofs), dtype=np.float32)
+        sample_init_lambda_j = np.zeros((num_sample_steps, num_joint_cts), dtype=np.float32)
         sample_next_q_j = np.zeros((num_sample_steps, num_joint_dofs), dtype=np.float32)
         sample_next_dq_j = np.zeros((num_sample_steps, num_joint_dofs), dtype=np.float32)
         sample_ctrl_tau_j = np.zeros((num_sample_steps, num_joint_dofs), dtype=np.float32)
@@ -313,7 +316,7 @@ class TestCartpoleSimulator(unittest.TestCase):
             # Execute a single simulation step
             single_sim.step()
             wp.synchronize()
-            if self.verbose:
+            if self.verbose or self.progress:
                 print_progress_bar(step + 1, total_steps, start_time, prefix="Progress", suffix="")
             # Collect the initial and next state samples at the specified frequency
             if step >= num_skip_steps and step % sample_freq == 0:
@@ -323,6 +326,7 @@ class TestCartpoleSimulator(unittest.TestCase):
                 sample_next_u_i[sample, :, :] = single_sim.state.u_i.numpy().copy()
                 sample_init_q_j[sample, :] = single_sim.state_previous.q_j.numpy().copy()
                 sample_init_dq_j[sample, :] = single_sim.state_previous.dq_j.numpy().copy()
+                sample_init_lambda_j[sample, :] = single_sim.state_previous.lambda_j.numpy().copy()
                 sample_next_q_j[sample, :] = single_sim.state.q_j.numpy().copy()
                 sample_next_dq_j[sample, :] = single_sim.state.dq_j.numpy().copy()
                 sample_ctrl_tau_j[sample, :] = single_sim.data.control_n.tau_j.numpy().copy()
@@ -335,6 +339,7 @@ class TestCartpoleSimulator(unittest.TestCase):
         sample_next_u_i = sample_next_u_i.reshape(-1, 6)
         sample_init_q_j = sample_init_q_j.reshape(-1)
         sample_init_dq_j = sample_init_dq_j.reshape(-1)
+        sample_init_lambda_j = sample_init_lambda_j.reshape(-1)
         sample_next_q_j = sample_next_q_j.reshape(-1)
         sample_next_dq_j = sample_next_dq_j.reshape(-1)
         sample_ctrl_tau_j = sample_ctrl_tau_j.reshape(-1)
@@ -344,6 +349,7 @@ class TestCartpoleSimulator(unittest.TestCase):
         msg.info(f"[samples]: init u_i (shape={sample_init_u_i.shape}):\n{sample_init_u_i}\n")
         msg.info(f"[samples]: init q_j (shape={sample_init_q_j.shape}):\n{sample_init_q_j}\n")
         msg.info(f"[samples]: init dq_j (shape={sample_init_dq_j.shape}):\n{sample_init_dq_j}\n")
+        msg.info(f"[samples]: init lambda_j (shape={sample_init_lambda_j.shape}):\n{sample_init_lambda_j}\n")
         msg.info(f"[samples]: next q_i (shape={sample_next_q_i.shape}):\n{sample_next_q_i}\n")
         msg.info(f"[samples]: next u_i (shape={sample_next_u_i.shape}):\n{sample_next_u_i}\n")
         msg.info(f"[samples]: next q_j (shape={sample_next_q_j.shape}):\n{sample_next_q_j}\n")
@@ -410,6 +416,11 @@ class TestCartpoleSimulator(unittest.TestCase):
         msg.info(f"[multi]: [init]: sim.model.state.dq_j:\n{multi_sim.state.dq_j}\n\n")
         msg.info(f"[multi]: [init]: sim.model.control.tau_j:\n{multi_sim.control.tau_j}\n\n")
 
+        # Due to warm-starting, we also need to set the initial constraint
+        # reactions in order to exactly reproduce the sampled trajectories
+        multi_sim.data.solver.joints.lambda_j.assign(sample_init_lambda_j)
+        np.testing.assert_allclose(multi_sim.data.solver.joints.lambda_j.numpy(), sample_init_lambda_j)
+
         # Step the multi-instance simulator once
         multi_sim.step()
         wp.synchronize()
@@ -471,12 +482,14 @@ class TestCartpoleSimulator(unittest.TestCase):
         # Allocate arrays to hold the collected samples
         num_bodies = single_sim.model.size.sum_of_num_bodies
         num_joint_dofs = single_sim.model.size.sum_of_num_joint_dofs
+        num_joint_cts = single_sim.model.size.sum_of_num_joint_cts
         sample_init_q_i = np.zeros((num_sample_steps, num_bodies, 7), dtype=np.float32)
         sample_init_u_i = np.zeros((num_sample_steps, num_bodies, 6), dtype=np.float32)
         sample_next_q_i = np.zeros((num_sample_steps, num_bodies, 7), dtype=np.float32)
         sample_next_u_i = np.zeros((num_sample_steps, num_bodies, 6), dtype=np.float32)
         sample_init_q_j = np.zeros((num_sample_steps, num_joint_dofs), dtype=np.float32)
         sample_init_dq_j = np.zeros((num_sample_steps, num_joint_dofs), dtype=np.float32)
+        sample_init_lambda_j = np.zeros((num_sample_steps, num_joint_cts), dtype=np.float32)
         sample_next_q_j = np.zeros((num_sample_steps, num_joint_dofs), dtype=np.float32)
         sample_next_dq_j = np.zeros((num_sample_steps, num_joint_dofs), dtype=np.float32)
         sample_ctrl_tau_j = np.zeros((num_sample_steps, num_joint_dofs), dtype=np.float32)
@@ -491,7 +504,7 @@ class TestCartpoleSimulator(unittest.TestCase):
             # Execute a single simulation step
             single_sim.step()
             wp.synchronize()
-            if self.verbose:
+            if self.verbose or self.progress:
                 print_progress_bar(step + 1, total_steps, start_time, prefix="Progress", suffix="")
             # Collect the initial and next state samples at the specified frequency
             if step >= num_skip_steps and step % sample_freq == 0 and sample < num_sample_steps:
@@ -501,6 +514,7 @@ class TestCartpoleSimulator(unittest.TestCase):
                 sample_next_u_i[sample, :, :] = single_sim.state.u_i.numpy().copy()
                 sample_init_q_j[sample, :] = single_sim.state_previous.q_j.numpy().copy()
                 sample_init_dq_j[sample, :] = single_sim.state_previous.dq_j.numpy().copy()
+                sample_init_lambda_j[sample, :] = single_sim.state_previous.lambda_j.numpy().copy()
                 sample_next_q_j[sample, :] = single_sim.state.q_j.numpy().copy()
                 sample_next_dq_j[sample, :] = single_sim.state.dq_j.numpy().copy()
                 sample_ctrl_tau_j[sample, :] = single_sim.data.control_n.tau_j.numpy().copy()
@@ -513,6 +527,7 @@ class TestCartpoleSimulator(unittest.TestCase):
         sample_next_u_i = sample_next_u_i.reshape(-1, 6)
         sample_init_q_j = sample_init_q_j.reshape(-1)
         sample_init_dq_j = sample_init_dq_j.reshape(-1)
+        sample_init_lambda_j = sample_init_lambda_j.reshape(-1)
         sample_next_q_j = sample_next_q_j.reshape(-1)
         sample_next_dq_j = sample_next_dq_j.reshape(-1)
         sample_ctrl_tau_j = sample_ctrl_tau_j.reshape(-1)
@@ -522,6 +537,7 @@ class TestCartpoleSimulator(unittest.TestCase):
         msg.info(f"[samples]: init u_i (shape={sample_init_u_i.shape}):\n{sample_init_u_i}\n")
         msg.info(f"[samples]: init q_j (shape={sample_init_q_j.shape}):\n{sample_init_q_j}\n")
         msg.info(f"[samples]: init dq_j (shape={sample_init_dq_j.shape}):\n{sample_init_dq_j}\n")
+        msg.info(f"[samples]: init lambda_j (shape={sample_init_lambda_j.shape}):\n{sample_init_lambda_j}\n")
         msg.info(f"[samples]: next q_i (shape={sample_next_q_i.shape}):\n{sample_next_q_i}\n")
         msg.info(f"[samples]: next u_i (shape={sample_next_u_i.shape}):\n{sample_next_u_i}\n")
         msg.info(f"[samples]: next q_j (shape={sample_next_q_j.shape}):\n{sample_next_q_j}\n")
@@ -559,11 +575,12 @@ class TestCartpoleSimulator(unittest.TestCase):
         state_0 = multi_sim.model.state()
         state_0.q_i.assign(sample_init_q_i)
         state_0.u_i.assign(sample_init_u_i)
+        state_0.lambda_j.assign(sample_init_lambda_j)
         control_0 = multi_sim.model.control()
         control_0.tau_j.assign(sample_ctrl_tau_j)
 
         # Reset the multi-instance simulator to load the new initial states
-        multi_sim.reset_to_state(state_0)
+        multi_sim.reset_to_state(state_0, reset_constraints=False)
         msg.info(f"[multi]: [reset]: sim.model.state_previous.q_i:\n{multi_sim.state_previous.q_i}\n\n")
         msg.info(f"[multi]: [reset]: sim.model.state_previous.u_i:\n{multi_sim.state_previous.u_i}\n\n")
         msg.info(f"[multi]: [reset]: sim.model.state_previous.q_j:\n{multi_sim.state_previous.q_j}\n\n")
@@ -649,12 +666,14 @@ class TestCartpoleSimulator(unittest.TestCase):
         # Allocate arrays to hold the collected samples
         num_bodies = single_sim.model.size.sum_of_num_bodies
         num_joint_dofs = single_sim.model.size.sum_of_num_joint_dofs
+        num_joint_cts = single_sim.model.size.sum_of_num_joint_cts
         sample_init_q_i = np.zeros((num_sample_steps, num_bodies, 7), dtype=np.float32)
         sample_init_u_i = np.zeros((num_sample_steps, num_bodies, 6), dtype=np.float32)
         sample_next_q_i = np.zeros((num_sample_steps, num_bodies, 7), dtype=np.float32)
         sample_next_u_i = np.zeros((num_sample_steps, num_bodies, 6), dtype=np.float32)
         sample_init_q_j = np.zeros((num_sample_steps, num_joint_dofs), dtype=np.float32)
         sample_init_dq_j = np.zeros((num_sample_steps, num_joint_dofs), dtype=np.float32)
+        sample_init_lambda_j = np.zeros((num_sample_steps, num_joint_cts), dtype=np.float32)
         sample_next_q_j = np.zeros((num_sample_steps, num_joint_dofs), dtype=np.float32)
         sample_next_dq_j = np.zeros((num_sample_steps, num_joint_dofs), dtype=np.float32)
         sample_ctrl_tau_j = np.zeros((num_sample_steps, num_joint_dofs), dtype=np.float32)
@@ -669,7 +688,7 @@ class TestCartpoleSimulator(unittest.TestCase):
             # Execute a single simulation step
             single_sim.step()
             wp.synchronize()
-            if self.verbose:
+            if self.verbose or self.progress:
                 print_progress_bar(step + 1, total_steps, start_time, prefix="Progress", suffix="")
             # Collect the initial and next state samples at the specified frequency
             if step >= num_skip_steps and step % sample_freq == 0 and sample < num_sample_steps:
@@ -679,6 +698,7 @@ class TestCartpoleSimulator(unittest.TestCase):
                 sample_next_u_i[sample, :, :] = single_sim.state.u_i.numpy().copy()
                 sample_init_q_j[sample, :] = single_sim.state_previous.q_j.numpy().copy()
                 sample_init_dq_j[sample, :] = single_sim.state_previous.dq_j.numpy().copy()
+                sample_init_lambda_j[sample, :] = single_sim.state_previous.lambda_j.numpy().copy()
                 sample_next_q_j[sample, :] = single_sim.state.q_j.numpy().copy()
                 sample_next_dq_j[sample, :] = single_sim.state.dq_j.numpy().copy()
                 sample_ctrl_tau_j[sample, :] = single_sim.data.control_n.tau_j.numpy().copy()
@@ -689,6 +709,7 @@ class TestCartpoleSimulator(unittest.TestCase):
         msg.info(f"[samples]: init u_i (shape={sample_init_u_i.shape}):\n{sample_init_u_i}\n")
         msg.info(f"[samples]: init q_j (shape={sample_init_q_j.shape}):\n{sample_init_q_j}\n")
         msg.info(f"[samples]: init dq_j (shape={sample_init_dq_j.shape}):\n{sample_init_dq_j}\n")
+        msg.info(f"[samples]: init lambda_j (shape={sample_init_lambda_j.shape}):\n{sample_init_lambda_j}\n")
         msg.info(f"[samples]: next q_i (shape={sample_next_q_i.shape}):\n{sample_next_q_i}\n")
         msg.info(f"[samples]: next u_i (shape={sample_next_u_i.shape}):\n{sample_next_u_i}\n")
         msg.info(f"[samples]: next q_j (shape={sample_next_q_j.shape}):\n{sample_next_q_j}\n")
@@ -738,6 +759,7 @@ class TestCartpoleSimulator(unittest.TestCase):
         expected_init_u_i = np.zeros_like(sample_init_u_i)
         expected_init_q_j = np.zeros_like(sample_init_q_j)
         expected_init_dq_j = np.zeros_like(sample_init_dq_j)
+        expected_init_lambda_j = np.zeros_like(sample_init_lambda_j)
         expected_next_q_i = np.zeros_like(sample_next_q_i)
         expected_next_u_i = np.zeros_like(sample_next_u_i)
         expected_next_q_j = np.zeros_like(sample_next_q_j)
@@ -749,6 +771,7 @@ class TestCartpoleSimulator(unittest.TestCase):
                 expected_init_u_i[i, :, :] = sample_init_u_i[i, :, :]
                 expected_init_q_j[i, :] = sample_init_q_j[i, :]
                 expected_init_dq_j[i, :] = sample_init_dq_j[i, :]
+                expected_init_lambda_j[i, :] = sample_init_lambda_j[i, :]
                 expected_next_q_i[i, :, :] = sample_next_q_i[i, :, :]
                 expected_next_u_i[i, :, :] = sample_next_u_i[i, :, :]
                 expected_next_q_j[i, :] = sample_next_q_j[i, :]
@@ -759,6 +782,7 @@ class TestCartpoleSimulator(unittest.TestCase):
                 expected_init_u_i[i, :, :] = sample_init_u_i[0, :, :]
                 expected_init_q_j[i, :] = sample_init_q_j[0, :]
                 expected_init_dq_j[i, :] = sample_init_dq_j[0, :]
+                expected_init_lambda_j[i, :] = sample_init_lambda_j[0, :]
                 expected_next_q_i[i, :, :] = sample_next_q_i[0, :, :]
                 expected_next_u_i[i, :, :] = sample_next_u_i[0, :, :]
                 expected_next_q_j[i, :] = sample_next_q_j[0, :]
@@ -768,6 +792,7 @@ class TestCartpoleSimulator(unittest.TestCase):
         msg.info(f"[multi]: expected init u_i after reset:\n{expected_init_u_i}\n")
         msg.info(f"[multi]: expected init q_j after reset:\n{expected_init_q_j}\n")
         msg.info(f"[multi]: expected init dq_j after reset:\n{expected_init_dq_j}\n")
+        msg.info(f"[multi]: expected init lambda_j after reset:\n{expected_init_lambda_j}\n")
         msg.info(f"[multi]: expected next q_i after reset:\n{expected_next_q_i}\n")
         msg.info(f"[multi]: expected next u_i after reset:\n{expected_next_u_i}\n")
         msg.info(f"[multi]: expected next q_j after reset:\n{expected_next_q_j}\n")
@@ -781,6 +806,7 @@ class TestCartpoleSimulator(unittest.TestCase):
         expected_next_u_i = expected_next_u_i.reshape(-1, 6)
         expected_init_q_j = expected_init_q_j.reshape(-1)
         expected_init_dq_j = expected_init_dq_j.reshape(-1)
+        expected_init_lambda_j = expected_init_lambda_j.reshape(-1)
         expected_next_q_j = expected_next_q_j.reshape(-1)
         expected_next_dq_j = expected_next_dq_j.reshape(-1)
         expected_ctrl_tau_j = expected_ctrl_tau_j.reshape(-1)
@@ -789,11 +815,12 @@ class TestCartpoleSimulator(unittest.TestCase):
         state_0 = multi_sim.model.state()
         state_0.q_i.assign(sample_init_q_i)
         state_0.u_i.assign(sample_init_u_i)
+        state_0.lambda_j.assign(sample_init_lambda_j)
         control_0 = multi_sim.model.control()
         control_0.tau_j.assign(sample_ctrl_tau_j.reshape(-1))
 
         # Reset the multi-instance simulator to load the new initial states
-        multi_sim.reset_to_state(state=state_0, world_mask=world_mask)
+        multi_sim.reset_to_state(state=state_0, world_mask=world_mask, reset_constraints=False)
         msg.info(f"[multi]: [reset]: sim.model.state_previous.q_i:\n{multi_sim.state_previous.q_i}\n\n")
         msg.info(f"[multi]: [reset]: sim.model.state_previous.u_i:\n{multi_sim.state_previous.u_i}\n\n")
         msg.info(f"[multi]: [reset]: sim.model.state_previous.q_j:\n{multi_sim.state_previous.q_j}\n\n")

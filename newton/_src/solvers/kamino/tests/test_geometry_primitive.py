@@ -151,6 +151,7 @@ def test_broadphases_on_primitive_combinations(
     broadphase_types = [PrimitiveBroadPhaseTestAABB, PrimitiveBroadPhaseTestBS]
     for bp_type in broadphase_types:
         for shape_combo in test_models.shape_combinations:
+            # Create a test model builder, model, and data
             build_fn = test_models.shape_combination_to_builder[shape_combo]
             builder = make_homogeneous_builder(num_worlds=num_worlds, build_fn=build_fn)
             model = builder.finalize(device)
@@ -200,6 +201,7 @@ def test_narrowphase_on_primitive_combinations(
     broadphase_types = [PrimitiveBroadPhaseTestAABB, PrimitiveBroadPhaseTestBS]
     for bp_type in broadphase_types:
         for shape_combo in test_models.shape_combinations:
+            # Create a test model builder, model, and data
             build_fn = test_models.shape_combination_to_builder[shape_combo]
             builder = make_homogeneous_builder(num_worlds=num_worlds, build_fn=build_fn)
             model = builder.finalize(device)
@@ -243,12 +245,120 @@ def test_narrowphase_on_primitive_combinations(
             )
 
 
+def test_narrowphase_specialized(testcase: unittest.TestCase, test_config: dict, expected: dict):
+    """
+    Tests a special case of primitive shape combination/configuration
+    specified in `test_config` and `expected` dictionaries.
+    """
+
+    # Create a test model builder, model, and data
+    builder: ModelBuilder = test_config["builder_fn"](dz_0=test_config["dz_0"])
+    model = builder.finalize(testcase.default_device)
+    data = model.data()
+
+    # Calculate expected model geom pairs
+    _, model_geom_pairs, *_ = builder.make_collision_candidate_pairs()
+    num_model_geom_pairs = len(model_geom_pairs)
+    geom_pairs_per_world = num_model_geom_pairs // builder.num_worlds
+
+    # Create a contacts container
+    capacity = [geom_pairs_per_world * test_config["max_contacts_per_pair"]] * builder.num_worlds
+    contacts = Contacts(capacity=capacity, device=testcase.default_device)
+
+    broadphase_types = [PrimitiveBroadPhaseTestAABB, PrimitiveBroadPhaseTestBS]
+    for bp_type in broadphase_types:
+        # Create a broad-phase backend
+        broadphase = bp_type(builder=builder, device=testcase.default_device)
+        check_broadphase_allocations(testcase, builder, broadphase)
+
+        # Perform broad-phase collision detection and check results
+        broadphase.collide(model, data, default_margin=0.0)
+
+        # Execute narrowphase for primitive shapes
+        contacts.clear()
+        primitive_narrowphase(model, data, broadphase._cdata, contacts, test_config["default_margin"])
+
+        # Optional verbose output
+        testname = test_config["name"]
+        bvname = bp_type.__name__
+        msg.info("[%s][%s]: bodies.q_i:\n%s", testname, bvname, data.bodies.q_i)
+        msg.info("[%s][%s]: contacts.model_num_contacts: %s", testname, bvname, contacts.model_num_contacts)
+        msg.info("[%s][%s]: contacts.world_num_contacts: %s", testname, bvname, contacts.world_num_contacts)
+        msg.info("[%s][%s]: contacts.wid: %s", testname, bvname, contacts.wid)
+        msg.info("[%s][%s]: contacts.cid: %s", testname, bvname, contacts.cid)
+        msg.info("[%s][%s]: contacts.gid_AB: %s", testname, bvname, contacts.gid_AB)
+        msg.info("[%s][%s]: contacts.bid_AB: %s", testname, bvname, contacts.bid_AB)
+        msg.info("[%s][%s]: contacts.position_A:\n%s", testname, bvname, contacts.position_A)
+        msg.info("[%s][%s]: contacts.position_B:\n%s", testname, bvname, contacts.position_B)
+        msg.info("[%s][%s]: contacts.gapfunc:\n%s", testname, bvname, contacts.gapfunc)
+        msg.info("[%s][%s]: contacts.frame:\n%s", testname, bvname, contacts.frame)
+        msg.info("[%s][%s]: contacts.material:\n%s", testname, bvname, contacts.material)
+
+        # Check results: We expect exactly 1 contact per world
+        testcase.assertEqual(
+            first=contacts.model_num_contacts.numpy()[0],
+            second=expected["num_contacts"],
+            msg=f"{bvname}: Failed `model_num_collisions` check for `{testname}`",
+        )
+        testcase.assertEqual(
+            first=contacts.world_num_contacts.numpy()[0],
+            second=expected["num_contacts"],
+            msg=f"{bvname}: Failed `world_num_collisions` check for `{testname}`",
+        )
+        testcase.assertEqual(
+            first=contacts.wid.numpy()[0],
+            second=0,
+            msg=f"{bvname}: Failed `wid` check for `{testname}`",
+        )
+        # Per-contact checks
+        num_active = contacts.model_num_contacts.numpy()[0]
+        np.testing.assert_array_equal(
+            actual=contacts.cid.numpy()[:num_active],
+            desired=np.arange(expected["num_contacts"], dtype=np.int32),
+            err_msg=f"{bvname}: Failed `cid` check for `boxes_nunchaku`",
+        )
+        np.testing.assert_almost_equal(
+            actual=contacts.gid_AB.numpy()[:num_active],
+            desired=expected["gid_AB"],
+            err_msg=f"{bvname}: Failed `gid_AB` check for `{testname}`",
+        )
+        np.testing.assert_almost_equal(
+            actual=contacts.bid_AB.numpy()[:num_active],
+            desired=expected["bid_AB"],
+            err_msg=f"{bvname}: Failed `bid_AB` check for `{testname}`",
+        )
+        np.testing.assert_almost_equal(
+            actual=contacts.position_A.numpy()[:num_active],
+            desired=expected["position_A"],
+            decimal=6,
+            err_msg=f"{bvname}: Failed `position_A` check for `{testname}`",
+        )
+        np.testing.assert_almost_equal(
+            actual=contacts.position_B.numpy()[:num_active],
+            desired=expected["position_B"],
+            decimal=6,
+            err_msg=f"{bvname}: Failed `position_B` check for `{testname}`",
+        )
+        np.testing.assert_almost_equal(
+            actual=contacts.gapfunc.numpy()[:num_active],
+            desired=expected["gapfunc"],
+            decimal=6,
+            err_msg=f"{bvname}: Failed `gapfunc` check for `{testname}`",
+        )
+        np.testing.assert_almost_equal(
+            actual=contacts.frame.numpy()[:num_active],
+            desired=expected["frame"],
+            decimal=6,
+            err_msg=f"{bvname}: Failed `frame` check for `{testname}`",
+        )
+
+
 ###
 # Tests
 ###
 
 
-class TestGeometryPipelinePrimitive(unittest.TestCase):
+class TestGeometryPipelinePrimitiveBroadPhase(unittest.TestCase):
     def setUp(self):
         self.default_device = wp.get_device()
         self.verbose = True  # Set to True for verbose output
@@ -265,15 +375,16 @@ class TestGeometryPipelinePrimitive(unittest.TestCase):
         if self.verbose:
             msg.reset_log_level()
 
-    def test_01_broadphase_primitive_combinations_singleworld(self):
+    def test_01_broadphase_on_primitive_combinations_singleworld(self):
         test_broadphases_on_primitive_combinations(self, num_worlds=1, device=self.default_device)
 
-    def test_02_broadphase_primitive_combinations_multiworld(self):
+    def test_02_broadphase_on_primitive_combinations_multiworld(self):
         test_broadphases_on_primitive_combinations(self, num_worlds=11, device=self.default_device)
 
-    def test_03_broadphase_boxes_nunchaku_singleworld(self):
+    def test_03_broadphase_on_boxes_nunchaku_singleworld(self):
         broadphase_types = [PrimitiveBroadPhaseTestAABB, PrimitiveBroadPhaseTestBS]
         for bp_type in broadphase_types:
+            # Create a test model builder, model, and data
             builder = build_boxes_nunchaku()
             model = builder.finalize(self.default_device)
             data = model.data()
@@ -290,22 +401,23 @@ class TestGeometryPipelinePrimitive(unittest.TestCase):
             np.testing.assert_array_equal(
                 actual=broadphase._cdata.model_num_collisions.numpy()[0],
                 desired=3,
-                err_msg=f"{bp_type.__name__}: Failed `model_num_collisions` check for `build_boxes_nunchaku`",
+                err_msg=f"{bp_type.__name__}: Failed `model_num_collisions` check for `boxes_nunchaku`",
             )
             np.testing.assert_array_equal(
                 actual=broadphase._cdata.world_num_collisions.numpy()[0],
                 desired=3,
-                err_msg=f"{bp_type.__name__}: Failed `world_num_collisions` check for `build_boxes_nunchaku`",
+                err_msg=f"{bp_type.__name__}: Failed `world_num_collisions` check for `boxes_nunchaku`",
             )
             np.testing.assert_array_equal(
                 actual=broadphase._cdata.wid.numpy()[0],
                 desired=0,
-                err_msg=f"{bp_type.__name__}: Failed `wid` check for `build_boxes_nunchaku`",
+                err_msg=f"{bp_type.__name__}: Failed `wid` check for `boxes_nunchaku`",
             )
 
-    def test_04_broadphase_boxes_nunchaku_multiworld(self):
+    def test_04_broadphase_on_boxes_nunchaku_multiworld(self):
         broadphase_types = [PrimitiveBroadPhaseTestAABB, PrimitiveBroadPhaseTestBS]
         for bp_type in broadphase_types:
+            # Create a test model builder, model, and data
             builder = make_homogeneous_builder(num_worlds=11, build_fn=build_boxes_nunchaku)
             model = builder.finalize(self.default_device)
             data = model.data()
@@ -322,21 +434,59 @@ class TestGeometryPipelinePrimitive(unittest.TestCase):
             np.testing.assert_array_equal(
                 actual=broadphase._cdata.model_num_collisions.numpy()[0],
                 desired=3 * builder.num_worlds,
-                err_msg=f"{bp_type.__name__}: Failed `model_num_collisions` check for `build_boxes_nunchaku`",
+                err_msg=f"{bp_type.__name__}: Failed `model_num_collisions` check for `boxes_nunchaku`",
             )
             np.testing.assert_array_equal(
                 actual=broadphase._cdata.world_num_collisions.numpy(),
                 desired=3 * np.ones(shape=(builder.num_worlds,)),
-                err_msg=f"{bp_type.__name__}: Failed `world_num_collisions` check for `build_boxes_nunchaku`",
+                err_msg=f"{bp_type.__name__}: Failed `world_num_collisions` check for `boxes_nunchaku`",
             )
             np.testing.assert_array_equal(
                 actual=broadphase._cdata.wid.numpy()[: broadphase._cdata.model_num_collisions.numpy()[0]],
                 desired=np.tile(np.arange(builder.num_worlds), (3, 1)).T.flatten(),
-                err_msg=f"{bp_type.__name__}: Failed `wid` check for `build_boxes_nunchaku`",
+                err_msg=f"{bp_type.__name__}: Failed `wid` check for `boxes_nunchaku`",
             )
 
-    def test_05_narrowphase_primitive_combinations_singleworld(self):
-        # First we test with a margin and initial penetration of zero
+
+class TestGeometryPipelinePrimitiveNarrowPhase(unittest.TestCase):
+    def setUp(self):
+        self.default_device = wp.get_device()
+        self.verbose = True  # Set to True for verbose output
+
+        # Set debug-level logging to print verbose test output to console
+        if self.verbose:
+            print("\n")  # Add newline before test output for better readability
+            msg.set_log_level(msg.LogLevel.DEBUG)
+        else:
+            msg.set_log_level(msg.LogLevel.WARNING)
+
+    def tearDown(self):
+        self.default_device = None
+        if self.verbose:
+            msg.reset_log_level()
+
+    def test_01_narrowphase_on_primitive_combinations_singleworld(self):
+        """
+        Tests all primitive broad-phase implementations over all
+        shape combinations under the following idealized conditions:
+        - all shapes are perfectly stacked along the vertical (z) axis
+        - all shapes are centered at the origin in the (x,y) plane
+        - all shapes are positioned and oriented in `nominal` configurations
+        that would would generate "median" number of contacts per shape combination
+        - the geoms are perfectly touching (i.e. penetration is exactly zero)
+        - all contact margins are set to zero
+
+        Notes:
+        - We refer to these "median" expected contacts as those that are neither the worst-case
+        (i.e. maximum possible contacts) nor the best-case (i.e. minimum possible contacts).
+        - An example of a "median" configuration is a box-on-box arrangement where two boxes are
+        perfectly aligned and touching face-to-face, generating 4 contact points. The worst-case
+        would be if the boxes were slightly offset, generating 8 contact points (i.e. full face-face
+        contact with 4 points on each face). The best-case would be if the boxes were touching at a single edge or corner,
+        generating only 1 contact point.
+        - Specialized configurations such as the ones mentioned above are tested in separate test cases.
+        """
+        # Configure for zero-valued contact margins and initial penetrations
         default_margin: float = 0.0
         dz_0: float = 0.0
 
@@ -375,8 +525,100 @@ class TestGeometryPipelinePrimitive(unittest.TestCase):
             device=self.default_device,
         )
 
-    # def test_06_narrowphase_primitive_combinations_multiworld(self):
-    #     test_narrowphase_on_primitive_combinations(self, num_worlds=11, device=self.default_device)
+    def test_02_narrowphase_on_primitive_combinations_multiworld(self):
+        test_narrowphase_on_primitive_combinations(self, num_worlds=11, device=self.default_device)
+
+    ###
+    # Tests for special cases of shape combinations/configurations
+    ###
+
+    def test_03_narrowphase_on_sphere_on_sphere(self):
+        # NOTE: We set to negative value to move the geoms into each other,
+        # i.e. move the bottomo geom upwards and the top geom downwards.
+        dz_0 = -0.01
+
+        # Test meta-data
+        test_config = {
+            "name": "sphere_on_sphere",
+            "builder_fn": test_models.build_sphere_on_sphere,
+            "max_contacts_per_pair": 2,
+            "default_margin": 0.0,
+            "dz_0": dz_0,
+        }
+        expected = {
+            "num_contacts": 1,
+            "gid_AB": np.array([[0, 1]], dtype=np.int32),
+            "bid_AB": np.array([[0, 1]], dtype=np.int32),
+            "position_A": np.array([[0.0, 0.0, 0.5 * abs(dz_0)]], dtype=np.float32),
+            "position_B": np.array([[0.0, 0.0, -0.5 * abs(dz_0)]], dtype=np.float32),
+            "gapfunc": np.array([[0.0, 0.0, 1.0, dz_0]], dtype=np.float32),
+            "frame": np.array([[0.0, 0.0, 0.0, 1.0]], dtype=np.float32),
+        }
+        test_narrowphase_specialized(self, test_config, expected)
+
+    def test_04_narrowphase_on_box_on_box(self):
+        # NOTE: We set to negative value to move the geoms into each other,
+        # i.e. move the bottomo geom upwards and the top geom downwards.
+        dz_0 = -0.01
+
+        # Test meta-data
+        test_config = {
+            "name": "box_on_box",
+            "builder_fn": test_models.build_box_on_box,
+            "max_contacts_per_pair": 8,
+            "default_margin": 0.0,
+            "dz_0": dz_0,
+        }
+        expected = {
+            "num_contacts": 4,
+            "gid_AB": np.tile(np.array([0, 1], dtype=np.int32), reps=(4, 1)),
+            "bid_AB": np.tile(np.array([0, 1], dtype=np.int32), reps=(4, 1)),
+            "position_A": np.array(
+                [
+                    [-0.5, -0.5, 0.5 * abs(dz_0)],
+                    [0.5, -0.5, 0.5 * abs(dz_0)],
+                    [-0.5, 0.5, 0.5 * abs(dz_0)],
+                    [0.5, 0.5, 0.5 * abs(dz_0)],
+                ],
+                dtype=np.float32,
+            ),
+            "position_B": np.array(
+                [
+                    [-0.5, -0.5, -0.5 * abs(dz_0)],
+                    [0.5, -0.5, -0.5 * abs(dz_0)],
+                    [-0.5, 0.5, -0.5 * abs(dz_0)],
+                    [0.5, 0.5, -0.5 * abs(dz_0)],
+                ],
+                dtype=np.float32,
+            ),
+            "gapfunc": np.tile(np.array([0.0, 0.0, 1.0, dz_0], dtype=np.float32), reps=(4, 1)),
+            "frame": np.tile(np.array([0.0, 0.0, 0.0, 1.0], dtype=np.float32), reps=(4, 1)),
+        }
+        test_narrowphase_specialized(self, test_config, expected)
+
+    def test_05_narrowphase_on_sphere_on_box(self):
+        # NOTE: We set to negative value to move the geoms into each other,
+        # i.e. move the bottomo geom upwards and the top geom downwards.
+        dz_0 = -0.01
+
+        # Test meta-data
+        test_config = {
+            "name": "sphere_on_box",
+            "builder_fn": test_models.build_sphere_on_box,
+            "max_contacts_per_pair": 1,
+            "default_margin": 0.0,
+            "dz_0": dz_0,
+        }
+        expected = {
+            "num_contacts": 1,
+            "gid_AB": np.array([[0, 1]], dtype=np.int32),
+            "bid_AB": np.array([[0, 1]], dtype=np.int32),
+            "position_A": np.array([[0.0, 0.0, 0.5 * abs(dz_0)]], dtype=np.float32),
+            "position_B": np.array([[0.0, 0.0, -0.5 * abs(dz_0)]], dtype=np.float32),
+            "gapfunc": np.array([[0.0, 0.0, 1.0, dz_0]], dtype=np.float32),
+            "frame": np.array([[0.0, 0.0, 0.0, 1.0]], dtype=np.float32),
+        }
+        test_narrowphase_specialized(self, test_config, expected)
 
 
 ###

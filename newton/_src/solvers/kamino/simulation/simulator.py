@@ -41,7 +41,11 @@ from ..geometry import (
     Contacts,
 )
 from ..integrators.euler import integrate_semi_implicit_euler
-from ..kinematics.constraints import make_unilateral_constraints_info, update_constraints_info
+from ..kinematics.constraints import (
+    make_unilateral_constraints_info,
+    unpack_constraint_solutions,
+    update_constraints_info,
+)
 from ..kinematics.jacobians import DenseSystemJacobians
 from ..kinematics.joints import compute_joints_data
 from ..kinematics.limits import Limits
@@ -314,6 +318,13 @@ class Simulator:
     ###
 
     @property
+    def settings(self) -> SimulatorSettings:
+        """
+        Returns the simulator settings.
+        """
+        return self._settings
+
+    @property
     def time(self) -> float:
         """
         Returns the current physical time of the simulation in seconds.
@@ -400,14 +411,14 @@ class Simulator:
     @property
     def limits(self) -> Limits:
         """
-        Returns the joint limits manager.
+        Returns the joint limits data container.
         """
         return self._limits
 
     @property
     def contacts(self) -> Contacts:
         """
-        Returns the contact manager.
+        Returns the contacts data container.
         """
         return self._contacts
 
@@ -1042,6 +1053,18 @@ class Simulator:
             jacobians=self._jacobians.data,
             lambdas_offsets=self._dual_problem.data.vio,
             lambdas_data=self._fd_solver.data.solution.lambdas,
+        )
+
+        # TODO: Could this operation be combined with computing body wrenches to optimize kernel launches?
+        # Unpack the computed constraint multipliers to the respective joint-limit
+        # and contact data for post-processing and optional solver warm-starting
+        unpack_constraint_solutions(
+            lambdas=self._fd_solver.data.solution.lambdas,
+            v_plus=self._fd_solver.data.solution.v_plus,
+            model=self._model,
+            data=self._data.solver,
+            limits=self.limits,
+            contacts=self.contacts,
         )
 
     def _forward_wrenches(self):

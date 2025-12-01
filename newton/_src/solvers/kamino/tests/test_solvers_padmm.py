@@ -13,18 +13,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Unit tests for the Proximal-ADMM Constraint Solver"""
+"""Unit tests for the Proximal-ADMM Solver."""
 
 import os
 import unittest
 
-import matplotlib.pyplot as plt
 import numpy as np
 import warp as wp
+from warp.context import Devicelike
 
+from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.core.math import screw, vec3f
+from newton._src.solvers.kamino.core.model import Model
 from newton._src.solvers.kamino.dynamics.dual import DualProblem
+from newton._src.solvers.kamino.kinematics.constraints import unpack_constraint_solutions
 from newton._src.solvers.kamino.linalg import LLTBlockedSolver
+from newton._src.solvers.kamino.linalg.utils.matrix import SquareSymmetricMatrixProperties
+from newton._src.solvers.kamino.linalg.utils.range import in_range_via_gaussian_elimination
 from newton._src.solvers.kamino.models.builders import (
     build_box_on_plane,
     build_box_pendulum,  # noqa: F401
@@ -32,81 +37,180 @@ from newton._src.solvers.kamino.models.builders import (
     build_boxes_hinged,  # noqa: F401
     build_boxes_nunchaku,  # noqa: F401
 )
-from newton._src.solvers.kamino.models.utils import (
-    make_single_builder,
-)
-
-# Module to be tested
-from newton._src.solvers.kamino.solvers.padmm import PADMMSettings, PADMMSolver
+from newton._src.solvers.kamino.solvers.padmm import PADMMSettings, PADMMSolver, PADMMWarmStartMode
 from newton._src.solvers.kamino.tests.utils.extract import (
     extract_delassus,
     extract_info_vectors,
     extract_problem_vector,
 )
-
-# Test utilities
 from newton._src.solvers.kamino.tests.utils.make import make_containers, update_containers
-from newton._src.solvers.kamino.tests.utils.print import print_model_info
+from newton._src.solvers.kamino.utils import logger as msg
 
 ###
 # Helper functions
 ###
 
 
-def print_problem_summary(problem: DualProblem):
-    print("Dual Problem Summary:")
-    print(f"problem.data.num_worlds: {problem.data.num_worlds}")
-    print(f"problem.data.num_maxdims: {problem.data.num_maxdims}")
-    print(f"problem.data.nl:{problem.data.nl}")
-    print(f"problem.data.nc:{problem.data.nc}")
-    print(f"problem.data.config: {problem.data.config}")
-    print(f"problem.data.maxdim: {problem.data.maxdim}")
-    print(f"problem.data.dim: {problem.data.dim}")
-    print(f"problem.data.mio: {problem.data.mio}")
-    print(f"problem.data.vio: {problem.data.vio}")
-    print(f"problem.data.u_f (shape): {problem.data.u_f.shape}")
-    print(f"problem.data.v_b (shape): {problem.data.v_b.shape}")
-    print(f"problem.data.v_i (shape): {problem.data.v_i.shape}")
-    print(f"problem.data.v_f (shape): {problem.data.v_f.shape}")
-    print(f"problem.data.mu (shape): {problem.data.mu.shape}")
-    print(f"problem.data.D (shape): {problem.data.D.shape}")
+class TestSetup:
+    def __init__(
+        self,
+        builder_fn,
+        max_world_contacts: int = 32,
+        perturb: bool = True,
+        gravity: bool = True,
+        device: Devicelike = None,
+        **kwargs,
+    ):
+        # Cache the max contacts allocated for the test problem
+        self.max_world_contacts = max_world_contacts
+
+        # Construct the model description using model builders for different systems
+        self.builder: ModelBuilder = builder_fn(**kwargs)
+
+        # Set ad-hoc configurations
+        self.builder.gravity[0].enabled = gravity
+        if perturb:
+            u_0 = screw(vec3f(+10.0, 0.0, 0.0), vec3f(0.0, 0.0, 0.0))
+            for body in self.builder.bodies:
+                body.u_i_0 = u_0
+
+        # Create the model and containers from the builder
+        self.model, self.data, self.limits, self.detector, self.jacobians = make_containers(
+            builder=self.builder, max_world_contacts=max_world_contacts, device=device
+        )
+        self.contacts = self.detector.contacts
+        self.state_p = self.model.state()
+
+        # Create the DualProblem to be solved
+        self.problem = DualProblem(
+            model=self.model,
+            data=self.data,
+            limits=self.limits,
+            contacts=self.contacts,
+            solver=LLTBlockedSolver,
+            device=device,
+        )
+
+        # Update the sim data containers
+        update_containers(
+            model=self.model, data=self.data, limits=self.limits, detector=self.detector, jacobians=self.jacobians
+        )
+
+    def build(self):
+        # Build the dual problem
+        self.problem.build(
+            model=self.model,
+            data=self.data,
+            limits=self.limits.data,
+            contacts=self.contacts.data,
+            jacobians=self.jacobians.data,
+        )
+
+    def cache(self, solver: PADMMSolver):
+        # Unpack the computed constraint multipliers to the respective joint-limit
+        # and contact data for post-processing and optional solver warm-starting
+        unpack_constraint_solutions(
+            lambdas=solver.data.solution.lambdas,
+            v_plus=solver.data.solution.v_plus,
+            model=self.model,
+            data=self.data,
+            limits=self.limits,
+            contacts=self.contacts,
+        )
 
 
-def print_solver_summary(solver: PADMMSolver):
-    print("PADMM Solver Summary:")
-    print("solver.size.num_worlds: ", solver.size.num_worlds)
-    print("solver.size.max_limits: ", solver.size.sum_of_max_limits)
-    print("solver.size.max_contacts: ", solver.size.sum_of_max_contacts)
-    print("solver.size.max_unilaterals: ", solver.size.sum_of_max_unilaterals)
-    print("solver.size.max_total_cts: ", solver.size.sum_of_max_total_cts)
-    print("solver.size.max_iters: ", solver._max_iters)
-    print("solver.data.config: ", solver.data.config)
-    print("solver.data.status: ", solver.data.status)
-    print("solver.data.penalty: ", solver.data.penalty)
-    print("solver.data.info.offsets: ", solver.data.info.offsets)
-    print("solver.data.info.r_primal: ", solver.data.info.r_primal.shape)
-    print("solver.data.info.r_dual: ", solver.data.info.r_dual.shape)
-    print("solver.data.info.r_compl: ", solver.data.info.r_compl.shape)
-    print("solver.data.state.s:", solver.data.state.s.shape)
-    print("solver.data.state.v:", solver.data.state.v.shape)
-    print("solver.data.state.x:", solver.data.state.x.shape)
-    print("solver.data.state.x_p:", solver.data.state.x_p.shape)
-    print("solver.data.state.y:", solver.data.state.y.shape)
-    print("solver.data.state.y_p:", solver.data.state.y_p.shape)
-    print("solver.data.state.z:", solver.data.state.z.shape)
-    print("solver.data.state.z_p:", solver.data.state.z_p.shape)
-    print("solver.data.solution.v_plus:", solver.data.solution.v_plus.shape)
-    print("solver.data.solution.lambdas:", solver.data.solution.lambdas.shape)
+def print_dual_problem_summary(D: np.ndarray, v_f: np.ndarray, notes: str = ""):
+    D_props = SquareSymmetricMatrixProperties(D)
+    v_f_is_in_range, *_ = in_range_via_gaussian_elimination(D, v_f)
+    msg.info("Delassus Properties %s:\n%s\n", notes, D_props)
+    msg.info("v_f is in range of D %s: %s\n", notes, v_f_is_in_range)
+
+
+def check_padmm_solution(
+    test: unittest.TestCase, model: Model, problem: DualProblem, solver: PADMMSolver, verbose: bool = False
+):
+    # Extract numpy arrays from the solver state and solution
+    only_active_dims = True
+    D_wp_np = extract_delassus(problem.delassus, only_active_dims=only_active_dims)
+    v_f_wp_np = extract_problem_vector(problem.delassus, problem.data.v_f.numpy(), only_active_dims=only_active_dims)
+    P_wp_np = extract_problem_vector(problem.delassus, problem.data.P.numpy(), only_active_dims=only_active_dims)
+    v_plus_wp_np = extract_problem_vector(
+        problem.delassus, solver.data.solution.v_plus.numpy(), only_active_dims=only_active_dims
+    )
+    lambdas_wp_np = extract_problem_vector(
+        problem.delassus, solver.data.solution.lambdas.numpy(), only_active_dims=only_active_dims
+    )
+
+    # Optional verbose output
+    status = solver.data.status.numpy()
+    for w in range(model.size.num_worlds):
+        # Recover the original (preconditioned) Delassua matrix from the in-place regularized storage
+        dtype = D_wp_np[w].dtype
+        ncts = D_wp_np[w].shape[0]
+        I_np = dtype.type(solver.settings[0].eta + solver.settings[0].rho_0) * np.eye(D_wp_np[w].shape[0], dtype=dtype)
+        D = D_wp_np[w] - I_np
+
+        # Recover original Delassus matrix and v_f from preconditioned versions
+        D_true = np.diag(np.reciprocal(P_wp_np[w])) @ D @ np.diag(np.reciprocal(P_wp_np[w]))
+        v_f_true = np.diag(np.reciprocal(P_wp_np[w])) @ v_f_wp_np[w]
+
+        # Compute the true dual solution and error
+        v_plus_true = np.matmul(D_true, lambdas_wp_np[w]) + v_f_true
+        error_dual_abs_l2 = np.linalg.norm(v_plus_true - v_plus_wp_np[w]) / float(ncts)
+        error_dual_abs_inf = np.linalg.norm(v_plus_true - v_plus_wp_np[w], ord=np.inf)
+
+        # Extract solver status
+        converged = True if status[w][0] == 1 else False
+        iterations = status[w][1]
+        r_p = status[w][2]
+        r_d = status[w][3]
+        r_c = status[w][4]
+
+        # Optionally print relevant solver data
+        if verbose:
+            print_dual_problem_summary(D, v_f_wp_np[w], "(preconditioned)")
+            print_dual_problem_summary(D_true, v_f_true)
+            msg.notif(
+                "\n---------"
+                f"\nconverged: {converged}"
+                f"\niterations: {iterations}"
+                "\n---------"
+                f"\nr_p: {r_p}"
+                f"\nr_d: {r_d}"
+                f"\nr_c: {r_c}"
+                "\n---------"
+                f"\nerror_dual_abs_l2: {error_dual_abs_l2}"
+                f"\nerror_dual_abs_inf: {error_dual_abs_inf}"
+                "\n---------"
+                f"\nsolution: lambda: {lambdas_wp_np[w]}"
+                f"\nsolution: v_plus: {v_plus_wp_np[w]}"
+                "\n---------\n"
+            )
+
+        # Check results
+        test.assertTrue(converged)
+        test.assertLessEqual(iterations, solver.settings[w].max_iterations)
+        test.assertLessEqual(r_p, solver.settings[w].primal_tolerance)
+        test.assertLessEqual(r_d, solver.settings[w].dual_tolerance)
+        test.assertLessEqual(r_c, solver.settings[w].compl_tolerance)
+        test.assertLessEqual(error_dual_abs_l2, solver.settings[w].dual_tolerance)
+        test.assertLessEqual(error_dual_abs_inf, solver.settings[w].dual_tolerance)
 
 
 def save_solver_info(solver: PADMMSolver, path: str | None = None, verbose: bool = False):
+    # Attempt to import matplotlib for plotting
+    try:
+        import matplotlib.pyplot as plt  # noqa: PLC0415
+    except ImportError:
+        return  # matplotlib is not available so we skip plotting
+
+    solver_has_acceleration = solver._use_acceleration
+
     nw = solver.size.num_worlds
     status = solver.data.status.numpy()
     iterations = [status[w][1] for w in range(nw)]
     offsets_np = solver.data.info.offsets.numpy()
-    num_restarts_np = extract_info_vectors(offsets_np, solver.data.info.num_restarts.numpy(), iterations)
     num_rho_updates_np = extract_info_vectors(offsets_np, solver.data.info.num_rho_updates.numpy(), iterations)
-    a_np = extract_info_vectors(offsets_np, solver.data.info.a.numpy(), iterations)
     norm_s_np = extract_info_vectors(offsets_np, solver.data.info.norm_s.numpy(), iterations)
     norm_x_np = extract_info_vectors(offsets_np, solver.data.info.norm_x.numpy(), iterations)
     norm_y_np = extract_info_vectors(offsets_np, solver.data.info.norm_y.numpy(), iterations)
@@ -121,19 +225,21 @@ def save_solver_info(solver: PADMMSolver, path: str | None = None, verbose: bool
     r_compl_np = extract_info_vectors(offsets_np, solver.data.info.r_compl.numpy(), iterations)
     r_pd_np = extract_info_vectors(offsets_np, solver.data.info.r_pd.numpy(), iterations)
     r_dp_np = extract_info_vectors(offsets_np, solver.data.info.r_dp.numpy(), iterations)
-    r_comb_np = extract_info_vectors(offsets_np, solver.data.info.r_comb.numpy(), iterations)
-    r_comb_ratio_np = extract_info_vectors(offsets_np, solver.data.info.r_comb_ratio.numpy(), iterations)
     r_ncp_primal_np = extract_info_vectors(offsets_np, solver.data.info.r_ncp_primal.numpy(), iterations)
     r_ncp_dual_np = extract_info_vectors(offsets_np, solver.data.info.r_ncp_dual.numpy(), iterations)
     r_ncp_compl_np = extract_info_vectors(offsets_np, solver.data.info.r_ncp_compl.numpy(), iterations)
     r_ncp_natmap_np = extract_info_vectors(offsets_np, solver.data.info.r_ncp_natmap.numpy(), iterations)
 
+    if solver_has_acceleration:
+        num_restarts_np = extract_info_vectors(offsets_np, solver.data.info.num_restarts.numpy(), iterations)
+        a_np = extract_info_vectors(offsets_np, solver.data.info.a.numpy(), iterations)
+        r_comb_np = extract_info_vectors(offsets_np, solver.data.info.r_comb.numpy(), iterations)
+        r_comb_ratio_np = extract_info_vectors(offsets_np, solver.data.info.r_comb_ratio.numpy(), iterations)
+
     if verbose:
         for w in range(nw):
             print(f"[World {w}] =======================================================================")
-            print(f"solver.info.num_restarts: {num_restarts_np[w]}")
             print(f"solver.info.num_rho_updates: {num_rho_updates_np[w]}")
-            print(f"solver.info.a: {a_np[w]}")
             print(f"solver.info.norm_s: {norm_s_np[w]}")
             print(f"solver.info.norm_x: {norm_x_np[w]}")
             print(f"solver.info.norm_y: {norm_y_np[w]}")
@@ -148,18 +254,19 @@ def save_solver_info(solver: PADMMSolver, path: str | None = None, verbose: bool
             print(f"solver.info.r_compl: {r_compl_np[w]}")
             print(f"solver.info.r_pd: {r_pd_np[w]}")
             print(f"solver.info.r_dp: {r_dp_np[w]}")
-            print(f"solver.info.r_comb: {r_comb_np[w]}")
-            print(f"solver.info.r_comb_ratio: {r_comb_ratio_np[w]}")
             print(f"solver.info.r_ncp_primal: {r_ncp_primal_np[w]}")
             print(f"solver.info.r_ncp_dual: {r_ncp_dual_np[w]}")
             print(f"solver.info.r_ncp_compl: {r_ncp_compl_np[w]}")
             print(f"solver.info.r_ncp_natmap: {r_ncp_natmap_np[w]}")
+            if solver_has_acceleration:
+                print(f"solver.info.num_restarts: {num_restarts_np[w]}")
+                print(f"solver.info.a: {a_np[w]}")
+                print(f"solver.info.r_comb: {r_comb_np[w]}")
+                print(f"solver.info.r_comb_ratio: {r_comb_ratio_np[w]}")
 
     # List of (label, data) for plotting
     info_list = [
-        ("num_restarts", num_restarts_np),
         ("num_rho_updates", num_rho_updates_np),
-        ("a", a_np),
         ("norm_s", norm_s_np),
         ("norm_x", norm_x_np),
         ("norm_y", norm_y_np),
@@ -174,13 +281,20 @@ def save_solver_info(solver: PADMMSolver, path: str | None = None, verbose: bool
         ("r_compl", r_compl_np),
         ("r_pd", r_pd_np),
         ("r_dp", r_dp_np),
-        ("r_comb", r_comb_np),
-        ("r_comb_ratio", r_comb_ratio_np),
         ("r_ncp_primal", r_ncp_primal_np),
         ("r_ncp_dual", r_ncp_dual_np),
         ("r_ncp_compl", r_ncp_compl_np),
         ("r_ncp_natmap", r_ncp_natmap_np),
     ]
+    if solver_has_acceleration:
+        info_list.extend(
+            [
+                ("num_restarts", num_restarts_np),
+                ("a", a_np),
+                ("r_comb", r_comb_np),
+                ("r_comb_ratio", r_comb_ratio_np),
+            ]
+        )
 
     # Plot all info as subplots: rows=info_list, cols=worlds
     n_rows = len(info_list)
@@ -212,463 +326,339 @@ def save_solver_info(solver: PADMMSolver, path: str | None = None, verbose: bool
 
 class TestPADMMSolver(unittest.TestCase):
     def setUp(self):
+        self.default_device = wp.get_device()
         self.verbose = False  # Set to True for detailed output
         self.savefig = False  # Set to True to generate solver info plots
-        self.default_device = wp.get_device()
+        self.output_dir = os.path.dirname(os.path.realpath(__file__)) + "/output/test_solvers_padmm"
+
+        # Create output directory if saving figures
+        if self.savefig:
+            os.makedirs(self.output_dir, exist_ok=True)
+
+        # Set debug-level logging to print verbose test output to console
+        if self.verbose:
+            print("\n")  # Add newline before test output for better readability
+            msg.set_log_level(msg.LogLevel.INFO)
+        else:
+            msg.set_log_level(msg.LogLevel.WARNING)
 
     def tearDown(self):
         self.default_device = None
-
-    def test_01_solve_box_on_plane_with_padmm(self):
-        """
-        Tests the Proximal-ADMM (PADMM) solver on the box-on-plane problem.
-        """
-        # Model constants
-        max_world_contacts = 12
-
-        # Construct the model description using model builders for different systems
-        builder = make_single_builder(build_fn=build_box_on_plane)
-        # builder = make_single_builder(build_fn=build_boxes_hinged, ground=True)
-        # builder = make_single_builder(build_fn=build_boxes_nunchaku)
-        # builder = make_single_builder(build_fn=build_boxes_fourbar)
-        # builder = make_homogeneous_builder(num_worlds=4, build_fn=build_box_on_plane)
-        # builder = make_homogeneous_builder(num_worlds=4, build_fn=build_boxes_hinged)
-        # builder = make_homogeneous_builder(num_worlds=4, build_fn=build_boxes_nunchaku)
-        # builder = make_homogeneous_builder(num_worlds=4, build_fn=build_boxes_fourbar)
-        # builder = make_heterogeneous_builder()
-
-        # Set ad-hoc configurations
-        builder.gravity[0].enabled = True
-        u_0 = screw(vec3f(+10.0, 0.0, 0.0), vec3f(0.0, 0.0, 0.0))
-        for body in builder.bodies:
-            body.u_i_0 = u_0
-
-        # Create the model and containers from the builder
-        model, data, limits, detector, jacobians = make_containers(
-            builder=builder, max_world_contacts=max_world_contacts, device=self.default_device
-        )
-
-        # Update the containers
-        update_containers(model=model, data=data, limits=limits, detector=detector, jacobians=jacobians)
         if self.verbose:
-            print("\n")  # Print a newline for better readability
-            print_model_info(model)
-            print("\n")  # Print a newline for better readability
+            msg.reset_log_level()
 
-        # Create the Delassus operator
-        problem = DualProblem(
-            model=model,
-            data=data,
-            limits=limits,
-            contacts=detector.contacts,
-            solver=LLTBlockedSolver,
-            device=self.default_device,
-        )
+    def test_00_make_padmm_default(self):
+        """
+        Test creating a PADMMSolver with default initialization.
+        """
+        # Creating a default PADMMSolver without any model or settings
+        # should result in a solver without any memory allocation.
+        solver = PADMMSolver()
+        self.assertIsNone(solver._size)
+        self.assertIsNone(solver._data)
+        self.assertIsNone(solver._device)
+        self.assertEqual(solver.settings, [])
 
-        # Build the dual problem
-        problem.build(
-            model=model, data=data, limits=limits.data, contacts=detector.contacts.data, jacobians=jacobians.data
-        )
+        # Requesting the solver data container when the
+        # solver has not been finalized should raise an
+        # error since no allocations have been made.
+        self.assertRaises(RuntimeError, lambda: solver.data)
 
-        # Optional verbose output
-        if self.verbose:
-            print("\n")  # Print a newline for better readability
-            print_problem_summary(problem)
-            print("\n")  # Print a newline for better readability
+    def test_01_finalize_padmm_default(self):
+        """
+        Test creating a PADMMSolver with default initialization and then finalizing all memory allocations.
+        """
+        # Create a test setup
+        test = TestSetup(builder_fn=build_box_on_plane, max_world_contacts=8, device=self.default_device)
 
-        # Define custom solver settings
+        # Creating a default PADMMSolver without any model or settings
+        # should result in a solver without any memory allocation.
+        solver = PADMMSolver()
+
+        # Finalize the solver with a model
+        solver.finalize(test.model)
+
+        # Check that the solver has been properly allocated
+        self.assertIsNotNone(solver._size)
+        self.assertIsNotNone(solver._data)
+        self.assertIsNotNone(solver._device)
+        self.assertEqual(len(solver.settings), test.model.size.num_worlds)
+        self.assertIs(solver._device, test.model.device)
+        self.assertIs(solver.size, test.model.size)
+
+    def test_02_padmm_solve(self):
+        """
+        Tests the Proximal-ADMM (PADMM) solver with default settings on the reference problem.
+        """
+        # Create the test problem
+        test = TestSetup(builder_fn=build_box_on_plane, max_world_contacts=8, device=self.default_device)
+
+        # Define solver settings
+        # NOTE: These are all equal to their default values
+        # but are defined here explicitly for the purposes
+        # of experimentation and testing.
         settings = PADMMSettings()
         settings.primal_tolerance = 1e-6
         settings.dual_tolerance = 1e-6
         settings.compl_tolerance = 1e-6
-        settings.restart_tolerance = 0.999
         settings.eta = 1e-5
-        settings.rho_0 = 1.0  # 9.7  # 2.7
-        settings.omega = 1.0  # 1.99
-        settings.max_iterations = 500
+        settings.rho_0 = 1.0
+        settings.max_iterations = 200
 
-        # Create the ADMM solver
+        # Create the PADMM solver
         solver = PADMMSolver(
-            model=model,
-            limits=limits,
-            contacts=detector.contacts,
+            model=test.model,
             settings=settings,
+            warmstart=PADMMWarmStartMode.NONE,
             use_acceleration=False,
             collect_info=True,
-            device=self.default_device,
         )
 
-        # Solve the example problem
-        solver.solve(problem=problem)
-
-        # Extract numpy arrays from the solver state and solution
-        only_active_dims = True
-        D_wp_np = extract_delassus(problem.delassus, only_active_dims=only_active_dims)
-        v_i_wp_np = extract_problem_vector(
-            problem.delassus, problem.data.v_i.numpy(), only_active_dims=only_active_dims
-        )
-        v_b_wp_np = extract_problem_vector(
-            problem.delassus, problem.data.v_b.numpy(), only_active_dims=only_active_dims
-        )
-        v_f_wp_np = extract_problem_vector(
-            problem.delassus, problem.data.v_f.numpy(), only_active_dims=only_active_dims
-        )
-        P_wp_np = extract_problem_vector(problem.delassus, problem.data.P.numpy(), only_active_dims=only_active_dims)
-        s_wp_np = extract_problem_vector(
-            problem.delassus, solver.data.state.s.numpy(), only_active_dims=only_active_dims
-        )
-        v_wp_np = extract_problem_vector(
-            problem.delassus, solver.data.state.v.numpy(), only_active_dims=only_active_dims
-        )
-        x_wp_np = extract_problem_vector(
-            problem.delassus, solver.data.state.x.numpy(), only_active_dims=only_active_dims
-        )
-        y_wp_np = extract_problem_vector(
-            problem.delassus, solver.data.state.y.numpy(), only_active_dims=only_active_dims
-        )
-        z_wp_np = extract_problem_vector(
-            problem.delassus, solver.data.state.z.numpy(), only_active_dims=only_active_dims
-        )
-        v_plus_wp_np = extract_problem_vector(
-            problem.delassus, solver.data.solution.v_plus.numpy(), only_active_dims=only_active_dims
-        )
-        lambdas_wp_np = extract_problem_vector(
-            problem.delassus, solver.data.solution.lambdas.numpy(), only_active_dims=only_active_dims
-        )
-        r_primal_wp_np = extract_problem_vector(
-            problem.delassus, solver.data.residuals.r_primal.numpy(), only_active_dims=only_active_dims
-        )
-        r_dual_wp_np = extract_problem_vector(
-            problem.delassus, solver.data.residuals.r_dual.numpy(), only_active_dims=only_active_dims
-        )
-        r_compl_wp_np = extract_problem_vector(
-            problem.delassus, solver.data.residuals.r_compl.numpy(), only_active_dims=only_active_dims
-        )
-        v_plus_info_np = extract_problem_vector(
-            problem.delassus, solver.data.info.v_plus.numpy(), only_active_dims=only_active_dims
-        )
-        v_aug_info_np = extract_problem_vector(
-            problem.delassus, solver.data.info.v_aug.numpy(), only_active_dims=only_active_dims
-        )
-        s_info_np = extract_problem_vector(
-            problem.delassus, solver.data.info.s.numpy(), only_active_dims=only_active_dims
-        )
-
-        # Optional verbose output
-        status = solver.data.status.numpy()
-        for w in range(model.size.num_worlds):
-            # Recover the original (preconditioned) Delassua matrix from the in-place regularized storage
-            dtype = D_wp_np[w].dtype
-            I_np = dtype.type(settings.eta + settings.rho_0) * np.eye(D_wp_np[w].shape[0], dtype=dtype)
-            D = D_wp_np[w] - I_np
-
-            # Compute spectral properties of preconditioned D
-            norm_v_f = np.linalg.norm(v_f_wp_np[w])
-            eigvals = np.linalg.eigvalsh(D)
-            eig_min = np.min(eigvals)
-            eig_max = np.max(eigvals)
-            L = eig_max + settings.eta
-            m = max(eig_min, 0.0) + settings.eta
-            kappa_D = L / m
-
-            # Recover original Delassus matrix and v_f from preconditioned versions
-            D_true = np.diag(np.reciprocal(P_wp_np[w])) @ D @ np.diag(np.reciprocal(P_wp_np[w]))
-            v_f_true = np.diag(np.reciprocal(P_wp_np[w])) @ v_f_wp_np[w]
-
-            # Compute the true dual solution and error
-            v_plus_true = np.matmul(D_true, lambdas_wp_np[w]) + v_f_true
-            error_dual_abs_l2 = np.linalg.norm(v_plus_true - v_plus_wp_np[w], ord=2)
-            error_dual_abs_inf = np.linalg.norm(v_plus_true - v_plus_wp_np[w], ord=np.inf)
-
-            # Check results
-            self.assertEqual(status[w][0], 1)
-            self.assertLessEqual(status[w][1], settings.max_iterations)
-            self.assertLessEqual(status[w][2], settings.primal_tolerance)
-            self.assertLessEqual(status[w][3], settings.dual_tolerance)
-            self.assertLessEqual(status[w][4], settings.compl_tolerance)
-            self.assertLess(error_dual_abs_l2, 1e-5)
-            self.assertLess(error_dual_abs_inf, 1e-5)
-
-            # Optionally print relevant solver data
-            if self.verbose:
-                print("\n")  # Print a newline for better readability
-                print(f"[World {w}] =======================================================================")
-                print(f"D_reg:\n{D_wp_np[w]}")
-                print(f"D:\n{D}")
-                print(f"v_i:\n{v_i_wp_np[w]}")
-                print(f"v_b:\n{v_b_wp_np[w]}")
-                print(f"v_f:\n{v_f_wp_np[w]}")
-                print(f"P:\n{P_wp_np[w]}")
-                print(f"norm_v_f: {norm_v_f}")
-                print(f"eig_max: {eig_max}")
-                print(f"eig_min: {eig_min}")
-                print(f"L: {L}")
-                print(f"m: {m}")
-                print(f"kappa_D: {kappa_D}")
-                print("---------")
-                print(f"s: {s_wp_np[w]}")
-                print(f"v: {v_wp_np[w]}")
-                print(f"x: {x_wp_np[w]}")
-                print(f"y: {y_wp_np[w]}")
-                print(f"z: {z_wp_np[w]}")
-                print("---------")
-                print(f" v_plus: {v_plus_wp_np[w]}")
-                print(f"lambdas: {lambdas_wp_np[w]}")
-                print("---------")
-                print(f"r_primal: {r_primal_wp_np[w]}")
-                print(f"  r_dual: {r_dual_wp_np[w]}")
-                print(f" r_compl: {r_compl_wp_np[w]}")
-                print("---------")
-                print(f"iterations: {status[w][1]}")
-                print(f"converged: {status[w][0]}")
-                print(f"r_p: {status[w][2]}")
-                print(f"r_d: {status[w][3]}")
-                print(f"r_c: {status[w][4]}")
-                print("---------")
-                print(f"error_dual_abs_l2: {error_dual_abs_l2}")
-                print(f"error_dual_abs_inf: {error_dual_abs_inf}")
-                print("---------")
-                print(f"   state:      s: {s_wp_np[w]}")
-                print(f"    info:      s: {s_info_np[w]}")
-                print(f"   state:      y: {y_wp_np[w]}")
-                print(f"solution: lambda: {lambdas_wp_np[w]}")
-                print(f"   state:      z: {z_wp_np[w]}")
-                print(f"    info:  v_aug: {v_aug_info_np[w]}")
-                print(f"solution: v_plus: {v_plus_wp_np[w]}")
-                print(f"    info: v_plus: {v_plus_info_np[w]}")
-                print(f"    true: v_plus: {v_plus_true}")
-                print("\n\n")  # Print a newline for better readability
+        # Solve the test problem
+        test.build()
+        solver.reset()
+        solver.coldstart()
+        solver.solve(problem=test.problem)
+        check_padmm_solution(self, test.model, test.problem, solver, verbose=self.verbose)
 
         # Extract solver info
         if self.savefig:
-            print("Generating solver info plots...")
-            path = os.path.dirname(os.path.realpath(__file__)) + "/output/test_solver_padmm_solver_info_01.pdf"
+            msg.notif("Generating solver info plots...")
+            path = self.output_dir + "/test_02_padmm_solve.pdf"
             save_solver_info(solver=solver, path=path)
 
-    def test_02_solve_box_on_plane_with_accelerated_padmm(self):
+    def test_03_padmm_solve_with_acceleration(self):
         """
-        Tests the Accelerated Proximal-ADMM (APADMM) solver on the box-on-plane problem.
+        Tests the Accelerated Proximal-ADMM (APADMM) solver on the reference problem with Nesterov acceleration.
         """
-        # Model constants
-        max_world_contacts = 12
+        # Create the test problem
+        test = TestSetup(builder_fn=build_box_on_plane, max_world_contacts=8, device=self.default_device)
 
-        # Construct the model description using model builders for different systems
-        builder = make_single_builder(build_fn=build_box_on_plane)
-        # builder = make_single_builder(build_fn=build_boxes_hinged, ground=True)
-        # builder = make_single_builder(build_fn=build_boxes_nunchaku)
-        # builder = make_single_builder(build_fn=build_boxes_fourbar)
-        # builder = make_homogeneous_builder(num_worlds=4, build_fn=build_box_on_plane)
-        # builder = make_homogeneous_builder(num_worlds=4, build_fn=build_boxes_hinged)
-        # builder = make_homogeneous_builder(num_worlds=4, build_fn=build_boxes_nunchaku)
-        # builder = make_homogeneous_builder(num_worlds=4, build_fn=build_boxes_fourbar)
-        # builder = make_heterogeneous_builder()
-
-        # Set ad-hoc configurations
-        builder.gravity[0].enabled = True
-        u_0 = screw(vec3f(+10.0, 0.0, 0.0), vec3f(0.0, 0.0, 0.0))
-        for body in builder.bodies:
-            body.u_i_0 = u_0
-
-        # Create the model and containers from the builder
-        model, data, limits, detector, jacobians = make_containers(
-            builder=builder, max_world_contacts=max_world_contacts, device=self.default_device
-        )
-
-        # Update the containers
-        update_containers(model=model, data=data, limits=limits, detector=detector, jacobians=jacobians)
-        if self.verbose:
-            print("\n")  # Print a newline for better readability
-            print_model_info(model)
-            print("\n")  # Print a newline for better readability
-
-        # Create the Delassus operator
-        problem = DualProblem(
-            model=model,
-            data=data,
-            limits=limits,
-            contacts=detector.contacts,
-            solver=LLTBlockedSolver,
-            device=self.default_device,
-        )
-
-        # Build the dual problem
-        problem.build(
-            model=model, data=data, limits=limits.data, contacts=detector.contacts.data, jacobians=jacobians.data
-        )
-
-        # Optional verbose output
-        if self.verbose:
-            print("\n")  # Print a newline for better readability
-            print_problem_summary(problem)
-            print("\n")  # Print a newline for better readability
-
-        # Define custom solver settings
+        # Define solver settings
+        # NOTE: These are all equal to their default values
+        # but are defined here explicitly for the purposes
+        # of experimentation and testing.
         settings = PADMMSettings()
         settings.primal_tolerance = 1e-6
         settings.dual_tolerance = 1e-6
         settings.compl_tolerance = 1e-6
         settings.restart_tolerance = 0.999
         settings.eta = 1e-5
-        settings.rho_0 = 1.0  # 9.7  # 2.7
-        settings.omega = 1.0  # 1.99
-        settings.max_iterations = 500
+        settings.rho_0 = 1.0
+        settings.max_iterations = 200
 
-        # Create the ADMM solver
+        # Create the PADMM solver
         solver = PADMMSolver(
-            model=model,
-            limits=limits,
-            contacts=detector.contacts,
+            model=test.model,
             settings=settings,
+            warmstart=PADMMWarmStartMode.NONE,
             use_acceleration=True,
             collect_info=True,
-            device=self.default_device,
         )
 
-        # Solve the example problem
-        solver.solve(problem=problem)
-
-        # Extract numpy arrays from the solver state and solution
-        only_active_dims = True
-        D_wp_np = extract_delassus(problem.delassus, only_active_dims=only_active_dims)
-        v_i_wp_np = extract_problem_vector(
-            problem.delassus, problem.data.v_i.numpy(), only_active_dims=only_active_dims
-        )
-        v_b_wp_np = extract_problem_vector(
-            problem.delassus, problem.data.v_b.numpy(), only_active_dims=only_active_dims
-        )
-        v_f_wp_np = extract_problem_vector(
-            problem.delassus, problem.data.v_f.numpy(), only_active_dims=only_active_dims
-        )
-        P_wp_np = extract_problem_vector(problem.delassus, problem.data.P.numpy(), only_active_dims=only_active_dims)
-        s_wp_np = extract_problem_vector(
-            problem.delassus, solver.data.state.s.numpy(), only_active_dims=only_active_dims
-        )
-        v_wp_np = extract_problem_vector(
-            problem.delassus, solver.data.state.v.numpy(), only_active_dims=only_active_dims
-        )
-        x_wp_np = extract_problem_vector(
-            problem.delassus, solver.data.state.x.numpy(), only_active_dims=only_active_dims
-        )
-        y_wp_np = extract_problem_vector(
-            problem.delassus, solver.data.state.y.numpy(), only_active_dims=only_active_dims
-        )
-        z_wp_np = extract_problem_vector(
-            problem.delassus, solver.data.state.z.numpy(), only_active_dims=only_active_dims
-        )
-        v_plus_wp_np = extract_problem_vector(
-            problem.delassus, solver.data.solution.v_plus.numpy(), only_active_dims=only_active_dims
-        )
-        lambdas_wp_np = extract_problem_vector(
-            problem.delassus, solver.data.solution.lambdas.numpy(), only_active_dims=only_active_dims
-        )
-        r_primal_wp_np = extract_problem_vector(
-            problem.delassus, solver.data.residuals.r_primal.numpy(), only_active_dims=only_active_dims
-        )
-        r_dual_wp_np = extract_problem_vector(
-            problem.delassus, solver.data.residuals.r_dual.numpy(), only_active_dims=only_active_dims
-        )
-        r_compl_wp_np = extract_problem_vector(
-            problem.delassus, solver.data.residuals.r_compl.numpy(), only_active_dims=only_active_dims
-        )
-        v_plus_info_np = extract_problem_vector(
-            problem.delassus, solver.data.info.v_plus.numpy(), only_active_dims=only_active_dims
-        )
-        v_aug_info_np = extract_problem_vector(
-            problem.delassus, solver.data.info.v_aug.numpy(), only_active_dims=only_active_dims
-        )
-        s_info_np = extract_problem_vector(
-            problem.delassus, solver.data.info.s.numpy(), only_active_dims=only_active_dims
-        )
-
-        # Optional verbose output
-        status = solver.data.status.numpy()
-        for w in range(model.size.num_worlds):
-            # Recover the original (preconditioned) Delassua matrix from the in-place regularized storage
-            dtype = D_wp_np[w].dtype
-            I_np = dtype.type(settings.eta + settings.rho_0) * np.eye(D_wp_np[w].shape[0], dtype=dtype)
-            D = D_wp_np[w] - I_np
-
-            # Compute spectral properties of preconditioned D
-            norm_v_f = np.linalg.norm(v_f_wp_np[w])
-            eigvals = np.linalg.eigvalsh(D)
-            eig_min = np.min(eigvals)
-            eig_max = np.max(eigvals)
-            L = eig_max + settings.eta
-            m = max(eig_min, 0.0) + settings.eta
-            kappa_D = L / m
-
-            # Recover original Delassus matrix and v_f from preconditioned versions
-            D_true = np.diag(np.reciprocal(P_wp_np[w])) @ D @ np.diag(np.reciprocal(P_wp_np[w]))
-            v_f_true = np.diag(np.reciprocal(P_wp_np[w])) @ v_f_wp_np[w]
-
-            # Compute the true dual solution and error
-            v_plus_true = np.matmul(D_true, lambdas_wp_np[w]) + v_f_true
-            error_dual_abs_l2 = np.linalg.norm(v_plus_true - v_plus_wp_np[w], ord=2)
-            error_dual_abs_inf = np.linalg.norm(v_plus_true - v_plus_wp_np[w], ord=np.inf)
-
-            # Check results
-            self.assertEqual(status[w][0], 1)
-            self.assertLessEqual(status[w][1], settings.max_iterations)
-            self.assertLessEqual(status[w][2], settings.primal_tolerance)
-            self.assertLessEqual(status[w][3], settings.dual_tolerance)
-            self.assertLessEqual(status[w][4], settings.compl_tolerance)
-            self.assertLess(error_dual_abs_l2, 1e-5)
-            self.assertLess(error_dual_abs_inf, 1e-5)
-
-            # Optionally print relevant solver data
-            if self.verbose:
-                print("\n")  # Print a newline for better readability
-                print(f"[World {w}] =======================================================================")
-                print(f"D_reg:\n{D_wp_np[w]}")
-                print(f"D:\n{D}")
-                print(f"v_i:\n{v_i_wp_np[w]}")
-                print(f"v_b:\n{v_b_wp_np[w]}")
-                print(f"v_f:\n{v_f_wp_np[w]}")
-                print(f"P:\n{P_wp_np[w]}")
-                print(f"norm_v_f: {norm_v_f}")
-                print(f"eig_max: {eig_max}")
-                print(f"eig_min: {eig_min}")
-                print(f"L: {L}")
-                print(f"m: {m}")
-                print(f"kappa_D: {kappa_D}")
-                print("---------")
-                print(f"s: {s_wp_np[w]}")
-                print(f"v: {v_wp_np[w]}")
-                print(f"x: {x_wp_np[w]}")
-                print(f"y: {y_wp_np[w]}")
-                print(f"z: {z_wp_np[w]}")
-                print("---------")
-                print(f" v_plus: {v_plus_wp_np[w]}")
-                print(f"lambdas: {lambdas_wp_np[w]}")
-                print("---------")
-                print(f"r_primal: {r_primal_wp_np[w]}")
-                print(f"  r_dual: {r_dual_wp_np[w]}")
-                print(f" r_compl: {r_compl_wp_np[w]}")
-                print("---------")
-                print(f"iterations: {status[w][1]}")
-                print(f"converged: {status[w][0]}")
-                print(f"r_p: {status[w][2]}")
-                print(f"r_d: {status[w][3]}")
-                print(f"r_c: {status[w][4]}")
-                print("---------")
-                print(f"error_dual_abs_l2: {error_dual_abs_l2}")
-                print(f"error_dual_abs_inf: {error_dual_abs_inf}")
-                print("---------")
-                print(f"   state:      s: {s_wp_np[w]}")
-                print(f"    info:      s: {s_info_np[w]}")
-                print(f"   state:      y: {y_wp_np[w]}")
-                print(f"solution: lambda: {lambdas_wp_np[w]}")
-                print(f"   state:      z: {z_wp_np[w]}")
-                print(f"    info:  v_aug: {v_aug_info_np[w]}")
-                print(f"solution: v_plus: {v_plus_wp_np[w]}")
-                print(f"    info: v_plus: {v_plus_info_np[w]}")
-                print(f"    true: v_plus: {v_plus_true}")
-                print("\n\n")  # Print a newline for better readability
+        # Solve the test problem
+        test.build()
+        solver.reset()
+        solver.coldstart()
+        solver.solve(problem=test.problem)
+        check_padmm_solution(self, test.model, test.problem, solver, verbose=self.verbose)
 
         # Extract solver info
         if self.savefig:
-            print("Generating solver info plots...")
-            path = os.path.dirname(os.path.realpath(__file__)) + "/output/test_solver_padmm_solver_info_02.pdf"
+            msg.notif("Generating solver info plots...")
+            path = self.output_dir + "/test_03_padmm_solve_with_acceleration.pdf"
+            save_solver_info(solver=solver, path=path)
+
+    def test_04_padmm_solve_with_internal_warmstart(self):
+        """
+        Tests the Proximal-ADMM (PADMM) solver on the reference problem with internal warmstarting.
+        """
+        # Create the test problem
+        test = TestSetup(builder_fn=build_box_on_plane, max_world_contacts=8, device=self.default_device)
+
+        # Define solver settings
+        # NOTE: These are all equal to their default values
+        # but are defined here explicitly for the purposes
+        # of experimentation and testing.
+        settings = PADMMSettings()
+        settings.primal_tolerance = 1e-6
+        settings.dual_tolerance = 1e-6
+        settings.compl_tolerance = 1e-6
+        settings.eta = 1e-5
+        settings.rho_0 = 1.0
+        settings.max_iterations = 200
+
+        # Create the ADMM solver
+        solver = PADMMSolver(
+            model=test.model,
+            settings=settings,
+            warmstart=PADMMWarmStartMode.INTERNAL,
+            use_acceleration=False,
+            collect_info=True,
+        )
+
+        # Initial cold-started solve
+        test.build()
+        solver.reset()
+        solver.coldstart()
+        solver.solve(problem=test.problem)
+        check_padmm_solution(self, test.model, test.problem, solver, verbose=self.verbose)
+
+        # Second solve with warm-starting from previous solution
+        test.build()
+        solver.warmstart(test.problem, test.model, test.data)
+        solver.solve(problem=test.problem)
+        check_padmm_solution(self, test.model, test.problem, solver, verbose=self.verbose)
+
+        # Extract solver info
+        if self.savefig:
+            msg.notif("Generating solver info plots...")
+            path = self.output_dir + "/test_04_padmm_solve_with_internal_warmstart.pdf"
+            save_solver_info(solver=solver, path=path)
+
+    def test_05_padmm_solve_with_container_warmstart(self):
+        """
+        Tests the Proximal-ADMM (PADMM) solver on the reference problem with container-based warmstarting.
+        """
+        # Create the test problem
+        test = TestSetup(builder_fn=build_box_on_plane, max_world_contacts=8, device=self.default_device)
+
+        # Define solver settings
+        # NOTE: These are all equal to their default values
+        # but are defined here explicitly for the purposes
+        # of experimentation and testing.
+        settings = PADMMSettings()
+        settings.primal_tolerance = 1e-6
+        settings.dual_tolerance = 1e-6
+        settings.compl_tolerance = 1e-6
+        settings.eta = 1e-5
+        settings.rho_0 = 1.0
+        settings.max_iterations = 200
+
+        # Create the ADMM solver
+        solver = PADMMSolver(
+            model=test.model,
+            settings=settings,
+            warmstart=PADMMWarmStartMode.CONTAINERS,
+            use_acceleration=False,
+            collect_info=True,
+        )
+
+        # Initial cold-started solve
+        test.build()
+        solver.reset()
+        solver.coldstart()
+        solver.solve(problem=test.problem)
+        check_padmm_solution(self, test.model, test.problem, solver, verbose=self.verbose)
+
+        # Second solve with warm-starting from previous solution
+        test.cache(solver=solver)
+        test.build()
+        solver.warmstart(test.problem, test.model, test.data, test.limits, test.contacts)
+        solver.solve(problem=test.problem)
+        check_padmm_solution(self, test.model, test.problem, solver, verbose=self.verbose)
+
+        # Extract solver info
+        if self.savefig:
+            msg.notif("Generating solver info plots...")
+            path = self.output_dir + "/test_05_padmm_solve_with_container_warmstart.pdf"
+            save_solver_info(solver=solver, path=path)
+
+    def test_06_padmm_solve_with_acceleration_and_internal_warmstart(self):
+        """
+        Tests the Proximal-ADMM (PADMM) solver on the reference problem with container-based warmstarting.
+        """
+        # Create the test problem
+        test = TestSetup(builder_fn=build_box_on_plane, max_world_contacts=8, device=self.default_device)
+
+        # Define solver settings
+        # NOTE: These are all equal to their default values
+        # but are defined here explicitly for the purposes
+        # of experimentation and testing.
+        settings = PADMMSettings()
+        settings.primal_tolerance = 1e-6
+        settings.dual_tolerance = 1e-6
+        settings.compl_tolerance = 1e-6
+        settings.restart_tolerance = 0.999
+        settings.eta = 1e-5
+        settings.rho_0 = 1.0
+        settings.max_iterations = 200
+
+        # Create the ADMM solver
+        solver = PADMMSolver(
+            model=test.model,
+            settings=settings,
+            warmstart=PADMMWarmStartMode.INTERNAL,
+            use_acceleration=True,
+            collect_info=True,
+        )
+
+        # Initial cold-started solve
+        test.build()
+        solver.reset()
+        solver.coldstart()
+        solver.solve(problem=test.problem)
+        check_padmm_solution(self, test.model, test.problem, solver, verbose=self.verbose)
+
+        # Second solve with warm-starting from previous solution
+        test.build()
+        solver.warmstart(test.problem, test.model, test.data)
+        solver.solve(problem=test.problem)
+        check_padmm_solution(self, test.model, test.problem, solver, verbose=self.verbose)
+
+        # Extract solver info
+        if self.savefig:
+            msg.notif("Generating solver info plots...")
+            path = self.output_dir + "/test_06_padmm_solve_with_acceleration_and_internal_warmstart.pdf"
+            save_solver_info(solver=solver, path=path)
+
+    def test_07_padmm_solve_with_acceleration_and_container_warmstart(self):
+        """
+        Tests the Proximal-ADMM (PADMM) solver on the reference problem with container-based warmstarting.
+        """
+        # Create the test problem
+        test = TestSetup(builder_fn=build_box_on_plane, max_world_contacts=8, device=self.default_device)
+
+        # Define solver settings
+        # NOTE: These are all equal to their default values
+        # but are defined here explicitly for the purposes
+        # of experimentation and testing.
+        settings = PADMMSettings()
+        settings.primal_tolerance = 1e-6
+        settings.dual_tolerance = 1e-6
+        settings.compl_tolerance = 1e-6
+        settings.restart_tolerance = 0.999
+        settings.eta = 1e-5
+        settings.rho_0 = 1.0
+        settings.max_iterations = 200
+
+        # Create the ADMM solver
+        solver = PADMMSolver(
+            model=test.model,
+            settings=settings,
+            warmstart=PADMMWarmStartMode.CONTAINERS,
+            use_acceleration=True,
+            collect_info=True,
+        )
+
+        # Initial cold-started solve
+        test.build()
+        solver.reset()
+        solver.coldstart()
+        solver.solve(problem=test.problem)
+        check_padmm_solution(self, test.model, test.problem, solver, verbose=self.verbose)
+
+        # Second solve with warm-starting from previous solution
+        test.cache(solver=solver)
+        test.build()
+        solver.warmstart(test.problem, test.model, test.data, test.limits, test.contacts)
+        solver.solve(problem=test.problem)
+        check_padmm_solution(self, test.model, test.problem, solver, verbose=self.verbose)
+
+        # Extract solver info
+        if self.savefig:
+            msg.notif("Generating solver info plots...")
+            path = self.output_dir + "/test_07_padmm_solve_with_acceleration_and_container_warmstart.pdf"
             save_solver_info(solver=solver, path=path)
 
 

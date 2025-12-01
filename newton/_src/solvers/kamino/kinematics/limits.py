@@ -625,7 +625,7 @@ class Limits:
         return self._device
 
     @property
-    def data(self) -> LimitsData | None:
+    def data(self) -> LimitsData:
         """
         Returns the managed limits data container.
         """

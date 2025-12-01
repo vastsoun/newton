@@ -66,10 +66,28 @@ def max_constraints_per_world(
     Returns:
         List[int]: A list of the maximum constraints for each world in the model.
     """
+    # Ensure the model container is valid
+    if model is None:
+        raise ValueError("`model` is required but got `None`.")
+    else:
+        if not isinstance(model, Model):
+            raise TypeError(f"`model` is required to be of type `Model` but got {type(model)}.")
+
+    # Ensure the limits container is valid
+    if limits is not None:
+        if not isinstance(limits, Limits):
+            raise TypeError(f"`limits` is required to be of type `Limits` but got {type(limits)}.")
+
+    # Ensure the contacts container is valid
+    if contacts is not None:
+        if not isinstance(contacts, Contacts):
+            raise TypeError(f"`contacts` is required to be of type `Contacts` but got {type(contacts)}.")
+
+    # Compute the maximum number of constraints per world
     nw = model.info.num_worlds
     njc = [model.worlds[i].num_joint_cts for i in range(nw)]
-    maxnl = limits.num_world_max_limits if limits else [0] * nw
-    maxnc = contacts.num_world_max_contacts if contacts else [0] * nw
+    maxnl = limits.num_world_max_limits if limits and limits.num_model_max_limits > 0 else [0] * nw
+    maxnc = contacts.num_world_max_contacts if contacts and contacts.num_model_max_contacts > 0 else [0] * nw
     maxncts = [njc[i] + maxnl[i] + 3 * maxnc[i] for i in range(nw)]
     return maxncts
 
@@ -104,7 +122,7 @@ def make_unilateral_constraints_info(
         device = model.device
 
     # Retrieve the number of worlds in the model
-    num_worlds = model.info.num_worlds
+    num_worlds = model.size.num_worlds
 
     # Declare the lists of per-world maximum limits and contacts
     # NOTE: These will either be captured by reference from the limits and contacts
@@ -112,17 +130,20 @@ def make_unilateral_constraints_info(
     world_maxnl: list[int] = []
     world_maxnc: list[int] = []
 
-    # If a limits container is provided, ensure it is valid
-    # and then assign the entity counters to the model info.
-    if limits is not None:
-        if not isinstance(limits, Limits):
-            raise TypeError("`limits` must be an instance of `Limits`")
+    ###
+    #  Helper functions
+    ###
+
+    def _assign_model_limits_info():
+        nonlocal world_maxnl
         world_maxnl = limits.num_world_max_limits
         model.size.sum_of_max_limits = limits.num_model_max_limits
         model.size.max_of_max_limits = max(limits.num_world_max_limits)
         model.info.max_limits = limits.world_max_limits
         data.info.num_limits = limits.world_num_limits
-    else:
+
+    def _make_empty_model_limits_info():
+        nonlocal world_maxnl
         world_maxnl = [0] * num_worlds
         model.size.sum_of_max_limits = 0
         model.size.max_of_max_limits = 0
@@ -130,23 +151,44 @@ def make_unilateral_constraints_info(
             model.info.max_limits = wp.zeros(shape=(num_worlds,), dtype=int32)
             data.info.num_limits = wp.zeros(shape=(num_worlds,), dtype=int32)
 
-    # If a contacts container is provided, ensure it is valid
-    # and then assign the entity counters to the model info.
-    if contacts is not None:
-        if not isinstance(contacts, Contacts):
-            raise TypeError("`contacts` must be an instance of `Contacts`")
+    def _assign_model_contacts_info():
+        nonlocal world_maxnc
         world_maxnc = contacts.num_world_max_contacts
         model.size.sum_of_max_contacts = contacts.num_model_max_contacts
         model.size.max_of_max_contacts = max(contacts.num_world_max_contacts)
         model.info.max_contacts = contacts.world_max_contacts
         data.info.num_contacts = contacts.world_num_contacts
-    else:
+
+    def _make_empty_model_contacts_info():
+        nonlocal world_maxnc
         world_maxnc = [0] * num_worlds
         model.size.sum_of_max_contacts = 0
         model.size.max_of_max_contacts = 0
         with wp.ScopedDevice(device):
             model.info.max_contacts = wp.zeros(shape=(num_worlds,), dtype=int32)
             data.info.num_contacts = wp.zeros(shape=(num_worlds,), dtype=int32)
+
+    # If a limits container is provided, ensure it is valid
+    # and then assign the entity counters to the model info.
+    if limits is not None:
+        if not isinstance(limits, Limits):
+            raise TypeError("`limits` must be an instance of `Limits`")
+        if limits.data is not None and limits.num_model_max_limits > 0:
+            _assign_model_limits_info()
+        else:
+            _make_empty_model_limits_info()
+    else:
+        _make_empty_model_limits_info()
+
+    # If a contacts container is provided, ensure it is valid
+    # and then assign the entity counters to the model info.
+    if contacts is not None:
+        if not isinstance(contacts, Contacts):
+            raise TypeError("`contacts` must be an instance of `Contacts`")
+        if contacts.data is not None and contacts.num_model_max_contacts > 0:
+            _assign_model_contacts_info()
+    else:
+        _make_empty_model_contacts_info()
 
     # Compute the maximum number of unilateral entities (limits and contacts) per world
     world_max_unilaterals: list[int] = [nl + nc for nl, nc in zip(world_maxnl, world_maxnc, strict=False)]

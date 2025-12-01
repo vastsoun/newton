@@ -871,8 +871,8 @@ class DenseSystemJacobians:
         nbd = [model.worlds[w].num_body_dofs for w in range(nw)]
         njc = [model.worlds[w].num_joint_cts for w in range(nw)]
         njd = [model.worlds[w].num_joint_dofs for w in range(nw)]
-        maxnl = limits.num_world_max_limits if limits is not None else [0] * nw
-        maxnc = contacts.num_world_max_contacts if contacts is not None else [0] * nw
+        maxnl = limits.num_world_max_limits if limits and limits.num_model_max_limits > 0 else [0] * nw
+        maxnc = contacts.num_world_max_contacts if contacts and contacts.num_model_max_contacts > 0 else [0] * nw
         maxncts = [njc[w] + maxnl[w] + 3 * maxnc[w] for w in range(nw)]
 
         # Compute the sizes of the Jacobian matrix data for each world

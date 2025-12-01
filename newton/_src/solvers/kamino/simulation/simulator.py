@@ -251,6 +251,9 @@ class Simulator:
             settings=self._settings.collision_detector,
         )
 
+        # Capture a reference to the contacts manager
+        self._contacts = self._collision_detector.contacts
+
         # Construct the unilateral constraints members in the model info
         make_unilateral_constraints_info(
             model=self._model, data=self._data.solver, limits=self._limits, contacts=self.contacts, device=self._device
@@ -260,7 +263,7 @@ class Simulator:
         self._jacobians = DenseSystemJacobians(
             model=self._model,
             limits=self._limits,
-            contacts=self._collision_detector.contacts,
+            contacts=self._contacts,
             device=self._device,
         )
 
@@ -269,7 +272,7 @@ class Simulator:
             model=self._model,
             data=self._data.solver,
             limits=self._limits,
-            contacts=self._collision_detector.contacts,
+            contacts=self._contacts,
             solver=settings.linear_solver_type,
             settings=settings.problem,
             device=self._device,
@@ -279,7 +282,7 @@ class Simulator:
         self._fd_solver = PADMMSolver(
             model=self._model,
             limits=self._limits,
-            contacts=self._collision_detector.contacts,
+            contacts=self._contacts,
             settings=settings.solver,
             use_acceleration=settings.use_solver_acceleration,
             collect_info=settings.collect_solver_info,
@@ -406,7 +409,7 @@ class Simulator:
         """
         Returns the contact manager.
         """
-        return self._collision_detector.contacts
+        return self._contacts
 
     @property
     def collision_detector(self) -> CollisionDetector:

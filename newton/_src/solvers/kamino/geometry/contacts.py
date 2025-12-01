@@ -43,6 +43,7 @@ from warp.context import Devicelike
 
 from ..core.math import COS_PI_6, UNIT_X, UNIT_Y
 from ..core.types import float32, int32, mat33f, quatf, vec2f, vec2i, vec3f, vec4f
+from ..utils import logger as msg
 
 ###
 # Module interface
@@ -381,8 +382,8 @@ class Contacts:
         # Cache the target device for all memory allocations
         self._device: Devicelike = None
 
-        # Declare the contacts data container
-        self._data: ContactsData | None = None
+        # Declare the contacts data container and initialize it to empty
+        self._data: ContactsData = ContactsData()
 
         # If a capacity is specified, finalize the contacts data allocation
         if capacity is not None:
@@ -653,6 +654,11 @@ class Contacts:
         else:
             raise TypeError("`capacity` must be an integer or a list of integers")
 
+        # Skip allocation if there are no contacts to allocate
+        if model_max_contacts == 0:
+            msg.debug("Contacts: Skipping contact data allocations since total requested capacity was `0`.")
+            return
+
         # Override the device if specified
         if device is not None:
             self._device = device
@@ -686,14 +692,16 @@ class Contacts:
         Clears the count of active contacts.
         """
         self._assert_has_data()
-        self._data.clear()
+        if self._data.num_model_max_contacts > 0:
+            self._data.clear()
 
     def reset(self):
         """
         Clears the count of active contacts and resets data to sentinel values.
         """
         self._assert_has_data()
-        self._data.reset()
+        if self._data.num_model_max_contacts > 0:
+            self._data.reset()
 
     ###
     # Internals

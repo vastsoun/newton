@@ -29,6 +29,7 @@ from .types import (
     mat33f,
     mat34f,
     mat44f,
+    mat63f,
     mat66f,
     quatf,
     vec3f,
@@ -549,7 +550,7 @@ def unit_quat_apply(q: quatf, v: vec3f) -> vec3f:
 @wp.func
 def unit_quat_conj_apply(q: quatf, v: vec3f) -> vec3f:
     """
-    Applies the conjugate of a unit quaternion to a vector (making use of the unit norm assumption to simplify
+    Applies a the conjugate of a unit quaternion to a vector (making use of the unit norm assumption to simplify
     the result)
     """
     qv = quat_imaginary(q)
@@ -704,3 +705,93 @@ def screw_angular(s: vec6f) -> vec3f:
         vec3f: The angular component of the screw.
     """
     return vec3f(s[3], s[4], s[5])
+
+
+###
+# Wrenches
+###
+
+
+W_C_I = wp.constant(mat63f(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0))
+"""Identify-like wrench matrix to initialize contact wrench matrices."""
+
+
+@wp.func
+def wrench_matrix_from_points(r_j: vec3f, r_i: vec3f) -> mat66f:
+    """
+    Generates a 6x6 wrench matrix from the absolute positions (in world coordinates) of the joint and body.
+
+    W_j = [I_3  , 0_3] , where S_ji is the skew-symmetric matrix of the vector r_ji = r_j - r_i.
+          [S_ji , I_3]
+
+    Args:
+        r_j (vec3f): Position of the joint in world coordinates.
+        r_i (vec3f): Position of the body in world coordinates.
+
+    Returns:
+        mat66f: The 6x6 wrench matrix.
+    """
+    # Initialize the wrench matrix
+    W_j = I_6
+
+    # Fill the lower left block with the skew-symmetric matrix
+    S_rj = wp.skew(r_j - r_i)
+    for i in range(3):
+        for j in range(3):
+            W_j[3 + i, j] = S_rj[i, j]
+
+    # Return the wrench matrix
+    return W_j
+
+
+@wp.func
+def contact_wrench_matrix_from_points(r_k: vec3f, r_i: vec3f) -> mat63f:
+    """
+    Generates a 6x3 wrench matrix from the absolute positions (in world coordinates) of the joint and body.
+
+    W_ki = [ I_3  ] , where S_ki is the skew-symmetric matrix of the vector r_ki = r_k - r_i.
+           [ S_ki ]
+
+    Args:
+        r_k (vec3f): Position of the contact on the body in world coordinates.
+        r_i (vec3f): Position of the body CoM in world coordinates.
+
+    Returns:
+        mat63f: The 6x3 wrench matrix.
+    """
+    # Initialize the wrench matrix
+    W_ki = W_C_I
+
+    # Fill the lower left block with the skew-symmetric matrix
+    S_ki = wp.skew(r_k - r_i)
+    for i in range(3):
+        for j in range(3):
+            W_ki[3 + i, j] = S_ki[i, j]
+
+    # Return the wrench matrix
+    return W_ki
+
+
+@wp.func
+def expand6d(X: mat33f) -> mat66f:
+    """
+    Expands a 3x3 rotation matrix to a 6x6 matrix operator by filling
+    the upper left and lower right blocks with the input matrix.
+
+    Args:
+        X (mat33f): The 3x3 matrix to be expanded.
+
+    Returns:
+        mat66: The expanded 6x6 matrix.
+    """
+    # Initialize the 6D matrix
+    X_6d = mat66f(0.0)
+
+    # Fill the upper left 3x3 block with the input matrix
+    for i in range(3):
+        for j in range(3):
+            X_6d[i, j] = X[i, j]
+            X_6d[3 + i, 3 + j] = X[i, j]
+
+    # Return the expanded matrix
+    return X_6d

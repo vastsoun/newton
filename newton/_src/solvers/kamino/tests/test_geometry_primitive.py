@@ -201,9 +201,15 @@ def test_narrowphase_on_primitive_combinations(
     broadphase_types = [PrimitiveBroadPhaseTestAABB, PrimitiveBroadPhaseTestBS]
     for bp_type in broadphase_types:
         for shape_combo in test_models.shape_combinations:
+            # Run the test only for shape combinations with defined expected contacts
+            if shape_combo not in expected_contacts_per_combination:
+                msg.info("narrow-phase test: skipping `%s`", shape_combo)
+                continue
+            msg.info("narrow-phase test: testing `%s`", shape_combo)
+
             # Create a test model builder, model, and data
             build_fn = test_models.shape_combination_to_builder[shape_combo]
-            builder = make_homogeneous_builder(num_worlds=num_worlds, build_fn=build_fn)
+            builder = make_homogeneous_builder(num_worlds=num_worlds, build_fn=build_fn, dz_0=dz_0)
             model = builder.finalize(device)
             data = model.data()
 
@@ -217,7 +223,7 @@ def test_narrowphase_on_primitive_combinations(
             check_broadphase_allocations(testcase, builder, broadphase)
 
             # Perform broad-phase collision detection and check results
-            broadphase.collide(model, data, default_margin=0.0)
+            broadphase.collide(model, data, default_margin=default_margin)
 
             # Create a contacts container
             capacity = [geom_pairs_per_world * max_contacts_per_pair] * num_worlds  # Custom capacity for each world
@@ -354,21 +360,53 @@ def test_narrowphase_specialized(testcase: unittest.TestCase, test_config: dict,
 
 
 ###
+# Constants
+###
+
+
+# Define the expected number of contacts for each supported shape combination
+# NOTE: This is based on "median" contact configurations as described in the
+# docstring of `test_01_narrowphase_on_primitive_combinations_singleworld`.
+expected_median_contacts_per_combination = {
+    ("sphere", "sphere"): 1,
+    ("sphere", "box"): 1,
+    ("sphere", "capsule"): 1,
+    ("sphere", "cylinder"): 1,
+    # ("sphere", "cone"): TODO,
+    # ("sphere", "ellipsoid"): 1,
+    ("box", "box"): 4,
+    ("box", "capsule"): 1,
+    # ("box", "cylinder"): TODO,
+    # ("box", "cone"): TODO,
+    # ("box", "ellipsoid"): 1,
+    ("capsule", "capsule"): 1,
+    # ("capsule", "cylinder"): TODO,
+    # ("capsule", "cone"): TODO,
+    # ("capsule", "ellipsoid"): 1,
+    # ("cylinder", "cylinder"): TODO,
+    # ("cylinder", "cone"): TODO,
+    # ("cylinder", "ellipsoid"): TODO,
+    # ("cone", "cone"): TODO,
+    # ("cone", "ellipsoid"): 1,
+    # ("ellipsoid", "ellipsoid"): 1,
+}
+
+###
 # Tests
 ###
 
 
-class TestGeometryPipelinePrimitiveBroadPhase(unittest.TestCase):
+class TestGeometryPrimitiveBroadPhase(unittest.TestCase):
     def setUp(self):
         self.default_device = wp.get_device()
-        self.verbose = True  # Set to True for verbose output
+        self.verbose = False  # Set to True for verbose output
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
             print("\n")  # Add newline before test output for better readability
-            msg.set_log_level(msg.LogLevel.DEBUG)
+            msg.set_log_level(msg.LogLevel.INFO)
         else:
-            msg.set_log_level(msg.LogLevel.WARNING)
+            msg.reset_log_level()
 
     def tearDown(self):
         self.default_device = None
@@ -448,7 +486,7 @@ class TestGeometryPipelinePrimitiveBroadPhase(unittest.TestCase):
             )
 
 
-class TestGeometryPipelinePrimitiveNarrowPhase(unittest.TestCase):
+class TestGeometryPrimitiveNarrowPhase(unittest.TestCase):
     def setUp(self):
         self.default_device = wp.get_device()
         self.verbose = True  # Set to True for verbose output
@@ -456,9 +494,9 @@ class TestGeometryPipelinePrimitiveNarrowPhase(unittest.TestCase):
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
             print("\n")  # Add newline before test output for better readability
-            msg.set_log_level(msg.LogLevel.DEBUG)
+            msg.set_log_level(msg.LogLevel.INFO)
         else:
-            msg.set_log_level(msg.LogLevel.WARNING)
+            msg.reset_log_level()
 
     def tearDown(self):
         self.default_device = None
@@ -467,11 +505,11 @@ class TestGeometryPipelinePrimitiveNarrowPhase(unittest.TestCase):
 
     def test_01_narrowphase_on_primitive_combinations_singleworld(self):
         """
-        Tests all primitive broad-phase implementations over all
+        Tests the primitive narrow-phase implementation over all
         shape combinations under the following idealized conditions:
         - all shapes are perfectly stacked along the vertical (z) axis
         - all shapes are centered at the origin in the (x,y) plane
-        - all shapes are positioned and oriented in `nominal` configurations
+        - all shapes are positioned and oriented in "nominal" configurations
         that would would generate "median" number of contacts per shape combination
         - the geoms are perfectly touching (i.e. penetration is exactly zero)
         - all contact margins are set to zero
@@ -482,59 +520,57 @@ class TestGeometryPipelinePrimitiveNarrowPhase(unittest.TestCase):
         - An example of a "median" configuration is a box-on-box arrangement where two boxes are
         perfectly aligned and touching face-to-face, generating 4 contact points. The worst-case
         would be if the boxes were slightly offset, generating 8 contact points (i.e. full face-face
-        contact with 4 points on each face). The best-case would be if the boxes were touching at a single edge or corner,
-        generating only 1 contact point.
+        contact with 4 points on each face). The best-case would be if the boxes were touching at a
+        single edge or corner, generating only 1 contact point.
         - Specialized configurations such as the ones mentioned above are tested in separate test cases.
         """
         # Configure for zero-valued contact margins and initial penetrations
-        default_margin: float = 0.0
-        dz_0: float = 0.0
-
-        # Define the expected number of contacts per shape combination
-        expected_contacts_per_combination = {
-            ("sphere", "sphere"): 1,
-            ("sphere", "box"): 1,
-            ("sphere", "capsule"): 1,
-            ("sphere", "cylinder"): 1,
-            ("sphere", "cone"): 1,
-            ("sphere", "ellipsoid"): 1,
-            ("box", "box"): 4,
-            ("box", "capsule"): 2,
-            ("box", "cylinder"): 2,
-            ("box", "cone"): 2,
-            ("box", "ellipsoid"): 2,
-            ("capsule", "capsule"): 2,
-            ("capsule", "cylinder"): 2,
-            ("capsule", "cone"): 2,
-            ("capsule", "ellipsoid"): 2,
-            ("cylinder", "cylinder"): 2,
-            ("cylinder", "cone"): 2,
-            ("cylinder", "ellipsoid"): 2,
-            ("cone", "cone"): 2,
-            ("cone", "ellipsoid"): 2,
-            ("ellipsoid", "ellipsoid"): 2,
-        }
+        default_margin: float = 0.0  # No contact margin
+        dz_0: float = 0.0  # No initial penetration
 
         # Run the narrowphase tests
         test_narrowphase_on_primitive_combinations(
             self,
             num_worlds=1,
-            expected_contacts_per_combination=expected_contacts_per_combination,
+            expected_contacts_per_combination=expected_median_contacts_per_combination,
             default_margin=default_margin,
             dz_0=dz_0,
             device=self.default_device,
         )
 
     def test_02_narrowphase_on_primitive_combinations_multiworld(self):
-        test_narrowphase_on_primitive_combinations(self, num_worlds=11, device=self.default_device)
+        """
+        Tests the primitive narrow-phase implementation over all shape
+        combinations under the idealized conditions, with multiple worlds.
+
+        See `test_01_narrowphase_on_primitive_combinations_singleworld` for details.
+        """
+        # Configure for zero-valued contact margins and initial penetrations
+        default_margin: float = 0.0  # No contact margin
+        dz_0: float = 0.0  # No initial penetration
+
+        # Run the narrowphase tests
+        test_narrowphase_on_primitive_combinations(
+            self,
+            num_worlds=11,
+            expected_contacts_per_combination=expected_median_contacts_per_combination,
+            default_margin=default_margin,
+            dz_0=dz_0,
+            device=self.default_device,
+        )
 
     ###
     # Tests for special cases of shape combinations/configurations
     ###
 
     def test_03_narrowphase_on_sphere_on_sphere(self):
+        """
+        Tests the narrow-phase collision detection for a special case of
+        two spheres stacked along the vertical (z) axis, centered at the origin
+        in the (x,y) plane, and slightly penetrating each other.
+        """
         # NOTE: We set to negative value to move the geoms into each other,
-        # i.e. move the bottomo geom upwards and the top geom downwards.
+        # i.e. move the bottom geom upwards and the top geom downwards.
         dz_0 = -0.01
 
         # Test meta-data
@@ -557,8 +593,13 @@ class TestGeometryPipelinePrimitiveNarrowPhase(unittest.TestCase):
         test_narrowphase_specialized(self, test_config, expected)
 
     def test_04_narrowphase_on_box_on_box(self):
+        """
+        Tests the narrow-phase collision detection for a special case of
+        two boxes stacked along the vertical (z) axis, centered at the origin
+        in the (x,y) plane, and slightly penetrating each other.
+        """
         # NOTE: We set to negative value to move the geoms into each other,
-        # i.e. move the bottomo geom upwards and the top geom downwards.
+        # i.e. move the bottom geom upwards and the top geom downwards.
         dz_0 = -0.01
 
         # Test meta-data
@@ -597,6 +638,11 @@ class TestGeometryPipelinePrimitiveNarrowPhase(unittest.TestCase):
         test_narrowphase_specialized(self, test_config, expected)
 
     def test_05_narrowphase_on_sphere_on_box(self):
+        """
+        Tests the narrow-phase collision detection for a special case of
+        a sphere on top of a box, stacked along the vertical (z) axis,
+        centered at the origin in the (x,y) plane, and slightly penetrating each other.
+        """
         # NOTE: We set to negative value to move the geoms into each other,
         # i.e. move the bottomo geom upwards and the top geom downwards.
         dz_0 = -0.01

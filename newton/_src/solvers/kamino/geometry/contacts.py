@@ -576,7 +576,7 @@ class Contacts:
         Shape of ``(num_model_max_contacts,)`` and type :class:`uint64`.
         """
         self._assert_has_data()
-        return self._data.material
+        return self._data.key
 
     @property
     def reaction(self) -> wp.array:

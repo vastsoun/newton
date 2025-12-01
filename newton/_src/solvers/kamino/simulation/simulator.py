@@ -51,6 +51,7 @@ from ..kinematics.joints import compute_joints_data
 from ..kinematics.limits import Limits
 from ..linalg import LinearSolverType, LLTBlockedSolver
 from ..solvers.fk import ForwardKinematicsSolver  # noqa: F401
+from ..solvers.metrics import SolutionMetrics
 from ..solvers.padmm import PADMMSettings, PADMMSolver, PADMMWarmStartMode
 from ..solvers.warmstart import WarmstarterContacts, WarmstarterLimits
 from .resets import reset_select_worlds_to_initial_state, reset_select_worlds_to_state
@@ -128,6 +129,12 @@ class SimulatorSettings:
     collect_solver_info: bool = False
     """
     Enables collection of dynamics solver convergence and performance info at each simulation step.\n
+    Defaults to `False`.
+    """
+
+    compute_metrics: bool = False
+    """
+    Enables computation of solution metrics at each simulation step.\n
     Defaults to `False`.
     """
 
@@ -345,6 +352,11 @@ class Simulator:
                 method=self._settings.contact_warmstart_method,
             )
 
+        # Allocate the solution metrics evaluator if enabled
+        self._metrics: SolutionMetrics | None = None
+        if self._settings.compute_metrics:
+            self._metrics = SolutionMetrics(model=self._model)
+
         # Initialize callbacks
         self._pre_reset_cb: Callable[[Simulator], None] = None
         self._post_reset_cb: Callable[[Simulator], None] = None
@@ -498,6 +510,13 @@ class Simulator:
         Returns the forward dynamics solver.
         """
         return self._fd_solver
+
+    @property
+    def metrics(self) -> SolutionMetrics | None:
+        """
+        Returns the solution metrics evaluator, if enabled.
+        """
+        return self._metrics
 
     @property
     def host(self) -> SimulatorData | None:
@@ -780,6 +799,9 @@ class Simulator:
 
         # Solve the time integration sub-problem to compute the next state of the system
         self._integrate()
+
+        # Compute solver solution metrics if enabled
+        self._compute_metrics()
 
         # Run the post-step callback if it has been set
         self._run_poststep_callback()
@@ -1198,6 +1220,25 @@ class Simulator:
 
         # Update the next-step state from the internal solver state
         self._data.update_next()
+
+    def _compute_metrics(self):
+        """
+        Computes performance metrics measuring the physical fidelity of the dynamics solver solution.
+        """
+        if self._settings.compute_metrics:
+            self.metrics.reset()
+            self._metrics.evaluate(
+                sigma=self._fd_solver.data.state.sigma,
+                lambdas=self._fd_solver.data.solution.lambdas,
+                v_plus=self._fd_solver.data.solution.v_plus,
+                model=self._model,
+                data=self._data.solver,
+                state_p=self._data.state_p,
+                problem=self._dual_problem,
+                jacobians=self._jacobians,
+                limits=self._limits,
+                contacts=self._contacts,
+            )
 
     def _advance_time(self):
         """

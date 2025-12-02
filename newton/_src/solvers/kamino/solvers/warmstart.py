@@ -25,7 +25,7 @@ The warm-starting process involves matching current constraints to cached ones u
 (e.g., joint-DoF index pairs for limits and geom-pair keys for contacts) and, for contacts,
 also considering contact point positions to ensure accurate matching.
 
-For contaacts, if a direct match based on position is not found, optional fallback mechanisms using
+For contacts, if a direct match based on position is not found, optional fallback mechanisms using
 the net force/wrench on the associated body CoMs are employed to estimate the warm-started reaction.
 
 See the :class:`WarmstarterLimits` and :class:`WarmstarterContacts` classes for detailed usage.

@@ -81,11 +81,11 @@ class PADMMSolver:
     post-event constraint-space velocities.
 
     Notes:
-    - The solver is designed to work with the DualProblem formulation.
-    - The solver operates on the Lagrange dual of the constrained forward dynamics problem.
-    - The solver is based on the Proximal-ADMM algorithm, which introduces a proximal regularization term
-    - The solver supports multiple penalty update methods, including fixed, linear, and spectral updates.
-    - The solver can be configured with various tolerances, penalty parameters, and other settings.
+    - is designed to work with the DualProblem formulation.
+    - operates on the Lagrange dual of the constrained forward dynamics problem.
+    - is based on the Proximal-ADMM algorithm, which introduces a proximal regularization term
+    - supports multiple penalty update methods, including fixed, linear, and spectral updates.
+    - can be configured with various tolerances, penalty parameters, and other settings.
     """
 
     def __init__(

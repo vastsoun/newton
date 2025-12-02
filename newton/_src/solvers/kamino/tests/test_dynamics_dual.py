@@ -42,7 +42,7 @@ from newton._src.solvers.kamino.tests.utils.setup import setup_tests, test_setti
 class TestDualProblem(unittest.TestCase):
     def setUp(self):
         self.verbose = test_settings.verbose  # Set to True for detailed output
-        self.default_device = test_settings.device
+        self.default_device = wp.get_device(test_settings.device)
 
     def tearDown(self):
         self.default_device = None

@@ -96,7 +96,7 @@ def compute_contact_frame_xnorm(
 class TestGeometryMath(unittest.TestCase):
     def setUp(self):
         self.verbose = test_settings.verbose  # Set to True for verbose output
-        self.default_device = test_settings.device
+        self.default_device = wp.get_device(test_settings.device)
 
     def tearDown(self):
         self.default_device = None

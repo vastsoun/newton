@@ -42,7 +42,7 @@ from newton._src.solvers.kamino.tests.utils.setup import setup_tests, test_setti
 class TestGeometryCollisionDetector(unittest.TestCase):
     def setUp(self):
         self.verbose = test_settings.verbose  # Set to True for detailed output
-        self.default_device = test_settings.device
+        self.default_device = wp.get_device(test_settings.device)
 
         # Set the common build function and geometry parameters
         self.build_func = build_boxes_nunchaku

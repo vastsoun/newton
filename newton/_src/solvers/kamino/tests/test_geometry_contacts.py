@@ -32,7 +32,7 @@ from newton._src.solvers.kamino.tests.utils.setup import setup_tests, test_setti
 
 class TestGeometryContacts(unittest.TestCase):
     def setUp(self):
-        self.default_device = test_settings.device
+        self.default_device = wp.get_device(test_settings.device)
 
     def tearDown(self):
         self.default_device = None

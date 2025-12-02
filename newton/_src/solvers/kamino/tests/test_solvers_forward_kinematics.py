@@ -48,7 +48,7 @@ wp.set_module_options({"enable_backward": False})
 
 class JacobianCheckForwardKinematics(unittest.TestCase):
     def setUp(self):
-        self.default_device = test_settings.device
+        self.default_device = wp.get_device(test_settings.device)
         self.has_cuda = self.default_device.is_cuda
 
     def tearDown(self):
@@ -324,7 +324,7 @@ def simulate_random_poses(
 
 class DRTestMechanismRandomPosesCheckForwardKinematics(unittest.TestCase):
     def setUp(self):
-        self.default_device = test_settings.device
+        self.default_device = wp.get_device(test_settings.device)
         self.has_cuda = self.default_device.is_cuda
         self.verbose = test_settings.verbose
 
@@ -368,7 +368,7 @@ class DRTestMechanismRandomPosesCheckForwardKinematics(unittest.TestCase):
 
 class DRLegsRandomPosesCheckForwardKinematics(unittest.TestCase):
     def setUp(self):
-        self.default_device = test_settings.device
+        self.default_device = wp.get_device(test_settings.device)
         self.has_cuda = self.default_device.is_cuda
         self.verbose = test_settings.verbose
 
@@ -413,7 +413,7 @@ class DRLegsRandomPosesCheckForwardKinematics(unittest.TestCase):
 
 class HeterogenousModelRandomPosesCheckForwardKinematics(unittest.TestCase):
     def setUp(self):
-        self.default_device = test_settings.device
+        self.default_device = wp.get_device(test_settings.device)
         self.has_cuda = self.default_device.is_cuda
         self.verbose = test_settings.verbose
 

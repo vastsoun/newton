@@ -42,7 +42,7 @@ class TestLinAlgUtilsRandomMatrixSymmetric(unittest.TestCase):
     def setUp(self):
         # Configs
         self.seed = 42
-        self.default_device = test_settings.device
+        self.default_device = wp.get_device(test_settings.device)
         self.verbose = test_settings.verbose  # Set to True for verbose output
 
         # Set debug-level logging to print verbose test output to console
@@ -248,7 +248,7 @@ class TestLinAlgUtilsRandomMatrixSPD(unittest.TestCase):
     def setUp(self):
         # Configs
         self.seed = 42
-        self.default_device = test_settings.device
+        self.default_device = wp.get_device(test_settings.device)
         self.verbose = test_settings.verbose  # Set to True for verbose output
 
         # Set debug-level logging to print verbose test output to console
@@ -382,7 +382,7 @@ class TestLinAlgUtilsRandomRhsVectors(unittest.TestCase):
     def setUp(self):
         # Configs
         self.seed = 42
-        self.default_device = test_settings.device
+        self.default_device = wp.get_device(test_settings.device)
         self.verbose = test_settings.verbose  # Set to True for verbose output
 
         # Set debug-level logging to print verbose test output to console

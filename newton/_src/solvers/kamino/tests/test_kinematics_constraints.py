@@ -32,7 +32,6 @@ from newton._src.solvers.kamino.models.builders import build_boxes_fourbar
 from newton._src.solvers.kamino.models.utils import (
     make_heterogeneous_builder,
     make_homogeneous_builder,
-    make_single_builder,
 )
 
 # Test utilities
@@ -69,7 +68,7 @@ class TestKinematicsConstraints(unittest.TestCase):
         max_world_contacts = 20
 
         # Construct the model description using the ModelBuilder
-        builder = make_single_builder(build_fn=build_boxes_fourbar)
+        builder = build_boxes_fourbar()
 
         # Create the model from the builder
         model: Model = builder.finalize(device=self.default_device)

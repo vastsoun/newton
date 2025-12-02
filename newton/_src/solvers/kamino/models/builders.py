@@ -54,7 +54,14 @@ __all__ = [
 ###
 
 
-def add_ground_geom(builder: ModelBuilder, group: int = 1, collides: int = 1, world_index: int = 0) -> int:
+def add_ground_geom(
+    builder: ModelBuilder,
+    z_offset: float = 0.0,
+    group: int = 1,
+    collides: int = 1,
+    world_index: int = 0,
+    layer: str = "ground",
+) -> int:
     """
     Adds a static collision layer and geometry to a given builder to represent a flat ground plane.
 
@@ -67,12 +74,12 @@ def add_ground_geom(builder: ModelBuilder, group: int = 1, collides: int = 1, wo
     Returns:
         int: The ID of the added ground geometry.
     """
-    builder.add_collision_layer("ground", world_index=world_index)
     gid = builder.add_collision_geometry(
         name="ground",
+        layer=layer,
         body=-1,
         shape=BoxShape(20.0, 20.0, 1.0),
-        offset=transformf(0.0, 0.0, -0.5, 0.0, 0.0, 0.0, 1.0),
+        offset=transformf(0.0, 0.0, -0.5 + z_offset, 0.0, 0.0, 0.0, 1.0),
         group=group,
         collides=collides,
         world_index=world_index,

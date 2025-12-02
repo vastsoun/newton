@@ -746,7 +746,7 @@ class TestModelBuilder(unittest.TestCase):
 
     def test_21_make_heterogeneous_test_builder(self):
         # Construct cartpole model
-        builder = make_heterogeneous_builder()
+        builder = make_heterogeneous_builder(ground=True)
         self.assertEqual(builder.num_worlds, 6)
         self.assertEqual(builder.num_bodies, 13)
         self.assertEqual(builder.num_joints, 10)

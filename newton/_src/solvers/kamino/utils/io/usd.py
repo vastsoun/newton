@@ -1658,6 +1658,7 @@ class USDImporter:
                         if has_default_override:
                             msg.debug(f"Overriding default material with:\n{material_desc}\n")
                             builder.set_default_material(material=material_desc)
+                            material_index_map[str(prim_path)] = 0
                         else:
                             msg.debug(f"Adding material '{builder.num_materials}':\n{material_desc}\n")
                             material_index_map[str(prim_path)] = builder.add_material(material=material_desc)

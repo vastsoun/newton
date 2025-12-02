@@ -38,7 +38,6 @@ from newton._src.solvers.kamino.models.builders import build_boxes_fourbar
 from newton._src.solvers.kamino.models.utils import (
     make_heterogeneous_builder,
     make_homogeneous_builder,
-    make_single_builder,
 )
 
 # Test utilities
@@ -270,7 +269,7 @@ class TestKinematicsJacobians(unittest.TestCase):
 
     def test_01_allocate_single_dense_system_jacobians_only_joints(self):
         # Construct the model description using the ModelBuilder
-        builder = make_single_builder(build_fn=build_boxes_fourbar)
+        builder = build_boxes_fourbar()
 
         # Create the model from the builder
         model = builder.finalize(device=self.default_device)
@@ -306,7 +305,7 @@ class TestKinematicsJacobians(unittest.TestCase):
 
     def test_02_allocate_single_dense_system_jacobians_with_limits(self):
         # Construct the model description using the ModelBuilder
-        builder = make_single_builder(build_fn=build_boxes_fourbar)
+        builder = build_boxes_fourbar()
 
         # Create the model from the builder
         model = builder.finalize(device=self.default_device)
@@ -351,7 +350,7 @@ class TestKinematicsJacobians(unittest.TestCase):
         max_world_contacts = 12
 
         # Construct the model description using the ModelBuilder
-        builder = make_single_builder(build_fn=build_boxes_fourbar)
+        builder = build_boxes_fourbar()
 
         # Create the model from the builder
         model = builder.finalize(device=self.default_device)
@@ -402,7 +401,7 @@ class TestKinematicsJacobians(unittest.TestCase):
         max_world_contacts = 12
 
         # Construct the model description using the ModelBuilder
-        builder = make_single_builder(build_fn=build_boxes_fourbar)
+        builder = build_boxes_fourbar()
 
         # Create the model from the builder
         model = builder.finalize(device=self.default_device)
@@ -624,7 +623,7 @@ class TestKinematicsJacobians(unittest.TestCase):
         max_world_contacts = 12
 
         # Construct the model description using the ModelBuilder
-        builder = make_single_builder(build_fn=build_boxes_fourbar)
+        builder = build_boxes_fourbar()
 
         # Create the model from the builder
         model = builder.finalize(device=self.default_device)

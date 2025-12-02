@@ -17,7 +17,7 @@
 
 import unittest
 
-from newton._src.solvers.kamino.tests.utils.setup import setup_tests
+from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.utils import logger as msg
 from newton._src.solvers.kamino.utils.logger import Logger
 
@@ -27,6 +27,10 @@ from newton._src.solvers.kamino.utils.logger import Logger
 
 
 class TestUtilsLogger(unittest.TestCase):
+    def setUp(self):
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
+
     def test_new_logger(self):
         """Test use of the custom logger."""
         print("")  # Print a newline for better readability in the output

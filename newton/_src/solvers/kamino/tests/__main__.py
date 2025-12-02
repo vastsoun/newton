@@ -13,7 +13,53 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from newton.tests.thirdparty.unittest_parallel import main
+import os
+import unittest
+
+from newton._src.solvers.kamino.tests import setup_tests
+
+###
+# Utilities
+###
+
+
+# Overload of TextTestResult printing a header for each new test module
+class ModuleHeaderTestResult(unittest.TextTestResult):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._current_module = None
+
+    def startTest(self, test):
+        module = test.__class__.__module__
+        if module != self._current_module:
+            self._current_module = module
+            filename = module.replace(".", "/") + ".py"
+
+            # Print spacing + header
+            self.stream.write("\n\n")
+            self.stream.write(f"=== Running tests in: {filename} ===\n")
+            self.stream.write("\n")
+            self.stream.flush()
+
+        super().startTest(test)
+
+
+# Overload of TextTestRunner printing a header for each new test module
+class ModuleHeaderTestRunner(unittest.TextTestRunner):
+    resultclass = ModuleHeaderTestResult
+
+
+###
+# Test execution
+###
 
 if __name__ == "__main__":
-    main()
+    # Perform global setup
+    setup_tests(verbose=False, device="cuda", clear_cache=True)
+
+    # Detect all unit tests
+    test_folder = os.path.dirname(os.path.abspath(__file__))
+    tests = unittest.defaultTestLoader.discover(test_folder, pattern="test_*.py")
+
+    # Run tests
+    ModuleHeaderTestRunner(verbosity=2).run(tests)

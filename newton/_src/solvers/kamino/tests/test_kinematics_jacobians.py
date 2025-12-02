@@ -40,13 +40,13 @@ from newton._src.solvers.kamino.models.utils import (
     make_homogeneous_builder,
     make_single_builder,
 )
+from newton._src.solvers.kamino.tests import setup_tests, test_context
 
 # Test utilities
 from newton._src.solvers.kamino.tests.utils.print import (
     print_model_constraint_info,
     print_model_data_info,
 )
-from newton._src.solvers.kamino.tests.utils.setup import setup_tests, test_settings
 
 ###
 # Module configs
@@ -263,8 +263,10 @@ def set_fourbar_body_states(model: Model, data: ModelData):
 
 class TestKinematicsJacobians(unittest.TestCase):
     def setUp(self):
-        self.verbose = test_settings.verbose  # Set to True for verbose output
-        self.default_device = wp.get_device(test_settings.device)
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
+        self.verbose = test_context.verbose  # Set to True for verbose output
+        self.default_device = wp.get_device(test_context.device)
 
     def tearDown(self):
         self.default_device = None

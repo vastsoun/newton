@@ -20,6 +20,7 @@ KAMINO: UNIT TESTS: CORE: BUILDER
 import unittest
 
 import numpy as np
+import warp as wp
 
 from newton._src.solvers.kamino.core.bodies import RigidBodyDescriptor
 from newton._src.solvers.kamino.core.builder import ModelBuilder
@@ -46,7 +47,7 @@ from newton._src.solvers.kamino.models.utils import (
     make_heterogeneous_builder,
     make_homogeneous_builder,
 )
-from newton._src.solvers.kamino.tests.utils.setup import setup_tests, test_settings
+from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.utils import logger as msg
 
 ###
@@ -157,8 +158,10 @@ def assert_model_matches_builder(test: unittest.TestCase, builder: ModelBuilder,
 
 class TestModelBuilder(unittest.TestCase):
     def setUp(self):
-        self.default_device = wp.get_device(test_settings.device)
-        self.verbose = test_settings.verbose  # Set to True to enable verbose output
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
+        self.default_device = wp.get_device(test_context.device)
+        self.verbose = test_context.verbose  # Set to True to enable verbose output
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:

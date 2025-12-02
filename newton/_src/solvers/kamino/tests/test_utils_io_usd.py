@@ -20,6 +20,7 @@ import os
 import unittest
 
 import numpy as np
+import warp as wp
 
 from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.core.joints import JointActuationType, JointDoFType
@@ -37,10 +38,10 @@ from newton._src.solvers.kamino.models.builders import (
     build_boxes_nunchaku,
     build_cartpole,
 )
+from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.tests.utils.checks import (
     assert_builders_equal,
 )
-from newton._src.solvers.kamino.tests.utils.setup import setup_tests, test_settings
 from newton._src.solvers.kamino.utils import logger as msg
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
 
@@ -58,8 +59,10 @@ FLOAT32_MIN = np.finfo(np.float32).min
 
 class TestUSDImporter(unittest.TestCase):
     def setUp(self):
-        self.default_device = wp.get_device(test_settings.device)
-        self.verbose = test_settings.verbose  # Set to True for verbose output
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
+        self.default_device = wp.get_device(test_context.device)
+        self.verbose = test_context.verbose  # Set to True for verbose output
 
         # Set the paths to the assets provided by the kamino package
         self.TEST_USD_ASSETS_PATH = get_tests_usd_assets_path()

@@ -19,11 +19,13 @@ KAMINO: UNIT TESTS
 
 import unittest
 
+import warp as wp
+
 # Module to be tested
 from newton._src.solvers.kamino.geometry.contacts import Contacts
 
 # Test utilities
-from newton._src.solvers.kamino.tests.utils.setup import setup_tests, test_settings
+from newton._src.solvers.kamino.tests import setup_tests, test_context
 
 ###
 # Tests
@@ -32,7 +34,9 @@ from newton._src.solvers.kamino.tests.utils.setup import setup_tests, test_setti
 
 class TestGeometryContacts(unittest.TestCase):
     def setUp(self):
-        self.default_device = wp.get_device(test_settings.device)
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
+        self.default_device = wp.get_device(test_context.device)
 
     def tearDown(self):
         self.default_device = None

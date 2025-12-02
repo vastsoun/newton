@@ -20,6 +20,7 @@ KAMINO: UNIT TESTS: DYNAMICS: DUAL PROBLEM
 import unittest
 
 import numpy as np
+import warp as wp
 
 # Module to be tested
 from newton._src.solvers.kamino.dynamics.dual import DualProblem
@@ -27,12 +28,12 @@ from newton._src.solvers.kamino.linalg import LLTSequentialSolver
 from newton._src.solvers.kamino.models.utils import (
     make_heterogeneous_builder,
 )
+from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.tests.utils.extract import extract_problem_vector
 
 # Test utilities
 from newton._src.solvers.kamino.tests.utils.make import make_containers, update_containers
 from newton._src.solvers.kamino.tests.utils.print import print_model_info
-from newton._src.solvers.kamino.tests.utils.setup import setup_tests, test_settings
 
 ###
 # Tests
@@ -41,8 +42,10 @@ from newton._src.solvers.kamino.tests.utils.setup import setup_tests, test_setti
 
 class TestDualProblem(unittest.TestCase):
     def setUp(self):
-        self.verbose = test_settings.verbose  # Set to True for detailed output
-        self.default_device = wp.get_device(test_settings.device)
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
+        self.verbose = test_context.verbose  # Set to True for detailed output
+        self.default_device = wp.get_device(test_context.device)
 
     def tearDown(self):
         self.default_device = None

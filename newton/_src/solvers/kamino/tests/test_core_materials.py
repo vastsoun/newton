@@ -31,7 +31,7 @@ from newton._src.solvers.kamino.core.materials import (
 )
 
 # Test utilities
-from newton._src.solvers.kamino.tests.utils.setup import setup_tests, test_settings
+from newton._src.solvers.kamino.tests import setup_tests, test_context
 
 ###
 # Tests
@@ -40,7 +40,9 @@ from newton._src.solvers.kamino.tests.utils.setup import setup_tests, test_setti
 
 class TestMaterials(unittest.TestCase):
     def setUp(self):
-        self.verbose = test_settings.verbose  # Set to True for verbose output
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
+        self.verbose = test_context.verbose  # Set to True for verbose output
 
     def test_00_default_material_pair_properties(self):
         # Create a default-constructed surface material

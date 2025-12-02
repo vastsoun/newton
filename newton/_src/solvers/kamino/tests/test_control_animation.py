@@ -25,7 +25,7 @@ from newton._src.solvers.kamino.control.animation import AnimationJointReference
 from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.core.types import float32
 from newton._src.solvers.kamino.models import get_examples_usd_assets_path
-from newton._src.solvers.kamino.tests.utils.setup import setup_tests, test_settings
+from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.utils import logger as msg
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
 
@@ -37,9 +37,11 @@ from newton._src.solvers.kamino.utils.io.usd import USDImporter
 class TestAnimationJointReference(unittest.TestCase):
     def setUp(self):
         # Configs
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
         self.seed = 42
-        self.default_device = wp.get_device(test_settings.device)
-        self.verbose = test_settings.verbose  # Set to True for verbose output
+        self.default_device = wp.get_device(test_context.device)
+        self.verbose = test_context.verbose  # Set to True for verbose output
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:

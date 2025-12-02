@@ -19,6 +19,8 @@ KAMINO: UNIT TESTS
 
 import unittest
 
+import warp as wp
+
 # Module to be tested
 from newton._src.solvers.kamino.geometry.collisions import Collisions, make_collision_pairs
 from newton._src.solvers.kamino.models.builders import (
@@ -30,7 +32,7 @@ from newton._src.solvers.kamino.models.utils import (
 )
 
 # Test utilities
-from newton._src.solvers.kamino.tests.utils.setup import setup_tests, test_settings
+from newton._src.solvers.kamino.tests import setup_tests, test_context
 
 ###
 # Tests
@@ -39,8 +41,10 @@ from newton._src.solvers.kamino.tests.utils.setup import setup_tests, test_setti
 
 class TestGeometryCollisions(unittest.TestCase):
     def setUp(self):
-        self.verbose = test_settings.verbose  # Set to True for detailed output
-        self.default_device = wp.get_device(test_settings.device)
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
+        self.verbose = test_context.verbose  # Set to True for detailed output
+        self.default_device = wp.get_device(test_context.device)
 
         # Set the common build function and geometry parameters
         self.build_func = build_boxes_nunchaku

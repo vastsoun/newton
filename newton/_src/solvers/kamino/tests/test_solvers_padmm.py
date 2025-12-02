@@ -20,6 +20,7 @@ import unittest
 
 import matplotlib.pyplot as plt
 import numpy as np
+import warp as wp
 
 from newton._src.solvers.kamino.core.math import screw, vec3f
 from newton._src.solvers.kamino.dynamics.dual import DualProblem
@@ -37,6 +38,7 @@ from newton._src.solvers.kamino.models.utils import (
 
 # Module to be tested
 from newton._src.solvers.kamino.solvers.padmm import PADMMSettings, PADMMSolver
+from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.tests.utils.extract import (
     extract_delassus,
     extract_info_vectors,
@@ -46,7 +48,6 @@ from newton._src.solvers.kamino.tests.utils.extract import (
 # Test utilities
 from newton._src.solvers.kamino.tests.utils.make import make_containers, update_containers
 from newton._src.solvers.kamino.tests.utils.print import print_model_info
-from newton._src.solvers.kamino.tests.utils.setup import setup_tests, test_settings
 
 ###
 # Helper functions
@@ -212,9 +213,11 @@ def save_solver_info(solver: PADMMSolver, path: str | None = None, verbose: bool
 
 class TestPADMMSolver(unittest.TestCase):
     def setUp(self):
-        self.verbose = test_settings.verbose  # Set to True for detailed output
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
+        self.verbose = test_context.verbose  # Set to True for detailed output
         self.savefig = False  # Set to True to generate solver info plots
-        self.default_device = wp.get_device(test_settings.device)
+        self.default_device = wp.get_device(test_context.device)
 
     def tearDown(self):
         self.default_device = None

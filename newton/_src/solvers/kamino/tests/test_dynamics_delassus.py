@@ -35,6 +35,7 @@ from newton._src.solvers.kamino.models.utils import (
     make_homogeneous_builder,
     make_single_builder,
 )
+from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.tests.utils.extract import (
     extract_active_constraint_dims,
     extract_cts_jacobians,
@@ -48,7 +49,6 @@ from newton._src.solvers.kamino.tests.utils.make import (
 )
 from newton._src.solvers.kamino.tests.utils.print import print_error_stats
 from newton._src.solvers.kamino.tests.utils.rand import random_rhs_for_matrix
-from newton._src.solvers.kamino.tests.utils.setup import setup_tests, test_settings
 
 ###
 # Helper functions
@@ -113,8 +113,10 @@ def print_delassus_info(delassus: DelassusOperator) -> None:
 
 class TestDelassusOperator(unittest.TestCase):
     def setUp(self):
-        self.verbose = test_settings.verbose  # Set to True for detailed output
-        self.default_device = wp.get_device(test_settings.device)
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
+        self.verbose = test_context.verbose  # Set to True for detailed output
+        self.default_device = wp.get_device(test_context.device)
 
     def tearDown(self):
         self.default_device = None

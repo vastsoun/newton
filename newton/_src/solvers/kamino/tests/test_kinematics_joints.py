@@ -27,7 +27,7 @@ from newton._src.solvers.kamino.core.types import float32, int32, mat33f, transf
 from newton._src.solvers.kamino.kinematics.joints import compute_joints_data
 from newton._src.solvers.kamino.models.builders import build_unary_revolute_joint_test
 from newton._src.solvers.kamino.models.utils import make_homogeneous_builder
-from newton._src.solvers.kamino.tests.utils.setup import setup_tests, test_settings
+from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.utils import logger as msg
 
 ###
@@ -147,8 +147,10 @@ def set_joint_follower_body_state(model: Model, data: ModelData):
 
 class TestKinematicsJoints(unittest.TestCase):
     def setUp(self):
-        self.default_device = wp.get_device(test_settings.device)
-        self.verbose = test_settings.verbose  # Set to True to enable verbose output
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
+        self.default_device = wp.get_device(test_context.device)
+        self.verbose = test_context.verbose  # Set to True to enable verbose output
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:

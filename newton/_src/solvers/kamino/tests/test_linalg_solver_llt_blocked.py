@@ -23,10 +23,10 @@ import warp as wp
 from newton._src.solvers.kamino.core.types import float32
 from newton._src.solvers.kamino.linalg.core import DenseLinearOperatorData, DenseSquareMultiLinearInfo
 from newton._src.solvers.kamino.linalg.linear import LLTBlockedSolver
+from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.tests.utils.extract import get_matrix_block, get_vector_block
 from newton._src.solvers.kamino.tests.utils.print import print_error_stats
 from newton._src.solvers.kamino.tests.utils.rand import RandomProblemLLT
-from newton._src.solvers.kamino.tests.utils.setup import setup_tests, test_settings
 from newton._src.solvers.kamino.utils import logger as msg
 
 ###
@@ -37,9 +37,11 @@ from newton._src.solvers.kamino.utils import logger as msg
 class TestLinAlgLLTBlockedSolver(unittest.TestCase):
     def setUp(self):
         # Configs
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
         self.seed = 42
-        self.default_device = wp.get_device(test_settings.device)
-        self.verbose = test_settings.verbose  # Set to True for verbose output
+        self.default_device = wp.get_device(test_context.device)
+        self.verbose = test_context.verbose  # Set to True for verbose output
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:

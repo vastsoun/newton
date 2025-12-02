@@ -19,6 +19,8 @@ KAMINO: UNIT TESTS: CORE: MODEL
 
 import unittest
 
+import warp as wp
+
 # Module to be tested
 from newton._src.solvers.kamino.core.model import Model
 
@@ -31,13 +33,13 @@ from newton._src.solvers.kamino.models.utils import (
     make_heterogeneous_builder,
     make_homogeneous_builder,
 )
+from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.tests.utils.print import (
     print_model_bodies,
     print_model_data_info,
     print_model_info,
     print_model_joints,
 )
-from newton._src.solvers.kamino.tests.utils.setup import setup_tests, test_settings
 from newton._src.solvers.kamino.utils import logger as msg
 
 ###
@@ -47,8 +49,10 @@ from newton._src.solvers.kamino.utils import logger as msg
 
 class TestModel(unittest.TestCase):
     def setUp(self):
-        self.default_device = wp.get_device(test_settings.device)
-        self.verbose = test_settings.verbose  # Set to True for verbose output
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
+        self.default_device = wp.get_device(test_context.device)
+        self.verbose = test_context.verbose  # Set to True for verbose output
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:

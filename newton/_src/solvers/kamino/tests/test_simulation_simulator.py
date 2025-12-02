@@ -26,7 +26,7 @@ from newton._src.solvers.kamino.examples import print_progress_bar
 from newton._src.solvers.kamino.models.builders import build_cartpole
 from newton._src.solvers.kamino.models.utils import make_homogeneous_builder
 from newton._src.solvers.kamino.simulation.simulator import Simulator
-from newton._src.solvers.kamino.tests.utils.setup import setup_tests, test_settings
+from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.utils import logger as msg
 
 ###
@@ -92,9 +92,11 @@ def test_control_callback(sim: Simulator):
 class TestCartpoleSimulator(unittest.TestCase):
     def setUp(self):
         # Configs
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
         self.seed = 42
-        self.default_device = wp.get_device(test_settings.device)
-        self.verbose = test_settings.verbose  # Set to True for verbose output
+        self.default_device = wp.get_device(test_context.device)
+        self.verbose = test_context.verbose  # Set to True for verbose output
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:

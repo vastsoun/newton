@@ -19,6 +19,7 @@ import math
 import unittest
 
 import numpy as np
+import warp as wp
 
 from newton._src.solvers.kamino.core.bodies import RigidBodyDescriptor
 from newton._src.solvers.kamino.core.geometry import CollisionGeometryDescriptor, GeometryDescriptor
@@ -37,7 +38,7 @@ from newton._src.solvers.kamino.core.materials import (
 )
 from newton._src.solvers.kamino.core.shapes import ShapeType, SphereShape
 from newton._src.solvers.kamino.core.world import WorldDescriptor
-from newton._src.solvers.kamino.tests.utils.setup import setup_tests, test_settings
+from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.utils import logger as msg
 
 ###
@@ -47,8 +48,10 @@ from newton._src.solvers.kamino.utils import logger as msg
 
 class TestGravityDescriptor(unittest.TestCase):
     def setUp(self):
-        self.default_device = wp.get_device(test_settings.device)
-        self.verbose = test_settings.verbose
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
+        self.default_device = wp.get_device(test_context.device)
+        self.verbose = test_context.verbose
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
@@ -113,8 +116,10 @@ class TestGravityDescriptor(unittest.TestCase):
 
 class TestBodyDescriptor(unittest.TestCase):
     def setUp(self):
-        self.default_device = wp.get_device(test_settings.device)
-        self.verbose = test_settings.verbose
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
+        self.default_device = wp.get_device(test_context.device)
+        self.verbose = test_context.verbose
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
@@ -143,8 +148,10 @@ class TestBodyDescriptor(unittest.TestCase):
 
 class TestJointDescriptor(unittest.TestCase):
     def setUp(self):
-        self.default_device = wp.get_device(test_settings.device)
-        self.verbose = test_settings.verbose
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
+        self.default_device = wp.get_device(test_context.device)
+        self.verbose = test_context.verbose
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
@@ -185,8 +192,10 @@ class TestJointDescriptor(unittest.TestCase):
 
 class TestGeometryDescriptor(unittest.TestCase):
     def setUp(self):
-        self.default_device = wp.get_device(test_settings.device)
-        self.verbose = test_settings.verbose
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
+        self.default_device = wp.get_device(test_context.device)
+        self.verbose = test_context.verbose
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
@@ -232,8 +241,10 @@ class TestGeometryDescriptor(unittest.TestCase):
 
 class TestCollisionGeometryDescriptor(unittest.TestCase):
     def setUp(self):
-        self.default_device = wp.get_device(test_settings.device)
-        self.verbose = test_settings.verbose
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
+        self.default_device = wp.get_device(test_context.device)
+        self.verbose = test_context.verbose
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
@@ -308,8 +319,10 @@ class TestCollisionGeometryDescriptor(unittest.TestCase):
 
 class TestMaterialDescriptor(unittest.TestCase):
     def setUp(self):
-        self.default_device = wp.get_device(test_settings.device)
-        self.verbose = test_settings.verbose
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
+        self.default_device = wp.get_device(test_context.device)
+        self.verbose = test_context.verbose
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
@@ -358,8 +371,10 @@ class TestMaterialDescriptor(unittest.TestCase):
 
 class TestWorldDescriptor(unittest.TestCase):
     def setUp(self):
-        self.default_device = wp.get_device(test_settings.device)
-        self.verbose = test_settings.verbose
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
+        self.default_device = wp.get_device(test_context.device)
+        self.verbose = test_context.verbose
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:

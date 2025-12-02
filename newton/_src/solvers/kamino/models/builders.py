@@ -119,9 +119,9 @@ def add_ground_geom(
     Returns:
         int: The ID of the added ground geometry.
     """
-    builder.add_collision_layer("ground", world_index=world_index)
     gid = builder.add_collision_geometry(
         name="ground",
+        layer=layer,
         body=-1,
         shape=BoxShape(20.0, 20.0, 1.0),
         offset=transformf(0.0, 0.0, -0.5 + z_offset, 0.0, 0.0, 0.0, 1.0),

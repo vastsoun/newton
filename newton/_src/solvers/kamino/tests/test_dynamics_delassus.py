@@ -114,7 +114,7 @@ def print_delassus_info(delassus: DelassusOperator) -> None:
 class TestDelassusOperator(unittest.TestCase):
     def setUp(self):
         self.verbose = test_settings.verbose  # Set to True for detailed output
-        self.default_device = test_settings.device
+        self.default_device = wp.get_device(test_settings.device)
 
     def tearDown(self):
         self.default_device = None

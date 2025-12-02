@@ -61,7 +61,7 @@ DEFAULT_OUTPUT_DATASET_PATH = test_output_path() + "/output.hdf5"
 class TestHDF5(unittest.TestCase):
     def setUp(self):
         self.dtype = np.float32
-        self.default_device = test_settings.device
+        self.default_device = wp.get_device(test_settings.device)
         self.infilename = DEFAULT_INPUT_DATASET_PATH
         self.found_dataset = os.path.exists(self.infilename)
         self.datapath = "Primitive/boxes_nunchaku/DenseConstraints/0"

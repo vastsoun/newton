@@ -153,7 +153,7 @@ def set_joint_follower_body_state(model: Model, data: ModelData):
 
 class TestKinematicsLimits(unittest.TestCase):
     def setUp(self):
-        self.default_device = test_settings.device
+        self.default_device = wp.get_device(test_settings.device)
         self.verbose = test_settings.verbose  # Set to True to enable verbose output
 
         # Set debug-level logging to print verbose test output to console

@@ -58,7 +58,7 @@ FLOAT32_MIN = np.finfo(np.float32).min
 
 class TestUSDImporter(unittest.TestCase):
     def setUp(self):
-        self.default_device = test_settings.device
+        self.default_device = wp.get_device(test_settings.device)
         self.verbose = test_settings.verbose  # Set to True for verbose output
 
         # Set the paths to the assets provided by the kamino package

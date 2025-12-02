@@ -214,7 +214,7 @@ class TestPADMMSolver(unittest.TestCase):
     def setUp(self):
         self.verbose = test_settings.verbose  # Set to True for detailed output
         self.savefig = False  # Set to True to generate solver info plots
-        self.default_device = test_settings.device
+        self.default_device = wp.get_device(test_settings.device)
 
     def tearDown(self):
         self.default_device = None

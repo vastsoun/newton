@@ -182,9 +182,6 @@ class LinearSolver(ABC):
             raise ValueError("The provided flat input vector data array does not have enough memory!")
         self._solve_inplace_impl(x=x, **kwargs)
 
-    def _solve_inplace_impl(self, x: wp.array, **kwargs: dict[str, Any]) -> None:
-        raise NotImplementedError("A solve-in-place operation is not implemented.")
-
 
 class DirectSolver(LinearSolver):
     """
@@ -357,7 +354,7 @@ class IterativeSolver(LinearSolver):
                 raise ValueError("The provided maxiter is not a valid wp.array or int!")
             if self._atol_sq_env is None:
                 # Default: dimension-scaled machine epsilon, squared
-                atol_val = self._max_dim * float(make_dtype_tolerance(None, wp.float64)) ** 2
+                atol_val = self._max_dim * float(make_dtype_tolerance(None, self._dtype)) ** 2
                 self._atol_sq_env = wp.full(self._num_envs, float(atol_val), dtype=self._dtype)
             elif isinstance(self._atol_sq_env, int | float):
                 self._atol_sq_env = wp.full(self._num_envs, self._atol_sq_env, dtype=self._dtype)
@@ -669,6 +666,7 @@ class ConjugateGradientSolver(IterativeSolver):
     ):
         self._A_op = None
         self._Mi_op = None
+        self._jacobi_preconditioner = None
 
         super().__init__(
             operator=operator,
@@ -696,19 +694,11 @@ class ConjugateGradientSolver(IterativeSolver):
             self._jacobi_preconditioner = wp.zeros(
                 shape=(self._num_envs, self._max_dim), dtype=self._dtype, device=self._device
             )
-            wp.launch(
-                make_jacobi_preconditioner,
-                dim=(self._num_envs, self._max_dim),
-                inputs=[
-                    operator.mat.reshape((self._num_envs, self._max_dim * self._max_dim)),
-                    self._operator.info.dim,
-                ],
-                outputs=[self._jacobi_preconditioner],
-                device=self._device,
-            )
             self._Mi_op = conjugate.make_diag_matrix_operator(
                 self._jacobi_preconditioner, self._max_dim, self._operator.info.dim
             )
+        elif self._preconditioner is not None:
+            raise ValueError(f"Unsupported preconditioner: {self._preconditioner}.")
         else:
             self._Mi_op = None
 
@@ -733,21 +723,42 @@ class ConjugateGradientSolver(IterativeSolver):
 
     @override
     def _reset_impl(self, A: wp.array | None = None, **kwargs: dict[str, Any]) -> None:
-        self._last_iter = None
-        self._last_resid_sq = None
+        if self._jacobi_preconditioner is not None:
+            self._jacobi_preconditioner.zero_()
+        self._solve_iterations: wp.array = None
+        self._solve_residual_norm: wp.array = None
 
     @override
     def _compute_impl(self, A: wp.array, **kwargs: dict[str, Any]) -> None:
-        pass
+        if A.ptr != self._operator.mat.ptr:
+            raise ValueError(f"{self.__class__.__name__} cannot be re-used with a different matrix.")
+        if self._Mi_op is not None:
+            self._update_preconditioner()
+
+    @override
+    def _solve_inplace_impl(self, x: wp.array, **kwargs: dict[str, Any]) -> None:
+        self._solve_impl(x, x, **kwargs)
 
     @override
     def _solve_impl(self, b: wp.array, x: wp.array, **kwargs: dict[str, Any]) -> None:
         if self._A_op is None:
-            raise ValueError("ConjugateGradientSolver.compute(A) must be called before solve().")
+            raise ValueError("ConjugateGradientSolver.allocate() must be called before solve().")
 
         self._solve_iterations, self._solve_residual_norm, _ = self.solver.solve(
             b=b.reshape((self._num_envs, self._max_dim)),
             x=x.reshape((self._num_envs, self._max_dim)),
+        )
+
+    def _update_preconditioner(self):
+        wp.launch(
+            make_jacobi_preconditioner,
+            dim=(self._num_envs, self._max_dim),
+            inputs=[
+                self._operator.mat.reshape((self._num_envs, self._max_dim * self._max_dim)),
+                self._operator.info.dim,
+            ],
+            outputs=[self._jacobi_preconditioner],
+            device=self._device,
         )
 
 
@@ -773,6 +784,7 @@ class ConjugateResidualSolver(IterativeSolver):
     ):
         self._A_op = None
         self._Mi_op = None
+        self._jacobi_preconditioner = None
 
         super().__init__(
             operator=operator,
@@ -800,19 +812,11 @@ class ConjugateResidualSolver(IterativeSolver):
             self._jacobi_preconditioner = wp.zeros(
                 shape=(self._num_envs, self._max_dim), dtype=self._dtype, device=self._device
             )
-            wp.launch(
-                make_jacobi_preconditioner,
-                dim=(self._num_envs, self._max_dim),
-                inputs=[
-                    operator.mat.reshape((self._num_envs, self._max_dim * self._max_dim)),
-                    self._operator.info.dim,
-                ],
-                outputs=[self._jacobi_preconditioner],
-                device=self._device,
-            )
             self._Mi_op = conjugate.make_diag_matrix_operator(
                 self._jacobi_preconditioner, self._max_dim, self._operator.info.dim
             )
+        elif self._preconditioner is not None:
+            raise ValueError(f"Unsupported preconditioner: {self._preconditioner}.")
         else:
             self._Mi_op = None
 
@@ -837,21 +841,42 @@ class ConjugateResidualSolver(IterativeSolver):
 
     @override
     def _reset_impl(self, A: wp.array | None = None, **kwargs: dict[str, Any]) -> None:
-        self._last_iter = None
-        self._last_resid_sq = None
+        if self._jacobi_preconditioner is not None:
+            self._jacobi_preconditioner.zero_()
+        self._solve_iterations: wp.array = None
+        self._solve_residual_norm: wp.array = None
 
     @override
     def _compute_impl(self, A: wp.array, **kwargs: dict[str, Any]) -> None:
-        pass
+        if A.ptr != self._operator.mat.ptr:
+            raise ValueError(f"{self.__class__.__name__} cannot be re-used with a different matrix.")
+        if self._Mi_op is not None:
+            self._update_preconditioner()
+
+    @override
+    def _solve_inplace_impl(self, x: wp.array, **kwargs: dict[str, Any]) -> None:
+        self._solve_impl(x, x)
 
     @override
     def _solve_impl(self, b: wp.array, x: wp.array, **kwargs: dict[str, Any]) -> None:
         if self._A_op is None:
-            raise ValueError("ConjugateGradientSolver.compute(A) must be called before solve().")
+            raise ValueError("ConjugateResidualSolver.allocate() must be called before solve().")
 
         self._solve_iterations, self._solve_residual_norm, _ = self.solver.solve(
             b=b.reshape((self._num_envs, self._max_dim)),
             x=x.reshape((self._num_envs, self._max_dim)),
+        )
+
+    def _update_preconditioner(self):
+        wp.launch(
+            make_jacobi_preconditioner,
+            dim=(self._num_envs, self._max_dim),
+            inputs=[
+                self._operator.mat.reshape((self._num_envs, self._max_dim * self._max_dim)),
+                self._operator.info.dim,
+            ],
+            outputs=[self._jacobi_preconditioner],
+            device=self._device,
         )
 
 
@@ -863,6 +888,7 @@ def make_jacobi_preconditioner(
     env_dim = env_dims[world]
     if row >= env_dim:
         diag[world, row] = 0.0
+        return
     el = A[world, row * env_dim + row]
     el_inv = 1.0 / (el + 1e-9)
     diag[world, row] = el_inv

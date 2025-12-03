@@ -422,110 +422,6 @@ def make_dense_square_matrix_operator(
     return BatchedLinearOperator(shape=shape, dtype=dtype, device=device, matvec=matvec)
 
 
-class TiledDot:
-    """
-    Computes the dot product of two arrays in a way that is compatible with CUDA sub-graphs.
-    """
-
-    def __init__(
-        self,
-        max_length: int,
-        active_dims: wp.array(dtype=Any),
-        env_active: wp.array(dtype=wp.bool),
-        scalar_type: type,
-        tile_size=512,
-        device=None,
-        n_cols: int = 1,
-    ):
-        """Shapes are cols x envs x vector_dim"""
-
-        self.tile_size = tile_size
-        self.scalar_type, self.int_type = scalar_type, active_dims.dtype
-        self.device = device
-        self.n_cols, self.n_envs = n_cols, active_dims.shape[0]
-
-        assert env_active.shape[0] == self.n_envs
-
-        self.active_dims = active_dims
-        self.env_active = env_active
-
-        n_blocks = (max_length + self.tile_size - 1) // self.tile_size
-
-        scratch = wp.empty(
-            shape=(2, n_cols, self.n_envs, n_blocks),
-            dtype=scalar_type,
-            device=self.device,
-        )
-        self.partial_sums_a = scratch[0]
-        self.partial_sums_b = scratch[1]
-
-        # self.dot_kernel, self.sum_kernel = _create_tiled_dot_kernels(self.tile_size)
-
-        # rounds = 0
-        # length = n_blocks
-        # while length > 1:
-        #     length = (length + self.tile_size - 1) // self.tile_size
-        #     rounds += 1
-
-        # self.rounds = rounds
-
-        # self._output = self.partial_sums_a if rounds % 2 == 0 else self.partial_sums_b
-        self._output = self.partial_sums_a
-        self.dot_launch = wp.launch(
-            dot_kernel,
-            dim=(n_cols, self.n_envs),
-            inputs=(self.partial_sums_a, self.partial_sums_b, self.active_dims, self.env_active),
-            outputs=(self.partial_sums_a,),
-            block_dim=self.tile_size,
-            record_cmd=True,
-        )
-
-        # self.dot_launch: wp.Launch = wp.launch(
-        #     self.dot_kernel,
-        #     dim=(n_cols, n_blocks, self.tile_size),
-        #     inputs=(self.partial_sums_a, self.partial_sums_b),
-        #     outputs=(self.partial_sums_a,),
-        #     block_dim=self.tile_size,
-        #     record_cmd=True,
-        # )
-        # self.sum_launch: wp.Launch = wp.launch(
-        #     self.sum_kernel,
-        #     dim=(n_cols, n_blocks, self.tile_size),
-        #     inputs=(self.partial_sums_a,),
-        #     outputs=(self.partial_sums_b,),
-        #     block_dim=self.tile_size,
-        #     record_cmd=True,
-        # )
-
-    # Result contains a single value, the sum of the array (will get updated by this function)
-    def compute(self, a: wp.array, b: wp.array, col_offset: int = 0):
-        if a.ndim == 2:
-            a = a.reshape((1, *a.shape))
-        elif a.ndim == 1:
-            raise ValueError
-        if b.ndim == 2:
-            b = b.reshape((1, *b.shape))
-        elif b.ndim == 1:
-            raise ValueError
-
-        column_count = a.shape[0]
-        data_out = self.partial_sums_a[col_offset : col_offset + column_count]
-
-        self.dot_launch.set_param_at_index(0, a)
-        self.dot_launch.set_param_at_index(1, b)
-        self.dot_launch.set_param_at_index(4, data_out)
-        self.dot_launch.set_dim((column_count, self.n_envs))
-        self.dot_launch.launch()
-
-        return data_out
-
-    def col(self, col: int = 0):
-        return self._output[col, :, :1]
-
-    def cols(self, count, start: int = 0):
-        return self._output[start : start + count, :, :1]
-
-
 def _run_capturable_loop(
     do_cycle: Callable,
     r_norm_sq: wp.array,
@@ -559,23 +455,6 @@ def _run_capturable_loop(
         outputs=[env_condition, global_condition],
         record_cmd=True,
     )
-    # update_env_condition_launch = wp.launch(
-    #     _check_env_termination,
-    #     dim=n_envs,
-    #     device=device,
-    #     inputs=[maxiter, cycle_size, r_norm_sq, atol_sq, env_active, cur_iter],
-    #     outputs=[env_condition],
-    #     record_cmd=True,
-    # )
-
-    # update_global_condition_launch = wp.launch(
-    #     _update_batch_condition,
-    #     dim=n_envs,
-    #     device=device,
-    #     inputs=[env_condition, n_envs],
-    #     outputs=[global_condition],
-    #     record_cmd=True,
-    # )
 
     if isinstance(callback, wp.Kernel):
         callback_launch = wp.launch(
@@ -649,6 +528,12 @@ def lt_mask(a: Any, b: Any):
 WP_NO_TILE_FULL = True  # TODO: remove w/ warp upgrade
 
 
+@wp.func
+def mul_mask(mask: Any, value: Any):
+    """Return value if mask is positive, else 0"""
+    return wp.where(mask > type(mask)(0), value, type(value)(0))
+
+
 @functools.cache
 def make_dot_kernel(tile_size: int, maxdim: int):
     second_tile_size = (maxdim + tile_size - 1) // tile_size
@@ -685,7 +570,7 @@ def make_dot_kernel(tile_size: int, maxdim: int):
                 else:
                     thresh = wp.tile_full((tile_size,), a.dtype(n - o_src), dtype=a.dtype)
                 mask = wp.tile_map(lt_mask, wp.tile_arange(tile_size, dtype=a.dtype), thresh)
-                prod = wp.tile_map(wp.mul, prod, mask)
+                prod = wp.tile_map(mul_mask, mask, prod)
             s = wp.tile_sum(prod)
             ts[block] = s[0]
             o_src += tile_size
@@ -772,23 +657,6 @@ class CGSolver:
         self.tiled_dot_kernel = make_dot_kernel(self.dot_tile_size, self.maxdims)
         self._allocate()
 
-    def compute_dot(self, a, b, col_offset=0):
-        block_dim = 256
-        if a.ndim == 2:
-            a = a.reshape((1, *a.shape))
-            b = b.reshape((1, *b.shape))
-
-        result = self.dot_product[col_offset:]
-
-        wp.launch(
-            self.tiled_dot_kernel,
-            dim=(a.shape[0], self.n_envs, block_dim),
-            block_dim=min(256, self.dot_tile_size // 8),
-            inputs=[a, b, self.active_dims, self.env_active],
-            outputs=[result],
-            device=self.device,
-        )
-
     def _allocate(self):
         # Temp storage
         self.r_and_z = wp.empty((2, *self.A.shape[:2]), dtype=self.scalar_type, device=self.device)
@@ -796,7 +664,7 @@ class CGSolver:
         self.residual = wp.empty((self.n_envs), dtype=self.scalar_type, device=self.device)
 
         if self.maxiter is None:
-            self.maxiter = wp.full(self.n_envs, int(1.5 * self.maxdims), dtype=int)
+            self.maxiter = wp.full(self.n_envs, int(1.5 * self.maxdims), dtype=int, device=self.device)
 
         # TODO: non-tiled variant for CPU
         self.dot_product = wp.empty((2, self.n_envs), dtype=self.scalar_type, device=self.device)
@@ -814,6 +682,23 @@ class CGSolver:
         self.cur_iter = wp.empty(self.n_envs, dtype=wp.int32, device=self.device)
         self.conditions = wp.empty(self.n_envs + 1, dtype=wp.int32, device=self.device)
         self.termination_kernel = make_termination_kernel(self.n_envs)
+
+    def compute_dot(self, a, b, col_offset=0):
+        block_dim = 256
+        if a.ndim == 2:
+            a = a.reshape((1, *a.shape))
+            b = b.reshape((1, *b.shape))
+
+        result = self.dot_product[col_offset:]
+
+        wp.launch(
+            self.tiled_dot_kernel,
+            dim=(a.shape[0], self.n_envs, block_dim),
+            block_dim=min(256, self.dot_tile_size // 8),
+            inputs=[a, b, self.active_dims, self.env_active],
+            outputs=[result],
+            device=self.device,
+        )
 
     def update_rr_rz(self, r, z, r_repeated):
         # z = M r
@@ -921,6 +806,8 @@ class CRSolver:
         self.check_every = check_every
         self.use_cuda_graph = use_cuda_graph
 
+        self.dot_tile_size = min(2048, 2 ** math.ceil(math.log(241, 2)))
+        self.tiled_dot_kernel = make_dot_kernel(self.dot_tile_size, self.maxdims)
         self._allocate()
 
     def _allocate(self):
@@ -932,16 +819,9 @@ class CRSolver:
         self.residual = wp.empty((self.n_envs), dtype=self.scalar_type, device=self.device)
 
         if self.maxiter is None:
-            self.maxiter = wp.full(self.n_envs, self.maxdims, dtype=int)
+            self.maxiter = wp.full(self.n_envs, int(1.5 * self.maxdims), dtype=int, device=self.device)
 
-        self.tiled_dot = TiledDot(
-            max_length=self.maxdims,
-            active_dims=self.active_dims,
-            env_active=self.env_active,
-            device=self.device,
-            scalar_type=self.scalar_type,
-            n_cols=2,
-        )
+        self.dot_product = wp.empty((2, self.n_envs), dtype=self.scalar_type, device=self.device)
 
         # (r, r) -- so we can compute r.z and r.r at once
         if self.M is None:
@@ -956,10 +836,27 @@ class CRSolver:
         # Notations below follow roughly pseudo-code from https://en.wikipedia.org/wiki/Conjugate_residual_method
         # with z := M^-1 r and y := M^-1 Ap
 
+    def compute_dot(self, a, b, col_offset=0):
+        block_dim = 256
+        if a.ndim == 2:
+            a = a.reshape((1, *a.shape))
+            b = b.reshape((1, *b.shape))
+
+        result = self.dot_product[col_offset:]
+
+        wp.launch(
+            self.tiled_dot_kernel,
+            dim=(a.shape[0], self.n_envs, block_dim),
+            block_dim=min(256, self.dot_tile_size // 8),
+            inputs=[a, b, self.active_dims, self.env_active],
+            outputs=[result],
+            device=self.device,
+        )
+
     def update_rr_zAz(self, z, Az, r, r_copy):
         self.A.matvec(z, Az, Az, self.env_active, alpha=1, beta=0)
         r_copy.assign(r)
-        self.tiled_dot.compute(self.r_and_z, self.r_and_Az)
+        self.compute_dot(self.r_and_z, self.r_and_Az)
 
     def solve(self, b: wp.array, x: wp.array):
         # named views
@@ -967,15 +864,17 @@ class CRSolver:
         r_copy, Az = self.r_and_Az[0], self.r_and_Az[1]
         y, Ap = self.y_and_Ap[0], self.y_and_Ap[1]
 
-        r_norm_sq = self.tiled_dot.col(0)[:, 0]
-        zAz_new = self.tiled_dot.col(1)[:, 0]
+        r_norm_sq = self.dot_product[0]
+        zAz_new = self.dot_product[1]
         zAz_old = self.residual
 
         # Initialize tolerance from right-hand-side norm
         self.A.matvec(x, b, r, self.env_active, alpha=-1.0, beta=1.0)
 
         # Not strictly necessary, but makes it more robust to user-provided LinearOperators
-        self.y_and_Ap.zero_()
+        # y.zero_()
+        # Ap.zero_()
+        # self.y_and_Ap.zero_()
 
         # z = M r
         if self.M is not None:
@@ -987,55 +886,70 @@ class CRSolver:
         self.p.assign(z)
         Ap.assign(Az)
 
-        def do_iteration():
-            zAz_old.assign(zAz_new)
-
-            if self.M is not None:
-                self.M.matvec(Ap, y, y, self.env_active, alpha=1.0, beta=0.0)
-            self.tiled_dot.compute(Ap, y, col_offset=1)
-            y_Ap = self.tiled_dot.col(1)[:, 0]
-
-            if self.M is None:
-                # In non-preconditioned case, first kernel is same as CG
-                wp.launch(
-                    kernel=_cg_kernel_1,
-                    dim=(self.n_envs, self.maxdims),
-                    inputs=[self.atol_sq, r_norm_sq, zAz_old, y_Ap, self.p, Ap],
-                    outputs=[x, r],
-                    device=self.device,
-                )
-            else:
-                # In preconditioned case, we have one more vector to update
-                wp.launch(
-                    kernel=_cr_kernel_1,
-                    dim=(self.n_envs, self.maxdims),
-                    inputs=[self.atol_sq, r_norm_sq, zAz_old, y_Ap, self.p, Ap, y],
-                    outputs=[x, r, z],
-                    device=self.device,
-                )
-
-            self.update_rr_zAz(z, Az, r, r_copy)
-            wp.launch(
-                kernel=_cr_kernel_2,
-                dim=(self.n_envs, self.maxdims),
-                inputs=[self.atol_sq, r_norm_sq, zAz_old, zAz_new, z, Az],
-                outputs=[self.p, Ap],
-                device=self.device,
-            )
+        do_iteration = functools.partial(
+            self.do_iteration,
+            p=self.p,
+            Ap=Ap,
+            Az=Az,
+            zAz_old=self.residual,
+            zAz_new=self.dot_product[1],
+            z=z,
+            y=y,
+            x=x,
+            r=r,
+            r_copy=r_copy,
+            r_norm_sq=r_norm_sq,
+        )
 
         return _run_capturable_loop(
             do_iteration,
-            cycle_size=1,
-            r_norm_sq=r_norm_sq,
-            env_active=self.env_active,
-            maxiter=self.maxiter,
-            atol_sq=self.atol_sq,
-            callback=self.callback,
-            check_every=self.check_every,
-            use_cuda_graph=self.use_cuda_graph,
-            cur_iter=self.cur_iter,
-            conditions=self.conditions,
+            r_norm_sq,
+            self.env_active,
+            self.cur_iter,
+            self.conditions,
+            self.maxiter,
+            self.atol_sq,
+            self.callback,
+            self.check_every,
+            self.use_cuda_graph,
             termination_kernel=self.termination_kernel,
+        )
+
+    def do_iteration(self, p, Ap, Az, zAz_old, zAz_new, z, y, x, r, r_copy, r_norm_sq):
+        zAz_old.assign(zAz_new)
+
+        if self.M is not None:
+            self.M.matvec(Ap, y, y, self.env_active, alpha=1.0, beta=0.0)
+        self.compute_dot(Ap, y, col_offset=1)
+        y_Ap = self.dot_product[1]
+
+        if self.M is None:
+            # In non-preconditioned case, first kernel is same as CG
+            wp.launch(
+                kernel=_cg_kernel_1,
+                dim=(self.n_envs, self.maxdims),
+                inputs=[self.atol_sq, r_norm_sq, zAz_old, y_Ap, p, Ap],
+                outputs=[x, r],
+                device=self.device,
+            )
+        else:
+            # In preconditioned case, we have one more vector to update
+            wp.launch(
+                kernel=_cr_kernel_1,
+                dim=(self.n_envs, self.maxdims),
+                inputs=[self.atol_sq, r_norm_sq, zAz_old, y_Ap, p, Ap, y],
+                outputs=[x, r, z],
+                device=self.device,
+            )
+
+        self.update_rr_zAz(z, Az, r, r_copy)
+
+        wp.launch(
+            kernel=_cr_kernel_2,
+            dim=(self.n_envs, self.maxdims),
+            inputs=[self.atol_sq, r_norm_sq, zAz_old, zAz_new, z, Az],
+            outputs=[p, Ap],
+            device=self.device,
         )
 
 

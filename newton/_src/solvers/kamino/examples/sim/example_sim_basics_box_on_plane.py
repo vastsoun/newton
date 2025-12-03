@@ -125,6 +125,7 @@ class Example:
         ground: bool = True,
         logging: bool = False,
         headless: bool = False,
+        show_contacts: bool = False,
         record_video: bool = False,
         async_save: bool = False,
     ):
@@ -202,6 +203,7 @@ class Example:
             self.viewer = ViewerKamino(
                 builder=self.builder,
                 simulator=self.sim,
+                show_contacts=show_contacts,
                 record_video=record_video,
                 video_folder=video_folder,
                 async_save=async_save,
@@ -319,6 +321,7 @@ if __name__ == "__main__":
     parser.add_argument("--clear-cache", action="store_true", default=False, help="Clear warp cache")
     parser.add_argument("--logging", action="store_true", default=True, help="Enable logging of simulation data")
     parser.add_argument("--show-plots", action="store_true", default=False, help="Show plots of logging data")
+    parser.add_argument("--show-contacts", action="store_true", default=False, help="Enable contact visualization")
     parser.add_argument("--test", action="store_true", default=False, help="Run tests")
     parser.add_argument(
         "--record",
@@ -365,6 +368,7 @@ if __name__ == "__main__":
         gravity=args.gravity,
         ground=args.ground,
         headless=args.headless,
+        show_contacts=args.show_contacts,
         logging=args.logging,
         record_video=args.record is not None and not args.headless,
         async_save=args.record == "async",

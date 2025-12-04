@@ -167,7 +167,7 @@ class ShapeType(IntEnum):
             case ShapeType.SDF:
                 type = GeoType.SDF
             case _:
-                raise ValueError(f"Unknown ShapeType value: {type}")
+                raise ValueError(f"Unknown ShapeType value: {self}")
         return type
 
 
@@ -505,6 +505,7 @@ class PlaneShape(ShapeDescriptor):
 
     @override
     def __repr__(self):
+        """Returns a human-readable string representation of the PlaneShape."""
         return (
             f"PlaneShape(\nname: {self.name},\nuid: {self.uid},\nnormal: {self.normal},\ndistance: {self.distance}\n)"
         )

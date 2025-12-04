@@ -71,6 +71,30 @@ wp.set_module_options({"enable_backward": False})
 
 
 ###
+# Constants
+###
+
+
+PRIMITIVE_NARROWPHASE_SUPPORTED_SHAPE_PAIRS: list[tuple[ShapeType, ShapeType]] = [
+    (ShapeType.BOX, ShapeType.BOX),
+    (ShapeType.CAPSULE, ShapeType.BOX),
+    (ShapeType.CAPSULE, ShapeType.CAPSULE),
+    (ShapeType.PLANE, ShapeType.BOX),
+    (ShapeType.PLANE, ShapeType.CAPSULE),
+    (ShapeType.PLANE, ShapeType.CYLINDER),
+    (ShapeType.PLANE, ShapeType.ELLIPSOID),
+    (ShapeType.PLANE, ShapeType.SPHERE),
+    (ShapeType.SPHERE, ShapeType.BOX),
+    (ShapeType.SPHERE, ShapeType.CAPSULE),
+    (ShapeType.SPHERE, ShapeType.CYLINDER),
+    (ShapeType.SPHERE, ShapeType.SPHERE),
+]
+"""
+List of primitive shape combinations supported by the primitive narrow-phase collider.
+"""
+
+
+###
 # Geometry helper Types
 ###
 

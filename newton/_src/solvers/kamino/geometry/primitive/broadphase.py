@@ -24,9 +24,8 @@ from enum import IntEnum
 import warp as wp
 
 from ...core.geometry import CollisionGeometriesModel, GeometriesData
-from ...core.math import FLOAT32_MAX, FLOAT32_MIN
 from ...core.shapes import ShapeType
-from ...core.types import float32, int32, mat83f, override, transformf, vec2i, vec3f, vec4f, vec8f
+from ...core.types import float32, int32, override, transformf, vec2i, vec3f, vec4f, vec6f, vec8f
 
 ###
 # Module interface
@@ -46,6 +45,23 @@ __all__ = [
 
 wp.set_module_options({"enable_backward": False})
 
+
+###
+# Constants
+###
+
+
+PRIMITIVE_BROADPHASE_SUPPORTED_SHAPES: list[ShapeType] = [
+    ShapeType.SPHERE,
+    ShapeType.CYLINDER,
+    ShapeType.CONE,
+    ShapeType.CAPSULE,
+    ShapeType.BOX,
+    ShapeType.ELLIPSOID,
+]
+"""
+List of primitive shape combinations supported by the primitive narrow-phase collider.
+"""
 
 ###
 # Types
@@ -91,8 +107,8 @@ class BoundingVolumesData:
 
     aabb: wp.array | None = None
     """
-    The vertices of the Axis-Aligned Bounding Box (AABB) of each collision geometry.\n
-    Shape of ``(sum_of_num_geoms,)`` and type :class:`mat83f`.
+    The min/max extents of the Axis-Aligned Bounding Box (AABB) of each collision geometry.\n
+    Shape of ``(sum_of_num_geoms,)`` and type :class:`vec6f`.
     """
 
     radius: wp.array | None = None
@@ -137,7 +153,6 @@ class CollisionCandidatesModel:
     Shape of ``(sum_of_num_candidate_pairs,)`` and type :class:`int32`.
     """
 
-    # TODO: Rename to `key` and use as key for sorting
     pairid: wp.array | None = None
     """
     Index of each the collision pair.\n
@@ -296,12 +311,12 @@ def has_bs_overlap(pose1: transformf, pose2: transformf, radius1: float32, radiu
 
 
 @wp.func
-def compute_tight_aabb_from_local_extents(pose: transformf, extents: vec3f) -> mat83f:
-    R_b = wp.quat_to_matrix(wp.transform_get_rotation(pose))
+def compute_tight_aabb_from_local_extents(pose: transformf, extents: vec3f, margin: float32) -> vec6f:
+    R_g = wp.quat_to_matrix(wp.transform_get_rotation(pose))
     r_g = wp.transform_get_translation(pose)
-    dx = extents[0]
-    dy = extents[1]
-    dz = extents[2]
+    dx = extents[0] + margin
+    dy = extents[1] + margin
+    dz = extents[2] + margin
     b_v_0 = vec3f(-dx, -dy, -dz)
     b_v_1 = vec3f(-dx, -dy, dz)
     b_v_2 = vec3f(-dx, dy, -dz)
@@ -310,123 +325,72 @@ def compute_tight_aabb_from_local_extents(pose: transformf, extents: vec3f) -> m
     b_v_5 = vec3f(dx, -dy, dz)
     b_v_6 = vec3f(dx, dy, -dz)
     b_v_7 = vec3f(dx, dy, dz)
-    w_v_0 = r_g + (R_b @ b_v_0)
-    w_v_1 = r_g + (R_b @ b_v_1)
-    w_v_2 = r_g + (R_b @ b_v_2)
-    w_v_3 = r_g + (R_b @ b_v_3)
-    w_v_4 = r_g + (R_b @ b_v_4)
-    w_v_5 = r_g + (R_b @ b_v_5)
-    w_v_6 = r_g + (R_b @ b_v_6)
-    w_v_7 = r_g + (R_b @ b_v_7)
+    w_v_0 = r_g + (R_g @ b_v_0)
+    w_v_1 = r_g + (R_g @ b_v_1)
+    w_v_2 = r_g + (R_g @ b_v_2)
+    w_v_3 = r_g + (R_g @ b_v_3)
+    w_v_4 = r_g + (R_g @ b_v_4)
+    w_v_5 = r_g + (R_g @ b_v_5)
+    w_v_6 = r_g + (R_g @ b_v_6)
+    w_v_7 = r_g + (R_g @ b_v_7)
     min_x = wp.min(vec8f(w_v_0[0], w_v_1[0], w_v_2[0], w_v_3[0], w_v_4[0], w_v_5[0], w_v_6[0], w_v_7[0]))
     max_x = wp.max(vec8f(w_v_0[0], w_v_1[0], w_v_2[0], w_v_3[0], w_v_4[0], w_v_5[0], w_v_6[0], w_v_7[0]))
     min_y = wp.min(vec8f(w_v_0[1], w_v_1[1], w_v_2[1], w_v_3[1], w_v_4[1], w_v_5[1], w_v_6[1], w_v_7[1]))
     max_y = wp.max(vec8f(w_v_0[1], w_v_1[1], w_v_2[1], w_v_3[1], w_v_4[1], w_v_5[1], w_v_6[1], w_v_7[1]))
     min_z = wp.min(vec8f(w_v_0[2], w_v_1[2], w_v_2[2], w_v_3[2], w_v_4[2], w_v_5[2], w_v_6[2], w_v_7[2]))
     max_z = wp.max(vec8f(w_v_0[2], w_v_1[2], w_v_2[2], w_v_3[2], w_v_4[2], w_v_5[2], w_v_6[2], w_v_7[2]))
-    aabb = mat83f(
-        min_x,
-        min_y,
-        min_z,
-        min_x,
-        min_y,
-        max_z,
-        min_x,
-        max_y,
-        min_z,
-        min_x,
-        max_y,
-        max_z,
-        max_x,
-        min_y,
-        min_z,
-        max_x,
-        min_y,
-        max_z,
-        max_x,
-        max_y,
-        min_z,
-        max_x,
-        max_y,
-        max_z,
-    )
+    aabb = vec6f(min_x, min_y, min_z, max_x, max_y, max_z)
     return aabb
 
 
 @wp.func
-def aabb_sphere(pose: transformf, radius: float32, margin: float32) -> mat83f:
+def aabb_sphere(pose: transformf, radius: float32, margin: float32) -> vec6f:
     r_g = wp.transform_get_translation(pose)
     extents = vec3f(radius + margin, radius + margin, radius + margin)
-    min_corner = r_g - extents
-    max_corner = r_g + extents
-    # Generate 8 corners of the AABB
-    aabb = mat83f(
-        min_corner[0],
-        min_corner[1],
-        min_corner[2],
-        min_corner[0],
-        min_corner[1],
-        max_corner[2],
-        min_corner[0],
-        max_corner[1],
-        min_corner[2],
-        min_corner[0],
-        max_corner[1],
-        max_corner[2],
-        max_corner[0],
-        min_corner[1],
-        min_corner[2],
-        max_corner[0],
-        min_corner[1],
-        max_corner[2],
-        max_corner[0],
-        max_corner[1],
-        min_corner[2],
-        max_corner[0],
-        max_corner[1],
-        max_corner[2],
-    )
+    min = r_g - extents
+    max = r_g + extents
+    aabb = vec6f(min.x, min.y, min.z, max.x, max.y, max.z)
     return aabb
 
 
 @wp.func
-def aabb_cylinder(pose: transformf, radius: float32, height: float32, margin: float32) -> mat83f:
-    extents = vec3f(radius + margin, radius + margin, 0.5 * height + margin)
-    return compute_tight_aabb_from_local_extents(pose, extents)
+def aabb_cylinder(pose: transformf, radius: float32, height: float32, margin: float32) -> vec6f:
+    extents = vec3f(radius, radius, 0.5 * height)
+    return compute_tight_aabb_from_local_extents(pose, extents, margin)
 
 
 @wp.func
-def aabb_cone(pose: transformf, radius: float32, height: float32, margin: float32) -> mat83f:
-    extents = vec3f(radius + margin, radius + margin, 0.5 * height + margin)
-    return compute_tight_aabb_from_local_extents(pose, extents)
+def aabb_cone(pose: transformf, radius: float32, height: float32, margin: float32) -> vec6f:
+    extents = vec3f(radius, radius, 0.5 * height)
+    return compute_tight_aabb_from_local_extents(pose, extents, margin)
 
 
 @wp.func
-def aabb_capsule(pose: transformf, radius: float32, height: float32, margin: float32) -> mat83f:
-    extents = vec3f(radius + margin, radius + margin, 0.5 * height + margin)
-    return compute_tight_aabb_from_local_extents(pose, extents)
+def aabb_capsule(pose: transformf, radius: float32, height: float32, margin: float32) -> vec6f:
+    extents = vec3f(radius, radius, 0.5 * height + radius)
+    return compute_tight_aabb_from_local_extents(pose, extents, margin)
 
 
 @wp.func
-def aabb_ellipsoid(pose: transformf, abc: vec3f, margin: float32) -> mat83f:
-    extents = vec3f(abc[0] + margin, abc[1] + margin, abc[2] + margin)
-    return compute_tight_aabb_from_local_extents(pose, extents)
+def aabb_ellipsoid(pose: transformf, abc: vec3f, margin: float32) -> vec6f:
+    extents = vec3f(abc[0], abc[1], abc[2])
+    return compute_tight_aabb_from_local_extents(pose, extents, margin)
 
 
 @wp.func
-def aabb_box(pose: transformf, size: vec3f, margin: float32) -> mat83f:
-    extents = 0.5 * size + vec3f(margin, margin, margin)
-    return compute_tight_aabb_from_local_extents(pose, extents)
+def aabb_box(pose: transformf, size: vec3f, margin: float32) -> vec6f:
+    extents = 0.5 * size
+    return compute_tight_aabb_from_local_extents(pose, extents, margin)
 
 
 # TODO: Implement proper AABB for planes
 @wp.func
-def aabb_plane(pose: transformf, normal: vec3f, distance: float32, margin: float32) -> mat83f:
-    return mat83f()
+def aabb_plane(pose: transformf, normal: vec3f, distance: float32, margin: float32) -> vec6f:
+    return vec6f(0.0)
 
 
 @wp.func
-def aabb_geom(sid: int32, params: vec4f, margin: float32, pose: transformf) -> mat83f:
+def aabb_geom(sid: int32, params: vec4f, margin: float32, pose: transformf) -> vec6f:
     """
     Compute the Axis-Aligned Bounding Box (AABB) vertices of a geometry element.
 
@@ -438,7 +402,7 @@ def aabb_geom(sid: int32, params: vec4f, margin: float32, pose: transformf) -> m
     Returns:
         vec6f: The vertices of the AABB of the geometry element.
     """
-    aabb = mat83f()
+    aabb = vec6f(0.0)
     if sid == ShapeType.SPHERE:
         aabb = aabb_sphere(pose, params[0], margin)
     elif sid == ShapeType.CYLINDER:
@@ -451,53 +415,16 @@ def aabb_geom(sid: int32, params: vec4f, margin: float32, pose: transformf) -> m
         aabb = aabb_ellipsoid(pose, vec3f(params[0], params[1], params[2]), margin)
     elif sid == ShapeType.BOX:
         aabb = aabb_box(pose, vec3f(params[0], params[1], params[2]), margin)
+    elif sid == ShapeType.PLANE:
+        aabb = aabb_plane(pose, vec3f(params[0], params[1], params[2]), params[3], margin)
     return aabb
 
 
 @wp.func
-def has_aabb_overlap(aabb1: mat83f, aabb2: mat83f) -> wp.bool:
-    # Initialize min/max for AABB A,B
-    a_min_x = FLOAT32_MAX
-    a_min_y = FLOAT32_MAX
-    a_min_z = FLOAT32_MAX
-    a_max_x = FLOAT32_MIN
-    a_max_y = FLOAT32_MIN
-    a_max_z = FLOAT32_MIN
-    b_min_x = FLOAT32_MAX
-    b_min_y = FLOAT32_MAX
-    b_min_z = FLOAT32_MAX
-    b_max_x = FLOAT32_MIN
-    b_max_y = FLOAT32_MIN
-    b_max_z = FLOAT32_MIN
-
-    # Iterate through the 8 corners of both AABBs
-    # and find the min/max coordinates
-    for i in range(8):
-        xa = aabb1[i, 0]
-        ya = aabb1[i, 1]
-        za = aabb1[i, 2]
-        xb = aabb2[i, 0]
-        yb = aabb2[i, 1]
-        zb = aabb2[i, 2]
-        a_min_x = wp.min(xa, a_min_x)
-        a_min_y = wp.min(ya, a_min_y)
-        a_min_z = wp.min(za, a_min_z)
-        a_max_x = wp.max(xa, a_max_x)
-        a_max_y = wp.max(ya, a_max_y)
-        a_max_z = wp.max(za, a_max_z)
-        b_min_x = wp.min(xb, b_min_x)
-        b_min_y = wp.min(yb, b_min_y)
-        b_min_z = wp.min(zb, b_min_z)
-        b_max_x = wp.max(xb, b_max_x)
-        b_max_y = wp.max(yb, b_max_y)
-        b_max_z = wp.max(zb, b_max_z)
-
-    # Overlap test: check for intersection on all 3 axes
-    overlap_x = (a_min_x <= b_max_x) and (a_max_x >= b_min_x)
-    overlap_y = (a_min_y <= b_max_y) and (a_max_y >= b_min_y)
-    overlap_z = (a_min_z <= b_max_z) and (a_max_z >= b_min_z)
-
-    # Return true if there is an overlap on all 3 axes
+def has_aabb_overlap(aabb1: vec6f, aabb2: vec6f) -> wp.bool:
+    overlap_x = (aabb1[0] <= aabb2[3]) and (aabb1[3] >= aabb2[0])
+    overlap_y = (aabb1[1] <= aabb2[4]) and (aabb1[4] >= aabb2[1])
+    overlap_z = (aabb1[2] <= aabb2[5]) and (aabb1[5] >= aabb2[2])
     return overlap_x and overlap_y and overlap_z
 
 
@@ -557,7 +484,7 @@ def _update_geometries_state_and_aabb(
     body_pose: wp.array(dtype=transformf),
     # Outputs:
     geom_pose: wp.array(dtype=transformf),
-    geom_aabb: wp.array(dtype=mat83f),
+    geom_aabb: wp.array(dtype=vec6f),
 ):
     """
     A kernel that updates the state of each geometry and computes its Axis-Aligned Bounding Box (AABB).
@@ -571,7 +498,7 @@ def _update_geometries_state_and_aabb(
 
     Outputs:
         geom_pose (wp.array(dtype=transformf)): Pose of each geometry in world coordinates.
-        geom_aabb (wp.array(dtype=mat83f)): Axis-Aligned Bounding Box for each geometry in world coordinates.
+        geom_aabb (wp.array(dtype=vec6f)): Axis-Aligned Bounding Box for each geometry in world coordinates.
     """
     # Retrieve geometry index from the thread grid
     gid = wp.tid()
@@ -665,7 +592,7 @@ def _update_geometries_state_and_bs(
 def _nxn_broadphase_aabb(
     # Inputs:
     geom_sid: wp.array(dtype=int32),
-    geom_aabb_vertices: wp.array(dtype=mat83f),
+    geom_aabb_minmax: wp.array(dtype=vec6f),
     cmodel_model_num_pairs: wp.array(dtype=int32),
     cmodel_world_num_pairs: wp.array(dtype=int32),
     cmodel_wid: wp.array(dtype=int32),
@@ -682,8 +609,8 @@ def _nxn_broadphase_aabb(
     Inputs:
         geom_sid (wp.array(dtype=int32)):
             Shape index for each geometry.
-        geom_aabb_vertices (wp.array(dtype=mat83f)):
-            Axis-Aligned Bounding Box (AABB) vertices for each geometry.
+        geom_aabb_minmax (wp.array(dtype=vec6f)):
+            Minimum and maximum coordinates for each geometry's Axis-Aligned Bounding Box (AABB).
         cmodel_model_num_pairs (wp.array(dtype=int32)):
             Total number of collision pairs in the model.
         cmodel_world_num_pairs (wp.array(dtype=int32)):
@@ -720,9 +647,9 @@ def _nxn_broadphase_aabb(
 
     # Retrieve the geometry-specific data for both geometries
     sid1 = geom_sid[gid1]
-    aabb1 = geom_aabb_vertices[gid1]
+    aabb1 = geom_aabb_minmax[gid1]
     sid2 = geom_sid[gid2]
-    aabb2 = geom_aabb_vertices[gid2]
+    aabb2 = geom_aabb_minmax[gid2]
 
     # Check for BV overlap and if yes then add to active collision pairs
     if has_aabb_overlap(aabb1, aabb2):

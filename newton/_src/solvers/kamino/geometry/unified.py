@@ -525,7 +525,7 @@ class CollisionPipelineUnifiedKamino:
         self._max_triangle_pairs: int = max_triangle_pairs
 
         # Get geometry count from builder
-        self._num_geoms: int = sum(builder._worlds[i].num_collision_geoms for i in range(builder.num_worlds))
+        self._num_geoms: int = builder.num_collision_geoms
 
         # Compute the maximum possible number of geom pairs (worst-case, needed for NXN/SAP)
         self._max_shape_pairs: int = (self._num_geoms * (self._num_geoms - 1)) // 2

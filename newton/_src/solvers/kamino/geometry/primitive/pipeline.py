@@ -26,16 +26,17 @@ from warp.context import Devicelike
 from .....sim.collide_unified import BroadPhaseMode
 from ...core.builder import ModelBuilder
 from ...core.model import Model, ModelData
-from ...core.types import float32, int32, mat83f, vec2i
+from ...core.types import float32, int32, vec2i, vec6f
 from ..contacts import DEFAULT_GEOM_PAIR_CONTACT_MARGIN, Contacts
 from .broadphase import (
+    PRIMITIVE_BROADPHASE_SUPPORTED_SHAPES,
     BoundingVolumesData,
     BoundingVolumeType,
     CollisionCandidatesData,
     CollisionCandidatesModel,
     primitive_broadphase_explicit,
 )
-from .narrowphase import primitive_narrowphase
+from .narrowphase import PRIMITIVE_NARROWPHASE_SUPPORTED_SHAPE_PAIRS, primitive_narrowphase
 
 ###
 # Interfaces
@@ -121,13 +122,17 @@ class CollisionPipelinePrimitive:
         world_num_geom_pairs, model_geom_pair, model_pairid, model_wid = builder.make_collision_candidate_pairs()
         model_num_geom_pairs = len(model_geom_pair)
 
+        # Ensure that all shape types are supported by the primitive
+        # broad-phase and narrow-phase back-ends before proceeding
+        self._assert_shapes_supported(model_geom_pair, builder)
+
         # Allocate the collision model data
         with wp.ScopedDevice(self._device):
             # Allocate the bounding volumes data
             self._bvdata = BoundingVolumesData()
             match self._bvtype:
                 case BoundingVolumeType.AABB:
-                    self._bvdata.aabb = wp.zeros(shape=(num_geoms,), dtype=mat83f)
+                    self._bvdata.aabb = wp.zeros(shape=(num_geoms,), dtype=vec6f)
                 case BoundingVolumeType.BS:
                     self._bvdata.radius = wp.zeros(shape=(num_geoms,), dtype=float32)
                 case _:
@@ -180,3 +185,55 @@ class CollisionPipelinePrimitive:
 
         # Perform the narrow-phase collision detection to generate active contacts
         primitive_narrowphase(model, data, self._cdata, contacts, default_margin=self._default_margin)
+
+    ###
+    # Internals
+    ###
+
+    def _assert_shapes_supported(self, geom_pairs: list[tuple[int, int]], builder: ModelBuilder):
+        """
+        Checks whether all collision geometries in the provided builder are supported
+        by the primitive narrow-phase collider.
+
+        Args:
+            builder (ModelBuilder): The model builder containing the collision geometries.
+
+        Raises:
+            ValueError: If any unsupported shape type is found.
+        """
+        print(f"geom_pairs:\n{geom_pairs}")
+
+        # Iterate over each candidate geometry pair
+        for gid_12 in geom_pairs:
+            # Retrieve the shape types
+            cgeom_1 = builder.collision_geoms[gid_12[0]]
+            cgeom_2 = builder.collision_geoms[gid_12[1]]
+            shape_1 = cgeom_1.shape.type
+            shape_2 = cgeom_2.shape.type
+
+            # Skip checks on geom-pairs belonging to different
+            # worlds because they are not collidable anyway
+            if cgeom_1.wid != cgeom_2.wid:
+                continue
+
+            # First check if both shapes are supported by the primitive broad-phase
+            if shape_1 not in PRIMITIVE_BROADPHASE_SUPPORTED_SHAPES:
+                raise ValueError(
+                    f"Builder contains shape '{shape_1}' which is currently not supported by the primitive broad-phase."
+                    "\nPlease consider using the `UNIFIED` collision pipeline, or using alternative shape types."
+                )
+            if shape_2 not in PRIMITIVE_BROADPHASE_SUPPORTED_SHAPES:
+                raise ValueError(
+                    f"Builder contains shape '{shape_2}' which is currently not supported by the primitive broad-phase."
+                    "\nPlease consider using the `UNIFIED` collision pipeline, or using alternative shape types."
+                )
+
+            # Then check if the shape-pair combination is supported by the primitive narrow-phase
+            shape_12_invalid = (shape_1, shape_2) not in PRIMITIVE_NARROWPHASE_SUPPORTED_SHAPE_PAIRS
+            shape_21_invalid = (shape_2, shape_1) not in PRIMITIVE_NARROWPHASE_SUPPORTED_SHAPE_PAIRS
+            if shape_12_invalid or shape_21_invalid:
+                raise ValueError(
+                    f"Builder contains shape-pair ({shape_1}, {shape_2}) with geom indices {gid_12}, "
+                    "but it is currently not supported by the primitive narrow-phase."
+                    "\nPlease consider using the `UNIFIED` collision pipeline, or using alternative shape types."
+                )

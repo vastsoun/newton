@@ -478,6 +478,14 @@ def quat_to_euler_xyz(q: quatf) -> vec3f:
 
 
 @wp.func
+def quat_from_euler_xyz(rpy: vec3f) -> quatf:
+    """
+    Converts XYZ Euler angles (also known as Cardan angles) to a unit quaternion.
+    """
+    return wp.quat_from_matrix(R_z(rpy.z) @ R_y(rpy.y) @ R_x(rpy.x))
+
+
+@wp.func
 def quat_left_jacobian_inverse(q: quatf) -> mat33f:
     """
     Computes the left-Jacobian inverse of the quaternion log map

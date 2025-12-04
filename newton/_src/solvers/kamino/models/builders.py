@@ -17,6 +17,7 @@
 
 import math
 
+import numpy as np
 import warp as wp
 
 from ..core import ModelBuilder
@@ -25,9 +26,20 @@ from ..core.inertia import (
     solid_sphere_body_moment_of_inertia,
 )
 from ..core.joints import JointActuationType, JointDoFType
-from ..core.math import FLOAT32_MAX, FLOAT32_MIN, I_3
-from ..core.shapes import BoxShape, CylinderShape, SphereShape
-from ..core.types import Axis, transformf, vec3f, vec6f
+from ..core.math import FLOAT32_MAX, FLOAT32_MIN, I_3, quat_from_euler_xyz
+from ..core.shapes import (
+    BoxShape,
+    CapsuleShape,
+    ConeShape,
+    CylinderShape,
+    EllipsoidShape,
+    PlaneShape,
+    ShapeDescriptorType,
+    ShapeType,
+    SphereShape,
+)
+from ..core.types import Axis, mat33f, transformf, vec3f, vec6f
+from ..utils import logger as msg
 from ..utils.io.usd import USDImporter
 
 ###
@@ -46,6 +58,8 @@ __all__ = [
     "build_boxes_nunchaku",
     "build_boxes_nunchaku_vertical",
     "build_usd_model",
+    "make_shape_pairs_builder",
+    "make_single_shape_pair_builder",
 ]
 
 
@@ -54,7 +68,45 @@ __all__ = [
 ###
 
 
-def add_ground_geom(builder: ModelBuilder, group: int = 1, collides: int = 1, world_index: int = 0) -> int:
+def add_ground_plane(
+    builder: ModelBuilder,
+    group: int = 1,
+    collides: int = 1,
+    world_index: int = 0,
+    z_offset: float = 0.0,
+) -> int:
+    """
+    Adds a static collision layer and geometry to a given builder to represent a flat ground plane.
+
+    Args:
+        builder (ModelBuilder): The model builder to which the ground geom should be added.
+        group (int): The collision group for the ground geometry.
+        collides (int): The collision mask for the ground geometry.
+        world_index (int): The index of the world in the builder where the ground geom should be added.
+
+    Returns:
+        int: The ID of the added ground geometry.
+    """
+    builder.add_collision_layer("ground", world_index=world_index)
+    gid = builder.add_collision_geometry(
+        name="ground",
+        body=-1,
+        shape=PlaneShape(vec3f(0.0, 0.0, 1.0), 0.0),
+        offset=transformf(0.0, 0.0, z_offset, 0.0, 0.0, 0.0, 1.0),
+        group=group,
+        collides=collides,
+        world_index=world_index,
+    )
+    return gid
+
+
+def add_ground_geom(
+    builder: ModelBuilder,
+    group: int = 1,
+    collides: int = 1,
+    world_index: int = 0,
+    z_offset: float = 0.0,
+) -> int:
     """
     Adds a static collision layer and geometry to a given builder to represent a flat ground plane.
 
@@ -72,7 +124,7 @@ def add_ground_geom(builder: ModelBuilder, group: int = 1, collides: int = 1, wo
         name="ground",
         body=-1,
         shape=BoxShape(20.0, 20.0, 1.0),
-        offset=transformf(0.0, 0.0, -0.5, 0.0, 0.0, 0.0, 1.0),
+        offset=transformf(0.0, 0.0, -0.5 + z_offset, 0.0, 0.0, 0.0, 1.0),
         group=group,
         collides=collides,
         world_index=world_index,
@@ -105,7 +157,7 @@ def add_body_twist_offset(builder: ModelBuilder, offset: vec6f):
 
 
 ###
-# Builders for unit-test models
+# Builders for joint tests
 ###
 
 
@@ -1534,6 +1586,327 @@ def build_all_joints_test_model(
 
     # Return the lists of element indices
     return _builder
+
+
+###
+# Builders for geometry tests
+###
+
+
+shape_name_to_type: dict[str, ShapeType] = {
+    "sphere": ShapeType.SPHERE,
+    "cylinder": ShapeType.CYLINDER,
+    "cone": ShapeType.CONE,
+    "capsule": ShapeType.CAPSULE,
+    "box": ShapeType.BOX,
+    "ellipsoid": ShapeType.ELLIPSOID,
+    "plane": ShapeType.PLANE,
+}
+"""Mapping from shape name to ShapeType enum."""
+
+
+shape_type_to_descriptor: dict[ShapeType, ShapeDescriptorType] = {
+    ShapeType.SPHERE: SphereShape,
+    ShapeType.CYLINDER: CylinderShape,
+    ShapeType.CONE: ConeShape,
+    ShapeType.CAPSULE: CapsuleShape,
+    ShapeType.BOX: BoxShape,
+    ShapeType.ELLIPSOID: EllipsoidShape,
+    ShapeType.PLANE: PlaneShape,
+}
+"""Mapping from ShapeType enum to corresponding ShapeDescriptorType."""
+
+
+shape_default_dims: dict[ShapeType, tuple] = {
+    ShapeType.SPHERE: (0.5,),
+    ShapeType.CYLINDER: (0.5, 1.0),
+    ShapeType.CONE: (0.5, 1.0),
+    ShapeType.CAPSULE: (0.5, 1.0),
+    ShapeType.BOX: (1.0, 1.0, 1.0),
+    ShapeType.ELLIPSOID: (1.0, 1.0, 0.5),
+    ShapeType.PLANE: (0.0, 0.0, 1.0, 0.0),
+}
+"""Mapping from ShapeType enum to default dimensions."""
+
+
+def make_shape_initial_position(name: str, dims: tuple, is_top: bool = True) -> vec3f:
+    """
+    Computes the initial position along the z-axis for a given shape.
+
+    This function calculates the position required to place a shape just above
+    (or below) the origin along the z-axis, based on its type and dimensions.
+
+    Args:
+        name (str):
+            The name of the shape (e.g., "sphere", "box", "capsule", etc.).
+        dims (tuple):
+            The dimensions of the shape. The expected format depends on the shape type.
+        is_top (bool):
+            If True, computes the position for a top shape (above the origin).
+            If False, computes the position for a bottom shape (below the origin).
+
+    Returns:
+        vec3f:
+            The computed position vector along the z-axis.
+    """
+    # Retrieve and check the shape type
+    shape_type = shape_name_to_type.get(name)
+    if shape_type is None:
+        raise ValueError(f"Unsupported shape name: {name}")
+
+    # Check dimensions length
+    if len(dims) != shape_type.num_params:
+        raise ValueError(f"Invalid dimensions for shape '{name}': expected {shape_type.num_params}, got {len(dims)}")
+
+    # Compute the initial position along z-axis that places the shape just above
+    if shape_type == ShapeType.SPHERE:
+        r = vec3f(0.0, 0.0, dims[0])
+    elif shape_type == ShapeType.BOX:
+        r = vec3f(0.0, 0.0, 0.5 * dims[2])
+    elif shape_type == ShapeType.CAPSULE:
+        r = vec3f(0.0, 0.0, 0.5 * dims[1] + dims[0])
+    elif shape_type == ShapeType.CYLINDER:
+        r = vec3f(0.0, 0.0, 0.5 * dims[1])
+    elif shape_type == ShapeType.CONE:
+        r = vec3f(0.0, 0.0, 0.5 * dims[1])
+    elif shape_type == ShapeType.ELLIPSOID:
+        r = vec3f(0.0, 0.0, dims[2])
+    elif shape_type == ShapeType.PLANE:
+        r = vec3f(0.0, 0.0, dims[3])
+    else:
+        raise ValueError(f"Unsupported shape type: {shape_type}")
+
+    # Invert the position if it's the bottom shape
+    if not is_top:
+        r = -r
+
+    # Return the computed position
+    return r
+
+
+def get_shape_bottom_position(center: vec3f, shape: ShapeDescriptorType) -> vec3f:
+    """
+    Computes the position of the bottom along the z-axis for a given shape.
+
+    Args:
+        center (vec3f):
+            The center position of the shape.
+        shape (ShapeDescriptorType):
+            The shape descriptor instance.
+
+    Returns:
+        vec3f:
+            The computed bottom position of the shape along the z-axis.
+    """
+    # Compute and return the initial position along z-axis that places the shape just above
+    r_bottom = vec3f(0.0)
+    if shape.type == ShapeType.SPHERE:
+        r_bottom = center - vec3f(0.0, 0.0, shape.params)
+    elif shape.type == ShapeType.BOX:
+        r_bottom = center - vec3f(0.0, 0.0, 0.5 * shape.params[2])
+    elif shape.type == ShapeType.CAPSULE:
+        r_bottom = center - vec3f(0.0, 0.0, 0.5 * shape.params[1] + shape.params[0])
+    elif shape.type == ShapeType.CYLINDER:
+        r_bottom = center - vec3f(0.0, 0.0, 0.5 * shape.params[1])
+    elif shape.type == ShapeType.CONE:
+        r_bottom = center - vec3f(0.0, 0.0, 0.5 * shape.params[1])
+    elif shape.type == ShapeType.ELLIPSOID:
+        r_bottom = center - vec3f(0.0, 0.0, shape.params[2])
+    elif shape.type == ShapeType.PLANE:
+        r_bottom = center - vec3f(0.0, 0.0, shape.params[3])
+    else:
+        raise ValueError(f"Unsupported shape type: {shape.type}")
+
+    # Return the bottom position of the given shape
+    return r_bottom
+
+
+def make_single_shape_pair_builder(
+    shapes: tuple[str, str],
+    bottom_dims: tuple | None = None,
+    bottom_xyz: tuple | None = None,
+    bottom_rpy: tuple | None = None,
+    top_dims: tuple | None = None,
+    top_xyz: tuple | None = None,
+    top_rpy: tuple | None = None,
+    distance: float = 0.0,
+    ground_box: bool = False,
+    ground_plane: bool = False,
+    ground_z: float | None = None,
+) -> ModelBuilder:
+    """
+    Generates a ModelBuilder for a given shape combination with specified parameters.
+
+    The first shape in the combination is placed below the second shape along
+    the z-axis, effectively generating a "shape[0] atop shape[1]" configuration.
+
+    Args:
+        shapes (tuple[str, str]):
+            A tuple specifying the names of the bottom and top shapes (e.g., ("box", "sphere")).
+        bottom_dims (tuple | None):
+            Dimensions for the bottom shape. If None, defaults are used.
+        bottom_xyz (tuple | None):
+            Position (x, y, z) for the bottom shape. If None, defaults to (0, 0, 0).
+        bottom_rpy (tuple | None):
+            Orientation (roll, pitch, yaw) for the bottom shape. If None, defaults to (0, 0, 0).
+        top_dims (tuple | None):
+            Dimensions for the top shape. If None, defaults are used.
+        top_xyz (tuple | None):
+            Position (x, y, z) for the top shape. If None, defaults to (0, 0, 0).
+        top_rpy (tuple | None):
+            Orientation (roll, pitch, yaw) for the top shape. If None, defaults to (0, 0, 0).
+        distance (float):
+            Mutual distance along the z-axis between the two shapes.\n
+            If zero, the shapes are exactly touching.\n
+            If positive, they are separated by that distance.\n
+            If negative, they are penetrating by that distance.
+
+    Returns:
+        ModelBuilder:
+            The constructed ModelBuilder with the specified shape combination.
+    """
+    # Check that the shape combination is tuple of strings
+    if not (isinstance(shapes, tuple) and len(shapes) == 2 and all(isinstance(s, str) for s in shapes)):
+        raise ValueError(f"Shape combination must be a tuple of two strings: {shapes}")
+
+    # Check that each shape name is valid
+    for shape_name in shapes:
+        if shape_name not in shape_name_to_type:
+            raise ValueError(f"Unsupported shape name: {shape_name}")
+
+    # Define bottom and top shapes
+    top = shapes[0]
+    bottom = shapes[1]
+
+    # Retrieve shape types
+    top_type = shape_name_to_type[top]
+    bottom_type = shape_name_to_type[bottom]
+
+    # Define default arguments for those not provided
+    if bottom_dims is None:
+        bottom_dims = shape_default_dims[bottom_type]
+    if bottom_xyz is None:
+        bottom_xyz = make_shape_initial_position(shapes[1], bottom_dims, is_top=False)
+    if bottom_rpy is None:
+        bottom_rpy = (0.0, 0.0, 0.0)
+    if top_dims is None:
+        top_dims = shape_default_dims[top_type]
+    if top_xyz is None:
+        top_xyz = make_shape_initial_position(shapes[0], top_dims, is_top=True)
+    if top_rpy is None:
+        top_rpy = (0.0, 0.0, 0.0)
+
+    # Retrieve the shape type
+    bottom_descriptor = shape_type_to_descriptor[bottom_type]
+    top_descriptor = shape_type_to_descriptor[top_type]
+
+    # Define the mutual separation along z-axis
+    r_dz = vec3f(0.0, 0.0, 0.5 * distance)
+
+    # Compute bottom box position and orientation
+    r_b = vec3f(bottom_xyz) - r_dz
+    q_b = quat_from_euler_xyz(vec3f(*bottom_rpy))
+
+    # Compute top sphere position and orientation
+    r_t = vec3f(top_xyz) + r_dz
+    q_t = quat_from_euler_xyz(vec3f(*top_rpy))
+
+    # Create the shape descriptors for bottom and top shapes
+    # with special handling for PlaneShape
+    if bottom_type == ShapeType.PLANE:
+        bottom_shape = bottom_descriptor(vec3f(*bottom_dims[0:3]), bottom_dims[3])
+    else:
+        bottom_shape = bottom_descriptor(*bottom_dims)
+    if top_type == ShapeType.PLANE:
+        top_shape = top_descriptor(vec3f(*top_dims[0:3]), top_dims[3])
+    else:
+        top_shape = top_descriptor(*top_dims)
+
+    # Create model builder and add corresponding bodies and their collision geometries
+    builder: ModelBuilder = ModelBuilder(default_world=True)
+    bid0 = builder.add_rigid_body(
+        name="bottom_" + bottom,
+        m_i=1.0,
+        i_I_i=mat33f(np.eye(3, dtype=np.float32)),
+        q_i_0=transformf(r_b, q_b),
+    )
+    bid1 = builder.add_rigid_body(
+        name="top_" + top,
+        m_i=1.0,
+        i_I_i=mat33f(np.eye(3, dtype=np.float32)),
+        q_i_0=transformf(r_t, q_t),
+    )
+    builder.add_collision_geometry(body=bid0, name="bottom_" + bottom, shape=bottom_shape)
+    builder.add_collision_geometry(body=bid1, name="top_" + top, shape=top_shape)
+
+    # Optionally add a ground geom below the bottom shape
+    if ground_box or ground_plane:
+        if ground_z is not None:
+            z_g_offset = ground_z
+        else:
+            z_g_offset = float(get_shape_bottom_position(r_b, bottom_shape).z - r_dz.z)
+        if ground_box:
+            add_ground_geom(builder, z_offset=z_g_offset)
+        if ground_plane:
+            add_ground_plane(builder, z_offset=z_g_offset)
+
+    # Debug output
+    msg.debug(
+        "[%s]:\nBODIES:\n%s\nGEOMS:\n%s\n",
+        shapes,
+        builder.bodies,
+        builder.collision_geoms,
+    )
+
+    # Return the constructed builder
+    return builder
+
+
+def make_shape_pairs_builder(
+    shape_pairs: list[tuple[str, str]],
+    per_shape_pair_args: dict | None = None,
+    distance: float | None = None,
+    ground_box: bool = False,
+    ground_plane: bool = False,
+    ground_z: float | None = None,
+) -> ModelBuilder:
+    """
+    Generates a builder containing a world for each specified shape combination.
+
+    Args:
+        shape_pairs (list[tuple[str, str]]):
+            A list of tuples specifying the names of the bottom and top shapes
+            for each combination (e.g., [("box", "sphere"), ("cylinder", "cone")]).
+        **kwargs:
+            Additional keyword arguments to be passed to `make_single_shape_pair_builder`.
+    Returns:
+        ModelBuilder
+            A ModelBuilder containing a world for each specified shape combination.
+    """
+    # Create an empty ModelBuilder to hold all shape pair worlds
+    builder = ModelBuilder(default_world=False)
+
+    # Iterate over each shape pair and add its builder to the main builder
+    for shapes in shape_pairs:
+        # Set shape-pair-specific arguments if provided
+        if per_shape_pair_args is not None:
+            # Check if per_shape_pair_args contains arguments for this shape pair
+            shape_pair_args = per_shape_pair_args.get(shapes, {})
+        else:
+            shape_pair_args = {}
+
+        # Override distance if specified
+        if distance is not None:
+            shape_pair_args["distance"] = distance
+
+        # Create the single shape pair builder and add it to the main builder
+        single_pair_builder = make_single_shape_pair_builder(
+            shapes, ground_box=ground_box, ground_plane=ground_plane, ground_z=ground_z, **shape_pair_args
+        )
+        builder.add_builder(single_pair_builder)
+
+    # Return the combined builder
+    return builder
 
 
 ###

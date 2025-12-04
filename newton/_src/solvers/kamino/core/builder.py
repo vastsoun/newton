@@ -282,7 +282,7 @@ class ModelBuilder:
         m_i: float,
         i_I_i: mat33f,
         q_i_0: transformf,
-        u_i_0: vec6f,
+        u_i_0: vec6f | None = None,
         name: str | None = None,
         uid: str | None = None,
         world_index: int = 0,
@@ -313,7 +313,7 @@ class ModelBuilder:
             m_i=m_i,
             i_I_i=i_I_i,
             q_i_0=q_i_0,
-            u_i_0=u_i_0,
+            u_i_0=u_i_0 if u_i_0 is not None else vec6f(0.0),
         )
 
         # Add the body descriptor to the model

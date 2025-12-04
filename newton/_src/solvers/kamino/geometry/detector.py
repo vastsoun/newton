@@ -321,7 +321,6 @@ class CollisionDetector:
                     self._primitive_pipeline = CollisionPipelinePrimitive(
                         device=self._device,
                         builder=builder,
-                        broadphase=self._settings.broadphase,
                         bvtype=self._settings.bvtype,
                         default_margin=self._settings.default_contact_margin,
                     )

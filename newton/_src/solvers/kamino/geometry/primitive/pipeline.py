@@ -23,7 +23,6 @@ geometry pairs and a narrow-phase based on the primitive colliders of Newton.
 import warp as wp
 from warp.context import Devicelike
 
-from .....sim.collide_unified import BroadPhaseMode
 from ...core.builder import ModelBuilder
 from ...core.model import Model, ModelData
 from ...core.types import float32, int32, vec2i, vec6f
@@ -54,7 +53,6 @@ class CollisionPipelinePrimitive:
     def __init__(
         self,
         builder: ModelBuilder | None = None,
-        broadphase: BroadPhaseMode = BroadPhaseMode.EXPLICIT,
         bvtype: BoundingVolumeType = BoundingVolumeType.AABB,
         default_margin: float = DEFAULT_GEOM_PAIR_CONTACT_MARGIN,
         device: Devicelike = None,
@@ -71,7 +69,6 @@ class CollisionPipelinePrimitive:
         """
         # Cache pipeline settings
         self._device: Devicelike = device
-        self._broadphase: BroadPhaseMode = broadphase
         self._bvtype: BoundingVolumeType = bvtype
         self._default_margin: float = default_margin
 
@@ -167,6 +164,10 @@ class CollisionPipelinePrimitive:
             data (ModelData): The data container holding the time-varying state of the simulation.
             contacts (Contacts): Output contacts container (will be cleared and populated)
         """
+        # Ensure that the pipeline has been finalized
+        # before proceeding with actual operations
+        self._assert_finalized()
+
         # Clear all active collision candidates and contacts
         self._cdata.clear()
         contacts.clear()
@@ -190,6 +191,19 @@ class CollisionPipelinePrimitive:
     # Internals
     ###
 
+    def _assert_finalized(self):
+        """
+        Asserts that the collision detection pipeline has been finalized.
+
+        Raises:
+            RuntimeError: If the pipeline has not been finalized.
+        """
+        if self._cmodel is None or self._cdata is None or self._bvdata is None:
+            raise RuntimeError(
+                "CollisionPipelinePrimitive has not been finalized. "
+                "Please call `finalize(builder, device)` before using the pipeline."
+            )
+
     def _assert_shapes_supported(self, geom_pairs: list[tuple[int, int]], builder: ModelBuilder):
         """
         Checks whether all collision geometries in the provided builder are supported
@@ -201,8 +215,6 @@ class CollisionPipelinePrimitive:
         Raises:
             ValueError: If any unsupported shape type is found.
         """
-        print(f"geom_pairs:\n{geom_pairs}")
-
         # Iterate over each candidate geometry pair
         for gid_12 in geom_pairs:
             # Retrieve the shape types
@@ -231,7 +243,7 @@ class CollisionPipelinePrimitive:
             # Then check if the shape-pair combination is supported by the primitive narrow-phase
             shape_12_invalid = (shape_1, shape_2) not in PRIMITIVE_NARROWPHASE_SUPPORTED_SHAPE_PAIRS
             shape_21_invalid = (shape_2, shape_1) not in PRIMITIVE_NARROWPHASE_SUPPORTED_SHAPE_PAIRS
-            if shape_12_invalid or shape_21_invalid:
+            if shape_12_invalid and shape_21_invalid:
                 raise ValueError(
                     f"Builder contains shape-pair ({shape_1}, {shape_2}) with geom indices {gid_12}, "
                     "but it is currently not supported by the primitive narrow-phase."

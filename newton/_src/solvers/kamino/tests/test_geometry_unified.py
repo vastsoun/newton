@@ -51,14 +51,14 @@ nominal_expected_contacts_per_shape_pair = {
     ("cylinder", "cone"): 1,
     ("cylinder", "capsule"): 1,
     ("cylinder", "box"): 4,
-    ("cylinder", "ellipsoid"): 4,  # TODO: FIX: currently disabled due to incorrect result, should be 1 (returns 4)
+    ("cylinder", "ellipsoid"): 4,  # TODO: currently returns 4, should this be =1 ?
     ("cylinder", "plane"): 4,
     ("cone", "sphere"): 1,
     ("cone", "cylinder"): 4,
     ("cone", "cone"): 1,
     ("cone", "capsule"): 1,
     ("cone", "box"): 4,
-    ("cone", "ellipsoid"): 4,  # TODO: FIX: currently disabled due to incorrect result, should be 1 (returns 4)
+    ("cone", "ellipsoid"): 4,  # TODO: currently returns 4, should this be =1 ?
     ("cone", "plane"): 4,
     ("capsule", "cone"): 1,
     ("capsule", "capsule"): 1,
@@ -67,10 +67,10 @@ nominal_expected_contacts_per_shape_pair = {
     ("capsule", "plane"): 1,
     ("box", "cone"): 1,
     ("box", "box"): 4,
-    ("box", "ellipsoid"): 4,  # TODO: FIX: currently disabled due to incorrect result, should be 1 (returns 4)
+    ("box", "ellipsoid"): 4,  # TODO: currently returns 4, should this be =1 ?
     ("box", "plane"): 4,
     ("ellipsoid", "cone"): 1,
-    ("ellipsoid", "ellipsoid"): 4,  # TODO: FIX: currently disabled due to incorrect result, should be 1 (returns 4)
+    ("ellipsoid", "ellipsoid"): 4,  # TODO: currently returns 4, should this be =1 ?
     ("ellipsoid", "plane"): 4,
 }
 """
@@ -100,7 +100,6 @@ single edge or corner, generating only 1 contact point.
 
 
 def test_unified_pipeline(
-    testcase: unittest.TestCase,
     builder: ModelBuilder,
     expected: dict,
     max_contacts_per_pair: int = 8,
@@ -198,7 +197,6 @@ def test_unified_pipeline_on_shape_pair(
 
     # Run the narrow-phase test
     test_unified_pipeline(
-        testcase=testcase,
         builder=builder,
         expected=expected,
         margin=margin,
@@ -212,7 +210,7 @@ def test_unified_pipeline_on_shape_pair(
 ###
 
 
-class TestGeometryUnifiedPipeline(unittest.TestCase):
+class TestCollisionPipelineUnified(unittest.TestCase):
     def setUp(self):
         self.default_device = wp.get_device()
         self.verbose = False  # Set to True for verbose output
@@ -220,7 +218,6 @@ class TestGeometryUnifiedPipeline(unittest.TestCase):
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
-            print("\n")  # Add newline before test output for better readability
             msg.set_log_level(msg.LogLevel.INFO)
         else:
             msg.reset_log_level()
@@ -236,12 +233,12 @@ class TestGeometryUnifiedPipeline(unittest.TestCase):
 
     def test_00_on_specific_primitive_shape_pair(self):
         """
-        Tests the narrow-phase collision detection on a specific primitive shape pair.
+        Tests the unified collision pipeline on a specific primitive shape pair.
 
         NOTE: This is mainly for debugging purposes, where we can easily test a specific case.
         """
         if self.skip_buggy_tests:
-            self.skipTest("Skipping 'specific_primitive_shape_pair_exact' test")
+            self.skipTest("Skipping 'specific_primitive_shape_pair' test")
 
         # Define the specific shape pair to test
         shape_pair = ("cylinder", "ellipsoid")
@@ -269,10 +266,10 @@ class TestGeometryUnifiedPipeline(unittest.TestCase):
 
     def test_01_on_each_primitive_shape_pair_touching(self):
         """
-        Tests the narrow-phase collision detection for each supported primitive
+        Tests the unified collision pipeline on each supported primitive
         shape pair when placed exactly at their contact boundaries.
         """
-        msg.info("Testing narrow-phase tests with exact boundaries")
+        msg.info("Testing unified pipeline tests with exact boundaries")
         # Each shape pair in its own world with
         for shape_pair in self.supported_shape_pairs:
             # Define any special kwargs for specific shape pairs
@@ -298,10 +295,10 @@ class TestGeometryUnifiedPipeline(unittest.TestCase):
 
     def test_02_on_each_primitive_shape_pair_apart(self):
         """
-        Tests the narrow-phase collision detection for each
+        Tests the unified collision pipeline on each
         supported primitive shape pair when placed apart.
         """
-        msg.info("Testing narrow-phase tests with shapes apart")
+        msg.info("Testing unified pipeline tests with shapes apart")
         # Each shape pair in its own world with
         for shape_pair in self.supported_shape_pairs:
             test_unified_pipeline_on_shape_pair(
@@ -314,10 +311,10 @@ class TestGeometryUnifiedPipeline(unittest.TestCase):
 
     def test_03_on_each_primitive_shape_pair_apart_with_margin(self):
         """
-        Tests the narrow-phase collision detection for each supported
+        Tests the unified collision pipeline on each supported
         primitive shape pair when placed apart but with contact margin.
         """
-        msg.info("Testing narrow-phase tests with shapes apart")
+        msg.info("Testing unified pipeline tests with shapes apart")
         # Each shape pair in its own world with
         # - zero distance: (i.e., exactly touching)
         # - zero margin: no preemption of collisions
@@ -349,7 +346,7 @@ class TestGeometryUnifiedPipeline(unittest.TestCase):
 
     def test_04_sphere_on_sphere_detailed(self):
         """
-        Tests all narrow-phase output data for the case of two spheres
+        Tests all unified pipeline output data for the case of two spheres
         stacked along the vertical (z) axis, centered at the origin
         in the (x,y) plane, and slightly penetrating each other.
         """
@@ -391,9 +388,9 @@ class TestGeometryUnifiedPipeline(unittest.TestCase):
 
     def test_05_box_on_box_simple(self):
         """
-        Tests all narrow-phase output data for the case of two boxes
-        stacked along the vertical (z) axis, centered at the origin
-        in the (x,y) plane, and slightly penetrating each other.
+        Tests unified pipeline output contacts for the case of two boxes
+        stacked along the vertical (z) axis, centered at the origin in
+        the (x,y) plane, and slightly penetrating each other.
 
         This test makes the bottom box larger in the (x,y) dimensions
         to ensure that only four contact points are generated at the
@@ -440,7 +437,6 @@ class TestGeometryUnifiedPipeline(unittest.TestCase):
 
         # Run the narrow-phase test on the shape pair
         test_unified_pipeline(
-            self,
             builder=builder,
             expected=expected,
             case="box_on_box_simple",
@@ -451,11 +447,10 @@ class TestGeometryUnifiedPipeline(unittest.TestCase):
 
     def test_07_on_box_on_box_vertex_on_face(self):
         """
-        Tests the narrow-phase collision detection for a special case of
-        two boxes stacked along the vertical (z) axis, centered at the origin
-        in the (x,y) plane, and the top box rotated so two diagonally opposing corners
-        lie exactly on the Z-axis. thus the bottom corner of the top box touches the
-        top face of the bottom box at a single point, slightly penetrating each other.
+        Tests the unified pipeline on the special case of two boxes
+        stacked along the vertical (z) axis, centered at the origin
+        in the (x,y) plane, and the top box rotated so that one of
+        its lowest vertex is touching the top face of the bottom box.
         """
         # NOTE: We set to negative value to move the geoms into each other,
         # i.e. move the bottom geom upwards and the top geom downwards.
@@ -481,7 +476,6 @@ class TestGeometryUnifiedPipeline(unittest.TestCase):
 
         # Run the narrow-phase test on the shape pair
         test_unified_pipeline(
-            self,
             builder=builder,
             expected=expected,
             case="box_on_box_vertex_on_face",
@@ -492,9 +486,7 @@ class TestGeometryUnifiedPipeline(unittest.TestCase):
 
     def test_08_on_boxes_nunchaku(self):
         """
-        Tests all narrow-phase output data for the case of two spheres
-        stacked along the vertical (z) axis, centered at the origin
-        in the (x,y) plane, and slightly penetrating each other.
+        Tests the unified collision detection pipeline on the boxes_nunchaku model.
         """
         # Define expected contact data
         expected = {
@@ -507,7 +499,6 @@ class TestGeometryUnifiedPipeline(unittest.TestCase):
 
         # Run the narrow-phase test on the shape pair
         test_unified_pipeline(
-            self,
             builder=builder,
             expected=expected,
             case="boxes_nunchaku",

@@ -24,7 +24,11 @@ from warp.context import Devicelike
 from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.core.model import Model, ModelData
 from newton._src.solvers.kamino.core.types import float32, int32, vec2i, vec6f
-from newton._src.solvers.kamino.geometry.contacts import Contacts
+from newton._src.solvers.kamino.geometry.contacts import DEFAULT_GEOM_PAIR_CONTACT_MARGIN, Contacts
+from newton._src.solvers.kamino.geometry.primitive import (
+    BoundingVolumeType,
+    CollisionPipelinePrimitive,
+)
 from newton._src.solvers.kamino.geometry.primitive.broadphase import (
     PRIMITIVE_BROADPHASE_SUPPORTED_SHAPES,
     BoundingVolumesData,
@@ -284,7 +288,7 @@ def check_contacts(
     """
     Checks the contents of a Contacts container against expected values.
     """
-    # Check overall contact counts
+    # Run contact counts checks
     if "model_num_contacts" in expected:
         np.testing.assert_equal(
             actual=int(contacts.model_num_contacts.numpy()[0]),
@@ -303,19 +307,21 @@ def check_contacts(
     if num_active == 0:
         return
 
-    # Run per-contact checks
-    np.testing.assert_equal(
-        actual=contacts.wid.numpy()[:num_active],
-        desired=np.zeros((num_active,), dtype=np.int32),
-        err_msg=f"\n{header}: Failed `wid` check for `{case}`\n",
-    )
-    np.testing.assert_equal(
-        actual=contacts.cid.numpy()[:num_active],
-        desired=np.arange(num_active, dtype=np.int32),
-        err_msg=f"\n{header}: Failed `cid` check for `{case}`\n",
-    )
+    # Run per-contact assignment checks
+    if "wid" in expected:
+        np.testing.assert_equal(
+            actual=contacts.wid.numpy()[:num_active],
+            desired=np.zeros((num_active,), dtype=np.int32),
+            err_msg=f"\n{header}: Failed `wid` check for `{case}`\n",
+        )
+    if "cid" in expected:
+        np.testing.assert_equal(
+            actual=contacts.cid.numpy()[:num_active],
+            desired=np.arange(num_active, dtype=np.int32),
+            err_msg=f"\n{header}: Failed `cid` check for `{case}`\n",
+        )
 
-    # Detailed per-contact checks
+    # Run per-contact detailed checks
     if "gid_AB" in expected:
         np.testing.assert_equal(
             actual=contacts.gid_AB.numpy()[:num_active],
@@ -470,14 +476,13 @@ def test_narrowphase_on_shape_pair(
 ###
 
 
-class TestGeometryPrimitiveBroadPhase(unittest.TestCase):
+class TestPrimitiveBroadPhase(unittest.TestCase):
     def setUp(self):
         self.default_device = wp.get_device()
         self.verbose = False  # Set to True for verbose output
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
-            print("\n")  # Add newline before test output for better readability
             msg.set_log_level(msg.LogLevel.INFO)
         else:
             msg.reset_log_level()
@@ -696,14 +701,13 @@ class TestGeometryPrimitiveBroadPhase(unittest.TestCase):
         )
 
 
-class TestGeometryPrimitiveNarrowPhase(unittest.TestCase):
+class TestPrimitiveNarrowPhase(unittest.TestCase):
     def setUp(self):
         self.default_device = wp.get_device()
         self.verbose = False  # Set to True for verbose output
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
-            print("\n")  # Add newline before test output for better readability
             msg.set_log_level(msg.LogLevel.INFO)
         else:
             msg.reset_log_level()
@@ -1006,6 +1010,87 @@ class TestGeometryPrimitiveNarrowPhase(unittest.TestCase):
             device=self.default_device,
             rtol=1e-5,
             atol=1e-6,
+        )
+
+
+class TestPipelinePrimitive(unittest.TestCase):
+    def setUp(self):
+        self.default_device = wp.get_device()
+        self.verbose = False  # Set to True for verbose output
+
+        # Set debug-level logging to print verbose test output to console
+        if self.verbose:
+            msg.set_log_level(msg.LogLevel.INFO)
+        else:
+            msg.reset_log_level()
+
+    def tearDown(self):
+        self.default_device = None
+        if self.verbose:
+            msg.reset_log_level()
+
+    def test_00_make_default(self):
+        """Tests the default constructor of CollisionPipelinePrimitive."""
+        pipeline = CollisionPipelinePrimitive()
+        self.assertIsNone(pipeline._device)
+        self.assertEqual(pipeline._bvtype, BoundingVolumeType.AABB)
+        self.assertEqual(pipeline._default_margin, DEFAULT_GEOM_PAIR_CONTACT_MARGIN)
+        self.assertRaises(RuntimeError, pipeline.collide, Model(), ModelData(), Contacts())
+
+    def test_02_make_and_collide(self):
+        """
+        Tests the construction and execution
+        of the CollisionPipelinePrimitive on
+        all supported primitive shape pairs.
+        """
+        # Create a list of collidable shape pairs and their reversed versions
+        collidable_shape_pairs = list(nominal_expected_contacts_per_shape_pair.keys())
+        msg.debug("collidable_shape_pairs:\n%s\n", collidable_shape_pairs)
+
+        # Define any special kwargs for specific shape pairs
+        per_shape_pair_args = {}
+        per_shape_pair_args[("box", "box")] = {
+            # NOTE: To asses "nominal" contacts for box-box,
+            # we need to specify larger box dimensions for
+            # the bottom box to avoid contacts on edges
+            "bottom_dims": (2.0, 2.0, 1.0)
+        }
+
+        # Create a builder for all supported shape pairs
+        builder = test_builders.make_shape_pairs_builder(
+            shape_pairs=collidable_shape_pairs, per_shape_pair_args=per_shape_pair_args
+        )
+        model = builder.finalize(device=self.default_device)
+        data = model.data()
+
+        # Create a contacts container
+        num_world_geom_pairs, *_ = builder.make_collision_candidate_pairs()
+        capacity = [ngp * 8 for ngp in num_world_geom_pairs]
+        contacts = Contacts(capacity=capacity, device=self.default_device)
+        contacts.clear()
+
+        # Create the collision pipeline
+        pipeline = CollisionPipelinePrimitive(builder=builder, device=self.default_device)
+
+        # Run collision detection
+        pipeline.collide(model, data, contacts)
+
+        # Create a list of expected number of contacts per shape pair
+        expected_contacts_per_pair: list[int] = list(nominal_expected_contacts_per_shape_pair.values())
+        msg.debug("expected_contacts_per_pair:\n%s\n", expected_contacts_per_pair)
+
+        # Define expected contacts dictionary
+        expected = {
+            "model_num_contacts": sum(expected_contacts_per_pair),
+            "world_num_contacts": np.array(expected_contacts_per_pair, dtype=np.int32),
+        }
+
+        # Check results
+        check_contacts(
+            contacts,
+            expected,
+            case="all shape pairs",
+            header="pipeline primitive narrow-phase",
         )
 
 

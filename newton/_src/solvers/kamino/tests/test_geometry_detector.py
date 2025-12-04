@@ -20,176 +20,155 @@ import unittest
 import numpy as np
 import warp as wp
 
+from newton._src.solvers.kamino.geometry import (
+    BoundingVolumeType,
+    BroadPhaseMode,
+    CollisionDetector,
+    CollisionDetectorSettings,
+    CollisionPipelineType,
+)
+from newton._src.solvers.kamino.models import builders as test_builders
+from newton._src.solvers.kamino.models.utils import make_homogeneous_builder
+from newton._src.solvers.kamino.tests.test_geometry_primitive import check_contacts
+from newton._src.solvers.kamino.utils import logger as msg
+
 ###
 # Tests
 ###
 
 
-# class TestGeometryCollisionDetector(unittest.TestCase):
-#     def setUp(self):
-#         self.default_device = wp.get_device()
-#         self.verbose = False  # Set to True for detailed output
+class TestCollisionDetectorSettings(unittest.TestCase):
+    def setUp(self):
+        self.default_device = wp.get_device()
+        self.verbose = False  # Set to True for detailed output
 
-#         # Set debug-level logging to print verbose test output to console
-#         if self.verbose:
-#             msg.info("\n")  # Add newline before test output for better readability
-#             msg.set_log_level(msg.LogLevel.DEBUG)
-#         else:
-#             msg.reset_log_level()
+        # Set debug-level logging to print verbose test output to console
+        if self.verbose:
+            msg.info("\n")  # Add newline before test output for better readability
+            msg.set_log_level(msg.LogLevel.DEBUG)
+        else:
+            msg.reset_log_level()
 
-#         # Set the common build function and geometry parameters
-#         self.build_func = build_boxes_nunchaku
-#         self.num_collisions = 3  # NOTE: specialized to build_boxes_nunchaku
-#         self.num_contacts = 9  # NOTE: specialized to build_boxes_nunchaku
-#         self.max_contacts = 12  # NOTE: This is specialized to the nunchaku model
-#         msg.info(f"build_func: {self.build_func.__name__}")
-#         msg.info(f"num_collisions: {self.num_collisions}")
-#         msg.info(f"num_contacts: {self.num_contacts}")
-#         msg.info(f"max_contacts: {self.max_contacts}")
+    def tearDown(self):
+        self.default_device = None
+        if self.verbose:
+            msg.reset_log_level()
 
-#     def tearDown(self):
-#         self.default_device = None
-#         if self.verbose:
-#             msg.reset_log_level()
+    def test_00_make_default(self):
+        """Test making default collision detector settings."""
+        settings = CollisionDetectorSettings()
+        self.assertEqual(settings.pipeline, CollisionPipelineType.PRIMITIVE)
+        self.assertEqual(settings.broadphase, BroadPhaseMode.EXPLICIT)
+        self.assertEqual(settings.bvtype, BoundingVolumeType.AABB)
 
-#     def test_01_update_collision_geometry_state(self):
-#         # Create and set up a model builder
-#         builder = make_homogeneous_builder(num_worlds=3, build_fn=self.build_func)
+    def test_01_make_with_string_args(self):
+        """Test making collision detector settings with string arguments."""
+        settings = CollisionDetectorSettings(pipeline="primitive", broadphase="explicit", bvtype="aabb")
+        self.assertEqual(settings.pipeline, CollisionPipelineType.PRIMITIVE)
+        self.assertEqual(settings.broadphase, BroadPhaseMode.EXPLICIT)
+        self.assertEqual(settings.bvtype, BoundingVolumeType.AABB)
 
-#         # Finalize the model
-#         model = builder.finalize(self.default_device)
 
-#         # Create a state container
-#         state = model.data()
+class TestGeometryCollisionDetector(unittest.TestCase):
+    def setUp(self):
+        self.default_device = wp.get_device()
+        self.verbose = False  # Set to True for detailed output
 
-#         # Update the absolute poses (i.e. computed in world coordinates) of the collision geometries
-#         update_collision_geometries_state(state.bodies.q_i, model.cgeoms, state.cgeoms)
+        # Set debug-level logging to print verbose test output to console
+        if self.verbose:
+            msg.set_log_level(msg.LogLevel.INFO)
+        else:
+            msg.reset_log_level()
 
-#         # Optional verbose output
-#         msg.info("state.bodies.q_i:\n%s", state.bodies.q_i)
-#         msg.info("state.cgeoms.pose:\n%s", state.cgeoms.pose)
-#         msg.info("state.cgeoms.aabb:\n%s", state.cgeoms.aabb)
-#         msg.info("state.cgeoms.radius:\n%s", state.cgeoms.radius)
+        self.build_func = test_builders.build_boxes_nunchaku
+        self.expected_contacts = 9  # NOTE: specialized to build_boxes_nunchaku
+        msg.debug(f"build_func: {self.build_func.__name__}")
+        msg.debug(f"expected_contacts: {self.expected_contacts}")
 
-#     def test_02_nxn_broadphase(self):
-#         # Create and set up a model builder
-#         builder = make_homogeneous_builder(num_worlds=4, build_fn=self.build_func)
-#         num_worlds = builder.num_worlds
+    def tearDown(self):
+        self.default_device = None
+        if self.verbose:
+            msg.reset_log_level()
 
-#         # Finalize the model
-#         model = builder.finalize(self.default_device)
+    def test_01_primitive_pipeline(self):
+        """
+        Test the collision detector with the primitive pipeline
+        on multiple worlds containing boxes_nunchaku model.
+        """
+        # Create and set up a model builder
+        builder = make_homogeneous_builder(num_worlds=3, build_fn=self.build_func)
+        model = builder.finalize(self.default_device)
+        data = model.data()
 
-#         # Create a state container
-#         state = model.data()
+        # Create a collision detector with primitive pipeline
+        settings = CollisionDetectorSettings(
+            pipeline=CollisionPipelineType.PRIMITIVE,
+            broadphase=BroadPhaseMode.EXPLICIT,
+            bvtype=BoundingVolumeType.AABB,
+        )
+        detector = CollisionDetector(model=model, builder=builder, settings=settings)
+        self.assertIs(detector.device, self.default_device)
 
-#         # Update the state of the collision geometries
-#         update_collision_geometries_state(state.bodies.q_i, model.cgeoms, state.cgeoms)
+        # Run collision detection
+        detector.collide(model, data)
 
-#         # Create collisions container
-#         collisions = Collisions(builder=builder, device=self.default_device)
+        # Create a list of expected number of contacts per shape pair
+        expected_world_contacts: list[int] = [self.expected_contacts] * builder.num_worlds
+        msg.debug("expected_world_contacts:\n%s\n", expected_world_contacts)
 
-#         # Execute brute-force (NxN) broadphase
-#         with wp.ScopedTimer("nxn_broadphase"):
-#             nxn_broadphase(model.cgeoms, state.cgeoms, collisions.model, collisions.data)
+        # Define expected contacts dictionary
+        expected = {
+            "model_num_contacts": sum(expected_world_contacts),
+            "world_num_contacts": np.array(expected_world_contacts, dtype=np.int32),
+        }
 
-#         # Check collision output
-#         self.assertEqual(collisions.data.model_num_collisions.numpy()[0], num_worlds * self.num_collisions)
-#         for i in range(num_worlds):
-#             self.assertEqual(collisions.data.world_num_collisions.numpy()[i], self.num_collisions)
+        # Check results
+        check_contacts(
+            detector.contacts,
+            expected,
+            case="boxes_nunchaku",
+            header="primitive pipeline",
+        )
 
-#         # Optional verbose output
-#         msg.info("collisions.model.num_model_geom_pairs: %s", collisions.model.num_model_geom_pairs)
-#         msg.info("collisions.model.num_world_geom_pairs: %s", collisions.model.num_world_geom_pairs)
-#         msg.info("collisions.model.model_num_pairs: %s", collisions.model.model_num_pairs)
-#         msg.info("collisions.model.world_num_pairs: %s", collisions.model.world_num_pairs)
-#         msg.info("collisions.model.wid: %s", collisions.model.wid)
-#         msg.info("collisions.model.pairid: %s", collisions.model.pairid)
-#         msg.info("collisions.model.geom_pair:\n%s", collisions.model.geom_pair)
-#         msg.info("collisions.data.model_num_collisions: %s", collisions.data.model_num_collisions)
-#         msg.info("collisions.data.world_num_collisions: %s", collisions.data.world_num_collisions)
-#         msg.info("collisions.data.wid: %s", collisions.data.wid)
-#         msg.info("collisions.data.geom_pair:\n%s", collisions.data.geom_pair)
+    def test_02_unified_pipeline(self):
+        """
+        Test the collision detector with the unified pipeline
+        on multiple worlds containing boxes_nunchaku model.
+        """
+        # Create and set up a model builder
+        builder = make_homogeneous_builder(num_worlds=3, build_fn=self.build_func)
+        model = builder.finalize(self.default_device)
+        data = model.data()
 
-#     def test_03_primitive_narrowphase(self):
-#         # Create and set up a model builder
-#         builder = make_homogeneous_builder(num_worlds=4, build_fn=self.build_func)
-#         num_worlds = builder.num_worlds
+        # Create a collision detector with primitive pipeline
+        settings = CollisionDetectorSettings(
+            pipeline=CollisionPipelineType.UNIFIED,
+            broadphase=BroadPhaseMode.EXPLICIT,
+            bvtype=BoundingVolumeType.AABB,
+        )
+        detector = CollisionDetector(model=model, builder=builder, settings=settings)
+        self.assertIs(detector.device, self.default_device)
 
-#         # Finalize the model
-#         model = builder.finalize(self.default_device)
+        # Run collision detection
+        detector.collide(model, data)
 
-#         # Create a state container
-#         state = model.data()
+        # Create a list of expected number of contacts per shape pair
+        expected_world_contacts: list[int] = [self.expected_contacts] * builder.num_worlds
+        msg.debug("expected_world_contacts:\n%s\n", expected_world_contacts)
 
-#         # Update the state of the collision geometries
-#         update_collision_geometries_state(state.bodies.q_i, model.cgeoms, state.cgeoms)
+        # Define expected contacts dictionary
+        expected = {
+            "model_num_contacts": sum(expected_world_contacts),
+            "world_num_contacts": np.array(expected_world_contacts, dtype=np.int32),
+        }
 
-#         # Create collisions container
-#         collisions = Collisions(builder=builder, device=self.default_device)
-
-#         # Execute brute-force (NxN) broadphase
-#         nxn_broadphase(model.cgeoms, state.cgeoms, collisions.model, collisions.data)
-
-#         # Create a contacts container
-#         capacity = [self.max_contacts] * num_worlds  # Custom capacity for each world
-#         contacts = Contacts(capacity=capacity, device=self.default_device)
-
-#         # Execute narrowphase for primitive shapes
-#         with wp.ScopedTimer("primitive_narrowphase"):
-#             primitive_narrowphase(model, state, collisions, contacts)
-
-#         # Optional verbose output
-#         msg.info("contacts.num_model_max_contacts: %s", contacts.data.num_model_max_contacts)
-#         msg.info("contacts.num_world_max_contacts: %s", contacts.data.num_world_max_contacts)
-#         msg.info("contacts.model_max_contacts: %s", contacts.data.model_max_contacts)
-#         msg.info("contacts.model_num_contacts: %s", contacts.data.model_num_contacts)
-#         msg.info("contacts.world_max_contacts: %s", contacts.data.world_max_contacts)
-#         msg.info("contacts.world_num_contacts: %s", contacts.data.world_num_contacts)
-#         msg.info("contacts.wid: %s", contacts.data.wid)
-#         msg.info("contacts.cid: %s", contacts.data.cid)
-#         msg.info("contacts.gid_AB:\n%s", contacts.data.gid_AB)
-#         msg.info("contacts.bid_AB:\n%s", contacts.data.bid_AB)
-#         msg.info("contacts.position_A:\n%s", contacts.data.position_A)
-#         msg.info("contacts.position_B:\n%s", contacts.data.position_B)
-#         msg.info("contacts.gapfunc:\n%s", contacts.data.gapfunc)
-#         msg.info("contacts.frame:\n%s", contacts.data.frame)
-#         msg.info("contacts.material:\n%s", contacts.data.material)
-
-#     def test_04_collision_detector(self):
-#         # Create and set up a model builder
-#         builder = make_homogeneous_builder(num_worlds=10, build_fn=self.build_func)
-
-#         # Finalize the model
-#         model = builder.finalize(self.default_device)
-
-#         # Create a state container
-#         state = model.data()
-
-#         # Create a collision detector
-#         detector = CollisionDetector(
-#             builder=builder, default_max_contacts=self.max_contacts, device=self.default_device
-#         )
-
-#         # Peroform collision detection
-#         with wp.ScopedTimer("detector.collide"):
-#             detector.collide(model, state)
-
-#         # Optional verbose output
-#         msg.info("detector.contacts.num_model_max_contacts: %s", detector.contacts.data.num_model_max_contacts)
-#         msg.info("detector.contacts.num_world_max_contacts: %s", detector.contacts.data.num_world_max_contacts)
-#         msg.info("detector.contacts.model_max_contacts: %s", detector.contacts.data.model_max_contacts)
-#         msg.info("detector.contacts.model_num_contacts: %s", detector.contacts.data.model_num_contacts)
-#         msg.info("detector.contacts.world_max_contacts: %s", detector.contacts.data.world_max_contacts)
-#         msg.info("detector.contacts.world_num_contacts: %s", detector.contacts.data.world_num_contacts)
-#         msg.info("detector.contacts.wid: %s", detector.contacts.data.wid)
-#         msg.info("detector.contacts.cid: %s", detector.contacts.data.cid)
-#         msg.info("detector.contacts.gid_AB:\n%s", detector.contacts.data.gid_AB)
-#         msg.info("detector.contacts.bid_AB:\n%s", detector.contacts.data.bid_AB)
-#         msg.info("detector.contacts.position_A:\n%s", detector.contacts.data.position_A)
-#         msg.info("detector.contacts.position_B:\n%s", detector.contacts.data.position_B)
-#         msg.info("detector.contacts.gapfunc:\n%s", detector.contacts.data.gapfunc)
-#         msg.info("detector.contacts.frame:\n%s", detector.contacts.data.frame)
-#         msg.info("detector.contacts.material:\n%s", detector.contacts.data.material)
+        # Check results
+        check_contacts(
+            detector.contacts,
+            expected,
+            case="boxes_nunchaku",
+            header="primitive pipeline",
+        )
 
 
 ###
@@ -198,11 +177,12 @@ import warp as wp
 
 if __name__ == "__main__":
     # Global numpy configurations
-    np.set_printoptions(linewidth=500, precision=10, suppress=True)  # Suppress scientific notation
+    np.set_printoptions(linewidth=20000, threshold=20000, precision=10, suppress=True)
 
     # Global warp configurations
-    wp.config.enable_backward = False
     wp.config.verbose = False
+    wp.config.verify_fp = False
+    wp.config.verify_cuda = False
     wp.clear_kernel_cache()
     wp.clear_lto_cache()
 

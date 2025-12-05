@@ -14,10 +14,9 @@
 # limitations under the License.
 
 """
-KAMINO: Interial Properties
+Provides functions to compute moments
+of inertia for solid geometric bodies.
 """
-
-from __future__ import annotations
 
 from .types import mat33f
 

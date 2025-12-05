@@ -23,7 +23,6 @@ from warp.context import Devicelike
 from .bodies import RigidBodiesData, RigidBodiesModel
 from .control import Control
 from .geometry import (
-    CollisionGeometriesData,
     CollisionGeometriesModel,
     GeometriesData,
     GeometriesModel,
@@ -33,7 +32,7 @@ from .joints import JointsData, JointsModel
 from .materials import MaterialPairsModel
 from .state import State
 from .time import TimeData, TimeModel
-from .types import float32, int32, mat33f, mat83f, transformf, vec6f
+from .types import float32, int32, mat33f, transformf, vec6f
 from .world import WorldDescriptor
 
 ###
@@ -802,8 +801,8 @@ class ModelData:
     constraint residuals and reactions, and generalized (DoF) quantities.
     """
 
-    cgeoms: CollisionGeometriesData | None = None
-    """States of collision geometries in the model: poses, AABBs etc. computed in world coordinates."""
+    cgeoms: GeometriesData | None = None
+    """States of collision geometries in the model: poses computed in world coordinates."""
 
     pgeoms: GeometriesData | None = None
     """States of physical geometries in the model: poses computed in world coordinates."""
@@ -979,11 +978,9 @@ class Model:
             )
 
             # Construct the collision geometries state from the model's initial state
-            cgeoms = CollisionGeometriesData(
+            cgeoms = GeometriesData(
                 num_geoms=ncg,
                 pose=wp.zeros(shape=ncg, dtype=transformf, requires_grad=requires_grad),
-                aabb=wp.zeros(shape=ncg, dtype=mat83f, requires_grad=requires_grad),
-                radius=wp.zeros(shape=ncg, dtype=float32, requires_grad=requires_grad),
             )
 
             # Construct the physical geometries state from the model's initial state

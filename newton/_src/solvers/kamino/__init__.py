@@ -25,7 +25,6 @@ from .core.control import (
     Control,
 )
 from .core.geometry import (
-    CollisionGeometriesData,
     CollisionGeometriesModel,
     CollisionGeometryDescriptor,
     GeometriesData,
@@ -125,14 +124,17 @@ from .dynamics.dual import (
     DualProblem,
     DualProblemData,
 )
-from .geometry.collisions import Collisions, CollisionsData, CollisionsModel
 from .geometry.contacts import (
     Contacts,
     ContactsData,
 )
 from .geometry.detector import (
     CollisionDetector,
+    CollisionDetectorSettings,
+    CollisionPipelineType,
 )
+from .geometry.primitive import BoundingVolumeType, CollisionPipelinePrimitive
+from .geometry.unified import BroadPhaseMode, CollisionPipelineUnifiedKamino
 from .kinematics.jacobians import (
     DenseSystemJacobians,
     DenseSystemJacobiansData,
@@ -159,12 +161,18 @@ __all__ = [
     "GRAVITY_DIREC_DEFAULT",
     "GRAVITY_NAME_DEFAULT",
     "ArrayLike",
+    "BoundingVolumeType",
     "BoxShape",
+    "BroadPhaseMode",
     "CapsuleShape",
     "CollisionDetector",
+    "CollisionDetectorSettings",
     "CollisionGeometriesData",
     "CollisionGeometriesModel",
     "CollisionGeometryDescriptor",
+    "CollisionPipelinePrimitive",
+    "CollisionPipelineType",
+    "CollisionPipelineUnifiedKamino",
     "Collisions",
     "CollisionsData",
     "CollisionsModel",

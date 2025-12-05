@@ -41,6 +41,7 @@ from ..core.types import (
     vec6f,
     vec7f,
 )
+from ..utils import logger as msg
 
 ###
 # Module interface
@@ -561,12 +562,31 @@ class Limits:
         # The device on which to allocate the limits data
         self._device = device
 
-        # Declare and initialize the time-varying data container
-        self._data: LimitsData | None = None
+        # Declare the joint-limits data container and initialize it to empty
+        self._data: LimitsData = LimitsData()
 
         # Perform memory allocation if max_limits is specified
         if builder is not None:
-            self.allocate(builder=builder, device=device)
+            self.finalize(builder=builder, device=device)
+
+    ###
+    # Properties
+    ###
+
+    @property
+    def device(self) -> Devicelike:
+        """
+        Returns the device on which the limits data is allocated.
+        """
+        return self._device
+
+    @property
+    def data(self) -> LimitsData | None:
+        """
+        Returns the managed limits data container.
+        """
+        self._assert_has_data()
+        return self._data
 
     @property
     def num_model_max_limits(self) -> int:
@@ -583,14 +603,6 @@ class Limits:
         """
         self._assert_has_data()
         return self._data.num_world_max_limits
-
-    @property
-    def data(self) -> LimitsData:
-        """
-        The time-varying limits data container.
-        """
-        self._assert_has_data()
-        return self._data
 
     @property
     def model_max_limits(self) -> wp.array:
@@ -701,7 +713,11 @@ class Limits:
         self._assert_has_data()
         return self._data.r_tau
 
-    def allocate(self, builder: ModelBuilder, device: Devicelike = None):
+    ###
+    # Operations
+    ###
+
+    def finalize(self, builder: ModelBuilder, device: Devicelike = None):
         # Ensure the builder is valid
         if builder is None:
             raise ValueError("Limits: builder must be specified for allocation (got None)")
@@ -720,6 +736,11 @@ class Limits:
                     model_max_limits += 1
                     world_max_limits[joint.wid] += 1
                 # TODO: handle generalized velocity and force limits (?)
+
+        # Skip allocation if there are no limits to allocate
+        if model_max_limits == 0:
+            msg.debug("Limits: Skipping joint-limit data allocations since total requested capacity was `0`.")
+            return
 
         # Override the device if specified
         if device is not None:
@@ -749,6 +770,9 @@ class Limits:
         """
         Clears the active limits count.
         """
+        # TODO: Fix this check once limits are reworked to support zero-allocation
+        if self._data is None or self._data.num_model_max_limits <= 0:
+            return
         self._data.model_num_limits.zero_()
         self._data.world_num_limits.zero_()
 
@@ -756,6 +780,9 @@ class Limits:
         """
         Resets the limits data to zero.
         """
+        # TODO: Fix this check once limits are reworked to support zero-allocation
+        if self._data is None or self._data.num_model_max_limits <= 0:
+            return
         self._data.model_num_limits.zero_()
         self._data.world_num_limits.zero_()
         self._data.wid.zero_()
@@ -780,6 +807,10 @@ class Limits:
             model (Model): The model to detect limits for.
             state (ModelData): The current state of the model.
         """
+        # Skip this operation if no contacts data has been allocated
+        if self._data is None or self._data.num_model_max_limits <= 0:
+            return
+
         # Ensure the model and state are valid
         if model is None:
             raise ValueError("Limits: model must be specified for detection (got None)")
@@ -789,10 +820,6 @@ class Limits:
             raise ValueError("Limits: data must be specified for detection (got None)")
         elif not isinstance(data, ModelData):
             raise TypeError("Limits: data must be an instance of ModelData")
-
-        # Ensure the limits data is allocated
-        if self._data.model_max_limits is None:
-            raise ValueError("Limits: data must be allocated before detection (got None)")
 
         # Ensure the limits data is allocated on the same device as the model
         if self._device is not None and self._device != model.device:
@@ -832,6 +859,10 @@ class Limits:
                 self._data.r_q,
             ],
         )
+
+    ###
+    # Internals
+    ###
 
     def _assert_has_data(self):
         """

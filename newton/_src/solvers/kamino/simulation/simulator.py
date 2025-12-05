@@ -35,8 +35,11 @@ from ..dynamics.wrenches import (
     compute_constraint_body_wrenches,
     compute_joint_dof_body_wrenches,
 )
-from ..geometry.contacts import Contacts
-from ..geometry.detector import CollisionDetector
+from ..geometry import (
+    CollisionDetector,
+    CollisionDetectorSettings,
+    Contacts,
+)
 from ..integrators.euler import integrate_semi_implicit_euler
 from ..kinematics.constraints import make_unilateral_constraints_info, update_constraints_info
 from ..kinematics.jacobians import DenseSystemJacobians
@@ -78,6 +81,9 @@ class SimulatorSettings:
 
     dt: float = 0.001
     """The time-step to be used for the simulation."""
+
+    collision_detector: CollisionDetectorSettings = field(default_factory=CollisionDetectorSettings)
+    """The settings for the collision detector."""
 
     problem: DualProblemSettings = field(default_factory=DualProblemSettings)
     """The settings for the dynamics problem."""
@@ -224,20 +230,29 @@ class Simulator:
         # Cache the target device use for the simulation
         self._device: Devicelike = device
 
-        # Joint Limits
-        self._limits = Limits(builder=builder, device=self._device)
-
-        # Collision Detection
-        self._collision_detector = CollisionDetector(builder=builder, device=self._device)
-
-        # Model
+        # Finalize the model from the builder on the specified
+        # device, allocating all necessary model data structures
         self._model = builder.finalize(device=self._device)
 
         # Configure model time-steps
         self._model.time.set_uniform_timestep(self._settings.dt)
 
-        # Allocate system data on the device
+        # Allocate time-varying simulation data
         self._data = SimulatorData(model=self._model, device=self._device)
+
+        # Allocate a joint-limits interface
+        self._limits = Limits(builder=builder, device=self._device)
+
+        # Allocate collision detection and contacts interface
+        self._collision_detector = CollisionDetector(
+            builder=builder,
+            model=self._model,
+            device=self._device,
+            settings=self._settings.collision_detector,
+        )
+
+        # Capture a reference to the contacts manager
+        self._contacts = self._collision_detector.contacts
 
         # Construct the unilateral constraints members in the model info
         make_unilateral_constraints_info(
@@ -248,7 +263,7 @@ class Simulator:
         self._jacobians = DenseSystemJacobians(
             model=self._model,
             limits=self._limits,
-            contacts=self._collision_detector.contacts,
+            contacts=self._contacts,
             device=self._device,
         )
 
@@ -257,7 +272,7 @@ class Simulator:
             model=self._model,
             data=self._data.solver,
             limits=self._limits,
-            contacts=self._collision_detector.contacts,
+            contacts=self._contacts,
             solver=settings.linear_solver_type,
             settings=settings.problem,
             device=self._device,
@@ -267,7 +282,7 @@ class Simulator:
         self._fd_solver = PADMMSolver(
             model=self._model,
             limits=self._limits,
-            contacts=self._collision_detector.contacts,
+            contacts=self._contacts,
             settings=settings.solver,
             use_acceleration=settings.use_solver_acceleration,
             collect_info=settings.collect_solver_info,
@@ -394,7 +409,7 @@ class Simulator:
         """
         Returns the contact manager.
         """
-        return self._collision_detector.contacts
+        return self._contacts
 
     @property
     def collision_detector(self) -> CollisionDetector:

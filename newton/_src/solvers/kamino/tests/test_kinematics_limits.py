@@ -28,8 +28,8 @@ from newton._src.solvers.kamino.core.model import Model, ModelData
 from newton._src.solvers.kamino.core.types import float32, int32, mat33f, transformf, vec3f, vec6f
 from newton._src.solvers.kamino.kinematics.joints import compute_joints_data
 from newton._src.solvers.kamino.kinematics.limits import Limits
-from newton._src.solvers.kamino.models import builders
-from newton._src.solvers.kamino.models.utils import make_homogeneous_builder
+from newton._src.solvers.kamino.models.builders import basics, testing
+from newton._src.solvers.kamino.models.builders.utils import make_homogeneous_builder
 from newton._src.solvers.kamino.utils import logger as msg
 
 ###
@@ -184,7 +184,7 @@ class TestKinematicsLimits(unittest.TestCase):
         Tests the allocation of a Limits container.
         """
         # Construct the model description using the ModelBuilder
-        builder = make_homogeneous_builder(num_worlds=3, build_fn=builders.build_boxes_fourbar)
+        builder = make_homogeneous_builder(num_worlds=3, build_fn=basics.build_boxes_fourbar)
 
         # Create a Limits container
         limits = Limits(builder=builder, device=self.default_device)
@@ -233,7 +233,7 @@ class TestKinematicsLimits(unittest.TestCase):
 
     def test_02_check_revolute_joint(self):
         # Construct the model description using the ModelBuilder
-        builder = make_homogeneous_builder(num_worlds=4, build_fn=builders.build_unary_revolute_joint_test)
+        builder = make_homogeneous_builder(num_worlds=4, build_fn=testing.build_unary_revolute_joint_test)
         num_worlds = builder.num_worlds
 
         # Create the model and state

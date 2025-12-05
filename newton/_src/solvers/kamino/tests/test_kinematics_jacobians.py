@@ -34,11 +34,8 @@ from newton._src.solvers.kamino.kinematics.constraints import make_unilateral_co
 from newton._src.solvers.kamino.kinematics.jacobians import DenseSystemJacobians
 from newton._src.solvers.kamino.kinematics.joints import compute_joints_data
 from newton._src.solvers.kamino.kinematics.limits import Limits
-from newton._src.solvers.kamino.models.builders import build_boxes_fourbar
-from newton._src.solvers.kamino.models.utils import (
-    make_heterogeneous_builder,
-    make_homogeneous_builder,
-)
+from newton._src.solvers.kamino.models.builders.basics import build_boxes_fourbar, make_basics_heterogeneous_builder
+from newton._src.solvers.kamino.models.builders.utils import make_homogeneous_builder
 
 # Test utilities
 from newton._src.solvers.kamino.tests.utils.print import (
@@ -283,14 +280,10 @@ class TestKinematicsJacobians(unittest.TestCase):
         # Create the Jacobians container
         jacobians = DenseSystemJacobians(model=model, device=self.default_device)
         if self.verbose:
-            print(
-                f"jacobians.data.J_cts_offsets (shape={jacobians.data.J_cts_offsets.shape}): {jacobians.data.J_cts_offsets}"
-            )
-            print(
-                f"jacobians.data.J_dofs_offsets (shape={jacobians.data.J_dofs_offsets.shape}): {jacobians.data.J_dofs_offsets}"
-            )
-            print(f"jacobians.data.J_cts_data: shape={jacobians.data.J_cts_data.shape}")
-            print(f"jacobians.data.J_dofs_data: shape={jacobians.data.J_dofs_data.shape}")
+            print(f"J_cts_offsets (shape={jacobians.data.J_cts_offsets.shape}): {jacobians.data.J_cts_offsets}")
+            print(f"J_dofs_offsets (shape={jacobians.data.J_dofs_offsets.shape}): {jacobians.data.J_dofs_offsets}")
+            print(f"J_cts_data: shape={jacobians.data.J_cts_data.shape}")
+            print(f"J_dofs_data: shape={jacobians.data.J_dofs_data.shape}")
 
         # Check the allocations of Jacobians
         model_num_cts = model.size.sum_of_num_joint_cts
@@ -325,14 +318,10 @@ class TestKinematicsJacobians(unittest.TestCase):
         # Create the Jacobians container
         jacobians = DenseSystemJacobians(model=model, limits=limits, device=self.default_device)
         if self.verbose:
-            print(
-                f"jacobians.data.J_dofs_offsets (shape={jacobians.data.J_dofs_offsets.shape}): {jacobians.data.J_dofs_offsets}"
-            )
-            print(
-                f"jacobians.data.J_cts_offsets (shape={jacobians.data.J_cts_offsets.shape}): {jacobians.data.J_cts_offsets}"
-            )
-            print(f"jacobians.data.J_dofs_data: shape={jacobians.data.J_dofs_data.shape}")
-            print(f"jacobians.data.J_cts_data: shape={jacobians.data.J_cts_data.shape}")
+            print(f"J_dofs_offsets (shape={jacobians.data.J_dofs_offsets.shape}): {jacobians.data.J_dofs_offsets}")
+            print(f"J_cts_offsets (shape={jacobians.data.J_cts_offsets.shape}): {jacobians.data.J_cts_offsets}")
+            print(f"J_dofs_data: shape={jacobians.data.J_dofs_data.shape}")
+            print(f"J_cts_data: shape={jacobians.data.J_cts_data.shape}")
 
         # Check the allocations of Jacobians
         model_num_cts = model.size.sum_of_num_joint_cts + limits.num_model_max_limits
@@ -376,14 +365,10 @@ class TestKinematicsJacobians(unittest.TestCase):
         # Create the Jacobians container
         jacobians = DenseSystemJacobians(model=model, contacts=contacts, device=self.default_device)
         if self.verbose:
-            print(
-                f"jacobians.data.J_dofs_offsets (shape={jacobians.data.J_dofs_offsets.shape}): {jacobians.data.J_dofs_offsets}"
-            )
-            print(
-                f"jacobians.data.J_cts_offsets (shape={jacobians.data.J_cts_offsets.shape}): {jacobians.data.J_cts_offsets}"
-            )
-            print(f"jacobians.data.J_dofs_data: shape={jacobians.data.J_dofs_data.shape}")
-            print(f"jacobians.data.J_cts_data: shape={jacobians.data.J_cts_data.shape}")
+            print(f"J_dofs_offsets (shape={jacobians.data.J_dofs_offsets.shape}): {jacobians.data.J_dofs_offsets}")
+            print(f"J_cts_offsets (shape={jacobians.data.J_cts_offsets.shape}): {jacobians.data.J_cts_offsets}")
+            print(f"J_dofs_data: shape={jacobians.data.J_dofs_data.shape}")
+            print(f"J_cts_data: shape={jacobians.data.J_cts_data.shape}")
 
         # Check the allocations of Jacobians
         model_num_cts = model.size.sum_of_num_joint_cts + 3 * contacts.num_model_max_contacts
@@ -433,14 +418,10 @@ class TestKinematicsJacobians(unittest.TestCase):
         # Create the Jacobians container
         jacobians = DenseSystemJacobians(model=model, limits=limits, contacts=contacts, device=self.default_device)
         if self.verbose:
-            print(
-                f"jacobians.data.J_dofs_offsets (shape={jacobians.data.J_dofs_offsets.shape}): {jacobians.data.J_dofs_offsets}"
-            )
-            print(
-                f"jacobians.data.J_cts_offsets (shape={jacobians.data.J_cts_offsets.shape}): {jacobians.data.J_cts_offsets}"
-            )
-            print(f"jacobians.data.J_dofs_data: shape={jacobians.data.J_dofs_data.shape}")
-            print(f"jacobians.data.J_cts_data: shape={jacobians.data.J_cts_data.shape}")
+            print(f"J_dofs_offsets (shape={jacobians.data.J_dofs_offsets.shape}): {jacobians.data.J_dofs_offsets}")
+            print(f"J_cts_offsets (shape={jacobians.data.J_cts_offsets.shape}): {jacobians.data.J_cts_offsets}")
+            print(f"J_dofs_data: shape={jacobians.data.J_dofs_data.shape}")
+            print(f"J_cts_data: shape={jacobians.data.J_cts_data.shape}")
 
         # Check the allocations of Jacobians
         model_num_cts = (
@@ -494,14 +475,10 @@ class TestKinematicsJacobians(unittest.TestCase):
         # Create the Jacobians container
         jacobians = DenseSystemJacobians(model=model, limits=limits, contacts=contacts, device=self.default_device)
         if self.verbose:
-            print(
-                f"jacobians.data.J_dofs_offsets (shape={jacobians.data.J_dofs_offsets.shape}): {jacobians.data.J_dofs_offsets}"
-            )
-            print(
-                f"jacobians.data.J_cts_offsets (shape={jacobians.data.J_cts_offsets.shape}): {jacobians.data.J_cts_offsets}"
-            )
-            print(f"jacobians.data.J_dofs_data: shape={jacobians.data.J_dofs_data.shape}")
-            print(f"jacobians.data.J_cts_data: shape={jacobians.data.J_cts_data.shape}")
+            print(f"J_dofs_offsets (shape={jacobians.data.J_dofs_offsets.shape}): {jacobians.data.J_dofs_offsets}")
+            print(f"J_cts_offsets (shape={jacobians.data.J_cts_offsets.shape}): {jacobians.data.J_cts_offsets}")
+            print(f"J_dofs_data: shape={jacobians.data.J_dofs_data.shape}")
+            print(f"J_cts_data: shape={jacobians.data.J_cts_data.shape}")
 
         # Compute the total maximum number of constraints
         num_body_dofs = [model.worlds[w].num_body_dofs for w in range(num_worlds)]
@@ -542,7 +519,7 @@ class TestKinematicsJacobians(unittest.TestCase):
         max_world_contacts = 12
 
         # Construct the model description using the ModelBuilder
-        builder = make_heterogeneous_builder()
+        builder = make_basics_heterogeneous_builder()
         num_worlds = builder.num_worlds
 
         # Create the model from the builder
@@ -575,14 +552,10 @@ class TestKinematicsJacobians(unittest.TestCase):
         # Create the Jacobians container
         jacobians = DenseSystemJacobians(model=model, limits=limits, contacts=contacts, device=self.default_device)
         if self.verbose:
-            print(
-                f"jacobians.data.J_dofs_offsets (shape={jacobians.data.J_dofs_offsets.shape}): {jacobians.data.J_dofs_offsets}"
-            )
-            print(
-                f"jacobians.data.J_cts_offsets (shape={jacobians.data.J_cts_offsets.shape}): {jacobians.data.J_cts_offsets}"
-            )
-            print(f"jacobians.data.J_dofs_data: shape={jacobians.data.J_dofs_data.shape}")
-            print(f"jacobians.data.J_cts_data: shape={jacobians.data.J_cts_data.shape}")
+            print(f"J_dofs_offsets (shape={jacobians.data.J_dofs_offsets.shape}): {jacobians.data.J_dofs_offsets}")
+            print(f"J_cts_offsets (shape={jacobians.data.J_cts_offsets.shape}): {jacobians.data.J_cts_offsets}")
+            print(f"J_dofs_data: shape={jacobians.data.J_dofs_data.shape}")
+            print(f"J_cts_data: shape={jacobians.data.J_cts_data.shape}")
 
         # Compute the total maximum number of constraints
         num_body_dofs = [model.worlds[w].num_body_dofs for w in range(num_worlds)]
@@ -724,14 +697,10 @@ class TestKinematicsJacobians(unittest.TestCase):
 
         # Optional verbose output
         if self.verbose:
-            print(
-                f"jacobians.data.J_cts_offsets (shape={jacobians.data.J_cts_offsets.shape}): {jacobians.data.J_cts_offsets}"
-            )
+            print(f"J_cts_offsets (shape={jacobians.data.J_cts_offsets.shape}): {jacobians.data.J_cts_offsets}")
             print(f"J_cts_flat (shape={J_cts_flat.shape}):\n{J_cts_flat}")
             print(f"J_cts_mat (shape={J_cts_mat.shape}):\n{J_cts_mat}")
-            print(
-                f"jacobians.data.J_dofs_offsets (shape={jacobians.data.J_dofs_offsets.shape}): {jacobians.data.J_dofs_offsets}"
-            )
+            print(f"J_dofs_offsets (shape={jacobians.data.J_dofs_offsets.shape}): {jacobians.data.J_dofs_offsets}")
             print(f"J_dofs_flat (shape={J_dofs_flat.shape}):\n{J_dofs_flat}")
             print(f"J_dofs_mat (shape={J_dofs_mat.shape}):\n{J_dofs_mat}")
 
@@ -829,7 +798,7 @@ class TestKinematicsJacobians(unittest.TestCase):
         max_world_contacts = 12
 
         # Construct the model description using the ModelBuilder
-        builder = make_heterogeneous_builder()
+        builder = make_basics_heterogeneous_builder()
 
         # Create the model from the builder
         model = builder.finalize(device=self.default_device)

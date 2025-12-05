@@ -43,7 +43,7 @@ from newton._src.solvers.kamino.geometry.primitive.narrowphase import (
     PRIMITIVE_NARROWPHASE_SUPPORTED_SHAPE_PAIRS,
     primitive_narrowphase,
 )
-from newton._src.solvers.kamino.models import builders as test_builders
+from newton._src.solvers.kamino.models.builders import basics, testing
 from newton._src.solvers.kamino.utils import logger as msg
 
 ###
@@ -262,7 +262,7 @@ def test_broadphase_on_single_pair(
     Tests a primitive broad-phase backend on a single shape pair.
     """
     # Create a test model builder, model, and data
-    builder = test_builders.make_single_shape_pair_builder(shapes=shape_pair, distance=distance)
+    builder = testing.make_single_shape_pair_builder(shapes=shape_pair, distance=distance)
 
     # Run the broad-phase test
     test_broadphase(
@@ -452,7 +452,7 @@ def test_narrowphase_on_shape_pair(
         builder_kwargs = {}
 
     # Create a builder for the specified shape pair
-    builder = test_builders.make_single_shape_pair_builder(shapes=shape_pair, distance=distance, **builder_kwargs)
+    builder = testing.make_single_shape_pair_builder(shapes=shape_pair, distance=distance, **builder_kwargs)
 
     # Define expected contacts dictionary
     expected = {
@@ -570,7 +570,7 @@ class TestPrimitiveBroadPhase(unittest.TestCase):
         # - zero distance: (i.e., exactly touching)
         # - zero margin: no preemption of collisions
         msg.info("[BS]: testing broadphase with overlapping shapes on all shape pairs")
-        builder = test_builders.make_shape_pairs_builder(
+        builder = testing.make_shape_pairs_builder(
             shape_pairs=self.supported_shape_pairs,
             distance=0.0,
         )
@@ -654,7 +654,7 @@ class TestPrimitiveBroadPhase(unittest.TestCase):
         # - zero distance: (i.e., exactly touching)
         # - zero margin: no preemption of collisions
         msg.info("[AABB]: testing broadphase with overlapping shapes on all shape pairs")
-        builder = test_builders.make_shape_pairs_builder(
+        builder = testing.make_shape_pairs_builder(
             shape_pairs=self.supported_shape_pairs,
             distance=0.0,
         )
@@ -672,7 +672,7 @@ class TestPrimitiveBroadPhase(unittest.TestCase):
 
     def test_11_bspheres_on_boxes_nunchaku(self):
         msg.info("[BS]: testing broadphase on `boxes_nunchaku`")
-        builder = test_builders.build_boxes_nunchaku()
+        builder = basics.build_boxes_nunchaku()
         test_broadphase(
             self,
             builder=builder,
@@ -687,7 +687,7 @@ class TestPrimitiveBroadPhase(unittest.TestCase):
 
     def test_12_aabbs_on_boxes_nunchaku(self):
         msg.info("[AABB]: testing broadphase on `boxes_nunchaku`")
-        builder = test_builders.build_boxes_nunchaku()
+        builder = basics.build_boxes_nunchaku()
         test_broadphase(
             self,
             builder=builder,
@@ -834,7 +834,7 @@ class TestPrimitiveNarrowPhase(unittest.TestCase):
         }
 
         # Create a builder for the specified shape pair
-        builder = test_builders.make_single_shape_pair_builder(
+        builder = testing.make_single_shape_pair_builder(
             shapes=("sphere", "sphere"),
             distance=distance,
         )
@@ -892,7 +892,7 @@ class TestPrimitiveNarrowPhase(unittest.TestCase):
         }
 
         # Create a builder for the specified shape pair
-        builder = test_builders.make_single_shape_pair_builder(
+        builder = testing.make_single_shape_pair_builder(
             shapes=("box", "box"),
             distance=distance,
             bottom_dims=(2.0, 2.0, 1.0),  # Larger bottom box
@@ -954,7 +954,7 @@ class TestPrimitiveNarrowPhase(unittest.TestCase):
         }
 
         # Create a builder for the specified shape pair
-        builder = test_builders.make_single_shape_pair_builder(
+        builder = testing.make_single_shape_pair_builder(
             shapes=("box", "box"),
             distance=distance,
             top_rpy=[0.0, 0.0, np.pi / 4],
@@ -995,7 +995,7 @@ class TestPrimitiveNarrowPhase(unittest.TestCase):
         }
 
         # Create a builder for the specified shape pair
-        builder = test_builders.make_single_shape_pair_builder(
+        builder = testing.make_single_shape_pair_builder(
             shapes=("box", "box"),
             top_xyz=[0.0, 0.0, 0.5 * np.sqrt(3) + 0.5],
             top_rpy=[np.pi / 4, -np.arctan(1.0 / np.sqrt(2)), 0.0],
@@ -1057,7 +1057,7 @@ class TestPipelinePrimitive(unittest.TestCase):
         }
 
         # Create a builder for all supported shape pairs
-        builder = test_builders.make_shape_pairs_builder(
+        builder = testing.make_shape_pairs_builder(
             shape_pairs=collidable_shape_pairs, per_shape_pair_args=per_shape_pair_args
         )
         model = builder.finalize(device=self.default_device)

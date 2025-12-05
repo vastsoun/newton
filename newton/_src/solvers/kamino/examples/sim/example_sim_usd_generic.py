@@ -26,8 +26,7 @@ import newton
 import newton.examples
 from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.examples import get_examples_output_path, run_headless
-from newton._src.solvers.kamino.models.builders import add_ground_geom
-from newton._src.solvers.kamino.models.utils import make_homogeneous_builder
+from newton._src.solvers.kamino.models.builders.utils import add_ground_box, make_homogeneous_builder
 from newton._src.solvers.kamino.simulation.simulator import Simulator, SimulatorSettings
 from newton._src.solvers.kamino.utils import logger as msg
 from newton._src.solvers.kamino.utils.datalog import SimulationLogger
@@ -78,7 +77,7 @@ class Example:
         # Add a static collision layer and geometry for the plane
         if ground:
             for w in range(num_worlds):
-                add_ground_geom(self.builder, z_offset=-0.5, world_index=w, layer="world")
+                add_ground_box(self.builder, z_offset=-0.5, world_index=w, layer="world")
 
         # Set gravity
         for w in range(self.builder.num_worlds):

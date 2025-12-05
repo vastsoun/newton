@@ -30,7 +30,7 @@ from newton._src.solvers.kamino.models import (
     get_examples_usd_assets_path,
     get_tests_usd_assets_path,
 )
-from newton._src.solvers.kamino.models.builders import (
+from newton._src.solvers.kamino.models.builders.basics import (
     build_box_on_plane,
     build_box_pendulum,
     build_boxes_fourbar,

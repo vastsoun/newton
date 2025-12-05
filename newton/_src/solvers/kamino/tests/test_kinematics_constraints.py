@@ -28,11 +28,8 @@ from newton._src.solvers.kamino.geometry.contacts import Contacts
 # Module to be tested
 from newton._src.solvers.kamino.kinematics.constraints import make_unilateral_constraints_info
 from newton._src.solvers.kamino.kinematics.limits import Limits
-from newton._src.solvers.kamino.models.builders import build_boxes_fourbar
-from newton._src.solvers.kamino.models.utils import (
-    make_heterogeneous_builder,
-    make_homogeneous_builder,
-)
+from newton._src.solvers.kamino.models.builders.basics import build_boxes_fourbar, make_basics_heterogeneous_builder
+from newton._src.solvers.kamino.models.builders.utils import make_homogeneous_builder
 
 # Test utilities
 from newton._src.solvers.kamino.tests.utils.print import (
@@ -209,7 +206,7 @@ class TestKinematicsConstraints(unittest.TestCase):
         max_world_contacts = 20
 
         # Construct the model description using the ModelBuilder
-        builder = make_heterogeneous_builder()
+        builder = make_basics_heterogeneous_builder()
 
         # Create the model from the builder
         model: Model = builder.finalize(device=self.default_device)

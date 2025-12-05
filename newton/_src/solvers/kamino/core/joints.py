@@ -84,7 +84,7 @@ class JointActuationType(IntEnum):
     @override
     def __str__(self):
         """Returns a string representation of the joint actuation type."""
-        return f"JointDoFType.{self.name} ({self.value})"
+        return f"JointActuationType.{self.name} ({self.value})"
 
     @override
     def __repr__(self):
@@ -106,7 +106,7 @@ class JointConnectionType(IntEnum):
     @override
     def __str__(self):
         """Returns a string representation of the joint connection type."""
-        return f"JointDoFType.{self.name} ({self.value})"
+        return f"JointConnectionType.{self.name} ({self.value})"
 
     @override
     def __repr__(self):

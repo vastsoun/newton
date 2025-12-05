@@ -330,14 +330,15 @@ def _build_limit_jacobians(
     model_info_bodies_offset: wp.array(dtype=int32),
     state_info_limit_cts_group_offset: wp.array(dtype=int32),
     limits_model_num: wp.array(dtype=int32),
+    limits_model_max: int32,
     limits_wid: wp.array(dtype=int32),
     limits_lid: wp.array(dtype=int32),
     limits_bids: wp.array(dtype=vec2i),
     limits_dof: wp.array(dtype=int32),
     limits_side: wp.array(dtype=float32),
     jacobian_dofs_offsets: wp.array(dtype=int32),
-    jacobian_cts_offsets: wp.array(dtype=int32),
     jacobian_dofs_data: wp.array(dtype=float32),
+    jacobian_cts_offsets: wp.array(dtype=int32),
     # Outputs:
     jacobian_cts_data: wp.array(dtype=float32),
 ):
@@ -348,7 +349,7 @@ def _build_limit_jacobians(
     lid = wp.tid()
 
     # Skip if cid is greater than the total number of active limits in the model
-    if lid >= limits_model_num[0]:
+    if lid >= wp.min(limits_model_num[0], limits_model_max):
         return
 
     # Retrieve the world index of the active limit
@@ -400,6 +401,7 @@ def _build_contact_jacobians(
     state_info_contact_cts_group_offset: wp.array(dtype=int32),
     state_bodies_q: wp.array(dtype=transformf),
     contacts_model_num: wp.array(dtype=int32),
+    contacts_model_max: int32,
     contacts_wid: wp.array(dtype=int32),
     contacts_cid: wp.array(dtype=int32),
     contacts_bid_AB: wp.array(dtype=vec2i),
@@ -417,7 +419,7 @@ def _build_contact_jacobians(
     cid = wp.tid()
 
     # Skip if cid is greater than the total number of active contacts in the model
-    if cid >= contacts_model_num[0]:
+    if cid >= wp.min(contacts_model_num[0], contacts_model_max):
         return
 
     # Retrieve the contact index w.r.t the world
@@ -542,6 +544,7 @@ def build_limit_jacobians(
             model.info.bodies_offset,
             data.info.limit_cts_group_offset,
             limits.model_num_limits,
+            limits.num_model_max_limits,
             limits.wid,
             limits.lid,
             limits.bids,
@@ -579,6 +582,7 @@ def build_contact_jacobians(
             data.info.contact_cts_group_offset,
             data.bodies.q_i,
             contacts.model_num_contacts,
+            contacts.num_model_max_contacts,
             contacts.wid,
             contacts.cid,
             contacts.bid_AB,
@@ -646,14 +650,15 @@ def build_jacobians(
                 model.info.bodies_offset,
                 data.info.limit_cts_group_offset,
                 limits.model_num_limits,
+                limits.num_model_max_limits,
                 limits.wid,
                 limits.lid,
                 limits.bids,
                 limits.dof,
                 limits.side,
                 jacobian_dofs_offsets,
-                jacobian_cts_offsets,
                 jacobian_dofs_data,
+                jacobian_cts_offsets,
                 # Outputs:
                 jacobian_cts_data,
             ],
@@ -673,6 +678,7 @@ def build_jacobians(
                 data.info.contact_cts_group_offset,
                 data.bodies.q_i,
                 contacts.model_num_contacts,
+                contacts.num_model_max_contacts,
                 contacts.wid,
                 contacts.cid,
                 contacts.bid_AB,

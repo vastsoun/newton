@@ -249,9 +249,9 @@ def quat_to_vec4(q: quatf) -> vec4f:
 def quat_conj(q: quatf) -> quatf:
     """
     Compute the conjugate of a quaternion.
-    The conjugate of a quaternion q = (x, y, z, w) is defined as: q_conj = (x, y, z, -w)
+    The conjugate of a quaternion q = (x, y, z, w) is defined as: q_conj = (-x, -y, -z, w)
     """
-    return quatf(q.x, q.y, q.z, -q.w)
+    return quatf(-q.x, -q.y, -q.z, q.w)
 
 
 @wp.func
@@ -281,7 +281,7 @@ def quat_apply(q: quatf, v: vec3f) -> vec3f:
     """
     Apply a quaternion to a vector.
     The quaternion is applied to the vector using the formula:
-    v' = s * v + q.w * uv + qv x uv, where s = q.w^2, uv = 2 * qv x v, and qv is the imaginary part of the quaternion.
+    v' = s * v + q.w * uv + qv x uv, where s = ||q||^2, uv = 2 * qv x v, and qv is the imaginary part of the quaternion.
     """
     qv = quat_imaginary(q)
     uv = 2.0 * wp.cross(qv, v)

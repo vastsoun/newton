@@ -150,7 +150,7 @@ def make_llt_blocked_factorize_kernel(block_size: int):
             A_kk_tile = wp.tile_load(A_i, shape=(block_size, block_size), offset=(k, k), storage="shared")
 
             # The following if pads the matrix if it is not divisible by block_size
-            if k + block_size > n_i or k + block_size > n_i:
+            if k + block_size > n_i:
                 num_tile_elements = block_size * block_size
                 num_iterations = (num_tile_elements + num_threads_per_block - 1) // num_threads_per_block
                 for i in range(num_iterations):

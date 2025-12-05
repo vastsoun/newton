@@ -52,9 +52,9 @@ def solid_cylinder_body_moment_of_inertia(m: float, r: float, h: float) -> mat33
 
 
 def solid_cone_body_moment_of_inertia(m: float, r: float, h: float) -> mat33f:
-    Ia = 0.05 * m * (3 * r * r + 2 * h * h)
+    Ia = 0.15 * m * (r * r + 0.25 * h * h)
     Ib = 0.3 * m * r * r
-    i_I_i = mat33f([[Ia, 0.0, 0.0], [0.0, Ib, 0.0], [0.0, 0.0, Ia]])
+    i_I_i = mat33f([[Ia, 0.0, 0.0], [0.0, Ia, 0.0], [0.0, 0.0, Ib]])
     return i_I_i
 
 

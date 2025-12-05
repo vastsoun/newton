@@ -105,12 +105,7 @@ class State:
         Args:
             other: The target State object to copy data into.
         """
-        wp.copy(other.q_i, self.q_i)
-        wp.copy(other.u_i, self.u_i)
-        wp.copy(other.w_i, self.w_i)
-        wp.copy(other.q_j, self.q_j)
-        wp.copy(other.dq_j, self.dq_j)
-        wp.copy(other.lambda_j, self.lambda_j)
+        other.copy_from(self)
 
     def copy_from(self, other: State) -> None:
         """
@@ -119,9 +114,14 @@ class State:
         Args:
             other: The source State object to copy data from.
         """
-        wp.copy(self.q_i, other.q_i)
-        wp.copy(self.u_i, other.u_i)
-        wp.copy(self.w_i, other.w_i)
-        wp.copy(self.q_j, other.q_j)
-        wp.copy(self.dq_j, other.dq_j)
-        wp.copy(self.lambda_j, other.lambda_j)
+        attributes = ("q_i", "u_i", "w_i", "q_j", "dq_j", "lambda_j")
+        for attr in attributes:
+            val_self = getattr(self, attr)
+            val_other = getattr(other, attr)
+            if val_self is None and val_other is None:
+                continue
+            if val_self is None:
+                raise ValueError(f"State is missing array for '{attr}' which is present in the other state.")
+            if val_other is None:
+                raise ValueError(f"Other state is missing array for '{attr}' which is present in this state.")
+            wp.copy(val_self, val_other)

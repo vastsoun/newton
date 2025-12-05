@@ -145,6 +145,7 @@ from .simulation import (
     SimulatorSettings,
 )
 from .solvers import (
+    ForwardKinematicsSolver,
     PADMMSettings,
     PADMMSolver,
 )
@@ -182,7 +183,6 @@ __all__ = [
     "Control",
     "CylinderShape",
     "DelassusOperator",
-    "DelassusOperatorData",
     "DenseSystemJacobians",
     "DenseSystemJacobiansData",
     "DualProblem",
@@ -235,7 +235,6 @@ __all__ = [
     "Vec4",
     "Vec6",
     "WorldDescriptor",
-    "__version__",
     "float16",
     "float32",
     "float64",

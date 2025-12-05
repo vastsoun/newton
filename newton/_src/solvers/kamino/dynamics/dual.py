@@ -507,6 +507,7 @@ def _build_free_velocity_bias_limits(
     model_time_inv_dt: wp.array(dtype=float32),
     state_info_limit_cts_group_offset: wp.array(dtype=int32),
     limits_model_num: wp.array(dtype=int32),
+    limits_model_max: int32,
     limits_wid: wp.array(dtype=int32),
     limits_lid: wp.array(dtype=int32),
     limits_r_q: wp.array(dtype=float32),
@@ -519,7 +520,7 @@ def _build_free_velocity_bias_limits(
     tid = wp.tid()
 
     # Retrieve the number of contacts active in the model
-    model_nl = limits_model_num[0]
+    model_nl = wp.min(limits_model_num[0], limits_model_max)
 
     # Skip if cid is greater than the number of contacts active in the world
     if tid >= model_nl:
@@ -550,6 +551,7 @@ def _build_free_velocity_bias_contacts(
     model_info_contacts_offset: wp.array(dtype=int32),
     state_info_contact_cts_group_offset: wp.array(dtype=int32),
     contacts_model_num: wp.array(dtype=int32),
+    contacts_model_max: int32,
     contacts_wid: wp.array(dtype=int32),
     contacts_cid: wp.array(dtype=int32),
     contacts_gapfunc: wp.array(dtype=vec4f),
@@ -565,7 +567,7 @@ def _build_free_velocity_bias_contacts(
     tid = wp.tid()
 
     # Retrieve the number of contacts active in the model
-    model_nc = contacts_model_num[0]
+    model_nc = wp.min(contacts_model_num[0], contacts_model_max)
 
     # Skip if cid is greater than the number of contacts active in the world
     if tid >= model_nc:
@@ -933,6 +935,7 @@ def build_free_velocity_bias(
                 model.time.inv_dt,
                 data.info.limit_cts_group_offset,
                 limits.model_num_limits,
+                limits.num_model_max_limits,
                 limits.wid,
                 limits.lid,
                 limits.r_q,
@@ -953,6 +956,7 @@ def build_free_velocity_bias(
                 model.info.contacts_offset,
                 data.info.contact_cts_group_offset,
                 contacts.model_num_contacts,
+                contacts.num_model_max_contacts,
                 contacts.wid,
                 contacts.cid,
                 contacts.gapfunc,

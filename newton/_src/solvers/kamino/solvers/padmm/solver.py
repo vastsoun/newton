@@ -902,7 +902,7 @@ class PADMMSolver:
                 # Inputs:
                 problem.data.nl,
                 problem.data.nc,
-                problem.data.cio,
+                problem.data.vio,
                 problem.data.uio,
                 problem.data.lcgo,
                 problem.data.ccgo,

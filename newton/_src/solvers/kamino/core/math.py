@@ -249,9 +249,9 @@ def quat_to_vec4(q: quatf) -> vec4f:
 def quat_conj(q: quatf) -> quatf:
     """
     Compute the conjugate of a quaternion.
-    The conjugate of a quaternion q = (x, y, z, w) is defined as: q_conj = (-x, -y, -z, w)
+    The conjugate of a quaternion q = (x, y, z, w) is defined as: q_conj = (x, y, z, -w)
     """
-    return quatf(-q.x, -q.y, -q.z, q.w)
+    return quatf(q.x, q.y, q.z, -q.w)
 
 
 @wp.func

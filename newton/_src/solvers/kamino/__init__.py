@@ -149,6 +149,9 @@ from .solvers import (
     PADMMSettings,
     PADMMSolver,
 )
+from .solvers.fk import (
+    ForwardKinematicsSolver,
+)
 from .utils.io import hdf5, usd
 
 ###

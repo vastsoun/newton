@@ -53,7 +53,7 @@ class Control:
             other: The target Control object to copy data into.
         """
         if self.tau_j is None or other.tau_j is None:
-            raise ValueError("Cannot copy: tau_j is None in source or destination")
+            raise ValueError("Error copying from/to uninitialized Control")
         wp.copy(other.tau_j, self.tau_j)
 
     def copy_from(self, other: Control) -> None:
@@ -64,5 +64,5 @@ class Control:
             other: The source Control object to copy data from.
         """
         if self.tau_j is None or other.tau_j is None:
-            raise ValueError("Cannot copy: tau_j is None in source or destination")
+            raise ValueError("Error copying from/to uninitialized Control")
         wp.copy(self.tau_j, other.tau_j)

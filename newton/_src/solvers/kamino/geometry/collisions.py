@@ -248,7 +248,7 @@ class Collisions:
     def allocate(self, builder: ModelBuilder, device: Devicelike = None):
         # Override the device if specified
         if device is None:
-            device = self.device
+            self.device = device
 
         # Retrieve the number of world
         num_worlds = builder.num_worlds

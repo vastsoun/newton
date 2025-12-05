@@ -76,7 +76,8 @@ def orthonormal(normal: vec3f) -> vec3f:
         dir = vec3f(-normal[1] * normal[0], 1.0 - normal[1] * normal[1], -normal[1] * normal[2])
     else:
         dir = vec3f(-normal[2] * normal[0], -normal[2] * normal[1], 1.0 - normal[2] * normal[2])
-    return wp.normalize(dir)
+        dir, _ = gjk_normalize(dir)
+    return dir
 
 
 @wp.func

@@ -576,6 +576,10 @@ class WorldDescriptor(Descriptor):
         if index < 0 or index >= self.num_materials:
             raise ValueError(f"Material index '{index}' out of range. Must be between 0 and {self.num_materials - 1}.")
 
+        # Assign material metadata based on the current contents of the world
+        material.wid = self.wid
+        material.mid = index
+
         # Set material info
         self.material_names[index] = material.name
         self.material_uids[index] = material.uid

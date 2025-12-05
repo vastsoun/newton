@@ -176,7 +176,8 @@ class TestKinematicsLimits(unittest.TestCase):
         limits = Limits(device=self.default_device)
 
         # Check the initial state of the limits
-        self.assertIsNone(limits._data)
+        self.assertEqual(limits._data.num_model_max_limits, 0)
+        self.assertEqual(limits._data.num_world_max_limits, [])
 
     def test_01_allocate_limits_container_from_homogeneous_builder(self):
         """

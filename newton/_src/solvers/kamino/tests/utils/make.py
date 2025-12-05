@@ -24,7 +24,7 @@ from warp.context import Devicelike
 from newton._src.solvers.kamino.core.bodies import update_body_inertias
 from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.core.model import Model, ModelData
-from newton._src.solvers.kamino.geometry.detector import CollisionDetector
+from newton._src.solvers.kamino.geometry.detector import CollisionDetector, CollisionDetectorSettings
 from newton._src.solvers.kamino.kinematics.constraints import make_unilateral_constraints_info, update_constraints_info
 from newton._src.solvers.kamino.kinematics.jacobians import DenseSystemJacobians
 from newton._src.solvers.kamino.kinematics.joints import compute_joints_data
@@ -127,7 +127,8 @@ def make_containers(
     limits = Limits(builder=builder, device=device)
 
     # Create the collision detector
-    detector = CollisionDetector(builder=builder, default_max_contacts=max_world_contacts, device=device)
+    settings = CollisionDetectorSettings(max_contacts_per_world=max_world_contacts, pipeline="primitive")
+    detector = CollisionDetector(model=model, builder=builder, settings=settings, device=device)
 
     # Construct the unilateral constraints members in the model info
     make_unilateral_constraints_info(model, data, limits, detector.contacts, device=device)

@@ -111,6 +111,40 @@ class ShapeType(IntEnum):
         return self.__str__()
 
     @property
+    def is_empty(self) -> bool:
+        """
+        Returns whether the shape type is the empty shape.
+        """
+        return self.value == self.EMPTY
+
+    @property
+    def is_primitive(self) -> bool:
+        """
+        Returns whether the shape type is a primitive shape.
+        """
+        return self.value in {
+            self.SPHERE,
+            self.CYLINDER,
+            self.CONE,
+            self.CAPSULE,
+            self.BOX,
+            self.ELLIPSOID,
+            self.PLANE,
+        }
+
+    @property
+    def is_explicit(self) -> bool:
+        """
+        Returns whether the shape type is an explicit shape.
+        """
+        return self.value in {
+            self.MESH,
+            self.CONVEX,
+            self.HFIELD,
+            self.SDF,
+        }
+
+    @property
     def num_params(self) -> int:
         """
         Returns the number of parameters that describe the shape type.
@@ -167,7 +201,7 @@ class ShapeType(IntEnum):
             case ShapeType.SDF:
                 type = GeoType.SDF
             case _:
-                raise ValueError(f"Unknown ShapeType value: {type}")
+                raise ValueError(f"Unknown ShapeType value: {self}")
         return type
 
 
@@ -505,6 +539,7 @@ class PlaneShape(ShapeDescriptor):
 
     @override
     def __repr__(self):
+        """Returns a human-readable string representation of the PlaneShape."""
         return (
             f"PlaneShape(\nname: {self.name},\nuid: {self.uid},\nnormal: {self.normal},\ndistance: {self.distance}\n)"
         )

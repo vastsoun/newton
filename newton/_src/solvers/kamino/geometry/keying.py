@@ -48,27 +48,6 @@ wp.set_module_options({"enable_backward": False})
 ###
 
 
-@wp.func
-def build_pair_key2(index_A: wp.uint32, index_B: wp.uint32) -> wp.uint64:
-    """
-    Build a 63-bit key from two indices with the following layout:
-    - The highest bit is always `0`, reserved as a sign bit to support conversion to signed int64.
-    - Upper 31 bits: index_A
-    - Lower 32 bits: index_B
-
-    Args:
-        index_A (wp.uint32): First index.
-        index_B (wp.uint32): Second index.
-
-    Returns:
-        wp.uint64: Combined 64-bit key.
-    """
-    key = wp.uint64(index_A & wp.uint32(wp.static(make_bitmask(31))))
-    key = key << wp.uint64(32)
-    key = key | wp.uint64(index_B)
-    return key
-
-
 def make_bitmask(num_bits: int) -> int:
     """
     Returns an all-ones mask for the requested number of bits.
@@ -93,13 +72,34 @@ def make_bitmask(num_bits: int) -> int:
     return (1 << num_bits) - 1
 
 
+@wp.func
+def build_pair_key2(index_A: wp.uint32, index_B: wp.uint32) -> wp.uint64:
+    """
+    Build a 63-bit key from two indices with the following layout:
+    - The highest bit is always `0`, reserved as a sign bit to support conversion to signed int64.
+    - Upper 31 bits: lower 31 bits of index_A
+    - Lower 32 bits: all 32 bits of index_B
+
+    Args:
+        index_A (wp.uint32): First index.
+        index_B (wp.uint32): Second index.
+
+    Returns:
+        wp.uint64: Combined 64-bit key.
+    """
+    key = wp.uint64(index_A & wp.uint32(wp.static(make_bitmask(31))))
+    key = key << wp.uint64(32)
+    key = key | wp.uint64(index_B)
+    return key
+
+
 def make_build_pair_key3_func(main_key_bits: int, aux_key_bits: int | None = None):
     """
     Generates a function that builds a 63-bit key from three indices with the following layout:
     - The highest bit is always `0`, reserved as a sign bit to support conversion to signed int64.
-    - Upper `main_key_bits` bits: index_A
-    - Middle `main_key_bits` bits: index_B
-    - Lower `aux_key_bits` bits: index_C
+    - Upper `main_key_bits` bits: lower `main_key_bits` bits of index_A
+    - Middle `main_key_bits` bits: lower `main_key_bits` bits of index_B
+    - Lower `aux_key_bits` bits: lower `aux_key_bits` bits of index_C
 
     Note:
     - The total number of bits used is `2 * main_key_bits + aux_key_bits`, which must be less than or equal to 63.

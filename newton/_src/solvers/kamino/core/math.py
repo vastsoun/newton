@@ -550,7 +550,7 @@ def unit_quat_apply(q: quatf, v: vec3f) -> vec3f:
 @wp.func
 def unit_quat_conj_apply(q: quatf, v: vec3f) -> vec3f:
     """
-    Applies a the conjugate of a unit quaternion to a vector (making use of the unit norm assumption to simplify
+    Applies the conjugate of a unit quaternion to a vector (making use of the unit norm assumption to simplify
     the result)
     """
     qv = quat_imaginary(q)
@@ -707,57 +707,73 @@ def screw_angular(s: vec6f) -> vec3f:
     return vec3f(s[3], s[4], s[5])
 
 
+@wp.func
+def screw_transform_matrix_from_points(r_A: vec3f, r_B: vec3f) -> mat66f:
+    """
+    Generates a 6x6 screw transformation matrix given the starting (`r_A`)
+    and ending (`r_B`) positions defining the line-of-action of the screw.
+
+    Both positions are assumed to be expressed in world coordinates,
+    and the line-of-action can be thought of as an effective lever-arm
+    from point `A` to point `B`.
+
+    This function thus renders the matrix screw transformation from point `A` to point `B` as:
+
+    `W_BA := [[I_3  , 0_3],[S_BA , I_3]]`,
+
+    where `S_BA` is the skew-symmetric matrix of the vector `r_BA = r_A - r_B`.
+
+    Args:
+        r_A (vec3f): The starting position of the line-of-action in world coordinates.
+        r_B (vec3f): The ending position of the line-of-action in world coordinates.
+
+    Returns:
+        mat66f: The 6x6 screw transformation matrix.
+    """
+    # Initialize the wrench matrix
+    W_BA = I_6
+
+    # Fill the lower left block with the skew-symmetric matrix
+    S_BA = wp.skew(r_A - r_B)
+    for i in range(3):
+        for j in range(3):
+            W_BA[3 + i, j] = S_BA[i, j]
+
+    # Return the wrench matrix
+    return W_BA
+
+
 ###
 # Wrenches
 ###
 
 
 W_C_I = wp.constant(mat63f(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0))
-"""Identify-like wrench matrix to initialize contact wrench matrices."""
-
-
-@wp.func
-def wrench_matrix_from_points(r_j: vec3f, r_i: vec3f) -> mat66f:
-    """
-    Generates a 6x6 wrench matrix from the absolute positions (in world coordinates) of the joint and body.
-
-    W_j = [I_3  , 0_3] , where S_ji is the skew-symmetric matrix of the vector r_ji = r_j - r_i.
-          [S_ji , I_3]
-
-    Args:
-        r_j (vec3f): Position of the joint in world coordinates.
-        r_i (vec3f): Position of the body in world coordinates.
-
-    Returns:
-        mat66f: The 6x6 wrench matrix.
-    """
-    # Initialize the wrench matrix
-    W_j = I_6
-
-    # Fill the lower left block with the skew-symmetric matrix
-    S_rj = wp.skew(r_j - r_i)
-    for i in range(3):
-        for j in range(3):
-            W_j[3 + i, j] = S_rj[i, j]
-
-    # Return the wrench matrix
-    return W_j
+"""Identity-like matrix to initialize contact wrench matrices."""
 
 
 @wp.func
 def contact_wrench_matrix_from_points(r_k: vec3f, r_i: vec3f) -> mat63f:
     """
-    Generates a 6x3 wrench matrix from the absolute positions (in world coordinates) of the joint and body.
+    Generates a 6x3 screw transformation matrix given the contact (`r_k`)
+    and body CoM (`r_i`) positions defining the line-of-action of the force.
 
-    W_ki = [ I_3  ] , where S_ki is the skew-symmetric matrix of the vector r_ki = r_k - r_i.
-           [ S_ki ]
+    Both positions are assumed to be expressed in world coordinates,
+    and the line-of-action can be thought of as an effective lever-arm
+    from point `k` to point `i`.
+
+    This function thus renders the matrix screw transformation from point `k` to point `i` as:
+
+    `W_ki := [[I_3],[S_ki]]`,
+
+    where `S_ki` is the skew-symmetric matrix of the vector `r_ki = r_k - r_i`.
 
     Args:
-        r_k (vec3f): Position of the contact on the body in world coordinates.
-        r_i (vec3f): Position of the body CoM in world coordinates.
+        r_k (vec3f): The position of the contact point in world coordinates.
+        r_i (vec3f): The position of the body CoM in world coordinates.
 
     Returns:
-        mat63f: The 6x3 wrench matrix.
+        mat66f: The 6x6 screw transformation matrix.
     """
     # Initialize the wrench matrix
     W_ki = W_C_I

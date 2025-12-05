@@ -316,13 +316,16 @@ class ContactsData:
 
     def reset(self):
         """
-        Clears the count of active contacts and resets data to sentinel values.
+        Clears the count of active contacts and resets contact data
+        to sentinel values, indicating an empty set of contacts.
         """
         self.clear()
         self.wid.fill_(-1)
         self.cid.fill_(-1)
         self.gid_AB.fill_(vec2i(-1, -1))
         self.bid_AB.fill_(vec2i(-1, -1))
+        self.reaction.zero_()
+        self.velocity.zero_()
 
 
 ###

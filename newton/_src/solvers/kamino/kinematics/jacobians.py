@@ -25,7 +25,7 @@ import warp as wp
 from warp.context import Devicelike
 
 from ..core.joints import JointDoFType
-from ..core.math import contact_wrench_matrix_from_points, expand6d, wrench_matrix_from_points
+from ..core.math import contact_wrench_matrix_from_points, expand6d, screw_transform_matrix_from_points
 from ..core.model import Model, ModelData
 from ..core.types import (
     float32,
@@ -305,8 +305,8 @@ def _build_joint_jacobians(
 
     # Compute the wrench matrices
     # TODO: Since the lever-arm is a relative position, can we just use B_r_Bj and F_r_Fj instead?
-    W_j_B = wrench_matrix_from_points(r_j, r_B_j)
-    W_j_F = wrench_matrix_from_points(r_j, r_F_j)
+    W_j_B = screw_transform_matrix_from_points(r_j, r_B_j)
+    W_j_F = screw_transform_matrix_from_points(r_j, r_F_j)
 
     # Compute the effective projector to joint frame and expand to 6D
     R_X_j = R_j @ X_j

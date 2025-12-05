@@ -198,18 +198,17 @@ class LimitsData:
 
     def reset(self):
         """
-        Clears the count of active limits and resets data to sentinel values.
+        Clears the count of active limits and resets limit data
+        to sentinel values, indicating an empty set of limits.
         """
         self.clear()
         self.wid.fill_(-1)
         self.jid.fill_(-1)
         self.bids.fill_(vec2i(-1, -1))
         self.dof.fill_(-1)
-        self.side.fill_(0.0)
-        self.r_q.fill_(0.0)
         self.key.fill_(make_bitmask(63))
-        self.reaction.fill_(0.0)
-        self.velocity.fill_(0.0)
+        self.reaction.zero_()
+        self.velocity.zero_()
 
 
 ###

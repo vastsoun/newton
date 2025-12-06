@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import argparse
+import os
 
 import numpy as np
 import warp as wp
@@ -23,10 +24,11 @@ import newton
 import newton.examples
 from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.core.types import float32
-from newton._src.solvers.kamino.examples import run_headless
+from newton._src.solvers.kamino.examples import get_examples_output_path, run_headless
 from newton._src.solvers.kamino.models.builders import build_all_joints_test_model
 from newton._src.solvers.kamino.simulation.simulator import Simulator, SimulatorSettings
 from newton._src.solvers.kamino.utils import logger as msg
+from newton._src.solvers.kamino.utils.datalog import SimulationLogger
 from newton._src.solvers.kamino.viewer import ViewerKamino
 
 ###
@@ -93,50 +95,74 @@ def test_control_callback(sim: Simulator):
 class Example:
     def __init__(
         self,
-        device: Devicelike,
+        device: Devicelike = None,
         max_steps: int = 1000,
         use_cuda_graph: bool = False,
+        gravity: bool = True,
+        ground: bool = False,
+        logging: bool = False,
         headless: bool = False,
+        record_video: bool = False,
+        async_save: bool = False,
     ):
         # Initialize target frames per second and corresponding time-steps
         self.fps = 60
-        self.frame_dt = 1.0 / self.fps
         self.sim_dt = 0.001
+        self.frame_dt = 1.0 / self.fps
         self.sim_substeps = int(self.frame_dt / self.sim_dt)
         self.max_steps = max_steps
-
-        # Initialize internal time-keeping
-        self.sim_time = 0.0
-        self.sim_steps = 0
 
         # Cache the device and other internal flags
         self.device = device
         self.use_cuda_graph: bool = use_cuda_graph
+        self.logging: bool = logging
 
         # Construct model builder
-        msg.info("Constructing builder using model generator ...")
-        self.builder: ModelBuilder = build_all_joints_test_model(ground=False)
+        msg.notif("Constructing builder using model generator ...")
+        self.builder: ModelBuilder = build_all_joints_test_model(ground=ground)
+
+        # Set gravity
+        for w in range(self.builder.num_worlds):
+            self.builder.gravity[w].enabled = gravity
 
         # Set solver settings
         settings = SimulatorSettings()
-        settings.dt = 0.001
+        settings.dt = self.sim_dt
         settings.solver.primal_tolerance = 1e-6
         settings.solver.dual_tolerance = 1e-6
         settings.solver.compl_tolerance = 1e-6
         settings.solver.rho_0 = 0.1
+        settings.compute_metrics = logging and not use_cuda_graph
 
         # Create a simulator
-        msg.info("Building the simulator...")
+        msg.notif("Building the simulator...")
         self.sim = Simulator(builder=self.builder, settings=settings, device=device)
 
-        # Initialize the viewer
+        # Initialize the data logger
+        self.logger: SimulationLogger | None = None
+        if self.logging:
+            msg.notif("Creating the sim data logger...")
+            self.logger = SimulationLogger(self.max_steps, self.sim, self.builder)
+
+        # Initialize the 3D viewer
+        self.viewer: ViewerKamino | None = None
         if not headless:
+            msg.notif("Creating the 3D viewer...")
+            # Set up video recording folder
+            video_folder = None
+            if record_video:
+                video_folder = os.path.join(get_examples_output_path(), "test_all_joints/frames")
+                os.makedirs(video_folder, exist_ok=True)
+                msg.info(f"Frame recording enabled ({'async' if async_save else 'sync'} mode)")
+                msg.info(f"Frames will be saved to: {video_folder}")
+
             self.viewer = ViewerKamino(
                 builder=self.builder,
                 simulator=self.sim,
+                record_video=record_video,
+                video_folder=video_folder,
+                async_save=async_save,
             )
-        else:
-            self.viewer = None
 
         # Declare and initialize the optional computation graphs
         # NOTE: These are used for most efficient GPU runtime
@@ -173,7 +199,8 @@ class Example:
         """Run simulation substeps."""
         for _i in range(self.sim_substeps):
             self.sim.step()
-            self.sim_steps += 1
+            if not self.use_cuda_graph and self.logging:
+                self.logger.log()
 
     def reset(self):
         """Reset the simulation."""
@@ -181,8 +208,9 @@ class Example:
             wp.capture_launch(self.reset_graph)
         else:
             self.sim.reset()
-        self.sim_steps = 0
-        self.sim_time = 0.0
+        if not self.use_cuda_graph and self.logging:
+            self.logger.reset()
+            self.logger.log()
 
     def step_once(self):
         """Run the simulation for a single time-step."""
@@ -190,8 +218,8 @@ class Example:
             wp.capture_launch(self.step_graph)
         else:
             self.sim.step()
-        self.sim_steps += 1
-        self.sim_time += self.sim_dt
+        if not self.use_cuda_graph and self.logging:
+            self.logger.log()
 
     def step(self):
         """Step the simulation."""
@@ -199,7 +227,6 @@ class Example:
             wp.capture_launch(self.simulate_graph)
         else:
             self.simulate()
-        self.sim_time += self.frame_dt
 
     def render(self):
         """Render the current frame."""
@@ -210,6 +237,27 @@ class Example:
         """Test function for compatibility."""
         pass
 
+    def plot(self, path: str | None = None, show: bool = False, keep_frames: bool = False):
+        """
+        Plot logged data and generate video from recorded frames.
+
+        Args:
+            path: Output directory path (uses video_folder if None)
+            show: If True, display plots after saving
+            keep_frames: If True, keep PNG frames after video creation
+        """
+        # Optionally plot the logged simulation data
+        if self.logging:
+            self.logger.plot_solver_info(path=path, show=show)
+            self.logger.plot_joint_tracking(path=path, show=show)
+            self.logger.plot_solution_metrics(path=path, show=show)
+
+        # Optionally generate video from recorded frames
+        if self.viewer is not None and self.viewer._record_video:
+            output_dir = path if path is not None else self.viewer._video_folder
+            output_path = os.path.join(output_dir, "recording.mp4")
+            self.viewer.generate_video(output_filename=output_path, fps=self.fps, keep_frames=keep_frames)
+
 
 ###
 # Main function
@@ -218,12 +266,23 @@ class Example:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="A demo of all supported joint types.")
-    parser.add_argument("--num-steps", type=int, default=1000, help="Number of steps for headless mode")
-    parser.add_argument("--headless", action="store_true", default=False, help="Run in headless mode")
     parser.add_argument("--device", type=str, help="The compute device to use")
+    parser.add_argument("--headless", action="store_true", default=False, help="Run in headless mode")
+    parser.add_argument("--num-steps", type=int, default=1000, help="Number of steps for headless mode")
+    parser.add_argument("--gravity", action="store_true", default=True, help="Enables gravity in the simulation")
+    parser.add_argument("--ground", action="store_true", default=False, help="Adds a ground plane to the simulation")
     parser.add_argument("--cuda-graph", action="store_true", default=True, help="Use CUDA graphs")
     parser.add_argument("--clear-cache", action="store_true", default=False, help="Clear warp cache")
+    parser.add_argument("--logging", action="store_true", default=True, help="Enable logging of simulation data")
+    parser.add_argument("--show-plots", action="store_true", default=False, help="Show plots of logging data")
     parser.add_argument("--test", action="store_true", default=False, help="Run tests")
+    parser.add_argument(
+        "--record",
+        type=str,
+        choices=["sync", "async"],
+        default=None,
+        help="Enable frame recording: 'sync' for synchronous, 'async' for asynchronous (non-blocking)",
+    )
     args = parser.parse_args()
 
     # Set global numpy configurations
@@ -257,10 +316,15 @@ if __name__ == "__main__":
         device=device,
         use_cuda_graph=use_cuda_graph,
         max_steps=args.num_steps,
+        gravity=args.gravity,
+        ground=args.ground,
         headless=args.headless,
+        logging=args.logging,
+        record_video=args.record is not None and not args.headless,
+        async_save=args.record == "async",
     )
 
-    # Run a brute-force similation loop if headless
+    # Run a brute-force simulation loop if headless
     if args.headless:
         msg.notif("Running in headless mode...")
         run_headless(example, progress=True)
@@ -277,3 +341,9 @@ if __name__ == "__main__":
 
         # Launch the example using Newton's built-in runtime
         newton.examples.run(example, args)
+
+    # Plot logged data after the viewer is closed
+    if args.logging or args.record:
+        OUTPUT_PLOT_PATH = os.path.join(get_examples_output_path(), "test_all_joints")
+        os.makedirs(OUTPUT_PLOT_PATH, exist_ok=True)
+        example.plot(path=OUTPUT_PLOT_PATH, show=args.show_plots)

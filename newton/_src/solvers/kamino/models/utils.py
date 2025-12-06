@@ -32,27 +32,12 @@ from ..models.builders import (
 __all__ = [
     "make_heterogeneous_builder",
     "make_homogeneous_builder",
-    "make_single_builder",
 ]
 
 
 ###
 # Builder utilities
 ###
-
-
-def make_single_builder(build_fn=build_boxes_nunchaku, **kwargs) -> ModelBuilder:
-    """
-    Utility factory function to create a single-model builder given a specific builder function.
-
-    Args:
-        build_fn (callable): The model builder function to use.
-        **kwargs: Additional keyword arguments to pass to the builder function.
-
-    Returns:
-        ModelBuilder: The constructed model builder.
-    """
-    return build_fn(None, **kwargs)
 
 
 def make_homogeneous_builder(num_worlds: int, build_fn=build_boxes_nunchaku, **kwargs) -> ModelBuilder:
@@ -67,14 +52,19 @@ def make_homogeneous_builder(num_worlds: int, build_fn=build_boxes_nunchaku, **k
     Returns:
         ModelBuilder: The constructed model builder.
     """
+    # First build a single world
+    # NOTE: We want to do this first to avoid re-constructing the same model multiple
+    # times especially if the construction is expensive such as importing from USD.
+    single = build_fn(**kwargs)
 
+    # Then replicate it across the specified number of worlds
     builder = ModelBuilder(default_world=False)
     for _ in range(num_worlds):
-        builder.add_builder(build_fn(**kwargs))
+        builder.add_builder(single)
     return builder
 
 
-def make_heterogeneous_builder() -> ModelBuilder:
+def make_heterogeneous_builder(ground: bool = True) -> ModelBuilder:
     """
     Utility factory function to create a multi-world builder with different worlds in each model.
 
@@ -84,10 +74,10 @@ def make_heterogeneous_builder() -> ModelBuilder:
         ModelBuilder: The constructed model builder.
     """
     builder = ModelBuilder(default_world=False)
-    builder.add_builder(build_boxes_fourbar())
-    builder.add_builder(build_boxes_nunchaku())
-    builder.add_builder(build_boxes_hinged())
-    builder.add_builder(build_box_pendulum())
-    builder.add_builder(build_box_on_plane())
-    builder.add_builder(build_cartpole(z_offset=0.5))
+    builder.add_builder(build_boxes_fourbar(ground=ground))
+    builder.add_builder(build_boxes_nunchaku(ground=ground))
+    builder.add_builder(build_boxes_hinged(ground=ground))
+    builder.add_builder(build_box_pendulum(ground=ground))
+    builder.add_builder(build_box_on_plane(ground=ground))
+    builder.add_builder(build_cartpole(z_offset=0.5, ground=ground))
     return builder

@@ -14,17 +14,15 @@
 # limitations under the License.
 
 """
-KAMINO: Kinematics: Constraints
+Provides mechanisms to define and manage constraints and their associated input/output data.
 """
-
-from __future__ import annotations
 
 import warp as wp
 from warp.context import Devicelike
 
 from ..core.model import Model, ModelData
-from ..core.types import int32
-from ..geometry.contacts import Contacts
+from ..core.types import float32, int32, vec3f
+from ..geometry.contacts import ContactMode, Contacts
 from ..kinematics.limits import Limits
 
 ###
@@ -34,6 +32,7 @@ from ..kinematics.limits import Limits
 __all__ = [
     "make_unilateral_constraints_info",
     "max_constraints_per_world",
+    "unpack_constraint_solutions",
     "update_constraints_info",
 ]
 
@@ -107,6 +106,8 @@ def make_unilateral_constraints_info(
         data (ModelData): The solver container holding time-varying data.
         limits (Limits, optional): The limits container holding the joint-limit data.
         contacts (Contacts, optional): The contacts container holding the contact data.
+        device (Devicelike, optional): The device on which to allocate the constraint info arrays.\n
+            If None, the model's device will be used.
     """
 
     # Ensure the model is valid
@@ -257,8 +258,8 @@ def make_unilateral_constraints_info(
 def _update_constraints_info(
     # Inputs:
     model_info_num_joint_cts: wp.array(dtype=int32),
-    model_info_num_limits: wp.array(dtype=int32),
-    model_info_num_contacts: wp.array(dtype=int32),
+    data_info_num_limits: wp.array(dtype=int32),
+    data_info_num_contacts: wp.array(dtype=int32),
     # Outputs:
     data_info_num_total_cts: wp.array(dtype=int32),
     data_info_num_limit_cts: wp.array(dtype=int32),
@@ -273,8 +274,8 @@ def _update_constraints_info(
     njc = model_info_num_joint_cts[wid]
 
     # Retrieve the number of unilaterals for this world
-    nl = model_info_num_limits[wid]
-    nc = model_info_num_contacts[wid]
+    nl = data_info_num_limits[wid]
+    nc = data_info_num_contacts[wid]
 
     # Set the number of active constraints for each group and the total
     nlc = nl  # NOTE: Each limit currently introduces only a single constraint
@@ -294,6 +295,145 @@ def _update_constraints_info(
     data_info_contact_cts_group_offset[wid] = ccgo
 
 
+@wp.kernel
+def _unpack_joint_constraint_solutions(
+    # Inputs:
+    model_info_total_cts_offset: wp.array(dtype=int32),
+    model_info_joint_cts_offset: wp.array(dtype=int32),
+    model_time_inv_dt: wp.array(dtype=float32),
+    joint_wid: wp.array(dtype=int32),
+    joint_num_cts: wp.array(dtype=int32),
+    joint_cts_offset: wp.array(dtype=int32),
+    lambdas: wp.array(dtype=float32),
+    # Outputs:
+    joint_lambda_j: wp.array(dtype=float32),
+):
+    # Retrieve the thread index as the joint index
+    jid = wp.tid()
+
+    # Retrieve the joint-specific model info
+    wid = joint_wid[jid]
+    num_cts = joint_num_cts[jid]
+    cts_offset = joint_cts_offset[jid]
+
+    # Retrieve the world-specific info
+    inv_dt = model_time_inv_dt[wid]
+    world_joints_cts_offset = model_info_joint_cts_offset[wid]
+    world_total_cts_offset = model_info_total_cts_offset[wid]
+
+    # Compute block offsets of the joint's constraints within
+    # the joint-only constraints and total constraints arrays
+    jio_j = world_joints_cts_offset + cts_offset
+    vio_j = world_total_cts_offset + cts_offset
+
+    # Compute and store the joint-constraint reaction forces
+    for j in range(num_cts):
+        joint_lambda_j[jio_j + j] = inv_dt * lambdas[vio_j + j]
+
+
+@wp.kernel
+def _unpack_limit_constraint_solutions(
+    # Inputs:
+    model_time_inv_dt: wp.array(dtype=float32),
+    data_info_limit_cts_group_offset: wp.array(dtype=int32),
+    limit_model_num_limits: wp.array(dtype=int32),
+    limit_wid: wp.array(dtype=int32),
+    limit_lid: wp.array(dtype=int32),
+    lambdas: wp.array(dtype=float32),
+    v_plus: wp.array(dtype=float32),
+    # Outputs:
+    limit_reaction: wp.array(dtype=float32),
+    limit_velocity: wp.array(dtype=float32),
+):
+    # Retrieve the thread index as the contact index
+    lid = wp.tid()
+
+    # Retrieve the number of limits active in the model
+    model_nl = limit_model_num_limits[0]
+
+    # Skip if lid is greater than the number of limits active in the model
+    if lid >= model_nl:
+        return
+
+    # Retrieve the world index and the world-relative limit index for this limit
+    wid = limit_wid[lid]
+    wlid = limit_lid[lid]
+
+    # Load the limit constraint group offset for this world
+    lcgo = data_info_limit_cts_group_offset[wid]
+
+    # Load the time step for this world
+    inv_dt = model_time_inv_dt[wid]
+
+    # Compute the global constraint index for this limit
+    limit_cts_idx = lcgo + wlid
+
+    # Load the limit reaction and velocity from the global constraint arrays
+    lambda_l = lambdas[limit_cts_idx]
+    v_plus_l = v_plus[limit_cts_idx]
+
+    # Scale the contact reaction by the time step to convert from lagrange impulse to force
+    lambda_l = inv_dt * lambda_l
+
+    # Store the computed limit state
+    limit_reaction[lid] = lambda_l
+    limit_velocity[lid] = v_plus_l
+
+
+@wp.kernel
+def _unpack_contact_constraint_solutions(
+    # Inputs:
+    model_time_inv_dt: wp.array(dtype=float32),
+    data_info_contact_cts_group_offset: wp.array(dtype=int32),
+    contact_model_num_contacts: wp.array(dtype=int32),
+    contact_wid: wp.array(dtype=int32),
+    contact_cid: wp.array(dtype=int32),
+    lambdas: wp.array(dtype=float32),
+    v_plus: wp.array(dtype=float32),
+    # Outputs:
+    contact_mode: wp.array(dtype=int32),
+    contact_reaction: wp.array(dtype=vec3f),
+    contact_velocity: wp.array(dtype=vec3f),
+):
+    # Retrieve the thread index as the contact index
+    cid = wp.tid()
+
+    # Retrieve the number of contacts active in the model
+    model_nc = contact_model_num_contacts[0]
+
+    # Skip if cid is greater than the number of contacts active in the model
+    if cid >= model_nc:
+        return
+
+    # Retrieve the world index and the world-relative contact index for this contact
+    wid = contact_wid[cid]
+    wcid = contact_cid[cid]
+
+    # Load the contact constraint group offset for this world
+    ccgo = data_info_contact_cts_group_offset[wid]
+
+    # Load the time step for this world
+    inv_dt = model_time_inv_dt[wid]
+
+    # Load the contact reaction and velocity from the global constraint arrays
+    lambda_k = vec3f(0.0)
+    v_plus_k = vec3f(0.0)
+    for k in range(3):
+        lambda_k[k] = lambdas[ccgo + 3 * wcid + k]
+        v_plus_k[k] = v_plus[ccgo + 3 * wcid + k]
+
+    # Scale the contact reaction by the time step to convert from lagrange impulse to force
+    lambda_k = inv_dt * lambda_k
+
+    # Compute the discrete contact mode based on the reaction magnitude and velocity
+    mode_k = wp.static(ContactMode.make_compute_mode_func())(v_plus_k)
+
+    # Store the computed contact state
+    contact_mode[cid] = mode_k
+    contact_reaction[cid] = lambda_k
+    contact_velocity[cid] = v_plus_k
+
+
 ###
 # Launchers
 ###
@@ -305,6 +445,10 @@ def update_constraints_info(
 ):
     """
     Updates the active constraints info for the given model and current data.
+
+    Args:
+        model (Model): The model container holding time-invariant data.
+        data (ModelData): The solver container holding time-varying data.
     """
     wp.launch(
         _update_constraints_info,
@@ -322,3 +466,84 @@ def update_constraints_info(
             data.info.contact_cts_group_offset,
         ],
     )
+
+
+def unpack_constraint_solutions(
+    lambdas: wp.array,
+    v_plus: wp.array,
+    model: Model,
+    data: ModelData,
+    limits: Limits | None = None,
+    contacts: Contacts | None = None,
+):
+    """
+    Unpacks the constraint reactions and velocities into respective data containers.
+
+    Args:
+        lambdas (wp.array): The array of constraint reactions (i.e. lagrange multipliers).
+        v_plus (wp.array): The array of post-event constraint velocities.
+        data (ModelData): The solver container holding time-varying data.
+        limits (Limits, optional): The limits container holding the joint-limit data.\n
+            If None, limits will be skipped.
+        contacts (Contacts, optional): The contacts container holding the contact data.\n
+            If None, contacts will be skipped.
+    """
+    # Unpack joint constraint multipliers if the model has joints
+    if model.size.sum_of_num_joints > 0:
+        wp.launch(
+            kernel=_unpack_joint_constraint_solutions,
+            dim=model.size.sum_of_num_joints,
+            inputs=[
+                # Inputs:
+                model.info.total_cts_offset,
+                model.info.joint_cts_offset,
+                model.time.inv_dt,
+                model.joints.wid,
+                model.joints.num_cts,
+                model.joints.cts_offset,
+                lambdas,
+                # Outputs:
+                data.joints.lambda_j,
+            ],
+        )
+
+    # Unpack limit constraint multipliers if a limits container is provided
+    if limits is not None:
+        wp.launch(
+            kernel=_unpack_limit_constraint_solutions,
+            dim=limits.num_model_max_limits,
+            inputs=[
+                # Inputs:
+                model.time.inv_dt,
+                data.info.limit_cts_group_offset,
+                limits.model_num_limits,
+                limits.wid,
+                limits.lid,
+                lambdas,
+                v_plus,
+                # Outputs:
+                limits.reaction,
+                limits.velocity,
+            ],
+        )
+
+    # Unpack contact constraint multipliers if a contacts container is provided
+    if contacts is not None:
+        wp.launch(
+            kernel=_unpack_contact_constraint_solutions,
+            dim=contacts.num_model_max_contacts,
+            inputs=[
+                # Inputs:
+                model.time.inv_dt,
+                data.info.contact_cts_group_offset,
+                contacts.model_num_contacts,
+                contacts.wid,
+                contacts.cid,
+                lambdas,
+                v_plus,
+                # Outputs:
+                contacts.mode,
+                contacts.reaction,
+                contacts.velocity,
+            ],
+        )

@@ -40,13 +40,14 @@ from ..core.builder import ModelBuilder
 from ..core.materials import DEFAULT_FRICTION, DEFAULT_RESTITUTION
 from ..core.model import Model, ModelData
 from ..core.shapes import ShapeType
-from ..core.types import float32, int32, quatf, transformf, vec2f, vec2i, vec3f, vec4f
+from ..core.types import float32, int32, quatf, transformf, uint32, uint64, vec2f, vec2i, vec3f, vec4f
 from ..geometry.contacts import (
     DEFAULT_GEOM_PAIR_CONTACT_MARGIN,
     DEFAULT_GEOM_PAIR_MAX_CONTACTS,
     Contacts,
     make_contact_frame_znorm,
 )
+from ..geometry.keying import build_pair_key2
 
 ###
 # Module configs
@@ -93,6 +94,7 @@ class ContactWriterDataKamino:
     contact_gapfunc: wp.array(dtype=vec4f)
     contact_frame: wp.array(dtype=quatf)
     contact_material: wp.array(dtype=vec2f)
+    contact_key: wp.array(dtype=uint64)
 
 
 ###
@@ -293,6 +295,7 @@ def write_contact_unified_kamino(
             # contact frame (z-norm aligned with contact normal)
             gapfunc = vec4f(normal[0], normal[1], normal[2], d)
             q_frame = wp.quat_from_matrix(make_contact_frame_znorm(normal))
+            key = build_pair_key2(uint32(gid_AB[0]), uint32(gid_AB[1]))
 
             # Store contact data in Kamino format
             writer_data.contact_wid[mcid] = wid
@@ -304,6 +307,7 @@ def write_contact_unified_kamino(
             writer_data.contact_gapfunc[mcid] = gapfunc
             writer_data.contact_frame[mcid] = q_frame
             writer_data.contact_material[mcid] = material
+            writer_data.contact_key[mcid] = key
 
         # TODO: Isnt it possible that this will create 'bubbles' of unused contacts?
         # TODO: We may need an flaging mechanism to indicate invalid contacts
@@ -798,6 +802,7 @@ class CollisionPipelineUnifiedKamino:
         writer_data.contact_gapfunc = contacts.gapfunc
         writer_data.contact_frame = contacts.frame
         writer_data.contact_material = contacts.material
+        writer_data.contact_key = contacts.key
 
         # Run narrow phase with the custom Kamino contact writer
         self.narrow_phase.launch_custom_write(

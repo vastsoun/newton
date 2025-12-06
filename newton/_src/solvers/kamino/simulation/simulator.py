@@ -41,13 +41,19 @@ from ..geometry import (
     Contacts,
 )
 from ..integrators.euler import integrate_semi_implicit_euler
-from ..kinematics.constraints import make_unilateral_constraints_info, update_constraints_info
+from ..kinematics.constraints import (
+    make_unilateral_constraints_info,
+    unpack_constraint_solutions,
+    update_constraints_info,
+)
 from ..kinematics.jacobians import DenseSystemJacobians
 from ..kinematics.joints import compute_joints_data
 from ..kinematics.limits import Limits
-from ..linalg import LinearSolver, LLTBlockedSolver
+from ..linalg import LinearSolverType, LLTBlockedSolver
 from ..solvers.fk import ForwardKinematicsSolver  # noqa: F401
-from ..solvers.padmm import PADMMSettings, PADMMSolver
+from ..solvers.metrics import SolutionMetrics
+from ..solvers.padmm import PADMMSettings, PADMMSolver, PADMMWarmStartMode
+from ..solvers.warmstart import WarmstarterContacts, WarmstarterLimits
 from .resets import reset_select_worlds_to_initial_state, reset_select_worlds_to_state
 
 ###
@@ -80,28 +86,71 @@ class SimulatorSettings:
     """
 
     dt: float = 0.001
-    """The time-step to be used for the simulation."""
+    """
+    The time-step to be used for the simulation.\n
+    Defaults to `0.001` seconds.
+    """
 
     collision_detector: CollisionDetectorSettings = field(default_factory=CollisionDetectorSettings)
     """The settings for the collision detector."""
 
     problem: DualProblemSettings = field(default_factory=DualProblemSettings)
-    """The settings for the dynamics problem."""
+    """
+    The settings for the dynamics problem.\n
+    See :class:`DualProblemSettings` for more details.
+    """
 
     solver: PADMMSettings = field(default_factory=PADMMSettings)
-    """The settings for the dynamics solver."""
+    """
+    The settings for the dynamics solver.\n
+    See :class:`PADMMSettings` for more details.
+    """
+
+    warmstart: PADMMWarmStartMode = PADMMWarmStartMode.CONTAINERS
+    """
+    The warmstart mode to be used for the dynamics solver.\n
+    See :class:`PADMMWarmStartMode` for the available options.\n
+    Defaults to `PADMMWarmStartMode.CONTAINERS to warmstart from the solver data containers.
+    """
+
+    contact_warmstart_method: WarmstarterContacts.Method = WarmstarterContacts.Method.KEY_AND_POSITION
+    """
+    The method to be used for warm-starting contacts.\n
+    See :class:`WarmstarterContacts.Method` for available options.\n
+    Defaults to `WarmstarterContacts.Method.KEY_AND_POSITION`.
+    """
 
     use_solver_acceleration: bool = True
-    """Set to True to enable Nesterov-type acceleration, i.e. use APADMM instead of standard PADMM."""
+    """
+    Enables Nesterov-type acceleration, i.e. use APADMM instead of standard PADMM.\n
+    Defaults to `True`.
+    """
 
     collect_solver_info: bool = False
-    """Set to True to collect solver convergence and performance info at each simulation step."""
+    """
+    Enables collection of dynamics solver convergence and performance info at each simulation step.\n
+    Defaults to `False`.
+    """
 
-    linear_solver_type: type[LinearSolver] = LLTBlockedSolver
-    """The type of linear solver to use for the dynamics problem."""
+    compute_metrics: bool = False
+    """
+    Enables computation of solution metrics at each simulation step.\n
+    Defaults to `False`.
+    """
+
+    linear_solver_type: type[LinearSolverType] = LLTBlockedSolver
+    """
+    The type of linear solver to use for the dynamics problem.\n
+    See :class:`LinearSolverType` for available options.\n
+    Defaults to :class:`LLTBlockedSolver`.
+    """
 
     rotation_correction: JointCorrectionMode = JointCorrectionMode.TWOPI
-    """The rotation correction mode to use for rotational DoFs."""
+    """
+    The rotation correction mode to use for rotational DoFs.\n
+    See :class:`JointCorrectionMode` for available options.\n
+    Defaults to `JointCorrectionMode.TWOPI`.
+    """
 
     def check(self) -> None:
         """
@@ -281,9 +330,8 @@ class Simulator:
         # Allocate the forward dynamics solver on the device
         self._fd_solver = PADMMSolver(
             model=self._model,
-            limits=self._limits,
-            contacts=self._contacts,
             settings=settings.solver,
+            warmstart=settings.warmstart,
             use_acceleration=settings.use_solver_acceleration,
             collect_info=settings.collect_solver_info,
             device=self._device,
@@ -291,6 +339,23 @@ class Simulator:
 
         # Allocate the forward kinematics solver on the device
         # self._fk_solver = ForwardKinematicsSolver(model=self._model)
+
+        # Declare the contacts warmstarter
+        self._ws_limits: WarmstarterLimits | None = None
+        self._ws_contacts: WarmstarterContacts | None = None
+
+        # Allocate the contacts warmstarter if enabled
+        if self._settings.warmstart == PADMMWarmStartMode.CONTAINERS:
+            self._ws_limits = WarmstarterLimits(limits=self._limits)
+            self._ws_contacts = WarmstarterContacts(
+                contacts=self._contacts,
+                method=self._settings.contact_warmstart_method,
+            )
+
+        # Allocate the solution metrics evaluator if enabled
+        self._metrics: SolutionMetrics | None = None
+        if self._settings.compute_metrics:
+            self._metrics = SolutionMetrics(model=self._model)
 
         # Initialize callbacks
         self._pre_reset_cb: Callable[[Simulator], None] = None
@@ -312,6 +377,13 @@ class Simulator:
     ###
     # Properties
     ###
+
+    @property
+    def settings(self) -> SimulatorSettings:
+        """
+        Returns the simulator settings.
+        """
+        return self._settings
 
     @property
     def time(self) -> float:
@@ -400,14 +472,14 @@ class Simulator:
     @property
     def limits(self) -> Limits:
         """
-        Returns the joint limits manager.
+        Returns the joint limits data container.
         """
         return self._limits
 
     @property
     def contacts(self) -> Contacts:
         """
-        Returns the contact manager.
+        Returns the contacts data container.
         """
         return self._contacts
 
@@ -438,6 +510,13 @@ class Simulator:
         Returns the forward dynamics solver.
         """
         return self._fd_solver
+
+    @property
+    def metrics(self) -> SolutionMetrics | None:
+        """
+        Returns the solution metrics evaluator, if enabled.
+        """
+        return self._metrics
 
     @property
     def host(self) -> SimulatorData | None:
@@ -721,6 +800,9 @@ class Simulator:
         # Solve the time integration sub-problem to compute the next state of the system
         self._integrate()
 
+        # Compute solver solution metrics if enabled
+        self._compute_metrics()
+
         # Run the post-step callback if it has been set
         self._run_poststep_callback()
 
@@ -883,6 +965,11 @@ class Simulator:
         # that controls can be applied on the first call to `step()`
         self._forward_kinematics()
 
+        # Reset the dual problem solver to clear internal state
+        # NOTE: This will cause the solver to perform a cold-start
+        # on the first call to `step()`
+        self._fd_solver.reset()
+
     def _reset_all_worlds_to_initial_state(self, reset_constraints: bool = True):
         """
         Resets the simulation to the initial state defined in the model.
@@ -912,7 +999,7 @@ class Simulator:
             reset_constraints=reset_constraints,
         )
 
-    def _reset_all_worlds_to_state(self, state: State, reset_constraints: bool = False):
+    def _reset_all_worlds_to_state(self, state: State, reset_constraints: bool = True):
         """
         Resets all worlds of the simulation to a fully specified state.
 
@@ -927,12 +1014,14 @@ class Simulator:
         # Copy the specified state into the internal solver state for bodies
         wp.copy(self._data.solver.bodies.q_i, state.q_i)
         wp.copy(self._data.solver.bodies.u_i, state.u_i)
+        if not reset_constraints:
+            wp.copy(self._data.solver.joints.lambda_j, state.lambda_j)
 
         # Then reset all internal body data (i.e. inertias, wrenches etc)
         self._reset_bodies_data()
 
         # Then reset the state of all joints
-        self._reset_joints_data(reset_constraints=not reset_constraints)
+        self._reset_joints_data(reset_constraints=reset_constraints)
 
         # Optionally also copy joint constraint forces
         # NOTE: Used to warm-start the constraint solver
@@ -1029,6 +1118,23 @@ class Simulator:
         Solves the forward dynamics sub-problem to compute constraint
         reactions and body wrenches effected through constraints.
         """
+        # If warm-starting is enabled, initialize unilateral
+        # constraints containers from the current solver data
+        if self._settings.warmstart > PADMMWarmStartMode.NONE:
+            if self._settings.warmstart == PADMMWarmStartMode.CONTAINERS:
+                self._ws_limits.warmstart(self.limits)
+                self._ws_contacts.warmstart(self._model, self._data.solver, self.contacts)
+            self._fd_solver.warmstart(
+                problem=self._dual_problem,
+                model=self._model,
+                data=self._data.solver,
+                limits=self.limits,
+                contacts=self.contacts,
+            )
+        # Otherwise, perform a cold-start of the dynamics solver
+        else:
+            self._fd_solver.coldstart()
+
         # Solve the dual problem to compute the constraint reactions
         self._fd_solver.solve(problem=self._dual_problem)
 
@@ -1043,6 +1149,25 @@ class Simulator:
             lambdas_offsets=self._dual_problem.data.vio,
             lambdas_data=self._fd_solver.data.solution.lambdas,
         )
+
+        # TODO: Could this operation be combined with computing body wrenches to optimize kernel launches?
+        # Unpack the computed constraint multipliers to the respective joint-limit
+        # and contact data for post-processing and optional solver warm-starting
+        unpack_constraint_solutions(
+            lambdas=self._fd_solver.data.solution.lambdas,
+            v_plus=self._fd_solver.data.solution.v_plus,
+            model=self._model,
+            data=self._data.solver,
+            limits=self.limits,
+            contacts=self.contacts,
+        )
+
+        # If warmstarting is enabled, update the limits and contacts caches
+        # with the constraint reactions generated by the dynamics solver
+        # NOTE: This needs to happen after unpacking the multipliers
+        if self._settings.warmstart == PADMMWarmStartMode.CONTAINERS:
+            self._ws_limits.update(self.limits)
+            self._ws_contacts.update(self.contacts)
 
     def _forward_wrenches(self):
         """
@@ -1095,6 +1220,25 @@ class Simulator:
 
         # Update the next-step state from the internal solver state
         self._data.update_next()
+
+    def _compute_metrics(self):
+        """
+        Computes performance metrics measuring the physical fidelity of the dynamics solver solution.
+        """
+        if self._settings.compute_metrics:
+            self.metrics.reset()
+            self._metrics.evaluate(
+                sigma=self._fd_solver.data.state.sigma,
+                lambdas=self._fd_solver.data.solution.lambdas,
+                v_plus=self._fd_solver.data.solution.v_plus,
+                model=self._model,
+                data=self._data.solver,
+                state_p=self._data.state_p,
+                problem=self._dual_problem,
+                jacobians=self._jacobians,
+                limits=self._limits,
+                contacts=self._contacts,
+            )
 
     def _advance_time(self):
         """

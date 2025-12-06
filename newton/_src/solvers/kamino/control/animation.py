@@ -610,6 +610,9 @@ class AnimationJointReference:
         if show:
             plt.show()
 
+        # Close the plot to free up resources
+        plt.close()
+
     def loop(self, enabled: bool | list[bool] = True) -> None:
         """
         Enable or disable looping of the animation sequence.

@@ -46,12 +46,15 @@ from ...core.types import (
     mat33f,
     quatf,
     transformf,
+    uint32,
+    uint64,
     vec2f,
     vec2i,
     vec3f,
     vec4f,
 )
 from ...geometry.contacts import ContactsData, make_contact_frame_znorm
+from ...geometry.keying import build_pair_key2
 from .broadphase import CollisionCandidatesData
 
 ###
@@ -265,6 +268,7 @@ def add_single_contact(
     contact_gapfunc: wp.array(dtype=vec4f),
     contact_frame: wp.array(dtype=quatf),
     contact_material: wp.array(dtype=vec2f),
+    contact_key: wp.array(dtype=uint64),
 ):
     # Skip if the contact distance exceeds the specified margin
     if (distance - margin) > 0.0:
@@ -300,6 +304,7 @@ def add_single_contact(
         gapfunc = vec4f(normal.x, normal.y, normal.z, distance)
         q_frame = wp.quat_from_matrix(make_contact_frame_znorm(normal))
         material = vec2f(friction, restitution)
+        key = build_pair_key2(uint32(gid_AB[0]), uint32(gid_AB[1]))
 
         # Store the active contact output data
         contact_wid[mcid] = wid
@@ -311,6 +316,7 @@ def add_single_contact(
         contact_gapfunc[mcid] = gapfunc
         contact_frame[mcid] = q_frame
         contact_material[mcid] = material
+        contact_key[mcid] = key
 
     # Otherwise roll-back the atomic add if we exceeded limits
     else:
@@ -348,6 +354,7 @@ def make_add_multiple_contacts(MAX_CONTACTS: int, SHARED_NORMAL: bool):
         contact_gapfunc: wp.array(dtype=vec4f),
         contact_frame: wp.array(dtype=quatf),
         contact_material: wp.array(dtype=vec2f),
+        contact_key: wp.array(dtype=uint64),
     ):
         # Count valid contacts (those with finite distance)
         num_contacts = wp.int32(0)
@@ -379,6 +386,7 @@ def make_add_multiple_contacts(MAX_CONTACTS: int, SHARED_NORMAL: bool):
 
         # Create the common material for this contact set
         material = vec2f(friction, restitution)
+        key = build_pair_key2(uint32(gid_AB[0]), uint32(gid_AB[1]))
 
         # Define a separate active contact index
         # NOTE: This is different from k since some contacts
@@ -428,6 +436,7 @@ def make_add_multiple_contacts(MAX_CONTACTS: int, SHARED_NORMAL: bool):
                 contact_gapfunc[mcid] = gapfunc
                 contact_frame[mcid] = q_frame
                 contact_material[mcid] = material
+                contact_key[mcid] = key
 
                 # Increment active contact index
                 active_contact_idx += 1
@@ -464,6 +473,7 @@ def sphere_sphere(
     contact_gapfunc: wp.array(dtype=vec4f),
     contact_frame: wp.array(dtype=quatf),
     contact_material: wp.array(dtype=vec2f),
+    contact_key: wp.array(dtype=uint64),
 ):
     # Run the respective collider function to detect sphere-sphere contacts
     distance, position, normal = collide_sphere_sphere(sphere1.pos, sphere1.radius, sphere2.pos, sphere2.radius)
@@ -494,6 +504,7 @@ def sphere_sphere(
         contact_gapfunc,
         contact_frame,
         contact_material,
+        contact_key,
     )
 
 
@@ -520,6 +531,7 @@ def sphere_cylinder(
     contact_gapfunc: wp.array(dtype=vec4f),
     contact_frame: wp.array(dtype=quatf),
     contact_material: wp.array(dtype=vec2f),
+    contact_key: wp.array(dtype=uint64),
 ):
     # Use the tested collision calculation from collision_primitive.py
     distance, position, normal = collide_sphere_cylinder(
@@ -557,6 +569,7 @@ def sphere_cylinder(
         contact_gapfunc,
         contact_frame,
         contact_material,
+        contact_key,
     )
 
 
@@ -588,6 +601,7 @@ def sphere_capsule(
     contact_gapfunc: wp.array(dtype=vec4f),
     contact_frame: wp.array(dtype=quatf),
     contact_material: wp.array(dtype=vec2f),
+    contact_key: wp.array(dtype=uint64),
 ):
     # Use the tested collision calculation from collision_primitive.py
     distance, position, normal = collide_sphere_capsule(
@@ -625,6 +639,7 @@ def sphere_capsule(
         contact_gapfunc,
         contact_frame,
         contact_material,
+        contact_key,
     )
 
 
@@ -651,6 +666,7 @@ def sphere_box(
     contact_gapfunc: wp.array(dtype=vec4f),
     contact_frame: wp.array(dtype=quatf),
     contact_material: wp.array(dtype=vec2f),
+    contact_key: wp.array(dtype=uint64),
 ):
     # Use the tested collision calculation from collision_primitive.py
     distance, position, normal = collide_sphere_box(sphere1.pos, sphere1.radius, box2.pos, box2.rot, box2.size)
@@ -681,6 +697,7 @@ def sphere_box(
         contact_gapfunc,
         contact_frame,
         contact_material,
+        contact_key,
     )
 
 
@@ -757,6 +774,7 @@ def capsule_capsule(
     contact_gapfunc: wp.array(dtype=vec4f),
     contact_frame: wp.array(dtype=quatf),
     contact_material: wp.array(dtype=vec2f),
+    contact_key: wp.array(dtype=uint64),
 ):
     # Use the tested collision calculation from collision_primitive.py
     distance, position, normal = collide_capsule_capsule(
@@ -796,6 +814,7 @@ def capsule_capsule(
         contact_gapfunc,
         contact_frame,
         contact_material,
+        contact_key,
     )
 
 
@@ -822,6 +841,7 @@ def capsule_box(
     contact_gapfunc: wp.array(dtype=vec4f),
     contact_frame: wp.array(dtype=quatf),
     contact_material: wp.array(dtype=vec2f),
+    contact_key: wp.array(dtype=uint64),
 ):
     # Use the tested collision calculation from collision_primitive.py
     distances, positions, normals = collide_capsule_box(
@@ -860,6 +880,7 @@ def capsule_box(
         contact_gapfunc,
         contact_frame,
         contact_material,
+        contact_key,
     )
 
 
@@ -891,6 +912,7 @@ def box_box(
     contact_gapfunc: wp.array(dtype=vec4f),
     contact_frame: wp.array(dtype=quatf),
     contact_material: wp.array(dtype=vec2f),
+    contact_key: wp.array(dtype=uint64),
 ):
     # Use the tested collision calculation from collision_primitive.py
     distances, positions, normals = collide_box_box(
@@ -923,6 +945,7 @@ def box_box(
         contact_gapfunc,
         contact_frame,
         contact_material,
+        contact_key,
     )
 
 
@@ -959,6 +982,7 @@ def plane_sphere(
     contact_gapfunc: wp.array(dtype=vec4f),
     contact_frame: wp.array(dtype=quatf),
     contact_material: wp.array(dtype=vec2f),
+    contact_key: wp.array(dtype=uint64),
 ):
     # Use the tested collision calculation from collision_primitive.py
     # Note: collide_plane_sphere returns (distance, position) without normal
@@ -993,6 +1017,7 @@ def plane_sphere(
         contact_gapfunc,
         contact_frame,
         contact_material,
+        contact_key,
     )
 
 
@@ -1019,6 +1044,7 @@ def plane_box(
     contact_gapfunc: wp.array(dtype=vec4f),
     contact_frame: wp.array(dtype=quatf),
     contact_material: wp.array(dtype=vec2f),
+    contact_key: wp.array(dtype=uint64),
 ):
     # Use the tested collision calculation from collision_primitive.py
     distances, positions, normal = collide_plane_box(plane1.normal, plane1.pos, box2.pos, box2.rot, box2.size)
@@ -1049,6 +1075,7 @@ def plane_box(
         contact_gapfunc,
         contact_frame,
         contact_material,
+        contact_key,
     )
 
 
@@ -1075,6 +1102,7 @@ def plane_ellipsoid(
     contact_gapfunc: wp.array(dtype=vec4f),
     contact_frame: wp.array(dtype=quatf),
     contact_material: wp.array(dtype=vec2f),
+    contact_key: wp.array(dtype=uint64),
 ):
     # Use the tested collision calculation from collision_primitive.py
     distance, position, normal = collide_plane_ellipsoid(
@@ -1107,6 +1135,7 @@ def plane_ellipsoid(
         contact_gapfunc,
         contact_frame,
         contact_material,
+        contact_key,
     )
 
 
@@ -1133,6 +1162,7 @@ def plane_capsule(
     contact_gapfunc: wp.array(dtype=vec4f),
     contact_frame: wp.array(dtype=quatf),
     contact_material: wp.array(dtype=vec2f),
+    contact_key: wp.array(dtype=uint64),
 ):
     # Use the tested collision calculation from collision_primitive.py
     # Note: collide_plane_capsule returns a contact frame, not individual normals
@@ -1176,6 +1206,7 @@ def plane_capsule(
     # Create the common properties shared by all contacts in the current set
     q_frame = wp.quat_from_matrix(make_contact_frame_znorm(normal))
     material = vec2f(friction, restitution)
+    key = build_pair_key2(uint32(gid_AB[0]), uint32(gid_AB[1]))
 
     # Add generated contacts data to the output arrays
     active_contact_idx = int32(0)
@@ -1211,6 +1242,7 @@ def plane_capsule(
             contact_gapfunc[mcid] = gapfunc
             contact_frame[mcid] = q_frame
             contact_material[mcid] = material
+            contact_key[mcid] = key
 
             # Increment active contact index
             active_contact_idx += 1
@@ -1239,6 +1271,7 @@ def plane_cylinder(
     contact_gapfunc: wp.array(dtype=vec4f),
     contact_frame: wp.array(dtype=quatf),
     contact_material: wp.array(dtype=vec2f),
+    contact_key: wp.array(dtype=uint64),
 ):
     # Use the tested collision calculation from collision_primitive.py
     distances, positions, normal = collide_plane_cylinder(
@@ -1271,6 +1304,7 @@ def plane_cylinder(
         contact_gapfunc,
         contact_frame,
         contact_material,
+        contact_key,
     )
 
 
@@ -1306,6 +1340,7 @@ def _primitive_narrowphase(
     contact_gapfunc: wp.array(dtype=vec4f),
     contact_frame: wp.array(dtype=quatf),
     contact_material: wp.array(dtype=vec2f),
+    contact_key: wp.array(dtype=uint64),
 ):
     # Retrieve the geom-pair index (gpid) from the thread grid
     gpid = wp.tid()
@@ -1375,6 +1410,7 @@ def _primitive_narrowphase(
             contact_gapfunc,
             contact_frame,
             contact_material,
+            contact_key,
         )
 
     elif sid1 == ShapeType.SPHERE and sid2 == ShapeType.CYLINDER:
@@ -1398,6 +1434,7 @@ def _primitive_narrowphase(
             contact_gapfunc,
             contact_frame,
             contact_material,
+            contact_key,
         )
 
     elif sid1 == ShapeType.SPHERE and sid2 == ShapeType.CONE:
@@ -1424,6 +1461,7 @@ def _primitive_narrowphase(
             contact_gapfunc,
             contact_frame,
             contact_material,
+            contact_key,
         )
 
     elif sid1 == ShapeType.SPHERE and sid2 == ShapeType.BOX:
@@ -1447,6 +1485,7 @@ def _primitive_narrowphase(
             contact_gapfunc,
             contact_frame,
             contact_material,
+            contact_key,
         )
 
     elif sid1 == ShapeType.SPHERE and sid2 == ShapeType.ELLIPSOID:
@@ -1500,6 +1539,7 @@ def _primitive_narrowphase(
             contact_gapfunc,
             contact_frame,
             contact_material,
+            contact_key,
         )
 
     elif sid1 == ShapeType.CAPSULE and sid2 == ShapeType.BOX:
@@ -1523,6 +1563,7 @@ def _primitive_narrowphase(
             contact_gapfunc,
             contact_frame,
             contact_material,
+            contact_key,
         )
 
     elif sid1 == ShapeType.CAPSULE and sid2 == ShapeType.ELLIPSOID:
@@ -1549,6 +1590,7 @@ def _primitive_narrowphase(
             contact_gapfunc,
             contact_frame,
             contact_material,
+            contact_key,
         )
 
     elif sid1 == ShapeType.BOX and sid2 == ShapeType.ELLIPSOID:
@@ -1579,6 +1621,7 @@ def _primitive_narrowphase(
             contact_gapfunc,
             contact_frame,
             contact_material,
+            contact_key,
         )
 
     elif sid1 == ShapeType.PLANE and sid2 == ShapeType.BOX:
@@ -1602,6 +1645,7 @@ def _primitive_narrowphase(
             contact_gapfunc,
             contact_frame,
             contact_material,
+            contact_key,
         )
 
     elif sid1 == ShapeType.PLANE and sid2 == ShapeType.ELLIPSOID:
@@ -1625,6 +1669,7 @@ def _primitive_narrowphase(
             contact_gapfunc,
             contact_frame,
             contact_material,
+            contact_key,
         )
 
     elif sid1 == ShapeType.PLANE and sid2 == ShapeType.CAPSULE:
@@ -1648,6 +1693,7 @@ def _primitive_narrowphase(
             contact_gapfunc,
             contact_frame,
             contact_material,
+            contact_key,
         )
 
     elif sid1 == ShapeType.PLANE and sid2 == ShapeType.CYLINDER:
@@ -1671,6 +1717,7 @@ def _primitive_narrowphase(
             contact_gapfunc,
             contact_frame,
             contact_material,
+            contact_key,
         )
 
 
@@ -1739,6 +1786,7 @@ def primitive_narrowphase(
             contacts.gapfunc,
             contacts.frame,
             contacts.material,
+            contacts.key,
         ],
         device=model.device,
     )

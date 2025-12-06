@@ -1172,6 +1172,13 @@ class DualProblem:
             )
 
     @property
+    def device(self) -> Devicelike:
+        """
+        Returns the device the dual problem is allocated on.
+        """
+        return self._device
+
+    @property
     def size(self) -> ModelSize:
         """
         Returns the model size of the dual problem.

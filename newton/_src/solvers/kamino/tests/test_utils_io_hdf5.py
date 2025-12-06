@@ -29,9 +29,6 @@ import newton._src.solvers.kamino.utils.io.hdf5 as hdf5
 from newton._src.solvers.kamino.models.builders import (
     build_boxes_nunchaku,
 )
-from newton._src.solvers.kamino.models.utils import (
-    make_single_builder,
-)
 from newton._src.solvers.kamino.simulation.simulator import Simulator
 
 ###
@@ -207,8 +204,8 @@ class TestHDF5(unittest.TestCase):
             return
 
         # Create a multi-instanced system
-        builder = make_single_builder(build_fn=build_boxes_nunchaku)
-        # sim = Simulator(builder=builder, device=self.default_device, shadow=True)  # TODO: Use shadow=True to test shadow data
+        builder = build_boxes_nunchaku()
+        # sim = Simulator(builder=builder, device=self.default_device, shadow=True)
         sim = Simulator(builder=builder, device=self.default_device)
 
         # Construct and configure the system data container

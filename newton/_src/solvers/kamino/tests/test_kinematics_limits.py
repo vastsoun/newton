@@ -201,8 +201,9 @@ class TestKinematicsLimits(unittest.TestCase):
         self.assertIsNotNone(limits.dof)
         self.assertIsNotNone(limits.side)
         self.assertIsNotNone(limits.r_q)
-        self.assertIsNotNone(limits.r_dq)
-        self.assertIsNotNone(limits.r_tau)
+        self.assertIsNotNone(limits.key)
+        self.assertIsNotNone(limits.reaction)
+        self.assertIsNotNone(limits.velocity)
 
         # Check the shapes of the limits arrays
         self.assertEqual(limits.num_model_max_limits, 12)
@@ -226,8 +227,9 @@ class TestKinematicsLimits(unittest.TestCase):
         msg.info("limits.dof: %s", limits.dof)
         msg.info("limits.side: %s", limits.side)
         msg.info("limits.r_q: %s", limits.r_q)
-        msg.info("limits.r_dq: %s", limits.r_dq)
-        msg.info("limits.r_tau: %s", limits.r_tau)
+        msg.info("limits.key: %s", limits.key)
+        msg.info("limits.reaction: %s", limits.reaction)
+        msg.info("limits.velocity: %s", limits.velocity)
 
     def test_02_check_revolute_joint(self):
         # Construct the model description using the ModelBuilder
@@ -274,8 +276,9 @@ class TestKinematicsLimits(unittest.TestCase):
         msg.info("[before]: limits.dof: %s", limits.dof)
         msg.info("[before]: limits.side: %s", limits.side)
         msg.info("[before]: limits.r_q: %s", limits.r_q)
-        msg.info("[before]: limits.r_dq: %s", limits.r_dq)
-        msg.info("[before]: limits.r_tau: %s\n\n", limits.r_tau)
+        msg.info("[before]: limits.key: %s", limits.key)
+        msg.info("[before]: limits.reaction: %s", limits.reaction)
+        msg.info("[before]: limits.velocity: %s", limits.velocity)
 
         # Check for active joint limits
         limits.detect(model, data)
@@ -294,8 +297,9 @@ class TestKinematicsLimits(unittest.TestCase):
         msg.info("[after]: limits.dof: %s", limits.dof)
         msg.info("[after]: limits.side: %s", limits.side)
         msg.info("[after]: limits.r_q: %s", limits.r_q)
-        msg.info("[after]: limits.r_dq: %s", limits.r_dq)
-        msg.info("[after]: limits.r_tau: %s\n\n", limits.r_tau)
+        msg.info("[after]: limits.key: %s", limits.key)
+        msg.info("[after]: limits.reaction: %s", limits.reaction)
+        msg.info("[after]: limits.velocity: %s", limits.velocity)
 
         # Check the limits
         limits_num_np = limits.world_num_limits.numpy()

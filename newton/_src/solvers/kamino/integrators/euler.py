@@ -67,7 +67,7 @@ def semi_implicit_euler_with_logmap(
 
     # Compute velocity update equations
     v_i_n = v_i + dt * (g + inv_m_i * f_i)
-    omega_i_n = omega_i + dt * inv_I_i @ (-S_i @ I_i @ omega_i + tau_i)
+    omega_i_n = omega_i + dt * inv_I_i @ (-S_i @ (I_i @ omega_i) + tau_i)
 
     # Compute configuration update equations
     r_i_n = r_i + dt * v_i_n

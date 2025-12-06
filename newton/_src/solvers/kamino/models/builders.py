@@ -70,6 +70,7 @@ __all__ = [
 
 def add_ground_plane(
     builder: ModelBuilder,
+    layer: str = "world",
     group: int = 1,
     collides: int = 1,
     world_index: int = 0,
@@ -87,21 +88,20 @@ def add_ground_plane(
     Returns:
         int: The ID of the added ground geometry.
     """
-    builder.add_collision_layer("ground", world_index=world_index)
-    gid = builder.add_collision_geometry(
-        name="ground",
-        body=-1,
+    return builder.add_collision_geometry(
         shape=PlaneShape(vec3f(0.0, 0.0, 1.0), 0.0),
         offset=transformf(0.0, 0.0, z_offset, 0.0, 0.0, 0.0, 1.0),
+        name="ground",
+        layer=layer,
         group=group,
         collides=collides,
         world_index=world_index,
     )
-    return gid
 
 
 def add_ground_geom(
     builder: ModelBuilder,
+    layer: str = "world",
     group: int = 1,
     collides: int = 1,
     world_index: int = 0,
@@ -119,17 +119,15 @@ def add_ground_geom(
     Returns:
         int: The ID of the added ground geometry.
     """
-    builder.add_collision_layer("ground", world_index=world_index)
-    gid = builder.add_collision_geometry(
-        name="ground",
-        body=-1,
+    return builder.add_collision_geometry(
         shape=BoxShape(20.0, 20.0, 1.0),
         offset=transformf(0.0, 0.0, -0.5 + z_offset, 0.0, 0.0, 0.0, 1.0),
+        name="ground",
+        layer=layer,
         group=group,
         collides=collides,
         world_index=world_index,
     )
-    return gid
 
 
 def add_body_pose_offset(builder: ModelBuilder, offset: transformf):

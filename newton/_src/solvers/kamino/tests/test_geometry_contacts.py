@@ -111,7 +111,7 @@ def compute_contact_mode(velocity: wp.array, mode: wp.array, num_threads: int = 
 class TestGeometryContactFrames(unittest.TestCase):
     def setUp(self):
         self.default_device = wp.get_device()
-        self.verbose = True  # Set to True for detailed output
+        self.verbose = False  # Set to True for detailed output
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
@@ -209,7 +209,7 @@ class TestGeometryContactFrames(unittest.TestCase):
 class TestGeometryContactMode(unittest.TestCase):
     def setUp(self):
         self.default_device = wp.get_device()
-        self.verbose = True  # Set to True for detailed output
+        self.verbose = False  # Set to True for detailed output
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
@@ -254,7 +254,7 @@ class TestGeometryContactMode(unittest.TestCase):
 class TestGeometryContacts(unittest.TestCase):
     def setUp(self):
         self.default_device = wp.get_device()
-        self.verbose = True  # Set to True for detailed output
+        self.verbose = False  # Set to True for detailed output
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:

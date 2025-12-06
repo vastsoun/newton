@@ -29,6 +29,7 @@ from .types import (
     mat33f,
     mat34f,
     mat44f,
+    mat63f,
     mat66f,
     quatf,
     vec3f,
@@ -704,3 +705,109 @@ def screw_angular(s: vec6f) -> vec3f:
         vec3f: The angular component of the screw.
     """
     return vec3f(s[3], s[4], s[5])
+
+
+@wp.func
+def screw_transform_matrix_from_points(r_A: vec3f, r_B: vec3f) -> mat66f:
+    """
+    Generates a 6x6 screw transformation matrix given the starting (`r_A`)
+    and ending (`r_B`) positions defining the line-of-action of the screw.
+
+    Both positions are assumed to be expressed in world coordinates,
+    and the line-of-action can be thought of as an effective lever-arm
+    from point `A` to point `B`.
+
+    This function thus renders the matrix screw transformation from point `A` to point `B` as:
+
+    `W_BA := [[I_3  , 0_3],[S_BA , I_3]]`,
+
+    where `S_BA` is the skew-symmetric matrix of the vector `r_BA = r_A - r_B`.
+
+    Args:
+        r_A (vec3f): The starting position of the line-of-action in world coordinates.
+        r_B (vec3f): The ending position of the line-of-action in world coordinates.
+
+    Returns:
+        mat66f: The 6x6 screw transformation matrix.
+    """
+    # Initialize the wrench matrix
+    W_BA = I_6
+
+    # Fill the lower left block with the skew-symmetric matrix
+    S_BA = wp.skew(r_A - r_B)
+    for i in range(3):
+        for j in range(3):
+            W_BA[3 + i, j] = S_BA[i, j]
+
+    # Return the wrench matrix
+    return W_BA
+
+
+###
+# Wrenches
+###
+
+
+W_C_I = wp.constant(mat63f(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0))
+"""Identity-like matrix to initialize contact wrench matrices."""
+
+
+@wp.func
+def contact_wrench_matrix_from_points(r_k: vec3f, r_i: vec3f) -> mat63f:
+    """
+    Generates a 6x3 screw transformation matrix given the contact (`r_k`)
+    and body CoM (`r_i`) positions defining the line-of-action of the force.
+
+    Both positions are assumed to be expressed in world coordinates,
+    and the line-of-action can be thought of as an effective lever-arm
+    from point `k` to point `i`.
+
+    This function thus renders the matrix screw transformation from point `k` to point `i` as:
+
+    `W_ki := [[I_3],[S_ki]]`,
+
+    where `S_ki` is the skew-symmetric matrix of the vector `r_ki = r_k - r_i`.
+
+    Args:
+        r_k (vec3f): The position of the contact point in world coordinates.
+        r_i (vec3f): The position of the body CoM in world coordinates.
+
+    Returns:
+        mat66f: The 6x6 screw transformation matrix.
+    """
+    # Initialize the wrench matrix
+    W_ki = W_C_I
+
+    # Fill the lower left block with the skew-symmetric matrix
+    S_ki = wp.skew(r_k - r_i)
+    for i in range(3):
+        for j in range(3):
+            W_ki[3 + i, j] = S_ki[i, j]
+
+    # Return the wrench matrix
+    return W_ki
+
+
+@wp.func
+def expand6d(X: mat33f) -> mat66f:
+    """
+    Expands a 3x3 rotation matrix to a 6x6 matrix operator by filling
+    the upper left and lower right blocks with the input matrix.
+
+    Args:
+        X (mat33f): The 3x3 matrix to be expanded.
+
+    Returns:
+        mat66: The expanded 6x6 matrix.
+    """
+    # Initialize the 6D matrix
+    X_6d = mat66f(0.0)
+
+    # Fill the upper left 3x3 block with the input matrix
+    for i in range(3):
+        for j in range(3):
+            X_6d[i, j] = X[i, j]
+            X_6d[3 + i, 3 + j] = X[i, j]
+
+    # Return the expanded matrix
+    return X_6d

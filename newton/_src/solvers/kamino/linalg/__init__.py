@@ -15,7 +15,7 @@
 
 """The Kamino Linear Algebra Module"""
 
-from . import utils as utils
+from . import utils
 from .core import (
     DenseLinearOperatorData,
     DenseRectangularMultiLinearInfo,

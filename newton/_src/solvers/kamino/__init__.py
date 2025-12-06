@@ -38,7 +38,13 @@ from .core.gravity import (
     GravityDescriptor,
     GravityModel,
 )
-from .core.joints import JointActuationType, JointDescriptor, JointDoFType, JointsData, JointsModel
+from .core.joints import (
+    JointActuationType,
+    JointDescriptor,
+    JointDoFType,
+    JointsData,
+    JointsModel,
+)
 from .core.materials import (
     DEFAULT_FRICTION,
     DEFAULT_RESTITUTION,
@@ -146,11 +152,10 @@ from .simulation import (
 )
 from .solvers import (
     ForwardKinematicsSolver,
+    ForwardKinematicsSolverSettings,
+    ForwardKinematicsSolverStatus,
     PADMMSettings,
     PADMMSolver,
-)
-from .solvers.fk import (
-    ForwardKinematicsSolver,
 )
 from .utils.io import hdf5, usd
 
@@ -194,6 +199,8 @@ __all__ = [
     "EmptyShape",
     "FloatArrayLike",
     "ForwardKinematicsSolver",
+    "ForwardKinematicsSolverSettings",
+    "ForwardKinematicsSolverStatus",
     "GeometriesData",
     "GeometriesModel",
     "GeometryDescriptor",

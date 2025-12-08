@@ -27,8 +27,11 @@ from newton._src.solvers.kamino.control.pid import JointSpacePIDController
 from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.examples import get_examples_output_path, run_headless
 from newton._src.solvers.kamino.models import get_examples_usd_assets_path
-from newton._src.solvers.kamino.models.builders import add_body_pose_offset, add_ground_geom
-from newton._src.solvers.kamino.models.utils import make_homogeneous_builder
+from newton._src.solvers.kamino.models.builders.utils import (
+    add_ground_box,
+    make_homogeneous_builder,
+    set_uniform_body_pose_offset,
+)
 from newton._src.solvers.kamino.simulation.simulator import Simulator, SimulatorSettings
 from newton._src.solvers.kamino.solvers.padmm import PADMMWarmStartMode
 from newton._src.solvers.kamino.solvers.warmstart import WarmstarterContacts
@@ -88,12 +91,12 @@ class Example:
         # Offset the model to place it above the ground
         # NOTE: The USD model is centered at the origin
         offset = wp.transformf(0.0, 0.0, 0.265, 0.0, 0.0, 0.0, 1.0)
-        add_body_pose_offset(builder=self.builder, offset=offset)
+        set_uniform_body_pose_offset(builder=self.builder, offset=offset)
 
         # Add a static collision layer and geometry for the plane
         if ground:
             for w in range(num_worlds):
-                add_ground_geom(self.builder, world_index=w, layer="world")
+                add_ground_box(self.builder, world_index=w, layer="world")
 
         # Set gravity
         for w in range(self.builder.num_worlds):

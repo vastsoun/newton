@@ -23,10 +23,7 @@ import warp as wp
 from warp.context import Devicelike
 
 from newton._src.solvers.kamino.integrators.euler import integrate_semi_implicit_euler
-from newton._src.solvers.kamino.models.builders import (
-    build_box_on_plane,
-    build_boxes_hinged,
-)
+from newton._src.solvers.kamino.models.builders.basics import build_box_on_plane, build_boxes_hinged
 from newton._src.solvers.kamino.solvers.metrics import SolutionMetrics
 from newton._src.solvers.kamino.solvers.padmm import PADMMSolver
 from newton._src.solvers.kamino.tests.test_solvers_padmm import TestSetup

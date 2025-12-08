@@ -38,7 +38,13 @@ from .core.gravity import (
     GravityDescriptor,
     GravityModel,
 )
-from .core.joints import JointActuationType, JointDescriptor, JointDoFType, JointsData, JointsModel
+from .core.joints import (
+    JointActuationType,
+    JointDescriptor,
+    JointDoFType,
+    JointsData,
+    JointsModel,
+)
 from .core.materials import (
     DEFAULT_FRICTION,
     DEFAULT_RESTITUTION,
@@ -145,6 +151,9 @@ from .simulation import (
     SimulatorSettings,
 )
 from .solvers import (
+    ForwardKinematicsSolver,
+    ForwardKinematicsSolverSettings,
+    ForwardKinematicsSolverStatus,
     PADMMSettings,
     PADMMSolver,
 )
@@ -182,7 +191,6 @@ __all__ = [
     "Control",
     "CylinderShape",
     "DelassusOperator",
-    "DelassusOperatorData",
     "DenseSystemJacobians",
     "DenseSystemJacobiansData",
     "DualProblem",
@@ -191,6 +199,8 @@ __all__ = [
     "EmptyShape",
     "FloatArrayLike",
     "ForwardKinematicsSolver",
+    "ForwardKinematicsSolverSettings",
+    "ForwardKinematicsSolverStatus",
     "GeometriesData",
     "GeometriesModel",
     "GeometryDescriptor",
@@ -235,7 +245,6 @@ __all__ = [
     "Vec4",
     "Vec6",
     "WorldDescriptor",
-    "__version__",
     "float16",
     "float32",
     "float64",

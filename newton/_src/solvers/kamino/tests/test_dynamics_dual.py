@@ -22,15 +22,10 @@ import unittest
 import numpy as np
 import warp as wp
 
-# Module to be tested
 from newton._src.solvers.kamino.dynamics.dual import DualProblem
 from newton._src.solvers.kamino.linalg import LLTSequentialSolver
-from newton._src.solvers.kamino.models.utils import (
-    make_heterogeneous_builder,
-)
+from newton._src.solvers.kamino.models.builders.basics import make_basics_heterogeneous_builder
 from newton._src.solvers.kamino.tests.utils.extract import extract_problem_vector
-
-# Test utilities
 from newton._src.solvers.kamino.tests.utils.make import make_containers, update_containers
 from newton._src.solvers.kamino.tests.utils.print import print_model_info
 
@@ -55,7 +50,7 @@ class TestDualProblem(unittest.TestCase):
         max_world_contacts = 12
 
         # Construct the model description using model builders for different systems
-        builder = make_heterogeneous_builder()
+        builder = make_basics_heterogeneous_builder()
 
         # Create the model and containers from the builder
         model, data, limits, detector, _jacobians = make_containers(
@@ -117,7 +112,7 @@ class TestDualProblem(unittest.TestCase):
         max_world_contacts = 12
 
         # Construct the model description using model builders for different systems
-        builder = make_heterogeneous_builder()
+        builder = make_basics_heterogeneous_builder()
         num_worlds = builder.num_worlds
 
         # Create the model and containers from the builder

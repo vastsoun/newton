@@ -28,7 +28,7 @@ from newton._src.solvers.kamino.examples import run_headless
 from newton._src.solvers.kamino.geometry import CollisionPipelineType
 from newton._src.solvers.kamino.geometry.primitive.broadphase import PRIMITIVE_BROADPHASE_SUPPORTED_SHAPES
 from newton._src.solvers.kamino.geometry.primitive.narrowphase import PRIMITIVE_NARROWPHASE_SUPPORTED_SHAPE_PAIRS
-from newton._src.solvers.kamino.models import builders
+from newton._src.solvers.kamino.models.builders import testing
 from newton._src.solvers.kamino.simulation.simulator import Simulator, SimulatorSettings
 from newton._src.solvers.kamino.utils import logger as msg
 from newton._src.solvers.kamino.viewer import ViewerKamino
@@ -168,7 +168,7 @@ class Example:
 
         # Construct model builder containing all shape-pair combinations supported by the configured pipeline
         msg.info("Constructing builder using model generator ...")
-        self.builder: ModelBuilder = builders.make_shape_pairs_builder(
+        self.builder: ModelBuilder = testing.make_shape_pairs_builder(
             shape_pairs=supported_shape_pairs,
             distance=0.0,
             ground_box=True,

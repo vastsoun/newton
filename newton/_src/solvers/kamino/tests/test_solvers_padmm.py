@@ -30,13 +30,7 @@ from newton._src.solvers.kamino.kinematics.constraints import unpack_constraint_
 from newton._src.solvers.kamino.linalg import LLTBlockedSolver
 from newton._src.solvers.kamino.linalg.utils.matrix import SquareSymmetricMatrixProperties
 from newton._src.solvers.kamino.linalg.utils.range import in_range_via_gaussian_elimination
-from newton._src.solvers.kamino.models.builders import (
-    build_box_on_plane,
-    build_box_pendulum,  # noqa: F401
-    build_boxes_fourbar,  # noqa: F401
-    build_boxes_hinged,  # noqa: F401
-    build_boxes_nunchaku,  # noqa: F401
-)
+from newton._src.solvers.kamino.models.builders import basics
 from newton._src.solvers.kamino.solvers.padmm import PADMMSettings, PADMMSolver, PADMMWarmStartMode
 from newton._src.solvers.kamino.tests.utils.extract import (
     extract_delassus,
@@ -369,7 +363,7 @@ class TestPADMMSolver(unittest.TestCase):
         Test creating a PADMMSolver with default initialization and then finalizing all memory allocations.
         """
         # Create a test setup
-        test = TestSetup(builder_fn=build_box_on_plane, max_world_contacts=8, device=self.default_device)
+        test = TestSetup(builder_fn=basics.build_box_on_plane, max_world_contacts=8, device=self.default_device)
 
         # Creating a default PADMMSolver without any model or settings
         # should result in a solver without any memory allocation.
@@ -391,7 +385,7 @@ class TestPADMMSolver(unittest.TestCase):
         Tests the Proximal-ADMM (PADMM) solver with default settings on the reference problem.
         """
         # Create the test problem
-        test = TestSetup(builder_fn=build_box_on_plane, max_world_contacts=8, device=self.default_device)
+        test = TestSetup(builder_fn=basics.build_box_on_plane, max_world_contacts=8, device=self.default_device)
 
         # Define solver settings
         # NOTE: These are all equal to their default values
@@ -432,7 +426,7 @@ class TestPADMMSolver(unittest.TestCase):
         Tests the Accelerated Proximal-ADMM (APADMM) solver on the reference problem with Nesterov acceleration.
         """
         # Create the test problem
-        test = TestSetup(builder_fn=build_box_on_plane, max_world_contacts=8, device=self.default_device)
+        test = TestSetup(builder_fn=basics.build_box_on_plane, max_world_contacts=8, device=self.default_device)
 
         # Define solver settings
         # NOTE: These are all equal to their default values
@@ -474,7 +468,7 @@ class TestPADMMSolver(unittest.TestCase):
         Tests the Proximal-ADMM (PADMM) solver on the reference problem with internal warmstarting.
         """
         # Create the test problem
-        test = TestSetup(builder_fn=build_box_on_plane, max_world_contacts=8, device=self.default_device)
+        test = TestSetup(builder_fn=basics.build_box_on_plane, max_world_contacts=8, device=self.default_device)
 
         # Define solver settings
         # NOTE: These are all equal to their default values
@@ -521,7 +515,7 @@ class TestPADMMSolver(unittest.TestCase):
         Tests the Proximal-ADMM (PADMM) solver on the reference problem with container-based warmstarting.
         """
         # Create the test problem
-        test = TestSetup(builder_fn=build_box_on_plane, max_world_contacts=8, device=self.default_device)
+        test = TestSetup(builder_fn=basics.build_box_on_plane, max_world_contacts=8, device=self.default_device)
 
         # Define solver settings
         # NOTE: These are all equal to their default values
@@ -569,7 +563,7 @@ class TestPADMMSolver(unittest.TestCase):
         Tests the Proximal-ADMM (PADMM) solver on the reference problem with container-based warmstarting.
         """
         # Create the test problem
-        test = TestSetup(builder_fn=build_box_on_plane, max_world_contacts=8, device=self.default_device)
+        test = TestSetup(builder_fn=basics.build_box_on_plane, max_world_contacts=8, device=self.default_device)
 
         # Define solver settings
         # NOTE: These are all equal to their default values
@@ -617,7 +611,7 @@ class TestPADMMSolver(unittest.TestCase):
         Tests the Proximal-ADMM (PADMM) solver on the reference problem with container-based warmstarting.
         """
         # Create the test problem
-        test = TestSetup(builder_fn=build_box_on_plane, max_world_contacts=8, device=self.default_device)
+        test = TestSetup(builder_fn=basics.build_box_on_plane, max_world_contacts=8, device=self.default_device)
 
         # Define solver settings
         # NOTE: These are all equal to their default values

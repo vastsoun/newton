@@ -35,18 +35,16 @@ from newton._src.solvers.kamino.core.materials import MaterialDescriptor
 from newton._src.solvers.kamino.core.model import Model
 from newton._src.solvers.kamino.core.shapes import SphereShape
 from newton._src.solvers.kamino.core.types import Axis, mat33f, transformf, vec6f
-from newton._src.solvers.kamino.models.builders import (
+from newton._src.solvers.kamino.models.builders.basics import (
     build_box_on_plane,
     build_box_pendulum,
     build_boxes_fourbar,
     build_boxes_hinged,
     build_boxes_nunchaku,
     build_cartpole,
+    make_basics_heterogeneous_builder,
 )
-from newton._src.solvers.kamino.models.utils import (
-    make_heterogeneous_builder,
-    make_homogeneous_builder,
-)
+from newton._src.solvers.kamino.models.builders.utils import make_homogeneous_builder
 from newton._src.solvers.kamino.utils import logger as msg
 
 ###
@@ -746,7 +744,7 @@ class TestModelBuilder(unittest.TestCase):
 
     def test_21_make_heterogeneous_test_builder(self):
         # Construct cartpole model
-        builder = make_heterogeneous_builder(ground=True)
+        builder = make_basics_heterogeneous_builder(ground=True)
         self.assertEqual(builder.num_worlds, 6)
         self.assertEqual(builder.num_bodies, 13)
         self.assertEqual(builder.num_joints, 10)

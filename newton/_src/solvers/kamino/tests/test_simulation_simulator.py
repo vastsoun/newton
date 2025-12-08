@@ -23,8 +23,8 @@ import warp as wp
 
 from newton._src.solvers.kamino.core.types import float32
 from newton._src.solvers.kamino.examples import print_progress_bar
-from newton._src.solvers.kamino.models.builders import build_cartpole
-from newton._src.solvers.kamino.models.utils import make_homogeneous_builder
+from newton._src.solvers.kamino.models.builders.basics import build_cartpole
+from newton._src.solvers.kamino.models.builders.utils import make_homogeneous_builder
 from newton._src.solvers.kamino.simulation.simulator import Simulator
 from newton._src.solvers.kamino.utils import logger as msg
 

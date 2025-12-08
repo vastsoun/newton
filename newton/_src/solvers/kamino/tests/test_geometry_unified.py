@@ -29,7 +29,7 @@ from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.core.model import Model, ModelData
 from newton._src.solvers.kamino.geometry.contacts import Contacts
 from newton._src.solvers.kamino.geometry.unified import BroadPhaseMode, CollisionPipelineUnifiedKamino
-from newton._src.solvers.kamino.models import builders as test_builders
+from newton._src.solvers.kamino.models.builders import basics, testing
 from newton._src.solvers.kamino.tests.test_geometry_primitive import check_contacts
 from newton._src.solvers.kamino.utils import logger as msg
 
@@ -187,7 +187,7 @@ def test_unified_pipeline_on_shape_pair(
         builder_kwargs = {}
 
     # Create a builder for the specified shape pair
-    builder = test_builders.make_single_shape_pair_builder(shapes=shape_pair, distance=distance, **builder_kwargs)
+    builder = testing.make_single_shape_pair_builder(shapes=shape_pair, distance=distance, **builder_kwargs)
 
     # Define expected contacts dictionary
     expected = {
@@ -370,7 +370,7 @@ class TestCollisionPipelineUnified(unittest.TestCase):
         }
 
         # Create a builder for the specified shape pair
-        builder = test_builders.make_single_shape_pair_builder(
+        builder = testing.make_single_shape_pair_builder(
             shapes=("sphere", "sphere"),
             distance=distance,
         )
@@ -429,7 +429,7 @@ class TestCollisionPipelineUnified(unittest.TestCase):
         }
 
         # Create a builder for the specified shape pair
-        builder = test_builders.make_single_shape_pair_builder(
+        builder = testing.make_single_shape_pair_builder(
             shapes=("box", "box"),
             distance=distance,
             bottom_dims=(2.0, 2.0, 1.0),  # Larger bottom box
@@ -468,7 +468,7 @@ class TestCollisionPipelineUnified(unittest.TestCase):
         }
 
         # Create a builder for the specified shape pair
-        builder = test_builders.make_single_shape_pair_builder(
+        builder = testing.make_single_shape_pair_builder(
             shapes=("box", "box"),
             top_xyz=[0.0, 0.0, 0.5 * np.sqrt(3) + 0.5],
             top_rpy=[np.pi / 4, -np.arctan(1.0 / np.sqrt(2)), 0.0],
@@ -495,7 +495,7 @@ class TestCollisionPipelineUnified(unittest.TestCase):
         }
 
         # Create a builder for the specified shape pair
-        builder = test_builders.build_boxes_nunchaku()
+        builder = basics.build_boxes_nunchaku()
 
         # Run the narrow-phase test on the shape pair
         test_unified_pipeline(

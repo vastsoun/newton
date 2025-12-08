@@ -260,11 +260,11 @@ class Axis(IntEnum):
     @classmethod
     def from_string(cls, axis_str: str) -> Axis:
         axis_str = axis_str.lower()
-        if axis_str == "x" or axis_str == "X":
+        if axis_str == "x":
             return cls.X
-        elif axis_str == "y" or axis_str == "Y":
+        elif axis_str == "y":
             return cls.Y
-        elif axis_str == "z" or axis_str == "Z":
+        elif axis_str == "z":
             return cls.Z
         raise ValueError(f"Invalid axis string: {axis_str}")
 

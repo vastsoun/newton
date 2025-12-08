@@ -896,9 +896,6 @@ class Model:
         Creates a model data container with the initial state of the model entities.
 
         Parameters:
-            skip_body_dofs (`bool`, optional):
-                Whether to skip initializing the body DoF state (poses and twists)
-                from the model's initial state. Defaults to `False`.
             unilateral_cts (`bool`, optional):
                 Whether to include unilateral constraints (limits and contacts) in the model data. Defaults to `True`.
             requires_grad (`bool`, optional):

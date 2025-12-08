@@ -28,9 +28,9 @@ from newton._src.solvers.kamino.core.shapes import ShapeType
 from newton._src.solvers.kamino.models import (
     get_basics_usd_assets_path,
     get_examples_usd_assets_path,
-    get_tests_usd_assets_path,
+    get_testing_usd_assets_path,
 )
-from newton._src.solvers.kamino.models.builders import (
+from newton._src.solvers.kamino.models.builders.basics import (
     build_box_on_plane,
     build_box_pendulum,
     build_boxes_fourbar,
@@ -65,7 +65,7 @@ class TestUSDImporter(unittest.TestCase):
         self.verbose = test_context.verbose  # Set to True for verbose output
 
         # Set the paths to the assets provided by the kamino package
-        self.TEST_USD_ASSETS_PATH = get_tests_usd_assets_path()
+        self.TEST_USD_ASSETS_PATH = get_testing_usd_assets_path()
         self.BASICS_USD_ASSETS_PATH = get_basics_usd_assets_path()
         self.EXAMPLES_USD_ASSETS_PATH = get_examples_usd_assets_path()
 

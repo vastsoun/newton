@@ -27,8 +27,8 @@ from newton._src.solvers.kamino.geometry import (
     CollisionDetectorSettings,
     CollisionPipelineType,
 )
-from newton._src.solvers.kamino.models import builders as test_builders
-from newton._src.solvers.kamino.models.utils import make_homogeneous_builder
+from newton._src.solvers.kamino.models.builders import basics
+from newton._src.solvers.kamino.models.builders.utils import make_homogeneous_builder
 from newton._src.solvers.kamino.tests.test_geometry_primitive import check_contacts
 from newton._src.solvers.kamino.utils import logger as msg
 
@@ -80,7 +80,7 @@ class TestGeometryCollisionDetector(unittest.TestCase):
         else:
             msg.reset_log_level()
 
-        self.build_func = test_builders.build_boxes_nunchaku
+        self.build_func = basics.build_boxes_nunchaku
         self.expected_contacts = 9  # NOTE: specialized to build_boxes_nunchaku
         msg.debug(f"build_func: {self.build_func.__name__}")
         msg.debug(f"expected_contacts: {self.expected_contacts}")

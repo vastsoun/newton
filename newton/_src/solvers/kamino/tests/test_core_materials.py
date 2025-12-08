@@ -13,9 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-KAMINO: UNIT TESTS: CORE: MATERIALS
-"""
+"""Unit tests for the `core/materials.py` module."""
 
 import unittest
 

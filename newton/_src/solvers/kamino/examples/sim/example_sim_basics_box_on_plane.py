@@ -28,8 +28,8 @@ from newton._src.solvers.kamino.core.materials import DEFAULT_FRICTION
 from newton._src.solvers.kamino.core.types import float32, int32, vec6f
 from newton._src.solvers.kamino.examples import get_examples_output_path, run_headless
 from newton._src.solvers.kamino.models import get_basics_usd_assets_path
-from newton._src.solvers.kamino.models.builders import build_box_on_plane
-from newton._src.solvers.kamino.models.utils import make_homogeneous_builder
+from newton._src.solvers.kamino.models.builders.basics import build_box_on_plane
+from newton._src.solvers.kamino.models.builders.utils import make_homogeneous_builder
 from newton._src.solvers.kamino.simulation.simulator import Simulator, SimulatorSettings
 from newton._src.solvers.kamino.solvers.padmm import PADMMWarmStartMode
 from newton._src.solvers.kamino.solvers.warmstart import WarmstarterContacts

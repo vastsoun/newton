@@ -105,12 +105,7 @@ class State:
         Args:
             other: The target State object to copy data into.
         """
-        wp.copy(other.q_i, self.q_i)
-        wp.copy(other.u_i, self.u_i)
-        wp.copy(other.w_i, self.w_i)
-        wp.copy(other.q_j, self.q_j)
-        wp.copy(other.dq_j, self.dq_j)
-        wp.copy(other.lambda_j, self.lambda_j)
+        other.copy_from(self)
 
     def copy_from(self, other: State) -> None:
         """
@@ -119,6 +114,9 @@ class State:
         Args:
             other: The source State object to copy data from.
         """
+        if self.q_i is None or other.q_i is None:
+            raise ValueError("Error copying from/to uninitialized State")
+
         wp.copy(self.q_i, other.q_i)
         wp.copy(self.u_i, other.u_i)
         wp.copy(self.w_i, other.w_i)

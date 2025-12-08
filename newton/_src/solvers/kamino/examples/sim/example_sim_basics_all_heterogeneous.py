@@ -25,7 +25,7 @@ import newton.examples
 from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.core.types import float32
 from newton._src.solvers.kamino.examples import get_examples_output_path, run_headless
-from newton._src.solvers.kamino.models.utils import make_heterogeneous_builder
+from newton._src.solvers.kamino.models.builders import basics
 from newton._src.solvers.kamino.simulation.simulator import Simulator, SimulatorSettings
 from newton._src.solvers.kamino.utils import logger as msg
 from newton._src.solvers.kamino.utils.datalog import SimulationLogger
@@ -119,7 +119,7 @@ class Example:
 
         # Construct model builder
         msg.notif("Constructing builder using model generator ...")
-        self.builder: ModelBuilder = make_heterogeneous_builder(ground=ground)
+        self.builder: ModelBuilder = basics.make_basics_heterogeneous_builder(ground=ground)
 
         # Set gravity
         for w in range(self.builder.num_worlds):

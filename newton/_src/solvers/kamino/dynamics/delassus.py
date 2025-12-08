@@ -128,6 +128,10 @@ def _build_delassus_elementwise(
     # Retrieve the problem dimensions
     ncts = delassus_dim[wid]
 
+    # Skip if world has no constraints
+    if ncts == 0:
+        return
+
     # Compute i (row) and j (col) indices from the tid
     i = tid // ncts
     j = tid % ncts

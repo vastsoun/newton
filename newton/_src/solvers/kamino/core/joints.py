@@ -49,7 +49,6 @@ from .types import (
 
 __all__ = [
     "JointActuationType",
-    "JointConnectionType",
     "JointCorrectionMode",
     "JointDescriptor",
     "JointDoFType",
@@ -84,33 +83,11 @@ class JointActuationType(IntEnum):
     @override
     def __str__(self):
         """Returns a string representation of the joint actuation type."""
-        return f"JointDoFType.{self.name} ({self.value})"
+        return f"JointActuationType.{self.name} ({self.value})"
 
     @override
     def __repr__(self):
         """Returns a string representation of the joint actuation type."""
-        return self.__str__()
-
-
-class JointConnectionType(IntEnum):
-    """
-    An enumeration of the joint connection types.
-    """
-
-    UNARY = 0
-    """Unary joint connection type, connecting a body to the world."""
-
-    BINARY = 1
-    """Binary joint connection type, connecting two bodies."""
-
-    @override
-    def __str__(self):
-        """Returns a string representation of the joint connection type."""
-        return f"JointDoFType.{self.name} ({self.value})"
-
-    @override
-    def __repr__(self):
-        """Returns a string representation of the joint connection type."""
         return self.__str__()
 
 
@@ -717,22 +694,40 @@ class JointDescriptor(Descriptor):
     """Index offset of this joint's coordinates among all joint coordinates in the world it belongs to."""
 
     dofs_offset: int = -1
-    """Index offset of this joint's DoFs among all joint DoFs in the world it belongs to."""
+    """
+    Index offset of this joint's DoFs among
+    all joint DoFs in the world it belongs to.
+    """
 
     passive_coords_offset: int = -1
-    """Index offset of this joint's passive coordinates among all passive joint coordinates in the world it belongs to."""
+    """
+    Index offset of this joint's passive coordinates among all
+    passive joint coordinates in the world it belongs to.
+    """
 
     passive_dofs_offset: int = -1
-    """Index offset of this joint's passive DoFs among all passive joint DoFs in the world it belongs to."""
+    """
+    Index offset of this joint's passive DoFs among all
+    passive joint DoFs in the world it belongs to.
+    """
 
     actuated_coords_offset: int = -1
-    """Index offset of this joint's actuated coordinates among all actuated joint coordinates in the world it belongs to."""
+    """
+    Index offset of this joint's actuated coordinates among
+    all actuated joint coordinates in the world it belongs to.
+    """
 
     actuated_dofs_offset: int = -1
-    """Index offset of this joint's actuated DoFs among all actuated joint DoFs in the world it belongs to."""
+    """
+    Index offset of this joint's actuated DoFs among
+    all actuated joint DoFs in the world it belongs to.
+    """
 
     cts_offset: int = -1
-    """Index offset of this joint's constraints among all joint constraints in the world it belongs to."""
+    """
+    Index offset of this joint's constraints among all
+    joint constraints in the world it belongs to.
+    """
 
     ###
     # Properties

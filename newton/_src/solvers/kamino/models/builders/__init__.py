@@ -13,34 +13,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""The Kamino Linear Algebra Module"""
+"""
+Model building utilities and predefined builders.
 
-from . import utils
-from .core import (
-    DenseLinearOperatorData,
-    DenseRectangularMultiLinearInfo,
-    DenseSquareMultiLinearInfo,
-)
-from .linear import (
-    DirectSolver,
-    LinearSolver,
-    LinearSolverType,
-    LLTBlockedSolver,
-    LLTSequentialSolver,
-)
+This module provides a collection of model builders
+for common scenarios and testing purposes, as well
+as utility functions for composing and manipulating
+model builders.
+"""
 
-###
-# Module interface
-###
+from . import basics, testing, utils
 
 __all__ = [
-    "DenseLinearOperatorData",
-    "DenseRectangularMultiLinearInfo",
-    "DenseSquareMultiLinearInfo",
-    "DirectSolver",
-    "LLTBlockedSolver",
-    "LLTSequentialSolver",
-    "LinearSolver",
-    "LinearSolverType",
+    "basics",
+    "testing",
     "utils",
 ]

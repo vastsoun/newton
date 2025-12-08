@@ -303,7 +303,7 @@ def make_read_joint_coords_map_and_limits(dof_type: JointDoFType):
     num_coords = dof_type.num_coords
 
     # Define a vector type for the joint coordinates
-    _coordsvec = dof_type.coords_storage_type
+    coordsvec_type = dof_type.coords_storage_type
 
     # Generate a joint type-specific function to write the
     # computed joint state into the model data arrays
@@ -323,7 +323,7 @@ def make_read_joint_coords_map_and_limits(dof_type: JointDoFType):
         q_j_min = vec6f(0.0)
         q_j_max = vec6f(0.0)
         q_j_map = vec6f(0.0)
-        q_j = _coordsvec(0.0)
+        q_j = coordsvec_type(0.0)
 
         # Only write the DoF coordinates and velocities if the joint defines DoFs
         # NOTE: This will be disabled for fixed joints

@@ -14,7 +14,7 @@
 # limitations under the License.
 
 """
-KAMINO: UNIT TESTS: RANDOM DATA GENERATION
+Unit tests for random matrix and problem generation utilities in `linalg/utils/random.py`.
 """
 
 import unittest

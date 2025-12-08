@@ -203,6 +203,7 @@ def _compute_limit_cts_body_wrenches(
     state_info_limit_cts_group_offset: wp.array(dtype=int32),
     model_time_inv_dt: wp.array(dtype=float32),
     limits_model_num: wp.array(dtype=int32),
+    limits_model_max: int32,
     limits_wid: wp.array(dtype=int32),
     limits_lid: wp.array(dtype=int32),
     limits_bids: wp.array(dtype=vec2i),
@@ -217,7 +218,7 @@ def _compute_limit_cts_body_wrenches(
     tid = wp.tid()
 
     # Skip if tid is greater than the number of active contacts in the model
-    if tid >= limits_model_num[0]:
+    if tid >= wp.min(limits_model_num[0], limits_model_max):
         return
 
     # Retrieve the contact index of the contact w.r.t the world
@@ -291,6 +292,7 @@ def _compute_contact_cts_body_wrenches(
     state_info_contact_cts_group_offset: wp.array(dtype=int32),
     model_time_inv_dt: wp.array(dtype=float32),
     contacts_model_num: wp.array(dtype=int32),
+    contacts_model_max: int32,
     contacts_wid: wp.array(dtype=int32),
     contacts_cid: wp.array(dtype=int32),
     contacts_bid_AB: wp.array(dtype=vec2i),
@@ -305,7 +307,7 @@ def _compute_contact_cts_body_wrenches(
     tid = wp.tid()
 
     # Skip if tid is greater than the number of active contacts in the model
-    if tid >= contacts_model_num[0]:
+    if tid >= wp.min(contacts_model_num[0], contacts_model_max):
         return
 
     # Retrieve the contact index of the contact w.r.t the world
@@ -466,6 +468,7 @@ def compute_constraint_body_wrenches(
                 data.info.limit_cts_group_offset,
                 model.time.inv_dt,
                 limits.model_num_limits,
+                limits.num_model_max_limits,
                 limits.wid,
                 limits.lid,
                 limits.bids,
@@ -491,6 +494,7 @@ def compute_constraint_body_wrenches(
                 data.info.contact_cts_group_offset,
                 model.time.inv_dt,
                 contacts.model_num_contacts,
+                contacts.num_model_max_contacts,
                 contacts.wid,
                 contacts.cid,
                 contacts.bid_AB,

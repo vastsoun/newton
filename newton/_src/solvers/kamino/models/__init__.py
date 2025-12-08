@@ -21,16 +21,17 @@ for testing and demonstrating the features of the Kamino physics solver.
 
 These include:
 
-- Utility functions to access USD asset paths
+- A set of utility functions to retrieve paths to USD asset directories
 
-- A set of 'basic' models, both in the form of USD
-  assets as well as manually constructed model builders
+- A set of 'example' models in the form of USD assets.\n
+    This directory currently provides a symbolic link to `newton-assets/disneyreasearch`.
 
-- Models for testing all supported geometric shapes
-  e.g. boxes, spheres, capsules, etc.
+- A set of 'basic' models used for demonstrating fundamental features of Kamino and for testing purposes.
+    These are provided both in the form of USD assets as well as manually constructed model builders.
 
-- Models for testing all supported joint types
-  e.g. revolute, prismatic, spherical, etc.
+- A set of `testing` models that are used to almost exclusively for unit testing, and include:
+    - supported geometric shapes, e.g. boxes, spheres, capsules, etc.
+    - supported joint types,e.g. revolute, prismatic, spherical, etc.
 """
 
 import os
@@ -42,7 +43,7 @@ __all__ = [
     "builders",
     "get_basics_usd_assets_path",
     "get_examples_usd_assets_path",
-    "get_tests_usd_assets_path",
+    "get_testing_usd_assets_path",
     "testing",
     "utils",
 ]
@@ -74,11 +75,11 @@ def get_basics_usd_assets_path() -> str:
     return path
 
 
-def get_tests_usd_assets_path() -> str:
+def get_testing_usd_assets_path() -> str:
     """
     Returns the path to the USD assets for testing models.
     """
-    path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "assets/tests")
+    path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "assets/testing")
     if not os.path.exists(path):
         raise FileNotFoundError(f"The USD assets path for testing models does not exist: {path}")
     return path

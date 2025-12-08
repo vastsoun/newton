@@ -25,7 +25,7 @@ from collections.abc import Callable
 import numpy as np
 from warp.context import Devicelike
 
-from newton._src.solvers.kamino.models import get_tests_usd_assets_path
+from newton._src.solvers.kamino.models import get_testing_usd_assets_path
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
 
 ###
@@ -71,7 +71,7 @@ def run_test_single_joint_examples(
     """
 
     # Resolve path of data folder
-    data_dir = os.path.join(get_tests_usd_assets_path(), "joints")
+    data_dir = os.path.join(get_testing_usd_assets_path(), "joints")
 
     # List file paths of examples
     file_paths = []

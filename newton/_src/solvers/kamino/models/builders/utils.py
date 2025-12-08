@@ -38,7 +38,12 @@ from ...utils.io.usd import USDImporter
 ###
 
 __all__ = [
+    "add_ground_box",
+    "add_ground_plane",
+    "build_usd",
     "make_homogeneous_builder",
+    "set_uniform_body_pose_offset",
+    "set_uniform_body_twist_offset",
 ]
 
 
@@ -56,14 +61,27 @@ def add_ground_plane(
     z_offset: float = 0.0,
 ) -> int:
     """
-    Adds a static collision layer and geometry to a given builder to represent a flat ground plane.
+    Adds a static plane geometry to a given builder to represent a flat ground with infinite dimensions.
 
     Args:
-        builder (ModelBuilder): The model builder to which the ground geom should be added.
-        group (int): The collision group for the ground geometry.
-        collides (int): The collision mask for the ground geometry.
-        world_index (int): The index of the world in the builder where the ground geom should be added.
-
+        builder (ModelBuilder):
+            The model builder to which the ground plane should be added.
+        layer (str):
+            The name of the geometry layer to which the ground plane should be added.\n
+            Defaults to `"world"`.
+        group (int):
+            The collision group for the ground geometry.\n
+            Defaults to `1`.
+        collides (int):
+            The collision mask for the ground geometry.\n
+            Defaults to `1`.
+        world_index (int):
+            The index of the world in the builder where the ground geometry should be added.\n
+            If the value does not correspond to an existing world an error will be raised.\n
+            Defaults to `0`.
+        z_offset (float):
+            The vertical offset of the ground plane along the Z axis.\n
+            Defaults to `0.0`.
     Returns:
         int: The ID of the added ground geometry.
     """
@@ -87,13 +105,27 @@ def add_ground_box(
     z_offset: float = 0.0,
 ) -> int:
     """
-    Adds a static collision layer and geometry to a given builder to represent a flat ground plane.
+    Adds a static box geometry to a given builder to represent a flat ground with finite dimensions.
 
     Args:
-        builder (ModelBuilder): The model builder to which the ground geom should be added.
-        group (int): The collision group for the ground geometry.
-        collides (int): The collision mask for the ground geometry.
-        world_index (int): The index of the world in the builder where the ground geom should be added.
+        builder (ModelBuilder):
+            The model builder to which the ground box should be added.
+        layer (str):
+            The name of the geometry layer to which the ground box should be added.\n
+            Defaults to `"world"`.
+        group (int):
+            The collision group for the ground geometry.\n
+            Defaults to `1`.
+        collides (int):
+            The collision mask for the ground geometry.\n
+            Defaults to `1`.
+        world_index (int):
+            The index of the world in the builder where the ground geometry should be added.\n
+            If the value does not correspond to an existing world an error will be raised.\n
+            Defaults to `0`.
+        z_offset (float):
+            The vertical offset of the ground box along the Z axis.\n
+            Defaults to `0.0`.
 
     Returns:
         int: The ID of the added ground geometry.
@@ -111,11 +143,11 @@ def add_ground_box(
 
 def set_uniform_body_pose_offset(builder: ModelBuilder, offset: transformf):
     """
-    Offsets a model builder by a given transform.
+    Offsets the initial poses of all rigid bodies existing in the builder uniformly by the specified offset.
 
     Args:
-        builder (ModelBuilder): The model builder to offset.
-        offset (transformf): The transform offset to apply to each body in the builder.
+        builder (ModelBuilder): The model builder containing the bodies to offset.
+        offset (transformf): The pose offset to apply to each body in the builder in the form of a :class:`transformf`.
     """
     for i in range(builder.num_bodies):
         builder.bodies[i].q_i_0 = wp.mul(offset, builder.bodies[i].q_i_0)
@@ -123,11 +155,11 @@ def set_uniform_body_pose_offset(builder: ModelBuilder, offset: transformf):
 
 def set_uniform_body_twist_offset(builder: ModelBuilder, offset: vec6f):
     """
-    Offsets a model builder by a given transform.
+    Offsets the initial twists of all rigid bodies existing in the builder uniformly by the specified offset.
 
     Args:
-        builder (ModelBuilder): The model builder to offset.
-        offset (vec6f): The twist offset to apply to each body in the builder.
+        builder (ModelBuilder): The model builder containing the bodies to offset.
+        offset (vec6f): The twist offset to apply to each body in the builder in the form of a :class:`vec6f`.
     """
     for i in range(builder.num_bodies):
         builder.bodies[i].u_i_0 += offset

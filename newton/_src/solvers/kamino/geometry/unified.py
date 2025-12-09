@@ -31,6 +31,7 @@ from ....geometry.broad_phase_sap import BroadPhaseSAP
 from ....geometry.collision_core import compute_tight_aabb_from_support
 from ....geometry.contact_data import ContactData
 from ....geometry.narrow_phase import NarrowPhase
+from ....geometry.sdf_utils import SDFData
 from ....geometry.support_function import GenericShapeData, SupportMapDataProvider, pack_mesh_ptr
 from ....geometry.types import GeoType
 from ....sim.collide_unified import BroadPhaseMode
@@ -570,6 +571,9 @@ class CollisionPipelineUnifiedKamino:
             self.broad_phase_shape_pairs = wp.zeros(self._max_shape_pairs, dtype=wp.vec2i)
             self.material_friction = wp.full(1, self._default_friction, dtype=float32)
             self.material_restitution = wp.full(1, self._default_restitution, dtype=float32)
+            # TODO: This is currently left empty just to satisfy the narrow phase interface
+            # but we need to implement SDF support in Kamino to make use of it
+            self.shape_sdf_data = wp.empty(shape=(0,), dtype=SDFData)
 
         # Initialize the broad-phase backend depending on the selected mode
         match self._broadphase:
@@ -812,6 +816,7 @@ class CollisionPipelineUnifiedKamino:
             shape_data=self.geom_data,
             shape_transform=data.cgeoms.pose,
             shape_source=model.cgeoms.ptr,
+            shape_sdf_data=self.shape_sdf_data,
             shape_contact_margin=model.cgeoms.margin,
             shape_collision_radius=self.geom_collision_radius,
             writer_data=writer_data,

@@ -51,14 +51,14 @@ nominal_expected_contacts_per_shape_pair = {
     ("cylinder", "cone"): 1,
     ("cylinder", "capsule"): 1,
     ("cylinder", "box"): 4,
-    ("cylinder", "ellipsoid"): 4,  # TODO: currently returns 4, should this be =1 ?
+    ("cylinder", "ellipsoid"): 1,
     ("cylinder", "plane"): 4,
     ("cone", "sphere"): 1,
     ("cone", "cylinder"): 4,
     ("cone", "cone"): 1,
     ("cone", "capsule"): 1,
     ("cone", "box"): 4,
-    ("cone", "ellipsoid"): 4,  # TODO: currently returns 4, should this be =1 ?
+    ("cone", "ellipsoid"): 1,
     ("cone", "plane"): 4,
     ("capsule", "cone"): 1,
     ("capsule", "capsule"): 1,
@@ -67,11 +67,11 @@ nominal_expected_contacts_per_shape_pair = {
     ("capsule", "plane"): 1,
     ("box", "cone"): 1,
     ("box", "box"): 4,
-    ("box", "ellipsoid"): 4,  # TODO: currently returns 4, should this be =1 ?
+    ("box", "ellipsoid"): 1,
     ("box", "plane"): 4,
     ("ellipsoid", "cone"): 1,
-    ("ellipsoid", "ellipsoid"): 4,  # TODO: currently returns 4, should this be =1 ?
-    ("ellipsoid", "plane"): 4,
+    ("ellipsoid", "ellipsoid"): 1,
+    ("ellipsoid", "plane"): 1,
 }
 """
 Defines the expected number of contacts for each supported

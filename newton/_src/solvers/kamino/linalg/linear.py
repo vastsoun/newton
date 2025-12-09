@@ -26,7 +26,6 @@ intra-system parallelism may be exploited.
 from abc import ABC, abstractmethod
 from typing import Any
 
-import numpy as np
 import warp as wp
 from warp.context import Devicelike
 
@@ -705,7 +704,6 @@ class ConjugateGradientSolver(IterativeSolver):
             maxiter=self._maxiter,
             M=self._Mi_op,
             callback=None,
-            check_every=0,
             use_cuda_graph=True,
         )
 
@@ -822,7 +820,6 @@ class ConjugateResidualSolver(IterativeSolver):
             maxiter=self._maxiter,
             M=self._Mi_op,
             callback=None,
-            check_every=0,
             use_cuda_graph=True,
         )
 

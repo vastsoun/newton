@@ -74,7 +74,6 @@ class TestLinalgConjugate(unittest.TestCase):
             maxiter=None,
             M=None,
             callback=None,
-            check_every=0,
             use_cuda_graph=False,
         )
         cur_iter, r_norm_sq, atol_sq = solver.solve(b_2d, x_wp)

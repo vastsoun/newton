@@ -367,13 +367,10 @@ def _run_capturable_loop(
     maxiter: wp.array(dtype=int),
     atol_sq: wp.array,
     callback: Callable | None,
-    check_every: int,
     use_cuda_graph: bool,
     cycle_size: int = 1,
     termination_kernel=None,
 ):
-    # TODO: check-every > 0 without python-space code
-    assert check_every == 0
     device = atol_sq.device
 
     n_envs = maxiter.shape[0]
@@ -424,7 +421,6 @@ def _run_capturable_loop(
                 break
 
     return cur_iter, r_norm_sq, atol_sq
-
 
 
 @wp.func
@@ -496,7 +492,7 @@ def _initialize_tolerance_kernel(
     atol_sq[env] = wp.max(r * r * b_norm_sq[env], a * a)
 
 
-class CGSolver:
+class ConjugateSolver:
     def __init__(
         self,
         A: BatchedLinearOperator,
@@ -507,7 +503,6 @@ class CGSolver:
         maxiter: wp.array = None,
         M: BatchedLinearOperator | None = None,
         callback: Callable | None = None,
-        check_every=10,
         use_cuda_graph=True,
     ):
         if not isinstance(A, BatchedLinearOperator):
@@ -534,7 +529,6 @@ class CGSolver:
         self.maxiter = maxiter
 
         self.callback = callback
-        self.check_every = check_every
         self.use_cuda_graph = use_cuda_graph
 
         self.dot_tile_size = min(2048, 2 ** math.ceil(math.log(self.maxdims, 2)))
@@ -542,9 +536,6 @@ class CGSolver:
         self._allocate()
 
     def _allocate(self):
-        # Temp storage
-        self.r_and_z = wp.empty((2, *self.A.shape[:2]), dtype=self.scalar_type, device=self.device)
-        self.p_and_Ap = wp.empty_like(self.r_and_z)
         self.residual = wp.empty((self.n_envs), dtype=self.scalar_type, device=self.device)
 
         if self.maxiter is None:
@@ -552,16 +543,6 @@ class CGSolver:
 
         # TODO: non-tiled variant for CPU
         self.dot_product = wp.empty((2, self.n_envs), dtype=self.scalar_type, device=self.device)
-
-        # (r, r) -- so we can compute r.z and r.r at once
-        self.r_repeated = _repeat_first(self.r_and_z)
-        if self.M is None:
-            # without preconditioner r == z
-            # TODO: allocate r_and_z here
-            self.r_and_z = self.r_repeated
-            self.rz_new = self.dot_product[0]
-        else:
-            self.rz_new = self.dot_product[1]
 
         atol_val = self.atol if isinstance(self.atol, float) else 1e-8
         rtol_val = self.rtol if isinstance(self.rtol, float) else 1e-8
@@ -594,6 +575,25 @@ class CGSolver:
             device=self.device,
         )
 
+
+class CGSolver(ConjugateSolver):
+    def _allocate(self):
+        super()._allocate()
+
+        # Temp storage
+        self.r_and_z = wp.empty((2, *self.A.shape[:2]), dtype=self.scalar_type, device=self.device)
+        self.p_and_Ap = wp.empty_like(self.r_and_z)
+
+        # (r, r) -- so we can compute r.z and r.r at once
+        self.r_repeated = _repeat_first(self.r_and_z)
+        if self.M is None:
+            # without preconditioner r == z
+            # TODO: allocate r_and_z here
+            self.r_and_z = self.r_repeated
+            self.rz_new = self.dot_product[0]
+        else:
+            self.rz_new = self.dot_product[1]
+
     def update_rr_rz(self, r, z, r_repeated):
         # z = M r
         if self.M is None:
@@ -616,8 +616,9 @@ class CGSolver:
             outputs=[self.atol_sq],
         )
         # Not strictly necessary, but makes it more robust to user-provided BatchedLinearOperators
-        Ap.zero_()
-        z.zero_()
+
+        # Ap.zero_()
+        # z.zero_()
 
         # Initialize residual
         self.A.matvec(x, b, r, self.env_active, alpha=-1.0, beta=1.0)
@@ -637,7 +638,6 @@ class CGSolver:
             self.maxiter,
             self.atol_sq,
             self.callback,
-            self.check_every,
             self.use_cuda_graph,
             termination_kernel=self.termination_kernel,
         )
@@ -669,101 +669,24 @@ class CGSolver:
         )
 
 
-class CRSolver:
-    def __init__(
-        self,
-        A: BatchedLinearOperator,
-        active_dims: wp.array(dtype=Any),
-        env_active: wp.array(dtype=wp.bool),
-        atol: float | wp.array(dtype=Any) | None = None,
-        rtol: float | wp.array(dtype=Any) | None = None,
-        maxiter: wp.array | None = None,
-        M: BatchedLinearOperator | None = None,
-        callback: Callable | None = None,
-        check_every=10,
-        use_cuda_graph=True,
-    ):
-        if not isinstance(A, BatchedLinearOperator):
-            raise ValueError("A must be a BatchedLinearOperator")
-        if not isinstance(M, BatchedLinearOperator | None):
-            raise ValueError("M must be a BatchedLinearOperator or None")
-
-        self.scalar_type = A.scalar_type
-
-        self.n_envs, self.maxdims, _ = A.shape
-        if self.maxdims != A.shape[2]:
-            raise ValueError("A must be a square BatchedLinearOperator")
-        if M is not None and A.shape != M.shape:
-            raise ValueError("M and A must have the same dimensions")
-
-        self.A = A
-        self.M = M
-        self.device = A.device
-
-        self.active_dims = active_dims
-        self.env_active = env_active
-        self.atol = atol
-        self.rtol = rtol
-        self.maxiter = maxiter
-
-        self.callback = callback
-        self.check_every = check_every
-        self.use_cuda_graph = use_cuda_graph
-
-        self.dot_tile_size = min(2048, 2 ** math.ceil(math.log(self.maxdims, 2)))
-        self.tiled_dot_kernel = make_dot_kernel(self.dot_tile_size, self.maxdims)
-        self._allocate()
+class CRSolver(ConjugateSolver):
+    # Notation roughly follow spseudo-code from https://en.wikipedia.org/wiki/Conjugate_residual_method
+    # with z := M^-1 r and y := M^-1 Ap
 
     def _allocate(self):
+        super()._allocate()
+
         # Temp storage
         self.r_and_z = wp.empty((2, *self.A.shape[:2]), dtype=self.scalar_type, device=self.device)
         self.r_and_Az = wp.empty_like(self.r_and_z)
         self.y_and_Ap = wp.empty_like(self.r_and_z)
         self.p = wp.empty(self.A.shape[:2], dtype=self.scalar_type, device=self.device)
-        self.residual = wp.empty((self.n_envs), dtype=self.scalar_type, device=self.device)
-
-        if self.maxiter is None:
-            self.maxiter = wp.full(self.n_envs, int(1.5 * self.maxdims), dtype=int, device=self.device)
-
-        self.dot_product = wp.empty((2, self.n_envs), dtype=self.scalar_type, device=self.device)
-
         # (r, r) -- so we can compute r.z and r.r at once
+
         if self.M is None:
             # For the unpreconditioned case, z == r and y == Ap
             self.r_and_z = _repeat_first(self.r_and_z)
             self.y_and_Ap = _repeat_first(self.y_and_Ap)
-
-        atol_val = self.atol if isinstance(self.atol, float) else 1e-8
-        rtol_val = self.rtol if isinstance(self.rtol, float) else 1e-8
-        if self.atol is None:
-            self.atol = wp.full(self.n_envs, atol_val, dtype=self.scalar_type, device=self.device)
-        if self.rtol is None:
-            self.rtol = wp.full(self.n_envs, rtol_val, dtype=self.scalar_type, device=self.device)
-        self.atol_sq = wp.empty(self.n_envs, dtype=self.scalar_type, device=self.device)
-        self.cur_iter = wp.empty(self.n_envs, dtype=wp.int32, device=self.device)
-        self.conditions = wp.empty(self.n_envs + 1, dtype=wp.int32, device=self.device)
-        self.termination_kernel = make_termination_kernel(self.n_envs)
-
-        # Notations below follow roughly pseudo-code from https://en.wikipedia.org/wiki/Conjugate_residual_method
-        # with z := M^-1 r and y := M^-1 Ap
-
-    def compute_dot(self, a, b, col_offset=0):
-        block_dim = 256
-        if a.ndim == 2:
-            a = a.reshape((1, *a.shape))
-            b = b.reshape((1, *b.shape))
-
-        result = self.dot_product[col_offset:]
-
-        # TODO: re-use env condition
-        wp.launch(
-            self.tiled_dot_kernel,
-            dim=(a.shape[0], self.n_envs, block_dim),
-            block_dim=min(256, self.dot_tile_size // 8),
-            inputs=[a, b, self.active_dims, self.env_active],
-            outputs=[result],
-            device=self.device,
-        )
 
     def update_rr_zAz(self, z, Az, r, r_copy):
         self.A.matvec(z, Az, Az, self.env_active, alpha=1, beta=0)
@@ -828,7 +751,6 @@ class CRSolver:
             self.maxiter,
             self.atol_sq,
             self.callback,
-            self.check_every,
             self.use_cuda_graph,
             termination_kernel=self.termination_kernel,
         )

@@ -187,6 +187,7 @@ class Example:
             self.viewer = ViewerKamino(
                 builder=self.builder,
                 simulator=self.sim,
+                show_contacts=True,
                 record_video=record_video,
                 video_folder=video_folder,
                 async_save=async_save,

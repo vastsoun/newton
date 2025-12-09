@@ -29,8 +29,150 @@ from ..core.geometry import CollisionGeometryDescriptor, GeometryDescriptor
 from ..core.shapes import ShapeType
 from ..core.types import vec3f
 from ..core.world import WorldDescriptor
+from ..geometry.contacts import ContactMode
 from ..simulation.simulator import Simulator
 from ..utils import logger as msg
+
+###
+# Kernels
+###
+
+
+@wp.kernel
+def compute_contact_box_transforms(
+    # Kamino contact data
+    position_A: wp.array(dtype=wp.vec3),  # Contact position on body A
+    position_B: wp.array(dtype=wp.vec3),  # Contact position on body B
+    frame: wp.array(dtype=wp.quatf),  # Contact frames
+    mode: wp.array(dtype=wp.int32),  # Contact modes
+    wid: wp.array(dtype=wp.int32),
+    num_contacts: int,
+    world_spacing: wp.vec3,
+    box_size: wp.vec3,  # Box dimensions
+    # Output buffers
+    transforms: wp.array(dtype=wp.transform),
+    scales: wp.array(dtype=wp.vec3),
+    colors: wp.array(dtype=wp.vec3),
+):
+    """
+    Compute transforms, scales, and colors for contact frame boxes.
+    """
+    i = wp.tid()
+
+    # Hide contacts beyond the active count or with INACTIVE mode
+    contact_mode = mode[i]
+    if i >= num_contacts or contact_mode == wp.int32(ContactMode.INACTIVE):
+        scales[i] = wp.vec3(0.0, 0.0, 0.0)
+        colors[i] = wp.vec3(0.0, 0.0, 0.0)
+        transforms[i] = wp.transform(wp.vec3(0.0, 0.0, 0.0), wp.quat_identity())
+        return
+
+    # Contact position - we could also use the midpoint?
+    contact_pos = position_B[i]
+
+    # Apply world spacing
+    world_id = float(wid[i])
+    contact_pos = contact_pos + world_spacing * world_id
+
+    # Contact frame rotation
+    q = frame[i]
+
+    # Set transform
+    transforms[i] = wp.transform(contact_pos, q)
+
+    # Set scale
+    scales[i] = box_size
+
+    # Set color based on contact mode
+    if contact_mode == wp.int32(ContactMode.OPENING):
+        # White
+        colors[i] = wp.vec3(1.0, 1.0, 1.0)
+    elif contact_mode == wp.int32(ContactMode.STICKING):
+        # Black
+        colors[i] = wp.vec3(0.1, 0.1, 0.1)
+    elif contact_mode == wp.int32(ContactMode.SLIDING):
+        # Blue
+        colors[i] = wp.vec3(0.404, 0.647, 0.953)
+    else:
+        # Unknown mode: Gray
+        colors[i] = wp.vec3(0.5, 0.5, 0.5)
+
+
+@wp.kernel
+def compute_contact_force_arrows(
+    # Kamino contact data
+    position_A: wp.array(dtype=wp.vec3),
+    position_B: wp.array(dtype=wp.vec3),
+    frame: wp.array(dtype=wp.quatf),  # Contact frames
+    reaction: wp.array(dtype=wp.vec3),  # Contact forces in respective local contact frame
+    mode: wp.array(dtype=wp.int32),  # Contact modes
+    wid: wp.array(dtype=wp.int32),
+    num_contacts: int,
+    world_spacing: wp.vec3,
+    force_scale: float,
+    force_threshold: float,  # Minimum force to display
+    # Output buffers
+    line_starts: wp.array(dtype=wp.vec3),
+    line_ends: wp.array(dtype=wp.vec3),
+    line_colors: wp.array(dtype=wp.vec3),
+    line_widths: wp.array(dtype=float),
+):
+    """
+    Compute line segments for visualizing contact forces as arrows.
+    """
+    i = wp.tid()
+
+    if i >= num_contacts:
+        return
+
+    # Skip inactive contacts
+    if mode[i] == wp.int32(ContactMode.INACTIVE):
+        line_starts[i] = wp.vec3(0.0, 0.0, 0.0)
+        line_ends[i] = wp.vec3(0.0, 0.0, 0.0)
+        line_widths[i] = 0.0
+        return
+
+    # Contact position - we could also use the midpoint?
+    contact_pos = position_B[i]
+
+    # Apply world spacing
+    world_id = float(wid[i])
+    contact_pos = contact_pos + world_spacing * world_id
+
+    # Transform force from contact frame to world frame
+    # reaction is in contact frame, need to rotate by frame quaternion
+    q = frame[i]
+    C = wp.quat_to_matrix(q)
+    f_world = C * reaction[i]
+
+    # Compute force magnitude
+    f_mag = wp.length(f_world)
+
+    # Only render if force is above threshold
+    if f_mag < force_threshold:
+        line_starts[i] = wp.vec3(0.0, 0.0, 0.0)
+        line_ends[i] = wp.vec3(0.0, 0.0, 0.0)
+        line_widths[i] = 0.0
+        return
+
+    # linear - Nonlinear scaling # todo make this be an option?
+    scaled_length = force_scale * f_mag
+    # scaled_length = force_scale * wp.sqrt(f_mag)
+
+    # Force direction
+    f_dir = f_world / f_mag
+
+    # Arrow from contact point along force direction
+    line_starts[i] = contact_pos
+    line_ends[i] = contact_pos + f_dir * scaled_length
+
+    # Magenta color for forces
+    line_colors[i] = wp.vec3(1.0, 0.0, 1.0)
+
+    # Line width proportional to force magnitude but clipped, requires modification in viewer_gl to work properly
+    # We could also use this to actually visualize something meaningful
+    line_widths[i] = wp.clamp(1.0 + 0.1 * f_mag, 1.0, 5.0)
+
 
 ###
 # Interfaces
@@ -65,6 +207,7 @@ class ViewerKamino(ViewerGL):
         height: int = 1080,
         vsync: bool = False,
         headless: bool = False,
+        show_contacts: bool = False,
         record_video: bool = False,
         video_folder: str | None = None,
         skip_img_idx: int = 0,
@@ -80,6 +223,7 @@ class ViewerKamino(ViewerGL):
             height: Window height in pixels.
             vsync: Enable vertical sync.
             headless: Run without displaying a window.
+            show_contacts: Enable contact point visualization (default: False).
             record_video: Enable frame recording to disk.
             video_folder: Directory to save recorded frames (default: "./frames").
             skip_img_idx: Number of initial frames to skip before recording.
@@ -103,6 +247,9 @@ class ViewerKamino(ViewerGL):
         self._skip_img_idx = skip_img_idx
         self._img_idx = 0
         self._frame_buffer = None
+
+        # Contact visualization settings
+        self._show_contacts = show_contacts
 
         if self._record_video:
             os.makedirs(self._video_folder, exist_ok=True)
@@ -171,6 +318,10 @@ class ViewerKamino(ViewerGL):
                 continue
             self.render_geometry(body_poses, pgeom, scope="physical")
 
+        # Render contacts if they exist and visualization is enabled
+        if hasattr(self._simulator, "contacts") and self._simulator.contacts is not None:
+            self.render_contacts_kamino(self._simulator.contacts)
+
         # End the new frame
         self.end_frame()
 
@@ -178,6 +329,244 @@ class ViewerKamino(ViewerGL):
         if self._record_video and not stop_recording:
             # todo : think about if we should continue to step the _img_idx even when not recording
             self._capture_frame()
+
+    def render_contacts_kamino(self, contacts):
+        """
+        Render contact points, frames, and forces for contacts.
+
+        Visualizations include:
+        - Small oriented boxes showing contact frame by mode
+        - Force arrows showing contact force magnitude and direction
+        """
+        if not self._show_contacts:
+            # Hide all contact visualizations
+            if hasattr(self, "_contact_box_mesh_created"):
+                self.log_instances("/contact_boxes", "/contact_box_mesh", None, None, None, materials=None, hidden=True)
+            self.log_lines("/contact_forces", None, None, None)
+            return
+
+        # Get number of active contacts
+        num_contacts = contacts.model_num_contacts.numpy()[0]
+        max_contacts = contacts.num_model_max_contacts
+
+        if False:  # Debug: Always print contact info
+            print(f"[VIEWER] Frame {getattr(self, '_frame', 0)}: num_contacts={num_contacts} (max={max_contacts})")
+
+            # Print all contact slots
+            modes = contacts.mode.numpy()[:max_contacts]
+            positions = contacts.position_B.numpy()[:max_contacts]
+            velocities = contacts.velocity.numpy()[:max_contacts]
+            reactions = contacts.reaction.numpy()[:max_contacts]
+
+            for i in range(max_contacts):
+                active = "ACTIVE" if i < num_contacts else "STALE"
+                print(
+                    f"  [{active}] Contact[{i}]: mode={modes[i]} (INACTIVE={ContactMode.INACTIVE}), "
+                    f"pos={positions[i]}, vel={velocities[i]}, reaction={reactions[i]}"
+                )
+
+            self._frame = getattr(self, "_frame", 0) + 1
+
+        # ======================================================================
+        # Render Contact Frame Boxes
+        # ======================================================================
+
+        # Allocate buffers for box transforms
+        if not hasattr(self, "_contact_box_transforms"):
+            self._contact_box_transforms = wp.zeros(max_contacts, dtype=wp.transform, device=self.device)
+            self._contact_box_scales = wp.zeros(max_contacts, dtype=wp.vec3, device=self.device)
+            self._contact_box_colors = wp.zeros(max_contacts, dtype=wp.vec3, device=self.device)
+
+        # Render boxes as instanced meshes
+        if not hasattr(self, "_contact_box_mesh_created"):
+            # Unit box mesh
+            points, indices_wp = self._create_box_mesh_simple(1.0, 1.0, 1.0)
+            self.log_mesh(
+                "/contact_box_mesh",
+                points,
+                indices_wp,
+                normals=None,
+                hidden=True,
+            )
+            self._contact_box_mesh_created = True
+
+        # Log instances of the box mesh
+        if num_contacts > 0:
+            # small scaled unit box to show frame orientation
+            box_size = wp.vec3(
+                0.025, 0.025, 0.025
+            )  # a little bit flat would look better? todo should we have like a viewer config somewhere?
+
+            # Compute box transforms, scales, and colors
+            wp.launch(
+                kernel=compute_contact_box_transforms,
+                dim=max_contacts,
+                inputs=[
+                    contacts.position_A,
+                    contacts.position_B,
+                    contacts.frame,
+                    contacts.mode,
+                    contacts.wid,
+                    num_contacts,
+                    self.world_spacing,
+                    box_size,
+                ],
+                outputs=[
+                    self._contact_box_transforms,
+                    self._contact_box_scales,
+                    self._contact_box_colors,
+                ],
+                device=self.device,
+            )
+
+            # Always render all max_contacts instances, not just active ones
+            # Inactive ones will have zero scale from the kernel
+            xforms = self._contact_box_transforms
+            scales = self._contact_box_scales
+            colors = self._contact_box_colors
+            self.log_instances(
+                "/contact_boxes",
+                "/contact_box_mesh",
+                xforms,
+                scales,
+                colors,
+                materials=None,
+                hidden=False,
+            )
+        else:
+            # Hide instances when no contacts
+            if hasattr(self, "_contact_box_mesh_created"):
+                self.log_instances(
+                    "/contact_boxes",
+                    "/contact_box_mesh",
+                    None,
+                    None,
+                    None,
+                    materials=None,
+                    hidden=True,
+                )
+
+        # ======================================================================
+        # Render Contact Force Arrow
+        # ======================================================================
+
+        # Allocate buffers for force arrows
+        if not hasattr(self, "_contact_force_starts"):
+            self._contact_force_starts = wp.zeros(max_contacts, dtype=wp.vec3, device=self.device)
+            self._contact_force_ends = wp.zeros(max_contacts, dtype=wp.vec3, device=self.device)
+            self._contact_force_colors = wp.zeros(max_contacts, dtype=wp.vec3, device=self.device)
+            self._contact_force_widths = wp.zeros(max_contacts, dtype=float, device=self.device)
+
+        # Compute force arrows
+        wp.launch(
+            kernel=compute_contact_force_arrows,
+            dim=max_contacts,
+            inputs=[
+                contacts.position_A,
+                contacts.position_B,
+                contacts.frame,
+                contacts.reaction,
+                contacts.mode,
+                contacts.wid,
+                num_contacts,
+                self.world_spacing,
+                0.05,  # force_scale # todo move to a cfg file?
+                1e-4,  # force_threshold # todo move to a cfg file?
+            ],
+            outputs=[
+                self._contact_force_starts,
+                self._contact_force_ends,
+                self._contact_force_colors,
+                self._contact_force_widths,
+            ],
+            device=self.device,
+        )
+
+        # Render force arrows as lines
+        if num_contacts > 0:
+            self.log_lines(
+                "/contact_forces",
+                self._contact_force_starts[:num_contacts],
+                self._contact_force_ends[:num_contacts],
+                self._contact_force_colors[:num_contacts],
+                width=3.0,  # todo this assumes we fix the viewer_gl line width issue
+            )
+        else:
+            self.log_lines("/contact_forces", None, None, None)
+
+    def _create_box_mesh_simple(self, sx, sy, sz):
+        """
+        # todo where should this function go, is it already implemented somewhere else?
+        Helper to create a simple box mesh for contact visualization using warp.
+        Returns (vertices, indices) as warp arrays.
+        """
+        # Create vertex array (8 corners of box)
+        verts = wp.array(
+            [
+                wp.vec3(-0.5 * sx, -0.5 * sy, -0.5 * sz),  # 0
+                wp.vec3(0.5 * sx, -0.5 * sy, -0.5 * sz),  # 1
+                wp.vec3(0.5 * sx, 0.5 * sy, -0.5 * sz),  # 2
+                wp.vec3(-0.5 * sx, 0.5 * sy, -0.5 * sz),  # 3
+                wp.vec3(-0.5 * sx, -0.5 * sy, 0.5 * sz),  # 4
+                wp.vec3(0.5 * sx, -0.5 * sy, 0.5 * sz),  # 5
+                wp.vec3(0.5 * sx, 0.5 * sy, 0.5 * sz),  # 6
+                wp.vec3(-0.5 * sx, 0.5 * sy, 0.5 * sz),  # 7
+            ],
+            dtype=wp.vec3,
+            device=self.device,
+        )
+
+        # Create index array (12 triangles, flattened)
+        indices = wp.array(
+            [
+                # Bottom face
+                0,
+                2,
+                1,
+                0,
+                3,
+                2,
+                # Top face
+                4,
+                5,
+                6,
+                4,
+                6,
+                7,
+                # Front face
+                0,
+                1,
+                5,
+                0,
+                5,
+                4,
+                # Back face
+                3,
+                7,
+                6,
+                3,
+                6,
+                2,
+                # Left face
+                0,
+                4,
+                7,
+                0,
+                7,
+                3,
+                # Right face
+                1,
+                2,
+                6,
+                1,
+                6,
+                5,
+            ],
+            dtype=wp.int32,
+            device=self.device,
+        )
+
+        return verts, indices
 
     def _capture_frame(self):
         """

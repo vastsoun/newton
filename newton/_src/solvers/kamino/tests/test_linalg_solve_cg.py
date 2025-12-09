@@ -63,12 +63,14 @@ class TestLinalgConjugate(unittest.TestCase):
             matrix_stride=maxdim,
         )
 
-        atol_sq = wp.full(n_envs, 1.0e-16, dtype=problem.wp_dtype, device=device)
+        atol = wp.full(n_envs, 1.0e-8, dtype=problem.wp_dtype, device=device)
+        rtol = wp.full(n_envs, 1.0e-8, dtype=problem.wp_dtype, device=device)
         solver = solver_cls(
             A=operator,
             active_dims=problem.dim_wp,
             env_active=env_active,
-            atol_sq=atol_sq,
+            atol=atol,
+            rtol=rtol,
             maxiter=None,
             M=None,
             callback=None,

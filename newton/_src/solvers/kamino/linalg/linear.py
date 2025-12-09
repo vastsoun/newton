@@ -274,14 +274,13 @@ class IterativeSolver(LinearSolver):
     def __init__(
         self,
         operator: DenseLinearOperatorData | None = None,
-        atol: float | None = None,
-        rtol: float | None = None,
+        atol: float | wp.array | None = None,
+        rtol: float | wp.array | None = None,
         dtype: FloatType = float32,
         device: Devicelike | None = None,
         maxiter: int | wp.array | None = None,
         env_active: wp.array | None = None,
         preconditioner: Any = None,
-        atol_sq_env: float | wp.array | None = None,
         **kwargs: dict[str, Any],
     ):
         # Initialize base class members
@@ -289,7 +288,8 @@ class IterativeSolver(LinearSolver):
         self._maxiter: int | wp.array | None = maxiter
         self._preconditioner: Any = preconditioner
         self._env_active: wp.array | None = env_active
-        self._atol_sq_env: wp.array | None = atol_sq_env
+        self.atol: float | wp.array | None = atol
+        self.rtol: float | wp.array | None = rtol
 
         self._num_envs: int | None = None
         self._max_dim: int | None = None
@@ -352,14 +352,6 @@ class IterativeSolver(LinearSolver):
                 self._maxiter = wp.full(self._num_envs, self._maxiter, dtype=wp.int32)
             elif not isinstance(self._maxiter, wp.array):
                 raise ValueError("The provided maxiter is not a valid wp.array or int!")
-            if self._atol_sq_env is None:
-                # Default: dimension-scaled machine epsilon, squared
-                atol_val = self._max_dim * float(make_dtype_tolerance(None, self._dtype)) ** 2
-                self._atol_sq_env = wp.full(self._num_envs, float(atol_val), dtype=self._dtype)
-            elif isinstance(self._atol_sq_env, int | float):
-                self._atol_sq_env = wp.full(self._num_envs, self._atol_sq_env, dtype=self._dtype)
-            elif not isinstance(self._atol_sq_env, wp.array):
-                raise ValueError("The provided atol_sq_env is not a valid scalar, list/ndarray, or wp.array!")
 
         self._allocate_impl(operator, **kwargs)
 
@@ -713,7 +705,8 @@ class ConjugateGradientSolver(IterativeSolver):
             A=self._A_op,
             active_dims=self._operator.info.dim,
             env_active=self._env_active,
-            atol_sq=self._atol_sq_env,
+            atol=self.atol,
+            rtol=self.rtol,
             maxiter=self._maxiter,
             M=self._Mi_op,
             callback=None,
@@ -831,7 +824,8 @@ class ConjugateResidualSolver(IterativeSolver):
             A=self._A_op,
             active_dims=self._operator.info.dim,
             env_active=self._env_active,
-            atol_sq=self._atol_sq_env,
+            atol=self.atol,
+            rtol=self.rtol,
             maxiter=self._maxiter,
             M=self._Mi_op,
             callback=None,

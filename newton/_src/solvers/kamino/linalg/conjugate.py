@@ -17,6 +17,8 @@
 KAMINO: Conjugate gradient and conjugate residual solvers
 """
 
+from __future__ import annotations
+
 import functools
 import math
 from collections.abc import Callable
@@ -614,13 +616,23 @@ def create_tiled_dot_kernels(tile_size):
     return block_dot_kernel, block_sum_kernel
 
 
+@wp.kernel
+def _initialize_tolerance_kernel(
+    rtol: wp.array(dtype=Any), atol: wp.array(dtype=Any), b_norm_sq: wp.array(dtype=Any), atol_sq: wp.array(dtype=Any)
+):
+    env = wp.tid()
+    a, r = atol[env], rtol[env]
+    atol_sq[env] = wp.max(r * r * b_norm_sq[env], a * a)
+
+
 class CGSolver:
     def __init__(
         self,
         A: BatchedLinearOperator,
         active_dims: wp.array(dtype=Any),
         env_active: wp.array(dtype=wp.bool),
-        atol_sq: wp.array(dtype=Any),
+        atol: float | wp.array(dtype=Any) | None = None,
+        rtol: float | wp.array(dtype=Any) | None = None,
         maxiter: wp.array = None,
         M: BatchedLinearOperator | None = None,
         callback: Callable | None = None,
@@ -646,14 +658,15 @@ class CGSolver:
 
         self.active_dims = active_dims
         self.env_active = env_active
-        self.atol_sq = atol_sq
+        self.atol = atol
+        self.rtol = rtol
         self.maxiter = maxiter
 
         self.callback = callback
         self.check_every = check_every
         self.use_cuda_graph = use_cuda_graph
 
-        self.dot_tile_size = min(2048, 2 ** math.ceil(math.log(241, 2)))
+        self.dot_tile_size = min(2048, 2 ** math.ceil(math.log(self.maxdims, 2)))
         self.tiled_dot_kernel = make_dot_kernel(self.dot_tile_size, self.maxdims)
         self._allocate()
 
@@ -679,6 +692,16 @@ class CGSolver:
         else:
             self.rz_new = self.dot_product[1]
 
+        atol_val = self.atol if isinstance(self.atol, float) else 1e-8
+        rtol_val = self.rtol if isinstance(self.rtol, float) else 1e-8
+
+        if self.atol is None or isinstance(self.atol, float):
+            self.atol = wp.full(self.n_envs, atol_val, dtype=self.scalar_type, device=self.device)
+
+        if self.rtol is None or isinstance(self.rtol, float):
+            self.rtol = wp.full(self.n_envs, rtol_val, dtype=self.scalar_type, device=self.device)
+
+        self.atol_sq = wp.empty(self.n_envs, dtype=self.scalar_type, device=self.device)
         self.cur_iter = wp.empty(self.n_envs, dtype=wp.int32, device=self.device)
         self.conditions = wp.empty(self.n_envs + 1, dtype=wp.int32, device=self.device)
         self.termination_kernel = make_termination_kernel(self.n_envs)
@@ -713,6 +736,14 @@ class CGSolver:
         r_norm_sq = self.dot_product[0]
         p, Ap = self.p_and_Ap[0], self.p_and_Ap[1]
 
+        self.compute_dot(b, b)
+        wp.launch(
+            kernel=_initialize_tolerance_kernel,
+            dim=self.n_envs,
+            device=self.device,
+            inputs=[self.rtol, self.atol, self.dot_product[0]],
+            outputs=[self.atol_sq],
+        )
         # Not strictly necessary, but makes it more robust to user-provided BatchedLinearOperators
         Ap.zero_()
         z.zero_()
@@ -773,7 +804,8 @@ class CRSolver:
         A: BatchedLinearOperator,
         active_dims: wp.array(dtype=Any),
         env_active: wp.array(dtype=wp.bool),
-        atol_sq: wp.array(dtype=Any),
+        atol: float | wp.array(dtype=Any) | None = None,
+        rtol: float | wp.array(dtype=Any) | None = None,
         maxiter: wp.array = None,
         M: BatchedLinearOperator | None = None,
         callback: Callable | None = None,
@@ -799,14 +831,15 @@ class CRSolver:
 
         self.active_dims = active_dims
         self.env_active = env_active
-        self.atol_sq = atol_sq
+        self.atol = atol
+        self.rtol = rtol
         self.maxiter = maxiter
 
         self.callback = callback
         self.check_every = check_every
         self.use_cuda_graph = use_cuda_graph
 
-        self.dot_tile_size = min(2048, 2 ** math.ceil(math.log(241, 2)))
+        self.dot_tile_size = min(2048, 2 ** math.ceil(math.log(self.maxdims, 2)))
         self.tiled_dot_kernel = make_dot_kernel(self.dot_tile_size, self.maxdims)
         self._allocate()
 
@@ -829,6 +862,13 @@ class CRSolver:
             self.r_and_z = _repeat_first(self.r_and_z)
             self.y_and_Ap = _repeat_first(self.y_and_Ap)
 
+        atol_val = self.atol if isinstance(self.atol, float) else 1e-8
+        rtol_val = self.rtol if isinstance(self.rtol, float) else 1e-8
+        if self.atol is None:
+            self.atol = wp.full(self.n_envs, atol_val, dtype=self.scalar_type, device=self.device)
+        if self.rtol is None:
+            self.rtol = wp.full(self.n_envs, rtol_val, dtype=self.scalar_type, device=self.device)
+        self.atol_sq = wp.empty(self.n_envs, dtype=self.scalar_type, device=self.device)
         self.cur_iter = wp.empty(self.n_envs, dtype=wp.int32, device=self.device)
         self.conditions = wp.empty(self.n_envs + 1, dtype=wp.int32, device=self.device)
         self.termination_kernel = make_termination_kernel(self.n_envs)
@@ -865,10 +905,16 @@ class CRSolver:
         y, Ap = self.y_and_Ap[0], self.y_and_Ap[1]
 
         r_norm_sq = self.dot_product[0]
-        zAz_new = self.dot_product[1]
-        zAz_old = self.residual
 
         # Initialize tolerance from right-hand-side norm
+        self.compute_dot(b, b)
+        wp.launch(
+            kernel=_initialize_tolerance_kernel,
+            dim=self.n_envs,
+            device=self.device,
+            inputs=[self.rtol, self.atol, self.dot_product[0]],
+            outputs=[self.atol_sq],
+        )
         self.A.matvec(x, b, r, self.env_active, alpha=-1.0, beta=1.0)
 
         # Not strictly necessary, but makes it more robust to user-provided LinearOperators

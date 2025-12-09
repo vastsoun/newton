@@ -605,17 +605,27 @@ class Example:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Cartpole simulation example")
     parser.add_argument("--device", type=str, help="The compute device to use")
-    parser.add_argument("--headless", action="store_true", default=False, help="Run in headless mode")
+    parser.add_argument("--headless", action=argparse.BooleanOptionalAction, default=False, help="Run in headless mode")
     parser.add_argument("--num-worlds", type=int, default=4, help="Number of worlds to simulate in parallel")
     parser.add_argument("--num-steps", type=int, default=5000, help="Number of steps for headless mode")
-    parser.add_argument("--load-from-usd", action="store_true", default=True, help="Load model from USD file")
-    parser.add_argument("--gravity", action="store_true", default=True, help="Enables gravity in the simulation")
-    parser.add_argument("--ground", action="store_true", default=False, help="Adds a ground plane to the simulation")
-    parser.add_argument("--cuda-graph", action="store_true", default=True, help="Use CUDA graphs")
-    parser.add_argument("--clear-cache", action="store_true", default=False, help="Clear warp cache")
-    parser.add_argument("--logging", action="store_true", default=True, help="Enable logging of simulation data")
-    parser.add_argument("--show-plots", action="store_true", default=False, help="Show plots of logging data")
-    parser.add_argument("--test", action="store_true", default=False, help="Run tests")
+    parser.add_argument(
+        "--load-from-usd", action=argparse.BooleanOptionalAction, default=True, help="Load model from USD file"
+    )
+    parser.add_argument(
+        "--gravity", action=argparse.BooleanOptionalAction, default=True, help="Enables gravity in the simulation"
+    )
+    parser.add_argument(
+        "--ground", action=argparse.BooleanOptionalAction, default=False, help="Adds a ground plane to the simulation"
+    )
+    parser.add_argument("--cuda-graph", action=argparse.BooleanOptionalAction, default=True, help="Use CUDA graphs")
+    parser.add_argument("--clear-cache", action=argparse.BooleanOptionalAction, default=False, help="Clear warp cache")
+    parser.add_argument(
+        "--logging", action=argparse.BooleanOptionalAction, default=True, help="Enable logging of simulation data"
+    )
+    parser.add_argument(
+        "--show-plots", action=argparse.BooleanOptionalAction, default=False, help="Show plots of logging data"
+    )
+    parser.add_argument("--test", action=argparse.BooleanOptionalAction, default=False, help="Run tests")
     parser.add_argument(
         "--record",
         type=str,

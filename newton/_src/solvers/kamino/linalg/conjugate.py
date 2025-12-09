@@ -32,6 +32,15 @@ wp.set_module_options({"enable_backward": False})
 # based on the warp.optim.linear implementation
 
 
+__all__ = [
+    "BatchedLinearOperator",
+    "CGSolver",
+    "CRSolver",
+    "make_dense_square_matrix_operator",
+    "make_diag_matrix_operator",
+]
+
+
 class BatchedLinearOperator:
     """
     Linear operator to be used as left-hand-side of linear iterative solvers for a batch of independent envs(problems).
@@ -107,37 +116,6 @@ class BatchedLinearOperator:
 # ---------------
 
 
-@wp.kernel
-def _check_env_termination(
-    maxiter: wp.array(dtype=int),
-    cycle_size: int,
-    r_norm_sq: wp.array(dtype=Any),
-    atol_sq: wp.array(dtype=Any),
-    env_active: wp.array(dtype=wp.bool),
-    cur_iter: wp.array(dtype=int),
-    env_condition: wp.array(dtype=wp.int32),
-):
-    env = wp.tid()
-    active = wp.where(env_active[env], 1, 0)
-    if active == 0 or env_condition[env] == 0:
-        return
-    cur_iter[env] += cycle_size
-    env_condition[env] = wp.where(r_norm_sq[env] <= atol_sq[env] or cur_iter[env] >= maxiter[env], 0, active)
-
-
-@wp.kernel
-def _update_batch_condition(
-    env_conditions: wp.array(dtype=wp.int32),
-    n_envs: int,
-    batch_condition: wp.array(dtype=wp.int32),
-):
-    for i in range(n_envs):
-        if env_conditions[i]:
-            batch_condition[0] = 1
-            return
-    batch_condition[0] = 0
-
-
 @functools.cache
 def make_termination_kernel(n_envs):
     @wp.kernel
@@ -172,50 +150,6 @@ def make_termination_kernel(n_envs):
 
 
 @wp.kernel
-def _dense_mv_kernel(
-    A: wp.array2d(dtype=Any),
-    x: wp.array1d(dtype=Any),
-    y: wp.array1d(dtype=Any),
-    z: wp.array1d(dtype=Any),
-    alpha: Any,
-    beta: Any,
-):
-    row, lane = wp.tid()
-
-    zero = type(alpha)(0)
-    s = zero
-    if alpha != zero:
-        for col in range(lane, A.shape[1], wp.block_dim()):
-            s += A[row, col] * x[col]
-
-    row_tile = wp.tile_sum(wp.tile(s * alpha))
-
-    if beta != zero:
-        row_tile += wp.tile_load(y, shape=1, offset=row) * beta
-
-    wp.tile_store(z, row_tile, offset=row)
-
-
-@wp.kernel
-def _diag_mv_kernel(
-    A: wp.array(dtype=Any),
-    x: wp.array(dtype=Any),
-    y: wp.array(dtype=Any),
-    z: wp.array(dtype=Any),
-    alpha: Any,
-    beta: Any,
-):
-    i = wp.tid()
-    zero = type(alpha)(0)
-    s = z.dtype(zero)
-    if alpha != zero:
-        s += alpha * (A[i] * x[i])
-    if beta != zero:
-        s += beta * y[i]
-    z[i] = s
-
-
-@wp.kernel
 def _cg_kernel_1(
     tol: wp.array(dtype=Any),
     resid: wp.array(dtype=Any),
@@ -228,7 +162,7 @@ def _cg_kernel_1(
 ):
     e, i = wp.tid()
 
-    alpha = wp.where(resid[e] > tol[e], rz_old[e] / p_Ap[e], rz_old.dtype(0.0))
+    alpha = wp.where(resid[e] > tol[e] and p_Ap[e] > 0.0, rz_old[e] / p_Ap[e], rz_old.dtype(0.0))
 
     x[e, i] = x[e, i] + alpha * p[e, i]
     r[e, i] = r[e, i] - alpha * Ap[e, i]
@@ -247,7 +181,7 @@ def _cg_kernel_2(
     e, i = wp.tid()
 
     cond = resid_new[e] > tol[e]
-    beta = wp.where(cond, rz_new[e] / rz_old[e], rz_old.dtype(0.0))
+    beta = wp.where(cond and rz_old[e] > 0.0, rz_new[e] / rz_old[e], rz_old.dtype(0.0))
 
     p[e, i] = z[e, i] + beta * p[e, i]
 
@@ -492,34 +426,6 @@ def _run_capturable_loop(
     return cur_iter, r_norm_sq, atol_sq
 
 
-@wp.kernel
-def dot_kernel(
-    a: wp.array3d(dtype=Any),
-    b: wp.array3d(dtype=Any),
-    active_dims: wp.array(dtype=Any),
-    env_active: wp.array(dtype=wp.bool),
-    dot: wp.array3d(dtype=Any),
-):
-    # called with (n_cols, n_envs)
-    col, env = wp.tid()
-    assert col < a.shape[0]
-    assert col < b.shape[0]
-    assert env < a.shape[1]
-    assert env < b.shape[1]
-    assert env_active.shape[0] == a.shape[1]
-
-    if not env_active[env]:
-        dot[col, env, 0] = a.dtype(0)
-        return
-
-    # use float64 to control error
-    z = wp.float64(0)
-
-    for i in range(active_dims[env]):
-        z += wp.float64(a[col, env, i] * b[col, env, i])
-
-    dot[col, env, 0] = a.dtype(z)
-
 
 @wp.func
 def lt_mask(a: Any, b: Any):
@@ -579,41 +485,6 @@ def make_dot_kernel(tile_size: int, maxdim: int):
         wp.tile_store(result[col], wp.tile_sum(ts), offset=env)
 
     return dot
-
-
-@functools.cache
-def create_tiled_dot_kernels(tile_size):
-    @wp.kernel
-    def block_dot_kernel(
-        a: wp.array2d(dtype=Any),
-        b: wp.array2d(dtype=Any),
-        partial_sums: wp.array2d(dtype=Any),
-    ):
-        column, block_id, tid_block = wp.tid()
-
-        start = block_id * tile_size
-
-        a_block = wp.tile_load(a[column], shape=tile_size, offset=start)
-        b_block = wp.tile_load(b[column], shape=tile_size, offset=start)
-        t = wp.tile_map(wp.mul, a_block, b_block)
-
-        tile_sum = wp.tile_sum(t)
-        wp.tile_store(partial_sums[column], tile_sum, offset=block_id)
-
-    @wp.kernel
-    def block_sum_kernel(
-        data: wp.array2d(dtype=Any),
-        partial_sums: wp.array2d(dtype=Any),
-    ):
-        column, block_id, tid_block = wp.tid()
-        start = block_id * tile_size
-
-        t = wp.tile_load(data[column], shape=tile_size, offset=start)
-
-        tile_sum = wp.tile_sum(t)
-        wp.tile_store(partial_sums[column], tile_sum, offset=block_id)
-
-    return block_dot_kernel, block_sum_kernel
 
 
 @wp.kernel
@@ -806,7 +677,7 @@ class CRSolver:
         env_active: wp.array(dtype=wp.bool),
         atol: float | wp.array(dtype=Any) | None = None,
         rtol: float | wp.array(dtype=Any) | None = None,
-        maxiter: wp.array = None,
+        maxiter: wp.array | None = None,
         M: BatchedLinearOperator | None = None,
         callback: Callable | None = None,
         check_every=10,
@@ -884,6 +755,7 @@ class CRSolver:
 
         result = self.dot_product[col_offset:]
 
+        # TODO: re-use env condition
         wp.launch(
             self.tiled_dot_kernel,
             dim=(a.shape[0], self.n_envs, block_dim),
@@ -918,9 +790,9 @@ class CRSolver:
         self.A.matvec(x, b, r, self.env_active, alpha=-1.0, beta=1.0)
 
         # Not strictly necessary, but makes it more robust to user-provided LinearOperators
-        # y.zero_()
+
         # Ap.zero_()
-        # self.y_and_Ap.zero_()
+        # y.zero_()
 
         # z = M r
         if self.M is not None:

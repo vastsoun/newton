@@ -429,9 +429,6 @@ def lt_mask(a: Any, b: Any):
     return wp.where(a < b, type(a)(1), type(a)(0))
 
 
-WP_NO_TILE_FULL = True  # TODO: remove w/ warp upgrade
-
-
 @wp.func
 def mul_mask(mask: Any, value: Any):
     """Return value if mask is positive, else 0"""
@@ -467,12 +464,7 @@ def make_dot_kernel(tile_size: int, maxdim: int):
             # TODO: consider using ts[block] twice, look into += data race in wp
             prod = wp.tile_map(wp.mul, ta, tb)
             if o_src > n - tile_size:
-                if wp.static(WP_NO_TILE_FULL):
-                    thresh_scalar = wp.tile_zeros(1, dtype=a.dtype)
-                    thresh_scalar[0] = a.dtype(n - o_src)
-                    thresh = wp.tile_broadcast(thresh_scalar, (tile_size,))
-                else:
-                    thresh = wp.tile_full((tile_size,), a.dtype(n - o_src), dtype=a.dtype)
+                thresh = wp.tile_full((tile_size,), a.dtype(n - o_src), dtype=a.dtype)
                 mask = wp.tile_map(lt_mask, wp.tile_arange(tile_size, dtype=a.dtype), thresh)
                 prod = wp.tile_map(mul_mask, mask, prod)
             s = wp.tile_sum(prod)

@@ -310,7 +310,6 @@ class IterativeSolver(LinearSolver):
         maxiter: int | wp.array | None = None,
         env_active: wp.array | None = None,
         preconditioner: Any = None,
-        atol_sq_env: float | wp.array | None = None,
         **kwargs: dict[str, Any],
     ) -> None:
         """
@@ -333,8 +332,6 @@ class IterativeSolver(LinearSolver):
             self._env_active = env_active
         if preconditioner is not None:
             self._preconditioner = preconditioner
-        if atol_sq_env is not None:
-            self._atol_sq_env = atol_sq_env
 
         self._num_envs = operator.info.num_blocks
         self._max_dim = operator.info.max_dimension
@@ -347,7 +344,7 @@ class IterativeSolver(LinearSolver):
             elif not isinstance(self._env_active, wp.array):
                 raise ValueError("The provided env_active is not a valid wp.array!")
             if self._maxiter is None:
-                self._maxiter = wp.array(np.ceil(1.5 * self._operator.info.dim.numpy()), dtype=wp.int32)
+                self._maxiter = wp.full(self._num_envs, self._operator.info.max_dimension, dtype=wp.int32)
             elif isinstance(self._maxiter, int):
                 self._maxiter = wp.full(self._num_envs, self._maxiter, dtype=wp.int32)
             elif not isinstance(self._maxiter, wp.array):
@@ -653,7 +650,6 @@ class ConjugateGradientSolver(IterativeSolver):
         maxiter: int | wp.array | None = None,
         env_active: wp.array | None = None,
         preconditioner: Any = None,
-        atol_sq_env: float | wp.array | None = None,
         **kwargs: dict[str, Any],
     ):
         self._A_op = None
@@ -669,7 +665,6 @@ class ConjugateGradientSolver(IterativeSolver):
             maxiter=maxiter,
             env_active=env_active,
             preconditioner=preconditioner,
-            atol_sq_env=atol_sq_env,
             **kwargs,
         )
 
@@ -772,7 +767,6 @@ class ConjugateResidualSolver(IterativeSolver):
         maxiter: int | wp.array | None = None,
         env_active: wp.array | None = None,
         preconditioner: Any = None,
-        atol_sq_env: float | wp.array | None = None,
         **kwargs: dict[str, Any],
     ):
         self._A_op = None
@@ -788,7 +782,6 @@ class ConjugateResidualSolver(IterativeSolver):
             maxiter=maxiter,
             env_active=env_active,
             preconditioner=preconditioner,
-            atol_sq_env=atol_sq_env,
             **kwargs,
         )
 

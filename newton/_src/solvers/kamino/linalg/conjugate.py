@@ -394,7 +394,7 @@ def make_dense_square_matrix_operator(
     matrix_stride: int,
     block_dim: int = 64,
 ) -> BatchedLinearOperator:
-    """Create a wp.optim.linalg.LinearOperator computing `z = \\alpha (A x) + \\beta y`
+    """Create a BatchedLinearOperator computing `z = \\alpha (A x) + \\beta y`
     for multiple, differently sized square matrices."""
     dtype = A.dtype
     device = A.device

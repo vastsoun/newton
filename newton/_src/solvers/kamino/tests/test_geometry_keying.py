@@ -54,7 +54,7 @@ class TestPairKeyOps(unittest.TestCase):
             print("\n")  # Add newline before test output for better readability
             msg.set_log_level(msg.LogLevel.DEBUG)
         else:
-            msg.set_log_level(msg.LogLevel.WARNING)
+            msg.reset_log_level()
 
         # Global numpy configurations
         np.set_printoptions(linewidth=10000, precision=10, threshold=10000, suppress=True)
@@ -237,7 +237,7 @@ class TestBinarySearchOps(unittest.TestCase):
             print("\n")  # Add newline before test output for better readability
             msg.set_log_level(msg.LogLevel.DEBUG)
         else:
-            msg.set_log_level(msg.LogLevel.WARNING)
+            msg.reset_log_level()
 
         # Global numpy configurations
         np.set_printoptions(linewidth=10000, precision=10, threshold=10000, suppress=True)
@@ -356,7 +356,7 @@ class TestKeySorter(unittest.TestCase):
             print("\n")  # Add newline before test output for better readability
             msg.set_log_level(msg.LogLevel.DEBUG)
         else:
-            msg.set_log_level(msg.LogLevel.WARNING)
+            msg.reset_log_level()
 
         # Global numpy configurations
         np.set_printoptions(linewidth=10000, precision=10, threshold=10000, suppress=True)

@@ -39,6 +39,7 @@ class TestContext:
 
 
 test_context = TestContext()
+""" Global object shared across unit tests, containing status & settings regarding test execution. """
 
 
 ###

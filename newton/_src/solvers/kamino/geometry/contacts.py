@@ -71,14 +71,14 @@ wp.set_module_options({"enable_backward": False})
 # Constants
 ###
 
-DEFAULT_WORLD_MAX_CONTACTS = 128
+DEFAULT_WORLD_MAX_CONTACTS: int = 128
 """
 The global default for maximum number of contacts per world.\n
 Used when allocating contact data without a specified capacity.\n
 Set to `128`.
 """
 
-DEFAULT_GEOM_PAIR_MAX_CONTACTS = 8
+DEFAULT_GEOM_PAIR_MAX_CONTACTS: int = 8
 """
 The global default for maximum number of contacts per geom-pair.\n
 Used when allocating contact data without a specified capacity.\n

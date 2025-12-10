@@ -324,6 +324,7 @@ class ContactsData:
         self.cid.fill_(-1)
         self.gid_AB.fill_(vec2i(-1, -1))
         self.bid_AB.fill_(vec2i(-1, -1))
+        self.mode.fill_(ContactMode.INACTIVE)
         self.reaction.zero_()
         self.velocity.zero_()
 

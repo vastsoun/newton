@@ -149,7 +149,7 @@ class Example:
         # Set solver settings
         settings = SimulatorSettings()
         settings.dt = self.sim_dt
-        settings.problem.use_preconditioning = True
+        settings.problem.preconditioning = True
         settings.solver.primal_tolerance = 1e-4
         settings.solver.dual_tolerance = 1e-4
         settings.solver.compl_tolerance = 1e-4

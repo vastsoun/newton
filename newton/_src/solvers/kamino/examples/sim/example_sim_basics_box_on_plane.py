@@ -101,7 +101,7 @@ def control_callback(sim: Simulator):
         dim=sim.model.size.sum_of_num_bodies,
         inputs=[
             sim.model.bodies.bid,
-            sim.contacts.data.world_num_contacts,
+            sim.contacts.data.world_active_contacts,
             sim.data.solver.time.time,
             sim.data.solver.bodies.w_e_i,
         ],
@@ -164,7 +164,7 @@ class Example:
         # Set solver settings
         settings = SimulatorSettings()
         settings.dt = self.sim_dt
-        settings.problem.use_preconditioning = True
+        settings.problem.preconditioning = True
         settings.solver.primal_tolerance = 1e-6
         settings.solver.dual_tolerance = 1e-6
         settings.solver.compl_tolerance = 1e-6

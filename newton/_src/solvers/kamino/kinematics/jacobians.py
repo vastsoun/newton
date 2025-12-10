@@ -753,7 +753,7 @@ class DenseSystemJacobians:
 
         # If a model is provided, allocate the Jacobians data
         if model is not None:
-            self.allocate(model=model, limits=limits, contacts=contacts, device=device)
+            self.finalize(model=model, limits=limits, contacts=contacts, device=device)
 
     @property
     def data(self) -> DenseSystemJacobiansData:
@@ -762,7 +762,7 @@ class DenseSystemJacobians:
         """
         return self._data
 
-    def allocate(
+    def finalize(
         self, model: Model, limits: Limits | None = None, contacts: Contacts | None = None, device: Devicelike = None
     ):
         # Ensure the model container is valid

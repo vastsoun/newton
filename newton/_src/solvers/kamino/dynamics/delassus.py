@@ -291,7 +291,7 @@ class DelassusOperator:
 
         # Allocate the Delassus operator data if at least the model is provided
         if model is not None:
-            self.allocate(
+            self.finalize(
                 model=model,
                 data=data,
                 limits=limits,
@@ -354,7 +354,7 @@ class DelassusOperator:
         """
         return self._operator.mat
 
-    def allocate(
+    def finalize(
         self,
         model: Model,
         data: ModelData,
@@ -428,7 +428,7 @@ class DelassusOperator:
                 device=self._device,
             )
         else:
-            self._operator.info.allocate(dimensions=maxdims, dtype=float32, itype=int32, device=self._device)
+            self._operator.info.finalize(dimensions=maxdims, dtype=float32, itype=int32, device=self._device)
 
         # Optionally initialize the linear system solver if one is specified
         if solver is not None:
@@ -473,7 +473,7 @@ class DelassusOperator:
 
         # Ensure the Delassus matrix is allocated
         if self._operator.mat is None:
-            raise ValueError("Delassus matrix is not allocated. Call allocate() first.")
+            raise ValueError("Delassus matrix is not allocated. Call finalize() first.")
 
         # Initialize the Delassus matrix to zero
         if reset_to_zero:
@@ -524,7 +524,7 @@ class DelassusOperator:
         """
         # Ensure the Delassus matrix is allocated
         if self._operator.mat is None:
-            raise ValueError("Delassus matrix is not allocated. Call allocate() first.")
+            raise ValueError("Delassus matrix is not allocated. Call finalize() first.")
 
         # Ensure the solver is available if pre-computation is requested
         if self._solver is None:
@@ -551,7 +551,7 @@ class DelassusOperator:
         """
         # Ensure the Delassus matrix is allocated
         if self._operator.mat is None:
-            raise ValueError("Delassus matrix is not allocated. Call allocate() first.")
+            raise ValueError("Delassus matrix is not allocated. Call finalize() first.")
 
         # Ensure the solver is available if solving is requested
         if self._solver is None:
@@ -574,7 +574,7 @@ class DelassusOperator:
         """
         # Ensure the Delassus matrix is allocated
         if self._operator.mat is None:
-            raise ValueError("Delassus matrix is not allocated. Call allocate() first.")
+            raise ValueError("Delassus matrix is not allocated. Call finalize() first.")
 
         # Ensure the solvers is available if solving in-place is requested
         if self._solver is None:

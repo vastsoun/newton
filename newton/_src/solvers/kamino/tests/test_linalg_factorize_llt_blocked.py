@@ -99,7 +99,7 @@ class TestLinAlgLLTSequential(unittest.TestCase):
 
         # Create the linear operator meta-data
         opinfo = DenseSquareMultiLinearInfo()
-        opinfo.allocate(dimensions=problem.dims, dtype=problem.wp_dtype, device=self.default_device)
+        opinfo.finalize(dimensions=problem.dims, dtype=problem.wp_dtype, device=self.default_device)
         msg.debug("opinfo:\n%s", opinfo)
 
         # Create the linear operator data structure
@@ -259,7 +259,7 @@ class TestLinAlgLLTSequential(unittest.TestCase):
 
         # Create the linear operator meta-data
         opinfo = DenseSquareMultiLinearInfo()
-        opinfo.allocate(dimensions=problem.maxdims, dtype=problem.wp_dtype, device=self.default_device)
+        opinfo.finalize(dimensions=problem.maxdims, dtype=problem.wp_dtype, device=self.default_device)
         msg.debug("opinfo:\n%s", opinfo)
 
         # Create the linear operator data structure
@@ -420,7 +420,7 @@ class TestLinAlgLLTSequential(unittest.TestCase):
 
         # Create the linear operator meta-data
         opinfo = DenseSquareMultiLinearInfo()
-        opinfo.allocate(dimensions=problem.dims, dtype=problem.wp_dtype, device=self.default_device)
+        opinfo.finalize(dimensions=problem.dims, dtype=problem.wp_dtype, device=self.default_device)
         msg.debug("opinfo:\n%s", opinfo)
 
         # Create the linear operator data structure
@@ -592,7 +592,7 @@ class TestLinAlgLLTSequential(unittest.TestCase):
 
         # Create the linear operator meta-data
         opinfo = DenseSquareMultiLinearInfo()
-        opinfo.allocate(dimensions=problem.maxdims, dtype=problem.wp_dtype, device=self.default_device)
+        opinfo.finalize(dimensions=problem.maxdims, dtype=problem.wp_dtype, device=self.default_device)
         msg.debug("opinfo:\n%s", opinfo)
 
         # Create the linear operator data structure

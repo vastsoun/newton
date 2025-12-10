@@ -270,9 +270,9 @@ class AnimationJointReference:
 
         Args:
             model (Model | None): The model container used to determine the required allocation sizes.
-                If None, calling ``allocate()`` later can be used for deferred allocation.
+                If None, calling ``finalize()`` later can be used for deferred allocation.
             data (np.ndarray | None): The input animation reference data as a 2D numpy array.
-                If None, calling ``allocate()`` later can be used for deferred allocation.
+                If None, calling ``finalize()`` later can be used for deferred allocation.
             data_dt (float | None): The time-step between frames in the input data.
             target_dt (float | None): The desired time-step between frames in the animation reference.
                 If None, defaults to ``data_dt``.
@@ -299,7 +299,7 @@ class AnimationJointReference:
 
         # If a model is provided, allocate the controller data
         if model is not None:
-            self.allocate(
+            self.finalize(
                 model=model,
                 data=data,
                 data_dt=data_dt,
@@ -338,7 +338,7 @@ class AnimationJointReference:
     def _assert_has_data(self) -> None:
         """Check if the internal animation data has been allocated."""
         if self._data is None:
-            raise ValueError("Animation reference data is not allocated. Call allocate() first.")
+            raise ValueError("Animation reference data is not allocated. Call finalize() first.")
 
     @staticmethod
     def _upsample_reference_coordinates(
@@ -434,7 +434,7 @@ class AnimationJointReference:
     # Operations
     ###
 
-    def allocate(
+    def finalize(
         self,
         model: Model,
         data: np.ndarray,
@@ -622,7 +622,7 @@ class AnimationJointReference:
         """
         # Ensure the animation data container is allocated
         if self._data is None:
-            raise ValueError("Controller data is not allocated. Call allocate() first.")
+            raise ValueError("Controller data is not allocated. Call finalize() first.")
 
         # Check if a single value or list is provided and set the loop flags accordingly
         if isinstance(enabled, list):

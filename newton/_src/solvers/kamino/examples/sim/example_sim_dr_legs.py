@@ -22,8 +22,6 @@ from warp.context import Devicelike
 
 import newton
 import newton.examples
-from newton._src.solvers.kamino.control.animation import AnimationJointReference
-from newton._src.solvers.kamino.control.pid import JointSpacePIDController
 from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.examples import get_examples_output_path, run_headless
 from newton._src.solvers.kamino.linalg.linear import SolverShorthand as LinearSolverShorthand
@@ -37,6 +35,7 @@ from newton._src.solvers.kamino.simulation.simulator import Simulator, Simulator
 from newton._src.solvers.kamino.solvers.padmm import PADMMWarmStartMode
 from newton._src.solvers.kamino.solvers.warmstart import WarmstarterContacts
 from newton._src.solvers.kamino.utils import logger as msg
+from newton._src.solvers.kamino.utils.control import AnimationJointReference, JointSpacePIDController
 from newton._src.solvers.kamino.utils.datalog import SimulationLogger
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
 from newton._src.solvers.kamino.viewer import ViewerKamino

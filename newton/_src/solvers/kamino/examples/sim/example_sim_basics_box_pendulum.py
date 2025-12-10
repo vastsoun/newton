@@ -22,7 +22,6 @@ from warp.context import Devicelike
 
 import newton
 import newton.examples
-from newton._src.solvers.kamino.control.pid import JointSpacePIDController
 from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.core.joints import JointCorrectionMode
 from newton._src.solvers.kamino.core.types import float32
@@ -32,6 +31,7 @@ from newton._src.solvers.kamino.models.builders.basics import build_box_pendulum
 from newton._src.solvers.kamino.models.builders.utils import make_homogeneous_builder
 from newton._src.solvers.kamino.simulation.simulator import Simulator, SimulatorSettings
 from newton._src.solvers.kamino.utils import logger as msg
+from newton._src.solvers.kamino.utils.control import JointSpacePIDController
 from newton._src.solvers.kamino.utils.datalog import SimulationLogger
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
 from newton._src.solvers.kamino.viewer import ViewerKamino

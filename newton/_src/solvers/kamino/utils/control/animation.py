@@ -24,9 +24,9 @@ import warp as wp
 from scipy.interpolate import interp1d
 from warp.context import Devicelike
 
-from ..core.model import Model
-from ..core.time import TimeData
-from ..core.types import float32, int32
+from ...core.model import Model
+from ...core.time import TimeData
+from ...core.types import float32, int32
 
 ###
 # Module interface

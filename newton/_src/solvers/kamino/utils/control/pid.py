@@ -23,12 +23,12 @@ import numpy as np
 import warp as wp
 from warp.context import Devicelike
 
-from ..core.control import Control
-from ..core.joints import JointActuationType
-from ..core.model import Model
-from ..core.state import State
-from ..core.time import TimeData
-from ..core.types import FloatArrayLike, IntArrayLike, float32, int32
+from ...core.control import Control
+from ...core.joints import JointActuationType
+from ...core.model import Model
+from ...core.state import State
+from ...core.time import TimeData
+from ...core.types import FloatArrayLike, IntArrayLike, float32, int32
 
 ###
 # Module interface

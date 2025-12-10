@@ -17,12 +17,12 @@
 KAMINO: Integrators Module
 """
 
-from .euler import integrate_semi_implicit_euler
+from .euler import integrate_euler_semi_implicit
 
 ##
 # Module interface
 ##
 
 __all__ = [
-    "integrate_semi_implicit_euler",
+    "integrate_euler_semi_implicit",
 ]

@@ -30,7 +30,7 @@ from ..core.types import float32, int32, mat33f, transformf, vec3f, vec4f, vec6f
 ###
 
 __all__ = [
-    "integrate_semi_implicit_euler",
+    "integrate_euler_semi_implicit",
 ]
 
 ###
@@ -46,7 +46,7 @@ wp.set_module_options({"enable_backward": False})
 
 
 @wp.func
-def semi_implicit_euler_with_logmap(
+def euler_semi_implicit_with_logmap(
     dt: float32,
     g: vec3f,
     inv_m_i: float32,
@@ -122,7 +122,7 @@ def _integrate_semi_implicit_euler_inplace(
     w_i = state_bodies_w[tid]
 
     # Compute the next pose and twist
-    q_i_n, u_i_n = semi_implicit_euler_with_logmap(
+    q_i_n, u_i_n = euler_semi_implicit_with_logmap(
         dt,
         g,
         inv_m_i,
@@ -143,7 +143,7 @@ def _integrate_semi_implicit_euler_inplace(
 ###
 
 
-def integrate_semi_implicit_euler(model: Model, data: ModelData):
+def integrate_euler_semi_implicit(model: Model, data: ModelData):
     wp.launch(
         _integrate_semi_implicit_euler_inplace,
         dim=model.size.sum_of_num_bodies,

@@ -17,8 +17,6 @@
 KAMINO: Dynamics: Wrenches
 """
 
-from __future__ import annotations
-
 import warp as wp
 
 from ..core.model import Model, ModelData
@@ -422,8 +420,8 @@ def compute_constraint_body_wrenches(
     limits: LimitsData,
     contacts: ContactsData,
     jacobians: DenseSystemJacobiansData,
-    lambdas_offsets: wp.array(dtype=int32),
-    lambdas_data: wp.array(dtype=float32),
+    lambdas_offsets: wp.array,
+    lambdas_data: wp.array,
     reset_to_zero: bool = True,
 ):
     """

@@ -44,6 +44,7 @@ from newton._src.solvers.kamino.geometry.primitive.narrowphase import (
     primitive_narrowphase,
 )
 from newton._src.solvers.kamino.models.builders import basics, testing
+from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.utils import logger as msg
 
 ###
@@ -478,8 +479,10 @@ def test_narrowphase_on_shape_pair(
 
 class TestPrimitiveBroadPhase(unittest.TestCase):
     def setUp(self):
-        self.default_device = wp.get_device()
-        self.verbose = False  # Set to True for verbose output
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
+        self.default_device = wp.get_device(test_context.device)
+        self.verbose = test_context.verbose  # Set to True for detailed output
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
@@ -703,8 +706,10 @@ class TestPrimitiveBroadPhase(unittest.TestCase):
 
 class TestPrimitiveNarrowPhase(unittest.TestCase):
     def setUp(self):
-        self.default_device = wp.get_device()
-        self.verbose = False  # Set to True for verbose output
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
+        self.default_device = wp.get_device(test_context.device)
+        self.verbose = test_context.verbose  # Set to True for detailed output
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
@@ -1015,8 +1020,10 @@ class TestPrimitiveNarrowPhase(unittest.TestCase):
 
 class TestPipelinePrimitive(unittest.TestCase):
     def setUp(self):
-        self.default_device = wp.get_device()
-        self.verbose = False  # Set to True for verbose output
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
+        self.default_device = wp.get_device(test_context.device)
+        self.verbose = test_context.verbose  # Set to True for detailed output
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
@@ -1099,15 +1106,8 @@ class TestPipelinePrimitive(unittest.TestCase):
 ###
 
 if __name__ == "__main__":
-    # Global numpy configurations
-    np.set_printoptions(linewidth=20000, threshold=20000, precision=10, suppress=True)
-
-    # Global warp configurations
-    wp.config.verbose = False
-    wp.config.verify_fp = False
-    wp.config.verify_cuda = False
-    wp.clear_kernel_cache()
-    wp.clear_lto_cache()
+    # Test setup
+    setup_tests()
 
     # Run all tests
     unittest.main(verbosity=2)

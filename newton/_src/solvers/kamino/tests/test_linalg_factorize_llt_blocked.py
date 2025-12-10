@@ -55,7 +55,7 @@ class TestLinAlgLLTSequential(unittest.TestCase):
             print("\n")  # Add newline before test output for better readability
             msg.set_log_level(msg.LogLevel.DEBUG)
         else:
-            msg.set_log_level(msg.LogLevel.WARNING)
+            msg.reset_log_level()
 
         # Set the tile block size for the blocked LLT kernels
         self.block_size = 16

@@ -53,7 +53,7 @@ class TestUtilsLinAlgProfiles(unittest.TestCase):
             print("\n")  # Add newline before test output for better readability
             msg.set_log_level(msg.LogLevel.DEBUG)
         else:
-            msg.set_log_level(msg.LogLevel.WARNING)
+            msg.reset_log_level()
 
         # Data directory (contains perfprof.csv)
         self.data_dir = Path(__file__).parent / "data"

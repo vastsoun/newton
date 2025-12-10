@@ -125,8 +125,8 @@ class TestGeometryCollisionDetector(unittest.TestCase):
 
         # Define expected contacts dictionary
         expected = {
-            "model_num_contacts": sum(expected_world_contacts),
-            "world_num_contacts": np.array(expected_world_contacts, dtype=np.int32),
+            "model_active_contacts": sum(expected_world_contacts),
+            "world_active_contacts": np.array(expected_world_contacts, dtype=np.int32),
         }
 
         # Check results
@@ -165,8 +165,8 @@ class TestGeometryCollisionDetector(unittest.TestCase):
 
         # Define expected contacts dictionary
         expected = {
-            "model_num_contacts": sum(expected_world_contacts),
-            "world_num_contacts": np.array(expected_world_contacts, dtype=np.int32),
+            "model_active_contacts": sum(expected_world_contacts),
+            "world_active_contacts": np.array(expected_world_contacts, dtype=np.int32),
         }
 
         # Check results

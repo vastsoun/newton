@@ -731,7 +731,7 @@ class ContactsData:
             contact.store(dataset, namespace=f"{namespace}/contacts/{c}")
 
     def update_from(self, simulator: Simulator, wid: int = 0, dtype=np.float64, itype=np.int32):
-        self.ncontacts = int(simulator.contacts.world_num_contacts.numpy()[wid])
+        self.ncontacts = int(simulator.contacts.world_active_contacts.numpy()[wid])
         self.contacts = [ContactData() for _ in range(self.ncontacts)]
         # Update the contact data from the contacts object if data is available
         if self.ncontacts > 0:

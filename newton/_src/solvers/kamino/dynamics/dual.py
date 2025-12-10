@@ -1135,7 +1135,7 @@ class DualProblem:
 
         # Determine the maximum number of contacts supported by the model
         # in order to allocate corresponding per-friction-cone parameters
-        num_model_max_contacts = contacts.num_model_max_contacts if contacts is not None else 0
+        model_max_contacts_host = contacts.model_max_contacts_host if contacts is not None else 0
 
         # Construct the Delassus operator first since it will already process the necessary
         # model and contacts allocation sizes and will create some of the necessary arrays
@@ -1177,7 +1177,7 @@ class DualProblem:
                 v_b=wp.zeros(shape=(self._delassus.num_maxdims,), dtype=float32),
                 v_i=wp.zeros(shape=(self._delassus.num_maxdims,), dtype=float32),
                 v_f=wp.zeros(shape=(self._delassus.num_maxdims,), dtype=float32),
-                mu=wp.zeros(shape=(num_model_max_contacts,), dtype=float32),
+                mu=wp.zeros(shape=(model_max_contacts_host,), dtype=float32),
                 P=wp.ones(shape=(self._delassus.num_maxdims,), dtype=float32),
             )
 
@@ -1359,16 +1359,16 @@ class DualProblem:
                 ],
             )
 
-        if limits.num_model_max_limits > 0:
+        if limits.model_max_limits_host > 0:
             wp.launch(
                 _build_free_velocity_bias_limits,
-                dim=limits.num_model_max_limits,
+                dim=limits.model_max_limits_host,
                 inputs=[
                     # Inputs:
                     model.time.inv_dt,
                     data.info.limit_cts_group_offset,
-                    limits.num_model_max_limits,
-                    limits.model_num_limits,
+                    limits.model_max_limits_host,
+                    limits.model_active_limits,
                     limits.wid,
                     limits.lid,
                     limits.r_q,
@@ -1379,17 +1379,17 @@ class DualProblem:
                 ],
             )
 
-        if contacts.num_model_max_contacts > 0:
+        if contacts.model_max_contacts_host > 0:
             wp.launch(
                 _build_free_velocity_bias_contacts,
-                dim=contacts.num_model_max_contacts,
+                dim=contacts.model_max_contacts_host,
                 inputs=[
                     # Inputs:
                     model.time.inv_dt,
                     model.info.contacts_offset,
                     data.info.contact_cts_group_offset,
-                    contacts.num_model_max_contacts,
-                    contacts.model_num_contacts,
+                    contacts.model_max_contacts_host,
+                    contacts.model_active_contacts,
                     contacts.wid,
                     contacts.cid,
                     contacts.gapfunc,

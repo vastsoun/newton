@@ -458,15 +458,15 @@ def compute_constraint_body_wrenches(
             data.bodies.w_l_i.zero_()
         wp.launch(
             _compute_limit_cts_body_wrenches,
-            dim=limits.num_model_max_limits,
+            dim=limits.model_max_limits_host,
             inputs=[
                 # Inputs:
                 model.info.num_body_dofs,
                 model.info.bodies_offset,
                 data.info.limit_cts_group_offset,
                 model.time.inv_dt,
-                limits.model_num_limits,
-                limits.num_model_max_limits,
+                limits.model_active_limits,
+                limits.model_max_limits_host,
                 limits.wid,
                 limits.lid,
                 limits.bids,
@@ -484,15 +484,15 @@ def compute_constraint_body_wrenches(
             data.bodies.w_c_i.zero_()
         wp.launch(
             _compute_contact_cts_body_wrenches,
-            dim=contacts.num_model_max_contacts,
+            dim=contacts.model_max_contacts_host,
             inputs=[
                 # Inputs:
                 model.info.num_body_dofs,
                 model.info.bodies_offset,
                 data.info.contact_cts_group_offset,
                 model.time.inv_dt,
-                contacts.model_num_contacts,
-                contacts.num_model_max_contacts,
+                contacts.model_active_contacts,
+                contacts.model_max_contacts_host,
                 contacts.wid,
                 contacts.cid,
                 contacts.bid_AB,

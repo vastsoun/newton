@@ -85,8 +85,8 @@ def max_constraints_per_world(
     # Compute the maximum number of constraints per world
     nw = model.info.num_worlds
     njc = [model.worlds[i].num_joint_cts for i in range(nw)]
-    maxnl = limits.num_world_max_limits if limits and limits.num_model_max_limits > 0 else [0] * nw
-    maxnc = contacts.num_world_max_contacts if contacts and contacts.num_model_max_contacts > 0 else [0] * nw
+    maxnl = limits.world_max_limits_host if limits and limits.model_max_limits_host > 0 else [0] * nw
+    maxnc = contacts.world_max_contacts_host if contacts and contacts.model_max_contacts_host > 0 else [0] * nw
     maxncts = [njc[i] + maxnl[i] + 3 * maxnc[i] for i in range(nw)]
     return maxncts
 
@@ -137,11 +137,11 @@ def make_unilateral_constraints_info(
 
     def _assign_model_limits_info():
         nonlocal world_maxnl
-        world_maxnl = limits.num_world_max_limits
-        model.size.sum_of_max_limits = limits.num_model_max_limits
-        model.size.max_of_max_limits = max(limits.num_world_max_limits)
+        world_maxnl = limits.world_max_limits_host
+        model.size.sum_of_max_limits = limits.model_max_limits_host
+        model.size.max_of_max_limits = max(limits.world_max_limits_host)
         model.info.max_limits = limits.world_max_limits
-        data.info.num_limits = limits.world_num_limits
+        data.info.num_limits = limits.world_active_limits
 
     def _make_empty_model_limits_info():
         nonlocal world_maxnl
@@ -154,11 +154,11 @@ def make_unilateral_constraints_info(
 
     def _assign_model_contacts_info():
         nonlocal world_maxnc
-        world_maxnc = contacts.num_world_max_contacts
-        model.size.sum_of_max_contacts = contacts.num_model_max_contacts
-        model.size.max_of_max_contacts = max(contacts.num_world_max_contacts)
+        world_maxnc = contacts.world_max_contacts_host
+        model.size.sum_of_max_contacts = contacts.model_max_contacts_host
+        model.size.max_of_max_contacts = max(contacts.world_max_contacts_host)
         model.info.max_contacts = contacts.world_max_contacts
-        data.info.num_contacts = contacts.world_num_contacts
+        data.info.num_contacts = contacts.world_active_contacts
 
     def _make_empty_model_contacts_info():
         nonlocal world_maxnc
@@ -174,7 +174,7 @@ def make_unilateral_constraints_info(
     if limits is not None:
         if not isinstance(limits, Limits):
             raise TypeError("`limits` must be an instance of `Limits`")
-        if limits.data is not None and limits.num_model_max_limits > 0:
+        if limits.data is not None and limits.model_max_limits_host > 0:
             _assign_model_limits_info()
         else:
             _make_empty_model_limits_info()
@@ -186,7 +186,7 @@ def make_unilateral_constraints_info(
     if contacts is not None:
         if not isinstance(contacts, Contacts):
             raise TypeError("`contacts` must be an instance of `Contacts`")
-        if contacts.data is not None and contacts.num_model_max_contacts > 0:
+        if contacts.data is not None and contacts.model_max_contacts_host > 0:
             _assign_model_contacts_info()
     else:
         _make_empty_model_contacts_info()
@@ -511,12 +511,12 @@ def unpack_constraint_solutions(
     if limits is not None:
         wp.launch(
             kernel=_unpack_limit_constraint_solutions,
-            dim=limits.num_model_max_limits,
+            dim=limits.model_max_limits_host,
             inputs=[
                 # Inputs:
                 model.time.inv_dt,
                 data.info.limit_cts_group_offset,
-                limits.model_num_limits,
+                limits.model_active_limits,
                 limits.wid,
                 limits.lid,
                 lambdas,
@@ -531,12 +531,12 @@ def unpack_constraint_solutions(
     if contacts is not None:
         wp.launch(
             kernel=_unpack_contact_constraint_solutions,
-            dim=contacts.num_model_max_contacts,
+            dim=contacts.model_max_contacts_host,
             inputs=[
                 # Inputs:
                 model.time.inv_dt,
                 data.info.contact_cts_group_offset,
-                contacts.model_num_contacts,
+                contacts.model_active_contacts,
                 contacts.wid,
                 contacts.cid,
                 lambdas,

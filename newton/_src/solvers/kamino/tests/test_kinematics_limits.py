@@ -178,8 +178,8 @@ class TestKinematicsLimits(unittest.TestCase):
         limits = Limits(device=self.default_device)
 
         # Check the initial state of the limits
-        self.assertEqual(limits._data.num_model_max_limits, 0)
-        self.assertEqual(limits._data.num_world_max_limits, [])
+        self.assertEqual(limits._data.model_max_limits_host, 0)
+        self.assertEqual(limits._data.world_max_limits_host, [])
 
     def test_01_allocate_limits_container_from_homogeneous_builder(self):
         """
@@ -193,7 +193,7 @@ class TestKinematicsLimits(unittest.TestCase):
 
         # Check the initial state of the limits
         self.assertIsNotNone(limits.model_max_limits)
-        self.assertIsNotNone(limits.model_num_limits)
+        self.assertIsNotNone(limits.model_active_limits)
         self.assertIsNotNone(limits.world_max_limits)
         self.assertIsNotNone(limits.world_max_limits)
         self.assertIsNotNone(limits.wid)
@@ -208,20 +208,20 @@ class TestKinematicsLimits(unittest.TestCase):
         self.assertIsNotNone(limits.velocity)
 
         # Check the shapes of the limits arrays
-        self.assertEqual(limits.num_model_max_limits, 12)
-        self.assertEqual(limits.num_world_max_limits, [4, 4, 4])
-        self.assertEqual(limits.model_num_limits.shape, (1,))
-        self.assertEqual(limits.model_num_limits.shape, (1,))
+        self.assertEqual(limits.model_max_limits_host, 12)
+        self.assertEqual(limits.world_max_limits_host, [4, 4, 4])
+        self.assertEqual(limits.model_active_limits.shape, (1,))
+        self.assertEqual(limits.model_active_limits.shape, (1,))
         self.assertEqual(limits.world_max_limits.shape, (3,))
-        self.assertEqual(limits.world_num_limits.shape, (3,))
+        self.assertEqual(limits.world_active_limits.shape, (3,))
 
         # Optional verbose output
-        msg.info("limits.num_model_max_limits: %s", limits.num_model_max_limits)
-        msg.info("limits.num_world_max_limits: %s", limits.num_world_max_limits)
+        msg.info("limits.model_max_limits_host: %s", limits.model_max_limits_host)
+        msg.info("limits.world_max_limits_host: %s", limits.world_max_limits_host)
         msg.info("limits.model_max_limits: %s", limits.model_max_limits)
-        msg.info("limits.model_num_limits: %s", limits.model_num_limits)
+        msg.info("limits.model_active_limits: %s", limits.model_active_limits)
         msg.info("limits.world_max_limits: %s", limits.world_max_limits)
-        msg.info("limits.world_num_limits: %s", limits.world_num_limits)
+        msg.info("limits.world_active_limits: %s", limits.world_active_limits)
         msg.info("limits.wid: %s", limits.wid)
         msg.info("limits.lid: %s", limits.lid)
         msg.info("limits.jid: %s", limits.jid)
@@ -265,12 +265,12 @@ class TestKinematicsLimits(unittest.TestCase):
         limits = Limits(builder=builder, device=self.default_device)
 
         # Optional verbose output
-        msg.info("[before]: limits.num_model_max_limits: %s", limits.num_model_max_limits)
-        msg.info("[before]: limits.num_world_max_limits: %s", limits.num_world_max_limits)
+        msg.info("[before]: limits.model_max_limits_host: %s", limits.model_max_limits_host)
+        msg.info("[before]: limits.world_max_limits_host: %s", limits.world_max_limits_host)
         msg.info("[before]: limits.model_max_limits: %s", limits.model_max_limits)
-        msg.info("[before]: limits.model_num_limits: %s", limits.model_num_limits)
+        msg.info("[before]: limits.model_active_limits: %s", limits.model_active_limits)
         msg.info("[before]: limits.world_max_limits: %s", limits.world_max_limits)
-        msg.info("[before]: limits.world_num_limits: %s", limits.world_num_limits)
+        msg.info("[before]: limits.world_active_limits: %s", limits.world_active_limits)
         msg.info("[before]: limits.wid: %s", limits.wid)
         msg.info("[before]: limits.lid: %s", limits.lid)
         msg.info("[before]: limits.jid: %s", limits.jid)
@@ -286,12 +286,12 @@ class TestKinematicsLimits(unittest.TestCase):
         limits.detect(model, data)
 
         # Optional verbose output
-        msg.info("[after]: limits.num_model_max_limits: %s", limits.num_model_max_limits)
-        msg.info("[after]: limits.num_world_max_limits: %s", limits.num_world_max_limits)
+        msg.info("[after]: limits.model_max_limits_host: %s", limits.model_max_limits_host)
+        msg.info("[after]: limits.world_max_limits_host: %s", limits.world_max_limits_host)
         msg.info("[after]: limits.model_max_limits: %s", limits.model_max_limits)
-        msg.info("[after]: limits.model_num_limits: %s", limits.model_num_limits)
+        msg.info("[after]: limits.model_active_limits: %s", limits.model_active_limits)
         msg.info("[after]: limits.world_max_limits: %s", limits.world_max_limits)
-        msg.info("[after]: limits.world_num_limits: %s", limits.world_num_limits)
+        msg.info("[after]: limits.world_active_limits: %s", limits.world_active_limits)
         msg.info("[after]: limits.wid: %s", limits.wid)
         msg.info("[after]: limits.lid: %s", limits.lid)
         msg.info("[after]: limits.jid: %s", limits.jid)
@@ -304,7 +304,7 @@ class TestKinematicsLimits(unittest.TestCase):
         msg.info("[after]: limits.velocity: %s", limits.velocity)
 
         # Check the limits
-        limits_num_np = limits.world_num_limits.numpy()
+        limits_num_np = limits.world_active_limits.numpy()
         limits_wid_np = limits.wid.numpy()
         limits_lid_np = limits.lid.numpy()
         limits_jid_np = limits.jid.numpy()

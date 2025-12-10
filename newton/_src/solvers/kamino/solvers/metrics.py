@@ -1138,13 +1138,13 @@ class SolutionMetrics:
             )
 
         # Compute the largest joint-limit constraint residuals (i.e. penetrations)
-        if limits is not None and limits.num_model_max_limits > 0:
+        if limits is not None and limits.model_max_limits_host > 0:
             wp.launch(
                 kernel=_compute_cts_limits_residual,
-                dim=limits.data.num_model_max_limits,
+                dim=limits.data.model_max_limits_host,
                 inputs=[
                     # Inputs:
-                    limits.data.model_num_limits,
+                    limits.data.model_active_limits,
                     limits.data.wid,
                     limits.data.lid,
                     limits.data.dof,
@@ -1157,13 +1157,13 @@ class SolutionMetrics:
             )
 
         # Compute the largest contact constraint residuals (i.e. penetrations)
-        if contacts is not None and contacts.num_model_max_contacts > 0:
+        if contacts is not None and contacts.model_max_contacts_host > 0:
             wp.launch(
                 kernel=_compute_cts_contacts_residual,
-                dim=contacts.data.num_model_max_contacts,
+                dim=contacts.data.model_max_contacts_host,
                 inputs=[
                     # Inputs:
-                    contacts.data.model_num_contacts,
+                    contacts.data.model_active_contacts,
                     contacts.data.wid,
                     contacts.data.cid,
                     contacts.data.gapfunc,

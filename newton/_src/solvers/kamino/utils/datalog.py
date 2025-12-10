@@ -171,10 +171,10 @@ class SimulationLogger:
             return
 
         # Log unilateral constraints info
-        if self._sim.limits.num_model_max_limits > 0:
-            self.log_num_limits[self._frames] = self._sim.limits.model_num_limits.numpy()[0]
-        if self._sim.contacts.num_model_max_contacts > 0:
-            self.log_num_contacts[self._frames] = self._sim.contacts.data.model_num_contacts.numpy()[0]
+        if self._sim.limits.model_max_limits_host > 0:
+            self.log_num_limits[self._frames] = self._sim.limits.model_active_limits.numpy()[0]
+        if self._sim.contacts.model_max_contacts_host > 0:
+            self.log_num_contacts[self._frames] = self._sim.contacts.data.model_active_contacts.numpy()[0]
 
         # Log PADMM solver info
         self.log_padmm_iters[self._frames] = self._sim.solver.data.status.numpy()[0][1]

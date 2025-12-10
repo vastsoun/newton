@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import argparse
 import os
 import unittest
 
@@ -54,8 +55,30 @@ class ModuleHeaderTestRunner(unittest.TextTestRunner):
 ###
 
 if __name__ == "__main__":
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(description="Runs all unit tests in Kamino.")
+    parser.add_argument(
+        "--device",
+        type=str,
+        default="cuda",  # Edit to change device (if not running in command line)
+        help="The compute device to use.",
+    )
+    parser.add_argument(
+        "--clear-cache",
+        default=True,  # Edit to enable/disable cache clear (if not running in command line)
+        action=argparse.BooleanOptionalAction,
+        help="Whether to clear the warp cache before running tests.",
+    )
+    parser.add_argument(
+        "--verbose",
+        default=False,  # Edit to change verbosity (if not running in command line)
+        action=argparse.BooleanOptionalAction,
+        help="Whether to print detailed information during tests execution.",
+    )
+    args = parser.parse_args()
+
     # Perform global setup
-    setup_tests(verbose=False, device="cuda", clear_cache=True)
+    setup_tests(verbose=args.verbose, device=args.device, clear_cache=args.clear_cache)
 
     # Detect all unit tests
     test_folder = os.path.dirname(os.path.abspath(__file__))

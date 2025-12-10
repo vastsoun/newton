@@ -25,6 +25,7 @@ from newton._src.solvers.kamino.linalg.core import (
     DenseSquareMultiLinearInfo,
     make_dtype_tolerance,
 )
+from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.utils import logger as msg
 
 ###
@@ -35,16 +36,18 @@ from newton._src.solvers.kamino.utils import logger as msg
 class TestLinAlgCoreMakeTolerance(unittest.TestCase):
     def setUp(self):
         # Configs
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
         self.seed = 42
-        self.default_device = wp.get_device()
-        self.verbose = False  # Set to True for verbose output
+        self.default_device = wp.get_device(test_context.device)
+        self.verbose = test_context.verbose  # Set to True for verbose output
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
             print("\n")  # Add newline before test output for better readability
             msg.set_log_level(msg.LogLevel.DEBUG)
         else:
-            msg.set_log_level(msg.LogLevel.WARNING)
+            msg.reset_log_level()
 
     def tearDown(self):
         self.default_device = None
@@ -97,16 +100,18 @@ class TestLinAlgCoreMakeTolerance(unittest.TestCase):
 class TestLinAlgCoreDenseMultiLinearRectangularInfo(unittest.TestCase):
     def setUp(self):
         # Configs
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
         self.seed = 42
-        self.default_device = wp.get_device()
-        self.verbose = False  # Set to True for verbose output
+        self.default_device = wp.get_device(test_context.device)
+        self.verbose = test_context.verbose  # Set to True for verbose output
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
             print("\n")  # Add newline before test output for better readability
             msg.set_log_level(msg.LogLevel.DEBUG)
         else:
-            msg.set_log_level(msg.LogLevel.WARNING)
+            msg.reset_log_level()
 
     def tearDown(self):
         self.default_device = None
@@ -211,16 +216,18 @@ class TestLinAlgCoreDenseMultiLinearRectangularInfo(unittest.TestCase):
 class TestLinAlgCoreDenseMultiLinearSquareInfo(unittest.TestCase):
     def setUp(self):
         # Configs
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
         self.seed = 42
-        self.default_device = wp.get_device()
-        self.verbose = False  # Set to True for verbose output
+        self.default_device = wp.get_device(test_context.device)
+        self.verbose = test_context.verbose  # Set to True for verbose output
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
             print("\n")  # Add newline before test output for better readability
             msg.set_log_level(msg.LogLevel.DEBUG)
         else:
-            msg.set_log_level(msg.LogLevel.WARNING)
+            msg.reset_log_level()
 
     def tearDown(self):
         self.default_device = None
@@ -309,19 +316,8 @@ class TestLinAlgCoreDenseMultiLinearSquareInfo(unittest.TestCase):
 ###
 
 if __name__ == "__main__":
-    # Global numpy configurations
-    np.set_printoptions(linewidth=10000, precision=10, threshold=10000, suppress=True)  # Suppress scientific notation
-
-    # Initialize Warp
-    wp.init()
-
-    # Global warp configurations
-    wp.config.enable_backward = False
-    wp.config.verbose = False
-
-    # Clear Warp caches
-    wp.clear_kernel_cache()
-    wp.clear_lto_cache()
+    # Test setup
+    setup_tests()
 
     # Run all tests
     unittest.main(verbosity=2)

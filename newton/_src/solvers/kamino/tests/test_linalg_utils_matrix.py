@@ -20,6 +20,7 @@ import unittest
 import numpy as np
 
 import newton._src.solvers.kamino.linalg as linalg
+from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.utils import logger as msg
 
 ###
@@ -29,7 +30,9 @@ from newton._src.solvers.kamino.utils import logger as msg
 
 class TestUtilsLinAlgMatrix(unittest.TestCase):
     def setUp(self):
-        self.verbose = False  # Set to True for verbose output
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
+        self.verbose = test_context.verbose  # Set to True for verbose output
         if self.verbose:
             msg.set_log_level(msg.LogLevel.DEBUG)
 
@@ -52,8 +55,8 @@ class TestUtilsLinAlgMatrix(unittest.TestCase):
 ###
 
 if __name__ == "__main__":
-    # Global numpy configurations
-    np.set_printoptions(linewidth=10000, precision=10, suppress=True)  # Suppress scientific notation
+    # Test setup
+    setup_tests()
 
     # Run all tests
     unittest.main(verbosity=2)

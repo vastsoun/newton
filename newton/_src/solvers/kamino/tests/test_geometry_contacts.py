@@ -31,6 +31,7 @@ from newton._src.solvers.kamino.geometry.contacts import (
     make_contact_frame_xnorm,
     make_contact_frame_znorm,
 )
+from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.utils import logger as msg
 
 ###
@@ -110,8 +111,10 @@ def compute_contact_mode(velocity: wp.array, mode: wp.array, num_threads: int = 
 
 class TestGeometryContactFrames(unittest.TestCase):
     def setUp(self):
-        self.default_device = wp.get_device()
-        self.verbose = False  # Set to True for detailed output
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
+        self.default_device = wp.get_device(test_context.device)
+        self.verbose = test_context.verbose  # Set to True for detailed output
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
@@ -208,8 +211,10 @@ class TestGeometryContactFrames(unittest.TestCase):
 
 class TestGeometryContactMode(unittest.TestCase):
     def setUp(self):
-        self.default_device = wp.get_device()
-        self.verbose = False  # Set to True for detailed output
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
+        self.default_device = wp.get_device(test_context.device)
+        self.verbose = test_context.verbose  # Set to True for detailed output
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
@@ -253,8 +258,10 @@ class TestGeometryContactMode(unittest.TestCase):
 
 class TestGeometryContacts(unittest.TestCase):
     def setUp(self):
-        self.default_device = wp.get_device()
-        self.verbose = False  # Set to True for detailed output
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
+        self.default_device = wp.get_device(test_context.device)
+        self.verbose = test_context.verbose  # Set to True for detailed output
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
@@ -356,13 +363,8 @@ class TestGeometryContacts(unittest.TestCase):
 ###
 
 if __name__ == "__main__":
-    # Global numpy configurations
-    np.set_printoptions(linewidth=10000, threshold=10000, precision=10, suppress=True)
-
-    # Global warp configurations
-    wp.config.verbose = False
-    wp.clear_kernel_cache()
-    wp.clear_lto_cache()
+    # Test setup
+    setup_tests()
 
     # Run all tests
     unittest.main(verbosity=2)

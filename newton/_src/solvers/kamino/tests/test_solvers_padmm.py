@@ -32,6 +32,7 @@ from newton._src.solvers.kamino.linalg.utils.matrix import SquareSymmetricMatrix
 from newton._src.solvers.kamino.linalg.utils.range import in_range_via_gaussian_elimination
 from newton._src.solvers.kamino.models.builders import basics
 from newton._src.solvers.kamino.solvers.padmm import PADMMSettings, PADMMSolver, PADMMWarmStartMode
+from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.tests.utils.extract import (
     extract_delassus,
     extract_info_vectors,
@@ -320,9 +321,11 @@ def save_solver_info(solver: PADMMSolver, path: str | None = None, verbose: bool
 
 class TestPADMMSolver(unittest.TestCase):
     def setUp(self):
-        self.default_device = wp.get_device()
-        self.verbose = False  # Set to True for detailed output
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
+        self.verbose = test_context.verbose  # Set to True for detailed output
         self.savefig = False  # Set to True to generate solver info plots
+        self.default_device = wp.get_device(test_context.device)
         self.output_dir = os.path.dirname(os.path.realpath(__file__)) + "/output/test_solvers_padmm"
 
         # Create output directory if saving figures
@@ -334,7 +337,7 @@ class TestPADMMSolver(unittest.TestCase):
             print("\n")  # Add newline before test output for better readability
             msg.set_log_level(msg.LogLevel.INFO)
         else:
-            msg.set_log_level(msg.LogLevel.WARNING)
+            msg.reset_log_level()
 
     def tearDown(self):
         self.default_device = None
@@ -661,14 +664,8 @@ class TestPADMMSolver(unittest.TestCase):
 ###
 
 if __name__ == "__main__":
-    # Global numpy configurations
-    np.set_printoptions(linewidth=1000, precision=10, threshold=10000, suppress=True)  # Suppress scientific notation
-
-    # Global warp configurations
-    wp.config.enable_backward = False
-    wp.config.verbose = False
-    wp.clear_kernel_cache()
-    wp.clear_lto_cache()
+    # Test setup
+    setup_tests()
 
     # Run all tests
     unittest.main(verbosity=2)

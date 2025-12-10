@@ -18,7 +18,6 @@
 import unittest
 
 import numpy as np
-import warp as wp
 
 # Module to be tested
 from newton._src.solvers.kamino.core.materials import (
@@ -29,6 +28,9 @@ from newton._src.solvers.kamino.core.materials import (
     MaterialPairProperties,
 )
 
+# Test utilities
+from newton._src.solvers.kamino.tests import setup_tests, test_context
+
 ###
 # Tests
 ###
@@ -36,7 +38,9 @@ from newton._src.solvers.kamino.core.materials import (
 
 class TestMaterials(unittest.TestCase):
     def setUp(self):
-        self.verbose = False  # Set to True for verbose output
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
+        self.verbose = test_context.verbose  # Set to True for verbose output
 
     def test_00_default_material_pair_properties(self):
         # Create a default-constructed surface material
@@ -529,13 +533,8 @@ class TestMaterials(unittest.TestCase):
 ###
 
 if __name__ == "__main__":
-    # Global numpy configurations
-    np.set_printoptions(linewidth=500, precision=6, suppress=True)  # Suppress scientific notation
-
-    # Global warp configurations
-    wp.config.verbose = False
-    wp.clear_kernel_cache()
-    wp.clear_lto_cache()
+    # Test setup
+    setup_tests()
 
     # Run all tests
     unittest.main(verbosity=2)

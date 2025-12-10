@@ -20,12 +20,12 @@ import unittest
 
 import numpy as np
 import warp as wp
-from warp.context import Devicelike
 
 from newton._src.solvers.kamino.integrators.euler import integrate_semi_implicit_euler
 from newton._src.solvers.kamino.models.builders.basics import build_box_on_plane, build_boxes_hinged
 from newton._src.solvers.kamino.solvers.metrics import SolutionMetrics
 from newton._src.solvers.kamino.solvers.padmm import PADMMSolver
+from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.tests.test_solvers_padmm import TestSetup
 from newton._src.solvers.kamino.utils import logger as msg
 
@@ -36,8 +36,10 @@ from newton._src.solvers.kamino.utils import logger as msg
 
 class TestSolverMetrics(unittest.TestCase):
     def setUp(self):
-        self.default_device: Devicelike = wp.get_device()
-        self.verbose = False  # Set to True for detailed output
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
+        self.default_device = wp.get_device(test_context.device)
+        self.verbose = test_context.verbose  # Set to True for detailed output
         self.savefig = False  # Set to True to generate solver info plots
         self.output_dir = os.path.dirname(os.path.realpath(__file__)) + "/output/test_solvers_padmm"
 
@@ -50,7 +52,7 @@ class TestSolverMetrics(unittest.TestCase):
             print("\n")  # Add newline before test output for better readability
             msg.set_log_level(msg.LogLevel.INFO)
         else:
-            msg.set_log_level(msg.LogLevel.WARNING)
+            msg.reset_log_level()
 
     def tearDown(self):
         self.default_device = None
@@ -403,14 +405,8 @@ class TestSolverMetrics(unittest.TestCase):
 ###
 
 if __name__ == "__main__":
-    # Global numpy configurations
-    np.set_printoptions(linewidth=1000, precision=10, threshold=10000, suppress=True)  # Suppress scientific notation
-
-    # Global warp configurations
-    wp.config.enable_backward = False
-    wp.config.verbose = False
-    wp.clear_kernel_cache()
-    wp.clear_lto_cache()
+    # Test setup
+    setup_tests()
 
     # Run all tests
     unittest.main(verbosity=2)

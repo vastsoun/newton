@@ -20,7 +20,6 @@ KAMINO: UNIT TESTS: KINEMATICS: LIMITS
 import math
 import unittest
 
-import numpy as np
 import warp as wp
 
 from newton._src.solvers.kamino.core.math import quat_exp, screw, screw_angular, screw_linear
@@ -30,6 +29,7 @@ from newton._src.solvers.kamino.kinematics.joints import compute_joints_data
 from newton._src.solvers.kamino.kinematics.limits import Limits
 from newton._src.solvers.kamino.models.builders import basics, testing
 from newton._src.solvers.kamino.models.builders.utils import make_homogeneous_builder
+from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.utils import logger as msg
 
 ###
@@ -153,15 +153,17 @@ def set_joint_follower_body_state(model: Model, data: ModelData):
 
 class TestKinematicsLimits(unittest.TestCase):
     def setUp(self):
-        self.default_device = wp.get_device()
-        self.verbose = False  # Set to True to enable verbose output
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
+        self.default_device = wp.get_device(test_context.device)
+        self.verbose = test_context.verbose  # Set to True to enable verbose output
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
             msg.info("\n")  # Add newline before test output for better readability
             msg.set_log_level(msg.LogLevel.DEBUG)
         else:
-            msg.set_log_level(msg.LogLevel.WARNING)
+            msg.reset_log_level()
 
     def tearDown(self):
         self.default_device = None
@@ -327,14 +329,8 @@ class TestKinematicsLimits(unittest.TestCase):
 ###
 
 if __name__ == "__main__":
-    # Global numpy configurations
-    np.set_printoptions(linewidth=10000, precision=10, threshold=10000, suppress=True)  # Suppress scientific notation
-
-    # Global warp configurations
-    wp.config.enable_backward = False
-    wp.config.verbose = False
-    wp.clear_kernel_cache()
-    wp.clear_lto_cache()
+    # Test setup
+    setup_tests()
 
     # Run all tests
     unittest.main(verbosity=2)

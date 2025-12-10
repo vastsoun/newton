@@ -38,6 +38,7 @@ from newton._src.solvers.kamino.models.builders.basics import (
     build_boxes_nunchaku,
     build_cartpole,
 )
+from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.tests.utils.checks import (
     assert_builders_equal,
 )
@@ -58,8 +59,10 @@ FLOAT32_MIN = np.finfo(np.float32).min
 
 class TestUSDImporter(unittest.TestCase):
     def setUp(self):
-        self.default_device = wp.get_device()
-        self.verbose = False  # Set to True for verbose output
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
+        self.default_device = wp.get_device(test_context.device)
+        self.verbose = test_context.verbose  # Set to True for verbose output
 
         # Set the paths to the assets provided by the kamino package
         self.TEST_USD_ASSETS_PATH = get_testing_usd_assets_path()
@@ -1077,14 +1080,8 @@ class TestUSDImporter(unittest.TestCase):
 ###
 
 if __name__ == "__main__":
-    # Global numpy configurations
-    np.set_printoptions(linewidth=500, precision=10, suppress=True)  # Suppress scientific notation
-
-    # Global warp configurations
-    wp.config.enable_backward = False
-    wp.config.verbose = False
-    wp.clear_kernel_cache()
-    wp.clear_lto_cache()
+    # Test setup
+    setup_tests()
 
     # Set global log-level
     # msg.set_log_level(msg.LogLevel.DEBUG)

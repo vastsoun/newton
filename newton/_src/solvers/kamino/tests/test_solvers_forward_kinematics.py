@@ -30,6 +30,7 @@ from newton._src.solvers.kamino.core.types import vec6f
 from newton._src.solvers.kamino.kinematics.joints import compute_joints_data
 from newton._src.solvers.kamino.models import get_examples_usd_assets_path
 from newton._src.solvers.kamino.solvers.fk import ForwardKinematicsSolver, ForwardKinematicsSolverSettings
+from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.tests.utils.diff_check import diff_check, run_test_single_joint_examples
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
 
@@ -47,7 +48,9 @@ wp.set_module_options({"enable_backward": False})
 
 class JacobianCheckForwardKinematics(unittest.TestCase):
     def setUp(self):
-        self.default_device = wp.get_device()
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
+        self.default_device = wp.get_device(test_context.device)
         self.has_cuda = self.default_device.is_cuda
 
     def tearDown(self):
@@ -323,9 +326,11 @@ def simulate_random_poses(
 
 class DRTestMechanismRandomPosesCheckForwardKinematics(unittest.TestCase):
     def setUp(self):
-        self.default_device = wp.get_device()
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
+        self.default_device = wp.get_device(test_context.device)
         self.has_cuda = self.default_device.is_cuda
-        self.verbose = False
+        self.verbose = test_context.verbose
 
     def tearDown(self):
         self.default_device = None
@@ -367,9 +372,11 @@ class DRTestMechanismRandomPosesCheckForwardKinematics(unittest.TestCase):
 
 class DRLegsRandomPosesCheckForwardKinematics(unittest.TestCase):
     def setUp(self):
-        self.default_device = wp.get_device()
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
+        self.default_device = wp.get_device(test_context.device)
         self.has_cuda = self.default_device.is_cuda
-        self.verbose = False
+        self.verbose = test_context.verbose
 
     def tearDown(self):
         self.default_device = None
@@ -412,9 +419,11 @@ class DRLegsRandomPosesCheckForwardKinematics(unittest.TestCase):
 
 class HeterogenousModelRandomPosesCheckForwardKinematics(unittest.TestCase):
     def setUp(self):
-        self.default_device = wp.get_device()
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
+        self.default_device = wp.get_device(test_context.device)
         self.has_cuda = self.default_device.is_cuda
-        self.verbose = False
+        self.verbose = test_context.verbose
 
     def tearDown(self):
         self.default_device = None
@@ -457,16 +466,8 @@ class HeterogenousModelRandomPosesCheckForwardKinematics(unittest.TestCase):
 ###
 
 if __name__ == "__main__":
-    # Global numpy configurations
-    np.set_printoptions(
-        linewidth=999999, edgeitems=999999, threshold=999999, precision=10, suppress=True
-    )  # Suppress scientific notation
-
-    # Global warp configurations
-    wp.config.enable_backward = False
-    wp.config.verbose = False
-    wp.clear_kernel_cache()
-    wp.clear_lto_cache()
+    # Test setup
+    setup_tests()
 
     # Run all tests
     unittest.main(verbosity=2)

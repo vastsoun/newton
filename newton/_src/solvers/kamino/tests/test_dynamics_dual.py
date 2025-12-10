@@ -25,6 +25,7 @@ import warp as wp
 from newton._src.solvers.kamino.dynamics.dual import DualProblem
 from newton._src.solvers.kamino.linalg import LLTSequentialSolver
 from newton._src.solvers.kamino.models.builders.basics import make_basics_heterogeneous_builder
+from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.tests.utils.extract import extract_problem_vector
 from newton._src.solvers.kamino.tests.utils.make import make_containers, update_containers
 from newton._src.solvers.kamino.tests.utils.print import print_model_info
@@ -36,8 +37,10 @@ from newton._src.solvers.kamino.tests.utils.print import print_model_info
 
 class TestDualProblem(unittest.TestCase):
     def setUp(self):
-        self.verbose = False  # Set to True for detailed output
-        self.default_device = wp.get_device()
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
+        self.verbose = test_context.verbose  # Set to True for detailed output
+        self.default_device = wp.get_device(test_context.device)
 
     def tearDown(self):
         self.default_device = None
@@ -179,14 +182,8 @@ class TestDualProblem(unittest.TestCase):
 ###
 
 if __name__ == "__main__":
-    # Global numpy configurations
-    np.set_printoptions(linewidth=2000, precision=10, suppress=True)  # Suppress scientific notation
-
-    # Global warp configurations
-    wp.config.enable_backward = False
-    wp.config.verbose = False
-    wp.clear_kernel_cache()
-    wp.clear_lto_cache()
+    # Test setup
+    setup_tests()
 
     # Run all tests
     unittest.main(verbosity=2)

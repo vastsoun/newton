@@ -36,6 +36,7 @@ from newton._src.solvers.kamino.kinematics.joints import compute_joints_data
 from newton._src.solvers.kamino.kinematics.limits import Limits
 from newton._src.solvers.kamino.models.builders.basics import build_boxes_fourbar, make_basics_heterogeneous_builder
 from newton._src.solvers.kamino.models.builders.utils import make_homogeneous_builder
+from newton._src.solvers.kamino.tests import setup_tests, test_context
 
 # Test utilities
 from newton._src.solvers.kamino.tests.utils.print import (
@@ -258,8 +259,10 @@ def set_fourbar_body_states(model: Model, data: ModelData):
 
 class TestKinematicsJacobians(unittest.TestCase):
     def setUp(self):
-        self.verbose = False  # Set to True for verbose output
-        self.default_device = wp.get_device()
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
+        self.verbose = test_context.verbose  # Set to True for verbose output
+        self.default_device = wp.get_device(test_context.device)
 
     def tearDown(self):
         self.default_device = None
@@ -887,14 +890,8 @@ class TestKinematicsJacobians(unittest.TestCase):
 ###
 
 if __name__ == "__main__":
-    # Global numpy configurations
-    np.set_printoptions(linewidth=1000, precision=6, threshold=10000, suppress=True)  # Suppress scientific notation
-
-    # Global warp configurations
-    wp.config.enable_backward = False
-    wp.config.verbose = False
-    wp.clear_kernel_cache()
-    wp.clear_lto_cache()
+    # Test setup
+    setup_tests()
 
     # Run all tests
     unittest.main(verbosity=2)

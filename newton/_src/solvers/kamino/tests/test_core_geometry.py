@@ -26,6 +26,7 @@ from newton._src.solvers.kamino.core.shapes import (
     ShapeType,
     SphereShape,
 )
+from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.utils import logger as msg
 
 ###
@@ -35,8 +36,10 @@ from newton._src.solvers.kamino.utils import logger as msg
 
 class TestGeometryDescriptor(unittest.TestCase):
     def setUp(self):
-        self.default_device = wp.get_device()
-        self.verbose = False  # Set to True to enable verbose output
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
+        self.default_device = wp.get_device(test_context.device)
+        self.verbose = test_context.verbose  # Set to True for detailed output
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
@@ -104,8 +107,10 @@ class TestGeometryDescriptor(unittest.TestCase):
 
 class TestCollisionGeometryDescriptor(unittest.TestCase):
     def setUp(self):
-        self.default_device = wp.get_device()
-        self.verbose = False  # Set to True to enable verbose output
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
+        self.default_device = wp.get_device(test_context.device)
+        self.verbose = test_context.verbose  # Set to True for detailed output
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
@@ -176,13 +181,8 @@ class TestCollisionGeometryDescriptor(unittest.TestCase):
 ###
 
 if __name__ == "__main__":
-    # Global numpy configurations
-    np.set_printoptions(linewidth=2000, precision=10, threshold=20000, suppress=True)
-
-    # Global warp configurations
-    wp.config.verbose = False
-    wp.clear_kernel_cache()
-    wp.clear_lto_cache()
+    # Test setup
+    setup_tests()
 
     # Run all tests
     unittest.main(verbosity=2)

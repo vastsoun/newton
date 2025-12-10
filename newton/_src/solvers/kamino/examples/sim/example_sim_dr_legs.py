@@ -26,7 +26,7 @@ from newton._src.solvers.kamino.control.animation import AnimationJointReference
 from newton._src.solvers.kamino.control.pid import JointSpacePIDController
 from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.examples import get_examples_output_path, run_headless
-from newton._src.solvers.kamino.linalg.linear import ConjugateGradientSolver, ConjugateResidualSolver
+from newton._src.solvers.kamino.linalg.linear import SolverShorthand as LinearSolverShorthand
 from newton._src.solvers.kamino.models import get_examples_usd_assets_path
 from newton._src.solvers.kamino.models.builders.utils import (
     add_ground_box,
@@ -120,14 +120,8 @@ class Example:
         settings.contact_warmstart_method = WarmstarterContacts.Method.GEOM_PAIR_NET_FORCE
         settings.collect_solver_info = False
         settings.compute_metrics = logging and not use_cuda_graph
-        if linear_solver.upper() == "LLTB":
-            pass
-        elif linear_solver.upper() == "CR":
-            settings.linear_solver_type = ConjugateResidualSolver
-        elif linear_solver.upper() == "CG":
-            settings.linear_solver_type = ConjugateGradientSolver
-        else:
-            raise RuntimeError(f"Unknown linear solver: {linear_solver}")
+        linear_solver_cls = {v: k for k, v in LinearSolverShorthand.items()}[linear_solver.upper()]
+        settings.linear_solver_type = linear_solver_cls
         settings.linear_solver_maxiter = linear_solver_maxiter
 
         # Create a simulator
@@ -349,7 +343,13 @@ if __name__ == "__main__":
         default=None,
         help="Enable frame recording: 'sync' for synchronous, 'async' for asynchronous (non-blocking)",
     )
-    parser.add_argument("--linear-solver", default="LLTB", help="Linear solver to use")
+    parser.add_argument(
+        "--linear-solver",
+        default="LLTB",
+        choices=LinearSolverShorthand.values(),
+        type=str.upper,
+        help="Linear solver to use",
+    )
     parser.add_argument(
         "--linear-solver-maxiter", default="0", type=int, help="Max number of iterations for iterative linear solvers"
     )

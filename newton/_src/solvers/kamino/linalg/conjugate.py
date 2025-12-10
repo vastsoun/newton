@@ -38,16 +38,17 @@ __all__ = [
     "CRSolver",
     "make_dense_square_matrix_operator",
     "make_diag_matrix_operator",
+    "make_jacobi_preconditioner",
 ]
 
 
 class BatchedLinearOperator:
     """
-    Linear operator to be used as left-hand-side of linear iterative solvers for a batch of independent envs(problems).
-    The rhs and x vectors are stored as 2d arrays with the first dimension corresponding to the env.
+    Linear operator to be used as left-hand-side of linear iterative solvers for a batch of independent worlds(problems).
+    The rhs and x vectors are stored as 2d arrays with the first dimension corresponding to the world.
 
     Args:
-        shape: Tuple of (n_envs, max_rows, max_cols)
+        shape: Tuple of (n_worlds, max_rows, max_cols)
         dtype: Type of the operator elements
         device: Device on which computations involving the operator should be performed
         matvec: Matrix-vector multiplication routine
@@ -70,8 +71,8 @@ class BatchedLinearOperator:
             This function computes the operation z = alpha * (A @ x) + beta * y, where 'A'
             is the linear operator represented by this class.
 
-            The additional arguments enable batched solving across multiple env:
-              - 'ndim' is the number of independent env processed in parallel
+            The additional arguments enable batched solving across multiple world:
+              - 'ndim' is the number of independent world processed in parallel
             '''
             ...
 
@@ -84,7 +85,7 @@ class BatchedLinearOperator:
     """
 
     def __init__(self, shape: tuple[int, int, int], dtype: type, device: wp.context.Device, matvec: Callable):
-        # TODO: active shapes per env, mostly for correctness
+        # TODO: active shapes per world, mostly for correctness
         self._shape = shape
         self._dtype = dtype
         self._device = device
@@ -117,31 +118,31 @@ class BatchedLinearOperator:
 
 
 @functools.cache
-def make_termination_kernel(n_envs):
+def make_termination_kernel(n_worlds):
     @wp.kernel
     def check_termination(
         maxiter: wp.array(dtype=int),
         cycle_size: int,
         r_norm_sq: wp.array(dtype=Any),
         atol_sq: wp.array(dtype=Any),
-        env_active: wp.array(dtype=wp.bool),
+        world_active: wp.array(dtype=wp.bool),
         cur_iter: wp.array(dtype=int),
-        env_condition: wp.array(dtype=wp.int32),
+        world_condition: wp.array(dtype=wp.int32),
         batch_condition: wp.array(dtype=wp.int32),
     ):
         thread = wp.tid()
-        active = wp.tile_astype(wp.tile_load(env_active, (n_envs,)), wp.int32)
-        condition = wp.tile_load(env_condition, (n_envs,))
-        env_stepped = wp.tile_map(wp.mul, active, condition)
-        iter = env_stepped * cycle_size + wp.tile_load(cur_iter, (n_envs,))
+        active = wp.tile_astype(wp.tile_load(world_active, (n_worlds,)), wp.int32)
+        condition = wp.tile_load(world_condition, (n_worlds,))
+        world_stepped = wp.tile_map(wp.mul, active, condition)
+        iter = world_stepped * cycle_size + wp.tile_load(cur_iter, (n_worlds,))
 
         wp.tile_store(cur_iter, iter)
         cont_norm = wp.tile_astype(
-            wp.tile_map(lt_mask, wp.tile_load(atol_sq, (n_envs,)), wp.tile_load(r_norm_sq, (n_envs,))), wp.int32
+            wp.tile_map(lt_mask, wp.tile_load(atol_sq, (n_worlds,)), wp.tile_load(r_norm_sq, (n_worlds,))), wp.int32
         )
-        cont_iter = wp.tile_map(lt_mask, iter, wp.tile_load(maxiter, (n_envs,)))
-        cont = wp.tile_map(wp.mul, wp.tile_map(wp.mul, cont_iter, cont_norm), env_stepped)
-        wp.tile_store(env_condition, cont)
+        cont_iter = wp.tile_map(lt_mask, iter, wp.tile_load(maxiter, (n_worlds,)))
+        cont = wp.tile_map(wp.mul, wp.tile_map(wp.mul, cont_iter, cont_norm), world_stepped)
+        wp.tile_store(world_condition, cont)
         batch_cont = wp.where(wp.tile_sum(cont)[0] > 0, 1, 0)
         if thread == 0:
             batch_condition[0] = batch_cont
@@ -235,24 +236,24 @@ def diag_matvec_kernel(
     y: wp.array2d(dtype=Any),
     D: wp.array2d(dtype=Any),
     active_dims: wp.array(dtype=Any),
-    env_active: wp.array(dtype=wp.bool),
+    world_active: wp.array(dtype=wp.bool),
     alpha: Any,
     beta: Any,
     z: wp.array2d(dtype=Any),
 ):
-    env, row = wp.tid()
-    assert env < len(active_dims)
-    if not env_active[env] or row >= active_dims[env]:
+    world, row = wp.tid()
+    assert world < len(active_dims)
+    if not world_active[world] or row >= active_dims[world]:
         return
 
     zero = type(alpha)(0)
     s = z.dtype(0)
 
     if alpha != zero:
-        s += alpha * D[env, row] * x[env, row]
+        s += alpha * D[world, row] * x[world, row]
     if beta != zero:
-        s += beta * y[env, row]
-    z[env, row] = s
+        s += beta * y[world, row]
+    z[world, row] = s
 
 
 def make_diag_matrix_operator(
@@ -272,14 +273,14 @@ def make_diag_matrix_operator(
         x: wp.array2d(dtype=Any),
         y: wp.array2d(dtype=Any),
         z: wp.array2d(dtype=Any),
-        env_active: wp.array(dtype=wp.bool),
+        world_active: wp.array(dtype=wp.bool),
         alpha: Any,
         beta: Any,
     ):
         wp.launch(
             diag_matvec_kernel,
             dim=(batch_size, max_dims),
-            inputs=[x, y, diag, active_dims, env_active, dtype(alpha), dtype(beta)],
+            inputs=[x, y, diag, active_dims, world_active, dtype(alpha), dtype(beta)],
             outputs=[z],
             device=device,
         )
@@ -295,7 +296,7 @@ def _dense_matvec_kernel(
     y: wp.array2d(dtype=Any),
     A: wp.array2d(dtype=Any),
     active_dims: wp.array(dtype=Any),
-    env_active: wp.array(dtype=wp.bool),
+    world_active: wp.array(dtype=wp.bool),
     alpha: Any,
     beta: Any,
     matrix_stride: int,
@@ -303,22 +304,22 @@ def _dense_matvec_kernel(
     z: wp.array2d(dtype=Any),
 ):
     """Computes z[i] = alpha * (A[i] @ x[i]) + beta * y[i]"""
-    env, row, lane = wp.tid()
-    assert env < len(active_dims)
-    dim = active_dims[env]
-    if not env_active[env] or row >= dim:
+    world, row, lane = wp.tid()
+    assert world < len(active_dims)
+    dim = active_dims[world]
+    if not world_active[world] or row >= dim:
         return
 
-    row_stride = active_dims[env]  # Active elements are contiguous in memory
+    row_stride = active_dims[world]  # Active elements are contiguous in memory
     zero = type(alpha)(0)
     s = zero
     if alpha != zero:
         for col in range(lane, dim, tile_size):
-            s += A[env, row * row_stride + col] * x[env, col]
+            s += A[world, row * row_stride + col] * x[world, col]
     row_tile = wp.tile_sum(wp.tile(s * alpha))
     if beta != zero:
-        row_tile += beta * wp.tile_load(y[env], shape=1, offset=row)
-    wp.tile_store(z[env], row_tile, offset=row)
+        row_tile += beta * wp.tile_load(y[world], shape=1, offset=row)
+    wp.tile_store(z[world], row_tile, offset=row)
 
 
 def make_dense_square_matrix_operator(
@@ -341,14 +342,14 @@ def make_dense_square_matrix_operator(
         x: wp.array(dtype=Any),
         y: wp.array(dtype=Any),
         z: wp.array(dtype=Any),
-        env_active: wp.array(dtype=wp.bool),
+        world_active: wp.array(dtype=wp.bool),
         alpha: Any,
         beta: Any,
     ):
         wp.launch(
             _dense_matvec_kernel,
             dim=(len(active_dims), max_dims, block_dim),
-            inputs=[x, y, A, active_dims, env_active, dtype(alpha), dtype(beta), matrix_stride, tile_size],
+            inputs=[x, y, A, active_dims, world_active, dtype(alpha), dtype(beta), matrix_stride, tile_size],
             outputs=[z],
             device=device,
             block_dim=tile_size if tile_size > 1 else 256,
@@ -361,7 +362,7 @@ def make_dense_square_matrix_operator(
 def _run_capturable_loop(
     do_cycle: Callable,
     r_norm_sq: wp.array,
-    env_active: wp.array(dtype=wp.bool),
+    world_active: wp.array(dtype=wp.bool),
     cur_iter: wp.array(dtype=wp.int32),
     conditions: wp.array(dtype=wp.int32),
     maxiter: wp.array(dtype=int),
@@ -373,31 +374,31 @@ def _run_capturable_loop(
 ):
     device = atol_sq.device
 
-    n_envs = maxiter.shape[0]
+    n_worlds = maxiter.shape[0]
     cur_iter.fill_(-1)
     conditions.fill_(1)
 
-    env_condition, global_condition = conditions[:n_envs], conditions[n_envs:]
+    world_condition, global_condition = conditions[:n_worlds], conditions[n_worlds:]
 
     update_condition_launch = wp.launch(
         termination_kernel,
-        dim=(1, n_envs),
-        block_dim=n_envs,
+        dim=(1, n_worlds),
+        block_dim=n_worlds,
         device=device,
-        inputs=[maxiter, cycle_size, r_norm_sq, atol_sq, env_active, cur_iter],
-        outputs=[env_condition, global_condition],
+        inputs=[maxiter, cycle_size, r_norm_sq, atol_sq, world_active, cur_iter],
+        outputs=[world_condition, global_condition],
         record_cmd=True,
     )
 
     if isinstance(callback, wp.Kernel):
         callback_launch = wp.launch(
-            callback, dim=n_envs, device=device, inputs=[cur_iter, r_norm_sq, atol_sq], record_cmd=True
+            callback, dim=n_worlds, device=device, inputs=[cur_iter, r_norm_sq, atol_sq], record_cmd=True
         )
     else:
         callback_launch = None
 
     # TODO: consider using a spinlock for fusing kernels
-    # update_env_condition_launch.launch()
+    # update_world_condition_launch.launch()
     # update_global_condition_launch.launch()
     update_condition_launch.launch()
 
@@ -443,15 +444,15 @@ def make_dot_kernel(tile_size: int, maxdim: int):
     def dot(
         a: wp.array3d(dtype=Any),
         b: wp.array3d(dtype=Any),
-        env_size: wp.array(dtype=wp.int32),
-        env_active: wp.array(dtype=wp.bool),
+        world_size: wp.array(dtype=wp.int32),
+        world_active: wp.array(dtype=wp.bool),
         result: wp.array2d(dtype=Any),
     ):
         """Compute the dot products between the trailing-dim arrays in a and b using tiles and pairwise summation."""
-        col, env, _ = wp.tid()
-        if not env_active[env]:
+        col, world, _ = wp.tid()
+        if not world_active[world]:
             return
-        n = env_size[env]
+        n = world_size[world]
 
         ts = wp.tile_zeros((second_tile_size,), dtype=a.dtype, storage="shared")
         o_src = wp.int32(0)
@@ -459,8 +460,8 @@ def make_dot_kernel(tile_size: int, maxdim: int):
         for block in range(second_tile_size):
             if o_src >= n:
                 break
-            ta = wp.tile_load(a[col, env], shape=tile_size, offset=o_src)
-            tb = wp.tile_load(b[col, env], shape=tile_size, offset=o_src)
+            ta = wp.tile_load(a[col, world], shape=tile_size, offset=o_src)
+            tb = wp.tile_load(b[col, world], shape=tile_size, offset=o_src)
             # TODO: consider using ts[block] twice, look into += data race in wp
             prod = wp.tile_map(wp.mul, ta, tb)
             if o_src > n - tile_size:
@@ -470,7 +471,7 @@ def make_dot_kernel(tile_size: int, maxdim: int):
             s = wp.tile_sum(prod)
             ts[block] = s[0]
             o_src += tile_size
-        wp.tile_store(result[col], wp.tile_sum(ts), offset=env)
+        wp.tile_store(result[col], wp.tile_sum(ts), offset=world)
 
     return dot
 
@@ -479,9 +480,23 @@ def make_dot_kernel(tile_size: int, maxdim: int):
 def _initialize_tolerance_kernel(
     rtol: wp.array(dtype=Any), atol: wp.array(dtype=Any), b_norm_sq: wp.array(dtype=Any), atol_sq: wp.array(dtype=Any)
 ):
-    env = wp.tid()
-    a, r = atol[env], rtol[env]
-    atol_sq[env] = wp.max(r * r * b_norm_sq[env], a * a)
+    world = wp.tid()
+    a, r = atol[world], rtol[world]
+    atol_sq[world] = wp.max(r * r * b_norm_sq[world], a * a)
+
+
+@wp.kernel
+def make_jacobi_preconditioner(
+    A: wp.array2d(dtype=Any), world_dims: wp.array(dtype=wp.int32), diag: wp.array2d(dtype=Any)
+):
+    world, row = wp.tid()
+    world_dim = world_dims[world]
+    if row >= world_dim:
+        diag[world, row] = 0.0
+        return
+    el = A[world, row * world_dim + row]
+    el_inv = 1.0 / (el + 1e-9)
+    diag[world, row] = el_inv
 
 
 class ConjugateSolver:
@@ -489,7 +504,7 @@ class ConjugateSolver:
         self,
         A: BatchedLinearOperator,
         active_dims: wp.array(dtype=Any),
-        env_active: wp.array(dtype=wp.bool),
+        world_active: wp.array(dtype=wp.bool),
         atol: float | wp.array(dtype=Any) | None = None,
         rtol: float | wp.array(dtype=Any) | None = None,
         maxiter: wp.array = None,
@@ -504,7 +519,7 @@ class ConjugateSolver:
 
         self.scalar_type = A.scalar_type
 
-        self.n_envs, self.maxdims, _ = A.shape
+        self.n_worlds, self.maxdims, _ = A.shape
         if self.maxdims != A.shape[2]:
             raise ValueError("A must be a square BatchedLinearOperator")
         if M is not None and A.shape != M.shape:
@@ -515,7 +530,7 @@ class ConjugateSolver:
         self.device = A.device
 
         self.active_dims = active_dims
-        self.env_active = env_active
+        self.world_active = world_active
         self.atol = atol
         self.rtol = rtol
         self.maxiter = maxiter
@@ -528,27 +543,27 @@ class ConjugateSolver:
         self._allocate()
 
     def _allocate(self):
-        self.residual = wp.empty((self.n_envs), dtype=self.scalar_type, device=self.device)
+        self.residual = wp.empty((self.n_worlds), dtype=self.scalar_type, device=self.device)
 
         if self.maxiter is None:
-            self.maxiter = wp.full(self.n_envs, int(1.5 * self.maxdims), dtype=int, device=self.device)
+            self.maxiter = wp.full(self.n_worlds, int(1.5 * self.maxdims), dtype=int, device=self.device)
 
         # TODO: non-tiled variant for CPU
-        self.dot_product = wp.empty((2, self.n_envs), dtype=self.scalar_type, device=self.device)
+        self.dot_product = wp.empty((2, self.n_worlds), dtype=self.scalar_type, device=self.device)
 
         atol_val = self.atol if isinstance(self.atol, float) else 1e-8
         rtol_val = self.rtol if isinstance(self.rtol, float) else 1e-8
 
         if self.atol is None or isinstance(self.atol, float):
-            self.atol = wp.full(self.n_envs, atol_val, dtype=self.scalar_type, device=self.device)
+            self.atol = wp.full(self.n_worlds, atol_val, dtype=self.scalar_type, device=self.device)
 
         if self.rtol is None or isinstance(self.rtol, float):
-            self.rtol = wp.full(self.n_envs, rtol_val, dtype=self.scalar_type, device=self.device)
+            self.rtol = wp.full(self.n_worlds, rtol_val, dtype=self.scalar_type, device=self.device)
 
-        self.atol_sq = wp.empty(self.n_envs, dtype=self.scalar_type, device=self.device)
-        self.cur_iter = wp.empty(self.n_envs, dtype=wp.int32, device=self.device)
-        self.conditions = wp.empty(self.n_envs + 1, dtype=wp.int32, device=self.device)
-        self.termination_kernel = make_termination_kernel(self.n_envs)
+        self.atol_sq = wp.empty(self.n_worlds, dtype=self.scalar_type, device=self.device)
+        self.cur_iter = wp.empty(self.n_worlds, dtype=wp.int32, device=self.device)
+        self.conditions = wp.empty(self.n_worlds + 1, dtype=wp.int32, device=self.device)
+        self.termination_kernel = make_termination_kernel(self.n_worlds)
 
     def compute_dot(self, a, b, col_offset=0):
         block_dim = 256
@@ -560,9 +575,9 @@ class ConjugateSolver:
 
         wp.launch(
             self.tiled_dot_kernel,
-            dim=(a.shape[0], self.n_envs, block_dim),
+            dim=(a.shape[0], self.n_worlds, block_dim),
             block_dim=min(256, self.dot_tile_size // 8),
-            inputs=[a, b, self.active_dims, self.env_active],
+            inputs=[a, b, self.active_dims, self.world_active],
             outputs=[result],
             device=self.device,
         )
@@ -591,7 +606,7 @@ class CGSolver(ConjugateSolver):
         if self.M is None:
             self.compute_dot(r, r)
         else:
-            self.M.matvec(r, z, z, self.env_active, alpha=1.0, beta=0.0)
+            self.M.matvec(r, z, z, self.world_active, alpha=1.0, beta=0.0)
             self.compute_dot(r_repeated, self.r_and_z)
 
     def solve(self, b: wp.array, x: wp.array):
@@ -602,7 +617,7 @@ class CGSolver(ConjugateSolver):
         self.compute_dot(b, b)
         wp.launch(
             kernel=_initialize_tolerance_kernel,
-            dim=self.n_envs,
+            dim=self.n_worlds,
             device=self.device,
             inputs=[self.rtol, self.atol, self.dot_product[0]],
             outputs=[self.atol_sq],
@@ -613,7 +628,7 @@ class CGSolver(ConjugateSolver):
         # z.zero_()
 
         # Initialize residual
-        self.A.matvec(x, b, r, self.env_active, alpha=-1.0, beta=1.0)
+        self.A.matvec(x, b, r, self.world_active, alpha=-1.0, beta=1.0)
         self.update_rr_rz(r, z, self.r_repeated)
         p.assign(z)
 
@@ -624,7 +639,7 @@ class CGSolver(ConjugateSolver):
         return _run_capturable_loop(
             do_iteration,
             r_norm_sq,
-            self.env_active,
+            self.world_active,
             self.cur_iter,
             self.conditions,
             self.maxiter,
@@ -638,13 +653,13 @@ class CGSolver(ConjugateSolver):
         rz_old.assign(rz_new)
 
         # Ap = A * p;
-        self.A.matvec(p, Ap, Ap, self.env_active, alpha=1, beta=0)
+        self.A.matvec(p, Ap, Ap, self.world_active, alpha=1, beta=0)
         self.compute_dot(p, Ap, col_offset=1)
         p_Ap = self.dot_product[1]
 
         wp.launch(
             kernel=_cg_kernel_1,
-            dim=(self.n_envs, self.maxdims),
+            dim=(self.n_worlds, self.maxdims),
             inputs=[self.atol_sq, r_norm_sq, rz_old, p_Ap, p, Ap],
             outputs=[x, r],
             device=self.device,
@@ -654,7 +669,7 @@ class CGSolver(ConjugateSolver):
 
         wp.launch(
             kernel=_cg_kernel_2,
-            dim=(self.n_envs, self.maxdims),
+            dim=(self.n_worlds, self.maxdims),
             inputs=[self.atol_sq, r_norm_sq, rz_old, rz_new, z],
             outputs=[p],
             device=self.device,
@@ -681,7 +696,7 @@ class CRSolver(ConjugateSolver):
             self.y_and_Ap = _repeat_first(self.y_and_Ap)
 
     def update_rr_zAz(self, z, Az, r, r_copy):
-        self.A.matvec(z, Az, Az, self.env_active, alpha=1, beta=0)
+        self.A.matvec(z, Az, Az, self.world_active, alpha=1, beta=0)
         r_copy.assign(r)
         self.compute_dot(self.r_and_z, self.r_and_Az)
 
@@ -697,12 +712,12 @@ class CRSolver(ConjugateSolver):
         self.compute_dot(b, b)
         wp.launch(
             kernel=_initialize_tolerance_kernel,
-            dim=self.n_envs,
+            dim=self.n_worlds,
             device=self.device,
             inputs=[self.rtol, self.atol, self.dot_product[0]],
             outputs=[self.atol_sq],
         )
-        self.A.matvec(x, b, r, self.env_active, alpha=-1.0, beta=1.0)
+        self.A.matvec(x, b, r, self.world_active, alpha=-1.0, beta=1.0)
 
         # Not strictly necessary, but makes it more robust to user-provided LinearOperators
 
@@ -712,7 +727,7 @@ class CRSolver(ConjugateSolver):
         # z = M r
         if self.M is not None:
             z.zero_()
-            self.M.matvec(r, z, z, self.env_active, alpha=1.0, beta=0.0)
+            self.M.matvec(r, z, z, self.world_active, alpha=1.0, beta=0.0)
 
         self.update_rr_zAz(z, Az, r, r_copy)
 
@@ -737,7 +752,7 @@ class CRSolver(ConjugateSolver):
         return _run_capturable_loop(
             do_iteration,
             r_norm_sq,
-            self.env_active,
+            self.world_active,
             self.cur_iter,
             self.conditions,
             self.maxiter,
@@ -751,7 +766,7 @@ class CRSolver(ConjugateSolver):
         zAz_old.assign(zAz_new)
 
         if self.M is not None:
-            self.M.matvec(Ap, y, y, self.env_active, alpha=1.0, beta=0.0)
+            self.M.matvec(Ap, y, y, self.world_active, alpha=1.0, beta=0.0)
         self.compute_dot(Ap, y, col_offset=1)
         y_Ap = self.dot_product[1]
 
@@ -759,7 +774,7 @@ class CRSolver(ConjugateSolver):
             # In non-preconditioned case, first kernel is same as CG
             wp.launch(
                 kernel=_cg_kernel_1,
-                dim=(self.n_envs, self.maxdims),
+                dim=(self.n_worlds, self.maxdims),
                 inputs=[self.atol_sq, r_norm_sq, zAz_old, y_Ap, p, Ap],
                 outputs=[x, r],
                 device=self.device,
@@ -768,7 +783,7 @@ class CRSolver(ConjugateSolver):
             # In preconditioned case, we have one more vector to update
             wp.launch(
                 kernel=_cr_kernel_1,
-                dim=(self.n_envs, self.maxdims),
+                dim=(self.n_worlds, self.maxdims),
                 inputs=[self.atol_sq, r_norm_sq, zAz_old, y_Ap, p, Ap, y],
                 outputs=[x, r, z],
                 device=self.device,
@@ -778,7 +793,7 @@ class CRSolver(ConjugateSolver):
 
         wp.launch(
             kernel=_cr_kernel_2,
-            dim=(self.n_envs, self.maxdims),
+            dim=(self.n_worlds, self.maxdims),
             inputs=[self.atol_sq, r_norm_sq, zAz_old, zAz_new, z, Az],
             outputs=[p, Ap],
             device=self.device,

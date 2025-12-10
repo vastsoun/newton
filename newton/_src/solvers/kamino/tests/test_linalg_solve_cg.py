@@ -48,14 +48,14 @@ class TestLinalgConjugate(unittest.TestCase):
             device=device,
         )
 
-        n_envs = problem.num_blocks
+        n_worlds = problem.num_blocks
         maxdim = int(problem.maxdims[0])
 
-        A_2d = problem.A_wp.reshape((n_envs, maxdim * maxdim))
-        b_2d = problem.b_wp.reshape((n_envs, maxdim))
+        A_2d = problem.A_wp.reshape((n_worlds, maxdim * maxdim))
+        b_2d = problem.b_wp.reshape((n_worlds, maxdim))
         x_wp = wp.zeros_like(b_2d, device=device)
 
-        env_active = wp.full(n_envs, True, dtype=wp.bool, device=device)
+        world_active = wp.full(n_worlds, True, dtype=wp.bool, device=device)
         operator = make_dense_square_matrix_operator(
             A=A_2d,
             active_dims=problem.dim_wp,
@@ -63,12 +63,12 @@ class TestLinalgConjugate(unittest.TestCase):
             matrix_stride=maxdim,
         )
 
-        atol = wp.full(n_envs, 1.0e-8, dtype=problem.wp_dtype, device=device)
-        rtol = wp.full(n_envs, 1.0e-8, dtype=problem.wp_dtype, device=device)
+        atol = wp.full(n_worlds, 1.0e-8, dtype=problem.wp_dtype, device=device)
+        rtol = wp.full(n_worlds, 1.0e-8, dtype=problem.wp_dtype, device=device)
         solver = solver_cls(
             A=operator,
             active_dims=problem.dim_wp,
-            env_active=env_active,
+            world_active=world_active,
             atol=atol,
             rtol=rtol,
             maxiter=None,

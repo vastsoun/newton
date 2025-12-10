@@ -145,15 +145,15 @@ class SimulatorSettings:
     Defaults to :class:`LLTBlockedSolver`.
     """
 
+    linear_solver_maxiter: int = 0
+    """Maximum number of iterations for iterative linear solvers."""
+
     rotation_correction: JointCorrectionMode = JointCorrectionMode.TWOPI
     """
     The rotation correction mode to use for rotational DoFs.\n
     See :class:`JointCorrectionMode` for available options.\n
     Defaults to `JointCorrectionMode.TWOPI`.
     """
-
-    linear_solver_maxiter: int = 0
-    """Maximum number of iterations for linear solver"""
 
     def check(self) -> None:
         """

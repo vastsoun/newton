@@ -25,14 +25,12 @@ import warp as wp
 from newton._src.solvers.kamino.core.model import Model
 
 # Test utilities
-from newton._src.solvers.kamino.models.builders import (
+from newton._src.solvers.kamino.models.builders.basics import (
     build_boxes_hinged,
     build_boxes_nunchaku,
+    make_basics_heterogeneous_builder,
 )
-from newton._src.solvers.kamino.models.utils import (
-    make_heterogeneous_builder,
-    make_homogeneous_builder,
-)
+from newton._src.solvers.kamino.models.builders.utils import make_homogeneous_builder
 from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.tests.utils.print import (
     print_model_bodies,
@@ -148,7 +146,7 @@ class TestModel(unittest.TestCase):
 
     def test_04_hetereogeneous_model(self):
         # Create a model builder
-        builder = make_heterogeneous_builder()
+        builder = make_basics_heterogeneous_builder()
         num_worlds = builder.num_worlds
 
         # Finalize the model

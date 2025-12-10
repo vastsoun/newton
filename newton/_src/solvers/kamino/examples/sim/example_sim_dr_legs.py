@@ -16,7 +16,6 @@
 import argparse
 import os
 
-import matplotlib.pyplot as plt
 import numpy as np
 import warp as wp
 from warp.context import Devicelike
@@ -28,9 +27,16 @@ from newton._src.solvers.kamino.control.pid import JointSpacePIDController
 from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.examples import get_examples_output_path, run_headless
 from newton._src.solvers.kamino.models import get_examples_usd_assets_path
-from newton._src.solvers.kamino.models.builders import add_body_pose_offset, add_ground_geom
+from newton._src.solvers.kamino.models.builders.utils import (
+    add_ground_box,
+    make_homogeneous_builder,
+    set_uniform_body_pose_offset,
+)
 from newton._src.solvers.kamino.simulation.simulator import Simulator, SimulatorSettings
+from newton._src.solvers.kamino.solvers.padmm import PADMMWarmStartMode
+from newton._src.solvers.kamino.solvers.warmstart import WarmstarterContacts
 from newton._src.solvers.kamino.utils import logger as msg
+from newton._src.solvers.kamino.utils.datalog import SimulationLogger
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
 from newton._src.solvers.kamino.viewer import ViewerKamino
 
@@ -42,22 +48,23 @@ from newton._src.solvers.kamino.viewer import ViewerKamino
 class Example:
     def __init__(
         self,
-        device: Devicelike,
-        use_cuda_graph: bool = False,
+        device: Devicelike = None,
+        num_worlds: int = 1,
         max_steps: int = 1000,
-        logging: bool = True,
+        use_cuda_graph: bool = False,
+        gravity: bool = True,
+        ground: bool = True,
+        logging: bool = False,
         headless: bool = False,
+        record_video: bool = False,
+        async_save: bool = False,
     ):
         # Initialize target frames per second and corresponding time-steps
         self.fps = 60
-        self.frame_dt = 1.0 / self.fps
         self.sim_dt = 0.001
+        self.frame_dt = 1.0 / self.fps
         self.sim_substeps = int(self.frame_dt / self.sim_dt)
         self.max_steps = max_steps
-
-        # Initialize internal time-keeping
-        self.sim_time = 0.0
-        self.sim_steps = 0
 
         # Cache the device and other internal flags
         self.device = device
@@ -68,70 +75,55 @@ class Example:
         EXAMPLE_ASSETS_PATH = get_examples_usd_assets_path()
         if EXAMPLE_ASSETS_PATH is None:
             raise FileNotFoundError(
-                "The USD assets path for example models is missing: `kamino-assets` may not be installed."
+                "The USD assets path for example models is missing: `newton-assets` may not be installed."
             )
         USD_MODEL_PATH = os.path.join(EXAMPLE_ASSETS_PATH, "dr_legs/usd/dr_legs_with_meshes_and_boxes.usda")
 
         # Create a model builder from the imported USD
         msg.notif("Constructing builder from imported USD ...")
         importer = USDImporter()
-        self.builder: ModelBuilder = importer.import_from(source=USD_MODEL_PATH)
+        self.builder: ModelBuilder = make_homogeneous_builder(
+            num_worlds=num_worlds, build_fn=importer.import_from, load_static_geometry=True, source=USD_MODEL_PATH
+        )
         msg.info("total mass: %f", self.builder.worlds[0].mass_total)
         msg.info("total diag inertia: %f", self.builder.worlds[0].inertia_total)
 
         # Offset the model to place it above the ground
         # NOTE: The USD model is centered at the origin
         offset = wp.transformf(0.0, 0.0, 0.265, 0.0, 0.0, 0.0, 1.0)
-        add_body_pose_offset(builder=self.builder, offset=offset)
+        set_uniform_body_pose_offset(builder=self.builder, offset=offset)
 
         # Add a static collision layer and geometry for the plane
-        add_ground_geom(builder=self.builder, group=1, collides=1)
+        if ground:
+            for w in range(num_worlds):
+                add_ground_box(self.builder, world_index=w, layer="world")
 
         # Set gravity
-        self.builder.gravity[0].enabled = True
+        for w in range(self.builder.num_worlds):
+            self.builder.gravity[w].enabled = gravity
 
         # Set solver settings
         settings = SimulatorSettings()
         settings.dt = self.sim_dt
         settings.problem.alpha = 0.1
-        settings.solver.primal_tolerance = 1e-6
-        settings.solver.dual_tolerance = 1e-6
-        settings.solver.compl_tolerance = 1e-6
+        settings.solver.primal_tolerance = 1e-4
+        settings.solver.dual_tolerance = 1e-4
+        settings.solver.compl_tolerance = 1e-4
         settings.solver.max_iterations = 200
+        settings.solver.eta = 1e-5
         settings.solver.rho_0 = 0.05
-
-        # Problem dimensions
-        njaq = self.builder.num_actuated_joint_coords
-        njad = self.builder.num_actuated_joint_dofs
-
-        # Array of actuated joint indices
-        self.actuated_joints = np.array([0, 1, 5, 6, 10, 15, 18, 19, 23, 24, 28, 33], dtype=np.int32)
-
-        # Data logging arrays
-        self.log_time = np.zeros(self.max_steps, dtype=np.float32)
-        self.log_q_j = np.zeros((self.max_steps, njaq), dtype=np.float32)
-        self.log_dq_j = np.zeros((self.max_steps, njaq), dtype=np.float32)
-        self.log_tau_j = np.zeros((self.max_steps, njaq), dtype=np.float32)
-        self.log_q_j_ref = np.zeros((self.max_steps, njaq), dtype=np.float32)
-        self.log_dq_j_ref = np.zeros((self.max_steps, njad), dtype=np.float32)
+        settings.use_solver_acceleration = True
+        settings.warmstart = PADMMWarmStartMode.CONTAINERS
+        settings.contact_warmstart_method = WarmstarterContacts.Method.GEOM_PAIR_NET_FORCE
+        settings.collect_solver_info = False
+        settings.compute_metrics = logging and not use_cuda_graph
 
         # Create a simulator
         msg.notif("Building the simulator...")
         self.sim = Simulator(builder=self.builder, settings=settings, device=device)
 
-        # Initialize the viewer
-        if not headless:
-            self.viewer = ViewerKamino(
-                builder=self.builder,
-                simulator=self.sim,
-            )
-        else:
-            self.viewer = None
-
         # Load animation data for dr_legs
-        NUMPY_ANIMATION_PATH = os.path.join(
-            get_examples_usd_assets_path(), "dr_legs/animation/dr_legs_animation_100fps.npy"
-        )
+        NUMPY_ANIMATION_PATH = os.path.join(EXAMPLE_ASSETS_PATH, "dr_legs/animation/dr_legs_animation_100fps.npy")
         animation_np = np.load(NUMPY_ANIMATION_PATH, allow_pickle=True)
         msg.debug("animation_np (shape={%s}):\n{%s}\n", animation_np.shape, animation_np)
 
@@ -187,6 +179,32 @@ class Example:
         self.sim.set_post_reset_callback(reset_jointspace_pid_control_callback)
         self.sim.set_control_callback(compute_jointspace_pid_control_callback)
 
+        # Initialize the data logger
+        self.logger: SimulationLogger | None = None
+        if self.logging:
+            msg.notif("Creating the sim data logger...")
+            self.logger = SimulationLogger(self.max_steps, self.sim, self.builder, self.controller)
+
+        # Initialize the 3D viewer
+        self.viewer: ViewerKamino | None = None
+        if not headless:
+            msg.notif("Creating the 3D viewer...")
+            # Set up video recording folder
+            video_folder = None
+            if record_video:
+                video_folder = os.path.join(get_examples_output_path(), "dr_legs/frames")
+                os.makedirs(video_folder, exist_ok=True)
+                msg.info(f"Frame recording enabled ({'async' if async_save else 'sync'} mode)")
+                msg.info(f"Frames will be saved to: {video_folder}")
+
+            self.viewer = ViewerKamino(
+                builder=self.builder,
+                simulator=self.sim,
+                record_video=record_video,
+                video_folder=video_folder,
+                async_save=async_save,
+            )
+
         # Declare and initialize the optional computation graphs
         # NOTE: These are used for most efficient GPU runtime
         self.reset_graph = None
@@ -218,24 +236,12 @@ class Example:
         else:
             msg.info("Running with kernels...")
 
-    def log_data(self):
-        if self.sim_steps >= self.max_steps:
-            msg.warning("Maximum simulation steps reached, skipping data logging.")
-            return
-        self.log_time[self.sim_steps] = self.sim.data.solver.time.time.numpy()[0]
-        self.log_q_j[self.sim_steps, :] = self.sim.data.state_n.q_j.numpy()[self.actuated_joints]
-        self.log_dq_j[self.sim_steps, :] = self.sim.data.state_n.dq_j.numpy()[self.actuated_joints]
-        self.log_tau_j[self.sim_steps, :] = self.sim.data.control_n.tau_j.numpy()[self.actuated_joints]
-        self.log_q_j_ref[self.sim_steps, :] = self.controller.data.q_j_ref.numpy()
-        self.log_dq_j_ref[self.sim_steps, :] = self.controller.data.dq_j_ref.numpy()
-
     def simulate(self):
         """Run simulation substeps."""
         for _i in range(self.sim_substeps):
             self.sim.step()
-            self.sim_steps += 1
             if not self.use_cuda_graph and self.logging:
-                self.log_data()
+                self.logger.log()
 
     def reset(self):
         """Reset the simulation."""
@@ -243,10 +249,9 @@ class Example:
             wp.capture_launch(self.reset_graph)
         else:
             self.sim.reset()
-        self.sim_steps = 0
-        self.sim_time = 0.0
         if not self.use_cuda_graph and self.logging:
-            self.log_data()
+            self.logger.reset()
+            self.logger.log()
 
     def step_once(self):
         """Run the simulation for a single time-step."""
@@ -254,10 +259,8 @@ class Example:
             wp.capture_launch(self.step_graph)
         else:
             self.sim.step()
-        self.sim_steps += 1
-        self.sim_time += self.sim_dt
         if not self.use_cuda_graph and self.logging:
-            self.log_data()
+            self.logger.log()
 
     def step(self):
         """Step the simulation."""
@@ -265,7 +268,6 @@ class Example:
             wp.capture_launch(self.simulate_graph)
         else:
             self.simulate()
-        self.sim_time += self.frame_dt
 
     def render(self):
         """Render the current frame."""
@@ -276,79 +278,30 @@ class Example:
         """Test function for compatibility."""
         pass
 
-    def plot(self, path: str | None = None, show: bool = False):
-        # First plot the animation sequence references
+    def plot(self, path: str | None = None, show: bool = False, keep_frames: bool = False):
+        """
+        Plot logged data and generate video from recorded frames.
+
+        Args:
+            path: Output directory path (uses video_folder if None)
+            show: If True, display plots after saving
+            keep_frames: If True, keep PNG frames after video creation
+        """
+        # Plot the animation sequence references
         animation_path = os.path.join(path, "animation_references.png") if path is not None else None
         self.animation.plot(path=animation_path, show=show)
 
-        # Then plot the joint tracking results
-        for j in range(len(self.actuated_joints)):
-            # Set the output path for the current joint
-            tracking_path = os.path.join(path, f"tracking_joint_{j}.png") if path is not None else None
+        # Optionally plot the logged simulation data
+        if self.logging:
+            self.logger.plot_solver_info(path=path, show=show)
+            self.logger.plot_joint_tracking(path=path, show=show)
+            self.logger.plot_solution_metrics(path=path, show=show)
 
-            # Plot logged data after the viewer is closed
-            _, axs = plt.subplots(3, 1, figsize=(10, 10), sharex=True)
-
-            # Plot the measured vs reference joint positions
-            axs[0].step(
-                example.log_time[: example.sim_steps],
-                example.log_q_j[: example.sim_steps, j],
-                label="Measured",
-            )
-            axs[0].step(
-                example.log_time[: example.sim_steps],
-                example.log_q_j_ref[: example.sim_steps, j],
-                label="Reference",
-                linestyle="--",
-            )
-            axs[0].set_ylabel("Actuator Position (rad)")
-            axs[0].legend()
-            axs[0].set_title(f"Actuator DoF {j} Position Tracking")
-            axs[0].grid()
-
-            # Plot the measured vs reference joint velocities
-            axs[1].step(
-                example.log_time[: example.sim_steps],
-                example.log_dq_j[: example.sim_steps, j],
-                label="Measured",
-            )
-            axs[1].step(
-                example.log_time[: example.sim_steps],
-                example.log_dq_j_ref[: example.sim_steps, j],
-                label="Reference",
-                linestyle="--",
-            )
-            axs[1].set_ylabel("Actuator Velocity (rad/s)")
-            axs[1].legend()
-            axs[1].set_title(f"Actuator DoF {j} Velocity Tracking")
-            axs[1].grid()
-
-            # Plot the control torques
-            axs[2].step(
-                example.log_time[: example.sim_steps],
-                example.log_tau_j[: example.sim_steps, j],
-                label="Control Torque",
-            )
-            axs[2].set_xlabel("Time (s)")
-            axs[2].set_ylabel("Torque (Nm)")
-            axs[2].legend()
-            axs[2].set_title(f"Actuator DoF {j} Control Torque")
-            axs[2].grid()
-
-            # Adjust layout
-            plt.tight_layout()
-
-            # Save the figure if a path is provided
-            if tracking_path is not None:
-                plt.savefig(tracking_path, dpi=300)
-
-            # Show the figure if requested
-            # NOTE: This will block execution until the plot window is closed
-            if show:
-                plt.show()
-
-            # Close the current figure to free memory
-            plt.close()
+        # Optionally generate video from recorded frames
+        if self.viewer is not None and self.viewer._record_video:
+            output_dir = path if path is not None else self.viewer._video_folder
+            output_path = os.path.join(output_dir, "recording.mp4")
+            self.viewer.generate_video(output_filename=output_path, fps=self.fps, keep_frames=keep_frames)
 
 
 ###
@@ -358,14 +311,32 @@ class Example:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="DR Legs simulation example")
-    parser.add_argument("--headless", action="store_true", default=False, help="Run in headless mode")
-    parser.add_argument("--num-steps", type=int, default=1000, help="Number of steps for headless mode")
     parser.add_argument("--device", type=str, help="The compute device to use")
-    parser.add_argument("--cuda-graph", action="store_true", default=True, help="Use CUDA graphs")
-    parser.add_argument("--clear-cache", action="store_true", default=False, help="Clear warp cache")
-    parser.add_argument("--logging", action="store_true", default=True, help="Enable logging of simulation data")
-    parser.add_argument("--show-plots", action="store_true", default=False, help="Show plots of logging data")
-    parser.add_argument("--test", action="store_true", default=False, help="Run tests")
+    parser.add_argument("--headless", action=argparse.BooleanOptionalAction, default=False, help="Run in headless mode")
+    parser.add_argument("--num-worlds", type=int, default=1, help="Number of worlds to simulate in parallel")
+    parser.add_argument("--num-steps", type=int, default=1000, help="Number of steps for headless mode")
+    parser.add_argument(
+        "--gravity", action=argparse.BooleanOptionalAction, default=True, help="Enables gravity in the simulation"
+    )
+    parser.add_argument(
+        "--ground", action=argparse.BooleanOptionalAction, default=True, help="Adds a ground plane to the simulation"
+    )
+    parser.add_argument("--cuda-graph", action=argparse.BooleanOptionalAction, default=True, help="Use CUDA graphs")
+    parser.add_argument("--clear-cache", action=argparse.BooleanOptionalAction, default=False, help="Clear warp cache")
+    parser.add_argument(
+        "--logging", action=argparse.BooleanOptionalAction, default=True, help="Enable logging of simulation data"
+    )
+    parser.add_argument(
+        "--show-plots", action=argparse.BooleanOptionalAction, default=False, help="Show plots of logging data"
+    )
+    parser.add_argument("--test", action=argparse.BooleanOptionalAction, default=False, help="Run tests")
+    parser.add_argument(
+        "--record",
+        type=str,
+        choices=["sync", "async"],
+        default=None,
+        help="Enable frame recording: 'sync' for synchronous, 'async' for asynchronous (non-blocking)",
+    )
     args = parser.parse_args()
 
     # Set global numpy configurations
@@ -398,12 +369,17 @@ if __name__ == "__main__":
     example = Example(
         device=device,
         use_cuda_graph=use_cuda_graph,
+        num_worlds=args.num_worlds,
         max_steps=args.num_steps,
-        logging=args.logging,
+        gravity=args.gravity,
+        ground=args.ground,
         headless=args.headless,
+        logging=args.logging,
+        record_video=args.record is not None and not args.headless,
+        async_save=args.record == "async",
     )
 
-    # Run a brute-force similation loop if headless
+    # Run a brute-force simulation loop if headless
     if args.headless:
         msg.notif("Running in headless mode...")
         run_headless(example, progress=True)
@@ -422,7 +398,7 @@ if __name__ == "__main__":
         newton.examples.run(example, args)
 
     # Plot logged data after the viewer is closed
-    if args.logging:
+    if args.logging or args.record:
         OUTPUT_PLOT_PATH = os.path.join(get_examples_output_path(), "dr_legs")
         os.makedirs(OUTPUT_PLOT_PATH, exist_ok=True)
         example.plot(path=OUTPUT_PLOT_PATH, show=args.show_plots)

@@ -26,15 +26,12 @@ from newton._src.solvers.kamino.geometry.contacts import Contacts
 from newton._src.solvers.kamino.kinematics.constraints import max_constraints_per_world
 from newton._src.solvers.kamino.kinematics.limits import Limits
 from newton._src.solvers.kamino.linalg import LLTSequentialSolver
-from newton._src.solvers.kamino.models.builders import (
+from newton._src.solvers.kamino.models.builders.basics import (
     build_boxes_fourbar,
     build_boxes_nunchaku,
+    make_basics_heterogeneous_builder,
 )
-from newton._src.solvers.kamino.models.utils import (
-    make_heterogeneous_builder,
-    make_homogeneous_builder,
-    make_single_builder,
-)
+from newton._src.solvers.kamino.models.builders.utils import make_homogeneous_builder
 from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.tests.utils.extract import (
     extract_active_constraint_dims,
@@ -126,7 +123,7 @@ class TestDelassusOperator(unittest.TestCase):
         max_world_contacts = 12
 
         # Construct the model description using model builders for different systems
-        builder = make_single_builder()
+        builder = build_boxes_nunchaku()
 
         # Create the model and containers from the builder
         model, data, limits, detector, jacobians = make_containers(
@@ -160,7 +157,7 @@ class TestDelassusOperator(unittest.TestCase):
         max_world_contacts = 12
 
         # Construct a homogeneous model description using model builders
-        builder = make_homogeneous_builder(num_worlds)
+        builder = make_homogeneous_builder(num_worlds=num_worlds, build_fn=build_boxes_nunchaku)
 
         # Create the model and containers from the builder
         model, data, limits, detector, jacobians = make_containers(
@@ -193,7 +190,7 @@ class TestDelassusOperator(unittest.TestCase):
         max_world_contacts = 12
 
         # Create a heterogeneous model description using model builders
-        builder = make_heterogeneous_builder()
+        builder = make_basics_heterogeneous_builder()
 
         # Create the model and containers from the builder
         model, data, limits, detector, jacobians = make_containers(
@@ -226,7 +223,6 @@ class TestDelassusOperator(unittest.TestCase):
         max_world_contacts = 12
 
         # Construct the model description using model builders for different systems
-        # builder = make_single_builder(build_fn=build_boxes_fourbar)
         # builder = build_boxes_hinged(z_offset=0.0, ground=False)
         builder = build_boxes_fourbar(z_offset=0.0, ground=False)
         num_bodies = [builder.num_bodies]
@@ -357,7 +353,7 @@ class TestDelassusOperator(unittest.TestCase):
         max_world_contacts = 12
 
         # Create a heterogeneous model description using model builders
-        builder = make_heterogeneous_builder()
+        builder = make_basics_heterogeneous_builder()
         num_bodies = [world.num_bodies for world in builder.worlds]
 
         # Create the model and containers from the builder
@@ -427,7 +423,7 @@ class TestDelassusOperator(unittest.TestCase):
         max_world_contacts = 12
 
         # Create a heterogeneous model description using model builders
-        builder = make_heterogeneous_builder()
+        builder = make_basics_heterogeneous_builder()
 
         # Create the model and containers from the builder
         model, data, limits, detector, jacobians = make_containers(
@@ -498,16 +494,7 @@ class TestDelassusOperator(unittest.TestCase):
         max_world_contacts = 12
 
         # Create a heterogeneous model description using model builders
-        # builder = make_single_builder(build_fn=build_box_on_plane)
-        # builder = make_single_builder(build_fn=build_box_pendulum)
-        # builder = make_single_builder(build_fn=build_boxes_hinged)
-        # builder = make_single_builder(build_fn=build_boxes_nunchaku)
-        # builder = make_single_builder(build_fn=build_boxes_fourbar)
-        # builder = make_homogeneous_builder(num_worlds=10, build_fn=build_box_on_plane)
-        # builder = make_homogeneous_builder(num_worlds=10, build_fn=build_boxes_hinged)
-        # builder = make_homogeneous_builder(num_worlds=10, build_fn=build_boxes_nunchaku)
-        # builder = make_homogeneous_builder(num_worlds=10, build_fn=build_boxes_fourbar)
-        builder = make_heterogeneous_builder()
+        builder = make_basics_heterogeneous_builder()
 
         # Create the model and containers from the builder
         model, data, limits, detector, jacobians = make_containers(

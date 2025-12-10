@@ -27,8 +27,8 @@ from newton._src.solvers.kamino.core.model import Model, ModelData
 from newton._src.solvers.kamino.core.types import float32, int32, mat33f, transformf, vec3f, vec6f
 from newton._src.solvers.kamino.kinematics.joints import compute_joints_data
 from newton._src.solvers.kamino.kinematics.limits import Limits
-from newton._src.solvers.kamino.models import builders
-from newton._src.solvers.kamino.models.utils import make_homogeneous_builder
+from newton._src.solvers.kamino.models.builders import basics, testing
+from newton._src.solvers.kamino.models.builders.utils import make_homogeneous_builder
 from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.utils import logger as msg
 
@@ -178,14 +178,15 @@ class TestKinematicsLimits(unittest.TestCase):
         limits = Limits(device=self.default_device)
 
         # Check the initial state of the limits
-        self.assertIsNone(limits._data)
+        self.assertEqual(limits._data.num_model_max_limits, 0)
+        self.assertEqual(limits._data.num_world_max_limits, [])
 
     def test_01_allocate_limits_container_from_homogeneous_builder(self):
         """
         Tests the allocation of a Limits container.
         """
         # Construct the model description using the ModelBuilder
-        builder = make_homogeneous_builder(num_worlds=3, build_fn=builders.build_boxes_fourbar)
+        builder = make_homogeneous_builder(num_worlds=3, build_fn=basics.build_boxes_fourbar)
 
         # Create a Limits container
         limits = Limits(builder=builder, device=self.default_device)
@@ -202,8 +203,9 @@ class TestKinematicsLimits(unittest.TestCase):
         self.assertIsNotNone(limits.dof)
         self.assertIsNotNone(limits.side)
         self.assertIsNotNone(limits.r_q)
-        self.assertIsNotNone(limits.r_dq)
-        self.assertIsNotNone(limits.r_tau)
+        self.assertIsNotNone(limits.key)
+        self.assertIsNotNone(limits.reaction)
+        self.assertIsNotNone(limits.velocity)
 
         # Check the shapes of the limits arrays
         self.assertEqual(limits.num_model_max_limits, 12)
@@ -227,12 +229,13 @@ class TestKinematicsLimits(unittest.TestCase):
         msg.info("limits.dof: %s", limits.dof)
         msg.info("limits.side: %s", limits.side)
         msg.info("limits.r_q: %s", limits.r_q)
-        msg.info("limits.r_dq: %s", limits.r_dq)
-        msg.info("limits.r_tau: %s", limits.r_tau)
+        msg.info("limits.key: %s", limits.key)
+        msg.info("limits.reaction: %s", limits.reaction)
+        msg.info("limits.velocity: %s", limits.velocity)
 
     def test_02_check_revolute_joint(self):
         # Construct the model description using the ModelBuilder
-        builder = make_homogeneous_builder(num_worlds=4, build_fn=builders.build_unary_revolute_joint_test)
+        builder = make_homogeneous_builder(num_worlds=4, build_fn=testing.build_unary_revolute_joint_test)
         num_worlds = builder.num_worlds
 
         # Create the model and state
@@ -275,8 +278,9 @@ class TestKinematicsLimits(unittest.TestCase):
         msg.info("[before]: limits.dof: %s", limits.dof)
         msg.info("[before]: limits.side: %s", limits.side)
         msg.info("[before]: limits.r_q: %s", limits.r_q)
-        msg.info("[before]: limits.r_dq: %s", limits.r_dq)
-        msg.info("[before]: limits.r_tau: %s\n\n", limits.r_tau)
+        msg.info("[before]: limits.key: %s", limits.key)
+        msg.info("[before]: limits.reaction: %s", limits.reaction)
+        msg.info("[before]: limits.velocity: %s", limits.velocity)
 
         # Check for active joint limits
         limits.detect(model, data)
@@ -295,8 +299,9 @@ class TestKinematicsLimits(unittest.TestCase):
         msg.info("[after]: limits.dof: %s", limits.dof)
         msg.info("[after]: limits.side: %s", limits.side)
         msg.info("[after]: limits.r_q: %s", limits.r_q)
-        msg.info("[after]: limits.r_dq: %s", limits.r_dq)
-        msg.info("[after]: limits.r_tau: %s\n\n", limits.r_tau)
+        msg.info("[after]: limits.key: %s", limits.key)
+        msg.info("[after]: limits.reaction: %s", limits.reaction)
+        msg.info("[after]: limits.velocity: %s", limits.velocity)
 
         # Check the limits
         limits_num_np = limits.world_num_limits.numpy()

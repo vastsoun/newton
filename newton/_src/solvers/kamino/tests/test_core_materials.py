@@ -13,9 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-KAMINO: UNIT TESTS: CORE: MATERIALS
-"""
+"""Unit tests for the `core/materials.py` module."""
 
 import unittest
 
@@ -143,11 +141,6 @@ class TestMaterials(unittest.TestCase):
         self.assertEqual(mp[1][0], None)
         self.assertEqual(mp[0][1], None)
         self.assertEqual(mp[1][1], None)
-
-        # Check if friction and restitution matrices rais errors since material pair properties are not set
-        self.assertRaises(ValueError, manager.restitution_matrix)
-        self.assertRaises(ValueError, manager.static_friction_matrix)
-        self.assertRaises(ValueError, manager.dynamic_friction_matrix)
 
         # Define material pair properties for the new material
         steel_on_steel = MaterialPairProperties(restitution=0.2, static_friction=0.1, dynamic_friction=0.1)

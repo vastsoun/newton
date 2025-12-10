@@ -25,7 +25,6 @@ from .core.control import (
     Control,
 )
 from .core.geometry import (
-    CollisionGeometriesData,
     CollisionGeometriesModel,
     CollisionGeometryDescriptor,
     GeometriesData,
@@ -39,7 +38,13 @@ from .core.gravity import (
     GravityDescriptor,
     GravityModel,
 )
-from .core.joints import JointActuationType, JointDescriptor, JointDoFType, JointsData, JointsModel
+from .core.joints import (
+    JointActuationType,
+    JointDescriptor,
+    JointDoFType,
+    JointsData,
+    JointsModel,
+)
 from .core.materials import (
     DEFAULT_FRICTION,
     DEFAULT_RESTITUTION,
@@ -125,14 +130,17 @@ from .dynamics.dual import (
     DualProblem,
     DualProblemData,
 )
-from .geometry.collisions import Collisions, CollisionsData, CollisionsModel
 from .geometry.contacts import (
     Contacts,
     ContactsData,
 )
 from .geometry.detector import (
     CollisionDetector,
+    CollisionDetectorSettings,
+    CollisionPipelineType,
 )
+from .geometry.primitive import BoundingVolumeType, CollisionPipelinePrimitive
+from .geometry.unified import BroadPhaseMode, CollisionPipelineUnifiedKamino
 from .kinematics.jacobians import (
     DenseSystemJacobians,
     DenseSystemJacobiansData,
@@ -143,6 +151,9 @@ from .simulation import (
     SimulatorSettings,
 )
 from .solvers import (
+    ForwardKinematicsSolver,
+    ForwardKinematicsSolverSettings,
+    ForwardKinematicsSolverStatus,
     PADMMSettings,
     PADMMSolver,
 )
@@ -159,12 +170,18 @@ __all__ = [
     "GRAVITY_DIREC_DEFAULT",
     "GRAVITY_NAME_DEFAULT",
     "ArrayLike",
+    "BoundingVolumeType",
     "BoxShape",
+    "BroadPhaseMode",
     "CapsuleShape",
     "CollisionDetector",
+    "CollisionDetectorSettings",
     "CollisionGeometriesData",
     "CollisionGeometriesModel",
     "CollisionGeometryDescriptor",
+    "CollisionPipelinePrimitive",
+    "CollisionPipelineType",
+    "CollisionPipelineUnifiedKamino",
     "Collisions",
     "CollisionsData",
     "CollisionsModel",
@@ -174,7 +191,6 @@ __all__ = [
     "Control",
     "CylinderShape",
     "DelassusOperator",
-    "DelassusOperatorData",
     "DenseSystemJacobians",
     "DenseSystemJacobiansData",
     "DualProblem",
@@ -183,6 +199,8 @@ __all__ = [
     "EmptyShape",
     "FloatArrayLike",
     "ForwardKinematicsSolver",
+    "ForwardKinematicsSolverSettings",
+    "ForwardKinematicsSolverStatus",
     "GeometriesData",
     "GeometriesModel",
     "GeometryDescriptor",
@@ -227,7 +245,6 @@ __all__ = [
     "Vec4",
     "Vec6",
     "WorldDescriptor",
-    "__version__",
     "float16",
     "float32",
     "float64",

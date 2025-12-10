@@ -22,7 +22,7 @@ from __future__ import annotations
 import warp as wp
 
 from ..core.model import Model, ModelData
-from ..core.types import float32, int32, mat63f, vec2i, vec3f, vec4f, vec6f
+from ..core.types import float32, int32, mat63f, vec2i, vec3f, vec6f
 from ..geometry.contacts import ContactsData
 from ..kinematics.jacobians import DenseSystemJacobiansData
 from ..kinematics.limits import LimitsData
@@ -203,6 +203,7 @@ def _compute_limit_cts_body_wrenches(
     state_info_limit_cts_group_offset: wp.array(dtype=int32),
     model_time_inv_dt: wp.array(dtype=float32),
     limits_model_num: wp.array(dtype=int32),
+    limits_model_max: int32,
     limits_wid: wp.array(dtype=int32),
     limits_lid: wp.array(dtype=int32),
     limits_bids: wp.array(dtype=vec2i),
@@ -217,7 +218,7 @@ def _compute_limit_cts_body_wrenches(
     tid = wp.tid()
 
     # Skip if tid is greater than the number of active contacts in the model
-    if tid >= limits_model_num[0]:
+    if tid >= wp.min(limits_model_num[0], limits_model_max):
         return
 
     # Retrieve the contact index of the contact w.r.t the world
@@ -291,10 +292,10 @@ def _compute_contact_cts_body_wrenches(
     state_info_contact_cts_group_offset: wp.array(dtype=int32),
     model_time_inv_dt: wp.array(dtype=float32),
     contacts_model_num: wp.array(dtype=int32),
+    contacts_model_max: int32,
     contacts_wid: wp.array(dtype=int32),
     contacts_cid: wp.array(dtype=int32),
-    contacts_body_A: wp.array(dtype=vec4f),
-    contacts_body_B: wp.array(dtype=vec4f),
+    contacts_bid_AB: wp.array(dtype=vec2i),
     jacobian_cts_offset: wp.array(dtype=int32),
     jacobian_cts_data: wp.array(dtype=float32),
     lambdas_offsets: wp.array(dtype=int32),
@@ -306,7 +307,7 @@ def _compute_contact_cts_body_wrenches(
     tid = wp.tid()
 
     # Skip if tid is greater than the number of active contacts in the model
-    if tid >= contacts_model_num[0]:
+    if tid >= wp.min(contacts_model_num[0], contacts_model_max):
         return
 
     # Retrieve the contact index of the contact w.r.t the world
@@ -317,8 +318,9 @@ def _compute_contact_cts_body_wrenches(
 
     # Extract the body indices associated with the contact
     # NOTE: These indices are w.r.t the model
-    bid_B = int(contacts_body_B[tid][3])
-    bid_A = int(contacts_body_A[tid][3])
+    bid_AB = contacts_bid_AB[tid]
+    bid_A = bid_AB[0]
+    bid_B = bid_AB[1]
 
     # Retrieve the inverse time-step of the world
     inv_dt = model_time_inv_dt[wid]
@@ -466,6 +468,7 @@ def compute_constraint_body_wrenches(
                 data.info.limit_cts_group_offset,
                 model.time.inv_dt,
                 limits.model_num_limits,
+                limits.num_model_max_limits,
                 limits.wid,
                 limits.lid,
                 limits.bids,
@@ -491,10 +494,10 @@ def compute_constraint_body_wrenches(
                 data.info.contact_cts_group_offset,
                 model.time.inv_dt,
                 contacts.model_num_contacts,
+                contacts.num_model_max_contacts,
                 contacts.wid,
                 contacts.cid,
-                contacts.body_A,
-                contacts.body_B,
+                contacts.bid_AB,
                 jacobians.J_cts_offsets,
                 jacobians.J_cts_data,
                 lambdas_offsets,

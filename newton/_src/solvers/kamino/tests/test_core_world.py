@@ -270,10 +270,12 @@ class TestCollisionGeometryDescriptor(unittest.TestCase):
         self.assertEqual(geom.wid, -1)
         self.assertEqual(geom.gid, -1)
         self.assertEqual(geom.lid, -1)
-        self.assertEqual(geom.mid, 0)
+        self.assertEqual(geom.material, None)
         self.assertEqual(geom.group, 1)
         self.assertEqual(geom.collides, 1)
         self.assertEqual(geom.max_contacts, 0)
+        self.assertEqual(geom.margin, 0.0)
+        self.assertEqual(geom.mid, None)
 
     def test_01_with_shape(self):
         cgeom = CollisionGeometryDescriptor(name="test_geom", bid=0, shape=SphereShape(radius=1.0, name="test_sphere"))
@@ -288,12 +290,40 @@ class TestCollisionGeometryDescriptor(unittest.TestCase):
         self.assertEqual(cgeom.wid, -1)
         self.assertEqual(cgeom.gid, -1)
         self.assertEqual(cgeom.lid, -1)
-        self.assertEqual(cgeom.mid, 0)
+        self.assertEqual(cgeom.material, None)
         self.assertEqual(cgeom.group, 1)
         self.assertEqual(cgeom.collides, 1)
         self.assertEqual(cgeom.max_contacts, 0)
+        self.assertEqual(cgeom.margin, 0.0)
+        self.assertEqual(cgeom.mid, None)
 
-    def test_02_from_base_geometry(self):
+    def test_02_with_shape_and_material(self):
+        test_material = MaterialDescriptor(name="test_material")
+        cgeom = CollisionGeometryDescriptor(
+            name="test_geom",
+            bid=0,
+            shape=SphereShape(radius=1.0, name="test_sphere"),
+            material=test_material.name,
+        )
+        msg.info(f"cgeom: {cgeom}")
+
+        self.assertIsInstance(cgeom, CollisionGeometryDescriptor)
+        self.assertEqual(cgeom.name, "test_geom")
+        self.assertEqual(cgeom.layer, "default")
+        self.assertEqual(cgeom.bid, 0)
+        self.assertEqual(cgeom.shape.type, ShapeType.SPHERE)
+        self.assertEqual(cgeom.shape.radius, 1.0)
+        self.assertEqual(cgeom.wid, -1)
+        self.assertEqual(cgeom.gid, -1)
+        self.assertEqual(cgeom.lid, -1)
+        self.assertEqual(cgeom.material, test_material.name)
+        self.assertEqual(cgeom.group, 1)
+        self.assertEqual(cgeom.collides, 1)
+        self.assertEqual(cgeom.max_contacts, 0)
+        self.assertEqual(cgeom.margin, 0.0)
+        self.assertEqual(cgeom.mid, None)
+
+    def test_03_from_base_geometry(self):
         geom = GeometryDescriptor(
             name="test_geom", layer="test_layer", bid=0, shape=SphereShape(radius=1.0, name="test_sphere")
         )
@@ -311,10 +341,12 @@ class TestCollisionGeometryDescriptor(unittest.TestCase):
         self.assertEqual(cgeom.wid, -1)
         self.assertEqual(cgeom.gid, -1)
         self.assertEqual(cgeom.lid, -1)
-        self.assertEqual(cgeom.mid, 0)
+        self.assertEqual(cgeom.material, None)
         self.assertEqual(cgeom.group, 1)
         self.assertEqual(cgeom.collides, 1)
         self.assertEqual(cgeom.max_contacts, 0)
+        self.assertEqual(cgeom.margin, 0.0)
+        self.assertEqual(cgeom.mid, None)
 
 
 class TestMaterialDescriptor(unittest.TestCase):

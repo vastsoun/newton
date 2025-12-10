@@ -13,9 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-KAMINO: UNIT TESTS: Input/Output: HDF5
-"""
+"""Unit tests for HDF5 I/O utilities."""
 
 import os
 import unittest
@@ -26,12 +24,7 @@ import warp as wp
 
 # Module to be tested
 import newton._src.solvers.kamino.utils.io.hdf5 as hdf5
-from newton._src.solvers.kamino.models.builders import (
-    build_boxes_nunchaku,
-)
-from newton._src.solvers.kamino.models.utils import (
-    make_single_builder,
-)
+from newton._src.solvers.kamino.models.builders.basics import build_boxes_nunchaku
 from newton._src.solvers.kamino.simulation.simulator import Simulator
 
 # Test utilities
@@ -212,8 +205,8 @@ class TestHDF5(unittest.TestCase):
             return
 
         # Create a multi-instanced system
-        builder = make_single_builder(build_fn=build_boxes_nunchaku)
-        # sim = Simulator(builder=builder, device=self.default_device, shadow=True)  # TODO: Use shadow=True to test shadow data
+        builder = build_boxes_nunchaku()
+        # sim = Simulator(builder=builder, device=self.default_device, shadow=True)
         sim = Simulator(builder=builder, device=self.default_device)
 
         # Construct and configure the system data container

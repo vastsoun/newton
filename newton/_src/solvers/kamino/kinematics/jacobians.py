@@ -25,18 +25,17 @@ import warp as wp
 from warp.context import Devicelike
 
 from ..core.joints import JointDoFType
-from ..core.math import I_6
+from ..core.math import contact_wrench_matrix_from_points, expand6d, screw_transform_matrix_from_points
 from ..core.model import Model, ModelData
 from ..core.types import (
     float32,
     int32,
     mat33f,
-    mat63f,
     mat66f,
+    quatf,
     transformf,
     vec2i,
     vec3f,
-    vec4f,
 )
 from ..geometry.contacts import Contacts, ContactsData
 from ..kinematics.limits import Limits, LimitsData
@@ -60,14 +59,6 @@ __all__ = [
 ###
 
 wp.set_module_options({"enable_backward": False})
-
-
-###
-# Constants
-###
-
-W_C_I = wp.constant(mat63f(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0))
-"""Identify-like wrench matrix to initialize contact wrench matrices."""
 
 
 ###
@@ -250,87 +241,6 @@ def store_joint_dofs_jacobian(
         )
 
 
-@wp.func
-def wrench_matrix_from_points(r_j: vec3f, r_i: vec3f) -> mat66f:
-    """
-    Generates a 6x6 wrench matrix from the absolute positions (in world coordinates) of the joint and body.
-
-    W_j = [I_3  , 0_3] , where S_ji is the skew-symmetric matrix of the vector r_ji = r_j - r_i.
-          [S_ji , I_3]
-
-    Args:
-        r_j (vec3f): Position of the joint in world coordinates.
-        r_i (vec3f): Position of the body in world coordinates.
-
-    Returns:
-        mat66f: The 6x6 wrench matrix.
-    """
-    # Initialize the wrench matrix
-    W_j = I_6
-
-    # Fill the lower left block with the skew-symmetric matrix
-    S_rj = wp.skew(r_j - r_i)
-    for i in range(3):
-        for j in range(3):
-            W_j[3 + i, j] = S_rj[i, j]
-
-    # Return the wrench matrix
-    return W_j
-
-
-@wp.func
-def contact_wrench_matrix_from_points(r_k: vec3f, r_i: vec3f) -> mat63f:
-    """
-    Generates a 6x3 wrench matrix from the absolute positions (in world coordinates) of the joint and body.
-
-    W_ki = [ I_3  ] , where S_ki is the skew-symmetric matrix of the vector r_ki = r_k - r_i.
-           [ S_ki ]
-
-    Args:
-        r_k (vec3f): Position of the contact on the body in world coordinates.
-        r_i (vec3f): Position of the body CoM in world coordinates.
-
-    Returns:
-        mat63f: The 6x3 wrench matrix.
-    """
-    # Initialize the wrench matrix
-    W_ki = W_C_I
-
-    # Fill the lower left block with the skew-symmetric matrix
-    S_ki = wp.skew(r_k - r_i)
-    for i in range(3):
-        for j in range(3):
-            W_ki[3 + i, j] = S_ki[i, j]
-
-    # Return the wrench matrix
-    return W_ki
-
-
-@wp.func
-def expand6d(X: mat33f) -> mat66f:
-    """
-    Expands a 3x3 rotation matrix to a 6x6 matrix operator by filling
-    the upper left and lower right blocks with the input matrix.
-
-    Args:
-        X (mat33f): The 3x3 matrix to be expanded.
-
-    Returns:
-        mat66: The expanded 6x6 matrix.
-    """
-    # Initialize the 6D matrix
-    X_6d = mat66f(0.0)
-
-    # Fill the upper left 3x3 block with the input matrix
-    for i in range(3):
-        for j in range(3):
-            X_6d[i, j] = X[i, j]
-            X_6d[3 + i, 3 + j] = X[i, j]
-
-    # Return the expanded matrix
-    return X_6d
-
-
 ###
 # Kernels
 ###
@@ -395,8 +305,8 @@ def _build_joint_jacobians(
 
     # Compute the wrench matrices
     # TODO: Since the lever-arm is a relative position, can we just use B_r_Bj and F_r_Fj instead?
-    W_j_B = wrench_matrix_from_points(r_j, r_B_j)
-    W_j_F = wrench_matrix_from_points(r_j, r_F_j)
+    W_j_B = screw_transform_matrix_from_points(r_j, r_B_j)
+    W_j_F = screw_transform_matrix_from_points(r_j, r_F_j)
 
     # Compute the effective projector to joint frame and expand to 6D
     R_X_j = R_j @ X_j
@@ -420,14 +330,15 @@ def _build_limit_jacobians(
     model_info_bodies_offset: wp.array(dtype=int32),
     state_info_limit_cts_group_offset: wp.array(dtype=int32),
     limits_model_num: wp.array(dtype=int32),
+    limits_model_max: int32,
     limits_wid: wp.array(dtype=int32),
     limits_lid: wp.array(dtype=int32),
     limits_bids: wp.array(dtype=vec2i),
     limits_dof: wp.array(dtype=int32),
     limits_side: wp.array(dtype=float32),
     jacobian_dofs_offsets: wp.array(dtype=int32),
-    jacobian_cts_offsets: wp.array(dtype=int32),
     jacobian_dofs_data: wp.array(dtype=float32),
+    jacobian_cts_offsets: wp.array(dtype=int32),
     # Outputs:
     jacobian_cts_data: wp.array(dtype=float32),
 ):
@@ -438,7 +349,7 @@ def _build_limit_jacobians(
     lid = wp.tid()
 
     # Skip if cid is greater than the total number of active limits in the model
-    if lid >= limits_model_num[0]:
+    if lid >= wp.min(limits_model_num[0], limits_model_max):
         return
 
     # Retrieve the world index of the active limit
@@ -490,11 +401,13 @@ def _build_contact_jacobians(
     state_info_contact_cts_group_offset: wp.array(dtype=int32),
     state_bodies_q: wp.array(dtype=transformf),
     contacts_model_num: wp.array(dtype=int32),
+    contacts_model_max: int32,
     contacts_wid: wp.array(dtype=int32),
     contacts_cid: wp.array(dtype=int32),
-    contacts_body_A: wp.array(dtype=vec4f),
-    contacts_body_B: wp.array(dtype=vec4f),
-    contacts_frames: wp.array(dtype=mat33f),
+    contacts_bid_AB: wp.array(dtype=vec2i),
+    contacts_position_A: wp.array(dtype=vec3f),
+    contacts_position_B: wp.array(dtype=vec3f),
+    contacts_frame: wp.array(dtype=quatf),
     jacobian_cts_offsets: wp.array(dtype=int32),
     # Outputs:
     jacobian_cts_data: wp.array(dtype=float32),
@@ -506,7 +419,7 @@ def _build_contact_jacobians(
     cid = wp.tid()
 
     # Skip if cid is greater than the total number of active contacts in the model
-    if cid >= contacts_model_num[0]:
+    if cid >= wp.min(contacts_model_num[0], contacts_model_max):
         return
 
     # Retrieve the contact index w.r.t the world
@@ -514,13 +427,12 @@ def _build_contact_jacobians(
     # contact index, i.e. C_k is the k-th contact entity
     cid_k = contacts_cid[cid]
 
-    # Retrieve the the contact frame and body contact points
-    R_k = contacts_frames[cid]
-    body_A_k = contacts_body_A[cid]
-    body_B_k = contacts_body_B[cid]
-
-    # Retrieve the world index of the contact
+    # Retrieve the the contact-specific data
     wid = contacts_wid[cid]
+    q_k = contacts_frame[cid]
+    bid_AB_k = contacts_bid_AB[cid]
+    r_Ac_k = contacts_position_A[cid]
+    r_Bc_k = contacts_position_B[cid]
 
     # Retrieve the relevant model info for the world
     nbd = model_info_num_body_dofs[wid]
@@ -531,13 +443,12 @@ def _build_contact_jacobians(
     # Append the index offset for the contact Jacobian block in the constraint Jacobian
     cjmio += ccgo * nbd
 
-    # Extract the body ids
-    bid_A_k = int32(body_A_k[3])
-    bid_B_k = int32(body_B_k[3])
+    # Extract the individual body indices
+    bid_A_k = bid_AB_k[0]
+    bid_B_k = bid_AB_k[1]
 
-    # Extract the contact points on each body geom
-    r_Ac_k = vec3f(body_A_k[0], body_A_k[1], body_A_k[2])
-    r_Bc_k = vec3f(body_B_k[0], body_B_k[1], body_B_k[2])
+    # Compute the rotation matrix from the contact frame quaternion
+    R_k = wp.quat_to_matrix(q_k)  # (3 x 3)
 
     # Set the constraint index offset for this contact
     cio_k = 3 * cid_k
@@ -633,6 +544,7 @@ def build_limit_jacobians(
             model.info.bodies_offset,
             data.info.limit_cts_group_offset,
             limits.model_num_limits,
+            limits.num_model_max_limits,
             limits.wid,
             limits.lid,
             limits.bids,
@@ -670,10 +582,12 @@ def build_contact_jacobians(
             data.info.contact_cts_group_offset,
             data.bodies.q_i,
             contacts.model_num_contacts,
+            contacts.num_model_max_contacts,
             contacts.wid,
             contacts.cid,
-            contacts.body_A,
-            contacts.body_B,
+            contacts.bid_AB,
+            contacts.position_A,
+            contacts.position_B,
             contacts.frame,
             jacobian_cts_offsets,
             # Outputs:
@@ -736,14 +650,15 @@ def build_jacobians(
                 model.info.bodies_offset,
                 data.info.limit_cts_group_offset,
                 limits.model_num_limits,
+                limits.num_model_max_limits,
                 limits.wid,
                 limits.lid,
                 limits.bids,
                 limits.dof,
                 limits.side,
                 jacobian_dofs_offsets,
-                jacobian_cts_offsets,
                 jacobian_dofs_data,
+                jacobian_cts_offsets,
                 # Outputs:
                 jacobian_cts_data,
             ],
@@ -763,10 +678,12 @@ def build_jacobians(
                 data.info.contact_cts_group_offset,
                 data.bodies.q_i,
                 contacts.model_num_contacts,
+                contacts.num_model_max_contacts,
                 contacts.wid,
                 contacts.cid,
-                contacts.body_A,
-                contacts.body_B,
+                contacts.bid_AB,
+                contacts.position_A,
+                contacts.position_B,
                 contacts.frame,
                 jacobian_cts_offsets,
                 # Outputs:
@@ -870,8 +787,8 @@ class DenseSystemJacobians:
         nbd = [model.worlds[w].num_body_dofs for w in range(nw)]
         njc = [model.worlds[w].num_joint_cts for w in range(nw)]
         njd = [model.worlds[w].num_joint_dofs for w in range(nw)]
-        maxnl = limits.num_world_max_limits if limits is not None else [0] * nw
-        maxnc = contacts.num_world_max_contacts if contacts is not None else [0] * nw
+        maxnl = limits.num_world_max_limits if limits and limits.num_model_max_limits > 0 else [0] * nw
+        maxnc = contacts.num_world_max_contacts if contacts and contacts.num_model_max_contacts > 0 else [0] * nw
         maxncts = [njc[w] + maxnl[w] + 3 * maxnc[w] for w in range(nw)]
 
         # Compute the sizes of the Jacobian matrix data for each world

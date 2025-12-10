@@ -506,6 +506,7 @@ def _build_free_velocity_bias_limits(
     # Inputs:
     model_time_inv_dt: wp.array(dtype=float32),
     state_info_limit_cts_group_offset: wp.array(dtype=int32),
+    limits_model_max: int32,
     limits_model_num: wp.array(dtype=int32),
     limits_wid: wp.array(dtype=int32),
     limits_lid: wp.array(dtype=int32),
@@ -519,7 +520,7 @@ def _build_free_velocity_bias_limits(
     tid = wp.tid()
 
     # Retrieve the number of contacts active in the model
-    model_nl = limits_model_num[0]
+    model_nl = wp.min(limits_model_num[0], limits_model_max)
 
     # Skip if cid is greater than the number of contacts active in the world
     if tid >= model_nl:
@@ -549,6 +550,7 @@ def _build_free_velocity_bias_contacts(
     model_time_inv_dt: wp.array(dtype=float32),
     model_info_contacts_offset: wp.array(dtype=int32),
     state_info_contact_cts_group_offset: wp.array(dtype=int32),
+    contacts_model_max: int32,
     contacts_model_num: wp.array(dtype=int32),
     contacts_wid: wp.array(dtype=int32),
     contacts_cid: wp.array(dtype=int32),
@@ -565,7 +567,7 @@ def _build_free_velocity_bias_contacts(
     tid = wp.tid()
 
     # Retrieve the number of contacts active in the model
-    model_nc = contacts_model_num[0]
+    model_nc = wp.min(contacts_model_num[0], contacts_model_max)
 
     # Skip if cid is greater than the number of contacts active in the world
     if tid >= model_nc:
@@ -895,7 +897,11 @@ def build_generalized_free_velocity(model: Model, data: ModelData, problem: Dual
 
 
 def build_free_velocity_bias(
-    model: Model, data: ModelData, limits: LimitsData, contacts: ContactsData, problem: DualProblemData
+    model: Model,
+    data: ModelData,
+    limits: LimitsData,
+    contacts: ContactsData,
+    problem: DualProblemData,
 ):
     """
     Builds the joint constraint section of the free-velocity vector.
@@ -920,7 +926,7 @@ def build_free_velocity_bias(
             ],
         )
 
-    if limits is not None:
+    if limits.num_model_max_limits > 0:
         wp.launch(
             _build_free_velocity_bias_limits,
             dim=limits.num_model_max_limits,
@@ -928,6 +934,7 @@ def build_free_velocity_bias(
                 # Inputs:
                 model.time.inv_dt,
                 data.info.limit_cts_group_offset,
+                limits.num_model_max_limits,
                 limits.model_num_limits,
                 limits.wid,
                 limits.lid,
@@ -939,7 +946,7 @@ def build_free_velocity_bias(
             ],
         )
 
-    if contacts is not None:
+    if contacts.num_model_max_contacts > 0:
         wp.launch(
             _build_free_velocity_bias_contacts,
             dim=contacts.num_model_max_contacts,
@@ -948,6 +955,7 @@ def build_free_velocity_bias(
                 model.time.inv_dt,
                 model.info.contacts_offset,
                 data.info.contact_cts_group_offset,
+                contacts.num_model_max_contacts,
                 contacts.model_num_contacts,
                 contacts.wid,
                 contacts.cid,
@@ -1168,6 +1176,13 @@ class DualProblem:
             )
 
     @property
+    def device(self) -> Devicelike:
+        """
+        Returns the device the dual problem is allocated on.
+        """
+        return self._device
+
+    @property
     def size(self) -> ModelSize:
         """
         Returns the model size of the dual problem.
@@ -1292,19 +1307,23 @@ class DualProblem:
         num_worlds = model.info.num_worlds if model is not None else 1
         self._settings = self._check_settings(settings, num_worlds)
 
+        # Determine the maximum number of contacts supported by the model
+        # in order to allocate corresponding per-friction-cone parameters
+        num_model_max_contacts = contacts.num_model_max_contacts if contacts is not None else 0
+
         # Allocate memory for the remaining dual problem quantities
         with wp.ScopedDevice(device):
             self._data.config = wp.array([s.to_config() for s in self.settings], dtype=DualProblemConfig)
-            self._data.h = wp.zeros(shape=(model.size.sum_of_num_bodies,), dtype=vec6f)  # TODO: remove these later
+            # self._data.h = wp.zeros(shape=(model.size.sum_of_num_bodies,), dtype=vec6f)  # TODO: remove these later
             self._data.u_f = wp.zeros(shape=(model.size.sum_of_num_bodies,), dtype=vec6f)
             self._data.v_b = wp.zeros(shape=(self._delassus.num_maxdims,), dtype=float32)
             self._data.v_i = wp.zeros(shape=(self._delassus.num_maxdims,), dtype=float32)
             self._data.v_f = wp.zeros(shape=(self._delassus.num_maxdims,), dtype=float32)
-            self._data.mu = wp.zeros(shape=(contacts.num_model_max_contacts,), dtype=float32)
+            self._data.mu = wp.zeros(shape=(num_model_max_contacts,), dtype=float32)
             self._data.P = wp.ones(shape=(self._delassus.num_maxdims,), dtype=float32)
 
     def zero(self):
-        self._data.h.zero_()  # TODO: remove these later
+        # self._data.h.zero_()  # TODO: remove these later
         self._data.u_f.zero_()
         self._data.v_b.zero_()
         self._data.v_i.zero_()

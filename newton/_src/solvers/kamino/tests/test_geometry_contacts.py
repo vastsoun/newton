@@ -14,22 +14,242 @@
 # limitations under the License.
 
 """
-KAMINO: UNIT TESTS
+Unit tests for `geometry/contacts.py`.
+
+Tests all components of the Contacts data types and operations.
 """
 
 import unittest
 
+import numpy as np
 import warp as wp
 
-# Module to be tested
-from newton._src.solvers.kamino.geometry.contacts import Contacts
-
-# Test utilities
+from newton._src.solvers.kamino.core.types import int32, mat33f, vec3f
+from newton._src.solvers.kamino.geometry.contacts import (
+    ContactMode,
+    Contacts,
+    make_contact_frame_xnorm,
+    make_contact_frame_znorm,
+)
 from newton._src.solvers.kamino.tests import setup_tests, test_context
+from newton._src.solvers.kamino.utils import logger as msg
+
+###
+# Kernels
+###
+
+
+@wp.kernel
+def _compute_contact_frame_znorm(
+    # Inputs:
+    normal: wp.array(dtype=vec3f),
+    # Outputs:
+    frame: wp.array(dtype=mat33f),
+):
+    tid = wp.tid()
+    frame[tid] = make_contact_frame_znorm(normal[tid])
+
+
+@wp.kernel
+def _compute_contact_frame_xnorm(
+    # Inputs:
+    normal: wp.array(dtype=vec3f),
+    # Outputs:
+    frame: wp.array(dtype=mat33f),
+):
+    tid = wp.tid()
+    frame[tid] = make_contact_frame_xnorm(normal[tid])
+
+
+@wp.kernel
+def _compute_contact_mode(
+    # Inputs:
+    velocity: wp.array(dtype=vec3f),
+    # Outputs:
+    mode: wp.array(dtype=int32),
+):
+    tid = wp.tid()
+    mode[tid] = wp.static(ContactMode.make_compute_mode_func())(velocity[tid])
+
+
+###
+# Launchers
+###
+
+
+def compute_contact_frame_znorm(normal: wp.array, frame: wp.array, num_threads: int = 1):
+    wp.launch(
+        _compute_contact_frame_znorm,
+        dim=num_threads,
+        inputs=[normal],
+        outputs=[frame],
+    )
+
+
+def compute_contact_frame_xnorm(normal: wp.array, frame: wp.array, num_threads: int = 1):
+    wp.launch(
+        _compute_contact_frame_xnorm,
+        dim=num_threads,
+        inputs=[normal],
+        outputs=[frame],
+    )
+
+
+def compute_contact_mode(velocity: wp.array, mode: wp.array, num_threads: int = 1):
+    wp.launch(
+        _compute_contact_mode,
+        dim=num_threads,
+        inputs=[velocity],
+        outputs=[mode],
+    )
+
 
 ###
 # Tests
 ###
+
+
+class TestGeometryContactFrames(unittest.TestCase):
+    def setUp(self):
+        self.default_device = wp.get_device()
+        self.verbose = False  # Set to True for detailed output
+
+        # Set debug-level logging to print verbose test output to console
+        if self.verbose:
+            msg.info("\n")  # Add newline before test output for better readability
+            msg.set_log_level(msg.LogLevel.DEBUG)
+        else:
+            msg.reset_log_level()
+
+    def tearDown(self):
+        self.default_device = None
+        if self.verbose:
+            msg.reset_log_level()
+
+    def test_01_make_contact_frame_znorm(self):
+        # Create a normal vectors
+        test_normals: list[vec3f] = []
+
+        # Add normals for which to test contact frame creation
+        test_normals.append(vec3f(1.0, 0.0, 0.0))
+        test_normals.append(vec3f(0.0, 1.0, 0.0))
+        test_normals.append(vec3f(0.0, 0.0, 1.0))
+        test_normals.append(vec3f(-1.0, 0.0, 0.0))
+        test_normals.append(vec3f(0.0, -1.0, 0.0))
+        test_normals.append(vec3f(0.0, 0.0, -1.0))
+
+        # Create the input output arrays
+        normals = wp.array(test_normals, dtype=vec3f)
+        frames = wp.zeros(shape=(len(test_normals),), dtype=mat33f)
+
+        # Compute the contact frames
+        compute_contact_frame_znorm(normal=normals, frame=frames, num_threads=len(test_normals))
+        if self.verbose:
+            print(f"normals:\n{normals}\n")
+            print(f"frames:\n{frames}\n")
+
+        # Extract numpy arrays for comparison
+        frames_np = frames.numpy()
+
+        # Check determinants of each frame
+        for i in range(len(test_normals)):
+            det = np.linalg.det(frames_np[i])
+            self.assertTrue(np.isclose(det, 1.0, atol=1e-6))
+
+        # Check each primitive frame
+        self.assertTrue(
+            np.allclose(frames_np[0], np.array([[0.0, 0.0, 1.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]), atol=1e-6)
+        )
+        self.assertTrue(
+            np.allclose(frames_np[1], np.array([[1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, -1.0, 0.0]]), atol=1e-6)
+        )
+        self.assertTrue(
+            np.allclose(frames_np[2], np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]), atol=1e-6)
+        )
+        self.assertTrue(
+            np.allclose(frames_np[3], np.array([[0.0, 0.0, -1.0], [1.0, 0.0, 0.0], [0.0, -1.0, 0.0]]), atol=1e-6)
+        )
+        self.assertTrue(
+            np.allclose(frames_np[4], np.array([[1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]]), atol=1e-6)
+        )
+        self.assertTrue(
+            np.allclose(frames_np[5], np.array([[1.0, 0.0, 0.0], [0.0, -1.0, 0.0], [0.0, 0.0, -1.0]]), atol=1e-6)
+        )
+
+    def test_02_make_contact_frame_xnorm(self):
+        # Create a normal vectors
+        test_normals: list[vec3f] = []
+
+        # Add normals for which to test contact frame creation
+        test_normals.append(vec3f(1.0, 0.0, 0.0))
+        test_normals.append(vec3f(0.0, 1.0, 0.0))
+        test_normals.append(vec3f(0.0, 0.0, 1.0))
+        test_normals.append(vec3f(-1.0, 0.0, 0.0))
+        test_normals.append(vec3f(0.0, -1.0, 0.0))
+        test_normals.append(vec3f(0.0, 0.0, -1.0))
+
+        # Create the input output arrays
+        normals = wp.array(test_normals, dtype=vec3f)
+        frames = wp.zeros(shape=(len(test_normals),), dtype=mat33f)
+
+        # Compute the contact frames
+        compute_contact_frame_xnorm(normal=normals, frame=frames, num_threads=len(test_normals))
+        if self.verbose:
+            print(f"normals:\n{normals}\n")
+            print(f"frames:\n{frames}\n")
+
+        # Extract numpy arrays for comparison
+        frames_np = frames.numpy()
+
+        # Check determinants of each frame
+        for i in range(len(test_normals)):
+            det = np.linalg.det(frames_np[i])
+            self.assertTrue(np.isclose(det, 1.0, atol=1e-6))
+
+
+class TestGeometryContactMode(unittest.TestCase):
+    def setUp(self):
+        self.default_device = wp.get_device()
+        self.verbose = False  # Set to True for detailed output
+
+        # Set debug-level logging to print verbose test output to console
+        if self.verbose:
+            msg.info("\n")  # Add newline before test output for better readability
+            msg.set_log_level(msg.LogLevel.DEBUG)
+        else:
+            msg.reset_log_level()
+
+    def tearDown(self):
+        self.default_device = None
+        if self.verbose:
+            msg.reset_log_level()
+
+    def test_01_contact_mode_opening(self):
+        v_input = wp.array([vec3f(0.0, 0.0, 0.01)], dtype=vec3f)
+        mode_output = wp.zeros(shape=(1,), dtype=int32)
+        compute_contact_mode(velocity=v_input, mode=mode_output, num_threads=1)
+        mode_int32 = mode_output.numpy()[0]
+        mode = ContactMode(int(mode_int32))
+        msg.info(f"mode: {mode} (int: {int(mode_int32)})")
+        self.assertEqual(mode, ContactMode.OPENING)
+
+    def test_02_contact_mode_sticking(self):
+        v_input = wp.array([vec3f(0.0, 0.0, 1e-7)], dtype=vec3f)
+        mode_output = wp.zeros(shape=(1,), dtype=int32)
+        compute_contact_mode(velocity=v_input, mode=mode_output, num_threads=1)
+        mode_int32 = mode_output.numpy()[0]
+        mode = ContactMode(int(mode_int32))
+        msg.info(f"mode: {mode} (int: {int(mode_int32)})")
+        self.assertEqual(mode, ContactMode.STICKING)
+
+    def test_03_contact_mode_slipping(self):
+        v_input = wp.array([vec3f(0.1, 0.0, 0.0)], dtype=vec3f)
+        mode_output = wp.zeros(shape=(1,), dtype=int32)
+        compute_contact_mode(velocity=v_input, mode=mode_output, num_threads=1)
+        mode_int32 = mode_output.numpy()[0]
+        mode = ContactMode(int(mode_int32))
+        msg.info(f"mode: {mode} (int: {int(mode_int32)})")
+        self.assertEqual(mode, ContactMode.SLIDING)
 
 
 class TestGeometryContacts(unittest.TestCase):
@@ -37,9 +257,19 @@ class TestGeometryContacts(unittest.TestCase):
         if not test_context.setup_done:
             setup_tests(clear_cache=False)
         self.default_device = wp.get_device(test_context.device)
+        self.verbose = test_context.verbose  # Set to True for detailed output
+
+        # Set debug-level logging to print verbose test output to console
+        if self.verbose:
+            msg.info("\n")  # Add newline before test output for better readability
+            msg.set_log_level(msg.LogLevel.DEBUG)
+        else:
+            msg.reset_log_level()
 
     def tearDown(self):
         self.default_device = None
+        if self.verbose:
+            msg.reset_log_level()
 
     def test_single_default_allocation(self):
         contacts = Contacts(capacity=0, device=self.default_device)
@@ -55,9 +285,12 @@ class TestGeometryContacts(unittest.TestCase):
         self.assertEqual(contacts.world_num_contacts.numpy()[0], 0)
         self.assertEqual(len(contacts.wid), contacts.default_max_world_contacts)
         self.assertEqual(len(contacts.cid), contacts.default_max_world_contacts)
-        self.assertEqual(len(contacts.body_A), contacts.default_max_world_contacts)
-        self.assertEqual(len(contacts.body_B), contacts.default_max_world_contacts)
+        self.assertEqual(len(contacts.gid_AB), contacts.default_max_world_contacts)
+        self.assertEqual(len(contacts.bid_AB), contacts.default_max_world_contacts)
+        self.assertEqual(len(contacts.position_A), contacts.default_max_world_contacts)
+        self.assertEqual(len(contacts.position_B), contacts.default_max_world_contacts)
         self.assertEqual(len(contacts.gapfunc), contacts.default_max_world_contacts)
+        self.assertEqual(len(contacts.frame), contacts.default_max_world_contacts)
         self.assertEqual(len(contacts.material), contacts.default_max_world_contacts)
 
     def test_multiple_default_allocations(self):
@@ -79,12 +312,14 @@ class TestGeometryContacts(unittest.TestCase):
         for i in range(num_worlds):
             self.assertEqual(world_max_contacts[i], contacts.default_max_world_contacts)
             self.assertEqual(world_num_contacts[i], 0)
-
         self.assertEqual(len(contacts.wid), num_worlds * contacts.default_max_world_contacts)
         self.assertEqual(len(contacts.cid), num_worlds * contacts.default_max_world_contacts)
-        self.assertEqual(len(contacts.body_A), num_worlds * contacts.default_max_world_contacts)
-        self.assertEqual(len(contacts.body_B), num_worlds * contacts.default_max_world_contacts)
+        self.assertEqual(len(contacts.gid_AB), num_worlds * contacts.default_max_world_contacts)
+        self.assertEqual(len(contacts.bid_AB), num_worlds * contacts.default_max_world_contacts)
+        self.assertEqual(len(contacts.position_A), num_worlds * contacts.default_max_world_contacts)
+        self.assertEqual(len(contacts.position_B), num_worlds * contacts.default_max_world_contacts)
         self.assertEqual(len(contacts.gapfunc), num_worlds * contacts.default_max_world_contacts)
+        self.assertEqual(len(contacts.frame), num_worlds * contacts.default_max_world_contacts)
         self.assertEqual(len(contacts.material), num_worlds * contacts.default_max_world_contacts)
 
     def test_multiple_custom_allocations(self):
@@ -110,9 +345,12 @@ class TestGeometryContacts(unittest.TestCase):
         maxnc = sum(capacities)
         self.assertEqual(len(contacts.wid), maxnc)
         self.assertEqual(len(contacts.cid), maxnc)
-        self.assertEqual(len(contacts.body_A), maxnc)
-        self.assertEqual(len(contacts.body_B), maxnc)
+        self.assertEqual(len(contacts.gid_AB), maxnc)
+        self.assertEqual(len(contacts.bid_AB), maxnc)
+        self.assertEqual(len(contacts.position_A), maxnc)
+        self.assertEqual(len(contacts.position_B), maxnc)
         self.assertEqual(len(contacts.gapfunc), maxnc)
+        self.assertEqual(len(contacts.frame), maxnc)
         self.assertEqual(len(contacts.material), maxnc)
 
 

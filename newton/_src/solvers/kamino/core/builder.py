@@ -25,6 +25,7 @@ import numpy as np
 import warp as wp
 from warp.context import Devicelike
 
+from ..utils import logger as msg
 from .bodies import RigidBodiesModel, RigidBodyDescriptor
 from .geometry import (
     CollisionGeometriesModel,
@@ -228,16 +229,6 @@ class ModelBuilder:
         """Returns the list of material descriptors contained in the model."""
         return self._materials.materials
 
-    @property
-    def required_contact_capacity(self) -> tuple[int, list[int]]:
-        """
-        Returns the total contact capacities required by the model and each world.
-
-        Returns:
-            tuple[int, list[int]]: A tuple containing the total contact capacity and a list of per-world capacities.
-        """
-        return self._compute_required_contact_capacity()
-
     ###
     # Model Construction
     ###
@@ -291,7 +282,7 @@ class ModelBuilder:
         m_i: float,
         i_I_i: mat33f,
         q_i_0: transformf,
-        u_i_0: vec6f,
+        u_i_0: vec6f | None = None,
         name: str | None = None,
         uid: str | None = None,
         world_index: int = 0,
@@ -322,7 +313,7 @@ class ModelBuilder:
             m_i=m_i,
             i_I_i=i_I_i,
             q_i_0=q_i_0,
-            u_i_0=u_i_0,
+            u_i_0=u_i_0 if u_i_0 is not None else vec6f(0.0),
         )
 
         # Add the body descriptor to the model
@@ -353,7 +344,7 @@ class ModelBuilder:
 
         # Append body model data
         world.add_body(body)
-        self._bodies.append(body)
+        self._insert_entity(self._bodies, body, world_index=world_index)
 
         # Update model-wide counters
         self._num_bodies += 1
@@ -454,7 +445,7 @@ class ModelBuilder:
 
         # Append joint model data
         world.add_joint(joint)
-        self._joints.append(joint)
+        self._insert_entity(self._joints, joint, world_index=world_index)
 
         # Update model-wide counters
         self._num_joints += 1
@@ -562,6 +553,7 @@ class ModelBuilder:
             layer=layer,
             offset=offset if offset is not None else transformf(),
             shape=shape,
+            material=self._materials[material],
             mid=self._materials.index(material),
             group=group,
             collides=collides,
@@ -593,12 +585,12 @@ class ModelBuilder:
         world = self._check_world_index(world_index)
 
         # If the geom material is not assigned, set it to the global default
-        if geom.mid < 0:
+        if geom.mid is None:
             geom.mid = self._materials.default.mid
 
         # Append body model data
         world.add_collision_geom(geom)
-        self._cgeoms.append(geom)
+        self._insert_entity(self._cgeoms, geom, world_index=world_index)
 
         # Update model-wide counters
         self._num_cgeoms += 1
@@ -637,8 +629,7 @@ class ModelBuilder:
         # Check if shape is valid
         if not isinstance(shape, ShapeDescriptorType):
             raise ValueError(
-                f"Shape '{shape}' must be a valid type.\n"
-                "See `ShapeDescriptorType` for the list of supported shapes."
+                f"Shape '{shape}' must be a valid type.\nSee `ShapeDescriptorType` for the list of supported shapes."
             )
 
         # Create a joint descriptor from the provided specifications
@@ -678,7 +669,7 @@ class ModelBuilder:
 
         # Append body model data
         world.add_physical_geom(geom)
-        self._pgeoms.append(geom)
+        self._insert_entity(self._pgeoms, geom, world_index=world_index)
 
         # Update model-wide counters
         self._num_pgeoms += 1
@@ -841,11 +832,11 @@ class ModelBuilder:
         if not isinstance(material, MaterialDescriptor):
             raise TypeError(f"Invalid material type: {type(material)}. Must be `MaterialDescriptor`.")
 
-        # Set the default material in the material manager
-        self._materials.default = material
-
         # Reset the default material of the world
         world.set_material(material, 0)
+
+        # Set the default material in the material manager
+        self._materials.default = material
 
     def set_material_pair(
         self,
@@ -1070,9 +1061,10 @@ class ModelBuilder:
         cgeoms_ptr = []
         cgeoms_params = []
         cgeoms_offset = []
+        cgeoms_mid = []
         cgeoms_group = []
         cgeoms_collides = []
-        cgeoms_mid = []
+        cgeoms_margin = []
 
         # Initialize the physical geometry data collections
         pgeoms_wid = []
@@ -1207,6 +1199,7 @@ class ModelBuilder:
                 cgeoms_mid.append(geom.mid)
                 cgeoms_group.append(geom.group)
                 cgeoms_collides.append(geom.collides)
+                cgeoms_margin.append(geom.margin)
                 cgeoms_ptr.append(make_geometry_source_pointer(geom, cgeom_meshes, device))
 
         # A helper function to collect model physical geometries data
@@ -1409,6 +1402,7 @@ class ModelBuilder:
                 mid=wp.array(cgeoms_mid, dtype=int32),
                 group=wp.array(cgeoms_group, dtype=uint32),
                 collides=wp.array(cgeoms_collides, dtype=uint32),
+                margin=wp.array(cgeoms_margin, dtype=float32),
             )
 
             # Create the physical geometries model
@@ -1434,6 +1428,138 @@ class ModelBuilder:
 
         # Return the constructed model data container
         return model
+
+    def compute_required_contact_capacity(
+        self,
+        max_contacts_per_pair: int,
+        max_contacts_per_world: int | None = None,
+    ) -> tuple[int, list[int]]:
+        # First check if there are any collision geometries
+        if self._num_cgeoms == 0:
+            return 0, [0] * self.num_worlds
+
+        # Compute the maximum possible number of geom pairs per world
+        world_max_contacts = [0] * self.num_worlds
+        for w, world in enumerate(self._worlds):
+            world_num_geom_pairs = (world.num_collision_geoms * (world.num_collision_geoms - 1)) // 2
+            world_max_contacts[w] = world_num_geom_pairs * max_contacts_per_pair
+
+        # Override the per-world maximum contacts if specified in the settings
+        if max_contacts_per_world is not None:
+            for w in range(self.num_worlds):
+                world_max_contacts[w] = max_contacts_per_world
+
+        # Return the per-world maximum contacts list
+        return sum(world_max_contacts), world_max_contacts
+
+    def make_collision_candidate_pairs(self, allow_neighbors: bool = False):
+        """
+        Construct the collision pair candidates for the given ModelBuilder instance.
+
+        Filtering steps:
+            1. filter out self-collisions
+            2. filter out same-body collisions
+            3. filter out collision between different worlds
+            4. filter out collisions according to the collision groupings
+            5. filter out neighbor collisions for fixed joints
+            6. (optional) filter out neighbor collisions for joints w/ DoFs
+
+        Args:
+            builder (ModelBuilder): The model builder instance containing the worlds and geometries.
+            allow_neighbors (bool, optional): If True, allows neighbor collisions for joints with DoF.
+
+        Returns:
+            tuple: A tuple containing:
+                - world_num_geom_pairs (list[int]): Number of collision pairs per world.
+                - model_geom_pairs (list[tuple[int, int]]): Geometry index pairs for each collision pair in the model.
+                - model_pairid (list[int]): Pair IDs for each collision pair in the model.
+                - model_wid (list[int]): World indices for each collision pair in the model.
+        """
+        # Retrieve the number of worlds
+        nw = self.num_worlds
+
+        # Extract the per-world info from the builder
+        ncg = [self._worlds[i].num_collision_geoms for i in range(nw)]
+
+        # Initialize the lists to store the collision candidate pairs and their properties of each world
+        world_num_geom_pairs = []
+        model_geom_pairs = []
+        model_pairid = []
+        model_wid = []
+
+        # Iterate over each world and construct the collision geometry pairs info
+        ncg_offset = 0
+        for wid in range(nw):
+            # Initialize the lists to store the collision candidate pairs and their properties
+            world_geom_pair = []
+            world_pairid = []
+            world_wid = []
+
+            # Iterate over each gid pair and filtering out pairs not viable for collision detection
+            # NOTE: k=1 skips diagonal entries to exclude self-collisions
+            for gid1_, gid2_ in zip(*np.triu_indices(ncg[wid], k=1), strict=False):
+                # Convert the per-world local gids to model gid integers
+                gid1 = int(gid1_) + ncg_offset
+                gid2 = int(gid2_) + ncg_offset
+
+                # Get references to the geometries
+                geom1, geom2 = self.collision_geoms[gid1], self.collision_geoms[gid2]
+
+                # Get body indices of each geom
+                bid1, bid2 = geom1.bid, geom2.bid
+
+                # Get world indices of each geom
+                wid1, wid2 = geom1.wid, geom2.wid
+
+                # 2. Check for same-body collision
+                is_self_collision = bid1 == bid2
+
+                # 3. Check for different-world collision
+                in_same_world = wid1 == wid2
+
+                # 4. Check for collision according to the collision groupings
+                are_collidable = ((geom1.group & geom2.collides) != 0) and ((geom2.group & geom1.collides) != 0)
+
+                # 5. Check for neighbor collision for fixed and DoF joints
+                are_fixed_neighbors = False
+                are_dof_neighbors = False
+                for joint in self.joints:
+                    if (joint.bid_B == bid1 and joint.bid_F == bid2) or (joint.bid_B == bid2 and joint.bid_F == bid1):
+                        if joint.dof_type == JointDoFType.FIXED:
+                            are_fixed_neighbors = True
+                        elif joint.bid_B < 0:
+                            pass
+                        else:
+                            are_dof_neighbors = True
+                        break
+
+                # Assign pairid based on filtering results
+                if (not is_self_collision) and (in_same_world) and (are_collidable) and (not are_fixed_neighbors):
+                    pairid = -1  # TODO: Compute as geom-pair key
+                else:
+                    continue  # Skip this pair if it does not pass the filtering
+
+                # Apply final check for DoF neighbor collisions
+                if (not allow_neighbors) and are_dof_neighbors:
+                    continue  # Skip this pair if it does not pass the filtering
+
+                # Append the geometry pair and pairid to the lists
+                world_geom_pair.append((gid1, gid2))
+                world_pairid.append(pairid)
+                world_wid.append(wid)
+                msg.debug("Adding broad-phase collision pair candidate: (gid1, gid2): (%d, %d)", gid1, gid2)
+
+            # Append the world collision pairs to the model lists
+            world_num_geom_pairs.append(len(world_geom_pair))
+            model_geom_pairs.extend(world_geom_pair)
+            model_pairid.extend(world_pairid)
+            model_wid.extend(world_wid)
+
+            # Update the geometry index offset for the next world
+            ncg_offset += ncg[wid]
+
+        # Return the model total collision pair candidates and their properties
+        return world_num_geom_pairs, model_geom_pairs, model_pairid, model_wid
 
     ###
     # Internal Functions
@@ -1504,37 +1630,44 @@ class ModelBuilder:
             actuated_joint_dofs_idx_offset += world.num_actuated_joint_dofs
             joint_cts_idx_offset += world.num_joint_cts
 
-    def _compute_required_contact_capacity(self) -> tuple[int, list[int]]:
-        # First check if there are any collision geometries
-        has_cgeoms = False
-        for world in self._worlds:
-            if world.num_collision_geoms > 0:
-                has_cgeoms = True
-                break
-
-        # If there are no collision geometries indicate this `-1`s
-        if not has_cgeoms:
-            # return -1, [-1] * self.num_worlds
-            return 0, [0] * self.num_worlds
-
-        # Else proceed to calculate the maximum number of contacts
+    def _collect_cgeom_max_contact_hints(self) -> tuple[int, list[int]]:
+        """
+        Collects the `max_contacts` hints from collision geometries.
+        """
         model_max_contacts = 0
-        world_max_contacts = []
-
-        # Calculate the maximum number of contacts for the model and each world
+        world_max_contacts = [0] * self.num_worlds
         for w in range(len(self._worlds)):
-            world_max_contacts.append(0)
             for cgeom_maxnc in self._worlds[w].collision_geometry_max_contacts:
                 model_max_contacts += cgeom_maxnc
                 world_max_contacts[w] += cgeom_maxnc
-
-        # Handle the case where there is only one model descriptor but multiple worlds are set
-        if len(self._worlds) == 1 and self.num_worlds > 1:
-            world_max_contacts = [model_max_contacts] * self.num_worlds
-            model_max_contacts *= self.num_worlds
-
-        # Return the total number of contacts and the per-world max contacts
         return model_max_contacts, world_max_contacts
+
+    EntityDescriptorType = RigidBodyDescriptor | JointDescriptor | GeometryDescriptor | CollisionGeometryDescriptor
+    """A type alias for model entity descriptors."""
+
+    @staticmethod
+    def _insert_entity(entity_list: list[EntityDescriptorType], entity: EntityDescriptorType, world_index: int = 0):
+        """
+        Inserts an entity descriptor into the provided entity list at
+        the end of the entities belonging to the specified world index.
+
+        Insertion preserves the order of entities per world.
+
+        Args:
+            entity_list (list[EntityDescriptorType]): The list of entity descriptors.
+            entity (EntityDescriptorType): The entity descriptor to be inserted.
+            world_index (int): The world index to insert the entity into.
+        """
+        # NOTE: We initialize the last entity index to the length of the list
+        # so that if no entities belong to the specified world, the new entity
+        # is simply appended to the end of the list.
+        last_entity_index = len(entity_list)
+        for i, e in enumerate(entity_list):
+            if e.wid == world_index:
+                last_entity_index = i
+        # NOTE: Insert the entity after the last entity of the specified
+        # world so that the order of entities per world is preserved.
+        entity_list.insert(last_entity_index + 1, entity)
 
     @staticmethod
     def _check_body_inertia(m_i: float, i_I_i: mat33f):

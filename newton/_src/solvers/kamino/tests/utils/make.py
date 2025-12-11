@@ -124,7 +124,7 @@ def make_containers(
     data = model.data(device=device)
 
     # Create the limits container
-    limits = Limits(builder=builder, device=device)
+    limits = Limits(model=model, device=device)
 
     # Create the collision detector
     settings = CollisionDetectorSettings(max_contacts_per_world=max_world_contacts, pipeline="primitive")

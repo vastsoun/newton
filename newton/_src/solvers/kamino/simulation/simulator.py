@@ -297,7 +297,7 @@ class Simulator:
         self._data = SimulatorData(model=self._model, device=self._device)
 
         # Allocate a joint-limits interface
-        self._limits = Limits(builder=builder, device=self._device)
+        self._limits = Limits(model=self._model, device=self._device)
 
         # Allocate collision detection and contacts interface
         self._collision_detector = CollisionDetector(

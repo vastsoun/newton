@@ -19,8 +19,8 @@ import time
 
 import warp as wp
 
-from ..simulation.simulator import Simulator
 from ..utils import logger as msg
+from ..utils.sim import Simulator
 
 ###
 # Example Paths

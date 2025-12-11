@@ -31,14 +31,12 @@ from newton._src.solvers.kamino.models.builders.utils import (
     make_homogeneous_builder,
     set_uniform_body_pose_offset,
 )
-from newton._src.solvers.kamino.simulation.simulator import Simulator, SimulatorSettings
 from newton._src.solvers.kamino.solvers.padmm import PADMMWarmStartMode
 from newton._src.solvers.kamino.solvers.warmstart import WarmstarterContacts
 from newton._src.solvers.kamino.utils import logger as msg
 from newton._src.solvers.kamino.utils.control import AnimationJointReference, JointSpacePIDController
-from newton._src.solvers.kamino.utils.datalog import SimulationLogger
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
-from newton._src.solvers.kamino.viewer import ViewerKamino
+from newton._src.solvers.kamino.utils.sim import SimulationLogger, Simulator, SimulatorSettings, ViewerKamino
 
 ###
 # Example class

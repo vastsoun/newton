@@ -25,10 +25,8 @@ import newton.examples
 from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.examples import get_examples_output_path, run_headless
 from newton._src.solvers.kamino.models.builders.testing import build_all_joints_test_model
-from newton._src.solvers.kamino.simulation.simulator import Simulator, SimulatorSettings
 from newton._src.solvers.kamino.utils import logger as msg
-from newton._src.solvers.kamino.utils.datalog import SimulationLogger
-from newton._src.solvers.kamino.viewer import ViewerKamino
+from newton._src.solvers.kamino.utils.sim import SimulationLogger, Simulator, SimulatorSettings, ViewerKamino
 
 ###
 # Module configs

@@ -29,7 +29,7 @@ from newton._src.solvers.kamino.kinematics.constraints import make_unilateral_co
 from newton._src.solvers.kamino.kinematics.jacobians import DenseSystemJacobians
 from newton._src.solvers.kamino.kinematics.joints import compute_joints_data
 from newton._src.solvers.kamino.kinematics.limits import Limits
-from newton._src.solvers.kamino.simulation.simulator import Simulator
+from newton._src.solvers.kamino.utils.sim import Simulator
 
 ###
 # Helper functions

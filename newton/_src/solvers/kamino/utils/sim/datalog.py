@@ -19,10 +19,10 @@ import os
 
 import numpy as np
 
-from ..core.builder import ModelBuilder
-from ..simulation.simulator import Simulator
-from ..utils import logger as msg
-from ..utils.control import JointSpacePIDController
+from ...core.builder import ModelBuilder
+from .. import logger as msg
+from ..control import JointSpacePIDController
+from .simulator import Simulator
 
 ###
 # Module interface

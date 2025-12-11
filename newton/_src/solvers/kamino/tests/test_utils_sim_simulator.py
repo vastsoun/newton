@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Unit tests for the high-level Simulator class of Kamino"""
+"""Unit tests for the high-level Simulator class utility of Kamino"""
 
 import time
 import unittest
@@ -25,9 +25,9 @@ from newton._src.solvers.kamino.core.types import float32
 from newton._src.solvers.kamino.examples import print_progress_bar
 from newton._src.solvers.kamino.models.builders.basics import build_cartpole
 from newton._src.solvers.kamino.models.builders.utils import make_homogeneous_builder
-from newton._src.solvers.kamino.simulation.simulator import Simulator
 from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.utils import logger as msg
+from newton._src.solvers.kamino.utils.sim.simulator import Simulator
 
 ###
 # Kernels

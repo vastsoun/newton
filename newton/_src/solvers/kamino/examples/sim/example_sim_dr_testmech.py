@@ -26,12 +26,10 @@ from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.examples import get_examples_output_path, run_headless
 from newton._src.solvers.kamino.models import get_examples_usd_assets_path
 from newton._src.solvers.kamino.models.builders.utils import make_homogeneous_builder
-from newton._src.solvers.kamino.simulation.simulator import Simulator, SimulatorSettings
 from newton._src.solvers.kamino.solvers.padmm import PADMMWarmStartMode
 from newton._src.solvers.kamino.utils import logger as msg
-from newton._src.solvers.kamino.utils.datalog import SimulationLogger
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
-from newton._src.solvers.kamino.viewer import ViewerKamino
+from newton._src.solvers.kamino.utils.sim import SimulationLogger, Simulator, SimulatorSettings, ViewerKamino
 
 ###
 # Module configs

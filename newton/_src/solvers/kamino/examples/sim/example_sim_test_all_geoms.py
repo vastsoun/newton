@@ -30,10 +30,8 @@ from newton._src.solvers.kamino.geometry import CollisionPipelineType
 from newton._src.solvers.kamino.geometry.primitive.broadphase import PRIMITIVE_BROADPHASE_SUPPORTED_SHAPES
 from newton._src.solvers.kamino.geometry.primitive.narrowphase import PRIMITIVE_NARROWPHASE_SUPPORTED_SHAPE_PAIRS
 from newton._src.solvers.kamino.models.builders import testing
-from newton._src.solvers.kamino.simulation.simulator import Simulator, SimulatorSettings
 from newton._src.solvers.kamino.utils import logger as msg
-from newton._src.solvers.kamino.utils.datalog import SimulationLogger
-from newton._src.solvers.kamino.viewer import ViewerKamino
+from newton._src.solvers.kamino.utils.sim import SimulationLogger, Simulator, SimulatorSettings, ViewerKamino
 
 ###
 # Module configs

@@ -24,7 +24,7 @@ import numpy as np
 
 from ...core.builder import WorldDescriptor
 from ...core.joints import JointActuationType, JointDoFType
-from ...simulation.simulator import Simulator
+from ...utils.sim import Simulator
 
 ###
 # Helper functions

@@ -23,15 +23,15 @@ from typing import ClassVar
 import warp as wp
 from PIL import Image
 
-from ....viewer import ViewerGL
-from ..core.builder import ModelBuilder
-from ..core.geometry import CollisionGeometryDescriptor, GeometryDescriptor
-from ..core.shapes import ShapeType
-from ..core.types import vec3f
-from ..core.world import WorldDescriptor
-from ..geometry.contacts import ContactMode
-from ..simulation.simulator import Simulator
-from ..utils import logger as msg
+from .....viewer import ViewerGL
+from ...core.builder import ModelBuilder
+from ...core.geometry import CollisionGeometryDescriptor, GeometryDescriptor
+from ...core.shapes import ShapeType
+from ...core.types import vec3f
+from ...core.world import WorldDescriptor
+from ...geometry.contacts import ContactMode
+from ...utils import logger as msg
+from .simulator import Simulator
 
 ###
 # Kernels

@@ -253,6 +253,7 @@ class PADMMSolver:
             make_update_dual_variables_and_compute_primal_dual_residuals(use_acceleration)
         )
 
+    # TODO: Add use of world_mask
     def reset(self):
         """
         Resets the all internal solver data to sentinel values.

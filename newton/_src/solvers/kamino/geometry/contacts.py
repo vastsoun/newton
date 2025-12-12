@@ -240,7 +240,7 @@ class ContactsData:
 
     bid_AB: wp.array | None = None
     """
-    The body indices of the body-pair AB associated with each activecontact.\n
+    The body indices of the body-pair AB associated with each active contact.\n
     Shape of ``(model_max_contacts_host,)`` and type :class:`vec2i`.
     """
 
@@ -489,7 +489,7 @@ class Contacts:
     @property
     def wid(self) -> wp.array:
         """
-        REturns the world index of each active contact.\n
+        Returns the world index of each active contact.\n
         Shape of ``(model_max_contacts_host,)`` and type :class:`int32`.
         """
         self._assert_has_data()

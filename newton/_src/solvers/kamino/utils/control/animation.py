@@ -687,7 +687,7 @@ class AnimationJointReference:
     def reset(self, q_j_ref_out: wp.array, dq_j_ref_out: wp.array) -> None:
         """
         Reset the active frame index of the animation sequence to zero
-        and sets the extracts the initial references into the output arrays.
+        and extracts the initial references into the output arrays.
 
         Args:
             q_j_ref_out (wp.array): Output array for the reference joint positions.

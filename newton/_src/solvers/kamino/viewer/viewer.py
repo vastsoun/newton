@@ -346,8 +346,8 @@ class ViewerKamino(ViewerGL):
             return
 
         # Get number of active contacts
-        num_contacts = contacts.model_num_contacts.numpy()[0]
-        max_contacts = contacts.num_model_max_contacts
+        num_contacts = contacts.model_active_contacts.numpy()[0]
+        max_contacts = contacts.model_max_contacts_host
 
         if False:  # Debug: Always print contact info
             print(f"[VIEWER] Frame {getattr(self, '_frame', 0)}: num_contacts={num_contacts} (max={max_contacts})")

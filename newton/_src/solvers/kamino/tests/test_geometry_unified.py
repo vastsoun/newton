@@ -146,8 +146,8 @@ def test_unified_pipeline(
 
         # Optional verbose output
         msg.debug("[%s][%s]: bodies.q_i:\n%s", case, bp_name, data.bodies.q_i)
-        msg.debug("[%s][%s]: contacts.model_num_contacts: %s", case, bp_name, contacts.model_num_contacts)
-        msg.debug("[%s][%s]: contacts.world_num_contacts: %s", case, bp_name, contacts.world_num_contacts)
+        msg.debug("[%s][%s]: contacts.model_active_contacts: %s", case, bp_name, contacts.model_active_contacts)
+        msg.debug("[%s][%s]: contacts.world_active_contacts: %s", case, bp_name, contacts.world_active_contacts)
         msg.debug("[%s][%s]: contacts.wid: %s", case, bp_name, contacts.wid)
         msg.debug("[%s][%s]: contacts.cid: %s", case, bp_name, contacts.cid)
         msg.debug("[%s][%s]: contacts.gid_AB:\n%s", case, bp_name, contacts.gid_AB)
@@ -192,8 +192,8 @@ def test_unified_pipeline_on_shape_pair(
 
     # Define expected contacts dictionary
     expected = {
-        "model_num_contacts": expected_contacts,
-        "world_num_contacts": [expected_contacts],
+        "model_active_contacts": expected_contacts,
+        "world_active_contacts": [expected_contacts],
     }
 
     # Run the narrow-phase test
@@ -362,8 +362,8 @@ class TestCollisionPipelineUnified(unittest.TestCase):
 
         # Define expected contact data
         expected = {
-            "model_num_contacts": 1,
-            "world_num_contacts": [1],
+            "model_active_contacts": 1,
+            "world_active_contacts": [1],
             "gid_AB": np.array([[0, 1]], dtype=np.int32),
             "bid_AB": np.array([[0, 1]], dtype=np.int32),
             "position_A": np.array([[0.0, 0.0, 0.5 * abs(distance)]], dtype=np.float32),
@@ -405,8 +405,8 @@ class TestCollisionPipelineUnified(unittest.TestCase):
 
         # Define expected contact data
         expected = {
-            "model_num_contacts": 4,
-            "world_num_contacts": [4],
+            "model_active_contacts": 4,
+            "world_active_contacts": [4],
             "gid_AB": np.tile(np.array([0, 1], dtype=np.int32), reps=(4, 1)),
             "bid_AB": np.tile(np.array([0, 1], dtype=np.int32), reps=(4, 1)),
             "position_A": np.array(
@@ -493,8 +493,8 @@ class TestCollisionPipelineUnified(unittest.TestCase):
         """
         # Define expected contact data
         expected = {
-            "model_num_contacts": 9,
-            "world_num_contacts": [9],
+            "model_active_contacts": 9,
+            "world_active_contacts": [9],
         }
 
         # Create a builder for the specified shape pair

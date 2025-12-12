@@ -718,7 +718,7 @@ class ModelBuilder:
         """
         # Check if the other builder is of valid type
         if not isinstance(other, ModelBuilder):
-            raise ValueError(f"Invalid builder type: {type(other)}. Must be a ModelBuilder instance.")
+            raise TypeError(f"Invalid builder type: {type(other)}. Must be a ModelBuilder instance.")
 
         # Make a deep copy of the other builder to avoid modifying the original
         # TODO: How can we avoid this deep copy to improve performance

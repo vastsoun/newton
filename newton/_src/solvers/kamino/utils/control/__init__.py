@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""The Kamino Control Module"""
+"""Utilities for reference motion generation and feedback control."""
 
 from .animation import AnimationJointReference, AnimationJointReferenceData
 from .pid import JointSpacePIDController, PIDControllerData

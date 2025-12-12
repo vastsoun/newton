@@ -117,7 +117,7 @@ class Example:
         self.fps = 60
         self.sim_dt = 0.001
         self.frame_dt = 1.0 / self.fps
-        self.sim_substeps = int(self.frame_dt / self.sim_dt)
+        self.sim_substeps = max(1, round(self.frame_dt / self.sim_dt))
         self.max_steps = max_steps
 
         # Cache the device and other internal flags
@@ -149,7 +149,7 @@ class Example:
         # Set solver settings
         settings = SimulatorSettings()
         settings.dt = self.sim_dt
-        settings.problem.use_preconditioning = True
+        settings.problem.preconditioning = True
         settings.solver.primal_tolerance = 1e-6
         settings.solver.dual_tolerance = 1e-6
         settings.solver.compl_tolerance = 1e-6

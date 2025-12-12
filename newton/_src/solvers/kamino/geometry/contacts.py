@@ -71,14 +71,14 @@ wp.set_module_options({"enable_backward": False})
 # Constants
 ###
 
-DEFAULT_WORLD_MAX_CONTACTS = 128
+DEFAULT_WORLD_MAX_CONTACTS: int = 128
 """
 The global default for maximum number of contacts per world.\n
 Used when allocating contact data without a specified capacity.\n
 Set to `128`.
 """
 
-DEFAULT_GEOM_PAIR_MAX_CONTACTS = 8
+DEFAULT_GEOM_PAIR_MAX_CONTACTS: int = 8
 """
 The global default for maximum number of contacts per geom-pair.\n
 Used when allocating contact data without a specified capacity.\n
@@ -184,15 +184,15 @@ class ContactsData:
     def _default_num_world_max_contacts() -> list[int]:
         return [0]
 
-    num_model_max_contacts: int = 0
+    model_max_contacts_host: int = 0
     """
-    A host-side cache of the maximum number of contacts allocated across all worlds.\n
+    Host-side cache of the maximum number of contacts allocated across all worlds.\n
     Intended for managing data allocations and setting thread sizes in kernels.
     """
 
-    num_world_max_contacts: list[int] = field(default_factory=_default_num_world_max_contacts)
+    world_max_contacts_host: list[int] = field(default_factory=_default_num_world_max_contacts)
     """
-    The host-side cache of the maximum number of contacts allocated per world.\n
+    Host-side cache of the maximum number of contacts allocated per world.\n
     Intended for managing data allocations and setting thread sizes in kernels.
     """
 
@@ -202,7 +202,7 @@ class ContactsData:
     Shape of ``(1,)`` and type :class:`int32`.
     """
 
-    model_num_contacts: wp.array | None = None
+    model_active_contacts: wp.array | None = None
     """
     The number of active contacts detected across all worlds in the model.\n
     Shape of ``(1,)`` and type :class:`int32`.
@@ -214,7 +214,7 @@ class ContactsData:
     Shape of ``(num_worlds,)`` and type :class:`int32`.
     """
 
-    world_num_contacts: wp.array | None = None
+    world_active_contacts: wp.array | None = None
     """
     The number of active contacts detected in each world.\n
     Shape of ``(num_worlds,)`` and type :class:`int32`.
@@ -223,55 +223,55 @@ class ContactsData:
     wid: wp.array | None = None
     """
     The world index of each active contact.\n
-    Shape of ``(num_model_max_contacts,)`` and type :class:`int32`.
+    Shape of ``(model_max_contacts_host,)`` and type :class:`int32`.
     """
 
     cid: wp.array | None = None
     """
     The contact index of each active contact w.r.t its world.\n
-    Shape of ``(num_model_max_contacts,)`` and type :class:`int32`.
+    Shape of ``(model_max_contacts_host,)`` and type :class:`int32`.
     """
 
     gid_AB: wp.array | None = None
     """
     The geometry indices of the geometry-pair AB associated with each active contact.\n
-    Shape of ``(num_model_max_contacts,)`` and type :class:`vec2i`.
+    Shape of ``(model_max_contacts_host,)`` and type :class:`vec2i`.
     """
 
     bid_AB: wp.array | None = None
     """
-    The body indices of the body-pair AB associated with each activecontact.\n
-    Shape of ``(num_model_max_contacts,)`` and type :class:`vec2i`.
+    The body indices of the body-pair AB associated with each active contact.\n
+    Shape of ``(model_max_contacts_host,)`` and type :class:`vec2i`.
     """
 
     position_A: wp.array | None = None
     """
     The position of each active contact on the associated body-A in world coordinates.\n
-    Shape of ``(num_model_max_contacts,)`` and type :class:`vec3f`.
+    Shape of ``(model_max_contacts_host,)`` and type :class:`vec3f`.
     """
 
     position_B: wp.array | None = None
     """
     The position of each active contact on the associated body-B in world coordinates.\n
-    Shape of ``(num_model_max_contacts,)`` and type :class:`vec3f`.
+    Shape of ``(model_max_contacts_host,)`` and type :class:`vec3f`.
     """
 
     gapfunc: wp.array | None = None
     """
     The gap-function (i.e. signed-distance) of each active contact with format `(xyz: normal, w: penetration)`.\n
-    Shape of ``(num_model_max_contacts,)`` and type :class:`vec4f`.
+    Shape of ``(model_max_contacts_host,)`` and type :class:`vec4f`.
     """
 
     frame: wp.array | None = None
     """
     The coordinate frame of each active contact as a rotation quaternion w.r.t the world.\n
-    Shape of ``(num_model_max_contacts,)`` and type :class:`quatf`.
+    Shape of ``(model_max_contacts_host,)`` and type :class:`quatf`.
     """
 
     material: wp.array | None = None
     """
     The material properties of each active contact with format `(0: friction, 1: restitution)`.\n
-    Shape of ``(num_model_max_contacts,)`` and type :class:`vec2f`.
+    Shape of ``(model_max_contacts_host,)`` and type :class:`vec2f`.
     """
 
     key: wp.array | None = None
@@ -282,21 +282,21 @@ class ContactsData:
     - the triangle index
     - shape-specific topological data
     - contact index w.r.t the geom-pair\n
-    Shape of ``(num_model_max_contacts,)`` and type :class:`uint64`.
+    Shape of ``(model_max_contacts_host,)`` and type :class:`uint64`.
     """
 
     reaction: wp.array | None = None
     """
     The 3D contact reaction (force/impulse) expressed in the respective local contact frame.\n
     This is to be set by solvers at each step, and also facilitates contact visualization and warm-starting.\n
-    Shape of ``(num_model_max_contacts,)`` and type :class:`vec3f`.
+    Shape of ``(model_max_contacts_host,)`` and type :class:`vec3f`.
     """
 
     velocity: wp.array | None = None
     """
     The 3D contact velocity expressed in the respective local contact frame.\n
     This is to be set by solvers at each step, and also facilitates contact visualization and warm-starting.\n
-    Shape of ``(num_model_max_contacts,)`` and type :class:`vec3f`.
+    Shape of ``(model_max_contacts_host,)`` and type :class:`vec3f`.
     """
 
     mode: wp.array | None = None
@@ -304,15 +304,15 @@ class ContactsData:
     The discrete contact mode expressed as an integer value.\n
     The possible values correspond to those of the :class:`ContactMode`.\n
     This is to be set by solvers at each step, and also facilitates contact visualization and warm-starting.\n
-    Shape of ``(num_model_max_contacts,)`` and type :class:`int32`.
+    Shape of ``(model_max_contacts_host,)`` and type :class:`int32`.
     """
 
     def clear(self):
         """
         Clears the count of active contacts.
         """
-        self.model_num_contacts.zero_()
-        self.world_num_contacts.zero_()
+        self.model_active_contacts.zero_()
+        self.world_active_contacts.zero_()
 
     def reset(self):
         """
@@ -324,6 +324,7 @@ class ContactsData:
         self.cid.fill_(-1)
         self.gid_AB.fill_(vec2i(-1, -1))
         self.bid_AB.fill_(vec2i(-1, -1))
+        self.mode.fill_(ContactMode.INACTIVE)
         self.reaction.zero_()
         self.velocity.zero_()
 
@@ -432,22 +433,22 @@ class Contacts:
         return self._data
 
     @property
-    def num_model_max_contacts(self) -> int:
+    def model_max_contacts_host(self) -> int:
         """
         Returns the host-side cache of the maximum number of contacts allocated across all worlds.\n
         Intended for managing data allocations and setting thread sizes in kernels.
         """
         self._assert_has_data()
-        return self._data.num_model_max_contacts
+        return self._data.model_max_contacts_host
 
     @property
-    def num_world_max_contacts(self) -> list[int]:
+    def world_max_contacts_host(self) -> list[int]:
         """
         Returns the host-side cache of the maximum number of contacts allocated per world.\n
         Intended for managing data allocations and setting thread sizes in kernels.
         """
         self._assert_has_data()
-        return self._data.num_world_max_contacts
+        return self._data.world_max_contacts_host
 
     @property
     def model_max_contacts(self) -> wp.array:
@@ -459,13 +460,13 @@ class Contacts:
         return self._data.model_max_contacts
 
     @property
-    def model_num_contacts(self) -> wp.array:
+    def model_active_contacts(self) -> wp.array:
         """
         Returns the number of active contacts detected across all worlds in the model.\n
         Shape of ``(1,)`` and type :class:`int32`.
         """
         self._assert_has_data()
-        return self._data.model_num_contacts
+        return self._data.model_active_contacts
 
     @property
     def world_max_contacts(self) -> wp.array:
@@ -477,19 +478,19 @@ class Contacts:
         return self._data.world_max_contacts
 
     @property
-    def world_num_contacts(self) -> wp.array:
+    def world_active_contacts(self) -> wp.array:
         """
         Returns the number of active contacts detected in each world.\n
         Shape of ``(num_worlds,)`` and type :class:`int32`.
         """
         self._assert_has_data()
-        return self._data.world_num_contacts
+        return self._data.world_active_contacts
 
     @property
     def wid(self) -> wp.array:
         """
-        REturns the world index of each active contact.\n
-        Shape of ``(num_model_max_contacts,)`` and type :class:`int32`.
+        Returns the world index of each active contact.\n
+        Shape of ``(model_max_contacts_host,)`` and type :class:`int32`.
         """
         self._assert_has_data()
         return self._data.wid
@@ -498,7 +499,7 @@ class Contacts:
     def cid(self) -> wp.array:
         """
         Returns the contact index of each active contact w.r.t its world.\n
-        Shape of ``(num_model_max_contacts,)`` and type :class:`int32`.
+        Shape of ``(model_max_contacts_host,)`` and type :class:`int32`.
         """
         self._assert_has_data()
         return self._data.cid
@@ -507,7 +508,7 @@ class Contacts:
     def gid_AB(self) -> wp.array:
         """
         Returns the geometry indices of the geometry-pair AB associated with each active contact.\n
-        Shape of ``(num_model_max_contacts,)`` and type :class:`vec2i`.
+        Shape of ``(model_max_contacts_host,)`` and type :class:`vec2i`.
         """
         self._assert_has_data()
         return self._data.gid_AB
@@ -516,7 +517,7 @@ class Contacts:
     def bid_AB(self) -> wp.array:
         """
         Returns the body indices of the body-pair AB associated with each active contact.\n
-        Shape of ``(num_model_max_contacts,)`` and type :class:`vec2i`.
+        Shape of ``(model_max_contacts_host,)`` and type :class:`vec2i`.
         """
         self._assert_has_data()
         return self._data.bid_AB
@@ -525,7 +526,7 @@ class Contacts:
     def position_A(self) -> wp.array:
         """
         Returns the position of each active contact on the associated body-A in world coordinates.\n
-        Shape of ``(num_model_max_contacts,)`` and type :class:`vec3f`.
+        Shape of ``(model_max_contacts_host,)`` and type :class:`vec3f`.
         """
         self._assert_has_data()
         return self._data.position_A
@@ -534,7 +535,7 @@ class Contacts:
     def position_B(self) -> wp.array:
         """
         Returns the position of each active contact on the associated body-B in world coordinates.\n
-        Shape of ``(num_model_max_contacts,)`` and type :class:`vec3f`.
+        Shape of ``(model_max_contacts_host,)`` and type :class:`vec3f`.
         """
         self._assert_has_data()
         return self._data.position_B
@@ -544,7 +545,7 @@ class Contacts:
         """
         Returns the gap-function (i.e. signed-distance) of each
         active contact with format `(xyz: normal, w: penetration)`.\n
-        Shape of ``(num_model_max_contacts,)`` and type :class:`vec4f`.
+        Shape of ``(model_max_contacts_host,)`` and type :class:`vec4f`.
         """
         self._assert_has_data()
         return self._data.gapfunc
@@ -553,7 +554,7 @@ class Contacts:
     def frame(self) -> wp.array:
         """
         Returns the coordinate frame of each active contact as a rotation quaternion w.r.t the world.\n
-        Shape of ``(num_model_max_contacts,)`` and type :class:`quatf`.
+        Shape of ``(model_max_contacts_host,)`` and type :class:`quatf`.
         """
         self._assert_has_data()
         return self._data.frame
@@ -562,7 +563,7 @@ class Contacts:
     def material(self) -> wp.array:
         """
         Returns the material properties of each active contact with format `(0: friction, 1: restitution)`.\n
-        Shape of ``(num_model_max_contacts,)`` and type :class:`vec2f`.
+        Shape of ``(model_max_contacts_host,)`` and type :class:`vec2f`.
         """
         self._assert_has_data()
         return self._data.material
@@ -576,7 +577,7 @@ class Contacts:
         - the triangle index
         - shape-specific topological data
         - contact index w.r.t the geom-pair\n
-        Shape of ``(num_model_max_contacts,)`` and type :class:`uint64`.
+        Shape of ``(model_max_contacts_host,)`` and type :class:`uint64`.
         """
         self._assert_has_data()
         return self._data.key
@@ -586,7 +587,7 @@ class Contacts:
         """
         Returns the 3D contact reaction (force/impulse) expressed in the respective local contact frame.\n
         This is to be set by solvers at each step, and also facilitates contact visualization and warm-starting.\n
-        Shape of ``(num_model_max_contacts,)`` and type :class:`vec3f`.
+        Shape of ``(model_max_contacts_host,)`` and type :class:`vec3f`.
         """
         self._assert_has_data()
         return self._data.reaction
@@ -596,7 +597,7 @@ class Contacts:
         """
         Returns the 3D contact velocity expressed in the respective local contact frame.\n
         This is to be set by solvers at each step, and also facilitates contact visualization and warm-starting.\n
-        Shape of ``(num_model_max_contacts,)`` and type :class:`vec3f`.
+        Shape of ``(model_max_contacts_host,)`` and type :class:`vec3f`.
         """
         self._assert_has_data()
         return self._data.velocity
@@ -607,7 +608,7 @@ class Contacts:
         Returns the discrete contact mode expressed as an integer value.\n
         The possible values correspond to those of the :class:`ContactMode`.\n
         This is to be set by solvers at each step, and also facilitates contact visualization and warm-starting.\n
-        Shape of ``(num_model_max_contacts,)`` and type :class:`int32`.
+        Shape of ``(model_max_contacts_host,)`` and type :class:`int32`.
         """
         self._assert_has_data()
         return self._data.mode
@@ -669,12 +670,12 @@ class Contacts:
         # Allocate the contacts data on the specified device
         with wp.ScopedDevice(self._device):
             self._data = ContactsData(
-                num_model_max_contacts=model_max_contacts,
-                num_world_max_contacts=world_max_contacts,
+                model_max_contacts_host=model_max_contacts,
+                world_max_contacts_host=world_max_contacts,
                 model_max_contacts=wp.array([model_max_contacts], dtype=int32),
-                model_num_contacts=wp.zeros(shape=1, dtype=int32),
+                model_active_contacts=wp.zeros(shape=1, dtype=int32),
                 world_max_contacts=wp.array(world_max_contacts, dtype=int32),
-                world_num_contacts=wp.zeros(shape=len(world_max_contacts), dtype=int32),
+                world_active_contacts=wp.zeros(shape=len(world_max_contacts), dtype=int32),
                 wid=wp.full(value=-1, shape=(model_max_contacts,), dtype=int32),
                 cid=wp.full(value=-1, shape=(model_max_contacts,), dtype=int32),
                 gid_AB=wp.full(value=vec2i(-1, -1), shape=(model_max_contacts,), dtype=vec2i),
@@ -695,7 +696,7 @@ class Contacts:
         Clears the count of active contacts.
         """
         self._assert_has_data()
-        if self._data.num_model_max_contacts > 0:
+        if self._data.model_max_contacts_host > 0:
             self._data.clear()
 
     def reset(self):
@@ -703,7 +704,7 @@ class Contacts:
         Clears the count of active contacts and resets data to sentinel values.
         """
         self._assert_has_data()
-        if self._data.num_model_max_contacts > 0:
+        if self._data.model_max_contacts_host > 0:
             self._data.reset()
 
     ###
@@ -711,5 +712,5 @@ class Contacts:
     ###
 
     def _assert_has_data(self):
-        if self._data is None:
+        if self._data.model_max_contacts_host == 0:
             raise RuntimeError("ContactsData has not been allocated. Call `finalize()` before accessing data.")

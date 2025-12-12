@@ -44,7 +44,7 @@ __all__ = [
 
 class BatchedLinearOperator:
     """
-    Linear operator to be used as left-hand-side of linear iterative solvers for a batch of independent worlds(problems).
+    Linear operator to be used as left-hand-side of linear iterative solvers for a batch of independent problems.
     The rhs and x vectors are stored as 2d arrays with the first dimension corresponding to the world.
 
     Args:

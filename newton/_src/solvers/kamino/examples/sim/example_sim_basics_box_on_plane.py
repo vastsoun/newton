@@ -101,7 +101,7 @@ def control_callback(sim: Simulator):
         dim=sim.model.size.sum_of_num_bodies,
         inputs=[
             sim.model.bodies.bid,
-            sim.contacts.data.world_num_contacts,
+            sim.contacts.data.world_active_contacts,
             sim.data.solver.time.time,
             sim.data.solver.bodies.w_e_i,
         ],
@@ -132,7 +132,7 @@ class Example:
         self.fps = 60
         self.sim_dt = 0.001
         self.frame_dt = 1.0 / self.fps
-        self.sim_substeps = int(self.frame_dt / self.sim_dt)
+        self.sim_substeps = max(1, round(self.frame_dt / self.sim_dt))
         self.max_steps = max_steps
 
         # Cache the device and other internal flags
@@ -164,7 +164,7 @@ class Example:
         # Set solver settings
         settings = SimulatorSettings()
         settings.dt = self.sim_dt
-        settings.problem.use_preconditioning = True
+        settings.problem.preconditioning = True
         settings.solver.primal_tolerance = 1e-6
         settings.solver.dual_tolerance = 1e-6
         settings.solver.compl_tolerance = 1e-6
@@ -335,7 +335,7 @@ if __name__ == "__main__":
         "--record",
         type=str,
         choices=["sync", "async"],
-        default="sync",
+        default=None,
         help="Enable frame recording: 'sync' for synchronous, 'async' for asynchronous (non-blocking)",
     )
     args = parser.parse_args()

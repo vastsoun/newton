@@ -121,7 +121,7 @@ class TestLinAlgCoreDenseMultiLinearRectangularInfo(unittest.TestCase):
     def test_00_make_single_rectangular_default(self):
         dims = (3, 4)
         info = DenseRectangularMultiLinearInfo()
-        info.allocate(dimensions=dims)
+        info.finalize(dimensions=dims)
         msg.debug("info:\n%s", info)
         msg.debug("info.maxdim: %s", info.maxdim)
         msg.debug("info.dim: %s", info.dim)
@@ -152,7 +152,7 @@ class TestLinAlgCoreDenseMultiLinearRectangularInfo(unittest.TestCase):
     def test_01_make_single_rectangular_wp_float64_int64(self):
         dims = (3, 4)
         info = DenseRectangularMultiLinearInfo()
-        info.allocate(dimensions=dims, dtype=wp.float64, itype=wp.int64)
+        info.finalize(dimensions=dims, dtype=wp.float64, itype=wp.int64)
         msg.debug("info:\n%s", info)
         msg.debug("info.maxdim: %s", info.maxdim)
         msg.debug("info.dim: %s", info.dim)
@@ -183,7 +183,7 @@ class TestLinAlgCoreDenseMultiLinearRectangularInfo(unittest.TestCase):
     def test_02_make_multiple_rectangular(self):
         dims = [(3, 4), (2, 5), (4, 3)]
         info = DenseRectangularMultiLinearInfo()
-        info.allocate(dimensions=dims)
+        info.finalize(dimensions=dims)
         msg.debug("info:\n%s", info)
         msg.debug("info.maxdim: %s", info.maxdim)
         msg.debug("info.dim: %s", info.dim)
@@ -237,7 +237,7 @@ class TestLinAlgCoreDenseMultiLinearSquareInfo(unittest.TestCase):
     def test_00_make_single_square_default(self):
         dims = 4
         info = DenseSquareMultiLinearInfo()
-        info.allocate(dimensions=dims)
+        info.finalize(dimensions=dims)
         msg.debug("info:\n%s", info)
         msg.debug("info.maxdim: %s", info.maxdim)
         msg.debug("info.dim: %s", info.dim)
@@ -262,7 +262,7 @@ class TestLinAlgCoreDenseMultiLinearSquareInfo(unittest.TestCase):
     def test_01_make_single_square_wp_float64_int64(self):
         dims = 13
         info = DenseSquareMultiLinearInfo()
-        info.allocate(dimensions=dims, dtype=wp.float64, itype=wp.int64)
+        info.finalize(dimensions=dims, dtype=wp.float64, itype=wp.int64)
         msg.debug("info:\n%s", info)
         msg.debug("info.maxdim: %s", info.maxdim)
         msg.debug("info.dim: %s", info.dim)
@@ -287,7 +287,7 @@ class TestLinAlgCoreDenseMultiLinearSquareInfo(unittest.TestCase):
     def test_02_make_multiple_square(self):
         dims = [4, 10, 5, 12]
         info = DenseSquareMultiLinearInfo()
-        info.allocate(dimensions=dims)
+        info.finalize(dimensions=dims)
         msg.debug("info:\n%s", info)
         msg.debug("info.maxdim: %s", info.maxdim)
         msg.debug("info.dim: %s", info.dim)

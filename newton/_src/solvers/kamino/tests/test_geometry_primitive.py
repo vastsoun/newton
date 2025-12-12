@@ -290,21 +290,21 @@ def check_contacts(
     Checks the contents of a Contacts container against expected values.
     """
     # Run contact counts checks
-    if "model_num_contacts" in expected:
+    if "model_active_contacts" in expected:
         np.testing.assert_equal(
-            actual=int(contacts.model_num_contacts.numpy()[0]),
-            desired=int(expected["model_num_contacts"]),
-            err_msg=f"\n{header}: Failed `model_num_contacts` check for `{case}`\n",
+            actual=int(contacts.model_active_contacts.numpy()[0]),
+            desired=int(expected["model_active_contacts"]),
+            err_msg=f"\n{header}: Failed `model_active_contacts` check for `{case}`\n",
         )
-    if "world_num_contacts" in expected:
+    if "world_active_contacts" in expected:
         np.testing.assert_equal(
-            actual=contacts.world_num_contacts.numpy(),
-            desired=expected["world_num_contacts"],
-            err_msg=f"\n{header}: Failed `world_num_contacts` check for `{case}`\n",
+            actual=contacts.world_active_contacts.numpy(),
+            desired=expected["world_active_contacts"],
+            err_msg=f"\n{header}: Failed `world_active_contacts` check for `{case}`\n",
         )
 
     # Skip per-contact checks if there are no active contacts
-    num_active = contacts.model_num_contacts.numpy()[0]
+    num_active = contacts.model_active_contacts.numpy()[0]
     if num_active == 0:
         return
 
@@ -411,8 +411,8 @@ def test_narrowphase(
 
         # Optional verbose output
         msg.debug("[%s][%s]: bodies.q_i:\n%s", case, bp_name, data.bodies.q_i)
-        msg.debug("[%s][%s]: contacts.model_num_contacts: %s", case, bp_name, contacts.model_num_contacts)
-        msg.debug("[%s][%s]: contacts.world_num_contacts: %s", case, bp_name, contacts.world_num_contacts)
+        msg.debug("[%s][%s]: contacts.model_active_contacts: %s", case, bp_name, contacts.model_active_contacts)
+        msg.debug("[%s][%s]: contacts.world_active_contacts: %s", case, bp_name, contacts.world_active_contacts)
         msg.debug("[%s][%s]: contacts.wid: %s", case, bp_name, contacts.wid)
         msg.debug("[%s][%s]: contacts.cid: %s", case, bp_name, contacts.cid)
         msg.debug("[%s][%s]: contacts.gid_AB:\n%s", case, bp_name, contacts.gid_AB)
@@ -457,8 +457,8 @@ def test_narrowphase_on_shape_pair(
 
     # Define expected contacts dictionary
     expected = {
-        "model_num_contacts": expected_contacts,
-        "world_num_contacts": [expected_contacts],
+        "model_active_contacts": expected_contacts,
+        "world_active_contacts": [expected_contacts],
     }
 
     # Run the narrow-phase test
@@ -828,8 +828,8 @@ class TestPrimitiveNarrowPhase(unittest.TestCase):
 
         # Define expected contact data
         expected = {
-            "model_num_contacts": 1,
-            "world_num_contacts": [1],
+            "model_active_contacts": 1,
+            "world_active_contacts": [1],
             "gid_AB": np.array([[0, 1]], dtype=np.int32),
             "bid_AB": np.array([[0, 1]], dtype=np.int32),
             "position_A": np.array([[0.0, 0.0, 0.5 * abs(distance)]], dtype=np.float32),
@@ -870,8 +870,8 @@ class TestPrimitiveNarrowPhase(unittest.TestCase):
 
         # Define expected contact data
         expected = {
-            "model_num_contacts": 4,
-            "world_num_contacts": [4],
+            "model_active_contacts": 4,
+            "world_active_contacts": [4],
             "gid_AB": np.tile(np.array([0, 1], dtype=np.int32), reps=(4, 1)),
             "bid_AB": np.tile(np.array([0, 1], dtype=np.int32), reps=(4, 1)),
             "position_A": np.array(
@@ -924,8 +924,8 @@ class TestPrimitiveNarrowPhase(unittest.TestCase):
 
         # Define expected contact data
         expected = {
-            "model_num_contacts": 8,
-            "world_num_contacts": [8],
+            "model_active_contacts": 8,
+            "world_active_contacts": [8],
             "gid_AB": np.tile(np.array([0, 1], dtype=np.int32), reps=(8, 1)),
             "bid_AB": np.tile(np.array([0, 1], dtype=np.int32), reps=(8, 1)),
             "position_A": np.array(
@@ -1088,8 +1088,8 @@ class TestPipelinePrimitive(unittest.TestCase):
 
         # Define expected contacts dictionary
         expected = {
-            "model_num_contacts": sum(expected_contacts_per_pair),
-            "world_num_contacts": np.array(expected_contacts_per_pair, dtype=np.int32),
+            "model_active_contacts": sum(expected_contacts_per_pair),
+            "world_active_contacts": np.array(expected_contacts_per_pair, dtype=np.int32),
         }
 
         # Check results

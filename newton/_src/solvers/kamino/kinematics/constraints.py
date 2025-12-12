@@ -85,8 +85,8 @@ def max_constraints_per_world(
     # Compute the maximum number of constraints per world
     nw = model.info.num_worlds
     njc = [model.worlds[i].num_joint_cts for i in range(nw)]
-    maxnl = limits.num_world_max_limits if limits and limits.num_model_max_limits > 0 else [0] * nw
-    maxnc = contacts.num_world_max_contacts if contacts and contacts.num_model_max_contacts > 0 else [0] * nw
+    maxnl = limits.world_max_limits_host if limits and limits.model_max_limits_host > 0 else [0] * nw
+    maxnc = contacts.world_max_contacts_host if contacts and contacts.model_max_contacts_host > 0 else [0] * nw
     maxncts = [njc[i] + maxnl[i] + 3 * maxnc[i] for i in range(nw)]
     return maxncts
 
@@ -137,11 +137,11 @@ def make_unilateral_constraints_info(
 
     def _assign_model_limits_info():
         nonlocal world_maxnl
-        world_maxnl = limits.num_world_max_limits
-        model.size.sum_of_max_limits = limits.num_model_max_limits
-        model.size.max_of_max_limits = max(limits.num_world_max_limits)
+        world_maxnl = limits.world_max_limits_host
+        model.size.sum_of_max_limits = limits.model_max_limits_host
+        model.size.max_of_max_limits = max(limits.world_max_limits_host)
         model.info.max_limits = limits.world_max_limits
-        data.info.num_limits = limits.world_num_limits
+        data.info.num_limits = limits.world_active_limits
 
     def _make_empty_model_limits_info():
         nonlocal world_maxnl
@@ -154,11 +154,11 @@ def make_unilateral_constraints_info(
 
     def _assign_model_contacts_info():
         nonlocal world_maxnc
-        world_maxnc = contacts.num_world_max_contacts
-        model.size.sum_of_max_contacts = contacts.num_model_max_contacts
-        model.size.max_of_max_contacts = max(contacts.num_world_max_contacts)
+        world_maxnc = contacts.world_max_contacts_host
+        model.size.sum_of_max_contacts = contacts.model_max_contacts_host
+        model.size.max_of_max_contacts = max(contacts.world_max_contacts_host)
         model.info.max_contacts = contacts.world_max_contacts
-        data.info.num_contacts = contacts.world_num_contacts
+        data.info.num_contacts = contacts.world_active_contacts
 
     def _make_empty_model_contacts_info():
         nonlocal world_maxnc
@@ -174,7 +174,7 @@ def make_unilateral_constraints_info(
     if limits is not None:
         if not isinstance(limits, Limits):
             raise TypeError("`limits` must be an instance of `Limits`")
-        if limits.data is not None and limits.num_model_max_limits > 0:
+        if limits.data is not None and limits.model_max_limits_host > 0:
             _assign_model_limits_info()
         else:
             _make_empty_model_limits_info()
@@ -186,7 +186,7 @@ def make_unilateral_constraints_info(
     if contacts is not None:
         if not isinstance(contacts, Contacts):
             raise TypeError("`contacts` must be an instance of `Contacts`")
-        if contacts.data is not None and contacts.num_model_max_contacts > 0:
+        if contacts.data is not None and contacts.model_max_contacts_host > 0:
             _assign_model_contacts_info()
     else:
         _make_empty_model_contacts_info()
@@ -318,13 +318,13 @@ def _unpack_joint_constraint_solutions(
 
     # Retrieve the world-specific info
     inv_dt = model_time_inv_dt[wid]
-    world_joints_cts_offset = model_info_joint_cts_offset[wid]
     world_total_cts_offset = model_info_total_cts_offset[wid]
+    world_joints_cts_offset = model_info_joint_cts_offset[wid]
 
     # Compute block offsets of the joint's constraints within
     # the joint-only constraints and total constraints arrays
-    jio_j = world_joints_cts_offset + cts_offset
     vio_j = world_total_cts_offset + cts_offset
+    jio_j = world_joints_cts_offset + cts_offset
 
     # Compute and store the joint-constraint reaction forces
     for j in range(num_cts):
@@ -335,6 +335,7 @@ def _unpack_joint_constraint_solutions(
 def _unpack_limit_constraint_solutions(
     # Inputs:
     model_time_inv_dt: wp.array(dtype=float32),
+    model_info_total_cts_offset: wp.array(dtype=int32),
     data_info_limit_cts_group_offset: wp.array(dtype=int32),
     limit_model_num_limits: wp.array(dtype=int32),
     limit_wid: wp.array(dtype=int32),
@@ -357,16 +358,15 @@ def _unpack_limit_constraint_solutions(
 
     # Retrieve the world index and the world-relative limit index for this limit
     wid = limit_wid[lid]
-    wlid = limit_lid[lid]
+    lid_l = limit_lid[lid]
 
-    # Load the limit constraint group offset for this world
-    lcgo = data_info_limit_cts_group_offset[wid]
-
-    # Load the time step for this world
+    # Retrieve the world-specific info
     inv_dt = model_time_inv_dt[wid]
+    total_cts_offset = model_info_total_cts_offset[wid]
+    limit_cts_offset = data_info_limit_cts_group_offset[wid]
 
     # Compute the global constraint index for this limit
-    limit_cts_idx = lcgo + wlid
+    limit_cts_idx = total_cts_offset + limit_cts_offset + lid_l
 
     # Load the limit reaction and velocity from the global constraint arrays
     lambda_l = lambdas[limit_cts_idx]
@@ -384,6 +384,7 @@ def _unpack_limit_constraint_solutions(
 def _unpack_contact_constraint_solutions(
     # Inputs:
     model_time_inv_dt: wp.array(dtype=float32),
+    model_info_total_cts_offset: wp.array(dtype=int32),
     data_info_contact_cts_group_offset: wp.array(dtype=int32),
     contact_model_num_contacts: wp.array(dtype=int32),
     contact_wid: wp.array(dtype=int32),
@@ -407,20 +408,23 @@ def _unpack_contact_constraint_solutions(
 
     # Retrieve the world index and the world-relative contact index for this contact
     wid = contact_wid[cid]
-    wcid = contact_cid[cid]
+    cid_k = contact_cid[cid]
 
-    # Load the contact constraint group offset for this world
-    ccgo = data_info_contact_cts_group_offset[wid]
-
-    # Load the time step for this world
+    # Retrieve the world-specific info
     inv_dt = model_time_inv_dt[wid]
+    total_cts_offset = model_info_total_cts_offset[wid]
+    contact_cts_offset = data_info_contact_cts_group_offset[wid]
+
+    # Compute block offsets of the contact constraints within
+    # the contact-only constraints and total constraints arrays
+    contact_cts_start = total_cts_offset + contact_cts_offset + 3 * cid_k
 
     # Load the contact reaction and velocity from the global constraint arrays
     lambda_k = vec3f(0.0)
     v_plus_k = vec3f(0.0)
     for k in range(3):
-        lambda_k[k] = lambdas[ccgo + 3 * wcid + k]
-        v_plus_k[k] = v_plus[ccgo + 3 * wcid + k]
+        lambda_k[k] = lambdas[contact_cts_start + k]
+        v_plus_k[k] = v_plus[contact_cts_start + k]
 
     # Scale the contact reaction by the time step to convert from lagrange impulse to force
     lambda_k = inv_dt * lambda_k
@@ -511,12 +515,13 @@ def unpack_constraint_solutions(
     if limits is not None:
         wp.launch(
             kernel=_unpack_limit_constraint_solutions,
-            dim=limits.num_model_max_limits,
+            dim=limits.model_max_limits_host,
             inputs=[
                 # Inputs:
                 model.time.inv_dt,
+                model.info.total_cts_offset,
                 data.info.limit_cts_group_offset,
-                limits.model_num_limits,
+                limits.model_active_limits,
                 limits.wid,
                 limits.lid,
                 lambdas,
@@ -531,12 +536,13 @@ def unpack_constraint_solutions(
     if contacts is not None:
         wp.launch(
             kernel=_unpack_contact_constraint_solutions,
-            dim=contacts.num_model_max_contacts,
+            dim=contacts.model_max_contacts_host,
             inputs=[
                 # Inputs:
                 model.time.inv_dt,
+                model.info.total_cts_offset,
                 data.info.contact_cts_group_offset,
-                contacts.model_num_contacts,
+                contacts.model_active_contacts,
                 contacts.wid,
                 contacts.cid,
                 lambdas,

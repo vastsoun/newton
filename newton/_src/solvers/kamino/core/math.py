@@ -55,7 +55,7 @@ FLOAT32_MAX = wp.constant(float32(np.finfo(np.float32).max))
 """The highest 32-bit floating-point value."""
 
 FLOAT32_EPS = wp.constant(float32(np.finfo(np.float32).eps))
-"""The smallest 32-bit floating-point value that is not zero."""
+"""Machine epsilon for 32-bit float: the smallest value such that 1.0 + eps != 1.0."""
 
 UNIT_X = wp.constant(vec3f(1.0, 0.0, 0.0))
 """ 3D unit vector for the X axis """

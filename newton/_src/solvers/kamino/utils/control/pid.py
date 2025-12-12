@@ -23,12 +23,12 @@ import numpy as np
 import warp as wp
 from warp.context import Devicelike
 
-from ..core.control import Control
-from ..core.joints import JointActuationType
-from ..core.model import Model
-from ..core.state import State
-from ..core.time import TimeData
-from ..core.types import FloatArrayLike, IntArrayLike, float32, int32
+from ...core.control import Control
+from ...core.joints import JointActuationType
+from ...core.model import Model
+from ...core.state import State
+from ...core.time import TimeData
+from ...core.types import FloatArrayLike, IntArrayLike, float32, int32
 
 ###
 # Module interface
@@ -363,7 +363,7 @@ class JointSpacePIDController:
 
         Args:
             model (Model | None): The model container describing the system to be simulated.
-                If None, call ``allocate()`` later.
+                If None, call ``finalize()`` later.
             K_p (FloatArrayLike | None): Proportional gains per actuated joint DoF.
             K_i (FloatArrayLike | None): Integral gains per actuated joint DoF.
             K_d (FloatArrayLike | None): Derivative gains per actuated joint DoF.
@@ -380,7 +380,7 @@ class JointSpacePIDController:
 
         # If a model is provided, allocate the controller data
         if model is not None:
-            self.allocate(model, K_p, K_i, K_d, decimation, device)
+            self.finalize(model, K_p, K_i, K_d, decimation, device)
 
     ###
     # Properties
@@ -390,7 +390,7 @@ class JointSpacePIDController:
     def data(self) -> PIDControllerData:
         """The internal controller data."""
         if self._data is None:
-            raise RuntimeError("Controller data is not allocated. Call allocate() first.")
+            raise RuntimeError("Controller data is not allocated. Call finalize() first.")
         return self._data
 
     @property
@@ -402,7 +402,7 @@ class JointSpacePIDController:
     # Operations
     ###
 
-    def allocate(
+    def finalize(
         self,
         model: Model,
         K_p: FloatArrayLike,

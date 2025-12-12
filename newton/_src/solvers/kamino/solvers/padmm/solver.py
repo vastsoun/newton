@@ -608,13 +608,13 @@ class PADMMSolver:
         """
         wp.launch(
             kernel=_warmstart_limit_constraints,
-            dim=limits.num_model_max_limits,
+            dim=limits.model_max_limits_host,
             inputs=[
                 # Inputs:
                 model.time.dt,
                 model.info.total_cts_offset,
                 data.info.limit_cts_group_offset,
-                limits.model_num_limits,
+                limits.model_active_limits,
                 limits.wid,
                 limits.lid,
                 limits.reaction,
@@ -652,13 +652,13 @@ class PADMMSolver:
         """
         wp.launch(
             kernel=_warmstart_contact_constraints,
-            dim=contacts.num_model_max_contacts,
+            dim=contacts.model_max_contacts_host,
             inputs=[
                 # Inputs:
                 model.time.dt,
                 model.info.total_cts_offset,
                 data.info.contact_cts_group_offset,
-                contacts.model_num_contacts,
+                contacts.model_active_contacts,
                 contacts.wid,
                 contacts.cid,
                 contacts.material,
@@ -745,9 +745,9 @@ class PADMMSolver:
         # Warm-start each constraint group from constraint states cached in the data containers
         if model.size.sum_of_num_joints > 0:
             self._warmstart_joint_constraints(model, data, problem, x_0, y_0, z_0)
-        if limits is not None and limits.num_model_max_limits > 0:
+        if limits is not None and limits.model_max_limits_host > 0:
             self._warmstart_limit_constraints(model, data, limits, problem, x_0, y_0, z_0)
-        if contacts is not None and contacts.num_model_max_contacts > 0:
+        if contacts is not None and contacts.model_max_contacts_host > 0:
             self._warmstart_contact_constraints(model, data, contacts, problem, x_0, y_0, z_0)
 
     ###

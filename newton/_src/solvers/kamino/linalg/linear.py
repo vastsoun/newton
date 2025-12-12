@@ -84,7 +84,7 @@ class LinearSolver(ABC):
 
         # If an operator is provided, proceed with any necessary memory allocations
         if operator is not None:
-            self.allocate(operator, **kwargs)
+            self.finalize(operator, **kwargs)
 
     ###
     # Properties
@@ -140,7 +140,7 @@ class LinearSolver(ABC):
     # Public API
     ###
 
-    def allocate(self, operator: DenseLinearOperatorData, **kwargs: dict[str, Any]) -> None:
+    def finalize(self, operator: DenseLinearOperatorData, **kwargs: dict[str, Any]) -> None:
         """
         Ingest a linear operator and allocate any necessary internal memory
         based on the multi-linear layout specified by the operator's info.

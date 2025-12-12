@@ -558,21 +558,21 @@ def warmstart_limits_by_matched_jid_dof_key(
         limits (LimitsData): The current limits data to be warm-started.
     """
     # First sort the keys of cached limits to facilitate binary search
-    sorter.sort(num_active_keys=cache.model_num_limits, keys=cache.key)
+    sorter.sort(num_active_keys=cache.model_active_limits, keys=cache.key)
 
     # Launch kernel to warmstart limits by matching jid keys
     wp.launch(
         kernel=_warmstart_limits_by_matched_jid_dof_key,
-        dim=limits.num_model_max_limits,
+        dim=limits.model_max_limits_host,
         inputs=[
             # Inputs - Previous:
             sorter.sorted_keys,
             sorter.sorted_to_unsorted_map,
-            cache.model_num_limits,
+            cache.model_active_limits,
             cache.velocity,
             cache.reaction,
             # Inputs - Next:
-            limits.model_num_limits,
+            limits.model_active_limits,
             limits.key,
             # Outputs:
             limits.reaction,
@@ -605,12 +605,12 @@ def warmstart_contacts_by_matched_geom_pair_key_and_position(
         tolerance = float32(1e-5)
 
     # First sort the keys of cached contacts to facilitate binary search
-    sorter.sort(num_active_keys=cache.model_num_contacts, keys=cache.key)
+    sorter.sort(num_active_keys=cache.model_active_contacts, keys=cache.key)
 
     # Launch kernel to warmstart contacts by matching geom-pair keys and contact point positions
     wp.launch(
         kernel=_warmstart_contacts_by_matched_geom_pair_key_and_position,
-        dim=contacts.num_model_max_contacts,
+        dim=contacts.model_max_contacts_host,
         inputs=[
             # Inputs - Common:
             tolerance,
@@ -620,13 +620,13 @@ def warmstart_contacts_by_matched_geom_pair_key_and_position(
             # Inputs - Previous:
             sorter.sorted_keys,
             sorter.sorted_to_unsorted_map,
-            cache.model_num_contacts,
+            cache.model_active_contacts,
             cache.position_B,
             cache.frame,
             cache.reaction,
             cache.velocity,
             # Inputs - Next:
-            contacts.model_num_contacts,
+            contacts.model_active_contacts,
             contacts.key,
             contacts.wid,
             contacts.bid_AB,
@@ -662,12 +662,12 @@ def warmstart_contacts_from_geom_pair_net_force(
         scaling = float32(1.0)
 
     # First sort the keys of cached contacts to facilitate binary search
-    sorter.sort(num_active_keys=cache.model_num_contacts, keys=cache.key)
+    sorter.sort(num_active_keys=cache.model_active_contacts, keys=cache.key)
 
     # Launch kernel to warmstart contacts by matching geom-pair keys and contact point positions
     wp.launch(
         kernel=_warmstart_contacts_from_geom_pair_net_force,
-        dim=contacts.num_model_max_contacts,
+        dim=contacts.model_max_contacts_host,
         inputs=[
             # Inputs - Common:
             scaling,
@@ -676,11 +676,11 @@ def warmstart_contacts_from_geom_pair_net_force(
             # Inputs - Previous:
             sorter.sorted_keys,
             sorter.sorted_to_unsorted_map,
-            cache.model_num_contacts,
+            cache.model_active_contacts,
             cache.frame,
             cache.reaction,
             # Inputs - Next:
-            contacts.model_num_contacts,
+            contacts.model_active_contacts,
             contacts.key,
             contacts.bid_AB,
             contacts.position_A,
@@ -722,12 +722,12 @@ def warmstart_contacts_by_matched_geom_pair_key_and_position_with_net_force_back
         scaling = float32(1.0)
 
     # First sort the keys of cached contacts to facilitate binary search
-    sorter.sort(num_active_keys=cache.model_num_contacts, keys=cache.key)
+    sorter.sort(num_active_keys=cache.model_active_contacts, keys=cache.key)
 
     # Launch kernel to warmstart contacts by matching geom-pair keys and contact point positions
     wp.launch(
         kernel=_warmstart_contacts_by_matched_geom_pair_key_and_position_with_net_force_backup,
-        dim=contacts.num_model_max_contacts,
+        dim=contacts.model_max_contacts_host,
         inputs=[
             # Inputs - Common:
             tolerance,
@@ -738,13 +738,13 @@ def warmstart_contacts_by_matched_geom_pair_key_and_position_with_net_force_back
             # Inputs - Previous:
             sorter.sorted_keys,
             sorter.sorted_to_unsorted_map,
-            cache.model_num_contacts,
+            cache.model_active_contacts,
             cache.position_B,
             cache.frame,
             cache.reaction,
             cache.velocity,
             # Inputs - Next:
-            contacts.model_num_contacts,
+            contacts.model_active_contacts,
             contacts.key,
             contacts.wid,
             contacts.bid_AB,
@@ -784,22 +784,22 @@ class WarmstarterLimits:
         self._cache: LimitsData | None = None
 
         # Check if the limits container has allocations and skip cache allocations if not
-        if limits.num_model_max_limits <= 0:
+        if limits.model_max_limits_host <= 0:
             return
 
         # Allocate contact data cache based on the those of the provided contacts container
         with wp.ScopedDevice(self._device):
             self._cache = LimitsData(
-                num_model_max_limits=limits.num_model_max_limits,
-                num_world_max_limits=limits.num_world_max_limits,
-                model_num_limits=wp.zeros_like(limits.model_num_limits),
+                model_max_limits_host=limits.model_max_limits_host,
+                world_max_limits_host=limits.world_max_limits_host,
+                model_active_limits=wp.zeros_like(limits.model_active_limits),
                 key=wp.zeros_like(limits.key),
                 velocity=wp.zeros_like(limits.velocity),
                 reaction=wp.zeros_like(limits.reaction),
             )
 
         # Create a key sorter that can handle the maximum number of contacts
-        self._sorter = KeySorter(max_num_keys=limits.num_model_max_limits, device=self._device)
+        self._sorter = KeySorter(max_num_keys=limits.model_max_limits_host, device=self._device)
 
     @property
     def device(self) -> Devicelike:
@@ -849,7 +849,7 @@ class WarmstarterLimits:
             return
 
         # Otherwise, copy over the limits data to the internal cache
-        wp.copy(self._cache.model_num_limits, limits.model_num_limits)
+        wp.copy(self._cache.model_active_limits, limits.model_active_limits)
         wp.copy(self._cache.key, limits.key)
         wp.copy(self._cache.velocity, limits.velocity)
         wp.copy(self._cache.reaction, limits.reaction)
@@ -945,15 +945,15 @@ class WarmstarterContacts:
         self._cache: ContactsData | None = None
 
         # Check if the contacts container has allocations and skip cache allocations if not
-        if contacts.num_model_max_contacts <= 0:
+        if contacts.model_max_contacts_host <= 0:
             return
 
         # Allocate contact data cache based on the those of the provided contacts container
         with wp.ScopedDevice(self._device):
             self._cache = ContactsData(
-                num_model_max_contacts=contacts.num_model_max_contacts,
-                num_world_max_contacts=contacts.num_world_max_contacts,
-                model_num_contacts=wp.zeros_like(contacts.model_num_contacts),
+                model_max_contacts_host=contacts.model_max_contacts_host,
+                world_max_contacts_host=contacts.world_max_contacts_host,
+                model_active_contacts=wp.zeros_like(contacts.model_active_contacts),
                 bid_AB=wp.full_like(contacts.bid_AB, value=vec2i(-1, -1)),
                 position_A=wp.zeros_like(contacts.position_A),
                 position_B=wp.zeros_like(contacts.position_B),
@@ -964,7 +964,7 @@ class WarmstarterContacts:
             )
 
         # Create a key sorter that can handle the maximum number of contacts
-        self._sorter = KeySorter(max_num_keys=contacts.num_model_max_contacts, device=self._device)
+        self._sorter = KeySorter(max_num_keys=contacts.model_max_contacts_host, device=self._device)
 
     @property
     def device(self) -> Devicelike:
@@ -1058,7 +1058,7 @@ class WarmstarterContacts:
             return
 
         # Otherwise, copy over the contacts data to the internal cache
-        wp.copy(self._cache.model_num_contacts, contacts.model_num_contacts)
+        wp.copy(self._cache.model_active_contacts, contacts.model_active_contacts)
         wp.copy(self._cache.bid_AB, contacts.bid_AB)
         wp.copy(self._cache.position_A, contacts.position_A)
         wp.copy(self._cache.position_B, contacts.position_B)

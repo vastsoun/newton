@@ -17,6 +17,7 @@
 
 from .delassus import DelassusOperator
 from .dual import DualProblem, DualProblemData, DualProblemSettings
+from .wrenches import compute_constraint_body_wrenches, compute_joint_dof_body_wrenches
 
 ###
 # Module interface
@@ -27,4 +28,6 @@ __all__ = [
     "DualProblem",
     "DualProblemData",
     "DualProblemSettings",
+    "compute_constraint_body_wrenches",
+    "compute_joint_dof_body_wrenches",
 ]

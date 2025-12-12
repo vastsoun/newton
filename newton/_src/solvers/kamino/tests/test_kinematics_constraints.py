@@ -79,8 +79,8 @@ class TestKinematicsConstraints(unittest.TestCase):
         limits = Limits(builder=builder, device=self.default_device)
         if self.verbose:
             print("")
-            print("limits.num_model_max_limits: ", limits.num_model_max_limits)
-            print("limits.num_world_max_limits: ", limits.num_world_max_limits)
+            print("limits.model_max_limits_host: ", limits.model_max_limits_host)
+            print("limits.world_max_limits_host: ", limits.world_max_limits_host)
 
         # Set the contact allocation capacities
         required_world_max_contacts = [max_world_contacts] * builder.num_worlds
@@ -91,8 +91,8 @@ class TestKinematicsConstraints(unittest.TestCase):
         contacts = Contacts(capacity=required_world_max_contacts, device=self.default_device)
         if self.verbose:
             print("contacts.default_max_world_contacts: ", contacts.default_max_world_contacts)
-            print("contacts.num_model_max_contacts: ", contacts.num_model_max_contacts)
-            print("contacts.num_world_max_contacts: ", contacts.num_world_max_contacts)
+            print("contacts.model_max_contacts_host: ", contacts.model_max_contacts_host)
+            print("contacts.world_max_contacts_host: ", contacts.world_max_contacts_host)
 
         # Create the constraints info
         make_unilateral_constraints_info(
@@ -128,8 +128,8 @@ class TestKinematicsConstraints(unittest.TestCase):
         limits = Limits(builder=builder, device=self.default_device)
         if self.verbose:
             print("")
-            print("limits.num_model_max_limits: ", limits.num_model_max_limits)
-            print("limits.num_world_max_limits: ", limits.num_world_max_limits)
+            print("limits.model_max_limits_host: ", limits.model_max_limits_host)
+            print("limits.world_max_limits_host: ", limits.world_max_limits_host)
 
         # Set the contact allocation capacities
         required_world_max_contacts = [max_world_contacts] * builder.num_worlds
@@ -140,8 +140,8 @@ class TestKinematicsConstraints(unittest.TestCase):
         contacts = Contacts(capacity=required_world_max_contacts, device=self.default_device)
         if self.verbose:
             print("contacts.default_max_world_contacts: ", contacts.default_max_world_contacts)
-            print("contacts.num_model_max_contacts: ", contacts.num_model_max_contacts)
-            print("contacts.num_world_max_contacts: ", contacts.num_world_max_contacts)
+            print("contacts.model_max_contacts_host: ", contacts.model_max_contacts_host)
+            print("contacts.world_max_contacts_host: ", contacts.world_max_contacts_host)
 
         # Create the constraints info
         make_unilateral_constraints_info(
@@ -220,8 +220,8 @@ class TestKinematicsConstraints(unittest.TestCase):
         limits = Limits(builder=builder, device=self.default_device)
         if self.verbose:
             print("")
-            print("limits.num_model_max_limits: ", limits.num_model_max_limits)
-            print("limits.num_world_max_limits: ", limits.num_world_max_limits)
+            print("limits.model_max_limits_host: ", limits.model_max_limits_host)
+            print("limits.world_max_limits_host: ", limits.world_max_limits_host)
 
         # Set the contact allocation capacities
         required_world_max_contacts = [max_world_contacts] * builder.num_worlds
@@ -232,8 +232,8 @@ class TestKinematicsConstraints(unittest.TestCase):
         contacts = Contacts(capacity=required_world_max_contacts, device=self.default_device)
         if self.verbose:
             print("contacts.default_max_world_contacts: ", contacts.default_max_world_contacts)
-            print("contacts.num_model_max_contacts: ", contacts.num_model_max_contacts)
-            print("contacts.num_world_max_contacts: ", contacts.num_world_max_contacts)
+            print("contacts.model_max_contacts_host: ", contacts.model_max_contacts_host)
+            print("contacts.world_max_contacts_host: ", contacts.world_max_contacts_host)
 
         # Create the constraints info
         make_unilateral_constraints_info(
@@ -247,13 +247,13 @@ class TestKinematicsConstraints(unittest.TestCase):
             print_model_constraint_info(model)
             print_model_data_info(data)
             print("data.info.num_limits.ptr: ", data.info.num_limits.ptr)
-            print("limits.world_num_limits.ptr: ", limits.world_num_limits.ptr)
+            print("limits.world_active_limits.ptr: ", limits.world_active_limits.ptr)
             print("data.info.num_contacts.ptr: ", data.info.num_contacts.ptr)
-            print("contacts.world_num_contacts.ptr: ", contacts.world_num_contacts.ptr)
+            print("contacts.world_active_contacts.ptr: ", contacts.world_active_contacts.ptr)
 
         # Check if the data info entity counters point to the same arrays as the limits and contacts containers
-        self.assertTrue(data.info.num_limits.ptr, limits.world_num_limits.ptr)
-        self.assertTrue(data.info.num_contacts.ptr, contacts.world_num_contacts.ptr)
+        self.assertTrue(data.info.num_limits.ptr, limits.world_active_limits.ptr)
+        self.assertTrue(data.info.num_contacts.ptr, contacts.world_active_contacts.ptr)
 
 
 ###

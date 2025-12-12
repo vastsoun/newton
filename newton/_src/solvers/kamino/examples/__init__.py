@@ -114,7 +114,7 @@ def print_frame(sim: Simulator, i: int, pfunc=msg.debug):
     maxcts = sim.model.info.max_total_cts.numpy()[0]
     ncts = sim.model_data.info.num_total_cts.numpy()[0]
     nl = sim.limits.world_max_limits.numpy()[0]
-    nc = sim.contacts.world_num_contacts.numpy()[0]
+    nc = sim.contacts.world_active_contacts.numpy()[0]
 
     # Print the simulation state
     pfunc(f"[s={i}]: nbd: {nbd}, ncts: {ncts}, nl: {nl}, nc: {nc}")

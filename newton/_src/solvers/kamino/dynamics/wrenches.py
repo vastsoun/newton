@@ -17,8 +17,6 @@
 KAMINO: Dynamics: Wrenches
 """
 
-from __future__ import annotations
-
 import warp as wp
 
 from ..core.model import Model, ModelData
@@ -217,17 +215,17 @@ def _compute_limit_cts_body_wrenches(
     # Retrieve the thread index
     tid = wp.tid()
 
-    # Skip if tid is greater than the number of active contacts in the model
+    # Skip if tid is greater than the number of active limits in the model
     if tid >= wp.min(limits_model_num[0], limits_model_max):
         return
 
-    # Retrieve the contact index of the contact w.r.t the world
+    # Retrieve the limit index of the limit w.r.t the world
     lid = limits_lid[tid]
 
-    # Retrieve the world index of the contact
+    # Retrieve the world index of the limit
     wid = limits_wid[tid]
 
-    # Extract the body indices associated with the contact
+    # Extract the body indices associated with the limit
     # NOTE: These indices are w.r.t the model
     bids = limits_bids[tid]
     bid_B = bids[0]
@@ -236,16 +234,16 @@ def _compute_limit_cts_body_wrenches(
     # Retrieve the inverse time-step of the world
     inv_dt = model_time_inv_dt[wid]
 
-    # Retrieve the world-specific info data
+    # Retrieve the world-specific info
     nbd = model_info_num_body_dofs[wid]
     bio = model_info_bodies_offset[wid]
     mio = jacobian_cts_offset[wid]
     vio = lambdas_offsets[wid]
 
-    # Retrieve the index offset of the active contact constraints of the world
+    # Retrieve the index offset of the active limit constraints of the world
     lcgo = state_info_limit_cts_group_offset[wid]
 
-    # Compute the index offsets of the contact constraint
+    # Compute the index offsets of the limit constraint
     cio_l = lcgo + lid
     vio_l = vio + cio_l
     mio_l = mio + nbd * cio_l
@@ -254,34 +252,33 @@ def _compute_limit_cts_body_wrenches(
     # NOTE: We need to scale by the time-step because the lambdas are impulses
     lambda_l = inv_dt * lambdas_data[vio_l]
 
-    # Extract the contact constraint Jacobian for the follower body
+    # Extract the limit constraint Jacobian for the follower body
     JT_l_F = vec6f(0.0)
     dio_F = 6 * (bid_F - bio)
-    for _j in range(3):
-        mio_lF = mio_l + dio_F
-        for i in range(6):
-            JT_l_F[i] = jacobian_cts_data[mio_lF + i]
+    mio_lF = mio_l + dio_F
+    for i in range(6):
+        JT_l_F[i] = jacobian_cts_data[mio_lF + i]
 
-    # Compute the contact constraint wrench for the follower body
-    w_c_F = JT_l_F * lambda_l
+    # Compute the limit constraint wrench for the follower body
+    w_l_F = JT_l_F * lambda_l
 
-    # Store the contact constraint wrench for the follower body
-    wp.atomic_add(state_bodies_w_l, bid_F, w_c_F)
+    # Store the limit constraint wrench for the follower body
+    wp.atomic_add(state_bodies_w_l, bid_F, w_l_F)
 
     # Compute the limit constraint wrench for the joint base body if bid_B >= 0
     if bid_B >= 0:
-        # Extract the contact constraint Jacobian for the base body
+        # Extract the limit constraint Jacobian for the base body
         JT_l_B = vec6f(0.0)
         dio_B = 6 * (bid_B - bio)
         mio_lB = mio_l + dio_B
         for i in range(6):
             JT_l_B[i] = jacobian_cts_data[mio_lB + i]
 
-        # Compute the contact constraint wrench for the base body
-        w_c_B = JT_l_B * lambda_l
+        # Compute the limit constraint wrench for the base body
+        w_l_B = JT_l_B * lambda_l
 
-        # Store the contact constraint wrench for the base body
-        wp.atomic_add(state_bodies_w_l, bid_B, w_c_B)
+        # Store the limit constraint wrench for the base body
+        wp.atomic_add(state_bodies_w_l, bid_B, w_l_B)
 
 
 @wp.kernel
@@ -422,8 +419,8 @@ def compute_constraint_body_wrenches(
     limits: LimitsData,
     contacts: ContactsData,
     jacobians: DenseSystemJacobiansData,
-    lambdas_offsets: wp.array(dtype=int32),
-    lambdas_data: wp.array(dtype=float32),
+    lambdas_offsets: wp.array,
+    lambdas_data: wp.array,
     reset_to_zero: bool = True,
 ):
     """
@@ -460,15 +457,15 @@ def compute_constraint_body_wrenches(
             data.bodies.w_l_i.zero_()
         wp.launch(
             _compute_limit_cts_body_wrenches,
-            dim=limits.num_model_max_limits,
+            dim=limits.model_max_limits_host,
             inputs=[
                 # Inputs:
                 model.info.num_body_dofs,
                 model.info.bodies_offset,
                 data.info.limit_cts_group_offset,
                 model.time.inv_dt,
-                limits.model_num_limits,
-                limits.num_model_max_limits,
+                limits.model_active_limits,
+                limits.model_max_limits_host,
                 limits.wid,
                 limits.lid,
                 limits.bids,
@@ -486,15 +483,15 @@ def compute_constraint_body_wrenches(
             data.bodies.w_c_i.zero_()
         wp.launch(
             _compute_contact_cts_body_wrenches,
-            dim=contacts.num_model_max_contacts,
+            dim=contacts.model_max_contacts_host,
             inputs=[
                 # Inputs:
                 model.info.num_body_dofs,
                 model.info.bodies_offset,
                 data.info.contact_cts_group_offset,
                 model.time.inv_dt,
-                contacts.model_num_contacts,
-                contacts.num_model_max_contacts,
+                contacts.model_active_contacts,
+                contacts.model_max_contacts_host,
                 contacts.wid,
                 contacts.cid,
                 contacts.bid_AB,

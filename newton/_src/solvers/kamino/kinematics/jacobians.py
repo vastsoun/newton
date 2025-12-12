@@ -537,14 +537,14 @@ def build_limit_jacobians(
     # Build the limit constraints Jacobians
     wp.launch(
         _build_limit_jacobians,
-        dim=limits.num_model_max_limits,
+        dim=limits.model_max_limits_host,
         inputs=[
             # Inputs:
             model.info.num_body_dofs,
             model.info.bodies_offset,
             data.info.limit_cts_group_offset,
-            limits.model_num_limits,
-            limits.num_model_max_limits,
+            limits.model_active_limits,
+            limits.model_max_limits_host,
             limits.wid,
             limits.lid,
             limits.bids,
@@ -574,15 +574,15 @@ def build_contact_jacobians(
     # Build the contact constraints Jacobians
     wp.launch(
         _build_contact_jacobians,
-        dim=contacts.num_model_max_contacts,
+        dim=contacts.model_max_contacts_host,
         inputs=[
             # Inputs:
             model.info.num_body_dofs,
             model.info.bodies_offset,
             data.info.contact_cts_group_offset,
             data.bodies.q_i,
-            contacts.model_num_contacts,
-            contacts.num_model_max_contacts,
+            contacts.model_active_contacts,
+            contacts.model_max_contacts_host,
             contacts.wid,
             contacts.cid,
             contacts.bid_AB,
@@ -643,14 +643,14 @@ def build_jacobians(
             raise TypeError(f"`limits` is required to be of type `LimitsData` but got {type(limits)}.")
         wp.launch(
             _build_limit_jacobians,
-            dim=limits.num_model_max_limits,
+            dim=limits.model_max_limits_host,
             inputs=[
                 # Inputs:
                 model.info.num_body_dofs,
                 model.info.bodies_offset,
                 data.info.limit_cts_group_offset,
-                limits.model_num_limits,
-                limits.num_model_max_limits,
+                limits.model_active_limits,
+                limits.model_max_limits_host,
                 limits.wid,
                 limits.lid,
                 limits.bids,
@@ -670,15 +670,15 @@ def build_jacobians(
             raise TypeError(f"`contacts` is required to be of type `ContactsData` but got {type(contacts)}.")
         wp.launch(
             _build_contact_jacobians,
-            dim=contacts.num_model_max_contacts,
+            dim=contacts.model_max_contacts_host,
             inputs=[
                 # Inputs:
                 model.info.num_body_dofs,
                 model.info.bodies_offset,
                 data.info.contact_cts_group_offset,
                 data.bodies.q_i,
-                contacts.model_num_contacts,
-                contacts.num_model_max_contacts,
+                contacts.model_active_contacts,
+                contacts.model_max_contacts_host,
                 contacts.wid,
                 contacts.cid,
                 contacts.bid_AB,
@@ -753,7 +753,7 @@ class DenseSystemJacobians:
 
         # If a model is provided, allocate the Jacobians data
         if model is not None:
-            self.allocate(model=model, limits=limits, contacts=contacts, device=device)
+            self.finalize(model=model, limits=limits, contacts=contacts, device=device)
 
     @property
     def data(self) -> DenseSystemJacobiansData:
@@ -762,7 +762,7 @@ class DenseSystemJacobians:
         """
         return self._data
 
-    def allocate(
+    def finalize(
         self, model: Model, limits: Limits | None = None, contacts: Contacts | None = None, device: Devicelike = None
     ):
         # Ensure the model container is valid
@@ -787,8 +787,8 @@ class DenseSystemJacobians:
         nbd = [model.worlds[w].num_body_dofs for w in range(nw)]
         njc = [model.worlds[w].num_joint_cts for w in range(nw)]
         njd = [model.worlds[w].num_joint_dofs for w in range(nw)]
-        maxnl = limits.num_world_max_limits if limits and limits.num_model_max_limits > 0 else [0] * nw
-        maxnc = contacts.num_world_max_contacts if contacts and contacts.num_model_max_contacts > 0 else [0] * nw
+        maxnl = limits.world_max_limits_host if limits and limits.model_max_limits_host > 0 else [0] * nw
+        maxnc = contacts.world_max_contacts_host if contacts and contacts.model_max_contacts_host > 0 else [0] * nw
         maxncts = [njc[w] + maxnl[w] + 3 * maxnc[w] for w in range(nw)]
 
         # Compute the sizes of the Jacobian matrix data for each world

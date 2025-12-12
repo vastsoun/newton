@@ -158,7 +158,7 @@ class DenseRectangularMultiLinearInfo:
             raise TypeError("Dimensions must be a pair of positive integers or a list of positive integer pairs.")
         return dims
 
-    def allocate(
+    def finalize(
         self,
         dimensions: list[tuple[int, int]],
         dtype: FloatType = float32,
@@ -403,7 +403,7 @@ class DenseSquareMultiLinearInfo:
             raise TypeError("Dimensions must be an positive integer or a list of positive integers.")
         return dims
 
-    def allocate(
+    def finalize(
         self, dimensions: list[int], dtype: FloatType = float32, itype: IntType = int32, device: Devicelike = None
     ) -> None:
         """

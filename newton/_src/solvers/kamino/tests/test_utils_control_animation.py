@@ -21,12 +21,12 @@ import unittest
 import numpy as np
 import warp as wp
 
-from newton._src.solvers.kamino.control.animation import AnimationJointReference
 from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.core.types import float32
 from newton._src.solvers.kamino.models import get_examples_usd_assets_path
 from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.utils import logger as msg
+from newton._src.solvers.kamino.utils.control import AnimationJointReference
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
 
 ###

@@ -79,8 +79,8 @@ def extract_cts_jacobians(
     # Extract each Jacobian as a matrix
     num_bdofs = [model.worlds[w].num_body_dofs for w in range(num_worlds)]
     num_jcts = [model.worlds[w].num_joint_cts for w in range(num_worlds)]
-    maxnl = limits.num_world_max_limits if limits is not None else [0] * num_worlds
-    maxnc = contacts.num_world_max_contacts if contacts is not None else [0] * num_worlds
+    maxnl = limits.world_max_limits_host if limits is not None else [0] * num_worlds
+    maxnc = contacts.world_max_contacts_host if contacts is not None else [0] * num_worlds
     J_cts_mat: list[np.ndarray] = []
     for i in range(num_worlds):
         maxncts = num_jcts[i] + maxnl[i] + 3 * maxnc[i]
@@ -315,8 +315,8 @@ class TestKinematicsJacobians(unittest.TestCase):
         # Construct and allocate the limits container
         limits = Limits(builder=builder, device=self.default_device)
         if self.verbose:
-            print("limits.num_model_max_limits: ", limits.num_model_max_limits)
-            print("limits.num_world_max_limits: ", limits.num_world_max_limits)
+            print("limits.model_max_limits_host: ", limits.model_max_limits_host)
+            print("limits.world_max_limits_host: ", limits.world_max_limits_host)
 
         # Create the Jacobians container
         jacobians = DenseSystemJacobians(model=model, limits=limits, device=self.default_device)
@@ -327,7 +327,7 @@ class TestKinematicsJacobians(unittest.TestCase):
             print(f"J_cts_data: shape={jacobians.data.J_cts_data.shape}")
 
         # Check the allocations of Jacobians
-        model_num_cts = model.size.sum_of_num_joint_cts + limits.num_model_max_limits
+        model_num_cts = model.size.sum_of_num_joint_cts + limits.model_max_limits_host
         self.assertEqual(jacobians.data.J_dofs_offsets.size, 1)
         self.assertEqual(jacobians.data.J_cts_offsets.size, 1)
         self.assertEqual(jacobians.data.J_dofs_offsets.numpy()[0], 0)
@@ -362,8 +362,8 @@ class TestKinematicsJacobians(unittest.TestCase):
         contacts = Contacts(capacity=required_world_max_contacts, device=self.default_device)
         if self.verbose:
             print("contacts.default_max_world_contacts: ", contacts.default_max_world_contacts)
-            print("contacts.num_model_max_contacts: ", contacts.num_model_max_contacts)
-            print("contacts.num_world_max_contacts: ", contacts.num_world_max_contacts)
+            print("contacts.model_max_contacts_host: ", contacts.model_max_contacts_host)
+            print("contacts.world_max_contacts_host: ", contacts.world_max_contacts_host)
 
         # Create the Jacobians container
         jacobians = DenseSystemJacobians(model=model, contacts=contacts, device=self.default_device)
@@ -374,7 +374,7 @@ class TestKinematicsJacobians(unittest.TestCase):
             print(f"J_cts_data: shape={jacobians.data.J_cts_data.shape}")
 
         # Check the allocations of Jacobians
-        model_num_cts = model.size.sum_of_num_joint_cts + 3 * contacts.num_model_max_contacts
+        model_num_cts = model.size.sum_of_num_joint_cts + 3 * contacts.model_max_contacts_host
         self.assertEqual(jacobians.data.J_dofs_offsets.size, 1)
         self.assertEqual(jacobians.data.J_cts_offsets.size, 1)
         self.assertEqual(jacobians.data.J_dofs_offsets.numpy()[0], 0)
@@ -403,8 +403,8 @@ class TestKinematicsJacobians(unittest.TestCase):
         # Construct and allocate the limits container
         limits = Limits(builder=builder, device=self.default_device)
         if self.verbose:
-            print("limits.num_model_max_limits: ", limits.num_model_max_limits)
-            print("limits.num_world_max_limits: ", limits.num_world_max_limits)
+            print("limits.model_max_limits_host: ", limits.model_max_limits_host)
+            print("limits.world_max_limits_host: ", limits.world_max_limits_host)
 
         # Set the contact allocation capacities
         required_world_max_contacts = [max_world_contacts] * builder.num_worlds
@@ -415,8 +415,8 @@ class TestKinematicsJacobians(unittest.TestCase):
         contacts = Contacts(capacity=required_world_max_contacts, device=self.default_device)
         if self.verbose:
             print("contacts.default_max_world_contacts: ", contacts.default_max_world_contacts)
-            print("contacts.num_model_max_contacts: ", contacts.num_model_max_contacts)
-            print("contacts.num_world_max_contacts: ", contacts.num_world_max_contacts)
+            print("contacts.model_max_contacts_host: ", contacts.model_max_contacts_host)
+            print("contacts.world_max_contacts_host: ", contacts.world_max_contacts_host)
 
         # Create the Jacobians container
         jacobians = DenseSystemJacobians(model=model, limits=limits, contacts=contacts, device=self.default_device)
@@ -428,7 +428,7 @@ class TestKinematicsJacobians(unittest.TestCase):
 
         # Check the allocations of Jacobians
         model_num_cts = (
-            model.size.sum_of_num_joint_cts + limits.num_model_max_limits + 3 * contacts.num_model_max_contacts
+            model.size.sum_of_num_joint_cts + limits.model_max_limits_host + 3 * contacts.model_max_contacts_host
         )
         self.assertEqual(jacobians.data.J_dofs_offsets.size, 1)
         self.assertEqual(jacobians.data.J_cts_offsets.size, 1)
@@ -459,8 +459,8 @@ class TestKinematicsJacobians(unittest.TestCase):
         # Construct and allocate the limits container
         limits = Limits(builder=builder, device=self.default_device)
         if self.verbose:
-            print("limits.num_model_max_limits: ", limits.num_model_max_limits)
-            print("limits.num_world_max_limits: ", limits.num_world_max_limits)
+            print("limits.model_max_limits_host: ", limits.model_max_limits_host)
+            print("limits.world_max_limits_host: ", limits.world_max_limits_host)
 
         # Set the contact allocation capacities
         required_world_max_contacts = [max_world_contacts] * builder.num_worlds
@@ -471,9 +471,9 @@ class TestKinematicsJacobians(unittest.TestCase):
         contacts = Contacts(capacity=required_world_max_contacts, device=self.default_device)
         if self.verbose:
             print("contacts.default_max_world_contacts: ", contacts.default_max_world_contacts)
-            print("contacts.num_model_max_contacts: ", contacts.num_model_max_contacts)
-            print("contacts.num_world_max_contacts: ", contacts.num_world_max_contacts)
-            print("contacts.num_world_max_contacts: ", contacts.num_world_max_contacts)
+            print("contacts.model_max_contacts_host: ", contacts.model_max_contacts_host)
+            print("contacts.world_max_contacts_host: ", contacts.world_max_contacts_host)
+            print("contacts.world_max_contacts_host: ", contacts.world_max_contacts_host)
 
         # Create the Jacobians container
         jacobians = DenseSystemJacobians(model=model, limits=limits, contacts=contacts, device=self.default_device)
@@ -487,7 +487,7 @@ class TestKinematicsJacobians(unittest.TestCase):
         num_body_dofs = [model.worlds[w].num_body_dofs for w in range(num_worlds)]
         num_joint_dofs = [model.worlds[w].num_joint_dofs for w in range(num_worlds)]
         num_total_cts = [
-            (model.worlds[w].num_joint_cts + limits.num_world_max_limits[w] + 3 * contacts.num_world_max_contacts[w])
+            (model.worlds[w].num_joint_cts + limits.world_max_limits_host[w] + 3 * contacts.world_max_contacts_host[w])
             for w in range(num_worlds)
         ]
         if self.verbose:
@@ -537,8 +537,8 @@ class TestKinematicsJacobians(unittest.TestCase):
         # Construct and allocate the limits container
         limits = Limits(builder=builder, device=self.default_device)
         if self.verbose:
-            print("limits.num_model_max_limits: ", limits.num_model_max_limits)
-            print("limits.num_world_max_limits: ", limits.num_world_max_limits)
+            print("limits.model_max_limits_host: ", limits.model_max_limits_host)
+            print("limits.world_max_limits_host: ", limits.world_max_limits_host)
 
         # Set the contact allocation capacities
         required_world_max_contacts = [max_world_contacts] * builder.num_worlds
@@ -549,8 +549,8 @@ class TestKinematicsJacobians(unittest.TestCase):
         contacts = Contacts(capacity=required_world_max_contacts, device=self.default_device)
         if self.verbose:
             print("contacts.default_max_world_contacts: ", contacts.default_max_world_contacts)
-            print("contacts.num_model_max_contacts: ", contacts.num_model_max_contacts)
-            print("contacts.num_world_max_contacts: ", contacts.num_world_max_contacts)
+            print("contacts.model_max_contacts_host: ", contacts.model_max_contacts_host)
+            print("contacts.world_max_contacts_host: ", contacts.world_max_contacts_host)
 
         # Create the Jacobians container
         jacobians = DenseSystemJacobians(model=model, limits=limits, contacts=contacts, device=self.default_device)
@@ -564,7 +564,7 @@ class TestKinematicsJacobians(unittest.TestCase):
         num_body_dofs = [model.worlds[w].num_body_dofs for w in range(num_worlds)]
         num_joint_dofs = [model.worlds[w].num_joint_dofs for w in range(num_worlds)]
         num_total_cts = [
-            (model.worlds[w].num_joint_cts + limits.num_world_max_limits[w] + 3 * contacts.num_world_max_contacts[w])
+            (model.worlds[w].num_joint_cts + limits.world_max_limits_host[w] + 3 * contacts.world_max_contacts_host[w])
             for w in range(num_worlds)
         ]
         if self.verbose:
@@ -654,14 +654,14 @@ class TestKinematicsJacobians(unittest.TestCase):
         limits.detect(model, data)
         wp.synchronize()
         if self.verbose:
-            print(f"limits.world_num_limits: {limits.world_num_limits}")
+            print(f"limits.world_active_limits: {limits.world_active_limits}")
             print(f"data.info.num_limits: {data.info.num_limits}")
 
         # Run collision detection to generate active contacts
         detector.collide(model, data)
         wp.synchronize()
         if self.verbose:
-            print(f"contacts.world_num_contacts: {detector.contacts.world_num_contacts}")
+            print(f"contacts.world_active_contacts: {detector.contacts.world_active_contacts}")
             print(f"data.info.num_contacts: {data.info.num_contacts}")
 
         # Update the constraints info
@@ -693,8 +693,8 @@ class TestKinematicsJacobians(unittest.TestCase):
         self.assertEqual(
             maxncts,
             model.size.sum_of_num_joint_cts
-            + limits.num_model_max_limits
-            + 3 * detector.contacts.num_model_max_contacts,
+            + limits.model_max_limits_host
+            + 3 * detector.contacts.model_max_contacts_host,
         )
         self.assertEqual(njd, model.size.sum_of_num_joint_dofs)
 
@@ -768,14 +768,14 @@ class TestKinematicsJacobians(unittest.TestCase):
         limits.detect(model, data)
         wp.synchronize()
         if self.verbose:
-            print(f"limits.world_num_limits: {limits.world_num_limits}")
+            print(f"limits.world_active_limits: {limits.world_active_limits}")
             print(f"data.info.num_limits: {data.info.num_limits}")
 
         # Run collision detection to generate active contacts
         detector.collide(model, data)
         wp.synchronize()
         if self.verbose:
-            print(f"contacts.world_num_contacts: {detector.contacts.world_num_contacts}")
+            print(f"contacts.world_active_contacts: {detector.contacts.world_active_contacts}")
             print(f"data.info.num_contacts: {data.info.num_contacts}")
 
         # Update the constraints info
@@ -856,14 +856,14 @@ class TestKinematicsJacobians(unittest.TestCase):
         limits.detect(model, data)
         wp.synchronize()
         if self.verbose:
-            print(f"limits.world_num_limits: {limits.world_num_limits}")
+            print(f"limits.world_active_limits: {limits.world_active_limits}")
             print(f"data.info.num_limits: {data.info.num_limits}")
 
         # Run collision detection to generate active contacts
         detector.collide(model, data)
         wp.synchronize()
         if self.verbose:
-            print(f"contacts.world_num_contacts: {detector.contacts.world_num_contacts}")
+            print(f"contacts.world_active_contacts: {detector.contacts.world_active_contacts}")
             print(f"data.info.num_contacts: {data.info.num_contacts}")
 
         # Update the constraints info

@@ -40,7 +40,7 @@ from ..geometry import (
     CollisionDetectorSettings,
     Contacts,
 )
-from ..integrators.euler import integrate_semi_implicit_euler
+from ..integrators.euler import integrate_euler_semi_implicit
 from ..kinematics.constraints import (
     make_unilateral_constraints_info,
     unpack_constraint_solutions,
@@ -1214,7 +1214,7 @@ class Simulator:
         self._data.update_previous()
 
         # Integrate the state of the system (i.e. of the bodies) to compute the next state
-        integrate_semi_implicit_euler(model=self._model, data=self._data.solver)
+        integrate_euler_semi_implicit(model=self._model, data=self._data.solver)
 
         # Update the joint states based on the updated body states
         # NOTE: We use the previous state `state_p` for post-processing

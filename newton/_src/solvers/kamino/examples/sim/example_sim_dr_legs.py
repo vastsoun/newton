@@ -22,8 +22,6 @@ from warp.context import Devicelike
 
 import newton
 import newton.examples
-from newton._src.solvers.kamino.control.animation import AnimationJointReference
-from newton._src.solvers.kamino.control.pid import JointSpacePIDController
 from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.examples import get_examples_output_path, run_headless
 from newton._src.solvers.kamino.linalg.linear import SolverShorthand as LinearSolverShorthand
@@ -37,6 +35,7 @@ from newton._src.solvers.kamino.simulation.simulator import Simulator, Simulator
 from newton._src.solvers.kamino.solvers.padmm import PADMMWarmStartMode
 from newton._src.solvers.kamino.solvers.warmstart import WarmstarterContacts
 from newton._src.solvers.kamino.utils import logger as msg
+from newton._src.solvers.kamino.utils.control import AnimationJointReference, JointSpacePIDController
 from newton._src.solvers.kamino.utils.datalog import SimulationLogger
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
 from newton._src.solvers.kamino.viewer import ViewerKamino
@@ -66,7 +65,7 @@ class Example:
         self.fps = 60
         self.sim_dt = 0.001
         self.frame_dt = 1.0 / self.fps
-        self.sim_substeps = int(self.frame_dt / self.sim_dt)
+        self.sim_substeps = max(1, round(self.frame_dt / self.sim_dt))
         self.max_steps = max_steps
 
         # Cache the device and other internal flags
@@ -77,9 +76,7 @@ class Example:
         # Set the path to the external USD assets
         EXAMPLE_ASSETS_PATH = get_examples_usd_assets_path()
         if EXAMPLE_ASSETS_PATH is None:
-            raise FileNotFoundError(
-                "The USD assets path for example models is missing: `newton-assets` may not be installed."
-            )
+            raise FileNotFoundError("Failed to find USD assets path for examples: ensure `newton-assets` is installed.")
         USD_MODEL_PATH = os.path.join(EXAMPLE_ASSETS_PATH, "dr_legs/usd/dr_legs_with_meshes_and_boxes.usda")
 
         # Create a model builder from the imported USD
@@ -135,7 +132,7 @@ class Example:
 
         # Compute animation time step and rate
         animation_dt = 0.01  # 100 fps
-        animation_rate = int(round(animation_dt / settings.dt))
+        animation_rate = round(animation_dt / settings.dt)
         msg.info(f"animation_dt: {animation_dt}")
         msg.info(f"animation_rate: {animation_rate}")
 
@@ -351,7 +348,7 @@ if __name__ == "__main__":
         help="Linear solver to use",
     )
     parser.add_argument(
-        "--linear-solver-maxiter", default="0", type=int, help="Max number of iterations for iterative linear solvers"
+        "--linear-solver-maxiter", default=0, type=int, help="Max number of iterations for iterative linear solvers"
     )
     args = parser.parse_args()
 
@@ -376,7 +373,7 @@ if __name__ == "__main__":
 
     # Determine if CUDA graphs should be used for execution
     can_use_cuda_graph = device.is_cuda and wp.is_mempool_enabled(device)
-    use_cuda_graph = can_use_cuda_graph & args.cuda_graph
+    use_cuda_graph = can_use_cuda_graph and args.cuda_graph
     msg.info(f"can_use_cuda_graph: {can_use_cuda_graph}")
     msg.info(f"use_cuda_graph: {use_cuda_graph}")
     msg.info(f"device: {device}")

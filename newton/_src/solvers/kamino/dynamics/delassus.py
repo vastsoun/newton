@@ -524,8 +524,9 @@ class DelassusOperator:
         pre-computation, e.g. Cholesky factorization for direct solvers.
 
         Args:
-            reset_to_zero (bool): If True, resets the Delassus matrix to zero before factorizing.
-            This is useful for ensuring that the matrix is in a clean state before factorization.
+            reset_to_zero (bool):
+                If True, resets the Delassus matrix to zero.\n
+                This is useful for ensuring that the matrix is in a clean state before pre-computation.
         """
         # Ensure the Delassus matrix is allocated
         if self._operator.mat is None:

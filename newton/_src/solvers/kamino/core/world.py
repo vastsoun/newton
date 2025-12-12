@@ -425,13 +425,6 @@ class WorldDescriptor(Descriptor):
                 - ==-1 indicates the world body, >=0 indicates finite rigid bodies\n\
                 - Follower BIDs must be in [0, {self.num_bodies - 1}]"
             )
-        if joint.bid_B < 0 and joint.bid_F < 0:
-            raise ValueError(
-                f"Invalid body indices: bid_B={joint.bid_B}, bid_F={joint.bid_F}:\n\
-                - ==-1 indicates the world body, >=0 indicates finite rigid bodies\n\
-                - Base BIDs must be in [-1, {self.num_bodies - 1}]\n\
-                - Follower BIDs must be in [0, {self.num_bodies - 1}]"
-            )
         if joint.bid_B >= self.num_bodies or joint.bid_F >= self.num_bodies:
             raise ValueError(
                 f"Invalid body indices: bid_B={joint.bid_B}, bid_F={joint.bid_F}.\n\

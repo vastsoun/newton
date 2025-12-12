@@ -921,12 +921,12 @@ class DualProblemSettings:
         """
         Validate the settings.
         """
-        if self.alpha < 0.0:
-            raise ValueError(f"Invalid alpha: {self.alpha}. Must be non-negative.")
-        if self.beta < 0.0:
-            raise ValueError(f"Invalid beta: {self.beta}. Must be non-negative.")
-        if self.gamma < 0.0:
-            raise ValueError(f"Invalid gamma: {self.gamma}. Must be non-negative.")
+        if self.alpha < 0.0 or self.alpha > 1.0:
+            raise ValueError(f"Invalid alpha: {self.alpha}. Must be in range [0, 1.0].")
+        if self.beta < 0.0 or self.beta > 1.0:
+            raise ValueError(f"Invalid beta: {self.beta}. Must be in range [0, 1.0].")
+        if self.gamma < 0.0 or self.gamma > 1.0:
+            raise ValueError(f"Invalid gamma: {self.gamma}. Must be in range [0, 1.0].")
         if self.delta < 0.0:
             raise ValueError(f"Invalid delta: {self.delta}. Must be non-negative.")
 
@@ -1289,7 +1289,7 @@ class DualProblem:
 
     def _build_nonlinear_generalized_force(model: Model, data: ModelData, problem: DualProblemData):
         """
-        Builds the generalized free-velocity vector (i.e. unconstrained) `u_f`.
+        Builds the nonlinear generalized force vector `h`.
         """
         wp.launch(
             _build_nonlinear_generalized_force,

@@ -179,21 +179,22 @@ def _build_delassus_elementwise(
             Jv_j[d] = jacobians_cts_data[jio_jk + d]
             Jw_j[d] = jacobians_cts_data[jio_jk + d + 3]
 
-        # Linear term: m_k * dot(Jv_i, Jv_j)
-        lin_ij = model_bodies_inv_m_i[bid_k] * wp.dot(Jv_i, Jv_j)
-        lin_ji = model_bodies_inv_m_i[bid_k] * wp.dot(Jv_j, Jv_i)
+        # Linear term: inv_m_k * dot(Jv_i, Jv_j)
+        inv_m_k = model_bodies_inv_m_i[bid_k]
+        lin_ij = inv_m_k * wp.dot(Jv_i, Jv_j)
+        lin_ji = inv_m_k * wp.dot(Jv_j, Jv_i)
 
         # Angular term: dot(Jw_i.T * I_k, Jw_j)
-        I_k = state_bodies_inv_I_i[bid_k]
+        inv_I_k = state_bodies_inv_I_i[bid_k]
         ang_ij = float32(0.0)
         ang_ji = float32(0.0)
         for r in range(3):  # Loop over rows of A (and elements of v)
             for c in range(r, 3):  # Loop over upper triangular part of A (including diagonal)
-                ang_ij += Jw_i[r] * I_k[r, c] * Jw_j[c]
-                ang_ji += Jw_j[r] * I_k[r, c] * Jw_i[c]
+                ang_ij += Jw_i[r] * inv_I_k[r, c] * Jw_j[c]
+                ang_ji += Jw_j[r] * inv_I_k[r, c] * Jw_i[c]
                 if r != c:
-                    ang_ij += Jw_i[c] * I_k[r, c] * Jw_j[r]
-                    ang_ji += Jw_j[c] * I_k[r, c] * Jw_i[r]
+                    ang_ij += Jw_i[c] * inv_I_k[r, c] * Jw_j[r]
+                    ang_ji += Jw_j[c] * inv_I_k[r, c] * Jw_i[r]
 
         # Accumulate
         D_ij += lin_ij + ang_ij
@@ -376,14 +377,15 @@ class DelassusOperator:
 
         # Ensure the model container is valid
         if model is None:
-            raise ValueError("A model of type `Model` must be provided to allocate the Delassus operator.")
+            raise ValueError("A model container of type `Model` must be provided to allocate the Delassus operator.")
         elif not isinstance(model, Model):
             raise ValueError("Invalid model provided. Must be an instance of `Model`.")
 
         # Ensure the data container is valid if provided
-        if data is not None:
-            if not isinstance(data, ModelData):
-                raise ValueError("Invalid data container provided. Must be an instance of `ModelData`.")
+        if data is None:
+            raise ValueError("A data container of type `ModelData` must be provided to allocate the Delassus operator.")
+        elif not isinstance(data, ModelData):
+            raise ValueError("Invalid data container provided. Must be an instance of `ModelData`.")
 
         # Ensure the limits container is valid if provided
         if limits is not None:
@@ -451,7 +453,7 @@ class DelassusOperator:
         Args:
             model (Model): The model for which the Delassus operator is built.
             data (ModelData): The current data of the model.
-            reset_to_zero (bool, optional): If True, resets the Delassus matrix to zero before building. Defaults to True.
+            reset_to_zero (bool, optional): If True (default), resets the Delassus matrix to zero before building.
 
         Raises:
             ValueError: If the model, data, or Jacobians are not valid.
@@ -468,7 +470,8 @@ class DelassusOperator:
         # Ensure the Jacobians are valid
         if jacobians is None or not isinstance(jacobians, DenseSystemJacobiansData):
             raise ValueError(
-                "A valid Jacobians data of type `DenseSystemJacobiansData` must be provided to build the Delassus operator."
+                "A valid Jacobians data container of type `DenseSystemJacobiansData` "
+                "must be provided to build the Delassus operator."
             )
 
         # Ensure the Delassus matrix is allocated
@@ -515,8 +518,10 @@ class DelassusOperator:
 
     def compute(self, reset_to_zero: bool = True):
         """
-        Factorizes the Delassus matrix using the Cholesky factorization.\n
-        Returns True if the factorization was successful, False otherwise.
+        Runs Delassus pre-computation operations in preparation for linear systems solves.
+
+        Depending on the configured solver type, this may perform different
+        pre-computation, e.g. Cholesky factorization for direct solvers.
 
         Args:
             reset_to_zero (bool): If True, resets the Delassus matrix to zero before factorizing.

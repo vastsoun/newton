@@ -575,10 +575,16 @@ class JointDescriptor(Descriptor):
     """DoF type of the joint."""
 
     bid_B: int = -1
-    """The Base body index of the joint (-1 for world, >=0 for bodies)."""
+    """
+    The Base body index of the joint (-1 for world, >=0 for bodies).\n
+    Defaults to `-1`, indicating that the joint has not been assigned a base body.
+    """
 
     bid_F: int = -1
-    """The Follower body index of the joint (-1 for world, >=0 for bodies)."""
+    """
+    The Follower body index of the joint (must always be >=0 to index a body).\n
+    Defaults to `-1`, indicating that the joint has not been assigned a follower body.
+    """
 
     # TODO: Change this to a transformf
     B_r_Bj: vec3f = field(default_factory=vec3f)

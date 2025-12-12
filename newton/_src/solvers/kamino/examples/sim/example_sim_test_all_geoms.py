@@ -150,8 +150,8 @@ class Example:
                     supported_shape_pairs.append((shape_top_name, shape_bottom_name))
         elif cd_pipeline == CollisionPipelineType.PRIMITIVE:
             excluded_types.extend([ShapeType.CYLINDER])
-            supported_shape_types = PRIMITIVE_BROADPHASE_SUPPORTED_SHAPES
-            supported_type_pairs = PRIMITIVE_NARROWPHASE_SUPPORTED_SHAPE_PAIRS
+            supported_shape_types = list(PRIMITIVE_BROADPHASE_SUPPORTED_SHAPES)
+            supported_type_pairs = list(PRIMITIVE_NARROWPHASE_SUPPORTED_SHAPE_PAIRS)
             supported_type_pairs_reversed = [(b, a) for (a, b) in supported_type_pairs]
             supported_type_pairs.extend(supported_type_pairs_reversed)
             for shape_bottom in supported_shape_types:

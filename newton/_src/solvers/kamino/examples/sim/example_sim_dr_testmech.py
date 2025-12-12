@@ -73,9 +73,7 @@ class Example:
         # Set the path to the external USD assets
         EXAMPLE_ASSETS_PATH = get_examples_usd_assets_path()
         if EXAMPLE_ASSETS_PATH is None:
-            raise FileNotFoundError(
-                "The USD assets path for example models is missing: `newton-assets` may not be installed."
-            )
+            raise FileNotFoundError("Failed to find USD assets path for examples: ensure `newton-assets` is installed.")
         USD_MODEL_PATH = os.path.join(EXAMPLE_ASSETS_PATH, "dr_testmech/usd/dr_testmech.usda")
 
         # Create a single-instance system (always load from USD for DR Test Mechanism)

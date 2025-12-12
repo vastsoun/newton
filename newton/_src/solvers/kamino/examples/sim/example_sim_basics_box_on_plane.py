@@ -335,7 +335,7 @@ if __name__ == "__main__":
         "--record",
         type=str,
         choices=["sync", "async"],
-        default="sync",
+        default=None,
         help="Enable frame recording: 'sync' for synchronous, 'async' for asynchronous (non-blocking)",
     )
     args = parser.parse_args()

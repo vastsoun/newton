@@ -318,7 +318,7 @@ class Example:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="A demo of all supported joint types.")
+    parser = argparse.ArgumentParser(description="A demo of all supported geometry types and CD pipelines.")
     parser.add_argument("--num-steps", type=int, default=1000, help="Number of steps for headless mode")
     parser.add_argument("--headless", action=argparse.BooleanOptionalAction, default=False, help="Run in headless mode")
     parser.add_argument("--device", type=str, help="The compute device to use")

@@ -23,7 +23,6 @@ from warp.context import Devicelike
 import newton
 import newton.examples
 from newton._src.solvers.kamino.core.builder import ModelBuilder
-from newton._src.solvers.kamino.core.types import float32
 from newton._src.solvers.kamino.examples import get_examples_output_path, run_headless
 from newton._src.solvers.kamino.models.builders.testing import build_all_joints_test_model
 from newton._src.solvers.kamino.simulation.simulator import Simulator, SimulatorSettings
@@ -36,55 +35,6 @@ from newton._src.solvers.kamino.viewer import ViewerKamino
 ###
 
 wp.set_module_options({"enable_backward": False})
-
-
-###
-# Kernels
-###
-
-
-@wp.kernel
-def _test_control_callback(
-    state_t: wp.array(dtype=float32),
-    control_tau_j: wp.array(dtype=float32),
-):
-    """
-    An example control callback kernel.
-    """
-    # Set world index
-    wid = int(0)
-
-    # Define the time window for the active external force profile
-    t_start = float32(1.0)
-    t_end = float32(3.0)
-
-    # Get the current time
-    t = state_t[wid]
-
-    # Apply a time-dependent external force
-    if t > t_start and t < t_end:
-        control_tau_j[0] = 1.0
-    else:
-        control_tau_j[0] = 0.0
-
-
-###
-# Launchers
-###
-
-
-def test_control_callback(sim: Simulator):
-    """
-    A control callback function
-    """
-    wp.launch(
-        _test_control_callback,
-        dim=1,
-        inputs=[
-            sim.data.solver.time.time,
-            sim.data.control_n.tau_j,
-        ],
-    )
 
 
 ###

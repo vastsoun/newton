@@ -532,6 +532,7 @@ class Example:
         """Run simulation substeps."""
         for _i in range(self.sim_substeps):
             self.sim.step()
+            self.sim_steps += 1
             if not self.use_cuda_graph and self.logging:
                 self.logger.log()
 
@@ -551,6 +552,7 @@ class Example:
             wp.capture_launch(self.step_graph)
         else:
             self.sim.step()
+        self.sim_steps += 1
         if not self.use_cuda_graph and self.logging:
             self.logger.log()
 

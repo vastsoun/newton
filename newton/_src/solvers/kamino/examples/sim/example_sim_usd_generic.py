@@ -57,7 +57,7 @@ class Example:
         self.fps = 60
         self.sim_dt = 0.001
         self.frame_dt = 1.0 / self.fps
-        self.sim_substeps = int(self.frame_dt / self.sim_dt)
+        self.sim_substeps = max(1, round(self.frame_dt / self.sim_dt))
         self.max_steps = max_steps
 
         # Cache the device and other internal flags
@@ -298,6 +298,8 @@ if __name__ == "__main__":
         ground=args.ground,
         headless=args.headless,
         logging=args.logging,
+        record_video=args.record is not None and not args.headless,
+        async_save=args.record == "async",
     )
 
     # Run a brute-force simulation loop if headless

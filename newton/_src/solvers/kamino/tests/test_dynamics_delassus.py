@@ -507,9 +507,9 @@ class TestDelassusOperator(unittest.TestCase):
             print("")  # Print a newline for better readability
             print(f"model.info.num_joint_cts: {model.info.num_joint_cts}")
             print(f"limits.data.world_max_limits: {limits.data.world_max_limits}")
-            print(f"limits.data.world_num_limits: {limits.data.world_num_limits}")
+            print(f"limits.data.world_active_limits: {limits.data.world_active_limits}")
             print(f"contacts.data.world_max_contacts: {detector.contacts.data.world_max_contacts}")
-            print(f"contacts.data.world_num_contacts: {detector.contacts.data.world_num_contacts}")
+            print(f"contacts.data.world_active_contacts: {detector.contacts.data.world_active_contacts}")
             print(f"data.info.num_total_cts: {data.info.num_total_cts}")
             print("")  # Print a newline for better readability
 

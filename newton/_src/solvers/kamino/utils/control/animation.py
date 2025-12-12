@@ -24,9 +24,9 @@ import warp as wp
 from scipy.interpolate import interp1d
 from warp.context import Devicelike
 
-from ..core.model import Model
-from ..core.time import TimeData
-from ..core.types import float32, int32
+from ...core.model import Model
+from ...core.time import TimeData
+from ...core.types import float32, int32
 
 ###
 # Module interface
@@ -169,7 +169,8 @@ def _advance_animation_frame(
     animation_frame: wp.array(dtype=int32),
 ):
     """
-    A kernel to compute joint-space PID control torques for force-actuated joints.
+    A kernel to advance the animation frame index for each world
+    based on time steps, decimation, rate, and loop settings.
     """
     # Retrieve the the world index from the thread indices
     wid = wp.tid()
@@ -219,7 +220,7 @@ def _extract_animation_references(
     dq_j_ref_active: wp.array(dtype=float32),
 ):
     """
-    A kernel to compute joint-space PID control torques for force-actuated joints.
+    A kernel to extract the active joint-space references from the animation data.
     """
     # Retrieve the the world and DoF index from the thread indices
     wid, qid = wp.tid()
@@ -270,9 +271,9 @@ class AnimationJointReference:
 
         Args:
             model (Model | None): The model container used to determine the required allocation sizes.
-                If None, calling ``allocate()`` later can be used for deferred allocation.
+                If None, calling ``finalize()`` later can be used for deferred allocation.
             data (np.ndarray | None): The input animation reference data as a 2D numpy array.
-                If None, calling ``allocate()`` later can be used for deferred allocation.
+                If None, calling ``finalize()`` later can be used for deferred allocation.
             data_dt (float | None): The time-step between frames in the input data.
             target_dt (float | None): The desired time-step between frames in the animation reference.
                 If None, defaults to ``data_dt``.
@@ -299,7 +300,7 @@ class AnimationJointReference:
 
         # If a model is provided, allocate the controller data
         if model is not None:
-            self.allocate(
+            self.finalize(
                 model=model,
                 data=data,
                 data_dt=data_dt,
@@ -338,7 +339,7 @@ class AnimationJointReference:
     def _assert_has_data(self) -> None:
         """Check if the internal animation data has been allocated."""
         if self._data is None:
-            raise ValueError("Animation reference data is not allocated. Call allocate() first.")
+            raise ValueError("Animation reference data is not allocated. Call finalize() first.")
 
     @staticmethod
     def _upsample_reference_coordinates(
@@ -434,7 +435,7 @@ class AnimationJointReference:
     # Operations
     ###
 
-    def allocate(
+    def finalize(
         self,
         model: Model,
         data: np.ndarray,
@@ -622,7 +623,7 @@ class AnimationJointReference:
         """
         # Ensure the animation data container is allocated
         if self._data is None:
-            raise ValueError("Controller data is not allocated. Call allocate() first.")
+            raise ValueError("Controller data is not allocated. Call finalize() first.")
 
         # Check if a single value or list is provided and set the loop flags accordingly
         if isinstance(enabled, list):
@@ -687,7 +688,7 @@ class AnimationJointReference:
     def reset(self, q_j_ref_out: wp.array, dq_j_ref_out: wp.array) -> None:
         """
         Reset the active frame index of the animation sequence to zero
-        and sets the extracts the initial references into the output arrays.
+        and extracts the initial references into the output arrays.
 
         Args:
             q_j_ref_out (wp.array): Output array for the reference joint positions.

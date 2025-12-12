@@ -872,7 +872,7 @@ class Model:
         """The gravity model container holding the gravity configurations for each world."""
 
         self.bodies: RigidBodiesModel | None = None
-        """The rigid bodies model container holdingall rigid body entities in the model."""
+        """The rigid bodies model container holding all rigid body entities in the model."""
 
         self.joints: JointsModel | None = None
         """The joints model container holding all joint entities in the model."""

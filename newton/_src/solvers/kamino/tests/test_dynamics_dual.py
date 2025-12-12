@@ -87,8 +87,8 @@ class TestDualProblem(unittest.TestCase):
         # Extract expected allocation sizes
         nw = model.info.num_worlds
         nb = model.size.sum_of_num_bodies
-        maxnl = limits.num_model_max_limits
-        maxnc = detector.contacts.num_model_max_contacts
+        maxnl = limits.model_max_limits_host
+        maxnc = detector.contacts.model_max_contacts_host
         maxdims = model.size.sum_of_num_joint_cts + maxnl + 3 * maxnc
 
         # Check allocations

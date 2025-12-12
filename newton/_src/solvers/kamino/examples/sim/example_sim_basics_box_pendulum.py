@@ -22,7 +22,6 @@ from warp.context import Devicelike
 
 import newton
 import newton.examples
-from newton._src.solvers.kamino.control.pid import JointSpacePIDController
 from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.core.joints import JointCorrectionMode
 from newton._src.solvers.kamino.core.types import float32
@@ -32,6 +31,7 @@ from newton._src.solvers.kamino.models.builders.basics import build_box_pendulum
 from newton._src.solvers.kamino.models.builders.utils import make_homogeneous_builder
 from newton._src.solvers.kamino.simulation.simulator import Simulator, SimulatorSettings
 from newton._src.solvers.kamino.utils import logger as msg
+from newton._src.solvers.kamino.utils.control import JointSpacePIDController
 from newton._src.solvers.kamino.utils.datalog import SimulationLogger
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
 from newton._src.solvers.kamino.viewer import ViewerKamino
@@ -116,7 +116,7 @@ class Example:
         self.fps = 60
         self.sim_dt = 0.001
         self.frame_dt = 1.0 / self.fps
-        self.sim_substeps = int(self.frame_dt / self.sim_dt)
+        self.sim_substeps = max(1, round(self.frame_dt / self.sim_dt))
         self.max_steps = max_steps
 
         # Cache the device and other internal flags
@@ -148,7 +148,7 @@ class Example:
         # Set solver settings
         settings = SimulatorSettings()
         settings.dt = self.sim_dt
-        settings.problem.use_preconditioning = True
+        settings.problem.preconditioning = True
         settings.solver.primal_tolerance = 1e-6
         settings.solver.dual_tolerance = 1e-6
         settings.solver.compl_tolerance = 1e-6
@@ -165,7 +165,7 @@ class Example:
         K_p = 0.0 * np.ones(njq, dtype=np.float32)
         K_i = 0.0 * np.ones(njq, dtype=np.float32)
         K_d = 60.0 * np.ones(njq, dtype=np.float32)
-        decimation = 1 * np.ones(self.sim.model.size.num_worlds, dtype=np.int32)  # Control every 10 steps
+        decimation = 1 * np.ones(self.sim.model.size.num_worlds, dtype=np.int32)  # Control on every step
         self.controller = JointSpacePIDController(
             model=self.sim.model, K_p=K_p, K_i=K_i, K_d=K_d, decimation=decimation, device=device
         )

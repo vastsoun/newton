@@ -21,7 +21,7 @@ import unittest
 import numpy as np
 import warp as wp
 
-from newton._src.solvers.kamino.integrators.euler import integrate_semi_implicit_euler
+from newton._src.solvers.kamino.integrators.euler import integrate_euler_semi_implicit
 from newton._src.solvers.kamino.models.builders.basics import build_box_on_plane, build_boxes_hinged
 from newton._src.solvers.kamino.solvers.metrics import SolutionMetrics
 from newton._src.solvers.kamino.solvers.padmm import PADMMSolver
@@ -149,10 +149,10 @@ class TestSolverMetrics(unittest.TestCase):
 
         # Build the test problem and integrate the state over a single time-step
         test.build()
-        integrate_semi_implicit_euler(model=test.model, data=test.data)
+        integrate_euler_semi_implicit(model=test.model, data=test.data)
 
-        nl = test.limits.model_num_limits.numpy()[0] if test.limits.num_model_max_limits > 0 else 0
-        nc = test.contacts.model_num_contacts.numpy()[0] if test.contacts.num_model_max_contacts > 0 else 0
+        nl = test.limits.model_active_limits.numpy()[0] if test.limits.model_max_limits_host > 0 else 0
+        nc = test.contacts.model_active_contacts.numpy()[0] if test.contacts.model_max_contacts_host > 0 else 0
         msg.info("num active limits: %s", nl)
         msg.info("num active contacts: %s\n", nc)
         self.assertEqual(nl, 0)
@@ -186,7 +186,7 @@ class TestSolverMetrics(unittest.TestCase):
         msg.info("metrics.r_vi_natmap: %s\n", metrics.data.r_vi_natmap)
 
         # Extract the maximum contact penetration to use for validation
-        nc = test.contacts.model_num_contacts.numpy()[0]
+        nc = test.contacts.model_active_contacts.numpy()[0]
         max_contact_penetration = 0.0
         for cid in range(nc):
             pen = test.contacts.gapfunc.numpy()[cid][3]
@@ -251,7 +251,7 @@ class TestSolverMetrics(unittest.TestCase):
         solver.reset()
         solver.coldstart()
         solver.solve(problem=test.problem)
-        integrate_semi_implicit_euler(model=test.model, data=test.data)
+        integrate_euler_semi_implicit(model=test.model, data=test.data)
 
         # Compute the metrics on the trivial solution
         metrics.reset()
@@ -268,8 +268,8 @@ class TestSolverMetrics(unittest.TestCase):
             contacts=test.contacts,
         )
 
-        nl = test.limits.model_num_limits.numpy()[0] if test.limits.num_model_max_limits > 0 else 0
-        nc = test.contacts.model_num_contacts.numpy()[0] if test.contacts.num_model_max_contacts > 0 else 0
+        nl = test.limits.model_active_limits.numpy()[0] if test.limits.model_max_limits_host > 0 else 0
+        nc = test.contacts.model_active_contacts.numpy()[0] if test.contacts.model_max_contacts_host > 0 else 0
         msg.info("num active limits: %s", nl)
         msg.info("num active contacts: %s\n", nc)
 
@@ -286,7 +286,7 @@ class TestSolverMetrics(unittest.TestCase):
         msg.info("metrics.r_vi_natmap: %s\n", metrics.data.r_vi_natmap)
 
         # Extract the maximum contact penetration to use for validation
-        nc = test.contacts.model_num_contacts.numpy()[0]
+        nc = test.contacts.model_active_contacts.numpy()[0]
         max_contact_penetration = 0.0
         for cid in range(nc):
             pen = test.contacts.gapfunc.numpy()[cid][3]
@@ -336,7 +336,7 @@ class TestSolverMetrics(unittest.TestCase):
         solver.reset()
         solver.coldstart()
         solver.solve(problem=test.problem)
-        integrate_semi_implicit_euler(model=test.model, data=test.data)
+        integrate_euler_semi_implicit(model=test.model, data=test.data)
 
         # Compute the metrics on the trivial solution
         metrics.evaluate(
@@ -352,8 +352,8 @@ class TestSolverMetrics(unittest.TestCase):
             contacts=test.contacts,
         )
 
-        nl = test.limits.model_num_limits.numpy()[0] if test.limits.num_model_max_limits > 0 else 0
-        nc = test.contacts.model_num_contacts.numpy()[0] if test.contacts.num_model_max_contacts > 0 else 0
+        nl = test.limits.model_active_limits.numpy()[0] if test.limits.model_max_limits_host > 0 else 0
+        nc = test.contacts.model_active_contacts.numpy()[0] if test.contacts.model_max_contacts_host > 0 else 0
         msg.info("num active limits: %s", nl)
         msg.info("num active contacts: %s\n", nc)
 

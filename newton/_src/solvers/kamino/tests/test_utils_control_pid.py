@@ -19,9 +19,9 @@ import unittest
 
 import warp as wp
 
-from newton._src.solvers.kamino.control.pid import JointSpacePIDController
 from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.utils import logger as msg
+from newton._src.solvers.kamino.utils.control.pid import JointSpacePIDController
 
 ###
 # Tests

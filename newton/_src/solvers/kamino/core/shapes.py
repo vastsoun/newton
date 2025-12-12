@@ -642,15 +642,15 @@ class MeshShape(ShapeDescriptor):
     @override
     def __repr__(self):
         """Returns a human-readable string representation of the MeshShape."""
+        label = "ConvexShape" if self.type == ShapeType.CONVEX else "MeshShape"
+        normals_shape = self._data._normals.shape if self._data._normals is not None else None
         return (
-            "MeshShape(\n"
-            if self.type == ShapeType.MESH
-            else "ConvexShape(\n"
+            f"{label}(\n"
             f"name: {self.name},\n"
             f"uid: {self.uid},\n"
             f"vertices: {self._data.vertices.shape},\n"
             f"indices: {self._data.indices.shape},\n"
-            f"normals: {self._data._normals.shape if self._data._normals is not None else None},\n"
+            f"normals: {normals_shape},\n"
             f")"
         )
 

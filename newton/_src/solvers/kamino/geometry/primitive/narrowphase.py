@@ -1775,8 +1775,8 @@ def primitive_narrowphase(
             contacts.world_max_contacts,
         ],
         outputs=[
-            contacts.model_num_contacts,
-            contacts.world_num_contacts,
+            contacts.model_active_contacts,
+            contacts.world_active_contacts,
             contacts.wid,
             contacts.cid,
             contacts.gid_AB,

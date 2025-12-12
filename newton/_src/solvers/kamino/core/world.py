@@ -419,11 +419,10 @@ class WorldDescriptor(Descriptor):
             raise ValueError(f"Joint UID '{joint.uid}' already exists in world '{self.name}' ({self.wid}).")
 
         # Check if the specified Base-Follower body indices are valid
-        if joint.bid_B < 0 and joint.bid_F < 0:
+        if joint.bid_F < 0:
             raise ValueError(
-                f"Invalid body indices: bid_B={joint.bid_B}, bid_F={joint.bid_F}:\n\
+                f"Invalid follower body index: bid_F={joint.bid_F}.\n\
                 - ==-1 indicates the world body, >=0 indicates finite rigid bodies\n\
-                - Base BIDs must be in [-1, {self.num_bodies - 1}]\n\
                 - Follower BIDs must be in [0, {self.num_bodies - 1}]"
             )
         if joint.bid_B >= self.num_bodies or joint.bid_F >= self.num_bodies:

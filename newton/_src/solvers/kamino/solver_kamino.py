@@ -201,6 +201,13 @@ class SolverKamino(SolverBase):
 
     """
 
+    StepCallbackType = Callable[["SolverKamino", State, State, Control, Contacts], None]
+    """
+    Defines the type signature for step callback functions.
+    Such functions take as input the solver instance, the current state,
+    the next state, the control inputs, and the active contacts.
+    """
+
     def __init__(
         self,
         model: Model,
@@ -221,7 +228,7 @@ class SolverKamino(SolverBase):
         """
         # First initialize the base solver
         # NOTE: Although we pass the model here, we will re-assign it below
-        # since currently the Kamino defines its own :class`Model` class.
+        # since currently Kamino defines its own :class`Model` class.
         super().__init__(model=model)
         self._model = model
 
@@ -291,9 +298,9 @@ class SolverKamino(SolverBase):
             self._metrics = SolutionMetrics(model=self._model)
 
         # Initialize callbacks
-        self._pre_step_cb: Callable[[SolverKamino], None] = None
-        self._mid_step_cb: Callable[[SolverKamino], None] = None
-        self._post_step_cb: Callable[[SolverKamino], None] = None
+        self._pre_step_cb: SolverKamino.StepCallbackType | None = None
+        self._mid_step_cb: SolverKamino.StepCallbackType | None = None
+        self._post_step_cb: SolverKamino.StepCallbackType | None = None
 
         # Initialize the solver internal data
         with wp.ScopedDevice(self._model.device):
@@ -342,19 +349,19 @@ class SolverKamino(SolverBase):
     # Configurations
     ###
 
-    def set_pre_step_callback(self, callback: Callable[[SolverKamino], None]):
+    def set_pre_step_callback(self, callback: StepCallbackType):
         """
         Sets a callback to be called before forward dynamics solve.
         """
         self._pre_step_cb = callback
 
-    def set_mid_step_callback(self, callback: Callable[[SolverKamino], None]):
+    def set_mid_step_callback(self, callback: StepCallbackType):
         """
         Sets a callback to be called between forward dynamics solver and state integration.
         """
         self._mid_step_cb = callback
 
-    def set_post_step_callback(self, callback: Callable[[SolverKamino], None]):
+    def set_post_step_callback(self, callback: StepCallbackType):
         """
         Sets a callback to be called after state integration.
         """
@@ -427,13 +434,13 @@ class SolverKamino(SolverBase):
         self._update_actuation_wrenches()
 
         # Run the pre-step callback if it has been set
-        self._run_prestep_callback()
+        self._run_prestep_callback(state_in, state_out, control, contacts)
 
         # Solve the forward dynamics sub-problem to compute constraint reactions and body wrenches
         self._forward(contacts=contacts)
 
         # Run the mid-step callback if it has been set
-        self._run_midstep_callback()
+        self._run_midstep_callback(state_in, state_out, control, contacts)
 
         # Solve the time integration sub-problem to compute the next state of the system
         self._integrate(state_p=state_in)
@@ -445,7 +452,7 @@ class SolverKamino(SolverBase):
         self._advance_time()
 
         # Run the post-step callback if it has been set
-        self._run_poststep_callback()
+        self._run_poststep_callback(state_in, state_out, control, contacts)
 
         # Copy the updated internal solver state to the output state
         self._write_next_state(state_out=state_out)
@@ -457,26 +464,26 @@ class SolverKamino(SolverBase):
     # Internals - Callback Operations
     ###
 
-    def _run_prestep_callback(self):
+    def _run_prestep_callback(self, state_in: State, state_out: State, control: Control, contacts: Contacts):
         """
         Runs the pre-step callback if it has been set.
         """
         if self._pre_step_cb is not None:
-            self._pre_step_cb(self)
+            self._pre_step_cb(self, state_in, state_out, control, contacts)
 
-    def _run_midstep_callback(self):
+    def _run_midstep_callback(self, state_in: State, state_out: State, control: Control, contacts: Contacts):
         """
         Runs the mid-step callback if it has been set.
         """
         if self._mid_step_cb is not None:
-            self._mid_step_cb(self)
+            self._mid_step_cb(self, state_in, state_out, control, contacts)
 
-    def _run_poststep_callback(self):
+    def _run_poststep_callback(self, state_in: State, state_out: State, control: Control, contacts: Contacts):
         """
         Executes the post-step callback if it has been set.
         """
         if self._post_step_cb is not None:
-            self._post_step_cb(self)
+            self._post_step_cb(self, state_in, state_out, control, contacts)
 
     ###
     # Internals - Input/Output Operations

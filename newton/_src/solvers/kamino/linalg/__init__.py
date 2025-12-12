@@ -22,7 +22,10 @@ from .core import (
     DenseSquareMultiLinearInfo,
 )
 from .linear import (
+    ConjugateGradientSolver,
+    ConjugateResidualSolver,
     DirectSolver,
+    IterativeSolver,
     LinearSolver,
     LinearSolverType,
     LLTBlockedSolver,
@@ -34,10 +37,13 @@ from .linear import (
 ###
 
 __all__ = [
+    "ConjugateGradientSolver",
+    "ConjugateResidualSolver",
     "DenseLinearOperatorData",
     "DenseRectangularMultiLinearInfo",
     "DenseSquareMultiLinearInfo",
     "DirectSolver",
+    "IterativeSolver",
     "LLTBlockedSolver",
     "LLTSequentialSolver",
     "LinearSolver",

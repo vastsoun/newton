@@ -72,6 +72,8 @@ Typical usage example:
     delassus.solve(b=rhs, x=solution)
 """
 
+from typing import Any
+
 import warp as wp
 from warp.context import Devicelike
 
@@ -244,6 +246,7 @@ class DelassusOperator:
         limits: Limits | None = None,
         contacts: Contacts | None = None,
         solver: LinearSolverType = None,
+        solver_kwargs: dict[str, Any] | None = None,
         device: Devicelike = None,
     ):
         """
@@ -294,6 +297,7 @@ class DelassusOperator:
                 limits=limits,
                 contacts=contacts,
                 solver=solver,
+                solver_kwargs=solver_kwargs,
                 device=device,
             )
 
@@ -358,6 +362,7 @@ class DelassusOperator:
         contacts: Contacts | None = None,
         solver: LinearSolverType = None,
         device: Devicelike = None,
+        solver_kwargs: dict[str, Any] | None = None,
     ):
         """
         Allocates the Delassus operator with the specified dimensions and device.
@@ -429,7 +434,8 @@ class DelassusOperator:
         if solver is not None:
             if not issubclass(solver, LinearSolverType):
                 raise ValueError("Invalid solver provided. Must be a subclass of `LinearSolverType`.")
-            self._solver = solver(operator=self._operator, device=self._device)
+            solver_kwargs = solver_kwargs or {}
+            self._solver = solver(operator=self._operator, device=self._device, **solver_kwargs)
 
     def zero(self):
         """

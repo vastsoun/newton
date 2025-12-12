@@ -49,7 +49,7 @@ from ..kinematics.constraints import (
 from ..kinematics.jacobians import DenseSystemJacobians
 from ..kinematics.joints import compute_joints_data
 from ..kinematics.limits import Limits
-from ..linalg import LinearSolverType, LLTBlockedSolver
+from ..linalg import IterativeSolver, LinearSolverType, LLTBlockedSolver
 from ..solvers.fk import ForwardKinematicsSolver  # noqa: F401
 from ..solvers.metrics import SolutionMetrics
 from ..solvers.padmm import PADMMSettings, PADMMSolver, PADMMWarmStartMode
@@ -144,6 +144,9 @@ class SimulatorSettings:
     See :class:`LinearSolverType` for available options.\n
     Defaults to :class:`LLTBlockedSolver`.
     """
+
+    linear_solver_maxiter: int = 0
+    """Maximum number of iterations for iterative linear solvers."""
 
     rotation_correction: JointCorrectionMode = JointCorrectionMode.TWOPI
     """
@@ -275,6 +278,10 @@ class Simulator:
 
         # Cache the solver settings
         self._settings: SimulatorSettings = settings
+        if issubclass(settings.linear_solver_type, IterativeSolver) and settings.linear_solver_maxiter != 0:
+            linear_solver_kwargs = {"maxiter": settings.linear_solver_maxiter}
+        else:
+            linear_solver_kwargs = {}
 
         # Cache the target device use for the simulation
         self._device: Devicelike = device
@@ -323,6 +330,7 @@ class Simulator:
             limits=self._limits,
             contacts=self._contacts,
             solver=settings.linear_solver_type,
+            solver_kwargs=linear_solver_kwargs,
             settings=settings.problem,
             device=self._device,
         )

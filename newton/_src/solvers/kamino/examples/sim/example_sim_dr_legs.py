@@ -26,6 +26,7 @@ from newton._src.solvers.kamino.control.animation import AnimationJointReference
 from newton._src.solvers.kamino.control.pid import JointSpacePIDController
 from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.examples import get_examples_output_path, run_headless
+from newton._src.solvers.kamino.linalg.linear import SolverShorthand as LinearSolverShorthand
 from newton._src.solvers.kamino.models import get_examples_usd_assets_path
 from newton._src.solvers.kamino.models.builders.utils import (
     add_ground_box,
@@ -55,6 +56,8 @@ class Example:
         gravity: bool = True,
         ground: bool = True,
         logging: bool = False,
+        linear_solver: str = "LLTB",
+        linear_solver_maxiter: int = 0,
         headless: bool = False,
         record_video: bool = False,
         async_save: bool = False,
@@ -117,6 +120,9 @@ class Example:
         settings.contact_warmstart_method = WarmstarterContacts.Method.GEOM_PAIR_NET_FORCE
         settings.collect_solver_info = False
         settings.compute_metrics = logging and not use_cuda_graph
+        linear_solver_cls = {v: k for k, v in LinearSolverShorthand.items()}[linear_solver.upper()]
+        settings.linear_solver_type = linear_solver_cls
+        settings.linear_solver_maxiter = linear_solver_maxiter
 
         # Create a simulator
         msg.notif("Building the simulator...")
@@ -337,6 +343,16 @@ if __name__ == "__main__":
         default=None,
         help="Enable frame recording: 'sync' for synchronous, 'async' for asynchronous (non-blocking)",
     )
+    parser.add_argument(
+        "--linear-solver",
+        default="LLTB",
+        choices=LinearSolverShorthand.values(),
+        type=str.upper,
+        help="Linear solver to use",
+    )
+    parser.add_argument(
+        "--linear-solver-maxiter", default="0", type=int, help="Max number of iterations for iterative linear solvers"
+    )
     args = parser.parse_args()
 
     # Set global numpy configurations
@@ -370,6 +386,8 @@ if __name__ == "__main__":
         device=device,
         use_cuda_graph=use_cuda_graph,
         num_worlds=args.num_worlds,
+        linear_solver=args.linear_solver,
+        linear_solver_maxiter=args.linear_solver_maxiter,
         max_steps=args.num_steps,
         gravity=args.gravity,
         ground=args.ground,

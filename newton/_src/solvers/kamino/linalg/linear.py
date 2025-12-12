@@ -30,7 +30,7 @@ import warp as wp
 from warp.context import Devicelike
 
 from ..core.types import FloatType, float32, override
-from . import factorize
+from . import conjugate, factorize
 from .core import DenseLinearOperatorData, DenseSquareMultiLinearInfo, make_dtype_tolerance
 
 ###
@@ -38,6 +38,8 @@ from .core import DenseLinearOperatorData, DenseSquareMultiLinearInfo, make_dtyp
 ###
 
 __all__ = [
+    "ConjugateGradientSolver",
+    "ConjugateResidualSolver",
     "DirectSolver",
     "LLTBlockedSolver",
     "LLTSequentialSolver",
@@ -261,6 +263,107 @@ class DirectSolver(LinearSolver):
         """Reconstructs the original matrix from the current factorization."""
         self._check_has_factorization()
         self._reconstruct_impl(A, **kwargs)
+
+
+class IterativeSolver(LinearSolver):
+    """
+    An abstract base class for iterative linear system solvers.
+    """
+
+    def __init__(
+        self,
+        operator: DenseLinearOperatorData | None = None,
+        atol: float | wp.array | None = None,
+        rtol: float | wp.array | None = None,
+        dtype: FloatType = float32,
+        device: Devicelike | None = None,
+        maxiter: int | wp.array | None = None,
+        world_active: wp.array | None = None,
+        preconditioner: Any = None,
+        **kwargs: dict[str, Any],
+    ):
+        # Initialize base class members
+
+        self._maxiter: int | wp.array | None = maxiter
+        self._preconditioner: Any = preconditioner
+        self._world_active: wp.array | None = world_active
+        self.atol: float | wp.array | None = atol
+        self.rtol: float | wp.array | None = rtol
+
+        self._num_worlds: int | None = None
+        self._max_dim: int | None = None
+
+        super().__init__(
+            operator=operator,
+            atol=atol,
+            rtol=rtol,
+            dtype=dtype,
+            device=device,
+            **kwargs,
+        )
+
+    @override
+    def allocate(
+        self,
+        operator: DenseLinearOperatorData,
+        maxiter: int | wp.array | None = None,
+        world_active: wp.array | None = None,
+        preconditioner: Any = None,
+        **kwargs: dict[str, Any],
+    ) -> None:
+        """
+        Ingest a linear operator and allocate any necessary internal memory
+        based on the multi-linear layout specified by the operator's info.
+        """
+        # Check the operator is valid
+        if operator is None:
+            raise ValueError("A valid linear operator must be provided!")
+        if not isinstance(operator, DenseLinearOperatorData):
+            raise ValueError("The provided operator is not a DenseLinearOperatorData instance!")
+        if operator.info is None:
+            raise ValueError("The provided operator does not have any associated info!")
+        self._operator = operator
+        self._dtype = operator.info.dtype
+
+        if maxiter is not None:
+            self._maxiter = maxiter
+        if world_active is not None:
+            self._world_active = world_active
+        if preconditioner is not None:
+            self._preconditioner = preconditioner
+
+        self._num_worlds = operator.info.num_blocks
+        self._max_dim = operator.info.max_dimension
+        self._solve_iterations: wp.array | None = None
+        self._solve_residual_norm: wp.array | None = None
+
+        with wp.ScopedDevice(self._device):
+            if self._world_active is None:
+                self._world_active = wp.full(self._num_worlds, True, dtype=wp.bool)
+            elif not isinstance(self._world_active, wp.array):
+                raise ValueError("The provided world_active is not a valid wp.array!")
+            if self._maxiter is None:
+                self._maxiter = wp.full(self._num_worlds, self._operator.info.max_dimension, dtype=wp.int32)
+            elif isinstance(self._maxiter, int):
+                self._maxiter = wp.full(self._num_worlds, self._maxiter, dtype=wp.int32)
+            elif not isinstance(self._maxiter, wp.array):
+                raise ValueError("The provided maxiter is not a valid wp.array or int!")
+
+        self._allocate_impl(operator, **kwargs)
+
+    @override
+    def solve(self, b: wp.array, x: wp.array, zero_x: bool = False, **kwargs: dict[str, Any]) -> None:
+        """Solves the multi-linear systems `A @ x = b`."""
+        if not self._operator.info.is_rhs_compatible(b):
+            raise ValueError("The provided flat rhs vector data array does not have enough memory!")
+        if not self._operator.info.is_input_compatible(x):
+            raise ValueError("The provided flat input vector data array does not have enough memory!")
+        if zero_x:
+            x.zero_()
+        self._solve_impl(b=b, x=x, **kwargs)
+
+    def get_solve_metadata(self) -> dict[str, Any]:
+        return {"iterations": self._solve_iterations, "residual_norm": self._solve_residual_norm}
 
 
 ###
@@ -525,8 +628,253 @@ class LLTBlockedSolver(DirectSolver):
 
 
 ###
+# Iterative solvers
+###
+
+
+class ConjugateGradientSolver(IterativeSolver):
+    """
+    A wrapper around the batched Conjugate Gradient implementation in `conjugate.cg`.
+
+    This solves multiple independent SPD systems using a batched operator.
+    """
+
+    def __init__(
+        self,
+        operator: DenseLinearOperatorData | None = None,
+        atol: float | None = None,
+        rtol: float | None = None,
+        dtype: FloatType = float32,
+        device: Devicelike | None = None,
+        maxiter: int | wp.array | None = None,
+        world_active: wp.array | None = None,
+        preconditioner: Any = None,
+        **kwargs: dict[str, Any],
+    ):
+        self._A_op = None
+        self._Mi_op = None
+        self._jacobi_preconditioner = None
+
+        super().__init__(
+            operator=operator,
+            atol=atol,
+            rtol=rtol,
+            dtype=dtype,
+            device=device,
+            maxiter=maxiter,
+            world_active=world_active,
+            preconditioner=preconditioner,
+            **kwargs,
+        )
+
+    @override
+    def _allocate_impl(self, operator: DenseLinearOperatorData, **kwargs: dict[str, Any]) -> None:
+        if not isinstance(operator.info, DenseSquareMultiLinearInfo):
+            raise ValueError("ConjugateGradientSolver requires a square matrix operator.")
+
+        dim_values = set(operator.info.maxdim.numpy().tolist())
+        if len(dim_values) > 1:
+            raise ValueError(f"ConjugateGradientSolver requires all blocks to have the same dimension ({dim_values}).")
+        # TODO: accept a BatchedLinearOperator instead of DenseLinearOperatorData
+        if self._preconditioner == "jacobi":
+            self._jacobi_preconditioner = wp.zeros(
+                shape=(self._num_worlds, self._max_dim), dtype=self._dtype, device=self._device
+            )
+            self._Mi_op = conjugate.make_diag_matrix_operator(
+                self._jacobi_preconditioner, self._max_dim, self._operator.info.dim
+            )
+        elif self._preconditioner is not None:
+            raise ValueError(f"Unsupported preconditioner: {self._preconditioner}.")
+        else:
+            self._Mi_op = None
+
+        self._A_op = conjugate.make_dense_square_matrix_operator(
+            A=operator.mat.reshape((self._num_worlds, self._max_dim * self._max_dim)),
+            active_dims=self._operator.info.dim,
+            max_dims=self._max_dim,
+            matrix_stride=self._max_dim,
+        )
+
+        self.solver = conjugate.CGSolver(
+            A=self._A_op,
+            active_dims=self._operator.info.dim,
+            world_active=self._world_active,
+            atol=self.atol,
+            rtol=self.rtol,
+            maxiter=self._maxiter,
+            M=self._Mi_op,
+            callback=None,
+            use_cuda_graph=True,
+        )
+
+    @override
+    def _reset_impl(self, A: wp.array | None = None, **kwargs: dict[str, Any]) -> None:
+        if self._jacobi_preconditioner is not None:
+            self._jacobi_preconditioner.zero_()
+        self._solve_iterations: wp.array = None
+        self._solve_residual_norm: wp.array = None
+
+    @override
+    def _compute_impl(self, A: wp.array, **kwargs: dict[str, Any]) -> None:
+        if A.ptr != self._operator.mat.ptr:
+            raise ValueError(f"{self.__class__.__name__} cannot be re-used with a different matrix.")
+        if self._Mi_op is not None:
+            self._update_preconditioner()
+
+    @override
+    def _solve_inplace_impl(self, x: wp.array, **kwargs: dict[str, Any]) -> None:
+        self._solve_impl(x, x, **kwargs)
+
+    @override
+    def _solve_impl(self, b: wp.array, x: wp.array, **kwargs: dict[str, Any]) -> None:
+        if self._A_op is None:
+            raise ValueError("ConjugateGradientSolver.allocate() must be called before solve().")
+
+        self._solve_iterations, self._solve_residual_norm, _ = self.solver.solve(
+            b=b.reshape((self._num_worlds, self._max_dim)),
+            x=x.reshape((self._num_worlds, self._max_dim)),
+        )
+
+    def _update_preconditioner(self):
+        wp.launch(
+            conjugate.make_jacobi_preconditioner,
+            dim=(self._num_worlds, self._max_dim),
+            inputs=[
+                self._operator.mat.reshape((self._num_worlds, self._max_dim * self._max_dim)),
+                self._operator.info.dim,
+            ],
+            outputs=[self._jacobi_preconditioner],
+            device=self._device,
+        )
+
+
+class ConjugateResidualSolver(IterativeSolver):
+    """
+    A wrapper around the batched Conjugate Residual implementation in `conjugate.cr`.
+
+    This solves multiple independent SPD systems using a batched operator.
+    """
+
+    def __init__(
+        self,
+        operator: DenseLinearOperatorData | None = None,
+        atol: float | None = None,
+        rtol: float | None = None,
+        dtype: FloatType = float32,
+        device: Devicelike | None = None,
+        maxiter: int | wp.array | None = None,
+        world_active: wp.array | None = None,
+        preconditioner: Any = None,
+        **kwargs: dict[str, Any],
+    ):
+        self._A_op = None
+        self._Mi_op = None
+        self._jacobi_preconditioner = None
+
+        super().__init__(
+            operator=operator,
+            atol=atol,
+            rtol=rtol,
+            dtype=dtype,
+            device=device,
+            maxiter=maxiter,
+            world_active=world_active,
+            preconditioner=preconditioner,
+            **kwargs,
+        )
+
+    @override
+    def _allocate_impl(self, operator: DenseLinearOperatorData, **kwargs: dict[str, Any]) -> None:
+        if not isinstance(operator.info, DenseSquareMultiLinearInfo):
+            raise ValueError("ConjugateResidualSolver requires a square matrix operator.")
+
+        dim_values = set(operator.info.maxdim.numpy().tolist())
+        if len(dim_values) > 1:
+            raise ValueError(f"ConjugateResidualSolver requires all blocks to have the same dimension ({dim_values}).")
+
+        if self._preconditioner == "jacobi":
+            self._jacobi_preconditioner = wp.zeros(
+                shape=(self._num_worlds, self._max_dim), dtype=self._dtype, device=self._device
+            )
+            self._Mi_op = conjugate.make_diag_matrix_operator(
+                self._jacobi_preconditioner, self._max_dim, self._operator.info.dim
+            )
+        elif self._preconditioner is not None:
+            raise ValueError(f"Unsupported preconditioner: {self._preconditioner}.")
+        else:
+            self._Mi_op = None
+
+        self._A_op = conjugate.make_dense_square_matrix_operator(
+            A=operator.mat.reshape((self._num_worlds, self._max_dim * self._max_dim)),
+            active_dims=self._operator.info.dim,
+            max_dims=self._max_dim,
+            matrix_stride=self._max_dim,
+        )
+
+        self.solver = conjugate.CRSolver(
+            A=self._A_op,
+            active_dims=self._operator.info.dim,
+            world_active=self._world_active,
+            atol=self.atol,
+            rtol=self.rtol,
+            maxiter=self._maxiter,
+            M=self._Mi_op,
+            callback=None,
+            use_cuda_graph=True,
+        )
+
+    @override
+    def _reset_impl(self, A: wp.array | None = None, **kwargs: dict[str, Any]) -> None:
+        if self._jacobi_preconditioner is not None:
+            self._jacobi_preconditioner.zero_()
+        self._solve_iterations: wp.array = None
+        self._solve_residual_norm: wp.array = None
+
+    @override
+    def _compute_impl(self, A: wp.array, **kwargs: dict[str, Any]) -> None:
+        if A.ptr != self._operator.mat.ptr:
+            raise ValueError(f"{self.__class__.__name__} cannot be re-used with a different matrix.")
+        if self._Mi_op is not None:
+            self._update_preconditioner()
+
+    @override
+    def _solve_inplace_impl(self, x: wp.array, **kwargs: dict[str, Any]) -> None:
+        self._solve_impl(x, x)
+
+    @override
+    def _solve_impl(self, b: wp.array, x: wp.array, **kwargs: dict[str, Any]) -> None:
+        if self._A_op is None:
+            raise ValueError("ConjugateResidualSolver.allocate() must be called before solve().")
+
+        self._solve_iterations, self._solve_residual_norm, _ = self.solver.solve(
+            b=b.reshape((self._num_worlds, self._max_dim)),
+            x=x.reshape((self._num_worlds, self._max_dim)),
+        )
+
+    def _update_preconditioner(self):
+        wp.launch(
+            conjugate.make_jacobi_preconditioner,
+            dim=(self._num_worlds, self._max_dim),
+            inputs=[
+                self._operator.mat.reshape((self._num_worlds, self._max_dim * self._max_dim)),
+                self._operator.info.dim,
+            ],
+            outputs=[self._jacobi_preconditioner],
+            device=self._device,
+        )
+
+
+###
 # Summary
 ###
 
-LinearSolverType = LLTSequentialSolver | LLTBlockedSolver
+
+SolverShorthand = {
+    LLTSequentialSolver: "LLTS",
+    LLTBlockedSolver: "LLTB",
+    ConjugateGradientSolver: "CG",
+    ConjugateResidualSolver: "CR",
+}
+
+LinearSolverType = LLTSequentialSolver | LLTBlockedSolver | ConjugateGradientSolver | ConjugateResidualSolver
 """Type alias over all linear solvers."""

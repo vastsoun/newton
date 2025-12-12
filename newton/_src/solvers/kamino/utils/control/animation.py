@@ -169,7 +169,8 @@ def _advance_animation_frame(
     animation_frame: wp.array(dtype=int32),
 ):
     """
-    A kernel to compute joint-space PID control torques for force-actuated joints.
+    A kernel to advance the animation frame index for each world
+    based on time steps, decimation, rate, and loop settings.
     """
     # Retrieve the the world index from the thread indices
     wid = wp.tid()
@@ -219,7 +220,7 @@ def _extract_animation_references(
     dq_j_ref_active: wp.array(dtype=float32),
 ):
     """
-    A kernel to compute joint-space PID control torques for force-actuated joints.
+    A kernel to extract the active joint-space references from the animation data.
     """
     # Retrieve the the world and DoF index from the thread indices
     wid, qid = wp.tid()

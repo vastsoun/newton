@@ -28,7 +28,7 @@ from newton._src.solvers.kamino.linalg.conjugate import (
 )
 from newton._src.solvers.kamino.tests.utils.extract import get_vector_block
 from newton._src.solvers.kamino.tests.utils.print import print_error_stats
-from newton._src.solvers.kamino.tests.utils.random import RandomProblemLLT
+from newton._src.solvers.kamino.tests.utils.rand import RandomProblemLLT
 
 
 class TestLinalgConjugate(unittest.TestCase):

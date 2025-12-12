@@ -712,5 +712,5 @@ class Contacts:
     ###
 
     def _assert_has_data(self):
-        if self._data is None:
+        if self._data.model_max_contacts_host == 0:
             raise RuntimeError("ContactsData has not been allocated. Call `finalize()` before accessing data.")

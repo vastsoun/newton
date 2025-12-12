@@ -805,6 +805,10 @@ def _apply_dual_preconditioner_to_matrix(
     # Retrieve the number of active constraints in the world
     ncts = problem_dim[wid]
 
+    # Skip if there no constraints ar active
+    if ncts == 0:
+        return
+
     # Compute i (row) and j (col) indices from the tid
     i = tid // ncts
     j = tid % ncts

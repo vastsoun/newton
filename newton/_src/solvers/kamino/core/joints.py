@@ -19,6 +19,7 @@ import math
 from dataclasses import dataclass, field
 from enum import IntEnum
 
+import numpy as np
 import warp as wp
 from warp._src.types import Any, Int, Vector
 
@@ -902,7 +903,7 @@ class JointDescriptor(Descriptor):
         if limits is None:
             return [float(default) for _ in range(size)]
 
-        if isinstance(limits, float):
+        if isinstance(limits, (int, float, np.floating)):
             if limits == math.inf:
                 return [float(FLOAT32_MAX) for _ in range(size)]
             elif limits == -math.inf:
@@ -917,7 +918,7 @@ class JointDescriptor(Descriptor):
             if len(limits) != size:
                 raise ValueError(f"Invalid limits length: {len(limits)} != {size}")
 
-            if all(isinstance(x, float) for x in limits):
+            if all(isinstance(x, (float, np.floating)) for x in limits):
                 for i in range(len(limits)):
                     if limits[i] == math.inf:
                         limits[i] = float(FLOAT32_MAX)
@@ -926,7 +927,7 @@ class JointDescriptor(Descriptor):
                 return limits
             else:
                 raise TypeError(
-                    f"Invalid limits type: All entries must be `float`, but got:\n{[type(x) for x in limits]}"
+                    f"Unsupported limits type: {type(limits)!r}; expected float, iterable of floats, or None"
                 )
 
 

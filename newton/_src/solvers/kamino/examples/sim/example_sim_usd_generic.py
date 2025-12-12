@@ -298,6 +298,8 @@ if __name__ == "__main__":
         ground=args.ground,
         headless=args.headless,
         logging=args.logging,
+        record_video=args.record is not None and not args.headless,
+        async_save=args.record == "async",
     )
 
     # Run a brute-force simulation loop if headless

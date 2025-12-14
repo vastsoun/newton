@@ -19,8 +19,77 @@ import unittest
 
 import warp as wp
 
+from newton._src.solvers.kamino.core.control import Control
+from newton._src.solvers.kamino.core.state import State
+from newton._src.solvers.kamino.core.types import float32
+from newton._src.solvers.kamino.examples import print_progress_bar
+from newton._src.solvers.kamino.geometry.contacts import Contacts
+from newton._src.solvers.kamino.models.builders.basics import build_cartpole
+from newton._src.solvers.kamino.models.builders.utils import make_homogeneous_builder
+from newton._src.solvers.kamino.solver_kamino import SolverKamino
 from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.utils import logger as msg
+
+###
+# Kernels
+###
+
+
+@wp.kernel
+def _test_control_callback(
+    model_dt: wp.array(dtype=float32),
+    state_t: wp.array(dtype=float32),
+    control_tau_j: wp.array(dtype=float32),
+):
+    """
+    An example control callback kernel.
+    """
+    # Retrieve the world index from the thread ID
+    wid = wp.tid()
+
+    # Get the fixed time-step and current time
+    dt = model_dt[wid]
+    t = state_t[wid]
+
+    # Define the time window for the active external force profile
+    t_start = float32(0.0)
+    t_end = 10.0 * dt
+
+    # Compute the first actuated joint index for the current world
+    aid = wid * 2 + 0
+
+    # Apply a time-dependent external force
+    if t > t_start and t < t_end:
+        control_tau_j[aid] = 0.1
+    else:
+        control_tau_j[aid] = 0.0
+
+
+###
+# Launchers
+###
+
+
+def test_control_callback(
+    solver: SolverKamino,
+    state_in: State,
+    state_out: State,
+    control: Control,
+    contacts: Contacts
+):
+    """
+    A control callback function
+    """
+    wp.launch(
+        _test_control_callback,
+        dim=solver._model.size.num_worlds,
+        inputs=[
+            solver._model.time.dt,
+            solver._data.time.time,
+            control.tau_j,
+        ],
+    )
+
 
 ###
 # Tests

@@ -80,22 +80,25 @@ class State:
     q_j: wp.array | None = None
     """
     Array of generalized joint coordinates.\n
-    Shape is ``(sum(c_j),)`` and dtype is :class:`float32`,\n
-    where ``c_j`` is the number of coordinates encoding the configuration of each joint ``j``.
+    Shape is ``(num_joint_coords,)`` and dtype is :class:`float32`.
+    """
+
+    q_j_p: wp.array | None = None
+    """
+    Array of previous generalized joint coordinates.\n
+    Shape is ``(num_joint_coords,)`` and dtype is :class:`float32`.
     """
 
     dq_j: wp.array | None = None
     """
     Array of generalized joint velocities.\n
-    Shape is ``(sum(d_j),)`` and dtype is :class:`float32`,\n
-    where ``d_j`` is the number of DoFs defining the velocity of each joint ``j``.
+    Shape is ``(num_joint_dofs,)`` and dtype is :class:`float32`.
     """
 
     lambda_j: wp.array | None = None
     """
     Array of generalized joint constraint forces.\n
-    Shape is ``(sum(m_j),)`` and dtype is :class:`float32`,\n
-    where ``m_j`` is the number of constraints enforced by each joint ``j``.
+    Shape is ``(num_joint_cts,)`` and dtype is :class:`float32`.
     """
 
     def copy_to(self, other: State) -> None:
@@ -121,5 +124,6 @@ class State:
         wp.copy(self.u_i, other.u_i)
         wp.copy(self.w_i, other.w_i)
         wp.copy(self.q_j, other.q_j)
+        wp.copy(self.q_j_p, other.q_j_p)
         wp.copy(self.dq_j, other.dq_j)
         wp.copy(self.lambda_j, other.lambda_j)

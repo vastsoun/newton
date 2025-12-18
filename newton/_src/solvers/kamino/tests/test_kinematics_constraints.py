@@ -76,7 +76,7 @@ class TestKinematicsConstraints(unittest.TestCase):
         data = model.data(device=self.default_device)
 
         # Create a  limits container
-        limits = Limits(builder=builder, device=self.default_device)
+        limits = Limits(model=model, device=self.default_device)
         if self.verbose:
             print("")
             print("limits.model_max_limits_host: ", limits.model_max_limits_host)
@@ -125,7 +125,7 @@ class TestKinematicsConstraints(unittest.TestCase):
         data = model.data(device=self.default_device)
 
         # Create a  limits container
-        limits = Limits(builder=builder, device=self.default_device)
+        limits = Limits(model=model, device=self.default_device)
         if self.verbose:
             print("")
             print("limits.model_max_limits_host: ", limits.model_max_limits_host)
@@ -217,7 +217,7 @@ class TestKinematicsConstraints(unittest.TestCase):
         data = model.data(device=self.default_device)
 
         # Create a  limits container
-        limits = Limits(builder=builder, device=self.default_device)
+        limits = Limits(model=model, device=self.default_device)
         if self.verbose:
             print("")
             print("limits.model_max_limits_host: ", limits.model_max_limits_host)

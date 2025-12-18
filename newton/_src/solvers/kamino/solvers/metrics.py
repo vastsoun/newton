@@ -46,7 +46,7 @@ A typical example for using this module is:
     model = builder.finalize()
     state_p = model.state()
     data = model.data()
-    limits = Limits(builder)
+    limits = Limits(model)
     contacts = Contacts(builder)
     jacobians = DenseSystemJacobians(model, limits, contacts)
 

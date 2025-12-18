@@ -187,9 +187,10 @@ class TestKinematicsLimits(unittest.TestCase):
         """
         # Construct the model description using the ModelBuilder
         builder = make_homogeneous_builder(num_worlds=3, build_fn=basics.build_boxes_fourbar)
+        model = builder.finalize(device=self.default_device)
 
         # Create a Limits container
-        limits = Limits(builder=builder, device=self.default_device)
+        limits = Limits(model=model, device=self.default_device)
 
         # Check the initial state of the limits
         self.assertIsNotNone(limits.model_max_limits)
@@ -262,7 +263,7 @@ class TestKinematicsLimits(unittest.TestCase):
         msg.info("data.joints.dq_j: %s\n\n", data.joints.dq_j)
 
         # Create a Limits container
-        limits = Limits(builder=builder, device=self.default_device)
+        limits = Limits(model=model, device=self.default_device)
 
         # Optional verbose output
         msg.info("[before]: limits.model_max_limits_host: %s", limits.model_max_limits_host)

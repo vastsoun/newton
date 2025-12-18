@@ -21,9 +21,9 @@ import warp as wp
 
 from ..core.model import Model, ModelData
 from ..core.types import float32, int32, mat63f, vec2i, vec3f, vec6f
-from ..geometry.contacts import ContactsData
-from ..kinematics.jacobians import DenseSystemJacobiansData
-from ..kinematics.limits import LimitsData
+from ..geometry.contacts import Contacts
+from ..kinematics.jacobians import DenseSystemJacobians
+from ..kinematics.limits import Limits
 
 ###
 # Module interface
@@ -379,7 +379,7 @@ def _compute_contact_cts_body_wrenches(
 
 
 def compute_joint_dof_body_wrenches(
-    model: Model, data: ModelData, jacobians: DenseSystemJacobiansData, reset_to_zero: bool = True
+    model: Model, data: ModelData, jacobians: DenseSystemJacobians, reset_to_zero: bool = True
 ) -> None:
     """
     Update the actuation wrenches of the bodies based on the active joint torques.
@@ -405,8 +405,8 @@ def compute_joint_dof_body_wrenches(
             model.joints.bid_B,
             model.joints.bid_F,
             data.joints.tau_j,
-            jacobians.J_dofs_offsets,
-            jacobians.J_dofs_data,
+            jacobians.data.J_dofs_offsets,
+            jacobians.data.J_dofs_data,
             # Outputs:
             data.bodies.w_a_i,
         ],
@@ -416,11 +416,11 @@ def compute_joint_dof_body_wrenches(
 def compute_constraint_body_wrenches(
     model: Model,
     data: ModelData,
-    limits: LimitsData,
-    contacts: ContactsData,
-    jacobians: DenseSystemJacobiansData,
+    jacobians: DenseSystemJacobians,
     lambdas_offsets: wp.array,
     lambdas_data: wp.array,
+    limits: Limits | None = None,
+    contacts: Contacts | None = None,
     reset_to_zero: bool = True,
 ):
     """
@@ -443,8 +443,8 @@ def compute_constraint_body_wrenches(
                 model.joints.cts_offset,
                 model.joints.bid_B,
                 model.joints.bid_F,
-                jacobians.J_cts_offsets,
-                jacobians.J_cts_data,
+                jacobians.data.J_cts_offsets,
+                jacobians.data.J_cts_data,
                 lambdas_offsets,
                 lambdas_data,
                 # Outputs:
@@ -452,7 +452,7 @@ def compute_constraint_body_wrenches(
             ],
         )
 
-    if limits is not None:
+    if limits is not None and limits.model_max_limits_host > 0:
         if reset_to_zero:
             data.bodies.w_l_i.zero_()
         wp.launch(
@@ -469,8 +469,8 @@ def compute_constraint_body_wrenches(
                 limits.wid,
                 limits.lid,
                 limits.bids,
-                jacobians.J_cts_offsets,
-                jacobians.J_cts_data,
+                jacobians.data.J_cts_offsets,
+                jacobians.data.J_cts_data,
                 lambdas_offsets,
                 lambdas_data,
                 # Outputs:
@@ -478,7 +478,7 @@ def compute_constraint_body_wrenches(
             ],
         )
 
-    if contacts is not None:
+    if contacts is not None and contacts.model_max_contacts_host > 0:
         if reset_to_zero:
             data.bodies.w_c_i.zero_()
         wp.launch(
@@ -495,8 +495,8 @@ def compute_constraint_body_wrenches(
                 contacts.wid,
                 contacts.cid,
                 contacts.bid_AB,
-                jacobians.J_cts_offsets,
-                jacobians.J_cts_data,
+                jacobians.data.J_cts_offsets,
+                jacobians.data.J_cts_data,
                 lambdas_offsets,
                 lambdas_data,
                 # Outputs:

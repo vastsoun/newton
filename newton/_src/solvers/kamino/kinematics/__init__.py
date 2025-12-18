@@ -17,15 +17,13 @@
 KAMINO: Kinematics Module
 """
 
-from .constraints import make_unilateral_constraints_info, update_constraints_info
-from .jacobians import (
-    DenseSystemJacobians,
-    DenseSystemJacobiansData,
-    build_contact_jacobians,
-    build_jacobians,
-    build_joint_jacobians,
-    build_limit_jacobians,
+from .constraints import (
+    get_max_constraints_per_world,
+    make_unilateral_constraints_info,
+    unpack_constraint_solutions,
+    update_constraints_info,
 )
+from .jacobians import DenseSystemJacobians, DenseSystemJacobiansData
 from .joints import compute_joints_data
 from .limits import Limits, LimitsData
 
@@ -38,11 +36,9 @@ __all__ = [
     "DenseSystemJacobiansData",
     "Limits",
     "LimitsData",
-    "build_contact_jacobians",
-    "build_jacobians",
-    "build_joint_jacobians",
-    "build_limit_jacobians",
     "compute_joints_data",
+    "get_max_constraints_per_world",
     "make_unilateral_constraints_info",
+    "unpack_constraint_solutions",
     "update_constraints_info",
 ]

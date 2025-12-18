@@ -253,22 +253,19 @@ class PADMMSolver:
             make_update_dual_variables_and_compute_primal_dual_residuals(use_acceleration)
         )
 
-    def reset(self):
+    def reset(self, world_mask: wp.array | None = None):
         """
         Resets the all internal solver data to sentinel values.
         """
-        # Initialize state arrays to zero
-        self._data.state.reset(use_acceleration=self._use_acceleration)
+        # If no world mask is provided, reset data of all worlds
+        if world_mask is None:
+            self._data.state.reset(use_acceleration=self._use_acceleration)
+            self._data.solution.zero()
 
-        # Initialize solution arrays to zero
-        self._data.solution.zero()
-
-        # Reset solver info to zero if collection is enabled
-        if self._collect_info:
-            self._data.info.zero()
-
-        # Reset the solver status and ALM penalty parameter
-        self._initialize()
+        # Otherwise, only reset data of the specified worlds
+        else:
+            # TODO: handle world mask
+            raise NotImplementedError("PADMM solver reset with world mask is not implemented yet.")
 
     def coldstart(self):
         """

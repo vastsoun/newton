@@ -17,10 +17,12 @@
 KAMINO: Simulation Module
 """
 
+from .datalog import SimulationLogger
 from .simulator import Simulator, SimulatorData, SimulatorSettings
+from .viewer import ViewerKamino
 
 ###
 # Module interface
 ###
 
-__all__ = ["Simulator", "SimulatorData", "SimulatorSettings"]
+__all__ = ["SimulationLogger", "Simulator", "SimulatorData", "SimulatorSettings", "ViewerKamino"]

@@ -22,13 +22,10 @@ import h5py
 import numpy as np
 import warp as wp
 
-# Module to be tested
 import newton._src.solvers.kamino.utils.io.hdf5 as hdf5
 from newton._src.solvers.kamino.models.builders.basics import build_boxes_nunchaku
-from newton._src.solvers.kamino.simulation.simulator import Simulator
-
-# Test utilities
 from newton._src.solvers.kamino.tests import setup_tests, test_context
+from newton._src.solvers.kamino.utils.sim.simulator import Simulator
 
 ###
 # Helper functions

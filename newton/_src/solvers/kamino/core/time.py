@@ -140,9 +140,9 @@ class TimeData:
     Shape of ``(num_worlds,)`` and type :class:`float`.
     """
 
-    def zero(self):
+    def reset(self):
         """
-        Reset the time state to zero.
+        Resets the time state to zero.
         """
         self.steps.fill_(0)
         self.time.fill_(0.0)

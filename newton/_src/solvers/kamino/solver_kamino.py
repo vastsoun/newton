@@ -333,9 +333,9 @@ class SolverKamino(SolverBase):
         self._mid_step_cb: SolverKamino.StepCallbackType | None = None
         self._post_step_cb: SolverKamino.StepCallbackType | None = None
 
-        # Initialize the solver internal data
-        with wp.ScopedDevice(self._model.device):
-            self.reset()
+        # # Initialize the solver internal data
+        # with wp.ScopedDevice(self._model.device):
+        #     self.reset()
 
     ###
     # Properties
@@ -569,7 +569,7 @@ class SolverKamino(SolverBase):
         self._run_midstep_callback(state_in, state_out, control, contacts)
 
         # Solve the time integration sub-problem to compute the next state of the system
-        self._integrate(state_p=state_in)
+        self._integrate()
 
         # Compute solver solution metrics if enabled
         self._compute_metrics(state_in=state_in, contacts=contacts)

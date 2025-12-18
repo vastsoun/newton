@@ -96,9 +96,9 @@ class TestSetup:
         self.problem.build(
             model=self.model,
             data=self.data,
-            limits=self.limits.data,
-            contacts=self.contacts.data,
-            jacobians=self.jacobians.data,
+            limits=self.limits,
+            contacts=self.contacts,
+            jacobians=self.jacobians,
         )
 
     def cache(self, solver: PADMMSolver):

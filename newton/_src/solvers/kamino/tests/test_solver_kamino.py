@@ -115,7 +115,6 @@ def assert_solver_components(testcase: unittest.TestCase, solver: SolverKamino):
     testcase.assertIsInstance(solver.settings, SolverKaminoSettings)
     testcase.assertIsInstance(solver._model, Model)
     testcase.assertIsInstance(solver._data, ModelData)
-    testcase.assertIsInstance(solver._state_pp_cache, State)
     testcase.assertIsInstance(solver._limits, Limits)
     testcase.assertIsInstance(solver._jacobians, DenseSystemJacobians)
     testcase.assertIsInstance(solver._problem_fd, DualProblem)
@@ -169,8 +168,8 @@ class TestSolverKamino(unittest.TestCase):
             setup_tests(clear_cache=False)
         self.default_device = wp.get_device(test_context.device)
         # self.verbose = test_context.verbose  # Set to True to enable verbose output
-        self.verbose = True  # Set to True to enable verbose output
-        self.progress = True  # Set to True for progress output
+        self.verbose = False  # Set to True to enable verbose output
+        self.progress = False  # Set to True for progress output
         self.seed = 42
 
         # Set debug-level logging to print verbose test output to console

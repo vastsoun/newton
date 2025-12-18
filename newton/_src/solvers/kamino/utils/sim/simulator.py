@@ -1068,7 +1068,7 @@ class Simulator:
         """
         Updates the actuation wrenches based on the current control inputs.
         """
-        compute_joint_dof_body_wrenches(self._model, self._data.solver, self._jacobians.data)
+        compute_joint_dof_body_wrenches(self._model, self._data.solver, self._jacobians)
 
     def _check_limits(self):
         """
@@ -1115,9 +1115,9 @@ class Simulator:
         self._dual_problem.build(
             model=self._model,
             data=self._data.solver,
-            limits=self._limits.data,
-            contacts=self.contacts.data,
-            jacobians=self.jacobians.data,
+            limits=self._limits,
+            contacts=self._contacts,
+            jacobians=self._jacobians,
             reset_to_zero=True,
         )
 
@@ -1151,9 +1151,9 @@ class Simulator:
         compute_constraint_body_wrenches(
             model=self._model,
             data=self._data.solver,
-            limits=self._limits.data,
-            contacts=self.contacts.data,
-            jacobians=self._jacobians.data,
+            limits=self._limits,
+            contacts=self.contacts,
+            jacobians=self._jacobians,
             lambdas_offsets=self._dual_problem.data.vio,
             lambdas_data=self._fd_solver.data.solution.lambdas,
         )

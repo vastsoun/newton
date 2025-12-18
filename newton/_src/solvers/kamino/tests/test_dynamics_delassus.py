@@ -246,7 +246,7 @@ class TestDelassusOperator(unittest.TestCase):
         )
 
         # Build the Delassus operator from the current data
-        delassus.build(model=model, data=data, jacobians=jacobians.data, reset_to_zero=True)
+        delassus.build(model=model, data=data, jacobians=jacobians, reset_to_zero=True)
 
         # Extract the active constraint dimensions
         active_dims = extract_active_constraint_dims(delassus)
@@ -305,7 +305,7 @@ class TestDelassusOperator(unittest.TestCase):
         )
 
         # Build the Delassus operator from the current data
-        delassus.build(model=model, data=data, jacobians=jacobians.data, reset_to_zero=True)
+        delassus.build(model=model, data=data, jacobians=jacobians, reset_to_zero=True)
 
         # Extract the active constraint dimensions
         active_dims = extract_active_constraint_dims(delassus)
@@ -375,7 +375,7 @@ class TestDelassusOperator(unittest.TestCase):
         )
 
         # Build the Delassus operator from the current data
-        delassus.build(model=model, data=data, jacobians=jacobians.data, reset_to_zero=True)
+        delassus.build(model=model, data=data, jacobians=jacobians, reset_to_zero=True)
 
         # Extract the active constraint dimensions
         active_dims = extract_active_constraint_dims(delassus)
@@ -444,7 +444,7 @@ class TestDelassusOperator(unittest.TestCase):
         )
 
         # Build the Delassus operator from the current data
-        delassus.build(model=model, data=data, jacobians=jacobians.data, reset_to_zero=True)
+        delassus.build(model=model, data=data, jacobians=jacobians, reset_to_zero=True)
 
         # Extract the active constraint dimensions
         active_dims = extract_active_constraint_dims(delassus)
@@ -524,7 +524,7 @@ class TestDelassusOperator(unittest.TestCase):
         )
 
         # Build the Delassus operator from the current data
-        delassus.build(model=model, data=data, jacobians=jacobians.data, reset_to_zero=True)
+        delassus.build(model=model, data=data, jacobians=jacobians, reset_to_zero=True)
 
         # Extract the active constraint dimensions
         active_dims = extract_active_constraint_dims(delassus)

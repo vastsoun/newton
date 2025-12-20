@@ -38,6 +38,7 @@ from .core.joints import JointCorrectionMode
 from .core.model import Model, ModelData
 from .core.state import State
 from .core.time import advance_time
+from .core.types import float32, int32, transformf, vec6f
 from .dynamics.dual import DualProblem, DualProblemSettings
 from .dynamics.wrenches import (
     compute_constraint_body_wrenches,
@@ -51,8 +52,19 @@ from .kinematics.constraints import (
     update_constraints_info,
 )
 from .kinematics.jacobians import DenseSystemJacobians
-from .kinematics.joints import compute_joints_data
+from .kinematics.joints import (
+    compute_joints_data,
+    extract_actuators_state_from_joints,
+    extract_joints_state_from_actuators,
+)
 from .kinematics.limits import Limits
+from .kinematics.resets import (
+    reset_body_net_wrenches,
+    reset_joint_constraint_reactions,
+    reset_state_from_base_state,
+    reset_state_to_model_default,
+    reset_time,
+)
 from .linalg import LinearSolverType, LLTBlockedSolver
 from .solvers.fk import ForwardKinematicsSolver, ForwardKinematicsSolverSettings
 from .solvers.metrics import SolutionMetrics
@@ -143,27 +155,27 @@ class SolverKaminoSettings:
     def check(self) -> None:
         """Validates relevant solver settings."""
         if not issubclass(self.linear_solver_type, LinearSolverType):
-            raise ValueError(
+            raise TypeError(
                 f"Invalid linear solver type: Expected a subclass of `LinearSolverType`, "
-                f"but got {self.linear_solver_type}."
+                f"but got {type(self.linear_solver_type)}."
             )
         if not isinstance(self.warmstart, PADMMWarmStartMode):
-            raise ValueError(
-                f"Invalid warmstart mode: Expected a `PADMMWarmStartMode` enum value, but got {self.warmstart}."
+            raise TypeError(
+                f"Invalid warmstart mode: Expected a `PADMMWarmStartMode` enum value, but got {type(self.warmstart)}."
             )
         if not isinstance(self.contact_warmstart_method, WarmstarterContacts.Method):
-            raise ValueError(
+            raise TypeError(
                 f"Invalid contact warmstart method: Expected a `WarmstarterContacts.Method` enum value, "
-                f"but got {self.contact_warmstart_method}."
+                f"but got {type(self.contact_warmstart_method)}."
             )
         if not isinstance(self.rotation_correction, JointCorrectionMode):
-            raise ValueError(
+            raise TypeError(
                 f"Invalid rotation correction mode: Expected a `JointCorrectionMode` enum value, "
-                f"but got {self.rotation_correction}."
+                f"but got {type(self.rotation_correction)}."
             )
         self.problem.check()
         self.padmm.check()
-        # TODO: self.fk.check()
+        self.fk.check()
 
     def __post_init__(self):
         """Post-initialization to validate settings."""
@@ -270,9 +282,7 @@ class SolverKamino(SolverBase):
         self._limits = Limits(model=self._model, device=self._model.device)
 
         # Construct the unilateral constraints members in the model info
-        make_unilateral_constraints_info(
-            model=self._model, data=self._data, limits=self._limits, contacts=contacts, device=self._model.device
-        )
+        make_unilateral_constraints_info(model=self._model, data=self._data, limits=self._limits, contacts=contacts)
 
         # Allocate Jacobians data on the device
         self._jacobians = DenseSystemJacobians(
@@ -307,9 +317,13 @@ class SolverKamino(SolverBase):
         # Allocate the forward kinematics solver on the device
         self._solver_fk = ForwardKinematicsSolver(model=self._model, settings=self._settings.fk)
 
-        # Allocate a fall-back world mask selecting all worlds
+        # Allocate additional internal data for reset operations
         with wp.ScopedDevice(self._model.device):
-            self._all_worlds_mask = wp.ones(shape=(self._model.size.num_worlds,), dtype=wp.int32)
+            self._all_worlds_mask = wp.ones(shape=(self._model.size.num_worlds,), dtype=int32)
+            self._base_q = wp.zeros(shape=(self._model.size.num_worlds,), dtype=transformf)
+            self._base_u = wp.zeros(shape=(self._model.size.num_worlds,), dtype=vec6f)
+            self._actuators_q = wp.zeros(shape=(self._model.size.sum_of_num_actuated_joint_coords,), dtype=float32)
+            self._actuators_u = wp.zeros(shape=(self._model.size.sum_of_num_actuated_joint_dofs,), dtype=float32)
 
         # Allocate the contacts warmstarter if enabled
         self._ws_limits: WarmstarterLimits | None = None
@@ -333,9 +347,9 @@ class SolverKamino(SolverBase):
         self._mid_step_cb: SolverKamino.StepCallbackType | None = None
         self._post_step_cb: SolverKamino.StepCallbackType | None = None
 
-        # # Initialize the solver internal data
-        # with wp.ScopedDevice(self._model.device):
-        #     self.reset()
+        # Initialize all internal solver data
+        with wp.ScopedDevice(self._model.device):
+            self._reset()
 
     ###
     # Properties
@@ -431,11 +445,13 @@ class SolverKamino(SolverBase):
     def reset(
         self,
         state_out: State,
+        world_mask: wp.array | None = None,
+        actuator_q: wp.array | None = None,
+        actuator_u: wp.array | None = None,
         joint_q: wp.array | None = None,
         joint_u: wp.array | None = None,
         base_q: wp.array | None = None,
         base_u: wp.array | None = None,
-        world_mask: wp.array | None = None,
     ):
         """
         Resets the simulation state given a combination of desired base body
@@ -448,6 +464,15 @@ class SolverKamino(SolverBase):
         Args:
             state_out (State):
                 The output state container to which the reset state data is written.
+            world_mask (wp.array, optional):
+                Optional array of per-world masks indicating which worlds should be reset.\n
+                Shape of `(num_worlds,)` and type :class:`wp.int8 | wp.bool`
+            actuator_q (wp.array, optional):
+                Optional array of target actuated joint coordinates.\n
+                Shape of `(num_actuated_joint_coords,)` and type :class:`wp.float32`
+            actuator_u (wp.array, optional):
+                Optional array of target actuated joint DoF velocities.\n
+                Shape of `(num_actuated_joint_dofs,)` and type :class:`wp.float32`
             joint_q (wp.array, optional):
                 Optional array of target joint coordinates.\n
                 Shape of `(num_joint_coords,)` and type :class:`wp.float32`
@@ -460,53 +485,94 @@ class SolverKamino(SolverBase):
             base_qd (wp.array, optional):
                 Optional array of target base body twists.\n
                 Shape of `(num_worlds,)` and type :class:`wp.spatial_vectorf`
-            world_mask (wp.array, optional):
-                Optional array of per-world masks indicating which worlds should be reset.\n
-                Shape of `(num_worlds,)` and type :class:`wp.int8 | wp.bool`
         """
+        # Ensure the input reset targets are valid
+        if joint_q is not None and joint_q.shape[0] != self._model.size.sum_of_num_joint_coords:
+            raise ValueError(
+                f"Invalid joint_q shape: Expected ({self._model.size.sum_of_num_joint_coords},),"
+                f" but got {joint_q.shape}."
+            )
+        if joint_u is not None and joint_u.shape[0] != self._model.size.sum_of_num_joint_dofs:
+            raise ValueError(
+                f"Invalid joint_u shape: Expected ({self._model.size.sum_of_num_joint_dofs},), but got {joint_u.shape}."
+            )
+        if actuator_q is not None and actuator_q.shape[0] != self._model.size.sum_of_num_actuated_joint_coords:
+            raise ValueError(
+                f"Invalid actuator_q shape: Expected ({self._model.size.sum_of_num_actuated_joint_coords},),"
+                f" but got {actuator_q.shape}."
+            )
+        if actuator_u is not None and actuator_u.shape[0] != self._model.size.sum_of_num_actuated_joint_dofs:
+            raise ValueError(
+                f"Invalid actuator_u shape: Expected ({self._model.size.sum_of_num_actuated_joint_dofs},),"
+                f" but got {actuator_u.shape}."
+            )
+        if base_q is not None and base_q.shape[0] != self._model.size.num_worlds:
+            raise ValueError(
+                f"Invalid base_q shape: Expected ({self._model.size.num_worlds},), but got {base_q.shape}."
+            )
+        if base_u is not None and base_u.shape[0] != self._model.size.num_worlds:
+            raise ValueError(
+                f"Invalid base_u shape: Expected ({self._model.size.num_worlds},), but got {base_u.shape}."
+            )
+        if world_mask is not None and world_mask.shape[0] != self._model.size.num_worlds:
+            raise ValueError(
+                f"Invalid world_mask shape: Expected ({self._model.size.num_worlds},), but got {world_mask.shape}."
+            )
+
+        # Ensure that only joint or actuator targets are provided
+        if (joint_q is not None or joint_u is not None) and (actuator_q is not None or actuator_u is not None):
+            raise ValueError("Combined joint and actuator targets are not supported. Only one type may be provided.")
+
         # Run the pre-reset callback if it has been set
         self._run_pre_reset_callback(state_out=state_out)
 
         # Determine the effective world mask to use for the reset operation
         _world_mask = world_mask if world_mask is not None else self._all_worlds_mask
 
-        # If no reset targets are provided, reset all bodies to the model initial state
+        # If no reset targets are provided, reset all bodies to the model default state
         if joint_q is None and joint_u is None and base_q is None and base_u is None:
-            self._reset_to_initial_state(
+            self._reset_to_default_state(
                 state_out=state_out,
-                mask=_world_mask,
+                world_mask=_world_mask,
             )
 
         # If only base targets are provided, uniformly reset all bodies to the given base states
-        elif (base_q is not None or base_u is not None) and (joint_q is None and joint_u is None):
+        elif (
+            (base_q is not None or base_u is not None)
+            and (joint_q is None and joint_u is None)
+            and (actuator_q is None and actuator_u is None)
+        ):
             self._reset_to_base_state(
                 state_out=state_out,
+                world_mask=_world_mask,
                 base_q=base_q,
                 base_u=base_u,
-                mask=_world_mask,
             )
 
         # If a joint target is provided, use the FK solver to reset the bodies accordingly
-        elif joint_q is not None:
+        elif joint_q is not None or actuator_q is not None:
             self._reset_with_fk_solve(
                 state_out=state_out,
+                world_mask=_world_mask,
+                actuator_q=actuator_q,
+                actuator_u=actuator_u,
                 joint_q=joint_q,
                 joint_u=joint_u,
                 base_q=base_q,
                 base_u=base_u,
-                world_mask=_world_mask,
             )
 
         # If no valid combination of reset targets is provided, raise an error
         else:
             raise ValueError(
                 "Unsupported reset combination with: "
+                f" actuator_q: {actuator_q is not None}, actuator_u: {actuator_u is not None},"
                 f" joint_q: {joint_q is not None}, joint_u: {joint_u is not None},"
                 f" base_q: {base_q is not None}, base_u: {base_u is not None}."
             )
 
         # Post-process the reset operation
-        self._reset_post_process(world_mask=world_mask)
+        self._reset_post_process(world_mask=_world_mask)
 
         # Run the post-reset callback if it has been set
         self._run_post_reset_callback(state_out=state_out)
@@ -659,39 +725,148 @@ class SolverKamino(SolverBase):
     # Internals - Reset Operations
     ###
 
-    def _reset_to_initial_state(self, state_out: State, mask: wp.array):
+    def _reset(self):
         """
-        Resets the simulation to the initial state defined in the model.
+        Performs a hard-reset of all solver internal data.
         """
-        pass
+        # Reset internal time-keeping data
+        self._data.time.reset()
+
+        # Reset all bodies to their model default states
+        self._data.bodies.clear_all_wrenches()
+        wp.copy(self._data.bodies.q_i, self._model.bodies.q_i_0)
+        wp.copy(self._data.bodies.u_i, self._model.bodies.u_i_0)
+        update_body_inertias(model=self._model.bodies, data=self._data.bodies)
+
+        # Reset all joints to their model default states
+        self._data.joints.reset_state(q_j_ref=self._model.joints.q_j_ref)
+        self._data.joints.clear_all()
+
+        # Reset the joint-limits interface
+        self._limits.reset()
+
+        # Initialize the constraint state info
+        self._data.info.num_limits.zero_()
+        self._data.info.num_contacts.zero_()
+        update_constraints_info(model=self._model, data=self._data)
+
+        # Initialize the system Jacobians so that they may be available after reset
+        # NOTE: This is not strictly necessary, but serves advanced users who may
+        # want to query Jacobians in controllers immediately after a reset operation.
+        self._jacobians.build(
+            model=self._model,
+            data=self._data,
+            limits=None,
+            contacts=None,
+            reset_to_zero=True,
+        )
+
+        # Reset the forward dynamics solver
+        self._solver_fd.reset()
+
+    def _reset_to_default_state(self, state_out: State, world_mask: wp.array):
+        """
+        Resets the simulation to the default state defined in the model.
+        """
+        reset_state_to_model_default(
+            model=self._model,
+            state_out=state_out,
+            world_mask=world_mask,
+        )
 
     def _reset_to_base_state(
         self,
         state_out: State,
+        world_mask: wp.array,
         base_q: wp.array | None = None,
         base_u: wp.array | None = None,
-        world_mask: wp.array | None = None,
     ):
         """
         Resets the simulation to the given base body states by
         uniformly applying the necessary transform across all bodies.
         """
-        pass
+        # First determine the effective base states to use
+        _base_q = base_q if base_q is not None else self._base_q
+        _base_u = base_u if base_u is not None else self._base_u
+
+        # Uniformly reset all bodies according to the transform between the given
+        # base state and the existing body states contained in `state_out`
+        reset_state_from_base_state(
+            model=self._model,
+            state_out=state_out,
+            world_mask=world_mask,
+            base_q=_base_q,
+            base_u=_base_u,
+            q_i_cache=self._data.bodies.q_i,
+        )
 
     def _reset_with_fk_solve(
         self,
         state_out: State,
+        world_mask: wp.array,
         joint_q: wp.array,
         joint_u: wp.array | None = None,
+        actuator_q: wp.array | None = None,
+        actuator_u: wp.array | None = None,
         base_q: wp.array | None = None,
         base_u: wp.array | None = None,
-        world_mask: wp.array | None = None,
     ):
         """
         Resets the simulation to the given joint states by solving
         the forward kinematics to compute the corresponding body states.
         """
-        pass
+        # Detect if joint or actuator targets are provided
+        with_joint_targets = joint_q is not None and (actuator_q is None and actuator_u is None)
+
+        # Unpack the actuated joint states from the input joint states
+        if with_joint_targets:
+            extract_actuators_state_from_joints(
+                model=self._model,
+                world_mask=world_mask,
+                joint_q=joint_q,
+                joint_u=joint_u if joint_u is not None else state_out.dq_j,
+                actuator_q=self._actuators_q,
+                actuator_u=self._actuators_u,
+            )
+
+        # Determine the actuator state arrays to use for the FK solve
+        _actuator_q = actuator_q if actuator_q is not None else self._actuators_q
+        _actuator_u = actuator_u if actuator_u is not None else self._actuators_u
+
+        # TODO: We need a graph-capturable mechanism to detect solver errors
+        # Solve the forward kinematics to compute the body states
+        self._solver_fk.run_fk_solve(
+            world_mask=world_mask,
+            bodies_q=state_out.q_i,
+            bodies_u=state_out.u_i,
+            actuators_q=_actuator_q,
+            actuators_u=_actuator_u,
+            base_q=base_q,
+            base_u=base_u,
+        )
+
+        # Reset the time, net body wrenches and joint constraint reactions to zero
+        # NOTE: This is necessary to ensure proper solver behavior after resets
+        reset_body_net_wrenches(model=self._model, body_w=state_out.w_i, world_mask=world_mask)
+        reset_joint_constraint_reactions(model=self._model, lambda_j=state_out.lambda_j, world_mask=world_mask)
+
+        # If joint targets were provided, copy them to the output state
+        if with_joint_targets:
+            # Copy the joint states to the output state
+            wp.copy(state_out.q_j_p, joint_q)
+            wp.copy(state_out.q_j, joint_q)
+            if joint_u is not None:
+                wp.copy(state_out.dq_j, joint_u)
+        # Otherwise, extract the joint states from the actuators
+        else:
+            extract_joints_state_from_actuators(
+                model=self._model,
+                world_mask=world_mask,
+                actuator_q=_actuator_q,
+                actuator_u=_actuator_u,
+                joint_q=state_out.q_j,
+                joint_u=state_out.dq_j,
+            )
 
     def _reset_post_process(self, world_mask: wp.array | None = None):
         """
@@ -701,13 +876,21 @@ class SolverKamino(SolverBase):
         that ensures that all state and control data are synchronized with the internal
         solver state, and that intermediate quantities are updated accordingly.
         """
+        # Reset the solver-internal time-keeping data
+        reset_time(
+            model=self._model,
+            world_mask=world_mask,
+            time=self._data.time.time,
+            steps=self._data.time.steps,
+        )
+
         # Reset the forward dynamics solver to clear internal state
         # NOTE: This will cause the solver to perform a cold-start
         # on the first call to `step()`
-        self._solver_fd.reset(world_mask=world_mask)
+        self._solver_fd.reset(problem=self._problem_fd, world_mask=world_mask)
 
     ###
-    # Internals - Update Operations
+    # Internals - Step Operations
     ###
 
     def _update_joints_data(self, q_j_p: wp.array):

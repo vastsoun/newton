@@ -24,7 +24,7 @@ from .constraints import (
     update_constraints_info,
 )
 from .jacobians import DenseSystemJacobians, DenseSystemJacobiansData
-from .joints import compute_joints_data
+from .joints import compute_joints_data, extract_actuators_state_from_joints, extract_joints_state_from_actuators
 from .limits import Limits, LimitsData
 
 ###
@@ -37,6 +37,8 @@ __all__ = [
     "Limits",
     "LimitsData",
     "compute_joints_data",
+    "extract_actuators_state_from_joints",
+    "extract_joints_state_from_actuators",
     "get_max_constraints_per_world",
     "make_unilateral_constraints_info",
     "unpack_constraint_solutions",

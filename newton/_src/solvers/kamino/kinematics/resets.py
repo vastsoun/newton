@@ -28,8 +28,13 @@ from ..kinematics.joints import compute_joint_pose_and_relative_motion, make_wri
 ###
 
 __all__ = [
+    "reset_body_net_wrenches",
+    "reset_joint_constraint_reactions",
     "reset_select_worlds_to_initial_state",
     "reset_select_worlds_to_state",
+    "reset_state_from_base_state",
+    "reset_state_to_model_default",
+    "reset_time",
 ]
 
 
@@ -41,11 +46,6 @@ wp.set_module_options({"enable_backward": False})
 
 
 ###
-# Functions
-###
-
-
-###
 # Kernels
 ###
 
@@ -53,7 +53,7 @@ wp.set_module_options({"enable_backward": False})
 @wp.kernel
 def _reset_time_of_select_worlds(
     # Inputs:
-    mask: wp.array(dtype=int32),
+    world_mask: wp.array(dtype=int32),
     # Outputs:
     data_time: wp.array(dtype=float32),
     data_steps: wp.array(dtype=int32),
@@ -61,16 +61,160 @@ def _reset_time_of_select_worlds(
     # Retrieve the world index from the 1D thread index
     wid = wp.tid()
 
-    # Retrieve the reset flag for the corresponding world
-    world_has_reset = mask[wid]
-
     # Skip resetting time if the world has not been marked for reset
-    if not world_has_reset:
+    if world_mask[wid] == 0:
         return
 
     # Reset both the physical time and step count to zero
     data_time[wid] = 0.0
     data_steps[wid] = 0
+
+
+@wp.kernel
+def _reset_body_state_of_select_worlds(
+    # Inputs:
+    world_mask: wp.array(dtype=int32),
+    model_body_wid: wp.array(dtype=int32),
+    model_body_q_i_0: wp.array(dtype=transformf),
+    model_body_u_i_0: wp.array(dtype=vec6f),
+    # Outputs:
+    state_q_i: wp.array(dtype=transformf),
+    state_u_i: wp.array(dtype=vec6f),
+    state_w_i: wp.array(dtype=vec6f),
+):
+    # Retrieve the body index from the 1D thread index
+    bid = wp.tid()
+
+    # Retrieve the world index for this body
+    wid = model_body_wid[bid]
+
+    # Skip resetting this body if the world has not been marked for reset
+    if world_mask[wid] == 0:
+        return
+
+    # Retrieve the target state for this body
+    q_i_0 = model_body_q_i_0[bid]
+    u_i_0 = model_body_u_i_0[bid]
+
+    # Store the reset state in the output arrays and zero-out wrenches
+    state_q_i[bid] = q_i_0
+    state_u_i[bid] = u_i_0
+    state_w_i[bid] = vec6f(0.0)
+
+
+@wp.kernel
+def _reset_body_state_from_base(
+    # Inputs:
+    world_mask: wp.array(dtype=int32),
+    model_info_base_body_index: wp.array(dtype=int32),
+    model_body_wid: wp.array(dtype=int32),
+    q_i_cache: wp.array(dtype=transformf),
+    base_q: wp.array(dtype=transformf),
+    base_u: wp.array(dtype=vec6f),
+    # Outputs:
+    state_q_i: wp.array(dtype=transformf),
+    state_u_i: wp.array(dtype=vec6f),
+    state_w_i: wp.array(dtype=vec6f),
+):
+    # Retrieve the body index from the 1D thread index
+    bid = wp.tid()
+
+    # Retrieve the world index for this body
+    wid = model_body_wid[bid]
+
+    # Skip resetting this body if the world has not been marked for reset
+    if world_mask[wid] == 0:
+        return
+
+    # Retrieve the index of the base body for this world
+    base_bid = model_info_base_body_index[wid]
+
+    # Retrieve the current pose of the base body
+    if base_bid >= 0:
+        q_b_0 = q_i_cache[base_bid]
+    else:
+        # If there is no base body, use the identity transform
+        q_b_0 = wp.transform_identity(dtype=float32)
+
+    # Retrieve the current pose for this body
+    q_i_0 = q_i_cache[bid]
+
+    # Retrieve the target state of the base body
+    q_b = base_q[wid]
+    u_b = base_u[wid]
+
+    # Compute the relative pose transform that
+    # moves the base body to the target pose
+    X_b = wp.transform_multiply(q_b, wp.transform_inverse(q_b_0))
+
+    # Compute the target pose and twist for this body
+    q_i = wp.transform_multiply(X_b, q_i_0)
+    u_i = u_b  # TODO: Transform twist according to distance to base body
+
+    # Store the reset state in the output arrays and zero-out wrenches
+    state_q_i[bid] = q_i
+    state_u_i[bid] = u_i
+    state_w_i[bid] = vec6f(0.0)
+
+
+@wp.kernel
+def _reset_joint_state_of_select_worlds(
+    # Inputs:
+    world_mask: wp.array(dtype=int32),
+    model_info_joint_coords_offset: wp.array(dtype=int32),
+    model_info_joint_dofs_offset: wp.array(dtype=int32),
+    model_info_joint_cts_offset: wp.array(dtype=int32),
+    model_joint_wid: wp.array(dtype=int32),
+    model_joint_num_coords: wp.array(dtype=int32),
+    model_joint_num_dofs: wp.array(dtype=int32),
+    model_joint_num_cts: wp.array(dtype=int32),
+    model_joint_coords_offset: wp.array(dtype=int32),
+    model_joint_dofs_offset: wp.array(dtype=int32),
+    model_joint_cts_offset: wp.array(dtype=int32),
+    model_joint_q_j_ref: wp.array(dtype=float32),
+    # Outputs:
+    state_q_j: wp.array(dtype=float32),
+    state_q_j_p: wp.array(dtype=float32),
+    state_dq_j: wp.array(dtype=float32),
+    state_lambda_j: wp.array(dtype=float32),
+):
+    # Retrieve the body index from the 1D thread index
+    jid = wp.tid()
+
+    # Retrieve the world index for this body
+    wid = model_joint_wid[jid]
+
+    # Skip resetting this joint if the world has not been marked for reset
+    if world_mask[wid] == 0:
+        return
+
+    # Retrieve the index offsets of the joint's constraint and DoF dimensions
+    world_joint_coords_offset = model_info_joint_coords_offset[wid]
+    world_joint_dofs_offset = model_info_joint_dofs_offset[wid]
+    world_joint_cts_offset = model_info_joint_cts_offset[wid]
+
+    # Retrieve the joint model data
+    num_coords = model_joint_num_coords[jid]
+    num_dofs = model_joint_num_dofs[jid]
+    num_cts = model_joint_num_cts[jid]
+    coords_offset = model_joint_coords_offset[jid]
+    dofs_offset = model_joint_dofs_offset[jid]
+    cts_offset = model_joint_cts_offset[jid]
+
+    # Append the index offsets of the world's joint blocks
+    coords_offset += world_joint_coords_offset
+    dofs_offset += world_joint_dofs_offset
+    cts_offset += world_joint_cts_offset
+
+    # Reset all joint state data
+    for j in range(num_coords):
+        q_j_ref = model_joint_q_j_ref[coords_offset + j]
+        state_q_j[coords_offset + j] = q_j_ref
+        state_q_j_p[coords_offset + j] = q_j_ref
+    for j in range(num_dofs):
+        state_dq_j[dofs_offset + j] = 0.0
+    for j in range(num_cts):
+        state_lambda_j[cts_offset + j] = 0.0
 
 
 @wp.kernel
@@ -134,6 +278,64 @@ def _reset_bodies_of_select_worlds(
     data_w_l_i[bid] = zero6
     data_w_c_i[bid] = zero6
     data_w_e_i[bid] = zero6
+
+
+@wp.kernel
+def _reset_body_net_wrenches(
+    # Inputs:
+    world_mask: wp.array(dtype=int32),
+    body_wid: wp.array(dtype=int32),
+    # Outputs:
+    body_w_i: wp.array(dtype=vec6f),
+):
+    # Retrieve the body index from the 1D thread grid
+    bid = wp.tid()
+
+    # Retrieve the world index for this body
+    wid = body_wid[bid]
+
+    # Skip resetting this body if the world has not been marked for reset
+    if world_mask[wid] == 0:
+        return
+
+    # Zero-out wrenches
+    body_w_i[bid] = vec6f(0.0)
+
+
+@wp.kernel
+def _reset_joint_constraint_reactions(
+    # Inputs:
+    world_mask: wp.array(dtype=int32),
+    model_info_joint_cts_offset: wp.array(dtype=int32),
+    model_joint_wid: wp.array(dtype=int32),
+    model_joint_num_cts: wp.array(dtype=int32),
+    model_joint_cts_offset: wp.array(dtype=int32),
+    # Outputs:
+    lambda_j: wp.array(dtype=float32),
+):
+    # Retrieve the joint index from the thread grid
+    jid = wp.tid()
+
+    # Retrieve the world index and actuation type of the joint
+    wid = model_joint_wid[jid]
+
+    # Early exit the operation if the joint's world is flagged as skipped or if the joint is not actuated
+    if world_mask[wid] == 0:
+        return
+
+    # Retrieve the joint model data
+    num_cts = model_joint_num_cts[jid]
+    cts_offset = model_joint_cts_offset[jid]
+
+    # Retrieve the index offsets of the joint's constraint dimensions
+    world_joint_cts_offset = model_info_joint_cts_offset[wid]
+
+    # Append the index offsets of the world's joint blocks
+    cts_offset += world_joint_cts_offset
+
+    # Reset the joint constraint reactions
+    for j in range(num_cts):
+        lambda_j[cts_offset + j] = 0.0
 
 
 @wp.kernel
@@ -249,17 +451,212 @@ def _reset_joints_of_select_worlds(
 
     # If requested, reset the joint constraint reactions to zero
     if reset_constraints:
-        for k in range(num_cts):
-            data_lambda_j[cts_offset + k] = 0.0
+        for j in range(num_cts):
+            data_lambda_j[cts_offset + j] = 0.0
     # Otherwise, copy the target constraint reactions from the target state
     else:
-        for k in range(num_cts):
-            data_lambda_j[cts_offset + k] = state_lambda_j[cts_offset + k]
+        for j in range(num_cts):
+            data_lambda_j[cts_offset + j] = state_lambda_j[cts_offset + j]
 
 
 ###
 # Launchers
 ###
+
+
+def reset_time(
+    model: Model,
+    time: wp.array,
+    steps: wp.array,
+    world_mask: wp.array,
+):
+    wp.launch(
+        _reset_time_of_select_worlds,
+        dim=model.size.num_worlds,
+        inputs=[
+            # Inputs:
+            world_mask,
+            # Outputs:
+            time,
+            steps,
+        ],
+    )
+
+
+def reset_body_net_wrenches(
+    model: Model,
+    body_w: wp.array,
+    world_mask: wp.array,
+):
+    """
+    Reset the body constraint wrenches of the selected worlds given an array of per-world flags.
+
+    Args:
+        model: Input model container holding the time-invariant data of the system.
+        body_w: Array of body constraint wrenches to be reset.
+        world_mask: Array of per-world flags indicating which worlds should be reset.
+    """
+    wp.launch(
+        _reset_body_net_wrenches,
+        dim=model.size.sum_of_num_bodies,
+        inputs=[
+            # Inputs:
+            world_mask,
+            model.bodies.wid,
+            # Outputs:
+            body_w,
+        ],
+    )
+
+
+def reset_joint_constraint_reactions(
+    model: Model,
+    lambda_j: wp.array,
+    world_mask: wp.array,
+):
+    """
+    Resets the joint constraint reaction forces/torques to zero.
+
+    This function is typically called at the beginning of a simulation step
+    to clear out any accumulated reaction forces from the previous step.
+
+    Args:
+        model (Model):
+            The model container holding the time-invariant data of the simulation.
+        lambda_j (wp.array):
+            The array of joint constraint reaction forces/torques.\n
+            Shape of ``(sum_of_num_joint_constraints,)`` and type :class:`float`.
+        world_mask (wp.array):
+            An array indicating which worlds are active (1) or skipped (0).\n
+            Shape of ``(num_worlds,)`` and type :class:`int32`.
+    """
+    wp.launch(
+        _reset_joint_constraint_reactions,
+        dim=model.size.sum_of_num_joints,
+        inputs=[
+            # Inputs:
+            world_mask,
+            model.info.joint_cts_offset,
+            model.joints.wid,
+            model.joints.num_cts,
+            model.joints.cts_offset,
+            # Outputs:
+            lambda_j,
+        ],
+        device=model.device,
+    )
+
+
+def reset_state_to_model_default(
+    model: Model,
+    state_out: State,
+    world_mask: wp.array,
+):
+    """
+    Reset the given `state_out` container to the initial state defined
+    in the model, but only for the worlds specified by the `world_mask`.
+
+    Args:
+        model (Model):
+            Input model container holding the time-invariant data of the system.
+        state_out (State):
+            Output state container to be reset to the model's default state.
+        world_mask (wp.array):
+            Array of per-world flags indicating which worlds should be reset.\n
+            Shape of ``(num_worlds,)`` and type :class:`int32`.
+    """
+    # Reset bodies
+    wp.launch(
+        _reset_body_state_of_select_worlds,
+        dim=model.size.sum_of_num_bodies,
+        inputs=[
+            # Inputs:
+            world_mask,
+            model.bodies.wid,
+            model.bodies.q_i_0,
+            model.bodies.u_i_0,
+            # Outputs:
+            state_out.q_i,
+            state_out.u_i,
+            state_out.w_i,
+        ],
+    )
+
+    # Reset joints
+    wp.launch(
+        _reset_joint_state_of_select_worlds,
+        dim=model.size.sum_of_num_joints,
+        inputs=[
+            # Inputs:
+            world_mask,
+            model.info.joint_coords_offset,
+            model.info.joint_dofs_offset,
+            model.info.joint_cts_offset,
+            model.joints.wid,
+            model.joints.num_coords,
+            model.joints.num_dofs,
+            model.joints.num_cts,
+            model.joints.coords_offset,
+            model.joints.dofs_offset,
+            model.joints.cts_offset,
+            model.joints.q_j_ref,
+            # Outputs:
+            state_out.q_j,
+            state_out.q_j_p,
+            state_out.dq_j,
+            state_out.lambda_j,
+        ],
+    )
+
+
+def reset_state_from_base_state(
+    model: Model,
+    state_out: State,
+    world_mask: wp.array,
+    base_q: wp.array,
+    base_u: wp.array,
+    q_i_cache: wp.array,
+):
+    """
+    Resets the state of all bodies in the selected worlds based on the state of their
+    respective base bodies. The result is stored in the provided `state_out` container.
+
+    Args:
+        model (Model):
+            Input model container holding the time-invariant data of the system.
+        state_out (State):
+            Output state container to be reset based on the base body states.
+        world_mask (wp.array):
+            Array of per-world flags indicating which worlds should be reset.\n
+            Shape of ``(num_worlds,)`` and type :class:`int32`.
+        base_q (wp.array):
+            Array of target poses for the base bodies of each world.\n
+            Shape of ``(num_worlds,)`` and type :class:`transformf`.
+        base_u (wp.array):
+            Array of target twists for the base bodies of each world.\n
+            Shape of ``(num_worlds,)`` and type :class:`vec6f`.
+    """
+    # First, cache the current body poses
+    wp.copy(q_i_cache, state_out.q_i)
+
+    # Reset bodies based on base body states
+    wp.launch(
+        _reset_body_state_from_base,
+        dim=model.size.sum_of_num_bodies,
+        inputs=[
+            # Inputs:
+            world_mask,
+            model.info.base_body_index,
+            model.bodies.wid,
+            q_i_cache,
+            base_q,
+            base_u,
+            # Outputs:
+            state_out.q_i,
+            state_out.u_i,
+            state_out.w_i,
+        ],
+    )
 
 
 def reset_select_worlds_to_initial_state(

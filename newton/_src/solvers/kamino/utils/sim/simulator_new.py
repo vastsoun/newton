@@ -245,6 +245,8 @@ class Simulator:
         )
 
         # Initialize callbacks
+        self._pre_reset_cb: Simulator.SimCallbackType = None
+        self._post_reset_cb: Simulator.SimCallbackType = None
         self._control_cb: Simulator.SimCallbackType = None
 
         # Initialize the simulation state
@@ -391,35 +393,19 @@ class Simulator:
         """
         self._control_cb = callback
 
-    def set_pre_step_callback(self, callback: SimCallbackType):
-        """
-        Sets a callback to be called before forward dynamics solve.
-        """
-        self._pre_step_cb = callback
-
-    def set_mid_step_callback(self, callback: SimCallbackType):
-        """
-        Sets a callback to be called between forward dynamics solver and state integration.
-        """
-        self._mid_step_cb = callback
-
-    def set_post_step_callback(self, callback: SimCallbackType):
-        """
-        Sets a callback to be called after state integration.
-        """
-        self._post_step_cb = callback
-
     ###
     # Operations
     ###
 
     def reset(
         self,
+        world_mask: wp.array | None = None,
+        actuator_q: wp.array | None = None,
+        actuator_u: wp.array | None = None,
         joint_q: wp.array | None = None,
         joint_u: wp.array | None = None,
         base_q: wp.array | None = None,
         base_u: wp.array | None = None,
-        world_mask: wp.array | None = None,
     ):
         """
         Resets the simulation state given a combination of desired base body
@@ -427,6 +413,9 @@ class Simulator:
         which worlds should be reset.
 
         Args:
+            world_mask (wp.array, optional):
+                Optional array of per-world masks indicating which worlds should be reset.
+                Shape of `(num_worlds,)` and type :class:`wp.int8 | wp.bool`
             joint_q (wp.array, optional):
                 Optional array of target joint coordinates.
                 Shape of `(num_joint_coords,)` and type :class:`wp.float32`
@@ -439,19 +428,26 @@ class Simulator:
             base_qd (wp.array, optional):
                 Optional array of target base body twists.
                 Shape of `(num_worlds,)` and type :class:`wp.spatial_vectorf`
-            world_mask (wp.array, optional):
-                Optional array of per-world masks indicating which worlds should be reset.
-                Shape of `(num_worlds,)` and type :class:`wp.int8 | wp.bool`
         """
+        # Run the pre-reset callback if it has been set
+        if self._pre_reset_cb is not None:
+            self._pre_reset_cb(self)
+
         # Step the physics solver
         self._solver.reset(
             state_out=self._simdata.state_n,
+            world_mask=world_mask,
+            actuator_q=actuator_q,
+            actuator_u=actuator_u,
             joint_q=joint_q,
             joint_u=joint_u,
             base_q=base_q,
             base_u=base_u,
-            world_mask=world_mask,
         )
+
+        # Run the post-reset callback if it has been set
+        if self._post_reset_cb is not None:
+            self._post_reset_cb(self)
 
         # Cache the current state as the previous state for the next step
         self._simdata.cache_state()

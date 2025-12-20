@@ -1169,15 +1169,15 @@ class ForwardKinematicsSolverSettings:
     Host-side class to store settings for the forward kinematics solve.
     """
 
-    max_newton_iterations: wp.int32 = 30
+    max_newton_iterations: int = 30
     """Maximal number of Gauss-Newton iterations (default: 30).
        Changes to this setting after the solver's initialization will have no effect."""
 
-    max_line_search_iterations: wp.int32 = 20
+    max_line_search_iterations: int = 20
     """Maximal line search iterations in the inner loop (default: 20).
        Changes to this setting after the solver's initialization will have no effect."""
 
-    tolerance: wp.float32 = 1e-6
+    tolerance: float = 1e-6
     """Maximal absolute kinematic constraint value that is acceptable at the solution (default: 1e-6).
        Changes to this setting after the solver's initialization will have no effect."""
 
@@ -1185,13 +1185,35 @@ class ForwardKinematicsSolverSettings:
     """Whether to reset the state to initial states, to use as initial guess (default: True).
        Changes to this setting after graph capture will have no effect."""
 
-    TILE_SIZE_CTS: wp.int32 = 8
+    TILE_SIZE_CTS: int = 8
     """Tile size for kernels along the dimension of kinematic constraints (default: 8).
        Changes to this setting after the solver's initialization will have no effect."""
 
-    TILE_SIZE_VRS: wp.int32 = 8
+    TILE_SIZE_VRS: int = 8
     """Tile size for kernels along the dimension of rigid body pose variables (default: 8).
        Changes to this setting after the solver's initialization will have no effect."""
+
+    def check(self):
+        """
+        Checks that the settings are valid.
+
+        Raises:
+            ValueError: If any of the settings is invalid.
+        """
+        if self.max_newton_iterations <= 0:
+            raise ValueError("`max_newton_iterations` must be positive.")
+        if self.max_line_search_iterations <= 0:
+            raise ValueError("`max_line_search_iterations` must be positive.")
+        if self.tolerance <= 0.0:
+            raise ValueError("`tolerance` must be positive.")
+        if self.TILE_SIZE_CTS <= 0:
+            raise ValueError("`TILE_SIZE_CTS` must be positive.")
+        if self.TILE_SIZE_VRS <= 0:
+            raise ValueError("`TILE_SIZE_VRS` must be positive.")
+
+    def __post_init__(self):
+        """Post-initialization hook to check settings validity."""
+        self.check()
 
 
 @dataclass

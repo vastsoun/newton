@@ -29,7 +29,7 @@ from .geometry import (
 )
 from .gravity import GravityModel
 from .joints import JointsData, JointsModel
-from .materials import MaterialPairsModel
+from .materials import MaterialPairsModel, MaterialsModel
 from .state import State
 from .time import TimeData, TimeModel
 from .types import float32, int32, mat33f, transformf, vec6f
@@ -188,6 +188,12 @@ class ModelSize:
 
     max_of_num_physical_geoms: int = 0
     """The maximum number of physical geometries in any world."""
+
+    sum_of_num_materials: int = 0
+    """The total number of materials in the model across all worlds."""
+
+    max_of_num_materials: int = 0
+    """The maximum number of materials in any world."""
 
     sum_of_num_material_pairs: int = 0
     """The total number of material pairs in the model across all worlds."""
@@ -837,7 +843,7 @@ class Model:
             The collision geometries model container holding all collision geometry entities in the model.
         pgeoms (GeometriesModel):
             The physical geometries model container holding all physical geometry entities in the model.
-        mpairs (MaterialPairsModel):
+        material_pairs (MaterialPairsModel):
             The material pairs model container holding all material pairs in the model.
     """
 
@@ -883,7 +889,10 @@ class Model:
         self.pgeoms: GeometriesModel | None = None
         """The physical geometries model container holding all physical geometry entities in the model."""
 
-        self.mpairs: MaterialPairsModel | None = None
+        self.materials: MaterialsModel | None = None
+        """The materials model container holding all material entities in the model."""
+
+        self.material_pairs: MaterialPairsModel | None = None
         """The material pairs model container holding all material pairs in the model."""
 
     def data(

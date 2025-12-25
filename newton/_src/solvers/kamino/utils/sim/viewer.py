@@ -301,7 +301,7 @@ class ViewerKamino(ViewerGL):
 
     def render_frame(self, stop_recording: bool = False):
         # Begin a new frame
-        self.begin_frame(self._simulator.time)
+        self.begin_frame(self.time)
 
         # Extract body poses from the kamino simulator
         body_poses = self._simulator.state.q_i.numpy()

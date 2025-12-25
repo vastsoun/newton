@@ -100,18 +100,17 @@ class SimulationLogger:
         self.log_padmm_r_c = np.zeros((self._max_frames,), dtype=np.float32)
 
         # Extract actuated DOF indices
+        self._nja: int = self._sim.model.size.sum_of_num_actuated_joints
         self._njaq: int = self._sim.model.size.sum_of_num_actuated_joint_coords
-        self._njad: int = self._sim.model.size.sum_of_num_actuated_joints
         self._actuated_dofs: list[int] = []
-        if self._njaq != self._njad:
+        if self._njaq != self._nja:
+            self._nja = 0
             self._njaq = 0
-            self._njad = 0
             msg.warning(
                 f"Number of actuated joint coordinates ({self._njaq}) does not match "
-                f"number of actuated joints ({self._njad}), skipping joint logging."
+                f"number of actuated joints ({self._nja}), skipping joint logging."
             )
         else:
-            self._actuated_dofs = []
             dof_offset = 0
             for joint in self._builder.joints:
                 if joint.is_actuated:
@@ -120,13 +119,13 @@ class SimulationLogger:
                 dof_offset += joint.num_dofs
 
         # Allocate actuated joint logging arrays if applicable
-        if self._njaq > 0 and self._njad > 0:
-            self.log_q_j = np.zeros((self._max_frames, self._njaq), dtype=np.float32)
-            self.log_dq_j = np.zeros((self._max_frames, self._njad), dtype=np.float32)
-            self.log_tau_j = np.zeros((self._max_frames, self._njad), dtype=np.float32)
+        if self._njaq > 0 and self._nja > 0:
+            self.log_q_j = np.zeros((self._max_frames, self._nja), dtype=np.float32)
+            self.log_dq_j = np.zeros((self._max_frames, self._nja), dtype=np.float32)
+            self.log_tau_j = np.zeros((self._max_frames, self._nja), dtype=np.float32)
             if self._ctrl is not None:
-                self.log_q_j_ref = np.zeros((self._max_frames, self._njaq), dtype=np.float32)
-                self.log_dq_j_ref = np.zeros((self._max_frames, self._njad), dtype=np.float32)
+                self.log_q_j_ref = np.zeros((self._max_frames, self._nja), dtype=np.float32)
+                self.log_dq_j_ref = np.zeros((self._max_frames, self._nja), dtype=np.float32)
 
         # Allocate logging arrays for solution metrics
         if self._sim.metrics is not None:
@@ -177,13 +176,13 @@ class SimulationLogger:
             self.log_num_contacts[self._frames] = self._sim.contacts.data.model_active_contacts.numpy()[0]
 
         # Log PADMM solver info
-        self.log_padmm_iters[self._frames] = self._sim.solver.data.status.numpy()[0][1]
-        self.log_padmm_r_p[self._frames] = self._sim.solver.data.status.numpy()[0][2]
-        self.log_padmm_r_d[self._frames] = self._sim.solver.data.status.numpy()[0][3]
-        self.log_padmm_r_c[self._frames] = self._sim.solver.data.status.numpy()[0][4]
+        self.log_padmm_iters[self._frames] = self._sim.solver.solver_fd.data.status.numpy()[0][1]
+        self.log_padmm_r_p[self._frames] = self._sim.solver.solver_fd.data.status.numpy()[0][2]
+        self.log_padmm_r_d[self._frames] = self._sim.solver.solver_fd.data.status.numpy()[0][3]
+        self.log_padmm_r_c[self._frames] = self._sim.solver.solver_fd.data.status.numpy()[0][4]
 
         # Log joint actuator info if available
-        if self._njaq > 0 and self._njad > 0 and self._njad == self._njaq:
+        if self._njaq > 0 and self._nja > 0 and self._njaq == self._nja:
             self.log_q_j[self._frames, :] = self._sim.state.q_j.numpy()[self._actuated_dofs]
             self.log_dq_j[self._frames, :] = self._sim.state.dq_j.numpy()[self._actuated_dofs]
             self.log_tau_j[self._frames, :] = self._sim.control.tau_j.numpy()[self._actuated_dofs]
@@ -240,6 +239,7 @@ class SimulationLogger:
             return
 
         # Create an array for time logging
+        # TODO: Handle array-valued time-steps
         dt = self._sim.settings.dt
         time = np.arange(0, self._frames, dtype=np.float32) * dt
 
@@ -256,7 +256,7 @@ class SimulationLogger:
         axs[0].grid()
 
         # Plot the PADMM primal residuals
-        eps_p = self._sim.settings.solver.primal_tolerance
+        eps_p = self._sim.settings.solver.padmm.primal_tolerance
         axs[1].step(time, self.log_padmm_r_p[: self._frames], label="PADMM Primal Residual", color="orange")
         axs[1].axhline(eps_p, color="black", linestyle="--", linewidth=1.0, label=f"eps_p={eps_p:.1e}")
         axs[1].set_title("PADMM Primal Residual")
@@ -266,7 +266,7 @@ class SimulationLogger:
         axs[1].grid()
 
         # Plot the PADMM dual residuals
-        eps_d = self._sim.settings.solver.dual_tolerance
+        eps_d = self._sim.settings.solver.padmm.dual_tolerance
         axs[2].step(time, self.log_padmm_r_d[: self._frames], label="PADMM Dual Residual", color="green")
         axs[2].axhline(eps_d, color="black", linestyle="--", linewidth=1.0, label=f"eps_d={eps_d:.1e}")
         axs[2].set_title("PADMM Dual Residual")
@@ -276,7 +276,7 @@ class SimulationLogger:
         axs[2].grid()
 
         # Plot the PADMM complementarity residuals
-        eps_c = self._sim.settings.solver.compl_tolerance
+        eps_c = self._sim.settings.solver.padmm.compl_tolerance
         axs[3].step(time, self.log_padmm_r_c[: self._frames], label="PADMM Complementarity Residual", color="red")
         axs[3].axhline(eps_c, color="black", linestyle="--", linewidth=1.0, label=f"eps_c={eps_c:.1e}")
         axs[3].set_title("PADMM Complementarity Residual")
@@ -333,7 +333,7 @@ class SimulationLogger:
             return
 
         # Ensure that joint logging data is available
-        if self._njaq == 0 or self._njad == 0:
+        if self._njaq == 0 or self._nja == 0:
             msg.warning("No actuated joints to plot, skipping joint-tracking plotting.")
             return
 

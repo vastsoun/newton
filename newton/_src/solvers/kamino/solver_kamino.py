@@ -849,7 +849,7 @@ class SolverKamino(SolverBase):
             base_u=base_u,
         )
 
-        # Reset the time, net body wrenches and joint constraint reactions to zero
+        # Reset net body wrenches and joint constraint reactions to zero
         # NOTE: This is necessary to ensure proper solver behavior after resets
         reset_body_net_wrenches(model=self._model, body_w=state_out.w_i, world_mask=world_mask)
         reset_joint_constraint_reactions(model=self._model, lambda_j=state_out.lambda_j, world_mask=world_mask)

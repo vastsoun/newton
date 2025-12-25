@@ -84,14 +84,18 @@ def _reset_solver_data(
     # Outputs:
     world_mask: wp.array(dtype=int32),
     problem_vio: wp.array(dtype=int32),
+    problem_maxdim: wp.array(dtype=int32),
     lambdas: wp.array(dtype=float32),
     v_plus: wp.array(dtype=float32),
 ):
     # Retrieve the world and constraint indices from the 2D thread grid
     wid, tid = wp.tid()
 
+    # Retrieve the maximum number of constraints in the world
+    maxncts = problem_maxdim[wid]
+
     # Skip operation if the world is masked out
-    if world_mask[wid] == 0:
+    if world_mask[wid] == 0 or tid >= maxncts:
         return
 
     # Retrieve the index offset of the vector block of the world

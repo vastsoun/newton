@@ -276,6 +276,7 @@ class PADMMSolver:
                 inputs=[
                     world_mask,
                     problem.data.vio,
+                    problem.data.maxdim,
                     self._data.solution.lambdas,
                     self._data.solution.v_plus,
                 ],

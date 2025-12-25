@@ -100,8 +100,8 @@ def control_callback(sim: Simulator):
         inputs=[
             sim.model.bodies.bid,
             sim.contacts.data.world_active_contacts,
-            sim.data.solver.time.time,
-            sim.data.solver.bodies.w_e_i,
+            sim.solver.data.time.time,
+            sim.solver.data.bodies.w_e_i,
         ],
     )
 
@@ -162,17 +162,17 @@ class Example:
         # Set solver settings
         settings = SimulatorSettings()
         settings.dt = self.sim_dt
-        settings.problem.preconditioning = True
-        settings.solver.primal_tolerance = 1e-6
-        settings.solver.dual_tolerance = 1e-6
-        settings.solver.compl_tolerance = 1e-6
-        settings.solver.max_iterations = 200
-        settings.solver.rho_0 = 0.1
-        settings.use_solver_acceleration = True
-        settings.warmstart = PADMMWarmStartMode.CONTAINERS
-        settings.contact_warmstart_method = WarmstarterContacts.Method.KEY_AND_POSITION_WITH_NET_FORCE_BACKUP
-        settings.collect_solver_info = True
-        settings.compute_metrics = logging and not use_cuda_graph
+        settings.solver.problem.preconditioning = True
+        settings.solver.padmm.primal_tolerance = 1e-6
+        settings.solver.padmm.dual_tolerance = 1e-6
+        settings.solver.padmm.compl_tolerance = 1e-6
+        settings.solver.padmm.max_iterations = 200
+        settings.solver.padmm.rho_0 = 0.1
+        settings.solver.use_solver_acceleration = True
+        settings.solver.warmstart = PADMMWarmStartMode.CONTAINERS
+        settings.solver.contact_warmstart_method = WarmstarterContacts.Method.KEY_AND_POSITION_WITH_NET_FORCE_BACKUP
+        settings.solver.collect_solver_info = True
+        settings.solver.compute_metrics = logging and not use_cuda_graph
 
         # Create a simulator
         msg.notif("Building the simulator...")

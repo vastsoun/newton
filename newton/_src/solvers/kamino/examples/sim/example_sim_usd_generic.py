@@ -84,13 +84,13 @@ class Example:
         # Set solver settings
         settings = SimulatorSettings()
         settings.dt = self.sim_dt
-        settings.problem.alpha = 0.1
-        settings.solver.primal_tolerance = 1e-6
-        settings.solver.dual_tolerance = 1e-6
-        settings.solver.compl_tolerance = 1e-6
-        settings.solver.max_iterations = 200
-        settings.solver.rho_0 = 0.05
-        settings.compute_metrics = logging and not use_cuda_graph
+        settings.solver.problem.alpha = 0.1
+        settings.solver.padmm.primal_tolerance = 1e-6
+        settings.solver.padmm.dual_tolerance = 1e-6
+        settings.solver.padmm.compl_tolerance = 1e-6
+        settings.solver.padmm.max_iterations = 200
+        settings.solver.padmm.rho_0 = 0.05
+        settings.solver.compute_metrics = logging and not use_cuda_graph
 
         # Create a simulator
         msg.notif("Building the simulator...")

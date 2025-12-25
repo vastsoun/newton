@@ -329,8 +329,8 @@ def test_control_callback(sim: Simulator):
         _test_control_callback,
         dim=sim.model.size.num_worlds,
         inputs=[
-            sim.data.solver.time.time,
-            sim.data.control_n.tau_j,
+            sim.solver.data.time.time,
+            sim.control.tau_j,
         ],
     )
 
@@ -366,7 +366,6 @@ class Example:
         # Cache the device and other internal flags
         self.device = device
         self.use_cuda_graph: bool = use_cuda_graph
-        self.logging: bool = logging
 
         # Construct model builder
         if load_from_usd:
@@ -399,17 +398,17 @@ class Example:
         # Set solver settings
         settings = SimulatorSettings()
         settings.dt = self.sim_dt
-        settings.problem.alpha = 0.1
-        settings.problem.beta = 0.1
-        settings.solver.primal_tolerance = 1e-6
-        settings.solver.dual_tolerance = 1e-6
-        settings.solver.compl_tolerance = 1e-6
-        settings.solver.max_iterations = 200
-        settings.solver.rho_0 = 0.05
-        settings.use_solver_acceleration = True
-        settings.warmstart = PADMMWarmStartMode.CONTAINERS
-        settings.collect_solver_info = False
-        settings.compute_metrics = logging and not use_cuda_graph
+        settings.solver.problem.alpha = 0.1
+        settings.solver.problem.beta = 0.1
+        settings.solver.padmm.primal_tolerance = 1e-6
+        settings.solver.padmm.dual_tolerance = 1e-6
+        settings.solver.padmm.compl_tolerance = 1e-6
+        settings.solver.padmm.max_iterations = 200
+        settings.solver.padmm.rho_0 = 0.05
+        settings.solver.use_solver_acceleration = True
+        settings.solver.warmstart = PADMMWarmStartMode.CONTAINERS
+        settings.solver.collect_solver_info = False
+        settings.solver.compute_metrics = logging and not use_cuda_graph
 
         # Create a simulator
         msg.notif("Building the simulator...")
@@ -418,7 +417,7 @@ class Example:
 
         # Initialize the data logger
         self.logger: SimulationLogger | None = None
-        if self.logging:
+        if logging and not use_cuda_graph:
             msg.notif("Creating the sim data logger...")
             self.logger = SimulationLogger(self.max_steps, self.sim, self.builder)
 
@@ -489,11 +488,11 @@ class Example:
 
         # Construct state and action tensors wrapping the underlying simulator data
         self.states = CartpoleStates(
-            q_j=wp.to_torch(self.sim.data.state_n.q_j).reshape(num_worlds, num_joint_dofs),
-            dq_j=wp.to_torch(self.sim.data.state_n.dq_j).reshape(num_worlds, num_joint_dofs),
+            q_j=wp.to_torch(self.sim.state.q_j).reshape(num_worlds, num_joint_dofs),
+            dq_j=wp.to_torch(self.sim.state.dq_j).reshape(num_worlds, num_joint_dofs),
         )
         self.actions = CartpoleActions(
-            tau_j=wp.to_torch(self.sim.data.control_n.tau_j).reshape(num_worlds, num_joint_dofs),
+            tau_j=wp.to_torch(self.sim.control.tau_j).reshape(num_worlds, num_joint_dofs),
         )
         # Create a world mask array+tensor for per-world selective resets
         self.world_mask_wp = wp.ones((num_worlds,), dtype=wp.int32, device=self.device)
@@ -501,13 +500,10 @@ class Example:
 
     def _reset_worlds(self):
         """Reset selected worlds to reference joint states."""
-        self.sim.reset_custom(
-            reset_fn=reset_select_worlds_to_dof_state,
-            model=self.sim.model,
-            q_j=self.q_j_ref,
-            dq_j=self.dq_j_ref,
-            mask=self.world_mask_wp,
-            data=self.sim.data.solver,
+        self.sim.reset(
+            world_mask=self.world_mask_wp,
+            joint_q=self.q_j_ref,
+            # joint_u=self.dq_j_ref,
         )
 
     def capture(self):
@@ -531,7 +527,7 @@ class Example:
         for _i in range(self.sim_substeps):
             self.sim.step()
             self.sim_steps += 1
-            if not self.use_cuda_graph and self.logging:
+            if self.logger:
                 self.logger.log()
 
     def reset(self):
@@ -540,7 +536,7 @@ class Example:
             wp.capture_launch(self.reset_graph)
         else:
             self._reset_worlds()
-        if not self.use_cuda_graph and self.logging:
+        if self.logger:
             self.logger.log()
         self.sim_steps = 0
 
@@ -551,7 +547,7 @@ class Example:
         else:
             self.sim.step()
         self.sim_steps += 1
-        if not self.use_cuda_graph and self.logging:
+        if self.logger:
             self.logger.log()
 
     def step(self):
@@ -585,7 +581,7 @@ class Example:
             keep_frames: If True, keep PNG frames after video creation
         """
         # Optionally plot the logged simulation data
-        if self.logging:
+        if self.logger:
             self.logger.plot_solver_info(path=path, show=show)
             self.logger.plot_joint_tracking(path=path, show=show)
             self.logger.plot_solution_metrics(path=path, show=show)
@@ -620,7 +616,7 @@ if __name__ == "__main__":
     parser.add_argument("--cuda-graph", action=argparse.BooleanOptionalAction, default=True, help="Use CUDA graphs")
     parser.add_argument("--clear-cache", action=argparse.BooleanOptionalAction, default=False, help="Clear warp cache")
     parser.add_argument(
-        "--logging", action=argparse.BooleanOptionalAction, default=True, help="Enable logging of simulation data"
+        "--logging", action=argparse.BooleanOptionalAction, default=False, help="Enable logging of simulation data"
     )
     parser.add_argument(
         "--show-plots", action=argparse.BooleanOptionalAction, default=False, help="Show plots of logging data"

@@ -103,21 +103,21 @@ class Example:
         # Set solver settings
         settings = SimulatorSettings()
         settings.dt = self.sim_dt
-        settings.problem.alpha = 0.1
-        settings.solver.primal_tolerance = 1e-4
-        settings.solver.dual_tolerance = 1e-4
-        settings.solver.compl_tolerance = 1e-4
-        settings.solver.max_iterations = 200
-        settings.solver.eta = 1e-5
-        settings.solver.rho_0 = 0.05
-        settings.use_solver_acceleration = True
-        settings.warmstart = PADMMWarmStartMode.CONTAINERS
-        settings.contact_warmstart_method = WarmstarterContacts.Method.GEOM_PAIR_NET_FORCE
-        settings.collect_solver_info = False
-        settings.compute_metrics = logging and not use_cuda_graph
+        settings.solver.problem.alpha = 0.1
+        settings.solver.padmm.primal_tolerance = 1e-4
+        settings.solver.padmm.dual_tolerance = 1e-4
+        settings.solver.padmm.compl_tolerance = 1e-4
+        settings.solver.padmm.max_iterations = 200
+        settings.solver.padmm.eta = 1e-5
+        settings.solver.padmm.rho_0 = 0.05
+        settings.solver.use_solver_acceleration = True
+        settings.solver.warmstart = PADMMWarmStartMode.CONTAINERS
+        settings.solver.contact_warmstart_method = WarmstarterContacts.Method.GEOM_PAIR_NET_FORCE
+        settings.solver.collect_solver_info = False
+        settings.solver.compute_metrics = logging and not use_cuda_graph
         linear_solver_cls = {v: k for k, v in LinearSolverShorthand.items()}[linear_solver.upper()]
-        settings.linear_solver_type = linear_solver_cls
-        settings.linear_solver_maxiter = linear_solver_maxiter
+        settings.solver.linear_solver_type = linear_solver_cls
+        settings.solver.linear_solver_kwargs = {"maxiter": linear_solver_maxiter} if linear_solver_maxiter > 0 else {}
 
         # Create a simulator
         msg.notif("Building the simulator...")
@@ -159,21 +159,21 @@ class Example:
 
         # Define a callback function to reset the controller
         def reset_jointspace_pid_control_callback(simulator: Simulator):
-            self.controller.reset(model=simulator.model, state=simulator.data.state_n)
+            self.controller.reset(model=simulator.model, state=simulator.state)
             self.animation.reset(q_j_ref_out=self.controller.data.q_j_ref, dq_j_ref_out=self.controller.data.dq_j_ref)
 
         # Define a callback function to wrap the execution of the controller
         def compute_jointspace_pid_control_callback(simulator: Simulator):
             self.animation.step(
-                time=simulator.data.solver.time,
+                time=simulator.solver.data.time,
                 q_j_ref_out=self.controller.data.q_j_ref,
                 dq_j_ref_out=self.controller.data.dq_j_ref,
             )
             self.controller.compute(
                 model=simulator.model,
-                state=simulator.data.state_n,
-                time=simulator.data.solver.time,
-                control=simulator.data.control_n,
+                state=simulator.state,
+                time=simulator.solver.data.time,
+                control=simulator.control,
             )
 
         # Set the reference tracking generation & control callbacks into the simulator

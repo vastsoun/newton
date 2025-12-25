@@ -1433,10 +1433,6 @@ class ModelBuilder:
                 static_friction=wp.array(materials_static_fric[0], dtype=float32),
                 dynamic_friction=wp.array(materials_dynamic_fric[0], dtype=float32),
             )
-            msg.error(f"model.materials.num_materials:\n{model.materials.num_materials}")
-            msg.error(f"model.materials.restitution:\n{model.materials.restitution}")
-            msg.error(f"model.materials.static_friction:\n{model.materials.static_friction}")
-            msg.error(f"model.materials.dynamic_friction:\n{model.materials.dynamic_friction}")
 
             # Create the material pairs model
             model.material_pairs = MaterialPairsModel(
@@ -1445,10 +1441,6 @@ class ModelBuilder:
                 static_friction=wp.array(mpairs_static_fric[0], dtype=float32),
                 dynamic_friction=wp.array(mpairs_dynamic_fric[0], dtype=float32),
             )
-            msg.error(f"model.material_pairs.num_material_pairs:\n{model.material_pairs.num_material_pairs}")
-            msg.error(f"model.material_pairs.restitution:\n{model.material_pairs.restitution}")
-            msg.error(f"model.material_pairs.static_friction:\n{model.material_pairs.static_friction}")
-            msg.error(f"model.material_pairs.dynamic_friction:\n{model.material_pairs.dynamic_friction}")
 
         # Return the constructed model data container
         return model

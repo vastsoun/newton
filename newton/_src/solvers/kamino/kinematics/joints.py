@@ -909,11 +909,11 @@ def compute_joints_data(
 
 def extract_actuators_state_from_joints(
     model: Model,
+    world_mask: wp.array,
     joint_q: wp.array,
     joint_u: wp.array,
     actuator_q: wp.array,
     actuator_u: wp.array,
-    world_mask: wp.array,
 ):
     """
     Extracts the states of the actuated joints from the full joint state arrays.
@@ -970,11 +970,11 @@ def extract_actuators_state_from_joints(
 
 def extract_joints_state_from_actuators(
     model: Model,
-    joint_q: wp.array,
-    joint_u: wp.array,
+    world_mask: wp.array,
     actuator_q: wp.array,
     actuator_u: wp.array,
-    world_mask: wp.array,
+    joint_q: wp.array,
+    joint_u: wp.array,
 ):
     """
     Extracts the states of the actuated joints from the full joint state arrays.

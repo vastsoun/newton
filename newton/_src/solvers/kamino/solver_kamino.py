@@ -530,7 +530,11 @@ class SolverKamino(SolverBase):
         _world_mask = world_mask if world_mask is not None else self._all_worlds_mask
 
         # If no reset targets are provided, reset all bodies to the model default state
-        if joint_q is None and joint_u is None and base_q is None and base_u is None:
+        if (
+            (base_q is None and base_u is None)
+            and (joint_q is None and joint_u is None)
+            and (actuator_q is None and actuator_u is None)
+        ):
             self._reset_to_default_state(
                 state_out=state_out,
                 world_mask=_world_mask,
@@ -838,7 +842,7 @@ class SolverKamino(SolverBase):
         self._solver_fk.run_fk_solve(
             world_mask=world_mask,
             bodies_q=state_out.q_i,
-            bodies_u=state_out.u_i,
+            bodies_u=state_out.u_i if joint_u is not None or actuator_u is not None else None,
             actuators_q=_actuator_q,
             actuators_u=_actuator_u,
             base_q=base_q,
@@ -867,6 +871,7 @@ class SolverKamino(SolverBase):
                 joint_q=state_out.q_j,
                 joint_u=state_out.dq_j,
             )
+            wp.copy(state_out.q_j_p, state_out.q_j)
 
     def _reset_post_process(self, world_mask: wp.array | None = None):
         """
@@ -996,7 +1001,6 @@ class SolverKamino(SolverBase):
             lambdas_data=self._solver_fd.data.solution.lambdas,
         )
 
-        # TODO: Could this operation be combined with computing body wrenches to optimize kernel launches?
         # Unpack the computed constraint multipliers to the respective joint-limit
         # and contact data for post-processing and optional solver warm-starting
         unpack_constraint_solutions(

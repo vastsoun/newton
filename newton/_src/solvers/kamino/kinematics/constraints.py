@@ -18,7 +18,6 @@ Provides mechanisms to define and manage constraints and their associated input/
 """
 
 import warp as wp
-from warp.context import Devicelike
 
 from ..core.model import Model, ModelData
 from ..core.types import float32, int32, vec3f
@@ -96,7 +95,7 @@ def make_unilateral_constraints_info(
     data: ModelData,
     limits: Limits | None = None,
     contacts: Contacts | None = None,
-    device: Devicelike = None,
+    device: wp.DeviceLike = None,
 ):
     """
     Constructs constraints entries in the ModelInfo member of a model.
@@ -106,7 +105,7 @@ def make_unilateral_constraints_info(
         data (ModelData): The solver container holding time-varying data.
         limits (Limits, optional): The limits container holding the joint-limit data.
         contacts (Contacts, optional): The contacts container holding the contact data.
-        device (Devicelike, optional): The device on which to allocate the constraint info arrays.\n
+        device (wp.DeviceLike, optional): The device on which to allocate the constraint info arrays.\n
             If None, the model's device will be used.
     """
 

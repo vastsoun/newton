@@ -19,7 +19,6 @@ KAMINO: UNIT TESTS: GENERAL UTILITIES
 
 import numpy as np
 import warp as wp
-from warp.context import Devicelike
 
 from newton._src.solvers.kamino.core.bodies import update_body_inertias
 from newton._src.solvers.kamino.core.builder import ModelBuilder
@@ -111,7 +110,7 @@ def make_inverse_generalized_mass_matrices(model: Model, data: ModelData) -> lis
 
 
 def make_containers(
-    builder: ModelBuilder, max_world_contacts: int = 0, dt: float = 0.001, device: Devicelike = None
+    builder: ModelBuilder, max_world_contacts: int = 0, dt: float = 0.001, device: wp.DeviceLike = None
 ) -> tuple[Model, ModelData, Limits, CollisionDetector, DenseSystemJacobians]:
     # Create the model from the builder
     model = builder.finalize(device=device)

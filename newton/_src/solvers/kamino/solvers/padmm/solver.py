@@ -22,7 +22,6 @@ See the :mod:`newton._src.solvers.kamino.solvers.padmm` module for a detailed de
 """
 
 import warp as wp
-from warp.context import Devicelike
 
 from ...core.model import Model, ModelData, ModelSize
 from ...dynamics.dual import DualProblem
@@ -96,7 +95,7 @@ class PADMMSolver:
         warmstart: PADMMWarmStartMode = PADMMWarmStartMode.NONE,
         use_acceleration: bool = True,
         collect_info: bool = False,
-        device: Devicelike = None,
+        device: wp.DeviceLike = None,
     ):
         """
         Initializes a PADMM solver.
@@ -113,7 +112,7 @@ class PADMMSolver:
             collect_info (bool): Set to `True` to enable collection of solver convergence info.\n
                 This setting is intended only for analysis and debugging purposes, as it
                 will increase memory consumption and reduce wall-clock time.
-            device (Devicelike | None): The target device on which to allocate the solver data.
+            device (wp.DeviceLike | None): The target device on which to allocate the solver data.
         """
 
         # Declare the internal solver settings cache
@@ -129,7 +128,7 @@ class PADMMSolver:
         self._data: PADMMData | None = None
 
         # Declare the device cache
-        self._device: Devicelike = None
+        self._device: wp.DeviceLike = None
 
         # Perform memory allocations if a model is provided
         if model is not None:
@@ -171,7 +170,7 @@ class PADMMSolver:
         return self._data
 
     @property
-    def device(self) -> Devicelike:
+    def device(self) -> wp.DeviceLike:
         """
         Returns the device on which the solver data is allocated.
         """
@@ -188,7 +187,7 @@ class PADMMSolver:
         warmstart: PADMMWarmStartMode = PADMMWarmStartMode.NONE,
         use_acceleration: bool = True,
         collect_info: bool = False,
-        device: Devicelike = None,
+        device: wp.DeviceLike = None,
     ):
         """
         Allocates the solver data structures on the specified device.
@@ -202,7 +201,7 @@ class PADMMSolver:
             collect_info (bool): Set to `True` to enable collection of solver convergence info.\n
                 This setting is intended only for analysis and debugging purposes, as it
                 will increase memory consumption and reduce wall-clock time.
-            device (Devicelike | None): The target device on which to allocate the solver data.
+            device (wp.DeviceLike | None): The target device on which to allocate the solver data.
         """
 
         # Ensure the model is valid

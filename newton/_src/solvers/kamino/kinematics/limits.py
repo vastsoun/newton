@@ -18,7 +18,6 @@
 from dataclasses import dataclass, field
 
 import warp as wp
-from warp.context import Devicelike
 
 from ..core.joints import JointDoFType
 from ..core.math import (
@@ -599,7 +598,7 @@ class Limits:
     def __init__(
         self,
         model: Model | None = None,
-        device: Devicelike = None,
+        device: wp.DeviceLike = None,
     ):
         # The device on which to allocate the limits data
         self._device = device
@@ -616,7 +615,7 @@ class Limits:
     ###
 
     @property
-    def device(self) -> Devicelike:
+    def device(self) -> wp.DeviceLike:
         """
         Returns the device on which the limits data is allocated.
         """
@@ -777,7 +776,7 @@ class Limits:
     # Operations
     ###
 
-    def finalize(self, model: Model, device: Devicelike = None):
+    def finalize(self, model: Model, device: wp.DeviceLike = None):
         # Ensure the model is valid
         if model is None:
             raise ValueError("Limits: model must be specified for allocation (got None)")

@@ -15,10 +15,8 @@
 
 """KAMINO: Utilities: CPU/GPU Warp Device Info"""
 
-from warp.context import Devicelike
 
-
-def get_device_info(device: Devicelike) -> str:
+def get_device_info(device: wp.DeviceLike) -> str:
     dinfo = "[device]:\n"
     dinfo += f"                name: {device.name}\n"
     dinfo += f"               alias: {device.alias}\n"
@@ -44,6 +42,6 @@ def get_device_info(device: Devicelike) -> str:
     return dinfo
 
 
-def get_device_memory_allocation_info(device: Devicelike) -> str:
+def get_device_memory_allocation_info(device: wp.DeviceLike) -> str:
     # TODO: Add printing of mempool info when available in Warp
     return ""

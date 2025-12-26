@@ -21,7 +21,6 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 
 import warp as wp
-from warp.context import Devicelike
 
 from ...core.builder import ModelBuilder
 from ...core.control import Control
@@ -184,7 +183,11 @@ class Simulator:
     """Defines a common type signature for all simulator callback functions."""
 
     def __init__(
-        self, builder: ModelBuilder, settings: SimulatorSettings = None, device: Devicelike = None, shadow: bool = False
+        self,
+        builder: ModelBuilder,
+        settings: SimulatorSettings = None,
+        device: wp.DeviceLike = None,
+        shadow: bool = False,
     ):
         """
         Initializes the simulator with the given model builder, time-step, and device.
@@ -192,7 +195,7 @@ class Simulator:
         Args:
             builder (ModelBuilder): The model builder defining the model to be simulated.
             settings (SimulatorSettings, optional): The simulator settings to use. If None, default settings are used.
-            device (Devicelike, optional): The device to run the simulation on. If None, the default device is used.
+            device (wp.DeviceLike, optional): The device to run the simulation on. If None, the default device is used.
             shadow (bool, optional): If True, maintains a host-side copy of the simulation data for easy access.
         """
         # Cache simulator settings: If no settings are provided, use defaults
@@ -202,7 +205,7 @@ class Simulator:
         self._settings: SimulatorSettings = settings
 
         # Cache the target device use for the simulation
-        self._device: Devicelike = device
+        self._device: wp.DeviceLike = device
 
         # Finalize the model from the builder on the specified
         # device, allocating all necessary model data structures

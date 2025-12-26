@@ -39,7 +39,6 @@ from dataclasses import dataclass, field
 from enum import IntEnum
 
 import warp as wp
-from warp.context import Devicelike
 
 from ..core.math import COS_PI_6, UNIT_X, UNIT_Y
 from ..core.types import float32, int32, mat33f, quatf, vec2f, vec2i, vec3f, vec4f
@@ -376,7 +375,7 @@ class Contacts:
         self,
         capacity: int | list[int] | None = None,
         default_max_contacts: int | None = None,
-        device: Devicelike = None,
+        device: wp.DeviceLike = None,
     ):
         # Declare and initialize the default maximum number of contacts per world
         self._default_max_world_contacts: int = DEFAULT_WORLD_MAX_CONTACTS
@@ -384,7 +383,7 @@ class Contacts:
             self._default_max_world_contacts = default_max_contacts
 
         # Cache the target device for all memory allocations
-        self._device: Devicelike = None
+        self._device: wp.DeviceLike = None
 
         # Declare the contacts data container and initialize it to empty
         self._data: ContactsData = ContactsData()
@@ -418,7 +417,7 @@ class Contacts:
         self._default_max_world_contacts = max_contacts
 
     @property
-    def device(self) -> Devicelike:
+    def device(self) -> wp.DeviceLike:
         """
         Returns the device on which the contacts data is allocated.
         """
@@ -617,7 +616,7 @@ class Contacts:
     # Operations
     ###
 
-    def finalize(self, capacity: int | list[int], device: Devicelike = None):
+    def finalize(self, capacity: int | list[int], device: wp.DeviceLike = None):
         """
         Finalizes the contacts data allocations based on the specified capacity.
 
@@ -626,7 +625,7 @@ class Contacts:
                 The maximum number of contacts to allocate.\n
                 If an integer is provided, it specifies the capacity for a single world.\n
                 If a list of integers is provided, it specifies the capacity for each world.
-            device (Devicelike, optional):
+            device (wp.DeviceLike, optional):
                 The device on which to allocate the contacts data.
         """
         # The memory allocation requires the total number of contacts (over multiple worlds)

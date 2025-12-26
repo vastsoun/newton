@@ -21,7 +21,6 @@ geometry pairs and a narrow-phase based on the primitive colliders of Newton.
 """
 
 import warp as wp
-from warp.context import Devicelike
 
 from ...core.builder import ModelBuilder
 from ...core.model import Model, ModelData
@@ -55,7 +54,7 @@ class CollisionPipelinePrimitive:
         builder: ModelBuilder | None = None,
         bvtype: BoundingVolumeType = BoundingVolumeType.AABB,
         default_margin: float = DEFAULT_GEOM_PAIR_CONTACT_MARGIN,
-        device: Devicelike = None,
+        device: wp.DeviceLike = None,
     ):
         """
         Initialize an instance of Kamino's optimized primitive collision detection pipeline.
@@ -65,10 +64,10 @@ class CollisionPipelinePrimitive:
             broadphase (BroadPhaseMode): Broad-phase collision detection algorithm to use.
             bvtype (BoundingVolumeType): Type of bounding volume to use in broad-phase.
             default_margin (float): Default collision margin for geometries.
-            device (Devicelike): Device on which to allocate data and perform computations.
+            device (wp.DeviceLike): Device on which to allocate data and perform computations.
         """
         # Cache pipeline settings
-        self._device: Devicelike = device
+        self._device: wp.DeviceLike = device
         self._bvtype: BoundingVolumeType = bvtype
         self._default_margin: float = default_margin
 
@@ -86,7 +85,7 @@ class CollisionPipelinePrimitive:
     ###
 
     @property
-    def device(self) -> Devicelike:
+    def device(self) -> wp.DeviceLike:
         """Returns the Warp device the pipeline operates on."""
         return self._device
 
@@ -94,14 +93,14 @@ class CollisionPipelinePrimitive:
     # Operations
     ###
 
-    def finalize(self, builder: ModelBuilder, bvtype: BoundingVolumeType | None = None, device: Devicelike = None):
+    def finalize(self, builder: ModelBuilder, bvtype: BoundingVolumeType | None = None, device: wp.DeviceLike = None):
         """
         Finalizes the collision detection pipeline by allocating all necessary data structures.
 
         Args:
             builder (ModelBuilder): The model builder used to pre-compute collision pairs.
             bvtype (BoundingVolumeType | None): Optional bounding volume type to override the default.
-            device (Devicelike): The Warp device on which the pipeline will operate.
+            device (wp.DeviceLike): The Warp device on which the pipeline will operate.
         """
         # Override the device if specified
         if device is not None:

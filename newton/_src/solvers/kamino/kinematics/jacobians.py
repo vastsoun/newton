@@ -22,7 +22,6 @@ from __future__ import annotations
 from typing import Any
 
 import warp as wp
-from warp.context import Devicelike
 
 from ..core.joints import JointDoFType
 from ..core.math import contact_wrench_matrix_from_points, expand6d, screw_transform_matrix_from_points
@@ -624,7 +623,7 @@ class DenseSystemJacobians:
         model: Model | None = None,
         limits: Limits | None = None,
         contacts: Contacts | None = None,
-        device: Devicelike = None,
+        device: wp.DeviceLike = None,
     ):
         # Declare and initialize the Jacobian data container
         self._data = DenseSystemJacobiansData()
@@ -641,7 +640,7 @@ class DenseSystemJacobians:
         return self._data
 
     def finalize(
-        self, model: Model, limits: Limits | None = None, contacts: Contacts | None = None, device: Devicelike = None
+        self, model: Model, limits: Limits | None = None, contacts: Contacts | None = None, device: wp.DeviceLike = None
     ):
         # Ensure the model container is valid
         if model is None:

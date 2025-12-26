@@ -67,7 +67,6 @@ from dataclasses import dataclass
 from typing import Any
 
 import warp as wp
-from warp.context import Devicelike
 
 from ..core.math import FLOAT32_EPS, UNIT_Z, screw, screw_angular, screw_linear
 from ..core.model import Model, ModelData, ModelSize
@@ -958,7 +957,7 @@ class DualProblem:
         solver_kwargs: dict[str, Any] | None = None,
         settings: list[DualProblemSettings] | DualProblemSettings | None = None,
         compute_h: bool = False,
-        device: Devicelike = None,
+        device: wp.DeviceLike = None,
     ):
         """
         Constructs a dual problem interface container.
@@ -985,12 +984,12 @@ class DualProblem:
                 Set to `True` to enable the computation of the nonlinear
                 generalized forces vectors in construction of the dual problem.\n
                 Defaults to `False`.
-            device (Devicelike, optional):
+            device (wp.DeviceLike, optional):
                 The device to allocate the dual problem on.\n
                 Defaults to `None`.
         """
         # Cache the requested device
-        self._device: Devicelike = device
+        self._device: wp.DeviceLike = device
 
         # Declare the model size cache
         self._size: ModelSize | None = None
@@ -1023,7 +1022,7 @@ class DualProblem:
     ###
 
     @property
-    def device(self) -> Devicelike:
+    def device(self) -> wp.DeviceLike:
         """
         Returns the device the dual problem is allocated on.
         """
@@ -1084,7 +1083,7 @@ class DualProblem:
         solver_kwargs: dict[str, Any] | None = None,
         settings: list[DualProblemSettings] | DualProblemSettings | None = None,
         compute_h: bool = False,
-        device: Devicelike = None,
+        device: wp.DeviceLike = None,
     ):
         """
         Finalizes all memory allocations of the dual problem data
@@ -1106,7 +1105,7 @@ class DualProblem:
                 Set to `True` to enable the computation of the nonlinear
                 generalized forces vectors in construction of the dual problem.\n
                 Defaults to `False`.
-            device (Devicelike, optional):
+            device (wp.DeviceLike, optional):
                 The device to allocate the dual problem on. Defaults to None.
         """
         # Ensure the model is valid

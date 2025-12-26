@@ -37,7 +37,6 @@ from dataclasses import dataclass
 from enum import IntEnum
 
 import warp as wp
-from warp.context import Devicelike
 
 from ..core.builder import ModelBuilder
 from ..core.model import Model, ModelData
@@ -179,7 +178,7 @@ class CollisionDetector:
         model: Model | None = None,
         builder: ModelBuilder | None = None,
         settings: CollisionDetectorSettings | None = None,
-        device: Devicelike = None,
+        device: wp.DeviceLike = None,
     ):
         """
         Initialize the CollisionDetector.
@@ -187,13 +186,13 @@ class CollisionDetector:
         Args:
             builder(ModelBuilder):
                 ModelBuilder instance containing the host-side model definition.
-            device(Devicelike):
+            device(wp.DeviceLike):
                 The target Warp device for allocation and execution.\n
                 If `None`, uses the default device selected by Warp on the given platform.
 
         """
         # Cache the target device
-        self._device: Devicelike = device
+        self._device: wp.DeviceLike = device
 
         # Cache the collision detector settings
         self._settings: CollisionDetectorSettings | None = settings
@@ -218,7 +217,7 @@ class CollisionDetector:
     ###
 
     @property
-    def device(self) -> Devicelike:
+    def device(self) -> wp.DeviceLike:
         """Returns the device on which the CollisionDetector data is allocated and executes."""
         return self._device
 
@@ -251,7 +250,7 @@ class CollisionDetector:
         model: Model,
         builder: ModelBuilder,
         settings: CollisionDetectorSettings | None = None,
-        device: Devicelike = None,
+        device: wp.DeviceLike = None,
     ):
         """
         Allocates CollisionDetector data on the target device.
@@ -262,7 +261,7 @@ class CollisionDetector:
             settings(CollisionDetectorSettings):
                 Settings to configure the CollisionDetector.\n
                 If `None`, uses default settings.
-            device(Devicelike):
+            device(wp.DeviceLike):
                 The target Warp device for allocation and execution.\n
                 If `None`, uses the default device selected by Warp on the given platform.
         """

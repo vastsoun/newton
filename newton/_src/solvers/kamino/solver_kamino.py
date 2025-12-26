@@ -25,7 +25,6 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import warp as wp
-from warp.context import Devicelike
 
 # Newton imports
 from ...core.types import override
@@ -364,7 +363,7 @@ class SolverKamino(SolverBase):
         return self._settings
 
     @property
-    def device(self) -> Devicelike:
+    def device(self) -> wp.DeviceLike:
         """
         Returns the device where the solver data is allocated.
         """

@@ -49,7 +49,6 @@ from dataclasses import dataclass
 from enum import IntEnum
 
 import warp as wp
-from warp.context import Devicelike
 
 from ...core.model import ModelSize
 from ...core.types import float32, int32, override, vec2f
@@ -1380,7 +1379,7 @@ class PADMMData:
         max_iters: int = 0,
         use_acceleration: bool = False,
         collect_info: bool = False,
-        device: Devicelike = None,
+        device: wp.DeviceLike = None,
     ):
         """
         Initializes a PADMM solver data container.
@@ -1389,7 +1388,7 @@ class PADMMData:
             size (ModelSize): The model-size utility container holding the dimensionality of the model.
             max_iters (int): The maximum number of iterations for which to allocate convergence data.
             collect_info (bool): Set to `True` to allocate data for reporting solver convergence info.
-            device (Devicelike): The target Warp device on which all data will be allocated.
+            device (wp.DeviceLike): The target Warp device on which all data will be allocated.
 
         Raises:
             ValueError: If either ``size.num_worlds`` or `max_iters`` are not a positive integers.
@@ -1441,7 +1440,7 @@ class PADMMData:
         max_iters: int = 0,
         use_acceleration: bool = False,
         collect_info: bool = False,
-        device: Devicelike = None,
+        device: wp.DeviceLike = None,
     ):
         """
         Allocates the PADMM solver data based on the model size and maximum number of iterations.
@@ -1450,7 +1449,7 @@ class PADMMData:
             size (ModelSize): The model-size utility container holding the dimensionality of the model.
             max_iters (int): The maximum number of iterations for which to allocate convergence data.
             collect_info (bool): Set to `True` to allocate data for reporting solver convergence info.
-            device (Devicelike): The target Warp device on which all data will be allocated.
+            device (wp.DeviceLike): The target Warp device on which all data will be allocated.
 
         Raises:
             ValueError: If either ``size.num_worlds`` or `max_iters`` are not a positive integers.

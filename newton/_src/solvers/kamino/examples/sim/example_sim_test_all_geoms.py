@@ -18,7 +18,6 @@ import os
 
 import numpy as np
 import warp as wp
-from warp.context import Devicelike
 
 import newton
 import newton.examples
@@ -40,7 +39,7 @@ from newton._src.solvers.kamino.utils.sim import SimulationLogger, Simulator, Si
 class Example:
     def __init__(
         self,
-        device: Devicelike,
+        device: wp.DeviceLike,
         max_steps: int = 1000,
         use_cuda_graph: bool = False,
         pipeline_name: str = "primitive",

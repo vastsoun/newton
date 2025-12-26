@@ -23,7 +23,6 @@ import unittest
 
 import numpy as np
 import warp as wp
-from warp.context import Devicelike
 
 from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.core.model import Model, ModelData
@@ -109,7 +108,7 @@ def test_unified_pipeline(
     atol: float = 0.0,
     case: str = "",
     broadphase_modes: list[BroadPhaseMode] | None = None,
-    device: Devicelike = None,
+    device: wp.DeviceLike = None,
 ):
     """
     Runs the unified collision detection pipeline using all broad-phase backends

@@ -25,7 +25,6 @@ from functools import cache
 
 import numpy as np
 import warp as wp
-from warp.context import Devicelike
 
 from ..core.joints import JointActuationType, JointDoFType
 from ..core.math import (
@@ -1259,7 +1258,7 @@ class ForwardKinematicsSolver:
         self.model: Model | None = None
         """Underlying model"""
 
-        self.device: Devicelike = None
+        self.device: wp.DeviceLike = None
         """Device for data allocations"""
 
         self.settings: ForwardKinematicsSolverSettings = ForwardKinematicsSolverSettings()

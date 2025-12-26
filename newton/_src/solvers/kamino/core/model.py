@@ -18,7 +18,6 @@
 from dataclasses import dataclass
 
 import warp as wp
-from warp.context import Devicelike
 
 from .bodies import RigidBodiesData, RigidBodiesModel
 from .control import Control
@@ -813,7 +812,7 @@ class Model:
     A container to hold the time-invariant system model data.
 
     Attributes:
-        device (Devicelike):
+        device (wp.DeviceLike):
             The device on which the model data is allocated.
         requires_grad (bool):
             Whether the model requires gradients for its state. Defaults to `False`.
@@ -842,7 +841,7 @@ class Model:
     """
 
     def __init__(self):
-        self.device: Devicelike = None
+        self.device: wp.DeviceLike = None
         """The device on which the model data is allocated.\n
         Defaults to `None`, indicating the default/preferred Warp device.
         """
@@ -890,7 +889,7 @@ class Model:
         self,
         unilateral_cts: bool = False,
         requires_grad: bool = False,
-        device: Devicelike = None,
+        device: wp.DeviceLike = None,
     ) -> ModelData:
         """
         Creates a model data container with the initial state of the model entities.
@@ -900,7 +899,7 @@ class Model:
                 Whether to include unilateral constraints (limits and contacts) in the model data. Defaults to `True`.
             requires_grad (`bool`, optional):
                 Whether the model data should require gradients. Defaults to `False`.
-            device (`Devicelike`, optional):
+            device (`wp.DeviceLike`, optional):
                 The device to create the model data on. If not specified, the model's device is used.
                 Defaults to `None`. If not specified, the model's device is used.
         """
@@ -997,14 +996,14 @@ class Model:
             pgeoms=pgeoms,
         )
 
-    def state(self, requires_grad: bool = False, device: Devicelike = None) -> State:
+    def state(self, requires_grad: bool = False, device: wp.DeviceLike = None) -> State:
         """
         Creates state container initialized to the initial body state defined in the model.
 
         Parameters:
             requires_grad (`bool`, optional):
                 Whether the state should require gradients. Defaults to `False`.
-            device (`Devicelike`, optional):
+            device (`wp.DeviceLike`, optional):
                 The device to create the state on. If not specified, the model's device is used.
         """
         # If no device is specified, use the model's device
@@ -1026,14 +1025,14 @@ class Model:
         # Return the constructed state container
         return state
 
-    def control(self, requires_grad: bool = False, device: Devicelike = None) -> Control:
+    def control(self, requires_grad: bool = False, device: wp.DeviceLike = None) -> Control:
         """
         Creates a control container with all values initialized to zeros.
 
         Parameters:
             requires_grad (`bool`, optional):
                 Whether the control container should require gradients. Defaults to `False`.
-            device (`Devicelike`, optional):
+            device (`wp.DeviceLike`, optional):
                 The device to create the control container on. If not specified, the model's device is used.
         """
         # If no device is specified, use the model's device

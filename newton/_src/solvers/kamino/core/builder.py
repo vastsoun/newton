@@ -23,7 +23,6 @@ import copy
 
 import numpy as np
 import warp as wp
-from warp.context import Devicelike
 
 from ..utils import logger as msg
 from .bodies import RigidBodiesModel, RigidBodyDescriptor
@@ -84,7 +83,7 @@ class ModelBuilder:
         """
         # Meta-data
         self._num_worlds: int = 0
-        self._device: Devicelike = None
+        self._device: wp.DeviceLike = None
         self._requires_grad: bool = False
 
         # Declare and initialize counters
@@ -917,7 +916,7 @@ class ModelBuilder:
     # Model Compilation
     ###
 
-    def finalize(self, device: Devicelike = None, requires_grad: bool = False, base_auto: bool = True) -> Model:
+    def finalize(self, device: wp.DeviceLike = None, requires_grad: bool = False, base_auto: bool = True) -> Model:
         """
         Constructs a Model object from the current ModelBuilder.
 
@@ -925,7 +924,7 @@ class ModelBuilder:
         object, allocating the necessary data structures on the target device.
 
         Args:
-            device (Devicelike): The target device for the model data.\n
+            device (wp.DeviceLike): The target device for the model data.\n
                 If None, the default/preferred device will determined by Warp.
             requires_grad (bool): Whether the model data should support gradients.\n
                 Defaults to False.

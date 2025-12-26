@@ -19,7 +19,6 @@ import unittest
 
 import numpy as np
 import warp as wp
-from warp.context import Devicelike
 
 from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.core.model import Model, ModelData
@@ -95,7 +94,7 @@ single edge or corner, generating only 1 contact point.
 
 
 class PrimitiveBroadPhaseTestBS:
-    def __init__(self, builder: ModelBuilder, device: Devicelike = None):
+    def __init__(self, builder: ModelBuilder, device: wp.DeviceLike = None):
         # Retrieve the number of world
         num_worlds = builder.num_worlds
         num_geoms = len(builder.collision_geoms)
@@ -132,7 +131,7 @@ class PrimitiveBroadPhaseTestBS:
 
 
 class PrimitiveBroadPhaseTestAABB:
-    def __init__(self, builder: ModelBuilder, device: Devicelike = None):
+    def __init__(self, builder: ModelBuilder, device: wp.DeviceLike = None):
         # Retrieve the number of world
         num_worlds = builder.num_worlds
         num_geoms = len(builder.collision_geoms)
@@ -208,7 +207,7 @@ def test_broadphase(
     expected_worlds: list[int] | None = None,
     margin: float = 0.0,
     case_name: str = "",
-    device: Devicelike = None,
+    device: wp.DeviceLike = None,
 ):
     """
     Tests a primitive broad-phase backend on a system specified via a ModelBuilder.
@@ -257,7 +256,7 @@ def test_broadphase_on_single_pair(
     expected_collisions: int,
     distance: float = 0.0,
     margin: float = 0.0,
-    device: Devicelike = None,
+    device: wp.DeviceLike = None,
 ):
     """
     Tests a primitive broad-phase backend on a single shape pair.
@@ -378,7 +377,7 @@ def test_narrowphase(
     rtol: float = 1e-6,
     atol: float = 0.0,
     case: str = "",
-    device: Devicelike = None,
+    device: wp.DeviceLike = None,
 ):
     """
     Runs the primitive narrow-phase collider using all broad-phase backends

@@ -23,7 +23,6 @@ contacts data directly into Kamino's respective format.
 
 # Warp imports
 import warp as wp
-from warp.context import Devicelike
 
 # Newton imports
 from ....geometry.broad_phase_nxn import BroadPhaseAllPairs, BroadPhaseExplicit
@@ -497,7 +496,7 @@ class CollisionPipelineUnifiedKamino:
         default_margin: float = DEFAULT_GEOM_PAIR_CONTACT_MARGIN,
         default_friction: float = DEFAULT_FRICTION,
         default_restitution: float = DEFAULT_RESTITUTION,
-        device: Devicelike = None,
+        device: wp.DeviceLike = None,
     ):
         """
         Initialize an instance of Kamino's wrapper of the unified collision detection pipeline.
@@ -511,11 +510,11 @@ class CollisionPipelineUnifiedKamino:
             default_margin (float): Default contact margin for collision detection
             default_friction (float): Default contact friction coefficient
             default_restitution (float): Default impact restitution coefficient
-            device (Devicelike): Warp device used to allocate memory and operate on
+            device (wp.DeviceLike): Warp device used to allocate memory and operate on
         """
         # Set the target Warp device for the pipeline
         # If not specified explicitly, use the device of the model
-        self._device: Devicelike = None
+        self._device: wp.DeviceLike = None
         if device is not None:
             self._device = device
         else:
@@ -604,7 +603,7 @@ class CollisionPipelineUnifiedKamino:
     ###
 
     @property
-    def device(self) -> Devicelike:
+    def device(self) -> wp.DeviceLike:
         """Returns the Warp device the pipeline operates on."""
         return self._device
 

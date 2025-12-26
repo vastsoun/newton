@@ -75,7 +75,6 @@ Typical usage example:
 from typing import Any
 
 import warp as wp
-from warp.context import Devicelike
 
 from ..core.model import Model, ModelData, ModelSize
 from ..core.types import float32, int32, mat33f, vec3f
@@ -248,7 +247,7 @@ class DelassusOperator:
         contacts: Contacts | None = None,
         solver: LinearSolverType = None,
         solver_kwargs: dict[str, Any] | None = None,
-        device: Devicelike = None,
+        device: wp.DeviceLike = None,
     ):
         """
         Creates a Delassus operator for the given model, limits and contacts containers.
@@ -267,7 +266,7 @@ class DelassusOperator:
             data (ModelData, optional): The model data container holding the state info and data.
             limits (Limits, optional): The container holding the allocated joint-limit data.
             contacts (Contacts, optional): The container holding the allocated contacts data.
-            device (Devicelike, optional): The device identifier for the Delassus operator. Defaults to None.
+            device (wp.DeviceLike, optional): The device identifier for the Delassus operator. Defaults to None.
             factorizer (CholeskyFactorizer, optional): An optional Cholesky factorization object. Defaults to None.
         """
         # Declare and initialize the host-side cache of the necessary memory allocations
@@ -279,7 +278,7 @@ class DelassusOperator:
         self._max_of_max_total_D_size: int = 0
 
         # Cache the requested device
-        self._device: Devicelike = device
+        self._device: wp.DeviceLike = device
 
         # Declare the model size cache
         self._size: ModelSize | None = None
@@ -362,7 +361,7 @@ class DelassusOperator:
         limits: Limits | None = None,
         contacts: Contacts | None = None,
         solver: LinearSolverType = None,
-        device: Devicelike = None,
+        device: wp.DeviceLike = None,
         solver_kwargs: dict[str, Any] | None = None,
     ):
         """
@@ -371,7 +370,7 @@ class DelassusOperator:
         Args
         ----
             dims (List[int]): The dimensions of the Delassus matrix for each world.
-            device (Devicelike, optional): The device identifier for the Delassus operator. Defaults to None.
+            device (wp.DeviceLike, optional): The device identifier for the Delassus operator. Defaults to None.
             factorizer (CholeskyFactorizer, optional): An optional Cholesky factorization object. Defaults to None.
         """
 

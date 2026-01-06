@@ -808,7 +808,7 @@ class SolverKamino(SolverBase):
         self,
         state_out: State,
         world_mask: wp.array,
-        joint_q: wp.array,
+        joint_q: wp.array | None = None,
         joint_u: wp.array | None = None,
         actuator_q: wp.array | None = None,
         actuator_u: wp.array | None = None,

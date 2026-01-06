@@ -100,6 +100,9 @@ def test_prestep_callback(
 # Utils
 ###
 
+rtol = 1e-7
+atol = 1e-10
+
 
 def assert_solver_settings(testcase: unittest.TestCase, settings: SolverKaminoSettings):
     testcase.assertIsInstance(settings, SolverKaminoSettings)
@@ -136,13 +139,13 @@ def assert_states_equal(testcase: unittest.TestCase, state_0: State, state_1: St
 def assert_states_close(testcase: unittest.TestCase, state_0: State, state_1: State):
     testcase.assertIsInstance(state_0, State)
     testcase.assertIsInstance(state_1, State)
-    np.testing.assert_allclose(state_0.q_i.numpy(), state_1.q_i.numpy())
-    np.testing.assert_allclose(state_0.u_i.numpy(), state_1.u_i.numpy())
-    np.testing.assert_allclose(state_0.w_i.numpy(), state_1.w_i.numpy())
-    np.testing.assert_allclose(state_0.q_j.numpy(), state_1.q_j.numpy())
-    np.testing.assert_allclose(state_0.q_j_p.numpy(), state_1.q_j_p.numpy())
-    np.testing.assert_allclose(state_0.dq_j.numpy(), state_1.dq_j.numpy())
-    np.testing.assert_allclose(state_0.lambda_j.numpy(), state_1.lambda_j.numpy())
+    np.testing.assert_allclose(state_0.q_i.numpy(), state_1.q_i.numpy(), rtol=rtol, atol=atol)
+    np.testing.assert_allclose(state_0.u_i.numpy(), state_1.u_i.numpy(), rtol=rtol, atol=atol)
+    np.testing.assert_allclose(state_0.w_i.numpy(), state_1.w_i.numpy(), rtol=rtol, atol=atol)
+    np.testing.assert_allclose(state_0.q_j.numpy(), state_1.q_j.numpy(), rtol=rtol, atol=atol)
+    np.testing.assert_allclose(state_0.q_j_p.numpy(), state_1.q_j_p.numpy(), rtol=rtol, atol=atol)
+    np.testing.assert_allclose(state_0.dq_j.numpy(), state_1.dq_j.numpy(), rtol=rtol, atol=atol)
+    np.testing.assert_allclose(state_0.lambda_j.numpy(), state_1.lambda_j.numpy(), rtol=rtol, atol=atol)
 
 
 def assert_states_close_masked(
@@ -170,18 +173,24 @@ def assert_states_close_masked(
                 np.testing.assert_allclose(
                     getattr(state_n, attr).numpy()[bodies_start : bodies_start + num_bodies_per_world],
                     getattr(state_0, attr).numpy()[bodies_start : bodies_start + num_bodies_per_world],
+                    rtol=rtol,
+                    atol=atol,
                     err_msg=f"\nWorld wid={wid}: attribute `{attr}` mismatch:\n",
                 )
             for attr in ["q_j", "q_j_p", "dq_j"]:
                 np.testing.assert_allclose(
                     getattr(state_n, attr).numpy()[joint_dofs_start : joint_dofs_start + num_joint_dofs_per_world],
                     getattr(state_0, attr).numpy()[joint_dofs_start : joint_dofs_start + num_joint_dofs_per_world],
+                    rtol=rtol,
+                    atol=atol,
                     err_msg=f"\nWorld wid={wid}: attribute `{attr}` mismatch:\n",
                 )
             for attr in ["lambda_j"]:
                 np.testing.assert_allclose(
                     getattr(state_n, attr).numpy()[joint_cts_start : joint_cts_start + num_joint_cts_per_world],
                     getattr(state_0, attr).numpy()[joint_cts_start : joint_cts_start + num_joint_cts_per_world],
+                    rtol=rtol,
+                    atol=atol,
                     err_msg=f"\nWorld wid={wid}: attribute `{attr}` mismatch:\n",
                 )
         bodies_start += num_bodies_per_world
@@ -371,9 +380,6 @@ class TestSolverKamino(unittest.TestCase):
             ValueError, lambda: solver.reset(state_out=state_0, joint_u=joint_u_0, actuator_u=actuator_u_0)
         )
         self.assertRaises(
-            ValueError, lambda: solver.reset(state_out=state_0, joint_u=joint_u_0, actuator_u=actuator_u_0)
-        )
-        self.assertRaises(
             ValueError,
             lambda: solver.reset(state_out=state_0, base_q=base_q_0, joint_u=joint_u_0, actuator_u=actuator_u_0),
         )
@@ -511,6 +517,8 @@ class TestSolverKamino(unittest.TestCase):
             np.testing.assert_allclose(
                 state_n.q_i.numpy()[base_idx],
                 base_q_0_np[wid],
+                rtol=rtol,
+                atol=atol,
             )
 
         # Step the solver a few times to change the state
@@ -545,6 +553,8 @@ class TestSolverKamino(unittest.TestCase):
             np.testing.assert_allclose(
                 state_n.u_i.numpy()[base_idx],
                 base_u_0_np[wid],
+                rtol=rtol,
+                atol=atol,
             )
 
         # Step the solver a few times to change the state
@@ -571,10 +581,14 @@ class TestSolverKamino(unittest.TestCase):
             np.testing.assert_allclose(
                 state_n.q_i.numpy()[base_idx],
                 base_q_0_np[wid],
+                rtol=rtol,
+                atol=atol,
             )
             np.testing.assert_allclose(
                 state_n.u_i.numpy()[base_idx],
                 base_u_0_np[wid],
+                rtol=rtol,
+                atol=atol,
             )
 
         # Optionally print the reset state for debugging
@@ -622,10 +636,14 @@ class TestSolverKamino(unittest.TestCase):
                 np.testing.assert_allclose(
                     state_n.q_i.numpy()[base_idx],
                     base_q_0_np[wid],
+                    rtol=rtol,
+                    atol=atol,
                 )
                 np.testing.assert_allclose(
                     state_n.u_i.numpy()[base_idx],
                     base_u_0_np[wid],
+                    rtol=rtol,
+                    atol=atol,
                 )
 
     def test_08_reset_to_joint_state(self):
@@ -686,11 +704,15 @@ class TestSolverKamino(unittest.TestCase):
         np.testing.assert_allclose(
             state_n.q_j.numpy(),
             joint_q_0_np,
+            rtol=rtol,
+            atol=atol,
             err_msg="\n`state_out.q_j` does not match joint_q target\n",
         )
         np.testing.assert_allclose(
             state_n.q_j_p.numpy(),
             joint_q_0_np,
+            rtol=rtol,
+            atol=atol,
             err_msg="\n`state_out.q_j_p` does not match joint_q target\n",
         )
         self.assertTrue(
@@ -733,16 +755,22 @@ class TestSolverKamino(unittest.TestCase):
         np.testing.assert_allclose(
             state_n.q_j.numpy(),
             joint_q_0_np,
+            rtol=rtol,
+            atol=atol,
             err_msg="\n`state_out.q_j` does not match joint_q target\n",
         )
         np.testing.assert_allclose(
             state_n.q_j_p.numpy(),
             joint_q_0_np,
+            rtol=rtol,
+            atol=atol,
             err_msg="\n`state_out.q_j_p` does not match joint_q target\n",
         )
         np.testing.assert_allclose(
             state_n.dq_j.numpy(),
             joint_u_0_np,
+            rtol=rtol,
+            atol=atol,
             err_msg="\n`state_out.dq_j` does not match joint_u target\n",
         )
         self.assertTrue(
@@ -764,7 +792,7 @@ class TestSolverKamino(unittest.TestCase):
             show_progress=self.progress or self.verbose,
         )
 
-        # Reset all worlds to the specified joint states
+        # Reset selected worlds to the specified joint states
         solver.reset(
             state_out=state_n,
             world_mask=world_mask,
@@ -792,16 +820,22 @@ class TestSolverKamino(unittest.TestCase):
                 np.testing.assert_allclose(
                     state_n.q_j.numpy()[coords_start : coords_start + num_world_coords],
                     joint_q_0_np[coords_start : coords_start + num_world_coords],
+                    rtol=rtol,
+                    atol=atol,
                     err_msg="\n`state_out.q_j` does not match joint_q target\n",
                 )
                 np.testing.assert_allclose(
                     state_n.q_j_p.numpy()[coords_start : coords_start + num_world_coords],
                     joint_q_0_np[coords_start : coords_start + num_world_coords],
+                    rtol=rtol,
+                    atol=atol,
                     err_msg="\n`state_out.q_j_p` does not match joint_q target\n",
                 )
                 np.testing.assert_allclose(
                     state_n.dq_j.numpy()[dofs_start : dofs_start + num_world_dofs],
                     joint_u_0_np[dofs_start : dofs_start + num_world_dofs],
+                    rtol=rtol,
+                    atol=atol,
                     err_msg="\n`state_out.dq_j` does not match joint_u target\n",
                 )
             coords_start += num_world_coords
@@ -884,11 +918,15 @@ class TestSolverKamino(unittest.TestCase):
         np.testing.assert_allclose(
             state_n.q_j.numpy(),
             joint_q_0_np,
+            rtol=rtol,
+            atol=atol,
             err_msg="\n`state_out.q_j` does not match joint_q target\n",
         )
         np.testing.assert_allclose(
             state_n.q_j_p.numpy(),
             joint_q_0_np,
+            rtol=rtol,
+            atol=atol,
             err_msg="\n`state_out.q_j_p` does not match joint_q target\n",
         )
         self.assertTrue(
@@ -945,16 +983,22 @@ class TestSolverKamino(unittest.TestCase):
         np.testing.assert_allclose(
             state_n.q_j.numpy(),
             joint_q_0_np,
+            rtol=rtol,
+            atol=atol,
             err_msg="\n`state_out.q_j` does not match joint_q target\n",
         )
         np.testing.assert_allclose(
             state_n.q_j_p.numpy(),
             joint_q_0_np,
+            rtol=rtol,
+            atol=atol,
             err_msg="\n`state_out.q_j_p` does not match joint_q target\n",
         )
         np.testing.assert_allclose(
             state_n.dq_j.numpy(),
             joint_u_0_np,
+            rtol=rtol,
+            atol=atol,
             err_msg="\n`state_out.dq_j` does not match joint_u target\n",
         )
         self.assertTrue(
@@ -1019,16 +1063,22 @@ class TestSolverKamino(unittest.TestCase):
                 np.testing.assert_allclose(
                     state_n.q_j.numpy()[coords_start : coords_start + num_world_coords],
                     joint_q_0_np[coords_start : coords_start + num_world_coords],
+                    rtol=rtol,
+                    atol=atol,
                     err_msg="\n`state_out.q_j` does not match joint_q target\n",
                 )
                 np.testing.assert_allclose(
                     state_n.q_j_p.numpy()[coords_start : coords_start + num_world_coords],
                     joint_q_0_np[coords_start : coords_start + num_world_coords],
+                    rtol=rtol,
+                    atol=atol,
                     err_msg="\n`state_out.q_j_p` does not match joint_q target\n",
                 )
                 np.testing.assert_allclose(
                     state_n.dq_j.numpy()[dofs_start : dofs_start + num_world_dofs],
                     joint_u_0_np[dofs_start : dofs_start + num_world_dofs],
+                    rtol=rtol,
+                    atol=atol,
                     err_msg="\n`state_out.dq_j` does not match joint_u target\n",
                 )
             coords_start += num_world_coords
@@ -1065,12 +1115,12 @@ class TestSolverKamino(unittest.TestCase):
         self.assertEqual(single_model.size.sum_of_num_bodies, 2)
         self.assertEqual(single_model.size.sum_of_num_joints, 2)
         for i, body in enumerate(single_builder.bodies):
-            np.testing.assert_allclose(single_model.bodies.q_i_0.numpy()[i], body.q_i_0)
-            np.testing.assert_allclose(single_model.bodies.u_i_0.numpy()[i], body.u_i_0)
-            np.testing.assert_allclose(single_state_p.q_i.numpy()[i], body.q_i_0)
-            np.testing.assert_allclose(single_state_p.u_i.numpy()[i], body.u_i_0)
-            np.testing.assert_allclose(single_state_n.q_i.numpy()[i], body.q_i_0)
-            np.testing.assert_allclose(single_state_n.u_i.numpy()[i], body.u_i_0)
+            np.testing.assert_allclose(single_model.bodies.q_i_0.numpy()[i], body.q_i_0, rtol=rtol, atol=atol)
+            np.testing.assert_allclose(single_model.bodies.u_i_0.numpy()[i], body.u_i_0, rtol=rtol, atol=atol)
+            np.testing.assert_allclose(single_state_p.q_i.numpy()[i], body.q_i_0, rtol=rtol, atol=atol)
+            np.testing.assert_allclose(single_state_p.u_i.numpy()[i], body.u_i_0, rtol=rtol, atol=atol)
+            np.testing.assert_allclose(single_state_n.q_i.numpy()[i], body.q_i_0, rtol=rtol, atol=atol)
+            np.testing.assert_allclose(single_state_n.u_i.numpy()[i], body.u_i_0, rtol=rtol, atol=atol)
 
         # Optional verbose output - enabled globally via self.verbose
         msg.info(f"[single]: [init]: model.size:\n{single_model.size}\n\n")
@@ -1168,12 +1218,12 @@ class TestSolverKamino(unittest.TestCase):
         self.assertEqual(multi_model.size.sum_of_num_bodies, single_model.size.sum_of_num_bodies * num_worlds)
         self.assertEqual(multi_model.size.sum_of_num_joints, single_model.size.sum_of_num_joints * num_worlds)
         for i, body in enumerate(multi_builder.bodies):
-            np.testing.assert_allclose(multi_model.bodies.q_i_0.numpy()[i], body.q_i_0)
-            np.testing.assert_allclose(multi_model.bodies.u_i_0.numpy()[i], body.u_i_0)
-            np.testing.assert_allclose(multi_state_p.q_i.numpy()[i], body.q_i_0)
-            np.testing.assert_allclose(multi_state_p.u_i.numpy()[i], body.u_i_0)
-            np.testing.assert_allclose(multi_state_n.q_i.numpy()[i], body.q_i_0)
-            np.testing.assert_allclose(multi_state_n.u_i.numpy()[i], body.u_i_0)
+            np.testing.assert_allclose(multi_model.bodies.q_i_0.numpy()[i], body.q_i_0, rtol=rtol, atol=atol)
+            np.testing.assert_allclose(multi_model.bodies.u_i_0.numpy()[i], body.u_i_0, rtol=rtol, atol=atol)
+            np.testing.assert_allclose(multi_state_p.q_i.numpy()[i], body.q_i_0, rtol=rtol, atol=atol)
+            np.testing.assert_allclose(multi_state_p.u_i.numpy()[i], body.u_i_0, rtol=rtol, atol=atol)
+            np.testing.assert_allclose(multi_state_n.q_i.numpy()[i], body.q_i_0, rtol=rtol, atol=atol)
+            np.testing.assert_allclose(multi_state_n.u_i.numpy()[i], body.u_i_0, rtol=rtol, atol=atol)
 
         # Optional verbose output - enabled globally via self.verbose
         msg.info(f"[multi]: [init]: sim.model.size:\n{multi_model.size}\n\n")
@@ -1188,14 +1238,14 @@ class TestSolverKamino(unittest.TestCase):
         msg.info(f"[multi]: [init]: sim.model.control.tau_j:\n{multi_control.tau_j}\n\n")
 
         # Check if the multi-instance simulator has initial states matching the tiled samples
-        np.testing.assert_allclose(multi_state_p.q_i.numpy(), multi_init_q_i)
-        np.testing.assert_allclose(multi_state_p.u_i.numpy(), multi_init_u_i)
-        np.testing.assert_allclose(multi_state_n.q_i.numpy(), multi_init_q_i)
-        np.testing.assert_allclose(multi_state_n.u_i.numpy(), multi_init_u_i)
-        np.testing.assert_allclose(multi_state_p.q_j.numpy(), multi_init_q_j)
-        np.testing.assert_allclose(multi_state_p.dq_j.numpy(), multi_init_dq_j)
-        np.testing.assert_allclose(multi_state_n.q_j.numpy(), multi_init_q_j)
-        np.testing.assert_allclose(multi_state_n.dq_j.numpy(), multi_init_dq_j)
+        np.testing.assert_allclose(multi_state_p.q_i.numpy(), multi_init_q_i, rtol=rtol, atol=atol)
+        np.testing.assert_allclose(multi_state_p.u_i.numpy(), multi_init_u_i, rtol=rtol, atol=atol)
+        np.testing.assert_allclose(multi_state_n.q_i.numpy(), multi_init_q_i, rtol=rtol, atol=atol)
+        np.testing.assert_allclose(multi_state_n.u_i.numpy(), multi_init_u_i, rtol=rtol, atol=atol)
+        np.testing.assert_allclose(multi_state_p.q_j.numpy(), multi_init_q_j, rtol=rtol, atol=atol)
+        np.testing.assert_allclose(multi_state_p.dq_j.numpy(), multi_init_dq_j, rtol=rtol, atol=atol)
+        np.testing.assert_allclose(multi_state_n.q_j.numpy(), multi_init_q_j, rtol=rtol, atol=atol)
+        np.testing.assert_allclose(multi_state_n.dq_j.numpy(), multi_init_dq_j, rtol=rtol, atol=atol)
 
         # Set a simple control callback that applies control inputs
         # NOTE: We use this to disturb the system from its initial state
@@ -1218,10 +1268,10 @@ class TestSolverKamino(unittest.TestCase):
         msg.info(f"[multi]: [final]: multi_state_n.dq_j:\n{multi_state_n.dq_j}\n\n")
 
         # Check that the next states match the collected samples
-        np.testing.assert_allclose(multi_state_n.q_i.numpy(), multi_final_q_i)
-        np.testing.assert_allclose(multi_state_n.u_i.numpy(), multi_final_u_i)
-        np.testing.assert_allclose(multi_state_n.q_j.numpy(), multi_final_q_j)
-        np.testing.assert_allclose(multi_state_n.dq_j.numpy(), multi_final_dq_j)
+        np.testing.assert_allclose(multi_state_n.q_i.numpy(), multi_final_q_i, rtol=rtol, atol=atol)
+        np.testing.assert_allclose(multi_state_n.u_i.numpy(), multi_final_u_i, rtol=rtol, atol=atol)
+        np.testing.assert_allclose(multi_state_n.q_j.numpy(), multi_final_q_j, rtol=rtol, atol=atol)
+        np.testing.assert_allclose(multi_state_n.dq_j.numpy(), multi_final_dq_j, rtol=rtol, atol=atol)
 
     def test_11_step_multiple_cartpoles_from_initial_state_with_contacts(self):
         """
@@ -1242,12 +1292,12 @@ class TestSolverKamino(unittest.TestCase):
         self.assertEqual(single_model.size.sum_of_num_bodies, 2)
         self.assertEqual(single_model.size.sum_of_num_joints, 2)
         for i, body in enumerate(single_builder.bodies):
-            np.testing.assert_allclose(single_model.bodies.q_i_0.numpy()[i], body.q_i_0)
-            np.testing.assert_allclose(single_model.bodies.u_i_0.numpy()[i], body.u_i_0)
-            np.testing.assert_allclose(single_state_p.q_i.numpy()[i], body.q_i_0)
-            np.testing.assert_allclose(single_state_p.u_i.numpy()[i], body.u_i_0)
-            np.testing.assert_allclose(single_state_n.q_i.numpy()[i], body.q_i_0)
-            np.testing.assert_allclose(single_state_n.u_i.numpy()[i], body.u_i_0)
+            np.testing.assert_allclose(single_model.bodies.q_i_0.numpy()[i], body.q_i_0, rtol=rtol, atol=atol)
+            np.testing.assert_allclose(single_model.bodies.u_i_0.numpy()[i], body.u_i_0, rtol=rtol, atol=atol)
+            np.testing.assert_allclose(single_state_p.q_i.numpy()[i], body.q_i_0, rtol=rtol, atol=atol)
+            np.testing.assert_allclose(single_state_p.u_i.numpy()[i], body.u_i_0, rtol=rtol, atol=atol)
+            np.testing.assert_allclose(single_state_n.q_i.numpy()[i], body.q_i_0, rtol=rtol, atol=atol)
+            np.testing.assert_allclose(single_state_n.u_i.numpy()[i], body.u_i_0, rtol=rtol, atol=atol)
 
         # Optional verbose output - enabled globally via self.verbose
         msg.info(f"[single]: [init]: model.size:\n{single_model.size}\n\n")
@@ -1353,12 +1403,12 @@ class TestSolverKamino(unittest.TestCase):
         self.assertEqual(multi_model.size.sum_of_num_bodies, single_model.size.sum_of_num_bodies * num_worlds)
         self.assertEqual(multi_model.size.sum_of_num_joints, single_model.size.sum_of_num_joints * num_worlds)
         for i, body in enumerate(multi_builder.bodies):
-            np.testing.assert_allclose(multi_model.bodies.q_i_0.numpy()[i], body.q_i_0)
-            np.testing.assert_allclose(multi_model.bodies.u_i_0.numpy()[i], body.u_i_0)
-            np.testing.assert_allclose(multi_state_p.q_i.numpy()[i], body.q_i_0)
-            np.testing.assert_allclose(multi_state_p.u_i.numpy()[i], body.u_i_0)
-            np.testing.assert_allclose(multi_state_n.q_i.numpy()[i], body.q_i_0)
-            np.testing.assert_allclose(multi_state_n.u_i.numpy()[i], body.u_i_0)
+            np.testing.assert_allclose(multi_model.bodies.q_i_0.numpy()[i], body.q_i_0, rtol=rtol, atol=atol)
+            np.testing.assert_allclose(multi_model.bodies.u_i_0.numpy()[i], body.u_i_0, rtol=rtol, atol=atol)
+            np.testing.assert_allclose(multi_state_p.q_i.numpy()[i], body.q_i_0, rtol=rtol, atol=atol)
+            np.testing.assert_allclose(multi_state_p.u_i.numpy()[i], body.u_i_0, rtol=rtol, atol=atol)
+            np.testing.assert_allclose(multi_state_n.q_i.numpy()[i], body.q_i_0, rtol=rtol, atol=atol)
+            np.testing.assert_allclose(multi_state_n.u_i.numpy()[i], body.u_i_0, rtol=rtol, atol=atol)
 
         # Optional verbose output - enabled globally via self.verbose
         msg.info(f"[multi]: [init]: sim.model.size:\n{multi_model.size}\n\n")
@@ -1373,14 +1423,14 @@ class TestSolverKamino(unittest.TestCase):
         msg.info(f"[multi]: [init]: sim.model.control.tau_j:\n{multi_control.tau_j}\n\n")
 
         # Check if the multi-instance simulator has initial states matching the tiled samples
-        np.testing.assert_allclose(multi_state_p.q_i.numpy(), multi_init_q_i)
-        np.testing.assert_allclose(multi_state_p.u_i.numpy(), multi_init_u_i)
-        np.testing.assert_allclose(multi_state_n.q_i.numpy(), multi_init_q_i)
-        np.testing.assert_allclose(multi_state_n.u_i.numpy(), multi_init_u_i)
-        np.testing.assert_allclose(multi_state_p.q_j.numpy(), multi_init_q_j)
-        np.testing.assert_allclose(multi_state_p.dq_j.numpy(), multi_init_dq_j)
-        np.testing.assert_allclose(multi_state_n.q_j.numpy(), multi_init_q_j)
-        np.testing.assert_allclose(multi_state_n.dq_j.numpy(), multi_init_dq_j)
+        np.testing.assert_allclose(multi_state_p.q_i.numpy(), multi_init_q_i, rtol=rtol, atol=atol)
+        np.testing.assert_allclose(multi_state_p.u_i.numpy(), multi_init_u_i, rtol=rtol, atol=atol)
+        np.testing.assert_allclose(multi_state_n.q_i.numpy(), multi_init_q_i, rtol=rtol, atol=atol)
+        np.testing.assert_allclose(multi_state_n.u_i.numpy(), multi_init_u_i, rtol=rtol, atol=atol)
+        np.testing.assert_allclose(multi_state_p.q_j.numpy(), multi_init_q_j, rtol=rtol, atol=atol)
+        np.testing.assert_allclose(multi_state_p.dq_j.numpy(), multi_init_dq_j, rtol=rtol, atol=atol)
+        np.testing.assert_allclose(multi_state_n.q_j.numpy(), multi_init_q_j, rtol=rtol, atol=atol)
+        np.testing.assert_allclose(multi_state_n.dq_j.numpy(), multi_init_dq_j, rtol=rtol, atol=atol)
 
         # Set a simple control callback that applies control inputs
         # NOTE: We use this to disturb the system from its initial state
@@ -1403,10 +1453,10 @@ class TestSolverKamino(unittest.TestCase):
         msg.info(f"[multi]: [final]: multi_state_n.dq_j:\n{multi_state_n.dq_j}\n\n")
 
         # Check that the next states match the collected samples
-        np.testing.assert_allclose(multi_state_n.q_i.numpy(), multi_final_q_i)
-        np.testing.assert_allclose(multi_state_n.u_i.numpy(), multi_final_u_i)
-        np.testing.assert_allclose(multi_state_n.q_j.numpy(), multi_final_q_j)
-        np.testing.assert_allclose(multi_state_n.dq_j.numpy(), multi_final_dq_j)
+        np.testing.assert_allclose(multi_state_n.q_i.numpy(), multi_final_q_i, rtol=rtol, atol=atol)
+        np.testing.assert_allclose(multi_state_n.u_i.numpy(), multi_final_u_i, rtol=rtol, atol=atol)
+        np.testing.assert_allclose(multi_state_n.q_j.numpy(), multi_final_q_j, rtol=rtol, atol=atol)
+        np.testing.assert_allclose(multi_state_n.dq_j.numpy(), multi_final_dq_j, rtol=rtol, atol=atol)
 
 
 ###

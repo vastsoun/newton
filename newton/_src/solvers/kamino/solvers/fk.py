@@ -2430,7 +2430,7 @@ class ForwardKinematicsSolver:
             success = self.newton_success.numpy().copy()
             iterations = self.newton_iteration.numpy().copy()
             max_constraints = self.max_constraint.numpy().copy()
-            num_active_worlds = self.num_worlds if world_mask is None else world_mask.sum()
+            num_active_worlds = self.num_worlds if world_mask is None else world_mask.numpy().sum()
             if verbose:
                 sys.__stdout__.write(f"Newton success for {success.sum()}/{num_active_worlds} worlds; ")
                 sys.__stdout__.write(f"num iterations={iterations.max()}; ")

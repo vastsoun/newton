@@ -25,6 +25,7 @@ from collections.abc import Callable
 from typing import Any
 
 import warp as wp
+import warp.sparse as wps
 
 # No need to auto-generate adjoint code for linear solvers
 wp.set_module_options({"enable_backward": False})
@@ -39,6 +40,7 @@ __all__ = [
     "make_dense_square_matrix_operator",
     "make_diag_matrix_operator",
     "make_jacobi_preconditioner",
+    "make_sparse_square_matrix_operator",
 ]
 
 
@@ -356,6 +358,126 @@ def make_dense_square_matrix_operator(
         )
 
     shape = (n, max_dims, max_dims)
+    return BatchedLinearOperator(shape=shape, dtype=dtype, device=device, matvec=matvec)
+
+
+# Sparse matrices
+@wp.kernel
+def _scalar_mul_kernel(
+    y: wp.array2d(dtype=Any),
+    beta: Any,
+    z: wp.array2d(dtype=Any),
+):
+    """Compute z = beta * y element-wise"""
+    world, i = wp.tid()
+    z[world, i] = beta * y[world, i]
+
+
+@wp.kernel
+def _csr_square_mat_conversion_kernel(
+    A: wp.array2d(dtype=Any),
+    active_dims: wp.array(dtype=Any),
+    A_sparse_rows: wp.array2d(dtype=wp.int32),
+    A_sparse_cols: wp.array2d(dtype=wp.int32),
+    A_sparse_values: wp.array2d(dtype=Any),
+    A_sparse_nnz: wp.array(dtype=wp.int32),
+):
+    world = wp.tid()
+
+    n = active_dims[world]
+    i = wp.int32(0)
+    for row in range(n):
+        for col in range(n):
+            val = A[world, row * n + col]
+            if val != 0.0:
+                A_sparse_rows[world, i] = row
+                A_sparse_cols[world, i] = col
+                A_sparse_values[world, i] = val
+                i += wp.int32(1)
+    A_sparse_nnz[world] = i
+
+
+def make_sparse_square_matrix_operator(
+    A: wp.array2d(dtype=Any),
+    active_dims: wp.array(dtype=Any),
+    max_dims: int,
+    matrix_stride: int,
+    block_dim: int = 64,
+) -> BatchedLinearOperator:
+    """Create a BatchedLinearOperator computing `z = \\alpha (A x) + \\beta y`
+    for multiple, differently sized square matrices using the warp BSR matrix."""
+    dtype = A.dtype
+    device = A.device
+
+    n_worlds = len(active_dims)
+    assert A.shape[0] == n_worlds
+
+    with wp.ScopedDevice(device):
+        A_sparse_rows_wp = wp.empty((n_worlds, max_dims * max_dims), dtype=wp.int32, device=device)
+        A_sparse_cols_wp = wp.empty((n_worlds, max_dims * max_dims), dtype=wp.int32, device=device)
+        A_sparse_values_wp = wp.empty((n_worlds, max_dims * max_dims), dtype=dtype, device=device)
+        A_sparse_nnz_wp = wp.empty((n_worlds,), dtype=wp.int32, device=device)
+
+    wp.launch(
+        _csr_square_mat_conversion_kernel,
+        dim=(n_worlds),
+        inputs=[A, active_dims],
+        outputs=[A_sparse_rows_wp, A_sparse_cols_wp, A_sparse_values_wp, A_sparse_nnz_wp],
+        device=device,
+    )
+
+    active_dims_local = active_dims.numpy()
+    A_sparse_nnz = A_sparse_nnz_wp.numpy()
+
+    A_sparse = []
+    with wp.ScopedDevice(device):
+        for i in range(n_worlds):
+            if A_sparse_nnz[i] == 0:
+                A_sparse.append(None)
+                continue
+            n = active_dims_local[i]
+            A_sparse_i = wps.bsr_zeros(rows_of_blocks=n, cols_of_blocks=n, block_type=dtype, device=device)
+            wps.bsr_set_from_triplets(
+                A_sparse_i,
+                A_sparse_rows_wp[i, :],
+                A_sparse_cols_wp[i, :],
+                A_sparse_values_wp[i, :],
+                A_sparse_nnz_wp[i : i + 1],
+            )
+            A_sparse_i.values.requires_grad = False
+            A_sparse.append(A_sparse_i)
+
+    def matvec(
+        x: wp.array(dtype=Any),
+        y: wp.array(dtype=Any),
+        z: wp.array(dtype=Any),
+        world_active: wp.array(dtype=wp.bool),
+        alpha: Any,
+        beta: Any,
+    ):
+        # Compute z = beta * y
+        wp.launch(
+            _scalar_mul_kernel,
+            dim=(n_worlds, max_dims),
+            inputs=[y, dtype(beta)],
+            outputs=[z],
+            device=device,
+        )
+        for i in range(n_worlds):
+            # Computes z[i] = alpha * (A[i] @ x[i]) + beta * y[i]
+            # y has already been scaled by beta and stored in z
+            if A_sparse[i] is None:
+                continue
+            wps.bsr_mv(
+                A_sparse[i],
+                x[i, : active_dims_local[i]],
+                z[i, : active_dims_local[i]],
+                alpha=dtype(alpha),
+                # beta=dtype(beta),
+                beta=dtype(1.0),
+            )
+
+    shape = (n_worlds, max_dims, max_dims)
     return BatchedLinearOperator(shape=shape, dtype=dtype, device=device, matvec=matvec)
 
 

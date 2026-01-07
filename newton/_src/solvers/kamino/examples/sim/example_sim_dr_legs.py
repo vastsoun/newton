@@ -340,7 +340,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--linear-solver",
-        default="LLTB",
+        default="CG",
         choices=LinearSolverShorthand.values(),
         type=str.upper,
         help="Linear solver to use",

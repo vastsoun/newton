@@ -25,6 +25,7 @@ from newton._src.solvers.kamino.linalg.conjugate import (
     CGSolver,
     CRSolver,
     make_dense_square_matrix_operator,
+    make_sparse_square_matrix_operator,
 )
 from newton._src.solvers.kamino.tests.utils.extract import get_vector_block
 from newton._src.solvers.kamino.tests.utils.print import print_error_stats
@@ -56,12 +57,21 @@ class TestLinalgConjugate(unittest.TestCase):
         x_wp = wp.zeros_like(b_2d, device=device)
 
         world_active = wp.full(n_worlds, True, dtype=wp.bool, device=device)
-        operator = make_dense_square_matrix_operator(
-            A=A_2d,
-            active_dims=problem.dim_wp,
-            max_dims=maxdim,
-            matrix_stride=maxdim,
-        )
+        sparse = False
+        if sparse:
+            operator = make_sparse_square_matrix_operator(
+                A=A_2d,
+                active_dims=problem.dim_wp,
+                max_dims=maxdim,
+                matrix_stride=maxdim,
+            )
+        else:
+            operator = make_dense_square_matrix_operator(
+                A=A_2d,
+                active_dims=problem.dim_wp,
+                max_dims=maxdim,
+                matrix_stride=maxdim,
+            )
 
         atol = wp.full(n_worlds, 1.0e-8, dtype=problem.wp_dtype, device=device)
         rtol = wp.full(n_worlds, 1.0e-8, dtype=problem.wp_dtype, device=device)

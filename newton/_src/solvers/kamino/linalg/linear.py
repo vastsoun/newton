@@ -349,7 +349,7 @@ class IterativeSolver(LinearSolver):
             elif not isinstance(self._maxiter, wp.array):
                 raise ValueError("The provided maxiter is not a valid wp.array or int!")
 
-        self._allocate_impl(operator, **kwargs)
+        # self._allocate_impl(operator, **kwargs)
 
     @override
     def solve(self, b: wp.array, x: wp.array, zero_x: bool = False, **kwargs: dict[str, Any]) -> None:
@@ -649,11 +649,13 @@ class ConjugateGradientSolver(IterativeSolver):
         maxiter: int | wp.array | None = None,
         world_active: wp.array | None = None,
         preconditioner: Any = None,
+        sparse: bool = True,
         **kwargs: dict[str, Any],
     ):
         self._A_op = None
         self._Mi_op = None
         self._jacobi_preconditioner = None
+        self._sparse = sparse
 
         super().__init__(
             operator=operator,
@@ -669,6 +671,7 @@ class ConjugateGradientSolver(IterativeSolver):
 
     @override
     def _allocate_impl(self, operator: DenseLinearOperatorData, **kwargs: dict[str, Any]) -> None:
+        self.allocate(operator)
         if not isinstance(operator.info, DenseSquareMultiLinearInfo):
             raise ValueError("ConjugateGradientSolver requires a square matrix operator.")
 
@@ -688,12 +691,21 @@ class ConjugateGradientSolver(IterativeSolver):
         else:
             self._Mi_op = None
 
-        self._A_op = conjugate.make_dense_square_matrix_operator(
-            A=operator.mat.reshape((self._num_worlds, self._max_dim * self._max_dim)),
-            active_dims=self._operator.info.dim,
-            max_dims=self._max_dim,
-            matrix_stride=self._max_dim,
-        )
+        if self._sparse:
+            self._A_op = conjugate.make_sparse_square_matrix_operator(
+                A=operator.mat.reshape((self._num_worlds, self._max_dim * self._max_dim)),
+                active_dims=self._operator.info.dim,
+                max_dims=self._max_dim,
+                matrix_stride=self._max_dim,
+            )
+        else:
+            print((self._num_worlds, self._max_dim))
+            self._A_op = conjugate.make_dense_square_matrix_operator(
+                A=operator.mat.reshape((self._num_worlds, self._max_dim * self._max_dim)),
+                active_dims=self._operator.info.dim,
+                max_dims=self._max_dim,
+                matrix_stride=self._max_dim,
+            )
 
         self.solver = conjugate.CGSolver(
             A=self._A_op,
@@ -785,6 +797,7 @@ class ConjugateResidualSolver(IterativeSolver):
 
     @override
     def _allocate_impl(self, operator: DenseLinearOperatorData, **kwargs: dict[str, Any]) -> None:
+        self.allocate(operator)
         if not isinstance(operator.info, DenseSquareMultiLinearInfo):
             raise ValueError("ConjugateResidualSolver requires a square matrix operator.")
 

@@ -23,6 +23,7 @@ independent linear systems, including rectangular and square systems.
 from collections.abc import Callable
 from dataclasses import dataclass
 
+import numpy as np
 import warp as wp
 from warp.context import Devicelike
 
@@ -35,7 +36,8 @@ from ..core.types import FloatType, IntType, float32, int32
 ###
 
 __all__ = [
-    "BlockSparseLinearOperator",
+    "BlockSparseLinearOperators",
+    "BlockSparseMatrices",
 ]
 
 
@@ -44,11 +46,16 @@ __all__ = [
 ###
 
 
+class SparseBlockType:
+    """A utility type for bundling meta-data about sparse-block types."""
+
+    _supported_types = float | wp.vector | wp.matrix
+
+
 @dataclass
-class BlockSparseLinearOperator:
+class BlockSparseMatrices:
     """
-    A Block-Sparse Linear Operator container for representing
-    and operating on multiple independent sparse linear systems.
+    A container for representing multiple block-sparse matrices of fixed block size.
     """
 
     ###
@@ -64,44 +71,110 @@ class BlockSparseLinearOperator:
     itype: IntType = int32
     """The integer type used for indexing the underlying data arrays."""
 
-    num_superblocks: int = 0
-    """Host-side cache of the number of super-blocks represented in each sparse operator."""
+    num_matrices: int = 0
+    """Host-side cache of the number of sparse matrices represented by this container."""
 
-    sum_of_nnzb: int = 0
-    """Host-side cache of the sum of the number of non-zero sub-blocks over all super-blocks."""
+    sum_of_num_nzb: int = 0
+    """Host-side cache of the sum of the number of non-zero sub-blocks over all sparse matrices."""
 
-    max_of_nnzb: int = 0
-    """Host-side cache of the maximum number of non-zero sub-blocks over all super-blocks."""
+    max_of_num_nzb: int = 0
+    """Host-side cache of the maximum number of non-zero sub-blocks over all sparse matrices."""
 
-    nzb_dimensions: tuple[int, int] | None = None
-    """Host-side cache of the fixed non-zero sub-block dimensions contained in all sparse super-blocks."""
+    nzb_size: tuple[int, int] | None = None
+    """Host-side cache of the fixed non-zero sub-block dimensions contained in all sparse matrices."""
 
     ###
     # On-device Data
     ###
 
-    maxdims: wp.array | None = None
+    max_dims: wp.array | None = None
     """
-    The maximum dimensions of each sparse super-block.\n
-    Shape of ``(num_superblocks,)`` and type :class:`vec2i`.
+    The maximum dimensions of each sparse matrices.\n
+    Shape of ``(num_matrices,)`` and type :class:`vec2i`.
     """
 
     dims: wp.array | None = None
     """
-    The active dimensions of each sparse super-block.\n
-    Shape of ``(num_superblocks,)`` and type :class:`vec2i`.
+    The active dimensions of each sparse matrices.\n
+    Shape of ``(num_matrices,)`` and type :class:`vec2i`.
     """
 
-    maxnnzb: wp.array | None = None
+    max_nzb: wp.array | None = None
     """
-    The maximum number of non-zero blocks per sparse super-block.\n
-    Shape of ``(num_superblocks,)`` and type :class:`int`.
+    The maximum number of non-zero blocks per sparse matrices.\n
+    Shape of ``(num_matrices,)`` and type :class:`int`.
     """
 
-    nnzb: wp.array | None = None
+    num_nzb: wp.array | None = None
     """
-    The active number of non-zero blocks per sparse super-block.\n
-    Shape of ``(num_superblocks,)`` and type :class:`int`.
+    The active number of non-zero blocks per sparse matrices.\n
+    Shape of ``(num_matrices,)`` and type :class:`int`.
+    """
+
+    nzb_start: wp.array | None = None
+    """
+    The index of the first non-zero sub-block of each sparse matrices.\n
+    Shape of ``(num_matrices,)`` and type :class:`int`.
+    """
+
+    nzb_coords: wp.array | None = None
+    """
+    The row-column coordinates of each sparse sub-block within its corresponding matrices.\n
+    Shape of ``(sum_of_num_nzb,)`` and type :class:`vec2i`.
+    """
+
+    nzb_values: wp.array | None = None
+    """
+    The flattened array containing all sparse non-zero blocks over all matrices.\n
+    Shape of ``(sum_of_num_nzb,)`` and type :class:`float | vector | matrix`.
+    """
+
+    ###
+    # Operations
+    ###
+
+    def finalize(capacities: list[int], block_type: SparseBlockType, device: Devicelike | None = None):
+        pass
+
+    def clear(self):
+        """Clears all variable sub-blocks."""
+        self._assert_is_finalized()
+        self.dims.zero_()
+        self.num_nzb.zero_()
+        self.nzb_coords.zero_()
+
+    def zero(self):
+        """Sets all sub-block data to zero."""
+        self._assert_is_finalized()
+        self.nzb_values.zero_()
+
+    def numpy(self) -> list[np.ndarray]:
+        pass
+
+    ###
+    # Internals
+    ###
+
+    def _assert_is_finalized(self):
+        # TODO: Check all array attributes
+        if self.nzb_values is None:
+            raise RuntimeError("No data has been allocated. Call `finalize()` before use.")
+
+
+@dataclass
+class BlockSparseLinearOperators:
+    """
+    A Block-Sparse Linear Operator container for representing
+    and operating on multiple independent sparse linear systems.
+    """
+
+    ###
+    # On-device Data
+    ###
+
+    bsm: BlockSparseMatrices | None = None
+    """
+    The underlying block-sparse matrix used by this operator.
     """
 
     row_start: wp.array | None = None
@@ -116,38 +189,32 @@ class BlockSparseLinearOperator:
     Shape of ``(num_superblocks,)`` and type :class:`int`.
     """
 
-    nzb_start: wp.array | None = None
-    """
-    The index of the first non-zero sub-block of each sparse super-block.\n
-    Shape of ``(num_superblocks,)`` and type :class:`int`.
-    """
-
-    nzb_coords: wp.array | None = None
-    """
-    The row-column coordinates of each sparse sub-block within its corresponding super-block.\n
-    Shape of ``(max_num_nonzero_subblocks,)`` and type :class:`vec2i`.
-    """
-
-    nzb_data: wp.array | None = None
-    """
-    The flattened array containing all sparse non-zero blocks over all super-blocks.\n
-    Shape of ``(max_num_nonzero_subblocks,)`` and type :class:`float | vector | matrix`.
-    """
-
     ###
     # Operators
     ###
 
-    Ax_op: Callable[["BlockSparseLinearOperator", wp.array, wp.array], None] | None = None
+    Ax_op: Callable[["BlockSparseLinearOperators", wp.array, wp.array], None] | None = None
     """
     The operator function for performing sparse matrix-vector products `y = A @ x`.\n
-    Signature: ``Ax_op(bslo: BlockSparseLinearOperator, x: wp.array, y: wp.array)``.
+    Signature: ``Ax_op(A: BlockSparseLinearOperators, x: wp.array, y: wp.array)``.
     """
 
-    ATy_op: Callable[["BlockSparseLinearOperator", wp.array, wp.array], None] | None = None
+    ATy_op: Callable[["BlockSparseLinearOperators", wp.array, wp.array], None] | None = None
     """
     The operator function for performing sparse matrix-transpose-vector products `x = A^T @ y`.\n
-    Signature: ``ATy_op(bslo: BlockSparseLinearOperator, y: wp.array, x: wp.array)``.
+    Signature: ``ATy_op(A: BlockSparseLinearOperators, y: wp.array, x: wp.array)``.
+    """
+
+    gemv_op: Callable[["BlockSparseLinearOperators", wp.array, wp.array, float, float, bool], None] | None = None
+    """
+    The operator function for performing generalized sparse matrix-vector products `y = alpha * A @ x + beta * y`.\n
+    Signature: ``gemv_op(A: BlockSparseLinearOperators, x: wp.array, y: wp.array, alpha: float, beta: float)``.
+    """
+
+    gemvt_op: Callable[["BlockSparseLinearOperators", wp.array, wp.array, float, float, bool], None] | None = None
+    """
+    The operator function for performing generalized sparse matrix-transpose-vector products `x = alpha * A^T @ y + beta * x`.\n
+    Signature: ``gemvt_op(A: BlockSparseLinearOperators, y: wp.array, x: wp.array, alpha: float, beta: float)``.
     """
 
     ###
@@ -156,35 +223,32 @@ class BlockSparseLinearOperator:
 
     def clear(self):
         """Clears all variable sub-blocks."""
-        self._assert_is_finalized()
-        self.dims.zero_()
-        self.nnzb.zero_()
-        self.nzb_coords.zero_()
+        self.bsm.clear()
 
     def zero(self):
         """Sets all sub-block data to zero."""
-        self._assert_is_finalized()
-        self.nzb_data.zero_()
+        self.bsm.zero()
 
     def matvec(self, x: wp.array, y: wp.array):
         """Performs the sparse matrix-vector product `y = A @ x`."""
-        self._assert_is_finalized()
         if self.Ax_op is None:
-            raise RuntimeError("No Ax operator has been assigned.")
+            raise RuntimeError("No `A@x` operator has been assigned.")
         self.Ax_op(self, x, y)
 
     def matvec_transpose(self, y: wp.array, x: wp.array):
         """Performs the sparse matrix-transpose-vector product `x = A^T @ y`."""
-        self._assert_is_finalized()
         if self.ATy_op is None:
-            raise RuntimeError("No ATy operator has been assigned.")
+            raise RuntimeError("No `A^T@y` operator has been assigned.")
         self.ATy_op(self, y, x)
 
-    ###
-    # Internals
-    ###
+    def gemv(self, x: wp.array, y: wp.array, alpha: float = 1.0, beta: float = 0.0):
+        """Performs a BLAS-like generalized sparse matrix-vector product `y = alpha * A @ x + beta * y`."""
+        if self.gemv_op is None:
+            raise RuntimeError("No BLAS-like `GEMV` operator has been assigned.")
+        self.gemv_op(self, x, y, alpha, beta)
 
-    def _assert_is_finalized(self):
-        # TODO: Check all array attributes
-        if self.nzb_data is None:
-            raise RuntimeError("No data has been allocated. Call `finalize()` before use.")
+    def gemv_transpose(self, y: wp.array, x: wp.array, alpha: float = 1.0, beta: float = 0.0):
+        """Performs a BLAS-like generalized sparse matrix-transpose-vector product `x = alpha * A^T @ y + beta * x`."""
+        if self.gemvt_op is None:
+            raise RuntimeError("No BLAS-like transposed `GEMV` operator has been assigned.")
+        self.gemvt_op(self, y, x, alpha, beta)

@@ -46,7 +46,7 @@ from ..core.types import (
 )
 from ..geometry.contacts import Contacts
 from ..kinematics.limits import Limits
-from ..linalg.sparse import BlockSparseLinearOperator
+from ..linalg.sparse import BlockSparseLinearOperators, BlockSparseMatrices
 
 ###
 # Module interface
@@ -140,54 +140,44 @@ def make_store_joint_jacobian_sparse_func(axes: Any):
 
     @wp.func
     def store_joint_jacobian_sparse(
-        J_nzb_start: int,
+        wid: int,
         row_start: int,
         bid_offset: int,
         bid_B: int,
         bid_F: int,
         JT_B_j: mat66f,
         JT_F_j: mat66f,
-        J_dims: wp.array(dtype=vec2i),
-        J_nnzb: wp.array(dtype=int32),
+        J_num_nzb: wp.array(dtype=int32),
+        J_nzb_start: wp.array(dtype=int32),
         J_nzb_coords: wp.array(dtype=vec2i),
-        J_nzb_data: wp.array(dtype=vec6f),
+        J_nzb_values: wp.array(dtype=vec6f),
     ):
         """
-        Stores the Jacobian blocks of a joint into the provided flat data array at the specified offset.
-
-        Args:
-            J_offset (int): The offset at which the Jacobian matrix block of the corresponding world starts.
-            row_offset (int): The offset at which the first target row starts.
-            row_size (int): The number of columns in the world's Jacobian block.
-            bid_offset (int): The body index offset of the world's bodies w.r.t the model.
-            bid_B (int): The body index of the base body of the joint w.r.t the model.
-            bid_F (int): The body index of the follower body of the joint w.r.t the model.
-            JT_B_j (mat66f): The 6x6 Jacobian transpose block of the joint's base body.
-            JT_F_j (mat66f): The 6x6 Jacobian transpose block of the joint's follower body.
-            J_data (wp.array(dtype=float32)): The flat data array holding the Jacobian matrix blocks.
+        TODO
         """
         # Set the number of rows in the output Jacobian block
         # NOTE: This is evaluated statically at compile time
         num_jac_rows = wp.static(len(axes))
 
+        # Retrieve the start index of the world's Jacobian super-block
+        J_j_nzb_start = J_nzb_start[wid]
+
         # Store the Jacobian block for the follower body
-        wp.atomic_add(J_dims, num_jac_rows)
         J_F_col = 6 * (bid_F - bid_offset)
-        J_F_nzb_start = wp.atomic_add(J_nnzb, num_jac_rows)
-        for j in range(num_jac_rows):
-            J_F_j_nzb_start = J_nzb_start + J_F_nzb_start - num_jac_rows + j
-            J_nzb_coords[J_F_j_nzb_start] = vec2i(row_start + j, J_F_col)
-            J_nzb_data[J_F_j_nzb_start] = JT_F_j[:, axes[j]]
+        J_F_nzb_start = wp.atomic_add(J_num_nzb, wid, num_jac_rows)
+        for i in range(num_jac_rows):
+            J_F_i_nzb_start = J_j_nzb_start + J_F_nzb_start - num_jac_rows + i
+            J_nzb_coords[J_F_i_nzb_start] = vec2i(row_start + i, J_F_col)
+            J_nzb_values[J_F_i_nzb_start] = JT_F_j[:, axes[i]]
 
         # If the base body is not the world (:= -1), store the respective Jacobian block
         if bid_B > -1:
-            wp.atomic_add(J_dims, num_jac_rows)
             J_B_col = 6 * (bid_B - bid_offset)
-            J_B_nzb_start = wp.atomic_add(J_nnzb, num_jac_rows)
-            for j in range(num_jac_rows):
-                J_B_j_nzb_start = J_nzb_start + J_B_nzb_start - num_jac_rows + j
-                J_nzb_coords[J_B_j_nzb_start] = vec2i(row_start + j, J_B_col)
-                J_nzb_data[J_B_j_nzb_start] = JT_B_j[:, axes[j]]
+            J_B_nzb_start = wp.atomic_add(J_num_nzb, wid, num_jac_rows)
+            for i in range(num_jac_rows):
+                J_B_i_nzb_start = J_j_nzb_start + J_B_nzb_start - num_jac_rows + i
+                J_nzb_coords[J_B_i_nzb_start] = vec2i(row_start + i, J_B_col)
+                J_nzb_values[J_B_i_nzb_start] = JT_B_j[:, axes[i]]
 
     # Return the function
     return store_joint_jacobian_sparse
@@ -311,18 +301,18 @@ def store_joint_dofs_jacobian_dense(
 
 @wp.func
 def store_joint_cts_jacobian_sparse(
+    wid: int,
     dof_type: int,
-    J_cts_offset: int,
     cts_offset: int,
     bid_offset: int,
     bid_B: int,
     bid_F: int,
     JT_B: mat66f,
     JT_F: mat66f,
-    J_cts_dims: wp.array(dtype=vec2i),
-    J_cts_nnzb: wp.array(dtype=int32),
+    J_cts_num_nzb: wp.array(dtype=int32),
+    J_cts_nzb_start: wp.array(dtype=int32),
     J_cts_nzb_coords: wp.array(dtype=vec2i),
-    J_cts_nzb_data: wp.array(dtype=vec6f),
+    J_cts_nzb_values: wp.array(dtype=vec6f),
 ):
     """
     Stores the constraints Jacobian block of a joint into the provided flat data array at the given offset.
@@ -330,139 +320,139 @@ def store_joint_cts_jacobian_sparse(
 
     if dof_type == JointDoFType.REVOLUTE:
         wp.static(make_store_joint_jacobian_sparse_func(JointDoFType.REVOLUTE.cts_axes))(
-            J_cts_offset,
+            wid,
             cts_offset,
             bid_offset,
             bid_B,
             bid_F,
             JT_B,
             JT_F,
-            J_cts_dims,
-            J_cts_nnzb,
+            J_cts_num_nzb,
+            J_cts_nzb_start,
             J_cts_nzb_coords,
-            J_cts_nzb_data,
+            J_cts_nzb_values,
         )
 
     elif dof_type == JointDoFType.PRISMATIC:
         wp.static(make_store_joint_jacobian_sparse_func(JointDoFType.PRISMATIC.cts_axes))(
-            J_cts_offset,
+            wid,
             cts_offset,
             bid_offset,
             bid_B,
             bid_F,
             JT_B,
             JT_F,
-            J_cts_dims,
-            J_cts_nnzb,
+            J_cts_num_nzb,
+            J_cts_nzb_start,
             J_cts_nzb_coords,
-            J_cts_nzb_data,
+            J_cts_nzb_values,
         )
 
     elif dof_type == JointDoFType.CYLINDRICAL:
         wp.static(make_store_joint_jacobian_sparse_func(JointDoFType.CYLINDRICAL.cts_axes))(
-            J_cts_offset,
+            wid,
             cts_offset,
             bid_offset,
             bid_B,
             bid_F,
             JT_B,
             JT_F,
-            J_cts_dims,
-            J_cts_nnzb,
+            J_cts_num_nzb,
+            J_cts_nzb_start,
             J_cts_nzb_coords,
-            J_cts_nzb_data,
+            J_cts_nzb_values,
         )
 
     elif dof_type == JointDoFType.UNIVERSAL:
         wp.static(make_store_joint_jacobian_sparse_func(JointDoFType.UNIVERSAL.cts_axes))(
-            J_cts_offset,
+            wid,
             cts_offset,
             bid_offset,
             bid_B,
             bid_F,
             JT_B,
             JT_F,
-            J_cts_dims,
-            J_cts_nnzb,
+            J_cts_num_nzb,
+            J_cts_nzb_start,
             J_cts_nzb_coords,
-            J_cts_nzb_data,
+            J_cts_nzb_values,
         )
 
     elif dof_type == JointDoFType.SPHERICAL:
         wp.static(make_store_joint_jacobian_sparse_func(JointDoFType.SPHERICAL.cts_axes))(
-            J_cts_offset,
+            wid,
             cts_offset,
             bid_offset,
             bid_B,
             bid_F,
             JT_B,
             JT_F,
-            J_cts_dims,
-            J_cts_nnzb,
+            J_cts_num_nzb,
+            J_cts_nzb_start,
             J_cts_nzb_coords,
-            J_cts_nzb_data,
+            J_cts_nzb_values,
         )
 
     elif dof_type == JointDoFType.GIMBAL:
         wp.static(make_store_joint_jacobian_sparse_func(JointDoFType.GIMBAL.cts_axes))(
-            J_cts_offset,
+            wid,
             cts_offset,
             bid_offset,
             bid_B,
             bid_F,
             JT_B,
             JT_F,
-            J_cts_dims,
-            J_cts_nnzb,
+            J_cts_num_nzb,
+            J_cts_nzb_start,
             J_cts_nzb_coords,
-            J_cts_nzb_data,
+            J_cts_nzb_values,
         )
 
     elif dof_type == JointDoFType.CARTESIAN:
         wp.static(make_store_joint_jacobian_sparse_func(JointDoFType.CARTESIAN.cts_axes))(
-            J_cts_offset,
+            wid,
             cts_offset,
             bid_offset,
             bid_B,
             bid_F,
             JT_B,
             JT_F,
-            J_cts_dims,
-            J_cts_nnzb,
+            J_cts_num_nzb,
+            J_cts_nzb_start,
             J_cts_nzb_coords,
-            J_cts_nzb_data,
+            J_cts_nzb_values,
         )
 
     elif dof_type == JointDoFType.FIXED:
         wp.static(make_store_joint_jacobian_sparse_func(JointDoFType.FIXED.cts_axes))(
-            J_cts_offset,
+            wid,
             cts_offset,
             bid_offset,
             bid_B,
             bid_F,
             JT_B,
             JT_F,
-            J_cts_dims,
-            J_cts_nnzb,
+            J_cts_num_nzb,
+            J_cts_nzb_start,
             J_cts_nzb_coords,
-            J_cts_nzb_data,
+            J_cts_nzb_values,
         )
 
 
 @wp.func
 def store_joint_dofs_jacobian_sparse(
+    wid: int,
     dof_type: int,
-    J_dofs_offset: int,
     dofs_offset: int,
     bid_offset: int,
     bid_B: int,
     bid_F: int,
     JT_B: mat66f,
     JT_F: mat66f,
-    J_dofs_dims: wp.array(dtype=vec2i),
-    J_dofs_nnzb: wp.array(dtype=int32),
+    J_dofs_num_nzb: wp.array(dtype=int32),
+    J_dofs_nzb_start: wp.array(dtype=int32),
     J_dofs_nzb_coords: wp.array(dtype=vec2i),
-    J_dofs_nzb_data: wp.array(dtype=vec6f),
+    J_dofs_nzb_values: wp.array(dtype=vec6f),
 ):
     """
     Stores the DoFs Jacobian block of a joint into the provided flat data array at the given offset.
@@ -470,122 +460,122 @@ def store_joint_dofs_jacobian_sparse(
 
     if dof_type == JointDoFType.REVOLUTE:
         wp.static(make_store_joint_jacobian_sparse_func(JointDoFType.REVOLUTE.dofs_axes))(
-            J_dofs_offset,
+            wid,
             dofs_offset,
             bid_offset,
             bid_B,
             bid_F,
             JT_B,
             JT_F,
-            J_dofs_dims,
-            J_dofs_nnzb,
+            J_dofs_num_nzb,
+            J_dofs_nzb_start,
             J_dofs_nzb_coords,
-            J_dofs_nzb_data,
+            J_dofs_nzb_values,
         )
 
     elif dof_type == JointDoFType.PRISMATIC:
         wp.static(make_store_joint_jacobian_sparse_func(JointDoFType.PRISMATIC.dofs_axes))(
-            J_dofs_offset,
+            wid,
             dofs_offset,
             bid_offset,
             bid_B,
             bid_F,
             JT_B,
             JT_F,
-            J_dofs_dims,
-            J_dofs_nnzb,
+            J_dofs_num_nzb,
+            J_dofs_nzb_start,
             J_dofs_nzb_coords,
-            J_dofs_nzb_data,
+            J_dofs_nzb_values,
         )
 
     elif dof_type == JointDoFType.CYLINDRICAL:
         wp.static(make_store_joint_jacobian_sparse_func(JointDoFType.CYLINDRICAL.dofs_axes))(
-            J_dofs_offset,
+            wid,
             dofs_offset,
             bid_offset,
             bid_B,
             bid_F,
             JT_B,
             JT_F,
-            J_dofs_dims,
-            J_dofs_nnzb,
+            J_dofs_num_nzb,
+            J_dofs_nzb_start,
             J_dofs_nzb_coords,
-            J_dofs_nzb_data,
+            J_dofs_nzb_values,
         )
 
     elif dof_type == JointDoFType.UNIVERSAL:
         wp.static(make_store_joint_jacobian_sparse_func(JointDoFType.UNIVERSAL.dofs_axes))(
-            J_dofs_offset,
+            wid,
             dofs_offset,
             bid_offset,
             bid_B,
             bid_F,
             JT_B,
             JT_F,
-            J_dofs_dims,
-            J_dofs_nnzb,
+            J_dofs_num_nzb,
+            J_dofs_nzb_start,
             J_dofs_nzb_coords,
-            J_dofs_nzb_data,
+            J_dofs_nzb_values,
         )
 
     elif dof_type == JointDoFType.SPHERICAL:
         wp.static(make_store_joint_jacobian_sparse_func(JointDoFType.SPHERICAL.dofs_axes))(
-            J_dofs_offset,
+            wid,
             dofs_offset,
             bid_offset,
             bid_B,
             bid_F,
             JT_B,
             JT_F,
-            J_dofs_dims,
-            J_dofs_nnzb,
+            J_dofs_num_nzb,
+            J_dofs_nzb_start,
             J_dofs_nzb_coords,
-            J_dofs_nzb_data,
+            J_dofs_nzb_values,
         )
 
     elif dof_type == JointDoFType.GIMBAL:
         wp.static(make_store_joint_jacobian_sparse_func(JointDoFType.GIMBAL.dofs_axes))(
-            J_dofs_offset,
+            wid,
             dofs_offset,
             bid_offset,
             bid_B,
             bid_F,
             JT_B,
             JT_F,
-            J_dofs_dims,
-            J_dofs_nnzb,
+            J_dofs_num_nzb,
+            J_dofs_nzb_start,
             J_dofs_nzb_coords,
-            J_dofs_nzb_data,
+            J_dofs_nzb_values,
         )
 
     elif dof_type == JointDoFType.CARTESIAN:
         wp.static(make_store_joint_jacobian_sparse_func(JointDoFType.CARTESIAN.dofs_axes))(
-            J_dofs_offset,
+            wid,
             dofs_offset,
             bid_offset,
             bid_B,
             bid_F,
             JT_B,
             JT_F,
-            J_dofs_dims,
-            J_dofs_nnzb,
+            J_dofs_num_nzb,
+            J_dofs_nzb_start,
             J_dofs_nzb_coords,
-            J_dofs_nzb_data,
+            J_dofs_nzb_values,
         )
 
     elif dof_type == JointDoFType.FREE:
         wp.static(make_store_joint_jacobian_sparse_func(JointDoFType.FREE.dofs_axes))(
-            J_dofs_offset,
+            wid,
             dofs_offset,
             bid_offset,
             bid_B,
             bid_F,
             JT_B,
             JT_F,
-            J_dofs_dims,
-            J_dofs_nnzb,
+            J_dofs_num_nzb,
+            J_dofs_nzb_start,
             J_dofs_nzb_coords,
-            J_dofs_nzb_data,
+            J_dofs_nzb_values,
         )
 
 
@@ -685,16 +675,14 @@ def _build_joint_jacobians_sparse(
     state_joints_p: wp.array(dtype=transformf),
     state_bodies_q: wp.array(dtype=transformf),
     jacobian_cts_nzb_start: wp.array(dtype=int32),
+    jacobian_cts_num_nzb: wp.array(dtype=int32),
     jacobian_dofs_nzb_start: wp.array(dtype=int32),
+    jacobian_dofs_num_nzb: wp.array(dtype=int32),
     # Outputs
-    jacobian_cts_dims: wp.array(dtype=vec2i),
-    jacobian_cts_nnzb: wp.array(dtype=int32),
     jacobian_cts_nzb_coords: wp.array(dtype=vec2i),
-    jacobian_cts_nzb_data: wp.array(dtype=vec6f),
-    jacobian_dofs_dims: wp.array(dtype=vec2i),
-    jacobian_dofs_nnzb: wp.array(dtype=int32),
+    jacobian_cts_nzb_values: wp.array(dtype=vec6f),
     jacobian_dofs_nzb_coords: wp.array(dtype=vec2i),
-    jacobian_dofs_nzb_data: wp.array(dtype=vec6f),
+    jacobian_dofs_nzb_values: wp.array(dtype=vec6f),
 ):
     """
     A kernel to compute the Jacobians (constraints and actuated DoFs) for the joints in a model.
@@ -747,6 +735,7 @@ def _build_joint_jacobians_sparse(
 
     # Store the constraint Jacobian block
     store_joint_cts_jacobian_sparse(
+        wid,
         dof_type,
         J_cts_nzb_start,
         cio,
@@ -755,14 +744,15 @@ def _build_joint_jacobians_sparse(
         bid_F,
         JT_B_j,
         JT_F_j,
-        jacobian_cts_dims,
-        jacobian_cts_nnzb,
+        jacobian_cts_num_nzb,
+        jacobian_cts_nzb_start,
         jacobian_cts_nzb_coords,
-        jacobian_cts_nzb_data,
+        jacobian_cts_nzb_values,
     )
 
     # Store the actuation Jacobian block if the joint is actuated
     store_joint_dofs_jacobian_sparse(
+        wid,
         dof_type,
         J_dofs_nzb_start,
         dio,
@@ -771,10 +761,10 @@ def _build_joint_jacobians_sparse(
         bid_F,
         JT_B_j,
         JT_F_j,
-        jacobian_dofs_dims,
-        jacobian_dofs_nnzb,
+        jacobian_dofs_num_nzb,
+        jacobian_dofs_nzb_start,
         jacobian_dofs_nzb_coords,
-        jacobian_dofs_nzb_data,
+        jacobian_dofs_nzb_values,
     )
 
 
@@ -1033,8 +1023,8 @@ def build_sparse_jacobians(
     data: ModelData,
     limits: Limits | None,
     contacts: Contacts | None,
-    jacobian_cts: BlockSparseLinearOperator,
-    jacobian_dofs: BlockSparseLinearOperator,
+    jacobian_cts: BlockSparseMatrices,
+    jacobian_dofs: BlockSparseMatrices,
     reset_to_zero: bool = True,
 ):
     # Optionally reset the Jacobian array data to zero
@@ -1045,6 +1035,26 @@ def build_sparse_jacobians(
     # TODO:
     jacobian_cts.clear()
     jacobian_dofs.clear()
+
+    # TODO: Implement kernel parallel over worlds to compute active BSM dimensions and num_nzb
+    # wp.launch(
+    #     _configure_jacobians_sparse,
+    #     dim=model.size.num_worlds,
+    #     inputs=[
+    #         # Inputs:
+    #         model.info.num_body_dofs,
+    #         model.info.num_joint_cts,
+    #         data.info.num_limits,
+    #         data.info.num_contacts,
+    #         jacobian_cts.nzb_start,
+    #         jacobian_dofs.nzb_start,
+    #         # Outputs:
+    #         jacobian_cts.dims,
+    #         jacobian_cts.num_nzb,
+    #         jacobian_dofs.dims,
+    #         jacobian_dofs.num_nzb,
+    #     ],
+    # )
 
     # Build the joint constraints and actuation Jacobians
     if model.size.sum_of_num_joints > 0:
@@ -1066,14 +1076,12 @@ def build_sparse_jacobians(
                 jacobian_cts.nzb_start,
                 jacobian_dofs.nzb_start,
                 # Outputs:
-                jacobian_cts.dims,
-                jacobian_cts.nnzb,
+                jacobian_cts.num_nzb,
                 jacobian_cts.nzb_coords,
-                jacobian_cts.nzb_data,
-                jacobian_dofs.dims,
-                jacobian_dofs.nnzb,
+                jacobian_cts.nzb_values,
+                jacobian_dofs.num_nzb,
                 jacobian_dofs.nzb_coords,
-                jacobian_dofs.nzb_data,
+                jacobian_dofs.nzb_values,
             ],
         )
 
@@ -1292,8 +1300,9 @@ class SparseSystemJacobians:
         device: Devicelike = None,
     ):
         # Declare and initialize the Jacobian data container
-        self._J_cts = BlockSparseLinearOperator()
-        self._J_dofs = BlockSparseLinearOperator()
+        self._J_cts: BlockSparseLinearOperators | None = None
+        self._J_dofs: BlockSparseLinearOperators | None = None
+        self._J_joint_nzb_assembly: wp.array | None = None
 
         # If a model is provided, allocate the Jacobians data
         if model is not None:
@@ -1380,51 +1389,49 @@ class SparseSystemJacobians:
             J_dofs_nzb_start[w] = J_dofs_nzb_start[w - 1] + J_dofs_nnbz[w - 1]
             J_dofs_rhs_start[w] = J_dofs_rhs_start[w - 1] + J_dofs_nrows[w - 1]
 
-        # # TODO: Use these instead of the rhs and inp starts above
-        # J_cts_row_start = model.info.total_cts_offset
-        # J_cts_col_start = model.info.body_dofs_offset
-        # J_dofs_row_start = model.info.joint_dofs_offset
-        # J_dofs_col_start = model.info.body_dofs_offset
-
         # Allocate the block-sparse linear-operator data to represent each system Jacobian
         with wp.ScopedDevice(device):
             # First allocate the geometric constraint Jacobian
-            self._J_cts = BlockSparseLinearOperator(
-                device=device,
-                num_superblocks=nw,
-                nzb_dimensions=(1, 6),
-                sum_of_nnzb=sum_of_J_cts_nnbz_max,
-                max_of_nnzb=max_of_J_cts_nnbz_max,
-                maxdims=wp.array(J_cts_dims_max, dtype=vec2i),
-                dims=wp.array(J_cts_dims_min, dtype=vec2i),
-                maxnnzb=wp.array(J_cts_nnbz_max, dtype=int32),
-                nnzb=wp.array(J_cts_nnbz_min, dtype=int32),
+            self._J_cts = BlockSparseLinearOperators(
+                bsm=BlockSparseMatrices(
+                    device=device,
+                    num_matrices=nw,
+                    nzb_size=(1, 6),
+                    sum_of_num_nzb=sum_of_J_cts_nnbz_max,
+                    max_of_num_nzb=max_of_J_cts_nnbz_max,
+                    max_dims=wp.array(J_cts_dims_max, dtype=vec2i),
+                    dims=wp.array(J_cts_dims_min, dtype=vec2i),
+                    max_nzb=wp.array(J_cts_nnbz_max, dtype=int32),
+                    num_nzb=wp.array(J_cts_nnbz_min, dtype=int32),
+                    nzb_start=wp.array(J_cts_nzb_start, dtype=int32),
+                    nzb_coords=wp.zeros(sum_of_J_cts_nnbz_max, dtype=vec2i),
+                    nzb_values=wp.zeros(sum_of_J_cts_nnbz_max, dtype=vec6f),
+                ),
                 row_start=wp.array(J_cts_rhs_start, dtype=int32),
                 col_start=wp.array(J_inp_start, dtype=int32),
                 # row_start=model.info.total_cts_offset,
                 # col_start=model.info.body_dofs_offset,
-                nzb_start=wp.array(J_cts_nzb_start, dtype=int32),
-                nzb_coords=wp.zeros(sum_of_J_cts_nnbz_max, dtype=vec2i),
-                nzb_data=wp.zeros(sum_of_J_cts_nnbz_max, dtype=vec6f),
             )
             # Then allocate the geometric DoFs Jacobian
-            self._J_dofs = BlockSparseLinearOperator(
-                device=device,
-                num_superblocks=nw,
-                nzb_dimensions=(1, 6),
-                sum_of_nnzb=sum_of_J_dofs_nnbz,
-                max_of_nnzb=max_of_J_dofs_nnbz,
-                maxdims=wp.array(J_dofs_dims, dtype=vec2i),
-                dims=wp.array(J_dofs_dims, dtype=vec2i),
-                maxnnzb=wp.array(J_dofs_nnbz, dtype=int32),
-                nnzb=wp.array(J_dofs_nnbz, dtype=int32),
+            self._J_dofs = BlockSparseLinearOperators(
+                bsm=BlockSparseMatrices(
+                    device=device,
+                    num_matrices=nw,
+                    nzb_size=(1, 6),
+                    sum_of_num_nzb=sum_of_J_dofs_nnbz,
+                    max_of_num_nzb=max_of_J_dofs_nnbz,
+                    max_dims=wp.array(J_dofs_dims, dtype=vec2i),
+                    dims=wp.array(J_dofs_dims, dtype=vec2i),
+                    max_nzb=wp.array(J_dofs_nnbz, dtype=int32),
+                    num_nzb=wp.array(J_dofs_nnbz, dtype=int32),
+                    nzb_start=wp.array(J_dofs_nzb_start, dtype=int32),
+                    nzb_coords=wp.zeros(sum_of_J_dofs_nnbz, dtype=vec2i),
+                    nzb_values=wp.zeros(sum_of_J_dofs_nnbz, dtype=vec6f),
+                ),
                 row_start=wp.array(J_dofs_rhs_start, dtype=int32),
                 col_start=wp.array(J_inp_start, dtype=int32),
                 # row_start=model.info.joint_dofs_offset,
                 # col_start=model.info.body_dofs_offset,
-                nzb_start=wp.array(J_dofs_nzb_start, dtype=int32),
-                nzb_coords=wp.zeros(sum_of_J_dofs_nnbz, dtype=vec2i),
-                nzb_data=wp.zeros(sum_of_J_dofs_nnbz, dtype=vec6f),
             )
 
     def build(
@@ -1439,12 +1446,17 @@ class SparseSystemJacobians:
         Builds the system DoF and constraint Jacobians for the given
         data of the provided model, data, limits and contacts containers.
         """
+        # Ensure the Jacobians have been finalized
+        if self._J_cts is None or self._J_dofs is None:
+            raise RuntimeError("SparseSystemJacobians.build() called before finalize().")
+
+        # Proceed to build the sparse system Jacobians given the current model and data
         build_sparse_jacobians(
             model=model,
             data=data,
             limits=limits,
             contacts=contacts,
-            jacobian_cts=self._J_cts,
-            jacobian_dofs=self._J_dofs,
+            jacobian_cts=self._J_cts.bsm,
+            jacobian_dofs=self._J_dofs.bsm,
             reset_to_zero=reset_to_zero,
         )

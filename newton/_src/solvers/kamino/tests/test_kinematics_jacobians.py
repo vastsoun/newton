@@ -29,16 +29,13 @@ from newton._src.solvers.kamino.core.types import float32, int32, mat33f, transf
 from newton._src.solvers.kamino.geometry.contacts import Contacts
 from newton._src.solvers.kamino.geometry.detector import CollisionDetector, CollisionDetectorSettings
 from newton._src.solvers.kamino.kinematics.constraints import make_unilateral_constraints_info, update_constraints_info
-
-# Module to be tested
-from newton._src.solvers.kamino.kinematics.jacobians import DenseSystemJacobians
+from newton._src.solvers.kamino.kinematics.jacobians import DenseSystemJacobians, SparseSystemJacobians
 from newton._src.solvers.kamino.kinematics.joints import compute_joints_data
 from newton._src.solvers.kamino.kinematics.limits import Limits
 from newton._src.solvers.kamino.models.builders.basics import build_boxes_fourbar, make_basics_heterogeneous_builder
 from newton._src.solvers.kamino.models.builders.utils import make_homogeneous_builder
+from newton._src.solvers.kamino.utils import logger as msg
 from newton._src.solvers.kamino.tests import setup_tests, test_context
-
-# Test utilities
 from newton._src.solvers.kamino.tests.utils.print import (
     print_model_constraint_info,
     print_model_data_info,
@@ -257,15 +254,25 @@ def set_fourbar_body_states(model: Model, data: ModelData):
 ###
 
 
-class TestKinematicsJacobians(unittest.TestCase):
+class TestKinematicsDenseSystemJacobians(unittest.TestCase):
     def setUp(self):
+        # Configs
         if not test_context.setup_done:
             setup_tests(clear_cache=False)
-        self.verbose = test_context.verbose  # Set to True for verbose output
         self.default_device = wp.get_device(test_context.device)
+        self.verbose = True  # Set to True for verbose output
+
+        # Set debug-level logging to print verbose test output to console
+        if self.verbose:
+            print("\n")  # Add newline before test output for better readability
+            msg.set_log_level(msg.LogLevel.DEBUG)
+        else:
+            msg.reset_log_level()
 
     def tearDown(self):
         self.default_device = None
+        if self.verbose:
+            msg.reset_log_level()
 
     def test_01_allocate_single_dense_system_jacobians_only_joints(self):
         # Construct the model description using the ModelBuilder
@@ -883,6 +890,35 @@ class TestKinematicsJacobians(unittest.TestCase):
         )
         extract_dofs_jacobians(model=model, jacobians=jacobians, verbose=self.verbose)
         # TODO: Add checks for the Jacobian matrices
+
+
+class TestKinematicsSparseSystemJacobians(unittest.TestCase):
+    def setUp(self):
+        # Configs
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
+        self.default_device = wp.get_device(test_context.device)
+        self.verbose = True  # Set to True for verbose output
+
+        # Set debug-level logging to print verbose test output to console
+        if self.verbose:
+            print("\n")  # Add newline before test output for better readability
+            msg.set_log_level(msg.LogLevel.DEBUG)
+        else:
+            msg.reset_log_level()
+
+    def tearDown(self):
+        self.default_device = None
+        if self.verbose:
+            msg.reset_log_level()
+
+    ###
+    # Construction
+    ###
+
+    ###
+    # Operations
+    ###
 
 
 ###

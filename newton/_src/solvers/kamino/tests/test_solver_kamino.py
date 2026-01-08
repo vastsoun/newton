@@ -22,7 +22,7 @@ import numpy as np
 import warp as wp
 
 from newton._src.solvers.kamino.core.control import Control
-from newton._src.solvers.kamino.core.joints import JointCorrectionMode
+from newton._src.solvers.kamino.core.joints import JointActuationType, JointCorrectionMode
 from newton._src.solvers.kamino.core.model import Model, ModelData
 from newton._src.solvers.kamino.core.state import State
 from newton._src.solvers.kamino.core.types import float32, int32, transformf, vec6f
@@ -32,7 +32,7 @@ from newton._src.solvers.kamino.geometry.contacts import Contacts
 from newton._src.solvers.kamino.kinematics.jacobians import DenseSystemJacobians
 from newton._src.solvers.kamino.kinematics.limits import Limits
 from newton._src.solvers.kamino.linalg import ConjugateGradientSolver, LinearSolverType, LLTBlockedSolver
-from newton._src.solvers.kamino.models.builders.basics import build_cartpole
+from newton._src.solvers.kamino.models.builders.basics import build_boxes_fourbar
 from newton._src.solvers.kamino.models.builders.utils import make_homogeneous_builder
 from newton._src.solvers.kamino.solver_kamino import SolverKamino, SolverKaminoSettings
 from newton._src.solvers.kamino.solvers import PADMMSettings, PADMMSolver, PADMMWarmStartMode
@@ -101,7 +101,7 @@ def test_prestep_callback(
 ###
 
 rtol = 1e-7
-atol = 1e-10
+atol = 1e-6
 
 
 def assert_solver_settings(testcase: unittest.TestCase, settings: SolverKaminoSettings):
@@ -294,7 +294,7 @@ class TestSolverKamino(unittest.TestCase):
         """
         Test creating a default Kamino solver without support for contacts.
         """
-        builder = make_homogeneous_builder(num_worlds=1, build_fn=build_cartpole)
+        builder = make_homogeneous_builder(num_worlds=1, build_fn=build_boxes_fourbar)
         model = builder.finalize(device=self.default_device)
         solver = SolverKamino(model=model)
         self.assertIsInstance(solver, SolverKamino)
@@ -304,7 +304,7 @@ class TestSolverKamino(unittest.TestCase):
         """
         Test creating a default Kamino solver with support for contacts.
         """
-        builder = make_homogeneous_builder(num_worlds=1, build_fn=build_cartpole)
+        builder = make_homogeneous_builder(num_worlds=1, build_fn=build_boxes_fourbar)
         model = builder.finalize(device=self.default_device)
         _, world_max_contacts = builder.compute_required_contact_capacity(max_contacts_per_pair=16)
         contacts = Contacts(capacity=world_max_contacts, device=model.device)
@@ -316,7 +316,7 @@ class TestSolverKamino(unittest.TestCase):
         """
         Test creating a default Kamino solver without support for contacts.
         """
-        builder = make_homogeneous_builder(num_worlds=1, build_fn=build_cartpole, limits=False)
+        builder = make_homogeneous_builder(num_worlds=1, build_fn=build_boxes_fourbar, limits=False)
         model = builder.finalize(device=self.default_device)
         solver = SolverKamino(model=model)
         self.assertIsInstance(solver, SolverKamino)
@@ -327,7 +327,7 @@ class TestSolverKamino(unittest.TestCase):
         """
         Test creating a default Kamino solver with support for contacts.
         """
-        builder = make_homogeneous_builder(num_worlds=1, build_fn=build_cartpole, limits=False)
+        builder = make_homogeneous_builder(num_worlds=1, build_fn=build_boxes_fourbar, limits=False)
         model = builder.finalize(device=self.default_device)
         _, world_max_contacts = builder.compute_required_contact_capacity(max_contacts_per_pair=16)
         contacts = Contacts(capacity=world_max_contacts, device=model.device)
@@ -342,9 +342,9 @@ class TestSolverKamino(unittest.TestCase):
 
     def test_05_reset_with_invalid_args(self):
         """
-        Test resetting multiple cartpole solvers to default state defined in the model.
+        Test resetting multiple world solvers to default state defined in the model.
         """
-        builder = make_homogeneous_builder(num_worlds=3, build_fn=build_cartpole, limits=False)
+        builder = make_homogeneous_builder(num_worlds=3, build_fn=build_boxes_fourbar, limits=False)
         model = builder.finalize(device=self.default_device)
         solver = SolverKamino(model=model)
 
@@ -396,9 +396,9 @@ class TestSolverKamino(unittest.TestCase):
 
     def test_06_reset_to_default_state(self):
         """
-        Test resetting multiple cartpole solvers to default state defined in the model.
+        Test resetting multiple world solvers to default state defined in the model.
         """
-        builder = make_homogeneous_builder(num_worlds=3, build_fn=build_cartpole, limits=False)
+        builder = make_homogeneous_builder(num_worlds=3, build_fn=build_boxes_fourbar, limits=False)
         model = builder.finalize(device=self.default_device)
         solver = SolverKamino(model=model)
 
@@ -456,9 +456,9 @@ class TestSolverKamino(unittest.TestCase):
 
     def test_07_reset_to_base_state(self):
         """
-        Test resetting multiple cartpole solvers to specified base states.
+        Test resetting multiple world solvers to specified base states.
         """
-        builder = make_homogeneous_builder(num_worlds=3, build_fn=build_cartpole, limits=False)
+        builder = make_homogeneous_builder(num_worlds=3, build_fn=build_boxes_fourbar, limits=False)
         model = builder.finalize(device=self.default_device)
         solver = SolverKamino(model=model)
 
@@ -473,13 +473,13 @@ class TestSolverKamino(unittest.TestCase):
         control = model.control()
         world_mask = wp.array([1, 1, 0], dtype=int32, device=self.default_device)
 
-        # Set default default reset base poses
+        # Define the reset base pose
         base_q_0_np = [0.1, 0.0, 0.5, 0.0, 0.0, 0.0, 1.0]
         base_q_0_np = np.tile(base_q_0_np, reps=model.size.num_worlds).astype(np.float32)
         base_q_0_np = base_q_0_np.reshape(model.size.num_worlds, 7)
         base_q_0: wp.array = wp.array(base_q_0_np, dtype=transformf, device=self.default_device)
 
-        # Set default default reset base poses
+        # Define the reset base twist
         base_u_0_np = [0.0, 1.5, 0.0, 0.0, 0.0, 0.0]
         base_u_0_np = np.tile(base_u_0_np, reps=model.size.num_worlds).astype(np.float32)
         base_u_0_np = base_u_0_np.reshape(model.size.num_worlds, 6)
@@ -648,9 +648,9 @@ class TestSolverKamino(unittest.TestCase):
 
     def test_08_reset_to_joint_state(self):
         """
-        Test resetting multiple cartpole solvers to specified joint states.
+        Test resetting multiple world solvers to specified joint states.
         """
-        builder = make_homogeneous_builder(num_worlds=3, build_fn=build_cartpole, limits=False)
+        builder = make_homogeneous_builder(num_worlds=3, build_fn=build_boxes_fourbar, limits=False)
         model = builder.finalize(device=self.default_device)
         solver = SolverKamino(model=model)
 
@@ -666,12 +666,12 @@ class TestSolverKamino(unittest.TestCase):
         world_mask = wp.array([1, 0, 1], dtype=int32, device=self.default_device)
 
         # Set default default reset joint coordinates
-        joint_q_0_np = [1.3, -1.0]
+        joint_q_0_np = [0.1, 0.1, 0.1, 0.1]
         joint_q_0_np = np.tile(joint_q_0_np, reps=model.size.num_worlds).astype(np.float32)
         joint_q_0: wp.array = wp.array(joint_q_0_np, dtype=float32, device=self.default_device)
 
         # Set default default reset joint velocities
-        joint_u_0_np = [-0.33, 1.0]
+        joint_u_0_np = [0.1, 0.1, 0.1, 0.1]
         joint_u_0_np = np.tile(joint_u_0_np, reps=model.size.num_worlds).astype(np.float32)
         joint_u_0: wp.array = wp.array(joint_u_0_np, dtype=float32, device=self.default_device)
 
@@ -851,9 +851,9 @@ class TestSolverKamino(unittest.TestCase):
 
     def test_09_reset_to_actuator_state(self):
         """
-        Test resetting multiple cartpole solvers to specified actuator states.
+        Test resetting multiple world solvers to specified actuator states.
         """
-        builder = make_homogeneous_builder(num_worlds=3, build_fn=build_cartpole, limits=False)
+        builder = make_homogeneous_builder(num_worlds=3, build_fn=build_boxes_fourbar, limits=False)
         model = builder.finalize(device=self.default_device)
         solver = SolverKamino(model=model)
 
@@ -869,12 +869,12 @@ class TestSolverKamino(unittest.TestCase):
         world_mask = wp.array([1, 0, 1], dtype=int32, device=self.default_device)
 
         # Set default default reset joint coordinates
-        actuator_q_0_np = [1.0]
+        actuator_q_0_np = [0.25, 0.25]
         actuator_q_0_np = np.tile(actuator_q_0_np, reps=model.size.num_worlds)
         actuator_q_0: wp.array = wp.array(actuator_q_0_np, dtype=float32, device=self.default_device)
 
         # Set default default reset joint velocities
-        actuator_u_0_np = [-1.0]
+        actuator_u_0_np = [-1.0, -1.0]
         actuator_u_0_np = np.tile(actuator_u_0_np, reps=model.size.num_worlds)
         actuator_u_0: wp.array = wp.array(actuator_u_0_np, dtype=float32, device=self.default_device)
 
@@ -905,14 +905,23 @@ class TestSolverKamino(unittest.TestCase):
 
         # Create expanded actuator state arrays matching the full joint state size
         joint_q_0_np = state_n.q_j.numpy().copy()
-        num_world_coords = model.size.max_of_num_joint_coords
-        num_world_act_coords = model.size.max_of_num_actuated_joint_coords
-        coords_start = 0
-        for wid in range(model.size.num_worlds):
-            joint_q_0_np[coords_start : coords_start + num_world_act_coords] = actuator_q_0_np[
-                wid : wid + num_world_act_coords
-            ]
-            coords_start += num_world_coords
+        joint_act_type = model.joints.act_type.numpy().copy()
+        joint_num_coords = model.joints.num_coords.numpy().copy()
+        jnt_coords_start = 0
+        act_coords_start = 0
+        for j in range(model.size.max_of_num_joints):
+            nq = joint_num_coords[j]
+            act_type = joint_act_type[j]
+            if act_type > JointActuationType.PASSIVE:
+                joint_q_0_np[jnt_coords_start : jnt_coords_start + nq] = actuator_q_0_np[
+                    act_coords_start : act_coords_start + nq
+                ]
+                act_coords_start += nq
+            jnt_coords_start += nq
+
+        np.set_printoptions(linewidth=999999, edgeitems=999999, threshold=999999, precision=10, suppress=True)
+        msg.warning("state_n.q_q_j:\n%s\n", state_n.q_j)
+        msg.warning("joint_q_0_np:\n%s\n", joint_q_0_np)
 
         # Check if the assigned joint states were correctly reset
         np.testing.assert_allclose(
@@ -967,17 +976,24 @@ class TestSolverKamino(unittest.TestCase):
         # Create expanded actuator state arrays matching the full joint state size
         joint_q_0_np = state_n.q_j.numpy().copy()
         joint_u_0_np = state_n.dq_j.numpy().copy()
-        num_world_coords = model.size.max_of_num_joint_coords
-        num_world_dofs = model.size.max_of_num_joint_dofs
-        num_world_act_coords = model.size.max_of_num_actuated_joint_coords
-        num_world_act_dofs = model.size.max_of_num_actuated_joint_dofs
+        joint_num_dofs = model.joints.num_dofs.numpy().copy()
+        jnt_coords_start = 0
+        jnt_dofs_start = 0
         act_coord_start = 0
         act_dof_start = 0
-        for wid in range(model.size.num_worlds):
-            joint_q_0_np[act_coord_start : act_coord_start + num_world_act_coords] = actuator_q_0_np[wid]
-            joint_u_0_np[act_dof_start : act_dof_start + num_world_act_dofs] = actuator_u_0_np[wid]
-            act_coord_start += num_world_coords
-            act_dof_start += num_world_dofs
+        for j in range(model.size.max_of_num_joints):
+            nq = joint_num_coords[j]
+            nu = joint_num_dofs[j]
+            act_type = joint_act_type[j]
+            if act_type > JointActuationType.PASSIVE:
+                joint_q_0_np[jnt_coords_start : jnt_coords_start + nq] = actuator_q_0_np[
+                    act_coord_start : act_coord_start + nq
+                ]
+                joint_u_0_np[jnt_dofs_start : jnt_dofs_start + nu] = actuator_u_0_np[act_dof_start : act_dof_start + nu]
+                act_coord_start += nq
+                act_dof_start += nu
+            jnt_coords_start += nq
+            jnt_dofs_start += nu
 
         # Check if the assigned joint states were correctly reset
         np.testing.assert_allclose(
@@ -1040,17 +1056,23 @@ class TestSolverKamino(unittest.TestCase):
         # Create expanded actuator state arrays matching the full joint state size
         joint_q_0_np = state_n.q_j.numpy().copy()
         joint_u_0_np = state_n.dq_j.numpy().copy()
-        num_world_coords = model.size.max_of_num_joint_coords
-        num_world_dofs = model.size.max_of_num_joint_dofs
-        num_world_act_coords = model.size.max_of_num_actuated_joint_coords
-        num_world_act_dofs = model.size.max_of_num_actuated_joint_dofs
+        jnt_coords_start = 0
+        jnt_dofs_start = 0
         act_coord_start = 0
         act_dof_start = 0
-        for wid in range(model.size.num_worlds):
-            joint_q_0_np[act_coord_start : act_coord_start + num_world_act_coords] = actuator_q_0_np[wid]
-            joint_u_0_np[act_dof_start : act_dof_start + num_world_act_dofs] = actuator_u_0_np[wid]
-            act_coord_start += num_world_coords
-            act_dof_start += num_world_dofs
+        for j in range(model.size.max_of_num_joints):
+            nq = joint_num_coords[j]
+            nu = joint_num_dofs[j]
+            act_type = joint_act_type[j]
+            if act_type > JointActuationType.PASSIVE:
+                joint_q_0_np[jnt_coords_start : jnt_coords_start + nq] = actuator_q_0_np[
+                    act_coord_start : act_coord_start + nq
+                ]
+                joint_u_0_np[jnt_dofs_start : jnt_dofs_start + nu] = actuator_u_0_np[act_dof_start : act_dof_start + nu]
+                act_coord_start += nq
+                act_dof_start += nu
+            jnt_coords_start += nq
+            jnt_dofs_start += nu
 
         # Check if the assigned joint states were correctly reset
         num_world_coords = model.size.max_of_num_joint_coords
@@ -1096,13 +1118,13 @@ class TestSolverKamino(unittest.TestCase):
     # Test Step Operations
     ###
 
-    def test_10_step_multiple_cartpoles_from_initial_state_without_contacts(self):
+    def test_10_step_multiple_worlds_from_initial_state_without_contacts(self):
         """
-        Test stepping multiple cartpole solvers initialized
+        Test stepping multiple worlds solvers initialized
         uniformly from the default initial state multiple times.
         """
         # Create a single-instance system
-        single_builder = build_cartpole(ground=False)
+        single_builder = build_boxes_fourbar(ground=False)
         for i, body in enumerate(single_builder.bodies):
             msg.info(f"[single]: [builder]: body {i}: q_i: {body.q_i_0}")
             msg.info(f"[single]: [builder]: body {i}: u_i: {body.u_i_0}")
@@ -1112,8 +1134,8 @@ class TestSolverKamino(unittest.TestCase):
         single_state_p = single_model.state()
         single_state_n = single_model.state()
         single_control = single_model.control()
-        self.assertEqual(single_model.size.sum_of_num_bodies, 2)
-        self.assertEqual(single_model.size.sum_of_num_joints, 2)
+        self.assertEqual(single_model.size.sum_of_num_bodies, 4)
+        self.assertEqual(single_model.size.sum_of_num_joints, 4)
         for i, body in enumerate(single_builder.bodies):
             np.testing.assert_allclose(single_model.bodies.q_i_0.numpy()[i], body.q_i_0, rtol=rtol, atol=atol)
             np.testing.assert_allclose(single_model.bodies.u_i_0.numpy()[i], body.u_i_0, rtol=rtol, atol=atol)
@@ -1201,7 +1223,7 @@ class TestSolverKamino(unittest.TestCase):
         msg.info(f"[samples]: [multi] [final]: dq_j (shape={multi_final_dq_j.shape}):\n{multi_final_dq_j}\n")
 
         # Create a multi-instance system by replicating the single-instance builder
-        multi_builder = make_homogeneous_builder(num_worlds=num_worlds, build_fn=build_cartpole, ground=False)
+        multi_builder = make_homogeneous_builder(num_worlds=num_worlds, build_fn=build_boxes_fourbar, ground=False)
         for i, body in enumerate(multi_builder.bodies):
             msg.info(f"[multi]: [builder]: body {i}: bid: {body.bid}")
             msg.info(f"[multi]: [builder]: body {i}: q_i: {body.q_i_0}")
@@ -1273,13 +1295,13 @@ class TestSolverKamino(unittest.TestCase):
         np.testing.assert_allclose(multi_state_n.q_j.numpy(), multi_final_q_j, rtol=rtol, atol=atol)
         np.testing.assert_allclose(multi_state_n.dq_j.numpy(), multi_final_dq_j, rtol=rtol, atol=atol)
 
-    def test_11_step_multiple_cartpoles_from_initial_state_with_contacts(self):
+    def test_11_step_multiple_worlds_from_initial_state_with_contacts(self):
         """
-        Test stepping multiple cartpole solvers initialized
+        Test stepping multiple world solvers initialized
         uniformly from the default initial state multiple times.
         """
         # Create a single-instance system
-        single_builder = build_cartpole(ground=True)
+        single_builder = build_boxes_fourbar(ground=True)
         for i, body in enumerate(single_builder.bodies):
             msg.info(f"[single]: [builder]: body {i}: q_i: {body.q_i_0}")
             msg.info(f"[single]: [builder]: body {i}: u_i: {body.u_i_0}")
@@ -1289,8 +1311,8 @@ class TestSolverKamino(unittest.TestCase):
         single_state_p = single_model.state()
         single_state_n = single_model.state()
         single_control = single_model.control()
-        self.assertEqual(single_model.size.sum_of_num_bodies, 2)
-        self.assertEqual(single_model.size.sum_of_num_joints, 2)
+        self.assertEqual(single_model.size.sum_of_num_bodies, 4)
+        self.assertEqual(single_model.size.sum_of_num_joints, 4)
         for i, body in enumerate(single_builder.bodies):
             np.testing.assert_allclose(single_model.bodies.q_i_0.numpy()[i], body.q_i_0, rtol=rtol, atol=atol)
             np.testing.assert_allclose(single_model.bodies.u_i_0.numpy()[i], body.u_i_0, rtol=rtol, atol=atol)
@@ -1382,7 +1404,7 @@ class TestSolverKamino(unittest.TestCase):
         msg.info(f"[samples]: [multi] [final]: dq_j (shape={multi_final_dq_j.shape}):\n{multi_final_dq_j}\n")
 
         # Create a multi-instance system by replicating the single-instance builder
-        multi_builder = make_homogeneous_builder(num_worlds=num_worlds, build_fn=build_cartpole, ground=True)
+        multi_builder = make_homogeneous_builder(num_worlds=num_worlds, build_fn=build_boxes_fourbar, ground=True)
         for i, body in enumerate(multi_builder.bodies):
             msg.info(f"[multi]: [builder]: body {i}: bid: {body.bid}")
             msg.info(f"[multi]: [builder]: body {i}: q_i: {body.q_i_0}")

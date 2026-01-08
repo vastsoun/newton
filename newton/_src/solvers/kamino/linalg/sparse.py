@@ -20,6 +20,7 @@ This module provides data structures and utilities for managing multiple
 independent linear systems, including rectangular and square systems.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
 import warp as wp
@@ -91,7 +92,7 @@ class BlockSparseLinearOperator:
     Shape of ``(num_superblocks,)`` and type :class:`vec2i`.
     """
 
-    maxnzb: wp.array | None = None
+    maxnnzb: wp.array | None = None
     """
     The maximum number of non-zero blocks per sparse super-block.\n
     Shape of ``(num_superblocks,)`` and type :class:`int`.
@@ -134,6 +135,22 @@ class BlockSparseLinearOperator:
     """
 
     ###
+    # Operators
+    ###
+
+    Ax_op: Callable[["BlockSparseLinearOperator", wp.array, wp.array], None] | None = None
+    """
+    The operator function for performing sparse matrix-vector products `y = A @ x`.\n
+    Signature: ``void Ax_op(bslo: BlockSparseLinearOperator, x: wp.array, y: wp.array)``.
+    """
+
+    ATy_op: Callable[["BlockSparseLinearOperator", wp.array, wp.array], None] | None = None
+    """
+    The operator function for performing sparse matrix-transpose-vector products `x = A^T @ y`.\n
+    Signature: ``void ATy_op(bslo: BlockSparseLinearOperator, y: wp.array, x: wp.array)``.
+    """
+
+    ###
     # Operations
     ###
 
@@ -149,10 +166,25 @@ class BlockSparseLinearOperator:
         self._assert_is_finalized()
         self.nzb_data.zero_()
 
+    def matvec(self, x: wp.array, y: wp.array):
+        """Performs the sparse matrix-vector product `y = A @ x`."""
+        self._assert_is_finalized()
+        if self.Ax_op is None:
+            raise RuntimeError("No Ax operator has been assigned.")
+        self.Ax_op(self, x, y)
+
+    def matvec_transpose(self, y: wp.array, x: wp.array):
+        """Performs the sparse matrix-transpose-vector product `x = A^T @ y`."""
+        self._assert_is_finalized()
+        if self.ATy_op is None:
+            raise RuntimeError("No ATy operator has been assigned.")
+        self.ATy_op(self, y, x)
+
     ###
     # Internals
     ###
 
     def _assert_is_finalized(self):
+        # TODO: Check all array attributes
         if self.nzb_data is None:
             raise RuntimeError("No data has been allocated. Call `finalize()` before use.")

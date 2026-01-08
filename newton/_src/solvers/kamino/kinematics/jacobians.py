@@ -1380,6 +1380,12 @@ class SparseSystemJacobians:
             J_dofs_nzb_start[w] = J_dofs_nzb_start[w - 1] + J_dofs_nnbz[w - 1]
             J_dofs_rhs_start[w] = J_dofs_rhs_start[w - 1] + J_dofs_nrows[w - 1]
 
+        # # TODO: Use these instead of the rhs and inp starts above
+        # J_cts_row_start = model.info.total_cts_offset
+        # J_cts_col_start = model.info.body_dofs_offset
+        # J_dofs_row_start = model.info.joint_dofs_offset
+        # J_dofs_col_start = model.info.body_dofs_offset
+
         # Allocate the block-sparse linear-operator data to represent each system Jacobian
         with wp.ScopedDevice(device):
             # First allocate the geometric constraint Jacobian
@@ -1391,10 +1397,12 @@ class SparseSystemJacobians:
                 max_of_nnzb=max_of_J_cts_nnbz_max,
                 maxdims=wp.array(J_cts_dims_max, dtype=vec2i),
                 dims=wp.array(J_cts_dims_min, dtype=vec2i),
-                maxnzb=wp.array(J_cts_nnbz_max, dtype=int32),
+                maxnnzb=wp.array(J_cts_nnbz_max, dtype=int32),
                 nnzb=wp.array(J_cts_nnbz_min, dtype=int32),
                 row_start=wp.array(J_cts_rhs_start, dtype=int32),
                 col_start=wp.array(J_inp_start, dtype=int32),
+                # row_start=model.info.total_cts_offset,
+                # col_start=model.info.body_dofs_offset,
                 nzb_start=wp.array(J_cts_nzb_start, dtype=int32),
                 nzb_coords=wp.zeros(sum_of_J_cts_nnbz_max, dtype=vec2i),
                 nzb_data=wp.zeros(sum_of_J_cts_nnbz_max, dtype=vec6f),
@@ -1408,10 +1416,12 @@ class SparseSystemJacobians:
                 max_of_nnzb=max_of_J_dofs_nnbz,
                 maxdims=wp.array(J_dofs_dims, dtype=vec2i),
                 dims=wp.array(J_dofs_dims, dtype=vec2i),
-                maxnzb=wp.array(J_dofs_nnbz, dtype=int32),
+                maxnnzb=wp.array(J_dofs_nnbz, dtype=int32),
                 nnzb=wp.array(J_dofs_nnbz, dtype=int32),
                 row_start=wp.array(J_dofs_rhs_start, dtype=int32),
                 col_start=wp.array(J_inp_start, dtype=int32),
+                # row_start=model.info.joint_dofs_offset,
+                # col_start=model.info.body_dofs_offset,
                 nzb_start=wp.array(J_dofs_nzb_start, dtype=int32),
                 nzb_coords=wp.zeros(sum_of_J_dofs_nnbz, dtype=vec2i),
                 nzb_data=wp.zeros(sum_of_J_dofs_nnbz, dtype=vec6f),

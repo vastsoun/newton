@@ -698,7 +698,10 @@ class JointDescriptor(Descriptor):
     """
 
     coords_offset: int = -1
-    """Index offset of this joint's coordinates among all joint coordinates in the world it belongs to."""
+    """
+    Index offset of this joint's coordinates among
+    all joint coordinates in the world it belongs to.
+    """
 
     dofs_offset: int = -1
     """

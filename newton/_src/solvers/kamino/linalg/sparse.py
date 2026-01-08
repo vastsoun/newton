@@ -141,13 +141,13 @@ class BlockSparseLinearOperator:
     Ax_op: Callable[["BlockSparseLinearOperator", wp.array, wp.array], None] | None = None
     """
     The operator function for performing sparse matrix-vector products `y = A @ x`.\n
-    Signature: ``void Ax_op(bslo: BlockSparseLinearOperator, x: wp.array, y: wp.array)``.
+    Signature: ``Ax_op(bslo: BlockSparseLinearOperator, x: wp.array, y: wp.array)``.
     """
 
     ATy_op: Callable[["BlockSparseLinearOperator", wp.array, wp.array], None] | None = None
     """
     The operator function for performing sparse matrix-transpose-vector products `x = A^T @ y`.\n
-    Signature: ``void ATy_op(bslo: BlockSparseLinearOperator, y: wp.array, x: wp.array)``.
+    Signature: ``ATy_op(bslo: BlockSparseLinearOperator, y: wp.array, x: wp.array)``.
     """
 
     ###

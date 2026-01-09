@@ -630,6 +630,9 @@ def reset_state_from_base_state(
     Resets the state of all bodies in the selected worlds based on the state of their
     respective base bodies. The result is stored in the provided `state_out` container.
 
+    The reset operation uses the target poses and twists of the base bodies to rigidly
+    and uniformly transform the poses and twists of all other bodies in the same world.
+
     Args:
         model (Model):
             Input model container holding the time-invariant data of the system.

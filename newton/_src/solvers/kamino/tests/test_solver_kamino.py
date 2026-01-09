@@ -108,7 +108,7 @@ def assert_solver_settings(testcase: unittest.TestCase, settings: SolverKaminoSe
     testcase.assertIsInstance(settings, SolverKaminoSettings)
     testcase.assertIsInstance(settings.problem, DualProblemSettings)
     testcase.assertIsInstance(settings.padmm, PADMMSettings)
-    testcase.assertIsInstance(settings.warmstart, PADMMWarmStartMode)
+    testcase.assertIsInstance(settings.warmstart_mode, PADMMWarmStartMode)
     testcase.assertTrue(issubclass(settings.linear_solver_type, LinearSolverType))
     testcase.assertIsInstance(settings.rotation_correction, JointCorrectionMode)
 
@@ -232,7 +232,7 @@ class TestSolverKaminoSettings(unittest.TestCase):
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
             print("\n")  # Add newline before test output for better readability
-            msg.set_log_level(msg.LogLevel.DEBUG)
+            msg.set_log_level(msg.LogLevel.INFO)
         else:
             msg.reset_log_level()
 
@@ -250,7 +250,7 @@ class TestSolverKaminoSettings(unittest.TestCase):
         settings = SolverKaminoSettings(
             problem=DualProblemSettings(),
             padmm=PADMMSettings(),
-            warmstart=PADMMWarmStartMode.CONTAINERS,
+            warmstart_mode=PADMMWarmStartMode.CONTAINERS,
             linear_solver_type=ConjugateGradientSolver,
             rotation_correction=JointCorrectionMode.CONTINUOUS,
         )
@@ -263,15 +263,14 @@ class TestSolverKamino(unittest.TestCase):
         if not test_context.setup_done:
             setup_tests(clear_cache=False)
         self.default_device = wp.get_device(test_context.device)
-        # self.verbose = test_context.verbose  # Set to True to enable verbose output
-        self.verbose = True  # Set to True to enable verbose output
-        self.progress = True  # Set to True for progress output
+        self.verbose = test_context.verbose  # Set to True to enable verbose output
+        self.progress = False  # Set to True for progress output
         self.seed = 42
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
             print("\n")  # Add newline before test output for better readability
-            msg.set_log_level(msg.LogLevel.DEBUG)
+            msg.set_log_level(msg.LogLevel.INFO)
         else:
             msg.reset_log_level()
 
@@ -918,10 +917,8 @@ class TestSolverKamino(unittest.TestCase):
                 ]
                 act_coords_start += nq
             jnt_coords_start += nq
-
-        np.set_printoptions(linewidth=999999, edgeitems=999999, threshold=999999, precision=10, suppress=True)
-        msg.warning("state_n.q_q_j:\n%s\n", state_n.q_j)
-        msg.warning("joint_q_0_np:\n%s\n", joint_q_0_np)
+        msg.info("state_n.q_q_j:\n%s\n", state_n.q_j)
+        msg.info("joint_q_0_np:\n%s\n", joint_q_0_np)
 
         # Check if the assigned joint states were correctly reset
         np.testing.assert_allclose(

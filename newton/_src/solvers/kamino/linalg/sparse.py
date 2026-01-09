@@ -28,9 +28,8 @@ import numpy as np
 import warp as wp
 from warp.context import Devicelike
 
-from ..core.types import FloatType, IntType, float32, int32
-
-# from ..utils import logger as msg
+from ..core.types import FloatType, IntType, int32
+from ..utils import logger as msg
 
 ###
 # Module interface
@@ -53,7 +52,20 @@ class BlockDType:
 
     def __init__(self, dtype: FloatType | IntType, shape: int | tuple[int] | tuple[int, int] | None = None):
         """
-        TODO
+        Constructs a new BlockDType descriptor given scalar Warp data-type and the block shape.
+
+        Args:
+            dtype (FloatType | IntType):
+                The underlying scalar Warp data-type of each sparse block.
+            shape (int | tuple[int] | tuple[int, int], optional):
+                The shape of each sparse block as an integer (for vectors) or a tuple of integers (for matrices).\n
+                If not provided, defaults to scalar blocks.
+
+        Raises:
+            TypeError:
+                If the `dtype` field is not a valid FloatType or IntType.
+            ValueError:
+                If the `shape` field is not a positive integer or a tuple of one or two positive integers.
         """
         # Ensure the underlying scalar dtype is valid
         if (dtype not in get_args(FloatType)) and (dtype not in get_args(IntType)):
@@ -139,7 +151,7 @@ class BlockDType:
 @dataclass
 class BlockSparseMatrices:
     """
-    A container for representing multiple block-sparse matrices of fixed block size.
+    A container to represent multiple block-sparse matrices of fixed non-zero block size.
     """
 
     ###
@@ -147,25 +159,34 @@ class BlockSparseMatrices:
     ###
 
     device: Devicelike | None = None
-    """The device on which the data arrays are allocated."""
+    """Host-side cache of the device on which all data arrays are allocated."""
 
-    dtype: FloatType = float32
-    """The data type of the underlying matrix and vector data arrays."""
+    nzb_dtype: BlockDType | None = None
+    """Host-side cache of the fixed non-zero block data type contained in all sparse matrices."""
 
-    itype: IntType = int32
-    """The integer type used for indexing the underlying data arrays."""
+    index_dtype: IntType = int32
+    """Host-side cache of the integer type used for indexing the underlying data arrays."""
 
     num_matrices: int = 0
-    """Host-side cache of the number of sparse matrices represented by this container."""
+    """
+    Host-side cache of the number of sparse matrices represented by this container.\n
+    When constructing the BSM via `finalize()`, this is inferred from the length of the provided capacities list.\n
+    Alternatively, it can be set directly if the BSM is constructed explicitly.
+    """
 
     sum_of_num_nzb: int = 0
-    """Host-side cache of the sum of the number of non-zero sub-blocks over all sparse matrices."""
+    """
+    Host-side cache of the sum of the number of non-zero blocks over all sparse matrices.\n
+    When constructing the BSM via `finalize()`, this is computed from the provided capacities list.
+    Alternatively, it can be set directly if the BSM is constructed explicitly.
+    """
 
     max_of_num_nzb: int = 0
-    """Host-side cache of the maximum number of non-zero sub-blocks over all sparse matrices."""
-
-    nzb_size: tuple[int, int] | None = None
-    """Host-side cache of the fixed non-zero sub-block dimensions contained in all sparse matrices."""
+    """
+    Host-side cache of the maximum number of non-zero blocks over all sparse matrices.\n
+    When constructing the BSM via `finalize()`, this is computed from the provided capacities list.
+    Alternatively, it can be set directly if the BSM is constructed explicitly.
+    """
 
     ###
     # On-device Data
@@ -197,19 +218,19 @@ class BlockSparseMatrices:
 
     nzb_start: wp.array | None = None
     """
-    The index of the first non-zero sub-block of each sparse matrices.\n
+    The index of the first non-zero block of each sparse matrices.\n
     Shape of ``(num_matrices,)`` and type :class:`int`.
     """
 
     nzb_coords: wp.array | None = None
     """
-    The row-column coordinates of each sparse sub-block within its corresponding matrices.\n
+    The row-column coordinates of each non-zero block within its corresponding sparse matrix.\n
     Shape of ``(sum_of_num_nzb,)`` and type :class:`vec2i`.
     """
 
     nzb_values: wp.array | None = None
     """
-    The flattened array containing all sparse non-zero blocks over all matrices.\n
+    The flattened array containing all non-zero blocks over all sparse matrices.\n
     Shape of ``(sum_of_num_nzb,)`` and type :class:`float | vector | matrix`.
     """
 
@@ -217,32 +238,212 @@ class BlockSparseMatrices:
     # Operations
     ###
 
-    def finalize(capacities: list[int], block_type: BlockDType, device: Devicelike | None = None):
-        pass
+    def finalize(
+        self,
+        capacities: list[int],
+        nzb_dtype: BlockDType | None = None,
+        index_dtype: IntType | None = None,
+        device: Devicelike | None = None,
+    ):
+        """
+        Finalizes the block-sparse matrix container by allocating on-device data arrays.
+
+        Args:
+            capacities (list[int]):
+                A list of integers specifying the maximum number of non-zero blocks for each sparse matrix.
+            block_type (BlockDType, optional):
+                An optional :class:`BlockDType` specifying the fixed type of each non-zero block.\n
+                If not provided, it must be set prior to finalization.
+            device (Devicelike, optional):
+                An optional device on which to allocate the data arrays.\n
+                If not provided, the existing device of the container will be used.
+
+        Raises:
+            RuntimeError:
+                If the `nzb_dtype` field has not been specified prior to finalization.
+            ValueError:
+                If the `capacities` field is not a non-empty list of non-negative integers.
+        """
+        # Override the device if provided
+        if device is not None:
+            self.device = device
+        # Override the block type if provided
+        if nzb_dtype is not None:
+            self.nzb_dtype = nzb_dtype
+        # Override the index type if provided
+        if index_dtype is not None:
+            self.index_dtype = index_dtype
+
+        # Ensure that the block and index dtypes have been specified
+        if self.nzb_dtype is None:
+            raise RuntimeError("The `nzb_dtype` field must be specified before finalizing the data arrays.")
+        elif not isinstance(self.nzb_dtype, BlockDType):
+            raise TypeError("The `nzb_dtype` field must be a valid BlockDType instance.")
+        if self.index_dtype is None:
+            raise RuntimeError("The `index_type` field must be specified before finalizing the data arrays.")
+        elif self.index_dtype not in get_args(IntType):
+            raise TypeError("The `index_type` field must be a valid IntType such as int32 or int64.")
+
+        # Ensure that the capacities are valid
+        if not isinstance(capacities, list) or len(capacities) == 0:
+            raise ValueError("The `capacities` field must be a non-empty list of integers.")
+        for cap in capacities:
+            if not isinstance(cap, int) or cap < 0:
+                raise ValueError("All entries in the `capacities` field must be non-negative integers.")
+
+        # Update memory allocation meta-data caches
+        self.num_matrices = len(capacities)
+        self.sum_of_num_nzb = sum(capacities)
+        self.max_of_num_nzb = max(capacities)
+
+        # Allocate on-device warp arrays
+        with wp.ScopedDevice(self.device):
+            self.max_dims = wp.zeros(shape=(self.num_matrices, 2), dtype=self.index_dtype)
+            self.dims = wp.zeros(shape=(self.num_matrices, 2), dtype=self.index_dtype)
+            self.max_nzb = wp.zeros(shape=(self.num_matrices,), dtype=self.index_dtype)
+            self.num_nzb = wp.zeros(shape=(self.num_matrices,), dtype=self.index_dtype)
+            self.nzb_start = wp.zeros(shape=(self.num_matrices,), dtype=self.index_dtype)
+            self.nzb_coords = wp.zeros(shape=(self.sum_of_num_nzb, 2), dtype=self.index_dtype)
+            self.nzb_values = wp.zeros(shape=(self.sum_of_num_nzb,), dtype=self.nzb_dtype.warp_type)
 
     def clear(self):
-        """Clears all variable sub-blocks."""
+        """Clears all variable non-zero blocks."""
         self._assert_is_finalized()
         self.dims.zero_()
         self.num_nzb.zero_()
         self.nzb_coords.zero_()
 
     def zero(self):
-        """Sets all sub-block data to zero."""
+        """Sets all non-zero block data to zero."""
         self._assert_is_finalized()
         self.nzb_values.zero_()
 
+    def assign(self, matrices: list[np.ndarray]):
+        """
+        Assigns data to all sparse matrices from a list of dense NumPy arrays.
+
+        This operation assumes that:
+        - the sparse matrices have been finalized
+        - the provided dense arrays match the active dimensions of each sparse matrix specified in `dims`
+        - the non-zero blocks are filled in row-major order according to the current values of `nzb_coords`.
+
+        Args:
+            data (list[np.ndarray]):
+                A list of dense NumPy arrays to assign to each sparse matrix.
+        """
+        # Ensure that the sparse matrices have been finalized
+        self._assert_is_finalized()
+
+        # Retrieve the fixed-size block dimensions
+        block_nrows, block_ncols = self._get_block_shape()
+
+        # Populate each sparse matrix from the provided dense arrays
+        nzb_values_np = np.zeros_like(self.nzb_values.numpy())
+        for m in range(self.num_matrices):
+            # Retrieve the active matrix dimensions
+            dims = self.dims.numpy()[m]
+            nrows, ncols = int(dims[0]), int(dims[1])
+
+            # Validate the provided dense array
+            dense_matrix = matrices[m]
+            if dense_matrix.shape != (nrows, ncols):
+                raise ValueError(
+                    f"The provided dense array for matrix {m} has shape {dense_matrix.shape}, "
+                    f"but expected shape is ({nrows}, {ncols})."
+                )
+
+            # Populate non-zero blocks
+            num_nzb = int(self.num_nzb.numpy()[m])
+            start_idx = int(self.nzb_start.numpy()[m])
+            coords = self.nzb_coords.numpy()[start_idx : start_idx + num_nzb]
+            for b in range(num_nzb):
+                row_idx, col_idx = int(coords[b][0]), int(coords[b][1])
+                block_value = dense_matrix[row_idx : row_idx + block_nrows, col_idx : col_idx + block_ncols]
+                nzb_values_np[start_idx + b] = block_value
+
+        # Copy the populated non-zero block values to the device
+        msg.warning("nzb_values_np:\n%s", nzb_values_np)
+        self.nzb_values.assign(nzb_values_np)
+
     def numpy(self) -> list[np.ndarray]:
-        pass
+        """Converts all sparse matrices to a list of dense NumPy arrays."""
+        # Ensure that the sparse matrices have been finalized
+        self._assert_is_finalized()
+
+        # Retrieve the fixed-size block dimensions
+        block_nrows, block_ncols = self._get_block_shape()
+
+        # Construct a list of dense NumPy matrices from the sparse representation
+        matrices: list[np.ndarray] = []
+        for m in range(self.num_matrices):
+            # Retrieve the active matrix dimensions
+            dims = self.dims.numpy()[m]
+            nrows, ncols = int(dims[0]), int(dims[1])
+
+            # Allocate dense matrix initially filled with zeros
+            dense_matrix = np.zeros((nrows, ncols), dtype=self.nzb_dtype.dtype)
+
+            # Populate non-zero blocks
+            num_nzb = int(self.num_nzb.numpy()[m])
+            start_idx = int(self.nzb_start.numpy()[m])
+            coords = self.nzb_coords.numpy()[start_idx : start_idx + num_nzb]
+            values = self.nzb_values.numpy()[start_idx : start_idx + num_nzb]
+            for b in range(num_nzb):
+                row_idx, col_idx = int(coords[b][0]), int(coords[b][1])
+                block_value = values[b].reshape((block_nrows, block_ncols))
+                dense_matrix[row_idx : row_idx + block_nrows, col_idx : col_idx + block_ncols] = block_value
+            matrices.append(dense_matrix)
+
+        # Return the list of dense matrices
+        return matrices
 
     ###
     # Internals
     ###
 
+    def _has_valid_metadata(self) -> bool:
+        return (
+            self.num_matrices > 0 and self.sum_of_num_nzb > 0 and self.max_of_num_nzb > 0 and self.nzb_dtype is not None
+        )
+
+    def _is_finalized(self) -> bool:
+        return (
+            self.nzb_values is not None
+            and self.max_dims is not None
+            and self.dims is not None
+            and self.max_nzb is not None
+            and self.num_nzb is not None
+            and self.nzb_start is not None
+            and self.nzb_coords is not None
+            and self.nzb_values is not None
+        )
+
     def _assert_is_finalized(self):
-        # TODO: Check all array attributes
-        if self.nzb_values is None:
+        if not self._is_finalized():
             raise RuntimeError("No data has been allocated. Call `finalize()` before use.")
+
+    def _get_block_shape(self) -> tuple[int, int]:
+        """Retrieves the fixed-size block shape as number of rows and columns according to row-major ordering."""
+        # NOTE: Assumes row-major ordering
+        block_shape = self.nzb_dtype.shape
+        if isinstance(block_shape, int):
+            block_nrows = 1
+            block_ncols = block_shape
+        elif isinstance(block_shape, tuple):
+            if len(block_shape) == 0:
+                block_nrows = 1
+                block_ncols = 1
+            elif len(block_shape) == 1:
+                block_nrows = 1
+                block_ncols = block_shape[0]
+            elif len(block_shape) == 2:
+                block_nrows = block_shape[0]
+                block_ncols = block_shape[1]
+            else:
+                raise RuntimeError("Unsupported block shape for NumPy conversion.")
+        else:
+            raise RuntimeError("Unsupported block shape for NumPy conversion.")
+        return block_nrows, block_ncols
 
 
 @dataclass

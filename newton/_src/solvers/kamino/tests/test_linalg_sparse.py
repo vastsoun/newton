@@ -20,114 +20,10 @@ import unittest
 import numpy as np
 import warp as wp
 
-from newton._src.solvers.kamino.core.types import float32, int32
-from newton._src.solvers.kamino.linalg.sparse import BlockDType, BlockSparseLinearOperators, BlockSparseMatrices
+from newton._src.solvers.kamino.linalg.sparse import BlockDType, BlockSparseMatrices
 from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.utils import logger as msg
 from newton._src.solvers.kamino.utils.sparse import sparseview
-
-###
-# Functions
-###
-
-###
-# Kernels
-###
-
-###
-# Launchers
-###
-
-###
-# Constructors
-###
-
-
-# def _build_block_matrix(
-#     matrix_shape: tuple[int, int],
-#     block_coords: dict,
-#     block_shapes: dict,
-#     dtype=np.int64,
-# ) -> np.ndarray:
-#     M = np.zeros(matrix_shape, dtype=dtype)
-#     for block_id, coords in block_coords.items():
-#         shapes = block_shapes[block_id]
-#         for (br, bc), (bm, bn) in zip(coords, shapes, strict=False):
-#             row_start = br * bm
-#             row_end = row_start + bm
-#             col_start = bc * bn
-#             col_end = col_start + bn
-#             M[row_start:row_end, col_start:col_end] = block_id
-#     return M
-
-
-# def _build_block_sparse_matrix(
-#     matrix_shape: tuple[int, int],
-#     block_coords: dict,
-#     block_shapes: dict,
-#     dtype=wp.float32,
-#     itype=wp.int32,
-#     device: wp.DeviceLike = None,
-# ) -> BlockSparseLinearOperator:
-#     spm = BlockSparseLinearOperator(dtype=dtype, itype=itype, device=device)
-#     spm.dimensions = [matrix_shape]
-#     spm.num_superblocks = 1
-#     spm.max_num_nonzero_subblocks = sum(len(coords) for coords in block_coords.values())
-
-#     sub_nrows = np.zeros((spm.max_num_nonzero_subblocks,), dtype=itype)
-#     sub_ncols = np.zeros((spm.max_num_nonzero_subblocks,), dtype=itype)
-#     sub_roffs = np.zeros((spm.max_num_nonzero_subblocks,), dtype=itype)
-#     sub_coffs = np.zeros((spm.max_num_nonzero_subblocks,), dtype=itype)
-#     sub_doffs = np.zeros((spm.max_num_nonzero_subblocks,), dtype=itype)
-
-#     total_nnzb = 0
-#     total_nnz = 0
-#     for block_id, coords in block_coords.items():
-#         shapes = block_shapes[block_id]
-#         for (br, bc), (bm, bn) in zip(coords, shapes, strict=False):
-#             row_start = br * bm
-#             col_start = bc * bn
-#             sub_nrows[total_nnzb] = bm
-#             sub_ncols[total_nnzb] = bn
-#             sub_roffs[total_nnzb] = row_start
-#             sub_coffs[total_nnzb] = col_start
-#             sub_doffs[total_nnzb] = total_nnz
-#             total_nnzb += 1
-#             total_nnz += bm * bn
-
-#     with wp.ScopedDevice(device):
-#         spm.superblock_nrows = wp.array([matrix_shape[0]], dtype=itype, device=device)
-#         spm.superblock_ncols = wp.array([matrix_shape[1]], dtype=itype, device=device)
-#         spm.superblock_nnzb = wp.array([spm.max_num_nonzero_subblocks], dtype=itype, device=device)
-#         spm.superblock_nnz = wp.array([total_nnz], dtype=itype, device=device)
-#         spm.subblock_nrows = wp.array(sub_nrows, dtype=itype, device=device)
-#         spm.subblock_ncols = wp.array(sub_ncols, dtype=itype, device=device)
-#         spm.subblock_roffs = wp.array(sub_roffs, dtype=itype, device=device)
-#         spm.subblock_coffs = wp.array(sub_coffs, dtype=itype, device=device)
-
-#         spm.subblock_data = wp.array()
-
-#     return spm
-
-
-# def make_block_sparse_matrix(dtype=np.float32) -> tuple[np.ndarray, BlockSparseLinearOperator]:
-#     grid_shape = (9, 8)
-#     block_dims = (5, 6)
-#     matrix_shape = (block_dims[0] * grid_shape[0], block_dims[1] * grid_shape[1])
-
-#     blue_coords = [(3, 0), (3, 3), (3, 5), (5, 0), (5, 3), (5, 5)]
-#     blue_shapes = [block_dims] * len(blue_coords)
-#     green_coords = [(1, 4), (1, 7), (4, 4), (4, 7), (6, 4), (6, 7), (7, 4), (7, 7)]
-#     green_shapes = [block_dims] * len(green_coords)
-#     orange_coords = [(0, 2), (0, 6), (2, 2), (2, 6), (8, 2), (8, 6)]
-#     orange_shapes = [block_dims] * len(orange_coords)
-#     block_coords = {1: blue_coords, 2: green_coords, 3: orange_coords}
-#     block_shapes = {1: blue_shapes, 2: green_shapes, 3: orange_shapes}
-
-#     A = _build_block_matrix(matrix_shape, block_coords, block_shapes, dtype)
-#     A_bsm = _build_block_sparse_matrix(matrix_shape, block_coords, block_shapes, dtype)
-#     return A, A_bsm
-
 
 ###
 # Tests
@@ -146,7 +42,7 @@ class TestBlockDType(unittest.TestCase):
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
             print("\n")  # Add newline before test output for better readability
-            msg.set_log_level(msg.LogLevel.DEBUG)
+            msg.set_log_level(msg.LogLevel.INFO)
         else:
             msg.reset_log_level()
 
@@ -229,37 +125,244 @@ class TestBlockDType(unittest.TestCase):
         self.assertEqual(warp_matrix_type._wp_scalar_type_, wp.float32)
 
 
-# class TestBlockSparseMatrices(unittest.TestCase):
-#     def setUp(self):
-#         # Configs
-#         if not test_context.setup_done:
-#             setup_tests(clear_cache=False)
-#         self.seed = 42
-#         self.default_device = wp.get_device(test_context.device)
-#         self.verbose = True  # Set to True for verbose output
+class TestBlockSparseMatrices(unittest.TestCase):
+    def setUp(self):
+        # Configs
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
+        self.seed = 42
+        self.default_device = wp.get_device(test_context.device)
+        self.verbose = True  # Set to True for verbose output
+        self.plot = True  # Set to True for verbose output
 
-#         # Set debug-level logging to print verbose test output to console
-#         if self.verbose:
-#             print("\n")  # Add newline before test output for better readability
-#             msg.set_log_level(msg.LogLevel.DEBUG)
-#         else:
-#             msg.reset_log_level()
+        # Set debug-level logging to print verbose test output to console
+        if self.verbose:
+            print("\n")  # Add newline before test output for better readability
+            msg.set_log_level(msg.LogLevel.INFO)
+        else:
+            msg.reset_log_level()
 
-#     def tearDown(self):
-#         self.default_device = None
-#         if self.verbose:
-#             msg.reset_log_level()
+    def tearDown(self):
+        self.default_device = None
+        if self.verbose:
+            msg.reset_log_level()
 
-#     ###
-#     # Construction Tests
-#     ###
+    ###
+    # Construction Tests
+    ###
 
-#     def test_00_make_single_matrix_default(self):
-#         # Generate the block-sparse matrix (each colored square becomes a brxbc dense block)
-#         A, A_bsm = make_block_sparse_matrix(dtype=np.float32)
+    def test_00_make_default(self):
+        bsm = BlockSparseMatrices()
+        self.assertIsInstance(bsm, BlockSparseMatrices)
 
-#         # Create images of the sparsity patterns
-#         sparseview(A, title="A (original)")
+        # Host-side meta-data should be default-initialized
+        self.assertIsNone(bsm.device)
+        self.assertEqual(bsm.num_matrices, 0)
+        self.assertEqual(bsm.sum_of_num_nzb, 0)
+        self.assertEqual(bsm.max_of_num_nzb, 0)
+        self.assertIsNone(bsm.nzb_dtype)
+        self.assertIs(bsm.index_dtype, wp.int32)
+
+        # On-device data should be None
+        self.assertIsNone(bsm.max_dims)
+        self.assertIsNone(bsm.dims)
+        self.assertIsNone(bsm.max_nzb)
+        self.assertIsNone(bsm.num_nzb)
+        self.assertIsNone(bsm.nzb_start)
+        self.assertIsNone(bsm.nzb_coords)
+        self.assertIsNone(bsm.nzb_values)
+
+        # Finalization should fail since the block size `nzb_size` is not set
+        self.assertRaises(RuntimeError, bsm.finalize, capacities=[0])
+
+    def test_01_make_single_scalar_block_sparse_matrix(self):
+        bsm = BlockSparseMatrices(num_matrices=1, nzb_dtype=BlockDType(dtype=wp.float32), device=self.default_device)
+        bsm.finalize(capacities=[1])
+
+        # Check meta-data
+        self.assertEqual(bsm.num_matrices, 1)
+        self.assertEqual(bsm.sum_of_num_nzb, 1)
+        self.assertEqual(bsm.max_of_num_nzb, 1)
+        self.assertEqual(bsm.nzb_dtype.dtype, wp.float32)
+        self.assertEqual(bsm.nzb_dtype.shape, ())
+        self.assertIs(bsm.index_dtype, wp.int32)
+        self.assertEqual(bsm.device, self.default_device)
+
+        # Check on-device data shapes
+        self.assertEqual(bsm.max_dims.shape, (1, 2))
+        self.assertEqual(bsm.dims.shape, (1, 2))
+        self.assertEqual(bsm.max_nzb.shape, (1,))
+        self.assertEqual(bsm.num_nzb.shape, (1,))
+        self.assertEqual(bsm.nzb_start.shape, (1,))
+        self.assertEqual(bsm.nzb_coords.shape, (1, 2))
+        self.assertEqual(bsm.nzb_values.shape, (1,))
+        self.assertEqual(bsm.nzb_values.size, 1)
+        self.assertEqual(bsm.nzb_values.view(dtype=wp.float32).size, 1)
+
+    def test_02_make_single_vector_block_sparse_matrix(self):
+        bsm = BlockSparseMatrices(num_matrices=1, nzb_dtype=BlockDType(shape=(6,), dtype=wp.float32))
+        bsm.finalize(capacities=[1], device=self.default_device)
+
+        # Check meta-data
+        self.assertEqual(bsm.num_matrices, 1)
+        self.assertEqual(bsm.sum_of_num_nzb, 1)
+        self.assertEqual(bsm.max_of_num_nzb, 1)
+        self.assertEqual(bsm.nzb_dtype.dtype, wp.float32)
+        self.assertEqual(bsm.nzb_dtype.shape, (6,))
+        self.assertIs(bsm.index_dtype, wp.int32)
+        self.assertEqual(bsm.device, self.default_device)
+
+        # Check on-device data shapes
+        self.assertEqual(bsm.max_dims.shape, (1, 2))
+        self.assertEqual(bsm.dims.shape, (1, 2))
+        self.assertEqual(bsm.max_nzb.shape, (1,))
+        self.assertEqual(bsm.num_nzb.shape, (1,))
+        self.assertEqual(bsm.nzb_start.shape, (1,))
+        self.assertEqual(bsm.nzb_coords.shape, (1, 2))
+        self.assertEqual(bsm.nzb_values.shape, (1,))
+        self.assertEqual(bsm.nzb_values.size, 1)
+        self.assertEqual(bsm.nzb_values.view(dtype=wp.float32).size, 6)
+
+    def test_03_make_single_matrix_block_sparse_matrix(self):
+        bsm = BlockSparseMatrices(num_matrices=1, nzb_dtype=BlockDType(shape=(6, 5), dtype=wp.float32))
+        bsm.finalize(capacities=[1], device=self.default_device)
+
+        # Check meta-data
+        self.assertEqual(bsm.num_matrices, 1)
+        self.assertEqual(bsm.sum_of_num_nzb, 1)
+        self.assertEqual(bsm.max_of_num_nzb, 1)
+        self.assertEqual(bsm.nzb_dtype.dtype, wp.float32)
+        self.assertEqual(bsm.nzb_dtype.shape, (6, 5))
+        self.assertIs(bsm.index_dtype, wp.int32)
+        self.assertEqual(bsm.device, self.default_device)
+
+        # Check on-device data shapes
+        self.assertEqual(bsm.max_dims.shape, (1, 2))
+        self.assertEqual(bsm.dims.shape, (1, 2))
+        self.assertEqual(bsm.max_nzb.shape, (1,))
+        self.assertEqual(bsm.num_nzb.shape, (1,))
+        self.assertEqual(bsm.nzb_start.shape, (1,))
+        self.assertEqual(bsm.nzb_coords.shape, (1, 2))
+        self.assertEqual(bsm.nzb_values.shape, (1,))
+        self.assertEqual(bsm.nzb_values.size, 1)
+        self.assertEqual(bsm.nzb_values.view(dtype=wp.float32).size, 30)
+
+    def test_04_build_multiple_vector_block_matrices(self):
+        bsm = BlockSparseMatrices(num_matrices=1, nzb_dtype=BlockDType(shape=(6,), dtype=wp.float32))
+        bsm.finalize(capacities=[3, 4, 5], device=self.default_device)
+
+        # Check meta-data
+        self.assertEqual(bsm.num_matrices, 3)
+        self.assertEqual(bsm.sum_of_num_nzb, 12)
+        self.assertEqual(bsm.max_of_num_nzb, 5)
+        self.assertEqual(bsm.nzb_dtype.dtype, wp.float32)
+        self.assertEqual(bsm.nzb_dtype.shape, (6,))
+        self.assertIs(bsm.index_dtype, wp.int32)
+        self.assertEqual(bsm.device, self.default_device)
+
+        # Check on-device data shapes
+        self.assertEqual(bsm.max_dims.shape, (3, 2))
+        self.assertEqual(bsm.dims.shape, (3, 2))
+        self.assertEqual(bsm.max_nzb.shape, (3,))
+        self.assertEqual(bsm.num_nzb.shape, (3,))
+        self.assertEqual(bsm.nzb_start.shape, (3,))
+        self.assertEqual(bsm.nzb_coords.shape, (12, 2))
+        self.assertEqual(bsm.nzb_values.shape, (12,))
+        self.assertEqual(bsm.nzb_values.size, 12)
+        self.assertEqual(bsm.nzb_values.view(dtype=wp.float32).size, 72)
+
+    ###
+    # Building Tests
+    ###
+
+    def test_10_build_multiple_vector_block_sparse_matrices_full(self):
+        """
+        Tests building two fully-filled block-sparse matrices with vector-shaped blocks and same overall shape.
+        """
+        bsm = BlockSparseMatrices(num_matrices=2, nzb_dtype=BlockDType(shape=(6,), dtype=wp.float32))
+        bsm.finalize(capacities=[2, 3], device=self.default_device)
+
+        # Check meta-data
+        self.assertEqual(bsm.num_matrices, 2)
+        self.assertEqual(bsm.sum_of_num_nzb, 5)
+        self.assertEqual(bsm.max_of_num_nzb, 3)
+        self.assertEqual(bsm.nzb_dtype.dtype, wp.float32)
+        self.assertEqual(bsm.nzb_dtype.shape, (6,))
+        self.assertIs(bsm.index_dtype, wp.int32)
+        self.assertEqual(bsm.device, self.default_device)
+
+        # Check on-device data shapes
+        self.assertEqual(bsm.max_dims.shape, (bsm.num_matrices, 2))
+        self.assertEqual(bsm.dims.shape, (bsm.num_matrices, 2))
+        self.assertEqual(bsm.max_nzb.shape, (bsm.num_matrices,))
+        self.assertEqual(bsm.num_nzb.shape, (bsm.num_matrices,))
+        self.assertEqual(bsm.nzb_start.shape, (bsm.num_matrices,))
+        self.assertEqual(bsm.nzb_coords.shape, (bsm.sum_of_num_nzb, 2))
+        self.assertEqual(bsm.nzb_values.shape, (bsm.sum_of_num_nzb,))
+        self.assertEqual(bsm.nzb_values.size, bsm.sum_of_num_nzb)
+        self.assertEqual(bsm.nzb_values.view(dtype=wp.float32).size, bsm.sum_of_num_nzb * bsm.nzb_dtype.size)
+
+        # Build each matrix as follows:
+        # Matrix 0: 2x12 block0diagonal with 2 non-zero blocks at on diagonals (0,0) and (1,6)
+        # Matrix 1: 2x12 upper-block-triangular with 3 non-zero blocks at on at (0,0), (0,6), and (1,6)
+        nzb_dims_np = np.array([[2, 12], [2, 12]], dtype=np.int32)
+        num_nzb_np = np.array([[2], [3]], dtype=np.int32)
+        nzb_start_np = np.array([[0], [2]], dtype=np.int32)
+        nzb_coords_np = np.array([[0, 0], [1, 6], [0, 0], [0, 6], [1, 6]], dtype=np.int32)
+        nzb_values_np = np.array(
+            [
+                [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+                [0.1, 0.2, 0.3, 0.4, 0.5, 0.6],
+                [2.0, 4.0, 6.0, 8.0, 10.0, 12.0],
+                [3.0, 3.0, 3.0, 3.0, 3.0, 3.0],
+                [9.0, 9.0, 9.0, 9.0, 9.0, 9.0],
+            ],
+            dtype=np.float32,
+        )
+        bsm.max_dims.assign(nzb_dims_np)
+        bsm.dims.assign(nzb_dims_np)
+        bsm.max_nzb.assign(num_nzb_np)
+        bsm.num_nzb.assign(num_nzb_np)
+        bsm.nzb_start.assign(nzb_start_np)
+        bsm.nzb_coords.assign(nzb_coords_np)
+        bsm.nzb_values.view(dtype=wp.float32).assign(nzb_values_np)
+        msg.info("bsm.max_dims:\n%s", bsm.max_dims)
+        msg.info("bsm.dims:\n%s", bsm.dims)
+        msg.info("bsm.max_nzb:\n%s", bsm.max_nzb)
+        msg.info("bsm.num_nzb:\n%s", bsm.num_nzb)
+        msg.info("bsm.nzb_start:\n%s", bsm.nzb_start)
+        msg.info("bsm.nzb_coords:\n%s", bsm.nzb_coords)
+        msg.info("bsm.nzb_values:\n%s", bsm.nzb_values)
+
+        # Check on-device data shapes again to ensure nothing changed during building
+        self.assertEqual(bsm.max_dims.shape, (bsm.num_matrices, 2))
+        self.assertEqual(bsm.dims.shape, (bsm.num_matrices, 2))
+        self.assertEqual(bsm.max_nzb.shape, (bsm.num_matrices,))
+        self.assertEqual(bsm.num_nzb.shape, (bsm.num_matrices,))
+        self.assertEqual(bsm.nzb_start.shape, (bsm.num_matrices,))
+        self.assertEqual(bsm.nzb_coords.shape, (bsm.sum_of_num_nzb, 2))
+        self.assertEqual(bsm.nzb_values.shape, (bsm.sum_of_num_nzb,))
+        self.assertEqual(bsm.nzb_values.size, bsm.sum_of_num_nzb)
+        self.assertEqual(bsm.nzb_values.view(dtype=wp.float32).size, bsm.sum_of_num_nzb * bsm.nzb_dtype.size)
+
+        # Convert to list of numpy arrays for easier verification
+        bsm_np = bsm.numpy()
+        for i in range(bsm.num_matrices):
+            msg.info("bsm_np[%d]:\n%s", i, bsm_np[i])
+            if self.plot:
+                sparseview(bsm_np[i], title=f"bsm_np[{i}]")
+
+        # Assign new values to the dense numpy arrays and set them back to the block-sparse matrices
+        for i in range(bsm.num_matrices):
+            bsm_np[i] += 1.0 * (i + 1)
+        bsm.assign(bsm_np)
+
+        # Convert again to list of numpy arrays for easier verification
+        bsm_np = bsm.numpy()
+        for i in range(bsm.num_matrices):
+            msg.info("bsm_np[%d]:\n%s", i, bsm_np[i])
+            if self.plot:
+                sparseview(bsm_np[i], title=f"bsm_np[{i}]")
 
 
 ###

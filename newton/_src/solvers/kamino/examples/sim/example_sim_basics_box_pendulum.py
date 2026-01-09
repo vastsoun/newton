@@ -24,73 +24,14 @@ import newton
 import newton.examples
 from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.core.joints import JointCorrectionMode
-from newton._src.solvers.kamino.core.types import float32
 from newton._src.solvers.kamino.examples import get_examples_output_path, run_headless
 from newton._src.solvers.kamino.models import get_basics_usd_assets_path
 from newton._src.solvers.kamino.models.builders.basics import build_box_pendulum_vertical
 from newton._src.solvers.kamino.models.builders.utils import make_homogeneous_builder
-from newton._src.solvers.kamino.simulation.simulator import Simulator, SimulatorSettings
 from newton._src.solvers.kamino.utils import logger as msg
 from newton._src.solvers.kamino.utils.control import JointSpacePIDController
-from newton._src.solvers.kamino.utils.datalog import SimulationLogger
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
-from newton._src.solvers.kamino.viewer import ViewerKamino
-
-###
-# Module configs
-###
-
-wp.set_module_options({"enable_backward": False})
-
-
-###
-# Kernels
-###
-
-
-@wp.kernel
-def _test_control_callback(
-    state_t: wp.array(dtype=float32),
-    control_tau_j: wp.array(dtype=float32),
-):
-    """
-    An example control callback kernel.
-    """
-    # Set world index
-    wid = int(0)
-
-    # Define the time window for the active external force profile
-    t_start = float32(1.0)
-    t_end = float32(3.0)
-
-    # Get the current time
-    t = state_t[wid]
-
-    # Apply a time-dependent external force
-    if t > t_start and t < t_end:
-        control_tau_j[0] = 1.0
-    else:
-        control_tau_j[0] = 0.0
-
-
-###
-# Launchers
-###
-
-
-def test_control_callback(sim: Simulator):
-    """
-    A control callback function
-    """
-    wp.launch(
-        _test_control_callback,
-        dim=1,
-        inputs=[
-            sim.data.solver.time.time,
-            sim.data.control_n.tau_j,
-        ],
-    )
-
+from newton._src.solvers.kamino.utils.sim import SimulationLogger, Simulator, SimulatorSettings, ViewerKamino
 
 ###
 # Example class
@@ -148,13 +89,13 @@ class Example:
         # Set solver settings
         settings = SimulatorSettings()
         settings.dt = self.sim_dt
-        settings.problem.preconditioning = True
-        settings.solver.primal_tolerance = 1e-6
-        settings.solver.dual_tolerance = 1e-6
-        settings.solver.compl_tolerance = 1e-6
-        settings.solver.rho_0 = 0.1
-        settings.rotation_correction = JointCorrectionMode.CONTINUOUS
-        settings.compute_metrics = logging and not use_cuda_graph
+        settings.solver.problem.preconditioning = True
+        settings.solver.padmm.primal_tolerance = 1e-6
+        settings.solver.padmm.dual_tolerance = 1e-6
+        settings.solver.padmm.compl_tolerance = 1e-6
+        settings.solver.padmm.rho_0 = 0.1
+        settings.solver.rotation_correction = JointCorrectionMode.CONTINUOUS
+        settings.solver.compute_metrics = logging and not use_cuda_graph
 
         # Create a simulator
         msg.notif("Building the simulator...")
@@ -179,8 +120,8 @@ class Example:
             self.controller.compute(
                 model=simulator.model,
                 state=simulator.data.state_n,
-                time=simulator.data.solver.time,
-                control=simulator.data.control_n,
+                time=simulator.solver.data.time,
+                control=simulator.control,
             )
 
         # Set the reference tracking generation & control callbacks into the simulator

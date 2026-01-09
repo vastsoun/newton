@@ -23,15 +23,15 @@ from typing import ClassVar
 import warp as wp
 from PIL import Image
 
-from ....viewer import ViewerGL
-from ..core.builder import ModelBuilder
-from ..core.geometry import CollisionGeometryDescriptor, GeometryDescriptor
-from ..core.shapes import ShapeType
-from ..core.types import vec3f
-from ..core.world import WorldDescriptor
-from ..geometry.contacts import ContactMode
-from ..simulation.simulator import Simulator
-from ..utils import logger as msg
+from .....viewer import ViewerGL
+from ...core.builder import ModelBuilder
+from ...core.geometry import CollisionGeometryDescriptor, GeometryDescriptor
+from ...core.shapes import ShapeType
+from ...core.types import vec3f
+from ...core.world import WorldDescriptor
+from ...geometry.contacts import ContactMode
+from ...utils import logger as msg
+from .simulator import Simulator
 
 ###
 # Kernels
@@ -301,7 +301,7 @@ class ViewerKamino(ViewerGL):
 
     def render_frame(self, stop_recording: bool = False):
         # Begin a new frame
-        self.begin_frame(self._simulator.time)
+        self.begin_frame(self.time)
 
         # Extract body poses from the kamino simulator
         body_poses = self._simulator.state.q_i.numpy()

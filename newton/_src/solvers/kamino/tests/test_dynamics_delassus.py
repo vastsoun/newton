@@ -23,7 +23,7 @@ import warp as wp
 from newton._src.solvers.kamino.core.model import Model
 from newton._src.solvers.kamino.dynamics.delassus import DelassusOperator
 from newton._src.solvers.kamino.geometry.contacts import Contacts
-from newton._src.solvers.kamino.kinematics.constraints import max_constraints_per_world
+from newton._src.solvers.kamino.kinematics.constraints import get_max_constraints_per_world
 from newton._src.solvers.kamino.kinematics.limits import Limits
 from newton._src.solvers.kamino.linalg import LLTSequentialSolver
 from newton._src.solvers.kamino.models.builders.basics import (
@@ -63,7 +63,7 @@ def check_delassus_allocations(
     delassus: DelassusOperator,
 ) -> None:
     # Compute expected and allocated dimensions and sizes
-    expected_max_constraint_dims = max_constraints_per_world(model, limits, contacts)
+    expected_max_constraint_dims = get_max_constraints_per_world(model, limits, contacts)
     num_worlds = len(expected_max_constraint_dims)
     expected_D_sizes = [expected_max_constraint_dims[i] * expected_max_constraint_dims[i] for i in range(num_worlds)]
     delassus_maxdim_np = delassus.info.maxdim.numpy()
@@ -249,7 +249,7 @@ class TestDelassusOperator(unittest.TestCase):
         )
 
         # Build the Delassus operator from the current data
-        delassus.build(model=model, data=data, jacobians=jacobians.data, reset_to_zero=True)
+        delassus.build(model=model, data=data, jacobians=jacobians, reset_to_zero=True)
 
         # Extract the active constraint dimensions
         active_dims = extract_active_constraint_dims(delassus)
@@ -308,7 +308,7 @@ class TestDelassusOperator(unittest.TestCase):
         )
 
         # Build the Delassus operator from the current data
-        delassus.build(model=model, data=data, jacobians=jacobians.data, reset_to_zero=True)
+        delassus.build(model=model, data=data, jacobians=jacobians, reset_to_zero=True)
 
         # Extract the active constraint dimensions
         active_dims = extract_active_constraint_dims(delassus)
@@ -378,7 +378,7 @@ class TestDelassusOperator(unittest.TestCase):
         )
 
         # Build the Delassus operator from the current data
-        delassus.build(model=model, data=data, jacobians=jacobians.data, reset_to_zero=True)
+        delassus.build(model=model, data=data, jacobians=jacobians, reset_to_zero=True)
 
         # Extract the active constraint dimensions
         active_dims = extract_active_constraint_dims(delassus)
@@ -447,7 +447,7 @@ class TestDelassusOperator(unittest.TestCase):
         )
 
         # Build the Delassus operator from the current data
-        delassus.build(model=model, data=data, jacobians=jacobians.data, reset_to_zero=True)
+        delassus.build(model=model, data=data, jacobians=jacobians, reset_to_zero=True)
 
         # Extract the active constraint dimensions
         active_dims = extract_active_constraint_dims(delassus)
@@ -527,7 +527,7 @@ class TestDelassusOperator(unittest.TestCase):
         )
 
         # Build the Delassus operator from the current data
-        delassus.build(model=model, data=data, jacobians=jacobians.data, reset_to_zero=True)
+        delassus.build(model=model, data=data, jacobians=jacobians, reset_to_zero=True)
 
         # Extract the active constraint dimensions
         active_dims = extract_active_constraint_dims(delassus)

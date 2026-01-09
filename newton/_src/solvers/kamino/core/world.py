@@ -434,15 +434,15 @@ class WorldDescriptor(Descriptor):
             )
 
         # Assign joint metadata based on the current contents of the world
-        joint.wid = self.wid
-        joint.jid = self.num_joints
-        joint.coords_offset = self.num_joint_coords
-        joint.dofs_offset = self.num_joint_dofs
-        joint.cts_offset = self.num_joint_cts
-        joint.passive_coords_offset = self.num_passive_joint_coords if joint.is_passive else -1
-        joint.passive_dofs_offset = self.num_passive_joint_dofs if joint.is_passive else -1
-        joint.actuated_coords_offset = self.num_actuated_joint_coords if joint.is_actuated else -1
-        joint.actuated_dofs_offset = self.num_actuated_joint_dofs if joint.is_actuated else -1
+        joint.wid = int(self.wid)
+        joint.jid = int(self.num_joints)
+        joint.coords_offset = int(self.num_joint_coords)
+        joint.dofs_offset = int(self.num_joint_dofs)
+        joint.cts_offset = int(self.num_joint_cts)
+        joint.passive_coords_offset = int(self.num_passive_joint_coords) if joint.is_passive else -1
+        joint.passive_dofs_offset = int(self.num_passive_joint_dofs) if joint.is_passive else -1
+        joint.actuated_coords_offset = int(self.num_actuated_joint_coords) if joint.is_actuated else -1
+        joint.actuated_dofs_offset = int(self.num_actuated_joint_dofs) if joint.is_actuated else -1
 
         # Append joint info
         self.joint_coords.append(joint.num_coords)
@@ -467,8 +467,8 @@ class WorldDescriptor(Descriptor):
 
         # Append joint control group info
         if joint.act_type == JointActuationType.PASSIVE:
-            joint.passive_coords_offset = self.num_passive_joint_coords
-            joint.passive_dofs_offset = self.num_passive_joint_dofs
+            joint.passive_coords_offset = int(self.num_passive_joint_coords)
+            joint.passive_dofs_offset = int(self.num_passive_joint_dofs)
             self.has_passive_dofs = True
             self.num_passive_joints += 1
             self.num_passive_joint_coords += joint.num_coords
@@ -477,8 +477,8 @@ class WorldDescriptor(Descriptor):
             self.joint_passive_dofs.append(joint.num_dofs)
             self.passive_joint_names.append(joint.name)
         else:
-            joint.actuated_coords_offset = self.num_actuated_joint_coords
-            joint.actuated_dofs_offset = self.num_actuated_joint_dofs
+            joint.actuated_coords_offset = int(self.num_actuated_joint_coords)
+            joint.actuated_dofs_offset = int(self.num_actuated_joint_dofs)
             self.has_actuated_dofs = True
             self.num_actuated_joints += 1
             self.num_actuated_joint_coords += joint.num_coords

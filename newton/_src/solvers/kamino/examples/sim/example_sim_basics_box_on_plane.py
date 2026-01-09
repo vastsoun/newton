@@ -30,13 +30,11 @@ from newton._src.solvers.kamino.examples import get_examples_output_path, run_he
 from newton._src.solvers.kamino.models import get_basics_usd_assets_path
 from newton._src.solvers.kamino.models.builders.basics import build_box_on_plane
 from newton._src.solvers.kamino.models.builders.utils import make_homogeneous_builder
-from newton._src.solvers.kamino.simulation.simulator import Simulator, SimulatorSettings
 from newton._src.solvers.kamino.solvers.padmm import PADMMWarmStartMode
 from newton._src.solvers.kamino.solvers.warmstart import WarmstarterContacts
 from newton._src.solvers.kamino.utils import logger as msg
-from newton._src.solvers.kamino.utils.datalog import SimulationLogger
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
-from newton._src.solvers.kamino.viewer import ViewerKamino
+from newton._src.solvers.kamino.utils.sim import SimulationLogger, Simulator, SimulatorSettings, ViewerKamino
 
 ###
 # Module configs
@@ -102,8 +100,8 @@ def control_callback(sim: Simulator):
         inputs=[
             sim.model.bodies.bid,
             sim.contacts.data.world_active_contacts,
-            sim.data.solver.time.time,
-            sim.data.solver.bodies.w_e_i,
+            sim.solver.data.time.time,
+            sim.solver.data.bodies.w_e_i,
         ],
     )
 
@@ -164,17 +162,17 @@ class Example:
         # Set solver settings
         settings = SimulatorSettings()
         settings.dt = self.sim_dt
-        settings.problem.preconditioning = True
-        settings.solver.primal_tolerance = 1e-6
-        settings.solver.dual_tolerance = 1e-6
-        settings.solver.compl_tolerance = 1e-6
-        settings.solver.max_iterations = 200
-        settings.solver.rho_0 = 0.1
-        settings.use_solver_acceleration = True
-        settings.warmstart = PADMMWarmStartMode.CONTAINERS
-        settings.contact_warmstart_method = WarmstarterContacts.Method.KEY_AND_POSITION_WITH_NET_FORCE_BACKUP
-        settings.collect_solver_info = True
-        settings.compute_metrics = logging and not use_cuda_graph
+        settings.solver.problem.preconditioning = True
+        settings.solver.padmm.primal_tolerance = 1e-6
+        settings.solver.padmm.dual_tolerance = 1e-6
+        settings.solver.padmm.compl_tolerance = 1e-6
+        settings.solver.padmm.max_iterations = 200
+        settings.solver.padmm.rho_0 = 0.1
+        settings.solver.use_solver_acceleration = True
+        settings.solver.warmstart_mode = PADMMWarmStartMode.CONTAINERS
+        settings.solver.contact_warmstart_method = WarmstarterContacts.Method.KEY_AND_POSITION_WITH_NET_FORCE_BACKUP
+        settings.solver.collect_solver_info = True
+        settings.solver.compute_metrics = logging and not use_cuda_graph
 
         # Create a simulator
         msg.notif("Building the simulator...")

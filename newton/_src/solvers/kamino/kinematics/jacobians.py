@@ -37,8 +37,8 @@ from ..core.types import (
     vec2i,
     vec3f,
 )
-from ..geometry.contacts import Contacts, ContactsData
-from ..kinematics.limits import Limits, LimitsData
+from ..geometry.contacts import Contacts
+from ..kinematics.limits import Limits
 
 ###
 # Module interface
@@ -47,10 +47,7 @@ from ..kinematics.limits import Limits, LimitsData
 __all__ = [
     "DenseSystemJacobians",
     "DenseSystemJacobiansData",
-    "build_contact_jacobians",
     "build_jacobians",
-    "build_joint_jacobians",
-    "build_limit_jacobians",
 ]
 
 
@@ -480,127 +477,11 @@ def _build_contact_jacobians(
 ###
 
 
-def build_joint_jacobians(
-    model: Model,
-    data: ModelData,
-    jacobian_cts_offsets: wp.array,
-    jacobian_cts_data: wp.array,
-    jacobian_dofs_offsets: wp.array,
-    jacobian_dofs_data: wp.array,
-    reset_to_zero: bool = False,
-):
-    # Optionally reset the Jacobian arrays to zero
-    if reset_to_zero:
-        jacobian_cts_data.zero_()
-        jacobian_dofs_data.zero_()
-
-    # Launch the kernel to build the joint Jacobians
-    wp.launch(
-        _build_joint_jacobians,
-        dim=model.size.sum_of_num_joints,
-        inputs=[
-            # Inputs:
-            model.info.num_body_dofs,
-            model.info.bodies_offset,
-            model.joints.wid,
-            model.joints.dof_type,
-            model.joints.cts_offset,
-            model.joints.dofs_offset,
-            model.joints.bid_B,
-            model.joints.bid_F,
-            model.joints.X_j,
-            data.joints.p_j,
-            data.bodies.q_i,
-            jacobian_cts_offsets,
-            jacobian_dofs_offsets,
-            # Outputs:
-            jacobian_cts_data,
-            jacobian_dofs_data,
-        ],
-    )
-
-
-def build_limit_jacobians(
-    model: Model,
-    data: ModelData,
-    limits: LimitsData,
-    jacobian_cts_offsets: wp.array,
-    jacobian_cts_data: wp.array,
-    jacobian_dofs_offsets: wp.array,
-    jacobian_dofs_data: wp.array,
-    reset_to_zero: bool = False,
-):
-    # Optionally reset the Jacobian array data to zero
-    if reset_to_zero:
-        jacobian_cts_data.zero_()
-
-    # Build the limit constraints Jacobians
-    wp.launch(
-        _build_limit_jacobians,
-        dim=limits.model_max_limits_host,
-        inputs=[
-            # Inputs:
-            model.info.num_body_dofs,
-            model.info.bodies_offset,
-            data.info.limit_cts_group_offset,
-            limits.model_active_limits,
-            limits.model_max_limits_host,
-            limits.wid,
-            limits.lid,
-            limits.bids,
-            limits.dof,
-            limits.side,
-            jacobian_dofs_offsets,
-            jacobian_dofs_data,
-            jacobian_cts_offsets,
-            # Outputs:
-            jacobian_cts_data,
-        ],
-    )
-
-
-def build_contact_jacobians(
-    model: Model,
-    data: ModelData,
-    contacts: ContactsData,
-    jacobian_cts_offsets: wp.array,
-    jacobian_cts_data: wp.array,
-    reset_to_zero: bool = False,
-):
-    # Optionally reset the Jacobian array data to zero
-    if reset_to_zero:
-        jacobian_cts_data.zero_()
-
-    # Build the contact constraints Jacobians
-    wp.launch(
-        _build_contact_jacobians,
-        dim=contacts.model_max_contacts_host,
-        inputs=[
-            # Inputs:
-            model.info.num_body_dofs,
-            model.info.bodies_offset,
-            data.info.contact_cts_group_offset,
-            data.bodies.q_i,
-            contacts.model_active_contacts,
-            contacts.model_max_contacts_host,
-            contacts.wid,
-            contacts.cid,
-            contacts.bid_AB,
-            contacts.position_A,
-            contacts.position_B,
-            contacts.frame,
-            jacobian_cts_offsets,
-            # Outputs:
-            jacobian_cts_data,
-        ],
-    )
-
-
 def build_jacobians(
     model: Model,
     data: ModelData,
-    limits: LimitsData | None,
-    contacts: ContactsData | None,
+    limits: Limits | None,
+    contacts: Contacts | None,
     jacobian_cts_offsets: wp.array,
     jacobian_cts_data: wp.array,
     jacobian_dofs_offsets: wp.array,
@@ -613,34 +494,33 @@ def build_jacobians(
         jacobian_dofs_data.zero_()
 
     # Build the joint constraints and actuation Jacobians
-    wp.launch(
-        _build_joint_jacobians,
-        dim=model.size.sum_of_num_joints,
-        inputs=[
-            # Inputs:
-            model.info.num_body_dofs,
-            model.info.bodies_offset,
-            model.joints.wid,
-            model.joints.dof_type,
-            model.joints.cts_offset,
-            model.joints.dofs_offset,
-            model.joints.bid_B,
-            model.joints.bid_F,
-            model.joints.X_j,
-            data.joints.p_j,
-            data.bodies.q_i,
-            jacobian_cts_offsets,
-            jacobian_dofs_offsets,
-            # Outputs:
-            jacobian_cts_data,
-            jacobian_dofs_data,
-        ],
-    )
+    if model.size.sum_of_num_joints > 0:
+        wp.launch(
+            _build_joint_jacobians,
+            dim=model.size.sum_of_num_joints,
+            inputs=[
+                # Inputs:
+                model.info.num_body_dofs,
+                model.info.bodies_offset,
+                model.joints.wid,
+                model.joints.dof_type,
+                model.joints.cts_offset,
+                model.joints.dofs_offset,
+                model.joints.bid_B,
+                model.joints.bid_F,
+                model.joints.X_j,
+                data.joints.p_j,
+                data.bodies.q_i,
+                jacobian_cts_offsets,
+                jacobian_dofs_offsets,
+                # Outputs:
+                jacobian_cts_data,
+                jacobian_dofs_data,
+            ],
+        )
 
     # Build the limit constraints Jacobians if a limits data container is provided
-    if limits is not None:
-        if not isinstance(limits, LimitsData):
-            raise TypeError(f"`limits` is required to be of type `LimitsData` but got {type(limits)}.")
+    if limits is not None and limits.model_max_limits_host > 0:
         wp.launch(
             _build_limit_jacobians,
             dim=limits.model_max_limits_host,
@@ -665,9 +545,7 @@ def build_jacobians(
         )
 
     # Build the contact constraints Jacobians if a contacts data container is provided
-    if contacts is not None:
-        if not isinstance(contacts, ContactsData):
-            raise TypeError(f"`contacts` is required to be of type `ContactsData` but got {type(contacts)}.")
+    if contacts is not None and contacts.model_max_contacts_host > 0:
         wp.launch(
             _build_contact_jacobians,
             dim=contacts.model_max_contacts_host,
@@ -814,7 +692,12 @@ class DenseSystemJacobians:
             self._data.J_dofs_data = wp.zeros(shape=(total_J_dofs_size,), dtype=float32)
 
     def build(
-        self, model: Model, data: ModelData, limits: LimitsData, contacts: ContactsData, reset_to_zero: bool = True
+        self,
+        model: Model,
+        data: ModelData,
+        limits: Limits | None = None,
+        contacts: Contacts | None = None,
+        reset_to_zero: bool = True,
     ):
         """
         Builds the system DoF and constraint Jacobians for the given

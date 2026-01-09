@@ -40,7 +40,7 @@ Typical usage example:
     # containers to hold joint-limits, contacts, Jacobians
     model = builder.finalize()
     data = model.data()
-    limits = Limits(builder)
+    limits = Limits(model)
     contacts = Contacts(builder)
     jacobians = DenseSystemJacobians(model, limits, contacts)
 
@@ -80,8 +80,8 @@ from warp.context import Devicelike
 from ..core.model import Model, ModelData, ModelSize
 from ..core.types import float32, int32, mat33f, vec3f
 from ..geometry.contacts import Contacts
-from ..kinematics.constraints import max_constraints_per_world
-from ..kinematics.jacobians import DenseSystemJacobiansData
+from ..kinematics.constraints import get_max_constraints_per_world
+from ..kinematics.jacobians import DenseSystemJacobians
 from ..kinematics.limits import Limits
 from ..linalg import DenseLinearOperatorData, DenseSquareMultiLinearInfo, LinearSolverType
 
@@ -401,7 +401,7 @@ class DelassusOperator:
         self._size = model.size
 
         # Extract required maximum number of constraints for each world
-        maxdims = max_constraints_per_world(model, limits, contacts)
+        maxdims = get_max_constraints_per_world(model, limits, contacts)
 
         # Update the allocation meta-data the specified constraint dimensions
         self._num_worlds = model.size.num_worlds
@@ -446,7 +446,7 @@ class DelassusOperator:
         """
         self._operator.mat.zero_()
 
-    def build(self, model: Model, data: ModelData, jacobians: DenseSystemJacobiansData, reset_to_zero: bool = True):
+    def build(self, model: Model, data: ModelData, jacobians: DenseSystemJacobians, reset_to_zero: bool = True):
         """
         Builds the Delassus matrix using the provided Model, ModelData, and constraint Jacobians.
 
@@ -468,9 +468,9 @@ class DelassusOperator:
             raise ValueError("A valid model data of type `ModelData` must be provided to build the Delassus operator.")
 
         # Ensure the Jacobians are valid
-        if jacobians is None or not isinstance(jacobians, DenseSystemJacobiansData):
+        if jacobians is None or not isinstance(jacobians, DenseSystemJacobians):
             raise ValueError(
-                "A valid Jacobians data container of type `DenseSystemJacobiansData` "
+                "A valid Jacobians data container of type `DenseSystemJacobians` "
                 "must be provided to build the Delassus operator."
             )
 
@@ -492,8 +492,8 @@ class DelassusOperator:
                 model.info.bodies_offset,
                 model.bodies.inv_m_i,
                 data.bodies.inv_I_i,
-                jacobians.J_cts_offsets,
-                jacobians.J_cts_data,
+                jacobians.data.J_cts_offsets,
+                jacobians.data.J_cts_data,
                 self._operator.info.dim,
                 self._operator.info.mio,
                 # Outputs:

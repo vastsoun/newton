@@ -320,6 +320,7 @@ def build_cartpole(
     z_offset: float = 0.0,
     ground: bool = True,
     new_world: bool = True,
+    limits: bool = True,
     world_index: int = 0,
 ) -> ModelBuilder:
     """
@@ -396,8 +397,8 @@ def build_cartpole(
         B_r_Bj=vec3f(0.0, 0.0, z_offset),
         F_r_Fj=vec3f(0.0, 0.0, 0.0),
         X_j=Axis.Y.to_mat33(),
-        q_j_min=[-4.0],
-        q_j_max=[4.0],
+        q_j_min=[-4.0] if limits else [float(FLOAT32_MIN)],
+        q_j_max=[4.0] if limits else [float(FLOAT32_MAX)],
         tau_j_max=[1000.0],
         world_index=world_index,
     )

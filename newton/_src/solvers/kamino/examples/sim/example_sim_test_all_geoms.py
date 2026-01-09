@@ -24,72 +24,13 @@ import newton
 import newton.examples
 from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.core.shapes import ShapeType
-from newton._src.solvers.kamino.core.types import float32
 from newton._src.solvers.kamino.examples import get_examples_output_path, run_headless
 from newton._src.solvers.kamino.geometry import CollisionPipelineType
 from newton._src.solvers.kamino.geometry.primitive.broadphase import PRIMITIVE_BROADPHASE_SUPPORTED_SHAPES
 from newton._src.solvers.kamino.geometry.primitive.narrowphase import PRIMITIVE_NARROWPHASE_SUPPORTED_SHAPE_PAIRS
 from newton._src.solvers.kamino.models.builders import testing
-from newton._src.solvers.kamino.simulation.simulator import Simulator, SimulatorSettings
 from newton._src.solvers.kamino.utils import logger as msg
-from newton._src.solvers.kamino.utils.datalog import SimulationLogger
-from newton._src.solvers.kamino.viewer import ViewerKamino
-
-###
-# Module configs
-###
-
-wp.set_module_options({"enable_backward": False})
-
-
-###
-# Kernels
-###
-
-
-@wp.kernel
-def _test_control_callback(
-    state_t: wp.array(dtype=float32),
-    control_tau_j: wp.array(dtype=float32),
-):
-    """
-    An example control callback kernel.
-    """
-    # Set world index
-    wid = int(0)
-
-    # Define the time window for the active external force profile
-    t_start = float32(1.0)
-    t_end = float32(3.0)
-
-    # Get the current time
-    t = state_t[wid]
-
-    # Apply a time-dependent external force
-    if t > t_start and t < t_end:
-        control_tau_j[0] = 1.0
-    else:
-        control_tau_j[0] = 0.0
-
-
-###
-# Launchers
-###
-
-
-def test_control_callback(sim: Simulator):
-    """
-    A control callback function
-    """
-    wp.launch(
-        _test_control_callback,
-        dim=1,
-        inputs=[
-            sim.data.solver.time.time,
-            sim.data.control_n.tau_j,
-        ],
-    )
-
+from newton._src.solvers.kamino.utils.sim import SimulationLogger, Simulator, SimulatorSettings, ViewerKamino
 
 ###
 # Example class
@@ -180,10 +121,10 @@ class Example:
         # Set solver settings
         settings = SimulatorSettings()
         settings.dt = 0.001
-        settings.solver.primal_tolerance = 1e-6
-        settings.solver.dual_tolerance = 1e-6
-        settings.solver.compl_tolerance = 1e-6
-        settings.solver.rho_0 = 0.1
+        settings.solver.padmm.primal_tolerance = 1e-6
+        settings.solver.padmm.dual_tolerance = 1e-6
+        settings.solver.padmm.compl_tolerance = 1e-6
+        settings.solver.padmm.rho_0 = 0.1
         settings.collision_detector.pipeline = cd_pipeline
 
         # Create a simulator

@@ -43,7 +43,7 @@ Typical usage example:
     # containers to hold joint-limits, contacts, Jacobians
     model = builder.finalize()
     data = model.data()
-    limits = Limits(builder)
+    limits = Limits(model)
     contacts = Contacts(builder)
     jacobians = DenseSystemJacobians(model, limits, contacts)
 
@@ -81,9 +81,9 @@ from ..core.types import (
     vec6f,
 )
 from ..dynamics.delassus import DelassusOperator
-from ..geometry.contacts import Contacts, ContactsData
-from ..kinematics.jacobians import DenseSystemJacobians, DenseSystemJacobiansData
-from ..kinematics.limits import Limits, LimitsData
+from ..geometry.contacts import Contacts
+from ..kinematics.jacobians import DenseSystemJacobians
+from ..kinematics.limits import Limits
 from ..linalg import LinearSolverType
 
 ###
@@ -1199,9 +1199,9 @@ class DualProblem:
         self,
         model: Model,
         data: ModelData,
-        limits: LimitsData,
-        contacts: ContactsData,
-        jacobians: DenseSystemJacobiansData,
+        jacobians: DenseSystemJacobians,
+        limits: Limits | None = None,
+        contacts: Contacts | None = None,
         reset_to_zero: bool = True,
     ):
         """
@@ -1239,8 +1239,8 @@ class DualProblem:
                 model.info.num_bodies,
                 model.info.bodies_offset,
                 data.bodies.u_i,
-                jacobians.J_cts_offsets,
-                jacobians.J_cts_data,
+                jacobians.data.J_cts_offsets,
+                jacobians.data.J_cts_data,
                 self._data.dim,
                 self._data.vio,
                 self._data.u_f,
@@ -1337,8 +1337,8 @@ class DualProblem:
         self,
         model: Model,
         data: ModelData,
-        limits: LimitsData,
-        contacts: ContactsData,
+        limits: Limits | None = None,
+        contacts: Contacts | None = None,
     ):
         """
         Builds the free-velocity bias vector `v_b`.
@@ -1363,7 +1363,7 @@ class DualProblem:
                 ],
             )
 
-        if limits.model_max_limits_host > 0:
+        if limits is not None and limits.model_max_limits_host > 0:
             wp.launch(
                 _build_free_velocity_bias_limits,
                 dim=limits.model_max_limits_host,
@@ -1383,7 +1383,7 @@ class DualProblem:
                 ],
             )
 
-        if contacts.model_max_contacts_host > 0:
+        if contacts is not None and contacts.model_max_contacts_host > 0:
             wp.launch(
                 _build_free_velocity_bias_contacts,
                 dim=contacts.model_max_contacts_host,

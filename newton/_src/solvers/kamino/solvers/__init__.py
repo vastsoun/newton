@@ -16,7 +16,7 @@
 """Numerical Solvers for Constraint Rigid Multi-Body Kinematics & Dynamics"""
 
 from .fk import ForwardKinematicsSolver, ForwardKinematicsSolverSettings, ForwardKinematicsSolverStatus
-from .padmm import PADMMSettings, PADMMSolver
+from .padmm import PADMMSettings, PADMMSolver, PADMMWarmStartMode
 
 ###
 # Module interface
@@ -28,4 +28,5 @@ __all__ = [
     "ForwardKinematicsSolverStatus",
     "PADMMSettings",
     "PADMMSolver",
+    "PADMMWarmStartMode",
 ]

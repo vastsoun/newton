@@ -20,7 +20,6 @@ from dataclasses import dataclass, field
 import warp as wp
 from warp.context import Devicelike
 
-from ..core.builder import ModelBuilder
 from ..core.joints import JointDoFType
 from ..core.math import (
     FLOAT32_MAX,
@@ -599,7 +598,7 @@ class Limits:
 
     def __init__(
         self,
-        builder: ModelBuilder | None = None,
+        model: Model | None = None,
         device: Devicelike = None,
     ):
         # The device on which to allocate the limits data
@@ -609,8 +608,8 @@ class Limits:
         self._data: LimitsData = LimitsData()
 
         # Perform memory allocation if max_limits is specified
-        if builder is not None:
-            self.finalize(builder=builder, device=device)
+        if model is not None:
+            self.finalize(model=model, device=device)
 
     ###
     # Properties
@@ -778,25 +777,32 @@ class Limits:
     # Operations
     ###
 
-    def finalize(self, builder: ModelBuilder, device: Devicelike = None):
-        # Ensure the builder is valid
-        if builder is None:
-            raise ValueError("Limits: builder must be specified for allocation (got None)")
-        elif not isinstance(builder, ModelBuilder):
-            raise TypeError("Limits: builder must be an instance of ModelBuilder")
+    def finalize(self, model: Model, device: Devicelike = None):
+        # Ensure the model is valid
+        if model is None:
+            raise ValueError("Limits: model must be specified for allocation (got None)")
+        elif not isinstance(model, Model):
+            raise TypeError("Limits: model must be an instance of Model")
 
-        # Extract the joint limits allocation sizes from the builder
+        # Extract the joint limits allocation sizes from the model
         # The memory allocation requires the total number of limits (over multiple worlds)
         # as well as the limit capacities for each world. Corresponding sizes are defaulted to 0 (empty).
         model_max_limits = 0
-        world_max_limits = [0] * builder.num_worlds
-        for _j, joint in enumerate(builder.joints):
-            for dof in range(joint.num_dofs):
-                # Check if the joint has finite generalized coordinate limits
-                if joint.q_j_min[dof] > float(FLOAT32_MIN) or joint.q_j_max[dof] < float(FLOAT32_MAX):
+        world_max_limits = [0] * model.size.num_worlds
+        floatmin = float(FLOAT32_MIN)
+        floatmax = float(FLOAT32_MAX)
+        joint_wid = model.joints.wid.numpy()
+        joint_num_dofs = model.joints.num_dofs.numpy()
+        joint_q_j_min = model.joints.q_j_min.numpy()
+        joint_q_j_max = model.joints.q_j_max.numpy()
+        num_joints = len(joint_wid)
+        dofs_start = 0
+        for j in range(num_joints):
+            for dof in range(joint_num_dofs[j]):
+                if joint_q_j_min[dofs_start + dof] > floatmin or joint_q_j_max[dofs_start + dof] < floatmax:
                     model_max_limits += 1
-                    world_max_limits[joint.wid] += 1
-                # TODO: handle generalized velocity and force limits (?)
+                    world_max_limits[joint_wid[j]] += 1
+            dofs_start += joint_num_dofs[j]
 
         # Skip allocation if there are no limits to allocate
         if model_max_limits == 0:

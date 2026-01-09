@@ -770,7 +770,7 @@ class WarmstarterLimits:
     Provides a unified mechanism for warm-starting unilateral limit constraints.
     """
 
-    def __init__(self, limits: Limits):
+    def __init__(self, limits: Limits | None = None):
         """
         Initializes the limits warmstarter using the allocations of the provided limits container.
 
@@ -778,13 +778,13 @@ class WarmstarterLimits:
             limits (Limits): The limits container whose allocations are used to initialize the warmstarter.
         """
         # Store the device of the provided contacts container
-        self._device: Devicelike = limits.device
+        self._device: Devicelike = limits.device if limits is not None else None
 
         # Declare the internal limits cache
         self._cache: LimitsData | None = None
 
         # Check if the limits container has allocations and skip cache allocations if not
-        if limits.model_max_limits_host <= 0:
+        if limits is None or (limits is not None and limits.model_max_limits_host <= 0):
             return
 
         # Allocate contact data cache based on the those of the provided contacts container
@@ -837,15 +837,15 @@ class WarmstarterLimits:
             limits=limits.data,
         )
 
-    def update(self, limits: Limits):
+    def update(self, limits: Limits | None = None):
         """
         Updates the warmstarter's internal cache with the provided limits data.
 
         Args:
             limits (Limits): The limits container from which to update the cache.
         """
-        # Early exit if no cache is allocated
-        if self._cache is None:
+        # Early exit if no cache is allocated or no limits data is provided
+        if self._cache is None or limits is None:
             return
 
         # Otherwise, copy over the limits data to the internal cache
@@ -915,7 +915,7 @@ class WarmstarterContacts:
 
     def __init__(
         self,
-        contacts: Contacts,
+        contacts: Contacts | None = None,
         method: Method = Method.KEY_AND_POSITION,
         tolerance: float = 1e-5,
         scaling: float = 1.0,
@@ -939,13 +939,13 @@ class WarmstarterContacts:
         self._scaling: float32 = float32(scaling)
 
         # Set the device to use as that of the provided contacts container
-        self._device: Devicelike = contacts.device
+        self._device: Devicelike = contacts.device if contacts is not None else None
 
         # Declare the internal contacts cache
         self._cache: ContactsData | None = None
 
         # Check if the contacts container has allocations and skip cache allocations if not
-        if contacts.model_max_contacts_host <= 0:
+        if contacts is None or (contacts is not None and contacts.model_max_contacts_host <= 0):
             return
 
         # Allocate contact data cache based on the those of the provided contacts container
@@ -1046,15 +1046,15 @@ class WarmstarterContacts:
                     "  - KEY_AND_POSITION_WITH_NET_WRENCH_BACKUP (4)."
                 )
 
-    def update(self, contacts: Contacts):
+    def update(self, contacts: Contacts | None = None):
         """
         Updates the warmstarter's internal cache with the provided contacts data.
 
         Args:
             contacts (Contacts): The contacts container from which to update the cache.
         """
-        # Early exit if no cache is allocated
-        if self._cache is None:
+        # Early exit if no cache is allocated or no contacts data is provided
+        if self._cache is None or contacts is None:
             return
 
         # Otherwise, copy over the contacts data to the internal cache

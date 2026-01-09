@@ -18,25 +18,74 @@ import os
 
 import numpy as np
 import warp as wp
+from scipy.spatial.transform import Rotation
 from warp.context import Devicelike
 
 import newton
 import newton.examples
 from newton._src.solvers.kamino.core.builder import ModelBuilder
+from newton._src.solvers.kamino.core.types import float32, int32, transformf, vec6f
 from newton._src.solvers.kamino.examples import get_examples_output_path, run_headless
-from newton._src.solvers.kamino.linalg.linear import SolverShorthand as LinearSolverShorthand
 from newton._src.solvers.kamino.models import get_examples_usd_assets_path
 from newton._src.solvers.kamino.models.builders.utils import (
-    add_ground_box,
     make_homogeneous_builder,
     set_uniform_body_pose_offset,
 )
 from newton._src.solvers.kamino.solvers.padmm import PADMMWarmStartMode
 from newton._src.solvers.kamino.solvers.warmstart import WarmstarterContacts
 from newton._src.solvers.kamino.utils import logger as msg
-from newton._src.solvers.kamino.utils.control import AnimationJointReference, JointSpacePIDController
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
-from newton._src.solvers.kamino.utils.sim import SimulationLogger, Simulator, SimulatorSettings, ViewerKamino
+from newton._src.solvers.kamino.utils.sim import ViewerKamino
+from newton._src.solvers.kamino.utils.sim.simulator import Simulator, SimulatorSettings
+
+###
+# Kernels
+###
+
+
+@wp.kernel
+def _test_control_callback(
+    sim_has_started_resets: wp.bool,
+    sim_reset_index: int32,
+    actuated_joint_idx: wp.array(dtype=int32),
+    state_t: wp.array(dtype=float32),
+    control_tau_j: wp.array(dtype=float32),
+):
+    """
+    An example control callback kernel.
+    """
+    # Skip if no joint is selected for actuation
+    if not sim_has_started_resets:
+        return
+
+    # Hack to handle negative reset index
+    if sim_reset_index < 0:
+        sim_reset_index = actuated_joint_idx.size - 1
+
+    # Define the time window for the active external force profile
+    t_start = float32(0.0)
+    t_end = float32(0.5)
+
+    # Get the current time
+    t = state_t[0]
+
+    # Add-hoc torque magnitude based on the selected joint
+    # because we want higher actuation for the two hip joints
+    if sim_reset_index == 0 or sim_reset_index == 6:
+        torque = 0.1
+    else:
+        torque = 0.01
+
+    # Reverse torque direction for the first leg
+    if sim_reset_index < 6:
+        torque = -torque
+
+    # Apply a time-dependent external force
+    if t >= t_start and t < t_end:
+        control_tau_j[actuated_joint_idx[sim_reset_index]] = torque
+    else:
+        control_tau_j[actuated_joint_idx[sim_reset_index]] = 0.0
+
 
 ###
 # Example class
@@ -50,11 +99,7 @@ class Example:
         num_worlds: int = 1,
         max_steps: int = 1000,
         use_cuda_graph: bool = False,
-        gravity: bool = True,
-        ground: bool = True,
         logging: bool = False,
-        linear_solver: str = "LLTB",
-        linear_solver_maxiter: int = 0,
         headless: bool = False,
         record_video: bool = False,
         async_save: bool = False,
@@ -65,6 +110,12 @@ class Example:
         self.frame_dt = 1.0 / self.fps
         self.sim_substeps = max(1, round(self.frame_dt / self.sim_dt))
         self.max_steps = max_steps
+
+        # Define internal counters
+        self.sim_steps = 0
+        self.sim_reset_index = -1
+        self.sim_reset_mode = 5
+        self.sim_has_started_resets = False
 
         # Cache the device and other internal flags
         self.device = device
@@ -88,17 +139,12 @@ class Example:
 
         # Offset the model to place it above the ground
         # NOTE: The USD model is centered at the origin
-        offset = wp.transformf(0.0, 0.0, 0.265, 0.0, 0.0, 0.0, 1.0)
-        set_uniform_body_pose_offset(builder=self.builder, offset=offset)
-
-        # Add a static collision layer and geometry for the plane
-        if ground:
-            for w in range(num_worlds):
-                add_ground_box(self.builder, world_index=w, layer="world")
+        q_base = wp.transformf((0.0, 0.0, 0.265), wp.quat_identity(dtype=float32))
+        set_uniform_body_pose_offset(builder=self.builder, offset=q_base)
 
         # Set gravity
         for w in range(self.builder.num_worlds):
-            self.builder.gravity[w].enabled = gravity
+            self.builder.gravity[w].enabled = False
 
         # Set solver settings
         settings = SimulatorSettings()
@@ -114,77 +160,48 @@ class Example:
         settings.solver.warmstart_mode = PADMMWarmStartMode.CONTAINERS
         settings.solver.contact_warmstart_method = WarmstarterContacts.Method.GEOM_PAIR_NET_FORCE
         settings.solver.collect_solver_info = False
-        settings.solver.compute_metrics = logging and not use_cuda_graph
-        linear_solver_cls = {v: k for k, v in LinearSolverShorthand.items()}[linear_solver.upper()]
-        settings.solver.linear_solver_type = linear_solver_cls
-        settings.solver.linear_solver_kwargs = {"maxiter": linear_solver_maxiter} if linear_solver_maxiter > 0 else {}
+        settings.solver.compute_metrics = True
 
         # Create a simulator
         msg.notif("Building the simulator...")
         self.sim = Simulator(builder=self.builder, settings=settings, device=device)
 
-        # Load animation data for dr_legs
-        NUMPY_ANIMATION_PATH = os.path.join(EXAMPLE_ASSETS_PATH, "dr_legs/animation/dr_legs_animation_100fps.npy")
-        animation_np = np.load(NUMPY_ANIMATION_PATH, allow_pickle=True)
-        msg.debug("animation_np (shape={%s}):\n{%s}\n", animation_np.shape, animation_np)
+        # Create a list of actuated joint indices from the model and builder
+        self.actuated_joint_idx_np = np.zeros(shape=(self.sim.model.size.sum_of_num_actuated_joints,), dtype=np.int32)
+        jidx = 0
+        for j, joint in enumerate(self.builder.joints):
+            if joint.is_actuated:
+                self.actuated_joint_idx_np[jidx] = j
+                jidx += 1
+        msg.warning("actuated_joint_idx_np: %s", self.actuated_joint_idx_np)
+        msg.warning("actuated_joint_names:\n%s", self.builder.worlds[0].actuated_joint_names)
 
-        # Compute animation time step and rate
-        animation_dt = 0.01  # 100 fps
-        animation_rate = round(animation_dt / settings.dt)
-        msg.info(f"animation_dt: {animation_dt}")
-        msg.info(f"animation_rate: {animation_rate}")
+        # Allocate utility arrays for resetting
+        with wp.ScopedDevice(self.device):
+            self.base_q = wp.zeros(shape=(self.sim.model.size.num_worlds,), dtype=transformf)
+            self.base_u = wp.zeros(shape=(self.sim.model.size.num_worlds,), dtype=vec6f)
+            self.joint_q = wp.zeros(shape=(self.sim.model.size.sum_of_num_joint_coords,), dtype=float32)
+            self.joint_u = wp.zeros(shape=(self.sim.model.size.sum_of_num_joint_dofs,), dtype=float32)
+            self.actuator_q = wp.zeros(shape=(self.sim.model.size.sum_of_num_actuated_joint_coords,), dtype=float32)
+            self.actuator_u = wp.zeros(shape=(self.sim.model.size.sum_of_num_actuated_joint_dofs,), dtype=float32)
+            self.actuated_joint_idx = wp.array(self.actuated_joint_idx_np, dtype=int32)
 
-        # Create a joint-space animation reference generator
-        self.animation = AnimationJointReference(
-            model=self.sim.model,
-            data=animation_np,
-            data_dt=animation_dt,
-            target_dt=settings.dt,
-            decimation=1,
-            rate=1,
-            loop=False,
-            use_fd=True,
-            device=device,
-        )
-
-        # Create a joint-space PID controller
-        njaq = self.sim.model.size.sum_of_num_actuated_joint_dofs
-        K_p = 80.0 * np.ones(njaq, dtype=np.float32)
-        K_d = 0.1 * np.ones(njaq, dtype=np.float32)
-        K_i = 0.01 * np.ones(njaq, dtype=np.float32)
-        decimation = 1 * np.ones(self.sim.model.size.num_worlds, dtype=np.int32)
-        self.controller = JointSpacePIDController(
-            model=self.sim.model, K_p=K_p, K_i=K_i, K_d=K_d, decimation=decimation, device=device
-        )
-
-        # Define a callback function to reset the controller
-        def reset_jointspace_pid_control_callback(simulator: Simulator):
-            self.controller.reset(model=simulator.model, state=simulator.state)
-            self.animation.reset(q_j_ref_out=self.controller.data.q_j_ref, dq_j_ref_out=self.controller.data.dq_j_ref)
-
-        # Define a callback function to wrap the execution of the controller
-        def compute_jointspace_pid_control_callback(simulator: Simulator):
-            self.animation.step(
-                time=simulator.solver.data.time,
-                q_j_ref_out=self.controller.data.q_j_ref,
-                dq_j_ref_out=self.controller.data.dq_j_ref,
-            )
-            self.controller.compute(
-                model=simulator.model,
-                state=simulator.state,
-                time=simulator.solver.data.time,
-                control=simulator.control,
+        # Define the control callback function that will actuate a single joint
+        def test_control_callback(sim: Simulator):
+            wp.launch(
+                _test_control_callback,
+                dim=1,
+                inputs=[
+                    self.sim_has_started_resets,
+                    self.sim_reset_index,
+                    self.actuated_joint_idx,
+                    sim.solver.data.time.time,
+                    sim.data.control.tau_j,
+                ],
             )
 
-        # Set the reference tracking generation & control callbacks into the simulator
-        self.sim.set_post_reset_callback(reset_jointspace_pid_control_callback)
-        self.sim.set_control_callback(compute_jointspace_pid_control_callback)
-
-        # Initialize the data logger
-        self.logger: SimulationLogger | None = None
-        if self.logging:
-            msg.notif("Creating the sim data logger...")
-            self.logger = SimulationLogger(self.max_steps, self.sim, self.builder, self.controller)
+        # Set the test control callback into the simulator
+        self.sim.set_control_callback(test_control_callback)
 
         # Initialize the 3D viewer
         self.viewer: ViewerKamino | None = None
@@ -193,7 +210,7 @@ class Example:
             # Set up video recording folder
             video_folder = None
             if record_video:
-                video_folder = os.path.join(get_examples_output_path(), "dr_legs/frames")
+                video_folder = os.path.join(get_examples_output_path(), "reset_dr_legs/frames")
                 os.makedirs(video_folder, exist_ok=True)
                 msg.info(f"Frame recording enabled ({'async' if async_save else 'sync'} mode)")
                 msg.info(f"Frames will be saved to: {video_folder}")
@@ -241,8 +258,7 @@ class Example:
         """Run simulation substeps."""
         for _i in range(self.sim_substeps):
             self.sim.step()
-            if not self.use_cuda_graph and self.logging:
-                self.logger.log()
+            self.sim_steps += 1
 
     def reset(self):
         """Reset the simulation."""
@@ -250,9 +266,6 @@ class Example:
             wp.capture_launch(self.reset_graph)
         else:
             self.sim.reset()
-        if not self.use_cuda_graph and self.logging:
-            self.logger.reset()
-            self.logger.log()
 
     def step_once(self):
         """Run the simulation for a single time-step."""
@@ -260,8 +273,19 @@ class Example:
             wp.capture_launch(self.step_graph)
         else:
             self.sim.step()
-        if not self.use_cuda_graph and self.logging:
-            self.logger.log()
+
+    def update_reset_config(self):
+        """Update the reset configuration based on the current reset index and mode."""
+        self.sim.data.control.tau_j.zero_()
+        self.sim_has_started_resets = True
+        self.sim_steps = 0
+        self.sim_reset_index = (self.sim_reset_index + 1) % len(self.actuated_joint_idx)
+        # If all joints have been cycled through, proceed to the next reset mode
+        if self.sim_reset_index == len(self.actuated_joint_idx) - 1:
+            self.sim_reset_mode = (self.sim_reset_mode + 1) % 5
+            self.sim_reset_index = -1
+        msg.warning(f"Next sim_reset_index: {self.sim_reset_index}")
+        msg.warning(f"Next sim_reset_mode: {self.sim_reset_mode}")
 
     def step(self):
         """Step the simulation."""
@@ -269,6 +293,111 @@ class Example:
             wp.capture_launch(self.simulate_graph)
         else:
             self.simulate()
+
+        # Demo of resetting to the default state defined in the model
+        if self.sim_steps >= self.max_steps and self.sim_reset_mode == 0:
+            msg.notif("Resetting to default model state...")
+            self.update_reset_config()
+            self.sim.reset()
+
+        # Demo of resetting only the base pose
+        if self.sim_steps >= self.max_steps and self.sim_reset_mode == 1:
+            msg.notif("Resetting with base pose...")
+            self.update_reset_config()
+            R_b = Rotation.from_rotvec(np.pi / 4 * np.array([0, 0, 1]))
+            q_b = R_b.as_quat()  # x, y, z, w
+            q_base = wp.transformf((0.1, 0.1, 0.3), q_b)
+            self.base_q.assign([q_base] * self.sim.model.size.num_worlds)
+            self.sim.reset(base_q=self.base_q)
+
+        # Demo of resetting the base pose and twist
+        if self.sim_steps >= self.max_steps and self.sim_reset_mode == 2:
+            msg.notif("Resetting with base pose and twist...")
+            self.update_reset_config()
+            R_b = Rotation.from_rotvec(np.pi / 4 * np.array([0, 0, 1]))
+            q_b = R_b.as_quat()  # x, y, z, w
+            q_base = wp.transformf((0.1, 0.1, 0.3), q_b)
+            self.base_q.assign([q_base] * self.sim.model.size.num_worlds)
+            self.sim.reset(base_q=self.base_q, base_u=self.base_u)
+
+        # Demo of resetting the base state and joint configurations
+        # NOTE: This will invoke the FK solver to update body poses
+        if self.sim_steps >= self.max_steps and self.sim_reset_mode == 3:
+            msg.notif("Resetting with base pose and joint configurations...")
+            self.update_reset_config()
+            R_b = Rotation.from_rotvec(np.pi / 4 * np.array([0, 0, 1]))
+            q_b = R_b.as_quat()  # x, y, z, w
+            q_base = wp.transformf((0.1, 0.1, 0.3), q_b)
+            self.base_q.assign([q_base] * self.sim.model.size.num_worlds)
+            joint_q_np = np.zeros(self.sim.model.size.sum_of_num_joint_coords, dtype=np.float32)
+            self.joint_q.assign(joint_q_np)
+            self.sim.reset(base_q=self.base_q, base_u=self.base_u, joint_q=self.joint_q, joint_u=self.joint_u)
+
+        # Demo of resetting the base state and joint configurations to specific poses
+        # NOTE: This will invoke the FK solver to update body poses
+        if self.sim_steps >= self.max_steps and self.sim_reset_mode == 4:
+            msg.notif("Resetting with base pose and specific joint configurations...")
+            self.update_reset_config()
+            msg.warning(f"Resetting joint {self.actuated_joint_idx_np[self.sim_reset_index]}...")
+            R_b = Rotation.from_rotvec(np.pi / 4 * np.array([0, 0, 1]))
+            q_b = R_b.as_quat()  # x, y, z, w
+            q_base = wp.transformf((0.1, 0.1, 0.3), q_b)
+            self.base_q.assign([q_base] * self.sim.model.size.num_worlds)
+            actuated_joint_config = np.array(
+                [
+                    np.pi / 12,
+                    np.pi / 12,
+                    np.pi / 12,
+                    np.pi / 12,
+                    np.pi / 12,
+                    np.pi / 12,
+                    -np.pi / 12,
+                    -np.pi / 12,
+                    -np.pi / 12,
+                    -np.pi / 12,
+                    -np.pi / 12,
+                    -np.pi / 12,
+                ],
+                dtype=np.float32,
+            )
+            joint_q_np = np.zeros(self.sim.model.size.sum_of_num_joint_coords, dtype=np.float32)
+            joint_q_np[self.actuated_joint_idx_np[self.sim_reset_index]] = actuated_joint_config[self.sim_reset_index]
+            self.joint_q.assign(joint_q_np)
+            self.sim.reset(base_q=self.base_q, base_u=self.base_u, joint_q=self.joint_q, joint_u=self.joint_u)
+
+        # Demo of resetting the base state and joint configurations to specific poses
+        # NOTE: This will invoke the FK solver to update body poses
+        if self.sim_steps >= self.max_steps and self.sim_reset_mode == 5:
+            msg.notif("Resetting with base pose and specific actuator configurations...")
+            self.update_reset_config()
+            msg.warning(f"Resetting joint {self.actuated_joint_idx_np[self.sim_reset_index]}...")
+            R_b = Rotation.from_rotvec(np.pi / 4 * np.array([0, 0, 1]))
+            q_b = R_b.as_quat()  # x, y, z, w
+            q_base = wp.transformf((0.1, 0.1, 0.3), q_b)
+            self.base_q.assign([q_base] * self.sim.model.size.num_worlds)
+            actuated_joint_config = np.array(
+                [
+                    np.pi / 12,
+                    np.pi / 12,
+                    np.pi / 12,
+                    np.pi / 12,
+                    np.pi / 12,
+                    np.pi / 12,
+                    -np.pi / 12,
+                    -np.pi / 12,
+                    -np.pi / 12,
+                    -np.pi / 12,
+                    -np.pi / 12,
+                    -np.pi / 12,
+                ],
+                dtype=np.float32,
+            )
+            actuator_q_np = np.zeros(self.sim.model.size.sum_of_num_actuated_joint_coords, dtype=np.float32)
+            actuator_q_np[self.sim_reset_index] = actuated_joint_config[self.sim_reset_index]
+            self.actuator_q.assign(actuator_q_np)
+            self.sim.reset(
+                base_q=self.base_q, base_u=self.base_u, actuator_q=self.actuator_q, actuator_u=self.actuator_u
+            )
 
     def render(self):
         """Render the current frame."""
@@ -279,7 +408,7 @@ class Example:
         """Test function for compatibility."""
         pass
 
-    def plot(self, path: str | None = None, show: bool = False, keep_frames: bool = False):
+    def plot(self, path: str | None = None, keep_frames: bool = False):
         """
         Plot logged data and generate video from recorded frames.
 
@@ -288,16 +417,6 @@ class Example:
             show: If True, display plots after saving
             keep_frames: If True, keep PNG frames after video creation
         """
-        # Plot the animation sequence references
-        animation_path = os.path.join(path, "animation_references.png") if path is not None else None
-        self.animation.plot(path=animation_path, show=show)
-
-        # Optionally plot the logged simulation data
-        if self.logging:
-            self.logger.plot_solver_info(path=path, show=show)
-            self.logger.plot_joint_tracking(path=path, show=show)
-            self.logger.plot_solution_metrics(path=path, show=show)
-
         # Optionally generate video from recorded frames
         if self.viewer is not None and self.viewer._record_video:
             output_dir = path if path is not None else self.viewer._video_folder
@@ -315,21 +434,9 @@ if __name__ == "__main__":
     parser.add_argument("--device", type=str, help="The compute device to use")
     parser.add_argument("--headless", action=argparse.BooleanOptionalAction, default=False, help="Run in headless mode")
     parser.add_argument("--num-worlds", type=int, default=1, help="Number of worlds to simulate in parallel")
-    parser.add_argument("--num-steps", type=int, default=1000, help="Number of steps for headless mode")
-    parser.add_argument(
-        "--gravity", action=argparse.BooleanOptionalAction, default=True, help="Enables gravity in the simulation"
-    )
-    parser.add_argument(
-        "--ground", action=argparse.BooleanOptionalAction, default=True, help="Adds a ground plane to the simulation"
-    )
+    parser.add_argument("--num-steps", type=int, default=200, help="Number of steps for headless mode")
     parser.add_argument("--cuda-graph", action=argparse.BooleanOptionalAction, default=True, help="Use CUDA graphs")
     parser.add_argument("--clear-cache", action=argparse.BooleanOptionalAction, default=False, help="Clear warp cache")
-    parser.add_argument(
-        "--logging", action=argparse.BooleanOptionalAction, default=True, help="Enable logging of simulation data"
-    )
-    parser.add_argument(
-        "--show-plots", action=argparse.BooleanOptionalAction, default=False, help="Show plots of logging data"
-    )
     parser.add_argument("--test", action=argparse.BooleanOptionalAction, default=False, help="Run tests")
     parser.add_argument(
         "--record",
@@ -337,16 +444,6 @@ if __name__ == "__main__":
         choices=["sync", "async"],
         default=None,
         help="Enable frame recording: 'sync' for synchronous, 'async' for asynchronous (non-blocking)",
-    )
-    parser.add_argument(
-        "--linear-solver",
-        default="LLTB",
-        choices=LinearSolverShorthand.values(),
-        type=str.upper,
-        help="Linear solver to use",
-    )
-    parser.add_argument(
-        "--linear-solver-maxiter", default=0, type=int, help="Max number of iterations for iterative linear solvers"
     )
     args = parser.parse_args()
 
@@ -381,13 +478,8 @@ if __name__ == "__main__":
         device=device,
         use_cuda_graph=use_cuda_graph,
         num_worlds=args.num_worlds,
-        linear_solver=args.linear_solver,
-        linear_solver_maxiter=args.linear_solver_maxiter,
         max_steps=args.num_steps,
-        gravity=args.gravity,
-        ground=args.ground,
         headless=args.headless,
-        logging=args.logging,
         record_video=args.record is not None and not args.headless,
         async_save=args.record == "async",
     )
@@ -411,7 +503,7 @@ if __name__ == "__main__":
         newton.examples.run(example, args)
 
     # Plot logged data after the viewer is closed
-    if args.logging or args.record:
-        OUTPUT_PLOT_PATH = os.path.join(get_examples_output_path(), "dr_legs")
+    if args.record:
+        OUTPUT_PLOT_PATH = os.path.join(get_examples_output_path(), "reset_dr_legs")
         os.makedirs(OUTPUT_PLOT_PATH, exist_ok=True)
-        example.plot(path=OUTPUT_PLOT_PATH, show=args.show_plots)
+        example.plot(path=OUTPUT_PLOT_PATH)

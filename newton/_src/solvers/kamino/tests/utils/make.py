@@ -29,7 +29,7 @@ from newton._src.solvers.kamino.kinematics.constraints import make_unilateral_co
 from newton._src.solvers.kamino.kinematics.jacobians import DenseSystemJacobians
 from newton._src.solvers.kamino.kinematics.joints import compute_joints_data
 from newton._src.solvers.kamino.kinematics.limits import Limits
-from newton._src.solvers.kamino.simulation.simulator import Simulator
+from newton._src.solvers.kamino.utils.sim import Simulator
 
 ###
 # Helper functions
@@ -124,7 +124,7 @@ def make_containers(
     data = model.data(device=device)
 
     # Create the limits container
-    limits = Limits(builder=builder, device=device)
+    limits = Limits(model=model, device=device)
 
     # Create the collision detector
     settings = CollisionDetectorSettings(max_contacts_per_world=max_world_contacts, pipeline="primitive")

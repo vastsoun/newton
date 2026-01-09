@@ -27,11 +27,9 @@ import newton.examples
 from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.examples import get_examples_output_path, run_headless
 from newton._src.solvers.kamino.models.builders.utils import add_ground_box, make_homogeneous_builder
-from newton._src.solvers.kamino.simulation.simulator import Simulator, SimulatorSettings
 from newton._src.solvers.kamino.utils import logger as msg
-from newton._src.solvers.kamino.utils.datalog import SimulationLogger
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
-from newton._src.solvers.kamino.viewer import ViewerKamino
+from newton._src.solvers.kamino.utils.sim import SimulationLogger, Simulator, SimulatorSettings, ViewerKamino
 
 ###
 # Example class
@@ -86,13 +84,13 @@ class Example:
         # Set solver settings
         settings = SimulatorSettings()
         settings.dt = self.sim_dt
-        settings.problem.alpha = 0.1
-        settings.solver.primal_tolerance = 1e-6
-        settings.solver.dual_tolerance = 1e-6
-        settings.solver.compl_tolerance = 1e-6
-        settings.solver.max_iterations = 200
-        settings.solver.rho_0 = 0.05
-        settings.compute_metrics = logging and not use_cuda_graph
+        settings.solver.problem.alpha = 0.1
+        settings.solver.padmm.primal_tolerance = 1e-6
+        settings.solver.padmm.dual_tolerance = 1e-6
+        settings.solver.padmm.compl_tolerance = 1e-6
+        settings.solver.padmm.max_iterations = 200
+        settings.solver.padmm.rho_0 = 0.05
+        settings.solver.compute_metrics = logging and not use_cuda_graph
 
         # Create a simulator
         msg.notif("Building the simulator...")

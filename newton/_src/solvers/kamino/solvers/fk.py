@@ -1169,15 +1169,15 @@ class ForwardKinematicsSolverSettings:
     Host-side class to store settings for the forward kinematics solve.
     """
 
-    max_newton_iterations: wp.int32 = 30
+    max_newton_iterations: int = 30
     """Maximal number of Gauss-Newton iterations (default: 30).
        Changes to this setting after the solver's initialization will have no effect."""
 
-    max_line_search_iterations: wp.int32 = 20
+    max_line_search_iterations: int = 20
     """Maximal line search iterations in the inner loop (default: 20).
        Changes to this setting after the solver's initialization will have no effect."""
 
-    tolerance: wp.float32 = 1e-6
+    tolerance: float = 1e-6
     """Maximal absolute kinematic constraint value that is acceptable at the solution (default: 1e-6).
        Changes to this setting after the solver's initialization will have no effect."""
 
@@ -1185,13 +1185,35 @@ class ForwardKinematicsSolverSettings:
     """Whether to reset the state to initial states, to use as initial guess (default: True).
        Changes to this setting after graph capture will have no effect."""
 
-    TILE_SIZE_CTS: wp.int32 = 8
+    TILE_SIZE_CTS: int = 8
     """Tile size for kernels along the dimension of kinematic constraints (default: 8).
        Changes to this setting after the solver's initialization will have no effect."""
 
-    TILE_SIZE_VRS: wp.int32 = 8
+    TILE_SIZE_VRS: int = 8
     """Tile size for kernels along the dimension of rigid body pose variables (default: 8).
        Changes to this setting after the solver's initialization will have no effect."""
+
+    def check(self):
+        """
+        Checks that the settings are valid.
+
+        Raises:
+            ValueError: If any of the settings is invalid.
+        """
+        if self.max_newton_iterations <= 0:
+            raise ValueError("`max_newton_iterations` must be positive.")
+        if self.max_line_search_iterations <= 0:
+            raise ValueError("`max_line_search_iterations` must be positive.")
+        if self.tolerance <= 0.0:
+            raise ValueError("`tolerance` must be positive.")
+        if self.TILE_SIZE_CTS <= 0:
+            raise ValueError("`TILE_SIZE_CTS` must be positive.")
+        if self.TILE_SIZE_VRS <= 0:
+            raise ValueError("`TILE_SIZE_VRS` must be positive.")
+
+    def __post_init__(self):
+        """Post-initialization hook to check settings validity."""
+        self.check()
 
 
 @dataclass
@@ -1299,18 +1321,18 @@ class ForwardKinematicsSolver:
         self.num_states_max = 7 * self.num_bodies_max  # Max state dimension across worlds
 
         # Retrieve / compute dimensions - Joints (main model)
-        num_joints_prev = self.model.info.num_joints.numpy()  # Number of joints per world
+        num_joints_prev = self.model.info.num_joints.numpy().copy()  # Number of joints per world
         first_joint_id_prev = np.concatenate(([0], num_joints_prev.cumsum()))  # Index of first joint per world
 
         # Retrieve / compute dimensions - Actuated coordinates (main model)
         num_actuated_coords_prev = (
-            self.model.info.num_actuated_joint_coords.numpy()
+            self.model.info.num_actuated_joint_coords.numpy().copy()
         )  # Number of actuated joint coordinates per world
         first_actuated_coord_prev = np.concatenate(
             ([0], num_actuated_coords_prev.cumsum())
         )  # Index of first actuated coordinate per world
         actuated_coord_offsets_prev = (
-            self.model.joints.actuated_coords_offset.numpy()
+            self.model.joints.actuated_coords_offset.numpy().copy()
         )  # Index of first joint actuated coordinate, among actuated coordinates of a single world
         for wd_id in range(self.num_worlds):  # Convert into offsets among all actuated coordinates
             actuated_coord_offsets_prev[first_joint_id_prev[wd_id] : first_joint_id_prev[wd_id + 1]] += (
@@ -1321,7 +1343,7 @@ class ForwardKinematicsSolver:
 
         # Retrieve / compute dimensions - Actuated dofs (main model)
         num_actuated_dofs_prev = (
-            self.model.info.num_actuated_joint_dofs.numpy()
+            self.model.info.num_actuated_joint_dofs.numpy().copy()
         )  # Number of actuated joint dofs per world
         first_actuated_dof_prev = np.concatenate(
             ([0], num_actuated_dofs_prev.cumsum())
@@ -1337,15 +1359,15 @@ class ForwardKinematicsSolver:
             # but we won't read these values below anyway.
 
         # Create a copy of the model's joints with added actuated free joints as needed to reset the base position/orientation
-        joints_dof_type_prev = self.model.joints.dof_type.numpy()
-        joints_act_type_prev = self.model.joints.act_type.numpy()
-        joints_bid_B_prev = self.model.joints.bid_B.numpy()
-        joints_bid_F_prev = self.model.joints.bid_F.numpy()
-        joints_B_r_Bj_prev = self.model.joints.B_r_Bj.numpy()
-        joints_F_r_Fj_prev = self.model.joints.F_r_Fj.numpy()
-        joints_X_j_prev = self.model.joints.X_j.numpy()
-        joints_num_coords_prev = self.model.joints.num_coords.numpy()
-        joints_num_dofs_prev = self.model.joints.num_dofs.numpy()
+        joints_dof_type_prev = self.model.joints.dof_type.numpy().copy()
+        joints_act_type_prev = self.model.joints.act_type.numpy().copy()
+        joints_bid_B_prev = self.model.joints.bid_B.numpy().copy()
+        joints_bid_F_prev = self.model.joints.bid_F.numpy().copy()
+        joints_B_r_Bj_prev = self.model.joints.B_r_Bj.numpy().copy()
+        joints_F_r_Fj_prev = self.model.joints.F_r_Fj.numpy().copy()
+        joints_X_j_prev = self.model.joints.X_j.numpy().copy()
+        joints_num_coords_prev = self.model.joints.num_coords.numpy().copy()
+        joints_num_dofs_prev = self.model.joints.num_dofs.numpy().copy()
         joints_dof_type = []
         joints_act_type = []
         joints_bid_B = []
@@ -2408,7 +2430,7 @@ class ForwardKinematicsSolver:
             success = self.newton_success.numpy().copy()
             iterations = self.newton_iteration.numpy().copy()
             max_constraints = self.max_constraint.numpy().copy()
-            num_active_worlds = self.num_worlds if world_mask is None else world_mask.sum()
+            num_active_worlds = self.num_worlds if world_mask is None else world_mask.numpy().sum()
             if verbose:
                 sys.__stdout__.write(f"Newton success for {success.sum()}/{num_active_worlds} worlds; ")
                 sys.__stdout__.write(f"num iterations={iterations.max()}; ")

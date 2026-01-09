@@ -151,8 +151,9 @@ def assert_states_close(testcase: unittest.TestCase, state_0: State, state_1: St
 def assert_states_close_masked(
     testcase: unittest.TestCase,
     model: Model,
-    state_n: State,
     state_0: State,
+    state_n: State,
+    state_n_ref: State,
     world_mask: wp.array,
 ):
     testcase.assertIsInstance(model, Model)
@@ -168,31 +169,37 @@ def assert_states_close_masked(
     joint_cts_start = 0
     world_mask_np = world_mask.numpy().copy()
     for wid in range(model.size.num_worlds):
+        # Select reference state based on world mask
         if world_mask_np[wid]:
-            for attr in ["q_i", "u_i", "w_i"]:
-                np.testing.assert_allclose(
-                    getattr(state_n, attr).numpy()[bodies_start : bodies_start + num_bodies_per_world],
-                    getattr(state_0, attr).numpy()[bodies_start : bodies_start + num_bodies_per_world],
-                    rtol=rtol,
-                    atol=atol,
-                    err_msg=f"\nWorld wid={wid}: attribute `{attr}` mismatch:\n",
-                )
-            for attr in ["q_j", "q_j_p", "dq_j"]:
-                np.testing.assert_allclose(
-                    getattr(state_n, attr).numpy()[joint_dofs_start : joint_dofs_start + num_joint_dofs_per_world],
-                    getattr(state_0, attr).numpy()[joint_dofs_start : joint_dofs_start + num_joint_dofs_per_world],
-                    rtol=rtol,
-                    atol=atol,
-                    err_msg=f"\nWorld wid={wid}: attribute `{attr}` mismatch:\n",
-                )
-            for attr in ["lambda_j"]:
-                np.testing.assert_allclose(
-                    getattr(state_n, attr).numpy()[joint_cts_start : joint_cts_start + num_joint_cts_per_world],
-                    getattr(state_0, attr).numpy()[joint_cts_start : joint_cts_start + num_joint_cts_per_world],
-                    rtol=rtol,
-                    atol=atol,
-                    err_msg=f"\nWorld wid={wid}: attribute `{attr}` mismatch:\n",
-                )
+            state_ref = state_0
+        else:
+            state_ref = state_n_ref
+        # Check state attributes for the current world
+        for attr in ["q_i", "u_i", "w_i"]:
+            np.testing.assert_allclose(
+                getattr(state_n, attr).numpy()[bodies_start : bodies_start + num_bodies_per_world],
+                getattr(state_ref, attr).numpy()[bodies_start : bodies_start + num_bodies_per_world],
+                rtol=rtol,
+                atol=atol,
+                err_msg=f"\nWorld wid={wid}: attribute `{attr}` mismatch:\n",
+            )
+        for attr in ["q_j", "q_j_p", "dq_j"]:
+            np.testing.assert_allclose(
+                getattr(state_n, attr).numpy()[joint_dofs_start : joint_dofs_start + num_joint_dofs_per_world],
+                getattr(state_ref, attr).numpy()[joint_dofs_start : joint_dofs_start + num_joint_dofs_per_world],
+                rtol=rtol,
+                atol=atol,
+                err_msg=f"\nWorld wid={wid}: attribute `{attr}` mismatch:\n",
+            )
+        for attr in ["lambda_j"]:
+            np.testing.assert_allclose(
+                getattr(state_n, attr).numpy()[joint_cts_start : joint_cts_start + num_joint_cts_per_world],
+                getattr(state_ref, attr).numpy()[joint_cts_start : joint_cts_start + num_joint_cts_per_world],
+                rtol=rtol,
+                atol=atol,
+                err_msg=f"\nWorld wid={wid}: attribute `{attr}` mismatch:\n",
+            )
+
         bodies_start += num_bodies_per_world
         joint_dofs_start += num_joint_dofs_per_world
         joint_cts_start += num_joint_cts_per_world
@@ -425,6 +432,8 @@ class TestSolverKamino(unittest.TestCase):
 
         # Reset all worlds to the initial state
         solver.reset(state_out=state_n)
+
+        # Check that all worlds were reset
         assert_states_equal(self, state_n, state_0)
 
         # Step the solver a few times to change the state
@@ -437,6 +446,10 @@ class TestSolverKamino(unittest.TestCase):
             control=control,
             show_progress=self.progress or self.verbose,
         )
+
+        # Create a copy of the current state before reset
+        state_n_ref = model.state()
+        state_n_ref.copy_from(state_n)
 
         # Reset only the specified worlds to the initial state
         solver.reset(state_out=state_n, world_mask=world_mask)
@@ -451,7 +464,7 @@ class TestSolverKamino(unittest.TestCase):
         msg.info("state_n.lambda_j:\n%s\n", state_n.lambda_j)
 
         # Check that only the specified worlds were reset
-        assert_states_close_masked(self, model, state_n, state_0, world_mask)
+        assert_states_close_masked(self, model, state_0, state_n, state_n_ref, world_mask)
 
     def test_07_reset_to_base_state(self):
         """

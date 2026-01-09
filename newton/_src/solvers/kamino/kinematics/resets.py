@@ -633,6 +633,9 @@ def reset_state_from_base_state(
     The reset operation uses the target poses and twists of the base bodies to rigidly
     and uniformly transform the poses and twists of all other bodies in the same world.
 
+    The current implementation sets the twists of all bodies to that of the base body,
+    but transformed to account for the relative pose offset of the base body.
+
     Args:
         model (Model):
             Input model container holding the time-invariant data of the system.

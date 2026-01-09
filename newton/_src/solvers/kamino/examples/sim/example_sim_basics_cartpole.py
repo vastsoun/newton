@@ -406,7 +406,7 @@ class Example:
         settings.solver.padmm.max_iterations = 200
         settings.solver.padmm.rho_0 = 0.05
         settings.solver.use_solver_acceleration = True
-        settings.solver.warmstart = PADMMWarmStartMode.CONTAINERS
+        settings.solver.warmstart_mode = PADMMWarmStartMode.CONTAINERS
         settings.solver.collect_solver_info = False
         settings.solver.compute_metrics = logging and not use_cuda_graph
 

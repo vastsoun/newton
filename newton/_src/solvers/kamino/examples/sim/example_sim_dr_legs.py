@@ -111,7 +111,7 @@ class Example:
         settings.solver.padmm.eta = 1e-5
         settings.solver.padmm.rho_0 = 0.05
         settings.solver.use_solver_acceleration = True
-        settings.solver.warmstart = PADMMWarmStartMode.CONTAINERS
+        settings.solver.warmstart_mode = PADMMWarmStartMode.CONTAINERS
         settings.solver.contact_warmstart_method = WarmstarterContacts.Method.GEOM_PAIR_NET_FORCE
         settings.solver.collect_solver_info = False
         settings.solver.compute_metrics = logging and not use_cuda_graph

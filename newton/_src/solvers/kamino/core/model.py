@@ -966,6 +966,7 @@ class Model:
                 dr_j=wp.zeros(shape=njc, dtype=float32, requires_grad=requires_grad),
                 lambda_j=wp.zeros(shape=njc, dtype=float32, requires_grad=requires_grad),
                 q_j=wp.zeros(shape=njq, dtype=float32, requires_grad=requires_grad),
+                q_j_p=wp.zeros(shape=njq, dtype=float32, requires_grad=requires_grad),
                 dq_j=wp.zeros(shape=njd, dtype=float32, requires_grad=requires_grad),
                 tau_j=wp.zeros(shape=njd, dtype=float32, requires_grad=requires_grad),
                 j_w_j=wp.zeros(shape=nj, dtype=vec6f, requires_grad=requires_grad),
@@ -1016,7 +1017,8 @@ class Model:
                 q_i=wp.clone(self.bodies.q_i_0, requires_grad=requires_grad),
                 u_i=wp.clone(self.bodies.u_i_0, requires_grad=requires_grad),
                 w_i=wp.zeros_like(self.bodies.u_i_0, requires_grad=requires_grad),
-                q_j=wp.zeros(shape=self.size.sum_of_num_joint_coords, dtype=float32, requires_grad=requires_grad),
+                q_j=wp.clone(self.joints.q_j_ref, requires_grad=requires_grad),
+                q_j_p=wp.clone(self.joints.q_j_ref, requires_grad=requires_grad),
                 dq_j=wp.zeros(shape=self.size.sum_of_num_joint_dofs, dtype=float32, requires_grad=requires_grad),
                 lambda_j=wp.zeros(shape=self.size.sum_of_num_joint_cts, dtype=float32, requires_grad=requires_grad),
             )

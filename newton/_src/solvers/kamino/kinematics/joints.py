@@ -23,7 +23,7 @@ from functools import cache
 
 import warp as wp
 
-from ..core.joints import JointCorrectionMode, JointDoFType
+from ..core.joints import JointActuationType, JointCorrectionMode, JointDoFType
 from ..core.math import (
     FLOAT32_MAX,
     TWO_PI,
@@ -59,6 +59,8 @@ from ..core.types import (
 
 __all__ = [
     "compute_joints_data",
+    "extract_actuators_state_from_joints",
+    "extract_joints_state_from_actuators",
 ]
 
 
@@ -644,9 +646,6 @@ def make_compute_joints_data_kernel(correction: JointCorrectionMode = JointCorre
         data_q_j: wp.array(dtype=float32),
         data_dq_j: wp.array(dtype=float32),
     ):
-        """
-        Reset the current state to the initial state defined in the model.
-        """
         # Retrieve the thread index
         jid = wp.tid()
 
@@ -712,6 +711,136 @@ def make_compute_joints_data_kernel(correction: JointCorrectionMode = JointCorre
     return _compute_joints_data
 
 
+@wp.kernel
+def _extract_actuators_state_from_joints(
+    # Inputs:
+    world_mask: wp.array(dtype=int32),
+    model_info_joint_coords_offset: wp.array(dtype=int32),
+    model_info_joint_dofs_offset: wp.array(dtype=int32),
+    model_info_joint_actuated_coords_offset: wp.array(dtype=int32),
+    model_info_joint_actuated_dofs_offset: wp.array(dtype=int32),
+    model_joint_wid: wp.array(dtype=int32),
+    model_joint_act_type: wp.array(dtype=int32),
+    model_joint_num_coords: wp.array(dtype=int32),
+    model_joint_num_dofs: wp.array(dtype=int32),
+    model_joint_coords_offset: wp.array(dtype=int32),
+    model_joint_dofs_offset: wp.array(dtype=int32),
+    model_joint_actuated_coords_offset: wp.array(dtype=int32),
+    model_joint_actuated_dofs_offset: wp.array(dtype=int32),
+    joint_q: wp.array(dtype=float32),
+    joint_u: wp.array(dtype=float32),
+    # Outputs:
+    actuator_q: wp.array(dtype=float32),
+    actuator_u: wp.array(dtype=float32),
+):
+    # Retrieve the joint index from the thread grid
+    jid = wp.tid()
+
+    # Retrieve the world index and actuation type of the joint
+    wid = model_joint_wid[jid]
+    act_type = model_joint_act_type[jid]
+
+    # Early exit the operation if the joint's world is flagged as skipped or if the joint is not actuated
+    if world_mask[wid] == 0 or act_type == JointActuationType.PASSIVE:
+        return
+
+    # Retrieve the joint model data
+    num_coords = model_joint_num_coords[jid]
+    num_dofs = model_joint_num_dofs[jid]
+    coords_offset = model_joint_coords_offset[jid]
+    dofs_offset = model_joint_dofs_offset[jid]
+    actuated_coords_offset = model_joint_actuated_coords_offset[jid]
+    actuated_dofs_offset = model_joint_actuated_dofs_offset[jid]
+
+    # Retrieve the index offsets of the joint's constraint and DoF dimensions
+    world_joint_coords_offset = model_info_joint_coords_offset[wid]
+    world_joint_dofs_offset = model_info_joint_dofs_offset[wid]
+    world_joint_actuated_coords_offset = model_info_joint_actuated_coords_offset[wid]
+    world_joint_actuated_dofs_offset = model_info_joint_actuated_dofs_offset[wid]
+
+    # Append the index offsets of the world's joint blocks
+    jq_start = world_joint_coords_offset + coords_offset
+    jd_start = world_joint_dofs_offset + dofs_offset
+    aq_start = world_joint_actuated_coords_offset + actuated_coords_offset
+    ad_start = world_joint_actuated_dofs_offset + actuated_dofs_offset
+
+    # TODO: Change to use array slice assignment when supported in Warp
+    # # Store the actuated joint coordinates and velocities
+    # actuator_q[aq_start : aq_start + num_coords] = joint_q[jq_start : jq_start + num_coords]
+    # actuator_u[ad_start : ad_start + num_dofs] = joint_u[jd_start : jd_start + num_dofs]
+
+    # Store the actuated joint coordinates and velocities
+    for j in range(num_coords):
+        actuator_q[aq_start + j] = joint_q[jq_start + j]
+    for j in range(num_dofs):
+        actuator_u[ad_start + j] = joint_u[jd_start + j]
+
+
+@wp.kernel
+def _extract_joints_state_from_actuators(
+    # Inputs:
+    world_mask: wp.array(dtype=int32),
+    model_info_joint_coords_offset: wp.array(dtype=int32),
+    model_info_joint_dofs_offset: wp.array(dtype=int32),
+    model_info_joint_actuated_coords_offset: wp.array(dtype=int32),
+    model_info_joint_actuated_dofs_offset: wp.array(dtype=int32),
+    model_joint_wid: wp.array(dtype=int32),
+    model_joint_act_type: wp.array(dtype=int32),
+    model_joint_num_coords: wp.array(dtype=int32),
+    model_joint_num_dofs: wp.array(dtype=int32),
+    model_joint_coords_offset: wp.array(dtype=int32),
+    model_joint_dofs_offset: wp.array(dtype=int32),
+    model_joint_actuated_coords_offset: wp.array(dtype=int32),
+    model_joint_actuated_dofs_offset: wp.array(dtype=int32),
+    actuator_q: wp.array(dtype=float32),
+    actuator_u: wp.array(dtype=float32),
+    # Outputs:
+    joint_q: wp.array(dtype=float32),
+    joint_u: wp.array(dtype=float32),
+):
+    # Retrieve the joint index from the thread grid
+    jid = wp.tid()
+
+    # Retrieve the world index and actuation type of the joint
+    wid = model_joint_wid[jid]
+    act_type = model_joint_act_type[jid]
+
+    # Early exit the operation if the joint's world is flagged as skipped or if the joint is not actuated
+    if world_mask[wid] == 0 or act_type == JointActuationType.PASSIVE:
+        return
+
+    # Retrieve the joint model data
+    num_coords = model_joint_num_coords[jid]
+    num_dofs = model_joint_num_dofs[jid]
+    coords_offset = model_joint_coords_offset[jid]
+    dofs_offset = model_joint_dofs_offset[jid]
+    actuated_coords_offset = model_joint_actuated_coords_offset[jid]
+    actuated_dofs_offset = model_joint_actuated_dofs_offset[jid]
+
+    # Retrieve the index offsets of the joint's constraint and DoF dimensions
+    world_joint_coords_offset = model_info_joint_coords_offset[wid]
+    world_joint_dofs_offset = model_info_joint_dofs_offset[wid]
+    world_joint_actuated_coords_offset = model_info_joint_actuated_coords_offset[wid]
+    world_joint_actuated_dofs_offset = model_info_joint_actuated_dofs_offset[wid]
+
+    # Append the index offsets of the world's joint blocks
+    jq_start = world_joint_coords_offset + coords_offset
+    jd_start = world_joint_dofs_offset + dofs_offset
+    aq_start = world_joint_actuated_coords_offset + actuated_coords_offset
+    ad_start = world_joint_actuated_dofs_offset + actuated_dofs_offset
+
+    # TODO: Change to use array slice assignment when supported in Warp
+    # # Store the actuated joint coordinates and velocities
+    # joint_q[jq_start : jq_start + num_coords] = actuator_q[aq_start : aq_start + num_coords]
+    # joint_u[jd_start : jd_start + num_dofs] = actuator_u[ad_start : ad_start + num_dofs]
+
+    # Store the actuated joint coordinates and velocities
+    for j in range(num_coords):
+        joint_q[jq_start + j] = actuator_q[aq_start + j]
+    for j in range(num_dofs):
+        joint_u[jd_start + j] = actuator_u[ad_start + j]
+
+
 ###
 # Launchers
 ###
@@ -731,11 +860,14 @@ def compute_joints_data(
     residuals and velocities of the applied bilateral constraints.
 
     Args:
-        model (`Model`): The model container holding the time-invariant data of the simulation.
-        q_j_ref (`wp.array`): An array of reference joint DoF coordinates used for coordinate correction.\n
+        model (`Model`):
+            The model container holding the time-invariant data of the simulation.
+        q_j_ref (`wp.array`):
+            An array of reference joint DoF coordinates used for coordinate correction.\n
             Only used for revolute DoFs of the relevant joints to enforce angle continuity.\n
             Shape of ``(sum_of_num_joint_coords,)`` and type :class:`float`.
-        data (`ModelData`): The solver data container holding the internal time-varying state of the simulation.
+        data (`ModelData`):
+            The solver data container holding the internal time-varying state of the simulation.
     """
 
     # Generate the kernel to compute the joint states
@@ -770,6 +902,128 @@ def compute_joints_data(
             data.joints.dr_j,
             data.joints.q_j,
             data.joints.dq_j,
+        ],
+        device=model.device,
+    )
+
+
+def extract_actuators_state_from_joints(
+    model: Model,
+    world_mask: wp.array,
+    joint_q: wp.array,
+    joint_u: wp.array,
+    actuator_q: wp.array,
+    actuator_u: wp.array,
+):
+    """
+    Extracts the states of the actuated joints from the full joint state arrays.
+
+    Only joints that are marked as actuated and belong to worlds
+    that are not masked will have their states extracted.
+
+    Args:
+        model (`Model`):
+            The model container holding the time-invariant data of the simulation.
+        joint_q (`wp.array`):
+            The full array of joint coordinates.\n
+            Shape of ``(sum_of_num_joint_coords,)`` and type :class:`float`.
+        joint_u (`wp.array`):
+            The full array of joint velocities.\n
+            Shape of ``(sum_of_num_joint_dofs,)`` and type :class:`float`.
+        actuator_q (`wp.array`):
+            The output array to store the actuated joint coordinates.\n
+            Shape of ``(sum_of_num_actuated_joint_coords,)`` and type :class:`float`.
+        actuator_u (`wp.array`):
+            The output array to store the actuated joint velocities.\n
+            Shape of ``(sum_of_actuated_joint_dofs,)`` and type :class:`float`.
+        world_mask (`wp.array`):
+            An array indicating which worlds are active (1) or skipped (0).\n
+            Shape of ``(num_worlds,)`` and type :class:`int32`.
+    """
+    wp.launch(
+        _extract_actuators_state_from_joints,
+        dim=model.size.sum_of_num_joints,
+        inputs=[
+            world_mask,
+            model.info.joint_coords_offset,
+            model.info.joint_dofs_offset,
+            model.info.joint_actuated_coords_offset,
+            model.info.joint_actuated_dofs_offset,
+            model.joints.wid,
+            model.joints.act_type,
+            model.joints.num_coords,
+            model.joints.num_dofs,
+            model.joints.coords_offset,
+            model.joints.dofs_offset,
+            model.joints.actuated_coords_offset,
+            model.joints.actuated_dofs_offset,
+            joint_q,
+            joint_u,
+        ],
+        outputs=[
+            actuator_q,
+            actuator_u,
+        ],
+        device=model.device,
+    )
+
+
+def extract_joints_state_from_actuators(
+    model: Model,
+    world_mask: wp.array,
+    actuator_q: wp.array,
+    actuator_u: wp.array,
+    joint_q: wp.array,
+    joint_u: wp.array,
+):
+    """
+    Extracts the states of the actuated joints from the full joint state arrays.
+
+    Only joints that are marked as actuated and belong to worlds
+    that are not masked will have their states extracted.
+
+    Args:
+        model (`Model`):
+            The model container holding the time-invariant data of the simulation.
+        joint_q (`wp.array`):
+            The full array of joint coordinates.\n
+            Shape of ``(sum_of_num_joint_coords,)`` and type :class:`float`.
+        joint_u (`wp.array`):
+            The full array of joint velocities.\n
+            Shape of ``(sum_of_num_joint_dofs,)`` and type :class:`float`.
+        actuator_q (`wp.array`):
+            The output array to store the actuated joint coordinates.\n
+            Shape of ``(sum_of_num_actuated_joint_coords,)`` and type :class:`float`.
+        actuator_u (`wp.array`):
+            The output array to store the actuated joint velocities.\n
+            Shape of ``(sum_of_actuated_joint_dofs,)`` and type :class:`float`.
+        world_mask (`wp.array`):
+            An array indicating which worlds are active (1) or skipped (0).\n
+            Shape of ``(num_worlds,)`` and type :class:`int32`.
+    """
+    wp.launch(
+        _extract_joints_state_from_actuators,
+        dim=model.size.sum_of_num_joints,
+        inputs=[
+            world_mask,
+            model.info.joint_coords_offset,
+            model.info.joint_dofs_offset,
+            model.info.joint_actuated_coords_offset,
+            model.info.joint_actuated_dofs_offset,
+            model.joints.wid,
+            model.joints.act_type,
+            model.joints.num_coords,
+            model.joints.num_dofs,
+            model.joints.coords_offset,
+            model.joints.dofs_offset,
+            model.joints.actuated_coords_offset,
+            model.joints.actuated_dofs_offset,
+            actuator_q,
+            actuator_u,
+        ],
+        outputs=[
+            joint_q,
+            joint_u,
         ],
         device=model.device,
     )

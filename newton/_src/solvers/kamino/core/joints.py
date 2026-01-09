@@ -1199,6 +1199,14 @@ class JointsData:
     is the number of coordinates of joint ``j``.
     """
 
+    q_j_p: wp.array | None = None
+    """
+    Flat array of previous generalized coordinates of the joints.\n
+    Shape of ``(sum_of_num_joint_coords,)`` and type :class:`float`,\n
+    where `sum_of_num_joint_coords := sum(c_j)`, and ``c_j``
+    is the number of coordinates of joint ``j``.
+    """
+
     dq_j: wp.array | None = None
     """
     Flat array of generalized velocities of the joints.\n
@@ -1254,42 +1262,55 @@ class JointsData:
     Shape of ``(num_joints,)`` and type :class:`vec6`.
     """
 
-    def clear_residuals(self):
-        """
-        Reset all joint state variables to zero.
-        """
-        self.r_j.zero_()
-        self.dr_j.zero_()
-
     def reset_state(self, q_j_ref: wp.array | None = None):
         """
-        Reset all joint state variables to zero.
+        Resets all generalized joint coordinates to either zero or the provided
+        reference coordinates and all generalized joint velocities to zero.
         """
         if q_j_ref is not None:
             if q_j_ref.size != self.q_j.size:
                 raise ValueError(f"Invalid size of q_j_ref: {q_j_ref.size}. Expected: {self.q_j.size}.")
             wp.copy(self.q_j, q_j_ref)
+            wp.copy(self.q_j_p, q_j_ref)
         else:
             self.q_j.zero_()
+            self.q_j_p.zero_()
         self.dq_j.zero_()
+
+    def clear_residuals(self):
+        """
+        Resets all joint state variables to zero.
+        """
+        self.r_j.zero_()
+        self.dr_j.zero_()
 
     def clear_constraint_reactions(self):
         """
-        Reset all joint constraint reactions to zero.
+        Resets all joint constraint reactions to zero.
         """
         self.lambda_j.zero_()
 
     def clear_actuation_forces(self):
         """
-        Reset all joint actuation forces to zero.
+        Resets all joint actuation forces to zero.
         """
         self.tau_j.zero_()
 
     def clear_wrenches(self):
         """
-        Reset all joint wrenches to zero.
+        Resets all joint wrenches to zero.
         """
         self.j_w_j.zero_()
         self.j_w_c_j.zero_()
         self.j_w_a_j.zero_()
         self.j_w_l_j.zero_()
+
+    def clear_all(self):
+        """
+        Resets all joint state variables, constraint reactions,
+        actuation forces, and wrenches to zero.
+        """
+        self.clear_residuals()
+        self.clear_constraint_reactions()
+        self.clear_actuation_forces()
+        self.clear_wrenches()

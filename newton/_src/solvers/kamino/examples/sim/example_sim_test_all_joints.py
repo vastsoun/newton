@@ -25,10 +25,8 @@ import newton.examples
 from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.examples import get_examples_output_path, run_headless
 from newton._src.solvers.kamino.models.builders.testing import build_all_joints_test_model
-from newton._src.solvers.kamino.simulation.simulator import Simulator, SimulatorSettings
 from newton._src.solvers.kamino.utils import logger as msg
-from newton._src.solvers.kamino.utils.datalog import SimulationLogger
-from newton._src.solvers.kamino.viewer import ViewerKamino
+from newton._src.solvers.kamino.utils.sim import SimulationLogger, Simulator, SimulatorSettings, ViewerKamino
 
 ###
 # Module configs
@@ -65,7 +63,6 @@ class Example:
         # Cache the device and other internal flags
         self.device = device
         self.use_cuda_graph: bool = use_cuda_graph
-        self.logging: bool = logging
 
         # Construct model builder
         msg.notif("Constructing builder using model generator ...")
@@ -78,21 +75,21 @@ class Example:
         # Set solver settings
         settings = SimulatorSettings()
         settings.dt = self.sim_dt
-        settings.solver.primal_tolerance = 1e-6
-        settings.solver.dual_tolerance = 1e-6
-        settings.solver.compl_tolerance = 1e-6
-        settings.solver.rho_0 = 0.1
-        settings.compute_metrics = logging and not use_cuda_graph
+        settings.solver.padmm.primal_tolerance = 1e-6
+        settings.solver.padmm.dual_tolerance = 1e-6
+        settings.solver.padmm.compl_tolerance = 1e-6
+        settings.solver.padmm.rho_0 = 0.1
+        settings.solver.compute_metrics = logging and not use_cuda_graph
 
         # Create a simulator
         msg.notif("Building the simulator...")
         self.sim = Simulator(builder=self.builder, settings=settings, device=device)
 
-        # Initialize the data logger
+        # # Initialize the data logger
         self.logger: SimulationLogger | None = None
-        if self.logging:
+        if logging and not use_cuda_graph:
             msg.notif("Creating the sim data logger...")
-            self.logger = SimulationLogger(self.max_steps, self.sim, self.builder)
+            self.logger = SimulationLogger(max_frames=self.max_steps, builder=self.builder, sim=self.sim)
 
         # Initialize the 3D viewer
         self.viewer: ViewerKamino | None = None
@@ -149,7 +146,7 @@ class Example:
         """Run simulation substeps."""
         for _i in range(self.sim_substeps):
             self.sim.step()
-            if not self.use_cuda_graph and self.logging:
+            if self.logger:
                 self.logger.log()
 
     def reset(self):
@@ -158,7 +155,7 @@ class Example:
             wp.capture_launch(self.reset_graph)
         else:
             self.sim.reset()
-        if not self.use_cuda_graph and self.logging:
+        if self.logger:
             self.logger.reset()
             self.logger.log()
 
@@ -168,7 +165,7 @@ class Example:
             wp.capture_launch(self.step_graph)
         else:
             self.sim.step()
-        if not self.use_cuda_graph and self.logging:
+        if self.logger:
             self.logger.log()
 
     def step(self):
@@ -197,13 +194,13 @@ class Example:
             keep_frames: If True, keep PNG frames after video creation
         """
         # Optionally plot the logged simulation data
-        if self.logging:
+        if self.logger:
             self.logger.plot_solver_info(path=path, show=show)
             self.logger.plot_joint_tracking(path=path, show=show)
             self.logger.plot_solution_metrics(path=path, show=show)
 
         # Optionally generate video from recorded frames
-        if self.viewer is not None and self.viewer._record_video:
+        if self.viewer and self.viewer._record_video:
             output_dir = path if path is not None else self.viewer._video_folder
             output_path = os.path.join(output_dir, "recording.mp4")
             self.viewer.generate_video(output_filename=output_path, fps=self.fps, keep_frames=keep_frames)

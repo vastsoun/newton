@@ -40,6 +40,7 @@ from .kernels import (
     _compute_solution_vectors,
     _compute_velocity_bias,
     _project_to_feasible_cone,
+    _reset_solver_data,
     _update_delassus_proximal_regularization,
     _update_state_with_acceleration,
     _warmstart_contact_constraints,
@@ -253,22 +254,33 @@ class PADMMSolver:
             make_update_dual_variables_and_compute_primal_dual_residuals(use_acceleration)
         )
 
-    def reset(self):
+    def reset(self, problem: DualProblem | None = None, world_mask: wp.array | None = None):
         """
         Resets the all internal solver data to sentinel values.
         """
-        # Initialize state arrays to zero
+        # Reset the internal solver state
         self._data.state.reset(use_acceleration=self._use_acceleration)
 
-        # Initialize solution arrays to zero
-        self._data.solution.zero()
+        # Reset the solution cache, which could be used for internal warm-starting
+        # If no world mask is provided, reset data of all worlds
+        if world_mask is None:
+            self._data.solution.zero()
 
-        # Reset solver info to zero if collection is enabled
-        if self._collect_info:
-            self._data.info.zero()
-
-        # Reset the solver status and ALM penalty parameter
-        self._initialize()
+        # Otherwise, only the solution cache of the specified worlds
+        else:
+            if problem is None:
+                raise ValueError("A `DualProblem` instance must be provided when a world mask is used.")
+            wp.launch(
+                kernel=_reset_solver_data,
+                dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
+                inputs=[
+                    world_mask,
+                    problem.data.vio,
+                    problem.data.maxdim,
+                    self._data.solution.lambdas,
+                    self._data.solution.v_plus,
+                ],
+            )
 
     def coldstart(self):
         """

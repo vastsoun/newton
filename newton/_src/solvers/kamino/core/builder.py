@@ -1604,18 +1604,18 @@ class ModelBuilder:
         # Iterate over each world and set their model offsets
         for world in self._worlds:
             # Set the offsets in the world descriptor to the current values
-            world.bodies_idx_offset = bodies_idx_offset
-            world.joints_idx_offset = joints_idx_offset
-            world.collision_geoms_idx_offset = collision_geoms_idx_offset
-            world.physical_geoms_idx_offset = physical_geoms_idx_offset
-            world.body_dofs_idx_offset = body_dofs_idx_offset
-            world.joint_coords_idx_offset = joint_coords_idx_offset
-            world.joint_dofs_idx_offset = joint_dofs_idx_offset
-            world.passive_joint_coords_idx_offset = passive_joint_coords_idx_offset
-            world.passive_joint_dofs_idx_offset = passive_joint_dofs_idx_offset
-            world.actuated_joint_coords_idx_offset = actuated_joint_coords_idx_offset
-            world.actuated_joint_dofs_idx_offset = actuated_joint_dofs_idx_offset
-            world.joint_cts_idx_offset = joint_cts_idx_offset
+            world.bodies_idx_offset = int(bodies_idx_offset)
+            world.joints_idx_offset = int(joints_idx_offset)
+            world.collision_geoms_idx_offset = int(collision_geoms_idx_offset)
+            world.physical_geoms_idx_offset = int(physical_geoms_idx_offset)
+            world.body_dofs_idx_offset = int(body_dofs_idx_offset)
+            world.joint_coords_idx_offset = int(joint_coords_idx_offset)
+            world.joint_dofs_idx_offset = int(joint_dofs_idx_offset)
+            world.passive_joint_coords_idx_offset = int(passive_joint_coords_idx_offset)
+            world.passive_joint_dofs_idx_offset = int(passive_joint_dofs_idx_offset)
+            world.actuated_joint_coords_idx_offset = int(actuated_joint_coords_idx_offset)
+            world.actuated_joint_dofs_idx_offset = int(actuated_joint_dofs_idx_offset)
+            world.joint_cts_idx_offset = int(joint_cts_idx_offset)
             # Update the offsets for the next world
             bodies_idx_offset += world.num_bodies
             joints_idx_offset += world.num_joints

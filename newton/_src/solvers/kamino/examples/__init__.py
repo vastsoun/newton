@@ -19,8 +19,8 @@ import time
 
 import warp as wp
 
-from ..simulation.simulator import Simulator
 from ..utils import logger as msg
+from ..utils.sim import Simulator
 
 ###
 # Example Paths
@@ -90,7 +90,7 @@ def print_progress_bar(iteration, total, start_time, length=40, prefix="", suffi
     bar = "█" * filled_length + "-" * (length - filled_length)
 
     # Estimated Time of Arrival
-    if iteration > 0:
+    if iteration > 0 and elapsed > 0:
         eta = elapsed / iteration * (total - iteration)
         eta_str = time.strftime("%H:%M:%S", time.gmtime(eta))
         fps = iteration / elapsed

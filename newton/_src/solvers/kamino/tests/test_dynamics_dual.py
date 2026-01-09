@@ -139,9 +139,7 @@ class TestDualProblem(unittest.TestCase):
         )
 
         # Build the dual problem
-        problem.build(
-            model=model, data=data, limits=limits.data, contacts=detector.contacts.data, jacobians=jacobians.data
-        )
+        problem.build(model=model, data=data, limits=limits, contacts=detector.contacts, jacobians=jacobians)
 
         # Extract numpy arrays from the problem data
         v_b_wp_np = problem.data.v_b.numpy()

@@ -30,8 +30,8 @@ from ..kinematics.limits import Limits
 ###
 
 __all__ = [
+    "get_max_constraints_per_world",
     "make_unilateral_constraints_info",
-    "max_constraints_per_world",
     "unpack_constraint_solutions",
     "update_constraints_info",
 ]
@@ -49,7 +49,7 @@ wp.set_module_options({"enable_backward": False})
 ###
 
 
-def max_constraints_per_world(
+def get_max_constraints_per_world(
     model: Model,
     limits: Limits | None,
     contacts: Contacts | None,

@@ -18,6 +18,7 @@
 import warp as wp
 
 from ..core.bodies import transform_body_inertial_properties
+from ..core.math import screw, screw_angular, screw_linear
 from ..core.model import Model, ModelData
 from ..core.state import State
 from ..core.types import float32, int32, mat33f, transformf, vec3f, vec6f
@@ -147,9 +148,17 @@ def _reset_body_state_from_base(
     # moves the base body to the target pose
     X_b = wp.transform_multiply(q_b, wp.transform_inverse(q_b_0))
 
+    # Retrieve the position vectors of the base and current body
+    r_b_0 = wp.transform_get_translation(q_b_0)
+    r_i_0 = wp.transform_get_translation(q_i_0)
+
+    # Decompose the base body's target twist
+    v_b = screw_linear(u_b)
+    omega_b = screw_angular(u_b)
+
     # Compute the target pose and twist for this body
     q_i = wp.transform_multiply(X_b, q_i_0)
-    u_i = u_b  # TODO: Transform twist according to distance to base body
+    u_i = screw(v_b + wp.cross(omega_b, r_i_0 - r_b_0), omega_b)
 
     # Store the reset state in the output arrays and zero-out wrenches
     state_q_i[bid] = q_i

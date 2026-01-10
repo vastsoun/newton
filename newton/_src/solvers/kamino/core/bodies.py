@@ -153,6 +153,12 @@ class RigidBodiesModel:
     Shape of ``(num_bodies,)`` and type :class:`int`.
     """
 
+    r_com_i: wp.array | None = None
+    """
+    Translational offset of the center of mass w.r.t the body's reference frame.\n
+    Shape of ``(num_bodies,)`` and type :class:`float`.
+    """
+
     m_i: wp.array | None = None
     """
     Mass of each body.\n

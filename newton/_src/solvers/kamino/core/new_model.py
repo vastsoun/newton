@@ -15,28 +15,28 @@
 
 """Constrained Rigid Multi-Body Model & Data Containers"""
 
+# Python
 from dataclasses import dataclass
 
+# Warp
 import warp as wp
 from warp.context import Devicelike
 
-from .bodies import RigidBodiesModel
-from .geometry import CollisionGeometriesModel, GeometriesModel
+# Newton
+from ....sim.model import Model
+
+# Kamino
+from .bodies import RigidBodiesData, RigidBodiesModel
+from .geometry import CollisionGeometriesModel, GeometriesData, GeometriesModel
 from .gravity import GravityModel
-from .joints import JointsModel
+from .joints import JointsData, JointsModel
 from .materials import MaterialPairsModel
-from .time import TimeModel
+from .new_control import KaminoControl
+from .new_data import KaminoData, KaminoDataInfo
+from .new_state import KaminoState
+from .time import TimeData, TimeModel
 from .types import float32, int32, mat33f, transformf, vec6f
 from .world import WorldDescriptor
-
-# New WIP containers
-from .bodies import RigidBodiesData
-from .geometry import GeometriesData
-from .joints import JointsData
-from .time import TimeData
-from .new_data import KaminoData, KaminoDataInfo
-from .new_control import KaminoControl
-from .new_state import KaminoState
 
 ###
 # Module interface
@@ -646,9 +646,19 @@ class KaminoModel:
             The material pairs model container holding all material pairs in the model.
     """
 
-    def __init__(self):
+    def __init__(self, model: Model | None = None):
+        """
+        Create a new KaminoModel instance.
+
+        TODO: about creating from an existing newton.Model instance.
+        """
+
+        self._model_base: Model | None = None
+        """The base newton.Model instance from which this KaminoModel was created."""
+
         self.device: Devicelike = None
-        """The device on which the model data is allocated.\n
+        """
+        The device on which the model data is allocated.\n
         Defaults to `None`, indicating the default/preferred Warp device.
         """
 
@@ -690,6 +700,152 @@ class KaminoModel:
 
         self.mpairs: MaterialPairsModel | None = None
         """The material pairs model container holding all material pairs in the model."""
+
+        # If a base model is provided, finalize from it
+        if model is not None:
+            self.finalize_from_newton_model(model)
+
+    def finalize_from_newton_model(self, model: Model):
+        """
+        Finalizes the KaminoModel from an existing newton.Model instance.
+        """
+        # Ensure the base model is valid
+        if model is None:
+            raise ValueError("Cannot finalize KaminoModel from a None newton.Model instance.")
+        elif not isinstance(model, Model):
+            raise TypeError("Cannot finalize KaminoModel from an invalid newton.Model instance.")
+
+        # Store the base model
+        self._model_base = model
+        self.device = self._model_base.device
+        self.requires_grad = self._model_base.requires_grad
+
+        # TODO: Construct the world descriptors from the newton.Model instance
+        self.worlds: list[WorldDescriptor] = []
+
+        # TODO: Construct KaminoModelSize from the newton.Model instance
+        self.size = KaminoModelSize(
+            # TODO
+        )
+
+        # Construct the model entities from the newton.Model instance
+        with wp.ScopedDevice(device=self.device):
+            # Model info
+            self.info = KaminoModelInfo(
+                num_worlds=model.num_worlds,
+                # num_bodies=wp.array(...),
+                # num_joints=wp.array(...),
+                # num_passive_joints=wp.array(...),
+                # num_actuated_joints=wp.array(...),
+                # num_collision_geoms=wp.array(...),
+                # num_physical_geoms=wp.array(...),
+                # max_limits=wp.array(...),
+                # max_contacts=wp.array(...),
+                # num_body_dofs=wp.array(...),
+                # num_joint_coords=wp.array(...),
+                # num_joint_dofs=wp.array(...),
+                # num_passive_joint_coords=wp.array(...),
+                # num_passive_joint_dofs=wp.array(...),
+                # num_actuated_joint_coords=wp.array(...),
+                # num_actuated_joint_dofs=wp.array(...),
+                # num_joint_cts=wp.array(...),
+                # max_limit_cts=wp.array(...),
+                # max_contact_cts=wp.array(...),
+                # max_total_cts=wp.array(...),
+                # bodies_offset=wp.array(...),
+                # joints_offset=wp.array(...),
+                # limits_offset=wp.array(...),
+                # contacts_offset=wp.array(...),
+                # unilaterals_offset=wp.array(...),
+                # body_dofs_offset=wp.array(...),
+                # joint_coords_offset=wp.array(...),
+                # joint_dofs_offset=wp.array(...),
+                # joint_passive_coords_offset=wp.array(...),
+                # joint_passive_dofs_offset=wp.array(...),
+                # joint_actuated_coords_offset=wp.array(...),
+                # joint_actuated_dofs_offset=wp.array(...),
+                # joint_cts_offset=wp.array(...),
+                # limit_cts_offset=wp.array(...),
+                # contact_cts_offset=wp.array(...),
+                # unilateral_cts_offset=wp.array(...),
+                # total_cts_offset=wp.array(...),
+                # base_body_index=wp.array(...),
+                # base_joint_index=wp.array(...),
+                # mass_min=wp.array(...),
+                # mass_max=wp.array(...),
+                # mass_total=wp.array(...),
+                # inertia_total=wp.array(...),
+            )
+
+            # Time
+            self.time = TimeModel(
+                # dt=wp.array(...),
+                # inv_dt=wp.array(...),
+            )
+
+            # Gravity
+            self.gravity = GravityModel(
+                # g_dir_acc=wp.array(...),
+                # vector=wp.array(...),
+            )
+
+            # Rigid bodies
+            self.bodies = RigidBodiesModel(
+                num_bodies=model.body_count,
+                wid=model.body_world,
+                # bid=model.body_index,
+                r_com_i=model.body_com,
+                m_i=model.body_mass,
+                inv_m_i=model.body_inv_mass,
+                I_i=model.body_inertia,
+                inv_i_I_i=model.body_inv_inertia,
+                # q_i_0=wp.array(...),  # From model.body_q
+                # u_i_0=wp.array(...),  # From model.body_qd
+            )
+
+            # Joints
+            self.joints = JointsModel(
+                num_joints=model.joint_count,
+                wid=model.joint_world,
+                # jid=model.joint_index,
+                dof_type=model.joint_type,
+                # act_type=wp.array(...),
+                bid_B=model.joint_parent,
+                bid_F=model.joint_child,
+                # B_r_Bj=wp.array(...),  # From model.joint_X_p
+                # F_r_Fj=wp.array(...),  # From model.joint_X_c
+                # X_j=wp.array(...),  # From model.joint_X_p
+                q_j_min=model.joint_limit_lower,
+                q_j_max=model.joint_limit_upper,
+                dq_j_max=model.joint_velocity_limit,
+                tau_j_max=model.joint_effort_limit,
+                # q_j_0=wp.array(...),  # From model.joint_q
+                # dq_j_0=wp.array(...),  # From model.joint_qd
+                # num_coords=wp.array(...),  # From model.joint_dof_dim and JointType
+                # num_dofs=wp.array(...),  # From model.joint_dof_dim and JointType
+                # num_cts=wp.array(...),  # From model.joint_dof_dim and JointType
+                # coords_offset=wp.array(...),
+                # dofs_offset=wp.array(...),
+                coords_offset=model.joint_q_start,
+                dofs_offset=model.joint_qd_start,
+                # passive_coords_offset=wp.array(...),
+                # passive_dofs_offset=wp.array(...),
+                # actuated_coords_offset=wp.array(...),
+                # actuated_dofs_offset=wp.array(...),
+                # cts_offset=wp.array(...),
+            )
+
+            # Collision geometries
+            self.cgeoms = CollisionGeometriesModel(
+                num_geoms=model.shape_count,
+                wid=model.shape_world,
+                # gid=model.shape_index,
+                bid=model.shape_body,
+                sid=model.shape_type,
+                ptr=model.shape_source_ptr,
+                offset=model.shape_transform,
+                # params=wp.array(...),  # From model.shape_scale
+            )
 
     def data(
         self,

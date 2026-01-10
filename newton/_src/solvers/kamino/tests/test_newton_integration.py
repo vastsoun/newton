@@ -202,6 +202,13 @@ class TestKaminoNewtonIntegration(unittest.TestCase):
         msg.info("model.body_index (type: %s): %s", type(model.body_index), model.body_index)
         msg.info("model.joint_key (type: %s): %s", type(model.joint_key), model.joint_key)
         msg.info("model.joint_type (type: %s): %s", type(model.joint_type), model.joint_type)
+        msg.info("model.joint_parent (type: %s): %s", type(model.joint_parent), model.joint_parent)
+        msg.info("model.joint_child (type: %s): %s", type(model.joint_child), model.joint_child)
+        msg.info("model.joint_q_start (type: %s): %s", type(model.joint_q_start), model.joint_q_start)
+        msg.info("model.joint_qd_start (type: %s): %s", type(model.joint_qd_start), model.joint_qd_start)
+        msg.info("model.joint_q (type: %s): %s", type(model.joint_q), model.joint_q)
+        msg.info("model.joint_qd (type: %s): %s", type(model.joint_qd), model.joint_qd)
+        msg.info("model.joint_dof_dim (type: %s):\n%s", type(model.joint_dof_dim), model.joint_dof_dim)
         msg.info("model.joint_world (type: %s): %s", type(model.joint_world), model.joint_world)
         msg.info("model.joint_index (type: %s): %s", type(model.joint_index), model.joint_index)
         msg.info("model.shape_index (type: %s): %s", type(model.shape_index), model.shape_index)
@@ -211,7 +218,7 @@ class TestKaminoNewtonIntegration(unittest.TestCase):
         self.assertTrue(np.allclose(model.joint_index.numpy(), [0, 1, 2, 3, 4]))
         self.assertTrue(np.allclose(model.shape_index.numpy(), [0, 1, 2, 3]))
 
-    def test_boxes_fourbar(self):
+    def test_usd_boxes_fourbar(self):
         """
         TODO
         """

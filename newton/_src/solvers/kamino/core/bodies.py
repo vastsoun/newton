@@ -21,7 +21,8 @@ from dataclasses import dataclass, field
 
 import warp as wp
 
-from .types import Descriptor, mat33f, override, transformf, vec6f
+from .math import screw, screw_angular, screw_linear
+from .types import Descriptor, mat33f, override, transformf, vec3f, vec6f
 
 ###
 # Module interface
@@ -57,6 +58,7 @@ class RigidBodyDescriptor(Descriptor):
         name (str): The name of the body.
         uid (str): The unique identifier of the body.
         m_i (float): Mass of the body (in kg).
+        i_r_com_i (vec3f): Translational offset of the body center of mass (in meters).
         i_I_i (mat33f): Moment of inertia matrix (in local coordinates) of the body (in kg*m^2).
         q_i_0 (transformf): Initial absolute pose of the body (in world coordinates).
         u_i_0 (vec6f): Initial absolute twist of the body (in world coordinates).
@@ -71,14 +73,17 @@ class RigidBodyDescriptor(Descriptor):
     m_i: float = 0.0
     """Mass of the body."""
 
+    i_r_com_i: vec3f = field(default_factory=vec3f)
+    """Translational offset of the body center of mass w.r.t the reference frame expressed in local coordinates."""
+
     i_I_i: mat33f = field(default_factory=mat33f)
-    """Moment of inertia matrix (in local coordinates) of the body."""
+    """Moment of inertia matrix of the body expressed in local coordinates."""
 
     q_i_0: transformf = field(default_factory=transformf)
-    """Initial absolute pose of the body (in world coordinates)."""
+    """Initial absolute pose of the body expressed in world coordinates."""
 
     u_i_0: vec6f = field(default_factory=vec6f)
-    """Initial absolute twist of the body (in world coordinates)."""
+    """Initial absolute twist of the body expressed in world coordinates."""
 
     ###
     # Metadata - to be set by the WorldDescriptor when added
@@ -153,7 +158,7 @@ class RigidBodiesModel:
     Shape of ``(num_bodies,)`` and type :class:`int`.
     """
 
-    r_com_i: wp.array | None = None
+    i_r_com_i: wp.array | None = None
     """
     Translational offset of the center of mass w.r.t the body's reference frame.\n
     Shape of ``(num_bodies,)`` and type :class:`float`.
@@ -408,6 +413,138 @@ def _update_body_wrenches(
     state_bodies_w_i_out[bid] = w_i
 
 
+@wp.kernel
+def _compute_body_com_state_from_frame(
+    # Inputs
+    model_bodies_i_r_com_i_in: wp.array(dtype=vec3f),
+    state_q_in: wp.array(dtype=transformf),
+    state_qd_in: wp.array(dtype=vec6f),
+    # Outputs
+    state_bodies_q_i_out: wp.array(dtype=transformf),
+    state_bodies_u_i_out: wp.array(dtype=vec6f),
+):
+    # Retrieve the thread index as the body index
+    bid = wp.tid()
+
+    # Retrieve the model and data of the body
+    i_r_com_i = model_bodies_i_r_com_i_in[bid]
+    body_q = state_q_in[bid]
+    body_u = state_qd_in[bid]
+
+    # Compute state of the body in the CoM frame from the local body-fixed frame
+    body_r = wp.transform_get_translation(body_q)
+    body_q_rot = wp.transform_get_rotation(body_q)
+    body_v = screw_linear(body_u)
+    body_omega = screw_angular(body_u)
+    r_com_i = wp.quat_rotate(body_q_rot, i_r_com_i)
+    body_r_com = body_r + r_com_i
+    body_v_com = body_v + wp.cross(body_omega, r_com_i)
+    body_q_i = transformf(body_r_com, body_q_rot)
+    body_u_i = screw(body_v_com, body_omega)
+
+    # Store results in the output arrays
+    state_bodies_q_i_out[bid] = body_q_i
+    state_bodies_u_i_out[bid] = body_u_i
+
+
+@wp.kernel
+def _compute_body_frame_state_from_com(
+    # Inputs
+    model_bodies_i_r_com_i_in: wp.array(dtype=vec3f),
+    state_bodies_q_i_in: wp.array(dtype=transformf),
+    state_bodies_u_i_in: wp.array(dtype=vec6f),
+    # Outputs
+    state_q_out: wp.array(dtype=transformf),
+    state_qd_out: wp.array(dtype=vec6f),
+):
+    # Retrieve the thread index as the body index
+    bid = wp.tid()
+
+    # Retrieve the model and data of the body
+    i_r_com_i = model_bodies_i_r_com_i_in[bid]
+    q_i = state_bodies_q_i_in[bid]
+    u_i = state_bodies_u_i_in[bid]
+
+    # Compute state of the body in the local body-fixed frame from the CoM frame
+    body_r_com = wp.transform_get_translation(q_i)
+    body_q_com = wp.transform_get_rotation(q_i)
+    body_v_com = screw_linear(u_i)
+    body_omega_com = screw_angular(u_i)
+    r_com_i = wp.quat_rotate(body_q_com, i_r_com_i)
+    body_r = body_r_com - r_com_i
+    body_v = body_v_com - wp.cross(body_omega_com, r_com_i)
+    body_q = transformf(body_r, body_q_com)
+    body_u = screw(body_v, body_omega_com)
+
+    # Store results in the output arrays
+    state_q_out[bid] = body_q
+    state_qd_out[bid] = body_u
+
+
+@wp.kernel
+def _compute_body_com_state_from_frame_inplace(
+    # Inputs
+    model_bodies_i_r_com_i: wp.array(dtype=vec3f),
+    # Outputs
+    state_bodies_q_i: wp.array(dtype=transformf),
+    state_bodies_u_i: wp.array(dtype=vec6f),
+):
+    # Retrieve the thread index as the body index
+    bid = wp.tid()
+
+    # Retrieve the model and data of the body
+    i_r_com_i = model_bodies_i_r_com_i[bid]
+    body_q = state_bodies_q_i[bid]
+    body_u = state_bodies_u_i[bid]
+
+    # Compute state of the body in the CoM frame from the local body-fixed frame
+    body_r = wp.transform_get_translation(body_q)
+    body_q_rot = wp.transform_get_rotation(body_q)
+    body_v = screw_linear(body_u)
+    body_omega = screw_angular(body_u)
+    r_com_i = wp.quat_rotate(body_q_rot, i_r_com_i)
+    body_r_com = body_r + r_com_i
+    body_v_com = body_v + wp.cross(body_omega, r_com_i)
+    body_q_i = transformf(body_r_com, body_q_rot)
+    body_u_i = screw(body_v_com, body_omega)
+
+    # Store results in the output arrays
+    state_bodies_q_i[bid] = body_q_i
+    state_bodies_u_i[bid] = body_u_i
+
+
+@wp.kernel
+def _compute_body_frame_state_from_com_inplace(
+    # Inputs
+    model_bodies_i_r_com_i: wp.array(dtype=vec3f),
+    # Outputs
+    state_bodies_q_i: wp.array(dtype=transformf),
+    state_bodies_u_i: wp.array(dtype=vec6f),
+):
+    # Retrieve the thread index as the body index
+    bid = wp.tid()
+
+    # Retrieve the model and data of the body
+    i_r_com_i = model_bodies_i_r_com_i[bid]
+    q_i = state_bodies_q_i[bid]
+    u_i = state_bodies_u_i[bid]
+
+    # Compute state of the body in the local body-fixed frame from the CoM frame
+    body_r_com = wp.transform_get_translation(q_i)
+    body_q_com = wp.transform_get_rotation(q_i)
+    body_v_com = screw_linear(u_i)
+    body_omega_com = screw_angular(u_i)
+    r_com_i = wp.quat_rotate(body_q_com, i_r_com_i)
+    body_r = body_r_com - r_com_i
+    body_v = body_v_com - wp.cross(body_omega_com, r_com_i)
+    body_q = transformf(body_r, body_q_com)
+    body_u = screw(body_v, body_omega_com)
+
+    # Store results in the output arrays
+    state_bodies_q_i[bid] = body_q
+    state_bodies_u_i[bid] = body_u
+
+
 ###
 # Launchers
 ###
@@ -442,5 +579,85 @@ def update_body_wrenches(model: RigidBodiesModel, data: RigidBodiesData):
             data.w_e_i,
             # Outputs:
             data.w_i,
+        ],
+    )
+
+
+def compute_body_com_state_from_frame(
+    model: RigidBodiesModel,
+    state_q: wp.array,
+    state_qd: wp.array,
+    state_q_i: wp.array,
+    state_u_i: wp.array,
+):
+    wp.launch(
+        _compute_body_com_state_from_frame,
+        dim=model.num_bodies,
+        inputs=[
+            # Inputs:
+            model.i_r_com_i,
+            state_q,
+            state_qd,
+            # Outputs:
+            state_q_i,
+            state_u_i,
+        ],
+    )
+
+
+def compute_body_frame_state_from_com(
+    model: RigidBodiesModel,
+    state_q_i: wp.array,
+    state_u_i: wp.array,
+    state_q: wp.array,
+    state_qd: wp.array,
+):
+    wp.launch(
+        _compute_body_frame_state_from_com,
+        dim=model.num_bodies,
+        inputs=[
+            # Inputs:
+            model.i_r_com_i,
+            state_q_i,
+            state_u_i,
+            # Outputs:
+            state_q,
+            state_qd,
+        ],
+    )
+
+
+def compute_body_com_state_from_frame_inplace(
+    model: RigidBodiesModel,
+    state_q_i: wp.array,
+    state_u_i: wp.array,
+):
+    wp.launch(
+        _compute_body_com_state_from_frame_inplace,
+        dim=model.num_bodies,
+        inputs=[
+            # Inputs:
+            model.i_r_com_i,
+            # Outputs:
+            state_q_i,
+            state_u_i,
+        ],
+    )
+
+
+def compute_body_frame_state_from_com_inplace(
+    model: RigidBodiesModel,
+    state_q_i: wp.array,
+    state_u_i: wp.array,
+):
+    wp.launch(
+        _compute_body_frame_state_from_com_inplace,
+        dim=model.num_bodies,
+        inputs=[
+            # Inputs:
+            model.i_r_com_i,
+            # Outputs:
+            state_q_i,
+            state_u_i,
         ],
     )

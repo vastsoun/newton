@@ -15,17 +15,13 @@
 
 """Constrained Rigid Multi-Body Model & Data Containers"""
 
-# Python
 from dataclasses import dataclass
 
-# Warp
+import numpy as np
 import warp as wp
 from warp.context import Devicelike
 
-# Newton
 from ....sim.model import Model
-
-# Kamino
 from .bodies import RigidBodiesData, RigidBodiesModel
 from .geometry import CollisionGeometriesModel, GeometriesData, GeometriesModel
 from .gravity import GravityModel
@@ -720,6 +716,18 @@ class KaminoModel:
         self.device = self._model_base.device
         self.requires_grad = self._model_base.requires_grad
 
+        def _compute_entity_indices(entity_world: wp.array) -> np.ndarray:
+            wid_np = entity_world.numpy()
+            eid_np = np.zeros_like(wid_np)
+            for b in range(model.body_count):
+                eid_np[b] = np.sum(wid_np[:b] == wid_np[b])
+            return eid_np
+
+        # Compute the entity indices of each body w.r.t the corresponding world
+        body_bid_np = _compute_entity_indices(model.body_world)
+        joint_jid_np = _compute_entity_indices(model.joint_world)
+        shape_sid_np = _compute_entity_indices(model.shape_world)
+
         # TODO: Construct the world descriptors from the newton.Model instance
         self.worlds: list[WorldDescriptor] = []
 
@@ -793,21 +801,21 @@ class KaminoModel:
             self.bodies = RigidBodiesModel(
                 num_bodies=model.body_count,
                 wid=model.body_world,
-                # bid=model.body_index,
-                r_com_i=model.body_com,
+                bid=wp.array(body_bid_np, dtype=int32),
+                i_r_com_i=model.body_com,
                 m_i=model.body_mass,
                 inv_m_i=model.body_inv_mass,
                 I_i=model.body_inertia,
                 inv_i_I_i=model.body_inv_inertia,
-                # q_i_0=wp.array(...),  # From model.body_q
-                # u_i_0=wp.array(...),  # From model.body_qd
+                q_i_0=wp.zeros_like(model.body_q),
+                u_i_0=wp.zeros_like(model.body_qd),
             )
 
             # Joints
             self.joints = JointsModel(
                 num_joints=model.joint_count,
                 wid=model.joint_world,
-                # jid=model.joint_index,
+                jid=wp.array(joint_jid_np, dtype=int32),
                 dof_type=model.joint_type,
                 # act_type=wp.array(...),
                 bid_B=model.joint_parent,
@@ -839,13 +847,16 @@ class KaminoModel:
             self.cgeoms = CollisionGeometriesModel(
                 num_geoms=model.shape_count,
                 wid=model.shape_world,
-                # gid=model.shape_index,
+                gid=wp.array(shape_sid_np, dtype=int32),
                 bid=model.shape_body,
                 sid=model.shape_type,
                 ptr=model.shape_source_ptr,
                 offset=model.shape_transform,
                 # params=wp.array(...),  # From model.shape_scale
             )
+
+        # Post-processing after construction
+        # TODO: Transform initial body CoM state from body frame state
 
     def data(
         self,

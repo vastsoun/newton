@@ -14,7 +14,15 @@
 # limitations under the License.
 
 """
-KAMINO: Material Model Types & Containers
+Mechanisms for defining and managing materials and their properties.
+
+TODO: elaborate further:
+- MaterialDescriptor
+- MaterialPairProperties
+- MaterialManager
+- MaterialsModel
+- MaterialPairsModel
+
 """
 
 from dataclasses import dataclass
@@ -71,12 +79,21 @@ Equals ``0.7``.
 
 class MaterialMuxMode(IntEnum):
     """
-    An enumeration defining the mixing modes for material pair properties.
+    An enumeration defining the heuristic modes for selecting
+    pairwise material properties from individual materials.
+
+    This is used when no specific material-pair properties
+    are defined and the properties must be derived.
     """
 
     AVERAGE = 0
+    """Pairwise property is the average of the two material properties."""
+
     MAX = 1
+    """Pairwise property is the maximum of the two material properties."""
+
     MIN = 2
+    """Pairwise property is the minimum of the two material properties."""
 
 
 @dataclass
@@ -84,23 +101,30 @@ class MaterialDescriptor(Descriptor):
     """
     A container to represent a managed material.
 
+
+
     Attributes:
-        name (`str`): The name of the material.
-        uid (`str`): The unique identifier (UUID) of the material.
-        density (`float`): The density of the material, in kg/m^3.\n
+        name (`str`):
+            The name of the material.
+        uid (`str`):
+            The unique identifier (UUID) of the material.
+        density (`float`):
+            The density of the material, in kg/m^3.\n
             Defaults to the global default of ``1000.0`` kg/m^3.
-        restitution (`float`): The coefficient of restitution,
-            according to the Newtonian impact model.\n
+        restitution (`float`):
+            The coefficient of restitution, according to the Newtonian impact model.\n
             Defaults to the global default of ``0.0``.
-        static_friction (`float`): The coefficient of static friction,
-            according to the Coulomb friction model.\n
+        static_friction (`float`):
+            The coefficient of static friction, according to the Coulomb friction model.\n
             Defaults to the global default of ``0.7``.
-        dynamic_friction (`float`): The coefficient of dynamic friction,
-            according to the Coulomb friction model.\n
+        dynamic_friction (`float`):
+            The coefficient of dynamic friction, according to the Coulomb friction model.\n
             Defaults to the global default of ``0.7``.
-        wid (`int`): Index of the world to which the material belongs.\n
+        wid (`int`):
+            Index of the world to which the material belongs.\n
             Defaults to `-1`, indicating that the material has not yet been added to a world.
-        mid (`int`): Index of the material w.r.t. the world.\n
+        mid (`int`):
+            Index of the material w.r.t. the world.\n
             Defaults to `-1`, indicating that the material has not yet been added to a world.
     """
 
@@ -171,14 +195,14 @@ class MaterialPairProperties:
     A container to represent the properties of a pair of materials, including friction and restitution coefficients.
 
     Attributes:
-        restitution (`float`): The coefficient of restitution,
-            according to the Newtonian impact model.\n
+        restitution (`float`):
+            The coefficient of restitution, according to the Newtonian impact model.\n
             Defaults to the global default of ``0.0``.
-        static_friction (`float`): The coefficient of static surface friction,
-            according to the Coulomb friction model.\n
+        static_friction (`float`):
+            The coefficient of static surface friction, according to the Coulomb friction model.\n
             Defaults to the global default of ``0.7``.
-        dynamic_friction (`float`): The coefficient of dynamic surface friction,
-            according to the Coulomb friction model.\n
+        dynamic_friction (`float`):
+            The coefficient of dynamic surface friction, according to the Coulomb friction model.\n
             Defaults to the global default of ``0.7``.
     """
 
@@ -209,43 +233,51 @@ class MaterialPairProperties:
 @dataclass
 class MaterialsModel:
     """
-    A container to hold material-pairs properties for a simulation.
+    A container to hold and manage per-material properties.
 
-    Each material-pair property is stored as a flat array containing the unique
-    non-zero elements of the lower-triangular part of a symmetric matrix, where
-    the entry at row i and column j corresponds to the material pair (i, j). The
-    indices correspond to the material indices defined by the MaterialManager.
+    Each material property is stored as an array ordered according
+    to the material index (`mid`) defined by the MaterialManager.
 
     Attributes:
-        num_pairs (int): Total number of material pairs in the model.
-        restitution (wp.array): Restitution coefficients matrix for each material pair.\n
+        num_pairs (int):
+            Total number of material pairs in the model.
+        restitution (wp.array):
+            Array of restitution coefficients for each registered material.\n
             Shape of ``(num_materials, num_materials)`` and type :class:`float`.
-        static_friction (wp.array): Friction coefficients matrix for each material pair.\n
+        static_friction (wp.array):
+            Array of static friction coefficients for each registered material.\n
             Shape of ``(num_materials, num_materials)`` and type :class:`float`.
-        dynamic_friction (wp.array): Friction coefficients matrix for each material pair.\n
+        dynamic_friction (wp.array):
+            Array of dynamic friction coefficients for each registered material.\n
             Shape of ``(num_materials, num_materials)`` and type :class:`float`.
     """
 
     num_materials: int = 0
     """Total number of materials represented in the model."""
 
+    density: wp.array | None = None
+    """
+    Array of material density values of each registered material.\n
+    Shape of ``(num_materials,)`` and type :class:`float`.
+    """
+
     restitution: wp.array | None = None
     """
-    Restitution coefficients matrix for each material pair.\n
+    Array of restitution coefficients for each registered material.\n
     Shape of ``(num_materials,)`` and type :class:`float`.
     """
 
     # TODO: Switch to vec3f for anisotropic+torsional friction?
     static_friction: wp.array | None = None
     """
-    Friction coefficients matrix for each material pair.\n
+    Array of static friction coefficients for each registered material.\n
     Shape of ``(num_materials,)`` and type :class:`float`.
     """
 
     # TODO: Switch to vec3f for anisotropic+torsional friction?
     dynamic_friction: wp.array | None = None
     """
-    Friction coefficients matrix for each material pair.\n
+    Array of dynamic friction coefficients for each registered material.\n
     Shape of ``(num_materials,)`` and type :class:`float`.
     """
 
@@ -253,20 +285,24 @@ class MaterialsModel:
 @dataclass
 class MaterialPairsModel:
     """
-    A container to hold material-pairs properties for a simulation.
+    A container to hold and manage per-material-pair properties.
 
-    Each material-pair property is stored as a flat array containing the unique
-    non-zero elements of the lower-triangular part of a symmetric matrix, where
-    the entry at row i and column j corresponds to the material pair (i, j). The
-    indices correspond to the material indices defined by the MaterialManager.
+    Each material-pair property is stored as a flat array containing the elements of
+    the lower-triangular part of the corresponding symmetric matrix, where the entry
+    at row `i` and column `j` corresponds to the material pair `(i, j)`. The indices
+    `i,j` correspond to the material indices (`mid`) defined by the MaterialManager.
 
     Attributes:
-        num_material_pairs (int): Total number of material pairs in the model.
-        restitution (wp.array): Restitution coefficients matrix for each material pair.\n
+        num_material_pairs (int):
+            Total number of material pairs represented in the model.
+        restitution (wp.array):
+            Lower-triangular matrix of material-pair restitution coefficients.\n
             Shape of ``(num_material_pairs,)`` and type :class:`float`.
-        static_friction (wp.array): Friction coefficients matrix for each material pair.\n
+        static_friction (wp.array):
+            Lower-triangular matrix of material-pair static friction coefficients.\n
             Shape of ``(num_material_pairs,)`` and type :class:`float`.
-        dynamic_friction (wp.array): Friction coefficients matrix for each material pair.\n
+        dynamic_friction (wp.array):
+            Lower-triangular matrix of material-pair dynamic friction coefficients.\n
             Shape of ``(num_material_pairs,)`` and type :class:`float`.
     """
 
@@ -275,21 +311,21 @@ class MaterialPairsModel:
 
     restitution: wp.array | None = None
     """
-    Restitution coefficients matrix for each material pair.\n
+    Lower-triangular matrix of material-pair restitution coefficients.\n
     Shape of ``(num_material_pairs,)`` and type :class:`float`.
     """
 
     # TODO: Switch to vec3f for anisotropic+torsional friction?
     static_friction: wp.array | None = None
     """
-    Friction coefficients matrix for each material pair.\n
+    Lower-triangular matrix of material-pair static friction coefficients.\n
     Shape of ``(num_material_pairs,)`` and type :class:`float`.
     """
 
     # TODO: Switch to vec3f for anisotropic+torsional friction?
     dynamic_friction: wp.array | None = None
     """
-    Friction coefficients matrix for each material pair.\n
+    Lower-triangular matrix of material-pair dynamic friction coefficients.\n
     Shape of ``(num_material_pairs,)`` and type :class:`float`.
     """
 
@@ -356,15 +392,15 @@ def material_min(
 def make_get_material_pair_properties(muxmode: MaterialMuxMode = MaterialMuxMode.MAX):
     """
     Generates a Warp function to retrieve material pair
-    properties based on the specified mixing mode.
+    properties based on the specified muxing mode.
 
     Args:
-        muxmode (MaterialMuxMode): The mixing mode to use for material pair properties.
+        muxmode (MaterialMuxMode): The muxing mode to use for material pair properties.
 
     Returns:
         function: A Warp function that retrieves material pair properties.
     """
-    # Select the appropriate mixing function based on the mixing mode
+    # Select the appropriate muxing function based on the muxing mode
     match muxmode:
         case MaterialMuxMode.AVERAGE:
             mix_func = material_average
@@ -373,7 +409,7 @@ def make_get_material_pair_properties(muxmode: MaterialMuxMode = MaterialMuxMode
         case MaterialMuxMode.MIN:
             mix_func = material_min
         case _:
-            raise ValueError(f"Unsupported material mixing mode: {muxmode}")
+            raise ValueError(f"Unsupported material muxing mode: {muxmode}")
 
     # Define the Warp function to retrieve material pair properties
     @wp.func
@@ -389,6 +425,10 @@ def make_get_material_pair_properties(muxmode: MaterialMuxMode = MaterialMuxMode
     ) -> tuple[float32, float32, float32]:
         """
         Retrieves the properties of a material pair given their material indices.
+
+        If material-pair properties are not defined (i.e., negative values) for the given
+        material indices `mid1, mid2`, the properties are computed from the individual
+        materials using the configured muxing method.
 
         Args:
             mid1 (int32): The index of the first material.
@@ -412,7 +452,7 @@ def make_get_material_pair_properties(muxmode: MaterialMuxMode = MaterialMuxMode
         static_friction = material_pair_static_friction[mid_tril_idx]
         dynamic_friction = material_pair_dynamic_friction[mid_tril_idx]
 
-        # If any property is negative, compute the material pair properties using the set mixing method
+        # If any property is negative, compute the material pair properties using the set muxing method
         if restitution < 0.0:
             restitution = mix_func(material_restitution[mid1], material_restitution[mid2])
         if static_friction < 0.0:
@@ -733,13 +773,13 @@ class MaterialManager:
             np.ndarray: A 1D numpy array containing per-material restitution coefficients.
         """
         # Get the number of materials
-        Nm = len(self._materials)
+        num_materials = len(self._materials)
 
         # Initialize the restitution matrix
-        restitution = np.full((Nm,), -1, dtype=np.float32)
+        restitution = np.full((num_materials,), -1, dtype=np.float32)
 
         # Fill the matrix with the restitution coefficients
-        for i in range(Nm):
+        for i in range(num_materials):
             restitution[i] = self._materials[i].restitution
 
         # Return the restitution matrix as a numpy array
@@ -753,14 +793,14 @@ class MaterialManager:
             np.ndarray: A 2D numpy array containing restitution coefficients.
         """
         # Get the number of materials
-        Nm = len(self._materials)
-        Nmp = Nm * (Nm + 1) // 2
+        num_materials = len(self._materials)
+        num_material_pairs = num_materials * (num_materials + 1) // 2
 
         # Initialize the restitution matrix
-        restitution = np.full((Nmp,), -1, dtype=np.float32)
+        restitution = np.full((num_material_pairs,), -1, dtype=np.float32)
 
         # Fill the matrix with the restitution coefficients
-        for i in range(Nm):
+        for i in range(num_materials):
             for j in range(0, i + 1):
                 # Check if the material pair properties exist
                 if self._pair_properties[i][j] is not None:
@@ -783,13 +823,13 @@ class MaterialManager:
             np.ndarray: A 1D numpy array containing per-material static friction coefficients.
         """
         # Get the number of materials
-        Nm = len(self._materials)
+        num_materials = len(self._materials)
 
         # Initialize the restitution matrix
-        static_friction = np.full((Nm,), -1, dtype=np.float32)
+        static_friction = np.full((num_materials,), -1, dtype=np.float32)
 
         # Fill the matrix with the restitution coefficients
-        for i in range(Nm):
+        for i in range(num_materials):
             static_friction[i] = self._materials[i].static_friction
 
         # Return the restitution matrix as a numpy array
@@ -803,14 +843,14 @@ class MaterialManager:
             np.ndarray: A 2D numpy array containing static friction coefficients.
         """
         # Get the number of materials
-        Nm = len(self._materials)
-        Nmp = Nm * (Nm + 1) // 2
+        num_materials = len(self._materials)
+        num_material_pairs = num_materials * (num_materials + 1) // 2
 
         # Initialize the friction matrix
-        static_friction = np.full((Nmp,), -1, dtype=np.float32)
+        static_friction = np.full((num_material_pairs,), -1, dtype=np.float32)
 
         # Fill the matrix with the friction coefficients
-        for i in range(Nm):
+        for i in range(num_materials):
             for j in range(0, i + 1):
                 # Check if the material pair properties exist
                 if self._pair_properties[i][j] is not None:
@@ -833,13 +873,13 @@ class MaterialManager:
             np.ndarray: A 1D numpy array containing per-material dynamic friction coefficients.
         """
         # Get the number of materials
-        Nm = len(self._materials)
+        num_materials = len(self._materials)
 
         # Initialize the restitution matrix
-        dynamic_friction = np.full((Nm,), -1, dtype=np.float32)
+        dynamic_friction = np.full((num_materials,), -1, dtype=np.float32)
 
         # Fill the matrix with the restitution coefficients
-        for i in range(Nm):
+        for i in range(num_materials):
             dynamic_friction[i] = self._materials[i].dynamic_friction
 
         # Return the restitution matrix as a numpy array
@@ -853,14 +893,14 @@ class MaterialManager:
             np.ndarray: A 2D numpy array containing dynamic friction coefficients.
         """
         # Get the number of materials
-        Nm = len(self._materials)
-        Nmp = Nm * (Nm + 1) // 2
+        num_materials = len(self._materials)
+        num_material_pairs = num_materials * (num_materials + 1) // 2
 
         # Initialize the friction matrix
-        dynamic_friction = np.full((Nmp,), -1, dtype=np.float32)
+        dynamic_friction = np.full((num_material_pairs,), -1, dtype=np.float32)
 
         # Fill the matrix with the friction coefficients
-        for i in range(Nm):
+        for i in range(num_materials):
             for j in range(0, i + 1):
                 # Check if the material pair properties exist
                 if self._pair_properties[i][j] is not None:

@@ -137,8 +137,9 @@ def contact_params(
     mix = wp.where((solmix1 >= MJ_MINVAL) and (solmix2 < MJ_MINVAL), 1.0, mix)
     mix = wp.where(p1 == p2, mix, wp.where(p1 > p2, 1.0, 0.0))
 
-    margin = wp.max(geom_margin[worldid, g1], geom_margin[worldid, g2])
-    gap = wp.max(geom_gap[worldid, g1], geom_gap[worldid, g2])
+    # Sum margins for consistency with thickness summing
+    margin = geom_margin[worldid, g1] + geom_margin[worldid, g2]
+    gap = geom_gap[worldid, g1] + geom_gap[worldid, g2]
 
     condim1 = geom_condim[g1]
     condim2 = geom_condim[g2]
@@ -165,6 +166,24 @@ def contact_params(
     return margin, gap, condim, friction, solref, solreffriction, solimp
 
 
+@wp.func
+def convert_solref(ke: float, kd: float, d_width: float, d_r: float) -> wp.vec2:
+    """Convert from stiffness and damping to time constant and damp ratio
+    based on d(r) and d(width)."""
+
+    if ke > 0.0 and kd > 0.0:
+        # ke = d(r) / (d_width^2 * timeconst^2 * dampratio^2)
+        # kd = 2 / (d_width * timeconst)
+        timeconst = 2.0 / (kd * d_width)
+        dampratio = kd / 2.0 * wp.sqrt(d_r / ke)
+    else:
+        timeconst = 0.02
+        dampratio = 1.0
+    # see https://mujoco.readthedocs.io/en/latest/modeling.html#solver-parameters
+
+    return wp.vec2(timeconst, dampratio)
+
+
 # Kernel functions
 @wp.kernel
 def convert_newton_contacts_to_mjwarp_kernel(
@@ -188,6 +207,9 @@ def convert_newton_contacts_to_mjwarp_kernel(
     rigid_contact_normal: wp.array(dtype=wp.vec3),
     rigid_contact_thickness0: wp.array(dtype=wp.float32),
     rigid_contact_thickness1: wp.array(dtype=wp.float32),
+    rigid_contact_stiffness: wp.array(dtype=wp.float32),
+    rigid_contact_damping: wp.array(dtype=wp.float32),
+    rigid_contact_friction_scale: wp.array(dtype=wp.float32),
     bodies_per_world: int,
     newton_shape_to_mjc_geom: wp.array(dtype=wp.int32),
     # Mujoco warp contacts
@@ -290,6 +312,37 @@ def convert_newton_contacts_to_mjwarp_kernel(
         geoms,
         worldid,
     )
+
+    if rigid_contact_stiffness:
+        # Use per-contact stiffness/damping parameters
+        contact_ke = rigid_contact_stiffness[tid]
+        if contact_ke > 0.0:
+            # set solimp to approximate linear force-to-displacement relationship at rest
+            # see https://mujoco.readthedocs.io/en/latest/modeling.html#solver-parameters
+            imp = solimp[1]
+            solimp = vec5(imp, imp, 0.001, 1.0, 0.5)
+            contact_ke = contact_ke * (1.0 - imp)  # compensate for impedance scaling
+            kd = rigid_contact_damping[tid]
+            # convert from stiffness/damping to MuJoCo's solref timeconst and dampratio
+            if kd > 0.0:
+                timeconst = 2.0 / kd
+                dampratio = wp.sqrt(1.0 / (timeconst * timeconst * contact_ke))
+            else:
+                # if no damping was set, use default damping ratio
+                timeconst = wp.sqrt(1.0 / contact_ke)
+                dampratio = 1.0
+
+            solref = wp.vec2(timeconst, dampratio)
+
+        friction_scale = rigid_contact_friction_scale[tid]
+        if friction_scale > 0.0:
+            friction = vec5(
+                friction[0] * friction_scale,
+                friction[1] * friction_scale,
+                friction[2],
+                friction[3],
+                friction[4],
+            )
 
     # Use the write_contact function to write all the data
     write_contact(
@@ -617,6 +670,7 @@ def apply_mjc_qfrc_kernel(
 def eval_single_articulation_fk(
     joint_start: int,
     joint_end: int,
+    joint_articulation: wp.array(dtype=int),
     joint_q: wp.array(dtype=float),
     joint_qd: wp.array(dtype=float),
     joint_q_start: wp.array(dtype=int),
@@ -634,6 +688,10 @@ def eval_single_articulation_fk(
     body_qd: wp.array(dtype=wp.spatial_vector),
 ):
     for i in range(joint_start, joint_end):
+        articulation = joint_articulation[i]
+        if articulation == -1:
+            continue
+
         parent = joint_parent[i]
         child = joint_child[i]
 
@@ -744,6 +802,7 @@ def eval_single_articulation_fk(
 @wp.kernel
 def eval_articulation_fk(
     articulation_start: wp.array(dtype=int),
+    joint_articulation: wp.array(dtype=int),
     joint_q: wp.array(dtype=float),
     joint_qd: wp.array(dtype=float),
     joint_q_start: wp.array(dtype=int),
@@ -768,6 +827,7 @@ def eval_articulation_fk(
     eval_single_articulation_fk(
         joint_start,
         joint_end,
+        joint_articulation,
         joint_q,
         joint_qd,
         joint_q_start,
@@ -915,11 +975,9 @@ def update_axis_properties_kernel(
     mjc_actuator_to_newton_axis: wp.array2d(dtype=wp.int32),
     joint_target_kp: wp.array(dtype=float),
     joint_target_kv: wp.array(dtype=float),
-    joint_effort_limit: wp.array(dtype=float),
     # outputs
     actuator_bias: wp.array2d(dtype=vec10),
     actuator_gain: wp.array2d(dtype=vec10),
-    actuator_forcerange: wp.array2d(dtype=wp.vec2f),
 ):
     """Update MuJoCo actuator properties from Newton joint properties.
 
@@ -937,16 +995,12 @@ def update_axis_properties_kernel(
     if raw_value >= 0:
         # Position actuator
         newton_axis = raw_value
-        effort_limit = joint_effort_limit[newton_axis]
-        actuator_forcerange[world, mjc_actuator] = wp.vec2f(-effort_limit, effort_limit)
         kp = joint_target_kp[newton_axis]
         actuator_bias[world, mjc_actuator][1] = -kp
         actuator_gain[world, mjc_actuator][0] = kp
     elif raw_value != -1:  # raw_value == -1 means unmapped
         # Velocity actuator
         newton_axis = -raw_value - 2  # Decode: -(newton_axis + 2) -> newton_axis
-        effort_limit = joint_effort_limit[newton_axis]
-        actuator_forcerange[world, mjc_actuator] = wp.vec2f(-effort_limit, effort_limit)
         kv = joint_target_kv[newton_axis]
         actuator_bias[world, mjc_actuator][2] = -kv
         actuator_gain[world, mjc_actuator][0] = kv
@@ -994,6 +1048,7 @@ def update_jnt_properties_kernel(
     joint_limit_kd: wp.array(dtype=float),
     joint_limit_lower: wp.array(dtype=float),
     joint_limit_upper: wp.array(dtype=float),
+    joint_effort_limit: wp.array(dtype=float),
     solimplimit: wp.array(dtype=vec5),
     joint_stiffness: wp.array(dtype=float),
     limit_margin: wp.array(dtype=float),
@@ -1003,6 +1058,7 @@ def update_jnt_properties_kernel(
     jnt_stiffness: wp.array2d(dtype=float),
     jnt_margin: wp.array2d(dtype=float),
     jnt_range: wp.array2d(dtype=wp.vec2),
+    jnt_actfrcrange: wp.array2d(dtype=wp.vec2),
 ):
     """Update MuJoCo joint properties from Newton DOF properties.
 
@@ -1032,6 +1088,9 @@ def update_jnt_properties_kernel(
 
     # Update joint range
     jnt_range[world, mjc_jnt] = wp.vec2(joint_limit_lower[newton_dof], joint_limit_upper[newton_dof])
+    # update joint actuator force range (effort limit)
+    effort_limit = joint_effort_limit[newton_dof]
+    jnt_actfrcrange[world, mjc_jnt] = wp.vec2(-effort_limit, effort_limit)
 
 
 @wp.kernel
@@ -1190,6 +1249,8 @@ def update_geom_properties_kernel(
     shape_torsional_friction: wp.array(dtype=float),
     shape_rolling_friction: wp.array(dtype=float),
     shape_geom_solimp: wp.array(dtype=vec5),
+    shape_geom_solmix: wp.array(dtype=float),
+    shape_geom_gap: wp.array(dtype=float),
     # outputs
     geom_rbound: wp.array2d(dtype=float),
     geom_friction: wp.array2d(dtype=wp.vec3f),
@@ -1198,6 +1259,8 @@ def update_geom_properties_kernel(
     geom_pos: wp.array2d(dtype=wp.vec3f),
     geom_quat: wp.array2d(dtype=wp.quatf),
     geom_solimp: wp.array2d(dtype=vec5),
+    geom_solmix: wp.array2d(dtype=float),
+    geom_gap: wp.array2d(dtype=float),
 ):
     """Update MuJoCo geom properties from Newton shape properties.
 
@@ -1220,21 +1283,21 @@ def update_geom_properties_kernel(
     geom_friction[world, geom_idx] = wp.vec3f(mu, torsional, rolling)
 
     # update geom_solref (timeconst, dampratio) using stiffness and damping
-    # we don't use negative convention for geom_solref because MJWarp's code
-    # combining geoms' negative solrefs looks suspicious
-    ke, kd = shape_ke[shape_idx], shape_kd[shape_idx]
-    if ke > 0.0 and kd > 0.0:
-        # kd = 2 / timeconst -> timeconst = 2 / kd
-        # ke = 1 / (timeconst^2 * dampratio^2) -> dampratio = sqrt(1 / (timeconst^2 * ke))
-        timeconst = 2.0 / kd
-        dampratio = wp.sqrt(1.0 / (timeconst * timeconst * ke))
-        geom_solref[world, geom_idx] = wp.vec2f(timeconst, dampratio)
-    else:
-        geom_solref[world, geom_idx] = wp.vec2f(0.02, 1.0)
+    # we don't use the negative convention to support controlling the mixing of shapes' stiffnesses via solmix
+    # use approximation of d(0) = d(width) = 1
+    geom_solref[world, geom_idx] = convert_solref(shape_ke[shape_idx], shape_kd[shape_idx], 1.0, 1.0)
 
     # update geom_solimp from custom attribute
     if shape_geom_solimp:
         geom_solimp[world, geom_idx] = shape_geom_solimp[shape_idx]
+
+    # update geom_solmix from custom attribute
+    if shape_geom_solmix:
+        geom_solmix[world, geom_idx] = shape_geom_solmix[shape_idx]
+
+    # update geom_gap from custom attribute
+    if shape_geom_gap:
+        geom_gap[world, geom_idx] = shape_geom_gap[shape_idx]
 
     # update size
     geom_size[world, geom_idx] = shape_size[shape_idx]
@@ -1275,3 +1338,85 @@ def _create_inverse_shape_mapping_kernel(
     newton_shape_idx = mjc_geom_to_newton_shape[world, geom_idx]
     if newton_shape_idx >= 0:
         newton_shape_to_mjc_geom[newton_shape_idx] = geom_idx
+
+
+@wp.func
+def mj_body_acceleration(
+    body_rootid: wp.array(dtype=int),
+    xipos_in: wp.array2d(dtype=wp.vec3),
+    subtree_com_in: wp.array2d(dtype=wp.vec3),
+    cvel_in: wp.array2d(dtype=wp.spatial_vector),
+    cacc_in: wp.array2d(dtype=wp.spatial_vector),
+    worldid: int,
+    bodyid: int,
+) -> wp.vec3:
+    """Compute accelerations for bodies from mjwarp data."""
+    cacc = cacc_in[worldid, bodyid]
+    cvel = cvel_in[worldid, bodyid]
+    offset = xipos_in[worldid, bodyid] - subtree_com_in[worldid, body_rootid[bodyid]]
+    ang = wp.spatial_top(cvel)
+    lin = wp.spatial_bottom(cvel) - wp.cross(offset, ang)
+    acc = wp.spatial_bottom(cacc) - wp.cross(offset, wp.spatial_top(cacc))
+    correction = wp.cross(ang, lin)
+
+    return acc + correction
+
+
+@wp.kernel
+def update_eq_properties_kernel(
+    mjc_eq_to_newton_eq: wp.array2d(dtype=wp.int32),
+    eq_solref: wp.array(dtype=wp.vec2),
+    # outputs
+    eq_solref_out: wp.array2d(dtype=wp.vec2),
+):
+    """Update MuJoCo equality constraint properties from Newton equality constraint properties.
+
+    Iterates over MuJoCo equality constraints [world, eq], looks up Newton eq constraint,
+    and copies solref.
+    """
+    world, mjc_eq = wp.tid()
+    newton_eq = mjc_eq_to_newton_eq[world, mjc_eq]
+    if newton_eq < 0:
+        return
+
+    if eq_solref:
+        eq_solref_out[world, mjc_eq] = eq_solref[newton_eq]
+
+
+@wp.kernel
+def convert_rigid_forces_from_mj_kernel(
+    mjc_body_to_newton: wp.array2d(dtype=wp.int32),
+    # mjw sources
+    mjw_body_rootid: wp.array(dtype=wp.int32),
+    mjw_gravity: wp.array(dtype=wp.vec3),
+    mjw_xpos: wp.array2d(dtype=wp.vec3),
+    mjw_subtree_com: wp.array2d(dtype=wp.vec3),
+    mjw_cacc: wp.array2d(dtype=wp.spatial_vector),
+    mjw_cvel: wp.array2d(dtype=wp.spatial_vector),
+    # outputs
+    body_qdd: wp.array(dtype=wp.spatial_vector),
+    body_parent_f: wp.array(dtype=wp.spatial_vector),
+):
+    """Update RNE-computed rigid forces from mj_warp com-based forces."""
+    world, mjc_body = wp.tid()
+    newton_body = mjc_body_to_newton[world, mjc_body]
+
+    if newton_body < 0:
+        return
+
+    if body_qdd:
+        cacc = mjw_cacc[world, mjc_body]
+        lin = mj_body_acceleration(
+            mjw_body_rootid,
+            mjw_xpos,
+            mjw_subtree_com,
+            mjw_cvel,
+            mjw_cacc,
+            world,
+            mjc_body,
+        )
+        body_qdd[newton_body] = wp.spatial_vector(lin + mjw_gravity[0], wp.spatial_top(cacc))
+
+    if body_parent_f:
+        # TODO: implement link incoming forces
+        pass

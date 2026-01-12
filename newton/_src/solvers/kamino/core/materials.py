@@ -86,7 +86,7 @@ Equals ``0.7``.
 
 class MaterialMuxMode(IntEnum):
     """
-    An enumeration defining the heuristic modes for selecting
+    An enumeration defining the heuristic modes for deriving
     pairwise material properties from individual materials.
 
     This is used when no specific material-pair properties
@@ -111,7 +111,7 @@ class MaterialDescriptor(Descriptor):
     This descriptor holds both intrinsic and extrinsic properties of a material. While the former
     are truly dependent on the material itself (e.g., density), the latter are actually dependent
     on the pairwise interactions of the material with others (e.g., friction, restitution). These
-    extrinsic properties are stored here for to support model specifications such as USD which
+    extrinsic properties are stored here to support model specifications such as USD which
     currently do not support material-pair definitions.
 
     Attributes:

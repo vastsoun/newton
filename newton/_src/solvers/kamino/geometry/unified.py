@@ -30,6 +30,7 @@ from ....geometry.broad_phase_nxn import BroadPhaseAllPairs, BroadPhaseExplicit
 from ....geometry.broad_phase_sap import BroadPhaseSAP
 from ....geometry.collision_core import compute_tight_aabb_from_support
 from ....geometry.contact_data import ContactData
+from ....geometry.flags import ShapeFlags
 from ....geometry.narrow_phase import NarrowPhase
 from ....geometry.sdf_utils import SDFData
 from ....geometry.support_function import GenericShapeData, SupportMapDataProvider, pack_mesh_ptr
@@ -213,6 +214,7 @@ def convert_kamino_shape_to_newton_geo(sid: int32, params: vec4f) -> tuple[int32
 def write_contact_unified_kamino(
     contact_data: ContactData,
     writer_data: ContactWriterDataKamino,
+    output_index: int,
 ):
     """
     Write a contact to Kamino-compatible output arrays.
@@ -269,6 +271,16 @@ def write_contact_unified_kamino(
         # Atomically increment contact counts
         mcid = wp.atomic_add(writer_data.contacts_model_num_active, 0, 1)
         wcid = wp.atomic_add(writer_data.contacts_world_num_active, wid, 1)
+
+        # if output_index < 0:
+        #     if d >= contact_data.margin:
+        #         return
+        #     index = wp.atomic_add(writer_data.contact_count, 0, 1)
+        #     if index >= writer_data.contact_max:
+        #         wp.atomic_add(writer_data.contact_count, 0, -1)
+        #         return
+        # else:
+        #     index = output_index
 
         # If within the max contact allocations, write the new contact
         if mcid < writer_data.model_max_contacts and wcid < world_max_contacts:
@@ -569,6 +581,13 @@ class CollisionPipelineUnifiedKamino:
         # Capture a reference to per-geometry world indices already present in the model
         self.geom_wid: wp.array = model.cgeoms.wid
 
+        # Define default shape flags for all geometries
+        default_shape_flag: int = (
+            ShapeFlags.VISIBLE  # Mark as visible for debugging/visualization
+            | ShapeFlags.COLLIDE_SHAPES  # Enable shape-shape collision
+            | ShapeFlags.COLLIDE_PARTICLES  # Enable shape-particle collision
+        )
+
         # Allocate internal data needed by the pipeline that
         # the Kamino model and data do not yet provide
         with wp.ScopedDevice(self._device):
@@ -576,6 +595,7 @@ class CollisionPipelineUnifiedKamino:
             self.geom_data = wp.zeros(self._num_geoms, dtype=vec4f)
             self.geom_collision_group = wp.array(geom_collision_group_list, dtype=int32)
             self.geom_collision_radius = wp.zeros(self._num_geoms, dtype=float32)
+            self.shape_flags = wp.full(self._num_geoms, default_shape_flag, dtype=int32)
             self.shape_aabb_lower = wp.zeros(self._num_geoms, dtype=wp.vec3)
             self.shape_aabb_upper = wp.zeros(self._num_geoms, dtype=wp.vec3)
             self.broad_phase_pair_count = wp.zeros(1, dtype=wp.int32)
@@ -834,6 +854,7 @@ class CollisionPipelineUnifiedKamino:
             shape_sdf_data=self.shape_sdf_data,
             shape_contact_margin=model.cgeoms.margin,
             shape_collision_radius=self.geom_collision_radius,
+            shape_flags=self.shape_flags,
             writer_data=writer_data,
             device=self._device,
         )

@@ -31,6 +31,7 @@ from .materials import MaterialPairsModel
 from .new_control import KaminoControl
 from .new_data import KaminoData, KaminoDataInfo
 from .new_state import KaminoState
+from .shapes import convert_newton_geo_to_kamino_shape
 from .time import TimeData, TimeModel
 from .types import float32, int32, mat33f, transformf, vec6f
 from .world import WorldDescriptor
@@ -747,9 +748,11 @@ class KaminoModel:
         msg.info("num_joints_np: %s", num_joints_np)
         msg.info("num_shapes_np: %s\n", num_shapes_np)
 
-        # Compute body DoF and joint coord/DoF/constraint counts per world
+        # Compute body coord/DoF counts per world
         num_body_coords_np = num_bodies_np * 7
         num_body_dofs_np = num_bodies_np * 6
+
+        # Compute joint coord/DoF/constraint counts per world
         num_joint_coords_np = np.zeros((model.num_worlds,), dtype=int)
         num_joint_dofs_np = np.zeros((model.num_worlds,), dtype=int)
         num_joint_cts_np = np.zeros((model.num_worlds,), dtype=int)
@@ -774,10 +777,32 @@ class KaminoModel:
         msg.info("num_body_dofs_np: %s", num_body_dofs_np)
         msg.info("num_joint_coords_np: %s", num_joint_coords_np)
         msg.info("num_joint_dofs_np: %s", num_joint_dofs_np)
-        msg.info("num_joint_cts_np: %s\n", num_joint_cts_np)
-        msg.info("joint_num_coords_np: %s\n", joint_num_coords_np)
-        msg.info("joint_num_dofs_np: %s\n", joint_num_dofs_np)
+        msg.info("num_joint_cts_np: %s", num_joint_cts_np)
+        msg.info("joint_num_coords_np: %s", joint_num_coords_np)
+        msg.info("joint_num_dofs_np: %s", joint_num_dofs_np)
         msg.info("joint_num_cts_np: %s\n", joint_num_cts_np)
+
+        # Compute constraint offsets of each joint w.r.t the corresponding world
+        joint_world_cts_offset_np = np.zeros((model.joint_count,), dtype=int)
+        for j in range(model.joint_count):
+            wid_j = joint_wid_np[j]
+            offset_j = 0
+            for jj in range(j):
+                if joint_wid_np[jj] == wid_j:
+                    offset_j += joint_num_cts_np[jj]
+            joint_world_cts_offset_np[j] = offset_j
+        msg.info("joint_world_cts_offset_np: %s\n", joint_world_cts_offset_np)
+
+        # Convert per-shape properties from Newton to Kamino format
+        geom_shape_type_np = model.shape_type.numpy()
+        geom_shape_scale_np = model.shape_scale.numpy()
+        geom_shape_params_np = np.zeros((model.shape_count, 4), dtype=float)
+        for s in range(model.shape_count):
+            shape_type, params = convert_newton_geo_to_kamino_shape(geom_shape_type_np[s], geom_shape_scale_np[s])
+            geom_shape_type_np[s] = shape_type
+            geom_shape_params_np[s, :] = params
+        msg.info("geom_shape_type_np: %s", geom_shape_type_np)
+        msg.info("geom_shape_params_np:\n%s\n", geom_shape_params_np)
 
         # Compute offsets per world
         body_offset_np = np.zeros((model.num_worlds,), dtype=int)
@@ -786,6 +811,7 @@ class KaminoModel:
         joint_coord_offset_np = np.zeros((model.num_worlds,), dtype=int)
         joint_dof_offset_np = np.zeros((model.num_worlds,), dtype=int)
         joint_cts_offset_np = np.zeros((model.num_worlds,), dtype=int)
+        shape_offset_np = np.zeros((model.num_worlds,), dtype=int)
         for w in range(1, model.num_worlds):
             body_offset_np[w] = body_offset_np[w - 1] + num_bodies_np[w - 1]
             body_dof_offset_np[w] = body_dof_offset_np[w - 1] + num_body_dofs_np[w - 1]
@@ -793,6 +819,7 @@ class KaminoModel:
             joint_coord_offset_np[w] = joint_coord_offset_np[w - 1] + num_joint_coords_np[w - 1]
             joint_dof_offset_np[w] = joint_dof_offset_np[w - 1] + num_joint_dofs_np[w - 1]
             joint_cts_offset_np[w] = joint_cts_offset_np[w - 1] + num_joint_cts_np[w - 1]
+            shape_offset_np[w] = shape_offset_np[w - 1] + num_shapes_np[w - 1]
         msg.info("body_offset_np: %s", body_offset_np)
         msg.info("body_dof_offset_np: %s", body_dof_offset_np)
         msg.info("joint_offset_np: %s", joint_offset_np)
@@ -801,25 +828,48 @@ class KaminoModel:
         msg.info("joint_cts_offset_np: %s\n", joint_cts_offset_np)
 
         # Determine the base body and joint indices per world
-        # TODO: Check for articulation
-        # TODO: Check for root joint (i.e. body with no parent)
         base_body_idx_np = np.zeros((model.num_worlds,), dtype=int)
         base_joint_idx_np = np.zeros((model.num_worlds,), dtype=int)
-
-        # TODO: Fall-back: first body and joint in the world
-        for w in range(model.num_worlds):
-            # Base body: first body in the world
-            for b in range(model.body_count):
-                if model.body_world[b] == w:
-                    base_body_idx_np[w] = b
-                    break
-            # Base joint: first joint in the world
-            for j in range(model.joint_count):
-                if model.joint_world[j] == w:
-                    base_joint_idx_np[w] = j
-                    break
+        body_world_np = model.body_world.numpy()
+        # TODO: Check for articulation
+        # TODO: Check for root joint (i.e. body with no parent)
+        # # TODO: Fall-back: first body and joint in the world
+        # for w in range(model.num_worlds):
+        #     # Base body: first body in the world
+        #     for b in range(model.body_count):
+        #         if body_world_np[b] == w:
+        #             base_body_idx_np[w] = b
+        #             break
+        #     # Base joint: first joint in the world
+        #     for j in range(model.joint_count):
+        #         if joint_world_np[j] == w:
+        #             base_joint_idx_np[w] = j
+        #             break
         msg.info("base_body_idx_np: %s", base_body_idx_np)
         msg.info("base_joint_idx_np: %s\n", base_joint_idx_np)
+
+        # Construct per-world inertial summaries
+        mass_min_np = np.zeros((model.num_worlds,), dtype=float)
+        mass_max_np = np.zeros((model.num_worlds,), dtype=float)
+        mass_total_np = np.zeros((model.num_worlds,), dtype=float)
+        inertia_total_np = np.zeros((model.num_worlds,), dtype=float)
+        body_mass_np = model.body_mass.numpy()
+        body_inertia_np = model.body_inertia.numpy()
+        for w in range(model.num_worlds):
+            masses_w = []
+            for b in range(model.body_count):
+                if body_world_np[b] == w:
+                    mass_b = body_mass_np[b]
+                    masses_w.append(mass_b)
+                    inertia_total_np[w] += body_inertia_np[b].diagonal().sum()
+                    mass_total_np[w] += mass_b
+            mass_min_np[w] = min(masses_w)
+            mass_max_np[w] = max(masses_w)
+        msg.info("body_mass_np: %s", body_mass_np)
+        msg.info("mass_min_np: %s", mass_min_np)
+        msg.info("mass_max_np: %s", mass_max_np)
+        msg.info("mass_total_np: %s", mass_total_np)
+        msg.info("inertia_total_np: %s\n", inertia_total_np)
 
         # TODO: Construct the world descriptors from the newton.Model instance
         self.worlds: list[WorldDescriptor] = [None] * model.num_worlds
@@ -833,7 +883,7 @@ class KaminoModel:
                 num_actuated_joints=num_joints_np[w],
                 num_collision_geoms=num_shapes_np[w],
                 num_physical_geoms=num_shapes_np[w],
-                num_materials=1,  # TODO: define default material
+                num_materials=0,  # TODO: how to handle both global and per-world materials simultaneously?
                 num_body_coords=num_body_coords_np[w],
                 num_body_dofs=num_body_dofs_np[w],
                 num_joint_coords=num_joint_coords_np[w],
@@ -843,7 +893,6 @@ class KaminoModel:
                 num_actuated_joint_coords=num_joint_coords_np[w],
                 num_actuated_joint_dofs=num_joint_dofs_np[w],
                 num_joint_cts=num_joint_cts_np[w],
-
                 # TODO
                 joint_coords=[],
                 joint_dofs=[],
@@ -852,21 +901,19 @@ class KaminoModel:
                 joint_actuated_coords=[],
                 joint_actuated_dofs=[],
                 joint_cts=[],
-
                 # TODO
-                bodies_idx_offset=0,
-                joints_idx_offset=0,
-                collision_geoms_idx_offset=0,
-                physical_geoms_idx_offset=0,
-                body_dofs_idx_offset=0,
-                joint_coords_idx_offset=0,
-                joint_dofs_idx_offset=0,
-                passive_joint_coords_idx_offset=0,
-                passive_joint_dofs_idx_offset=0,
-                actuated_joint_coords_idx_offset=0,
-                actuated_joint_dofs_idx_offset=0,
-                joint_cts_idx_offset=0,
-
+                bodies_idx_offset=body_offset_np[w],
+                joints_idx_offset=joint_offset_np[w],
+                collision_geoms_idx_offset=shape_offset_np[w],
+                physical_geoms_idx_offset=shape_offset_np[w],
+                body_dofs_idx_offset=body_dof_offset_np[w],
+                joint_coords_idx_offset=joint_coord_offset_np[w],
+                joint_dofs_idx_offset=joint_dof_offset_np[w],
+                passive_joint_coords_idx_offset=-1,
+                passive_joint_dofs_idx_offset=-1,
+                actuated_joint_coords_idx_offset=joint_coord_offset_np[w],
+                actuated_joint_dofs_idx_offset=joint_dof_offset_np[w],
+                joint_cts_idx_offset=joint_cts_offset_np[w],
                 # TODO
                 body_names=[],
                 body_uids=[],
@@ -882,17 +929,16 @@ class KaminoModel:
                 fixed_joint_names=[],
                 passive_joint_names=[],
                 actuated_joint_names=[],
-                physical_geometry_layers=[],
-                collision_geometry_layers=[],
-                collision_geometry_max_contacts=[],
-
+                physical_geometry_layers=["default"],
+                collision_geometry_layers=["default"],
+                collision_geometry_max_contacts=[-1] * num_shapes_np[w],
                 # TODO
-                base_body_idx=0,  # TODO
-                base_joint_idx=0,  # TODO
-                mass_min=0.0,  # TODO
-                mass_max=0.0,  # TODO
-                mass_total=0.0,  # TODO
-                inertia_total=0.0,  # TODO
+                base_body_idx=base_body_idx_np[w],
+                base_joint_idx=base_joint_idx_np[w],
+                mass_min=mass_min_np[w],
+                mass_max=mass_max_np[w],
+                mass_total=mass_total_np[w],
+                inertia_total=inertia_total_np[w],
             )
 
         # Construct KaminoModelSize from the newton.Model instance
@@ -950,8 +996,6 @@ class KaminoModel:
                 num_actuated_joints=wp.array(num_joints_np, dtype=int32),
                 num_collision_geoms=wp.array(num_shapes_np, dtype=int32),
                 num_physical_geoms=wp.array(num_shapes_np, dtype=int32),
-                max_limits=None,  # Created by Limits container
-                max_contacts=None,  # Created by Contacts container
                 num_body_dofs=wp.array(num_body_dofs_np, dtype=int32),
                 num_joint_coords=wp.array(num_joint_coords_np, dtype=int32),
                 num_joint_dofs=wp.array(num_joint_dofs_np, dtype=int32),
@@ -960,27 +1004,23 @@ class KaminoModel:
                 num_actuated_joint_coords=wp.array(num_joint_coords_np, dtype=int32),
                 num_actuated_joint_dofs=wp.array(num_joint_dofs_np, dtype=int32),
                 num_joint_cts=wp.array(num_joint_cts_np, dtype=int32),
-                max_limit_cts=None,  # Created by Limits container
-                max_contact_cts=None,  # Created by Contacts container
                 max_total_cts=wp.array(num_joint_cts_np, dtype=int32),
                 bodies_offset=wp.array(body_offset_np, dtype=int32),
                 joints_offset=wp.array(joint_offset_np, dtype=int32),
                 body_dofs_offset=wp.array(body_dof_offset_np, dtype=int32),
                 joint_coords_offset=wp.array(joint_coord_offset_np, dtype=int32),
                 joint_dofs_offset=wp.array(joint_dof_offset_np, dtype=int32),
-                joint_passive_coords_offset=wp.full_like(wp.array(joint_coord_offset_np, dtype=int32), -1, dtype=int32),
-                joint_passive_dofs_offset=wp.full_like(wp.array(joint_dof_offset_np, dtype=int32), -1, dtype=int32),
+                joint_passive_coords_offset=wp.full((model.joint_count), -1, dtype=int32),
+                joint_passive_dofs_offset=wp.full((model.joint_count), -1, dtype=int32),
                 joint_actuated_coords_offset=wp.array(joint_coord_offset_np, dtype=int32),
                 joint_actuated_dofs_offset=wp.array(joint_dof_offset_np, dtype=int32),
                 joint_cts_offset=wp.array(joint_cts_offset_np, dtype=int32),
-
-                # TODO
-                # base_body_index=wp.array(...),
-                # base_joint_index=wp.array(...),
-                # mass_min=wp.array(...),
-                # mass_max=wp.array(...),
-                # mass_total=wp.array(...),
-                # inertia_total=wp.array(...),
+                base_body_index=wp.array(base_body_idx_np, dtype=int32),
+                base_joint_index=wp.array(base_joint_idx_np, dtype=int32),
+                mass_min=wp.array(mass_min_np, dtype=float32),
+                mass_max=wp.array(mass_max_np, dtype=float32),
+                mass_total=wp.array(mass_total_np, dtype=float32),
+                inertia_total=wp.array(inertia_total_np, dtype=float32),
             )
 
             # Time
@@ -1016,7 +1056,7 @@ class KaminoModel:
                 wid=model.joint_world,
                 jid=wp.array(joint_jid_np, dtype=int32),
                 dof_type=model.joint_type,
-                act_type=wp.full_like(model.joint_type, JointActuationType.FORCE, dtype=int32),
+                act_type=wp.full((model.joint_count,), JointActuationType.FORCE, dtype=int32),
                 bid_B=model.joint_parent,
                 bid_F=model.joint_child,
                 # B_r_Bj=wp.array(...),  # From model.joint_X_p
@@ -1033,11 +1073,11 @@ class KaminoModel:
                 num_cts=wp.array(joint_num_cts_np, dtype=int32),
                 coords_offset=model.joint_q_start,
                 dofs_offset=model.joint_qd_start,
-                passive_coords_offset=wp.full_like(model.joint_q_start, -1, dtype=int32),
-                passive_dofs_offset=wp.full_like(model.joint_qd_start, -1, dtype=int32),
+                passive_coords_offset=wp.full_like(model.joint_q_start, -1),
+                passive_dofs_offset=wp.full_like(model.joint_qd_start, -1),
                 actuated_coords_offset=model.joint_q_start,
                 actuated_dofs_offset=model.joint_qd_start,
-                # cts_offset=wp.array(...),
+                cts_offset=wp.array(joint_world_cts_offset_np, dtype=int32),
             )
 
             # Collision geometries
@@ -1045,12 +1085,29 @@ class KaminoModel:
                 num_geoms=model.shape_count,
                 wid=model.shape_world,
                 gid=wp.array(shape_sid_np, dtype=int32),
-                lid=wp.zeros(shape=model.shape_count, dtype=int32),  # TODO: No layers yet
+                lid=wp.zeros(shape=model.shape_count, dtype=int32),
                 bid=model.shape_body,
-                # sid=model.shape_type,
+                sid=wp.array(geom_shape_type_np, dtype=int32),
                 ptr=model.shape_source_ptr,
                 offset=model.shape_transform,
-                # params=wp.array(...),  # From model.shape_scale
+                params=wp.array(geom_shape_params_np, dtype=float32),
+                mid=wp.full(shape=(model.shape_count,), value=0, dtype=int32),  # TODO: model.shape_material_id
+                group=wp.full(shape=(model.shape_count,), value=1, dtype=int32),  # TODO: model.shape_collision_group
+                collides=wp.full(shape=(model.shape_count,), value=1, dtype=int32),  # TODO: model.shape_collision_group
+                margin=model.shape_contact_margin,
+            )
+
+            # Physical (i.e. visual) geometries
+            self.pgeoms = GeometriesModel(
+                num_geoms=model.shape_count,
+                wid=model.shape_world,
+                gid=wp.array(shape_sid_np, dtype=int32),
+                lid=wp.zeros(shape=model.shape_count, dtype=int32),
+                bid=model.shape_body,
+                sid=wp.array(geom_shape_type_np, dtype=int32),
+                ptr=model.shape_source_ptr,
+                offset=model.shape_transform,
+                params=wp.array(geom_shape_params_np, dtype=float32),
             )
 
         # Post-processing after construction

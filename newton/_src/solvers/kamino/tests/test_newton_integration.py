@@ -19,26 +19,26 @@ import copy
 import os
 import unittest
 
-import numpy as np
+# import numpy as np
 import warp as wp
 
-from newton._src.solvers.kamino.core.new_model import KaminoModel
-# from newton._src.solvers.kamino.core.new_data import KaminoData
-from newton._src.solvers.kamino.models import get_basics_usd_assets_path
-from newton._src.solvers.kamino.tests import setup_tests, test_context
-from newton._src.solvers.kamino.utils import logger as msg
 from newton._src.sim import (
-    # Model,
+    Model,
     ModelAttributeAssignment,
     ModelAttributeFrequency,
     ModelBuilder,
-    # State,
+    State,
 )
-
+from newton._src.solvers.kamino.core.new_model import KaminoModel
+from newton._src.solvers.kamino.core.new_data import KaminoData
+from newton._src.solvers.kamino.models import get_basics_usd_assets_path
+from newton._src.solvers.kamino.tests import setup_tests, test_context
+from newton._src.solvers.kamino.utils import logger as msg
 
 ###
 # Utilities
 ###
+
 
 def register_solver_attributes(builder: ModelBuilder) -> None:
     """
@@ -165,18 +165,19 @@ class TestKaminoNewtonIntegration(unittest.TestCase):
             child_xform=wp.transformf(),
             custom_attributes={"joint_index": 4},
         )
-        builder.add_shape_box(key="geom_0", body=0, hx=0.5, hy=0.1, hz=0.1, custom_attributes={"shape_index": 0})
-        builder.add_shape_box(key="geom_1", body=1, hx=0.1, hy=0.1, hz=0.5, custom_attributes={"shape_index": 1})
-        builder.add_shape_box(key="geom_2", body=2, hx=0.5, hy=0.1, hz=0.1, custom_attributes={"shape_index": 2})
-        builder.add_shape_box(key="geom_3", body=3, hx=0.1, hy=0.1, hz=0.5, custom_attributes={"shape_index": 3})
+        builder.add_shape_box(key="geom_0", body=0, hx=0.25, hy=0.05, hz=0.05, custom_attributes={"shape_index": 0})
+        builder.add_shape_box(key="geom_1", body=1, hx=0.05, hy=0.05, hz=0.25, custom_attributes={"shape_index": 1})
+        builder.add_shape_box(key="geom_2", body=2, hx=0.25, hy=0.05, hz=0.05, custom_attributes={"shape_index": 2})
+        builder.add_shape_box(key="geom_3", body=3, hx=0.05, hy=0.05, hz=0.25, custom_attributes={"shape_index": 3})
         builder.end_world()
 
-        # TODO: How can we replicate the contents of the builder for multiple worlds?
+        # TODO
         builder.begin_world()
         builder.add_builder(copy.deepcopy(builder))
         builder.end_world()
 
         # TODO
+        msg.info("builder.num_worlds: %s", builder.num_worlds)
         msg.info("builder.body_count: %s", builder.body_count)
         msg.info("builder.body_world: %s", builder.body_world)
         msg.info("builder.body_key: %s", builder.body_key)
@@ -199,7 +200,7 @@ class TestKaminoNewtonIntegration(unittest.TestCase):
         msg.info("builder.articulation_count: %s\n", builder.articulation_count)
 
         # TODO
-        model = builder.finalize()
+        model: Model = builder.finalize()
         msg.info("model.body_key (type: %s): %s", type(model.body_key), model.body_key)
         msg.info("model.body_mass (type: %s): %s", type(model.body_mass), model.body_mass)
         msg.info("model.body_com (type: %s):\n%s", type(model.body_com), model.body_com)
@@ -217,7 +218,6 @@ class TestKaminoNewtonIntegration(unittest.TestCase):
         msg.info("model.joint_world (type: %s): %s", type(model.joint_world), model.joint_world)
         msg.info("model.joint_index (type: %s): %s", type(model.joint_index), model.joint_index)
         msg.info("model.shape_index (type: %s): %s\n", type(model.shape_index), model.shape_index)
-
         # TODO
         msg.info("model.articulation_count (type: %s): %s", type(model.articulation_count), model.articulation_count)
         msg.info("model.articulation_key (type: %s): %s", type(model.articulation_key), model.articulation_key)
@@ -230,7 +230,26 @@ class TestKaminoNewtonIntegration(unittest.TestCase):
         # self.assertTrue(np.allclose(model.shape_index.numpy(), [0, 1, 2, 3]))
 
         # TODO
-        kmn_model = KaminoModel(model)
+        state: State = model.state()
+        msg.info("state.body_count (type: %s): %s", type(state.body_count), state.body_count)
+        msg.info("state.particle_count (type: %s): %s", type(state.particle_count), state.particle_count)
+        msg.info("state.joint_coord_count (type: %s): %s", type(state.joint_coord_count), state.joint_coord_count)
+        msg.info("state.joint_dof_count (type: %s): %s", type(state.joint_dof_count), state.joint_dof_count)
+        msg.info("state.particle_q (type: %s):\n%s", type(state.particle_q), state.particle_q)
+        msg.info("state.particle_qd (type: %s):\n%s", type(state.particle_qd), state.particle_qd)
+        msg.info("state.particle_f (type: %s):\n%s", type(state.particle_f), state.particle_f)
+        msg.info("state.body_q (type: %s):\n%s", type(state.body_q), state.body_q)
+        msg.info("state.body_qd (type: %s):\n%s", type(state.body_qd), state.body_qd)
+        msg.info("state.body_q_prev (type: %s):\n%s", type(state.body_q_prev), state.body_q_prev)
+        msg.info("state.body_qdd (type: %s):\n%s", type(state.body_qdd), state.body_qdd)
+        msg.info("state.body_f (type: %s):\n%s", type(state.body_f), state.body_f)
+        msg.info("state.body_parent_f (type: %s):\n%s", type(state.body_parent_f), state.body_parent_f)
+        msg.info("state.joint_q (type: %s):\n%s", type(state.joint_q), state.joint_q)
+        msg.info("state.joint_qd (type: %s):\n%s", type(state.joint_qd), state.joint_qd)
+
+        # TODO
+        kmn_model: KaminoModel = KaminoModel(model)
+        # kmn_data: KaminoData = kmn_model.data()
 
     def test_usd_boxes_fourbar(self):
         """

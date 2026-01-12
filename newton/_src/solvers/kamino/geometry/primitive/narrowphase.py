@@ -38,6 +38,7 @@ from .....geometry.collision_primitive import (
     collide_sphere_cylinder,
     collide_sphere_sphere,
 )
+from ...core.materials import make_get_material_pair_properties
 from ...core.model import Model, ModelData
 from ...core.shapes import ShapeType
 from ...core.types import (
@@ -1328,6 +1329,12 @@ def _primitive_narrowphase(
     candidate_geom_pair: wp.array(dtype=vec2i),
     contact_model_max_num: wp.array(dtype=int32),
     contact_world_max_num: wp.array(dtype=int32),
+    material_restitution: wp.array(dtype=float32),
+    material_static_friction: wp.array(dtype=float32),
+    material_dynamic_friction: wp.array(dtype=float32),
+    material_pair_restitution: wp.array(dtype=float32),
+    material_pair_static_friction: wp.array(dtype=float32),
+    material_pair_dynamic_friction: wp.array(dtype=float32),
     # Outputs:
     contact_model_num: wp.array(dtype=int32),
     contact_world_num: wp.array(dtype=int32),
@@ -1365,7 +1372,7 @@ def _primitive_narrowphase(
     # NOTE: We retrieve data per-geom for memory coalescing
     bid1 = geom_bid[gid1]
     sid1 = geom_sid[gid1]
-    # mid1 = geom_mid[gid1]
+    mid1 = geom_mid[gid1]
     params1 = geom_params[gid1]
     margin1 = geom_margin[gid1]
     pose1 = geom_pose[gid1]
@@ -1374,7 +1381,7 @@ def _primitive_narrowphase(
     # NOTE: We retrieve data per-geom for memory coalescing
     bid2 = geom_bid[gid2]
     sid2 = geom_sid[gid2]
-    # mid2 = geom_mid[gid2]
+    mid2 = geom_mid[gid2]
     params2 = geom_params[gid2]
     margin2 = geom_margin[gid1]
     pose2 = geom_pose[gid2]
@@ -1384,9 +1391,17 @@ def _primitive_narrowphase(
     # TODO: How can we support negative margins here?
     contact_margin_12 = wp.max(default_margin, wp.max(margin1, margin2))
 
-    # TODO: retrieve the material properties from the material table using mid1 and mid2
-    mu_12 = float32(0.7)
-    restitution_12 = float32(0.0)
+    # Retrieve the material properties for the geom pair
+    restitution_12, _, mu_12 = wp.static(make_get_material_pair_properties())(
+        mid1,
+        mid2,
+        material_restitution,
+        material_static_friction,
+        material_dynamic_friction,
+        material_pair_restitution,
+        material_pair_static_friction,
+        material_pair_dynamic_friction,
+    )
 
     # TODO(team): static loop unrolling to remove unnecessary branching
     if sid1 == ShapeType.SPHERE and sid2 == ShapeType.SPHERE:
@@ -1773,6 +1788,12 @@ def primitive_narrowphase(
             candidates.geom_pair,
             contacts.model_max_contacts,
             contacts.world_max_contacts,
+            model.materials.restitution,
+            model.materials.static_friction,
+            model.materials.dynamic_friction,
+            model.material_pairs.restitution,
+            model.material_pairs.static_friction,
+            model.material_pairs.dynamic_friction,
         ],
         outputs=[
             contacts.model_active_contacts,

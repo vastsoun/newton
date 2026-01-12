@@ -40,7 +40,7 @@ from .joints import (
     JointDoFType,
     JointsModel,
 )
-from .materials import MaterialDescriptor, MaterialManager, MaterialPairProperties, MaterialPairsModel
+from .materials import MaterialDescriptor, MaterialManager, MaterialPairProperties, MaterialPairsModel, MaterialsModel
 from .math import FLOAT32_EPS
 from .model import Model, ModelInfo
 from .shapes import ShapeDescriptorType, ShapeType
@@ -1076,7 +1076,10 @@ class ModelBuilder:
         pgeoms_params = []
         pgeoms_offset = []
 
-        # Initialize the material-pair data collections
+        # Initialize the material data collections
+        materials_rest = []
+        materials_static_fric = []
+        materials_dynamic_fric = []
         mpairs_rest = []
         mpairs_static_fric = []
         mpairs_dynamic_fric = []
@@ -1217,6 +1220,9 @@ class ModelBuilder:
 
         # A helper function to collect model material-pairs data
         def collect_material_pairs_model_data():
+            materials_rest.append(self._materials.restitution_vector())
+            materials_static_fric.append(self._materials.static_friction_vector())
+            materials_dynamic_fric.append(self._materials.dynamic_friction_vector())
             mpairs_rest.append(self._materials.restitution_matrix())
             mpairs_static_fric.append(self._materials.static_friction_matrix())
             mpairs_dynamic_fric.append(self._materials.dynamic_friction_matrix())
@@ -1263,6 +1269,8 @@ class ModelBuilder:
         model.size.max_of_num_collision_geoms = max([world.num_collision_geoms for world in self._worlds])
         model.size.sum_of_num_physical_geoms = self._num_pgeoms
         model.size.max_of_num_physical_geoms = max([world.num_physical_geoms for world in self._worlds])
+        model.size.sum_of_num_materials = self._materials.num_materials
+        model.size.max_of_num_materials = self._materials.num_materials
         model.size.sum_of_num_material_pairs = self._materials.num_material_pairs
         model.size.max_of_num_material_pairs = self._materials.num_material_pairs
 
@@ -1419,11 +1427,19 @@ class ModelBuilder:
             )
 
             # Create the material pairs model
-            model.mpairs = MaterialPairsModel(
-                num_pairs=model.size.sum_of_num_material_pairs,
-                restitution=wp.array(mpairs_rest, dtype=float32),
-                static_friction=wp.array(mpairs_static_fric, dtype=float32),
-                dynamic_friction=wp.array(mpairs_dynamic_fric, dtype=float32),
+            model.materials = MaterialsModel(
+                num_materials=model.size.sum_of_num_materials,
+                restitution=wp.array(materials_rest[0], dtype=float32),
+                static_friction=wp.array(materials_static_fric[0], dtype=float32),
+                dynamic_friction=wp.array(materials_dynamic_fric[0], dtype=float32),
+            )
+
+            # Create the material pairs model
+            model.material_pairs = MaterialPairsModel(
+                num_material_pairs=model.size.sum_of_num_material_pairs,
+                restitution=wp.array(mpairs_rest[0], dtype=float32),
+                static_friction=wp.array(mpairs_static_fric[0], dtype=float32),
+                dynamic_friction=wp.array(mpairs_dynamic_fric[0], dtype=float32),
             )
 
         # Return the constructed model data container

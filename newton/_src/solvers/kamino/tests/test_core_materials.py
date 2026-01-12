@@ -17,8 +17,6 @@
 
 import unittest
 
-import numpy as np
-
 # Module to be tested
 from newton._src.solvers.kamino.core.materials import (
     DEFAULT_FRICTION,
@@ -32,6 +30,17 @@ from newton._src.solvers.kamino.core.materials import (
 from newton._src.solvers.kamino.tests import setup_tests, test_context
 
 ###
+# Utilities
+###
+
+
+def tril_index(i: int, j: int) -> int:
+    if i < j:
+        i, j = j, i
+    return (i * (i + 1)) // 2 + j
+
+
+###
 # Tests
 ###
 
@@ -41,6 +50,15 @@ class TestMaterials(unittest.TestCase):
         if not test_context.setup_done:
             setup_tests(clear_cache=False)
         self.verbose = test_context.verbose  # Set to True for verbose output
+
+    def test_00_default_material_properties(self):
+        # Create a default-constructed surface material
+        material = MaterialDescriptor(name="default")
+
+        # Check default values
+        self.assertEqual(material.restitution, DEFAULT_RESTITUTION)
+        self.assertEqual(material.static_friction, DEFAULT_FRICTION)
+        self.assertEqual(material.dynamic_friction, DEFAULT_FRICTION)
 
     def test_00_default_material_pair_properties(self):
         # Create a default-constructed surface material
@@ -74,18 +92,18 @@ class TestMaterials(unittest.TestCase):
 
         # Check restitution matrix of the default material
         drm = manager.restitution_matrix()
-        self.assertEqual(drm.shape, (1, 1))
-        self.assertEqual(drm[0, 0], DEFAULT_RESTITUTION)
+        self.assertEqual(drm.shape, (1,))
+        self.assertEqual(drm[0], DEFAULT_RESTITUTION)
 
         # Check the static friction matrix of the default material
-        dfm = manager.static_friction_matrix()
-        self.assertEqual(dfm.shape, (1, 1))
-        self.assertEqual(dfm[0, 0], DEFAULT_FRICTION)
+        dsfm = manager.static_friction_matrix()
+        self.assertEqual(dsfm.shape, (1,))
+        self.assertEqual(dsfm[0], DEFAULT_FRICTION)
 
         # Check the dynamic friction matrix of the default material
-        dym = manager.dynamic_friction_matrix()
-        self.assertEqual(dym.shape, (1, 1))
-        self.assertEqual(dym[0, 0], DEFAULT_FRICTION)
+        ddfm = manager.dynamic_friction_matrix()
+        self.assertEqual(ddfm.shape, (1,))
+        self.assertEqual(ddfm[0], DEFAULT_FRICTION)
 
         # Modify the default material properties
         manager.configure_pair(
@@ -104,18 +122,18 @@ class TestMaterials(unittest.TestCase):
 
         # Check restitution matrix of the default material
         drm = manager.restitution_matrix()
-        self.assertEqual(drm.shape, (1, 1))
-        self.assertEqual(drm[0, 0], 0.5)
+        self.assertEqual(drm.shape, (1,))
+        self.assertEqual(drm[0], 0.5)
 
         # Check friction matrix of the default material
-        dfm = manager.static_friction_matrix()
-        self.assertEqual(dfm.shape, (1, 1))
-        self.assertEqual(dfm[0, 0], 0.5)
+        dsfm = manager.static_friction_matrix()
+        self.assertEqual(dsfm.shape, (1,))
+        self.assertEqual(dsfm[0], 0.5)
 
         # Check dynamic friction matrix of the default material
-        dym = manager.dynamic_friction_matrix()
-        self.assertEqual(dym.shape, (1, 1))
-        self.assertEqual(dym[0, 0], 0.5)
+        ddfm = manager.dynamic_friction_matrix()
+        self.assertEqual(ddfm.shape, (1,))
+        self.assertEqual(ddfm[0], 0.5)
 
     def test_02_material_manager_register_material(self):
         # Create a default-constructed material manager
@@ -161,29 +179,29 @@ class TestMaterials(unittest.TestCase):
         self.assertEqual(mp[1][1].static_friction, 0.1)
         self.assertEqual(mp[1][1].dynamic_friction, 0.1)
 
-        # Check the friction matrix
-        fm = manager.static_friction_matrix()
-        self.assertEqual(fm.shape, (2, 2))
-        self.assertEqual(fm[0, 0], DEFAULT_FRICTION)
-        self.assertEqual(fm[0, 1], 1.0)
-        self.assertEqual(fm[1, 0], 1.0)
-        self.assertEqual(fm[1, 1], 0.1)
-
-        # Check the dynamic friction matrix
-        dym = manager.dynamic_friction_matrix()
-        self.assertEqual(dym.shape, (2, 2))
-        self.assertEqual(dym[0, 0], DEFAULT_FRICTION)
-        self.assertEqual(dym[0, 1], 1.0)
-        self.assertEqual(dym[1, 0], 1.0)
-        self.assertEqual(dym[1, 1], 0.1)
-
         # Check the restitution matrix
         rm = manager.restitution_matrix()
-        self.assertEqual(rm.shape, (2, 2))
-        self.assertEqual(rm[0, 0], DEFAULT_RESTITUTION)
-        self.assertEqual(rm[0, 1], 1.0)
-        self.assertEqual(rm[1, 0], 1.0)
-        self.assertEqual(rm[1, 1], 0.2)
+        self.assertEqual(rm.shape, (manager.num_material_pairs,))
+        self.assertEqual(rm[tril_index(0, 0)], DEFAULT_RESTITUTION)
+        self.assertEqual(rm[tril_index(0, 1)], 1.0)
+        self.assertEqual(rm[tril_index(1, 0)], 1.0)
+        self.assertEqual(rm[tril_index(1, 1)], 0.2)
+
+        # Check the friction matrix
+        sfm = manager.static_friction_matrix()
+        self.assertEqual(sfm.shape, (manager.num_material_pairs,))
+        self.assertEqual(sfm[tril_index(0, 0)], DEFAULT_FRICTION)
+        self.assertEqual(sfm[tril_index(0, 1)], 1.0)
+        self.assertEqual(sfm[tril_index(1, 0)], 1.0)
+        self.assertEqual(sfm[tril_index(1, 1)], 0.1)
+
+        # Check the dynamic friction matrix
+        dfm = manager.dynamic_friction_matrix()
+        self.assertEqual(dfm.shape, (manager.num_material_pairs,))
+        self.assertEqual(dfm[tril_index(0, 0)], DEFAULT_FRICTION)
+        self.assertEqual(dfm[tril_index(0, 1)], 1.0)
+        self.assertEqual(dfm[tril_index(1, 0)], 1.0)
+        self.assertEqual(dfm[tril_index(1, 1)], 0.1)
 
         # Configure the material pair
         manager.configure_pair(
@@ -203,27 +221,27 @@ class TestMaterials(unittest.TestCase):
 
         # Check the updated restitution matrix
         rm = manager.restitution_matrix()
-        self.assertEqual(rm.shape, (2, 2))
-        self.assertEqual(rm[0, 0], DEFAULT_RESTITUTION)
-        self.assertEqual(rm[0, 1], 0.5)
-        self.assertEqual(rm[1, 0], 0.5)
-        self.assertEqual(rm[1, 1], 0.2)
+        self.assertEqual(rm.shape, (manager.num_material_pairs,))
+        self.assertEqual(rm[tril_index(0, 0)], DEFAULT_RESTITUTION)
+        self.assertEqual(rm[tril_index(0, 1)], 0.5)
+        self.assertEqual(rm[tril_index(1, 0)], 0.5)
+        self.assertEqual(rm[tril_index(1, 1)], 0.2)
 
         # Check the updated friction matrix
-        fm = manager.static_friction_matrix()
-        self.assertEqual(fm.shape, (2, 2))
-        self.assertEqual(fm[0, 0], DEFAULT_FRICTION)
-        self.assertEqual(fm[0, 1], 0.5)
-        self.assertEqual(fm[1, 0], 0.5)
-        self.assertEqual(fm[1, 1], 0.1)
+        sfm = manager.static_friction_matrix()
+        self.assertEqual(sfm.shape, (manager.num_material_pairs,))
+        self.assertEqual(sfm[tril_index(0, 0)], DEFAULT_FRICTION)
+        self.assertEqual(sfm[tril_index(0, 1)], 0.5)
+        self.assertEqual(sfm[tril_index(1, 0)], 0.5)
+        self.assertEqual(sfm[tril_index(1, 1)], 0.1)
 
         # Check the updated dynamic friction matrix
-        dym = manager.dynamic_friction_matrix()
-        self.assertEqual(dym.shape, (2, 2))
-        self.assertEqual(dym[0, 0], DEFAULT_FRICTION)
-        self.assertEqual(dym[0, 1], 0.5)
-        self.assertEqual(dym[1, 0], 0.5)
-        self.assertEqual(dym[1, 1], 0.1)
+        dfm = manager.dynamic_friction_matrix()
+        self.assertEqual(dfm.shape, (manager.num_material_pairs,))
+        self.assertEqual(dfm[tril_index(0, 0)], DEFAULT_FRICTION)
+        self.assertEqual(dfm[tril_index(0, 1)], 0.5)
+        self.assertEqual(dfm[tril_index(1, 0)], 0.5)
+        self.assertEqual(dfm[tril_index(1, 1)], 0.1)
 
     def test_03_material_manager_register_pair(self):
         # Create a default-constructed material manager
@@ -280,45 +298,42 @@ class TestMaterials(unittest.TestCase):
 
         # Check the restitution matrix
         rm = manager.restitution_matrix()
-        self.assertEqual(rm.shape, (3, 3))
-        self.assertTrue(np.allclose(rm, rm.T), "Restitution matrix is not symmetric")
-        self.assertEqual(rm[0, 0], DEFAULT_RESTITUTION)
-        self.assertEqual(rm[0, 1], 0.8)
-        self.assertEqual(rm[0, 2], 1.0)
-        self.assertEqual(rm[1, 0], 0.8)
-        self.assertEqual(rm[1, 1], 0.2)
-        self.assertEqual(rm[1, 2], 0.6)
-        self.assertEqual(rm[2, 0], 1.0)
-        self.assertEqual(rm[2, 1], 0.6)
-        self.assertEqual(rm[2, 2], 0.4)
+        self.assertEqual(rm.shape, (manager.num_material_pairs,))
+        self.assertEqual(rm[tril_index(0, 0)], DEFAULT_RESTITUTION)
+        self.assertEqual(rm[tril_index(0, 1)], 0.8)
+        self.assertEqual(rm[tril_index(0, 2)], 1.0)
+        self.assertEqual(rm[tril_index(1, 0)], 0.8)
+        self.assertEqual(rm[tril_index(1, 1)], 0.2)
+        self.assertEqual(rm[tril_index(1, 2)], 0.6)
+        self.assertEqual(rm[tril_index(2, 0)], 1.0)
+        self.assertEqual(rm[tril_index(2, 1)], 0.6)
+        self.assertEqual(rm[tril_index(2, 2)], 0.4)
 
         # Check the static friction matrix
         fm = manager.static_friction_matrix()
-        self.assertEqual(fm.shape, (3, 3))
-        self.assertTrue(np.allclose(fm, fm.T), "Static friction matrix is not symmetric")
-        self.assertEqual(fm[0, 0], DEFAULT_FRICTION)
-        self.assertEqual(fm[0, 1], 0.7)
-        self.assertEqual(fm[0, 2], 0.9)
-        self.assertEqual(fm[1, 0], 0.7)
-        self.assertEqual(fm[1, 1], 0.1)
-        self.assertEqual(fm[1, 2], 0.5)
-        self.assertEqual(fm[2, 0], 0.9)
-        self.assertEqual(fm[2, 1], 0.5)
-        self.assertEqual(fm[2, 2], 0.3)
+        self.assertEqual(fm.shape, (manager.num_material_pairs,))
+        self.assertEqual(fm[tril_index(0, 0)], DEFAULT_FRICTION)
+        self.assertEqual(fm[tril_index(0, 1)], 0.7)
+        self.assertEqual(fm[tril_index(0, 2)], 0.9)
+        self.assertEqual(fm[tril_index(1, 0)], 0.7)
+        self.assertEqual(fm[tril_index(1, 1)], 0.1)
+        self.assertEqual(fm[tril_index(1, 2)], 0.5)
+        self.assertEqual(fm[tril_index(2, 0)], 0.9)
+        self.assertEqual(fm[tril_index(2, 1)], 0.5)
+        self.assertEqual(fm[tril_index(2, 2)], 0.3)
 
         # Check the dynamic friction matrix
         dym = manager.dynamic_friction_matrix()
-        self.assertEqual(dym.shape, (3, 3))
-        self.assertTrue(np.allclose(dym, dym.T), "Dynamic friction matrix is not symmetric")
-        self.assertEqual(dym[0, 0], DEFAULT_FRICTION)
-        self.assertEqual(dym[0, 1], 0.7)
-        self.assertEqual(dym[0, 2], 0.9)
-        self.assertEqual(dym[1, 0], 0.7)
-        self.assertEqual(dym[1, 1], 0.1)
-        self.assertEqual(dym[1, 2], 0.5)
-        self.assertEqual(dym[2, 0], 0.9)
-        self.assertEqual(dym[2, 1], 0.5)
-        self.assertEqual(dym[2, 2], 0.3)
+        self.assertEqual(dym.shape, (manager.num_material_pairs,))
+        self.assertEqual(dym[tril_index(0, 0)], DEFAULT_FRICTION)
+        self.assertEqual(dym[tril_index(0, 1)], 0.7)
+        self.assertEqual(dym[tril_index(0, 2)], 0.9)
+        self.assertEqual(dym[tril_index(1, 0)], 0.7)
+        self.assertEqual(dym[tril_index(1, 1)], 0.1)
+        self.assertEqual(dym[tril_index(1, 2)], 0.5)
+        self.assertEqual(dym[tril_index(2, 0)], 0.9)
+        self.assertEqual(dym[tril_index(2, 1)], 0.5)
+        self.assertEqual(dym[tril_index(2, 2)], 0.3)
 
         # Optional verbose output
         if self.verbose:

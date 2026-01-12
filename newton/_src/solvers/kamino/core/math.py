@@ -811,3 +811,23 @@ def expand6d(X: mat33f) -> mat66f:
 
     # Return the expanded matrix
     return X_6d
+
+
+###
+# Indexing
+###
+
+
+@wp.func
+def tril_index(row: Any, col: Any) -> Any:
+    """
+    Computes the index in a flattened lower-triangular matrix.
+
+    Args:
+        row (Any): The row index.
+        col (Any): The column index.
+
+    Returns:
+        Any: The index in the flattened lower-triangular matrix.
+    """
+    return (row * (row + 1)) // 2 + col

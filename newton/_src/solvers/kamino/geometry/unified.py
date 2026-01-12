@@ -38,7 +38,7 @@ from ....sim.collide_unified import BroadPhaseMode
 
 # Kamino imports
 from ..core.builder import ModelBuilder
-from ..core.materials import DEFAULT_FRICTION, DEFAULT_RESTITUTION
+from ..core.materials import DEFAULT_FRICTION, DEFAULT_RESTITUTION, make_get_material_pair_properties
 from ..core.model import Model, ModelData
 from ..core.shapes import ShapeType
 from ..core.types import float32, int32, quatf, transformf, uint32, uint64, vec2f, vec2i, vec3f, vec4f
@@ -80,8 +80,12 @@ class ContactWriterDataKamino:
     geom_margin: wp.array(dtype=float32)  # Contact margin for each geometry
 
     # Material properties (indexed by material pair)
-    material_friction: wp.array(dtype=float32)
     material_restitution: wp.array(dtype=float32)
+    material_static_friction: wp.array(dtype=float32)
+    material_dynamic_friction: wp.array(dtype=float32)
+    material_pair_restitution: wp.array(dtype=float32)
+    material_pair_static_friction: wp.array(dtype=float32)
+    material_pair_dynamic_friction: wp.array(dtype=float32)
 
     # Output arrays (Kamino Contacts format)
     contacts_model_num_active: wp.array(dtype=int32)
@@ -252,8 +256,8 @@ def write_contact_unified_kamino(
         gid_b = contact_data.shape_b
         bid_a = writer_data.geom_bid[contact_data.shape_a]
         bid_b = writer_data.geom_bid[contact_data.shape_b]
-        # TODO: mid_a = writer_data.geom_mid[contact_data.shape_a]
-        # TODO: mid_b = writer_data.geom_mid[contact_data.shape_b]
+        mid_a = writer_data.geom_mid[contact_data.shape_a]
+        mid_b = writer_data.geom_mid[contact_data.shape_b]
 
         # TODO: Check this logic: Are we sure this is guaranteed by the broadphase?
         # Assume both geoms are in same world
@@ -286,11 +290,18 @@ def write_contact_unified_kamino(
                 pos_A = a_contact_world
                 pos_B = b_contact_world
 
-            # TODO: Change this to extract from material-pair data
-            # Currently we only have a single material in the pipeline (i.e. the default)
-            friction = writer_data.material_friction[0]
-            restitution = writer_data.material_restitution[0]
-            material = vec2f(friction, restitution)
+            # Retrieve the material properties for the geom pair
+            restitution_ab, _, mu_ab = wp.static(make_get_material_pair_properties())(
+                mid_a,
+                mid_b,
+                writer_data.material_restitution,
+                writer_data.material_static_friction,
+                writer_data.material_dynamic_friction,
+                writer_data.material_pair_restitution,
+                writer_data.material_pair_static_friction,
+                writer_data.material_pair_dynamic_friction,
+            )
+            material = vec2f(mu_ab, restitution_ab)
 
             # Generate the gap-function (normal.x, normal.y, normal.z, distance),
             # contact frame (z-norm aligned with contact normal)
@@ -684,17 +695,17 @@ class CollisionPipelineUnifiedKamino:
             model (Model): The Kamino model containing material-pair properties.
         """
         # TODO: Fix this to:
-        # 1. handle default material if no mpairs exist
+        # 1. handle default material if no material_pairs exist
         # 2. copy the per material-pair properties from the model-builder
-        if model.mpairs is not None and model.mpairs.num_pairs > 0:
+        if model.material_pairs is not None and model.material_pairs.num_pairs > 0:
             # Reallocate material arrays if needed
-            if self.material_friction.shape[0] != model.mpairs.num_pairs:
-                self.material_friction = wp.zeros(model.mpairs.num_pairs, dtype=float32, device=self._device)
-                self.material_restitution = wp.zeros(model.mpairs.num_pairs, dtype=float32, device=self._device)
+            if self.material_friction.shape[0] != model.material_pairs.num_pairs:
+                self.material_friction = wp.zeros(model.material_pairs.num_pairs, dtype=float32, device=self._device)
+                self.material_restitution = wp.zeros(model.material_pairs.num_pairs, dtype=float32, device=self._device)
 
             # Copy material properties
-            wp.copy(self.material_friction, model.mpairs.dynamic_friction)
-            wp.copy(self.material_restitution, model.mpairs.restitution)
+            wp.copy(self.material_friction, model.material_pairs.dynamic_friction)
+            wp.copy(self.material_restitution, model.material_pairs.restitution)
 
     def _update_geom_data(self, model: Model, data: ModelData):
         """
@@ -793,8 +804,12 @@ class CollisionPipelineUnifiedKamino:
         writer_data.geom_wid = model.cgeoms.wid
         writer_data.geom_mid = model.cgeoms.mid
         writer_data.geom_margin = model.cgeoms.margin
-        writer_data.material_friction = self.material_friction
-        writer_data.material_restitution = self.material_restitution
+        writer_data.material_restitution = model.materials.restitution
+        writer_data.material_static_friction = model.materials.static_friction
+        writer_data.material_dynamic_friction = model.materials.dynamic_friction
+        writer_data.material_pair_restitution = model.material_pairs.restitution
+        writer_data.material_pair_static_friction = model.material_pairs.static_friction
+        writer_data.material_pair_dynamic_friction = model.material_pairs.dynamic_friction
         writer_data.contacts_model_num_active = contacts.model_active_contacts
         writer_data.contacts_world_num_active = contacts.world_active_contacts
         writer_data.contact_wid = contacts.wid

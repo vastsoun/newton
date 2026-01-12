@@ -23,8 +23,6 @@ from warp.context import Devicelike
 import newton
 import newton.examples
 from newton._src.solvers.kamino.core.builder import ModelBuilder
-from newton._src.solvers.kamino.core.gravity import GRAVITY_ACCEL_DEFAULT
-from newton._src.solvers.kamino.core.materials import DEFAULT_FRICTION
 from newton._src.solvers.kamino.core.types import float32, int32, vec6f
 from newton._src.solvers.kamino.examples import get_examples_output_path, run_headless
 from newton._src.solvers.kamino.models import get_basics_usd_assets_path
@@ -77,8 +75,8 @@ def _control_callback(
     # Apply a time-dependent external force
     if t > t_start and t < t_end and wnc > 0:
         m = float32(1.0)  # Mass of the box
-        g = float32(GRAVITY_ACCEL_DEFAULT)  # Gravitational acceleration
-        mu = float32(DEFAULT_FRICTION)  # Friction coefficient
+        g = float32(9.8067)  # Gravitational acceleration
+        mu = float32(0.9)  # Friction coefficient
         f_ext = 1.1 * m * g * mu  # Magnitude of the external force
         state_w_e_i[bid] = vec6f(f_ext, 0.0, 0.0, 0.0, 0.0, 0.0)
     else:

@@ -50,6 +50,9 @@ def Xform "boxes_hinged"
                         quatf xformOp:orient = (1, 0, 0, 0)
                         double3 xformOp:translate = (0, 0, 0)
                         uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                        rel material:binding:physics = </boxes_hinged/Materials/Steel> (
+                            bindMaterialAs = "weakerThanDescendants"
+                        )
                     }
                 }
             }
@@ -76,15 +79,21 @@ def Xform "boxes_hinged"
 
             def Scope "Geometry"
             {
-                def Cube "box_2" (
-                    prepend apiSchemas = ["PhysicsCollisionAPI", "PhysicsMeshCollisionAPI", "MaterialBindingAPI"]
-                )
+                def Scope "Primary"
                 {
-                    float3[] extent = [(-1, -1, -1), (1, 1, 1)]
-                    float3 xformOp:scale = (0.25, 0.05, 0.05)
-                    quatf xformOp:orient = (1, 0, 0, 0)
-                    double3 xformOp:translate = (0, 0, 0)
-                    uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                    def Cube "box_2" (
+                        prepend apiSchemas = ["PhysicsCollisionAPI", "PhysicsMeshCollisionAPI", "MaterialBindingAPI"]
+                    )
+                    {
+                        float3[] extent = [(-1, -1, -1), (1, 1, 1)]
+                        float3 xformOp:scale = (0.25, 0.05, 0.05)
+                        quatf xformOp:orient = (1, 0, 0, 0)
+                        double3 xformOp:translate = (0, 0, 0)
+                        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                        rel material:binding:physics = </boxes_hinged/Materials/Steel> (
+                            bindMaterialAs = "weakerThanDescendants"
+                        )
+                    }
                 }
             }
         }

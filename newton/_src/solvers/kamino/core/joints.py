@@ -23,6 +23,7 @@ import numpy as np
 import warp as wp
 from warp._src.types import Any, Int, Vector
 
+from ....sim.joints import JointType as NewtonJointType
 from .math import FLOAT32_MAX, FLOAT32_MIN, PI, TWO_PI
 from .types import (
     ArrayLike,
@@ -537,6 +538,46 @@ class JointDoFType(IntEnum):
             return []
         else:
             raise ValueError(f"Unknown joint DoF type: {self.value}")
+
+
+def kamino_to_newton_joint_type(dof_type: JointDoFType) -> NewtonJointType:
+    """
+    Converts a `JointDoFType` to the corresponding `NewtonJointType`.
+
+    Args:
+        dof_type (JointDoFType): The joint DoF type to convert.
+
+    Returns:
+        NewtonJointType: The corresponding Newton joint type.
+    """
+    mapping = {
+        JointDoFType.FREE: NewtonJointType.FREE,
+        JointDoFType.REVOLUTE: NewtonJointType.REVOLUTE,
+        JointDoFType.PRISMATIC: NewtonJointType.PRISMATIC,
+        JointDoFType.SPHERICAL: NewtonJointType.BALL,
+        JointDoFType.FIXED: NewtonJointType.FIXED,
+    }
+    return mapping[dof_type]
+
+
+def newton_to_kamino_joint_dof_type(joint_type: NewtonJointType) -> JointDoFType:
+    """
+    Converts a `NewtonJointType` to the corresponding `JointDoFType`.
+
+    Args:
+        joint_type (NewtonJointType): The Newton joint type to convert.
+
+    Returns:
+        JointDoFType: The corresponding joint DoF type.
+    """
+    mapping = {
+        NewtonJointType.FREE: JointDoFType.FREE,
+        NewtonJointType.REVOLUTE: JointDoFType.REVOLUTE,
+        NewtonJointType.PRISMATIC: JointDoFType.PRISMATIC,
+        NewtonJointType.BALL: JointDoFType.SPHERICAL,
+        NewtonJointType.FIXED: JointDoFType.FIXED,
+    }
+    return mapping[joint_type]
 
 
 ###
@@ -1074,14 +1115,21 @@ class JointsModel:
     where ``d_j`` is the number of DoFs of joint ``j``.
     """
 
-    q_j_ref: wp.array | None = None
+    q_j_0: wp.array | None = None
     """
-    The reference coordinates of each joint (as flat array),
+    The initial coordinates of each joint (as flat array),
     indicating the "rest" or "neutral" position of each joint.\n
     These are used for resetting joint positions when multi-turn
     correction for revolute DoFs is enabled in the simulation.\n
     Shape of ``(sum(c_j),)`` and type :class:`float`,\n
     where ``c_j`` is the number of coordinates of joint ``j``.
+    """
+
+    dq_j_0: wp.array | None = None
+    """
+    The initial velocities of each joint (as flat array),
+    Shape of ``(sum(d_j),)`` and type :class:`float`,\n
+    where ``d_j`` is the number of DoFs of joint ``j``.
     """
 
     num_coords: wp.array | None = None

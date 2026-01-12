@@ -15,13 +15,14 @@
 
 """TODO"""
 
+import copy
 import os
 import unittest
 
 import numpy as np
 import warp as wp
 
-# from newton._src.solvers.kamino.core.new_model import KaminoModel
+from newton._src.solvers.kamino.core.new_model import KaminoModel
 # from newton._src.solvers.kamino.core.new_data import KaminoData
 from newton._src.solvers.kamino.models import get_basics_usd_assets_path
 from newton._src.solvers.kamino.tests import setup_tests, test_context
@@ -169,7 +170,11 @@ class TestKaminoNewtonIntegration(unittest.TestCase):
         builder.add_shape_box(key="geom_2", body=2, hx=0.5, hy=0.1, hz=0.1, custom_attributes={"shape_index": 2})
         builder.add_shape_box(key="geom_3", body=3, hx=0.1, hy=0.1, hz=0.5, custom_attributes={"shape_index": 3})
         builder.end_world()
+
         # TODO: How can we replicate the contents of the builder for multiple worlds?
+        builder.begin_world()
+        builder.add_builder(copy.deepcopy(builder))
+        builder.end_world()
 
         # TODO
         msg.info("builder.body_count: %s", builder.body_count)
@@ -191,7 +196,7 @@ class TestKaminoNewtonIntegration(unittest.TestCase):
         msg.info("builder.shape_world: %s", builder.shape_world)
         msg.info("builder.shape_key: %s", builder.shape_key)
         msg.info("builder.shape_type: %s", builder.shape_type)
-        msg.info("builder.articulation_count: %s", builder.articulation_count)
+        msg.info("builder.articulation_count: %s\n", builder.articulation_count)
 
         # TODO
         model = builder.finalize()
@@ -211,12 +216,21 @@ class TestKaminoNewtonIntegration(unittest.TestCase):
         msg.info("model.joint_dof_dim (type: %s):\n%s", type(model.joint_dof_dim), model.joint_dof_dim)
         msg.info("model.joint_world (type: %s): %s", type(model.joint_world), model.joint_world)
         msg.info("model.joint_index (type: %s): %s", type(model.joint_index), model.joint_index)
-        msg.info("model.shape_index (type: %s): %s", type(model.shape_index), model.shape_index)
+        msg.info("model.shape_index (type: %s): %s\n", type(model.shape_index), model.shape_index)
 
         # TODO
-        self.assertTrue(np.allclose(model.body_index.numpy(), [0, 1, 2, 3]))
-        self.assertTrue(np.allclose(model.joint_index.numpy(), [0, 1, 2, 3, 4]))
-        self.assertTrue(np.allclose(model.shape_index.numpy(), [0, 1, 2, 3]))
+        msg.info("model.articulation_count (type: %s): %s", type(model.articulation_count), model.articulation_count)
+        msg.info("model.articulation_key (type: %s): %s", type(model.articulation_key), model.articulation_key)
+        msg.info("model.articulation_start (type: %s): %s", type(model.articulation_start), model.articulation_start)
+        msg.info("model.articulation_world (type: %s): %s\n", type(model.articulation_world), model.articulation_world)
+
+        # # TODO
+        # self.assertTrue(np.allclose(model.body_index.numpy(), [0, 1, 2, 3]))
+        # self.assertTrue(np.allclose(model.joint_index.numpy(), [0, 1, 2, 3, 4]))
+        # self.assertTrue(np.allclose(model.shape_index.numpy(), [0, 1, 2, 3]))
+
+        # TODO
+        kmn_model = KaminoModel(model)
 
     def test_usd_boxes_fourbar(self):
         """

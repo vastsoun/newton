@@ -22,10 +22,11 @@ import warp as wp
 from warp.context import Devicelike
 
 from ....sim.model import Model
+from ..utils import logger as msg
 from .bodies import RigidBodiesData, RigidBodiesModel
 from .geometry import CollisionGeometriesModel, GeometriesData, GeometriesModel
 from .gravity import GravityModel
-from .joints import JointsData, JointsModel
+from .joints import JointActuationType, JointsData, JointsModel, newton_to_kamino_joint_dof_type
 from .materials import MaterialPairsModel
 from .new_control import KaminoControl
 from .new_data import KaminoData, KaminoDataInfo
@@ -716,67 +717,264 @@ class KaminoModel:
         self.device = self._model_base.device
         self.requires_grad = self._model_base.requires_grad
 
-        def _compute_entity_indices(entity_world: wp.array) -> np.ndarray:
+        def _compute_entity_indices_wrt_world(entity_world: wp.array) -> np.ndarray:
             wid_np = entity_world.numpy()
             eid_np = np.zeros_like(wid_np)
-            for b in range(model.body_count):
-                eid_np[b] = np.sum(wid_np[:b] == wid_np[b])
+            for e in range(wid_np.size):
+                eid_np[e] = np.sum(wid_np[:e] == wid_np[e])
             return eid_np
 
+        def _compute_num_entities_per_world(entity_world: wp.array, num_worlds: int) -> np.ndarray:
+            wid_np = entity_world.numpy()
+            counts = np.zeros(num_worlds, dtype=int)
+            for w in range(num_worlds):
+                counts[w] = np.sum(wid_np == w)
+            return counts
+
         # Compute the entity indices of each body w.r.t the corresponding world
-        body_bid_np = _compute_entity_indices(model.body_world)
-        joint_jid_np = _compute_entity_indices(model.joint_world)
-        shape_sid_np = _compute_entity_indices(model.shape_world)
+        body_bid_np = _compute_entity_indices_wrt_world(model.body_world)
+        joint_jid_np = _compute_entity_indices_wrt_world(model.joint_world)
+        shape_sid_np = _compute_entity_indices_wrt_world(model.shape_world)
+        msg.info("body_bid_np: %s", body_bid_np)
+        msg.info("joint_jid_np: %s", joint_jid_np)
+        msg.info("shape_sid_np: %s\n", shape_sid_np)
+
+        # Compute the number of entities per world
+        num_bodies_np = _compute_num_entities_per_world(model.body_world, model.num_worlds)
+        num_joints_np = _compute_num_entities_per_world(model.joint_world, model.num_worlds)
+        num_shapes_np = _compute_num_entities_per_world(model.shape_world, model.num_worlds)
+        msg.info("num_bodies_np: %s", num_bodies_np)
+        msg.info("num_joints_np: %s", num_joints_np)
+        msg.info("num_shapes_np: %s\n", num_shapes_np)
+
+        # Compute body DoF and joint coord/DoF/constraint counts per world
+        num_body_coords_np = num_bodies_np * 7
+        num_body_dofs_np = num_bodies_np * 6
+        num_joint_coords_np = np.zeros((model.num_worlds,), dtype=int)
+        num_joint_dofs_np = np.zeros((model.num_worlds,), dtype=int)
+        num_joint_cts_np = np.zeros((model.num_worlds,), dtype=int)
+        joint_num_coords_np = np.zeros((model.joint_count,), dtype=int)
+        joint_num_dofs_np = np.zeros((model.joint_count,), dtype=int)
+        joint_num_cts_np = np.zeros((model.joint_count,), dtype=int)
+        joint_wid_np = model.joint_world.numpy()
+        joint_type_np = model.joint_type.numpy()
+        for j in range(model.joint_count):
+            wid_j = joint_wid_np[j]
+            dof_type_j = newton_to_kamino_joint_dof_type(joint_type_np[j])
+            ncoords_j = dof_type_j.num_coords
+            ndofs_j = dof_type_j.num_dofs
+            ncts_j = dof_type_j.num_cts
+            num_joint_coords_np[wid_j] += ncoords_j
+            num_joint_dofs_np[wid_j] += ndofs_j
+            num_joint_cts_np[wid_j] += ncts_j
+            joint_num_coords_np[j] = ncoords_j
+            joint_num_dofs_np[j] = ndofs_j
+            joint_num_cts_np[j] = ncts_j
+        msg.info("num_body_coords_np: %s", num_body_coords_np)
+        msg.info("num_body_dofs_np: %s", num_body_dofs_np)
+        msg.info("num_joint_coords_np: %s", num_joint_coords_np)
+        msg.info("num_joint_dofs_np: %s", num_joint_dofs_np)
+        msg.info("num_joint_cts_np: %s\n", num_joint_cts_np)
+        msg.info("joint_num_coords_np: %s\n", joint_num_coords_np)
+        msg.info("joint_num_dofs_np: %s\n", joint_num_dofs_np)
+        msg.info("joint_num_cts_np: %s\n", joint_num_cts_np)
+
+        # Compute offsets per world
+        body_offset_np = np.zeros((model.num_worlds,), dtype=int)
+        body_dof_offset_np = np.zeros((model.num_worlds,), dtype=int)
+        joint_offset_np = np.zeros((model.num_worlds,), dtype=int)
+        joint_coord_offset_np = np.zeros((model.num_worlds,), dtype=int)
+        joint_dof_offset_np = np.zeros((model.num_worlds,), dtype=int)
+        joint_cts_offset_np = np.zeros((model.num_worlds,), dtype=int)
+        for w in range(1, model.num_worlds):
+            body_offset_np[w] = body_offset_np[w - 1] + num_bodies_np[w - 1]
+            body_dof_offset_np[w] = body_dof_offset_np[w - 1] + num_body_dofs_np[w - 1]
+            joint_offset_np[w] = joint_offset_np[w - 1] + num_joints_np[w - 1]
+            joint_coord_offset_np[w] = joint_coord_offset_np[w - 1] + num_joint_coords_np[w - 1]
+            joint_dof_offset_np[w] = joint_dof_offset_np[w - 1] + num_joint_dofs_np[w - 1]
+            joint_cts_offset_np[w] = joint_cts_offset_np[w - 1] + num_joint_cts_np[w - 1]
+        msg.info("body_offset_np: %s", body_offset_np)
+        msg.info("body_dof_offset_np: %s", body_dof_offset_np)
+        msg.info("joint_offset_np: %s", joint_offset_np)
+        msg.info("joint_coord_offset_np: %s", joint_coord_offset_np)
+        msg.info("joint_dof_offset_np: %s", joint_dof_offset_np)
+        msg.info("joint_cts_offset_np: %s\n", joint_cts_offset_np)
+
+        # Determine the base body and joint indices per world
+        # TODO: Check for articulation
+        # TODO: Check for root joint (i.e. body with no parent)
+        base_body_idx_np = np.zeros((model.num_worlds,), dtype=int)
+        base_joint_idx_np = np.zeros((model.num_worlds,), dtype=int)
+
+        # TODO: Fall-back: first body and joint in the world
+        for w in range(model.num_worlds):
+            # Base body: first body in the world
+            for b in range(model.body_count):
+                if model.body_world[b] == w:
+                    base_body_idx_np[w] = b
+                    break
+            # Base joint: first joint in the world
+            for j in range(model.joint_count):
+                if model.joint_world[j] == w:
+                    base_joint_idx_np[w] = j
+                    break
+        msg.info("base_body_idx_np: %s", base_body_idx_np)
+        msg.info("base_joint_idx_np: %s\n", base_joint_idx_np)
 
         # TODO: Construct the world descriptors from the newton.Model instance
-        self.worlds: list[WorldDescriptor] = []
+        self.worlds: list[WorldDescriptor] = [None] * model.num_worlds
+        for w in range(model.num_worlds):
+            self.worlds[w] = WorldDescriptor(
+                name=f"world_{w}",
+                wid=w,
+                num_bodies=num_bodies_np[w],
+                num_joints=num_joints_np[w],
+                num_passive_joints=0,
+                num_actuated_joints=num_joints_np[w],
+                num_collision_geoms=num_shapes_np[w],
+                num_physical_geoms=num_shapes_np[w],
+                num_materials=1,  # TODO: define default material
+                num_body_coords=num_body_coords_np[w],
+                num_body_dofs=num_body_dofs_np[w],
+                num_joint_coords=num_joint_coords_np[w],
+                num_joint_dofs=num_joint_dofs_np[w],
+                num_passive_joint_coords=0,
+                num_passive_joint_dofs=0,
+                num_actuated_joint_coords=num_joint_coords_np[w],
+                num_actuated_joint_dofs=num_joint_dofs_np[w],
+                num_joint_cts=num_joint_cts_np[w],
 
-        # TODO: Construct KaminoModelSize from the newton.Model instance
+                # TODO
+                joint_coords=[],
+                joint_dofs=[],
+                joint_passive_coords=[],
+                joint_passive_dofs=[],
+                joint_actuated_coords=[],
+                joint_actuated_dofs=[],
+                joint_cts=[],
+
+                # TODO
+                bodies_idx_offset=0,
+                joints_idx_offset=0,
+                collision_geoms_idx_offset=0,
+                physical_geoms_idx_offset=0,
+                body_dofs_idx_offset=0,
+                joint_coords_idx_offset=0,
+                joint_dofs_idx_offset=0,
+                passive_joint_coords_idx_offset=0,
+                passive_joint_dofs_idx_offset=0,
+                actuated_joint_coords_idx_offset=0,
+                actuated_joint_dofs_idx_offset=0,
+                joint_cts_idx_offset=0,
+
+                # TODO
+                body_names=[],
+                body_uids=[],
+                joint_names=[],
+                joint_uids=[],
+                collision_geom_names=[],
+                collision_geom_uids=[],
+                physical_geom_names=[],
+                physical_geom_uids=[],
+                material_names=[],
+                material_uids=[],
+                unary_joint_names=[],
+                fixed_joint_names=[],
+                passive_joint_names=[],
+                actuated_joint_names=[],
+                physical_geometry_layers=[],
+                collision_geometry_layers=[],
+                collision_geometry_max_contacts=[],
+
+                # TODO
+                base_body_idx=0,  # TODO
+                base_joint_idx=0,  # TODO
+                mass_min=0.0,  # TODO
+                mass_max=0.0,  # TODO
+                mass_total=0.0,  # TODO
+                inertia_total=0.0,  # TODO
+            )
+
+        # Construct KaminoModelSize from the newton.Model instance
         self.size = KaminoModelSize(
-            # TODO
+            num_worlds=model.num_worlds,
+            sum_of_num_bodies=num_bodies_np.sum(),
+            max_of_num_bodies=num_bodies_np.max(),
+            sum_of_num_joints=num_joints_np.sum(),
+            max_of_num_joints=num_joints_np.max(),
+            sum_of_num_passive_joints=0,
+            max_of_num_passive_joints=0,
+            sum_of_num_actuated_joints=num_joints_np.sum(),
+            max_of_num_actuated_joints=num_joints_np.max(),
+            sum_of_num_collision_geoms=num_shapes_np.sum(),
+            max_of_num_collision_geoms=num_shapes_np.max(),
+            sum_of_num_physical_geoms=num_shapes_np.sum(),
+            max_of_num_physical_geoms=num_shapes_np.max(),
+            sum_of_num_material_pairs=0,
+            max_of_num_material_pairs=0,
+            sum_of_num_body_dofs=num_body_dofs_np.sum(),
+            max_of_num_body_dofs=num_body_dofs_np.max(),
+            sum_of_num_joint_coords=num_joint_coords_np.sum(),
+            max_of_num_joint_coords=num_joint_coords_np.max(),
+            sum_of_num_joint_dofs=num_joint_dofs_np.sum(),
+            max_of_num_joint_dofs=num_joint_dofs_np.max(),
+            sum_of_num_passive_joint_coords=0,
+            max_of_num_passive_joint_coords=0,
+            sum_of_num_passive_joint_dofs=0,
+            max_of_num_passive_joint_dofs=0,
+            sum_of_num_actuated_joint_coords=num_joint_coords_np.sum(),
+            max_of_num_actuated_joint_coords=num_joint_coords_np.max(),
+            sum_of_num_actuated_joint_dofs=num_joint_dofs_np.sum(),
+            max_of_num_actuated_joint_dofs=num_joint_dofs_np.max(),
+            sum_of_num_joint_cts=num_joint_cts_np.sum(),
+            max_of_num_joint_cts=num_joint_cts_np.max(),
+            sum_of_max_limits=0,
+            max_of_max_limits=0,
+            sum_of_max_contacts=0,
+            max_of_max_contacts=0,
+            sum_of_max_unilaterals=0,
+            max_of_max_unilaterals=0,
+            sum_of_max_total_cts=num_joint_cts_np.sum(),
+            max_of_max_total_cts=num_joint_cts_np.max(),
         )
+        msg.info("KaminoModelSize:\n%s", self.size)
 
         # Construct the model entities from the newton.Model instance
         with wp.ScopedDevice(device=self.device):
             # Model info
             self.info = KaminoModelInfo(
                 num_worlds=model.num_worlds,
-                # num_bodies=wp.array(...),
-                # num_joints=wp.array(...),
-                # num_passive_joints=wp.array(...),
-                # num_actuated_joints=wp.array(...),
-                # num_collision_geoms=wp.array(...),
-                # num_physical_geoms=wp.array(...),
-                # max_limits=wp.array(...),
-                # max_contacts=wp.array(...),
-                # num_body_dofs=wp.array(...),
-                # num_joint_coords=wp.array(...),
-                # num_joint_dofs=wp.array(...),
-                # num_passive_joint_coords=wp.array(...),
-                # num_passive_joint_dofs=wp.array(...),
-                # num_actuated_joint_coords=wp.array(...),
-                # num_actuated_joint_dofs=wp.array(...),
-                # num_joint_cts=wp.array(...),
-                # max_limit_cts=wp.array(...),
-                # max_contact_cts=wp.array(...),
-                # max_total_cts=wp.array(...),
-                # bodies_offset=wp.array(...),
-                # joints_offset=wp.array(...),
-                # limits_offset=wp.array(...),
-                # contacts_offset=wp.array(...),
-                # unilaterals_offset=wp.array(...),
-                # body_dofs_offset=wp.array(...),
-                # joint_coords_offset=wp.array(...),
-                # joint_dofs_offset=wp.array(...),
-                # joint_passive_coords_offset=wp.array(...),
-                # joint_passive_dofs_offset=wp.array(...),
-                # joint_actuated_coords_offset=wp.array(...),
-                # joint_actuated_dofs_offset=wp.array(...),
-                # joint_cts_offset=wp.array(...),
-                # limit_cts_offset=wp.array(...),
-                # contact_cts_offset=wp.array(...),
-                # unilateral_cts_offset=wp.array(...),
-                # total_cts_offset=wp.array(...),
+                num_bodies=wp.array(num_bodies_np, dtype=int32),
+                num_joints=wp.array(num_joints_np, dtype=int32),
+                num_passive_joints=wp.zeros((model.num_worlds,), dtype=int32),
+                num_actuated_joints=wp.array(num_joints_np, dtype=int32),
+                num_collision_geoms=wp.array(num_shapes_np, dtype=int32),
+                num_physical_geoms=wp.array(num_shapes_np, dtype=int32),
+                max_limits=None,  # Created by Limits container
+                max_contacts=None,  # Created by Contacts container
+                num_body_dofs=wp.array(num_body_dofs_np, dtype=int32),
+                num_joint_coords=wp.array(num_joint_coords_np, dtype=int32),
+                num_joint_dofs=wp.array(num_joint_dofs_np, dtype=int32),
+                num_passive_joint_coords=wp.zeros((model.num_worlds,), dtype=int32),
+                num_passive_joint_dofs=wp.zeros((model.num_worlds,), dtype=int32),
+                num_actuated_joint_coords=wp.array(num_joint_coords_np, dtype=int32),
+                num_actuated_joint_dofs=wp.array(num_joint_dofs_np, dtype=int32),
+                num_joint_cts=wp.array(num_joint_cts_np, dtype=int32),
+                max_limit_cts=None,  # Created by Limits container
+                max_contact_cts=None,  # Created by Contacts container
+                max_total_cts=wp.array(num_joint_cts_np, dtype=int32),
+                bodies_offset=wp.array(body_offset_np, dtype=int32),
+                joints_offset=wp.array(joint_offset_np, dtype=int32),
+                body_dofs_offset=wp.array(body_dof_offset_np, dtype=int32),
+                joint_coords_offset=wp.array(joint_coord_offset_np, dtype=int32),
+                joint_dofs_offset=wp.array(joint_dof_offset_np, dtype=int32),
+                joint_passive_coords_offset=wp.full_like(wp.array(joint_coord_offset_np, dtype=int32), -1, dtype=int32),
+                joint_passive_dofs_offset=wp.full_like(wp.array(joint_dof_offset_np, dtype=int32), -1, dtype=int32),
+                joint_actuated_coords_offset=wp.array(joint_coord_offset_np, dtype=int32),
+                joint_actuated_dofs_offset=wp.array(joint_dof_offset_np, dtype=int32),
+                joint_cts_offset=wp.array(joint_cts_offset_np, dtype=int32),
+
+                # TODO
                 # base_body_index=wp.array(...),
                 # base_joint_index=wp.array(...),
                 # mass_min=wp.array(...),
@@ -805,8 +1003,9 @@ class KaminoModel:
                 i_r_com_i=model.body_com,
                 m_i=model.body_mass,
                 inv_m_i=model.body_inv_mass,
-                I_i=model.body_inertia,
+                i_I_i=model.body_inertia,
                 inv_i_I_i=model.body_inv_inertia,
+                # TODO: Can we avoid the extra memory allocation here?
                 q_i_0=wp.zeros_like(model.body_q),
                 u_i_0=wp.zeros_like(model.body_qd),
             )
@@ -817,7 +1016,7 @@ class KaminoModel:
                 wid=model.joint_world,
                 jid=wp.array(joint_jid_np, dtype=int32),
                 dof_type=model.joint_type,
-                # act_type=wp.array(...),
+                act_type=wp.full_like(model.joint_type, JointActuationType.FORCE, dtype=int32),
                 bid_B=model.joint_parent,
                 bid_F=model.joint_child,
                 # B_r_Bj=wp.array(...),  # From model.joint_X_p
@@ -827,19 +1026,17 @@ class KaminoModel:
                 q_j_max=model.joint_limit_upper,
                 dq_j_max=model.joint_velocity_limit,
                 tau_j_max=model.joint_effort_limit,
-                # q_j_0=wp.array(...),  # From model.joint_q
-                # dq_j_0=wp.array(...),  # From model.joint_qd
-                # num_coords=wp.array(...),  # From model.joint_dof_dim and JointType
-                # num_dofs=wp.array(...),  # From model.joint_dof_dim and JointType
-                # num_cts=wp.array(...),  # From model.joint_dof_dim and JointType
-                # coords_offset=wp.array(...),
-                # dofs_offset=wp.array(...),
+                q_j_0=model.joint_q,
+                dq_j_0=model.joint_qd,
+                num_coords=wp.array(joint_num_coords_np, dtype=int32),
+                num_dofs=wp.array(joint_num_dofs_np, dtype=int32),
+                num_cts=wp.array(joint_num_cts_np, dtype=int32),
                 coords_offset=model.joint_q_start,
                 dofs_offset=model.joint_qd_start,
-                # passive_coords_offset=wp.array(...),
-                # passive_dofs_offset=wp.array(...),
-                # actuated_coords_offset=wp.array(...),
-                # actuated_dofs_offset=wp.array(...),
+                passive_coords_offset=wp.full_like(model.joint_q_start, -1, dtype=int32),
+                passive_dofs_offset=wp.full_like(model.joint_qd_start, -1, dtype=int32),
+                actuated_coords_offset=model.joint_q_start,
+                actuated_dofs_offset=model.joint_qd_start,
                 # cts_offset=wp.array(...),
             )
 
@@ -848,8 +1045,9 @@ class KaminoModel:
                 num_geoms=model.shape_count,
                 wid=model.shape_world,
                 gid=wp.array(shape_sid_np, dtype=int32),
+                lid=wp.zeros(shape=model.shape_count, dtype=int32),  # TODO: No layers yet
                 bid=model.shape_body,
-                sid=model.shape_type,
+                # sid=model.shape_type,
                 ptr=model.shape_source_ptr,
                 offset=model.shape_transform,
                 # params=wp.array(...),  # From model.shape_scale
@@ -857,6 +1055,8 @@ class KaminoModel:
 
         # Post-processing after construction
         # TODO: Transform initial body CoM state from body frame state
+        # TODO: Convert limits from `JOINT_LIMIT_UNLIMITED` to `FLOAT_MAX/MIN` representation
+        # TODO: Convert shape_scale to geom_params
 
     def data(
         self,

@@ -16,13 +16,20 @@
 """
 Mechanisms for defining and managing materials and their properties.
 
-TODO: elaborate further:
-- MaterialDescriptor
-- MaterialPairProperties
-- MaterialManager
-- MaterialsModel
-- MaterialPairsModel
+This module provides a set of data types and operations that realize configurable
+material properties that can be queried at simulation runtime. It includes:
 
+- :class:`MaterialDescriptor`: A container to represent a managed material.
+
+- :class:`MaterialPairProperties`: A container to represent the properties of a pair
+  of materials, including friction and restitution coefficients.
+
+- :class:`MaterialManager`: A class to manage materials used in simulations, including
+  their properties and pairwise interactions.
+
+- :class:`MaterialsModel`: A container to hold and manage per-material properties.
+
+- :class:`MaterialPairsModel`: A container to hold and manage per-material-pair properties.
 """
 
 from dataclasses import dataclass
@@ -101,7 +108,11 @@ class MaterialDescriptor(Descriptor):
     """
     A container to represent a managed material.
 
-
+    This descriptor holds both intrinsic and extrinsic properties of a material. While the former
+    are truly dependent on the material itself (e.g., density), the latter are actually dependent
+    on the pairwise interactions of the material with others (e.g., friction, restitution). These
+    extrinsic properties are stored here for to support model specifications such as USD which
+    currently do not support material-pair definitions.
 
     Attributes:
         name (`str`):
@@ -474,7 +485,7 @@ def make_get_material_pair_properties(muxmode: MaterialMuxMode = MaterialMuxMode
 
 class MaterialManager:
     """
-    A class to manage materials used in simulations, including their properties and pair-wise interactions.
+    A class to manage materials used in simulations, including their properties and pairwise interactions.
 
     Attributes:
         num_materials (int): The number of materials managed by this MaterialManager.

@@ -246,20 +246,17 @@ def write_contact_unified_kamino(
     distance = wp.dot(diff, contact_normal_a_to_b)
     d = distance - total_separation_needed
 
-    # Use per-shape contact margin (max of both shapes)
-    margin_a = writer_data.geom_margin[contact_data.shape_a]
-    margin_b = writer_data.geom_margin[contact_data.shape_b]
-    margin = wp.max(writer_data.default_margin, wp.max(margin_a, margin_b))
+    # Check if an explicit output index is provided, and allocate contact index if not
+    if output_index < 0:
+        # Use per-shape contact margin (max of both shapes)
+        # TODO: Should we use `contact_data.margin`?
+        margin_a = writer_data.geom_margin[contact_data.shape_a]
+        margin_b = writer_data.geom_margin[contact_data.shape_b]
+        margin = wp.max(writer_data.default_margin, wp.max(margin_a, margin_b))
 
-    # Only write contact if within margin
-    if d < margin:
-        # Retrieve the geom/body/material indices
-        gid_a = contact_data.shape_a
-        gid_b = contact_data.shape_b
-        bid_a = writer_data.geom_bid[contact_data.shape_a]
-        bid_b = writer_data.geom_bid[contact_data.shape_b]
-        mid_a = writer_data.geom_mid[contact_data.shape_a]
-        mid_b = writer_data.geom_mid[contact_data.shape_b]
+        # Early exit if geom/shape distance exceeds the contact margin
+        if d >= margin:
+            return
 
         # TODO: Check this logic: Are we sure this is guaranteed by the broadphase?
         # Assume both geoms are in same world
@@ -268,77 +265,80 @@ def write_contact_unified_kamino(
         # Retrieve the max contacts of the corresponding world
         world_max_contacts = writer_data.world_max_contacts[wid]
 
-        # Atomically increment contact counts
+        # Atomically increment the model-level contact counter and
+        # roll-back the atomic add if the respective limit is exceeded
         mcid = wp.atomic_add(writer_data.contacts_model_num_active, 0, 1)
-        wcid = wp.atomic_add(writer_data.contacts_world_num_active, wid, 1)
-
-        # if output_index < 0:
-        #     if d >= contact_data.margin:
-        #         return
-        #     index = wp.atomic_add(writer_data.contact_count, 0, 1)
-        #     if index >= writer_data.contact_max:
-        #         wp.atomic_add(writer_data.contact_count, 0, -1)
-        #         return
-        # else:
-        #     index = output_index
-
-        # If within the max contact allocations, write the new contact
-        if mcid < writer_data.model_max_contacts and wcid < world_max_contacts:
-            # Perform A/B geom and body assignment,
-            # ensuring static bodies is always body A
-            # NOTE: We want the normal to always point from A to B,
-            # and hence body B to be the "effected" body in the contact
-            # so we have to ensure that bid_B is always non-negative
-            if bid_b < 0:
-                gid_AB = vec2i(gid_b, gid_a)
-                bid_AB = vec2i(bid_b, bid_a)
-                normal = -contact_normal_a_to_b
-                pos_A = b_contact_world
-                pos_B = a_contact_world
-            else:
-                gid_AB = vec2i(gid_a, gid_b)
-                bid_AB = vec2i(bid_a, bid_b)
-                normal = contact_normal_a_to_b
-                pos_A = a_contact_world
-                pos_B = b_contact_world
-
-            # Retrieve the material properties for the geom pair
-            restitution_ab, _, mu_ab = wp.static(make_get_material_pair_properties())(
-                mid_a,
-                mid_b,
-                writer_data.material_restitution,
-                writer_data.material_static_friction,
-                writer_data.material_dynamic_friction,
-                writer_data.material_pair_restitution,
-                writer_data.material_pair_static_friction,
-                writer_data.material_pair_dynamic_friction,
-            )
-            material = vec2f(mu_ab, restitution_ab)
-
-            # Generate the gap-function (normal.x, normal.y, normal.z, distance),
-            # contact frame (z-norm aligned with contact normal)
-            gapfunc = vec4f(normal[0], normal[1], normal[2], d)
-            q_frame = wp.quat_from_matrix(make_contact_frame_znorm(normal))
-            key = build_pair_key2(uint32(gid_AB[0]), uint32(gid_AB[1]))
-
-            # Store contact data in Kamino format
-            writer_data.contact_wid[mcid] = wid
-            writer_data.contact_cid[mcid] = wcid
-            writer_data.contact_gid_AB[mcid] = gid_AB
-            writer_data.contact_bid_AB[mcid] = bid_AB
-            writer_data.contact_position_A[mcid] = pos_A
-            writer_data.contact_position_B[mcid] = pos_B
-            writer_data.contact_gapfunc[mcid] = gapfunc
-            writer_data.contact_frame[mcid] = q_frame
-            writer_data.contact_material[mcid] = material
-            writer_data.contact_key[mcid] = key
-
-        # TODO: Isnt it possible that this will create 'bubbles' of unused contacts?
-        # TODO: We may need an flaging mechanism to indicate invalid contacts
-        # Otherwise roll-back the atomic add if we exceeded limits
-        else:
+        if mcid >= writer_data.model_max_contacts:
             wp.atomic_sub(writer_data.contacts_model_num_active, 0, 1)
-            wp.atomic_sub(writer_data.contacts_world_num_active, wid, 1)
+            return
+
+    # Otherwise, use the provided output index
+    else:
+        mcid = output_index
+
+    # Atomically increment the world-specific contact counter and
+    # roll-back the atomic add if the respective limit is exceeded
+    wcid = wp.atomic_add(writer_data.contacts_world_num_active, wid, 1)
+    if wcid >= world_max_contacts:
+        wp.atomic_sub(writer_data.contacts_world_num_active, wid, 1)
+        return
+
+    # Retrieve the geom/body/material indices
+    gid_a = contact_data.shape_a
+    gid_b = contact_data.shape_b
+    bid_a = writer_data.geom_bid[contact_data.shape_a]
+    bid_b = writer_data.geom_bid[contact_data.shape_b]
+    mid_a = writer_data.geom_mid[contact_data.shape_a]
+    mid_b = writer_data.geom_mid[contact_data.shape_b]
+
+    # Perform A/B geom and body assignment,
+    # ensuring static bodies is always body A
+    # NOTE: We want the normal to always point from A to B,
+    # and hence body B to be the "effected" body in the contact
+    # so we have to ensure that bid_B is always non-negative
+    if bid_b < 0:
+        gid_AB = vec2i(gid_b, gid_a)
+        bid_AB = vec2i(bid_b, bid_a)
+        normal = -contact_normal_a_to_b
+        pos_A = b_contact_world
+        pos_B = a_contact_world
+    else:
+        gid_AB = vec2i(gid_a, gid_b)
+        bid_AB = vec2i(bid_a, bid_b)
+        normal = contact_normal_a_to_b
+        pos_A = a_contact_world
+        pos_B = b_contact_world
+
+    # Retrieve the material properties for the geom pair
+    restitution_ab, _, mu_ab = wp.static(make_get_material_pair_properties())(
+        mid_a,
+        mid_b,
+        writer_data.material_restitution,
+        writer_data.material_static_friction,
+        writer_data.material_dynamic_friction,
+        writer_data.material_pair_restitution,
+        writer_data.material_pair_static_friction,
+        writer_data.material_pair_dynamic_friction,
+    )
+    material = vec2f(mu_ab, restitution_ab)
+
+    # Generate the gap-function (normal.x, normal.y, normal.z, distance),
+    # contact frame (z-norm aligned with contact normal)
+    gapfunc = vec4f(normal[0], normal[1], normal[2], d)
+    q_frame = wp.quat_from_matrix(make_contact_frame_znorm(normal))
+    key = build_pair_key2(uint32(gid_AB[0]), uint32(gid_AB[1]))
+
+    # Store contact data in Kamino format
+    writer_data.contact_wid[mcid] = wid
+    writer_data.contact_cid[mcid] = wcid
+    writer_data.contact_gid_AB[mcid] = gid_AB
+    writer_data.contact_bid_AB[mcid] = bid_AB
+    writer_data.contact_position_A[mcid] = pos_A
+    writer_data.contact_position_B[mcid] = pos_B
+    writer_data.contact_gapfunc[mcid] = gapfunc
+    writer_data.contact_frame[mcid] = q_frame
+    writer_data.contact_material[mcid] = material
+    writer_data.contact_key[mcid] = key
 
 
 ###

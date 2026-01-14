@@ -1051,7 +1051,7 @@ class ModelBuilder:
         joints_q_j_max = []
         joints_qd_j_max = []
         joints_tau_j_max = []
-        joints_q_j_ref = []
+        joints_q_j_0 = []
 
         # Initialize the collision geometry data collections
         cgeoms_wid = []
@@ -1160,7 +1160,7 @@ class ModelBuilder:
                 joints_q_j_max.extend(joint.q_j_max)
                 joints_qd_j_max.extend(joint.dq_j_max)
                 joints_tau_j_max.extend(joint.tau_j_max)
-                joints_q_j_ref.extend(joint.dof_type.reference_coords)
+                joints_q_j_0.extend(joint.dof_type.reference_coords)
                 joints_c_j.append(joint.num_coords)
                 joints_d_j.append(joint.num_dofs)
                 joints_m_j.append(joint.num_cts)
@@ -1396,7 +1396,7 @@ class ModelBuilder:
                 q_j_max=wp.array(joints_q_j_max, dtype=float32, requires_grad=requires_grad),
                 dq_j_max=wp.array(joints_qd_j_max, dtype=float32, requires_grad=requires_grad),
                 tau_j_max=wp.array(joints_tau_j_max, dtype=float32, requires_grad=requires_grad),
-                q_j_ref=wp.array(joints_q_j_ref, dtype=float32, requires_grad=requires_grad),
+                q_j_0=wp.array(joints_q_j_0, dtype=float32, requires_grad=requires_grad),
             )
 
             # Create the collision geometries model

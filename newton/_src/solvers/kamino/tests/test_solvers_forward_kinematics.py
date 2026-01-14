@@ -293,7 +293,7 @@ def simulate_random_poses(
         # Update joints data from body states for validation
         wp.copy(data.bodies.q_i, bodies_q)
         wp.copy(data.bodies.u_i, bodies_u)
-        compute_joints_data(model, model.joints.q_j_ref, data, JointCorrectionMode.CONTINUOUS)
+        compute_joints_data(model, model.joints.q_j_0, data, JointCorrectionMode.CONTINUOUS)
 
         # Validate positions computation
         residual_ct_pos = np.max(np.abs(data.joints.r_j.numpy()[residual_mask]))

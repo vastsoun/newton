@@ -20,7 +20,13 @@ import unittest
 import numpy as np
 import warp as wp
 
-from newton._src.solvers.kamino.linalg.sparse import BlockDType, BlockSparseMatrices
+from newton._src.solvers.kamino.linalg.blas import (
+    block_sparse_gemv,
+    block_sparse_matvec,
+    block_sparse_transpose_gemv,
+    block_sparse_transpose_matvec,
+)
+from newton._src.solvers.kamino.linalg.sparse import BlockDType, BlockSparseLinearOperators, BlockSparseMatrices
 from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.utils import logger as msg
 from newton._src.solvers.kamino.utils.sparse import sparseview
@@ -363,6 +369,394 @@ class TestBlockSparseMatrices(unittest.TestCase):
             msg.info("bsm_np[%d]:\n%s", i, bsm_np[i])
             if self.plot:
                 sparseview(bsm_np[i], title=f"bsm_np[{i}]")
+
+
+class TestBlockSparseMatrixOperations(unittest.TestCase):
+    def setUp(self):
+        # Configs
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
+        self.epsilon = 1e-5  # Threshold for matvec product test
+        self.default_device = wp.get_device(test_context.device)
+        self.verbose = False  # Set to True for verbose output
+        self.plot = False  # Set to True to plot sparse matrices
+
+        # Random number generation.
+        self.seed = 42
+        self.rng = None
+
+        # Set debug-level logging to print verbose test output to console
+        if self.verbose:
+            print("\n")  # Add newline before test output for better readability
+            msg.set_log_level(msg.LogLevel.INFO)
+        else:
+            msg.reset_log_level()
+
+    def tearDown(self):
+        self.default_device = None
+        if self.verbose:
+            msg.reset_log_level()
+
+    ###
+    # Test Helpers
+    ###
+
+    def _build_sparse_matrix_operator(self, bsm: BlockSparseMatrices):
+        num_matrices = bsm.num_matrices
+        matrix_max_dims = bsm.max_dims.numpy()
+
+        ops = BlockSparseLinearOperators(bsm)
+        row_start_np = np.zeros((num_matrices,), dtype=np.int32)
+        col_start_np = np.zeros((num_matrices,), dtype=np.int32)
+        for mat_id in range(1, num_matrices):
+            row_start_np[mat_id] = row_start_np[mat_id - 1] + matrix_max_dims[mat_id - 1, 0]
+            col_start_np[mat_id] = col_start_np[mat_id - 1] + matrix_max_dims[mat_id - 1, 1]
+        ops.row_start = wp.from_numpy(row_start_np, dtype=wp.int32, device=self.default_device)
+        ops.col_start = wp.from_numpy(col_start_np, dtype=wp.int32, device=self.default_device)
+        ops.Ax_op = block_sparse_matvec
+        ops.ATy_op = block_sparse_transpose_matvec
+        ops.gemv_op = block_sparse_gemv
+        ops.gemvt_op = block_sparse_transpose_gemv
+
+        return ops
+
+    def _matvec_product_check(self, ops: BlockSparseLinearOperators):
+        """Tests the regular matrix-vector product and the generalized matrix-vector product for the
+        given operator, both in regular and transposed versions."""
+        bsm = ops.bsm
+        num_matrices = bsm.num_matrices
+        matrix_max_dims = bsm.max_dims.numpy()
+        matrix_dims = bsm.dims.numpy()
+        row_start_np = ops.row_start.numpy()
+        col_start_np = ops.col_start.numpy()
+
+        matrix_max_dims_sum = np.sum(matrix_max_dims, axis=0)
+
+        def product_check(transpose: bool):
+            input_dim, output_dim = (0, 1) if transpose else (1, 0)
+            size_input = matrix_max_dims_sum[input_dim]
+            size_output = matrix_max_dims_sum[output_dim]
+            input_start, output_start = (row_start_np, col_start_np) if transpose else (col_start_np, row_start_np)
+
+            # Create vectors for matrix-vector multiplications.
+            alpha = self.rng.standard_normal((1,))[0]
+            beta = self.rng.standard_normal((1,))[0]
+            input_vectors = [self.rng.standard_normal((shape[input_dim],)) for shape in matrix_dims]
+            offset_vectors = [self.rng.standard_normal((shape[output_dim],)) for shape in matrix_dims]
+            input_vec_np = np.zeros((size_input,), dtype=np.float32)
+            offset_vec_np = np.zeros((size_output,), dtype=np.float32)
+            for mat_id in range(num_matrices):
+                input_vec_np[input_start[mat_id] : input_start[mat_id] + matrix_dims[mat_id, input_dim]] = (
+                    input_vectors[mat_id]
+                )
+                offset_vec_np[output_start[mat_id] : output_start[mat_id] + matrix_dims[mat_id, output_dim]] = (
+                    offset_vectors[mat_id]
+                )
+
+            # Compute matrix-vector product.
+            input_vec = wp.from_numpy(input_vec_np, dtype=wp.float32, device=self.default_device)
+            output_vec_matmul = wp.zeros((size_output,), dtype=wp.float32, device=self.default_device)
+            output_vec_gemv = wp.from_numpy(offset_vec_np, dtype=wp.float32, device=self.default_device)
+
+            if transpose:
+                ops.matvec_transpose(input_vec, output_vec_matmul)
+                ops.gemv_transpose(input_vec, output_vec_gemv, alpha, beta)
+            else:
+                ops.matvec(input_vec, output_vec_matmul)
+                ops.gemv(input_vec, output_vec_gemv, alpha, beta)
+
+            # Compare result to dense matrix-vector product.
+            matrices_np = bsm.numpy()
+            output_vec_matmul_np = output_vec_matmul.numpy()
+            output_vec_gemv_np = output_vec_gemv.numpy()
+            for mat_id in range(num_matrices):
+                if transpose:
+                    output_vec_matmul_ref = matrices_np[mat_id].T @ input_vectors[mat_id]
+                else:
+                    output_vec_matmul_ref = matrices_np[mat_id] @ input_vectors[mat_id]
+                output_vec_gemv_ref = alpha * output_vec_matmul_ref + beta * offset_vectors[mat_id]
+
+                diff_matmul = (
+                    output_vec_matmul_ref
+                    - output_vec_matmul_np[
+                        output_start[mat_id] : output_start[mat_id] + matrix_dims[mat_id, output_dim]
+                    ]
+                )
+                self.assertLess(np.max(np.abs(diff_matmul)), self.epsilon)
+                diff_gemv = (
+                    output_vec_gemv_ref
+                    - output_vec_gemv_np[output_start[mat_id] : output_start[mat_id] + matrix_dims[mat_id, output_dim]]
+                )
+                self.assertLess(np.max(np.abs(diff_gemv)), self.epsilon)
+
+        product_check(transpose=False)
+        product_check(transpose=True)
+
+    ###
+    # Matrix-Vector Product Tests
+    ###
+
+    def test_00_sparse_matrix_vector_product_full(self):
+        """
+        Tests multiplication of a random dense block matrix with a random vector.
+        """
+
+        # Test dimensions.
+        blocks_per_dim = np.array([[4, 4], [6, 4], [4, 6]], dtype=np.int32)
+        block_dims_array = [(1,), (3,), (2, 2)]
+
+        self.rng = np.random.default_rng(seed=self.seed)
+
+        for block_dims_short in block_dims_array:
+            num_matrices = len(blocks_per_dim)
+            block_dims = (1, block_dims_short[0]) if len(block_dims_short) == 1 else block_dims_short
+
+            # Add offsets for max dimensions (in terms of blocks).
+            max_blocks_per_dim = blocks_per_dim.copy()
+            for mat_id in range(num_matrices):
+                max_blocks_per_dim[mat_id, :] += [2 * mat_id + 3, 2 * mat_id + 4]
+
+            # Compute matrix dimensions in terms of entries.
+            matrix_dims = np.asarray(
+                [[shape[0] * block_dims[0], shape[1] * block_dims[1]] for shape in blocks_per_dim], dtype=np.int32
+            )
+            matrix_max_dims = np.asarray(
+                [[shape[0] * block_dims[0], shape[1] * block_dims[1]] for shape in max_blocks_per_dim], dtype=np.int32
+            )
+
+            # Generate random matrix and vector.
+            matrices = [self.rng.standard_normal((shape[0], shape[1])) for shape in matrix_dims]
+
+            bsm = BlockSparseMatrices(
+                num_matrices=num_matrices, nzb_dtype=BlockDType(shape=block_dims_short, dtype=wp.float32)
+            )
+            capacities = np.asarray([shape[0] * shape[1] for shape in max_blocks_per_dim], dtype=np.int32)
+            num_nzb_np = np.asarray([shape[0] * shape[1] for shape in blocks_per_dim], dtype=np.int32)
+            bsm.finalize(capacities=[int(c) for c in capacities], device=self.default_device)
+
+            # Fill in sparse matrix data structure.
+            nzb_start_np = np.zeros((num_matrices,), dtype=np.int32)
+            for mat_id in range(1, num_matrices):
+                nzb_start_np[mat_id] = nzb_start_np[mat_id - 1] + capacities[mat_id - 1]
+            sum_of_max_nzb = np.sum(capacities)
+
+            nzb_coords_np = np.zeros((sum_of_max_nzb, 2), dtype=np.int32)
+            nzb_values_np = np.zeros((sum_of_max_nzb, block_dims[0], block_dims[1]), dtype=np.float32)
+            for mat_id in range(num_matrices):
+                for outer_row_id in range(blocks_per_dim[mat_id, 0]):
+                    row_id = outer_row_id * block_dims[0]
+                    for outer_col_id in range(blocks_per_dim[mat_id, 1]):
+                        col_id = outer_col_id * block_dims[1]
+                        global_idx = nzb_start_np[mat_id] + outer_row_id * blocks_per_dim[mat_id, 1] + outer_col_id
+                        nzb_coords_np[global_idx, :] = [row_id, col_id]
+                        nzb_values_np[global_idx, :, :] = matrices[mat_id][
+                            row_id : row_id + block_dims[0], col_id : col_id + block_dims[1]
+                        ]
+
+            bsm.max_dims.assign(matrix_max_dims)
+            bsm.dims.assign(matrix_dims)
+            bsm.max_nzb.assign(capacities)
+            bsm.num_nzb.assign(num_nzb_np)
+            bsm.nzb_start.assign(nzb_start_np)
+            bsm.nzb_coords.assign(nzb_coords_np)
+            bsm.nzb_values.view(dtype=wp.float32).assign(nzb_values_np)
+
+            # Build operator.
+            ops = self._build_sparse_matrix_operator(bsm)
+
+            # Run multiplication operator checks.
+            self._matvec_product_check(ops)
+
+    def test_01_sparse_matrix_vector_product_partial(self):
+        """
+        Tests multiplication of a random block sparse matrix with a random vector.
+        """
+
+        # Test dimensions.
+        blocks_per_dim = np.array([[7, 7], [17, 11], [13, 19]], dtype=np.int32)
+        block_dims_array = [(1,), (3,), (2, 2)]
+        sparse_block_offset = 5  # Every i-th block will be filled.
+
+        self.rng = np.random.default_rng(seed=self.seed)
+
+        for block_dims_short in block_dims_array:
+            num_matrices = len(blocks_per_dim)
+            block_dims = (1, block_dims_short[0]) if len(block_dims_short) == 1 else block_dims_short
+
+            # Add offsets for max dimensions (in terms of blocks).
+            max_blocks_per_dim = blocks_per_dim.copy()
+            for mat_id in range(num_matrices):
+                max_blocks_per_dim[mat_id, :] += [2 * mat_id + 3, 2 * mat_id + 4]
+
+            # Compute matrix dimensions in terms of entries.
+            matrix_dims = np.asarray(
+                [[shape[0] * block_dims[0], shape[1] * block_dims[1]] for shape in blocks_per_dim], dtype=np.int32
+            )
+            matrix_max_dims = np.asarray(
+                [[shape[0] * block_dims[0], shape[1] * block_dims[1]] for shape in max_blocks_per_dim], dtype=np.int32
+            )
+
+            # Create sparse matrices by randomly selecting which blocks to populate.
+            num_nzb_np = np.zeros((num_matrices,), dtype=np.int32)
+            max_nzb_np = np.zeros((num_matrices,), dtype=np.int32)
+            nzb_start_np = np.zeros((num_matrices,), dtype=np.int32)
+            nzb_coords_list = []
+            nzb_values_list = []
+            for mat_id in range(num_matrices):
+                nzb_start_np[mat_id] = len(nzb_coords_list)
+
+                # Randomly select blocks to be non-zero.
+                all_block_indices = [
+                    [row * block_dims[0], col * block_dims[1]]
+                    for col in range(blocks_per_dim[mat_id, 1])
+                    for row in range(blocks_per_dim[mat_id, 0])
+                ]
+                nzb_coords = all_block_indices[mat_id::sparse_block_offset]
+                num_nzb_np[mat_id] = len(nzb_coords)
+
+                # Create non-zero blocks for matrix.
+                for _ in nzb_coords:
+                    nzb_values_list.append(self.rng.standard_normal(block_dims, dtype=np.float32))
+
+                # Add empty entries.
+                for _ in range(5):
+                    nzb_coords.append([0, 0])
+                    nzb_values_list.append(np.zeros(block_dims, dtype=np.float32))
+
+                max_nzb_np[mat_id] = len(nzb_coords)
+                nzb_coords_list.extend(nzb_coords)
+
+            nzb_coords_np = np.asarray(nzb_coords_list, dtype=np.float32)
+            nzb_values_np = np.asarray(nzb_values_list, dtype=np.float32)
+
+            bsm = BlockSparseMatrices(
+                num_matrices=num_matrices, nzb_dtype=BlockDType(shape=block_dims_short, dtype=wp.float32)
+            )
+            bsm.finalize(capacities=[int(c) for c in max_nzb_np], device=self.default_device)
+
+            # Fill in sparse matrix data structure.
+            bsm.max_dims.assign(matrix_max_dims)
+            bsm.dims.assign(matrix_dims)
+            bsm.max_nzb.assign(max_nzb_np)
+            bsm.num_nzb.assign(num_nzb_np)
+            bsm.nzb_start.assign(nzb_start_np)
+            bsm.nzb_coords.assign(nzb_coords_np)
+            bsm.nzb_values.view(dtype=wp.float32).assign(nzb_values_np)
+
+            # Build operator.
+            ops = self._build_sparse_matrix_operator(bsm)
+
+            # Run multiplication operator checks.
+            self._matvec_product_check(ops)
+
+            if self.plot:
+                matrices = bsm.numpy()
+                for i in range(num_matrices):
+                    sparseview(matrices[i], title=f"Matrix {i}")
+
+    def test_02_sparse_matrix_vector_product_jacobian(self):
+        """
+        Tests multiplication of a block sparse matrix with a random vector, where the sparse matrix has a Jacobian-like
+        structure.
+        """
+
+        # Problem size as number of rigid bodies and number of constraints.
+        problem_sizes = [(10, 10), (20, 22), (100, 105)]
+        num_matrices = 5
+
+        block_dims_short = (6,)
+        block_dims = (1, 6)
+
+        self.rng = np.random.default_rng(seed=self.seed)
+
+        for problem_size in problem_sizes:
+            num_rigid_bodies = problem_size[0]
+            num_constraints = problem_size[1]
+            max_num_contacts = 10
+            max_num_limits = num_constraints // 2
+
+            num_eqs_per_constraint = self.rng.integers(3, 6, num_constraints, endpoint=True, dtype=int)
+            num_constraint_eqs = np.sum(num_eqs_per_constraint)
+
+            # Compute matrix dimensions.
+            max_blocks_per_dim = (num_constraint_eqs + 3 * max_num_contacts + max_num_limits, num_rigid_bodies)
+            matrix_max_dims = np.asarray(
+                [[max_blocks_per_dim[0] * block_dims[0], max_blocks_per_dim[1] * block_dims[1]]] * num_matrices,
+                dtype=np.int32,
+            )
+
+            # Create sparse Jacobian-like matrices by randomly selecting which blocks to populate.
+            num_nzb_np = np.zeros((num_matrices,), dtype=np.int32)
+            max_nzb_np = np.zeros((num_matrices,), dtype=np.int32)
+            nzb_start_np = np.zeros((num_matrices,), dtype=np.int32)
+            nzb_coords_list = []
+            nzb_values_list = []
+            matrix_dims = []
+            for mat_id in range(num_matrices):
+                nzb_start_np[mat_id] = len(nzb_coords_list)
+
+                row_idx = 0
+                nzb_coords = []
+                # Add binary constraints.
+                for ct_id in range(num_constraints):
+                    rb_id_A, rb_id_B = self.rng.choice(num_rigid_bodies, 2, replace=False)
+                    for i in range(num_eqs_per_constraint[ct_id]):
+                        nzb_coords.append((row_idx + i, block_dims[1] * rb_id_A))
+                    for i in range(num_eqs_per_constraint[ct_id]):
+                        nzb_coords.append((row_idx + i, block_dims[1] * rb_id_B))
+                    row_idx += num_eqs_per_constraint[ct_id]
+                # Add some numbers of contacts.
+                for _ in range(max_num_contacts // 3):
+                    rb_id = self.rng.choice(num_rigid_bodies, 1)[0]
+                    for i in range(3):
+                        nzb_coords.append((row_idx + i, block_dims[1] * rb_id))
+                    row_idx += 3
+                # Add some number of limits.
+                for _ in range(num_constraints // 3):
+                    rb_id_A, rb_id_B = self.rng.choice(num_rigid_bodies, 2, replace=False)
+                    nzb_coords.append((row_idx, block_dims[1] * rb_id_A))
+                    nzb_coords.append((row_idx, block_dims[1] * rb_id_B))
+                    row_idx += 1
+
+                num_nzb_np[mat_id] = len(nzb_coords)
+                dims = (row_idx, block_dims[1] * num_rigid_bodies)
+                matrix_dims.append(list(dims))
+
+                # Create non-zero blocks for matrix.
+                for _ in nzb_coords:
+                    nzb_values_list.append(self.rng.standard_normal(block_dims, dtype=np.float32))
+
+                # Add empty entries.
+                for _ in range(5):
+                    nzb_coords.append([0, 0])
+                    nzb_values_list.append(np.zeros(block_dims, dtype=np.float32))
+
+                max_nzb_np[mat_id] = len(nzb_coords)
+                nzb_coords_list.extend(nzb_coords)
+
+            matrix_dims = np.asarray(matrix_dims)
+            nzb_coords_np = np.asarray(nzb_coords_list, dtype=np.float32)
+            nzb_values_np = np.asarray(nzb_values_list, dtype=np.float32)
+
+            bsm = BlockSparseMatrices(
+                num_matrices=num_matrices, nzb_dtype=BlockDType(shape=block_dims_short, dtype=wp.float32)
+            )
+            bsm.finalize(capacities=[int(c) for c in max_nzb_np], device=self.default_device)
+
+            # Fill in sparse matrix data structure.
+            bsm.max_dims.assign(matrix_max_dims)
+            bsm.dims.assign(matrix_dims)
+            bsm.max_nzb.assign(max_nzb_np)
+            bsm.num_nzb.assign(num_nzb_np)
+            bsm.nzb_start.assign(nzb_start_np)
+            bsm.nzb_coords.assign(nzb_coords_np)
+            bsm.nzb_values.view(dtype=wp.float32).assign(nzb_values_np)
+
+            # Build operator.
+            ops = self._build_sparse_matrix_operator(bsm)
+
+            # Run multiplication operator checks.
+            self._matvec_product_check(ops)
 
 
 ###

@@ -72,7 +72,7 @@ Typical usage example:
     delassus.solve(b=rhs, x=solution)
 """
 
-from typing import Any
+from typing import Any, Callable
 
 import warp as wp
 from warp.context import Devicelike
@@ -84,6 +84,16 @@ from ..kinematics.constraints import get_max_constraints_per_world
 from ..kinematics.jacobians import DenseSystemJacobians
 from ..kinematics.limits import Limits
 from ..linalg import DenseLinearOperatorData, DenseSquareMultiLinearInfo, LinearSolverType
+from ..linalg.blas import (
+    block_sparse_gemv,
+    block_sparse_matvec,
+    block_sparse_transpose_gemv,
+    block_sparse_transpose_matvec,
+)
+
+# from ..linalg import Matrices, LinearOperatos
+# from ..linalg.dense import DenseMatrices, DenseLinearOperators
+from ..linalg.sparse import BlockSparseMatrices, BlockSparseLinearOperators
 
 ###
 # Module interface
@@ -112,7 +122,7 @@ def _build_delassus_elementwise(
     model_info_num_bodies: wp.array(dtype=int32),
     model_info_bodies_offset: wp.array(dtype=int32),
     model_bodies_inv_m_i: wp.array(dtype=float32),
-    state_bodies_inv_I_i: wp.array(dtype=mat33f),
+    data_bodies_inv_I_i: wp.array(dtype=mat33f),
     jacobians_cts_offset: wp.array(dtype=int32),
     jacobians_cts_data: wp.array(dtype=float32),
     delassus_dim: wp.array(dtype=int32),
@@ -185,7 +195,7 @@ def _build_delassus_elementwise(
         lin_ji = inv_m_k * wp.dot(Jv_j, Jv_i)
 
         # Angular term: dot(Jw_i.T * I_k, Jw_j)
-        inv_I_k = state_bodies_inv_I_i[bid_k]
+        inv_I_k = data_bodies_inv_I_i[bid_k]
         ang_ij = float32(0.0)
         ang_ji = float32(0.0)
         for r in range(3):  # Loop over rows of A (and elements of v)
@@ -588,3 +598,78 @@ class DelassusOperator:
 
         # Solve the linear system in-place
         return self._solver.solve_inplace(x=x)
+
+
+class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
+    """
+    A matrix-free Delassus operator for representing and operating on multiple independent sparse linear systems.
+    """
+
+    def __init__(self):
+        # TODO
+        # self.bsm represents the constraint Jacobian
+        self._model: Model | None = None
+        self._data: ModelData | None = None
+        self._sigma: wp.array | None = None
+        self._precond: wp.array | None = None
+
+        # Temporary vector to store results, sized to store all rigid body dofs of a model.
+        self._vec_temp: wp.array | None = None
+
+        # Initialize matrix-vector operations
+        self.gemv_op = block_sparse_gemv
+        self.Ax_op = block_sparse_matvec
+        self.gemvt_op = block_sparse_transpose_gemv
+        self.ATy_op = block_sparse_transpose_matvec
+
+    def assign(
+        self,
+        data: ModelData,
+        sigma: wp.array,
+        P: wp.array,
+        eta: wp.array,
+    ):
+        """
+        Args:
+            eta (wp.array): The regularization values to add to the diagonal of each matrix block.
+            This should be an array of shape `(maxdims,)` and type :class:`float32`.
+            Each value in `eta` corresponds to the regularization along each constraint.
+        """
+
+        pass
+
+    def matvec(self, x: wp.array, y: wp.array, matrix_mask: wp.array):
+        """Performs the sparse matrix-vector product `y = D @ x`."""
+        if self.Ax_op is None:
+            raise RuntimeError("No `A@x` operator has been assigned.")
+        if self.ATy_op is None:
+            raise RuntimeError("No `A^T@y` operator has been assigned.")
+
+        self._vec_temp.zero_()
+        self.ATy_op(self.bsm, x, self._vec_temp, matrix_mask)
+
+        # TODO: Multiply by inverse mass matrix
+
+        self.Ax_op(self.bsm, self._vec_temp, y, matrix_mask)
+
+    def matvec_transpose(self, y: wp.array, x: wp.array, matrix_mask: wp.array):
+        """Performs the sparse matrix-transpose-vector product `x = D^T @ y`."""
+        self.matvec(x, y, matrix_mask)
+
+    def gemv(self, x: wp.array, y: wp.array, matrix_mask: wp.array, alpha: float = 1.0, beta: float = 0.0):
+        """Performs a BLAS-like generalized sparse matrix-vector product `y = alpha * D @ x + beta * y`."""
+        if self.gemv_op is None:
+            raise RuntimeError("No BLAS-like `GEMV` operator has been assigned.")
+        if self.ATy_op is None:
+            raise RuntimeError("No `A^T@y` operator has been assigned.")
+
+        self._vec_temp.zero_()
+        self.ATy_op(self.bsm, x, self._vec_temp, matrix_mask)
+
+        # TODO: Multiply by inverse mass matrix
+
+        self.gemv_op(self.bsm, self._vec_temp, y, alpha, beta, matrix_mask)
+
+    def gemv_transpose(self, y: wp.array, x: wp.array, matrix_mask: wp.array, alpha: float = 1.0, beta: float = 0.0):
+        """Performs a BLAS-like generalized sparse matrix-transpose-vector product `x = alpha * A^T @ y + beta * x`."""
+        self.gemv(y, x, matrix_mask, alpha, beta)

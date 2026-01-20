@@ -439,8 +439,8 @@ class TestBlockSparseMatrixOperations(unittest.TestCase):
             input_start, output_start = (row_start_np, col_start_np) if transpose else (col_start_np, row_start_np)
 
             # Create vectors for matrix-vector multiplications.
-            alpha = self.rng.standard_normal((1,))[0]
-            beta = self.rng.standard_normal((1,))[0]
+            alpha = float(self.rng.standard_normal((1,))[0])
+            beta = float(self.rng.standard_normal((1,))[0])
             input_vectors = [self.rng.standard_normal((shape[input_dim],)) for shape in matrix_dims]
             offset_vectors = [self.rng.standard_normal((shape[output_dim],)) for shape in matrix_dims]
             input_vec_np = np.zeros((size_input,), dtype=np.float32)

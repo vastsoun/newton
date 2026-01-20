@@ -144,8 +144,8 @@ def _make_block_sparse_matvec_kernel(block_type: BlockDType):
         row_start: wp.array(dtype=int32),
         col_start: wp.array(dtype=int32),
         # Vector
-        x: wp.array(dtype=float32),
-        y: wp.array(dtype=float32),
+        x: wp.array(dtype=block_type.dtype),
+        y: wp.array(dtype=block_type.dtype),
     ):
         mat_id, block_idx = wp.tid()
 
@@ -163,7 +163,7 @@ def _make_block_sparse_matvec_kernel(block_type: BlockDType):
         # Perform block matrix-vector multiplication: y_block += A_block @ x_block
         if wp.static(n_block_rows == 1):
             x_idx_base = col_start[mat_id] + block_coord[1]
-            acc = float32(0.0)
+            acc = block_type.dtype(0.0)
 
             for j in range(n_block_cols):
                 acc += block[j] * x[x_idx_base + j]
@@ -175,7 +175,7 @@ def _make_block_sparse_matvec_kernel(block_type: BlockDType):
             y_idx_base = row_start[mat_id] + block_coord[0]
 
             for i in range(n_block_rows):
-                acc = float32(0.0)
+                acc = block_type.dtype(0.0)
 
                 for j in range(n_block_cols):
                     acc += block[i, j] * x[x_idx_base + j]
@@ -207,8 +207,8 @@ def _make_block_sparse_transpose_matvec_kernel(block_type: BlockDType):
         row_start: wp.array(dtype=int32),
         col_start: wp.array(dtype=int32),
         # Vector
-        y: wp.array(dtype=float32),
-        x: wp.array(dtype=float32),
+        y: wp.array(dtype=block_type.dtype),
+        x: wp.array(dtype=block_type.dtype),
     ):
         mat_id, block_idx = wp.tid()
 
@@ -236,7 +236,7 @@ def _make_block_sparse_transpose_matvec_kernel(block_type: BlockDType):
             y_idx_base = row_start[mat_id] + block_coord[0]
 
             for i in range(n_block_cols):
-                acc = float32(0.0)
+                acc = block_type.dtype(0.0)
 
                 for j in range(n_block_rows):
                     acc += block[j, i] * y[y_idx_base + j]
@@ -249,8 +249,8 @@ def _make_block_sparse_transpose_matvec_kernel(block_type: BlockDType):
 @wp.kernel
 def _scale_vector_kernel(
     # Inputs:
-    x: wp.array(dtype=float32),
-    beta: float32,
+    x: wp.array(dtype=Any),
+    beta: Any,
 ):
     tid = wp.tid()
     x[tid] = beta * x[tid]
@@ -278,10 +278,10 @@ def _make_block_sparse_gemv_kernel(block_type: BlockDType):
         row_start: wp.array(dtype=int32),
         col_start: wp.array(dtype=int32),
         # Vector
-        x: wp.array(dtype=float32),
-        y: wp.array(dtype=float32),
+        x: wp.array(dtype=block_type.dtype),
+        y: wp.array(dtype=block_type.dtype),
         # Scaling
-        alpha: float32,
+        alpha: block_type.dtype,
     ):
         mat_id, block_idx = wp.tid()
 
@@ -299,7 +299,7 @@ def _make_block_sparse_gemv_kernel(block_type: BlockDType):
         # Perform block matrix-vector multiplication: z += alpha * A_block @ x_block
         if wp.static(n_block_rows == 1):
             x_idx_base = col_start[mat_id] + block_coord[1]
-            acc = float32(0.0)
+            acc = block_type.dtype(0.0)
 
             for j in range(n_block_cols):
                 acc += alpha * block[j] * x[x_idx_base + j]
@@ -311,7 +311,7 @@ def _make_block_sparse_gemv_kernel(block_type: BlockDType):
             y_idx_base = row_start[mat_id] + block_coord[0]
 
             for i in range(n_block_rows):
-                acc = float32(0.0)
+                acc = block_type.dtype(0.0)
 
                 for j in range(n_block_cols):
                     acc += alpha * block[i, j] * x[x_idx_base + j]
@@ -343,10 +343,10 @@ def _make_block_sparse_transpose_gemv_kernel(block_type: BlockDType):
         row_start: wp.array(dtype=int32),
         col_start: wp.array(dtype=int32),
         # Vector
-        y: wp.array(dtype=float32),
-        x: wp.array(dtype=float32),
+        y: wp.array(dtype=block_type.dtype),
+        x: wp.array(dtype=block_type.dtype),
         # Scaling
-        alpha: float32,
+        alpha: block_type.dtype,
     ):
         mat_id, block_idx = wp.tid()
 
@@ -374,7 +374,7 @@ def _make_block_sparse_transpose_gemv_kernel(block_type: BlockDType):
             y_idx_base = row_start[mat_id] + block_coord[0]
 
             for i in range(n_block_cols):
-                acc = float32(0.0)
+                acc = block_type.dtype(0.0)
 
                 for j in range(n_block_rows):
                     acc += alpha * block[j, i] * y[y_idx_base + j]

@@ -441,10 +441,10 @@ def _make_block_sparse_transpose_gemv_kernel(block_type: BlockDType):
 
 
 def block_sparse_matvec(
-    matrix_mask: wp.array(dtype=int32),
+    matrix_mask: wp.array,
     A: BlockSparseLinearOperators,
-    x: wp.array(dtype=Any),
-    y: wp.array(dtype=Any),
+    x: wp.array,
+    y: wp.array,
 ):
     """
     Launch kernel for block-sparse matrix-vector product: y = A * x
@@ -478,10 +478,10 @@ def block_sparse_matvec(
 
 
 def block_sparse_transpose_matvec(
-    matrix_mask: wp.array(dtype=int32),
+    matrix_mask: wp.array,
     A: BlockSparseLinearOperators,
-    y: wp.array(dtype=Any),
-    x: wp.array(dtype=Any),
+    y: wp.array,
+    x: wp.array,
 ):
     """
     Launch kernel for block-sparse transpose matrix-vector product: x = A^T * y
@@ -515,10 +515,10 @@ def block_sparse_transpose_matvec(
 
 
 def block_sparse_gemv(
-    matrix_mask: wp.array(dtype=int32),
+    matrix_mask: wp.array,
     A: BlockSparseLinearOperators,
-    x: wp.array(dtype=Any),
-    y: wp.array(dtype=Any),
+    x: wp.array,
+    y: wp.array,
     alpha: Any,
     beta: Any,
 ):
@@ -564,10 +564,10 @@ def block_sparse_gemv(
 
 
 def block_sparse_transpose_gemv(
-    matrix_mask: wp.array(dtype=int32),
+    matrix_mask: wp.array,
     A: BlockSparseLinearOperators,
-    y: wp.array(dtype=Any),
-    x: wp.array(dtype=Any),
+    y: wp.array,
+    x: wp.array,
     alpha: Any,
     beta: Any,
 ):

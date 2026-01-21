@@ -188,6 +188,11 @@ class BlockSparseMatrices:
     Alternatively, it can be set directly if the BSM is constructed explicitly.
     """
 
+    max_of_max_dims: tuple[int, int] = (0, 0)
+    """
+    Host-side cache of the maximum of the maximum matrix dimensions over all sparse matrices.
+    """
+
     ###
     # On-device Data
     ###

@@ -166,6 +166,7 @@ class TestBlockSparseMatrices(unittest.TestCase):
         self.assertEqual(bsm.num_matrices, 0)
         self.assertEqual(bsm.sum_of_num_nzb, 0)
         self.assertEqual(bsm.max_of_num_nzb, 0)
+        self.assertEqual(bsm.max_of_max_dims, (0, 0))
         self.assertIsNone(bsm.nzb_dtype)
         self.assertIs(bsm.index_dtype, wp.int32)
 
@@ -189,6 +190,7 @@ class TestBlockSparseMatrices(unittest.TestCase):
         self.assertEqual(bsm.num_matrices, 1)
         self.assertEqual(bsm.sum_of_num_nzb, 1)
         self.assertEqual(bsm.max_of_num_nzb, 1)
+        self.assertEqual(bsm.max_of_max_dims, (0, 0))
         self.assertEqual(bsm.nzb_dtype.dtype, wp.float32)
         self.assertEqual(bsm.nzb_dtype.shape, ())
         self.assertIs(bsm.index_dtype, wp.int32)
@@ -213,6 +215,7 @@ class TestBlockSparseMatrices(unittest.TestCase):
         self.assertEqual(bsm.num_matrices, 1)
         self.assertEqual(bsm.sum_of_num_nzb, 1)
         self.assertEqual(bsm.max_of_num_nzb, 1)
+        self.assertEqual(bsm.max_of_max_dims, (0, 0))
         self.assertEqual(bsm.nzb_dtype.dtype, wp.float32)
         self.assertEqual(bsm.nzb_dtype.shape, (6,))
         self.assertIs(bsm.index_dtype, wp.int32)
@@ -237,6 +240,7 @@ class TestBlockSparseMatrices(unittest.TestCase):
         self.assertEqual(bsm.num_matrices, 1)
         self.assertEqual(bsm.sum_of_num_nzb, 1)
         self.assertEqual(bsm.max_of_num_nzb, 1)
+        self.assertEqual(bsm.max_of_max_dims, (0, 0))
         self.assertEqual(bsm.nzb_dtype.dtype, wp.float32)
         self.assertEqual(bsm.nzb_dtype.shape, (6, 5))
         self.assertIs(bsm.index_dtype, wp.int32)
@@ -292,6 +296,7 @@ class TestBlockSparseMatrices(unittest.TestCase):
         self.assertEqual(bsm.num_matrices, 2)
         self.assertEqual(bsm.sum_of_num_nzb, 5)
         self.assertEqual(bsm.max_of_num_nzb, 3)
+        self.assertEqual(bsm.max_of_max_dims, (0, 0))
         self.assertEqual(bsm.nzb_dtype.dtype, wp.float32)
         self.assertEqual(bsm.nzb_dtype.shape, (6,))
         self.assertIs(bsm.index_dtype, wp.int32)
@@ -325,6 +330,7 @@ class TestBlockSparseMatrices(unittest.TestCase):
             ],
             dtype=np.float32,
         )
+        bsm.max_of_max_dims = tuple(np.max(nzb_dims_np, axis=0))
         bsm.max_dims.assign(nzb_dims_np)
         bsm.dims.assign(nzb_dims_np)
         bsm.max_nzb.assign(num_nzb_np)
@@ -332,6 +338,7 @@ class TestBlockSparseMatrices(unittest.TestCase):
         bsm.nzb_start.assign(nzb_start_np)
         bsm.nzb_coords.assign(nzb_coords_np)
         bsm.nzb_values.view(dtype=wp.float32).assign(nzb_values_np)
+        msg.info("bsm.max_of_max_dims:\n%s", bsm.max_of_max_dims)
         msg.info("bsm.max_dims:\n%s", bsm.max_dims)
         msg.info("bsm.dims:\n%s", bsm.dims)
         msg.info("bsm.max_nzb:\n%s", bsm.max_nzb)
@@ -339,6 +346,9 @@ class TestBlockSparseMatrices(unittest.TestCase):
         msg.info("bsm.nzb_start:\n%s", bsm.nzb_start)
         msg.info("bsm.nzb_coords:\n%s", bsm.nzb_coords)
         msg.info("bsm.nzb_values:\n%s", bsm.nzb_values)
+
+        # Check host device data
+        self.assertEqual(bsm.max_of_max_dims, (2, 12))
 
         # Check on-device data shapes again to ensure nothing changed during building
         self.assertEqual(bsm.max_dims.shape, (bsm.num_matrices, 2))
@@ -553,6 +563,7 @@ class TestBlockSparseMatrixOperations(unittest.TestCase):
                             row_id : row_id + block_dims[0], col_id : col_id + block_dims[1]
                         ]
 
+            bsm.max_of_max_dims = tuple(np.max(matrix_max_dims, axis=0))
             bsm.max_dims.assign(matrix_max_dims)
             bsm.dims.assign(matrix_dims)
             bsm.max_nzb.assign(capacities)
@@ -635,6 +646,7 @@ class TestBlockSparseMatrixOperations(unittest.TestCase):
             bsm.finalize(capacities=[int(c) for c in max_nzb_np], device=self.default_device)
 
             # Fill in sparse matrix data structure.
+            bsm.max_of_max_dims = tuple(np.max(matrix_max_dims, axis=0))
             bsm.max_dims.assign(matrix_max_dims)
             bsm.dims.assign(matrix_dims)
             bsm.max_nzb.assign(max_nzb_np)
@@ -744,6 +756,7 @@ class TestBlockSparseMatrixOperations(unittest.TestCase):
             bsm.finalize(capacities=[int(c) for c in max_nzb_np], device=self.default_device)
 
             # Fill in sparse matrix data structure.
+            bsm.max_of_max_dims = tuple(np.max(matrix_max_dims, axis=0))
             bsm.max_dims.assign(matrix_max_dims)
             bsm.dims.assign(matrix_dims)
             bsm.max_nzb.assign(max_nzb_np)

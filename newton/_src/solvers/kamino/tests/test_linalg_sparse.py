@@ -442,11 +442,18 @@ class TestBlockSparseMatrixOperations(unittest.TestCase):
 
         matrix_max_dims_sum = np.sum(matrix_max_dims, axis=0)
 
-        def product_check(transpose: bool):
+        def product_check(transpose: bool, mask_matrices: bool):
             input_dim, output_dim = (0, 1) if transpose else (1, 0)
             size_input = matrix_max_dims_sum[input_dim]
             size_output = matrix_max_dims_sum[output_dim]
             input_start, output_start = (row_start_np, col_start_np) if transpose else (col_start_np, row_start_np)
+
+            if mask_matrices:
+                mask_np = np.ones((num_matrices,), dtype=np.int32)
+                mask_np[::2] = 0
+                matrix_mask = wp.from_numpy(mask_np, dtype=wp.int32, device=self.default_device)
+            else:
+                matrix_mask = wp.ones((num_matrices,), dtype=wp.int32, device=self.default_device)
 
             # Create vectors for matrix-vector multiplications.
             alpha = float(self.rng.standard_normal((1,))[0])
@@ -469,38 +476,56 @@ class TestBlockSparseMatrixOperations(unittest.TestCase):
             output_vec_gemv = wp.from_numpy(offset_vec_np, dtype=wp.float32, device=self.default_device)
 
             if transpose:
-                ops.matvec_transpose(input_vec, output_vec_matmul)
-                ops.gemv_transpose(input_vec, output_vec_gemv, alpha, beta)
+                ops.matvec_transpose(matrix_mask, input_vec, output_vec_matmul)
+                ops.gemv_transpose(matrix_mask, input_vec, output_vec_gemv, alpha, beta)
             else:
-                ops.matvec(input_vec, output_vec_matmul)
-                ops.gemv(input_vec, output_vec_gemv, alpha, beta)
+                ops.matvec(matrix_mask, input_vec, output_vec_matmul)
+                ops.gemv(matrix_mask, input_vec, output_vec_gemv, alpha, beta)
 
             # Compare result to dense matrix-vector product.
             matrices_np = bsm.numpy()
             output_vec_matmul_np = output_vec_matmul.numpy()
             output_vec_gemv_np = output_vec_gemv.numpy()
+            matrix_mask_np = matrix_mask.numpy()
             for mat_id in range(num_matrices):
-                if transpose:
-                    output_vec_matmul_ref = matrices_np[mat_id].T @ input_vectors[mat_id]
-                else:
-                    output_vec_matmul_ref = matrices_np[mat_id] @ input_vectors[mat_id]
-                output_vec_gemv_ref = alpha * output_vec_matmul_ref + beta * offset_vectors[mat_id]
-
-                diff_matmul = (
-                    output_vec_matmul_ref
-                    - output_vec_matmul_np[
+                if matrix_mask_np[mat_id] == 0:
+                    output_matmul = output_vec_matmul_np[
                         output_start[mat_id] : output_start[mat_id] + matrix_dims[mat_id, output_dim]
                     ]
-                )
-                self.assertLess(np.max(np.abs(diff_matmul)), self.epsilon)
-                diff_gemv = (
-                    output_vec_gemv_ref
-                    - output_vec_gemv_np[output_start[mat_id] : output_start[mat_id] + matrix_dims[mat_id, output_dim]]
-                )
-                self.assertLess(np.max(np.abs(diff_gemv)), self.epsilon)
+                    self.assertEqual(np.max(np.abs(output_matmul)), 0.0)
+                    diff_gemv = (
+                        offset_vec_np[output_start[mat_id] : output_start[mat_id] + matrix_dims[mat_id, output_dim]]
+                        - output_vec_gemv_np[
+                            output_start[mat_id] : output_start[mat_id] + matrix_dims[mat_id, output_dim]
+                        ]
+                    )
+                    self.assertEqual(np.max(np.abs(diff_gemv)), 0.0)
+                else:
+                    if transpose:
+                        output_vec_matmul_ref = matrices_np[mat_id].T @ input_vectors[mat_id]
+                    else:
+                        output_vec_matmul_ref = matrices_np[mat_id] @ input_vectors[mat_id]
+                    output_vec_gemv_ref = alpha * output_vec_matmul_ref + beta * offset_vectors[mat_id]
 
-        product_check(transpose=False)
-        product_check(transpose=True)
+                    diff_matmul = (
+                        output_vec_matmul_ref
+                        - output_vec_matmul_np[
+                            output_start[mat_id] : output_start[mat_id] + matrix_dims[mat_id, output_dim]
+                        ]
+                    )
+                    self.assertLess(np.max(np.abs(diff_matmul)), self.epsilon)
+                    diff_gemv = (
+                        output_vec_gemv_ref
+                        - output_vec_gemv_np[
+                            output_start[mat_id] : output_start[mat_id] + matrix_dims[mat_id, output_dim]
+                        ]
+                    )
+                    self.assertLess(np.max(np.abs(diff_gemv)), self.epsilon)
+
+        product_check(transpose=False, mask_matrices=False)
+        product_check(transpose=False, mask_matrices=True)
+        product_check(transpose=True, mask_matrices=False)
+        product_check(transpose=True, mask_matrices=True)
 
     ###
     # Matrix-Vector Product Tests

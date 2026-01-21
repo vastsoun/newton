@@ -166,6 +166,7 @@ class TestBlockSparseMatrices(unittest.TestCase):
         self.assertEqual(bsm.num_matrices, 0)
         self.assertEqual(bsm.sum_of_num_nzb, 0)
         self.assertEqual(bsm.max_of_num_nzb, 0)
+        self.assertEqual(bsm.max_of_max_dims, (0, 0))
         self.assertIsNone(bsm.nzb_dtype)
         self.assertIs(bsm.index_dtype, wp.int32)
 
@@ -189,6 +190,7 @@ class TestBlockSparseMatrices(unittest.TestCase):
         self.assertEqual(bsm.num_matrices, 1)
         self.assertEqual(bsm.sum_of_num_nzb, 1)
         self.assertEqual(bsm.max_of_num_nzb, 1)
+        self.assertEqual(bsm.max_of_max_dims, (0, 0))
         self.assertEqual(bsm.nzb_dtype.dtype, wp.float32)
         self.assertEqual(bsm.nzb_dtype.shape, ())
         self.assertIs(bsm.index_dtype, wp.int32)
@@ -213,6 +215,7 @@ class TestBlockSparseMatrices(unittest.TestCase):
         self.assertEqual(bsm.num_matrices, 1)
         self.assertEqual(bsm.sum_of_num_nzb, 1)
         self.assertEqual(bsm.max_of_num_nzb, 1)
+        self.assertEqual(bsm.max_of_max_dims, (0, 0))
         self.assertEqual(bsm.nzb_dtype.dtype, wp.float32)
         self.assertEqual(bsm.nzb_dtype.shape, (6,))
         self.assertIs(bsm.index_dtype, wp.int32)
@@ -237,6 +240,7 @@ class TestBlockSparseMatrices(unittest.TestCase):
         self.assertEqual(bsm.num_matrices, 1)
         self.assertEqual(bsm.sum_of_num_nzb, 1)
         self.assertEqual(bsm.max_of_num_nzb, 1)
+        self.assertEqual(bsm.max_of_max_dims, (0, 0))
         self.assertEqual(bsm.nzb_dtype.dtype, wp.float32)
         self.assertEqual(bsm.nzb_dtype.shape, (6, 5))
         self.assertIs(bsm.index_dtype, wp.int32)
@@ -292,6 +296,7 @@ class TestBlockSparseMatrices(unittest.TestCase):
         self.assertEqual(bsm.num_matrices, 2)
         self.assertEqual(bsm.sum_of_num_nzb, 5)
         self.assertEqual(bsm.max_of_num_nzb, 3)
+        self.assertEqual(bsm.max_of_max_dims, (0, 0))
         self.assertEqual(bsm.nzb_dtype.dtype, wp.float32)
         self.assertEqual(bsm.nzb_dtype.shape, (6,))
         self.assertIs(bsm.index_dtype, wp.int32)
@@ -325,6 +330,7 @@ class TestBlockSparseMatrices(unittest.TestCase):
             ],
             dtype=np.float32,
         )
+        bsm.max_of_max_dims = tuple(np.max(nzb_dims_np, axis=0))
         bsm.max_dims.assign(nzb_dims_np)
         bsm.dims.assign(nzb_dims_np)
         bsm.max_nzb.assign(num_nzb_np)
@@ -332,6 +338,7 @@ class TestBlockSparseMatrices(unittest.TestCase):
         bsm.nzb_start.assign(nzb_start_np)
         bsm.nzb_coords.assign(nzb_coords_np)
         bsm.nzb_values.view(dtype=wp.float32).assign(nzb_values_np)
+        msg.info("bsm.max_of_max_dims:\n%s", bsm.max_of_max_dims)
         msg.info("bsm.max_dims:\n%s", bsm.max_dims)
         msg.info("bsm.dims:\n%s", bsm.dims)
         msg.info("bsm.max_nzb:\n%s", bsm.max_nzb)
@@ -339,6 +346,9 @@ class TestBlockSparseMatrices(unittest.TestCase):
         msg.info("bsm.nzb_start:\n%s", bsm.nzb_start)
         msg.info("bsm.nzb_coords:\n%s", bsm.nzb_coords)
         msg.info("bsm.nzb_values:\n%s", bsm.nzb_values)
+
+        # Check host device data
+        self.assertEqual(bsm.max_of_max_dims, (2, 12))
 
         # Check on-device data shapes again to ensure nothing changed during building
         self.assertEqual(bsm.max_dims.shape, (bsm.num_matrices, 2))
@@ -432,15 +442,22 @@ class TestBlockSparseMatrixOperations(unittest.TestCase):
 
         matrix_max_dims_sum = np.sum(matrix_max_dims, axis=0)
 
-        def product_check(transpose: bool):
+        def product_check(transpose: bool, mask_matrices: bool):
             input_dim, output_dim = (0, 1) if transpose else (1, 0)
             size_input = matrix_max_dims_sum[input_dim]
             size_output = matrix_max_dims_sum[output_dim]
             input_start, output_start = (row_start_np, col_start_np) if transpose else (col_start_np, row_start_np)
 
+            if mask_matrices:
+                mask_np = np.ones((num_matrices,), dtype=np.int32)
+                mask_np[::2] = 0
+                matrix_mask = wp.from_numpy(mask_np, dtype=wp.int32, device=self.default_device)
+            else:
+                matrix_mask = wp.ones((num_matrices,), dtype=wp.int32, device=self.default_device)
+
             # Create vectors for matrix-vector multiplications.
-            alpha = self.rng.standard_normal((1,))[0]
-            beta = self.rng.standard_normal((1,))[0]
+            alpha = float(self.rng.standard_normal((1,))[0])
+            beta = float(self.rng.standard_normal((1,))[0])
             input_vectors = [self.rng.standard_normal((shape[input_dim],)) for shape in matrix_dims]
             offset_vectors = [self.rng.standard_normal((shape[output_dim],)) for shape in matrix_dims]
             input_vec_np = np.zeros((size_input,), dtype=np.float32)
@@ -459,38 +476,56 @@ class TestBlockSparseMatrixOperations(unittest.TestCase):
             output_vec_gemv = wp.from_numpy(offset_vec_np, dtype=wp.float32, device=self.default_device)
 
             if transpose:
-                ops.matvec_transpose(input_vec, output_vec_matmul)
-                ops.gemv_transpose(input_vec, output_vec_gemv, alpha, beta)
+                ops.matvec_transpose(matrix_mask, input_vec, output_vec_matmul)
+                ops.gemv_transpose(matrix_mask, input_vec, output_vec_gemv, alpha, beta)
             else:
-                ops.matvec(input_vec, output_vec_matmul)
-                ops.gemv(input_vec, output_vec_gemv, alpha, beta)
+                ops.matvec(matrix_mask, input_vec, output_vec_matmul)
+                ops.gemv(matrix_mask, input_vec, output_vec_gemv, alpha, beta)
 
             # Compare result to dense matrix-vector product.
             matrices_np = bsm.numpy()
             output_vec_matmul_np = output_vec_matmul.numpy()
             output_vec_gemv_np = output_vec_gemv.numpy()
+            matrix_mask_np = matrix_mask.numpy()
             for mat_id in range(num_matrices):
-                if transpose:
-                    output_vec_matmul_ref = matrices_np[mat_id].T @ input_vectors[mat_id]
-                else:
-                    output_vec_matmul_ref = matrices_np[mat_id] @ input_vectors[mat_id]
-                output_vec_gemv_ref = alpha * output_vec_matmul_ref + beta * offset_vectors[mat_id]
-
-                diff_matmul = (
-                    output_vec_matmul_ref
-                    - output_vec_matmul_np[
+                if matrix_mask_np[mat_id] == 0:
+                    output_matmul = output_vec_matmul_np[
                         output_start[mat_id] : output_start[mat_id] + matrix_dims[mat_id, output_dim]
                     ]
-                )
-                self.assertLess(np.max(np.abs(diff_matmul)), self.epsilon)
-                diff_gemv = (
-                    output_vec_gemv_ref
-                    - output_vec_gemv_np[output_start[mat_id] : output_start[mat_id] + matrix_dims[mat_id, output_dim]]
-                )
-                self.assertLess(np.max(np.abs(diff_gemv)), self.epsilon)
+                    self.assertEqual(np.max(np.abs(output_matmul)), 0.0)
+                    diff_gemv = (
+                        offset_vec_np[output_start[mat_id] : output_start[mat_id] + matrix_dims[mat_id, output_dim]]
+                        - output_vec_gemv_np[
+                            output_start[mat_id] : output_start[mat_id] + matrix_dims[mat_id, output_dim]
+                        ]
+                    )
+                    self.assertEqual(np.max(np.abs(diff_gemv)), 0.0)
+                else:
+                    if transpose:
+                        output_vec_matmul_ref = matrices_np[mat_id].T @ input_vectors[mat_id]
+                    else:
+                        output_vec_matmul_ref = matrices_np[mat_id] @ input_vectors[mat_id]
+                    output_vec_gemv_ref = alpha * output_vec_matmul_ref + beta * offset_vectors[mat_id]
 
-        product_check(transpose=False)
-        product_check(transpose=True)
+                    diff_matmul = (
+                        output_vec_matmul_ref
+                        - output_vec_matmul_np[
+                            output_start[mat_id] : output_start[mat_id] + matrix_dims[mat_id, output_dim]
+                        ]
+                    )
+                    self.assertLess(np.max(np.abs(diff_matmul)), self.epsilon)
+                    diff_gemv = (
+                        output_vec_gemv_ref
+                        - output_vec_gemv_np[
+                            output_start[mat_id] : output_start[mat_id] + matrix_dims[mat_id, output_dim]
+                        ]
+                    )
+                    self.assertLess(np.max(np.abs(diff_gemv)), self.epsilon)
+
+        product_check(transpose=False, mask_matrices=False)
+        product_check(transpose=False, mask_matrices=True)
+        product_check(transpose=True, mask_matrices=False)
+        product_check(transpose=True, mask_matrices=True)
 
     ###
     # Matrix-Vector Product Tests
@@ -553,6 +588,7 @@ class TestBlockSparseMatrixOperations(unittest.TestCase):
                             row_id : row_id + block_dims[0], col_id : col_id + block_dims[1]
                         ]
 
+            bsm.max_of_max_dims = tuple(np.max(matrix_max_dims, axis=0))
             bsm.max_dims.assign(matrix_max_dims)
             bsm.dims.assign(matrix_dims)
             bsm.max_nzb.assign(capacities)
@@ -635,6 +671,7 @@ class TestBlockSparseMatrixOperations(unittest.TestCase):
             bsm.finalize(capacities=[int(c) for c in max_nzb_np], device=self.default_device)
 
             # Fill in sparse matrix data structure.
+            bsm.max_of_max_dims = tuple(np.max(matrix_max_dims, axis=0))
             bsm.max_dims.assign(matrix_max_dims)
             bsm.dims.assign(matrix_dims)
             bsm.max_nzb.assign(max_nzb_np)
@@ -744,6 +781,7 @@ class TestBlockSparseMatrixOperations(unittest.TestCase):
             bsm.finalize(capacities=[int(c) for c in max_nzb_np], device=self.default_device)
 
             # Fill in sparse matrix data structure.
+            bsm.max_of_max_dims = tuple(np.max(matrix_max_dims, axis=0))
             bsm.max_dims.assign(matrix_max_dims)
             bsm.dims.assign(matrix_dims)
             bsm.max_nzb.assign(max_nzb_np)

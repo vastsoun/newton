@@ -273,7 +273,7 @@ def create_eval_joint_constraints_kernel(has_universal_joints: bool):
         joints_F_r_F: wp.array(dtype=wp.vec3f),
         bodies_q: wp.array(dtype=wp.transformf),
         pos_control_transforms: wp.array(dtype=wp.transformf),
-        ct_full_to_red_map: wp.array2d(dtype=wp.int32),
+        ct_full_to_red_map: wp.array(dtype=wp.int32),
         world_mask: wp.array(dtype=wp.int32),
         # Outputs
         constraints: wp.array2d(dtype=wp.float32),
@@ -299,7 +299,7 @@ def create_eval_joint_constraints_kernel(has_universal_joints: bool):
             joints_F_r_F: Joint local position on follower body
             bodies_q: Body poses
             pos_control_transforms: Joint position-control transformation
-            ct_full_to_red_map: Map from full to reduced constraint id (per world)
+            ct_full_to_red_map: Map from full to reduced constraint id
             world_mask: Per-world flag to perform the computation (0 = skip)
         Outputs:
             constraints: Constraint vector per world
@@ -313,16 +313,16 @@ def create_eval_joint_constraints_kernel(has_universal_joints: bool):
             jt_id_tot = first_joint_id[wd_id] + jt_id_loc
 
             # Get reduced constraint ids (-1 meaning constraint is not used)
-            first_ct_id_full = 6 * jt_id_loc
+            first_ct_id_full = 6 * jt_id_tot
             trans_ct_ids_red = wp.vec3i(
-                ct_full_to_red_map[wd_id, first_ct_id_full],
-                ct_full_to_red_map[wd_id, first_ct_id_full + 1],
-                ct_full_to_red_map[wd_id, first_ct_id_full + 2],
+                ct_full_to_red_map[first_ct_id_full],
+                ct_full_to_red_map[first_ct_id_full + 1],
+                ct_full_to_red_map[first_ct_id_full + 2],
             )
             rot_ct_ids_red = wp.vec3i(
-                ct_full_to_red_map[wd_id, first_ct_id_full + 3],
-                ct_full_to_red_map[wd_id, first_ct_id_full + 4],
-                ct_full_to_red_map[wd_id, first_ct_id_full + 5],
+                ct_full_to_red_map[first_ct_id_full + 3],
+                ct_full_to_red_map[first_ct_id_full + 4],
+                ct_full_to_red_map[first_ct_id_full + 5],
             )
 
             # Get joint local positions and orientation
@@ -447,7 +447,7 @@ def create_eval_joint_constraints_jacobian_kernel(has_universal_joints: bool):
         joints_F_r_F: wp.array(dtype=wp.vec3f),
         bodies_q: wp.array(dtype=wp.transformf),
         pos_control_transforms: wp.array(dtype=wp.transformf),
-        ct_full_to_red_map: wp.array2d(dtype=wp.int32),
+        ct_full_to_red_map: wp.array(dtype=wp.int32),
         world_mask: wp.array(dtype=wp.int32),
         # Outputs
         constraints_jacobian: wp.array3d(dtype=wp.float32),
@@ -470,7 +470,7 @@ def create_eval_joint_constraints_jacobian_kernel(has_universal_joints: bool):
             joints_F_r_F: Joint local position on follower body
             bodies_q: Body poses
             pos_control_transforms: Joint position-control transformation
-            ct_full_to_red_map: Map from full to reduced constraint id (per world)
+            ct_full_to_red_map: Map from full to reduced constraint id
             world_mask: Per-world flag to perform the computation (0 = skip)
         Outputs:
             constraints_jacobian: Constraint Jacobian per world
@@ -484,16 +484,16 @@ def create_eval_joint_constraints_jacobian_kernel(has_universal_joints: bool):
             jt_id_tot = first_joint_id[wd_id] + jt_id_loc
 
             # Get reduced constraint ids (-1 meaning constraint is not used)
-            first_ct_id_full = 6 * jt_id_loc
+            first_ct_id_full = 6 * jt_id_tot
             trans_ct_ids_red = wp.vec3i(
-                ct_full_to_red_map[wd_id, first_ct_id_full],
-                ct_full_to_red_map[wd_id, first_ct_id_full + 1],
-                ct_full_to_red_map[wd_id, first_ct_id_full + 2],
+                ct_full_to_red_map[first_ct_id_full],
+                ct_full_to_red_map[first_ct_id_full + 1],
+                ct_full_to_red_map[first_ct_id_full + 2],
             )
             rot_ct_ids_red = wp.vec3i(
-                ct_full_to_red_map[wd_id, first_ct_id_full + 3],
-                ct_full_to_red_map[wd_id, first_ct_id_full + 4],
-                ct_full_to_red_map[wd_id, first_ct_id_full + 5],
+                ct_full_to_red_map[first_ct_id_full + 3],
+                ct_full_to_red_map[first_ct_id_full + 4],
+                ct_full_to_red_map[first_ct_id_full + 5],
             )
 
             # Get joint local positions and orientation
@@ -1046,7 +1046,7 @@ def _eval_target_constraint_velocities(
     joints_dof_type: wp.array(dtype=wp.int32),
     joints_act_type: wp.array(dtype=wp.int32),
     actuated_dofs_offset: wp.array(dtype=wp.int32),
-    ct_full_to_red_map: wp.array2d(dtype=wp.int32),
+    ct_full_to_red_map: wp.array(dtype=wp.int32),
     actuators_u: wp.array(dtype=wp.float32),
     world_mask: wp.array(dtype=wp.int32),
     # Outputs
@@ -1062,7 +1062,7 @@ def _eval_target_constraint_velocities(
         joints_dof_type: Joint dof type (i.e. revolute, spherical, ...)
         joints_act_type: Joint actuation type (i.e. passive or actuated)
         actuated_dofs_offset: Joint first actuated dof id, among all actuated dofs in all worlds
-        ct_full_to_red_map: Map from full to reduced constraint id (per world)
+        ct_full_to_red_map: Map from full to reduced constraint id
         actuators_u: Actuated joint velocities
         world_mask: Per-world flag to perform the computation (0 = skip)
     Outputs:
@@ -1078,7 +1078,7 @@ def _eval_target_constraint_velocities(
             return
         dof_type_j = joints_dof_type[jt_id_tot]
         offset_u_j = actuated_dofs_offset[jt_id_tot]
-        offset_cts_j = ct_full_to_red_map[wd_id, 6 * jt_id_loc]
+        offset_cts_j = ct_full_to_red_map[6 * jt_id_tot]
 
         if dof_type_j == JointDoFType.CARTESIAN:
             target_cts_u[wd_id, offset_cts_j] = actuators_u[offset_u_j]
@@ -1485,7 +1485,7 @@ class ForwardKinematicsSolver:
         # Retrieve / compute dimensions - Constraints
         num_constraints = num_bodies.copy()  # Number of kinematic constraints per world (unit quat. + joints)
         has_universal_joints = False  # Whether the model has a least one passive universal joint
-        constraint_full_to_red_map = -1 * np.ones((self.num_worlds, 6 * self.num_joints_max), dtype=np.int32)
+        constraint_full_to_red_map = np.full(-1, 6 * self.num_joints_tot, dtype=np.int32)
         for wd_id in range(self.num_worlds):
             ct_count = num_constraints[wd_id]
             for jt_id_loc in range(num_joints[wd_id]):
@@ -1493,46 +1493,46 @@ class ForwardKinematicsSolver:
                 act_type = joints_act_type[jt_id_tot]
                 if act_type == JointActuationType.FORCE:  # Actuator: select all six constraints
                     for i in range(6):
-                        constraint_full_to_red_map[wd_id, 6 * jt_id_loc + i] = ct_count + i
+                        constraint_full_to_red_map[6 * jt_id_tot + i] = ct_count + i
                     ct_count += 6
                 else:
                     dof_type = joints_dof_type[jt_id_tot]
                     if dof_type == JointDoFType.CARTESIAN:
                         for i in range(3):
-                            constraint_full_to_red_map[wd_id, 6 * jt_id_loc + 3 + i] = ct_count + i
+                            constraint_full_to_red_map[6 * jt_id_tot + 3 + i] = ct_count + i
                         ct_count += 3
                     elif dof_type == JointDoFType.CYLINDRICAL:
-                        constraint_full_to_red_map[wd_id, 6 * jt_id_loc + 1] = ct_count
-                        constraint_full_to_red_map[wd_id, 6 * jt_id_loc + 2] = ct_count + 1
-                        constraint_full_to_red_map[wd_id, 6 * jt_id_loc + 4] = ct_count + 2
-                        constraint_full_to_red_map[wd_id, 6 * jt_id_loc + 5] = ct_count + 3
+                        constraint_full_to_red_map[6 * jt_id_tot + 1] = ct_count
+                        constraint_full_to_red_map[6 * jt_id_tot + 2] = ct_count + 1
+                        constraint_full_to_red_map[6 * jt_id_tot + 4] = ct_count + 2
+                        constraint_full_to_red_map[6 * jt_id_tot + 5] = ct_count + 3
                         ct_count += 4
                     elif dof_type == JointDoFType.FIXED:
                         for i in range(6):
-                            constraint_full_to_red_map[wd_id, 6 * jt_id_loc + i] = ct_count + i
+                            constraint_full_to_red_map[6 * jt_id_tot + i] = ct_count + i
                         ct_count += 6
                     elif dof_type == JointDoFType.FREE:
                         pass
                     elif dof_type == JointDoFType.PRISMATIC:
-                        constraint_full_to_red_map[wd_id, 6 * jt_id_loc + 1] = ct_count
-                        constraint_full_to_red_map[wd_id, 6 * jt_id_loc + 2] = ct_count + 1
+                        constraint_full_to_red_map[6 * jt_id_tot + 1] = ct_count
+                        constraint_full_to_red_map[6 * jt_id_tot + 2] = ct_count + 1
                         for i in range(3):
-                            constraint_full_to_red_map[wd_id, 6 * jt_id_loc + 3 + i] = ct_count + 2 + i
+                            constraint_full_to_red_map[6 * jt_id_tot + 3 + i] = ct_count + 2 + i
                         ct_count += 5
                     elif dof_type == JointDoFType.REVOLUTE:
                         for i in range(3):
-                            constraint_full_to_red_map[wd_id, 6 * jt_id_loc + i] = ct_count + i
-                        constraint_full_to_red_map[wd_id, 6 * jt_id_loc + 4] = ct_count + 3
-                        constraint_full_to_red_map[wd_id, 6 * jt_id_loc + 5] = ct_count + 4
+                            constraint_full_to_red_map[6 * jt_id_tot + i] = ct_count + i
+                        constraint_full_to_red_map[6 * jt_id_tot + 4] = ct_count + 3
+                        constraint_full_to_red_map[6 * jt_id_tot + 5] = ct_count + 4
                         ct_count += 5
                     elif dof_type == JointDoFType.SPHERICAL:
                         for i in range(3):
-                            constraint_full_to_red_map[wd_id, 6 * jt_id_loc + i] = ct_count + i
+                            constraint_full_to_red_map[6 * jt_id_tot + i] = ct_count + i
                         ct_count += 3
                     elif dof_type == JointDoFType.UNIVERSAL:
                         for i in range(3):
-                            constraint_full_to_red_map[wd_id, 6 * jt_id_loc + i] = ct_count + i
-                        constraint_full_to_red_map[wd_id, 6 * jt_id_loc + 5] = ct_count + 3
+                            constraint_full_to_red_map[6 * jt_id_tot + i] = ct_count + i
+                        constraint_full_to_red_map[6 * jt_id_tot + 5] = ct_count + 3
                         ct_count += 4
                         has_universal_joints = True
                     else:
@@ -1672,10 +1672,10 @@ class ForwardKinematicsSolver:
                     rb_id_loc = rb_id_tot - first_body_id[wd_id]
                     state_offset = 7 * rb_id_loc
                     for i in range(3):
-                        ct_offset = constraint_full_to_red_map[wd_id, 6 * jt_id_loc + i]  # ith translation constraint
+                        ct_offset = constraint_full_to_red_map[6 * jt_id_tot + i]  # ith translation constraint
                         if ct_offset >= 0:
                             sparsity_pattern[wd_id, ct_offset, state_offset : state_offset + 7] = 1
-                        ct_offset = constraint_full_to_red_map[wd_id, 6 * jt_id_loc + 3 + i]  # ith rotation constraint
+                        ct_offset = constraint_full_to_red_map[6 * jt_id_tot + 3 + i]  # ith rotation constraint
                         if ct_offset >= 0:
                             sparsity_pattern[wd_id, ct_offset, state_offset + 3 : state_offset + 7] = 1
 

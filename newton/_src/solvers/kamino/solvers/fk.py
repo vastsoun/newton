@@ -57,6 +57,10 @@ __all__ = ["ForwardKinematicsSolver", "ForwardKinematicsSolverSettings", "Forwar
 wp.set_module_options({"enable_backward": False})
 
 
+class block_type(BlockDType(dtype=wp.float32, shape=(7,)).warp_type):
+    pass
+
+
 ###
 # Functions
 ###
@@ -426,6 +430,47 @@ def _eval_unit_quaternion_constraints_jacobian(
         constraints_jacobian[wd_id, rb_id_loc, state_offset + 3] = 2.0 * q.w
 
 
+@wp.kernel
+def _eval_unit_quaternion_constraints_sparse_jacobian(
+    # Inputs
+    num_bodies: wp.array(dtype=wp.int32),
+    first_body_id: wp.array(dtype=wp.int32),
+    bodies_q: wp.array(dtype=wp.transformf),
+    rb_nzb_id: wp.array(dtype=wp.int32),
+    world_mask: wp.array(dtype=wp.int32),
+    # Outputs
+    jacobian_nzb: wp.array(dtype=block_type),
+):
+    """
+    A kernel computing the sparse Jacobian of unit norm quaternion constraints for each body, written at the top of the
+    constraints Jacobian
+
+    Inputs:
+        num_bodies: Num bodies per world
+        first_body_id: First body id per world
+        bodies_q: Body poses
+        rb_nzb_id: Id of the nzb corresponding to the constraint per body
+        world_mask: Per-world flag to perform the computation (0 = skip)
+    Outputs:
+        jacobian_nzb: Non-zero blocks of the sparse Jacobian
+    """
+
+    # Retrieve the thread indices (= world index, body index)
+    wd_id, rb_id_loc = wp.tid()
+
+    if wd_id < num_bodies.shape[0] and world_mask[wd_id] != 0 and rb_id_loc < num_bodies[wd_id]:
+        # Get overall body id
+        rb_id_tot = first_body_id[wd_id] + rb_id_loc
+
+        # Evaluate constraint Jacobian
+        q = wp.transform_get_rotation(bodies_q[rb_id_tot])
+        nzb_id = rb_nzb_id[rb_id_tot]
+        jacobian_nzb[nzb_id][3] = 2.0 * q.x
+        jacobian_nzb[nzb_id][4] = 2.0 * q.y
+        jacobian_nzb[nzb_id][5] = 2.0 * q.z
+        jacobian_nzb[nzb_id][6] = 2.0 * q.w
+
+
 @cache
 def create_eval_joint_constraints_jacobian_kernel(has_universal_joints: bool):
     """
@@ -588,6 +633,169 @@ def create_eval_joint_constraints_jacobian_kernel(has_universal_joints: bool):
                     constraints_jacobian[wd_id, rot_ct_id_red, follower_offset + 3 + i] = jac_q_follower[i]
 
     return _eval_joint_constraints_jacobian
+
+
+@cache
+def create_eval_joint_constraints_sparse_jacobian_kernel(has_universal_joints: bool):
+    """
+    Returns the joint constraints sparse Jacobian evaluation kernel, statically baking in whether there are universal joints
+    or not (these joints need a separate handling)
+    """
+
+    @wp.kernel
+    def _eval_joint_constraints_sparse_jacobian(
+        # Inputs
+        num_joints: wp.array(dtype=wp.int32),
+        first_joint_id: wp.array(dtype=wp.int32),
+        first_body_id: wp.array(dtype=wp.int32),
+        joints_dof_type: wp.array(dtype=wp.int32),
+        joints_act_type: wp.array(dtype=wp.int32),
+        joints_bid_B: wp.array(dtype=wp.int32),
+        joints_bid_F: wp.array(dtype=wp.int32),
+        joints_X: wp.array(dtype=wp.mat33f),
+        joints_B_r_B: wp.array(dtype=wp.vec3f),
+        joints_F_r_F: wp.array(dtype=wp.vec3f),
+        bodies_q: wp.array(dtype=wp.transformf),
+        pos_control_transforms: wp.array(dtype=wp.transformf),
+        ct_nzb_id_base: wp.array(dtype=wp.int32),
+        ct_nzb_id_follower: wp.array(dtype=wp.int32),
+        world_mask: wp.array(dtype=wp.int32),
+        # Outputs
+        jacobian_nzb: wp.array(dtype=block_type),
+    ):
+        """
+        A kernel computing the Jacobian of the joint constraints.
+        The Jacobian is assumed to have already been filled with zeros, at least in the coefficients that
+        are always zero due to joint connectivity.
+
+        Inputs:
+            num_joints: Num joints per world
+            first_joint_id: First joint id per world
+            first_body_id: First body id per world
+            joints_dof_type: Joint dof type (i.e. revolute, spherical, ...)
+            joints_act_type: Joint actuation type (i.e. passive or actuated)
+            joints_bid_B: Joint base body id
+            joints_bid_F: Joint follower body id
+            joints_X: Joint frame (local axes, valid both on base and follower)
+            joints_B_r_B: Joint local position on base body
+            joints_F_r_F: Joint local position on follower body
+            bodies_q: Body poses
+            pos_control_transforms: Joint position-control transformation
+            ct_nzb_id_base: Map from full constraint id to nzb id, for the base body blocks
+            ct_nzb_id_base: Map from full constraint id to nzb id, for the follower body blocks
+            world_mask: Per-world flag to perform the computation (0 = skip)
+        Outputs:
+            jacobian_nzb: Non-zero blocks of the sparse Jacobian
+        """
+
+        # Retrieve the thread indices (= world index, joint index)
+        wd_id, jt_id_loc = wp.tid()
+
+        if wd_id < num_joints.shape[0] and world_mask[wd_id] != 0 and jt_id_loc < num_joints[wd_id]:
+            # Get overall joint id
+            jt_id_tot = first_joint_id[wd_id] + jt_id_loc
+
+            # Get nzb ids (-1 meaning constraint is not used)
+            start = 6 * jt_id_tot
+            end = start + 6
+            nzb_ids_base = ct_nzb_id_base[start:end]
+            nzb_ids_follower = ct_nzb_id_follower[start:end]
+
+            # Get joint local positions and orientation
+            x_follower = joints_F_r_F[jt_id_tot]
+            X_T = wp.transpose(joints_X[jt_id_tot])
+
+            # Get base and follower transformations
+            base_id = joints_bid_B[jt_id_tot]
+            if base_id < 0:
+                c_base = wp.vec3f(0.0, 0.0, 0.0)
+                q_base = wp.quatf(0.0, 0.0, 0.0, 1.0)
+            else:
+                c_base = wp.transform_get_translation(bodies_q[base_id])
+                q_base = wp.transform_get_rotation(bodies_q[base_id])
+            follower_id = joints_bid_F[jt_id_tot]
+            c_follower = wp.transform_get_translation(bodies_q[follower_id])
+            q_follower = wp.transform_get_rotation(bodies_q[follower_id])
+
+            # Get position control transformation (rotation part only, as translation part doesn't affect the Jacobian)
+            q_control_body = wp.transform_get_rotation(pos_control_transforms[jt_id_tot])
+
+            # Translation constraints
+            X_T_R_base_T = X_T * unit_quat_conj_to_rotation_matrix(q_base)
+            if base_id >= 0:
+                jac_trans_c_base = -X_T_R_base_T
+                delta_pos = unit_quat_apply(q_follower, x_follower) + c_follower - c_base
+                jac_trans_q_base = X_T * unit_quat_conj_apply_jacobian(q_base, delta_pos)
+            jac_trans_c_follower = X_T_R_base_T
+            jac_trans_q_follower = X_T_R_base_T * unit_quat_apply_jacobian(q_follower, x_follower)
+
+            # Rotation constraints
+            q_base_sq_norm = wp.dot(q_base, q_base)
+            q_follower_sq_norm = wp.dot(q_follower, q_follower)
+            R_base_T = unit_quat_conj_to_rotation_matrix(q_base / wp.sqrt(q_base_sq_norm))
+            q_rel = q_follower * wp.quat_inverse(q_control_body) * wp.quat_inverse(q_base)
+            temp = X_T * R_base_T * quat_left_jacobian_inverse(q_rel)
+            if base_id >= 0:
+                jac_rot_q_base = (-2.0 / q_base_sq_norm) * temp * G_of(q_base)
+            jac_rot_q_follower = (2.0 / q_follower_sq_norm) * temp * G_of(q_follower)
+            # Note: we need X^T * R_base^T both for translation and rotation constraints, but to get the correct
+            # derivatives for non-unit quaternions (which may be encountered before convergence) we end up needing
+            # to use a separate formula to evaluate R_base in either case
+
+            # Write out Jacobian
+            if base_id >= 0:
+                for i in range(3):
+                    nzb_id = nzb_ids_base[i]
+                    if nzb_id >= 0:
+                        for j in range(3):
+                            jacobian_nzb[nzb_id][j] = jac_trans_c_base[i, j]
+                        for j in range(4):
+                            jacobian_nzb[nzb_id][3 + j] = jac_trans_q_base[i, j]
+                for i in range(3):
+                    nzb_id = nzb_ids_base[i + 3]
+                    if nzb_id >= 0:
+                        for j in range(4):
+                            jacobian_nzb[nzb_id][3 + j] = jac_rot_q_base[i, j]
+            for i in range(3):
+                nzb_id = nzb_ids_follower[i]
+                if nzb_id >= 0:
+                    for j in range(3):
+                        jacobian_nzb[nzb_id][j] = jac_trans_c_follower[i, j]
+                    for j in range(4):
+                        jacobian_nzb[nzb_id][3 + j] = jac_trans_q_follower[i, j]
+            for i in range(3):
+                nzb_id = nzb_ids_follower[i + 3]
+                if nzb_id >= 0:
+                    for j in range(4):
+                        jacobian_nzb[nzb_id][3 + j] = jac_rot_q_follower[i, j]
+
+            # Correct Jacobian for passive universal joints
+            if wp.static(has_universal_joints):
+                # Check for a passive universal joint
+                dof_type_j = joints_dof_type[jt_id_tot]
+                act_type_j = joints_act_type[jt_id_tot]
+                if dof_type_j != int(JointDoFType.UNIVERSAL) or act_type_j != int(JointActuationType.PASSIVE):
+                    return
+
+                # Compute constraint Jacobian (cross product between x axis on base and y axis on follower)
+                a_x = X_T[0]
+                a_y = X_T[1]
+                if base_id >= 0:
+                    a_y_follower = unit_quat_apply(q_follower, a_y)
+                    jac_q_base = -a_y_follower * unit_quat_apply_jacobian(q_base, a_x)
+                a_x_base = unit_quat_apply(q_base, a_x)
+                jac_q_follower = -a_x_base * unit_quat_apply_jacobian(q_follower, a_y)
+
+                # Write out Jacobian
+                if base_id >= 0:
+                    nzb_id = nzb_ids_base[5]
+                    for j in range(4):
+                        jacobian_nzb[nzb_id][3 + j] = jac_q_base[j]
+                nzb_id = nzb_ids_follower[5]
+                for j in range(4):
+                    jacobian_nzb[nzb_id][3 + j] = jac_q_follower[j]
+
+    return _eval_joint_constraints_sparse_jacobian
 
 
 @cache
@@ -1773,6 +1981,11 @@ class ForwardKinematicsSolver:
             self.ct_nzb_id_base = wp.from_numpy(ct_nzb_id_base, dtype=wp.int32)
             self.ct_nzb_id_follower = wp.from_numpy(ct_nzb_id_follower, dtype=wp.int32)
 
+        # Initialize Jacobian assembly kernel
+        self._eval_joint_constraints_sparse_jacobian_kernel = create_eval_joint_constraints_sparse_jacobian_kernel(
+            has_universal_joints
+        )
+
     ###
     # Internal evaluators (graph-capturable functions working on pre-allocated data)
     ###
@@ -2257,6 +2470,60 @@ class ForwardKinematicsSolver:
         world_mask = wp.ones(dtype=wp.int32, shape=(self.num_worlds,), device=self.device)
         self._eval_kinematic_constraints_jacobian(bodies_q, pos_control_transforms, world_mask, constraints_jacobian)
         return constraints_jacobian
+
+    def assemble_sparse_jacobian(
+        self, bodies_q: wp.array(dtype=wp.transformf), pos_control_transforms: wp.array(dtype=wp.transformf)
+    ):
+        """
+        Assembles the sparse Jacobian given input body poses and control transforms.
+        Note: the sparse Jacobian is not yet used in the solver, this function is only for
+        testing purposes currently.
+        """
+        assert bodies_q.device == self.device
+        assert pos_control_transforms.device == self.device
+
+        self.sparse_jacobian.zero()
+        world_mask = wp.ones(dtype=wp.int32, shape=(self.num_worlds,), device=self.device)
+
+        # Evaluate unit norm quaternion constraints Jacobian
+        wp.launch(
+            _eval_unit_quaternion_constraints_sparse_jacobian,
+            dim=(self.num_worlds, self.num_bodies_max),
+            inputs=[
+                self.model.info.num_bodies,
+                self.first_body_id,
+                bodies_q,
+                self.rb_nzb_id,
+                world_mask,
+                self.sparse_jacobian.nzb_values,
+            ],
+            device=self.device,
+        )
+
+        # Evaluate joint constraints Jacobian
+        wp.launch(
+            self._eval_joint_constraints_sparse_jacobian_kernel,
+            dim=(self.num_worlds, self.num_joints_max),
+            inputs=[
+                self.num_joints,
+                self.first_joint_id,
+                self.first_body_id,
+                self.joints_dof_type,
+                self.joints_act_type,
+                self.joints_bid_B,
+                self.joints_bid_F,
+                self.joints_X_j,
+                self.joints_B_r_Bj,
+                self.joints_F_r_Fj,
+                bodies_q,
+                pos_control_transforms,
+                self.ct_nzb_id_base,
+                self.ct_nzb_id_follower,
+                world_mask,
+                self.sparse_jacobian.nzb_values,
+            ],
+            device=self.device,
+        )
 
     def solve_for_body_velocities(
         self,

@@ -41,6 +41,7 @@ from ..core.math import (
 from ..core.model import Model
 from ..core.types import vec6f
 from ..linalg.factorize.llt_blocked_semi_sparse import SemiSparseBlockCholeskySolverBatched
+from ..linalg.sparse import BlockDType, BlockSparseMatrices
 
 ###
 # Module interface
@@ -1485,7 +1486,7 @@ class ForwardKinematicsSolver:
         # Retrieve / compute dimensions - Constraints
         num_constraints = num_bodies.copy()  # Number of kinematic constraints per world (unit quat. + joints)
         has_universal_joints = False  # Whether the model has a least one passive universal joint
-        constraint_full_to_red_map = np.full(-1, 6 * self.num_joints_tot, dtype=np.int32)
+        constraint_full_to_red_map = np.full(6 * self.num_joints_tot, -1, dtype=np.int32)
         for wd_id in range(self.num_worlds):
             ct_count = num_constraints[wd_id]
             for jt_id_loc in range(num_joints[wd_id]):
@@ -1702,6 +1703,75 @@ class ForwardKinematicsSolver:
             enable_reordering=True,
         )
         self.linear_solver.capture_sparsity_pattern(sparsity_pattern_lhs, num_states)
+
+        ######### Sparse Jacobian - symbolic assembly
+        self.sparse_jacobian = BlockSparseMatrices(
+            device=self.device, nzb_dtype=BlockDType(dtype=wp.float32, shape=(7,)), num_matrices=self.num_worlds
+        )
+        jacobian_dims = np.stack((num_constraints, 7 * num_bodies)).T.flatten()
+
+        # Determine number of nzb, per world and in total
+        num_nzb = num_bodies.copy()  # nzb due to rigid body unit quaternion constraints
+        jt_num_constraints = (constraint_full_to_red_map.reshape((-1, 6)) >= 0).sum(axis=1)
+        jt_num_bodies = np.array([1 if joints_bid_B[i] < 0 else 2 for i in range(self.num_joints_tot)])
+        for wd_id in range(self.num_worlds):  # nzb due to joint constraints
+            start = first_joint_id[wd_id]
+            end = start + num_joints[wd_id]
+            num_nzb[wd_id] += (jt_num_constraints[start:end] * jt_num_bodies[start:end]).sum()
+        first_nzb = np.concatenate(([0], num_nzb.cumsum()))
+        num_nzb_tot = num_nzb.sum()
+
+        # Symbolic assembly
+        nzb_row = np.empty(num_nzb_tot, dtype=np.int32)
+        nzb_col = np.empty(num_nzb_tot, dtype=np.int32)
+        rb_nzb_id = np.empty(self.model.size.sum_of_num_bodies, dtype=np.int32)
+        ct_nzb_id_base = np.full(6 * self.num_joints_tot, -1, dtype=np.int32)
+        ct_nzb_id_follower = np.full(6 * self.num_joints_tot, -1, dtype=np.int32)
+        for wd_id in range(self.num_worlds):
+            start_nzb = first_nzb[wd_id]
+
+            # Compute index, row and column of rigid body nzb
+            start_rb = first_body_id[wd_id]
+            size_rb = num_bodies[wd_id]
+            rb_ids = np.arange(size_rb)
+            rb_nzb_id[start_rb : start_rb + size_rb] = start_nzb + rb_ids
+            nzb_row[start_nzb : start_nzb + size_rb] = rb_ids
+            nzb_col[start_nzb : start_nzb + size_rb] = 7 * rb_ids
+
+            # Compute index, row and column of constraint nzb
+            start_nzb += size_rb
+            for jt_id_loc in range(num_joints[wd_id]):
+                jt_id_tot = jt_id_loc + first_joint_id[wd_id]
+                has_base = joints_bid_B[jt_id_tot] >= 0
+                row_ids_full = constraint_full_to_red_map[6 * jt_id_tot : 6 * jt_id_tot + 6]
+                row_ids_red = [i for i in row_ids_full if i >= 0]
+                num_cts = len(row_ids_red)
+                if has_base:
+                    nzb_id_base = ct_nzb_id_base[6 * jt_id_tot : 6 * jt_id_tot + 6]
+                    nzb_id_base[row_ids_full >= 0] = np.arange(start_nzb, start_nzb + num_cts)
+                    nzb_row[start_nzb : start_nzb + num_cts] = row_ids_red
+                    base_id_loc = joints_bid_B[jt_id_tot] - first_body_id[wd_id]
+                    nzb_col[start_nzb : start_nzb + num_cts] = 7 * base_id_loc
+                    start_nzb += num_cts
+                nzb_id_follower = ct_nzb_id_follower[6 * jt_id_tot : 6 * jt_id_tot + 6]
+                nzb_id_follower[row_ids_full >= 0] = np.arange(start_nzb, start_nzb + num_cts)
+                nzb_row[start_nzb : start_nzb + num_cts] = row_ids_red
+                follower_id_loc = joints_bid_F[jt_id_tot] - first_body_id[wd_id]
+                nzb_col[start_nzb : start_nzb + num_cts] = 7 * follower_id_loc
+                start_nzb += num_cts
+
+        # Transfer data to GPU
+        self.sparse_jacobian.finalize(num_nzb.tolist())
+        self.sparse_jacobian.max_dims.assign(jacobian_dims)
+        self.sparse_jacobian.dims.assign(jacobian_dims)
+        self.sparse_jacobian.max_nzb.assign(num_nzb)
+        self.sparse_jacobian.num_nzb.assign(num_nzb)
+        self.sparse_jacobian.nzb_start.assign(first_nzb[:-1])
+        self.sparse_jacobian.nzb_coords.assign(np.stack((nzb_row, nzb_col)).T.flatten())
+        with wp.ScopedDevice(self.device):
+            self.rb_nzb_id = wp.from_numpy(rb_nzb_id, dtype=wp.int32)
+            self.ct_nzb_id_base = wp.from_numpy(ct_nzb_id_base, dtype=wp.int32)
+            self.ct_nzb_id_follower = wp.from_numpy(ct_nzb_id_follower, dtype=wp.int32)
 
     ###
     # Internal evaluators (graph-capturable functions working on pre-allocated data)

@@ -522,32 +522,28 @@ class BlockSparseLinearOperators:
     # Operators
     ###
 
-    Ax_op: Callable[[wp.array, "BlockSparseLinearOperators", wp.array, wp.array], None] | None = None
+    Ax_op: Callable | None = None
     """
     The operator function for performing sparse matrix-vector products `y = A @ x`.\n
-    Signature: ``Ax_op(matrix_mask: wp.array, A: BlockSparseLinearOperators, x: wp.array, y: wp.array)``.
+    Example signature: ``Ax_op(A: BlockSparseLinearMatrices, x: wp.array, y: wp.array, matrix_mask: wp.array)``.
     """
 
-    ATy_op: Callable[[wp.array, "BlockSparseLinearOperators", wp.array, wp.array], None] | None = None
+    ATy_op: Callable | None = None
     """
     The operator function for performing sparse matrix-transpose-vector products `x = A^T @ y`.\n
-    Signature: ``ATy_op(matrix_mask: wp.array, A: BlockSparseLinearOperators, y: wp.array, x: wp.array)``.
+    Example signature: ``ATy_op(A: BlockSparseLinearMatrices, y: wp.array, x: wp.array, matrix_mask: wp.array)``.
     """
 
-    gemv_op: Callable[[wp.array, "BlockSparseLinearOperators", wp.array, wp.array, float, float, bool], None] | None = (
-        None
-    )
+    gemv_op: Callable | None = None
     """
     The operator function for performing generalized sparse matrix-vector products `y = alpha * A @ x + beta * y`.\n
-    Signature: ``gemv_op(matrix_mask: wp.array, A: BlockSparseLinearOperators, x: wp.array, y: wp.array, alpha: float, beta: float)``.
+    Example signature: ``gemv_op(A: BlockSparseLinearMatrices, x: wp.array, y: wp.array, alpha: float, beta: float, matrix_mask: wp.array)``.
     """
 
-    gemvt_op: (
-        Callable[[wp.array, "BlockSparseLinearOperators", wp.array, wp.array, float, float, bool], None] | None
-    ) = None
+    gemvt_op: Callable | None = None
     """
     The operator function for performing generalized sparse matrix-transpose-vector products `x = alpha * A^T @ y + beta * x`.\n
-    Signature: ``gemvt_op(matrix_mask: wp.array, A: BlockSparseLinearOperators, y: wp.array, x: wp.array, alpha: float, beta: float)``.
+    Example signature: ``gemvt_op(A: BlockSparseLinearMatrices, y: wp.array, x: wp.array, alpha: float, beta: float, matrix_mask: wp.array)``.
     """
 
     ###
@@ -562,26 +558,26 @@ class BlockSparseLinearOperators:
         """Sets all sub-block data to zero."""
         self.bsm.zero()
 
-    def matvec(self, matrix_mask: wp.array, x: wp.array, y: wp.array):
+    def matvec(self, x: wp.array, y: wp.array, matrix_mask: wp.array):
         """Performs the sparse matrix-vector product `y = A @ x`."""
         if self.Ax_op is None:
             raise RuntimeError("No `A@x` operator has been assigned.")
-        self.Ax_op(matrix_mask, self, x, y)
+        self.Ax_op(self.bsm, x, y, matrix_mask)
 
-    def matvec_transpose(self, matrix_mask: wp.array, y: wp.array, x: wp.array):
+    def matvec_transpose(self, y: wp.array, x: wp.array, matrix_mask: wp.array):
         """Performs the sparse matrix-transpose-vector product `x = A^T @ y`."""
         if self.ATy_op is None:
             raise RuntimeError("No `A^T@y` operator has been assigned.")
-        self.ATy_op(matrix_mask, self, y, x)
+        self.ATy_op(self.bsm, y, x, matrix_mask)
 
-    def gemv(self, matrix_mask: wp.array, x: wp.array, y: wp.array, alpha: float = 1.0, beta: float = 0.0):
+    def gemv(self, x: wp.array, y: wp.array, matrix_mask: wp.array, alpha: float = 1.0, beta: float = 0.0):
         """Performs a BLAS-like generalized sparse matrix-vector product `y = alpha * A @ x + beta * y`."""
         if self.gemv_op is None:
             raise RuntimeError("No BLAS-like `GEMV` operator has been assigned.")
-        self.gemv_op(matrix_mask, self, x, y, alpha, beta)
+        self.gemv_op(self.bsm, x, y, alpha, beta, matrix_mask)
 
-    def gemv_transpose(self, matrix_mask: wp.array, y: wp.array, x: wp.array, alpha: float = 1.0, beta: float = 0.0):
+    def gemv_transpose(self, y: wp.array, x: wp.array, matrix_mask: wp.array, alpha: float = 1.0, beta: float = 0.0):
         """Performs a BLAS-like generalized sparse matrix-transpose-vector product `x = alpha * A^T @ y + beta * x`."""
         if self.gemvt_op is None:
             raise RuntimeError("No BLAS-like transposed `GEMV` operator has been assigned.")
-        self.gemvt_op(matrix_mask, self, y, x, alpha, beta)
+        self.gemvt_op(self.bsm, y, x, alpha, beta, matrix_mask)

@@ -476,11 +476,11 @@ class TestBlockSparseMatrixOperations(unittest.TestCase):
             output_vec_gemv = wp.from_numpy(offset_vec_np, dtype=wp.float32, device=self.default_device)
 
             if transpose:
-                ops.matvec_transpose(matrix_mask, input_vec, output_vec_matmul)
-                ops.gemv_transpose(matrix_mask, input_vec, output_vec_gemv, alpha, beta)
+                ops.matvec_transpose(input_vec, output_vec_matmul, matrix_mask)
+                ops.gemv_transpose(input_vec, output_vec_gemv, matrix_mask, alpha, beta)
             else:
-                ops.matvec(matrix_mask, input_vec, output_vec_matmul)
-                ops.gemv(matrix_mask, input_vec, output_vec_gemv, alpha, beta)
+                ops.matvec(input_vec, output_vec_matmul, matrix_mask)
+                ops.gemv(input_vec, output_vec_gemv, matrix_mask, alpha, beta)
 
             # Compare result to dense matrix-vector product.
             matrices_np = bsm.numpy()

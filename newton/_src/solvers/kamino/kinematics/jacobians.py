@@ -1398,13 +1398,13 @@ class SparseSystemJacobians:
                     max_nzb=wp.array(J_cts_nnbz_max, dtype=int32),
                     num_nzb=wp.array(J_cts_nnbz_min, dtype=int32),
                     nzb_start=wp.array(J_cts_nzb_start, dtype=int32),
+                    row_start=wp.array(J_cts_rhs_start, dtype=int32),
+                    col_start=wp.array(J_inp_start, dtype=int32),
+                    # row_start=model.info.total_cts_offset,
+                    # col_start=model.info.body_dofs_offset,
                     nzb_coords=wp.zeros(sum_of_J_cts_nnbz_max, dtype=vec2i),
                     nzb_values=wp.zeros(sum_of_J_cts_nnbz_max, dtype=vec6f),
                 ),
-                row_start=wp.array(J_cts_rhs_start, dtype=int32),
-                col_start=wp.array(J_inp_start, dtype=int32),
-                # row_start=model.info.total_cts_offset,
-                # col_start=model.info.body_dofs_offset,
             )
             # Then allocate the geometric DoFs Jacobian
             self._J_dofs = BlockSparseLinearOperators(
@@ -1419,13 +1419,13 @@ class SparseSystemJacobians:
                     max_nzb=wp.array(J_dofs_nnbz, dtype=int32),
                     num_nzb=wp.array(J_dofs_nnbz, dtype=int32),
                     nzb_start=wp.array(J_dofs_nzb_start, dtype=int32),
+                    row_start=wp.array(J_dofs_rhs_start, dtype=int32),
+                    col_start=wp.array(J_inp_start, dtype=int32),
+                    # row_start=model.info.joint_dofs_offset,
+                    # col_start=model.info.body_dofs_offset,
                     nzb_coords=wp.zeros(sum_of_J_dofs_nnbz, dtype=vec2i),
                     nzb_values=wp.zeros(sum_of_J_dofs_nnbz, dtype=vec6f),
                 ),
-                row_start=wp.array(J_dofs_rhs_start, dtype=int32),
-                col_start=wp.array(J_inp_start, dtype=int32),
-                # row_start=model.info.joint_dofs_offset,
-                # col_start=model.info.body_dofs_offset,
             )
 
     def build(

@@ -468,8 +468,8 @@ def block_sparse_matvec(
             bsm.nzb_start,
             bsm.nzb_coords,
             bsm.nzb_values,
-            A.row_start,
-            A.col_start,
+            bsm.row_start,
+            bsm.col_start,
             x,
             y,
         ],
@@ -505,8 +505,8 @@ def block_sparse_transpose_matvec(
             bsm.nzb_start,
             bsm.nzb_coords,
             bsm.nzb_values,
-            A.row_start,
-            A.col_start,
+            bsm.row_start,
+            bsm.col_start,
             y,
             x,
         ],
@@ -539,7 +539,7 @@ def block_sparse_gemv(
     wp.launch(
         kernel=_make_scale_vector_kernel(0),
         dim=(bsm.num_matrices, bsm.max_of_max_dims[0]),
-        inputs=[matrix_mask, bsm.dims, A.row_start, A.col_start, y, beta],
+        inputs=[matrix_mask, bsm.dims, bsm.row_start, bsm.col_start, y, beta],
         device=bsm.device,
     )
 
@@ -553,8 +553,8 @@ def block_sparse_gemv(
             bsm.nzb_start,
             bsm.nzb_coords,
             bsm.nzb_values,
-            A.row_start,
-            A.col_start,
+            bsm.row_start,
+            bsm.col_start,
             x,
             y,
             alpha,
@@ -588,7 +588,7 @@ def block_sparse_transpose_gemv(
     wp.launch(
         kernel=_make_scale_vector_kernel(1),
         dim=(bsm.num_matrices, bsm.max_of_max_dims[1]),
-        inputs=[matrix_mask, bsm.dims, A.row_start, A.col_start, x, beta],
+        inputs=[matrix_mask, bsm.dims, bsm.row_start, bsm.col_start, x, beta],
         device=bsm.device,
     )
 
@@ -602,8 +602,8 @@ def block_sparse_transpose_gemv(
             bsm.nzb_start,
             bsm.nzb_coords,
             bsm.nzb_values,
-            A.row_start,
-            A.col_start,
+            bsm.row_start,
+            bsm.col_start,
             y,
             x,
             alpha,

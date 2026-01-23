@@ -421,8 +421,8 @@ class TestBlockSparseMatrixOperations(unittest.TestCase):
         for mat_id in range(1, num_matrices):
             row_start_np[mat_id] = row_start_np[mat_id - 1] + matrix_max_dims[mat_id - 1, 0]
             col_start_np[mat_id] = col_start_np[mat_id - 1] + matrix_max_dims[mat_id - 1, 1]
-        ops.row_start = wp.from_numpy(row_start_np, dtype=wp.int32, device=self.default_device)
-        ops.col_start = wp.from_numpy(col_start_np, dtype=wp.int32, device=self.default_device)
+        bsm.row_start = wp.from_numpy(row_start_np, dtype=wp.int32, device=self.default_device)
+        bsm.col_start = wp.from_numpy(col_start_np, dtype=wp.int32, device=self.default_device)
         ops.Ax_op = block_sparse_matvec
         ops.ATy_op = block_sparse_transpose_matvec
         ops.gemv_op = block_sparse_gemv
@@ -437,8 +437,8 @@ class TestBlockSparseMatrixOperations(unittest.TestCase):
         num_matrices = bsm.num_matrices
         matrix_max_dims = bsm.max_dims.numpy()
         matrix_dims = bsm.dims.numpy()
-        row_start_np = ops.row_start.numpy()
-        col_start_np = ops.col_start.numpy()
+        row_start_np = bsm.row_start.numpy()
+        col_start_np = bsm.col_start.numpy()
 
         matrix_max_dims_sum = np.sum(matrix_max_dims, axis=0)
 

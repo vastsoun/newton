@@ -227,6 +227,18 @@ class BlockSparseMatrices:
     Shape of ``(num_matrices,)`` and type :class:`int`.
     """
 
+    row_start: wp.array | None = None
+    """
+    The start index of each row vector block in a flattened data array of size sum_of_max_rows.\n
+    Shape of ``(num_matrices,)`` and type :class:`int`.
+    """
+
+    col_start: wp.array | None = None
+    """
+    The start index of each column vector block in a flattened data array of size sum_of_max_cols.\n
+    Shape of ``(num_matrices,)`` and type :class:`int`.
+    """
+
     nzb_coords: wp.array | None = None
     """
     The row-column coordinates of each non-zero block within its corresponding sparse matrix.\n
@@ -465,18 +477,6 @@ class BlockSparseLinearOperators:
     bsm: BlockSparseMatrices | None = None
     """
     The underlying block-sparse matrix used by this operator.
-    """
-
-    row_start: wp.array | None = None
-    """
-    The start index of each row vector block in flattened data arrays.\n
-    Shape of ``(num_superblocks,)`` and type :class:`int`.
-    """
-
-    col_start: wp.array | None = None
-    """
-    The start index of each column vector block in flattened data arrays.\n
-    Shape of ``(num_superblocks,)`` and type :class:`int`.
     """
 
     ###

@@ -702,10 +702,6 @@ def _build_joint_jacobians_sparse(
     # Retrieve the number of body DoFs for corresponding world
     bio = model_info_bodies_offset[wid]
 
-    # Retrieve the Jacobian block offset for this joint
-    J_cts_nzb_start = jacobian_cts_nzb_start[wid]
-    J_dofs_nzb_start = jacobian_dofs_nzb_start[wid]
-
     # Retrieve the pose transform of the joint
     T_j = state_joints_p[jid]
     r_j = wp.transform_get_translation(T_j)
@@ -737,7 +733,6 @@ def _build_joint_jacobians_sparse(
     store_joint_cts_jacobian_sparse(
         wid,
         dof_type,
-        J_cts_nzb_start,
         cio,
         bio,
         bid_B,
@@ -754,7 +749,6 @@ def _build_joint_jacobians_sparse(
     store_joint_dofs_jacobian_sparse(
         wid,
         dof_type,
-        J_dofs_nzb_start,
         dio,
         bio,
         bid_B,

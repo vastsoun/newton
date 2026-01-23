@@ -194,8 +194,10 @@ class BlockSparseMatrices:
     """
 
     ###
-    # On-device Data
+    # On-device Data (Constant)
     ###
+
+    # These arrays are expected to stay constant once this object is finalized
 
     max_dims: wp.array | None = None
     """
@@ -203,21 +205,9 @@ class BlockSparseMatrices:
     Shape of ``(num_matrices,)`` and type :class:`vec2i`.
     """
 
-    dims: wp.array | None = None
-    """
-    The active dimensions of each sparse matrices.\n
-    Shape of ``(num_matrices,)`` and type :class:`vec2i`.
-    """
-
     max_nzb: wp.array | None = None
     """
     The maximum number of non-zero blocks per sparse matrices.\n
-    Shape of ``(num_matrices,)`` and type :class:`int`.
-    """
-
-    num_nzb: wp.array | None = None
-    """
-    The active number of non-zero blocks per sparse matrices.\n
     Shape of ``(num_matrices,)`` and type :class:`int`.
     """
 
@@ -236,6 +226,24 @@ class BlockSparseMatrices:
     col_start: wp.array | None = None
     """
     The start index of each column vector block in a flattened data array of size sum_of_max_cols.\n
+    Shape of ``(num_matrices,)`` and type :class:`int`.
+    """
+
+    ###
+    # On-device Data (Variable)
+    ###
+
+    # These are the arrays to update when assembling the matrices
+
+    dims: wp.array | None = None
+    """
+    The active dimensions of each sparse matrices.\n
+    Shape of ``(num_matrices,)`` and type :class:`vec2i`.
+    """
+
+    num_nzb: wp.array | None = None
+    """
+    The active number of non-zero blocks per sparse matrices.\n
     Shape of ``(num_matrices,)`` and type :class:`int`.
     """
 

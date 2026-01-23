@@ -194,18 +194,14 @@ class BlockSparseMatrices:
     """
 
     ###
-    # On-device Data
+    # On-device Data (Constant)
     ###
+
+    # These arrays are expected to stay constant once this object is finalized
 
     max_dims: wp.array | None = None
     """
     The maximum dimensions of each sparse matrices.\n
-    Shape of ``(num_matrices,)`` and type :class:`vec2i`.
-    """
-
-    dims: wp.array | None = None
-    """
-    The active dimensions of each sparse matrices.\n
     Shape of ``(num_matrices,)`` and type :class:`vec2i`.
     """
 
@@ -215,15 +211,39 @@ class BlockSparseMatrices:
     Shape of ``(num_matrices,)`` and type :class:`int`.
     """
 
-    num_nzb: wp.array | None = None
-    """
-    The active number of non-zero blocks per sparse matrices.\n
-    Shape of ``(num_matrices,)`` and type :class:`int`.
-    """
-
     nzb_start: wp.array | None = None
     """
     The index of the first non-zero block of each sparse matrices.\n
+    Shape of ``(num_matrices,)`` and type :class:`int`.
+    """
+
+    row_start: wp.array | None = None
+    """
+    The start index of each row vector block in a flattened data array of size sum_of_max_rows.\n
+    Shape of ``(num_matrices,)`` and type :class:`int`.
+    """
+
+    col_start: wp.array | None = None
+    """
+    The start index of each column vector block in a flattened data array of size sum_of_max_cols.\n
+    Shape of ``(num_matrices,)`` and type :class:`int`.
+    """
+
+    ###
+    # On-device Data (Variable)
+    ###
+
+    # These are the arrays to update when assembling the matrices
+
+    dims: wp.array | None = None
+    """
+    The active dimensions of each sparse matrices.\n
+    Shape of ``(num_matrices,)`` and type :class:`vec2i`.
+    """
+
+    num_nzb: wp.array | None = None
+    """
+    The active number of non-zero blocks per sparse matrices.\n
     Shape of ``(num_matrices,)`` and type :class:`int`.
     """
 
@@ -245,6 +265,7 @@ class BlockSparseMatrices:
 
     def finalize(
         self,
+        max_dims: list[tuple[int, int]],
         capacities: list[int],
         nzb_dtype: BlockDType | None = None,
         index_dtype: IntType | None = None,
@@ -254,6 +275,8 @@ class BlockSparseMatrices:
         Finalizes the block-sparse matrix container by allocating on-device data arrays.
 
         Args:
+            max_dims (list[tuple[int, int]]):
+                A list of pairs of integers, specifying the maximum number of rows and columns for each matrix.
             capacities (list[int]):
                 A list of integers specifying the maximum number of non-zero blocks for each sparse matrix.
             block_type (BlockDType, optional):
@@ -289,6 +312,16 @@ class BlockSparseMatrices:
         elif self.index_dtype not in get_args(IntType):
             raise TypeError("The `index_type` field must be a valid IntType such as int32 or int64.")
 
+        # Ensure that the max dimensions are valid
+        if not isinstance(max_dims, list) or len(max_dims) == 0:
+            raise ValueError("The `max_dims` field must be a non-empty list of integers 2-tuples.")
+        for dims in max_dims:
+            if not isinstance(dims, tuple) or len(dims) != 2:
+                raise ValueError("All entries in the `max_dims` field must be 2-tuples of non-negative integers.")
+            r, c = dims
+            if not isinstance(r, int) or not isinstance(c, int) or r < 0 or c < 0:
+                raise ValueError("All entries in the `max_dims` field must be 2-tuples of non-negative integers.")
+
         # Ensure that the capacities are valid
         if not isinstance(capacities, list) or len(capacities) == 0:
             raise ValueError("The `capacities` field must be a non-empty list of integers.")
@@ -296,18 +329,29 @@ class BlockSparseMatrices:
             if not isinstance(cap, int) or cap < 0:
                 raise ValueError("All entries in the `capacities` field must be non-negative integers.")
 
+        # Ensure that inputs are consistent
+        if len(max_dims) != len(capacities):
+            raise ValueError("The `max_dims`, and `capacities` fields must have the same size.")
+
         # Update memory allocation meta-data caches
         self.num_matrices = len(capacities)
+        self.max_of_max_dims = tuple(max(x) for x in zip(*max_dims, strict=True))
         self.sum_of_num_nzb = sum(capacities)
         self.max_of_num_nzb = max(capacities)
 
-        # Allocate on-device warp arrays
+        # Compute cumulated sums for rows, cols and nzb
+        dim_start_np = np.concatenate(([[0, 0]], np.asarray(max_dims).cumsum(axis=0)))[:-1]
+        nzb_start_np = np.concatenate(([0], np.asarray(capacities).cumsum()))[:-1]
+
+        # Initialize on-device warp arrays
         with wp.ScopedDevice(self.device):
-            self.max_dims = wp.zeros(shape=(self.num_matrices, 2), dtype=self.index_dtype)
+            self.max_dims = wp.from_numpy(np.asarray(max_dims), shape=(self.num_matrices, 2), dtype=self.index_dtype)
             self.dims = wp.zeros(shape=(self.num_matrices, 2), dtype=self.index_dtype)
-            self.max_nzb = wp.zeros(shape=(self.num_matrices,), dtype=self.index_dtype)
+            self.row_start = wp.from_numpy(dim_start_np[:, 0], shape=(self.num_matrices,), dtype=self.index_dtype)
+            self.col_start = wp.from_numpy(dim_start_np[:, 1], shape=(self.num_matrices,), dtype=self.index_dtype)
+            self.max_nzb = wp.from_numpy(np.asarray(capacities), shape=(self.num_matrices,), dtype=self.index_dtype)
             self.num_nzb = wp.zeros(shape=(self.num_matrices,), dtype=self.index_dtype)
-            self.nzb_start = wp.zeros(shape=(self.num_matrices,), dtype=self.index_dtype)
+            self.nzb_start = wp.from_numpy(nzb_start_np, shape=(self.num_matrices,), dtype=self.index_dtype)
             self.nzb_coords = wp.zeros(shape=(self.sum_of_num_nzb, 2), dtype=self.index_dtype)
             self.nzb_values = wp.zeros(shape=(self.sum_of_num_nzb,), dtype=self.nzb_dtype.warp_type)
 
@@ -378,21 +422,28 @@ class BlockSparseMatrices:
         # Retrieve the fixed-size block dimensions
         block_nrows, block_ncols = self._get_block_shape()
 
+        # Retrieve sparse data from the device
+        dims_np = self.dims.numpy()
+        num_nzb_np = self.num_nzb.numpy()
+        nzb_start_np = self.nzb_start.numpy()
+        nzb_coords_np = self.nzb_coords.numpy()
+        nzb_values_np = self.nzb_values.numpy()
+
         # Construct a list of dense NumPy matrices from the sparse representation
         matrices: list[np.ndarray] = []
         for m in range(self.num_matrices):
             # Retrieve the active matrix dimensions
-            dims = self.dims.numpy()[m]
+            dims = dims_np[m]
             nrows, ncols = int(dims[0]), int(dims[1])
 
             # Allocate dense matrix initially filled with zeros
             dense_matrix = np.zeros((nrows, ncols), dtype=self.nzb_dtype.dtype)
 
             # Populate non-zero blocks
-            num_nzb = int(self.num_nzb.numpy()[m])
-            start_idx = int(self.nzb_start.numpy()[m])
-            coords = self.nzb_coords.numpy()[start_idx : start_idx + num_nzb]
-            values = self.nzb_values.numpy()[start_idx : start_idx + num_nzb]
+            num_nzb = int(num_nzb_np[m])
+            start_idx = int(nzb_start_np[m])
+            coords = nzb_coords_np[start_idx : start_idx + num_nzb]
+            values = nzb_values_np[start_idx : start_idx + num_nzb]
             for b in range(num_nzb):
                 row_idx, col_idx = int(coords[b][0]), int(coords[b][1])
                 block_value = values[b].reshape((block_nrows, block_ncols))
@@ -467,48 +518,32 @@ class BlockSparseLinearOperators:
     The underlying block-sparse matrix used by this operator.
     """
 
-    row_start: wp.array | None = None
-    """
-    The start index of each row vector block in flattened data arrays.\n
-    Shape of ``(num_superblocks,)`` and type :class:`int`.
-    """
-
-    col_start: wp.array | None = None
-    """
-    The start index of each column vector block in flattened data arrays.\n
-    Shape of ``(num_superblocks,)`` and type :class:`int`.
-    """
-
     ###
     # Operators
     ###
 
-    Ax_op: Callable[[wp.array, "BlockSparseLinearOperators", wp.array, wp.array], None] | None = None
+    Ax_op: Callable | None = None
     """
     The operator function for performing sparse matrix-vector products `y = A @ x`.\n
-    Signature: ``Ax_op(matrix_mask: wp.array, A: BlockSparseLinearOperators, x: wp.array, y: wp.array)``.
+    Example signature: ``Ax_op(A: BlockSparseLinearMatrices, x: wp.array, y: wp.array, matrix_mask: wp.array)``.
     """
 
-    ATy_op: Callable[[wp.array, "BlockSparseLinearOperators", wp.array, wp.array], None] | None = None
+    ATy_op: Callable | None = None
     """
     The operator function for performing sparse matrix-transpose-vector products `x = A^T @ y`.\n
-    Signature: ``ATy_op(matrix_mask: wp.array, A: BlockSparseLinearOperators, y: wp.array, x: wp.array)``.
+    Example signature: ``ATy_op(A: BlockSparseLinearMatrices, y: wp.array, x: wp.array, matrix_mask: wp.array)``.
     """
 
-    gemv_op: Callable[[wp.array, "BlockSparseLinearOperators", wp.array, wp.array, float, float, bool], None] | None = (
-        None
-    )
+    gemv_op: Callable | None = None
     """
     The operator function for performing generalized sparse matrix-vector products `y = alpha * A @ x + beta * y`.\n
-    Signature: ``gemv_op(matrix_mask: wp.array, A: BlockSparseLinearOperators, x: wp.array, y: wp.array, alpha: float, beta: float)``.
+    Example signature: ``gemv_op(A: BlockSparseLinearMatrices, x: wp.array, y: wp.array, alpha: float, beta: float, matrix_mask: wp.array)``.
     """
 
-    gemvt_op: (
-        Callable[[wp.array, "BlockSparseLinearOperators", wp.array, wp.array, float, float, bool], None] | None
-    ) = None
+    gemvt_op: Callable | None = None
     """
     The operator function for performing generalized sparse matrix-transpose-vector products `x = alpha * A^T @ y + beta * x`.\n
-    Signature: ``gemvt_op(matrix_mask: wp.array, A: BlockSparseLinearOperators, y: wp.array, x: wp.array, alpha: float, beta: float)``.
+    Example signature: ``gemvt_op(A: BlockSparseLinearMatrices, y: wp.array, x: wp.array, alpha: float, beta: float, matrix_mask: wp.array)``.
     """
 
     ###
@@ -523,26 +558,26 @@ class BlockSparseLinearOperators:
         """Sets all sub-block data to zero."""
         self.bsm.zero()
 
-    def matvec(self, matrix_mask: wp.array, x: wp.array, y: wp.array):
+    def matvec(self, x: wp.array, y: wp.array, matrix_mask: wp.array):
         """Performs the sparse matrix-vector product `y = A @ x`."""
         if self.Ax_op is None:
             raise RuntimeError("No `A@x` operator has been assigned.")
-        self.Ax_op(matrix_mask, self, x, y)
+        self.Ax_op(self.bsm, x, y, matrix_mask)
 
-    def matvec_transpose(self, matrix_mask: wp.array, y: wp.array, x: wp.array):
+    def matvec_transpose(self, y: wp.array, x: wp.array, matrix_mask: wp.array):
         """Performs the sparse matrix-transpose-vector product `x = A^T @ y`."""
         if self.ATy_op is None:
             raise RuntimeError("No `A^T@y` operator has been assigned.")
-        self.ATy_op(matrix_mask, self, y, x)
+        self.ATy_op(self.bsm, y, x, matrix_mask)
 
-    def gemv(self, matrix_mask: wp.array, x: wp.array, y: wp.array, alpha: float = 1.0, beta: float = 0.0):
+    def gemv(self, x: wp.array, y: wp.array, matrix_mask: wp.array, alpha: float = 1.0, beta: float = 0.0):
         """Performs a BLAS-like generalized sparse matrix-vector product `y = alpha * A @ x + beta * y`."""
         if self.gemv_op is None:
             raise RuntimeError("No BLAS-like `GEMV` operator has been assigned.")
-        self.gemv_op(matrix_mask, self, x, y, alpha, beta)
+        self.gemv_op(self.bsm, x, y, alpha, beta, matrix_mask)
 
-    def gemv_transpose(self, matrix_mask: wp.array, y: wp.array, x: wp.array, alpha: float = 1.0, beta: float = 0.0):
+    def gemv_transpose(self, y: wp.array, x: wp.array, matrix_mask: wp.array, alpha: float = 1.0, beta: float = 0.0):
         """Performs a BLAS-like generalized sparse matrix-transpose-vector product `x = alpha * A^T @ y + beta * x`."""
         if self.gemvt_op is None:
             raise RuntimeError("No BLAS-like transposed `GEMV` operator has been assigned.")
-        self.gemvt_op(matrix_mask, self, y, x, alpha, beta)
+        self.gemvt_op(self.bsm, y, x, alpha, beta, matrix_mask)

@@ -201,6 +201,89 @@ def compute_constraint_residual_mask(model: Model):
     return mask
 
 
+def generate_random_inputs_q(
+    model: Model,
+    num_poses: int,
+    max_base_q: np.ndarray,
+    max_actuators_q: np.ndarray,
+    rng: np.random._generator.Generator,
+    unit_quaternions=True,
+):
+    # Check dimensions
+    base_q_size = 7 * model.size.num_worlds
+    actuators_q_size = model.size.sum_of_num_actuated_joint_dofs
+    assert len(max_base_q) == base_q_size
+    assert len(max_actuators_q) == actuators_q_size
+
+    # Generate (random) base_q, actuators_q
+    base_q_np = np.zeros((num_poses, base_q_size))
+    for i in range(base_q_size):
+        base_q_np[:, i] = rng.uniform(-max_base_q[i], max_base_q[i], num_poses)
+    actuators_q_np = np.zeros((num_poses, actuators_q_size))
+    for i in range(actuators_q_size):
+        actuators_q_np[:, i] = rng.uniform(-max_actuators_q[i], max_actuators_q[i], num_poses)
+
+    # Normalize quaternions in base_q, actuators_q
+    if unit_quaternions:
+        for i in range(model.size.num_worlds):
+            base_q_np[:, 7 * i + 3 : 7 * i + 7] /= np.linalg.norm(base_q_np[:, 7 * i + 3 : 7 * i + 7], axis=1)[:, None]
+        quat_ids = get_actuators_q_quaternion_first_ids(model)
+        for i in quat_ids:
+            actuators_q_np[:, i : i + 4] /= np.linalg.norm(actuators_q_np[:, i : i + 4], axis=1)[:, None]
+
+    return base_q_np, actuators_q_np
+
+
+def generate_random_inputs_u(
+    model: Model,
+    num_poses: int,
+    max_base_u: np.ndarray,
+    max_actuators_u: np.ndarray,
+    rng: np.random._generator.Generator,
+):
+    # Check dimensions
+    base_u_size = 6 * model.size.num_worlds
+    actuators_u_size = model.size.sum_of_num_actuated_joint_dofs
+    assert len(max_base_u) == base_u_size
+    assert len(max_actuators_u) == actuators_u_size
+
+    # Generate (random) base_u, actuators_u
+    base_u_np = np.zeros((num_poses, base_u_size))
+    for i in range(base_u_size):
+        base_u_np[:, i] = rng.uniform(-max_base_u[i], max_base_u[i], num_poses)
+    actuators_u_np = np.zeros((num_poses, actuators_u_size))
+    for i in range(actuators_u_size):
+        actuators_u_np[:, i] = rng.uniform(-max_actuators_u[i], max_actuators_u[i], num_poses)
+
+    return base_u_np, actuators_u_np
+
+
+def generate_random_poses(
+    model: Model,
+    num_poses: int,
+    max_bodies_q: np.ndarray,
+    rng: np.random._generator.Generator,
+    unit_quaternions=True,
+):
+    # Check dimensions
+    bodies_q_size = 7 * model.size.sum_of_num_bodies
+    assert len(max_bodies_q) == bodies_q_size
+
+    # Generate (random) bodies_q
+    bodies_q_np = np.zeros((num_poses, bodies_q_size))
+    for i in range(bodies_q_size):
+        bodies_q_np[:, i] = rng.uniform(-max_bodies_q[i], max_bodies_q[i], num_poses)
+
+    # Normalize quaternions in bodies_q
+    if unit_quaternions:
+        for i in range(model.size.num_worlds):
+            bodies_q_np[:, 7 * i + 3 : 7 * i + 7] /= np.linalg.norm(bodies_q_np[:, 7 * i + 3 : 7 * i + 7], axis=1)[
+                :, None
+            ]
+
+    return bodies_q_np
+
+
 def simulate_random_poses(
     model: Model,
     num_poses: int,
@@ -212,38 +295,9 @@ def simulate_random_poses(
     use_graph: bool = False,
     verbose: bool = False,
 ):
-    # Check dimensions
-    base_q_size = 7 * model.size.num_worlds
-    actuators_q_size = model.size.sum_of_num_actuated_joint_dofs
-    base_u_size = 6 * model.size.num_worlds
-    actuators_u_size = model.size.sum_of_num_actuated_joint_dofs
-    assert len(max_base_q) == base_q_size
-    assert len(max_actuators_q) == actuators_q_size
-    assert len(max_base_u) == base_u_size
-    assert len(max_actuators_u) == actuators_u_size
-
-    # Generate (random) base_q, actuators_q
-    base_q_np = np.zeros((num_poses, base_q_size))
-    for i in range(base_q_size):
-        base_q_np[:, i] = rng.uniform(-max_base_q[i], max_base_q[i], num_poses)
-    actuators_q_np = np.zeros((num_poses, actuators_q_size))
-    for i in range(actuators_q_size):
-        actuators_q_np[:, i] = rng.uniform(-max_actuators_q[i], max_actuators_q[i], num_poses)
-
-    # Normalize quaternions in base_q, actuators_q
-    for i in range(model.size.num_worlds):
-        base_q_np[:, 7 * i + 3 : 7 * i + 7] /= np.linalg.norm(base_q_np[:, 7 * i + 3 : 7 * i + 7], axis=1)[:, None]
-    quat_ids = get_actuators_q_quaternion_first_ids(model)
-    for i in quat_ids:
-        actuators_q_np[:, i : i + 4] /= np.linalg.norm(actuators_q_np[:, i : i + 4], axis=1)[:, None]
-
-    # Generate (random) base_u, actuators_u
-    base_u_np = np.zeros((num_poses, base_u_size))
-    for i in range(base_u_size):
-        base_u_np[:, i] = rng.uniform(-max_base_u[i], max_base_u[i], num_poses)
-    actuators_u_np = np.zeros((num_poses, actuators_u_size))
-    for i in range(actuators_u_size):
-        actuators_u_np[:, i] = rng.uniform(-max_actuators_u[i], max_actuators_u[i], num_poses)
+    # Generate random inputs
+    base_q_np, actuators_q_np = generate_random_inputs_q(model, num_poses, max_base_q, max_actuators_q, rng)
+    base_u_np, actuators_u_np = generate_random_inputs_u(model, num_poses, max_base_u, max_actuators_u, rng)
 
     # Precompute offset arrays for extracting actuator coordinates/dofs
     actuated_coord_offsets, actuated_coords_sizes, actuated_dof_offsets, actuated_dofs_sizes = (
@@ -261,10 +315,10 @@ def simulate_random_poses(
     with wp.ScopedDevice(model.device):
         bodies_q = wp.array(shape=(model.size.sum_of_num_bodies), dtype=wp.transformf)
         base_q = wp.array(shape=(model.size.num_worlds), dtype=wp.transformf)
-        actuators_q = wp.array(shape=(actuators_q_size), dtype=wp.float32)
+        actuators_q = wp.array(shape=(actuators_q_np.shape[1]), dtype=wp.float32)
         bodies_u = wp.array(shape=(model.size.sum_of_num_bodies), dtype=vec6f)
         base_u = wp.array(shape=(model.size.num_worlds), dtype=vec6f)
-        actuators_u = wp.array(shape=(actuators_u_size), dtype=wp.float32)
+        actuators_u = wp.array(shape=(actuators_u_np.shape[1]), dtype=wp.float32)
     data = model.data(device=model.device)
     epsilon = 1e-2
     for pose_id in range(num_poses):
@@ -459,6 +513,70 @@ class HeterogenousModelRandomPosesCheckForwardKinematics(unittest.TestCase):
             model, num_poses, base_q_max, actuators_q_max, base_u_max, actuators_u_max, rng, self.has_cuda, self.verbose
         )
         self.assertTrue(success)
+
+
+class HeterogenousModelSparseJacobianAssemblyCheck(unittest.TestCase):
+    def setUp(self):
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
+        self.default_device = wp.get_device(test_context.device)
+        self.has_cuda = self.default_device.is_cuda
+        self.verbose = test_context.verbose
+
+    def tearDown(self):
+        self.default_device = None
+
+    def test_heterogenous_model_FK_random_poses(self):
+        # Initialize RNG
+        test_name = "Heterogenous model (test mechanism + dr_legs) sparse Jacobian assembly check"
+        seed = int(hashlib.sha256(test_name.encode("utf8")).hexdigest(), 16)
+        rng = np.random.default_rng(seed)
+
+        # Load models
+        examples_path = get_examples_usd_assets_path()
+        if not examples_path:
+            self.skipTest("Examples USD assets path not found. Skipping test.")
+        model_path = os.path.join(examples_path, "dr_testmech/usd/dr_testmech.usda")
+        builder = USDImporter().import_from(model_path)
+        builder.set_base_joint("base")
+        model_path1 = os.path.join(examples_path, "dr_legs/usd/dr_legs_with_boxes.usda")
+        builder1 = USDImporter().import_from(model_path1)
+        builder1.set_base_body("pelvis")
+        builder.add_builder(builder1)
+        model = builder.finalize(device=self.default_device, requires_grad=False)
+
+        # Generate random poses
+        num_poses = 30
+        bodies_q_max = np.array(model.size.sum_of_num_bodies * [0.2, 0.2, 0.2, 1.0, 1.0, 1.0, 1.0])
+        theta_max_test_mech = np.radians(100.0)
+        theta_max_dr_legs = np.radians(10.0)
+        base_q_max = np.array(3 * [0.2] + 4 * [1.0] + 3 * [0.2] + 4 * [1.0])
+        actuators_q_max = np.array([theta_max_test_mech] + builder1.num_actuated_joint_coords * [theta_max_dr_legs])
+        bodies_q_np = generate_random_poses(model, num_poses, bodies_q_max, rng, False)
+        base_q_np, actuators_q_np = generate_random_inputs_q(model, num_poses, base_q_max, actuators_q_max, rng)
+
+        # Assemble and compare dense and sparse Jacobian for each pose
+        solver = ForwardKinematicsSolver(model)
+        with wp.ScopedDevice(model.device):
+            bodies_q = wp.array(shape=(model.size.sum_of_num_bodies), dtype=wp.transformf)
+            base_q = wp.array(shape=(model.size.num_worlds), dtype=wp.transformf)
+            actuators_q = wp.array(shape=(actuators_q_np.shape[1]), dtype=wp.float32)
+        dims = solver.sparse_jacobian.dims.numpy()
+
+        for pose_id in range(num_poses):
+            bodies_q.assign(bodies_q_np[pose_id])
+            base_q.assign(base_q_np[pose_id])
+            actuators_q.assign(actuators_q_np[pose_id])
+            transforms = solver.eval_position_control_transformations(actuators_q, base_q)
+
+            jac_dense_np = solver.eval_kinematic_constraints_jacobian(bodies_q, transforms).numpy()
+            solver.assemble_sparse_jacobian(bodies_q, transforms)
+            jac_sparse_np = solver.sparse_jacobian.numpy()
+
+            for wd_id in range(model.size.num_worlds):
+                rows, cols = int(dims[wd_id][0]), int(dims[wd_id][1])
+                residual = jac_dense_np[wd_id, :rows, :cols] - jac_sparse_np[wd_id]
+                self.assertTrue(np.max(np.abs(residual)) < 1e-10)
 
 
 ###

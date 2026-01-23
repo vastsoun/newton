@@ -21,7 +21,7 @@ from typing import Any
 import warp as wp
 
 from ..core.types import float32, int32
-from .sparse import BlockDType, BlockSparseLinearOperators
+from .sparse import BlockDType, BlockSparseMatrices
 
 ###
 # Module interface
@@ -136,7 +136,6 @@ def _make_block_sparse_matvec_kernel(block_type: BlockDType):
     @wp.kernel
     def block_sparse_matvec_kernel(
         # Matrix data:
-        matrix_mask: wp.array(dtype=int32),
         num_nzb: wp.array(dtype=int32),
         nzb_start: wp.array(dtype=int32),
         nzb_coords: wp.array2d(dtype=int32),
@@ -144,9 +143,11 @@ def _make_block_sparse_matvec_kernel(block_type: BlockDType):
         # Vector block offsets:
         row_start: wp.array(dtype=int32),
         col_start: wp.array(dtype=int32),
-        # Vector
+        # Vector:
         x: wp.array(dtype=block_type.dtype),
         y: wp.array(dtype=block_type.dtype),
+        # Mask:
+        matrix_mask: wp.array(dtype=int32),
     ):
         mat_id, block_idx = wp.tid()
 
@@ -204,7 +205,6 @@ def _make_block_sparse_transpose_matvec_kernel(block_type: BlockDType):
     @wp.kernel
     def block_sparse_transpose_matvec_kernel(
         # Matrix data:
-        matrix_mask: wp.array(dtype=int32),
         num_nzb: wp.array(dtype=int32),
         nzb_start: wp.array(dtype=int32),
         nzb_coords: wp.array2d(dtype=int32),
@@ -212,9 +212,11 @@ def _make_block_sparse_transpose_matvec_kernel(block_type: BlockDType):
         # Vector block offsets:
         row_start: wp.array(dtype=int32),
         col_start: wp.array(dtype=int32),
-        # Vector
+        # Vector:
         y: wp.array(dtype=block_type.dtype),
         x: wp.array(dtype=block_type.dtype),
+        # Mask:
+        matrix_mask: wp.array(dtype=int32),
     ):
         mat_id, block_idx = wp.tid()
 
@@ -272,7 +274,6 @@ def _make_scale_vector_kernel(space_dim: int):
     @wp.kernel
     def scale_vector_kernel(
         # Matrix data:
-        matrix_mask: wp.array(dtype=int32),
         matrix_dims: wp.array2d(dtype=int32),
         # Vector block offsets:
         row_start: wp.array(dtype=int32),
@@ -280,6 +281,8 @@ def _make_scale_vector_kernel(space_dim: int):
         # Inputs:
         x: wp.array(dtype=Any),
         beta: Any,
+        # Mask:
+        matrix_mask: wp.array(dtype=int32),
     ):
         mat_id, entry_id = wp.tid()
 
@@ -311,7 +314,6 @@ def _make_block_sparse_gemv_kernel(block_type: BlockDType):
     @wp.kernel
     def block_sparse_gemv_kernel(
         # Matrix data:
-        matrix_mask: wp.array(dtype=int32),
         num_nzb: wp.array(dtype=int32),
         nzb_start: wp.array(dtype=int32),
         nzb_coords: wp.array2d(dtype=int32),
@@ -319,11 +321,13 @@ def _make_block_sparse_gemv_kernel(block_type: BlockDType):
         # Vector block offsets:
         row_start: wp.array(dtype=int32),
         col_start: wp.array(dtype=int32),
-        # Vector
+        # Vector:
         x: wp.array(dtype=block_type.dtype),
         y: wp.array(dtype=block_type.dtype),
-        # Scaling
+        # Scaling:
         alpha: block_type.dtype,
+        # Mask:
+        matrix_mask: wp.array(dtype=int32),
     ):
         mat_id, block_idx = wp.tid()
 
@@ -381,7 +385,6 @@ def _make_block_sparse_transpose_gemv_kernel(block_type: BlockDType):
     @wp.kernel
     def block_sparse_transpose_gemv_kernel(
         # Matrix data:
-        matrix_mask: wp.array(dtype=int32),
         num_nzb: wp.array(dtype=int32),
         nzb_start: wp.array(dtype=int32),
         nzb_coords: wp.array2d(dtype=int32),
@@ -389,11 +392,13 @@ def _make_block_sparse_transpose_gemv_kernel(block_type: BlockDType):
         # Vector block offsets:
         row_start: wp.array(dtype=int32),
         col_start: wp.array(dtype=int32),
-        # Vector
+        # Vector:
         y: wp.array(dtype=block_type.dtype),
         x: wp.array(dtype=block_type.dtype),
-        # Scaling
+        # Scaling:
         alpha: block_type.dtype,
+        # Mask:
+        matrix_mask: wp.array(dtype=int32),
     ):
         mat_id, block_idx = wp.tid()
 
@@ -441,172 +446,164 @@ def _make_block_sparse_transpose_gemv_kernel(block_type: BlockDType):
 
 
 def block_sparse_matvec(
-    matrix_mask: wp.array,
-    A: BlockSparseLinearOperators,
+    A: BlockSparseMatrices,
     x: wp.array,
     y: wp.array,
+    matrix_mask: wp.array,
 ):
     """
     Launch kernel for block-sparse matrix-vector product: y = A * x
 
     Args:
-        matrix_mask (wp.array): Mask vector to skip matrices set to `0` in the mask.
-        A (BlockSparseLinearOperators): Operators containing the sparse matrix data.
+        A (BlockSparseMatrices): Sparse matrices.
         x (wp.array): Input vector.
         y (wp.array): Output vector.
+        matrix_mask (wp.array): Mask vector to skip matrices set to `0` in the mask.
     """
-    bsm = A.bsm
-
     y.zero_()
 
     wp.launch(
-        kernel=_make_block_sparse_matvec_kernel(bsm.nzb_dtype),
-        dim=(bsm.num_matrices, bsm.max_of_num_nzb),
+        kernel=_make_block_sparse_matvec_kernel(A.nzb_dtype),
+        dim=(A.num_matrices, A.max_of_num_nzb),
         inputs=[
-            matrix_mask,
-            bsm.num_nzb,
-            bsm.nzb_start,
-            bsm.nzb_coords,
-            bsm.nzb_values,
+            A.num_nzb,
+            A.nzb_start,
+            A.nzb_coords,
+            A.nzb_values,
             A.row_start,
             A.col_start,
             x,
             y,
+            matrix_mask,
         ],
-        device=bsm.device,
+        device=A.device,
     )
 
 
 def block_sparse_transpose_matvec(
-    matrix_mask: wp.array,
-    A: BlockSparseLinearOperators,
+    A: BlockSparseMatrices,
     y: wp.array,
     x: wp.array,
+    matrix_mask: wp.array,
 ):
     """
     Launch kernel for block-sparse transpose matrix-vector product: x = A^T * y
 
     Args:
-        matrix_mask (wp.array): Mask vector to skip matrices set to `0` in the mask.
-        A (BlockSparseLinearOperators): Operators containing the sparse matrix data.
+        A (BlockSparseMatrices): Sparse matrices.
         y (wp.array): Input vector.
         x (wp.array): Output vector.
+        matrix_mask (wp.array): Mask vector to skip matrices set to `0` in the mask.
     """
-    bsm = A.bsm
-
     x.zero_()
 
     wp.launch(
-        kernel=_make_block_sparse_transpose_matvec_kernel(bsm.nzb_dtype),
-        dim=(bsm.num_matrices, bsm.max_of_num_nzb),
+        kernel=_make_block_sparse_transpose_matvec_kernel(A.nzb_dtype),
+        dim=(A.num_matrices, A.max_of_num_nzb),
         inputs=[
-            matrix_mask,
-            bsm.num_nzb,
-            bsm.nzb_start,
-            bsm.nzb_coords,
-            bsm.nzb_values,
+            A.num_nzb,
+            A.nzb_start,
+            A.nzb_coords,
+            A.nzb_values,
             A.row_start,
             A.col_start,
             y,
             x,
+            matrix_mask,
         ],
-        device=bsm.device,
+        device=A.device,
     )
 
 
 def block_sparse_gemv(
-    matrix_mask: wp.array,
-    A: BlockSparseLinearOperators,
+    A: BlockSparseMatrices,
     x: wp.array,
     y: wp.array,
     alpha: Any,
     beta: Any,
+    matrix_mask: wp.array,
 ):
     """
     Launch kernel for generalized block-sparse matrix-vector product: y = alpha * (A * x) + beta * y
 
     Args:
-        matrix_mask (wp.array): Mask vector to skip matrices set to `0` in the mask.
-        A (BlockSparseLinearOperators): Operators containing the sparse matrix data.
+        A (BlockSparseMatrices): Sparse matrices.
         x (wp.array): Input vector for matrix-vector multiplication.
         y (wp.array): Input vector for linear offset and output vector.
         alpha (Any): Input scaling for matrix-vector multiplication.
         beta (Any): Input scaling for linear offset.
+        matrix_mask (wp.array): Mask vector to skip matrices set to `0` in the mask.
     """
-    bsm = A.bsm
-
     # Compute y <= beta * y
     wp.launch(
         kernel=_make_scale_vector_kernel(0),
-        dim=(bsm.num_matrices, bsm.max_of_max_dims[0]),
-        inputs=[matrix_mask, bsm.dims, A.row_start, A.col_start, y, beta],
-        device=bsm.device,
+        dim=(A.num_matrices, A.max_of_max_dims[0]),
+        inputs=[A.dims, A.row_start, A.col_start, y, beta, matrix_mask],
+        device=A.device,
     )
 
     # Compute y += alpha * A @ x
     wp.launch(
-        kernel=_make_block_sparse_gemv_kernel(bsm.nzb_dtype),
-        dim=(bsm.num_matrices, bsm.max_of_num_nzb),
+        kernel=_make_block_sparse_gemv_kernel(A.nzb_dtype),
+        dim=(A.num_matrices, A.max_of_num_nzb),
         inputs=[
-            matrix_mask,
-            bsm.num_nzb,
-            bsm.nzb_start,
-            bsm.nzb_coords,
-            bsm.nzb_values,
+            A.num_nzb,
+            A.nzb_start,
+            A.nzb_coords,
+            A.nzb_values,
             A.row_start,
             A.col_start,
             x,
             y,
             alpha,
+            matrix_mask,
         ],
-        device=bsm.device,
+        device=A.device,
     )
 
 
 def block_sparse_transpose_gemv(
-    matrix_mask: wp.array,
-    A: BlockSparseLinearOperators,
+    A: BlockSparseMatrices,
     y: wp.array,
     x: wp.array,
     alpha: Any,
     beta: Any,
+    matrix_mask: wp.array,
 ):
     """
     Launch kernel for generalized block-sparse transpose matrix-vector product: x = alpha * (A^T * y) + beta * x
 
     Args:
-        matrix_mask (wp.array): Mask vector to skip matrices set to `0` in the mask.
-        A (BlockSparseLinearOperators): Operators containing the sparse matrix data.
+        A (BlockSparseMatrices): Sparse matrices.
         y (wp.array): Input vector for matrix-vector multiplication.
         x (wp.array): Input vector for linear offset and output vector.
         alpha (Any): Input scaling for matrix-vector multiplication.
         beta (Any): Input scaling for linear offset.
+        matrix_mask (wp.array): Mask vector to skip matrices set to `0` in the mask.
     """
-    bsm = A.bsm
-
     # Compute x <= beta * x
     wp.launch(
         kernel=_make_scale_vector_kernel(1),
-        dim=(bsm.num_matrices, bsm.max_of_max_dims[1]),
-        inputs=[matrix_mask, bsm.dims, A.row_start, A.col_start, x, beta],
-        device=bsm.device,
+        dim=(A.num_matrices, A.max_of_max_dims[1]),
+        inputs=[A.dims, A.row_start, A.col_start, x, beta, matrix_mask],
+        device=A.device,
     )
 
     # Compute y += alpha * A^T @ y
     wp.launch(
-        kernel=_make_block_sparse_transpose_gemv_kernel(bsm.nzb_dtype),
-        dim=(bsm.num_matrices, bsm.max_of_num_nzb),
+        kernel=_make_block_sparse_transpose_gemv_kernel(A.nzb_dtype),
+        dim=(A.num_matrices, A.max_of_num_nzb),
         inputs=[
-            matrix_mask,
-            bsm.num_nzb,
-            bsm.nzb_start,
-            bsm.nzb_coords,
-            bsm.nzb_values,
+            A.num_nzb,
+            A.nzb_start,
+            A.nzb_coords,
+            A.nzb_values,
             A.row_start,
             A.col_start,
             y,
             x,
             alpha,
+            matrix_mask,
         ],
-        device=bsm.device,
+        device=A.device,
     )

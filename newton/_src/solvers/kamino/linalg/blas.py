@@ -21,7 +21,7 @@ from typing import Any
 import warp as wp
 
 from ..core.types import float32, int32
-from .sparse import BlockDType, BlockSparseMatrices
+from .sparse_matrix import BlockDType, BlockSparseMatrices
 
 ###
 # Module interface

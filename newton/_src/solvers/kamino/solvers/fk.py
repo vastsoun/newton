@@ -41,7 +41,7 @@ from ..core.math import (
 from ..core.model import Model
 from ..core.types import vec6f
 from ..linalg.factorize.llt_blocked_semi_sparse import SemiSparseBlockCholeskySolverBatched
-from ..linalg.sparse import BlockDType, BlockSparseMatrices
+from ..linalg.sparse_matrix import BlockDType, BlockSparseMatrices
 
 ###
 # Module interface

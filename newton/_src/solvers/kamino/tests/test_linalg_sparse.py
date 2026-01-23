@@ -20,13 +20,8 @@ import unittest
 import numpy as np
 import warp as wp
 
-from newton._src.solvers.kamino.linalg.blas import (
-    block_sparse_gemv,
-    block_sparse_matvec,
-    block_sparse_transpose_gemv,
-    block_sparse_transpose_matvec,
-)
-from newton._src.solvers.kamino.linalg.sparse import BlockDType, BlockSparseLinearOperators, BlockSparseMatrices
+from newton._src.solvers.kamino.linalg.sparse_matrix import BlockDType, BlockSparseMatrices
+from newton._src.solvers.kamino.linalg.sparse_operator import BlockSparseLinearOperators
 from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.utils import logger as msg
 from newton._src.solvers.kamino.utils.sparse import sparseview
@@ -421,15 +416,6 @@ class TestBlockSparseMatrixOperations(unittest.TestCase):
     # Test Helpers
     ###
 
-    def _build_sparse_matrix_operator(self, bsm: BlockSparseMatrices):
-        ops = BlockSparseLinearOperators(bsm)
-        ops.Ax_op = block_sparse_matvec
-        ops.ATy_op = block_sparse_transpose_matvec
-        ops.gemv_op = block_sparse_gemv
-        ops.gemvt_op = block_sparse_transpose_gemv
-
-        return ops
-
     def _matvec_product_check(self, ops: BlockSparseLinearOperators):
         """Tests the regular matrix-vector product and the generalized matrix-vector product for the
         given operator, both in regular and transposed versions."""
@@ -588,7 +574,8 @@ class TestBlockSparseMatrixOperations(unittest.TestCase):
             bsm.nzb_values.view(dtype=wp.float32).assign(nzb_values_np)
 
             # Build operator.
-            ops = self._build_sparse_matrix_operator(bsm)
+            ops = BlockSparseLinearOperators(bsm)
+            ops.initialize_default_operators()
 
             # Run multiplication operator checks.
             self._matvec_product_check(ops)
@@ -662,7 +649,8 @@ class TestBlockSparseMatrixOperations(unittest.TestCase):
             bsm.nzb_values.view(dtype=wp.float32).assign(nzb_values_np)
 
             # Build operator.
-            ops = self._build_sparse_matrix_operator(bsm)
+            ops = BlockSparseLinearOperators(bsm)
+            ops.initialize_default_operators()
 
             # Run multiplication operator checks.
             self._matvec_product_check(ops)
@@ -764,7 +752,8 @@ class TestBlockSparseMatrixOperations(unittest.TestCase):
             bsm.nzb_values.view(dtype=wp.float32).assign(nzb_values_np)
 
             # Build operator.
-            ops = self._build_sparse_matrix_operator(bsm)
+            ops = BlockSparseLinearOperators(bsm)
+            ops.initialize_default_operators()
 
             # Run multiplication operator checks.
             self._matvec_product_check(ops)

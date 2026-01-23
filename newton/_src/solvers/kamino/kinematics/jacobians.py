@@ -46,7 +46,8 @@ from ..core.types import (
 )
 from ..geometry.contacts import Contacts
 from ..kinematics.limits import Limits
-from ..linalg.sparse import BlockSparseLinearOperators, BlockSparseMatrices
+from ..linalg.sparse_matrix import BlockSparseMatrices
+from ..linalg.sparse_operator import BlockSparseLinearOperators
 
 ###
 # Module interface

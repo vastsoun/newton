@@ -64,6 +64,19 @@ class Control:
             Support for muscle dynamics is not yet implemented.
         """
 
+    @property
+    def device(self) -> wp.DeviceLike:
+        """The device on which the control arrays are allocated."""
+        if self.joint_f:
+            return self.joint_f.device
+        if self.tri_activations:
+            return self.tri_activations.device
+        if self.tet_activations:
+            return self.tet_activations.device
+        if self.muscle_activations:
+            return self.muscle_activations.device
+        raise ValueError("Control has no allocated arrays to determine device from.")
+
     def clear(self) -> None:
         """Reset the control inputs to zero."""
 

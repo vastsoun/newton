@@ -15,25 +15,32 @@
 
 """Constrained Rigid Multi-Body Model & Data Containers"""
 
-from dataclasses import dataclass
+from __future__ import annotations
+
+from dataclasses import dataclass, field
 
 import numpy as np
 import warp as wp
-from warp.context import Devicelike
 
 from ....sim.model import Model
 from ..utils import logger as msg
 from .bodies import RigidBodiesData, RigidBodiesModel
-from .geometry import CollisionGeometriesModel, GeometriesData, GeometriesModel
+from .geometry import CollisionGeometriesModel, GeometriesData
 from .gravity import GravityModel
-from .joints import JointActuationType, JointsData, JointsModel, newton_to_kamino_joint_dof_type
-from .materials import MaterialPairsModel
-from .new_control import KaminoControl
-from .new_data import KaminoData, KaminoDataInfo
-from .new_state import KaminoState
+from .joints import (
+    JointActuationType,
+    JointsData,
+    JointsModel,
+    axes_matrix_from_joint_type,
+    newton_to_kamino_joint_dof_type,
+)
+from .materials import MaterialManager, MaterialPairsModel, MaterialsModel
+from .new_control import ControlKamino
+from .new_data import DataKamino, DataKaminoInfo
+from .new_state import StateKamino
 from .shapes import convert_newton_geo_to_kamino_shape
 from .time import TimeData, TimeModel
-from .types import float32, int32, mat33f, transformf, vec6f
+from .types import float32, int32, mat33f, transformf, vec4f, vec6f
 from .world import WorldDescriptor
 
 ###
@@ -41,9 +48,9 @@ from .world import WorldDescriptor
 ###
 
 __all__ = [
-    "KaminoModel",
-    "KaminoModelInfo",
-    "KaminoModelSize",
+    "ModelKamino",
+    "ModelKaminoInfo",
+    "ModelKaminoSize",
 ]
 
 
@@ -60,7 +67,7 @@ wp.set_module_options({"enable_backward": False})
 
 
 @dataclass
-class KaminoModelSize:
+class ModelKaminoSize:
     """
     A container to hold the summary size of memory allocations and thread dimensions.
 
@@ -189,6 +196,24 @@ class KaminoModelSize:
     max_of_num_physical_geoms: int = 0
     """The maximum number of physical geometries in any world."""
 
+    sum_of_num_materials: int = 0
+    """
+    The total number of materials in the model across all worlds.
+
+    In the present implementation, this will be equal to `max_of_num_materials`,
+    since model materials are defined globally for all worlds. We plan to also
+    introduce per-world materials in the future.
+    """
+
+    max_of_num_materials: int = 0
+    """
+    The maximum number of materials in any world.
+
+    In the present implementation, this will be equal to `sum_of_num_materials`,
+    since model materials are defined globally for all worlds. We plan to also
+    introduce per-world materials in the future.
+    """
+
     sum_of_num_material_pairs: int = 0
     """The total number of material pairs in the model across all worlds."""
 
@@ -313,8 +338,9 @@ class KaminoModelSize:
         return "\n".join(lines)
 
 
+# TODO: Rename to also include `World` since it actually holds per-world model info.
 @dataclass
-class KaminoModelInfo:
+class ModelKaminoInfo:
     """
     A container to hold the time-invariant information and meta-data of a model.
     """
@@ -459,30 +485,35 @@ class KaminoModelInfo:
     bodies_offset: wp.array | None = None
     """
     The body index offset of each world w.r.t the model.\n
+    Used to index into world-specific blocks of per-body entity arrays.\n
     Shape of ``(num_worlds,)`` and type :class:`int`.
     """
 
     joints_offset: wp.array | None = None
     """
     The joint index offset of each world w.r.t the model.\n
+    Used to index into world-specific blocks of per-joint entity arrays.\n
     Shape of ``(num_worlds,)`` and type :class:`int`.
     """
 
     limits_offset: wp.array | None = None
     """
     The limit index offset of each world w.r.t the model.\n
+    Used to index into world-specific blocks of per-limit entity arrays.\n
     Shape of ``(num_worlds,)`` and type :class:`int`.
     """
 
     contacts_offset: wp.array | None = None
     """
-    The contact index offset of world w.r.t the model.\n
+    The contact index offset of each world w.r.t the model.\n
+    Used to index into world-specific blocks of per-contact entity arrays.\n
     Shape of ``(num_worlds,)`` and type :class:`int`.
     """
 
     unilaterals_offset: wp.array | None = None
     """
     The index offset of the unilaterals (limits + contacts) block of each world.\n
+    Used to index into world-specific blocks of per-unilateral entity arrays.\n
     Shape of ``(num_worlds,)`` and type :class:`int`.
     """
 
@@ -490,6 +521,7 @@ class KaminoModelInfo:
     # DoF Offsets
     ###
 
+    # TODO: Remove
     body_dofs_offset: wp.array | None = None
     """
     The index offset of the body DoF block of each world.\n
@@ -499,36 +531,42 @@ class KaminoModelInfo:
     joint_coords_offset: wp.array | None = None
     """
     The index offset of the joint coordinates block of each world.\n
+    Used to index into world-specific blocks of per-joint-coordinate arrays.\n
     Shape of ``(num_worlds,)`` and type :class:`int`.
     """
 
     joint_dofs_offset: wp.array | None = None
     """
     The index offset of the joint DoF block of each world.\n
+    Used to index into world-specific blocks of per-joint-DoF arrays.\n
     Shape of ``(num_worlds,)`` and type :class:`int`.
     """
 
     joint_passive_coords_offset: wp.array | None = None
     """
     The index offset of the passive joint coordinates block of each world.\n
+    Used to index into world-specific blocks of per-passive-joint-coordinate arrays.\n
     Shape of ``(num_worlds,)`` and type :class:`int`.
     """
 
     joint_passive_dofs_offset: wp.array | None = None
     """
     The index offset of the passive joint DoF block of each world.\n
+    Used to index into world-specific blocks of per-passive-joint-DoF arrays.\n
     Shape of ``(num_worlds,)`` and type :class:`int`.
     """
 
     joint_actuated_coords_offset: wp.array | None = None
     """
     The index offset of the actuated joint coordinates block of each world.\n
+    Used to index into world-specific blocks of per-actuated-joint-coordinate arrays.\n
     Shape of ``(num_worlds,)`` and type :class:`int`.
     """
 
     joint_actuated_dofs_offset: wp.array | None = None
     """
     The index offset of the actuated joint DoF block of each world.\n
+    Used to index into world-specific blocks of per-actuated-joint-DoF arrays.\n
     Shape of ``(num_worlds,)`` and type :class:`int`.
     """
 
@@ -536,33 +574,42 @@ class KaminoModelInfo:
     # Constraint Offsets
     ###
 
+    # TODO: move to joints section
     joint_cts_offset: wp.array | None = None
     """
     The index offset of the joint constraints block of each world.\n
+    Used to index into world-specific blocks of per-joint-constraint arrays.\n
     Shape of ``(num_worlds,)`` and type :class:`int`.
     """
 
+    # TODO: Remove
     limit_cts_offset: wp.array | None = None
     """
     The index offset of the limit constraints block of each world.\n
+    Used to index into world-specific blocks of per-limit-constraint arrays.\n
     Shape of ``(num_worlds,)`` and type :class:`int`.
     """
 
+    # TODO: Remove
     contact_cts_offset: wp.array | None = None
     """
     The index offset of the contact constraints block of each world.\n
+    Used to index into world-specific blocks of per-contact-constraint arrays.\n
     Shape of ``(num_worlds,)`` and type :class:`int`.
     """
 
+    # TODO: Remove
     unilateral_cts_offset: wp.array | None = None
     """
     The index offset of the unilateral constraints block of each world.\n
+    Used to index into world-specific blocks of per-unilateral-constraint arrays.\n
     Shape of ``(num_worlds,)`` and type :class:`int`.
     """
 
     total_cts_offset: wp.array | None = None
     """
     The index offset of the total constraints block of each world.\n
+    Used to index into world-specific blocks of per-constraint arrays.\n
     Shape of ``(num_worlds,)`` and type :class:`int`.
     """
 
@@ -611,12 +658,13 @@ class KaminoModelInfo:
     """
 
 
-class KaminoModel:
+@dataclass
+class ModelKamino:
     """
     A container to hold the time-invariant system model data.
 
     Attributes:
-        device (Devicelike):
+        device (wp.DeviceLike):
             The device on which the model data is allocated.
         requires_grad (bool):
             Whether the model requires gradients for its state. Defaults to `False`.
@@ -636,87 +684,81 @@ class KaminoModel:
             The rigid bodies model container holding all rigid body entities in the model.
         joints (JointsModel):
             The joints model container holding all joint entities in the model.
-        cgeoms (CollisionGeometriesModel):
-            The collision geometries model container holding all collision geometry entities in the model.
-        pgeoms (GeometriesModel):
-            The physical geometries model container holding all physical geometry entities in the model.
-        mpairs (MaterialPairsModel):
+        geoms (CollisionGeometriesModel):
+            The geometries model container holding all collision geometry entities in the model.
+        materials (MaterialsModel):
+            The materials model container holding all material entities in the model.\n
+            The materials data is currently defined globally to be shared by all worlds.
+        material_pairs (MaterialPairsModel):
             The material pairs model container holding all material pairs in the model.
+            The material-pairs data is currently defined globally to be shared by all worlds.
     """
 
-    def __init__(self, model: Model | None = None):
+    _model: Model | None = None
+    """The base :class:`newton.Model` instance from which this :class:`kamino.ModelKamino` was created."""
+
+    size: ModelKaminoSize = field(default_factory=ModelKaminoSize)
+    """
+    Host-side cache of the model summary sizes.\n
+    This is used for memory allocations and kernel thread dimensions.
+    """
+
+    worlds: list[WorldDescriptor] = field(default_factory=list)
+    """
+    Host-side cache of the world descriptors.\n
+    This is used to construct the model and for memory allocations.
+    """
+
+    info: ModelKaminoInfo | None = None
+    """The model info container holding the information and meta-data of the model."""
+
+    time: TimeModel | None = None
+    """The time model container holding time-step of each world."""
+
+    gravity: GravityModel | None = None
+    """The gravity model container holding the gravity configurations for each world."""
+
+    bodies: RigidBodiesModel | None = None
+    """The rigid bodies model container holding all rigid body entities in the model."""
+
+    joints: JointsModel | None = None
+    """The joints model container holding all joint entities in the model."""
+
+    geoms: CollisionGeometriesModel | None = None
+    """The collision geometries model container holding all collision geometry entities in the model."""
+
+    materials: MaterialsModel | None = None
+    """
+    The materials model container holding all material entities in the model.\n
+    The materials data is currently defined globally to be shared by all worlds.
+    """
+
+    material_pairs: MaterialPairsModel | None = None
+    """
+    The material pairs model container holding all material pairs in the model.\n
+    The material-pairs data is currently defined globally to be shared by all worlds.
+    """
+
+    @property
+    def device(self) -> wp.DeviceLike:
+        """The Warp device on which the model data is allocated."""
+        return self._model.device
+
+    @property
+    def requires_grad(self) -> bool:
+        """Whether the model was finalized (see :meth:`ModelBuilder.finalize`) with gradient computation enabled."""
+        return self._model.requires_grad
+
+    @classmethod
+    def from_newton(cls, model: Model) -> ModelKamino:
         """
-        Create a new KaminoModel instance.
-
-        TODO: about creating from an existing newton.Model instance.
-        """
-
-        self._model_base: Model | None = None
-        """The base newton.Model instance from which this KaminoModel was created."""
-
-        self.device: Devicelike = None
-        """
-        The device on which the model data is allocated.\n
-        Defaults to `None`, indicating the default/preferred Warp device.
-        """
-
-        self.requires_grad: bool = False
-        """Whether the model requires gradients for its state. Defaults to `False`."""
-
-        self.size: KaminoModelSize = KaminoModelSize()
-        """
-        Host-side cache of the model summary sizes.\n
-        This is used for memory allocations and kernel thread dimensions.
-        """
-
-        self.worlds: list[WorldDescriptor] = []
-        """
-        Host-side cache of the world descriptors.\n
-        This is used to construct the model and for memory allocations.
-        """
-
-        self.info: KaminoModelInfo | None = None
-        """The model info container holding the information and meta-data of the model."""
-
-        self.time: TimeModel | None = None
-        """The time model container holding time-step of each world."""
-
-        self.gravity: GravityModel | None = None
-        """The gravity model container holding the gravity configurations for each world."""
-
-        self.bodies: RigidBodiesModel | None = None
-        """The rigid bodies model container holding all rigid body entities in the model."""
-
-        self.joints: JointsModel | None = None
-        """The joints model container holding all joint entities in the model."""
-
-        self.cgeoms: CollisionGeometriesModel | None = None
-        """The collision geometries model container holding all collision geometry entities in the model."""
-
-        self.pgeoms: GeometriesModel | None = None
-        """The physical geometries model container holding all physical geometry entities in the model."""
-
-        self.mpairs: MaterialPairsModel | None = None
-        """The material pairs model container holding all material pairs in the model."""
-
-        # If a base model is provided, finalize from it
-        if model is not None:
-            self.finalize_from_newton_model(model)
-
-    def finalize_from_newton_model(self, model: Model):
-        """
-        Finalizes the KaminoModel from an existing newton.Model instance.
+        Finalizes the ModelKamino from an existing newton.Model instance.
         """
         # Ensure the base model is valid
         if model is None:
-            raise ValueError("Cannot finalize KaminoModel from a None newton.Model instance.")
+            raise ValueError("Cannot finalize ModelKamino from a None newton.Model instance.")
         elif not isinstance(model, Model):
-            raise TypeError("Cannot finalize KaminoModel from an invalid newton.Model instance.")
-
-        # Store the base model
-        self._model_base = model
-        self.device = self._model_base.device
-        self.requires_grad = self._model_base.requires_grad
+            raise TypeError("Cannot finalize ModelKamino from an invalid newton.Model instance.")
 
         def _compute_entity_indices_wrt_world(entity_world: wp.array) -> np.ndarray:
             wid_np = entity_world.numpy()
@@ -756,23 +798,66 @@ class KaminoModel:
         num_joint_coords_np = np.zeros((model.num_worlds,), dtype=int)
         num_joint_dofs_np = np.zeros((model.num_worlds,), dtype=int)
         num_joint_cts_np = np.zeros((model.num_worlds,), dtype=int)
+        joint_dof_type_np = np.zeros((model.joint_count,), dtype=int)
         joint_num_coords_np = np.zeros((model.joint_count,), dtype=int)
         joint_num_dofs_np = np.zeros((model.joint_count,), dtype=int)
         joint_num_cts_np = np.zeros((model.joint_count,), dtype=int)
+        joint_B_r_Bj_np = np.zeros((model.joint_count, 3), dtype=float)
+        joint_F_r_Fj_np = np.zeros((model.joint_count, 3), dtype=float)
+        joint_X_j_np = np.zeros((model.joint_count, 9), dtype=float)
+        joint_q_start_np = np.zeros((model.joint_count,), dtype=int32)
+        joint_dq_start_np = np.zeros((model.joint_count,), dtype=int32)
         joint_wid_np = model.joint_world.numpy()
         joint_type_np = model.joint_type.numpy()
+        joint_parent_np = model.joint_parent.numpy()
+        joint_child_np = model.joint_child.numpy()
+        joint_X_p_np = model.joint_X_p.numpy()
+        joint_X_c_np = model.joint_X_c.numpy()
+        joint_axis_np = model.joint_axis.numpy()
+        joint_qd_start_np = model.joint_qd_start.numpy()
+        body_com_np = model.body_com.numpy()
         for j in range(model.joint_count):
+            # TODO
             wid_j = joint_wid_np[j]
+
+            # TODO
+            joint_q_start_np[j] = num_joint_coords_np[wid_j]
+            joint_dq_start_np[j] = num_joint_dofs_np[wid_j]
+
+            # TODO
             dof_type_j = newton_to_kamino_joint_dof_type(joint_type_np[j])
             ncoords_j = dof_type_j.num_coords
             ndofs_j = dof_type_j.num_dofs
             ncts_j = dof_type_j.num_cts
+            joint_dof_type_np[j] = dof_type_j.value
             num_joint_coords_np[wid_j] += ncoords_j
             num_joint_dofs_np[wid_j] += ndofs_j
             num_joint_cts_np[wid_j] += ncts_j
             joint_num_coords_np[j] = ncoords_j
             joint_num_dofs_np[j] = ndofs_j
             joint_num_cts_np[j] = ncts_j
+
+            # TODO
+            dofs_start_j = joint_qd_start_np[j]
+            joint_axes_j = joint_axis_np[dofs_start_j : dofs_start_j + ndofs_j]
+            R_axis_j = axes_matrix_from_joint_type(joint_type_np[j], joint_axes_j)
+
+            # TODO
+            p_r_p_com = wp.vec3f(body_com_np[joint_parent_np[j]])
+            c_r_c_com = wp.vec3f(body_com_np[joint_child_np[j]])
+            X_p_j = wp.transformf(*joint_X_p_np[j, :])
+            X_c_j = wp.transformf(*joint_X_c_np[j, :])
+            q_p_j = wp.transform_get_rotation(X_p_j)
+            p_r_p_j = wp.transform_get_translation(X_p_j)
+            c_r_c_j = wp.transform_get_translation(X_c_j)
+
+            # TODO
+            B_r_Bj = p_r_p_j - p_r_p_com
+            F_r_Fj = c_r_c_j - c_r_c_com
+            X_j = wp.quat_to_matrix(q_p_j) @ R_axis_j
+            joint_B_r_Bj_np[j, :] = B_r_Bj
+            joint_F_r_Fj_np[j, :] = F_r_Fj
+            joint_X_j_np[j, :] = X_j
         msg.info("num_body_coords_np: %s", num_body_coords_np)
         msg.info("num_body_dofs_np: %s", num_body_dofs_np)
         msg.info("num_joint_coords_np: %s", num_joint_coords_np)
@@ -781,17 +866,20 @@ class KaminoModel:
         msg.info("joint_num_coords_np: %s", joint_num_coords_np)
         msg.info("joint_num_dofs_np: %s", joint_num_dofs_np)
         msg.info("joint_num_cts_np: %s\n", joint_num_cts_np)
+        msg.info("joint_B_r_Bj_np:\n%s", joint_B_r_Bj_np)
+        msg.info("joint_F_r_Fj_np:\n%s", joint_F_r_Fj_np)
+        msg.info("joint_X_j_np:\n%s\n", joint_X_j_np)
 
         # Compute constraint offsets of each joint w.r.t the corresponding world
-        joint_world_cts_offset_np = np.zeros((model.joint_count,), dtype=int)
+        joint_cts_start_np = np.zeros((model.joint_count,), dtype=int)
         for j in range(model.joint_count):
             wid_j = joint_wid_np[j]
             offset_j = 0
             for jj in range(j):
                 if joint_wid_np[jj] == wid_j:
                     offset_j += joint_num_cts_np[jj]
-            joint_world_cts_offset_np[j] = offset_j
-        msg.info("joint_world_cts_offset_np: %s\n", joint_world_cts_offset_np)
+            joint_cts_start_np[j] = offset_j
+        msg.info("joint_cts_start_np: %s\n", joint_cts_start_np)
 
         # Convert per-shape properties from Newton to Kamino format
         geom_shape_type_np = model.shape_type.numpy()
@@ -828,23 +916,45 @@ class KaminoModel:
         msg.info("joint_cts_offset_np: %s\n", joint_cts_offset_np)
 
         # Determine the base body and joint indices per world
-        base_body_idx_np = np.zeros((model.num_worlds,), dtype=int)
-        base_joint_idx_np = np.zeros((model.num_worlds,), dtype=int)
+        base_body_idx_np = np.full((model.num_worlds,), -1, dtype=int)
+        base_joint_idx_np = np.full((model.num_worlds,), -1, dtype=int)
         body_world_np = model.body_world.numpy()
-        # TODO: Check for articulation
-        # TODO: Check for root joint (i.e. body with no parent)
-        # # TODO: Fall-back: first body and joint in the world
-        # for w in range(model.num_worlds):
-        #     # Base body: first body in the world
-        #     for b in range(model.body_count):
-        #         if body_world_np[b] == w:
-        #             base_body_idx_np[w] = b
-        #             break
-        #     # Base joint: first joint in the world
-        #     for j in range(model.joint_count):
-        #         if joint_world_np[j] == w:
-        #             base_joint_idx_np[w] = j
-        #             break
+        joint_world_np = model.joint_world.numpy()
+        # Check for articulations
+        if model.articulation_count > 0:
+            articulation_start_np = model.articulation_start.numpy()
+            articulation_world_np = model.articulation_world.numpy()
+            # For each articulation, assign its base body and joint to the corresponding world
+            # NOTE: We only assign the first articulation found in each world
+            for aid in range(model.articulation_count):
+                wid = articulation_world_np[aid]
+                base_joint = articulation_start_np[aid]
+                base_body = joint_child_np[base_joint]
+                if base_body_idx_np[wid] == -1 and base_joint_idx_np[wid] == -1:
+                    base_body_idx_np[wid] = base_body
+                    base_joint_idx_np[wid] = base_joint
+        # Check for root joint (i.e. joint with no parent body (= -1))
+        elif model.joint_count > 0:
+            for j in range(model.joint_count):
+                wid_j = joint_world_np[j]
+                parent_j = joint_parent_np[j]
+                if parent_j == -1:
+                    if base_body_idx_np[wid_j] == -1 and base_joint_idx_np[wid_j] == -1:
+                        base_body_idx_np[wid_j] = joint_child_np[j]
+                        base_joint_idx_np[wid_j] = j
+        # Fall-back: first body and joint in the world
+        else:
+            for w in range(model.num_worlds):
+                # Base body: first body in the world
+                for b in range(model.body_count):
+                    if body_world_np[b] == w:
+                        base_body_idx_np[w] = b
+                        break
+                # Base joint: first joint in the world
+                for j in range(model.joint_count):
+                    if joint_world_np[j] == w:
+                        base_joint_idx_np[w] = j
+                        break
         msg.info("base_body_idx_np: %s", base_body_idx_np)
         msg.info("base_joint_idx_np: %s\n", base_joint_idx_np)
 
@@ -861,8 +971,8 @@ class KaminoModel:
                 if body_world_np[b] == w:
                     mass_b = body_mass_np[b]
                     masses_w.append(mass_b)
-                    inertia_total_np[w] += body_inertia_np[b].diagonal().sum()
                     mass_total_np[w] += mass_b
+                    inertia_total_np[w] += 3.0 * mass_b + body_inertia_np[b].diagonal().sum()
             mass_min_np[w] = min(masses_w)
             mass_max_np[w] = max(masses_w)
         msg.info("body_mass_np: %s", body_mass_np)
@@ -871,10 +981,39 @@ class KaminoModel:
         msg.info("mass_total_np: %s", mass_total_np)
         msg.info("inertia_total_np: %s\n", inertia_total_np)
 
-        # TODO: Construct the world descriptors from the newton.Model instance
-        self.worlds: list[WorldDescriptor] = [None] * model.num_worlds
+        # Construct per-world gravity
+        gravity_g_dir_acc_np = np.zeros(shape=(model.num_worlds, 4), dtype=float)
+        gravity_vector_np = np.zeros(shape=(model.num_worlds, 4), dtype=float)
+        gravity_np = model.gravity.numpy()
+        msg.info("gravity_np (shape=%s):\n%s", gravity_np.shape, gravity_np)
         for w in range(model.num_worlds):
-            self.worlds[w] = WorldDescriptor(
+            gravity_accel = np.linalg.norm(gravity_np[w, :])
+            gravity_dir = gravity_np[w, :] / gravity_accel
+            gravity_g_dir_acc_np[w, :] = np.array(
+                [gravity_dir[0], gravity_dir[1], gravity_dir[2], gravity_accel], dtype=float
+            )
+            gravity_vector_np[w, 0:3] = gravity_np[w, :]
+            gravity_vector_np[w, 3] = 1.0  # Enable gravity by default in all worlds
+        msg.info("gravity_g_dir_acc_np:\n%s", gravity_g_dir_acc_np)
+        msg.info("gravity_vector_np:\n%s\n", gravity_vector_np)
+
+        # Construct the per-material and per-material-pair properties
+        materials_manager = MaterialManager()
+        materials_rest = [materials_manager.restitution_vector()]
+        materials_static_fric = [materials_manager.static_friction_vector()]
+        materials_dynamic_fric = [materials_manager.dynamic_friction_vector()]
+        mpairs_rest = [materials_manager.restitution_matrix()]
+        mpairs_static_fric = [materials_manager.static_friction_matrix()]
+        mpairs_dynamic_fric = [materials_manager.dynamic_friction_matrix()]
+
+        ###
+        # Model Attributes
+        ###
+
+        # TODO: Construct the world descriptors from the newton.Model instance
+        model_worlds: list[WorldDescriptor] = [None] * model.num_worlds
+        for w in range(model.num_worlds):
+            model_worlds[w] = WorldDescriptor(
                 name=f"world_{w}",
                 wid=w,
                 num_bodies=num_bodies_np[w],
@@ -882,7 +1021,7 @@ class KaminoModel:
                 num_passive_joints=0,
                 num_actuated_joints=num_joints_np[w],
                 num_collision_geoms=num_shapes_np[w],
-                num_physical_geoms=num_shapes_np[w],
+                num_physical_geoms=0,
                 num_materials=0,  # TODO: how to handle both global and per-world materials simultaneously?
                 num_body_coords=num_body_coords_np[w],
                 num_body_dofs=num_body_dofs_np[w],
@@ -941,61 +1080,63 @@ class KaminoModel:
                 inertia_total=inertia_total_np[w],
             )
 
-        # Construct KaminoModelSize from the newton.Model instance
-        self.size = KaminoModelSize(
+        # Construct ModelKaminoSize from the newton.Model instance
+        model_size = ModelKaminoSize(
             num_worlds=model.num_worlds,
-            sum_of_num_bodies=num_bodies_np.sum(),
-            max_of_num_bodies=num_bodies_np.max(),
-            sum_of_num_joints=num_joints_np.sum(),
-            max_of_num_joints=num_joints_np.max(),
+            sum_of_num_bodies=int(num_bodies_np.sum()),
+            max_of_num_bodies=int(num_bodies_np.max()),
+            sum_of_num_joints=int(num_joints_np.sum()),
+            max_of_num_joints=int(num_joints_np.max()),
             sum_of_num_passive_joints=0,
             max_of_num_passive_joints=0,
-            sum_of_num_actuated_joints=num_joints_np.sum(),
-            max_of_num_actuated_joints=num_joints_np.max(),
-            sum_of_num_collision_geoms=num_shapes_np.sum(),
-            max_of_num_collision_geoms=num_shapes_np.max(),
-            sum_of_num_physical_geoms=num_shapes_np.sum(),
-            max_of_num_physical_geoms=num_shapes_np.max(),
-            sum_of_num_material_pairs=0,
-            max_of_num_material_pairs=0,
-            sum_of_num_body_dofs=num_body_dofs_np.sum(),
-            max_of_num_body_dofs=num_body_dofs_np.max(),
-            sum_of_num_joint_coords=num_joint_coords_np.sum(),
-            max_of_num_joint_coords=num_joint_coords_np.max(),
-            sum_of_num_joint_dofs=num_joint_dofs_np.sum(),
-            max_of_num_joint_dofs=num_joint_dofs_np.max(),
+            sum_of_num_actuated_joints=int(num_joints_np.sum()),
+            max_of_num_actuated_joints=int(num_joints_np.max()),
+            sum_of_num_collision_geoms=int(num_shapes_np.sum()),
+            max_of_num_collision_geoms=int(num_shapes_np.max()),
+            sum_of_num_physical_geoms=0,
+            max_of_num_physical_geoms=0,
+            sum_of_num_materials=materials_manager.num_materials,
+            max_of_num_materials=materials_manager.num_materials,
+            sum_of_num_material_pairs=materials_manager.num_material_pairs,
+            max_of_num_material_pairs=materials_manager.num_material_pairs,
+            sum_of_num_body_dofs=int(num_body_dofs_np.sum()),
+            max_of_num_body_dofs=int(num_body_dofs_np.max()),
+            sum_of_num_joint_coords=int(num_joint_coords_np.sum()),
+            max_of_num_joint_coords=int(num_joint_coords_np.max()),
+            sum_of_num_joint_dofs=int(num_joint_dofs_np.sum()),
+            max_of_num_joint_dofs=int(num_joint_dofs_np.max()),
             sum_of_num_passive_joint_coords=0,
             max_of_num_passive_joint_coords=0,
             sum_of_num_passive_joint_dofs=0,
             max_of_num_passive_joint_dofs=0,
-            sum_of_num_actuated_joint_coords=num_joint_coords_np.sum(),
-            max_of_num_actuated_joint_coords=num_joint_coords_np.max(),
-            sum_of_num_actuated_joint_dofs=num_joint_dofs_np.sum(),
-            max_of_num_actuated_joint_dofs=num_joint_dofs_np.max(),
-            sum_of_num_joint_cts=num_joint_cts_np.sum(),
-            max_of_num_joint_cts=num_joint_cts_np.max(),
+            sum_of_num_actuated_joint_coords=int(num_joint_coords_np.sum()),
+            max_of_num_actuated_joint_coords=int(num_joint_coords_np.max()),
+            sum_of_num_actuated_joint_dofs=int(num_joint_dofs_np.sum()),
+            max_of_num_actuated_joint_dofs=int(num_joint_dofs_np.max()),
+            sum_of_num_joint_cts=int(num_joint_cts_np.sum()),
+            max_of_num_joint_cts=int(num_joint_cts_np.max()),
             sum_of_max_limits=0,
             max_of_max_limits=0,
             sum_of_max_contacts=0,
             max_of_max_contacts=0,
             sum_of_max_unilaterals=0,
             max_of_max_unilaterals=0,
-            sum_of_max_total_cts=num_joint_cts_np.sum(),
-            max_of_max_total_cts=num_joint_cts_np.max(),
+            sum_of_max_total_cts=int(num_joint_cts_np.sum()),
+            max_of_max_total_cts=int(num_joint_cts_np.max()),
         )
-        msg.info("KaminoModelSize:\n%s", self.size)
+        msg.info("ModelKaminoSize:\n%s", model_size)
 
         # Construct the model entities from the newton.Model instance
-        with wp.ScopedDevice(device=self.device):
-            # Model info
-            self.info = KaminoModelInfo(
+        with wp.ScopedDevice(device=model.device):
+            # Per-world heterogeneous model info
+            model_info = ModelKaminoInfo(
                 num_worlds=model.num_worlds,
                 num_bodies=wp.array(num_bodies_np, dtype=int32),
                 num_joints=wp.array(num_joints_np, dtype=int32),
                 num_passive_joints=wp.zeros((model.num_worlds,), dtype=int32),
                 num_actuated_joints=wp.array(num_joints_np, dtype=int32),
                 num_collision_geoms=wp.array(num_shapes_np, dtype=int32),
-                num_physical_geoms=wp.array(num_shapes_np, dtype=int32),
+                num_physical_geoms=wp.zeros((model.num_worlds,), dtype=int32),
                 num_body_dofs=wp.array(num_body_dofs_np, dtype=int32),
                 num_joint_coords=wp.array(num_joint_coords_np, dtype=int32),
                 num_joint_dofs=wp.array(num_joint_dofs_np, dtype=int32),
@@ -1004,14 +1145,13 @@ class KaminoModel:
                 num_actuated_joint_coords=wp.array(num_joint_coords_np, dtype=int32),
                 num_actuated_joint_dofs=wp.array(num_joint_dofs_np, dtype=int32),
                 num_joint_cts=wp.array(num_joint_cts_np, dtype=int32),
-                max_total_cts=wp.array(num_joint_cts_np, dtype=int32),
                 bodies_offset=wp.array(body_offset_np, dtype=int32),
                 joints_offset=wp.array(joint_offset_np, dtype=int32),
                 body_dofs_offset=wp.array(body_dof_offset_np, dtype=int32),
                 joint_coords_offset=wp.array(joint_coord_offset_np, dtype=int32),
                 joint_dofs_offset=wp.array(joint_dof_offset_np, dtype=int32),
-                joint_passive_coords_offset=wp.full((model.joint_count), -1, dtype=int32),
-                joint_passive_dofs_offset=wp.full((model.joint_count), -1, dtype=int32),
+                joint_passive_coords_offset=wp.full((model.num_worlds), 0, dtype=int32),
+                joint_passive_dofs_offset=wp.full((model.num_worlds), 0, dtype=int32),
                 joint_actuated_coords_offset=wp.array(joint_coord_offset_np, dtype=int32),
                 joint_actuated_dofs_offset=wp.array(joint_dof_offset_np, dtype=int32),
                 joint_cts_offset=wp.array(joint_cts_offset_np, dtype=int32),
@@ -1023,20 +1163,20 @@ class KaminoModel:
                 inertia_total=wp.array(inertia_total_np, dtype=float32),
             )
 
-            # Time
-            self.time = TimeModel(
-                # dt=wp.array(...),
-                # inv_dt=wp.array(...),
+            # Per-world time
+            model_time = TimeModel(
+                dt=wp.zeros(shape=(model.num_worlds,), dtype=float32),
+                inv_dt=wp.zeros(shape=(model.num_worlds,), dtype=float32),
             )
 
-            # Gravity
-            self.gravity = GravityModel(
-                # g_dir_acc=wp.array(...),
-                # vector=wp.array(...),
+            # Per-world gravity
+            model_gravity = GravityModel(
+                g_dir_acc=wp.array(gravity_g_dir_acc_np, dtype=vec4f),
+                vector=wp.array(gravity_vector_np, dtype=vec4f),
             )
 
             # Rigid bodies
-            self.bodies = RigidBodiesModel(
+            model_bodies = RigidBodiesModel(
                 num_bodies=model.body_count,
                 wid=model.body_world,
                 bid=wp.array(body_bid_np, dtype=int32),
@@ -1045,23 +1185,23 @@ class KaminoModel:
                 inv_m_i=model.body_inv_mass,
                 i_I_i=model.body_inertia,
                 inv_i_I_i=model.body_inv_inertia,
-                # TODO: Can we avoid the extra memory allocation here?
-                q_i_0=wp.zeros_like(model.body_q),
-                u_i_0=wp.zeros_like(model.body_qd),
+                q_i_0=model.body_q,
+                u_i_0=model.body_qd,
             )
 
             # Joints
-            self.joints = JointsModel(
+            model_joints = JointsModel(
                 num_joints=model.joint_count,
                 wid=model.joint_world,
                 jid=wp.array(joint_jid_np, dtype=int32),
-                dof_type=model.joint_type,
+                # dof_type=model.joint_type,
+                dof_type=wp.array(joint_dof_type_np, dtype=int32),
                 act_type=wp.full((model.joint_count,), JointActuationType.FORCE, dtype=int32),
                 bid_B=model.joint_parent,
                 bid_F=model.joint_child,
-                # B_r_Bj=wp.array(...),  # From model.joint_X_p
-                # F_r_Fj=wp.array(...),  # From model.joint_X_c
-                # X_j=wp.array(...),  # From model.joint_X_p
+                B_r_Bj=wp.array(joint_B_r_Bj_np, dtype=wp.vec3f),
+                F_r_Fj=wp.array(joint_F_r_Fj_np, dtype=wp.vec3f),
+                X_j=wp.array(joint_X_j_np.reshape((model.joint_count, 3, 3)), dtype=wp.mat33f),
                 q_j_min=model.joint_limit_lower,
                 q_j_max=model.joint_limit_upper,
                 dq_j_max=model.joint_velocity_limit,
@@ -1071,21 +1211,23 @@ class KaminoModel:
                 num_coords=wp.array(joint_num_coords_np, dtype=int32),
                 num_dofs=wp.array(joint_num_dofs_np, dtype=int32),
                 num_cts=wp.array(joint_num_cts_np, dtype=int32),
-                coords_offset=model.joint_q_start,
-                dofs_offset=model.joint_qd_start,
-                passive_coords_offset=wp.full_like(model.joint_q_start, -1),
-                passive_dofs_offset=wp.full_like(model.joint_qd_start, -1),
-                actuated_coords_offset=model.joint_q_start,
-                actuated_dofs_offset=model.joint_qd_start,
-                cts_offset=wp.array(joint_world_cts_offset_np, dtype=int32),
+                # coords_offset=model.joint_q_start,
+                # dofs_offset=model.joint_qd_start,
+                coords_offset=wp.array(joint_q_start_np, dtype=int32),
+                dofs_offset=wp.array(joint_dq_start_np, dtype=int32),
+                passive_coords_offset=wp.full((model.joint_count,), -1),
+                passive_dofs_offset=wp.full((model.joint_count,), -1),
+                actuated_coords_offset=wp.array(joint_q_start_np, dtype=int32),
+                actuated_dofs_offset=wp.array(joint_dq_start_np, dtype=int32),
+                cts_offset=wp.array(joint_cts_start_np, dtype=int32),
             )
 
             # Collision geometries
-            self.cgeoms = CollisionGeometriesModel(
+            model_geoms = CollisionGeometriesModel(
                 num_geoms=model.shape_count,
                 wid=model.shape_world,
                 gid=wp.array(shape_sid_np, dtype=int32),
-                lid=wp.zeros(shape=model.shape_count, dtype=int32),
+                lid=wp.zeros(shape=model.shape_count, dtype=int32),  # TODO: Remove this since it's not used anywhere
                 bid=model.shape_body,
                 sid=wp.array(geom_shape_type_np, dtype=int32),
                 ptr=model.shape_source_ptr,
@@ -1097,30 +1239,46 @@ class KaminoModel:
                 margin=model.shape_contact_margin,
             )
 
-            # Physical (i.e. visual) geometries
-            self.pgeoms = GeometriesModel(
-                num_geoms=model.shape_count,
-                wid=model.shape_world,
-                gid=wp.array(shape_sid_np, dtype=int32),
-                lid=wp.zeros(shape=model.shape_count, dtype=int32),
-                bid=model.shape_body,
-                sid=wp.array(geom_shape_type_np, dtype=int32),
-                ptr=model.shape_source_ptr,
-                offset=model.shape_transform,
-                params=wp.array(geom_shape_params_np, dtype=float32),
+            # Per-material properties
+            model_materials = MaterialsModel(
+                num_materials=model_size.sum_of_num_materials,
+                restitution=wp.array(materials_rest[0], dtype=float32),
+                static_friction=wp.array(materials_static_fric[0], dtype=float32),
+                dynamic_friction=wp.array(materials_dynamic_fric[0], dtype=float32),
+            )
+
+            # Per-material-pair properties
+            model_material_pairs = MaterialPairsModel(
+                num_material_pairs=model_size.sum_of_num_material_pairs,
+                restitution=wp.array(mpairs_rest[0], dtype=float32),
+                static_friction=wp.array(mpairs_static_fric[0], dtype=float32),
+                dynamic_friction=wp.array(mpairs_dynamic_fric[0], dtype=float32),
             )
 
         # Post-processing after construction
-        # TODO: Transform initial body CoM state from body frame state
-        # TODO: Convert limits from `JOINT_LIMIT_UNLIMITED` to `FLOAT_MAX/MIN` representation
-        # TODO: Convert shape_scale to geom_params
+        # TODO: Transform initial body CoM state from body frame state --> probably using kernel called in reset methods
+
+        # Construct and return the new ModelKamino instance
+        return ModelKamino(
+            _model=model,
+            size=model_size,
+            worlds=model_worlds,
+            info=model_info,
+            time=model_time,
+            gravity=model_gravity,
+            bodies=model_bodies,
+            joints=model_joints,
+            geoms=model_geoms,
+            materials=model_materials,
+            material_pairs=model_material_pairs,
+        )
 
     def data(
         self,
         unilateral_cts: bool = False,
         requires_grad: bool = False,
-        device: Devicelike = None,
-    ) -> KaminoData:
+        device: wp.DeviceLike = None,
+    ) -> DataKamino:
         """
         Creates a model data container with the initial state of the model entities.
 
@@ -1129,7 +1287,7 @@ class KaminoModel:
                 Whether to include unilateral constraints (limits and contacts) in the model data. Defaults to `True`.
             requires_grad (`bool`, optional):
                 Whether the model data should require gradients. Defaults to `False`.
-            device (`Devicelike`, optional):
+            device (`wp.DeviceLike`, optional):
                 The device to create the model data on. If not specified, the model's device is used.
                 Defaults to `None`. If not specified, the model's device is used.
         """
@@ -1153,7 +1311,7 @@ class KaminoModel:
         with wp.ScopedDevice(device=device):
             # Create a new model data info with the total constraint
             # counts initialized to the joint constraints count
-            info = KaminoDataInfo(
+            info = DataKaminoInfo(
                 num_total_cts=wp.clone(self.info.num_joint_cts),
             )
 
@@ -1217,7 +1375,7 @@ class KaminoModel:
             )
 
         # Assemble and return the new model data container
-        return KaminoData(
+        return DataKamino(
             info=info,
             time=time,
             bodies=bodies,
@@ -1226,14 +1384,14 @@ class KaminoModel:
             pgeoms=pgeoms,
         )
 
-    def state(self, requires_grad: bool = False, device: Devicelike = None) -> KaminoState:
+    def state(self, requires_grad: bool = False, device: wp.DeviceLike = None) -> StateKamino:
         """
         Creates state container initialized to the initial body state defined in the model.
 
         Parameters:
             requires_grad (`bool`, optional):
                 Whether the state should require gradients. Defaults to `False`.
-            device (`Devicelike`, optional):
+            device (`wp.DeviceLike`, optional):
                 The device to create the state on. If not specified, the model's device is used.
         """
         # If no device is specified, use the model's device
@@ -1242,7 +1400,7 @@ class KaminoModel:
 
         # Create a new state container with the initial state of the model entities on the specified device
         with wp.ScopedDevice(device=device):
-            state = KaminoState(
+            state = StateKamino(
                 q_i=wp.clone(self.bodies.q_i_0, requires_grad=requires_grad),
                 u_i=wp.clone(self.bodies.u_i_0, requires_grad=requires_grad),
                 w_i=wp.zeros_like(self.bodies.u_i_0, requires_grad=requires_grad),
@@ -1255,14 +1413,14 @@ class KaminoModel:
         # Return the constructed state container
         return state
 
-    def control(self, requires_grad: bool = False, device: Devicelike = None) -> KaminoControl:
+    def control(self, requires_grad: bool = False, device: wp.DeviceLike = None) -> ControlKamino:
         """
         Creates a control container with all values initialized to zeros.
 
         Parameters:
             requires_grad (`bool`, optional):
                 Whether the control container should require gradients. Defaults to `False`.
-            device (`Devicelike`, optional):
+            device (`wp.DeviceLike`, optional):
                 The device to create the control container on. If not specified, the model's device is used.
         """
         # If no device is specified, use the model's device
@@ -1271,7 +1429,7 @@ class KaminoModel:
 
         # Create a new control container on the specified device
         with wp.ScopedDevice(device=device):
-            control = KaminoControl(
+            control = ControlKamino(
                 tau_j=wp.zeros(shape=self.size.sum_of_num_joint_dofs, dtype=float32, requires_grad=requires_grad)
             )
 

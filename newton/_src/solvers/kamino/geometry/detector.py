@@ -128,7 +128,7 @@ class CollisionDetectorSettings:
     The maximum number of contacts to generate per candidate geom-pair.\n
     Used to compute the total maximum contacts allocated for the model,
     in conjunction with the total number of candidate geom-pairs.\n
-    Defaults to `DEFAULT_GEOM_PAIR_MAX_CONTACTS` (`10`).
+    Defaults to `DEFAULT_GEOM_PAIR_MAX_CONTACTS` (`8`).
     """
 
     max_triangle_pairs: int = 1_000_000

@@ -189,6 +189,15 @@ class State:
             val_self.assign(val_other)
 
     @property
+    def device(self) -> wp.DeviceLike:
+        """The device on which the state arrays are allocated."""
+        if self.particle_q:
+            return self.particle_q.device
+        if self.body_q:
+            return self.body_q.device
+        raise ValueError("State has no allocated arrays to determine device from.")
+
+    @property
     def requires_grad(self) -> bool:
         """Indicates whether the state arrays have gradient computation enabled."""
         if self.particle_q:

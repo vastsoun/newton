@@ -39,8 +39,8 @@ from dataclasses import dataclass, field
 from enum import IntEnum
 
 import warp as wp
-from warp.context import Devicelike
 
+from ....sim.contacts import Contacts as ContactsNewton
 from ..core.math import COS_PI_6, UNIT_X, UNIT_Y
 from ..core.types import float32, int32, mat33f, quatf, vec2f, vec2i, vec3f, vec4f
 from ..utils import logger as msg
@@ -376,7 +376,7 @@ class Contacts:
         self,
         capacity: int | list[int] | None = None,
         default_max_contacts: int | None = None,
-        device: Devicelike = None,
+        device: wp.DeviceLike = None,
     ):
         # Declare and initialize the default maximum number of contacts per world
         self._default_max_world_contacts: int = DEFAULT_WORLD_MAX_CONTACTS
@@ -384,7 +384,7 @@ class Contacts:
             self._default_max_world_contacts = default_max_contacts
 
         # Cache the target device for all memory allocations
-        self._device: Devicelike = None
+        self._device: wp.DeviceLike = None
 
         # Declare the contacts data container and initialize it to empty
         self._data: ContactsData = ContactsData()
@@ -418,7 +418,7 @@ class Contacts:
         self._default_max_world_contacts = max_contacts
 
     @property
-    def device(self) -> Devicelike:
+    def device(self) -> wp.DeviceLike:
         """
         Returns the device on which the contacts data is allocated.
         """
@@ -617,7 +617,7 @@ class Contacts:
     # Operations
     ###
 
-    def finalize(self, capacity: int | list[int], device: Devicelike = None):
+    def finalize(self, capacity: int | list[int], device: wp.DeviceLike = None):
         """
         Finalizes the contacts data allocations based on the specified capacity.
 
@@ -626,7 +626,7 @@ class Contacts:
                 The maximum number of contacts to allocate.\n
                 If an integer is provided, it specifies the capacity for a single world.\n
                 If a list of integers is provided, it specifies the capacity for each world.
-            device (Devicelike, optional):
+            device (wp.DeviceLike, optional):
                 The device on which to allocate the contacts data.
         """
         # The memory allocation requires the total number of contacts (over multiple worlds)
@@ -706,6 +706,31 @@ class Contacts:
         self._assert_has_data()
         if self._data.model_max_contacts_host > 0:
             self._data.reset()
+
+    @classmethod
+    def from_newton(cls, contacts: ContactsNewton, num_worlds: int) -> "Contacts":
+        """
+        Constructs a KaminoContacts object from a :class:`newton.Contacts` object.
+
+        Args:
+            contacts (`newton.Contacts`):
+                The source :class:`newton.Contacts` object.
+            num_worlds (`int`):
+                The number of worlds represented in the model.
+        """
+        # Determine the per-world maximum contacts as a list of integer capacities
+        model_max_contacts = contacts.rigid_contact_max
+        per_world_max_contacts = model_max_contacts // num_worlds
+        world_max_contacts = [per_world_max_contacts] * num_worlds
+
+        # Construct and return the KaminoContacts given the per-world capacities
+        # NOTE: Currently we allocate new data for kamino.Contacts since the data
+        # layout is different than newton.Contacts. This will soon be adapted so
+        # that kamino.Contacts can directly wrap newton.Contacts data without copies.
+        return Contacts(
+            capacity=world_max_contacts,
+            device=contacts.device,
+        )
 
     ###
     # Internals

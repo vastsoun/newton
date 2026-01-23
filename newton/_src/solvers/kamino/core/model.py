@@ -568,30 +568,35 @@ class ModelInfo:
     bodies_offset: wp.array | None = None
     """
     The body index offset of each world w.r.t the model.\n
+    Used to index into world-specific blocks of per-body arrays.\n
     Shape of ``(num_worlds,)`` and type :class:`int`.
     """
 
     joints_offset: wp.array | None = None
     """
     The joint index offset of each world w.r.t the model.\n
+    Used to index into world-specific blocks of per-joint arrays.\n
     Shape of ``(num_worlds,)`` and type :class:`int`.
     """
 
     limits_offset: wp.array | None = None
     """
     The limit index offset of each world w.r.t the model.\n
+    Used to index into world-specific blocks of per-limit arrays.\n
     Shape of ``(num_worlds,)`` and type :class:`int`.
     """
 
     contacts_offset: wp.array | None = None
     """
-    The contact index offset of world w.r.t the model.\n
+    The contact index offset of each world w.r.t the model.\n
+    Used to index into world-specific blocks of per-contact arrays.\n
     Shape of ``(num_worlds,)`` and type :class:`int`.
     """
 
     unilaterals_offset: wp.array | None = None
     """
     The index offset of the unilaterals (limits + contacts) block of each world.\n
+    Used to index into world-specific blocks of per-unilateral arrays.\n
     Shape of ``(num_worlds,)`` and type :class:`int`.
     """
 
@@ -599,6 +604,7 @@ class ModelInfo:
     # DoF Offsets
     ###
 
+    # TODO: Remove
     body_dofs_offset: wp.array | None = None
     """
     The index offset of the body DoF block of each world.\n
@@ -608,36 +614,42 @@ class ModelInfo:
     joint_coords_offset: wp.array | None = None
     """
     The index offset of the joint coordinates block of each world.\n
+    Used to index into world-specific blocks of per-joint-coordinate arrays.\n
     Shape of ``(num_worlds,)`` and type :class:`int`.
     """
 
     joint_dofs_offset: wp.array | None = None
     """
     The index offset of the joint DoF block of each world.\n
+    Used to index into world-specific blocks of per-joint-DoF arrays.\n
     Shape of ``(num_worlds,)`` and type :class:`int`.
     """
 
     joint_passive_coords_offset: wp.array | None = None
     """
     The index offset of the passive joint coordinates block of each world.\n
+    Used to index into world-specific blocks of per-passive-joint-coordinate arrays.\n
     Shape of ``(num_worlds,)`` and type :class:`int`.
     """
 
     joint_passive_dofs_offset: wp.array | None = None
     """
     The index offset of the passive joint DoF block of each world.\n
+    Used to index into world-specific blocks of per-passive-joint-DoF arrays.\n
     Shape of ``(num_worlds,)`` and type :class:`int`.
     """
 
     joint_actuated_coords_offset: wp.array | None = None
     """
     The index offset of the actuated joint coordinates block of each world.\n
+    Used to index into world-specific blocks of per-actuated-joint-coordinate arrays.\n
     Shape of ``(num_worlds,)`` and type :class:`int`.
     """
 
     joint_actuated_dofs_offset: wp.array | None = None
     """
     The index offset of the actuated joint DoF block of each world.\n
+    Used to index into world-specific blocks of per-actuated-joint-DoF arrays.\n
     Shape of ``(num_worlds,)`` and type :class:`int`.
     """
 
@@ -645,33 +657,42 @@ class ModelInfo:
     # Constraint Offsets
     ###
 
+    # TODO: move to joints section
     joint_cts_offset: wp.array | None = None
     """
     The index offset of the joint constraints block of each world.\n
+    Used to index into world-specific blocks of per-joint-constraint arrays.\n
     Shape of ``(num_worlds,)`` and type :class:`int`.
     """
 
+    # TODO: Remove
     limit_cts_offset: wp.array | None = None
     """
     The index offset of the limit constraints block of each world.\n
+    Used to index into world-specific blocks of per-limit-constraint arrays.\n
     Shape of ``(num_worlds,)`` and type :class:`int`.
     """
 
+    # TODO: Remove
     contact_cts_offset: wp.array | None = None
     """
     The index offset of the contact constraints block of each world.\n
+    Used to index into world-specific blocks of per-contact-constraint arrays.\n
     Shape of ``(num_worlds,)`` and type :class:`int`.
     """
 
+    # TODO: Remove
     unilateral_cts_offset: wp.array | None = None
     """
     The index offset of the unilateral constraints block of each world.\n
+    Used to index into world-specific blocks of per-unilateral-constraint arrays.\n
     Shape of ``(num_worlds,)`` and type :class:`int`.
     """
 
     total_cts_offset: wp.array | None = None
     """
     The index offset of the total constraints block of each world.\n
+    Used to index into world-specific blocks of per-constraint arrays.\n
     Shape of ``(num_worlds,)`` and type :class:`int`.
     """
 

@@ -229,23 +229,23 @@ def make_unilateral_constraints_info(
 
         # Allocate the limit constraint arrays
         model.info.max_limit_cts = wp.array(world_maxnlc, dtype=int32)
-        model.info.limits_offset = wp.array(world_lio[:num_worlds], dtype=int32)
-        model.info.limit_cts_offset = wp.array(world_lcio[:num_worlds], dtype=int32)
+        model.info.limits_offset = wp.array(world_lio[:num_worlds], dtype=int32)  # Start of each world's limits in per-limit arrays, e.g. residuals
+        model.info.limit_cts_offset = wp.array(world_lcio[:num_worlds], dtype=int32)  # Remove: seems unused, same as group offset
 
         # Allocate the contact constraint arrays
         model.info.max_contact_cts = wp.array(world_maxncc, dtype=int32)
-        model.info.contacts_offset = wp.array(world_cio[:num_worlds], dtype=int32)
-        model.info.unilaterals_offset = wp.array(world_uio[:num_worlds], dtype=int32)
+        model.info.contacts_offset = wp.array(world_cio[:num_worlds], dtype=int32)  # Start of each world's contacts in per-contact arrays, e.g. problem.mu
+        model.info.contact_cts_offset = wp.array(world_ccio[:num_worlds], dtype=int32)  # Remove: seems unused, same as group offset
 
         # Allocate the unilateral constraint arrays
-        model.info.contact_cts_offset = wp.array(world_ccio[:num_worlds], dtype=int32)
-        model.info.unilateral_cts_offset = wp.array(world_ucio[:num_worlds], dtype=int32)
+        model.info.unilaterals_offset = wp.array(world_uio[:num_worlds], dtype=int32)  # Start of each world's unilaterals in per-unilateral arrays, e.g. residuals
+        model.info.unilateral_cts_offset = wp.array(world_ucio[:num_worlds], dtype=int32)  # Remove: seems unused, same as group offset
 
         # Initialize the active constraint counters to zero
         data.info.num_total_cts = wp.zeros(shape=(num_worlds,), dtype=int32)
         data.info.num_limit_cts = wp.zeros(shape=(num_worlds,), dtype=int32)
-        data.info.limit_cts_group_offset = wp.zeros(shape=(num_worlds,), dtype=int32)
         data.info.num_contact_cts = wp.zeros(shape=(num_worlds,), dtype=int32)
+        data.info.limit_cts_group_offset = wp.zeros(shape=(num_worlds,), dtype=int32)
         data.info.contact_cts_group_offset = wp.zeros(shape=(num_worlds,), dtype=int32)
 
 

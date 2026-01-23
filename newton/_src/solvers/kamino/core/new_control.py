@@ -21,9 +21,15 @@ from dataclasses import dataclass
 
 import warp as wp
 
+from ....sim.control import Control
+
+###
+# Types
+###
+
 
 @dataclass
-class KaminoControl:
+class ControlKamino:
     """
     Time-varying control data for a :class:`Model`.
 
@@ -45,7 +51,7 @@ class KaminoControl:
     where ``d_j`` is the number of DoFs of each joint ``j``.
     """
 
-    def copy_to(self, other: KaminoControl) -> None:
+    def copy_to(self, other: ControlKamino) -> None:
         """
         Copies the Control data to another Control object.
 
@@ -56,7 +62,7 @@ class KaminoControl:
             raise ValueError("Error copying from/to uninitialized Control")
         wp.copy(other.tau_j, self.tau_j)
 
-    def copy_from(self, other: KaminoControl) -> None:
+    def copy_from(self, other: ControlKamino) -> None:
         """
         Copies the Control data from another Control object.
 
@@ -66,3 +72,17 @@ class KaminoControl:
         if self.tau_j is None or other.tau_j is None:
             raise ValueError("Error copying from/to uninitialized Control")
         wp.copy(self.tau_j, other.tau_j)
+
+    @classmethod
+    def from_newton(cls, control: Control) -> ControlKamino:
+        """
+        Constructs a ControlKamino object from a :class:`newton.Control` object.
+
+        This operation serves only as a adaptor-like constructor to interface a
+        :class:`newton.Control`, effectively creating an alias without copying data.
+
+        Args:
+            control: The source :class:`newton.Control` object to be adapted.
+        """
+        with wp.ScopedDevice(control.device):
+            return ControlKamino(tau_j=control.joint_f)

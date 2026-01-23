@@ -29,8 +29,8 @@ from .time import TimeData
 ###
 
 __all__ = [
-    "KaminoData",
-    "KaminoDataInfo",
+    "DataKamino",
+    "DataKaminoInfo",
 ]
 
 
@@ -47,7 +47,7 @@ wp.set_module_options({"enable_backward": False})
 
 
 @dataclass
-class KaminoDataInfo:
+class DataKaminoInfo:
     """
     A container to hold the time-varying information about the set of active constraints.
     """
@@ -108,7 +108,7 @@ class KaminoDataInfo:
 
 
 @dataclass
-class KaminoData:
+class DataKamino:
     """
     A container to hold the time-varying data of the model entities.
 
@@ -127,7 +127,7 @@ class KaminoData:
         pgeoms (GeometriesData): States of physical geometries in the model: poses computed in world coordinates.
     """
 
-    info: KaminoDataInfo | None = None
+    info: DataKaminoInfo | None = None
     """The info container holding information about the set of active constraints."""
 
     time: TimeData | None = None
@@ -145,5 +145,8 @@ class KaminoData:
     constraint residuals and reactions, and generalized (DoF) quantities.
     """
 
-    geoms: GeometriesData | None = None
+    cgeoms: GeometriesData | None = None
     """States of collision geometries in the model: poses computed in world coordinates."""
+
+    pgeoms: GeometriesData | None = None
+    """States of physical geometries in the model: poses computed in world coordinates."""

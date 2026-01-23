@@ -1238,6 +1238,13 @@ class ModelBuilder:
         collect_physical_geometry_model_data()
         collect_material_pairs_model_data()
 
+        # Post-processing of reference coords of FREE joints to match body frames
+        for joint in self._joints:
+            if joint.dof_type == JointDoFType.FREE:
+                body = self._bodies[joint.bid_F + self._worlds[joint.wid].bodies_idx_offset]
+                qj_start = joint.coords_offset + self._worlds[joint.wid].joint_coords_idx_offset
+                joints_q_j_0[qj_start: qj_start + joint.num_coords] = [*body.q_i_0]
+
         ###
         # Model construction
         ###
@@ -1397,6 +1404,7 @@ class ModelBuilder:
                 dq_j_max=wp.array(joints_qd_j_max, dtype=float32, requires_grad=requires_grad),
                 tau_j_max=wp.array(joints_tau_j_max, dtype=float32, requires_grad=requires_grad),
                 q_j_0=wp.array(joints_q_j_0, dtype=float32, requires_grad=requires_grad),
+                dq_j_0=wp.zeros(model.size.sum_of_num_joint_dofs, dtype=float32, requires_grad=requires_grad),
             )
 
             # Create the collision geometries model

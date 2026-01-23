@@ -23,10 +23,12 @@ import numpy as np
 import warp as wp
 from warp._src.types import Any, Int, Vector
 
+from ....core.types import MAXVAL
 from ....sim.joints import JointType as NewtonJointType
 from .math import FLOAT32_MAX, FLOAT32_MIN, PI, TWO_PI
 from .types import (
     ArrayLike,
+    Axis,
     Descriptor,
     mat33f,
     override,
@@ -64,6 +66,24 @@ __all__ = [
 ###
 
 wp.set_module_options({"enable_backward": False})
+
+
+###
+# Constants
+###
+
+
+JOINT_QMIN: float = -MAXVAL
+""" Sentinel value indicating the minimum joint coordinate limit."""
+
+JOINT_QMAX: float = MAXVAL
+""" Sentinel value indicating the maximum joint coordinate limit."""
+
+JOINT_DQMAX: float = 1e6
+""" Sentinel value indicating the maximum joint velocity limit."""
+
+JOINT_TAUMAX: float = 1e6
+""" Sentinel value indicating the maximum joint effort limit."""
 
 
 ###
@@ -108,7 +128,7 @@ class JointCorrectionMode(IntEnum):
     """
     Rotational joint coordinates are continuously accumulated and thus unbounded.\n
     This means that joint coordinates can increase/decrease indefinitely over time,
-    but are limited to numerical precision limits (i.e. ``[-FLOAT32_MAX, FLOAT32_MAX]``).
+    but are limited to numerical precision limits (i.e. ``[JOINT_QMIN, JOINT_QMAX]``).
     """
 
     NONE = -1
@@ -125,7 +145,7 @@ class JointCorrectionMode(IntEnum):
         if self.value == self.TWOPI:
             return float(TWO_PI)
         elif self.value == self.CONTINUOUS:
-            return float(FLOAT32_MAX)
+            return float(JOINT_QMAX)
         elif self.value == self.NONE:
             return float(PI)
         else:
@@ -519,65 +539,25 @@ class JointDoFType(IntEnum):
         rotation_bound = correction.bound
 
         if self.value == self.FREE:
-            return [FLOAT32_MAX] * 7
+            return [JOINT_QMAX] * 7
         elif self.value == self.REVOLUTE:
             return [rotation_bound]
         elif self.value == self.PRISMATIC:
-            return [float(FLOAT32_MAX)]
+            return [JOINT_QMAX]
         elif self.value == self.CYLINDRICAL:
-            return [float(FLOAT32_MAX), rotation_bound]
+            return [JOINT_QMAX, rotation_bound]
         elif self.value == self.UNIVERSAL:
             return [rotation_bound, rotation_bound]
         elif self.value == self.SPHERICAL:
-            return [float(FLOAT32_MAX)] * 4
+            return [JOINT_QMAX] * 4
         elif self.value == self.GIMBAL:
             return [rotation_bound] * 3
         elif self.value == self.CARTESIAN:
-            return [float(FLOAT32_MAX)] * 3
+            return [JOINT_QMAX] * 3
         elif self.value == self.FIXED:
             return []
         else:
             raise ValueError(f"Unknown joint DoF type: {self.value}")
-
-
-def kamino_to_newton_joint_type(dof_type: JointDoFType) -> NewtonJointType:
-    """
-    Converts a `JointDoFType` to the corresponding `NewtonJointType`.
-
-    Args:
-        dof_type (JointDoFType): The joint DoF type to convert.
-
-    Returns:
-        NewtonJointType: The corresponding Newton joint type.
-    """
-    mapping = {
-        JointDoFType.FREE: NewtonJointType.FREE,
-        JointDoFType.REVOLUTE: NewtonJointType.REVOLUTE,
-        JointDoFType.PRISMATIC: NewtonJointType.PRISMATIC,
-        JointDoFType.SPHERICAL: NewtonJointType.BALL,
-        JointDoFType.FIXED: NewtonJointType.FIXED,
-    }
-    return mapping[dof_type]
-
-
-def newton_to_kamino_joint_dof_type(joint_type: NewtonJointType) -> JointDoFType:
-    """
-    Converts a `NewtonJointType` to the corresponding `JointDoFType`.
-
-    Args:
-        joint_type (NewtonJointType): The Newton joint type to convert.
-
-    Returns:
-        JointDoFType: The corresponding joint DoF type.
-    """
-    mapping = {
-        NewtonJointType.FREE: JointDoFType.FREE,
-        NewtonJointType.REVOLUTE: JointDoFType.REVOLUTE,
-        NewtonJointType.PRISMATIC: JointDoFType.PRISMATIC,
-        NewtonJointType.BALL: JointDoFType.SPHERICAL,
-        NewtonJointType.FIXED: JointDoFType.FIXED,
-    }
-    return mapping[joint_type]
 
 
 ###
@@ -875,10 +855,10 @@ class JointDescriptor(Descriptor):
             )
 
         # Set default values for joint limits if not provided
-        self.q_j_min = self._check_limits(self.q_j_min, self.num_dofs, float(FLOAT32_MIN))
-        self.q_j_max = self._check_limits(self.q_j_max, self.num_dofs, float(FLOAT32_MAX))
-        self.dq_j_max = self._check_limits(self.dq_j_max, self.num_dofs, float(FLOAT32_MAX))
-        self.tau_j_max = self._check_limits(self.tau_j_max, self.num_dofs, float(FLOAT32_MAX))
+        self.q_j_min = self._check_limits(self.q_j_min, self.num_dofs, JOINT_QMIN)
+        self.q_j_max = self._check_limits(self.q_j_max, self.num_dofs, JOINT_QMAX)
+        self.dq_j_max = self._check_limits(self.dq_j_max, self.num_dofs, JOINT_DQMAX)
+        self.tau_j_max = self._check_limits(self.tau_j_max, self.num_dofs, JOINT_TAUMAX)
 
     @override
     def __repr__(self):
@@ -918,7 +898,7 @@ class JointDescriptor(Descriptor):
     ###
 
     @staticmethod
-    def _check_limits(limits: ArrayLike | float | None, size: int, default: float = float(FLOAT32_MAX)) -> list[float]:
+    def _check_limits(limits: ArrayLike | float | None, size: int, default: float) -> list[float]:
         """
         Processes a specified limit value to ensure it is a list of floats.
 
@@ -931,7 +911,7 @@ class JointDescriptor(Descriptor):
 
         Args:
             limits (List[float] | float | None): The limits to be processed.
-            num_dofs (int): The number of degrees of freedom to determine the length of the output list.
+            size (int): The expected number of joint DoF limits.
             default (float): The default value to use if limits is None or an empty list.
 
         Returns:
@@ -1362,3 +1342,111 @@ class JointsData:
         self.clear_constraint_reactions()
         self.clear_actuation_forces()
         self.clear_wrenches()
+
+
+###
+# Conversions
+###
+
+
+def kamino_to_newton_joint_type(dof_type: JointDoFType) -> NewtonJointType:
+    """
+    Converts a `JointDoFType` to the corresponding `NewtonJointType`.
+
+    Args:
+        dof_type (JointDoFType): The joint DoF type to convert.
+
+    Returns:
+        NewtonJointType: The corresponding Newton joint type.
+    """
+    mapping = {
+        JointDoFType.FREE: NewtonJointType.FREE,
+        JointDoFType.REVOLUTE: NewtonJointType.REVOLUTE,
+        JointDoFType.PRISMATIC: NewtonJointType.PRISMATIC,
+        JointDoFType.SPHERICAL: NewtonJointType.BALL,
+        JointDoFType.FIXED: NewtonJointType.FIXED,
+    }
+    # TODO: Handle unsupported types
+    return mapping[dof_type]
+
+
+def newton_to_kamino_joint_dof_type(joint_type: NewtonJointType) -> JointDoFType:
+    """
+    Converts a `NewtonJointType` to the corresponding `JointDoFType`.
+
+    Args:
+        joint_type (NewtonJointType): The Newton joint type to convert.
+
+    Returns:
+        JointDoFType: The corresponding joint DoF type.
+    """
+    mapping = {
+        NewtonJointType.FREE: JointDoFType.FREE,
+        NewtonJointType.REVOLUTE: JointDoFType.REVOLUTE,
+        NewtonJointType.PRISMATIC: JointDoFType.PRISMATIC,
+        NewtonJointType.BALL: JointDoFType.SPHERICAL,
+        NewtonJointType.FIXED: JointDoFType.FIXED,
+    }
+    # TODO: Handle unsupported types
+    return mapping[joint_type]
+
+
+def axes_matrix_from_joint_type(joint_type: NewtonJointType, joint_dof_axis: np.ndarray) -> wp.mat33f | None:
+    """
+    TODO
+    """
+    R_axis_j = wp.quat_to_matrix(wp.quat_identity())
+
+    def _is_pos_x_axis(axis: np.ndarray) -> bool:
+        return np.allclose(axis, np.array([1.0, 0.0, 0.0]))
+
+    def _is_pos_y_axis(axis: np.ndarray) -> bool:
+        return np.allclose(axis, np.array([0.0, 1.0, 0.0]))
+
+    def _is_pos_z_axis(axis: np.ndarray) -> bool:
+        return np.allclose(axis, np.array([0.0, 0.0, 1.0]))
+
+    def _axis_rotmatn_from_vec3f(vec: np.ndarray) -> wp.mat33f:
+        if _is_pos_x_axis(vec):
+            return Axis.X.to_mat33()
+        elif _is_pos_y_axis(vec):
+            return Axis.Y.to_mat33()
+        elif _is_pos_z_axis(vec):
+            return Axis.Z.to_mat33()
+        else:
+            raise ValueError(f"Unsupported joint axis vector: {vec}")
+
+    # Determine rotation matrix based on joint type and axis
+    # NOTE #1: BALL, FIXED, FREE and DISTANCE joints do
+    # not have specific axes and thus return identity
+    # NOTE #2: CABLE joints are always defined along the local X axis
+    if joint_type == NewtonJointType.PRISMATIC:
+        num_dofs: int = 1
+        R_axis_j = _axis_rotmatn_from_vec3f(joint_dof_axis[:num_dofs, :])
+
+    elif joint_type == NewtonJointType.REVOLUTE:
+        num_dofs: int = 1
+        R_axis_j = _axis_rotmatn_from_vec3f(joint_dof_axis[:num_dofs, :])
+
+    elif joint_type == NewtonJointType.D6:
+        ax_tra = joint_dof_axis[:num_dofs, 0]
+        ay_tra = joint_dof_axis[:num_dofs, 1]
+        az_tra = joint_dof_axis[:num_dofs, 2]
+        ax_rot = joint_dof_axis[:num_dofs, 3]
+        ay_rot = joint_dof_axis[:num_dofs, 4]
+        az_rot = joint_dof_axis[:num_dofs, 5]
+        if not np.allclose(ax_tra, ax_rot):
+            raise ValueError(f"Inconsistent D6 joint axes: translation axis {ax_tra} != rotation axis {ax_rot}")
+        elif not np.allclose(ay_tra, ay_rot):
+            raise ValueError(f"Inconsistent D6 joint axes: translation axis {ay_tra} != rotation axis {ay_rot}")
+        elif not np.allclose(az_tra, az_rot):
+            raise ValueError(f"Inconsistent D6 joint axes: translation axis {az_tra} != rotation axis {az_rot}")
+        R_axis_j = wp.mat33f(*ax_tra.tolist(), *ay_tra.tolist(), *az_tra.tolist())
+
+    elif joint_type in (NewtonJointType.BALL, NewtonJointType.FIXED, NewtonJointType.FREE):
+        pass  # Identity
+
+    else:
+        raise ValueError(f"Unsupported Newton joint type: {joint_type}")
+
+    return R_axis_j

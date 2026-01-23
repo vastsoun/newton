@@ -21,9 +21,17 @@ from dataclasses import dataclass
 
 import warp as wp
 
+from ....sim.model import Model
+from ....sim.state import State
+from .types import vec6f
+
+###
+# Types
+###
+
 
 @dataclass
-class KaminoState:
+class StateKamino:
     """
     Represents the time-varying state of a :class:`Model` in a simulation.
 
@@ -101,7 +109,7 @@ class KaminoState:
     Shape is ``(num_joint_cts,)`` and dtype is :class:`float32`.
     """
 
-    def copy_to(self, other: KaminoState) -> None:
+    def copy_to(self, other: StateKamino) -> None:
         """
         Copy the State data to another State object.
 
@@ -110,7 +118,7 @@ class KaminoState:
         """
         other.copy_from(self)
 
-    def copy_from(self, other: KaminoState) -> None:
+    def copy_from(self, other: StateKamino) -> None:
         """
         Copy the State data from another State object.
 
@@ -127,3 +135,25 @@ class KaminoState:
         wp.copy(self.q_j_p, other.q_j_p)
         wp.copy(self.dq_j, other.dq_j)
         wp.copy(self.lambda_j, other.lambda_j)
+
+    @classmethod
+    def from_newton(cls, model: Model, state: State) -> StateKamino:
+        """
+        Constructs a StateKamino object from a :class:`newton.State` object.
+
+        This operation serves only as a adaptor-like constructor to interface a
+        :class:`newton.State`, effectively creating an alias without copying data.
+
+        Args:
+            state: The source :class:`newton.State` object to be adapted.
+        """
+        with wp.ScopedDevice(state.device):
+            return StateKamino(
+                q_i=state.body_q,
+                u_i=state.body_qd,
+                w_i=state.body_f.view(dtype=vec6f),  # TODO: change to wp.spatial_vector
+                q_j=state.joint_q,
+                q_j_p=wp.clone(state.joint_q),
+                dq_j=state.joint_qd,
+                lambda_j=wp.array(shape=(model.joint_constraint_count,), dtype=wp.float32),
+            )

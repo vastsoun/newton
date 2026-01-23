@@ -414,21 +414,28 @@ class BlockSparseMatrices:
         # Retrieve the fixed-size block dimensions
         block_nrows, block_ncols = self._get_block_shape()
 
+        # Retrieve sparse data from the device
+        dims_np = self.dims.numpy()
+        num_nzb_np = self.num_nzb.numpy()
+        nzb_start_np = self.nzb_start.numpy()
+        nzb_coords_np = self.nzb_coords.numpy()
+        nzb_values_np = self.nzb_values.numpy()
+
         # Construct a list of dense NumPy matrices from the sparse representation
         matrices: list[np.ndarray] = []
         for m in range(self.num_matrices):
             # Retrieve the active matrix dimensions
-            dims = self.dims.numpy()[m]
+            dims = dims_np[m]
             nrows, ncols = int(dims[0]), int(dims[1])
 
             # Allocate dense matrix initially filled with zeros
             dense_matrix = np.zeros((nrows, ncols), dtype=self.nzb_dtype.dtype)
 
             # Populate non-zero blocks
-            num_nzb = int(self.num_nzb.numpy()[m])
-            start_idx = int(self.nzb_start.numpy()[m])
-            coords = self.nzb_coords.numpy()[start_idx : start_idx + num_nzb]
-            values = self.nzb_values.numpy()[start_idx : start_idx + num_nzb]
+            num_nzb = int(num_nzb_np[m])
+            start_idx = int(nzb_start_np[m])
+            coords = nzb_coords_np[start_idx : start_idx + num_nzb]
+            values = nzb_values_np[start_idx : start_idx + num_nzb]
             for b in range(num_nzb):
                 row_idx, col_idx = int(coords[b][0]), int(coords[b][1])
                 block_value = values[b].reshape((block_nrows, block_ncols))

@@ -46,7 +46,7 @@ from ..core.types import (
 )
 from ..geometry.contacts import Contacts
 from ..kinematics.limits import Limits
-from ..linalg.sparse import BlockSparseLinearOperators, BlockSparseMatrices
+from ..linalg.sparse import BlockDType, BlockSparseLinearOperators, BlockSparseMatrices
 
 ###
 # Module interface
@@ -1338,95 +1338,49 @@ class SparseSystemJacobians:
         joint_num_dofs = model.joints.num_dofs.numpy()
         joint_q_j_min = model.joints.q_j_min.numpy()
         joint_q_j_max = model.joints.q_j_max.numpy()
-        J_cts_nnbz_min = [0] * nw
-        J_cts_nnbz_max = [0] * nw
-        J_dofs_nnbz = [0] * nw
+        J_cts_nnzb_min = [0] * nw
+        J_cts_nnzb_max = [0] * nw
+        J_dofs_nnzb = [0] * nw
         # Add non-zero blocks for joints and joint limits
         for _j in range(model.size.sum_of_num_joints):
             w = joint_wid[_j]
-            J_cts_nnbz_min[w] += 2 * joint_num_cts[_j] if joint_bid_B[_j] > -1 else joint_num_cts[_j]
-            J_cts_nnbz_max[w] += 2 * joint_num_cts[_j] if joint_bid_B[_j] > -1 else joint_num_cts[_j]
-            J_dofs_nnbz[w] += 2 * joint_num_dofs[_j] if joint_bid_B[_j] > -1 else joint_num_dofs[_j]
+            J_cts_nnzb_min[w] += 2 * joint_num_cts[_j] if joint_bid_B[_j] > -1 else joint_num_cts[_j]
+            J_cts_nnzb_max[w] += 2 * joint_num_cts[_j] if joint_bid_B[_j] > -1 else joint_num_cts[_j]
+            J_dofs_nnzb[w] += 2 * joint_num_dofs[_j] if joint_bid_B[_j] > -1 else joint_num_dofs[_j]
             for d_j in range(joint_num_dofs[_j]):
                 if joint_q_j_min[_j][d_j] > float(FLOAT32_MIN) or joint_q_j_max[_j][d_j] < float(FLOAT32_MAX):
-                    J_cts_nnbz_max[w] += 2 if joint_bid_B[_j] > -1 else 1
+                    J_cts_nnzb_max[w] += 2 if joint_bid_B[_j] > -1 else 1
         # Add non-zero blocks for contacts
         # TODO: Use the candidate geom-pair info to compute maximum possible contact constraint blocks more accurately
         if contacts is not None and contacts.model_max_contacts_host > 0:
             for w in range(nw):
-                J_cts_nnbz_max[w] += 2 * 3 * maxnc[w]
+                J_cts_nnzb_max[w] += 2 * 3 * maxnc[w]
 
         # Compute the sizes of the Jacobian matrix data for each world
-        J_ncols = [nbd[i] for i in range(nw)]
-        J_cts_nrows_max = [maxncts[i] for i in range(nw)]
         J_cts_dims_max = [(maxncts[i], nbd[i]) for i in range(nw)]
         J_cts_dims_min = [(njc[i], nbd[i]) for i in range(nw)]
-        J_dofs_nrows = [njd[i] for i in range(nw)]
         J_dofs_dims = [(njd[i], nbd[i]) for i in range(nw)]
-
-        # Compute sum/max number of non-zero blocks
-        max_of_J_cts_nnbz_max = max(J_cts_nnbz_max)
-        sum_of_J_cts_nnbz_max = sum(J_cts_nnbz_max)
-        max_of_J_dofs_nnbz = max(J_dofs_nnbz)
-        sum_of_J_dofs_nnbz = sum(J_dofs_nnbz)
-
-        # Compute matrix index offsets of each Jacobian block
-        J_inp_start = [0] * nw
-        J_cts_nzb_start = [0] * nw
-        J_cts_rhs_start = [0] * nw
-        J_dofs_nzb_start = [0] * nw
-        J_dofs_rhs_start = [0] * nw
-        for w in range(1, nw):
-            J_inp_start[w] = J_inp_start[w - 1] + J_ncols[w - 1]
-            J_cts_nzb_start[w] = J_cts_nzb_start[w - 1] + J_cts_nnbz_max[w - 1]
-            J_cts_rhs_start[w] = J_cts_rhs_start[w - 1] + J_cts_nrows_max[w - 1]
-            J_dofs_nzb_start[w] = J_dofs_nzb_start[w - 1] + J_dofs_nnbz[w - 1]
-            J_dofs_rhs_start[w] = J_dofs_rhs_start[w - 1] + J_dofs_nrows[w - 1]
 
         # Allocate the block-sparse linear-operator data to represent each system Jacobian
         with wp.ScopedDevice(device):
             # First allocate the geometric constraint Jacobian
-            self._J_cts = BlockSparseLinearOperators(
-                bsm=BlockSparseMatrices(
-                    device=device,
-                    num_matrices=nw,
-                    nzb_size=(1, 6),
-                    sum_of_num_nzb=sum_of_J_cts_nnbz_max,
-                    max_of_num_nzb=max_of_J_cts_nnbz_max,
-                    max_dims=wp.array(J_cts_dims_max, dtype=vec2i),
-                    dims=wp.array(J_cts_dims_min, dtype=vec2i),
-                    max_nzb=wp.array(J_cts_nnbz_max, dtype=int32),
-                    num_nzb=wp.array(J_cts_nnbz_min, dtype=int32),
-                    nzb_start=wp.array(J_cts_nzb_start, dtype=int32),
-                    row_start=wp.array(J_cts_rhs_start, dtype=int32),
-                    col_start=wp.array(J_inp_start, dtype=int32),
-                    # row_start=model.info.total_cts_offset,
-                    # col_start=model.info.body_dofs_offset,
-                    nzb_coords=wp.zeros(sum_of_J_cts_nnbz_max, dtype=vec2i),
-                    nzb_values=wp.zeros(sum_of_J_cts_nnbz_max, dtype=vec6f),
-                ),
+            J_cts_mat = BlockSparseMatrices(
+                device=device,
+                nzb_dtype=BlockDType(shape=(1, 6), dtype=float32),
             )
+            J_cts_mat.finalize(J_cts_dims_max, J_cts_nnzb_max)
+            J_cts_mat.dims = wp.array(J_cts_dims_min, dtype=vec2i)
+            J_cts_mat.num_nzb = wp.array(J_cts_nnzb_min, dtype=int32)
+            self._J_cts = BlockSparseLinearOperators(bsm=J_cts_mat)
             # Then allocate the geometric DoFs Jacobian
-            self._J_dofs = BlockSparseLinearOperators(
-                bsm=BlockSparseMatrices(
-                    device=device,
-                    num_matrices=nw,
-                    nzb_size=(1, 6),
-                    sum_of_num_nzb=sum_of_J_dofs_nnbz,
-                    max_of_num_nzb=max_of_J_dofs_nnbz,
-                    max_dims=wp.array(J_dofs_dims, dtype=vec2i),
-                    dims=wp.array(J_dofs_dims, dtype=vec2i),
-                    max_nzb=wp.array(J_dofs_nnbz, dtype=int32),
-                    num_nzb=wp.array(J_dofs_nnbz, dtype=int32),
-                    nzb_start=wp.array(J_dofs_nzb_start, dtype=int32),
-                    row_start=wp.array(J_dofs_rhs_start, dtype=int32),
-                    col_start=wp.array(J_inp_start, dtype=int32),
-                    # row_start=model.info.joint_dofs_offset,
-                    # col_start=model.info.body_dofs_offset,
-                    nzb_coords=wp.zeros(sum_of_J_dofs_nnbz, dtype=vec2i),
-                    nzb_values=wp.zeros(sum_of_J_dofs_nnbz, dtype=vec6f),
-                ),
+            J_dofs_mat = BlockSparseMatrices(
+                device=device,
+                nzb_dtype=BlockDType(shape=(1, 6), dtype=float32),
             )
+            J_dofs_mat.finalize(J_dofs_dims, J_dofs_nnzb)
+            J_dofs_mat.dims = wp.array(J_dofs_dims, dtype=vec2i)
+            J_dofs_mat.num_nzb = wp.array(J_dofs_nnzb, dtype=int32)
+            self._J_dofs = BlockSparseLinearOperators(bsm=J_dofs_mat)
 
     def build(
         self,

@@ -1916,7 +1916,7 @@ class ForwardKinematicsSolver:
         self.sparse_jacobian = BlockSparseMatrices(
             device=self.device, nzb_dtype=BlockDType(dtype=wp.float32, shape=(7,)), num_matrices=self.num_worlds
         )
-        jacobian_dims = np.stack((num_constraints, 7 * num_bodies)).T.flatten()
+        jacobian_dims = list(zip(num_constraints.tolist(), (7 * num_bodies).tolist(), strict=True))
 
         # Determine number of nzb, per world and in total
         num_nzb = num_bodies.copy()  # nzb due to rigid body unit quaternion constraints
@@ -1969,12 +1969,9 @@ class ForwardKinematicsSolver:
                 start_nzb += num_cts
 
         # Transfer data to GPU
-        self.sparse_jacobian.finalize(num_nzb.tolist())
-        self.sparse_jacobian.max_dims.assign(jacobian_dims)
+        self.sparse_jacobian.finalize(jacobian_dims, num_nzb.tolist())
         self.sparse_jacobian.dims.assign(jacobian_dims)
-        self.sparse_jacobian.max_nzb.assign(num_nzb)
         self.sparse_jacobian.num_nzb.assign(num_nzb)
-        self.sparse_jacobian.nzb_start.assign(first_nzb[:-1])
         self.sparse_jacobian.nzb_coords.assign(np.stack((nzb_row, nzb_col)).T.flatten())
         with wp.ScopedDevice(self.device):
             self.rb_nzb_id = wp.from_numpy(rb_nzb_id, dtype=wp.int32)

@@ -257,6 +257,7 @@ class BlockSparseMatrices:
 
     def finalize(
         self,
+        max_dims: list[tuple[int, int]],
         capacities: list[int],
         nzb_dtype: BlockDType | None = None,
         index_dtype: IntType | None = None,
@@ -266,6 +267,8 @@ class BlockSparseMatrices:
         Finalizes the block-sparse matrix container by allocating on-device data arrays.
 
         Args:
+            max_dims (list[tuple[int, int]]):
+                A list of pairs of integers, specifying the maximum number of rows and columns for each matrix.
             capacities (list[int]):
                 A list of integers specifying the maximum number of non-zero blocks for each sparse matrix.
             block_type (BlockDType, optional):
@@ -301,6 +304,16 @@ class BlockSparseMatrices:
         elif self.index_dtype not in get_args(IntType):
             raise TypeError("The `index_type` field must be a valid IntType such as int32 or int64.")
 
+        # Ensure that the max dimensions are valid
+        if not isinstance(max_dims, list) or len(max_dims) == 0:
+            raise ValueError("The `max_dims` field must be a non-empty list of integers 2-tuples.")
+        for dims in max_dims:
+            if not isinstance(dims, tuple) or len(dims) != 2:
+                raise ValueError("All entries in the `max_dims` field must be 2-tuples of non-negative integers.")
+            r, c = dims
+            if not isinstance(r, int) or not isinstance(c, int) or r < 0 or c < 0:
+                raise ValueError("All entries in the `max_dims` field must be 2-tuples of non-negative integers.")
+
         # Ensure that the capacities are valid
         if not isinstance(capacities, list) or len(capacities) == 0:
             raise ValueError("The `capacities` field must be a non-empty list of integers.")
@@ -308,18 +321,29 @@ class BlockSparseMatrices:
             if not isinstance(cap, int) or cap < 0:
                 raise ValueError("All entries in the `capacities` field must be non-negative integers.")
 
+        # Ensure that inputs are consistent
+        if len(max_dims) != len(capacities):
+            raise ValueError("The `max_dims`, and `capacities` fields must have the same size.")
+
         # Update memory allocation meta-data caches
         self.num_matrices = len(capacities)
+        self.max_of_max_dims = tuple(max(x) for x in zip(*max_dims, strict=True))
         self.sum_of_num_nzb = sum(capacities)
         self.max_of_num_nzb = max(capacities)
 
-        # Allocate on-device warp arrays
+        # Compute cumulated sums for rows, cols and nzb
+        dim_start_np = np.concatenate(([[0, 0]], np.asarray(max_dims).cumsum(axis=0)))[:-1]
+        nzb_start_np = np.concatenate(([0], np.asarray(capacities).cumsum()))[:-1]
+
+        # Initialize on-device warp arrays
         with wp.ScopedDevice(self.device):
-            self.max_dims = wp.zeros(shape=(self.num_matrices, 2), dtype=self.index_dtype)
+            self.max_dims = wp.from_numpy(np.asarray(max_dims), shape=(self.num_matrices, 2), dtype=self.index_dtype)
             self.dims = wp.zeros(shape=(self.num_matrices, 2), dtype=self.index_dtype)
-            self.max_nzb = wp.zeros(shape=(self.num_matrices,), dtype=self.index_dtype)
+            self.row_start = wp.from_numpy(dim_start_np[:, 0], shape=(self.num_matrices,), dtype=self.index_dtype)
+            self.col_start = wp.from_numpy(dim_start_np[:, 1], shape=(self.num_matrices,), dtype=self.index_dtype)
+            self.max_nzb = wp.from_numpy(np.asarray(capacities), shape=(self.num_matrices,), dtype=self.index_dtype)
             self.num_nzb = wp.zeros(shape=(self.num_matrices,), dtype=self.index_dtype)
-            self.nzb_start = wp.zeros(shape=(self.num_matrices,), dtype=self.index_dtype)
+            self.nzb_start = wp.from_numpy(nzb_start_np, shape=(self.num_matrices,), dtype=self.index_dtype)
             self.nzb_coords = wp.zeros(shape=(self.sum_of_num_nzb, 2), dtype=self.index_dtype)
             self.nzb_values = wp.zeros(shape=(self.sum_of_num_nzb,), dtype=self.nzb_dtype.warp_type)
 

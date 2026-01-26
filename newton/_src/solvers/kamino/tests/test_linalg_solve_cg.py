@@ -53,7 +53,7 @@ class TestLinalgConjugate(unittest.TestCase):
         b_2d = problem.b_wp.reshape((n_worlds, maxdim))
         x_wp = wp.zeros_like(b_2d, device=device)
 
-        world_active = wp.full(n_worlds, True, dtype=wp.bool, device=device)
+        world_active = wp.full(n_worlds, 1, dtype=wp.int32, device=device)
 
         # Create operator - use maxdim for allocation, then set actual dims
         info = DenseSquareMultiLinearInfo()
@@ -160,7 +160,9 @@ class TestLinalgConjugate(unittest.TestCase):
             x_ref_list.append(np.linalg.solve(A, b))
 
         # Block coordinates (all blocks, row-major) - same for all worlds
-        coords = [(bi * block_size, bj * block_size) for bi in range(n_blocks_per_dim) for bj in range(n_blocks_per_dim)]
+        coords = [
+            (bi * block_size, bj * block_size) for bi in range(n_blocks_per_dim) for bj in range(n_blocks_per_dim)
+        ]
         all_coords = np.array(coords * n_worlds, dtype=np.int32)
 
         # Build BlockSparseMatrices
@@ -193,23 +195,35 @@ class TestLinalgConjugate(unittest.TestCase):
             b_2d[m, :dim] = b
         b_wp = wp.array(b_2d, dtype=float32, device=device)
 
-        world_active = wp.full(n_worlds, True, dtype=wp.bool, device=device)
+        world_active = wp.full(n_worlds, 1, dtype=wp.int32, device=device)
         atol = wp.full(n_worlds, 1.0e-6, dtype=float32, device=device)
         rtol = wp.full(n_worlds, 1.0e-6, dtype=float32, device=device)
 
         # Solve with dense operator
         x_dense = wp.zeros((n_worlds, padded_dim), dtype=float32, device=device)
         solver_dense = solver_cls(
-            A=dense_op, world_active=world_active, atol=atol, rtol=rtol,
-            maxiter=None, Mi=None, callback=None, use_cuda_graph=False,
+            A=dense_op,
+            world_active=world_active,
+            atol=atol,
+            rtol=rtol,
+            maxiter=None,
+            Mi=None,
+            callback=None,
+            use_cuda_graph=False,
         )
         solver_dense.solve(b_wp, x_dense)
 
         # Solve with sparse operator
         x_sparse = wp.zeros((n_worlds, padded_dim), dtype=float32, device=device)
         solver_sparse = solver_cls(
-            A=sparse_op, world_active=world_active, atol=atol, rtol=rtol,
-            maxiter=None, Mi=None, callback=None, use_cuda_graph=False,
+            A=sparse_op,
+            world_active=world_active,
+            atol=atol,
+            rtol=rtol,
+            maxiter=None,
+            Mi=None,
+            callback=None,
+            use_cuda_graph=False,
         )
         solver_sparse.solve(b_wp, x_sparse)
 
@@ -254,7 +268,6 @@ class TestLinalgConjugate(unittest.TestCase):
             with self.subTest(problem=problem_name, solver="CRSolver"):
                 self._test_sparse_solve(CRSolver, device=device, **params)
 
-
     def _build_sparse_operator(self, A: np.ndarray, block_size: int, device):
         """Helper to build a sparse operator from a dense matrix."""
         dim = A.shape[0]
@@ -294,7 +307,7 @@ class TestLinalgConjugate(unittest.TestCase):
 
         b_wp = wp.array(b.reshape(1, -1), dtype=float32, device=device)
         x_wp = wp.zeros((1, dim), dtype=float32, device=device)
-        world_active = wp.full(1, True, dtype=wp.bool, device=device)
+        world_active = wp.full(1, 1, dtype=wp.int32, device=device)
         atol = wp.full(1, 1e-6, dtype=float32, device=device)
         rtol = wp.full(1, 1e-6, dtype=float32, device=device)
 

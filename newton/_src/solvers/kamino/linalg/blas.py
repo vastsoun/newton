@@ -453,14 +453,14 @@ def _diag_gemv_kernel(
     y: wp.array2d(dtype=Any),
     D: wp.array2d(dtype=Any),
     active_dims: wp.array(dtype=Any),
-    world_active: wp.array(dtype=wp.bool),
+    world_active: wp.array(dtype=wp.int32),
     alpha: Any,
     beta: Any,
 ):
     """Computes y[w] = alpha * D[w] * x[w] + beta * y[w] for each world w."""
     world, row = wp.tid()
     assert world < len(active_dims)
-    if not world_active[world] or row >= active_dims[world]:
+    if world_active[world] == 0 or row >= active_dims[world]:
         return
 
     zero = type(alpha)(0)
@@ -479,7 +479,7 @@ def _dense_gemv_kernel(
     y: wp.array2d(dtype=Any),
     A: wp.array2d(dtype=Any),
     active_dims: wp.array(dtype=Any),
-    world_active: wp.array(dtype=wp.bool),
+    world_active: wp.array(dtype=wp.int32),
     alpha: Any,
     beta: Any,
     matrix_stride: int,
@@ -489,7 +489,7 @@ def _dense_gemv_kernel(
     world, row, lane = wp.tid()
     assert world < len(active_dims)
     dim = active_dims[world]
-    if not world_active[world] or row >= dim:
+    if world_active[world] == 0 or row >= dim:
         return
 
     row_stride = active_dims[world]

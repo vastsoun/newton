@@ -104,16 +104,12 @@ class BatchedLinearOperator:
         """
         max_rows, max_cols = A.max_of_max_dims
         n_worlds = A.num_matrices
-        # block_sparse_gemv expects int32 mask, not bool
-        mask_int32 = wp.zeros(n_worlds, dtype=wp.int32, device=A.device)
 
         def gemv_fn(x, y, world_active, alpha, beta):
-            # Convert bool mask to int32 via numpy (block_sparse_gemv expects int32)
-            mask_int32.assign(wp.array(world_active.numpy().astype("int32"), dtype=wp.int32, device=A.device))
             # Reshape 2D arrays to 1D for sparse gemv, then back
             x_flat = x.reshape((n_worlds * max_cols,))
             y_flat = y.reshape((n_worlds * max_rows,))
-            blas.block_sparse_gemv(A, x_flat, y_flat, alpha, beta, mask_int32)
+            blas.block_sparse_gemv(A, x_flat, y_flat, alpha, beta, world_active)
 
         dtype = A.nzb_dtype.dtype if A.nzb_dtype is not None else None
         return cls(gemv_fn, n_worlds, max_rows, active_dims, A.device, dtype)
@@ -135,13 +131,13 @@ def make_termination_kernel(n_worlds):
         cycle_size: int,
         r_norm_sq: wp.array(dtype=Any),
         atol_sq: wp.array(dtype=Any),
-        world_active: wp.array(dtype=wp.bool),
+        world_active: wp.array(dtype=wp.int32),
         cur_iter: wp.array(dtype=int),
         world_condition: wp.array(dtype=wp.int32),
         batch_condition: wp.array(dtype=wp.int32),
     ):
         thread = wp.tid()
-        active = wp.tile_astype(wp.tile_load(world_active, (n_worlds,)), wp.int32)
+        active = wp.tile_load(world_active, (n_worlds,))
         condition = wp.tile_load(world_condition, (n_worlds,))
         world_stepped = wp.tile_map(wp.mul, active, condition)
         iter = world_stepped * cycle_size + wp.tile_load(cur_iter, (n_worlds,))
@@ -242,7 +238,7 @@ def _cr_kernel_2(
 def _run_capturable_loop(
     do_cycle: Callable,
     r_norm_sq: wp.array,
-    world_active: wp.array(dtype=wp.bool),
+    world_active: wp.array(dtype=wp.int32),
     cur_iter: wp.array(dtype=wp.int32),
     conditions: wp.array(dtype=wp.int32),
     maxiter: wp.array(dtype=int),
@@ -325,7 +321,7 @@ def make_dot_kernel(tile_size: int, maxdim: int):
         a: wp.array3d(dtype=Any),
         b: wp.array3d(dtype=Any),
         world_size: wp.array(dtype=wp.int32),
-        world_active: wp.array(dtype=wp.bool),
+        world_active: wp.array(dtype=wp.int32),
         result: wp.array2d(dtype=Any),
     ):
         """Compute the dot products between the trailing-dim arrays in a and b using tiles and pairwise summation."""
@@ -383,7 +379,8 @@ class ConjugateSolver:
     def __init__(
         self,
         A: BatchedLinearOperator,
-        world_active: wp.array(dtype=wp.bool),
+        active_dims: wp.array(dtype=Any) | None = None,
+        world_active: wp.array(dtype=wp.int32) | None = None,
         atol: float | wp.array(dtype=Any) | None = None,
         rtol: float | wp.array(dtype=Any) | None = None,
         maxiter: wp.array = None,
@@ -402,7 +399,7 @@ class ConjugateSolver:
         self.A = A
         self.Mi = Mi
         self.device = A.device
-        self.active_dims = A.active_dims
+        self.active_dims = active_dims if active_dims is not None else A.active_dims
 
         self.world_active = world_active
         self.atol = atol
@@ -439,7 +436,7 @@ class ConjugateSolver:
         self.conditions = wp.empty(self.n_worlds + 1, dtype=wp.int32, device=self.device)
         self.termination_kernel = make_termination_kernel(self.n_worlds)
 
-    def compute_dot(self, a, b, col_offset=0):
+    def compute_dot(self, a, b, active_dims, world_active, col_offset=0):
         block_dim = 256
         if a.ndim == 2:
             a = a.reshape((1, *a.shape))
@@ -451,7 +448,7 @@ class ConjugateSolver:
             self.tiled_dot_kernel,
             dim=(a.shape[0], self.n_worlds, block_dim),
             block_dim=min(256, self.dot_tile_size // 8),
-            inputs=[a, b, self.active_dims, self.world_active],
+            inputs=[a, b, active_dims, world_active],
             outputs=[result],
             device=self.device,
         )
@@ -474,20 +471,35 @@ class CGSolver(ConjugateSolver):
         else:
             self.rz_new = self.dot_product[1]
 
-    def update_rr_rz(self, r, z, r_repeated):
+    def update_rr_rz(self, r, z, r_repeated, active_dims, world_active):
         # z = M r
         if self.Mi is None:
-            self.compute_dot(r, r)
+            self.compute_dot(r, r, active_dims, world_active)
         else:
-            self.Mi.gemv(r, z, self.world_active, alpha=1.0, beta=0.0)
-            self.compute_dot(r_repeated, self.r_and_z)
+            self.Mi.gemv(r, z, world_active, alpha=1.0, beta=0.0)
+            self.compute_dot(r_repeated, self.r_and_z, active_dims, world_active)
 
-    def solve(self, b: wp.array, x: wp.array):
+    def solve(
+        self,
+        b: wp.array,
+        x: wp.array,
+        active_dims: wp.array(dtype=Any) | None = None,
+        world_active: wp.array(dtype=wp.int32) | None = None,
+    ):
+        if active_dims is None:
+            if self.active_dims is None:
+                raise ValueError("Error, active_dims must be provided either to constructor or to solve()")
+            active_dims = self.active_dims
+        if world_active is None:
+            if self.world_active is None:
+                raise ValueError("Error, world_active must be provided either to constructor or to solve()")
+            world_active = self.world_active
+
         r, z = self.r_and_z[0], self.r_and_z[1]
         r_norm_sq = self.dot_product[0]
         p, Ap = self.p_and_Ap[0], self.p_and_Ap[1]
 
-        self.compute_dot(b, b)
+        self.compute_dot(b, b, active_dims, world_active)
         wp.launch(
             kernel=_initialize_tolerance_kernel,
             dim=self.n_worlds,
@@ -496,18 +508,28 @@ class CGSolver(ConjugateSolver):
             outputs=[self.atol_sq],
         )
         r.assign(b)
-        self.A.gemv(x, r, self.world_active, alpha=-1.0, beta=1.0)
-        self.update_rr_rz(r, z, self.r_repeated)
+        self.A.gemv(x, r, world_active, alpha=-1.0, beta=1.0)
+        self.update_rr_rz(r, z, self.r_repeated, active_dims, world_active)
         p.assign(z)
 
         do_iteration = functools.partial(
-            self.do_iteration, p=p, Ap=Ap, rz_old=self.residual, rz_new=self.rz_new, z=z, x=x, r=r, r_norm_sq=r_norm_sq
+            self.do_iteration,
+            p=p,
+            Ap=Ap,
+            rz_old=self.residual,
+            rz_new=self.rz_new,
+            z=z,
+            x=x,
+            r=r,
+            r_norm_sq=r_norm_sq,
+            active_dims=active_dims,
+            world_active=world_active,
         )
 
         return _run_capturable_loop(
             do_iteration,
             r_norm_sq,
-            self.world_active,
+            world_active,
             self.cur_iter,
             self.conditions,
             self.maxiter,
@@ -517,12 +539,12 @@ class CGSolver(ConjugateSolver):
             termination_kernel=self.termination_kernel,
         )
 
-    def do_iteration(self, p, Ap, rz_old, rz_new, z, x, r, r_norm_sq):
+    def do_iteration(self, p, Ap, rz_old, rz_new, z, x, r, r_norm_sq, active_dims, world_active):
         rz_old.assign(rz_new)
 
         # Ap = A * p
-        self.A.gemv(p, Ap, self.world_active, alpha=1.0, beta=0.0)
-        self.compute_dot(p, Ap, col_offset=1)
+        self.A.gemv(p, Ap, world_active, alpha=1.0, beta=0.0)
+        self.compute_dot(p, Ap, active_dims, world_active, col_offset=1)
         p_Ap = self.dot_product[1]
 
         wp.launch(
@@ -533,7 +555,7 @@ class CGSolver(ConjugateSolver):
             device=self.device,
         )
 
-        self.update_rr_rz(r, z, self.r_repeated)
+        self.update_rr_rz(r, z, self.r_repeated, active_dims, world_active)
 
         wp.launch(
             kernel=_cg_kernel_2,
@@ -563,12 +585,27 @@ class CRSolver(ConjugateSolver):
             self.r_and_z = _repeat_first(self.r_and_z)
             self.y_and_Ap = _repeat_first(self.y_and_Ap)
 
-    def update_rr_zAz(self, z, Az, r, r_copy):
-        self.A.gemv(z, Az, self.world_active, alpha=1.0, beta=0.0)
+    def update_rr_zAz(self, z, Az, r, r_copy, active_dims, world_active):
+        self.A.gemv(z, Az, world_active, alpha=1.0, beta=0.0)
         r_copy.assign(r)
-        self.compute_dot(self.r_and_z, self.r_and_Az)
+        self.compute_dot(self.r_and_z, self.r_and_Az, active_dims, world_active)
 
-    def solve(self, b: wp.array, x: wp.array):
+    def solve(
+        self,
+        b: wp.array,
+        x: wp.array,
+        active_dims: wp.array(dtype=Any) | None = None,
+        world_active: wp.array(dtype=wp.int32) | None = None,
+    ):
+        if active_dims is None:
+            if self.active_dims is None:
+                raise ValueError("Error, active_dims must be provided either to constructor or to solve()")
+            active_dims = self.active_dims
+        if world_active is None:
+            if self.world_active is None:
+                raise ValueError("Error, world_active must be provided either to constructor or to solve()")
+            world_active = self.world_active
+
         # named views
         r, z = self.r_and_z[0], self.r_and_z[1]
         r_copy, Az = self.r_and_Az[0], self.r_and_Az[1]
@@ -577,7 +614,7 @@ class CRSolver(ConjugateSolver):
         r_norm_sq = self.dot_product[0]
 
         # Initialize tolerance from right-hand-side norm
-        self.compute_dot(b, b)
+        self.compute_dot(b, b, active_dims, world_active)
         wp.launch(
             kernel=_initialize_tolerance_kernel,
             dim=self.n_worlds,
@@ -585,15 +622,14 @@ class CRSolver(ConjugateSolver):
             inputs=[self.rtol, self.atol, self.dot_product[0]],
             outputs=[self.atol_sq],
         )
-
         r.assign(b)
-        self.A.gemv(x, r, self.world_active, alpha=-1.0, beta=1.0)
+        self.A.gemv(x, r, world_active, alpha=-1.0, beta=1.0)
 
         # z = M r
         if self.Mi is not None:
-            self.Mi.gemv(r, z, self.world_active, alpha=1.0, beta=0.0)
+            self.Mi.gemv(r, z, world_active, alpha=1.0, beta=0.0)
 
-        self.update_rr_zAz(z, Az, r, r_copy)
+        self.update_rr_zAz(z, Az, r, r_copy, active_dims, world_active)
 
         self.p.assign(z)
         Ap.assign(Az)
@@ -611,12 +647,14 @@ class CRSolver(ConjugateSolver):
             r=r,
             r_copy=r_copy,
             r_norm_sq=r_norm_sq,
+            active_dims=active_dims,
+            world_active=world_active,
         )
 
         return _run_capturable_loop(
             do_iteration,
             r_norm_sq,
-            self.world_active,
+            world_active,
             self.cur_iter,
             self.conditions,
             self.maxiter,
@@ -626,12 +664,12 @@ class CRSolver(ConjugateSolver):
             termination_kernel=self.termination_kernel,
         )
 
-    def do_iteration(self, p, Ap, Az, zAz_old, zAz_new, z, y, x, r, r_copy, r_norm_sq):
+    def do_iteration(self, p, Ap, Az, zAz_old, zAz_new, z, y, x, r, r_copy, r_norm_sq, active_dims, world_active):
         zAz_old.assign(zAz_new)
 
         if self.Mi is not None:
-            self.Mi.gemv(Ap, y, self.world_active, alpha=1.0, beta=0.0)
-        self.compute_dot(Ap, y, col_offset=1)
+            self.Mi.gemv(Ap, y, world_active, alpha=1.0, beta=0.0)
+        self.compute_dot(Ap, y, active_dims, world_active, col_offset=1)
         y_Ap = self.dot_product[1]
 
         if self.Mi is None:
@@ -653,7 +691,7 @@ class CRSolver(ConjugateSolver):
                 device=self.device,
             )
 
-        self.update_rr_zAz(z, Az, r, r_copy)
+        self.update_rr_zAz(z, Az, r, r_copy, active_dims, world_active)
 
         wp.launch(
             kernel=_cr_kernel_2,

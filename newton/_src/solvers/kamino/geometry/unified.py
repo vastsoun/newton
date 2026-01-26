@@ -250,6 +250,12 @@ def write_contact_unified_kamino(
     distance = wp.dot(diff, contact_normal_a_to_b)
     d = distance - total_separation_needed
 
+    # Assume both geoms are in same world (guaranteed by broadphase)
+    wid = writer_data.geom_wid[contact_data.shape_a]
+
+    # Retrieve the max contacts of the corresponding world
+    world_max_contacts = writer_data.world_max_contacts[wid]
+
     # Check if an explicit output index is provided, and allocate contact index if not
     if output_index < 0:
         # Use per-shape contact margin (max of both shapes)
@@ -262,13 +268,6 @@ def write_contact_unified_kamino(
         if d >= margin:
             return
 
-        # TODO: Check this logic: Are we sure this is guaranteed by the broadphase?
-        # Assume both geoms are in same world
-        wid = writer_data.geom_wid[contact_data.shape_a]
-
-        # Retrieve the max contacts of the corresponding world
-        world_max_contacts = writer_data.world_max_contacts[wid]
-
         # Atomically increment the model-level contact counter and
         # roll-back the atomic add if the respective limit is exceeded
         mcid = wp.atomic_add(writer_data.contacts_model_num_active, 0, 1)
@@ -276,9 +275,11 @@ def write_contact_unified_kamino(
             wp.atomic_sub(writer_data.contacts_model_num_active, 0, 1)
             return
 
-    # Otherwise, use the provided output index
+    # Otherwise, use the provided output index (primitive kernel already validated margin)
     else:
         mcid = output_index
+        # Still need to increment Kamino's model-level contact counter
+        wp.atomic_add(writer_data.contacts_model_num_active, 0, 1)
 
     # Atomically increment the world-specific contact counter and
     # roll-back the atomic add if the respective limit is exceeded

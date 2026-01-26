@@ -494,8 +494,8 @@ class TestCollisionPipelineUnified(unittest.TestCase):
         """
         # Define expected contact data
         expected = {
-            "model_active_contacts": 9,
-            "world_active_contacts": [9],
+            "model_active_contacts": 8,
+            "world_active_contacts": [8],
         }
 
         # Create a builder for the specified shape pair

@@ -55,7 +55,7 @@ class TestLinalgConjugate(unittest.TestCase):
         b_2d = problem.b_wp.reshape((n_worlds, maxdim))
         x_wp = wp.zeros_like(b_2d, device=device)
 
-        world_active = wp.full(n_worlds, True, dtype=wp.bool, device=device)
+        world_active = wp.full(n_worlds, 1, dtype=wp.int32, device=device)
         operator = make_dense_square_matrix_operator(
             A=A_2d,
             active_dims=problem.dim_wp,

@@ -21,11 +21,8 @@ import numpy as np
 import warp as wp
 
 from newton._src.solvers.kamino.core.types import float32
-from newton._src.solvers.kamino.linalg.conjugate import (
-    CGSolver,
-    CRSolver,
-    make_dense_square_matrix_operator,
-)
+from newton._src.solvers.kamino.linalg.conjugate import BatchedLinearOperator, CGSolver, CRSolver
+from newton._src.solvers.kamino.linalg.core import DenseLinearOperatorData, DenseSquareMultiLinearInfo
 from newton._src.solvers.kamino.tests.utils.extract import get_vector_block
 from newton._src.solvers.kamino.tests.utils.print import print_error_stats
 from newton._src.solvers.kamino.tests.utils.rand import RandomProblemLLT
@@ -51,28 +48,27 @@ class TestLinalgConjugate(unittest.TestCase):
         n_worlds = problem.num_blocks
         maxdim = int(problem.maxdims[0])
 
-        A_2d = problem.A_wp.reshape((n_worlds, maxdim * maxdim))
         b_2d = problem.b_wp.reshape((n_worlds, maxdim))
         x_wp = wp.zeros_like(b_2d, device=device)
 
         world_active = wp.full(n_worlds, True, dtype=wp.bool, device=device)
-        operator = make_dense_square_matrix_operator(
-            A=A_2d,
-            active_dims=problem.dim_wp,
-            max_dims=maxdim,
-            matrix_stride=maxdim,
-        )
+
+        # Create operator - use maxdim for allocation, then set actual dims
+        info = DenseSquareMultiLinearInfo()
+        info.finalize(dimensions=[maxdim] * n_worlds, dtype=float32, device=device)
+        info.dim = problem.dim_wp  # Override with actual active dimensions
+        operator = DenseLinearOperatorData(info=info, mat=problem.A_wp)
+        A = BatchedLinearOperator.from_dense(operator)
 
         atol = wp.full(n_worlds, 1.0e-8, dtype=problem.wp_dtype, device=device)
         rtol = wp.full(n_worlds, 1.0e-8, dtype=problem.wp_dtype, device=device)
         solver = solver_cls(
-            A=operator,
-            active_dims=problem.dim_wp,
+            A=A,
             world_active=world_active,
             atol=atol,
             rtol=rtol,
             maxiter=None,
-            M=None,
+            Mi=None,
             callback=None,
             use_cuda_graph=False,
         )

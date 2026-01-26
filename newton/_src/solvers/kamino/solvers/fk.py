@@ -42,6 +42,7 @@ from ..core.model import Model
 from ..core.types import vec6f
 from ..linalg.factorize.llt_blocked_semi_sparse import SemiSparseBlockCholeskySolverBatched
 from ..linalg.sparse_matrix import BlockDType, BlockSparseMatrices
+from ..linalg.sparse_operator import BlockSparseLinearOperators
 
 ###
 # Module interface
@@ -1983,6 +1984,10 @@ class ForwardKinematicsSolver:
             has_universal_joints
         )
 
+        # Initialize Jacobian linear operator
+        self.sparse_jacobian_op = BlockSparseLinearOperators(self.sparse_jacobian)
+        self.sparse_jacobian_op.initialize_default_operators(flat=False)
+
     ###
     # Internal evaluators (graph-capturable functions working on pre-allocated data)
     ###
@@ -2155,6 +2160,59 @@ class ForwardKinematicsSolver:
             device=self.device,
         )
 
+    def _assemble_sparse_jacobian(
+        self,
+        bodies_q: wp.array(dtype=wp.transformf),
+        pos_control_transforms: wp.array(dtype=wp.transformf),
+        world_mask: wp.array(dtype=wp.int32),
+    ):
+        """
+        Internal evaluator for the sparse kinematic constraints Jacobian with respect to body poses, from body poses
+        and position-control transformations
+        """
+
+        self.sparse_jacobian.zero()
+
+        # Evaluate unit norm quaternion constraints Jacobian
+        wp.launch(
+            _eval_unit_quaternion_constraints_sparse_jacobian,
+            dim=(self.num_worlds, self.num_bodies_max),
+            inputs=[
+                self.model.info.num_bodies,
+                self.first_body_id,
+                bodies_q,
+                self.rb_nzb_id,
+                world_mask,
+                self.sparse_jacobian.nzb_values,
+            ],
+            device=self.device,
+        )
+
+        # Evaluate joint constraints Jacobian
+        wp.launch(
+            self._eval_joint_constraints_sparse_jacobian_kernel,
+            dim=(self.num_worlds, self.num_joints_max),
+            inputs=[
+                self.num_joints,
+                self.first_joint_id,
+                self.first_body_id,
+                self.joints_dof_type,
+                self.joints_act_type,
+                self.joints_bid_B,
+                self.joints_bid_F,
+                self.joints_X_j,
+                self.joints_B_r_Bj,
+                self.joints_F_r_Fj,
+                bodies_q,
+                pos_control_transforms,
+                self.ct_nzb_id_base,
+                self.ct_nzb_id_follower,
+                world_mask,
+                self.sparse_jacobian.nzb_values,
+            ],
+            device=self.device,
+        )
+
     def _eval_merit_function(self, constraints: wp.array2d(dtype=wp.float32), error: wp.array(dtype=wp.float32)):
         """
         Internal evaluator for the line search merit function, i.e. the least-squares error 1/2 * ||C||^2,
@@ -2250,6 +2308,7 @@ class ForwardKinematicsSolver:
         self._eval_kinematic_constraints_jacobian(
             bodies_q, self.pos_control_transforms, self.newton_mask, self.jacobian
         )
+        self._assemble_sparse_jacobian(bodies_q, self.pos_control_transforms, self.newton_mask)
 
         # Evaluate Gauss-Newton left-hand side (J^T * J) and right-hand side (-J^T * C)
         wp.launch_tiled(
@@ -2259,13 +2318,14 @@ class ForwardKinematicsSolver:
             block_dim=64,
             device=self.device,
         )
-        wp.launch_tiled(
-            self._eval_jacobian_T_constraints_kernel,
-            dim=(self.num_worlds, self.num_tiles_states),
-            inputs=[self.jacobian, self.constraints, self.newton_mask, self.grad],
-            block_dim=64,
-            device=self.device,
-        )
+        self.sparse_jacobian_op.matvec_transpose(self.constraints, self.grad, self.newton_mask)
+        # wp.launch_tiled(
+        #    self._eval_jacobian_T_constraints_kernel,
+        #    dim=(self.num_worlds, self.num_tiles_states),
+        #    inputs=[self.jacobian, self.constraints, self.newton_mask, self.grad],
+        #    block_dim=64,
+        #    device=self.device,
+        # )
         wp.launch(
             _eval_rhs,
             dim=(self.num_worlds, self.num_states_max),
@@ -2376,6 +2436,7 @@ class ForwardKinematicsSolver:
 
         # Update constraints Jacobian
         self._eval_kinematic_constraints_jacobian(bodies_q, pos_control_transforms, world_mask, self.jacobian)
+        self._assemble_sparse_jacobian(bodies_q, pos_control_transforms, world_mask)
 
         # Evaluate system left-hand side (J^T * J) and right-hand side (J^T * targets_cts_u)
         wp.launch_tiled(
@@ -2385,13 +2446,14 @@ class ForwardKinematicsSolver:
             block_dim=64,
             device=self.device,
         )
-        wp.launch_tiled(
-            self._eval_jacobian_T_constraints_kernel,
-            dim=(self.num_worlds, self.num_tiles_states),
-            inputs=[self.jacobian, self.target_cts_u, world_mask, self.rhs],
-            block_dim=64,
-            device=self.device,
-        )
+        self.sparse_jacobian_op.matvec_transpose(self.target_cts_u, self.rhs, world_mask)
+        # wp.launch_tiled(
+        #    self._eval_jacobian_T_constraints_kernel,
+        #    dim=(self.num_worlds, self.num_tiles_states),
+        #    inputs=[self.jacobian, self.target_cts_u, world_mask, self.rhs],
+        #    block_dim=64,
+        #    device=self.device,
+        # )
 
         # Compute body velocities (system solve)
         self.linear_solver.factorize(self.lhs, self.num_states, world_mask)
@@ -2479,48 +2541,8 @@ class ForwardKinematicsSolver:
         assert bodies_q.device == self.device
         assert pos_control_transforms.device == self.device
 
-        self.sparse_jacobian.zero()
         world_mask = wp.ones(dtype=wp.int32, shape=(self.num_worlds,), device=self.device)
-
-        # Evaluate unit norm quaternion constraints Jacobian
-        wp.launch(
-            _eval_unit_quaternion_constraints_sparse_jacobian,
-            dim=(self.num_worlds, self.num_bodies_max),
-            inputs=[
-                self.model.info.num_bodies,
-                self.first_body_id,
-                bodies_q,
-                self.rb_nzb_id,
-                world_mask,
-                self.sparse_jacobian.nzb_values,
-            ],
-            device=self.device,
-        )
-
-        # Evaluate joint constraints Jacobian
-        wp.launch(
-            self._eval_joint_constraints_sparse_jacobian_kernel,
-            dim=(self.num_worlds, self.num_joints_max),
-            inputs=[
-                self.num_joints,
-                self.first_joint_id,
-                self.first_body_id,
-                self.joints_dof_type,
-                self.joints_act_type,
-                self.joints_bid_B,
-                self.joints_bid_F,
-                self.joints_X_j,
-                self.joints_B_r_Bj,
-                self.joints_F_r_Fj,
-                bodies_q,
-                pos_control_transforms,
-                self.ct_nzb_id_base,
-                self.ct_nzb_id_follower,
-                world_mask,
-                self.sparse_jacobian.nzb_values,
-            ],
-            device=self.device,
-        )
+        self._assemble_sparse_jacobian(bodies_q, pos_control_transforms, world_mask)
 
     def solve_for_body_velocities(
         self,

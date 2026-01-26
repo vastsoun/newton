@@ -310,6 +310,7 @@ def simulate_random_poses(
     # Run forward kinematics on all random poses
     settings = ForwardKinematicsSolverSettings()
     settings.reset_state = True
+    settings.use_sparsity = True  # Change for sparse/dense solver
     solver = ForwardKinematicsSolver(model, settings)
     success_flags = []
     with wp.ScopedDevice(model.device):

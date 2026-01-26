@@ -769,7 +769,7 @@ def _build_joint_jacobians_sparse(
 
 
 @wp.kernel
-def _build_limit_jacobians(
+def _build_limit_jacobians_dense(
     # Inputs:
     model_info_num_body_dofs: wp.array(dtype=int32),
     model_info_bodies_offset: wp.array(dtype=int32),
@@ -839,7 +839,7 @@ def _build_limit_jacobians(
 
 
 @wp.kernel
-def _build_contact_jacobians(
+def _build_contact_jacobians_dense(
     # Inputs:
     model_info_num_body_dofs: wp.array(dtype=int32),
     model_info_bodies_offset: wp.array(dtype=int32),
@@ -970,7 +970,7 @@ def build_dense_jacobians(
     # Build the limit constraints Jacobians if a limits data container is provided
     if limits is not None and limits.model_max_limits_host > 0:
         wp.launch(
-            _build_limit_jacobians,
+            _build_limit_jacobians_dense,
             dim=limits.model_max_limits_host,
             inputs=[
                 # Inputs:
@@ -995,7 +995,7 @@ def build_dense_jacobians(
     # Build the contact constraints Jacobians if a contacts data container is provided
     if contacts is not None and contacts.model_max_contacts_host > 0:
         wp.launch(
-            _build_contact_jacobians,
+            _build_contact_jacobians_dense,
             dim=contacts.model_max_contacts_host,
             inputs=[
                 # Inputs:

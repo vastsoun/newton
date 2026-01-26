@@ -25,6 +25,7 @@ from typing import Any
 import warp as wp
 
 from .....geometry.collision_primitive import (
+    MAXVAL,
     collide_box_box,
     collide_capsule_box,
     collide_capsule_capsule,
@@ -790,33 +791,35 @@ def capsule_capsule(
     )
 
     # Add the active contact to the global contacts arrays
-    add_single_contact(
-        model_max_contacts,
-        world_max_contacts,
-        wid,
-        capsule1.gid,
-        capsule2.gid,
-        capsule1.bid,
-        capsule2.bid,
-        margin,
-        distance,
-        position,
-        normal,
-        friction,
-        restitution,
-        contact_model_num,
-        contact_world_num,
-        contact_wid,
-        contact_cid,
-        contact_gid_AB,
-        contact_bid_AB,
-        contact_position_A,
-        contact_position_B,
-        contact_gapfunc,
-        contact_frame,
-        contact_material,
-        contact_key,
-    )
+    for k in range(2):
+        if distance[k] != MAXVAL:
+            add_single_contact(
+                model_max_contacts,
+                world_max_contacts,
+                wid,
+                capsule1.gid,
+                capsule2.gid,
+                capsule1.bid,
+                capsule2.bid,
+                margin,
+                distance[k],
+                position[k],
+                normal,
+                friction,
+                restitution,
+                contact_model_num,
+                contact_world_num,
+                contact_wid,
+                contact_cid,
+                contact_gid_AB,
+                contact_bid_AB,
+                contact_position_A,
+                contact_position_B,
+                contact_gapfunc,
+                contact_frame,
+                contact_material,
+                contact_key,
+            )
 
 
 @wp.func

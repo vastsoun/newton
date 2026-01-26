@@ -88,6 +88,10 @@ class ContactWriterDataKamino:
     material_pair_static_friction: wp.array(dtype=float32)
     material_pair_dynamic_friction: wp.array(dtype=float32)
 
+    # Contact limit and active count (Newton interface)
+    contact_max: int32
+    contact_count: wp.array(dtype=int32)
+
     # Output arrays (Kamino Contacts format)
     contacts_model_num_active: wp.array(dtype=int32)
     contacts_world_num_active: wp.array(dtype=int32)
@@ -600,6 +604,7 @@ class CollisionPipelineUnifiedKamino:
             self.shape_aabb_upper = wp.zeros(self._num_geoms, dtype=wp.vec3)
             self.broad_phase_pair_count = wp.zeros(1, dtype=wp.int32)
             self.broad_phase_shape_pairs = wp.zeros(self._max_shape_pairs, dtype=wp.vec2i)
+            self.narrow_phase_contact_count = wp.zeros(1, dtype=int32)
             self.material_friction = wp.full(1, self._default_friction, dtype=float32)
             self.material_restitution = wp.full(1, self._default_restitution, dtype=float32)
             # TODO: This is currently left empty just to satisfy the narrow phase interface
@@ -668,6 +673,9 @@ class CollisionPipelineUnifiedKamino:
 
         # Clear contacts
         contacts.clear()
+
+        # Clear internal contact counts
+        self.narrow_phase_contact_count.zero_()
 
         # Update geometry poses from body states and compute respective AABBs
         self._update_geom_data(model, data)
@@ -830,6 +838,8 @@ class CollisionPipelineUnifiedKamino:
         writer_data.material_pair_restitution = model.material_pairs.restitution
         writer_data.material_pair_static_friction = model.material_pairs.static_friction
         writer_data.material_pair_dynamic_friction = model.material_pairs.dynamic_friction
+        writer_data.contact_max = int32(contacts.model_max_contacts_host)
+        writer_data.contact_count = self.narrow_phase_contact_count
         writer_data.contacts_model_num_active = contacts.model_active_contacts
         writer_data.contacts_world_num_active = contacts.world_active_contacts
         writer_data.contact_wid = contacts.wid

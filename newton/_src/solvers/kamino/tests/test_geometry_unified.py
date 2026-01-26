@@ -216,8 +216,9 @@ class TestCollisionPipelineUnified(unittest.TestCase):
         if not test_context.setup_done:
             setup_tests(clear_cache=False)
         self.default_device = wp.get_device(test_context.device)
-        self.verbose = test_context.verbose  # Set to True for detailed output
-        self.skip_buggy_tests = True  # Set to True to skip known-buggy tests
+        # self.verbose = test_context.verbose  # Set to True for detailed output
+        self.verbose = True  # Set to True for detailed output
+        self.skip_buggy_tests = False  # Set to True to skip known-buggy tests
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:

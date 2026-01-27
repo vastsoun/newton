@@ -20,7 +20,7 @@ from typing import Any
 
 import warp as wp
 
-from ..core.types import int32
+from ..core.types import FloatType, int32
 from .sparse_matrix import BlockDType, BlockSparseMatrices
 
 ###
@@ -344,6 +344,100 @@ def _make_block_sparse_transpose_gemv_kernel(block_type: BlockDType):
     return block_sparse_transpose_gemv_kernel
 
 
+@functools.cache
+def _make_block_sparse_ATA_diagonal_kernel(block_type: BlockDType):
+    # Determine (static) block size for kernel.
+    block_shape = block_type.shape
+    if isinstance(block_type.shape, int):
+        block_shape = (block_shape, block_shape)
+    elif len(block_shape) == 0:
+        block_shape = (1, 1)
+    elif len(block_shape) == 1:
+        block_shape = (1, block_shape[0])
+
+    @wp.kernel
+    def block_sparse_ATA_diagonal_kernel(
+        # Matrix data:
+        num_nzb: wp.array(dtype=int32),
+        nzb_start: wp.array(dtype=int32),
+        nzb_coords: wp.array2d(dtype=int32),
+        nzb_values: wp.array(dtype=block_type.warp_type),
+        # Output:
+        diag: wp.array2d(dtype=block_type.dtype),
+        # Mask:
+        matrix_mask: wp.array(dtype=int32),
+    ):
+        """
+        For a block sparse matrix (stack) A, computes the diagonal of A^T * A
+        """
+        mat_id, block_idx = wp.tid()
+
+        # Early exit if the matrix is flagged as inactive.
+        if matrix_mask[mat_id] == 0:
+            return
+
+        n_block_rows = wp.static(block_shape[0])
+        n_block_cols = wp.static(block_shape[1])
+
+        # Check if block index is valid for this matrix.
+        if block_idx >= num_nzb[mat_id]:
+            return
+
+        global_block_idx = nzb_start[mat_id] + block_idx
+        block_col = nzb_coords[global_block_idx][1]
+        block = nzb_values[global_block_idx]
+
+        # Accumulate coefficients contributed by non-zero block
+        if wp.static(n_block_rows == 1):
+            for j in range(n_block_cols):
+                val = block[j]
+                wp.atomic_add(diag, mat_id, block_col + j, val * val)
+        else:
+            for j in range(n_block_cols):
+                acc = block_type.dtype(0.0)
+                for i in range(n_block_rows):
+                    val = block[i, j]
+                    acc += val * val
+                wp.atomic_add(diag, mat_id, block_col + j, acc)
+
+    return block_sparse_ATA_diagonal_kernel
+
+
+@functools.cache
+def _make_cwise_inverse_kernel(dtype: FloatType):
+    @wp.kernel
+    def cwise_inverse_kernel(
+        # Inputs
+        x: wp.array2d(dtype=dtype),
+        dim: wp.array(dtype=wp.int32),
+        mask: wp.array(dtype=wp.int32),
+    ):
+        mat_id, coeff_id = wp.tid()
+
+        if mat_id >= mask.shape[0] or mask[mat_id] == 0 or coeff_id >= dim[mat_id]:
+            return
+
+        x[mat_id, coeff_id] = 1.0 / x[mat_id, coeff_id]
+
+    return cwise_inverse_kernel
+
+
+@wp.kernel
+def _eval_diagonal_gemv(
+    diag: wp.array2d(dtype=wp.float32),
+    x: wp.array2d(dtype=wp.float32),
+    y: wp.array2d(dtype=wp.float32),
+    z: wp.array2d(dtype=wp.float32),
+    num_rows: wp.array(dtype=wp.int32),
+    world_mask: wp.array(dtype=wp.int32),
+    alpha: wp.float32,
+    beta: wp.float32,
+):
+    wd_id, row_id = wp.tid()  # Thread indices (= world index, row index)
+    if wd_id < num_rows.shape[0] and row_id < num_rows[wd_id]:
+        z[wd_id, row_id] = alpha * diag[wd_id, row_id] * x[wd_id, row_id] + beta * y[wd_id, row_id]
+
+
 ##
 # Launchers
 ##
@@ -503,3 +597,69 @@ def block_sparse_transpose_gemv_2d(
         ],
         device=A.device,
     )
+
+
+def block_sparse_ATA_inv_diagonal_2d(A: BlockSparseMatrices, inv_diag: wp.array, matrix_mask: wp.array):
+    inv_diag.zero_()
+    wp.launch(
+        kernel=_make_block_sparse_ATA_diagonal_kernel(A.nzb_dtype),
+        dim=(A.num_matrices, A.max_of_num_nzb),
+        inputs=[
+            A.num_nzb,
+            A.nzb_start,
+            A.nzb_coords,
+            A.nzb_values,
+            inv_diag,
+            matrix_mask,
+        ],
+        device=A.device,
+    )
+    int_size_bytes = 4  # Size of wp.int32 in bytes
+    cols = wp.array(
+        dtype=wp.int32,
+        shape=(A.num_matrices,),
+        ptr=A.dims.ptr + int_size_bytes,
+        strides=(2 * int_size_bytes,),
+        copy=False,
+    )
+    wp.launch(
+        kernel=_make_cwise_inverse_kernel(A.nzb_dtype.dtype),
+        dim=(A.num_matrices, A.max_of_max_dims[1]),
+        inputs=[
+            inv_diag,
+            cols,
+            matrix_mask,
+        ],
+        device=A.device,
+    )
+
+
+def get_diagonal_gemv_operator(
+    diag: wp.array2d(dtype=wp.float32),
+    num_rows: wp.array(dtype=wp.int32),
+):
+    def op(
+        x: wp.array2d(dtype=wp.float32),
+        y: wp.array2d(dtype=wp.float32),
+        z: wp.array2d(dtype=wp.float32),
+        world_mask: wp.array(dtype=wp.int32),
+        alpha: wp.float32,
+        beta: wp.float32,
+    ):
+        wp.launch(
+            _eval_diagonal_gemv,
+            dim=(diag.shape),
+            inputs=[
+                diag,
+                x,
+                y,
+                z,
+                num_rows,
+                world_mask,
+                alpha,
+                beta,
+            ],
+            device=diag.device,
+        )
+
+    return op

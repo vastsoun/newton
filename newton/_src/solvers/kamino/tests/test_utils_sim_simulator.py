@@ -96,8 +96,8 @@ class TestCartpoleSimulator(unittest.TestCase):
             setup_tests(clear_cache=False)
         self.seed = 42
         self.default_device = wp.get_device(test_context.device)
-        self.verbose = True  # Set to True for verbose output
-        self.progress = True  # Set to True for progress output
+        self.verbose = False  # Set to True for verbose output
+        self.progress = False  # Set to True for progress output
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:

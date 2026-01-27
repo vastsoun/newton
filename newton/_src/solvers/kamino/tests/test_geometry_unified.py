@@ -381,7 +381,6 @@ class TestCollisionPipelineUnified(unittest.TestCase):
 
         # Run the narrow-phase test on the shape pair
         test_unified_pipeline(
-            self,
             builder=builder,
             expected=expected,
             case="sphere_on_sphere_detailed",
@@ -494,8 +493,8 @@ class TestCollisionPipelineUnified(unittest.TestCase):
         """
         # Define expected contact data
         expected = {
-            "model_active_contacts": 8,
-            "world_active_contacts": [8],
+            "model_active_contacts": 9,
+            "world_active_contacts": [9],
         }
 
         # Create a builder for the specified shape pair

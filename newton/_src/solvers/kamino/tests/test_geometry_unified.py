@@ -501,11 +501,13 @@ class TestCollisionPipelineUnified(unittest.TestCase):
         builder = basics.build_boxes_nunchaku()
 
         # Run the narrow-phase test on the shape pair
+        # Note: Use small margin to handle floating point precision for touching contacts
         test_unified_pipeline(
             builder=builder,
             expected=expected,
             case="boxes_nunchaku",
             broadphase_modes=[BroadPhaseMode.EXPLICIT],
+            margin=1e-6,
             device=self.default_device,
         )
 

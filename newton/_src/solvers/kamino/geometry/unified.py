@@ -230,25 +230,20 @@ def write_contact_unified_kamino(
         contact_data: ContactData struct from narrow phase containing contact information
         writer_data: ContactWriterDataKamino struct containing output arrays
     """
-    total_separation_needed = (
-        contact_data.radius_eff_a + contact_data.radius_eff_b + contact_data.thickness_a + contact_data.thickness_b
-    )
-
     # Normalize contact normal
     contact_normal_a_to_b = wp.normalize(contact_data.contact_normal_a_to_b)
 
-    # Compute contact points on each shape
-    a_contact_world = contact_data.contact_point_center - contact_normal_a_to_b * (
-        0.5 * contact_data.contact_distance + contact_data.radius_eff_a
-    )
-    b_contact_world = contact_data.contact_point_center + contact_normal_a_to_b * (
-        0.5 * contact_data.contact_distance + contact_data.radius_eff_b
-    )
+    # Calculate penetration distance for margin check
+    # d = surface-to-surface distance minus thickness offsets
+    total_thickness = contact_data.thickness_a + contact_data.thickness_b
+    d = contact_data.contact_distance - total_thickness
 
-    # Calculate penetration distance
-    diff = b_contact_world - a_contact_world
-    distance = wp.dot(diff, contact_normal_a_to_b)
-    d = distance - total_separation_needed
+    # Compute contact points on each shape's surface
+    # The primitive colliders return contact_point_center at the midpoint between surfaces,
+    # so we offset by half the absolute penetration depth along the normal.
+    distance_abs = wp.abs(contact_data.contact_distance)
+    a_contact_world = contact_data.contact_point_center + contact_normal_a_to_b * 0.5 * distance_abs
+    b_contact_world = contact_data.contact_point_center - contact_normal_a_to_b * 0.5 * distance_abs
 
     # Assume both geoms are in same world (guaranteed by broadphase)
     wid = writer_data.geom_wid[contact_data.shape_a]

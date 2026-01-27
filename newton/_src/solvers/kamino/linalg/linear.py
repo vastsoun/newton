@@ -374,10 +374,11 @@ class IterativeSolver(LinearSolver):
     @override
     def solve(self, b: wp.array, x: wp.array, zero_x: bool = False, **kwargs: dict[str, Any]) -> None:
         """Solves the multi-linear systems `A @ x = b`."""
-        if not self._operator.info.is_rhs_compatible(b):
-            raise ValueError("The provided flat rhs vector data array does not have enough memory!")
-        if not self._operator.info.is_input_compatible(x):
-            raise ValueError("The provided flat input vector data array does not have enough memory!")
+        if self._operator is not None:
+            if not self._operator.info.is_rhs_compatible(b):
+                raise ValueError("The provided flat rhs vector data array does not have enough memory!")
+            if not self._operator.info.is_input_compatible(x):
+                raise ValueError("The provided flat input vector data array does not have enough memory!")
         if zero_x:
             x.zero_()
         self._solve_impl(b=b, x=x, **kwargs)

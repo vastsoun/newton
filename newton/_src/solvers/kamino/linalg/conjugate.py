@@ -104,12 +104,16 @@ class BatchedLinearOperator:
         """
         max_rows, max_cols = A.max_of_max_dims
         n_worlds = A.num_matrices
+        # block_sparse_gemv expects int32 mask, not bool
+        mask_int32 = wp.zeros(n_worlds, dtype=wp.int32, device=A.device)
 
         def gemv_fn(x, y, world_active, alpha, beta):
+            # Convert bool mask to int32 via numpy (block_sparse_gemv expects int32)
+            mask_int32.assign(wp.array(world_active.numpy().astype("int32"), dtype=wp.int32, device=A.device))
             # Reshape 2D arrays to 1D for sparse gemv, then back
             x_flat = x.reshape((n_worlds * max_cols,))
             y_flat = y.reshape((n_worlds * max_rows,))
-            blas.block_sparse_gemv(A, x_flat, y_flat, alpha, beta, world_active)
+            blas.block_sparse_gemv(A, x_flat, y_flat, alpha, beta, mask_int32)
 
         dtype = A.nzb_dtype.dtype if A.nzb_dtype is not None else None
         return cls(gemv_fn, n_worlds, max_rows, active_dims, A.device, dtype)
@@ -517,7 +521,7 @@ class CGSolver(ConjugateSolver):
         rz_old.assign(rz_new)
 
         # Ap = A * p
-        self.A.gemv(p, Ap, self.world_active, alpha=1, beta=0)
+        self.A.gemv(p, Ap, self.world_active, alpha=1.0, beta=0.0)
         self.compute_dot(p, Ap, col_offset=1)
         p_Ap = self.dot_product[1]
 
@@ -560,7 +564,7 @@ class CRSolver(ConjugateSolver):
             self.y_and_Ap = _repeat_first(self.y_and_Ap)
 
     def update_rr_zAz(self, z, Az, r, r_copy):
-        self.A.gemv(z, Az, self.world_active, alpha=1, beta=0)
+        self.A.gemv(z, Az, self.world_active, alpha=1.0, beta=0.0)
         r_copy.assign(r)
         self.compute_dot(self.r_and_z, self.r_and_Az)
 

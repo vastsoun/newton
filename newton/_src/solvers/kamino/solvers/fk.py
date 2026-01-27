@@ -40,6 +40,7 @@ from ..core.math import (
 )
 from ..core.model import Model
 from ..core.types import vec6f
+from ..linalg.blas2d import block_sparse_ATA_inv_diagonal_2d, get_diagonal_gemv_operator
 from ..linalg.conjugate import BatchedLinearOperator, CGSolver
 from ..linalg.factorize.llt_blocked_semi_sparse import SemiSparseBlockCholeskySolverBatched
 from ..linalg.sparse_matrix import BlockDType, BlockSparseMatrices
@@ -1399,6 +1400,23 @@ def _eval_body_velocities(
         bodies_u[rb_id_tot][5] = omega[2]
 
 
+@wp.kernel
+def _update_cg_tolerance_kernel(
+    # Input
+    max_constraint: wp.array(dtype=wp.float32),
+    world_mask: wp.array(dtype=wp.int32),
+    # Output
+    atol: wp.array(dtype=wp.float32),
+    rtol: wp.array(dtype=wp.float32),
+):
+    wd_id = wp.tid()
+    if wd_id >= world_mask.shape[0] or world_mask[wd_id] == 0:
+        return
+    tol = wp.max(1e-8, wp.min(1e-5, 1e-2 * max_constraint[wd_id]))
+    atol[wd_id] = tol
+    rtol[wd_id] = tol
+
+
 ###
 # Classes
 ###
@@ -2035,6 +2053,17 @@ class ForwardKinematicsSolver:
             self.sparse_jacobian_op = BlockSparseLinearOperators(self.sparse_jacobian)
             self.sparse_jacobian_op.initialize_default_operators(flat=False)
 
+            # Initialize preconditioner
+            self.jacobian_diag_inv = wp.array(
+                dtype=wp.float32, device=self.device, shape=(self.num_worlds, self.num_constraints_max)
+            )
+            preconditioner_op = BatchedLinearOperator(
+                shape=(self.num_worlds, self.num_states_max, self.num_states_max),
+                dtype=wp.float32,
+                device=self.device,
+                matvec=get_diagonal_gemv_operator(self.jacobian_diag_inv, self.jacobian_cols),
+            )
+
             # Initialize CG solver
             cg_op = BatchedLinearOperator(
                 shape=(self.num_worlds, self.num_states_max, self.num_states_max),
@@ -2042,7 +2071,17 @@ class ForwardKinematicsSolver:
                 device=self.device,
                 matvec=self._eval_lhs_gemv,
             )
-            self.linear_solver_cg = CGSolver(A=cg_op, active_dims=self.num_states)
+            self.cg_atol = wp.array(dtype=wp.float32, shape=self.num_worlds, device=self.device)
+            self.cg_rtol = wp.array(dtype=wp.float32, shape=self.num_worlds, device=self.device)
+            self.cg_max_iter = wp.from_numpy(2 * self.num_states.numpy(), dtype=wp.int32, device=self.device)
+            self.linear_solver_cg = CGSolver(
+                A=cg_op,
+                active_dims=self.num_states,
+                M=preconditioner_op,
+                atol=self.cg_atol,
+                rtol=self.cg_rtol,
+                maxiter=self.cg_max_iter,
+            )
 
     ###
     # Internal evaluators (graph-capturable functions working on pre-allocated data)
@@ -2376,6 +2415,18 @@ class ForwardKinematicsSolver:
             device=self.device,
         )
 
+    def _update_cg_tolerance(
+        self,
+        residual_norm: wp.array(dtype=wp.float32),
+        world_mask: wp.array(dtype=wp.int32),
+    ):
+        wp.launch(
+            _update_cg_tolerance_kernel,
+            dim=(self.num_worlds,),
+            inputs=[residual_norm, world_mask, self.cg_atol, self.cg_rtol],
+            device=self.device,
+        )
+
     def _run_newton_iteration(self, bodies_q: wp.array(dtype=wp.transformf)):
         """
         Internal function running one iteration of Gauss-Newton. Assumes the constraints vector to be already
@@ -2416,7 +2467,11 @@ class ForwardKinematicsSolver:
 
         # Compute step (system solve)
         if self.settings.use_sparsity:
+            block_sparse_ATA_inv_diagonal_2d(self.sparse_jacobian, self.jacobian_diag_inv, self.newton_mask)
             self.step.zero_()
+            # self._update_cg_tolerance(self.max_constraint, self.newton_mask)
+            self.cg_atol.fill_(1e-8)
+            self.cg_rtol.fill_(1e-8)
             self.linear_solver_cg.solve(self.rhs, self.step, world_active=self.newton_mask)
         else:
             self.linear_solver.factorize(self.lhs, self.num_states, self.newton_mask)
@@ -2546,7 +2601,10 @@ class ForwardKinematicsSolver:
 
         # Compute body velocities (system solve)
         if self.settings.use_sparsity:
+            block_sparse_ATA_inv_diagonal_2d(self.sparse_jacobian, self.jacobian_diag_inv, world_mask)
             self.bodies_q_dot.zero_()
+            self.cg_atol.fill_(1e-8)
+            self.cg_rtol.fill_(1e-8)
             self.linear_solver_cg.solve(self.rhs, self.bodies_q_dot, world_active=world_mask)
         else:
             self.linear_solver.factorize(self.lhs, self.num_states, world_mask)

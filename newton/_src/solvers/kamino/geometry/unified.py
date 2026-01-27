@@ -608,9 +608,13 @@ class CollisionPipelineUnifiedKamino:
             self.narrow_phase_contact_count = wp.zeros(1, dtype=int32)
             self.material_friction = wp.full(1, self._default_friction, dtype=float32)
             self.material_restitution = wp.full(1, self._default_restitution, dtype=float32)
-            # TODO: This is currently left empty just to satisfy the narrow phase interface
-            # but we need to implement SDF support in Kamino to make use of it
+            # TODO: These are currently left empty just to satisfy the narrow phase interface
+            # but we need to implement SDF/mesh support in Kamino to make use of them.
+            # With has_meshes=False, these arrays are never accessed.
             self.shape_sdf_data = wp.empty(shape=(0,), dtype=SDFData)
+            self.shape_local_aabb_lower = wp.empty(shape=(0,), dtype=wp.vec3)
+            self.shape_local_aabb_upper = wp.empty(shape=(0,), dtype=wp.vec3)
+            self.shape_voxel_resolution = wp.empty(shape=(0,), dtype=wp.vec3i)
 
         # Initialize the broad-phase backend depending on the selected mode
         match self._broadphase:
@@ -624,6 +628,7 @@ class CollisionPipelineUnifiedKamino:
                 raise ValueError(f"Unsupported broad phase mode: {self._broadphase}")
 
         # Initialize narrow-phase backend with the contact writer customized for Kamino
+        # Note: has_meshes=False since Kamino doesn't support mesh collisions yet
         self.narrow_phase = NarrowPhase(
             max_candidate_pairs=self._max_shape_pairs,
             max_triangle_pairs=self._max_triangle_pairs,
@@ -631,6 +636,7 @@ class CollisionPipelineUnifiedKamino:
             shape_aabb_lower=self.shape_aabb_lower,
             shape_aabb_upper=self.shape_aabb_upper,
             contact_writer_warp_func=write_contact_unified_kamino,
+            has_meshes=False,
         )
 
         # Convert geometry data from Kamino to Newton format
@@ -866,6 +872,9 @@ class CollisionPipelineUnifiedKamino:
             shape_contact_margin=model.cgeoms.margin,
             shape_collision_radius=self.geom_collision_radius,
             shape_flags=self.shape_flags,
+            shape_local_aabb_lower=self.shape_local_aabb_lower,
+            shape_local_aabb_upper=self.shape_local_aabb_upper,
+            shape_voxel_resolution=self.shape_voxel_resolution,
             writer_data=writer_data,
             device=self._device,
         )

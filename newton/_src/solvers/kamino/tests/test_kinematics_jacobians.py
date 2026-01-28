@@ -29,7 +29,7 @@ from newton._src.solvers.kamino.core.types import float32, int32, mat33f, transf
 from newton._src.solvers.kamino.geometry.contacts import Contacts
 from newton._src.solvers.kamino.geometry.detector import CollisionDetector, CollisionDetectorSettings
 from newton._src.solvers.kamino.kinematics.constraints import make_unilateral_constraints_info, update_constraints_info
-from newton._src.solvers.kamino.kinematics.jacobians import DenseSystemJacobians
+from newton._src.solvers.kamino.kinematics.jacobians import DenseSystemJacobians, SparseSystemJacobians
 from newton._src.solvers.kamino.kinematics.joints import compute_joints_data
 from newton._src.solvers.kamino.kinematics.limits import Limits
 from newton._src.solvers.kamino.models.builders.basics import build_boxes_fourbar, make_basics_heterogeneous_builder
@@ -898,7 +898,8 @@ class TestKinematicsSparseSystemJacobians(unittest.TestCase):
         if not test_context.setup_done:
             setup_tests(clear_cache=False)
         self.default_device = wp.get_device(test_context.device)
-        self.verbose = True  # Set to True for verbose output
+        self.verbose = False  # Set to True for verbose output
+        self.epsilon = 1e-6  # Threshold for sparse-dense comparison test
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
@@ -913,8 +914,562 @@ class TestKinematicsSparseSystemJacobians(unittest.TestCase):
             msg.reset_log_level()
 
     ###
+    # Helpers
+    ###
+    def _create_fourbar_example(
+        self,
+        create_limits: bool = False,
+        create_contacts: bool = False,
+        num_worlds: int = 1,
+        max_world_contacts: int = 12,
+    ) -> (
+        tuple[Model, ModelData]
+        | tuple[Model, ModelData, Limits]
+        | tuple[Model, ModelData, Contacts]
+        | tuple[Model, ModelData, Limits, Contacts]
+    ):
+        limits = None
+        contacts = None
+
+        # Construct the model description using the ModelBuilder
+        builder = make_homogeneous_builder(num_worlds=num_worlds, build_fn=build_boxes_fourbar)
+
+        # Create the model from the builder
+        model = builder.finalize(device=self.default_device)
+
+        # Create a model state container
+        data = model.data(device=self.default_device)
+
+        # Construct and allocate the limits container
+        if create_limits:
+            limits = Limits(model=model, device=self.default_device)
+
+        # Create the collision detector
+        if create_contacts:
+            settings = CollisionDetectorSettings(max_contacts_per_world=max_world_contacts, pipeline="primitive")
+            detector = CollisionDetector(model=model, builder=builder, settings=settings, device=self.default_device)
+            contacts = detector.contacts
+
+        # Create the constraints info
+        make_unilateral_constraints_info(
+            model=model,
+            data=data,
+            limits=limits,
+            contacts=contacts,
+            device=self.default_device,
+        )
+        if self.verbose:
+            print("")  # Add a newline for better readability
+            print_model_constraint_info(model)
+            print_model_data_info(data)
+
+        # Perturb the fourbar bodies in poses that trigger the joint limits
+        set_fourbar_body_states(model=model, data=data)
+        wp.synchronize()
+        if self.verbose:
+            print("data.bodies.q_i:\n", data.bodies.q_i)
+            print("data.bodies.u_i:\n", data.bodies.u_i)
+
+        # Compute the joints state
+        compute_joints_data(model=model, q_j_ref=wp.zeros_like(data.joints.q_j), data=data)
+        wp.synchronize()
+        if self.verbose:
+            print("data.joints.p_j:\n", data.joints.p_j)
+            print("data.joints.r_j:\n", data.joints.r_j)
+            print("data.joints.dr_j:\n", data.joints.dr_j)
+            print("data.joints.q_j:\n", data.joints.q_j)
+            print("data.joints.dq_j:\n", data.joints.dq_j)
+
+        # Run limit detection to generate active limits
+        if create_limits:
+            limits.detect(model, data)
+            wp.synchronize()
+            if self.verbose:
+                print(f"limits.world_active_limits: {limits.world_active_limits}")
+                print(f"data.info.num_limits: {data.info.num_limits}")
+
+        # Run collision detection to generate active contacts
+        if create_contacts:
+            detector.collide(model, data)
+            wp.synchronize()
+            if self.verbose:
+                print(f"contacts.world_active_contacts: {detector.contacts.world_active_contacts}")
+                print(f"data.info.num_contacts: {data.info.num_contacts}")
+
+        # Update the constraints info
+        update_constraints_info(model=model, data=data)
+        if self.verbose:
+            print("")  # Add a newline for better readability
+            print_model_data_info(data)
+        wp.synchronize()
+
+        return_values = (model, data)
+        if create_limits:
+            return_values += (limits,)
+        if create_contacts:
+            return_values += (contacts,)
+        return return_values
+
+    def _compare_dense_sparse_jacobians(
+        self,
+        model: Model,
+        limits: Limits | None,
+        contacts: Contacts | None,
+        jacobians_dense: DenseSystemJacobians,
+        jacobians_sparse: SparseSystemJacobians,
+    ):
+        # Reshape the dense Jacobian data as a matrices
+        J_cts_dense = extract_cts_jacobians(
+            model=model, limits=limits, contacts=contacts, jacobians=jacobians_dense, verbose=self.verbose
+        )
+        J_dofs_dense = extract_dofs_jacobians(model=model, jacobians=jacobians_dense, verbose=self.verbose)
+
+        # Get the (dense) numpy version of the sparse Jacobians
+        J_dofs_sparse = jacobians_sparse._J_dofs.bsm.numpy()
+        J_cts_sparse = jacobians_sparse._J_cts.bsm.numpy()
+
+        self.assertEqual(len(J_cts_dense), len(J_cts_sparse))
+        self.assertEqual(len(J_dofs_dense), len(J_dofs_sparse))
+
+        # Check that Jacobians match
+        for mat_id in range(len(J_cts_dense)):
+            if J_dofs_dense[mat_id].size > 0:
+                diff_J_dofs = J_dofs_dense[mat_id] - J_dofs_sparse[mat_id]
+                self.assertLess(np.max(np.abs(diff_J_dofs)), self.epsilon)
+
+            diff_J_cts = J_cts_dense[mat_id][: J_cts_sparse[mat_id].shape[0], :] - J_cts_sparse[mat_id]
+            self.assertLess(np.max(np.abs(diff_J_cts)), self.epsilon)
+
+            # Extra entries in dense constraint Jacobian need to be zero
+            if J_cts_dense[mat_id].shape[0] > J_cts_sparse[mat_id].shape[0]:
+                self.assertEqual(np.max(np.abs(J_cts_dense[mat_id][J_cts_sparse[mat_id].shape[0] :, :])), 0)
+
+    ###
     # Construction
     ###
+
+    def test_01_allocate_single_sparse_system_jacobians_only_joints(self):
+        # Construct the example
+        model, _ = self._create_fourbar_example()
+
+        # Create the sparse Jacobians
+        jacobians = SparseSystemJacobians(model=model, device=self.default_device)
+        if self.verbose:
+            print(f"J_cts max_dims (shape={jacobians._J_cts.bsm.max_dims.shape}): {jacobians._J_cts.bsm.max_dims}")
+            print(f"J_cts dims (shape={jacobians._J_cts.bsm.dims.shape}): {jacobians._J_cts.bsm.dims}")
+            print(f"J_cts max_nzb (shape={jacobians._J_cts.bsm.max_nzb.shape}): {jacobians._J_cts.bsm.max_nzb}")
+            print(f"J_dofs max_dims (shape={jacobians._J_dofs.bsm.max_dims.shape}): {jacobians._J_dofs.bsm.max_dims}")
+            print(f"J_dofs dims (shape={jacobians._J_dofs.bsm.dims.shape}): {jacobians._J_dofs.bsm.dims}")
+            print(f"J_dofs max_nzb (shape={jacobians._J_dofs.bsm.max_nzb.shape}): {jacobians._J_dofs.bsm.max_nzb}")
+
+        # Check the allocation of Jacobians
+        model_num_cts = model.size.sum_of_num_joint_cts
+        model_num_dofs = model.size.sum_of_num_joint_dofs
+        model_num_bodies = model.size.sum_of_num_bodies
+        self.assertEqual(jacobians._J_cts.bsm.num_matrices, 1)
+        self.assertEqual(jacobians._J_dofs.bsm.num_matrices, 1)
+        self.assertTrue((jacobians._J_cts.bsm.max_dims.numpy() == [[model_num_cts, 6 * model_num_bodies]]).all())
+        self.assertTrue((jacobians._J_dofs.bsm.max_dims.numpy() == [[model_num_dofs, 6 * model_num_bodies]]).all())
+        self.assertEqual(jacobians._J_cts.bsm.max_nzb.numpy()[0], 2 * model_num_cts)
+
+    def test_02_allocate_single_sparse_system_jacobians_with_limits(self):
+        # Construct the example
+        model, _, limits = self._create_fourbar_example(create_limits=True)
+
+        # Create the Jacobians container
+        jacobians = SparseSystemJacobians(model=model, limits=limits, device=self.default_device)
+        if self.verbose:
+            print(f"J_cts max_dims (shape={jacobians._J_cts.bsm.max_dims.shape}): {jacobians._J_cts.bsm.max_dims}")
+            print(f"J_cts dims (shape={jacobians._J_cts.bsm.dims.shape}): {jacobians._J_cts.bsm.dims}")
+            print(f"J_cts max_nzb (shape={jacobians._J_cts.bsm.max_nzb.shape}): {jacobians._J_cts.bsm.max_nzb}")
+            print(f"J_dofs max_dims (shape={jacobians._J_dofs.bsm.max_dims.shape}): {jacobians._J_dofs.bsm.max_dims}")
+            print(f"J_dofs dims (shape={jacobians._J_dofs.bsm.dims.shape}): {jacobians._J_dofs.bsm.dims}")
+            print(f"J_dofs max_nzb (shape={jacobians._J_dofs.bsm.max_nzb.shape}): {jacobians._J_dofs.bsm.max_nzb}")
+
+        # Check the allocation of Jacobians
+        model_num_cts = model.size.sum_of_num_joint_cts + limits.model_max_limits_host
+        model_num_dofs = model.size.sum_of_num_joint_dofs
+        model_num_bodies = model.size.sum_of_num_bodies
+        self.assertEqual(jacobians._J_cts.bsm.num_matrices, 1)
+        self.assertEqual(jacobians._J_dofs.bsm.num_matrices, 1)
+        self.assertTrue((jacobians._J_cts.bsm.max_dims.numpy() == [[model_num_cts, 6 * model_num_bodies]]).all())
+        self.assertTrue((jacobians._J_dofs.bsm.max_dims.numpy() == [[model_num_dofs, 6 * model_num_bodies]]).all())
+        self.assertEqual(jacobians._J_cts.bsm.max_nzb.numpy()[0], 2 * model_num_cts)
+
+    def test_03_allocate_single_sparse_system_jacobians_with_contacts(self):
+        # Problem constants
+        max_world_contacts = 12
+
+        # Construct the example
+        model, _, contacts = self._create_fourbar_example(
+            create_contacts=True,
+            max_world_contacts=max_world_contacts,
+        )
+
+        # Create the Jacobians container
+        jacobians = SparseSystemJacobians(model=model, contacts=contacts, device=self.default_device)
+        if self.verbose:
+            print(f"J_cts max_dims (shape={jacobians._J_cts.bsm.max_dims.shape}): {jacobians._J_cts.bsm.max_dims}")
+            print(f"J_cts dims (shape={jacobians._J_cts.bsm.dims.shape}): {jacobians._J_cts.bsm.dims}")
+            print(f"J_cts max_nzb (shape={jacobians._J_cts.bsm.max_nzb.shape}): {jacobians._J_cts.bsm.max_nzb}")
+            print(f"J_dofs max_dims (shape={jacobians._J_dofs.bsm.max_dims.shape}): {jacobians._J_dofs.bsm.max_dims}")
+            print(f"J_dofs dims (shape={jacobians._J_dofs.bsm.dims.shape}): {jacobians._J_dofs.bsm.dims}")
+            print(f"J_dofs max_nzb (shape={jacobians._J_dofs.bsm.max_nzb.shape}): {jacobians._J_dofs.bsm.max_nzb}")
+
+        # Check the allocation of Jacobians
+        model_num_cts = model.size.sum_of_num_joint_cts + 3 * contacts.model_max_contacts_host
+        model_num_dofs = model.size.sum_of_num_joint_dofs
+        model_num_bodies = model.size.sum_of_num_bodies
+        self.assertEqual(jacobians._J_cts.bsm.num_matrices, 1)
+        self.assertEqual(jacobians._J_dofs.bsm.num_matrices, 1)
+        self.assertTrue((jacobians._J_cts.bsm.max_dims.numpy() == [[model_num_cts, 6 * model_num_bodies]]).all())
+        self.assertTrue((jacobians._J_dofs.bsm.max_dims.numpy() == [[model_num_dofs, 6 * model_num_bodies]]).all())
+        self.assertEqual(jacobians._J_cts.bsm.max_nzb.numpy()[0], 2 * model_num_cts)
+
+    def test_04_allocate_single_sparse_system_jacobians_with_limits_and_contacts(self):
+        # Problem constants
+        max_world_contacts = 12
+
+        # Construct the example
+        model, _, limits, contacts = self._create_fourbar_example(
+            create_limits=True,
+            create_contacts=True,
+            max_world_contacts=max_world_contacts,
+        )
+
+        # Create the Jacobians container
+        jacobians = SparseSystemJacobians(model=model, limits=limits, contacts=contacts, device=self.default_device)
+        if self.verbose:
+            print(f"J_cts max_dims (shape={jacobians._J_cts.bsm.max_dims.shape}): {jacobians._J_cts.bsm.max_dims}")
+            print(f"J_cts dims (shape={jacobians._J_cts.bsm.dims.shape}): {jacobians._J_cts.bsm.dims}")
+            print(f"J_cts max_nzb (shape={jacobians._J_cts.bsm.max_nzb.shape}): {jacobians._J_cts.bsm.max_nzb}")
+            print(f"J_dofs max_dims (shape={jacobians._J_dofs.bsm.max_dims.shape}): {jacobians._J_dofs.bsm.max_dims}")
+            print(f"J_dofs dims (shape={jacobians._J_dofs.bsm.dims.shape}): {jacobians._J_dofs.bsm.dims}")
+            print(f"J_dofs max_nzb (shape={jacobians._J_dofs.bsm.max_nzb.shape}): {jacobians._J_dofs.bsm.max_nzb}")
+
+        # Check the allocation of Jacobians
+        model_num_cts = (
+            model.size.sum_of_num_joint_cts + limits.model_max_limits_host + 3 * contacts.model_max_contacts_host
+        )
+        model_num_dofs = model.size.sum_of_num_joint_dofs
+        model_num_bodies = model.size.sum_of_num_bodies
+        self.assertEqual(jacobians._J_cts.bsm.num_matrices, 1)
+        self.assertEqual(jacobians._J_dofs.bsm.num_matrices, 1)
+        self.assertTrue((jacobians._J_cts.bsm.max_dims.numpy() == [[model_num_cts, 6 * model_num_bodies]]).all())
+        self.assertTrue((jacobians._J_dofs.bsm.max_dims.numpy() == [[model_num_dofs, 6 * model_num_bodies]]).all())
+        self.assertEqual(jacobians._J_cts.bsm.max_nzb.numpy()[0], 2 * model_num_cts)
+
+    def test_05_allocate_homogeneous_sparse_system_jacobians(self):
+        # Problem constants
+        num_worlds = 3
+        max_world_contacts = 12
+
+        # Construct the example
+        model, _, limits, contacts = self._create_fourbar_example(
+            create_limits=True,
+            create_contacts=True,
+            num_worlds=num_worlds,
+            max_world_contacts=max_world_contacts,
+        )
+
+        # Create the Jacobians container
+        jacobians = SparseSystemJacobians(model=model, limits=limits, contacts=contacts, device=self.default_device)
+        if self.verbose:
+            print(f"J_cts max_dims (shape={jacobians._J_cts.bsm.max_dims.shape}): {jacobians._J_cts.bsm.max_dims}")
+            print(f"J_cts dims (shape={jacobians._J_cts.bsm.dims.shape}): {jacobians._J_cts.bsm.dims}")
+            print(f"J_cts max_nzb (shape={jacobians._J_cts.bsm.max_nzb.shape}): {jacobians._J_cts.bsm.max_nzb}")
+            print(f"J_dofs max_dims (shape={jacobians._J_dofs.bsm.max_dims.shape}): {jacobians._J_dofs.bsm.max_dims}")
+            print(f"J_dofs dims (shape={jacobians._J_dofs.bsm.dims.shape}): {jacobians._J_dofs.bsm.dims}")
+            print(f"J_dofs max_nzb (shape={jacobians._J_dofs.bsm.max_nzb.shape}): {jacobians._J_dofs.bsm.max_nzb}")
+
+        # Check the allocation of Jacobians
+        num_body_dofs = [model.worlds[w].num_body_dofs for w in range(num_worlds)]
+        num_joint_dofs = [model.worlds[w].num_joint_dofs for w in range(num_worlds)]
+        num_total_cts = [
+            (model.worlds[w].num_joint_cts + limits.world_max_limits_host[w] + 3 * contacts.world_max_contacts_host[w])
+            for w in range(num_worlds)
+        ]
+        self.assertEqual(jacobians._J_cts.bsm.num_matrices, num_worlds)
+        self.assertEqual(jacobians._J_dofs.bsm.num_matrices, num_worlds)
+        self.assertTrue(
+            (
+                jacobians._J_cts.bsm.max_dims.numpy()
+                == [[num_total_cts[w], num_body_dofs[w]] for w in range(num_worlds)]
+            ).all()
+        )
+        self.assertTrue(
+            (
+                jacobians._J_dofs.bsm.max_dims.numpy()
+                == [[num_joint_dofs[w], num_body_dofs[w]] for w in range(num_worlds)]
+            ).all()
+        )
+        self.assertTrue(
+            (jacobians._J_cts.bsm.max_nzb.numpy() == [2 * num_total_cts[w] for w in range(num_worlds)]).all()
+        )
+
+    def test_06_allocate_heterogeneous_sparse_system_jacobians(self):
+        # Problem constants
+        max_world_contacts = 12
+
+        # Construct the model
+        builder = make_basics_heterogeneous_builder()
+        num_worlds = builder.num_worlds
+        model = builder.finalize(device=self.default_device)
+        if self.verbose:
+            print("")  # Add a newline for better readability
+            print(f"model.size.sum_of_num_bodies: {model.size.sum_of_num_bodies}")
+            print(f"model.size.sum_of_num_joints: {model.size.sum_of_num_joints}")
+            print(f"model.size.sum_of_num_joint_cts: {model.size.sum_of_num_joint_cts}")
+            print(f"model.size.sum_of_num_joint_dofs: {model.size.sum_of_num_joint_dofs}")
+
+        # Construct and allocate the limits container
+        limits = Limits(model=model, device=self.default_device)
+        if self.verbose:
+            print("limits.model_max_limits_host: ", limits.model_max_limits_host)
+            print("limits.world_max_limits_host: ", limits.world_max_limits_host)
+
+        # Set the contact allocation capacities
+        required_world_max_contacts = [max_world_contacts] * builder.num_worlds
+        if self.verbose:
+            print("required_world_max_contacts: ", required_world_max_contacts)
+
+        # Construct and allocate the contacts container
+        contacts = Contacts(capacity=required_world_max_contacts, device=self.default_device)
+        if self.verbose:
+            print("contacts.default_max_world_contacts: ", contacts.default_max_world_contacts)
+            print("contacts.model_max_contacts_host: ", contacts.model_max_contacts_host)
+            print("contacts.world_max_contacts_host: ", contacts.world_max_contacts_host)
+
+        # Create the Jacobians container
+        jacobians = SparseSystemJacobians(model=model, limits=limits, contacts=contacts, device=self.default_device)
+        if self.verbose:
+            print(f"J_cts max_dims (shape={jacobians._J_cts.bsm.max_dims.shape}): {jacobians._J_cts.bsm.max_dims}")
+            print(f"J_cts dims (shape={jacobians._J_cts.bsm.dims.shape}): {jacobians._J_cts.bsm.dims}")
+            print(f"J_cts max_nzb (shape={jacobians._J_cts.bsm.max_nzb.shape}): {jacobians._J_cts.bsm.max_nzb}")
+            print(f"J_dofs max_dims (shape={jacobians._J_dofs.bsm.max_dims.shape}): {jacobians._J_dofs.bsm.max_dims}")
+            print(f"J_dofs dims (shape={jacobians._J_dofs.bsm.dims.shape}): {jacobians._J_dofs.bsm.dims}")
+            print(f"J_dofs max_nzb (shape={jacobians._J_dofs.bsm.max_nzb.shape}): {jacobians._J_dofs.bsm.max_nzb}")
+
+        # Check the allocation of Jacobians
+        num_body_dofs = [model.worlds[w].num_body_dofs for w in range(num_worlds)]
+        num_joint_dofs = [model.worlds[w].num_joint_dofs for w in range(num_worlds)]
+        num_total_cts = [
+            (model.worlds[w].num_joint_cts + limits.world_max_limits_host[w] + 3 * contacts.world_max_contacts_host[w])
+            for w in range(num_worlds)
+        ]
+        self.assertEqual(jacobians._J_cts.bsm.num_matrices, num_worlds)
+        self.assertEqual(jacobians._J_dofs.bsm.num_matrices, num_worlds)
+        self.assertTrue(
+            (
+                jacobians._J_cts.bsm.max_dims.numpy()
+                == [[num_total_cts[w], num_body_dofs[w]] for w in range(num_worlds)]
+            ).all()
+        )
+        self.assertTrue(
+            (
+                jacobians._J_dofs.bsm.max_dims.numpy()
+                == [[num_joint_dofs[w], num_body_dofs[w]] for w in range(num_worlds)]
+            ).all()
+        )
+
+    def test_07_build_compare_single_system_jacobians(self):
+        # Construct the example
+        model, data = self._create_fourbar_example()
+
+        # Create the Jacobians container
+        jacobians = SparseSystemJacobians(model=model, device=self.default_device)
+        jacobians_dense = DenseSystemJacobians(model=model, device=self.default_device)
+        wp.synchronize()
+
+        # Build the system Jacobians
+        jacobians.build(model=model, data=data)
+        jacobians_dense.build(model=model, data=data)
+        wp.synchronize()
+
+        # Check that Jacobians match
+        self._compare_dense_sparse_jacobians(model, None, None, jacobians_dense, jacobians)
+
+    def test_08_build_compare_single_system_jacobians_with_limits(self):
+        # Construct the example
+        model, data, limits = self._create_fourbar_example(create_limits=True)
+
+        # Create the Jacobians container
+        jacobians = SparseSystemJacobians(model=model, limits=limits, device=self.default_device)
+        jacobians_dense = DenseSystemJacobians(model=model, limits=limits, device=self.default_device)
+        wp.synchronize()
+
+        # Build the system Jacobians
+        jacobians.build(model=model, data=data, limits=limits.data)
+        jacobians_dense.build(model=model, data=data, limits=limits.data)
+        wp.synchronize()
+
+        # Check that Jacobians match
+        self._compare_dense_sparse_jacobians(model, limits, None, jacobians_dense, jacobians)
+
+    def test_09_build_compare_single_system_jacobians_with_contacts(self):
+        # Constants
+        max_world_contacts = 12
+
+        # Construct the example
+        model, data, contacts = self._create_fourbar_example(
+            create_contacts=True,
+            max_world_contacts=max_world_contacts,
+        )
+
+        # Create the Jacobians container
+        jacobians = SparseSystemJacobians(model=model, contacts=contacts, device=self.default_device)
+        jacobians_dense = DenseSystemJacobians(model=model, contacts=contacts, device=self.default_device)
+        wp.synchronize()
+
+        # Build the system Jacobians
+        jacobians.build(model=model, data=data, contacts=contacts.data)
+        jacobians_dense.build(model=model, data=data, contacts=contacts.data)
+        wp.synchronize()
+
+        # Check that Jacobians match
+        self._compare_dense_sparse_jacobians(model, None, contacts, jacobians_dense, jacobians)
+
+    def test_10_build_compare_single_system_jacobians_with_limits_and_contacts(self):
+        # Constants
+        max_world_contacts = 12
+
+        # Construct the example
+        model, data, limits, contacts = self._create_fourbar_example(
+            create_limits=True,
+            create_contacts=True,
+            max_world_contacts=max_world_contacts,
+        )
+
+        # Create the Jacobians container
+        jacobians = SparseSystemJacobians(model=model, limits=limits, contacts=contacts, device=self.default_device)
+        jacobians_dense = DenseSystemJacobians(
+            model=model, limits=limits, contacts=contacts, device=self.default_device
+        )
+        wp.synchronize()
+
+        # Build the system Jacobians
+        jacobians.build(model=model, data=data, limits=limits.data, contacts=contacts.data)
+        jacobians_dense.build(model=model, data=data, limits=limits.data, contacts=contacts.data)
+        wp.synchronize()
+
+        # Check that Jacobians match
+        self._compare_dense_sparse_jacobians(model, limits, contacts, jacobians_dense, jacobians)
+
+    def test_11_build_compare_homogeneous_system_jacobians(self):
+        # Problem constants
+        num_worlds = 3
+        max_world_contacts = 12
+
+        # Construct the example
+        model, data, limits, contacts = self._create_fourbar_example(
+            create_limits=True,
+            create_contacts=True,
+            num_worlds=num_worlds,
+            max_world_contacts=max_world_contacts,
+        )
+
+        # Create the Jacobians container
+        jacobians = SparseSystemJacobians(model=model, limits=limits, contacts=contacts, device=self.default_device)
+        jacobians_dense = DenseSystemJacobians(
+            model=model, limits=limits, contacts=contacts, device=self.default_device
+        )
+        wp.synchronize()
+
+        # Build the system Jacobians
+        jacobians.build(model=model, data=data, limits=limits.data, contacts=contacts.data)
+        jacobians_dense.build(model=model, data=data, limits=limits.data, contacts=contacts.data)
+        wp.synchronize()
+
+        # Check that Jacobians match
+        self._compare_dense_sparse_jacobians(model, limits, contacts, jacobians_dense, jacobians)
+
+    def test_12_build_compare_heterogeneous_system_jacobians(self):
+        # Problem constants
+        max_world_contacts = 12
+
+        # Construct the model description using the ModelBuilder
+        builder = make_basics_heterogeneous_builder()
+
+        # Create the model from the builder
+        model = builder.finalize(device=self.default_device)
+
+        # Create a model state container
+        data = model.data(device=self.default_device)
+
+        # Construct and allocate the limits container
+        limits = Limits(model=model, device=self.default_device)
+
+        # Create the collision detector
+        settings = CollisionDetectorSettings(max_contacts_per_world=max_world_contacts, pipeline="primitive")
+        detector = CollisionDetector(model=model, builder=builder, settings=settings, device=self.default_device)
+
+        # Create the constraints info
+        make_unilateral_constraints_info(
+            model=model,
+            data=data,
+            limits=limits,
+            contacts=detector.contacts,
+            device=self.default_device,
+        )
+        if self.verbose:
+            print("")  # Add a newline for better readability
+            print_model_constraint_info(model)
+            print_model_data_info(data)
+
+        # Perturb the fourbar bodies in poses that trigger the joint limits
+        set_fourbar_body_states(model=model, data=data)
+        wp.synchronize()
+        if self.verbose:
+            print("data.bodies.q_i:\n", data.bodies.q_i)
+            print("data.bodies.u_i:\n", data.bodies.u_i)
+
+        # Compute the joints state
+        compute_joints_data(model=model, q_j_ref=wp.zeros_like(data.joints.q_j), data=data)
+        wp.synchronize()
+        if self.verbose:
+            print("data.joints.p_j:\n", data.joints.p_j)
+            print("data.joints.r_j:\n", data.joints.r_j)
+            print("data.joints.dr_j:\n", data.joints.dr_j)
+            print("data.joints.q_j:\n", data.joints.q_j)
+            print("data.joints.dq_j:\n", data.joints.dq_j)
+
+        # Run limit detection to generate active limits
+        limits.detect(model, data)
+        wp.synchronize()
+        if self.verbose:
+            print(f"limits.world_active_limits: {limits.world_active_limits}")
+            print(f"data.info.num_limits: {data.info.num_limits}")
+
+        # Run collision detection to generate active contacts
+        detector.collide(model, data)
+        wp.synchronize()
+        if self.verbose:
+            print(f"contacts.world_active_contacts: {detector.contacts.world_active_contacts}")
+            print(f"data.info.num_contacts: {data.info.num_contacts}")
+
+        # Update the constraints info
+        update_constraints_info(model=model, data=data)
+        if self.verbose:
+            print("")  # Add a newline for better readability
+            print_model_data_info(data)
+        wp.synchronize()
+
+        # Create the Jacobians container
+        jacobians = SparseSystemJacobians(
+            model=model, limits=limits, contacts=detector.contacts, device=self.default_device
+        )
+        jacobians_dense = DenseSystemJacobians(
+            model=model, limits=limits, contacts=detector.contacts, device=self.default_device
+        )
+        wp.synchronize()
+
+        # Build the system Jacobians
+        jacobians.build(model=model, data=data, limits=limits.data, contacts=detector.contacts.data)
+        jacobians_dense.build(model=model, data=data, limits=limits.data, contacts=detector.contacts.data)
+        wp.synchronize()
+
+        # Check that Jacobians match
+        self._compare_dense_sparse_jacobians(model, limits, detector.contacts, jacobians_dense, jacobians)
 
     ###
     # Operations

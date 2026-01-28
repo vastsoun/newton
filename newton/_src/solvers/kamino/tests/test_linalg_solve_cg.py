@@ -23,7 +23,13 @@ import warp as wp
 from newton._src.solvers.kamino.core.types import float32
 from newton._src.solvers.kamino.linalg.conjugate import BatchedLinearOperator, CGSolver, CRSolver
 from newton._src.solvers.kamino.linalg.core import DenseLinearOperatorData, DenseSquareMultiLinearInfo
-from newton._src.solvers.kamino.linalg.sparse import BlockDType, BlockSparseMatrices
+from newton._src.solvers.kamino.linalg.linear import ConjugateGradientSolver
+from newton._src.solvers.kamino.linalg.sparse import (
+    BlockDType,
+    BlockSparseMatrices,
+    allocate_block_sparse_from_dense,
+    dense_to_block_sparse_copy_values,
+)
 from newton._src.solvers.kamino.linalg.utils.rand import random_spd_matrix
 from newton._src.solvers.kamino.tests.utils.extract import get_vector_block
 from newton._src.solvers.kamino.tests.utils.print import print_error_stats
@@ -326,6 +332,165 @@ class TestLinalgConjugate(unittest.TestCase):
         self.assertTrue(
             np.allclose(x_result, x_ref, rtol=1e-3, atol=1e-4),
             f"CG solve failed: {x_result} vs {x_ref}, error={np.abs(x_result - x_ref).max():.2e}",
+        )
+
+    def test_dense_to_block_sparse_conversion(self):
+        """Test conversion from DenseLinearOperatorData to BlockSparseMatrices and back."""
+        if not wp.get_cuda_devices():
+            self.skipTest("No CUDA devices found")
+        device = wp.get_cuda_device()
+
+        rng = np.random.default_rng(self.seed)
+        n_worlds = 4
+        block_size = 4
+        dims = [12, 16, 8, 20]  # Different dimensions per world
+
+        # Create block-sparse matrices in numpy (some blocks are zero)
+        original_matrices = []
+        for w, dim in enumerate(dims):
+            n_blocks = (dim + block_size - 1) // block_size
+            matrix = np.zeros((dim, dim), dtype=np.float32)
+
+            # Fill some blocks with random values, leave others as zero
+            for bi in range(n_blocks):
+                for bj in range(n_blocks):
+                    # ~60% chance of non-zero block
+                    if rng.random() < 0.6:
+                        row_start = bi * block_size
+                        col_start = bj * block_size
+                        row_end = min(row_start + block_size, dim)
+                        col_end = min(col_start + block_size, dim)
+                        block_rows = row_end - row_start
+                        block_cols = col_end - col_start
+                        matrix[row_start:row_end, col_start:col_end] = rng.standard_normal(
+                            (block_rows, block_cols)
+                        ).astype(np.float32)
+
+            original_matrices.append(matrix)
+
+        # Create DenseLinearOperatorData using canonical compact storage:
+        # - Offsets based on maxdim^2 (each world gets maxdim^2 slots)
+        # - Within each world, only dim*dim elements stored with stride=dim
+        max_dim = max(dims)
+
+        # Allocate with maxdim^2 per world, but only store dim*dim elements compactly
+        A_flat = np.full(n_worlds * max_dim * max_dim, np.inf, dtype=np.float32)
+        for w, (dim, matrix) in enumerate(zip(dims, original_matrices, strict=False)):
+            offset = w * max_dim * max_dim
+            # Store compactly with dim as stride (canonical format)
+            A_flat[offset : offset + dim * dim] = matrix.flatten()
+        A_wp = wp.array(A_flat, dtype=float32, device=device)
+
+        info = DenseSquareMultiLinearInfo()
+        info.finalize(dimensions=[max_dim] * n_worlds, dtype=float32, device=device)
+        info.dim = wp.array(dims, dtype=wp.int32, device=device)
+        dense_op = DenseLinearOperatorData(info=info, mat=A_wp)
+
+        # Allocate BSM with threshold (allow for all blocks)
+        bsm = allocate_block_sparse_from_dense(
+            dense_op=dense_op,
+            block_size=block_size,
+            sparsity_threshold=1.0,
+            device=device,
+        )
+
+        # Convert dense to block sparse
+        dense_to_block_sparse_copy_values(
+            dense_op=dense_op,
+            bsm=bsm,
+            block_size=block_size,
+        )
+        wp.synchronize()
+
+        # Convert back to numpy and compare
+        recovered_matrices = bsm.numpy()
+
+        for w, (orig, recovered) in enumerate(zip(original_matrices, recovered_matrices, strict=False)):
+            dim = dims[w]
+            orig_trimmed = orig[:dim, :dim].astype(np.float32)
+            recovered_trimmed = recovered[:dim, :dim].astype(np.float32)
+
+            if self.verbose:
+                print(f"World {w} (dim={dim}):")
+                print(f"  Original non-zeros: {np.count_nonzero(orig_trimmed)}")
+                print(f"  Recovered non-zeros: {np.count_nonzero(recovered_trimmed)}")
+                max_diff = np.abs(orig_trimmed - recovered_trimmed).max()
+                print(f"  Max abs diff: {max_diff:.2e}")
+
+            self.assertTrue(
+                np.allclose(orig_trimmed, recovered_trimmed, rtol=1e-5, atol=1e-6),
+                f"World {w}: matrices don't match, max diff={np.abs(orig_trimmed - recovered_trimmed).max():.2e}",
+            )
+
+    def test_cg_solver_discover_sparse(self):
+        """Test ConjugateGradientSolver with discover_sparse=True."""
+        if not wp.get_cuda_devices():
+            self.skipTest("No CUDA devices found")
+        device = wp.get_cuda_device()
+
+        rng = np.random.default_rng(self.seed)
+        n_worlds = 3
+        block_size = 6
+        maxdim = 24  # Multiple of block_size for clean blocks
+
+        # Generate SPD matrices and RHS
+        A_list, b_list, x_ref_list = [], [], []
+        for i in range(n_worlds):
+            A = random_spd_matrix(dim=maxdim, seed=self.seed + i, dtype=np.float32)
+            b = rng.standard_normal(maxdim).astype(np.float32)
+            A_list.append(A)
+            b_list.append(b)
+            x_ref_list.append(np.linalg.solve(A, b))
+
+        # Create dense storage (compact format: dim*dim per world, with maxdim^2 spacing)
+        A_flat = np.zeros(n_worlds * maxdim * maxdim, dtype=np.float32)
+        for w, A in enumerate(A_list):
+            offset = w * maxdim * maxdim
+            A_flat[offset : offset + maxdim * maxdim] = A.flatten()
+        A_wp = wp.array(A_flat, dtype=float32, device=device)
+
+        # Create DenseLinearOperatorData
+        info = DenseSquareMultiLinearInfo()
+        info.finalize(dimensions=[maxdim] * n_worlds, dtype=float32, device=device)
+        dense_op = DenseLinearOperatorData(info=info, mat=A_wp)
+
+        # Create b and x arrays
+        b_2d = np.array(b_list, dtype=np.float32)
+        b_wp = wp.array(b_2d.flatten(), dtype=float32, device=device)
+        x_wp = wp.zeros(n_worlds * maxdim, dtype=float32, device=device)
+
+        # Solve with discover_sparse=True
+        solver = ConjugateGradientSolver(discover_sparse=True, sparse_block_size=block_size, sparse_threshold=1.0)
+        solver.finalize(dense_op)
+        solver.compute(A_wp)
+        solver.solve(b_wp, x_wp)
+
+        # Check results
+        x_np = x_wp.numpy().reshape(n_worlds, maxdim)
+        for w in range(n_worlds):
+            x_found = x_np[w]
+            x_ref = x_ref_list[w]
+            if self.verbose:
+                print(f"World {w}: max error = {np.abs(x_found - x_ref).max():.2e}")
+            self.assertTrue(
+                np.allclose(x_found, x_ref, rtol=1e-3, atol=1e-4),
+                f"World {w}: solve failed, max error={np.abs(x_found - x_ref).max():.2e}",
+            )
+
+        # Also solve with discover_sparse=False and compare
+        x_dense_wp = wp.zeros(n_worlds * maxdim, dtype=float32, device=device)
+        solver_dense = ConjugateGradientSolver(discover_sparse=False)
+        solver_dense.finalize(dense_op)
+        solver_dense.compute(A_wp)
+        solver_dense.solve(b_wp, x_dense_wp)
+
+        x_sparse = x_wp.numpy()
+        x_dense = x_dense_wp.numpy()
+        if self.verbose:
+            print(f"Sparse vs dense max diff: {np.abs(x_sparse - x_dense).max():.2e}")
+        self.assertTrue(
+            np.allclose(x_sparse, x_dense, rtol=1e-5, atol=1e-6),
+            f"Sparse and dense solutions differ: max diff={np.abs(x_sparse - x_dense).max():.2e}",
         )
 
 

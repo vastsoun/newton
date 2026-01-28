@@ -32,7 +32,12 @@ from warp.context import Devicelike
 from ..core.types import FloatType, float32, override
 from . import conjugate, factorize
 from .core import DenseLinearOperatorData, DenseSquareMultiLinearInfo, make_dtype_tolerance
-from .sparse import BlockSparseLinearOperators
+from .sparse import (
+    BlockSparseLinearOperators,
+    BlockSparseMatrices,
+    allocate_block_sparse_from_dense,
+    dense_to_block_sparse_copy_values,
+)
 
 ###
 # Module interface
@@ -166,6 +171,23 @@ class LinearSolver(ABC):
         """Ingest matrix data and pre-compute any rhs-independent intermediate data."""
         if not self._operator.info.is_matrix_compatible(A):
             raise ValueError("The provided flat matrix data array does not have enough memory!")
+
+        if False:
+            # DEBUG: Dump matrix BEFORE compute
+            import os
+
+            import numpy as np
+
+            step = getattr(self, "_dump_step", 0)
+            self._dump_step = step + 1
+            wp.synchronize()
+            wid = 0
+            maxdim = self._operator.info.maxdim.numpy()[wid]
+            dim = self._operator.info.dim.numpy()[wid]
+            D = A.numpy()  # .reshape((maxdim, maxdim))[:dim, :dim]
+            os.makedirs("output", exist_ok=True)
+            np.save(f"output/delassus_{step:04d}.npy", D)
+
         self._compute_impl(A=A, **kwargs)
 
     def solve(self, b: wp.array, x: wp.array, **kwargs: dict[str, Any]) -> None:
@@ -293,6 +315,14 @@ class IterativeSolver(LinearSolver):
         self._max_dim: int | None = None
         self._batched_operator: conjugate.BatchedLinearOperator | None = None
 
+        # Sparse discovery settings (via kwargs)
+        self._discover_sparse: bool = kwargs.pop("discover_sparse", True)
+        self._sparse_block_size: int = kwargs.pop("sparse_block_size", 4)
+        self._sparse_threshold: float = kwargs.pop("sparse_threshold", 0.5)
+        self._sparse_bsm: BlockSparseMatrices | None = None
+        self._sparse_operator: conjugate.BatchedLinearOperator | None = None
+        self._sparse_solver: Any = None  # Set by concrete classes
+
         super().__init__(
             operator=operator,
             atol=atol,
@@ -336,6 +366,14 @@ class IterativeSolver(LinearSolver):
         if operator is None:
             raise ValueError("A valid linear operator must be provided!")
 
+        # Update sparse settings from kwargs if provided
+        if "discover_sparse" in kwargs:
+            self._discover_sparse = kwargs.pop("discover_sparse")
+        if "sparse_block_size" in kwargs:
+            self._sparse_block_size = kwargs.pop("sparse_block_size")
+        if "sparse_threshold" in kwargs:
+            self._sparse_threshold = kwargs.pop("sparse_threshold")
+
         self._batched_operator = self._to_batched_operator(operator)
 
         if isinstance(operator, DenseLinearOperatorData):
@@ -369,6 +407,21 @@ class IterativeSolver(LinearSolver):
             elif not isinstance(self._maxiter, wp.array):
                 raise ValueError("The provided maxiter is not a valid wp.array or int!")
 
+        # Allocate block-sparse matrix if sparse discovery is enabled
+        if self._discover_sparse:
+            if not isinstance(operator, DenseLinearOperatorData):
+                raise ValueError("discover_sparse requires a DenseLinearOperatorData operator.")
+            self._sparse_bsm = allocate_block_sparse_from_dense(
+                dense_op=operator,
+                block_size=self._sparse_block_size,
+                sparsity_threshold=self._sparse_threshold,
+                device=self._device,
+            )
+            # Create sparse operator (will be populated at compute time)
+            self._sparse_operator = conjugate.BatchedLinearOperator.from_block_sparse(
+                self._sparse_bsm, self._batched_operator.active_dims
+            )
+
         self._allocate_impl(operator, **kwargs)
 
     @override
@@ -385,6 +438,15 @@ class IterativeSolver(LinearSolver):
 
     def get_solve_metadata(self) -> dict[str, Any]:
         return {"iterations": self._solve_iterations, "residual_norm": self._solve_residual_norm}
+
+    def _update_sparse_bsm(self) -> None:
+        """Updates the block-sparse matrix from the dense operator. Called during compute()."""
+        if self._discover_sparse and self._sparse_bsm is not None and self._operator is not None:
+            dense_to_block_sparse_copy_values(
+                dense_op=self._operator,
+                bsm=self._sparse_bsm,
+                block_size=self._sparse_block_size,
+            )
 
 
 ###
@@ -704,6 +766,18 @@ class ConjugateGradientSolver(IterativeSolver):
             use_cuda_graph=True,
         )
 
+        if self._discover_sparse and self._sparse_operator is not None:
+            self._sparse_solver = conjugate.CGSolver(
+                A=self._sparse_operator,
+                world_active=self._world_active,
+                atol=self.atol,
+                rtol=self.rtol,
+                maxiter=self._maxiter,
+                Mi=self._Mi,
+                callback=None,
+                use_cuda_graph=True,
+            )
+
     @override
     def _reset_impl(self, A: wp.array | None = None, **kwargs: dict[str, Any]) -> None:
         if self._jacobi_preconditioner is not None:
@@ -717,6 +791,7 @@ class ConjugateGradientSolver(IterativeSolver):
             raise ValueError(f"{self.__class__.__name__} cannot be re-used with a different matrix.")
         if self._Mi is not None:
             self._update_preconditioner()
+        self._update_sparse_bsm()
 
     @override
     def _solve_inplace_impl(self, x: wp.array, **kwargs: dict[str, Any]) -> None:
@@ -724,10 +799,11 @@ class ConjugateGradientSolver(IterativeSolver):
 
     @override
     def _solve_impl(self, b: wp.array, x: wp.array, **kwargs: dict[str, Any]) -> None:
-        if self.solver is None:
+        solver = self._sparse_solver or self.solver
+        if solver is None:
             raise ValueError("ConjugateGradientSolver.allocate() must be called before solve().")
 
-        self._solve_iterations, self._solve_residual_norm, _ = self.solver.solve(
+        self._solve_iterations, self._solve_residual_norm, _ = solver.solve(
             b=b.reshape((self._num_worlds, self._max_dim)),
             x=x.reshape((self._num_worlds, self._max_dim)),
         )
@@ -797,6 +873,18 @@ class ConjugateResidualSolver(IterativeSolver):
             use_cuda_graph=True,
         )
 
+        if self._discover_sparse and self._sparse_operator is not None:
+            self._sparse_solver = conjugate.CRSolver(
+                A=self._sparse_operator,
+                world_active=self._world_active,
+                atol=self.atol,
+                rtol=self.rtol,
+                maxiter=self._maxiter,
+                Mi=self._Mi,
+                callback=None,
+                use_cuda_graph=True,
+            )
+
     @override
     def _reset_impl(self, A: wp.array | None = None, **kwargs: dict[str, Any]) -> None:
         if self._jacobi_preconditioner is not None:
@@ -810,6 +898,7 @@ class ConjugateResidualSolver(IterativeSolver):
             raise ValueError(f"{self.__class__.__name__} cannot be re-used with a different matrix.")
         if self._Mi is not None:
             self._update_preconditioner()
+        self._update_sparse_bsm()
 
     @override
     def _solve_inplace_impl(self, x: wp.array, **kwargs: dict[str, Any]) -> None:
@@ -817,10 +906,11 @@ class ConjugateResidualSolver(IterativeSolver):
 
     @override
     def _solve_impl(self, b: wp.array, x: wp.array, **kwargs: dict[str, Any]) -> None:
-        if self.solver is None:
+        solver = self._sparse_solver or self.solver
+        if solver is None:
             raise ValueError("ConjugateResidualSolver.allocate() must be called before solve().")
 
-        self._solve_iterations, self._solve_residual_norm, _ = self.solver.solve(
+        self._solve_iterations, self._solve_residual_norm, _ = solver.solve(
             b=b.reshape((self._num_worlds, self._max_dim)),
             x=x.reshape((self._num_worlds, self._max_dim)),
         )

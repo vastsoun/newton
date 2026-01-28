@@ -27,7 +27,14 @@ from .sparse import BlockDType, BlockSparseMatrices
 # Module interface
 ###
 
-__all__ = ["block_sparse_gemv", "block_sparse_matvec", "block_sparse_transpose_gemv", "block_sparse_transpose_matvec"]
+__all__ = [
+    "block_sparse_gemv",
+    "block_sparse_matvec",
+    "block_sparse_transpose_gemv",
+    "block_sparse_transpose_matvec",
+    "dense_gemv",
+    "diag_gemv",
+]
 
 ###
 # Module configs
@@ -440,9 +447,134 @@ def _make_block_sparse_transpose_gemv_kernel(block_type: BlockDType):
     return block_sparse_transpose_gemv_kernel
 
 
+@wp.kernel
+def _diag_gemv_kernel(
+    x: wp.array2d(dtype=Any),
+    y: wp.array2d(dtype=Any),
+    D: wp.array2d(dtype=Any),
+    active_dims: wp.array(dtype=Any),
+    world_active: wp.array(dtype=wp.int32),
+    alpha: Any,
+    beta: Any,
+):
+    """Computes y[w] = alpha * D[w] * x[w] + beta * y[w] for each world w."""
+    world, row = wp.tid()
+    assert world < len(active_dims)
+    if world_active[world] == 0 or row >= active_dims[world]:
+        return
+
+    zero = type(alpha)(0)
+    s = y.dtype(0)
+
+    if alpha != zero:
+        s += alpha * D[world, row] * x[world, row]
+    if beta != zero:
+        s += beta * y[world, row]
+    y[world, row] = s
+
+
+@wp.kernel
+def _dense_gemv_kernel(
+    x: wp.array2d(dtype=Any),
+    y: wp.array2d(dtype=Any),
+    A: wp.array2d(dtype=Any),
+    active_dims: wp.array(dtype=Any),
+    world_active: wp.array(dtype=wp.int32),
+    alpha: Any,
+    beta: Any,
+    matrix_stride: int,
+    tile_size: int,
+):
+    """Computes y[w] = alpha * (A[w] @ x[w]) + beta * y[w] in-place for each world w."""
+    world, row, lane = wp.tid()
+    assert world < len(active_dims)
+    dim = active_dims[world]
+    if world_active[world] == 0 or row >= dim:
+        return
+
+    row_stride = active_dims[world]
+    zero = type(alpha)(0)
+    s = zero
+    if alpha != zero:
+        for col in range(lane, dim, tile_size):
+            s += A[world, row * row_stride + col] * x[world, col]
+    row_tile = wp.tile_sum(wp.tile(s * alpha))
+    if beta != zero:
+        row_tile += beta * wp.tile_load(y[world], shape=1, offset=row)
+    wp.tile_store(y[world], row_tile, offset=row)
+
+
 ##
 # Launchers
 ##
+
+
+def diag_gemv(
+    D: wp.array2d,
+    x: wp.array2d,
+    y: wp.array2d,
+    active_dims: wp.array,
+    world_active: wp.array,
+    alpha: float,
+    beta: float,
+):
+    """
+    Launch kernel for diagonal matrix gemv: y = alpha * D * x + beta * y
+
+    Args:
+        D: Diagonal matrices stored as 2D array (n_worlds, max_dim).
+        x: Input vectors (n_worlds, max_dim).
+        y: Output vectors (n_worlds, max_dim), modified in-place.
+        active_dims: Active dimension per world.
+        world_active: Boolean mask for active worlds.
+        alpha: Scalar multiplier for D * x.
+        beta: Scalar multiplier for y.
+    """
+    n_worlds, max_dim = x.shape
+    dtype = x.dtype
+    wp.launch(
+        _diag_gemv_kernel,
+        dim=(n_worlds, max_dim),
+        inputs=[x, y, D, active_dims, world_active, dtype(alpha), dtype(beta)],
+        device=x.device,
+    )
+
+
+def dense_gemv(
+    A: wp.array2d,
+    x: wp.array2d,
+    y: wp.array2d,
+    active_dims: wp.array,
+    world_active: wp.array,
+    alpha: float,
+    beta: float,
+    matrix_stride: int,
+    block_dim: int = 64,
+):
+    """
+    Launch kernel for dense matrix gemv: y = alpha * A @ x + beta * y
+
+    Args:
+        A: Dense matrices stored as 2D array (n_worlds, max_dim * max_dim).
+        x: Input vectors (n_worlds, max_dim).
+        y: Output vectors (n_worlds, max_dim), modified in-place.
+        active_dims: Active dimension per world.
+        world_active: Boolean mask for active worlds.
+        alpha: Scalar multiplier for A * x.
+        beta: Scalar multiplier for y.
+        matrix_stride: Stride for matrix row indexing.
+        block_dim: Block dimension for tiled computation.
+    """
+    n_worlds, max_dim = x.shape
+    dtype = x.dtype
+    tile_size = block_dim if x.device.is_cuda else 1
+    wp.launch(
+        _dense_gemv_kernel,
+        dim=(n_worlds, max_dim, block_dim),
+        inputs=[x, y, A, active_dims, world_active, dtype(alpha), dtype(beta), matrix_stride, tile_size],
+        device=x.device,
+        block_dim=tile_size if tile_size > 1 else 256,
+    )
 
 
 def block_sparse_matvec(

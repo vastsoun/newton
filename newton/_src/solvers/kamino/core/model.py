@@ -23,7 +23,6 @@ from warp.context import Devicelike
 from .bodies import RigidBodiesData, RigidBodiesModel
 from .control import Control
 from .geometry import (
-    CollisionGeometriesModel,
     GeometriesData,
     GeometriesModel,
 )
@@ -92,10 +91,6 @@ class ModelSize:
             The total number of collision geometries in the model across all worlds.
         max_of_num_collision_geoms (int):
             The maximum number of collision geometries in any world.
-        sum_of_num_physical_geoms (int):
-            The total number of physical geometries in the model across all worlds.
-        max_of_num_physical_geoms (int):
-            The maximum number of physical geometries in any world.
         sum_of_num_material_pairs (int):
             The total number of material pairs in the model across all worlds.
         max_of_num_material_pairs (int):
@@ -182,12 +177,6 @@ class ModelSize:
 
     max_of_num_collision_geoms: int = 0
     """The maximum number of collision geometries in any world."""
-
-    sum_of_num_physical_geoms: int = 0
-    """The total number of physical geometries in the model across all worlds."""
-
-    max_of_num_physical_geoms: int = 0
-    """The maximum number of physical geometries in any world."""
 
     sum_of_num_materials: int = 0
     """
@@ -294,7 +283,6 @@ class ModelSize:
             ("num_passive_joints", "sum_of_num_passive_joints", "max_of_num_passive_joints"),
             ("num_actuated_joints", "sum_of_num_actuated_joints", "max_of_num_actuated_joints"),
             ("num_collision_geoms", "sum_of_num_collision_geoms", "max_of_num_collision_geoms"),
-            ("num_physical_geoms", "sum_of_num_physical_geoms", "max_of_num_physical_geoms"),
             ("num_material_pairs", "sum_of_num_material_pairs", "max_of_num_material_pairs"),
             ("num_body_dofs", "sum_of_num_body_dofs", "max_of_num_body_dofs"),
             ("num_joint_coords", "sum_of_num_joint_coords", "max_of_num_joint_coords"),
@@ -348,8 +336,6 @@ class ModelInfo:
         num_actuated_joints (wp.array): The total number of actuated joints in the model.\n
             Shape of ``(num_worlds,)`` and type :class:`int`.
         num_collision_geoms (wp.array): The total number of collision geometries in the model.\n
-            Shape of ``(num_worlds,)`` and type :class:`int`.
-        num_physical_geoms (wp.array): The total number of physical geometries in the model.\n
             Shape of ``(num_worlds,)`` and type :class:`int`.
         max_limits (wp.array): The maximum number of limits allocated for the model.\n
             Shape of ``(num_worlds,)`` and type :class:`int`.
@@ -466,12 +452,6 @@ class ModelInfo:
     num_collision_geoms: wp.array | None = None
     """
     The number of collision geometries in each world.\n
-    Shape of ``(num_worlds,)`` and type :class:`int`.
-    """
-
-    num_physical_geoms: wp.array | None = None
-    """
-    The number of physical geometries in each world.\n
     Shape of ``(num_worlds,)`` and type :class:`int`.
     """
 
@@ -819,7 +799,6 @@ class ModelData:
             constraint residuals and reactions, and generalized (DoF) quantities.
         cgeoms (CollisionGeometriesData): States of collision geometries in the model:
             poses, AABBs etc. computed in world coordinates.
-        pgeoms (GeometriesData): States of physical geometries in the model: poses computed in world coordinates.
     """
 
     info: ModelDataInfo | None = None
@@ -842,9 +821,6 @@ class ModelData:
 
     cgeoms: GeometriesData | None = None
     """States of collision geometries in the model: poses computed in world coordinates."""
-
-    pgeoms: GeometriesData | None = None
-    """States of physical geometries in the model: poses computed in world coordinates."""
 
 
 class Model:
@@ -872,10 +848,8 @@ class Model:
             The rigid bodies model container holding all rigid body entities in the model.
         joints (JointsModel):
             The joints model container holding all joint entities in the model.
-        cgeoms (CollisionGeometriesModel):
+        cgeoms (GeometriesModel):
             The collision geometries model container holding all collision geometry entities in the model.
-        pgeoms (GeometriesModel):
-            The physical geometries model container holding all physical geometry entities in the model.
         material_pairs (MaterialPairsModel):
             The material pairs model container holding all material pairs in the model.
     """
@@ -916,11 +890,8 @@ class Model:
         self.joints: JointsModel | None = None
         """The joints model container holding all joint entities in the model."""
 
-        self.cgeoms: CollisionGeometriesModel | None = None
+        self.cgeoms: GeometriesModel | None = None
         """The collision geometries model container holding all collision geometry entities in the model."""
-
-        self.pgeoms: GeometriesModel | None = None
-        """The physical geometries model container holding all physical geometry entities in the model."""
 
         self.materials: MaterialsModel | None = None
         """
@@ -961,7 +932,6 @@ class Model:
         nb = self.size.sum_of_num_bodies
         nj = self.size.sum_of_num_joints
         ncg = self.size.sum_of_num_collision_geoms
-        npg = self.size.sum_of_num_physical_geoms
 
         # Retrieve the joint coordinate, DoF and constraint counts
         njq = self.size.sum_of_num_joint_coords
@@ -1029,12 +999,6 @@ class Model:
                 pose=wp.zeros(shape=ncg, dtype=transformf, requires_grad=requires_grad),
             )
 
-            # Construct the physical geometries state from the model's initial state
-            pgeoms = GeometriesData(
-                num_geoms=npg,
-                pose=wp.zeros(shape=npg, dtype=transformf, requires_grad=requires_grad),
-            )
-
         # Assemble and return the new model data container
         return ModelData(
             info=info,
@@ -1042,7 +1006,6 @@ class Model:
             bodies=bodies,
             joints=joints,
             cgeoms=cgeoms,
-            pgeoms=pgeoms,
         )
 
     def state(self, requires_grad: bool = False, device: Devicelike = None) -> State:

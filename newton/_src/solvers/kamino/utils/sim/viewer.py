@@ -25,7 +25,7 @@ from PIL import Image
 
 from .....viewer import ViewerGL
 from ...core.builder import ModelBuilder
-from ...core.geometry import CollisionGeometryDescriptor, GeometryDescriptor
+from ...core.geometry import GeometryDescriptor
 from ...core.shapes import ShapeType
 from ...core.types import vec3f
 from ...core.world import WorldDescriptor
@@ -237,8 +237,7 @@ class ViewerKamino(ViewerGL):
 
         # Declare and initialize geometry info cache
         self._worlds: list[WorldDescriptor] = builder.worlds
-        self._collision_geometry: list[CollisionGeometryDescriptor] = builder.collision_geoms
-        self._physical_geometry: list[GeometryDescriptor] = builder.physical_geoms
+        self._collision_geometry: list[GeometryDescriptor] = builder.collision_geoms
 
         # Initialize video recording settings
         self._record_video = record_video
@@ -311,12 +310,6 @@ class ViewerKamino(ViewerGL):
             if cgeom.shape.type == ShapeType.EMPTY:
                 continue
             self.render_geometry(body_poses, cgeom, scope="collision")
-
-        # Render each physical geom
-        for pgeom in self._physical_geometry:
-            if pgeom.shape.type == ShapeType.EMPTY:
-                continue
-            self.render_geometry(body_poses, pgeom, scope="physical")
 
         # Render contacts if they exist and visualization is enabled
         if hasattr(self._simulator, "contacts") and self._simulator.contacts is not None:

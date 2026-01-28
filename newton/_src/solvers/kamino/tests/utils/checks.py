@@ -60,7 +60,6 @@ def assert_builders_equal(
     """
     fixture.assertEqual(builder1.num_bodies, builder2.num_bodies)
     fixture.assertEqual(builder1.num_joints, builder2.num_joints)
-    fixture.assertEqual(builder1.num_physical_geoms, builder2.num_physical_geoms)
     fixture.assertEqual(builder1.num_collision_geoms, builder2.num_collision_geoms)
     fixture.assertEqual(builder1.num_materials, builder2.num_materials)
     for i in range(builder1.num_bodies):

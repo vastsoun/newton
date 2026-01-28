@@ -25,7 +25,7 @@ import warp as wp
 from ....sim.model import Model
 from ..utils import logger as msg
 from .bodies import RigidBodiesData, RigidBodiesModel
-from .geometry import CollisionGeometriesModel, GeometriesData
+from .geometry import GeometriesData, GeometriesModel
 from .gravity import GravityModel
 from .joints import (
     JointActuationType,
@@ -99,10 +99,6 @@ class ModelKaminoSize:
             The total number of collision geometries in the model across all worlds.
         max_of_num_collision_geoms (int):
             The maximum number of collision geometries in any world.
-        sum_of_num_physical_geoms (int):
-            The total number of physical geometries in the model across all worlds.
-        max_of_num_physical_geoms (int):
-            The maximum number of physical geometries in any world.
         sum_of_num_material_pairs (int):
             The total number of material pairs in the model across all worlds.
         max_of_num_material_pairs (int):
@@ -189,12 +185,6 @@ class ModelKaminoSize:
 
     max_of_num_collision_geoms: int = 0
     """The maximum number of collision geometries in any world."""
-
-    sum_of_num_physical_geoms: int = 0
-    """The total number of physical geometries in the model across all worlds."""
-
-    max_of_num_physical_geoms: int = 0
-    """The maximum number of physical geometries in any world."""
 
     sum_of_num_materials: int = 0
     """
@@ -301,7 +291,6 @@ class ModelKaminoSize:
             ("num_passive_joints", "sum_of_num_passive_joints", "max_of_num_passive_joints"),
             ("num_actuated_joints", "sum_of_num_actuated_joints", "max_of_num_actuated_joints"),
             ("num_collision_geoms", "sum_of_num_collision_geoms", "max_of_num_collision_geoms"),
-            ("num_physical_geoms", "sum_of_num_physical_geoms", "max_of_num_physical_geoms"),
             ("num_material_pairs", "sum_of_num_material_pairs", "max_of_num_material_pairs"),
             ("num_body_dofs", "sum_of_num_body_dofs", "max_of_num_body_dofs"),
             ("num_joint_coords", "sum_of_num_joint_coords", "max_of_num_joint_coords"),
@@ -383,12 +372,6 @@ class ModelKaminoInfo:
     num_collision_geoms: wp.array | None = None
     """
     The number of collision geometries in each world.\n
-    Shape of ``(num_worlds,)`` and type :class:`int`.
-    """
-
-    num_physical_geoms: wp.array | None = None
-    """
-    The number of physical geometries in each world.\n
     Shape of ``(num_worlds,)`` and type :class:`int`.
     """
 
@@ -684,7 +667,7 @@ class ModelKamino:
             The rigid bodies model container holding all rigid body entities in the model.
         joints (JointsModel):
             The joints model container holding all joint entities in the model.
-        geoms (CollisionGeometriesModel):
+        geoms (GeometriesModel):
             The geometries model container holding all collision geometry entities in the model.
         materials (MaterialsModel):
             The materials model container holding all material entities in the model.\n
@@ -724,7 +707,7 @@ class ModelKamino:
     joints: JointsModel | None = None
     """The joints model container holding all joint entities in the model."""
 
-    geoms: CollisionGeometriesModel | None = None
+    geoms: GeometriesModel | None = None
     """The collision geometries model container holding all collision geometry entities in the model."""
 
     materials: MaterialsModel | None = None
@@ -1021,7 +1004,6 @@ class ModelKamino:
                 num_passive_joints=0,
                 num_actuated_joints=num_joints_np[w],
                 num_collision_geoms=num_shapes_np[w],
-                num_physical_geoms=0,
                 num_materials=0,  # TODO: how to handle both global and per-world materials simultaneously?
                 num_body_coords=num_body_coords_np[w],
                 num_body_dofs=num_body_dofs_np[w],
@@ -1044,7 +1026,6 @@ class ModelKamino:
                 bodies_idx_offset=body_offset_np[w],
                 joints_idx_offset=joint_offset_np[w],
                 collision_geoms_idx_offset=shape_offset_np[w],
-                physical_geoms_idx_offset=shape_offset_np[w],
                 body_dofs_idx_offset=body_dof_offset_np[w],
                 joint_coords_idx_offset=joint_coord_offset_np[w],
                 joint_dofs_idx_offset=joint_dof_offset_np[w],
@@ -1060,15 +1041,12 @@ class ModelKamino:
                 joint_uids=[],
                 collision_geom_names=[],
                 collision_geom_uids=[],
-                physical_geom_names=[],
-                physical_geom_uids=[],
                 material_names=[],
                 material_uids=[],
                 unary_joint_names=[],
                 fixed_joint_names=[],
                 passive_joint_names=[],
                 actuated_joint_names=[],
-                physical_geometry_layers=["default"],
                 collision_geometry_layers=["default"],
                 collision_geometry_max_contacts=[-1] * num_shapes_np[w],
                 # TODO
@@ -1093,8 +1071,6 @@ class ModelKamino:
             max_of_num_actuated_joints=int(num_joints_np.max()),
             sum_of_num_collision_geoms=int(num_shapes_np.sum()),
             max_of_num_collision_geoms=int(num_shapes_np.max()),
-            sum_of_num_physical_geoms=0,
-            max_of_num_physical_geoms=0,
             sum_of_num_materials=materials_manager.num_materials,
             max_of_num_materials=materials_manager.num_materials,
             sum_of_num_material_pairs=materials_manager.num_material_pairs,
@@ -1136,7 +1112,6 @@ class ModelKamino:
                 num_passive_joints=wp.zeros((model.num_worlds,), dtype=int32),
                 num_actuated_joints=wp.array(num_joints_np, dtype=int32),
                 num_collision_geoms=wp.array(num_shapes_np, dtype=int32),
-                num_physical_geoms=wp.zeros((model.num_worlds,), dtype=int32),
                 num_body_dofs=wp.array(num_body_dofs_np, dtype=int32),
                 num_joint_coords=wp.array(num_joint_coords_np, dtype=int32),
                 num_joint_dofs=wp.array(num_joint_dofs_np, dtype=int32),
@@ -1223,7 +1198,7 @@ class ModelKamino:
             )
 
             # Collision geometries
-            model_geoms = CollisionGeometriesModel(
+            model_geoms = GeometriesModel(
                 num_geoms=model.shape_count,
                 wid=model.shape_world,
                 gid=wp.array(shape_sid_np, dtype=int32),
@@ -1300,7 +1275,6 @@ class ModelKamino:
         nb = self.size.sum_of_num_bodies
         nj = self.size.sum_of_num_joints
         ncg = self.size.sum_of_num_collision_geoms
-        npg = self.size.sum_of_num_physical_geoms
 
         # Retrieve the joint coordinate, DoF and constraint counts
         njq = self.size.sum_of_num_joint_coords
@@ -1368,12 +1342,6 @@ class ModelKamino:
                 pose=wp.zeros(shape=ncg, dtype=transformf, requires_grad=requires_grad),
             )
 
-            # Construct the physical geometries state from the model's initial state
-            pgeoms = GeometriesData(
-                num_geoms=npg,
-                pose=wp.zeros(shape=npg, dtype=transformf, requires_grad=requires_grad),
-            )
-
         # Assemble and return the new model data container
         return DataKamino(
             info=info,
@@ -1381,7 +1349,6 @@ class ModelKamino:
             bodies=bodies,
             joints=joints,
             cgeoms=cgeoms,
-            pgeoms=pgeoms,
         )
 
     def state(self, requires_grad: bool = False, device: wp.DeviceLike = None) -> StateKamino:

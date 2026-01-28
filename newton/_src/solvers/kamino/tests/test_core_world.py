@@ -22,7 +22,7 @@ import numpy as np
 import warp as wp
 
 from newton._src.solvers.kamino.core.bodies import RigidBodyDescriptor
-from newton._src.solvers.kamino.core.geometry import CollisionGeometryDescriptor, GeometryDescriptor
+from newton._src.solvers.kamino.core.geometry import GeometryDescriptor
 from newton._src.solvers.kamino.core.gravity import (
     GRAVITY_ACCEL_DEFAULT,
     GRAVITY_DIREC_DEFAULT,
@@ -36,7 +36,7 @@ from newton._src.solvers.kamino.core.materials import (
     DEFAULT_RESTITUTION,
     MaterialDescriptor,
 )
-from newton._src.solvers.kamino.core.shapes import ShapeType, SphereShape
+from newton._src.solvers.kamino.core.shapes import MeshShape, ShapeDescriptor, ShapeType, SphereShape
 from newton._src.solvers.kamino.core.world import WorldDescriptor
 from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.utils import logger as msg
@@ -56,7 +56,7 @@ class TestGravityDescriptor(unittest.TestCase):
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
             print("\n")  # Add newline before test output for better readability
-            msg.set_log_level(msg.LogLevel.DEBUG)
+            msg.set_log_level(msg.LogLevel.INFO)
         else:
             msg.reset_log_level()
 
@@ -124,7 +124,7 @@ class TestBodyDescriptor(unittest.TestCase):
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
             print("\n")  # Add newline before test output for better readability
-            msg.set_log_level(msg.LogLevel.DEBUG)
+            msg.set_log_level(msg.LogLevel.INFO)
         else:
             msg.reset_log_level()
 
@@ -156,7 +156,7 @@ class TestJointDescriptor(unittest.TestCase):
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
             print("\n")  # Add newline before test output for better readability
-            msg.set_log_level(msg.LogLevel.DEBUG)
+            msg.set_log_level(msg.LogLevel.INFO)
         else:
             msg.reset_log_level()
 
@@ -200,7 +200,7 @@ class TestGeometryDescriptor(unittest.TestCase):
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
             print("\n")  # Add newline before test output for better readability
-            msg.set_log_level(msg.LogLevel.DEBUG)
+            msg.set_log_level(msg.LogLevel.INFO)
         else:
             msg.reset_log_level()
 
@@ -218,135 +218,114 @@ class TestGeometryDescriptor(unittest.TestCase):
         self.assertEqual(geom.layer, "default")
         self.assertEqual(geom.bid, 0)
         self.assertEqual(geom.shape, None)
+        self.assertEqual(geom.material, None)
         self.assertEqual(geom.wid, -1)
         self.assertEqual(geom.gid, -1)
         self.assertEqual(geom.lid, -1)
+        self.assertEqual(geom.mid, -1)
+        self.assertEqual(geom.group, 1)
+        self.assertEqual(geom.collides, 1)
+        self.assertEqual(geom.max_contacts, 0)
+        self.assertEqual(geom.contact_margin, 0.0)
 
     def test_01_with_shape(self):
-        geom = GeometryDescriptor(
-            name="test_geom", layer="test_layer", bid=0, shape=SphereShape(radius=1.0, name="test_sphere")
-        )
+        geom = GeometryDescriptor(name="test_geom", bid=0, shape=SphereShape(radius=1.0, name="test_sphere"))
         msg.info(f"geom: {geom}")
 
         self.assertIsInstance(geom, GeometryDescriptor)
         self.assertEqual(geom.name, "test_geom")
-        self.assertEqual(geom.layer, "test_layer")
-        self.assertEqual(geom.bid, 0)
-        self.assertEqual(geom.shape.type, ShapeType.SPHERE)
-        self.assertEqual(geom.shape.radius, 1.0)
-        self.assertEqual(geom.wid, -1)
-        self.assertEqual(geom.gid, -1)
-        self.assertEqual(geom.lid, -1)
-
-
-class TestCollisionGeometryDescriptor(unittest.TestCase):
-    def setUp(self):
-        if not test_context.setup_done:
-            setup_tests(clear_cache=False)
-        self.default_device = wp.get_device(test_context.device)
-        self.verbose = test_context.verbose
-
-        # Set debug-level logging to print verbose test output to console
-        if self.verbose:
-            print("\n")  # Add newline before test output for better readability
-            msg.set_log_level(msg.LogLevel.DEBUG)
-        else:
-            msg.reset_log_level()
-
-    def tearDown(self):
-        self.default_device = None
-        if self.verbose:
-            msg.reset_log_level()
-
-    def test_00_default_construction(self):
-        geom = CollisionGeometryDescriptor(name="test_geom", bid=0)
-        msg.info(f"geom: {geom}")
-
-        self.assertIsInstance(geom, CollisionGeometryDescriptor)
-        self.assertEqual(geom.name, "test_geom")
         self.assertEqual(geom.layer, "default")
         self.assertEqual(geom.bid, 0)
-        self.assertEqual(geom.shape, None)
-        self.assertEqual(geom.wid, -1)
-        self.assertEqual(geom.gid, -1)
-        self.assertEqual(geom.lid, -1)
+        self.assertIsInstance(geom.shape, ShapeDescriptor)
+        self.assertEqual(geom.shape.type, ShapeType.SPHERE)
+        self.assertEqual(geom.shape.radius, 1.0)
         self.assertEqual(geom.material, None)
         self.assertEqual(geom.group, 1)
         self.assertEqual(geom.collides, 1)
         self.assertEqual(geom.max_contacts, 0)
-        self.assertEqual(geom.margin, 0.0)
-        self.assertEqual(geom.mid, None)
-
-    def test_01_with_shape(self):
-        cgeom = CollisionGeometryDescriptor(name="test_geom", bid=0, shape=SphereShape(radius=1.0, name="test_sphere"))
-        msg.info(f"cgeom: {cgeom}")
-
-        self.assertIsInstance(cgeom, CollisionGeometryDescriptor)
-        self.assertEqual(cgeom.name, "test_geom")
-        self.assertEqual(cgeom.layer, "default")
-        self.assertEqual(cgeom.bid, 0)
-        self.assertEqual(cgeom.shape.type, ShapeType.SPHERE)
-        self.assertEqual(cgeom.shape.radius, 1.0)
-        self.assertEqual(cgeom.wid, -1)
-        self.assertEqual(cgeom.gid, -1)
-        self.assertEqual(cgeom.lid, -1)
-        self.assertEqual(cgeom.material, None)
-        self.assertEqual(cgeom.group, 1)
-        self.assertEqual(cgeom.collides, 1)
-        self.assertEqual(cgeom.max_contacts, 0)
-        self.assertEqual(cgeom.margin, 0.0)
-        self.assertEqual(cgeom.mid, None)
+        self.assertEqual(geom.contact_margin, 0.0)
+        self.assertEqual(geom.wid, -1)
+        self.assertEqual(geom.gid, -1)
+        self.assertEqual(geom.lid, -1)
+        self.assertEqual(geom.mid, -1)
 
     def test_02_with_shape_and_material(self):
         test_material = MaterialDescriptor(name="test_material")
-        cgeom = CollisionGeometryDescriptor(
+        geom = GeometryDescriptor(
             name="test_geom",
             bid=0,
             shape=SphereShape(radius=1.0, name="test_sphere"),
             material=test_material.name,
         )
-        msg.info(f"cgeom: {cgeom}")
-
-        self.assertIsInstance(cgeom, CollisionGeometryDescriptor)
-        self.assertEqual(cgeom.name, "test_geom")
-        self.assertEqual(cgeom.layer, "default")
-        self.assertEqual(cgeom.bid, 0)
-        self.assertEqual(cgeom.shape.type, ShapeType.SPHERE)
-        self.assertEqual(cgeom.shape.radius, 1.0)
-        self.assertEqual(cgeom.wid, -1)
-        self.assertEqual(cgeom.gid, -1)
-        self.assertEqual(cgeom.lid, -1)
-        self.assertEqual(cgeom.material, test_material.name)
-        self.assertEqual(cgeom.group, 1)
-        self.assertEqual(cgeom.collides, 1)
-        self.assertEqual(cgeom.max_contacts, 0)
-        self.assertEqual(cgeom.margin, 0.0)
-        self.assertEqual(cgeom.mid, None)
-
-    def test_03_from_base_geometry(self):
-        geom = GeometryDescriptor(
-            name="test_geom", layer="test_layer", bid=0, shape=SphereShape(radius=1.0, name="test_sphere")
-        )
         msg.info(f"geom: {geom}")
 
-        cgeom = CollisionGeometryDescriptor(base=geom)
-        msg.info(f"cgeom: {cgeom}")
+        self.assertIsInstance(geom, GeometryDescriptor)
+        self.assertEqual(geom.name, "test_geom")
+        self.assertEqual(geom.layer, "default")
+        self.assertEqual(geom.bid, 0)
+        self.assertIsInstance(geom.shape, ShapeDescriptor)
+        self.assertEqual(geom.shape.type, ShapeType.SPHERE)
+        self.assertEqual(geom.shape.radius, 1.0)
+        self.assertEqual(geom.material, test_material.name)
+        self.assertEqual(geom.group, 1)
+        self.assertEqual(geom.collides, 1)
+        self.assertEqual(geom.max_contacts, 0)
+        self.assertEqual(geom.contact_margin, 0.0)
+        self.assertEqual(geom.wid, -1)
+        self.assertEqual(geom.gid, -1)
+        self.assertEqual(geom.lid, -1)
+        self.assertEqual(geom.mid, -1)
 
-        self.assertIsInstance(cgeom, CollisionGeometryDescriptor)
-        self.assertEqual(cgeom.name, "test_geom")
-        self.assertEqual(cgeom.bid, geom.bid)
-        self.assertEqual(cgeom.layer, geom.layer)
-        self.assertEqual(cgeom.shape.type, ShapeType.SPHERE)
-        self.assertEqual(cgeom.shape.radius, 1.0)
-        self.assertEqual(cgeom.wid, -1)
-        self.assertEqual(cgeom.gid, -1)
-        self.assertEqual(cgeom.lid, -1)
-        self.assertEqual(cgeom.material, None)
-        self.assertEqual(cgeom.group, 1)
-        self.assertEqual(cgeom.collides, 1)
-        self.assertEqual(cgeom.max_contacts, 0)
-        self.assertEqual(cgeom.margin, 0.0)
-        self.assertEqual(cgeom.mid, None)
+    def test_03_primitive_shape_geom(self):
+        # Create a geometry descriptor with a sphere shape
+        geom = GeometryDescriptor(name="sphere_geom", shape=SphereShape(radius=0.42))
+        # Check default values
+        self.assertEqual(geom.name, "sphere_geom")
+        self.assertEqual(geom.layer, "default")
+        self.assertEqual(geom.bid, -1)
+        self.assertEqual(geom.shape.type, ShapeType.SPHERE)
+        self.assertEqual(geom.shape.num_params, 1)
+        self.assertEqual(geom.shape.params, 0.42)
+        self.assertEqual(geom.shape.name, "sphere")
+        self.assertIsInstance(geom.shape.uid, str)
+
+        # Check hash function
+        geom_hash = hash(geom)
+        geom_hash2 = hash(geom)
+        shape_hash = hash(geom.shape)
+        self.assertEqual(geom_hash, geom_hash2)
+        self.assertEqual(shape_hash, shape_hash)
+        msg.info(f"geom_hash: {geom_hash}")
+        msg.info(f"geom_hash2: {geom_hash2}")
+        msg.info(f"shape_hash: {shape_hash}")
+
+    def test_04_mesh_shape_geom(self):
+        # Create a geometry descriptor with a mesh shape
+        vertices = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+        indices = [(0, 1, 2)]
+        geom = GeometryDescriptor(name="mesh_geom", shape=MeshShape(vertices, indices))
+
+        # Check default values
+        self.assertEqual(geom.name, "mesh_geom")
+        self.assertEqual(geom.layer, "default")
+        self.assertEqual(geom.bid, -1)
+        self.assertEqual(geom.shape.type, ShapeType.MESH)
+        self.assertEqual(geom.shape.num_params, -1)
+        self.assertEqual(geom.shape.params, 1.0)
+        self.assertEqual(geom.shape.name, "mesh")
+        self.assertIsInstance(geom.shape.uid, str)
+        self.assertTrue(np.array_equal(geom.shape.vertices, np.array(vertices)))
+        self.assertTrue(np.array_equal(geom.shape.indices, np.array(indices).flatten()))
+
+        # Check hash function
+        geom_hash = hash(geom)
+        geom_hash2 = hash(geom)
+        shape_hash = hash(geom.shape)
+        self.assertEqual(geom_hash, geom_hash2)
+        self.assertEqual(shape_hash, shape_hash)
+        msg.info(f"geom_hash: {geom_hash}")
+        msg.info(f"geom_hash2: {geom_hash2}")
+        msg.info(f"shape_hash: {shape_hash}")
 
 
 class TestMaterialDescriptor(unittest.TestCase):
@@ -359,7 +338,7 @@ class TestMaterialDescriptor(unittest.TestCase):
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
             print("\n")  # Add newline before test output for better readability
-            msg.set_log_level(msg.LogLevel.DEBUG)
+            msg.set_log_level(msg.LogLevel.INFO)
         else:
             msg.reset_log_level()
 
@@ -411,7 +390,7 @@ class TestWorldDescriptor(unittest.TestCase):
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
             print("\n")  # Add newline before test output for better readability
-            msg.set_log_level(msg.LogLevel.DEBUG)
+            msg.set_log_level(msg.LogLevel.INFO)
         else:
             msg.reset_log_level()
 
@@ -437,11 +416,9 @@ class TestWorldDescriptor(unittest.TestCase):
         self.assertEqual(world.num_bodies, 0)
         self.assertEqual(world.num_joints, 0)
         self.assertEqual(world.num_collision_geoms, 0)
-        self.assertEqual(world.num_physical_geoms, 0)
         self.assertEqual(len(world.body_names), 0)
         self.assertEqual(len(world.joint_names), 0)
         self.assertEqual(len(world.collision_geom_names), 0)
-        self.assertEqual(len(world.physical_geom_names), 0)
         self.assertEqual(world.mass_min, math.inf)
         self.assertEqual(world.mass_max, 0.0)
         self.assertEqual(world.mass_total, 0.0)
@@ -531,35 +508,23 @@ class TestWorldDescriptor(unittest.TestCase):
         self.assertEqual(body_0.bid, 0)
         self.assertEqual(body_0.wid, world.wid)
 
-        # Add physical geometry to body_0
-        pgeom = GeometryDescriptor(name="test_pgeom", bid=body_0.bid, shape=SphereShape(radius=1.0, name="test_sphere"))
-        world.add_physical_geom(pgeom)
-        msg.info(f"pgeom: {pgeom}")
-        self.assertEqual(pgeom.name, "test_pgeom")
-        self.assertEqual(pgeom.bid, body_0.bid)
-        self.assertEqual(pgeom.shape.type, ShapeType.SPHERE)
-        self.assertEqual(pgeom.shape.radius, 1.0)
-        self.assertEqual(pgeom.wid, world.wid)
-        self.assertEqual(pgeom.gid, 0)
-
         # Add collision geometry to body_0
-        cgeom = CollisionGeometryDescriptor(name="test_cgeom", base=pgeom)
-        world.add_collision_geom(cgeom)
-        msg.info(f"cgeom: {cgeom}")
-        self.assertEqual(cgeom.name, "test_cgeom")
-        self.assertEqual(cgeom.bid, body_0.bid)
-        self.assertEqual(cgeom.shape.type, ShapeType.SPHERE)
-        self.assertEqual(cgeom.shape.radius, 1.0)
-        self.assertIs(cgeom.shape, pgeom.shape)  # Should reference the same shape object
-        self.assertEqual(cgeom.wid, world.wid)
-        self.assertEqual(cgeom.gid, 0)
+        # TODO: Remove base descriptor
+        geom = GeometryDescriptor(name="test_geom", bid=body_0.bid, shape=SphereShape(radius=1.0, name="test_sphere"))
+        world.add_collision_geom(geom)
+        msg.info(f"geom: {geom}")
+        self.assertEqual(geom.name, "test_geom")
+        self.assertEqual(geom.bid, body_0.bid)
+        self.assertEqual(geom.shape.type, ShapeType.SPHERE)
+        self.assertEqual(geom.shape.radius, 1.0)
+        self.assertIs(geom.shape, geom.shape)  # Should reference the same shape object
+        self.assertEqual(geom.wid, world.wid)
+        self.assertEqual(geom.gid, 0)
 
         # Verify world properties
-        self.assertEqual(world.num_physical_geoms, 1)
         self.assertEqual(world.num_collision_geoms, 1)
         self.assertIn(body_0.name, world.body_names)
-        self.assertIn(pgeom.name, world.physical_geom_names)
-        self.assertIn(cgeom.name, world.collision_geom_names)
+        self.assertIn(geom.name, world.collision_geom_names)
 
     def test_04_add_material(self):
         world = WorldDescriptor(name="test_world", wid=42)

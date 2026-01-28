@@ -416,16 +416,6 @@ def assert_model_size_equal(test: unittest.TestCase, model0: ModelKamino, model1
         msg="`model.size.max_of_num_collision_geoms` are not equal.",
     )
     test.assertEqual(
-        first=model0.size.sum_of_num_physical_geoms,
-        second=model1.size.sum_of_num_physical_geoms,
-        msg="`model.size.sum_of_num_physical_geoms` are not equal.",
-    )
-    test.assertEqual(
-        first=model0.size.max_of_num_physical_geoms,
-        second=model1.size.max_of_num_physical_geoms,
-        msg="`model.size.max_of_num_physical_geoms` are not equal.",
-    )
-    test.assertEqual(
         first=model0.size.sum_of_num_material_pairs,
         second=model1.size.sum_of_num_material_pairs,
         msg="`model.size.sum_of_num_material_pairs` are not equal.",
@@ -583,11 +573,6 @@ def assert_model_info_equal(test: unittest.TestCase, model0: ModelKamino, model1
         actual=model0.info.num_collision_geoms.numpy(),
         desired=model1.info.num_collision_geoms.numpy(),
         err_msg="model.info.num_collision_geoms are not equal.",
-    )
-    np.testing.assert_allclose(
-        actual=model0.info.num_physical_geoms.numpy(),
-        desired=model1.info.num_physical_geoms.numpy(),
-        err_msg="model.info.num_physical_geoms are not equal.",
     )
     np.testing.assert_allclose(
         actual=model0.info.num_body_dofs.numpy(),
@@ -1204,7 +1189,6 @@ class TestKaminoNewtonIntegration(unittest.TestCase):
         msg.info("builder_1.num_joint_dofs: %s", builder_1.num_joint_dofs)
         msg.info("builder_1.num_joint_cts: %s", builder_1.num_joint_cts)
         msg.info("builder_1.num_collision_geoms: %s", builder_1.num_collision_geoms)
-        msg.info("builder_1.num_physical_geoms: %s\n", builder_1.num_physical_geoms)
 
         ###
         # Models

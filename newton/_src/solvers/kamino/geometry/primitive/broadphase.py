@@ -23,7 +23,7 @@ from enum import IntEnum
 
 import warp as wp
 
-from ...core.geometry import CollisionGeometriesModel, GeometriesData
+from ...core.geometry import GeometriesData, GeometriesModel
 from ...core.shapes import ShapeType
 from ...core.types import float32, int32, override, transformf, vec2i, vec3f, vec4f, vec6f, vec8f
 
@@ -763,7 +763,7 @@ def _nxn_broadphase_bs(
 def update_geoms_aabb(
     # Inputs:
     body_poses: wp.array,
-    geoms_model: CollisionGeometriesModel,
+    geoms_model: GeometriesModel,
     geoms_data: GeometriesData,
     # Outputs:
     bv_data: BoundingVolumesData,
@@ -775,7 +775,7 @@ def update_geoms_aabb(
 
     Args:
         body_poses (wp.array): Pose of each body in world coordinates.
-        geoms_model (CollisionGeometriesModel): Model data for collision geometries.
+        geoms_model (GeometriesModel): Model data for collision geometries.
         geoms_data (GeometriesData): Data for collision geometries.
         bv_data (BoundingVolumesData): Data for bounding volumes containing Axis-Aligned Bounding Boxes (AABB) vertices.
     """
@@ -798,7 +798,7 @@ def update_geoms_aabb(
 
 def nxn_broadphase_aabb(
     # Inputs:
-    geoms_model: CollisionGeometriesModel,
+    geoms_model: GeometriesModel,
     bv_data: BoundingVolumesData,
     # Outputs:
     candidates_model: CollisionCandidatesModel,
@@ -808,7 +808,7 @@ def nxn_broadphase_aabb(
     Launches a kernel to perform broad-phase collision detection using Axis-Aligned Bounding Boxes (AABB).
 
     Args:
-        geoms_model (CollisionGeometriesModel): Model data for collision geometries.
+        geoms_model (GeometriesModel): Model data for collision geometries.
         bv_data (BoundingVolumesData): Data for bounding volumes containing Axis-Aligned Bounding Boxes (AABB) vertices.
         candidates_model (CollisionCandidatesModel): Model data for collision candidates.
         candidates_data (CollisionCandidatesData): Data for collision candidates.
@@ -837,7 +837,7 @@ def nxn_broadphase_aabb(
 def update_geoms_bs(
     # Inputs:
     body_poses: wp.array,
-    geoms_model: CollisionGeometriesModel,
+    geoms_model: GeometriesModel,
     geoms_data: GeometriesData,
     # Outputs:
     bv_data: BoundingVolumesData,
@@ -849,7 +849,7 @@ def update_geoms_bs(
 
     Args:
         body_poses (wp.array): Pose of each body in world coordinates.
-        geoms_model (CollisionGeometriesModel): Model data for collision geometries.
+        geoms_model (GeometriesModel): Model data for collision geometries.
         geoms_data (GeometriesData): Data for collision geometries.
         bv_data (BoundingVolumesData): Data for bounding volumes containing bounding sphere radii.
     """
@@ -872,7 +872,7 @@ def update_geoms_bs(
 
 def nxn_broadphase_bs(
     # Inputs:
-    geoms_model: CollisionGeometriesModel,
+    geoms_model: GeometriesModel,
     geoms_data: GeometriesData,
     bv_data: BoundingVolumesData,
     # Outputs:
@@ -883,7 +883,7 @@ def nxn_broadphase_bs(
     Launches a kernel to perform broad-phase collision detection using bounding spheres (BS).
 
     Args:
-        geoms_model (CollisionGeometriesModel): Model data for collision geometries.
+        geoms_model (GeometriesModel): Model data for collision geometries.
         geoms_data (GeometriesData): Data for collision geometries.
         bv_data (BoundingVolumesData): Data for bounding volumes containing bounding sphere radii.
         candidates_model (CollisionCandidatesModel): Model data for collision candidates.
@@ -914,7 +914,7 @@ def nxn_broadphase_bs(
 def primitive_broadphase_explicit(
     # Inputs:
     body_poses: wp.array,
-    geoms_model: CollisionGeometriesModel,
+    geoms_model: GeometriesModel,
     geoms_data: GeometriesData,
     bv_data: BoundingVolumesData,
     bv_type: BoundingVolumeType,
@@ -930,7 +930,7 @@ def primitive_broadphase_explicit(
 
     Args:
         body_poses (wp.array): Pose of each body in world coordinates.
-        geoms_model (CollisionGeometriesModel): Model data for collision geometries.
+        geoms_model (GeometriesModel): Model data for collision geometries.
         geoms_data (GeometriesData): Data for collision geometries.
         bv_data (BoundingVolumesData): Data for bounding volumes.
         bv_type (BoundingVolumeType): Type of bounding volume to use for broad-phase collision detection.

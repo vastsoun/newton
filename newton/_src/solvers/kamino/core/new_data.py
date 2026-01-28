@@ -124,7 +124,6 @@ class DataKamino:
             constraint residuals and reactions, and generalized (DoF) quantities.
         cgeoms (CollisionGeometriesData): States of collision geometries in the model:
             poses, AABBs etc. computed in world coordinates.
-        pgeoms (GeometriesData): States of physical geometries in the model: poses computed in world coordinates.
     """
 
     info: DataKaminoInfo | None = None
@@ -147,6 +146,3 @@ class DataKamino:
 
     cgeoms: GeometriesData | None = None
     """States of collision geometries in the model: poses computed in world coordinates."""
-
-    pgeoms: GeometriesData | None = None
-    """States of physical geometries in the model: poses computed in world coordinates."""

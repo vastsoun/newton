@@ -393,7 +393,6 @@ class Example:
         msg.info("self.builder.bodies:\n%s", self.builder.bodies)
         msg.info("self.builder.joints:\n%s", self.builder.joints)
         msg.info("self.builder.collision_geoms:\n%s", self.builder.collision_geoms)
-        msg.info("self.builder.physical_geoms:\n%s", self.builder.physical_geoms)
 
         # Set solver settings
         settings = SimulatorSettings()

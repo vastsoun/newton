@@ -40,7 +40,7 @@ from ..core.math import (
 )
 from ..core.model import Model
 from ..core.types import vec6f
-from ..linalg.blas2d import block_sparse_ATA_inv_diagonal_2d, get_diagonal_gemv_operator
+from ..linalg.blas2d import block_sparse_ATA_inv_diagonal_2d
 from ..linalg.conjugate import BatchedLinearOperator, CGSolver
 from ..linalg.factorize.llt_blocked_semi_sparse import SemiSparseBlockCholeskySolverBatched
 from ..linalg.sparse_matrix import BlockDType, BlockSparseMatrices
@@ -1892,6 +1892,9 @@ class ForwardKinematicsSolver:
             self.jacobian_times_vector = wp.zeros(
                 dtype=wp.float32, shape=(self.num_worlds, self.num_constraints_max)
             )  # Intermediary vector when computing J^T * (J * x)
+            self.lhs_times_vector = wp.zeros(
+                dtype=wp.float32, shape=(self.num_worlds, self.num_states_max)
+            )  # Intermediary vector when computing J^T * (J * x)
 
             # Velocity solver
             self.actuators_u = wp.array(
@@ -2057,19 +2060,16 @@ class ForwardKinematicsSolver:
             self.jacobian_diag_inv = wp.array(
                 dtype=wp.float32, device=self.device, shape=(self.num_worlds, self.num_constraints_max)
             )
-            preconditioner_op = BatchedLinearOperator(
-                shape=(self.num_worlds, self.num_states_max, self.num_states_max),
-                dtype=wp.float32,
-                device=self.device,
-                matvec=get_diagonal_gemv_operator(self.jacobian_diag_inv, self.jacobian_cols),
-            )
+            preconditioner_op = BatchedLinearOperator.from_diagonal(self.jacobian_diag_inv, self.jacobian_cols)
 
             # Initialize CG solver
             cg_op = BatchedLinearOperator(
-                shape=(self.num_worlds, self.num_states_max, self.num_states_max),
+                n_worlds=self.num_worlds,
+                max_dim=self.num_states_max,
+                active_dims=self.num_states,
                 dtype=wp.float32,
                 device=self.device,
-                matvec=self._eval_lhs_gemv,
+                gemv_fn=self._eval_lhs_gemv,
             )
             self.cg_atol = wp.array(dtype=wp.float32, shape=self.num_worlds, device=self.device)
             self.cg_rtol = wp.array(dtype=wp.float32, shape=self.num_worlds, device=self.device)
@@ -2077,7 +2077,7 @@ class ForwardKinematicsSolver:
             self.linear_solver_cg = CGSolver(
                 A=cg_op,
                 active_dims=self.num_states,
-                M=preconditioner_op,
+                Mi=preconditioner_op,
                 atol=self.cg_atol,
                 rtol=self.cg_rtol,
                 maxiter=self.cg_max_iter,
@@ -2312,20 +2312,19 @@ class ForwardKinematicsSolver:
         self,
         x: wp.array2d(dtype=wp.float32),
         y: wp.array2d(dtype=wp.float32),
-        z: wp.array2d(dtype=wp.float32),
         world_mask: wp.array(dtype=wp.int32),
         alpha: wp.float32,
         beta: wp.float32,
     ):
         """
-        Internal evaluator for z = alpha * J^T * J * x + beta * y, using the assembled sparse Jacobian J
+        Internal evaluator for y = alpha * J^T * J * x + beta * y, using the assembled sparse Jacobian J
         """
         self.sparse_jacobian_op.matvec(x, self.jacobian_times_vector, world_mask)
-        self.sparse_jacobian_op.matvec_transpose(self.jacobian_times_vector, z, world_mask)
+        self.sparse_jacobian_op.matvec_transpose(self.jacobian_times_vector, self.lhs_times_vector, world_mask)
         wp.launch(
             _eval_linear_combination,
             dim=(self.num_worlds, self.num_states_max),
-            inputs=[alpha, z, beta, y, self.jacobian_cols, world_mask, z],
+            inputs=[alpha, self.lhs_times_vector, beta, y, self.jacobian_cols, world_mask, y],
             device=self.device,
         )
 

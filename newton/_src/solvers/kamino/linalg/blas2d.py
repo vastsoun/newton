@@ -422,22 +422,6 @@ def _make_cwise_inverse_kernel(dtype: FloatType):
     return cwise_inverse_kernel
 
 
-@wp.kernel
-def _eval_diagonal_gemv(
-    diag: wp.array2d(dtype=wp.float32),
-    x: wp.array2d(dtype=wp.float32),
-    y: wp.array2d(dtype=wp.float32),
-    z: wp.array2d(dtype=wp.float32),
-    num_rows: wp.array(dtype=wp.int32),
-    world_mask: wp.array(dtype=wp.int32),
-    alpha: wp.float32,
-    beta: wp.float32,
-):
-    wd_id, row_id = wp.tid()  # Thread indices (= world index, row index)
-    if wd_id < num_rows.shape[0] and row_id < num_rows[wd_id]:
-        z[wd_id, row_id] = alpha * diag[wd_id, row_id] * x[wd_id, row_id] + beta * y[wd_id, row_id]
-
-
 ##
 # Launchers
 ##
@@ -632,34 +616,3 @@ def block_sparse_ATA_inv_diagonal_2d(A: BlockSparseMatrices, inv_diag: wp.array,
         ],
         device=A.device,
     )
-
-
-def get_diagonal_gemv_operator(
-    diag: wp.array2d(dtype=wp.float32),
-    num_rows: wp.array(dtype=wp.int32),
-):
-    def op(
-        x: wp.array2d(dtype=wp.float32),
-        y: wp.array2d(dtype=wp.float32),
-        z: wp.array2d(dtype=wp.float32),
-        world_mask: wp.array(dtype=wp.int32),
-        alpha: wp.float32,
-        beta: wp.float32,
-    ):
-        wp.launch(
-            _eval_diagonal_gemv,
-            dim=(diag.shape),
-            inputs=[
-                diag,
-                x,
-                y,
-                z,
-                num_rows,
-                world_mask,
-                alpha,
-                beta,
-            ],
-            device=diag.device,
-        )
-
-    return op

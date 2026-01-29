@@ -584,6 +584,14 @@ def block_sparse_transpose_gemv_2d(
 
 
 def block_sparse_ATA_inv_diagonal_2d(A: BlockSparseMatrices, inv_diag: wp.array, matrix_mask: wp.array):
+    """
+    Function computing the inverse of the diagonal of A^T * A given sparse matrix (stack) A.
+
+    Args:
+        A (BlockSparseMatrices): Sparse matrices.
+        inv_diag (wp.array): Stack of output vectors, expects shape (num_matrices, max_of_max_cols).
+        matrix_mask (wp.array): Mask vector to skip matrices set to `0` in the mask.
+    """
     inv_diag.zero_()
     wp.launch(
         kernel=_make_block_sparse_ATA_diagonal_kernel(A.nzb_dtype),

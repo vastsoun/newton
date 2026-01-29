@@ -1409,6 +1409,11 @@ def _update_cg_tolerance_kernel(
     atol: wp.array(dtype=wp.float32),
     rtol: wp.array(dtype=wp.float32),
 ):
+    """
+    A kernel heuristically adapting the CG tolerance based on the current constraint residual
+    (starting with a loose tolerance, and tightening it as we converge)
+    Note: needs to be refined, until then we are still using a fixed tolerance
+    """
     wd_id = wp.tid()
     if wd_id >= world_mask.shape[0] or world_mask[wd_id] == 0:
         return
@@ -1454,7 +1459,7 @@ class ForwardKinematicsSolverSettings:
 
     use_sparsity: bool = True
     """Whether to use sparse Jacobian and solver; otherwise, dense versions are used (default: True).
-       Changes to this setting the solver's initialization lead to undefined behavior."""
+       Changes to this setting after the solver's initialization lead to undefined behavior."""
 
     def check(self):
         """
@@ -1527,9 +1532,6 @@ class ForwardKinematicsSolver:
 
         self.settings: ForwardKinematicsSolverSettings = ForwardKinematicsSolverSettings()
         """Solver settings"""
-
-        self.linear_solver: SemiSparseBlockCholeskySolverBatched | None = None
-        """Semi-sparse Cholesky solver for the J^T * J linear system"""
 
         self.graph: wp.Graph | None = None
         """Cuda graph for the convenience function with verbosity options"""
@@ -1820,6 +1822,7 @@ class ForwardKinematicsSolver:
             self.actuated_dof_offsets = wp.from_numpy(actuated_dof_offsets, dtype=wp.int32)
             self.actuated_dofs_map = wp.from_numpy(np.array(actuated_dofs_map), dtype=wp.int32)
             self.num_states = wp.from_numpy(num_states, dtype=wp.int32)
+            self.num_constraints = wp.from_numpy(num_constraints, dtype=wp.int32)
             self.constraint_full_to_red_map = wp.from_numpy(constraint_full_to_red_map, dtype=wp.int32)
 
             # Modified joints
@@ -1926,7 +1929,7 @@ class ForwardKinematicsSolver:
             self._eval_merit_function_gradient_kernel,
         ) = create_tile_based_kernels(self.settings.TILE_SIZE_CTS, self.settings.TILE_SIZE_VRS)
 
-        # Compute sparsity pattern and initialize linear solver for dense case (running symbolic factorization)
+        # Compute sparsity pattern and initialize linear solver for dense (semi-sparse) case
         if not self.settings.use_sparsity:
             # Jacobian sparsity pattern
             sparsity_pattern = np.zeros((self.num_worlds, self.num_constraints_max, self.num_states_max), dtype=int)
@@ -1963,17 +1966,17 @@ class ForwardKinematicsSolver:
             )
             sparsity_pattern_lhs = sparsity_pattern_lhs_wp.numpy().astype("int32")
 
-            # Initialize linear solver
-            self.linear_solver = SemiSparseBlockCholeskySolverBatched(
+            # Initialize linear solver (semi-sparse LLT)
+            self.linear_solver_llt = SemiSparseBlockCholeskySolverBatched(
                 self.num_worlds,
                 self.num_states_max,
                 block_size=16,  # TODO: optimize this (e.g. 14 ?)
                 device=self.device,
                 enable_reordering=True,
             )
-            self.linear_solver.capture_sparsity_pattern(sparsity_pattern_lhs, num_states)
+            self.linear_solver_llt.capture_sparsity_pattern(sparsity_pattern_lhs, num_states)
 
-        ######### Sparse Jacobian - symbolic assembly
+        # Compute sparsity pattern and initialize linear solver for sparse case
         if self.settings.use_sparsity:
             self.sparse_jacobian = BlockSparseMatrices(
                 device=self.device, nzb_dtype=BlockDType(dtype=wp.float32, shape=(7,)), num_matrices=self.num_worlds
@@ -2035,17 +2038,10 @@ class ForwardKinematicsSolver:
             self.sparse_jacobian.dims.assign(jacobian_dims)
             self.sparse_jacobian.num_nzb.assign(num_nzb)
             self.sparse_jacobian.nzb_coords.assign(np.stack((nzb_row, nzb_col)).T.flatten())
-            int_size_bytes = 4  # Size of wp.int32 in bytes
             with wp.ScopedDevice(self.device):
                 self.rb_nzb_id = wp.from_numpy(rb_nzb_id, dtype=wp.int32)
                 self.ct_nzb_id_base = wp.from_numpy(ct_nzb_id_base, dtype=wp.int32)
                 self.ct_nzb_id_follower = wp.from_numpy(ct_nzb_id_follower, dtype=wp.int32)
-                self.jacobian_cols = wp.array(
-                    dtype=wp.int32,
-                    shape=(self.num_worlds,),
-                    ptr=self.sparse_jacobian.dims.ptr + int_size_bytes,
-                    strides=(2 * int_size_bytes,),
-                )  # Number of Jacobian cols per world
 
             # Initialize Jacobian assembly kernel
             self._eval_joint_constraints_sparse_jacobian_kernel = create_eval_joint_constraints_sparse_jacobian_kernel(
@@ -2060,7 +2056,7 @@ class ForwardKinematicsSolver:
             self.jacobian_diag_inv = wp.array(
                 dtype=wp.float32, device=self.device, shape=(self.num_worlds, self.num_constraints_max)
             )
-            preconditioner_op = BatchedLinearOperator.from_diagonal(self.jacobian_diag_inv, self.jacobian_cols)
+            preconditioner_op = BatchedLinearOperator.from_diagonal(self.jacobian_diag_inv, self.num_constraints)
 
             # Initialize CG solver
             cg_op = BatchedLinearOperator(
@@ -2324,7 +2320,7 @@ class ForwardKinematicsSolver:
         wp.launch(
             _eval_linear_combination,
             dim=(self.num_worlds, self.num_states_max),
-            inputs=[alpha, self.lhs_times_vector, beta, y, self.jacobian_cols, world_mask, y],
+            inputs=[alpha, self.lhs_times_vector, beta, y, self.num_constraints, world_mask, y],
             device=self.device,
         )
 
@@ -2419,6 +2415,11 @@ class ForwardKinematicsSolver:
         residual_norm: wp.array(dtype=wp.float32),
         world_mask: wp.array(dtype=wp.int32),
     ):
+        """
+        Internal function heuristically adapting the CG tolerance based on the current constraint residual
+        (starting with a loose tolerance, and tightening it as we converge)
+        Note: needs to be refined, until then we are still using a fixed tolerance
+        """
         wp.launch(
             _update_cg_tolerance_kernel,
             dim=(self.num_worlds,),
@@ -2473,8 +2474,8 @@ class ForwardKinematicsSolver:
             self.cg_rtol.fill_(1e-8)
             self.linear_solver_cg.solve(self.rhs, self.step, world_active=self.newton_mask)
         else:
-            self.linear_solver.factorize(self.lhs, self.num_states, self.newton_mask)
-            self.linear_solver.solve(
+            self.linear_solver_llt.factorize(self.lhs, self.num_states, self.newton_mask)
+            self.linear_solver_llt.solve(
                 self.rhs.reshape((self.num_worlds, self.num_states_max, 1)),
                 self.step.reshape((self.num_worlds, self.num_states_max, 1)),
                 self.newton_mask,
@@ -2606,8 +2607,8 @@ class ForwardKinematicsSolver:
             self.cg_rtol.fill_(1e-8)
             self.linear_solver_cg.solve(self.rhs, self.bodies_q_dot, world_active=world_mask)
         else:
-            self.linear_solver.factorize(self.lhs, self.num_states, world_mask)
-            self.linear_solver.solve(
+            self.linear_solver_llt.factorize(self.lhs, self.num_states, world_mask)
+            self.linear_solver_llt.solve(
                 self.rhs.reshape((self.num_worlds, self.num_states_max, 1)),
                 self.bodies_q_dot.reshape((self.num_worlds, self.num_states_max, 1)),
                 world_mask,
@@ -2684,9 +2685,8 @@ class ForwardKinematicsSolver:
         self, bodies_q: wp.array(dtype=wp.transformf), pos_control_transforms: wp.array(dtype=wp.transformf)
     ):
         """
-        Assembles the sparse Jacobian given input body poses and control transforms.
-        Note: the sparse Jacobian is not yet used in the solver, this function is only for
-        testing purposes currently.
+        Assembles the sparse Jacobian (under self.sparse_jacobian) given input body poses and control transforms.
+        Note: only safe to call if this object was finalized with sparsity enabled in the settings.
         """
         assert bodies_q.device == self.device
         assert pos_control_transforms.device == self.device

@@ -1313,10 +1313,16 @@ class ModelBuilder:
         if self._num_geoms == 0:
             return 0, [0] * self.num_worlds
 
+        # Count the number of collidable geoms total and per world
+        collidable_geoms_per_world = [0] * self.num_worlds
+        for geom in self._geoms:
+            if geom.is_collidable:
+                collidable_geoms_per_world[geom.wid] += 1
+
         # Compute the maximum possible number of geom pairs per world
         world_max_contacts = [0] * self.num_worlds
-        for w, world in enumerate(self._worlds):
-            world_num_geom_pairs = (world.num_geoms * (world.num_geoms - 1)) // 2
+        for w in range(self.num_worlds):
+            world_num_geom_pairs = (collidable_geoms_per_world[w] * (collidable_geoms_per_world[w] - 1)) // 2
             world_max_contacts[w] = world_num_geom_pairs * max_contacts_per_pair
 
         # Override the per-world maximum contacts if specified in the settings

@@ -553,7 +553,7 @@ class CollisionPipelineUnifiedKamino:
         self._max_triangle_pairs: int = max_triangle_pairs
 
         # Get geometry count from builder
-        self._num_geoms: int = builder.num_collision_geoms
+        self._num_geoms: int = builder.num_geoms
 
         # Compute the maximum possible number of geom pairs (worst-case, needed for NXN/SAP)
         self._max_shape_pairs: int = (self._num_geoms * (self._num_geoms - 1)) // 2
@@ -579,7 +579,7 @@ class CollisionPipelineUnifiedKamino:
         geom_collision_group_list = [1] * self._num_geoms  # All geometries can collide
 
         # Capture a reference to per-geometry world indices already present in the model
-        self.geom_wid: wp.array = model.cgeoms.wid
+        self.geom_wid: wp.array = model.geoms.wid
 
         # Define default shape flags for all geometries
         default_shape_flag: int = (
@@ -706,11 +706,11 @@ class CollisionPipelineUnifiedKamino:
             dim=self._num_geoms,
             inputs=[
                 self._default_margin,
-                model.cgeoms.sid,
-                model.cgeoms.params,
+                model.geoms.sid,
+                model.geoms.params,
             ],
             outputs=[
-                model.cgeoms.margin,
+                model.geoms.margin,
                 self.geom_type,
                 self.geom_data,
             ],
@@ -751,15 +751,15 @@ class CollisionPipelineUnifiedKamino:
             inputs=[
                 self.geom_type,
                 self.geom_data,
-                model.cgeoms.bid,
-                model.cgeoms.ptr,
-                model.cgeoms.offset,
-                model.cgeoms.margin,
+                model.geoms.bid,
+                model.geoms.ptr,
+                model.geoms.offset,
+                model.geoms.margin,
                 self.geom_collision_radius,
                 data.bodies.q_i,
             ],
             outputs=[
-                data.cgeoms.pose,
+                data.geoms.pose,
                 self.shape_aabb_lower,
                 self.shape_aabb_upper,
             ],
@@ -830,10 +830,10 @@ class CollisionPipelineUnifiedKamino:
         writer_data.model_max_contacts = int32(contacts.model_max_contacts_host)
         writer_data.world_max_contacts = contacts.world_max_contacts
         writer_data.default_margin = float32(self._default_margin)
-        writer_data.geom_bid = model.cgeoms.bid
-        writer_data.geom_wid = model.cgeoms.wid
-        writer_data.geom_mid = model.cgeoms.mid
-        writer_data.geom_margin = model.cgeoms.margin
+        writer_data.geom_bid = model.geoms.bid
+        writer_data.geom_wid = model.geoms.wid
+        writer_data.geom_mid = model.geoms.mid
+        writer_data.geom_margin = model.geoms.margin
         writer_data.material_restitution = model.materials.restitution
         writer_data.material_static_friction = model.materials.static_friction
         writer_data.material_dynamic_friction = model.materials.dynamic_friction
@@ -861,10 +861,10 @@ class CollisionPipelineUnifiedKamino:
             num_candidate_pair=self.broad_phase_pair_count,
             shape_types=self.geom_type,
             shape_data=self.geom_data,
-            shape_transform=data.cgeoms.pose,
-            shape_source=model.cgeoms.ptr,
+            shape_transform=data.geoms.pose,
+            shape_source=model.geoms.ptr,
             shape_sdf_data=self.shape_sdf_data,
-            shape_contact_margin=model.cgeoms.margin,
+            shape_contact_margin=model.geoms.margin,
             shape_collision_radius=self.geom_collision_radius,
             shape_flags=self.shape_flags,
             shape_local_aabb_lower=self.shape_local_aabb_lower,

@@ -406,14 +406,14 @@ def assert_model_size_equal(test: unittest.TestCase, model0: ModelKamino, model1
         msg="`model.size.max_of_num_actuated_joints` are not equal.",
     )
     test.assertEqual(
-        first=model0.size.sum_of_num_collision_geoms,
-        second=model1.size.sum_of_num_collision_geoms,
-        msg="`model.size.sum_of_num_collision_geoms` are not equal.",
+        first=model0.size.sum_of_num_geoms,
+        second=model1.size.sum_of_num_geoms,
+        msg="`model.size.sum_of_num_geoms` are not equal.",
     )
     test.assertEqual(
-        first=model0.size.max_of_num_collision_geoms,
-        second=model1.size.max_of_num_collision_geoms,
-        msg="`model.size.max_of_num_collision_geoms` are not equal.",
+        first=model0.size.max_of_num_geoms,
+        second=model1.size.max_of_num_geoms,
+        msg="`model.size.max_of_num_geoms` are not equal.",
     )
     test.assertEqual(
         first=model0.size.sum_of_num_material_pairs,
@@ -570,9 +570,9 @@ def assert_model_info_equal(test: unittest.TestCase, model0: ModelKamino, model1
         err_msg="model.info.num_actuated_joints are not equal.",
     )
     np.testing.assert_allclose(
-        actual=model0.info.num_collision_geoms.numpy(),
-        desired=model1.info.num_collision_geoms.numpy(),
-        err_msg="model.info.num_collision_geoms are not equal.",
+        actual=model0.info.num_geoms.numpy(),
+        desired=model1.info.num_geoms.numpy(),
+        err_msg="model.info.num_geoms are not equal.",
     )
     np.testing.assert_allclose(
         actual=model0.info.num_body_dofs.numpy(),
@@ -890,57 +890,57 @@ def assert_model_joints_equal(test: unittest.TestCase, model0: ModelKamino, mode
 def assert_model_geoms_equal(test: unittest.TestCase, model0: ModelKamino, model1: ModelKamino) -> None:
     np.testing.assert_allclose(
         actual=model0.geoms.wid.numpy(),
-        desired=model1.cgeoms.wid.numpy(),
+        desired=model1.geoms.wid.numpy(),
         err_msg="model.geoms.wid are not equal.",
     )
     np.testing.assert_allclose(
         actual=model0.geoms.gid.numpy(),
-        desired=model1.cgeoms.gid.numpy(),
+        desired=model1.geoms.gid.numpy(),
         err_msg="model.geoms.gid are not equal.",
     )
     np.testing.assert_allclose(
         actual=model0.geoms.bid.numpy(),
-        desired=model1.cgeoms.bid.numpy(),
+        desired=model1.geoms.bid.numpy(),
         err_msg="model.geoms.bid are not equal.",
     )
     np.testing.assert_allclose(
         actual=model0.geoms.sid.numpy(),
-        desired=model1.cgeoms.sid.numpy(),
+        desired=model1.geoms.sid.numpy(),
         err_msg="model.geoms.sid are not equal.",
     )
     np.testing.assert_allclose(
         actual=model0.geoms.mid.numpy(),
-        desired=model1.cgeoms.mid.numpy(),
+        desired=model1.geoms.mid.numpy(),
         err_msg="model.geoms.mid are not equal.",
     )
     np.testing.assert_allclose(
         actual=model0.geoms.ptr.numpy(),
-        desired=model1.cgeoms.ptr.numpy(),
+        desired=model1.geoms.ptr.numpy(),
         err_msg="model.geoms.ptr are not equal.",
     )
     np.testing.assert_allclose(
         actual=model0.geoms.params.numpy(),
-        desired=model1.cgeoms.params.numpy(),
+        desired=model1.geoms.params.numpy(),
         err_msg="model.geoms.params are not equal.",
     )
     np.testing.assert_allclose(
         actual=model0.geoms.offset.numpy(),
-        desired=model1.cgeoms.offset.numpy(),
+        desired=model1.geoms.offset.numpy(),
         err_msg="model.geoms.offset are not equal.",
     )
     np.testing.assert_allclose(
         actual=model0.geoms.group.numpy(),
-        desired=model1.cgeoms.group.numpy(),
+        desired=model1.geoms.group.numpy(),
         err_msg="model.geoms.group are not equal.",
     )
     np.testing.assert_allclose(
         actual=model0.geoms.collides.numpy(),
-        desired=model1.cgeoms.collides.numpy(),
+        desired=model1.geoms.collides.numpy(),
         err_msg="model.geoms.collides are not equal.",
     )
     np.testing.assert_allclose(
         actual=model0.geoms.margin.numpy(),
-        desired=model1.cgeoms.margin.numpy(),
+        desired=model1.geoms.margin.numpy(),
         err_msg="model.geoms.margin are not equal.",
     )
 
@@ -1188,7 +1188,7 @@ class TestKaminoNewtonIntegration(unittest.TestCase):
         msg.info("builder_1.num_joint_coords: %s", builder_1.num_joint_coords)
         msg.info("builder_1.num_joint_dofs: %s", builder_1.num_joint_dofs)
         msg.info("builder_1.num_joint_cts: %s", builder_1.num_joint_cts)
-        msg.info("builder_1.num_collision_geoms: %s", builder_1.num_collision_geoms)
+        msg.info("builder_1.num_geoms: %s", builder_1.num_geoms)
 
         ###
         # Models

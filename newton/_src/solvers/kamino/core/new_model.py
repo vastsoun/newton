@@ -95,9 +95,9 @@ class ModelKaminoSize:
             The total number of actuated joints in the model across all worlds.
         max_of_num_actuated_joints (int):
             The maximum number of actuated joints in any world.
-        sum_of_num_collision_geoms (int):
+        sum_of_num_geoms (int):
             The total number of collision geometries in the model across all worlds.
-        max_of_num_collision_geoms (int):
+        max_of_num_geoms (int):
             The maximum number of collision geometries in any world.
         sum_of_num_material_pairs (int):
             The total number of material pairs in the model across all worlds.
@@ -180,10 +180,10 @@ class ModelKaminoSize:
     max_of_num_actuated_joints: int = 0
     """The maximum number of actuated joints in any world."""
 
-    sum_of_num_collision_geoms: int = 0
+    sum_of_num_geoms: int = 0
     """The total number of collision geometries in the model across all worlds."""
 
-    max_of_num_collision_geoms: int = 0
+    max_of_num_geoms: int = 0
     """The maximum number of collision geometries in any world."""
 
     sum_of_num_materials: int = 0
@@ -290,7 +290,7 @@ class ModelKaminoSize:
             ("num_joints", "sum_of_num_joints", "max_of_num_joints"),
             ("num_passive_joints", "sum_of_num_passive_joints", "max_of_num_passive_joints"),
             ("num_actuated_joints", "sum_of_num_actuated_joints", "max_of_num_actuated_joints"),
-            ("num_collision_geoms", "sum_of_num_collision_geoms", "max_of_num_collision_geoms"),
+            ("num_geoms", "sum_of_num_geoms", "max_of_num_geoms"),
             ("num_material_pairs", "sum_of_num_material_pairs", "max_of_num_material_pairs"),
             ("num_body_dofs", "sum_of_num_body_dofs", "max_of_num_body_dofs"),
             ("num_joint_coords", "sum_of_num_joint_coords", "max_of_num_joint_coords"),
@@ -369,7 +369,7 @@ class ModelKaminoInfo:
     Shape of ``(num_worlds,)`` and type :class:`int`.
     """
 
-    num_collision_geoms: wp.array | None = None
+    num_geoms: wp.array | None = None
     """
     The number of collision geometries in each world.\n
     Shape of ``(num_worlds,)`` and type :class:`int`.
@@ -1003,7 +1003,7 @@ class ModelKamino:
                 num_joints=num_joints_np[w],
                 num_passive_joints=0,
                 num_actuated_joints=num_joints_np[w],
-                num_collision_geoms=num_shapes_np[w],
+                num_geoms=num_shapes_np[w],
                 num_materials=0,  # TODO: how to handle both global and per-world materials simultaneously?
                 num_body_coords=num_body_coords_np[w],
                 num_body_dofs=num_body_dofs_np[w],
@@ -1025,7 +1025,7 @@ class ModelKamino:
                 # TODO
                 bodies_idx_offset=body_offset_np[w],
                 joints_idx_offset=joint_offset_np[w],
-                collision_geoms_idx_offset=shape_offset_np[w],
+                geoms_idx_offset=shape_offset_np[w],
                 body_dofs_idx_offset=body_dof_offset_np[w],
                 joint_coords_idx_offset=joint_coord_offset_np[w],
                 joint_dofs_idx_offset=joint_dof_offset_np[w],
@@ -1039,16 +1039,16 @@ class ModelKamino:
                 body_uids=[],
                 joint_names=[],
                 joint_uids=[],
-                collision_geom_names=[],
-                collision_geom_uids=[],
+                geom_names=[],
+                geom_uids=[],
                 material_names=[],
                 material_uids=[],
                 unary_joint_names=[],
                 fixed_joint_names=[],
                 passive_joint_names=[],
                 actuated_joint_names=[],
-                collision_geometry_layers=["default"],
-                collision_geometry_max_contacts=[-1] * num_shapes_np[w],
+                geometry_layers=["default"],
+                geometry_max_contacts=[-1] * num_shapes_np[w],
                 # TODO
                 base_body_idx=base_body_idx_np[w],
                 base_joint_idx=base_joint_idx_np[w],
@@ -1069,8 +1069,8 @@ class ModelKamino:
             max_of_num_passive_joints=0,
             sum_of_num_actuated_joints=int(num_joints_np.sum()),
             max_of_num_actuated_joints=int(num_joints_np.max()),
-            sum_of_num_collision_geoms=int(num_shapes_np.sum()),
-            max_of_num_collision_geoms=int(num_shapes_np.max()),
+            sum_of_num_geoms=int(num_shapes_np.sum()),
+            max_of_num_geoms=int(num_shapes_np.max()),
             sum_of_num_materials=materials_manager.num_materials,
             max_of_num_materials=materials_manager.num_materials,
             sum_of_num_material_pairs=materials_manager.num_material_pairs,
@@ -1111,7 +1111,7 @@ class ModelKamino:
                 num_joints=wp.array(num_joints_np, dtype=int32),
                 num_passive_joints=wp.zeros((model.num_worlds,), dtype=int32),
                 num_actuated_joints=wp.array(num_joints_np, dtype=int32),
-                num_collision_geoms=wp.array(num_shapes_np, dtype=int32),
+                num_geoms=wp.array(num_shapes_np, dtype=int32),
                 num_body_dofs=wp.array(num_body_dofs_np, dtype=int32),
                 num_joint_coords=wp.array(num_joint_coords_np, dtype=int32),
                 num_joint_dofs=wp.array(num_joint_dofs_np, dtype=int32),
@@ -1274,7 +1274,7 @@ class ModelKamino:
         nw = self.size.num_worlds
         nb = self.size.sum_of_num_bodies
         nj = self.size.sum_of_num_joints
-        ncg = self.size.sum_of_num_collision_geoms
+        ncg = self.size.sum_of_num_geoms
 
         # Retrieve the joint coordinate, DoF and constraint counts
         njq = self.size.sum_of_num_joint_coords
@@ -1337,7 +1337,7 @@ class ModelKamino:
             )
 
             # Construct the collision geometries state from the model's initial state
-            cgeoms = GeometriesData(
+            geoms = GeometriesData(
                 num_geoms=ncg,
                 pose=wp.zeros(shape=ncg, dtype=transformf, requires_grad=requires_grad),
             )
@@ -1348,7 +1348,7 @@ class ModelKamino:
             time=time,
             bodies=bodies,
             joints=joints,
-            cgeoms=cgeoms,
+            geoms=geoms,
         )
 
     def state(self, requires_grad: bool = False, device: wp.DeviceLike = None) -> StateKamino:

@@ -137,7 +137,7 @@ def test_unified_pipeline(
 
         # Create a contacts container using the worst-case capacity of NxN over model-wise geom pairs
         # NOTE: This is required by the unified pipeline when using SAP and NXN broad-phases
-        capacity = max_contacts_per_pair * ((builder.num_collision_geoms * (builder.num_collision_geoms - 1)) // 2)
+        capacity = max_contacts_per_pair * ((builder.num_geoms * (builder.num_geoms - 1)) // 2)
         contacts = Contacts(capacity=capacity, device=device)
         contacts.clear()
 

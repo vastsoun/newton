@@ -98,7 +98,7 @@ class PrimitiveBroadPhaseTestBS:
     def __init__(self, builder: ModelBuilder, device: Devicelike = None):
         # Retrieve the number of world
         num_worlds = builder.num_worlds
-        num_geoms = len(builder.collision_geoms)
+        num_geoms = len(builder.geoms)
         # Construct collision pairs
         world_num_geom_pairs, model_geom_pair, model_pairid, model_wid = builder.make_collision_candidate_pairs()
         model_num_geom_pairs = len(model_geom_pair)
@@ -127,15 +127,15 @@ class PrimitiveBroadPhaseTestBS:
 
     def collide(self, model: Model, data: ModelData, default_margin: float = 0.0):
         self._cdata.clear()
-        update_geoms_bs(data.bodies.q_i, model.cgeoms, data.cgeoms, self.bvdata, default_margin)
-        nxn_broadphase_bs(model.cgeoms, data.cgeoms, self.bvdata, self._cmodel, self._cdata)
+        update_geoms_bs(data.bodies.q_i, model.geoms, data.geoms, self.bvdata, default_margin)
+        nxn_broadphase_bs(model.geoms, data.geoms, self.bvdata, self._cmodel, self._cdata)
 
 
 class PrimitiveBroadPhaseTestAABB:
     def __init__(self, builder: ModelBuilder, device: Devicelike = None):
         # Retrieve the number of world
         num_worlds = builder.num_worlds
-        num_geoms = len(builder.collision_geoms)
+        num_geoms = len(builder.geoms)
         # Construct collision pairs
         world_num_geom_pairs, model_geom_pair, model_pairid, model_wid = builder.make_collision_candidate_pairs()
         model_num_geom_pairs = len(model_geom_pair)
@@ -164,8 +164,8 @@ class PrimitiveBroadPhaseTestAABB:
 
     def collide(self, model: Model, data: ModelData, default_margin: float = 0.0):
         self._cdata.clear()
-        update_geoms_aabb(data.bodies.q_i, model.cgeoms, data.cgeoms, self.bvdata, default_margin)
-        nxn_broadphase_aabb(model.cgeoms, self.bvdata, self._cmodel, self._cdata)
+        update_geoms_aabb(data.bodies.q_i, model.geoms, data.geoms, self.bvdata, default_margin)
+        nxn_broadphase_aabb(model.geoms, self.bvdata, self._cmodel, self._cdata)
 
 
 PrimitiveBroadPhaseType = PrimitiveBroadPhaseTestBS | PrimitiveBroadPhaseTestAABB

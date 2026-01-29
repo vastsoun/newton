@@ -88,7 +88,7 @@ class ModelBuilder:
         # Declare and initialize counters
         self._num_bodies: int = 0
         self._num_joints: int = 0
-        self._num_cgeoms: int = 0
+        self._num_geoms: int = 0
         self._num_materials: int = 0
         self._num_bdofs: int = 0
         self._num_jcoords: int = 0
@@ -105,7 +105,7 @@ class ModelBuilder:
         self._gravity: list[GravityDescriptor] = []
         self._bodies: list[RigidBodyDescriptor] = []
         self._joints: list[JointDescriptor] = []
-        self._cgeoms: list[GeometryDescriptor] = []
+        self._geoms: list[GeometryDescriptor] = []
 
         # Declare a global material manager
         self._materials: MaterialManager = MaterialManager()
@@ -131,9 +131,9 @@ class ModelBuilder:
         return self._num_joints
 
     @property
-    def num_collision_geoms(self) -> int:
+    def num_geoms(self) -> int:
         """Returns the number of collision geometries contained in the model."""
-        return self._num_cgeoms
+        return self._num_geoms
 
     @property
     def num_materials(self) -> int:
@@ -206,9 +206,9 @@ class ModelBuilder:
         return self._joints
 
     @property
-    def collision_geoms(self) -> list[GeometryDescriptor]:
+    def geoms(self) -> list[GeometryDescriptor]:
         """Returns the list of collision geometry descriptors contained in the model."""
-        return self._cgeoms
+        return self._geoms
 
     @property
     def materials(self) -> list[MaterialDescriptor]:
@@ -446,7 +446,7 @@ class ModelBuilder:
         # Return the new joint index
         return joint.jid
 
-    def add_collision_layer(self, name: str, world_index: int = 0):
+    def add_geometry_layer(self, name: str, world_index: int = 0):
         """
         Add a new collision geometry layer to the model.
 
@@ -456,9 +456,9 @@ class ModelBuilder:
                 Defaults to the first world with index `0`.
         """
         world = self._check_world_index(world_index)
-        world.add_collision_layer(name)
+        world.add_geometry_layer(name)
 
-    def add_collision_geometry(
+    def add_geometry(
         self,
         body: int = -1,
         layer: str = "default",
@@ -521,7 +521,7 @@ class ModelBuilder:
         # but we allow it to be optional here for convenience. Thus, we
         # generate a default name if none is provided.
         geom = GeometryDescriptor(
-            name=name if name is not None else f"cgeom_{self._num_cgeoms}",
+            name=name if name is not None else f"geom_{self._num_geoms}",
             uid=uid,
             bid=body,
             layer=layer,
@@ -535,9 +535,9 @@ class ModelBuilder:
         )
 
         # Add the body descriptor to the model
-        return self.add_collision_geometry_descriptor(geom, world_index=world_index)
+        return self.add_geometry_descriptor(geom, world_index=world_index)
 
-    def add_collision_geometry_descriptor(self, geom: GeometryDescriptor, world_index: int = 0) -> int:
+    def add_geometry_descriptor(self, geom: GeometryDescriptor, world_index: int = 0) -> int:
         """
         Add a collision geometry to the model by descriptor.
 
@@ -562,11 +562,11 @@ class ModelBuilder:
             geom.mid = self._materials.default.mid
 
         # Append body model data
-        world.add_collision_geom(geom)
-        self._insert_entity(self._cgeoms, geom, world_index=world_index)
+        world.add_geometry(geom)
+        self._insert_entity(self._geoms, geom, world_index=world_index)
 
         # Update model-wide counters
-        self._num_cgeoms += 1
+        self._num_geoms += 1
 
         # Return the new geometry index
         return geom.gid
@@ -627,7 +627,7 @@ class ModelBuilder:
         # Append the other per-entity descriptors
         self._bodies.extend(_other._bodies)
         self._joints.extend(_other._joints)
-        self._cgeoms.extend(_other._cgeoms)
+        self._geoms.extend(_other._geoms)
 
         # Append the other materials
         self._materials.merge(_other._materials)
@@ -643,13 +643,13 @@ class ModelBuilder:
                 body.wid = self._num_worlds + w
             for joint in self._joints[self._num_joints : self._num_joints + world.num_joints]:
                 joint.wid = self._num_worlds + w
-            for cgeom in self._cgeoms[self._num_cgeoms : self._num_cgeoms + world.num_collision_geoms]:
-                cgeom.wid = self._num_worlds + w
+            for geom in self._geoms[self._num_geoms : self._num_geoms + world.num_geoms]:
+                geom.wid = self._num_worlds + w
 
             # Update model-wide counters
             self._num_bodies += world.num_bodies
             self._num_joints += world.num_joints
-            self._num_cgeoms += world.num_collision_geoms
+            self._num_geoms += world.num_geoms
             self._num_bdofs += 6 * world.num_bodies
             self._num_jcoords += world.num_joint_coords
             self._num_jdofs += world.num_joint_dofs
@@ -943,18 +943,18 @@ class ModelBuilder:
         joints_q_j_0 = []
 
         # Initialize the collision geometry data collections
-        cgeoms_wid = []
-        cgeoms_gid = []
-        cgeoms_lid = []
-        cgeoms_bid = []
-        cgeoms_sid = []
-        cgeoms_ptr = []
-        cgeoms_params = []
-        cgeoms_offset = []
-        cgeoms_mid = []
-        cgeoms_group = []
-        cgeoms_collides = []
-        cgeoms_margin = []
+        geoms_wid = []
+        geoms_gid = []
+        geoms_lid = []
+        geoms_bid = []
+        geoms_sid = []
+        geoms_ptr = []
+        geoms_params = []
+        geoms_offset = []
+        geoms_mid = []
+        geoms_group = []
+        geoms_collides = []
+        geoms_margin = []
 
         # Initialize the material data collections
         materials_rest = []
@@ -973,7 +973,7 @@ class ModelBuilder:
                 info_nj.append(world.num_joints)
                 info_njp.append(world.num_passive_joints)
                 info_nja.append(world.num_actuated_joints)
-                info_ncg.append(world.num_collision_geoms)
+                info_ncg.append(world.num_geoms)
                 info_nbd.append(world.num_body_dofs)
                 info_njq.append(world.num_joint_coords)
                 info_njd.append(world.num_joint_dofs)
@@ -1069,21 +1069,21 @@ class ModelBuilder:
                 return 0
 
         # A helper function to collect model collision geometries data
-        def collect_collision_geometry_model_data():
-            cgeom_meshes = {}
-            for geom in self._cgeoms:
-                cgeoms_wid.append(geom.wid)
-                cgeoms_lid.append(geom.lid)
-                cgeoms_gid.append(geom.gid)
-                cgeoms_bid.append(geom.bid + self._worlds[geom.wid].bodies_idx_offset if geom.bid >= 0 else -1)
-                cgeoms_sid.append(geom.shape.type.value)
-                cgeoms_params.append(geom.shape.paramsvec)
-                cgeoms_offset.append(geom.offset)
-                cgeoms_mid.append(geom.mid)
-                cgeoms_group.append(geom.group)
-                cgeoms_collides.append(geom.collides)
-                cgeoms_margin.append(geom.contact_margin)
-                cgeoms_ptr.append(make_geometry_source_pointer(geom, cgeom_meshes, device))
+        def collect_geometry_model_data():
+            geom_meshes = {}
+            for geom in self._geoms:
+                geoms_wid.append(geom.wid)
+                geoms_lid.append(geom.lid)
+                geoms_gid.append(geom.gid)
+                geoms_bid.append(geom.bid + self._worlds[geom.wid].bodies_idx_offset if geom.bid >= 0 else -1)
+                geoms_sid.append(geom.shape.type.value)
+                geoms_params.append(geom.shape.paramsvec)
+                geoms_offset.append(geom.offset)
+                geoms_mid.append(geom.mid)
+                geoms_group.append(geom.group)
+                geoms_collides.append(geom.collides)
+                geoms_margin.append(geom.contact_margin)
+                geoms_ptr.append(make_geometry_source_pointer(geom, geom_meshes, device))
 
         # A helper function to collect model material-pairs data
         def collect_material_pairs_model_data():
@@ -1099,7 +1099,7 @@ class ModelBuilder:
         collect_gravity_model_data()
         collect_body_model_data()
         collect_joint_model_data()
-        collect_collision_geometry_model_data()
+        collect_geometry_model_data()
         collect_material_pairs_model_data()
 
         # Post-processing of reference coords of FREE joints to match body frames
@@ -1138,8 +1138,8 @@ class ModelBuilder:
         model.size.max_of_num_passive_joints = max([world.num_passive_joints for world in self._worlds])
         model.size.sum_of_num_actuated_joints = sum([world.num_actuated_joints for world in self._worlds])
         model.size.max_of_num_actuated_joints = max([world.num_actuated_joints for world in self._worlds])
-        model.size.sum_of_num_collision_geoms = self._num_cgeoms
-        model.size.max_of_num_collision_geoms = max([world.num_collision_geoms for world in self._worlds])
+        model.size.sum_of_num_geoms = self._num_geoms
+        model.size.max_of_num_geoms = max([world.num_geoms for world in self._worlds])
         model.size.sum_of_num_materials = self._materials.num_materials
         model.size.max_of_num_materials = self._materials.num_materials
         model.size.sum_of_num_material_pairs = self._materials.num_material_pairs
@@ -1188,7 +1188,7 @@ class ModelBuilder:
                 num_joints=wp.array(info_nj, dtype=int32),
                 num_passive_joints=wp.array(info_njp, dtype=int32),
                 num_actuated_joints=wp.array(info_nja, dtype=int32),
-                num_collision_geoms=wp.array(info_ncg, dtype=int32),
+                num_geoms=wp.array(info_ncg, dtype=int32),
                 num_body_dofs=wp.array(info_nbd, dtype=int32),
                 num_joint_coords=wp.array(info_njq, dtype=int32),
                 num_joint_dofs=wp.array(info_njd, dtype=int32),
@@ -1269,20 +1269,20 @@ class ModelBuilder:
             )
 
             # Create the collision geometries model
-            model.cgeoms = GeometriesModel(
-                num_geoms=model.size.sum_of_num_collision_geoms,
-                wid=wp.array(cgeoms_wid, dtype=int32),
-                gid=wp.array(cgeoms_gid, dtype=int32),
-                lid=wp.array(cgeoms_lid, dtype=int32),
-                bid=wp.array(cgeoms_bid, dtype=int32),
-                sid=wp.array(cgeoms_sid, dtype=int32),
-                ptr=wp.array(cgeoms_ptr, dtype=wp.uint64),
-                params=wp.array(cgeoms_params, dtype=vec4f, requires_grad=requires_grad),
-                offset=wp.array(cgeoms_offset, dtype=transformf, requires_grad=requires_grad),
-                mid=wp.array(cgeoms_mid, dtype=int32),
-                group=wp.array(cgeoms_group, dtype=uint32),
-                collides=wp.array(cgeoms_collides, dtype=uint32),
-                margin=wp.array(cgeoms_margin, dtype=float32),
+            model.geoms = GeometriesModel(
+                num_geoms=model.size.sum_of_num_geoms,
+                wid=wp.array(geoms_wid, dtype=int32),
+                gid=wp.array(geoms_gid, dtype=int32),
+                lid=wp.array(geoms_lid, dtype=int32),
+                bid=wp.array(geoms_bid, dtype=int32),
+                sid=wp.array(geoms_sid, dtype=int32),
+                ptr=wp.array(geoms_ptr, dtype=wp.uint64),
+                params=wp.array(geoms_params, dtype=vec4f, requires_grad=requires_grad),
+                offset=wp.array(geoms_offset, dtype=transformf, requires_grad=requires_grad),
+                mid=wp.array(geoms_mid, dtype=int32),
+                group=wp.array(geoms_group, dtype=uint32),
+                collides=wp.array(geoms_collides, dtype=uint32),
+                margin=wp.array(geoms_margin, dtype=float32),
             )
 
             # Create the material pairs model
@@ -1310,13 +1310,13 @@ class ModelBuilder:
         max_contacts_per_world: int | None = None,
     ) -> tuple[int, list[int]]:
         # First check if there are any collision geometries
-        if self._num_cgeoms == 0:
+        if self._num_geoms == 0:
             return 0, [0] * self.num_worlds
 
         # Compute the maximum possible number of geom pairs per world
         world_max_contacts = [0] * self.num_worlds
         for w, world in enumerate(self._worlds):
-            world_num_geom_pairs = (world.num_collision_geoms * (world.num_collision_geoms - 1)) // 2
+            world_num_geom_pairs = (world.num_geoms * (world.num_geoms - 1)) // 2
             world_max_contacts[w] = world_num_geom_pairs * max_contacts_per_pair
 
         # Override the per-world maximum contacts if specified in the settings
@@ -1354,7 +1354,7 @@ class ModelBuilder:
         nw = self.num_worlds
 
         # Extract the per-world info from the builder
-        ncg = [self._worlds[i].num_collision_geoms for i in range(nw)]
+        ncg = [self._worlds[i].num_geoms for i in range(nw)]
 
         # Initialize the lists to store the collision candidate pairs and their properties of each world
         world_num_geom_pairs = []
@@ -1378,7 +1378,7 @@ class ModelBuilder:
                 gid2 = int(gid2_) + ncg_offset
 
                 # Get references to the geometries
-                geom1, geom2 = self.collision_geoms[gid1], self.collision_geoms[gid2]
+                geom1, geom2 = self.geoms[gid1], self.geoms[gid2]
 
                 # Get body indices of each geom
                 bid1, bid2 = geom1.bid, geom2.bid
@@ -1466,7 +1466,7 @@ class ModelBuilder:
         # Initialize the model offsets
         bodies_idx_offset: int = 0
         joints_idx_offset: int = 0
-        collision_geoms_idx_offset: int = 0
+        geoms_idx_offset: int = 0
         body_dofs_idx_offset: int = 0
         joint_coords_idx_offset: int = 0
         joint_dofs_idx_offset: int = 0
@@ -1480,7 +1480,7 @@ class ModelBuilder:
             # Set the offsets in the world descriptor to the current values
             world.bodies_idx_offset = int(bodies_idx_offset)
             world.joints_idx_offset = int(joints_idx_offset)
-            world.collision_geoms_idx_offset = int(collision_geoms_idx_offset)
+            world.geoms_idx_offset = int(geoms_idx_offset)
             world.body_dofs_idx_offset = int(body_dofs_idx_offset)
             world.joint_coords_idx_offset = int(joint_coords_idx_offset)
             world.joint_dofs_idx_offset = int(joint_dofs_idx_offset)
@@ -1492,7 +1492,7 @@ class ModelBuilder:
             # Update the offsets for the next world
             bodies_idx_offset += world.num_bodies
             joints_idx_offset += world.num_joints
-            collision_geoms_idx_offset += world.num_collision_geoms
+            geoms_idx_offset += world.num_geoms
             body_dofs_idx_offset += 6 * world.num_bodies
             joint_coords_idx_offset += world.num_joint_coords
             joint_dofs_idx_offset += world.num_joint_dofs
@@ -1502,16 +1502,16 @@ class ModelBuilder:
             actuated_joint_dofs_idx_offset += world.num_actuated_joint_dofs
             joint_cts_idx_offset += world.num_joint_cts
 
-    def _collect_cgeom_max_contact_hints(self) -> tuple[int, list[int]]:
+    def _collect_geom_max_contact_hints(self) -> tuple[int, list[int]]:
         """
         Collects the `max_contacts` hints from collision geometries.
         """
         model_max_contacts = 0
         world_max_contacts = [0] * self.num_worlds
         for w in range(len(self._worlds)):
-            for cgeom_maxnc in self._worlds[w].collision_geometry_max_contacts:
-                model_max_contacts += cgeom_maxnc
-                world_max_contacts[w] += cgeom_maxnc
+            for geom_maxnc in self._worlds[w].geometry_max_contacts:
+                model_max_contacts += geom_maxnc
+                world_max_contacts[w] += geom_maxnc
         return model_max_contacts, world_max_contacts
 
     EntityDescriptorType = RigidBodyDescriptor | JointDescriptor | GeometryDescriptor

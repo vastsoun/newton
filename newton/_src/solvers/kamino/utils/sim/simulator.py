@@ -169,7 +169,7 @@ class Simulator:
         # Define the model components (e.g., bodies, joints, collision geometries etc.)
         builder.add_rigid_body(...)
         builder.add_joint(...)
-        builder.add_collision_geometry(...)
+        builder.add_geometry(...)
 
         # Create the simulator from the builder
         simulator = Simulator(builder)

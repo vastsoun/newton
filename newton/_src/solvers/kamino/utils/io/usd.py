@@ -1856,8 +1856,8 @@ class USDImporter:
                     continue
                 # Append geometry descriptor to appropriate entity
                 if type(geom_desc) is GeometryDescriptor:
-                    msg.debug("Adding geom '%d':\n%s\n", builder.num_collision_geoms, geom_desc)
-                    builder.add_collision_geometry_descriptor(geom=geom_desc)
+                    msg.debug("Adding geom '%d':\n%s\n", builder.num_geoms, geom_desc)
+                    builder.add_geometry_descriptor(geom=geom_desc)
 
             # Indicate to user that a UsdGeom has potentially not been marked for physics simulation
             else:
@@ -1869,7 +1869,7 @@ class USDImporter:
 
         msg.debug("Builder: Rigid Bodies:\n%s\n", builder.bodies)
         msg.debug("Builder: Joints:\n%s\n", builder.joints)
-        msg.debug("Builder: Geoms:\n%s\n", builder.collision_geoms)
+        msg.debug("Builder: Geoms:\n%s\n", builder.geoms)
         msg.debug("Builder: Materials:\n%s\n", builder.materials)
 
         # Return the ModelBuilder populated from the parsed USD file

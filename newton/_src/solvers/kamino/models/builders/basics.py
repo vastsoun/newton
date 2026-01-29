@@ -108,11 +108,11 @@ def build_box_on_plane(
     )
 
     # Add a collision layer and geometries
-    _builder.add_collision_geometry(body=bid0, shape=BoxShape(0.2, 0.2, 0.2), world_index=world_index)
+    _builder.add_geometry(body=bid0, shape=BoxShape(0.2, 0.2, 0.2), world_index=world_index)
 
     # Add a static collision layer and geometry for the plane
     if ground:
-        _builder.add_collision_geometry(
+        _builder.add_geometry(
             body=-1,
             shape=BoxShape(20.0, 20.0, 1.0),
             offset=transformf(0.0, 0.0, -0.5, 0.0, 0.0, 0.0, 1.0),
@@ -198,7 +198,7 @@ def build_box_pendulum(
     )
 
     # Add a collision layer and geometries
-    _builder.add_collision_geometry(
+    _builder.add_geometry(
         name="box",
         body=bid0,
         shape=BoxShape(d, w, h),
@@ -207,7 +207,7 @@ def build_box_pendulum(
 
     # Add a static collision layer and geometry for the plane
     if ground:
-        _builder.add_collision_geometry(
+        _builder.add_geometry(
             name="ground",
             body=-1,
             shape=BoxShape(20.0, 20.0, 1.0),
@@ -294,7 +294,7 @@ def build_box_pendulum_vertical(
     )
 
     # Add a collision layer and geometries
-    _builder.add_collision_geometry(
+    _builder.add_geometry(
         name="box",
         body=bid0,
         shape=BoxShape(d, w, h),
@@ -303,7 +303,7 @@ def build_box_pendulum_vertical(
 
     # Add a static collision layer and geometry for the plane
     if ground:
-        _builder.add_collision_geometry(
+        _builder.add_geometry(
             name="ground",
             body=-1,
             shape=BoxShape(20.0, 20.0, 1.0),
@@ -417,7 +417,7 @@ def build_cartpole(
     )
 
     # Add a collision layer and geometries
-    _builder.add_collision_geometry(
+    _builder.add_geometry(
         name="cart",
         layer="primary",
         body=bid0,
@@ -426,7 +426,7 @@ def build_cartpole(
         collides=2,
         world_index=world_index,
     )
-    _builder.add_collision_geometry(
+    _builder.add_geometry(
         name="pole",
         layer="primary",
         body=bid1,
@@ -435,7 +435,7 @@ def build_cartpole(
         collides=3,
         world_index=world_index,
     )
-    _builder.add_collision_geometry(
+    _builder.add_geometry(
         name="rail",
         layer="world",
         body=-1,
@@ -448,7 +448,7 @@ def build_cartpole(
 
     # Add a static collision layer and geometry for the plane
     if ground:
-        _builder.add_collision_geometry(
+        _builder.add_geometry(
             name="ground",
             layer="world",
             body=-1,
@@ -547,16 +547,16 @@ def build_boxes_hinged(
     )
 
     # Add a collision layer and geometries
-    _builder.add_collision_geometry(
+    _builder.add_geometry(
         name="base/box", body=bid0, shape=BoxShape(d, w, h), group=2, collides=3, world_index=world_index
     )
-    _builder.add_collision_geometry(
+    _builder.add_geometry(
         name="follower/box", body=bid1, shape=BoxShape(d, w, h), group=3, collides=5, world_index=world_index
     )
 
     # Add a static collision layer and geometry for the plane
     if ground:
-        _builder.add_collision_geometry(
+        _builder.add_geometry(
             name="ground",
             body=-1,
             shape=BoxShape(20.0, 20.0, 1.0),
@@ -685,19 +685,19 @@ def build_boxes_nunchaku(
     )
 
     # Add a collision layer and geometries
-    _builder.add_collision_geometry(
+    _builder.add_geometry(
         name="box_bottom", body=bid0, shape=BoxShape(d, w, h), group=2, collides=3, world_index=world_index
     )
-    _builder.add_collision_geometry(
+    _builder.add_geometry(
         name="sphere_middle", body=bid1, shape=SphereShape(r), group=3, collides=5, world_index=world_index
     )
-    _builder.add_collision_geometry(
+    _builder.add_geometry(
         name="box_top", body=bid2, shape=BoxShape(d, w, h), group=2, collides=3, world_index=world_index
     )
 
     # Add a static collision layer and geometry for the plane
     if ground:
-        _builder.add_collision_geometry(
+        _builder.add_geometry(
             name="ground",
             body=-1,
             shape=BoxShape(20.0, 20.0, 1.0),
@@ -826,19 +826,19 @@ def build_boxes_nunchaku_vertical(
     )
 
     # Add a collision layer and geometries
-    _builder.add_collision_geometry(
+    _builder.add_geometry(
         name="box_bottom", body=bid0, shape=BoxShape(d, w, h), group=2, collides=3, world_index=world_index
     )
-    _builder.add_collision_geometry(
+    _builder.add_geometry(
         name="sphere_middle", body=bid1, shape=SphereShape(r), group=3, collides=5, world_index=world_index
     )
-    _builder.add_collision_geometry(
+    _builder.add_geometry(
         name="box_top", body=bid2, shape=BoxShape(d, w, h), group=2, collides=3, world_index=world_index
     )
 
     # Add a static collision layer and geometry for the plane
     if ground:
-        _builder.add_collision_geometry(
+        _builder.add_geometry(
             name="ground",
             body=-1,
             shape=BoxShape(20.0, 20.0, 1.0),
@@ -1129,14 +1129,14 @@ def build_boxes_fourbar(
     ###
 
     # Add a collision layer and geometries
-    _builder.add_collision_geometry(name="box_1", body=bid1, shape=BoxShape(d_1, w_1, h_1), world_index=world_index)
-    _builder.add_collision_geometry(name="box_2", body=bid2, shape=BoxShape(d_2, w_2, h_2), world_index=world_index)
-    _builder.add_collision_geometry(name="box_3", body=bid3, shape=BoxShape(d_3, w_3, h_3), world_index=world_index)
-    _builder.add_collision_geometry(name="box_4", body=bid4, shape=BoxShape(d_4, w_4, h_4), world_index=world_index)
+    _builder.add_geometry(name="box_1", body=bid1, shape=BoxShape(d_1, w_1, h_1), world_index=world_index)
+    _builder.add_geometry(name="box_2", body=bid2, shape=BoxShape(d_2, w_2, h_2), world_index=world_index)
+    _builder.add_geometry(name="box_3", body=bid3, shape=BoxShape(d_3, w_3, h_3), world_index=world_index)
+    _builder.add_geometry(name="box_4", body=bid4, shape=BoxShape(d_4, w_4, h_4), world_index=world_index)
 
     # Add a static collision layer and geometry for the plane
     if ground:
-        _builder.add_collision_geometry(
+        _builder.add_geometry(
             name="ground",
             body=-1,
             shape=BoxShape(20.0, 20.0, 1.0),

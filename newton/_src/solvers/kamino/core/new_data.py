@@ -122,7 +122,7 @@ class DataKamino:
             and moments of inertia computed in world coordinates.
         joints (JointsData): States of joints in the model: joint frames computed in world coordinates,
             constraint residuals and reactions, and generalized (DoF) quantities.
-        cgeoms (CollisionGeometriesData): States of collision geometries in the model:
+        geoms (CollisionGeometriesData): States of collision geometries in the model:
             poses, AABBs etc. computed in world coordinates.
     """
 
@@ -144,5 +144,5 @@ class DataKamino:
     constraint residuals and reactions, and generalized (DoF) quantities.
     """
 
-    cgeoms: GeometriesData | None = None
+    geoms: GeometriesData | None = None
     """States of collision geometries in the model: poses computed in world coordinates."""

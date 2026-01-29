@@ -60,7 +60,7 @@ def assert_builders_equal(
     """
     fixture.assertEqual(builder1.num_bodies, builder2.num_bodies)
     fixture.assertEqual(builder1.num_joints, builder2.num_joints)
-    fixture.assertEqual(builder1.num_collision_geoms, builder2.num_collision_geoms)
+    fixture.assertEqual(builder1.num_geoms, builder2.num_geoms)
     fixture.assertEqual(builder1.num_materials, builder2.num_materials)
     for i in range(builder1.num_bodies):
         fixture.assertEqual(builder1.bodies[i].wid, builder2.bodies[i].wid)
@@ -106,21 +106,19 @@ def assert_builders_equal(
             arrays_equal(builder1.joints[j].tau_j_max, builder2.joints[j].tau_j_max),
             f"Joint {j} tau_j_max mismatch:\nleft:\n{builder1.joints[j].tau_j_max}\nright:\n{builder2.joints[j].tau_j_max}",
         )
-    for k in range(builder1.num_collision_geoms):
-        fixture.assertEqual(builder1.collision_geoms[k].wid, builder2.collision_geoms[k].wid)
-        fixture.assertEqual(builder1.collision_geoms[k].gid, builder2.collision_geoms[k].gid)
-        fixture.assertEqual(builder1.collision_geoms[k].lid, builder2.collision_geoms[k].lid)
-        fixture.assertEqual(builder1.collision_geoms[k].bid, builder2.collision_geoms[k].bid)
-        fixture.assertEqual(builder1.collision_geoms[k].shape.type, builder2.collision_geoms[k].shape.type)
-        fixture.assertEqual(builder1.collision_geoms[k].shape.num_params, builder2.collision_geoms[k].shape.num_params)
-        fixture.assertTrue(
-            lists_equal(builder1.collision_geoms[k].shape.paramsvec, builder2.collision_geoms[k].shape.paramsvec)
-        )
-        fixture.assertEqual(builder1.collision_geoms[k].mid, builder2.collision_geoms[k].mid)
-        fixture.assertEqual(builder1.collision_geoms[k].max_contacts, builder2.collision_geoms[k].max_contacts)
+    for k in range(builder1.num_geoms):
+        fixture.assertEqual(builder1.geoms[k].wid, builder2.geoms[k].wid)
+        fixture.assertEqual(builder1.geoms[k].gid, builder2.geoms[k].gid)
+        fixture.assertEqual(builder1.geoms[k].lid, builder2.geoms[k].lid)
+        fixture.assertEqual(builder1.geoms[k].bid, builder2.geoms[k].bid)
+        fixture.assertEqual(builder1.geoms[k].shape.type, builder2.geoms[k].shape.type)
+        fixture.assertEqual(builder1.geoms[k].shape.num_params, builder2.geoms[k].shape.num_params)
+        fixture.assertTrue(lists_equal(builder1.geoms[k].shape.paramsvec, builder2.geoms[k].shape.paramsvec))
+        fixture.assertEqual(builder1.geoms[k].mid, builder2.geoms[k].mid)
+        fixture.assertEqual(builder1.geoms[k].max_contacts, builder2.geoms[k].max_contacts)
         if not skip_colliders:
-            fixture.assertEqual(builder1.collision_geoms[k].group, builder2.collision_geoms[k].group)
-            fixture.assertEqual(builder1.collision_geoms[k].collides, builder2.collision_geoms[k].collides)
+            fixture.assertEqual(builder1.geoms[k].group, builder2.geoms[k].group)
+            fixture.assertEqual(builder1.geoms[k].collides, builder2.geoms[k].collides)
     for m in range(builder1.num_materials):
         fixture.assertEqual(builder1.materials[m].wid, builder2.materials[m].wid)
         fixture.assertEqual(builder1.materials[m].mid, builder2.materials[m].mid)

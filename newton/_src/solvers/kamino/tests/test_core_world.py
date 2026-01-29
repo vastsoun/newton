@@ -415,10 +415,10 @@ class TestWorldDescriptor(unittest.TestCase):
         self.assertEqual(world.name, "test_world")
         self.assertEqual(world.num_bodies, 0)
         self.assertEqual(world.num_joints, 0)
-        self.assertEqual(world.num_collision_geoms, 0)
+        self.assertEqual(world.num_geoms, 0)
         self.assertEqual(len(world.body_names), 0)
         self.assertEqual(len(world.joint_names), 0)
-        self.assertEqual(len(world.collision_geom_names), 0)
+        self.assertEqual(len(world.geom_names), 0)
         self.assertEqual(world.mass_min, math.inf)
         self.assertEqual(world.mass_max, 0.0)
         self.assertEqual(world.mass_total, 0.0)
@@ -511,7 +511,7 @@ class TestWorldDescriptor(unittest.TestCase):
         # Add collision geometry to body_0
         # TODO: Remove base descriptor
         geom = GeometryDescriptor(name="test_geom", bid=body_0.bid, shape=SphereShape(radius=1.0, name="test_sphere"))
-        world.add_collision_geom(geom)
+        world.add_geometry(geom)
         msg.info(f"geom: {geom}")
         self.assertEqual(geom.name, "test_geom")
         self.assertEqual(geom.bid, body_0.bid)
@@ -522,9 +522,9 @@ class TestWorldDescriptor(unittest.TestCase):
         self.assertEqual(geom.gid, 0)
 
         # Verify world properties
-        self.assertEqual(world.num_collision_geoms, 1)
+        self.assertEqual(world.num_geoms, 1)
         self.assertIn(body_0.name, world.body_names)
-        self.assertIn(geom.name, world.collision_geom_names)
+        self.assertIn(geom.name, world.geom_names)
 
     def test_04_add_material(self):
         world = WorldDescriptor(name="test_world", wid=42)

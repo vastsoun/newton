@@ -85,7 +85,7 @@ def add_ground_plane(
     Returns:
         int: The ID of the added ground geometry.
     """
-    return builder.add_collision_geometry(
+    return builder.add_geometry(
         shape=PlaneShape(vec3f(0.0, 0.0, 1.0), 0.0),
         offset=transformf(0.0, 0.0, z_offset, 0.0, 0.0, 0.0, 1.0),
         name="ground",
@@ -130,7 +130,7 @@ def add_ground_box(
     Returns:
         int: The ID of the added ground geometry.
     """
-    return builder.add_collision_geometry(
+    return builder.add_geometry(
         shape=BoxShape(20.0, 20.0, 1.0),
         offset=transformf(0.0, 0.0, -0.5 + z_offset, 0.0, 0.0, 0.0, 1.0),
         name="ground",

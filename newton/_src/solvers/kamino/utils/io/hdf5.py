@@ -223,7 +223,7 @@ class RigidBodySystemInfoData:
         self.body_names: list[str] = []
         self.joint_names: list[str] = []
         self.physical_geometry_layers: list[str] = []
-        self.collision_geometry_layers: list[str] = []
+        self.geometry_layers: list[str] = []
         self.fixed_joint_names: list[str] = []
         self.passive_joint_names: list[str] = []
         self.actuated_joint_names: list[str] = []
@@ -258,7 +258,7 @@ class RigidBodySystemInfoData:
             \nbody_names={self.body_names}, \
             \njoint_names={self.joint_names}, \
             \nphysical_geometry_layers={self.physical_geometry_layers}, \
-            \ncollision_geometry_layers={self.collision_geometry_layers}, \
+            \ngeometry_layers={self.geometry_layers}, \
             \nfixed_joint_names={self.fixed_joint_names}, \
             \npassive_joint_names={self.passive_joint_names}, \
             \nactuated_joint_names={self.actuated_joint_names}, \
@@ -290,7 +290,7 @@ class RigidBodySystemInfoData:
         self.body_names = [str(s.decode("UTF-8")) for s in dataset["body_names"]]
         # self.joint_names = [str(s.decode('UTF-8')) for s in dataset['joint_names']]
         self.physical_geometry_layers = [str(s.decode("UTF-8")) for s in dataset["physical_geometry_layers"]]
-        self.collision_geometry_layers = [str(s.decode("UTF-8")) for s in dataset["collision_geometry_layers"]]
+        self.geometry_layers = [str(s.decode("UTF-8")) for s in dataset["geometry_layers"]]
         self.fixed_joint_names = [str(s.decode("UTF-8")) for s in dataset["fixed_joint_names"]]
         self.passive_joint_names = [str(s.decode("UTF-8")) for s in dataset["passive_joint_names"]]
         self.actuated_joint_names = [str(s.decode("UTF-8")) for s in dataset["actuated_joint_names"]]
@@ -322,7 +322,7 @@ class RigidBodySystemInfoData:
         dataset[namespace + "/body_names"] = [s.encode("UTF-8") for s in self.body_names]
         dataset[namespace + "/joint_names"] = [s.encode("UTF-8") for s in self.joint_names]
         dataset[namespace + "/physical_geometry_layers"] = [s.encode("UTF-8") for s in self.physical_geometry_layers]
-        dataset[namespace + "/collision_geometry_layers"] = [s.encode("UTF-8") for s in self.collision_geometry_layers]
+        dataset[namespace + "/geometry_layers"] = [s.encode("UTF-8") for s in self.geometry_layers]
         dataset[namespace + "/fixed_joint_names"] = [s.encode("UTF-8") for s in self.fixed_joint_names]
         dataset[namespace + "/passive_joint_names"] = [s.encode("UTF-8") for s in self.passive_joint_names]
         dataset[namespace + "/actuated_joint_names"] = [s.encode("UTF-8") for s in self.actuated_joint_names]
@@ -354,7 +354,7 @@ class RigidBodySystemInfoData:
         self.body_names = world.body_names
         self.joint_names = world.joint_names
         self.physical_geometry_layers = world.physical_geometry_layers
-        self.collision_geometry_layers = world.collision_geometry_layers
+        self.geometry_layers = world.geometry_layers
         self.fixed_joint_names = world.fixed_joint_names
         self.passive_joint_names = world.passive_joint_names
         self.actuated_joint_names = world.actuated_joint_names

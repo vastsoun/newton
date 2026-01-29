@@ -237,7 +237,7 @@ class ViewerKamino(ViewerGL):
 
         # Declare and initialize geometry info cache
         self._worlds: list[WorldDescriptor] = builder.worlds
-        self._collision_geometry: list[GeometryDescriptor] = builder.collision_geoms
+        self._geometry: list[GeometryDescriptor] = builder.geoms
 
         # Initialize video recording settings
         self._record_video = record_video
@@ -306,10 +306,10 @@ class ViewerKamino(ViewerGL):
         body_poses = self._simulator.state.q_i.numpy()
 
         # Render each collision geom
-        for cgeom in self._collision_geometry:
-            if cgeom.shape.type == ShapeType.EMPTY:
+        for geom in self._geometry:
+            if geom.shape.type == ShapeType.EMPTY:
                 continue
-            self.render_geometry(body_poses, cgeom, scope="collision")
+            self.render_geometry(body_poses, geom, scope="collision")
 
         # Render contacts if they exist and visualization is enabled
         if hasattr(self._simulator, "contacts") and self._simulator.contacts is not None:

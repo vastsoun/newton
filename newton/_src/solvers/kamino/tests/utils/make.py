@@ -26,7 +26,7 @@ from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.core.model import Model, ModelData
 from newton._src.solvers.kamino.geometry.detector import CollisionDetector, CollisionDetectorSettings
 from newton._src.solvers.kamino.kinematics.constraints import make_unilateral_constraints_info, update_constraints_info
-from newton._src.solvers.kamino.kinematics.jacobians import DenseSystemJacobians
+from newton._src.solvers.kamino.kinematics.jacobians import DenseSystemJacobians, SparseSystemJacobians
 from newton._src.solvers.kamino.kinematics.joints import compute_joints_data
 from newton._src.solvers.kamino.kinematics.limits import Limits
 from newton._src.solvers.kamino.utils.sim import Simulator
@@ -111,8 +111,12 @@ def make_inverse_generalized_mass_matrices(model: Model, data: ModelData) -> lis
 
 
 def make_containers(
-    builder: ModelBuilder, max_world_contacts: int = 0, dt: float = 0.001, device: Devicelike = None
-) -> tuple[Model, ModelData, Limits, CollisionDetector, DenseSystemJacobians]:
+    builder: ModelBuilder,
+    max_world_contacts: int = 0,
+    dt: float = 0.001,
+    device: Devicelike = None,
+    sparse: bool = False,
+) -> tuple[Model, ModelData, Limits, CollisionDetector, DenseSystemJacobians | SparseSystemJacobians]:
     # Create the model from the builder
     model = builder.finalize(device=device)
 
@@ -134,14 +138,21 @@ def make_containers(
     make_unilateral_constraints_info(model, data, limits, detector.contacts, device=device)
 
     # Create the Jacobians container
-    jacobians = DenseSystemJacobians(model=model, limits=limits, contacts=detector.contacts, device=device)
+    if sparse:
+        jacobians = SparseSystemJacobians(model=model, limits=limits, contacts=detector.contacts, device=device)
+    else:
+        jacobians = DenseSystemJacobians(model=model, limits=limits, contacts=detector.contacts, device=device)
 
     # Return the model, data, detector, and jacobians
     return model, data, limits, detector, jacobians
 
 
 def update_containers(
-    model: Model, data: ModelData, limits: Limits, detector: CollisionDetector, jacobians: DenseSystemJacobians
+    model: Model,
+    data: ModelData,
+    limits: Limits,
+    detector: CollisionDetector,
+    jacobians: DenseSystemJacobians | SparseSystemJacobians,
 ) -> None:
     # Update body inertias according to the current state of the bodies
     update_body_inertias(model=model.bodies, data=data.bodies)

@@ -16,8 +16,9 @@
 """Utilities for extracting data from Kamino data structures"""
 
 import numpy as np
+import warp as wp
 
-from ...dynamics.delassus import DelassusOperator
+from ...dynamics.delassus import BlockSparseMatrixFreeDelassusOperator, DelassusOperator
 from ...kinematics.jacobians import DenseSystemJacobians
 
 ###
@@ -150,6 +151,80 @@ def extract_delassus(delassus: DelassusOperator, only_active_dims: bool = False)
         D_mat.append(D_wp_np[D_start:D_end].reshape((D_dim, D_dim)))
 
     # Return the list of Delassus matrices
+    return D_mat
+
+
+def extract_delassus_sparse(
+    delassus: BlockSparseMatrixFreeDelassusOperator, only_active_dims: bool = False
+) -> list[np.ndarray]:
+    """
+    Extracts the (dense) Delassus matrix from the sparse matrix-free Delassus operator by querying
+    individual matrix columns.
+    """
+    num_worlds = delassus._model.size.num_worlds
+    sum_max_cts = delassus._model.size.sum_of_max_total_cts
+    max_cts_np = delassus._model.info.max_total_cts.numpy()
+
+    num_cts = delassus._data.info.num_total_cts
+    num_cts_np = num_cts.numpy()
+    max_dim = np.max(num_cts_np) if only_active_dims else np.max(max_cts_np)
+
+    D_mat: list[np.ndarray] = []
+    for world_id in range(num_worlds):
+        if only_active_dims:
+            D_mat.append(np.zeros((num_cts_np[world_id], num_cts_np[world_id]), dtype=np.float32))
+        else:
+            D_mat.append(np.zeros((max_cts_np[world_id], max_cts_np[world_id]), dtype=np.float32))
+
+    vec_query = wp.empty((sum_max_cts,), dtype=wp.float32, device=delassus._device)
+    vec_response = wp.empty((sum_max_cts,), dtype=wp.float32, device=delassus._device)
+
+    @wp.kernel
+    def _set_unit_entry(
+        # Inputs:
+        index: int,
+        world_dim: wp.array(dtype=wp.int32),
+        entry_start: wp.array(dtype=wp.int32),
+        # Output:
+        x: wp.array(dtype=wp.float32),
+    ):
+        world_id = wp.tid()
+
+        if index >= world_dim[world_id]:
+            return
+
+        x[entry_start[world_id] + index] = 1.0
+
+    entry_start_np = delassus.bsm.row_start.numpy()
+
+    world_mask = wp.ones((num_worlds,), dtype=wp.int32, device=delassus._device)
+
+    for dim in range(max_dim):
+        # Query the operator by computing the product with a vector where only entry `dim` is set to 1.
+        vec_query.zero_()
+        wp.launch(
+            kernel=_set_unit_entry,
+            dim=num_worlds,
+            inputs=[
+                # Inputs:
+                dim,
+                num_cts,
+                delassus.bsm.row_start,
+                # Outputs:
+                vec_query,
+            ],
+        )
+        delassus.matvec(vec_query, vec_response, world_mask)
+        vec_response_np = vec_response.numpy()
+
+        # Set the response as the corresponding column of each matrix
+        for world_id in range(num_worlds):
+            D_mat_dim = D_mat[world_id].shape[0]
+            if dim >= D_mat_dim:
+                continue
+            start_idx = entry_start_np[world_id]
+            D_mat[world_id][:, dim] = vec_response_np[start_idx : start_idx + D_mat_dim]
+
     return D_mat
 
 

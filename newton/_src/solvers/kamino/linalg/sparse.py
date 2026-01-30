@@ -437,7 +437,7 @@ class BlockSparseMatrices:
             nrows, ncols = int(dims[0]), int(dims[1])
 
             # Allocate dense matrix initially filled with zeros
-            dense_matrix = np.zeros((nrows, ncols), dtype=self.nzb_dtype.dtype)
+            dense_matrix = np.zeros((nrows, ncols), dtype=wp.dtype_to_numpy(self.nzb_dtype.dtype))
 
             # Populate non-zero blocks
             num_nzb = int(num_nzb_np[m])
@@ -522,6 +522,12 @@ class BlockSparseLinearOperators:
     # Operators
     ###
 
+    precompute_op: Callable | None = None
+    """
+    The operator function for precomputing any necessary data for the operators.\n
+    Signature: ``precompute_op(A: BlockSparseLinearOperators)``.
+    """
+
     Ax_op: Callable | None = None
     """
     The operator function for performing sparse matrix-vector products `y = A @ x`.\n
@@ -557,6 +563,11 @@ class BlockSparseLinearOperators:
     def zero(self):
         """Sets all sub-block data to zero."""
         self.bsm.zero()
+
+    def precompute(self):
+        """Precomputes any necessary data for the operators."""
+        if self.precompute_op:
+            self.precompute_op(self)
 
     def matvec(self, x: wp.array, y: wp.array, matrix_mask: wp.array):
         """Performs the sparse matrix-vector product `y = A @ x`."""

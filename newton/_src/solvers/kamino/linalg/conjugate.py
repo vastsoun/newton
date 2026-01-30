@@ -420,7 +420,7 @@ class ConjugateSolver:
             self.maxiter = wp.full(self.n_worlds, int(1.5 * self.maxdims), dtype=int, device=self.device)
 
         # TODO: non-tiled variant for CPU
-        self.dot_product = wp.empty((2, self.n_worlds), dtype=self.scalar_type, device=self.device)
+        self.dot_product = wp.zeros((2, self.n_worlds), dtype=self.scalar_type, device=self.device)
 
         atol_val = self.atol if isinstance(self.atol, float) else 1e-8
         rtol_val = self.rtol if isinstance(self.rtol, float) else 1e-8
@@ -459,8 +459,8 @@ class CGSolver(ConjugateSolver):
         super()._allocate()
 
         # Temp storage
-        self.r_and_z = wp.empty((2, self.n_worlds, self.maxdims), dtype=self.scalar_type, device=self.device)
-        self.p_and_Ap = wp.empty_like(self.r_and_z)
+        self.r_and_z = wp.zeros((2, self.n_worlds, self.maxdims), dtype=self.scalar_type, device=self.device)
+        self.p_and_Ap = wp.zeros_like(self.r_and_z)
 
         # (r, r) -- so we can compute r.z and r.r at once
         self.r_repeated = _repeat_first(self.r_and_z)
@@ -574,10 +574,10 @@ class CRSolver(ConjugateSolver):
         super()._allocate()
 
         # Temp storage
-        self.r_and_z = wp.empty((2, self.n_worlds, self.maxdims), dtype=self.scalar_type, device=self.device)
-        self.r_and_Az = wp.empty_like(self.r_and_z)
-        self.y_and_Ap = wp.empty_like(self.r_and_z)
-        self.p = wp.empty((self.n_worlds, self.maxdims), dtype=self.scalar_type, device=self.device)
+        self.r_and_z = wp.zeros((2, self.n_worlds, self.maxdims), dtype=self.scalar_type, device=self.device)
+        self.r_and_Az = wp.zeros_like(self.r_and_z)
+        self.y_and_Ap = wp.zeros_like(self.r_and_z)
+        self.p = wp.zeros((self.n_worlds, self.maxdims), dtype=self.scalar_type, device=self.device)
         # (r, r) -- so we can compute r.z and r.r at once
 
         if self.Mi is None:

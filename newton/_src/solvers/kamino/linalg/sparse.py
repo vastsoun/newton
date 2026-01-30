@@ -20,16 +20,20 @@ This module provides data structures and utilities for managing multiple
 independent linear systems, including rectangular and square systems.
 """
 
+import functools
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, get_args
+from typing import TYPE_CHECKING, Any, get_args
 
 import numpy as np
 import warp as wp
 from warp.context import Devicelike
 
-from ..core.types import FloatType, IntType, int32
+from ..core.types import FloatType, IntType, float32, int32
 from ..utils import logger as msg
+
+if TYPE_CHECKING:
+    from .core import DenseLinearOperatorData
 
 ###
 # Module interface
@@ -39,6 +43,8 @@ __all__ = [
     "BlockDType",
     "BlockSparseLinearOperators",
     "BlockSparseMatrices",
+    "allocate_block_sparse_from_dense",
+    "dense_to_block_sparse_copy_values",
 ]
 
 
@@ -581,3 +587,271 @@ class BlockSparseLinearOperators:
         if self.gemvt_op is None:
             raise RuntimeError("No BLAS-like transposed `GEMV` operator has been assigned.")
         self.gemvt_op(self.bsm, y, x, alpha, beta, matrix_mask)
+
+
+###
+# Dense to Block-Sparse Conversion
+###
+
+
+@wp.kernel
+def _copy_square_dims_kernel(
+    src_dim: wp.array(dtype=int32),
+    dst_dims: wp.array2d(dtype=int32),
+):
+    """Copies square dimensions from 1D array to 2D (n, n) format."""
+    wid = wp.tid()
+    d = src_dim[wid]
+    dst_dims[wid, 0] = d
+    dst_dims[wid, 1] = d
+
+
+@functools.cache
+def _make_dense_to_bsm_detect_kernel(block_size: int):
+    """Creates a kernel that detects non-zero blocks in dense matrices and populates BSM coordinates.
+
+    Note: Dense matrices use canonical compact storage where stride = active dim (not maxdim).
+    """
+
+    @wp.kernel
+    def kernel(
+        # Dense matrix info
+        dense_dim: wp.array(dtype=int32),
+        dense_mio: wp.array(dtype=int32),
+        dense_mat: wp.array(dtype=float32),
+        # BSM info
+        max_nzb: wp.array(dtype=int32),
+        nzb_start: wp.array(dtype=int32),
+        # Outputs
+        num_nzb: wp.array(dtype=int32),
+        nzb_coords: wp.array2d(dtype=int32),
+    ):
+        wid, bi, bj = wp.tid()
+
+        dim = dense_dim[wid]
+        bs = wp.static(block_size)
+        n_blocks = (dim + bs - 1) // bs
+
+        if bi >= n_blocks or bj >= n_blocks:
+            return
+
+        row_start = bi * bs
+        col_start = bj * bs
+        m_offset = dense_mio[wid]
+
+        # Check if any element in this block is non-zero
+        # Dense matrices use compact storage: stride = dim
+        nonzero_count = int(0)
+        for i in range(bs):
+            row = row_start + i
+            if row < dim:
+                for j in range(bs):
+                    col = col_start + j
+                    if col < dim:
+                        idx = m_offset + row * dim + col
+                        if dense_mat[idx] != float32(0.0):
+                            nonzero_count = nonzero_count + 1
+
+        if nonzero_count > 0:
+            slot = wp.atomic_add(num_nzb, wid, 1)
+            cap = max_nzb[wid]
+            if slot < cap:
+                global_idx = nzb_start[wid] + slot
+                nzb_coords[global_idx, 0] = row_start
+                nzb_coords[global_idx, 1] = col_start
+
+    return kernel
+
+
+@functools.cache
+def _make_dense_to_bsm_copy_kernel(block_size: int):
+    """Creates a kernel that copies block values from dense matrices to BSM storage.
+
+    Note: Dense matrices use canonical compact storage where stride = active dim (not maxdim).
+    """
+
+    mat_type = wp.types.matrix(shape=(block_size, block_size), dtype=float32)
+
+    @wp.kernel
+    def kernel(
+        # Dense matrix info
+        dense_dim: wp.array(dtype=int32),
+        dense_mio: wp.array(dtype=int32),
+        dense_mat: wp.array(dtype=float32),
+        # BSM info
+        nzb_start: wp.array(dtype=int32),
+        num_nzb: wp.array(dtype=int32),
+        nzb_coords: wp.array2d(dtype=int32),
+        # Output
+        nzb_values: wp.array(dtype=mat_type),
+    ):
+        wid, block_idx = wp.tid()
+
+        if block_idx >= num_nzb[wid]:
+            return
+
+        dim = dense_dim[wid]
+        m_offset = dense_mio[wid]
+        global_idx = nzb_start[wid] + block_idx
+        row_start = nzb_coords[global_idx, 0]
+        col_start = nzb_coords[global_idx, 1]
+
+        bs = wp.static(block_size)
+        block = mat_type()
+
+        # Dense matrices use compact storage: stride = dim
+        for i in range(bs):
+            row = row_start + i
+            for j in range(bs):
+                col = col_start + j
+                if row < dim and col < dim:
+                    idx = m_offset + row * dim + col
+                    block[i, j] = dense_mat[idx]
+                else:
+                    block[i, j] = float32(0.0)
+
+        nzb_values[global_idx] = block
+
+    return kernel
+
+
+def allocate_block_sparse_from_dense(
+    dense_op: "DenseLinearOperatorData",
+    block_size: int,
+    sparsity_threshold: float = 1.0,
+    device: Devicelike | None = None,
+) -> BlockSparseMatrices:
+    """
+    Allocates a BlockSparseMatrices container sized for converting from a dense operator.
+
+    Args:
+        dense_op: The dense linear operator to convert from.
+        block_size: The size of each square block.
+        sparsity_threshold: Fraction of maximum possible blocks to allocate for (0.0 to 1.0).
+            E.g., 0.5 allocates for up to 50% of blocks being non-zero. Default 1.0 (all blocks).
+        device: Device to allocate on. Defaults to the dense operator's device.
+
+    Returns:
+        A finalized but empty BlockSparseMatrices ready for use with dense_to_block_sparse_copy_values.
+    """
+    from .core import DenseSquareMultiLinearInfo
+
+    if dense_op.info is None:
+        raise ValueError("Dense operator must have info set.")
+    if not isinstance(dense_op.info, DenseSquareMultiLinearInfo):
+        raise ValueError("Dense operator must be square (DenseSquareMultiLinearInfo).")
+
+    info = dense_op.info
+    if info.dimensions is None:
+        raise ValueError("Dense operator info must have dimensions set.")
+    if device is None:
+        device = info.device
+
+    max_dims_list: list[tuple[int, int]] = []
+    capacities: list[int] = []
+
+    for dim in info.dimensions:
+        n_blocks_per_dim = (dim + block_size - 1) // block_size
+        max_blocks = n_blocks_per_dim * n_blocks_per_dim
+        capacity = max(1, int(sparsity_threshold * max_blocks))
+        max_dims_list.append((dim, dim))
+        capacities.append(capacity)
+
+    nzb_dtype = BlockDType(dtype=info.dtype, shape=(block_size, block_size))
+
+    bsm = BlockSparseMatrices()
+    bsm.finalize(
+        max_dims=max_dims_list,
+        capacities=capacities,
+        nzb_dtype=nzb_dtype,
+        index_dtype=info.itype,
+        device=device,
+    )
+
+    return bsm
+
+
+def dense_to_block_sparse_copy_values(
+    dense_op: "DenseLinearOperatorData",
+    bsm: BlockSparseMatrices,
+    block_size: int,
+) -> None:
+    """
+    Converts dense matrix values to block-sparse format (graph-capturable).
+
+    This function detects non-zero blocks and copies their values from the dense
+    operator to the block-sparse matrices container. It is fully GPU-based and
+    graph-capturable.
+
+    Args:
+        dense_op: The dense linear operator containing the matrix data.
+        bsm: A pre-allocated BlockSparseMatrices (from allocate_block_sparse_from_dense).
+        block_size: The block size (must match the BSM's block size).
+    """
+    from .core import DenseSquareMultiLinearInfo
+
+    if dense_op.info is None:
+        raise ValueError("Dense operator must have info set.")
+    if not isinstance(dense_op.info, DenseSquareMultiLinearInfo):
+        raise ValueError("Dense operator must be square.")
+    if not bsm._is_finalized():
+        raise ValueError("BlockSparseMatrices must be finalized before use.")
+
+    info = dense_op.info
+    device = bsm.device
+
+    # Reset num_nzb counter for fresh detection
+    bsm.num_nzb.zero_()
+
+    # Copy active dimensions from dense to BSM
+    wp.launch(
+        _copy_square_dims_kernel,
+        dim=(info.num_blocks,),
+        inputs=[info.dim],
+        outputs=[bsm.dims],
+        device=device,
+    )
+
+    # Compute launch dimensions
+    max_dim = info.max_dimension
+    max_blocks_per_dim = (max_dim + block_size - 1) // block_size
+
+    # Get cached kernels
+    detect_kernel = _make_dense_to_bsm_detect_kernel(block_size)
+    copy_kernel = _make_dense_to_bsm_copy_kernel(block_size)
+
+    # Launch detection kernel
+    wp.launch(
+        detect_kernel,
+        dim=(info.num_blocks, max_blocks_per_dim, max_blocks_per_dim),
+        inputs=[
+            info.dim,
+            info.mio,
+            dense_op.mat,
+            bsm.max_nzb,
+            bsm.nzb_start,
+        ],
+        outputs=[
+            bsm.num_nzb,
+            bsm.nzb_coords,
+        ],
+        device=device,
+    )
+
+    # Launch copy kernel
+    wp.launch(
+        copy_kernel,
+        dim=(bsm.num_matrices, bsm.max_of_num_nzb),
+        inputs=[
+            info.dim,
+            info.mio,
+            dense_op.mat,
+            bsm.nzb_start,
+            bsm.num_nzb,
+            bsm.nzb_coords,
+        ],
+        outputs=[
+            bsm.nzb_values,
+        ],
+        device=device,
+    )

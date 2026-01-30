@@ -72,16 +72,16 @@ Typical usage example:
     delassus.solve(b=rhs, x=solution)
 """
 
-from typing import Any, Callable
+from typing import Any
 
 import warp as wp
 from warp.context import Devicelike
 
 from ..core.model import Model, ModelData, ModelSize
-from ..core.types import float32, int32, mat33f, vec3f
+from ..core.types import float32, int32, mat33f, vec3f, vec6f
 from ..geometry.contacts import Contacts
 from ..kinematics.constraints import get_max_constraints_per_world
-from ..kinematics.jacobians import DenseSystemJacobians
+from ..kinematics.jacobians import DenseSystemJacobians, SparseSystemJacobians
 from ..kinematics.limits import Limits
 from ..linalg import DenseLinearOperatorData, DenseSquareMultiLinearInfo, LinearSolverType
 from ..linalg.blas import (
@@ -91,9 +91,9 @@ from ..linalg.blas import (
     block_sparse_transpose_matvec,
 )
 
-# from ..linalg import Matrices, LinearOperatos
+# from ..linalg import Matrices, LinearOperators
 # from ..linalg.dense import DenseMatrices, DenseLinearOperators
-from ..linalg.sparse import BlockSparseMatrices, BlockSparseLinearOperators
+from ..linalg.sparse import BlockSparseLinearOperators
 
 ###
 # Module interface
@@ -238,6 +238,191 @@ def _regularize_delassus_diagonal(
 
     # Regularize the diagonal element
     delassus_D[mio + dim * tid + tid] += eta[vio + tid]
+
+
+@wp.kernel
+def _inverse_mass_matrix_matvec(
+    # Model:
+    model_info_num_bodies: wp.array(dtype=int32),
+    model_info_bodies_offset: wp.array(dtype=int32),
+    # Mass properties:
+    model_bodies_inv_m_i: wp.array(dtype=float32),
+    data_bodies_inv_I_i: wp.array(dtype=mat33f),
+    # Vector:
+    x: wp.array(dtype=float32),
+    # Mask:
+    world_mask: wp.array(dtype=int32),
+):
+    """
+    Applies the inverse mass matrix to a vector in body coordinate space: x = M^-1 @ x.
+    """
+    # Retrieve the thread index as the world index and body index
+    world_id, body_id = wp.tid()
+
+    # Skip if world is inactive or body index exceeds the number of bodies in the world
+    if world_mask[world_id] == 0 or body_id >= model_info_num_bodies[world_id]:
+        return
+
+    # Index of body w.r.t the model
+    global_body_id = model_info_bodies_offset[world_id] + body_id
+
+    # Body dof index offset in the flattened vector
+    body_dof_index = 6 * global_body_id
+
+    # Load the inverse mass and inverse inertia for this body
+    inv_m = model_bodies_inv_m_i[global_body_id]
+    inv_I = data_bodies_inv_I_i[global_body_id]
+
+    # Load the input vector components for this body
+    v = x[body_dof_index : body_dof_index + 6]
+    v_lin = wp.vec3(*v[0:3])
+    v_ang = wp.vec3(*v[3:6])
+
+    # Apply inverse mass to linear velocity component
+    v_lin_out = inv_m * v_lin
+
+    # Apply inverse inertia to angular velocity component
+    v_ang_out = inv_I @ v_ang
+
+    # Store the result
+    x[body_dof_index + 0] = v_lin_out[0]
+    x[body_dof_index + 1] = v_lin_out[1]
+    x[body_dof_index + 2] = v_lin_out[2]
+    x[body_dof_index + 3] = v_ang_out[0]
+    x[body_dof_index + 4] = v_ang_out[1]
+    x[body_dof_index + 5] = v_ang_out[2]
+
+
+@wp.kernel
+def _compute_block_sparse_delassus_diagonal(
+    # Inputs:
+    model_info_bodies_offset: wp.array(dtype=int32),
+    model_bodies_inv_m_i: wp.array(dtype=float32),
+    data_bodies_inv_I_i: wp.array(dtype=mat33f),
+    bsm_nzb_start: wp.array(dtype=int32),
+    bsm_num_nzb: wp.array(dtype=int32),
+    bsm_nzb_coords: wp.array2d(dtype=int32),
+    bsm_nzb_values: wp.array(dtype=vec6f),
+    vec_start: wp.array(dtype=int32),
+    # Outputs:
+    diag: wp.array(dtype=float32),
+):
+    """
+    Computes the diagonal entries of the Delassus matrix by summing up the contributions of each
+    non-zero block of the Jacobian: D_ii = sum_k J_ik @ M_kk^-1 @ (J_ik)^T
+
+    This kernel processes one non-zero block per thread and accumulates all contributions.
+    """
+    # Retrieve the thread index as the world index and block index
+    world_id, block_idx_local = wp.tid()
+
+    # Skip if block index exceeds the number of non-zero blocks
+    if block_idx_local >= bsm_num_nzb[world_id]:
+        return
+
+    # Compute the global block index
+    block_idx = bsm_nzb_start[world_id] + block_idx_local
+
+    # Get the row and column for this block
+    row = bsm_nzb_coords[block_idx, 0]
+    col = bsm_nzb_coords[block_idx, 1]
+
+    # Get the body index offset for this world
+    body_index_offset = model_info_bodies_offset[world_id]
+
+    # Get the Jacobian block and extract linear and angular components
+    J_block = bsm_nzb_values[block_idx]
+    Jv = J_block[0:3]
+    Jw = J_block[3:6]
+
+    # Get the body index from the column
+    body_idx = col // 6
+    body_idx_global = body_index_offset + body_idx
+
+    # Load the inverse mass and inverse inertia for this body
+    inv_m = model_bodies_inv_m_i[body_idx_global]
+    inv_I = data_bodies_inv_I_i[body_idx_global]
+
+    # Compute linear contribution: Jv^T @ inv_m @ Jv
+    diag_kk = inv_m * wp.dot(Jv, Jv)
+
+    # Compute angular contribution: Jw^T @ inv_I @ Jw
+    diag_kk += wp.dot(Jw, inv_I @ Jw)
+
+    # Atomically add contribution to the diagonal element
+    wp.atomic_add(diag, vec_start[world_id] + row, diag_kk)
+
+
+@wp.kernel
+def _add_matrix_diag_product(
+    model_data_num_total_cts: wp.array(dtype=int32),
+    row_start: wp.array(dtype=int32),
+    d: wp.array(dtype=float32),
+    x: wp.array(dtype=float32),
+    y: wp.array(dtype=float32),
+    alpha: float,
+    world_mask: wp.array(dtype=int32),
+):
+    """
+    Adds the product of a vector with a diagonal matrix to another vector: y += alpha * diag(d) @ x
+    This is used to apply a regularization to the Delassus matrix-vector product.
+    """
+    # Retrieve the thread index as the world index and constraint index
+    world_id, ct_id = wp.tid()
+
+    # Terminate early if world or constraint is inactive
+    if world_mask[world_id] == 0 or ct_id >= model_data_num_total_cts[world_id]:
+        return
+
+    idx = row_start[world_id] + ct_id
+    y[idx] += alpha * d[idx] * x[idx]
+
+
+@wp.kernel
+def _set_matrix_diag_product(
+    model_data_num_total_cts: wp.array(dtype=int32),
+    row_start: wp.array(dtype=int32),
+    d: wp.array(dtype=float32),
+    x: wp.array(dtype=float32),
+    world_mask: wp.array(dtype=int32),
+):
+    """
+    Applies a diagonal matrix to a vector: x = diag(d) @ x
+    This is used to apply preconditioning to a vector.
+    """
+    # Retrieve the thread index as the world index and constraint index
+    world_id, ct_id = wp.tid()
+
+    # Terminate early if world or constraint is inactive
+    if world_mask[world_id] == 0 or ct_id >= model_data_num_total_cts[world_id]:
+        return
+
+    idx = row_start[world_id] + ct_id
+    x[idx] = d[idx] * x[idx]
+
+
+@wp.kernel
+def _scaled_vector_sum(
+    model_data_num_total_cts: wp.array(dtype=int32),
+    row_start: wp.array(dtype=int32),
+    x: wp.array(dtype=float32),
+    y: wp.array(dtype=float32),
+    alpha: float,
+    beta: float,
+    world_mask: wp.array(dtype=int32),
+):
+    """
+    Computes the scaled vector sum: y = alpha * x + beta * y.
+    """
+    # Retrieve the thread index as the world index and constraint index
+    world_id, ct_id = wp.tid()
+
+    # Terminate early if world or constraint is inactive
+    if world_mask[world_id] == 0 or ct_id >= model_data_num_total_cts[world_id]:
+        return
+
+    idx = row_start[world_id] + ct_id
+    y[idx] = alpha * x[idx] + beta * y[idx]
 
 
 ###
@@ -602,19 +787,103 @@ class DelassusOperator:
 
 class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
     """
-    A matrix-free Delassus operator for representing and operating on multiple independent sparse linear systems.
+    A matrix-free Delassus operator for representing and operating on multiple independent sparse
+    linear systems.
+
+    In contrast to the dense :class:`DelassusOperator`, this operator only provides functions to
+    compute matrix-vector products with the Delassus matrix, not solve linear systems.
+
+    The Delassus operator D is implicitly defined as D = J @ M^-1 @ J^T, where J is the constraint
+    Jacobian and M is the mass matrix. It supports diagonal regularization via eta and diagonal
+    preconditioning for iterative solvers.
+
+    Typical usage example:
+
+    .. code-block:: python
+
+        # Create a model builder and add bodies, joints, geoms, etc.
+        builder = ModelBuilder()
+        ...
+
+        # Create a model from the builder and construct additional
+        # containers to hold joint-limits, contacts, Jacobians
+        model = builder.finalize()
+        data = model.data()
+        limits = Limits(model)
+        contacts = Contacts(builder)
+        jacobians = SparseSystemJacobians(model, limits, contacts)
+
+        # Build the Jacobians for the model and active limits and contacts
+        jacobians.build(model, data, limits, contacts)
+        ...
+
+        # Create a Delassus operator from the model data and Jacobians
+        delassus = BlockSparseMatrixFreeDelassusOperator(model, data, jacobians)
+
+        # Add diagonal regularization to the Delassus operator
+        eta = ...
+        delassus.set_regularization(eta=eta)
+
+        # Add preconditioning to the Delassus operator
+        P = ...
+        delassus.set_preconditioner(preconditioner=P)
+
+        # Compute the matrix-vector product `y = D @ x` using the Delassus operator
+        x = ...
+        y = ...
+        world_mask = ...
+        delassus.matvec(x=x, y=y, world_mask=world_mask)
     """
 
-    def __init__(self):
-        # TODO
+    def __init__(
+        self,
+        model: Model | None = None,
+        data: ModelData | None = None,
+        jacobians: SparseSystemJacobians | None = None,
+        device: Devicelike = None,
+    ):
+        """
+        Creates a Delassus operator for the given model.
+
+        This class also supports deferred allocation, i.e. it can be initialized without a model,
+        and the allocation can be performed later using the `finalize` method. This is useful for
+        scenarios where the model or constraints are not known at the time of Delassus operator
+        creation, but will be available later.
+
+        The dimension of a Delassus matrix is defined as the sum over active joint, limit, and
+        contact constraints, and the maximum dimension is the maximum number of constraints that can
+        be active in each world.
+
+        Args:
+            model (Model): The model container for which the Delassus operator is built.
+            data (ModelData, optional): The model data container holding the state info and data.
+            device (Devicelike, optional): The device identifier for the Delassus operator. Defaults to None.
+        """
+        super().__init__()
+
         # self.bsm represents the constraint Jacobian
         self._model: Model | None = None
         self._data: ModelData | None = None
-        self._sigma: wp.array | None = None
-        self._precond: wp.array | None = None
+        self._preconditioner: wp.array | None = None
+        self._eta: wp.array | None = None
 
-        # Temporary vector to store results, sized to store all rigid body dofs of a model.
-        self._vec_temp: wp.array | None = None
+        # Cache the requested device
+        self._device: Devicelike = device
+
+        # Temporary vector to store results, sized to the number of body dofs in a model.
+        self._vec_temp_body_space: wp.array | None = None
+        # Temporary vectors to store results, sized to the maximum number of constraints in a model.
+        self._vec_temp_cts_space_A: wp.array | None = None
+        self._vec_temp_cts_space_B: wp.array | None = None
+
+        # Allocate the Delassus operator data if at least the model is provided
+        if model is not None:
+            self.finalize(
+                model=model,
+                data=data,
+                jacobians=jacobians,
+                device=device,
+            )
 
         # Initialize matrix-vector operations
         self.gemv_op = block_sparse_gemv
@@ -622,54 +891,379 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
         self.gemvt_op = block_sparse_transpose_gemv
         self.ATy_op = block_sparse_transpose_matvec
 
-    def assign(
+    def finalize(
         self,
+        model: Model,
         data: ModelData,
-        sigma: wp.array,
-        P: wp.array,
-        eta: wp.array,
+        jacobians: SparseSystemJacobians | None = None,
+        device: Devicelike = None,
     ):
         """
+        Allocates the Delassus operator with the specified dimensions and device.
+
         Args:
-            eta (wp.array): The regularization values to add to the diagonal of each matrix block.
-            This should be an array of shape `(maxdims,)` and type :class:`float32`.
-            Each value in `eta` corresponds to the regularization along each constraint.
+            model (Model): The model container for which the Delassus operator is built.
+            data (ModelData): The model data container holding the state info and data.
+            device (Devicelike, optional): The device identifier for the Delassus operator. Defaults to None.
         """
+        # Ensure the model container is valid
+        if model is None:
+            raise ValueError("A model container of type `Model` must be provided to allocate the Delassus operator.")
+        elif not isinstance(model, Model):
+            raise ValueError("Invalid model provided. Must be an instance of `Model`.")
 
-        pass
+        # Ensure the data container is valid if provided
+        if data is None:
+            raise ValueError("A data container of type `ModelData` must be provided to allocate the Delassus operator.")
+        elif not isinstance(data, ModelData):
+            raise ValueError("Invalid data container provided. Must be an instance of `ModelData`.")
 
-    def matvec(self, x: wp.array, y: wp.array, matrix_mask: wp.array):
-        """Performs the sparse matrix-vector product `y = D @ x`."""
+        self._model = model
+        self._data = data
+
+        # Override the device identifier if specified, otherwise use the current device
+        if device is not None:
+            self._device = device
+
+        # Initialize temporary memory
+        self._vec_temp_body_space = wp.empty(
+            (self._model.size.sum_of_num_body_dofs,), dtype=float32, device=self._device
+        )
+
+        # Assign Jacobian if specified
+        if jacobians is not None:
+            self.assign(jacobians)
+
+    def assign(self, jacobian: SparseSystemJacobians):
+        """
+        Assigns the constraint Jacobian to the Delassus operator.
+
+        This method links the Delassus operator to the block sparse Jacobian matrix,
+        which is used to compute the implicit Delassus matrix-vector products.
+
+        Args:
+            jacobian (SparseSystemJacobians): The sparse system Jacobians container holding the
+                constraint Jacobian matrix in block sparse format.
+        """
+        self.bsm = jacobian._J_cts.bsm
+
+    def set_regularization(self, eta: wp.array | None):
+        """
+        Adds diagonal regularization to each matrix block of the Delassus operator, replacing any
+        previously set regularization.
+
+        The regularized Delassus matrix is defined as D = J @ M^-1 @ J^T + diag(eta)
+
+        Args:
+            eta (wp.array): The regularization values to add to the diagonal of each matrix block,
+                with each value corresponding to the regularization along a constraint.
+                This should be an array of shape `(sum_of_max_total_cts,)` and type :class:`float32`,
+                or `None` if no regularization should be applied.
+        """
+        self._eta = eta
+
+    def set_preconditioner(self, preconditioner: wp.array | None):
+        """
+        Sets the diagonal preconditioner for the Delassus operator, replacing any previously set
+        preconditioner.
+
+        With preconditioning, the effective operator becomes P @ D @ P, where P = diag(preconditioner).
+
+        Args:
+            preconditioner (wp.array): The diagonal preconditioner values to apply to the Delassus
+                operator, with each value corresponding to a constraint. This should be an array of
+                shape `(sum_of_max_total_cts,)` and type :class:`float32`, or `None` to disable
+                preconditioning.
+        """
+        self._preconditioner = preconditioner
+
+        # Initialize memory to store intermediate results with preconditioning
+        if self._preconditioner is not None:
+            if self._vec_temp_cts_space_A is None:
+                self._vec_temp_cts_space_A = wp.empty(
+                    (self._model.size.sum_of_max_total_cts,), dtype=float32, device=self._device
+                )
+            if self._vec_temp_cts_space_B is None:
+                self._vec_temp_cts_space_B = wp.empty(
+                    (self._model.size.sum_of_max_total_cts,), dtype=float32, device=self._device
+                )
+
+    def diagonal(self, diag: wp.array):
+        """Stores the diagonal of the Delassus matrix in the given array.
+
+        Note:
+            This uses the diagonal of the pure Delassus matrix, without any regularization or
+            preconditioning.
+
+        Args:
+            diag (wp.array): Output vector for the Delassus matrix diagonal entries.
+                Shape `(sum_of_max_total_cts,)` and type :class:`float32`.
+        """
+        if self._model is None or self._data is None:
+            raise RuntimeError("Model and data must be assigned before computing diagonal.")
+        if self.bsm is None:
+            raise RuntimeError("Jacobian must be assigned before computing diagonal.")
+
+        diag.zero_()
+
+        # Launch kernel over all non-zero blocks
+        wp.launch(
+            kernel=_compute_block_sparse_delassus_diagonal,
+            dim=(self._model.size.num_worlds, self.bsm.max_of_num_nzb),
+            inputs=[
+                self._model.info.bodies_offset,
+                self._model.bodies.inv_m_i,
+                self._data.bodies.inv_I_i,
+                self.bsm.nzb_start,
+                self.bsm.num_nzb,
+                self.bsm.nzb_coords,
+                self.bsm.nzb_values,
+                self.bsm.row_start,
+                diag,
+            ],
+            device=self._device,
+        )
+
+    def matvec(self, x: wp.array, y: wp.array, world_mask: wp.array):
+        """
+        Performs the sparse matrix-vector product `y = D @ x`, applying regularization and
+        preconditioning if configured.
+        """
         if self.Ax_op is None:
             raise RuntimeError("No `A@x` operator has been assigned.")
         if self.ATy_op is None:
             raise RuntimeError("No `A^T@y` operator has been assigned.")
 
-        self._vec_temp.zero_()
-        self.ATy_op(self.bsm, x, self._vec_temp, matrix_mask)
+        v = self._vec_temp_body_space
+        v.zero_()
 
-        # TODO: Multiply by inverse mass matrix
+        if self._preconditioner is None:
+            # Compute first Jacobian matrix-vector product: v <- J^T @ x
+            self.ATy_op(self.bsm, x, v, world_mask)
 
-        self.Ax_op(self.bsm, self._vec_temp, y, matrix_mask)
+            # Multiply by inverse mass matrix (in-place): v <- M^-1 @ v
+            self._apply_inverse_mass_matrix(v, world_mask)
 
-    def matvec_transpose(self, y: wp.array, x: wp.array, matrix_mask: wp.array):
-        """Performs the sparse matrix-transpose-vector product `x = D^T @ y`."""
-        self.matvec(x, y, matrix_mask)
+            # Compute second Jacobian matrix-vector product: y <- J @ v
+            self.Ax_op(self.bsm, v, y, world_mask)
 
-    def gemv(self, x: wp.array, y: wp.array, matrix_mask: wp.array, alpha: float = 1.0, beta: float = 0.0):
-        """Performs a BLAS-like generalized sparse matrix-vector product `y = alpha * D @ x + beta * y`."""
+            # Add regularization, if provided: y <- y + diag(eta) @ x
+            self._apply_regularization(x, y, world_mask)
+
+        else:
+            x_preconditioned = self._vec_temp_cts_space_A
+
+            # Apply preconditioning to input vector: x_p <- diag(P) @ x
+            wp.copy(x_preconditioned, x)
+            self._apply_preconditioning(x_preconditioned, world_mask)
+
+            # Compute first Jacobian matrix-vector product: v <- J^T @ x_p
+            self.ATy_op(self.bsm, x_preconditioned, v, world_mask)
+
+            # Multiply by inverse mass matrix (in-place): v <- M^-1 @ v
+            self._apply_inverse_mass_matrix(v, world_mask)
+
+            # Compute second Jacobian matrix-vector product: y <- J @ v
+            self.Ax_op(self.bsm, v, y, world_mask)
+
+            # Add regularization, if provided: y <- y + diag(eta) @ x_p
+            self._apply_regularization(x_preconditioned, y, world_mask)
+
+            # Apply preconditioning to output vector: y <- diag(P) @ y
+            self._apply_preconditioning(y, world_mask)
+
+    def matvec_transpose(self, y: wp.array, x: wp.array, world_mask: wp.array):
+        """
+        Performs the sparse matrix-transpose-vector product `x = D^T @ y`.
+
+        Note:
+            Since the Delassus matrix is symmetric, this is equivalent to `matvec`.
+        """
+        self.matvec(x, y, world_mask)
+
+    def gemv(self, x: wp.array, y: wp.array, world_mask: wp.array, alpha: float = 1.0, beta: float = 0.0):
+        """
+        Performs a BLAS-like generalized sparse matrix-vector product `y = alpha * D @ x + beta * y`,
+        applying regularization and preconditioning if configured.
+        """
         if self.gemv_op is None:
             raise RuntimeError("No BLAS-like `GEMV` operator has been assigned.")
         if self.ATy_op is None:
             raise RuntimeError("No `A^T@y` operator has been assigned.")
 
-        self._vec_temp.zero_()
-        self.ATy_op(self.bsm, x, self._vec_temp, matrix_mask)
+        v = self._vec_temp_body_space
+        v.zero_()
 
-        # TODO: Multiply by inverse mass matrix
+        if self._preconditioner is None:
+            # Compute first Jacobian matrix-vector product: v <- J^T @ x
+            self.ATy_op(self.bsm, x, v, world_mask)
 
-        self.gemv_op(self.bsm, self._vec_temp, y, alpha, beta, matrix_mask)
+            # Multiply by inverse mass matrix (in-place): v <- M^-1 @ v
+            self._apply_inverse_mass_matrix(v, world_mask)
 
-    def gemv_transpose(self, y: wp.array, x: wp.array, matrix_mask: wp.array, alpha: float = 1.0, beta: float = 0.0):
-        """Performs a BLAS-like generalized sparse matrix-transpose-vector product `x = alpha * A^T @ y + beta * x`."""
-        self.gemv(y, x, matrix_mask, alpha, beta)
+            # Compute second Jacobian matrix-vector product as general matrix-vector product:
+            #   y <- alpha * J @ v + beta * y
+            self.gemv_op(self.bsm, v, y, alpha, beta, world_mask)
+
+            # Add regularization, if provided: y <- y + alpha * diag(eta) @ x
+            self._apply_regularization(x, y, world_mask, alpha)
+
+        else:
+            x_preconditioned = self._vec_temp_cts_space_A
+            z = self._vec_temp_cts_space_B
+
+            # Apply preconditioning to input vector: x_p <- diag(P) @ x
+            wp.copy(x_preconditioned, x)
+            self._apply_preconditioning(x_preconditioned, world_mask)
+
+            # Compute first Jacobian matrix-vector product: v <- J^T @ x_p
+            self.ATy_op(self.bsm, x_preconditioned, v, world_mask)
+
+            # Multiply by inverse mass matrix (in-place): v <- M^-1 @ v
+            self._apply_inverse_mass_matrix(v, world_mask)
+
+            if beta == 0.0:
+                # Special case: If `beta` is zero, we can skip some of the steps and use `y`
+                # directly without having to use an additional temporary.
+
+                # Compute second Jacobian matrix-vector product using general matrix-vector product:
+                #   y <- alpha * J @ v
+                self.gemv_op(self.bsm, v, y, alpha, 0.0, world_mask)
+
+                # Add regularization, if provided: y <- y + alpha * diag(eta) @ x_p
+                self._apply_regularization(x_preconditioned, y, world_mask, alpha)
+
+                # Apply preconditioning: y <- diag(P) @ y
+                self._apply_preconditioning(y, world_mask)
+
+            else:
+                # Compute second Jacobian matrix-vector product: z <- J @ v
+                self.Ax_op(self.bsm, v, z, world_mask)
+
+                # Add regularization, if provided: z <- z + diag(eta) @ x_p
+                self._apply_regularization(x_preconditioned, z, world_mask)
+
+                # Apply preconditioning: z <- diag(P) @ z
+                self._apply_preconditioning(z, world_mask)
+
+                # Add scaling and offset: y <- alpha * z + beta * y
+                wp.launch(
+                    kernel=_scaled_vector_sum,
+                    dim=(self._model.size.num_worlds, self._model.size.max_of_max_total_cts),
+                    inputs=[
+                        self._data.info.num_total_cts,
+                        self.bsm.row_start,
+                        z,
+                        y,
+                        alpha,
+                        beta,
+                        world_mask,
+                    ],
+                    device=self._device,
+                )
+
+    def gemv_transpose(self, y: wp.array, x: wp.array, world_mask: wp.array, alpha: float = 1.0, beta: float = 0.0):
+        """
+        Performs a BLAS-like generalized sparse matrix-transpose-vector product
+        `x = alpha * D^T @ y + beta * x`.
+
+        Note:
+            Since the Delassus matrix is symmetric, this is equivalent to `gemv` with swapped arguments.
+        """
+        self.gemv(y, x, world_mask, alpha, beta)
+
+    def _apply_inverse_mass_matrix(self, x: wp.array, world_mask: wp.array):
+        """
+        Applies the inverse mass matrix to a vector in-place: x = M^-1 @ x.
+
+        Args:
+            x (wp.array): Input/output vector in body coordinate space.
+            world_mask (wp.array): Array of integers indicating which worlds to process (0 = skip).
+        """
+        if self._model is None or self._data is None:
+            raise RuntimeError("Model and data must be assigned before applying inverse mass matrix.")
+
+        wp.launch(
+            kernel=_inverse_mass_matrix_matvec,
+            dim=(self._model.size.num_worlds, self._model.size.max_of_num_bodies),
+            inputs=[
+                self._model.info.num_bodies,
+                self._model.info.bodies_offset,
+                self._model.bodies.inv_m_i,
+                self._data.bodies.inv_I_i,
+                x,
+                world_mask,
+            ],
+            device=self._device,
+        )
+
+    def _apply_regularization(self, x: wp.array, y: wp.array, world_mask: wp.array, alpha: float = 1.0):
+        """
+        Adds diagonal regularization to the matrix-vector product result.
+
+        If regularization values have been set via `set_regularization()`, this method computes
+        `y += alpha * diag(eta) @ x`, where `eta` contains the regularization.
+
+        Args:
+            x (wp.array): Input vector to be scaled by the diagonal regularization matrix.
+                Shape `(sum_of_max_total_cts,)` and type :class:`float32`.
+            y (wp.array): Output vector to which the regularization contribution is added.
+                Shape `(sum_of_max_total_cts,)` and type :class:`float32`.
+            world_mask (wp.array): Array of integers indicating which worlds to process (0 = skip).
+                Shape `(num_worlds,)` and type :class:`int32`.
+            alpha (float, optional): Scalar multiplier for the regularization term. Defaults to 1.0.
+        """
+        if self._model is None or self._data is None:
+            raise RuntimeError("Model and data must be assigned before applying regularization.")
+
+        # Skip if no regularization is set
+        if self._eta is None:
+            return
+
+        wp.launch(
+            kernel=_add_matrix_diag_product,
+            dim=(self._model.size.num_worlds, self._model.size.max_of_max_total_cts),
+            inputs=[
+                self._data.info.num_total_cts,
+                self.bsm.row_start,
+                self._eta,
+                x,
+                y,
+                alpha,
+                world_mask,
+            ],
+            device=self._device,
+        )
+
+    def _apply_preconditioning(self, x: wp.array, world_mask: wp.array):
+        """
+        Applies diagonal preconditioning to a vector.
+
+        If a preconditioner has been set via `set_preconditioner()`, this method computes
+        `x = diag(P) @ x`, where `P` contains the diagonal elements of a preconditioning matrix.
+
+        Args:
+            x (wp.array): Vector to be scaled by the diagonal preconditioning matrix.
+                Shape `(sum_of_max_total_cts,)` and type :class:`float32`.
+            world_mask (wp.array): Array of integers indicating which worlds to process (0 = skip).
+                Shape `(num_worlds,)` and type :class:`int32`.
+        """
+        if self._model is None or self._data is None:
+            raise RuntimeError("Model and data must be assigned before applying preconditioning.")
+
+        # Skip if no preconditioner is set
+        if self._preconditioner is None:
+            return
+
+        wp.launch(
+            kernel=_set_matrix_diag_product,
+            dim=(self._model.size.num_worlds, self._model.size.max_of_max_total_cts),
+            inputs=[
+                self._data.info.num_total_cts,
+                self.bsm.row_start,
+                self._preconditioner,
+                x,
+                world_mask,
+            ],
+            device=self._device,
+        )

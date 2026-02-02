@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import sys
 from dataclasses import dataclass
+from enum import IntEnum
 from functools import cache
 
 import numpy as np
@@ -40,7 +41,11 @@ from ..core.math import (
 )
 from ..core.model import Model
 from ..core.types import vec6f
-from ..linalg.blas2d import block_sparse_ATA_inv_diagonal_2d
+from ..linalg.blas2d import (
+    block_sparse_ATA_blockwise_3_4_inv_diagonal_2d,
+    block_sparse_ATA_inv_diagonal_2d,
+    get_blockwise_diag_3_4_gemv,
+)
 from ..linalg.conjugate import BatchedLinearOperator, CGSolver
 from ..linalg.factorize.llt_blocked_semi_sparse import SemiSparseBlockCholeskySolverBatched
 from ..linalg.sparse_matrix import BlockDType, BlockSparseMatrices
@@ -1427,6 +1432,20 @@ def _update_cg_tolerance_kernel(
 ###
 
 
+class FKPreconditionerOptions(IntEnum):
+    """Conjugate gradient preconditioning options of the FK solver, if sparsity is enabled."""
+
+    NONE = 0
+    """No preconditioning"""
+
+    JACOBI_DIAGONAL = 1
+    """Diagonal Jacobi preconditioner"""
+
+    JACOBI_BLOCK_DIAGONAL = 2
+    """Blockwise-diagonal Jacobi preconditioner, alternating blocks of size 3 and 4 along the diagonal,
+       corresponding to the position and orientation (quaternion) of individual rigid bodies."""
+
+
 @dataclass
 class ForwardKinematicsSolverSettings:
     """
@@ -1459,6 +1478,11 @@ class ForwardKinematicsSolverSettings:
 
     use_sparsity: bool = True
     """Whether to use sparse Jacobian and solver; otherwise, dense versions are used (default: True).
+       Changes to this setting after the solver's initialization lead to undefined behavior."""
+
+    preconditioner: FKPreconditionerOptions = FKPreconditionerOptions.JACOBI_BLOCK_DIAGONAL
+    """Preconditioner to use for the Conjugate Gradient solver if sparsity is enabled
+       (default: JACOBI_BLOCK_DIAGONAL).
        Changes to this setting after the solver's initialization lead to undefined behavior."""
 
     def check(self):
@@ -2053,10 +2077,28 @@ class ForwardKinematicsSolver:
             self.sparse_jacobian_op.initialize_default_operators(flat=False)
 
             # Initialize preconditioner
-            self.jacobian_diag_inv = wp.array(
-                dtype=wp.float32, device=self.device, shape=(self.num_worlds, self.num_constraints_max)
-            )
-            preconditioner_op = BatchedLinearOperator.from_diagonal(self.jacobian_diag_inv, self.num_constraints)
+            if self.settings.preconditioner == FKPreconditionerOptions.JACOBI_DIAGONAL:
+                self.jacobian_diag_inv = wp.array(
+                    dtype=wp.float32, device=self.device, shape=(self.num_worlds, self.num_states_max)
+                )
+                preconditioner_op = BatchedLinearOperator.from_diagonal(self.jacobian_diag_inv, self.num_states)
+            elif self.settings.preconditioner == FKPreconditionerOptions.JACOBI_BLOCK_DIAGONAL:
+                self.inv_blocks_3 = wp.array(
+                    dtype=wp.mat33f, shape=(self.num_worlds, self.num_bodies_max), device=self.device
+                )
+                self.inv_blocks_4 = wp.array(
+                    dtype=wp.mat44f, shape=(self.num_worlds, self.num_bodies_max), device=self.device
+                )
+                preconditioner_op = BatchedLinearOperator(
+                    gemv_fn=get_blockwise_diag_3_4_gemv(self.inv_blocks_3, self.inv_blocks_4, self.num_states),
+                    n_worlds=self.num_worlds,
+                    max_dim=self.num_states_max,
+                    active_dims=self.num_states,
+                    device=self.device,
+                    dtype=wp.float32,
+                )
+            else:
+                preconditioner_op = None
 
             # Initialize CG solver
             cg_op = BatchedLinearOperator(
@@ -2467,7 +2509,12 @@ class ForwardKinematicsSolver:
 
         # Compute step (system solve)
         if self.settings.use_sparsity:
-            block_sparse_ATA_inv_diagonal_2d(self.sparse_jacobian, self.jacobian_diag_inv, self.newton_mask)
+            if self.settings.preconditioner == FKPreconditionerOptions.JACOBI_DIAGONAL:
+                block_sparse_ATA_inv_diagonal_2d(self.sparse_jacobian, self.jacobian_diag_inv, self.newton_mask)
+            elif self.settings.preconditioner == FKPreconditionerOptions.JACOBI_BLOCK_DIAGONAL:
+                block_sparse_ATA_blockwise_3_4_inv_diagonal_2d(
+                    self.sparse_jacobian, self.inv_blocks_3, self.inv_blocks_4, self.newton_mask
+                )
             self.step.zero_()
             # self._update_cg_tolerance(self.max_constraint, self.newton_mask)
             self.cg_atol.fill_(1e-8)
@@ -2601,7 +2648,12 @@ class ForwardKinematicsSolver:
 
         # Compute body velocities (system solve)
         if self.settings.use_sparsity:
-            block_sparse_ATA_inv_diagonal_2d(self.sparse_jacobian, self.jacobian_diag_inv, world_mask)
+            if self.settings.preconditioner == FKPreconditionerOptions.JACOBI_DIAGONAL:
+                block_sparse_ATA_inv_diagonal_2d(self.sparse_jacobian, self.jacobian_diag_inv, world_mask)
+            elif self.settings.preconditioner == FKPreconditionerOptions.JACOBI_BLOCK_DIAGONAL:
+                block_sparse_ATA_blockwise_3_4_inv_diagonal_2d(
+                    self.sparse_jacobian, self.inv_blocks_3, self.inv_blocks_4, world_mask
+                )
             self.bodies_q_dot.zero_()
             self.cg_atol.fill_(1e-8)
             self.cg_rtol.fill_(1e-8)

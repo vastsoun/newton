@@ -403,6 +403,60 @@ def _make_block_sparse_ATA_diagonal_kernel(block_type: BlockDType):
     return block_sparse_ATA_diagonal_kernel
 
 
+class nzb_type_7(BlockDType(dtype=wp.float32, shape=(7,)).warp_type):
+    pass
+
+
+@wp.kernel
+def block_sparse_ATA_diagonal_3_4_blocks_kernel(
+    # Matrix data:
+    num_nzb: wp.array(dtype=int32),
+    nzb_start: wp.array(dtype=int32),
+    nzb_coords: wp.array2d(dtype=int32),
+    nzb_values: wp.array(dtype=nzb_type_7),
+    # Output:
+    blocks_3: wp.array2d(dtype=wp.float32),
+    blocks_4: wp.array2d(dtype=wp.float32),
+    # Mask:
+    matrix_mask: wp.array(dtype=int32),
+):
+    """
+    For a block sparse matrix (stack) A with 1x7 blocks, computes the blockwise-diagonal of A^T * A,
+    with alternating 3x3 and 4x4 blocks
+    3x3 and 4x4 blocks are flattened and concatenated in blocks_3 and blocks_4 (to allow atomic_add)
+    """
+    mat_id, block_idx = wp.tid()
+
+    # Early exit if the matrix is flagged as inactive.
+    if matrix_mask[mat_id] == 0:
+        return
+
+    # Check if block index is valid for this matrix.
+    if block_idx >= num_nzb[mat_id]:
+        return
+
+    global_block_idx = nzb_start[mat_id] + block_idx
+    block_col = nzb_coords[global_block_idx][1]
+    block = nzb_values[global_block_idx]
+    block_col_7 = block_col // 7
+
+    # Accumulate coefficients contributed to 3x3 block
+    offset = 9 * block_col_7
+    for i in range(3):
+        val_i = block[i]
+        for j in range(3):
+            val_j = block[j]
+            wp.atomic_add(blocks_3, mat_id, offset + 3 * i + j, val_i * val_j)
+
+    # Accumulate coefficients contributed to 4x4 block
+    offset = 16 * block_col_7
+    for i in range(4):
+        val_i = block[3 + i]
+        for j in range(4):
+            val_j = block[3 + j]
+            wp.atomic_add(blocks_4, mat_id, offset + 4 * i + j, val_i * val_j)
+
+
 @functools.cache
 def _make_cwise_inverse_kernel(dtype: FloatType):
     @wp.kernel
@@ -420,6 +474,77 @@ def _make_cwise_inverse_kernel(dtype: FloatType):
         x[mat_id, coeff_id] = 1.0 / x[mat_id, coeff_id]
 
     return cwise_inverse_kernel
+
+
+@wp.kernel
+def blockwise_inverse_kernel_3(
+    # Inputs
+    blocks: wp.array2d(dtype=wp.mat33f),
+    dim: wp.array(dtype=wp.int32),
+    mask: wp.array(dtype=wp.int32),
+):
+    mat_id, block_id = wp.tid()
+
+    if mat_id >= mask.shape[0] or mask[mat_id] == 0 or 7 * block_id >= dim[mat_id]:
+        return
+
+    blocks[mat_id, block_id] = wp.inverse(blocks[mat_id, block_id])
+
+
+@wp.kernel
+def blockwise_inverse_kernel_4(
+    # Inputs
+    blocks: wp.array2d(dtype=wp.mat44f),
+    dim: wp.array(dtype=wp.int32),
+    mask: wp.array(dtype=wp.int32),
+):
+    mat_id, block_id = wp.tid()
+
+    if mat_id >= mask.shape[0] or mask[mat_id] == 0 or 7 * block_id >= dim[mat_id]:
+        return
+
+    blocks[mat_id, block_id] = wp.inverse(blocks[mat_id, block_id])
+
+
+@wp.kernel
+def _blockwise_diag_3_4_gemv_kernel(
+    x: wp.array2d(dtype=wp.float32),
+    y: wp.array2d(dtype=wp.float32),
+    blocks_3: wp.array2d(dtype=wp.mat33f),
+    blocks_4: wp.array2d(dtype=wp.mat44f),
+    active_dims: wp.array(dtype=wp.int32),
+    world_active: wp.array(dtype=wp.int32),
+    alpha: wp.float32,
+    beta: wp.float32,
+):
+    """Computes y[w] = alpha * D[w] * x[w] + beta * y[w] for each world w.
+    where D is blockwise-diagonal, alternating 3x3 and 4x4 blocks"""
+    world, row_block_id = wp.tid()
+    row_id = 7 * row_block_id
+    assert world < len(active_dims)
+    if world_active[world] == 0 or row_id >= active_dims[world]:
+        return
+
+    zero = type(alpha)(0)
+    y_3 = wp.vec3f(0.0, 0.0, 0.0)
+    y_4 = wp.vec4f(0.0, 0.0, 0.0, 0.0)
+
+    if alpha != zero:
+        x_3 = wp.vec3f(x[world, row_id], x[world, row_id + 1], x[world, row_id + 2])
+        y_3 += alpha * (blocks_3[world, row_block_id] * x_3)
+        x_4 = wp.vec4f(x[world, row_id + 3], x[world, row_id + 4], x[world, row_id + 5], x[world, row_id + 6])
+        y_4 = alpha * (blocks_4[world, row_block_id] * x_4)
+    if beta != zero:
+        y_3 += beta * wp.vec3f(y[world, row_id], y[world, row_id + 1], y[world, row_id + 2])
+        y_4 += beta * wp.vec4f(y[world, row_id + 3], y[world, row_id + 4], y[world, row_id + 5], y[world, row_id + 6])
+
+    y[world, row_id] = y_3[0]
+    y[world, row_id + 1] = y_3[1]
+    y[world, row_id + 2] = y_3[2]
+    y[world, row_id + 3] = y_4[0]
+    y[world, row_id + 4] = y_4[1]
+    y[world, row_id + 5] = y_4[2]
+    y[world, row_id + 6] = y_4[3]
 
 
 ##
@@ -624,3 +749,107 @@ def block_sparse_ATA_inv_diagonal_2d(A: BlockSparseMatrices, inv_diag: wp.array,
         ],
         device=A.device,
     )
+
+
+def block_sparse_ATA_blockwise_3_4_inv_diagonal_2d(
+    A: BlockSparseMatrices, inv_blocks_3: wp.array, inv_blocks_4: wp.array, matrix_mask: wp.array
+):
+    """
+    Function computing the blockwise inverse of the diagonal of A^T * A given sparse matrix (stack) A,
+    with alternating 3x3 and 4x4 blocks
+    A must have block size 1x7
+
+    Args:
+        A (BlockSparseMatrices): Sparse matrices.
+        inv_blocks (wp.array): Stack of vectors of 3x3 blocks, expects shape (num_matrices, max_of_max_cols / 7).
+        matrix_mask (wp.array): Mask vector to skip matrices set to `0` in the mask.
+    """
+    inv_blocks_3.zero_()
+    inv_blocks_4.zero_()
+    inv_blocks_3_flat = wp.array(
+        dtype=wp.float32,
+        ptr=inv_blocks_3.ptr,
+        shape=(A.num_matrices, 9 * inv_blocks_3.shape[1]),
+        copy=False,
+        device=A.device,
+    )
+    inv_blocks_4_flat = wp.array(
+        dtype=wp.float32,
+        ptr=inv_blocks_4.ptr,
+        shape=(A.num_matrices, 16 * inv_blocks_3.shape[1]),
+        copy=False,
+        device=A.device,
+    )
+    wp.launch(
+        kernel=block_sparse_ATA_diagonal_3_4_blocks_kernel,
+        dim=(A.num_matrices, A.max_of_num_nzb),
+        inputs=[
+            A.num_nzb,
+            A.nzb_start,
+            A.nzb_coords,
+            A.nzb_values,
+            inv_blocks_3_flat,
+            inv_blocks_4_flat,
+            matrix_mask,
+        ],
+        device=A.device,
+    )
+    int_size_bytes = 4  # Size of wp.int32 in bytes
+    cols = wp.array(
+        dtype=wp.int32,
+        shape=(A.num_matrices,),
+        ptr=A.dims.ptr + int_size_bytes,
+        strides=(2 * int_size_bytes,),
+        copy=False,
+    )
+    wp.launch(
+        kernel=blockwise_inverse_kernel_3,
+        dim=inv_blocks_3.shape,
+        inputs=[
+            inv_blocks_3,
+            cols,
+            matrix_mask,
+        ],
+        device=A.device,
+    )
+    wp.launch(
+        kernel=blockwise_inverse_kernel_4,
+        dim=inv_blocks_4.shape,
+        inputs=[
+            inv_blocks_4,
+            cols,
+            matrix_mask,
+        ],
+        device=A.device,
+    )
+
+
+def get_blockwise_diag_3_4_gemv(
+    blocks_3: wp.array2d(dtype=wp.mat33f),
+    blocks_4: wp.array2d(dtype=wp.mat44f),
+    active_dims: wp.array(dtype=wp.int32),
+):
+    def gemv(
+        x: wp.array2d(dtype=wp.float32),
+        y: wp.array2d(dtype=wp.float32),
+        world_active: wp.array(dtype=wp.int32),
+        alpha: wp.float32,
+        beta: wp.float32,
+    ):
+        wp.launch(
+            _blockwise_diag_3_4_gemv_kernel,
+            dim=blocks_3.shape,
+            inputs=[
+                x,
+                y,
+                blocks_3,
+                blocks_4,
+                active_dims,
+                world_active,
+                alpha,
+                beta,
+            ],
+            device=blocks_3.device,
+        )
+
+    return gemv

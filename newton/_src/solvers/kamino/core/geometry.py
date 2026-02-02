@@ -272,8 +272,34 @@ class GeometriesModel:
             Shape of ``(num_geoms,)`` and type :class:`float32`.
     """
 
+    ###
+    # Meta-Data
+    ###
+
     num_geoms: int = 0
     """Total number of geometry entities in the model."""
+
+    collidable_geoms_count: int = 0
+    """Total number of collidable geometry entities in the model."""
+
+    collidable_geom_pairs_count: int = 0
+    """Total number of collidable geometry pairs in the model."""
+
+    collidable_geom_pairs: list[tuple[int, int]] = field(default_factory=list)
+    """List of collidable geometry pairs as tuples of geometry indices."""
+
+    model_required_contacts: int = 0
+    """The number of contacts required for the entire model."""
+
+    world_required_contacts: list[int] = field(default_factory=list)
+    """
+    List of the number of contacts required for each world in the model.\n
+    The sum of all elements in `world_required_contacts` should equal `model_required_contacts`.
+    """
+
+    ###
+    # Data Attributes
+    ###
 
     wid: wp.array | None = None
     """

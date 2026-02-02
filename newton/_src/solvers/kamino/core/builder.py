@@ -1175,6 +1175,27 @@ class ModelBuilder:
         model.size.sum_of_max_total_cts = model.size.sum_of_num_joint_cts
         model.size.max_of_max_total_cts = model.size.max_of_num_joint_cts
 
+        # Generate the list of collision candidate geometry pairs
+        # and compute the total number of collidable geoms
+        _, model_collidable_geom_pairs, _, _ = self.make_collision_candidate_pairs()
+        model_collidable_geoms = set()
+        for pair in model_collidable_geom_pairs:
+            model_collidable_geoms.add(pair[0])
+            model_collidable_geoms.add(pair[1])
+        model_num_collidable_geoms = len(model_collidable_geoms)
+        msg.warning("ModelBuilder: model_num_collidable_geoms: %s", model_num_collidable_geoms)
+        msg.warning("ModelBuilder: model_num_collidable_geom_pairs: %s", len(model_collidable_geom_pairs))
+        msg.warning("ModelBuilder: model_collidable_geom_pairs:\n%s", model_collidable_geom_pairs)
+
+        # Compute the maximum number of contacts required for the model and each world
+        # NOTE: This is a conservative estimate based on the maximum per-world geom-pairs
+        _, world_required_contacts = self.compute_required_contact_capacity(
+            max_contacts_per_pair=10
+        )  # TODO: Compute value based on each geom-pair type
+        model_required_contacts = sum(world_required_contacts)
+        msg.warning("ModelBuilder: Will allocate for `model_required_contacts`: %s", model_required_contacts)
+        msg.warning("ModelBuilder: Will allocate for `world_required_contacts`: %s", world_required_contacts)
+
         ###
         # On-device data allocation
         ###
@@ -1271,6 +1292,11 @@ class ModelBuilder:
             # Create the collision geometries model
             model.geoms = GeometriesModel(
                 num_geoms=model.size.sum_of_num_geoms,
+                collidable_geoms_count=model_num_collidable_geoms,
+                collidable_geom_pairs_count=len(model_collidable_geom_pairs),
+                collidable_geom_pairs=model_collidable_geom_pairs,
+                model_required_contacts=model_required_contacts,
+                world_required_contacts=world_required_contacts,
                 wid=wp.array(geoms_wid, dtype=int32),
                 gid=wp.array(geoms_gid, dtype=int32),
                 lid=wp.array(geoms_lid, dtype=int32),
@@ -1306,7 +1332,7 @@ class ModelBuilder:
 
     def compute_required_contact_capacity(
         self,
-        max_contacts_per_pair: int,
+        max_contacts_per_pair: int | None = None,
         max_contacts_per_world: int | None = None,
     ) -> tuple[int, list[int]]:
         # First check if there are any collision geometries

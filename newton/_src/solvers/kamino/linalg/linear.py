@@ -171,23 +171,6 @@ class LinearSolver(ABC):
         """Ingest matrix data and pre-compute any rhs-independent intermediate data."""
         if not self._operator.info.is_matrix_compatible(A):
             raise ValueError("The provided flat matrix data array does not have enough memory!")
-
-        if False:
-            # DEBUG: Dump matrix BEFORE compute
-            import os  # noqa: PLC0415
-
-            import numpy as np  # noqa: PLC0415
-
-            step = getattr(self, "_dump_step", 0)
-            self._dump_step = step + 1
-            wp.synchronize()
-            wid = 0
-            maxdim = self._operator.info.maxdim.numpy()[wid]  # noqa: F841
-            dim = self._operator.info.dim.numpy()[wid]  # noqa: F841
-            D = A.numpy()  # .reshape((maxdim, maxdim))[:dim, :dim]
-            os.makedirs("output", exist_ok=True)
-            np.save(f"output/delassus_{step:04d}.npy", D)
-
         self._compute_impl(A=A, **kwargs)
 
     def solve(self, b: wp.array, x: wp.array, **kwargs: dict[str, Any]) -> None:

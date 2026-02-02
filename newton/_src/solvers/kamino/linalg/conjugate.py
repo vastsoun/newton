@@ -376,6 +376,27 @@ def make_jacobi_preconditioner(
 
 
 class ConjugateSolver:
+    """Base class for conjugate iterative solvers (CG, CR).
+
+    Solves batched linear systems Ax = b for multiple independent worlds in parallel.
+    Supports dense, diagonal, and block-sparse matrix operators with optional
+    preconditioning.
+
+    Note:
+        Temporary arrays are zero-initialized to avoid NaN propagation.
+
+    Args:
+        A: Linear operator representing the system matrix.
+        active_dims: Active dimension per world. If None, uses A.active_dims.
+        world_active: Int32 mask indicating which worlds are active (1) or inactive (0).
+        atol: Absolute tolerance for convergence. Scalar or per-world array.
+        rtol: Relative tolerance for convergence. Scalar or per-world array.
+        maxiter: Maximum iterations per world. If None, defaults to 1.5 * maxdims.
+        Mi: Operator applying the inverse preconditioner M^-1, such that Mi @ A has a smaller condition number than A.
+        callback: Optional callback kernel invoked each iteration.
+        use_cuda_graph: Whether to use CUDA graph capture for the solve loop.
+    """
+
     def __init__(
         self,
         A: BatchedLinearOperator,
@@ -420,7 +441,7 @@ class ConjugateSolver:
             self.maxiter = wp.full(self.n_worlds, int(1.5 * self.maxdims), dtype=int, device=self.device)
 
         # TODO: non-tiled variant for CPU
-        self.dot_product = wp.empty((2, self.n_worlds), dtype=self.scalar_type, device=self.device)
+        self.dot_product = wp.zeros((2, self.n_worlds), dtype=self.scalar_type, device=self.device)
 
         atol_val = self.atol if isinstance(self.atol, float) else 1e-8
         rtol_val = self.rtol if isinstance(self.rtol, float) else 1e-8
@@ -455,12 +476,18 @@ class ConjugateSolver:
 
 
 class CGSolver(ConjugateSolver):
+    """Conjugate Gradient solver for symmetric positive definite systems.
+
+    The solver terminates when ||r||^2 < max(rtol^2 * ||b||^2, atol^2) or
+    when maxiter iterations are reached.
+    """
+
     def _allocate(self):
         super()._allocate()
 
         # Temp storage
-        self.r_and_z = wp.empty((2, self.n_worlds, self.maxdims), dtype=self.scalar_type, device=self.device)
-        self.p_and_Ap = wp.empty_like(self.r_and_z)
+        self.r_and_z = wp.zeros((2, self.n_worlds, self.maxdims), dtype=self.scalar_type, device=self.device)
+        self.p_and_Ap = wp.zeros_like(self.r_and_z)
 
         # (r, r) -- so we can compute r.z and r.r at once
         self.r_repeated = _repeat_first(self.r_and_z)
@@ -567,17 +594,20 @@ class CGSolver(ConjugateSolver):
 
 
 class CRSolver(ConjugateSolver):
-    # Notation roughly follow spseudo-code from https://en.wikipedia.org/wiki/Conjugate_residual_method
-    # with z := M^-1 r and y := M^-1 Ap
+    """Conjugate Residual solver for symmetric (possibly indefinite) systems.
+
+    The solver terminates when ||r||^2 < max(rtol^2 * ||b||^2, atol^2) or
+    when maxiter iterations are reached.
+    """
 
     def _allocate(self):
         super()._allocate()
 
         # Temp storage
-        self.r_and_z = wp.empty((2, self.n_worlds, self.maxdims), dtype=self.scalar_type, device=self.device)
-        self.r_and_Az = wp.empty_like(self.r_and_z)
-        self.y_and_Ap = wp.empty_like(self.r_and_z)
-        self.p = wp.empty((self.n_worlds, self.maxdims), dtype=self.scalar_type, device=self.device)
+        self.r_and_z = wp.zeros((2, self.n_worlds, self.maxdims), dtype=self.scalar_type, device=self.device)
+        self.r_and_Az = wp.zeros_like(self.r_and_z)
+        self.y_and_Ap = wp.zeros_like(self.r_and_z)
+        self.p = wp.zeros((self.n_worlds, self.maxdims), dtype=self.scalar_type, device=self.device)
         # (r, r) -- so we can compute r.z and r.r at once
 
         if self.Mi is None:

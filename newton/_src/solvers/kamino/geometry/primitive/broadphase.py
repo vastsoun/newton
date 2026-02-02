@@ -153,12 +153,6 @@ class CollisionCandidatesModel:
     Shape of ``(sum_of_num_candidate_pairs,)`` and type :class:`int32`.
     """
 
-    pairid: wp.array | None = None
-    """
-    Index of each the collision pair.\n
-    Shape of ``(sum_of_num_candidate_pairs,)`` and type :class:`int32`.
-    """
-
     geom_pair: wp.array | None = None
     """
     Geometry indices of each collision pair.\n

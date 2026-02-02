@@ -116,7 +116,7 @@ class CollisionPipelinePrimitive:
         num_geoms = len(builder.geoms)
 
         # Construct collision pairs
-        world_num_geom_pairs, model_geom_pair, model_pairid, model_wid = builder.make_collision_candidate_pairs()
+        world_num_geom_pairs, model_geom_pair, _, model_wid = builder.make_collision_candidate_pairs()
         model_num_geom_pairs = len(model_geom_pair)
 
         # Ensure that all shape types are supported by the primitive
@@ -142,7 +142,6 @@ class CollisionPipelinePrimitive:
                 model_num_pairs=wp.array([model_num_geom_pairs], dtype=int32),
                 world_num_pairs=wp.array(world_num_geom_pairs, dtype=int32),
                 wid=wp.array(model_wid, dtype=int32),
-                pairid=wp.array(model_pairid, dtype=int32),
                 geom_pair=wp.array(model_geom_pair, dtype=vec2i),
             )
 

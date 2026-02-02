@@ -717,26 +717,6 @@ class CollisionPipelineUnifiedKamino:
             device=self._device,
         )
 
-    def _set_model_materials(self, model: Model):
-        """
-        Update material arrays from the model's material pairs.
-
-        Args:
-            model (Model): The Kamino model containing material-pair properties.
-        """
-        # TODO: Fix this to:
-        # 1. handle default material if no material_pairs exist
-        # 2. copy the per material-pair properties from the model-builder
-        if model.material_pairs is not None and model.material_pairs.num_pairs > 0:
-            # Reallocate material arrays if needed
-            if self.material_friction.shape[0] != model.material_pairs.num_pairs:
-                self.material_friction = wp.zeros(model.material_pairs.num_pairs, dtype=float32, device=self._device)
-                self.material_restitution = wp.zeros(model.material_pairs.num_pairs, dtype=float32, device=self._device)
-
-            # Copy material properties
-            wp.copy(self.material_friction, model.material_pairs.dynamic_friction)
-            wp.copy(self.material_restitution, model.material_pairs.restitution)
-
     def _update_geom_data(self, model: Model, data: ModelData):
         """
         Updates geometry poses from corresponding body states and computes respective AABBs.

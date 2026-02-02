@@ -100,7 +100,7 @@ class PrimitiveBroadPhaseTestBS:
         num_worlds = builder.num_worlds
         num_geoms = len(builder.geoms)
         # Construct collision pairs
-        world_num_geom_pairs, model_geom_pair, model_pairid, model_wid = builder.make_collision_candidate_pairs()
+        world_num_geom_pairs, model_geom_pair, _, model_wid = builder.make_collision_candidate_pairs()
         model_num_geom_pairs = len(model_geom_pair)
         # Allocate the collision model data
         with wp.ScopedDevice(device):
@@ -113,7 +113,6 @@ class PrimitiveBroadPhaseTestBS:
                 model_num_pairs=wp.array([model_num_geom_pairs], dtype=int32),
                 world_num_pairs=wp.array(world_num_geom_pairs, dtype=int32),
                 wid=wp.array(model_wid, dtype=int32),
-                pairid=wp.array(model_pairid, dtype=int32),
                 geom_pair=wp.array(model_geom_pair, dtype=vec2i),
             )
             # Allocate the time-varying collision candidates data
@@ -137,7 +136,7 @@ class PrimitiveBroadPhaseTestAABB:
         num_worlds = builder.num_worlds
         num_geoms = len(builder.geoms)
         # Construct collision pairs
-        world_num_geom_pairs, model_geom_pair, model_pairid, model_wid = builder.make_collision_candidate_pairs()
+        world_num_geom_pairs, model_geom_pair, _, model_wid = builder.make_collision_candidate_pairs()
         model_num_geom_pairs = len(model_geom_pair)
         # Allocate the collision model data
         with wp.ScopedDevice(device):
@@ -150,7 +149,6 @@ class PrimitiveBroadPhaseTestAABB:
                 model_num_pairs=wp.array([model_num_geom_pairs], dtype=int32),
                 world_num_pairs=wp.array(world_num_geom_pairs, dtype=int32),
                 wid=wp.array(model_wid, dtype=int32),
-                pairid=wp.array(model_pairid, dtype=int32),
                 geom_pair=wp.array(model_geom_pair, dtype=vec2i),
             )
             # Allocate the time-varying collision candidates data
@@ -190,7 +188,6 @@ def check_broadphase_allocations(
     testcase.assertEqual(broadphase._cmodel.model_num_pairs.size, 1)
     testcase.assertEqual(broadphase._cmodel.world_num_pairs.size, builder.num_worlds)
     testcase.assertEqual(broadphase._cmodel.wid.size, num_geom_pairs)
-    testcase.assertEqual(broadphase._cmodel.pairid.size, num_geom_pairs)
     testcase.assertEqual(broadphase._cmodel.geom_pair.size, num_geom_pairs)
     np.testing.assert_array_equal(broadphase._cmodel.geom_pair.numpy(), model_geom_pairs)
     testcase.assertEqual(broadphase._cdata.model_num_collisions.size, 1)

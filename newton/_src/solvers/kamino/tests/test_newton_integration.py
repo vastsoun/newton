@@ -27,20 +27,18 @@ from newton._src.sim import (
     Contacts,
     Control,
     Model,
-    ModelAttributeAssignment,
-    ModelAttributeFrequency,
     ModelBuilder,
     State,
 )
 from newton._src.solvers.kamino.core import inertia
-from newton._src.solvers.kamino.core.joints import JOINT_QMAX, JOINT_QMIN
 from newton._src.solvers.kamino.core.builder import ModelBuilder as ModelBuilderKamino
+from newton._src.solvers.kamino.core.joints import JOINT_QMAX, JOINT_QMIN
 from newton._src.solvers.kamino.core.new_control import ControlKamino
 from newton._src.solvers.kamino.core.new_data import DataKamino
 from newton._src.solvers.kamino.core.new_model import ModelKamino
 from newton._src.solvers.kamino.core.new_state import StateKamino
-from newton._src.solvers.kamino.geometry.contacts import Contacts as ContactsKamino
 from newton._src.solvers.kamino.geometry.contacts import DEFAULT_GEOM_PAIR_MAX_CONTACTS
+from newton._src.solvers.kamino.geometry.contacts import Contacts as ContactsKamino
 from newton._src.solvers.kamino.models import basics, get_basics_usd_assets_path
 from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.utils import logger as msg
@@ -309,36 +307,36 @@ def build_boxes_fourbar_newton(
     _builder.add_shape_box(
         key="box_1",
         body=bid1,
-        hx=0.5*d_1,
-        hy=0.5*w_1,
-        hz=0.5*h_1,
-        cfg=ModelBuilder.ShapeConfig(contact_margin=0.0)
+        hx=0.5 * d_1,
+        hy=0.5 * w_1,
+        hz=0.5 * h_1,
+        cfg=ModelBuilder.ShapeConfig(contact_margin=0.0),
     )
     _builder.add_shape_box(
         key="box_2",
         body=bid2,
-        hx=0.5*d_2,
-        hy=0.5*w_2,
-        hz=0.5*h_2,
-        cfg=ModelBuilder.ShapeConfig(contact_margin=0.0)
+        hx=0.5 * d_2,
+        hy=0.5 * w_2,
+        hz=0.5 * h_2,
+        cfg=ModelBuilder.ShapeConfig(contact_margin=0.0),
     )
 
     _builder.add_shape_box(
         key="box_3",
         body=bid3,
-        hx=0.5*d_3,
-        hy=0.5*w_3,
-        hz=0.5*h_3,
-        cfg=ModelBuilder.ShapeConfig(contact_margin=0.0)
+        hx=0.5 * d_3,
+        hy=0.5 * w_3,
+        hz=0.5 * h_3,
+        cfg=ModelBuilder.ShapeConfig(contact_margin=0.0),
     )
 
     _builder.add_shape_box(
         key="box_4",
         body=bid4,
-        hx=0.5*d_4,
-        hy=0.5*w_4,
-        hz=0.5*h_4,
-        cfg=ModelBuilder.ShapeConfig(contact_margin=0.0)
+        hx=0.5 * d_4,
+        hy=0.5 * w_4,
+        hz=0.5 * h_4,
+        cfg=ModelBuilder.ShapeConfig(contact_margin=0.0),
     )
 
     # Add a static collision layer and geometry for the plane
@@ -1207,15 +1205,35 @@ class TestKaminoNewtonIntegration(unittest.TestCase):
         msg.info("model_0_nwt.joint_parent (type: %s): %s", type(model_0_nwt.joint_parent), model_0_nwt.joint_parent)
         msg.info("model_0_nwt.joint_child (type: %s): %s", type(model_0_nwt.joint_child), model_0_nwt.joint_child)
         msg.info("model_0_nwt.joint_q_start (type: %s): %s", type(model_0_nwt.joint_q_start), model_0_nwt.joint_q_start)
-        msg.info("model_0_nwt.joint_qd_start (type: %s): %s", type(model_0_nwt.joint_qd_start), model_0_nwt.joint_qd_start)
+        msg.info(
+            "model_0_nwt.joint_qd_start (type: %s): %s", type(model_0_nwt.joint_qd_start), model_0_nwt.joint_qd_start
+        )
         msg.info("model_0_nwt.joint_q (type: %s): %s", type(model_0_nwt.joint_q), model_0_nwt.joint_q)
         msg.info("model_0_nwt.joint_qd (type: %s): %s", type(model_0_nwt.joint_qd), model_0_nwt.joint_qd)
-        msg.info("model_0_nwt.joint_dof_dim (type: %s):\n%s", type(model_0_nwt.joint_dof_dim), model_0_nwt.joint_dof_dim)
+        msg.info(
+            "model_0_nwt.joint_dof_dim (type: %s):\n%s", type(model_0_nwt.joint_dof_dim), model_0_nwt.joint_dof_dim
+        )
         msg.info("model_0_nwt.joint_world (type: %s): %s", type(model_0_nwt.joint_world), model_0_nwt.joint_world)
-        msg.info("model_0_nwt.articulation_count (type: %s): %s", type(model_0_nwt.articulation_count), model_0_nwt.articulation_count)
-        msg.info("model_0_nwt.articulation_key (type: %s): %s", type(model_0_nwt.articulation_key), model_0_nwt.articulation_key)
-        msg.info("model_0_nwt.articulation_start (type: %s): %s", type(model_0_nwt.articulation_start), model_0_nwt.articulation_start)
-        msg.info("model_0_nwt.articulation_world (type: %s): %s\n", type(model_0_nwt.articulation_world), model_0_nwt.articulation_world)
+        msg.info(
+            "model_0_nwt.articulation_count (type: %s): %s",
+            type(model_0_nwt.articulation_count),
+            model_0_nwt.articulation_count,
+        )
+        msg.info(
+            "model_0_nwt.articulation_key (type: %s): %s",
+            type(model_0_nwt.articulation_key),
+            model_0_nwt.articulation_key,
+        )
+        msg.info(
+            "model_0_nwt.articulation_start (type: %s): %s",
+            type(model_0_nwt.articulation_start),
+            model_0_nwt.articulation_start,
+        )
+        msg.info(
+            "model_0_nwt.articulation_world (type: %s): %s\n",
+            type(model_0_nwt.articulation_world),
+            model_0_nwt.articulation_world,
+        )
         msg.info("model_0.size:\n%s", model_0.size)
         msg.info("model_1.size:\n%s", model_1.size)
 
@@ -1234,9 +1252,17 @@ class TestKaminoNewtonIntegration(unittest.TestCase):
 
         # TODO
         msg.info("state_0_nwt.body_count (type: %s): %s", type(state_0_nwt.body_count), state_0_nwt.body_count)
-        msg.info("state_0_nwt.particle_count (type: %s): %s", type(state_0_nwt.particle_count), state_0_nwt.particle_count)
-        msg.info("state_0_nwt.joint_coord_count (type: %s): %s", type(state_0_nwt.joint_coord_count), state_0_nwt.joint_coord_count)
-        msg.info("state_0_nwt.joint_dof_count (type: %s): %s", type(state_0_nwt.joint_dof_count), state_0_nwt.joint_dof_count)
+        msg.info(
+            "state_0_nwt.particle_count (type: %s): %s", type(state_0_nwt.particle_count), state_0_nwt.particle_count
+        )
+        msg.info(
+            "state_0_nwt.joint_coord_count (type: %s): %s",
+            type(state_0_nwt.joint_coord_count),
+            state_0_nwt.joint_coord_count,
+        )
+        msg.info(
+            "state_0_nwt.joint_dof_count (type: %s): %s", type(state_0_nwt.joint_dof_count), state_0_nwt.joint_dof_count
+        )
         msg.info("state_0_nwt.particle_q (type: %s):\n%s", type(state_0_nwt.particle_q), state_0_nwt.particle_q)
         msg.info("state_0_nwt.particle_qd (type: %s):\n%s", type(state_0_nwt.particle_qd), state_0_nwt.particle_qd)
         msg.info("state_0_nwt.particle_f (type: %s):\n%s", type(state_0_nwt.particle_f), state_0_nwt.particle_f)
@@ -1341,10 +1367,7 @@ class TestKaminoNewtonIntegration(unittest.TestCase):
             per_contact_shape_properties=False,
             clear_buffers=True,
         )
-        contacts_1: ContactsKamino = ContactsKamino(
-            capacity=world_max_contacts_1,
-            device=model_1.device
-        )
+        contacts_1: ContactsKamino = ContactsKamino(capacity=world_max_contacts_1, device=model_1.device)
 
         # TODO
         msg.info("contacts_0_nwt.rigid_contact_max: %s", contacts_0_nwt.rigid_contact_max)
@@ -1352,9 +1375,21 @@ class TestKaminoNewtonIntegration(unittest.TestCase):
         msg.info("contacts_1.world_max_contacts_host: %s\n\n", contacts_1.world_max_contacts_host)
 
         # TODO
-        msg.info("contacts_0_nwt.rigid_contact_count (shape=%s): %s", contacts_0_nwt.rigid_contact_count.shape, contacts_0_nwt.rigid_contact_count)
-        msg.info("contacts_1.model_active_contacts (shape=%s): %s", contacts_1.model_active_contacts.shape, contacts_1.model_active_contacts)
-        msg.info("contacts_1.world_active_contacts (shape=%s): %s", contacts_1.world_active_contacts.shape, contacts_1.world_active_contacts)
+        msg.info(
+            "contacts_0_nwt.rigid_contact_count (shape=%s): %s",
+            contacts_0_nwt.rigid_contact_count.shape,
+            contacts_0_nwt.rigid_contact_count,
+        )
+        msg.info(
+            "contacts_1.model_active_contacts (shape=%s): %s",
+            contacts_1.model_active_contacts.shape,
+            contacts_1.model_active_contacts,
+        )
+        msg.info(
+            "contacts_1.world_active_contacts (shape=%s): %s",
+            contacts_1.world_active_contacts.shape,
+            contacts_1.world_active_contacts,
+        )
 
 
 ###

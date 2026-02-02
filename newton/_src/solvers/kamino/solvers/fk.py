@@ -1422,7 +1422,7 @@ def _update_cg_tolerance_kernel(
     wd_id = wp.tid()
     if wd_id >= world_mask.shape[0] or world_mask[wd_id] == 0:
         return
-    tol = wp.max(1e-8, wp.min(1e-5, 1e-2 * max_constraint[wd_id]))
+    tol = wp.max(1e-8, wp.min(1e-5, 1e-3 * max_constraint[wd_id]))
     atol[wd_id] = tol
     rtol[wd_id] = tol
 
@@ -1484,6 +1484,11 @@ class ForwardKinematicsSolverSettings:
     """Preconditioner to use for the Conjugate Gradient solver if sparsity is enabled
        (default: JACOBI_BLOCK_DIAGONAL).
        Changes to this setting after the solver's initialization lead to undefined behavior."""
+
+    use_adaptive_cg_tolerance: bool = True
+    """Whether to use an adaptive tolerance strategy for the Conjugate Gradient solver if sparsity
+       is enabled, which reduces the number of CG iterations in most cases (default: True).
+       Changes to this setting after graph capture will have no effect."""
 
     def check(self):
         """
@@ -2516,9 +2521,11 @@ class ForwardKinematicsSolver:
                     self.sparse_jacobian, self.inv_blocks_3, self.inv_blocks_4, self.newton_mask
                 )
             self.step.zero_()
-            # self._update_cg_tolerance(self.max_constraint, self.newton_mask)
-            self.cg_atol.fill_(1e-8)
-            self.cg_rtol.fill_(1e-8)
+            if self.settings.use_adaptive_cg_tolerance:
+                self._update_cg_tolerance(self.max_constraint, self.newton_mask)
+            else:
+                self.cg_atol.fill_(1e-8)
+                self.cg_rtol.fill_(1e-8)
             self.linear_solver_cg.solve(self.rhs, self.step, world_active=self.newton_mask)
         else:
             self.linear_solver_llt.factorize(self.lhs, self.num_states, self.newton_mask)

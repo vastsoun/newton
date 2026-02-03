@@ -22,8 +22,8 @@ from dataclasses import dataclass, field
 import numpy as np
 import warp as wp
 
+from ....geometry.flags import ShapeFlags
 from ....sim.model import Model
-from ..utils import logger as msg
 from .bodies import RigidBodiesData, RigidBodiesModel
 from .geometry import GeometriesData, GeometriesModel
 from .gravity import GravityModel
@@ -761,17 +761,11 @@ class ModelKamino:
         body_bid_np = _compute_entity_indices_wrt_world(model.body_world)
         joint_jid_np = _compute_entity_indices_wrt_world(model.joint_world)
         shape_sid_np = _compute_entity_indices_wrt_world(model.shape_world)
-        msg.info("body_bid_np: %s", body_bid_np)
-        msg.info("joint_jid_np: %s", joint_jid_np)
-        msg.info("shape_sid_np: %s\n", shape_sid_np)
 
         # Compute the number of entities per world
         num_bodies_np = _compute_num_entities_per_world(model.body_world, model.num_worlds)
         num_joints_np = _compute_num_entities_per_world(model.joint_world, model.num_worlds)
         num_shapes_np = _compute_num_entities_per_world(model.shape_world, model.num_worlds)
-        msg.info("num_bodies_np: %s", num_bodies_np)
-        msg.info("num_joints_np: %s", num_joints_np)
-        msg.info("num_shapes_np: %s\n", num_shapes_np)
 
         # Compute body coord/DoF counts per world
         num_body_coords_np = num_bodies_np * 7
@@ -841,17 +835,6 @@ class ModelKamino:
             joint_B_r_Bj_np[j, :] = B_r_Bj
             joint_F_r_Fj_np[j, :] = F_r_Fj
             joint_X_j_np[j, :] = X_j
-        msg.info("num_body_coords_np: %s", num_body_coords_np)
-        msg.info("num_body_dofs_np: %s", num_body_dofs_np)
-        msg.info("num_joint_coords_np: %s", num_joint_coords_np)
-        msg.info("num_joint_dofs_np: %s", num_joint_dofs_np)
-        msg.info("num_joint_cts_np: %s", num_joint_cts_np)
-        msg.info("joint_num_coords_np: %s", joint_num_coords_np)
-        msg.info("joint_num_dofs_np: %s", joint_num_dofs_np)
-        msg.info("joint_num_cts_np: %s\n", joint_num_cts_np)
-        msg.info("joint_B_r_Bj_np:\n%s", joint_B_r_Bj_np)
-        msg.info("joint_F_r_Fj_np:\n%s", joint_F_r_Fj_np)
-        msg.info("joint_X_j_np:\n%s\n", joint_X_j_np)
 
         # Compute constraint offsets of each joint w.r.t the corresponding world
         joint_cts_start_np = np.zeros((model.joint_count,), dtype=int)
@@ -862,18 +845,42 @@ class ModelKamino:
                 if joint_wid_np[jj] == wid_j:
                     offset_j += joint_num_cts_np[jj]
             joint_cts_start_np[j] = offset_j
-        msg.info("joint_cts_start_np: %s\n", joint_cts_start_np)
+
+        # TODO
+        materials_manager = MaterialManager()
+        # shape_material: list[MaterialDescriptor] = []
+        # shape_friction_np = model.shape_material_mu.numpy()
+        # shape_restitution_np = model.shape_material_restitution.numpy()
+        # shape_world_np = model.shape_world.numpy()
+        # for s in range(model.shape_count):
+        #     shape_material.append(
+        #         MaterialDescriptor(
+        #             restitution=shape_restitution_np[s],
+        #             static_friction=shape_friction_np[s],
+        #             dynamic_friction=shape_friction_np[s],
+        #             wid=shape_world_np[s],
+        #         )
+        #     )
+        #     materials_manager.register(shape_material[-1])
 
         # Convert per-shape properties from Newton to Kamino format
         geom_shape_type_np = model.shape_type.numpy()
         geom_shape_scale_np = model.shape_scale.numpy()
+        geom_shape_flags_np = model.shape_flags.numpy()
+        geom_shape_collision_group_np = model.shape_collision_group.numpy()
         geom_shape_params_np = np.zeros((model.shape_count, 4), dtype=float)
+        model_num_collidable_geoms = 0
         for s in range(model.shape_count):
             shape_type, params = convert_newton_geo_to_kamino_shape(geom_shape_type_np[s], geom_shape_scale_np[s])
             geom_shape_type_np[s] = shape_type
             geom_shape_params_np[s, :] = params
-        msg.info("geom_shape_type_np: %s", geom_shape_type_np)
-        msg.info("geom_shape_params_np:\n%s\n", geom_shape_params_np)
+            if (geom_shape_flags_np[s] & ShapeFlags.COLLIDE_SHAPES) != 0 and geom_shape_collision_group_np[s] > 0:
+                model_num_collidable_geoms += 1
+
+        # Compute total number of required contacts per world
+        # TODO: We need to do this properly based on the actual geometries in each world
+        required_contacts_per_world = model.rigid_contact_max // model.num_worlds
+        world_required_contacts = [required_contacts_per_world] * model.num_worlds
 
         # Compute offsets per world
         body_offset_np = np.zeros((model.num_worlds,), dtype=int)
@@ -891,12 +898,6 @@ class ModelKamino:
             joint_dof_offset_np[w] = joint_dof_offset_np[w - 1] + num_joint_dofs_np[w - 1]
             joint_cts_offset_np[w] = joint_cts_offset_np[w - 1] + num_joint_cts_np[w - 1]
             shape_offset_np[w] = shape_offset_np[w - 1] + num_shapes_np[w - 1]
-        msg.info("body_offset_np: %s", body_offset_np)
-        msg.info("body_dof_offset_np: %s", body_dof_offset_np)
-        msg.info("joint_offset_np: %s", joint_offset_np)
-        msg.info("joint_coord_offset_np: %s", joint_coord_offset_np)
-        msg.info("joint_dof_offset_np: %s", joint_dof_offset_np)
-        msg.info("joint_cts_offset_np: %s\n", joint_cts_offset_np)
 
         # Determine the base body and joint indices per world
         base_body_idx_np = np.full((model.num_worlds,), -1, dtype=int)
@@ -938,8 +939,6 @@ class ModelKamino:
                     if joint_world_np[j] == w:
                         base_joint_idx_np[w] = j
                         break
-        msg.info("base_body_idx_np: %s", base_body_idx_np)
-        msg.info("base_joint_idx_np: %s\n", base_joint_idx_np)
 
         # Construct per-world inertial summaries
         mass_min_np = np.zeros((model.num_worlds,), dtype=float)
@@ -958,17 +957,11 @@ class ModelKamino:
                     inertia_total_np[w] += 3.0 * mass_b + body_inertia_np[b].diagonal().sum()
             mass_min_np[w] = min(masses_w)
             mass_max_np[w] = max(masses_w)
-        msg.info("body_mass_np: %s", body_mass_np)
-        msg.info("mass_min_np: %s", mass_min_np)
-        msg.info("mass_max_np: %s", mass_max_np)
-        msg.info("mass_total_np: %s", mass_total_np)
-        msg.info("inertia_total_np: %s\n", inertia_total_np)
 
         # Construct per-world gravity
         gravity_g_dir_acc_np = np.zeros(shape=(model.num_worlds, 4), dtype=float)
         gravity_vector_np = np.zeros(shape=(model.num_worlds, 4), dtype=float)
         gravity_np = model.gravity.numpy()
-        msg.info("gravity_np (shape=%s):\n%s", gravity_np.shape, gravity_np)
         for w in range(model.num_worlds):
             gravity_accel = np.linalg.norm(gravity_np[w, :])
             gravity_dir = gravity_np[w, :] / gravity_accel
@@ -977,11 +970,8 @@ class ModelKamino:
             )
             gravity_vector_np[w, 0:3] = gravity_np[w, :]
             gravity_vector_np[w, 3] = 1.0  # Enable gravity by default in all worlds
-        msg.info("gravity_g_dir_acc_np:\n%s", gravity_g_dir_acc_np)
-        msg.info("gravity_vector_np:\n%s\n", gravity_vector_np)
 
         # Construct the per-material and per-material-pair properties
-        materials_manager = MaterialManager()
         materials_rest = [materials_manager.restitution_vector()]
         materials_static_fric = [materials_manager.static_friction_vector()]
         materials_dynamic_fric = [materials_manager.dynamic_friction_vector()]
@@ -1100,7 +1090,7 @@ class ModelKamino:
             sum_of_max_total_cts=int(num_joint_cts_np.sum()),
             max_of_max_total_cts=int(num_joint_cts_np.max()),
         )
-        msg.info("ModelKaminoSize:\n%s", model_size)
+        # msg.info("ModelKaminoSize:\n%s", model_size)
 
         # Construct the model entities from the newton.Model instance
         with wp.ScopedDevice(device=model.device):
@@ -1200,6 +1190,10 @@ class ModelKamino:
             # Collision geometries
             model_geoms = GeometriesModel(
                 num_geoms=model.shape_count,
+                num_collidable_geoms=model_num_collidable_geoms,
+                num_collidable_geom_pairs=model.shape_contact_pair_count,
+                model_max_contacts=model.rigid_contact_max,
+                world_max_contacts=world_required_contacts,
                 wid=model.shape_world,
                 gid=wp.array(shape_sid_np, dtype=int32),
                 lid=wp.zeros(shape=model.shape_count, dtype=int32),  # TODO: Remove this since it's not used anywhere
@@ -1212,6 +1206,7 @@ class ModelKamino:
                 group=wp.full(shape=(model.shape_count,), value=1, dtype=int32),  # TODO: model.shape_collision_group
                 collides=wp.full(shape=(model.shape_count,), value=1, dtype=int32),  # TODO: model.shape_collision_group
                 margin=model.shape_contact_margin,
+                collidable_pairs=model.shape_contact_pairs,
             )
 
             # Per-material properties

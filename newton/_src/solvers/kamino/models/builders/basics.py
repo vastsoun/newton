@@ -904,7 +904,6 @@ def build_boxes_fourbar(
         actuator_ids = [1, 3]
     elif not isinstance(actuator_ids, list):
         raise TypeError("actuator_ids, if specified, must be provided as a list of integers.")
-    print(f"WARNING: Using actuator IDs: {actuator_ids}")
 
     ###
     # Base Parameters

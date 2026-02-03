@@ -108,6 +108,7 @@ class GeometryDescriptor(Descriptor):
     # Attributes
     ###
 
+    # TODO: Rename as `body`
     bid: int = -1
     """
     Index of the body to which the geometry entity is attached.\n
@@ -134,12 +135,16 @@ class GeometryDescriptor(Descriptor):
     Defaults to `None`, indicating the default material.
     """
 
+    # TODO: Use Model.ShapeConfig instead of all these individual fields
+    # config: ModelBuilder.ShapeConfig = field(default_factory=ModelBuilder.ShapeConfig)
+
     group: int = 1
     """
     The collision group assigned to the collision geometry.\n
     Defaults to the default group with value `1`.
     """
 
+    # TODO: Remove
     collides: int = 1
     """
     The collision groups with which the collision geometry can collide.\n
@@ -279,22 +284,19 @@ class GeometriesModel:
     num_geoms: int = 0
     """Total number of geometry entities in the model."""
 
-    collidable_geoms_count: int = 0
+    num_collidable_geoms: int = 0
     """Total number of collidable geometry entities in the model."""
 
-    collidable_geom_pairs_count: int = 0
+    num_collidable_geom_pairs: int = 0
     """Total number of collidable geometry pairs in the model."""
 
-    collidable_geom_pairs: list[tuple[int, int]] = field(default_factory=list)
-    """List of collidable geometry pairs as tuples of geometry indices."""
+    model_max_contacts: int = 0
+    """The maximum number of contacts allocated for the entire model."""
 
-    model_required_contacts: int = 0
-    """The number of contacts required for the entire model."""
-
-    world_required_contacts: list[int] = field(default_factory=list)
+    world_max_contacts: list[int] = field(default_factory=list)
     """
-    List of the number of contacts required for each world in the model.\n
-    The sum of all elements in `world_required_contacts` should equal `model_required_contacts`.
+    List of the maximum number of contacts allocated for each world in the model.\n
+    The sum of all elements in `world_max_contacts` should equal `model_max_contacts`.
     """
 
     ###
@@ -325,6 +327,7 @@ class GeometriesModel:
     Shape of ``(num_geoms,)`` and type :class:`int`.
     """
 
+    # TODO: Rename as `type`
     sid: wp.array | None = None
     """
     Shape index of each geometry element.\n
@@ -363,6 +366,7 @@ class GeometriesModel:
     Shape of ``(num_geoms,)`` and type :class:`uint32`.
     """
 
+    # TODO: Remove
     collides: wp.array | None = None
     """
     Collision groups with which each collision geometry can collide.\n
@@ -374,6 +378,13 @@ class GeometriesModel:
     Collision detection margin if each collision geometry.\n
     Used in narrow-phase collision detection algorithms to improve robustness.\n
     Shape of ``(num_geoms,)`` and type :class:`float32`.
+    """
+
+    collidable_pairs: wp.array | None = None
+    """
+    Geometry-pair indices that are collidable, i.e. can generate contacts.
+    This array is used in broad-phase collision detection.\n
+    Shape of ``(num_collidable_geom_pairs,)`` and type :class:`int`.
     """
 
 

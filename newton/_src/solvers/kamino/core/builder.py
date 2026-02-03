@@ -43,7 +43,7 @@ from .math import FLOAT32_EPS
 from .model import Model, ModelInfo
 from .shapes import ShapeDescriptorType, ShapeType
 from .time import TimeModel
-from .types import Axis, float32, int32, mat33f, transformf, uint32, vec3f, vec4f, vec6f
+from .types import Axis, float32, int32, mat33f, transformf, uint32, vec2i, vec3f, vec4f, vec6f
 from .world import WorldDescriptor
 
 ###
@@ -1183,18 +1183,13 @@ class ModelBuilder:
             model_collidable_geoms.add(pair[0])
             model_collidable_geoms.add(pair[1])
         model_num_collidable_geoms = len(model_collidable_geoms)
-        msg.warning("ModelBuilder: model_num_collidable_geoms: %s", model_num_collidable_geoms)
-        msg.warning("ModelBuilder: model_num_collidable_geom_pairs: %s", len(model_collidable_geom_pairs))
-        msg.warning("ModelBuilder: model_collidable_geom_pairs:\n%s", model_collidable_geom_pairs)
 
         # Compute the maximum number of contacts required for the model and each world
         # NOTE: This is a conservative estimate based on the maximum per-world geom-pairs
         _, world_required_contacts = self.compute_required_contact_capacity(
-            max_contacts_per_pair=10
-        )  # TODO: Compute value based on each geom-pair type
+            collidable_geom_pairs=model_collidable_geom_pairs
+        )
         model_required_contacts = sum(world_required_contacts)
-        msg.warning("ModelBuilder: Will allocate for `model_required_contacts`: %s", model_required_contacts)
-        msg.warning("ModelBuilder: Will allocate for `world_required_contacts`: %s", world_required_contacts)
 
         ###
         # On-device data allocation
@@ -1292,11 +1287,10 @@ class ModelBuilder:
             # Create the collision geometries model
             model.geoms = GeometriesModel(
                 num_geoms=model.size.sum_of_num_geoms,
-                collidable_geoms_count=model_num_collidable_geoms,
-                collidable_geom_pairs_count=len(model_collidable_geom_pairs),
-                collidable_geom_pairs=model_collidable_geom_pairs,
-                model_required_contacts=model_required_contacts,
-                world_required_contacts=world_required_contacts,
+                num_collidable_geoms=model_num_collidable_geoms,
+                num_collidable_geom_pairs=len(model_collidable_geom_pairs),
+                model_max_contacts=model_required_contacts,
+                world_max_contacts=world_required_contacts,
                 wid=wp.array(geoms_wid, dtype=int32),
                 gid=wp.array(geoms_gid, dtype=int32),
                 lid=wp.array(geoms_lid, dtype=int32),
@@ -1309,6 +1303,7 @@ class ModelBuilder:
                 group=wp.array(geoms_group, dtype=uint32),
                 collides=wp.array(geoms_collides, dtype=uint32),
                 margin=wp.array(geoms_margin, dtype=float32),
+                collidable_pairs=wp.array(np.array(model_collidable_geom_pairs), dtype=vec2i),
             )
 
             # Create the material pairs model
@@ -1332,6 +1327,7 @@ class ModelBuilder:
 
     def compute_required_contact_capacity(
         self,
+        collidable_geom_pairs: list[tuple[int, int]] | None = None,
         max_contacts_per_pair: int | None = None,
         max_contacts_per_world: int | None = None,
     ) -> tuple[int, list[int]]:
@@ -1339,22 +1335,35 @@ class ModelBuilder:
         if self._num_geoms == 0:
             return 0, [0] * self.num_worlds
 
-        # Count the number of collidable geoms total and per world
-        collidable_geoms_per_world = [0] * self.num_worlds
-        for geom in self._geoms:
-            if geom.is_collidable:
-                collidable_geoms_per_world[geom.wid] += 1
+        # Generate the collision candidate pairs if not provided
+        if collidable_geom_pairs is None:
+            _, collidable_geom_pairs, _, _ = self.make_collision_candidate_pairs()
 
         # Compute the maximum possible number of geom pairs per world
         world_max_contacts = [0] * self.num_worlds
-        for w in range(self.num_worlds):
-            world_num_geom_pairs = (collidable_geoms_per_world[w] * (collidable_geoms_per_world[w] - 1)) // 2
-            world_max_contacts[w] = world_num_geom_pairs * max_contacts_per_pair
+        for geom_pair in collidable_geom_pairs:
+            g1 = int(geom_pair[0])
+            g2 = int(geom_pair[1])
+            geom1 = self._geoms[g1]
+            geom2 = self._geoms[g2]
+            num_contacts_a, num_contacts_b = self._count_contact_points_for_pair(
+                shape_a=g1,
+                shape_b=g2,
+                type_a=geom1.shape.type,
+                type_b=geom2.shape.type,
+                scale_a=geom1.shape.params,
+                scale_b=geom2.shape.params,
+            )
+            num_contacts = num_contacts_a + num_contacts_b
+            if max_contacts_per_pair is not None:
+                world_max_contacts[geom1.wid] += max(num_contacts, max_contacts_per_pair)
+            else:
+                world_max_contacts[geom1.wid] += num_contacts
 
         # Override the per-world maximum contacts if specified in the settings
         if max_contacts_per_world is not None:
             for w in range(self.num_worlds):
-                world_max_contacts[w] = max_contacts_per_world
+                world_max_contacts[w] = max(world_max_contacts[w], max_contacts_per_world)
 
         # Return the per-world maximum contacts list
         return sum(world_max_contacts), world_max_contacts
@@ -1471,6 +1480,103 @@ class ModelBuilder:
     ###
     # Internal Functions
     ###
+
+    @staticmethod
+    def _count_contact_points_for_pair(
+        shape_a: int,
+        shape_b: int,
+        type_a: int,
+        type_b: int,
+        scale_a: list[float],
+        scale_b: list[float],
+    ) -> tuple[int, int]:
+        """
+        Count the number of potential contact points for a collision pair in both directions
+        of the collision pair (collisions from A to B and from B to A).
+
+        Inputs must be canonicalized such that the type of shape A is less than or equal to the type of shape B.
+
+        Args:
+            shape_a: First shape index
+            shape_b: Second shape index
+            type_a: First shape type
+            type_b: Second shape type
+            scale_a: Shape scale of first shape
+            scale_b: Shape scale of second shape
+
+        Returns:
+            tuple[int, int]: Number of contact points for collisions between A->B and B->A.
+        """
+
+        # PLANE against all other types (ordered by GeoType index)
+        if type_a == ShapeType.PLANE:
+            if type_b == ShapeType.PLANE:
+                return 0, 0  # no plane-plane contacts
+            if type_b == ShapeType.SPHERE:
+                return 1, 0
+            if type_b == ShapeType.CAPSULE:
+                if scale_a[0] == 0.0 and scale_a[1] == 0.0:
+                    return 2, 0  # vertex-based collision for infinite plane
+                return 2 + 4, 0  # vertex-based collision + plane edges
+            if type_b == ShapeType.CYLINDER:
+                # infinite plane: support max primitive contacts (2 caps + 2 side) = 4
+                return 4, 0
+            if type_b == ShapeType.BOX:
+                # elif actual_type_b == GeoType.PLANE:
+                if scale_a[0] == 0.0 and scale_a[1] == 0.0:
+                    return 8, 0  # vertex-based collision
+                else:
+                    return 8 + 4, 0  # vertex-based collision + plane edges
+            if type_b == ShapeType.MESH or type_b == ShapeType.CONVEX:
+                # TODO: mesh_b = wp.mesh_get(shape_source_ptr[shape_b])
+                # return mesh_b.points.shape[0], 0
+                return 0, 0
+
+        # SPHERE against all other types (always 1 contact)
+        elif type_a == ShapeType.SPHERE:
+            return 1, 0
+
+        # CAPSULE against all other types
+        elif type_a == ShapeType.CAPSULE:
+            if type_b == ShapeType.CAPSULE:
+                return 2, 0
+            if type_b == ShapeType.BOX:
+                return 8, 0
+            if type_b == ShapeType.MESH or type_b == ShapeType.CONVEX:
+                num_contacts_a = 2
+                # mesh_b = wp.mesh_get(shape_source_ptr[shape_b])
+                # num_contacts_b = mesh_b.points.shape[0]
+                # return num_contacts_a, num_contacts_b
+                return num_contacts_a, 0
+
+        # CYLINDER against all other types
+        elif type_a == ShapeType.CYLINDER:
+            # unsupported type combination
+            return 0, 0
+
+        # BOX against all other types
+        elif type_a == ShapeType.BOX:
+            if type_b == ShapeType.BOX:
+                return 12, 12
+            if type_b == ShapeType.MESH or type_b == ShapeType.CONVEX:
+                num_contacts_a = 8
+                # mesh_b = wp.mesh_get(shape_source_ptr[shape_b])
+                # num_contacts_b = mesh_b.points.shape[0]
+                # return num_contacts_a, num_contacts_b
+                return num_contacts_a, 0
+
+        # MESH against all other types
+        elif type_a == ShapeType.MESH or type_a == ShapeType.CONVEX:
+            # mesh_a = wp.mesh_get(shape_source_ptr[shape_a])
+            # num_contacts_a = mesh_a.points.shape[0]
+            # if type_b == ShapeType.MESH or type_b == ShapeType.CONVEX:
+            #     mesh_b = wp.mesh_get(shape_source_ptr[shape_b])
+            #     num_contacts_b = mesh_b.points.shape[0]
+            #     return num_contacts_a, num_contacts_b
+            return 0, 0
+
+        # unsupported type combination
+        return 0, 0
 
     def _check_world_index(self, world_index: int) -> WorldDescriptor:
         """

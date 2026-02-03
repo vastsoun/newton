@@ -23,7 +23,9 @@ import unittest
 import numpy as np
 import warp as wp
 
+from newton._src.core import Axis
 from newton._src.sim import (
+    ActuatorMode,
     Contacts,
     Control,
     Model,
@@ -55,8 +57,8 @@ def register_solver_attributes(builder: ModelBuilder) -> None:
     builder.add_custom_attribute(
         ModelBuilder.CustomAttribute(
             name="num_body_dofs",
-            frequency=ModelAttributeFrequency.WORLD,
-            assignment=ModelAttributeAssignment.MODEL,
+            frequency=Model.AttributeFrequency.WORLD,
+            assignment=Model.AttributeAssignment.MODEL,
             dtype=wp.int32,
             default=0,
             namespace="info",
@@ -228,79 +230,6 @@ def build_boxes_fourbar_newton(
     )
 
     ###
-    # Joints
-    ###
-
-    if limits:
-        qmin = -0.25 * math.pi
-        qmax = 0.25 * math.pi
-    else:
-        qmin = float(JOINT_QMIN)
-        qmax = float(JOINT_QMAX)
-
-    if fixedbase:
-        _builder.add_joint_fixed(
-            key="world_to_link1",
-            parent=-1,
-            child=bid1,
-            parent_xform=wp.transform_identity(dtype=wp.float32),
-            child_xform=wp.transformf(-r_b1, wp.quat_identity(dtype=wp.float32)),
-        )
-
-    if floatingbase:
-        _builder.add_joint_free(
-            key="world_to_link1",
-            parent=-1,
-            child=bid1,
-            parent_xform=wp.transform_identity(dtype=wp.float32),
-            child_xform=wp.transform_identity(dtype=wp.float32),
-        )
-
-    _builder.add_joint_revolute(
-        key="link1_to_link2",
-        parent=bid1,
-        child=bid2,
-        axis="Y",
-        parent_xform=wp.transformf(r_j1 - r_b1, wp.quat_identity(dtype=wp.float32)),
-        child_xform=wp.transformf(r_j1 - r_b2, wp.quat_identity(dtype=wp.float32)),
-        limit_lower=qmin,
-        limit_upper=qmax,
-    )
-
-    _builder.add_joint_revolute(
-        key="link2_to_link3",
-        parent=bid2,
-        child=bid3,
-        axis="Y",
-        parent_xform=wp.transformf(r_j2 - r_b2, wp.quat_identity(dtype=wp.float32)),
-        child_xform=wp.transformf(r_j2 - r_b3, wp.quat_identity(dtype=wp.float32)),
-        limit_lower=qmin,
-        limit_upper=qmax,
-    )
-
-    _builder.add_joint_revolute(
-        key="link3_to_link4",
-        parent=bid3,
-        child=bid4,
-        axis="Y",
-        parent_xform=wp.transformf(r_j3 - r_b3, wp.quat_identity(dtype=wp.float32)),
-        child_xform=wp.transformf(r_j3 - r_b4, wp.quat_identity(dtype=wp.float32)),
-        limit_lower=qmin,
-        limit_upper=qmax,
-    )
-
-    _builder.add_joint_revolute(
-        key="link4_to_link1",
-        parent=bid4,
-        child=bid1,
-        axis="Y",
-        parent_xform=wp.transformf(r_j4 - r_b4, wp.quat_identity(dtype=wp.float32)),
-        child_xform=wp.transformf(r_j4 - r_b1, wp.quat_identity(dtype=wp.float32)),
-        limit_lower=qmin,
-        limit_upper=qmax,
-    )
-
-    ###
     # Geometries
     ###
 
@@ -350,6 +279,84 @@ def build_boxes_fourbar_newton(
             xform=wp.transformf(0.0, 0.0, -0.5, 0.0, 0.0, 0.0, 1.0),
             cfg=ModelBuilder.ShapeConfig(contact_margin=0.0),
         )
+
+    ###
+    # Joints
+    ###
+
+    if limits:
+        qmin = -0.25 * math.pi
+        qmax = 0.25 * math.pi
+    else:
+        qmin = float(JOINT_QMIN)
+        qmax = float(JOINT_QMAX)
+
+    if fixedbase:
+        _builder.add_joint_fixed(
+            key="world_to_link1",
+            parent=-1,
+            child=bid1,
+            parent_xform=wp.transform_identity(dtype=wp.float32),
+            child_xform=wp.transformf(-r_b1, wp.quat_identity(dtype=wp.float32)),
+        )
+
+    if floatingbase:
+        _builder.add_joint_free(
+            key="world_to_link1",
+            parent=-1,
+            child=bid1,
+            parent_xform=wp.transform_identity(dtype=wp.float32),
+            child_xform=wp.transform_identity(dtype=wp.float32),
+        )
+
+    passive_joint_dof_config = ModelBuilder.JointDofConfig(
+        axis=Axis.Y,
+        actuator_mode=ActuatorMode.NONE,
+        limit_lower=qmin,
+        limit_upper=qmax,
+    )
+    actuated_joint_dof_config = ModelBuilder.JointDofConfig(
+        axis=Axis.Y,
+        actuator_mode=ActuatorMode.EFFORT,
+        limit_lower=qmin,
+        limit_upper=qmax,
+    )
+
+    _builder.add_joint_revolute(
+        key="link1_to_link2",
+        parent=bid1,
+        child=bid2,
+        axis=actuated_joint_dof_config if 1 in actuator_ids else passive_joint_dof_config,
+        parent_xform=wp.transformf(r_j1 - r_b1, wp.quat_identity(dtype=wp.float32)),
+        child_xform=wp.transformf(r_j1 - r_b2, wp.quat_identity(dtype=wp.float32)),
+    )
+
+    _builder.add_joint_revolute(
+        key="link2_to_link3",
+        parent=bid2,
+        child=bid3,
+        axis=actuated_joint_dof_config if 2 in actuator_ids else passive_joint_dof_config,
+        parent_xform=wp.transformf(r_j2 - r_b2, wp.quat_identity(dtype=wp.float32)),
+        child_xform=wp.transformf(r_j2 - r_b3, wp.quat_identity(dtype=wp.float32)),
+    )
+
+    _builder.add_joint_revolute(
+        key="link3_to_link4",
+        parent=bid3,
+        child=bid4,
+        axis=actuated_joint_dof_config if 3 in actuator_ids else passive_joint_dof_config,
+        parent_xform=wp.transformf(r_j3 - r_b3, wp.quat_identity(dtype=wp.float32)),
+        child_xform=wp.transformf(r_j3 - r_b4, wp.quat_identity(dtype=wp.float32)),
+    )
+
+    _builder.add_joint_revolute(
+        key="link4_to_link1",
+        parent=bid4,
+        child=bid1,
+        axis=actuated_joint_dof_config if 4 in actuator_ids else passive_joint_dof_config,
+        parent_xform=wp.transformf(r_j4 - r_b4, wp.quat_identity(dtype=wp.float32)),
+        child_xform=wp.transformf(r_j4 - r_b1, wp.quat_identity(dtype=wp.float32)),
+    )
 
     # Signal the end of setting-up the new world
     if new_world or builder is None:
@@ -886,6 +893,31 @@ def assert_model_joints_equal(test: unittest.TestCase, model0: ModelKamino, mode
 
 
 def assert_model_geoms_equal(test: unittest.TestCase, model0: ModelKamino, model1: ModelKamino) -> None:
+    test.assertEqual(
+        first=model0.geoms.num_geoms,
+        second=model1.geoms.num_geoms,
+        msg="model.geoms.num_geoms are not equal.",
+    )
+    test.assertEqual(
+        first=model0.geoms.num_collidable_geoms,
+        second=model1.geoms.num_collidable_geoms,
+        msg="model.geoms.num_collidable_geoms are not equal.",
+    )
+    test.assertEqual(
+        first=model0.geoms.num_collidable_geom_pairs,
+        second=model1.geoms.num_collidable_geom_pairs,
+        msg="model.geoms.num_collidable_geom_pairs are not equal.",
+    )
+    test.assertEqual(
+        first=model0.geoms.model_max_contacts,
+        second=model1.geoms.model_max_contacts,
+        msg="model.geoms.model_max_contacts are not equal.",
+    )
+    test.assertEqual(
+        first=model0.geoms.world_max_contacts,
+        second=model1.geoms.world_max_contacts,
+        msg="model.geoms.world_max_contacts are not equal.",
+    )
     np.testing.assert_allclose(
         actual=model0.geoms.wid.numpy(),
         desired=model1.geoms.wid.numpy(),
@@ -940,6 +972,11 @@ def assert_model_geoms_equal(test: unittest.TestCase, model0: ModelKamino, model
         actual=model0.geoms.margin.numpy(),
         desired=model1.geoms.margin.numpy(),
         err_msg="model.geoms.margin are not equal.",
+    )
+    np.testing.assert_allclose(
+        actual=model0.geoms.collidable_pairs.numpy(),
+        desired=model1.geoms.collidable_pairs.numpy(),
+        err_msg="model.geoms.collidable_pairs are not equal.",
     )
 
 
@@ -1236,6 +1273,7 @@ class TestKaminoNewtonIntegration(unittest.TestCase):
         )
         msg.info("model_0.size:\n%s", model_0.size)
         msg.info("model_1.size:\n%s", model_1.size)
+        msg.error("model_0_nwt.joint_act_mode:\n%s\n\n", model_0_nwt.joint_act_mode)
 
         # Checks
         assert_model_equal(self, model_0, model_1)
@@ -1325,6 +1363,7 @@ class TestKaminoNewtonIntegration(unittest.TestCase):
 
         # TODO
         data_0: DataKamino = model_0.data()
+        # data_1: DataKamino = model_1.data()
 
         # TODO
         msg.info("data_0.bodies.q_i (shape=%s):\n%s\n\n", data_0.bodies.q_i.shape, data_0.bodies.q_i)
@@ -1349,9 +1388,9 @@ class TestKaminoNewtonIntegration(unittest.TestCase):
         )
 
         # TODO
-        msg.info("model_0_nwt.shape_collision_filter_pairs:\n%s", model_0_nwt.shape_collision_filter_pairs)
-        msg.info("model_0_nwt.shape_contact_pairs:\n%s", model_0_nwt.shape_contact_pairs)
-        msg.info("\nmodel_0_nwt.shape_contact_pair_count: %s\n\n", model_0_nwt.shape_contact_pair_count)
+        msg.info("model_0_nwt.shape_collision_filter_pairs: %s", model_0_nwt.shape_collision_filter_pairs)
+        msg.info("model_0_nwt.shape_contact_pair_count: %s", model_0_nwt.shape_contact_pair_count)
+        msg.info("model_0_nwt.shape_contact_pairs:\n%s\n\n", model_0_nwt.shape_contact_pairs)
 
         # TODO
         msg.info("model_0_nwt.rigid_contact_max: %s", model_0_nwt.rigid_contact_max)
@@ -1373,23 +1412,6 @@ class TestKaminoNewtonIntegration(unittest.TestCase):
         msg.info("contacts_0_nwt.rigid_contact_max: %s", contacts_0_nwt.rigid_contact_max)
         msg.info("contacts_1.model_max_contacts_host: %s", contacts_1.model_max_contacts_host)
         msg.info("contacts_1.world_max_contacts_host: %s\n\n", contacts_1.world_max_contacts_host)
-
-        # TODO
-        msg.info(
-            "contacts_0_nwt.rigid_contact_count (shape=%s): %s",
-            contacts_0_nwt.rigid_contact_count.shape,
-            contacts_0_nwt.rigid_contact_count,
-        )
-        msg.info(
-            "contacts_1.model_active_contacts (shape=%s): %s",
-            contacts_1.model_active_contacts.shape,
-            contacts_1.model_active_contacts,
-        )
-        msg.info(
-            "contacts_1.world_active_contacts (shape=%s): %s",
-            contacts_1.world_active_contacts.shape,
-            contacts_1.world_active_contacts,
-        )
 
 
 ###

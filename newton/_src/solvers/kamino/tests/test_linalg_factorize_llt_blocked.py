@@ -21,7 +21,7 @@ import numpy as np
 import warp as wp
 
 from newton._src.solvers.kamino.core.types import float32
-from newton._src.solvers.kamino.linalg.core import DenseLinearOperatorData, DenseSquareMultiLinearInfo
+from newton._src.solvers.kamino.linalg.core import DenseLinearOperator, DenseSquareMultiLinearInfo
 from newton._src.solvers.kamino.linalg.factorize import (
     llt_blocked_factorize,
     llt_blocked_solve,
@@ -103,7 +103,7 @@ class TestLinAlgLLTSequential(unittest.TestCase):
         msg.debug("opinfo:\n%s", opinfo)
 
         # Create the linear operator data structure
-        operator = DenseLinearOperatorData(info=opinfo, mat=problem.A_wp)
+        operator = DenseLinearOperator(info=opinfo, mat=problem.A_wp)
         msg.debug("operator.info:\n%s\n", operator.info)
         msg.debug("operator.mat (%s):\n%s\n", operator.mat.shape, operator.mat.numpy().reshape((N, N)))
 
@@ -263,7 +263,7 @@ class TestLinAlgLLTSequential(unittest.TestCase):
         msg.debug("opinfo:\n%s", opinfo)
 
         # Create the linear operator data structure
-        operator = DenseLinearOperatorData(info=opinfo, mat=problem.A_wp)
+        operator = DenseLinearOperator(info=opinfo, mat=problem.A_wp)
         msg.debug("operator.info:\n%s\n", operator.info)
         msg.debug("operator.mat (%s):\n%s\n", operator.mat.shape, operator.mat.numpy().reshape((N_max, N_max)))
 
@@ -424,7 +424,7 @@ class TestLinAlgLLTSequential(unittest.TestCase):
         msg.debug("opinfo:\n%s", opinfo)
 
         # Create the linear operator data structure
-        operator = DenseLinearOperatorData(info=opinfo, mat=problem.A_wp)
+        operator = DenseLinearOperator(info=opinfo, mat=problem.A_wp)
         msg.debug("operator.info:\n%s\n", operator.info)
         msg.debug("operator.mat shape:\n%s\n", operator.mat.shape)
 
@@ -596,7 +596,7 @@ class TestLinAlgLLTSequential(unittest.TestCase):
         msg.debug("opinfo:\n%s", opinfo)
 
         # Create the linear operator data structure
-        operator = DenseLinearOperatorData(info=opinfo, mat=problem.A_wp)
+        operator = DenseLinearOperator(info=opinfo, mat=problem.A_wp)
         msg.debug("operator.info:\n%s\n", operator.info)
         msg.debug("operator.mat shape:\n%s\n", operator.mat.shape)
 

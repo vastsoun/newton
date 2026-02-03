@@ -83,7 +83,7 @@ from ..geometry.contacts import Contacts
 from ..kinematics.constraints import get_max_constraints_per_world
 from ..kinematics.jacobians import DenseSystemJacobians, SparseSystemJacobians
 from ..kinematics.limits import Limits
-from ..linalg import DenseLinearOperatorData, DenseSquareMultiLinearInfo, LinearSolverType
+from ..linalg import DenseLinearOperator, DenseSquareMultiLinearInfo, LinearSolverType
 from ..linalg.blas import (
     block_sparse_gemv,
     block_sparse_matvec,
@@ -100,6 +100,7 @@ from ..linalg.sparse import BlockSparseLinearOperators
 ###
 
 __all__ = [
+    "BlockSparseMatrixFreeDelassusOperator",
     "DelassusOperator",
 ]
 
@@ -480,7 +481,7 @@ class DelassusOperator:
         self._size: ModelSize | None = None
 
         # Initialize the Delassus data container
-        self._operator: DenseLinearOperatorData | None = None
+        self._operator: DenseLinearOperator | None = None
 
         # Declare the optional Cholesky factorization
         self._solver: LinearSolverType | None = None
@@ -522,7 +523,7 @@ class DelassusOperator:
         return self._model_maxsize
 
     @property
-    def operator(self) -> DenseLinearOperatorData:
+    def operator(self) -> DenseLinearOperator:
         """
         Returns a reference to the flat Delassus matrix array.
         """
@@ -611,7 +612,7 @@ class DelassusOperator:
             self._device = device
 
         # Construct the Delassus operator data structure
-        self._operator = DenseLinearOperatorData()
+        self._operator = DenseLinearOperator()
         self._operator.info = DenseSquareMultiLinearInfo()
         self._operator.mat = wp.zeros(shape=(self._model_maxsize,), dtype=float32, device=self._device)
         if (model.info is not None) and (data.info is not None):

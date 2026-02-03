@@ -17,7 +17,7 @@
 
 from . import utils
 from .core import (
-    DenseLinearOperatorData,
+    DenseLinearOperator,
     DenseRectangularMultiLinearInfo,
     DenseSquareMultiLinearInfo,
 )
@@ -39,7 +39,7 @@ from .linear import (
 __all__ = [
     "ConjugateGradientSolver",
     "ConjugateResidualSolver",
-    "DenseLinearOperatorData",
+    "DenseLinearOperator",
     "DenseRectangularMultiLinearInfo",
     "DenseSquareMultiLinearInfo",
     "DirectSolver",

@@ -31,7 +31,7 @@ from warp.context import Devicelike
 
 from ..core.types import FloatType, float32, override
 from . import conjugate, factorize
-from .core import DenseLinearOperatorData, DenseSquareMultiLinearInfo, make_dtype_tolerance
+from .core import DenseLinearOperator, DenseSquareMultiLinearInfo, LinearOperator, make_dtype_tolerance
 from .sparse import (
     BlockSparseLinearOperators,
     BlockSparseMatrices,
@@ -66,7 +66,7 @@ class LinearSolver(ABC):
 
     def __init__(
         self,
-        operator: DenseLinearOperatorData | None = None,
+        operator: LinearOperator | None = None,
         atol: float | None = None,
         rtol: float | None = None,
         dtype: FloatType = float32,
@@ -74,7 +74,7 @@ class LinearSolver(ABC):
         **kwargs: dict[str, Any],
     ):
         # Declare and initialize the internal reference to the matrix/operator data
-        self._operator: DenseLinearOperatorData | None = operator
+        self._operator: LinearOperator | None = operator
 
         # Override dtype if linear operator is provided
         if operator is not None:
@@ -97,7 +97,7 @@ class LinearSolver(ABC):
     ###
 
     @property
-    def operator(self) -> DenseLinearOperatorData:
+    def operator(self) -> LinearOperator:
         if self._operator is None:
             raise ValueError("No linear operator has been allocated!")
         return self._operator
@@ -123,15 +123,15 @@ class LinearSolver(ABC):
     ###
 
     @abstractmethod
-    def _allocate_impl(self, operator: DenseLinearOperatorData, **kwargs: dict[str, Any]) -> None:
+    def _allocate_impl(self, operator: LinearOperator, **kwargs: dict[str, Any]) -> None:
         raise NotImplementedError("An allocation operation is not implemented.")
 
     @abstractmethod
-    def _reset_impl(self, A: wp.array, **kwargs: dict[str, Any]) -> None:
+    def _reset_impl(self, A: wp.array | None = None, **kwargs: dict[str, Any]) -> None:
         raise NotImplementedError("A reset operation is not implemented.")
 
     @abstractmethod
-    def _compute_impl(self, A: wp.array, **kwargs: dict[str, Any]) -> None:
+    def _compute_impl(self, A: wp.array | None = None, **kwargs: dict[str, Any]) -> None:
         raise NotImplementedError("A compute operation is not implemented.")
 
     @abstractmethod
@@ -146,7 +146,7 @@ class LinearSolver(ABC):
     # Public API
     ###
 
-    def finalize(self, operator: DenseLinearOperatorData, **kwargs: dict[str, Any]) -> None:
+    def finalize(self, operator: LinearOperator, **kwargs: dict[str, Any]) -> None:
         """
         Ingest a linear operator and allocate any necessary internal memory
         based on the multi-linear layout specified by the operator's info.
@@ -154,8 +154,8 @@ class LinearSolver(ABC):
         # Check the operator is valid
         if operator is None:
             raise ValueError("A valid linear operator must be provided!")
-        if not isinstance(operator, DenseLinearOperatorData):
-            raise ValueError("The provided operator is not a DenseLinearOperatorData instance!")
+        if not isinstance(operator, LinearOperator):
+            raise ValueError("The provided operator is not a LinearOperator instance!")
         if operator.info is None:
             raise ValueError("The provided operator does not have any associated info!")
         self._operator = operator
@@ -167,8 +167,8 @@ class LinearSolver(ABC):
         """Resets the internal solver data (e.g. possibly to zeros)."""
         self._reset_impl()
 
-    def compute(self, A: wp.array, **kwargs: dict[str, Any]) -> None:
-        """Ingest matrix data and pre-compute any rhs-independent intermediate data."""
+    def compute(self, A: wp.array | None = None, **kwargs: dict[str, Any]) -> None:
+        """Ingest matrix data (if available, for dense operator only) and pre-compute any rhs-independent intermediate data."""
         if not self._operator.info.is_matrix_compatible(A):
             raise ValueError("The provided flat matrix data array does not have enough memory!")
         self._compute_impl(A=A, **kwargs)
@@ -195,7 +195,7 @@ class DirectSolver(LinearSolver):
 
     def __init__(
         self,
-        operator: DenseLinearOperatorData | None = None,
+        operator: DenseLinearOperator | None = None,
         atol: float | None = None,
         rtol: float | None = None,
         ftol: float | None = None,
@@ -234,7 +234,7 @@ class DirectSolver(LinearSolver):
     ###
 
     @abstractmethod
-    def _factorize_impl(self, A: wp.array, **kwargs: dict[str, Any]) -> None:
+    def _factorize_impl(self, A: wp.array | None, **kwargs: dict[str, Any]) -> None:
         raise NotImplementedError("A matrix factorization implementation is not provided.")
 
     @abstractmethod
@@ -246,16 +246,20 @@ class DirectSolver(LinearSolver):
     ###
 
     @override
-    def _compute_impl(self, A: wp.array, **kwargs: dict[str, Any]):
+    def _compute_impl(self, A: wp.array | None = None, **kwargs: dict[str, Any]):
         self._factorize(A, **kwargs)
 
-    def _factorize(self, A: wp.array, ftol: float | None = None, **kwargs: dict[str, Any]) -> None:
+    def _factorize(self, A: wp.array | None, ftol: float | None = None, **kwargs: dict[str, Any]) -> None:
         # Override the current tolerance if provided otherwise ensure
         # it does not exceed machine precision for the current dtype
         if ftol is not None:
             self._ftol = make_dtype_tolerance(ftol, dtype=self._dtype)
         else:
             self._ftol = make_dtype_tolerance(self._ftol, dtype=self._dtype)
+
+        # If there is no new matrix data, we use the existing reference from the operator
+        if A is None:
+            A = self._operator.mat
 
         # Factorize the specified matrix data and store any intermediate data
         self._factorize_impl(A, **kwargs)
@@ -278,7 +282,7 @@ class IterativeSolver(LinearSolver):
 
     def __init__(
         self,
-        operator: conjugate.BatchedLinearOperator | DenseLinearOperatorData | BlockSparseLinearOperators | None = None,
+        operator: LinearOperator = None,
         atol: float | wp.array | None = None,
         rtol: float | wp.array | None = None,
         dtype: FloatType = float32,
@@ -315,13 +319,11 @@ class IterativeSolver(LinearSolver):
             **kwargs,
         )
 
-    def _to_batched_operator(
-        self, operator: conjugate.BatchedLinearOperator | DenseLinearOperatorData | BlockSparseLinearOperators
-    ) -> conjugate.BatchedLinearOperator:
+    def _to_batched_operator(self, operator: LinearOperator) -> conjugate.BatchedLinearOperator:
         """Convert various operator types to BatchedLinearOperator."""
         if isinstance(operator, conjugate.BatchedLinearOperator):
             return operator
-        elif isinstance(operator, DenseLinearOperatorData):
+        elif isinstance(operator, DenseLinearOperator):
             return conjugate.BatchedLinearOperator.from_dense(operator)
         elif isinstance(operator, BlockSparseLinearOperators):
             # For sparse, need uniform dimensions - extract row dims as active_dims
@@ -335,7 +337,7 @@ class IterativeSolver(LinearSolver):
     @override
     def finalize(
         self,
-        operator: conjugate.BatchedLinearOperator | DenseLinearOperatorData | BlockSparseLinearOperators,
+        operator: LinearOperator,
         maxiter: int | wp.array | None = None,
         world_active: wp.array | None = None,
         preconditioner: Any = None,
@@ -344,7 +346,7 @@ class IterativeSolver(LinearSolver):
         """
         Ingest a linear operator and allocate any necessary internal memory.
 
-        Accepts BatchedLinearOperator, DenseLinearOperatorData, or BlockSparseMatrices.
+        Accepts general LinearOperator.
         """
         if operator is None:
             raise ValueError("A valid linear operator must be provided!")
@@ -359,7 +361,7 @@ class IterativeSolver(LinearSolver):
 
         self._batched_operator = self._to_batched_operator(operator)
 
-        if isinstance(operator, DenseLinearOperatorData):
+        if isinstance(operator, DenseLinearOperator):
             self._operator = operator
             self._dtype = operator.info.dtype
         else:
@@ -392,8 +394,8 @@ class IterativeSolver(LinearSolver):
 
         # Allocate block-sparse matrix if sparse discovery is enabled
         if self._discover_sparse:
-            if not isinstance(operator, DenseLinearOperatorData):
-                raise ValueError("discover_sparse requires a DenseLinearOperatorData operator.")
+            if not isinstance(operator, DenseLinearOperator):
+                raise ValueError("discover_sparse requires a DenseLinearOperator operator.")
             self._sparse_bsm = allocate_block_sparse_from_dense(
                 dense_op=operator,
                 block_size=self._sparse_block_size,
@@ -446,7 +448,7 @@ class LLTSequentialSolver(DirectSolver):
 
     def __init__(
         self,
-        operator: DenseLinearOperatorData | None = None,
+        operator: DenseLinearOperator | None = None,
         atol: float | None = None,
         rtol: float | None = None,
         ftol: float | None = None,
@@ -492,7 +494,11 @@ class LLTSequentialSolver(DirectSolver):
     ###
 
     @override
-    def _allocate_impl(self, A: DenseLinearOperatorData, **kwargs: dict[str, Any]) -> None:
+    def _allocate_impl(self, A: LinearOperator, **kwargs: dict[str, Any]) -> None:
+        # Check that the operator is dense
+        if not isinstance(A, DenseLinearOperator):
+            raise TypeError("The provided operator needs to be dense.")
+
         # Check the operator has info
         if A.info is None:
             raise ValueError("The provided operator does not have any associated info!")
@@ -508,7 +514,7 @@ class LLTSequentialSolver(DirectSolver):
             self._y = wp.zeros(shape=(self._operator.info.total_vec_size,), dtype=self._dtype)
 
     @override
-    def _reset_impl(self) -> None:
+    def _reset_impl(self, A: wp.array | None = None) -> None:
         self._L.zero_()
         self._y.zero_()
         self._has_factors = False
@@ -563,10 +569,10 @@ class LLTBlockedSolver(DirectSolver):
 
     def __init__(
         self,
-        operator: DenseLinearOperatorData | None = None,
+        operator: DenseLinearOperator | None = None,
         block_size: int = 16,
         solve_block_dim: int = 64,
-        factortize_block_dim: int = 128,
+        factorize_block_dim: int = 128,
         atol: float | None = None,
         rtol: float | None = None,
         ftol: float | None = None,
@@ -583,7 +589,7 @@ class LLTBlockedSolver(DirectSolver):
         # Cache the fixed block size
         self._block_size: int = block_size
         self._solve_block_dim: int = solve_block_dim
-        self._factortize_block_dim: int = factortize_block_dim
+        self._factorize_block_dim: int = factorize_block_dim
 
         # Create the factorization and solve kernels
         self._factorize_kernel = factorize.make_llt_blocked_factorize_kernel(block_size)
@@ -622,7 +628,7 @@ class LLTBlockedSolver(DirectSolver):
     ###
 
     @override
-    def _allocate_impl(self, A: DenseLinearOperatorData, **kwargs: dict[str, Any]) -> None:
+    def _allocate_impl(self, A: DenseLinearOperator, **kwargs: dict[str, Any]) -> None:
         # Check the operator has info
         if A.info is None:
             raise ValueError("The provided operator does not have any associated info!")
@@ -638,7 +644,7 @@ class LLTBlockedSolver(DirectSolver):
             self._y = wp.zeros(shape=(self._operator.info.total_vec_size,), dtype=self._dtype)
 
     @override
-    def _reset_impl(self) -> None:
+    def _reset_impl(self, A: wp.array | None = None) -> None:
         self._L.zero_()
         self._y.zero_()
         self._has_factors = False
@@ -648,7 +654,7 @@ class LLTBlockedSolver(DirectSolver):
         factorize.llt_blocked_factorize(
             kernel=self._factorize_kernel,
             num_blocks=self._operator.info.num_blocks,
-            block_dim=self._factortize_block_dim,
+            block_dim=self._factorize_block_dim,
             dim=self._operator.info.dim,
             mio=self._operator.info.mio,
             A=A,
@@ -717,7 +723,7 @@ class ConjugateGradientSolver(IterativeSolver):
     @override
     def _allocate_impl(self, operator, **kwargs: dict[str, Any]) -> None:
         # Validate square operator for dense case
-        if isinstance(operator, DenseLinearOperatorData):
+        if isinstance(operator, DenseLinearOperator):
             if not isinstance(operator.info, DenseSquareMultiLinearInfo):
                 raise ValueError("ConjugateGradientSolver requires a square matrix operator.")
             dim_values = set(operator.info.maxdim.numpy().tolist())
@@ -769,8 +775,8 @@ class ConjugateGradientSolver(IterativeSolver):
         self._solve_residual_norm: wp.array = None
 
     @override
-    def _compute_impl(self, A: wp.array, **kwargs: dict[str, Any]) -> None:
-        if self._operator is not None and A.ptr != self._operator.mat.ptr:
+    def _compute_impl(self, A: wp.array | None, **kwargs: dict[str, Any]) -> None:
+        if self._operator is not None and A is not None and A.ptr != self._operator.mat.ptr:
             raise ValueError(f"{self.__class__.__name__} cannot be re-used with a different matrix.")
         if self._Mi is not None:
             self._update_preconditioner()
@@ -793,7 +799,7 @@ class ConjugateGradientSolver(IterativeSolver):
 
     def _update_preconditioner(self):
         if self._operator is None:
-            raise ValueError("Jacobi preconditioner requires a DenseLinearOperatorData operator.")
+            raise ValueError("Jacobi preconditioner requires a DenseLinearOperator operator.")
         wp.launch(
             conjugate.make_jacobi_preconditioner,
             dim=(self._num_worlds, self._max_dim),
@@ -824,7 +830,7 @@ class ConjugateResidualSolver(IterativeSolver):
 
     @override
     def _allocate_impl(self, operator, **kwargs: dict[str, Any]) -> None:
-        if isinstance(operator, DenseLinearOperatorData):
+        if isinstance(operator, DenseLinearOperator):
             if not isinstance(operator.info, DenseSquareMultiLinearInfo):
                 raise ValueError("ConjugateResidualSolver requires a square matrix operator.")
             dim_values = set(operator.info.maxdim.numpy().tolist())
@@ -876,8 +882,8 @@ class ConjugateResidualSolver(IterativeSolver):
         self._solve_residual_norm: wp.array = None
 
     @override
-    def _compute_impl(self, A: wp.array, **kwargs: dict[str, Any]) -> None:
-        if self._operator is not None and A.ptr != self._operator.mat.ptr:
+    def _compute_impl(self, A: wp.array | None, **kwargs: dict[str, Any]) -> None:
+        if self._operator is not None and A is not None and A.ptr != self._operator.mat.ptr:
             raise ValueError(f"{self.__class__.__name__} cannot be re-used with a different matrix.")
         if self._Mi is not None:
             self._update_preconditioner()
@@ -900,7 +906,7 @@ class ConjugateResidualSolver(IterativeSolver):
 
     def _update_preconditioner(self):
         if self._operator is None:
-            raise ValueError("Jacobi preconditioner requires a DenseLinearOperatorData operator.")
+            raise ValueError("Jacobi preconditioner requires a DenseLinearOperator operator.")
         wp.launch(
             conjugate.make_jacobi_preconditioner,
             dim=(self._num_worlds, self._max_dim),

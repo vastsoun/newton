@@ -592,6 +592,12 @@ def block_sparse_matvec(
         y (wp.array): Output vector.
         matrix_mask (wp.array): Mask vector to skip matrices set to `0` in the mask.
     """
+
+    if x.ndim == 2:
+        x = x.reshape((A.num_matrices * A.max_of_max_dims[1],))
+    if y.ndim == 2:
+        y = y.reshape((A.num_matrices * A.max_of_max_dims[0],))
+
     y.zero_()
 
     wp.launch(

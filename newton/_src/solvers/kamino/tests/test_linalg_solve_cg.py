@@ -22,7 +22,7 @@ import warp as wp
 
 from newton._src.solvers.kamino.core.types import float32
 from newton._src.solvers.kamino.linalg.conjugate import BatchedLinearOperator, CGSolver, CRSolver
-from newton._src.solvers.kamino.linalg.core import DenseLinearOperatorData, DenseSquareMultiLinearInfo
+from newton._src.solvers.kamino.linalg.core import DenseLinearOperator, DenseSquareMultiLinearInfo
 from newton._src.solvers.kamino.linalg.linear import ConjugateGradientSolver
 from newton._src.solvers.kamino.linalg.sparse import (
     BlockDType,
@@ -65,7 +65,7 @@ class TestLinalgConjugate(unittest.TestCase):
         info = DenseSquareMultiLinearInfo()
         info.finalize(dimensions=[maxdim] * n_worlds, dtype=float32, device=device)
         info.dim = problem.dim_wp  # Override with actual active dimensions
-        operator = DenseLinearOperatorData(info=info, mat=problem.A_wp)
+        operator = DenseLinearOperator(info=info, mat=problem.A_wp)
         A = BatchedLinearOperator.from_dense(operator)
 
         atol = wp.full(n_worlds, 1.0e-8, dtype=problem.wp_dtype, device=device)
@@ -192,7 +192,7 @@ class TestLinalgConjugate(unittest.TestCase):
         info = DenseSquareMultiLinearInfo()
         info.finalize(dimensions=[padded_dim] * n_worlds, dtype=float32, device=device)
         info.dim = active_dims
-        dense_op = BatchedLinearOperator.from_dense(DenseLinearOperatorData(info=info, mat=A_wp))
+        dense_op = BatchedLinearOperator.from_dense(DenseLinearOperator(info=info, mat=A_wp))
         sparse_op = BatchedLinearOperator.from_block_sparse(bsm, active_dims)
 
         # Prepare RHS
@@ -335,7 +335,7 @@ class TestLinalgConjugate(unittest.TestCase):
         )
 
     def test_dense_to_block_sparse_conversion(self):
-        """Test conversion from DenseLinearOperatorData to BlockSparseMatrices and back."""
+        """Test conversion from DenseLinearOperator to BlockSparseMatrices and back."""
         if not wp.get_cuda_devices():
             self.skipTest("No CUDA devices found")
         device = wp.get_cuda_device()
@@ -347,7 +347,7 @@ class TestLinalgConjugate(unittest.TestCase):
 
         # Create block-sparse matrices in numpy (some blocks are zero)
         original_matrices = []
-        for w, dim in enumerate(dims):
+        for _w, dim in enumerate(dims):
             n_blocks = (dim + block_size - 1) // block_size
             matrix = np.zeros((dim, dim), dtype=np.float32)
 
@@ -368,7 +368,7 @@ class TestLinalgConjugate(unittest.TestCase):
 
             original_matrices.append(matrix)
 
-        # Create DenseLinearOperatorData using canonical compact storage:
+        # Create DenseLinearOperator using canonical compact storage:
         # - Offsets based on maxdim^2 (each world gets maxdim^2 slots)
         # - Within each world, only dim*dim elements stored with stride=dim
         max_dim = max(dims)
@@ -384,7 +384,7 @@ class TestLinalgConjugate(unittest.TestCase):
         info = DenseSquareMultiLinearInfo()
         info.finalize(dimensions=[max_dim] * n_worlds, dtype=float32, device=device)
         info.dim = wp.array(dims, dtype=wp.int32, device=device)
-        dense_op = DenseLinearOperatorData(info=info, mat=A_wp)
+        dense_op = DenseLinearOperator(info=info, mat=A_wp)
 
         # Allocate BSM with threshold (allow for all blocks)
         bsm = allocate_block_sparse_from_dense(
@@ -449,10 +449,10 @@ class TestLinalgConjugate(unittest.TestCase):
             A_flat[offset : offset + maxdim * maxdim] = A.flatten()
         A_wp = wp.array(A_flat, dtype=float32, device=device)
 
-        # Create DenseLinearOperatorData
+        # Create DenseLinearOperator
         info = DenseSquareMultiLinearInfo()
         info.finalize(dimensions=[maxdim] * n_worlds, dtype=float32, device=device)
-        dense_op = DenseLinearOperatorData(info=info, mat=A_wp)
+        dense_op = DenseLinearOperator(info=info, mat=A_wp)
 
         # Create b and x arrays
         b_2d = np.array(b_list, dtype=np.float32)

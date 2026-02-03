@@ -422,7 +422,7 @@ class TestBlockSparseMatrixOperations(unittest.TestCase):
     ###
 
     def _build_sparse_matrix_operator(self, bsm: BlockSparseMatrices):
-        ops = BlockSparseLinearOperators(bsm)
+        ops = BlockSparseLinearOperators(bsm=bsm)
         ops.Ax_op = block_sparse_matvec
         ops.ATy_op = block_sparse_transpose_matvec
         ops.gemv_op = block_sparse_gemv

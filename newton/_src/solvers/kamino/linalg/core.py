@@ -20,6 +20,7 @@ This module provides data structures and utilities for managing multiple
 independent linear systems, including rectangular and square systems.
 """
 
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
 import numpy as np
@@ -28,18 +29,98 @@ from warp.context import Devicelike
 
 from ..core.types import FloatType, IntType, VecIntType, float32, int32
 from ..utils import logger as msg
+from . import blas
 
 ###
 # Module interface
 ###
 
 __all__ = [
-    "DenseLinearOperatorData",
+    "DenseLinearOperator",
     "DenseRectangularMultiLinearInfo",
     "DenseSquareMultiLinearInfo",
+    "LinearOperator",
     "make_dtype_tolerance",
 ]
 
+###
+# Types
+###
+
+# LinearInfoType = LLTSequentialSolver | LLTBlockedSolver | ConjugateGradientSolver | ConjugateResidualSolver
+
+
+# @dataclass
+# class LinearInfo(ABC):
+#     @property
+#     @abstractmethod
+#     def num_matrices(self):
+#         raise NotImplementedError("`num_matrices` property is not implemented.")
+
+#     dtype: FloatType = float32
+#     """The data type of the underlying matrix and vector data arrays."""
+
+#     itype: IntType = int32
+#     """The integer type used for indexing the underlying data arrays."""
+
+#     device: Devicelike | None = None
+#     """The device on which the data arrays are allocated."""
+
+#     dimensions: list[tuple[int, int]] | None = None
+#     """Host-side cache of the dimensions of each rectangular linear system."""
+
+#     max_dimensions: tuple[int, int] = (0, 0)
+#     """Host-side cache of the maximum dimension over all matrix blocks."""
+
+#     total_mat_size: int = 0
+#     """
+#     Host-side cache of the total size of the flat matrix data array.
+#     This is equal to `sum(maxdim[i][0]*maxdim[i][1] for i in range(num_blocks))`.
+#     """
+
+#     total_rhs_size: int = 0
+#     """
+#     Host-side cache of the total size of the flat data array of rhs vectors.
+#     This is equal to `sum(maxdim[i][1] for i in range(num_blocks))`.
+#     """
+
+#     total_inp_size: int = 0
+#     """
+#     Host-side cache of the total size of the flat data array of input vectors.
+#     This is equal to `sum(maxdim[i][0] for i in range(num_blocks))`.
+#     """
+
+#     maxdim: wp.array | None = None
+#     """
+#     The maximum dimensions of each rectangular matrix block.
+#     Shape of ``(num_blocks,)`` and type :class:`vec2i`.
+#     Each entry corresponds to the shape `(max_rows, max_cols)`.
+#     """
+
+#     dim: wp.array | None = None
+#     """
+#     The active dimensions of each rectangular matrix block.
+#     Shape of ``(num_blocks,)`` and type :class:`vec2i`.
+#     Each entry corresponds to the shape `(rows, cols)`.
+#     """
+
+#     mio: wp.array | None = None
+#     """
+#     The matrix index offset (mio) of each block in the flat data array.
+#     Shape of ``(num_blocks,)`` and type :class:`int | int32 | int64`.
+#     """
+
+#     rvio: wp.array | None = None
+#     """
+#     The rhs vector index offset (vio) of each block in the flat data array.
+#     Shape of ``(num_blocks,)`` and type :class:`int | int32 | int64`.
+#     """
+
+#     ivio: wp.array | None = None
+#     """
+#     The input vector index offset (vio) of each block in the flat data array.
+#     Shape of ``(num_blocks,)`` and type :class:`int | int32 | int64`.
+#     """
 
 ###
 # Types
@@ -526,7 +607,50 @@ class DenseSquareMultiLinearInfo:
 
 
 @dataclass
-class DenseLinearOperatorData:
+class LinearOperator(ABC):
+    """
+    An abstract base class for a linear operator with support for matrix-vector products.
+    """
+
+    info: DenseRectangularMultiLinearInfo | DenseSquareMultiLinearInfo | None = None
+    """The multi-linear data structure describing the operator."""
+
+    ###
+    # Properties
+    ###
+
+    @property
+    def dtype(self) -> FloatType | None:
+        if self.info is None:
+            return None
+        return self.info.dtype
+
+    @property
+    def itype(self) -> IntType | None:
+        if self.info is None:
+            return None
+        return self.info.itype
+
+    @property
+    def device(self) -> Devicelike | None:
+        if self.info is None:
+            return None
+        return self.info.device
+
+    ###
+    # Operations
+    ###
+
+    @abstractmethod
+    def gemv(self, x: wp.array, y: wp.array, matrix_mask: wp.array, alpha: float = 1.0, beta: float = 0.0) -> None:
+        raise NotImplementedError("General matrix-vector product is not implemented.")
+
+    def matvec(self, x: wp.array, y: wp.array, matrix_mask: wp.array) -> None:
+        self.gemv(x, y, matrix_mask)
+
+
+@dataclass
+class DenseLinearOperator(LinearOperator):
     """
     A data structure for encapsulating a multi-linear matrix operator.
 
@@ -539,14 +663,33 @@ class DenseLinearOperatorData:
     from an external source to avoid unnecessary memory reallocations.
     """
 
-    info: DenseRectangularMultiLinearInfo | DenseSquareMultiLinearInfo | None = None
-    """The multi-linear data structure describing the operator."""
-
     mat: wp.array | None = None
     """The flat data array containing the matrix blocks."""
 
     def zero(self) -> None:
         self.mat.zero_()
+
+    def gemv(self, x: wp.array, y: wp.array, matrix_mask: wp.array, alpha: float = 1.0, beta: float = 0.0) -> None:
+        if self.mat is None:
+            raise RuntimeError("Matrix data needs to be set to run matrix-vector multiplication.")
+
+        if self.mat.ndim == 1:
+            raise NotImplementedError("Matrix-vector product with 1d arrays not yet implemented.")
+
+        elif self.mat.ndim == 2:
+            if x.ndim != 2 or y.ndim != 2:
+                raise TypeError(
+                    f"Dimension of vector arrays (x: {x.ndim}, y: {y.ndim}) needs to match dimension of matrix ({self.mat.ndim})."
+                )
+
+            info = self.mat.info
+            blas.dense_gemv(self.mat, x, y, info.dim, matrix_mask, alpha, beta, info.max_dimensions)
+
+    def operator_2d(self):
+        # TODO: Check that transformation is valid (all max dims are equal)
+        num_matrices = self.info.num_blocks
+        max_dim = self.info.max_dimension
+        return DenseLinearOperator(info=self.info, mat=self.mat.reshape((num_matrices, max_dim * max_dim)))
 
 
 ###

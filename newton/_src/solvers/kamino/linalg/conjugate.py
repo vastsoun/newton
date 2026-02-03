@@ -27,7 +27,7 @@ from typing import Any
 import warp as wp
 
 from . import blas
-from .core import DenseLinearOperatorData
+from .core import DenseLinearOperator
 from .sparse import BlockSparseMatrices
 
 # No need to auto-generate adjoint code for linear solvers
@@ -68,7 +68,7 @@ class BatchedLinearOperator:
         self.dtype = dtype
 
     @classmethod
-    def from_dense(cls, operator: DenseLinearOperatorData) -> BatchedLinearOperator:
+    def from_dense(cls, operator: DenseLinearOperator) -> BatchedLinearOperator:
         """Create operator from dense matrix data."""
         info = operator.info
         n_worlds = info.num_blocks

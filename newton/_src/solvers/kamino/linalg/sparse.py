@@ -31,9 +31,10 @@ from warp.context import Devicelike
 
 from ..core.types import FloatType, IntType, float32, int32
 from ..utils import logger as msg
+from .core import LinearOperator
 
 if TYPE_CHECKING:
-    from .core import DenseLinearOperatorData
+    from .core import DenseLinearOperator
 
 ###
 # Module interface
@@ -509,7 +510,7 @@ class BlockSparseMatrices:
 
 
 @dataclass
-class BlockSparseLinearOperators:
+class BlockSparseLinearOperators(LinearOperator):
     """
     A Block-Sparse Linear Operator container for representing
     and operating on multiple independent sparse linear systems.
@@ -727,7 +728,7 @@ def _make_dense_to_bsm_copy_kernel(block_size: int):
 
 
 def allocate_block_sparse_from_dense(
-    dense_op: "DenseLinearOperatorData",
+    dense_op: "DenseLinearOperator",
     block_size: int,
     sparsity_threshold: float = 1.0,
     device: Devicelike | None = None,
@@ -745,7 +746,7 @@ def allocate_block_sparse_from_dense(
     Returns:
         A finalized but empty BlockSparseMatrices ready for use with dense_to_block_sparse_copy_values.
     """
-    from .core import DenseSquareMultiLinearInfo
+    from .core import DenseSquareMultiLinearInfo  # noqa: PLC0415
 
     if dense_op.info is None:
         raise ValueError("Dense operator must have info set.")
@@ -783,7 +784,7 @@ def allocate_block_sparse_from_dense(
 
 
 def dense_to_block_sparse_copy_values(
-    dense_op: "DenseLinearOperatorData",
+    dense_op: "DenseLinearOperator",
     bsm: BlockSparseMatrices,
     block_size: int,
 ) -> None:
@@ -799,7 +800,7 @@ def dense_to_block_sparse_copy_values(
         bsm: A pre-allocated BlockSparseMatrices (from allocate_block_sparse_from_dense).
         block_size: The block size (must match the BSM's block size).
     """
-    from .core import DenseSquareMultiLinearInfo
+    from .core import DenseSquareMultiLinearInfo  # noqa: PLC0415
 
     if dense_op.info is None:
         raise ValueError("Dense operator must have info set.")

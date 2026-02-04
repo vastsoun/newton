@@ -442,7 +442,7 @@ class BlockSparseMatrices:
             nrows, ncols = int(dims[0]), int(dims[1])
 
             # Allocate dense matrix initially filled with zeros
-            dense_matrix = np.zeros((nrows, ncols), dtype=self.nzb_dtype.dtype)
+            dense_matrix = np.zeros((nrows, ncols), dtype=wp.dtype_to_numpy(self.nzb_dtype.dtype))
 
             # Populate non-zero blocks
             num_nzb = int(num_nzb_np[m])

@@ -20,10 +20,11 @@ import unittest
 import numpy as np
 import warp as wp
 
-from newton._src.solvers.kamino.core.model import Model
-from newton._src.solvers.kamino.dynamics.delassus import DelassusOperator
+from newton._src.solvers.kamino.core.model import Model, ModelData
+from newton._src.solvers.kamino.dynamics.delassus import BlockSparseMatrixFreeDelassusOperator, DelassusOperator
 from newton._src.solvers.kamino.geometry.contacts import Contacts
 from newton._src.solvers.kamino.kinematics.constraints import get_max_constraints_per_world
+from newton._src.solvers.kamino.kinematics.jacobians import SparseSystemJacobians
 from newton._src.solvers.kamino.kinematics.limits import Limits
 from newton._src.solvers.kamino.linalg import LLTSequentialSolver
 from newton._src.solvers.kamino.models.builders.basics import (
@@ -37,6 +38,7 @@ from newton._src.solvers.kamino.tests.utils.extract import (
     extract_active_constraint_dims,
     extract_cts_jacobians,
     extract_delassus,
+    extract_delassus_sparse,
     extract_problem_vector,
 )
 from newton._src.solvers.kamino.tests.utils.make import (
@@ -588,6 +590,660 @@ class TestDelassusOperator(unittest.TestCase):
             if not is_x_close or self.verbose:
                 print_error_stats(f"x[{w}]", x_wp_np[w], x_np[w], active_dims[w])
             self.assertTrue(is_x_close)
+
+
+class TestDelassusOperatorSparse(unittest.TestCase):
+    def setUp(self):
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
+        self.verbose = test_context.verbose  # Set to True for detailed output
+        self.default_device = wp.get_device(test_context.device)
+        self.seed = 42
+
+    def tearDown(self):
+        self.default_device = None
+
+    ###
+    # Helpers
+    ###
+
+    def _check_sparse_delassus_allocations(
+        self,
+        model: Model,
+        delassus: BlockSparseMatrixFreeDelassusOperator,
+    ):
+        """Checks the allocation of a sparse Delassus operator."""
+        self.assertEqual(delassus._model, model)
+        self.assertIsNotNone(delassus._data)
+        self.assertIsNone(delassus._preconditioner)
+        self.assertIsNone(delassus._eta)
+
+        # Check that only body space temp vector is initialized without preconditioning
+        self.assertEqual(delassus._vec_temp_body_space.shape, (model.size.sum_of_num_body_dofs,))
+        self.assertEqual(delassus._vec_temp_cts_space_A, None)
+        self.assertEqual(delassus._vec_temp_cts_space_B, None)
+
+        rng = np.random.default_rng(seed=self.seed)
+        regularization_np = rng.standard_normal((model.size.sum_of_max_total_cts,), dtype=np.float32)
+        regularization = wp.from_numpy(regularization_np, dtype=wp.float32, device=self.default_device)
+        delassus.set_regularization(regularization)
+
+        # Check that setting regularization works
+        self.assertEqual(delassus._eta, regularization)
+
+        preconditioner_np = rng.standard_normal((model.size.sum_of_max_total_cts,), dtype=np.float32)
+        preconditioner = wp.from_numpy(preconditioner_np, dtype=wp.float32, device=self.default_device)
+        delassus.set_preconditioner(preconditioner)
+
+        # Check that setting preconditioner works and allocates the constraint space temp vectors
+        self.assertEqual(delassus._preconditioner, preconditioner)
+        self.assertEqual(delassus._vec_temp_cts_space_A.shape, (model.size.sum_of_max_total_cts,))
+        self.assertEqual(delassus._vec_temp_cts_space_B.shape, (model.size.sum_of_max_total_cts,))
+
+    def _check_delassus_matrix(
+        self,
+        model: Model,
+        data: ModelData,
+        delassus: BlockSparseMatrixFreeDelassusOperator,
+        jacobians: SparseSystemJacobians,
+    ):
+        """Checks that a sparse Delassus operator represents the correct matrix."""
+        rng = np.random.default_rng(seed=self.seed)
+
+        def run_check(use_regularization: bool, use_preconditioner: bool):
+            # Extract Jacobians as numpy arrays
+            J_cts_np = jacobians._J_cts.bsm.numpy()
+
+            # Add regularization
+            if use_regularization:
+                regularization_list: list[np.ndarray] = []
+                regularization_np = np.zeros((model.size.sum_of_max_total_cts,), dtype=np.float32)
+                delassus_sizes = data.info.num_total_cts.numpy()
+                jac_row_start = jacobians._J_cts.bsm.row_start.numpy()
+                for w in range(model.info.num_worlds):
+                    d_size = delassus_sizes[w]
+                    regularization_list.append(rng.standard_normal((d_size,), dtype=np.float32))
+                    regularization_np[jac_row_start[w] : jac_row_start[w] + d_size] = regularization_list[-1]
+                regularization = wp.from_numpy(regularization_np, dtype=wp.float32, device=self.default_device)
+                delassus.set_regularization(regularization)
+            else:
+                delassus.set_regularization(None)
+
+            # Add preconditioner
+            if use_preconditioner:
+                preconditioner_list: list[np.ndarray] = []
+                preconditioner_np = np.zeros((model.size.sum_of_max_total_cts,), dtype=np.float32)
+                delassus_sizes = data.info.num_total_cts.numpy()
+                jac_row_start = jacobians._J_cts.bsm.row_start.numpy()
+                for w in range(model.info.num_worlds):
+                    d_size = delassus_sizes[w]
+                    preconditioner_list.append(rng.standard_normal((d_size,), dtype=np.float32))
+                    preconditioner_np[jac_row_start[w] : jac_row_start[w] + d_size] = preconditioner_list[-1]
+                preconditioner = wp.from_numpy(preconditioner_np, dtype=wp.float32, device=self.default_device)
+                delassus.set_preconditioner(preconditioner)
+            else:
+                delassus.set_preconditioner(None)
+
+            # Extract Delassus matrices as numpy arrays
+            D_np = extract_delassus_sparse(delassus, only_active_dims=True)
+
+            # Construct a list of generalized inverse mass matrices of each world
+            invM_np = make_inverse_generalized_mass_matrices(model, data)
+
+            # Optional verbose output
+            if self.verbose:
+                print("")  # Print a newline for better readability
+                for i in range(len(J_cts_np)):
+                    print(f"[{i}]: J_cts_np (shape={J_cts_np[i].shape}):\n{J_cts_np[i]}")
+                for i in range(len(invM_np)):
+                    print(f"[{i}]: invM_np (shape={invM_np[i].shape}):\n{invM_np[i]}")
+                for i in range(len(D_np)):
+                    print(f"[{i}]: D_np (shape={D_np[i].shape}):\n{D_np[i]}")
+                print("")  # Add a newline for better readability
+
+            # For each world, compute the Delassus matrix using numpy and compare it with the matrix
+            # represented by the Delassus operator.
+            for w in range(model.info.num_worlds):
+                # Compute the Delassus matrix using the inverse mass matrix and the Jacobian
+                if use_regularization:
+                    D_w = J_cts_np[w] @ invM_np[w] @ J_cts_np[w].T + np.diag(regularization_list[w])
+                else:
+                    D_w = (J_cts_np[w] @ invM_np[w]) @ J_cts_np[w].T
+
+                if use_preconditioner:
+                    D_w = np.diag(preconditioner_list[w]) @ D_w @ np.diag(preconditioner_list[w])
+
+                is_D_close = np.allclose(D_np[w], D_w, atol=1e-3, rtol=1e-4)
+                if not is_D_close or self.verbose:
+                    print(f"[{w}]: D_w (shape={D_w.shape}):\n{D_w}")
+                    print(f"[{w}]: D_np (shape={D_np[w].shape}):\n{D_np[w]}")
+                    print_error_stats(f"D[{w}]", D_np[w], D_w, D_w.shape[0])
+                self.assertTrue(is_D_close)
+
+        run_check(use_regularization=False, use_preconditioner=False)
+        run_check(use_regularization=True, use_preconditioner=False)
+        run_check(use_regularization=False, use_preconditioner=True)
+        run_check(use_regularization=True, use_preconditioner=True)
+
+    def _check_delassus_matrix_vector_product(
+        self,
+        model: Model,
+        data: ModelData,
+        delassus: BlockSparseMatrixFreeDelassusOperator,
+        jacobians: SparseSystemJacobians,
+    ):
+        """Checks the different matrix-vector products provided by the sparse Delassus operator."""
+        rng = np.random.default_rng(seed=self.seed)
+
+        def run_check(use_regularization: bool, use_preconditioner: bool, mask_worlds: bool):
+            delassus_sizes = data.info.num_total_cts.numpy()
+            jac_row_start = jacobians._J_cts.bsm.row_start.numpy()
+
+            # Add regularization
+            if use_regularization:
+                regularization_list: list[np.ndarray] = []
+                regularization_np = np.zeros((model.size.sum_of_max_total_cts,), dtype=np.float32)
+                for w in range(model.info.num_worlds):
+                    d_size = delassus_sizes[w]
+                    regularization_list.append(rng.standard_normal((d_size,), dtype=np.float32))
+                    regularization_np[jac_row_start[w] : jac_row_start[w] + d_size] = regularization_list[-1]
+                regularization = wp.from_numpy(regularization_np, dtype=wp.float32, device=self.default_device)
+                delassus.set_regularization(regularization)
+            else:
+                delassus.set_regularization(None)
+
+            # Add preconditioner
+            if use_preconditioner:
+                preconditioner_list: list[np.ndarray] = []
+                preconditioner_np = np.zeros((model.size.sum_of_max_total_cts,), dtype=np.float32)
+                for w in range(model.info.num_worlds):
+                    d_size = delassus_sizes[w]
+                    preconditioner_list.append(rng.standard_normal((d_size,), dtype=np.float32))
+                    preconditioner_np[jac_row_start[w] : jac_row_start[w] + d_size] = preconditioner_list[-1]
+                preconditioner = wp.from_numpy(preconditioner_np, dtype=wp.float32, device=self.default_device)
+                delassus.set_preconditioner(preconditioner)
+            else:
+                delassus.set_preconditioner(None)
+
+            # Generate vectors for multiplication
+            alpha = float(rng.standard_normal((1,))[0])
+            beta = float(rng.standard_normal((1,))[0])
+            input_vec_list: list[np.ndarray] = []
+            offset_vec_list: list[np.ndarray] = []
+            input_vec_np = np.zeros((model.size.sum_of_max_total_cts,), dtype=np.float32)
+            offset_vec_np = np.zeros((model.size.sum_of_max_total_cts,), dtype=np.float32)
+            for w in range(model.info.num_worlds):
+                d_size = delassus_sizes[w]
+                input_vec_list.append(rng.standard_normal((d_size,), dtype=np.float32))
+                offset_vec_list.append(rng.standard_normal((d_size,), dtype=np.float32))
+                input_vec_np[jac_row_start[w] : jac_row_start[w] + d_size] = input_vec_list[-1]
+                offset_vec_np[jac_row_start[w] : jac_row_start[w] + d_size] = offset_vec_list[-1]
+            input_vec = wp.from_numpy(input_vec_np, dtype=wp.float32, device=self.default_device)
+            output_vec_matmul = wp.zeros_like(input_vec)
+            output_vec_gemv = wp.from_numpy(offset_vec_np, dtype=wp.float32, device=self.default_device)
+            output_vec_gemv_zero = wp.from_numpy(offset_vec_np, dtype=wp.float32, device=self.default_device)
+
+            mask_np = np.ones((model.size.num_worlds,), dtype=np.int32)
+            if mask_worlds:
+                mask_np[::2] = 0
+            world_mask = wp.from_numpy(mask_np, dtype=wp.int32, device=self.default_device)
+
+            # Compute different products (simple matvec, gemv, and gemv with beta = 0.0)
+            delassus.matvec(input_vec, output_vec_matmul, world_mask)
+            delassus.gemv(input_vec, output_vec_gemv, world_mask, alpha, beta)
+            delassus.gemv(input_vec, output_vec_gemv_zero, world_mask, alpha, 0.0)
+
+            output_vec_matmul_np = output_vec_matmul.numpy()
+            output_vec_gemv_np = output_vec_gemv.numpy()
+            output_vec_gemv_zero_np = output_vec_gemv_zero.numpy()
+
+            # Extract Jacobians as numpy arrays
+            J_cts_np = jacobians._J_cts.bsm.numpy()
+
+            # Construct a list of generalized inverse mass matrices of each world
+            invM_np = make_inverse_generalized_mass_matrices(model, data)
+
+            # For each world, compute the Delassus matrix-vector product using numpy and compare it
+            # with the one from the Delassus operator class
+            for w in range(model.info.num_worlds):
+                vec_matmul_w = output_vec_matmul_np[jac_row_start[w] : jac_row_start[w] + delassus_sizes[w]]
+                vec_gemv_w = output_vec_gemv_np[jac_row_start[w] : jac_row_start[w] + delassus_sizes[w]]
+                vec_gemv_zero_w = output_vec_gemv_zero_np[jac_row_start[w] : jac_row_start[w] + delassus_sizes[w]]
+
+                if mask_np[w] == 0:
+                    self.assertEqual(np.max(np.abs(vec_matmul_w)), 0.0)
+                    self.assertTrue((vec_gemv_w == offset_vec_list[w]).all())
+                    self.assertTrue((vec_gemv_zero_w == offset_vec_list[w]).all())
+                else:
+                    # Compute the Delassus matrix using the inverse mass matrix and the Jacobian
+                    if use_regularization:
+                        D_w = J_cts_np[w] @ invM_np[w] @ J_cts_np[w].T + np.diag(regularization_list[w])
+                    else:
+                        D_w = (J_cts_np[w] @ invM_np[w]) @ J_cts_np[w].T
+
+                    if use_preconditioner:
+                        D_w = np.diag(preconditioner_list[w]) @ D_w @ np.diag(preconditioner_list[w])
+
+                    vec_matmul_ref = D_w @ input_vec_list[w]
+                    vec_gemv_ref = alpha * (D_w @ input_vec_list[w]) + beta * offset_vec_list[w]
+                    vec_gemv_zero_ref = alpha * (D_w @ input_vec_list[w])
+
+                    # Compare the computed Delassus matrix with the one from the dual problem
+                    is_matmul_close = np.allclose(vec_matmul_ref, vec_matmul_w, atol=1e-3, rtol=1e-4)
+                    if not is_matmul_close or self.verbose:
+                        print(f"[{w}]: vec_matmul_ref (shape={vec_matmul_ref.shape}):\n{vec_matmul_ref}")
+                        print(f"[{w}]: vec_matmul_w (shape={vec_matmul_w.shape}):\n{vec_matmul_w}")
+                        print_error_stats(
+                            f"vec_gemv_zero[{w}]",
+                            vec_matmul_ref,
+                            vec_matmul_w,
+                            vec_matmul_w.shape[0],
+                        )
+                    self.assertTrue(is_matmul_close)
+                    is_gemv_close = np.allclose(vec_gemv_ref, vec_gemv_w, atol=1e-3, rtol=1e-4)
+                    if not is_gemv_close or self.verbose:
+                        print(f"[{w}]: vec_gemv_ref (shape={vec_gemv_ref.shape}):\n{vec_gemv_ref}")
+                        print(f"[{w}]: vec_gemv_w (shape={vec_gemv_w.shape}):\n{vec_gemv_w}")
+                        print_error_stats(
+                            f"vec_gemv_zero[{w}]",
+                            vec_gemv_ref,
+                            vec_gemv_w,
+                            vec_gemv_w.shape[0],
+                        )
+                    self.assertTrue(is_gemv_close)
+                    is_gemv_zero_close = np.allclose(vec_gemv_zero_ref, vec_gemv_zero_w, atol=1e-3, rtol=1e-4)
+                    if not is_gemv_zero_close or self.verbose:
+                        print(f"[{w}]: vec_gemv_zero_ref (shape={vec_gemv_zero_ref.shape}):\n{vec_gemv_zero_ref}")
+                        print(f"[{w}]: vec_gemv_zero_w (shape={vec_gemv_zero_w.shape}):\n{vec_gemv_zero_w}")
+                        print_error_stats(
+                            f"vec_gemv_zero[{w}]",
+                            vec_gemv_zero_ref,
+                            vec_gemv_zero_w,
+                            vec_gemv_zero_w.shape[0],
+                        )
+                    self.assertTrue(is_gemv_zero_close)
+
+        run_check(use_regularization=False, use_preconditioner=False, mask_worlds=False)
+        run_check(use_regularization=True, use_preconditioner=False, mask_worlds=False)
+        run_check(use_regularization=False, use_preconditioner=True, mask_worlds=False)
+        run_check(use_regularization=True, use_preconditioner=True, mask_worlds=False)
+        run_check(use_regularization=False, use_preconditioner=False, mask_worlds=True)
+        run_check(use_regularization=True, use_preconditioner=False, mask_worlds=True)
+        run_check(use_regularization=False, use_preconditioner=True, mask_worlds=True)
+        run_check(use_regularization=True, use_preconditioner=True, mask_worlds=True)
+
+    def _check_delassus_diagonal(
+        self,
+        model: Model,
+        data: ModelData,
+        delassus: BlockSparseMatrixFreeDelassusOperator,
+        jacobians: SparseSystemJacobians,
+    ):
+        """Check the diagonal extraction routine of the sparse Delassus operator."""
+        # Extract Jacobians as numpy arrays
+        J_cts_np = jacobians._J_cts.bsm.numpy()
+
+        # Get diagonals from the sparse Delassus operator and split the single array into separate
+        # numpy vectors
+        D_diag = wp.zeros((model.size.sum_of_max_total_cts,), dtype=wp.float32, device=self.default_device)
+        delassus.diagonal(D_diag)
+        D_diag_np = D_diag.numpy()
+        row_start_np = jacobians._J_cts.bsm.row_start.numpy()
+        num_total_cts_np = data.info.num_total_cts.numpy()
+        max_total_cts_np = model.info.max_total_cts.numpy()
+        D_diag_list = []
+        for w in range(model.info.num_worlds):
+            D_diag_list.append(D_diag_np[row_start_np[w] : row_start_np[w] + num_total_cts_np[w]])
+            if max_total_cts_np[w] > num_total_cts_np[w]:
+                # Check that unused entries of the diagonal vector are zero
+                diag_unused = D_diag_np[row_start_np[w] + num_total_cts_np[w] : row_start_np[w] + max_total_cts_np[w]]
+                self.assertEqual(np.max(np.abs(diag_unused)), 0)
+
+        # Construct a list of generalized inverse mass matrices of each world
+        invM_np = make_inverse_generalized_mass_matrices(model, data)
+
+        # Optional verbose output
+        if self.verbose:
+            print("")  # Print a newline for better readability
+            for i in range(len(J_cts_np)):
+                print(f"[{i}]: J_cts_np (shape={J_cts_np[i].shape}):\n{J_cts_np[i]}")
+            for i in range(len(invM_np)):
+                print(f"[{i}]: invM_np (shape={invM_np[i].shape}):\n{invM_np[i]}")
+            for i in range(len(D_diag_list)):
+                print(f"[{i}]: D_diag (shape={D_diag_list[i].shape}):\n{D_diag_list[i]}")
+            print("")  # Add a newline for better readability
+
+        # For each world, compute the Delassus matrix diagonal using numpy and compare it with the
+        # one from the Delassus operator class
+        for w in range(model.info.num_worlds):
+            # Compute the Delassus matrix diagonal using the inverse mass matrix and the Jacobian
+            D_w = (J_cts_np[w] @ invM_np[w]) @ J_cts_np[w].T
+            D_diag_ref = np.diag(D_w)
+
+            # Compare the computed Delassus matrix diagonals
+            is_D_diag_close = np.allclose(D_diag_list[w], D_diag_ref, atol=1e-3, rtol=1e-4)
+            if not is_D_diag_close or self.verbose:
+                print(f"[{w}]: D_diag_ref (shape={D_diag_ref.shape}):\n{D_diag_ref}")
+                print(f"[{w}]: D_diag (shape={D_diag_list[w].shape}):\n{D_diag_list[w]}")
+                print_error_stats(f"D_diag[{w}]", D_diag_list[w], D_diag_ref, D_diag_ref.shape[0])
+            self.assertTrue(is_D_diag_close)
+
+    ###
+    # Allocation
+    ###
+
+    def test_01_allocate_single_delassus_operator(self):
+        # Model constants
+        max_world_contacts = 12
+
+        # Construct the model description using model builders for different systems
+        builder = build_boxes_nunchaku()
+
+        # Create the model and containers from the builder
+        model, data, limits, detector, jacobians = make_containers(
+            builder=builder, max_world_contacts=max_world_contacts, device=self.default_device, sparse=True
+        )
+
+        # Update the containers
+        update_containers(model=model, data=data, limits=limits, detector=detector, jacobians=jacobians)
+
+        # Create the sparse Delassus operator
+        delassus = BlockSparseMatrixFreeDelassusOperator(
+            model=model,
+            data=data,
+            device=self.default_device,
+        )
+
+        # Compare expected to allocated dimensions and sizes
+        self._check_sparse_delassus_allocations(model, delassus)
+
+    def test_02_allocate_homogeneous_delassus_operator(self):
+        # Model constants
+        num_worlds = 3
+        max_world_contacts = 12
+
+        # Construct a homogeneous model description using model builders
+        builder = make_homogeneous_builder(num_worlds=num_worlds, build_fn=build_boxes_nunchaku)
+
+        # Create the model and containers from the builder
+        model, data, limits, detector, jacobians = make_containers(
+            builder=builder, max_world_contacts=max_world_contacts, device=self.default_device, sparse=True
+        )
+
+        # Update the containers
+        update_containers(model=model, data=data, limits=limits, detector=detector, jacobians=jacobians)
+
+        # Create the Delassus operator
+        delassus = BlockSparseMatrixFreeDelassusOperator(
+            model=model,
+            data=data,
+            device=self.default_device,
+        )
+
+        # Compare expected to allocated dimensions and sizes
+        self._check_sparse_delassus_allocations(model, delassus)
+
+    def test_03_allocate_heterogeneous_delassus_operator(self):
+        # Model constants
+        max_world_contacts = 12
+
+        # Create a heterogeneous model description using model builders
+        builder = make_basics_heterogeneous_builder()
+
+        # Create the model and containers from the builder
+        model, data, limits, detector, jacobians = make_containers(
+            builder=builder, max_world_contacts=max_world_contacts, device=self.default_device, sparse=True
+        )
+
+        # Update the containers
+        update_containers(model=model, data=data, limits=limits, detector=detector, jacobians=jacobians)
+
+        # Create the Delassus operator
+        delassus = BlockSparseMatrixFreeDelassusOperator(
+            model=model,
+            data=data,
+            device=self.default_device,
+        )
+
+        # Compare expected to allocated dimensions and sizes
+        self._check_sparse_delassus_allocations(model, delassus)
+
+    def test_04_build_delassus_operator(self):
+        # Model constants
+        max_world_contacts = 12
+
+        # Construct the model description using model builders for different systems
+        builder = build_boxes_fourbar(z_offset=0.0, ground=False)
+
+        # Create the model and containers from the builder
+        model, data, limits, detector, jacobians = make_containers(
+            builder=builder, max_world_contacts=max_world_contacts, device=self.default_device, sparse=True
+        )
+
+        # Update the containers
+        update_containers(model=model, data=data, limits=limits, detector=detector, jacobians=jacobians)
+
+        # Create the Delassus operator
+        delassus = BlockSparseMatrixFreeDelassusOperator(
+            model=model,
+            data=data,
+            jacobians=jacobians,
+            device=self.default_device,
+        )
+
+        # Check that the Delassus operator represents the actual Delassus matrix
+        self._check_delassus_matrix(model, data, delassus, jacobians)
+
+    def test_05_build_homogeneous_delassus_operator(self):
+        # Model constants
+        num_worlds = 3
+        max_world_contacts = 12
+
+        # Construct a homogeneous model description using model builders
+        builder = make_homogeneous_builder(num_worlds=num_worlds, build_fn=build_boxes_nunchaku)
+
+        # Create the model and containers from the builder
+        model, data, limits, detector, jacobians = make_containers(
+            builder=builder, max_world_contacts=max_world_contacts, device=self.default_device, sparse=True
+        )
+
+        # Update the containers
+        update_containers(model=model, data=data, limits=limits, detector=detector, jacobians=jacobians)
+
+        # Create the Delassus operator
+        delassus = BlockSparseMatrixFreeDelassusOperator(
+            model=model,
+            data=data,
+            jacobians=jacobians,
+            device=self.default_device,
+        )
+
+        # Check that the Delassus operator represents the actual Delassus matrix
+        self._check_delassus_matrix(model, data, delassus, jacobians)
+
+    def test_06_build_heterogeneous_delassus_operator(self):
+        # Model constants
+        max_world_contacts = 12
+
+        # Create a heterogeneous model description using model builders
+        builder = make_basics_heterogeneous_builder()
+
+        # Create the model and containers from the builder
+        model, data, limits, detector, jacobians = make_containers(
+            builder=builder, max_world_contacts=max_world_contacts, device=self.default_device, sparse=True
+        )
+
+        # Update the containers
+        update_containers(model=model, data=data, limits=limits, detector=detector, jacobians=jacobians)
+
+        # Create the Delassus operator
+        delassus = BlockSparseMatrixFreeDelassusOperator(
+            model=model,
+            data=data,
+            jacobians=jacobians,
+            device=self.default_device,
+        )
+
+        # Check that the Delassus operator represents the actual Delassus matrix
+        self._check_delassus_matrix(model, data, delassus, jacobians)
+
+    def test_07_extract_delassus_diagonal(self):
+        # Model constants
+        max_world_contacts = 12
+
+        # Construct the model description using model builders for different systems
+        builder = build_boxes_fourbar(z_offset=0.0, ground=False)
+
+        # Create the model and containers from the builder
+        model, data, limits, detector, jacobians = make_containers(
+            builder=builder, max_world_contacts=max_world_contacts, device=self.default_device, sparse=True
+        )
+
+        # Update the containers
+        update_containers(model=model, data=data, limits=limits, detector=detector, jacobians=jacobians)
+
+        # Create the Delassus operator
+        delassus = BlockSparseMatrixFreeDelassusOperator(
+            model=model,
+            data=data,
+            jacobians=jacobians,
+            device=self.default_device,
+        )
+
+        # Check that the Delassus operator represents the actual Delassus matrix
+        self._check_delassus_diagonal(model, data, delassus, jacobians)
+
+    def test_08_extract_delassus_diagonal_homogeneous(self):
+        # Model constants
+        num_worlds = 3
+        max_world_contacts = 12
+
+        # Construct a homogeneous model description using model builders
+        builder = make_homogeneous_builder(num_worlds=num_worlds, build_fn=build_boxes_nunchaku)
+
+        # Create the model and containers from the builder
+        model, data, limits, detector, jacobians = make_containers(
+            builder=builder, max_world_contacts=max_world_contacts, device=self.default_device, sparse=True
+        )
+
+        # Update the containers
+        update_containers(model=model, data=data, limits=limits, detector=detector, jacobians=jacobians)
+
+        # Create the Delassus operator
+        delassus = BlockSparseMatrixFreeDelassusOperator(
+            model=model,
+            data=data,
+            jacobians=jacobians,
+            device=self.default_device,
+        )
+
+        # Check that the Delassus operator represents the actual Delassus matrix
+        self._check_delassus_diagonal(model, data, delassus, jacobians)
+
+    def test_09_extract_delassus_diagonal_heterogeneous(self):
+        # Model constants
+        max_world_contacts = 12
+
+        # Create a heterogeneous model description using model builders
+        builder = make_basics_heterogeneous_builder()
+
+        # Create the model and containers from the builder
+        model, data, limits, detector, jacobians = make_containers(
+            builder=builder, max_world_contacts=max_world_contacts, device=self.default_device, sparse=True
+        )
+
+        # Update the containers
+        update_containers(model=model, data=data, limits=limits, detector=detector, jacobians=jacobians)
+
+        # Create the Delassus operator
+        delassus = BlockSparseMatrixFreeDelassusOperator(
+            model=model,
+            data=data,
+            jacobians=jacobians,
+            device=self.default_device,
+        )
+
+        # Check that the Delassus operator represents the actual Delassus matrix
+        self._check_delassus_diagonal(model, data, delassus, jacobians)
+
+    def test_10_delassus_operator_vector_product(self):
+        # Model constants
+        max_world_contacts = 12
+
+        # Construct the model description using model builders for different systems
+        builder = build_boxes_fourbar(z_offset=0.0, ground=False)
+
+        # Create the model and containers from the builder
+        model, data, limits, detector, jacobians = make_containers(
+            builder=builder, max_world_contacts=max_world_contacts, device=self.default_device, sparse=True
+        )
+
+        # Update the containers
+        update_containers(model=model, data=data, limits=limits, detector=detector, jacobians=jacobians)
+
+        # Create the Delassus operator
+        delassus = BlockSparseMatrixFreeDelassusOperator(
+            model=model,
+            data=data,
+            jacobians=jacobians,
+            device=self.default_device,
+        )
+
+        # Check that the Delassus operator represents the actual Delassus matrix
+        self._check_delassus_matrix_vector_product(model, data, delassus, jacobians)
+
+    def test_11_homogeneous_delassus_operator_vector_product(self):
+        # Model constants
+        num_worlds = 3
+        max_world_contacts = 12
+
+        # Construct a homogeneous model description using model builders
+        builder = make_homogeneous_builder(num_worlds=num_worlds, build_fn=build_boxes_nunchaku)
+
+        # Create the model and containers from the builder
+        model, data, limits, detector, jacobians = make_containers(
+            builder=builder, max_world_contacts=max_world_contacts, device=self.default_device, sparse=True
+        )
+
+        # Update the containers
+        update_containers(model=model, data=data, limits=limits, detector=detector, jacobians=jacobians)
+
+        # Create the Delassus operator
+        delassus = BlockSparseMatrixFreeDelassusOperator(
+            model=model,
+            data=data,
+            jacobians=jacobians,
+            device=self.default_device,
+        )
+
+        # Check that the Delassus operator represents the actual Delassus matrix
+        self._check_delassus_matrix_vector_product(model, data, delassus, jacobians)
+
+    def test_12_heterogeneous_delassus_operator_vector_product(self):
+        # Model constants
+        max_world_contacts = 12
+
+        # Create a heterogeneous model description using model builders
+        builder = make_basics_heterogeneous_builder()
+
+        # Create the model and containers from the builder
+        model, data, limits, detector, jacobians = make_containers(
+            builder=builder, max_world_contacts=max_world_contacts, device=self.default_device, sparse=True
+        )
+
+        # Update the containers
+        update_containers(model=model, data=data, limits=limits, detector=detector, jacobians=jacobians)
+
+        # Create the Delassus operator
+        delassus = BlockSparseMatrixFreeDelassusOperator(
+            model=model,
+            data=data,
+            jacobians=jacobians,
+            device=self.default_device,
+        )
+
+        # Check that the Delassus operator represents the actual Delassus matrix
+        self._check_delassus_matrix_vector_product(model, data, delassus, jacobians)
 
 
 ###

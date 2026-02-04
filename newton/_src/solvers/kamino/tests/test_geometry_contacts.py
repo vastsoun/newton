@@ -16,7 +16,7 @@
 """
 Unit tests for `geometry/contacts.py`.
 
-Tests all components of the Contacts data types and operations.
+Tests all components of the ContactsKamino data types and operations.
 """
 
 import unittest
@@ -27,7 +27,7 @@ import warp as wp
 from newton._src.solvers.kamino.core.types import int32, mat33f, vec3f
 from newton._src.solvers.kamino.geometry.contacts import (
     ContactMode,
-    Contacts,
+    ContactsKamino,
     make_contact_frame_xnorm,
     make_contact_frame_znorm,
 )
@@ -276,7 +276,7 @@ class TestGeometryContacts(unittest.TestCase):
             msg.reset_log_level()
 
     def test_single_default_allocation(self):
-        contacts = Contacts(capacity=0, device=self.default_device)
+        contacts = ContactsKamino(capacity=0, device=self.default_device)
         self.assertEqual(contacts.model_max_contacts_host, contacts.default_max_world_contacts)
         self.assertEqual(contacts.world_max_contacts_host[0], contacts.default_max_world_contacts)
         self.assertEqual(len(contacts.model_max_contacts), 1)
@@ -300,7 +300,7 @@ class TestGeometryContacts(unittest.TestCase):
     def test_multiple_default_allocations(self):
         num_worlds = 10
         capacities = [0] * num_worlds
-        contacts = Contacts(capacity=capacities, device=self.default_device)
+        contacts = ContactsKamino(capacity=capacities, device=self.default_device)
 
         model_max_contacts = contacts.model_max_contacts.numpy()
         model_active_contacts = contacts.model_active_contacts.numpy()
@@ -328,7 +328,7 @@ class TestGeometryContacts(unittest.TestCase):
 
     def test_multiple_custom_allocations(self):
         capacities = [10, 20, 30, 40, 50, 60]
-        contacts = Contacts(capacity=capacities, device=self.default_device)
+        contacts = ContactsKamino(capacity=capacities, device=self.default_device)
 
         num_worlds = len(capacities)
         model_max_contacts = contacts.model_max_contacts.numpy()

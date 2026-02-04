@@ -29,18 +29,20 @@ mode based on local contact velocities.
 - Utility functions for constructing contact-local coordinate frames
 supporting both a Z-up and X-up convention.
 
-- The :class:`Contacts` container which provides a high-level interface to
+- The :class:`ContactsKamino` container which provides a high-level interface to
   manage contact data, including allocations, access, and common operations,
   and fundamentally serves as the primary output of collision detectors
   as well as a cache of contact data to warm-start physics solvers.
 """
+
+from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import IntEnum
 
 import warp as wp
 
-from ....sim.contacts import Contacts as ContactsNewton
+from ....sim.contacts import Contacts
 from ..core.math import COS_PI_6, UNIT_X, UNIT_Y
 from ..core.types import float32, int32, mat33f, quatf, vec2f, vec2i, vec3f, vec4f
 from ..utils import logger as msg
@@ -53,8 +55,8 @@ __all__ = [
     "DEFAULT_GEOM_PAIR_MAX_CONTACTS",
     "DEFAULT_WORLD_MAX_CONTACTS",
     "ContactMode",
-    "Contacts",
     "ContactsData",
+    "ContactsKamino",
     "make_contact_frame_xnorm",
     "make_contact_frame_znorm",
 ]
@@ -363,7 +365,7 @@ def make_contact_frame_xnorm(n: vec3f) -> mat33f:
 ###
 
 
-class Contacts:
+class ContactsKamino:
     """
     Provides a high-level interface to manage contact data,
     including allocations, access, and common operations.
@@ -660,7 +662,7 @@ class Contacts:
 
         # Skip allocation if there are no contacts to allocate
         if model_max_contacts == 0:
-            msg.debug("Contacts: Skipping contact data allocations since total requested capacity was `0`.")
+            msg.debug("ContactsKamino: Skipping contact data allocations since total requested capacity was `0`.")
             return
 
         # Override the device if specified
@@ -708,9 +710,9 @@ class Contacts:
             self._data.reset()
 
     @classmethod
-    def from_newton(cls, contacts: ContactsNewton, num_worlds: int) -> "Contacts":
+    def from_newton(cls, contacts: Contacts, num_worlds: int) -> ContactsKamino:
         """
-        Constructs a KaminoContacts object from a :class:`newton.Contacts` object.
+        Constructs a KaminoContacts object from a :class:`newton.ContactsKamino` object.
 
         Args:
             contacts (`newton.Contacts`):
@@ -724,10 +726,10 @@ class Contacts:
         world_max_contacts = [per_world_max_contacts] * num_worlds
 
         # Construct and return the KaminoContacts given the per-world capacities
-        # NOTE: Currently we allocate new data for kamino.Contacts since the data
-        # layout is different than newton.Contacts. This will soon be adapted so
-        # that kamino.Contacts can directly wrap newton.Contacts data without copies.
-        return Contacts(
+        # NOTE: Currently we allocate new data for kamino.ContactsKamino since the
+        # data layout is different than newton.Contacts. This will soon be adapted so
+        # that kamino.ContactsKamino can directly wrap newton.Contacts data without copies.
+        return ContactsKamino(
             capacity=world_max_contacts,
             device=contacts.device,
         )

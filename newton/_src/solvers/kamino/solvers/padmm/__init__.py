@@ -46,7 +46,7 @@ A typical example for using this module is:
 
     # Import all relevant types from Kamino
     from newton._src.solvers.kamino.core import ModelBuilderKamino
-    from newton._src.solvers.kamino.geometry import Contacts
+    from newton._src.solvers.kamino.geometry import ContactsKamino
     from newton._src.solvers.kamino.kinematics import Limits
     from newton._src.solvers.kamino.kinematics import DenseSystemJacobians
     from newton._src.solvers.kamino.dynamics import DualProblem
@@ -61,7 +61,7 @@ A typical example for using this module is:
     model = builder.finalize()
     data = model.data()
     limits = Limits(model)
-    contacts = Contacts(builder)
+    contacts = ContactsKamino(builder)
     jacobians = DenseSystemJacobians(model, limits, contacts)
 
     # Build the Jacobians for the model and active limits and contacts

@@ -39,8 +39,7 @@ from newton._src.solvers.kamino.core.data import DataKamino
 from newton._src.solvers.kamino.core.joints import JOINT_QMAX, JOINT_QMIN
 from newton._src.solvers.kamino.core.model import ModelKamino
 from newton._src.solvers.kamino.core.state import StateKamino
-from newton._src.solvers.kamino.geometry.contacts import DEFAULT_GEOM_PAIR_MAX_CONTACTS
-from newton._src.solvers.kamino.geometry.contacts import Contacts as ContactsKamino
+from newton._src.solvers.kamino.geometry.contacts import DEFAULT_GEOM_PAIR_MAX_CONTACTS, ContactsKamino
 from newton._src.solvers.kamino.models import basics, get_basics_usd_assets_path
 from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.utils import logger as msg

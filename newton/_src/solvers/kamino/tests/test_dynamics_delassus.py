@@ -22,7 +22,7 @@ import warp as wp
 
 from newton._src.solvers.kamino.core.model import ModelKamino
 from newton._src.solvers.kamino.dynamics.delassus import DelassusOperator
-from newton._src.solvers.kamino.geometry.contacts import Contacts
+from newton._src.solvers.kamino.geometry.contacts import ContactsKamino
 from newton._src.solvers.kamino.kinematics.constraints import get_max_constraints_per_world
 from newton._src.solvers.kamino.kinematics.limits import Limits
 from newton._src.solvers.kamino.linalg import LLTSequentialSolver
@@ -56,7 +56,7 @@ def check_delassus_allocations(
     fixture: unittest.TestCase,
     model: ModelKamino,
     limits: Limits,
-    contacts: Contacts,
+    contacts: ContactsKamino,
     delassus: DelassusOperator,
 ) -> None:
     # Compute expected and allocated dimensions and sizes

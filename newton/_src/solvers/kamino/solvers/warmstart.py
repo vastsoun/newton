@@ -40,7 +40,7 @@ from ..core.data import DataKamino
 from ..core.math import contact_wrench_matrix_from_points
 from ..core.model import ModelKamino
 from ..core.types import float32, int32, override, quatf, transformf, uint64, vec2f, vec2i, vec3f, vec6f
-from ..geometry.contacts import Contacts, ContactsData
+from ..geometry.contacts import ContactsData, ContactsKamino
 from ..geometry.keying import KeySorter, binary_search_find_range_start
 from ..kinematics.limits import Limits, LimitsData
 from ..solvers.padmm.math import project_to_coulomb_cone
@@ -916,7 +916,7 @@ class WarmstarterContacts:
 
     def __init__(
         self,
-        contacts: Contacts | None = None,
+        contacts: ContactsKamino | None = None,
         method: Method = Method.KEY_AND_POSITION,
         tolerance: float = 1e-5,
         scaling: float = 1.0,
@@ -925,7 +925,7 @@ class WarmstarterContacts:
         Initializes the contacts warmstarter using the allocations of the provided contacts container.
 
         Args:
-            contacts (Contacts): The contacts container whose allocations are used to initialize the warmstarter.
+            contacts (ContactsKamino): The contacts container whose allocations are used to initialize the warmstarter.
             method (WarmstarterContacts.Method): The warm-starting method to use.
             tolerance (float): The tolerance used for matching contact point positions.\n
                 Must be a floating-point value specified in meters, and within the range `[0, +inf)`.\n
@@ -981,7 +981,7 @@ class WarmstarterContacts:
         """
         return self._cache
 
-    def warmstart(self, model: ModelKamino, data: DataKamino, contacts: Contacts):
+    def warmstart(self, model: ModelKamino, data: DataKamino, contacts: ContactsKamino):
         """
         Warm-starts the provided contacts container using the internal cache.
 
@@ -990,7 +990,7 @@ class WarmstarterContacts:
         Args:
             model (ModelKamino): The model containing simulation parameters.
             data (DataKamino): The model data containing body states.
-            contacts (Contacts): The contacts container to warm-start.
+            contacts (ContactsKamino): The contacts container to warm-start.
         """
         # Early exit if no cache is allocated
         if self._cache is None:
@@ -1047,12 +1047,12 @@ class WarmstarterContacts:
                     "  - KEY_AND_POSITION_WITH_NET_WRENCH_BACKUP (4)."
                 )
 
-    def update(self, contacts: Contacts | None = None):
+    def update(self, contacts: ContactsKamino | None = None):
         """
         Updates the warmstarter's internal cache with the provided contacts data.
 
         Args:
-            contacts (Contacts): The contacts container from which to update the cache.
+            contacts (ContactsKamino): The contacts container from which to update the cache.
         """
         # Early exit if no cache is allocated or no contacts data is provided
         if self._cache is None or contacts is None:

@@ -38,7 +38,7 @@ from ..core.types import (
     vec2i,
     vec3f,
 )
-from ..geometry.contacts import Contacts
+from ..geometry.contacts import ContactsKamino
 from ..kinematics.limits import Limits
 
 ###
@@ -482,7 +482,7 @@ def build_jacobians(
     model: ModelKamino,
     data: DataKamino,
     limits: Limits | None,
-    contacts: Contacts | None,
+    contacts: ContactsKamino | None,
     jacobian_cts_offsets: wp.array,
     jacobian_cts_data: wp.array,
     jacobian_dofs_offsets: wp.array,
@@ -624,7 +624,7 @@ class DenseSystemJacobians:
         self,
         model: ModelKamino | None = None,
         limits: Limits | None = None,
-        contacts: Contacts | None = None,
+        contacts: ContactsKamino | None = None,
         device: Devicelike = None,
     ):
         # Declare and initialize the Jacobian data container
@@ -645,7 +645,7 @@ class DenseSystemJacobians:
         self,
         model: ModelKamino,
         limits: Limits | None = None,
-        contacts: Contacts | None = None,
+        contacts: ContactsKamino | None = None,
         device: Devicelike = None,
     ):
         # Ensure the model container is valid
@@ -662,8 +662,8 @@ class DenseSystemJacobians:
 
         # Ensure the contacts container is valid
         if contacts is not None:
-            if not isinstance(contacts, Contacts):
-                raise TypeError(f"`contacts` is required to be of type `Contacts` but got {type(contacts)}.")
+            if not isinstance(contacts, ContactsKamino):
+                raise TypeError(f"`contacts` is required to be of type `ContactsKamino` but got {type(contacts)}.")
 
         # Extract the constraint and DoF sizes of each world
         nw = model.info.num_worlds
@@ -701,7 +701,7 @@ class DenseSystemJacobians:
         model: ModelKamino,
         data: DataKamino,
         limits: Limits | None = None,
-        contacts: Contacts | None = None,
+        contacts: ContactsKamino | None = None,
         reset_to_zero: bool = True,
     ):
         """

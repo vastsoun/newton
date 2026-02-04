@@ -25,7 +25,7 @@ from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
 from newton._src.solvers.kamino.core.data import DataKamino
 from newton._src.solvers.kamino.core.model import ModelKamino
 from newton._src.solvers.kamino.core.types import float32, int32, vec2i, vec6f
-from newton._src.solvers.kamino.geometry.contacts import DEFAULT_GEOM_PAIR_CONTACT_MARGIN, Contacts
+from newton._src.solvers.kamino.geometry.contacts import DEFAULT_GEOM_PAIR_CONTACT_MARGIN, ContactsKamino
 from newton._src.solvers.kamino.geometry.primitive import (
     BoundingVolumeType,
     CollisionPipelinePrimitive,
@@ -277,7 +277,7 @@ def test_broadphase_on_single_pair(
 
 
 def check_contacts(
-    contacts: Contacts,
+    contacts: ContactsKamino,
     expected: dict,
     header: str,
     case: str,
@@ -285,7 +285,7 @@ def check_contacts(
     atol: float = 0.0,
 ):
     """
-    Checks the contents of a Contacts container against expected values.
+    Checks the contents of a ContactsKamino container against expected values.
     """
     # Run contact counts checks
     if "model_active_contacts" in expected:
@@ -401,7 +401,7 @@ def test_narrowphase(
 
         # Create a contacts container
         capacity = [ngp * max_contacts_per_pair for ngp in num_world_geom_pairs]
-        contacts = Contacts(capacity=capacity, device=device)
+        contacts = ContactsKamino(capacity=capacity, device=device)
         contacts.clear()
 
         # Execute narrowphase for primitive shapes
@@ -1040,7 +1040,7 @@ class TestPipelinePrimitive(unittest.TestCase):
         self.assertIsNone(pipeline._device)
         self.assertEqual(pipeline._bvtype, BoundingVolumeType.AABB)
         self.assertEqual(pipeline._default_margin, DEFAULT_GEOM_PAIR_CONTACT_MARGIN)
-        self.assertRaises(RuntimeError, pipeline.collide, ModelKamino(), DataKamino(), Contacts())
+        self.assertRaises(RuntimeError, pipeline.collide, ModelKamino(), DataKamino(), ContactsKamino())
 
     def test_02_make_and_collide(self):
         """
@@ -1071,7 +1071,7 @@ class TestPipelinePrimitive(unittest.TestCase):
         # Create a contacts container
         num_world_geom_pairs, *_ = builder.make_collision_candidate_pairs()
         capacity = [ngp * 8 for ngp in num_world_geom_pairs]
-        contacts = Contacts(capacity=capacity, device=self.default_device)
+        contacts = ContactsKamino(capacity=capacity, device=self.default_device)
         contacts.clear()
 
         # Create the collision pipeline

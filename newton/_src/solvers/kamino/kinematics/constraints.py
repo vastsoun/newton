@@ -23,7 +23,7 @@ from warp.context import Devicelike
 from ..core.data import DataKamino
 from ..core.model import ModelKamino
 from ..core.types import float32, int32, vec3f
-from ..geometry.contacts import ContactMode, Contacts
+from ..geometry.contacts import ContactMode, ContactsKamino
 from ..kinematics.limits import Limits
 
 ###
@@ -53,7 +53,7 @@ wp.set_module_options({"enable_backward": False})
 def get_max_constraints_per_world(
     model: ModelKamino,
     limits: Limits | None,
-    contacts: Contacts | None,
+    contacts: ContactsKamino | None,
 ) -> list[int]:
     """
     Returns the maximum number of constraints for each world in the model.
@@ -61,7 +61,7 @@ def get_max_constraints_per_world(
     Args:
         model (ModelKamino): The model for which to compute the maximum constraints.
         limits (Limits, optional): The container holding the allocated joint-limit data.
-        contacts (Contacts, optional): The container holding the allocated contacts data.
+        contacts (ContactsKamino, optional): The container holding the allocated contacts data.
 
     Returns:
         List[int]: A list of the maximum constraints for each world in the model.
@@ -80,8 +80,8 @@ def get_max_constraints_per_world(
 
     # Ensure the contacts container is valid
     if contacts is not None:
-        if not isinstance(contacts, Contacts):
-            raise TypeError(f"`contacts` is required to be of type `Contacts` but got {type(contacts)}.")
+        if not isinstance(contacts, ContactsKamino):
+            raise TypeError(f"`contacts` is required to be of type `ContactsKamino` but got {type(contacts)}.")
 
     # Compute the maximum number of constraints per world
     nw = model.info.num_worlds
@@ -96,7 +96,7 @@ def make_unilateral_constraints_info(
     model: ModelKamino,
     data: DataKamino,
     limits: Limits | None = None,
-    contacts: Contacts | None = None,
+    contacts: ContactsKamino | None = None,
     device: Devicelike = None,
 ):
     """
@@ -106,7 +106,7 @@ def make_unilateral_constraints_info(
         model (ModelKamino): The model container holding time-invariant data.
         data (DataKamino): The solver container holding time-varying data.
         limits (Limits, optional): The limits container holding the joint-limit data.
-        contacts (Contacts, optional): The contacts container holding the contact data.
+        contacts (ContactsKamino, optional): The contacts container holding the contact data.
         device (Devicelike, optional): The device on which to allocate the constraint info arrays.\n
             If None, the model's device will be used.
     """
@@ -185,8 +185,8 @@ def make_unilateral_constraints_info(
     # If a contacts container is provided, ensure it is valid
     # and then assign the entity counters to the model info.
     if contacts is not None:
-        if not isinstance(contacts, Contacts):
-            raise TypeError("`contacts` must be an instance of `Contacts`")
+        if not isinstance(contacts, ContactsKamino):
+            raise TypeError("`contacts` must be an instance of `ContactsKamino`")
         if contacts.data is not None and contacts.model_max_contacts_host > 0:
             _assign_model_contacts_info()
     else:
@@ -491,7 +491,7 @@ def unpack_constraint_solutions(
     model: ModelKamino,
     data: DataKamino,
     limits: Limits | None = None,
-    contacts: Contacts | None = None,
+    contacts: ContactsKamino | None = None,
 ):
     """
     Unpacks the constraint reactions and velocities into respective data containers.
@@ -502,7 +502,7 @@ def unpack_constraint_solutions(
         data (DataKamino): The solver container holding time-varying data.
         limits (Limits, optional): The limits container holding the joint-limit data.\n
             If None, limits will be skipped.
-        contacts (Contacts, optional): The contacts container holding the contact data.\n
+        contacts (ContactsKamino, optional): The contacts container holding the contact data.\n
             If None, contacts will be skipped.
     """
     # Unpack joint constraint multipliers if the model has joints

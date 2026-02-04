@@ -28,7 +28,7 @@ from warp.context import Devicelike
 from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
 from newton._src.solvers.kamino.core.data import DataKamino
 from newton._src.solvers.kamino.core.model import ModelKamino
-from newton._src.solvers.kamino.geometry.contacts import Contacts
+from newton._src.solvers.kamino.geometry.contacts import ContactsKamino
 from newton._src.solvers.kamino.geometry.unified import BroadPhaseMode, CollisionPipelineUnifiedKamino
 from newton._src.solvers.kamino.models.builders import basics, testing
 from newton._src.solvers.kamino.tests import setup_tests, test_context
@@ -154,7 +154,7 @@ def test_unified_pipeline(
         # Create a contacts container using the worst-case capacity of NxN over model-wise geom pairs
         # NOTE: This is required by the unified pipeline when using SAP and NXN broad-phases
         capacity = max_contacts_per_pair * ((builder.num_geoms * (builder.num_geoms - 1)) // 2)
-        contacts = Contacts(capacity=capacity, device=device)
+        contacts = ContactsKamino(capacity=capacity, device=device)
         contacts.clear()
 
         # Execute the unified collision detection pipeline

@@ -26,7 +26,7 @@ This module provides a front-end defined by:
 - :class:`ContactsData`:
     A simple dataclass defining the data layout and contents of discrete contacts.
 
-- :class:`Contacts`:
+- :class:`ContactsKamino`:
     A data interface class for allocating and managing contacts data. This
     serves as the container with which collision detection pipelines operate,
     storing all generated contacts.
@@ -61,7 +61,7 @@ This module provides a front-end defined by:
     geometry pairs and a narrow-phase based on the primitive colliders of Newton.
 """
 
-from .contacts import ContactMode, Contacts, ContactsData
+from .contacts import ContactMode, ContactsData, ContactsKamino
 from .detector import (
     CollisionDetector,
     CollisionDetectorSettings,
@@ -83,6 +83,6 @@ __all__ = [
     "CollisionPipelineType",
     "CollisionPipelineUnifiedKamino",
     "ContactMode",
-    "Contacts",
     "ContactsData",
+    "ContactsKamino",
 ]

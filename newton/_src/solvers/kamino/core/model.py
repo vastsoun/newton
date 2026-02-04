@@ -15,17 +15,19 @@
 
 """Constrained Rigid Multi-Body Model & Data Containers"""
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 
+# import numpy as np
 import warp as wp
-from warp.context import Devicelike
 
+# from ....geometry.flags import ShapeFlags
+# from ....sim.model import Model
 from .bodies import RigidBodiesData, RigidBodiesModel
 from .control import Control
-from .geometry import (
-    GeometriesData,
-    GeometriesModel,
-)
+from .data import ModelData, ModelDataInfo
+from .geometry import GeometriesData, GeometriesModel
 from .gravity import GravityModel
 from .joints import JointsData, JointsModel
 from .materials import MaterialPairsModel, MaterialsModel
@@ -40,9 +42,8 @@ from .world import WorldDescriptor
 
 __all__ = [
     "Model",
-    "ModelData",
-    "ModelDataInfo",
     "ModelInfo",
+    "ModelSize",
 ]
 
 
@@ -67,82 +68,6 @@ class ModelSize:
     - The sums are used for memory allocations.
     - The maximums are used to define 2D thread shapes: (num_worlds, max_of_max_XXX)
     - Where `XXX` is the maximum number of limits, contacts, unilaterals, or constraints in any world.
-
-    Attributes:
-        num_worlds (int):
-            The number of worlds represented in the model.
-        sum_of_num_bodies (int):
-            The total number of bodies in the model across all worlds.
-        max_of_num_bodies (int):
-            The maximum number of bodies in any world.
-        sum_of_num_joints (int):
-            The total number of joints in the model across all worlds.
-        max_of_num_joints (int):
-            The maximum number of joints in any world.
-        sum_of_num_passive_joints (int):
-            The total number of passive joints in the model across all worlds.
-        max_of_num_passive_joints (int):
-            The maximum number of passive joints in any world.
-        sum_of_num_actuated_joints (int):
-            The total number of actuated joints in the model across all worlds.
-        max_of_num_actuated_joints (int):
-            The maximum number of actuated joints in any world.
-        sum_of_num_geoms (int):
-            The total number of geometries in the model across all worlds.
-        max_of_num_geoms (int):
-            The maximum number of geometries in any world.
-        sum_of_num_material_pairs (int):
-            The total number of material pairs in the model across all worlds.
-        max_of_num_material_pairs (int):
-            The maximum number of material pairs in any world.
-        sum_of_num_body_dofs (int):
-            The total number of body DoFs in the model across all worlds.
-        max_of_num_body_dofs (int):
-            The maximum number of body DoFs in any world.
-        sum_of_num_joint_coords (int):
-            The total number of joint coordinates in the model across all worlds.
-        max_of_num_joint_coords (int):
-            The maximum number of joint coordinates in any world.
-        sum_of_num_joint_dofs (int):
-            The total number of joint DoFs in the model across all worlds.
-        max_of_num_joint_dofs (int):
-            The maximum number of joint DoFs in any world.
-        sum_of_num_passive_joint_coords (int):
-            The total number of passive joint coordinates in the model across all worlds.
-        max_of_num_passive_joint_coords (int):
-            The maximum number of passive joint coordinates in any world.
-        sum_of_num_passive_joint_dofs (int):
-            The total number of passive joint DoFs in the model across all worlds.
-        max_of_num_passive_joint_dofs (int):
-            The maximum number of passive joint DoFs in any world.
-        sum_of_num_actuated_joint_coords (int):
-            The total number of actuated joint coordinates in the model across all worlds.
-        max_of_num_actuated_joint_coords (int):
-            The maximum number of actuated joint coordinates in any world.
-        sum_of_num_actuated_joint_dofs (int):
-            The total number of actuated joint DoFs in the model across all worlds.
-        max_of_num_actuated_joint_dofs (int):
-            The maximum number of actuated joint DoFs in any world.
-        sum_of_num_joint_cts (int):
-            The total number of joint constraints in the model across all worlds.
-        max_of_num_joint_cts (int):
-            The maximum number of joint constraints in any world.
-        sum_of_max_limits (int):
-            The total maximum number of limits allocated for the model across all worlds.
-        max_of_max_limits (int):
-            The maximum number of active limits of any world.
-        sum_of_max_contacts (int):
-            The total maximum number of contacts allocated for the model across all worlds.
-        max_of_max_contacts (int):
-            The maximum number of active contacts of any world.
-        sum_of_max_unilaterals (int):
-            The maximum number of active unilateral entities, i.e. joint-limits and contacts.
-        max_of_max_unilaterals (int):
-            The maximum number of active unilaterals of any world.
-        sum_of_max_total_cts (int):
-            The maximum number of active constraints.
-        max_of_max_total_cts (int):
-            The maximum number of active constraints of any world.
     """
 
     num_worlds: int = 0
@@ -319,99 +244,11 @@ class ModelSize:
         return "\n".join(lines)
 
 
+# TODO: Rename to also include `World` since it actually holds per-world model info.
 @dataclass
 class ModelInfo:
     """
     A container to hold the time-invariant information and meta-data of a model.
-
-    Attributes:
-        num_worlds (int): The number of worlds represented in the model.\n
-            This is a host-side cache and is not mirrored on-device.
-        num_bodies (wp.array): The total number of bodies in the model.\n
-            Shape of ``(num_worlds,)`` and type :class:`int`.
-        num_joints (wp.array): The total number of joints in the model.\n
-            Shape of ``(num_worlds,)`` and type :class:`int`.
-        num_passive_joints (wp.array): The total number of passive joints in the model.\n
-            Shape of ``(num_worlds,)`` and type :class:`int`.
-        num_actuated_joints (wp.array): The total number of actuated joints in the model.\n
-            Shape of ``(num_worlds,)`` and type :class:`int`.
-        num_geoms (wp.array): The total number of geometries in the model.\n
-            Shape of ``(num_worlds,)`` and type :class:`int`.
-        max_limits (wp.array): The maximum number of limits allocated for the model.\n
-            Shape of ``(num_worlds,)`` and type :class:`int`.
-        max_contacts (wp.array): The maximum number of contacts allocated for the model.\n
-            Shape of ``(num_worlds,)`` and type :class:`int`.
-        num_body_dofs (wp.array): The total number of body DoFs in the model.\n
-            Shape of ``(num_worlds,)`` and type :class:`int`.
-        num_joint_coords (wp.array): The total number of joint coordinates in the model.\n
-            Shape of ``(num_worlds,)`` and type :class:`int`.
-        num_joint_dofs (wp.array): The total number of joint DoFs in the model.\n
-            Shape of ``(num_worlds,)`` and type :class:`int`.
-        num_passive_joint_coords (wp.array): The total number of passive joint coordinates in the model.\n
-            Shape of ``(num_worlds,)`` and type :class:`int`.
-        num_passive_joint_dofs (wp.array): The total number of passive joint DoFs in the model.\n
-            Shape of ``(num_worlds,)`` and type :class:`int`.
-        num_actuated_joint_coords (wp.array): The total number of actuated joint coordinates in the model.\n
-            Shape of ``(num_worlds,)`` and type :class:`int`.
-        num_actuated_joint_dofs (wp.array): The total number of actuated joint DoFs in the model.\n
-            Shape of ``(num_worlds,)`` and type :class:`int`.
-        num_joint_cts (wp.array): The total number of joint constraints in the model.\n
-            Shape of ``(num_worlds,)`` and type :class:`int`.
-        max_limit_cts (wp.array): The maximum number of active limit constraints of the model.\n
-            Shape of ``(num_worlds,)`` and type :class:`int`.
-        max_contact_cts (wp.array): The maximum number of active contact constraints of the model.\n
-            Shape of ``(num_worlds,)`` and type :class:`int`.
-        max_total_cts (wp.array): The maximum total number of active constraints of the model.\n
-            Shape of ``(num_worlds,)`` and type :class:`int`.
-        bodies_offset (wp.array): The body index offset of each world w.r.t the model.\n
-            Shape of ``(num_worlds,)`` and type :class:`int`.
-        joints_offset (wp.array): The joint index offset of each world w.r.t the model.\n
-            Shape of ``(num_worlds,)`` and type :class:`int`.
-        limits_offset (wp.array): The limit index offset of each world w.r.t the model.\n
-            Shape of ``(num_worlds,)`` and type :class:`int`.
-        contacts_offset (wp.array): The contact index offset of world w.r.t the model.\n
-            Shape of ``(num_worlds,)`` and type :class:`int`.
-        unilaterals_offset (wp.array): The unilateral index offset of each world w.r.t the model.\n
-            Shape of ``(num_worlds,)`` and type :class:`int`.
-        body_dofs_offset (wp.array): The body DoFs index offset of each world w.r.t the model.\n
-            Shape of ``(num_worlds,)`` and type :class:`int`.
-        joint_coords_offset (wp.array): The joint coordinates index offset of each world w.r.t the model.\n
-            Shape of ``(num_worlds,)`` and type :class:`int`.
-        joint_dofs_offset (wp.array): The joint DoFs index offset of each world w.r.t the model.\n
-            Shape of ``(num_worlds,)`` and type :class:`int`.
-        joint_passive_coords_offset (wp.array):
-            The passive joint coordinates index offset of each world w.r.t the model.\n
-            Shape of ``(num_worlds,)`` and type :class:`int`.
-        joint_passive_dofs_offset (wp.array):
-            The passive joint DoFs index offset of each world w.r.t the model.\n
-            Shape of ``(num_worlds,)`` and type :class:`int`.
-        joint_actuated_coords_offset (wp.array):
-            The actuated joint coordinates index offset of each world w.r.t the model.\n
-            Shape of ``(num_worlds,)`` and type :class:`int`.
-        joint_actuated_dofs_offset (wp.array): The actuated joint DoFs index offset of each world w.r.t the model.\n
-            Shape of ``(num_worlds,)`` and type :class:`int`.
-        joint_cts_offset (wp.array): The joint constraints index offset of each world w.r.t the model.\n
-            Shape of ``(num_worlds,)`` and type :class:`int`.
-        limit_cts_offset (wp.array): The limit constraints index offset of each world w.r.t the model.\n
-            Shape of ``(num_worlds,)`` and type :class:`int`.
-        contact_cts_offset (wp.array): The contact constraints index offset of each world w.r.t the model.\n
-            Shape of ``(num_worlds,)`` and type :class:`int`.
-        unilateral_cts_offset (wp.array): The unilateral constraints index offset of each world w.r.t the model.\n
-            Shape of ``(num_worlds,)`` and type :class:`int`.
-        total_cts_offset (wp.array): The index offset of the total constraints block of each world.\n
-            Shape of ``(num_worlds,)`` and type :class:`int`.
-        base_body_index (wp.array): The index of the base body assigned in each world w.r.t the model.\n
-            Shape of ``(num_worlds,)`` and type :class:`int`.
-        base_joint_index (wp.array): The index of the base joint assigned in each world w.r.t the model.\n
-            Shape of ``(num_worlds,)`` and type :class:`int`.
-        mass_min (wp.array): The minimum body mass in each world.\n
-            Shape of ``(num_worlds,)`` and type :class:`float`.
-        mass_max (wp.array): The maximum body mass in each world.\n
-            Shape of ``(num_worlds,)`` and type :class:`float`.
-        mass_total (wp.array): The total body mass in each world.\n
-            Shape of ``(num_worlds,)`` and type :class:`float`.
-        inertia_total (wp.array):  Total diagonal inertia over all bodies in each world.\n
-            Shape of ``(num_worlds,)`` and type :class:`float`.
     """
 
     ###
@@ -548,35 +385,35 @@ class ModelInfo:
     bodies_offset: wp.array | None = None
     """
     The body index offset of each world w.r.t the model.\n
-    Used to index into world-specific blocks of per-body arrays.\n
+    Used to index into world-specific blocks of per-body entity arrays.\n
     Shape of ``(num_worlds,)`` and type :class:`int`.
     """
 
     joints_offset: wp.array | None = None
     """
     The joint index offset of each world w.r.t the model.\n
-    Used to index into world-specific blocks of per-joint arrays.\n
+    Used to index into world-specific blocks of per-joint entity arrays.\n
     Shape of ``(num_worlds,)`` and type :class:`int`.
     """
 
     limits_offset: wp.array | None = None
     """
     The limit index offset of each world w.r.t the model.\n
-    Used to index into world-specific blocks of per-limit arrays.\n
+    Used to index into world-specific blocks of per-limit entity arrays.\n
     Shape of ``(num_worlds,)`` and type :class:`int`.
     """
 
     contacts_offset: wp.array | None = None
     """
     The contact index offset of each world w.r.t the model.\n
-    Used to index into world-specific blocks of per-contact arrays.\n
+    Used to index into world-specific blocks of per-contact entity arrays.\n
     Shape of ``(num_worlds,)`` and type :class:`int`.
     """
 
     unilaterals_offset: wp.array | None = None
     """
     The index offset of the unilaterals (limits + contacts) block of each world.\n
-    Used to index into world-specific blocks of per-unilateral arrays.\n
+    Used to index into world-specific blocks of per-unilateral entity arrays.\n
     Shape of ``(num_worlds,)`` and type :class:`int`.
     """
 
@@ -721,141 +558,13 @@ class ModelInfo:
     """
 
 
-@dataclass
-class ModelDataInfo:
-    """
-    A container to hold the time-varying information about the set of active constraints.
-    """
-
-    ###
-    # Total Constraints
-    ###
-
-    num_total_cts: wp.array | None = None
-    """
-    The total number of active constraints.\n
-    Shape of ``(num_worlds,)`` and type :class:`int32`.
-    """
-
-    ###
-    # Limits
-    ###
-
-    num_limits: wp.array | None = None
-    """
-    The number of active limits in each world.\n
-    Shape of ``(num_worlds,)`` and type :class:`int32`.
-    """
-
-    num_limit_cts: wp.array | None = None
-    """
-    The number of active limit constraints.\n
-    Shape of ``(num_worlds,)`` and type :class:`int32`.
-    """
-
-    limit_cts_group_offset: wp.array | None = None
-    """
-    The index offset of the limit constraints group within the constraints block of each world.\n
-    Shape of ``(num_worlds,)`` and type :class:`int32`.
-    """
-
-    ###
-    # Contacts
-    ###
-
-    num_contacts: wp.array | None = None
-    """
-    The number of active contacts in each world.\n
-    Shape of ``(num_worlds,)`` and type :class:`int32`.
-    """
-
-    num_contact_cts: wp.array | None = None
-    """
-    The number of active contact constraints.\n
-    Shape of ``(num_worlds,)`` and type :class:`int32`.
-    """
-
-    contact_cts_group_offset: wp.array | None = None
-    """
-    The index offset of the contact constraints group within the constraints block of each world.\n
-    Shape of ``(num_worlds,)`` and type :class:`int32`.
-    """
-
-
-@dataclass
-class ModelData:
-    """
-    A container to hold the time-varying data of the model entities.
-
-    It includes all model-specific intermediate quantities used throughout the simulation, as needed
-    to update the state of rigid bodies, joints, geometries, active constraints and time-keeping.
-
-    Attributes:
-        info (ModelDataInfo): The info container holding information about the set of active constraints.
-        time (TimeData): Time state of the model, including the current simulation step and time.
-        bodies (RigidBodiesData): States of all rigid bodies in the model: poses, twists, wrenches,
-            and moments of inertia computed in world coordinates.
-        joints (JointsData): States of joints in the model: joint frames computed in world coordinates,
-            constraint residuals and reactions, and generalized (DoF) quantities.
-        geoms (CollisionGeometriesData): States of geometries in the model:
-            poses, AABBs etc. computed in world coordinates.
-    """
-
-    info: ModelDataInfo | None = None
-    """The info container holding information about the set of active constraints."""
-
-    time: TimeData | None = None
-    """Time state of the model, including the current simulation step and time."""
-
-    bodies: RigidBodiesData | None = None
-    """
-    States of all rigid bodies in the model: poses, twists, wrenches,
-    and moments of inertia computed in world coordinates.
-    """
-
-    joints: JointsData | None = None
-    """
-    States of joints in the model: joint frames computed in world coordinates,
-    constraint residuals and reactions, and generalized (DoF) quantities.
-    """
-
-    geoms: GeometriesData | None = None
-    """States of geometries in the model: poses computed in world coordinates."""
-
-
 class Model:
     """
     A container to hold the time-invariant system model data.
-
-    Attributes:
-        device (Devicelike):
-            The device on which the model data is allocated.
-        requires_grad (bool):
-            Whether the model requires gradients for its state. Defaults to `False`.
-        size (ModelSize):
-            Host-side cache of the model summary sizes.\n
-            This is used for memory allocations and kernel thread dimensions.
-        worlds (list[WorldDescriptor]):
-            Host-side cache of the world descriptors.\n
-            This is used to construct the model and for memory allocations.
-        info (ModelInfo):
-            The model info container holding the information and meta-data of the model.
-        time (TimeModel):
-            The time model container holding time-step of each world.
-        gravity (GravityModel):
-            The gravity model container holding the gravity configurations for each world.
-        bodies (RigidBodiesModel):
-            The rigid bodies model container holding all rigid body entities in the model.
-        joints (JointsModel):
-            The joints model container holding all joint entities in the model.
-        geoms (GeometriesModel):
-            The geometries model container holding all geometry entities in the model.
-        material_pairs (MaterialPairsModel):
-            The material pairs model container holding all material pairs in the model.
     """
 
     def __init__(self):
-        self.device: Devicelike = None
+        self.device: wp.DeviceLike = None
         """The device on which the model data is allocated.\n
         Defaults to `None`, indicating the default/preferred Warp device.
         """
@@ -909,7 +618,7 @@ class Model:
         self,
         unilateral_cts: bool = False,
         requires_grad: bool = False,
-        device: Devicelike = None,
+        device: wp.DeviceLike = None,
     ) -> ModelData:
         """
         Creates a model data container with the initial state of the model entities.
@@ -919,7 +628,7 @@ class Model:
                 Whether to include unilateral constraints (limits and contacts) in the model data. Defaults to `True`.
             requires_grad (`bool`, optional):
                 Whether the model data should require gradients. Defaults to `False`.
-            device (`Devicelike`, optional):
+            device (`wp.DeviceLike`, optional):
                 The device to create the model data on. If not specified, the model's device is used.
                 Defaults to `None`. If not specified, the model's device is used.
         """
@@ -1008,14 +717,14 @@ class Model:
             geoms=geoms,
         )
 
-    def state(self, requires_grad: bool = False, device: Devicelike = None) -> State:
+    def state(self, requires_grad: bool = False, device: wp.DeviceLike = None) -> State:
         """
         Creates state container initialized to the initial body state defined in the model.
 
         Parameters:
             requires_grad (`bool`, optional):
                 Whether the state should require gradients. Defaults to `False`.
-            device (`Devicelike`, optional):
+            device (`wp.DeviceLike`, optional):
                 The device to create the state on. If not specified, the model's device is used.
         """
         # If no device is specified, use the model's device
@@ -1037,14 +746,14 @@ class Model:
         # Return the constructed state container
         return state
 
-    def control(self, requires_grad: bool = False, device: Devicelike = None) -> Control:
+    def control(self, requires_grad: bool = False, device: wp.DeviceLike = None) -> Control:
         """
         Creates a control container with all values initialized to zeros.
 
         Parameters:
             requires_grad (`bool`, optional):
                 Whether the control container should require gradients. Defaults to `False`.
-            device (`Devicelike`, optional):
+            device (`wp.DeviceLike`, optional):
                 The device to create the control container on. If not specified, the model's device is used.
         """
         # If no device is specified, use the model's device

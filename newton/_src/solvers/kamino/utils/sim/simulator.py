@@ -26,7 +26,7 @@ from warp.context import Devicelike
 from ...core.builder import ModelBuilder
 from ...core.control import ControlKamino
 from ...core.model import ModelKamino
-from ...core.state import State
+from ...core.state import StateKamino
 from ...core.types import FloatArrayLike
 from ...geometry import CollisionDetector, CollisionDetectorSettings
 from ...solver_kamino import SolverKamino, SolverKaminoSettings
@@ -120,9 +120,9 @@ class SimulatorData:
     Holds the time-varying data for the simulation.
 
     Attributes:
-        state_p (State):
+        state_p (StateKamino):
             The previous state data of the simulation
-        state_n (State):
+        state_n (StateKamino):
             The current state data of the simulation, computed from the previous step as:
             ``state_n = f(state_p, control)``, where ``f()`` is the system dynamics function.
         control (ControlKamino):
@@ -134,8 +134,8 @@ class SimulatorData:
         """
         Initializes the simulator data for the given model on the specified device.
         """
-        self.state_p: State = model.state(device=model.device)
-        self.state_n: State = model.state(device=model.device)
+        self.state_p: StateKamino = model.state(device=model.device)
+        self.state_n: StateKamino = model.state(device=model.device)
         self.control: ControlKamino = model.control(device=model.device)
 
     def cache_state(self):
@@ -268,14 +268,14 @@ class Simulator:
         return self._data
 
     @property
-    def state(self) -> State:
+    def state(self) -> StateKamino:
         """
         Returns the current state of the simulation.
         """
         return self._data.state_n
 
     @property
-    def state_previous(self) -> State:
+    def state_previous(self) -> StateKamino:
         """
         Returns the previous state of the simulation.
         """

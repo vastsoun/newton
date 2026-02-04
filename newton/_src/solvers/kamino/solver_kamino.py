@@ -36,7 +36,7 @@ from .core.bodies import update_body_inertias, update_body_wrenches
 from .core.control import ControlKamino
 from .core.joints import JointCorrectionMode
 from .core.model import DataKamino, ModelKamino
-from .core.state import State
+from .core.state import StateKamino
 from .core.time import advance_time
 from .core.types import float32, int32, transformf, vec6f
 from .dynamics.dual import DualProblem, DualProblemSettings
@@ -211,7 +211,7 @@ class SolverKamino(SolverBase):
           International Journal for Numerical Methods in Engineering, 122(16), 4093-4113.
           https://onlinelibrary.wiley.com/doi/full/10.1002/nme.6693
 
-    After constructing :class:`ModelKamino`, :class:`State`, :class:`ControlKamino` and :class:`Contacts`
+    After constructing :class:`ModelKamino`, :class:`StateKamino`, :class:`ControlKamino` and :class:`Contacts`
     objects, this physics solver may be used to advance the simulation state forward in time.
 
     Example
@@ -230,10 +230,10 @@ class SolverKamino(SolverBase):
 
     """
 
-    ResetCallbackType = Callable[["SolverKamino", State], None]
+    ResetCallbackType = Callable[["SolverKamino", StateKamino], None]
     """Defines the type signature for reset callback functions."""
 
-    StepCallbackType = Callable[["SolverKamino", State, State, ControlKamino, Contacts], None]
+    StepCallbackType = Callable[["SolverKamino", StateKamino, StateKamino, ControlKamino, Contacts], None]
     """Defines the type signature for step callback functions."""
 
     def __init__(
@@ -445,7 +445,7 @@ class SolverKamino(SolverBase):
 
     def reset(
         self,
-        state_out: State,
+        state_out: StateKamino,
         world_mask: wp.array | None = None,
         actuator_q: wp.array | None = None,
         actuator_u: wp.array | None = None,
@@ -463,7 +463,7 @@ class SolverKamino(SolverBase):
         `state_out` must initially contain the current state of the simulation.
 
         Args:
-            state_out (State):
+            state_out (StateKamino):
                 The output state container to which the reset state data is written.
             world_mask (wp.array, optional):
                 Optional array of per-world masks indicating which worlds should be reset.\n
@@ -585,8 +585,8 @@ class SolverKamino(SolverBase):
     @override
     def step(
         self,
-        state_in: State,
-        state_out: State,
+        state_in: StateKamino,
+        state_out: StateKamino,
         control: ControlKamino,
         contacts: Contacts | None = None,
         dt: float | None = None,
@@ -597,9 +597,9 @@ class SolverKamino(SolverBase):
         `contacts`. The updated state is written to `state_out`.
 
         Args:
-            state_in (State):
+            state_in (StateKamino):
                 The input current state of the simulation.
-            state_out (State):
+            state_out (StateKamino):
                 The output next state after time integration.
             control (ControlKamino):
                 The input controls applied to the system.
@@ -658,35 +658,41 @@ class SolverKamino(SolverBase):
     # Internals - Callback Operations
     ###
 
-    def _run_pre_reset_callback(self, state_out: State):
+    def _run_pre_reset_callback(self, state_out: StateKamino):
         """
         Runs the pre-reset callback if it has been set.
         """
         if self._pre_reset_cb is not None:
             self._pre_reset_cb(self, state_out)
 
-    def _run_post_reset_callback(self, state_out: State):
+    def _run_post_reset_callback(self, state_out: StateKamino):
         """
         Runs the post-reset callback if it has been set.
         """
         if self._post_reset_cb is not None:
             self._post_reset_cb(self, state_out)
 
-    def _run_prestep_callback(self, state_in: State, state_out: State, control: ControlKamino, contacts: Contacts):
+    def _run_prestep_callback(
+        self, state_in: StateKamino, state_out: StateKamino, control: ControlKamino, contacts: Contacts
+    ):
         """
         Runs the pre-step callback if it has been set.
         """
         if self._pre_step_cb is not None:
             self._pre_step_cb(self, state_in, state_out, control, contacts)
 
-    def _run_midstep_callback(self, state_in: State, state_out: State, control: ControlKamino, contacts: Contacts):
+    def _run_midstep_callback(
+        self, state_in: StateKamino, state_out: StateKamino, control: ControlKamino, contacts: Contacts
+    ):
         """
         Runs the mid-step callback if it has been set.
         """
         if self._mid_step_cb is not None:
             self._mid_step_cb(self, state_in, state_out, control, contacts)
 
-    def _run_poststep_callback(self, state_in: State, state_out: State, control: ControlKamino, contacts: Contacts):
+    def _run_poststep_callback(
+        self, state_in: StateKamino, state_out: StateKamino, control: ControlKamino, contacts: Contacts
+    ):
         """
         Executes the post-step callback if it has been set.
         """
@@ -697,7 +703,7 @@ class SolverKamino(SolverBase):
     # Internals - Input/Output Operations
     ###
 
-    def _read_step_inputs(self, state_in: State, control_in: ControlKamino):
+    def _read_step_inputs(self, state_in: StateKamino, control_in: ControlKamino):
         """
         Updates the internal solver data from the input state and control.
         """
@@ -712,7 +718,7 @@ class SolverKamino(SolverBase):
         wp.copy(self._data.joints.lambda_j, state_in.lambda_j)
         wp.copy(self._data.joints.tau_j, control_in.tau_j)
 
-    def _write_step_output(self, state_out: State):
+    def _write_step_output(self, state_out: StateKamino):
         """
         Updates the output state from the internal solver data.
         """
@@ -769,7 +775,7 @@ class SolverKamino(SolverBase):
         # Reset the forward dynamics solver
         self._solver_fd.reset()
 
-    def _reset_to_default_state(self, state_out: State, world_mask: wp.array):
+    def _reset_to_default_state(self, state_out: StateKamino, world_mask: wp.array):
         """
         Resets the simulation to the default state defined in the model.
         """
@@ -781,7 +787,7 @@ class SolverKamino(SolverBase):
 
     def _reset_to_base_state(
         self,
-        state_out: State,
+        state_out: StateKamino,
         world_mask: wp.array,
         base_q: wp.array | None = None,
         base_u: wp.array | None = None,
@@ -807,7 +813,7 @@ class SolverKamino(SolverBase):
 
     def _reset_with_fk_solve(
         self,
-        state_out: State,
+        state_out: StateKamino,
         world_mask: wp.array,
         joint_q: wp.array | None = None,
         joint_u: wp.array | None = None,
@@ -913,7 +919,7 @@ class SolverKamino(SolverBase):
             correction=self._settings.rotation_correction,
         )
 
-    def _update_intermediates(self, state_in: State):
+    def _update_intermediates(self, state_in: StateKamino):
         """
         Updates intermediate quantities required for the forward dynamics solve.
         """
@@ -1052,7 +1058,7 @@ class SolverKamino(SolverBase):
         wp.copy(self._data.joints.q_j_p, self._data.joints.q_j)
         self._update_joints_data(q_j_p=self._data.joints.q_j_p)
 
-    def _compute_metrics(self, state_in: State, contacts: Contacts | None = None):
+    def _compute_metrics(self, state_in: StateKamino, contacts: Contacts | None = None):
         """
         Computes performance metrics measuring the physical fidelity of the dynamics solver solution.
         """

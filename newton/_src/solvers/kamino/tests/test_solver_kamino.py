@@ -24,7 +24,7 @@ import warp as wp
 from newton._src.solvers.kamino.core.control import ControlKamino
 from newton._src.solvers.kamino.core.joints import JointActuationType, JointCorrectionMode
 from newton._src.solvers.kamino.core.model import DataKamino, ModelKamino
-from newton._src.solvers.kamino.core.state import State
+from newton._src.solvers.kamino.core.state import StateKamino
 from newton._src.solvers.kamino.core.types import float32, int32, transformf, vec6f
 from newton._src.solvers.kamino.dynamics import DualProblem, DualProblemSettings
 from newton._src.solvers.kamino.examples import print_progress_bar
@@ -80,7 +80,7 @@ def _test_control_callback(
 
 
 def test_prestep_callback(
-    solver: SolverKamino, state_in: State, state_out: State, control: ControlKamino, contacts: Contacts
+    solver: SolverKamino, state_in: StateKamino, state_out: StateKamino, control: ControlKamino, contacts: Contacts
 ):
     """
     A control callback function
@@ -124,9 +124,9 @@ def assert_solver_components(testcase: unittest.TestCase, solver: SolverKamino):
     testcase.assertIsInstance(solver._solver_fd, PADMMSolver)
 
 
-def assert_states_equal(testcase: unittest.TestCase, state_0: State, state_1: State):
-    testcase.assertIsInstance(state_0, State)
-    testcase.assertIsInstance(state_1, State)
+def assert_states_equal(testcase: unittest.TestCase, state_0: StateKamino, state_1: StateKamino):
+    testcase.assertIsInstance(state_0, StateKamino)
+    testcase.assertIsInstance(state_1, StateKamino)
     np.testing.assert_array_equal(state_0.q_i.numpy(), state_1.q_i.numpy())
     np.testing.assert_array_equal(state_0.u_i.numpy(), state_1.u_i.numpy())
     np.testing.assert_array_equal(state_0.w_i.numpy(), state_1.w_i.numpy())
@@ -136,9 +136,9 @@ def assert_states_equal(testcase: unittest.TestCase, state_0: State, state_1: St
     np.testing.assert_array_equal(state_0.lambda_j.numpy(), state_1.lambda_j.numpy())
 
 
-def assert_states_close(testcase: unittest.TestCase, state_0: State, state_1: State):
-    testcase.assertIsInstance(state_0, State)
-    testcase.assertIsInstance(state_1, State)
+def assert_states_close(testcase: unittest.TestCase, state_0: StateKamino, state_1: StateKamino):
+    testcase.assertIsInstance(state_0, StateKamino)
+    testcase.assertIsInstance(state_1, StateKamino)
     np.testing.assert_allclose(state_0.q_i.numpy(), state_1.q_i.numpy(), rtol=rtol, atol=atol)
     np.testing.assert_allclose(state_0.u_i.numpy(), state_1.u_i.numpy(), rtol=rtol, atol=atol)
     np.testing.assert_allclose(state_0.w_i.numpy(), state_1.w_i.numpy(), rtol=rtol, atol=atol)
@@ -151,14 +151,14 @@ def assert_states_close(testcase: unittest.TestCase, state_0: State, state_1: St
 def assert_states_close_masked(
     testcase: unittest.TestCase,
     model: ModelKamino,
-    state_0: State,
-    state_n: State,
-    state_n_ref: State,
+    state_0: StateKamino,
+    state_n: StateKamino,
+    state_n_ref: StateKamino,
     world_mask: wp.array,
 ):
     testcase.assertIsInstance(model, ModelKamino)
-    testcase.assertIsInstance(state_0, State)
-    testcase.assertIsInstance(state_n, State)
+    testcase.assertIsInstance(state_0, StateKamino)
+    testcase.assertIsInstance(state_n, StateKamino)
 
     num_bodies_per_world = model.size.max_of_num_bodies
     num_joint_dofs_per_world = model.size.max_of_num_joint_dofs
@@ -208,8 +208,8 @@ def assert_states_close_masked(
 def step_solver(
     num_steps: int,
     solver: SolverKamino,
-    state_p: State,
-    state_n: State,
+    state_p: StateKamino,
+    state_n: StateKamino,
     control: ControlKamino,
     contacts: Contacts | None = None,
     dt: float = 0.001,

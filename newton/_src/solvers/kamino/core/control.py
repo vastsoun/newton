@@ -13,13 +13,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Defines the Control container for Kamino."""
+"""Defines the control container of Kamino."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
 import warp as wp
+
+from ....sim.control import Control
+
+###
+# Types
+###
 
 
 @dataclass
@@ -66,3 +72,16 @@ class ControlKamino:
         if self.tau_j is None or other.tau_j is None:
             raise ValueError("Error copying from/to uninitialized ControlKamino")
         wp.copy(self.tau_j, other.tau_j)
+
+    @classmethod
+    def from_newton(cls, control: Control) -> ControlKamino:
+        """
+        Constructs a ControlKamino object from a :class:`newton.Control` object.
+
+        This operation serves only as a adaptor-like constructor to interface a
+        :class:`newton.Control`, effectively creating an alias without copying data.
+
+        Args:
+            control: The source :class:`newton.Control` object to be adapted.
+        """
+        return ControlKamino(tau_j=control.joint_f)

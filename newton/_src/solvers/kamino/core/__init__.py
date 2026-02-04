@@ -20,10 +20,10 @@ KAMINO: Core Module
 from .builder import ModelBuilder
 from .control import ControlKamino
 from .model import DataKamino, ModelKamino
-from .state import State
+from .state import StateKamino
 
 ###
 # Module interface
 ###
 
-__all__ = ["ControlKamino", "DataKamino", "ModelBuilder", "ModelKamino", "State"]
+__all__ = ["ControlKamino", "DataKamino", "ModelBuilder", "ModelKamino", "StateKamino"]

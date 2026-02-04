@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Constrained Rigid Multi-Body Model & Data Containers"""
+"""Defines the model container of Kamino."""
 
 from __future__ import annotations
 
@@ -38,7 +38,7 @@ from .joints import (
 )
 from .materials import MaterialManager, MaterialPairsModel, MaterialsModel
 from .shapes import convert_newton_geo_to_kamino_shape
-from .state import State
+from .state import StateKamino
 from .time import TimeData, TimeModel
 from .types import float32, int32, mat33f, transformf, vec4f, vec6f
 from .world import WorldDescriptor
@@ -1248,7 +1248,7 @@ class ModelKamino:
             geoms=geoms,
         )
 
-    def state(self, requires_grad: bool = False, device: wp.DeviceLike = None) -> State:
+    def state(self, requires_grad: bool = False, device: wp.DeviceLike = None) -> StateKamino:
         """
         Creates state container initialized to the initial body state defined in the model.
 
@@ -1264,7 +1264,7 @@ class ModelKamino:
 
         # Create a new state container with the initial state of the model entities on the specified device
         with wp.ScopedDevice(device=device):
-            state = State(
+            state = StateKamino(
                 q_i=wp.clone(self.bodies.q_i_0, requires_grad=requires_grad),
                 u_i=wp.clone(self.bodies.u_i_0, requires_grad=requires_grad),
                 w_i=wp.zeros_like(self.bodies.u_i_0, requires_grad=requires_grad),

@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Defines the State container for Kamino."""
+"""Defines the state container of Kamino."""
 
 from __future__ import annotations
 
@@ -21,17 +21,25 @@ from dataclasses import dataclass
 
 import warp as wp
 
+from ....sim.model import Model
+from ....sim.state import State
+from .types import vec6f
+
+###
+# Types
+###
+
 
 @dataclass
-class State:
+class StateKamino:
     """
     Represents the time-varying state of a :class:`ModelKamino` in a simulation.
 
-    The State object holds all dynamic quantities that change over time during simulation,
+    The StateKamino object holds all dynamic quantities that change over time during simulation,
     such as rigid body poses, twists, and wrenches, as well as joint coordinates, velocities,
     and constraint forces.
 
-    State objects are typically created via :meth:`kamino.ModelKamino.state()` and are used to
+    StateKamino objects are typically created via :meth:`kamino.ModelKamino.state()` and are used to
     store and update the simulation's current configuration and derived data.
 
     For constrained rigid multi-body system, the state is defined formally using either:
@@ -101,24 +109,24 @@ class State:
     Shape is ``(num_joint_cts,)`` and dtype is :class:`float32`.
     """
 
-    def copy_to(self, other: State) -> None:
+    def copy_to(self, other: StateKamino) -> None:
         """
-        Copy the State data to another State object.
+        Copy the StateKamino data to another StateKamino object.
 
         Args:
-            other: The target State object to copy data into.
+            other: The target StateKamino object to copy data into.
         """
         other.copy_from(self)
 
-    def copy_from(self, other: State) -> None:
+    def copy_from(self, other: StateKamino) -> None:
         """
-        Copy the State data from another State object.
+        Copy the StateKamino data from another StateKamino object.
 
         Args:
-            other: The source State object to copy data from.
+            other: The source StateKamino object to copy data from.
         """
         if self.q_i is None or other.q_i is None:
-            raise ValueError("Error copying from/to uninitialized State")
+            raise ValueError("Error copying from/to uninitialized StateKamino")
 
         wp.copy(self.q_i, other.q_i)
         wp.copy(self.u_i, other.u_i)
@@ -127,3 +135,25 @@ class State:
         wp.copy(self.q_j_p, other.q_j_p)
         wp.copy(self.dq_j, other.dq_j)
         wp.copy(self.lambda_j, other.lambda_j)
+
+    @classmethod
+    def from_newton(cls, model: Model, state: State) -> StateKamino:
+        """
+        Constructs a StateKamino object from a :class:`newton.State` object.
+
+        This operation serves only as a adaptor-like constructor to interface a
+        :class:`newton.State`, effectively creating an alias without copying data.
+
+        Args:
+            state: The source :class:`newton.State` object to be adapted.
+        """
+        with wp.ScopedDevice(state.device):
+            return StateKamino(
+                q_i=state.body_q,
+                u_i=state.body_qd,
+                w_i=state.body_f.view(dtype=vec6f),  # TODO: change to wp.spatial_vector
+                q_j=state.joint_q,
+                q_j_p=wp.clone(state.joint_q),
+                dq_j=state.joint_qd,
+                lambda_j=wp.array(shape=(model.joint_constraint_count,), dtype=wp.float32),
+            )

@@ -612,7 +612,7 @@ class TestKinematicsJacobians(unittest.TestCase):
 
         # Create the collision detector
         settings = CollisionDetectorSettings(max_contacts_per_world=max_world_contacts, pipeline="primitive")
-        detector = CollisionDetector(model=model, builder=builder, settings=settings, device=self.default_device)
+        detector = CollisionDetector(model=model, settings=settings, device=self.default_device)
 
         # Create the constraints info
         make_unilateral_constraints_info(
@@ -726,7 +726,7 @@ class TestKinematicsJacobians(unittest.TestCase):
 
         # Create the collision detector
         settings = CollisionDetectorSettings(max_contacts_per_world=max_world_contacts, pipeline="primitive")
-        detector = CollisionDetector(model=model, builder=builder, settings=settings, device=self.default_device)
+        detector = CollisionDetector(model=model, settings=settings, device=self.default_device)
 
         # Create the constraints info
         make_unilateral_constraints_info(
@@ -814,7 +814,7 @@ class TestKinematicsJacobians(unittest.TestCase):
 
         # Create the collision detector
         settings = CollisionDetectorSettings(max_contacts_per_world=max_world_contacts, pipeline="primitive")
-        detector = CollisionDetector(model=model, builder=builder, settings=settings, device=self.default_device)
+        detector = CollisionDetector(model=model, settings=settings, device=self.default_device)
 
         # Create the constraints info
         make_unilateral_constraints_info(

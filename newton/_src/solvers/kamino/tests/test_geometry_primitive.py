@@ -1074,7 +1074,7 @@ class TestPipelinePrimitive(unittest.TestCase):
         contacts.clear()
 
         # Create the collision pipeline
-        pipeline = CollisionPipelinePrimitive(builder=builder, device=self.default_device)
+        pipeline = CollisionPipelinePrimitive(model=model, device=self.default_device)
 
         # Run collision detection
         pipeline.collide(model, data, contacts)

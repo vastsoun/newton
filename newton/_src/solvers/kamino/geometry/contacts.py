@@ -78,12 +78,12 @@ Used when allocating contact data without a specified capacity.\n
 Set to `128`.
 """
 
-DEFAULT_GEOM_PAIR_MAX_CONTACTS: int = 8
+DEFAULT_GEOM_PAIR_MAX_CONTACTS: int = 12
 """
 The global default for maximum number of contacts per geom-pair.\n
 Used when allocating contact data without a specified capacity.\n
 Ignored for mesh-based collisions.\n
-Set to `8` (with box-box collisions being a prototypical case).
+Set to `12` (with box-box collisions being a prototypical case).
 """
 
 DEFAULT_GEOM_PAIR_CONTACT_MARGIN: float = 1e-5

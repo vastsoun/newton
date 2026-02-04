@@ -38,7 +38,6 @@ from ....geometry.types import GeoType
 from ....sim.collide_unified import BroadPhaseMode
 
 # Kamino imports
-from ..core.builder import ModelBuilder
 from ..core.materials import DEFAULT_FRICTION, DEFAULT_RESTITUTION, make_get_material_pair_properties
 from ..core.model import Model, ModelData
 from ..core.shapes import ShapeType
@@ -512,7 +511,6 @@ class CollisionPipelineUnifiedKamino:
     def __init__(
         self,
         model: Model,
-        builder: ModelBuilder,
         broadphase: BroadPhaseMode = BroadPhaseMode.EXPLICIT,
         max_contacts: int | None = None,
         max_contacts_per_pair: int = DEFAULT_GEOM_PAIR_MAX_CONTACTS,
@@ -526,7 +524,7 @@ class CollisionPipelineUnifiedKamino:
         Initialize an instance of Kamino's wrapper of the unified collision detection pipeline.
 
         Args:
-            builder (ModelBuilder): Kamino ModelBuilder (used to extract collision pair information)
+            model (Model): The model container holding the time-invariant parameters of the simulation.
             broadphase (BroadPhaseMode): Broad-phase back-end to use (NXN, SAP, or EXPLICIT)
             max_contacts (int | None): Maximum contacts for the entire model (overrides computed value)
             max_contacts_per_pair (int): Maximum contacts per colliding geometry pair
@@ -553,7 +551,7 @@ class CollisionPipelineUnifiedKamino:
         self._max_triangle_pairs: int = max_triangle_pairs
 
         # Get geometry count from builder
-        self._num_geoms: int = builder.num_geoms
+        self._num_geoms: int = model.geoms.num_geoms
 
         # Compute the maximum possible number of geom pairs (worst-case, needed for NXN/SAP)
         self._max_shape_pairs: int = (self._num_geoms * (self._num_geoms - 1)) // 2
@@ -566,10 +564,9 @@ class CollisionPipelineUnifiedKamino:
         # Build shape pairs for EXPLICIT mode
         self.shape_pairs_filtered: wp.array | None = None
         if broadphase == BroadPhaseMode.EXPLICIT:
-            _, model_filtered_geom_pairs, _, _ = builder.make_collision_candidate_pairs()
-            self.shape_pairs_filtered = wp.array(model_filtered_geom_pairs, dtype=vec2i, device=self._device)
-            self._max_shape_pairs = len(model_filtered_geom_pairs)
-            self._max_contacts = self._max_shape_pairs * self._max_contacts_per_pair
+            self.shape_pairs_filtered = model.geoms.collidable_pairs
+            self._max_shape_pairs = model.geoms.num_collidable_geom_pairs
+            self._max_contacts = model.geoms.model_max_contacts
 
         # Build collision group array for NXN/SAP modes
         # Newton's broad phase uses a simpler collision group system than Kamino's bitmask approach

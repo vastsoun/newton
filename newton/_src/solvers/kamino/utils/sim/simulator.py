@@ -219,7 +219,6 @@ class Simulator:
 
         # Allocate collision detection and contacts interface
         self._collision_detector = CollisionDetector(
-            builder=builder,
             model=self._model,
             settings=self._settings.collision_detector,
         )

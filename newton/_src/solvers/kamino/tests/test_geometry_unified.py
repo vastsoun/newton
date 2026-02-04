@@ -101,9 +101,10 @@ single edge or corner, generating only 1 contact point.
 
 
 def test_unified_pipeline(
+    testcase: unittest.TestCase,
     builder: ModelBuilder,
     expected: dict,
-    max_contacts_per_pair: int = 8,
+    max_contacts_per_pair: int = 24,
     margin: float = 0.0,
     rtol: float = 1e-6,
     atol: float = 0.0,
@@ -126,10 +127,24 @@ def test_unified_pipeline(
         model: Model = builder.finalize(device)
         data: ModelData = model.data()
 
+        # Optional verbose output
+        msg.debug("[%s][%s]: model.geoms.num_geoms: %s", case, bp_name, model.geoms.num_geoms)
+        msg.debug("[%s][%s]: model.geoms.num_collidable_geoms: %s", case, bp_name, model.geoms.num_collidable_geoms)
+        msg.debug(
+            "[%s][%s]: model.geoms.num_collidable_pairs: %s", case, bp_name, model.geoms.num_collidable_geom_pairs
+        )
+        msg.debug("[%s][%s]: model.geoms.model_max_contacts: %s", case, bp_name, model.geoms.model_max_contacts)
+        msg.debug("[%s][%s]: model.geoms.world_max_contacts: %s", case, bp_name, model.geoms.world_max_contacts)
+
+        # Ensure contact capacity is sufficient for the test case, especially for SAP/NXN broad-phases
+        testcase.assertTrue(
+            expr=model.geoms.model_max_contacts > 0,
+            msg=f"model.geoms.model_max_contacts was {model.geoms.model_max_contacts}, must be > 0.",
+        )
+
         # Create a pipeline
         pipeline = CollisionPipelineUnifiedKamino(
             model=model,
-            builder=builder,
             broadphase=bp_mode,
             default_margin=margin,
             device=device,
@@ -198,6 +213,7 @@ def test_unified_pipeline_on_shape_pair(
 
     # Run the narrow-phase test
     test_unified_pipeline(
+        testcase=testcase,
         builder=builder,
         expected=expected,
         margin=margin,
@@ -217,7 +233,7 @@ class TestCollisionPipelineUnified(unittest.TestCase):
             setup_tests(clear_cache=False)
         self.default_device = wp.get_device(test_context.device)
         # self.verbose = test_context.verbose  # Set to True for detailed output
-        self.verbose = False  # Set to True for detailed output
+        self.verbose = True  # Set to True for detailed output
         self.skip_buggy_tests = False  # Set to True to skip known-buggy tests
 
         # Set debug-level logging to print verbose test output to console
@@ -381,6 +397,7 @@ class TestCollisionPipelineUnified(unittest.TestCase):
 
         # Run the narrow-phase test on the shape pair
         test_unified_pipeline(
+            testcase=self,
             builder=builder,
             expected=expected,
             case="sphere_on_sphere_detailed",
@@ -440,6 +457,7 @@ class TestCollisionPipelineUnified(unittest.TestCase):
 
         # Run the narrow-phase test on the shape pair
         test_unified_pipeline(
+            testcase=self,
             builder=builder,
             expected=expected,
             case="box_on_box_simple",
@@ -479,6 +497,7 @@ class TestCollisionPipelineUnified(unittest.TestCase):
 
         # Run the narrow-phase test on the shape pair
         test_unified_pipeline(
+            testcase=self,
             builder=builder,
             expected=expected,
             case="box_on_box_vertex_on_face",
@@ -503,6 +522,7 @@ class TestCollisionPipelineUnified(unittest.TestCase):
         # Run the narrow-phase test on the shape pair
         # Note: Use small margin to handle floating point precision for touching contacts
         test_unified_pipeline(
+            testcase=self,
             builder=builder,
             expected=expected,
             case="boxes_nunchaku",

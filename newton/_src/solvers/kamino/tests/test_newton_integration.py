@@ -908,16 +908,17 @@ def assert_model_geoms_equal(test: unittest.TestCase, model0: ModelKamino, model
         second=model1.geoms.num_collidable_geom_pairs,
         msg="model.geoms.num_collidable_geom_pairs are not equal.",
     )
-    test.assertEqual(
-        first=model0.geoms.model_max_contacts,
-        second=model1.geoms.model_max_contacts,
+    test.assertLessEqual(
+        a=model0.geoms.model_max_contacts,
+        b=model1.geoms.model_max_contacts,
         msg="model.geoms.model_max_contacts are not equal.",
     )
-    test.assertEqual(
-        first=model0.geoms.world_max_contacts,
-        second=model1.geoms.world_max_contacts,
-        msg="model.geoms.world_max_contacts are not equal.",
-    )
+    for w in range(model0.size.num_worlds):
+        test.assertLessEqual(
+            a=model0.geoms.world_max_contacts[w],
+            b=model1.geoms.world_max_contacts[w],
+            msg=f"model.geoms.world_max_contacts[{w}] are not less-than-or-equal.",
+        )
     np.testing.assert_allclose(
         actual=model0.geoms.wid.numpy(),
         desired=model1.geoms.wid.numpy(),

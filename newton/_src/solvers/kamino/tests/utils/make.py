@@ -128,7 +128,7 @@ def make_containers(
 
     # Create the collision detector
     settings = CollisionDetectorSettings(max_contacts_per_world=max_world_contacts, pipeline="primitive")
-    detector = CollisionDetector(model=model, builder=builder, settings=settings, device=device)
+    detector = CollisionDetector(model=model, settings=settings, device=device)
 
     # Construct the unilateral constraints members in the model info
     make_unilateral_constraints_info(model, data, limits, detector.contacts, device=device)

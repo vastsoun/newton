@@ -22,6 +22,9 @@ Usage example:
     builder = ModelBuilder()
     # ... add bodies and collision geometries to the builder ...
 
+    # Finalize the model
+    model = builder.finalize(device="cuda:0")
+
     # Create a collision detector with desired settings
     settings = CollisionDetectorSettings(
         pipeline=CollisionPipelineType.PRIMITIVE,
@@ -30,7 +33,7 @@ Usage example:
     )
 
     # Create the collision detector
-    detector = CollisionDetector(builder=builder, settings=settings, device="cuda:0")
+    detector = CollisionDetector(model=model, settings=settings)
 """
 
 from dataclasses import dataclass
@@ -39,13 +42,11 @@ from enum import IntEnum
 import warp as wp
 from warp.context import Devicelike
 
-from ..core.builder import ModelBuilder
 from ..core.model import Model, ModelData
 from ..core.types import override
 from ..geometry.contacts import DEFAULT_GEOM_PAIR_CONTACT_MARGIN, DEFAULT_GEOM_PAIR_MAX_CONTACTS, Contacts
 from ..geometry.primitive import BoundingVolumeType, CollisionPipelinePrimitive
 from ..geometry.unified import BroadPhaseMode, CollisionPipelineUnifiedKamino
-from ..utils import logger as msg
 
 ###
 # Module configs
@@ -177,7 +178,6 @@ class CollisionDetector:
     def __init__(
         self,
         model: Model | None = None,
-        builder: ModelBuilder | None = None,
         settings: CollisionDetectorSettings | None = None,
         device: Devicelike = None,
     ):
@@ -185,9 +185,12 @@ class CollisionDetector:
         Initialize the CollisionDetector.
 
         Args:
-            builder(ModelBuilder):
-                ModelBuilder instance containing the host-side model definition.
-            device(Devicelike):
+            model (Model):
+                The model container holding the time-invariant parameters of the simulation.
+            settings (CollisionDetectorSettings):
+                Settings to configure the CollisionDetector.\n
+                If `None`, uses default settings.
+            device (Devicelike):
                 The target Warp device for allocation and execution.\n
                 If `None`, uses the default device selected by Warp on the given platform.
 
@@ -210,8 +213,8 @@ class CollisionDetector:
         self._world_max_contacts: list[int] = [0]
 
         # Finalize the collision detector if a builder is provided
-        if builder is not None and model is not None:
-            self.finalize(builder=builder, model=model, settings=settings, device=device)
+        if model is not None:
+            self.finalize(model=model, settings=settings, device=device)
 
     ###
     # Properties
@@ -249,7 +252,6 @@ class CollisionDetector:
     def finalize(
         self,
         model: Model,
-        builder: ModelBuilder,
         settings: CollisionDetectorSettings | None = None,
         device: Devicelike = None,
     ):
@@ -257,21 +259,15 @@ class CollisionDetector:
         Allocates CollisionDetector data on the target device.
 
         Args:
-            builder(ModelBuilder):
-                ModelBuilder instance containing the host-side model definition.
-            settings(CollisionDetectorSettings):
+            model (Model):
+                The model container holding the time-invariant parameters of the simulation.
+            settings (CollisionDetectorSettings):
                 Settings to configure the CollisionDetector.\n
                 If `None`, uses default settings.
-            device(Devicelike):
+            device (Devicelike):
                 The target Warp device for allocation and execution.\n
                 If `None`, uses the default device selected by Warp on the given platform.
         """
-        # Check that the builder is valid
-        if builder is None:
-            raise ValueError("Cannot finalize CollisionDetector: builder is None")
-        if not isinstance(builder, ModelBuilder):
-            raise TypeError(f"Cannot finalize CollisionDetector: expected ModelBuilder, got {type(builder)}")
-
         # Check that the model is valid
         if model is None:
             raise ValueError("Cannot finalize CollisionDetector: model is None")
@@ -296,16 +292,9 @@ class CollisionDetector:
         else:
             self._device = model.device
 
-        # Compute the maximum number of contacts required for the model and each world
-        # NOTE: This is a conservative estimate based on the maximum per-world geom-pairs
-        _, world_max_contacts = builder.compute_required_contact_capacity(
-            max_contacts_per_pair=self._settings.max_contacts_per_pair,
-            max_contacts_per_world=self._settings.max_contacts_per_world,
-        )
-        self._model_max_contacts = sum(world_max_contacts)
-        self._world_max_contacts = world_max_contacts
-        msg.debug("CollisionDetector: Will allocate for `model_max_contacts`: %s", self._model_max_contacts)
-        msg.debug("CollisionDetector: Will allocate for `world_max_contacts`: %s", self._world_max_contacts)
+        # Cache the contacts allocation sizes specified in the model
+        self._model_max_contacts = model.geoms.model_max_contacts
+        self._world_max_contacts = model.geoms.world_max_contacts
 
         # Create the contacts interface which will allocate all contacts data arrays
         # NOTE: If internal allocations happen, then they will contain
@@ -320,7 +309,7 @@ class CollisionDetector:
                 case CollisionPipelineType.PRIMITIVE:
                     self._primitive_pipeline = CollisionPipelinePrimitive(
                         device=self._device,
-                        builder=builder,
+                        model=model,
                         bvtype=self._settings.bvtype,
                         default_margin=self._settings.default_contact_margin,
                     )
@@ -328,7 +317,6 @@ class CollisionDetector:
                     self._unified_pipeline = CollisionPipelineUnifiedKamino(
                         device=self._device,
                         model=model,
-                        builder=builder,
                         broadphase=self._settings.broadphase,
                         # TODO: Add support for bvtype in unified pipeline
                         default_margin=self._settings.default_contact_margin,
@@ -346,8 +334,8 @@ class CollisionDetector:
         the configuration set during the initialization of the CollisionDetector.
 
         Args:
-            model (Model): The Model instance containing the collision geometries
-            data (ModelData): The ModelData instance containing the state of the geometries
+            model (Model): The model container holding the time-invariant parameters of the simulation.
+            data (ModelData): The data container holding the time-varying state of the simulation.
         """
         # Skip this operation if no contacts data has been allocated
         if self._contacts is None or self._model_max_contacts <= 0:

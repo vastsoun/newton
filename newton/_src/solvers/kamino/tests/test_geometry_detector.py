@@ -113,7 +113,7 @@ class TestGeometryCollisionDetector(unittest.TestCase):
             broadphase=BroadPhaseMode.EXPLICIT,
             bvtype=BoundingVolumeType.AABB,
         )
-        detector = CollisionDetector(model=model, builder=builder, settings=settings)
+        detector = CollisionDetector(model=model, settings=settings)
         self.assertIs(detector.device, self.default_device)
 
         # Run collision detection
@@ -153,7 +153,7 @@ class TestGeometryCollisionDetector(unittest.TestCase):
             broadphase=BroadPhaseMode.EXPLICIT,
             bvtype=BoundingVolumeType.AABB,
         )
-        detector = CollisionDetector(model=model, builder=builder, settings=settings)
+        detector = CollisionDetector(model=model, settings=settings)
         self.assertIs(detector.device, self.default_device)
 
         # Run collision detection

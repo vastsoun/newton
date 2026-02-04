@@ -20,11 +20,12 @@ This pipeline uses an `EXPLICIT` broad-phase operating on pre-computed
 geometry pairs and a narrow-phase based on the primitive colliders of Newton.
 """
 
+import numpy as np
 import warp as wp
 from warp.context import Devicelike
 
-from ...core.builder import ModelBuilder
 from ...core.model import Model, ModelData
+from ...core.shapes import ShapeType
 from ...core.types import float32, int32, vec2i, vec6f
 from ..contacts import DEFAULT_GEOM_PAIR_CONTACT_MARGIN, Contacts
 from .broadphase import (
@@ -52,7 +53,7 @@ class CollisionPipelinePrimitive:
 
     def __init__(
         self,
-        builder: ModelBuilder | None = None,
+        model: Model | None = None,
         bvtype: BoundingVolumeType = BoundingVolumeType.AABB,
         default_margin: float = DEFAULT_GEOM_PAIR_CONTACT_MARGIN,
         device: Devicelike = None,
@@ -61,7 +62,7 @@ class CollisionPipelinePrimitive:
         Initialize an instance of Kamino's optimized primitive collision detection pipeline.
 
         Args:
-            builder (ModelBuilder | None): Optional model builder to pre-compute collision pairs.
+            model (Model | None): The model container holding the time-invariant parameters of the simulation.
             broadphase (BroadPhaseMode): Broad-phase collision detection algorithm to use.
             bvtype (BoundingVolumeType): Type of bounding volume to use in broad-phase.
             default_margin (float): Default collision margin for geometries.
@@ -77,9 +78,9 @@ class CollisionPipelinePrimitive:
         self._cdata: CollisionCandidatesData | None = None
         self._bvdata: BoundingVolumesData | None = None
 
-        # If a builder is provided, proceed to finalize all data allocations
-        if builder is not None:
-            self.finalize(builder, bvtype, device)
+        # If a model is provided, proceed to finalize all data allocations
+        if model is not None:
+            self.finalize(model, bvtype, device)
 
     ###
     # Properties
@@ -94,12 +95,12 @@ class CollisionPipelinePrimitive:
     # Operations
     ###
 
-    def finalize(self, builder: ModelBuilder, bvtype: BoundingVolumeType | None = None, device: Devicelike = None):
+    def finalize(self, model: Model, bvtype: BoundingVolumeType | None = None, device: Devicelike = None):
         """
         Finalizes the collision detection pipeline by allocating all necessary data structures.
 
         Args:
-            builder (ModelBuilder): The model builder used to pre-compute collision pairs.
+            model (Model): The model container holding the time-invariant parameters of the simulation.
             bvtype (BoundingVolumeType | None): Optional bounding volume type to override the default.
             device (Devicelike): The Warp device on which the pipeline will operate.
         """
@@ -111,17 +112,14 @@ class CollisionPipelinePrimitive:
         if bvtype is not None:
             self._bvtype = bvtype
 
-        # Retrieve the number of world
-        num_worlds = builder.num_worlds
-        num_geoms = len(builder.geoms)
-
-        # Construct collision pairs
-        world_num_geom_pairs, model_geom_pair, _, model_wid = builder.make_collision_candidate_pairs()
-        model_num_geom_pairs = len(model_geom_pair)
+        # Retrieve the number of worlds and total number of geometries in the model
+        num_worlds = model.size.num_worlds
+        num_geoms = model.geoms.num_geoms
 
         # Ensure that all shape types are supported by the primitive
         # broad-phase and narrow-phase back-ends before proceeding
-        self._assert_shapes_supported(model_geom_pair, builder)
+        model_num_geom_pairs = model.geoms.num_collidable_geom_pairs
+        world_num_geom_pairs, geom_pair_wid = self._assert_shapes_supported(model)
 
         # Allocate the collision model data
         with wp.ScopedDevice(self._device):
@@ -137,12 +135,12 @@ class CollisionPipelinePrimitive:
 
             # Allocate the time-invariant collision candidates model
             self._cmodel = CollisionCandidatesModel(
-                num_model_geom_pairs=model_num_geom_pairs,
+                num_model_geom_pairs=model.geoms.num_collidable_geom_pairs,
                 num_world_geom_pairs=world_num_geom_pairs,
                 model_num_pairs=wp.array([model_num_geom_pairs], dtype=int32),
                 world_num_pairs=wp.array(world_num_geom_pairs, dtype=int32),
-                wid=wp.array(model_wid, dtype=int32),
-                geom_pair=wp.array(model_geom_pair, dtype=vec2i),
+                wid=wp.array(geom_pair_wid, dtype=int32),
+                geom_pair=model.geoms.collidable_pairs,
             )
 
             # Allocate the time-varying collision candidates data
@@ -200,32 +198,32 @@ class CollisionPipelinePrimitive:
         if self._cmodel is None or self._cdata is None or self._bvdata is None:
             raise RuntimeError(
                 "CollisionPipelinePrimitive has not been finalized. "
-                "Please call `finalize(builder, device)` before using the pipeline."
+                "Please call `finalize(model, device)` before using the pipeline."
             )
 
-    def _assert_shapes_supported(self, geom_pairs: list[tuple[int, int]], builder: ModelBuilder):
+    def _assert_shapes_supported(self, model: Model) -> tuple[list[int], np.ndarray]:
         """
         Checks whether all collision geometries in the provided builder are supported
         by the primitive narrow-phase collider.
 
         Args:
-            builder (ModelBuilder): The model builder containing the collision geometries.
+            model (Model): The model container holding the time-invariant parameters of the simulation.
 
         Raises:
             ValueError: If any unsupported shape type is found.
         """
         # Iterate over each candidate geometry pair
-        for gid_12 in geom_pairs:
-            # Retrieve the shape types
-            geom_1 = builder.geoms[gid_12[0]]
-            geom_2 = builder.geoms[gid_12[1]]
-            shape_1 = geom_1.shape.type
-            shape_2 = geom_2.shape.type
-
-            # Skip checks on geom-pairs belonging to different
-            # worlds because they are not collidable anyway
-            if geom_1.wid != geom_2.wid:
-                continue
+        geom_type = model.geoms.sid.numpy()
+        geom_wid = model.geoms.wid.numpy()
+        geom_pairs = model.geoms.collidable_pairs.numpy()
+        world_num_geom_pairs: list[int] = [0] * model.size.num_worlds
+        geom_pair_wid: np.ndarray = np.zeros(shape=(geom_pairs.shape[0],), dtype=np.int32)
+        for gid_12 in range(geom_pairs.shape[0]):
+            # Retrieve the shape types and world indices of the geometry pair
+            gid_1 = geom_pairs[gid_12, 0]
+            gid_2 = geom_pairs[gid_12, 1]
+            shape_1 = ShapeType(geom_type[gid_1])
+            shape_2 = ShapeType(geom_type[gid_2])
 
             # First check if both shapes are supported by the primitive broad-phase
             if shape_1 not in PRIMITIVE_BROADPHASE_SUPPORTED_SHAPES:
@@ -248,3 +246,11 @@ class CollisionPipelinePrimitive:
                     "but it is currently not supported by the primitive narrow-phase."
                     "\nPlease consider using the `UNIFIED` collision pipeline, or using alternative shape types."
                 )
+
+            # Store the world index for this geometry pair
+            geom_pair_12_wid = geom_wid[gid_1]
+            geom_pair_wid[gid_12] = geom_pair_12_wid
+            world_num_geom_pairs[geom_pair_12_wid] += 1
+
+        # Return the per-world geometry pair counts and the per-geom-pair world indices
+        return world_num_geom_pairs, geom_pair_wid

@@ -1186,10 +1186,9 @@ class ModelBuilder:
 
         # Compute the maximum number of contacts required for the model and each world
         # NOTE: This is a conservative estimate based on the maximum per-world geom-pairs
-        _, world_required_contacts = self.compute_required_contact_capacity(
+        model_required_contacts, world_required_contacts = self.compute_required_contact_capacity(
             collidable_geom_pairs=model_collidable_geom_pairs
         )
-        model_required_contacts = sum(world_required_contacts)
 
         ###
         # On-device data allocation
@@ -1346,13 +1345,12 @@ class ModelBuilder:
             g2 = int(geom_pair[1])
             geom1 = self._geoms[g1]
             geom2 = self._geoms[g2]
+            if geom1.shape.type > geom2.shape.type:
+                g1, g2 = g2, g1
+                geom1, geom2 = geom2, geom1
             num_contacts_a, num_contacts_b = self._count_contact_points_for_pair(
-                shape_a=g1,
-                shape_b=g2,
                 type_a=geom1.shape.type,
                 type_b=geom2.shape.type,
-                scale_a=geom1.shape.params,
-                scale_b=geom2.shape.params,
             )
             num_contacts = num_contacts_a + num_contacts_b
             if max_contacts_per_pair is not None:
@@ -1482,14 +1480,7 @@ class ModelBuilder:
     ###
 
     @staticmethod
-    def _count_contact_points_for_pair(
-        shape_a: int,
-        shape_b: int,
-        type_a: int,
-        type_b: int,
-        scale_a: list[float],
-        scale_b: list[float],
-    ) -> tuple[int, int]:
+    def _count_contact_points_for_pair(type_a: int, type_b: int) -> tuple[int, int]:
         """
         Count the number of potential contact points for a collision pair in both directions
         of the collision pair (collisions from A to B and from B to A).
@@ -1507,73 +1498,82 @@ class ModelBuilder:
         Returns:
             tuple[int, int]: Number of contact points for collisions between A->B and B->A.
         """
+        # Ensure the shape types are ordered canonically
+        if type_a > type_b:
+            raise ValueError("Shape types must be ordered such that type_a <= type_b")
 
-        # PLANE against all other types (ordered by GeoType index)
-        if type_a == ShapeType.PLANE:
-            if type_b == ShapeType.PLANE:
-                return 0, 0  # no plane-plane contacts
-            if type_b == ShapeType.SPHERE:
-                return 1, 0
-            if type_b == ShapeType.CAPSULE:
-                if scale_a[0] == 0.0 and scale_a[1] == 0.0:
-                    return 2, 0  # vertex-based collision for infinite plane
-                return 2 + 4, 0  # vertex-based collision + plane edges
-            if type_b == ShapeType.CYLINDER:
-                # infinite plane: support max primitive contacts (2 caps + 2 side) = 4
-                return 4, 0
-            if type_b == ShapeType.BOX:
-                # elif actual_type_b == GeoType.PLANE:
-                if scale_a[0] == 0.0 and scale_a[1] == 0.0:
-                    return 8, 0  # vertex-based collision
-                else:
-                    return 8 + 4, 0  # vertex-based collision + plane edges
-            if type_b == ShapeType.MESH or type_b == ShapeType.CONVEX:
-                # TODO: mesh_b = wp.mesh_get(shape_source_ptr[shape_b])
-                # return mesh_b.points.shape[0], 0
-                return 0, 0
-
-        # SPHERE against all other types (always 1 contact)
-        elif type_a == ShapeType.SPHERE:
+        if type_a == ShapeType.SPHERE:
             return 1, 0
 
-        # CAPSULE against all other types
+        elif type_a == ShapeType.CYLINDER:
+            if type_b == ShapeType.CYLINDER:
+                return 4, 4
+            elif type_b == ShapeType.CONE:
+                return 4, 4
+            elif type_b == ShapeType.CAPSULE:
+                return 4, 4
+            elif type_b == ShapeType.BOX:
+                return 8, 8
+            elif type_b == ShapeType.ELLIPSOID:
+                return 4, 4
+            elif type_b == ShapeType.PLANE:
+                return 6, 6
+            elif type_b == ShapeType.MESH or type_b == ShapeType.CONVEX:
+                pass
+
+        elif type_a == ShapeType.CONE:
+            if type_b == ShapeType.CONE:
+                return 4, 4
+            elif type_b == ShapeType.CAPSULE:
+                return 4, 4
+            elif type_b == ShapeType.BOX:
+                return 8, 8
+            elif type_b == ShapeType.ELLIPSOID:
+                return 8, 8
+            elif type_b == ShapeType.PLANE:
+                return 8, 8
+            elif type_b == ShapeType.MESH or type_b == ShapeType.CONVEX:
+                pass
+
         elif type_a == ShapeType.CAPSULE:
             if type_b == ShapeType.CAPSULE:
-                return 2, 0
-            if type_b == ShapeType.BOX:
-                return 8, 0
-            if type_b == ShapeType.MESH or type_b == ShapeType.CONVEX:
-                num_contacts_a = 2
-                # mesh_b = wp.mesh_get(shape_source_ptr[shape_b])
-                # num_contacts_b = mesh_b.points.shape[0]
-                # return num_contacts_a, num_contacts_b
-                return num_contacts_a, 0
+                return 2, 2
+            elif type_b == ShapeType.BOX:
+                return 8, 8
+            elif type_b == ShapeType.ELLIPSOID:
+                return 8, 8
+            elif type_b == ShapeType.PLANE:
+                return 8, 8
+            elif type_b == ShapeType.MESH or type_b == ShapeType.CONVEX:
+                pass
 
-        # CYLINDER against all other types
-        elif type_a == ShapeType.CYLINDER:
-            # unsupported type combination
-            return 0, 0
-
-        # BOX against all other types
         elif type_a == ShapeType.BOX:
             if type_b == ShapeType.BOX:
                 return 12, 12
-            if type_b == ShapeType.MESH or type_b == ShapeType.CONVEX:
-                num_contacts_a = 8
-                # mesh_b = wp.mesh_get(shape_source_ptr[shape_b])
-                # num_contacts_b = mesh_b.points.shape[0]
-                # return num_contacts_a, num_contacts_b
-                return num_contacts_a, 0
+            elif type_b == ShapeType.ELLIPSOID:
+                return 8, 8
+            elif type_b == ShapeType.PLANE:
+                return 12, 12
+            elif type_b == ShapeType.MESH or type_b == ShapeType.CONVEX:
+                pass
 
-        # MESH against all other types
+        elif type_a == ShapeType.ELLIPSOID:
+            if type_b == ShapeType.ELLIPSOID:
+                return 4, 4
+            elif type_b == ShapeType.PLANE:
+                return 4, 4
+            elif type_b == ShapeType.MESH or type_b == ShapeType.CONVEX:
+                pass
+
+        elif type_a == ShapeType.PLANE:
+            if type_b == ShapeType.MESH or type_b == ShapeType.CONVEX:
+                pass
+
         elif type_a == ShapeType.MESH or type_a == ShapeType.CONVEX:
-            # mesh_a = wp.mesh_get(shape_source_ptr[shape_a])
-            # num_contacts_a = mesh_a.points.shape[0]
-            # if type_b == ShapeType.MESH or type_b == ShapeType.CONVEX:
-            #     mesh_b = wp.mesh_get(shape_source_ptr[shape_b])
-            #     num_contacts_b = mesh_b.points.shape[0]
-            #     return num_contacts_a, num_contacts_b
-            return 0, 0
+            if type_a == ShapeType.HFIELD:
+                pass
+            else:
+                pass
 
         # unsupported type combination
         return 0, 0

@@ -34,8 +34,9 @@ from ..solver import SolverBase
 # Kamino imports
 from .core.bodies import update_body_inertias, update_body_wrenches
 from .core.control import ControlKamino
+from .core.data import DataKamino
 from .core.joints import JointCorrectionMode
-from .core.model import DataKamino, ModelKamino
+from .core.model import ModelKamino
 from .core.state import StateKamino
 from .core.time import advance_time
 from .core.types import float32, int32, transformf, vec6f

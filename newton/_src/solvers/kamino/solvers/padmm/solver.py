@@ -24,7 +24,8 @@ See the :mod:`newton._src.solvers.kamino.solvers.padmm` module for a detailed de
 import warp as wp
 from warp.context import Devicelike
 
-from ...core.model import DataKamino, ModelKamino, ModelKaminoSize
+from ...core.data import DataKamino
+from ...core.model import ModelKamino, ModelKaminoSize
 from ...dynamics.dual import DualProblem
 from ...geometry.contacts import Contacts
 from ...kinematics.limits import Limits

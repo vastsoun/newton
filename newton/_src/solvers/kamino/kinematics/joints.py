@@ -23,6 +23,7 @@ from functools import cache
 
 import warp as wp
 
+from ..core.data import DataKamino
 from ..core.joints import JointActuationType, JointCorrectionMode, JointDoFType
 from ..core.math import (
     FLOAT32_MAX,
@@ -38,7 +39,7 @@ from ..core.math import (
     screw_linear,
     squared_norm,
 )
-from ..core.model import DataKamino, ModelKamino
+from ..core.model import ModelKamino
 from ..core.types import (
     float32,
     int32,

@@ -19,7 +19,8 @@ KAMINO: Core Module
 
 from .builder import ModelBuilderKamino
 from .control import ControlKamino
-from .model import DataKamino, ModelKamino
+from .data import DataKamino
+from .model import ModelKamino
 from .state import StateKamino
 
 ###

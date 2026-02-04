@@ -77,7 +77,8 @@ from typing import Any
 import warp as wp
 from warp.context import Devicelike
 
-from ..core.model import DataKamino, ModelKamino, ModelKaminoSize
+from ..core.data import DataKamino
+from ..core.model import ModelKamino, ModelKaminoSize
 from ..core.types import float32, int32, mat33f, vec3f
 from ..geometry.contacts import Contacts
 from ..kinematics.constraints import get_max_constraints_per_world

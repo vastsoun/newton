@@ -26,7 +26,8 @@ import warp as wp
 from warp.context import Devicelike
 
 from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
-from newton._src.solvers.kamino.core.model import DataKamino, ModelKamino
+from newton._src.solvers.kamino.core.data import DataKamino
+from newton._src.solvers.kamino.core.model import ModelKamino
 from newton._src.solvers.kamino.geometry.contacts import Contacts
 from newton._src.solvers.kamino.geometry.unified import BroadPhaseMode, CollisionPipelineUnifiedKamino
 from newton._src.solvers.kamino.models.builders import basics, testing

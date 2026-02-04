@@ -36,10 +36,11 @@ from ....geometry.sdf_utils import SDFData
 from ....geometry.support_function import GenericShapeData, SupportMapDataProvider, pack_mesh_ptr
 from ....geometry.types import GeoType
 from ....sim.collide_unified import BroadPhaseMode
+from ..core.data import DataKamino
 
 # Kamino imports
 from ..core.materials import DEFAULT_FRICTION, DEFAULT_RESTITUTION, make_get_material_pair_properties
-from ..core.model import DataKamino, ModelKamino
+from ..core.model import ModelKamino
 from ..core.shapes import ShapeType
 from ..core.types import float32, int32, quatf, transformf, uint32, uint64, vec2f, vec2i, vec3f, vec4f
 from ..geometry.contacts import (

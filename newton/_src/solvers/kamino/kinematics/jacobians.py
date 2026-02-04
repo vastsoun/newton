@@ -24,9 +24,10 @@ from typing import Any
 import warp as wp
 from warp.context import Devicelike
 
+from ..core.data import DataKamino
 from ..core.joints import JointDoFType
 from ..core.math import contact_wrench_matrix_from_points, expand6d, screw_transform_matrix_from_points
-from ..core.model import DataKamino, ModelKamino
+from ..core.model import ModelKamino
 from ..core.types import (
     float32,
     int32,

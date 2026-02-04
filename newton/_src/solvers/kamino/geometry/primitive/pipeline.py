@@ -24,7 +24,8 @@ import numpy as np
 import warp as wp
 from warp.context import Devicelike
 
-from ...core.model import DataKamino, ModelKamino
+from ...core.data import DataKamino
+from ...core.model import ModelKamino
 from ...core.shapes import ShapeType
 from ...core.types import float32, int32, vec2i, vec6f
 from ..contacts import DEFAULT_GEOM_PAIR_CONTACT_MARGIN, Contacts

@@ -22,7 +22,8 @@ import warp as wp
 from warp.context import Devicelike
 
 from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
-from newton._src.solvers.kamino.core.model import DataKamino, ModelKamino
+from newton._src.solvers.kamino.core.data import DataKamino
+from newton._src.solvers.kamino.core.model import ModelKamino
 from newton._src.solvers.kamino.core.types import float32, int32, vec2i, vec6f
 from newton._src.solvers.kamino.geometry.contacts import DEFAULT_GEOM_PAIR_CONTACT_MARGIN, Contacts
 from newton._src.solvers.kamino.geometry.primitive import (

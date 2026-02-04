@@ -89,8 +89,9 @@ from dataclasses import dataclass
 import warp as wp
 from warp.context import Devicelike
 
+from ..core.data import DataKamino
 from ..core.math import screw, screw_angular, screw_linear
-from ..core.model import DataKamino, ModelKamino
+from ..core.model import ModelKamino
 from ..core.state import StateKamino
 from ..core.types import float32, int32, int64, mat33f, uint32, vec2f, vec3f, vec4f, vec6f
 from ..dynamics.dual import DualProblem

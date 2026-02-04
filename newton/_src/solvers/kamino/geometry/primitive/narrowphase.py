@@ -39,8 +39,9 @@ from .....geometry.collision_primitive import (
     collide_sphere_cylinder,
     collide_sphere_sphere,
 )
+from ...core.data import DataKamino
 from ...core.materials import make_get_material_pair_properties
-from ...core.model import DataKamino, ModelKamino
+from ...core.model import ModelKamino
 from ...core.shapes import ShapeType
 from ...core.types import (
     float32,

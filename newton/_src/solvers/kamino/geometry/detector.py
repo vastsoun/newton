@@ -42,7 +42,8 @@ from enum import IntEnum
 import warp as wp
 from warp.context import Devicelike
 
-from ..core.model import DataKamino, ModelKamino
+from ..core.data import DataKamino
+from ..core.model import ModelKamino
 from ..core.types import override
 from ..geometry.contacts import DEFAULT_GEOM_PAIR_CONTACT_MARGIN, DEFAULT_GEOM_PAIR_MAX_CONTACTS, Contacts
 from ..geometry.primitive import BoundingVolumeType, CollisionPipelinePrimitive

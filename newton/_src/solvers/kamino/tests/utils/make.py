@@ -23,7 +23,8 @@ from warp.context import Devicelike
 
 from newton._src.solvers.kamino.core.bodies import update_body_inertias
 from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
-from newton._src.solvers.kamino.core.model import DataKamino, ModelKamino
+from newton._src.solvers.kamino.core.data import DataKamino
+from newton._src.solvers.kamino.core.model import ModelKamino
 from newton._src.solvers.kamino.geometry.detector import CollisionDetector, CollisionDetectorSettings
 from newton._src.solvers.kamino.kinematics.constraints import make_unilateral_constraints_info, update_constraints_info
 from newton._src.solvers.kamino.kinematics.jacobians import DenseSystemJacobians

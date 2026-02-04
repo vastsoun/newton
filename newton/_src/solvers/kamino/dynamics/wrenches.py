@@ -19,7 +19,7 @@ KAMINO: Dynamics: Wrenches
 
 import warp as wp
 
-from ..core.model import ModelData, ModelKamino
+from ..core.model import DataKamino, ModelKamino
 from ..core.types import float32, int32, mat63f, vec2i, vec3f, vec6f
 from ..geometry.contacts import Contacts
 from ..kinematics.jacobians import DenseSystemJacobians
@@ -379,7 +379,7 @@ def _compute_contact_cts_body_wrenches(
 
 
 def compute_joint_dof_body_wrenches(
-    model: ModelKamino, data: ModelData, jacobians: DenseSystemJacobians, reset_to_zero: bool = True
+    model: ModelKamino, data: DataKamino, jacobians: DenseSystemJacobians, reset_to_zero: bool = True
 ) -> None:
     """
     Update the actuation wrenches of the bodies based on the active joint torques.
@@ -415,7 +415,7 @@ def compute_joint_dof_body_wrenches(
 
 def compute_constraint_body_wrenches(
     model: ModelKamino,
-    data: ModelData,
+    data: DataKamino,
     jacobians: DenseSystemJacobians,
     lambdas_offsets: wp.array,
     lambdas_data: wp.array,

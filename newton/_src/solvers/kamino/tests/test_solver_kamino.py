@@ -23,7 +23,7 @@ import warp as wp
 
 from newton._src.solvers.kamino.core.control import Control
 from newton._src.solvers.kamino.core.joints import JointActuationType, JointCorrectionMode
-from newton._src.solvers.kamino.core.model import ModelData, ModelKamino
+from newton._src.solvers.kamino.core.model import DataKamino, ModelKamino
 from newton._src.solvers.kamino.core.state import State
 from newton._src.solvers.kamino.core.types import float32, int32, transformf, vec6f
 from newton._src.solvers.kamino.dynamics import DualProblem, DualProblemSettings
@@ -117,7 +117,7 @@ def assert_solver_components(testcase: unittest.TestCase, solver: SolverKamino):
     testcase.assertIsInstance(solver, SolverKamino)
     testcase.assertIsInstance(solver.settings, SolverKaminoSettings)
     testcase.assertIsInstance(solver._model, ModelKamino)
-    testcase.assertIsInstance(solver._data, ModelData)
+    testcase.assertIsInstance(solver._data, DataKamino)
     testcase.assertIsInstance(solver._limits, Limits)
     testcase.assertIsInstance(solver._jacobians, DenseSystemJacobians)
     testcase.assertIsInstance(solver._problem_fd, DualProblem)

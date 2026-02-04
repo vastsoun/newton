@@ -23,7 +23,7 @@ from warp.context import Devicelike
 
 from newton._src.solvers.kamino.core.bodies import update_body_inertias
 from newton._src.solvers.kamino.core.builder import ModelBuilder
-from newton._src.solvers.kamino.core.model import ModelData, ModelKamino
+from newton._src.solvers.kamino.core.model import DataKamino, ModelKamino
 from newton._src.solvers.kamino.geometry.detector import CollisionDetector, CollisionDetectorSettings
 from newton._src.solvers.kamino.kinematics.constraints import make_unilateral_constraints_info, update_constraints_info
 from newton._src.solvers.kamino.kinematics.jacobians import DenseSystemJacobians
@@ -62,7 +62,7 @@ def make_simulator(nw: int, model_build_func, device=None) -> Simulator:
     return sim
 
 
-def make_generalized_mass_matrices(model: ModelKamino, data: ModelData) -> list[np.ndarray]:
+def make_generalized_mass_matrices(model: ModelKamino, data: DataKamino) -> list[np.ndarray]:
     # Extract the masses and inertias as numpy arrays
     m_i = model.bodies.m_i.numpy()
     I_i = data.bodies.I_i.numpy()
@@ -86,7 +86,7 @@ def make_generalized_mass_matrices(model: ModelKamino, data: ModelData) -> list[
     return M_np
 
 
-def make_inverse_generalized_mass_matrices(model: ModelKamino, data: ModelData) -> list[np.ndarray]:
+def make_inverse_generalized_mass_matrices(model: ModelKamino, data: DataKamino) -> list[np.ndarray]:
     # Extract the inverse masses and inertias as numpy arrays
     inv_m_i = model.bodies.inv_m_i.numpy()
     inv_I_i = data.bodies.inv_I_i.numpy()
@@ -112,7 +112,7 @@ def make_inverse_generalized_mass_matrices(model: ModelKamino, data: ModelData) 
 
 def make_containers(
     builder: ModelBuilder, max_world_contacts: int = 0, dt: float = 0.001, device: Devicelike = None
-) -> tuple[ModelKamino, ModelData, Limits, CollisionDetector, DenseSystemJacobians]:
+) -> tuple[ModelKamino, DataKamino, Limits, CollisionDetector, DenseSystemJacobians]:
     # Create the model from the builder
     model = builder.finalize(device=device)
 
@@ -141,7 +141,7 @@ def make_containers(
 
 
 def update_containers(
-    model: ModelKamino, data: ModelData, limits: Limits, detector: CollisionDetector, jacobians: DenseSystemJacobians
+    model: ModelKamino, data: DataKamino, limits: Limits, detector: CollisionDetector, jacobians: DenseSystemJacobians
 ) -> None:
     # Update body inertias according to the current state of the bodies
     update_body_inertias(model=model.bodies, data=data.bodies)

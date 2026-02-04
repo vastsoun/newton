@@ -42,7 +42,7 @@ from enum import IntEnum
 import warp as wp
 from warp.context import Devicelike
 
-from ..core.model import ModelData, ModelKamino
+from ..core.model import DataKamino, ModelKamino
 from ..core.types import override
 from ..geometry.contacts import DEFAULT_GEOM_PAIR_CONTACT_MARGIN, DEFAULT_GEOM_PAIR_MAX_CONTACTS, Contacts
 from ..geometry.primitive import BoundingVolumeType, CollisionPipelinePrimitive
@@ -326,7 +326,7 @@ class CollisionDetector:
                 case _:
                     raise ValueError(f"Unsupported CollisionPipelineType: {self._settings.pipeline}")
 
-    def collide(self, model: ModelKamino, data: ModelData):
+    def collide(self, model: ModelKamino, data: DataKamino):
         """
         Executes collision detection given a model and its associated data.
 
@@ -335,7 +335,7 @@ class CollisionDetector:
 
         Args:
             model (ModelKamino): The model container holding the time-invariant parameters of the simulation.
-            data (ModelData): The data container holding the time-varying state of the simulation.
+            data (DataKamino): The data container holding the time-varying state of the simulation.
         """
         # Skip this operation if no contacts data has been allocated
         if self._contacts is None or self._model_max_contacts <= 0:
@@ -352,8 +352,8 @@ class CollisionDetector:
             raise TypeError(f"Cannot perform collision detection: expected ModelKamino, got {type(model)}")
         if data is None:
             raise ValueError("Cannot perform collision detection: data is None")
-        if not isinstance(data, ModelData):
-            raise TypeError(f"Cannot perform collision detection: expected ModelData, got {type(data)}")
+        if not isinstance(data, DataKamino):
+            raise TypeError(f"Cannot perform collision detection: expected DataKamino, got {type(data)}")
 
         # Execute the configured collision detection pipeline
         match self._settings.pipeline:

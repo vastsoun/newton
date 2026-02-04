@@ -22,7 +22,7 @@ from __future__ import annotations
 import warp as wp
 
 from ..core.math import quat_box_plus, screw, screw_angular, screw_linear
-from ..core.model import ModelData, ModelKamino
+from ..core.model import DataKamino, ModelKamino
 from ..core.types import float32, int32, mat33f, transformf, vec3f, vec4f, vec6f
 
 ###
@@ -143,7 +143,7 @@ def _integrate_semi_implicit_euler_inplace(
 ###
 
 
-def integrate_euler_semi_implicit(model: ModelKamino, data: ModelData):
+def integrate_euler_semi_implicit(model: ModelKamino, data: DataKamino):
     wp.launch(
         _integrate_semi_implicit_euler_inplace,
         dim=model.size.sum_of_num_bodies,

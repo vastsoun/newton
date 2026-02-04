@@ -19,7 +19,7 @@ import warp as wp
 
 from ..core.bodies import transform_body_inertial_properties
 from ..core.math import screw, screw_angular, screw_linear
-from ..core.model import ModelData, ModelKamino
+from ..core.model import DataKamino, ModelKamino
 from ..core.state import State
 from ..core.types import float32, int32, mat33f, transformf, vec3f, vec6f
 from ..kinematics.joints import compute_joint_pose_and_relative_motion, make_write_joint_data
@@ -677,7 +677,7 @@ def reset_state_from_base_state(
 def reset_select_worlds_to_initial_state(
     model: ModelKamino,
     mask: wp.array,
-    data: ModelData,
+    data: DataKamino,
     reset_constraints: bool = True,
 ):
     """
@@ -775,7 +775,7 @@ def reset_select_worlds_to_state(
     model: ModelKamino,
     state: State,
     mask: wp.array,
-    data: ModelData,
+    data: DataKamino,
     reset_constraints: bool = True,
 ):
     """

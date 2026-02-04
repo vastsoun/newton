@@ -26,7 +26,7 @@ from ....geometry.flags import ShapeFlags
 from ....sim.model import Model
 from .bodies import RigidBodiesData, RigidBodiesModel
 from .control import Control
-from .data import ModelData, ModelDataInfo
+from .data import DataKamino, DataKaminoInfo
 from .geometry import GeometriesData, GeometriesModel
 from .gravity import GravityModel
 from .joints import (
@@ -1150,7 +1150,7 @@ class ModelKamino:
         unilateral_cts: bool = False,
         requires_grad: bool = False,
         device: wp.DeviceLike = None,
-    ) -> ModelData:
+    ) -> DataKamino:
         """
         Creates a model data container with the initial state of the model entities.
 
@@ -1182,7 +1182,7 @@ class ModelKamino:
         with wp.ScopedDevice(device=device):
             # Create a new model data info with the total constraint
             # counts initialized to the joint constraints count
-            info = ModelDataInfo(
+            info = DataKaminoInfo(
                 num_total_cts=wp.clone(self.info.num_joint_cts),
             )
 
@@ -1240,7 +1240,7 @@ class ModelKamino:
             )
 
         # Assemble and return the new model data container
-        return ModelData(
+        return DataKamino(
             info=info,
             time=time,
             bodies=bodies,

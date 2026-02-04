@@ -38,7 +38,7 @@ from ..core.math import (
     screw_linear,
     squared_norm,
 )
-from ..core.model import ModelData, ModelKamino
+from ..core.model import DataKamino, ModelKamino
 from ..core.types import (
     float32,
     int32,
@@ -849,7 +849,7 @@ def _extract_joints_state_from_actuators(
 def compute_joints_data(
     model: ModelKamino,
     q_j_ref: wp.array,
-    data: ModelData,
+    data: DataKamino,
     correction: JointCorrectionMode = JointCorrectionMode.TWOPI,
 ) -> None:
     """
@@ -866,7 +866,7 @@ def compute_joints_data(
             An array of reference joint DoF coordinates used for coordinate correction.\n
             Only used for revolute DoFs of the relevant joints to enforce angle continuity.\n
             Shape of ``(sum_of_num_joint_coords,)`` and type :class:`float`.
-        data (`ModelData`):
+        data (`DataKamino`):
             The solver data container holding the internal time-varying state of the simulation.
     """
 

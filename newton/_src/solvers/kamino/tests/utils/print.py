@@ -19,7 +19,7 @@ KAMINO: UNIT TESTS: GENERAL UTILITIES
 
 import numpy as np
 
-from newton._src.solvers.kamino.core.model import ModelData, ModelKamino
+from newton._src.solvers.kamino.core.model import DataKamino, ModelKamino
 
 ###
 # Model Functions
@@ -153,7 +153,7 @@ def print_model_joints(model: ModelKamino, offsets=True, parameters=True, limits
         print(f"model.joints.tau_j_max: {model.joints.tau_j_max}")
 
 
-def print_model_data_info(data: ModelData):
+def print_model_data_info(data: DataKamino):
     print("data.info.num_total_cts: ", data.info.num_total_cts)
     print("data.info.num_limits: ", data.info.num_limits)
     print("data.info.num_limit_cts: ", data.info.num_limit_cts)
@@ -163,7 +163,7 @@ def print_model_data_info(data: ModelData):
     print("data.info.contact_cts_group_offset: ", data.info.contact_cts_group_offset)
 
 
-def print_model_state(data: ModelData, info=True):
+def print_model_state(data: DataKamino, info=True):
     # Print the state info
     if info:
         print_model_data_info(data)

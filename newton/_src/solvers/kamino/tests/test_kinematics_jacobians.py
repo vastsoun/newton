@@ -24,7 +24,7 @@ import numpy as np
 import warp as wp
 
 from newton._src.solvers.kamino.core.math import quat_exp, screw, screw_angular, screw_linear
-from newton._src.solvers.kamino.core.model import ModelData, ModelKamino
+from newton._src.solvers.kamino.core.model import DataKamino, ModelKamino
 from newton._src.solvers.kamino.core.types import float32, int32, mat33f, transformf, vec3f, vec6f
 from newton._src.solvers.kamino.geometry.contacts import Contacts
 from newton._src.solvers.kamino.geometry.detector import CollisionDetector, CollisionDetectorSettings
@@ -238,7 +238,7 @@ def _set_fourbar_body_states(
 ###
 
 
-def set_fourbar_body_states(model: ModelKamino, data: ModelData):
+def set_fourbar_body_states(model: ModelKamino, data: DataKamino):
     wp.launch(
         _set_fourbar_body_states,
         dim=3,  # Set to three because we only need to set the first three joints

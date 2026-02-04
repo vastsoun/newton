@@ -26,7 +26,7 @@ from warp.context import Devicelike
 
 from ..core.joints import JointDoFType
 from ..core.math import contact_wrench_matrix_from_points, expand6d, screw_transform_matrix_from_points
-from ..core.model import ModelData, ModelKamino
+from ..core.model import DataKamino, ModelKamino
 from ..core.types import (
     float32,
     int32,
@@ -479,7 +479,7 @@ def _build_contact_jacobians(
 
 def build_jacobians(
     model: ModelKamino,
-    data: ModelData,
+    data: DataKamino,
     limits: Limits | None,
     contacts: Contacts | None,
     jacobian_cts_offsets: wp.array,
@@ -698,7 +698,7 @@ class DenseSystemJacobians:
     def build(
         self,
         model: ModelKamino,
-        data: ModelData,
+        data: DataKamino,
         limits: Limits | None = None,
         contacts: Contacts | None = None,
         reset_to_zero: bool = True,

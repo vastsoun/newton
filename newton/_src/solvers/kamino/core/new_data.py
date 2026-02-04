@@ -15,6 +15,8 @@
 
 """Defines the Kamino-specific data containers to hold time-varying simulation data."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 
 import warp as wp
@@ -116,21 +118,25 @@ class DataKamino:
     to update the state of rigid bodies, joints, geometries, active constraints and time-keeping.
 
     Attributes:
-        info (ModelDataInfo): The info container holding information about the set of active constraints.
-        time (TimeData): Time state of the model, including the current simulation step and time.
-        bodies (RigidBodiesData): States of all rigid bodies in the model: poses, twists, wrenches,
+        info (DataKaminoInfo):
+            The data info container holding information about the set of active constraints.
+        time (TimeData):
+            Time-varying time-keeping data, including the current simulation step and time.
+        bodies (RigidBodiesData):
+            States of all rigid bodies in the model: poses, twists, wrenches,
             and moments of inertia computed in world coordinates.
-        joints (JointsData): States of joints in the model: joint frames computed in world coordinates,
+        joints (JointsData):
+            States of joints in the model: joint frames computed in world coordinates,
             constraint residuals and reactions, and generalized (DoF) quantities.
-        geoms (CollisionGeometriesData): States of collision geometries in the model:
-            poses, AABBs etc. computed in world coordinates.
+        geoms (GeometriesData):
+            States of geometries in the model: poses, AABBs etc. computed in world coordinates.
     """
 
     info: DataKaminoInfo | None = None
-    """The info container holding information about the set of active constraints."""
+    """The data info container holding information about the set of active constraints."""
 
     time: TimeData | None = None
-    """Time state of the model, including the current simulation step and time."""
+    """Time-varying time-keeping data, including the current simulation step and time."""
 
     bodies: RigidBodiesData | None = None
     """
@@ -145,4 +151,4 @@ class DataKamino:
     """
 
     geoms: GeometriesData | None = None
-    """States of collision geometries in the model: poses computed in world coordinates."""
+    """States of geometries in the model: poses computed in world coordinates."""

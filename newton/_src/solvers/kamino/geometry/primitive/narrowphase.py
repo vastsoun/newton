@@ -40,7 +40,7 @@ from .....geometry.collision_primitive import (
     collide_sphere_sphere,
 )
 from ...core.materials import make_get_material_pair_properties
-from ...core.model import ModelData, ModelKamino
+from ...core.model import DataKamino, ModelKamino
 from ...core.shapes import ShapeType
 from ...core.types import (
     float32,
@@ -1746,7 +1746,7 @@ def _primitive_narrowphase(
 
 def primitive_narrowphase(
     model: ModelKamino,
-    data: ModelData,
+    data: DataKamino,
     candidates: CollisionCandidatesData,
     contacts: ContactsData,
     default_margin: float | None = None,
@@ -1757,7 +1757,7 @@ def primitive_narrowphase(
     Args:
         model (ModelKamino):
             The model containing the collision geometries.
-        data (ModelData):
+        data (DataKamino):
             The data containing the current state of the geometries.
         candidates (CollisionCandidatesData):
             The collision container holding collision pairs.

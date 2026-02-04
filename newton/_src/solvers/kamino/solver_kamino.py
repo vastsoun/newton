@@ -33,7 +33,7 @@ from ..solver import SolverBase
 
 # Kamino imports
 from .core.bodies import update_body_inertias, update_body_wrenches
-from .core.control import Control
+from .core.control import ControlKamino
 from .core.joints import JointCorrectionMode
 from .core.model import DataKamino, ModelKamino
 from .core.state import State
@@ -211,7 +211,7 @@ class SolverKamino(SolverBase):
           International Journal for Numerical Methods in Engineering, 122(16), 4093-4113.
           https://onlinelibrary.wiley.com/doi/full/10.1002/nme.6693
 
-    After constructing :class:`ModelKamino`, :class:`State`, :class:`Control` and :class:`Contacts`
+    After constructing :class:`ModelKamino`, :class:`State`, :class:`ControlKamino` and :class:`Contacts`
     objects, this physics solver may be used to advance the simulation state forward in time.
 
     Example
@@ -233,7 +233,7 @@ class SolverKamino(SolverBase):
     ResetCallbackType = Callable[["SolverKamino", State], None]
     """Defines the type signature for reset callback functions."""
 
-    StepCallbackType = Callable[["SolverKamino", State, State, Control, Contacts], None]
+    StepCallbackType = Callable[["SolverKamino", State, State, ControlKamino, Contacts], None]
     """Defines the type signature for step callback functions."""
 
     def __init__(
@@ -587,7 +587,7 @@ class SolverKamino(SolverBase):
         self,
         state_in: State,
         state_out: State,
-        control: Control,
+        control: ControlKamino,
         contacts: Contacts | None = None,
         dt: float | None = None,
     ):
@@ -601,7 +601,7 @@ class SolverKamino(SolverBase):
                 The input current state of the simulation.
             state_out (State):
                 The output next state after time integration.
-            control (Control):
+            control (ControlKamino):
                 The input controls applied to the system.
             contacts (Contacts, optional):
                 The set of active contacts.
@@ -672,21 +672,21 @@ class SolverKamino(SolverBase):
         if self._post_reset_cb is not None:
             self._post_reset_cb(self, state_out)
 
-    def _run_prestep_callback(self, state_in: State, state_out: State, control: Control, contacts: Contacts):
+    def _run_prestep_callback(self, state_in: State, state_out: State, control: ControlKamino, contacts: Contacts):
         """
         Runs the pre-step callback if it has been set.
         """
         if self._pre_step_cb is not None:
             self._pre_step_cb(self, state_in, state_out, control, contacts)
 
-    def _run_midstep_callback(self, state_in: State, state_out: State, control: Control, contacts: Contacts):
+    def _run_midstep_callback(self, state_in: State, state_out: State, control: ControlKamino, contacts: Contacts):
         """
         Runs the mid-step callback if it has been set.
         """
         if self._mid_step_cb is not None:
             self._mid_step_cb(self, state_in, state_out, control, contacts)
 
-    def _run_poststep_callback(self, state_in: State, state_out: State, control: Control, contacts: Contacts):
+    def _run_poststep_callback(self, state_in: State, state_out: State, control: ControlKamino, contacts: Contacts):
         """
         Executes the post-step callback if it has been set.
         """
@@ -697,7 +697,7 @@ class SolverKamino(SolverBase):
     # Internals - Input/Output Operations
     ###
 
-    def _read_step_inputs(self, state_in: State, control_in: Control):
+    def _read_step_inputs(self, state_in: State, control_in: ControlKamino):
         """
         Updates the internal solver data from the input state and control.
         """

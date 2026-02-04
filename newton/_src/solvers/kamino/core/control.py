@@ -23,14 +23,14 @@ import warp as wp
 
 
 @dataclass
-class Control:
+class ControlKamino:
     """
     Time-varying control data for a :class:`ModelKamino`.
 
     Time-varying control data currently consists of generalized joint actuation forces, with
     the intention that external actuator models or controllers will populate these attributes.
 
-    The exact attributes depend on the contents of the model. Control objects
+    The exact attributes depend on the contents of the model. ControlKamino objects
     should generally be created using the :func:`kamino.ModelKamino.control()` function.
 
     We adopt the following notational conventions for the control attributes:
@@ -45,24 +45,24 @@ class Control:
     where ``d_j`` is the number of DoFs of each joint ``j``.
     """
 
-    def copy_to(self, other: Control) -> None:
+    def copy_to(self, other: ControlKamino) -> None:
         """
-        Copies the Control data to another Control object.
+        Copies the ControlKamino data to another ControlKamino object.
 
         Args:
-            other: The target Control object to copy data into.
+            other: The target ControlKamino object to copy data into.
         """
         if self.tau_j is None or other.tau_j is None:
-            raise ValueError("Error copying from/to uninitialized Control")
+            raise ValueError("Error copying from/to uninitialized ControlKamino")
         wp.copy(other.tau_j, self.tau_j)
 
-    def copy_from(self, other: Control) -> None:
+    def copy_from(self, other: ControlKamino) -> None:
         """
-        Copies the Control data from another Control object.
+        Copies the ControlKamino data from another ControlKamino object.
 
         Args:
-            other: The source Control object to copy data from.
+            other: The source ControlKamino object to copy data from.
         """
         if self.tau_j is None or other.tau_j is None:
-            raise ValueError("Error copying from/to uninitialized Control")
+            raise ValueError("Error copying from/to uninitialized ControlKamino")
         wp.copy(self.tau_j, other.tau_j)

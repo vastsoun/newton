@@ -23,7 +23,7 @@ import numpy as np
 import warp as wp
 from warp.context import Devicelike
 
-from ...core.control import Control
+from ...core.control import ControlKamino
 from ...core.joints import JointActuationType
 from ...core.model import ModelKamino
 from ...core.state import State
@@ -301,7 +301,7 @@ def compute_jointspace_pid_control(
     time: TimeData,
     controller: PIDControllerData,
     # Outputs:
-    control: Control,
+    control: ControlKamino,
 ) -> None:
     """
     A kernel launcher to compute joint-space PID control outputs for force-actuated joints.
@@ -534,7 +534,7 @@ class JointSpacePIDController:
         model: ModelKamino,
         state: State,
         time: TimeData,
-        control: Control,
+        control: ControlKamino,
     ) -> None:
         """
         Compute the control torques.
@@ -543,7 +543,7 @@ class JointSpacePIDController:
             model (ModelKamino): The input model container holding the time-invariant parameters of the simulation.
             state (State): The input state container holding the current state of the simulation.
             time (TimeData): The input time data container holding the current simulation time and steps.
-            control (Control): The output control container where the computed control torques will be stored.
+            control (ControlKamino): The output control container where the computed control torques will be stored.
         """
         compute_jointspace_pid_control(
             model=model,

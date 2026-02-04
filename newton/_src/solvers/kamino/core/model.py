@@ -25,7 +25,7 @@ import warp as wp
 from ....geometry.flags import ShapeFlags
 from ....sim.model import Model
 from .bodies import RigidBodiesData, RigidBodiesModel
-from .control import Control
+from .control import ControlKamino
 from .data import DataKamino, DataKaminoInfo
 from .geometry import GeometriesData, GeometriesModel
 from .gravity import GravityModel
@@ -1277,7 +1277,7 @@ class ModelKamino:
         # Return the constructed state container
         return state
 
-    def control(self, requires_grad: bool = False, device: wp.DeviceLike = None) -> Control:
+    def control(self, requires_grad: bool = False, device: wp.DeviceLike = None) -> ControlKamino:
         """
         Creates a control container with all values initialized to zeros.
 
@@ -1293,7 +1293,7 @@ class ModelKamino:
 
         # Create a new control container on the specified device
         with wp.ScopedDevice(device=device):
-            control = Control(
+            control = ControlKamino(
                 tau_j=wp.zeros(shape=self.size.sum_of_num_joint_dofs, dtype=float32, requires_grad=requires_grad)
             )
 

@@ -21,7 +21,7 @@ import unittest
 import numpy as np
 import warp as wp
 
-from newton._src.solvers.kamino.core.control import Control
+from newton._src.solvers.kamino.core.control import ControlKamino
 from newton._src.solvers.kamino.core.joints import JointActuationType, JointCorrectionMode
 from newton._src.solvers.kamino.core.model import DataKamino, ModelKamino
 from newton._src.solvers.kamino.core.state import State
@@ -80,7 +80,7 @@ def _test_control_callback(
 
 
 def test_prestep_callback(
-    solver: SolverKamino, state_in: State, state_out: State, control: Control, contacts: Contacts
+    solver: SolverKamino, state_in: State, state_out: State, control: ControlKamino, contacts: Contacts
 ):
     """
     A control callback function
@@ -210,7 +210,7 @@ def step_solver(
     solver: SolverKamino,
     state_p: State,
     state_n: State,
-    control: Control,
+    control: ControlKamino,
     contacts: Contacts | None = None,
     dt: float = 0.001,
     show_progress: bool = False,

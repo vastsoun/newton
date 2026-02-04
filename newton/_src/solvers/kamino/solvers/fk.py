@@ -1476,7 +1476,7 @@ class ForwardKinematicsSolverSettings:
     """Tile size for kernels along the dimension of rigid body pose variables (default: 8).
        Changes to this setting after the solver's initialization will have no effect."""
 
-    use_sparsity: bool = True
+    use_sparsity: bool = False
     """Whether to use sparse Jacobian and solver; otherwise, dense versions are used (default: True).
        Changes to this setting after the solver's initialization lead to undefined behavior."""
 

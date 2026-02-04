@@ -25,7 +25,7 @@ import warp as wp
 
 from .....core.types import nparray
 from ...core.bodies import RigidBodyDescriptor
-from ...core.builder import ModelBuilder
+from ...core.builder import ModelBuilderKamino
 from ...core.geometry import GeometryDescriptor
 from ...core.gravity import GravityDescriptor
 from ...core.joints import (
@@ -1536,14 +1536,14 @@ class USDImporter:
         root_path: str = "/",
         xform: Transform | None = None,
         ignore_paths: list[str] | None = None,
-        builder: ModelBuilder | None = None,
+        builder: ModelBuilderKamino | None = None,
         apply_up_axis_from_stage: bool = True,
         only_load_enabled_rigid_bodies: bool = True,
         only_load_enabled_joints: bool = True,
         load_static_geometry: bool = True,
         load_materials: bool = True,
         meshes_are_collidable: bool = False,
-    ) -> ModelBuilder:
+    ) -> ModelBuilderKamino:
         """
         Parses an OpenUSD file.
         """
@@ -1596,9 +1596,9 @@ class USDImporter:
         # Load the USD file into an object dictionary
         ret_dict = self.UsdPhysics.LoadUsdPhysicsFromRange(stage, [root_path], excludePaths=ignore_paths)
 
-        # Create a new ModelBuilder if not provided
+        # Create a new ModelBuilderKamino if not provided
         if builder is None:
-            builder = ModelBuilder(default_world=False)
+            builder = ModelBuilderKamino(default_world=False)
             builder.add_world(name=default_prim_name)
 
         ###
@@ -1872,5 +1872,5 @@ class USDImporter:
         msg.debug("Builder: Geoms:\n%s\n", builder.geoms)
         msg.debug("Builder: Materials:\n%s\n", builder.materials)
 
-        # Return the ModelBuilder populated from the parsed USD file
+        # Return the ModelBuilderKamino populated from the parsed USD file
         return builder

@@ -33,7 +33,7 @@ from newton._src.sim import (
     State,
 )
 from newton._src.solvers.kamino.core import inertia
-from newton._src.solvers.kamino.core.builder import ModelBuilder as ModelBuilderKamino
+from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
 from newton._src.solvers.kamino.core.control import ControlKamino
 from newton._src.solvers.kamino.core.data import DataKamino
 from newton._src.solvers.kamino.core.joints import JOINT_QMAX, JOINT_QMIN

@@ -165,7 +165,7 @@ class GeometryDescriptor(Descriptor):
     """
 
     ###
-    # Metadata - to be set by the ModelBuilder when added
+    # Metadata - to be set by the model builder when added
     ###
 
     wid: int = -1

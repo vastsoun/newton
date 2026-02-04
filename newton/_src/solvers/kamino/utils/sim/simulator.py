@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 import warp as wp
 from warp.context import Devicelike
 
-from ...core.builder import ModelBuilder
+from ...core.builder import ModelBuilderKamino
 from ...core.control import ControlKamino
 from ...core.model import ModelKamino
 from ...core.state import StateKamino
@@ -157,14 +157,14 @@ class Simulator:
     The Simulator class encapsulates the entire simulation pipeline, including model definition,
     state management, collision detection, constraint handling, and time integration.
 
-    A Simulator is typically instantiated from a :class:`ModelBuilder` that defines the model
+    A Simulator is typically instantiated from a :class:`ModelBuilderKamino` that defines the model
     to be simulated. The simulator manages the time-stepping loop, invoking callbacks at various
     stages of the simulation step, and provides access to the current state and control inputs.
 
     Example:
     ```python
         # Create a model builder and define the model
-        builder = ModelBuilder()
+        builder = ModelBuilderKamino()
 
         # Define the model components (e.g., bodies, joints, collision geometries etc.)
         builder.add_rigid_body(...)
@@ -184,13 +184,17 @@ class Simulator:
     """Defines a common type signature for all simulator callback functions."""
 
     def __init__(
-        self, builder: ModelBuilder, settings: SimulatorSettings = None, device: Devicelike = None, shadow: bool = False
+        self,
+        builder: ModelBuilderKamino,
+        settings: SimulatorSettings = None,
+        device: Devicelike = None,
+        shadow: bool = False,
     ):
         """
         Initializes the simulator with the given model builder, time-step, and device.
 
         Args:
-            builder (ModelBuilder): The model builder defining the model to be simulated.
+            builder (ModelBuilderKamino): The model builder defining the model to be simulated.
             settings (SimulatorSettings, optional): The simulator settings to use. If None, default settings are used.
             device (Devicelike, optional): The device to run the simulation on. If None, the default device is used.
             shadow (bool, optional): If True, maintains a host-side copy of the simulation data for easy access.

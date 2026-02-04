@@ -21,7 +21,7 @@ import numpy as np
 import warp as wp
 from warp.context import Devicelike
 
-from newton._src.solvers.kamino.core.builder import ModelBuilder
+from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
 from newton._src.solvers.kamino.core.model import DataKamino, ModelKamino
 from newton._src.solvers.kamino.core.types import float32, int32, vec2i, vec6f
 from newton._src.solvers.kamino.geometry.contacts import DEFAULT_GEOM_PAIR_CONTACT_MARGIN, Contacts
@@ -95,7 +95,7 @@ single edge or corner, generating only 1 contact point.
 
 
 class PrimitiveBroadPhaseTestBS:
-    def __init__(self, builder: ModelBuilder, device: Devicelike = None):
+    def __init__(self, builder: ModelBuilderKamino, device: Devicelike = None):
         # Retrieve the number of world
         num_worlds = builder.num_worlds
         num_geoms = len(builder.geoms)
@@ -131,7 +131,7 @@ class PrimitiveBroadPhaseTestBS:
 
 
 class PrimitiveBroadPhaseTestAABB:
-    def __init__(self, builder: ModelBuilder, device: Devicelike = None):
+    def __init__(self, builder: ModelBuilderKamino, device: Devicelike = None):
         # Retrieve the number of world
         num_worlds = builder.num_worlds
         num_geoms = len(builder.geoms)
@@ -176,7 +176,7 @@ PrimitiveBroadPhaseType = PrimitiveBroadPhaseTestBS | PrimitiveBroadPhaseTestAAB
 
 def check_broadphase_allocations(
     testcase: unittest.TestCase,
-    builder: ModelBuilder,
+    builder: ModelBuilderKamino,
     broadphase: PrimitiveBroadPhaseType,
 ):
     # Calculate the maximum number of geometry pairs
@@ -199,7 +199,7 @@ def check_broadphase_allocations(
 def test_broadphase(
     testcase: unittest.TestCase,
     broadphase_type: PrimitiveBroadPhaseType,
-    builder: ModelBuilder,
+    builder: ModelBuilderKamino,
     expected_model_collisions: int,
     expected_world_collisions: list[int],
     expected_worlds: list[int] | None = None,
@@ -208,7 +208,7 @@ def test_broadphase(
     device: Devicelike = None,
 ):
     """
-    Tests a primitive broad-phase backend on a system specified via a ModelBuilder.
+    Tests a primitive broad-phase backend on a system specified via a ModelBuilderKamino.
     """
     # Create a test model and data
     model = builder.finalize(device)
@@ -368,7 +368,7 @@ def check_contacts(
 
 def test_narrowphase(
     testcase: unittest.TestCase,
-    builder: ModelBuilder,
+    builder: ModelBuilderKamino,
     expected: dict,
     max_contacts_per_pair: int = 8,
     margin: float = 0.0,
@@ -379,7 +379,7 @@ def test_narrowphase(
 ):
     """
     Runs the primitive narrow-phase collider using all broad-phase backends
-    on a system specified via a ModelBuilder and checks the results.
+    on a system specified via a ModelBuilderKamino and checks the results.
     """
     # Run the narrow-phase test over each broad-phase backend
     broadphase_types = [PrimitiveBroadPhaseTestAABB, PrimitiveBroadPhaseTestBS]

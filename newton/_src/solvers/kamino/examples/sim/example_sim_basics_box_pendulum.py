@@ -22,7 +22,7 @@ from warp.context import Devicelike
 
 import newton
 import newton.examples
-from newton._src.solvers.kamino.core.builder import ModelBuilder
+from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
 from newton._src.solvers.kamino.core.joints import JointCorrectionMode
 from newton._src.solvers.kamino.examples import get_examples_output_path, run_headless
 from newton._src.solvers.kamino.models import get_basics_usd_assets_path
@@ -70,7 +70,7 @@ class Example:
             msg.notif("Constructing builder from imported USD ...")
             USD_MODEL_PATH = os.path.join(get_basics_usd_assets_path(), "box_pendulum.usda")
             importer = USDImporter()
-            self.builder: ModelBuilder = make_homogeneous_builder(
+            self.builder: ModelBuilderKamino = make_homogeneous_builder(
                 num_worlds=num_worlds,
                 build_fn=importer.import_from,
                 source=USD_MODEL_PATH,
@@ -78,7 +78,7 @@ class Example:
             )
         else:
             msg.notif("Constructing builder using model generator ...")
-            self.builder: ModelBuilder = make_homogeneous_builder(
+            self.builder: ModelBuilderKamino = make_homogeneous_builder(
                 num_worlds=num_worlds, build_fn=build_box_pendulum_vertical, ground=ground
             )
 

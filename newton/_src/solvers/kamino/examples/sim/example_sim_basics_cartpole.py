@@ -24,7 +24,7 @@ from warp.context import Devicelike
 
 import newton
 import newton.examples
-from newton._src.solvers.kamino.core.builder import ModelBuilder
+from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
 from newton._src.solvers.kamino.core.math import I_3, R_x, screw
 from newton._src.solvers.kamino.core.model import DataKamino, ModelKamino
 from newton._src.solvers.kamino.core.types import float32, int32, mat33f, transformf, uint32, vec3f, vec6f
@@ -372,7 +372,7 @@ class Example:
             msg.notif("Constructing builder from imported USD ...")
             USD_MODEL_PATH = os.path.join(get_basics_usd_assets_path(), "cartpole.usda")
             importer = USDImporter()
-            self.builder: ModelBuilder = make_homogeneous_builder(
+            self.builder: ModelBuilderKamino = make_homogeneous_builder(
                 num_worlds=num_worlds, build_fn=importer.import_from, load_static_geometry=True, source=USD_MODEL_PATH
             )
             if ground:
@@ -380,7 +380,7 @@ class Example:
                     add_ground_box(self.builder, z_offset=-0.5, world_index=w, layer="world")
         else:
             msg.notif("Constructing builder using model generator ...")
-            self.builder: ModelBuilder = make_homogeneous_builder(
+            self.builder: ModelBuilderKamino = make_homogeneous_builder(
                 num_worlds=num_worlds, build_fn=build_cartpole, ground=ground
             )
 

@@ -23,7 +23,7 @@ import numpy as np
 import warp as wp
 
 from newton._src.solvers.kamino.core.bodies import RigidBodyDescriptor
-from newton._src.solvers.kamino.core.builder import ModelBuilder
+from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
 from newton._src.solvers.kamino.core.geometry import GeometryDescriptor
 from newton._src.solvers.kamino.core.gravity import (
     GRAVITY_ACCEL_DEFAULT,
@@ -53,7 +53,7 @@ from newton._src.solvers.kamino.utils import logger as msg
 ###
 
 
-def assert_model_matches_builder(test: unittest.TestCase, builder: ModelBuilder, model: ModelKamino):
+def assert_model_matches_builder(test: unittest.TestCase, builder: ModelBuilderKamino, model: ModelKamino):
     """
     Assert that a constructed model matches the specifications of the given builder.
 
@@ -161,7 +161,7 @@ class TestModelBuilder(unittest.TestCase):
             msg.reset_log_level()
 
     def test_00_make_default(self):
-        builder = ModelBuilder()
+        builder = ModelBuilderKamino()
         self.assertEqual(builder.num_worlds, 0)
         self.assertEqual(builder.num_bodies, 0)
         self.assertEqual(builder.num_joints, 0)
@@ -178,7 +178,7 @@ class TestModelBuilder(unittest.TestCase):
         self.assertEqual(len(builder.materials), 1)  # Default material is always created
 
     def test_01_make_default_with_world(self):
-        builder = ModelBuilder(default_world=True)
+        builder = ModelBuilderKamino(default_world=True)
         self.assertEqual(builder.num_worlds, 1)
         self.assertEqual(builder.num_bodies, 0)
         self.assertEqual(builder.num_joints, 0)
@@ -195,7 +195,7 @@ class TestModelBuilder(unittest.TestCase):
         self.assertEqual(len(builder.materials), 1)  # Default material is always created
 
     def test_02_add_world(self):
-        builder = ModelBuilder()
+        builder = ModelBuilderKamino()
         wid = builder.add_world(name="test_world", up_axis=Axis.Y)
         self.assertEqual(wid, 0)
         self.assertEqual(builder.num_worlds, 1)
@@ -207,7 +207,7 @@ class TestModelBuilder(unittest.TestCase):
         np.testing.assert_array_equal(builder.gravity[wid].direction, np.array(GRAVITY_DIREC_DEFAULT, dtype=np.float32))
 
     def test_03_add_rigid_body(self):
-        builder = ModelBuilder()
+        builder = ModelBuilderKamino()
         wid = builder.add_world(name="test_world", up_axis=Axis.Z)
 
         bid = builder.add_rigid_body(
@@ -230,7 +230,7 @@ class TestModelBuilder(unittest.TestCase):
         np.testing.assert_array_equal(builder.bodies[bid].u_i_0, np.zeros(6, dtype=np.float32))
 
     def test_04_add_rigid_body_descriptor(self):
-        builder = ModelBuilder()
+        builder = ModelBuilderKamino()
         wid = builder.add_world(name="test_world", up_axis=Axis.Z)
 
         body = RigidBodyDescriptor(
@@ -253,7 +253,7 @@ class TestModelBuilder(unittest.TestCase):
         np.testing.assert_array_equal(builder.bodies[bid].u_i_0, np.zeros(6, dtype=np.float32))
 
     def test_05_add_duplicate_rigid_body(self):
-        builder = ModelBuilder()
+        builder = ModelBuilderKamino()
         wid = builder.add_world(name="test_world", up_axis=Axis.Z)
 
         body_0 = RigidBodyDescriptor(
@@ -269,7 +269,7 @@ class TestModelBuilder(unittest.TestCase):
         self.assertRaises(ValueError, builder.add_rigid_body_descriptor, body_0, world_index=wid)
 
     def test_06_add_joint(self):
-        builder = ModelBuilder()
+        builder = ModelBuilderKamino()
         wid = builder.add_world(name="test_world", up_axis=Axis.Z)
 
         # Define two rigid bodies to connect with a joint
@@ -312,7 +312,7 @@ class TestModelBuilder(unittest.TestCase):
         self.assertEqual(builder.joints[jid].act_type, JointActuationType.FORCE)
 
     def test_07_add_duplicate_joint(self):
-        builder = ModelBuilder()
+        builder = ModelBuilderKamino()
         wid = builder.add_world(name="test_world", up_axis=Axis.Z)
 
         # Define two rigid bodies to connect with a joint
@@ -347,7 +347,7 @@ class TestModelBuilder(unittest.TestCase):
         self.assertRaises(ValueError, builder.add_joint_descriptor, joint, world_index=wid)
 
     def test_08_add_invalid_joint(self):
-        builder = ModelBuilder()
+        builder = ModelBuilderKamino()
         wid = builder.add_world(name="test_world", up_axis=Axis.Z)
 
         # Define a joint descriptor
@@ -360,7 +360,7 @@ class TestModelBuilder(unittest.TestCase):
         self.assertRaises(ValueError, builder.add_joint_descriptor, joint, world_index=wid)
 
     def test_09_add_geometry(self):
-        builder = ModelBuilder()
+        builder = ModelBuilderKamino()
         wid = builder.add_world(name="test_world", up_axis=Axis.Z)
         self.assertTrue(builder.num_geoms == 0)
         self.assertEqual(len(builder.worlds[wid].geometry_layers), 0)
@@ -385,7 +385,7 @@ class TestModelBuilder(unittest.TestCase):
         self.assertEqual(builder.worlds[wid].geometry_layers[0], "foo")
 
     def test_10_add_geometry_descriptors(self):
-        builder = ModelBuilder()
+        builder = ModelBuilderKamino()
         wid = builder.add_world(name="test_world", up_axis=Axis.Z)
         self.assertTrue(builder.num_geoms == 0)
         self.assertEqual(len(builder.worlds[wid].geometry_layers), 0)
@@ -406,7 +406,7 @@ class TestModelBuilder(unittest.TestCase):
         self.assertEqual(builder.worlds[wid].geometry_layers[0], "default")
 
     def test_11_add_material(self):
-        builder = ModelBuilder()
+        builder = ModelBuilderKamino()
         wid = builder.add_world(name="test_world", up_axis=Axis.Z)
         self.assertEqual(builder.num_materials, 1)  # Default material exists
 
@@ -628,7 +628,7 @@ class TestModelBuilder(unittest.TestCase):
 
     def test_18_add_two_cartpole_worlds_to_builder(self):
         # Construct cartpole model
-        builder = ModelBuilder(default_world=False)
+        builder = ModelBuilderKamino(default_world=False)
         builder = build_cartpole(builder=builder, new_world=True)
         builder = build_cartpole(builder=builder, new_world=True)
         builder = build_cartpole(builder=builder, new_world=True)

@@ -22,7 +22,7 @@ from warp.context import Devicelike
 
 import newton
 import newton.examples
-from newton._src.solvers.kamino.core.builder import ModelBuilder
+from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
 from newton._src.solvers.kamino.examples import get_examples_output_path, run_headless
 from newton._src.solvers.kamino.models.builders.testing import build_all_joints_test_model
 from newton._src.solvers.kamino.utils import logger as msg
@@ -66,7 +66,7 @@ class Example:
 
         # Construct model builder
         msg.notif("Constructing builder using model generator ...")
-        self.builder: ModelBuilder = build_all_joints_test_model(ground=ground)
+        self.builder: ModelBuilderKamino = build_all_joints_test_model(ground=ground)
 
         # Set gravity
         for w in range(self.builder.num_worlds):

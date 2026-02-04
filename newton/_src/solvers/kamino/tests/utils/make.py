@@ -22,7 +22,7 @@ import warp as wp
 from warp.context import Devicelike
 
 from newton._src.solvers.kamino.core.bodies import update_body_inertias
-from newton._src.solvers.kamino.core.builder import ModelBuilder
+from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
 from newton._src.solvers.kamino.core.model import DataKamino, ModelKamino
 from newton._src.solvers.kamino.geometry.detector import CollisionDetector, CollisionDetectorSettings
 from newton._src.solvers.kamino.kinematics.constraints import make_unilateral_constraints_info, update_constraints_info
@@ -38,14 +38,14 @@ from newton._src.solvers.kamino.utils.sim import Simulator
 
 def make_simulator(nw: int, model_build_func, device=None) -> Simulator:
     # Create a model builder
-    builder = ModelBuilder()
+    builder = ModelBuilderKamino()
 
     # Construct a specific test model in the builder
     _, _, _ = model_build_func(builder)
 
     # Create additional builders and add them to the main builder
     for _ in range(nw - 1):
-        other = ModelBuilder()
+        other = ModelBuilderKamino()
         _, _, _ = model_build_func(other)
         builder.add_builder(other)
 
@@ -111,7 +111,7 @@ def make_inverse_generalized_mass_matrices(model: ModelKamino, data: DataKamino)
 
 
 def make_containers(
-    builder: ModelBuilder, max_world_contacts: int = 0, dt: float = 0.001, device: Devicelike = None
+    builder: ModelBuilderKamino, max_world_contacts: int = 0, dt: float = 0.001, device: Devicelike = None
 ) -> tuple[ModelKamino, DataKamino, Limits, CollisionDetector, DenseSystemJacobians]:
     # Create the model from the builder
     model = builder.finalize(device=device)

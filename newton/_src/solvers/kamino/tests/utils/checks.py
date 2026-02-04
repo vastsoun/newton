@@ -21,7 +21,7 @@ import unittest
 
 import numpy as np
 
-from newton._src.solvers.kamino.core.builder import ModelBuilder
+from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
 
 ###
 # Array-like comparisons
@@ -51,12 +51,12 @@ def vectors_equal(v1, v2, tolerance=1e-6) -> bool:
 
 def assert_builders_equal(
     fixture: unittest.TestCase,
-    builder1: ModelBuilder,
-    builder2: ModelBuilder,
+    builder1: ModelBuilderKamino,
+    builder2: ModelBuilderKamino,
     skip_colliders: bool = False,
 ):
     """
-    Compares two ModelBuilder instances for equality.
+    Compares two ModelBuilderKamino instances for equality.
     """
     fixture.assertEqual(builder1.num_bodies, builder2.num_bodies)
     fixture.assertEqual(builder1.num_joints, builder2.num_joints)

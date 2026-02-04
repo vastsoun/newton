@@ -25,7 +25,7 @@ import numpy as np
 import warp as wp
 from warp.context import Devicelike
 
-from newton._src.solvers.kamino.core.builder import ModelBuilder
+from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
 from newton._src.solvers.kamino.core.model import DataKamino, ModelKamino
 from newton._src.solvers.kamino.geometry.contacts import Contacts
 from newton._src.solvers.kamino.geometry.unified import BroadPhaseMode, CollisionPipelineUnifiedKamino
@@ -102,7 +102,7 @@ single edge or corner, generating only 1 contact point.
 
 def test_unified_pipeline(
     testcase: unittest.TestCase,
-    builder: ModelBuilder,
+    builder: ModelBuilderKamino,
     expected: dict,
     max_contacts_per_pair: int = 24,
     margin: float = 0.0,
@@ -114,7 +114,7 @@ def test_unified_pipeline(
 ):
     """
     Runs the unified collision detection pipeline using all broad-phase backends
-    on a system specified via a ModelBuilder and checks the results.
+    on a system specified via a ModelBuilderKamino and checks the results.
     """
     # Run the narrow-phase test over each broad-phase backend
     if broadphase_modes is None:

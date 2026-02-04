@@ -31,7 +31,8 @@ from warp.context import Devicelike
 
 from ..core.types import FloatType, IntType, float32, int32
 from ..utils import logger as msg
-from .core import LinearOperator
+from . import blas
+from .core import LinearInfo, LinearOperator
 
 if TYPE_CHECKING:
     from .core import DenseLinearOperator
@@ -510,11 +511,83 @@ class BlockSparseMatrices:
 
 
 @dataclass
+class BlockSparseInfo(LinearInfo):
+    bsm: BlockSparseMatrices | None = None
+
+    _dim: wp.array | None = None
+
+    @property
+    def dtype(self) -> FloatType | None:
+        if self.bsm is None:
+            return None
+        return self.bsm.nzb_dtype.dtype
+
+    @property
+    def device(self) -> Devicelike | None:
+        if self.bsm is None:
+            return None
+        return self.bsm.device
+
+    @property
+    def num_matrices(self) -> int:
+        if self.bsm is None:
+            return 0
+        return self.bsm.num_matrices
+
+    @property
+    def num_blocks(self) -> int:
+        if self.bsm is None:
+            return 0
+        return self.bsm.num_matrices
+
+    @property
+    def max_dimension(self) -> int:
+        if self.bsm is None:
+            return 0
+        return max(self.bsm.max_of_max_dims)
+
+    @property
+    def dim(self):
+        return self._dim
+
+    @dim.getter
+    def dim(self) -> wp.array | None:
+        if self.bsm is None:
+            return None
+        if self._dim is None:
+            self._dim = wp.empty(
+                (self.num_matrices,),
+                dtype=self.bsm.index_dtype,
+                device=self.device,
+            )
+
+        @wp.kernel
+        def copy_dim(
+            dims: wp.array2d(dtype=self.bsm.index_dtype),
+            dim: wp.array(dtype=self.bsm.index_dtype),
+        ):
+            wid = wp.tid()
+            dim[wid] = dims[wid, 1]
+
+        wp.launch(kernel=copy_dim, dim=self.num_matrices, inputs=[self.bsm.dims], outputs=[self._dim])
+        return self._dim
+
+
 class BlockSparseLinearOperators(LinearOperator):
     """
     A Block-Sparse Linear Operator container for representing
     and operating on multiple independent sparse linear systems.
     """
+
+    def __init__(self, bsm: BlockSparseMatrices | None = None):
+        self.bsm = bsm
+        self.info = BlockSparseInfo(bsm=bsm)
+
+        # Default operators
+        self.Ax_op = blas.block_sparse_matvec
+        self.ATy_op = blas.block_sparse_transpose_matvec
+        self.gemv_op = blas.block_sparse_gemv
+        self.gemvt_op = blas.block_sparse_transpose_gemv
 
     ###
     # On-device Data
@@ -599,6 +672,38 @@ class BlockSparseLinearOperators(LinearOperator):
         if self.gemvt_op is None:
             raise RuntimeError("No BLAS-like transposed `GEMV` operator has been assigned.")
         self.gemvt_op(self.bsm, y, x, alpha, beta, matrix_mask)
+
+
+@dataclass
+class DiagonalLinearOperator(LinearOperator):
+    """
+    A data structure for encapsulating a multi-linear diagonal matrix operator.
+    """
+
+    diag: wp.array | None = None
+    """The flat data array containing the matrix blocks."""
+
+    def gemv(self, x: wp.array, y: wp.array, matrix_mask: wp.array, alpha: float = 1.0, beta: float = 0.0) -> None:
+        if self.diag is None:
+            raise RuntimeError("Matrix data needs to be set to run matrix-vector multiplication.")
+
+        if self.diag.ndim == 1:
+            raise NotImplementedError("Matrix-vector product with 1d arrays not yet implemented.")
+
+        elif self.diag.ndim == 2:
+            if x.ndim != 2 or y.ndim != 2:
+                raise TypeError(
+                    f"Dimension of vector arrays (x: {x.ndim}, y: {y.ndim}) needs to match dimension of matrix ({self.diag.ndim})."
+                )
+
+            info = self.mat.info
+            blas.diag_gemv(self.diag, x, y, info.dim, matrix_mask, alpha, beta)
+
+    def operator_2d(self):
+        # TODO: Check that transformation is valid (all max dims are equal)
+        num_matrices = self.info.num_blocks
+        max_dim = self.info.max_dimension
+        return DiagonalLinearOperator(info=self.info, mat=self.diag.reshape((num_matrices, max_dim)))
 
 
 ###
@@ -746,7 +851,7 @@ def allocate_block_sparse_from_dense(
     Returns:
         A finalized but empty BlockSparseMatrices ready for use with dense_to_block_sparse_copy_values.
     """
-    from .core import DenseSquareMultiLinearInfo  # noqa: PLC0415
+    from .dense import DenseSquareMultiLinearInfo  # noqa: PLC0415
 
     if dense_op.info is None:
         raise ValueError("Dense operator must have info set.")
@@ -800,7 +905,7 @@ def dense_to_block_sparse_copy_values(
         bsm: A pre-allocated BlockSparseMatrices (from allocate_block_sparse_from_dense).
         block_size: The block size (must match the BSM's block size).
     """
-    from .core import DenseSquareMultiLinearInfo  # noqa: PLC0415
+    from .dense import DenseSquareMultiLinearInfo  # noqa: PLC0415
 
     if dense_op.info is None:
         raise ValueError("Dense operator must have info set.")

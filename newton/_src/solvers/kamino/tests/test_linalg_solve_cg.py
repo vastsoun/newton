@@ -21,11 +21,15 @@ import numpy as np
 import warp as wp
 
 from newton._src.solvers.kamino.core.types import float32
-from newton._src.solvers.kamino.linalg.conjugate import BatchedLinearOperator, CGSolver, CRSolver
-from newton._src.solvers.kamino.linalg.core import DenseLinearOperator, DenseSquareMultiLinearInfo
+from newton._src.solvers.kamino.linalg.blas import block_sparse_gemv
+
+# from newton._src.solvers.kamino.linalg.conjugate import BatchedLinearOperator, CGSolver, CRSolver
+from newton._src.solvers.kamino.linalg.conjugate import CGSolver, CRSolver
+from newton._src.solvers.kamino.linalg.dense import DenseLinearOperator, DenseSquareMultiLinearInfo
 from newton._src.solvers.kamino.linalg.linear import ConjugateGradientSolver
 from newton._src.solvers.kamino.linalg.sparse import (
     BlockDType,
+    BlockSparseLinearOperators,
     BlockSparseMatrices,
     allocate_block_sparse_from_dense,
     dense_to_block_sparse_copy_values,
@@ -66,7 +70,8 @@ class TestLinalgConjugate(unittest.TestCase):
         info.finalize(dimensions=[maxdim] * n_worlds, dtype=float32, device=device)
         info.dim = problem.dim_wp  # Override with actual active dimensions
         operator = DenseLinearOperator(info=info, mat=problem.A_wp)
-        A = BatchedLinearOperator.from_dense(operator)
+        # A = BatchedLinearOperator.from_dense(operator)
+        A = operator.operator_2d()
 
         atol = wp.full(n_worlds, 1.0e-8, dtype=problem.wp_dtype, device=device)
         rtol = wp.full(n_worlds, 1.0e-8, dtype=problem.wp_dtype, device=device)
@@ -192,8 +197,11 @@ class TestLinalgConjugate(unittest.TestCase):
         info = DenseSquareMultiLinearInfo()
         info.finalize(dimensions=[padded_dim] * n_worlds, dtype=float32, device=device)
         info.dim = active_dims
-        dense_op = BatchedLinearOperator.from_dense(DenseLinearOperator(info=info, mat=A_wp))
-        sparse_op = BatchedLinearOperator.from_block_sparse(bsm, active_dims)
+        # dense_op = BatchedLinearOperator.from_dense(DenseLinearOperator(info=info, mat=A_wp))
+        dense_op = DenseLinearOperator(info=info, mat=A_wp).operator_2d()
+        # sparse_op = BatchedLinearOperator.from_block_sparse(bsm, active_dims)
+        sparse_op = BlockSparseLinearOperators(bsm=bsm)
+        sparse_op.gemv_op = block_sparse_gemv
 
         # Prepare RHS
         b_2d = np.zeros((n_worlds, padded_dim), dtype=np.float32)
@@ -295,8 +303,11 @@ class TestLinalgConjugate(unittest.TestCase):
         bsm.nzb_coords.assign(np.array(coords, dtype=np.int32))
         bsm.assign([A])
 
-        active_dims = wp.array([dim], dtype=wp.int32, device=device)
-        return BatchedLinearOperator.from_block_sparse(bsm, active_dims)
+        # active_dims = wp.array([dim], dtype=wp.int32, device=device)
+        # return BatchedLinearOperator.from_block_sparse(bsm, active_dims)
+        operator = BlockSparseLinearOperators(bsm=bsm)
+        operator.gemv_op = block_sparse_gemv
+        return operator
 
     def test_sparse_cg_solve_simple(self):
         """Test CG solve with sparse operator on a 16x16 system with 4x4 blocks."""
@@ -471,6 +482,8 @@ class TestLinalgConjugate(unittest.TestCase):
             x_found = x_np[w]
             x_ref = x_ref_list[w]
             if self.verbose:
+                print(f"World {w}: x_ref = {x_ref}")
+                print(f"World {w}: x_found = {x_found}")
                 print(f"World {w}: max error = {np.abs(x_found - x_ref).max():.2e}")
             self.assertTrue(
                 np.allclose(x_found, x_ref, rtol=1e-3, atol=1e-4),

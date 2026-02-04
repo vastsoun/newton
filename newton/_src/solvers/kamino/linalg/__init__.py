@@ -17,6 +17,9 @@
 
 from . import utils
 from .core import (
+    LinearOperator,
+)
+from .dense import (
     DenseLinearOperator,
     DenseRectangularMultiLinearInfo,
     DenseSquareMultiLinearInfo,
@@ -46,6 +49,7 @@ __all__ = [
     "IterativeSolver",
     "LLTBlockedSolver",
     "LLTSequentialSolver",
+    "LinearOperator",
     "LinearSolver",
     "LinearSolverType",
     "utils",

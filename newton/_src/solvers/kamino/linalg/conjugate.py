@@ -26,9 +26,7 @@ from typing import Any
 
 import warp as wp
 
-from . import blas
-from .core import DenseLinearOperator
-from .sparse import BlockSparseMatrices
+from .core import LinearOperator
 
 # No need to auto-generate adjoint code for linear solvers
 wp.set_module_options({"enable_backward": False})
@@ -37,86 +35,87 @@ wp.set_module_options({"enable_backward": False})
 
 
 __all__ = [
-    "BatchedLinearOperator",
+    # "BatchedLinearOperator",
     "CGSolver",
     "CRSolver",
     "make_jacobi_preconditioner",
+    "transform_diag_to_jacobi_preconditioner",
 ]
 
 
-class BatchedLinearOperator:
-    """Linear operator for batched matrix-vector products.
+# class BatchedLinearOperator:
+#     """Linear operator for batched matrix-vector products.
 
-    Supports dense, diagonal, and block-sparse matrices.
-    Use class methods to create instances.
-    """
+#     Supports dense, diagonal, and block-sparse matrices.
+#     Use class methods to create instances.
+#     """
 
-    def __init__(
-        self,
-        gemv_fn: Callable,
-        n_worlds: int,
-        max_dim: int,
-        active_dims: wp.array,
-        device: wp.context.Device,
-        dtype: type,
-    ):
-        self._gemv_fn = gemv_fn
-        self.n_worlds = n_worlds
-        self.max_dim = max_dim
-        self.active_dims = active_dims
-        self.device = device
-        self.dtype = dtype
+#     def __init__(
+#         self,
+#         gemv_fn: Callable,
+#         n_worlds: int,
+#         max_dim: int,
+#         active_dims: wp.array,
+#         device: wp.context.Device,
+#         dtype: type,
+#     ):
+#         self._gemv_fn = gemv_fn
+#         self.n_worlds = n_worlds
+#         self.max_dim = max_dim
+#         self.active_dims = active_dims
+#         self.device = device
+#         self.dtype = dtype
 
-    @classmethod
-    def from_dense(cls, operator: DenseLinearOperator) -> BatchedLinearOperator:
-        """Create operator from dense matrix data."""
-        info = operator.info
-        n_worlds = info.num_blocks
-        max_dim = info.max_dimension
-        A_mat = operator.mat.reshape((n_worlds, max_dim * max_dim))
-        active_dims = info.dim
+#     @classmethod
+#     def from_dense(cls, operator: DenseLinearOperator) -> BatchedLinearOperator:
+#         """Create operator from dense matrix data."""
+#         info = operator.info
+#         n_worlds = info.num_blocks
+#         max_dim = info.max_dimension
+#         A_mat = operator.mat.reshape((n_worlds, max_dim * max_dim))
+#         active_dims = info.dim
 
-        def gemv_fn(x, y, world_active, alpha, beta):
-            blas.dense_gemv(A_mat, x, y, active_dims, world_active, alpha, beta, max_dim)
+#         def gemv_fn(x, y, world_active, alpha, beta):
+#             blas.dense_gemv(A_mat, x, y, active_dims, world_active, alpha, beta, max_dim)
 
-        return cls(gemv_fn, n_worlds, max_dim, active_dims, info.device, info.dtype)
+#         return cls(gemv_fn, n_worlds, max_dim, active_dims, info.device, info.dtype)
 
-    @classmethod
-    def from_diagonal(cls, D: wp.array2d, active_dims: wp.array) -> BatchedLinearOperator:
-        """Create operator from diagonal matrix."""
-        n_worlds, max_dim = D.shape
+#     @classmethod
+#     def from_diagonal(cls, D: wp.array2d, active_dims: wp.array) -> BatchedLinearOperator:
+#         """Create operator from diagonal matrix."""
+#         n_worlds, max_dim = D.shape
 
-        def gemv_fn(x, y, world_active, alpha, beta):
-            blas.diag_gemv(D, x, y, active_dims, world_active, alpha, beta)
+#         def gemv_fn(x, y, world_active, alpha, beta):
+#             blas.diag_gemv(D, x, y, active_dims, world_active, alpha, beta)
 
-        return cls(gemv_fn, n_worlds, max_dim, active_dims, D.device, D.dtype)
+#         return cls(gemv_fn, n_worlds, max_dim, active_dims, D.device, D.dtype)
 
-    @classmethod
-    def from_block_sparse(cls, A: BlockSparseMatrices, active_dims: wp.array) -> BatchedLinearOperator:
-        """Create operator from block-sparse matrix.
+#     @classmethod
+#     def from_block_sparse(cls, A: BlockSparseMatrices, active_dims: wp.array) -> BatchedLinearOperator:
+#         """Create operator from block-sparse matrix.
 
-        Requires all matrices to have the same max dimensions so that 2D arrays
-        can be reshaped to 1D for the sparse gemv kernel.
+#         Requires all matrices to have the same max dimensions so that 2D arrays
+#         can be reshaped to 1D for the sparse gemv kernel.
 
-        Args:
-            A: Block-sparse matrices container.
-            active_dims: 1D int array with active row dimension per matrix.
-        """
-        max_rows, max_cols = A.max_of_max_dims
-        n_worlds = A.num_matrices
+#         Args:
+#             A: Block-sparse matrices container.
+#             active_dims: 1D int array with active row dimension per matrix.
+#         """
+#         max_rows, max_cols = A.max_of_max_dims
+#         n_worlds = A.num_matrices
 
-        def gemv_fn(x, y, world_active, alpha, beta):
-            # Reshape 2D arrays to 1D for sparse gemv, then back
-            x_flat = x.reshape((n_worlds * max_cols,))
-            y_flat = y.reshape((n_worlds * max_rows,))
-            blas.block_sparse_gemv(A, x_flat, y_flat, alpha, beta, world_active)
+#         def gemv_fn(x, y, world_active, alpha, beta):
+#             # Reshape 2D arrays to 1D for sparse gemv, then back
+#             x_flat = x.reshape((n_worlds * max_cols,))
+#             y_flat = y.reshape((n_worlds * max_rows,))
+#             blas.block_sparse_gemv(A, x_flat, y_flat, alpha, beta, world_active)
 
-        dtype = A.nzb_dtype.dtype if A.nzb_dtype is not None else None
-        return cls(gemv_fn, n_worlds, max_rows, active_dims, A.device, dtype)
+#         dtype = A.nzb_dtype.dtype if A.nzb_dtype is not None else None
+#         return cls(gemv_fn, n_worlds, max_rows, active_dims, A.device, dtype)
 
-    def gemv(self, x: wp.array2d, y: wp.array2d, world_active: wp.array, alpha: float, beta: float):
-        """Compute y = alpha * A @ x + beta * y."""
-        self._gemv_fn(x, y, world_active, alpha, beta)
+#     def gemv(self, x: wp.array2d, y: wp.array2d, world_active: wp.array, alpha: float, beta: float):
+#         """Compute y = alpha * A @ x + beta * y."""
+#         self._gemv_fn(x, y, world_active, alpha, beta)
 
 
 # Implementations
@@ -375,6 +374,18 @@ def make_jacobi_preconditioner(
     diag[world, row] = el_inv
 
 
+@wp.kernel
+def transform_diag_to_jacobi_preconditioner(diag: wp.array2d(dtype=Any), world_dims: wp.array(dtype=wp.int32)):
+    world, row = wp.tid()
+    world_dim = world_dims[world]
+    if row >= world_dim:
+        diag[world, row] = 0.0
+        return
+    el = diag[world, row]
+    el_inv = 1.0 / (el + 1e-9)
+    diag[world, row] = el_inv
+
+
 class ConjugateSolver:
     """Base class for conjugate iterative solvers (CG, CR).
 
@@ -399,20 +410,20 @@ class ConjugateSolver:
 
     def __init__(
         self,
-        A: BatchedLinearOperator,
+        A: LinearOperator,
         active_dims: wp.array(dtype=Any) | None = None,
         world_active: wp.array(dtype=wp.int32) | None = None,
         atol: float | wp.array(dtype=Any) | None = None,
         rtol: float | wp.array(dtype=Any) | None = None,
         maxiter: wp.array = None,
-        Mi: BatchedLinearOperator | None = None,
+        Mi: LinearOperator | None = None,
         callback: Callable | None = None,
         use_cuda_graph=True,
     ):
-        if not isinstance(A, BatchedLinearOperator):
-            raise ValueError("A must be a BatchedLinearOperator")
-        if Mi is not None and not isinstance(Mi, BatchedLinearOperator):
-            raise ValueError("Mi must be a BatchedLinearOperator or None")
+        if not isinstance(A, LinearOperator):
+            raise ValueError("A must be a LinearOperator")
+        if Mi is not None and not isinstance(Mi, LinearOperator):
+            raise ValueError("Mi must be a LinearOperator or None")
 
         self.scalar_type = wp.types.type_scalar_type(A.dtype)
         self.n_worlds = A.n_worlds

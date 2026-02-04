@@ -31,10 +31,16 @@ from warp.context import Devicelike
 
 from ..core.types import FloatType, float32, override
 from . import conjugate, factorize
-from .core import DenseLinearOperator, DenseSquareMultiLinearInfo, LinearOperator, make_dtype_tolerance
+from .core import LinearOperator
+from .dense import (
+    DenseLinearOperator,
+    DenseSquareMultiLinearInfo,
+    make_dtype_tolerance,
+)
 from .sparse import (
     BlockSparseLinearOperators,
     BlockSparseMatrices,
+    DiagonalLinearOperator,
     allocate_block_sparse_from_dense,
     dense_to_block_sparse_copy_values,
 )
@@ -300,14 +306,15 @@ class IterativeSolver(LinearSolver):
 
         self._num_worlds: int | None = None
         self._max_dim: int | None = None
-        self._batched_operator: conjugate.BatchedLinearOperator | None = None
+        # self._batched_operator: conjugate.BatchedLinearOperator | None = None
 
         # Sparse discovery settings (via kwargs)
         self._discover_sparse: bool = kwargs.pop("discover_sparse", True)
         self._sparse_block_size: int = kwargs.pop("sparse_block_size", 4)
         self._sparse_threshold: float = kwargs.pop("sparse_threshold", 0.5)
         self._sparse_bsm: BlockSparseMatrices | None = None
-        self._sparse_operator: conjugate.BatchedLinearOperator | None = None
+        # self._sparse_operator: conjugate.BatchedLinearOperator | None = None
+        self._sparse_operator: BlockSparseLinearOperators | None = None
         self._sparse_solver: Any = None  # Set by concrete classes
 
         super().__init__(
@@ -319,20 +326,20 @@ class IterativeSolver(LinearSolver):
             **kwargs,
         )
 
-    def _to_batched_operator(self, operator: LinearOperator) -> conjugate.BatchedLinearOperator:
-        """Convert various operator types to BatchedLinearOperator."""
-        if isinstance(operator, conjugate.BatchedLinearOperator):
-            return operator
-        elif isinstance(operator, DenseLinearOperator):
-            return conjugate.BatchedLinearOperator.from_dense(operator)
-        elif isinstance(operator, BlockSparseLinearOperators):
-            # For sparse, need uniform dimensions - extract row dims as active_dims
-            bsm = operator.bsm
-            max_rows = bsm.max_of_max_dims[0]
-            active_dims = wp.full(bsm.num_matrices, max_rows, dtype=wp.int32, device=bsm.device)
-            return conjugate.BatchedLinearOperator.from_block_sparse(bsm, active_dims)
-        else:
-            raise ValueError(f"Unsupported operator type: {type(operator)}")
+    # def _to_batched_operator(self, operator: LinearOperator) -> conjugate.BatchedLinearOperator:
+    #     """Convert various operator types to BatchedLinearOperator."""
+    #     if isinstance(operator, conjugate.BatchedLinearOperator):
+    #         return operator
+    #     elif isinstance(operator, DenseLinearOperator):
+    #         return conjugate.BatchedLinearOperator.from_dense(operator)
+    #     elif isinstance(operator, BlockSparseLinearOperators):
+    #         # For sparse, need uniform dimensions - extract row dims as active_dims
+    #         bsm = operator.bsm
+    #         max_rows = bsm.max_of_max_dims[0]
+    #         active_dims = wp.full(bsm.num_matrices, max_rows, dtype=wp.int32, device=bsm.device)
+    #         return conjugate.BatchedLinearOperator.from_block_sparse(bsm, active_dims)
+    #     else:
+    #         raise ValueError(f"Unsupported operator type: {type(operator)}")
 
     @override
     def finalize(
@@ -359,14 +366,22 @@ class IterativeSolver(LinearSolver):
         if "sparse_threshold" in kwargs:
             self._sparse_threshold = kwargs.pop("sparse_threshold")
 
-        self._batched_operator = self._to_batched_operator(operator)
+        # self._batched_operator = self._to_batched_operator(operator)
 
-        if isinstance(operator, DenseLinearOperator):
-            self._operator = operator
-            self._dtype = operator.info.dtype
-        else:
-            self._operator = None
-            self._dtype = self._batched_operator.dtype
+        # if isinstance(operator, DenseLinearOperator):
+        #     self._operator = operator
+        #     self._dtype = operator.info.dtype
+        # else:
+        #     self._operator = None
+        #     self._dtype = self._batched_operator.dtype
+        self._operator = operator
+        if (
+            not self._discover_sparse
+            and isinstance(self._operator, DenseLinearOperator)
+            and not self._operator.is_operator_2d()
+        ):
+            self._operator = self._operator.operator_2d()
+        self._dtype = operator.dtype
 
         if maxiter is not None:
             self._maxiter = maxiter
@@ -375,8 +390,10 @@ class IterativeSolver(LinearSolver):
         if preconditioner is not None:
             self._preconditioner = preconditioner
 
-        self._num_worlds = self._batched_operator.n_worlds
-        self._max_dim = self._batched_operator.max_dim
+        # self._num_worlds = self._batched_operator.n_worlds
+        # self._max_dim = self._batched_operator.max_dim
+        self._num_worlds = operator.info.num_blocks
+        self._max_dim = operator.info.max_dimension
         self._solve_iterations: wp.array | None = None
         self._solve_residual_norm: wp.array | None = None
 
@@ -403,9 +420,10 @@ class IterativeSolver(LinearSolver):
                 device=self._device,
             )
             # Create sparse operator (will be populated at compute time)
-            self._sparse_operator = conjugate.BatchedLinearOperator.from_block_sparse(
-                self._sparse_bsm, self._batched_operator.active_dims
-            )
+            # self._sparse_operator = conjugate.BatchedLinearOperator.from_block_sparse(
+            #     self._sparse_bsm, self._batched_operator.active_dims
+            # )
+            self._sparse_operator = BlockSparseLinearOperators(bsm=self._sparse_bsm)
 
         self._allocate_impl(operator, **kwargs)
 
@@ -736,16 +754,18 @@ class ConjugateGradientSolver(IterativeSolver):
             self._jacobi_preconditioner = wp.zeros(
                 shape=(self._num_worlds, self._max_dim), dtype=self._dtype, device=self._device
             )
-            self._Mi = conjugate.BatchedLinearOperator.from_diagonal(
-                self._jacobi_preconditioner, self._batched_operator.active_dims
-            )
+            # self._Mi = conjugate.BatchedLinearOperator.from_diagonal(
+            #     self._jacobi_preconditioner, self._batched_operator.active_dims
+            # )
+            self._Mi = DiagonalLinearOperator(diag=self._jacobi_preconditioner, info=self._operator.info)
         elif self._preconditioner is not None:
             raise ValueError(f"Unsupported preconditioner: {self._preconditioner}.")
         else:
             self._Mi = None
 
         self.solver = conjugate.CGSolver(
-            A=self._batched_operator,
+            # A=self._batched_operator,
+            A=self._operator,
             world_active=self._world_active,
             atol=self.atol,
             rtol=self.rtol,
@@ -805,7 +825,8 @@ class ConjugateGradientSolver(IterativeSolver):
             dim=(self._num_worlds, self._max_dim),
             inputs=[
                 self._operator.mat.reshape((self._num_worlds, self._max_dim * self._max_dim)),
-                self._batched_operator.active_dims,
+                # self._batched_operator.active_dims,
+                self._operator.info.dim,
             ],
             outputs=[self._jacobi_preconditioner],
             device=self._device,
@@ -843,16 +864,18 @@ class ConjugateResidualSolver(IterativeSolver):
             self._jacobi_preconditioner = wp.zeros(
                 shape=(self._num_worlds, self._max_dim), dtype=self._dtype, device=self._device
             )
-            self._Mi = conjugate.BatchedLinearOperator.from_diagonal(
-                self._jacobi_preconditioner, self._batched_operator.active_dims
-            )
+            # self._Mi = conjugate.BatchedLinearOperator.from_diagonal(
+            #     self._jacobi_preconditioner, self._batched_operator.active_dims
+            # )
+            self._Mi = DiagonalLinearOperator(diag=self._jacobi_preconditioner, info=self._operator.info)
         elif self._preconditioner is not None:
             raise ValueError(f"Unsupported preconditioner: {self._preconditioner}.")
         else:
             self._Mi = None
 
         self.solver = conjugate.CRSolver(
-            A=self._batched_operator,
+            # A=self._batched_operator,
+            A=self._operator,
             world_active=self._world_active,
             atol=self.atol,
             rtol=self.rtol,
@@ -912,7 +935,8 @@ class ConjugateResidualSolver(IterativeSolver):
             dim=(self._num_worlds, self._max_dim),
             inputs=[
                 self._operator.mat.reshape((self._num_worlds, self._max_dim * self._max_dim)),
-                self._batched_operator.active_dims,
+                # self._batched_operator.active_dims,
+                self._operator.info.dim,
             ],
             outputs=[self._jacobi_preconditioner],
             device=self._device,

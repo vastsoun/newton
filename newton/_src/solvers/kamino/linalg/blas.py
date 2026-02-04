@@ -672,6 +672,12 @@ def block_sparse_gemv(
         beta (Any): Input scaling for linear offset.
         matrix_mask (wp.array): Mask vector to skip matrices set to `0` in the mask.
     """
+
+    if x.ndim == 2:
+        x = x.reshape((A.num_matrices * A.max_of_max_dims[1],))
+    if y.ndim == 2:
+        y = y.reshape((A.num_matrices * A.max_of_max_dims[0],))
+
     # Compute y <= beta * y
     wp.launch(
         kernel=_make_scale_vector_kernel(0),

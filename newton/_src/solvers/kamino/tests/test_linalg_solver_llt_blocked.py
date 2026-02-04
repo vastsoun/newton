@@ -21,7 +21,7 @@ import numpy as np
 import warp as wp
 
 from newton._src.solvers.kamino.core.types import float32
-from newton._src.solvers.kamino.linalg.core import DenseLinearOperator, DenseSquareMultiLinearInfo
+from newton._src.solvers.kamino.linalg.dense import DenseLinearOperator, DenseSquareMultiLinearInfo
 from newton._src.solvers.kamino.linalg.linear import LLTBlockedSolver
 from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.tests.utils.extract import get_matrix_block, get_vector_block

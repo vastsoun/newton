@@ -34,11 +34,11 @@ from newton._src.sim import (
 )
 from newton._src.solvers.kamino.core import inertia
 from newton._src.solvers.kamino.core.builder import ModelBuilder as ModelBuilderKamino
+from newton._src.solvers.kamino.core.control import ControlKamino
+from newton._src.solvers.kamino.core.data import DataKamino
 from newton._src.solvers.kamino.core.joints import JOINT_QMAX, JOINT_QMIN
-from newton._src.solvers.kamino.core.new_control import ControlKamino
-from newton._src.solvers.kamino.core.new_data import DataKamino
-from newton._src.solvers.kamino.core.new_model import ModelKamino
-from newton._src.solvers.kamino.core.new_state import StateKamino
+from newton._src.solvers.kamino.core.model import ModelKamino
+from newton._src.solvers.kamino.core.state import StateKamino
 from newton._src.solvers.kamino.geometry.contacts import DEFAULT_GEOM_PAIR_MAX_CONTACTS
 from newton._src.solvers.kamino.geometry.contacts import Contacts as ContactsKamino
 from newton._src.solvers.kamino.models import basics, get_basics_usd_assets_path

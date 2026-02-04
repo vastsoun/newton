@@ -31,12 +31,6 @@ from .blas import (
     block_sparse_transpose_gemv,
     block_sparse_transpose_matvec,
 )
-from .blas2d import (
-    block_sparse_gemv_2d,
-    block_sparse_matvec_2d,
-    block_sparse_transpose_gemv_2d,
-    block_sparse_transpose_matvec_2d,
-)
 from .sparse_matrix import BlockSparseMatrices
 
 ###
@@ -115,20 +109,12 @@ class BlockSparseLinearOperators:
         if self.precompute_op:
             self.precompute_op(self)
 
-    def initialize_default_operators(self, flat=True):
-        """Sets all operator functions to their default implementations.
-        Uses versions expecting flattened stacks of input and output vectors if flat is True;
-        otherwise uses versions expecting 2d arrays for stacks of vectors."""
-        if flat:
-            self.Ax_op = block_sparse_matvec
-            self.ATy_op = block_sparse_transpose_matvec
-            self.gemv_op = block_sparse_gemv
-            self.gemvt_op = block_sparse_transpose_gemv
-        else:
-            self.Ax_op = block_sparse_matvec_2d
-            self.ATy_op = block_sparse_transpose_matvec_2d
-            self.gemv_op = block_sparse_gemv_2d
-            self.gemvt_op = block_sparse_transpose_gemv_2d
+    def initialize_default_operators(self):
+        """Sets all operator functions to their default implementations."""
+        self.Ax_op = block_sparse_matvec
+        self.ATy_op = block_sparse_transpose_matvec
+        self.gemv_op = block_sparse_gemv
+        self.gemvt_op = block_sparse_transpose_gemv
 
     def matvec(self, x: wp.array, y: wp.array, matrix_mask: wp.array):
         """Performs the sparse matrix-vector product `y = A @ x`."""

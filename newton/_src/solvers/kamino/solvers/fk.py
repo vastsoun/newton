@@ -41,10 +41,10 @@ from ..core.math import (
 )
 from ..core.model import Model
 from ..core.types import vec6f
-from ..linalg.blas2d import (
+from ..linalg.blas import (
     block_sparse_ATA_blockwise_3_4_inv_diagonal_2d,
     block_sparse_ATA_inv_diagonal_2d,
-    get_blockwise_diag_3_4_gemv,
+    get_blockwise_diag_3_4_gemv_2d,
 )
 from ..linalg.conjugate import BatchedLinearOperator, CGSolver
 from ..linalg.factorize.llt_blocked_semi_sparse import SemiSparseBlockCholeskySolverBatched
@@ -2079,7 +2079,7 @@ class ForwardKinematicsSolver:
 
             # Initialize Jacobian linear operator
             self.sparse_jacobian_op = BlockSparseLinearOperators(self.sparse_jacobian)
-            self.sparse_jacobian_op.initialize_default_operators(flat=False)
+            self.sparse_jacobian_op.initialize_default_operators()
 
             # Initialize preconditioner
             if self.settings.preconditioner == FKPreconditionerOptions.JACOBI_DIAGONAL:
@@ -2095,7 +2095,7 @@ class ForwardKinematicsSolver:
                     dtype=wp.mat44f, shape=(self.num_worlds, self.num_bodies_max), device=self.device
                 )
                 preconditioner_op = BatchedLinearOperator(
-                    gemv_fn=get_blockwise_diag_3_4_gemv(self.inv_blocks_3, self.inv_blocks_4, self.num_states),
+                    gemv_fn=get_blockwise_diag_3_4_gemv_2d(self.inv_blocks_3, self.inv_blocks_4, self.num_states),
                     n_worlds=self.num_worlds,
                     max_dim=self.num_states_max,
                     active_dims=self.num_states,

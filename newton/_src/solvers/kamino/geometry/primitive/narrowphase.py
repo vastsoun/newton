@@ -40,7 +40,7 @@ from .....geometry.collision_primitive import (
     collide_sphere_sphere,
 )
 from ...core.materials import make_get_material_pair_properties
-from ...core.model import Model, ModelData
+from ...core.model import ModelData, ModelKamino
 from ...core.shapes import ShapeType
 from ...core.types import (
     float32,
@@ -1745,7 +1745,7 @@ def _primitive_narrowphase(
 
 
 def primitive_narrowphase(
-    model: Model,
+    model: ModelKamino,
     data: ModelData,
     candidates: CollisionCandidatesData,
     contacts: ContactsData,
@@ -1755,7 +1755,7 @@ def primitive_narrowphase(
     Launches the narrow-phase collision detection kernel optimized for primitive shapes.
 
     Args:
-        model (Model):
+        model (ModelKamino):
             The model containing the collision geometries.
         data (ModelData):
             The data containing the current state of the geometries.

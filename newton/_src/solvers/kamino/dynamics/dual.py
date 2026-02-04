@@ -24,7 +24,7 @@ the equations of motion in terms of constraint reactions.
 
 
 This module thus provides building-blocks to realize Delassus operators across multiple
-worlds contained in a :class:`Model`. The :class:`DelassusOperator` class provides a
+worlds contained in a :class:`ModelKamino`. The :class:`DelassusOperator` class provides a
 high-level interface to encapsulate both the data representation as well as the
 relevant operations. It provides methods to allocate the necessary data arrays, build
 the Delassus matrix given the current state of the model and the active constraints,
@@ -70,7 +70,7 @@ import warp as wp
 from warp.context import Devicelike
 
 from ..core.math import FLOAT32_EPS, UNIT_Z, screw, screw_angular, screw_linear
-from ..core.model import Model, ModelData, ModelSize
+from ..core.model import ModelData, ModelKamino, ModelKaminoSize
 from ..core.types import (
     float32,
     int32,
@@ -950,7 +950,7 @@ class DualProblem:
 
     def __init__(
         self,
-        model: Model | None = None,
+        model: ModelKamino | None = None,
         data: ModelData | None = None,
         limits: Limits | None = None,
         contacts: Contacts | None = None,
@@ -971,7 +971,7 @@ class DualProblem:
         by calling the `finalize()` method at a later point.
 
         Args:
-            model (Model, optional):
+            model (ModelKamino, optional):
                 The model to build the dual problem for.
             contacts (Contacts, optional):
                 The contacts container to use for the dual problem.
@@ -993,7 +993,7 @@ class DualProblem:
         self._device: Devicelike = device
 
         # Declare the model size cache
-        self._size: ModelSize | None = None
+        self._size: ModelKaminoSize | None = None
 
         self._settings: list[DualProblemSettings] = []
         """Host-side cache of the list of per world dual problem settings."""
@@ -1030,13 +1030,13 @@ class DualProblem:
         return self._device
 
     @property
-    def size(self) -> ModelSize:
+    def size(self) -> ModelKaminoSize:
         """
         Returns the model size of the dual problem.
         This is the size of the model that the dual problem is built for.
         """
         if self._size is None:
-            raise ValueError("Model size is not allocated. Call `finalize()` first.")
+            raise ValueError("ModelKamino size is not allocated. Call `finalize()` first.")
         return self._size
 
     @property
@@ -1076,7 +1076,7 @@ class DualProblem:
 
     def finalize(
         self,
-        model: Model,
+        model: ModelKamino,
         data: ModelData | None = None,
         limits: Limits | None = None,
         contacts: Contacts | None = None,
@@ -1091,7 +1091,7 @@ class DualProblem:
         for the given model, limits, contacts and Jacobians.
 
         Args:
-            model (Model, optional):
+            model (ModelKamino, optional):
                 The model to build the dual problem for.
             contacts (Contacts, optional):
                 The contacts container to use for the dual problem.
@@ -1111,9 +1111,9 @@ class DualProblem:
         """
         # Ensure the model is valid
         if model is None:
-            raise ValueError("A model of type `Model` must be provided to allocate the Delassus operator.")
-        elif not isinstance(model, Model):
-            raise ValueError("Invalid model provided. Must be an instance of `Model`.")
+            raise ValueError("A model of type `ModelKamino` must be provided to allocate the Delassus operator.")
+        elif not isinstance(model, ModelKamino):
+            raise ValueError("Invalid model provided. Must be an instance of `ModelKamino`.")
 
         # Ensure the data container is valid if provided
         if data is not None:
@@ -1197,7 +1197,7 @@ class DualProblem:
 
     def build(
         self,
-        model: Model,
+        model: ModelKamino,
         data: ModelData,
         jacobians: DenseSystemJacobians,
         limits: Limits | None = None,
@@ -1287,7 +1287,7 @@ class DualProblem:
         else:
             raise TypeError(f"Expected List[DualProblemSettings] or DualProblemSettings, got {type(settings)}")
 
-    def _build_nonlinear_generalized_force(model: Model, data: ModelData, problem: DualProblemData):
+    def _build_nonlinear_generalized_force(model: ModelKamino, data: ModelData, problem: DualProblemData):
         """
         Builds the nonlinear generalized force vector `h`.
         """
@@ -1309,7 +1309,7 @@ class DualProblem:
             ],
         )
 
-    def _build_generalized_free_velocity(self, model: Model, data: ModelData):
+    def _build_generalized_free_velocity(self, model: ModelKamino, data: ModelData):
         """
         Builds the generalized free-velocity vector (i.e. unconstrained) `u_f`.
         """
@@ -1335,7 +1335,7 @@ class DualProblem:
 
     def _build_free_velocity_bias(
         self,
-        model: Model,
+        model: ModelKamino,
         data: ModelData,
         limits: Limits | None = None,
         contacts: Contacts | None = None,
@@ -1407,7 +1407,7 @@ class DualProblem:
                 ],
             )
 
-    def _build_free_velocity(self, model: Model, data: ModelData, jacobians: DenseSystemJacobians):
+    def _build_free_velocity(self, model: ModelKamino, data: ModelData, jacobians: DenseSystemJacobians):
         """
         Builds the free-velocity vector `v_f`.
         """

@@ -32,7 +32,7 @@ from newton._src.solvers.kamino.core.gravity import (
 )
 from newton._src.solvers.kamino.core.joints import JointActuationType, JointDescriptor, JointDoFType
 from newton._src.solvers.kamino.core.materials import MaterialDescriptor
-from newton._src.solvers.kamino.core.model import Model
+from newton._src.solvers.kamino.core.model import ModelKamino
 from newton._src.solvers.kamino.core.shapes import SphereShape
 from newton._src.solvers.kamino.core.types import Axis, mat33f, transformf, vec6f
 from newton._src.solvers.kamino.models.builders.basics import (
@@ -53,7 +53,7 @@ from newton._src.solvers.kamino.utils import logger as msg
 ###
 
 
-def assert_model_matches_builder(test: unittest.TestCase, builder: ModelBuilder, model: Model):
+def assert_model_matches_builder(test: unittest.TestCase, builder: ModelBuilder, model: ModelKamino):
     """
     Assert that a constructed model matches the specifications of the given builder.
 

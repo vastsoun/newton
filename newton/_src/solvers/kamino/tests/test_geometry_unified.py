@@ -26,7 +26,7 @@ import warp as wp
 from warp.context import Devicelike
 
 from newton._src.solvers.kamino.core.builder import ModelBuilder
-from newton._src.solvers.kamino.core.model import Model, ModelData
+from newton._src.solvers.kamino.core.model import ModelData, ModelKamino
 from newton._src.solvers.kamino.geometry.contacts import Contacts
 from newton._src.solvers.kamino.geometry.unified import BroadPhaseMode, CollisionPipelineUnifiedKamino
 from newton._src.solvers.kamino.models.builders import basics, testing
@@ -124,7 +124,7 @@ def test_unified_pipeline(
         msg.info("Testing unified CD on '%s' using '%s'", case, bp_name)
 
         # Create a test model and data
-        model: Model = builder.finalize(device)
+        model: ModelKamino = builder.finalize(device)
         data: ModelData = model.data()
 
         # Optional verbose output

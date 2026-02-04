@@ -17,23 +17,30 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
-# import numpy as np
+import numpy as np
 import warp as wp
 
-# from ....geometry.flags import ShapeFlags
-# from ....sim.model import Model
+from ....geometry.flags import ShapeFlags
+from ....sim.model import Model
 from .bodies import RigidBodiesData, RigidBodiesModel
 from .control import Control
 from .data import ModelData, ModelDataInfo
 from .geometry import GeometriesData, GeometriesModel
 from .gravity import GravityModel
-from .joints import JointsData, JointsModel
-from .materials import MaterialPairsModel, MaterialsModel
+from .joints import (
+    JointActuationType,
+    JointsData,
+    JointsModel,
+    axes_matrix_from_joint_type,
+    newton_to_kamino_joint_dof_type,
+)
+from .materials import MaterialManager, MaterialPairsModel, MaterialsModel
+from .shapes import convert_newton_geo_to_kamino_shape
 from .state import State
 from .time import TimeData, TimeModel
-from .types import float32, int32, mat33f, transformf, vec6f
+from .types import float32, int32, mat33f, transformf, vec4f, vec6f
 from .world import WorldDescriptor
 
 ###
@@ -41,9 +48,9 @@ from .world import WorldDescriptor
 ###
 
 __all__ = [
-    "Model",
-    "ModelInfo",
-    "ModelSize",
+    "ModelKamino",
+    "ModelKaminoInfo",
+    "ModelKaminoSize",
 ]
 
 
@@ -60,7 +67,7 @@ wp.set_module_options({"enable_backward": False})
 
 
 @dataclass
-class ModelSize:
+class ModelKaminoSize:
     """
     A container to hold the summary size of memory allocations and thread dimensions.
 
@@ -200,7 +207,7 @@ class ModelSize:
     """The maximum number of active constraints of any world."""
 
     def __repr__(self):
-        """Returns a human-readable string representation of the ModelSize as a formatted table."""
+        """Returns a human-readable string representation of the ModelKaminoSize as a formatted table."""
         # List of (row title, sum attr, max attr)
         rows = [
             ("num_bodies", "sum_of_num_bodies", "max_of_num_bodies"),
@@ -228,7 +235,7 @@ class ModelSize:
         sum_width = max(len("Sum"), *(len(str(getattr(self, r[1]))) for r in rows))
         max_width = max(len("Max"), *(len(str(getattr(self, r[2]))) for r in rows))
 
-        # Write ModelSize members as a formatted table
+        # Write ModelKaminoSize members as a formatted table
         lines = []
         lines.append("-" * (name_width + 1 + sum_width + 1 + max_width))
         lines.append(f"{'Name':<{name_width}} {'Sum':>{sum_width}} {'Max':>{max_width}}")
@@ -246,7 +253,7 @@ class ModelSize:
 
 # TODO: Rename to also include `World` since it actually holds per-world model info.
 @dataclass
-class ModelInfo:
+class ModelKaminoInfo:
     """
     A container to hold the time-invariant information and meta-data of a model.
     """
@@ -558,61 +565,585 @@ class ModelInfo:
     """
 
 
-class Model:
+@dataclass
+class ModelKamino:
     """
     A container to hold the time-invariant system model data.
     """
 
-    def __init__(self):
-        self.device: wp.DeviceLike = None
-        """The device on which the model data is allocated.\n
-        Defaults to `None`, indicating the default/preferred Warp device.
+    _model: Model | None = None
+    """The base :class:`newton.Model` instance from which this :class:`kamino.ModelKamino` was created."""
+
+    _device: wp.DeviceLike | None = None
+    """The Warp device on which the model data is allocated."""
+
+    _requires_grad: bool = False
+    """Whether the model was finalized (see :meth:`ModelBuilder.finalize`) with gradient computation enabled."""
+
+    size: ModelKaminoSize = field(default_factory=ModelKaminoSize)
+    """
+    Host-side cache of the model summary sizes.\n
+    This is used for memory allocations and kernel thread dimensions.
+    """
+
+    worlds: list[WorldDescriptor] = field(default_factory=list)
+    """
+    Host-side cache of the world descriptors.\n
+    This is used to construct the model and for memory allocations.
+    """
+
+    info: ModelKaminoInfo | None = None
+    """The model info container holding the information and meta-data of the model."""
+
+    time: TimeModel | None = None
+    """The time model container holding time-step of each world."""
+
+    gravity: GravityModel | None = None
+    """The gravity model container holding the gravity configurations for each world."""
+
+    bodies: RigidBodiesModel | None = None
+    """The rigid bodies model container holding all rigid body entities in the model."""
+
+    joints: JointsModel | None = None
+    """The joints model container holding all joint entities in the model."""
+
+    geoms: GeometriesModel | None = None
+    """The collision geometries model container holding all collision geometry entities in the model."""
+
+    materials: MaterialsModel | None = None
+    """
+    The materials model container holding all material entities in the model.\n
+    The materials data is currently defined globally to be shared by all worlds.
+    """
+
+    material_pairs: MaterialPairsModel | None = None
+    """
+    The material pairs model container holding all material pairs in the model.\n
+    The material-pairs data is currently defined globally to be shared by all worlds.
+    """
+
+    @property
+    def device(self) -> wp.DeviceLike:
+        """The Warp device on which the model data is allocated."""
+        return self._device
+
+    @property
+    def requires_grad(self) -> bool:
+        """Whether the model was finalized (see :meth:`ModelBuilder.finalize`) with gradient computation enabled."""
+        return self._requires_grad
+
+    @classmethod
+    def from_newton(cls, model: Model) -> ModelKamino:
         """
-
-        self.requires_grad: bool = False
-        """Whether the model requires gradients for its state. Defaults to `False`."""
-
-        self.size: ModelSize = ModelSize()
+        Finalizes the ModelKamino from an existing newton.Model instance.
         """
-        Host-side cache of the model summary sizes.\n
-        This is used for memory allocations and kernel thread dimensions.
-        """
+        # Ensure the base model is valid
+        if model is None:
+            raise ValueError("Cannot finalize ModelKamino from a None newton.Model instance.")
+        elif not isinstance(model, Model):
+            raise TypeError("Cannot finalize ModelKamino from an invalid newton.Model instance.")
 
-        self.worlds: list[WorldDescriptor] = []
-        """
-        Host-side cache of the world descriptors.\n
-        This is used to construct the model and for memory allocations.
-        """
+        def _compute_entity_indices_wrt_world(entity_world: wp.array) -> np.ndarray:
+            wid_np = entity_world.numpy()
+            eid_np = np.zeros_like(wid_np)
+            for e in range(wid_np.size):
+                eid_np[e] = np.sum(wid_np[:e] == wid_np[e])
+            return eid_np
 
-        self.info: ModelInfo | None = None
-        """The model info container holding the information and meta-data of the model."""
+        def _compute_num_entities_per_world(entity_world: wp.array, num_worlds: int) -> np.ndarray:
+            wid_np = entity_world.numpy()
+            counts = np.zeros(num_worlds, dtype=int)
+            for w in range(num_worlds):
+                counts[w] = np.sum(wid_np == w)
+            return counts
 
-        self.time: TimeModel | None = None
-        """The time model container holding time-step of each world."""
+        # Compute the entity indices of each body w.r.t the corresponding world
+        body_bid_np = _compute_entity_indices_wrt_world(model.body_world)
+        joint_jid_np = _compute_entity_indices_wrt_world(model.joint_world)
+        shape_sid_np = _compute_entity_indices_wrt_world(model.shape_world)
 
-        self.gravity: GravityModel | None = None
-        """The gravity model container holding the gravity configurations for each world."""
+        # Compute the number of entities per world
+        num_bodies_np = _compute_num_entities_per_world(model.body_world, model.num_worlds)
+        num_joints_np = _compute_num_entities_per_world(model.joint_world, model.num_worlds)
+        num_shapes_np = _compute_num_entities_per_world(model.shape_world, model.num_worlds)
 
-        self.bodies: RigidBodiesModel | None = None
-        """The rigid bodies model container holding all rigid body entities in the model."""
+        # Compute body coord/DoF counts per world
+        num_body_coords_np = num_bodies_np * 7
+        num_body_dofs_np = num_bodies_np * 6
 
-        self.joints: JointsModel | None = None
-        """The joints model container holding all joint entities in the model."""
+        # Compute joint coord/DoF/constraint counts per world
+        num_joint_coords_np = np.zeros((model.num_worlds,), dtype=int)
+        num_joint_dofs_np = np.zeros((model.num_worlds,), dtype=int)
+        num_joint_cts_np = np.zeros((model.num_worlds,), dtype=int)
+        joint_dof_type_np = np.zeros((model.joint_count,), dtype=int)
+        joint_num_coords_np = np.zeros((model.joint_count,), dtype=int)
+        joint_num_dofs_np = np.zeros((model.joint_count,), dtype=int)
+        joint_num_cts_np = np.zeros((model.joint_count,), dtype=int)
+        joint_B_r_Bj_np = np.zeros((model.joint_count, 3), dtype=float)
+        joint_F_r_Fj_np = np.zeros((model.joint_count, 3), dtype=float)
+        joint_X_j_np = np.zeros((model.joint_count, 9), dtype=float)
+        joint_q_start_np = np.zeros((model.joint_count,), dtype=int32)
+        joint_dq_start_np = np.zeros((model.joint_count,), dtype=int32)
+        joint_wid_np = model.joint_world.numpy()
+        joint_type_np = model.joint_type.numpy()
+        joint_parent_np = model.joint_parent.numpy()
+        joint_child_np = model.joint_child.numpy()
+        joint_X_p_np = model.joint_X_p.numpy()
+        joint_X_c_np = model.joint_X_c.numpy()
+        joint_axis_np = model.joint_axis.numpy()
+        joint_qd_start_np = model.joint_qd_start.numpy()
+        body_com_np = model.body_com.numpy()
+        for j in range(model.joint_count):
+            # TODO
+            wid_j = joint_wid_np[j]
 
-        self.geoms: GeometriesModel | None = None
-        """The geometries model container holding all geometry entities in the model."""
+            # TODO
+            joint_q_start_np[j] = num_joint_coords_np[wid_j]
+            joint_dq_start_np[j] = num_joint_dofs_np[wid_j]
 
-        self.materials: MaterialsModel | None = None
-        """
-        The materials model container holding all material entities in the model.\n
-        The materials data is currently defined globally to be shared by all worlds.
-        """
+            # TODO
+            dof_type_j = newton_to_kamino_joint_dof_type(joint_type_np[j])
+            ncoords_j = dof_type_j.num_coords
+            ndofs_j = dof_type_j.num_dofs
+            ncts_j = dof_type_j.num_cts
+            joint_dof_type_np[j] = dof_type_j.value
+            num_joint_coords_np[wid_j] += ncoords_j
+            num_joint_dofs_np[wid_j] += ndofs_j
+            num_joint_cts_np[wid_j] += ncts_j
+            joint_num_coords_np[j] = ncoords_j
+            joint_num_dofs_np[j] = ndofs_j
+            joint_num_cts_np[j] = ncts_j
 
-        self.material_pairs: MaterialPairsModel | None = None
-        """
-        The material pairs model container holding all material pairs in the model.\n
-        The material-pairs data is currently defined globally to be shared by all worlds.
-        """
+            # TODO
+            dofs_start_j = joint_qd_start_np[j]
+            joint_axes_j = joint_axis_np[dofs_start_j : dofs_start_j + ndofs_j]
+            R_axis_j = axes_matrix_from_joint_type(joint_type_np[j], joint_axes_j)
+
+            # TODO
+            p_r_p_com = wp.vec3f(body_com_np[joint_parent_np[j]])
+            c_r_c_com = wp.vec3f(body_com_np[joint_child_np[j]])
+            X_p_j = wp.transformf(*joint_X_p_np[j, :])
+            X_c_j = wp.transformf(*joint_X_c_np[j, :])
+            q_p_j = wp.transform_get_rotation(X_p_j)
+            p_r_p_j = wp.transform_get_translation(X_p_j)
+            c_r_c_j = wp.transform_get_translation(X_c_j)
+
+            # TODO
+            B_r_Bj = p_r_p_j - p_r_p_com
+            F_r_Fj = c_r_c_j - c_r_c_com
+            X_j = wp.quat_to_matrix(q_p_j) @ R_axis_j
+            joint_B_r_Bj_np[j, :] = B_r_Bj
+            joint_F_r_Fj_np[j, :] = F_r_Fj
+            joint_X_j_np[j, :] = X_j
+
+        # Compute constraint offsets of each joint w.r.t the corresponding world
+        joint_cts_start_np = np.zeros((model.joint_count,), dtype=int)
+        for j in range(model.joint_count):
+            wid_j = joint_wid_np[j]
+            offset_j = 0
+            for jj in range(j):
+                if joint_wid_np[jj] == wid_j:
+                    offset_j += joint_num_cts_np[jj]
+            joint_cts_start_np[j] = offset_j
+
+        # TODO
+        materials_manager = MaterialManager()
+        # shape_material: list[MaterialDescriptor] = []
+        # shape_friction_np = model.shape_material_mu.numpy()
+        # shape_restitution_np = model.shape_material_restitution.numpy()
+        # shape_world_np = model.shape_world.numpy()
+        # for s in range(model.shape_count):
+        #     shape_material.append(
+        #         MaterialDescriptor(
+        #             restitution=shape_restitution_np[s],
+        #             static_friction=shape_friction_np[s],
+        #             dynamic_friction=shape_friction_np[s],
+        #             wid=shape_world_np[s],
+        #         )
+        #     )
+        #     materials_manager.register(shape_material[-1])
+
+        # Convert per-shape properties from Newton to Kamino format
+        geom_shape_type_np = model.shape_type.numpy()
+        geom_shape_scale_np = model.shape_scale.numpy()
+        geom_shape_flags_np = model.shape_flags.numpy()
+        geom_shape_collision_group_np = model.shape_collision_group.numpy()
+        geom_shape_params_np = np.zeros((model.shape_count, 4), dtype=float)
+        model_num_collidable_geoms = 0
+        for s in range(model.shape_count):
+            shape_type, params = convert_newton_geo_to_kamino_shape(geom_shape_type_np[s], geom_shape_scale_np[s])
+            geom_shape_type_np[s] = shape_type
+            geom_shape_params_np[s, :] = params
+            if (geom_shape_flags_np[s] & ShapeFlags.COLLIDE_SHAPES) != 0 and geom_shape_collision_group_np[s] > 0:
+                model_num_collidable_geoms += 1
+
+        # Compute total number of required contacts per world
+        # TODO: We need to do this properly based on the actual geometries in each world
+        required_contacts_per_world = model.rigid_contact_max // model.num_worlds
+        world_required_contacts = [required_contacts_per_world] * model.num_worlds
+
+        # Compute offsets per world
+        body_offset_np = np.zeros((model.num_worlds,), dtype=int)
+        body_dof_offset_np = np.zeros((model.num_worlds,), dtype=int)
+        joint_offset_np = np.zeros((model.num_worlds,), dtype=int)
+        joint_coord_offset_np = np.zeros((model.num_worlds,), dtype=int)
+        joint_dof_offset_np = np.zeros((model.num_worlds,), dtype=int)
+        joint_cts_offset_np = np.zeros((model.num_worlds,), dtype=int)
+        shape_offset_np = np.zeros((model.num_worlds,), dtype=int)
+        for w in range(1, model.num_worlds):
+            body_offset_np[w] = body_offset_np[w - 1] + num_bodies_np[w - 1]
+            body_dof_offset_np[w] = body_dof_offset_np[w - 1] + num_body_dofs_np[w - 1]
+            joint_offset_np[w] = joint_offset_np[w - 1] + num_joints_np[w - 1]
+            joint_coord_offset_np[w] = joint_coord_offset_np[w - 1] + num_joint_coords_np[w - 1]
+            joint_dof_offset_np[w] = joint_dof_offset_np[w - 1] + num_joint_dofs_np[w - 1]
+            joint_cts_offset_np[w] = joint_cts_offset_np[w - 1] + num_joint_cts_np[w - 1]
+            shape_offset_np[w] = shape_offset_np[w - 1] + num_shapes_np[w - 1]
+
+        # Determine the base body and joint indices per world
+        base_body_idx_np = np.full((model.num_worlds,), -1, dtype=int)
+        base_joint_idx_np = np.full((model.num_worlds,), -1, dtype=int)
+        body_world_np = model.body_world.numpy()
+        joint_world_np = model.joint_world.numpy()
+        # Check for articulations
+        if model.articulation_count > 0:
+            articulation_start_np = model.articulation_start.numpy()
+            articulation_world_np = model.articulation_world.numpy()
+            # For each articulation, assign its base body and joint to the corresponding world
+            # NOTE: We only assign the first articulation found in each world
+            for aid in range(model.articulation_count):
+                wid = articulation_world_np[aid]
+                base_joint = articulation_start_np[aid]
+                base_body = joint_child_np[base_joint]
+                if base_body_idx_np[wid] == -1 and base_joint_idx_np[wid] == -1:
+                    base_body_idx_np[wid] = base_body
+                    base_joint_idx_np[wid] = base_joint
+        # Check for root joint (i.e. joint with no parent body (= -1))
+        elif model.joint_count > 0:
+            for j in range(model.joint_count):
+                wid_j = joint_world_np[j]
+                parent_j = joint_parent_np[j]
+                if parent_j == -1:
+                    if base_body_idx_np[wid_j] == -1 and base_joint_idx_np[wid_j] == -1:
+                        base_body_idx_np[wid_j] = joint_child_np[j]
+                        base_joint_idx_np[wid_j] = j
+        # Fall-back: first body and joint in the world
+        else:
+            for w in range(model.num_worlds):
+                # Base body: first body in the world
+                for b in range(model.body_count):
+                    if body_world_np[b] == w:
+                        base_body_idx_np[w] = b
+                        break
+                # Base joint: first joint in the world
+                for j in range(model.joint_count):
+                    if joint_world_np[j] == w:
+                        base_joint_idx_np[w] = j
+                        break
+
+        # Construct per-world inertial summaries
+        mass_min_np = np.zeros((model.num_worlds,), dtype=float)
+        mass_max_np = np.zeros((model.num_worlds,), dtype=float)
+        mass_total_np = np.zeros((model.num_worlds,), dtype=float)
+        inertia_total_np = np.zeros((model.num_worlds,), dtype=float)
+        body_mass_np = model.body_mass.numpy()
+        body_inertia_np = model.body_inertia.numpy()
+        for w in range(model.num_worlds):
+            masses_w = []
+            for b in range(model.body_count):
+                if body_world_np[b] == w:
+                    mass_b = body_mass_np[b]
+                    masses_w.append(mass_b)
+                    mass_total_np[w] += mass_b
+                    inertia_total_np[w] += 3.0 * mass_b + body_inertia_np[b].diagonal().sum()
+            mass_min_np[w] = min(masses_w)
+            mass_max_np[w] = max(masses_w)
+
+        # Construct per-world gravity
+        gravity_g_dir_acc_np = np.zeros(shape=(model.num_worlds, 4), dtype=float)
+        gravity_vector_np = np.zeros(shape=(model.num_worlds, 4), dtype=float)
+        gravity_np = model.gravity.numpy()
+        for w in range(model.num_worlds):
+            gravity_accel = np.linalg.norm(gravity_np[w, :])
+            gravity_dir = gravity_np[w, :] / gravity_accel
+            gravity_g_dir_acc_np[w, :] = np.array(
+                [gravity_dir[0], gravity_dir[1], gravity_dir[2], gravity_accel], dtype=float
+            )
+            gravity_vector_np[w, 0:3] = gravity_np[w, :]
+            gravity_vector_np[w, 3] = 1.0  # Enable gravity by default in all worlds
+
+        # Construct the per-material and per-material-pair properties
+        materials_rest = [materials_manager.restitution_vector()]
+        materials_static_fric = [materials_manager.static_friction_vector()]
+        materials_dynamic_fric = [materials_manager.dynamic_friction_vector()]
+        mpairs_rest = [materials_manager.restitution_matrix()]
+        mpairs_static_fric = [materials_manager.static_friction_matrix()]
+        mpairs_dynamic_fric = [materials_manager.dynamic_friction_matrix()]
+
+        ###
+        # Model Attributes
+        ###
+
+        # TODO: Construct the world descriptors from the newton.Model instance
+        model_worlds: list[WorldDescriptor] = [None] * model.num_worlds
+        for w in range(model.num_worlds):
+            model_worlds[w] = WorldDescriptor(
+                name=f"world_{w}",
+                wid=w,
+                num_bodies=num_bodies_np[w],
+                num_joints=num_joints_np[w],
+                num_passive_joints=0,
+                num_actuated_joints=num_joints_np[w],
+                num_geoms=num_shapes_np[w],
+                num_materials=0,  # TODO: how to handle both global and per-world materials simultaneously?
+                num_body_coords=num_body_coords_np[w],
+                num_body_dofs=num_body_dofs_np[w],
+                num_joint_coords=num_joint_coords_np[w],
+                num_joint_dofs=num_joint_dofs_np[w],
+                num_passive_joint_coords=0,
+                num_passive_joint_dofs=0,
+                num_actuated_joint_coords=num_joint_coords_np[w],
+                num_actuated_joint_dofs=num_joint_dofs_np[w],
+                num_joint_cts=num_joint_cts_np[w],
+                # TODO
+                joint_coords=[],
+                joint_dofs=[],
+                joint_passive_coords=[],
+                joint_passive_dofs=[],
+                joint_actuated_coords=[],
+                joint_actuated_dofs=[],
+                joint_cts=[],
+                # TODO
+                bodies_idx_offset=body_offset_np[w],
+                joints_idx_offset=joint_offset_np[w],
+                geoms_idx_offset=shape_offset_np[w],
+                body_dofs_idx_offset=body_dof_offset_np[w],
+                joint_coords_idx_offset=joint_coord_offset_np[w],
+                joint_dofs_idx_offset=joint_dof_offset_np[w],
+                passive_joint_coords_idx_offset=-1,
+                passive_joint_dofs_idx_offset=-1,
+                actuated_joint_coords_idx_offset=joint_coord_offset_np[w],
+                actuated_joint_dofs_idx_offset=joint_dof_offset_np[w],
+                joint_cts_idx_offset=joint_cts_offset_np[w],
+                # TODO
+                body_names=[],
+                body_uids=[],
+                joint_names=[],
+                joint_uids=[],
+                geom_names=[],
+                geom_uids=[],
+                material_names=[],
+                material_uids=[],
+                unary_joint_names=[],
+                fixed_joint_names=[],
+                passive_joint_names=[],
+                actuated_joint_names=[],
+                geometry_layers=["default"],
+                geometry_max_contacts=[-1] * num_shapes_np[w],
+                # TODO
+                base_body_idx=base_body_idx_np[w],
+                base_joint_idx=base_joint_idx_np[w],
+                mass_min=mass_min_np[w],
+                mass_max=mass_max_np[w],
+                mass_total=mass_total_np[w],
+                inertia_total=inertia_total_np[w],
+            )
+
+        # Construct ModelKaminoSize from the newton.Model instance
+        model_size = ModelKaminoSize(
+            num_worlds=model.num_worlds,
+            sum_of_num_bodies=int(num_bodies_np.sum()),
+            max_of_num_bodies=int(num_bodies_np.max()),
+            sum_of_num_joints=int(num_joints_np.sum()),
+            max_of_num_joints=int(num_joints_np.max()),
+            sum_of_num_passive_joints=0,
+            max_of_num_passive_joints=0,
+            sum_of_num_actuated_joints=int(num_joints_np.sum()),
+            max_of_num_actuated_joints=int(num_joints_np.max()),
+            sum_of_num_geoms=int(num_shapes_np.sum()),
+            max_of_num_geoms=int(num_shapes_np.max()),
+            sum_of_num_materials=materials_manager.num_materials,
+            max_of_num_materials=materials_manager.num_materials,
+            sum_of_num_material_pairs=materials_manager.num_material_pairs,
+            max_of_num_material_pairs=materials_manager.num_material_pairs,
+            sum_of_num_body_dofs=int(num_body_dofs_np.sum()),
+            max_of_num_body_dofs=int(num_body_dofs_np.max()),
+            sum_of_num_joint_coords=int(num_joint_coords_np.sum()),
+            max_of_num_joint_coords=int(num_joint_coords_np.max()),
+            sum_of_num_joint_dofs=int(num_joint_dofs_np.sum()),
+            max_of_num_joint_dofs=int(num_joint_dofs_np.max()),
+            sum_of_num_passive_joint_coords=0,
+            max_of_num_passive_joint_coords=0,
+            sum_of_num_passive_joint_dofs=0,
+            max_of_num_passive_joint_dofs=0,
+            sum_of_num_actuated_joint_coords=int(num_joint_coords_np.sum()),
+            max_of_num_actuated_joint_coords=int(num_joint_coords_np.max()),
+            sum_of_num_actuated_joint_dofs=int(num_joint_dofs_np.sum()),
+            max_of_num_actuated_joint_dofs=int(num_joint_dofs_np.max()),
+            sum_of_num_joint_cts=int(num_joint_cts_np.sum()),
+            max_of_num_joint_cts=int(num_joint_cts_np.max()),
+            sum_of_max_limits=0,
+            max_of_max_limits=0,
+            sum_of_max_contacts=0,
+            max_of_max_contacts=0,
+            sum_of_max_unilaterals=0,
+            max_of_max_unilaterals=0,
+            sum_of_max_total_cts=int(num_joint_cts_np.sum()),
+            max_of_max_total_cts=int(num_joint_cts_np.max()),
+        )
+        # msg.info("ModelKaminoSize:\n%s", model_size)
+
+        # Construct the model entities from the newton.Model instance
+        with wp.ScopedDevice(device=model.device):
+            # Per-world heterogeneous model info
+            model_info = ModelKaminoInfo(
+                num_worlds=model.num_worlds,
+                num_bodies=wp.array(num_bodies_np, dtype=int32),
+                num_joints=wp.array(num_joints_np, dtype=int32),
+                num_passive_joints=wp.zeros((model.num_worlds,), dtype=int32),
+                num_actuated_joints=wp.array(num_joints_np, dtype=int32),
+                num_geoms=wp.array(num_shapes_np, dtype=int32),
+                num_body_dofs=wp.array(num_body_dofs_np, dtype=int32),
+                num_joint_coords=wp.array(num_joint_coords_np, dtype=int32),
+                num_joint_dofs=wp.array(num_joint_dofs_np, dtype=int32),
+                num_passive_joint_coords=wp.zeros((model.num_worlds,), dtype=int32),
+                num_passive_joint_dofs=wp.zeros((model.num_worlds,), dtype=int32),
+                num_actuated_joint_coords=wp.array(num_joint_coords_np, dtype=int32),
+                num_actuated_joint_dofs=wp.array(num_joint_dofs_np, dtype=int32),
+                num_joint_cts=wp.array(num_joint_cts_np, dtype=int32),
+                bodies_offset=wp.array(body_offset_np, dtype=int32),
+                joints_offset=wp.array(joint_offset_np, dtype=int32),
+                body_dofs_offset=wp.array(body_dof_offset_np, dtype=int32),
+                joint_coords_offset=wp.array(joint_coord_offset_np, dtype=int32),
+                joint_dofs_offset=wp.array(joint_dof_offset_np, dtype=int32),
+                joint_passive_coords_offset=wp.full((model.num_worlds), 0, dtype=int32),
+                joint_passive_dofs_offset=wp.full((model.num_worlds), 0, dtype=int32),
+                joint_actuated_coords_offset=wp.array(joint_coord_offset_np, dtype=int32),
+                joint_actuated_dofs_offset=wp.array(joint_dof_offset_np, dtype=int32),
+                joint_cts_offset=wp.array(joint_cts_offset_np, dtype=int32),
+                base_body_index=wp.array(base_body_idx_np, dtype=int32),
+                base_joint_index=wp.array(base_joint_idx_np, dtype=int32),
+                mass_min=wp.array(mass_min_np, dtype=float32),
+                mass_max=wp.array(mass_max_np, dtype=float32),
+                mass_total=wp.array(mass_total_np, dtype=float32),
+                inertia_total=wp.array(inertia_total_np, dtype=float32),
+            )
+
+            # Per-world time
+            model_time = TimeModel(
+                dt=wp.zeros(shape=(model.num_worlds,), dtype=float32),
+                inv_dt=wp.zeros(shape=(model.num_worlds,), dtype=float32),
+            )
+
+            # Per-world gravity
+            model_gravity = GravityModel(
+                g_dir_acc=wp.array(gravity_g_dir_acc_np, dtype=vec4f),
+                vector=wp.array(gravity_vector_np, dtype=vec4f),
+            )
+
+            # Rigid bodies
+            model_bodies = RigidBodiesModel(
+                num_bodies=model.body_count,
+                wid=model.body_world,
+                bid=wp.array(body_bid_np, dtype=int32),
+                i_r_com_i=model.body_com,
+                m_i=model.body_mass,
+                inv_m_i=model.body_inv_mass,
+                i_I_i=model.body_inertia,
+                inv_i_I_i=model.body_inv_inertia,
+                q_i_0=model.body_q,
+                u_i_0=model.body_qd,
+            )
+
+            # Joints
+            model_joints = JointsModel(
+                num_joints=model.joint_count,
+                wid=model.joint_world,
+                jid=wp.array(joint_jid_np, dtype=int32),
+                # dof_type=model.joint_type,
+                dof_type=wp.array(joint_dof_type_np, dtype=int32),
+                act_type=wp.full((model.joint_count,), JointActuationType.FORCE, dtype=int32),
+                bid_B=model.joint_parent,
+                bid_F=model.joint_child,
+                B_r_Bj=wp.array(joint_B_r_Bj_np, dtype=wp.vec3f),
+                F_r_Fj=wp.array(joint_F_r_Fj_np, dtype=wp.vec3f),
+                X_j=wp.array(joint_X_j_np.reshape((model.joint_count, 3, 3)), dtype=wp.mat33f),
+                q_j_min=model.joint_limit_lower,
+                q_j_max=model.joint_limit_upper,
+                dq_j_max=model.joint_velocity_limit,
+                tau_j_max=model.joint_effort_limit,
+                q_j_0=model.joint_q,
+                dq_j_0=model.joint_qd,
+                num_coords=wp.array(joint_num_coords_np, dtype=int32),
+                num_dofs=wp.array(joint_num_dofs_np, dtype=int32),
+                num_cts=wp.array(joint_num_cts_np, dtype=int32),
+                # coords_offset=model.joint_q_start,
+                # dofs_offset=model.joint_qd_start,
+                coords_offset=wp.array(joint_q_start_np, dtype=int32),
+                dofs_offset=wp.array(joint_dq_start_np, dtype=int32),
+                passive_coords_offset=wp.full((model.joint_count,), -1),
+                passive_dofs_offset=wp.full((model.joint_count,), -1),
+                actuated_coords_offset=wp.array(joint_q_start_np, dtype=int32),
+                actuated_dofs_offset=wp.array(joint_dq_start_np, dtype=int32),
+                cts_offset=wp.array(joint_cts_start_np, dtype=int32),
+            )
+
+            # Collision geometries
+            model_geoms = GeometriesModel(
+                num_geoms=model.shape_count,
+                num_collidable_geoms=model_num_collidable_geoms,
+                num_collidable_geom_pairs=model.shape_contact_pair_count,
+                model_max_contacts=model.rigid_contact_max,
+                world_max_contacts=world_required_contacts,
+                wid=model.shape_world,
+                gid=wp.array(shape_sid_np, dtype=int32),
+                lid=wp.zeros(shape=model.shape_count, dtype=int32),  # TODO: Remove this since it's not used anywhere
+                bid=model.shape_body,
+                sid=wp.array(geom_shape_type_np, dtype=int32),
+                ptr=model.shape_source_ptr,
+                offset=model.shape_transform,
+                params=wp.array(geom_shape_params_np, dtype=float32),
+                mid=wp.full(shape=(model.shape_count,), value=0, dtype=int32),  # TODO: model.shape_material_id
+                group=wp.full(shape=(model.shape_count,), value=1, dtype=int32),  # TODO: model.shape_collision_group
+                collides=wp.full(shape=(model.shape_count,), value=1, dtype=int32),  # TODO: model.shape_collision_group
+                margin=model.shape_contact_margin,
+                collidable_pairs=model.shape_contact_pairs,
+            )
+
+            # Per-material properties
+            model_materials = MaterialsModel(
+                num_materials=model_size.sum_of_num_materials,
+                restitution=wp.array(materials_rest[0], dtype=float32),
+                static_friction=wp.array(materials_static_fric[0], dtype=float32),
+                dynamic_friction=wp.array(materials_dynamic_fric[0], dtype=float32),
+            )
+
+            # Per-material-pair properties
+            model_material_pairs = MaterialPairsModel(
+                num_material_pairs=model_size.sum_of_num_material_pairs,
+                restitution=wp.array(mpairs_rest[0], dtype=float32),
+                static_friction=wp.array(mpairs_static_fric[0], dtype=float32),
+                dynamic_friction=wp.array(mpairs_dynamic_fric[0], dtype=float32),
+            )
+
+        # Post-processing after construction
+        # TODO: Transform initial body CoM state from body frame state --> probably using kernel called in reset methods
+
+        # Construct and return the new ModelKamino instance
+        return ModelKamino(
+            _model=model,
+            _device=model.device,
+            _requires_grad=model.requires_grad,
+            size=model_size,
+            worlds=model_worlds,
+            info=model_info,
+            time=model_time,
+            gravity=model_gravity,
+            bodies=model_bodies,
+            joints=model_joints,
+            geoms=model_geoms,
+            materials=model_materials,
+            material_pairs=model_material_pairs,
+        )
 
     def data(
         self,

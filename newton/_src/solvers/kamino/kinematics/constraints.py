@@ -20,7 +20,7 @@ Provides mechanisms to define and manage constraints and their associated input/
 import warp as wp
 from warp.context import Devicelike
 
-from ..core.model import Model, ModelData
+from ..core.model import ModelData, ModelKamino
 from ..core.types import float32, int32, vec3f
 from ..geometry.contacts import ContactMode, Contacts
 from ..kinematics.limits import Limits
@@ -50,7 +50,7 @@ wp.set_module_options({"enable_backward": False})
 
 
 def get_max_constraints_per_world(
-    model: Model,
+    model: ModelKamino,
     limits: Limits | None,
     contacts: Contacts | None,
 ) -> list[int]:
@@ -58,7 +58,7 @@ def get_max_constraints_per_world(
     Returns the maximum number of constraints for each world in the model.
 
     Args:
-        model (Model): The model for which to compute the maximum constraints.
+        model (ModelKamino): The model for which to compute the maximum constraints.
         limits (Limits, optional): The container holding the allocated joint-limit data.
         contacts (Contacts, optional): The container holding the allocated contacts data.
 
@@ -69,8 +69,8 @@ def get_max_constraints_per_world(
     if model is None:
         raise ValueError("`model` is required but got `None`.")
     else:
-        if not isinstance(model, Model):
-            raise TypeError(f"`model` is required to be of type `Model` but got {type(model)}.")
+        if not isinstance(model, ModelKamino):
+            raise TypeError(f"`model` is required to be of type `ModelKamino` but got {type(model)}.")
 
     # Ensure the limits container is valid
     if limits is not None:
@@ -92,17 +92,17 @@ def get_max_constraints_per_world(
 
 
 def make_unilateral_constraints_info(
-    model: Model,
+    model: ModelKamino,
     data: ModelData,
     limits: Limits | None = None,
     contacts: Contacts | None = None,
     device: Devicelike = None,
 ):
     """
-    Constructs constraints entries in the ModelInfo member of a model.
+    Constructs constraints entries in the ModelKaminoInfo member of a model.
 
     Args:
-        model (Model): The model container holding time-invariant data.
+        model (ModelKamino): The model container holding time-invariant data.
         data (ModelData): The solver container holding time-varying data.
         limits (Limits, optional): The limits container holding the joint-limit data.
         contacts (Contacts, optional): The contacts container holding the contact data.
@@ -111,8 +111,8 @@ def make_unilateral_constraints_info(
     """
 
     # Ensure the model is valid
-    if not isinstance(model, Model):
-        raise TypeError("`model` must be an instance of `Model`")
+    if not isinstance(model, ModelKamino):
+        raise TypeError("`model` must be an instance of `ModelKamino`")
 
     # Ensure the data is valid
     if not isinstance(data, ModelData):
@@ -229,17 +229,29 @@ def make_unilateral_constraints_info(
 
         # Allocate the limit constraint arrays
         model.info.max_limit_cts = wp.array(world_maxnlc, dtype=int32)
-        model.info.limits_offset = wp.array(world_lio[:num_worlds], dtype=int32)  # Start of each world's limits in per-limit arrays, e.g. residuals
-        model.info.limit_cts_offset = wp.array(world_lcio[:num_worlds], dtype=int32)  # Remove: seems unused, same as group offset
+        model.info.limits_offset = wp.array(
+            world_lio[:num_worlds], dtype=int32
+        )  # Start of each world's limits in per-limit arrays, e.g. residuals
+        model.info.limit_cts_offset = wp.array(
+            world_lcio[:num_worlds], dtype=int32
+        )  # Remove: seems unused, same as group offset
 
         # Allocate the contact constraint arrays
         model.info.max_contact_cts = wp.array(world_maxncc, dtype=int32)
-        model.info.contacts_offset = wp.array(world_cio[:num_worlds], dtype=int32)  # Start of each world's contacts in per-contact arrays, e.g. problem.mu
-        model.info.contact_cts_offset = wp.array(world_ccio[:num_worlds], dtype=int32)  # Remove: seems unused, same as group offset
+        model.info.contacts_offset = wp.array(
+            world_cio[:num_worlds], dtype=int32
+        )  # Start of each world's contacts in per-contact arrays, e.g. problem.mu
+        model.info.contact_cts_offset = wp.array(
+            world_ccio[:num_worlds], dtype=int32
+        )  # Remove: seems unused, same as group offset
 
         # Allocate the unilateral constraint arrays
-        model.info.unilaterals_offset = wp.array(world_uio[:num_worlds], dtype=int32)  # Start of each world's unilaterals in per-unilateral arrays, e.g. residuals
-        model.info.unilateral_cts_offset = wp.array(world_ucio[:num_worlds], dtype=int32)  # Remove: seems unused, same as group offset
+        model.info.unilaterals_offset = wp.array(
+            world_uio[:num_worlds], dtype=int32
+        )  # Start of each world's unilaterals in per-unilateral arrays, e.g. residuals
+        model.info.unilateral_cts_offset = wp.array(
+            world_ucio[:num_worlds], dtype=int32
+        )  # Remove: seems unused, same as group offset
 
         # Initialize the active constraint counters to zero
         data.info.num_total_cts = wp.zeros(shape=(num_worlds,), dtype=int32)
@@ -444,14 +456,14 @@ def _unpack_contact_constraint_solutions(
 
 
 def update_constraints_info(
-    model: Model,
+    model: ModelKamino,
     data: ModelData,
 ):
     """
     Updates the active constraints info for the given model and current data.
 
     Args:
-        model (Model): The model container holding time-invariant data.
+        model (ModelKamino): The model container holding time-invariant data.
         data (ModelData): The solver container holding time-varying data.
     """
     wp.launch(
@@ -475,7 +487,7 @@ def update_constraints_info(
 def unpack_constraint_solutions(
     lambdas: wp.array,
     v_plus: wp.array,
-    model: Model,
+    model: ModelKamino,
     data: ModelData,
     limits: Limits | None = None,
     contacts: Contacts | None = None,

@@ -26,7 +26,7 @@ from warp.context import Devicelike
 
 from ..core.joints import JointDoFType
 from ..core.math import contact_wrench_matrix_from_points, expand6d, screw_transform_matrix_from_points
-from ..core.model import Model, ModelData
+from ..core.model import ModelData, ModelKamino
 from ..core.types import (
     float32,
     int32,
@@ -478,7 +478,7 @@ def _build_contact_jacobians(
 
 
 def build_jacobians(
-    model: Model,
+    model: ModelKamino,
     data: ModelData,
     limits: Limits | None,
     contacts: Contacts | None,
@@ -621,7 +621,7 @@ class DenseSystemJacobians:
 
     def __init__(
         self,
-        model: Model | None = None,
+        model: ModelKamino | None = None,
         limits: Limits | None = None,
         contacts: Contacts | None = None,
         device: Devicelike = None,
@@ -641,14 +641,18 @@ class DenseSystemJacobians:
         return self._data
 
     def finalize(
-        self, model: Model, limits: Limits | None = None, contacts: Contacts | None = None, device: Devicelike = None
+        self,
+        model: ModelKamino,
+        limits: Limits | None = None,
+        contacts: Contacts | None = None,
+        device: Devicelike = None,
     ):
         # Ensure the model container is valid
         if model is None:
             raise ValueError("`model` is required but got `None`.")
         else:
-            if not isinstance(model, Model):
-                raise TypeError(f"`model` is required to be of type `Model` but got {type(model)}.")
+            if not isinstance(model, ModelKamino):
+                raise TypeError(f"`model` is required to be of type `ModelKamino` but got {type(model)}.")
 
         # Ensure the limits container is valid
         if limits is not None:
@@ -693,7 +697,7 @@ class DenseSystemJacobians:
 
     def build(
         self,
-        model: Model,
+        model: ModelKamino,
         data: ModelData,
         limits: Limits | None = None,
         contacts: Contacts | None = None,

@@ -21,7 +21,7 @@ import unittest
 
 import warp as wp
 
-from newton._src.solvers.kamino.core.model import Model
+from newton._src.solvers.kamino.core.model import ModelKamino
 from newton._src.solvers.kamino.geometry.contacts import Contacts
 
 # Module to be tested
@@ -70,7 +70,7 @@ class TestKinematicsConstraints(unittest.TestCase):
         builder = build_boxes_fourbar()
 
         # Create the model from the builder
-        model: Model = builder.finalize(device=self.default_device)
+        model: ModelKamino = builder.finalize(device=self.default_device)
 
         # Create a model data
         data = model.data(device=self.default_device)
@@ -119,7 +119,7 @@ class TestKinematicsConstraints(unittest.TestCase):
         num_worlds = builder.num_worlds
 
         # Create the model from the builder
-        model: Model = builder.finalize(device=self.default_device)
+        model: ModelKamino = builder.finalize(device=self.default_device)
 
         # Create a model data
         data = model.data(device=self.default_device)
@@ -211,7 +211,7 @@ class TestKinematicsConstraints(unittest.TestCase):
         builder = make_basics_heterogeneous_builder()
 
         # Create the model from the builder
-        model: Model = builder.finalize(device=self.default_device)
+        model: ModelKamino = builder.finalize(device=self.default_device)
 
         # Create a model data
         data = model.data(device=self.default_device)

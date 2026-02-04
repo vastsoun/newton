@@ -283,7 +283,7 @@ class ModelKaminoSize:
     """The maximum number of active constraints of any world."""
 
     def __repr__(self):
-        """Returns a human-readable string representation of the ModelSize as a formatted table."""
+        """Returns a human-readable string representation of the ModelKaminoSize as a formatted table."""
         # List of (row title, sum attr, max attr)
         rows = [
             ("num_bodies", "sum_of_num_bodies", "max_of_num_bodies"),
@@ -311,7 +311,7 @@ class ModelKaminoSize:
         sum_width = max(len("Sum"), *(len(str(getattr(self, r[1]))) for r in rows))
         max_width = max(len("Max"), *(len(str(getattr(self, r[2]))) for r in rows))
 
-        # Write ModelSize members as a formatted table
+        # Write ModelKaminoSize members as a formatted table
         lines = []
         lines.append("-" * (name_width + 1 + sum_width + 1 + max_width))
         lines.append(f"{'Name':<{name_width}} {'Sum':>{sum_width}} {'Max':>{max_width}}")
@@ -645,36 +645,6 @@ class ModelKaminoInfo:
 class ModelKamino:
     """
     A container to hold the time-invariant system model data.
-
-    Attributes:
-        device (wp.DeviceLike):
-            The device on which the model data is allocated.
-        requires_grad (bool):
-            Whether the model requires gradients for its state. Defaults to `False`.
-        size (ModelSize):
-            Host-side cache of the model summary sizes.\n
-            This is used for memory allocations and kernel thread dimensions.
-        worlds (list[WorldDescriptor]):
-            Host-side cache of the world descriptors.\n
-            This is used to construct the model and for memory allocations.
-        info (ModelInfo):
-            The model info container holding the information and meta-data of the model.
-        time (TimeModel):
-            The time model container holding time-step of each world.
-        gravity (GravityModel):
-            The gravity model container holding the gravity configurations for each world.
-        bodies (RigidBodiesModel):
-            The rigid bodies model container holding all rigid body entities in the model.
-        joints (JointsModel):
-            The joints model container holding all joint entities in the model.
-        geoms (GeometriesModel):
-            The geometries model container holding all collision geometry entities in the model.
-        materials (MaterialsModel):
-            The materials model container holding all material entities in the model.\n
-            The materials data is currently defined globally to be shared by all worlds.
-        material_pairs (MaterialPairsModel):
-            The material pairs model container holding all material pairs in the model.
-            The material-pairs data is currently defined globally to be shared by all worlds.
     """
 
     _model: Model | None = None

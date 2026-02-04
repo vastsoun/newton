@@ -24,7 +24,7 @@ import numpy as np
 import warp as wp
 from warp.context import Devicelike
 
-from ...core.model import Model, ModelData
+from ...core.model import ModelData, ModelKamino
 from ...core.shapes import ShapeType
 from ...core.types import float32, int32, vec2i, vec6f
 from ..contacts import DEFAULT_GEOM_PAIR_CONTACT_MARGIN, Contacts
@@ -53,7 +53,7 @@ class CollisionPipelinePrimitive:
 
     def __init__(
         self,
-        model: Model | None = None,
+        model: ModelKamino | None = None,
         bvtype: BoundingVolumeType = BoundingVolumeType.AABB,
         default_margin: float = DEFAULT_GEOM_PAIR_CONTACT_MARGIN,
         device: Devicelike = None,
@@ -62,7 +62,7 @@ class CollisionPipelinePrimitive:
         Initialize an instance of Kamino's optimized primitive collision detection pipeline.
 
         Args:
-            model (Model | None): The model container holding the time-invariant parameters of the simulation.
+            model (ModelKamino | None): The model container holding the time-invariant parameters of the simulation.
             broadphase (BroadPhaseMode): Broad-phase collision detection algorithm to use.
             bvtype (BoundingVolumeType): Type of bounding volume to use in broad-phase.
             default_margin (float): Default collision margin for geometries.
@@ -95,12 +95,12 @@ class CollisionPipelinePrimitive:
     # Operations
     ###
 
-    def finalize(self, model: Model, bvtype: BoundingVolumeType | None = None, device: Devicelike = None):
+    def finalize(self, model: ModelKamino, bvtype: BoundingVolumeType | None = None, device: Devicelike = None):
         """
         Finalizes the collision detection pipeline by allocating all necessary data structures.
 
         Args:
-            model (Model): The model container holding the time-invariant parameters of the simulation.
+            model (ModelKamino): The model container holding the time-invariant parameters of the simulation.
             bvtype (BoundingVolumeType | None): Optional bounding volume type to override the default.
             device (Devicelike): The Warp device on which the pipeline will operate.
         """
@@ -152,12 +152,12 @@ class CollisionPipelinePrimitive:
                 geom_pair=wp.zeros(shape=(model_num_geom_pairs,), dtype=vec2i),
             )
 
-    def collide(self, model: Model, data: ModelData, contacts: Contacts):
+    def collide(self, model: ModelKamino, data: ModelData, contacts: Contacts):
         """
         Runs the unified collision detection pipeline to generate discrete contacts.
 
         Args:
-            model (Model): The model container holding the time-invariant parameters of the simulation.
+            model (ModelKamino): The model container holding the time-invariant parameters of the simulation.
             data (ModelData): The data container holding the time-varying state of the simulation.
             contacts (Contacts): Output contacts container (will be cleared and populated)
         """
@@ -201,13 +201,13 @@ class CollisionPipelinePrimitive:
                 "Please call `finalize(model, device)` before using the pipeline."
             )
 
-    def _assert_shapes_supported(self, model: Model) -> tuple[list[int], np.ndarray]:
+    def _assert_shapes_supported(self, model: ModelKamino) -> tuple[list[int], np.ndarray]:
         """
         Checks whether all collision geometries in the provided builder are supported
         by the primitive narrow-phase collider.
 
         Args:
-            model (Model): The model container holding the time-invariant parameters of the simulation.
+            model (ModelKamino): The model container holding the time-invariant parameters of the simulation.
 
         Raises:
             ValueError: If any unsupported shape type is found.

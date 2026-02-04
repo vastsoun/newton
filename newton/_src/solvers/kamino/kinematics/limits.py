@@ -20,13 +20,13 @@ from dataclasses import dataclass, field
 import warp as wp
 from warp.context import Devicelike
 
-from ..core.joints import JointDoFType, JOINT_QMIN, JOINT_QMAX
+from ..core.joints import JOINT_QMAX, JOINT_QMIN, JointDoFType
 from ..core.math import (
     quat_from_vec4,
     quat_log,
     screw,
 )
-from ..core.model import Model, ModelData
+from ..core.model import ModelData, ModelKamino
 from ..core.types import (
     float32,
     int32,
@@ -74,7 +74,7 @@ class LimitsData:
     """
     Host-side cache of the maximum number of limits allocated across all worlds.\n
     The number of allocated limits in the model is determined by the ModelBuilder when finalizing
-    a ``Model``, and is equal to the sum over all finite-valued limits defined by each joint.\n
+    a ``ModelKamino``, and is equal to the sum over all finite-valued limits defined by each joint.\n
     The single entry is then less than or equal to the total ``num_joint_dofs`` of the entire model.\n
     This is cached on the host-side for managing data allocations and setting thread sizes in kernels.
     """
@@ -83,7 +83,7 @@ class LimitsData:
     """
     Host-side cache of the maximum number of limits allocated per world.\n
     The number of allocated limits per world is determined by the ModelBuilder when finalizing a
-    ``Model``, and is equal to the sum over all finite-valued limits defined by each joint of each world.\n
+    ``ModelKamino``, and is equal to the sum over all finite-valued limits defined by each joint of each world.\n
     Each entry is then less than or equal to the total ``num_joint_dofs`` of the corresponding world.\n
     This is cached on the host-side for managing data allocations and setting thread sizes in kernels.
     """
@@ -92,7 +92,7 @@ class LimitsData:
     """
     The maximum number of limits allocated for the model across all worlds.\n
     The number of allocated limits in the model is determined by the ModelBuilder when finalizing
-    a ``Model``, and is equal to the sum over all finite-valued limits defined by each joint.\n
+    a ``ModelKamino``, and is equal to the sum over all finite-valued limits defined by each joint.\n
     The single entry is then less than or equal to the total ``num_joint_dofs`` of the entire model.\n
     Shape of ``(1,)`` and type :class:`int32`.
     """
@@ -107,7 +107,7 @@ class LimitsData:
     """
     The maximum number of limits allocated per world.\n
     The number of allocated limits per world is determined by the ModelBuilder when finalizing a
-    ``Model``, and is equal to the sum over all finite-valued limits defined by each joint of each world.\n
+    ``ModelKamino``, and is equal to the sum over all finite-valued limits defined by each joint of each world.\n
     Each entry is then less than or equal to the total ``num_joint_dofs`` of the corresponding world.\n
     Shape of ``(num_worlds,)`` and type :class:`int32`.
     """
@@ -596,7 +596,7 @@ class Limits:
 
     def __init__(
         self,
-        model: Model | None = None,
+        model: ModelKamino | None = None,
         device: Devicelike = None,
     ):
         # The device on which to allocate the limits data
@@ -775,12 +775,12 @@ class Limits:
     # Operations
     ###
 
-    def finalize(self, model: Model, device: Devicelike = None):
+    def finalize(self, model: ModelKamino, device: Devicelike = None):
         # Ensure the model is valid
         if model is None:
             raise ValueError("Limits: model must be specified for allocation (got None)")
-        elif not isinstance(model, Model):
-            raise TypeError("Limits: model must be an instance of Model")
+        elif not isinstance(model, ModelKamino):
+            raise TypeError("Limits: model must be an instance of ModelKamino")
 
         # Extract the joint limits allocation sizes from the model
         # The memory allocation requires the total number of limits (over multiple worlds)
@@ -846,14 +846,14 @@ class Limits:
 
     def detect(
         self,
-        model: Model,
+        model: ModelKamino,
         data: ModelData,
     ):
         """
         Detects the active joint limits in the model and updates the limits data.
 
         Args:
-            model (Model): The model to detect limits for.
+            model (ModelKamino): The model to detect limits for.
             state (ModelData): The current state of the model.
         """
         # Skip this operation if no contacts data has been allocated
@@ -863,8 +863,8 @@ class Limits:
         # Ensure the model and state are valid
         if model is None:
             raise ValueError("Limits: model must be specified for detection (got None)")
-        elif not isinstance(model, Model):
-            raise TypeError("Limits: model must be an instance of Model")
+        elif not isinstance(model, ModelKamino):
+            raise TypeError("Limits: model must be an instance of ModelKamino")
         if data is None:
             raise ValueError("Limits: data must be specified for detection (got None)")
         elif not isinstance(data, ModelData):

@@ -22,7 +22,7 @@ import unittest
 import warp as wp
 
 # Module to be tested
-from newton._src.solvers.kamino.core.model import Model
+from newton._src.solvers.kamino.core.model import ModelKamino
 
 # Test utilities
 from newton._src.solvers.kamino.models.builders.basics import (
@@ -69,7 +69,7 @@ class TestModel(unittest.TestCase):
         builder = build_boxes_hinged()
 
         # Finalize the model
-        model: Model = builder.finalize(self.default_device)
+        model: ModelKamino = builder.finalize(self.default_device)
         if self.verbose:
             print("")  # Add a newline for better readability
             print_model_info(model)
@@ -100,7 +100,7 @@ class TestModel(unittest.TestCase):
         builder1.add_builder(builder2)
 
         # Finalize the model
-        model: Model = builder1.finalize(self.default_device)
+        model: ModelKamino = builder1.finalize(self.default_device)
         if self.verbose:
             print("")  # Add a newline for better readability
             print_model_info(model)
@@ -124,7 +124,7 @@ class TestModel(unittest.TestCase):
         builder = make_homogeneous_builder(num_worlds=num_worlds, build_fn=build_boxes_hinged)
 
         # Finalize the model
-        model: Model = builder.finalize(self.default_device)
+        model: ModelKamino = builder.finalize(self.default_device)
         if self.verbose:
             print("")  # Add a newline for better readability
             print_model_info(model)
@@ -147,7 +147,7 @@ class TestModel(unittest.TestCase):
         num_worlds = builder.num_worlds
 
         # Finalize the model
-        model: Model = builder.finalize(self.default_device)
+        model: ModelKamino = builder.finalize(self.default_device)
         if self.verbose:
             print("")  # Add a newline for better readability
             print_model_info(model)

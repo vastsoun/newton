@@ -37,7 +37,7 @@ import warp as wp
 from warp.context import Devicelike
 
 from ..core.math import contact_wrench_matrix_from_points
-from ..core.model import Model, ModelData
+from ..core.model import ModelData, ModelKamino
 from ..core.types import float32, int32, override, quatf, transformf, uint64, vec2f, vec2i, vec3f, vec6f
 from ..geometry.contacts import Contacts, ContactsData
 from ..geometry.keying import KeySorter, binary_search_find_range_start
@@ -583,7 +583,7 @@ def warmstart_limits_by_matched_jid_dof_key(
 
 
 def warmstart_contacts_by_matched_geom_pair_key_and_position(
-    model: Model,
+    model: ModelKamino,
     data: ModelData,
     sorter: KeySorter,
     cache: ContactsData,
@@ -594,7 +594,7 @@ def warmstart_contacts_by_matched_geom_pair_key_and_position(
     Warm-starts contacts by matching geom-pair keys and contact point positions.
 
     Args:
-        model (Model): The model containing simulation parameters.
+        model (ModelKamino): The model containing simulation parameters.
         data (ModelData): The model data containing body states.
         sorter (KeySorter): The key sorter used to sort cached contact keys.
         cache (ContactsData): The cached contacts data from the previous simulation step.
@@ -651,7 +651,7 @@ def warmstart_contacts_from_geom_pair_net_force(
     Warm-starts contacts by matching geom-pair keys and contact point positions.
 
     Args:
-        model (Model): The model containing simulation parameters.
+        model (ModelKamino): The model containing simulation parameters.
         data (ModelData): The model data containing body states.
         sorter (KeySorter): The key sorter used to sort cached contact keys.
         cache (ContactsData): The cached contacts data from the previous simulation step.
@@ -696,7 +696,7 @@ def warmstart_contacts_from_geom_pair_net_force(
 
 
 def warmstart_contacts_by_matched_geom_pair_key_and_position_with_net_force_backup(
-    model: Model,
+    model: ModelKamino,
     data: ModelData,
     sorter: KeySorter,
     cache: ContactsData,
@@ -708,7 +708,7 @@ def warmstart_contacts_by_matched_geom_pair_key_and_position_with_net_force_back
     Warm-starts contacts by matching geom-pair keys and contact point positions.
 
     Args:
-        model (Model): The model containing simulation parameters.
+        model (ModelKamino): The model containing simulation parameters.
         data (ModelData): The model data containing body states.
         sorter (KeySorter): The key sorter used to sort cached contact keys.
         cache (ContactsData): The cached contacts data from the previous simulation step.
@@ -822,7 +822,7 @@ class WarmstarterLimits:
         The current implementation matches contacts based on geom-pair keys and contact point positions.
 
         Args:
-            model (Model): The model containing simulation parameters.
+            model (ModelKamino): The model containing simulation parameters.
             data (ModelData): The model data containing body states.
             limits (Limits): The limits container to warm-start.
         """
@@ -980,14 +980,14 @@ class WarmstarterContacts:
         """
         return self._cache
 
-    def warmstart(self, model: Model, data: ModelData, contacts: Contacts):
+    def warmstart(self, model: ModelKamino, data: ModelData, contacts: Contacts):
         """
         Warm-starts the provided contacts container using the internal cache.
 
         The current implementation matches contacts based on geom-pair keys and contact point positions.
 
         Args:
-            model (Model): The model containing simulation parameters.
+            model (ModelKamino): The model containing simulation parameters.
             data (ModelData): The model data containing body states.
             contacts (Contacts): The contacts container to warm-start.
         """

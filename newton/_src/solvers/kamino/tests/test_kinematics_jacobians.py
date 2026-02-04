@@ -24,7 +24,7 @@ import numpy as np
 import warp as wp
 
 from newton._src.solvers.kamino.core.math import quat_exp, screw, screw_angular, screw_linear
-from newton._src.solvers.kamino.core.model import Model, ModelData
+from newton._src.solvers.kamino.core.model import ModelData, ModelKamino
 from newton._src.solvers.kamino.core.types import float32, int32, mat33f, transformf, vec3f, vec6f
 from newton._src.solvers.kamino.geometry.contacts import Contacts
 from newton._src.solvers.kamino.geometry.detector import CollisionDetector, CollisionDetectorSettings
@@ -57,7 +57,7 @@ wp.set_module_options({"enable_backward": False})
 
 
 def extract_cts_jacobians(
-    model: Model,
+    model: ModelKamino,
     limits: Limits | None,
     contacts: Contacts | None,
     jacobians: DenseSystemJacobians,
@@ -103,7 +103,9 @@ def extract_cts_jacobians(
     return J_cts_mat
 
 
-def extract_dofs_jacobians(model: Model, jacobians: DenseSystemJacobians, verbose: bool = False) -> list[np.ndarray]:
+def extract_dofs_jacobians(
+    model: ModelKamino, jacobians: DenseSystemJacobians, verbose: bool = False
+) -> list[np.ndarray]:
     # Retrieve the number of worlds in the model
     num_worlds = model.info.num_worlds
 
@@ -236,7 +238,7 @@ def _set_fourbar_body_states(
 ###
 
 
-def set_fourbar_body_states(model: Model, data: ModelData):
+def set_fourbar_body_states(model: ModelKamino, data: ModelData):
     wp.launch(
         _set_fourbar_body_states,
         dim=3,  # Set to three because we only need to set the first three joints

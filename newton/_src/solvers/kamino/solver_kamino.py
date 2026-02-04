@@ -35,7 +35,7 @@ from ..solver import SolverBase
 from .core.bodies import update_body_inertias, update_body_wrenches
 from .core.control import Control
 from .core.joints import JointCorrectionMode
-from .core.model import Model, ModelData
+from .core.model import ModelData, ModelKamino
 from .core.state import State
 from .core.time import advance_time
 from .core.types import float32, int32, transformf, vec6f
@@ -211,7 +211,7 @@ class SolverKamino(SolverBase):
           International Journal for Numerical Methods in Engineering, 122(16), 4093-4113.
           https://onlinelibrary.wiley.com/doi/full/10.1002/nme.6693
 
-    After constructing :class:`Model`, :class:`State`, :class:`Control` and :class:`Contacts`
+    After constructing :class:`ModelKamino`, :class:`State`, :class:`Control` and :class:`Contacts`
     objects, this physics solver may be used to advance the simulation state forward in time.
 
     Example
@@ -238,7 +238,7 @@ class SolverKamino(SolverBase):
 
     def __init__(
         self,
-        model: Model,
+        model: ModelKamino,
         contacts: Contacts | None = None,
         settings: SolverKaminoSettings | None = None,
     ):
@@ -250,13 +250,13 @@ class SolverKamino(SolverBase):
         settings are provided, default settings will be used.
 
         Args:
-            model (Model): The multi-body systems model to simulate.
+            model (ModelKamino): The multi-body systems model to simulate.
             contacts (Contacts): The contact data container for the simulation.
             settings (SolverKaminoSettings | None): Optional solver settings.
         """
         # Ensure the input containers are valid
-        if not isinstance(model, Model):
-            raise TypeError(f"Invalid model container: Expected a `Model` instance, but got {type(model)}.")
+        if not isinstance(model, ModelKamino):
+            raise TypeError(f"Invalid model container: Expected a `ModelKamino` instance, but got {type(model)}.")
         if contacts is not None and not isinstance(contacts, Contacts):
             raise TypeError(f"Invalid contacts container: Expected a `Contacts` instance, but got {type(contacts)}.")
         if settings is not None and not isinstance(settings, SolverKaminoSettings):
@@ -266,7 +266,7 @@ class SolverKamino(SolverBase):
 
         # First initialize the base solver
         # NOTE: Although we pass the model here, we will re-assign it below
-        # since currently Kamino defines its own :class`Model` class.
+        # since currently Kamino defines its own :class`ModelKamino` class.
         super().__init__(model=model)
         self._model = model
 

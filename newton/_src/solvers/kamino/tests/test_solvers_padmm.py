@@ -24,7 +24,7 @@ from warp.context import Devicelike
 
 from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.core.math import screw, vec3f
-from newton._src.solvers.kamino.core.model import Model
+from newton._src.solvers.kamino.core.model import ModelKamino
 from newton._src.solvers.kamino.dynamics.dual import DualProblem
 from newton._src.solvers.kamino.kinematics.constraints import unpack_constraint_solutions
 from newton._src.solvers.kamino.linalg import LLTBlockedSolver
@@ -122,7 +122,7 @@ def print_dual_problem_summary(D: np.ndarray, v_f: np.ndarray, notes: str = ""):
 
 
 def check_padmm_solution(
-    test: unittest.TestCase, model: Model, problem: DualProblem, solver: PADMMSolver, verbose: bool = False
+    test: unittest.TestCase, model: ModelKamino, problem: DualProblem, solver: PADMMSolver, verbose: bool = False
 ):
     # Extract numpy arrays from the solver state and solution
     only_active_dims = True

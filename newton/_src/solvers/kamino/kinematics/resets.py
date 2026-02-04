@@ -19,7 +19,7 @@ import warp as wp
 
 from ..core.bodies import transform_body_inertial_properties
 from ..core.math import screw, screw_angular, screw_linear
-from ..core.model import Model, ModelData
+from ..core.model import ModelData, ModelKamino
 from ..core.state import State
 from ..core.types import float32, int32, mat33f, transformf, vec3f, vec6f
 from ..kinematics.joints import compute_joint_pose_and_relative_motion, make_write_joint_data
@@ -474,7 +474,7 @@ def _reset_joints_of_select_worlds(
 
 
 def reset_time(
-    model: Model,
+    model: ModelKamino,
     time: wp.array,
     steps: wp.array,
     world_mask: wp.array,
@@ -493,7 +493,7 @@ def reset_time(
 
 
 def reset_body_net_wrenches(
-    model: Model,
+    model: ModelKamino,
     body_w: wp.array,
     world_mask: wp.array,
 ):
@@ -519,7 +519,7 @@ def reset_body_net_wrenches(
 
 
 def reset_joint_constraint_reactions(
-    model: Model,
+    model: ModelKamino,
     lambda_j: wp.array,
     world_mask: wp.array,
 ):
@@ -530,7 +530,7 @@ def reset_joint_constraint_reactions(
     to clear out any accumulated reaction forces from the previous step.
 
     Args:
-        model (Model):
+        model (ModelKamino):
             The model container holding the time-invariant data of the simulation.
         lambda_j (wp.array):
             The array of joint constraint reaction forces/torques.\n
@@ -557,7 +557,7 @@ def reset_joint_constraint_reactions(
 
 
 def reset_state_to_model_default(
-    model: Model,
+    model: ModelKamino,
     state_out: State,
     world_mask: wp.array,
 ):
@@ -566,7 +566,7 @@ def reset_state_to_model_default(
     in the model, but only for the worlds specified by the `world_mask`.
 
     Args:
-        model (Model):
+        model (ModelKamino):
             Input model container holding the time-invariant data of the system.
         state_out (State):
             Output state container to be reset to the model's default state.
@@ -619,7 +619,7 @@ def reset_state_to_model_default(
 
 
 def reset_state_from_base_state(
-    model: Model,
+    model: ModelKamino,
     state_out: State,
     world_mask: wp.array,
     base_q: wp.array,
@@ -637,7 +637,7 @@ def reset_state_from_base_state(
     but transformed to account for the relative pose offset of the base body.
 
     Args:
-        model (Model):
+        model (ModelKamino):
             Input model container holding the time-invariant data of the system.
         state_out (State):
             Output state container to be reset based on the base body states.
@@ -675,7 +675,7 @@ def reset_state_from_base_state(
 
 
 def reset_select_worlds_to_initial_state(
-    model: Model,
+    model: ModelKamino,
     mask: wp.array,
     data: ModelData,
     reset_constraints: bool = True,
@@ -772,7 +772,7 @@ def reset_select_worlds_to_initial_state(
 
 
 def reset_select_worlds_to_state(
-    model: Model,
+    model: ModelKamino,
     state: State,
     mask: wp.array,
     data: ModelData,

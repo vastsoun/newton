@@ -39,7 +39,7 @@ from ....sim.collide_unified import BroadPhaseMode
 
 # Kamino imports
 from ..core.materials import DEFAULT_FRICTION, DEFAULT_RESTITUTION, make_get_material_pair_properties
-from ..core.model import Model, ModelData
+from ..core.model import ModelData, ModelKamino
 from ..core.shapes import ShapeType
 from ..core.types import float32, int32, quatf, transformf, uint32, uint64, vec2f, vec2i, vec3f, vec4f
 from ..geometry.contacts import (
@@ -510,7 +510,7 @@ class CollisionPipelineUnifiedKamino:
 
     def __init__(
         self,
-        model: Model,
+        model: ModelKamino,
         broadphase: BroadPhaseMode = BroadPhaseMode.EXPLICIT,
         max_contacts: int | None = None,
         max_contacts_per_pair: int = DEFAULT_GEOM_PAIR_MAX_CONTACTS,
@@ -524,7 +524,7 @@ class CollisionPipelineUnifiedKamino:
         Initialize an instance of Kamino's wrapper of the unified collision detection pipeline.
 
         Args:
-            model (Model): The model container holding the time-invariant parameters of the simulation.
+            model (ModelKamino): The model container holding the time-invariant parameters of the simulation.
             broadphase (BroadPhaseMode): Broad-phase back-end to use (NXN, SAP, or EXPLICIT)
             max_contacts (int | None): Maximum contacts for the entire model (overrides computed value)
             max_contacts_per_pair (int): Maximum contacts per colliding geometry pair
@@ -647,12 +647,12 @@ class CollisionPipelineUnifiedKamino:
     # Operations
     ###
 
-    def collide(self, model: Model, data: ModelData, contacts: Contacts):
+    def collide(self, model: ModelKamino, data: ModelData, contacts: Contacts):
         """
         Runs the unified collision detection pipeline to generate discrete contacts.
 
         Args:
-            model (Model): The model container holding the time-invariant parameters of the simulation.
+            model (ModelKamino): The model container holding the time-invariant parameters of the simulation.
             data (ModelData): The data container holding the time-varying state of the simulation.
             contacts (Contacts): Output contacts container (will be cleared and populated)
         """
@@ -689,14 +689,14 @@ class CollisionPipelineUnifiedKamino:
     # Internals
     ###
 
-    def _convert_geometry_data(self, model: Model):
+    def _convert_geometry_data(self, model: ModelKamino):
         """
         Converts Kamino geometry data to the Newton format.
 
         This operation needs to be called only once during initialization.
 
         Args:
-            model (Model): The model container holding the time-invariant parameters of the simulation.
+            model (ModelKamino): The model container holding the time-invariant parameters of the simulation.
         """
         wp.launch(
             kernel=_convert_geom_data_kamino_to_newton,
@@ -714,12 +714,12 @@ class CollisionPipelineUnifiedKamino:
             device=self._device,
         )
 
-    def _update_geom_data(self, model: Model, data: ModelData):
+    def _update_geom_data(self, model: ModelKamino, data: ModelData):
         """
         Updates geometry poses from corresponding body states and computes respective AABBs.
 
         Args:
-            model (Model): The model container holding the time-invariant parameters of the simulation.
+            model (ModelKamino): The model container holding the time-invariant parameters of the simulation.
             data (ModelData): The data container holding the time-varying state of the simulation.
         """
         wp.launch(
@@ -790,12 +790,12 @@ class CollisionPipelineUnifiedKamino:
             case _:
                 raise ValueError(f"Unsupported broad phase mode: {self._broadphase}")
 
-    def _run_narrowphase(self, model: Model, data: ModelData, contacts: Contacts):
+    def _run_narrowphase(self, model: ModelKamino, data: ModelData, contacts: Contacts):
         """
         Runs narrow-phase collision detection to generate contacts.
 
         Args:
-            model (Model): The model container holding the time-invariant parameters of the simulation.
+            model (ModelKamino): The model container holding the time-invariant parameters of the simulation.
             data (ModelData): The data container holding the time-varying state of the simulation.
             contacts (Contacts): Output contacts container (will be populated by this function)
         """

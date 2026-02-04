@@ -40,7 +40,7 @@ from .joints import (
 )
 from .materials import MaterialDescriptor, MaterialManager, MaterialPairProperties, MaterialPairsModel, MaterialsModel
 from .math import FLOAT32_EPS
-from .model import Model, ModelInfo
+from .model import ModelKamino, ModelKaminoInfo, ModelKaminoSize
 from .shapes import ShapeDescriptorType, ShapeType
 from .time import TimeModel
 from .types import Axis, float32, int32, mat33f, transformf, uint32, vec2i, vec3f, vec4f, vec6f
@@ -807,11 +807,11 @@ class ModelBuilder:
     # Model Compilation
     ###
 
-    def finalize(self, device: Devicelike = None, requires_grad: bool = False, base_auto: bool = True) -> Model:
+    def finalize(self, device: Devicelike = None, requires_grad: bool = False, base_auto: bool = True) -> ModelKamino:
         """
-        Constructs a Model object from the current ModelBuilder.
+        Constructs a ModelKamino object from the current ModelBuilder.
 
-        All description data contained in the builder is compiled into a Model
+        All description data contained in the builder is compiled into a ModelKamino
         object, allocating the necessary data structures on the target device.
 
         Args:
@@ -823,7 +823,7 @@ class ModelBuilder:
                 and if possible, a base joint, if neither was set.
 
         Returns:
-            Model: The constructed Model object containing the time-invariant simulation data.
+            ModelKamino: The constructed ModelKamino object containing the time-invariant simulation data.
         """
         # Number of model worlds
         num_worlds = len(self._worlds)
@@ -1113,67 +1113,52 @@ class ModelBuilder:
         # Model construction
         ###
 
-        # Create the model
-        model = Model()
-
-        # Configure model properties
-        model.device = device
-        model.requires_grad = requires_grad
-
-        # Store the model builder info list as the model descriptors
-        # NOTE This caches the info of each model on the host side
-        model.worlds = self._worlds
-
-        ###
-        # Set the host-side model size
-        ###
-
-        # Compute the sum/max of model entities
-        model.size.num_worlds = num_worlds
-        model.size.sum_of_num_bodies = self._num_bodies
-        model.size.max_of_num_bodies = max([world.num_bodies for world in self._worlds])
-        model.size.sum_of_num_joints = self._num_joints
-        model.size.max_of_num_joints = max([world.num_joints for world in self._worlds])
-        model.size.sum_of_num_passive_joints = sum([world.num_passive_joints for world in self._worlds])
-        model.size.max_of_num_passive_joints = max([world.num_passive_joints for world in self._worlds])
-        model.size.sum_of_num_actuated_joints = sum([world.num_actuated_joints for world in self._worlds])
-        model.size.max_of_num_actuated_joints = max([world.num_actuated_joints for world in self._worlds])
-        model.size.sum_of_num_geoms = self._num_geoms
-        model.size.max_of_num_geoms = max([world.num_geoms for world in self._worlds])
-        model.size.sum_of_num_materials = self._materials.num_materials
-        model.size.max_of_num_materials = self._materials.num_materials
-        model.size.sum_of_num_material_pairs = self._materials.num_material_pairs
-        model.size.max_of_num_material_pairs = self._materials.num_material_pairs
-
-        # Compute the sum/max of model DoFs and constraints
-        model.size.sum_of_num_body_dofs = self._num_bdofs
-        model.size.max_of_num_body_dofs = max([world.num_body_dofs for world in self._worlds])
-        model.size.sum_of_num_joint_coords = self._num_jcoords
-        model.size.max_of_num_joint_coords = max([world.num_joint_coords for world in self._worlds])
-        model.size.sum_of_num_joint_dofs = self._num_jdofs
-        model.size.max_of_num_joint_dofs = max([world.num_joint_dofs for world in self._worlds])
-        model.size.sum_of_num_passive_joint_coords = self._num_jpcoords
-        model.size.max_of_num_passive_joint_coords = max([world.num_passive_joint_coords for world in self._worlds])
-        model.size.sum_of_num_passive_joint_dofs = self._num_jpdofs
-        model.size.max_of_num_passive_joint_dofs = max([world.num_passive_joint_dofs for world in self._worlds])
-        model.size.sum_of_num_actuated_joint_coords = self._num_jacoords
-        model.size.max_of_num_actuated_joint_coords = max([world.num_actuated_joint_coords for world in self._worlds])
-        model.size.sum_of_num_actuated_joint_dofs = self._num_jadofs
-        model.size.max_of_num_actuated_joint_dofs = max([world.num_actuated_joint_dofs for world in self._worlds])
-        model.size.sum_of_num_joint_cts = self._num_jcts
-        model.size.max_of_num_joint_cts = max([world.num_joint_cts for world in self._worlds])
-
-        # Initialize unilateral counts (limits, and contacts) to zero
-        model.size.sum_of_max_limits = 0
-        model.size.max_of_max_limits = 0
-        model.size.sum_of_max_contacts = 0
-        model.size.max_of_max_contacts = 0
-        model.size.sum_of_max_unilaterals = 0
-        model.size.max_of_max_unilaterals = 0
-
-        # Initialize total constraint counts to the same as the joint constraint counts
-        model.size.sum_of_max_total_cts = model.size.sum_of_num_joint_cts
-        model.size.max_of_max_total_cts = model.size.max_of_num_joint_cts
+        # Create a model size summary
+        model_size = ModelKaminoSize(
+            # Compute the sum/max of model entities
+            num_worlds=num_worlds,
+            sum_of_num_bodies=self._num_bodies,
+            max_of_num_bodies=max([world.num_bodies for world in self._worlds]),
+            sum_of_num_joints=self._num_joints,
+            max_of_num_joints=max([world.num_joints for world in self._worlds]),
+            sum_of_num_passive_joints=sum([world.num_passive_joints for world in self._worlds]),
+            max_of_num_passive_joints=max([world.num_passive_joints for world in self._worlds]),
+            sum_of_num_actuated_joints=sum([world.num_actuated_joints for world in self._worlds]),
+            max_of_num_actuated_joints=max([world.num_actuated_joints for world in self._worlds]),
+            sum_of_num_geoms=self._num_geoms,
+            max_of_num_geoms=max([world.num_geoms for world in self._worlds]),
+            sum_of_num_materials=self._materials.num_materials,
+            max_of_num_materials=self._materials.num_materials,
+            sum_of_num_material_pairs=self._materials.num_material_pairs,
+            max_of_num_material_pairs=self._materials.num_material_pairs,
+            # Compute the sum/max of model DoFs and constraints
+            sum_of_num_body_dofs=self._num_bdofs,
+            max_of_num_body_dofs=max([world.num_body_dofs for world in self._worlds]),
+            sum_of_num_joint_coords=self._num_jcoords,
+            max_of_num_joint_coords=max([world.num_joint_coords for world in self._worlds]),
+            sum_of_num_joint_dofs=self._num_jdofs,
+            max_of_num_joint_dofs=max([world.num_joint_dofs for world in self._worlds]),
+            sum_of_num_passive_joint_coords=self._num_jpcoords,
+            max_of_num_passive_joint_coords=max([world.num_passive_joint_coords for world in self._worlds]),
+            sum_of_num_passive_joint_dofs=self._num_jpdofs,
+            max_of_num_passive_joint_dofs=max([world.num_passive_joint_dofs for world in self._worlds]),
+            sum_of_num_actuated_joint_coords=self._num_jacoords,
+            max_of_num_actuated_joint_coords=max([world.num_actuated_joint_coords for world in self._worlds]),
+            sum_of_num_actuated_joint_dofs=self._num_jadofs,
+            max_of_num_actuated_joint_dofs=max([world.num_actuated_joint_dofs for world in self._worlds]),
+            sum_of_num_joint_cts=self._num_jcts,
+            max_of_num_joint_cts=max([world.num_joint_cts for world in self._worlds]),
+            # Initialize unilateral counts (limits, and contacts) to zero
+            sum_of_max_limits=0,
+            max_of_max_limits=0,
+            sum_of_max_contacts=0,
+            max_of_max_contacts=0,
+            sum_of_max_unilaterals=0,
+            max_of_max_unilaterals=0,
+            # Initialize total constraint counts to the same as the joint constraint counts
+            sum_of_max_total_cts=self._num_jcts,
+            max_of_max_total_cts=max([world.num_joint_cts for world in self._worlds]),  # TODO: Use variable
+        )
 
         # Generate the list of collision candidate geometry pairs
         # and compute the total number of collidable geoms
@@ -1197,7 +1182,7 @@ class ModelBuilder:
         # Allocate the model data on the target device
         with wp.ScopedDevice(device):
             # Create the immutable model info arrays from the collected data
-            model.info = ModelInfo(
+            model_info = ModelKaminoInfo(
                 num_worlds=num_worlds,
                 num_bodies=wp.array(info_nb, dtype=int32),
                 num_joints=wp.array(info_nj, dtype=int32),
@@ -1231,17 +1216,17 @@ class ModelBuilder:
             )
 
             # Create the model time data
-            model.time = TimeModel(dt=wp.zeros(num_worlds, dtype=float32), inv_dt=wp.zeros(num_worlds, dtype=float32))
+            model_time = TimeModel(dt=wp.zeros(num_worlds, dtype=float32), inv_dt=wp.zeros(num_worlds, dtype=float32))
 
             # Construct model gravity data
-            model.gravity = GravityModel(
+            model_gravity = GravityModel(
                 g_dir_acc=wp.array(gravity_g_dir_acc, dtype=vec4f),
                 vector=wp.array(gravity_vector, dtype=vec4f, requires_grad=requires_grad),
             )
 
             # Create the bodies model
-            model.bodies = RigidBodiesModel(
-                num_bodies=model.size.sum_of_num_bodies,
+            model_bodies = RigidBodiesModel(
+                num_bodies=model_size.sum_of_num_bodies,
                 wid=wp.array(bodies_wid, dtype=int32),
                 bid=wp.array(bodies_bid, dtype=int32),
                 i_r_com_i=wp.array(bodies_i_r_com_i, dtype=float32, requires_grad=requires_grad),
@@ -1254,8 +1239,8 @@ class ModelBuilder:
             )
 
             # Create the joints model
-            model.joints = JointsModel(
-                num_joints=model.size.sum_of_num_joints,
+            model_joints = JointsModel(
+                num_joints=model_size.sum_of_num_joints,
                 wid=wp.array(joints_wid, dtype=int32),
                 jid=wp.array(joints_jid, dtype=int32),
                 dof_type=wp.array(joints_dofid, dtype=int32),
@@ -1280,12 +1265,12 @@ class ModelBuilder:
                 dq_j_max=wp.array(joints_qd_j_max, dtype=float32, requires_grad=requires_grad),
                 tau_j_max=wp.array(joints_tau_j_max, dtype=float32, requires_grad=requires_grad),
                 q_j_0=wp.array(joints_q_j_0, dtype=float32, requires_grad=requires_grad),
-                dq_j_0=wp.zeros(model.size.sum_of_num_joint_dofs, dtype=float32, requires_grad=requires_grad),
+                dq_j_0=wp.zeros(model_size.sum_of_num_joint_dofs, dtype=float32, requires_grad=requires_grad),
             )
 
             # Create the collision geometries model
-            model.geoms = GeometriesModel(
-                num_geoms=model.size.sum_of_num_geoms,
+            model_geoms = GeometriesModel(
+                num_geoms=model_size.sum_of_num_geoms,
                 num_collidable_geoms=model_num_collidable_geoms,
                 num_collidable_geom_pairs=len(model_collidable_geom_pairs),
                 model_max_contacts=model_required_contacts,
@@ -1306,23 +1291,36 @@ class ModelBuilder:
             )
 
             # Create the material pairs model
-            model.materials = MaterialsModel(
-                num_materials=model.size.sum_of_num_materials,
+            model_materials = MaterialsModel(
+                num_materials=model_size.sum_of_num_materials,
                 restitution=wp.array(materials_rest[0], dtype=float32),
                 static_friction=wp.array(materials_static_fric[0], dtype=float32),
                 dynamic_friction=wp.array(materials_dynamic_fric[0], dtype=float32),
             )
 
             # Create the material pairs model
-            model.material_pairs = MaterialPairsModel(
-                num_material_pairs=model.size.sum_of_num_material_pairs,
+            model_material_pairs = MaterialPairsModel(
+                num_material_pairs=model_size.sum_of_num_material_pairs,
                 restitution=wp.array(mpairs_rest[0], dtype=float32),
                 static_friction=wp.array(mpairs_static_fric[0], dtype=float32),
                 dynamic_friction=wp.array(mpairs_dynamic_fric[0], dtype=float32),
             )
 
         # Return the constructed model data container
-        return model
+        return ModelKamino(
+            _device=device,
+            _requires_grad=requires_grad,
+            worlds=self._worlds,
+            size=model_size,
+            info=model_info,
+            time=model_time,
+            gravity=model_gravity,
+            bodies=model_bodies,
+            joints=model_joints,
+            geoms=model_geoms,
+            materials=model_materials,
+            material_pairs=model_material_pairs,
+        )
 
     def compute_required_contact_capacity(
         self,

@@ -24,7 +24,7 @@ import warp as wp
 from scipy.interpolate import interp1d
 from warp.context import Devicelike
 
-from ...core.model import Model
+from ...core.model import ModelKamino
 from ...core.time import TimeData
 from ...core.types import float32, int32
 
@@ -256,7 +256,7 @@ class AnimationJointReference:
 
     def __init__(
         self,
-        model: Model | None = None,
+        model: ModelKamino | None = None,
         data: np.ndarray | None = None,
         data_dt: float | None = None,
         target_dt: float | None = None,
@@ -270,7 +270,7 @@ class AnimationJointReference:
         Initialize the animation joint reference interface.
 
         Args:
-            model (Model | None): The model container used to determine the required allocation sizes.
+            model (ModelKamino | None): The model container used to determine the required allocation sizes.
                 If None, calling ``finalize()`` later can be used for deferred allocation.
             data (np.ndarray | None): The input animation reference data as a 2D numpy array.
                 If None, calling ``finalize()`` later can be used for deferred allocation.
@@ -437,7 +437,7 @@ class AnimationJointReference:
 
     def finalize(
         self,
-        model: Model,
+        model: ModelKamino,
         data: np.ndarray,
         data_dt: float,
         target_dt: float | None = None,
@@ -451,7 +451,7 @@ class AnimationJointReference:
         Allocate the animation joint reference data.
 
         Args:
-            model (Model): The model container used to determine the required allocation sizes.
+            model (ModelKamino): The model container used to determine the required allocation sizes.
             data (np.ndarray): The input animation reference data as a 2D numpy array.
             data_dt (float): The time-step between frames in the input data.
             target_dt (float | None): The desired time-step between frames in the animation reference.
@@ -474,7 +474,7 @@ class AnimationJointReference:
         """
         # Ensure the model is valid
         if model is None or model.size is None:
-            raise ValueError("Model is not valid. Cannot allocate controller data.")
+            raise ValueError("ModelKamino is not valid. Cannot allocate controller data.")
 
         # Retrieve the shape of the input data
         if data is None:
@@ -493,12 +493,12 @@ class AnimationJointReference:
 
         # Check if there are any actuated DoFs
         if total_num_actuated_dofs == 0:
-            raise ValueError("Model has no actuated DoFs.")
+            raise ValueError("ModelKamino has no actuated DoFs.")
 
         # Ensure the model has only 1-DoF actuated joints
         if total_num_actuated_coords != total_num_actuated_dofs:
             raise ValueError(
-                f"Model has {total_num_actuated_coords} actuated coordinates but {total_num_actuated_dofs} actuated "
+                f"ModelKamino has {total_num_actuated_coords} actuated coordinates but {total_num_actuated_dofs} actuated "
                 "DoFs. AnimationJointReference is currently incompatible with multi-DoF actuated joints."
             )
 

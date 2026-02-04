@@ -90,7 +90,7 @@ import warp as wp
 from warp.context import Devicelike
 
 from ..core.math import screw, screw_angular, screw_linear
-from ..core.model import Model, ModelData
+from ..core.model import ModelData, ModelKamino
 from ..core.state import State
 from ..core.types import float32, int32, int64, mat33f, uint32, vec2f, vec3f, vec4f, vec6f
 from ..dynamics.dual import DualProblem
@@ -929,12 +929,12 @@ class SolutionMetrics:
     about the specific metrics computed, please refer to the documentation of that class.
     """
 
-    def __init__(self, model: Model | None = None, device: Devicelike = None):
+    def __init__(self, model: ModelKamino | None = None, device: Devicelike = None):
         """
         Initializes the solution metrics evaluator.
 
         Args:
-            model (Model):
+            model (ModelKamino):
                 The model containing the time-invariant data of the simulation.
             device (Devicelike, optional):
                 The device where the metrics data should be allocated.\n
@@ -956,20 +956,20 @@ class SolutionMetrics:
         if model is not None:
             self.finalize(model, device)
 
-    def finalize(self, model: Model, device: Devicelike = None):
+    def finalize(self, model: ModelKamino, device: Devicelike = None):
         """
         Finalizes the metrics data allocations on the specified device.
 
         Args:
-            model (Model):
+            model (ModelKamino):
                 The model containing the time-invariant data of the simulation.
             device (Devicelike, optional):
                 The device where the metrics data should be allocated.\n
                 If not specified, the model's device will be used by default.
         """
         # Ensure the model is valid
-        if not isinstance(model, Model):
-            raise TypeError("Expected 'model' to be of type Model.")
+        if not isinstance(model, ModelKamino):
+            raise TypeError("Expected 'model' to be of type ModelKamino.")
 
         # Set the target device for metrics data allocation and execution
         # If no device is specified, use the model's device by default
@@ -1043,7 +1043,7 @@ class SolutionMetrics:
         sigma: wp.array,
         lambdas: wp.array,
         v_plus: wp.array,
-        model: Model,
+        model: ModelKamino,
         data: ModelData,
         state_p: State,
         problem: DualProblem,
@@ -1055,7 +1055,7 @@ class SolutionMetrics:
         Evaluates all solution performance metrics.
 
         Args:
-            model (Model):
+            model (ModelKamino):
                 The model containing the time-invariant data of the simulation.
             data (ModelData):
                 The model data containing the time-variant data of the simulation.
@@ -1097,7 +1097,7 @@ class SolutionMetrics:
 
     def _evaluate_constraint_violations_perf(
         self,
-        model: Model,
+        model: ModelKamino,
         data: ModelData,
         limits: Limits | None = None,
         contacts: Contacts | None = None,
@@ -1106,7 +1106,7 @@ class SolutionMetrics:
         Evaluates the constraint-violation performance metrics.
 
         Args:
-            model (Model):
+            model (ModelKamino):
                 The model containing the time-invariant data of the simulation.
             data (ModelData):
                 The model data containing the time-variant data of the simulation.
@@ -1176,7 +1176,7 @@ class SolutionMetrics:
 
     def _evaluate_primal_problem_perf(
         self,
-        model: Model,
+        model: ModelKamino,
         data: ModelData,
         state_p: State,
         jacobians: DenseSystemJacobians,
@@ -1185,7 +1185,7 @@ class SolutionMetrics:
         Evaluates the primal problem performance metrics.
 
         Args:
-            model (Model):
+            model (ModelKamino):
                 The model containing the time-invariant data of the simulation.
             data (ModelData):
                 The model data containing the time-variant data of the simulation.

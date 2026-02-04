@@ -29,11 +29,8 @@ from warp.context import Devicelike
 
 # Newton imports
 from ...core.types import override
-
-# from ...sim.model import Model
-# from ...sim.model import State
-# from ...sim.model import Control
-# from ...sim.contacts import Contacts
+from ...sim.contacts import Contacts
+from ...sim.model import Control, Model, State
 from ..solver import SolverBase
 
 # Kamino imports
@@ -50,6 +47,7 @@ from .dynamics.wrenches import (
     compute_constraint_body_wrenches,
     compute_joint_dof_body_wrenches,
 )
+from .geometry import CollisionDetector, CollisionDetectorSettings
 from .geometry.contacts import ContactsKamino
 from .integrators.euler import integrate_euler_semi_implicit
 from .kinematics.constraints import (
@@ -662,6 +660,19 @@ class SolverKamino(SolverBase):
         # Copy the updated internal solver state to the output state
         self._write_step_output(state_out=state_out)
 
+    @override
+    def notify_model_changed(self, flags: int):
+        pass  # TODO
+
+    @override
+    def update_contacts(self, contacts: Contacts) -> None:
+        pass  # TODO
+
+    @override
+    @classmethod
+    def register_custom_attributes(cls, flags: int):
+        pass  # TODO
+
     ###
     # Internals - Callback Operations
     ###
@@ -1090,3 +1101,89 @@ class SolverKamino(SolverBase):
         Updates simulation time-keeping (i.e. physical time and discrete steps).
         """
         advance_time(self._model.time, self._data.time)
+
+
+class SolverKaminoWrapper(SolverBase):
+    """
+    TODO
+    """
+
+    def __init__(
+        self,
+        model: Model,
+        solver_settings: SolverKaminoSettings | None = None,
+        collision_detector_settings: CollisionDetectorSettings | None = None,
+    ):
+        """
+        TODO
+        """
+        # Initialize the base solver
+        super().__init__(model=model)
+
+        # Create a Kamino model from the Newton model
+        self._model_kamino = ModelKamino.from_newton(model)
+
+        # Create state buffers
+        self._state_in = self._model_kamino.state()
+        self._state_out = self._model_kamino.state()
+
+        # Create a collision detector
+        self._collision_detector_kamino = CollisionDetector(
+            model=self._model_kamino,
+            settings=collision_detector_settings,
+        )
+
+        # Capture a reference to the contacts container
+        self._contacts_kamino = self._collision_detector_kamino.contacts
+
+        # Initialize the internal Kamino solver
+        self._solver_kamino = SolverKamino(
+            model=self._model_kamino,
+            contacts=self._contacts_kamino,
+            settings=solver_settings,
+        )
+
+    @override
+    def step(self, state_in: State, state_out: State, control: Control, contacts: Contacts, dt: float):
+        """
+        Simulate the model for a given time step using the given control input.
+
+        Args:
+            state_in (State): The input state.
+            state_out (State): The output state.
+            control (Control): The control input.
+                Defaults to `None` which means the control values from the
+                :class:`Model` are used.
+            contacts (Contacts): The contact information.
+            dt (float): The time step (typically in seconds).
+        """
+        # TODO: Update self._state_in from state_in
+
+        # Perform collision detection
+        # TODO: PROBLEM: DO WE NEED TO UPDATE DATA FROM STATE BEFORE COLLIDE?
+        # TODO: Maybe this should also accept state_in?
+        self._collision_detector_kamino.collide(self._model_kamino, self._solver_kamino.data)
+
+        # Step the physics solver
+        self._solver_kamino.step(
+            state_in=self._state_in,
+            state_out=self._state_out,
+            control=ControlKamino.from_newton(control),
+            contacts=self._contacts_kamino,
+            dt=dt,
+        )
+
+        # TODO: Update state_out from self._state_out
+
+    @override
+    def notify_model_changed(self, flags: int):
+        pass
+
+    @override
+    def update_contacts(self, contacts: Contacts) -> None:
+        pass
+
+    @override
+    @classmethod
+    def register_custom_attributes(cls, flags: int):
+        pass

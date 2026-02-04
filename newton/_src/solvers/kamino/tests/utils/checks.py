@@ -21,7 +21,7 @@ import unittest
 
 import numpy as np
 
-from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
+from ...core.builder import ModelBuilderKamino
 
 ###
 # Array-like comparisons

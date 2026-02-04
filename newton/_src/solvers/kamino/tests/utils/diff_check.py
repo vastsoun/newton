@@ -25,8 +25,8 @@ from collections.abc import Callable
 import numpy as np
 from warp.context import Devicelike
 
-from newton._src.solvers.kamino.models import get_testing_usd_assets_path
-from newton._src.solvers.kamino.utils.io.usd import USDImporter
+from ...models import get_testing_usd_assets_path
+from ...utils.io.usd import USDImporter
 
 ###
 # Module interface

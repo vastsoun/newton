@@ -683,7 +683,7 @@ class ModelBuilderKamino:
 
         # Check if the axis is valid
         if not isinstance(axis, Axis):
-            raise TypeError(f"ModelBuilderKamino: Invalid axis type: {type(axis)}. Must be `Axis`.")
+            raise TypeError(f"Invalid axis type: {type(axis)}. Must be `Axis`.")
 
         # Set the new up axis
         self._up_axes[world_index] = axis
@@ -828,11 +828,9 @@ class ModelBuilderKamino:
         # Number of model worlds
         num_worlds = len(self._worlds)
         if num_worlds == 0:
-            raise ValueError("ModelBuilderKamino: Cannot finalize an empty model with zero worlds.")
+            raise ValueError("Cannot finalize an empty model with zero worlds.")
         if num_worlds != self._num_worlds:
-            raise ValueError(
-                f"ModelBuilderKamino: Inconsistent number of worlds: expected {self._num_worlds}, but found {num_worlds}."
-            )
+            raise ValueError(f"Inconsistent number of worlds: expected {self._num_worlds}, but found {num_worlds}.")
 
         ###
         # Pre-processing
@@ -851,9 +849,7 @@ class ModelBuilderKamino:
                 follower_idx = self._joints[joint_idx].bid_F  # Note: index among world bodies
                 if world.has_base_body:  # Ensure base joint & body are compatible if both were set
                     if world.base_body_idx != follower_idx:
-                        raise ValueError(
-                            f"ModelBuilderKamino: Inconsistent base body and base joint for world {world.name} ({w})"
-                        )
+                        raise ValueError(f"Inconsistent base body and base joint for world {world.name} ({w})")
                 else:  # Set base body to be the follower of the base joint
                     world.set_base_body(follower_idx)
             elif not world.has_base_body and base_auto:

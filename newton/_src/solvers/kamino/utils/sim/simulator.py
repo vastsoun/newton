@@ -194,10 +194,14 @@ class Simulator:
         Initializes the simulator with the given model builder, time-step, and device.
 
         Args:
-            builder (ModelBuilderKamino): The model builder defining the model to be simulated.
-            settings (SimulatorSettings, optional): The simulator settings to use. If None, default settings are used.
-            device (Devicelike, optional): The device to run the simulation on. If None, the default device is used.
-            shadow (bool, optional): If True, maintains a host-side copy of the simulation data for easy access.
+            builder (ModelBuilderKamino):
+                The model builder defining the model to be simulated.
+            settings (SimulatorSettings, optional):
+                The simulator settings to use. If None, default settings are used.
+            device (Devicelike, optional):
+                The device to run the simulation on. If None, the default device is used.
+            shadow (bool, optional):
+                If True, maintains a host-side copy of the simulation data for easy access.
         """
         # Cache simulator settings: If no settings are provided, use defaults
         if settings is None:
@@ -422,7 +426,7 @@ class Simulator:
         self._data.cache_state()
 
         # Perform collision detection
-        self._collision_detector.collide(self._model, self._solver.data)
+        self._collision_detector.collide(self._model, self._solver.data, self._data.state_p)
 
         # Step the physics solver
         self._solver.step(

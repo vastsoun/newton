@@ -44,6 +44,7 @@ from warp.context import Devicelike
 
 from ..core.data import DataKamino
 from ..core.model import ModelKamino
+from ..core.state import StateKamino
 from ..core.types import override
 from ..geometry.contacts import DEFAULT_GEOM_PAIR_CONTACT_MARGIN, DEFAULT_GEOM_PAIR_MAX_CONTACTS, ContactsKamino
 from ..geometry.primitive import BoundingVolumeType, CollisionPipelinePrimitive
@@ -327,7 +328,7 @@ class CollisionDetector:
                 case _:
                     raise ValueError(f"Unsupported CollisionPipelineType: {self._settings.pipeline}")
 
-    def collide(self, model: ModelKamino, data: DataKamino):
+    def collide(self, model: ModelKamino, data: DataKamino, state: StateKamino):
         """
         Executes collision detection given a model and its associated data.
 
@@ -335,8 +336,12 @@ class CollisionDetector:
         the configuration set during the initialization of the CollisionDetector.
 
         Args:
-            model (ModelKamino): The model container holding the time-invariant parameters of the simulation.
-            data (DataKamino): The data container holding the time-varying state of the simulation.
+            model (ModelKamino):
+                The model container holding the time-invariant parameters of the simulation.
+            data (DataKamino):
+                The data container holding internal time-varying state of the solver.
+            state (StateKamino):
+                The state container holding time-varying state of the simulation.
         """
         # Skip this operation if no contacts data has been allocated
         if self._contacts is None or self._model_max_contacts <= 0:
@@ -355,12 +360,16 @@ class CollisionDetector:
             raise ValueError("Cannot perform collision detection: data is None")
         if not isinstance(data, DataKamino):
             raise TypeError(f"Cannot perform collision detection: expected DataKamino, got {type(data)}")
+        if state is None:
+            raise ValueError("Cannot perform collision detection: state is None")
+        if not isinstance(state, StateKamino):
+            raise TypeError(f"Cannot perform collision detection: expected StateKamino, got {type(state)}")
 
         # Execute the configured collision detection pipeline
         match self._settings.pipeline:
             case CollisionPipelineType.PRIMITIVE:
-                self._primitive_pipeline.collide(model, data, self._contacts)
+                self._primitive_pipeline.collide(model, data, state, self._contacts)
             case CollisionPipelineType.UNIFIED:
-                self._unified_pipeline.collide(model, data, self._contacts)
+                self._unified_pipeline.collide(model, data, state, self._contacts)
             case _:
                 raise ValueError(f"Unsupported CollisionPipelineType: {self._settings.pipeline}")

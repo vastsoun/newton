@@ -27,6 +27,7 @@ from warp.context import Devicelike
 from ...core.data import DataKamino
 from ...core.model import ModelKamino
 from ...core.shapes import ShapeType
+from ...core.state import StateKamino
 from ...core.types import float32, int32, vec2i, vec6f
 from ..contacts import DEFAULT_GEOM_PAIR_CONTACT_MARGIN, ContactsKamino
 from .broadphase import (
@@ -63,11 +64,16 @@ class CollisionPipelinePrimitive:
         Initialize an instance of Kamino's optimized primitive collision detection pipeline.
 
         Args:
-            model (ModelKamino | None): The model container holding the time-invariant parameters of the simulation.
-            broadphase (BroadPhaseMode): Broad-phase collision detection algorithm to use.
-            bvtype (BoundingVolumeType): Type of bounding volume to use in broad-phase.
-            default_margin (float): Default collision margin for geometries.
-            device (Devicelike): Device on which to allocate data and perform computations.
+            model (ModelKamino | None):
+                The model container holding the time-invariant parameters of the simulation.
+            broadphase (BroadPhaseMode):
+                Broad-phase collision detection algorithm to use.
+            bvtype (BoundingVolumeType):
+                Type of bounding volume to use in broad-phase.
+            default_margin (float):
+                Default collision margin for geometries.
+            device (Devicelike):
+                Device on which to allocate data and perform computations.
         """
         # Cache pipeline settings
         self._device: Devicelike = device
@@ -101,9 +107,12 @@ class CollisionPipelinePrimitive:
         Finalizes the collision detection pipeline by allocating all necessary data structures.
 
         Args:
-            model (ModelKamino): The model container holding the time-invariant parameters of the simulation.
-            bvtype (BoundingVolumeType | None): Optional bounding volume type to override the default.
-            device (Devicelike): The Warp device on which the pipeline will operate.
+            model (ModelKamino):
+                The model container holding the time-invariant parameters of the simulation.
+            bvtype (BoundingVolumeType | None):
+                Optional bounding volume type to override the default.
+            device (Devicelike):
+                The Warp device on which the pipeline will operate.
         """
         # Override the device if specified
         if device is not None:
@@ -153,14 +162,19 @@ class CollisionPipelinePrimitive:
                 geom_pair=wp.zeros(shape=(model_num_geom_pairs,), dtype=vec2i),
             )
 
-    def collide(self, model: ModelKamino, data: DataKamino, contacts: ContactsKamino):
+    def collide(self, model: ModelKamino, data: DataKamino, state: StateKamino, contacts: ContactsKamino):
         """
         Runs the unified collision detection pipeline to generate discrete contacts.
 
         Args:
-            model (ModelKamino): The model container holding the time-invariant parameters of the simulation.
-            data (DataKamino): The data container holding the time-varying state of the simulation.
-            contacts (ContactsKamino): Output contacts container (will be cleared and populated)
+            model (ModelKamino):
+                The model container holding the time-invariant parameters of the simulation.
+            data (DataKamino):
+                The data container holding internal time-varying state of the solver.
+            state (StateKamino):
+                The state container holding the time-varying state of the simulation.
+            contacts (ContactsKamino):
+                Output contacts container (will be cleared and populated)
         """
         # Ensure that the pipeline has been finalized
         # before proceeding with actual operations
@@ -172,7 +186,7 @@ class CollisionPipelinePrimitive:
 
         # Perform the broad-phase collision detection to generate candidate pairs
         primitive_broadphase_explicit(
-            body_poses=data.bodies.q_i,
+            body_poses=state.q_i,
             geoms_model=model.geoms,
             geoms_data=data.geoms,
             bv_type=self._bvtype,
@@ -208,7 +222,8 @@ class CollisionPipelinePrimitive:
         by the primitive narrow-phase collider.
 
         Args:
-            model (ModelKamino): The model container holding the time-invariant parameters of the simulation.
+            model (ModelKamino):
+                The model container holding the time-invariant parameters of the simulation.
 
         Raises:
             ValueError: If any unsupported shape type is found.

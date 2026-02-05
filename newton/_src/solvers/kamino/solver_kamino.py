@@ -1162,7 +1162,7 @@ class SolverKaminoWrapper(SolverBase):
         # Perform collision detection
         # TODO: PROBLEM: DO WE NEED TO UPDATE DATA FROM STATE BEFORE COLLIDE?
         # TODO: Maybe this should also accept state_in?
-        self._collision_detector_kamino.collide(self._model_kamino, self._solver_kamino.data)
+        self._collision_detector_kamino.collide(self._model_kamino, self._solver_kamino.data, self._state_in)
 
         # Step the physics solver
         self._solver_kamino.step(

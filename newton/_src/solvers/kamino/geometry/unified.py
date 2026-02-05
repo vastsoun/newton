@@ -36,12 +36,13 @@ from ....geometry.sdf_utils import SDFData
 from ....geometry.support_function import GenericShapeData, SupportMapDataProvider, pack_mesh_ptr
 from ....geometry.types import GeoType
 from ....sim.collide_unified import BroadPhaseMode
-from ..core.data import DataKamino
 
 # Kamino imports
+from ..core.data import DataKamino
 from ..core.materials import DEFAULT_FRICTION, DEFAULT_RESTITUTION, make_get_material_pair_properties
 from ..core.model import ModelKamino
 from ..core.shapes import ShapeType
+from ..core.state import StateKamino
 from ..core.types import float32, int32, quatf, transformf, uint32, uint64, vec2f, vec2i, vec3f, vec4f
 from ..geometry.contacts import (
     DEFAULT_GEOM_PAIR_CONTACT_MARGIN,
@@ -156,8 +157,8 @@ def convert_kamino_shape_to_newton_geo(sid: int32, params: vec4f) -> tuple[int32
 
     Returns:
         (int32, vec3f):
-        A tuple containing the corresponding Newton :class:`GeoType`
-        as an :class:`int32`, and the shape scale as a :class:`vec3f`.
+            A tuple containing the corresponding Newton :class:`GeoType`
+            as an :class:`int32`, and the shape scale as a :class:`vec3f`.
     """
     geo_type = int32(GeoType.NONE)
     scale = vec3f(0.0)
@@ -227,8 +228,10 @@ def write_contact_unified_kamino(
     It converts ContactData from the narrow phase directly to Kamino's contact format.
 
     Args:
-        contact_data: ContactData struct from narrow phase containing contact information
-        writer_data: ContactWriterDataKamino struct containing output arrays
+        contact_data:
+            ContactData struct from narrow phase containing contact information
+        writer_data:
+            ContactWriterDataKamino struct containing output arrays
     """
     # Normalize contact normal
     contact_normal_a_to_b = wp.normalize(contact_data.contact_normal_a_to_b)
@@ -361,12 +364,16 @@ def _convert_geom_data_kamino_to_newton(
     Converts Kamino geometry :class:`ShapeType` and parameters to Newton :class:`GeoType` and scale.
 
     Inputs:
-        geom_sid (wp.array): Array of Kamino shape indices corresponding to :class:`ShapeType` values.
-        geom_params (wp.array): Array of Kamino shape parameters.
+        geom_sid (wp.array):
+            Array of Kamino shape indices corresponding to :class:`ShapeType` values.
+        geom_params (wp.array):
+            Array of Kamino shape parameters.
 
     Outputs:
-        geom_type (wp.array): Array for Newton geometry indices corresponding to :class:`GeoType` values.
-        geom_data (wp.array): Array for Newton geometry data (scale and thickness).
+        geom_type (wp.array):
+            Array for Newton geometry indices corresponding to :class:`GeoType` values.
+        geom_data (wp.array):
+            Array for Newton geometry data (scale and thickness).
     """
     # Retrieve the geometry index from the thread grid
     gid = wp.tid()
@@ -415,19 +422,30 @@ def _update_geom_poses_and_compute_aabbs(
         AABBs are enlarged by per-shape contact margin for contact detection.
 
     Inputs:
-        geom_bid (wp.array): Array of body indices for each geometry.
-        geom_type (wp.array): Array of geometry type indices corresponding to :class:`GeoType` values.
-        geom_data (wp.array): Array of geometry data (scale and thickness).
-        geom_ptr (wp.array): Array of geometry pointers (used for mesh shapes).
-        geom_offset (wp.array): Array of geometry local pose offset transforms w.r.t the associated body.
-        geom_contact_margin (wp.array): Array of per-geometry contact margins.
-        geom_collision_radius (wp.array): Array of geometry collision bounding sphere radii.
-        body_pose (wp.array): Array of body poses in world coordinates.
+        geom_bid (wp.array):
+            Array of body indices for each geometry.
+        geom_type (wp.array):
+            Array of geometry type indices corresponding to :class:`GeoType` values.
+        geom_data (wp.array):
+            Array of geometry data (scale and thickness).
+        geom_ptr (wp.array):
+            Array of geometry pointers (used for mesh shapes).
+        geom_offset (wp.array):
+            Array of geometry local pose offset transforms w.r.t the associated body.
+        geom_contact_margin (wp.array):
+            Array of per-geometry contact margins.
+        geom_collision_radius (wp.array):
+            Array of geometry collision bounding sphere radii.
+        body_pose (wp.array):
+            Array of body poses in world coordinates.
 
     Outputs:
-        geom_pose (wp.array): Array of geometry poses in world coordinates.
-        shape_aabb_lower (wp.array): Array of lower bounds of geometry axis-aligned bounding boxes.
-        shape_aabb_upper (wp.array): Array of upper bounds of geometry axis-aligned bounding boxes.
+        geom_pose (wp.array):
+            Array of geometry poses in world coordinates.
+        shape_aabb_lower (wp.array):
+            Array of lower bounds of geometry axis-aligned bounding boxes.
+        shape_aabb_upper (wp.array):
+            Array of upper bounds of geometry axis-aligned bounding boxes.
     """
     # Retrieve the geometry index from the thread grid
     gid = wp.tid()
@@ -525,15 +543,24 @@ class CollisionPipelineUnifiedKamino:
         Initialize an instance of Kamino's wrapper of the unified collision detection pipeline.
 
         Args:
-            model (ModelKamino): The model container holding the time-invariant parameters of the simulation.
-            broadphase (BroadPhaseMode): Broad-phase back-end to use (NXN, SAP, or EXPLICIT)
-            max_contacts (int | None): Maximum contacts for the entire model (overrides computed value)
-            max_contacts_per_pair (int): Maximum contacts per colliding geometry pair
-            max_triangle_pairs (int): Maximum triangle pairs for mesh/mesh and mesh/hfield collisions
-            default_margin (float): Default contact margin for collision detection
-            default_friction (float): Default contact friction coefficient
-            default_restitution (float): Default impact restitution coefficient
-            device (Devicelike): Warp device used to allocate memory and operate on
+            model (ModelKamino):
+                The model container holding the time-invariant parameters of the simulation.
+            broadphase (BroadPhaseMode):
+                Broad-phase back-end to use (NXN, SAP, or EXPLICIT)
+            max_contacts (int | None):
+                Maximum contacts for the entire model (overrides computed value)
+            max_contacts_per_pair (int):
+                Maximum contacts per colliding geometry pair
+            max_triangle_pairs (int):
+                Maximum triangle pairs for mesh/mesh and mesh/hfield collisions
+            default_margin (float):
+                Default contact margin for collision detection
+            default_friction (float):
+                Default contact friction coefficient
+            default_restitution (float):
+                Default impact restitution coefficient
+            device (Devicelike):
+                Warp device used to allocate memory and operate on
         """
         # Set the target Warp device for the pipeline
         # If not specified explicitly, use the device of the model
@@ -648,14 +675,19 @@ class CollisionPipelineUnifiedKamino:
     # Operations
     ###
 
-    def collide(self, model: ModelKamino, data: DataKamino, contacts: ContactsKamino):
+    def collide(self, model: ModelKamino, data: DataKamino, state: StateKamino, contacts: ContactsKamino):
         """
         Runs the unified collision detection pipeline to generate discrete contacts.
 
         Args:
-            model (ModelKamino): The model container holding the time-invariant parameters of the simulation.
-            data (DataKamino): The data container holding the time-varying state of the simulation.
-            contacts (ContactsKamino): Output contacts container (will be cleared and populated)
+            model (ModelKamino):
+                The model container holding the time-invariant parameters of the simulation.
+            data (DataKamino):
+                The data container holding internal time-varying state of the solver.
+            state (StateKamino):
+                The state container holding the time-varying state of the simulation.
+            contacts (ContactsKamino):
+                Output contacts container (will be cleared and populated)
         """
         # Check if contacts is allocated on the same device
         if contacts.device != self._device:
@@ -678,7 +710,7 @@ class CollisionPipelineUnifiedKamino:
         self.narrow_phase_contact_count.zero_()
 
         # Update geometry poses from body states and compute respective AABBs
-        self._update_geom_data(model, data)
+        self._update_geom_data(model, data, state)
 
         # Run broad-phase collision detection to get candidate shape pairs
         self._run_broadphase()
@@ -697,7 +729,8 @@ class CollisionPipelineUnifiedKamino:
         This operation needs to be called only once during initialization.
 
         Args:
-            model (ModelKamino): The model container holding the time-invariant parameters of the simulation.
+            model (ModelKamino):
+                The model container holding the time-invariant parameters of the simulation.
         """
         wp.launch(
             kernel=_convert_geom_data_kamino_to_newton,
@@ -715,13 +748,17 @@ class CollisionPipelineUnifiedKamino:
             device=self._device,
         )
 
-    def _update_geom_data(self, model: ModelKamino, data: DataKamino):
+    def _update_geom_data(self, model: ModelKamino, data: DataKamino, state: StateKamino):
         """
         Updates geometry poses from corresponding body states and computes respective AABBs.
 
         Args:
-            model (ModelKamino): The model container holding the time-invariant parameters of the simulation.
-            data (DataKamino): The data container holding the time-varying state of the simulation.
+            model (ModelKamino):
+                The model container holding the time-invariant parameters of the simulation.
+            data (DataKamino):
+                The data container holding internal time-varying state of the solver.
+            state (StateKamino):
+                The state container holding the current simulation state.
         """
         wp.launch(
             kernel=_update_geom_poses_and_compute_aabbs,
@@ -734,7 +771,7 @@ class CollisionPipelineUnifiedKamino:
                 model.geoms.offset,
                 model.geoms.margin,
                 self.geom_collision_radius,
-                data.bodies.q_i,
+                state.q_i,
             ],
             outputs=[
                 data.geoms.pose,
@@ -796,9 +833,12 @@ class CollisionPipelineUnifiedKamino:
         Runs narrow-phase collision detection to generate contacts.
 
         Args:
-            model (ModelKamino): The model container holding the time-invariant parameters of the simulation.
-            data (DataKamino): The data container holding the time-varying state of the simulation.
-            contacts (ContactsKamino): Output contacts container (will be populated by this function)
+            model (ModelKamino):
+                The model container holding the time-invariant parameters of the simulation.
+            data (DataKamino):
+                The data container holding the time-varying state of the simulation.
+            contacts (ContactsKamino):
+                Output contacts container (will be populated by this function)
         """
         # Create a writer data struct to bundle all necessary input/output
         # arrays into a single object for the narrow phase custom writer

@@ -337,7 +337,7 @@ class StateKamino:
         if hasattr(state, "joint_lambdas"):
             joint_lambdas = state.joint_lambdas
         else:
-            joint_lambdas = wp.array(shape=(model.joint_constraint_count,), dtype=wp.float32, device=state.device)
+            joint_lambdas = wp.zeros(shape=(model.joint_constraint_count,), dtype=wp.float32, device=state.device)
 
         # Create a new StateKamino object, aliasing the relevant data from the input newton.State
         state_kamino = StateKamino(

@@ -29,8 +29,13 @@ from warp.context import Devicelike
 
 # Newton imports
 from ...core.types import override
-from ...sim.contacts import Contacts
-from ...sim.model import Control, Model, State
+from ...sim import (
+    Contacts,
+    Control,
+    Model,
+    ModelBuilder,
+    State,
+)
 from ..solver import SolverBase
 
 # Kamino imports
@@ -192,7 +197,7 @@ class SolverKaminoSettings:
 ###
 
 
-class SolverKamino(SolverBase):
+class SolverKaminoImpl(SolverBase):
     """
     A physics solver for simulating constrained multi-body systems for arbitrary mechanical assemblies.
 
@@ -1103,7 +1108,7 @@ class SolverKamino(SolverBase):
         advance_time(self._model.time, self._data.time)
 
 
-class SolverKaminoWrapper(SolverBase):
+class SolverKamino(SolverBase):
     """
     TODO
     """
@@ -1123,10 +1128,6 @@ class SolverKaminoWrapper(SolverBase):
         # Create a Kamino model from the Newton model
         self._model_kamino = ModelKamino.from_newton(model)
 
-        # Create state buffers
-        self._state_in = self._model_kamino.state()
-        self._state_out = self._model_kamino.state()
-
         # Create a collision detector
         self._collision_detector_kamino = CollisionDetector(
             model=self._model_kamino,
@@ -1134,10 +1135,10 @@ class SolverKaminoWrapper(SolverBase):
         )
 
         # Capture a reference to the contacts container
-        self._contacts_kamino = self._collision_detector_kamino.contacts
+        self._contacts_kamino: ContactsKamino = self._collision_detector_kamino.contacts
 
         # Initialize the internal Kamino solver
-        self._solver_kamino = SolverKamino(
+        self._solver_kamino = SolverKaminoImpl(
             model=self._model_kamino,
             contacts=self._contacts_kamino,
             settings=solver_settings,
@@ -1157,23 +1158,28 @@ class SolverKaminoWrapper(SolverBase):
             contacts (Contacts): The contact information.
             dt (float): The time step (typically in seconds).
         """
-        # TODO: Update self._state_in from state_in
+        # Interface the input state and control
+        # containers to Kamino's equivalents
+        # NOTE: Converts the input state to Kamino's
+        # convention (i.e. using local body CoM frame)
+        state_in_kamino = StateKamino.from_newton(self._model_kamino, state_in, convert_to_com_frame=True)
+        state_out_kamino = StateKamino.from_newton(self._model_kamino, state_out)
+        control_kamino = ControlKamino.from_newton(control)
 
         # Perform collision detection
-        # TODO: PROBLEM: DO WE NEED TO UPDATE DATA FROM STATE BEFORE COLLIDE?
-        # TODO: Maybe this should also accept state_in?
-        self._collision_detector_kamino.collide(self._model_kamino, self._solver_kamino.data, self._state_in)
+        self._collision_detector_kamino.collide(self._model_kamino, self._solver_kamino.data, state_in_kamino)
 
         # Step the physics solver
         self._solver_kamino.step(
-            state_in=self._state_in,
-            state_out=self._state_out,
-            control=ControlKamino.from_newton(control),
+            state_in=state_in_kamino,
+            state_out=state_out_kamino,
+            control=control_kamino,
             contacts=self._contacts_kamino,
             dt=dt,
         )
 
-        # TODO: Update state_out from self._state_out
+        # Convert the output state back to Newton's convention (i.e. using local body frame)
+        state_out_kamino.convert_to_body_frame_state(self._model_kamino)
 
     @override
     def notify_model_changed(self, flags: int):
@@ -1185,5 +1191,29 @@ class SolverKaminoWrapper(SolverBase):
 
     @override
     @classmethod
-    def register_custom_attributes(cls, flags: int):
-        pass
+    def register_custom_attributes(cls, builder: ModelBuilder) -> None:
+        """
+        Register custom attributes for SolverKamino.
+
+        Args:
+            builder (ModelBuilder): The model builder to register the custom attributes to.
+        """
+        # State attributes
+        builder.add_custom_attribute(
+            ModelBuilder.CustomAttribute(
+                name="joint_q_prev",
+                assignment=Model.AttributeAssignment.STATE,
+                frequency=Model.AttributeFrequency.JOINT_COORD,
+                dtype=wp.float32,
+                default=0.0,
+            )
+        )
+        builder.add_custom_attribute(
+            ModelBuilder.CustomAttribute(
+                name="joint_lambdas",
+                assignment=Model.AttributeAssignment.STATE,
+                frequency=Model.AttributeFrequency.JOINT_CONSTRAINT,
+                dtype=wp.float32,
+                default=0.0,
+            )
+        )

@@ -26,6 +26,148 @@ from ....sim.state import State
 from .types import vec6f
 
 ###
+# Module interface
+###
+
+__all__ = ["StateKamino", "compute_body_com_state", "compute_body_frame_state"]
+
+
+###
+# Module configs
+###
+
+wp.set_module_options({"enable_backward": False})
+
+
+###
+# Kernels
+###
+
+
+# TODO: Should we also transform body_q_prev to CoM frame here?
+@wp.kernel
+def _compute_body_com_state(
+    # Inputs:
+    body_com: wp.array(dtype=wp.vec3f),
+    body_q: wp.array(dtype=wp.transformf),
+    # Outputs:
+    q_i: wp.array(dtype=wp.transformf),
+):
+    """
+    Transforms body-frame state to body center-of-mass (CoM) state.
+
+    Inputs:
+        body_com (`wp.array(dtype=wp.vec3f)`):
+            Array of body center-of-mass offsets in body frame.
+        body_q (`wp.array(dtype=wp.transformf)`):
+            Array of body-frame poses in world frame.
+
+    Outputs:
+        q_i (`wp.array(dtype=wp.transformf)`):
+            Array of body CoM poses in world frame.
+    """
+    # Retrieve the body index from the thread grid
+    bid = wp.tid()
+
+    # Load body-frame pose and local CoM offset
+    q_i = body_q[bid]
+    r_com_i = body_com[bid]
+
+    # Compute and store the CoM pose in world frame
+    q_com_i = wp.transform_multiply(q_i, wp.transformf(r_com_i, wp.quat_identity()))
+    q_i[bid] = q_com_i
+
+
+# TODO: Should we also transform body_q_prev to CoM frame here?
+@wp.kernel
+def _compute_body_frame_state(
+    # Inputs:
+    body_com: wp.array(dtype=wp.vec3f),
+    q_i: wp.array(dtype=wp.transformf),
+    # Outputs:
+    body_q: wp.array(dtype=wp.transformf),
+):
+    """
+    Transforms body center-of-mass (CoM) state to body-frame state.
+
+    Inputs:
+        body_com (`wp.array(dtype=wp.vec3f)`):
+            Array of body center-of-mass offsets in body frame.
+        q_i (`wp.array(dtype=wp.transformf)`):
+            Array of body CoM poses in world frame.
+
+    Outputs:
+        body_q (`wp.array(dtype=wp.transformf)`):
+            Array of body-frame poses in world frame.
+    """
+    # Retrieve the body index from the thread grid
+    bid = wp.tid()
+
+    # Load body CoM pose and local CoM offset
+    q_com_i = q_i[bid]
+    r_com_i = body_com[bid]
+
+    # Compute and store the body-frame pose in world frame
+    q_i = wp.transform_multiply(q_com_i, wp.transformf(-r_com_i, wp.quat_identity()))
+    body_q[bid] = q_i
+
+
+###
+# Launchers
+###
+
+
+def compute_body_com_state(
+    body_com: wp.array,
+    body_q: wp.array,
+    q_i: wp.array,
+) -> None:
+    """
+    Launcher for the `_compute_body_com_state` kernel.
+
+    Args:
+        body_com (`wp.array`):
+            Array of body center-of-mass offsets in body frame.
+        body_q (`wp.array`):
+            Array of body-frame poses in world frame.
+        q_i (`wp.array`):
+            Array of body CoM poses in world frame.
+    """
+    wp.launch(
+        kernel=_compute_body_com_state,
+        dim=body_com.shape[0],
+        inputs=[body_com, body_q],
+        outputs=[q_i],
+        device=body_com.device,
+    )
+
+
+def compute_body_frame_state(
+    body_com: wp.array,
+    q_i: wp.array,
+    body_q: wp.array,
+) -> None:
+    """
+    Launcher for the `_compute_body_frame_state` kernel.
+
+    Args:
+        body_com (`wp.array`):
+            Array of body center-of-mass offsets in body frame.
+        q_i (`wp.array`):
+            Array of body CoM poses in world frame.
+        body_q (`wp.array`):
+            Array of body-frame poses in world frame.
+    """
+    wp.launch(
+        kernel=_compute_body_frame_state,
+        dim=body_com.shape[0],
+        inputs=[body_com, q_i],
+        outputs=[body_q],
+        device=body_com.device,
+    )
+
+
+###
 # Types
 ###
 
@@ -136,24 +278,121 @@ class StateKamino:
         wp.copy(self.dq_j, other.dq_j)
         wp.copy(self.lambda_j, other.lambda_j)
 
-    @classmethod
-    def from_newton(cls, model: Model, state: State) -> StateKamino:
+    def convert_to_body_com_state(self, model: Model) -> None:
         """
-        Constructs a StateKamino object from a :class:`newton.State` object.
+        Convert the body-frame state to body center-of-mass (CoM)
+        state using the provided body center-of-mass offsets.
+
+        Args:
+            model (Model):
+                The model container holding the time-invariant parameters of the simulation.
+        """
+        compute_body_com_state(
+            body_com=model.body_com,
+            body_q=self.q_i,
+            q_i=self.q_i,
+        )
+
+    def convert_to_body_frame_state(self, model: Model) -> None:
+        """
+        Convert the body center-of-mass (CoM) state to body-frame
+        state using the provided body center-of-mass offsets.
+
+        Args:
+            model (Model):
+                The model container holding the time-invariant parameters of the simulation.
+        """
+        compute_body_frame_state(
+            body_com=model.body_com,
+            q_i=self.q_i,
+            body_q=self.q_i,
+        )
+
+    @classmethod
+    def from_newton(cls, model: Model, state: State, convert_to_com_frame: bool = False) -> StateKamino:
+        """
+        Constructs a :class:`kamino.StateKamino` object from a :class:`newton.State` object.
 
         This operation serves only as a adaptor-like constructor to interface a
         :class:`newton.State`, effectively creating an alias without copying data.
 
         Args:
-            state: The source :class:`newton.State` object to be adapted.
+            state (State):
+                The source :class:`newton.State` object to be adapted.
+            convert_to_com_frame (bool):
+                If True, convert body poses to local center-of-mass frames.
+
+        Returns:
+            A :class:`kamino.StateKamino` object that aliases the data of the input :class:`newton.State` object.
         """
-        with wp.ScopedDevice(state.device):
-            return StateKamino(
-                q_i=state.body_q,
-                u_i=state.body_qd,
-                w_i=state.body_f.view(dtype=vec6f),  # TODO: change to wp.spatial_vector
-                q_j=state.joint_q,
-                q_j_p=wp.clone(state.joint_q),
-                dq_j=state.joint_qd,
-                lambda_j=wp.array(shape=(model.joint_constraint_count,), dtype=wp.float32),
-            )
+        # If the state contains the Kamino-specific `joint_q_prev` custom attribute,
+        # capture a reference to it; otherwise, create a new array for it.
+        if hasattr(state, "joint_q_prev"):
+            joint_q_prev = state.joint_q_prev
+        else:
+            joint_q_prev = wp.clone(state.joint_q)
+
+        # If the state contains the Kamino-specific `joint_lambdas` custom attribute,
+        # capture a reference to it; otherwise, create a new array for it.
+        if hasattr(state, "joint_lambdas"):
+            joint_lambdas = state.joint_lambdas
+        else:
+            joint_lambdas = wp.array(shape=(model.joint_constraint_count,), dtype=wp.float32, device=state.device)
+
+        # Create a new StateKamino object, aliasing the relevant data from the input newton.State
+        state_kamino = StateKamino(
+            q_i=state.body_q,
+            u_i=state.body_qd.view(dtype=vec6f),  # TODO: change to wp.spatial_vector
+            w_i=state.body_f.view(dtype=vec6f),  # TODO: change to wp.spatial_vector
+            q_j=state.joint_q,
+            q_j_p=joint_q_prev,
+            dq_j=state.joint_qd,
+            lambda_j=joint_lambdas,
+        )
+
+        # Optionally convert to the body states to CoM frame
+        # NOTE: This only affects the body poses
+        if convert_to_com_frame:
+            state_kamino.convert_to_body_com_state(model)
+
+        # Return the StateKamino object, aliasing the
+        # relevant data from the input newton.State
+        return state_kamino
+
+    @classmethod
+    def to_newton(cls, model: Model, state: StateKamino, convert_to_body_frame: bool = False) -> State:
+        """
+        Constructs a :class:`newton.State` object from a :class:`kamino.StateKamino` object.
+
+        This operation serves only as a adaptor-like constructor to interface a
+        :class:`kamino.StateKamino`, effectively creating an alias without copying data.
+
+        Args:
+            state (StateKamino):
+                The source :class:`kamino.StateKamino` object to be adapted.
+            convert_to_body_frame (bool):
+                If True, convert body poses to body-local frames.
+
+        Returns:
+            A :class:`newton.State` object that aliases the data of the input :class:`kamino.StateKamino` object.
+        """
+        # Optionally convert to the body states to body frame
+        # NOTE: This only affects the body poses
+        if convert_to_body_frame:
+            state.convert_to_body_frame_state(model)
+
+        # Create a new State object, aliasing the relevant
+        # data from the input kamino.StateKamino
+        state_newton = State()
+        state_newton.body_q = state.q_i
+        state_newton.body_qd = state.u_i.view(dtype=wp.spatial_vectorf)
+        state_newton.body_f = state.w_i.view(dtype=wp.spatial_vectorf)
+        state_newton.joint_q = state.q_j
+        state_newton.joint_qd = state.dq_j
+
+        # Add Kamino-specific custom attributes to the newton.State object
+        state_newton.joint_q_prev = state.q_j_p
+        state_newton.joint_lambdas = state.lambda_j
+
+        # Return the new newton.State object
+        return state_newton

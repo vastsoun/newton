@@ -76,7 +76,7 @@ class ControlKamino:
     @classmethod
     def from_newton(cls, control: Control) -> ControlKamino:
         """
-        Constructs a ControlKamino object from a :class:`newton.Control` object.
+        Constructs a :class:`kamino.ControlKamino` object from a :class:`newton.Control` object.
 
         This operation serves only as a adaptor-like constructor to interface a
         :class:`newton.Control`, effectively creating an alias without copying data.
@@ -85,3 +85,16 @@ class ControlKamino:
             control: The source :class:`newton.Control` object to be adapted.
         """
         return ControlKamino(tau_j=control.joint_f)
+
+    @classmethod
+    def to_newton(cls, control: ControlKamino) -> Control:
+        """
+        Constructs a :class:`newton.Control` object from a :class:`kamino.ControlKamino` object.
+
+        This operation serves only as a adaptor-like constructor to interface a
+        :class:`kamino.ControlKamino`, effectively creating an alias without copying data.
+
+        Args:
+            control: The source :class:`kamino.ControlKamino` object to be adapted.
+        """
+        return Control(joint_f=control.tau_j)

@@ -49,22 +49,6 @@ from newton._src.solvers.kamino.utils import logger as msg
 ###
 
 
-def register_solver_attributes(builder: ModelBuilder) -> None:
-    """
-    TODO
-    """
-    builder.add_custom_attribute(
-        ModelBuilder.CustomAttribute(
-            name="num_body_dofs",
-            frequency=Model.AttributeFrequency.WORLD,
-            assignment=Model.AttributeAssignment.MODEL,
-            dtype=wp.int32,
-            default=0,
-            namespace="info",
-        )
-    )
-
-
 def build_boxes_fourbar_newton(
     builder: ModelBuilder | None = None,
     z_offset: float = 0.0,

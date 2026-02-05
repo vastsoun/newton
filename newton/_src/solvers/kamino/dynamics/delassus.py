@@ -40,7 +40,7 @@ Typical usage example:
     # containers to hold joint-limits, contacts, Jacobians
     model = builder.finalize()
     data = model.data()
-    limits = Limits(model)
+    limits = LimitsKamino(model)
     contacts = ContactsKamino(builder)
     jacobians = DenseSystemJacobians(model, limits, contacts)
 
@@ -83,7 +83,7 @@ from ..core.types import float32, int32, mat33f, vec3f
 from ..geometry.contacts import ContactsKamino
 from ..kinematics.constraints import get_max_constraints_per_world
 from ..kinematics.jacobians import DenseSystemJacobians
-from ..kinematics.limits import Limits
+from ..kinematics.limits import LimitsKamino
 from ..linalg import DenseLinearOperatorData, DenseSquareMultiLinearInfo, LinearSolverType
 
 ###
@@ -245,7 +245,7 @@ class DelassusOperator:
         self,
         model: ModelKamino | None = None,
         data: DataKamino | None = None,
-        limits: Limits | None = None,
+        limits: LimitsKamino | None = None,
         contacts: ContactsKamino | None = None,
         solver: LinearSolverType = None,
         solver_kwargs: dict[str, Any] | None = None,
@@ -266,7 +266,7 @@ class DelassusOperator:
         Args:
             model (ModelKamino): The model container for which the Delassus operator is built.
             data (DataKamino, optional): The model data container holding the state info and data.
-            limits (Limits, optional): The container holding the allocated joint-limit data.
+            limits (LimitsKamino, optional): The container holding the allocated joint-limit data.
             contacts (ContactsKamino, optional): The container holding the allocated contacts data.
             device (Devicelike, optional): The device identifier for the Delassus operator. Defaults to None.
             factorizer (CholeskyFactorizer, optional): An optional Cholesky factorization object. Defaults to None.
@@ -360,7 +360,7 @@ class DelassusOperator:
         self,
         model: ModelKamino,
         data: DataKamino,
-        limits: Limits | None = None,
+        limits: LimitsKamino | None = None,
         contacts: ContactsKamino | None = None,
         solver: LinearSolverType = None,
         device: Devicelike = None,
@@ -394,8 +394,8 @@ class DelassusOperator:
 
         # Ensure the limits container is valid if provided
         if limits is not None:
-            if not isinstance(limits, Limits):
-                raise ValueError("Invalid limits container provided. Must be an instance of `Limits`.")
+            if not isinstance(limits, LimitsKamino):
+                raise ValueError("Invalid limits container provided. Must be an instance of `LimitsKamino`.")
 
         # Ensure the contacts container is valid if provided
         if contacts is not None:

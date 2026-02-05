@@ -692,7 +692,8 @@ class CollisionPipelineUnifiedKamino:
         # Check if contacts is allocated on the same device
         if contacts.device != self._device:
             raise ValueError(
-                f"ContactsKamino container device ({contacts.device}) does not match the pipeline device ({self._device})."
+                f"ContactsKamino container device ({contacts.device}) "
+                f"does not match the pipeline device ({self._device})."
             )
 
         # Check if contacts can hold the maximum number of contacts

@@ -29,7 +29,7 @@ from ...core.model import ModelKamino
 from ...core.state import StateKamino
 from ...core.types import FloatArrayLike
 from ...geometry import CollisionDetector, CollisionDetectorSettings
-from ...solver_kamino import SolverKamino, SolverKaminoSettings
+from ...solver_kamino import SolverKaminoImpl, SolverKaminoSettings
 
 ###
 # Module interface
@@ -235,7 +235,7 @@ class Simulator:
         self._contacts = self._collision_detector.contacts
 
         # Define a physics solver for time-stepping
-        self._solver = SolverKamino(
+        self._solver = SolverKaminoImpl(
             model=self._model,
             contacts=self._contacts,
             settings=self._settings.solver,
@@ -325,7 +325,7 @@ class Simulator:
         return self._collision_detector
 
     @property
-    def solver(self) -> SolverKamino:
+    def solver(self) -> SolverKaminoImpl:
         """
         Returns the physics step solver.
         """

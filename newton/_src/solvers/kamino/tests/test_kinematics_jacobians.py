@@ -34,7 +34,7 @@ from newton._src.solvers.kamino.kinematics.constraints import make_unilateral_co
 # Module to be tested
 from newton._src.solvers.kamino.kinematics.jacobians import DenseSystemJacobians
 from newton._src.solvers.kamino.kinematics.joints import compute_joints_data
-from newton._src.solvers.kamino.kinematics.limits import Limits
+from newton._src.solvers.kamino.kinematics.limits import LimitsKamino
 from newton._src.solvers.kamino.models.builders.basics import build_boxes_fourbar, make_basics_heterogeneous_builder
 from newton._src.solvers.kamino.models.builders.utils import make_homogeneous_builder
 from newton._src.solvers.kamino.tests import setup_tests, test_context
@@ -59,7 +59,7 @@ wp.set_module_options({"enable_backward": False})
 
 def extract_cts_jacobians(
     model: ModelKamino,
-    limits: Limits | None,
+    limits: LimitsKamino | None,
     contacts: ContactsKamino | None,
     jacobians: DenseSystemJacobians,
     verbose: bool = False,
@@ -316,7 +316,7 @@ class TestKinematicsJacobians(unittest.TestCase):
             print(f"model.size.sum_of_num_joint_dofs: {model.size.sum_of_num_joint_dofs}")
 
         # Construct and allocate the limits container
-        limits = Limits(model=model, device=self.default_device)
+        limits = LimitsKamino(model=model, device=self.default_device)
         if self.verbose:
             print("limits.model_max_limits_host: ", limits.model_max_limits_host)
             print("limits.world_max_limits_host: ", limits.world_max_limits_host)
@@ -404,7 +404,7 @@ class TestKinematicsJacobians(unittest.TestCase):
             print(f"model.size.sum_of_num_joint_dofs: {model.size.sum_of_num_joint_dofs}")
 
         # Construct and allocate the limits container
-        limits = Limits(model=model, device=self.default_device)
+        limits = LimitsKamino(model=model, device=self.default_device)
         if self.verbose:
             print("limits.model_max_limits_host: ", limits.model_max_limits_host)
             print("limits.world_max_limits_host: ", limits.world_max_limits_host)
@@ -460,7 +460,7 @@ class TestKinematicsJacobians(unittest.TestCase):
             print(f"model.size.sum_of_num_joint_dofs: {model.size.sum_of_num_joint_dofs}")
 
         # Construct and allocate the limits container
-        limits = Limits(model=model, device=self.default_device)
+        limits = LimitsKamino(model=model, device=self.default_device)
         if self.verbose:
             print("limits.model_max_limits_host: ", limits.model_max_limits_host)
             print("limits.world_max_limits_host: ", limits.world_max_limits_host)
@@ -538,7 +538,7 @@ class TestKinematicsJacobians(unittest.TestCase):
             print(f"model.size.sum_of_num_joint_dofs: {model.size.sum_of_num_joint_dofs}")
 
         # Construct and allocate the limits container
-        limits = Limits(model=model, device=self.default_device)
+        limits = LimitsKamino(model=model, device=self.default_device)
         if self.verbose:
             print("limits.model_max_limits_host: ", limits.model_max_limits_host)
             print("limits.world_max_limits_host: ", limits.world_max_limits_host)
@@ -607,11 +607,14 @@ class TestKinematicsJacobians(unittest.TestCase):
         # Create the model from the builder
         model = builder.finalize(device=self.default_device)
 
-        # Create a model state container
+        # Create a state container
+        state = model.state(device=self.default_device)
+
+        # Create a data container
         data = model.data(device=self.default_device)
 
         # Construct and allocate the limits container
-        limits = Limits(model=model, device=self.default_device)
+        limits = LimitsKamino(model=model, device=self.default_device)
 
         # Create the collision detector
         settings = CollisionDetectorSettings(max_contacts_per_world=max_world_contacts, pipeline="primitive")
@@ -661,7 +664,7 @@ class TestKinematicsJacobians(unittest.TestCase):
             print(f"data.info.num_limits: {data.info.num_limits}")
 
         # Run collision detection to generate active contacts
-        detector.collide(model, data)
+        detector.collide(model, data, state)
         wp.synchronize()
         if self.verbose:
             print(f"contacts.world_active_contacts: {detector.contacts.world_active_contacts}")
@@ -721,11 +724,14 @@ class TestKinematicsJacobians(unittest.TestCase):
         # Create the model from the builder
         model = builder.finalize(device=self.default_device)
 
-        # Create a model state container
+        # Create a state container
+        state = model.state(device=self.default_device)
+
+        # Create a data container
         data = model.data(device=self.default_device)
 
         # Construct and allocate the limits container
-        limits = Limits(model=model, device=self.default_device)
+        limits = LimitsKamino(model=model, device=self.default_device)
 
         # Create the collision detector
         settings = CollisionDetectorSettings(max_contacts_per_world=max_world_contacts, pipeline="primitive")
@@ -775,7 +781,7 @@ class TestKinematicsJacobians(unittest.TestCase):
             print(f"data.info.num_limits: {data.info.num_limits}")
 
         # Run collision detection to generate active contacts
-        detector.collide(model, data)
+        detector.collide(model, data, state)
         wp.synchronize()
         if self.verbose:
             print(f"contacts.world_active_contacts: {detector.contacts.world_active_contacts}")
@@ -809,11 +815,14 @@ class TestKinematicsJacobians(unittest.TestCase):
         # Create the model from the builder
         model = builder.finalize(device=self.default_device)
 
-        # Create a model state container
+        # Create a state container
+        state = model.state(device=self.default_device)
+
+        # Create a data container
         data = model.data(device=self.default_device)
 
         # Construct and allocate the limits container
-        limits = Limits(model=model, device=self.default_device)
+        limits = LimitsKamino(model=model, device=self.default_device)
 
         # Create the collision detector
         settings = CollisionDetectorSettings(max_contacts_per_world=max_world_contacts, pipeline="primitive")
@@ -863,7 +872,7 @@ class TestKinematicsJacobians(unittest.TestCase):
             print(f"data.info.num_limits: {data.info.num_limits}")
 
         # Run collision detection to generate active contacts
-        detector.collide(model, data)
+        detector.collide(model, data, state)
         wp.synchronize()
         if self.verbose:
             print(f"contacts.world_active_contacts: {detector.contacts.world_active_contacts}")

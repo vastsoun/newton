@@ -28,6 +28,7 @@ from warp.context import Devicelike
 from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
 from newton._src.solvers.kamino.core.data import DataKamino
 from newton._src.solvers.kamino.core.model import ModelKamino
+from newton._src.solvers.kamino.core.state import StateKamino
 from newton._src.solvers.kamino.geometry.contacts import ContactsKamino
 from newton._src.solvers.kamino.geometry.unified import BroadPhaseMode, CollisionPipelineUnifiedKamino
 from newton._src.solvers.kamino.models.builders import basics, testing
@@ -127,6 +128,7 @@ def test_unified_pipeline(
         # Create a test model and data
         model: ModelKamino = builder.finalize(device)
         data: DataKamino = model.data()
+        state: StateKamino = model.state()
 
         # Optional verbose output
         msg.debug("[%s][%s]: model.geoms.num_geoms: %s", case, bp_name, model.geoms.num_geoms)
@@ -158,7 +160,7 @@ def test_unified_pipeline(
         contacts.clear()
 
         # Execute the unified collision detection pipeline
-        pipeline.collide(model, data, contacts)
+        pipeline.collide(model, data, state, contacts)
 
         # Optional verbose output
         msg.debug("[%s][%s]: bodies.q_i:\n%s", case, bp_name, data.bodies.q_i)
@@ -233,8 +235,7 @@ class TestCollisionPipelineUnified(unittest.TestCase):
         if not test_context.setup_done:
             setup_tests(clear_cache=False)
         self.default_device = wp.get_device(test_context.device)
-        # self.verbose = test_context.verbose  # Set to True for detailed output
-        self.verbose = True  # Set to True for detailed output
+        self.verbose = test_context.verbose  # Set to True for detailed output
         self.skip_buggy_tests = False  # Set to True to skip known-buggy tests
 
         # Set debug-level logging to print verbose test output to console

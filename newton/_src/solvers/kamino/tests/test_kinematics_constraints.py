@@ -26,7 +26,7 @@ from newton._src.solvers.kamino.geometry.contacts import ContactsKamino
 
 # Module to be tested
 from newton._src.solvers.kamino.kinematics.constraints import make_unilateral_constraints_info
-from newton._src.solvers.kamino.kinematics.limits import Limits
+from newton._src.solvers.kamino.kinematics.limits import LimitsKamino
 from newton._src.solvers.kamino.models.builders.basics import build_boxes_fourbar, make_basics_heterogeneous_builder
 from newton._src.solvers.kamino.models.builders.utils import make_homogeneous_builder
 from newton._src.solvers.kamino.tests import setup_tests, test_context
@@ -76,7 +76,7 @@ class TestKinematicsConstraints(unittest.TestCase):
         data = model.data(device=self.default_device)
 
         # Create a  limits container
-        limits = Limits(model=model, device=self.default_device)
+        limits = LimitsKamino(model=model, device=self.default_device)
         if self.verbose:
             print("")
             print("limits.model_max_limits_host: ", limits.model_max_limits_host)
@@ -125,7 +125,7 @@ class TestKinematicsConstraints(unittest.TestCase):
         data = model.data(device=self.default_device)
 
         # Create a  limits container
-        limits = Limits(model=model, device=self.default_device)
+        limits = LimitsKamino(model=model, device=self.default_device)
         if self.verbose:
             print("")
             print("limits.model_max_limits_host: ", limits.model_max_limits_host)
@@ -217,7 +217,7 @@ class TestKinematicsConstraints(unittest.TestCase):
         data = model.data(device=self.default_device)
 
         # Create a  limits container
-        limits = Limits(model=model, device=self.default_device)
+        limits = LimitsKamino(model=model, device=self.default_device)
         if self.verbose:
             print("")
             print("limits.model_max_limits_host: ", limits.model_max_limits_host)

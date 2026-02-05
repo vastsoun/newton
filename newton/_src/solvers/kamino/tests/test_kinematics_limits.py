@@ -27,7 +27,7 @@ from newton._src.solvers.kamino.core.math import quat_exp, screw, screw_angular,
 from newton._src.solvers.kamino.core.model import ModelKamino
 from newton._src.solvers.kamino.core.types import float32, int32, mat33f, transformf, vec3f, vec6f
 from newton._src.solvers.kamino.kinematics.joints import compute_joints_data
-from newton._src.solvers.kamino.kinematics.limits import Limits
+from newton._src.solvers.kamino.kinematics.limits import LimitsKamino
 from newton._src.solvers.kamino.models.builders import basics, testing
 from newton._src.solvers.kamino.models.builders.utils import make_homogeneous_builder
 from newton._src.solvers.kamino.tests import setup_tests, test_context
@@ -173,10 +173,10 @@ class TestKinematicsLimits(unittest.TestCase):
 
     def test_00_create_empty_limits_container(self):
         """
-        Tests the creation of an empty Limits container (for deferred allocation).
+        Tests the creation of an empty LimitsKamino container (for deferred allocation).
         """
-        # Create a Limits container
-        limits = Limits(device=self.default_device)
+        # Create a LimitsKamino container
+        limits = LimitsKamino(device=self.default_device)
 
         # Check the initial state of the limits
         self.assertEqual(limits._data.model_max_limits_host, 0)
@@ -184,14 +184,14 @@ class TestKinematicsLimits(unittest.TestCase):
 
     def test_01_allocate_limits_container_from_homogeneous_builder(self):
         """
-        Tests the allocation of a Limits container.
+        Tests the allocation of a LimitsKamino container.
         """
         # Construct the model description using the ModelBuilder
         builder = make_homogeneous_builder(num_worlds=3, build_fn=basics.build_boxes_fourbar)
         model = builder.finalize(device=self.default_device)
 
-        # Create a Limits container
-        limits = Limits(model=model, device=self.default_device)
+        # Create a LimitsKamino container
+        limits = LimitsKamino(model=model, device=self.default_device)
 
         # Check the initial state of the limits
         self.assertIsNotNone(limits.model_max_limits)
@@ -263,8 +263,8 @@ class TestKinematicsLimits(unittest.TestCase):
         msg.info("data.joints.q_j: %s", data.joints.q_j)
         msg.info("data.joints.dq_j: %s\n\n", data.joints.dq_j)
 
-        # Create a Limits container
-        limits = Limits(model=model, device=self.default_device)
+        # Create a LimitsKamino container
+        limits = LimitsKamino(model=model, device=self.default_device)
 
         # Optional verbose output
         msg.info("[before]: limits.model_max_limits_host: %s", limits.model_max_limits_host)

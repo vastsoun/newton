@@ -24,7 +24,7 @@ from ..core.model import ModelKamino
 from ..core.types import float32, int32, mat63f, vec2i, vec3f, vec6f
 from ..geometry.contacts import ContactsKamino
 from ..kinematics.jacobians import DenseSystemJacobians
-from ..kinematics.limits import Limits
+from ..kinematics.limits import LimitsKamino
 
 ###
 # Module interface
@@ -420,7 +420,7 @@ def compute_constraint_body_wrenches(
     jacobians: DenseSystemJacobians,
     lambdas_offsets: wp.array,
     lambdas_data: wp.array,
-    limits: Limits | None = None,
+    limits: LimitsKamino | None = None,
     contacts: ContactsKamino | None = None,
     reset_to_zero: bool = True,
 ):

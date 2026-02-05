@@ -25,11 +25,12 @@ from newton._src.solvers.kamino.core.bodies import update_body_inertias
 from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
 from newton._src.solvers.kamino.core.data import DataKamino
 from newton._src.solvers.kamino.core.model import ModelKamino
+from newton._src.solvers.kamino.core.state import StateKamino
 from newton._src.solvers.kamino.geometry.detector import CollisionDetector, CollisionDetectorSettings
 from newton._src.solvers.kamino.kinematics.constraints import make_unilateral_constraints_info, update_constraints_info
 from newton._src.solvers.kamino.kinematics.jacobians import DenseSystemJacobians
 from newton._src.solvers.kamino.kinematics.joints import compute_joints_data
-from newton._src.solvers.kamino.kinematics.limits import Limits
+from newton._src.solvers.kamino.kinematics.limits import LimitsKamino
 from newton._src.solvers.kamino.utils.sim import Simulator
 
 ###
@@ -113,7 +114,7 @@ def make_inverse_generalized_mass_matrices(model: ModelKamino, data: DataKamino)
 
 def make_containers(
     builder: ModelBuilderKamino, max_world_contacts: int = 0, dt: float = 0.001, device: Devicelike = None
-) -> tuple[ModelKamino, DataKamino, Limits, CollisionDetector, DenseSystemJacobians]:
+) -> tuple[ModelKamino, DataKamino, StateKamino, LimitsKamino, CollisionDetector, DenseSystemJacobians]:
     # Create the model from the builder
     model = builder.finalize(device=device)
 
@@ -121,11 +122,14 @@ def make_containers(
     model.time.dt.fill_(wp.float32(dt))
     model.time.inv_dt.fill_(wp.float32(1.0 / dt))
 
-    # Create a model data container
+    # Create a state container
+    state = model.state()
+
+    # Create a data container
     data = model.data(device=device)
 
     # Create the limits container
-    limits = Limits(model=model, device=device)
+    limits = LimitsKamino(model=model, device=device)
 
     # Create the collision detector
     settings = CollisionDetectorSettings(max_contacts_per_world=max_world_contacts, pipeline="primitive")
@@ -137,13 +141,23 @@ def make_containers(
     # Create the Jacobians container
     jacobians = DenseSystemJacobians(model=model, limits=limits, contacts=detector.contacts, device=device)
 
-    # Return the model, data, detector, and jacobians
-    return model, data, limits, detector, jacobians
+    # Return the constructed data containers
+    return model, data, state, limits, detector, jacobians
 
 
 def update_containers(
-    model: ModelKamino, data: DataKamino, limits: Limits, detector: CollisionDetector, jacobians: DenseSystemJacobians
+    model: ModelKamino,
+    data: DataKamino,
+    state: StateKamino,
+    limits: LimitsKamino,
+    detector: CollisionDetector,
+    jacobians: DenseSystemJacobians,
 ) -> None:
+    # Update the state of the bodies according to the current state of the system
+    data.copy_body_state_to(state)
+    data.copy_joint_state_to(state)
+    wp.synchronize()
+
     # Update body inertias according to the current state of the bodies
     update_body_inertias(model=model.bodies, data=data.bodies)
     wp.synchronize()
@@ -153,11 +167,11 @@ def update_containers(
     wp.synchronize()
 
     # Run joint-limit detection to generate active limits
-    limits.detect(model, data=data)
+    limits.detect(model=model, data=data)
     wp.synchronize()
 
     # Run collision detection to generate active contacts
-    detector.collide(model, data=data)
+    detector.collide(model=model, data=data, state=state)
     wp.synchronize()
 
     # Update the constraint state info

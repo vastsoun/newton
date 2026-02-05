@@ -22,8 +22,10 @@ from dataclasses import dataclass
 import warp as wp
 
 from .bodies import RigidBodiesData
+from .control import ControlKamino
 from .geometry import GeometriesData
 from .joints import JointsData
+from .state import StateKamino
 from .time import TimeData
 
 ###
@@ -152,3 +154,111 @@ class DataKamino:
 
     geoms: GeometriesData | None = None
     """States of geometries in the model: poses computed in world coordinates."""
+
+    ###
+    # Operations
+    ###
+
+    def copy_body_state_from(self, state: StateKamino) -> None:
+        """
+        Copies the rigid bodies data from the given :class:`StateKamino`.
+
+        This operation copies:
+        - Body poses
+        - Body twists
+
+        Args:
+            state (StateKamino):
+                The state container holding time-varying state of the simulation.
+        """
+        # Ensure bodies data has been allocated
+        if self.bodies is None:
+            raise RuntimeError("DataKamino.bodies is not finalized.")
+
+        # Update rigid bodies data from the model state
+        wp.copy(self.bodies.q_i, state.q_i)
+        wp.copy(self.bodies.u_i, state.u_i)
+
+    def copy_body_state_to(self, state: StateKamino) -> None:
+        """
+        Copies the rigid bodies data to the given :class:`StateKamino`.
+
+        This operation copies:
+        - Body poses
+        - Body twists
+        - Body wrenches
+
+        Args:
+            state (StateKamino):
+                The state container holding time-varying state of the simulation.
+        """
+        # Ensure bodies data has been allocated
+        if self.bodies is None:
+            raise RuntimeError("DataKamino.bodies is not finalized.")
+
+        # Update rigid bodies data from the model state
+        wp.copy(state.q_i, self.bodies.q_i)
+        wp.copy(state.u_i, self.bodies.u_i)
+        wp.copy(state.w_i, self.bodies.w_i)
+
+    def copy_joint_state_from(self, state: StateKamino) -> None:
+        """
+        Copies the rigid bodies data from the given :class:`StateKamino`.
+
+        This operation copies:
+        - Joint coordinates
+        - Joint velocities
+
+        Args:
+            state (StateKamino):
+                The state container holding time-varying state of the simulation.
+        """
+        # Ensure bodies data has been allocated
+        if self.joints is None:
+            raise RuntimeError("DataKamino.joints is not finalized.")
+
+        # Update rigid bodies data from the model state
+        wp.copy(self.joints.q_j, state.q_j)
+        wp.copy(self.joints.q_j_p, state.q_j_p)
+        wp.copy(self.joints.dq_j, state.dq_j)
+
+    def copy_joint_state_to(self, state: StateKamino) -> None:
+        """
+        Copies the rigid bodies data to the given :class:`StateKamino`.
+
+        This operation copies:
+        - Joint coordinates
+        - Joint velocities
+        - Joint constraint reactions
+
+        Args:
+            state (StateKamino):
+                The state container holding time-varying state of the simulation.
+        """
+        # Ensure bodies data has been allocated
+        if self.joints is None:
+            raise RuntimeError("DataKamino.joints is not finalized.")
+
+        # Update rigid bodies data from the model state
+        wp.copy(state.q_j, self.joints.q_j)
+        wp.copy(state.q_j_p, self.joints.q_j_p)
+        wp.copy(state.dq_j, self.joints.dq_j)
+        wp.copy(state.lambda_j, self.joints.lambda_j)
+
+    def copy_joint_effort_from(self, control: ControlKamino) -> None:
+        """
+        Copies the joint effort data from the given :class:`ControlKamino`.
+
+        This operation copies:
+        - Joint efforts/torques
+
+        Args:
+            control (ControlKamino):
+                The control container holding the joint efforts/torques.
+        """
+        # Ensure bodies data has been allocated
+        if self.joints is None:
+            raise RuntimeError("DataKamino.joints is not finalized.")
+
+        # Update rigid bodies data from the model state
+        wp.copy(self.joints.tau_j, control.tau_j)

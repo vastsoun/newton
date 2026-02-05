@@ -42,7 +42,7 @@ from ..core.model import ModelKamino
 from ..core.types import float32, int32, override, quatf, transformf, uint64, vec2f, vec2i, vec3f, vec6f
 from ..geometry.contacts import ContactsData, ContactsKamino
 from ..geometry.keying import KeySorter, binary_search_find_range_start
-from ..kinematics.limits import Limits, LimitsData
+from ..kinematics.limits import LimitsData, LimitsKamino
 from ..solvers.padmm.math import project_to_coulomb_cone
 
 ###
@@ -771,12 +771,12 @@ class WarmstarterLimits:
     Provides a unified mechanism for warm-starting unilateral limit constraints.
     """
 
-    def __init__(self, limits: Limits | None = None):
+    def __init__(self, limits: LimitsKamino | None = None):
         """
         Initializes the limits warmstarter using the allocations of the provided limits container.
 
         Args:
-            limits (Limits): The limits container whose allocations are used to initialize the warmstarter.
+            limits (LimitsKamino): The limits container whose allocations are used to initialize the warmstarter.
         """
         # Store the device of the provided contacts container
         self._device: Devicelike = limits.device if limits is not None else None
@@ -816,7 +816,7 @@ class WarmstarterLimits:
         """
         return self._cache
 
-    def warmstart(self, limits: Limits):
+    def warmstart(self, limits: LimitsKamino):
         """
         Warm-starts the provided contacts container using the internal cache.
 
@@ -825,7 +825,7 @@ class WarmstarterLimits:
         Args:
             model (ModelKamino): The model containing simulation parameters.
             data (DataKamino): The model data containing body states.
-            limits (Limits): The limits container to warm-start.
+            limits (LimitsKamino): The limits container to warm-start.
         """
         # Early exit if no cache is allocated
         if self._cache is None:
@@ -838,12 +838,12 @@ class WarmstarterLimits:
             limits=limits.data,
         )
 
-    def update(self, limits: Limits | None = None):
+    def update(self, limits: LimitsKamino | None = None):
         """
         Updates the warmstarter's internal cache with the provided limits data.
 
         Args:
-            limits (Limits): The limits container from which to update the cache.
+            limits (LimitsKamino): The limits container from which to update the cache.
         """
         # Early exit if no cache is allocated or no limits data is provided
         if self._cache is None or limits is None:

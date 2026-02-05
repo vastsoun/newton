@@ -43,7 +43,7 @@ Typical usage example:
     # containers to hold joint-limits, contacts, Jacobians
     model = builder.finalize()
     data = model.data()
-    limits = Limits(model)
+    limits = LimitsKamino(model)
     contacts = ContactsKamino(builder)
     jacobians = DenseSystemJacobians(model, limits, contacts)
 
@@ -84,7 +84,7 @@ from ..core.types import (
 from ..dynamics.delassus import DelassusOperator
 from ..geometry.contacts import ContactsKamino
 from ..kinematics.jacobians import DenseSystemJacobians
-from ..kinematics.limits import Limits
+from ..kinematics.limits import LimitsKamino
 from ..linalg import LinearSolverType
 
 ###
@@ -953,7 +953,7 @@ class DualProblem:
         self,
         model: ModelKamino | None = None,
         data: DataKamino | None = None,
-        limits: Limits | None = None,
+        limits: LimitsKamino | None = None,
         contacts: ContactsKamino | None = None,
         solver: LinearSolverType | None = None,
         solver_kwargs: dict[str, Any] | None = None,
@@ -1079,7 +1079,7 @@ class DualProblem:
         self,
         model: ModelKamino,
         data: DataKamino | None = None,
-        limits: Limits | None = None,
+        limits: LimitsKamino | None = None,
         contacts: ContactsKamino | None = None,
         solver: LinearSolverType | None = None,
         solver_kwargs: dict[str, Any] | None = None,
@@ -1123,8 +1123,8 @@ class DualProblem:
 
         # Ensure the limits container is valid if provided
         if limits is not None:
-            if not isinstance(limits, Limits):
-                raise ValueError("Invalid limits container provided. Must be an instance of `Limits`.")
+            if not isinstance(limits, LimitsKamino):
+                raise ValueError("Invalid limits container provided. Must be an instance of `LimitsKamino`.")
 
         # Ensure the contacts container is valid if provided
         if contacts is not None:
@@ -1201,7 +1201,7 @@ class DualProblem:
         model: ModelKamino,
         data: DataKamino,
         jacobians: DenseSystemJacobians,
-        limits: Limits | None = None,
+        limits: LimitsKamino | None = None,
         contacts: ContactsKamino | None = None,
         reset_to_zero: bool = True,
     ):
@@ -1338,7 +1338,7 @@ class DualProblem:
         self,
         model: ModelKamino,
         data: DataKamino,
-        limits: Limits | None = None,
+        limits: LimitsKamino | None = None,
         contacts: ContactsKamino | None = None,
     ):
         """

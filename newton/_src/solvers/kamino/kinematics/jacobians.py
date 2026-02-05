@@ -39,7 +39,7 @@ from ..core.types import (
     vec3f,
 )
 from ..geometry.contacts import ContactsKamino
-from ..kinematics.limits import Limits
+from ..kinematics.limits import LimitsKamino
 
 ###
 # Module interface
@@ -481,7 +481,7 @@ def _build_contact_jacobians(
 def build_jacobians(
     model: ModelKamino,
     data: DataKamino,
-    limits: Limits | None,
+    limits: LimitsKamino | None,
     contacts: ContactsKamino | None,
     jacobian_cts_offsets: wp.array,
     jacobian_cts_data: wp.array,
@@ -623,7 +623,7 @@ class DenseSystemJacobians:
     def __init__(
         self,
         model: ModelKamino | None = None,
-        limits: Limits | None = None,
+        limits: LimitsKamino | None = None,
         contacts: ContactsKamino | None = None,
         device: Devicelike = None,
     ):
@@ -644,7 +644,7 @@ class DenseSystemJacobians:
     def finalize(
         self,
         model: ModelKamino,
-        limits: Limits | None = None,
+        limits: LimitsKamino | None = None,
         contacts: ContactsKamino | None = None,
         device: Devicelike = None,
     ):
@@ -657,8 +657,8 @@ class DenseSystemJacobians:
 
         # Ensure the limits container is valid
         if limits is not None:
-            if not isinstance(limits, Limits):
-                raise TypeError(f"`limits` is required to be of type `Limits` but got {type(limits)}.")
+            if not isinstance(limits, LimitsKamino):
+                raise TypeError(f"`limits` is required to be of type `LimitsKamino` but got {type(limits)}.")
 
         # Ensure the contacts container is valid
         if contacts is not None:
@@ -700,7 +700,7 @@ class DenseSystemJacobians:
         self,
         model: ModelKamino,
         data: DataKamino,
-        limits: Limits | None = None,
+        limits: LimitsKamino | None = None,
         contacts: ContactsKamino | None = None,
         reset_to_zero: bool = True,
     ):

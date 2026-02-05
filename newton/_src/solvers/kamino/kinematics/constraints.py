@@ -24,7 +24,7 @@ from ..core.data import DataKamino
 from ..core.model import ModelKamino
 from ..core.types import float32, int32, vec3f
 from ..geometry.contacts import ContactMode, ContactsKamino
-from ..kinematics.limits import Limits
+from ..kinematics.limits import LimitsKamino
 
 ###
 # Module interface
@@ -52,7 +52,7 @@ wp.set_module_options({"enable_backward": False})
 
 def get_max_constraints_per_world(
     model: ModelKamino,
-    limits: Limits | None,
+    limits: LimitsKamino | None,
     contacts: ContactsKamino | None,
 ) -> list[int]:
     """
@@ -60,7 +60,7 @@ def get_max_constraints_per_world(
 
     Args:
         model (ModelKamino): The model for which to compute the maximum constraints.
-        limits (Limits, optional): The container holding the allocated joint-limit data.
+        limits (LimitsKamino, optional): The container holding the allocated joint-limit data.
         contacts (ContactsKamino, optional): The container holding the allocated contacts data.
 
     Returns:
@@ -75,8 +75,8 @@ def get_max_constraints_per_world(
 
     # Ensure the limits container is valid
     if limits is not None:
-        if not isinstance(limits, Limits):
-            raise TypeError(f"`limits` is required to be of type `Limits` but got {type(limits)}.")
+        if not isinstance(limits, LimitsKamino):
+            raise TypeError(f"`limits` is required to be of type `LimitsKamino` but got {type(limits)}.")
 
     # Ensure the contacts container is valid
     if contacts is not None:
@@ -95,7 +95,7 @@ def get_max_constraints_per_world(
 def make_unilateral_constraints_info(
     model: ModelKamino,
     data: DataKamino,
-    limits: Limits | None = None,
+    limits: LimitsKamino | None = None,
     contacts: ContactsKamino | None = None,
     device: Devicelike = None,
 ):
@@ -105,7 +105,7 @@ def make_unilateral_constraints_info(
     Args:
         model (ModelKamino): The model container holding time-invariant data.
         data (DataKamino): The solver container holding time-varying data.
-        limits (Limits, optional): The limits container holding the joint-limit data.
+        limits (LimitsKamino, optional): The limits container holding the joint-limit data.
         contacts (ContactsKamino, optional): The contacts container holding the contact data.
         device (Devicelike, optional): The device on which to allocate the constraint info arrays.\n
             If None, the model's device will be used.
@@ -173,8 +173,8 @@ def make_unilateral_constraints_info(
     # If a limits container is provided, ensure it is valid
     # and then assign the entity counters to the model info.
     if limits is not None:
-        if not isinstance(limits, Limits):
-            raise TypeError("`limits` must be an instance of `Limits`")
+        if not isinstance(limits, LimitsKamino):
+            raise TypeError("`limits` must be an instance of `LimitsKamino`")
         if limits.data is not None and limits.model_max_limits_host > 0:
             _assign_model_limits_info()
         else:
@@ -490,7 +490,7 @@ def unpack_constraint_solutions(
     v_plus: wp.array,
     model: ModelKamino,
     data: DataKamino,
-    limits: Limits | None = None,
+    limits: LimitsKamino | None = None,
     contacts: ContactsKamino | None = None,
 ):
     """
@@ -500,7 +500,7 @@ def unpack_constraint_solutions(
         lambdas (wp.array): The array of constraint reactions (i.e. lagrange multipliers).
         v_plus (wp.array): The array of post-event constraint velocities.
         data (DataKamino): The solver container holding time-varying data.
-        limits (Limits, optional): The limits container holding the joint-limit data.\n
+        limits (LimitsKamino, optional): The limits container holding the joint-limit data.\n
             If None, limits will be skipped.
         contacts (ContactsKamino, optional): The contacts container holding the contact data.\n
             If None, contacts will be skipped.

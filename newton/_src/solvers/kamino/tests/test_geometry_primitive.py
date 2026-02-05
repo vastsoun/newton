@@ -24,6 +24,7 @@ from warp.context import Devicelike
 from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
 from newton._src.solvers.kamino.core.data import DataKamino
 from newton._src.solvers.kamino.core.model import ModelKamino
+from newton._src.solvers.kamino.core.state import StateKamino
 from newton._src.solvers.kamino.core.types import float32, int32, vec2i, vec6f
 from newton._src.solvers.kamino.geometry.contacts import DEFAULT_GEOM_PAIR_CONTACT_MARGIN, ContactsKamino
 from newton._src.solvers.kamino.geometry.primitive import (
@@ -1040,7 +1041,7 @@ class TestPipelinePrimitive(unittest.TestCase):
         self.assertIsNone(pipeline._device)
         self.assertEqual(pipeline._bvtype, BoundingVolumeType.AABB)
         self.assertEqual(pipeline._default_margin, DEFAULT_GEOM_PAIR_CONTACT_MARGIN)
-        self.assertRaises(RuntimeError, pipeline.collide, ModelKamino(), DataKamino(), ContactsKamino())
+        self.assertRaises(RuntimeError, pipeline.collide, ModelKamino(), DataKamino(), StateKamino(), ContactsKamino())
 
     def test_02_make_and_collide(self):
         """
@@ -1067,6 +1068,7 @@ class TestPipelinePrimitive(unittest.TestCase):
         )
         model = builder.finalize(device=self.default_device)
         data = model.data()
+        state = model.state()
 
         # Create a contacts container
         num_world_geom_pairs, *_ = builder.make_collision_candidate_pairs()
@@ -1078,7 +1080,7 @@ class TestPipelinePrimitive(unittest.TestCase):
         pipeline = CollisionPipelinePrimitive(model=model, device=self.default_device)
 
         # Run collision detection
-        pipeline.collide(model, data, contacts)
+        pipeline.collide(model, data, state, contacts)
 
         # Create a list of expected number of contacts per shape pair
         expected_contacts_per_pair: list[int] = list(nominal_expected_contacts_per_shape_pair.values())

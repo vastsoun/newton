@@ -381,6 +381,39 @@ def make_dot_kernel(tile_size: int, maxdim: int):
 
 
 @wp.kernel
+def dot_sequential(
+    a: wp.array3d(dtype=Any),
+    b: wp.array3d(dtype=Any),
+    world_size: wp.array(dtype=wp.int32),
+    world_active: wp.array(dtype=wp.int32),
+    partial_sum: wp.array3d(dtype=Any),
+):
+    col, world = wp.tid()
+
+    if not world_active[world]:
+        return
+    n = wp.int32(world_size[world])
+
+    for i in range((n + 1) // 2):
+        s = a[col, world, 2 * i] * b[col, world, 2 * i]
+        if 2 * i + 1 < n:
+            s += a[col, world, 2 * i + 1] * b[col, world, 2 * i + 1]
+        partial_sum[col, world, i] = s
+
+    n = (n + 1) // 2
+
+    while n > 1:
+        s = a.dtype(0)
+        if n & 1:
+            s += partial_sum[col, world, n - 1]
+        for i in range(n // 2):
+            s += partial_sum[col, world, 2 * i] + partial_sum[col, world, 2 * i + 1]
+            partial_sum[col, world, i] = s
+            s = a.dtype(0)
+        n = n // 2
+
+
+@wp.kernel
 def _initialize_tolerance_kernel(
     rtol: wp.array(dtype=Any), atol: wp.array(dtype=Any), b_norm_sq: wp.array(dtype=Any), atol_sq: wp.array(dtype=Any)
 ):
@@ -475,7 +508,11 @@ class ConjugateSolver:
             self.maxiter_host = int(max(self.maxiter.numpy()))
 
         # TODO: non-tiled variant for CPU
-        self.dot_product = wp.zeros((2, self.n_worlds), dtype=self.scalar_type, device=self.device)
+        if self.tiled_dot_product:
+            self.dot_product = wp.zeros((2, self.n_worlds), dtype=self.scalar_type, device=self.device)
+        else:
+            self.dot_partial_sums = wp.zeros((2, self.n_worlds, (self.maxdims + 1) // 2), device=self.device)
+            self.dot_product = self.dot_partial_sums[:, :, 0]
 
         atol_val = self.atol if isinstance(self.atol, float) else 1e-8
         rtol_val = self.rtol if isinstance(self.rtol, float) else 1e-8
@@ -491,22 +528,35 @@ class ConjugateSolver:
         self.conditions = wp.empty(self.n_worlds + 1, dtype=wp.int32, device=self.device)
         self.termination_kernel = make_termination_kernel(self.n_worlds)
 
+    @property
+    def tiled_dot_product(self):
+        return wp.get_device(self.device).is_cuda
+
     def compute_dot(self, a, b, active_dims, world_active, col_offset=0):
-        block_dim = 256
         if a.ndim == 2:
             a = a.reshape((1, *a.shape))
             b = b.reshape((1, *b.shape))
+        if self.tiled_dot_product:
+            block_dim = 256
+            result = self.dot_product[col_offset:]
 
-        result = self.dot_product[col_offset:]
-
-        wp.launch(
-            self.tiled_dot_kernel,
-            dim=(a.shape[0], self.n_worlds, block_dim),
-            block_dim=min(256, self.dot_tile_size // 8),
-            inputs=[a, b, active_dims, world_active],
-            outputs=[result],
-            device=self.device,
-        )
+            wp.launch(
+                self.tiled_dot_kernel,
+                dim=(a.shape[0], self.n_worlds, block_dim),
+                block_dim=min(256, self.dot_tile_size // 8),
+                inputs=[a, b, active_dims, world_active],
+                outputs=[result],
+                device=self.device,
+            )
+        else:
+            partial_sums = self.dot_partial_sums[col_offset:]
+            wp.launch(
+                dot_sequential,
+                dim=(a.shape[0], self.n_worlds),
+                inputs=[a, b, active_dims, world_active],
+                outputs=[partial_sums],
+                device=self.device,
+            )
 
 
 class CGSolver(ConjugateSolver):

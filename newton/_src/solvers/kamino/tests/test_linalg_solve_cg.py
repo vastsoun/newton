@@ -68,14 +68,15 @@ class TestLinalgConjugate(unittest.TestCase):
         operator = DenseLinearOperatorData(info=info, mat=problem.A_wp)
         A = BatchedLinearOperator.from_dense(operator)
 
-        atol = wp.full(n_worlds, 1.0e-8, dtype=problem.wp_dtype, device=device)
-        rtol = wp.full(n_worlds, 1.0e-8, dtype=problem.wp_dtype, device=device)
+        atol = wp.full(n_worlds, 1.0e-4, dtype=problem.wp_dtype, device=device)
+        rtol = wp.full(n_worlds, 1.0e-5, dtype=problem.wp_dtype, device=device)
+        maxiter = wp.full(n_worlds, max(3 * maxdim, 50), dtype=int, device=device)
         solver = solver_cls(
             A=A,
             world_active=world_active,
             atol=atol,
             rtol=rtol,
-            maxiter=None,
+            maxiter=maxiter,
             Mi=None,
             callback=None,
             use_cuda_graph=False,
@@ -88,7 +89,7 @@ class TestLinalgConjugate(unittest.TestCase):
             pass
         for block_idx, block_act in enumerate(problem.dims):
             x_found = get_vector_block(block_idx, x_wp_np, problem.dims, problem.maxdims)[:block_act]
-            is_x_close = np.allclose(x_found, problem.x_np[block_idx][:block_act], rtol=1e-3, atol=1e-4)
+            is_x_close = np.allclose(x_found, problem.x_np[block_idx][:block_act], rtol=1e-5, atol=1e-4)
             if self.verbose:
                 print(f"Cur iter: {cur_iter}")
                 print(f"R norm sq {r_norm_sq}")
@@ -112,7 +113,6 @@ class TestLinalgConjugate(unittest.TestCase):
 
     def test_solve_cg_cpu(self):
         device = "cpu"
-        self.skipTest("No CPU tests")
         solver_cls = CGSolver
         for problem_name, problem_params in self._problem_params().items():
             with self.subTest(problem=problem_name, solver=solver_cls.__name__):
@@ -120,7 +120,6 @@ class TestLinalgConjugate(unittest.TestCase):
 
     def test_solve_cr_cpu(self):
         device = "cpu"
-        self.skipTest("No CPU tests")
         solver_cls = CRSolver
         for problem_name, problem_params in self._problem_params().items():
             with self.subTest(problem=problem_name, solver=solver_cls.__name__):

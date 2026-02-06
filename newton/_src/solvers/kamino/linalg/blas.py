@@ -1068,13 +1068,14 @@ def dense_gemv(
     """
     n_worlds, max_dim = x.shape
     dtype = x.dtype
-    tile_size = block_dim if x.device.is_cuda else 1
+    if not x.device.is_cuda:
+        block_dim = 1
     wp.launch(
         _dense_gemv_kernel,
         dim=(n_worlds, max_dim, block_dim),
-        inputs=[x, y, A, active_dims, world_active, dtype(alpha), dtype(beta), matrix_stride, tile_size],
+        inputs=[x, y, A, active_dims, world_active, dtype(alpha), dtype(beta), matrix_stride, block_dim],
         device=x.device,
-        block_dim=tile_size if tile_size > 1 else 256,
+        block_dim=block_dim,
     )
 
 

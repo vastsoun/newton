@@ -87,7 +87,10 @@ def print_progress_bar(iteration, total, start_time, length=40, prefix="", suffi
     elapsed = time.time() - start_time
     progress = iteration / total
     filled_length = int(length * progress)
-    bar = "█" * filled_length + "-" * (length - filled_length)
+    if sys.stdout.encoding == "cp1252":  # Fix for Windows terminal
+        bar = "x" * filled_length + "-" * (length - filled_length)
+    else:
+        bar = "█" * filled_length + "-" * (length - filled_length)
 
     # Estimated Time of Arrival
     if iteration > 0 and elapsed > 0:

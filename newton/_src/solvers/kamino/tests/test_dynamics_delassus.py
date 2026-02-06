@@ -705,13 +705,11 @@ class TestDelassusOperatorSparse(unittest.TestCase):
             # represented by the Delassus operator.
             for w in range(model.info.num_worlds):
                 # Compute the Delassus matrix using the inverse mass matrix and the Jacobian
-                if use_regularization:
-                    D_w = J_cts_np[w] @ invM_np[w] @ J_cts_np[w].T + np.diag(regularization_list[w])
-                else:
-                    D_w = (J_cts_np[w] @ invM_np[w]) @ J_cts_np[w].T
-
+                D_w = (J_cts_np[w] @ invM_np[w]) @ J_cts_np[w].T
                 if use_preconditioner:
                     D_w = np.diag(preconditioner_list[w]) @ D_w @ np.diag(preconditioner_list[w])
+                if use_regularization:
+                    D_w = D_w + np.diag(regularization_list[w])
 
                 is_D_close = np.allclose(D_np[w], D_w, atol=1e-3, rtol=1e-4)
                 if not is_D_close or self.verbose:
@@ -816,13 +814,11 @@ class TestDelassusOperatorSparse(unittest.TestCase):
                     self.assertTrue((vec_gemv_zero_w == offset_vec_list[w]).all())
                 else:
                     # Compute the Delassus matrix using the inverse mass matrix and the Jacobian
-                    if use_regularization:
-                        D_w = J_cts_np[w] @ invM_np[w] @ J_cts_np[w].T + np.diag(regularization_list[w])
-                    else:
-                        D_w = (J_cts_np[w] @ invM_np[w]) @ J_cts_np[w].T
-
+                    D_w = (J_cts_np[w] @ invM_np[w]) @ J_cts_np[w].T
                     if use_preconditioner:
                         D_w = np.diag(preconditioner_list[w]) @ D_w @ np.diag(preconditioner_list[w])
+                    if use_regularization:
+                        D_w = D_w + np.diag(regularization_list[w])
 
                     vec_matmul_ref = D_w @ input_vec_list[w]
                     vec_gemv_ref = alpha * (D_w @ input_vec_list[w]) + beta * offset_vec_list[w]

@@ -789,8 +789,11 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
     compute matrix-vector products with the Delassus matrix, not solve linear systems.
 
     The Delassus operator D is implicitly defined as D = J @ M^-1 @ J^T, where J is the constraint
-    Jacobian and M is the mass matrix. It supports diagonal regularization via eta and diagonal
-    preconditioning for iterative solvers.
+    Jacobian and M is the mass matrix. It supports diagonal regularization and diagonal
+    preconditioning.
+
+    For a given diagonal regularization matrix R and a diagonal preconditioning matrix P, the
+    final operator is defined by the matrix P @ D @ P + R.
 
     Typical usage example:
 
@@ -1055,11 +1058,11 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
             # Compute second Jacobian matrix-vector product: y <- J @ v
             self.Ax_op(self.bsm, v, y, world_mask)
 
-            # Add regularization, if provided: y <- y + diag(eta) @ x_p
-            self._apply_regularization(x_preconditioned, y, world_mask)
-
             # Apply preconditioning to output vector: y <- diag(P) @ y
             self._apply_preconditioning(y, world_mask)
+
+            # Add regularization, if provided: y <- y + diag(eta) @ x
+            self._apply_regularization(x, y, world_mask)
 
     def matvec_transpose(self, y: wp.array, x: wp.array, world_mask: wp.array):
         """
@@ -1119,21 +1122,21 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
                 #   y <- alpha * J @ v
                 self.gemv_op(self.bsm, v, y, alpha, 0.0, world_mask)
 
-                # Add regularization, if provided: y <- y + alpha * diag(eta) @ x_p
-                self._apply_regularization(x_preconditioned, y, world_mask, alpha)
-
                 # Apply preconditioning: y <- diag(P) @ y
                 self._apply_preconditioning(y, world_mask)
+
+                # Add regularization, if provided: y <- y + alpha * diag(eta) @ x
+                self._apply_regularization(x, y, world_mask, alpha)
 
             else:
                 # Compute second Jacobian matrix-vector product: z <- J @ v
                 self.Ax_op(self.bsm, v, z, world_mask)
 
-                # Add regularization, if provided: z <- z + diag(eta) @ x_p
-                self._apply_regularization(x_preconditioned, z, world_mask)
-
                 # Apply preconditioning: z <- diag(P) @ z
                 self._apply_preconditioning(z, world_mask)
+
+                # Add regularization, if provided: z <- z + diag(eta) @ x
+                self._apply_regularization(x, z, world_mask)
 
                 # Add scaling and offset: y <- alpha * z + beta * y
                 wp.launch(

@@ -132,7 +132,13 @@ def extract_dofs_jacobians(
     return J_cts_mat
 
 
-def extract_delassus(delassus: DelassusOperator, only_active_dims: bool = False) -> list[np.ndarray]:
+def extract_delassus(
+    delassus: DelassusOperator | BlockSparseMatrixFreeDelassusOperator,
+    only_active_dims: bool = False,
+) -> list[np.ndarray]:
+    if isinstance(delassus, BlockSparseMatrixFreeDelassusOperator):
+        return extract_delassus_sparse(delassus=delassus, only_active_dims=only_active_dims)
+
     maxdim_wp_np = delassus.info.maxdim.numpy()
     dim_wp_np = delassus.info.dim.numpy()
     mio_wp_np = delassus.info.mio.numpy()
@@ -229,15 +235,19 @@ def extract_delassus_sparse(
 
 
 def extract_problem_vector(
-    delassus: DelassusOperator, vector: np.ndarray, only_active_dims: bool = False
+    delassus: DelassusOperator | BlockSparseMatrixFreeDelassusOperator,
+    vector: np.ndarray,
+    only_active_dims: bool = False,
 ) -> list[np.ndarray]:
     maxdim_wp_np = delassus.info.maxdim.numpy()
     dim_wp_np = delassus.info.dim.numpy()
     vio_wp_np = delassus.info.vio.numpy()
 
+    num_worlds = delassus.num_worlds if isinstance(delassus, DelassusOperator) else delassus.num_matrices
+
     # Extract each vector for each world
     vectors_np: list[np.ndarray] = []
-    for i in range(delassus.num_worlds):
+    for i in range(num_worlds):
         vec_maxdim = maxdim_wp_np[i]
         vec_start = vio_wp_np[i]
         vec_end = vec_start + vec_maxdim

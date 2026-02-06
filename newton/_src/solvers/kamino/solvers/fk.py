@@ -2079,7 +2079,6 @@ class ForwardKinematicsSolver:
 
             # Initialize Jacobian linear operator
             self.sparse_jacobian_op = BlockSparseLinearOperators(self.sparse_jacobian)
-            self.sparse_jacobian_op.initialize_default_operators()
 
             # Initialize preconditioner
             if self.settings.preconditioner == FKPreconditionerOptions.JACOBI_DIAGONAL:

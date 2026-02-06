@@ -21,7 +21,6 @@ independent linear systems, including rectangular and square systems.
 """
 
 from collections.abc import Callable
-from dataclasses import dataclass
 
 import warp as wp
 
@@ -42,12 +41,15 @@ __all__ = [
 ]
 
 
-@dataclass
 class BlockSparseLinearOperators:
     """
     A Block-Sparse Linear Operator container for representing
     and operating on multiple independent sparse linear systems.
     """
+
+    def __init__(self, bsm: BlockSparseMatrices | None = None):
+        self.bsm = bsm
+        self.initialize_default_operators()
 
     ###
     # On-device Data

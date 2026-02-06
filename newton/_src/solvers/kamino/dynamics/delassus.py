@@ -84,12 +84,6 @@ from ..kinematics.constraints import get_max_constraints_per_world
 from ..kinematics.jacobians import DenseSystemJacobians, SparseSystemJacobians
 from ..kinematics.limits import Limits
 from ..linalg import DenseLinearOperatorData, DenseSquareMultiLinearInfo, LinearSolverType
-from ..linalg.blas import (
-    block_sparse_gemv,
-    block_sparse_matvec,
-    block_sparse_transpose_gemv,
-    block_sparse_transpose_matvec,
-)
 
 # from ..linalg import Matrices, LinearOperators
 # from ..linalg.dense import DenseMatrices, DenseLinearOperators
@@ -100,6 +94,7 @@ from ..linalg.sparse_operator import BlockSparseLinearOperators
 ###
 
 __all__ = [
+    "BlockSparseMatrixFreeDelassusOperator",
     "DelassusOperator",
 ]
 
@@ -884,12 +879,6 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
                 jacobians=jacobians,
                 device=device,
             )
-
-        # Initialize matrix-vector operations
-        self.gemv_op = block_sparse_gemv
-        self.Ax_op = block_sparse_matvec
-        self.gemvt_op = block_sparse_transpose_gemv
-        self.ATy_op = block_sparse_transpose_matvec
 
     def finalize(
         self,

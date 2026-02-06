@@ -575,7 +575,6 @@ class TestBlockSparseMatrixOperations(unittest.TestCase):
 
             # Build operator.
             ops = BlockSparseLinearOperators(bsm)
-            ops.initialize_default_operators()
 
             # Run multiplication operator checks.
             self._matvec_product_check(ops)
@@ -650,7 +649,6 @@ class TestBlockSparseMatrixOperations(unittest.TestCase):
 
             # Build operator.
             ops = BlockSparseLinearOperators(bsm)
-            ops.initialize_default_operators()
 
             # Run multiplication operator checks.
             self._matvec_product_check(ops)
@@ -753,7 +751,6 @@ class TestBlockSparseMatrixOperations(unittest.TestCase):
 
             # Build operator.
             ops = BlockSparseLinearOperators(bsm)
-            ops.initialize_default_operators()
 
             # Run multiplication operator checks.
             self._matvec_product_check(ops)

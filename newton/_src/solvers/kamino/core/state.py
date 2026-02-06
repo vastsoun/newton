@@ -258,6 +258,12 @@ class StateKamino:
         Args:
             other: The target StateKamino object to copy data into.
         """
+        # Ensure the state is valid
+        if other is None:
+            raise ValueError("A StateKamino instance must be provided to copy to.")
+        if not isinstance(other, StateKamino):
+            raise TypeError(f"Expected state of type StateKamino, but got {type(other)}.")
+
         other.copy_from(self)
 
     def copy_from(self, other: StateKamino) -> None:
@@ -267,6 +273,12 @@ class StateKamino:
         Args:
             other: The source StateKamino object to copy data from.
         """
+        # Ensure the state is valid
+        if other is None:
+            raise ValueError("A StateKamino instance must be provided to copy from.")
+        if not isinstance(other, StateKamino):
+            raise TypeError(f"Expected state of type StateKamino, but got {type(other)}.")
+
         if self.q_i is None or other.q_i is None:
             raise ValueError("Error copying from/to uninitialized StateKamino")
 
@@ -287,6 +299,15 @@ class StateKamino:
             model (Model):
                 The model container holding the time-invariant parameters of the simulation.
         """
+        # Ensure the model is valid
+        if model is None:
+            raise ValueError("Model must be provided to convert to body CoM state.")
+        if not isinstance(model, Model):
+            raise TypeError(f"Expected model of type Model, but got {type(model)}.")
+        if model.body_com is None:
+            raise ValueError("Model must have body_com defined to convert to body CoM state.")
+
+        # Launch the kernel to convert body poses to CoM frame
         compute_body_com_state(
             body_com=model.body_com,
             body_q=self.q_i,
@@ -302,6 +323,15 @@ class StateKamino:
             model (Model):
                 The model container holding the time-invariant parameters of the simulation.
         """
+        # Ensure the model is valid
+        if model is None:
+            raise ValueError("Model must be provided to convert to body CoM state.")
+        if not isinstance(model, Model):
+            raise TypeError(f"Expected model of type Model, but got {type(model)}.")
+        if model.body_com is None:
+            raise ValueError("Model must have body_com defined to convert to body CoM state.")
+
+        # Launch the kernel to convert body poses to body frame
         compute_body_frame_state(
             body_com=model.body_com,
             q_i=self.q_i,
@@ -334,6 +364,18 @@ class StateKamino:
         Returns:
             A :class:`kamino.StateKamino` object that aliases the data of the input :class:`newton.State` object.
         """
+        # Ensure the model is valid
+        if model is None:
+            raise ValueError("A Model instance must be provided to convert to StateKamino.")
+        if not isinstance(model, Model):
+            raise TypeError(f"Expected model of type Model, but got {type(model)}.")
+
+        # Ensure the state is valid
+        if state is None:
+            raise ValueError("A State instance must be provided to convert to StateKamino.")
+        if not isinstance(state, State):
+            raise TypeError(f"Expected state of type State, but got {type(state)}.")
+
         # If the state contains the Kamino-specific `joint_q_prev` custom attribute,
         # capture a reference to it; otherwise, create a new array for it.
         if hasattr(state, "joint_q_prev"):
@@ -389,6 +431,18 @@ class StateKamino:
         Returns:
             A :class:`newton.State` object that aliases the data of the input :class:`kamino.StateKamino` object.
         """
+        # Ensure the model is valid
+        if model is None:
+            raise ValueError("A Model instance must be provided to convert to StateKamino.")
+        if not isinstance(model, Model):
+            raise TypeError(f"Expected model of type Model, but got {type(model)}.")
+
+        # Ensure the state is valid
+        if state is None:
+            raise ValueError("A StateKamino instance must be provided to convert to State.")
+        if not isinstance(state, StateKamino):
+            raise TypeError(f"Expected state of type StateKamino, but got {type(state)}.")
+
         # Optionally convert to the body states to body frame
         # NOTE: This only affects the body poses
         if convert_to_body_frame:

@@ -1160,11 +1160,14 @@ class SolverKamino(SolverBase):
         """
         # Interface the input state and control
         # containers to Kamino's equivalents
-        # NOTE: Converts the input state to Kamino's
-        # convention (i.e. using local body CoM frame)
-        state_in_kamino = StateKamino.from_newton(self._model_kamino, state_in, convert_to_com_frame=True)
+        # NOTE: These should produce zero-copy views/references
+        # to the arrays of the source Newton containers.
+        state_in_kamino = StateKamino.from_newton(self._model_kamino, state_in)
         state_out_kamino = StateKamino.from_newton(self._model_kamino, state_out)
         control_kamino = ControlKamino.from_newton(control)
+
+        # Convert the input state from Newton's convention (i.e. using local body frame)
+        state_in_kamino.convert_to_body_com_state(self.model)
 
         # Perform collision detection
         self._collision_detector_kamino.collide(self._model_kamino, self._solver_kamino.data, state_in_kamino)
@@ -1179,7 +1182,7 @@ class SolverKamino(SolverBase):
         )
 
         # Convert the output state back to Newton's convention (i.e. using local body frame)
-        state_out_kamino.convert_to_body_frame_state(self._model_kamino)
+        state_out_kamino.convert_to_body_frame_state(self.model)
 
     @override
     def notify_model_changed(self, flags: int):

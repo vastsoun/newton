@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import sys
 from dataclasses import dataclass
+from enum import IntEnum
 from functools import cache
 
 import numpy as np
@@ -40,8 +41,15 @@ from ..core.math import (
 )
 from ..core.model import Model
 from ..core.types import vec6f
+from ..linalg.blas import (
+    block_sparse_ATA_blockwise_3_4_inv_diagonal_2d,
+    block_sparse_ATA_inv_diagonal_2d,
+    get_blockwise_diag_3_4_gemv_2d,
+)
+from ..linalg.conjugate import BatchedLinearOperator, CGSolver
 from ..linalg.factorize.llt_blocked_semi_sparse import SemiSparseBlockCholeskySolverBatched
-from ..linalg.sparse import BlockDType, BlockSparseMatrices
+from ..linalg.sparse_matrix import BlockDType, BlockSparseMatrices
+from ..linalg.sparse_operator import BlockSparseLinearOperators
 
 ###
 # Module interface
@@ -1100,6 +1108,36 @@ def _eval_rhs(
 
 
 @wp.kernel
+def _eval_linear_combination(
+    # Inputs
+    alpha: wp.float32,
+    x: wp.array2d(dtype=wp.float32),
+    beta: wp.float32,
+    y: wp.array2d(dtype=wp.float32),
+    num_rows: wp.array(dtype=wp.int32),
+    world_mask: wp.array(dtype=wp.int32),
+    # Outputs
+    z: wp.array2d(dtype=wp.float32),
+):
+    """
+    A kernel computing z := alpha * x + beta * y
+
+    Inputs:
+        alpha: Scalar coefficient
+        x: Stack of vectors (one per world) to be multiplied by alpha
+        beta: Scalar coefficient
+        y: Stack of vectors (one per world) to be multiplied by beta
+        num_rows: Active size of the vectors (x, y and z) per world
+        world_mask: Per-world flag to perform the computation (0 = skip)
+    Outputs:
+        z: Output stack of vectors
+    """
+    wd_id, row_id = wp.tid()  # Thread indices (= world index, row index)
+    if wd_id < num_rows.shape[0] and row_id < num_rows[wd_id]:
+        z[wd_id, row_id] = alpha * x[wd_id, row_id] + beta * y[wd_id, row_id]
+
+
+@wp.kernel
 def _eval_stepped_state(
     # Inputs
     num_bodies: wp.array(dtype=wp.int32),
@@ -1367,9 +1405,45 @@ def _eval_body_velocities(
         bodies_u[rb_id_tot][5] = omega[2]
 
 
+@wp.kernel
+def _update_cg_tolerance_kernel(
+    # Input
+    max_constraint: wp.array(dtype=wp.float32),
+    world_mask: wp.array(dtype=wp.int32),
+    # Output
+    atol: wp.array(dtype=wp.float32),
+    rtol: wp.array(dtype=wp.float32),
+):
+    """
+    A kernel heuristically adapting the CG tolerance based on the current constraint residual
+    (starting with a loose tolerance, and tightening it as we converge)
+    Note: needs to be refined, until then we are still using a fixed tolerance
+    """
+    wd_id = wp.tid()
+    if wd_id >= world_mask.shape[0] or world_mask[wd_id] == 0:
+        return
+    tol = wp.max(1e-8, wp.min(1e-5, 1e-3 * max_constraint[wd_id]))
+    atol[wd_id] = tol
+    rtol[wd_id] = tol
+
+
 ###
 # Classes
 ###
+
+
+class FKPreconditionerOptions(IntEnum):
+    """Conjugate gradient preconditioning options of the FK solver, if sparsity is enabled."""
+
+    NONE = 0
+    """No preconditioning"""
+
+    JACOBI_DIAGONAL = 1
+    """Diagonal Jacobi preconditioner"""
+
+    JACOBI_BLOCK_DIAGONAL = 2
+    """Blockwise-diagonal Jacobi preconditioner, alternating blocks of size 3 and 4 along the diagonal,
+       corresponding to the position and orientation (quaternion) of individual rigid bodies."""
 
 
 @dataclass
@@ -1401,6 +1475,20 @@ class ForwardKinematicsSolverSettings:
     TILE_SIZE_VRS: int = 8
     """Tile size for kernels along the dimension of rigid body pose variables (default: 8).
        Changes to this setting after the solver's initialization will have no effect."""
+
+    use_sparsity: bool = False
+    """Whether to use sparse Jacobian and solver; otherwise, dense versions are used (default: True).
+       Changes to this setting after the solver's initialization lead to undefined behavior."""
+
+    preconditioner: FKPreconditionerOptions = FKPreconditionerOptions.JACOBI_BLOCK_DIAGONAL
+    """Preconditioner to use for the Conjugate Gradient solver if sparsity is enabled
+       (default: JACOBI_BLOCK_DIAGONAL).
+       Changes to this setting after the solver's initialization lead to undefined behavior."""
+
+    use_adaptive_cg_tolerance: bool = True
+    """Whether to use an adaptive tolerance strategy for the Conjugate Gradient solver if sparsity
+       is enabled, which reduces the number of CG iterations in most cases (default: True).
+       Changes to this setting after graph capture will have no effect."""
 
     def check(self):
         """
@@ -1473,9 +1561,6 @@ class ForwardKinematicsSolver:
 
         self.settings: ForwardKinematicsSolverSettings = ForwardKinematicsSolverSettings()
         """Solver settings"""
-
-        self.linear_solver: SemiSparseBlockCholeskySolverBatched | None = None
-        """Semi-sparse Cholesky solver for the J^T * J linear system"""
 
         self.graph: wp.Graph | None = None
         """Cuda graph for the convenience function with verbosity options"""
@@ -1766,6 +1851,7 @@ class ForwardKinematicsSolver:
             self.actuated_dof_offsets = wp.from_numpy(actuated_dof_offsets, dtype=wp.int32)
             self.actuated_dofs_map = wp.from_numpy(np.array(actuated_dofs_map), dtype=wp.int32)
             self.num_states = wp.from_numpy(num_states, dtype=wp.int32)
+            self.num_constraints = wp.from_numpy(num_constraints, dtype=wp.int32)
             self.constraint_full_to_red_map = wp.from_numpy(constraint_full_to_red_map, dtype=wp.int32)
 
             # Modified joints
@@ -1822,9 +1908,10 @@ class ForwardKinematicsSolver:
             self.jacobian = wp.zeros(
                 dtype=wp.float32, shape=(self.num_worlds, self.num_constraints_max, self.num_states_max)
             )  # Constraints Jacobian per world
-            self.lhs = wp.zeros(
-                dtype=wp.float32, shape=(self.num_worlds, self.num_states_max, self.num_states_max)
-            )  # Gauss-Newton left-hand side per world
+            if not self.settings.use_sparsity:
+                self.lhs = wp.zeros(
+                    dtype=wp.float32, shape=(self.num_worlds, self.num_states_max, self.num_states_max)
+                )  # Gauss-Newton left-hand side per world
             self.grad = wp.zeros(
                 dtype=wp.float32, shape=(self.num_worlds, self.num_states_max)
             )  # Merit function gradient w.r.t. state per world
@@ -1834,6 +1921,12 @@ class ForwardKinematicsSolver:
             self.step = wp.zeros(
                 dtype=wp.float32, shape=(self.num_worlds, self.num_states_max)
             )  # Step in state variables per world
+            self.jacobian_times_vector = wp.zeros(
+                dtype=wp.float32, shape=(self.num_worlds, self.num_constraints_max)
+            )  # Intermediary vector when computing J^T * (J * x)
+            self.lhs_times_vector = wp.zeros(
+                dtype=wp.float32, shape=(self.num_worlds, self.num_states_max)
+            )  # Intermediary vector when computing J^T * (J * x)
 
             # Velocity solver
             self.actuators_u = wp.array(
@@ -1865,123 +1958,173 @@ class ForwardKinematicsSolver:
             self._eval_merit_function_gradient_kernel,
         ) = create_tile_based_kernels(self.settings.TILE_SIZE_CTS, self.settings.TILE_SIZE_VRS)
 
-        # Compute sparsity pattern and initialize linear solver (running symbolic factorization)
+        # Compute sparsity pattern and initialize linear solver for dense (semi-sparse) case
+        if not self.settings.use_sparsity:
+            # Jacobian sparsity pattern
+            sparsity_pattern = np.zeros((self.num_worlds, self.num_constraints_max, self.num_states_max), dtype=int)
+            for wd_id in range(self.num_worlds):
+                for rb_id_loc in range(num_bodies[wd_id]):
+                    sparsity_pattern[wd_id, rb_id_loc, 7 * rb_id_loc + 3 : 7 * rb_id_loc + 7] = 1
+                for jt_id_loc in range(num_joints[wd_id]):
+                    jt_id_tot = first_joint_id[wd_id] + jt_id_loc
+                    base_id_tot = joints_bid_B[jt_id_tot]
+                    follower_id_tot = joints_bid_F[jt_id_tot]
+                    rb_ids_tot = [base_id_tot, follower_id_tot] if base_id_tot >= 0 else [follower_id_tot]
+                    for rb_id_tot in rb_ids_tot:
+                        rb_id_loc = rb_id_tot - first_body_id[wd_id]
+                        state_offset = 7 * rb_id_loc
+                        for i in range(3):
+                            ct_offset = constraint_full_to_red_map[6 * jt_id_tot + i]  # ith translation constraint
+                            if ct_offset >= 0:
+                                sparsity_pattern[wd_id, ct_offset, state_offset : state_offset + 7] = 1
+                            ct_offset = constraint_full_to_red_map[6 * jt_id_tot + 3 + i]  # ith rotation constraint
+                            if ct_offset >= 0:
+                                sparsity_pattern[wd_id, ct_offset, state_offset + 3 : state_offset + 7] = 1
 
-        # Jacobian sparsity pattern
-        sparsity_pattern = np.zeros((self.num_worlds, self.num_constraints_max, self.num_states_max), dtype=int)
-        for wd_id in range(self.num_worlds):
-            for rb_id_loc in range(num_bodies[wd_id]):
-                sparsity_pattern[wd_id, rb_id_loc, 7 * rb_id_loc + 3 : 7 * rb_id_loc + 7] = 1
-            for jt_id_loc in range(num_joints[wd_id]):
-                jt_id_tot = first_joint_id[wd_id] + jt_id_loc
-                base_id_tot = joints_bid_B[jt_id_tot]
-                follower_id_tot = joints_bid_F[jt_id_tot]
-                rb_ids_tot = [base_id_tot, follower_id_tot] if base_id_tot >= 0 else [follower_id_tot]
-                for rb_id_tot in rb_ids_tot:
-                    rb_id_loc = rb_id_tot - first_body_id[wd_id]
-                    state_offset = 7 * rb_id_loc
-                    for i in range(3):
-                        ct_offset = constraint_full_to_red_map[6 * jt_id_tot + i]  # ith translation constraint
-                        if ct_offset >= 0:
-                            sparsity_pattern[wd_id, ct_offset, state_offset : state_offset + 7] = 1
-                        ct_offset = constraint_full_to_red_map[6 * jt_id_tot + 3 + i]  # ith rotation constraint
-                        if ct_offset >= 0:
-                            sparsity_pattern[wd_id, ct_offset, state_offset + 3 : state_offset + 7] = 1
+            # Jacobian^T * Jacobian sparsity pattern
+            sparsity_pattern_wp = wp.from_numpy(sparsity_pattern, dtype=wp.float32, device=self.device)
+            sparsity_pattern_lhs_wp = wp.zeros(
+                dtype=wp.float32, shape=(self.num_worlds, self.num_states_max, self.num_states_max), device=self.device
+            )
+            wp.launch_tiled(
+                self._eval_pattern_T_pattern_kernel,
+                dim=(self.num_worlds, self.num_tiles_states, self.num_tiles_states),
+                inputs=[sparsity_pattern_wp, sparsity_pattern_lhs_wp],
+                block_dim=64,
+                device=self.device,
+            )
+            sparsity_pattern_lhs = sparsity_pattern_lhs_wp.numpy().astype("int32")
 
-        # Jacobian^T * Jacobian sparsity pattern
-        sparsity_pattern_wp = wp.from_numpy(sparsity_pattern, dtype=wp.float32, device=self.device)
-        sparsity_pattern_lhs_wp = wp.zeros(
-            dtype=wp.float32, shape=(self.num_worlds, self.num_states_max, self.num_states_max), device=self.device
-        )
-        wp.launch_tiled(
-            self._eval_pattern_T_pattern_kernel,
-            dim=(self.num_worlds, self.num_tiles_states, self.num_tiles_states),
-            inputs=[sparsity_pattern_wp, sparsity_pattern_lhs_wp],
-            block_dim=64,
-            device=self.device,
-        )
-        sparsity_pattern_lhs = sparsity_pattern_lhs_wp.numpy().astype("int32")
+            # Initialize linear solver (semi-sparse LLT)
+            self.linear_solver_llt = SemiSparseBlockCholeskySolverBatched(
+                self.num_worlds,
+                self.num_states_max,
+                block_size=16,  # TODO: optimize this (e.g. 14 ?)
+                device=self.device,
+                enable_reordering=True,
+            )
+            self.linear_solver_llt.capture_sparsity_pattern(sparsity_pattern_lhs, num_states)
 
-        # Initialize linear solver
-        self.linear_solver = SemiSparseBlockCholeskySolverBatched(
-            self.num_worlds,
-            self.num_states_max,
-            block_size=16,  # TODO: optimize this (e.g. 14 ?)
-            device=self.device,
-            enable_reordering=True,
-        )
-        self.linear_solver.capture_sparsity_pattern(sparsity_pattern_lhs, num_states)
+        # Compute sparsity pattern and initialize linear solver for sparse case
+        if self.settings.use_sparsity:
+            self.sparse_jacobian = BlockSparseMatrices(
+                device=self.device, nzb_dtype=BlockDType(dtype=wp.float32, shape=(7,)), num_matrices=self.num_worlds
+            )
+            jacobian_dims = list(zip(num_constraints.tolist(), (7 * num_bodies).tolist(), strict=True))
 
-        ######### Sparse Jacobian - symbolic assembly
-        self.sparse_jacobian = BlockSparseMatrices(
-            device=self.device, nzb_dtype=BlockDType(dtype=wp.float32, shape=(7,)), num_matrices=self.num_worlds
-        )
-        jacobian_dims = list(zip(num_constraints.tolist(), (7 * num_bodies).tolist(), strict=True))
+            # Determine number of nzb, per world and in total
+            num_nzb = num_bodies.copy()  # nzb due to rigid body unit quaternion constraints
+            jt_num_constraints = (constraint_full_to_red_map.reshape((-1, 6)) >= 0).sum(axis=1)
+            jt_num_bodies = np.array([1 if joints_bid_B[i] < 0 else 2 for i in range(self.num_joints_tot)])
+            for wd_id in range(self.num_worlds):  # nzb due to joint constraints
+                start = first_joint_id[wd_id]
+                end = start + num_joints[wd_id]
+                num_nzb[wd_id] += (jt_num_constraints[start:end] * jt_num_bodies[start:end]).sum()
+            first_nzb = np.concatenate(([0], num_nzb.cumsum()))
+            num_nzb_tot = num_nzb.sum()
 
-        # Determine number of nzb, per world and in total
-        num_nzb = num_bodies.copy()  # nzb due to rigid body unit quaternion constraints
-        jt_num_constraints = (constraint_full_to_red_map.reshape((-1, 6)) >= 0).sum(axis=1)
-        jt_num_bodies = np.array([1 if joints_bid_B[i] < 0 else 2 for i in range(self.num_joints_tot)])
-        for wd_id in range(self.num_worlds):  # nzb due to joint constraints
-            start = first_joint_id[wd_id]
-            end = start + num_joints[wd_id]
-            num_nzb[wd_id] += (jt_num_constraints[start:end] * jt_num_bodies[start:end]).sum()
-        first_nzb = np.concatenate(([0], num_nzb.cumsum()))
-        num_nzb_tot = num_nzb.sum()
+            # Symbolic assembly
+            nzb_row = np.empty(num_nzb_tot, dtype=np.int32)
+            nzb_col = np.empty(num_nzb_tot, dtype=np.int32)
+            rb_nzb_id = np.empty(self.model.size.sum_of_num_bodies, dtype=np.int32)
+            ct_nzb_id_base = np.full(6 * self.num_joints_tot, -1, dtype=np.int32)
+            ct_nzb_id_follower = np.full(6 * self.num_joints_tot, -1, dtype=np.int32)
+            for wd_id in range(self.num_worlds):
+                start_nzb = first_nzb[wd_id]
 
-        # Symbolic assembly
-        nzb_row = np.empty(num_nzb_tot, dtype=np.int32)
-        nzb_col = np.empty(num_nzb_tot, dtype=np.int32)
-        rb_nzb_id = np.empty(self.model.size.sum_of_num_bodies, dtype=np.int32)
-        ct_nzb_id_base = np.full(6 * self.num_joints_tot, -1, dtype=np.int32)
-        ct_nzb_id_follower = np.full(6 * self.num_joints_tot, -1, dtype=np.int32)
-        for wd_id in range(self.num_worlds):
-            start_nzb = first_nzb[wd_id]
+                # Compute index, row and column of rigid body nzb
+                start_rb = first_body_id[wd_id]
+                size_rb = num_bodies[wd_id]
+                rb_ids = np.arange(size_rb)
+                rb_nzb_id[start_rb : start_rb + size_rb] = start_nzb + rb_ids
+                nzb_row[start_nzb : start_nzb + size_rb] = rb_ids
+                nzb_col[start_nzb : start_nzb + size_rb] = 7 * rb_ids
 
-            # Compute index, row and column of rigid body nzb
-            start_rb = first_body_id[wd_id]
-            size_rb = num_bodies[wd_id]
-            rb_ids = np.arange(size_rb)
-            rb_nzb_id[start_rb : start_rb + size_rb] = start_nzb + rb_ids
-            nzb_row[start_nzb : start_nzb + size_rb] = rb_ids
-            nzb_col[start_nzb : start_nzb + size_rb] = 7 * rb_ids
-
-            # Compute index, row and column of constraint nzb
-            start_nzb += size_rb
-            for jt_id_loc in range(num_joints[wd_id]):
-                jt_id_tot = jt_id_loc + first_joint_id[wd_id]
-                has_base = joints_bid_B[jt_id_tot] >= 0
-                row_ids_full = constraint_full_to_red_map[6 * jt_id_tot : 6 * jt_id_tot + 6]
-                row_ids_red = [i for i in row_ids_full if i >= 0]
-                num_cts = len(row_ids_red)
-                if has_base:
-                    nzb_id_base = ct_nzb_id_base[6 * jt_id_tot : 6 * jt_id_tot + 6]
-                    nzb_id_base[row_ids_full >= 0] = np.arange(start_nzb, start_nzb + num_cts)
+                # Compute index, row and column of constraint nzb
+                start_nzb += size_rb
+                for jt_id_loc in range(num_joints[wd_id]):
+                    jt_id_tot = jt_id_loc + first_joint_id[wd_id]
+                    has_base = joints_bid_B[jt_id_tot] >= 0
+                    row_ids_full = constraint_full_to_red_map[6 * jt_id_tot : 6 * jt_id_tot + 6]
+                    row_ids_red = [i for i in row_ids_full if i >= 0]
+                    num_cts = len(row_ids_red)
+                    if has_base:
+                        nzb_id_base = ct_nzb_id_base[6 * jt_id_tot : 6 * jt_id_tot + 6]
+                        nzb_id_base[row_ids_full >= 0] = np.arange(start_nzb, start_nzb + num_cts)
+                        nzb_row[start_nzb : start_nzb + num_cts] = row_ids_red
+                        base_id_loc = joints_bid_B[jt_id_tot] - first_body_id[wd_id]
+                        nzb_col[start_nzb : start_nzb + num_cts] = 7 * base_id_loc
+                        start_nzb += num_cts
+                    nzb_id_follower = ct_nzb_id_follower[6 * jt_id_tot : 6 * jt_id_tot + 6]
+                    nzb_id_follower[row_ids_full >= 0] = np.arange(start_nzb, start_nzb + num_cts)
                     nzb_row[start_nzb : start_nzb + num_cts] = row_ids_red
-                    base_id_loc = joints_bid_B[jt_id_tot] - first_body_id[wd_id]
-                    nzb_col[start_nzb : start_nzb + num_cts] = 7 * base_id_loc
+                    follower_id_loc = joints_bid_F[jt_id_tot] - first_body_id[wd_id]
+                    nzb_col[start_nzb : start_nzb + num_cts] = 7 * follower_id_loc
                     start_nzb += num_cts
-                nzb_id_follower = ct_nzb_id_follower[6 * jt_id_tot : 6 * jt_id_tot + 6]
-                nzb_id_follower[row_ids_full >= 0] = np.arange(start_nzb, start_nzb + num_cts)
-                nzb_row[start_nzb : start_nzb + num_cts] = row_ids_red
-                follower_id_loc = joints_bid_F[jt_id_tot] - first_body_id[wd_id]
-                nzb_col[start_nzb : start_nzb + num_cts] = 7 * follower_id_loc
-                start_nzb += num_cts
 
-        # Transfer data to GPU
-        self.sparse_jacobian.finalize(jacobian_dims, num_nzb.tolist())
-        self.sparse_jacobian.dims.assign(jacobian_dims)
-        self.sparse_jacobian.num_nzb.assign(num_nzb)
-        self.sparse_jacobian.nzb_coords.assign(np.stack((nzb_row, nzb_col)).T.flatten())
-        with wp.ScopedDevice(self.device):
-            self.rb_nzb_id = wp.from_numpy(rb_nzb_id, dtype=wp.int32)
-            self.ct_nzb_id_base = wp.from_numpy(ct_nzb_id_base, dtype=wp.int32)
-            self.ct_nzb_id_follower = wp.from_numpy(ct_nzb_id_follower, dtype=wp.int32)
+            # Transfer data to GPU
+            self.sparse_jacobian.finalize(jacobian_dims, num_nzb.tolist())
+            self.sparse_jacobian.dims.assign(jacobian_dims)
+            self.sparse_jacobian.num_nzb.assign(num_nzb)
+            self.sparse_jacobian.nzb_coords.assign(np.stack((nzb_row, nzb_col)).T.flatten())
+            with wp.ScopedDevice(self.device):
+                self.rb_nzb_id = wp.from_numpy(rb_nzb_id, dtype=wp.int32)
+                self.ct_nzb_id_base = wp.from_numpy(ct_nzb_id_base, dtype=wp.int32)
+                self.ct_nzb_id_follower = wp.from_numpy(ct_nzb_id_follower, dtype=wp.int32)
 
-        # Initialize Jacobian assembly kernel
-        self._eval_joint_constraints_sparse_jacobian_kernel = create_eval_joint_constraints_sparse_jacobian_kernel(
-            has_universal_joints
-        )
+            # Initialize Jacobian assembly kernel
+            self._eval_joint_constraints_sparse_jacobian_kernel = create_eval_joint_constraints_sparse_jacobian_kernel(
+                has_universal_joints
+            )
+
+            # Initialize Jacobian linear operator
+            self.sparse_jacobian_op = BlockSparseLinearOperators(self.sparse_jacobian)
+            self.sparse_jacobian_op.initialize_default_operators()
+
+            # Initialize preconditioner
+            if self.settings.preconditioner == FKPreconditionerOptions.JACOBI_DIAGONAL:
+                self.jacobian_diag_inv = wp.array(
+                    dtype=wp.float32, device=self.device, shape=(self.num_worlds, self.num_states_max)
+                )
+                preconditioner_op = BatchedLinearOperator.from_diagonal(self.jacobian_diag_inv, self.num_states)
+            elif self.settings.preconditioner == FKPreconditionerOptions.JACOBI_BLOCK_DIAGONAL:
+                self.inv_blocks_3 = wp.array(
+                    dtype=wp.mat33f, shape=(self.num_worlds, self.num_bodies_max), device=self.device
+                )
+                self.inv_blocks_4 = wp.array(
+                    dtype=wp.mat44f, shape=(self.num_worlds, self.num_bodies_max), device=self.device
+                )
+                preconditioner_op = BatchedLinearOperator(
+                    gemv_fn=get_blockwise_diag_3_4_gemv_2d(self.inv_blocks_3, self.inv_blocks_4, self.num_states),
+                    n_worlds=self.num_worlds,
+                    max_dim=self.num_states_max,
+                    active_dims=self.num_states,
+                    device=self.device,
+                    dtype=wp.float32,
+                )
+            else:
+                preconditioner_op = None
+
+            # Initialize CG solver
+            cg_op = BatchedLinearOperator(
+                n_worlds=self.num_worlds,
+                max_dim=self.num_states_max,
+                active_dims=self.num_states,
+                dtype=wp.float32,
+                device=self.device,
+                gemv_fn=self._eval_lhs_gemv,
+            )
+            self.cg_atol = wp.array(dtype=wp.float32, shape=self.num_worlds, device=self.device)
+            self.cg_rtol = wp.array(dtype=wp.float32, shape=self.num_worlds, device=self.device)
+            self.cg_max_iter = wp.from_numpy(2 * self.num_states.numpy(), dtype=wp.int32, device=self.device)
+            self.linear_solver_cg = CGSolver(
+                A=cg_op,
+                active_dims=self.num_states,
+                Mi=preconditioner_op,
+                atol=self.cg_atol,
+                rtol=self.cg_rtol,
+                maxiter=self.cg_max_iter,
+            )
 
     ###
     # Internal evaluators (graph-capturable functions working on pre-allocated data)
@@ -2155,6 +2298,79 @@ class ForwardKinematicsSolver:
             device=self.device,
         )
 
+    def _assemble_sparse_jacobian(
+        self,
+        bodies_q: wp.array(dtype=wp.transformf),
+        pos_control_transforms: wp.array(dtype=wp.transformf),
+        world_mask: wp.array(dtype=wp.int32),
+    ):
+        """
+        Internal evaluator for the sparse kinematic constraints Jacobian with respect to body poses, from body poses
+        and position-control transformations
+        """
+
+        self.sparse_jacobian.zero()
+
+        # Evaluate unit norm quaternion constraints Jacobian
+        wp.launch(
+            _eval_unit_quaternion_constraints_sparse_jacobian,
+            dim=(self.num_worlds, self.num_bodies_max),
+            inputs=[
+                self.model.info.num_bodies,
+                self.first_body_id,
+                bodies_q,
+                self.rb_nzb_id,
+                world_mask,
+                self.sparse_jacobian.nzb_values,
+            ],
+            device=self.device,
+        )
+
+        # Evaluate joint constraints Jacobian
+        wp.launch(
+            self._eval_joint_constraints_sparse_jacobian_kernel,
+            dim=(self.num_worlds, self.num_joints_max),
+            inputs=[
+                self.num_joints,
+                self.first_joint_id,
+                self.first_body_id,
+                self.joints_dof_type,
+                self.joints_act_type,
+                self.joints_bid_B,
+                self.joints_bid_F,
+                self.joints_X_j,
+                self.joints_B_r_Bj,
+                self.joints_F_r_Fj,
+                bodies_q,
+                pos_control_transforms,
+                self.ct_nzb_id_base,
+                self.ct_nzb_id_follower,
+                world_mask,
+                self.sparse_jacobian.nzb_values,
+            ],
+            device=self.device,
+        )
+
+    def _eval_lhs_gemv(
+        self,
+        x: wp.array2d(dtype=wp.float32),
+        y: wp.array2d(dtype=wp.float32),
+        world_mask: wp.array(dtype=wp.int32),
+        alpha: wp.float32,
+        beta: wp.float32,
+    ):
+        """
+        Internal evaluator for y = alpha * J^T * J * x + beta * y, using the assembled sparse Jacobian J
+        """
+        self.sparse_jacobian_op.matvec(x, self.jacobian_times_vector, world_mask)
+        self.sparse_jacobian_op.matvec_transpose(self.jacobian_times_vector, self.lhs_times_vector, world_mask)
+        wp.launch(
+            _eval_linear_combination,
+            dim=(self.num_worlds, self.num_states_max),
+            inputs=[alpha, self.lhs_times_vector, beta, y, self.num_constraints, world_mask, y],
+            device=self.device,
+        )
+
     def _eval_merit_function(self, constraints: wp.array2d(dtype=wp.float32), error: wp.array(dtype=wp.float32)):
         """
         Internal evaluator for the line search merit function, i.e. the least-squares error 1/2 * ||C||^2,
@@ -2241,31 +2457,54 @@ class ForwardKinematicsSolver:
             device=self.device,
         )
 
+    def _update_cg_tolerance(
+        self,
+        residual_norm: wp.array(dtype=wp.float32),
+        world_mask: wp.array(dtype=wp.int32),
+    ):
+        """
+        Internal function heuristically adapting the CG tolerance based on the current constraint residual
+        (starting with a loose tolerance, and tightening it as we converge)
+        Note: needs to be refined, until then we are still using a fixed tolerance
+        """
+        wp.launch(
+            _update_cg_tolerance_kernel,
+            dim=(self.num_worlds,),
+            inputs=[residual_norm, world_mask, self.cg_atol, self.cg_rtol],
+            device=self.device,
+        )
+
     def _run_newton_iteration(self, bodies_q: wp.array(dtype=wp.transformf)):
         """
         Internal function running one iteration of Gauss-Newton. Assumes the constraints vector to be already
         up-to-date (because we will already have checked convergence before the first loop iteration)
         """
         # Evaluate constraints Jacobian
-        self._eval_kinematic_constraints_jacobian(
-            bodies_q, self.pos_control_transforms, self.newton_mask, self.jacobian
-        )
+        if self.settings.use_sparsity:
+            self._assemble_sparse_jacobian(bodies_q, self.pos_control_transforms, self.newton_mask)
+        else:
+            self._eval_kinematic_constraints_jacobian(
+                bodies_q, self.pos_control_transforms, self.newton_mask, self.jacobian
+            )
 
-        # Evaluate Gauss-Newton left-hand side (J^T * J) and right-hand side (-J^T * C)
-        wp.launch_tiled(
-            self._eval_jacobian_T_jacobian_kernel,
-            dim=(self.num_worlds, self.num_tiles_states, self.num_tiles_states),
-            inputs=[self.jacobian, self.newton_mask, self.lhs],
-            block_dim=64,
-            device=self.device,
-        )
-        wp.launch_tiled(
-            self._eval_jacobian_T_constraints_kernel,
-            dim=(self.num_worlds, self.num_tiles_states),
-            inputs=[self.jacobian, self.constraints, self.newton_mask, self.grad],
-            block_dim=64,
-            device=self.device,
-        )
+        # Evaluate Gauss-Newton left-hand side (J^T * J) if needed, and right-hand side (-J^T * C)
+        if self.settings.use_sparsity:
+            self.sparse_jacobian_op.matvec_transpose(self.constraints, self.grad, self.newton_mask)
+        else:
+            wp.launch_tiled(
+                self._eval_jacobian_T_jacobian_kernel,
+                dim=(self.num_worlds, self.num_tiles_states, self.num_tiles_states),
+                inputs=[self.jacobian, self.newton_mask, self.lhs],
+                block_dim=64,
+                device=self.device,
+            )
+            wp.launch_tiled(
+                self._eval_jacobian_T_constraints_kernel,
+                dim=(self.num_worlds, self.num_tiles_states),
+                inputs=[self.jacobian, self.constraints, self.newton_mask, self.grad],
+                block_dim=64,
+                device=self.device,
+            )
         wp.launch(
             _eval_rhs,
             dim=(self.num_worlds, self.num_states_max),
@@ -2274,12 +2513,27 @@ class ForwardKinematicsSolver:
         )
 
         # Compute step (system solve)
-        self.linear_solver.factorize(self.lhs, self.num_states, self.newton_mask)
-        self.linear_solver.solve(
-            self.rhs.reshape((self.num_worlds, self.num_states_max, 1)),
-            self.step.reshape((self.num_worlds, self.num_states_max, 1)),
-            self.newton_mask,
-        )
+        if self.settings.use_sparsity:
+            if self.settings.preconditioner == FKPreconditionerOptions.JACOBI_DIAGONAL:
+                block_sparse_ATA_inv_diagonal_2d(self.sparse_jacobian, self.jacobian_diag_inv, self.newton_mask)
+            elif self.settings.preconditioner == FKPreconditionerOptions.JACOBI_BLOCK_DIAGONAL:
+                block_sparse_ATA_blockwise_3_4_inv_diagonal_2d(
+                    self.sparse_jacobian, self.inv_blocks_3, self.inv_blocks_4, self.newton_mask
+                )
+            self.step.zero_()
+            if self.settings.use_adaptive_cg_tolerance:
+                self._update_cg_tolerance(self.max_constraint, self.newton_mask)
+            else:
+                self.cg_atol.fill_(1e-8)
+                self.cg_rtol.fill_(1e-8)
+            self.linear_solver_cg.solve(self.rhs, self.step, world_active=self.newton_mask)
+        else:
+            self.linear_solver_llt.factorize(self.lhs, self.num_states, self.newton_mask)
+            self.linear_solver_llt.solve(
+                self.rhs.reshape((self.num_worlds, self.num_states_max, 1)),
+                self.step.reshape((self.num_worlds, self.num_states_max, 1)),
+                self.newton_mask,
+            )
 
         # Line search
         self.line_search_iteration.zero_()
@@ -2375,31 +2629,49 @@ class ForwardKinematicsSolver:
         )
 
         # Update constraints Jacobian
-        self._eval_kinematic_constraints_jacobian(bodies_q, pos_control_transforms, world_mask, self.jacobian)
+        if self.settings.use_sparsity:
+            self._assemble_sparse_jacobian(bodies_q, pos_control_transforms, world_mask)
+        else:
+            self._eval_kinematic_constraints_jacobian(bodies_q, pos_control_transforms, world_mask, self.jacobian)
 
-        # Evaluate system left-hand side (J^T * J) and right-hand side (J^T * targets_cts_u)
-        wp.launch_tiled(
-            self._eval_jacobian_T_jacobian_kernel,
-            dim=(self.num_worlds, self.num_tiles_states, self.num_tiles_states),
-            inputs=[self.jacobian, world_mask, self.lhs],
-            block_dim=64,
-            device=self.device,
-        )
-        wp.launch_tiled(
-            self._eval_jacobian_T_constraints_kernel,
-            dim=(self.num_worlds, self.num_tiles_states),
-            inputs=[self.jacobian, self.target_cts_u, world_mask, self.rhs],
-            block_dim=64,
-            device=self.device,
-        )
+        # Evaluate system left-hand side (J^T * J) if needed, and right-hand side (J^T * targets_cts_u)
+        if self.settings.use_sparsity:
+            self.sparse_jacobian_op.matvec_transpose(self.target_cts_u, self.rhs, world_mask)
+        else:
+            wp.launch_tiled(
+                self._eval_jacobian_T_jacobian_kernel,
+                dim=(self.num_worlds, self.num_tiles_states, self.num_tiles_states),
+                inputs=[self.jacobian, world_mask, self.lhs],
+                block_dim=64,
+                device=self.device,
+            )
+            wp.launch_tiled(
+                self._eval_jacobian_T_constraints_kernel,
+                dim=(self.num_worlds, self.num_tiles_states),
+                inputs=[self.jacobian, self.target_cts_u, world_mask, self.rhs],
+                block_dim=64,
+                device=self.device,
+            )
 
         # Compute body velocities (system solve)
-        self.linear_solver.factorize(self.lhs, self.num_states, world_mask)
-        self.linear_solver.solve(
-            self.rhs.reshape((self.num_worlds, self.num_states_max, 1)),
-            self.bodies_q_dot.reshape((self.num_worlds, self.num_states_max, 1)),
-            world_mask,
-        )
+        if self.settings.use_sparsity:
+            if self.settings.preconditioner == FKPreconditionerOptions.JACOBI_DIAGONAL:
+                block_sparse_ATA_inv_diagonal_2d(self.sparse_jacobian, self.jacobian_diag_inv, world_mask)
+            elif self.settings.preconditioner == FKPreconditionerOptions.JACOBI_BLOCK_DIAGONAL:
+                block_sparse_ATA_blockwise_3_4_inv_diagonal_2d(
+                    self.sparse_jacobian, self.inv_blocks_3, self.inv_blocks_4, world_mask
+                )
+            self.bodies_q_dot.zero_()
+            self.cg_atol.fill_(1e-8)
+            self.cg_rtol.fill_(1e-8)
+            self.linear_solver_cg.solve(self.rhs, self.bodies_q_dot, world_active=world_mask)
+        else:
+            self.linear_solver_llt.factorize(self.lhs, self.num_states, world_mask)
+            self.linear_solver_llt.solve(
+                self.rhs.reshape((self.num_worlds, self.num_states_max, 1)),
+                self.bodies_q_dot.reshape((self.num_worlds, self.num_states_max, 1)),
+                world_mask,
+            )
         wp.launch(
             _eval_body_velocities,
             dim=(self.num_worlds, self.num_bodies_max),
@@ -2472,55 +2744,14 @@ class ForwardKinematicsSolver:
         self, bodies_q: wp.array(dtype=wp.transformf), pos_control_transforms: wp.array(dtype=wp.transformf)
     ):
         """
-        Assembles the sparse Jacobian given input body poses and control transforms.
-        Note: the sparse Jacobian is not yet used in the solver, this function is only for
-        testing purposes currently.
+        Assembles the sparse Jacobian (under self.sparse_jacobian) given input body poses and control transforms.
+        Note: only safe to call if this object was finalized with sparsity enabled in the settings.
         """
         assert bodies_q.device == self.device
         assert pos_control_transforms.device == self.device
 
-        self.sparse_jacobian.zero()
         world_mask = wp.ones(dtype=wp.int32, shape=(self.num_worlds,), device=self.device)
-
-        # Evaluate unit norm quaternion constraints Jacobian
-        wp.launch(
-            _eval_unit_quaternion_constraints_sparse_jacobian,
-            dim=(self.num_worlds, self.num_bodies_max),
-            inputs=[
-                self.model.info.num_bodies,
-                self.first_body_id,
-                bodies_q,
-                self.rb_nzb_id,
-                world_mask,
-                self.sparse_jacobian.nzb_values,
-            ],
-            device=self.device,
-        )
-
-        # Evaluate joint constraints Jacobian
-        wp.launch(
-            self._eval_joint_constraints_sparse_jacobian_kernel,
-            dim=(self.num_worlds, self.num_joints_max),
-            inputs=[
-                self.num_joints,
-                self.first_joint_id,
-                self.first_body_id,
-                self.joints_dof_type,
-                self.joints_act_type,
-                self.joints_bid_B,
-                self.joints_bid_F,
-                self.joints_X_j,
-                self.joints_B_r_Bj,
-                self.joints_F_r_Fj,
-                bodies_q,
-                pos_control_transforms,
-                self.ct_nzb_id_base,
-                self.ct_nzb_id_follower,
-                world_mask,
-                self.sparse_jacobian.nzb_values,
-            ],
-            device=self.device,
-        )
+        self._assemble_sparse_jacobian(bodies_q, pos_control_transforms, world_mask)
 
     def solve_for_body_velocities(
         self,

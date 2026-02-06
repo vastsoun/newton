@@ -32,12 +32,12 @@ from warp.context import Devicelike
 from ..core.types import FloatType, float32, override
 from . import conjugate, factorize
 from .core import DenseLinearOperatorData, DenseSquareMultiLinearInfo, make_dtype_tolerance
-from .sparse import (
-    BlockSparseLinearOperators,
+from .sparse_matrix import (
     BlockSparseMatrices,
     allocate_block_sparse_from_dense,
     dense_to_block_sparse_copy_values,
 )
+from .sparse_operator import BlockSparseLinearOperators
 
 ###
 # Module interface

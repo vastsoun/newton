@@ -28,7 +28,7 @@ import warp as wp
 
 from . import blas
 from .core import DenseLinearOperatorData
-from .sparse import BlockSparseMatrices
+from .sparse_matrix import BlockSparseMatrices
 
 # No need to auto-generate adjoint code for linear solvers
 wp.set_module_options({"enable_backward": False})

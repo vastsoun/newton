@@ -21,7 +21,6 @@ independent linear systems, including rectangular and square systems.
 """
 
 import functools
-from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, get_args
 
@@ -31,6 +30,7 @@ from warp.context import Devicelike
 
 from ..core.types import FloatType, IntType, float32, int32
 from ..utils import logger as msg
+from .core import DenseSquareMultiLinearInfo
 
 if TYPE_CHECKING:
     from .core import DenseLinearOperatorData
@@ -41,7 +41,6 @@ if TYPE_CHECKING:
 
 __all__ = [
     "BlockDType",
-    "BlockSparseLinearOperators",
     "BlockSparseMatrices",
     "allocate_block_sparse_from_dense",
     "dense_to_block_sparse_copy_values",
@@ -508,98 +507,6 @@ class BlockSparseMatrices:
         return block_nrows, block_ncols
 
 
-@dataclass
-class BlockSparseLinearOperators:
-    """
-    A Block-Sparse Linear Operator container for representing
-    and operating on multiple independent sparse linear systems.
-    """
-
-    ###
-    # On-device Data
-    ###
-
-    bsm: BlockSparseMatrices | None = None
-    """
-    The underlying block-sparse matrix used by this operator.
-    """
-
-    ###
-    # Operators
-    ###
-
-    precompute_op: Callable | None = None
-    """
-    The operator function for precomputing any necessary data for the operators.\n
-    Signature: ``precompute_op(A: BlockSparseLinearOperators)``.
-    """
-
-    Ax_op: Callable | None = None
-    """
-    The operator function for performing sparse matrix-vector products `y = A @ x`.\n
-    Example signature: ``Ax_op(A: BlockSparseLinearMatrices, x: wp.array, y: wp.array, matrix_mask: wp.array)``.
-    """
-
-    ATy_op: Callable | None = None
-    """
-    The operator function for performing sparse matrix-transpose-vector products `x = A^T @ y`.\n
-    Example signature: ``ATy_op(A: BlockSparseLinearMatrices, y: wp.array, x: wp.array, matrix_mask: wp.array)``.
-    """
-
-    gemv_op: Callable | None = None
-    """
-    The operator function for performing generalized sparse matrix-vector products `y = alpha * A @ x + beta * y`.\n
-    Example signature: ``gemv_op(A: BlockSparseLinearMatrices, x: wp.array, y: wp.array, alpha: float, beta: float, matrix_mask: wp.array)``.
-    """
-
-    gemvt_op: Callable | None = None
-    """
-    The operator function for performing generalized sparse matrix-transpose-vector products `x = alpha * A^T @ y + beta * x`.\n
-    Example signature: ``gemvt_op(A: BlockSparseLinearMatrices, y: wp.array, x: wp.array, alpha: float, beta: float, matrix_mask: wp.array)``.
-    """
-
-    ###
-    # Operations
-    ###
-
-    def clear(self):
-        """Clears all variable sub-blocks."""
-        self.bsm.clear()
-
-    def zero(self):
-        """Sets all sub-block data to zero."""
-        self.bsm.zero()
-
-    def precompute(self):
-        """Precomputes any necessary data for the operators."""
-        if self.precompute_op:
-            self.precompute_op(self)
-
-    def matvec(self, x: wp.array, y: wp.array, matrix_mask: wp.array):
-        """Performs the sparse matrix-vector product `y = A @ x`."""
-        if self.Ax_op is None:
-            raise RuntimeError("No `A@x` operator has been assigned.")
-        self.Ax_op(self.bsm, x, y, matrix_mask)
-
-    def matvec_transpose(self, y: wp.array, x: wp.array, matrix_mask: wp.array):
-        """Performs the sparse matrix-transpose-vector product `x = A^T @ y`."""
-        if self.ATy_op is None:
-            raise RuntimeError("No `A^T@y` operator has been assigned.")
-        self.ATy_op(self.bsm, y, x, matrix_mask)
-
-    def gemv(self, x: wp.array, y: wp.array, matrix_mask: wp.array, alpha: float = 1.0, beta: float = 0.0):
-        """Performs a BLAS-like generalized sparse matrix-vector product `y = alpha * A @ x + beta * y`."""
-        if self.gemv_op is None:
-            raise RuntimeError("No BLAS-like `GEMV` operator has been assigned.")
-        self.gemv_op(self.bsm, x, y, alpha, beta, matrix_mask)
-
-    def gemv_transpose(self, y: wp.array, x: wp.array, matrix_mask: wp.array, alpha: float = 1.0, beta: float = 0.0):
-        """Performs a BLAS-like generalized sparse matrix-transpose-vector product `x = alpha * A^T @ y + beta * x`."""
-        if self.gemvt_op is None:
-            raise RuntimeError("No BLAS-like transposed `GEMV` operator has been assigned.")
-        self.gemvt_op(self.bsm, y, x, alpha, beta, matrix_mask)
-
-
 ###
 # Dense to Block-Sparse Conversion
 ###
@@ -745,8 +652,6 @@ def allocate_block_sparse_from_dense(
     Returns:
         A finalized but empty BlockSparseMatrices ready for use with dense_to_block_sparse_copy_values.
     """
-    from .core import DenseSquareMultiLinearInfo
-
     if dense_op.info is None:
         raise ValueError("Dense operator must have info set.")
     if not isinstance(dense_op.info, DenseSquareMultiLinearInfo):
@@ -799,8 +704,6 @@ def dense_to_block_sparse_copy_values(
         bsm: A pre-allocated BlockSparseMatrices (from allocate_block_sparse_from_dense).
         block_size: The block size (must match the BSM's block size).
     """
-    from .core import DenseSquareMultiLinearInfo
-
     if dense_op.info is None:
         raise ValueError("Dense operator must have info set.")
     if not isinstance(dense_op.info, DenseSquareMultiLinearInfo):

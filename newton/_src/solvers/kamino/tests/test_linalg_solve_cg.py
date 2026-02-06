@@ -24,7 +24,7 @@ from newton._src.solvers.kamino.core.types import float32
 from newton._src.solvers.kamino.linalg.conjugate import BatchedLinearOperator, CGSolver, CRSolver
 from newton._src.solvers.kamino.linalg.core import DenseLinearOperatorData, DenseSquareMultiLinearInfo
 from newton._src.solvers.kamino.linalg.linear import ConjugateGradientSolver
-from newton._src.solvers.kamino.linalg.sparse import (
+from newton._src.solvers.kamino.linalg.sparse_matrix import (
     BlockDType,
     BlockSparseMatrices,
     allocate_block_sparse_from_dense,
@@ -347,7 +347,7 @@ class TestLinalgConjugate(unittest.TestCase):
 
         # Create block-sparse matrices in numpy (some blocks are zero)
         original_matrices = []
-        for w, dim in enumerate(dims):
+        for dim in dims:
             n_blocks = (dim + block_size - 1) // block_size
             matrix = np.zeros((dim, dim), dtype=np.float32)
 

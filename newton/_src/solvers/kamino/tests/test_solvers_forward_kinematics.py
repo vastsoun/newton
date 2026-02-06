@@ -29,7 +29,11 @@ from newton._src.solvers.kamino.core.model import Model
 from newton._src.solvers.kamino.core.types import vec6f
 from newton._src.solvers.kamino.kinematics.joints import compute_joints_data
 from newton._src.solvers.kamino.models import get_examples_usd_assets_path
-from newton._src.solvers.kamino.solvers.fk import ForwardKinematicsSolver, ForwardKinematicsSolverSettings
+from newton._src.solvers.kamino.solvers.fk import (
+    FKPreconditionerOptions,
+    ForwardKinematicsSolver,
+    ForwardKinematicsSolverSettings,
+)
 from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.tests.utils.diff_check import diff_check, run_test_single_joint_examples
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
@@ -310,6 +314,8 @@ def simulate_random_poses(
     # Run forward kinematics on all random poses
     settings = ForwardKinematicsSolverSettings()
     settings.reset_state = True
+    settings.use_sparsity = False  # Change for sparse/dense solver
+    settings.preconditioner = FKPreconditionerOptions.JACOBI_BLOCK_DIAGONAL  # Change to test preconditioners
     solver = ForwardKinematicsSolver(model, settings)
     success_flags = []
     with wp.ScopedDevice(model.device):
@@ -556,7 +562,7 @@ class HeterogenousModelSparseJacobianAssemblyCheck(unittest.TestCase):
         base_q_np, actuators_q_np = generate_random_inputs_q(model, num_poses, base_q_max, actuators_q_max, rng)
 
         # Assemble and compare dense and sparse Jacobian for each pose
-        solver = ForwardKinematicsSolver(model)
+        solver = ForwardKinematicsSolver(model, settings=ForwardKinematicsSolverSettings(use_sparsity=True))
         with wp.ScopedDevice(model.device):
             bodies_q = wp.array(shape=(model.size.sum_of_num_bodies), dtype=wp.transformf)
             base_q = wp.array(shape=(model.size.num_worlds), dtype=wp.transformf)

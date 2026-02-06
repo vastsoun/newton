@@ -93,7 +93,7 @@ from ..linalg.blas import (
 
 # from ..linalg import Matrices, LinearOperators
 # from ..linalg.dense import DenseMatrices, DenseLinearOperators
-from ..linalg.sparse import BlockSparseLinearOperators
+from ..linalg.sparse_operator import BlockSparseLinearOperators
 
 ###
 # Module interface

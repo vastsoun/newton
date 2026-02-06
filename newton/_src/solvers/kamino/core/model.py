@@ -34,6 +34,7 @@ from .joints import (
     JointsData,
     JointsModel,
     axes_matrix_from_joint_type,
+    newton_to_kamino_joint_actuation_type,
     newton_to_kamino_joint_dof_type,
 )
 from .materials import MaterialManager, MaterialPairsModel, MaterialsModel
@@ -675,17 +676,30 @@ class ModelKamino:
         num_joint_coords_np = np.zeros((model.num_worlds,), dtype=int)
         num_joint_dofs_np = np.zeros((model.num_worlds,), dtype=int)
         num_joint_cts_np = np.zeros((model.num_worlds,), dtype=int)
+        num_actuated_joints_np = np.zeros((model.num_worlds,), dtype=int)
+        num_actuated_joint_coords_np = np.zeros((model.num_worlds,), dtype=int)
+        num_actuated_joint_dofs_np = np.zeros((model.num_worlds,), dtype=int)
+        num_passive_joints_np = np.zeros((model.num_worlds,), dtype=int)
+        num_passive_joint_coords_np = np.zeros((model.num_worlds,), dtype=int)
+        num_passive_joint_dofs_np = np.zeros((model.num_worlds,), dtype=int)
         joint_dof_type_np = np.zeros((model.joint_count,), dtype=int)
+        joint_act_type_np = np.zeros((model.joint_count,), dtype=int)
         joint_num_coords_np = np.zeros((model.joint_count,), dtype=int)
         joint_num_dofs_np = np.zeros((model.joint_count,), dtype=int)
         joint_num_cts_np = np.zeros((model.joint_count,), dtype=int)
         joint_B_r_Bj_np = np.zeros((model.joint_count, 3), dtype=float)
         joint_F_r_Fj_np = np.zeros((model.joint_count, 3), dtype=float)
         joint_X_j_np = np.zeros((model.joint_count, 9), dtype=float)
-        joint_q_start_np = np.zeros((model.joint_count,), dtype=int32)
-        joint_dq_start_np = np.zeros((model.joint_count,), dtype=int32)
+        joint_coord_start_np = np.zeros((model.joint_count,), dtype=int32)
+        joint_dofs_start_np = np.zeros((model.joint_count,), dtype=int32)
+        joint_cts_start_np = np.zeros((model.joint_count,), dtype=int)
+        joint_actuated_coord_start_np = np.zeros((model.joint_count,), dtype=int32)
+        joint_actuated_dofs_start_np = np.zeros((model.joint_count,), dtype=int32)
+        joint_passive_coord_start_np = np.zeros((model.joint_count,), dtype=int32)
+        joint_passive_dofs_start_np = np.zeros((model.joint_count,), dtype=int32)
         joint_wid_np = model.joint_world.numpy()
         joint_type_np = model.joint_type.numpy()
+        joint_act_mode_np = model.joint_act_mode.numpy()
         joint_parent_np = model.joint_parent.numpy()
         joint_child_np = model.joint_child.numpy()
         joint_X_p_np = model.joint_X_p.numpy()
@@ -698,8 +712,13 @@ class ModelKamino:
             wid_j = joint_wid_np[j]
 
             # TODO
-            joint_q_start_np[j] = num_joint_coords_np[wid_j]
-            joint_dq_start_np[j] = num_joint_dofs_np[wid_j]
+            joint_coord_start_np[j] = num_joint_coords_np[wid_j]
+            joint_dofs_start_np[j] = num_joint_dofs_np[wid_j]
+            joint_cts_start_np[j] = num_joint_cts_np[wid_j]
+            joint_actuated_coord_start_np[j] = num_actuated_joint_coords_np[wid_j]
+            joint_actuated_dofs_start_np[j] = num_actuated_joint_dofs_np[wid_j]
+            joint_passive_coord_start_np[j] = num_passive_joint_coords_np[wid_j]
+            joint_passive_dofs_start_np[j] = num_passive_joint_dofs_np[wid_j]
 
             # TODO
             dof_type_j = newton_to_kamino_joint_dof_type(joint_type_np[j])
@@ -718,6 +737,24 @@ class ModelKamino:
             dofs_start_j = joint_qd_start_np[j]
             joint_axes_j = joint_axis_np[dofs_start_j : dofs_start_j + ndofs_j]
             R_axis_j = axes_matrix_from_joint_type(joint_type_np[j], joint_axes_j)
+            joint_dofs_act_mode_j = joint_act_mode_np[dofs_start_j : dofs_start_j + ndofs_j]
+            joint_act_mode_j = joint_dofs_act_mode_j.max()
+
+            # TODO
+            act_type_j = newton_to_kamino_joint_actuation_type(joint_act_mode_j)
+            joint_act_type_np[j] = act_type_j.value
+            if act_type_j > JointActuationType.PASSIVE:
+                num_actuated_joints_np[wid_j] += 1
+                num_actuated_joint_coords_np[wid_j] += ncoords_j
+                num_actuated_joint_dofs_np[wid_j] += ndofs_j
+                joint_passive_coord_start_np[j] = -1
+                joint_passive_dofs_start_np[j] = -1
+            else:
+                num_passive_joints_np[wid_j] += 1
+                num_passive_joint_coords_np[wid_j] += ncoords_j
+                num_passive_joint_dofs_np[wid_j] += ndofs_j
+                joint_actuated_coord_start_np[j] = -1
+                joint_actuated_dofs_start_np[j] = -1
 
             # TODO
             p_r_p_com = wp.vec3f(body_com_np[joint_parent_np[j]])
@@ -735,16 +772,6 @@ class ModelKamino:
             joint_B_r_Bj_np[j, :] = B_r_Bj
             joint_F_r_Fj_np[j, :] = F_r_Fj
             joint_X_j_np[j, :] = X_j
-
-        # Compute constraint offsets of each joint w.r.t the corresponding world
-        joint_cts_start_np = np.zeros((model.joint_count,), dtype=int)
-        for j in range(model.joint_count):
-            wid_j = joint_wid_np[j]
-            offset_j = 0
-            for jj in range(j):
-                if joint_wid_np[jj] == wid_j:
-                    offset_j += joint_num_cts_np[jj]
-            joint_cts_start_np[j] = offset_j
 
         # TODO
         materials_manager = MaterialManager()
@@ -783,21 +810,38 @@ class ModelKamino:
         world_required_contacts = [required_contacts_per_world] * model.num_worlds
 
         # Compute offsets per world
-        body_offset_np = np.zeros((model.num_worlds,), dtype=int)
-        body_dof_offset_np = np.zeros((model.num_worlds,), dtype=int)
-        joint_offset_np = np.zeros((model.num_worlds,), dtype=int)
-        joint_coord_offset_np = np.zeros((model.num_worlds,), dtype=int)
-        joint_dof_offset_np = np.zeros((model.num_worlds,), dtype=int)
-        joint_cts_offset_np = np.zeros((model.num_worlds,), dtype=int)
-        shape_offset_np = np.zeros((model.num_worlds,), dtype=int)
+        world_shape_offset_np = np.zeros((model.num_worlds,), dtype=int)
+        world_body_offset_np = np.zeros((model.num_worlds,), dtype=int)
+        world_body_dof_offset_np = np.zeros((model.num_worlds,), dtype=int)
+        world_joint_offset_np = np.zeros((model.num_worlds,), dtype=int)
+        world_joint_coord_offset_np = np.zeros((model.num_worlds,), dtype=int)
+        world_joint_dof_offset_np = np.zeros((model.num_worlds,), dtype=int)
+        world_joint_cts_offset_np = np.zeros((model.num_worlds,), dtype=int)
+        world_actuated_joint_coord_offset_np = np.zeros((model.num_worlds,), dtype=int)
+        world_actuated_joint_dofs_offset_np = np.zeros((model.num_worlds,), dtype=int)
+        world_passive_joint_coord_offset_np = np.zeros((model.num_worlds,), dtype=int)
+        world_passive_joint_dofs_offset_np = np.zeros((model.num_worlds,), dtype=int)
+
         for w in range(1, model.num_worlds):
-            body_offset_np[w] = body_offset_np[w - 1] + num_bodies_np[w - 1]
-            body_dof_offset_np[w] = body_dof_offset_np[w - 1] + num_body_dofs_np[w - 1]
-            joint_offset_np[w] = joint_offset_np[w - 1] + num_joints_np[w - 1]
-            joint_coord_offset_np[w] = joint_coord_offset_np[w - 1] + num_joint_coords_np[w - 1]
-            joint_dof_offset_np[w] = joint_dof_offset_np[w - 1] + num_joint_dofs_np[w - 1]
-            joint_cts_offset_np[w] = joint_cts_offset_np[w - 1] + num_joint_cts_np[w - 1]
-            shape_offset_np[w] = shape_offset_np[w - 1] + num_shapes_np[w - 1]
+            world_shape_offset_np[w] = world_shape_offset_np[w - 1] + num_shapes_np[w - 1]
+            world_body_offset_np[w] = world_body_offset_np[w - 1] + num_bodies_np[w - 1]
+            world_body_dof_offset_np[w] = world_body_dof_offset_np[w - 1] + num_body_dofs_np[w - 1]
+            world_joint_offset_np[w] = world_joint_offset_np[w - 1] + num_joints_np[w - 1]
+            world_joint_coord_offset_np[w] = world_joint_coord_offset_np[w - 1] + num_joint_coords_np[w - 1]
+            world_joint_dof_offset_np[w] = world_joint_dof_offset_np[w - 1] + num_joint_dofs_np[w - 1]
+            world_joint_cts_offset_np[w] = world_joint_cts_offset_np[w - 1] + num_joint_cts_np[w - 1]
+            world_actuated_joint_coord_offset_np[w] = (
+                world_actuated_joint_coord_offset_np[w - 1] + num_actuated_joint_coords_np[w - 1]
+            )
+            world_actuated_joint_dofs_offset_np[w] = (
+                world_actuated_joint_dofs_offset_np[w - 1] + num_actuated_joint_dofs_np[w - 1]
+            )
+            world_passive_joint_coord_offset_np[w] = (
+                world_passive_joint_coord_offset_np[w - 1] + num_passive_joint_coords_np[w - 1]
+            )
+            world_passive_joint_dofs_offset_np[w] = (
+                world_passive_joint_dofs_offset_np[w - 1] + num_passive_joint_dofs_np[w - 1]
+            )
 
         # Determine the base body and joint indices per world
         base_body_idx_np = np.full((model.num_worlds,), -1, dtype=int)
@@ -891,19 +935,19 @@ class ModelKamino:
                 wid=w,
                 num_bodies=num_bodies_np[w],
                 num_joints=num_joints_np[w],
-                num_passive_joints=0,
-                num_actuated_joints=num_joints_np[w],
+                num_passive_joints=num_passive_joints_np[w],
+                num_actuated_joints=num_actuated_joints_np[w],
                 num_geoms=num_shapes_np[w],
                 num_materials=0,  # TODO: how to handle both global and per-world materials simultaneously?
                 num_body_coords=num_body_coords_np[w],
                 num_body_dofs=num_body_dofs_np[w],
                 num_joint_coords=num_joint_coords_np[w],
                 num_joint_dofs=num_joint_dofs_np[w],
-                num_passive_joint_coords=0,
-                num_passive_joint_dofs=0,
-                num_actuated_joint_coords=num_joint_coords_np[w],
-                num_actuated_joint_dofs=num_joint_dofs_np[w],
                 num_joint_cts=num_joint_cts_np[w],
+                num_passive_joint_coords=num_passive_joint_coords_np[w],
+                num_passive_joint_dofs=num_passive_joint_dofs_np[w],
+                num_actuated_joint_coords=num_actuated_joint_coords_np[w],
+                num_actuated_joint_dofs=num_actuated_joint_dofs_np[w],
                 # TODO
                 joint_coords=[],
                 joint_dofs=[],
@@ -913,17 +957,17 @@ class ModelKamino:
                 joint_actuated_dofs=[],
                 joint_cts=[],
                 # TODO
-                bodies_idx_offset=body_offset_np[w],
-                joints_idx_offset=joint_offset_np[w],
-                geoms_idx_offset=shape_offset_np[w],
-                body_dofs_idx_offset=body_dof_offset_np[w],
-                joint_coords_idx_offset=joint_coord_offset_np[w],
-                joint_dofs_idx_offset=joint_dof_offset_np[w],
-                passive_joint_coords_idx_offset=-1,
-                passive_joint_dofs_idx_offset=-1,
-                actuated_joint_coords_idx_offset=joint_coord_offset_np[w],
-                actuated_joint_dofs_idx_offset=joint_dof_offset_np[w],
-                joint_cts_idx_offset=joint_cts_offset_np[w],
+                bodies_idx_offset=world_body_offset_np[w],
+                joints_idx_offset=world_joint_offset_np[w],
+                geoms_idx_offset=world_shape_offset_np[w],
+                body_dofs_idx_offset=world_body_dof_offset_np[w],
+                joint_coords_idx_offset=world_joint_coord_offset_np[w],
+                joint_dofs_idx_offset=world_joint_dof_offset_np[w],
+                passive_joint_coords_idx_offset=world_passive_joint_coord_offset_np[w],
+                passive_joint_dofs_idx_offset=world_passive_joint_dofs_offset_np[w],
+                actuated_joint_coords_idx_offset=world_actuated_joint_coord_offset_np[w],
+                actuated_joint_dofs_idx_offset=world_actuated_joint_dofs_offset_np[w],
+                joint_cts_idx_offset=world_joint_cts_offset_np[w],
                 # TODO
                 body_names=[],
                 body_uids=[],
@@ -955,10 +999,10 @@ class ModelKamino:
             max_of_num_bodies=int(num_bodies_np.max()),
             sum_of_num_joints=int(num_joints_np.sum()),
             max_of_num_joints=int(num_joints_np.max()),
-            sum_of_num_passive_joints=0,
-            max_of_num_passive_joints=0,
-            sum_of_num_actuated_joints=int(num_joints_np.sum()),
-            max_of_num_actuated_joints=int(num_joints_np.max()),
+            sum_of_num_passive_joints=int(num_passive_joints_np.sum()),
+            max_of_num_passive_joints=int(num_passive_joints_np.max()),
+            sum_of_num_actuated_joints=int(num_actuated_joints_np.sum()),
+            max_of_num_actuated_joints=int(num_actuated_joints_np.max()),
             sum_of_num_geoms=int(num_shapes_np.sum()),
             max_of_num_geoms=int(num_shapes_np.max()),
             sum_of_num_materials=materials_manager.num_materials,
@@ -971,14 +1015,14 @@ class ModelKamino:
             max_of_num_joint_coords=int(num_joint_coords_np.max()),
             sum_of_num_joint_dofs=int(num_joint_dofs_np.sum()),
             max_of_num_joint_dofs=int(num_joint_dofs_np.max()),
-            sum_of_num_passive_joint_coords=0,
-            max_of_num_passive_joint_coords=0,
-            sum_of_num_passive_joint_dofs=0,
-            max_of_num_passive_joint_dofs=0,
-            sum_of_num_actuated_joint_coords=int(num_joint_coords_np.sum()),
-            max_of_num_actuated_joint_coords=int(num_joint_coords_np.max()),
-            sum_of_num_actuated_joint_dofs=int(num_joint_dofs_np.sum()),
-            max_of_num_actuated_joint_dofs=int(num_joint_dofs_np.max()),
+            sum_of_num_passive_joint_coords=int(num_passive_joint_coords_np.sum()),
+            max_of_num_passive_joint_coords=int(num_passive_joint_coords_np.max()),
+            sum_of_num_passive_joint_dofs=int(num_passive_joint_dofs_np.sum()),
+            max_of_num_passive_joint_dofs=int(num_passive_joint_dofs_np.max()),
+            sum_of_num_actuated_joint_coords=int(num_actuated_joint_coords_np.sum()),
+            max_of_num_actuated_joint_coords=int(num_actuated_joint_coords_np.max()),
+            sum_of_num_actuated_joint_dofs=int(num_actuated_joint_dofs_np.sum()),
+            max_of_num_actuated_joint_dofs=int(num_actuated_joint_dofs_np.max()),
             sum_of_num_joint_cts=int(num_joint_cts_np.sum()),
             max_of_num_joint_cts=int(num_joint_cts_np.max()),
             sum_of_max_limits=0,
@@ -999,27 +1043,27 @@ class ModelKamino:
                 num_worlds=model.num_worlds,
                 num_bodies=wp.array(num_bodies_np, dtype=int32),
                 num_joints=wp.array(num_joints_np, dtype=int32),
-                num_passive_joints=wp.zeros((model.num_worlds,), dtype=int32),
-                num_actuated_joints=wp.array(num_joints_np, dtype=int32),
+                num_passive_joints=wp.array(num_passive_joints_np, dtype=int32),
+                num_actuated_joints=wp.array(num_actuated_joints_np, dtype=int32),
                 num_geoms=wp.array(num_shapes_np, dtype=int32),
                 num_body_dofs=wp.array(num_body_dofs_np, dtype=int32),
                 num_joint_coords=wp.array(num_joint_coords_np, dtype=int32),
                 num_joint_dofs=wp.array(num_joint_dofs_np, dtype=int32),
-                num_passive_joint_coords=wp.zeros((model.num_worlds,), dtype=int32),
-                num_passive_joint_dofs=wp.zeros((model.num_worlds,), dtype=int32),
-                num_actuated_joint_coords=wp.array(num_joint_coords_np, dtype=int32),
-                num_actuated_joint_dofs=wp.array(num_joint_dofs_np, dtype=int32),
+                num_passive_joint_coords=wp.array(num_passive_joint_coords_np, dtype=int32),
+                num_passive_joint_dofs=wp.array(num_passive_joint_dofs_np, dtype=int32),
+                num_actuated_joint_coords=wp.array(num_actuated_joint_coords_np, dtype=int32),
+                num_actuated_joint_dofs=wp.array(num_actuated_joint_dofs_np, dtype=int32),
                 num_joint_cts=wp.array(num_joint_cts_np, dtype=int32),
-                bodies_offset=wp.array(body_offset_np, dtype=int32),
-                joints_offset=wp.array(joint_offset_np, dtype=int32),
-                body_dofs_offset=wp.array(body_dof_offset_np, dtype=int32),
-                joint_coords_offset=wp.array(joint_coord_offset_np, dtype=int32),
-                joint_dofs_offset=wp.array(joint_dof_offset_np, dtype=int32),
-                joint_passive_coords_offset=wp.full((model.num_worlds), 0, dtype=int32),
-                joint_passive_dofs_offset=wp.full((model.num_worlds), 0, dtype=int32),
-                joint_actuated_coords_offset=wp.array(joint_coord_offset_np, dtype=int32),
-                joint_actuated_dofs_offset=wp.array(joint_dof_offset_np, dtype=int32),
-                joint_cts_offset=wp.array(joint_cts_offset_np, dtype=int32),
+                bodies_offset=wp.array(world_body_offset_np, dtype=int32),
+                joints_offset=wp.array(world_joint_offset_np, dtype=int32),
+                body_dofs_offset=wp.array(world_body_dof_offset_np, dtype=int32),
+                joint_coords_offset=wp.array(world_joint_coord_offset_np, dtype=int32),
+                joint_dofs_offset=wp.array(world_joint_dof_offset_np, dtype=int32),
+                joint_cts_offset=wp.array(world_joint_cts_offset_np, dtype=int32),
+                joint_passive_coords_offset=wp.array(world_passive_joint_coord_offset_np, dtype=int32),
+                joint_passive_dofs_offset=wp.array(world_passive_joint_dofs_offset_np, dtype=int32),
+                joint_actuated_coords_offset=wp.array(world_actuated_joint_coord_offset_np, dtype=int32),
+                joint_actuated_dofs_offset=wp.array(world_actuated_joint_dofs_offset_np, dtype=int32),
                 base_body_index=wp.array(base_body_idx_np, dtype=int32),
                 base_joint_index=wp.array(base_joint_idx_np, dtype=int32),
                 mass_min=wp.array(mass_min_np, dtype=float32),
@@ -1044,7 +1088,7 @@ class ModelKamino:
             model_bodies = RigidBodiesModel(
                 num_bodies=model.body_count,
                 wid=model.body_world,
-                bid=wp.array(body_bid_np, dtype=int32),
+                bid=wp.array(body_bid_np, dtype=int32),  # TODO: Remove
                 i_r_com_i=model.body_com,
                 m_i=model.body_mass,
                 inv_m_i=model.body_inv_mass,
@@ -1058,10 +1102,11 @@ class ModelKamino:
             model_joints = JointsModel(
                 num_joints=model.joint_count,
                 wid=model.joint_world,
-                jid=wp.array(joint_jid_np, dtype=int32),
+                jid=wp.array(joint_jid_np, dtype=int32),  # TODO: Remove
                 # dof_type=model.joint_type,
+                # act_type=model.joint_act_mode,
                 dof_type=wp.array(joint_dof_type_np, dtype=int32),
-                act_type=wp.full((model.joint_count,), JointActuationType.FORCE, dtype=int32),
+                act_type=wp.array(joint_act_type_np, dtype=int32),
                 bid_B=model.joint_parent,
                 bid_F=model.joint_child,
                 B_r_Bj=wp.array(joint_B_r_Bj_np, dtype=wp.vec3f),
@@ -1073,18 +1118,19 @@ class ModelKamino:
                 tau_j_max=model.joint_effort_limit,
                 q_j_0=model.joint_q,
                 dq_j_0=model.joint_qd,
+                # TODO:
+                # coords_start=model.joint_q_start,
+                # dofs_start=model.joint_qd_start,
                 num_coords=wp.array(joint_num_coords_np, dtype=int32),
                 num_dofs=wp.array(joint_num_dofs_np, dtype=int32),
                 num_cts=wp.array(joint_num_cts_np, dtype=int32),
-                # coords_offset=model.joint_q_start,
-                # dofs_offset=model.joint_qd_start,
-                coords_offset=wp.array(joint_q_start_np, dtype=int32),
-                dofs_offset=wp.array(joint_dq_start_np, dtype=int32),
-                passive_coords_offset=wp.full((model.joint_count,), -1),
-                passive_dofs_offset=wp.full((model.joint_count,), -1),
-                actuated_coords_offset=wp.array(joint_q_start_np, dtype=int32),
-                actuated_dofs_offset=wp.array(joint_dq_start_np, dtype=int32),
+                coords_offset=wp.array(joint_coord_start_np, dtype=int32),
+                dofs_offset=wp.array(joint_dofs_start_np, dtype=int32),
                 cts_offset=wp.array(joint_cts_start_np, dtype=int32),
+                passive_coords_offset=wp.array(joint_passive_coord_start_np, dtype=int32),
+                passive_dofs_offset=wp.array(joint_passive_dofs_start_np, dtype=int32),
+                actuated_coords_offset=wp.array(joint_actuated_coord_start_np, dtype=int32),
+                actuated_dofs_offset=wp.array(joint_actuated_dofs_start_np, dtype=int32),
             )
 
             # Collision geometries
@@ -1095,7 +1141,7 @@ class ModelKamino:
                 model_max_contacts=model.rigid_contact_max,
                 world_max_contacts=world_required_contacts,
                 wid=model.shape_world,
-                gid=wp.array(shape_sid_np, dtype=int32),
+                gid=wp.array(shape_sid_np, dtype=int32),  # TODO: Remove
                 lid=wp.zeros(shape=model.shape_count, dtype=int32),  # TODO: Remove this since it's not used anywhere
                 bid=model.shape_body,
                 sid=wp.array(geom_shape_type_np, dtype=int32),

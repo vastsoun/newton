@@ -389,7 +389,7 @@ class TestKaminoContainers(unittest.TestCase):
             limits=True,
             ground=True,
             new_world=True,
-            actuator_ids=[0, 1, 2, 3, 4],
+            actuator_ids=[1, 3],
         )
 
         # Duplicate the world to test multi-world handling
@@ -406,7 +406,7 @@ class TestKaminoContainers(unittest.TestCase):
             limits=True,
             ground=True,
             new_world=True,
-            actuator_ids=[0, 1, 2, 3, 4],
+            actuator_ids=[1, 3],
         )
 
         # Duplicate the world to test multi-world handling
@@ -416,7 +416,7 @@ class TestKaminoContainers(unittest.TestCase):
         model_0: Model = builder_0.finalize(skip_validation_joints=True)
         model_1: ModelKamino = builder_1.finalize()
         model_2: ModelKamino = ModelKamino.from_newton(model_0)
-        test_util_checks.assert_model_equal(self, model_1, model_2)
+        test_util_checks.assert_model_equal(self, model_2, model_1)
 
     def test_10_state_conversions(self):
         """
@@ -436,7 +436,7 @@ class TestKaminoContainers(unittest.TestCase):
             limits=True,
             ground=True,
             new_world=True,
-            actuator_ids=[0, 1, 2, 3, 4],
+            actuator_ids=[2, 4],
         )
 
         # Duplicate the world to test multi-world handling
@@ -453,7 +453,7 @@ class TestKaminoContainers(unittest.TestCase):
             limits=True,
             ground=True,
             new_world=True,
-            actuator_ids=[0, 1, 2, 3, 4],
+            actuator_ids=[2, 4],
         )
 
         # Duplicate the world to test multi-world handling
@@ -518,7 +518,7 @@ class TestKaminoContainers(unittest.TestCase):
             limits=True,
             ground=True,
             new_world=True,
-            actuator_ids=[0, 1, 2, 3, 4],
+            actuator_ids=[1, 2, 3, 4],
         )
 
         # Duplicate the world to test multi-world handling
@@ -535,7 +535,7 @@ class TestKaminoContainers(unittest.TestCase):
             limits=True,
             ground=True,
             new_world=True,
-            actuator_ids=[0, 1, 2, 3, 4],
+            actuator_ids=[1, 2, 3, 4],
         )
 
         # Duplicate the world to test multi-world handling

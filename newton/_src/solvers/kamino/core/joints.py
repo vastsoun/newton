@@ -24,6 +24,7 @@ import warp as wp
 from warp._src.types import Any, Int, Vector
 
 from ....core.types import MAXVAL
+from ....sim.joints import ActuatorMode as NewtonActuatorMode
 from ....sim.joints import JointType as NewtonJointType
 from .math import FLOAT32_MAX, FLOAT32_MIN, PI, TWO_PI
 from .types import (
@@ -101,6 +102,21 @@ class JointActuationType(IntEnum):
 
     FORCE = 1
     """Force-controlled joint type, i.e. actuated by set of forces and/or torques."""
+
+    POSITION = 2
+    """Position-controlled joint type, i.e. actuated by set of position targets."""
+
+    VELOCITY = 3
+    """Velocity-controlled joint type, i.e. actuated by set of velocity targets."""
+
+    POSITION_VELOCITY = 4
+    """Position + velocity controlled joint type, i.e. actuated by set of position + velocity targets."""
+
+    POSITION_VELOCITY_EFFORT = 5
+    """
+    Position + velocity + effort controlled joint type, i.e.
+    actuated by set of position + velocity + effort targets.
+    """
 
     @override
     def __str__(self):
@@ -1370,12 +1386,12 @@ def kamino_to_newton_joint_type(dof_type: JointDoFType) -> NewtonJointType:
     return mapping[dof_type]
 
 
-def newton_to_kamino_joint_dof_type(joint_type: NewtonJointType) -> JointDoFType:
+def newton_to_kamino_joint_dof_type(type: NewtonJointType) -> JointDoFType:
     """
     Converts a `NewtonJointType` to the corresponding `JointDoFType`.
 
     Args:
-        joint_type (NewtonJointType): The Newton joint type to convert.
+        type (NewtonJointType): The Newton joint type to convert.
 
     Returns:
         JointDoFType: The corresponding joint DoF type.
@@ -1388,7 +1404,47 @@ def newton_to_kamino_joint_dof_type(joint_type: NewtonJointType) -> JointDoFType
         NewtonJointType.FIXED: JointDoFType.FIXED,
     }
     # TODO: Handle unsupported types
-    return mapping[joint_type]
+    return mapping[type]
+
+
+def kamino_to_newton_actuator_mode(type: JointActuationType) -> NewtonActuatorMode:
+    """
+    Converts a `JointActuationType` to the corresponding `NewtonActuatorMode`.
+
+    Args:
+        type (JointActuationType): The joint actuation type to convert.
+
+    Returns:
+        NewtonActuatorMode: The corresponding Newton actuator mode.
+    """
+    mapping = {
+        JointActuationType.PASSIVE: NewtonActuatorMode.NONE,
+        JointActuationType.POSITION: NewtonActuatorMode.POSITION,
+        JointActuationType.VELOCITY: NewtonActuatorMode.VELOCITY,
+        JointActuationType.POSITION_VELOCITY: NewtonActuatorMode.POSITION_VELOCITY,
+        JointActuationType.FORCE: NewtonActuatorMode.EFFORT,
+    }
+    return mapping[type]
+
+
+def newton_to_kamino_joint_actuation_type(mode: NewtonActuatorMode) -> JointActuationType:
+    """
+    Converts a `NewtonActuatorMode` to the corresponding `JointActuationType`.
+
+    Args:
+        mode (NewtonActuatorMode): The Newton actuator mode to convert.
+
+    Returns:
+        JointActuationType: The corresponding joint actuation type.
+    """
+    mapping = {
+        NewtonActuatorMode.NONE: JointActuationType.PASSIVE,
+        NewtonActuatorMode.POSITION: JointActuationType.POSITION,
+        NewtonActuatorMode.VELOCITY: JointActuationType.VELOCITY,
+        NewtonActuatorMode.POSITION_VELOCITY: JointActuationType.POSITION_VELOCITY,
+        NewtonActuatorMode.EFFORT: JointActuationType.FORCE,
+    }
+    return mapping[mode]
 
 
 def axes_matrix_from_joint_type(joint_type: NewtonJointType, joint_dof_axis: np.ndarray) -> wp.mat33f | None:

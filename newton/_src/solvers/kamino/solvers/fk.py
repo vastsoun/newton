@@ -116,6 +116,65 @@ def _reset_state(
 
 
 @wp.kernel
+def _reset_state_base_q(
+    # Inputs
+    base_joint_id: wp.array(dtype=wp.int32),
+    base_q: wp.array(dtype=wp.transformf),
+    joints_X: wp.array(dtype=wp.mat33f),
+    joints_B_r_B: wp.array(dtype=wp.vec3f),
+    num_bodies: wp.array(dtype=wp.int32),
+    first_body_id: wp.array(dtype=wp.int32),
+    bodies_q_0: wp.array(dtype=wp.transformf),
+    world_mask: wp.array(dtype=wp.int32),
+    # Outputs
+    bodies_q: wp.array(dtype=wp.transformf),
+):
+    """
+    A kernel resetting the fk state (body poses) to a rigid transformation of the reference state,
+    computed so that the base body is aligned on its prescribed pose.
+
+    Inputs:
+        base_joint_id: Base joint id per world (-1 = None)
+        base_q: Base body pose per world, in base joint coordinates
+        joints_X: Joint frame (local axes, valid both on base and follower)
+        joints_B_r_B: Joint local position on base body
+        num_bodies: Num bodies per world
+        first_body_id: First body id per world
+        bodies_q_0: Reference body poses
+        world_mask: Per-world flag to perform the operation (0 = skip)
+    Outputs:
+        bodies_q: Body poses to reset
+    """
+    wd_id, rb_id_loc = wp.tid()  # Thread indices (= world index, body index)
+    if wd_id < num_bodies.shape[0] and world_mask[wd_id] != 0 and rb_id_loc < num_bodies[wd_id]:
+        # Worlds without base joint: just copy the reference pose
+        rb_id_tot = first_body_id[wd_id] + rb_id_loc
+        base_jt_id = base_joint_id[wd_id]
+        body_q_0 = bodies_q_0[rb_id_tot]
+        if base_jt_id < 0:
+            bodies_q[rb_id_tot] = body_q_0
+            return
+
+        # Read memory
+        base_q_wd = base_q[wd_id]
+        X = joints_X[base_jt_id]
+        x = joints_B_r_B[base_jt_id]
+
+        # Compute transformation that maps the reference pose of the base body (follower of the base joint)
+        # to the pose corresponding by base_q. Note: we make use of the fact that initial body orientations
+        # are the identity (a more complex formula would needed otherwise)
+        t_jt = wp.transform_get_translation(base_q_wd)
+        q_jt = wp.transform_get_rotation(base_q_wd)
+        q_X = wp.quat_from_matrix(X)
+        q_tot = q_X * q_jt * wp.quat_inverse(q_X)
+        t_tot = x - wp.quat_rotate(q_tot, x) + wp.quat_rotate(q_X, t_jt)
+        transform_tot = wp.transformf(t_tot, q_tot)
+
+        # Apply to body pose
+        bodies_q[rb_id_tot] = wp.transform_multiply(transform_tot, body_q_0)
+
+
+@wp.kernel
 def _eval_fk_actuated_dofs_or_coords(
     # Inputs
     model_base_dofs: wp.array(dtype=wp.float32),
@@ -1677,6 +1736,7 @@ class ForwardKinematicsSolver:
         actuated_dofs_map = []  # Map of new actuated dofs to these in the model or to the base dofs
         base_q_default = np.zeros(7 * self.num_worlds, dtype=np.float32)  # Default base pose
         bodies_q_0 = self.model.bodies.q_i_0.numpy()
+        base_joint_ids = self.num_worlds * [-1]  # Base joint id per world
         for wd_id in range(self.num_worlds):
             # Retrieve base joint id if set
             base_joint_id = -1
@@ -1728,11 +1788,12 @@ class ForwardKinematicsSolver:
                     0.0,
                     0.0,
                     0.0,
-                    0.1,
+                    1.0,
                 ]  # Default to zero of free joint
                 joints_num_actuated_dofs.append(6)
                 dof_offset = -6 * wd_id - 1  # We encode offsets in base_u negatively with i -> -i - 1
                 actuated_dofs_map.extend(range(dof_offset, dof_offset - 6, -1))
+                base_joint_ids[wd_id] = len(joints_dof_type) - 1
             elif self.model.worlds[wd_id].has_base_body:  # Add an actuated free joint to the base body
                 base_body_id = first_body_id[wd_id] + self.model.worlds[wd_id].base_body_idx
                 joints_dof_type.append(JointDoFType.FREE)
@@ -1752,6 +1813,7 @@ class ForwardKinematicsSolver:
                 joints_num_actuated_dofs.append(6)
                 dof_offset = -6 * wd_id - 1  # We encode offsets in base_u negatively with i -> -i - 1
                 actuated_dofs_map.extend(range(dof_offset, dof_offset - 6, -1))
+                base_joint_ids[wd_id] = len(joints_dof_type) - 1
 
             # Record number of joints
             num_joints_world = len(joints_dof_type) - self.num_joints_tot
@@ -1862,6 +1924,7 @@ class ForwardKinematicsSolver:
             self.joints_B_r_Bj = wp.from_numpy(joints_B_r_Bj, dtype=wp.vec3f)
             self.joints_F_r_Fj = wp.from_numpy(joints_F_r_Fj, dtype=wp.vec3f)
             self.joints_X_j = wp.from_numpy(joints_X_j, dtype=wp.mat33f)
+            self.base_joint_id = wp.from_numpy(base_joint_ids, dtype=wp.int32)
 
             # Default base state
             self.base_q_default = wp.from_numpy(base_q_default, dtype=wp.transformf)
@@ -2155,6 +2218,33 @@ class ForwardKinematicsSolver:
                 wp.array(
                     ptr=bodies_q.ptr, dtype=wp.float32, shape=(self.num_states_tot,), device=self.device, copy=False
                 ),
+            ],
+            device=self.device,
+        )
+
+    def _reset_state_base_q(
+        self,
+        bodies_q: wp.array(dtype=wp.transformf),
+        base_q: wp.array(dtype=wp.transformf),
+        world_mask: wp.array(dtype=wp.int32),
+    ):
+        """
+        Internal function resetting the bodies state to a rigid transformation of the reference state,
+        computed so that the base body is aligned on its prescribed pose.
+        """
+        wp.launch(
+            _reset_state_base_q,
+            dim=(self.num_worlds, self.num_bodies_max),
+            inputs=[
+                self.base_joint_id,
+                base_q,
+                self.joints_X_j,
+                self.joints_B_r_Bj,
+                self.model.info.num_bodies,
+                self.first_body_id,
+                self.model.bodies.q_i_0,
+                world_mask,
+                bodies_q,
             ],
             device=self.device,
         )
@@ -2881,7 +2971,10 @@ class ForwardKinematicsSolver:
 
         # Optionally reset state
         if self.settings.reset_state:
-            self._reset_state(bodies_q, self.newton_mask)
+            if base_q is None:
+                self._reset_state(bodies_q, self.newton_mask)
+            else:
+                self._reset_state_base_q(bodies_q, base_q, self.newton_mask)
 
         # Evaluate constraints, and initialize loop condition (might not even need to loop)
         self._eval_kinematic_constraints(bodies_q, self.pos_control_transforms, self.newton_mask, self.constraints)

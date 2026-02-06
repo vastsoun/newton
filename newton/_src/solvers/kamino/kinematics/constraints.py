@@ -194,8 +194,8 @@ def make_unilateral_constraints_info(
 
     # Compute the maximum number of unilateral entities (limits and contacts) per world
     world_max_unilaterals: list[int] = [nl + nc for nl, nc in zip(world_maxnl, world_maxnc, strict=False)]
-    model.size.sum_of_max_unilaterals = sum(world_max_unilaterals)
-    model.size.max_of_max_unilaterals = max(world_max_unilaterals)
+    model.size.sum_of_max_unilaterals = int(sum(world_max_unilaterals))
+    model.size.max_of_max_unilaterals = int(max(world_max_unilaterals))
 
     # Compute the maximum number of constraints per world: limits, contacts, and total
     world_maxnlc: list[int] = list(world_maxnl)
@@ -204,8 +204,8 @@ def make_unilateral_constraints_info(
     world_maxncts = [
         maxnl + maxnc + njc for maxnl, maxnc, njc in zip(world_maxnlc, world_maxncc, world_njc, strict=False)
     ]
-    model.size.sum_of_max_total_cts = sum(world_maxncts)
-    model.size.max_of_max_total_cts = max(world_maxncts)
+    model.size.sum_of_max_total_cts = int(sum(world_maxncts))
+    model.size.max_of_max_total_cts = int(max(world_maxncts))
 
     # Compute the entity index offsets for limits, contacts and unilaterals
     # NOTE: unilaterals is simply the concatenation of limits and contacts

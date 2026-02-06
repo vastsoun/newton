@@ -1162,8 +1162,8 @@ class SolverKamino(SolverBase):
         # containers to Kamino's equivalents
         # NOTE: These should produce zero-copy views/references
         # to the arrays of the source Newton containers.
-        state_in_kamino = StateKamino.from_newton(self._model_kamino, state_in)
-        state_out_kamino = StateKamino.from_newton(self._model_kamino, state_out)
+        state_in_kamino = StateKamino.from_newton(self.model, state_in)
+        state_out_kamino = StateKamino.from_newton(self.model, state_out)
         control_kamino = ControlKamino.from_newton(control)
 
         # Convert the input state from Newton's convention (i.e. using local body frame)

@@ -24,6 +24,7 @@ import warp as wp
 
 from ....geometry.flags import ShapeFlags
 from ....sim.model import Model
+from ..utils import logger as msg
 from .bodies import RigidBodiesData, RigidBodiesModel
 from .control import ControlKamino
 from .data import DataKamino, DataKaminoInfo
@@ -700,6 +701,8 @@ class ModelKamino:
         joint_wid_np = model.joint_world.numpy()
         joint_type_np = model.joint_type.numpy()
         joint_act_mode_np = model.joint_act_mode.numpy()
+        msg.warning("joint_type_np: %s", joint_type_np)
+        msg.warning("joint_act_mode_np: %s", joint_act_mode_np)
         joint_parent_np = model.joint_parent.numpy()
         joint_child_np = model.joint_child.numpy()
         joint_X_p_np = model.joint_X_p.numpy()
@@ -722,8 +725,10 @@ class ModelKamino:
 
             # TODO
             dof_type_j = newton_to_kamino_joint_dof_type(joint_type_np[j])
+            msg.warning("[%s]: dof_type_j: %s", j, dof_type_j)
             ncoords_j = dof_type_j.num_coords
             ndofs_j = dof_type_j.num_dofs
+            msg.warning("[%s]: ndofs_j: %s", j, ndofs_j)
             ncts_j = dof_type_j.num_cts
             joint_dof_type_np[j] = dof_type_j.value
             num_joint_coords_np[wid_j] += ncoords_j
@@ -735,10 +740,15 @@ class ModelKamino:
 
             # TODO
             dofs_start_j = joint_qd_start_np[j]
+            msg.warning("[%s]: dofs_start_j: %s", j, dofs_start_j)
             joint_axes_j = joint_axis_np[dofs_start_j : dofs_start_j + ndofs_j]
             R_axis_j = axes_matrix_from_joint_type(joint_type_np[j], joint_axes_j)
             joint_dofs_act_mode_j = joint_act_mode_np[dofs_start_j : dofs_start_j + ndofs_j]
-            joint_act_mode_j = joint_dofs_act_mode_j.max()
+            msg.warning("[%s]: joint_dofs_act_mode_j: %s", j, joint_dofs_act_mode_j)
+            joint_act_mode_j = (
+                max(joint_dofs_act_mode_j) if len(joint_dofs_act_mode_j) > 0 else JointActuationType.PASSIVE
+            )
+            msg.warning("[%s]: joint_act_mode_j: %s", j, joint_act_mode_j)
 
             # TODO
             act_type_j = newton_to_kamino_joint_actuation_type(joint_act_mode_j)
@@ -791,17 +801,18 @@ class ModelKamino:
         #     materials_manager.register(shape_material[-1])
 
         # Convert per-shape properties from Newton to Kamino format
-        geom_shape_type_np = model.shape_type.numpy()
-        geom_shape_scale_np = model.shape_scale.numpy()
-        geom_shape_flags_np = model.shape_flags.numpy()
+        shape_type_np = model.shape_type.numpy()
+        shape_scale_np = model.shape_scale.numpy()
+        shape_flags_np = model.shape_flags.numpy()
         geom_shape_collision_group_np = model.shape_collision_group.numpy()
+        geom_shape_type_np = np.zeros((model.shape_count,), dtype=int)
         geom_shape_params_np = np.zeros((model.shape_count, 4), dtype=float)
         model_num_collidable_geoms = 0
         for s in range(model.shape_count):
-            shape_type, params = convert_newton_geo_to_kamino_shape(geom_shape_type_np[s], geom_shape_scale_np[s])
+            shape_type, params = convert_newton_geo_to_kamino_shape(shape_type_np[s], shape_scale_np[s])
             geom_shape_type_np[s] = shape_type
             geom_shape_params_np[s, :] = params
-            if (geom_shape_flags_np[s] & ShapeFlags.COLLIDE_SHAPES) != 0 and geom_shape_collision_group_np[s] > 0:
+            if (shape_flags_np[s] & ShapeFlags.COLLIDE_SHAPES) != 0 and geom_shape_collision_group_np[s] > 0:
                 model_num_collidable_geoms += 1
 
         # Compute total number of required contacts per world
@@ -1147,7 +1158,7 @@ class ModelKamino:
                 sid=wp.array(geom_shape_type_np, dtype=int32),
                 ptr=model.shape_source_ptr,
                 offset=model.shape_transform,
-                params=wp.array(geom_shape_params_np, dtype=float32),
+                params=wp.array(geom_shape_params_np, dtype=vec4f),
                 mid=wp.full(shape=(model.shape_count,), value=0, dtype=int32),  # TODO: model.shape_material_id
                 group=wp.full(shape=(model.shape_count,), value=1, dtype=int32),  # TODO: model.shape_collision_group
                 collides=wp.full(shape=(model.shape_count,), value=1, dtype=int32),  # TODO: model.shape_collision_group

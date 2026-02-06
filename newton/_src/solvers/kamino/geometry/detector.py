@@ -100,7 +100,7 @@ class CollisionPipelineType(IntEnum):
 class CollisionDetectorSettings:
     """Defines the settings for configuring a CollisionDetector."""
 
-    pipeline: str | CollisionPipelineType = CollisionPipelineType.PRIMITIVE
+    pipeline: str | CollisionPipelineType = CollisionPipelineType.UNIFIED
     """
     The type of collision-detection pipeline to use, either `PRIMITIVE` or `UNIFIED`.\n
     Defaults to `PRIMITIVE`.

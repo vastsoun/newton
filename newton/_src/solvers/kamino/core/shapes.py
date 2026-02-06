@@ -1039,6 +1039,14 @@ def convert_newton_geo_to_kamino_shape(geo_type: GeoType, scale: ShapeParamsLike
         shape_type = ShapeType.PLANE
         params = vec4f(0.0, 0.0, 1.0, 0.0)  # Default normal and distance
 
+    elif geo_type == GeoType.MESH:
+        shape_type = ShapeType.MESH
+        params = vec4f(0.0)
+
+    elif geo_type == GeoType.CONVEX_MESH:
+        shape_type = ShapeType.CONVEX
+        params = vec4f(0.0)
+
     else:
         raise ValueError(f"Unsupported GeoType for conversion: {geo_type}")
 

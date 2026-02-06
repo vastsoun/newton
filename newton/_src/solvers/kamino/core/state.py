@@ -51,7 +51,7 @@ def _compute_body_com_state(
     body_com: wp.array(dtype=wp.vec3f),
     body_q: wp.array(dtype=wp.transformf),
     # Outputs:
-    q_i: wp.array(dtype=wp.transformf),
+    body_q_com: wp.array(dtype=wp.transformf),
 ):
     """
     Transforms body-frame state to body center-of-mass (CoM) state.
@@ -63,7 +63,7 @@ def _compute_body_com_state(
             Array of body-frame poses in world frame.
 
     Outputs:
-        q_i (`wp.array(dtype=wp.transformf)`):
+        body_q_com (`wp.array(dtype=wp.transformf)`):
             Array of body CoM poses in world frame.
     """
     # Retrieve the body index from the thread grid
@@ -74,8 +74,7 @@ def _compute_body_com_state(
     r_com_i = body_com[bid]
 
     # Compute and store the CoM pose in world frame
-    q_com_i = wp.transform_multiply(q_i, wp.transformf(r_com_i, wp.quat_identity()))
-    q_i[bid] = q_com_i
+    body_q_com[bid] = wp.transform_multiply(q_i, wp.transformf(r_com_i, wp.quat_identity()))
 
 
 # TODO: Should we also transform body_q_prev to CoM frame here?
@@ -83,7 +82,7 @@ def _compute_body_com_state(
 def _compute_body_frame_state(
     # Inputs:
     body_com: wp.array(dtype=wp.vec3f),
-    q_i: wp.array(dtype=wp.transformf),
+    body_q_com: wp.array(dtype=wp.transformf),
     # Outputs:
     body_q: wp.array(dtype=wp.transformf),
 ):
@@ -93,7 +92,7 @@ def _compute_body_frame_state(
     Inputs:
         body_com (`wp.array(dtype=wp.vec3f)`):
             Array of body center-of-mass offsets in body frame.
-        q_i (`wp.array(dtype=wp.transformf)`):
+        body_q_com (`wp.array(dtype=wp.transformf)`):
             Array of body CoM poses in world frame.
 
     Outputs:
@@ -104,12 +103,11 @@ def _compute_body_frame_state(
     bid = wp.tid()
 
     # Load body CoM pose and local CoM offset
-    q_com_i = q_i[bid]
+    q_com_i = body_q_com[bid]
     r_com_i = body_com[bid]
 
     # Compute and store the body-frame pose in world frame
-    q_i = wp.transform_multiply(q_com_i, wp.transformf(-r_com_i, wp.quat_identity()))
-    body_q[bid] = q_i
+    body_q[bid] = wp.transform_multiply(q_com_i, wp.transformf(-r_com_i, wp.quat_identity()))
 
 
 ###
@@ -120,7 +118,7 @@ def _compute_body_frame_state(
 def compute_body_com_state(
     body_com: wp.array,
     body_q: wp.array,
-    q_i: wp.array,
+    body_q_com: wp.array,
 ) -> None:
     """
     Launcher for the `_compute_body_com_state` kernel.
@@ -137,14 +135,14 @@ def compute_body_com_state(
         kernel=_compute_body_com_state,
         dim=body_com.shape[0],
         inputs=[body_com, body_q],
-        outputs=[q_i],
+        outputs=[body_q_com],
         device=body_com.device,
     )
 
 
 def compute_body_frame_state(
     body_com: wp.array,
-    q_i: wp.array,
+    body_q_com: wp.array,
     body_q: wp.array,
 ) -> None:
     """
@@ -161,7 +159,7 @@ def compute_body_frame_state(
     wp.launch(
         kernel=_compute_body_frame_state,
         dim=body_com.shape[0],
-        inputs=[body_com, q_i],
+        inputs=[body_com, body_q_com],
         outputs=[body_q],
         device=body_com.device,
     )
@@ -311,7 +309,7 @@ class StateKamino:
         compute_body_com_state(
             body_com=model.body_com,
             body_q=self.q_i,
-            q_i=self.q_i,
+            body_q_com=self.q_i,
         )
 
     def convert_to_body_frame_state(self, model: Model) -> None:
@@ -334,7 +332,7 @@ class StateKamino:
         # Launch the kernel to convert body poses to body frame
         compute_body_frame_state(
             body_com=model.body_com,
-            q_i=self.q_i,
+            body_q_com=self.q_i,
             body_q=self.q_i,
         )
 

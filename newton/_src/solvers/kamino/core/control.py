@@ -97,4 +97,6 @@ class ControlKamino:
         Args:
             control: The source :class:`kamino.ControlKamino` object to be adapted.
         """
-        return Control(joint_f=control.tau_j)
+        control_newton = Control()
+        control_newton.joint_f = control.tau_j
+        return control_newton

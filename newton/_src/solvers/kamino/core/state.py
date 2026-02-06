@@ -309,7 +309,13 @@ class StateKamino:
         )
 
     @classmethod
-    def from_newton(cls, model: Model, state: State, convert_to_com_frame: bool = False) -> StateKamino:
+    def from_newton(
+        cls,
+        model: Model,
+        state: State,
+        initialize_state_prev: bool = False,
+        convert_to_com_frame: bool = False,
+    ) -> StateKamino:
         """
         Constructs a :class:`kamino.StateKamino` object from a :class:`newton.State` object.
 
@@ -319,6 +325,9 @@ class StateKamino:
         Args:
             state (State):
                 The source :class:`newton.State` object to be adapted.
+            initialize_state_prev (bool):
+                If True, initialize the `joint_q_prev` attribute to
+                match the current `joint_q` from the newton.State.
             convert_to_com_frame (bool):
                 If True, convert body poses to local center-of-mass frames.
 
@@ -338,6 +347,10 @@ class StateKamino:
             joint_lambdas = state.joint_lambdas
         else:
             joint_lambdas = wp.zeros(shape=(model.joint_constraint_count,), dtype=wp.float32, device=state.device)
+
+        # Optionally initialize the `joint_q_prev` array to match the current `joint_q`
+        if initialize_state_prev:
+            wp.copy(joint_q_prev, state.joint_q)
 
         # Create a new StateKamino object, aliasing the relevant data from the input newton.State
         state_kamino = StateKamino(

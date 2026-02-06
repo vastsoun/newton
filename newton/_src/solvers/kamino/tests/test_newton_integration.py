@@ -17,15 +17,14 @@
 
 import copy
 import math
-import os
 import unittest
 
 import warp as wp
 
+import newton._src.solvers.kamino.tests.utils.checks as test_util_checks
 from newton._src.core import Axis
 from newton._src.sim import (
     ActuatorMode,
-    Contacts,
     Control,
     Model,
     ModelBuilder,
@@ -34,14 +33,12 @@ from newton._src.sim import (
 from newton._src.solvers.kamino.core import inertia
 from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
 from newton._src.solvers.kamino.core.control import ControlKamino
-from newton._src.solvers.kamino.core.data import DataKamino
 from newton._src.solvers.kamino.core.joints import JOINT_QMAX, JOINT_QMIN
 from newton._src.solvers.kamino.core.model import ModelKamino
 from newton._src.solvers.kamino.core.state import StateKamino
-from newton._src.solvers.kamino.geometry.contacts import DEFAULT_GEOM_PAIR_MAX_CONTACTS, ContactsKamino
-from newton._src.solvers.kamino.models import basics, get_basics_usd_assets_path
+from newton._src.solvers.kamino.models import basics
+from newton._src.solvers.kamino.solver_kamino import SolverKamino
 from newton._src.solvers.kamino.tests import setup_tests, test_context
-from newton._src.solvers.kamino.tests.utils.checks import assert_control_equal, assert_model_equal, assert_state_equal
 from newton._src.solvers.kamino.utils import logger as msg
 
 ###
@@ -354,7 +351,7 @@ def build_boxes_fourbar_newton(
 ###
 
 
-class TestKaminoNewtonIntegration(unittest.TestCase):
+class TestKaminoContainers(unittest.TestCase):
     def setUp(self):
         if not test_context.setup_done:
             setup_tests(clear_cache=False)
@@ -374,50 +371,18 @@ class TestKaminoNewtonIntegration(unittest.TestCase):
         if self.verbose:
             msg.reset_log_level()
 
-    def test_usd_boxes_fourbar_newton(self):
+    def test_00_model_conversions(self):
         """
-        TODO
+        Test the conversion operations between newton.Model and kamino.ModelKamino.
         """
-        builder = ModelBuilder()
-
-        # TODO
-        USD_MODEL_PATH = os.path.join(get_basics_usd_assets_path(), "boxes_fourbar.usda")
-        builder.begin_world()
-        builder.add_usd(source=USD_MODEL_PATH, joint_ordering=None)
-        builder.end_world()
-
-        # TODO
-        msg.info("builder.particle_count: %s", builder.particle_count)
-        msg.info("builder.body_count: %s", builder.body_count)
-        msg.info("builder.body_world: %s", builder.body_world)
-        msg.info("builder.body_key: %s", builder.body_key)
-        msg.info("builder.shape_count: %s", builder.shape_count)
-        msg.info("builder.shape_world: %s", builder.shape_world)
-        msg.info("builder.shape_key: %s", builder.shape_key)
-        msg.info("builder.joint_count: %s", builder.joint_count)
-        msg.info("builder.joint_coord_count: %s", builder.joint_coord_count)
-        msg.info("builder.joint_dof_count: %s", builder.joint_dof_count)
-        msg.info("builder.joint_key: %s", builder.joint_key)
-        msg.info("builder.joint_world: %s", builder.joint_world)
-        msg.info("builder.joint_parent: %s", builder.joint_parent)
-        msg.info("builder.joint_child: %s", builder.joint_child)
-        msg.info("builder.joint_q_start: %s", builder.joint_q_start)
-        msg.info("builder.joint_qd_start: %s", builder.joint_qd_start)
-        msg.info("builder.articulation_count: %s", builder.articulation_count)
-        msg.info("builder.articulation_start: %s", builder.articulation_start)
-        msg.info("builder.articulation_world: %s", builder.articulation_world)
-
-    def test_boxes_fourbar_newton(self):
-        """
-        TODO
-        """
-        ###
-        # Builders
-        ###
+        # Create a fourbar using Newton's ModelBuilder and
+        # register Kamino-specific custom attributes
+        builder_0: ModelBuilder = ModelBuilder()
+        SolverKamino.register_custom_attributes(builder_0)
 
         # Create a fourbar using Newton's ModelBuilder
         builder_0: ModelBuilder = build_boxes_fourbar_newton(
-            builder=None,
+            builder=builder_0,
             z_offset=0.0,
             fixedbase=False,
             floatingbase=True,
@@ -447,84 +412,336 @@ class TestKaminoNewtonIntegration(unittest.TestCase):
         # Duplicate the world to test multi-world handling
         builder_1.add_builder(copy.deepcopy(builder_1))
 
-        ###
-        # Models
-        ###
+        # Create models from the builders and conversion operations, and check for consistency
+        model_0: Model = builder_0.finalize(skip_validation_joints=True)
+        model_1: ModelKamino = builder_1.finalize()
+        model_2: ModelKamino = ModelKamino.from_newton(model_0)
+        test_util_checks.assert_model_equal(self, model_1, model_2)
+
+    def test_10_state_conversions(self):
+        """
+        Test the conversion operations between newton.State and kamino.StateKamino.
+        """
+        # Create a fourbar using Newton's ModelBuilder and
+        # register Kamino-specific custom attributes
+        builder_0: ModelBuilder = ModelBuilder()
+        SolverKamino.register_custom_attributes(builder_0)
+
+        # Create a fourbar using Newton's ModelBuilder
+        builder_0: ModelBuilder = build_boxes_fourbar_newton(
+            builder=builder_0,
+            z_offset=0.0,
+            fixedbase=False,
+            floatingbase=True,
+            limits=True,
+            ground=True,
+            new_world=True,
+            actuator_ids=[0, 1, 2, 3, 4],
+        )
+
+        # Duplicate the world to test multi-world handling
+        builder_0.begin_world()
+        builder_0.add_builder(copy.deepcopy(builder_0))
+        builder_0.end_world()
+
+        # Create a fourbar using Kamino's ModelBuilderKamino
+        builder_1: ModelBuilderKamino = basics.build_boxes_fourbar(
+            builder=None,
+            z_offset=0.0,
+            fixedbase=False,
+            floatingbase=True,
+            limits=True,
+            ground=True,
+            new_world=True,
+            actuator_ids=[0, 1, 2, 3, 4],
+        )
+
+        # Duplicate the world to test multi-world handling
+        builder_1.add_builder(copy.deepcopy(builder_1))
 
         # Create models from the builders and conversion operations, and check for consistency
-        model_0_nwt: Model = builder_0.finalize(skip_validation_joints=True)
-        model_0: ModelKamino = ModelKamino.from_newton(model_0_nwt)
+        model_0: Model = builder_0.finalize(skip_validation_joints=True)
         model_1: ModelKamino = builder_1.finalize()
-        assert_model_equal(self, model_0, model_1)
+        model_2: ModelKamino = ModelKamino.from_newton(model_0)
+        test_util_checks.assert_model_equal(self, model_1, model_2)
 
-        ###
-        # State
-        ###
+        # Create a Newton state container
+        state_0: State = model_0.state()
+        self.assertIsInstance(state_0.body_q, wp.array)
+        self.assertEqual(state_0.body_q.size, model_0.body_count)
+        self.assertIsNotNone(state_0.joint_q_prev)
+        self.assertEqual(state_0.joint_q_prev.size, model_0.joint_coord_count)
+        self.assertIsNotNone(state_0.joint_lambdas)
+        self.assertEqual(state_0.joint_lambdas.size, model_0.joint_constraint_count)
 
-        # Create states from the models and conversion operations, and check for consistency
-        state_0_nwt: State = model_0_nwt.state()
-        state_0: StateKamino = model_0.state()
+        # Create a Kamino state container
         state_1: StateKamino = model_1.state()
-        state_2 = StateKamino.from_newton(model_0_nwt, state_0_nwt)
-        assert_state_equal(self, state_0, state_1)
-        assert_state_equal(self, state_1, state_2)
+        self.assertIsInstance(state_1.q_i, wp.array)
+        self.assertEqual(state_1.q_i.size, model_1.size.sum_of_num_bodies)
 
-        ###
-        # Control
-        ###
+        state_2: StateKamino = StateKamino.from_newton(model_0, state_0, True, False)
+        self.assertIsInstance(state_2.q_i, wp.array)
+        self.assertEqual(state_2.q_i.size, model_1.size.sum_of_num_bodies)
+        self.assertIs(state_2.q_i, state_0.body_q)
+        self.assertIs(state_2.u_i.ptr, state_0.body_qd.ptr)  # NOTE: Check ptr due to conversion from wp.spatial_vectorf
+        self.assertIs(state_2.w_i.ptr, state_0.body_f.ptr)  # NOTE: Check ptr due to conversion from wp.spatial_vectorf
+        self.assertIs(state_2.q_j, state_0.joint_q)
+        self.assertIs(state_2.dq_j, state_0.joint_qd)
+        self.assertIs(state_2.q_j_p, state_0.joint_q_prev)
+        test_util_checks.assert_state_equal(self, state_2, state_1)
 
-        # Create controls from the models and conversion operations, and check for consistency
-        control_0_nwt: Control = model_0_nwt.control()
-        control_0: ControlKamino = model_0.control()
+        state_3: State = StateKamino.to_newton(model_0, state_2)
+        self.assertIsInstance(state_3.body_q, wp.array)
+        self.assertEqual(state_3.body_q.size, model_0.body_count)
+        self.assertIs(state_3.body_q, state_2.q_i)
+        self.assertIs(state_3.body_qd.ptr, state_2.u_i.ptr)  # NOTE: Check ptr due to conversion from vec6f
+        self.assertIs(state_3.body_f.ptr, state_2.w_i.ptr)  # NOTE: Check ptr due to conversion from vec6f
+        self.assertIs(state_3.joint_q, state_2.q_j)
+        self.assertIs(state_3.joint_qd, state_2.dq_j)
+        self.assertIs(state_3.joint_q_prev, state_2.q_j_p)
+
+    def test_20_control_conversions(self):
+        """
+        Test the conversions between newton.Control and kamino.ControlKamino.
+        """
+        # Create a fourbar using Newton's ModelBuilder and
+        # register Kamino-specific custom attributes
+        builder_0: ModelBuilder = ModelBuilder()
+        SolverKamino.register_custom_attributes(builder_0)
+
+        # Create a fourbar using Newton's ModelBuilder
+        builder_0: ModelBuilder = build_boxes_fourbar_newton(
+            builder=builder_0,
+            z_offset=0.0,
+            fixedbase=False,
+            floatingbase=True,
+            limits=True,
+            ground=True,
+            new_world=True,
+            actuator_ids=[0, 1, 2, 3, 4],
+        )
+
+        # Duplicate the world to test multi-world handling
+        builder_0.begin_world()
+        builder_0.add_builder(copy.deepcopy(builder_0))
+        builder_0.end_world()
+
+        # Create a fourbar using Kamino's ModelBuilderKamino
+        builder_1: ModelBuilderKamino = basics.build_boxes_fourbar(
+            builder=None,
+            z_offset=0.0,
+            fixedbase=False,
+            floatingbase=True,
+            limits=True,
+            ground=True,
+            new_world=True,
+            actuator_ids=[0, 1, 2, 3, 4],
+        )
+
+        # Duplicate the world to test multi-world handling
+        builder_1.add_builder(copy.deepcopy(builder_1))
+
+        # Create models from the builders and conversion operations, and check for consistency
+        model_0: Model = builder_0.finalize(skip_validation_joints=True)
+        model_1: ModelKamino = builder_1.finalize()
+        model_2: ModelKamino = ModelKamino.from_newton(model_0)
+        test_util_checks.assert_model_equal(self, model_1, model_2)
+
+        # Create a Newton control container
+        control_0: Control = model_0.control()
+        self.assertIsInstance(control_0.joint_f, wp.array)
+        self.assertEqual(control_0.joint_f.size, model_0.joint_dof_count)
+
+        # Create a Kamino control container
         control_1: ControlKamino = model_1.control()
-        control_2 = ControlKamino.from_newton(control_0_nwt)
-        assert_control_equal(self, control_0, control_1)
-        assert_control_equal(self, control_1, control_2)
+        self.assertIsInstance(control_1.tau_j, wp.array)
+        self.assertEqual(control_1.tau_j.size, model_1.size.sum_of_num_joint_dofs)
 
-        ###
-        # Data
-        ###
+        # Create a Kamino control container
+        control_2: ControlKamino = ControlKamino.from_newton(control_0)
+        self.assertIsInstance(control_2.tau_j, wp.array)
+        self.assertIs(control_2.tau_j, control_0.joint_f)
+        self.assertEqual(control_2.tau_j.size, model_0.joint_dof_count)
+        test_util_checks.assert_control_equal(self, control_2, control_1)
 
-        # TODO: Add checks
-        # data_0: DataKamino = model_0.data()
-        # data_1: DataKamino = model_1.data()
-        # assert_data_equal(self, data_0, data_1)
+        # Convert back to a Newton control container
+        control_3: Control = ControlKamino.to_newton(control_2)
+        self.assertIsInstance(control_3.joint_f, wp.array)
+        self.assertIs(control_3.joint_f, control_2.tau_j)
+        self.assertEqual(control_3.joint_f.size, model_0.joint_dof_count)
 
-        ###
-        # Contacts
-        ###
 
-        # TODO: Add checks
-        model_max_contacts_1, world_max_contacts_1 = builder_1.compute_required_contact_capacity(
-            max_contacts_per_pair=DEFAULT_GEOM_PAIR_MAX_CONTACTS,
-            max_contacts_per_world=None,  # Let the builder compute this value from the number of geoms/shapes
-        )
+# class TestKaminoNewtonIntegration(unittest.TestCase):
+#     def setUp(self):
+#         if not test_context.setup_done:
+#             setup_tests(clear_cache=False)
+#         self.default_device = wp.get_device(test_context.device)
+#         # self.verbose = test_context.verbose  # Set to True to enable verbose output
+#         self.verbose = True  # Set to True to enable verbose output
 
-        # TODO
-        msg.info("model_0_nwt.shape_collision_filter_pairs: %s", model_0_nwt.shape_collision_filter_pairs)
-        msg.info("model_0_nwt.shape_contact_pair_count: %s", model_0_nwt.shape_contact_pair_count)
-        msg.info("model_0_nwt.shape_contact_pairs:\n%s\n\n", model_0_nwt.shape_contact_pairs)
+#         # Set debug-level logging to print verbose test output to console
+#         if self.verbose:
+#             print("\n")  # Add newline before test output for better readability
+#             msg.set_log_level(msg.LogLevel.INFO)
+#         else:
+#             msg.reset_log_level()
 
-        # TODO
-        msg.info("model_0_nwt.rigid_contact_max: %s", model_0_nwt.rigid_contact_max)
-        msg.info("builder_1.model_max_contacts_1: %s", model_max_contacts_1)
-        msg.info("builder_1.world_max_contacts_1: %s\n\n", world_max_contacts_1)
+#     def tearDown(self):
+#         self.default_device = None
+#         if self.verbose:
+#             msg.reset_log_level()
 
-        # TODO
-        contacts_0_nwt: Contacts = Contacts(
-            rigid_contact_max=model_0_nwt.rigid_contact_max,
-            soft_contact_max=0,
-            requires_grad=model_0_nwt.requires_grad,
-            device=model_0_nwt.device,
-            per_contact_shape_properties=False,
-            clear_buffers=True,
-        )
-        contacts_1: ContactsKamino = ContactsKamino(capacity=world_max_contacts_1, device=model_1.device)
+#     def test_usd_boxes_fourbar_newton(self):
+#         """
+#         TODO
+#         """
+#         builder = ModelBuilder()
 
-        # TODO
-        msg.info("contacts_0_nwt.rigid_contact_max: %s", contacts_0_nwt.rigid_contact_max)
-        msg.info("contacts_1.model_max_contacts_host: %s", contacts_1.model_max_contacts_host)
-        msg.info("contacts_1.world_max_contacts_host: %s\n\n", contacts_1.world_max_contacts_host)
+#         # TODO
+#         USD_MODEL_PATH = os.path.join(get_basics_usd_assets_path(), "boxes_fourbar.usda")
+#         builder.begin_world()
+#         builder.add_usd(source=USD_MODEL_PATH, joint_ordering=None)
+#         builder.end_world()
+
+#         # TODO
+#         msg.info("builder.particle_count: %s", builder.particle_count)
+#         msg.info("builder.body_count: %s", builder.body_count)
+#         msg.info("builder.body_world: %s", builder.body_world)
+#         msg.info("builder.body_key: %s", builder.body_key)
+#         msg.info("builder.shape_count: %s", builder.shape_count)
+#         msg.info("builder.shape_world: %s", builder.shape_world)
+#         msg.info("builder.shape_key: %s", builder.shape_key)
+#         msg.info("builder.joint_count: %s", builder.joint_count)
+#         msg.info("builder.joint_coord_count: %s", builder.joint_coord_count)
+#         msg.info("builder.joint_dof_count: %s", builder.joint_dof_count)
+#         msg.info("builder.joint_key: %s", builder.joint_key)
+#         msg.info("builder.joint_world: %s", builder.joint_world)
+#         msg.info("builder.joint_parent: %s", builder.joint_parent)
+#         msg.info("builder.joint_child: %s", builder.joint_child)
+#         msg.info("builder.joint_q_start: %s", builder.joint_q_start)
+#         msg.info("builder.joint_qd_start: %s", builder.joint_qd_start)
+#         msg.info("builder.articulation_count: %s", builder.articulation_count)
+#         msg.info("builder.articulation_start: %s", builder.articulation_start)
+#         msg.info("builder.articulation_world: %s", builder.articulation_world)
+
+#     def test_boxes_fourbar_newton(self):
+#         """
+#         TODO
+#         """
+#         ###
+#         # Builders
+#         ###
+
+#         # Create a fourbar using Newton's ModelBuilder
+#         builder_0: ModelBuilder = build_boxes_fourbar_newton(
+#             builder=None,
+#             z_offset=0.0,
+#             fixedbase=False,
+#             floatingbase=True,
+#             limits=True,
+#             ground=True,
+#             new_world=True,
+#             actuator_ids=[0, 1, 2, 3, 4],
+#         )
+
+#         # Duplicate the world to test multi-world handling
+#         builder_0.begin_world()
+#         builder_0.add_builder(copy.deepcopy(builder_0))
+#         builder_0.end_world()
+
+#         # Create a fourbar using Kamino's ModelBuilderKamino
+#         builder_1: ModelBuilderKamino = basics.build_boxes_fourbar(
+#             builder=None,
+#             z_offset=0.0,
+#             fixedbase=False,
+#             floatingbase=True,
+#             limits=True,
+#             ground=True,
+#             new_world=True,
+#             actuator_ids=[0, 1, 2, 3, 4],
+#         )
+
+#         # Duplicate the world to test multi-world handling
+#         builder_1.add_builder(copy.deepcopy(builder_1))
+
+#         ###
+#         # Models
+#         ###
+
+#         # Create models from the builders and conversion operations, and check for consistency
+#         model_0_nwt: Model = builder_0.finalize(skip_validation_joints=True)
+#         model_0: ModelKamino = ModelKamino.from_newton(model_0_nwt)
+#         model_1: ModelKamino = builder_1.finalize()
+#         assert_model_equal(self, model_0, model_1)
+
+#         ###
+#         # State
+#         ###
+
+#         # Create states from the models and conversion operations, and check for consistency
+#         state_0_nwt: State = model_0_nwt.state()
+#         state_0: StateKamino = model_0.state()
+#         state_1: StateKamino = model_1.state()
+#         state_2 = StateKamino.from_newton(model_0_nwt, state_0_nwt)
+#         assert_state_equal(self, state_0, state_1)
+#         assert_state_equal(self, state_1, state_2)
+
+#         ###
+#         # Control
+#         ###
+
+#         # Create controls from the models and conversion operations, and check for consistency
+#         control_0_nwt: Control = model_0_nwt.control()
+#         control_0: ControlKamino = model_0.control()
+#         control_1: ControlKamino = model_1.control()
+#         control_2 = ControlKamino.from_newton(control_0_nwt)
+#         assert_control_equal(self, control_0, control_1)
+#         assert_control_equal(self, control_1, control_2)
+
+#         ###
+#         # Data
+#         ###
+
+#         # TODO: Add checks
+#         # data_0: DataKamino = model_0.data()
+#         # data_1: DataKamino = model_1.data()
+#         # assert_data_equal(self, data_0, data_1)
+
+#         ###
+#         # Contacts
+#         ###
+
+#         # TODO: Add checks
+#         model_max_contacts_1, world_max_contacts_1 = builder_1.compute_required_contact_capacity(
+#             max_contacts_per_pair=DEFAULT_GEOM_PAIR_MAX_CONTACTS,
+#             max_contacts_per_world=None,  # Let the builder compute this value from the number of geoms/shapes
+#         )
+
+#         # TODO
+#         msg.info("model_0_nwt.shape_collision_filter_pairs: %s", model_0_nwt.shape_collision_filter_pairs)
+#         msg.info("model_0_nwt.shape_contact_pair_count: %s", model_0_nwt.shape_contact_pair_count)
+#         msg.info("model_0_nwt.shape_contact_pairs:\n%s\n\n", model_0_nwt.shape_contact_pairs)
+
+#         # TODO
+#         msg.info("model_0_nwt.rigid_contact_max: %s", model_0_nwt.rigid_contact_max)
+#         msg.info("builder_1.model_max_contacts_1: %s", model_max_contacts_1)
+#         msg.info("builder_1.world_max_contacts_1: %s\n\n", world_max_contacts_1)
+
+#         # TODO
+#         contacts_0_nwt: Contacts = Contacts(
+#             rigid_contact_max=model_0_nwt.rigid_contact_max,
+#             soft_contact_max=0,
+#             requires_grad=model_0_nwt.requires_grad,
+#             device=model_0_nwt.device,
+#             per_contact_shape_properties=False,
+#             clear_buffers=True,
+#         )
+#         contacts_1: ContactsKamino = ContactsKamino(capacity=world_max_contacts_1, device=model_1.device)
+
+#         # TODO
+#         msg.info("contacts_0_nwt.rigid_contact_max: %s", contacts_0_nwt.rigid_contact_max)
+#         msg.info("contacts_1.model_max_contacts_host: %s", contacts_1.model_max_contacts_host)
+#         msg.info("contacts_1.world_max_contacts_host: %s\n\n", contacts_1.world_max_contacts_host)
 
 
 ###

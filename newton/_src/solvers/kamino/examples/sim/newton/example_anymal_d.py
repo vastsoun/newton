@@ -27,74 +27,78 @@ import warp as wp
 import newton
 import newton.examples
 import newton.utils
-from newton import ActuatorMode
 
 
 class Example:
     def __init__(self, viewer, num_worlds=8, args=None):
+        # TODO
         self.fps = 50
         self.frame_dt = 1.0 / self.fps
         self.sim_time = 0.0
         self.sim_substeps = 4
         self.sim_dt = self.frame_dt / self.sim_substeps
-
         self.num_worlds = num_worlds
-
         self.viewer = viewer
-
         self.device = wp.get_device()
 
-        articulation_builder = newton.ModelBuilder(up_axis=newton.Axis.Z)
-        newton.solvers.SolverKamino.register_custom_attributes(articulation_builder)
-        articulation_builder.default_joint_cfg = newton.ModelBuilder.JointDofConfig(
-            limit_ke=1.0e3, limit_kd=1.0e1, friction=1e-5
-        )
-        articulation_builder.default_shape_cfg.ke = 2.0e3
-        articulation_builder.default_shape_cfg.kd = 1.0e2
-        articulation_builder.default_shape_cfg.kf = 1.0e3
-        articulation_builder.default_shape_cfg.mu = 0.75
+        # Create a single-robot model builder and register the Kamino-specific custom attributes
+        robot_builder = newton.ModelBuilder(up_axis=newton.Axis.Z)
+        newton.solvers.SolverKamino.register_custom_attributes(robot_builder)
 
+        # Load the Anymal D USD and add it to the builder
         asset_path = newton.utils.download_asset("anybotics_anymal_d")
         asset_file = str(asset_path / "usd" / "anymal_d.usda")
-        articulation_builder.add_usd(
+        robot_builder.add_usd(
             asset_file,
             collapse_fixed_joints=False,
             enable_self_collisions=False,
             hide_collision_shapes=True,
         )
 
-        articulation_builder.joint_q[:3] = [0.0, 0.0, 0.62]
-        if len(articulation_builder.joint_q) > 6:
-            articulation_builder.joint_q[3:7] = [0.0, 0.0, 0.0, 1.0]
+        # Add a ground plane
+        # TODO: @nvtw: Remove this once global ground planes are supported
+        robot_builder.add_shape_box(
+            key="ground",
+            body=-1,
+            hx=10.0,
+            hy=10.0,
+            hz=0.5,
+            xform=wp.transformf(0.0, 0.0, -0.5, 0.0, 0.0, 0.0, 1.0),
+            cfg=newton.ModelBuilder.ShapeConfig(contact_margin=0.0),
+        )
 
-        for i in range(articulation_builder.joint_dof_count):
-            articulation_builder.joint_target_ke[i] = 150
-            articulation_builder.joint_target_kd[i] = 5
-            articulation_builder.joint_act_mode[i] = int(ActuatorMode.POSITION)
-
+        # Create the multi-world model by duplicating the single-robot
+        # builder for the specified number of worlds
         builder = newton.ModelBuilder(up_axis=newton.Axis.Z)
         for _ in range(self.num_worlds):
-            builder.add_world(articulation_builder)
+            builder.add_world(robot_builder)
+        # TODO: @nvtw: Add support for global ground plane
+        # TODO: builder.add_ground_plane()
 
-        builder.default_shape_cfg.ke = 1.0e3
-        builder.default_shape_cfg.kd = 1.0e2
-        builder.add_ground_plane()
-
-        # TODO
+        # Create the model from the builder
         self.model = builder.finalize()
 
+        # Create the Kamino solver for the given model
         # TODO: Set solver configurations
         self.solver = newton.solvers.SolverKamino(self.model)
 
-        # TODO
+        # Create state and control data containers
         self.state_0 = self.model.state()
         self.state_1 = self.model.state()
         self.control = self.model.control()
 
-        # ensure this is called at the end of the Example constructor
+        # Reset the simulation state to a valid initial configuration above the ground
+        self.base_q = wp.zeros(shape=(self.num_worlds,), dtype=wp.transformf)
+        q_b = wp.quat_identity(dtype=wp.float32)
+        q_base = wp.transformf((0.0, 0.0, 0.7), q_b)
+        self.base_q.assign([q_base] * self.num_worlds)
+        self.solver.reset(state_out=self.state_0, base_q=self.base_q)
+
+        # Attach the model to the viewer for visualization
         self.viewer.set_model(self.model)
 
-        # put graph capture into it's own function
+        # Capture the simulation graph if running on CUDA
+        # NOTE: This only has an effect on GPU devices
         self.capture()
 
     def capture(self):
@@ -127,7 +131,7 @@ class Example:
     def render(self):
         self.viewer.begin_frame(self.sim_time)
         self.viewer.log_state(self.state_0)
-        # self.viewer.log_contacts(self.contacts, self.state_0)
+        # TODO: self.viewer.log_contacts(self.contacts, self.state_0)
         self.viewer.end_frame()
 
     def test_final(self):

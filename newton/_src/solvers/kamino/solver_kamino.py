@@ -1144,6 +1144,61 @@ class SolverKamino(SolverBase):
             settings=solver_settings,
         )
 
+    def reset(
+        self,
+        state_out: State,
+        world_mask: wp.array | None = None,
+        actuator_q: wp.array | None = None,
+        actuator_u: wp.array | None = None,
+        joint_q: wp.array | None = None,
+        joint_u: wp.array | None = None,
+        base_q: wp.array | None = None,
+        base_u: wp.array | None = None,
+    ):
+        """
+        Resets the simulation state given a combination of desired base body
+        and joint states, as well as an optional per-world mask array indicating
+        which worlds should be reset. The reset state is written to `state_out`.
+
+        For resets given absolute quantities like base body poses, the
+        `state_out` must initially contain the current state of the simulation.
+
+        Args:
+            state_out (State):
+                The output state container to which the reset state data is written.
+            world_mask (wp.array, optional):
+                Optional array of per-world masks indicating which worlds should be reset.\n
+                Shape of `(num_worlds,)` and type :class:`wp.int8 | wp.bool`
+            actuator_q (wp.array, optional):
+                Optional array of target actuated joint coordinates.\n
+                Shape of `(num_actuated_joint_coords,)` and type :class:`wp.float32`
+            actuator_u (wp.array, optional):
+                Optional array of target actuated joint DoF velocities.\n
+                Shape of `(num_actuated_joint_dofs,)` and type :class:`wp.float32`
+            joint_q (wp.array, optional):
+                Optional array of target joint coordinates.\n
+                Shape of `(num_joint_coords,)` and type :class:`wp.float32`
+            joint_qd (wp.array, optional):
+                Optional array of target joint DoF velocities.\n
+                Shape of `(num_joint_dofs,)` and type :class:`wp.float32`
+            base_q (wp.array, optional):
+                Optional array of target base body poses.\n
+                Shape of `(num_worlds,)` and type :class:`wp.transformf`
+            base_qd (wp.array, optional):
+                Optional array of target base body twists.\n
+                Shape of `(num_worlds,)` and type :class:`wp.spatial_vectorf`
+        """
+        self._solver_kamino.reset(
+            state_out=StateKamino.from_newton(self.model, state_out),
+            world_mask=world_mask,
+            actuator_q=actuator_q,
+            actuator_u=actuator_u,
+            joint_q=joint_q,
+            joint_u=joint_u,
+            base_q=base_q,
+            base_u=base_u,
+        )
+
     @override
     def step(self, state_in: State, state_out: State, control: Control, contacts: Contacts, dt: float):
         """

@@ -24,6 +24,7 @@ import numpy as np
 import warp as wp
 
 from .....core.types import nparray
+from .....usd import utils as usd_utils
 from ...core.bodies import RigidBodyDescriptor
 from ...core.builder import ModelBuilderKamino
 from ...core.geometry import GeometryDescriptor
@@ -267,6 +268,14 @@ class USDImporter:
         if "PhysicsRigidBodyAPI" in parent.GetAppliedSchemas():
             return parent
         return USDImporter._get_prim_parent_body(parent)
+
+    @staticmethod
+    def _prim_is_rigid_body(prim) -> bool:
+        if prim is None:
+            return False
+        if "PhysicsRigidBodyAPI" in prim.GetAppliedSchemas():
+            return True
+        return False
 
     @staticmethod
     def _get_material_default_override(prim) -> bool:
@@ -586,13 +595,12 @@ class USDImporter:
         m_i_default = 0.0
         i_r_com_i_default = np.zeros(3, dtype=np.float32)
         i_I_i_default = np.zeros((3, 3), dtype=np.float32)
-        i_q_i_pa_default = np.array([0.0, 0.0, 0.0, 1.0], dtype=np.float32)
 
         # Extract the mass, center of mass, diagonal inertia, and principal axes from the prim
         m_i = mass_unit * self._parse_float(rigid_body_prim, "physics:mass", default=m_i_default)
         i_r_com_i = distance_unit * self._parse_vec(rigid_body_prim, "physics:centerOfMass", default=i_r_com_i_default)
         i_I_i_diag = inertia_unit * self._parse_vec(rigid_body_prim, "physics:diagonalInertia", default=i_I_i_default)
-        i_q_i_pa = self._parse_quat(rigid_body_prim, "physics:principalAxes", default=i_q_i_pa_default)
+        i_q_i_pa = usd_utils.get_quat(rigid_body_prim, "physics:principalAxes", wp.quat_identity())
         msg.debug(f"m_i: {m_i}")
         msg.debug(f"i_r_com_i: {i_r_com_i}")
         msg.debug(f"i_I_i_diag: {i_I_i_diag}")
@@ -622,13 +630,14 @@ class USDImporter:
         # TODO: Should we handle massless bodies?
 
         # Compute the moment of inertia matrix (in body-local coordinates) from the diagonal inertia and principal axes
-        i_I_i_diag = wp.diag(vec3f(i_I_i_diag))
-        i_q_i_pa = wp.normalize(quatf(i_q_i_pa))
-        R_i_pa = wp.quat_to_matrix(i_q_i_pa)
-        i_I_i = R_i_pa @ i_I_i_diag @ wp.transpose(R_i_pa)
+        if np.linalg.norm(i_I_i_diag) > 0.0:
+            R_i_pa = np.array(wp.quat_to_matrix(i_q_i_pa), dtype=np.float32).reshape(3, 3)
+            i_I_i = R_i_pa @ np.diag(i_I_i_diag) @ R_i_pa.T
+            i_I_i = wp.mat33(i_I_i)
+        else:
+            i_I_i = wp.mat33(0.0)
         msg.debug(f"i_I_i_diag:\n{i_I_i_diag}")
         msg.debug(f"i_q_i_pa: {i_q_i_pa}")
-        msg.debug(f"R_i_pa:\n{R_i_pa}")
         msg.debug(f"i_I_i:\n{i_I_i}")
 
         # Compute the center of mass in world coordinates
@@ -1186,7 +1195,7 @@ class USDImporter:
             name = path
         # Otherwise define the a condensed name based on the body and geometry layer
         else:
-            name = f"{self._get_leaf_name(body_name)}/{layer}/{name}"
+            name = f"{self._get_leaf_name(body_name)}/visual/{layer}/{name}"
         msg.debug(f"[Geom]: name: {name}")
 
         ###
@@ -1365,7 +1374,7 @@ class USDImporter:
             name = path
         # Otherwise define the a condensed name based on the body and geometry layer
         else:
-            name = f"{self._get_leaf_name(body_name)}/{layer}/{name}"
+            name = f"{self._get_leaf_name(body_name)}/physics/{layer}/{name}"
         msg.debug(f"[Geom]: name: {name}")
 
         ###
@@ -1557,9 +1566,11 @@ class USDImporter:
 
         # Retrieve the default prim name to assign as the name of the world
         if stage.HasDefaultPrim():
-            default_prim_name = stage.GetDefaultPrim().GetName()
+            default_prim = stage.GetDefaultPrim()
+            default_prim_name = default_prim.GetName()
         else:
             default_prim_name = Path(source).name if isinstance(source, str) else "world"
+        msg.debug(f"default_prim_path: {default_prim.GetPath() if stage.HasDefaultPrim() else 'N/A'}")
         msg.debug(f"default_prim_name: {default_prim_name}")
 
         ###
@@ -1707,12 +1718,41 @@ class USDImporter:
         msg.debug(f"cgroup_index_map: {cgroup_index_map}")
 
         ###
+        # Articulations
+        ###
+
+        # Construct a list of articulation root bodies to create FREE
+        # joints if not already defined explicitly in the USD file
+        articulation_root_body_paths = []
+        if self.UsdPhysics.ObjectType.Articulation in ret_dict:
+            paths, articulation_descs = ret_dict[self.UsdPhysics.ObjectType.Articulation]
+            for path, _desc in zip(paths, articulation_descs, strict=False):
+                articulation_prim = stage.GetPrimAtPath(path)
+                try:
+                    parent_prim = articulation_prim.GetParent()
+                except Exception:
+                    parent_prim = None
+                if articulation_prim.HasAPI(self.UsdPhysics.ArticulationRootAPI):
+                    if self._prim_is_rigid_body(articulation_prim):
+                        msg.debug(f"Adding articulation_prim at '{path}' as articulation root body")
+                        articulation_root_body_paths.append(articulation_prim.GetPath())
+                elif (
+                    parent_prim is not None
+                    and parent_prim.IsValid()
+                    and parent_prim.HasAPI(self.UsdPhysics.ArticulationRootAPI)
+                ):
+                    if self._prim_is_rigid_body(parent_prim):
+                        msg.debug(f"Adding parent_prim at '{parent_prim.GetPath()}' as articulation root body")
+                        articulation_root_body_paths.append(parent_prim.GetPath())
+
+        ###
         # Bodies
         ###
 
         # Define a mapping from prim paths to body indices
         # NOTE: This can be used for both rigid and flexible bodies
         body_index_map = {}
+        body_path_map = {}
 
         # Parse for and import UsdPhysicsRigidBody prims
         if self.UsdPhysics.ObjectType.RigidBody in ret_dict:
@@ -1730,7 +1770,9 @@ class USDImporter:
                 )
                 if rigid_body_desc is not None:
                     msg.debug(f"Adding body '{builder.num_bodies}':\n{rigid_body_desc}\n")
-                    body_index_map[str(prim_path)] = builder.add_rigid_body_descriptor(body=rigid_body_desc)
+                    body_index = builder.add_rigid_body_descriptor(body=rigid_body_desc)
+                    body_index_map[str(prim_path)] = body_index
+                    body_path_map[body_index] = str(prim_path)
                 else:
                     msg.debug(f"Rigid body @'{prim_path}' not loaded. Will be treated as static geometry.")
                     body_index_map[str(prim_path)] = -1  # Body not loaded, is statically part of the world
@@ -1752,6 +1794,8 @@ class USDImporter:
         msg.debug(f"joint_type_names: {joint_type_names}")
 
         # Then iterate over each pair of prim path and joint type-name to parse the joint specifications
+        articulation_root_joints: list[JointDescriptor] = []
+        joint_descriptors: list[JointDescriptor] = []
         for joint_prim_path, joint_type_name in zip(joint_prim_paths, joint_type_names, strict=False):
             joint_type = self.supported_usd_joint_types[self.supported_usd_joint_type_names.index(joint_type_name)]
             joint_paths, joint_specs = ret_dict[joint_type]
@@ -1770,22 +1814,86 @@ class USDImporter:
                     )
                     if joint_desc is not None:
                         msg.debug(f"Adding joint '{builder.num_joints}':\n{joint_desc}\n")
-                        builder.add_joint_descriptor(joint=joint_desc)
+                        joint_descriptors.append(joint_desc)
+                        # Check if the joint's Follower body is the articulation root
+                        if body_path_map[joint_desc.bid_F] in articulation_root_body_paths:
+                            articulation_root_joints.append(joint_desc)
                     else:
                         msg.debug(f"Joint @'{prim_path}' not loaded. Will be ignored.")
                     break  # Stop after the first match
+
+        # For each articulation root body that does not have an explicit joint
+        # defined in the USD file, add a FREE joint to attach it to the world
+        if len(articulation_root_joints) != len(articulation_root_body_paths):
+            for root_body_path in articulation_root_body_paths:
+                # Check if the root body already has a joint defined in the USD file
+                root_body_index = int(body_index_map[str(root_body_path)])
+                has_joint = False
+                for joint_desc in articulation_root_joints:
+                    if joint_desc.has_follower_body(root_body_index):
+                        has_joint = True
+                        break
+                if has_joint:
+                    msg.debug(
+                        f"Articulation root body '{root_body_path}' already has a joint defined. Skipping FREE joint creation."
+                    )
+                    continue
+
+                # If not, create a FREE joint descriptor to attach the root body to the
+                # world and insert it at the beginning of the joint descriptors list
+                root_body_name = builder.bodies[root_body_index].name
+                joint_desc = JointDescriptor(
+                    name=f"world_to_{root_body_name}",
+                    dof_type=JointDoFType.FREE,
+                    act_type=JointActuationType.PASSIVE,
+                    bid_B=-1,
+                    bid_F=root_body_index,
+                    X_j=Axis.X.to_mat33(),
+                )
+                msg.debug(
+                    f"Adding FREE joint '{joint_desc.name}' to attach articulation "
+                    f"root body '{root_body_path}' to the world:\n{joint_desc}\n"
+                )
+                joint_descriptors.insert(0, joint_desc)
+
+        # Add all descriptors to the builder
+        for joint_desc in joint_descriptors:
+            builder.add_joint_descriptor(joint=joint_desc)
 
         ###
         # Geometry
         ###
 
-        # Traverse the stage to collect geometry prim paths and their types
-        for prim in stage.Traverse():
-            # Skip non-geom prims
-            if not prim.IsA(self.UsdGeom.Gprim):
-                msg.debug(f"Skipping non-geom prim: {prim.GetPath()}")
-                continue
+        # Define a list to hold all geometry prims found in the
+        # stage, including those nested within instances
+        geom_prims = []
 
+        # Define a recursive function to traverse the stage and collect
+        # all UsdGeom prims, including those nested within instances
+        def _collect_geom_prims(prim):
+            if prim.IsA(self.UsdGeom.Gprim):
+                msg.debug(f"Found UsdGeom prim: {prim.GetPath()}, type: {prim.GetTypeName()}")
+                geom_prims.append(prim)
+            elif prim.IsInstance():
+                proto = prim.GetPrototype()
+                for child in proto.GetChildren():
+                    inst_child = stage.GetPrimAtPath(child.GetPath().ReplacePrefix(proto.GetPath(), prim.GetPath()))
+                    _collect_geom_prims(inst_child)
+
+        # Traverse the stage to collect geometry prims
+        for prim in stage.Traverse():
+            _collect_geom_prims(prim)
+        msg.debug(f"num_geom_prims: {len(geom_prims)}")
+        msg.debug(f"geom_prims: {geom_prims}")
+
+        # Define separate lists to hold geometry descriptors for visual and physics geometry
+        visual_geoms: list[GeometryDescriptor] = []
+        physics_geoms: list[GeometryDescriptor] = []
+
+        # Define a function to process each geometry prim and construct geometry descriptors based on whether
+        # they are marked for physics simulation or not. The geometry descriptors are then added to the
+        # corresponding list to be added to the builder at the end of the process.
+        def _process_geom_prim(prim):
             # Extract UsdGeom prim information
             geom_prim_path = prim.GetPath()
             typename = prim.GetTypeName()
@@ -1811,7 +1919,7 @@ class USDImporter:
                         msg.debug(f"Found {len(geom_paths)} geometry descriptors of type '{typename}'")
                     else:
                         msg.critical(f"No UsdPhysics shape descriptors found that match prim type '{typename}'")
-                        continue
+                        return
 
                     # Iterate over physics geom descriptors until a match to the target geom prims is found
                     for geom_path, geom_spec in zip(geom_paths, geom_specs, strict=False):
@@ -1832,7 +1940,7 @@ class USDImporter:
                             break  # Stop after the first match
                 else:
                     msg.warning(f"Skipping unsupported physics geom prim: {geom_prim_path} of type {typename}")
-                    continue
+                    return
             else:
                 if typename in self.supported_usd_geom_type_names:
                     geom_type_index = self.supported_usd_geom_type_names.index(typename)
@@ -1847,21 +1955,62 @@ class USDImporter:
                     )
                 else:
                     msg.warning(f"Skipping unsupported geom prim: {geom_prim_path} of type {typename}")
-                    continue
+                    return
 
             # If construction succeeded, append it to the model builder
             if geom_desc is not None:
                 # Skip static geometry if not requested
                 if geom_desc.bid == -1 and not load_static_geometry:
-                    continue
+                    return
                 # Append geometry descriptor to appropriate entity
                 if type(geom_desc) is GeometryDescriptor:
-                    msg.debug("Adding geom '%d':\n%s\n", builder.num_geoms, geom_desc)
-                    builder.add_geometry_descriptor(geom=geom_desc)
+                    if has_physics_schemas:
+                        msg.debug("Adding physics geom '%d':\n%s\n", builder.num_geoms, geom_desc)
+                        physics_geoms.append(geom_desc)
+                    else:
+                        msg.debug("Adding visual geom '%d':\n%s\n", builder.num_geoms, geom_desc)
+                        visual_geoms.append(geom_desc)
 
             # Indicate to user that a UsdGeom has potentially not been marked for physics simulation
             else:
                 msg.critical("Failed to parse geom prim '%s'", geom_prim_path)
+
+        # Process each geometry prim to construct geometry descriptors
+        for geom_prim in geom_prims:
+            _process_geom_prim(geom_prim)
+
+        # Add all geoms grouped by whether they belong to the physics scene or not
+        for geom_desc in visual_geoms:
+            builder.add_geometry_descriptor(geom=geom_desc)
+        for geom_desc in physics_geoms:
+            builder.add_geometry_descriptor(geom=geom_desc)
+
+        ###
+        # DEBUG
+        ###
+
+        # base_visuals = stage.GetPrimAtPath("/anymal/base/visuals")
+        # msg.critical(f"base_visuals: {base_visuals}")
+        # base_visuals_typeinfo = base_visuals.GetPrimTypeInfo()
+        # base_visuals_typename = base_visuals.GetTypeName()
+        # base_visuals_schemas = base_visuals.GetAppliedSchemas()
+
+        # if base_visuals.IsInstance():
+        #     base_visuals_proto = base_visuals.GetPrototype()
+        #     msg.critical(f"base_visuals_proto: {base_visuals_proto}")
+        #     for child in base_visuals_proto.GetChildren():
+        #         # remap prototype child path to this instance's path (instance proxy)
+        #         inst_path = child.GetPath().ReplacePrefix(base_visuals_proto.GetPath(), base_visuals.GetPath())
+        #         inst_child = stage.GetPrimAtPath(inst_path)
+        #         msg.critical(f"instance child: {inst_child}, type: {inst_child.GetTypeName()}, schemas: {inst_child.GetAppliedSchemas()}")
+
+        # msg.critical(f"base_visuals.children: {base_visuals.GetAllChildren()}")
+        # msg.critical(f"base_visuals_typeinfo: {base_visuals_typeinfo}")
+        # msg.critical(f"base_visuals_typeinfo.typename: {base_visuals_typeinfo.GetTypeName()}")
+        # msg.critical(f"base_visuals_typeinfo.applied_api_schemas: {base_visuals_typeinfo.GetAppliedAPISchemas()}")
+        # msg.critical(f"base_visuals_typeinfo.prim_definition: {base_visuals_typeinfo.GetPrimDefinition()}")
+        # msg.critical(f"base_visuals_typename: {base_visuals_typename}")
+        # msg.critical(f"base_visuals_schemas: {base_visuals_schemas}")
 
         ###
         # Summary

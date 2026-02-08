@@ -31,6 +31,10 @@ from .data import DataKamino, DataKaminoInfo
 from .geometry import GeometriesData, GeometriesModel
 from .gravity import GravityModel
 from .joints import (
+    JOINT_DQMAX,
+    JOINT_QMAX,
+    JOINT_QMIN,
+    JOINT_TAUMAX,
     JointActuationType,
     JointsData,
     JointsModel,
@@ -691,18 +695,18 @@ class ModelKamino:
         joint_B_r_Bj_np = np.zeros((model.joint_count, 3), dtype=float)
         joint_F_r_Fj_np = np.zeros((model.joint_count, 3), dtype=float)
         joint_X_j_np = np.zeros((model.joint_count, 9), dtype=float)
-        joint_coord_start_np = np.zeros((model.joint_count,), dtype=int32)
-        joint_dofs_start_np = np.zeros((model.joint_count,), dtype=int32)
+        joint_coord_start_np = np.zeros((model.joint_count,), dtype=int)
+        joint_dofs_start_np = np.zeros((model.joint_count,), dtype=int)
         joint_cts_start_np = np.zeros((model.joint_count,), dtype=int)
-        joint_actuated_coord_start_np = np.zeros((model.joint_count,), dtype=int32)
-        joint_actuated_dofs_start_np = np.zeros((model.joint_count,), dtype=int32)
-        joint_passive_coord_start_np = np.zeros((model.joint_count,), dtype=int32)
-        joint_passive_dofs_start_np = np.zeros((model.joint_count,), dtype=int32)
+        joint_actuated_coord_start_np = np.zeros((model.joint_count,), dtype=int)
+        joint_actuated_dofs_start_np = np.zeros((model.joint_count,), dtype=int)
+        joint_passive_coord_start_np = np.zeros((model.joint_count,), dtype=int)
+        joint_passive_dofs_start_np = np.zeros((model.joint_count,), dtype=int)
         joint_wid_np = model.joint_world.numpy()
         joint_type_np = model.joint_type.numpy()
         joint_act_mode_np = model.joint_act_mode.numpy()
-        msg.warning("joint_type_np: %s", joint_type_np)
-        msg.warning("joint_act_mode_np: %s", joint_act_mode_np)
+        msg.error("joint_type_np: %s", joint_type_np)
+        msg.error("joint_act_mode_np: %s", joint_act_mode_np)
         joint_parent_np = model.joint_parent.numpy()
         joint_child_np = model.joint_child.numpy()
         joint_X_p_np = model.joint_X_p.numpy()
@@ -724,7 +728,7 @@ class ModelKamino:
             joint_passive_dofs_start_np[j] = num_passive_joint_dofs_np[wid_j]
 
             # TODO
-            dof_type_j = newton_to_kamino_joint_dof_type(joint_type_np[j])
+            dof_type_j = newton_to_kamino_joint_dof_type(int(joint_type_np[j]))
             msg.warning("[%s]: dof_type_j: %s", j, dof_type_j)
             ncoords_j = dof_type_j.num_coords
             ndofs_j = dof_type_j.num_dofs
@@ -782,6 +786,21 @@ class ModelKamino:
             joint_B_r_Bj_np[j, :] = B_r_Bj
             joint_F_r_Fj_np[j, :] = F_r_Fj
             joint_X_j_np[j, :] = X_j
+        msg.error("joint_act_type_np: %s", joint_act_type_np)
+
+        # TODO
+        joint_limit_lower_np = model.joint_limit_lower.numpy()
+        joint_limit_upper_np = model.joint_limit_upper.numpy()
+        joint_velocity_limit_np = model.joint_velocity_limit.numpy()
+        joint_effort_limit_np = model.joint_effort_limit.numpy()
+        np.clip(a=joint_limit_lower_np, a_min=JOINT_QMIN, a_max=JOINT_QMAX, out=joint_limit_lower_np)
+        np.clip(a=joint_limit_upper_np, a_min=JOINT_QMIN, a_max=JOINT_QMAX, out=joint_limit_upper_np)
+        np.clip(a=joint_velocity_limit_np, a_min=-JOINT_DQMAX, a_max=JOINT_DQMAX, out=joint_velocity_limit_np)
+        np.clip(a=joint_effort_limit_np, a_min=-JOINT_TAUMAX, a_max=JOINT_TAUMAX, out=joint_effort_limit_np)
+        model.joint_limit_lower.assign(joint_limit_lower_np)
+        model.joint_limit_upper.assign(joint_limit_upper_np)
+        model.joint_velocity_limit.assign(joint_velocity_limit_np)
+        model.joint_effort_limit.assign(joint_effort_limit_np)
 
         # TODO
         materials_manager = MaterialManager()
@@ -859,6 +878,9 @@ class ModelKamino:
         base_joint_idx_np = np.full((model.num_worlds,), -1, dtype=int)
         body_world_np = model.body_world.numpy()
         joint_world_np = model.joint_world.numpy()
+        body_world_start_np = model.body_world_start.numpy()
+        # joint_world_start_np = model.joint_world_start.numpy()
+
         # Check for articulations
         if model.articulation_count > 0:
             articulation_start_np = model.articulation_start.numpy()
@@ -872,15 +894,40 @@ class ModelKamino:
                 if base_body_idx_np[wid] == -1 and base_joint_idx_np[wid] == -1:
                     base_body_idx_np[wid] = base_body
                     base_joint_idx_np[wid] = base_joint
+
         # Check for root joint (i.e. joint with no parent body (= -1))
         elif model.joint_count > 0:
+            msg.error("joint_world_np: %s", joint_world_np)
+            msg.error("joint_parent_np: %s", joint_parent_np)
+            msg.error("joint_child_np: %s", joint_child_np)
+
+            # TODO: How to handle no free joint being defined?
+            # Create a list of joint indices with parent body == -1 for each world
+            world_parent_joints: dict[int, list[int]] = {w: [] for w in range(model.num_worlds)}
+            msg.warning("world_parent_joints: %s", world_parent_joints)
             for j in range(model.joint_count):
                 wid_j = joint_world_np[j]
+                msg.info("joint %s belongs to world %s", j, wid_j)
                 parent_j = joint_parent_np[j]
                 if parent_j == -1:
-                    if base_body_idx_np[wid_j] == -1 and base_joint_idx_np[wid_j] == -1:
-                        base_body_idx_np[wid_j] = joint_child_np[j]
-                        base_joint_idx_np[wid_j] = j
+                    msg.info("BEFORE: world_parent_joints: %s", world_parent_joints)
+                    world_parent_joints[wid_j].append(j)
+                    msg.info("AFTER: world_parent_joints[%s]: %s", wid_j, world_parent_joints)
+            msg.error("world_parent_joints: %s", world_parent_joints)
+
+            # For each world, assign the base body and joint based on the first joint with parent == -1,
+            # If no joint with parent == -1 is found in a world, then assign the first body as base
+            # If multiple joints with parent == -1 are found in a world, then assign the first one as the base
+            for w in range(model.num_worlds):
+                if len(world_parent_joints[w]) > 0:
+                    j = world_parent_joints[w][0]
+                    wid_j = joint_world_np[j]
+                    base_joint_idx_np[wid_j] = j
+                    base_body_idx_np[wid_j] = int(joint_child_np[j])
+                else:
+                    base_body_idx_np[wid_j] = int(body_world_start_np[w])
+                    base_joint_idx_np[wid_j] = -1
+
         # Fall-back: first body and joint in the world
         else:
             for w in range(model.num_worlds):
@@ -894,6 +941,12 @@ class ModelKamino:
                     if joint_world_np[j] == w:
                         base_joint_idx_np[w] = j
                         break
+        msg.error("base_body_idx_np: %s", base_body_idx_np)
+        msg.error("base_joint_idx_np: %s", base_joint_idx_np)
+        # Ensure that all worlds have a base body assigned
+        for w in range(model.num_worlds):
+            if base_body_idx_np[w] == -1:
+                raise ValueError(f"World {w} does not have a base body assigned (index is -1).")
 
         # Construct per-world inertial summaries
         mass_min_np = np.zeros((model.num_worlds,), dtype=float)
@@ -944,21 +997,21 @@ class ModelKamino:
             model_worlds[w] = WorldDescriptor(
                 name=f"world_{w}",
                 wid=w,
-                num_bodies=num_bodies_np[w],
-                num_joints=num_joints_np[w],
-                num_passive_joints=num_passive_joints_np[w],
-                num_actuated_joints=num_actuated_joints_np[w],
-                num_geoms=num_shapes_np[w],
+                num_bodies=int(num_bodies_np[w]),
+                num_joints=int(num_joints_np[w]),
+                num_passive_joints=int(num_passive_joints_np[w]),
+                num_actuated_joints=int(num_actuated_joints_np[w]),
+                num_geoms=int(num_shapes_np[w]),
                 num_materials=0,  # TODO: how to handle both global and per-world materials simultaneously?
-                num_body_coords=num_body_coords_np[w],
-                num_body_dofs=num_body_dofs_np[w],
-                num_joint_coords=num_joint_coords_np[w],
-                num_joint_dofs=num_joint_dofs_np[w],
-                num_joint_cts=num_joint_cts_np[w],
-                num_passive_joint_coords=num_passive_joint_coords_np[w],
-                num_passive_joint_dofs=num_passive_joint_dofs_np[w],
-                num_actuated_joint_coords=num_actuated_joint_coords_np[w],
-                num_actuated_joint_dofs=num_actuated_joint_dofs_np[w],
+                num_body_coords=int(num_body_coords_np[w]),
+                num_body_dofs=int(num_body_dofs_np[w]),
+                num_joint_coords=int(num_joint_coords_np[w]),
+                num_joint_dofs=int(num_joint_dofs_np[w]),
+                num_joint_cts=int(num_joint_cts_np[w]),
+                num_passive_joint_coords=int(num_passive_joint_coords_np[w]),
+                num_passive_joint_dofs=int(num_passive_joint_dofs_np[w]),
+                num_actuated_joint_coords=int(num_actuated_joint_coords_np[w]),
+                num_actuated_joint_dofs=int(num_actuated_joint_dofs_np[w]),
                 # TODO
                 joint_coords=[],
                 joint_dofs=[],
@@ -968,17 +1021,17 @@ class ModelKamino:
                 joint_actuated_dofs=[],
                 joint_cts=[],
                 # TODO
-                bodies_idx_offset=world_body_offset_np[w],
-                joints_idx_offset=world_joint_offset_np[w],
-                geoms_idx_offset=world_shape_offset_np[w],
-                body_dofs_idx_offset=world_body_dof_offset_np[w],
-                joint_coords_idx_offset=world_joint_coord_offset_np[w],
-                joint_dofs_idx_offset=world_joint_dof_offset_np[w],
-                passive_joint_coords_idx_offset=world_passive_joint_coord_offset_np[w],
-                passive_joint_dofs_idx_offset=world_passive_joint_dofs_offset_np[w],
-                actuated_joint_coords_idx_offset=world_actuated_joint_coord_offset_np[w],
-                actuated_joint_dofs_idx_offset=world_actuated_joint_dofs_offset_np[w],
-                joint_cts_idx_offset=world_joint_cts_offset_np[w],
+                bodies_idx_offset=int(world_body_offset_np[w]),
+                joints_idx_offset=int(world_joint_offset_np[w]),
+                geoms_idx_offset=int(world_shape_offset_np[w]),
+                body_dofs_idx_offset=int(world_body_dof_offset_np[w]),
+                joint_coords_idx_offset=int(world_joint_coord_offset_np[w]),
+                joint_dofs_idx_offset=int(world_joint_dof_offset_np[w]),
+                passive_joint_coords_idx_offset=int(world_passive_joint_coord_offset_np[w]),
+                passive_joint_dofs_idx_offset=int(world_passive_joint_dofs_offset_np[w]),
+                actuated_joint_coords_idx_offset=int(world_actuated_joint_coord_offset_np[w]),
+                actuated_joint_dofs_idx_offset=int(world_actuated_joint_dofs_offset_np[w]),
+                joint_cts_idx_offset=int(world_joint_cts_offset_np[w]),
                 # TODO
                 body_names=[],
                 body_uids=[],
@@ -993,14 +1046,14 @@ class ModelKamino:
                 passive_joint_names=[],
                 actuated_joint_names=[],
                 geometry_layers=["default"],
-                geometry_max_contacts=[-1] * num_shapes_np[w],
+                geometry_max_contacts=[-1] * int(num_shapes_np[w]),
                 # TODO
-                base_body_idx=base_body_idx_np[w],
-                base_joint_idx=base_joint_idx_np[w],
-                mass_min=mass_min_np[w],
-                mass_max=mass_max_np[w],
-                mass_total=mass_total_np[w],
-                inertia_total=inertia_total_np[w],
+                base_body_idx=int(base_body_idx_np[w]),
+                base_joint_idx=int(base_joint_idx_np[w]),
+                mass_min=float(mass_min_np[w]),
+                mass_max=float(mass_max_np[w]),
+                mass_total=float(mass_total_np[w]),
+                inertia_total=float(inertia_total_np[w]),
             )
 
         # Construct ModelKaminoSize from the newton.Model instance

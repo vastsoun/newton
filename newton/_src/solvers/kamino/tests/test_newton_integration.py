@@ -17,10 +17,12 @@
 
 import copy
 import math
+import os
 import unittest
 
 import warp as wp
 
+import newton
 import newton._src.solvers.kamino.tests.utils.checks as test_util_checks
 from newton._src.core import Axis
 from newton._src.sim import (
@@ -36,10 +38,11 @@ from newton._src.solvers.kamino.core.control import ControlKamino
 from newton._src.solvers.kamino.core.joints import JOINT_QMAX, JOINT_QMIN
 from newton._src.solvers.kamino.core.model import ModelKamino
 from newton._src.solvers.kamino.core.state import StateKamino
-from newton._src.solvers.kamino.models import basics
+from newton._src.solvers.kamino.models import basics, get_basics_usd_assets_path, get_examples_usd_assets_path
 from newton._src.solvers.kamino.solver_kamino import SolverKamino
 from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.utils import logger as msg
+from newton._src.solvers.kamino.utils.io.usd import USDImporter
 
 ###
 # Utilities
@@ -371,9 +374,10 @@ class TestKaminoContainers(unittest.TestCase):
         if self.verbose:
             msg.reset_log_level()
 
-    def test_00_model_conversions(self):
+    def test_00_model_conversions_fourbar_from_builder(self):
         """
-        Test the conversion operations between newton.Model and kamino.ModelKamino.
+        Test the conversion operations between newton.Model and kamino.ModelKamino
+        on a simple fourbar model created explicitly using the builder.
         """
         # Create a fourbar using Newton's ModelBuilder and
         # register Kamino-specific custom attributes
@@ -417,6 +421,165 @@ class TestKaminoContainers(unittest.TestCase):
         model_1: ModelKamino = builder_1.finalize()
         model_2: ModelKamino = ModelKamino.from_newton(model_0)
         test_util_checks.assert_model_equal(self, model_2, model_1)
+
+    def test_01_model_conversions_fourbar_from_usd(self):
+        """
+        Test the conversion operations between newton.Model and kamino.ModelKamino
+        on a simple fourbar model loaded from USD.
+        """
+        # TODO
+        USD_MODEL_PATH = os.path.join(get_basics_usd_assets_path(), "boxes_fourbar.usda")
+
+        # Create a fourbar using Newton's ModelBuilder and
+        # register Kamino-specific custom attributes
+        builder_0: ModelBuilder = ModelBuilder()
+        SolverKamino.register_custom_attributes(builder_0)
+        builder_0.begin_world()
+        builder_0.add_usd(source=USD_MODEL_PATH, joint_ordering=None)
+        builder_0.end_world()
+
+        # TODO
+        importer = USDImporter()
+        builder_1: ModelBuilderKamino = importer.import_from(source=USD_MODEL_PATH, load_static_geometry=True)
+
+        # TODO
+        model_0: Model = builder_0.finalize(skip_validation_joints=True)
+        model_1: ModelKamino = builder_1.finalize()
+        model_2: ModelKamino = ModelKamino.from_newton(model_0)
+        test_util_checks.assert_model_equal(self, model_2, model_1)
+
+    def test_02_model_conversions_dr_testmech_from_usd(self):
+        """
+        Test the conversion operations between newton.Model and kamino.ModelKamino
+        on the DR testmechanism model loaded from USD.
+        """
+        # TODO
+        USD_MODEL_PATH = os.path.join(get_examples_usd_assets_path(), "dr_testmech/usd/dr_testmech.usda")
+
+        # Create a fourbar using Newton's ModelBuilder and
+        # register Kamino-specific custom attributes
+        builder_0: ModelBuilder = ModelBuilder()
+        SolverKamino.register_custom_attributes(builder_0)
+        builder_0.begin_world()
+        builder_0.add_usd(source=USD_MODEL_PATH, joint_ordering=None)
+        builder_0.end_world()
+
+        # TODO
+        importer = USDImporter()
+        builder_1: ModelBuilderKamino = importer.import_from(source=USD_MODEL_PATH, load_static_geometry=True)
+
+        # TODO
+        model_0: Model = builder_0.finalize(skip_validation_joints=True)
+        model_1: ModelKamino = builder_1.finalize()
+        model_2: ModelKamino = ModelKamino.from_newton(model_0)
+        test_util_checks.assert_model_equal(self, model_2, model_1)
+
+    def test_03_model_conversions_dr_legs_from_usd(self):
+        """
+        Test the conversion operations between newton.Model and kamino.ModelKamino
+        on the DR legs model loaded from USD.
+        """
+        # TODO
+        USD_MODEL_PATH = os.path.join(get_examples_usd_assets_path(), "dr_legs/usd/dr_legs_with_meshes_and_boxes.usda")
+
+        # Create a fourbar using Newton's ModelBuilder and
+        # register Kamino-specific custom attributes
+        builder_0: ModelBuilder = ModelBuilder()
+        SolverKamino.register_custom_attributes(builder_0)
+        builder_0.begin_world()
+        builder_0.add_usd(source=USD_MODEL_PATH, joint_ordering=None)
+        builder_0.end_world()
+
+        # TODO
+        importer = USDImporter()
+        builder_1: ModelBuilderKamino = importer.import_from(source=USD_MODEL_PATH, load_static_geometry=True)
+
+        # TODO
+        model_0: Model = builder_0.finalize(skip_validation_joints=True)
+        model_1: ModelKamino = builder_1.finalize()
+        model_2: ModelKamino = ModelKamino.from_newton(model_0)
+
+        # np.set_printoptions(precision=23, suppress=True)
+        # model_0_i_I_i_np = model_0.body_inertia.numpy()
+        # model_1_i_I_i_np = model_1.bodies.i_I_i.numpy()
+        # model_2_i_I_i_np = model_2.bodies.i_I_i.numpy()
+        # for i in range(model_0.body_count):
+        #     msg.warning("body %s inertia comparison:\nmodel_0:\n%s\nmodel_1:\n%s\nmodel_2:\n%s\n", i, model_0_i_I_i_np[i], model_1_i_I_i_np[i], model_2_i_I_i_np[i])
+        #     np.testing.assert_allclose(
+        #         actual=model_0_i_I_i_np[i],
+        #         desired=model_1_i_I_i_np[i],
+        #         err_msg=f"Body {i} inertia does not match between model_0 and model_1.",
+        #         atol=1e-7,
+        #         rtol=1e-7,
+        #     )
+        #     np.testing.assert_allclose(
+        #         actual=model_0_i_I_i_np[i],
+        #         desired=model_2_i_I_i_np[i],
+        #         err_msg=f"Body {i} inertia does not match between model_0 and model_2.",
+        #     )
+
+        # np.set_printoptions(precision=23, suppress=True)
+        # model_0_inv_i_I_i_np = model_0.body_inv_inertia.numpy()
+        # model_1_inv_i_I_i_np = model_1.bodies.inv_i_I_i.numpy()
+        # model_2_inv_i_I_i_np = model_2.bodies.inv_i_I_i.numpy()
+        # for i in range(model_0.body_count):
+        #     msg.warning("body %s inertia comparison:\nmodel_0:\n%s\nmodel_1:\n%s\nmodel_2:\n%s\n", i, model_0_inv_i_I_i_np[i], model_1_inv_i_I_i_np[i], model_2_inv_i_I_i_np[i])
+        #     np.testing.assert_allclose(
+        #         actual=model_0_inv_i_I_i_np[i],
+        #         desired=model_1_inv_i_I_i_np[i],
+        #         err_msg=f"Body {i} inertia does not match between model_0 and model_1.",
+        #         atol=1e-6,
+        #         rtol=1e-6,
+        #     )
+        #     np.testing.assert_allclose(
+        #         actual=model_0_inv_i_I_i_np[i],
+        #         desired=model_2_inv_i_I_i_np[i],
+        #         err_msg=f"Body {i} inertia does not match between model_0 and model_2.",
+        #         atol=1e-7,
+        #         rtol=1e-7,
+        #     )
+
+        # NOTE: We don't check mesh geometry pointers since they have been loaded separately
+        # TODO: Check mesh geometry data explicitly: vertices, triangle, normals etc
+        test_util_checks.assert_model_equal(
+            self, model_2, model_1, check_geom_source_ptr=False, check_geom_group_and_collides=False
+        )
+
+    def test_04_model_conversions_anymal_d_from_usd(self):
+        """
+        Test the conversion operations between newton.Model and kamino.ModelKamino
+        on the Anymal D model loaded from USD.
+        """
+        # TODO
+        asset_path = newton.utils.download_asset("anybotics_anymal_d")
+        asset_file = str(asset_path / "usd" / "anymal_d.usda")
+
+        # Create a fourbar using Newton's ModelBuilder and
+        # register Kamino-specific custom attributes
+        builder_0: ModelBuilder = ModelBuilder()
+        SolverKamino.register_custom_attributes(builder_0)
+        builder_0.begin_world()
+        builder_0.add_usd(
+            source=asset_file,
+            collapse_fixed_joints=False,
+            enable_self_collisions=False,
+            hide_collision_shapes=True,
+        )
+        builder_0.end_world()
+
+        # TODO
+        importer = USDImporter()
+        builder_1: ModelBuilderKamino = importer.import_from(source=asset_file, load_static_geometry=True)
+
+        # TODO
+        model_0: Model = builder_0.finalize()
+        model_1: ModelKamino = builder_1.finalize()
+        model_2: ModelKamino = ModelKamino.from_newton(model_0)
+        # NOTE: We don't check mesh geometry pointers since they have been loaded separately
+        # TODO: Check mesh geometry data explicitly: vertices, triangle, normals etc
+        test_util_checks.assert_model_equal(
+            self, model_2, model_1, check_geom_source_ptr=False, check_geom_group_and_collides=False
+        )
 
     def test_10_state_conversions(self):
         """

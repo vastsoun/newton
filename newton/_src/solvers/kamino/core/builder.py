@@ -1225,7 +1225,7 @@ class ModelBuilderKamino:
                 num_bodies=model_size.sum_of_num_bodies,
                 wid=wp.array(bodies_wid, dtype=int32),
                 bid=wp.array(bodies_bid, dtype=int32),
-                i_r_com_i=wp.array(bodies_i_r_com_i, dtype=float32, requires_grad=requires_grad),
+                i_r_com_i=wp.array(bodies_i_r_com_i, dtype=vec3f, requires_grad=requires_grad),
                 m_i=wp.array(bodies_m_i, dtype=float32, requires_grad=requires_grad),
                 inv_m_i=wp.array(bodies_inv_m_i, dtype=float32, requires_grad=requires_grad),
                 i_I_i=wp.array(bodies_i_I_i, dtype=mat33f, requires_grad=requires_grad),

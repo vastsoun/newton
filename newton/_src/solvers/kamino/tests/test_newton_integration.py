@@ -183,7 +183,7 @@ def build_boxes_fourbar_newton(
     bid1 = _builder.add_link(
         key="link_1",
         mass=m_i,
-        I_m=i_I_i_1,
+        inertia=i_I_i_1,
         xform=q_i_1,
         lock_inertia=True,
     )
@@ -191,7 +191,7 @@ def build_boxes_fourbar_newton(
     bid2 = _builder.add_link(
         key="link_2",
         mass=m_i,
-        I_m=i_I_i_2,
+        inertia=i_I_i_2,
         xform=q_i_2,
         lock_inertia=True,
     )
@@ -199,7 +199,7 @@ def build_boxes_fourbar_newton(
     bid3 = _builder.add_link(
         key="link_3",
         mass=m_i,
-        I_m=i_I_i_3,
+        inertia=i_I_i_3,
         xform=q_i_3,
         lock_inertia=True,
     )
@@ -207,7 +207,7 @@ def build_boxes_fourbar_newton(
     bid4 = _builder.add_link(
         key="link_4",
         mass=m_i,
-        I_m=i_I_i_4,
+        inertia=i_I_i_4,
         xform=q_i_4,
         lock_inertia=True,
     )
@@ -498,47 +498,6 @@ class TestKaminoContainers(unittest.TestCase):
         model_0: Model = builder_0.finalize(skip_validation_joints=True)
         model_1: ModelKamino = builder_1.finalize()
         model_2: ModelKamino = ModelKamino.from_newton(model_0)
-
-        # np.set_printoptions(precision=23, suppress=True)
-        # model_0_i_I_i_np = model_0.body_inertia.numpy()
-        # model_1_i_I_i_np = model_1.bodies.i_I_i.numpy()
-        # model_2_i_I_i_np = model_2.bodies.i_I_i.numpy()
-        # for i in range(model_0.body_count):
-        #     msg.warning("body %s inertia comparison:\nmodel_0:\n%s\nmodel_1:\n%s\nmodel_2:\n%s\n", i, model_0_i_I_i_np[i], model_1_i_I_i_np[i], model_2_i_I_i_np[i])
-        #     np.testing.assert_allclose(
-        #         actual=model_0_i_I_i_np[i],
-        #         desired=model_1_i_I_i_np[i],
-        #         err_msg=f"Body {i} inertia does not match between model_0 and model_1.",
-        #         atol=1e-7,
-        #         rtol=1e-7,
-        #     )
-        #     np.testing.assert_allclose(
-        #         actual=model_0_i_I_i_np[i],
-        #         desired=model_2_i_I_i_np[i],
-        #         err_msg=f"Body {i} inertia does not match between model_0 and model_2.",
-        #     )
-
-        # np.set_printoptions(precision=23, suppress=True)
-        # model_0_inv_i_I_i_np = model_0.body_inv_inertia.numpy()
-        # model_1_inv_i_I_i_np = model_1.bodies.inv_i_I_i.numpy()
-        # model_2_inv_i_I_i_np = model_2.bodies.inv_i_I_i.numpy()
-        # for i in range(model_0.body_count):
-        #     msg.warning("body %s inertia comparison:\nmodel_0:\n%s\nmodel_1:\n%s\nmodel_2:\n%s\n", i, model_0_inv_i_I_i_np[i], model_1_inv_i_I_i_np[i], model_2_inv_i_I_i_np[i])
-        #     np.testing.assert_allclose(
-        #         actual=model_0_inv_i_I_i_np[i],
-        #         desired=model_1_inv_i_I_i_np[i],
-        #         err_msg=f"Body {i} inertia does not match between model_0 and model_1.",
-        #         atol=1e-6,
-        #         rtol=1e-6,
-        #     )
-        #     np.testing.assert_allclose(
-        #         actual=model_0_inv_i_I_i_np[i],
-        #         desired=model_2_inv_i_I_i_np[i],
-        #         err_msg=f"Body {i} inertia does not match between model_0 and model_2.",
-        #         atol=1e-7,
-        #         rtol=1e-7,
-        #     )
-
         # NOTE: We don't check mesh geometry pointers since they have been loaded separately
         # TODO: Check mesh geometry data explicitly: vertices, triangle, normals etc
         test_util_checks.assert_model_equal(

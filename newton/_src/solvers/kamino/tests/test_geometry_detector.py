@@ -62,7 +62,7 @@ class TestCollisionDetectorSettings(unittest.TestCase):
     def test_00_make_default(self):
         """Test making default collision detector settings."""
         settings = CollisionDetectorSettings()
-        self.assertEqual(settings.pipeline, CollisionPipelineType.PRIMITIVE)
+        self.assertEqual(settings.pipeline, CollisionPipelineType.UNIFIED)
         self.assertEqual(settings.broadphase, BroadPhaseMode.EXPLICIT)
         self.assertEqual(settings.bvtype, BoundingVolumeType.AABB)
 

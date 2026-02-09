@@ -1255,7 +1255,7 @@ class USDImporter:
             shape = ConeShape(radius=radius, height=height)
 
         elif geom_type == self.UsdGeom.Cube:
-            d, w, h = distance_unit * scale
+            d, w, h = 2.0 * distance_unit * scale
             shape = BoxShape(depth=d, width=w, height=h)
 
         elif geom_type == self.UsdGeom.Cylinder:
@@ -1278,6 +1278,7 @@ class USDImporter:
         elif geom_type == self.UsdGeom.Sphere:
             sphere = self.UsdGeom.Sphere(geom_prim)
             radius = distance_unit * sphere.GetRadiusAttr().Get()
+            scale = np.array(scale, dtype=np.float32)
             if np.all(scale[0:] == scale[0]):
                 shape = SphereShape(radius=radius)
             else:
@@ -1863,20 +1864,16 @@ class USDImporter:
         if len(articulation_root_body_paths) > 0 and len(joint_descriptors) > 0:
             # Create a list of body-pair indices (B, F) for each joint
             joint_body_pairs = [(joint_desc.bid_B, joint_desc.bid_F) for joint_desc in joint_descriptors]
-            msg.warning(f"joint_body_pairs: {joint_body_pairs}")
             # Perform a topological sort of the joints based on their body-pair indices
             joint_indices, reversed_joints = topological_sort_undirected(joints=joint_body_pairs, use_dfs=True)
-            msg.warning(f"joint_indices: {joint_indices}")
-            msg.warning(f"reversed_joints: {reversed_joints}")
-            # Reverse the order of the joints that were reversed during the topological sort to maintain the original joint directionality as much as possible
+            # Reverse the order of the joints that were reversed during the topological
+            # sort to maintain the original joint directionality as much as possible
             for i in reversed_joints:
-                msg.warning(f"Reversing joint at index {i} due to topological sort")
                 joint_desc = joint_descriptors[i]
                 joint_desc.bid_B, joint_desc.bid_F = joint_desc.bid_F, joint_desc.bid_B
                 joint_desc.B_r_Bj, joint_desc.F_r_Fj = joint_desc.F_r_Fj, joint_desc.B_r_Bj
             # Reorder the joint descriptors based on the topological sort
             joint_descriptors = [joint_descriptors[i] for i in joint_indices]
-            msg.warning(f"joint_descriptors (after topological sort): {joint_descriptors}")
 
         # Add all descriptors to the builder
         for joint_desc in joint_descriptors:
@@ -1905,8 +1902,6 @@ class USDImporter:
         # Traverse the stage to collect geometry prims
         for prim in stage.Traverse():
             _collect_geom_prims(prim)
-        msg.debug(f"num_geom_prims: {len(geom_prims)}")
-        msg.debug(f"geom_prims: {geom_prims}")
 
         # Define separate lists to hold geometry descriptors for visual and physics geometry
         visual_geoms: list[GeometryDescriptor] = []

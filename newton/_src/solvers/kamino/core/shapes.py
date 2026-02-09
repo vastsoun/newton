@@ -756,7 +756,7 @@ class SDFShape(ShapeDescriptor):
             volume=volume,
             mass=mass,
             com=com,
-            I=inertia,
+            inertia=inertia,
         )
 
     @override
@@ -773,7 +773,7 @@ class SDFShape(ShapeDescriptor):
             f"uid: {self.uid},\n"
             f"mass: {self._data.mass},\n"
             f"com: {self._data.com},\n"
-            f"I:\n{self._data.I},\n"
+            f"inertia:\n{self._data.I},\n"
             f")"
         )
 

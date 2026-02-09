@@ -35,7 +35,7 @@ from ....geometry.narrow_phase import NarrowPhase
 from ....geometry.sdf_utils import SDFData
 from ....geometry.support_function import GenericShapeData, SupportMapDataProvider, pack_mesh_ptr
 from ....geometry.types import GeoType
-from ....sim.collide_unified import BroadPhaseMode
+from ....sim.collide import BroadPhaseMode
 
 # Kamino imports
 from ..core.data import DataKamino

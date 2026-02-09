@@ -161,7 +161,7 @@ class RigidBodiesModel:
     i_r_com_i: wp.array | None = None
     """
     Translational offset of the center of mass w.r.t the body's reference frame.\n
-    Shape of ``(num_bodies,)`` and type :class:`float`.
+    Shape of ``(num_bodies,)`` and type :class:`vec3f`.
     """
 
     m_i: wp.array | None = None

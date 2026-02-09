@@ -900,7 +900,6 @@ class ModelKamino:
             msg.error("joint_world_np: %s", joint_world_np)
             msg.error("joint_parent_np: %s", joint_parent_np)
             msg.error("joint_child_np: %s", joint_child_np)
-            msg.error("joint_child_np: %s", joint_child_np)
 
             # TODO: How to handle no free joint being defined?
             # Create a list of joint indices with parent body == -1 for each world

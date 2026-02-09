@@ -72,7 +72,7 @@ class Example:
         )
 
         # TODO: Remove this once the issue with the USD loader and collision filter pairs is resolved
-        robot_builder.shape_collision_filter_pairs.append((3, 0))
+        # robot_builder.shape_collision_filter_pairs.append((3, 0))
         msg.error("robot_builder.shape_collision_filter_pairs: %s", robot_builder.shape_collision_filter_pairs)
 
         # Create the multi-world model by duplicating the single-robot

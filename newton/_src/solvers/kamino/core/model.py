@@ -900,6 +900,7 @@ class ModelKamino:
             msg.error("joint_world_np: %s", joint_world_np)
             msg.error("joint_parent_np: %s", joint_parent_np)
             msg.error("joint_child_np: %s", joint_child_np)
+            msg.error("joint_child_np: %s", joint_child_np)
 
             # TODO: How to handle no free joint being defined?
             # Create a list of joint indices with parent body == -1 for each world
@@ -921,12 +922,11 @@ class ModelKamino:
             for w in range(model.num_worlds):
                 if len(world_parent_joints[w]) > 0:
                     j = world_parent_joints[w][0]
-                    wid_j = joint_world_np[j]
-                    base_joint_idx_np[wid_j] = j
-                    base_body_idx_np[wid_j] = int(joint_child_np[j])
+                    base_joint_idx_np[w] = j
+                    base_body_idx_np[w] = int(joint_child_np[j])
                 else:
-                    base_body_idx_np[wid_j] = int(body_world_start_np[w])
-                    base_joint_idx_np[wid_j] = -1
+                    base_body_idx_np[w] = int(body_world_start_np[w])
+                    base_joint_idx_np[w] = -1
 
         # Fall-back: first body and joint in the world
         else:

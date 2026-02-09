@@ -55,12 +55,14 @@ class Example:
         self.device = wp.get_device()
 
         # Create a single-robot model builder and register the Kamino-specific custom attributes
+        msg.notif("Creating and configuring the model builder for Kamino...")
         robot_builder = newton.ModelBuilder(up_axis=newton.Axis.Z)
         newton.solvers.SolverKamino.register_custom_attributes(robot_builder)
         robot_builder.default_shape_cfg.thickness = 1e-5
         robot_builder.default_shape_cfg.contact_margin = 1e-5
 
         # Load the Anymal D USD and add it to the builder
+        msg.notif("Loading USD asset and adding it to the model builder...")
         asset_file = os.path.join(get_basics_usd_assets_path(), "boxes_fourbar.usda")
         robot_builder.add_usd(
             asset_file,
@@ -71,12 +73,9 @@ class Example:
             hide_collision_shapes=False,
         )
 
-        # TODO: Remove this once the issue with the USD loader and collision filter pairs is resolved
-        # robot_builder.shape_collision_filter_pairs.append((3, 0))
-        msg.error("robot_builder.shape_collision_filter_pairs: %s", robot_builder.shape_collision_filter_pairs)
-
         # Create the multi-world model by duplicating the single-robot
         # builder for the specified number of worlds
+        msg.notif(f"Duplicating the model builder for {self.num_worlds} worlds and finalizing the model...")
         builder = newton.ModelBuilder(up_axis=newton.Axis.Z)
         for _ in range(self.num_worlds):
             builder.add_world(robot_builder)
@@ -85,18 +84,13 @@ class Example:
         # builder.add_ground_plane()
 
         # Create the model from the builder
+        msg.notif("Creating the model from the builder...")
         self.model = builder.finalize(skip_validation_joints=True)
-
-        # TODO: Remove this once the issue with the USD loader and collision filter pairs is resolved
-        np.set_printoptions(precision=7, linewidth=10000, threshold=10000, suppress=True)
-        msg.error("model.shape_body: %s", self.model.shape_body)
-        msg.error("model.shape_collision_filter_pairs: %s", self.model.shape_collision_filter_pairs)
-        msg.error("model.shape_contact_pair_count: %s", self.model.shape_contact_pair_count)
-        msg.error("model.shape_contact_pairs:\n%s", self.model.shape_contact_pairs)
 
         # Create and configure settings for SolverKamino and the collision detector
         collision_detector_settings = CollisionDetectorSettings()
         collision_detector_settings.pipeline = CollisionPipelineType.UNIFIED
+        collision_detector_settings.max_contacts = 32 * self.num_worlds
         solver_settings = SolverKaminoSettings()
         solver_settings.problem.preconditioning = True
         solver_settings.padmm.primal_tolerance = 1e-4
@@ -109,16 +103,12 @@ class Example:
         solver_settings.contact_warmstart_method = WarmstarterContacts.Method.GEOM_PAIR_NET_FORCE
 
         # Create the Kamino solver for the given model
+        msg.notif("Creating the Kamino solver for the given model...")
         self.solver = newton.solvers.SolverKamino(
             model=self.model,
-            collision_detector_settings=collision_detector_settings,
             solver_settings=solver_settings,
+            collision_detector_settings=collision_detector_settings,
         )
-
-        msg.warning("model.shape_collision_group:\n%s\n", self.model.shape_collision_group)
-        msg.warning("model_kamino.geoms.group:\n%s\n", self.solver._model_kamino.geoms.group)
-        msg.warning("model_kamino.geoms.collides:\n%s\n", self.solver._model_kamino.geoms.collides)
-        msg.warning("model_kamino.geoms.margin:\n%s\n", self.solver._model_kamino.geoms.margin)
 
         # Create state and control data containers
         self.state_0 = self.model.state()
@@ -126,9 +116,10 @@ class Example:
         self.control = self.model.control()
 
         # Reset the simulation state to a valid initial configuration above the ground
+        msg.notif("Resetting the simulation state to a valid initial configuration above the ground...")
         self.base_q = wp.zeros(shape=(self.num_worlds,), dtype=wp.transformf)
         q_b = wp.quat_identity(dtype=wp.float32)
-        q_base = wp.transformf((0.0, 0.0, 0.0), q_b)
+        q_base = wp.transformf((0.0, 0.0, 0.1), q_b)
         q_base = np.array(q_base)
         q_base = np.tile(q_base, (self.num_worlds, 1))
         for w in range(self.num_worlds):
@@ -209,4 +200,5 @@ if __name__ == "__main__":
         yaw = 70.0
         example.viewer.set_camera(camera_pos, pitch, yaw)
 
+    msg.notif("Starting the simulation...")
     newton.examples.run(example, args)

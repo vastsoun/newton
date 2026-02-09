@@ -46,7 +46,12 @@ from ..core.data import DataKamino
 from ..core.model import ModelKamino
 from ..core.state import StateKamino
 from ..core.types import override
-from ..geometry.contacts import DEFAULT_GEOM_PAIR_CONTACT_MARGIN, DEFAULT_GEOM_PAIR_MAX_CONTACTS, ContactsKamino
+from ..geometry.contacts import (
+    DEFAULT_GEOM_PAIR_CONTACT_MARGIN,
+    DEFAULT_GEOM_PAIR_MAX_CONTACTS,
+    DEFAULT_MODEL_MAX_CONTACTS,
+    ContactsKamino,
+)
 from ..geometry.primitive import BoundingVolumeType, CollisionPipelinePrimitive
 from ..geometry.unified import BroadPhaseMode, CollisionPipelineUnifiedKamino
 
@@ -126,12 +131,20 @@ class CollisionDetectorSettings:
     Defaults to `None`, allowing contact allocations to occur according to the model.
     """
 
+    max_contacts: int = DEFAULT_MODEL_MAX_CONTACTS
+    """
+    The maximum number of contacts to generate over the entire model.\n
+    Used to compute the total maximum contacts allocated for the model,
+    in conjunction with the total number of candidate geom-pairs.\n
+    Defaults to `DEFAULT_MODEL_MAX_CONTACTS` (`1000`).
+    """
+
     max_contacts_per_pair: int = DEFAULT_GEOM_PAIR_MAX_CONTACTS
     """
     The maximum number of contacts to generate per candidate geom-pair.\n
     Used to compute the total maximum contacts allocated for the model,
     in conjunction with the total number of candidate geom-pairs.\n
-    Defaults to `DEFAULT_GEOM_PAIR_MAX_CONTACTS` (`8`).
+    Defaults to `DEFAULT_GEOM_PAIR_MAX_CONTACTS` (`12`).
     """
 
     max_triangle_pairs: int = 1_000_000
@@ -145,7 +158,7 @@ class CollisionDetectorSettings:
     """
     The default per-geom contact margin used in the narrow-phase.\n
     Used when a collision geometry does not specify a contact margin.\n
-    Defaults to `1e-5`.
+    Defaults to `DEFAULT_GEOM_PAIR_CONTACT_MARGIN` (`1e-5`).
     """
 
     def __post_init__(self):
@@ -294,9 +307,28 @@ class CollisionDetector:
         else:
             self._device = model.device
 
-        # Cache the contacts allocation sizes specified in the model
-        self._model_max_contacts = model.geoms.model_max_contacts
-        self._world_max_contacts = model.geoms.world_max_contacts
+        # TODO: FIX THIS SO THAT PER-WORLD MAX IS ACTUALLY BASED ON THE NUM OF COLLIDABLE
+        # GOEMS IN EACH WORLD, INSTEAD OF JUST DIVIDING THE MODEL MAX BY THE NUM WORLDS
+        # For collision pipeline, we don't multiply by per-pair factors since broad phase
+        # discovers pairs dynamically. Users can provide rigid_contact_max explicitly,
+        # otherwise it is estimated from shape count and broad phase mode.
+        if model.geoms.model_max_contacts > 0:
+            self._model_max_contacts = model.geoms.model_max_contacts
+            self._world_max_contacts = model.geoms.world_max_contacts
+        else:
+            # Estimate based on broad phase mode and available information
+            if self._settings.broadphase == BroadPhaseMode.EXPLICIT and model.geoms.collidable_pairs is not None:
+                # For EXPLICIT mode, we know the maximum possible pairs
+                # Estimate ~10 contacts per shape pair (conservative for mesh-mesh contacts)
+                self._model_max_contacts = max(self._settings.max_contacts, model.geoms.num_collidable_geom_pairs * 10)
+            else:
+                # For NXN/SAP dynamic broad phase, estimate based on shape count
+                # Assume each shape contacts ~20 others on average (conservative estimate)
+                # This scales much better than O(N²) while still being safe
+                self._model_max_contacts = max(self._settings.max_contacts, model.geoms.num_collidable_geoms * 20)
+
+            #  Set the world max contacts to be the same for all worlds in the model
+            self._world_max_contacts = [self._model_max_contacts // model.size.num_worlds] * model.size.num_worlds
 
         # Create the contacts interface which will allocate all contacts data arrays
         # NOTE: If internal allocations happen, then they will contain

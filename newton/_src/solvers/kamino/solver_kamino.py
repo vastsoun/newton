@@ -1221,11 +1221,11 @@ class SolverKamino(SolverBase):
         state_out_kamino = StateKamino.from_newton(self.model, state_out)
         control_kamino = ControlKamino.from_newton(control)
 
-        # Convert the input state from Newton's convention (i.e. using local body frame)
-        state_in_kamino.convert_to_body_com_state(self.model)
-
         # Perform collision detection
         self._collision_detector_kamino.collide(self._model_kamino, self._solver_kamino.data, state_in_kamino)
+
+        # Convert the input state from Newton's convention (i.e. to using body CoM frame)
+        state_in_kamino.convert_to_body_com_state(self.model)
 
         # Step the physics solver
         self._solver_kamino.step(
@@ -1236,7 +1236,8 @@ class SolverKamino(SolverBase):
             dt=dt,
         )
 
-        # Convert the output state back to Newton's convention (i.e. using local body frame)
+        # Convert the output state back to Newton's convention (i.e. to using local body frame)
+        state_in_kamino.convert_to_body_frame_state(self.model)
         state_out_kamino.convert_to_body_frame_state(self.model)
 
     @override

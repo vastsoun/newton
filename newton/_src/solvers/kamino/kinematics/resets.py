@@ -110,6 +110,7 @@ def _reset_body_state_from_base(
     world_mask: wp.array(dtype=int32),
     model_info_base_body_index: wp.array(dtype=int32),
     model_body_wid: wp.array(dtype=int32),
+    model_body_i_r_com_i: wp.array(dtype=vec3f),
     q_i_cache: wp.array(dtype=transformf),
     base_q: wp.array(dtype=transformf),
     base_u: wp.array(dtype=vec6f),
@@ -134,24 +135,35 @@ def _reset_body_state_from_base(
     # Retrieve the current pose of the base body
     if base_bid >= 0:
         q_b_0 = q_i_cache[base_bid]
+        b_r_b_com = model_body_i_r_com_i[base_bid]
     else:
         # If there is no base body, use the identity transform
         q_b_0 = wp.transform_identity(dtype=float32)
+        b_r_b_com = vec3f(0.0)
 
-    # Retrieve the current pose for this body
+    # Retrieve the current pose and CoM offset for this body
     q_i_0 = q_i_cache[bid]
+    i_r_i_com = model_body_i_r_com_i[bid]
 
     # Retrieve the target state of the base body
     q_b = base_q[wid]
     u_b = base_u[wid]
 
+    # Retrieve the body frame position vectors of the base and current body
+    r_b_0 = wp.transform_get_translation(q_b_0)
+    r_i_0 = wp.transform_get_translation(q_i_0)
+
+    # Compute the CoMs frame position vectors of the base and current body
+    r_b_0_com = r_b_0 + b_r_b_com
+    r_i_0_com = r_i_0 + i_r_i_com
+
+    # Transform the base and body frame poses to their respective CoM poses
+    wp.transform_set_translation(q_b_0, r_b_0_com)
+    wp.transform_set_translation(q_i_0, r_i_0_com)
+
     # Compute the relative pose transform that
     # moves the base body to the target pose
     X_b = wp.transform_multiply(q_b, wp.transform_inverse(q_b_0))
-
-    # Retrieve the position vectors of the base and current body
-    r_b_0 = wp.transform_get_translation(q_b_0)
-    r_i_0 = wp.transform_get_translation(q_i_0)
 
     # Decompose the base body's target twist
     v_b = screw_linear(u_b)
@@ -159,7 +171,10 @@ def _reset_body_state_from_base(
 
     # Compute the target pose and twist for this body
     q_i = wp.transform_multiply(X_b, q_i_0)
-    u_i = screw(v_b + wp.cross(omega_b, r_i_0 - r_b_0), omega_b)
+    u_i = screw(v_b + wp.cross(omega_b, r_i_0_com - r_b_0_com), omega_b)
+
+    # Transform the body frame pose back to the original CoM frame by applying the inverse of the CoM offset transform
+    wp.transform_set_translation(q_i, wp.transform_get_translation(q_i) - i_r_i_com)
 
     # Store the reset state in the output arrays and zero-out wrenches
     state_q_i[bid] = q_i
@@ -664,6 +679,7 @@ def reset_state_from_base_state(
             world_mask,
             model.info.base_body_index,
             model.bodies.wid,
+            model.bodies.i_r_com_i,
             q_i_cache,
             base_q,
             base_u,

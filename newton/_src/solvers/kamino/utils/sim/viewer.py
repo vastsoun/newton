@@ -494,6 +494,24 @@ class ViewerKamino(ViewerGL):
         else:
             self.log_lines("/contact_forces", None, None, None)
 
+    def set_camera_lookat(self, pos: wp.vec3, target: wp.vec3):
+        """
+        Set the camera position and orient it to face a specific target.
+
+        Args:
+            pos: The camera position.
+            target: The point the camera should look at.
+        """
+        # Calculate the direction vector from camera to target
+        dir = wp.normalize(target - pos)
+
+        # Calculate camera angles
+        yaw = wp.degrees(wp.atan2(dir[1], dir[0]))
+        pitch = wp.degrees(wp.asin(dir[2]))
+
+        # Call basic set camera method
+        self.set_camera(pos, pitch, yaw)
+
     def _create_box_mesh_simple(self, sx, sy, sz):
         """
         # todo where should this function go, is it already implemented somewhere else?

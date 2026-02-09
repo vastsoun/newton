@@ -25,6 +25,7 @@ import warp as wp
 
 from .....core.types import nparray
 from .....usd import utils as usd_utils
+from .....utils.topology import topological_sort_undirected
 from ...core.bodies import RigidBodyDescriptor
 from ...core.builder import ModelBuilderKamino
 from ...core.geometry import GeometryDescriptor
@@ -660,6 +661,7 @@ class USDImporter:
             name=name,
             uid=uid,
             m_i=m_i,
+            i_r_com_i=i_r_com_i,
             i_I_i=i_I_i,
             q_i_0=q_i_0,
             u_i_0=u_i_0,
@@ -1856,6 +1858,26 @@ class USDImporter:
                 )
                 joint_descriptors.insert(0, joint_desc)
 
+        # If an articulation is present, sort joint indices according
+        # to DFS to produce a minimum-depth kinematic tree ordering
+        if len(articulation_root_body_paths) > 0 and len(joint_descriptors) > 0:
+            # Create a list of body-pair indices (B, F) for each joint
+            joint_body_pairs = [(joint_desc.bid_B, joint_desc.bid_F) for joint_desc in joint_descriptors]
+            msg.warning(f"joint_body_pairs: {joint_body_pairs}")
+            # Perform a topological sort of the joints based on their body-pair indices
+            joint_indices, reversed_joints = topological_sort_undirected(joints=joint_body_pairs, use_dfs=True)
+            msg.warning(f"joint_indices: {joint_indices}")
+            msg.warning(f"reversed_joints: {reversed_joints}")
+            # Reverse the order of the joints that were reversed during the topological sort to maintain the original joint directionality as much as possible
+            for i in reversed_joints:
+                msg.warning(f"Reversing joint at index {i} due to topological sort")
+                joint_desc = joint_descriptors[i]
+                joint_desc.bid_B, joint_desc.bid_F = joint_desc.bid_F, joint_desc.bid_B
+                joint_desc.B_r_Bj, joint_desc.F_r_Fj = joint_desc.F_r_Fj, joint_desc.B_r_Bj
+            # Reorder the joint descriptors based on the topological sort
+            joint_descriptors = [joint_descriptors[i] for i in joint_indices]
+            msg.warning(f"joint_descriptors (after topological sort): {joint_descriptors}")
+
         # Add all descriptors to the builder
         for joint_desc in joint_descriptors:
             builder.add_joint_descriptor(joint=joint_desc)
@@ -1984,33 +2006,6 @@ class USDImporter:
             builder.add_geometry_descriptor(geom=geom_desc)
         for geom_desc in physics_geoms:
             builder.add_geometry_descriptor(geom=geom_desc)
-
-        ###
-        # DEBUG
-        ###
-
-        # base_visuals = stage.GetPrimAtPath("/anymal/base/visuals")
-        # msg.critical(f"base_visuals: {base_visuals}")
-        # base_visuals_typeinfo = base_visuals.GetPrimTypeInfo()
-        # base_visuals_typename = base_visuals.GetTypeName()
-        # base_visuals_schemas = base_visuals.GetAppliedSchemas()
-
-        # if base_visuals.IsInstance():
-        #     base_visuals_proto = base_visuals.GetPrototype()
-        #     msg.critical(f"base_visuals_proto: {base_visuals_proto}")
-        #     for child in base_visuals_proto.GetChildren():
-        #         # remap prototype child path to this instance's path (instance proxy)
-        #         inst_path = child.GetPath().ReplacePrefix(base_visuals_proto.GetPath(), base_visuals.GetPath())
-        #         inst_child = stage.GetPrimAtPath(inst_path)
-        #         msg.critical(f"instance child: {inst_child}, type: {inst_child.GetTypeName()}, schemas: {inst_child.GetAppliedSchemas()}")
-
-        # msg.critical(f"base_visuals.children: {base_visuals.GetAllChildren()}")
-        # msg.critical(f"base_visuals_typeinfo: {base_visuals_typeinfo}")
-        # msg.critical(f"base_visuals_typeinfo.typename: {base_visuals_typeinfo.GetTypeName()}")
-        # msg.critical(f"base_visuals_typeinfo.applied_api_schemas: {base_visuals_typeinfo.GetAppliedAPISchemas()}")
-        # msg.critical(f"base_visuals_typeinfo.prim_definition: {base_visuals_typeinfo.GetPrimDefinition()}")
-        # msg.critical(f"base_visuals_typename: {base_visuals_typename}")
-        # msg.critical(f"base_visuals_schemas: {base_visuals_schemas}")
 
         ###
         # Summary

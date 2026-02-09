@@ -575,6 +575,12 @@ class TestKaminoContainers(unittest.TestCase):
         model_0: Model = builder_0.finalize()
         model_1: ModelKamino = builder_1.finalize()
         model_2: ModelKamino = ModelKamino.from_newton(model_0)
+        msg.critical("model_0.joint_X_p:\n%s", model_0.joint_X_p)
+        msg.critical("model_0.joint_X_c:\n%s", model_0.joint_X_c)
+        msg.error("model_1.joints.B_r_Bj:\n%s", model_1.joints.B_r_Bj)
+        msg.error("model_2.joints.B_r_Bj:\n%s\n", model_2.joints.B_r_Bj)
+        msg.error("model_1.joints.F_r_Fj:\n%s", model_1.joints.F_r_Fj)
+        msg.error("model_2.joints.F_r_Fj:\n%s\n", model_2.joints.F_r_Fj)
         # NOTE: We don't check mesh geometry pointers since they have been loaded separately
         # TODO: Check mesh geometry data explicitly: vertices, triangle, normals etc
         test_util_checks.assert_model_equal(

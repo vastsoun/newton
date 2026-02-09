@@ -53,7 +53,7 @@ wp.set_module_options({"enable_backward": False})
 
 
 @wp.kernel
-def aggregate_contact_forces_per_body(
+def _aggregate_contact_force_per_body(
     # Input: Kamino ContactsData
     wid: wp.array(dtype=int32),  # world index per contact
     bid_AB: wp.array(dtype=vec2i),  # body pair per contact (global body indices)
@@ -66,11 +66,11 @@ def aggregate_contact_forces_per_body(
     num_worlds: int,
     max_bodies_per_world: int,
     # Output: aggregated data
-    net_forces: wp.array3d(dtype=wp.float32),  # [num_worlds, max_bodies, 3]
-    contact_flags: wp.array2d(dtype=int32),  # [num_worlds, max_bodies]
+    net_force: wp.array3d(dtype=wp.float32),  # [num_worlds, max_bodies, 3]
+    contact_flag: wp.array2d(dtype=int32),  # [num_worlds, max_bodies]
 ):
     """
-    Aggregate contact forces and flags per body across all contacts.
+    Aggregate contact force and flags per body across all contacts.
 
     Each thread processes one contact. Forces are transformed from local
     contact frame to world frame, then atomically accumulated to both
@@ -85,8 +85,8 @@ def aggregate_contact_forces_per_body(
         world_active_contacts: Number of active contacts per world
         num_worlds: Total number of worlds
         max_bodies_per_world: Maximum number of bodies per world
-        net_forces: Output array for net forces per body (world frame)
-        contact_flags: Output array for contact flags per body
+        net_force: Output array for net force per body (world frame)
+        contact_flag: Output array for contact flag per body
     """
     contact_idx = wp.tid()
 
@@ -121,39 +121,39 @@ def aggregate_contact_forces_per_body(
     if global_body_A >= 0:
         body_A_in_world = model_body_bid[global_body_A]  # Convert to per-world index
         for i in range(3):
-            wp.atomic_add(net_forces, world_idx, body_A_in_world, i, -force_world[i])
-        wp.atomic_max(contact_flags, world_idx, body_A_in_world, int32(1))
+            wp.atomic_add(net_force, world_idx, body_A_in_world, i, -force_world[i])
+        wp.atomic_max(contact_flag, world_idx, body_A_in_world, int32(1))
 
     if global_body_B >= 0:
         body_B_in_world = model_body_bid[global_body_B]  # Convert to per-world index
         for i in range(3):
-            wp.atomic_add(net_forces, world_idx, body_B_in_world, i, force_world[i])
-        wp.atomic_max(contact_flags, world_idx, body_B_in_world, int32(1))
+            wp.atomic_add(net_force, world_idx, body_B_in_world, i, force_world[i])
+        wp.atomic_max(contact_flag, world_idx, body_B_in_world, int32(1))
 
 
 @wp.kernel
-def aggregate_ground_contact_flags_per_body(
+def _aggregate_ground_contact_flag_per_body(
     # Input: Kamino ContactsData
     wid: wp.array(dtype=int32),  # world index per contact
     bid_AB: wp.array(dtype=vec2i),  # body pair per contact (global body indices)
     gid_AB: wp.array(dtype=vec2i),  # geometry pair per contact
     mode: wp.array(dtype=int32),  # contact mode
     world_active_contacts: wp.array(dtype=int32),  # contacts per world
-    # Ground filter
-    ground_geom_mask: wp.array(dtype=int32),  # 1 if geom is ground, 0 otherwise
+    # Static filter
+    static_geom_mask: wp.array(dtype=int32),  # 1 if geom is static, 0 otherwise
     # Model data for global to per-world body ID conversion
     model_body_bid: wp.array(dtype=int32),  # Per-world body ID for each global body
     num_worlds: int,
     max_bodies_per_world: int,
     max_geoms_per_world: int,
     # Output
-    ground_contact_flags: wp.array2d(dtype=int32),  # [num_worlds, max_bodies]
+    static_contact_flag: wp.array2d(dtype=int32),  # [num_worlds, max_bodies]
 ):
     """
-    Identify which bodies are in contact with ground geometries.
+    Identify which bodies are in contact with static geometries.
 
     Each thread processes one contact. If either geometry in the contact
-    pair is marked as ground, the corresponding non-ground body's ground
+    pair is marked as static, the corresponding non-static body's static
     contact flag is set.
 
     Args:
@@ -162,10 +162,10 @@ def aggregate_ground_contact_flags_per_body(
         gid_AB: Geometry index pair (A, B) for each contact
         mode: Contact mode (INACTIVE, OPENING, STICKING, SLIDING)
         world_active_contacts: Number of active contacts per world
-        ground_geom_mask: Mask indicating which geometries are ground (1=ground, 0=not)
+        static_geom_mask: Mask indicating which geometries are static (1=static, 0=not)
         num_worlds: Total number of worlds
         max_bodies_per_world: Maximum number of bodies per world
-        ground_contact_flags: Output array for ground contact flags per body
+        static_contact_flag: Output array for static contact flag per body
     """
     contact_idx = wp.tid()
 
@@ -192,27 +192,27 @@ def aggregate_ground_contact_flags_per_body(
     global_geom_A = geom_pair[0]  # Global geometry index
     global_geom_B = geom_pair[1]  # Global geometry index
 
-    # Check if either geometry is ground
+    # Check if either geometry is static
     # Note: gid_AB contains global geometry indices, use directly
-    geom_A_is_ground = ground_geom_mask[global_geom_A]
-    geom_B_is_ground = ground_geom_mask[global_geom_B]
+    geom_A_is_static = static_geom_mask[global_geom_A]
+    geom_B_is_static = static_geom_mask[global_geom_B]
 
-    # Set ground contact flag for non-ground body
+    # Set static contact flag for non-static body
     # Convert global body indices to per-world body indices for array indexing
-    # Skip static bodies (bid < 0, e.g., ground plane)
-    if geom_B_is_ground and global_body_A >= 0:
-        # Body A is in contact with ground (geom B)
+    # Skip static bodies (bid < 0, e.g., static plane)
+    if geom_B_is_static and global_body_A >= 0:
+        # Body A is in contact with static (geom B)
         body_A_in_world = model_body_bid[global_body_A]
-        wp.atomic_max(ground_contact_flags, world_idx, body_A_in_world, int32(1))
+        wp.atomic_max(static_contact_flag, world_idx, body_A_in_world, int32(1))
 
-    if geom_A_is_ground and global_body_B >= 0:
-        # Body B is in contact with ground (geom A)
+    if geom_A_is_static and global_body_B >= 0:
+        # Body B is in contact with static (geom A)
         body_B_in_world = model_body_bid[global_body_B]
-        wp.atomic_max(ground_contact_flags, world_idx, body_B_in_world, int32(1))
+        wp.atomic_max(static_contact_flag, world_idx, body_B_in_world, int32(1))
 
 
 @wp.kernel
-def aggregate_contact_forces_per_geom(
+def _aggregate_contact_force_per_geom(
     # Input: Kamino ContactsData
     wid: wp.array(dtype=int32),  # world index per contact
     gid_AB: wp.array(dtype=vec2i),  # geometry pair per contact
@@ -223,13 +223,13 @@ def aggregate_contact_forces_per_geom(
     num_worlds: int,
     max_geoms_per_world: int,
     # Output: aggregated data
-    net_forces: wp.array3d(dtype=wp.float32),  # [num_worlds, max_geoms, 3]
-    contact_flags: wp.array2d(dtype=int32),  # [num_worlds, max_geoms]
+    net_force: wp.array3d(dtype=wp.float32),  # [num_worlds, max_geoms, 3]
+    contact_flag: wp.array2d(dtype=int32),  # [num_worlds, max_geoms]
 ):
     """
-    Aggregate contact forces and flags per geometry across all contacts.
+    Aggregate contact force and flags per geometry across all contacts.
 
-    Similar to aggregate_contact_forces_per_body, but aggregates to geometry
+    Similar to _aggregate_contact_force_per_body, but aggregates to geometry
     level instead of body level. Useful for detailed contact analysis in RL.
 
     Args:
@@ -241,8 +241,8 @@ def aggregate_contact_forces_per_geom(
         world_active_contacts: Number of active contacts per world
         num_worlds: Total number of worlds
         max_geoms_per_world: Maximum number of geometries per world
-        net_forces: Output array for net forces per geometry (world frame)
-        contact_flags: Output array for contact flags per geometry
+        net_force: Output array for net force per geometry (world frame)
+        contact_flag: Output array for contact flag per geometry
     """
     contact_idx = wp.tid()
 
@@ -273,12 +273,12 @@ def aggregate_contact_forces_per_geom(
     # Accumulate force to both geometries (equal and opposite)
     # Need to add each component separately for atomic operations on 3D arrays
     for i in range(3):
-        wp.atomic_add(net_forces, world_idx, geom_A, i, force_world[i])
-        wp.atomic_add(net_forces, world_idx, geom_B, i, -force_world[i])
+        wp.atomic_add(net_force, world_idx, geom_A, i, force_world[i])
+        wp.atomic_add(net_force, world_idx, geom_B, i, -force_world[i])
 
-    # Set contact flags for both geometries
-    wp.atomic_max(contact_flags, world_idx, geom_A, int32(1))
-    wp.atomic_max(contact_flags, world_idx, geom_B, int32(1))
+    # Set contact flag for both geometries
+    wp.atomic_max(contact_flag, world_idx, geom_A, int32(1))
+    wp.atomic_max(contact_flag, world_idx, geom_B, int32(1))
 
 
 ###
@@ -295,38 +295,38 @@ class ContactAggregationData:
 
     # === Per-Body Aggregated Data (for RL interface) ===
 
-    net_contact_forces_per_body: wp.array | None = None
-    """Net contact forces per body (world frame). Shape: (num_worlds, max_bodies_per_world, 3)"""
+    body_net_contact_force: wp.array | None = None
+    """Net contact force per body (world frame). Shape: (num_worlds, max_bodies_per_world, 3)"""
 
-    contact_flags_per_body: wp.array | None = None
-    """Binary contact flags per body (any contact). Shape: (num_worlds, max_bodies_per_world)"""
+    body_contact_flag: wp.array | None = None
+    """Binary contact flag per body (any contact). Shape: (num_worlds, max_bodies_per_world)"""
 
-    ground_contact_flags_per_body: wp.array | None = None
-    """Ground contact flags per body (contact with ground geoms). Shape: (num_worlds, max_bodies_per_world)"""
+    body_static_contact_flag: wp.array | None = None
+    """Static contact flag per body (contact with static geoms). Shape: (num_worlds, max_bodies_per_world)"""
 
     # === Per-Geom Detailed Data (for advanced RL) ===
 
-    net_contact_forces_per_geom: wp.array | None = None
-    """Net contact forces per geometry (world frame). Shape: (num_worlds, max_geoms_per_world, 3)"""
+    geom_net_contact_force: wp.array | None = None
+    """Net contact force per geometry (world frame). Shape: (num_worlds, max_geoms_per_world, 3)"""
 
-    contact_flags_per_geom: wp.array | None = None
+    geom_contact_flag: wp.array | None = None
     """Contact flags per geometry. Shape: (num_worlds, max_geoms_per_world)"""
 
     # === Contact Position/Normal Data (optional, for visualization) ===
 
-    contact_positions_per_body: wp.array | None = None
+    body_contact_position: wp.array | None = None
     """Average contact position per body (world frame). Shape: (num_worlds, max_bodies_per_world, 3)"""
 
-    contact_normals_per_body: wp.array | None = None
+    body_contact_normal: wp.array | None = None
     """Average contact normal per body (world frame). Shape: (num_worlds, max_bodies_per_world, 3)"""
 
-    num_contacts_per_body: wp.array | None = None
+    body_num_contacts: wp.array | None = None
     """Number of contacts per body. Shape: (num_worlds, max_bodies_per_world)"""
 
-    # === Ground Geometry Filter ===
+    # === Static Geometry Filter ===
 
-    ground_geom_mask: wp.array | None = None
-    """Pre-computed mask: which geom IDs are 'ground'. Shape: (total_num_geoms,)"""
+    static_geom_mask: wp.array | None = None
+    """Pre-computed mask: which geom IDs are 'static'. Shape: (total_num_geoms,)"""
 
 
 ###
@@ -343,19 +343,19 @@ class ContactAggregation:
     is performed on GPU using atomic operations for efficiency.
 
     Usage:
-        aggregation = ContactAggregation(model, contacts, ground_geom_ids=[0])
+        aggregation = ContactAggregation(model, contacts, static_geom_ids=[0])
         aggregation.compute()  # Call after simulator.step()
 
         # Access via PyTorch tensors (zero-copy)
-        net_forces = wp.to_torch(aggregation.net_forces_per_body)
-        contact_flags = wp.to_torch(aggregation.contact_flags_per_body)
+        net_force = wp.to_torch(aggregation.body_net_force)
+        contact_flag = wp.to_torch(aggregation.body_contact_flag)
     """
 
     def __init__(
         self,
         model: Model,
         contacts: Contacts,
-        ground_geom_ids: list[int] | None = None,
+        static_geom_ids: list[int] | None = None,
         device: Devicelike | None = None,
         enable_positions_normals: bool = False,
     ):
@@ -364,7 +364,7 @@ class ContactAggregation:
         Args:
             model: The Kamino model containing world/body/geom topology
             contacts: The Contacts container with per-contact data
-            ground_geom_ids: List of geometry IDs considered as 'ground'. Defaults to [0].
+            static_geom_ids: List of geometry IDs considered as 'static'. Defaults to [0].
             device: Device for computation. If None, uses model's device.
             enable_positions_normals: Whether to compute average contact positions and normals per body.
         """
@@ -376,10 +376,10 @@ class ContactAggregation:
         # Allocate aggregation data
         self._data = self._allocate_data()
 
-        # Setup ground geometry mask
-        if ground_geom_ids is None:
-            ground_geom_ids = [0]  # Default: first geometry is ground
-        self._setup_ground_mask(ground_geom_ids)
+        # Setup static geometry mask
+        if static_geom_ids is None:
+            static_geom_ids = [0]  # Default: first geometry is static
+        self._setup_static_mask(static_geom_ids)
 
     def _allocate_data(self) -> ContactAggregationData:
         """Allocate all necessary arrays for aggregation."""
@@ -388,46 +388,46 @@ class ContactAggregation:
         max_geoms = self._model.size.max_of_num_collision_geoms
 
         # Per-body aggregated data
-        net_contact_forces_per_body = wp.zeros((num_worlds, max_bodies, 3), dtype=wp.float32, device=self._device)
-        contact_flags_per_body = wp.zeros((num_worlds, max_bodies), dtype=wp.int32, device=self._device)
-        ground_contact_flags_per_body = wp.zeros((num_worlds, max_bodies), dtype=wp.int32, device=self._device)
+        body_net_contact_force = wp.zeros((num_worlds, max_bodies, 3), dtype=wp.float32, device=self._device)
+        body_contact_flag = wp.zeros((num_worlds, max_bodies), dtype=wp.int32, device=self._device)
+        body_static_contact_flag = wp.zeros((num_worlds, max_bodies), dtype=wp.int32, device=self._device)
 
         # Per-geom detailed data
-        net_contact_forces_per_geom = wp.zeros((num_worlds, max_geoms, 3), dtype=wp.float32, device=self._device)
-        contact_flags_per_geom = wp.zeros((num_worlds, max_geoms), dtype=wp.int32, device=self._device)
+        geom_net_contact_force = wp.zeros((num_worlds, max_geoms, 3), dtype=wp.float32, device=self._device)
+        geom_contact_flag = wp.zeros((num_worlds, max_geoms), dtype=wp.int32, device=self._device)
 
-        # Ground geometry mask (_setup_ground_mask)
+        # Static geometry mask (_setup_static_mask)
         # Allocate based on actual number of geometries, not max_geoms * num_worlds
         num_geoms = self._model.cgeoms.num_geoms
-        ground_geom_mask = wp.zeros(num_geoms, dtype=wp.int32, device=self._device)
+        static_geom_mask = wp.zeros(num_geoms, dtype=wp.int32, device=self._device)
 
         # Contact positions and normals
-        contact_positions_per_body = None
-        contact_normals_per_body = None
-        num_contacts_per_body = None
+        body_contact_position = None
+        body_contact_normal = None
+        body_num_contacts = None
 
         if self._enable_positions_normals:
-            contact_positions_per_body = wp.zeros((num_worlds, max_bodies, 3), dtype=wp.float32, device=self._device)
-            contact_normals_per_body = wp.zeros((num_worlds, max_bodies, 3), dtype=wp.float32, device=self._device)
-            num_contacts_per_body = wp.zeros((num_worlds, max_bodies), dtype=wp.int32, device=self._device)
+            body_contact_position = wp.zeros((num_worlds, max_bodies, 3), dtype=wp.float32, device=self._device)
+            body_contact_normal = wp.zeros((num_worlds, max_bodies, 3), dtype=wp.float32, device=self._device)
+            body_num_contacts = wp.zeros((num_worlds, max_bodies), dtype=wp.int32, device=self._device)
 
         return ContactAggregationData(
-            net_contact_forces_per_body=net_contact_forces_per_body,
-            contact_flags_per_body=contact_flags_per_body,
-            ground_contact_flags_per_body=ground_contact_flags_per_body,
-            net_contact_forces_per_geom=net_contact_forces_per_geom,
-            contact_flags_per_geom=contact_flags_per_geom,
-            ground_geom_mask=ground_geom_mask,
-            contact_positions_per_body=contact_positions_per_body,
-            contact_normals_per_body=contact_normals_per_body,
-            num_contacts_per_body=num_contacts_per_body,
+            body_net_contact_force=body_net_contact_force,
+            body_contact_flag=body_contact_flag,
+            body_static_contact_flag=body_static_contact_flag,
+            geom_net_contact_force=geom_net_contact_force,
+            geom_contact_flag=geom_contact_flag,
+            static_geom_mask=static_geom_mask,
+            body_contact_position=body_contact_position,
+            body_contact_normal=body_contact_normal,
+            body_num_contacts=body_num_contacts,
         )
 
-    def _setup_ground_mask(self, ground_geom_ids: list[int]):
-        """Mark which geometries are considered 'ground'.
+    def _setup_static_mask(self, static_geom_ids: list[int]):
+        """Mark which geometries are considered 'static'.
 
         Args:
-            ground_geom_ids: List of geometry IDs (per world) that should be marked as ground
+            static_geom_ids: List of geometry IDs (per world) that should be marked as static
         """
         # Get collision geometry data
         cgeoms = self._model.cgeoms
@@ -437,20 +437,20 @@ class ContactAggregation:
         mask_host = np.zeros(num_geoms, dtype=np.int32)
         gid_host = cgeoms.gid.numpy()  # Per-world geometry IDs
 
-        # Mark geometries whose per-world ID is in ground_geom_ids
+        # Mark geometries whose per-world ID is in static_geom_ids
         for i in range(num_geoms):
-            if gid_host[i] in ground_geom_ids:
+            if gid_host[i] in static_geom_ids:
                 mask_host[i] = 1
 
         # Copy to device
-        wp.copy(self._data.ground_geom_mask, wp.array(mask_host, dtype=wp.int32, device=self._device))
+        wp.copy(self._data.static_geom_mask, wp.array(mask_host, dtype=wp.int32, device=self._device))
 
     def compute(self, skip_if_no_contacts: bool = False):
         """
         Compute aggregated contact data from current ContactsData.
 
         This method should be called after simulator.step() to update contact
-        forces and flags. It launches GPU kernels to efficiently aggregate
+        force and flags. It launches GPU kernels to efficiently aggregate
         per-contact data into per-body and per-geom summaries.
 
         Args:
@@ -459,16 +459,16 @@ class ContactAggregation:
         """
 
         # Zero out previous results
-        self._data.net_contact_forces_per_body.zero_()
-        self._data.contact_flags_per_body.zero_()
-        self._data.ground_contact_flags_per_body.zero_()
-        self._data.net_contact_forces_per_geom.zero_()
-        self._data.contact_flags_per_geom.zero_()
+        self._data.body_net_contact_force.zero_()
+        self._data.body_contact_flag.zero_()
+        self._data.body_static_contact_flag.zero_()
+        self._data.geom_net_contact_force.zero_()
+        self._data.geom_contact_flag.zero_()
 
         if self._enable_positions_normals:
-            self._data.contact_positions_per_body.zero_()
-            self._data.contact_normals_per_body.zero_()
-            self._data.num_contacts_per_body.zero_()
+            self._data.body_contact_position.zero_()
+            self._data.body_contact_normal.zero_()
+            self._data.body_num_contacts.zero_()
 
         # Get contact data
         contacts_data = self._contacts.data
@@ -484,9 +484,9 @@ class ContactAggregation:
         max_bodies = self._model.size.max_of_num_bodies
         max_geoms = self._model.size.max_of_num_collision_geoms
 
-        # Launch aggregation kernel for per-body forces
+        # Launch aggregation kernel for per-body force
         wp.launch(
-            aggregate_contact_forces_per_body,
+            _aggregate_contact_force_per_body,
             dim=contacts_data.model_max_contacts_host,
             inputs=[
                 contacts_data.wid,
@@ -500,15 +500,15 @@ class ContactAggregation:
                 max_bodies,
             ],
             outputs=[
-                self._data.net_contact_forces_per_body,
-                self._data.contact_flags_per_body,
+                self._data.body_net_contact_force,
+                self._data.body_contact_flag,
             ],
             device=self._device,
         )
 
-        # Launch aggregation kernel for ground contact flags
+        # Launch aggregation kernel for static contact flag
         wp.launch(
-            aggregate_ground_contact_flags_per_body,
+            _aggregate_ground_contact_flag_per_body,
             dim=contacts_data.model_max_contacts_host,
             inputs=[
                 contacts_data.wid,
@@ -516,21 +516,21 @@ class ContactAggregation:
                 contacts_data.gid_AB,
                 contacts_data.mode,
                 contacts_data.world_active_contacts,
-                self._data.ground_geom_mask,
+                self._data.static_geom_mask,
                 self._model.bodies.bid,  # For global to per-world body ID conversion
                 num_worlds,
                 max_bodies,
                 max_geoms,
             ],
             outputs=[
-                self._data.ground_contact_flags_per_body,
+                self._data.body_static_contact_flag,
             ],
             device=self._device,
         )
 
-        # Launch aggregation kernel for per-geom forces
+        # Launch aggregation kernel for per-geom force
         wp.launch(
-            aggregate_contact_forces_per_geom,
+            _aggregate_contact_force_per_geom,
             dim=contacts_data.model_max_contacts_host,
             inputs=[
                 contacts_data.wid,
@@ -543,38 +543,38 @@ class ContactAggregation:
                 max_geoms,
             ],
             outputs=[
-                self._data.net_contact_forces_per_geom,
-                self._data.contact_flags_per_geom,
+                self._data.geom_net_contact_force,
+                self._data.geom_contact_flag,
             ],
             device=self._device,
         )
 
     @property
-    def net_forces_per_body(self) -> wp.array:
-        """Net forces per body [num_worlds, max_bodies, 3]"""
-        return self._data.net_contact_forces_per_body
+    def body_net_force(self) -> wp.array:
+        """Net force per body [num_worlds, max_bodies, 3]"""
+        return self._data.body_net_contact_force
 
     @property
-    def contact_flags_per_body(self) -> wp.array:
+    def body_contact_flag(self) -> wp.array:
         """Contact flags per body [num_worlds, max_bodies]"""
-        return self._data.contact_flags_per_body
+        return self._data.body_contact_flag
 
     @property
-    def ground_contact_flags_per_body(self) -> wp.array:
-        """Ground contact flags per body [num_worlds, max_bodies]"""
-        return self._data.ground_contact_flags_per_body
+    def body_static_contact_flag(self) -> wp.array:
+        """Static contact flag per body [num_worlds, max_bodies]"""
+        return self._data.body_static_contact_flag
 
     @property
-    def net_forces_per_geom(self) -> wp.array:
-        """Net forces per geom [num_worlds, max_geoms, 3]"""
-        return self._data.net_contact_forces_per_geom
+    def geom_net_force(self) -> wp.array:
+        """Net force per geom [num_worlds, max_geoms, 3]"""
+        return self._data.geom_net_contact_force
 
     @property
-    def contact_flags_per_geom(self) -> wp.array:
+    def geom_contact_flag(self) -> wp.array:
         """Contact flags per geom [num_worlds, max_geoms]"""
-        return self._data.contact_flags_per_geom
+        return self._data.geom_contact_flag
 
     @property
-    def ground_geom_mask(self) -> wp.array:
-        """Ground geometry mask [num_geoms]"""
-        return self._data.ground_geom_mask
+    def static_geom_mask(self) -> wp.array:
+        """Static geometry mask [num_geoms]"""
+        return self._data.static_geom_mask

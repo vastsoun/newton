@@ -353,8 +353,8 @@ class ContactAggregation:
 
     def __init__(
         self,
-        model: Model,
-        contacts: Contacts,
+        model: Model | None = None,
+        contacts: Contacts | None = None,
         static_geom_ids: list[int] | None = None,
         device: Devicelike | None = None,
         enable_positions_normals: bool = False,
@@ -362,30 +362,61 @@ class ContactAggregation:
         """Initialize contact aggregation.
 
         Args:
-            model: The Kamino model containing world/body/geom topology
-            contacts: The Contacts container with per-contact data
+            model (Model | None): The model container describing the system to be simulated.
+                If None, call ``finalize()`` later.
+            contacts (Contacts | None): The Contacts container with per-contact data.
+                If None, call ``finalize()`` later.
             static_geom_ids: List of geometry IDs considered as 'static'. Defaults to [0].
             device: Device for computation. If None, uses model's device.
             enable_positions_normals: Whether to compute average contact positions and normals per body.
         """
+        # Cache the device
+        self._device: Devicelike | None = device
+
+        # Forward declarations
+        self._model: Model | None = None
+        self._contacts: Contacts | None = None
+        self._data: ContactAggregationData | None = None
+        self._enable_positions_normals: bool = enable_positions_normals
+
+        # Proceed with memory allocations if model and contacts are provided
+        if model is not None and contacts is not None:
+            self.finalize(
+                model=model,
+                contacts=contacts,
+                static_geom_ids=static_geom_ids,
+                device=device,
+            )
+
+    def finalize(
+        self,
+        model: Model,
+        contacts: Contacts,
+        static_geom_ids: list[int] | None = None,
+        device: Devicelike | None = None,
+    ) -> None:
+        """Finalizes memory allocations for the contact aggregation data.
+
+        Args:
+            model (Model): The model container describing the system to be simulated.
+            contacts (Contacts): The Contacts container with per-contact data.
+            static_geom_ids (list[int] | None): List of geometry IDs considered as 'static'. Defaults to [0].
+            device (Devicelike | None): Device for computation. If None, uses model's device.
+        """
+        # Override the device if specified
+        if device is not None:
+            self._device = device
+        if self._device is None:
+            self._device = model.device
+
         self._model = model
         self._contacts = contacts
-        self._device = device if device is not None else model.device
-        self._enable_positions_normals = enable_positions_normals
 
-        # Allocate aggregation data
-        self._data = self._allocate_data()
-
-        # Setup static geometry mask
-        if static_geom_ids is None:
-            static_geom_ids = [0]  # Default: first geometry is static
-        self._setup_static_mask(static_geom_ids)
-
-    def _allocate_data(self) -> ContactAggregationData:
-        """Allocate all necessary arrays for aggregation."""
-        num_worlds = self._model.size.num_worlds
-        max_bodies = self._model.size.max_of_num_bodies
-        max_geoms = self._model.size.max_of_num_collision_geoms
+        # Read dimensions from the model
+        num_worlds = model.size.num_worlds
+        max_bodies = model.size.max_of_num_bodies
+        max_geoms = model.size.max_of_num_collision_geoms
+        num_geoms = model.cgeoms.num_geoms
 
         # Per-body aggregated data
         body_net_contact_force = wp.zeros((num_worlds, max_bodies, 3), dtype=wp.float32, device=self._device)
@@ -396,9 +427,7 @@ class ContactAggregation:
         geom_net_contact_force = wp.zeros((num_worlds, max_geoms, 3), dtype=wp.float32, device=self._device)
         geom_contact_flag = wp.zeros((num_worlds, max_geoms), dtype=wp.int32, device=self._device)
 
-        # Static geometry mask (_setup_static_mask)
-        # Allocate based on actual number of geometries, not max_geoms * num_worlds
-        num_geoms = self._model.cgeoms.num_geoms
+        # Static geometry mask
         static_geom_mask = wp.zeros(num_geoms, dtype=wp.int32, device=self._device)
 
         # Contact positions and normals
@@ -411,7 +440,7 @@ class ContactAggregation:
             body_contact_normal = wp.zeros((num_worlds, max_bodies, 3), dtype=wp.float32, device=self._device)
             body_num_contacts = wp.zeros((num_worlds, max_bodies), dtype=wp.int32, device=self._device)
 
-        return ContactAggregationData(
+        self._data = ContactAggregationData(
             body_net_contact_force=body_net_contact_force,
             body_contact_flag=body_contact_flag,
             body_static_contact_flag=body_static_contact_flag,
@@ -422,6 +451,11 @@ class ContactAggregation:
             body_contact_normal=body_contact_normal,
             body_num_contacts=body_num_contacts,
         )
+
+        # Setup static geometry mask
+        if static_geom_ids is None:
+            static_geom_ids = [0]  # Default: first geometry is static
+        self._setup_static_mask(static_geom_ids)
 
     def _setup_static_mask(self, static_geom_ids: list[int]):
         """Mark which geometries are considered 'static'.

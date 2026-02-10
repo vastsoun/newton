@@ -143,8 +143,22 @@ class RigidBodiesModel:
             Shape of ``(num_bodies,)`` and type :class:`vec6`.
     """
 
+    ###
+    # Meta-Data
+    ###
+
     num_bodies: int = 0
     """Total number of body elements in the model (host-side)."""
+
+    label: list[str] | None = None
+    """
+    A list containing the label of each body.\n
+    Length of ``num_bodies`` and type :class:`str`.
+    """
+
+    ###
+    # Data Attributes
+    ###
 
     wid: wp.array | None = None
     """

@@ -1171,6 +1171,7 @@ class ModelKamino:
             # Rigid bodies
             model_bodies = RigidBodiesModel(
                 num_bodies=model.body_count,
+                label=model.body_key,
                 wid=model.body_world,
                 bid=wp.array(body_bid_np, dtype=int32),  # TODO: Remove
                 i_r_com_i=model.body_com,
@@ -1185,6 +1186,7 @@ class ModelKamino:
             # Joints
             model_joints = JointsModel(
                 num_joints=model.joint_count,
+                label=model.joint_key,
                 wid=model.joint_world,
                 jid=wp.array(joint_jid_np, dtype=int32),  # TODO: Remove
                 # dof_type=model.joint_type,
@@ -1224,6 +1226,7 @@ class ModelKamino:
                 num_collidable_geom_pairs=model.shape_contact_pair_count,
                 model_max_contacts=model.rigid_contact_max,
                 world_max_contacts=world_required_contacts,
+                label=model.shape_key,
                 wid=model.shape_world,
                 gid=wp.array(shape_sid_np, dtype=int32),  # TODO: Remove
                 lid=wp.zeros(shape=model.shape_count, dtype=int32),  # TODO: Remove this since it's not used anywhere

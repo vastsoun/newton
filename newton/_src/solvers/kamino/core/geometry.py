@@ -237,19 +237,19 @@ class GeometriesModel:
         num_geoms (int):
             The total number of geometry elements in the model (host-side).
         wid (wp.array | None):
-            World index each geometry element.\n
+            World index each geometry entity.\n
             Shape of ``(num_geoms,)`` and type :class:`int`.
         gid (wp.array | None):
-            Geometry index of each geometry element w.r.t its world.\n
+            Geometry index of each geometry entity w.r.t its world.\n
             Shape of ``(num_geoms,)`` and type :class:`int32`.
         lid (wp.array | None):
-            Layer index of each geometry element w.r.t its body.\n
+            Layer index of each geometry entity w.r.t its body.\n
             Shape of ``(num_geoms,)`` and type :class:`int`.
         bid (wp.array | None):
-            Body index of each geometry element.\n
+            Body index of each geometry entity.\n
             Shape of ``(num_geoms,)`` and type :class:`int`.
         sid (wp.array | None):
-            Shape index of each geometry element.\n
+            Shape index of each geometry entity.\n
             Shape of ``(num_geoms,)`` and type :class:`int`.
         ptr (wp.array | None):
             Pointer to the source data of the shape.\n
@@ -257,7 +257,7 @@ class GeometriesModel:
             the shape data, which can correspond to a mesh, heightfield, or SDF.\n
             Shape of ``(num_geoms,)`` and type :class:`uint64`.
         params (wp.array | None):
-            Shape parameters of each geometry element if they are shape primitives.\n
+            Shape parameters of each geometry entity if they are shape primitives.\n
             Shape of ``(num_geoms,)`` and type :class:`vec4f`.
         offset (wp.array | None):
             Offset poses of the geometry elements w.r.t. their corresponding bodies.\n
@@ -299,38 +299,44 @@ class GeometriesModel:
     The sum of all elements in `world_max_contacts` should equal `model_max_contacts`.
     """
 
+    label: list[str] | None = None
+    """
+    A list containing the label of each geometry entity.\n
+    Length of ``num_geoms`` and type :class:`str`.
+    """
+
     ###
     # Data Attributes
     ###
 
     wid: wp.array | None = None
     """
-    World index each geometry element.\n
+    World index of each geometry entity.\n
     Shape of ``(num_geoms,)`` and type :class:`int`.
     """
 
     gid: wp.array | None = None
     """
-    Geometry index of each geometry element w.r.t its world.\n
+    Geometry index of each geometry entity w.r.t its world.\n
     Shape of ``(num_geoms,)`` and type :class:`int32`.
     """
 
     lid: wp.array | None = None
     """
-    Layer index of each geometry element w.r.t its body.\n
+    Layer index of each geometry entity w.r.t its body.\n
     Shape of ``(num_geoms,)`` and type :class:`int`.
     """
 
     bid: wp.array | None = None
     """
-    Body index of each geometry element.\n
+    Body index of each geometry entity.\n
     Shape of ``(num_geoms,)`` and type :class:`int`.
     """
 
     # TODO: Rename as `type`
     sid: wp.array | None = None
     """
-    Shape index of each geometry element.\n
+    Shape index of each geometry entity.\n
     Shape of ``(num_geoms,)`` and type :class:`int`.
     """
 
@@ -344,7 +350,7 @@ class GeometriesModel:
 
     params: wp.array | None = None
     """
-    Shape parameters of each geometry element if they are shape primitives.\n
+    Shape parameters of each geometry entity if they are shape primitives.\n
     Shape of ``(num_geoms,)`` and type :class:`vec4f`.
     """
 

@@ -1013,8 +1013,22 @@ class JointsModel:
             the start index of joint constraints of the corresponding world.
     """
 
+    ###
+    # Meta-Data
+    ###
+
     num_joints: int = 0
     """Total number of joints in the model (host-side)."""
+
+    label: list[str] | None = None
+    """
+    A list containing the label of each joint entity.\n
+    Length of ``num_joints`` and type :class:`str`.
+    """
+
+    ###
+    # Data Attributes
+    ###
 
     wid: wp.array | None = None
     """

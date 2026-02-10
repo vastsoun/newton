@@ -902,6 +902,7 @@ class ModelBuilderKamino:
         gravity_vector = []
 
         # Initialize the body data collections
+        bodies_label = []
         bodies_wid = []
         bodies_bid = []
         bodies_i_r_com_i = []
@@ -913,6 +914,7 @@ class ModelBuilderKamino:
         bodies_u_i_0 = []
 
         # Initialize the joint data collections
+        joints_label = []
         joints_wid = []
         joints_jid = []
         joints_dofid = []
@@ -939,6 +941,7 @@ class ModelBuilderKamino:
         joints_q_j_0 = []
 
         # Initialize the collision geometry data collections
+        geoms_label = []
         geoms_wid = []
         geoms_gid = []
         geoms_lid = []
@@ -1009,6 +1012,7 @@ class ModelBuilderKamino:
         # A helper function to collect model bodies data
         def collect_body_model_data():
             for body in self._bodies:
+                bodies_label.append(body.name)
                 bodies_wid.append(body.wid)
                 bodies_bid.append(body.bid)
                 bodies_i_r_com_i.append(body.i_r_com_i)
@@ -1023,6 +1027,7 @@ class ModelBuilderKamino:
         def collect_joint_model_data():
             for joint in self._joints:
                 world_bio = self._worlds[joint.wid].bodies_idx_offset
+                joints_label.append(joint.name)
                 joints_wid.append(joint.wid)
                 joints_jid.append(joint.jid)
                 joints_dofid.append(joint.dof_type.value)
@@ -1068,6 +1073,7 @@ class ModelBuilderKamino:
         def collect_geometry_model_data():
             geom_meshes = {}
             for geom in self._geoms:
+                geoms_label.append(geom.name)
                 geoms_wid.append(geom.wid)
                 geoms_lid.append(geom.lid)
                 geoms_gid.append(geom.gid)
@@ -1223,6 +1229,7 @@ class ModelBuilderKamino:
             # Create the bodies model
             model_bodies = RigidBodiesModel(
                 num_bodies=model_size.sum_of_num_bodies,
+                label=bodies_label,
                 wid=wp.array(bodies_wid, dtype=int32),
                 bid=wp.array(bodies_bid, dtype=int32),
                 i_r_com_i=wp.array(bodies_i_r_com_i, dtype=vec3f, requires_grad=requires_grad),
@@ -1237,6 +1244,7 @@ class ModelBuilderKamino:
             # Create the joints model
             model_joints = JointsModel(
                 num_joints=model_size.sum_of_num_joints,
+                label=joints_label,
                 wid=wp.array(joints_wid, dtype=int32),
                 jid=wp.array(joints_jid, dtype=int32),
                 dof_type=wp.array(joints_dofid, dtype=int32),
@@ -1271,6 +1279,7 @@ class ModelBuilderKamino:
                 num_collidable_geom_pairs=len(model_collidable_geom_pairs),
                 model_max_contacts=model_required_contacts,
                 world_max_contacts=world_required_contacts,
+                label=geoms_label,
                 wid=wp.array(geoms_wid, dtype=int32),
                 gid=wp.array(geoms_gid, dtype=int32),
                 lid=wp.array(geoms_lid, dtype=int32),

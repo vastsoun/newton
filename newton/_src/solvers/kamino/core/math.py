@@ -532,6 +532,22 @@ def quat_conj_normalized_apply(q: quatf, v: vec3f) -> vec3f:
     return v - q[3] * uv_s + wp.cross(qv, uv_s)
 
 
+@wp.func
+def quat_twist_angle(q: quatf, axis: vec3f) -> wp.float32:
+    """
+    Computes the twist angle of a quaternion around a specific axis.
+
+    This function isolates the rotation component of ``q`` that occurs purely
+    around the provided ``axis`` (Twist-Swing decomposition) and returns
+    its angle in [-pi, pi].
+    """
+    # positive quaternion guarantees angle is in [-pi, pi]
+    p = quat_positive(q)
+    pv = quat_imaginary(p)
+    angle = 2.0 * wp.atan2(wp.dot(pv, axis), p.w)
+    return angle
+
+
 ###
 # Unit Quaternions
 ###

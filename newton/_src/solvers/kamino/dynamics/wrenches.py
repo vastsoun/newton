@@ -22,7 +22,7 @@ import warp as wp
 from ..core.model import Model, ModelData
 from ..core.types import float32, int32, mat63f, vec2i, vec3f, vec6f
 from ..geometry.contacts import Contacts
-from ..kinematics.jacobians import DenseSystemJacobians
+from ..kinematics.jacobians import DenseSystemJacobians, SparseSystemJacobians
 from ..kinematics.limits import Limits
 
 ###
@@ -115,6 +115,68 @@ def _compute_joint_dof_body_wrenches(
             tau_j = state_joints_tau_j[vio_j]
             for i in range(6):
                 w_j_B[i] += jacobian_dofs_data[mio_j + i] * tau_j
+        wp.atomic_add(state_bodies_w_a, bid_B_j, w_j_B)
+
+
+@wp.kernel
+def _compute_joint_dof_body_wrenches_sparse(
+    # Inputs:
+    model_info_joint_dofs_offset: wp.array(dtype=int32),
+    model_joints_num_dofs: wp.array(dtype=int32),
+    model_joints_dofs_offset: wp.array(dtype=int32),
+    model_joints_wid: wp.array(dtype=int32),
+    model_joints_bid_B: wp.array(dtype=int32),
+    model_joints_bid_F: wp.array(dtype=int32),
+    state_joints_tau_j: wp.array(dtype=float32),
+    jac_nzb_start: wp.array(dtype=int32),
+    jac_nzb_values: wp.array(dtype=vec6f),
+    jac_joint_nzb_offsets: wp.array(dtype=int32),
+    # Outputs:
+    state_bodies_w_a: wp.array(dtype=vec6f),
+):
+    # Retrieve the thread index as the joint index
+    jid = wp.tid()
+
+    # Retrieve the world index of the joint
+    wid = model_joints_wid[jid]
+
+    # Retrieve the body indices of the joint
+    # NOTE: these indices are w.r.t the model
+    bid_F_j = model_joints_bid_F[jid]
+    bid_B_j = model_joints_bid_B[jid]
+
+    # Retrieve the size and index offset of the joint DoFs
+    d_j = model_joints_num_dofs[jid]
+    dio_j = model_joints_dofs_offset[jid]
+
+    # Retrieve the DoF block index offsets of the world's actuation
+    # Jacobian matrix and generalized joint actuation force vector
+    vio = model_info_joint_dofs_offset[wid]
+
+    # Append offsets to the current joint's DoFs
+    vio += dio_j
+
+    # Retrieve the starting index for the non-zero blocks for the current joint
+    jac_j_nzb_start = jac_nzb_start[wid] + jac_joint_nzb_offsets[jid]
+    nzb_stride = 2 if bid_B_j > -1 else 1
+
+    # Compute and store the joint actuation wrench for the Follower body
+    w_j_F = vec6f(0.0)
+    for j in range(d_j):
+        jac_block = jac_nzb_values[jac_j_nzb_start + nzb_stride * j]
+        vio_j = vio + j
+        tau_j = state_joints_tau_j[vio_j]
+        w_j_F += jac_block * tau_j
+    wp.atomic_add(state_bodies_w_a, bid_F_j, w_j_F)
+
+    # Compute and store the joint actuation wrench for the Base body if bid_B >= 0
+    if bid_B_j >= 0:
+        w_j_B = vec6f(0.0)
+        for j in range(d_j):
+            jac_block = jac_nzb_values[jac_j_nzb_start + 2 * j + 1]
+            vio_j = vio + j
+            tau_j = state_joints_tau_j[vio_j]
+            w_j_B += jac_block * tau_j
         wp.atomic_add(state_bodies_w_a, bid_B_j, w_j_B)
 
 
@@ -373,13 +435,65 @@ def _compute_contact_cts_body_wrenches(
         wp.atomic_add(state_bodies_w_c, bid_A, w_c_A)
 
 
+@wp.kernel
+def _compute_cts_body_wrenches_sparse(
+    # Inputs:
+    model_time_inv_dt: wp.array(dtype=float32),
+    state_info_limit_cts_group_offset: wp.array(dtype=int32),
+    state_info_contact_cts_group_offset: wp.array(dtype=int32),
+    jac_num_nzb: wp.array(dtype=int32),
+    jac_nzb_start: wp.array(dtype=int32),
+    jac_nzb_coords: wp.array2d(dtype=int32),
+    jac_nzb_values: wp.array(dtype=vec6f),
+    lambdas_offsets: wp.array(dtype=int32),
+    lambdas_data: wp.array(dtype=float32),
+    # Outputs:
+    state_bodies_w_j: wp.array(dtype=vec6f),
+    state_bodies_l_j: wp.array(dtype=vec6f),
+    state_bodies_c_j: wp.array(dtype=vec6f),
+):
+    # Retrieve the thread index as the joint index
+    wid, nzb_id = wp.tid()
+
+    if nzb_id >= jac_num_nzb[wid]:
+        return
+
+    global_nzb_id = jac_nzb_start[wid] + nzb_id
+    block_coords = jac_nzb_coords[global_nzb_id]
+    block = jac_nzb_values[global_nzb_id]
+
+    # Get constraint and body from the block coordinates
+    cid = block_coords[0]
+    bid_j = block_coords[1] // 6
+
+    # Retrieve the inverse time-step of the world
+    inv_dt = model_time_inv_dt[wid]
+
+    # Retrieve the constraint block index offsets of the
+    # Jacobian matrix and multipliers vector of the world
+    # NOTE: We need to scale by the time-step because the lambdas are impulses
+    vio = lambdas_offsets[wid]
+    lambda_j_inv_dt = lambdas_data[vio + cid] * inv_dt
+
+    # Compute the joint constraint wrench for the body
+    w_j_F = block * lambda_j_inv_dt
+
+    # Add the wrench to the appropriate array
+    if cid >= state_info_contact_cts_group_offset[wid]:
+        wp.atomic_add(state_bodies_c_j, bid_j, w_j_F)
+    elif cid >= state_info_limit_cts_group_offset[wid]:
+        wp.atomic_add(state_bodies_l_j, bid_j, w_j_F)
+    else:
+        wp.atomic_add(state_bodies_w_j, bid_j, w_j_F)
+
+
 ###
 # Launchers
 ###
 
 
 def compute_joint_dof_body_wrenches(
-    model: Model, data: ModelData, jacobians: DenseSystemJacobians, reset_to_zero: bool = True
+    model: Model, data: ModelData, jacobians: DenseSystemJacobians | SparseSystemJacobians, reset_to_zero: bool = True
 ) -> None:
     """
     Update the actuation wrenches of the bodies based on the active joint torques.
@@ -391,32 +505,53 @@ def compute_joint_dof_body_wrenches(
         data.bodies.w_a_i.zero_()
 
     # Then compute the body wrenches resulting from the current generalized actuation forces
-    wp.launch(
-        _compute_joint_dof_body_wrenches,
-        dim=model.size.sum_of_num_joints,
-        inputs=[
-            # Inputs:
-            model.info.num_body_dofs,
-            model.info.bodies_offset,
-            model.info.joint_dofs_offset,
-            model.joints.num_dofs,
-            model.joints.dofs_offset,
-            model.joints.wid,
-            model.joints.bid_B,
-            model.joints.bid_F,
-            data.joints.tau_j,
-            jacobians.data.J_dofs_offsets,
-            jacobians.data.J_dofs_data,
-            # Outputs:
-            data.bodies.w_a_i,
-        ],
-    )
+    if isinstance(jacobians, DenseSystemJacobians):
+        wp.launch(
+            _compute_joint_dof_body_wrenches,
+            dim=model.size.sum_of_num_joints,
+            inputs=[
+                # Inputs:
+                model.info.num_body_dofs,
+                model.info.bodies_offset,
+                model.info.joint_dofs_offset,
+                model.joints.num_dofs,
+                model.joints.dofs_offset,
+                model.joints.wid,
+                model.joints.bid_B,
+                model.joints.bid_F,
+                data.joints.tau_j,
+                jacobians.data.J_dofs_offsets,
+                jacobians.data.J_dofs_data,
+                # Outputs:
+                data.bodies.w_a_i,
+            ],
+        )
+    else:
+        wp.launch(
+            _compute_joint_dof_body_wrenches_sparse,
+            dim=model.size.sum_of_num_joints,
+            inputs=[
+                # Inputs:
+                model.info.joint_dofs_offset,
+                model.joints.num_dofs,
+                model.joints.dofs_offset,
+                model.joints.wid,
+                model.joints.bid_B,
+                model.joints.bid_F,
+                data.joints.tau_j,
+                jacobians._J_dofs.bsm.nzb_start,
+                jacobians._J_dofs.bsm.nzb_values,
+                jacobians._J_dofs_joint_nzb_offsets,
+                # Outputs:
+                data.bodies.w_a_i,
+            ],
+        )
 
 
 def compute_constraint_body_wrenches(
     model: Model,
     data: ModelData,
-    jacobians: DenseSystemJacobians,
+    jacobians: DenseSystemJacobians | SparseSystemJacobians,
     lambdas_offsets: wp.array,
     lambdas_data: wp.array,
     limits: Limits | None = None,
@@ -427,79 +562,107 @@ def compute_constraint_body_wrenches(
     Launches the kernels to compute the body-wise constraint wrenches.
     """
 
-    if model.size.sum_of_num_joints > 0:
+    if isinstance(jacobians, DenseSystemJacobians):
+        if model.size.sum_of_num_joints > 0:
+            if reset_to_zero:
+                data.bodies.w_j_i.zero_()
+            wp.launch(
+                _compute_joint_cts_body_wrenches,
+                dim=model.size.sum_of_num_joints,
+                inputs=[
+                    # Inputs:
+                    model.info.num_body_dofs,
+                    model.info.bodies_offset,
+                    model.time.inv_dt,
+                    model.joints.wid,
+                    model.joints.num_cts,
+                    model.joints.cts_offset,
+                    model.joints.bid_B,
+                    model.joints.bid_F,
+                    jacobians.data.J_cts_offsets,
+                    jacobians.data.J_cts_data,
+                    lambdas_offsets,
+                    lambdas_data,
+                    # Outputs:
+                    data.bodies.w_j_i,
+                ],
+            )
+
+        if limits is not None and limits.model_max_limits_host > 0:
+            if reset_to_zero:
+                data.bodies.w_l_i.zero_()
+            wp.launch(
+                _compute_limit_cts_body_wrenches,
+                dim=limits.model_max_limits_host,
+                inputs=[
+                    # Inputs:
+                    model.info.num_body_dofs,
+                    model.info.bodies_offset,
+                    data.info.limit_cts_group_offset,
+                    model.time.inv_dt,
+                    limits.model_active_limits,
+                    limits.model_max_limits_host,
+                    limits.wid,
+                    limits.lid,
+                    limits.bids,
+                    jacobians.data.J_cts_offsets,
+                    jacobians.data.J_cts_data,
+                    lambdas_offsets,
+                    lambdas_data,
+                    # Outputs:
+                    data.bodies.w_l_i,
+                ],
+            )
+
+        if contacts is not None and contacts.model_max_contacts_host > 0:
+            if reset_to_zero:
+                data.bodies.w_c_i.zero_()
+            wp.launch(
+                _compute_contact_cts_body_wrenches,
+                dim=contacts.model_max_contacts_host,
+                inputs=[
+                    # Inputs:
+                    model.info.num_body_dofs,
+                    model.info.bodies_offset,
+                    data.info.contact_cts_group_offset,
+                    model.time.inv_dt,
+                    contacts.model_active_contacts,
+                    contacts.model_max_contacts_host,
+                    contacts.wid,
+                    contacts.cid,
+                    contacts.bid_AB,
+                    jacobians.data.J_cts_offsets,
+                    jacobians.data.J_cts_data,
+                    lambdas_offsets,
+                    lambdas_data,
+                    # Outputs:
+                    data.bodies.w_c_i,
+                ],
+            )
+    else:  # Sparse Jacobians
         if reset_to_zero:
             data.bodies.w_j_i.zero_()
+            data.bodies.w_l_i.zero_()
+            data.bodies.w_c_i.zero_()
+
+        jacobian_cts = jacobians._J_cts.bsm
         wp.launch(
-            _compute_joint_cts_body_wrenches,
-            dim=model.size.sum_of_num_joints,
+            _compute_cts_body_wrenches_sparse,
+            dim=(model.size.num_worlds, jacobian_cts.max_of_num_nzb),
             inputs=[
                 # Inputs:
-                model.info.num_body_dofs,
-                model.info.bodies_offset,
                 model.time.inv_dt,
-                model.joints.wid,
-                model.joints.num_cts,
-                model.joints.cts_offset,
-                model.joints.bid_B,
-                model.joints.bid_F,
-                jacobians.data.J_cts_offsets,
-                jacobians.data.J_cts_data,
+                data.info.limit_cts_group_offset,
+                data.info.contact_cts_group_offset,
+                jacobian_cts.num_nzb,
+                jacobian_cts.nzb_start,
+                jacobian_cts.nzb_coords,
+                jacobian_cts.nzb_values,
                 lambdas_offsets,
                 lambdas_data,
                 # Outputs:
                 data.bodies.w_j_i,
-            ],
-        )
-
-    if limits is not None and limits.model_max_limits_host > 0:
-        if reset_to_zero:
-            data.bodies.w_l_i.zero_()
-        wp.launch(
-            _compute_limit_cts_body_wrenches,
-            dim=limits.model_max_limits_host,
-            inputs=[
-                # Inputs:
-                model.info.num_body_dofs,
-                model.info.bodies_offset,
-                data.info.limit_cts_group_offset,
-                model.time.inv_dt,
-                limits.model_active_limits,
-                limits.model_max_limits_host,
-                limits.wid,
-                limits.lid,
-                limits.bids,
-                jacobians.data.J_cts_offsets,
-                jacobians.data.J_cts_data,
-                lambdas_offsets,
-                lambdas_data,
-                # Outputs:
                 data.bodies.w_l_i,
-            ],
-        )
-
-    if contacts is not None and contacts.model_max_contacts_host > 0:
-        if reset_to_zero:
-            data.bodies.w_c_i.zero_()
-        wp.launch(
-            _compute_contact_cts_body_wrenches,
-            dim=contacts.model_max_contacts_host,
-            inputs=[
-                # Inputs:
-                model.info.num_body_dofs,
-                model.info.bodies_offset,
-                data.info.contact_cts_group_offset,
-                model.time.inv_dt,
-                contacts.model_active_contacts,
-                contacts.model_max_contacts_host,
-                contacts.wid,
-                contacts.cid,
-                contacts.bid_AB,
-                jacobians.data.J_cts_offsets,
-                jacobians.data.J_cts_data,
-                lambdas_offsets,
-                lambdas_data,
-                # Outputs:
                 data.bodies.w_c_i,
             ],
         )

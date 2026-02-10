@@ -78,12 +78,13 @@ import warp as wp
 from warp.context import Devicelike
 
 from ..core.model import Model, ModelData, ModelSize
-from ..core.types import float32, int32, mat33f, vec3f, vec6f
+from ..core.types import FloatType, float32, int32, mat33f, vec3f, vec6f
 from ..geometry.contacts import Contacts
 from ..kinematics.constraints import get_max_constraints_per_world
 from ..kinematics.jacobians import DenseSystemJacobians, SparseSystemJacobians
 from ..kinematics.limits import Limits
 from ..linalg import DenseLinearOperatorData, DenseSquareMultiLinearInfo, LinearSolverType
+from ..linalg.linear import IterativeSolver
 
 # from ..linalg import Matrices, LinearOperators
 # from ..linalg.dense import DenseMatrices, DenseLinearOperators
@@ -838,6 +839,8 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
         model: Model | None = None,
         data: ModelData | None = None,
         jacobians: SparseSystemJacobians | None = None,
+        solver: LinearSolverType = None,
+        solver_kwargs: dict[str, Any] | None = None,
         device: Devicelike = None,
     ):
         """
@@ -855,6 +858,9 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
         Args:
             model (Model): The model container for which the Delassus operator is built.
             data (ModelData, optional): The model data container holding the state info and data.
+            jacobians (SparseSystemJacobians, optional): The sparse Jacobians container. Can be assigned later via the `assign` method.
+            solver (LinearSolverType, optional): The linear solver class to use for solving linear systems. Must be a subclass of `IterativeSolver`.
+            solver_kwargs (dict, optional): Additional keyword arguments to pass to the solver constructor.
             device (Devicelike, optional): The device identifier for the Delassus operator. Defaults to None.
         """
         super().__init__()
@@ -865,8 +871,15 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
         self._preconditioner: wp.array | None = None
         self._eta: wp.array | None = None
 
+        # Problem info object
+        # TODO: Create more general info object independent of dense matrix representation
+        self._info: DenseSquareMultiLinearInfo | None = None
+
         # Cache the requested device
         self._device: Devicelike = device
+
+        # Declare the optional (iterative) solver
+        self._solver: LinearSolverType | None = None
 
         # Temporary vector to store results, sized to the number of body dofs in a model.
         self._vec_temp_body_space: wp.array | None = None
@@ -880,7 +893,9 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
                 model=model,
                 data=data,
                 jacobians=jacobians,
+                solver=solver,
                 device=device,
+                solver_kwargs=solver_kwargs,
             )
 
     def finalize(
@@ -888,7 +903,9 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
         model: Model,
         data: ModelData,
         jacobians: SparseSystemJacobians | None = None,
+        solver: LinearSolverType = None,
         device: Devicelike = None,
+        solver_kwargs: dict[str, Any] | None = None,
     ):
         """
         Allocates the Delassus operator with the specified dimensions and device.
@@ -896,7 +913,10 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
         Args:
             model (Model): The model container for which the Delassus operator is built.
             data (ModelData): The model data container holding the state info and data.
+            jacobians (SparseSystemJacobians, optional): The sparse Jacobians container. Can be assigned later via the `assign` method.
+            solver (LinearSolverType, optional): The linear solver class to use for solving linear systems. Must be a subclass of `IterativeSolver`.
             device (Devicelike, optional): The device identifier for the Delassus operator. Defaults to None.
+            solver_kwargs (dict, optional): Additional keyword arguments to pass to the solver constructor.
         """
         # Ensure the model container is valid
         if model is None:
@@ -910,12 +930,34 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
         elif not isinstance(data, ModelData):
             raise ValueError("Invalid data container provided. Must be an instance of `ModelData`.")
 
+        # Ensure the solver is iterative if provided
+        if solver is not None and not issubclass(solver, IterativeSolver):
+            raise ValueError("Invalid solver provided. Must be a subclass of `IterativeSolver`.")
+
         self._model = model
         self._data = data
 
         # Override the device identifier if specified, otherwise use the current device
         if device is not None:
             self._device = device
+
+        self._info = DenseSquareMultiLinearInfo()
+        if model.info is not None and data.info is not None:
+            self._info.assign(
+                maxdim=model.info.max_total_cts,
+                dim=data.info.num_total_cts,
+                vio=model.info.total_cts_offset,
+                mio=wp.empty((self.num_matrices,), dtype=int32, device=self._device),
+                dtype=float32,
+                device=self._device,
+            )
+        else:
+            self._info.finalize(
+                dimensions=model.info.max_total_cts.numpy(),
+                dtype=float32,
+                itype=int32,
+                device=self._device,
+            )
 
         # Initialize temporary memory
         self._vec_temp_body_space = wp.empty(
@@ -924,7 +966,12 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
 
         # Assign Jacobian if specified
         if jacobians is not None:
-            self.assign(jacobians)
+            self.bsm = jacobians._J_cts.bsm
+
+        # Optionally initialize the iterative linear system solver if one is specified
+        if solver is not None:
+            solver_kwargs = solver_kwargs or {}
+            self._solver = solver(operator=self, device=self._device, **solver_kwargs)
 
     def assign(self, jacobian: SparseSystemJacobians):
         """
@@ -1015,6 +1062,133 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
             ],
             device=self._device,
         )
+
+    def compute(self, reset_to_zero: bool = True):
+        """
+        Runs Delassus pre-computation operations in preparation for linear systems solves.
+
+        Depending on the configured solver type, this may perform different pre-computation.
+
+        Args:
+            reset_to_zero (bool):
+                If True, resets the Delassus matrix to zero.\n
+                This is useful for ensuring that the matrix is in a clean state before pre-computation.
+        """
+        # Ensure that `finalize()` was called
+        if self._info is None:
+            raise ValueError("Data structure is not allocated. Call finalize() first.")
+
+        # Ensure the Jacobian is set
+        if self.bsm is None:
+            raise ValueError("Jacobian matrix is not set. Call assign() first.")
+
+        # Ensure the solver is available if pre-computation is requested
+        if self._solver is None:
+            raise ValueError("A linear system solver is not available. Allocate with solver=LINEAR_SOLVER_TYPE.")
+
+        # Optionally initialize the solver
+        if reset_to_zero:
+            self._solver.reset()
+
+        # Perform the pre-computation
+        self._solver.compute()
+
+    def solve(self, v: wp.array, x: wp.array):
+        """
+        Solves the linear system D * x = v using the assigned solver.
+
+        Args:
+            v (wp.array): The right-hand side vector of the linear system.
+            x (wp.array): The array to hold the solution.
+
+        Raises:
+            ValueError: If the Delassus matrix is not allocated or the solver is not available.
+        """
+        # Ensure that `finalize()` was called
+        if self._info is None:
+            raise ValueError("Data structure is not allocated. Call finalize() first.")
+
+        # Ensure the Jacobian is set
+        if self.bsm is None:
+            raise ValueError("Jacobian matrix is not set. Call assign() first.")
+
+        # Ensure the solver is available
+        if self._solver is None:
+            raise ValueError("A linear system solver is not available. Allocate with solver=LINEAR_SOLVER_TYPE.")
+
+        # Solve the linear system
+        return self._solver.solve(b=v, x=x)
+
+    def solve_inplace(self, x: wp.array):
+        """
+        Solves the linear system D * x = v in-place.\n
+        This modifies the input array x to contain the solution assuming it is initialized as x=v.
+
+        Args:
+            x (wp.array): The array to hold the solution. It should be initialized with the right-hand side vector v.
+
+        Raises:
+            ValueError: If the Delassus matrix is not allocated or the solver is not available.
+        """
+        # Ensure that `finalize()` was called
+        if self._info is None:
+            raise ValueError("Data structure is not allocated. Call finalize() first.")
+
+        # Ensure the Jacobian is set
+        if self.bsm is None:
+            raise ValueError("Jacobian matrix is not set. Call assign() first.")
+
+        # Ensure the solver is available if pre-computation is requested
+        if self._solver is None:
+            raise ValueError("A linear system solver is not available. Allocate with solver=LINEAR_SOLVER_TYPE.")
+
+        # Solve the linear system in-place
+        return self._solver.solve_inplace(x=x)
+
+    ###
+    # Properties
+    ###
+
+    @property
+    def info(self) -> DenseSquareMultiLinearInfo | None:
+        """
+        Returns the info object for the Delassus problem dimensions and sizes.
+        """
+        return self._info
+
+    @property
+    def num_matrices(self) -> int:
+        """
+        Returns the number of matrices represented by the Delassus operator.
+        """
+        return self._model.size.num_worlds
+
+    @property
+    def max_of_max_dims(self) -> tuple[int, int]:
+        """
+        Returns the maximum dimension of any Delassus matrix across all worlds.
+        """
+        max_jac_rows = self._model.size.max_of_max_total_cts
+        return (max_jac_rows, max_jac_rows)
+
+    @property
+    def sum_of_max_dims(self) -> int:
+        """
+        Returns the sum of maximum dimensions of the Delassus matrix across all worlds.
+        """
+        return self._model.size.sum_of_max_total_cts
+
+    @property
+    def dtype(self) -> FloatType:
+        return self._info.dtype
+
+    @property
+    def device(self) -> Devicelike:
+        return self._model.device
+
+    ###
+    # Operations
+    ###
 
     def matvec(self, x: wp.array, y: wp.array, world_mask: wp.array):
         """

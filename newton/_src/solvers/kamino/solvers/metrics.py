@@ -96,7 +96,7 @@ from ..core.types import float32, int32, int64, mat33f, uint32, vec2f, vec3f, ve
 from ..dynamics.dual import DualProblem
 from ..geometry.contacts import Contacts
 from ..geometry.keying import build_pair_key2
-from ..kinematics.jacobians import DenseSystemJacobians
+from ..kinematics.jacobians import DenseSystemJacobians, SparseSystemJacobians
 from ..kinematics.limits import Limits
 from ..solvers.padmm.math import (
     compute_desaxce_corrections,
@@ -1047,7 +1047,7 @@ class SolutionMetrics:
         data: ModelData,
         state_p: State,
         problem: DualProblem,
-        jacobians: DenseSystemJacobians,
+        jacobians: DenseSystemJacobians | SparseSystemJacobians,
         limits: Limits | None = None,
         contacts: Contacts | None = None,
     ):
@@ -1067,8 +1067,8 @@ class SolutionMetrics:
                 The contact data describing active contact constraints.
             problem (DualProblem):
                 The dual forward dynamics problem of the current time-step.
-            jacobians (DenseSystemJacobians):
-                The dense system Jacobians of the current time-step.
+            jacobians (DenseSystemJacobians | SparseSystemJacobians):
+                The system Jacobians of the current time-step.
             sigma (wp.array):
                 The array diagonal regularization applied to the Delassus matrix of the current dual problem.
             lambdas (wp.array):
@@ -1179,7 +1179,7 @@ class SolutionMetrics:
         model: Model,
         data: ModelData,
         state_p: State,
-        jacobians: DenseSystemJacobians,
+        jacobians: DenseSystemJacobians | SparseSystemJacobians,
     ):
         """
         Evaluates the primal problem performance metrics.
@@ -1191,8 +1191,8 @@ class SolutionMetrics:
                 The model data containing the time-variant data of the simulation.
             state_p (State):
                 The previous state of the simulation.
-            jacobians (DenseSystemJacobians):
-                The dense system Jacobians of the current time-step.
+            jacobians (DenseSystemJacobians | SparseSystemJacobians):
+                The system Jacobians of the current time-step.
         """
         # Ensure metrics data is available
         self._assert_has_data()
@@ -1221,27 +1221,30 @@ class SolutionMetrics:
         # Compute the kinematics constraint residuals,
         # i.e. velocity-level joint constraint equations
         if model.size.sum_of_num_joints > 0:
-            wp.launch(
-                kernel=_compute_joint_kinematics_residual,
-                dim=model.size.sum_of_num_joints,
-                inputs=[
-                    # Inputs:
-                    model.info.num_body_dofs,
-                    model.info.bodies_offset,
-                    model.joints.wid,
-                    model.joints.num_cts,
-                    model.joints.cts_offset,
-                    model.joints.bid_B,
-                    model.joints.bid_F,
-                    data.bodies.u_i,
-                    jacobians.data.J_cts_offsets,
-                    jacobians.data.J_cts_data,
-                    # Outputs:
-                    self._data.r_kinematics,
-                    self._data.r_kinematics_argmax,
-                ],
-                device=model.device,
-            )
+            if isinstance(jacobians, DenseSystemJacobians):
+                wp.launch(
+                    kernel=_compute_joint_kinematics_residual,
+                    dim=model.size.sum_of_num_joints,
+                    inputs=[
+                        # Inputs:
+                        model.info.num_body_dofs,
+                        model.info.bodies_offset,
+                        model.joints.wid,
+                        model.joints.num_cts,
+                        model.joints.cts_offset,
+                        model.joints.bid_B,
+                        model.joints.bid_F,
+                        data.bodies.u_i,
+                        jacobians.data.J_cts_offsets,
+                        jacobians.data.J_cts_data,
+                        # Outputs:
+                        self._data.r_kinematics,
+                        self._data.r_kinematics_argmax,
+                    ],
+                    device=model.device,
+                )
+            else:
+                raise NotImplementedError("Not yet implemented.")
 
     def _evaluate_dual_problem_perf(
         self,

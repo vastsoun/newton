@@ -499,7 +499,7 @@ def _update_delassus_proximal_regularization_sparse(
     solver_status: wp.array(dtype=PADMMStatus),
     solver_state_sigma: wp.array(dtype=vec2f),
     # Outputs:
-    solver_state_sigma_vec: wp.array(dtype=float32),
+    delassus_eta: wp.array(dtype=float32),
 ):
     # Retrieve the thread index
     wid, tid = wp.tid()
@@ -519,14 +519,14 @@ def _update_delassus_proximal_regularization_sparse(
 
     # Set regularization to 1.0 if the solver has already converged
     if status.converged > 0:
-        solver_state_sigma_vec[mio + tid] = 1.0
+        delassus_eta[mio + tid] = 1.0
         return
 
     # Retrieve the (current, previous) proximal regularization pair
     sigma = solver_state_sigma[wid]
 
     # Set the proximal regularization term
-    solver_state_sigma_vec[mio + tid] = sigma[0] - sigma[1]
+    delassus_eta[mio + tid] = sigma[0] - sigma[1]
 
 
 @wp.kernel

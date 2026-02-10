@@ -1280,6 +1280,14 @@ class DualProblem:
                 solver_kwargs=solver_kwargs,
                 device=device,
             )
+            # Assign identity regularization, to be modified by solver
+            self._delassus.set_regularization(
+                wp.ones(
+                    (model.size.sum_of_max_total_cts,),
+                    dtype=float32,
+                    device=device,
+                )
+            )
         else:
             self._delassus = DelassusOperator(
                 model=model,

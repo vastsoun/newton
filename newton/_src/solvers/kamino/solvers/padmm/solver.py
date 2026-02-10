@@ -449,11 +449,9 @@ class PADMMSolver:
                     self._data.status,
                     self._data.state.sigma,
                     # Outputs:
-                    self._data.state.sigma_vec,
+                    problem.delassus._eta,
                 ],
             )
-
-            problem.delassus.set_regularization(self._data.state.sigma_vec)
         else:
             # Update the proximal regularization term in the Delassus matrix
             wp.launch(

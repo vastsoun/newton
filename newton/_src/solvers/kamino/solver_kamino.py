@@ -51,7 +51,7 @@ from .kinematics.constraints import (
     unpack_constraint_solutions,
     update_constraints_info,
 )
-from .kinematics.jacobians import DenseSystemJacobians
+from .kinematics.jacobians import DenseSystemJacobians, SparseSystemJacobians
 from .kinematics.joints import (
     compute_joints_data,
     extract_actuators_state_from_joints,
@@ -65,11 +65,12 @@ from .kinematics.resets import (
     reset_state_to_model_default,
     reset_time,
 )
-from .linalg import LinearSolverType, LLTBlockedSolver
+from .linalg import ConjugateGradientSolver, IterativeSolver, LinearSolverType, LLTBlockedSolver
 from .solvers.fk import ForwardKinematicsSolver, ForwardKinematicsSolverSettings
 from .solvers.metrics import SolutionMetrics
 from .solvers.padmm import PADMMSettings, PADMMSolver, PADMMWarmStartMode
 from .solvers.warmstart import WarmstarterContacts, WarmstarterLimits
+from .utils import logger as msg
 
 ###
 # Types
@@ -150,6 +151,11 @@ class SolverKaminoSettings:
     The rotation correction mode to use for rotational DoFs.\n
     See :class:`JointCorrectionMode` for available options.\n
     Defaults to `JointCorrectionMode.TWOPI`.
+    """
+
+    sparse: bool = True
+    """
+    Flag to indicate whether the solver should use sparse data representations.
     """
 
     def check(self) -> None:
@@ -276,6 +282,12 @@ class SolverKamino(SolverBase):
         settings.check()
         self._settings: SolverKaminoSettings = settings
 
+        if self._settings.sparse and not issubclass(self._settings.linear_solver_type, IterativeSolver):
+            msg.warning(
+                f"Sparse problem requires iterative solver, but got '{self._settings.linear_solver_type.__name__}'. Switching to 'ConjugateGradientSolver'."
+            )
+            self._settings.linear_solver_type = ConjugateGradientSolver
+
         # Allocate internal time-varying solver data
         self._data = self._model.data()
 
@@ -286,12 +298,20 @@ class SolverKamino(SolverBase):
         make_unilateral_constraints_info(model=self._model, data=self._data, limits=self._limits, contacts=contacts)
 
         # Allocate Jacobians data on the device
-        self._jacobians = DenseSystemJacobians(
-            model=self._model,
-            limits=self._limits,
-            contacts=contacts,
-            device=self._model.device,
-        )
+        if self._settings.sparse:
+            self._jacobians = SparseSystemJacobians(
+                model=self._model,
+                limits=self._limits,
+                contacts=contacts,
+                device=self._model.device,
+            )
+        else:
+            self._jacobians = DenseSystemJacobians(
+                model=self._model,
+                limits=self._limits,
+                contacts=contacts,
+                device=self._model.device,
+            )
 
         # Allocate the dual problem data on the device
         self._problem_fd = DualProblem(
@@ -303,6 +323,7 @@ class SolverKamino(SolverBase):
             solver_kwargs=self._settings.linear_solver_kwargs,
             settings=self._settings.problem,
             device=self._model.device,
+            sparse=self._settings.sparse,
         )
 
         # Allocate the forward dynamics solver on the device

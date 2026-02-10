@@ -438,6 +438,7 @@ def _compute_contact_cts_body_wrenches(
 @wp.kernel
 def _compute_cts_body_wrenches_sparse(
     # Inputs:
+    model_info_bodies_offset: wp.array(dtype=int32),
     model_time_inv_dt: wp.array(dtype=float32),
     state_info_limit_cts_group_offset: wp.array(dtype=int32),
     state_info_contact_cts_group_offset: wp.array(dtype=int32),
@@ -466,6 +467,9 @@ def _compute_cts_body_wrenches_sparse(
     cid = block_coords[0]
     bid_j = block_coords[1] // 6
 
+    # Get global body index
+    global_bid_j = bid_j + model_info_bodies_offset[wid]
+
     # Retrieve the inverse time-step of the world
     inv_dt = model_time_inv_dt[wid]
 
@@ -480,11 +484,11 @@ def _compute_cts_body_wrenches_sparse(
 
     # Add the wrench to the appropriate array
     if cid >= state_info_contact_cts_group_offset[wid]:
-        wp.atomic_add(state_bodies_c_j, bid_j, w_j_F)
+        wp.atomic_add(state_bodies_c_j, global_bid_j, w_j_F)
     elif cid >= state_info_limit_cts_group_offset[wid]:
-        wp.atomic_add(state_bodies_l_j, bid_j, w_j_F)
+        wp.atomic_add(state_bodies_l_j, global_bid_j, w_j_F)
     else:
-        wp.atomic_add(state_bodies_w_j, bid_j, w_j_F)
+        wp.atomic_add(state_bodies_w_j, global_bid_j, w_j_F)
 
 
 ###
@@ -651,6 +655,7 @@ def compute_constraint_body_wrenches(
             dim=(model.size.num_worlds, jacobian_cts.max_of_num_nzb),
             inputs=[
                 # Inputs:
+                model.info.bodies_offset,
                 model.time.inv_dt,
                 data.info.limit_cts_group_offset,
                 data.info.contact_cts_group_offset,

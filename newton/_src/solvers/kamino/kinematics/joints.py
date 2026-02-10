@@ -33,6 +33,7 @@ from ..core.math import (
     quat_product,
     quat_to_euler_xyz,
     quat_to_vec4,
+    quat_twist_angle,
     screw,
     screw_angular,
     screw_linear,
@@ -210,8 +211,9 @@ def map_to_joint_coords_free(j_r_j: vec3f, j_q_j: quatf) -> vec7f:
 @wp.func
 def map_to_joint_coords_revolute(j_r_j: vec3f, j_q_j: quatf) -> vec1f:
     """Returns the 1D rotation angle about the local X-axis."""
-    j_p_j = quat_log(j_q_j)
-    return vec1f(j_p_j[0])
+    # Measure rotation around the x-axis only
+    axis = vec3f(1.0, 0.0, 0.0)
+    return vec1f(quat_twist_angle(j_q_j, axis))
 
 
 @wp.func
@@ -282,6 +284,71 @@ def get_joint_coords_mapping_function(dof_type: JointDoFType):
 
 
 ###
+# Functions - Constraint residual
+###
+
+
+@wp.func
+def joint_constraint_angular_residual_free(j_q_j: quatf) -> vec3f:
+    return vec3f(0.0, 0.0, 0.0)
+
+
+@wp.func
+def joint_constraint_angular_residual_revolute(j_q_j: quatf) -> vec3f:
+    """Returns the joint constraint residual for a revolute joint that rotates about the local X-axis."""
+    # x-axis attached to the base body
+    j_x_B = vec3f(1.0, 0.0, 0.0)
+
+    # x-axis attached to the follower body, expressed in the joint frame on the base body.
+    j_x_F = wp.quat_rotate(j_q_j, j_x_B)
+
+    # Residual vector = sin(res_angle) * axis, where axis only has y, and z components.
+    # For small angles this is equal to res_angle * axis
+    return wp.cross(j_x_B, j_x_F)
+
+
+@wp.func
+def joint_constraint_angular_residual_universal(j_q_j: quatf) -> vec3f:
+    """Returns the joint constraint residual for a universal joint."""
+    # TODO: Fix, using log-based residual as a placeholder
+    return quat_log(j_q_j)
+
+
+@wp.func
+def joint_constraint_angular_residual_fixed(j_q_j: quatf) -> vec3f:
+    """Returns the joint constraint residual for a fixed joint."""
+    return quat_log(j_q_j)
+
+
+def get_joint_constraint_angular_residual_function(dof_type: JointDoFType):
+    """
+    Retrieves the function that computes the joint constraint residual as a 6D local vector
+    """
+
+    # Use the fixed joint residual as the generic implementation.
+    if dof_type == JointDoFType.FREE:
+        return joint_constraint_angular_residual_free
+    elif dof_type == JointDoFType.REVOLUTE:
+        return joint_constraint_angular_residual_revolute
+    elif dof_type == JointDoFType.PRISMATIC:
+        return joint_constraint_angular_residual_fixed
+    elif dof_type == JointDoFType.CYLINDRICAL:
+        return joint_constraint_angular_residual_revolute
+    elif dof_type == JointDoFType.UNIVERSAL:
+        return joint_constraint_angular_residual_universal
+    elif dof_type == JointDoFType.SPHERICAL:
+        return joint_constraint_angular_residual_free
+    elif dof_type == JointDoFType.GIMBAL:
+        return joint_constraint_angular_residual_free
+    elif dof_type == JointDoFType.CARTESIAN:
+        return joint_constraint_angular_residual_fixed
+    elif dof_type == JointDoFType.FIXED:
+        return joint_constraint_angular_residual_fixed
+    else:
+        raise ValueError(f"Unknown joint DoF type: {dof_type}")
+
+
+###
 # Functions - State Writes
 ###
 
@@ -327,8 +394,9 @@ def make_typed_write_joint_data(dof_type: JointDoFType, correction: JointCorrect
         # Only write the constraint residual and velocity if the joint defines constraints
         # NOTE: This will be disabled for free joints
         if wp.static(num_cts > 0):
-            # Construct a 6D relative pose vector using a rotation vector
-            j_p_j = screw(j_r_j, quat_log(j_q_j))
+            # Construct a 6D residual vector
+            j_theta_j = wp.static(get_joint_constraint_angular_residual_function(dof_type))(j_q_j)
+            j_p_j = screw(j_r_j, j_theta_j)
             # Store the joint constraint residuals
             for j in range(num_cts):
                 r_j_out[cts_offset + j] = j_p_j[cts_axes[j]]

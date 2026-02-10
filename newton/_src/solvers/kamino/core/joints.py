@@ -260,6 +260,9 @@ class JointDoFType(IntEnum):
         2D vector of angular velocity {`R_x`} + linear velocity {`T_x`}
     """
 
+    # TODO: Add support for PLANAR joints with 2D linear DOFS along {`T_x`, `T_y`}
+    # and 1D angular DOF along {`R_z`}, with constraints for {`T_z`, `R_x`, `R_y`}
+
     UNIVERSAL = 4
     """
     A 2-DoF universal joint, with rotational DoFs along {`R_x`, `R_y`}.
@@ -1386,7 +1389,14 @@ def kamino_to_newton_joint_type(dof_type: JointDoFType) -> NewtonJointType:
     return mapping[dof_type]
 
 
-def newton_to_kamino_joint_dof_type(type: NewtonJointType) -> JointDoFType:
+def newton_to_kamino_joint_dof_type(
+    type: NewtonJointType,
+    dof_dim: tuple[int, int] | None,
+    q_count: int | None,
+    qd_count: int | None,
+    limit_lower: np.ndarray | None,
+    limit_upper: np.ndarray | None,
+) -> JointDoFType:
     """
     Converts a `NewtonJointType` to the corresponding `JointDoFType`.
 
@@ -1396,15 +1406,89 @@ def newton_to_kamino_joint_dof_type(type: NewtonJointType) -> JointDoFType:
     Returns:
         JointDoFType: The corresponding joint DoF type.
     """
-    mapping = {
+    direct_mapping = {
         NewtonJointType.FREE: JointDoFType.FREE,
         NewtonJointType.REVOLUTE: JointDoFType.REVOLUTE,
         NewtonJointType.PRISMATIC: JointDoFType.PRISMATIC,
         NewtonJointType.BALL: JointDoFType.SPHERICAL,
         NewtonJointType.FIXED: JointDoFType.FIXED,
     }
-    # TODO: Handle unsupported types
-    return mapping[type]
+
+    # Fist try direct mapping for supported types
+    dof_type = direct_mapping.get(type, None)
+
+    # If the type is not directly supported, attempt to infer the DoF type based on the number of DoFs
+    if dof_type is None or type == NewtonJointType.D6:
+        # Ensure that q_count and qd_count are provided for inference
+        if q_count is None or qd_count is None:
+            raise ValueError("q_count and qd_count must be provided for inference of unsupported joint types.")
+        # Ensure the limits are provided for inference
+        if limit_lower is None or limit_upper is None:
+            raise ValueError("limit_lower and limit_upper must be provided for inference of unsupported joint types.")
+        if not isinstance(limit_lower, np.ndarray) or not isinstance(limit_upper, np.ndarray):
+            raise TypeError(
+                "limit_lower and limit_upper must be numpy arrays for inference of unsupported joint types."
+            )
+        if limit_lower.shape != limit_upper.shape:
+            raise ValueError(
+                f"limit_lower and limit_upper must have the same shape, got: "
+                f"limit_lower.shape: {limit_lower.shape}, limit_upper.shape: {limit_upper.shape}."
+            )
+        if limit_lower.shape[0] != qd_count or limit_upper.shape[0] != qd_count:
+            raise ValueError(
+                f"The length of limit_lower and limit_upper must match qd_count ({qd_count}), got:"
+                f"\n  limit_lower: {limit_lower} (shape={limit_lower.shape})"
+                f"\n  limit_upper: {limit_upper} (shape={limit_upper.shape})"
+            )
+
+        if q_count == 0 and qd_count == 0 and dof_dim == (0, 0):
+            dof_type = JointDoFType.FIXED
+
+        elif q_count == 1 and qd_count == 1 and dof_dim == (1, 0):
+            dof_type = JointDoFType.PRISMATIC
+
+        elif q_count == 1 and qd_count == 1 and dof_dim == (0, 1):
+            dof_type = JointDoFType.REVOLUTE
+
+        elif q_count == 2 and qd_count == 2 and dof_dim == (0, 2):
+            dof_type = JointDoFType.UNIVERSAL
+
+        elif q_count == 2 and qd_count == 2 and dof_dim == (1, 1):
+            dof_type = JointDoFType.CYLINDRICAL
+
+        elif q_count == 3 and qd_count == 3 and dof_dim == (3, 0):
+            dof_type = JointDoFType.CARTESIAN
+
+        elif q_count == 3 and qd_count == 3 and dof_dim == (0, 3):
+            # TODO: dof_type = JointDoFType.GIMBAL
+            raise ValueError("Unsupported joint type: GIMBAL joints are not currently supported.")
+
+        elif q_count == 4 and qd_count == 3 and dof_dim == (0, 3):
+            dof_type = JointDoFType.SPHERICAL
+
+        elif q_count == 7 and qd_count == 6:
+            if np.any(limit_lower <= JOINT_QMIN) or np.any(limit_upper >= JOINT_QMAX):
+                dof_type = JointDoFType.FREE
+            else:
+                raise ValueError(
+                    f"Unsupported joint type with 7 coordinates and 6 DoFs but unrecognized limits:\n"
+                    f"\n  limit_lower: {limit_lower}"
+                    f"\n  limit_upper: {limit_upper}"
+                )
+
+        else:
+            raise ValueError(
+                f"Unsupported joint type with:"
+                f"\n  type: {type}"
+                f"\n  dof_dim: {dof_dim}"
+                f"\n  q_count: {q_count}"
+                f"\n  qd_count: {qd_count}"
+                f"\n  limit_lower: {limit_lower}"
+                f"\n  limit_upper: {limit_upper}"
+            )
+
+    # Return the inferred DoF type
+    return dof_type
 
 
 def kamino_to_newton_actuator_mode(type: JointActuationType) -> NewtonActuatorMode:
@@ -1447,7 +1531,11 @@ def newton_to_kamino_joint_actuation_type(mode: NewtonActuatorMode) -> JointActu
     return mapping[mode]
 
 
-def axes_matrix_from_joint_type(joint_type: NewtonJointType, joint_dof_axis: np.ndarray) -> wp.mat33f | None:
+def axes_matrix_from_joint_type(
+    dof_type: JointDoFType,
+    dof_dim: tuple[int, int],
+    dof_axes: np.ndarray,
+) -> wp.mat33f | None:
     """
     TODO
     """
@@ -1472,37 +1560,47 @@ def axes_matrix_from_joint_type(joint_type: NewtonJointType, joint_dof_axis: np.
         else:
             raise ValueError(f"Unsupported joint axis vector: {vec}")
 
-    # Determine rotation matrix based on joint type and axis
-    # NOTE #1: BALL, FIXED, FREE and DISTANCE joints do
-    # not have specific axes and thus return identity
-    # NOTE #2: CABLE joints are always defined along the local X axis
-    if joint_type == NewtonJointType.PRISMATIC:
-        num_dofs: int = 1
-        R_axis_j = _axis_rotmatn_from_vec3f(joint_dof_axis[:num_dofs, :])
+    # Ensure that dof_axes has the correct shape based on the number of DoFs
+    if dof_axes.shape != (dof_dim[0] + dof_dim[1], 3):
+        raise ValueError(f"Invalid shape of dof_axes: {dof_axes.shape}. Expected: {(dof_dim[0] + dof_dim[1], 3)}.")
 
-    elif joint_type == NewtonJointType.REVOLUTE:
-        num_dofs: int = 1
-        R_axis_j = _axis_rotmatn_from_vec3f(joint_dof_axis[:num_dofs, :])
+    # Retrieve the number of DoFs for the joint type
+    num_dofs = dof_dim[0] + dof_dim[1]
+    print(f"{dof_type} with {num_dofs} DoFs and axis:\n{dof_axes}")
 
-    elif joint_type == NewtonJointType.D6:
-        ax_tra = joint_dof_axis[:num_dofs, 0]
-        ay_tra = joint_dof_axis[:num_dofs, 1]
-        az_tra = joint_dof_axis[:num_dofs, 2]
-        ax_rot = joint_dof_axis[:num_dofs, 3]
-        ay_rot = joint_dof_axis[:num_dofs, 4]
-        az_rot = joint_dof_axis[:num_dofs, 5]
-        if not np.allclose(ax_tra, ax_rot):
-            raise ValueError(f"Inconsistent D6 joint axes: translation axis {ax_tra} != rotation axis {ax_rot}")
-        elif not np.allclose(ay_tra, ay_rot):
-            raise ValueError(f"Inconsistent D6 joint axes: translation axis {ay_tra} != rotation axis {ay_rot}")
-        elif not np.allclose(az_tra, az_rot):
-            raise ValueError(f"Inconsistent D6 joint axes: translation axis {az_tra} != rotation axis {az_rot}")
-        R_axis_j = wp.mat33f(*ax_tra.tolist(), *ay_tra.tolist(), *az_tra.tolist())
+    # Determine the joint axes matrix based on the DoF type and axes
+    if dof_type == JointDoFType.FIXED:
+        pass  # R_axis_j is already set to identity
 
-    elif joint_type in (NewtonJointType.BALL, NewtonJointType.FIXED, NewtonJointType.FREE):
-        pass  # Identity
+    elif dof_type in (JointDoFType.REVOLUTE, JointDoFType.PRISMATIC, JointDoFType.CYLINDRICAL):
+        R_axis_j = _axis_rotmatn_from_vec3f(dof_axes[0, :])
+
+    elif dof_type == JointDoFType.UNIVERSAL:
+        ax = dof_axes[0, :]
+        ay = dof_axes[1, :]
+        az = np.cross(ax, ay)
+        R_axis_j = wp.mat33f(*ax.tolist(), *ay.tolist(), *az.tolist())
+
+    elif dof_type in (JointDoFType.SPHERICAL, JointDoFType.CARTESIAN):
+        R_axis_j = wp.mat33f(*dof_axes.tolist())
+
+    elif dof_type in (JointDoFType.FIXED, JointDoFType.FREE):
+        ax_lin = dof_axes[0, :]
+        ay_lin = dof_axes[1, :]
+        az_lin = dof_axes[2, :]
+        ax_rot = dof_axes[3, :]
+        ay_rot = dof_axes[4, :]
+        az_rot = dof_axes[5, :]
+        if not np.allclose(ax_lin, ax_rot) or not np.allclose(ay_lin, ay_rot) or not np.allclose(az_lin, az_rot):
+            raise ValueError(
+                f"For FREE joints, the first 3 axes (linear) must match the last 3 axes (rotational), got:"
+                f"\nax_lin: {ax_lin}, ax_rot: {ax_rot}\nay_lin: {ay_lin}, "
+                f"ay_rot: {ay_rot}\naz_lin: {az_lin}, az_rot: {az_rot}"
+            )
+        R_axis_j = wp.mat33f(*ax_lin.tolist(), *ay_lin.tolist(), *az_lin.tolist())
 
     else:
-        raise ValueError(f"Unsupported Newton joint type: {joint_type}")
+        raise ValueError(f"Unsupported joint DOF type: {dof_type}")
+    print(f"R_axis_j for {dof_type}:\n{R_axis_j}")
 
     return R_axis_j

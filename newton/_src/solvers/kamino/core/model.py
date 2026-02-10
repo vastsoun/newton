@@ -23,6 +23,7 @@ import numpy as np
 import warp as wp
 
 from ....geometry.flags import ShapeFlags
+from ....sim.joints import JointType
 from ....sim.model import Model
 from ..utils import logger as msg
 from .bodies import RigidBodiesData, RigidBodiesModel
@@ -712,7 +713,11 @@ class ModelKamino:
         joint_X_p_np = model.joint_X_p.numpy()
         joint_X_c_np = model.joint_X_c.numpy()
         joint_axis_np = model.joint_axis.numpy()
+        joint_dof_dim_np = model.joint_dof_dim.numpy()
+        joint_q_start_np = model.joint_q_start.numpy()
         joint_qd_start_np = model.joint_qd_start.numpy()
+        joint_limit_lower_np = model.joint_limit_lower.numpy()
+        joint_limit_upper_np = model.joint_limit_upper.numpy()
         body_com_np = model.body_com.numpy()
         for j in range(model.joint_count):
             # TODO
@@ -728,10 +733,28 @@ class ModelKamino:
             joint_passive_dofs_start_np[j] = num_passive_joint_dofs_np[wid_j]
 
             # TODO
-            dof_type_j = newton_to_kamino_joint_dof_type(int(joint_type_np[j]))
+            type_j = int(joint_type_np[j])
+            dof_dim_j = (int(joint_dof_dim_np[j][0]), int(joint_dof_dim_np[j][1]))
+            q_count_j = int(joint_q_start_np[j + 1] - joint_q_start_np[j])
+            qd_count_j = int(joint_qd_start_np[j + 1] - joint_qd_start_np[j])
+            limit_upper_j = joint_limit_upper_np[joint_qd_start_np[j] : joint_qd_start_np[j + 1]].astype(float)
+            limit_lower_j = joint_limit_lower_np[joint_qd_start_np[j] : joint_qd_start_np[j + 1]].astype(float)
+            msg.error("[%s]: key_j: %s", j, model.joint_key[j])
+            msg.error("[%s]: type_j: %s", j, JointType(type_j).name)
+            msg.error("[%s]: dof_dim_j: %s", j, dof_dim_j)
+            msg.error("[%s]: q_count_j: %s", j, q_count_j)
+            msg.error("[%s]: qd_count_j: %s", j, qd_count_j)
+            msg.error("[%s]: limit_lower_j: %s", j, limit_lower_j)
+            msg.error("[%s]: limit_upper_j: %s", j, limit_upper_j)
+
+            # TODO
+            dof_type_j = newton_to_kamino_joint_dof_type(
+                type_j, dof_dim_j, q_count_j, qd_count_j, limit_lower_j, limit_upper_j
+            )
             msg.warning("[%s]: dof_type_j: %s", j, dof_type_j)
             ncoords_j = dof_type_j.num_coords
             ndofs_j = dof_type_j.num_dofs
+
             msg.warning("[%s]: ndofs_j: %s", j, ndofs_j)
             ncts_j = dof_type_j.num_cts
             joint_dof_type_np[j] = dof_type_j.value
@@ -746,7 +769,7 @@ class ModelKamino:
             dofs_start_j = joint_qd_start_np[j]
             msg.warning("[%s]: dofs_start_j: %s", j, dofs_start_j)
             joint_axes_j = joint_axis_np[dofs_start_j : dofs_start_j + ndofs_j]
-            R_axis_j = axes_matrix_from_joint_type(joint_type_np[j], joint_axes_j)
+            R_axis_j = axes_matrix_from_joint_type(dof_type_j, dof_dim_j, joint_axes_j)
             joint_dofs_act_mode_j = joint_act_mode_np[dofs_start_j : dofs_start_j + ndofs_j]
             msg.warning("[%s]: joint_dofs_act_mode_j: %s", j, joint_dofs_act_mode_j)
             joint_act_mode_j = (
@@ -789,8 +812,6 @@ class ModelKamino:
         msg.error("joint_act_type_np: %s", joint_act_type_np)
 
         # TODO
-        joint_limit_lower_np = model.joint_limit_lower.numpy()
-        joint_limit_upper_np = model.joint_limit_upper.numpy()
         joint_velocity_limit_np = model.joint_velocity_limit.numpy()
         joint_effort_limit_np = model.joint_effort_limit.numpy()
         np.clip(a=joint_limit_lower_np, a_min=JOINT_QMIN, a_max=JOINT_QMAX, out=joint_limit_lower_np)

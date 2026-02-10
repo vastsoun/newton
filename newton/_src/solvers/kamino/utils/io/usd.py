@@ -444,6 +444,13 @@ class USDImporter:
         return int(max_contacts) if max_contacts is not None else 0
 
     @staticmethod
+    def _warn_invalid_desc(path, descriptor) -> bool:
+        if not descriptor.isValid:
+            msg.warning(f'Invalid {type(descriptor).__name__} descriptor for prim at path "{path}".')
+            return True
+        return False
+
+    @staticmethod
     def _material_pair_properties_from(first: MaterialDescriptor, second: MaterialDescriptor) -> MaterialPairProperties:
         pair_properties = MaterialPairProperties()
         pair_properties.restitution = 0.5 * (first.restitution + second.restitution)
@@ -1553,6 +1560,7 @@ class USDImporter:
         only_load_enabled_rigid_bodies: bool = True,
         only_load_enabled_joints: bool = True,
         retain_joint_ordering: bool = True,
+        retain_geom_ordering: bool = True,
         load_static_geometry: bool = True,
         load_materials: bool = True,
         meshes_are_collidable: bool = False,
@@ -1839,14 +1847,7 @@ class USDImporter:
             # Collect joint specifications grouped by their USD-native joint type
             joint_specifications = {}
             for key, value in ret_dict.items():
-                if key in {
-                    self.UsdPhysics.ObjectType.FixedJoint,
-                    self.UsdPhysics.ObjectType.RevoluteJoint,
-                    self.UsdPhysics.ObjectType.PrismaticJoint,
-                    self.UsdPhysics.ObjectType.SphericalJoint,
-                    self.UsdPhysics.ObjectType.D6Joint,
-                    self.UsdPhysics.ObjectType.DistanceJoint,
-                }:
+                if key in self.supported_usd_joint_types:
                     paths, joint_specs = value
                     for path, joint_spec in zip(paths, joint_specs, strict=False):
                         joint_specifications[str(path)] = (joint_spec, key)
@@ -1934,23 +1935,57 @@ class USDImporter:
 
         # Define a list to hold all geometry prims found in the
         # stage, including those nested within instances
-        geom_prims = []
+        path_geom_prim_map = {}
+        visual_geom_prims = []
+        collision_geom_prims = []
+
+        # Define a function to check if a given prim has an enabled collider
+        def _is_enabled_collider(prim) -> bool:
+            if collider := self.UsdPhysics.CollisionAPI(prim):
+                return collider.GetCollisionEnabledAttr().Get()
+            return False
 
         # Define a recursive function to traverse the stage and collect
         # all UsdGeom prims, including those nested within instances
-        def _collect_geom_prims(prim):
+        def _collect_geom_prims(prim, colliders=True, visuals=True):
             if prim.IsA(self.UsdGeom.Gprim):
                 msg.debug(f"Found UsdGeom prim: {prim.GetPath()}, type: {prim.GetTypeName()}")
-                geom_prims.append(prim)
+                path = str(prim.GetPath())
+                if path not in path_geom_prim_map:
+                    is_collider = _is_enabled_collider(prim)
+                    if is_collider and colliders:
+                        collision_geom_prims.append(prim)
+                        path_geom_prim_map[path] = prim
+                    if not is_collider and visuals:
+                        visual_geom_prims.append(prim)
+                        path_geom_prim_map[path] = prim
             elif prim.IsInstance():
                 proto = prim.GetPrototype()
                 for child in proto.GetChildren():
                     inst_child = stage.GetPrimAtPath(child.GetPath().ReplacePrefix(proto.GetPath(), prim.GetPath()))
-                    _collect_geom_prims(inst_child)
+                    _collect_geom_prims(inst_child, colliders=colliders, visuals=visuals)
 
-        # Traverse the stage to collect geometry prims
-        for prim in stage.Traverse():
-            _collect_geom_prims(prim)
+        # If enabled, traverse the stage to collect geometry
+        # prims in the order they are defined in the USD file
+        if retain_geom_ordering:
+            # Traverse the stage to collect geometry prims
+            for prim in stage.Traverse():
+                _collect_geom_prims(prim=prim)
+
+        # Otherwise, simply retrieve the geometry prim paths and descriptors from the physics shape
+        else:
+            # First traverse only visuals
+            for prim in stage.Traverse():
+                _collect_geom_prims(prim=prim, colliders=False)
+
+            # Then iterate through physics-only shapes
+            for key, value in ret_dict.items():
+                if key in self.supported_usd_physics_shape_types:
+                    paths, shape_specs = value
+                    for xpath, shape_spec in zip(paths, shape_specs, strict=False):
+                        if self._warn_invalid_desc(xpath, shape_spec):
+                            continue
+                        _collect_geom_prims(prim=stage.GetPrimAtPath(str(xpath)), visuals=False)
 
         # Define separate lists to hold geometry descriptors for visual and physics geometry
         visual_geoms: list[GeometryDescriptor] = []
@@ -2042,13 +2077,11 @@ class USDImporter:
                 msg.critical("Failed to parse geom prim '%s'", geom_prim_path)
 
         # Process each geometry prim to construct geometry descriptors
-        for geom_prim in geom_prims:
+        for geom_prim in visual_geom_prims + collision_geom_prims:
             _process_geom_prim(geom_prim)
 
         # Add all geoms grouped by whether they belong to the physics scene or not
-        for geom_desc in visual_geoms:
-            builder.add_geometry_descriptor(geom=geom_desc)
-        for geom_desc in physics_geoms:
+        for geom_desc in visual_geoms + physics_geoms:
             builder.add_geometry_descriptor(geom=geom_desc)
 
         ###

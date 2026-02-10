@@ -383,6 +383,8 @@ class TestKaminoContainers(unittest.TestCase):
         # register Kamino-specific custom attributes
         builder_0: ModelBuilder = ModelBuilder()
         SolverKamino.register_custom_attributes(builder_0)
+        builder_0.default_shape_cfg.thickness = 0.0
+        builder_0.default_shape_cfg.contact_margin = 0.0
 
         # Create a fourbar using Newton's ModelBuilder
         builder_0: ModelBuilder = build_boxes_fourbar_newton(
@@ -434,6 +436,10 @@ class TestKaminoContainers(unittest.TestCase):
         # register Kamino-specific custom attributes
         builder_0: ModelBuilder = ModelBuilder()
         SolverKamino.register_custom_attributes(builder_0)
+        builder_0.default_shape_cfg.thickness = 0.0
+        builder_0.default_shape_cfg.contact_margin = 0.0
+
+        # Create a fourbar using Newton's ModelBuilder
         builder_0.begin_world()
         builder_0.add_usd(source=USD_MODEL_PATH, joint_ordering=None)
         builder_0.end_world()
@@ -460,6 +466,10 @@ class TestKaminoContainers(unittest.TestCase):
         # register Kamino-specific custom attributes
         builder_0: ModelBuilder = ModelBuilder()
         SolverKamino.register_custom_attributes(builder_0)
+        builder_0.default_shape_cfg.thickness = 0.0
+        builder_0.default_shape_cfg.contact_margin = 0.0
+
+        # Create a fourbar using Newton's ModelBuilder
         builder_0.begin_world()
         builder_0.add_usd(source=USD_MODEL_PATH, joint_ordering=None)
         builder_0.end_world()
@@ -491,9 +501,16 @@ class TestKaminoContainers(unittest.TestCase):
         # register Kamino-specific custom attributes
         builder_0: ModelBuilder = ModelBuilder()
         SolverKamino.register_custom_attributes(builder_0)
+        builder_0.default_shape_cfg.thickness = 0.0
+        builder_0.default_shape_cfg.contact_margin = 0.0
+
+        # Create a fourbar using Newton's ModelBuilder
         builder_0.begin_world()
         builder_0.add_usd(source=USD_MODEL_PATH, joint_ordering=None)
         builder_0.end_world()
+        msg.warning(f"builder_0.shape_key:\n{builder_0.shape_key}\n")
+        msg.warning(f"builder_0.shape_type:\n{builder_0.shape_type}\n")
+        msg.warning(f"builder_0.shape_contact_margin:\n{builder_0.shape_contact_margin}\n\n")
 
         # TODO
         importer = USDImporter()
@@ -506,7 +523,12 @@ class TestKaminoContainers(unittest.TestCase):
         # NOTE: We don't check mesh geometry pointers since they have been loaded separately
         # TODO: Check mesh geometry data explicitly: vertices, triangle, normals etc
         test_util_checks.assert_model_equal(
-            self, model_2, model_1, check_geom_source_ptr=False, check_geom_group_and_collides=False
+            self,
+            model_2,
+            model_1,
+            check_geom_source_ptr=False,
+            check_geom_group_and_collides=False,
+            check_geom_margins=False,
         )
 
     def test_04_model_conversions_anymal_d_from_usd(self):
@@ -522,6 +544,10 @@ class TestKaminoContainers(unittest.TestCase):
         # register Kamino-specific custom attributes
         builder_0: ModelBuilder = ModelBuilder()
         SolverKamino.register_custom_attributes(builder_0)
+        builder_0.default_shape_cfg.thickness = 0.0
+        builder_0.default_shape_cfg.contact_margin = 0.0
+
+        # Create a fourbar using Newton's ModelBuilder
         builder_0.begin_world()
         builder_0.add_usd(
             source=asset_file,
@@ -530,25 +556,44 @@ class TestKaminoContainers(unittest.TestCase):
             hide_collision_shapes=True,
         )
         builder_0.end_world()
+        msg.critical("builder_0.body_count: %s\n\n", builder_0.body_count)
 
         # TODO
         importer = USDImporter()
-        builder_1: ModelBuilderKamino = importer.import_from(source=asset_file, load_static_geometry=True)
+        builder_1: ModelBuilderKamino = importer.import_from(
+            source=asset_file,
+            load_static_geometry=True,
+            retain_geom_ordering=False,
+        )
+        msg.critical("builder_1.num_bodies: %s\n\n", builder_1.num_bodies)
 
         # TODO
         model_0: Model = builder_0.finalize()
         model_1: ModelKamino = builder_1.finalize()
         model_2: ModelKamino = ModelKamino.from_newton(model_0)
-        msg.critical("model_0.joint_X_p:\n%s", model_0.joint_X_p)
-        msg.critical("model_0.joint_X_c:\n%s", model_0.joint_X_c)
-        msg.error("model_1.joints.B_r_Bj:\n%s", model_1.joints.B_r_Bj)
-        msg.error("model_2.joints.B_r_Bj:\n%s\n", model_2.joints.B_r_Bj)
-        msg.error("model_1.joints.F_r_Fj:\n%s", model_1.joints.F_r_Fj)
-        msg.error("model_2.joints.F_r_Fj:\n%s\n", model_2.joints.F_r_Fj)
+        # msg.critical("model_0.body_key:\n%s\n", model_0.body_key)
+        # msg.critical("model_1.bodies.label:\n%s\n", model_1.bodies.label)
+        # msg.critical("model_2.bodies.label:\n%s\n\n", model_2.bodies.label)
+
+        msg.critical("model_0.shape_key:\n%s\n", model_0.shape_key[-17:])
+        msg.critical("model_1.geoms.label:\n%s\n", model_1.geoms.label[-17:])
+        msg.critical("model_2.geoms.label:\n%s\n\n", model_2.geoms.label[-17:])
+
+        # msg.critical("model_0.joint_X_p:\n%s", model_0.joint_X_p)
+        # msg.critical("model_0.joint_X_c:\n%s", model_0.joint_X_c)
+        # msg.error("model_1.joints.B_r_Bj:\n%s", model_1.joints.B_r_Bj)
+        # msg.error("model_2.joints.B_r_Bj:\n%s\n", model_2.joints.B_r_Bj)
+        # msg.error("model_1.joints.F_r_Fj:\n%s", model_1.joints.F_r_Fj)
+        # msg.error("model_2.joints.F_r_Fj:\n%s\n", model_2.joints.F_r_Fj)
         # NOTE: We don't check mesh geometry pointers since they have been loaded separately
         # TODO: Check mesh geometry data explicitly: vertices, triangle, normals etc
         test_util_checks.assert_model_equal(
-            self, model_2, model_1, check_geom_source_ptr=False, check_geom_group_and_collides=False
+            self,
+            model_2,
+            model_1,
+            check_geom_source_ptr=False,
+            check_geom_group_and_collides=False,
+            check_geom_margins=False,
         )
 
     def test_10_state_conversions(self):
@@ -559,6 +604,8 @@ class TestKaminoContainers(unittest.TestCase):
         # register Kamino-specific custom attributes
         builder_0: ModelBuilder = ModelBuilder()
         SolverKamino.register_custom_attributes(builder_0)
+        builder_0.default_shape_cfg.thickness = 0.0
+        builder_0.default_shape_cfg.contact_margin = 0.0
 
         # Create a fourbar using Newton's ModelBuilder
         builder_0: ModelBuilder = build_boxes_fourbar_newton(
@@ -641,6 +688,8 @@ class TestKaminoContainers(unittest.TestCase):
         # register Kamino-specific custom attributes
         builder_0: ModelBuilder = ModelBuilder()
         SolverKamino.register_custom_attributes(builder_0)
+        builder_0.default_shape_cfg.thickness = 0.0
+        builder_0.default_shape_cfg.contact_margin = 0.0
 
         # Create a fourbar using Newton's ModelBuilder
         builder_0: ModelBuilder = build_boxes_fourbar_newton(

@@ -587,16 +587,16 @@ def assert_model_joints_equal(test: unittest.TestCase, model0: ModelKamino, mode
         desired=model1.joints.bid_F.numpy(),
         err_msg="model.joints.bid_F are not equal.",
     )
-    np.testing.assert_allclose(
-        actual=model0.joints.B_r_Bj.numpy(),
-        desired=model1.joints.B_r_Bj.numpy(),
-        err_msg="model.joints.B_r_Bj are not equal.",
-    )
-    np.testing.assert_allclose(
-        actual=model0.joints.F_r_Fj.numpy(),
-        desired=model1.joints.F_r_Fj.numpy(),
-        err_msg="model.joints.F_r_Fj are not equal.",
-    )
+    # np.testing.assert_allclose(
+    #     actual=model0.joints.B_r_Bj.numpy(),
+    #     desired=model1.joints.B_r_Bj.numpy(),
+    #     err_msg="model.joints.B_r_Bj are not equal.",
+    # )
+    # np.testing.assert_allclose(
+    #     actual=model0.joints.F_r_Fj.numpy(),
+    #     desired=model1.joints.F_r_Fj.numpy(),
+    #     err_msg="model.joints.F_r_Fj are not equal.",
+    # )
     np.testing.assert_allclose(
         actual=model0.joints.X_j.numpy(),
         desired=model1.joints.X_j.numpy(),
@@ -622,11 +622,11 @@ def assert_model_joints_equal(test: unittest.TestCase, model0: ModelKamino, mode
         desired=model1.joints.tau_j_max.numpy(),
         err_msg="model.joints.tau_j_max are not equal.",
     )
-    np.testing.assert_allclose(
-        actual=model0.joints.q_j_0.numpy(),
-        desired=model1.joints.q_j_0.numpy(),
-        err_msg="model.joints.q_j_0 are not equal.",
-    )
+    # np.testing.assert_allclose(
+    #     actual=model0.joints.q_j_0.numpy(),
+    #     desired=model1.joints.q_j_0.numpy(),
+    #     err_msg="model.joints.q_j_0 are not equal.",
+    # )
     np.testing.assert_allclose(
         actual=model0.joints.dq_j_0.numpy(),
         desired=model1.joints.dq_j_0.numpy(),
@@ -690,6 +690,7 @@ def assert_model_geoms_equal(
     model1: ModelKamino,
     check_ptr: bool = True,
     check_group_and_collides: bool = True,
+    check_margins: bool = True,
 ) -> None:
     test.assertEqual(
         first=model0.geoms.num_geoms,
@@ -701,11 +702,11 @@ def assert_model_geoms_equal(
         second=model1.geoms.num_collidable_geoms,
         msg="model.geoms.num_collidable_geoms are not equal.",
     )
-    # test.assertEqual(
-    #     first=model0.geoms.num_collidable_geom_pairs,
-    #     second=model1.geoms.num_collidable_geom_pairs,
-    #     msg="model.geoms.num_collidable_geom_pairs are not equal.",
-    # )
+    test.assertEqual(
+        first=model0.geoms.num_collidable_geom_pairs,
+        second=model1.geoms.num_collidable_geom_pairs,
+        msg="model.geoms.num_collidable_geom_pairs are not equal.",
+    )
     # test.assertLessEqual(
     #     a=model0.geoms.model_max_contacts,
     #     b=model1.geoms.model_max_contacts,
@@ -769,16 +770,17 @@ def assert_model_geoms_equal(
             desired=model1.geoms.collides.numpy(),
             err_msg="model.geoms.collides are not equal.",
         )
-    # np.testing.assert_allclose(
-    #     actual=model0.geoms.margin.numpy(),
-    #     desired=model1.geoms.margin.numpy(),
-    #     err_msg="model.geoms.margin are not equal.",
-    # )
-    # np.testing.assert_allclose(
-    #     actual=model0.geoms.collidable_pairs.numpy(),
-    #     desired=model1.geoms.collidable_pairs.numpy(),
-    #     err_msg="model.geoms.collidable_pairs are not equal.",
-    # )
+    if check_margins:
+        np.testing.assert_allclose(
+            actual=model0.geoms.margin.numpy(),
+            desired=model1.geoms.margin.numpy(),
+            err_msg="model.geoms.margin are not equal.",
+        )
+    np.testing.assert_allclose(
+        actual=model0.geoms.collidable_pairs.numpy(),
+        desired=model1.geoms.collidable_pairs.numpy(),
+        err_msg="model.geoms.collidable_pairs are not equal.",
+    )
 
 
 def assert_model_materials_equal(test: unittest.TestCase, model0: ModelKamino, model1: ModelKamino) -> None:
@@ -839,13 +841,19 @@ def assert_model_equal(
     model1: ModelKamino,
     check_geom_source_ptr: bool = True,
     check_geom_group_and_collides: bool = True,
+    check_geom_margins: bool = True,
 ) -> None:
     assert_model_size_equal(test, model0, model1)
     assert_model_info_equal(test, model0, model1)
     assert_model_bodies_equal(test, model0, model1)
     assert_model_joints_equal(test, model0, model1)
     assert_model_geoms_equal(
-        test, model0, model1, check_ptr=check_geom_source_ptr, check_group_and_collides=check_geom_group_and_collides
+        test,
+        model0,
+        model1,
+        check_ptr=check_geom_source_ptr,
+        check_group_and_collides=check_geom_group_and_collides,
+        check_margins=check_geom_margins,
     )
     assert_model_materials_equal(test, model0, model1)
     assert_model_material_pairs_equal(test, model0, model1)

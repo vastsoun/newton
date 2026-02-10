@@ -499,19 +499,19 @@ class SolverKamino(SolverBase):
         """
 
         # Ensure the input reset targets are valid
-        def check_length(data: wp.array, name: str, expected: int):
+        def _check_length(data: wp.array, name: str, expected: int):
             if data is not None and data.shape[0] != expected:
                 raise ValueError(f"Invalid {name} shape: Expected ({expected},), but got {data.shape}.")
 
-        check_length(joint_q, "joint_q", self._model.size.sum_of_num_joint_coords)
-        check_length(joint_u, "joint_u", self._model.size.sum_of_num_joint_dofs)
-        check_length(actuator_q, "actuator_q", self._model.size.sum_of_num_actuated_joint_coords)
-        check_length(actuator_u, "actuator_u", self._model.size.sum_of_num_actuated_joint_dofs)
-        check_length(base_q, "base_q", self._model.size.num_worlds)
-        check_length(base_u, "base_u", self._model.size.num_worlds)
-        check_length(bodies_q, "bodies_q", self._model.size.sum_of_num_bodies)
-        check_length(bodies_u, "bodies_u", self._model.size.sum_of_num_bodies)
-        check_length(world_mask, "world_mask", self._model.size.num_worlds)
+        _check_length(joint_q, "joint_q", self._model.size.sum_of_num_joint_coords)
+        _check_length(joint_u, "joint_u", self._model.size.sum_of_num_joint_dofs)
+        _check_length(actuator_q, "actuator_q", self._model.size.sum_of_num_actuated_joint_coords)
+        _check_length(actuator_u, "actuator_u", self._model.size.sum_of_num_actuated_joint_dofs)
+        _check_length(base_q, "base_q", self._model.size.num_worlds)
+        _check_length(base_u, "base_u", self._model.size.num_worlds)
+        _check_length(bodies_q, "bodies_q", self._model.size.sum_of_num_bodies)
+        _check_length(bodies_u, "bodies_u", self._model.size.sum_of_num_bodies)
+        _check_length(world_mask, "world_mask", self._model.size.num_worlds)
 
         # Ensure that only joint or actuator targets are provided
         if (joint_q is not None or joint_u is not None) and (actuator_q is not None or actuator_u is not None):
@@ -545,7 +545,7 @@ class SolverKamino(SolverBase):
             )
 
         # If a joint target is provided, use the FK solver to reset the bodies accordingly
-        elif not base_reset and joint_reset and not bodies_reset:
+        elif joint_reset and not bodies_reset:
             self._reset_with_fk_solve(
                 state_out=state_out,
                 world_mask=_world_mask,

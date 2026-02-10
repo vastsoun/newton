@@ -1323,6 +1323,8 @@ class DualProblem:
                     mu=wp.zeros(shape=(model_max_contacts_host,), dtype=float32),
                     P=wp.ones(shape=(self._delassus.sum_of_max_dims,), dtype=float32),
                 )
+                # Connect Delassus preconditioner to data array
+                self._delassus.set_preconditioner(self._data.P)
             else:
                 self._data = DualProblemData(
                     # Set the host-side caches of the maximal problem dimensions
@@ -1674,8 +1676,8 @@ class DualProblem:
         Delassus operator 'D' and free-velocity vector `v_f`.
         """
         if self._sparse:
-            self._delassus.set_preconditioner(self._data.P)
-            # pass
+            # Preconditioner has already been connected to appropriate array
+            pass
         else:
             wp.launch(
                 _apply_dual_preconditioner_to_matrix,

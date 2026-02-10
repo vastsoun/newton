@@ -695,6 +695,16 @@ class PADMMState:
         Shape of ``(num_worlds,)`` and type :class:`vec2f`.
         """
 
+        self.sigma_vec: wp.array | None = None
+        """
+        The scalar diagonal regularization vector with entries for each constraint.
+
+        This is the processed variant of `sigma`, to be used with the matrix-free
+        Delassus operator.
+
+        Shape of ``(sum_of_max_total_cts,)`` and type :class:`float32`.
+        """
+
         self.s: wp.array | None = None
         """
         The De Saxce correction velocities `s = Gamma(v_plus)`.\n
@@ -788,6 +798,7 @@ class PADMMState:
 
         # Allocate primary state variables
         self.sigma = wp.zeros(size.num_worlds, dtype=vec2f)
+        self.sigma_vec = wp.zeros(size.sum_of_max_total_cts, dtype=float32)
         self.s = wp.zeros(size.sum_of_max_total_cts, dtype=float32)
         self.v = wp.zeros(size.sum_of_max_total_cts, dtype=float32)
         self.x = wp.zeros(size.sum_of_max_total_cts, dtype=float32)

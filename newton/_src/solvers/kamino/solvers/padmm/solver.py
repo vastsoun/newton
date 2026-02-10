@@ -42,12 +42,14 @@ from .kernels import (
     _project_to_feasible_cone,
     _reset_solver_data,
     _update_delassus_proximal_regularization,
+    _update_delassus_proximal_regularization_sparse,
     _update_state_with_acceleration,
     _warmstart_contact_constraints,
     _warmstart_desaxce_correction,
     _warmstart_joint_constraints,
     _warmstart_limit_constraints,
     make_collect_solver_info_kernel,
+    make_collect_solver_info_kernel_sparse,
     make_initialize_solver_kernel,
     make_update_dual_variables_and_compute_primal_dual_residuals,
 )
@@ -250,6 +252,7 @@ class PADMMSolver:
         # Specialize certain solver kernels depending on whether acceleration is enabled
         self._initialize_solver_kernel = make_initialize_solver_kernel(use_acceleration)
         self._collect_solver_info_kernel = make_collect_solver_info_kernel(use_acceleration)
+        self._collect_solver_info_kernel_sparse = make_collect_solver_info_kernel_sparse(use_acceleration)
         self._update_dual_variables_and_compute_primal_dual_residuals_kernel = (
             make_update_dual_variables_and_compute_primal_dual_residuals(use_acceleration)
         )
@@ -434,23 +437,41 @@ class PADMMSolver:
         Args:
             problem (DualProblem): The dual forward dynamics problem to be solved.
         """
-        # Update the proximal regularization term in the Delassus matrix
-        wp.launch(
-            kernel=_update_delassus_proximal_regularization,
-            dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
-            inputs=[
-                # Inputs:
-                problem.data.dim,
-                problem.data.mio,
-                self._data.status,
-                self._data.state.sigma,
-                # Outputs:
-                problem.data.D,
-            ],
-        )
+        if problem.sparse:
+            # Update the proximal regularization diagonal for the sparse Delassus operator
+            wp.launch(
+                kernel=_update_delassus_proximal_regularization_sparse,
+                dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
+                inputs=[
+                    # Inputs:
+                    problem.data.dim,
+                    problem.data.vio,
+                    self._data.status,
+                    self._data.state.sigma,
+                    # Outputs:
+                    self._data.state.sigma_vec,
+                ],
+            )
 
-        # Compute Choleky/LDLT factorization of the Delassus matrix
-        problem._delassus.compute(reset_to_zero=True)
+            problem.delassus.set_regularization(self._data.state.sigma_vec)
+        else:
+            # Update the proximal regularization term in the Delassus matrix
+            wp.launch(
+                kernel=_update_delassus_proximal_regularization,
+                dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
+                inputs=[
+                    # Inputs:
+                    problem.data.dim,
+                    problem.data.mio,
+                    self._data.status,
+                    self._data.state.sigma,
+                    # Outputs:
+                    problem.data.D,
+                ],
+            )
+
+            # Compute Cholesky/LDLT factorization of the Delassus matrix
+            problem._delassus.compute(reset_to_zero=True)
 
     def _step(self, problem: DualProblem):
         """
@@ -1121,65 +1142,138 @@ class PADMMSolver:
         self._data.info.s.zero_()
 
         # Collect convergence information from the current state
-        wp.launch(
-            kernel=self._collect_solver_info_kernel,
-            dim=self._size.num_worlds,
-            inputs=[
-                # Inputs:
-                problem.data.nl,
-                problem.data.nc,
-                problem.data.cio,
-                problem.data.lcgo,
-                problem.data.ccgo,
-                problem.data.dim,
-                problem.data.vio,
-                problem.data.mio,
-                problem.data.mu,
-                problem.data.v_f,
-                problem.data.D,
-                problem.data.P,
-                self._data.state.sigma,
-                self._data.state.s,
-                self._data.state.x,
-                self._data.state.x_p,
-                self._data.state.y,
-                self._data.state.y_p,
-                self._data.state.z,
-                self._data.state.z_p,
-                self._data.state.a,
-                self._data.penalty,
-                self._data.status,
-                # Outputs:
-                self._data.info.lambdas,
-                self._data.info.v_plus,
-                self._data.info.v_aug,
-                self._data.info.s,
-                self._data.info.offsets,
-                self._data.info.num_restarts,
-                self._data.info.num_rho_updates,
-                self._data.info.a,
-                self._data.info.norm_s,
-                self._data.info.norm_x,
-                self._data.info.norm_y,
-                self._data.info.norm_z,
-                self._data.info.f_ccp,
-                self._data.info.f_ncp,
-                self._data.info.r_dx,
-                self._data.info.r_dy,
-                self._data.info.r_dz,
-                self._data.info.r_primal,
-                self._data.info.r_dual,
-                self._data.info.r_compl,
-                self._data.info.r_pd,
-                self._data.info.r_dp,
-                self._data.info.r_comb,
-                self._data.info.r_comb_ratio,
-                self._data.info.r_ncp_primal,
-                self._data.info.r_ncp_dual,
-                self._data.info.r_ncp_compl,
-                self._data.info.r_ncp_natmap,
-            ],
-        )
+        if problem.sparse:
+            # Compute post-event constraint-space velocity from solution: v_plus = v_f + D @ lambda
+            wp.copy(self._data.info.v_plus, problem.data.v_f)
+            delassus_reg_prev = problem.delassus._eta
+            delassus_pre_prev = problem.delassus._preconditioner
+            problem.delassus.set_regularization(None)
+            problem.delassus.set_preconditioner(None)
+            problem.delassus.gemv(
+                x=self._data.state.y,
+                y=self._data.info.v_plus,
+                world_mask=wp.ones((problem.data.num_worlds,), dtype=wp.int32, device=self.device),
+                alpha=1.0,
+                beta=1.0,
+            )
+            problem.delassus.set_regularization(delassus_reg_prev)
+            problem.delassus.set_preconditioner(delassus_pre_prev)
+            wp.launch(
+                kernel=self._collect_solver_info_kernel_sparse,
+                dim=self._size.num_worlds,
+                inputs=[
+                    # Inputs:
+                    problem.data.nl,
+                    problem.data.nc,
+                    problem.data.cio,
+                    problem.data.lcgo,
+                    problem.data.ccgo,
+                    problem.data.dim,
+                    problem.data.vio,
+                    problem.data.mu,
+                    problem.data.v_f,
+                    problem.data.P,
+                    self._data.state.s,
+                    self._data.state.x,
+                    self._data.state.x_p,
+                    self._data.state.y,
+                    self._data.state.y_p,
+                    self._data.state.z,
+                    self._data.state.z_p,
+                    self._data.state.a,
+                    self._data.penalty,
+                    self._data.status,
+                    self._data.info.v_plus,
+                    # Outputs:
+                    self._data.info.lambdas,
+                    self._data.info.v_aug,
+                    self._data.info.s,
+                    self._data.info.offsets,
+                    self._data.info.num_restarts,
+                    self._data.info.num_rho_updates,
+                    self._data.info.a,
+                    self._data.info.norm_s,
+                    self._data.info.norm_x,
+                    self._data.info.norm_y,
+                    self._data.info.norm_z,
+                    self._data.info.f_ccp,
+                    self._data.info.f_ncp,
+                    self._data.info.r_dx,
+                    self._data.info.r_dy,
+                    self._data.info.r_dz,
+                    self._data.info.r_primal,
+                    self._data.info.r_dual,
+                    self._data.info.r_compl,
+                    self._data.info.r_pd,
+                    self._data.info.r_dp,
+                    self._data.info.r_comb,
+                    self._data.info.r_comb_ratio,
+                    self._data.info.r_ncp_primal,
+                    self._data.info.r_ncp_dual,
+                    self._data.info.r_ncp_compl,
+                    self._data.info.r_ncp_natmap,
+                ],
+            )
+        else:
+            wp.launch(
+                kernel=self._collect_solver_info_kernel,
+                dim=self._size.num_worlds,
+                inputs=[
+                    # Inputs:
+                    problem.data.nl,
+                    problem.data.nc,
+                    problem.data.cio,
+                    problem.data.lcgo,
+                    problem.data.ccgo,
+                    problem.data.dim,
+                    problem.data.vio,
+                    problem.data.mio,
+                    problem.data.mu,
+                    problem.data.v_f,
+                    problem.data.D,
+                    problem.data.P,
+                    self._data.state.sigma,
+                    self._data.state.s,
+                    self._data.state.x,
+                    self._data.state.x_p,
+                    self._data.state.y,
+                    self._data.state.y_p,
+                    self._data.state.z,
+                    self._data.state.z_p,
+                    self._data.state.a,
+                    self._data.penalty,
+                    self._data.status,
+                    # Outputs:
+                    self._data.info.lambdas,
+                    self._data.info.v_plus,
+                    self._data.info.v_aug,
+                    self._data.info.s,
+                    self._data.info.offsets,
+                    self._data.info.num_restarts,
+                    self._data.info.num_rho_updates,
+                    self._data.info.a,
+                    self._data.info.norm_s,
+                    self._data.info.norm_x,
+                    self._data.info.norm_y,
+                    self._data.info.norm_z,
+                    self._data.info.f_ccp,
+                    self._data.info.f_ncp,
+                    self._data.info.r_dx,
+                    self._data.info.r_dy,
+                    self._data.info.r_dz,
+                    self._data.info.r_primal,
+                    self._data.info.r_dual,
+                    self._data.info.r_compl,
+                    self._data.info.r_pd,
+                    self._data.info.r_dp,
+                    self._data.info.r_comb,
+                    self._data.info.r_comb_ratio,
+                    self._data.info.r_ncp_primal,
+                    self._data.info.r_ncp_dual,
+                    self._data.info.r_ncp_compl,
+                    self._data.info.r_ncp_natmap,
+                ],
+            )
 
     def _update_previous_state(self):
         """

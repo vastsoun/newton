@@ -55,12 +55,14 @@ __all__ = [
     "_project_to_feasible_cone",
     "_reset_solver_data",
     "_update_delassus_proximal_regularization",
+    "_update_delassus_proximal_regularization_sparse",
     "_update_state_with_acceleration",
     "_warmstart_contact_constraints",
     "_warmstart_desaxce_correction",
     "_warmstart_joint_constraints",
     "_warmstart_limit_constraints",
     "make_collect_solver_info_kernel",
+    "make_collect_solver_info_kernel_sparse",
     "make_initialize_solver_kernel",
     "make_update_dual_variables_and_compute_primal_dual_residuals",
     "make_update_proximal_regularization_kernel",
@@ -487,6 +489,44 @@ def _update_delassus_proximal_regularization(
 
     # Add the proximal regularization to the diagonal of the Delassus matrix
     D[mio + ncts * tid + tid] += sigma[0] - sigma[1]
+
+
+@wp.kernel
+def _update_delassus_proximal_regularization_sparse(
+    # Inputs:
+    problem_dim: wp.array(dtype=int32),
+    problem_vio: wp.array(dtype=int32),
+    solver_status: wp.array(dtype=PADMMStatus),
+    solver_state_sigma: wp.array(dtype=vec2f),
+    # Outputs:
+    solver_state_sigma_vec: wp.array(dtype=float32),
+):
+    # Retrieve the thread index
+    wid, tid = wp.tid()
+
+    # Retrieve the number of active constraints in the world
+    ncts = problem_dim[wid]
+
+    # Retrieve the solver status
+    status = solver_status[wid]
+
+    # Skip if row index exceed the problem size
+    if tid >= ncts:
+        return
+
+    # Retrieve the vector index offset of the world
+    mio = problem_vio[wid]
+
+    # Set regularization to 1.0 if the solver has already converged
+    if status.converged > 0:
+        solver_state_sigma_vec[mio + tid] = 1.0
+        return
+
+    # Retrieve the (current, previous) proximal regularization pair
+    sigma = solver_state_sigma[wid]
+
+    # Set the proximal regularization term
+    solver_state_sigma_vec[mio + tid] = sigma[0] - sigma[1]
 
 
 @wp.kernel
@@ -1281,6 +1321,176 @@ def make_collect_solver_info_kernel(use_acceleration: bool):
 
     # Return the generated kernel
     return _collect_solver_convergence_info
+
+
+def make_collect_solver_info_kernel_sparse(use_acceleration: bool):
+    """
+    Creates a kernel to collect solver convergence information after each iteration.
+
+    Specializes the kernel based on whether acceleration is enabled to reduce unnecessary overhead.
+
+    Args:
+        use_acceleration (bool): Whether acceleration is enabled in the solver.
+
+    Returns:
+        wp.kernel: The kernel function to collect solver convergence information.
+    """
+
+    @wp.kernel
+    def _collect_solver_convergence_info_sparse(
+        # Inputs:
+        problem_nl: wp.array(dtype=int32),
+        problem_nc: wp.array(dtype=int32),
+        problem_cio: wp.array(dtype=int32),
+        problem_lcgo: wp.array(dtype=int32),
+        problem_ccgo: wp.array(dtype=int32),
+        problem_dim: wp.array(dtype=int32),
+        problem_vio: wp.array(dtype=int32),
+        problem_mu: wp.array(dtype=float32),
+        problem_v_f: wp.array(dtype=float32),
+        problem_P: wp.array(dtype=float32),
+        solver_state_s: wp.array(dtype=float32),
+        solver_state_x: wp.array(dtype=float32),
+        solver_state_x_p: wp.array(dtype=float32),
+        solver_state_y: wp.array(dtype=float32),
+        solver_state_y_p: wp.array(dtype=float32),
+        solver_state_z: wp.array(dtype=float32),
+        solver_state_z_p: wp.array(dtype=float32),
+        solver_state_a: wp.array(dtype=float32),
+        solver_penalty: wp.array(dtype=PADMMPenalty),
+        solver_status: wp.array(dtype=PADMMStatus),
+        solver_info_v_plus: wp.array(dtype=float32),
+        # Outputs:
+        solver_info_lambdas: wp.array(dtype=float32),
+        solver_info_v_aug: wp.array(dtype=float32),
+        solver_info_s: wp.array(dtype=float32),
+        solver_info_offset: wp.array(dtype=int32),
+        solver_info_num_restarts: wp.array(dtype=int32),
+        solver_info_num_rho_updates: wp.array(dtype=int32),
+        solver_info_a: wp.array(dtype=float32),
+        solver_info_norm_s: wp.array(dtype=float32),
+        solver_info_norm_x: wp.array(dtype=float32),
+        solver_info_norm_y: wp.array(dtype=float32),
+        solver_info_norm_z: wp.array(dtype=float32),
+        solver_info_f_ccp: wp.array(dtype=float32),
+        solver_info_f_ncp: wp.array(dtype=float32),
+        solver_info_r_dx: wp.array(dtype=float32),
+        solver_info_r_dy: wp.array(dtype=float32),
+        solver_info_r_dz: wp.array(dtype=float32),
+        solver_info_r_primal: wp.array(dtype=float32),
+        solver_info_r_dual: wp.array(dtype=float32),
+        solver_info_r_compl: wp.array(dtype=float32),
+        solver_info_r_pd: wp.array(dtype=float32),
+        solver_info_r_dp: wp.array(dtype=float32),
+        solver_info_r_comb: wp.array(dtype=float32),
+        solver_info_r_comb_ratio: wp.array(dtype=float32),
+        solver_info_r_ncp_primal: wp.array(dtype=float32),
+        solver_info_r_ncp_dual: wp.array(dtype=float32),
+        solver_info_r_ncp_compl: wp.array(dtype=float32),
+        solver_info_r_ncp_natmap: wp.array(dtype=float32),
+    ):
+        # Retrieve the thread index as the world index
+        wid = wp.tid()
+
+        # Retrieve the world-specific data
+        nl = problem_nl[wid]
+        nc = problem_nc[wid]
+        ncts = problem_dim[wid]
+        cio = problem_cio[wid]
+        lcgo = problem_lcgo[wid]
+        ccgo = problem_ccgo[wid]
+        vio = problem_vio[wid]
+        rio = solver_info_offset[wid]
+        penalty = solver_penalty[wid]
+        status = solver_status[wid]
+
+        # Retrieve parameters
+        iter = status.iterations - 1
+
+        # Compute additional info
+        njc = ncts - (nl + 3 * nc)
+
+        # Compute and store the norms of the current solution state
+        norm_s = compute_l2_norm(ncts, vio, solver_state_s)
+        norm_x = compute_l2_norm(ncts, vio, solver_state_x)
+        norm_y = compute_l2_norm(ncts, vio, solver_state_y)
+        norm_z = compute_l2_norm(ncts, vio, solver_state_z)
+
+        # Compute (division safe) residual ratios
+        r_pd = status.r_p / (status.r_d + FLOAT32_EPS)
+        r_dp = status.r_d / (status.r_p + FLOAT32_EPS)
+
+        # Compute the post-event constraint-space velocity from the current solution: v_plus = v_f + D @ lambda
+        compute_cwise_vec_mul(ncts, vio, problem_P, solver_state_y, solver_info_lambdas)
+
+        # Compute the De Saxce correction for each contact as: s = G(v_plus)
+        compute_desaxce_corrections(nc, cio, vio, ccgo, problem_mu, solver_info_v_plus, solver_info_s)
+
+        # Compute the CCP optimization objective as: f_ccp = 0.5 * lambda.dot(v_plus + v_f)
+        f_ccp = 0.5 * compute_double_dot_product(ncts, vio, solver_info_lambdas, solver_info_v_plus, problem_v_f)
+
+        # Compute the NCP optimization objective as:  f_ncp = f_ccp + lambda.dot(s)
+        f_ncp = compute_dot_product(ncts, vio, solver_info_lambdas, solver_info_s)
+        f_ncp += f_ccp
+
+        # Compute the augmented post-event constraint-space velocity as: v_aug = v_plus + s
+        compute_vector_sum(ncts, vio, solver_info_v_plus, solver_info_s, solver_info_v_aug)
+
+        # Compute the NCP primal residual as: r_p := || lambda - proj_K(lambda) ||_inf
+        r_ncp_p, _ = compute_ncp_primal_residual(nl, nc, vio, lcgo, ccgo, cio, problem_mu, solver_info_lambdas)
+
+        # Compute the NCP dual residual as: r_d := || v_plus + s - proj_dual_K(v_plus + s)  ||_inf
+        r_ncp_d, _ = compute_ncp_dual_residual(njc, nl, nc, vio, lcgo, ccgo, cio, problem_mu, solver_info_v_aug)
+
+        # Compute the NCP complementarity (lambda _|_ (v_plus + s)) residual as r_c := || lambda.dot(v_plus + s) ||_inf
+        r_ncp_c, _ = compute_ncp_complementarity_residual(
+            nl, nc, vio, lcgo, ccgo, solver_info_v_aug, solver_info_lambdas
+        )
+
+        # Compute the natural-map residuals as: r_natmap = || lambda - proj_K(lambda - (v + s)) ||_inf
+        r_ncp_natmap, _ = compute_ncp_natural_map_residual(
+            nl, nc, vio, lcgo, ccgo, cio, problem_mu, solver_info_v_aug, solver_info_lambdas
+        )
+
+        # Compute the iterate residual as: r_iter := || y - y_p ||_inf
+        r_dx = compute_preconditioned_iterate_residual(ncts, vio, problem_P, solver_state_x, solver_state_x_p)
+        r_dy = compute_preconditioned_iterate_residual(ncts, vio, problem_P, solver_state_y, solver_state_y_p)
+        r_dz = compute_inverse_preconditioned_iterate_residual(ncts, vio, problem_P, solver_state_z, solver_state_z_p)
+
+        # Compute index offset for the info of the current iteration
+        iio = rio + iter
+
+        # Store the convergence information in the solver info arrays
+        solver_info_num_rho_updates[iio] = penalty.num_updates
+        solver_info_norm_s[iio] = norm_s
+        solver_info_norm_x[iio] = norm_x
+        solver_info_norm_y[iio] = norm_y
+        solver_info_norm_z[iio] = norm_z
+        solver_info_r_dx[iio] = r_dx
+        solver_info_r_dy[iio] = r_dy
+        solver_info_r_dz[iio] = r_dz
+        solver_info_r_primal[iio] = status.r_p
+        solver_info_r_dual[iio] = status.r_d
+        solver_info_r_compl[iio] = status.r_c
+        solver_info_r_pd[iio] = r_pd
+        solver_info_r_dp[iio] = r_dp
+        solver_info_r_ncp_primal[iio] = r_ncp_p
+        solver_info_r_ncp_dual[iio] = r_ncp_d
+        solver_info_r_ncp_compl[iio] = r_ncp_c
+        solver_info_r_ncp_natmap[iio] = r_ncp_natmap
+        solver_info_f_ccp[iio] = f_ccp
+        solver_info_f_ncp[iio] = f_ncp
+
+        # Optionally store acceleration-relevant info if acceleration is enabled
+        # NOTE: This is statically evaluated to avoid unnecessary overhead when acceleration is disabled
+        if wp.static(use_acceleration):
+            solver_info_a[iio] = solver_state_a[wid]
+            solver_info_r_comb[iio] = status.r_a
+            solver_info_r_comb_ratio[iio] = status.r_a / (status.r_a_pp)
+            solver_info_num_restarts[iio] = status.num_restarts
+
+    # Return the generated kernel
+    return _collect_solver_convergence_info_sparse
 
 
 @wp.kernel

@@ -814,7 +814,7 @@ class SolverKamino(SolverBase):
     ):
         """
         Resets the simulation to the given rigid body states.
-        There is no check that the provided states satisify joint constraints.
+        There is no check that the provided states satisfy any kinematic constraints.
         """
 
         # use initial model poses if not provided

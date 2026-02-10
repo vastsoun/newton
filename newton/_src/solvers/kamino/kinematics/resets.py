@@ -34,6 +34,7 @@ __all__ = [
     "reset_select_worlds_to_initial_state",
     "reset_select_worlds_to_state",
     "reset_state_from_base_state",
+    "reset_state_from_bodies_state",
     "reset_state_to_model_default",
     "reset_time",
 ]
@@ -574,6 +575,41 @@ def reset_state_to_model_default(
             Array of per-world flags indicating which worlds should be reset.\n
             Shape of ``(num_worlds,)`` and type :class:`int32`.
     """
+    reset_state_from_bodies_state(
+        model,
+        state_out,
+        world_mask,
+        model.bodies.q_i_0,
+        model.bodies.u_i_0,
+    )
+
+
+def reset_state_from_bodies_state(
+    model: Model,
+    state_out: State,
+    world_mask: wp.array,
+    bodies_q: wp.array,
+    bodies_u: wp.array,
+):
+    """
+    Resets the state of all bodies in the selected worlds based on their provided state.
+    The result is stored in the provided `state_out` container.
+
+    Args:
+        model (Model):
+            Input model container holding the time-invariant data of the system.
+        state_out (State):
+            Output state container to be reset to the model's default state.
+        world_mask (wp.array):
+            Array of per-world flags indicating which worlds should be reset.\n
+            Shape of ``(num_worlds,)`` and type :class:`int32`.
+        bodies_q (wp.array):
+            Array of target poses for the rigid bodies of each world.\n
+            Shape of ``(num_bodies,)`` and type :class:`transformf`.
+        bodies_u (wp.array):
+            Array of target twists for the rigid bodies of each world.\n
+            Shape of ``(num_bodies,)`` and type :class:`vec6f`.
+    """
     # Reset bodies
     wp.launch(
         _reset_body_state_of_select_worlds,
@@ -582,8 +618,8 @@ def reset_state_to_model_default(
             # Inputs:
             world_mask,
             model.bodies.wid,
-            model.bodies.q_i_0,
-            model.bodies.u_i_0,
+            bodies_q,
+            bodies_u,
             # Outputs:
             state_out.q_i,
             state_out.u_i,

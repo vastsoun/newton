@@ -23,7 +23,9 @@ independent linear systems, including rectangular and square systems.
 from collections.abc import Callable
 
 import warp as wp
+from warp.context import Devicelike
 
+from ..core.types import FloatType
 from .blas import (
     block_sparse_gemv,
     block_sparse_matvec,
@@ -93,6 +95,26 @@ class BlockSparseLinearOperators:
     The operator function for performing generalized sparse matrix-transpose-vector products `x = alpha * A^T @ y + beta * x`.\n
     Example signature: ``gemvt_op(A: BlockSparseLinearMatrices, y: wp.array, x: wp.array, alpha: float, beta: float, matrix_mask: wp.array)``.
     """
+
+    ###
+    # Properties
+    ###
+
+    @property
+    def num_matrices(self) -> int:
+        return self.bsm.num_matrices
+
+    @property
+    def max_of_max_dims(self) -> tuple[int, int]:
+        return self.bsm.max_of_max_dims
+
+    @property
+    def dtype(self) -> FloatType:
+        return self.bsm.nzb_dtype.dtype
+
+    @property
+    def device(self) -> Devicelike:
+        return self.bsm.device
 
     ###
     # Operations

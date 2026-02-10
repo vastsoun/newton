@@ -115,7 +115,7 @@ def make_containers(
     max_world_contacts: int = 0,
     dt: float = 0.001,
     device: Devicelike = None,
-    sparse: bool = False,
+    sparse: bool = True,
 ) -> tuple[Model, ModelData, Limits, CollisionDetector, DenseSystemJacobians | SparseSystemJacobians]:
     # Create the model from the builder
     model = builder.finalize(device=device)

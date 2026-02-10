@@ -231,7 +231,7 @@ class TestDelassusOperator(unittest.TestCase):
 
         # Create the model and containers from the builder
         model, data, limits, detector, jacobians = make_containers(
-            builder=builder, max_world_contacts=max_world_contacts, device=self.default_device
+            builder=builder, max_world_contacts=max_world_contacts, device=self.default_device, sparse=False
         )
 
         # Update the containers
@@ -290,7 +290,7 @@ class TestDelassusOperator(unittest.TestCase):
 
         # Create the model and containers from the builder
         model, data, limits, detector, jacobians = make_containers(
-            builder=builder, max_world_contacts=max_world_contacts, device=self.default_device
+            builder=builder, max_world_contacts=max_world_contacts, device=self.default_device, sparse=False
         )
 
         # Update the containers
@@ -360,7 +360,7 @@ class TestDelassusOperator(unittest.TestCase):
 
         # Create the model and containers from the builder
         model, data, limits, detector, jacobians = make_containers(
-            builder=builder, max_world_contacts=max_world_contacts, device=self.default_device
+            builder=builder, max_world_contacts=max_world_contacts, device=self.default_device, sparse=False
         )
 
         # Update the containers
@@ -429,7 +429,7 @@ class TestDelassusOperator(unittest.TestCase):
 
         # Create the model and containers from the builder
         model, data, limits, detector, jacobians = make_containers(
-            builder=builder, max_world_contacts=max_world_contacts, device=self.default_device
+            builder=builder, max_world_contacts=max_world_contacts, device=self.default_device, sparse=False
         )
 
         # Update the containers
@@ -500,7 +500,7 @@ class TestDelassusOperator(unittest.TestCase):
 
         # Create the model and containers from the builder
         model, data, limits, detector, jacobians = make_containers(
-            builder=builder, max_world_contacts=max_world_contacts, device=self.default_device
+            builder=builder, max_world_contacts=max_world_contacts, device=self.default_device, sparse=False
         )
 
         # Update the containers

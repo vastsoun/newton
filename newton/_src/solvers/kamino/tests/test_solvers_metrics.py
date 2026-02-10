@@ -136,6 +136,7 @@ class TestSolverMetrics(unittest.TestCase):
             gravity=False,
             perturb=False,
             device=self.default_device,
+            sparse=False,
         )
 
         # Creating a default solver metrics evaluator from the test model
@@ -237,7 +238,12 @@ class TestSolverMetrics(unittest.TestCase):
         """
         # Create the test problem
         test = TestSetup(
-            builder_fn=build_box_on_plane, max_world_contacts=4, gravity=True, perturb=True, device=self.default_device
+            builder_fn=build_box_on_plane,
+            max_world_contacts=4,
+            gravity=True,
+            perturb=True,
+            device=self.default_device,
+            sparse=False,
         )
 
         # Create the PADMM solver
@@ -322,7 +328,12 @@ class TestSolverMetrics(unittest.TestCase):
         """
         # Create the test problem
         test = TestSetup(
-            builder_fn=build_boxes_hinged, max_world_contacts=8, gravity=True, perturb=True, device=self.default_device
+            builder_fn=build_boxes_hinged,
+            max_world_contacts=8,
+            gravity=True,
+            perturb=True,
+            device=self.default_device,
+            sparse=False,
         )
 
         # Create the PADMM solver

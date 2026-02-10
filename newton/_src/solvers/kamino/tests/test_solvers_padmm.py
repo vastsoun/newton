@@ -27,7 +27,7 @@ from newton._src.solvers.kamino.core.math import screw, vec3f
 from newton._src.solvers.kamino.core.model import Model
 from newton._src.solvers.kamino.dynamics.dual import DualProblem
 from newton._src.solvers.kamino.kinematics.constraints import unpack_constraint_solutions
-from newton._src.solvers.kamino.linalg import LLTBlockedSolver
+from newton._src.solvers.kamino.linalg import ConjugateGradientSolver
 from newton._src.solvers.kamino.linalg.utils.matrix import SquareSymmetricMatrixProperties
 from newton._src.solvers.kamino.linalg.utils.range import in_range_via_gaussian_elimination
 from newton._src.solvers.kamino.models.builders import basics
@@ -54,6 +54,7 @@ class TestSetup:
         perturb: bool = True,
         gravity: bool = True,
         device: Devicelike = None,
+        sparse: bool = True,
         **kwargs,
     ):
         # Cache the max contacts allocated for the test problem
@@ -71,7 +72,7 @@ class TestSetup:
 
         # Create the model and containers from the builder
         self.model, self.data, self.limits, self.detector, self.jacobians = make_containers(
-            builder=self.builder, max_world_contacts=max_world_contacts, device=device
+            builder=self.builder, max_world_contacts=max_world_contacts, device=device, sparse=sparse
         )
         self.contacts = self.detector.contacts
         self.state_p = self.model.state()
@@ -82,8 +83,10 @@ class TestSetup:
             data=self.data,
             limits=self.limits,
             contacts=self.contacts,
-            solver=LLTBlockedSolver,
+            # solver=ConjugateGradientSolver if sparse else LLTBlockedSolver,
+            solver=ConjugateGradientSolver,
             device=device,
+            sparse=sparse,
         )
 
         # Update the sim data containers

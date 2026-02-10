@@ -23,7 +23,7 @@ import numpy as np
 import warp as wp
 
 from newton._src.solvers.kamino.dynamics.dual import DualProblem
-from newton._src.solvers.kamino.linalg import LLTSequentialSolver
+from newton._src.solvers.kamino.linalg import ConjugateGradientSolver
 from newton._src.solvers.kamino.models.builders.basics import make_basics_heterogeneous_builder
 from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.tests.utils.extract import extract_problem_vector
@@ -66,7 +66,7 @@ class TestDualProblem(unittest.TestCase):
             data=data,
             limits=limits,
             contacts=detector.contacts,
-            solver=LLTSequentialSolver,
+            solver=ConjugateGradientSolver,
             device=self.default_device,
         )
 
@@ -135,7 +135,7 @@ class TestDualProblem(unittest.TestCase):
             data=data,
             limits=limits,
             contacts=detector.contacts,
-            solver=LLTSequentialSolver,
+            solver=ConjugateGradientSolver,
             device=self.default_device,
         )
 

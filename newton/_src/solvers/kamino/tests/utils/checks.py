@@ -500,6 +500,12 @@ def assert_model_bodies_equal(test: unittest.TestCase, model0: ModelKamino, mode
         second=model1.bodies.num_bodies,
         msg="model.bodies.num_bodies are not equal.",
     )
+    for i in range(model0.bodies.num_bodies):
+        test.assertEqual(
+            first=model0.bodies.label[i],
+            second=model1.bodies.label[i],
+            msg=f"model.bodies.label[{i}] are not equal.",
+        )
     np.testing.assert_allclose(
         actual=model0.bodies.wid.numpy(),
         desired=model1.bodies.wid.numpy(),
@@ -539,11 +545,11 @@ def assert_model_bodies_equal(test: unittest.TestCase, model0: ModelKamino, mode
         atol=1e-5,
         rtol=1e-5,
     )
-    # np.testing.assert_allclose(
-    #     actual=model0.bodies.q_i_0.numpy(),
-    #     desired=model1.bodies.q_i_0.numpy(),
-    #     err_msg="model.bodies.q_i_0 are not equal.",
-    # )
+    np.testing.assert_allclose(
+        actual=model0.bodies.q_i_0.numpy(),
+        desired=model1.bodies.q_i_0.numpy(),
+        err_msg="model.bodies.q_i_0 are not equal.",
+    )
     np.testing.assert_allclose(
         actual=model0.bodies.u_i_0.numpy(),
         desired=model1.bodies.u_i_0.numpy(),
@@ -557,6 +563,12 @@ def assert_model_joints_equal(test: unittest.TestCase, model0: ModelKamino, mode
         second=model1.joints.num_joints,
         msg="model.joints.num_joints are not equal.",
     )
+    for i in range(model0.joints.num_joints):
+        test.assertEqual(
+            first=model0.joints.label[i],
+            second=model1.joints.label[i],
+            msg=f"model.joints.label[{i}] are not equal.",
+        )
     np.testing.assert_allclose(
         actual=model0.joints.wid.numpy(),
         desired=model1.joints.wid.numpy(),
@@ -587,16 +599,16 @@ def assert_model_joints_equal(test: unittest.TestCase, model0: ModelKamino, mode
         desired=model1.joints.bid_F.numpy(),
         err_msg="model.joints.bid_F are not equal.",
     )
-    # np.testing.assert_allclose(
-    #     actual=model0.joints.B_r_Bj.numpy(),
-    #     desired=model1.joints.B_r_Bj.numpy(),
-    #     err_msg="model.joints.B_r_Bj are not equal.",
-    # )
-    # np.testing.assert_allclose(
-    #     actual=model0.joints.F_r_Fj.numpy(),
-    #     desired=model1.joints.F_r_Fj.numpy(),
-    #     err_msg="model.joints.F_r_Fj are not equal.",
-    # )
+    np.testing.assert_allclose(
+        actual=model0.joints.B_r_Bj.numpy(),
+        desired=model1.joints.B_r_Bj.numpy(),
+        err_msg="model.joints.B_r_Bj are not equal.",
+    )
+    np.testing.assert_allclose(
+        actual=model0.joints.F_r_Fj.numpy(),
+        desired=model1.joints.F_r_Fj.numpy(),
+        err_msg="model.joints.F_r_Fj are not equal.",
+    )
     np.testing.assert_allclose(
         actual=model0.joints.X_j.numpy(),
         desired=model1.joints.X_j.numpy(),
@@ -622,11 +634,11 @@ def assert_model_joints_equal(test: unittest.TestCase, model0: ModelKamino, mode
         desired=model1.joints.tau_j_max.numpy(),
         err_msg="model.joints.tau_j_max are not equal.",
     )
-    # np.testing.assert_allclose(
-    #     actual=model0.joints.q_j_0.numpy(),
-    #     desired=model1.joints.q_j_0.numpy(),
-    #     err_msg="model.joints.q_j_0 are not equal.",
-    # )
+    np.testing.assert_allclose(
+        actual=model0.joints.q_j_0.numpy(),
+        desired=model1.joints.q_j_0.numpy(),
+        err_msg="model.joints.q_j_0 are not equal.",
+    )
     np.testing.assert_allclose(
         actual=model0.joints.dq_j_0.numpy(),
         desired=model1.joints.dq_j_0.numpy(),
@@ -697,6 +709,12 @@ def assert_model_geoms_equal(
         second=model1.geoms.num_geoms,
         msg="model.geoms.num_geoms are not equal.",
     )
+    for i in range(model0.geoms.num_geoms):
+        test.assertEqual(
+            first=model0.geoms.label[i],
+            second=model1.geoms.label[i],
+            msg=f"model.geoms.label[{i}] are not equal.",
+        )
     test.assertEqual(
         first=model0.geoms.num_collidable_geoms,
         second=model1.geoms.num_collidable_geoms,

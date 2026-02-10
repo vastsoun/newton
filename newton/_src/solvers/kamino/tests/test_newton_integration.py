@@ -446,7 +446,11 @@ class TestKaminoContainers(unittest.TestCase):
 
         # TODO
         importer = USDImporter()
-        builder_1: ModelBuilderKamino = importer.import_from(source=USD_MODEL_PATH, load_static_geometry=True)
+        builder_1: ModelBuilderKamino = importer.import_from(
+            source=USD_MODEL_PATH,
+            load_static_geometry=True,
+            use_prim_path_names=True,
+        )
 
         # TODO
         model_0: Model = builder_0.finalize(skip_validation_joints=True)
@@ -481,6 +485,7 @@ class TestKaminoContainers(unittest.TestCase):
             load_static_geometry=True,
             retain_joint_ordering=False,
             meshes_are_collidable=True,
+            use_prim_path_names=True,
         )
 
         # TODO
@@ -514,7 +519,11 @@ class TestKaminoContainers(unittest.TestCase):
 
         # TODO
         importer = USDImporter()
-        builder_1: ModelBuilderKamino = importer.import_from(source=USD_MODEL_PATH, load_static_geometry=True)
+        builder_1: ModelBuilderKamino = importer.import_from(
+            source=USD_MODEL_PATH,
+            load_static_geometry=True,
+            use_prim_path_names=True,
+        )
 
         # TODO
         model_0: Model = builder_0.finalize(skip_validation_joints=True)
@@ -556,7 +565,7 @@ class TestKaminoContainers(unittest.TestCase):
             hide_collision_shapes=True,
         )
         builder_0.end_world()
-        msg.critical("builder_0.body_count: %s\n\n", builder_0.body_count)
+        msg.critical("builder_0.joint_count: %s\n\n", builder_0.joint_count)
 
         # TODO
         importer = USDImporter()
@@ -564,20 +573,41 @@ class TestKaminoContainers(unittest.TestCase):
             source=asset_file,
             load_static_geometry=True,
             retain_geom_ordering=False,
+            use_articulation_root_name=False,
+            use_prim_path_names=True,
         )
-        msg.critical("builder_1.num_bodies: %s\n\n", builder_1.num_bodies)
+        msg.critical("builder_1.num_joints: %s\n\n", builder_1.num_joints)
 
         # TODO
         model_0: Model = builder_0.finalize()
         model_1: ModelKamino = builder_1.finalize()
         model_2: ModelKamino = ModelKamino.from_newton(model_0)
-        # msg.critical("model_0.body_key:\n%s\n", model_0.body_key)
-        # msg.critical("model_1.bodies.label:\n%s\n", model_1.bodies.label)
-        # msg.critical("model_2.bodies.label:\n%s\n\n", model_2.bodies.label)
 
-        msg.critical("model_0.shape_key:\n%s\n", model_0.shape_key[-17:])
-        msg.critical("model_1.geoms.label:\n%s\n", model_1.geoms.label[-17:])
-        msg.critical("model_2.geoms.label:\n%s\n\n", model_2.geoms.label[-17:])
+        msg.critical("model_0.shape_flags: %s", model_0.shape_flags)
+        msg.critical("model_0.shape_collision_group: %s", model_0.shape_collision_group)
+        msg.critical("model_1.geoms.group: %s", model_1.geoms.group)
+        msg.critical("model_2.geoms.group: %s\n\n", model_2.geoms.group)
+
+        msg.critical(
+            "model_0.shape_collision_filter_pairs (size=%s): %s\n\n",
+            len(model_0.shape_collision_filter_pairs),
+            model_0.shape_collision_filter_pairs,
+        )
+
+        msg.critical("model_1.geoms.num_collidable_geoms: %s", model_1.geoms.num_collidable_geoms)
+        msg.critical("model_2.geoms.num_collidable_geoms: %s\n\n", model_2.geoms.num_collidable_geoms)
+
+        msg.critical("model_0.shape_contact_pair_count: %s", model_0.shape_contact_pair_count)
+        msg.critical("model_1.geoms.num_collidable_geom_pairs: %s", model_1.geoms.num_collidable_geom_pairs)
+        msg.critical("model_2.geoms.num_collidable_geom_pairs: %s\n\n", model_2.geoms.num_collidable_geom_pairs)
+
+        msg.critical("model_0.shape_contact_pairs:\n%s", model_0.shape_contact_pairs)
+        msg.critical("model_1.geoms.collidable_pairs:\n%s", model_1.geoms.collidable_pairs)
+        msg.critical("model_2.geoms.collidable_pairs:\n%s\n\n", model_2.geoms.collidable_pairs)
+
+        # msg.critical("model_0.shape_transform:\n%s", model_0.shape_transform)
+        # msg.critical("model_1.geoms.offset:\n%s", model_1.geoms.offset)
+        # msg.critical("model_2.geoms.offset:\n%s\n\n", model_2.geoms.offset)
 
         # msg.critical("model_0.joint_X_p:\n%s", model_0.joint_X_p)
         # msg.critical("model_0.joint_X_c:\n%s", model_0.joint_X_c)

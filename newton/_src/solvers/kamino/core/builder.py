@@ -777,7 +777,7 @@ class ModelBuilderKamino:
                 if body.wid == world_index and body.name == body_key:
                     world.set_base_body(body.bid)
                     return
-        raise ValueError(f"Failed to identify the base body in world `{world_index} given key {body_key}`.")
+        raise ValueError(f"Failed to identify the base body in world `{world_index}` given key `{body_key}`.")
 
     def set_base_joint(self, joint_key: int | str, world_index: int = 0):
         """
@@ -801,7 +801,7 @@ class ModelBuilderKamino:
                 if joint.wid == world_index and joint.name == joint_key:
                     world.set_base_joint(joint.jid)
                     return
-        raise ValueError(f"Failed to identify the base joint in world `{world_index} given key {joint_key}`.")
+        raise ValueError(f"Failed to identify the base joint in world `{world_index}` given key `{joint_key}`.")
 
     ###
     # Model Compilation

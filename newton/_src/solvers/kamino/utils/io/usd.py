@@ -534,6 +534,7 @@ class USDImporter:
         mass_unit: float = 1.0,
         offset_xform: wp.transformf | None = None,
         only_load_enabled_rigid_bodies: bool = True,
+        prim_path_names: bool = False,
     ) -> RigidBodyDescriptor | None:
         # Skip this body if it is not enable and we are only loading enabled rigid bodies
         if not rigid_body_spec.rigidBodyEnabled and only_load_enabled_rigid_bodies:
@@ -566,10 +567,15 @@ class USDImporter:
         ###
 
         # Retrieve the name and UID of the rigid body from the prim
+        path = self._get_prim_path(rigid_body_prim)
         name = self._get_prim_name(rigid_body_prim)
         uid = self._get_prim_uid(rigid_body_prim)
-        msg.debug(f"name: {name}")
-        msg.debug(f"uid: {uid}")
+        # Use the explicit prim path as the geometry name if specified
+        if prim_path_names:
+            name = path
+        msg.debug(f"[Body]: path: {path}")
+        msg.debug(f"[Body]: uid: {uid}")
+        msg.debug(f"[Body]: name: {name}")
 
         ###
         # PhysicsRigidBodyAPI
@@ -933,6 +939,7 @@ class USDImporter:
         distance_unit: float = 1.0,
         rotation_unit: float = 1.0,
         only_load_enabled_joints: bool = True,
+        prim_path_names: bool = False,
     ) -> JointDescriptor | None:
         # Skip this body if it is not enable and we are only loading enabled rigid bodies
         if not joint_spec.jointEnabled and only_load_enabled_joints:
@@ -942,11 +949,17 @@ class USDImporter:
         # Prim Identifiers
         ###
 
-        # Retrieve the name and UID of the joint from the prim
+        # Retrieve the name and UID of the rigid body from the prim
+        path = self._get_prim_path(joint_prim)
         name = self._get_prim_name(joint_prim)
         uid = self._get_prim_uid(joint_prim)
-        msg.debug(f"name: {name}")
-        msg.debug(f"uid: {uid}")
+
+        # Use the explicit prim path as the geometry name if specified
+        if prim_path_names:
+            name = path
+        msg.debug(f"[Joint]: path: {path}")
+        msg.debug(f"[Joint]: uid: {uid}")
+        msg.debug(f"[Joint]: name: {name}")
 
         ###
         # PhysicsJoint Common Properties
@@ -1564,6 +1577,8 @@ class USDImporter:
         load_static_geometry: bool = True,
         load_materials: bool = True,
         meshes_are_collidable: bool = False,
+        use_prim_path_names: bool = False,
+        use_articulation_root_name: bool = True,
     ) -> ModelBuilderKamino:
         """
         Parses an OpenUSD file.
@@ -1779,6 +1794,7 @@ class USDImporter:
                     distance_unit=distance_unit,
                     rotation_unit=rotation_unit,
                     mass_unit=mass_unit,
+                    prim_path_names=use_prim_path_names,
                 )
                 if rigid_body_desc is not None:
                     msg.debug(f"Adding body '{builder.num_bodies}':\n{rigid_body_desc}\n")
@@ -1829,6 +1845,7 @@ class USDImporter:
                             body_index_map=body_index_map,
                             distance_unit=distance_unit,
                             rotation_unit=rotation_unit,
+                            prim_path_names=use_prim_path_names,
                         )
                         if joint_desc is not None:
                             msg.debug(f"Adding joint '{builder.num_joints}':\n{joint_desc}\n")
@@ -1865,6 +1882,7 @@ class USDImporter:
                     body_index_map=body_index_map,
                     distance_unit=distance_unit,
                     rotation_unit=rotation_unit,
+                    prim_path_names=use_prim_path_names,
                 )
                 if joint_desc is not None:
                     msg.debug(f"Adding joint '{builder.num_joints}':\n{joint_desc}\n")
@@ -1888,15 +1906,18 @@ class USDImporter:
                         break
                 if has_joint:
                     msg.debug(
-                        f"Articulation root body '{root_body_path}' already has a joint defined. Skipping FREE joint creation."
+                        f"Articulation root body '{root_body_path}' already has a joint defined. Skipping FREE joint."
                     )
                     continue
 
                 # If not, create a FREE joint descriptor to attach the root body to the
                 # world and insert it at the beginning of the joint descriptors list
                 root_body_name = builder.bodies[root_body_index].name
+
                 joint_desc = JointDescriptor(
-                    name=f"world_to_{root_body_name}",
+                    name=f"world_to_{root_body_name}"
+                    if use_articulation_root_name
+                    else f"joint_{builder.num_joints + 1}",
                     dof_type=JointDoFType.FREE,
                     act_type=JointActuationType.PASSIVE,
                     bid_B=-1,
@@ -2037,6 +2058,7 @@ class USDImporter:
                                 material_index_map=material_index_map,
                                 distance_unit=distance_unit,
                                 meshes_are_collidable=meshes_are_collidable,
+                                prim_path_names=use_prim_path_names,
                             )
                             break  # Stop after the first match
                 else:
@@ -2052,7 +2074,7 @@ class USDImporter:
                         geom_type=geom_type,
                         body_index_map=body_index_map,
                         distance_unit=distance_unit,
-                        prim_path_names=False,
+                        prim_path_names=use_prim_path_names,
                     )
                 else:
                     msg.warning(f"Skipping unsupported geom prim: {geom_prim_path} of type {typename}")

@@ -14,30 +14,32 @@
 # limitations under the License.
 
 ###########################################################################
-# Example Robot Anymal D
+# Example Robot DR Legs
 #
-# Shows how to simulate Anymal D with multiple worlds using SolverKamino.
+# Shows how to simulate DR Legs with multiple worlds using SolverKamino.
 #
-# Command: python -m newton.examples robot_anymal_d --num-worlds 16
+# Command: python -m newton.examples robot_dr_legs --num-worlds 16
 #
 ###########################################################################
+
+import os
 
 import warp as wp
 
 import newton
 import newton.examples
-import newton.utils
+from newton._src.solvers.kamino.models import get_examples_usd_assets_path
 from newton._src.solvers.kamino.utils import logger as msg
 
 
 class Example:
     def __init__(self, viewer, num_worlds=8, args=None):
         # TODO
-        self.fps = 60
+        self.fps = 50
         self.frame_dt = 1.0 / self.fps
-        self.sim_substeps = 16
-        self.sim_dt = self.frame_dt / self.sim_substeps
         self.sim_time = 0.0
+        self.sim_substeps = 4
+        self.sim_dt = self.frame_dt / self.sim_substeps
         self.num_worlds = num_worlds
         self.viewer = viewer
         self.device = wp.get_device()
@@ -48,14 +50,13 @@ class Example:
         robot_builder.default_shape_cfg.thickness = 1e-5
         robot_builder.default_shape_cfg.contact_margin = 1e-5
 
-        # Load the Anymal D USD and add it to the builder
-        asset_path = newton.utils.download_asset("anybotics_anymal_d")
-        asset_file = str(asset_path / "usd" / "anymal_d.usda")
+        # Load the DR Legs USD and add it to the builder
+        asset_file = os.path.join(get_examples_usd_assets_path(), "dr_legs/usd/dr_legs_with_meshes_and_boxes.usda")
         robot_builder.add_usd(
             asset_file,
             collapse_fixed_joints=False,  # TODO: FIX THIS WHEN ITS TRUE
             enable_self_collisions=False,
-            hide_collision_shapes=False,
+            hide_collision_shapes=True,
         )
 
         robot_builder.shape_collision_filter_pairs.append((0, 3))
@@ -66,13 +67,12 @@ class Example:
         robot_builder.add_shape_box(
             key="ground",
             body=-1,
-            hx=10.0,
-            hy=10.0,
-            hz=0.5,
-            xform=wp.transformf(0.0, 0.0, -0.5, 0.0, 0.0, 0.0, 1.0),
+            hx=1.0,
+            hy=1.0,
+            hz=0.1,
+            xform=wp.transformf(0.0, 0.0, -0.2, 0.0, 0.0, 0.0, 1.0),
             cfg=newton.ModelBuilder.ShapeConfig(contact_margin=0.0),
         )
-        robot_builder.gravity = 0.0
 
         # Create the multi-world model by duplicating the single-robot
         # builder for the specified number of worlds
@@ -84,7 +84,16 @@ class Example:
         # builder.add_ground_plane()
 
         # Create the model from the builder
-        self.model = builder.finalize(skip_validation_joints=True)
+        self.model = builder.finalize(
+            # skip_all_validations=True,
+            skip_validation_joints=True,
+            # skip_validation_joint_ordering=True,
+        )
+
+        msg.warning("model.shape_body: %s", self.model.shape_body)
+        msg.warning("model.shape_collision_filter_pairs: %s", self.model.shape_collision_filter_pairs)
+        msg.warning("model.shape_contact_pair_count: %s", self.model.shape_contact_pair_count)
+        msg.warning("model.shape_contact_pairs:\n%s", self.model.shape_contact_pairs)
 
         # Create the Kamino solver for the given model
         # TODO: Set solver configurations
@@ -98,7 +107,7 @@ class Example:
         # Reset the simulation state to a valid initial configuration above the ground
         self.base_q = wp.zeros(shape=(self.num_worlds,), dtype=wp.transformf)
         q_b = wp.quat_identity(dtype=wp.float32)
-        q_base = wp.transformf((0.0, 0.0, 1.0), q_b)
+        q_base = wp.transformf((0.0, 0.0, 0.3), q_b)
         self.base_q.assign([q_base] * self.num_worlds)
         self.solver.reset(state_out=self.state_0, base_q=self.base_q)
 
@@ -125,16 +134,6 @@ class Example:
             self.viewer.apply_forces(self.state_0)
             # step the simulation forward by one time step
             self.solver.step(self.state_0, self.state_1, self.control, None, self.sim_dt)
-
-            # TODO
-            active_contacts_np = self.solver._collision_detector_kamino.contacts.model_active_contacts.numpy()
-            num_active_contacts = active_contacts_np[0]
-            bid_AB_np = self.solver._collision_detector_kamino.contacts.bid_AB.numpy()[:num_active_contacts, :]
-            gid_AB_np = self.solver._collision_detector_kamino.contacts.gid_AB.numpy()[:num_active_contacts, :]
-            msg.warning("num_active_contacts: %s", num_active_contacts)
-            msg.warning("bid_AB:\n%s", bid_AB_np)
-            msg.warning("gid_AB:\n%s\n\n", gid_AB_np)
-
             # swap states
             self.state_0, self.state_1 = self.state_1, self.state_0
 
@@ -181,9 +180,10 @@ if __name__ == "__main__":
     # If only a single-world is created, set initial
     # camera position for better view of the system
     if args.num_worlds == 1 and hasattr(example.viewer, "set_camera"):
-        camera_pos = wp.vec3(5.0, 0.0, 2.0)
-        pitch = -15.0
+        camera_pos = wp.vec3(1.34, 0.0, 0.25)
+        pitch = -7.0
         yaw = -180.0
         example.viewer.set_camera(camera_pos, pitch, yaw)
 
+    msg.notif("Starting the simulation...")
     newton.examples.run(example, args)

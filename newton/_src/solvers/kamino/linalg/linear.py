@@ -299,7 +299,7 @@ class IterativeSolver(LinearSolver):
         self._batched_operator: conjugate.BatchedLinearOperator | None = None
 
         # Sparse discovery settings (via kwargs)
-        self._discover_sparse: bool = kwargs.pop("discover_sparse", True)
+        self._discover_sparse: bool = kwargs.pop("discover_sparse", False)
         self._sparse_block_size: int = kwargs.pop("sparse_block_size", 4)
         self._sparse_threshold: float = kwargs.pop("sparse_threshold", 0.5)
         self._sparse_bsm: BlockSparseMatrices | None = None
@@ -325,10 +325,9 @@ class IterativeSolver(LinearSolver):
             return conjugate.BatchedLinearOperator.from_dense(operator)
         elif isinstance(operator, BlockSparseLinearOperators):
             # For sparse, need uniform dimensions - extract row dims as active_dims
-            bsm = operator.bsm
-            max_rows = bsm.max_of_max_dims[0]
-            active_dims = wp.full(bsm.num_matrices, max_rows, dtype=wp.int32, device=bsm.device)
-            return conjugate.BatchedLinearOperator.from_block_sparse(bsm, active_dims)
+            max_rows = operator.max_of_max_dims[0]
+            active_dims = wp.full(operator.num_matrices, max_rows, dtype=wp.int32, device=operator.device)
+            return conjugate.BatchedLinearOperator.from_block_sparse_operator(operator, active_dims)
         else:
             raise ValueError(f"Unsupported operator type: {type(operator)}")
 

@@ -29,6 +29,7 @@ import warp as wp
 from . import blas
 from .core import DenseLinearOperatorData
 from .sparse_matrix import BlockSparseMatrices
+from .sparse_operator import BlockSparseLinearOperators
 
 # No need to auto-generate adjoint code for linear solvers
 wp.set_module_options({"enable_backward": False})
@@ -113,6 +114,27 @@ class BatchedLinearOperator:
 
         dtype = A.nzb_dtype.dtype if A.nzb_dtype is not None else None
         return cls(gemv_fn, n_worlds, max_rows, active_dims, A.device, dtype)
+
+    @classmethod
+    def from_block_sparse_operator(cls, A: BlockSparseLinearOperators, active_dims: wp.array) -> BatchedLinearOperator:
+        """Create operator from block-sparse operator.
+
+        Requires all matrices to have the same max dimensions so that 2D arrays
+        can be reshaped to 1D for the sparse gemv kernel.
+
+        Args:
+            A: Block-sparse matrices operator.
+            active_dims: 1D int array with active row dimension per matrix.
+        """
+        max_rows, max_cols = A.max_of_max_dims
+        n_worlds = A.num_matrices
+
+        def gemv_fn(x, y, world_active, alpha, beta):
+            x_flat = x.reshape((n_worlds * max_cols,))
+            y_flat = y.reshape((n_worlds * max_rows,))
+            A.gemv(x_flat, y_flat, world_active, alpha, beta)
+
+        return cls(gemv_fn, n_worlds, max_rows, active_dims, A.device, A.dtype)
 
     def gemv(self, x: wp.array2d, y: wp.array2d, world_active: wp.array, alpha: float, beta: float):
         """Compute y = alpha * A @ x + beta * y."""

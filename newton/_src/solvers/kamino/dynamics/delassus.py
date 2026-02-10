@@ -959,6 +959,19 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
                 device=self._device,
             )
 
+        self._active_rows = wp.array(
+            dtype=wp.int32,
+            shape=(self._model.size.num_worlds,),
+            ptr=self._data.info.num_total_cts.ptr,
+            copy=False,
+        )
+        self._active_cols = wp.array(
+            dtype=wp.int32,
+            shape=(self._model.size.num_worlds,),
+            ptr=self._data.info.num_total_cts.ptr,
+            copy=False,
+        )
+
         # Initialize temporary memory
         self._vec_temp_body_space = wp.empty(
             (self._model.size.sum_of_num_body_dofs,), dtype=float32, device=self._device

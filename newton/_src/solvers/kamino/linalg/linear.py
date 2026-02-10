@@ -324,10 +324,8 @@ class IterativeSolver(LinearSolver):
         elif isinstance(operator, DenseLinearOperatorData):
             return conjugate.BatchedLinearOperator.from_dense(operator)
         elif isinstance(operator, BlockSparseLinearOperators):
-            # For sparse, need uniform dimensions - extract row dims as active_dims
-            max_rows = operator.max_of_max_dims[0]
-            active_dims = wp.full(operator.num_matrices, max_rows, dtype=wp.int32, device=operator.device)
-            return conjugate.BatchedLinearOperator.from_block_sparse_operator(operator, active_dims)
+            # For sparse, need uniform dimensions
+            return conjugate.BatchedLinearOperator.from_block_sparse_operator(operator)
         else:
             raise ValueError(f"Unsupported operator type: {type(operator)}")
 

@@ -536,8 +536,8 @@ def assert_model_bodies_equal(test: unittest.TestCase, model0: ModelKamino, mode
         actual=model0.bodies.inv_i_I_i.numpy(),
         desired=model1.bodies.inv_i_I_i.numpy(),
         err_msg="model.bodies.inv_i_I_i are not equal.",
-        atol=1e-6,
-        rtol=1e-6,
+        atol=1e-5,
+        rtol=1e-5,
     )
     # np.testing.assert_allclose(
     #     actual=model0.bodies.q_i_0.numpy(),

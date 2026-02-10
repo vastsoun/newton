@@ -1552,6 +1552,7 @@ class USDImporter:
         apply_up_axis_from_stage: bool = True,
         only_load_enabled_rigid_bodies: bool = True,
         only_load_enabled_joints: bool = True,
+        retain_joint_ordering: bool = True,
         load_static_geometry: bool = True,
         load_materials: bool = True,
         meshes_are_collidable: bool = False,
@@ -1785,45 +1786,93 @@ class USDImporter:
         # Joints
         ###
 
-        # First construct lists of joint prim paths and their types that
-        # retain the order of the joints as specified in the USD file.
-        joint_prim_paths = []
-        joint_type_names = []
-        for prim in stage.Traverse():
-            if prim.GetTypeName() in self.supported_usd_joint_type_names:
-                joint_type_names.append(prim.GetTypeName())
-                joint_prim_paths.append(prim.GetPath())
-        msg.debug(f"joint_prim_paths: {joint_prim_paths}")
-        msg.debug(f"joint_type_names: {joint_type_names}")
-
-        # Then iterate over each pair of prim path and joint type-name to parse the joint specifications
-        articulation_root_joints: list[JointDescriptor] = []
+        # Define a list to hold all joint descriptors to be added to the builder after sorting
         joint_descriptors: list[JointDescriptor] = []
-        for joint_prim_path, joint_type_name in zip(joint_prim_paths, joint_type_names, strict=False):
-            joint_type = self.supported_usd_joint_types[self.supported_usd_joint_type_names.index(joint_type_name)]
-            joint_paths, joint_specs = ret_dict[joint_type]
-            for prim_path, joint_spec in zip(joint_paths, joint_specs, strict=False):
-                if prim_path == joint_prim_path:
-                    msg.debug(f"Parsing joint @'{prim_path}' of type '{joint_type_name}'")
-                    joint_desc = self._parse_joint(
-                        stage=stage,
-                        only_load_enabled_joints=only_load_enabled_joints,
-                        joint_prim=stage.GetPrimAtPath(prim_path),
-                        joint_spec=joint_spec,
-                        joint_type=joint_type,
-                        body_index_map=body_index_map,
-                        distance_unit=distance_unit,
-                        rotation_unit=rotation_unit,
-                    )
-                    if joint_desc is not None:
-                        msg.debug(f"Adding joint '{builder.num_joints}':\n{joint_desc}\n")
-                        joint_descriptors.append(joint_desc)
-                        # Check if the joint's Follower body is the articulation root
-                        if body_path_map[joint_desc.bid_F] in articulation_root_body_paths:
-                            articulation_root_joints.append(joint_desc)
-                    else:
-                        msg.debug(f"Joint @'{prim_path}' not loaded. Will be ignored.")
-                    break  # Stop after the first match
+        articulation_root_joints: list[JointDescriptor] = []
+
+        # If retaining joint ordering, first construct lists of joint prim paths and their
+        # types that retain the order of the joints as specified in the USD file, then iterate
+        # over each pair of prim path and joint type-name to parse the joint specifications
+        if retain_joint_ordering:
+            # First construct lists of joint prim paths and their types that
+            # retain the order of the joints as specified in the USD file.
+            joint_prim_paths = []
+            joint_type_names = []
+            for prim in stage.Traverse():
+                if prim.GetTypeName() in self.supported_usd_joint_type_names:
+                    joint_type_names.append(prim.GetTypeName())
+                    joint_prim_paths.append(prim.GetPath())
+            msg.debug(f"joint_prim_paths: {joint_prim_paths}")
+            msg.debug(f"joint_type_names: {joint_type_names}")
+
+            # Then iterate over each pair of prim path and joint type-name to parse the joint specifications
+            for joint_prim_path, joint_type_name in zip(joint_prim_paths, joint_type_names, strict=False):
+                joint_type = self.supported_usd_joint_types[self.supported_usd_joint_type_names.index(joint_type_name)]
+                joint_paths, joint_specs = ret_dict[joint_type]
+                for prim_path, joint_spec in zip(joint_paths, joint_specs, strict=False):
+                    if prim_path == joint_prim_path:
+                        msg.debug(f"Parsing joint @'{prim_path}' of type '{joint_type_name}'")
+                        joint_desc = self._parse_joint(
+                            stage=stage,
+                            only_load_enabled_joints=only_load_enabled_joints,
+                            joint_prim=stage.GetPrimAtPath(prim_path),
+                            joint_spec=joint_spec,
+                            joint_type=joint_type,
+                            body_index_map=body_index_map,
+                            distance_unit=distance_unit,
+                            rotation_unit=rotation_unit,
+                        )
+                        if joint_desc is not None:
+                            msg.debug(f"Adding joint '{builder.num_joints}':\n{joint_desc}\n")
+                            joint_descriptors.append(joint_desc)
+                            # Check if the joint's Follower body is the articulation root
+                            if body_path_map[joint_desc.bid_F] in articulation_root_body_paths:
+                                articulation_root_joints.append(joint_desc)
+                        else:
+                            msg.debug(f"Joint @'{prim_path}' not loaded. Will be ignored.")
+                        break  # Stop after the first match
+
+        # If not retaining joint ordering, simply iterate over the joint types in any order and parse the joints
+        # NOTE: This has been added only to be able to reproduce the behavior of the newton.ModelBuilder
+        # TODO: Once the newton.ModelBuilder is updated to retain USD joint ordering, this branch can be removed
+        else:
+            # Collect joint specifications grouped by their USD-native joint type
+            joint_specifications = {}
+            for key, value in ret_dict.items():
+                if key in {
+                    self.UsdPhysics.ObjectType.FixedJoint,
+                    self.UsdPhysics.ObjectType.RevoluteJoint,
+                    self.UsdPhysics.ObjectType.PrismaticJoint,
+                    self.UsdPhysics.ObjectType.SphericalJoint,
+                    self.UsdPhysics.ObjectType.D6Joint,
+                    self.UsdPhysics.ObjectType.DistanceJoint,
+                }:
+                    paths, joint_specs = value
+                    for path, joint_spec in zip(paths, joint_specs, strict=False):
+                        joint_specifications[str(path)] = (joint_spec, key)
+
+            # Then iterate over each pair of prim path and joint type-name to parse the joint specifications
+            for prim_path, (joint_spec, joint_type_name) in joint_specifications.items():
+                joint_type = self.supported_usd_joint_types[self.supported_usd_joint_types.index(joint_type_name)]
+                msg.debug(f"Parsing joint @'{prim_path}' of type '{joint_type_name}'")
+                joint_desc = self._parse_joint(
+                    stage=stage,
+                    only_load_enabled_joints=only_load_enabled_joints,
+                    joint_prim=stage.GetPrimAtPath(prim_path),
+                    joint_spec=joint_spec,
+                    joint_type=joint_type,
+                    body_index_map=body_index_map,
+                    distance_unit=distance_unit,
+                    rotation_unit=rotation_unit,
+                )
+                if joint_desc is not None:
+                    msg.debug(f"Adding joint '{builder.num_joints}':\n{joint_desc}\n")
+                    joint_descriptors.append(joint_desc)
+                    # Check if the joint's Follower body is the articulation root
+                    if body_path_map[joint_desc.bid_F] in articulation_root_body_paths:
+                        articulation_root_joints.append(joint_desc)
+                else:
+                    msg.debug(f"Joint @'{prim_path}' not loaded. Will be ignored.")
 
         # For each articulation root body that does not have an explicit joint
         # defined in the USD file, add a FREE joint to attach it to the world

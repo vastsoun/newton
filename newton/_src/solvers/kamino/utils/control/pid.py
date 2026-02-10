@@ -246,7 +246,8 @@ def _compute_jointspace_pid_control(
 
         # Update the integrator state with anti-windup clamping
         integrator += q_j_err * dt
-        integrator = wp.clamp(integrator, -tau_j_max, tau_j_max)
+        integrator_max = tau_j_max / K_i
+        integrator = wp.clamp(integrator, -integrator_max, integrator_max)
 
         # Compute the Feed-Forward + PID control generalized forces
         # NOTE: We also clamp the final control forces to avoid exceeding actuator limits

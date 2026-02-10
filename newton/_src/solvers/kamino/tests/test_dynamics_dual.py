@@ -95,7 +95,8 @@ class TestDualProblem(unittest.TestCase):
         self.assertEqual(problem.data.config.size, nw)
         self.assertEqual(problem.data.maxdim.size, nw)
         self.assertEqual(problem.data.dim.size, nw)
-        self.assertEqual(problem.data.mio.size, nw)
+        if not problem.sparse:
+            self.assertEqual(problem.data.mio.size, nw)
         self.assertEqual(problem.data.vio.size, nw)
         self.assertEqual(problem.data.u_f.size, nb)
         self.assertEqual(problem.data.v_b.size, maxdims)

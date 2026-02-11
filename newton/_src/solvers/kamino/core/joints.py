@@ -867,7 +867,7 @@ class JointDescriptor(Descriptor):
         """
         Returns whether the joint's dynamics is simulated implicitly.
         """
-        return np.any(self.m_j) or np.any(self.b_j) or np.any(self.k_p_j) or np.any(self.k_d_j)
+        return np.any(self.a_j) or np.any(self.b_j)
 
     def has_base_body(self, bid: int) -> bool:
         """
@@ -920,10 +920,13 @@ class JointDescriptor(Descriptor):
         self.tau_j_max = self._check_dofs_array(self.tau_j_max, self.num_dofs, float(FLOAT32_MAX))
 
         # Set default values for internal inertia, damping, and implicit PD gains if not provided
-        self.m_j = self._check_dofs_array(self.m_j, self.num_dofs, 0.0)
+        self.a_j = self._check_dofs_array(self.a_j, self.num_dofs, 0.0)
         self.b_j = self._check_dofs_array(self.b_j, self.num_dofs, 0.0)
         self.k_p_j = self._check_dofs_array(self.k_p_j, self.num_dofs, 0.0)
         self.k_d_j = self._check_dofs_array(self.k_d_j, self.num_dofs, 0.0)
+
+        # Validate that the specified parameters are valid
+        self._check_parameters()
 
     @override
     def __repr__(self):
@@ -1026,6 +1029,40 @@ class JointDescriptor(Descriptor):
                 return x
             else:
                 raise TypeError(f"Unsupported DOF array type: {type(x)!r}; expected float, iterable of floats, or None")
+
+    def _check_parameters(self):
+        """
+        Validates the joint parameters to ensure they are consistent and within expected ranges.
+
+        Raises:
+            ValueError: If any of the joint parameters are invalid, such as:
+                - q_j_min >= q_j_max for any DoF
+                - dq_j_max <= 0 for any DoF
+                - tau_j_max <= 0 for any DoF
+                - a_j < 0 for any DoF
+                - b_j < 0 for any DoF
+                - k_p_j < 0 for any DoF
+                - k_d_j < 0 for any DoF
+        """
+        for i in range(self.num_dofs):
+            if self.q_j_min[i] >= self.q_j_max[i]:
+                raise ValueError(
+                    f"Invalid joint limits: q_j_min[{i}] >= q_j_max[{i}] (name={self.name}, uid={self.uid})."
+                )
+            if self.dq_j_max[i] <= 0:
+                raise ValueError(
+                    f"Invalid joint velocity limit: dq_j_max[{i}] <= 0 (name={self.name}, uid={self.uid})."
+                )
+            if self.tau_j_max[i] <= 0:
+                raise ValueError(f"Invalid joint effort limit: tau_j_max[{i}] <= 0 (name={self.name}, uid={self.uid}).")
+            if self.a_j[i] < 0:
+                raise ValueError(f"Invalid joint armature: a_j[{i}] < 0 (name={self.name}, uid={self.uid}).")
+            if self.b_j[i] < 0:
+                raise ValueError(f"Invalid joint damping: b_j[{i}] < 0 (name={self.name}, uid={self.uid}).")
+            if self.k_p_j[i] < 0:
+                raise ValueError(f"Invalid joint proportional gain: k_p_j[{i}] < 0 (name={self.name}, uid={self.uid}).")
+            if self.k_d_j[i] < 0:
+                raise ValueError(f"Invalid joint derivative gain: k_d_j[{i}] < 0 (name={self.name}, uid={self.uid}).")
 
 
 @dataclass
@@ -1249,7 +1286,7 @@ class JointsModel:
 
     num_coords: wp.array | None = None
     """
-    Number of configuration coordinates of each joint.\n
+    Number of coordinates of each joint.\n
     Shape of ``(num_joints,)`` and type :class:`int`.
     """
 
@@ -1430,10 +1467,14 @@ class JointsData:
     where ``d_j`` is the number of DoFs of joint ``j``.
     """
 
+    ###
+    # Reference State
+    ###
+
     q_j_ref: wp.array | None = None
     """
     The reference coordinates of each joint (as flat array), indicating
-    the "target" position of each joint for implicit PD control.\n
+    the target position of each joint for implicit PD control.\n
     Shape of ``(sum(c_j),)`` and type :class:`float`,
     where ``c_j`` is the number of coordinates of joint ``j``.
     """
@@ -1441,7 +1482,7 @@ class JointsData:
     dq_j_ref: wp.array | None = None
     """
     The reference velocities of each joint (as flat array), indicating
-    the "target" velocity of each joint for implicit PD control.\n
+    the target velocity of each joint for implicit PD control.\n
     Shape of ``(sum(d_j),)`` and type :class:`float`,
     where ``d_j`` is the number of DoFs of joint ``j``.
     """

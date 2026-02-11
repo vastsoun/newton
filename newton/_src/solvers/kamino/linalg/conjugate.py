@@ -316,7 +316,6 @@ def _run_capturable_loop(
         if not avoid_graph_conditionals:
             wp.capture_while(global_condition, do_cycle_with_condition)
         else:
-            print(f"Using maxiter host = {maxiter_host}")
             for _ in range(0, int(maxiter_host), cycle_size):
                 do_cycle_with_condition()
     else:

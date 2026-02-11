@@ -98,6 +98,7 @@ class PADMMSolver:
         warmstart: PADMMWarmStartMode = PADMMWarmStartMode.NONE,
         use_acceleration: bool = True,
         collect_info: bool = False,
+        avoid_graph_conditionals: bool = False,
         device: Devicelike = None,
     ):
         """
@@ -115,6 +116,8 @@ class PADMMSolver:
             collect_info (bool): Set to `True` to enable collection of solver convergence info.\n
                 This setting is intended only for analysis and debugging purposes, as it
                 will increase memory consumption and reduce wall-clock time.
+            avoid_graph_conditionals (bool): Set to `True` to avoid CUDA graph conditional nodes.\n
+                When enabled, replaces `wp.capture_while` with an unrolled for-loop over max iterations.
             device (Devicelike | None): The target device on which to allocate the solver data.
         """
 
@@ -123,6 +126,7 @@ class PADMMSolver:
         self._settings: list[PADMMSettings] = []
         self._use_acceleration: bool = False
         self._collect_info: bool = False
+        self._avoid_graph_conditionals: bool = False
 
         # Declare the model size cache
         self._size: ModelSize | None = None
@@ -141,6 +145,7 @@ class PADMMSolver:
                 warmstart=warmstart,
                 use_acceleration=use_acceleration,
                 collect_info=collect_info,
+                avoid_graph_conditionals=avoid_graph_conditionals,
                 device=device,
             )
 
@@ -190,6 +195,7 @@ class PADMMSolver:
         warmstart: PADMMWarmStartMode = PADMMWarmStartMode.NONE,
         use_acceleration: bool = True,
         collect_info: bool = False,
+        avoid_graph_conditionals: bool = False,
         device: Devicelike = None,
     ):
         """
@@ -204,6 +210,8 @@ class PADMMSolver:
             collect_info (bool): Set to `True` to enable collection of solver convergence info.\n
                 This setting is intended only for analysis and debugging purposes, as it
                 will increase memory consumption and reduce wall-clock time.
+            avoid_graph_conditionals (bool): Set to `True` to avoid CUDA graph conditional nodes.\n
+                When enabled, replaces `wp.capture_while` with an unrolled for-loop over max iterations.
             device (Devicelike | None): The target device on which to allocate the solver data.
         """
 
@@ -220,6 +228,7 @@ class PADMMSolver:
         self._warmstart = warmstart
         self._use_acceleration = use_acceleration
         self._collect_info = collect_info
+        self._avoid_graph_conditionals = avoid_graph_conditionals
 
         # Set the target device if specified, otherwise use the model device
         self._device = device if device is not None else model.device
@@ -234,6 +243,7 @@ class PADMMSolver:
         # NOTE: This is needed to allocate the solver
         # info arrays if `collect_info` is enabled
         max_of_max_iters = max([s.max_iterations for s in self._settings])
+        self._max_of_max_iters = max_of_max_iters
 
         # Allocate memory in device global memory
         self._data = PADMMData(
@@ -353,10 +363,12 @@ class PADMMSolver:
             self._data.info.zero()
 
         # Iterate until convergence or maximum number of iterations is reached
-        if self._use_acceleration:
-            wp.capture_while(self._data.state.done, while_body=self._step_accel, problem=problem)
+        step_fn = self._step_accel if self._use_acceleration else self._step
+        if self._avoid_graph_conditionals:
+            for _ in range(self._max_of_max_iters):
+                step_fn(problem)
         else:
-            wp.capture_while(self._data.state.done, while_body=self._step, problem=problem)
+            wp.capture_while(self._data.state.done, while_body=step_fn, problem=problem)
 
         # Update the final solution from the terminal PADMM state
         self._update_solution(problem)

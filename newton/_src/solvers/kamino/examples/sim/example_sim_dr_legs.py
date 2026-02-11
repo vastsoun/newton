@@ -55,6 +55,7 @@ class Example:
         logging: bool = False,
         linear_solver: str = "LLTB",
         linear_solver_maxiter: int = 0,
+        avoid_graph_conditionals: bool = True,
         headless: bool = False,
         record_video: bool = False,
         async_save: bool = False,
@@ -118,6 +119,7 @@ class Example:
         linear_solver_cls = {v: k for k, v in LinearSolverShorthand.items()}[linear_solver.upper()]
         settings.solver.linear_solver_type = linear_solver_cls
         settings.solver.linear_solver_kwargs = {"maxiter": linear_solver_maxiter} if linear_solver_maxiter > 0 else {}
+        settings.solver.avoid_graph_conditionals = avoid_graph_conditionals
 
         # Create a simulator
         msg.notif("Building the simulator...")
@@ -348,6 +350,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--linear-solver-maxiter", default=0, type=int, help="Max number of iterations for iterative linear solvers"
     )
+    parser.add_argument(
+        "--avoid-graph-conditionals",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Avoid CUDA graph conditional nodes in iterative solvers",
+    )
     args = parser.parse_args()
 
     # Set global numpy configurations
@@ -383,6 +391,7 @@ if __name__ == "__main__":
         num_worlds=args.num_worlds,
         linear_solver=args.linear_solver,
         linear_solver_maxiter=args.linear_solver_maxiter,
+        avoid_graph_conditionals=args.avoid_graph_conditionals,
         max_steps=args.num_steps,
         gravity=args.gravity,
         ground=args.ground,

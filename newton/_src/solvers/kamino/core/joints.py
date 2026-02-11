@@ -918,7 +918,15 @@ class JointDescriptor(Descriptor):
         self.k_d_j = self._check_dofs_array(self.k_d_j, self.num_dofs, 0.0)
 
         # Validate that the specified parameters are valid
-        self._check_parameters()
+        self._check_parameter_values()
+
+        # Ensure that PD gains are only specified for actuated joints
+        if self.is_passive and (np.any(self.k_p_j) or np.any(self.k_d_j)):
+            raise ValueError(
+                f"Joint `{self.name}` has non-zero PD gains but the joint is defined as passive:"
+                f"\n  k_p_j: {self.k_p_j}"
+                f"\n  k_d_j: {self.k_d_j}"
+            )
 
     @override
     def __repr__(self):
@@ -1024,7 +1032,7 @@ class JointDescriptor(Descriptor):
             else:
                 raise TypeError(f"Unsupported DOF array type: {type(x)!r}; expected float, iterable of floats, or None")
 
-    def _check_parameters(self):
+    def _check_parameter_values(self):
         """
         Validates the joint parameters to ensure they are consistent and within expected ranges.
 

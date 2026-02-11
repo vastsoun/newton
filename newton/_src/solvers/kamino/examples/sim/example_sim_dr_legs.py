@@ -55,7 +55,7 @@ class Example:
         logging: bool = False,
         linear_solver: str = "LLTB",
         linear_solver_maxiter: int = 0,
-        avoid_graph_conditionals: bool = True,
+        avoid_graph_conditionals: bool = False,
         headless: bool = False,
         record_video: bool = False,
         async_save: bool = False,
@@ -353,7 +353,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--avoid-graph-conditionals",
         action=argparse.BooleanOptionalAction,
-        default=True,
+        default=False,
         help="Avoid CUDA graph conditional nodes in iterative solvers",
     )
     args = parser.parse_args()

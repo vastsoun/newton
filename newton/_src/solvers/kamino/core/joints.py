@@ -782,16 +782,16 @@ class JointDescriptor(Descriptor):
     all actuated joint DoFs in the world it belongs to.
     """
 
-    kinematic_cts_offset: int = -1
-    """
-    Index offset of this joint's kinematic constraints among all
-    joint kinematic constraints in the world it belongs to.
-    """
-
     dynamic_cts_offset: int = -1
     """
     Index offset of this joint's dynamic constraints among all
-    joint dynamic constraints in the world it belongs to.
+    dynamic joint constraints in the world it belongs to.
+    """
+
+    kinematic_cts_offset: int = -1
+    """
+    Index offset of this joint's kinematic constraints among all
+    kinematic joint constraints in the world it belongs to.
     """
 
     ###
@@ -813,9 +813,16 @@ class JointDescriptor(Descriptor):
         return self.dof_type.num_dofs
 
     @property
-    def num_cts(self) -> int:
+    def num_dynamic_cts(self) -> int:
         """
-        Returns the number of constraints for this joint.
+        Returns the number of dynamic constraints introduced by this joint.
+        """
+        return self.dof_type.num_dofs if self.is_implicit else 0
+
+    @property
+    def num_kinematic_cts(self) -> int:
+        """
+        Returns the number of kinematic constraints introduced by this joint.
         """
         return self.dof_type.num_cts
 
@@ -936,7 +943,7 @@ class JointDescriptor(Descriptor):
             f"dq_j_max: {self.dq_j_max},\n"
             f"tau_j_max: {self.tau_j_max}\n"
             "----------------------------------------------\n"
-            f"m_j: {self.m_j},\n"
+            f"a_j: {self.a_j},\n"
             f"b_j: {self.b_j},\n"
             f"k_p_j: {self.k_p_j},\n"
             f"k_d_j: {self.k_d_j},\n"
@@ -946,11 +953,13 @@ class JointDescriptor(Descriptor):
             "----------------------------------------------\n"
             f"num_coords: {self.num_coords},\n"
             f"num_dofs: {self.num_dofs},\n"
-            f"num_cts: {self.num_cts},\n"
+            f"num_dynamic_cts: {self.num_dynamic_cts},\n"
+            f"num_kinematic_cts: {self.num_kinematic_cts},\n"
             "----------------------------------------------\n"
             f"coords_offset: {self.coords_offset},\n"
             f"dofs_offset: {self.dofs_offset},\n"
-            f"cts_offset: {self.cts_offset},\n"
+            f"cts_dynamic_offset: {self.dynamic_cts_offset},\n"
+            f"cts_kinematic_offset: {self.kinematic_cts_offset},\n"
             "----------------------------------------------\n"
             f"passive_coords_offset: {self.passive_coords_offset},\n"
             f"passive_dofs_offset: {self.passive_dofs_offset},\n"
@@ -1293,17 +1302,17 @@ class JointsModel:
     Shape of ``(num_joints,)`` and type :class:`int`.
     """
 
-    kinematic_cts_offset: wp.array | None = None
+    dynamic_cts_offset: wp.array | None = None
     """
-    Index offset of each joint's constraints w.r.t the start
-    index of joint constraints of the corresponding world.\n
+    Index offset of each joint's dynamic constraints w.r.t the start
+    index of dynamic joint constraints of the corresponding world.\n
     Shape of ``(num_joints,)`` and type :class:`int`.
     """
 
-    dynamic_cts_offset: wp.array | None = None
+    kinematic_cts_offset: wp.array | None = None
     """
-    Index offset of each joint's constraints w.r.t the start
-    index of joint constraints of the corresponding world.\n
+    Index offset of each joint's kinematic constraints w.r.t the start
+    index of kinematic joint constraints of the corresponding world.\n
     Shape of ``(num_joints,)`` and type :class:`int`.
     """
 
@@ -1497,6 +1506,25 @@ class JointsData:
             self.q_j.zero_()
             self.q_j_p.zero_()
         self.dq_j.zero_()
+
+    def reset_references(self, q_j_ref: wp.array | None = None, dq_j_ref: wp.array | None = None):
+        """
+        Resets all reference coordinates and velocities to either zero or the provided
+        reference values.
+        """
+        if q_j_ref is not None:
+            if q_j_ref.size != self.q_j_ref.size:
+                raise ValueError(f"Invalid size of q_j_ref: {q_j_ref.size}. Expected: {self.q_j_ref.size}.")
+            wp.copy(self.q_j_ref, q_j_ref)
+        else:
+            self.q_j_ref.zero_()
+
+        if dq_j_ref is not None:
+            if dq_j_ref.size != self.dq_j_ref.size:
+                raise ValueError(f"Invalid size of dq_j_ref: {dq_j_ref.size}. Expected: {self.dq_j_ref.size}.")
+            wp.copy(self.dq_j_ref, dq_j_ref)
+        else:
+            self.dq_j_ref.zero_()
 
     def clear_residuals(self):
         """

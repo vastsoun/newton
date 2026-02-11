@@ -30,9 +30,7 @@ from .types import Descriptor
 # Module interface
 ###
 
-__all__ = [
-    "WorldDescriptor",
-]
+__all__ = ["WorldDescriptor"]
 
 
 ###
@@ -75,13 +73,19 @@ class WorldDescriptor(Descriptor):
 
     num_passive_joints: int = 0
     """
-    The number of joints which are passive.\n
+    The number of joints that are passive.\n
     This is less than or equal to `num_joints`.
     """
 
     num_actuated_joints: int = 0
     """
-    The number of joints which are actuated.\n
+    The number of joints that are actuated.\n
+    This is less than or equal to `num_joints`.
+    """
+
+    num_dynamic_joints: int = 0
+    """
+    The number of joints that are dynamic.\n
     This is less than or equal to `num_joints`.
     """
 
@@ -130,14 +134,14 @@ class WorldDescriptor(Descriptor):
 
     num_passive_joint_coords: int = 0
     """
-    The number of passive joint joint coordinates.\n
+    The number of passive joint coordinates.\n
     This is equal to the sum of the coordinates of all passive joints defined
     in the world, and is always less than or equal to `num_joint_coords`.\n
     """
 
     num_passive_joint_dofs: int = 0
     """
-    The number of passive joint joint DoFs.\n
+    The number of passive joint DoFs.\n
     This is equal to the sum of the DoFs of all passive joints defined
     in the world, and is always less than or equal to `num_joint_dofs`.\n
     """
@@ -156,10 +160,16 @@ class WorldDescriptor(Descriptor):
     in the world, and is always less than or equal to `num_joint_dofs`.\n
     """
 
-    num_joint_cts: int = 0
+    num_dynamic_joint_cts: int = 0
     """
-    The total number of joint constraints.\n
-    This is equal to the sum of the constraints of all joints defined in the world.
+    The total number of joint dynamics constraints.\n
+    This is equal to the sum of the dyanimcs constraints of all dynamic joints defined in the world.
+    """
+
+    num_kinematic_joint_cts: int = 0
+    """
+    The total number of joint kinematics constraints.\n
+    This is equal to the sum of the kinematics constraints of all joints defined in the world.
     """
 
     joint_coords: list[int] = field(default_factory=list[int])
@@ -204,11 +214,18 @@ class WorldDescriptor(Descriptor):
     and the sum of all elements is equal to `num_actuated_joint_dofs`.\n
     """
 
-    joint_cts: list[int] = field(default_factory=list[int])
+    joint_dynamic_cts: list[int] = field(default_factory=list[int])
     """
-    The list of all joint constraints.\n
+    The list of all joint dynamics constraints.\n
     This list is ordered according the joint indices in the world,
-    and the sum of all elements is equal to `num_joint_cts`.\n
+    and the sum of all elements is equal to `num_dynamic_joint_cts`.\n
+    """
+
+    joint_kinematic_cts: list[int] = field(default_factory=list[int])
+    """
+    The list of all joint kinematics constraints.\n
+    This list is ordered according the joint indices in the world,
+    and the sum of all elements is equal to `num_kinematic_joint_cts`.\n
     """
 
     ###
@@ -252,8 +269,11 @@ class WorldDescriptor(Descriptor):
     actuated_joint_dofs_idx_offset: int = 0
     """Index offset of the world's actuated joint DoFs w.r.t the entire model."""
 
-    joint_cts_idx_offset: int = 0
-    """Index offset of the world's joint constraints w.r.t the entire model."""
+    joint_dynamic_cts_idx_offset: int = 0
+    """Index offset of the world's joint dynamics constraints w.r.t the entire model."""
+
+    joint_kinematic_cts_idx_offset: int = 0
+    """Index offset of the world's joint kinematics constraints w.r.t the entire model."""
 
     ###
     # Entity Identifiers
@@ -300,6 +320,9 @@ class WorldDescriptor(Descriptor):
 
     actuated_joint_names: list[str] = field(default_factory=list[str])
     """List of actuated joint names."""
+
+    dynamic_joint_names: list[str] = field(default_factory=list[str])
+    """List of dynamic joint names."""
 
     physical_geometry_layers: list[str] = field(default_factory=list[str])
     """List of physical geometry layers."""
@@ -361,6 +384,9 @@ class WorldDescriptor(Descriptor):
 
     has_actuated_dofs: bool = False
     """Whether the world has actuated DoFs."""
+
+    has_implicit_dofs: bool = False
+    """Whether the world has implicit DoFs."""
 
     ###
     # Inertial Properties
@@ -438,24 +464,28 @@ class WorldDescriptor(Descriptor):
         joint.jid = int(self.num_joints)
         joint.coords_offset = int(self.num_joint_coords)
         joint.dofs_offset = int(self.num_joint_dofs)
-        joint.cts_offset = int(self.num_joint_cts)
         joint.passive_coords_offset = int(self.num_passive_joint_coords) if joint.is_passive else -1
         joint.passive_dofs_offset = int(self.num_passive_joint_dofs) if joint.is_passive else -1
         joint.actuated_coords_offset = int(self.num_actuated_joint_coords) if joint.is_actuated else -1
         joint.actuated_dofs_offset = int(self.num_actuated_joint_dofs) if joint.is_actuated else -1
+        joint.dynamic_cts_offset = int(self.num_dynamic_joint_cts) if joint.is_implicit else -1
+        joint.kinematic_cts_offset = int(self.num_kinematic_joint_cts)
 
-        # Append joint info
-        self.joint_coords.append(joint.num_coords)
-        self.joint_dofs.append(joint.num_dofs)
-        self.joint_cts.append(joint.num_cts)
+        # Append joint identifiers
         self.joint_names.append(joint.name)
         self.joint_uids.append(joint.uid)
+
+        # Append joint dimensions
+        self.joint_coords.append(joint.num_coords)
+        self.joint_dofs.append(joint.num_dofs)
+        self.joint_kinematic_cts.append(joint.num_kinematic_cts)
 
         # Update joint entity counts
         self.num_joints += 1
         self.num_joint_coords += joint.num_coords
         self.num_joint_dofs += joint.num_dofs
-        self.num_joint_cts += joint.num_cts
+        self.num_dynamic_joint_cts += joint.num_dynamic_cts
+        self.num_kinematic_joint_cts += joint.num_kinematic_cts
 
         # Append joint connection group info
         if joint.bid_B < 0:
@@ -486,6 +516,14 @@ class WorldDescriptor(Descriptor):
             self.joint_actuated_coords.append(joint.num_coords)
             self.joint_actuated_dofs.append(joint.num_dofs)
             self.actuated_joint_names.append(joint.name)
+
+        # Append joint dynamics group info
+        if joint.is_implicit:
+            joint.dynamic_cts_offset = int(self.num_dynamic_joint_cts)
+            self.has_implicit_dofs = True
+            self.num_dynamic_joints += 1
+            self.joint_dynamic_cts.append(joint.num_dynamic_cts)
+            self.dynamic_joint_names.append(joint.name)
 
     def add_collision_layer(self, layer: str):
         if not isinstance(layer, str):

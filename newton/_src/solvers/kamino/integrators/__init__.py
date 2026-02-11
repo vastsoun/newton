@@ -14,15 +14,17 @@
 # limitations under the License.
 
 """
-KAMINO: Integrators Module
+Time-Integrators
 """
 
-from .euler import integrate_euler_semi_implicit
+from .euler import IntegratorEuler
+from .moreau import IntegratorMoreauJean
 
 ##
 # Module interface
 ##
 
 __all__ = [
-    "integrate_euler_semi_implicit",
+    "IntegratorEuler",
+    "IntegratorMoreauJean",
 ]

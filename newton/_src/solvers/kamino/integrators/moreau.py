@@ -14,7 +14,7 @@
 # limitations under the License.
 
 """
-Provides an implementation of a Semi-Implicit Euler time-integrator.
+KAMINO: Moreau Midpoint Semi-Implicit Integrator
 """
 
 from __future__ import annotations
@@ -26,7 +26,6 @@ import warp as wp
 from ..core.control import Control as ControlKamino
 from ..core.math import (
     quat_box_plus,
-    screw,
     screw_angular,
     screw_linear,
 )
@@ -45,12 +44,13 @@ from ..core.types import (
 from ..geometry.contacts import Contacts as ContactsKamino
 from ..geometry.detector import CollisionDetector
 from ..kinematics.limits import Limits as LimitsKamino
+from .euler import euler_semi_implicit_with_logmap
 
 ###
 # Module interface
 ###
 
-__all__ = ["IntegratorEuler"]
+__all__ = ["IntegratorMoreauJean"]
 
 
 ###
@@ -61,57 +61,49 @@ wp.set_module_options({"enable_backward": False})
 
 
 ###
-# Functions
-###
-
-
-@wp.func
-def euler_semi_implicit_with_logmap(
-    alpha: float32,
-    dt: float32,
-    g: vec3f,
-    inv_m_i: float32,
-    I_i: mat33f,
-    inv_I_i: mat33f,
-    p_i: transformf,
-    u_i: vec6f,
-    w_i: vec6f,
-):
-    # Extract linear and angular parts
-    r_i = wp.transform_get_translation(p_i)
-    q_i = wp.transform_get_rotation(p_i)
-    v_i = screw_linear(u_i)
-    omega_i = screw_angular(u_i)
-    S_i = wp.skew(omega_i)
-    f_i = screw_linear(w_i)
-    tau_i = screw_angular(w_i)
-
-    # Compute velocity update equations
-    v_i_n = v_i + dt * (g + inv_m_i * f_i)
-    omega_i_n = omega_i + dt * inv_I_i @ (-S_i @ (I_i @ omega_i) + tau_i)
-
-    # Apply damping to angular velocity
-    omega_i_n *= 1.0 - alpha * dt
-
-    # Compute configuration update equations
-    r_i_n = r_i + dt * v_i_n
-    q_i_n = quat_box_plus(q_i, dt * omega_i_n)
-
-    # Compute the new pose and twist
-    p_i_n = wp.transformation(r_i_n, q_i_n)
-    u_i_n = screw(v_i_n, omega_i_n)
-
-    # Return the new pose and twist
-    return p_i_n, u_i_n
-
-
-###
 # Kernels
 ###
 
 
 @wp.kernel
-def _integrate_semi_implicit_euler_inplace(
+def _integrate_moreau_jean_first_inplace(
+    # Inputs:
+    model_dt: wp.array(dtype=float32),
+    model_bodies_wid: wp.array(dtype=int32),
+    bodies_u: wp.array(dtype=vec6f),
+    # Outputs:
+    bodies_q: wp.array(dtype=transformf),
+):
+    # Retrieve the thread index
+    tid = wp.tid()
+
+    # Retrieve the world index
+    wid = model_bodies_wid[tid]
+
+    # Retrieve the time step and gravity vector
+    dt = 0.5 * model_dt[wid]
+
+    # Retrieve the current state of the body
+    p_i = bodies_q[tid]
+    u_i = bodies_u[tid]
+
+    # Extract linear and angular parts
+    r_i = wp.transform_get_translation(p_i)
+    q_i = wp.transform_get_rotation(p_i)
+    v_i = screw_linear(u_i)
+    omega_i = screw_angular(u_i)
+
+    # Compute configuration-level update
+    r_i_n = r_i + dt * v_i
+    q_i_n = quat_box_plus(q_i, dt * omega_i)
+    p_i_n = wp.transformf(r_i_n, q_i_n)
+
+    # Store the computed next pose and twist
+    bodies_q[tid] = p_i_n
+
+
+@wp.kernel
+def _integrate_moreau_jean_second_inplace(
     # Inputs:
     alpha: float,
     model_dt: wp.array(dtype=float32),
@@ -149,7 +141,7 @@ def _integrate_semi_implicit_euler_inplace(
     # Compute the next pose and twist
     q_i_n, u_i_n = euler_semi_implicit_with_logmap(
         alpha,
-        dt,
+        0.5 * dt,
         g,
         inv_m_i,
         I_i,
@@ -165,37 +157,11 @@ def _integrate_semi_implicit_euler_inplace(
 
 
 ###
-# Launchers
-###
-
-
-def integrate_euler_semi_implicit(model: ModelKamino, data: DataKamino, alpha: float = 0.0):
-    wp.launch(
-        _integrate_semi_implicit_euler_inplace,
-        dim=model.size.sum_of_num_bodies,
-        inputs=[
-            # Inputs:
-            alpha,  # alpha: angular damping
-            model.time.dt,
-            model.gravity.vector,
-            model.bodies.wid,
-            model.bodies.inv_m_i,
-            data.bodies.I_i,
-            data.bodies.inv_I_i,
-            data.bodies.w_i,
-            # Outputs:
-            data.bodies.q_i,
-            data.bodies.u_i,
-        ],
-    )
-
-
-###
 # Interfaces
 ###
 
 
-class IntegratorEuler:
+class IntegratorMoreauJean:
     """
     TODO
     """
@@ -224,8 +190,14 @@ class IntegratorEuler:
         detector: CollisionDetector | None = None,
     ):
         """
-        TODO
+        Solves the time integration sub-problem to compute the next state of the system.
         """
+
+        # Take the first semi-step until the mid-point of the step
+        # NOTE: We only integrate on configuration level
+        # q_M = q_i + 1/2 * dt * G(q_i) * u_i
+        self._integrate1(model=model, data=data)
+
         # If a collision detector is provided, use it to generate
         # the set of active contacts at the current state
         if detector:
@@ -241,5 +213,51 @@ class IntegratorEuler:
             contacts=contacts,
         )
 
-        # Perform forward integration to compute the next state of the system
-        integrate_euler_semi_implicit(model=model, data=data, alpha=self._alpha)
+        # Take the second semi-step until the end of the step
+        # u_E = u_S + dt * M(q_M)^{-1} * (dt * h(q_M, u_S) + dt * J_a^T(q_M) * tau_j + J_c^T(q_M) * lambda)
+        # q_E = q_M + 1/2 * dt * G(q_M) * u_E
+        self._integrate2(model=model, data=data)
+
+    ###
+    # Operations
+    ###
+
+    def _integrate1(self, model: ModelKamino, data: DataKamino):
+        """
+        TODO
+        """
+        wp.launch(
+            _integrate_moreau_jean_first_inplace,
+            dim=model.size.sum_of_num_bodies,
+            inputs=[
+                # Inputs:
+                model.time.dt,
+                model.bodies.wid,
+                data.bodies.u_i,
+                # Outputs:
+                data.bodies.q_i,
+            ],
+        )
+
+    def _integrate2(self, model: ModelKamino, data: DataKamino):
+        """
+        TODO
+        """
+        wp.launch(
+            _integrate_moreau_jean_second_inplace,
+            dim=model.size.sum_of_num_bodies,
+            inputs=[
+                # Inputs:
+                self._alpha,  # alpha: angular damping
+                model.time.dt,
+                model.gravity.vector,
+                model.bodies.wid,
+                model.bodies.inv_m_i,
+                data.bodies.I_i,
+                data.bodies.inv_I_i,
+                data.bodies.w_i,
+                # Outputs:
+                data.bodies.q_i,
+                data.bodies.u_i,
+            ],
+        )

@@ -338,7 +338,7 @@ class CollisionDetector:
                 case _:
                     raise ValueError(f"Unsupported CollisionPipelineType: {self._settings.pipeline}")
 
-    def collide(self, model: Model, data: ModelData):
+    def collide(self, model: Model, data: ModelData, contacts: Contacts | None = None):
         """
         Executes collision detection given a model and its associated data.
 
@@ -346,11 +346,22 @@ class CollisionDetector:
         the configuration set during the initialization of the CollisionDetector.
 
         Args:
-            model (Model): The Model instance containing the collision geometries
-            data (ModelData): The ModelData instance containing the state of the geometries
+            model (Model):
+                The Model instance containing the collision geometries
+            data (ModelData):
+                The ModelData instance containing the state of the geometries
+            contacts (Contacts, optional):
+                An optional Contacts container to store the generated contacts.
+                If `None`, uses the internal Contacts container managed by the CollisionDetector.
         """
+        # If no contacts can be generated, skip collision detection
+        if contacts is not None:
+            _contacts = contacts
+        else:
+            _contacts = self._contacts
+
         # Skip this operation if no contacts data has been allocated
-        if self._contacts is None or self._model_max_contacts <= 0:
+        if _contacts is None or _contacts.model_max_contacts_host <= 0:
             return
 
         # Ensure that a collision detection pipeline has been created
@@ -370,8 +381,8 @@ class CollisionDetector:
         # Execute the configured collision detection pipeline
         match self._settings.pipeline:
             case CollisionPipelineType.PRIMITIVE:
-                self._primitive_pipeline.collide(model, data, self._contacts)
+                self._primitive_pipeline.collide(model, data, _contacts)
             case CollisionPipelineType.UNIFIED:
-                self._unified_pipeline.collide(model, data, self._contacts)
+                self._unified_pipeline.collide(model, data, _contacts)
             case _:
                 raise ValueError(f"Unsupported CollisionPipelineType: {self._settings.pipeline}")

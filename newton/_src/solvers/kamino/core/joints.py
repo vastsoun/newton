@@ -813,6 +813,34 @@ class JointDescriptor(Descriptor):
         return self.dof_type.num_dofs
 
     @property
+    def num_passive_coords(self) -> int:
+        """
+        Returns the number of passive coordinates for this joint.
+        """
+        return self.dof_type.num_coords if self.is_passive else 0
+
+    @property
+    def num_passive_dofs(self) -> int:
+        """
+        Returns the number of passive DoFs for this joint.
+        """
+        return self.dof_type.num_dofs if self.is_passive else 0
+
+    @property
+    def num_actuated_coords(self) -> int:
+        """
+        Returns the number of actuated coordinates for this joint.
+        """
+        return self.dof_type.num_coords if self.is_actuated else 0
+
+    @property
+    def num_actuated_dofs(self) -> int:
+        """
+        Returns the number of actuated DoFs for this joint.
+        """
+        return self.dof_type.num_dofs if self.is_actuated else 0
+
+    @property
     def num_dynamic_cts(self) -> int:
         """
         Returns the number of dynamic constraints introduced by this joint.
@@ -1187,34 +1215,6 @@ class JointsModel:
     """
 
     ###
-    # Initial State
-    ###
-
-    q_j_0: wp.array | None = None
-    """
-    The initial coordinates of each joint (as flat array),
-    indicating the "rest" or "neutral" position of each joint.
-
-    These are used for resetting joint positions when multi-turn
-    correction for revolute DoFs is enabled in the simulation.
-
-    Shape of ``(sum(c_j),)`` and type :class:`float`,\n
-    where ``c_j`` is the number of coordinates of joint ``j``.
-    """
-
-    dq_j_0: wp.array | None = None
-    """
-    The initial velocities of each joint (as flat array),
-    indicating the "rest" or "neutral" velocity of each joint.
-
-    These are used for resetting joint velocities when multi-turn
-    correction for revolute DoFs is enabled in the simulation.
-
-    Shape of ``(sum(c_j),)`` and type :class:`float`,\n
-    where ``c_j`` is the number of coordinates of joint ``j``.
-    """
-
-    ###
     # Dynamics
     ###
 
@@ -1247,6 +1247,34 @@ class JointsModel:
     """
 
     ###
+    # Initial State
+    ###
+
+    q_j_0: wp.array | None = None
+    """
+    The initial coordinates of each joint (as flat array),
+    indicating the "rest" or "neutral" position of each joint.
+
+    These are used for resetting joint positions when multi-turn
+    correction for revolute DoFs is enabled in the simulation.
+
+    Shape of ``(sum(c_j),)`` and type :class:`float`,\n
+    where ``c_j`` is the number of coordinates of joint ``j``.
+    """
+
+    dq_j_0: wp.array | None = None
+    """
+    The initial velocities of each joint (as flat array),
+    indicating the "rest" or "neutral" velocity of each joint.
+
+    These are used for resetting joint velocities when multi-turn
+    correction for revolute DoFs is enabled in the simulation.
+
+    Shape of ``(sum(c_j),)`` and type :class:`float`,\n
+    where ``c_j`` is the number of coordinates of joint ``j``.
+    """
+
+    ###
     # Metadata
     ###
 
@@ -1262,9 +1290,15 @@ class JointsModel:
     Shape of ``(num_joints,)`` and type :class:`int`.
     """
 
-    num_cts: wp.array | None = None
+    num_dynamic_cts: wp.array | None = None
     """
-    Number of constraints of each joint.\n
+    Number of dynamic constraints of each joint.\n
+    Shape of ``(num_joints,)`` and type :class:`int`.
+    """
+
+    num_kinematic_cts: wp.array | None = None
+    """
+    Number of kinematic constraints of each joint.\n
     Shape of ``(num_joints,)`` and type :class:`int`.
     """
 

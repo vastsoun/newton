@@ -153,6 +153,13 @@ class SolverKaminoSettings:
     Defaults to `JointCorrectionMode.TWOPI`.
     """
 
+    angular_velocity_damping: float = 0.0
+    """
+    A damping factor applied to the angular velocity of bodies during state integration.\n
+    This can help stabilize simulations with large time steps or high angular velocities.\n
+    Defaults to `0.0` (i.e. no damping).
+    """
+
     def check(self) -> None:
         """Validates relevant solver settings."""
         if not issubclass(self.linear_solver_type, LinearSolverType):
@@ -1071,7 +1078,7 @@ class SolverKamino(SolverBase):
         Solves the time integration sub-problem to compute the next state of the system.
         """
         # Integrate the state of the system (i.e. of the bodies) to compute the next state
-        integrate_euler_semi_implicit(model=self._model, data=self._data)
+        integrate_euler_semi_implicit(model=self._model, data=self._data, alpha=self._settings.angular_velocity_damping)
 
         # Update the internal joint states based on the current and next body states
         wp.copy(self._data.joints.q_j_p, self._data.joints.q_j)

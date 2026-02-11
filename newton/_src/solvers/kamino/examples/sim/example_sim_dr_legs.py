@@ -118,6 +118,7 @@ class Example:
         linear_solver_cls = {v: k for k, v in LinearSolverShorthand.items()}[linear_solver.upper()]
         settings.solver.linear_solver_type = linear_solver_cls
         settings.solver.linear_solver_kwargs = {"maxiter": linear_solver_maxiter} if linear_solver_maxiter > 0 else {}
+        settings.solver.angular_velocity_damping = 0.0
 
         # Create a simulator
         msg.notif("Building the simulator...")

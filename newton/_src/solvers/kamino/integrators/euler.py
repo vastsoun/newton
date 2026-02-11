@@ -47,6 +47,7 @@ wp.set_module_options({"enable_backward": False})
 
 @wp.func
 def euler_semi_implicit_with_logmap(
+    alpha: float32,
     dt: float32,
     g: vec3f,
     inv_m_i: float32,
@@ -69,6 +70,9 @@ def euler_semi_implicit_with_logmap(
     v_i_n = v_i + dt * (g + inv_m_i * f_i)
     omega_i_n = omega_i + dt * inv_I_i @ (-S_i @ (I_i @ omega_i) + tau_i)
 
+    # Apply damping to angular velocity
+    omega_i_n *= 1.0 - alpha * dt
+
     # Compute configuration update equations
     r_i_n = r_i + dt * v_i_n
     q_i_n = quat_box_plus(q_i, dt * omega_i_n)
@@ -89,6 +93,7 @@ def euler_semi_implicit_with_logmap(
 @wp.kernel
 def _integrate_semi_implicit_euler_inplace(
     # Inputs:
+    alpha: float,
     model_dt: wp.array(dtype=float32),
     model_gravity: wp.array(dtype=vec4f),
     model_bodies_wid: wp.array(dtype=int32),
@@ -123,6 +128,7 @@ def _integrate_semi_implicit_euler_inplace(
 
     # Compute the next pose and twist
     q_i_n, u_i_n = euler_semi_implicit_with_logmap(
+        alpha,
         dt,
         g,
         inv_m_i,
@@ -143,12 +149,13 @@ def _integrate_semi_implicit_euler_inplace(
 ###
 
 
-def integrate_euler_semi_implicit(model: Model, data: ModelData):
+def integrate_euler_semi_implicit(model: Model, data: ModelData, alpha: float = 0.0):
     wp.launch(
         _integrate_semi_implicit_euler_inplace,
         dim=model.size.sum_of_num_bodies,
         inputs=[
             # Inputs:
+            alpha,  # alpha: angular damping
             model.time.dt,
             model.gravity.vector,
             model.bodies.wid,

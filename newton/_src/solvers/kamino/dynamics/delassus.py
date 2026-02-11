@@ -271,8 +271,8 @@ def _inverse_mass_matrix_matvec(
 
     # Load the input vector components for this body
     v = x[body_dof_index : body_dof_index + 6]
-    v_lin = wp.vec3(*v[0:3])
-    v_ang = wp.vec3(*v[3:6])
+    v_lin = wp.vec3(v[0], v[1], v[2])
+    v_ang = wp.vec3(v[3], v[4], v[5])
 
     # Apply inverse mass to linear velocity component
     v_lin_out = inv_m * v_lin

@@ -133,6 +133,13 @@ class SolverKaminoSettings:
     Defaults to `False`.
     """
 
+    avoid_graph_conditionals: bool = False
+    """
+    Avoids CUDA graph conditional nodes in iterative solvers.\n
+    When enabled, replaces `wp.capture_while` with unrolled for-loops over max iterations.\n
+    Defaults to `False`.
+    """
+
     linear_solver_type: type[LinearSolverType] = LLTBlockedSolver
     """
     The type of linear solver to use for the dynamics problem.\n
@@ -314,13 +321,16 @@ class SolverKamino(SolverBase):
             )
 
         # Allocate the dual problem data on the device
+        linear_solver_kwargs = dict(self._settings.linear_solver_kwargs)
+        if self._settings.avoid_graph_conditionals and issubclass(self._settings.linear_solver_type, IterativeSolver):
+            linear_solver_kwargs.setdefault("avoid_graph_conditionals", True)
         self._problem_fd = DualProblem(
             model=self._model,
             data=self._data,
             limits=self._limits,
             contacts=contacts,
             solver=self._settings.linear_solver_type,
-            solver_kwargs=self._settings.linear_solver_kwargs,
+            solver_kwargs=linear_solver_kwargs,
             settings=self._settings.problem,
             device=self._model.device,
             sparse=self._settings.sparse,
@@ -333,6 +343,7 @@ class SolverKamino(SolverBase):
             warmstart=self._settings.warmstart_mode,
             use_acceleration=self._settings.use_solver_acceleration,
             collect_info=self._settings.collect_solver_info,
+            avoid_graph_conditionals=self._settings.avoid_graph_conditionals,
             device=self._model.device,
         )
 

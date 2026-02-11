@@ -840,6 +840,14 @@ class JointDescriptor(Descriptor):
         """
         return self.dof_type.num_dofs if self.is_actuated else 0
 
+    # TODO: Enable this when we've fixed the dynamic/kinematic specifics
+    # @property
+    # def num_cts(self) -> int:
+    #     """
+    #     Returns the total number of constraints introduced by this joint.
+    #     """
+    #     return self.num_dynamic_cts + self.num_kinematic_cts
+
     @property
     def num_dynamic_cts(self) -> int:
         """
@@ -1290,6 +1298,13 @@ class JointsModel:
     Shape of ``(num_joints,)`` and type :class:`int`.
     """
 
+    # TODO: Enable this once we've fixed kinematic/dynamic specifics
+    # num_cts: wp.array | None = None
+    # """
+    # Number of total constraints of each joint.\n
+    # Shape of ``(num_joints,)`` and type :class:`int`.
+    # """
+
     num_dynamic_cts: wp.array | None = None
     """
     Number of dynamic constraints of each joint.\n
@@ -1343,6 +1358,14 @@ class JointsModel:
     index of actuated joint DoFs of the corresponding world.\n
     Shape of ``(num_joints,)`` and type :class:`int`.
     """
+
+    # TODO: Enable this once we've fixed kinematic/dynamic specifics
+    # cts_offset: wp.array | None = None
+    # """
+    # Index offset of each joint's constraints w.r.t the start
+    # index of constraints of the corresponding world.\n
+    # Shape of ``(num_joints,)`` and type :class:`int`.
+    # """
 
     dynamic_cts_offset: wp.array | None = None
     """

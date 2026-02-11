@@ -557,21 +557,6 @@ class JointDoFType(IntEnum):
 class JointDescriptor(Descriptor):
     """
     A container to describe a single joint in the model builder.
-
-    Attributes:
-        name (str): Name of the joint.
-        uid (int): Unique identifier of the joint.
-        act_type (JointActuationType): Actuation type of the joint.
-        dof_type (JointDoFType): DoF type of the joint.
-        bid_B (int): The Base body index of the joint (-1 for world, >=0 for bodies).
-        bid_F (int): The Follower body index of the joint (-1 for world, >=0 for bodies).
-        B_r_Bj (vec3f): The relative position of the joint in the base body coordinates.
-        F_r_Fj (vec3f): The relative position of the joint in the follower body coordinates.
-        X_j (mat33f): The constant axes matrix of the joint.
-        q_j_min (list[float] | float | None): Minimum DoF limits of the joint.
-        q_j_max (list[float] | float | None): Maximum DoF limits of the joint.
-        dq_j_max (list[float] | float | None): Maximum velocity limits of the joint.
-        tau_j_max (list[float] | float | None): Maximum effort limits of the joint.
     """
 
     ###
@@ -1069,42 +1054,6 @@ class JointDescriptor(Descriptor):
 class JointsModel:
     """
     An SoA-based container to hold time-invariant model data of joints.
-
-    Attributes:
-        num_joints (int): Total number of joints in the model.
-        wid (wp.array | None): World index of each joint.
-        jid (wp.array | None): Joint index w.r.t the world of each joint.
-        dof_type (wp.array | None): Joint DoF type ID of each joint.
-        act_type (wp.array | None): Joint actuation type ID of each joint.
-        bid_B (wp.array | None): Base body index of each joint w.r.t the model.\n
-            Equals `-1` for world, `>=0` for bodies.
-        bid_F (wp.array | None): Follower body index of each joint w.r.t the model.\n
-            Equals `-1` for world, `>=0` for bodies.
-        B_r_Bj (wp.array | None): Relative position of the joint,
-            expressed in and w.r.t the base body coordinate frame.
-        F_r_Fj (wp.array | None): Relative position of the joint,
-            expressed in and w.r.t the follower body coordinate frame.
-        X_j (wp.array | None): Joint axes matrix (local coordinates) of each joint.\n
-            Indicates the relative orientation of the the joint frame w.r.t the base body coordinate frame.
-        q_j_min (wp.array | None): Minimum joint position limits of each joint (as flat array).
-        q_j_max (wp.array | None): Maximum joint position limits of each joint (as flat array).
-        num_coords (wp.array | None): Number of configuration coordinates of each joint.
-        num_dofs (wp.array | None): Number of DoFs of each joint.
-        num_cts (wp.array | None): Number of constraints of each joint.
-        coords_offset (wp.array | None): Index offset of each joint's coordinates
-            w.r.t the start index of joint coordinates of the corresponding world.
-        dofs_offset (wp.array | None): Index offset of each joint's DoFs w.r.t
-            the start index of joint DoFs of the corresponding world.
-        passive_coords_offset (wp.array | None): Index offset of each joint's passive coordinates
-            w.r.t the start index of passive joint coordinates of the corresponding world.
-        passive_dofs_offset (wp.array | None): Index offset of each joint's passive DoFs
-            w.r.t the start index of passive joint DoFs of the corresponding world.
-        actuated_coords_offset (wp.array | None): Index offset of each joint's actuated coordinates
-            w.r.t the start index of actuated joint coordinates of the corresponding world.
-        actuated_dofs_offset (wp.array | None): Index offset of each joint's actuated DoFs w.r.t
-            the start index of actuated joint DoFs of the corresponding world.
-        cts_offset (wp.array | None): Index offset of each joint's constraints w.r.t
-            the start index of joint constraints of the corresponding world.
     """
 
     num_joints: int = 0

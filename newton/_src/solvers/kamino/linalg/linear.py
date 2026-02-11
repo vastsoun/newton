@@ -297,6 +297,7 @@ class IterativeSolver(LinearSolver):
         self._num_worlds: int | None = None
         self._max_dim: int | None = None
         self._batched_operator: conjugate.BatchedLinearOperator | None = None
+        self._avoid_graph_conditionals: bool = kwargs.pop("avoid_graph_conditionals", False)
 
         # Sparse discovery settings (via kwargs)
         self._discover_sparse: bool = kwargs.pop("discover_sparse", False)
@@ -744,6 +745,7 @@ class ConjugateGradientSolver(IterativeSolver):
             Mi=self._Mi,
             callback=None,
             use_cuda_graph=True,
+            avoid_graph_conditionals=self._avoid_graph_conditionals,
         )
 
         if self._discover_sparse and self._sparse_operator is not None:
@@ -756,6 +758,7 @@ class ConjugateGradientSolver(IterativeSolver):
                 Mi=self._Mi,
                 callback=None,
                 use_cuda_graph=True,
+                avoid_graph_conditionals=self._avoid_graph_conditionals,
             )
 
     @override
@@ -851,6 +854,7 @@ class ConjugateResidualSolver(IterativeSolver):
             Mi=self._Mi,
             callback=None,
             use_cuda_graph=True,
+            avoid_graph_conditionals=self._avoid_graph_conditionals,
         )
 
         if self._discover_sparse and self._sparse_operator is not None:
@@ -863,6 +867,7 @@ class ConjugateResidualSolver(IterativeSolver):
                 Mi=self._Mi,
                 callback=None,
                 use_cuda_graph=True,
+                avoid_graph_conditionals=self._avoid_graph_conditionals,
             )
 
     @override

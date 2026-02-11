@@ -267,6 +267,8 @@ def _run_capturable_loop(
     atol_sq: wp.array,
     callback: Callable | None,
     use_cuda_graph: bool,
+    avoid_graph_conditionals: bool = False,
+    maxiter_host: int | None = None,
     cycle_size: int = 1,
     termination_kernel=None,
 ):
@@ -311,7 +313,12 @@ def _run_capturable_loop(
             callback_launch.launch()
 
     if use_cuda_graph and device.is_cuda and device.is_capturing:
-        wp.capture_while(global_condition, do_cycle_with_condition)
+        if not avoid_graph_conditionals:
+            wp.capture_while(global_condition, do_cycle_with_condition)
+        else:
+            print(f"Using maxiter host = {maxiter_host}")
+            for _ in range(0, int(maxiter_host), cycle_size):
+                do_cycle_with_condition()
     else:
         for _ in range(0, int(maxiter.numpy().max()), cycle_size):
             do_cycle_with_condition()
@@ -429,7 +436,8 @@ class ConjugateSolver:
         maxiter: wp.array = None,
         Mi: BatchedLinearOperator | None = None,
         callback: Callable | None = None,
-        use_cuda_graph=True,
+        use_cuda_graph: bool = True,
+        avoid_graph_conditionals: bool = False,
     ):
         if not isinstance(A, BatchedLinearOperator):
             raise ValueError("A must be a BatchedLinearOperator")
@@ -443,6 +451,7 @@ class ConjugateSolver:
         self.Mi = Mi
         self.device = A.device
         self.active_dims = active_dims if active_dims is not None else A.active_dims
+        self.avoid_graph_conditionals = avoid_graph_conditionals
 
         self.world_active = world_active
         self.atol = atol
@@ -460,7 +469,11 @@ class ConjugateSolver:
         self.residual = wp.empty((self.n_worlds), dtype=self.scalar_type, device=self.device)
 
         if self.maxiter is None:
-            self.maxiter = wp.full(self.n_worlds, int(1.5 * self.maxdims), dtype=int, device=self.device)
+            maxiter = int(1.5 * self.maxdims)
+            self.maxiter = wp.full(self.n_worlds, maxiter, dtype=int, device=self.device)
+            self.maxiter_host = maxiter
+        else:
+            self.maxiter_host = int(max(self.maxiter.numpy()))
 
         # TODO: non-tiled variant for CPU
         self.dot_product = wp.zeros((2, self.n_worlds), dtype=self.scalar_type, device=self.device)
@@ -586,6 +599,8 @@ class CGSolver(ConjugateSolver):
             self.callback,
             self.use_cuda_graph,
             termination_kernel=self.termination_kernel,
+            avoid_graph_conditionals=self.avoid_graph_conditionals,
+            maxiter_host=self.maxiter_host,
         )
 
     def do_iteration(self, p, Ap, rz_old, rz_new, z, x, r, r_norm_sq, active_dims, world_active):
@@ -714,6 +729,8 @@ class CRSolver(ConjugateSolver):
             self.callback,
             self.use_cuda_graph,
             termination_kernel=self.termination_kernel,
+            avoid_graph_conditionals=self.avoid_graph_conditionals,
+            maxiter_host=self.maxiter_host,
         )
 
     def do_iteration(self, p, Ap, Az, zAz_old, zAz_new, z, y, x, r, r_copy, r_norm_sq, active_dims, world_active):

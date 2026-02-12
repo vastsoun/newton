@@ -1153,12 +1153,10 @@ class PADMMSolver:
 
         # Collect convergence information from the current state
         if problem.sparse:
-            # Compute post-event constraint-space velocity from solution: v_plus = v_f + D @ lambda
+            # Initialize post-event constraint-space velocity from solution: v_plus = v_f + D @ lambda
             wp.copy(self._data.info.v_plus, problem.data.v_f)
             delassus_reg_prev = problem.delassus._eta
-            delassus_pre_prev = problem.delassus._preconditioner
             problem.delassus.set_regularization(None)
-            problem.delassus.set_preconditioner(None)
             problem.delassus.gemv(
                 x=self._data.state.y,
                 y=self._data.info.v_plus,
@@ -1167,7 +1165,6 @@ class PADMMSolver:
                 beta=1.0,
             )
             problem.delassus.set_regularization(delassus_reg_prev)
-            problem.delassus.set_preconditioner(delassus_pre_prev)
             wp.launch(
                 kernel=self._collect_solver_info_kernel_sparse,
                 dim=self._size.num_worlds,
@@ -1193,9 +1190,9 @@ class PADMMSolver:
                     self._data.state.a,
                     self._data.penalty,
                     self._data.status,
-                    self._data.info.v_plus,
                     # Outputs:
                     self._data.info.lambdas,
+                    self._data.info.v_plus,
                     self._data.info.v_aug,
                     self._data.info.s,
                     self._data.info.offsets,

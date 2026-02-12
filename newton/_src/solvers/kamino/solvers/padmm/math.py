@@ -24,6 +24,7 @@ from ...core.types import float32, int32, vec3f
 ###
 
 __all__ = [
+    "compute_cwise_vec_div",
     "compute_cwise_vec_mul",
     "compute_desaxce_corrections",
     "compute_dot_product",
@@ -256,6 +257,29 @@ def compute_cwise_vec_mul(
     for i in range(dim):
         v_i = vio + i
         y[v_i] = a[v_i] * x[v_i]
+
+
+@wp.func
+def compute_cwise_vec_div(
+    dim: int32,
+    vio: int32,
+    a: wp.array(dtype=float32),
+    x: wp.array(dtype=float32),
+    y: wp.array(dtype=float32),
+):
+    """
+    Computes the coefficient-wise vector-vector division `y =  a / x`.\n
+
+    Args:
+        dim (int32): The dimension (i.e. size) of the vectors.
+        vio (int32): The vector index offset (i.e. start index).
+        a (wp.array(dtype=float32)): Input array containing the first set of vectors.
+        x (wp.array(dtype=float32)): Input array containing the second set of vectors.
+        y (wp.array(dtype=float32)): Output array where the result is stored.
+    """
+    for i in range(dim):
+        v_i = vio + i
+        y[v_i] = a[v_i] / x[v_i]
 
 
 @wp.func

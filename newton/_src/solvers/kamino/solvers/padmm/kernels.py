@@ -20,6 +20,7 @@ import warp as wp
 from ...core.math import FLOAT32_EPS, FLOAT32_MAX
 from ...core.types import float32, int32, vec2f, vec3f, vec6f
 from .math import (
+    compute_cwise_vec_div,
     compute_cwise_vec_mul,
     compute_desaxce_corrections,
     compute_dot_product,
@@ -1247,7 +1248,7 @@ def make_collect_solver_info_kernel(use_acceleration: bool):
         r_pd = status.r_p / (status.r_d + FLOAT32_EPS)
         r_dp = status.r_d / (status.r_p + FLOAT32_EPS)
 
-        # Compute the post-event constraint-space velocity from the current solution: v_plus = v_f + D @ lambda
+        # Remove preconditioning from lambdas
         compute_cwise_vec_mul(ncts, vio, problem_P, solver_state_y, solver_info_lambdas)
 
         # Compute the post-event constraint-space velocity from the current solution: v_plus = v_f + D @ lambda
@@ -1359,9 +1360,9 @@ def make_collect_solver_info_kernel_sparse(use_acceleration: bool):
         solver_state_a: wp.array(dtype=float32),
         solver_penalty: wp.array(dtype=PADMMPenalty),
         solver_status: wp.array(dtype=PADMMStatus),
-        solver_info_v_plus: wp.array(dtype=float32),
         # Outputs:
         solver_info_lambdas: wp.array(dtype=float32),
+        solver_info_v_plus: wp.array(dtype=float32),
         solver_info_v_aug: wp.array(dtype=float32),
         solver_info_s: wp.array(dtype=float32),
         solver_info_offset: wp.array(dtype=int32),
@@ -1420,8 +1421,11 @@ def make_collect_solver_info_kernel_sparse(use_acceleration: bool):
         r_pd = status.r_p / (status.r_d + FLOAT32_EPS)
         r_dp = status.r_d / (status.r_p + FLOAT32_EPS)
 
-        # Compute the post-event constraint-space velocity from the current solution: v_plus = v_f + D @ lambda
+        # Remove preconditioning from lambdas
         compute_cwise_vec_mul(ncts, vio, problem_P, solver_state_y, solver_info_lambdas)
+
+        # Remove preconditioning from v_plus
+        compute_cwise_vec_div(ncts, vio, solver_info_v_plus, problem_P, solver_info_v_plus)
 
         # Compute the De Saxce correction for each contact as: s = G(v_plus)
         compute_desaxce_corrections(nc, cio, vio, ccgo, problem_mu, solver_info_v_plus, solver_info_s)

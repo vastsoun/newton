@@ -118,11 +118,16 @@ class TestKinematicsConstraints(unittest.TestCase):
         Tests the population of model info with constraint sizes and offsets for a homogeneous multi-world model.
         """
         # Constants
-        max_world_contacts = 20
+        num_worlds: int = 10
+        max_world_contacts: int = 20
 
         # Construct the model description using the ModelBuilder
-        builder = make_homogeneous_builder(num_worlds=10, build_fn=build_boxes_fourbar)
-        num_worlds = builder.num_worlds
+        builder = make_homogeneous_builder(
+            num_worlds=num_worlds,
+            build_fn=build_boxes_fourbar,
+            dynamic_joints=True,
+            implicit_pd=True,
+        )
 
         # Create the model from the builder
         model: Model = builder.finalize(device=self.default_device)
@@ -188,13 +193,13 @@ class TestKinematicsConstraints(unittest.TestCase):
             self.assertEqual(max_contacts[i], max_world_contacts)
             self.assertEqual(max_limit_cts[i], 4)
             self.assertEqual(max_contact_cts[i], 3 * max_world_contacts)
-            self.assertEqual(max_total_cts[i], 20 + 4 + 3 * max_world_contacts)
+            self.assertEqual(max_total_cts[i], 21 + 4 + 3 * max_world_contacts)
             self.assertEqual(limits_offset[i], nl)
             self.assertEqual(contacts_offset[i], nc)
             self.assertEqual(unilaterals_offset[i], nl + nc)
             self.assertEqual(total_cts_offset[i], njc + nlc + ncc)
             nj += 4
-            njc += 20
+            njc += 21
             nl += 4
             nlc += 4
             nc += max_world_contacts

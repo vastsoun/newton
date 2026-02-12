@@ -224,7 +224,9 @@ def make_unilateral_constraints_info(
 
     # Compute the initial values of the absolute constraint group
     # offsets for joints (dynamic + kinematic), limits, contacts
-    world_jdcio = [world_ctsio[i] for i in range(num_worlds)]
+    # TODO: Consider using absolute start indices for each group
+    # world_jdcio = [world_ctsio[i] for i in range(num_worlds)]
+    world_jdcio = [0] * num_worlds
     world_jkcio = [world_jdcio[i] + world_njdc[i] for i in range(num_worlds)]
     world_lcio = [world_jkcio[i] + world_njkc[i] for i in range(num_worlds)]
     world_ccio = [world_lcio[i] for i in range(num_worlds)]

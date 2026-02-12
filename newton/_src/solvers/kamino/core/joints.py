@@ -895,6 +895,8 @@ class JointDescriptor(Descriptor):
         """
         return self.act_type > JointActuationType.PASSIVE
 
+    # TODO: @ruben, should we rename this to `is_dynamic`?
+    # TODO: @ruben, should we also add a `is_implicit_pd` property method?
     @property
     def is_implicit(self) -> bool:
         """

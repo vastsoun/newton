@@ -1397,7 +1397,7 @@ class ModelBuilder:
                 joint_passive_dofs_offset=wp.array(info_jpdio, dtype=int32),
                 joint_actuated_coords_offset=wp.array(info_jaqio, dtype=int32),
                 joint_actuated_dofs_offset=wp.array(info_jadio, dtype=int32),
-                # TODO: joint_cts_offset=wp.array(info_jcio, dtype=int32),
+                joint_cts_offset=wp.array(info_jcio, dtype=int32),
                 joint_dynamic_cts_offset=wp.array(info_jdcio, dtype=int32),
                 joint_kinematic_cts_offset=wp.array(info_jkcio, dtype=int32),
                 base_body_index=wp.array(info_base_bid, dtype=int32),

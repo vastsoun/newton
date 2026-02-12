@@ -519,14 +519,13 @@ class ModelInfo:
     # Constraint Offsets
     ###
 
-    # TODO: Enable this once we've fixed the dynamic/kinematic specifics
-    # joint_cts_offset: wp.array | None = None
-    # """
-    # The index offset of the joint constraints block of each world.\n
-    # Used to index into arrays that contain flattened and
-    # concatenated dynamic and kinematic joint constraint data.\n
-    # Shape of ``(num_worlds,)`` and type :class:`int`.
-    # """
+    joint_cts_offset: wp.array | None = None
+    """
+    The index offset of the joint constraints block of each world.\n
+    Used to index into arrays that contain flattened and
+    concatenated dynamic and kinematic joint constraint data.\n
+    Shape of ``(num_worlds,)`` and type :class:`int`.
+    """
 
     joint_dynamic_cts_offset: wp.array | None = None
     """
@@ -891,16 +890,13 @@ class Model:
             # counts initialized to the joint constraints count
             info = ModelDataInfo(
                 num_total_cts=wp.clone(self.info.num_joint_cts),
+                num_limits=wp.zeros(shape=nw, dtype=int32) if unilateral_cts else None,
+                num_contacts=wp.zeros(shape=nw, dtype=int32) if unilateral_cts else None,
+                num_limit_cts=wp.zeros(shape=nw, dtype=int32) if unilateral_cts else None,
+                num_contact_cts=wp.zeros(shape=nw, dtype=int32) if unilateral_cts else None,
+                limit_cts_group_offset=wp.zeros(shape=nw, dtype=int32) if unilateral_cts else None,
+                contact_cts_group_offset=wp.zeros(shape=nw, dtype=int32) if unilateral_cts else None,
             )
-
-            # If unilateral constraints are enabled, initialize the additional state info
-            if unilateral_cts:
-                info.num_limits = wp.zeros(shape=nw, dtype=int32)
-                info.num_contacts = wp.zeros(shape=nw, dtype=int32)
-                info.num_limit_cts = wp.zeros(shape=nw, dtype=int32)
-                info.num_contact_cts = wp.zeros(shape=nw, dtype=int32)
-                info.limit_cts_group_offset = wp.zeros(shape=nw, dtype=int32)
-                info.contact_cts_group_offset = wp.zeros(shape=nw, dtype=int32)
 
             # Construct the time state
             time = TimeData(

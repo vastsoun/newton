@@ -166,9 +166,6 @@ class TestKinematicsConstraints(unittest.TestCase):
         limits_offset = model.info.limits_offset.numpy()
         contacts_offset = model.info.contacts_offset.numpy()
         unilaterals_offset = model.info.unilaterals_offset.numpy()
-        limit_cts_offset = model.info.limit_cts_offset.numpy()
-        contact_cts_offset = model.info.contact_cts_offset.numpy()
-        unilateral_cts_offset = model.info.unilateral_cts_offset.numpy()
         total_cts_offset = model.info.total_cts_offset.numpy()
 
         # Check the model info entries
@@ -189,9 +186,6 @@ class TestKinematicsConstraints(unittest.TestCase):
             self.assertEqual(limits_offset[i], nl)
             self.assertEqual(contacts_offset[i], nc)
             self.assertEqual(unilaterals_offset[i], nl + nc)
-            self.assertEqual(limit_cts_offset[i], nlc)
-            self.assertEqual(contact_cts_offset[i], ncc)
-            self.assertEqual(unilateral_cts_offset[i], nlc + ncc)
             self.assertEqual(total_cts_offset[i], njc + nlc + ncc)
             nj += 4
             njc += 20

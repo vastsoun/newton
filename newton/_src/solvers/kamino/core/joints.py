@@ -1386,12 +1386,28 @@ class JointsModel:
     cts_offset: wp.array | None = None
     """
     Index offset of each joint's constraints w.r.t the start
-    index of constraints of the corresponding world.\n
-
-    Used to index into:
-    - array of joint constraint Lagrange multipliers `lambda_j`
+    index of constraints of the corresponding world.
 
     Shape of ``(num_joints,)`` and type :class:`int`.
+
+    Used together with :attr:`ModelInfo.joint_cts_offset`
+    to index into the joint-specific blocks of:
+    - array of joint constraint Lagrange multipliers `lambda_j`
+
+    For a joint `j` of world `w`, its constraint multipliers can be accessed as:
+    ```
+    # Retrieve dimensions and start indices
+    joint_num_cts = model.joints.num_cts[j]
+    world_cts_start_idx = model.info.joint_cts_offset[w]
+    joint_cts_start_idx = model.joints.cts_offset[j]
+
+    # Compute the start and end indices for the joint's constraints
+    start_idx = world_cts_start_idx + joint_cts_start_idx
+    end_idx = start_idx + joint_num_cts
+
+    # Access the joint's constraint multipliers
+    lambda_j = lambda_j[start_idx:end_idx]
+    ```
     """
 
     dynamic_cts_offset: wp.array | None = None
@@ -1399,7 +1415,8 @@ class JointsModel:
     Index offset of each joint's dynamic constraints w.r.t the start
     index of dynamic joint constraints of the corresponding world.\n
 
-    Used to index into into joint-specific blocks of:
+        Used together with :attr:`ModelInfo.joint_dynamic_cts_offset`
+        to index into the joint-specific blocks of:
     - array of effective joint-space inertia :attr:`JointsData.m_j`
     - array of joint-space damping :attr:`JointsData.b_j`
     - array of joint-space P gains :attr:`JointsData.k_p_j`
@@ -1413,7 +1430,8 @@ class JointsModel:
     Index offset of each joint's kinematic constraints w.r.t the start
     index of kinematic joint constraints of the corresponding world.\n
 
-    Used to index into joint-specific blocks of:
+    Used together with :attr:`ModelInfo.joint_kinematic_cts_offset`
+    to index into the joint-specific blocks of:
     - array of joint constraint residuals :attr:`JointsData.r_j`
     - array of joint constraint residual time-derivatives :attr:`JointsData.dr_j`
 

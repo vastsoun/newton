@@ -23,19 +23,13 @@ import warp as wp
 
 from newton._src.solvers.kamino.core.model import Model
 from newton._src.solvers.kamino.geometry.contacts import Contacts
-
-# Module to be tested
 from newton._src.solvers.kamino.kinematics.constraints import make_unilateral_constraints_info
 from newton._src.solvers.kamino.kinematics.limits import Limits
 from newton._src.solvers.kamino.models.builders.basics import build_boxes_fourbar, make_basics_heterogeneous_builder
 from newton._src.solvers.kamino.models.builders.utils import make_homogeneous_builder
 from newton._src.solvers.kamino.tests import setup_tests, test_context
-
-# Test utilities
-from newton._src.solvers.kamino.tests.utils.print import (
-    print_model_constraint_info,
-    print_model_data_info,
-)
+from newton._src.solvers.kamino.tests.utils.print import print_model_constraint_info, print_model_data_info
+from newton._src.solvers.kamino.utils import logger as msg
 
 ###
 # Module configs
@@ -51,13 +45,25 @@ wp.set_module_options({"enable_backward": False})
 
 class TestKinematicsConstraints(unittest.TestCase):
     def setUp(self):
+        # Configs
         if not test_context.setup_done:
             setup_tests(clear_cache=False)
-        self.verbose = test_context.verbose  # Set to True for detailed output
+        self.seed = 42
         self.default_device = wp.get_device(test_context.device)
+        # self.verbose = test_context.verbose  # Set to True for verbose output
+        self.verbose = True  # Set to True for verbose output
+
+        # Set debug-level logging to print verbose test output to console
+        if self.verbose:
+            print("\n")  # Add newline before test output for better readability
+            msg.set_log_level(msg.LogLevel.INFO)
+        else:
+            msg.reset_log_level()
 
     def tearDown(self):
         self.default_device = None
+        if self.verbose:
+            msg.reset_log_level()
 
     def test_01_single_model_make_constraints(self):
         """
@@ -103,7 +109,7 @@ class TestKinematicsConstraints(unittest.TestCase):
             device=self.default_device,
         )
         if self.verbose:
-            print(f"model.size:\n{model.size}")
+            print(f"model.size:\n{model.size}\n\n")
             print_model_constraint_info(model)
             print_model_data_info(data)
 

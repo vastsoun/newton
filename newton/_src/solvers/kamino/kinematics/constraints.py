@@ -17,7 +17,6 @@
 Provides mechanisms to define and manage constraints and their associated input/output data.
 """
 
-import numpy as np
 import warp as wp
 from warp.context import Devicelike
 
@@ -225,21 +224,10 @@ def make_unilateral_constraints_info(
 
     # Compute the initial values of the absolute constraint group
     # offsets for joints (dynamic + kinematic), limits, contacts
-    world_jdcio = [world_ctsio[i] for i in range(1, num_worlds)]
-    world_jkcio = [world_jdcio[i] + world_njdc[i] for i in range(1, num_worlds)]
-    world_lcio = [world_jkcio[i] + world_njkc[i] for i in range(1, num_worlds)]
-    world_ccio = [world_lcio[i] for i in range(1, num_worlds)]
-
-    # Define a helper function to allocate an array anew if not done so already
-    def _allocate_or_assign_array(array: wp.array | None, data: np.ndarray) -> wp.array:
-        if array is not None and array.shape >= data.shape:
-            if array.dtype != wp.dtype_to_numpy(data.dtype):
-                raise TypeError(f"Expected array of dtype {wp.dtype_to_numpy(data.dtype)} but got {array.dtype}")
-            if array.shape != data.shape:
-                raise ValueError(f"Expected array of shape {data.shape} but got {array.shape}")
-            return array.assign(np.array(data, dtype=wp.dtype_to_numpy(array.dtype)))
-        else:
-            return wp.array(data, dtype=wp.dtype_to_numpy(data.dtype))
+    world_jdcio = [world_ctsio[i] for i in range(num_worlds)]
+    world_jkcio = [world_jdcio[i] + world_njdc[i] for i in range(num_worlds)]
+    world_lcio = [world_jkcio[i] + world_njkc[i] for i in range(num_worlds)]
+    world_ccio = [world_lcio[i] for i in range(num_worlds)]
 
     # Allocate all constraint info arrays on the target device
     with wp.ScopedDevice(device):
@@ -249,7 +237,7 @@ def make_unilateral_constraints_info(
         model.info.max_contact_cts = wp.array(world_maxncc, dtype=int32)
 
         # Allocate the per-world active constraints count arrays
-        data.info.num_total_cts = wp.clone(model.info.num_joint_cts)
+        # data.info.num_total_cts = wp.clone(model.info.num_joint_cts)
         data.info.num_limit_cts = wp.zeros(shape=(num_worlds,), dtype=int32)
         data.info.num_contact_cts = wp.zeros(shape=(num_worlds,), dtype=int32)
 
@@ -520,8 +508,6 @@ def unpack_constraint_solutions(
                 model.info.joint_cts_offset,
                 model.time.inv_dt,
                 model.joints.wid,
-                # model.joints.num_cts,
-                # model.joints.cts_offset,
                 model.joints.num_cts,
                 model.joints.cts_offset,
                 lambdas,

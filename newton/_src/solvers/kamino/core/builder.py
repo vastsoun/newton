@@ -1389,7 +1389,7 @@ class ModelBuilder:
                 num_passive_joint_dofs=wp.array(info_njpd, dtype=int32),
                 num_actuated_joint_coords=wp.array(info_njaq, dtype=int32),
                 num_actuated_joint_dofs=wp.array(info_njad, dtype=int32),
-                num_joint_cts=wp.array(info_njc, dtype=int32) + wp.array(info_njdc, dtype=int32),
+                num_joint_cts=wp.array(info_njc, dtype=int32),
                 num_joint_dynamic_cts=wp.array(info_njdc, dtype=int32),
                 num_joint_kinematic_cts=wp.array(info_njkc, dtype=int32),
                 bodies_offset=wp.array(info_bio, dtype=int32),

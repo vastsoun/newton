@@ -115,6 +115,8 @@ def print_model_constraint_info(model: Model):
     print(f"model.info.max_contacts: {model.info.max_contacts}")
     print("-------------------------------------------------------------------------------")
     print(f"model.info.num_joint_cts: {model.info.num_joint_cts}")
+    print(f"model.info.num_joint_dynamic_cts: {model.info.num_joint_dynamic_cts}")
+    print(f"model.info.num_joint_kinematic_cts: {model.info.num_joint_kinematic_cts}")
     print(f"model.info.max_limit_cts: {model.info.max_limit_cts}")
     print(f"model.info.max_contact_cts: {model.info.max_contact_cts}")
     print(f"model.info.max_total_cts: {model.info.max_total_cts}")

@@ -27,7 +27,10 @@ from newton._src.solvers.kamino.core.types import float32
 from newton._src.solvers.kamino.examples import get_examples_output_path, run_headless
 from newton._src.solvers.kamino.models import get_basics_usd_assets_path
 from newton._src.solvers.kamino.models.builders.basics import build_boxes_fourbar
-from newton._src.solvers.kamino.models.builders.utils import make_homogeneous_builder
+from newton._src.solvers.kamino.models.builders.utils import (
+    make_homogeneous_builder,
+    set_uniform_body_pose_offset,
+)
 from newton._src.solvers.kamino.solvers.padmm import PADMMWarmStartMode
 from newton._src.solvers.kamino.solvers.warmstart import WarmstarterContacts
 from newton._src.solvers.kamino.utils import logger as msg
@@ -140,6 +143,11 @@ class Example:
                 num_worlds=num_worlds, build_fn=build_boxes_fourbar, ground=ground
             )
 
+        # Offset the model to place it above the ground
+        # NOTE: The USD model is centered at the origin
+        offset = wp.transformf(0.0, 0.0, 0.2, 0.0, 0.0, 0.0, 1.0)
+        set_uniform_body_pose_offset(builder=self.builder, offset=offset)
+
         # Set gravity
         for w in range(self.builder.num_worlds):
             self.builder.gravity[w].enabled = gravity
@@ -147,6 +155,7 @@ class Example:
         # Set solver settings
         settings = SimulatorSettings()
         settings.dt = self.sim_dt
+        settings.solver.integrator = "moreau"  # Select from {"euler", "moreau"}
         settings.solver.problem.preconditioning = True
         settings.solver.padmm.primal_tolerance = 1e-4
         settings.solver.padmm.dual_tolerance = 1e-4

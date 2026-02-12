@@ -67,6 +67,11 @@ def assert_model_matches_builder(test: unittest.TestCase, builder: ModelBuilder,
         test.assertEqual(world.wid, w)
         test.assertEqual(model.info.num_bodies.numpy()[w], world.num_bodies)
         test.assertEqual(model.info.num_joints.numpy()[w], world.num_joints)
+        test.assertEqual(model.info.num_passive_joints.numpy()[w], world.num_passive_joints)
+        test.assertEqual(model.info.num_actuated_joints.numpy()[w], world.num_actuated_joints)
+        test.assertEqual(model.info.num_dynamic_joints.numpy()[w], world.num_dynamic_joints)
+        test.assertEqual(model.info.num_collision_geoms.numpy()[w], world.num_collision_geoms)
+        test.assertEqual(model.info.num_physical_geoms.numpy()[w], world.num_physical_geoms)
         test.assertEqual(model.info.num_body_dofs.numpy()[w], world.num_body_dofs)
         test.assertEqual(model.info.num_joint_coords.numpy()[w], world.num_joint_coords)
         test.assertEqual(model.info.num_joint_dofs.numpy()[w], world.num_joint_dofs)
@@ -75,16 +80,20 @@ def assert_model_matches_builder(test: unittest.TestCase, builder: ModelBuilder,
         test.assertEqual(model.info.num_actuated_joint_coords.numpy()[w], world.num_actuated_joint_coords)
         test.assertEqual(model.info.num_actuated_joint_dofs.numpy()[w], world.num_actuated_joint_dofs)
         test.assertEqual(model.info.num_joint_cts.numpy()[w], world.num_joint_cts)
+        test.assertEqual(model.info.num_joint_dynamic_cts.numpy()[w], world.num_dynamic_joint_cts)
+        test.assertEqual(model.info.num_joint_kinematic_cts.numpy()[w], world.num_kinematic_joint_cts)
         test.assertEqual(model.info.bodies_offset.numpy()[w], world.bodies_idx_offset)
         test.assertEqual(model.info.joints_offset.numpy()[w], world.joints_idx_offset)
         test.assertEqual(model.info.body_dofs_offset.numpy()[w], world.body_dofs_idx_offset)
         test.assertEqual(model.info.joint_coords_offset.numpy()[w], world.joint_coords_idx_offset)
         test.assertEqual(model.info.joint_dofs_offset.numpy()[w], world.joint_dofs_idx_offset)
-        test.assertEqual(model.info.joint_passive_coords_offset.numpy()[w], world.passive_joint_coords_idx_offset)
-        test.assertEqual(model.info.joint_passive_dofs_offset.numpy()[w], world.passive_joint_dofs_idx_offset)
-        test.assertEqual(model.info.joint_actuated_coords_offset.numpy()[w], world.actuated_joint_coords_idx_offset)
-        test.assertEqual(model.info.joint_actuated_dofs_offset.numpy()[w], world.actuated_joint_dofs_idx_offset)
-        test.assertEqual(model.info.joint_cts_offset.numpy()[w], world.joint_cts_idx_offset)
+        test.assertEqual(model.info.joint_passive_coords_offset.numpy()[w], world.joint_passive_coords_idx_offset)
+        test.assertEqual(model.info.joint_passive_dofs_offset.numpy()[w], world.joint_passive_dofs_idx_offset)
+        test.assertEqual(model.info.joint_actuated_coords_offset.numpy()[w], world.joint_actuated_coords_idx_offset)
+        test.assertEqual(model.info.joint_actuated_dofs_offset.numpy()[w], world.joint_actuated_dofs_idx_offset)
+        # TODO: test.assertEqual(model.info.joint_cts_offset.numpy()[w], world.joint_cts_idx_offset)
+        test.assertEqual(model.info.joint_dynamic_cts_offset.numpy()[w], world.joint_dynamic_cts_idx_offset)
+        test.assertEqual(model.info.joint_kinematic_cts_offset.numpy()[w], world.joint_kinematic_cts_idx_offset)
 
     for i in range(model.size.sum_of_num_bodies):
         test.assertEqual(model.bodies.wid.numpy()[i], builder.bodies[i].wid)
@@ -140,7 +149,9 @@ def assert_model_matches_builder(test: unittest.TestCase, builder: ModelBuilder,
     msg.info("model.info.body_dofs_offset: %s", model.info.body_dofs_offset)
     msg.info("model.info.joint_coords_offset: %s", model.info.joint_coords_offset)
     msg.info("model.info.joint_dofs_offset: %s", model.info.joint_dofs_offset)
-    msg.info("model.info.joint_cts_offset: %s\n", model.info.joint_cts_offset)
+    # TODO: msg.info("model.info.joint_cts_offset: %s\n", model.info.joint_cts_offset)
+    msg.info("model.info.joint_dynamic_cts_offset: %s\n", model.info.joint_dynamic_cts_offset)
+    msg.info("model.info.joint_kinematic_cts_offset: %s\n", model.info.joint_kinematic_cts_offset)
     msg.info("model.info.joint_passive_coords_offset: %s", model.info.joint_passive_coords_offset)
     msg.info("model.info.joint_passive_dofs_offset: %s", model.info.joint_passive_dofs_offset)
     msg.info("model.info.joint_actuated_coords_offset: %s", model.info.joint_actuated_coords_offset)
@@ -186,6 +197,8 @@ class TestModelBuilder(unittest.TestCase):
         self.assertEqual(builder.num_passive_joint_dofs, 0)
         self.assertEqual(builder.num_actuated_joint_dofs, 0)
         self.assertEqual(builder.num_joint_cts, 0)
+        self.assertEqual(builder.num_dynamic_joint_cts, 0)
+        self.assertEqual(builder.num_kinematic_joint_cts, 0)
         self.assertEqual(len(builder.bodies), 0)
         self.assertEqual(len(builder.joints), 0)
         self.assertEqual(len(builder.collision_geoms), 0)
@@ -314,6 +327,8 @@ class TestModelBuilder(unittest.TestCase):
             bid_F=bid_1,
             dof_type=JointDoFType.PRISMATIC,
             act_type=JointActuationType.FORCE,
+            a_j=1.0,
+            b_j=1.0,
         )
         jid = builder.add_joint_descriptor(joint, world_index=wid)
 
@@ -327,6 +342,11 @@ class TestModelBuilder(unittest.TestCase):
         self.assertEqual(builder.joints[jid].bid_F, bid_1)
         self.assertEqual(builder.joints[jid].dof_type, JointDoFType.PRISMATIC)
         self.assertEqual(builder.joints[jid].act_type, JointActuationType.FORCE)
+        self.assertEqual(builder.joints[jid].a_j, [1.0])
+        self.assertEqual(builder.joints[jid].b_j, [1.0])
+        self.assertTrue(builder.joints[jid].is_implicit)
+        self.assertTrue(builder.joints[jid].num_kinematic_cts, 5)
+        self.assertTrue(builder.joints[jid].num_dynamic_cts, 1)
 
     def test_07_add_duplicate_joint(self):
         builder = ModelBuilder()

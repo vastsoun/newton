@@ -48,12 +48,13 @@ def print_model_size(model: Model):
 
 
 def print_model_info(model: Model):
+    print("===============================================================================")
     print("Model Info:")
-
     # Print the host-side model info meta-data
+    print("-------------------------------------------------------------------------------")
     print(f"model.info.num_worlds: {model.info.num_worlds}")
-
     # Print the device-side model info data
+    print("-------------------------------------------------------------------------------")
     print(f"model.info.num_bodies: {model.info.num_bodies}")
     print(f"model.info.num_joints: {model.info.num_joints}")
     print(f"model.info.num_passive_joints: {model.info.num_passive_joints}")
@@ -63,6 +64,7 @@ def print_model_info(model: Model):
     print(f"model.info.num_physical_geoms: {model.info.num_physical_geoms}")
     print(f"model.info.max_limits: {model.info.max_limits}")
     print(f"model.info.max_contacts: {model.info.max_contacts}")
+    print("-------------------------------------------------------------------------------")
     print(f"model.info.num_body_dofs: {model.info.num_body_dofs}")
     print(f"model.info.num_joint_coords: {model.info.num_joint_coords}")
     print(f"model.info.num_joint_dofs: {model.info.num_joint_dofs}")
@@ -70,21 +72,22 @@ def print_model_info(model: Model):
     print(f"model.info.num_passive_joint_dofs: {model.info.num_passive_joint_dofs}")
     print(f"model.info.num_actuated_joint_coords: {model.info.num_actuated_joint_coords}")
     print(f"model.info.num_actuated_joint_dofs: {model.info.num_actuated_joint_dofs}")
+    print("-------------------------------------------------------------------------------")
     print(f"model.info.num_joint_cts: {model.info.num_joint_cts}")
     print(f"model.info.num_joint_dynamic_cts: {model.info.num_joint_dynamic_cts}")
     print(f"model.info.num_joint_kinematic_cts: {model.info.num_joint_kinematic_cts}")
     print(f"model.info.max_limit_cts: {model.info.max_limit_cts}")
     print(f"model.info.max_contact_cts: {model.info.max_contact_cts}")
     print(f"model.info.max_total_cts: {model.info.max_total_cts}")
-
     # Print the element offsets
+    print("-------------------------------------------------------------------------------")
     print(f"model.info.bodies_offset: {model.info.bodies_offset}")
     print(f"model.info.joints_offset: {model.info.joints_offset}")
     print(f"model.info.limits_offset: {model.info.limits_offset}")
     print(f"model.info.contacts_offset: {model.info.contacts_offset}")
     print(f"model.info.unilaterals_offset: {model.info.unilaterals_offset}")
-
     # Print the coords, DoFs and constraint offsets
+    print("-------------------------------------------------------------------------------")
     print(f"model.info.body_dofs_offset: {model.info.body_dofs_offset}")
     print(f"model.info.joint_coords_offset: {model.info.joint_coords_offset}")
     print(f"model.info.joint_dofs_offset: {model.info.joint_dofs_offset}")
@@ -92,12 +95,13 @@ def print_model_info(model: Model):
     print(f"model.info.joint_passive_dofs_offset: {model.info.joint_passive_dofs_offset}")
     print(f"model.info.joint_actuated_coords_offset: {model.info.joint_actuated_coords_offset}")
     print(f"model.info.joint_actuated_dofs_offset: {model.info.joint_actuated_dofs_offset}")
+    print("-------------------------------------------------------------------------------")
     print(f"model.info.joint_cts_offset: {model.info.joint_cts_offset}")
     print(f"model.info.joint_dynamic_cts_offset: {model.info.joint_dynamic_cts_offset}")
     print(f"model.info.joint_kinematic_cts_offset: {model.info.joint_kinematic_cts_offset}")
     print(f"model.info.total_cts_offset: {model.info.total_cts_offset}")
-
     # Print the inertial properties
+    print("-------------------------------------------------------------------------------")
     print(f"model.info.mass_min: {model.info.mass_min}")
     print(f"model.info.mass_max: {model.info.mass_max}")
     print(f"model.info.mass_total: {model.info.mass_total}")
@@ -106,15 +110,19 @@ def print_model_info(model: Model):
 
 def print_model_constraint_info(model: Model):
     print("Model Constraint Info:")
+    print("-------------------------------------------------------------------------------")
     print(f"model.info.max_limits: {model.info.max_limits}")
     print(f"model.info.max_contacts: {model.info.max_contacts}")
+    print("-------------------------------------------------------------------------------")
     print(f"model.info.num_joint_cts: {model.info.num_joint_cts}")
     print(f"model.info.max_limit_cts: {model.info.max_limit_cts}")
     print(f"model.info.max_contact_cts: {model.info.max_contact_cts}")
     print(f"model.info.max_total_cts: {model.info.max_total_cts}")
+    print("-------------------------------------------------------------------------------")
     print(f"model.info.limits_offset: {model.info.limits_offset}")
     print(f"model.info.contacts_offset: {model.info.contacts_offset}")
     print(f"model.info.unilaterals_offset: {model.info.unilaterals_offset}")
+    print("-------------------------------------------------------------------------------")
     print(f"model.info.body_dofs_offset: {model.info.body_dofs_offset}")
     print(f"model.info.joint_coords_offset: {model.info.joint_coords_offset}")
     print(f"model.info.joint_dofs_offset: {model.info.joint_dofs_offset}")
@@ -122,9 +130,11 @@ def print_model_constraint_info(model: Model):
     print(f"model.info.joint_passive_dofs_offset: {model.info.joint_passive_dofs_offset}")
     print(f"model.info.joint_actuated_coords_offset: {model.info.joint_actuated_coords_offset}")
     print(f"model.info.joint_actuated_dofs_offset: {model.info.joint_actuated_dofs_offset}")
+    print("-------------------------------------------------------------------------------")
     print(f"model.info.joint_cts_offset: {model.info.joint_cts_offset}")
     print(f"model.info.joint_dynamic_cts_offset: {model.info.joint_dynamic_cts_offset}")
     print(f"model.info.joint_kinematic_cts_offset: {model.info.joint_kinematic_cts_offset}")
+    print("-------------------------------------------------------------------------------")
     print(f"model.info.total_cts_offset: {model.info.total_cts_offset}")
     print(f"model.info.joint_dynamic_cts_group_offset: {model.info.joint_dynamic_cts_group_offset}")
     print(f"model.info.joint_kinematic_cts_group_offset: {model.info.joint_kinematic_cts_group_offset}")
@@ -199,12 +209,15 @@ def print_model_joints(
 
 
 def print_model_data_info(data: ModelData):
-    print("data.info.num_total_cts: ", data.info.num_total_cts)
+    print("===============================================================================")
     print("data.info.num_limits: ", data.info.num_limits)
-    print("data.info.num_limit_cts: ", data.info.num_limit_cts)
-    print("data.info.limit_cts_group_offset: ", data.info.limit_cts_group_offset)
     print("data.info.num_contacts: ", data.info.num_contacts)
+    print("-------------------------------------------------------------------------------")
+    print("data.info.num_total_cts: ", data.info.num_total_cts)
+    print("data.info.num_limit_cts: ", data.info.num_limit_cts)
     print("data.info.num_contact_cts: ", data.info.num_contact_cts)
+    print("-------------------------------------------------------------------------------")
+    print("data.info.limit_cts_group_offset: ", data.info.limit_cts_group_offset)
     print("data.info.contact_cts_group_offset: ", data.info.contact_cts_group_offset)
 
 

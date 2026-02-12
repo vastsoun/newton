@@ -497,8 +497,9 @@ def _update_delassus_proximal_regularization_sparse(
     # Inputs:
     problem_dim: wp.array(dtype=int32),
     problem_vio: wp.array(dtype=int32),
+    solver_config: wp.array(dtype=PADMMConfig),
+    solver_penalty: wp.array(dtype=PADMMPenalty),
     solver_status: wp.array(dtype=PADMMStatus),
-    solver_state_sigma: wp.array(dtype=vec2f),
     # Outputs:
     delassus_eta: wp.array(dtype=float32),
 ):
@@ -523,11 +524,8 @@ def _update_delassus_proximal_regularization_sparse(
         delassus_eta[mio + tid] = 1.0
         return
 
-    # Retrieve the (current, previous) proximal regularization pair
-    sigma = solver_state_sigma[wid]
-
-    # Set the proximal regularization term
-    delassus_eta[mio + tid] = sigma[0] - sigma[1]
+    # Set the proximal regularization term: eta + rho
+    delassus_eta[mio + tid] = solver_config[wid].eta + solver_penalty[wid].rho
 
 
 @wp.kernel
@@ -901,6 +899,7 @@ def _compute_infnorm_residuals_serially(
     solver_r_d: wp.array(dtype=float32),
     solver_r_c: wp.array(dtype=float32),
     # Outputs:
+    solver_penalty: wp.array(dtype=PADMMPenalty),
     solver_state_done: wp.array(dtype=int32),
     solver_status: wp.array(dtype=PADMMStatus),
 ):
@@ -967,6 +966,19 @@ def _compute_infnorm_residuals_serially(
     # Store the updated status
     solver_status[wid] = status
 
+    if config.penalty_update_method == int32(PADMMPenaltyUpdate.BALANCED):
+        pen = solver_penalty[wid]
+        rho = pen.rho
+        freq = config.penalty_update_freq
+        if freq > 0 and status.iterations > 0 and status.iterations % freq == 0:
+            if r_p_max > config.alpha * r_d_max:
+                rho = rho * config.tau
+            elif r_d_max > config.alpha * r_p_max:
+                rho = wp.max(rho / config.tau, config.rho_min)
+            pen.rho = rho
+            pen.num_updates += int32(1)
+            solver_penalty[wid] = pen
+
 
 @wp.kernel
 def _compute_infnorm_residuals_serially_accel(
@@ -977,7 +989,6 @@ def _compute_infnorm_residuals_serially_accel(
     problem_dim: wp.array(dtype=int32),
     problem_vio: wp.array(dtype=int32),
     solver_config: wp.array(dtype=PADMMConfig),
-    solver_params: wp.array(dtype=PADMMPenalty),
     solver_r_p: wp.array(dtype=float32),
     solver_r_d: wp.array(dtype=float32),
     solver_r_c: wp.array(dtype=float32),
@@ -986,6 +997,7 @@ def _compute_infnorm_residuals_serially_accel(
     solver_r_dz: wp.array(dtype=float32),
     solver_state_a_p: wp.array(dtype=float32),
     # Outputs:
+    solver_penalty: wp.array(dtype=PADMMPenalty),
     solver_state_done: wp.array(dtype=int32),
     solver_state_a: wp.array(dtype=float32),
     solver_status: wp.array(dtype=PADMMStatus),
@@ -1024,8 +1036,8 @@ def _compute_infnorm_residuals_serially_accel(
     maxiters = config.max_iterations
 
     # Extract the penalty parameters
-    params = solver_params[wid]
-    rho = params.rho
+    pen = solver_penalty[wid]
+    rho = pen.rho
 
     # Compute element-wise max over each residual vector to compute the infinity-norm
     r_p_max = float(0.0)
@@ -1083,6 +1095,17 @@ def _compute_infnorm_residuals_serially_accel(
 
     # Store the updated status
     solver_status[wid] = status
+
+    if config.penalty_update_method == int32(PADMMPenaltyUpdate.BALANCED):
+        freq = config.penalty_update_freq
+        if freq > 0 and status.iterations > 0 and status.iterations % freq == 0:
+            if r_p_max > config.alpha * r_d_max:
+                rho = rho * config.tau
+            elif r_d_max > config.alpha * r_p_max:
+                rho = wp.max(rho / config.tau, config.rho_min)
+            pen.rho = rho
+            pen.num_updates += int32(1)
+            solver_penalty[wid] = pen
 
 
 @wp.kernel

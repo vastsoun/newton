@@ -112,6 +112,11 @@ class PADMMPenaltyUpdate(IntEnum):
     # Spectral penalty update:
     # `rho` is increased by the spectral radius of the Delassus matrix.
     # """
+    BALANCED = 1
+    """
+    Balanced-residuals penalty update:
+    `rho` is increased in order for the ratio of primal/dual residuals to be close to unity.
+    """
 
     @override
     def __str__(self):

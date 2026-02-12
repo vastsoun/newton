@@ -440,6 +440,21 @@ class PADMMSolver:
         # converges or reaches the maximum number of iterations
         self._data.state.done.fill_(self._size.num_worlds)
 
+    def _update_sparse_regularization(self, problem: DualProblem):
+        """Propagate eta + rho to the sparse Delassus diagonal regularization."""
+        wp.launch(
+            kernel=_update_delassus_proximal_regularization_sparse,
+            dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
+            inputs=[
+                problem.data.dim,
+                problem.data.vio,
+                self._data.config,
+                self._data.penalty,
+                self._data.status,
+                problem.delassus._eta,
+            ],
+        )
+
     def _update_regularization(self, problem: DualProblem):
         """
         Updates the diagonal regularization of the lhs matrix with the proximal regularization terms.\n
@@ -450,20 +465,7 @@ class PADMMSolver:
             problem (DualProblem): The dual forward dynamics problem to be solved.
         """
         if problem.sparse:
-            # Update the proximal regularization diagonal for the sparse Delassus operator
-            wp.launch(
-                kernel=_update_delassus_proximal_regularization_sparse,
-                dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
-                inputs=[
-                    # Inputs:
-                    problem.data.dim,
-                    problem.data.vio,
-                    self._data.status,
-                    self._data.state.sigma,
-                    # Outputs:
-                    problem.delassus._eta,
-                ],
-            )
+            self._update_sparse_regularization(problem)
         else:
             # Update the proximal regularization term in the Delassus matrix
             wp.launch(
@@ -511,6 +513,10 @@ class PADMMSolver:
         # Compute infinity-norm of all residuals and check for convergence
         self._update_convergence_check(problem)
 
+        # Update sparse Delassus regularization
+        if problem.sparse:
+            self._update_sparse_regularization(problem)
+
         # Optionally record internal solver info
         if self._collect_info:
             self._update_solver_info(problem)
@@ -545,6 +551,10 @@ class PADMMSolver:
 
         # Compute infinity-norm of all residuals and check for convergence
         self._update_convergence_check_accel(problem)
+
+        # Update sparse Delassus regularization
+        if problem.sparse:
+            self._update_sparse_regularization(problem)
 
         # Optionally update Nesterov acceleration states from the current iteration
         self._update_acceleration(problem)
@@ -1065,6 +1075,7 @@ class PADMMSolver:
                 self._data.residuals.r_dual,
                 self._data.residuals.r_compl,
                 # Outputs:
+                self._data.penalty,
                 self._data.state.done,
                 self._data.status,
             ],
@@ -1092,7 +1103,6 @@ class PADMMSolver:
                 problem.data.dim,
                 problem.data.vio,
                 self._data.config,
-                self._data.penalty,
                 self._data.residuals.r_primal,
                 self._data.residuals.r_dual,
                 self._data.residuals.r_compl,
@@ -1101,6 +1111,7 @@ class PADMMSolver:
                 self._data.residuals.r_dz,
                 self._data.state.a_p,
                 # Outputs:
+                self._data.penalty,
                 self._data.state.done,
                 self._data.state.a,
                 self._data.status,

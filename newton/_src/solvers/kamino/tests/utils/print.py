@@ -58,15 +58,21 @@ def print_model_info(model: Model):
     print(f"model.info.num_joints: {model.info.num_joints}")
     print(f"model.info.num_passive_joints: {model.info.num_passive_joints}")
     print(f"model.info.num_actuated_joints: {model.info.num_actuated_joints}")
+    print(f"model.info.num_dynamic_joints: {model.info.num_dynamic_joints}")
     print(f"model.info.num_collision_geoms: {model.info.num_collision_geoms}")
     print(f"model.info.num_physical_geoms: {model.info.num_physical_geoms}")
     print(f"model.info.max_limits: {model.info.max_limits}")
     print(f"model.info.max_contacts: {model.info.max_contacts}")
     print(f"model.info.num_body_dofs: {model.info.num_body_dofs}")
+    print(f"model.info.num_joint_coords: {model.info.num_joint_coords}")
     print(f"model.info.num_joint_dofs: {model.info.num_joint_dofs}")
+    print(f"model.info.num_passive_joint_coords: {model.info.num_passive_joint_coords}")
     print(f"model.info.num_passive_joint_dofs: {model.info.num_passive_joint_dofs}")
+    print(f"model.info.num_actuated_joint_coords: {model.info.num_actuated_joint_coords}")
     print(f"model.info.num_actuated_joint_dofs: {model.info.num_actuated_joint_dofs}")
     print(f"model.info.num_joint_cts: {model.info.num_joint_cts}")
+    print(f"model.info.num_joint_dynamic_cts: {model.info.num_joint_dynamic_cts}")
+    print(f"model.info.num_joint_kinematic_cts: {model.info.num_joint_kinematic_cts}")
     print(f"model.info.max_limit_cts: {model.info.max_limit_cts}")
     print(f"model.info.max_contact_cts: {model.info.max_contact_cts}")
     print(f"model.info.max_total_cts: {model.info.max_total_cts}")
@@ -78,15 +84,17 @@ def print_model_info(model: Model):
     print(f"model.info.contacts_offset: {model.info.contacts_offset}")
     print(f"model.info.unilaterals_offset: {model.info.unilaterals_offset}")
 
-    # Print the DoF and constraint offsets
+    # Print the coords, DoFs and constraint offsets
     print(f"model.info.body_dofs_offset: {model.info.body_dofs_offset}")
+    print(f"model.info.joint_coords_offset: {model.info.joint_coords_offset}")
     print(f"model.info.joint_dofs_offset: {model.info.joint_dofs_offset}")
+    print(f"model.info.joint_passive_coords_offset: {model.info.joint_passive_coords_offset}")
     print(f"model.info.joint_passive_dofs_offset: {model.info.joint_passive_dofs_offset}")
+    print(f"model.info.joint_actuated_coords_offset: {model.info.joint_actuated_coords_offset}")
     print(f"model.info.joint_actuated_dofs_offset: {model.info.joint_actuated_dofs_offset}")
     print(f"model.info.joint_cts_offset: {model.info.joint_cts_offset}")
-    print(f"model.info.limit_cts_offset: {model.info.limit_cts_offset}")
-    print(f"model.info.contact_cts_offset: {model.info.contact_cts_offset}")
-    print(f"model.info.unilateral_cts_offset: {model.info.unilateral_cts_offset}")
+    print(f"model.info.joint_dynamic_cts_offset: {model.info.joint_dynamic_cts_offset}")
+    print(f"model.info.joint_kinematic_cts_offset: {model.info.joint_kinematic_cts_offset}")
     print(f"model.info.total_cts_offset: {model.info.total_cts_offset}")
 
     # Print the inertial properties
@@ -107,11 +115,19 @@ def print_model_constraint_info(model: Model):
     print(f"model.info.limits_offset: {model.info.limits_offset}")
     print(f"model.info.contacts_offset: {model.info.contacts_offset}")
     print(f"model.info.unilaterals_offset: {model.info.unilaterals_offset}")
+    print(f"model.info.body_dofs_offset: {model.info.body_dofs_offset}")
+    print(f"model.info.joint_coords_offset: {model.info.joint_coords_offset}")
+    print(f"model.info.joint_dofs_offset: {model.info.joint_dofs_offset}")
+    print(f"model.info.joint_passive_coords_offset: {model.info.joint_passive_coords_offset}")
+    print(f"model.info.joint_passive_dofs_offset: {model.info.joint_passive_dofs_offset}")
+    print(f"model.info.joint_actuated_coords_offset: {model.info.joint_actuated_coords_offset}")
+    print(f"model.info.joint_actuated_dofs_offset: {model.info.joint_actuated_dofs_offset}")
     print(f"model.info.joint_cts_offset: {model.info.joint_cts_offset}")
-    print(f"model.info.limit_cts_offset: {model.info.limit_cts_offset}")
-    print(f"model.info.contact_cts_offset: {model.info.contact_cts_offset}")
-    print(f"model.info.unilateral_cts_offset: {model.info.unilateral_cts_offset}")
+    print(f"model.info.joint_dynamic_cts_offset: {model.info.joint_dynamic_cts_offset}")
+    print(f"model.info.joint_kinematic_cts_offset: {model.info.joint_kinematic_cts_offset}")
     print(f"model.info.total_cts_offset: {model.info.total_cts_offset}")
+    print(f"model.info.joint_dynamic_cts_group_offset: {model.info.joint_dynamic_cts_group_offset}")
+    print(f"model.info.joint_kinematic_cts_group_offset: {model.info.joint_kinematic_cts_group_offset}")
 
 
 def print_model_bodies(model: Model, inertias=True, initial_states=True):
@@ -128,21 +144,44 @@ def print_model_bodies(model: Model, inertias=True, initial_states=True):
         print(f"model.bodies.u_i_0:\n{model.bodies.u_i_0}")
 
 
-def print_model_joints(model: Model, offsets=True, parameters=True, limits=True):
+def print_model_joints(
+    model: Model,
+    dimensions=True,
+    offsets=True,
+    parameters=True,
+    limits=True,
+    dynamics=True,
+):
     print(f"model.joints.num_joints: {model.joints.num_joints}")
     print(f"model.joints.wid: {model.joints.wid}")
     print(f"model.joints.jid: {model.joints.jid}")
     print(f"model.joints.dof_type: {model.joints.dof_type}")
     print(f"model.joints.act_type: {model.joints.act_type}")
-    print(f"model.joints.num_cts: {model.joints.num_cts}")
-    print(f"model.joints.num_dofs: {model.joints.num_dofs}")
+    print(f"model.joints.num_dynamic_cts: {model.joints.num_dynamic_cts}")
+    print(f"model.joints.num_kinematic_cts: {model.joints.num_kinematic_cts}")
     print(f"model.joints.bid_B: {model.joints.bid_B}")
     print(f"model.joints.bid_F: {model.joints.bid_F}")
+    print(f"model.joints.B_r_Bj:\n{model.joints.B_r_Bj}")
+    print(f"model.joints.F_r_Fj:\n{model.joints.F_r_Fj}")
+    print(f"model.joints.X_j:\n{model.joints.X_j}")
+    print(f"model.joints.q_j_0: {model.joints.q_j_0}")
+    print(f"model.joints.dq_j_0: {model.joints.dq_j_0}")
+    if dimensions:
+        print(f"model.joints.num_coords: {model.joints.num_coords}")
+        print(f"model.joints.num_dofs: {model.joints.num_dofs}")
+        # TODO: print(f"model.joints.num_cts: {model.joints.num_cts}")
+        print(f"model.joints.num_dynamic_cts: {model.joints.num_dynamic_cts}")
+        print(f"model.joints.num_kinematic_cts: {model.joints.num_kinematic_cts}")
     if offsets:
-        print(f"model.joints.cts_offset: {model.joints.cts_offset}")
+        print(f"model.joints.coords_offset: {model.joints.coords_offset}")
         print(f"model.joints.dofs_offset: {model.joints.dofs_offset}")
+        print(f"model.joints.passive_coords_offset: {model.joints.passive_coords_offset}")
         print(f"model.joints.passive_dofs_offset: {model.joints.passive_dofs_offset}")
+        print(f"model.joints.actuated_coords_offset: {model.joints.actuated_coords_offset}")
         print(f"model.joints.actuated_dofs_offset: {model.joints.actuated_dofs_offset}")
+        # TODO: print(f"model.joints.cts_offset: {model.joints.cts_offset}")
+        print(f"model.joints.dynamic_cts_offset: {model.joints.dynamic_cts_offset}")
+        print(f"model.joints.kinematic_cts_offset: {model.joints.kinematic_cts_offset}")
     if parameters:
         print(f"model.joints.B_r_Bj: {model.joints.B_r_Bj}")
         print(f"model.joints.F_r_Fj: {model.joints.F_r_Fj}")
@@ -152,6 +191,11 @@ def print_model_joints(model: Model, offsets=True, parameters=True, limits=True)
         print(f"model.joints.q_j_max: {model.joints.q_j_max}")
         print(f"model.joints.dq_j_max: {model.joints.dq_j_max}")
         print(f"model.joints.tau_j_max: {model.joints.tau_j_max}")
+    if dynamics:
+        print(f"model.joints.a_j: {model.joints.a_j}")
+        print(f"model.joints.b_j: {model.joints.b_j}")
+        print(f"model.joints.k_p_j: {model.joints.k_p_j}")
+        print(f"model.joints.k_d_j: {model.joints.k_d_j}")
 
 
 def print_model_data_info(data: ModelData):
@@ -181,20 +225,22 @@ def print_model_state(data: ModelData, info=True):
     print(f"data.bodies.w_e_i: {data.bodies.w_e_i}")
     # Print joint state data
     print(f"data.joints.p_j: {data.joints.p_j}")
-    print(f"data.joints.r_j: {data.joints.r_j}")
-    print(f"data.joints.dr_j: {data.joints.dr_j}")
-    print(f"data.joints.lambda_j: {data.joints.lambda_j}")
     print(f"data.joints.q_j: {data.joints.q_j}")
     print(f"data.joints.dq_j: {data.joints.dq_j}")
     print(f"data.joints.tau_j: {data.joints.tau_j}")
+    print(f"data.joints.r_j: {data.joints.r_j}")
+    print(f"data.joints.dr_j: {data.joints.dr_j}")
+    print(f"data.joints.lambda_j: {data.joints.lambda_j}")
+    print(f"data.joints.m_j: {data.joints.m_j}")
+    print(f"data.joints.inv_m_j: {data.joints.inv_m_j}")
+    print(f"data.joints.q_j_ref: {data.joints.q_j_ref}")
+    print(f"data.joints.dq_j_ref: {data.joints.dq_j_ref}")
     print(f"data.joints.j_w_j: {data.joints.j_w_j}")
-    print(f"data.joints.j_w_c_j: {data.joints.j_w_c_j}")
     print(f"data.joints.j_w_a_j: {data.joints.j_w_a_j}")
+    print(f"data.joints.j_w_c_j: {data.joints.j_w_c_j}")
     print(f"data.joints.j_w_l_j: {data.joints.j_w_l_j}")
     # Print the geometry state data
     print(f"data.cgeoms.pose: {data.cgeoms.pose}")
-    print(f"data.cgeoms.aabb: {data.cgeoms.aabb}")
-    print(f"data.cgeoms.radius: {data.cgeoms.radius}")
 
 
 ###

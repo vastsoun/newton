@@ -219,7 +219,7 @@ class IntegratorEuler(IntegratorBase):
     constraint reactions.
     """
 
-    def __init__(self, model: ModelKamino, alpha: float = 0.0):
+    def __init__(self, model: ModelKamino, alpha: float | None = None):
         """
         Initializes the Semi-Implicit Euler integrator with the given :class:`ModelKamino` instance.
 
@@ -227,10 +227,15 @@ class IntegratorEuler(IntegratorBase):
             model (`ModelKamino`):
                 The model container holding the time-invariant parameters of the system being simulated.
             alpha (`float`, optional):
-                The angular damping coefficient. Defaults to 0.0.
+                The angular damping coefficient. Defaults to 0.0 if `None` is provided.
         """
         super().__init__(model)
-        self._alpha = alpha
+
+        self._alpha: float = alpha if alpha is not None else 0.0
+        """
+        Damping coefficient for angular velocity used to improve numerical stability of the integrator.\n
+        Defaults to `0.0`, corresponding to no damping being applied.
+        """
 
     ###
     # Operations
@@ -275,7 +280,7 @@ class IntegratorEuler(IntegratorBase):
             detector (`CollisionDetector`, optional):
                 The collision detector to use for generating the set of active contacts at the current time-step.\n
                 If `None`, no collision detection is performed for the current time-step,
-                and active contacts must be provided via the `contacts` argument.O
+                and active contacts must be provided via the `contacts` argument.
         """
         # If a collision detector is provided, use it to generate
         # the set of active contacts at the current state

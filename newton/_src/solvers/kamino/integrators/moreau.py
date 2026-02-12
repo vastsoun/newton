@@ -14,7 +14,8 @@
 # limitations under the License.
 
 """
-KAMINO: Moreau Midpoint Semi-Implicit Integrator
+Provides an implementation of a Semi-Implicit Moreau-Jean
+mid-point integration scheme for non-smooth dynamical systems.
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ from collections.abc import Callable
 
 import warp as wp
 
+from ....core.types import override
 from ..core.control import Control as ControlKamino
 from ..core.math import (
     quat_box_plus,
@@ -45,6 +47,7 @@ from ..geometry.contacts import Contacts as ContactsKamino
 from ..geometry.detector import CollisionDetector
 from ..kinematics.limits import Limits as LimitsKamino
 from .euler import euler_semi_implicit_with_logmap
+from .integrator import IntegratorBase
 
 ###
 # Module interface
@@ -81,7 +84,7 @@ def _integrate_moreau_jean_first_inplace(
     wid = model_bodies_wid[tid]
 
     # Retrieve the time step and gravity vector
-    dt = 0.5 * model_dt[wid]
+    half_dt = 0.5 * model_dt[wid]
 
     # Retrieve the current state of the body
     p_i = bodies_q[tid]
@@ -94,8 +97,8 @@ def _integrate_moreau_jean_first_inplace(
     omega_i = screw_angular(u_i)
 
     # Compute configuration-level update
-    r_i_n = r_i + dt * v_i
-    q_i_n = quat_box_plus(q_i, dt * omega_i)
+    r_i_n = r_i + half_dt * v_i
+    q_i_n = quat_box_plus(q_i, half_dt * omega_i)
     p_i_n = wp.transformf(r_i_n, q_i_n)
 
     # Store the computed next pose and twist
@@ -161,22 +164,69 @@ def _integrate_moreau_jean_second_inplace(
 ###
 
 
-class IntegratorMoreauJean:
+class IntegratorMoreauJean(IntegratorBase):
     """
-    TODO
+    Provides an implementation of a semi-implicit Moreau-Jean
+    time-stepping integrator for non-smooth dynamical systems.
+
+    Effectively, the Moreau-Jean scheme involves the following three steps:
+
+    1. An initial explicit forward integration of the generalized coordinates
+       using the generalized velocities at the start of the time-step to render
+       an intermediate configuration at the mid-point of the time-step.
+
+    2. An implicit solve of the forward dynamics using the generalized coordinates
+       evaluated at the mid-point of the discrete time-step together with the initial
+       generalized velocities to render constraint reactions.
+
+    3. A final explicit forward integration of the generalized coordinates and velocities
+       using the constraint reactions computed at the mid-point of the time-step to render
+       the next state of the system at the end of the time-step.
+
+    These steps can be summarized by the following equations:
+    ```
+    1: q_m = q_i + 1/2 * dt * G(q_i) * u_p
+    2: lambdas = f_fd(q_m, u_p, tau_j)
+    3: u_n = u_p + M(q_m)^{-1} * ( dt * h(q_m, u_p) + dt * J_a(q_m)^T * tau_j + J_c(q_m)^T * lambdas )
+    4: q_n = q_m + dt * G(q_m) @ u_n
+    ```
+
+    where `q_p` and `u_p` are the generalized coordinates and velocities at the start of the
+    time-step, `q_m` is the intermediate configuration at the mid-point of the time-step,
+    `q_n` and `u_n` are the generalized coordinates and velocities at the end of the time-step.
+
+    `M(q_m)` is the generalized mass matrix, `h(q_m, u_p)` is the vector of generalized
+    non-linear forces, `J_a(q_m)` is the actuation Jacobian matrix, `J_c(q_m)` is the
+    constraint Jacobian matrix, all evaluated at the mid-point configuration `q_m`.
+
+    `tau_j` is the vector of generalized forces provided at the start of the
+    time-step, and `lambdas` are the resulting constraint reactions computed
+    at the mid-point from the forward dynamics sub-problem.
     """
 
-    def __init__(self, model: ModelKamino, alpha: float = 0.0):
+    def __init__(self, model: ModelKamino, alpha: float | None = None):
         """
-        TODO
+        Initializes the semi-implicit Moreau-Jean integrator with the given :class:`ModelKamino` instance.
+
+        Args:
+            model (`ModelKamino`):
+                The model container holding the time-invariant parameters of the system being simulated.
+            alpha (`float`, optional):
+                The angular damping coefficient. Defaults to 0.0 if `None` is provided.
         """
-        self._model = model
-        self._alpha = alpha
+        super().__init__(model)
+
+        self._alpha: float = alpha if alpha is not None else 0.0
+        """
+        Damping coefficient for angular velocity used to improve numerical stability of the integrator.\n
+        Defaults to `0.0`, corresponding to no damping being applied.
+        """
 
     ###
     # Operations
     ###
 
+    @override
     def integrate(
         self,
         forward: Callable,
@@ -190,7 +240,32 @@ class IntegratorMoreauJean:
         detector: CollisionDetector | None = None,
     ):
         """
-        Solves the time integration sub-problem to compute the next state of the system.
+        Solves the time integration sub-problem using a semi-implicit Moreau-Jean
+        scheme to integrate the current state of the system over a single time-step.
+
+        Args:
+            forward (`Callable`):
+                An operator that calls the underlying solver for the forward dynamics sub-problem.
+            model (`ModelKamino`):
+                The model container holding the time-invariant parameters of the system being simulated.
+            data (`DataKamino`):
+                The data container holding the time-varying parameters of the system being simulated.
+            state_in (`StateKamino`):
+                The state of the system at the current time-step.
+            state_out (`StateKamino`):
+                The state of the system at the next time-step.
+            control (`ControlKamino`):
+                The control inputs applied to the system at the current time-step.
+            limits (`LimitsKamino`, optional):
+                The joint limits of the system at the current time-step.
+                If `None`, no joint limits are considered for the current time-step.
+            contacts (`ContactsKamino`, optional):
+                The set of active contacts of the system at the current time-step.
+                If `None`, no contacts are considered for the current time-step.
+            detector (`CollisionDetector`, optional):
+                The collision detector to use for generating the set of active contacts at the current time-step.\n
+                If `None`, no collision detection is performed for the current time-step,
+                and active contacts must be provided via the `contacts` argument.
         """
 
         # Take the first semi-step until the mid-point of the step
@@ -224,7 +299,16 @@ class IntegratorMoreauJean:
 
     def _integrate1(self, model: ModelKamino, data: DataKamino):
         """
-        TODO
+        Executes the first semi-step of the Moreau-Jean scheme to
+        integrate the generalized coordinates of the system from
+        the start of the time-step to the mid-point of the time-step
+        using the initial generalized velocities of the system.
+
+        Args:
+            model (`ModelKamino`):
+                The model container holding the time-invariant parameters of the system being simulated.
+            data (`DataKamino`):
+                The data container holding the time-varying parameters of the system being simulated.
         """
         wp.launch(
             _integrate_moreau_jean_first_inplace,
@@ -241,14 +325,23 @@ class IntegratorMoreauJean:
 
     def _integrate2(self, model: ModelKamino, data: DataKamino):
         """
-        TODO
+        Executes the second semi-step of the Moreau-Jean scheme to
+        integrate the generalized coordinates and velocities of the
+        system from the mid-point the end of the time-step using
+        the constraint reactions computed from the forward dynamics.
+
+        Args:
+            model (`ModelKamino`):
+                The model container holding the time-invariant parameters of the system being simulated.
+            data (`DataKamino`):
+                The data container holding the time-varying parameters of the system being simulated.
         """
         wp.launch(
             _integrate_moreau_jean_second_inplace,
             dim=model.size.sum_of_num_bodies,
             inputs=[
                 # Inputs:
-                self._alpha,  # alpha: angular damping
+                self._alpha,
                 model.time.dt,
                 model.gravity.vector,
                 model.bodies.wid,

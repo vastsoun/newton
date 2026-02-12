@@ -950,17 +950,20 @@ class SolverKamino(SolverBase):
         """
         Updates the joint states based on the current body states.
         """
-        # TODO
-        if q_j_p is None:
+        # Use the provided previous joint states if given,
+        # otherwise use the internal cached joint states
+        if q_j_p is not None:
+            _q_j_p = q_j_p
+        else:
             wp.copy(self._data.joints.q_j_p, self._data.joints.q_j)
-            q_j_p = self._data.joints.q_j_p
+            _q_j_p = self._data.joints.q_j_p
 
         # Update the joint states based on the updated body states
         # NOTE: We use the previous state `state_p` for post-processing
         # purposes, e.g. account for roll-over of revolute joints etc
         compute_joints_data(
             model=self._model,
-            q_j_ref=q_j_p,
+            q_j_ref=_q_j_p,
             data=self._data,
             correction=self._settings.rotation_correction,
         )
@@ -1106,6 +1109,14 @@ class SolverKamino(SolverBase):
         TODO
         """
         # Update intermediate quantities of the bodies and joints
+        # NOTE: We update the intermediate joint and body data here
+        # to ensure that they consistent with the current state.
+        # This is to handle cases when the forward dynamics may be
+        # evaluated at intermediate points of the discrete time-step
+        # (and potentially multiple times). The intermediate data is
+        # then used to perform limit and contact detection, as well
+        # as to evaluate kinematics and dynamics quantities such as
+        # the system Jacobians and generalized mass matrix.
         self._update_intermediates(state_in=state_in)
 
         # If a collision detector is provided, use it to generate

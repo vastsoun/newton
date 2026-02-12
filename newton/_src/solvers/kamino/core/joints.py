@@ -1425,6 +1425,17 @@ class JointsData:
     is the number of DoFs of joint ``j``.
     """
 
+    # TODO (@ruben): I think we still need this to be in full DoF space to inject
+    # generalized forces in full DoF-space, when no implicit PD control is preset,
+    # plus we could use this as a feed-forward term when implicit PD control is present.
+    tau_j: wp.array | None = None
+    """
+    Flat array of generalized forces of the joints.\n
+    Shape of ``(sum_of_num_joint_dofs,)`` and type :class:`float`,
+    where `sum_of_num_joint_dofs := sum(d_j)`, and ``d_j``
+    is the number of DoFs of joint ``j``.
+    """
+
     ###
     # Constraints
     ###
@@ -1445,25 +1456,39 @@ class JointsData:
     is the number of constraints of joint ``j``.
     """
 
+    # TODO (@ruben): Should we separate the Lagrange multipliers
+    # for dynamic vs kinematic constraints or keep them together?
     lambda_j: wp.array | None = None
     """
     Flat array of joint constraint Lagrange multipliers.\n
     Shape of ``(sum_of_num_joint_cts,)`` and type :class:`float`,\n
-    where `sum_of_num_joint_cts := sum(e_j)`, and ``e_j``
+    where `sum_of_num_joint_cts := sum(d_j) + sum(e_j)`, and ``d_j`` and ``e_j``
+    are the number of DoFs and constraints of joint ``j``, respectively.
+    """
+
+    # TODO (@ruben): Should we separate the Lagrange multipliers
+    # for dynamic vs kinematic constraints or keep them together?
+    lambda_j_q: wp.array | None = None
+    """
+    Flat array of constraint Lagrange multipliers for dynamic joint constraints.\n
+    Shape of ``(sum_of_num_joint_dynamic_cts,)`` and type :class:`float`,\n
+    where `sum_of_num_joint_dynamic_cts := sum(d_j)`, and ``d_j``
+    is the number of DoFs of joint ``j``.
+    """
+
+    # TODO (@ruben): Should we separate the Lagrange multipliers
+    # for dynamic vs kinematic constraints or keep them together?
+    lambda_j_c: wp.array | None = None
+    """
+    Flat array of constraint Lagrange multipliers for kinematic joint constraints.\n
+    Shape of ``(sum_of_num_joint_kinematic_cts,)`` and type :class:`float`,\n
+    where `sum_of_num_joint_kinematic_cts := sum(e_j)`, and ``e_j``
     is the number of constraints of joint ``j``.
     """
 
     ###
     # Dynamics
     ###
-
-    tau_j: wp.array | None = None
-    """
-    Flat array of generalized forces of the joints.\n
-    Shape of ``(sum_of_num_joint_dofs,)`` and type :class:`float`,
-    where `sum_of_num_joint_dofs := sum(d_j)`, and ``d_j``
-    is the number of DoFs of joint ``j``.
-    """
 
     m_j: wp.array | None = None
     """
@@ -1603,6 +1628,8 @@ class JointsData:
         Resets all joint constraint reactions to zero.
         """
         self.lambda_j.zero_()
+        # TODO: self.lambda_j_q.zero_()
+        # TODO: self.lambda_j_c.zero_()
 
     def clear_actuation_forces(self):
         """

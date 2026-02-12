@@ -128,6 +128,8 @@ def build_box_pendulum(
     z_offset: float = 0.7,
     ground: bool = True,
     new_world: bool = True,
+    dynamic_joints: bool = False,
+    implicit_pd: bool = False,
     world_index: int = 0,
 ) -> ModelBuilder:
     """
@@ -194,6 +196,10 @@ def build_box_pendulum(
         B_r_Bj=vec3f(0.0, 0.0, 0.5 * h + z_0),
         F_r_Fj=vec3f(-0.5 * d, 0.0, 0.0),
         X_j=Axis.Y.to_mat33(),
+        a_j=1.0 if dynamic_joints else None,
+        b_j=0.1 if dynamic_joints else None,
+        k_p_j=100.0 if implicit_pd else None,
+        k_d_j=1.0 if implicit_pd else None,
         world_index=world_index,
     )
 
@@ -467,6 +473,8 @@ def build_boxes_hinged(
     builder: ModelBuilder | None = None,
     z_offset: float = 0.0,
     ground: bool = True,
+    dynamic_joints: bool = False,
+    implicit_pd: bool = False,
     new_world: bool = True,
     world_index: int = 0,
 ) -> ModelBuilder:
@@ -543,6 +551,10 @@ def build_boxes_hinged(
         B_r_Bj=vec3f(0.25, 0.05, 0.0),
         F_r_Fj=vec3f(-0.25, -0.05, 0.0),
         X_j=Axis.Y.to_mat33(),
+        a_j=1.0 if dynamic_joints else None,
+        b_j=0.1 if dynamic_joints else None,
+        k_p_j=100.0 if implicit_pd else None,
+        k_d_j=1.0 if implicit_pd else None,
         world_index=world_index,
     )
 
@@ -858,6 +870,8 @@ def build_boxes_fourbar(
     fixedbase: bool = False,
     limits: bool = True,
     ground: bool = True,
+    dynamic_joints: bool = False,
+    implicit_pd: bool = False,
     verbose: bool = False,
     new_world: bool = True,
     world_index: int = 0,
@@ -1057,6 +1071,10 @@ def build_boxes_fourbar(
         X_j=X_j,
         q_j_min=[qmin],
         q_j_max=[qmax],
+        a_j=1.0 if dynamic_joints else None,
+        b_j=0.1 if dynamic_joints else None,
+        k_p_j=100.0 if implicit_pd else None,
+        k_d_j=1.0 if implicit_pd else None,
         world_index=world_index,
     )
 

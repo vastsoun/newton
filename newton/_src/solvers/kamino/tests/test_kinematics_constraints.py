@@ -73,7 +73,7 @@ class TestKinematicsConstraints(unittest.TestCase):
         max_world_contacts = 20
 
         # Construct the model description using the ModelBuilder
-        builder = build_boxes_fourbar()
+        builder = build_boxes_fourbar(dynamic_joints=True, implicit_pd=True)
 
         # Create the model from the builder
         model: Model = builder.finalize(device=self.default_device)

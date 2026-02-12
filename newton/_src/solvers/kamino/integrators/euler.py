@@ -23,6 +23,7 @@ from collections.abc import Callable
 
 import warp as wp
 
+from ....core.types import override
 from ..core.control import Control as ControlKamino
 from ..core.math import (
     quat_box_plus,
@@ -45,6 +46,7 @@ from ..core.types import (
 from ..geometry.contacts import Contacts as ContactsKamino
 from ..geometry.detector import CollisionDetector
 from ..kinematics.limits import Limits as LimitsKamino
+from .integrator import IntegratorBase
 
 ###
 # Module interface
@@ -195,22 +197,46 @@ def integrate_euler_semi_implicit(model: ModelKamino, data: DataKamino, alpha: f
 ###
 
 
-class IntegratorEuler:
+class IntegratorEuler(IntegratorBase):
     """
-    TODO
+    Provides an implementation of a Semi-Implicit Euler time-stepping integrator.
+
+    Effectively, the Semi-Implicit Euler scheme involves an implicit solve of the
+    forward dynamics to render constraint reactions at the start of the time-step,
+    followed by an explicit forward integration step to compute the next state:
+
+    ```
+    lambda = f_fd(q_p, u_p, tau_j)
+    u_n = u_p + M^{-1} * ( dt * h(q_p, u_p) + dt * J_a(q_p)^T * tau_j + J_c(q_p)^T * lambda )
+    q_n = q_p + dt * G(q_p) @ u_n
+    ```
+
+    where `q_p` and `u_p` are the generalized coordinates and velocities at the start of the
+    time-step, `q_n` and `u_n` are the generalized coordinates and velocities at the end of
+    the time-step, `M` is the generalized mass matrix, `h` is the vector of generalized
+    non-linear forces, `J_a` is the actuation Jacobian matrix, `tau_j` is the vector of
+    generalized forces, `J_c` is the constraint Jacobian matrix, and `lambda` are the
+    constraint reactions.
     """
 
     def __init__(self, model: ModelKamino, alpha: float = 0.0):
         """
-        TODO
+        Initializes the Semi-Implicit Euler integrator with the given :class:`ModelKamino` instance.
+
+        Args:
+            model (`ModelKamino`):
+                The model container holding the time-invariant parameters of the system being simulated.
+            alpha (`float`, optional):
+                The angular damping coefficient. Defaults to 0.0.
         """
-        self._model = model
+        super().__init__(model)
         self._alpha = alpha
 
     ###
     # Operations
     ###
 
+    @override
     def integrate(
         self,
         forward: Callable,
@@ -224,7 +250,32 @@ class IntegratorEuler:
         detector: CollisionDetector | None = None,
     ):
         """
-        TODO
+        Solves the time integration sub-problem using a Semi-Implicit Euler scheme
+        to integrate the current state of the system over a single time-step.
+
+        Args:
+            forward (`Callable`):
+                An operator that calls the underlying solver for the forward dynamics sub-problem.
+            model (`ModelKamino`):
+                The model container holding the time-invariant parameters of the system being simulated.
+            data (`DataKamino`):
+                The data container holding the time-varying parameters of the system being simulated.
+            state_in (`StateKamino`):
+                The state of the system at the current time-step.
+            state_out (`StateKamino`):
+                The state of the system at the next time-step.
+            control (`ControlKamino`):
+                The control inputs applied to the system at the current time-step.
+            limits (`LimitsKamino`, optional):
+                The joint limits of the system at the current time-step.
+                If `None`, no joint limits are considered for the current time-step.
+            contacts (`ContactsKamino`, optional):
+                The set of active contacts of the system at the current time-step.
+                If `None`, no contacts are considered for the current time-step.
+            detector (`CollisionDetector`, optional):
+                The collision detector to use for generating the set of active contacts at the current time-step.\n
+                If `None`, no collision detection is performed for the current time-step,
+                and active contacts must be provided via the `contacts` argument.O
         """
         # If a collision detector is provided, use it to generate
         # the set of active contacts at the current state

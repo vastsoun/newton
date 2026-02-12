@@ -393,6 +393,8 @@ class ModelInfo:
     # Constraint Counts
     ###
 
+    # TODO: We could make this a vec2i to store dynamic
+    # and kinematic joint constraint counts separately
     num_joint_cts: wp.array | None = None
     """
     The number of joint constraints of each world.\n

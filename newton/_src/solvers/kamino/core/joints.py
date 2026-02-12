@@ -1303,13 +1303,13 @@ class JointsModel:
     Shape of ``(num_joints,)`` and type :class:`int`.
     """
 
-    # TODO: Enable this once we've fixed kinematic/dynamic specifics
-    # TODO: Consider making this a vec2i containing both dynamic and kinematic constraint counts
-    # num_cts: wp.array | None = None
-    # """
-    # Number of total constraints of each joint.\n
-    # Shape of ``(num_joints,)`` and type :class:`int`.
-    # """
+    # TODO: Consider making this a vec2i containing
+    # both dynamic and kinematic constraint counts
+    num_cts: wp.array | None = None
+    """
+    Number of total constraints of each joint.\n
+    Shape of ``(num_joints,)`` and type :class:`int`.
+    """
 
     num_dynamic_cts: wp.array | None = None
     """
@@ -1381,17 +1381,16 @@ class JointsModel:
     Shape of ``(num_joints,)`` and type :class:`int`.
     """
 
-    # TODO: Enable this once we've fixed kinematic/dynamic specifics
-    # cts_offset: wp.array | None = None
-    # """
-    # Index offset of each joint's constraints w.r.t the start
-    # index of constraints of the corresponding world.\n
-    #
-    # Used to index into:
-    # - array of joint constraint Lagrange multipliers `lambda_j`
-    #
-    # Shape of ``(num_joints,)`` and type :class:`int`.
-    # """
+    cts_offset: wp.array | None = None
+    """
+    Index offset of each joint's constraints w.r.t the start
+    index of constraints of the corresponding world.\n
+
+    Used to index into:
+    - array of joint constraint Lagrange multipliers `lambda_j`
+
+    Shape of ``(num_joints,)`` and type :class:`int`.
+    """
 
     dynamic_cts_offset: wp.array | None = None
     """

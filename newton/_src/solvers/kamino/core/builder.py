@@ -1081,6 +1081,7 @@ class ModelBuilder:
         joints_k_d_j = []
         joints_ncoords_j = []
         joints_ndofs_j = []
+        joints_ncts_j = []
         joints_nkincts_j = []
         joints_ndyncts_j = []
         joints_q_start = []
@@ -1089,6 +1090,7 @@ class ModelBuilder:
         joints_pdq_start = []
         joints_aq_start = []
         joints_adq_start = []
+        joints_cts_start = []
         joints_dcts_start = []
         joints_kcts_start = []
 
@@ -1211,6 +1213,7 @@ class ModelBuilder:
                 joints_k_d_j.extend(joint.k_d_j)
                 joints_ncoords_j.append(joint.num_coords)
                 joints_ndofs_j.append(joint.num_dofs)
+                joints_ncts_j.append(joint.num_cts)
                 joints_ndyncts_j.append(joint.num_dynamic_cts)
                 joints_nkincts_j.append(joint.num_kinematic_cts)
                 joints_q_start.append(joint.coords_offset)
@@ -1219,6 +1222,7 @@ class ModelBuilder:
                 joints_pdq_start.append(joint.passive_dofs_offset)
                 joints_aq_start.append(joint.actuated_coords_offset)
                 joints_adq_start.append(joint.actuated_dofs_offset)
+                joints_cts_start.append(joint.cts_offset)
                 joints_dcts_start.append(joint.dynamic_cts_offset)
                 joints_kcts_start.append(joint.kinematic_cts_offset)
                 joints_bid_B.append(joint.bid_B + world_bio if joint.bid_B >= 0 else -1)
@@ -1454,7 +1458,7 @@ class ModelBuilder:
                 dq_j_0=wp.array(joints_dq_j_0, dtype=float32, requires_grad=requires_grad),
                 num_coords=wp.array(joints_ncoords_j, dtype=int32),
                 num_dofs=wp.array(joints_ndofs_j, dtype=int32),
-                # TODO: num_cts=wp.array(joints_ncts_j, dtype=int32),
+                num_cts=wp.array(joints_ncts_j, dtype=int32),
                 num_dynamic_cts=wp.array(joints_ndyncts_j, dtype=int32),
                 num_kinematic_cts=wp.array(joints_nkincts_j, dtype=int32),
                 coords_offset=wp.array(joints_q_start, dtype=int32),
@@ -1463,7 +1467,7 @@ class ModelBuilder:
                 passive_dofs_offset=wp.array(joints_pdq_start, dtype=int32),
                 actuated_coords_offset=wp.array(joints_aq_start, dtype=int32),
                 actuated_dofs_offset=wp.array(joints_adq_start, dtype=int32),
-                # TODO: cts_offset=wp.array(joints_cts_start, dtype=int32),
+                cts_offset=wp.array(joints_cts_start, dtype=int32),
                 dynamic_cts_offset=wp.array(joints_dcts_start, dtype=int32),
                 kinematic_cts_offset=wp.array(joints_kcts_start, dtype=int32),
             )

@@ -110,9 +110,9 @@ class Example:
         settings.solver.padmm.compl_tolerance = 1e-4
         settings.solver.padmm.max_iterations = 100
         settings.solver.padmm.eta = 1e-5
-        settings.solver.padmm.rho_0 = 0.02
+        settings.solver.padmm.rho_0 = 0.02  # try 0.02 for Balanced update
         settings.solver.padmm.rho_min = 0.01
-        settings.solver.penalty_update_method = PADMMPenaltyUpdate.BALANCED
+        settings.solver.penalty_update_method = PADMMPenaltyUpdate.FIXED  # try BALANCED
         settings.solver.use_solver_acceleration = True
         settings.solver.warmstart_mode = PADMMWarmStartMode.CONTAINERS
         settings.solver.contact_warmstart_method = WarmstarterContacts.Method.GEOM_PAIR_NET_FORCE

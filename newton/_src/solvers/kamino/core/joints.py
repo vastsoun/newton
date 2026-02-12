@@ -1304,6 +1304,7 @@ class JointsModel:
     """
 
     # TODO: Enable this once we've fixed kinematic/dynamic specifics
+    # TODO: Consider making this a vec2i containing both dynamic and kinematic constraint counts
     # num_cts: wp.array | None = None
     # """
     # Number of total constraints of each joint.\n
@@ -1326,13 +1327,25 @@ class JointsModel:
     """
     Index offset of each joint's coordinates w.r.t the start
     index of joint coordinates of the corresponding world.\n
+
+    Used to index into joint-specific blocks of:
+    - array of initial joint generalized coordinates :attr:`JointsModel.q_j_0`
+    - array of joint generalized coordinates :attr:`JointsData.q_j`
+    - array of previous joint generalized coordinates :attr:`JointsData.q_j_p`
+
     Shape of ``(num_joints,)`` and type :class:`int`.
     """
 
     dofs_offset: wp.array | None = None
     """
     Index offset of each joint's DoFs w.r.t the start
-    index of joint DoFs of the corresponding world.\n
+    index of joint DoFs of the corresponding world.
+
+    Used to index into joint-specific blocks of:
+    - array of initial joint generalized velocities :attr:`JointsModel.dq_j_0`
+    - array of joint generalized velocities :attr:`JointsData.dq_j`
+    - array of joint generalized forces :attr:`JointsData.tau_j`
+
     Shape of ``(num_joints,)`` and type :class:`int`.
     """
 
@@ -1340,6 +1353,7 @@ class JointsModel:
     """
     Index offset of each joint's passive coordinates w.r.t the start
     index of passive joint coordinates of the corresponding world.\n
+    Used to index into passive-specific blocks of flattened passive joint coordinates arrays.\n
     Shape of ``(num_joints,)`` and type :class:`int`.
     """
 
@@ -1347,6 +1361,7 @@ class JointsModel:
     """
     Index offset of each joint's passive DoFs w.r.t the start
     index of passive joint DoFs of the corresponding world.\n
+    Used to index into passive-specific blocks of flattened passive joint coordinates and DoFs arrays.\n
     Shape of ``(num_joints,)`` and type :class:`int`.
     """
 
@@ -1354,6 +1369,7 @@ class JointsModel:
     """
     Index offset of each joint's actuated coordinates w.r.t the start
     index of actuated joint coordinates of the corresponding world.\n
+    Used to index into actuator-specific blocks of flattened actuator coordinates arrays.\n
     Shape of ``(num_joints,)`` and type :class:`int`.
     """
 
@@ -1361,6 +1377,7 @@ class JointsModel:
     """
     Index offset of each joint's actuated DoFs w.r.t the start
     index of actuated joint DoFs of the corresponding world.\n
+    Used to index into actuator-specific blocks of flattened actuator DoFs arrays.\n
     Shape of ``(num_joints,)`` and type :class:`int`.
     """
 
@@ -1369,6 +1386,10 @@ class JointsModel:
     # """
     # Index offset of each joint's constraints w.r.t the start
     # index of constraints of the corresponding world.\n
+    #
+    # Used to index into:
+    # - array of joint constraint Lagrange multipliers `lambda_j`
+    #
     # Shape of ``(num_joints,)`` and type :class:`int`.
     # """
 
@@ -1376,6 +1397,13 @@ class JointsModel:
     """
     Index offset of each joint's dynamic constraints w.r.t the start
     index of dynamic joint constraints of the corresponding world.\n
+
+    Used to index into into joint-specific blocks of:
+    - array of effective joint-space inertia :attr:`JointsData.m_j`
+    - array of joint-space damping :attr:`JointsData.b_j`
+    - array of joint-space P gains :attr:`JointsData.k_p_j`
+    - array of joint-space D gains :attr:`JointsData.k_d_j`
+
     Shape of ``(num_joints,)`` and type :class:`int`.
     """
 
@@ -1383,6 +1411,11 @@ class JointsModel:
     """
     Index offset of each joint's kinematic constraints w.r.t the start
     index of kinematic joint constraints of the corresponding world.\n
+
+    Used to index into joint-specific blocks of:
+    - array of joint constraint residuals :attr:`JointsData.r_j`
+    - array of joint constraint residual time-derivatives :attr:`JointsData.dr_j`
+
     Shape of ``(num_joints,)`` and type :class:`int`.
     """
 
@@ -1447,48 +1480,47 @@ class JointsData:
 
     r_j: wp.array | None = None
     """
-    Flat array of joint constraint residuals.\n
+    Flat array of joint constraint residuals.
+
+    To access the constraint residuals of a specific world `w` use:
+    - to get the start index: ``model.info.joint_kinematic_cts_offset[w]``
+    - to get the size: ``model.info.num_joint_kinematic_cts[w]``
+
     Shape of ``(sum_of_num_joint_cts,)`` and type :class:`float`,\n
-    where `sum_of_num_joint_cts := sum(e_j)`, and ``e_j``
+    where `sum_of_num_kinematic_joint_cts := sum(e_j)`, and ``e_j``
     is the number of constraints of joint ``j``.
     """
 
     dr_j: wp.array | None = None
     """
-    Flat array of joint constraint residual time-derivatives.\n
+    Flat array of joint constraint residual time-derivatives.
+
+    To access the constraint residuals of a specific world `w` use:
+    - to get the start index: ``model.info.joint_kinematic_cts_offset[w]``
+    - to get the size: ``model.info.num_joint_kinematic_cts[w]``
+
     Shape of ``(sum_of_num_joint_cts,)`` and type :class:`float`,\n
-    where `sum_of_num_joint_cts := sum(e_j)`, and ``e_j``
+    where `sum_of_num_kinematic_joint_cts := sum(e_j)`, and ``e_j``
     is the number of constraints of joint ``j``.
     """
 
-    # TODO (@ruben): Should we separate the Lagrange multipliers
-    # for dynamic vs kinematic constraints or keep them together?
     lambda_j: wp.array | None = None
     """
-    Flat array of joint constraint Lagrange multipliers.\n
+    Flat array of joint constraint Lagrange multipliers.
+
+    To access the constraint multipliers of a specific world `w` use:
+    - to get the start index: ``model.info.joint_cts_offset[w]``
+    - to get the size: ``model.info.num_joint_cts[w]``
+
+    Then to access the individual dynamic or kinematic constraint blocks, use:
+    - dynamic constraints:
+        ``model.info.joint_dynamic_cts_group_offset[w]`` and ``model.info.num_joint_dynamic_cts[w]``
+    - kinematic constraints:
+        ``model.info.joint_kinematic_cts_group_offset[w]`` and ``model.info.num_joint_kinematic_cts[w]``
+
     Shape of ``(sum_of_num_joint_cts,)`` and type :class:`float`,\n
     where `sum_of_num_joint_cts := sum(d_j) + sum(e_j)`, and ``d_j`` and ``e_j``
     are the number of DoFs and constraints of joint ``j``, respectively.
-    """
-
-    # TODO (@ruben): Should we separate the Lagrange multipliers
-    # for dynamic vs kinematic constraints or keep them together?
-    lambda_j_q: wp.array | None = None
-    """
-    Flat array of constraint Lagrange multipliers for dynamic joint constraints.\n
-    Shape of ``(sum_of_num_joint_dynamic_cts,)`` and type :class:`float`,\n
-    where `sum_of_num_joint_dynamic_cts := sum(d_j)`, and ``d_j``
-    is the number of DoFs of joint ``j``.
-    """
-
-    # TODO (@ruben): Should we separate the Lagrange multipliers
-    # for dynamic vs kinematic constraints or keep them together?
-    lambda_j_c: wp.array | None = None
-    """
-    Flat array of constraint Lagrange multipliers for kinematic joint constraints.\n
-    Shape of ``(sum_of_num_joint_kinematic_cts,)`` and type :class:`float`,\n
-    where `sum_of_num_joint_kinematic_cts := sum(e_j)`, and ``e_j``
-    is the number of constraints of joint ``j``.
     """
 
     ###
@@ -1542,6 +1574,9 @@ class JointsData:
 
     ###
     # Per-Body Wrenches
+    #
+    # TODO: Remove these (probably redundant) or make them optional via flag
+    # since they are mainly useful for visualization and simulation debugging
     ###
 
     j_w_j: wp.array | None = None

@@ -782,6 +782,12 @@ class JointDescriptor(Descriptor):
     all actuated joint DoFs in the world it belongs to.
     """
 
+    cts_offset: int = -1
+    """
+    Index offset of this joint's constraints among all
+    joint constraints in the world it belongs to.
+    """
+
     dynamic_cts_offset: int = -1
     """
     Index offset of this joint's dynamic constraints among all
@@ -840,13 +846,12 @@ class JointDescriptor(Descriptor):
         """
         return self.dof_type.num_dofs if self.is_actuated else 0
 
-    # TODO: Enable this when we've fixed the dynamic/kinematic specifics
-    # @property
-    # def num_cts(self) -> int:
-    #     """
-    #     Returns the total number of constraints introduced by this joint.
-    #     """
-    #     return self.num_dynamic_cts + self.num_kinematic_cts
+    @property
+    def num_cts(self) -> int:
+        """
+        Returns the total number of constraints introduced by this joint.
+        """
+        return self.num_dynamic_cts + self.num_kinematic_cts
 
     @property
     def num_dynamic_cts(self) -> int:

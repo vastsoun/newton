@@ -549,6 +549,44 @@ class ModelInfo:
     Shape of ``(num_worlds,)`` and type :class:`int`.
     """
 
+    # TODO: We could make this an array of vec5i and store the absolute
+    #  startindex of each constraint group in the constraint array `lambda`:
+    # - [0]: total_cts_offset
+    # - [1]: joint_dynamic_cts_group_offset
+    # - [2]: joint_kinematic_cts_group_offset
+    # - [3]: limit_cts_group_offset
+    # - [4]: contact_cts_group_offset
+    # TODO: We could then provide helper functions to get the start-end of each block
+    total_cts_offset: wp.array | None = None
+    """
+    The index offset of the total constraints block of each world.\n
+    Used to index into constraint-space arrays, e.g. constraint residuals and reactions.\n
+
+    This offset should be used together with:
+    - joint_dynamic_cts_group_offset
+    - joint_kinematic_cts_group_offset
+    - limit_cts_group_offset
+    - contact_cts_group_offset
+
+    Example:
+    ```
+    # To index into the dynamic joint constraint reactions of world `w`:
+    world_cts_start = model_info.total_cts_offset[w]
+    local_joint_dynamic_cts_start = model_info.joint_dynamic_cts_group_offset[w]
+    local_joint_kinematic_cts_start = model_info.joint_kinematic_cts_group_offset[w]
+    local_limit_cts_start = model_info.limit_cts_group_offset[w]
+    local_contact_cts_start = model_info.contact_cts_group_offset[w]
+
+    # Now compute the starting index of each constraint group within the total constraints block of world `w`:
+    world_dynamic_joint_cts_start = world_cts_start + local_joint_dynamic_cts_start
+    world_kinematic_joint_cts_start = world_cts_start + local_joint_kinematic_cts_start
+    world_limit_cts_start = world_cts_start + local_limit_cts_start
+    world_contact_cts_start = world_cts_start + local_contact_cts_start
+    ```
+
+    Shape of ``(num_worlds,)`` and type :class:`int`.
+    """
+
     # TODO: This may be redundant if we know it's always the first block i.e. same as `total_cts_offset`
     # TODO: Enable this once we've fixed the dynamic/kinematic specifics
     # joint_cts_group_offset: wp.array | None = None
@@ -569,13 +607,6 @@ class ModelInfo:
     joint_kinematic_cts_group_offset: wp.array | None = None
     """
     The index offset of the kinematic joint constraints group within the constraints block of each world.\n
-    Used to index into constraint-space arrays, e.g. constraint residuals and reactions.\n
-    Shape of ``(num_worlds,)`` and type :class:`int`.
-    """
-
-    total_cts_offset: wp.array | None = None
-    """
-    The index offset of the total constraints block of each world.\n
     Used to index into constraint-space arrays, e.g. constraint residuals and reactions.\n
     Shape of ``(num_worlds,)`` and type :class:`int`.
     """
@@ -848,11 +879,11 @@ class Model:
         npg = self.size.sum_of_num_physical_geoms
 
         # Retrieve the joint coordinate, DoF and constraint counts
-        njq = self.size.sum_of_num_joint_coords
-        njd = self.size.sum_of_num_joint_dofs
-        njc = self.size.sum_of_num_joint_cts
-        njdc = self.size.sum_of_num_dynamic_joint_cts
-        njkc = self.size.sum_of_num_kinematic_joint_cts
+        njcoords = self.size.sum_of_num_joint_coords
+        njdofs = self.size.sum_of_num_joint_dofs
+        njcts = self.size.sum_of_num_joint_cts
+        njdyncts = self.size.sum_of_num_dynamic_joint_cts
+        njkincts = self.size.sum_of_num_kinematic_joint_cts
 
         # Construct the model data on the specified device
         with wp.ScopedDevice(device=device):
@@ -896,17 +927,15 @@ class Model:
             joints = JointsData(
                 num_joints=nj,
                 p_j=wp.zeros(shape=nj, dtype=transformf, requires_grad=requires_grad),
-                q_j=wp.zeros(shape=njq, dtype=float32, requires_grad=requires_grad),
-                q_j_p=wp.zeros(shape=njq, dtype=float32, requires_grad=requires_grad),
-                dq_j=wp.zeros(shape=njd, dtype=float32, requires_grad=requires_grad),
-                tau_j=wp.zeros(shape=njd, dtype=float32, requires_grad=requires_grad),
-                r_j=wp.zeros(shape=njc, dtype=float32, requires_grad=requires_grad),
-                dr_j=wp.zeros(shape=njc, dtype=float32, requires_grad=requires_grad),
-                lambda_j=wp.zeros(shape=njc, dtype=float32, requires_grad=requires_grad),
-                lambda_j_q=wp.zeros(shape=njdc, dtype=float32, requires_grad=requires_grad),
-                lambda_j_c=wp.zeros(shape=njkc, dtype=float32, requires_grad=requires_grad),
-                m_j=wp.zeros(shape=njdc, dtype=float32, requires_grad=requires_grad),
-                inv_m_j=wp.zeros(shape=njdc, dtype=float32, requires_grad=requires_grad),
+                q_j=wp.zeros(shape=njcoords, dtype=float32, requires_grad=requires_grad),
+                q_j_p=wp.zeros(shape=njcoords, dtype=float32, requires_grad=requires_grad),
+                dq_j=wp.zeros(shape=njdofs, dtype=float32, requires_grad=requires_grad),
+                tau_j=wp.zeros(shape=njdofs, dtype=float32, requires_grad=requires_grad),
+                r_j=wp.zeros(shape=njkincts, dtype=float32, requires_grad=requires_grad),
+                dr_j=wp.zeros(shape=njkincts, dtype=float32, requires_grad=requires_grad),
+                lambda_j=wp.zeros(shape=njcts, dtype=float32, requires_grad=requires_grad),
+                m_j=wp.zeros(shape=njdyncts, dtype=float32, requires_grad=requires_grad),
+                inv_m_j=wp.zeros(shape=njdyncts, dtype=float32, requires_grad=requires_grad),
                 q_j_ref=wp.clone(self.joints.q_j_0, requires_grad=requires_grad),
                 dq_j_ref=wp.clone(self.joints.dq_j_0, requires_grad=requires_grad),
                 j_w_j=wp.zeros(shape=nj, dtype=vec6f, requires_grad=requires_grad),

@@ -77,6 +77,9 @@ class TestKinematicsConstraints(unittest.TestCase):
 
         # Create the model from the builder
         model: Model = builder.finalize(device=self.default_device)
+        msg.info(f"model.joints.cts_offset:\n{model.joints.cts_offset}")
+        msg.info(f"model.joints.dynamic_cts_offset:\n{model.joints.dynamic_cts_offset}")
+        msg.info(f"model.joints.kinematic_cts_offset:\n{model.joints.kinematic_cts_offset}")
 
         # Create a model data
         data = model.data(device=self.default_device)
@@ -131,6 +134,9 @@ class TestKinematicsConstraints(unittest.TestCase):
 
         # Create the model from the builder
         model: Model = builder.finalize(device=self.default_device)
+        msg.info(f"model.joints.cts_offset:\n{model.joints.cts_offset}")
+        msg.info(f"model.joints.dynamic_cts_offset:\n{model.joints.dynamic_cts_offset}")
+        msg.info(f"model.joints.kinematic_cts_offset:\n{model.joints.kinematic_cts_offset}")
 
         # Create a model data
         data = model.data(device=self.default_device)

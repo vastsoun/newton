@@ -257,17 +257,21 @@ class WorldDescriptor(Descriptor):
     joint_dofs_idx_offset: int = 0
     """Index offset of the world's joint DoFs w.r.t the entire model."""
 
-    passive_joint_coords_idx_offset: int = 0
+    joint_passive_coords_idx_offset: int = 0
     """Index offset of the world's passive joint coordinates w.r.t the entire model."""
 
-    passive_joint_dofs_idx_offset: int = 0
+    joint_passive_dofs_idx_offset: int = 0
     """Index offset of the world's passive joint DoFs w.r.t the entire model."""
 
-    actuated_joint_coords_idx_offset: int = 0
+    joint_actuated_coords_idx_offset: int = 0
     """Index offset of the world's actuated joint coordinates w.r.t the entire model."""
 
-    actuated_joint_dofs_idx_offset: int = 0
+    joint_actuated_dofs_idx_offset: int = 0
     """Index offset of the world's actuated joint DoFs w.r.t the entire model."""
+
+    # TODO: Enable this when we've fixed the dynamic/kinematic specifics
+    # joint_cts_idx_offset: int = 0
+    # """Index offset of the world's joint constraints w.r.t the entire model."""
 
     joint_dynamic_cts_idx_offset: int = 0
     """Index offset of the world's joint dynamics constraints w.r.t the entire model."""

@@ -541,13 +541,6 @@ class ModelInfo:
     Shape of ``(num_worlds,)`` and type :class:`int`.
     """
 
-    unilateral_cts_offset: wp.array | None = None
-    """
-    The index offset of the unilateral constraints block of each world.\n
-    Used to index into arrays that contain flattened and concatenated limit and contact constraint data.\n
-    Shape of ``(num_worlds,)`` and type :class:`int`.
-    """
-
     # TODO: We could make this an array of vec5i and store the absolute
     #  startindex of each constraint group in the constraint array `lambda`:
     # - [0]: total_cts_offset

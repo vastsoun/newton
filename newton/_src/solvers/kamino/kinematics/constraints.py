@@ -17,6 +17,7 @@
 Provides mechanisms to define and manage constraints and their associated input/output data.
 """
 
+import numpy as np
 import warp as wp
 from warp.context import Devicelike
 
@@ -188,6 +189,8 @@ def make_unilateral_constraints_info(
             raise TypeError("`contacts` must be an instance of `Contacts`")
         if contacts.data is not None and contacts.model_max_contacts_host > 0:
             _assign_model_contacts_info()
+        else:
+            _make_empty_model_contacts_info()
     else:
         _make_empty_model_contacts_info()
 
@@ -200,8 +203,10 @@ def make_unilateral_constraints_info(
     world_maxnlc: list[int] = list(world_maxnl)
     world_maxncc: list[int] = [3 * maxnc for maxnc in world_maxnc]
     world_njc = [world.num_joint_cts for world in model.worlds]
+    world_njdc = [world.num_dynamic_joint_cts for world in model.worlds]
+    world_njkc = [world.num_kinematic_joint_cts for world in model.worlds]
     world_maxncts = [
-        maxnl + maxnc + njc for maxnl, maxnc, njc in zip(world_maxnlc, world_maxncc, world_njc, strict=False)
+        njc + maxnl + maxnc for njc, maxnl, maxnc in zip(world_njc, world_maxnlc, world_maxncc, strict=False)
     ]
     model.size.sum_of_max_total_cts = sum(world_maxncts)
     model.size.max_of_max_total_cts = max(world_maxncts)
@@ -212,41 +217,53 @@ def make_unilateral_constraints_info(
     world_cio = [0] + [sum(world_maxnc[:i]) for i in range(1, num_worlds + 1)]
     world_uio = [0] + [sum(world_maxnl[:i]) + sum(world_maxnc[:i]) for i in range(1, num_worlds + 1)]
 
-    # Compute the entity index offsets for limits, contacts and unilaterals
-    # NOTE: unilaterals is simply the concatenation of limits and contacts
-    world_lcio = [0] + [sum(world_maxnlc[:i]) for i in range(1, num_worlds + 1)]
-    world_ccio = [0] + [sum(world_maxncc[:i]) for i in range(1, num_worlds + 1)]
-    world_ucio = [0] + [sum(world_maxnlc[:i]) + sum(world_maxncc[:i]) for i in range(1, num_worlds + 1)]
+    # Compute the per-world absolute total constraint block offsets
+    # NOTE: These are the per-world start indices of arrays like the constraint multipliers `lambda`.
     world_ctsio = [0] + [
         sum(world_njc[:i]) + sum(world_maxnlc[:i]) + sum(world_maxncc[:i]) for i in range(1, num_worlds + 1)
     ]
 
+    # Compute the initial values of the absolute constraint group
+    # offsets for joints (dynamic + kinematic), limits, contacts
+    world_jdcio = [world_ctsio[i] for i in range(1, num_worlds)]
+    world_jkcio = [world_jdcio[i] + world_njdc[i] for i in range(1, num_worlds)]
+    world_lcio = [world_jkcio[i] + world_njkc[i] for i in range(1, num_worlds)]
+    world_ccio = [world_lcio[i] for i in range(1, num_worlds)]
+
+    # Define a helper function to allocate an array anew if not done so already
+    def _allocate_or_assign_array(array: wp.array | None, data: np.ndarray) -> wp.array:
+        if array is not None and array.shape >= data.shape:
+            if array.dtype != wp.dtype_to_numpy(data.dtype):
+                raise TypeError(f"Expected array of dtype {wp.dtype_to_numpy(data.dtype)} but got {array.dtype}")
+            if array.shape != data.shape:
+                raise ValueError(f"Expected array of shape {data.shape} but got {array.shape}")
+            return array.assign(np.array(data, dtype=wp.dtype_to_numpy(array.dtype)))
+        else:
+            return wp.array(data, dtype=wp.dtype_to_numpy(data.dtype))
+
     # Allocate all constraint info arrays on the target device
     with wp.ScopedDevice(device):
-        # Allocate the total constraint arrays
+        # Allocate the per-world max constraints count arrays
         model.info.max_total_cts = wp.array(world_maxncts, dtype=int32)
-        model.info.total_cts_offset = wp.array(world_ctsio[:num_worlds], dtype=int32)
-
-        # Allocate the limit constraint arrays
         model.info.max_limit_cts = wp.array(world_maxnlc, dtype=int32)
-        model.info.limits_offset = wp.array(world_lio[:num_worlds], dtype=int32)
-        model.info.limit_cts_offset = wp.array(world_lcio[:num_worlds], dtype=int32)
-
-        # Allocate the contact constraint arrays
         model.info.max_contact_cts = wp.array(world_maxncc, dtype=int32)
+
+        # Allocate the per-world active constraints count arrays
+        data.info.num_total_cts = wp.clone(model.info.num_joint_cts)
+        data.info.num_limit_cts = wp.zeros(shape=(num_worlds,), dtype=int32)
+        data.info.num_contact_cts = wp.zeros(shape=(num_worlds,), dtype=int32)
+
+        # Allocate the per-world entity start arrays
+        model.info.limits_offset = wp.array(world_lio[:num_worlds], dtype=int32)
         model.info.contacts_offset = wp.array(world_cio[:num_worlds], dtype=int32)
         model.info.unilaterals_offset = wp.array(world_uio[:num_worlds], dtype=int32)
 
-        # Allocate the unilateral constraint arrays
-        model.info.contact_cts_offset = wp.array(world_ccio[:num_worlds], dtype=int32)
-        model.info.unilateral_cts_offset = wp.array(world_ucio[:num_worlds], dtype=int32)
-
-        # Initialize the active constraint counters to zero
-        data.info.num_total_cts = wp.zeros(shape=(num_worlds,), dtype=int32)
-        data.info.num_limit_cts = wp.zeros(shape=(num_worlds,), dtype=int32)
-        data.info.limit_cts_group_offset = wp.zeros(shape=(num_worlds,), dtype=int32)
-        data.info.num_contact_cts = wp.zeros(shape=(num_worlds,), dtype=int32)
-        data.info.contact_cts_group_offset = wp.zeros(shape=(num_worlds,), dtype=int32)
+        # Allocate the per-world constraint block/group arrays
+        model.info.total_cts_offset = wp.array(world_ctsio[:num_worlds], dtype=int32)
+        model.info.joint_dynamic_cts_group_offset = wp.array(world_jdcio[:num_worlds], dtype=int32)
+        model.info.joint_kinematic_cts_group_offset = wp.array(world_jkcio[:num_worlds], dtype=int32)
+        data.info.limit_cts_group_offset = wp.array(world_lcio[:num_worlds], dtype=int32)
+        data.info.contact_cts_group_offset = wp.array(world_ccio[:num_worlds], dtype=int32)
 
 
 ###
@@ -503,6 +520,8 @@ def unpack_constraint_solutions(
                 model.info.joint_cts_offset,
                 model.time.inv_dt,
                 model.joints.wid,
+                # model.joints.num_cts,
+                # model.joints.cts_offset,
                 model.joints.num_cts,
                 model.joints.cts_offset,
                 lambdas,

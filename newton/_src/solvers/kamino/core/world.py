@@ -160,6 +160,12 @@ class WorldDescriptor(Descriptor):
     in the world, and is always less than or equal to `num_joint_dofs`.\n
     """
 
+    num_joint_cts: int = 0
+    """
+    The total number of joint constraints.\n
+    This is equal to the sum of the constraints of all dynamic joints defined in the world.
+    """
+
     num_dynamic_joint_cts: int = 0
     """
     The total number of joint dynamics constraints.\n
@@ -472,6 +478,7 @@ class WorldDescriptor(Descriptor):
         joint.passive_dofs_offset = int(self.num_passive_joint_dofs) if joint.is_passive else -1
         joint.actuated_coords_offset = int(self.num_actuated_joint_coords) if joint.is_actuated else -1
         joint.actuated_dofs_offset = int(self.num_actuated_joint_dofs) if joint.is_actuated else -1
+        joint.cts_offset = int(self.num_joint_cts)
         joint.dynamic_cts_offset = int(self.num_dynamic_joint_cts) if joint.is_implicit else -1
         joint.kinematic_cts_offset = int(self.num_kinematic_joint_cts)
 
@@ -488,6 +495,7 @@ class WorldDescriptor(Descriptor):
         self.num_joints += 1
         self.num_joint_coords += joint.num_coords
         self.num_joint_dofs += joint.num_dofs
+        self.num_joint_cts += joint.num_cts
         self.num_dynamic_joint_cts += joint.num_dynamic_cts
         self.num_kinematic_joint_cts += joint.num_kinematic_cts
 

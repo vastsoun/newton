@@ -516,7 +516,7 @@ class ConjugateSolver:
         self.termination_kernel = make_termination_kernel(self.n_worlds)
 
     def compute_dot(self, a, b, active_dims, world_active, col_offset=0):
-        block_dim = 256
+        block_dim = 128
         if a.ndim == 2:
             a = a.reshape((1, *a.shape))
             b = b.reshape((1, *b.shape))
@@ -526,7 +526,7 @@ class ConjugateSolver:
         wp.launch(
             self.tiled_dot_kernel,
             dim=(a.shape[0], self.n_worlds, block_dim),
-            block_dim=min(256, self.dot_tile_size // 8),
+            block_dim=min(block_dim, self.dot_tile_size // 8),
             inputs=[a, b, active_dims, world_active],
             outputs=[result],
             device=self.device,

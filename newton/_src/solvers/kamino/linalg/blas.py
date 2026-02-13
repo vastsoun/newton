@@ -330,8 +330,16 @@ def _make_block_sparse_transpose_matvec_kernel(block_type: BlockDType, blocks_pe
                     if row_idx != last_row_idx:
                         cached_y = y[row_idx]
                         last_row_idx = row_idx
-                    for i in range(n_block_cols):
-                        wp.atomic_add(x, x_idx_base + i, block[i] * cached_y)
+                    if wp.static(n_block_cols == 6):
+                        wp.atomic_add(x, x_idx_base + 0, block[0] * cached_y)
+                        wp.atomic_add(x, x_idx_base + 1, block[1] * cached_y)
+                        wp.atomic_add(x, x_idx_base + 2, block[2] * cached_y)
+                        wp.atomic_add(x, x_idx_base + 3, block[3] * cached_y)
+                        wp.atomic_add(x, x_idx_base + 4, block[4] * cached_y)
+                        wp.atomic_add(x, x_idx_base + 5, block[5] * cached_y)
+                    else:
+                        for i in range(n_block_cols):
+                            wp.atomic_add(x, x_idx_base + i, block[i] * cached_y)
         else:
             for local_idx in range(bpt):
                 block_idx = first_block + local_idx
@@ -401,8 +409,16 @@ def _make_block_sparse_transpose_matvec_kernel_2d(block_type: BlockDType, blocks
                     if row_idx != last_row_idx:
                         cached_y = y[mat_id, row_idx]
                         last_row_idx = row_idx
-                    for i in range(n_block_cols):
-                        wp.atomic_add(x, mat_id, x_idx_base + i, block[i] * cached_y)
+                    if wp.static(n_block_cols == 6):
+                        wp.atomic_add(x, mat_id, x_idx_base + 0, block[0] * cached_y)
+                        wp.atomic_add(x, mat_id, x_idx_base + 1, block[1] * cached_y)
+                        wp.atomic_add(x, mat_id, x_idx_base + 2, block[2] * cached_y)
+                        wp.atomic_add(x, mat_id, x_idx_base + 3, block[3] * cached_y)
+                        wp.atomic_add(x, mat_id, x_idx_base + 4, block[4] * cached_y)
+                        wp.atomic_add(x, mat_id, x_idx_base + 5, block[5] * cached_y)
+                    else:
+                        for i in range(n_block_cols):
+                            wp.atomic_add(x, mat_id, x_idx_base + i, block[i] * cached_y)
         else:
             for local_idx in range(bpt):
                 block_idx = first_block + local_idx
@@ -698,8 +714,16 @@ def _make_block_sparse_transpose_gemv_kernel(block_type: BlockDType, blocks_per_
                     if row_idx != last_row_idx:
                         cached_y = y[row_idx]
                         last_row_idx = row_idx
-                    for i in range(n_block_cols):
-                        wp.atomic_add(x, x_idx_base + i, alpha * block[i] * cached_y)
+                    if wp.static(n_block_cols == 6):
+                        wp.atomic_add(x, x_idx_base + 0, alpha * block[0] * cached_y)
+                        wp.atomic_add(x, x_idx_base + 1, alpha * block[1] * cached_y)
+                        wp.atomic_add(x, x_idx_base + 2, alpha * block[2] * cached_y)
+                        wp.atomic_add(x, x_idx_base + 3, alpha * block[3] * cached_y)
+                        wp.atomic_add(x, x_idx_base + 4, alpha * block[4] * cached_y)
+                        wp.atomic_add(x, x_idx_base + 5, alpha * block[5] * cached_y)
+                    else:
+                        for i in range(n_block_cols):
+                            wp.atomic_add(x, x_idx_base + i, alpha * block[i] * cached_y)
         else:
             for local_idx in range(bpt):
                 block_idx = first_block + local_idx
@@ -771,8 +795,16 @@ def _make_block_sparse_transpose_gemv_kernel_2d(block_type: BlockDType, blocks_p
                     if row_idx != last_row_idx:
                         cached_y = y[mat_id, row_idx]
                         last_row_idx = row_idx
-                    for i in range(n_block_cols):
-                        wp.atomic_add(x, mat_id, x_idx_base + i, alpha * block[i] * cached_y)
+                    if wp.static(n_block_cols == 6):
+                        wp.atomic_add(x, mat_id, x_idx_base + 0, alpha * block[0] * cached_y)
+                        wp.atomic_add(x, mat_id, x_idx_base + 1, alpha * block[1] * cached_y)
+                        wp.atomic_add(x, mat_id, x_idx_base + 2, alpha * block[2] * cached_y)
+                        wp.atomic_add(x, mat_id, x_idx_base + 3, alpha * block[3] * cached_y)
+                        wp.atomic_add(x, mat_id, x_idx_base + 4, alpha * block[4] * cached_y)
+                        wp.atomic_add(x, mat_id, x_idx_base + 5, alpha * block[5] * cached_y)
+                    else:
+                        for i in range(n_block_cols):
+                            wp.atomic_add(x, mat_id, x_idx_base + i, alpha * block[i] * cached_y)
         else:
             for local_idx in range(bpt):
                 block_idx = first_block + local_idx
@@ -1198,7 +1230,7 @@ def block_sparse_transpose_matvec(
         matrix_mask (wp.array): Mask vector to skip matrices set to `0` in the mask.
     """
     blocks_per_thread = _get_blocks_per_thread(
-        blocks_per_thread, env_var="NEWTON_KAMINO_BPT_TRANSPOSE", default_value=12
+        blocks_per_thread, env_var="NEWTON_KAMINO_BPT_TRANSPOSE_GEMV", default_value=8
     )
     launch_blocks = (A.max_of_num_nzb + blocks_per_thread - 1) // blocks_per_thread
     x.zero_()

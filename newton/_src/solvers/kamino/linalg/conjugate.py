@@ -482,7 +482,9 @@ class ConjugateSolver:
         self.callback = callback
         self.use_cuda_graph = use_cuda_graph
 
-        self.dot_tile_size = min(2048, 2 ** math.ceil(math.log(self.maxdims, 2)))
+        dot_tile_size_cap = max(1, int(os.getenv("NEWTON_KAMINO_DOT_TILE_SIZE_CAP", "2048")))
+        self.dot_tile_size = min(dot_tile_size_cap, 2 ** math.ceil(math.log(self.maxdims, 2)))
+        self.dot_block_dim = max(1, int(os.getenv("NEWTON_KAMINO_DOT_BLOCK_DIM", "64")))
         self.tiled_dot_kernel = make_dot_kernel(self.dot_tile_size, self.maxdims)
         self._allocate()
 
@@ -514,7 +516,7 @@ class ConjugateSolver:
         self.termination_kernel = make_termination_kernel(self.n_worlds)
 
     def compute_dot(self, a, b, active_dims, world_active, col_offset=0):
-        block_dim = 128
+        block_dim = self.dot_block_dim
         if a.ndim == 2:
             a = a.reshape((1, *a.shape))
             b = b.reshape((1, *b.shape))

@@ -26,10 +26,9 @@ import warp as wp
 from ....core.types import override
 from ..core.control import Control as ControlKamino
 from ..core.math import (
-    quat_box_plus,
+    compute_body_pose_update_with_logmap,
+    compute_maximal_coordinate_body_velocity_update,
     screw,
-    screw_angular,
-    screw_linear,
 )
 from ..core.model import Model as ModelKamino
 from ..core.model import ModelData as DataKamino
@@ -52,12 +51,14 @@ from .integrator import IntegratorBase
 # Module interface
 ###
 
+
 __all__ = ["IntegratorEuler"]
 
 
 ###
 # Module configs
 ###
+
 
 wp.set_module_options({"enable_backward": False})
 
@@ -78,33 +79,31 @@ def euler_semi_implicit_with_logmap(
     p_i: transformf,
     u_i: vec6f,
     w_i: vec6f,
-):
-    # Extract linear and angular parts
-    r_i = wp.transform_get_translation(p_i)
-    q_i = wp.transform_get_rotation(p_i)
-    v_i = screw_linear(u_i)
-    omega_i = screw_angular(u_i)
-    S_i = wp.skew(omega_i)
-    f_i = screw_linear(w_i)
-    tau_i = screw_angular(w_i)
-
-    # Compute velocity update equations
-    v_i_n = v_i + dt * (g + inv_m_i * f_i)
-    omega_i_n = omega_i + dt * inv_I_i @ (-S_i @ (I_i @ omega_i) + tau_i)
+) -> tuple[transformf, vec6f]:
+    # Integrate the body twist using the maximal coordinate forward dynamics equations
+    v_i_n, omega_i_n = compute_maximal_coordinate_body_velocity_update(
+        dt=dt,
+        g=g,
+        inv_m_i=inv_m_i,
+        I_i=I_i,
+        inv_I_i=inv_I_i,
+        u_i=u_i,
+        w_i=w_i,
+    )
 
     # Apply damping to angular velocity
     omega_i_n *= 1.0 - alpha * dt
 
-    # Compute configuration update equations
-    r_i_n = r_i + dt * v_i_n
-    q_i_n = quat_box_plus(q_i, dt * omega_i_n)
-
-    # Compute the new pose and twist
-    p_i_n = wp.transformation(r_i_n, q_i_n)
-    u_i_n = screw(v_i_n, omega_i_n)
+    # Integrate the body pose using the updated twist
+    p_i_n = compute_body_pose_update_with_logmap(
+        dt=dt,
+        p_i=p_i,
+        v_i=v_i_n,
+        omega_i=omega_i_n,
+    )
 
     # Return the new pose and twist
-    return p_i_n, u_i_n
+    return p_i_n, screw(v_i_n, omega_i_n)
 
 
 ###

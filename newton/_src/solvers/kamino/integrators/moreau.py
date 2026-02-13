@@ -27,7 +27,9 @@ import warp as wp
 from ....core.types import override
 from ..core.control import Control as ControlKamino
 from ..core.math import (
-    quat_box_plus,
+    compute_body_pose_update_with_logmap,
+    compute_maximal_coordinate_body_velocity_update,
+    screw,
     screw_angular,
     screw_linear,
 )
@@ -46,12 +48,12 @@ from ..core.types import (
 from ..geometry.contacts import Contacts as ContactsKamino
 from ..geometry.detector import CollisionDetector
 from ..kinematics.limits import Limits as LimitsKamino
-from .euler import euler_semi_implicit_with_logmap
 from .integrator import IntegratorBase
 
 ###
 # Module interface
 ###
+
 
 __all__ = ["IntegratorMoreauJean"]
 
@@ -60,7 +62,51 @@ __all__ = ["IntegratorMoreauJean"]
 # Module configs
 ###
 
+
 wp.set_module_options({"enable_backward": False})
+
+
+###
+# Functions
+###
+
+
+@wp.func
+def moreau_jean_semi_implicit_with_logmap(
+    alpha: float32,
+    dt: float32,
+    g: vec3f,
+    inv_m_i: float32,
+    I_i: mat33f,
+    inv_I_i: mat33f,
+    p_i: transformf,
+    u_i: vec6f,
+    w_i: vec6f,
+) -> tuple[transformf, vec6f]:
+    # Integrate the body twist using the maximal coordinate forward dynamics equations
+    v_i_n, omega_i_n = compute_maximal_coordinate_body_velocity_update(
+        dt=dt,
+        g=g,
+        inv_m_i=inv_m_i,
+        I_i=I_i,
+        inv_I_i=inv_I_i,
+        u_i=u_i,
+        w_i=w_i,
+    )
+
+    # Apply damping to angular velocity
+    omega_i_n *= 1.0 - alpha * dt
+
+    # Integrate the body pose using the updated twist
+    p_i_n = compute_body_pose_update_with_logmap(
+        dt=0.5 * dt,
+        p_i=p_i,
+        v_i=v_i_n,
+        omega_i=omega_i_n,
+    )
+
+    # Return the new pose and twist
+    return p_i_n, screw(v_i_n, omega_i_n)
 
 
 ###
@@ -84,25 +130,22 @@ def _integrate_moreau_jean_first_inplace(
     wid = model_bodies_wid[tid]
 
     # Retrieve the time step and gravity vector
-    half_dt = 0.5 * model_dt[wid]
+    dt = model_dt[wid]
 
     # Retrieve the current state of the body
-    p_i = bodies_q[tid]
+    q_i = bodies_q[tid]
     u_i = bodies_u[tid]
 
-    # Extract linear and angular parts
-    r_i = wp.transform_get_translation(p_i)
-    q_i = wp.transform_get_rotation(p_i)
-    v_i = screw_linear(u_i)
-    omega_i = screw_angular(u_i)
-
-    # Compute configuration-level update
-    r_i_n = r_i + half_dt * v_i
-    q_i_n = quat_box_plus(q_i, half_dt * omega_i)
-    p_i_n = wp.transformf(r_i_n, q_i_n)
+    # Integrate the body pose using the updated twist
+    q_i_m = compute_body_pose_update_with_logmap(
+        dt=0.5 * dt,
+        p_i=q_i,
+        v_i=screw_linear(u_i),
+        omega_i=screw_angular(u_i),
+    )
 
     # Store the computed next pose and twist
-    bodies_q[tid] = p_i_n
+    bodies_q[tid] = q_i_m
 
 
 @wp.kernel
@@ -137,19 +180,19 @@ def _integrate_moreau_jean_second_inplace(
     inv_I_i = model_bodies_inv_I[tid]
 
     # Retrieve the current state of the body
-    q_i = state_bodies_q[tid]
+    q_i_m = state_bodies_q[tid]
     u_i = state_bodies_u[tid]
     w_i = state_bodies_w[tid]
 
     # Compute the next pose and twist
-    q_i_n, u_i_n = euler_semi_implicit_with_logmap(
+    q_i_n, u_i_n = moreau_jean_semi_implicit_with_logmap(
         alpha,
-        0.5 * dt,
+        dt,
         g,
         inv_m_i,
         I_i,
         inv_I_i,
-        q_i,
+        q_i_m,
         u_i,
         w_i,
     )
@@ -185,7 +228,7 @@ class IntegratorMoreauJean(IntegratorBase):
 
     These steps can be summarized by the following equations:
     ```
-    1: q_m = q_i + 1/2 * dt * G(q_i) * u_p
+    1: q_m = q_p + 1/2 * dt * G(q_p) * u_p
     2: lambdas = f_fd(q_m, u_p, tau_j)
     3: u_n = u_p + M(q_m)^{-1} * ( dt * h(q_m, u_p) + dt * J_a(q_m)^T * tau_j + J_c(q_m)^T * lambdas )
     4: q_n = q_m + 1/2 * dt * G(q_m) @ u_n

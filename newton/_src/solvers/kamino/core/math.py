@@ -836,7 +836,7 @@ def expand6d(X: mat33f) -> mat66f:
 
 
 @wp.func
-def compute_maximal_coordinate_body_velocity_update(
+def compute_body_twist_update_with_eom(
     dt: float32,
     g: vec3f,
     inv_m_i: float32,

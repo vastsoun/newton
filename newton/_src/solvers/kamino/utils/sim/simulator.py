@@ -422,13 +422,11 @@ class Simulator:
         # Cache the current state as the previous state for the next step
         self._data.cache_state()
 
-        # Perform collision detection
-        self._collision_detector.collide(self._model, self._solver.data)
-
         # Step the physics solver
         self._solver.step(
             state_in=self._data.state_p,
             state_out=self._data.state_n,
             control=self._data.control,
             contacts=self._contacts,
+            detector=self._collision_detector,
         )

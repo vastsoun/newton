@@ -28,7 +28,7 @@ from ....core.types import override
 from ..core.control import Control as ControlKamino
 from ..core.math import (
     compute_body_pose_update_with_logmap,
-    compute_maximal_coordinate_body_velocity_update,
+    compute_body_twist_update_with_eom,
     screw,
     screw_angular,
     screw_linear,
@@ -84,7 +84,7 @@ def moreau_jean_semi_implicit_with_logmap(
     w_i: vec6f,
 ) -> tuple[transformf, vec6f]:
     # Integrate the body twist using the maximal coordinate forward dynamics equations
-    v_i_n, omega_i_n = compute_maximal_coordinate_body_velocity_update(
+    v_i_n, omega_i_n = compute_body_twist_update_with_eom(
         dt=dt,
         g=g,
         inv_m_i=inv_m_i,
@@ -316,11 +316,6 @@ class IntegratorMoreauJean(IntegratorBase):
         # q_M = q_i + 1/2 * dt * G(q_i) * u_i
         self._integrate1(model=model, data=data)
 
-        # If a collision detector is provided, use it to generate
-        # the set of active contacts at the current state
-        if detector:
-            detector.collide(model=model, data=data, contacts=contacts)
-
         # Solve the forward dynamics sub-problem to compute the
         # constraint reactions at the mid-point of the step
         forward(
@@ -329,6 +324,7 @@ class IntegratorMoreauJean(IntegratorBase):
             control=control,
             limits=limits,
             contacts=contacts,
+            detector=detector,
         )
 
         # Take the second semi-step until the end of the step

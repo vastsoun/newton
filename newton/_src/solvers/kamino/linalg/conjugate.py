@@ -380,7 +380,6 @@ def make_dot_kernel(tile_size: int, maxdim: int):
     return dot
 
 
-
 @wp.kernel
 def _initialize_tolerance_kernel(
     rtol: wp.array(dtype=Any), atol: wp.array(dtype=Any), b_norm_sq: wp.array(dtype=Any), atol_sq: wp.array(dtype=Any)
@@ -533,6 +532,7 @@ class CGSolver(ConjugateSolver):
         else:
             self.rz_new = self.dot_product[1]
 
+
     def update_rr_rz(self, r, z, r_repeated, active_dims, world_active):
         # z = M r
         if self.Mi is None:
@@ -606,8 +606,10 @@ class CGSolver(ConjugateSolver):
     def do_iteration(self, p, Ap, rz_old, rz_new, z, x, r, r_norm_sq, active_dims, world_active):
         rz_old.assign(rz_new)
 
-        # Ap = A * p
+        # Ap = A * p (Delassus matvec - the expensive part, can't be fused)
         self.A.gemv(p, Ap, world_active, alpha=1.0, beta=0.0)
+
+        # Compute p · Ap
         self.compute_dot(p, Ap, active_dims, world_active, col_offset=1)
         p_Ap = self.dot_product[1]
 
@@ -628,7 +630,6 @@ class CGSolver(ConjugateSolver):
             outputs=[p],
             device=self.device,
         )
-
 
 class CRSolver(ConjugateSolver):
     """Conjugate Residual solver for symmetric (possibly indefinite) systems.

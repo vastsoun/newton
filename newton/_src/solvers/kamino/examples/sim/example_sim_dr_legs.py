@@ -15,6 +15,7 @@
 
 import argparse
 import os
+import time
 
 import numpy as np
 import warp as wp
@@ -23,7 +24,7 @@ from warp.context import Devicelike
 import newton
 import newton.examples
 from newton._src.solvers.kamino.core.builder import ModelBuilder
-from newton._src.solvers.kamino.examples import get_examples_output_path, run_headless
+from newton._src.solvers.kamino.examples import get_examples_output_path
 from newton._src.solvers.kamino.linalg.linear import SolverShorthand as LinearSolverShorthand
 from newton._src.solvers.kamino.models import get_examples_usd_assets_path
 from newton._src.solvers.kamino.models.builders.utils import (
@@ -319,9 +320,9 @@ class Example:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="DR Legs simulation example")
     parser.add_argument("--device", type=str, help="The compute device to use")
-    parser.add_argument("--headless", action=argparse.BooleanOptionalAction, default=False, help="Run in headless mode")
-    parser.add_argument("--num-worlds", type=int, default=1, help="Number of worlds to simulate in parallel")
-    parser.add_argument("--num-steps", type=int, default=1000, help="Number of steps for headless mode")
+    parser.add_argument("--headless", action=argparse.BooleanOptionalAction, default=True, help="Run in headless mode")
+    parser.add_argument("--num-worlds", type=int, default=512, help="Number of worlds to simulate in parallel")
+    parser.add_argument("--num-steps", type=int, default=200, help="Number of steps for headless mode")
     parser.add_argument(
         "--gravity", action=argparse.BooleanOptionalAction, default=True, help="Enables gravity in the simulation"
     )
@@ -363,7 +364,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--max-contacts-per-world",
-        default=128,
+        default=64,
         type=int,
         help="Cap per-world contact allocation to control memory usage at large world counts",
     )
@@ -374,6 +375,11 @@ if __name__ == "__main__":
         help="Avoid CUDA graph conditional nodes in iterative solvers",
     )
     args = parser.parse_args()
+
+    # Print settings used (right at start)
+    print("Settings: headless=%s num_worlds=%s num_steps=%s logging=%s warmstart_mode=%s linear_solver=%s max_contacts_per_world=%s"
+          % (args.headless, args.num_worlds, args.num_steps, args.logging, args.warmstart_mode, args.linear_solver, args.max_contacts_per_world))
+    print()
 
     # Set global numpy configurations
     np.set_printoptions(linewidth=20000, precision=6, threshold=10000, suppress=True)  # Suppress scientific notation
@@ -420,10 +426,27 @@ if __name__ == "__main__":
         async_save=args.record == "async",
     )
 
-    # Run a brute-force simulation loop if headless
+    # Run a brute-force simulation loop if headless (benchmark-friendly: simple progress, FPS, memory)
     if args.headless:
         msg.notif("Running in headless mode...")
-        run_headless(example, progress=True)
+        msg.notif(f"Running for {example.max_steps} steps...")
+        start_time = time.time()
+        last_printed_pct = -1
+        for i in range(example.max_steps):
+            example.step_once()
+            wp.synchronize()
+            pct = (i + 1) * 100 // example.max_steps
+            if pct >= 10 and pct % 10 == 0 and pct != last_printed_pct:
+                print(f"{pct}%")
+                last_printed_pct = pct
+        elapsed = time.time() - start_time
+        avg_fps = example.max_steps / elapsed if elapsed > 0 else 0.0
+        print(f"Average FPS: {avg_fps:.2f}")
+        if device.is_cuda:
+            max_mem_bytes = wp.get_mempool_used_mem_high(device)
+            max_mib = max_mem_bytes / (1024 * 1024)
+            print(f"Max mempool memory: {max_mib:.2f} MiB")
+        msg.notif("Finished headless run")
 
     # Otherwise launch using a debug viewer
     else:

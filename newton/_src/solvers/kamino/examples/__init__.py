@@ -64,11 +64,15 @@ def run_headless(example, progress: bool = True):
     """Run the simulation in headless mode for a fixed number of steps."""
     msg.notif(f"Running for {example.max_steps} steps...")
     start_time = time.time()
+    last_printed_pct = -1
     for i in range(example.max_steps):
         example.step_once()
         wp.synchronize()
         if progress:
-            print_progress_bar(i + 1, example.max_steps, start_time, prefix="Progress", suffix="")
+            pct = (i + 1) * 100 // example.max_steps
+            if pct >= 10 and pct % 10 == 0 and pct != last_printed_pct:
+                print(f"{pct}%")
+                last_printed_pct = pct
     msg.notif("Finished headless run")
 
 

@@ -1564,9 +1564,12 @@ class JointsData:
     Internal effective inverse inertia of each joint (as flat
     array), used for implicit integration of joint dynamics.
 
-    ``inv_m_j := 1 / m_j if m_j > 0 else 0.0``, computed element-wise,\n
+    ``inv_m_j := 1 / m_j``, computed element-wise,\n
     where ``m_j := a_j + dt * (b_j + k_d_j) + dt^2 * k_p_j``,
     and dt is the simulation time step.
+
+    Note that all ``inv_m_j>0``, otherwise the DoF would not be
+    part of the dynamic constraints.
 
     Shape of ``(sum(e_j),)`` and type :class:`float`,
     where ``e_j`` is the number of dynamic constraints of joint ``j``.

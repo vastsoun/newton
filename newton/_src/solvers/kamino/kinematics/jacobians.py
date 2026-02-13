@@ -30,7 +30,6 @@ from ..core.model import Model, ModelData
 from ..core.types import (
     float32,
     int32,
-    mat33f,
     mat66f,
     quatf,
     transformf,
@@ -254,7 +253,6 @@ def _build_joint_jacobians(
     model_joints_dofs_offset: wp.array(dtype=int32),
     model_joints_bid_B: wp.array(dtype=int32),
     model_joints_bid_F: wp.array(dtype=int32),
-    model_joints_X: wp.array(dtype=mat33f),
     state_joints_p: wp.array(dtype=transformf),
     state_bodies_q: wp.array(dtype=transformf),
     jacobian_cts_offsets: wp.array(dtype=int32),
@@ -276,7 +274,6 @@ def _build_joint_jacobians(
     dio = model_joints_dofs_offset[jid]
     bid_B = model_joints_bid_B[jid]
     bid_F = model_joints_bid_F[jid]
-    X_j = model_joints_X[jid]
 
     # Retrieve the number of body DoFs for corresponding world
     nbd = model_info_num_body_dofs[wid]
@@ -289,7 +286,7 @@ def _build_joint_jacobians(
     # Retrieve the pose transform of the joint
     T_j = state_joints_p[jid]
     r_j = wp.transform_get_translation(T_j)
-    R_j = wp.quat_to_matrix(wp.transform_get_rotation(T_j))
+    R_X_j = wp.quat_to_matrix(wp.transform_get_rotation(T_j))
 
     # Retrieve the pose transforms of each body
     # NOTE: If the base body is the world (bid=-1), use the identity transform (frame of the world's origin)
@@ -306,7 +303,6 @@ def _build_joint_jacobians(
     W_j_F = screw_transform_matrix_from_points(r_j, r_F_j)
 
     # Compute the effective projector to joint frame and expand to 6D
-    R_X_j = R_j @ X_j
     R_X_bar_j = expand6d(R_X_j)
 
     # Compute the extended jacobians, i.e. without the selection-matrix multiplication
@@ -508,7 +504,6 @@ def build_jacobians(
                 model.joints.dofs_offset,
                 model.joints.bid_B,
                 model.joints.bid_F,
-                model.joints.X_j,
                 data.joints.p_j,
                 data.bodies.q_i,
                 jacobian_cts_offsets,

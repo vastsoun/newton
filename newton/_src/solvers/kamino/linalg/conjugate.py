@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import functools
 import math
+import os
 from collections.abc import Callable
 from typing import Any
 
@@ -518,6 +519,7 @@ class CGSolver(ConjugateSolver):
 
     def _allocate(self):
         super()._allocate()
+        self.cg_cycle_size = max(1, int(os.getenv("NEWTON_KAMINO_CG_CYCLE_SIZE", "3")))
 
         # Temp storage
         self.r_and_z = wp.zeros((2, self.n_worlds, self.maxdims), dtype=self.scalar_type, device=self.device)
@@ -587,9 +589,14 @@ class CGSolver(ConjugateSolver):
             active_dims=active_dims,
             world_active=world_active,
         )
+        cycle_size = min(self.cg_cycle_size, self.maxiter_host)
+
+        def do_cycle():
+            for _ in range(cycle_size):
+                do_iteration()
 
         return _run_capturable_loop(
-            do_iteration,
+            do_cycle,
             r_norm_sq,
             world_active,
             self.cur_iter,
@@ -601,6 +608,7 @@ class CGSolver(ConjugateSolver):
             termination_kernel=self.termination_kernel,
             avoid_graph_conditionals=self.avoid_graph_conditionals,
             maxiter_host=self.maxiter_host,
+            cycle_size=cycle_size,
         )
 
     def do_iteration(self, p, Ap, rz_old, rz_new, z, x, r, r_norm_sq, active_dims, world_active):

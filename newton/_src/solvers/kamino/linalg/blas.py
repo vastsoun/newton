@@ -322,6 +322,7 @@ def _make_block_sparse_transpose_matvec_kernel(block_type: BlockDType, blocks_pe
             if wp.static(n_block_cols == 6):
                 col0 = int32(-1)
                 col1 = int32(-1)
+                col2 = int32(-1)
                 acc00 = block_type.dtype(0.0)
                 acc01 = block_type.dtype(0.0)
                 acc02 = block_type.dtype(0.0)
@@ -334,6 +335,12 @@ def _make_block_sparse_transpose_matvec_kernel(block_type: BlockDType, blocks_pe
                 acc13 = block_type.dtype(0.0)
                 acc14 = block_type.dtype(0.0)
                 acc15 = block_type.dtype(0.0)
+                acc20 = block_type.dtype(0.0)
+                acc21 = block_type.dtype(0.0)
+                acc22 = block_type.dtype(0.0)
+                acc23 = block_type.dtype(0.0)
+                acc24 = block_type.dtype(0.0)
+                acc25 = block_type.dtype(0.0)
 
                 for local_idx in range(bpt):
                     block_idx = first_block + local_idx
@@ -365,6 +372,15 @@ def _make_block_sparse_transpose_matvec_kernel(block_type: BlockDType, blocks_pe
                             acc13 += block[3] * cached_y
                             acc14 += block[4] * cached_y
                             acc15 += block[5] * cached_y
+                        elif x_idx_base == col2 or col2 < 0:
+                            if col2 < 0:
+                                col2 = x_idx_base
+                            acc20 += block[0] * cached_y
+                            acc21 += block[1] * cached_y
+                            acc22 += block[2] * cached_y
+                            acc23 += block[3] * cached_y
+                            acc24 += block[4] * cached_y
+                            acc25 += block[5] * cached_y
                         else:
                             wp.atomic_add(x, x_idx_base + 0, block[0] * cached_y)
                             wp.atomic_add(x, x_idx_base + 1, block[1] * cached_y)
@@ -387,6 +403,13 @@ def _make_block_sparse_transpose_matvec_kernel(block_type: BlockDType, blocks_pe
                     wp.atomic_add(x, col1 + 3, acc13)
                     wp.atomic_add(x, col1 + 4, acc14)
                     wp.atomic_add(x, col1 + 5, acc15)
+                if col2 >= 0:
+                    wp.atomic_add(x, col2 + 0, acc20)
+                    wp.atomic_add(x, col2 + 1, acc21)
+                    wp.atomic_add(x, col2 + 2, acc22)
+                    wp.atomic_add(x, col2 + 3, acc23)
+                    wp.atomic_add(x, col2 + 4, acc24)
+                    wp.atomic_add(x, col2 + 5, acc25)
             else:
                 for local_idx in range(bpt):
                     block_idx = first_block + local_idx
@@ -462,6 +485,7 @@ def _make_block_sparse_transpose_matvec_kernel_2d(block_type: BlockDType, blocks
             if wp.static(n_block_cols == 6):
                 col0 = int32(-1)
                 col1 = int32(-1)
+                col2 = int32(-1)
                 acc00 = block_type.dtype(0.0)
                 acc01 = block_type.dtype(0.0)
                 acc02 = block_type.dtype(0.0)
@@ -474,6 +498,12 @@ def _make_block_sparse_transpose_matvec_kernel_2d(block_type: BlockDType, blocks
                 acc13 = block_type.dtype(0.0)
                 acc14 = block_type.dtype(0.0)
                 acc15 = block_type.dtype(0.0)
+                acc20 = block_type.dtype(0.0)
+                acc21 = block_type.dtype(0.0)
+                acc22 = block_type.dtype(0.0)
+                acc23 = block_type.dtype(0.0)
+                acc24 = block_type.dtype(0.0)
+                acc25 = block_type.dtype(0.0)
 
                 for local_idx in range(bpt):
                     block_idx = first_block + local_idx
@@ -505,6 +535,15 @@ def _make_block_sparse_transpose_matvec_kernel_2d(block_type: BlockDType, blocks
                             acc13 += block[3] * cached_y
                             acc14 += block[4] * cached_y
                             acc15 += block[5] * cached_y
+                        elif x_idx_base == col2 or col2 < 0:
+                            if col2 < 0:
+                                col2 = x_idx_base
+                            acc20 += block[0] * cached_y
+                            acc21 += block[1] * cached_y
+                            acc22 += block[2] * cached_y
+                            acc23 += block[3] * cached_y
+                            acc24 += block[4] * cached_y
+                            acc25 += block[5] * cached_y
                         else:
                             wp.atomic_add(x, mat_id, x_idx_base + 0, block[0] * cached_y)
                             wp.atomic_add(x, mat_id, x_idx_base + 1, block[1] * cached_y)
@@ -527,6 +566,13 @@ def _make_block_sparse_transpose_matvec_kernel_2d(block_type: BlockDType, blocks
                     wp.atomic_add(x, mat_id, col1 + 3, acc13)
                     wp.atomic_add(x, mat_id, col1 + 4, acc14)
                     wp.atomic_add(x, mat_id, col1 + 5, acc15)
+                if col2 >= 0:
+                    wp.atomic_add(x, mat_id, col2 + 0, acc20)
+                    wp.atomic_add(x, mat_id, col2 + 1, acc21)
+                    wp.atomic_add(x, mat_id, col2 + 2, acc22)
+                    wp.atomic_add(x, mat_id, col2 + 3, acc23)
+                    wp.atomic_add(x, mat_id, col2 + 4, acc24)
+                    wp.atomic_add(x, mat_id, col2 + 5, acc25)
             else:
                 for local_idx in range(bpt):
                     block_idx = first_block + local_idx

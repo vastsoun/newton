@@ -72,6 +72,8 @@ Typical usage example:
     delassus.solve(b=rhs, x=solution)
 """
 
+import functools
+import os
 from typing import Any
 
 import warp as wp
@@ -435,55 +437,89 @@ def _set_and_add_matrix_diag_product(
     y[idx] = preconditioner[idx] * y[idx] + alpha * regularization[idx] * x[idx]
 
 
-@wp.kernel
-def _delassus_forward_fused_matvec(
-    # Block sparse data (J):
-    num_nzb: wp.array(dtype=int32),
-    nzb_start: wp.array(dtype=int32),
-    nzb_coords: wp.array2d(dtype=int32),
-    nzb_values: wp.array(dtype=vec6f),
-    # Vector block offsets:
-    row_start: wp.array(dtype=int32),
-    col_start: wp.array(dtype=int32),
-    # Body inverse mass:
-    bodies_offset: wp.array(dtype=int32),
-    inv_m_i: wp.array(dtype=float32),
-    inv_I_i: wp.array(dtype=mat33f),
-    # Vectors:
-    v: wp.array(dtype=float32),
-    y: wp.array(dtype=float32),
-    # Scaling:
-    alpha: float,
-    # Mask:
-    world_mask: wp.array(dtype=int32),
-):
-    """
-    Fused forward Delassus matvec: y += alpha * J @ (M^-1 @ v).
-    """
-    mat_id, block_idx = wp.tid()
-    if world_mask[mat_id] == 0 or block_idx >= num_nzb[mat_id]:
-        return
+@functools.cache
+def _make_delassus_forward_fused_matvec_kernel(blocks_per_thread: int):
+    @wp.kernel
+    def _delassus_forward_fused_matvec(
+        # Block sparse data (J):
+        num_nzb: wp.array(dtype=int32),
+        nzb_start: wp.array(dtype=int32),
+        nzb_coords: wp.array2d(dtype=int32),
+        nzb_values: wp.array(dtype=vec6f),
+        # Vector block offsets:
+        row_start: wp.array(dtype=int32),
+        col_start: wp.array(dtype=int32),
+        # Body inverse mass:
+        bodies_offset: wp.array(dtype=int32),
+        inv_m_i: wp.array(dtype=float32),
+        inv_I_i: wp.array(dtype=mat33f),
+        # Vectors:
+        v: wp.array(dtype=float32),
+        y: wp.array(dtype=float32),
+        # Scaling:
+        alpha: float,
+        # Mask:
+        world_mask: wp.array(dtype=int32),
+    ):
+        """
+        Fused forward Delassus matvec: y += alpha * J @ (M^-1 @ v).
+        Processes multiple non-zero blocks per thread and accumulates up to two
+        row contributions locally before issuing atomics.
+        """
+        mat_id, block_group = wp.tid()
+        if world_mask[mat_id] == 0:
+            return
 
-    global_block_idx = nzb_start[mat_id] + block_idx
-    block_coord = nzb_coords[global_block_idx]
-    J_block = nzb_values[global_block_idx]
+        bpt = wp.static(blocks_per_thread)
+        first_block = block_group * bpt
+        n_blocks = num_nzb[mat_id]
 
-    body_idx_local = block_coord[1] // 6
-    body_idx_global = bodies_offset[mat_id] + body_idx_local
+        row0 = int32(-1)
+        row1 = int32(-1)
+        acc0 = float32(0.0)
+        acc1 = float32(0.0)
 
-    inv_m = inv_m_i[body_idx_global]
-    inv_I = inv_I_i[body_idx_global]
+        for local_idx in range(bpt):
+            block_idx = first_block + local_idx
+            if block_idx < n_blocks:
+                global_block_idx = nzb_start[mat_id] + block_idx
+                block_coord = nzb_coords[global_block_idx]
+                J_block = nzb_values[global_block_idx]
 
-    v_base = col_start[mat_id] + block_coord[1]
-    v_lin = vec3f(v[v_base + 0], v[v_base + 1], v[v_base + 2])
-    v_ang = vec3f(v[v_base + 3], v[v_base + 4], v[v_base + 5])
-    v_lin_minv = inv_m * v_lin
-    v_ang_minv = inv_I @ v_ang
+                body_idx_local = block_coord[1] // 6
+                body_idx_global = bodies_offset[mat_id] + body_idx_local
 
-    Jv = vec3f(J_block[0], J_block[1], J_block[2])
-    Jw = vec3f(J_block[3], J_block[4], J_block[5])
-    acc = wp.dot(Jv, v_lin_minv) + wp.dot(Jw, v_ang_minv)
-    wp.atomic_add(y, row_start[mat_id] + block_coord[0], alpha * acc)
+                inv_m = inv_m_i[body_idx_global]
+                inv_I = inv_I_i[body_idx_global]
+
+                v_base = col_start[mat_id] + block_coord[1]
+                v_lin = vec3f(v[v_base + 0], v[v_base + 1], v[v_base + 2])
+                v_ang = vec3f(v[v_base + 3], v[v_base + 4], v[v_base + 5])
+                v_lin_minv = inv_m * v_lin
+                v_ang_minv = inv_I @ v_ang
+
+                Jv = vec3f(J_block[0], J_block[1], J_block[2])
+                Jw = vec3f(J_block[3], J_block[4], J_block[5])
+                contrib = alpha * (wp.dot(Jv, v_lin_minv) + wp.dot(Jw, v_ang_minv))
+                row_idx = row_start[mat_id] + block_coord[0]
+
+                if row_idx == row0 or row0 < 0:
+                    if row0 < 0:
+                        row0 = row_idx
+                    acc0 += contrib
+                elif row_idx == row1 or row1 < 0:
+                    if row1 < 0:
+                        row1 = row_idx
+                    acc1 += contrib
+                else:
+                    wp.atomic_add(y, row_idx, contrib)
+
+        if row0 >= 0:
+            wp.atomic_add(y, row0, acc0)
+        if row1 >= 0:
+            wp.atomic_add(y, row1, acc1)
+
+    return _delassus_forward_fused_matvec
 
 
 @wp.kernel
@@ -1563,9 +1599,12 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
         if self.bsm is None:
             raise RuntimeError("Jacobian must be assigned before fused forward matvec.")
 
+        blocks_per_thread = max(1, int(os.getenv("NEWTON_KAMINO_BPT_DELASSUS_FWD", "4")))
+        block_groups = (self.bsm.max_of_num_nzb + blocks_per_thread - 1) // blocks_per_thread
+
         wp.launch(
-            kernel=_delassus_forward_fused_matvec,
-            dim=(self._model.size.num_worlds, self.bsm.max_of_num_nzb),
+            kernel=_make_delassus_forward_fused_matvec_kernel(blocks_per_thread),
+            dim=(self._model.size.num_worlds, block_groups),
             inputs=[
                 self.bsm.num_nzb,
                 self.bsm.nzb_start,

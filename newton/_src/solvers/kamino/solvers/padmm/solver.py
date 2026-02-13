@@ -53,7 +53,7 @@ from .kernels import (
     make_initialize_solver_kernel,
     make_update_dual_variables_and_compute_primal_dual_residuals,
 )
-from .types import PADMMConfig, PADMMData, PADMMSettings, PADMMWarmStartMode
+from .types import PADMMConfig, PADMMData, PADMMPenaltyUpdate, PADMMSettings, PADMMWarmStartMode
 
 ###
 # Module interface
@@ -127,6 +127,7 @@ class PADMMSolver:
         self._use_acceleration: bool = False
         self._collect_info: bool = False
         self._avoid_graph_conditionals: bool = False
+        self._uses_adaptive_penalty: bool = False
 
         # Declare the model size cache
         self._size: ModelSize | None = None
@@ -238,6 +239,9 @@ class PADMMSolver:
             self._settings = self._check_settings(model, settings)
         elif len(self._settings) == 0:
             self._settings = self._check_settings(model, None)
+
+        # Check if any world uses adaptive penalty updates (requiring per-step regularization updates)
+        self._uses_adaptive_penalty = any(s.penalty_update_method != PADMMPenaltyUpdate.FIXED for s in self._settings)
 
         # Compute the largest max iterations across all worlds
         # NOTE: This is needed to allocate the solver
@@ -513,8 +517,8 @@ class PADMMSolver:
         # Compute infinity-norm of all residuals and check for convergence
         self._update_convergence_check(problem)
 
-        # Update sparse Delassus regularization
-        if problem.sparse:
+        # Update sparse Delassus regularization if penalty was updated adaptively
+        if problem.sparse and self._uses_adaptive_penalty:
             self._update_sparse_regularization(problem)
 
         # Optionally record internal solver info
@@ -552,8 +556,8 @@ class PADMMSolver:
         # Compute infinity-norm of all residuals and check for convergence
         self._update_convergence_check_accel(problem)
 
-        # Update sparse Delassus regularization
-        if problem.sparse:
+        # Update sparse Delassus regularization if penalty was updated adaptively
+        if problem.sparse and self._uses_adaptive_penalty:
             self._update_sparse_regularization(problem)
 
         # Optionally update Nesterov acceleration states from the current iteration

@@ -886,6 +886,27 @@ def _compute_complementarity_residuals(
         solver_r_c[uio_u] = wp.dot(x_c, z_c)
 
 
+@wp.func
+def _update_penalty(config: PADMMConfig, pen: PADMMPenalty, iterations: int32, r_p: float32, r_d: float32):
+    """Adaptively updates the ADMM penalty parameter based on the configured strategy.
+
+    For BALANCED mode, rho is scaled up when the primal residual dominates and
+    scaled down (to ``config.rho_min``) when the dual residual dominates, every
+    ``config.penalty_update_freq`` iterations.  For FIXED mode this is a no-op.
+    """
+    if config.penalty_update_method == int32(PADMMPenaltyUpdate.BALANCED):
+        freq = config.penalty_update_freq
+        if freq > 0 and iterations > 0 and iterations % freq == 0:
+            rho = pen.rho
+            if r_p > config.alpha * r_d:
+                rho = rho * config.tau
+            elif r_d > config.alpha * r_p:
+                rho = wp.max(rho / config.tau, config.rho_min)
+            pen.rho = rho
+            pen.num_updates += int32(1)
+    return pen
+
+
 @wp.kernel
 def _compute_infnorm_residuals_serially(
     # Inputs:
@@ -966,18 +987,7 @@ def _compute_infnorm_residuals_serially(
     # Store the updated status
     solver_status[wid] = status
 
-    if config.penalty_update_method == int32(PADMMPenaltyUpdate.BALANCED):
-        pen = solver_penalty[wid]
-        rho = pen.rho
-        freq = config.penalty_update_freq
-        if freq > 0 and status.iterations > 0 and status.iterations % freq == 0:
-            if r_p_max > config.alpha * r_d_max:
-                rho = rho * config.tau
-            elif r_d_max > config.alpha * r_p_max:
-                rho = wp.max(rho / config.tau, config.rho_min)
-            pen.rho = rho
-            pen.num_updates += int32(1)
-            solver_penalty[wid] = pen
+    solver_penalty[wid] = _update_penalty(config, solver_penalty[wid], status.iterations, r_p_max, r_d_max)
 
 
 @wp.kernel
@@ -1096,16 +1106,7 @@ def _compute_infnorm_residuals_serially_accel(
     # Store the updated status
     solver_status[wid] = status
 
-    if config.penalty_update_method == int32(PADMMPenaltyUpdate.BALANCED):
-        freq = config.penalty_update_freq
-        if freq > 0 and status.iterations > 0 and status.iterations % freq == 0:
-            if r_p_max > config.alpha * r_d_max:
-                rho = rho * config.tau
-            elif r_d_max > config.alpha * r_p_max:
-                rho = wp.max(rho / config.tau, config.rho_min)
-            pen.rho = rho
-            pen.num_updates += int32(1)
-            solver_penalty[wid] = pen
+    solver_penalty[wid] = _update_penalty(config, pen, status.iterations, r_p_max, r_d_max)
 
 
 @wp.kernel

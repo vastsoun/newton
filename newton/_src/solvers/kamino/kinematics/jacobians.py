@@ -69,9 +69,18 @@ def make_store_joint_jacobian_func(axes: Any):
     """
 
     @wp.func
+    def _store_JT_column(
+        idx: int,
+        axis: int,
+        JT: mat66f,
+        J_data: wp.array(dtype=float32),
+    ):
+        for i in range(6):
+            J_data[idx + i] = JT[i, axis]
+
+    @wp.func
     def store_joint_jacobian(
-        J_offset: int,
-        row_offset: int,
+        J_row_offset: int,
         row_size: int,
         bid_offset: int,
         bid_B: int,
@@ -84,8 +93,7 @@ def make_store_joint_jacobian_func(axes: Any):
         Stores the Jacobian blocks of a joint into the provided flat data array at the specified offset.
 
         Args:
-            J_offset (int): The offset at which the Jacobian matrix block of the corresponding world starts.
-            row_offset (int): The offset at which the first target row starts.
+            J_row_offset (int): The offset at which the Jacobian matrix block of the corresponding world starts.
             row_size (int): The number of columns in the world's Jacobian block.
             bid_offset (int): The body index offset of the world's bodies w.r.t the model.
             bid_B (int): The body index of the base body of the joint w.r.t the model.
@@ -98,24 +106,19 @@ def make_store_joint_jacobian_func(axes: Any):
         # NOTE: This is evaluated statically at compile time
         num_jac_rows = wp.static(len(axes))
 
-        # Append the row offset to the Jacobian matrix block offset
-        # NOTE: This sets the adjusts the start index to the first target row
-        J_offset += row_size * row_offset
-
-        # Store the Jacobian block for the follower body
-        J_offset_F = J_offset + 6 * (bid_F - bid_offset)
+        # Fill the data row by row
+        body_offset_F = 6 * (bid_F - bid_offset)
+        body_offset_B = 6 * (bid_B - bid_offset)
         for j in range(num_jac_rows):
-            kj = J_offset_F + row_size * j
-            for i in range(6):
-                J_data[kj + i] = JT_F_j[i, axes[j]]
+            # Store the Jacobian block for the follower body
+            _store_JT_column(J_row_offset + body_offset_F, axes[j], JT_F_j, J_data)
 
-        # If the base body is not the world (:= -1), store the respective Jacobian block
-        if bid_B > -1:
-            J_offset_B = J_offset + 6 * (bid_B - bid_offset)
-            for j in range(num_jac_rows):
-                kj = J_offset_B + row_size * j
-                for i in range(6):
-                    J_data[kj + i] = JT_B_j[i, axes[j]]
+            # If the base body is not the world (:= -1), store the respective Jacobian block
+            if bid_B > -1:
+                _store_JT_column(J_row_offset + body_offset_B, axes[j], JT_B_j, J_data)
+
+            # Increment to next Jacobian row
+            J_row_offset += row_size
 
     # Return the function
     return store_joint_jacobian
@@ -124,15 +127,14 @@ def make_store_joint_jacobian_func(axes: Any):
 @wp.func
 def store_joint_cts_jacobian(
     dof_type: int,
-    J_cts_offset: int,
-    cts_offset: int,
+    J_row_offset: int,
     num_body_dofs: int,
     bid_offset: int,
     bid_B: int,
     bid_F: int,
     JT_B: mat66f,
     JT_F: mat66f,
-    J_cts_data: wp.array(dtype=float32),
+    J_data: wp.array(dtype=float32),
 ):
     """
     Stores the constraints Jacobian block of a joint into the provided flat data array at the given offset.
@@ -140,57 +142,56 @@ def store_joint_cts_jacobian(
 
     if dof_type == JointDoFType.REVOLUTE:
         wp.static(make_store_joint_jacobian_func(JointDoFType.REVOLUTE.cts_axes))(
-            J_cts_offset, cts_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_cts_data
+            J_row_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_data
         )
 
     elif dof_type == JointDoFType.PRISMATIC:
         wp.static(make_store_joint_jacobian_func(JointDoFType.PRISMATIC.cts_axes))(
-            J_cts_offset, cts_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_cts_data
+            J_row_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_data
         )
 
     elif dof_type == JointDoFType.CYLINDRICAL:
         wp.static(make_store_joint_jacobian_func(JointDoFType.CYLINDRICAL.cts_axes))(
-            J_cts_offset, cts_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_cts_data
+            J_row_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_data
         )
 
     elif dof_type == JointDoFType.UNIVERSAL:
         wp.static(make_store_joint_jacobian_func(JointDoFType.UNIVERSAL.cts_axes))(
-            J_cts_offset, cts_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_cts_data
+            J_row_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_data
         )
 
     elif dof_type == JointDoFType.SPHERICAL:
         wp.static(make_store_joint_jacobian_func(JointDoFType.SPHERICAL.cts_axes))(
-            J_cts_offset, cts_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_cts_data
+            J_row_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_data
         )
 
     elif dof_type == JointDoFType.GIMBAL:
         wp.static(make_store_joint_jacobian_func(JointDoFType.GIMBAL.cts_axes))(
-            J_cts_offset, cts_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_cts_data
+            J_row_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_data
         )
 
     elif dof_type == JointDoFType.CARTESIAN:
         wp.static(make_store_joint_jacobian_func(JointDoFType.CARTESIAN.cts_axes))(
-            J_cts_offset, cts_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_cts_data
+            J_row_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_data
         )
 
     elif dof_type == JointDoFType.FIXED:
         wp.static(make_store_joint_jacobian_func(JointDoFType.FIXED.cts_axes))(
-            J_cts_offset, cts_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_cts_data
+            J_row_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_data
         )
 
 
 @wp.func
 def store_joint_dofs_jacobian(
     dof_type: int,
-    J_dofs_offset: int,
-    dofs_offset: int,
+    J_row_offset: int,
     num_body_dofs: int,
     bid_offset: int,
     bid_B: int,
     bid_F: int,
     JT_B: mat66f,
     JT_F: mat66f,
-    J_dofs_data: wp.array(dtype=float32),
+    J_data: wp.array(dtype=float32),
 ):
     """
     Stores the DoFs Jacobian block of a joint into the provided flat data array at the given offset.
@@ -198,42 +199,42 @@ def store_joint_dofs_jacobian(
 
     if dof_type == JointDoFType.REVOLUTE:
         wp.static(make_store_joint_jacobian_func(JointDoFType.REVOLUTE.dofs_axes))(
-            J_dofs_offset, dofs_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_dofs_data
+            J_row_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_data
         )
 
     elif dof_type == JointDoFType.PRISMATIC:
         wp.static(make_store_joint_jacobian_func(JointDoFType.PRISMATIC.dofs_axes))(
-            J_dofs_offset, dofs_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_dofs_data
+            J_row_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_data
         )
 
     elif dof_type == JointDoFType.CYLINDRICAL:
         wp.static(make_store_joint_jacobian_func(JointDoFType.CYLINDRICAL.dofs_axes))(
-            J_dofs_offset, dofs_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_dofs_data
+            J_row_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_data
         )
 
     elif dof_type == JointDoFType.UNIVERSAL:
         wp.static(make_store_joint_jacobian_func(JointDoFType.UNIVERSAL.dofs_axes))(
-            J_dofs_offset, dofs_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_dofs_data
+            J_row_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_data
         )
 
     elif dof_type == JointDoFType.SPHERICAL:
         wp.static(make_store_joint_jacobian_func(JointDoFType.SPHERICAL.dofs_axes))(
-            J_dofs_offset, dofs_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_dofs_data
+            J_row_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_data
         )
 
     elif dof_type == JointDoFType.GIMBAL:
         wp.static(make_store_joint_jacobian_func(JointDoFType.GIMBAL.dofs_axes))(
-            J_dofs_offset, dofs_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_dofs_data
+            J_row_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_data
         )
 
     elif dof_type == JointDoFType.CARTESIAN:
         wp.static(make_store_joint_jacobian_func(JointDoFType.CARTESIAN.dofs_axes))(
-            J_dofs_offset, dofs_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_dofs_data
+            J_row_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_data
         )
 
     elif dof_type == JointDoFType.FREE:
         wp.static(make_store_joint_jacobian_func(JointDoFType.FREE.dofs_axes))(
-            J_dofs_offset, dofs_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_dofs_data
+            J_row_offset, num_body_dofs, bid_offset, bid_B, bid_F, JT_B, JT_F, J_data
         )
 
 
@@ -247,9 +248,11 @@ def _build_joint_jacobians(
     # Inputs
     model_info_num_body_dofs: wp.array(dtype=int32),
     model_info_bodies_offset: wp.array(dtype=int32),
+    model_info_joint_kinematic_cts_group_offset: wp.array(dtype=int32),
     model_joints_wid: wp.array(dtype=int32),
     model_joints_dof_type: wp.array(dtype=int32),
-    model_joints_cts_offset: wp.array(dtype=int32),
+    model_joints_dynamic_cts_offset: wp.array(dtype=int32),
+    model_joints_kinematic_cts_offset: wp.array(dtype=int32),
     model_joints_dofs_offset: wp.array(dtype=int32),
     model_joints_bid_B: wp.array(dtype=int32),
     model_joints_bid_F: wp.array(dtype=int32),
@@ -270,8 +273,6 @@ def _build_joint_jacobians(
     # Retrieve the joint model data
     wid = model_joints_wid[jid]
     dof_type = model_joints_dof_type[jid]
-    cio = model_joints_cts_offset[jid]
-    dio = model_joints_dofs_offset[jid]
     bid_B = model_joints_bid_B[jid]
     bid_F = model_joints_bid_F[jid]
 
@@ -279,9 +280,15 @@ def _build_joint_jacobians(
     nbd = model_info_num_body_dofs[wid]
     bio = model_info_bodies_offset[wid]
 
-    # Retrieve the Jacobian block offset for this joint
+    # Retrieve the Jacobian block offset for this world
     cjmio = jacobian_cts_offsets[wid]
     djmio = jacobian_dofs_offsets[wid]
+
+    # Constraint Jacobian row offsets for this joint
+    dco = model_joints_dynamic_cts_offset[jid]
+    dco_row = cjmio + nbd * dco
+    kco_row = cjmio + model_info_joint_kinematic_cts_group_offset[jid] + nbd * model_joints_kinematic_cts_offset[jid]
+    dio_row = djmio + nbd * model_joints_dofs_offset[jid]
 
     # Retrieve the pose transform of the joint
     T_j = state_joints_p[jid]
@@ -309,11 +316,15 @@ def _build_joint_jacobians(
     JT_B_j = -W_j_B @ R_X_bar_j  # Reaction is on the Base body body ; (6 x 6)
     JT_F_j = W_j_F @ R_X_bar_j  # Action is on the Follower body    ; (6 x 6)
 
-    # Store the constraint Jacobian block
-    store_joint_cts_jacobian(dof_type, cjmio, cio, nbd, bio, bid_B, bid_F, JT_B_j, JT_F_j, jacobian_cts_data)
+    # Store joint dynamic constraint jacobians if applicable
+    if dco >= 0:  # Negative dynamic constraint offset means the joint is not implicit
+        store_joint_dofs_jacobian(dof_type, dco_row, nbd, bio, bid_B, bid_F, JT_B_j, JT_F_j, jacobian_cts_data)
+
+    # Store joint kinematic constraint jacobians
+    store_joint_cts_jacobian(dof_type, kco_row, nbd, bio, bid_B, bid_F, JT_B_j, JT_F_j, jacobian_cts_data)
 
     # Store the actuation Jacobian block if the joint is actuated
-    store_joint_dofs_jacobian(dof_type, djmio, dio, nbd, bio, bid_B, bid_F, JT_B_j, JT_F_j, jacobian_dofs_data)
+    store_joint_dofs_jacobian(dof_type, dio_row, nbd, bio, bid_B, bid_F, JT_B_j, JT_F_j, jacobian_dofs_data)
 
 
 @wp.kernel
@@ -498,9 +509,11 @@ def build_jacobians(
                 # Inputs:
                 model.info.num_body_dofs,
                 model.info.bodies_offset,
+                model.info.joint_kinematic_cts_group_offset,
                 model.joints.wid,
                 model.joints.dof_type,
-                model.joints.cts_offset,
+                model.joints.dynamic_cts_offset,
+                model.joints.kinematic_cts_offset,
                 model.joints.dofs_offset,
                 model.joints.bid_B,
                 model.joints.bid_F,
@@ -588,7 +601,7 @@ class DenseSystemJacobiansData:
 
         self.J_cts_data: wp.array(dtype=float32) | None = None
         """
-        A flat array containing the joint constraint Jacobian matrix data of all worlds.\n
+        A flat array containing the constraint Jacobian matrix data of all worlds.\n
         Shape of ``(sum(ncts_w * nbd_w),)`` and type :class:`float32`.
         """
 

@@ -129,7 +129,7 @@ def _integrate_moreau_jean_first_inplace(
     # Retrieve the world index
     wid = model_bodies_wid[tid]
 
-    # Retrieve the time step and gravity vector
+    # Retrieve the configured time-step of the corresponding world
     dt = model_dt[wid]
 
     # Retrieve the current state of the body
@@ -169,7 +169,8 @@ def _integrate_moreau_jean_second_inplace(
     # Retrieve the world index
     wid = model_bodies_wid[tid]
 
-    # Retrieve the time step and gravity vector
+    # Retrieve the configured time-step and the
+    # gravity vector of the corresponding world
     dt = model_dt[wid]
     gv = model_gravity[wid]
     g = gv.w * vec3f(gv.x, gv.y, gv.z)

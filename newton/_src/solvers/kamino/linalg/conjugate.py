@@ -198,30 +198,6 @@ def _cg_kernel_1(
 
 
 @wp.kernel
-def _cg_kernel_1_fused_rnorm(
-    tol: wp.array(dtype=Any),
-    resid: wp.array(dtype=Any),
-    rz_old: wp.array(dtype=Any),
-    p_Ap: wp.array(dtype=Any),
-    p: wp.array2d(dtype=Any),
-    Ap: wp.array2d(dtype=Any),
-    x: wp.array2d(dtype=Any),
-    r: wp.array2d(dtype=Any),
-    active_dims: wp.array(dtype=wp.int32),
-    world_active: wp.array(dtype=wp.int32),
-    r_norm_sq: wp.array(dtype=Any),
-):
-    e, i = wp.tid()
-
-    alpha = wp.where(resid[e] > tol[e] and p_Ap[e] > 0.0, rz_old[e] / p_Ap[e], rz_old.dtype(0.0))
-    x[e, i] = x[e, i] + alpha * p[e, i]
-    r_new = r[e, i] - alpha * Ap[e, i]
-    r[e, i] = r_new
-    if world_active[e] != 0 and i < active_dims[e]:
-        wp.atomic_add(r_norm_sq, e, r_new * r_new)
-
-
-@wp.kernel
 def _cg_kernel_2(
     tol: wp.array(dtype=Any),
     resid_new: wp.array(dtype=Any),
@@ -402,6 +378,7 @@ def make_dot_kernel(tile_size: int, maxdim: int):
         wp.tile_store(result[col], wp.tile_sum(ts), offset=world)
 
     return dot
+
 
 
 @wp.kernel

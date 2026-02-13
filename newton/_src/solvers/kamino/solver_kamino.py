@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 import warp as wp
 from warp.context import Devicelike
@@ -45,7 +45,8 @@ from .dynamics.wrenches import (
     compute_joint_dof_body_wrenches,
 )
 from .geometry.contacts import Contacts
-from .integrators.euler import integrate_euler_semi_implicit
+from .geometry.detector import CollisionDetector
+from .integrators import IntegratorEuler, IntegratorMoreauJean
 from .kinematics.constraints import (
     make_unilateral_constraints_info,
     unpack_constraint_solutions,
@@ -81,6 +82,13 @@ from .solvers.warmstart import WarmstarterContacts, WarmstarterLimits
 class SolverKaminoSettings:
     """
     A container to hold configurations for :class:`SolverKamino`.
+    """
+
+    integrator: Literal["euler", "moreau"] | None = "euler"
+    """
+    The time-integrator to use for state integration.\n
+    See available options in the `integrators` module.\n
+    Defaults to `"euler"`.
     """
 
     problem: DualProblemSettings = field(default_factory=DualProblemSettings)
@@ -151,6 +159,13 @@ class SolverKaminoSettings:
     The rotation correction mode to use for rotational DoFs.\n
     See :class:`JointCorrectionMode` for available options.\n
     Defaults to `JointCorrectionMode.TWOPI`.
+    """
+
+    angular_velocity_damping: float = 0.0
+    """
+    A damping factor applied to the angular velocity of bodies during state integration.\n
+    This can help stabilize simulations with large time steps or high angular velocities.\n
+    Defaults to `0.0` (i.e. no damping).
     """
 
     def check(self) -> None:
@@ -318,6 +333,16 @@ class SolverKamino(SolverBase):
 
         # Allocate the forward kinematics solver on the device
         self._solver_fk = ForwardKinematicsSolver(model=self._model, settings=self._settings.fk)
+
+        # Create the time-integrator instance based on the settings
+        if self._settings.integrator == "euler":
+            self._integrator = IntegratorEuler(model=self._model)
+        elif self._settings.integrator == "moreau":
+            self._integrator = IntegratorMoreauJean(model=self._model)
+        else:
+            raise ValueError(
+                f"Unsupported integrator type: Expected 'euler' or 'moreau', but got {self._settings.integrator}."
+            )
 
         # Allocate additional internal data for reset operations
         with wp.ScopedDevice(self._model.device):
@@ -589,6 +614,7 @@ class SolverKamino(SolverBase):
         state_out: State,
         control: Control,
         contacts: Contacts | None = None,
+        detector: CollisionDetector | None = None,
         dt: float | None = None,
     ):
         """
@@ -605,6 +631,9 @@ class SolverKamino(SolverBase):
                 The input controls applied to the system.
             contacts (Contacts, optional):
                 The set of active contacts.
+            detector (CollisionDetector, optional):
+                An optional collision detector to use for generating contacts at the current state.\n
+                If `None`, the `contacts` data will be used as the current set of active contacts.
             dt (float, optional):
                 A uniform time-step to apply uniformly to all worlds of the simulation.
         """
@@ -615,32 +644,25 @@ class SolverKamino(SolverBase):
         # Copy the new input state and control to the internal solver data
         self._read_step_inputs(state_in=state_in, control_in=control)
 
-        # Update intermediate quantities of the bodies and joints
-        self._update_intermediates(state_in=state_in)
+        # Execute state integration:
+        #  - Optionally calls limit and contact detection to generate unilateral constraints
+        #  - Solves the forward dynamics sub-problem to compute constraint reactions
+        #  - Integrates the state forward in time
+        self._integrator.integrate(
+            forward=self._solve_forward_dynamics,
+            model=self._model,
+            data=self._data,
+            state_in=state_in,
+            state_out=state_out,
+            control=control,
+            limits=self._limits,
+            contacts=contacts,
+            detector=detector,
+        )
 
-        # Run limit detection to generate active joint limits
-        self._update_limits()
-
-        # Update the constraint state info
-        self._update_constraint_info()
-
-        # Update the differential forward kinematics to compute system Jacobians
-        self._update_jacobians(contacts=contacts)
-
-        # Compute the body actuation wrenches based on the current control inputs
-        self._update_actuation_wrenches()
-
-        # Run the pre-step callback if it has been set
-        self._run_prestep_callback(state_in, state_out, control, contacts)
-
-        # Solve the forward dynamics sub-problem to compute constraint reactions and body wrenches
-        self._forward(contacts=contacts)
-
-        # Run the mid-step callback if it has been set
-        self._run_midstep_callback(state_in, state_out, control, contacts)
-
-        # Solve the time integration sub-problem to compute the next state of the system
-        self._integrate()
+        # Update the internal joint states from the
+        # updated body states after time-integration
+        self._update_joints_data()
 
         # Compute solver solution metrics if enabled
         self._compute_metrics(state_in=state_in, contacts=contacts)
@@ -924,16 +946,24 @@ class SolverKamino(SolverBase):
     # Internals - Step Operations
     ###
 
-    def _update_joints_data(self, q_j_p: wp.array):
+    def _update_joints_data(self, q_j_p: wp.array | None = None):
         """
         Updates the joint states based on the current body states.
         """
+        # Use the provided previous joint states if given,
+        # otherwise use the internal cached joint states
+        if q_j_p is not None:
+            _q_j_p = q_j_p
+        else:
+            wp.copy(self._data.joints.q_j_p, self._data.joints.q_j)
+            _q_j_p = self._data.joints.q_j_p
+
         # Update the joint states based on the updated body states
         # NOTE: We use the previous state `state_p` for post-processing
         # purposes, e.g. account for roll-over of revolute joints etc
         compute_joints_data(
             model=self._model,
-            q_j_ref=q_j_p,
+            q_j_ref=_q_j_p,
             data=self._data,
             correction=self._settings.rotation_correction,
         )
@@ -1066,16 +1096,56 @@ class SolverKamino(SolverBase):
         # Post-processing
         self._update_wrenches()
 
-    def _integrate(self):
+    def _solve_forward_dynamics(
+        self,
+        state_in: State,
+        state_out: State,
+        control: Control,
+        limits: Limits | None = None,  # TODO: Fix this interface
+        contacts: Contacts | None = None,
+        detector: CollisionDetector | None = None,
+    ):
         """
-        Solves the time integration sub-problem to compute the next state of the system.
+        TODO
         """
-        # Integrate the state of the system (i.e. of the bodies) to compute the next state
-        integrate_euler_semi_implicit(model=self._model, data=self._data)
+        # Update intermediate quantities of the bodies and joints
+        # NOTE: We update the intermediate joint and body data here
+        # to ensure that they consistent with the current state.
+        # This is to handle cases when the forward dynamics may be
+        # evaluated at intermediate points of the discrete time-step
+        # (and potentially multiple times). The intermediate data is
+        # then used to perform limit and contact detection, as well
+        # as to evaluate kinematics and dynamics quantities such as
+        # the system Jacobians and generalized mass matrix.
+        self._update_intermediates(state_in=state_in)
 
-        # Update the internal joint states based on the current and next body states
-        wp.copy(self._data.joints.q_j_p, self._data.joints.q_j)
-        self._update_joints_data(q_j_p=self._data.joints.q_j_p)
+        # If a collision detector is provided, use it to generate
+        # update the set of active contacts at the current state
+        if detector is not None:
+            detector.collide(model=self._model, data=self._data, contacts=contacts)
+
+        # If a limits container/detector is provided, run joint-limit
+        # detection to generate active joint limits at the current state
+        if limits is not None:
+            limits.detect(self._model, self._data)
+
+        # Update the constraint state info
+        self._update_constraint_info()
+
+        # Update the differential forward kinematics to compute system Jacobians
+        self._update_jacobians(contacts=contacts)
+
+        # Compute the body actuation wrenches based on the current control inputs
+        self._update_actuation_wrenches()
+
+        # Run the pre-step callback if it has been set
+        self._run_prestep_callback(state_in, state_out, control, contacts)
+
+        # Solve the forward dynamics sub-problem to compute constraint reactions and body wrenches
+        self._forward(contacts=contacts)
+
+        # Run the mid-step callback if it has been set
+        self._run_midstep_callback(state_in, state_out, control, contacts)
 
     def _compute_metrics(self, state_in: State, contacts: Contacts | None = None):
         """

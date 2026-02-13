@@ -53,8 +53,10 @@ class Example:
         gravity: bool = True,
         ground: bool = True,
         logging: bool = False,
-        linear_solver: str = "LLTB",
+        warmstart_mode: str = "NONE",
+        linear_solver: str = "CG",
         linear_solver_maxiter: int = 0,
+        max_contacts_per_world: int = 128,
         avoid_graph_conditionals: bool = False,
         headless: bool = False,
         record_video: bool = False,
@@ -76,7 +78,7 @@ class Example:
         EXAMPLE_ASSETS_PATH = get_examples_usd_assets_path()
         if EXAMPLE_ASSETS_PATH is None:
             raise FileNotFoundError("Failed to find USD assets path for examples: ensure `newton-assets` is installed.")
-        USD_MODEL_PATH = os.path.join(EXAMPLE_ASSETS_PATH, "dr_legs/usd/dr_legs_with_meshes_and_boxes.usda")
+        USD_MODEL_PATH = os.path.join(EXAMPLE_ASSETS_PATH, "dr_legs/usd/dr_legs_with_boxes.usda")
 
         # Create a model builder from the imported USD
         msg.notif("Constructing builder from imported USD ...")
@@ -112,13 +114,15 @@ class Example:
         settings.solver.padmm.eta = 1e-5
         settings.solver.padmm.rho_0 = 0.05
         settings.solver.use_solver_acceleration = True
-        settings.solver.warmstart_mode = PADMMWarmStartMode.CONTAINERS
+        settings.solver.warmstart_mode = PADMMWarmStartMode[warmstart_mode.upper()]
         settings.solver.contact_warmstart_method = WarmstarterContacts.Method.GEOM_PAIR_NET_FORCE
         settings.solver.collect_solver_info = False
         settings.solver.compute_metrics = logging and not use_cuda_graph
         linear_solver_cls = {v: k for k, v in LinearSolverShorthand.items()}[linear_solver.upper()]
         settings.solver.linear_solver_type = linear_solver_cls
         settings.solver.linear_solver_kwargs = {"maxiter": linear_solver_maxiter} if linear_solver_maxiter > 0 else {}
+        # Cap contact allocations to avoid quadratic capacity growth with many worlds/geometries.
+        settings.collision_detector.max_contacts_per_world = max_contacts_per_world
         settings.solver.avoid_graph_conditionals = avoid_graph_conditionals
 
         # Create a simulator
@@ -327,7 +331,14 @@ if __name__ == "__main__":
     parser.add_argument("--cuda-graph", action=argparse.BooleanOptionalAction, default=True, help="Use CUDA graphs")
     parser.add_argument("--clear-cache", action=argparse.BooleanOptionalAction, default=False, help="Clear warp cache")
     parser.add_argument(
-        "--logging", action=argparse.BooleanOptionalAction, default=True, help="Enable logging of simulation data"
+        "--logging", action=argparse.BooleanOptionalAction, default=False, help="Enable logging of simulation data"
+    )
+    parser.add_argument(
+        "--warmstart-mode",
+        default="NONE",
+        choices=["NONE", "INTERNAL", "CONTAINERS"],
+        type=str.upper,
+        help="Warmstart mode for PADMM solver",
     )
     parser.add_argument(
         "--show-plots", action=argparse.BooleanOptionalAction, default=False, help="Show plots of logging data"
@@ -342,13 +353,19 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--linear-solver",
-        default="LLTB",
+        default="CG",
         choices=LinearSolverShorthand.values(),
         type=str.upper,
         help="Linear solver to use",
     )
     parser.add_argument(
         "--linear-solver-maxiter", default=0, type=int, help="Max number of iterations for iterative linear solvers"
+    )
+    parser.add_argument(
+        "--max-contacts-per-world",
+        default=128,
+        type=int,
+        help="Cap per-world contact allocation to control memory usage at large world counts",
     )
     parser.add_argument(
         "--avoid-graph-conditionals",
@@ -389,8 +406,10 @@ if __name__ == "__main__":
         device=device,
         use_cuda_graph=use_cuda_graph,
         num_worlds=args.num_worlds,
+        warmstart_mode=args.warmstart_mode,
         linear_solver=args.linear_solver,
         linear_solver_maxiter=args.linear_solver_maxiter,
+        max_contacts_per_world=args.max_contacts_per_world,
         avoid_graph_conditionals=args.avoid_graph_conditionals,
         max_steps=args.num_steps,
         gravity=args.gravity,

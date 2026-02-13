@@ -27,10 +27,7 @@ from ..core.joints import JointActuationType, JointCorrectionMode, JointDoFType
 from ..core.math import (
     FLOAT32_MAX,
     TWO_PI,
-    quat_apply,
-    quat_conj,
     quat_log,
-    quat_product,
     quat_to_euler_xyz,
     quat_to_vec4,
     quat_twist_angle,
@@ -637,10 +634,13 @@ def compute_joint_pose_and_relative_motion(
         tuple[transformf, vec6f, vec6f]: The absolute pose of the joint frame in world coordinates,
         and two 6D vectors encoding the relative motion of the bodies in the frame of the joint.
     """
+
+    # Joint frame as quaternion
+    q_X_j = wp.quat_from_matrix(X_j)
+
     # Extract the decomposed state of the Base body
     r_B_j = wp.transform_get_translation(T_B_j)
     q_B_j = wp.transform_get_rotation(T_B_j)
-    R_B_j = wp.quat_to_matrix(q_B_j)
     v_B_j = screw_linear(u_B_j)
     omega_B_j = screw_angular(u_B_j)
 
@@ -650,27 +650,25 @@ def compute_joint_pose_and_relative_motion(
     v_F_j = screw_linear(u_F_j)
     omega_F_j = screw_angular(u_F_j)
 
-    # Compute the pose of the joint frame via the Base body
-    r_j_B = r_B_j + R_B_j @ B_r_Bj
-    p_j = wp.transformation(r_j_B, q_B_j, dtype=float32)
+    # Local joint frame quantities
+    r_Bj = wp.quat_rotate(q_B_j, B_r_Bj)
+    q_Bj = q_B_j * q_X_j
+    r_Fj = wp.quat_rotate(q_F_j, F_r_Fj)
+    q_Fj = q_F_j * q_X_j
 
-    # Pre-compute transforms to joint-space
-    X_j_T = wp.transpose(X_j)
-    X_j_T_R_B_j_T = X_j_T @ wp.transpose(R_B_j)
-    q_X_j_T = wp.quat_from_matrix(X_j_T)
+    # Compute the pose of the joint frame via the Base body
+    r_j_B = r_B_j + r_Bj
+    p_j = wp.transformation(r_j_B, q_Bj, dtype=float32)
 
     # Compute the relative pose between the representations of joint frame w.r.t. the two bodies
     # NOTE: The pose is decomposed into a translation vector `j_r_j` and a rotation quaternion `j_q_j`
-    q_B_j_conj = quat_conj(q_B_j)
-    j_r_j = X_j_T @ (quat_apply(q_B_j_conj, r_F_j + quat_apply(q_F_j, F_r_Fj) - r_B_j) - B_r_Bj)
-    j_q_j = q_X_j_T * quat_product(q_B_j_conj, q_F_j) * wp.quat_inverse(q_X_j_T)
+    j_r_j = wp.quat_rotate_inv(q_Bj, r_F_j + r_Fj - r_j_B)
+    j_q_j = wp.quat_inverse(q_Bj) * q_Fj
 
     # Compute the 6D relative twist vector between the representations of joint frame w.r.t. the two bodies
     # TODO: How can we simplify this expression and make it more efficient?
-    r_Bj = quat_apply(q_B_j, B_r_Bj)
-    r_Fj = quat_apply(q_F_j, F_r_Fj)
-    j_v_j = X_j_T_R_B_j_T @ (v_F_j - v_B_j + wp.cross(omega_F_j, r_Fj) - wp.cross(omega_B_j, r_Bj))
-    j_omega_j = X_j_T_R_B_j_T @ (omega_F_j - omega_B_j)
+    j_v_j = wp.quat_rotate_inv(q_Bj, v_F_j - v_B_j + wp.cross(omega_F_j, r_Fj) - wp.cross(omega_B_j, r_Bj))
+    j_omega_j = wp.quat_rotate_inv(q_Bj, omega_F_j - omega_B_j)
     j_u_j = screw(j_v_j, j_omega_j)
 
     # Return the computed joint frame pose and relative motion vectors

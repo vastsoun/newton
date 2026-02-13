@@ -42,11 +42,15 @@ wp.set_module_options({"enable_backward": False})
 
 Q_X_J = 0.5 * math.pi
 THETA_Y_J = 0.1
-THETA_Z_J = -0.1
+THETA_Z_J = -0.2
 J_DR_J = vec3f(0.01, 0.02, 0.03)
 J_DV_J = vec3f(0.1, -0.2, 0.3)
 J_DOMEGA_J = vec3f(-1.0, 0.04, -0.05)
 
+# Compute revolute joint rotational residual: sin(angle) * axis
+ROT_RES_VEC = np.array([0.0, THETA_Y_J, THETA_Z_J])
+ROT_RES_ANGLE = np.linalg.norm(ROT_RES_VEC)
+ROT_RES = (np.sin(ROT_RES_ANGLE) / ROT_RES_ANGLE) * ROT_RES_VEC
 
 ###
 # Kernels
@@ -86,11 +90,9 @@ def _set_joint_follower_body_state(
     # Define the joint rotation offset
     # NOTE: X_j projects quantities into the joint frame
     # NOTE: X_j^T projects quantities into the outer frame (world or body)
-    q_x_j = Q_X_J
-    theta_y_j = THETA_Y_J
-    theta_z_j = THETA_Z_J
-    j_dR_j = vec3f(q_x_j, theta_y_j, theta_z_j)  # Joint offset as rotation vector
-    q_jq = quat_exp(j_dR_j)  # Joint offset as rotation quaternion
+    j_dR_yz_j = vec3f(0.0, THETA_Y_J, THETA_Z_J)  # Joint residual as rotation vector
+    j_dR_x_j = vec3f(Q_X_J, 0.0, 0.0)  # Joint dof rotation as rotation vector
+    q_jq = quat_exp(j_dR_yz_j) * quat_exp(j_dR_x_j)  # Total joint offset
     R_jq = wp.quat_to_matrix(q_jq)  # Joint offset as rotation matrix
 
     # Define the joint translation offset
@@ -192,7 +194,7 @@ class TestKinematicsJoints(unittest.TestCase):
         msg.info("[measured]: dq_j: %s", dq_j_np)
 
         # Construct expected joint data
-        r_j_expected = np.array([J_DR_J[0], J_DR_J[1], J_DR_J[2], THETA_Y_J, THETA_Z_J], dtype=np.float32)
+        r_j_expected = np.array([J_DR_J[0], J_DR_J[1], J_DR_J[2], ROT_RES[1], ROT_RES[2]], dtype=np.float32)
         dr_j_expected = np.array([J_DV_J[0], J_DV_J[1], J_DV_J[2], J_DOMEGA_J[1], J_DOMEGA_J[2]], dtype=np.float32)
         q_j_expected = np.array([Q_X_J], dtype=np.float32)
         dq_j_expected = np.array([J_DOMEGA_J[0]], dtype=np.float32)
@@ -235,7 +237,7 @@ class TestKinematicsJoints(unittest.TestCase):
         msg.info("[measured]: dq_j: %s", dq_j_np)
 
         # Construct expected joint data
-        r_j_expected = np.array([J_DR_J[0], J_DR_J[1], J_DR_J[2], THETA_Y_J, THETA_Z_J], dtype=np.float32)
+        r_j_expected = np.array([J_DR_J[0], J_DR_J[1], J_DR_J[2], ROT_RES[1], ROT_RES[2]], dtype=np.float32)
         dr_j_expected = np.array([J_DV_J[0], J_DV_J[1], J_DV_J[2], J_DOMEGA_J[1], J_DOMEGA_J[2]], dtype=np.float32)
         q_j_expected = np.array([Q_X_J], dtype=np.float32)
         dq_j_expected = np.array([J_DOMEGA_J[0]], dtype=np.float32)

@@ -1014,6 +1014,11 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
         # Temporary vectors to store results, sized to the maximum number of constraints in a model.
         self._vec_temp_cts_space_A: wp.array | None = None
         self._vec_temp_cts_space_B: wp.array | None = None
+        # Runtime-tunable fast-path flags/config cached once per operator setup.
+        self._use_transpose_gemv: bool = False
+        self._split_delassus_fwd: bool = False
+        self._bpt_delassus_fwd: int = 3
+        self._block_groups_delassus_fwd: int = 1
 
         # Allocate the Delassus operator data if at least the model is provided
         if model is not None:
@@ -1109,6 +1114,9 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
         if jacobians is not None:
             self.bsm = jacobians._J_cts.bsm
 
+        # Refresh runtime tuning flags/parameters once after setup.
+        self._refresh_runtime_tuning()
+
         # Optionally initialize the iterative linear system solver if one is specified
         if solver is not None:
             solver_kwargs = solver_kwargs or {}
@@ -1126,6 +1134,16 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
                 constraint Jacobian matrix in block sparse format.
         """
         self.bsm = jacobian._J_cts.bsm
+        self._refresh_runtime_tuning()
+
+    def _refresh_runtime_tuning(self):
+        self._use_transpose_gemv = int(os.getenv("NEWTON_KAMINO_USE_TRANSPOSE_GEMV", "0")) != 0
+        self._split_delassus_fwd = int(os.getenv("NEWTON_KAMINO_SPLIT_DELASSUS_FWD", "0")) != 0
+        self._bpt_delassus_fwd = max(1, int(os.getenv("NEWTON_KAMINO_BPT_DELASSUS_FWD", "3")))
+        if self.bsm is not None:
+            self._block_groups_delassus_fwd = (self.bsm.max_of_num_nzb + self._bpt_delassus_fwd - 1) // self._bpt_delassus_fwd
+        else:
+            self._block_groups_delassus_fwd = 1
 
     def set_regularization(self, eta: wp.array | None):
         """
@@ -1331,6 +1349,18 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
     # Operations
     ###
 
+    def _transpose_apply(self, y: wp.array, x: wp.array, world_mask: wp.array):
+        # Optional fast path: use transpose GEMV with beta=0.
+        if self._use_transpose_gemv:
+            if self.gemvt_op is None:
+                raise RuntimeError("No BLAS-like transposed `GEMV` operator has been assigned.")
+            self.gemvt_op(self.bsm, y, x, 1.0, 0.0, world_mask)
+            return
+
+        if self.ATy_op is None:
+            raise RuntimeError("No `A^T@y` operator has been assigned.")
+        self.ATy_op(self.bsm, y, x, world_mask)
+
     def matvec(self, x: wp.array, y: wp.array, world_mask: wp.array):
         """
         Performs the sparse matrix-vector product `y = D @ x`, applying regularization and
@@ -1345,11 +1375,17 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
 
         if self._preconditioner is None:
             # Compute first Jacobian matrix-vector product: v <- J^T @ x
-            self.ATy_op(self.bsm, x, v, world_mask)
+            self._transpose_apply(x, v, world_mask)
 
-            # Compute y <- J @ (M^-1 @ v) in one kernel launch.
+            # Compute y <- J @ (M^-1 @ v), optionally split into two kernels.
             y.zero_()
-            self._fused_forward_matvec(v, y, world_mask, alpha=1.0)
+            if self._split_delassus_fwd:
+                if self.Ax_op is None:
+                    raise RuntimeError("No `A@x` operator has been assigned.")
+                self._apply_inverse_mass_matrix(v, world_mask)
+                self.Ax_op(self.bsm, v, y, world_mask)
+            else:
+                self._fused_forward_matvec(v, y, world_mask, alpha=1.0)
 
             # Add regularization, if provided: y <- y + diag(eta) @ x
             self._apply_regularization(x, y, world_mask)
@@ -1362,7 +1398,7 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
             self._apply_preconditioning(x_preconditioned, world_mask)
 
             # Compute first Jacobian matrix-vector product: v <- J^T @ x_p
-            self.ATy_op(self.bsm, x_preconditioned, v, world_mask)
+            self._transpose_apply(x_preconditioned, v, world_mask)
 
             # Multiply by inverse mass matrix (in-place): v <- M^-1 @ v
             self._apply_inverse_mass_matrix(v, world_mask)
@@ -1394,11 +1430,17 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
 
         if self._preconditioner is None:
             # Compute first Jacobian matrix-vector product: v <- J^T @ x
-            self.ATy_op(self.bsm, x, v, world_mask)
+            self._transpose_apply(x, v, world_mask)
 
             if beta == 0.0:
-                y.zero_()
-                self._fused_forward_matvec(v, y, world_mask, alpha)
+                if self._split_delassus_fwd:
+                    if self.gemv_op is None:
+                        raise RuntimeError("No BLAS-like `GEMV` operator has been assigned.")
+                    self._apply_inverse_mass_matrix(v, world_mask)
+                    self.gemv_op(self.bsm, v, y, alpha, 0.0, world_mask)
+                else:
+                    y.zero_()
+                    self._fused_forward_matvec(v, y, world_mask, alpha)
             else:
                 if self.gemv_op is None:
                     raise RuntimeError("No BLAS-like `GEMV` operator has been assigned.")
@@ -1428,11 +1470,17 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
             )
 
             # Compute first Jacobian matrix-vector product: v <- J^T @ x_p
-            self.ATy_op(self.bsm, x_preconditioned, v, world_mask)
+            self._transpose_apply(x_preconditioned, v, world_mask)
 
             if beta == 0.0:
-                y.zero_()
-                self._fused_forward_matvec(v, y, world_mask, alpha)
+                if self._split_delassus_fwd:
+                    if self.gemv_op is None:
+                        raise RuntimeError("No BLAS-like `GEMV` operator has been assigned.")
+                    self._apply_inverse_mass_matrix(v, world_mask)
+                    self.gemv_op(self.bsm, v, y, alpha, 0.0, world_mask)
+                else:
+                    y.zero_()
+                    self._fused_forward_matvec(v, y, world_mask, alpha)
 
                 # Apply output preconditioning and regularization.
                 self._apply_preconditioning_and_regularization(x=x, y=y, world_mask=world_mask, alpha=alpha)
@@ -1602,12 +1650,9 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
         if self.bsm is None:
             raise RuntimeError("Jacobian must be assigned before fused forward matvec.")
 
-        blocks_per_thread = max(1, int(os.getenv("NEWTON_KAMINO_BPT_DELASSUS_FWD", "4")))
-        block_groups = (self.bsm.max_of_num_nzb + blocks_per_thread - 1) // blocks_per_thread
-
         wp.launch(
-            kernel=_make_delassus_forward_fused_matvec_kernel(blocks_per_thread),
-            dim=(self._model.size.num_worlds, block_groups),
+            kernel=_make_delassus_forward_fused_matvec_kernel(self._bpt_delassus_fwd),
+            dim=(self._model.size.num_worlds, self._block_groups_delassus_fwd),
             inputs=[
                 self.bsm.num_nzb,
                 self.bsm.nzb_start,

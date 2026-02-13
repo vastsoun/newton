@@ -136,7 +136,6 @@ class TestSolverMetrics(unittest.TestCase):
             gravity=False,
             perturb=False,
             device=self.default_device,
-            sparse=False,
         )
 
         # Creating a default solver metrics evaluator from the test model
@@ -243,7 +242,6 @@ class TestSolverMetrics(unittest.TestCase):
             gravity=True,
             perturb=True,
             device=self.default_device,
-            sparse=False,
         )
 
         # Create the PADMM solver
@@ -333,7 +331,6 @@ class TestSolverMetrics(unittest.TestCase):
             gravity=True,
             perturb=True,
             device=self.default_device,
-            sparse=False,
         )
 
         # Create the PADMM solver

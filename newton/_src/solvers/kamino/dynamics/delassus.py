@@ -398,6 +398,26 @@ def _set_matrix_diag_product(
 
 
 @wp.kernel
+def _copy_and_scale_diag(
+    model_data_num_total_cts: wp.array(dtype=int32),
+    row_start: wp.array(dtype=int32),
+    d: wp.array(dtype=float32),
+    x_in: wp.array(dtype=float32),
+    x_out: wp.array(dtype=float32),
+    world_mask: wp.array(dtype=int32),
+):
+    """
+    Copies and scales a vector by a diagonal matrix: x_out = diag(d) @ x_in
+    Fuses wp.copy + _set_matrix_diag_product into a single kernel.
+    """
+    world_id, ct_id = wp.tid()
+    if world_mask[world_id] == 0 or ct_id >= model_data_num_total_cts[world_id]:
+        return
+    idx = row_start[world_id] + ct_id
+    x_out[idx] = d[idx] * x_in[idx]
+
+
+@wp.kernel
 def _set_and_add_matrix_diag_product(
     model_data_num_total_cts: wp.array(dtype=int32),
     row_start: wp.array(dtype=int32),
@@ -1353,9 +1373,20 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
             x_preconditioned = self._vec_temp_cts_space_A
             z = self._vec_temp_cts_space_B
 
-            # Apply preconditioning to input vector: x_p <- diag(P) @ x
-            wp.copy(x_preconditioned, x)
-            self._apply_preconditioning(x_preconditioned, world_mask)
+            # Fused copy + preconditioning: x_p <- diag(P) @ x
+            wp.launch(
+                kernel=_copy_and_scale_diag,
+                dim=(self._model.size.num_worlds, self._model.size.max_of_max_total_cts),
+                inputs=[
+                    self._data.info.num_total_cts,
+                    self.bsm.row_start,
+                    self._preconditioner,
+                    x,
+                    x_preconditioned,
+                    world_mask,
+                ],
+                device=self._device,
+            )
 
             # Compute first Jacobian matrix-vector product: v <- J^T @ x_p
             self.ATy_op(self.bsm, x_preconditioned, v, world_mask)

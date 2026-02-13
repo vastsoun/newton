@@ -1230,7 +1230,7 @@ def block_sparse_transpose_matvec(
         matrix_mask (wp.array): Mask vector to skip matrices set to `0` in the mask.
     """
     blocks_per_thread = _get_blocks_per_thread(
-        blocks_per_thread, env_var="NEWTON_KAMINO_BPT_TRANSPOSE_GEMV", default_value=8
+        blocks_per_thread, env_var="NEWTON_KAMINO_BPT_TRANSPOSE", default_value=16
     )
     launch_blocks = (A.max_of_num_nzb + blocks_per_thread - 1) // blocks_per_thread
     x.zero_()
@@ -1292,7 +1292,7 @@ def block_sparse_gemv(
         matrix_mask (wp.array): Mask vector to skip matrices set to `0` in the mask.
     """
     blocks_per_thread = _get_blocks_per_thread(
-        blocks_per_thread, env_var="NEWTON_KAMINO_BPT_GEMV", default_value=8
+        blocks_per_thread, env_var="NEWTON_KAMINO_BPT_GEMV", default_value=12
     )
     launch_blocks = (A.max_of_num_nzb + blocks_per_thread - 1) // blocks_per_thread
     if beta == 0:

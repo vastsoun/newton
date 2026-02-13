@@ -315,6 +315,8 @@ def _make_block_sparse_transpose_matvec_kernel(block_type: BlockDType, blocks_pe
         bpt = wp.static(blocks_per_thread)
         first_block = block_group * bpt
         n_blocks = num_nzb[mat_id]
+        nzb_base = nzb_start[mat_id]
+        nzb_base = nzb_start[mat_id]
 
         if wp.static(n_block_rows == 1):
             last_row_idx = -1
@@ -345,7 +347,7 @@ def _make_block_sparse_transpose_matvec_kernel(block_type: BlockDType, blocks_pe
                 for local_idx in range(bpt):
                     block_idx = first_block + local_idx
                     if block_idx < n_blocks:
-                        global_block_idx = nzb_start[mat_id] + block_idx
+                        global_block_idx = nzb_base + block_idx
                         block_coord = nzb_coords[global_block_idx]
                         block = nzb_values[global_block_idx]
                         x_idx_base = col_start[mat_id] + block_coord[1]
@@ -414,7 +416,7 @@ def _make_block_sparse_transpose_matvec_kernel(block_type: BlockDType, blocks_pe
                 for local_idx in range(bpt):
                     block_idx = first_block + local_idx
                     if block_idx < n_blocks:
-                        global_block_idx = nzb_start[mat_id] + block_idx
+                        global_block_idx = nzb_base + block_idx
                         block_coord = nzb_coords[global_block_idx]
                         block = nzb_values[global_block_idx]
                         x_idx_base = col_start[mat_id] + block_coord[1]
@@ -428,7 +430,7 @@ def _make_block_sparse_transpose_matvec_kernel(block_type: BlockDType, blocks_pe
             for local_idx in range(bpt):
                 block_idx = first_block + local_idx
                 if block_idx < n_blocks:
-                    global_block_idx = nzb_start[mat_id] + block_idx
+                    global_block_idx = nzb_base + block_idx
                     block_coord = nzb_coords[global_block_idx]
                     block = nzb_values[global_block_idx]
                     x_idx_base = col_start[mat_id] + block_coord[1]
@@ -508,7 +510,7 @@ def _make_block_sparse_transpose_matvec_kernel_2d(block_type: BlockDType, blocks
                 for local_idx in range(bpt):
                     block_idx = first_block + local_idx
                     if block_idx < n_blocks:
-                        global_block_idx = nzb_start[mat_id] + block_idx
+                        global_block_idx = nzb_base + block_idx
                         block_coord = nzb_coords[global_block_idx]
                         block = nzb_values[global_block_idx]
                         x_idx_base = block_coord[1]
@@ -577,7 +579,7 @@ def _make_block_sparse_transpose_matvec_kernel_2d(block_type: BlockDType, blocks
                 for local_idx in range(bpt):
                     block_idx = first_block + local_idx
                     if block_idx < n_blocks:
-                        global_block_idx = nzb_start[mat_id] + block_idx
+                        global_block_idx = nzb_base + block_idx
                         block_coord = nzb_coords[global_block_idx]
                         block = nzb_values[global_block_idx]
                         x_idx_base = block_coord[1]
@@ -591,7 +593,7 @@ def _make_block_sparse_transpose_matvec_kernel_2d(block_type: BlockDType, blocks
             for local_idx in range(bpt):
                 block_idx = first_block + local_idx
                 if block_idx < n_blocks:
-                    global_block_idx = nzb_start[mat_id] + block_idx
+                    global_block_idx = nzb_base + block_idx
                     block_coord = nzb_coords[global_block_idx]
                     block = nzb_values[global_block_idx]
                     x_idx_base = block_coord[1]

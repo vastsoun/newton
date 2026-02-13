@@ -473,6 +473,10 @@ def _make_delassus_forward_fused_matvec_kernel(blocks_per_thread: int):
         bpt = wp.static(blocks_per_thread)
         first_block = block_group * bpt
         n_blocks = num_nzb[mat_id]
+        nzb_base = nzb_start[mat_id]
+        row_base = row_start[mat_id]
+        col_base = col_start[mat_id]
+        bodies_base = bodies_offset[mat_id]
 
         row0 = int32(-1)
         row1 = int32(-1)
@@ -482,17 +486,16 @@ def _make_delassus_forward_fused_matvec_kernel(blocks_per_thread: int):
         for local_idx in range(bpt):
             block_idx = first_block + local_idx
             if block_idx < n_blocks:
-                global_block_idx = nzb_start[mat_id] + block_idx
+                global_block_idx = nzb_base + block_idx
                 block_coord = nzb_coords[global_block_idx]
                 J_block = nzb_values[global_block_idx]
 
                 body_idx_local = block_coord[1] // 6
-                body_idx_global = bodies_offset[mat_id] + body_idx_local
-
+                body_idx_global = bodies_base + body_idx_local
                 inv_m = inv_m_i[body_idx_global]
                 inv_I = inv_I_i[body_idx_global]
 
-                v_base = col_start[mat_id] + block_coord[1]
+                v_base = col_base + block_coord[1]
                 v_lin = vec3f(v[v_base + 0], v[v_base + 1], v[v_base + 2])
                 v_ang = vec3f(v[v_base + 3], v[v_base + 4], v[v_base + 5])
                 v_lin_minv = inv_m * v_lin
@@ -501,7 +504,7 @@ def _make_delassus_forward_fused_matvec_kernel(blocks_per_thread: int):
                 Jv = vec3f(J_block[0], J_block[1], J_block[2])
                 Jw = vec3f(J_block[3], J_block[4], J_block[5])
                 contrib = alpha * (wp.dot(Jv, v_lin_minv) + wp.dot(Jw, v_ang_minv))
-                row_idx = row_start[mat_id] + block_coord[0]
+                row_idx = row_base + block_coord[0]
 
                 if row_idx == row0 or row0 < 0:
                     if row0 < 0:

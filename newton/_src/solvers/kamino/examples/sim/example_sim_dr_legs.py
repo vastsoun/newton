@@ -57,6 +57,7 @@ class Example:
         warmstart_mode: str = "NONE",
         linear_solver: str = "CG",
         linear_solver_maxiter: int = 0,
+        linear_solver_preconditioner: str = "jacobi",
         max_contacts_per_world: int = 128,
         avoid_graph_conditionals: bool = False,
         headless: bool = False,
@@ -121,7 +122,13 @@ class Example:
         settings.solver.compute_metrics = logging and not use_cuda_graph
         linear_solver_cls = {v: k for k, v in LinearSolverShorthand.items()}[linear_solver.upper()]
         settings.solver.linear_solver_type = linear_solver_cls
-        settings.solver.linear_solver_kwargs = {"maxiter": linear_solver_maxiter} if linear_solver_maxiter > 0 else {}
+        linear_solver_kwargs = {}
+        if linear_solver_maxiter > 0:
+            linear_solver_kwargs["maxiter"] = linear_solver_maxiter
+        cg_preconditioner = linear_solver_preconditioner.strip().lower()
+        if linear_solver.upper() in ("CG", "CR") and cg_preconditioner not in ("", "none", "off", "0"):
+            linear_solver_kwargs["preconditioner"] = cg_preconditioner
+        settings.solver.linear_solver_kwargs = linear_solver_kwargs
         # Cap contact allocations to avoid quadratic capacity growth with many worlds/geometries.
         settings.collision_detector.max_contacts_per_world = max_contacts_per_world
         settings.solver.avoid_graph_conditionals = avoid_graph_conditionals
@@ -363,6 +370,13 @@ if __name__ == "__main__":
         "--linear-solver-maxiter", default=0, type=int, help="Max number of iterations for iterative linear solvers"
     )
     parser.add_argument(
+        "--linear-solver-preconditioner",
+        default="jacobi",
+        choices=["jacobi", "none"],
+        type=str.lower,
+        help="Preconditioner for iterative linear solvers",
+    )
+    parser.add_argument(
         "--max-contacts-per-world",
         default=64,
         type=int,
@@ -377,8 +391,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Print settings used (right at start)
-    print("Settings: headless=%s num_worlds=%s num_steps=%s logging=%s warmstart_mode=%s linear_solver=%s max_contacts_per_world=%s"
-          % (args.headless, args.num_worlds, args.num_steps, args.logging, args.warmstart_mode, args.linear_solver, args.max_contacts_per_world))
+    print("Settings: headless=%s num_worlds=%s num_steps=%s logging=%s warmstart_mode=%s linear_solver=%s preconditioner=%s max_contacts_per_world=%s"
+          % (args.headless, args.num_worlds, args.num_steps, args.logging, args.warmstart_mode, args.linear_solver, args.linear_solver_preconditioner, args.max_contacts_per_world))
     print()
 
     # Set global numpy configurations
@@ -415,6 +429,7 @@ if __name__ == "__main__":
         warmstart_mode=args.warmstart_mode,
         linear_solver=args.linear_solver,
         linear_solver_maxiter=args.linear_solver_maxiter,
+        linear_solver_preconditioner=args.linear_solver_preconditioner,
         max_contacts_per_world=args.max_contacts_per_world,
         avoid_graph_conditionals=args.avoid_graph_conditionals,
         max_steps=args.num_steps,

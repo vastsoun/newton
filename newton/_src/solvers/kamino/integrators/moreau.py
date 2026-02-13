@@ -188,7 +188,7 @@ class IntegratorMoreauJean(IntegratorBase):
     1: q_m = q_i + 1/2 * dt * G(q_i) * u_p
     2: lambdas = f_fd(q_m, u_p, tau_j)
     3: u_n = u_p + M(q_m)^{-1} * ( dt * h(q_m, u_p) + dt * J_a(q_m)^T * tau_j + J_c(q_m)^T * lambdas )
-    4: q_n = q_m + dt * G(q_m) @ u_n
+    4: q_n = q_m + 1/2 * dt * G(q_m) @ u_n
     ```
 
     where `q_p` and `u_p` are the generalized coordinates and velocities at the start of the

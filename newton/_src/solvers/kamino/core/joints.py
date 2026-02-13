@@ -182,7 +182,8 @@ class JointDoFType(IntEnum):
     - Joints are indexed by `j`, and we often employ the subscript notation `*_j`.
     - `c_j` | `num_coords`: denote the number of generalized coordinates defined by joint `j`.
     - `d_j` | `num_dofs`: denote the number of DoFs defined by joint `j`.
-    - `e_j` | `num_cts`: denote the number of equality constraints imposed by joint `j`.
+    - `e_j` | `num_dynamic_cts`: denote the number of dynamic equality constraints imposed by joint `j`.
+    - `f_j` | `num_kinematic_cts`: denote the number of kinematic equality constraints imposed by joint `j`.
     """
 
     FREE = 0
@@ -1499,28 +1500,28 @@ class JointsData:
 
     r_j: wp.array | None = None
     """
-    Flat array of joint constraint residuals.
+    Flat array of joint kinematic constraint residuals.
 
     To access the constraint residuals of a specific world `w` use:
     - to get the start index: ``model.info.joint_kinematic_cts_offset[w]``
     - to get the size: ``model.info.num_joint_kinematic_cts[w]``
 
-    Shape of ``(sum_of_num_joint_cts,)`` and type :class:`float`,\n
-    where `sum_of_num_kinematic_joint_cts := sum(e_j)`, and ``e_j``
-    is the number of constraints of joint ``j``.
+    Shape of ``(sum_of_num_kinematic_joint_cts,)`` and type :class:`float`,\n
+    where `sum_of_num_kinematic_joint_cts := sum(f_j)`, and ``f_j``
+    is the number of kinematic constraints of joint ``j``.
     """
 
     dr_j: wp.array | None = None
     """
-    Flat array of joint constraint residual time-derivatives.
+    Flat array of joint kinematic constraint residual time-derivatives.
 
     To access the constraint residuals of a specific world `w` use:
     - to get the start index: ``model.info.joint_kinematic_cts_offset[w]``
     - to get the size: ``model.info.num_joint_kinematic_cts[w]``
 
-    Shape of ``(sum_of_num_joint_cts,)`` and type :class:`float`,\n
-    where `sum_of_num_kinematic_joint_cts := sum(e_j)`, and ``e_j``
-    is the number of constraints of joint ``j``.
+    Shape of ``(sum_of_num_kinematic_joint_cts,)`` and type :class:`float`,\n
+    where `sum_of_num_kinematic_joint_cts := sum(f_j)`, and ``f_j``
+    is the number of kinematic constraints of joint ``j``.
     """
 
     lambda_j: wp.array | None = None
@@ -1538,8 +1539,8 @@ class JointsData:
         ``model.info.joint_kinematic_cts_group_offset[w]`` and ``model.info.num_joint_kinematic_cts[w]``
 
     Shape of ``(sum_of_num_joint_cts,)`` and type :class:`float`,\n
-    where `sum_of_num_joint_cts := sum(d_j) + sum(e_j)`, and ``d_j`` and ``e_j``
-    are the number of DoFs and constraints of joint ``j``, respectively.
+    where `sum_of_num_joint_cts := sum(e_j) + sum(f_j)`, and ``e_j`` and ``f_j``
+    are the number of dynamic and kinematic constraints of joint ``j``, respectively.
     """
 
     ###
@@ -1554,8 +1555,8 @@ class JointsData:
     ``m_j := a_j + dt * (b_j + k_d_j) + dt^2 * k_p_j``,\n
     where dt is the simulation time step.
 
-    Shape of ``(sum(d_j),)`` and type :class:`float`,\n
-    where ``d_j`` is the number of DoFs of joint ``j``.
+    Shape of ``(sum(e_j),)`` and type :class:`float`,\n
+    where ``e_j`` is the number of dynamic constraints of joint ``j``.
     """
 
     inv_m_j: wp.array | None = None
@@ -1567,8 +1568,20 @@ class JointsData:
     where ``m_j := a_j + dt * (b_j + k_d_j) + dt^2 * k_p_j``,
     and dt is the simulation time step.
 
-    Shape of ``(sum(d_j),)`` and type :class:`float`,
-    where ``d_j`` is the number of DoFs of joint ``j``.
+    Shape of ``(sum(e_j),)`` and type :class:`float`,
+    where ``e_j`` is the number of dynamic constraints of joint ``j``.
+    """
+
+    v_b_dyn_j: wp.array | None = None
+    """
+    The velocity bias of the joint dynamic constraints (as flat array),
+
+    ``h_j := dt * ( k_p_j * ( q_j_ref - q_j ) + k_d_j * dq_j_ref ) ``,\n
+    ``v_b_dyn_j := inv_m_j * ( a_j * dq_j + dt * h_j ) ``,\n
+    where dt is the simulation time step.
+
+    Shape of ``(sum(e_j),)`` and type :class:`float`,\n
+    where ``e_j`` is the number of dynamic constraints of joint ``j``.
     """
 
     ###

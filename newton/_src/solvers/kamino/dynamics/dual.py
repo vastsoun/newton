@@ -284,13 +284,17 @@ class DualProblemData:
 
     v_b: wp.array | None = None
     """
-    Stack of free-velocity statbilization biases vectors (in constraint-space).\n
+    Stack of free-velocity constraint bias vectors (in constraint-space).\n
 
     Computed as:
-    `v_b = [alpha * inv_dt * r_joints; beta * inv_dt * r_limits; gamma * inv_dt * r_contacts]`
+    `v_b = [ v_b_dynamics;
+             alpha * inv_dt * r_joints;
+             beta * inv_dt * r_limits;
+             gamma * inv_dt * r_contacts ]`
 
     where:
-    - `inv_dt` is the inverse simulation time step
+    - `v_b_dynamics` is the joint dynamics velocity bias.
+    - `dt` and `inv_dt` is the simulation time step and it inverse
     - `r_joints` is the stack of joint constraint residuals
     - `r_limits` is the stack of limit constraint residuals
     - `r_contacts` is the stack of contact constraint residuals
@@ -474,13 +478,51 @@ def _build_generalized_free_velocity(
 
 
 @wp.kernel
-def _build_free_velocity_bias_joints(
+def _build_free_velocity_bias_joint_dynamics(
     # Inputs:
-    model_info_joint_cts_offset: wp.array(dtype=int32),
+    model_info_joint_dynamic_cts_offset: wp.array(dtype=int32),
+    model_joints_wid: wp.array(dtype=int32),
+    model_joints_num_dynamic_cts: wp.array(dtype=int32),
+    model_joints_dynamic_cts_offset: wp.array(dtype=int32),
+    data_joints_v_b_dyn_j: wp.array(dtype=float32),
+    problem_vio: wp.array(dtype=int32),
+    # Outputs:
+    problem_v_b: wp.array(dtype=float32),
+):
+    # Retrieve the joint index as the thread index
+    jid = wp.tid()
+
+    # Retrieve the world index from the joint
+    wid = model_joints_wid[jid]
+
+    # Retrieve the joint constraint index offset
+    cts_offset = model_info_joint_dynamic_cts_offset[wid]
+
+    # Retrieve the index offset of the vector block of the world
+    vio = problem_vio[wid]
+
+    # Retrieve the joint constraint index and offset
+    ncts_j = model_joints_num_dynamic_cts[jid]
+    ctsio_j = model_joints_dynamic_cts_offset[jid]
+
+    # Compute block offsets for the constraint and velocity
+    vio_j = vio + ctsio_j
+    jio_j = cts_offset + ctsio_j
+
+    # Compute the free-velocity bias for the joint
+    for j in range(ncts_j):
+        problem_v_b[vio_j + j] = data_joints_v_b_dyn_j[jio_j + j]
+
+
+@wp.kernel
+def _build_free_velocity_bias_joint_kinematics(
+    # Inputs:
+    model_info_joint_kinematic_cts_offset: wp.array(dtype=int32),
+    model_info_joint_kinematic_cts_group_offset: wp.array(dtype=int32),
     model_time_inv_dt: wp.array(dtype=float32),
     model_joints_wid: wp.array(dtype=int32),
-    model_joints_num_cts: wp.array(dtype=int32),
-    model_joints_cts_offset: wp.array(dtype=int32),
+    model_joints_num_kinematic_cts: wp.array(dtype=int32),
+    model_joints_kinematic_cts_offset: wp.array(dtype=int32),
     state_joints_r_j: wp.array(dtype=float32),
     problem_config: wp.array(dtype=DualProblemConfig),
     problem_vio: wp.array(dtype=int32),
@@ -494,7 +536,7 @@ def _build_free_velocity_bias_joints(
     wid = model_joints_wid[jid]
 
     # Retrieve the joint constraint index offset
-    cts_offset = model_info_joint_cts_offset[wid]
+    cts_offset = model_info_joint_kinematic_cts_offset[wid]
 
     # Retrieve the model time step
     inv_dt = model_time_inv_dt[wid]
@@ -506,14 +548,14 @@ def _build_free_velocity_bias_joints(
     vio = problem_vio[wid]
 
     # Retrieve the joint constraint index and offset
-    ncts_j = model_joints_num_cts[jid]
-    ctsio_j = model_joints_cts_offset[jid]
+    ncts_j = model_joints_num_kinematic_cts[jid]
+    ctsio_j = model_joints_kinematic_cts_offset[jid]
 
     # Compute baumgarte constraint stabilization coefficient
     c_b = config.alpha * inv_dt
 
     # Compute block offsets for the constraint and residual vectors
-    vio_j = vio + ctsio_j
+    vio_j = vio + model_info_joint_kinematic_cts_group_offset[wid] + ctsio_j
     rio_j = cts_offset + ctsio_j
 
     # Compute the free-velocity bias for the joint
@@ -1346,15 +1388,30 @@ class DualProblem:
 
         if model.size.sum_of_num_joints > 0:
             wp.launch(
-                _build_free_velocity_bias_joints,
+                _build_free_velocity_bias_joint_dynamics,
                 dim=model.size.sum_of_num_joints,
                 inputs=[
                     # Inputs:
-                    model.info.joint_cts_offset,
+                    model.info.joint_dynamic_cts_offset,
+                    model.joints.wid,
+                    model.joints.num_dynamic_cts,
+                    model.joints.dynamic_cts_offset,
+                    data.joints.v_b_dyn_j,
+                    self._data.vio,
+                    # Outputs:
+                    self._data.v_b,
+                ],
+            )
+            wp.launch(
+                _build_free_velocity_bias_joint_kinematics,
+                dim=model.size.sum_of_num_joints,
+                inputs=[
+                    # Inputs:
+                    model.info.joint_kinematic_cts_offset,
                     model.time.inv_dt,
                     model.joints.wid,
-                    model.joints.num_cts,
-                    model.joints.cts_offset,
+                    model.joints.num_kinematic_cts,
+                    model.joints.kinematic_cts_offset,
                     data.joints.r_j,
                     self._data.config,
                     self._data.vio,

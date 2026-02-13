@@ -398,6 +398,75 @@ def _set_matrix_diag_product(
 
 
 @wp.kernel
+def _set_and_add_matrix_diag_product(
+    model_data_num_total_cts: wp.array(dtype=int32),
+    row_start: wp.array(dtype=int32),
+    preconditioner: wp.array(dtype=float32),
+    regularization: wp.array(dtype=float32),
+    x: wp.array(dtype=float32),
+    y: wp.array(dtype=float32),
+    alpha: float,
+    world_mask: wp.array(dtype=int32),
+):
+    world_id, ct_id = wp.tid()
+    if world_mask[world_id] == 0 or ct_id >= model_data_num_total_cts[world_id]:
+        return
+    idx = row_start[world_id] + ct_id
+    y[idx] = preconditioner[idx] * y[idx] + alpha * regularization[idx] * x[idx]
+
+
+@wp.kernel
+def _delassus_forward_fused_matvec(
+    # Block sparse data (J):
+    num_nzb: wp.array(dtype=int32),
+    nzb_start: wp.array(dtype=int32),
+    nzb_coords: wp.array2d(dtype=int32),
+    nzb_values: wp.array(dtype=vec6f),
+    # Vector block offsets:
+    row_start: wp.array(dtype=int32),
+    col_start: wp.array(dtype=int32),
+    # Body inverse mass:
+    bodies_offset: wp.array(dtype=int32),
+    inv_m_i: wp.array(dtype=float32),
+    inv_I_i: wp.array(dtype=mat33f),
+    # Vectors:
+    v: wp.array(dtype=float32),
+    y: wp.array(dtype=float32),
+    # Scaling:
+    alpha: float,
+    # Mask:
+    world_mask: wp.array(dtype=int32),
+):
+    """
+    Fused forward Delassus matvec: y += alpha * J @ (M^-1 @ v).
+    """
+    mat_id, block_idx = wp.tid()
+    if world_mask[mat_id] == 0 or block_idx >= num_nzb[mat_id]:
+        return
+
+    global_block_idx = nzb_start[mat_id] + block_idx
+    block_coord = nzb_coords[global_block_idx]
+    J_block = nzb_values[global_block_idx]
+
+    body_idx_local = block_coord[1] // 6
+    body_idx_global = bodies_offset[mat_id] + body_idx_local
+
+    inv_m = inv_m_i[body_idx_global]
+    inv_I = inv_I_i[body_idx_global]
+
+    v_base = col_start[mat_id] + block_coord[1]
+    v_lin = vec3f(v[v_base + 0], v[v_base + 1], v[v_base + 2])
+    v_ang = vec3f(v[v_base + 3], v[v_base + 4], v[v_base + 5])
+    v_lin_minv = inv_m * v_lin
+    v_ang_minv = inv_I @ v_ang
+
+    Jv = vec3f(J_block[0], J_block[1], J_block[2])
+    Jw = vec3f(J_block[3], J_block[4], J_block[5])
+    acc = wp.dot(Jv, v_lin_minv) + wp.dot(Jw, v_ang_minv)
+    wp.atomic_add(y, row_start[mat_id] + block_coord[0], alpha * acc)
+
+
+@wp.kernel
 def _scaled_vector_sum(
     model_data_num_total_cts: wp.array(dtype=int32),
     row_start: wp.array(dtype=int32),
@@ -1208,23 +1277,20 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
         Performs the sparse matrix-vector product `y = D @ x`, applying regularization and
         preconditioning if configured.
         """
-        if self.Ax_op is None:
-            raise RuntimeError("No `A@x` operator has been assigned.")
         if self.ATy_op is None:
             raise RuntimeError("No `A^T@y` operator has been assigned.")
+        if self._preconditioner is not None and self.Ax_op is None:
+            raise RuntimeError("No `A@x` operator has been assigned.")
 
         v = self._vec_temp_body_space
-        v.zero_()
 
         if self._preconditioner is None:
             # Compute first Jacobian matrix-vector product: v <- J^T @ x
             self.ATy_op(self.bsm, x, v, world_mask)
 
-            # Multiply by inverse mass matrix (in-place): v <- M^-1 @ v
-            self._apply_inverse_mass_matrix(v, world_mask)
-
-            # Compute second Jacobian matrix-vector product: y <- J @ v
-            self.Ax_op(self.bsm, v, y, world_mask)
+            # Compute y <- J @ (M^-1 @ v) in one kernel launch.
+            y.zero_()
+            self._fused_forward_matvec(v, y, world_mask, alpha=1.0)
 
             # Add regularization, if provided: y <- y + diag(eta) @ x
             self._apply_regularization(x, y, world_mask)
@@ -1245,11 +1311,8 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
             # Compute second Jacobian matrix-vector product: y <- J @ v
             self.Ax_op(self.bsm, v, y, world_mask)
 
-            # Apply preconditioning to output vector: y <- diag(P) @ y
-            self._apply_preconditioning(y, world_mask)
-
-            # Add regularization, if provided: y <- y + diag(eta) @ x
-            self._apply_regularization(x, y, world_mask)
+            # Apply output preconditioning and regularization.
+            self._apply_preconditioning_and_regularization(x=x, y=y, world_mask=world_mask, alpha=1.0)
 
     def matvec_transpose(self, y: wp.array, x: wp.array, world_mask: wp.array):
         """
@@ -1265,24 +1328,23 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
         Performs a BLAS-like generalized sparse matrix-vector product `y = alpha * D @ x + beta * y`,
         applying regularization and preconditioning if configured.
         """
-        if self.gemv_op is None:
-            raise RuntimeError("No BLAS-like `GEMV` operator has been assigned.")
         if self.ATy_op is None:
             raise RuntimeError("No `A^T@y` operator has been assigned.")
 
         v = self._vec_temp_body_space
-        v.zero_()
 
         if self._preconditioner is None:
             # Compute first Jacobian matrix-vector product: v <- J^T @ x
             self.ATy_op(self.bsm, x, v, world_mask)
 
-            # Multiply by inverse mass matrix (in-place): v <- M^-1 @ v
-            self._apply_inverse_mass_matrix(v, world_mask)
-
-            # Compute second Jacobian matrix-vector product as general matrix-vector product:
-            #   y <- alpha * J @ v + beta * y
-            self.gemv_op(self.bsm, v, y, alpha, beta, world_mask)
+            if beta == 0.0:
+                y.zero_()
+                self._fused_forward_matvec(v, y, world_mask, alpha)
+            else:
+                if self.gemv_op is None:
+                    raise RuntimeError("No BLAS-like `GEMV` operator has been assigned.")
+                self._apply_inverse_mass_matrix(v, world_mask)
+                self.gemv_op(self.bsm, v, y, alpha, beta, world_mask)
 
             # Add regularization, if provided: y <- y + alpha * diag(eta) @ x
             self._apply_regularization(x, y, world_mask, alpha)
@@ -1298,24 +1360,17 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
             # Compute first Jacobian matrix-vector product: v <- J^T @ x_p
             self.ATy_op(self.bsm, x_preconditioned, v, world_mask)
 
-            # Multiply by inverse mass matrix (in-place): v <- M^-1 @ v
-            self._apply_inverse_mass_matrix(v, world_mask)
-
             if beta == 0.0:
-                # Special case: If `beta` is zero, we can skip some of the steps and use `y`
-                # directly without having to use an additional temporary.
+                y.zero_()
+                self._fused_forward_matvec(v, y, world_mask, alpha)
 
-                # Compute second Jacobian matrix-vector product using general matrix-vector product:
-                #   y <- alpha * J @ v
-                self.gemv_op(self.bsm, v, y, alpha, 0.0, world_mask)
-
-                # Apply preconditioning: y <- diag(P) @ y
-                self._apply_preconditioning(y, world_mask)
-
-                # Add regularization, if provided: y <- y + alpha * diag(eta) @ x
-                self._apply_regularization(x, y, world_mask, alpha)
+                # Apply output preconditioning and regularization.
+                self._apply_preconditioning_and_regularization(x=x, y=y, world_mask=world_mask, alpha=alpha)
 
             else:
+                # Keep general beta path unchanged.
+                self._apply_inverse_mass_matrix(v, world_mask)
+
                 # Compute second Jacobian matrix-vector product: z <- J @ v
                 self.Ax_op(self.bsm, v, z, world_mask)
 
@@ -1442,6 +1497,57 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
                 self.bsm.row_start,
                 self._preconditioner,
                 x,
+                world_mask,
+            ],
+            device=self._device,
+        )
+
+    def _apply_preconditioning_and_regularization(
+        self, x: wp.array, y: wp.array, world_mask: wp.array, alpha: float = 1.0
+    ):
+        if self._preconditioner is not None and self._eta is not None:
+            wp.launch(
+                kernel=_set_and_add_matrix_diag_product,
+                dim=(self._model.size.num_worlds, self._model.size.max_of_max_total_cts),
+                inputs=[
+                    self._data.info.num_total_cts,
+                    self.bsm.row_start,
+                    self._preconditioner,
+                    self._eta,
+                    x,
+                    y,
+                    alpha,
+                    world_mask,
+                ],
+                device=self._device,
+            )
+            return
+
+        self._apply_preconditioning(y, world_mask)
+        self._apply_regularization(x, y, world_mask, alpha)
+
+    def _fused_forward_matvec(self, v: wp.array, y: wp.array, world_mask: wp.array, alpha: float = 1.0):
+        if self._model is None or self._data is None:
+            raise RuntimeError("Model and data must be assigned before fused forward matvec.")
+        if self.bsm is None:
+            raise RuntimeError("Jacobian must be assigned before fused forward matvec.")
+
+        wp.launch(
+            kernel=_delassus_forward_fused_matvec,
+            dim=(self._model.size.num_worlds, self.bsm.max_of_num_nzb),
+            inputs=[
+                self.bsm.num_nzb,
+                self.bsm.nzb_start,
+                self.bsm.nzb_coords,
+                self.bsm.nzb_values,
+                self.bsm.row_start,
+                self.bsm.col_start,
+                self._model.info.bodies_offset,
+                self._model.bodies.inv_m_i,
+                self._data.bodies.inv_I_i,
+                v,
+                y,
+                alpha,
                 world_mask,
             ],
             device=self._device,

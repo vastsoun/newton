@@ -495,8 +495,11 @@ def _build_free_velocity_bias_joint_dynamics(
     # Retrieve the world index from the joint
     wid = model_joints_wid[jid]
 
-    # Retrieve the joint constraint index offset
+    # Retrieve the joint constraint index offsets in the:
+    # - arrays of only dynamic constraints (i.e. for residuals)
     cts_offset = model_info_joint_dynamic_cts_offset[wid]
+    # - arrays of all constraints (i.e. including joint dynamics+kinematics, limits and contacts)
+    # NOTE: This is trivially zero since dynamics constraints are always the first block
 
     # Retrieve the index offset of the vector block of the world
     vio = problem_vio[wid]
@@ -523,7 +526,7 @@ def _build_free_velocity_bias_joint_kinematics(
     model_joints_wid: wp.array(dtype=int32),
     model_joints_num_kinematic_cts: wp.array(dtype=int32),
     model_joints_kinematic_cts_offset: wp.array(dtype=int32),
-    state_joints_r_j: wp.array(dtype=float32),
+    data_joints_r_j: wp.array(dtype=float32),
     problem_config: wp.array(dtype=DualProblemConfig),
     problem_vio: wp.array(dtype=int32),
     # Outputs:
@@ -535,8 +538,11 @@ def _build_free_velocity_bias_joint_kinematics(
     # Retrieve the world index from the joint
     wid = model_joints_wid[jid]
 
-    # Retrieve the joint constraint index offset
+    # Retrieve the joint constraint index offsets in the:
+    # - arrays of only kinematic constraints (i.e. for residuals)
     cts_offset = model_info_joint_kinematic_cts_offset[wid]
+    # - arrays of all constraints (i.e. including joint dynamics+kinematics, limits and contacts)
+    cts_group_offset = model_info_joint_kinematic_cts_group_offset[wid]
 
     # Retrieve the model time step
     inv_dt = model_time_inv_dt[wid]
@@ -555,19 +561,19 @@ def _build_free_velocity_bias_joint_kinematics(
     c_b = config.alpha * inv_dt
 
     # Compute block offsets for the constraint and residual vectors
-    vio_j = vio + model_info_joint_kinematic_cts_group_offset[wid] + ctsio_j
+    vio_j = vio + cts_group_offset + ctsio_j
     rio_j = cts_offset + ctsio_j
 
     # Compute the free-velocity bias for the joint
     for j in range(ncts_j):
-        problem_v_b[vio_j + j] = c_b * state_joints_r_j[rio_j + j]
+        problem_v_b[vio_j + j] = c_b * data_joints_r_j[rio_j + j]
 
 
 @wp.kernel
 def _build_free_velocity_bias_limits(
     # Inputs:
     model_time_inv_dt: wp.array(dtype=float32),
-    state_info_limit_cts_group_offset: wp.array(dtype=int32),
+    data_info_limit_cts_group_offset: wp.array(dtype=int32),
     limits_model_max: int32,
     limits_model_num: wp.array(dtype=int32),
     limits_wid: wp.array(dtype=int32),
@@ -597,7 +603,7 @@ def _build_free_velocity_bias_limits(
     inv_dt = model_time_inv_dt[wid]
     config = problem_config[wid]
     vio = problem_vio[wid]
-    lcio = state_info_limit_cts_group_offset[wid]
+    lcio = data_info_limit_cts_group_offset[wid]
 
     # Compute the total constraint index offset of the current contact
     lcio_l = vio + lcio + lid
@@ -611,7 +617,7 @@ def _build_free_velocity_bias_contacts(
     # Inputs:
     model_time_inv_dt: wp.array(dtype=float32),
     model_info_contacts_offset: wp.array(dtype=int32),
-    state_info_contact_cts_group_offset: wp.array(dtype=int32),
+    data_info_contact_cts_group_offset: wp.array(dtype=int32),
     contacts_model_max: int32,
     contacts_model_num: wp.array(dtype=int32),
     contacts_wid: wp.array(dtype=int32),
@@ -644,7 +650,7 @@ def _build_free_velocity_bias_contacts(
     # Retrieve the world-specific data
     inv_dt = model_time_inv_dt[wid_k]
     cio = model_info_contacts_offset[wid_k]
-    ccio = state_info_contact_cts_group_offset[wid_k]
+    ccio = data_info_contact_cts_group_offset[wid_k]
     vio = problem_vio[wid_k]
     config = problem_config[wid_k]
 
@@ -698,7 +704,7 @@ def _build_free_velocity(
     # Inputs:
     model_info_num_bodies: wp.array(dtype=int32),
     model_info_bodies_offset: wp.array(dtype=int32),
-    state_bodies_u_i: wp.array(dtype=vec6f),
+    data_bodies_u_i: wp.array(dtype=vec6f),
     jacobians_J_cts_offsets: wp.array(dtype=int32),
     jacobians_J_cts_data: wp.array(dtype=float32),
     problem_dim: wp.array(dtype=int32),
@@ -749,7 +755,7 @@ def _build_free_velocity(
         m_ji = cjmio + 6 * i
 
         # Extract the twist and unconstrained velocity of the body
-        u_i = state_bodies_u_i[bio + i]
+        u_i = data_bodies_u_i[bio + i]
         u_f_i = problem_u_f[bio + i]
 
         # Extract the Jacobian block J_ji
@@ -1387,27 +1393,29 @@ class DualProblem:
         """
 
         if model.size.sum_of_num_joints > 0:
-            wp.launch(
-                _build_free_velocity_bias_joint_dynamics,
-                dim=model.size.sum_of_num_joints,
-                inputs=[
-                    # Inputs:
-                    model.info.joint_dynamic_cts_offset,
-                    model.joints.wid,
-                    model.joints.num_dynamic_cts,
-                    model.joints.dynamic_cts_offset,
-                    data.joints.v_b_dyn_j,
-                    self._data.vio,
-                    # Outputs:
-                    self._data.v_b,
-                ],
-            )
+            if model.size.sum_of_num_dynamic_joints > 0:
+                wp.launch(
+                    _build_free_velocity_bias_joint_dynamics,
+                    dim=model.size.sum_of_num_joints,
+                    inputs=[
+                        # Inputs:
+                        model.info.joint_dynamic_cts_offset,
+                        model.joints.wid,
+                        model.joints.num_dynamic_cts,
+                        model.joints.dynamic_cts_offset,
+                        data.joints.v_b_dyn_j,
+                        self._data.vio,
+                        # Outputs:
+                        self._data.v_b,
+                    ],
+                )
             wp.launch(
                 _build_free_velocity_bias_joint_kinematics,
                 dim=model.size.sum_of_num_joints,
                 inputs=[
                     # Inputs:
                     model.info.joint_kinematic_cts_offset,
+                    model.info.joint_kinematic_cts_group_offset,
                     model.time.inv_dt,
                     model.joints.wid,
                     model.joints.num_kinematic_cts,

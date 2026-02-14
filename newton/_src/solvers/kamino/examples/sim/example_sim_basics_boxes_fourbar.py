@@ -52,7 +52,10 @@ wp.set_module_options({"enable_backward": False})
 @wp.kernel
 def _control_callback(
     state_t: wp.array(dtype=float32),
-    control_tau_j: wp.array(dtype=float32),
+    # control_tau_j: wp.array(dtype=float32),
+    data_joint_tau_j: wp.array(dtype=float32),
+    data_joint_q_j_ref: wp.array(dtype=float32),
+    data_joint_dq_j_ref: wp.array(dtype=float32),
 ):
     """
     An example control callback kernel.
@@ -63,16 +66,28 @@ def _control_callback(
 
     # Define the time window for the active external force profile
     t_start = float32(2.0)
-    t_end = float32(2.5)
+    t_end = float32(5.0)
 
     # Get the current time
     t = state_t[wid]
 
-    # Apply a time-dependent external force
+    # # Apply a time-dependent external force
+    # if t > t_start and t < t_end:
+    #     control_tau_j[jid] = 0.1
+    # else:
+    #     control_tau_j[jid] = 0.0
+
+    # Apply a time-dependent joint references
     if t > t_start and t < t_end:
-        control_tau_j[jid] = 0.1
+        data_joint_q_j_ref[jid] = 0.4
     else:
-        control_tau_j[jid] = 0.0
+        data_joint_q_j_ref[jid] = 0.0
+
+    # # Apply a time-dependent joint references
+    # if t > t_start and t < t_end:
+    #     data_joint_dq_j_ref[jid] = 0.1
+    # else:
+    #     data_joint_dq_j_ref[jid] = 0.0
 
 
 ###
@@ -89,7 +104,9 @@ def control_callback(sim: Simulator):
         dim=1,
         inputs=[
             sim.solver.data.time.time,
-            sim.control.tau_j,
+            sim.solver.data.joints.tau_j,
+            sim.solver.data.joints.q_j_ref,
+            sim.solver.data.joints.dq_j_ref,
         ],
     )
 
@@ -140,8 +157,13 @@ class Example:
         else:
             msg.notif("Constructing builder using model generator ...")
             self.builder: ModelBuilder = make_homogeneous_builder(
-                num_worlds=num_worlds, build_fn=build_boxes_fourbar, ground=ground
+                num_worlds=num_worlds,
+                build_fn=build_boxes_fourbar,
+                ground=ground,
+                dynamic_joints=True,
+                implicit_pd=True,
             )
+            msg.error("builder.joints:\n%s", self.builder.joints)
 
         # Offset the model to place it above the ground
         # NOTE: The USD model is centered at the origin
@@ -156,7 +178,7 @@ class Example:
         settings = SimulatorSettings()
         settings.dt = self.sim_dt
         settings.solver.integrator = "moreau"  # Select from {"euler", "moreau"}
-        settings.solver.problem.preconditioning = True
+        settings.solver.problem.preconditioning = False
         settings.solver.padmm.primal_tolerance = 1e-4
         settings.solver.padmm.dual_tolerance = 1e-4
         settings.solver.padmm.compl_tolerance = 1e-4
@@ -172,6 +194,10 @@ class Example:
         msg.notif("Building the simulator...")
         self.sim = Simulator(builder=self.builder, settings=settings, device=device)
         self.sim.set_control_callback(control_callback)
+        msg.error("model.joints.a_j: %s", self.sim.model.joints.a_j)
+        msg.error("model.joints.b_j: %s", self.sim.model.joints.b_j)
+        msg.error("model.joints.k_p_j: %s", self.sim.model.joints.k_p_j)
+        msg.error("model.joints.k_d_j: %s", self.sim.model.joints.k_d_j)
 
         # Initialize the data logger
         self.logger: SimulationLogger | None = None
@@ -199,6 +225,12 @@ class Example:
                 video_folder=video_folder,
                 async_save=async_save,
             )
+
+        # TODO:
+        msg.warning("model.joints.a_j: %s", self.sim.model.joints.a_j)
+        msg.warning("model.joints.b_j: %s", self.sim.model.joints.b_j)
+        msg.warning("model.joints.k_p_j: %s", self.sim.model.joints.k_p_j)
+        msg.warning("model.joints.k_d_j: %s", self.sim.model.joints.k_d_j)
 
         # Declare and initialize the optional computation graphs
         # NOTE: These are used for most efficient GPU runtime
@@ -235,8 +267,13 @@ class Example:
         """Run simulation substeps."""
         for _i in range(self.sim_substeps):
             self.sim.step()
-            if not self.use_cuda_graph and self.logging:
-                self.logger.log()
+            t = self.sim.solver.data.time.time.numpy()[0]
+            if t > 1.9:
+                msg.warning("[%f]:  v_b_dyn_j: %s\n", t, self.sim.solver.data.joints.v_b_dyn_j)
+                msg.error("[%f]:  v_f: %s\n\n", t, self.sim.solver._problem_fd.data.v_f)
+                # msg.info("[%d]: dq_j_ref: %s", t, self.sim.solver.data.joints.dq_j_ref)
+            # if not self.use_cuda_graph and self.logging:
+            #     self.logger.log()
 
     def reset(self):
         """Reset the simulation."""
@@ -307,7 +344,7 @@ if __name__ == "__main__":
     parser.add_argument("--num-worlds", type=int, default=1, help="Number of worlds to simulate in parallel")
     parser.add_argument("--num-steps", type=int, default=3000, help="Number of steps for headless mode")
     parser.add_argument(
-        "--load-from-usd", action=argparse.BooleanOptionalAction, default=True, help="Load model from USD file"
+        "--load-from-usd", action=argparse.BooleanOptionalAction, default=False, help="Load model from USD file"
     )
     parser.add_argument(
         "--gravity", action=argparse.BooleanOptionalAction, default=True, help="Enables gravity in the simulation"

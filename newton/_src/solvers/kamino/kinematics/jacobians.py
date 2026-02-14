@@ -251,9 +251,9 @@ def _build_joint_jacobians(
     model_info_joint_kinematic_cts_group_offset: wp.array(dtype=int32),
     model_joints_wid: wp.array(dtype=int32),
     model_joints_dof_type: wp.array(dtype=int32),
+    model_joints_dofs_offset: wp.array(dtype=int32),
     model_joints_dynamic_cts_offset: wp.array(dtype=int32),
     model_joints_kinematic_cts_offset: wp.array(dtype=int32),
-    model_joints_dofs_offset: wp.array(dtype=int32),
     model_joints_bid_B: wp.array(dtype=int32),
     model_joints_bid_F: wp.array(dtype=int32),
     state_joints_p: wp.array(dtype=transformf),
@@ -275,20 +275,23 @@ def _build_joint_jacobians(
     dof_type = model_joints_dof_type[jid]
     bid_B = model_joints_bid_B[jid]
     bid_F = model_joints_bid_F[jid]
+    dofs_offset = model_joints_dofs_offset[jid]
+    dyn_cts_offset = model_joints_dynamic_cts_offset[jid]
+    kin_cts_offset = model_joints_kinematic_cts_offset[jid]
 
     # Retrieve the number of body DoFs for corresponding world
     nbd = model_info_num_body_dofs[wid]
     bio = model_info_bodies_offset[wid]
+    jkcgo = model_info_joint_kinematic_cts_group_offset[wid]
 
     # Retrieve the Jacobian block offset for this world
-    cjmio = jacobian_cts_offsets[wid]
-    djmio = jacobian_dofs_offsets[wid]
+    J_cjmio = jacobian_cts_offsets[wid]
+    J_djmio = jacobian_dofs_offsets[wid]
 
     # Constraint Jacobian row offsets for this joint
-    dco = model_joints_dynamic_cts_offset[jid]
-    dco_row = cjmio + nbd * dco
-    kco_row = cjmio + model_info_joint_kinematic_cts_group_offset[jid] + nbd * model_joints_kinematic_cts_offset[jid]
-    dio_row = djmio + nbd * model_joints_dofs_offset[jid]
+    J_jdof_row_start = J_djmio + nbd * dofs_offset
+    J_jdc_row_start = J_cjmio + nbd * dyn_cts_offset  # NOTE: Dynamics constraints are always first (offset is zero)
+    J_jkc_row_start = J_cjmio + nbd * (jkcgo + kin_cts_offset)  # NOTE: Kinematic constraints are after dynamic
 
     # Retrieve the pose transform of the joint
     T_j = state_joints_p[jid]
@@ -317,14 +320,15 @@ def _build_joint_jacobians(
     JT_F_j = W_j_F @ R_X_bar_j  # Action is on the Follower body    ; (6 x 6)
 
     # Store joint dynamic constraint jacobians if applicable
-    if dco >= 0:  # Negative dynamic constraint offset means the joint is not implicit
-        store_joint_dofs_jacobian(dof_type, dco_row, nbd, bio, bid_B, bid_F, JT_B_j, JT_F_j, jacobian_cts_data)
+    # NOTE: We use the extraction method for DoFs since dynamic constraints are in DoF-space
+    if dyn_cts_offset >= 0:  # Negative dynamic constraint offset means the joint is not implicit
+        store_joint_dofs_jacobian(dof_type, J_jdc_row_start, nbd, bio, bid_B, bid_F, JT_B_j, JT_F_j, jacobian_cts_data)
 
     # Store joint kinematic constraint jacobians
-    store_joint_cts_jacobian(dof_type, kco_row, nbd, bio, bid_B, bid_F, JT_B_j, JT_F_j, jacobian_cts_data)
+    store_joint_cts_jacobian(dof_type, J_jkc_row_start, nbd, bio, bid_B, bid_F, JT_B_j, JT_F_j, jacobian_cts_data)
 
     # Store the actuation Jacobian block if the joint is actuated
-    store_joint_dofs_jacobian(dof_type, dio_row, nbd, bio, bid_B, bid_F, JT_B_j, JT_F_j, jacobian_dofs_data)
+    store_joint_dofs_jacobian(dof_type, J_jdof_row_start, nbd, bio, bid_B, bid_F, JT_B_j, JT_F_j, jacobian_dofs_data)
 
 
 @wp.kernel
@@ -332,7 +336,7 @@ def _build_limit_jacobians(
     # Inputs:
     model_info_num_body_dofs: wp.array(dtype=int32),
     model_info_bodies_offset: wp.array(dtype=int32),
-    state_info_limit_cts_group_offset: wp.array(dtype=int32),
+    data_info_limit_cts_group_offset: wp.array(dtype=int32),
     limits_model_num: wp.array(dtype=int32),
     limits_model_max: int32,
     limits_wid: wp.array(dtype=int32),
@@ -369,7 +373,7 @@ def _build_limit_jacobians(
     # Retrieve the relevant model info of the world
     nbd = model_info_num_body_dofs[wid_l]
     bio = model_info_bodies_offset[wid_l]
-    lcgo = state_info_limit_cts_group_offset[wid_l]
+    lcgo = data_info_limit_cts_group_offset[wid_l]
     ajmio = jacobian_dofs_offsets[wid_l]
     cjmio = jacobian_cts_offsets[wid_l]
 
@@ -402,7 +406,7 @@ def _build_contact_jacobians(
     # Inputs:
     model_info_num_body_dofs: wp.array(dtype=int32),
     model_info_bodies_offset: wp.array(dtype=int32),
-    state_info_contact_cts_group_offset: wp.array(dtype=int32),
+    data_info_contact_cts_group_offset: wp.array(dtype=int32),
     state_bodies_q: wp.array(dtype=transformf),
     contacts_model_num: wp.array(dtype=int32),
     contacts_model_max: int32,
@@ -441,7 +445,7 @@ def _build_contact_jacobians(
     # Retrieve the relevant model info for the world
     nbd = model_info_num_body_dofs[wid]
     bio = model_info_bodies_offset[wid]
-    ccgo = state_info_contact_cts_group_offset[wid]
+    ccgo = data_info_contact_cts_group_offset[wid]
     cjmio = jacobian_cts_offsets[wid]
 
     # Append the index offset for the contact Jacobian block in the constraint Jacobian
@@ -512,9 +516,9 @@ def build_jacobians(
                 model.info.joint_kinematic_cts_group_offset,
                 model.joints.wid,
                 model.joints.dof_type,
+                model.joints.dofs_offset,
                 model.joints.dynamic_cts_offset,
                 model.joints.kinematic_cts_offset,
-                model.joints.dofs_offset,
                 model.joints.bid_B,
                 model.joints.bid_F,
                 data.joints.p_j,

@@ -747,14 +747,6 @@ def make_compute_joints_data_kernel(correction: JointCorrectionMode = JointCorre
         world_dofs_offset = model_info_joint_dofs_offset[wid]
         world_dynamic_cts_offset = model_info_joint_dynamic_cts_offset[wid]
         world_kinematic_cts_offset = model_info_joint_kinematic_cts_offset[wid]
-        wp.printf(
-            "world %d: world_coords_offset=%d, world_dofs_offset=%d, world_dynamic_cts_offset=%d, world_kinematic_cts_offset=%d\n",
-            wid,
-            world_coords_offset,
-            world_dofs_offset,
-            world_dynamic_cts_offset,
-            world_kinematic_cts_offset,
-        )
 
         # Retrieve joint-specific offsets
         # NOTE: We load data together for better memory coalescing
@@ -762,30 +754,12 @@ def make_compute_joints_data_kernel(correction: JointCorrectionMode = JointCorre
         joint_dofs_offset = model_joint_dofs_offset[jid]
         joint_dynamic_cts_offset = model_joint_dynamic_cts_offset[jid]
         joint_kinematic_cts_offset = model_joint_kinematic_cts_offset[jid]
-        wp.printf(
-            "joint %d/%d: joint_coords_offset=%d, joint_dofs_offset=%d, joint_dynamic_cts_offset=%d, joint_kinematic_cts_offset=%d\n",
-            jid,
-            wid,
-            joint_coords_offset,
-            joint_dofs_offset,
-            joint_dynamic_cts_offset,
-            joint_kinematic_cts_offset,
-        )
 
         # Construct offsets from world + current joint offset
         coords_offset = world_coords_offset + joint_coords_offset
         dofs_offset = world_dofs_offset + joint_dofs_offset
         dynamic_cts_offset = world_dynamic_cts_offset + joint_dynamic_cts_offset
         kinematic_cts_offset = world_kinematic_cts_offset + joint_kinematic_cts_offset
-        wp.printf(
-            "joint %d/%d: coords_offset=%d, dofs_offset=%d, dynamic_cts_offset=%d, kinematic_cts_offset=%d\n\n",
-            jid,
-            wid,
-            coords_offset,
-            dofs_offset,
-            dynamic_cts_offset,
-            kinematic_cts_offset,
-        )
 
         # If the Base body is the world (bid=-1), use the identity transform (frame
         # of the world's origin), otherwise retrieve the Base body's pose and twist

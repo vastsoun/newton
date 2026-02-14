@@ -36,6 +36,11 @@ from newton._src.solvers.kamino.solvers.warmstart import WarmstarterContacts
 from newton._src.solvers.kamino.utils import logger as msg
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
 from newton._src.solvers.kamino.utils.sim import SimulationLogger, Simulator, SimulatorSettings, ViewerKamino
+from newton._src.solvers.kamino.tests.utils.extract import (
+    extract_active_constraint_dims,
+    extract_cts_jacobians,
+    extract_dofs_jacobians,
+)
 
 ###
 # Module configs
@@ -79,9 +84,13 @@ def _control_callback(
 
     # Apply a time-dependent joint references
     if t > t_start and t < t_end:
+        # data_joint_q_j_ref[jid] = 0.25 * wp.half_pi * wp.sin(2.0 * wp.pi * 0.5 * (t - t_start))  # Example: sinusoidal position reference
+        # data_joint_dq_j_ref[jid] = 0.25 * wp.half_pi * 2.0 * wp.pi * 0.5 * wp.cos(2.0 * wp.pi * 0.5 * (t - t_start))  # Example: sinusoidal velocity reference
         data_joint_q_j_ref[jid] = 0.4
+        data_joint_dq_j_ref[jid] = 0.0
     else:
         data_joint_q_j_ref[jid] = 0.0
+        data_joint_dq_j_ref[jid] = 0.0
 
     # # Apply a time-dependent joint references
     # if t > t_start and t < t_end:
@@ -159,33 +168,33 @@ class Example:
             self.builder: ModelBuilder = make_homogeneous_builder(
                 num_worlds=num_worlds,
                 build_fn=build_boxes_fourbar,
-                ground=ground,
+                ground=False,
                 dynamic_joints=True,
                 implicit_pd=True,
             )
             msg.error("builder.joints:\n%s", self.builder.joints)
 
-        # Offset the model to place it above the ground
-        # NOTE: The USD model is centered at the origin
-        offset = wp.transformf(0.0, 0.0, 0.2, 0.0, 0.0, 0.0, 1.0)
-        set_uniform_body_pose_offset(builder=self.builder, offset=offset)
+        # # Offset the model to place it above the ground
+        # # NOTE: The USD model is centered at the origin
+        # offset = wp.transformf(0.0, 0.0, 0.2, 0.0, 0.0, 0.0, 1.0)
+        # set_uniform_body_pose_offset(builder=self.builder, offset=offset)
 
         # Set gravity
         for w in range(self.builder.num_worlds):
-            self.builder.gravity[w].enabled = gravity
+            self.builder.gravity[w].enabled = False
 
         # Set solver settings
         settings = SimulatorSettings()
         settings.dt = self.sim_dt
-        settings.solver.integrator = "moreau"  # Select from {"euler", "moreau"}
+        settings.solver.integrator = "euler"  # Select from {"euler", "moreau"}
         settings.solver.problem.preconditioning = False
         settings.solver.padmm.primal_tolerance = 1e-4
         settings.solver.padmm.dual_tolerance = 1e-4
         settings.solver.padmm.compl_tolerance = 1e-4
         settings.solver.padmm.max_iterations = 200
-        settings.solver.padmm.rho_0 = 0.1
-        settings.solver.use_solver_acceleration = True
-        settings.solver.warmstart_mode = PADMMWarmStartMode.CONTAINERS
+        settings.solver.padmm.rho_0 = 1.0
+        settings.solver.use_solver_acceleration = False
+        settings.solver.warmstart_mode = PADMMWarmStartMode.NONE
         settings.solver.contact_warmstart_method = WarmstarterContacts.Method.GEOM_PAIR_NET_FORCE
         settings.solver.collect_solver_info = False
         settings.solver.compute_metrics = logging and not use_cuda_graph
@@ -267,11 +276,17 @@ class Example:
         """Run simulation substeps."""
         for _i in range(self.sim_substeps):
             self.sim.step()
-            t = self.sim.solver.data.time.time.numpy()[0]
-            if t > 1.9:
-                msg.warning("[%f]:  v_b_dyn_j: %s\n", t, self.sim.solver.data.joints.v_b_dyn_j)
-                msg.error("[%f]:  v_f: %s\n\n", t, self.sim.solver._problem_fd.data.v_f)
-                # msg.info("[%d]: dq_j_ref: %s", t, self.sim.solver.data.joints.dq_j_ref)
+            # t = self.sim.solver.data.time.time.numpy()[0]
+            # if t > 1.99:
+            #     # Extract the active constraint dimensions
+            #     active_dims = extract_active_constraint_dims(self.sim.solver._problem_fd.delassus)
+            #     J_cts = extract_cts_jacobians(self.sim.solver._jacobians, num_bodies=[4], active_dims=active_dims)
+            #     J_dofs = extract_dofs_jacobians(self.sim.solver._jacobians, num_body_dofs=[24])
+            #     msg.warning("[%f]: J_cts:\n%s\n", t, J_cts[0])
+            #     msg.warning("[%f]: J_dofs:\n%s\n\n", t, J_dofs[0])
+            # msg.warning("[%f]:  v_b_dyn_j: %s\n", t, self.sim.solver.data.joints.v_b_dyn_j)
+            # msg.error("[%f]:  v_f: %s\n\n", t, self.sim.solver._problem_fd.data.v_f)
+            # msg.info("[%d]: dq_j_ref: %s", t, self.sim.solver.data.joints.dq_j_ref)
             # if not self.use_cuda_graph and self.logging:
             #     self.logger.log()
 

@@ -234,7 +234,6 @@ def _add_joint_armature_diagonal_regularization(
 
     # Retrieve the joint's inverse mass for armature regularization
     inv_m_j = model_joint_inv_m_j[world_joint_dynamic_cts_offset + tid]
-    wp.printf("world %d, joint dynamic constraint %d: inv_m_j = %f\n", wid, tid, inv_m_j)
 
     # Add the armature regularization to the diagonal element of the Delassus matrix
     delassus_D[dmio + ncts * tid + tid] += inv_m_j

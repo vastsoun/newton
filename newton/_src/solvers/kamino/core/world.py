@@ -478,7 +478,7 @@ class WorldDescriptor(Descriptor):
         joint.actuated_coords_offset = int(self.num_actuated_joint_coords) if joint.is_actuated else -1
         joint.actuated_dofs_offset = int(self.num_actuated_joint_dofs) if joint.is_actuated else -1
         joint.cts_offset = int(self.num_joint_cts)
-        joint.dynamic_cts_offset = int(self.num_dynamic_joint_cts) if joint.is_implicit else -1
+        joint.dynamic_cts_offset = int(self.num_dynamic_joint_cts) if joint.is_dynamic else -1
         joint.kinematic_cts_offset = int(self.num_kinematic_joint_cts)
 
         # Append joint identifiers
@@ -529,8 +529,7 @@ class WorldDescriptor(Descriptor):
             self.actuated_joint_names.append(joint.name)
 
         # Append joint dynamics group info
-        if joint.is_implicit:
-            joint.dynamic_cts_offset = int(self.num_dynamic_joint_cts)
+        if joint.is_dynamic:
             self.has_implicit_dofs = True
             self.num_dynamic_joints += 1
             self.joint_dynamic_cts.append(joint.num_dynamic_cts)

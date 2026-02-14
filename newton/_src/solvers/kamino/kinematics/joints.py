@@ -710,10 +710,11 @@ def make_compute_joints_data_kernel(correction: JointCorrectionMode = JointCorre
         model_joint_b_j: wp.array(dtype=float32),
         model_joint_k_p_j: wp.array(dtype=float32),
         model_joint_k_d_j: wp.array(dtype=float32),
+        data_body_q_i: wp.array(dtype=transformf),
+        data_body_u_i: wp.array(dtype=vec6f),
+        data_joint_tau_j: wp.array(dtype=float32),
         data_joint_q_j_ref: wp.array(dtype=float32),
         data_joint_dq_j_ref: wp.array(dtype=float32),
-        state_body_q_i: wp.array(dtype=transformf),
-        state_body_u_i: wp.array(dtype=vec6f),
         q_j_p: wp.array(dtype=float32),
         # Outputs:
         data_p_j: wp.array(dtype=transformf),
@@ -766,12 +767,12 @@ def make_compute_joints_data_kernel(correction: JointCorrectionMode = JointCorre
         T_B_j = wp.transform_identity(dtype=float32)
         u_B_j = vec6f(0.0)
         if bid_B > -1:
-            T_B_j = state_body_q_i[bid_B]
-            u_B_j = state_body_u_i[bid_B]
+            T_B_j = data_body_q_i[bid_B]
+            u_B_j = data_body_u_i[bid_B]
 
         # Retrieve the Follower body's pose and twist
-        T_F_j = state_body_q_i[bid_F]
-        u_F_j = state_body_u_i[bid_F]
+        T_F_j = data_body_q_i[bid_F]
+        u_F_j = data_body_u_i[bid_F]
 
         # Compute the joint frame pose and relative motion
         p_j, j_r_j, j_q_j, j_u_j = compute_joint_pose_and_relative_motion(
@@ -812,11 +813,14 @@ def make_compute_joints_data_kernel(correction: JointCorrectionMode = JointCorre
             # Get joint kinematic state, just written in make_write_joint_data
             q_j = data_q_j[dofs_offset_j]
             dq_j = data_dq_j[dofs_offset_j]
+            tau_j_ff = data_joint_tau_j[dofs_offset_j]
 
             # Compute joint dynamic outputs
             m_j = a_j + dt * (b_j + k_d_j) + dt * dt * k_p_j
             # TODO @ruben: Could it still be possible that we want implicit PD without inertia?
             inv_m_j = 1.0 / m_j  # Zero division will not happen, otherwise this would not be a dynamic constraint.
+            h_j = dt * (tau_j_ff + k_p_j * (pd_q_j_ref - q_j) + k_d_j * pd_dq_j_ref)
+            # TODO: REMOVE THIS OVERWRITING
             h_j = dt * (k_p_j * (pd_q_j_ref - q_j) + k_d_j * pd_dq_j_ref)
             v_b_dyn_j = inv_m_j * (a_j * dq_j + dt * h_j)
 
@@ -1019,10 +1023,11 @@ def compute_joints_data(
             model.joints.b_j,
             model.joints.k_p_j,
             model.joints.k_d_j,
-            data.joints.q_j_ref,
-            data.joints.dq_j_ref,
             data.bodies.q_i,
             data.bodies.u_i,
+            data.joints.tau_j,
+            data.joints.q_j_ref,
+            data.joints.dq_j_ref,
             q_j_p,
             # Outputs:
             data.joints.p_j,

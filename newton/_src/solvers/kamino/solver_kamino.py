@@ -766,7 +766,7 @@ class SolverKamino(SolverBase):
         update_body_inertias(model=self._model.bodies, data=self._data.bodies)
 
         # Reset all joints to their model default states
-        self._data.joints.reset_state(q_j_ref=self._model.joints.q_j_ref)
+        self._data.joints.reset_state(q_j_ref=self._model.joints.q_j_0)
         self._data.joints.clear_all()
 
         # Reset the joint-limits interface
@@ -963,8 +963,8 @@ class SolverKamino(SolverBase):
         # purposes, e.g. account for roll-over of revolute joints etc
         compute_joints_data(
             model=self._model,
-            q_j_ref=_q_j_p,
             data=self._data,
+            q_j_p=_q_j_p,
             correction=self._settings.rotation_correction,
         )
 

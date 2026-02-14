@@ -344,7 +344,7 @@ class TestModelBuilder(unittest.TestCase):
         self.assertEqual(builder.joints[jid].act_type, JointActuationType.FORCE)
         self.assertEqual(builder.joints[jid].a_j, [1.0])
         self.assertEqual(builder.joints[jid].b_j, [1.0])
-        self.assertTrue(builder.joints[jid].is_implicit)
+        self.assertTrue(builder.joints[jid].is_dynamic)
         self.assertTrue(builder.joints[jid].num_kinematic_cts, 5)
         self.assertTrue(builder.joints[jid].num_dynamic_cts, 1)
 

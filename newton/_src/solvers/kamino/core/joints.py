@@ -859,7 +859,7 @@ class JointDescriptor(Descriptor):
         """
         Returns the number of dynamic constraints introduced by this joint.
         """
-        return self.dof_type.num_dofs if self.is_implicit else 0
+        return self.dof_type.num_dofs if self.is_dynamic else 0
 
     @property
     def num_kinematic_cts(self) -> int:
@@ -896,14 +896,19 @@ class JointDescriptor(Descriptor):
         """
         return self.act_type > JointActuationType.PASSIVE
 
-    # TODO: @ruben, should we rename this to `is_dynamic`?
-    # TODO: @ruben, should we also add a `is_implicit_pd` property method?
     @property
-    def is_implicit(self) -> bool:
+    def is_dynamic(self) -> bool:
         """
         Returns whether the joint's dynamics is simulated implicitly.
         """
         return np.any(self.a_j) or np.any(self.b_j)
+
+    @property
+    def is_implicit_pd(self) -> bool:
+        """
+        Returns whether the joint's dynamics is simulated using implicit PD control.
+        """
+        return np.any(self.k_p_j) or np.any(self.k_d_j)
 
     def has_base_body(self, bid: int) -> bool:
         """
@@ -947,6 +952,20 @@ class JointDescriptor(Descriptor):
         if self.act_type == JointActuationType.FORCE and self.dof_type == JointDoFType.FIXED:
             raise ValueError(
                 f"Invalid joint configuration: FIXED joints cannot be actuated (name={self.name}, uid={self.uid})."
+            )
+
+        # Check if DoF type + dynamic/implicit PD settings are compatible
+        if self.is_implicit_pd and self.dof_type == JointDoFType.FREE:
+            raise ValueError(
+                f"Invalid joint configuration: FREE joints cannot have implicit PD gains (name={self.name}, uid={self.uid})."
+            )
+        if self.is_dynamic and self.dof_type == JointDoFType.FIXED:
+            raise ValueError(
+                f"Invalid joint configuration: FIXED joints cannot be dynamic (name={self.name}, uid={self.uid})."
+            )
+        if self.is_implicit_pd and self.dof_type == JointDoFType.FIXED:
+            raise ValueError(
+                f"Invalid joint configuration: FIXED joints cannot have implicit PD gains (name={self.name}, uid={self.uid})."
             )
 
         # Set default values for joint limits if not provided
@@ -1577,13 +1596,31 @@ class JointsData:
 
     v_b_dyn_j: wp.array | None = None
     """
-    The velocity bias of the joint dynamic constraints (as flat array),
+    The velocity bias of the joint dynamic constraints (as flat array).
 
-    ``h_j := dt * ( k_p_j * ( q_j_ref - q_j ) + k_d_j * dq_j_ref ) ``,\n
-    ``v_b_dyn_j := inv_m_j * ( a_j * dq_j + dt * h_j ) ``,\n
+    Each joint has local actuation and PD control dynamics:\n
+    ``m_j * dq_j^{+} = a_j * dq_j^{-} + dt * h_j``
+
+    and is contributes to the dynamice of the system through the constraint equation:\n
+    ``dq_j^{+} = J_a_j * u^{+}``
+
+    where ``dq_j^{-}`` and ``dq_j^{+}`` are the pre- and post-event joint-space
+    velocities, and ``u^{+}`` are the post-event generalized velocities of the
+    system computed implicitly as a result of solving the forward dynamics problem
+    with the joint dynamic constraints. `J_a_j` is the block of the actuation Jacobian
+    matrix corresponding to the rows of DoFs of joint `j`.
+
+    This results in the following dynamic constraint equation for each joint `j`:\n
+    ``dq_j^{+} + m_j^{-1} * lambda_q_j = m_j^{-1} * (a_j * dq_j^{-} + dt * h_j)``,\n
+    ``dq_j^{+} + m_j^{-1} * lambda_q_j = v_b_dyn_j``,\n
+    ``J_a_j * u^{+} + m_j^{-1} * lambda_q_j = v_b_dyn_j``
+
+    and thus the velocity bias term of the joint-space dynamics of each joint `j` is computed as:\n
+    ``h_j := dt * ( k_p_j * ( q_j_ref - q_j^{-} ) + k_d_j * dq_j_ref ) ``,\n
+    ``v_b_dyn_j := inv_m_j * ( a_j * dq_j^{-} + dt * h_j ) ``,\n
     where dt is the simulation time step.
 
-    Shape of ``(sum(e_j),)`` and type :class:`float`,\n
+    Shape of ``(sum(e_j),)`` and type :class:`float`,
     where ``e_j`` is the number of dynamic constraints of joint ``j``.
     """
 

@@ -207,7 +207,7 @@ class TestJointDescriptor(unittest.TestCase):
         self.assertEqual(joint.is_passive, True)
         self.assertEqual(joint.is_binary, False)
         self.assertEqual(joint.is_unary, True)
-        self.assertEqual(joint.is_implicit, False)
+        self.assertEqual(joint.is_dynamic, False)
 
     def test_01_actuated_revolute_joint_with_effort_dynamics(self):
         joint = JointDescriptor(
@@ -260,7 +260,7 @@ class TestJointDescriptor(unittest.TestCase):
         self.assertEqual(joint.is_passive, False)
         self.assertEqual(joint.is_binary, True)
         self.assertEqual(joint.is_unary, False)
-        self.assertEqual(joint.is_implicit, True)
+        self.assertEqual(joint.is_dynamic, True)
 
 
 class TestGeometryDescriptor(unittest.TestCase):
@@ -625,7 +625,7 @@ class TestWorldDescriptor(unittest.TestCase):
         self.assertEqual(joint_0.wid, world.wid)
         self.assertFalse(joint_0.is_actuated)
         self.assertTrue(joint_0.is_binary)
-        self.assertTrue(joint_0.is_implicit)
+        self.assertTrue(joint_0.is_dynamic)
         self.assertTrue(joint_0.is_connected_to_body(body_0.bid))
         self.assertTrue(joint_0.is_connected_to_body(body_1.bid))
 

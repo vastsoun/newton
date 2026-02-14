@@ -171,6 +171,15 @@ class TestKinematicsConstraints(unittest.TestCase):
         if self.verbose:
             print_model_constraint_info(model)
             print_model_data_info(data)
+            print("\n===============================================================")
+            print("data.info.num_limits.ptr: ", data.info.num_limits.ptr)
+            print("limits.world_active_limits.ptr: ", limits.world_active_limits.ptr)
+            print("data.info.num_contacts.ptr: ", data.info.num_contacts.ptr)
+            print("contacts.world_active_contacts.ptr: ", contacts.world_active_contacts.ptr)
+
+        # Check if the data info entity counters point to the same arrays as the limits and contacts containers
+        self.assertTrue(data.info.num_limits.ptr, limits.world_active_limits.ptr)
+        self.assertTrue(data.info.num_contacts.ptr, contacts.world_active_contacts.ptr)
 
         # Extract numpy arrays from the model info
         model_max_limits = model.size.sum_of_max_limits
@@ -257,6 +266,7 @@ class TestKinematicsConstraints(unittest.TestCase):
         if self.verbose:
             print_model_constraint_info(model)
             print_model_data_info(data)
+            print("\n===============================================================")
             print("data.info.num_limits.ptr: ", data.info.num_limits.ptr)
             print("limits.world_active_limits.ptr: ", limits.world_active_limits.ptr)
             print("data.info.num_contacts.ptr: ", data.info.num_contacts.ptr)

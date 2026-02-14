@@ -112,7 +112,8 @@ class TestDelassusOperator(unittest.TestCase):
     def setUp(self):
         if not test_context.setup_done:
             setup_tests(clear_cache=False)
-        self.verbose = test_context.verbose  # Set to True for detailed output
+        # self.verbose = test_context.verbose  # Set to True for detailed output
+        self.verbose = True  # Set to True for detailed output
         self.default_device = wp.get_device(test_context.device)
 
     def tearDown(self):
@@ -224,7 +225,7 @@ class TestDelassusOperator(unittest.TestCase):
 
         # Construct the model description using model builders for different systems
         # builder = build_boxes_hinged(z_offset=0.0, ground=False)
-        builder = build_boxes_fourbar(z_offset=0.0, ground=False)
+        builder = build_boxes_fourbar(z_offset=0.0, ground=False, dynamic_joints=True, implicit_pd=True)
         num_bodies = [builder.num_bodies]
 
         # Create the model and containers from the builder
@@ -261,11 +262,22 @@ class TestDelassusOperator(unittest.TestCase):
         # Construct a list of generalized inverse mass matrices of each world
         invM_np = make_inverse_generalized_mass_matrices(model, data)
 
+        # Construct the joint armature regularization term for each world
+        njdcts = model.info.num_joint_dynamic_cts.numpy()
+        jdcts_start = model.info.joint_dynamic_cts_offset.numpy()
+        inv_M_q_np = [np.zeros(shape=(dim,), dtype=np.float32) for dim in active_dims]
+        if np.any(njdcts):
+            inv_m_j_np = data.joints.inv_m_j.numpy()
+            for w in range(delassus.num_worlds):
+                inv_M_q_np[w][: njdcts[w]] = inv_m_j_np[jdcts_start[w] : jdcts_start[w] + njdcts[w]]
+                inv_M_q_np[w] = np.diag(inv_M_q_np[w])
+                print(f"[{w}]: inv_M_q_np (shape={inv_M_q_np[w].shape}):\n{inv_M_q_np[w]}\n\n")
+
         # For each world, compute the Delassus matrix using numpy and
         # compare it with the one from the Delassus operator class
         for w in range(delassus.num_worlds):
             # Compute the Delassus matrix using the inverse mass matrix and the Jacobian
-            D_w = J_cts_np[w] @ invM_np[w] @ J_cts_np[w].T
+            D_w = (J_cts_np[w] @ invM_np[w]) @ J_cts_np[w].T + inv_M_q_np[w]
 
             # Compare the computed Delassus matrix with the one from the dual problem
             is_D_close = np.allclose(D_np[w], D_w, rtol=1e-3, atol=1e-4)
@@ -319,6 +331,17 @@ class TestDelassusOperator(unittest.TestCase):
         # Construct a list of generalized inverse mass matrices of each world
         invM_np = make_inverse_generalized_mass_matrices(model, data)
 
+        # Construct the joint armature regularization term for each world
+        njdcts = model.info.num_joint_dynamic_cts.numpy()
+        jdcts_start = model.info.joint_dynamic_cts_offset.numpy()
+        inv_M_q_np = [np.zeros(shape=(dim,), dtype=np.float32) for dim in active_dims]
+        if np.any(njdcts):
+            inv_m_j_np = data.joints.inv_m_j.numpy()
+            for w in range(delassus.num_worlds):
+                inv_M_q_np[w][: njdcts[w]] = inv_m_j_np[jdcts_start[w] : jdcts_start[w] + njdcts[w]]
+                inv_M_q_np[w] = np.diag(inv_M_q_np[w])
+                print(f"[{w}]: inv_M_q_np (shape={inv_M_q_np[w].shape}):\n{inv_M_q_np[w]}\n\n")
+
         # Optional verbose output
         if self.verbose:
             print("")  # Print a newline for better readability
@@ -338,7 +361,7 @@ class TestDelassusOperator(unittest.TestCase):
         # compare it with the one from the Delassus operator class
         for w in range(delassus.num_worlds):
             # Compute the Delassus matrix using the inverse mass matrix and the Jacobian
-            D_w = (J_cts_np[w] @ invM_np[w]) @ J_cts_np[w].T
+            D_w = (J_cts_np[w] @ invM_np[w]) @ J_cts_np[w].T + inv_M_q_np[w]
 
             # Compare the computed Delassus matrix with the one from the dual problem
             is_D_close = np.allclose(D_np[w], D_w, atol=1e-3, rtol=1e-4)

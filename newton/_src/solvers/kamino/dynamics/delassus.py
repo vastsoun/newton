@@ -205,6 +205,42 @@ def _build_delassus_elementwise(
 
 
 @wp.kernel
+def _add_joint_armature_diagonal_regularization(
+    # Inputs:
+    model_info_num_joint_dynamic_cts: wp.array(dtype=int32),
+    model_info_joint_dynamic_cts_offset: wp.array(dtype=int32),
+    model_joint_inv_m_j: wp.array(dtype=float32),
+    delassus_dim: wp.array(dtype=int32),
+    delassus_mio: wp.array(dtype=int32),
+    # Outputs:
+    delassus_D: wp.array(dtype=float32),
+):
+    # Retrieve the thread index as the world index and Delassus element index
+    wid, tid = wp.tid()
+
+    # Retrieve the world dimensions
+    num_joint_dyn_cts = model_info_num_joint_dynamic_cts[wid]
+
+    # Skip if world has no dynamic joint constraints or indices exceed the problem size
+    if num_joint_dyn_cts == 0 or tid >= num_joint_dyn_cts:
+        return
+
+    # Retrieve the world's Delassus matrix dimension and offset
+    ncts = delassus_dim[wid]
+    dmio = delassus_mio[wid]
+
+    # Retrieve the dynamic constraint index offset of the world
+    world_joint_dynamic_cts_offset = model_info_joint_dynamic_cts_offset[wid]
+
+    # Retrieve the joint's inverse mass for armature regularization
+    inv_m_j = model_joint_inv_m_j[world_joint_dynamic_cts_offset + tid]
+    wp.printf("world %d, joint dynamic constraint %d: inv_m_j = %f\n", wid, tid, inv_m_j)
+
+    # Add the armature regularization to the diagonal element of the Delassus matrix
+    delassus_D[dmio + ncts * tid + tid] += inv_m_j
+
+
+@wp.kernel
 def _regularize_delassus_diagonal(
     # Inputs:
     delassus_dim: wp.array(dtype=int32),
@@ -500,6 +536,23 @@ class DelassusOperator:
                 self._operator.mat,
             ],
         )
+
+        # Add armature regularization to the upper diagonal if dynamic joint constraints are present
+        if model.size.sum_of_num_dynamic_joints > 0:
+            wp.launch(
+                kernel=_add_joint_armature_diagonal_regularization,
+                dim=(self._size.num_worlds, model.size.max_of_num_dynamic_joint_cts),
+                inputs=[
+                    # Inputs:
+                    model.info.num_joint_dynamic_cts,
+                    model.info.joint_dynamic_cts_offset,
+                    data.joints.inv_m_j,
+                    self._operator.info.dim,
+                    self._operator.info.mio,
+                    # Outputs:
+                    self._operator.mat,
+                ],
+            )
 
     def regularize(self, eta: wp.array):
         """

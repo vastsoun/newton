@@ -745,6 +745,9 @@ def _build_free_velocity(
     # proper way would be to perform this op only for contacts
     epsilon_j = problem_v_i[thread_offset]
 
+    # TODO
+    v_b_j = problem_v_b[thread_offset]
+
     # Buffers
     J_i = vec6f(0.0)
     v_f_j = float32(0.0)
@@ -768,9 +771,16 @@ def _build_free_velocity(
 
         # Accumulate the impact bias term
         v_f_j += epsilon_j * wp.dot(J_i, u_i)
+    # wp.printf("%d: v_f_j: %.10f, v_b_j: %.10f\n", tid, v_f_j, v_b_j)
+    # wp.printf("%d: v_f_j + v_b_j: %.10f\n", tid, v_f_j + v_b_j)
+
+    # # Skip if row index exceed the problem size
+    # if tid < 1:
+    #     problem_v_f[thread_offset] = v_b_j
+    #     return
 
     # Store sum of velocity bias terms
-    problem_v_f[thread_offset] = v_f_j + problem_v_b[thread_offset]
+    problem_v_f[thread_offset] = v_f_j + v_b_j
 
 
 @wp.kernel
@@ -1299,10 +1309,10 @@ class DualProblem:
             ],
         )
 
-        # Optionally build and apply the Delassus diagonal preconditioner
-        if any(s.preconditioning for s in self._settings):
-            self._build_dual_preconditioner()
-            self._apply_dual_preconditioner_to_dual()
+        # # Optionally build and apply the Delassus diagonal preconditioner
+        # if any(s.preconditioning for s in self._settings):
+        #     self._build_dual_preconditioner()
+        #     self._apply_dual_preconditioner_to_dual()
 
     ###
     # Internals

@@ -36,11 +36,6 @@ from newton._src.solvers.kamino.solvers.warmstart import WarmstarterContacts
 from newton._src.solvers.kamino.utils import logger as msg
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
 from newton._src.solvers.kamino.utils.sim import SimulationLogger, Simulator, SimulatorSettings, ViewerKamino
-from newton._src.solvers.kamino.tests.utils.extract import (
-    extract_active_constraint_dims,
-    extract_cts_jacobians,
-    extract_dofs_jacobians,
-)
 
 ###
 # Module configs
@@ -70,8 +65,14 @@ def _control_callback(
     jid = int(0)
 
     # Define the time window for the active external force profile
-    t_start = float32(2.0)
-    t_end = float32(5.0)
+    t_start = float32(3.0)
+    t_window = float32(3.0)
+    t_0 = t_start + t_window
+    t_1 = t_0 + t_window
+    t_2 = t_1 + t_window
+    t_3 = t_2 + t_window
+    t_4 = t_3 + t_window
+    t_5 = t_4 + t_window
 
     # Get the current time
     t = state_t[wid]
@@ -83,10 +84,25 @@ def _control_callback(
     #     control_tau_j[jid] = 0.0
 
     # Apply a time-dependent joint references
-    if t > t_start and t < t_end:
+    if t > t_start and t < t_0:
         # data_joint_q_j_ref[jid] = 0.25 * wp.half_pi * wp.sin(2.0 * wp.pi * 0.5 * (t - t_start))  # Example: sinusoidal position reference
         # data_joint_dq_j_ref[jid] = 0.25 * wp.half_pi * 2.0 * wp.pi * 0.5 * wp.cos(2.0 * wp.pi * 0.5 * (t - t_start))  # Example: sinusoidal velocity reference
-        data_joint_q_j_ref[jid] = 0.4
+        data_joint_q_j_ref[jid] = 0.1
+        data_joint_dq_j_ref[jid] = 0.0
+    elif t > t_0 and t < t_1:
+        data_joint_q_j_ref[jid] = -0.1
+        data_joint_dq_j_ref[jid] = 0.0
+    elif t > t_1 and t < t_2:
+        data_joint_q_j_ref[jid] = 0.2
+        data_joint_dq_j_ref[jid] = 0.0
+    elif t > t_2 and t < t_3:
+        data_joint_q_j_ref[jid] = -0.2
+        data_joint_dq_j_ref[jid] = 0.0
+    elif t > t_3 and t < t_4:
+        data_joint_q_j_ref[jid] = 0.3
+        data_joint_dq_j_ref[jid] = 0.0
+    elif t > t_4 and t < t_5:
+        data_joint_q_j_ref[jid] = -0.3
         data_joint_dq_j_ref[jid] = 0.0
     else:
         data_joint_q_j_ref[jid] = 0.0
@@ -141,8 +157,8 @@ class Example:
         async_save: bool = False,
     ):
         # Initialize target frames per second and corresponding time-steps
-        self.fps = 60
-        self.sim_dt = 0.001
+        self.fps = 30
+        self.sim_dt = 0.01
         self.frame_dt = 1.0 / self.fps
         self.sim_substeps = max(1, round(self.frame_dt / self.sim_dt))
         self.max_steps = max_steps
@@ -168,20 +184,21 @@ class Example:
             self.builder: ModelBuilder = make_homogeneous_builder(
                 num_worlds=num_worlds,
                 build_fn=build_boxes_fourbar,
-                ground=False,
+                ground=ground,
+                limits=False,
                 dynamic_joints=True,
                 implicit_pd=True,
             )
             msg.error("builder.joints:\n%s", self.builder.joints)
 
-        # # Offset the model to place it above the ground
-        # # NOTE: The USD model is centered at the origin
-        # offset = wp.transformf(0.0, 0.0, 0.2, 0.0, 0.0, 0.0, 1.0)
-        # set_uniform_body_pose_offset(builder=self.builder, offset=offset)
+        # Offset the model to place it above the ground
+        # NOTE: The USD model is centered at the origin
+        offset = wp.transformf(0.0, 0.0, 0.1, 0.0, 0.0, 0.0, 1.0)
+        set_uniform_body_pose_offset(builder=self.builder, offset=offset)
 
         # Set gravity
         for w in range(self.builder.num_worlds):
-            self.builder.gravity[w].enabled = False
+            self.builder.gravity[w].enabled = gravity
 
         # Set solver settings
         settings = SimulatorSettings()
@@ -277,15 +294,19 @@ class Example:
         for _i in range(self.sim_substeps):
             self.sim.step()
             # t = self.sim.solver.data.time.time.numpy()[0]
+            # msg.warning("time: %s", t)
             # if t > 1.99:
-            #     # Extract the active constraint dimensions
-            #     active_dims = extract_active_constraint_dims(self.sim.solver._problem_fd.delassus)
-            #     J_cts = extract_cts_jacobians(self.sim.solver._jacobians, num_bodies=[4], active_dims=active_dims)
-            #     J_dofs = extract_dofs_jacobians(self.sim.solver._jacobians, num_body_dofs=[24])
-            #     msg.warning("[%f]: J_cts:\n%s\n", t, J_cts[0])
-            #     msg.warning("[%f]: J_dofs:\n%s\n\n", t, J_dofs[0])
-            # msg.warning("[%f]:  v_b_dyn_j: %s\n", t, self.sim.solver.data.joints.v_b_dyn_j)
-            # msg.error("[%f]:  v_f: %s\n\n", t, self.sim.solver._problem_fd.data.v_f)
+            #     pass
+            # # Extract the active constraint dimensions
+            # active_dims = extract_active_constraint_dims(self.sim.solver._problem_fd.delassus)
+            # J_cts = extract_cts_jacobians(self.sim.solver._jacobians, num_bodies=[4], active_dims=active_dims)
+            # J_dofs = extract_dofs_jacobians(self.sim.solver._jacobians, num_body_dofs=[24])
+            # msg.warning("[%f]: J_cts:\n%s\n", t, J_cts[0])
+            # msg.warning("[%f]: J_dofs:\n%s\n\n", t, J_dofs[0])
+            # msg.warning("[%f]: v_b_dyn_j: %s\n", t, self.sim.solver.data.joints.v_b_dyn_j)
+            # msg.error("[%f]: v_b: %s\n", t, self.sim.solver._problem_fd.data.v_b)
+            # msg.error("[%f]: v_f: %s\n", t, self.sim.solver._problem_fd.data.v_f)
+            # msg.error("[%f]: lambdas: %s\n\n", t, self.sim.solver._solver_fd.data.solution.lambdas)
             # msg.info("[%d]: dq_j_ref: %s", t, self.sim.solver.data.joints.dq_j_ref)
             # if not self.use_cuda_graph and self.logging:
             #     self.logger.log()

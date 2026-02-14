@@ -1071,7 +1071,7 @@ def build_boxes_fourbar(
         X_j=X_j,
         q_j_min=[qmin],
         q_j_max=[qmax],
-        a_j=0.01 if dynamic_joints else None,
+        a_j=0.1 if dynamic_joints else None,
         b_j=0.001 if dynamic_joints else None,
         k_p_j=100.0 if implicit_pd else None,
         k_d_j=1.0 if implicit_pd else None,

@@ -772,18 +772,17 @@ def _compute_joint_kinematics_residual_sparse(
 
     # Retrieve the starting index for the non-zero blocks for the current joint
     jac_j_nzb_start = jac_nzb_start[wid] + jac_joint_nzb_offsets[jid]
-    nzb_stride = 2 if bid_B_j > -1 else 1
 
     # Compute the per-joint constraint Jacobian matrix-vector product
     j_v_j = vec6f(0.0)
     u_i_F = data_bodies_u_i[bid_F_j]
     for j in range(num_cts_j):
-        jac_block = jac_nzb_values[jac_j_nzb_start + nzb_stride * j]
+        jac_block = jac_nzb_values[jac_j_nzb_start + j]
         j_v_j[j] += wp.dot(jac_block, u_i_F)
     if bid_B_j >= 0:
         u_i_B = data_bodies_u_i[bid_B_j]
         for j in range(num_cts_j):
-            jac_block = jac_nzb_values[jac_j_nzb_start + 2 * j + 1]
+            jac_block = jac_nzb_values[jac_j_nzb_start + num_cts_j + j]
             j_v_j[j] += wp.dot(jac_block, u_i_B)
 
     # Compute the per-joint kinematics residual

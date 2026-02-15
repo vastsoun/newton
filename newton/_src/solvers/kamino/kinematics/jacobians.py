@@ -177,9 +177,8 @@ def make_store_joint_jacobian_sparse_func(axes: Any):
 
         # Store the Jacobian block for the follower body
         J_F_col = 6 * (bid_F - bid_offset)
-        nzb_stride = 2 if bid_B > -1 else 1
         for i in range(num_jac_rows):
-            J_F_i_nzb_start = J_j_nzb_start + J_nzb_offset + nzb_stride * i
+            J_F_i_nzb_start = J_j_nzb_start + J_nzb_offset + i
             J_nzb_coords[J_F_i_nzb_start, 0] = row_start + i
             J_nzb_coords[J_F_i_nzb_start, 1] = J_F_col
             J_nzb_values[J_F_i_nzb_start] = JT_F_j[:, axes[i]]
@@ -188,7 +187,7 @@ def make_store_joint_jacobian_sparse_func(axes: Any):
         if bid_B > -1:
             J_B_col = 6 * (bid_B - bid_offset)
             for i in range(num_jac_rows):
-                J_B_i_nzb_start = J_j_nzb_start + J_nzb_offset + 2 * i + 1
+                J_B_i_nzb_start = J_j_nzb_start + J_nzb_offset + num_jac_rows + i
                 J_nzb_coords[J_B_i_nzb_start, 0] = row_start + i
                 J_nzb_coords[J_B_i_nzb_start, 1] = J_B_col
                 J_nzb_values[J_B_i_nzb_start] = JT_B_j[:, axes[i]]

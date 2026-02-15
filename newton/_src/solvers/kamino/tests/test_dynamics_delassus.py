@@ -947,6 +947,8 @@ class TestDelassusOperatorSparse(unittest.TestCase):
         delassus = BlockSparseMatrixFreeDelassusOperator(
             model=model,
             data=data,
+            limits=limits,
+            contacts=detector.contacts,
             device=self.default_device,
         )
 
@@ -973,6 +975,8 @@ class TestDelassusOperatorSparse(unittest.TestCase):
         delassus = BlockSparseMatrixFreeDelassusOperator(
             model=model,
             data=data,
+            limits=limits,
+            contacts=detector.contacts,
             device=self.default_device,
         )
 
@@ -998,6 +1002,8 @@ class TestDelassusOperatorSparse(unittest.TestCase):
         delassus = BlockSparseMatrixFreeDelassusOperator(
             model=model,
             data=data,
+            limits=limits,
+            contacts=detector.contacts,
             device=self.default_device,
         )
 
@@ -1023,6 +1029,8 @@ class TestDelassusOperatorSparse(unittest.TestCase):
         delassus = BlockSparseMatrixFreeDelassusOperator(
             model=model,
             data=data,
+            limits=limits,
+            contacts=detector.contacts,
             jacobians=jacobians,
             device=self.default_device,
         )
@@ -1050,6 +1058,8 @@ class TestDelassusOperatorSparse(unittest.TestCase):
         delassus = BlockSparseMatrixFreeDelassusOperator(
             model=model,
             data=data,
+            limits=limits,
+            contacts=detector.contacts,
             jacobians=jacobians,
             device=self.default_device,
         )
@@ -1076,6 +1086,8 @@ class TestDelassusOperatorSparse(unittest.TestCase):
         delassus = BlockSparseMatrixFreeDelassusOperator(
             model=model,
             data=data,
+            limits=limits,
+            contacts=detector.contacts,
             jacobians=jacobians,
             device=self.default_device,
         )
@@ -1102,6 +1114,8 @@ class TestDelassusOperatorSparse(unittest.TestCase):
         delassus = BlockSparseMatrixFreeDelassusOperator(
             model=model,
             data=data,
+            limits=limits,
+            contacts=detector.contacts,
             jacobians=jacobians,
             device=self.default_device,
         )
@@ -1129,6 +1143,8 @@ class TestDelassusOperatorSparse(unittest.TestCase):
         delassus = BlockSparseMatrixFreeDelassusOperator(
             model=model,
             data=data,
+            limits=limits,
+            contacts=detector.contacts,
             jacobians=jacobians,
             device=self.default_device,
         )
@@ -1155,6 +1171,8 @@ class TestDelassusOperatorSparse(unittest.TestCase):
         delassus = BlockSparseMatrixFreeDelassusOperator(
             model=model,
             data=data,
+            limits=limits,
+            contacts=detector.contacts,
             jacobians=jacobians,
             device=self.default_device,
         )
@@ -1181,6 +1199,8 @@ class TestDelassusOperatorSparse(unittest.TestCase):
         delassus = BlockSparseMatrixFreeDelassusOperator(
             model=model,
             data=data,
+            limits=limits,
+            contacts=detector.contacts,
             jacobians=jacobians,
             device=self.default_device,
         )
@@ -1208,6 +1228,8 @@ class TestDelassusOperatorSparse(unittest.TestCase):
         delassus = BlockSparseMatrixFreeDelassusOperator(
             model=model,
             data=data,
+            limits=limits,
+            contacts=detector.contacts,
             jacobians=jacobians,
             device=self.default_device,
         )
@@ -1234,6 +1256,8 @@ class TestDelassusOperatorSparse(unittest.TestCase):
         delassus = BlockSparseMatrixFreeDelassusOperator(
             model=model,
             data=data,
+            limits=limits,
+            contacts=detector.contacts,
             jacobians=jacobians,
             device=self.default_device,
         )

@@ -1276,6 +1276,8 @@ class DualProblem:
             self._delassus = BlockSparseMatrixFreeDelassusOperator(
                 model=model,
                 data=data,
+                limits=limits,
+                contacts=contacts,
                 solver=solver,
                 solver_kwargs=solver_kwargs,
                 device=device,
@@ -1398,7 +1400,8 @@ class DualProblem:
         # Build the Delassus operator
         # NOTE: We build this first since it will update the arrays of active constraints
         if self._sparse:
-            self._delassus.assign(jacobian=jacobians)
+            self._delassus.assign(jacobians=jacobians)
+            self._delassus.update()
         else:
             self._delassus.build(
                 model=model,

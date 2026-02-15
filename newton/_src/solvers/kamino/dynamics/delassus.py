@@ -74,6 +74,7 @@ Typical usage example:
 
 from typing import Any
 
+import numpy as np
 import warp as wp
 from warp.context import Devicelike
 
@@ -81,7 +82,7 @@ from ..core.model import Model, ModelData, ModelSize
 from ..core.types import FloatType, float32, int32, mat33f, vec3f, vec6f
 from ..geometry.contacts import Contacts
 from ..kinematics.constraints import get_max_constraints_per_world
-from ..kinematics.jacobians import DenseSystemJacobians, SparseSystemJacobians
+from ..kinematics.jacobians import ColMajorSparseConstraintJacobians, DenseSystemJacobians, SparseSystemJacobians
 from ..kinematics.limits import Limits
 from ..linalg import DenseLinearOperatorData, DenseSquareMultiLinearInfo, LinearSolverType
 from ..linalg.linear import IterativeSolver
@@ -838,10 +839,13 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
         self,
         model: Model | None = None,
         data: ModelData | None = None,
+        limits: Limits | None = None,
+        contacts: Contacts | None = None,
         jacobians: SparseSystemJacobians | None = None,
         solver: LinearSolverType = None,
         solver_kwargs: dict[str, Any] | None = None,
         device: Devicelike = None,
+        build_col_major_jacobians: bool = True,
     ):
         """
         Creates a Delassus operator for the given model.
@@ -858,18 +862,25 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
         Args:
             model (Model): The model container for which the Delassus operator is built.
             data (ModelData, optional): The model data container holding the state info and data.
+            limits (Limits, optional): Limits data container for joint limit constraints.
+            contacts (Contacts, optional): Contacts data container for contact constraints.
             jacobians (SparseSystemJacobians, optional): The sparse Jacobians container. Can be assigned later via the `assign` method.
             solver (LinearSolverType, optional): The linear solver class to use for solving linear systems. Must be a subclass of `IterativeSolver`.
             solver_kwargs (dict, optional): Additional keyword arguments to pass to the solver constructor.
             device (Devicelike, optional): The device identifier for the Delassus operator. Defaults to None.
+            build_col_major_jacobians (bool): Flag to indicate whether a column-major Jacobian to speed up matrix-vector operations should be constructed. Defaults to `True`.
         """
         super().__init__()
 
         # self.bsm represents the constraint Jacobian
         self._model: Model | None = None
         self._data: ModelData | None = None
+        self._limits: Limits | None
+        self._contacts: Contacts | None
         self._preconditioner: wp.array | None = None
         self._eta: wp.array | None = None
+
+        self._jacobians: SparseSystemJacobians | None = None
 
         # Problem info object
         # TODO: Create more general info object independent of dense matrix representation
@@ -887,25 +898,33 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
         self._vec_temp_cts_space_A: wp.array | None = None
         self._vec_temp_cts_space_B: wp.array | None = None
 
+        self._col_major_jacobian: ColMajorSparseConstraintJacobians | None = None
+
         # Allocate the Delassus operator data if at least the model is provided
         if model is not None:
             self.finalize(
                 model=model,
                 data=data,
+                limits=limits,
+                contacts=contacts,
                 jacobians=jacobians,
                 solver=solver,
                 device=device,
                 solver_kwargs=solver_kwargs,
+                build_col_major_jacobians=build_col_major_jacobians,
             )
 
     def finalize(
         self,
         model: Model,
         data: ModelData,
+        limits: Limits | None,
+        contacts: Contacts | None,
         jacobians: SparseSystemJacobians | None = None,
         solver: LinearSolverType = None,
         device: Devicelike = None,
         solver_kwargs: dict[str, Any] | None = None,
+        build_col_major_jacobians: bool = True,
     ):
         """
         Allocates the Delassus operator with the specified dimensions and device.
@@ -913,10 +932,13 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
         Args:
             model (Model): The model container for which the Delassus operator is built.
             data (ModelData): The model data container holding the state info and data.
+            limits (Limits, optional): Limits data container for joint limit constraints.
+            contacts (Contacts, optional): Contacts data container for contact constraints.
             jacobians (SparseSystemJacobians, optional): The sparse Jacobians container. Can be assigned later via the `assign` method.
             solver (LinearSolverType, optional): The linear solver class to use for solving linear systems. Must be a subclass of `IterativeSolver`.
             device (Devicelike, optional): The device identifier for the Delassus operator. Defaults to None.
             solver_kwargs (dict, optional): Additional keyword arguments to pass to the solver constructor.
+            build_col_major_jacobians (bool): Flag to indicate whether a column-major Jacobian to speed up matrix-vector operations should be constructed. Defaults to `True`.
         """
         # Ensure the model container is valid
         if model is None:
@@ -936,6 +958,8 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
 
         self._model = model
         self._data = data
+        self._limits = limits
+        self._contacts = contacts
 
         # Override the device identifier if specified, otherwise use the current device
         if device is not None:
@@ -979,14 +1003,30 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
 
         # Assign Jacobian if specified
         if jacobians is not None:
-            self.bsm = jacobians._J_cts.bsm
+            self.assign(jacobians)
+
+        if build_col_major_jacobians:
+            # Check whether any of the maximum row dimensions of the Jacobians is smaller than six.
+            # If so, we avoid building the column-major Jacobian due to potential memory access issues.
+            min_of_max_rows = np.min(self._model.info.max_total_cts.numpy())
+
+            if min_of_max_rows >= 6:
+                self._col_major_jacobian = ColMajorSparseConstraintJacobians(
+                    model=self._model,
+                    limits=self._limits,
+                    contacts=self._contacts,
+                    jacobians=self._jacobians,
+                    device=self.device,
+                )
+            else:
+                self._col_major_jacobian = None
 
         # Optionally initialize the iterative linear system solver if one is specified
         if solver is not None:
             solver_kwargs = solver_kwargs or {}
             self._solver = solver(operator=self, device=self._device, **solver_kwargs)
 
-    def assign(self, jacobian: SparseSystemJacobians):
+    def assign(self, jacobians: SparseSystemJacobians):
         """
         Assigns the constraint Jacobian to the Delassus operator.
 
@@ -994,10 +1034,18 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
         which is used to compute the implicit Delassus matrix-vector products.
 
         Args:
-            jacobian (SparseSystemJacobians): The sparse system Jacobians container holding the
+            jacobians (SparseSystemJacobians): The sparse system Jacobians container holding the
                 constraint Jacobian matrix in block sparse format.
         """
-        self.bsm = jacobian._J_cts.bsm
+        self._jacobians = jacobians
+        self.bsm = jacobians._J_cts.bsm
+
+    def update(self):
+        """
+        Updates any internal data structures that depend on the model, limits, contacts, or system Jacobians.
+        """
+        if self._col_major_jacobian is not None:
+            self._col_major_jacobian.update(self._jacobians, self._model, self._limits, self._contacts)
 
     def set_regularization(self, eta: wp.array | None):
         """
@@ -1218,7 +1266,10 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
 
         if self._preconditioner is None:
             # Compute first Jacobian matrix-vector product: v <- J^T @ x
-            self.ATy_op(self.bsm, x, v, world_mask)
+            if self._col_major_jacobian is not None:
+                self.ATy_op(self._col_major_jacobian.bsm, x, v, world_mask)
+            else:
+                self.ATy_op(self.bsm, x, v, world_mask)
 
             # Multiply by inverse mass matrix (in-place): v <- M^-1 @ v
             self._apply_inverse_mass_matrix(v, world_mask)
@@ -1237,7 +1288,10 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
             self._apply_preconditioning(x_preconditioned, world_mask)
 
             # Compute first Jacobian matrix-vector product: v <- J^T @ x_p
-            self.ATy_op(self.bsm, x_preconditioned, v, world_mask)
+            if self._col_major_jacobian is not None:
+                self.ATy_op(self._col_major_jacobian.bsm, x_preconditioned, v, world_mask)
+            else:
+                self.ATy_op(self.bsm, x_preconditioned, v, world_mask)
 
             # Multiply by inverse mass matrix (in-place): v <- M^-1 @ v
             self._apply_inverse_mass_matrix(v, world_mask)
@@ -1275,7 +1329,10 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
 
         if self._preconditioner is None:
             # Compute first Jacobian matrix-vector product: v <- J^T @ x
-            self.ATy_op(self.bsm, x, v, world_mask)
+            if self._col_major_jacobian is not None:
+                self.ATy_op(self._col_major_jacobian.bsm, x, v, world_mask)
+            else:
+                self.ATy_op(self.bsm, x, v, world_mask)
 
             # Multiply by inverse mass matrix (in-place): v <- M^-1 @ v
             self._apply_inverse_mass_matrix(v, world_mask)
@@ -1296,7 +1353,10 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
             self._apply_preconditioning(x_preconditioned, world_mask)
 
             # Compute first Jacobian matrix-vector product: v <- J^T @ x_p
-            self.ATy_op(self.bsm, x_preconditioned, v, world_mask)
+            if self._col_major_jacobian is not None:
+                self.ATy_op(self._col_major_jacobian.bsm, x_preconditioned, v, world_mask)
+            else:
+                self.ATy_op(self.bsm, x_preconditioned, v, world_mask)
 
             # Multiply by inverse mass matrix (in-place): v <- M^-1 @ v
             self._apply_inverse_mass_matrix(v, world_mask)

@@ -887,6 +887,7 @@ def _build_limit_jacobians_sparse(
     jacobian_cts_num_nzb: wp.array(dtype=int32),
     jacobian_cts_nzb_coords: wp.array2d(dtype=int32),
     jacobian_cts_nzb_values: wp.array(dtype=vec6f),
+    jacobian_cts_limit_nzb_offsets: wp.array(dtype=int32),
 ):
     """
     A kernel to compute the Jacobians (constraints and actuated DoFs) for the joints in a model.
@@ -924,6 +925,7 @@ def _build_limit_jacobians_sparse(
     # Set the constraint Jacobian block for the follower body from the actuation Jacobian block
     num_limit_nzb = 2 if body_id_B_l > -1 else 1
     jac_cts_nzb_offset_world = wp.atomic_add(jacobian_cts_num_nzb, world_id, num_limit_nzb)
+    jacobian_cts_limit_nzb_offsets[limit_id] = jac_cts_nzb_offset_world
     jac_cts_nzb_idx = jacobian_cts_nzb_start[world_id] + jac_cts_nzb_offset_world
     jacobian_cts_nzb_values[jac_cts_nzb_idx] = side_l * jacobian_dofs_nzb_values[jac_dofs_nzb_idx]
     jacobian_cts_nzb_coords[jac_cts_nzb_idx, 0] = limit_cts_offset + limit_id_l
@@ -1037,6 +1039,7 @@ def _build_contact_jacobians_sparse(
     jacobian_cts_num_nzb: wp.array(dtype=int32),
     jacobian_cts_nzb_coords: wp.array2d(dtype=int32),
     jacobian_cts_nzb_values: wp.array(dtype=vec6f),
+    jacobian_cts_contact_nzb_offsets: wp.array(dtype=int32),
 ):
     """
     A kernel to compute the Jacobians (constraints and actuated DoFs) for the joints in a model.
@@ -1080,6 +1083,7 @@ def _build_contact_jacobians_sparse(
     num_contact_nzb = 6 if body_id_A_k > -1 else 3
     # Allocate non-zero blocks in the Jacobian by incrementing the number of NZB
     jac_cts_nzb_offset_world = wp.atomic_add(jacobian_cts_num_nzb, world_id, num_contact_nzb)
+    jacobian_cts_contact_nzb_offsets[contact_id] = jac_cts_nzb_offset_world
     jac_cts_nzb_offset = jacobian_cts_nzb_start[world_id] + jac_cts_nzb_offset_world
     # Store 6x3 Jacobian block as three separate 6x1 blocks
     for j in range(3):
@@ -1364,8 +1368,11 @@ class SparseSystemJacobians:
         # Declare and initialize the Jacobian data containers
         self._J_cts: BlockSparseLinearOperators | None = None
         self._J_dofs: BlockSparseLinearOperators | None = None
-        # Local (in-world) offsets for the non-zero blocks of the constraint and dofs Jacobian for each (global) joint
+        # Local (in-world) offsets for the non-zero blocks of the constraint and dofs Jacobian for
+        # each (global) joint, limit, and contact
         self._J_cts_joint_nzb_offsets: wp.array | None = None
+        self._J_cts_limit_nzb_offsets: wp.array | None = None
+        self._J_cts_contact_nzb_offsets: wp.array | None = None
         self._J_dofs_joint_nzb_offsets: wp.array | None = None
         # Local (in-world) offsets for the non-zero blocks of the dofs Jacobian for each (global) joint dof
         self._J_dofs_dof_nzb_offsets: wp.array | None = None
@@ -1475,6 +1482,10 @@ class SparseSystemJacobians:
             self._J_dofs = BlockSparseLinearOperators(bsm=bsm_dofs)
 
             self._J_cts_joint_nzb_offsets = wp.array(J_cts_joint_nzb_offsets, dtype=int32, device=device)
+            self._J_cts_limit_nzb_offsets = wp.zeros(shape=(model.size.sum_of_max_limits,), dtype=int32, device=device)
+            self._J_cts_contact_nzb_offsets = wp.zeros(
+                shape=(model.size.sum_of_max_contacts,), dtype=int32, device=device
+            )
             self._J_dofs_joint_nzb_offsets = wp.array(J_dofs_joint_nzb_offsets, dtype=int32, device=device)
             self._J_dofs_dof_nzb_offsets = wp.array(J_dofs_dof_nzb_offsets, dtype=int32, device=device)
 
@@ -1584,6 +1595,7 @@ class SparseSystemJacobians:
                     jacobian_cts.num_nzb,
                     jacobian_cts.nzb_coords,
                     jacobian_cts.nzb_values,
+                    self._J_cts_limit_nzb_offsets,
                 ],
             )
 
@@ -1610,5 +1622,6 @@ class SparseSystemJacobians:
                     jacobian_cts.num_nzb,
                     jacobian_cts.nzb_coords,
                     jacobian_cts.nzb_values,
+                    self._J_cts_contact_nzb_offsets,
                 ],
             )

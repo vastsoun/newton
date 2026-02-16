@@ -990,6 +990,24 @@ class JointDescriptor(Descriptor):
                 f"\n  k_p_j: {self.k_p_j}"
                 f"\n  k_d_j: {self.k_d_j}"
             )
+        if self.is_implicit_pd and not (np.any(self.k_p_j) or np.any(self.k_d_j)):
+            raise ValueError(
+                f"Joint `{self.name}` is defined as implicit PD but has zero-valued PD gains:"
+                f"\n  k_p_j: {self.k_p_j}"
+                f"\n  k_d_j: {self.k_d_j}"
+            )
+        if self.act_type == JointActuationType.FORCE and (np.any(self.k_p_j) or np.any(self.k_d_j)):
+            raise ValueError(
+                f"Joint `{self.name}` is defined as FORCE actuated but has non-zero PD gains:"
+                f"\n  k_p_j: {self.k_p_j}"
+                f"\n  k_d_j: {self.k_d_j}"
+            )
+        if self.act_type == JointActuationType.POSITION_VELOCITY and not (np.any(self.k_p_j) or np.any(self.k_d_j)):
+            raise ValueError(
+                f"Joint `{self.name}` is defined as POSITION_VELOCITY actuated but has zero-valued PD gains:"
+                f"\n  k_p_j: {self.k_p_j}"
+                f"\n  k_d_j: {self.k_d_j}"
+            )
 
     @override
     def __repr__(self):

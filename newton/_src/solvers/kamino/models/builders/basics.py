@@ -1063,7 +1063,7 @@ def build_boxes_fourbar(
     _builder.add_joint(
         name="link1_to_link2",
         dof_type=JointDoFType.REVOLUTE,
-        act_type=JointActuationType.FORCE,
+        act_type=JointActuationType.POSITION_VELOCITY if implicit_pd else JointActuationType.FORCE,
         bid_B=bid1,
         bid_F=bid2,
         B_r_Bj=r_j1 - r_b1,

@@ -53,7 +53,7 @@ from .kernels import (
     make_initialize_solver_kernel,
     make_update_dual_variables_and_compute_primal_dual_residuals,
 )
-from .types import PADMMConfig, PADMMData, PADMMSettings, PADMMWarmStartMode
+from .types import PADMMConfig, PADMMData, PADMMSettings, PADMMStatus, PADMMWarmStartMode
 
 ###
 # Module interface
@@ -73,6 +73,22 @@ wp.set_module_options({"enable_backward": False})
 ###
 # Interfaces
 ###
+
+
+@wp.kernel
+def _update_inner_solver_tolerances(
+    status: wp.array(dtype=PADMMStatus),
+    base_atol: wp.array(dtype=float),
+    base_rtol: wp.array(dtype=float),
+    loose_iters: int,
+    loose_scale: float,
+    out_atol: wp.array(dtype=float),
+    out_rtol: wp.array(dtype=float),
+):
+    world = wp.tid()
+    scale = wp.where(status[world].iterations < loose_iters, loose_scale, 1.0)
+    out_atol[world] = base_atol[world] * scale
+    out_rtol[world] = base_rtol[world] * scale
 
 
 class PADMMSolver:
@@ -136,6 +152,12 @@ class PADMMSolver:
 
         # Declare the device cache
         self._device: Devicelike = None
+
+        # Early ADMM iterations can use looser inner-CG tolerances for speed.
+        self._inner_cg_loose_iterations: int = 12
+        self._inner_cg_loose_scale: float = 8.0
+        self._inner_cg_base_atol: wp.array | None = None
+        self._inner_cg_base_rtol: wp.array | None = None
 
         # Perform memory allocations if a model is provided
         if model is not None:
@@ -253,6 +275,8 @@ class PADMMSolver:
             collect_info=self._collect_info,
             device=self._device,
         )
+        self._inner_cg_base_atol = None
+        self._inner_cg_base_rtol = None
 
         # Write algorithm configs into device memory
         configs = [s.to_config() for s in self._settings]
@@ -357,6 +381,7 @@ class PADMMSolver:
         # Add the diagonal proximal regularization to the Delassus matrix
         # D_{eta,rho} := D + (eta + rho) * I_{ncts}
         self._update_regularization(problem)
+        self._prepare_inner_solver_tolerance_schedule(problem)
 
         # Reset the solver info to zero if collection is enabled
         if self._collect_info:
@@ -865,10 +890,65 @@ class PADMMSolver:
         Args:
             problem (DualProblem): The dual forward dynamics problem to be solved.
         """
+        self._update_inner_solver_tolerance_schedule(problem)
+
         # TODO: We should do this in-place
         # wp.copy(self._data.state.x, self._data.state.v)
         # problem._delassus.solve_inplace(x=self._data.state.x)
         problem._delassus.solve(v=self._data.state.v, x=self._data.state.x)
+
+    def _update_inner_solver_tolerance_schedule(self, problem: DualProblem):
+        """Loosen inner iterative solver tolerances during early ADMM iterations."""
+        linear_solver = getattr(problem._delassus, "_solver", None)
+        if linear_solver is None:
+            return
+        inner_solver = getattr(linear_solver, "solver", None)
+        if inner_solver is None:
+            return
+        atol = getattr(inner_solver, "atol", None)
+        rtol = getattr(inner_solver, "rtol", None)
+        if not isinstance(atol, wp.array) or not isinstance(rtol, wp.array):
+            return
+        if self._inner_cg_base_atol is None or self._inner_cg_base_rtol is None:
+            return
+
+        wp.launch(
+            kernel=_update_inner_solver_tolerances,
+            dim=self._size.num_worlds,
+            inputs=[
+                self._data.status,
+                self._inner_cg_base_atol,
+                self._inner_cg_base_rtol,
+                self._inner_cg_loose_iterations,
+                self._inner_cg_loose_scale,
+            ],
+            outputs=[atol, rtol],
+            device=self._device,
+        )
+
+    def _prepare_inner_solver_tolerance_schedule(self, problem: DualProblem):
+        """Prepare baseline tolerance buffers outside captured solver loops."""
+        linear_solver = getattr(problem._delassus, "_solver", None)
+        if linear_solver is None:
+            return
+        inner_solver = getattr(linear_solver, "solver", None)
+        if inner_solver is None:
+            return
+        atol = getattr(inner_solver, "atol", None)
+        rtol = getattr(inner_solver, "rtol", None)
+        if not isinstance(atol, wp.array) or not isinstance(rtol, wp.array):
+            return
+        if (
+            self._inner_cg_base_atol is not None
+            and self._inner_cg_base_rtol is not None
+            and self._inner_cg_base_atol.shape == atol.shape
+            and self._inner_cg_base_rtol.shape == rtol.shape
+        ):
+            return
+        self._inner_cg_base_atol = wp.empty_like(atol)
+        self._inner_cg_base_rtol = wp.empty_like(rtol)
+        wp.copy(self._inner_cg_base_atol, atol)
+        wp.copy(self._inner_cg_base_rtol, rtol)
 
     def _update_projection_argument(self, problem: DualProblem, z: wp.array):
         """

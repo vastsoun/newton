@@ -842,8 +842,6 @@
 </div>
 <div class="output_area docutils container">
 <div class="highlight"><pre>
-Warp DeprecationWarning: The namespace `warp.context` will soon be removed from the public API. It can still be accessed from `warp._src.context` but might be changed or removed without notice.
-Warp DeprecationWarning: The symbol `warp.context.Device` will soon be removed from the public API. Use `warp.Device` instead.
 Warp 1.12.0.dev20260127 initialized:
    CUDA driver not found or failed to initialize
    Devices:
@@ -969,7 +967,7 @@ Added 4 bodies with collision shapes
 </div>
 <div class="output_area docutils container">
 <div class="highlight"><pre>
-Module newton._src.geometry.inertia 8e8f74f load on device &#39;cpu&#39; took 2440.60 ms  (compiled)
+Module newton._src.geometry.inertia 8e8f74f load on device &#39;cpu&#39; took 2525.68 ms  (compiled)
 Added mesh body with 6102 vertices
 </pre></div></div>
 </div>
@@ -1002,7 +1000,7 @@ Added mesh body with 6102 vertices
 </div>
 <div class="output_area docutils container">
 <div class="highlight"><pre>
-Module validate_and_correct_inertia_kernel_1911a1c2 f78b133 load on device &#39;cpu&#39; took 2045.88 ms  (compiled)
+Module validate_and_correct_inertia_kernel_1911a1c2 f78b133 load on device &#39;cpu&#39; took 2055.48 ms  (compiled)
 Model finalized for device cpu:
   Bodies: 5
   Shapes: 7
@@ -1032,10 +1030,10 @@ Model finalized for device cpu:
 <span class="c1"># The control object is not used in this example, but we create it for completeness</span>
 <span class="n">control</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">control</span><span class="p">()</span>
 
-<span class="c1"># Perform initial collision detection</span>
-<span class="n">contacts</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">collide</span><span class="p">(</span><span class="n">state_0</span><span class="p">)</span>
+<span class="c1"># Allocate Contacts buffer</span>
+<span class="n">contacts</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">contacts</span><span class="p">()</span>
 
-<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;State and control objects created&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;State, Contacts and Control objects created&quot;</span><span class="p">)</span>
 </pre></div>
 </div>
 </div>
@@ -1044,7 +1042,7 @@ Model finalized for device cpu:
 </div>
 <div class="output_area stderr docutils container">
 <div class="highlight"><pre>
-/home/runner/work/newton/newton/newton/_src/sim/collide.py:461: UserWarning: NarrowPhase running on CPU: mesh-mesh contacts will be skipped (SDF-based mesh-mesh collision requires CUDA). Use a CUDA device for full mesh-mesh contact support.
+/home/runner/work/newton/newton/newton/_src/sim/collide.py:521: UserWarning: NarrowPhase running on CPU: mesh-mesh contacts will be skipped (SDF-based mesh-mesh collision requires CUDA). Use a CUDA device for full mesh-mesh contact support.
   self.narrow_phase = NarrowPhase(
 </pre></div></div>
 </div>
@@ -1053,13 +1051,7 @@ Model finalized for device cpu:
 </div>
 <div class="output_area docutils container">
 <div class="highlight"><pre>
-Module newton._src.sim.collide 5ade590 load on device &#39;cpu&#39; took 2965.54 ms  (compiled)
-Module newton._src.geometry.broad_phase_nxn e7bae85 load on device &#39;cpu&#39; took 2266.18 ms  (compiled)
-Module newton._src.geometry.narrow_phase 4616d06 load on device &#39;cpu&#39; took 3063.27 ms  (compiled)
-Module newton._src.geometry.narrow_phase c2abaa2 load on device &#39;cpu&#39; took 5269.75 ms  (compiled)
-Module newton._src.geometry.narrow_phase 98788b6 load on device &#39;cpu&#39; took 5028.06 ms  (compiled)
-Module newton._src.geometry.narrow_phase 36a79f8 load on device &#39;cpu&#39; took 6752.55 ms  (compiled)
-State and control objects created
+State, Contacts and Control objects created
 </pre></div></div>
 </div>
 </section>
@@ -1147,7 +1139,7 @@ Simulation configured:
         <span class="c1"># viewer.apply_forces(state_0)</span>
 
         <span class="c1"># 3. Detect collisions</span>
-        <span class="n">contacts</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">collide</span><span class="p">(</span><span class="n">state_0</span><span class="p">)</span>
+        <span class="n">model</span><span class="o">.</span><span class="n">collide</span><span class="p">(</span><span class="n">state_0</span><span class="p">,</span> <span class="n">contacts</span><span class="p">)</span>
 
         <span class="c1"># 4. Step the simulation by one physics timestep</span>
         <span class="n">solver</span><span class="o">.</span><span class="n">step</span><span class="p">(</span><span class="n">state_in</span><span class="o">=</span><span class="n">state_0</span><span class="p">,</span> <span class="n">state_out</span><span class="o">=</span><span class="n">state_1</span><span class="p">,</span> <span class="n">control</span><span class="o">=</span><span class="n">control</span><span class="p">,</span> <span class="n">contacts</span><span class="o">=</span><span class="n">contacts</span><span class="p">,</span> <span class="n">dt</span><span class="o">=</span><span class="n">sim_dt</span><span class="p">)</span>
@@ -1222,7 +1214,7 @@ Running on CPU (no CUDA graph)
 </div>
 <div class="output_area docutils container">
 <div class="highlight"><pre>
-Module newton._src.viewer.kernels 5d36fe6 load on device &#39;cpu&#39; took 3108.10 ms  (compiled)
+Module newton._src.viewer.kernels 5d36fe6 load on device &#39;cpu&#39; took 3130.16 ms  (compiled)
 </pre></div></div>
 </div>
 </section>
@@ -1265,8 +1257,14 @@ Module newton._src.viewer.kernels 5d36fe6 load on device &#39;cpu&#39; took 3108
 </div>
 <div class="output_area docutils container">
 <div class="highlight"><pre>
-Module newton._src.solvers.xpbd.kernels bff295d load on device &#39;cpu&#39; took 11643.10 ms  (compiled)
-Module newton._src.solvers.solver dc85a44 load on device &#39;cpu&#39; took 2435.99 ms  (compiled)
+Module newton._src.sim.collide 7310511 load on device &#39;cpu&#39; took 3032.95 ms  (compiled)
+Module newton._src.geometry.broad_phase_nxn e7bae85 load on device &#39;cpu&#39; took 2314.90 ms  (compiled)
+Module newton._src.geometry.narrow_phase fbf8381 load on device &#39;cpu&#39; took 3491.89 ms  (compiled)
+Module newton._src.geometry.narrow_phase 139934a load on device &#39;cpu&#39; took 5935.05 ms  (compiled)
+Module newton._src.geometry.narrow_phase 846bb98 load on device &#39;cpu&#39; took 5528.48 ms  (compiled)
+Module newton._src.geometry.narrow_phase 2d27e24 load on device &#39;cpu&#39; took 7097.04 ms  (compiled)
+Module newton._src.solvers.xpbd.kernels bff295d load on device &#39;cpu&#39; took 11899.24 ms  (compiled)
+Module newton._src.solvers.solver dc85a44 load on device &#39;cpu&#39; took 2453.66 ms  (compiled)
 
 Simulation complete! Total time: 8.33 seconds
 </pre></div></div>

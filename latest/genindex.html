@@ -803,6 +803,7 @@ window.addEventListener("load", () => mermaid.run());
             <dt><a href="api/_generated/newton.geometry.BroadPhaseExplicit.html#newton.geometry.BroadPhaseExplicit.__init__">(newton.geometry.BroadPhaseExplicit method)</a></dt>
             <dt><a href="api/_generated/newton.geometry.BroadPhaseSAP.html#newton.geometry.BroadPhaseSAP.__init__">(newton.geometry.BroadPhaseSAP method)</a></dt>
             <dt><a href="api/_generated/newton.geometry.SDFHydroelasticConfig.html#newton.geometry.SDFHydroelasticConfig.__init__">(newton.geometry.SDFHydroelasticConfig method)</a></dt>
+            <dt><a href="api/_generated/newton.Heightfield.html#newton.Heightfield.__init__">(newton.Heightfield method)</a></dt>
             <dt><a href="api/_generated/newton.ik.IKObjective.html#newton.ik.IKObjective.__init__">(newton.ik.IKObjective method)</a></dt>
             <dt><a href="api/_generated/newton.ik.IKObjectiveJointLimit.html#newton.ik.IKObjectiveJointLimit.__init__">(newton.ik.IKObjectiveJointLimit method)</a></dt>
             <dt><a href="api/_generated/newton.ik.IKObjectivePosition.html#newton.ik.IKObjectivePosition.__init__">(newton.ik.IKObjectivePosition method)</a></dt>
@@ -903,6 +904,9 @@ window.addEventListener("load", () => mermaid.run());
           </dl>
         </dd>
         <dt>
+          <a href="api/_generated/newton.ModelBuilder.html#newton.ModelBuilder.add_constraint_mimic">add_constraint_mimic() (newton.ModelBuilder method)</a>
+        </dt>
+        <dt>
           <a href="api/_generated/newton.ModelBuilder.html#newton.ModelBuilder.add_custom_attribute">add_custom_attribute() (newton.ModelBuilder method)</a>
         </dt>
         <dt>
@@ -930,9 +934,6 @@ window.addEventListener("load", () => mermaid.run());
         </dt>
         <dt>
           <a href="api/_generated/newton.ModelBuilder.html#newton.ModelBuilder.add_equality_constraint_weld">add_equality_constraint_weld() (newton.ModelBuilder method)</a>
-        </dt>
-        <dt>
-          <a href="api/_generated/newton.ModelBuilder.html#newton.ModelBuilder.add_free_joints_to_floating_bodies">add_free_joints_to_floating_bodies() (newton.ModelBuilder method)</a>
         </dt>
         <dt>
           <a href="api/_generated/newton.ModelBuilder.html#newton.ModelBuilder.add_ground_plane">add_ground_plane() (newton.ModelBuilder method)</a>
@@ -1015,6 +1016,9 @@ window.addEventListener("load", () => mermaid.run());
         </dt>
         <dt>
           <a href="api/_generated/newton.ModelBuilder.html#newton.ModelBuilder.add_shape_ellipsoid">add_shape_ellipsoid() (newton.ModelBuilder method)</a>
+        </dt>
+        <dt>
+          <a href="api/_generated/newton.ModelBuilder.html#newton.ModelBuilder.add_shape_heightfield">add_shape_heightfield() (newton.ModelBuilder method)</a>
         </dt>
         <dt>
           <a href="api/_generated/newton.ModelBuilder.html#newton.ModelBuilder.add_shape_mesh">add_shape_mesh() (newton.ModelBuilder method)</a>
@@ -1483,10 +1487,6 @@ window.addEventListener("load", () => mermaid.run());
             <dt><a href="api/_generated/newton.ik.IKObjectiveRotation.html#newton.ik.IKObjectiveRotation.compute_jacobian_analytic">(newton.ik.IKObjectiveRotation method)</a></dt>
           </dl>
         </dd>
-      </dl>
-    </td>
-    <td style="width: 33%; vertical-align: top;">
-      <dl>
         <dt>
           <a href="api/_generated/newton.ik.IKObjective.html#newton.ik.IKObjective.compute_jacobian_autodiff">compute_jacobian_autodiff() (newton.ik.IKObjective method)</a>
         </dt>
@@ -1510,6 +1510,10 @@ window.addEventListener("load", () => mermaid.run());
             <dt><a href="api/_generated/newton.ik.IKObjectiveRotation.html#newton.ik.IKObjectiveRotation.compute_residuals">(newton.ik.IKObjectiveRotation method)</a></dt>
           </dl>
         </dd>
+      </dl>
+    </td>
+    <td style="width: 33%; vertical-align: top;">
+      <dl>
         <dt>
           <a href="api/_generated/newton.solvers.SolverVBD.html#newton.solvers.SolverVBD.compute_rigid_force_element_adjacency">compute_rigid_force_element_adjacency() (newton.solvers.SolverVBD method)</a>
         </dt>
@@ -1537,11 +1541,49 @@ window.addEventListener("load", () => mermaid.run());
           <a href="api/_generated/newton.JointType.html#newton.JointType.constraint_count">constraint_count() (newton.JointType method)</a>
         </dt>
         <dt>
+          <a href="api/_generated/newton.Model.html#newton.Model.AttributeFrequency.CONSTRAINT_MIMIC">CONSTRAINT_MIMIC (newton.Model.AttributeFrequency attribute)</a>
+        </dt>
+        <dt>
+          <a href="api/_generated/newton.Model.html#newton.Model.constraint_mimic_coef0">constraint_mimic_coef0 (newton.Model attribute)</a>
+        </dt>
+        <dt>
+          <a href="api/_generated/newton.Model.html#newton.Model.constraint_mimic_coef1">constraint_mimic_coef1 (newton.Model attribute)</a>
+        </dt>
+        <dt>
+          <a href="api/_generated/newton.Model.html#newton.Model.constraint_mimic_count">constraint_mimic_count (newton.Model attribute)</a>
+        </dt>
+        <dt>
+          <a href="api/_generated/newton.Model.html#newton.Model.constraint_mimic_enabled">constraint_mimic_enabled (newton.Model attribute)</a>
+        </dt>
+        <dt>
+          <a href="api/_generated/newton.Model.html#newton.Model.constraint_mimic_joint0">constraint_mimic_joint0 (newton.Model attribute)</a>
+        </dt>
+        <dt>
+          <a href="api/_generated/newton.Model.html#newton.Model.constraint_mimic_joint1">constraint_mimic_joint1 (newton.Model attribute)</a>
+        </dt>
+        <dt>
+          <a href="api/_generated/newton.Model.html#newton.Model.constraint_mimic_key">constraint_mimic_key (newton.Model attribute)</a>
+        </dt>
+        <dt>
+          <a href="api/_generated/newton.Model.html#newton.Model.constraint_mimic_world">constraint_mimic_world (newton.Model attribute)</a>
+        </dt>
+        <dt>
+          <a href="api/_generated/newton.solvers.SolverNotifyFlags.html#newton.solvers.SolverNotifyFlags.CONSTRAINT_PROPERTIES">CONSTRAINT_PROPERTIES (newton.solvers.SolverNotifyFlags attribute)</a>
+        </dt>
+        <dt>
           <a href="api/_generated/newton.Model.html#newton.Model.AttributeAssignment.CONTACT">CONTACT (newton.Model.AttributeAssignment attribute)</a>
         </dt>
         <dt>
           <a href="api/_generated/newton.Contacts.html#newton.Contacts">Contacts (class in newton)</a>
         </dt>
+        <dt>
+          <a href="api/_generated/newton.CollisionPipeline.html#newton.CollisionPipeline.contacts">contacts() (newton.CollisionPipeline method)</a>
+        </dt>
+        <dd>
+          <dl>
+            <dt><a href="api/_generated/newton.Model.html#newton.Model.contacts">(newton.Model method)</a></dt>
+          </dl>
+        </dd>
         <dt>
           <a href="api/_generated/newton.Control.html#newton.Control">Control (class in newton)</a>
         </dt>
@@ -1571,6 +1613,9 @@ window.addEventListener("load", () => mermaid.run());
             <dt><a href="api/_generated/newton.utils.create_box_mesh.html#newton.utils.create_box_mesh">(in module newton.utils)</a></dt>
           </dl>
         </dd>
+        <dt>
+          <a href="api/_generated/newton.utils.create_cable_stiffness_from_elastic_moduli.html#newton.utils.create_cable_stiffness_from_elastic_moduli">create_cable_stiffness_from_elastic_moduli() (in module newton.utils)</a>
+        </dt>
         <dt>
           <a href="api/_generated/newton.utils.create_capsule_mesh.html#newton.utils.create_capsule_mesh">create_capsule_mesh() (in module newton.utils)</a>
         </dt>
@@ -1605,6 +1650,9 @@ window.addEventListener("load", () => mermaid.run());
           <a href="api/_generated/newton.sensors.SensorTiledCamera.html#newton.sensors.SensorTiledCamera.create_normal_image_output">create_normal_image_output() (newton.sensors.SensorTiledCamera method)</a>
         </dt>
         <dt>
+          <a href="api/_generated/newton.utils.create_parallel_transport_cable_quaternions.html#newton.utils.create_parallel_transport_cable_quaternions">create_parallel_transport_cable_quaternions() (in module newton.utils)</a>
+        </dt>
+        <dt>
           <a href="api/_generated/newton.utils.create_plane_mesh.html#newton.utils.create_plane_mesh">create_plane_mesh() (in module newton.utils)</a>
         </dt>
         <dt>
@@ -1612,6 +1660,12 @@ window.addEventListener("load", () => mermaid.run());
         </dt>
         <dt>
           <a href="api/_generated/newton.utils.create_sphere_mesh.html#newton.utils.create_sphere_mesh">create_sphere_mesh() (in module newton.utils)</a>
+        </dt>
+        <dt>
+          <a href="api/_generated/newton.utils.create_straight_cable_points.html#newton.utils.create_straight_cable_points">create_straight_cable_points() (in module newton.utils)</a>
+        </dt>
+        <dt>
+          <a href="api/_generated/newton.utils.create_straight_cable_points_and_quaternions.html#newton.utils.create_straight_cable_points_and_quaternions">create_straight_cable_points_and_quaternions() (in module newton.utils)</a>
         </dt>
         <dt>
           <a href="api/_generated/newton.ModelBuilder.html#newton.ModelBuilder.JointDofConfig.create_unlimited">create_unlimited() (newton.ModelBuilder.JointDofConfig class method)</a>
@@ -1642,6 +1696,9 @@ window.addEventListener("load", () => mermaid.run());
       <dl>
         <dt>
           <a href="api/_generated/newton.JointType.html#newton.JointType.D6">D6 (newton.JointType attribute)</a>
+        </dt>
+        <dt>
+          <a href="api/_generated/newton.Heightfield.html#newton.Heightfield.data">data (newton.Heightfield property)</a>
         </dt>
         <dt>
           <a href="api/_generated/newton.sensors.SensorTiledCamera.html#newton.sensors.SensorTiledCamera.Options.default_light">default_light (newton.sensors.SensorTiledCamera.Options attribute)</a>
@@ -1796,9 +1853,6 @@ window.addEventListener("load", () => mermaid.run());
           <a href="api/_generated/newton.Model.html#newton.Model.equality_constraint_polycoef">equality_constraint_polycoef (newton.Model attribute)</a>
         </dt>
         <dt>
-          <a href="api/_generated/newton.solvers.SolverNotifyFlags.html#newton.solvers.SolverNotifyFlags.EQUALITY_CONSTRAINT_PROPERTIES">EQUALITY_CONSTRAINT_PROPERTIES (newton.solvers.SolverNotifyFlags attribute)</a>
-        </dt>
-        <dt>
           <a href="api/_generated/newton.Model.html#newton.Model.equality_constraint_relpose">equality_constraint_relpose (newton.Model attribute)</a>
         </dt>
         <dt>
@@ -1833,11 +1887,21 @@ window.addEventListener("load", () => mermaid.run());
           <a href="api/_generated/newton.eval_ik.html#newton.eval_ik">eval_ik() (in module newton)</a>
         </dt>
         <dt>
-          <a href="api/_generated/newton.selection.ArticulationView.html#newton.selection.ArticulationView.eval_jacobian">eval_jacobian() (newton.selection.ArticulationView method)</a>
+          <a href="api/_generated/newton.eval_jacobian.html#newton.eval_jacobian">eval_jacobian() (in module newton)</a>
         </dt>
+        <dd>
+          <dl>
+            <dt><a href="api/_generated/newton.selection.ArticulationView.html#newton.selection.ArticulationView.eval_jacobian">(newton.selection.ArticulationView method)</a></dt>
+          </dl>
+        </dd>
         <dt>
-          <a href="api/_generated/newton.selection.ArticulationView.html#newton.selection.ArticulationView.eval_mass_matrix">eval_mass_matrix() (newton.selection.ArticulationView method)</a>
+          <a href="api/_generated/newton.eval_mass_matrix.html#newton.eval_mass_matrix">eval_mass_matrix() (in module newton)</a>
         </dt>
+        <dd>
+          <dl>
+            <dt><a href="api/_generated/newton.selection.ArticulationView.html#newton.selection.ArticulationView.eval_mass_matrix">(newton.selection.ArticulationView method)</a></dt>
+          </dl>
+        </dd>
         <dt>
           <a href="api/_generated/newton.utils.event_scope.html#newton.utils.event_scope">event_scope() (in module newton.utils)</a>
         </dt>
@@ -1872,10 +1936,11 @@ window.addEventListener("load", () => mermaid.run());
           <a href="api/_generated/newton.utils.MeshAdjacency.html#newton.utils.MeshAdjacency.Edge.f1">f1 (newton.utils.MeshAdjacency.Edge attribute)</a>
         </dt>
         <dt>
-          <a href="api/_generated/newton.Mesh.html#newton.Mesh.finalize">finalize() (newton.Mesh method)</a>
+          <a href="api/_generated/newton.Heightfield.html#newton.Heightfield.finalize">finalize() (newton.Heightfield method)</a>
         </dt>
         <dd>
           <dl>
+            <dt><a href="api/_generated/newton.Mesh.html#newton.Mesh.finalize">(newton.Mesh method)</a></dt>
             <dt><a href="api/_generated/newton.ModelBuilder.html#newton.ModelBuilder.finalize">(newton.ModelBuilder method)</a></dt>
             <dt><a href="api/_generated/newton.SDF.html#newton.SDF.finalize">(newton.SDF method)</a></dt>
           </dl>
@@ -1898,13 +1963,13 @@ window.addEventListener("load", () => mermaid.run());
         <dt>
           <a href="api/_generated/newton.ModelBuilder.html#newton.ModelBuilder.ShapeConfig.flags">flags (newton.ModelBuilder.ShapeConfig property)</a>
         </dt>
-        <dt>
-          <a href="api/_generated/newton.sensors.SensorTiledCamera.html#newton.sensors.SensorTiledCamera.flatten_color_image_to_rgba">flatten_color_image_to_rgba() (newton.sensors.SensorTiledCamera method)</a>
-        </dt>
       </dl>
     </td>
     <td style="width: 33%; vertical-align: top;">
       <dl>
+        <dt>
+          <a href="api/_generated/newton.sensors.SensorTiledCamera.html#newton.sensors.SensorTiledCamera.flatten_color_image_to_rgba">flatten_color_image_to_rgba() (newton.sensors.SensorTiledCamera method)</a>
+        </dt>
         <dt>
           <a href="api/_generated/newton.sensors.SensorTiledCamera.html#newton.sensors.SensorTiledCamera.flatten_depth_image_to_rgba">flatten_depth_image_to_rgba() (newton.sensors.SensorTiledCamera method)</a>
         </dt>
@@ -1937,9 +2002,6 @@ window.addEventListener("load", () => mermaid.run());
         </dt>
         <dt>
           <a href="api/_generated/newton.usd.from_gfquat.html#newton.usd.from_gfquat">from_gfquat() (in module newton.usd)</a>
-        </dt>
-        <dt>
-          <a href="api/_generated/newton.CollisionPipeline.html#newton.CollisionPipeline.from_model">from_model() (newton.CollisionPipeline class method)</a>
         </dt>
         <dt>
           <a href="api/_generated/newton.Axis.html#newton.Axis.from_string">from_string() (newton.Axis class method)</a>
@@ -2045,9 +2107,6 @@ window.addEventListener("load", () => mermaid.run());
           <a href="api/_generated/newton.usd.get_quat.html#newton.usd.get_quat">get_quat() (in module newton.usd)</a>
         </dt>
         <dt>
-          <a href="api/_generated/newton.viewer.ViewerFile.html#newton.viewer.ViewerFile.get_recorder">get_recorder() (newton.viewer.ViewerFile method)</a>
-        </dt>
-        <dt>
           <a href="api/_generated/newton.Model.html#newton.Model.get_requested_contact_attributes">get_requested_contact_attributes() (newton.Model method)</a>
         </dt>
         <dt>
@@ -2094,17 +2153,26 @@ window.addEventListener("load", () => mermaid.run());
           <a href="api/_generated/newton.ModelBuilder.html#newton.ModelBuilder.has_custom_attribute">has_custom_attribute() (newton.ModelBuilder method)</a>
         </dt>
         <dt>
+          <a href="api/_generated/newton.viewer.ViewerFile.html#newton.viewer.ViewerFile.has_model">has_model() (newton.viewer.ViewerFile method)</a>
+        </dt>
+        <dt>
           <a href="api/_generated/newton.ModelBuilder.html#newton.ModelBuilder.ShapeConfig.has_particle_collision">has_particle_collision (newton.ModelBuilder.ShapeConfig attribute)</a>
+        </dt>
+        <dt>
+          <a href="api/_generated/newton.ModelBuilder.html#newton.ModelBuilder.ShapeConfig.has_shape_collision">has_shape_collision (newton.ModelBuilder.ShapeConfig attribute)</a>
         </dt>
       </dl>
     </td>
     <td style="width: 33%; vertical-align: top;">
       <dl>
         <dt>
-          <a href="api/_generated/newton.ModelBuilder.html#newton.ModelBuilder.ShapeConfig.has_shape_collision">has_shape_collision (newton.ModelBuilder.ShapeConfig attribute)</a>
+          <a href="api/_generated/newton.sensors.SensorRaycast.html#newton.sensors.SensorRaycast.height">height (newton.sensors.SensorRaycast attribute)</a>
         </dt>
         <dt>
-          <a href="api/_generated/newton.sensors.SensorRaycast.html#newton.sensors.SensorRaycast.height">height (newton.sensors.SensorRaycast attribute)</a>
+          <a href="api/_generated/newton.Heightfield.html#newton.Heightfield">Heightfield (class in newton)</a>
+        </dt>
+        <dt>
+          <a href="api/_generated/newton.Model.html#newton.Model.heightfield_elevation_data">heightfield_elevation_data (newton.Model attribute)</a>
         </dt>
         <dt>
           <a href="api/_generated/newton.GeoType.html#newton.GeoType.HFIELD">HFIELD (newton.GeoType attribute)</a>
@@ -2505,7 +2573,13 @@ window.addEventListener("load", () => mermaid.run());
           <a href="api/_generated/newton.ik.IKOptimizer.html#newton.ik.IKOptimizer.LM">LM (newton.ik.IKOptimizer attribute)</a>
         </dt>
         <dt>
+          <a href="api/_generated/newton.viewer.ViewerFile.html#newton.viewer.ViewerFile.load_model">load_model() (newton.viewer.ViewerFile method)</a>
+        </dt>
+        <dt>
           <a href="api/_generated/newton.viewer.ViewerFile.html#newton.viewer.ViewerFile.load_recording">load_recording() (newton.viewer.ViewerFile method)</a>
+        </dt>
+        <dt>
+          <a href="api/_generated/newton.viewer.ViewerFile.html#newton.viewer.ViewerFile.load_state">load_state() (newton.viewer.ViewerFile method)</a>
         </dt>
         <dt>
           <a href="api/_generated/newton.utils.load_texture.html#newton.utils.load_texture">load_texture() (in module newton.utils)</a>
@@ -2681,18 +2755,21 @@ window.addEventListener("load", () => mermaid.run());
           <a href="api/_generated/newton.solvers.SolverMuJoCo.html#newton.solvers.SolverMuJoCo.mjc_eq_to_newton_jnt">mjc_eq_to_newton_jnt (newton.solvers.SolverMuJoCo attribute)</a>
         </dt>
         <dt>
+          <a href="api/_generated/newton.solvers.SolverMuJoCo.html#newton.solvers.SolverMuJoCo.mjc_eq_to_newton_mimic">mjc_eq_to_newton_mimic (newton.solvers.SolverMuJoCo attribute)</a>
+        </dt>
+        <dt>
           <a href="api/_generated/newton.solvers.SolverMuJoCo.html#newton.solvers.SolverMuJoCo.mjc_geom_to_newton_shape">mjc_geom_to_newton_shape (newton.solvers.SolverMuJoCo attribute)</a>
         </dt>
         <dt>
           <a href="api/_generated/newton.solvers.SolverMuJoCo.html#newton.solvers.SolverMuJoCo.mjc_jnt_to_newton_dof">mjc_jnt_to_newton_dof (newton.solvers.SolverMuJoCo attribute)</a>
         </dt>
-        <dt>
-          <a href="api/_generated/newton.solvers.SolverMuJoCo.html#newton.solvers.SolverMuJoCo.mjc_jnt_to_newton_jnt">mjc_jnt_to_newton_jnt (newton.solvers.SolverMuJoCo attribute)</a>
-        </dt>
       </dl>
     </td>
     <td style="width: 33%; vertical-align: top;">
       <dl>
+        <dt>
+          <a href="api/_generated/newton.solvers.SolverMuJoCo.html#newton.solvers.SolverMuJoCo.mjc_jnt_to_newton_jnt">mjc_jnt_to_newton_jnt (newton.solvers.SolverMuJoCo attribute)</a>
+        </dt>
         <dt>
           <a href="api/_generated/newton.solvers.SolverMuJoCo.html#newton.solvers.SolverMuJoCo.mjc_mocap_to_newton_jnt">mjc_mocap_to_newton_jnt (newton.solvers.SolverMuJoCo attribute)</a>
         </dt>
@@ -2943,10 +3020,6 @@ window.addEventListener("load", () => mermaid.run());
         <dt>
           <a href="api/_generated/newton.Model.html#newton.Model.particle_mu">particle_mu (newton.Model attribute)</a>
         </dt>
-      </dl>
-    </td>
-    <td style="width: 33%; vertical-align: top;">
-      <dl>
         <dt>
           <a href="api/_generated/newton.Model.html#newton.Model.particle_q">particle_q (newton.Model attribute)</a>
         </dt>
@@ -2955,6 +3028,10 @@ window.addEventListener("load", () => mermaid.run());
             <dt><a href="api/_generated/newton.State.html#newton.State.particle_q">(newton.State attribute)</a></dt>
           </dl>
         </dd>
+      </dl>
+    </td>
+    <td style="width: 33%; vertical-align: top;">
+      <dl>
         <dt>
           <a href="api/_generated/newton.Model.html#newton.Model.particle_qd">particle_qd (newton.Model attribute)</a>
         </dt>
@@ -2989,6 +3066,12 @@ window.addEventListener("load", () => mermaid.run());
             <dt><a href="api/_generated/newton.sensors.SensorTiledCamera.html#newton.sensors.SensorTiledCamera.RenderShapeType.PLANE">(newton.sensors.SensorTiledCamera.RenderShapeType attribute)</a></dt>
           </dl>
         </dd>
+        <dt>
+          <a href="api/_generated/newton.viewer.ViewerFile.html#newton.viewer.ViewerFile.playback">playback() (newton.viewer.ViewerFile method)</a>
+        </dt>
+        <dt>
+          <a href="api/_generated/newton.viewer.ViewerFile.html#newton.viewer.ViewerFile.playback_model">playback_model() (newton.viewer.ViewerFile method)</a>
+        </dt>
         <dt>
           <a href="api/_generated/newton.ModelBuilder.html#newton.ModelBuilder.plot_articulation">plot_articulation() (newton.ModelBuilder method)</a>
         </dt>
@@ -3034,15 +3117,18 @@ window.addEventListener("load", () => mermaid.run());
           </dl>
         </dd>
         <dt>
-          <a href="api/_generated/newton.utils.quat_decompose.html#newton.utils.quat_decompose">quat_decompose() (in module newton.utils)</a>
+          <a href="api/_generated/newton.utils.quat_between_vectors_robust.html#newton.utils.quat_between_vectors_robust">quat_between_vectors_robust() (in module newton.utils)</a>
         </dt>
         <dt>
-          <a href="api/_generated/newton.utils.quat_from_euler.html#newton.utils.quat_from_euler">quat_from_euler() (in module newton.utils)</a>
+          <a href="api/_generated/newton.utils.quat_decompose.html#newton.utils.quat_decompose">quat_decompose() (in module newton.utils)</a>
         </dt>
       </dl>
     </td>
     <td style="width: 33%; vertical-align: top;">
       <dl>
+        <dt>
+          <a href="api/_generated/newton.utils.quat_from_euler.html#newton.utils.quat_from_euler">quat_from_euler() (in module newton.utils)</a>
+        </dt>
         <dt>
           <a href="api/_generated/newton.utils.quat_to_euler.html#newton.utils.quat_to_euler">quat_to_euler() (in module newton.utils)</a>
         </dt>
@@ -3070,6 +3156,12 @@ window.addEventListener("load", () => mermaid.run());
         </dt>
         <dt>
           <a href="api/_generated/newton.solvers.SolverVBD.html#newton.solvers.SolverVBD.rebuild_bvh">rebuild_bvh() (newton.solvers.SolverVBD method)</a>
+        </dt>
+        <dt>
+          <a href="api/_generated/newton.viewer.ViewerFile.html#newton.viewer.ViewerFile.record">record() (newton.viewer.ViewerFile method)</a>
+        </dt>
+        <dt>
+          <a href="api/_generated/newton.viewer.ViewerFile.html#newton.viewer.ViewerFile.record_model">record_model() (newton.viewer.ViewerFile method)</a>
         </dt>
         <dt>
           <a href="api/_generated/newton.geometry.SDFHydroelasticConfig.html#newton.geometry.SDFHydroelasticConfig.reduce_contacts">reduce_contacts (newton.geometry.SDFHydroelasticConfig attribute)</a>
@@ -3100,6 +3192,10 @@ window.addEventListener("load", () => mermaid.run());
         <dt>
           <a href="api/_generated/newton.ModelBuilder.html#newton.ModelBuilder.replicate">replicate() (newton.ModelBuilder method)</a>
         </dt>
+      </dl>
+    </td>
+    <td style="width: 33%; vertical-align: top;">
+      <dl>
         <dt>
           <a href="api/_generated/newton.Model.html#newton.Model.request_contact_attributes">request_contact_attributes() (newton.Model method)</a>
         </dt>
@@ -3108,10 +3204,6 @@ window.addEventListener("load", () => mermaid.run());
             <dt><a href="api/_generated/newton.ModelBuilder.html#newton.ModelBuilder.request_contact_attributes">(newton.ModelBuilder method)</a></dt>
           </dl>
         </dd>
-      </dl>
-    </td>
-    <td style="width: 33%; vertical-align: top;">
-      <dl>
         <dt>
           <a href="api/_generated/newton.Model.html#newton.Model.request_state_attributes">request_state_attributes() (newton.Model method)</a>
         </dt>
@@ -3331,6 +3423,9 @@ window.addEventListener("load", () => mermaid.run());
         </dt>
         <dt>
           <a href="api/_generated/newton.Model.html#newton.Model.shape_flags">shape_flags (newton.Model attribute)</a>
+        </dt>
+        <dt>
+          <a href="api/_generated/newton.Model.html#newton.Model.shape_heightfield_data">shape_heightfield_data (newton.Model attribute)</a>
         </dt>
         <dt>
           <a href="api/_generated/newton.Model.html#newton.Model.shape_is_solid">shape_is_solid (newton.Model attribute)</a>
@@ -3768,6 +3863,9 @@ window.addEventListener("load", () => mermaid.run());
         </dt>
         <dt>
           <a href="api/_generated/newton.solvers.SolverMuJoCo.html#newton.solvers.SolverMuJoCo.update_joint_properties">update_joint_properties() (newton.solvers.SolverMuJoCo method)</a>
+        </dt>
+        <dt>
+          <a href="api/_generated/newton.solvers.SolverMuJoCo.html#newton.solvers.SolverMuJoCo.update_mimic_eq_properties">update_mimic_eq_properties() (newton.solvers.SolverMuJoCo method)</a>
         </dt>
         <dt>
           <a href="api/_generated/newton.solvers.SolverMuJoCo.html#newton.solvers.SolverMuJoCo.update_model_properties">update_model_properties() (newton.solvers.SolverMuJoCo method)</a>

@@ -1612,7 +1612,7 @@ class JointsData:
     where ``e_j`` is the number of dynamic constraints of joint ``j``.
     """
 
-    v_b_dyn_j: wp.array | None = None
+    qd_b_j: wp.array | None = None
     """
     The velocity bias of the joint dynamic constraints (as flat array).
 
@@ -1630,12 +1630,12 @@ class JointsData:
 
     This results in the following dynamic constraint equation for each joint `j`:\n
     ``dq_j^{+} + m_j^{-1} * lambda_q_j = m_j^{-1} * (a_j * dq_j^{-} + dt * h_j)``,\n
-    ``dq_j^{+} + m_j^{-1} * lambda_q_j = v_b_dyn_j``,\n
-    ``J_a_j * u^{+} + m_j^{-1} * lambda_q_j = v_b_dyn_j``
+    ``dq_j^{+} + m_j^{-1} * lambda_q_j = qd_b_j``,\n
+    ``J_a_j * u^{+} + m_j^{-1} * lambda_q_j = qd_b_j``
 
     and thus the velocity bias term of the joint-space dynamics of each joint `j` is computed as:\n
     ``h_j := dt * ( k_p_j * ( q_j_ref - q_j^{-} ) + k_d_j * dq_j_ref ) ``,\n
-    ``v_b_dyn_j := inv_m_j * ( a_j * dq_j^{-} + dt * h_j ) ``,\n
+    ``qd_b_j := inv_m_j * ( a_j * dq_j^{-} + dt * h_j ) ``,\n
     where dt is the simulation time step.
 
     Shape of ``(sum(e_j),)`` and type :class:`float`,

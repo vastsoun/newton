@@ -248,6 +248,7 @@ def _build_joint_jacobians(
     # Inputs
     model_info_num_body_dofs: wp.array(dtype=int32),
     model_info_bodies_offset: wp.array(dtype=int32),
+    model_info_joint_dynamic_cts_group_offset: wp.array(dtype=int32),
     model_info_joint_kinematic_cts_group_offset: wp.array(dtype=int32),
     model_joints_wid: wp.array(dtype=int32),
     model_joints_dof_type: wp.array(dtype=int32),
@@ -282,6 +283,7 @@ def _build_joint_jacobians(
     # Retrieve the number of body DoFs for corresponding world
     nbd = model_info_num_body_dofs[wid]
     bio = model_info_bodies_offset[wid]
+    jdcgo = model_info_joint_dynamic_cts_group_offset[wid]
     jkcgo = model_info_joint_kinematic_cts_group_offset[wid]
 
     # Retrieve the Jacobian block offset for this world
@@ -290,8 +292,8 @@ def _build_joint_jacobians(
 
     # Constraint Jacobian row offsets for this joint
     J_jdof_row_start = J_djmio + nbd * dofs_offset
-    J_jdc_row_start = J_cjmio + nbd * dyn_cts_offset  # NOTE: Dynamics constraints are always first (offset is zero)
-    J_jkc_row_start = J_cjmio + nbd * (jkcgo + kin_cts_offset)  # NOTE: Kinematic constraints are after dynamic
+    J_jdc_row_start = J_cjmio + nbd * (jdcgo + dyn_cts_offset)
+    J_jkc_row_start = J_cjmio + nbd * (jkcgo + kin_cts_offset)
 
     # Retrieve the pose transform of the joint
     T_j = state_joints_p[jid]
@@ -513,6 +515,7 @@ def build_jacobians(
                 # Inputs:
                 model.info.num_body_dofs,
                 model.info.bodies_offset,
+                model.info.joint_dynamic_cts_group_offset,
                 model.info.joint_kinematic_cts_group_offset,
                 model.joints.wid,
                 model.joints.dof_type,

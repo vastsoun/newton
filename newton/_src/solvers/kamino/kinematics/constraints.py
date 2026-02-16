@@ -305,12 +305,16 @@ def _update_constraints_info(
 @wp.kernel
 def _unpack_joint_constraint_solutions(
     # Inputs:
-    model_info_total_cts_offset: wp.array(dtype=int32),
     model_info_joint_cts_offset: wp.array(dtype=int32),
+    model_info_total_cts_offset: wp.array(dtype=int32),
+    model_info_joint_dynamic_cts_group_offset: wp.array(dtype=int32),
+    model_info_joint_kinematic_cts_group_offset: wp.array(dtype=int32),
     model_time_inv_dt: wp.array(dtype=float32),
-    joint_wid: wp.array(dtype=int32),
-    joint_num_cts: wp.array(dtype=int32),
-    joint_cts_offset: wp.array(dtype=int32),
+    model_joint_wid: wp.array(dtype=int32),
+    model_joints_num_dynamic_cts: wp.array(dtype=int32),
+    model_joints_num_kinematic_cts: wp.array(dtype=int32),
+    model_joints_dynamic_cts_offset: wp.array(dtype=int32),
+    model_joints_kinematic_cts_offset: wp.array(dtype=int32),
     lambdas: wp.array(dtype=float32),
     # Outputs:
     joint_lambda_j: wp.array(dtype=float32),
@@ -319,23 +323,31 @@ def _unpack_joint_constraint_solutions(
     jid = wp.tid()
 
     # Retrieve the joint-specific model info
-    wid = joint_wid[jid]
-    num_cts = joint_num_cts[jid]
-    cts_offset = joint_cts_offset[jid]
+    wid = model_joint_wid[jid]
+    num_dyn_cts_j = model_joints_num_dynamic_cts[jid]
+    num_kin_cts_j = model_joints_num_kinematic_cts[jid]
+    dyn_cts_start_j = model_joints_dynamic_cts_offset[jid]
+    kin_cts_start_j = model_joints_kinematic_cts_offset[jid]
 
     # Retrieve the world-specific info
     inv_dt = model_time_inv_dt[wid]
-    world_total_cts_offset = model_info_total_cts_offset[wid]
-    world_joints_cts_offset = model_info_joint_cts_offset[wid]
+    world_joint_cts_start = model_info_joint_cts_offset[wid]
+    world_total_cts_start = model_info_total_cts_offset[wid]
+    world_jdcgo = model_info_joint_dynamic_cts_group_offset[wid]
+    world_jkcgo = model_info_joint_kinematic_cts_group_offset[wid]
 
     # Compute block offsets of the joint's constraints within
     # the joint-only constraints and total constraints arrays
-    vio_j = world_total_cts_offset + cts_offset
-    jio_j = world_joints_cts_offset + cts_offset
+    joint_dyn_cts_start_j = world_joint_cts_start + world_jdcgo + dyn_cts_start_j
+    joint_kin_cts_start_j = world_joint_cts_start + world_jkcgo + kin_cts_start_j
+    dyn_cts_row_start_j = world_total_cts_start + world_jdcgo + dyn_cts_start_j
+    kin_cts_row_start_j = world_total_cts_start + world_jkcgo + kin_cts_start_j
 
     # Compute and store the joint-constraint reaction forces
-    for j in range(num_cts):
-        joint_lambda_j[jio_j + j] = inv_dt * lambdas[vio_j + j]
+    for j in range(num_dyn_cts_j):
+        joint_lambda_j[joint_dyn_cts_start_j + j] = inv_dt * lambdas[dyn_cts_row_start_j + j]
+    for j in range(num_kin_cts_j):
+        joint_lambda_j[joint_kin_cts_start_j + j] = inv_dt * lambdas[kin_cts_row_start_j + j]
 
 
 @wp.kernel
@@ -506,12 +518,16 @@ def unpack_constraint_solutions(
             dim=model.size.sum_of_num_joints,
             inputs=[
                 # Inputs:
-                model.info.total_cts_offset,
                 model.info.joint_cts_offset,
+                model.info.total_cts_offset,
+                model.info.joint_dynamic_cts_group_offset,
+                model.info.joint_kinematic_cts_group_offset,
                 model.time.inv_dt,
                 model.joints.wid,
-                model.joints.num_cts,
-                model.joints.cts_offset,
+                model.joints.num_dynamic_cts,
+                model.joints.num_kinematic_cts,
+                model.joints.dynamic_cts_offset,
+                model.joints.kinematic_cts_offset,
                 lambdas,
                 # Outputs:
                 data.joints.lambda_j,

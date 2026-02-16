@@ -947,7 +947,7 @@ def build_boxes_fourbar(
     h_4 = h
 
     # Inertial properties
-    m_i = 1.0
+    m_i = 0.001
     i_I_i_1 = inertia.solid_cuboid_body_moment_of_inertia(m_i, d_1, w_1, h_1)
     i_I_i_2 = inertia.solid_cuboid_body_moment_of_inertia(m_i, d_2, w_2, h_2)
     i_I_i_3 = inertia.solid_cuboid_body_moment_of_inertia(m_i, d_3, w_3, h_3)
@@ -1073,8 +1073,8 @@ def build_boxes_fourbar(
         q_j_max=[qmax],
         a_j=0.1 if dynamic_joints else None,
         b_j=0.001 if dynamic_joints else None,
-        k_p_j=100.0 if implicit_pd else None,
-        k_d_j=1.0 if implicit_pd else None,
+        k_p_j=1000.0 if implicit_pd else None,
+        k_d_j=20.0 if implicit_pd else None,
         world_index=world_index,
     )
 

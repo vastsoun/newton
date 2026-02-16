@@ -50,7 +50,7 @@ wp.set_module_options({"enable_backward": False})
 
 
 @wp.kernel
-def _control_callback(
+def _pd_control_callback(
     state_t: wp.array(dtype=float32),
     # control_tau_j: wp.array(dtype=float32),
     data_joint_tau_j: wp.array(dtype=float32),
@@ -77,16 +77,8 @@ def _control_callback(
     # Get the current time
     t = state_t[wid]
 
-    # # Apply a time-dependent external force
-    # if t > t_start and t < t_end:
-    #     control_tau_j[jid] = 0.1
-    # else:
-    #     control_tau_j[jid] = 0.0
-
     # Apply a time-dependent joint references
     if t > t_start and t < t_0:
-        # data_joint_q_j_ref[jid] = 0.25 * wp.half_pi * wp.sin(2.0 * wp.pi * 0.5 * (t - t_start))  # Example: sinusoidal position reference
-        # data_joint_dq_j_ref[jid] = 0.25 * wp.half_pi * 2.0 * wp.pi * 0.5 * wp.cos(2.0 * wp.pi * 0.5 * (t - t_start))  # Example: sinusoidal velocity reference
         data_joint_q_j_ref[jid] = 0.1
         data_joint_dq_j_ref[jid] = 0.0
     elif t > t_0 and t < t_1:
@@ -108,11 +100,31 @@ def _control_callback(
         data_joint_q_j_ref[jid] = 0.0
         data_joint_dq_j_ref[jid] = 0.0
 
-    # # Apply a time-dependent joint references
-    # if t > t_start and t < t_end:
-    #     data_joint_dq_j_ref[jid] = 0.1
-    # else:
-    #     data_joint_dq_j_ref[jid] = 0.0
+
+@wp.kernel
+def _torque_control_callback(
+    state_t: wp.array(dtype=float32),
+    control_tau_j: wp.array(dtype=float32),
+):
+    """
+    An example control callback kernel.
+    """
+    # Set world index
+    wid = int(0)
+    jid = int(0)
+
+    # Define the time window for the active external force profile
+    t_start = float32(2.0)
+    t_end = float32(2.5)
+
+    # Get the current time
+    t = state_t[wid]
+
+    # Apply a time-dependent external force
+    if t > t_start and t < t_end:
+        control_tau_j[jid] = 0.1
+    else:
+        control_tau_j[jid] = 0.0
 
 
 ###
@@ -120,18 +132,32 @@ def _control_callback(
 ###
 
 
-def control_callback(sim: Simulator):
+def pd_control_callback(sim: Simulator):
     """
     A control callback function
     """
     wp.launch(
-        _control_callback,
+        _pd_control_callback,
         dim=1,
         inputs=[
             sim.solver.data.time.time,
             sim.solver.data.joints.tau_j,
             sim.solver.data.joints.q_j_ref,
             sim.solver.data.joints.dq_j_ref,
+        ],
+    )
+
+
+def torque_control_callback(sim: Simulator):
+    """
+    A control callback function
+    """
+    wp.launch(
+        _torque_control_callback,
+        dim=1,
+        inputs=[
+            sim.solver.data.time.time,
+            sim.control.tau_j,
         ],
     )
 
@@ -149,6 +175,7 @@ class Example:
         max_steps: int = 1000,
         use_cuda_graph: bool = False,
         load_from_usd: bool = False,
+        implicit_pd: bool = True,
         gravity: bool = True,
         ground: bool = True,
         logging: bool = False,
@@ -157,7 +184,7 @@ class Example:
         async_save: bool = False,
     ):
         # Initialize target frames per second and corresponding time-steps
-        self.fps = 30
+        self.fps = 60
         self.sim_dt = 0.01
         self.frame_dt = 1.0 / self.fps
         self.sim_substeps = max(1, round(self.frame_dt / self.sim_dt))
@@ -185,11 +212,10 @@ class Example:
                 num_worlds=num_worlds,
                 build_fn=build_boxes_fourbar,
                 ground=ground,
-                limits=False,
-                dynamic_joints=True,
-                implicit_pd=True,
+                limits=True,
+                dynamic_joints=implicit_pd,
+                implicit_pd=implicit_pd,
             )
-            msg.error("builder.joints:\n%s", self.builder.joints)
 
         # Offset the model to place it above the ground
         # NOTE: The USD model is centered at the origin
@@ -204,13 +230,13 @@ class Example:
         settings = SimulatorSettings()
         settings.dt = self.sim_dt
         settings.solver.integrator = "euler"  # Select from {"euler", "moreau"}
-        settings.solver.problem.preconditioning = False
+        settings.solver.problem.preconditioning = True
         settings.solver.padmm.primal_tolerance = 1e-4
         settings.solver.padmm.dual_tolerance = 1e-4
         settings.solver.padmm.compl_tolerance = 1e-4
         settings.solver.padmm.max_iterations = 200
-        settings.solver.padmm.rho_0 = 1.0
-        settings.solver.use_solver_acceleration = False
+        settings.solver.padmm.rho_0 = 0.1
+        settings.solver.use_solver_acceleration = True
         settings.solver.warmstart_mode = PADMMWarmStartMode.NONE
         settings.solver.contact_warmstart_method = WarmstarterContacts.Method.GEOM_PAIR_NET_FORCE
         settings.solver.collect_solver_info = False
@@ -219,11 +245,12 @@ class Example:
         # Create a simulator
         msg.notif("Building the simulator...")
         self.sim = Simulator(builder=self.builder, settings=settings, device=device)
-        self.sim.set_control_callback(control_callback)
-        msg.error("model.joints.a_j: %s", self.sim.model.joints.a_j)
-        msg.error("model.joints.b_j: %s", self.sim.model.joints.b_j)
-        msg.error("model.joints.k_p_j: %s", self.sim.model.joints.k_p_j)
-        msg.error("model.joints.k_d_j: %s", self.sim.model.joints.k_d_j)
+
+        # Set the control callback based on whether implicit PD control is enabled
+        if implicit_pd:
+            self.sim.set_control_callback(pd_control_callback)
+        else:
+            self.sim.set_control_callback(torque_control_callback)
 
         # Initialize the data logger
         self.logger: SimulationLogger | None = None
@@ -251,12 +278,6 @@ class Example:
                 video_folder=video_folder,
                 async_save=async_save,
             )
-
-        # TODO:
-        msg.warning("model.joints.a_j: %s", self.sim.model.joints.a_j)
-        msg.warning("model.joints.b_j: %s", self.sim.model.joints.b_j)
-        msg.warning("model.joints.k_p_j: %s", self.sim.model.joints.k_p_j)
-        msg.warning("model.joints.k_d_j: %s", self.sim.model.joints.k_d_j)
 
         # Declare and initialize the optional computation graphs
         # NOTE: These are used for most efficient GPU runtime
@@ -293,23 +314,8 @@ class Example:
         """Run simulation substeps."""
         for _i in range(self.sim_substeps):
             self.sim.step()
-            # t = self.sim.solver.data.time.time.numpy()[0]
-            # msg.warning("time: %s", t)
-            # if t > 1.99:
-            #     pass
-            # # Extract the active constraint dimensions
-            # active_dims = extract_active_constraint_dims(self.sim.solver._problem_fd.delassus)
-            # J_cts = extract_cts_jacobians(self.sim.solver._jacobians, num_bodies=[4], active_dims=active_dims)
-            # J_dofs = extract_dofs_jacobians(self.sim.solver._jacobians, num_body_dofs=[24])
-            # msg.warning("[%f]: J_cts:\n%s\n", t, J_cts[0])
-            # msg.warning("[%f]: J_dofs:\n%s\n\n", t, J_dofs[0])
-            # msg.warning("[%f]: v_b_dyn_j: %s\n", t, self.sim.solver.data.joints.v_b_dyn_j)
-            # msg.error("[%f]: v_b: %s\n", t, self.sim.solver._problem_fd.data.v_b)
-            # msg.error("[%f]: v_f: %s\n", t, self.sim.solver._problem_fd.data.v_f)
-            # msg.error("[%f]: lambdas: %s\n\n", t, self.sim.solver._solver_fd.data.solution.lambdas)
-            # msg.info("[%d]: dq_j_ref: %s", t, self.sim.solver.data.joints.dq_j_ref)
-            # if not self.use_cuda_graph and self.logging:
-            #     self.logger.log()
+            if not self.use_cuda_graph and self.logging:
+                self.logger.log()
 
     def reset(self):
         """Reset the simulation."""
@@ -383,6 +389,12 @@ if __name__ == "__main__":
         "--load-from-usd", action=argparse.BooleanOptionalAction, default=False, help="Load model from USD file"
     )
     parser.add_argument(
+        "--implicit-pd",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Enables implicit PD control of joints",
+    )
+    parser.add_argument(
         "--gravity", action=argparse.BooleanOptionalAction, default=True, help="Enables gravity in the simulation"
     )
     parser.add_argument(
@@ -439,6 +451,7 @@ if __name__ == "__main__":
         load_from_usd=args.load_from_usd,
         num_worlds=args.num_worlds,
         max_steps=args.num_steps,
+        implicit_pd=args.implicit_pd,
         gravity=args.gravity,
         ground=args.ground,
         headless=args.headless,

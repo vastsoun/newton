@@ -99,7 +99,10 @@ def print_model_info(model: Model):
     print(f"model.info.joint_cts_offset: {model.info.joint_cts_offset}")
     print(f"model.info.joint_dynamic_cts_offset: {model.info.joint_dynamic_cts_offset}")
     print(f"model.info.joint_kinematic_cts_offset: {model.info.joint_kinematic_cts_offset}")
+    print("-------------------------------------------------------------------------------")
     print(f"model.info.total_cts_offset: {model.info.total_cts_offset}")
+    print(f"model.info.joint_dynamic_cts_group_offset: {model.info.joint_dynamic_cts_group_offset}")
+    print(f"model.info.joint_kinematic_cts_group_offset: {model.info.joint_kinematic_cts_group_offset}")
     # Print the inertial properties
     print("-------------------------------------------------------------------------------")
     print(f"model.info.mass_min: {model.info.mass_min}")
@@ -210,6 +213,7 @@ def print_model_joints(
         print(f"model.joints.k_d_j: {model.joints.k_d_j}")
 
 
+# TODO: RENAME print_data_info
 def print_model_data_info(data: ModelData):
     print("===============================================================================")
     print("data.info.num_limits: ", data.info.num_limits)

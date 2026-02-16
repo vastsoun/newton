@@ -724,7 +724,7 @@ def make_compute_joints_data_kernel(correction: JointCorrectionMode = JointCorre
         data_dq_j: wp.array(dtype=float32),
         data_m_j: wp.array(dtype=float32),
         data_inv_m_j: wp.array(dtype=float32),
-        data_v_b_dyn_j: wp.array(dtype=float32),
+        data_qd_b_j: wp.array(dtype=float32),
     ):
         # Retrieve the thread index
         jid = wp.tid()
@@ -830,13 +830,13 @@ def make_compute_joints_data_kernel(correction: JointCorrectionMode = JointCorre
             m_j = a_j + dt * (b_j + k_d_j) + dt * dt * k_p_j
             # TODO @ruben: Could it still be possible that we want implicit PD without inertia?
             inv_m_j = 1.0 / m_j  # Zero division will not happen, otherwise this would not be a dynamic constraint.
-            h_j = tau_j_ff + k_p_j * (pd_q_j_ref - q_j) + k_d_j * pd_dq_j_ref
-            v_b_dyn_j = inv_m_j * (a_j * dq_j - dt * h_j)
+            tau_j = tau_j_ff + k_p_j * (pd_q_j_ref - q_j) + k_d_j * pd_dq_j_ref
+            qd_b_j = inv_m_j * (a_j * dq_j + dt * tau_j)
 
             # Write joint dynamics outputs
             data_m_j[dynamic_cts_offset_j] = m_j
             data_inv_m_j[dynamic_cts_offset_j] = inv_m_j
-            data_v_b_dyn_j[dynamic_cts_offset_j] = v_b_dyn_j
+            data_qd_b_j[dynamic_cts_offset_j] = qd_b_j
 
     # Return the kernel
     return _compute_joints_data
@@ -1046,7 +1046,7 @@ def compute_joints_data(
             data.joints.dq_j,
             data.joints.m_j,
             data.joints.inv_m_j,
-            data.joints.v_b_dyn_j,
+            data.joints.qd_b_j,
         ],
         device=model.device,
     )

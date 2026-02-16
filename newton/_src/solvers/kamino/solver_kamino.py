@@ -1049,10 +1049,6 @@ class SolverKamino(SolverBase):
         # Solve the dual problem to compute the constraint reactions
         self._solver_fd.solve(problem=self._problem_fd)
 
-        # # TODO
-        # lambdas_np = self._solver_fd.data.solution.lambdas.numpy()
-        # lambdas_np[0] = -lambdas_np[0]
-
         # Compute the effective body wrenches applied by the set of
         # active constraints from the respective reaction multipliers
         compute_constraint_body_wrenches(

@@ -809,17 +809,6 @@ def make_compute_joints_data_kernel(correction: JointCorrectionMode = JointCorre
             k_d_j = model_joint_k_d_j[dynamic_cts_offset_j]
             pd_q_j_ref = data_joint_q_j_ref[dynamic_cts_offset_j]
             pd_dq_j_ref = data_joint_dq_j_ref[dynamic_cts_offset_j]
-            # wp.printf(
-            #     "Joint %d, DoF %d: a_j=%.3f, b_j=%.3f, k_p_j=%.3f, k_d_j=%.3f, pd_q_j_ref=%.3f, pd_dq_j_ref=%.3f\n",
-            #     jid,
-            #     j,
-            #     a_j,
-            #     b_j,
-            #     k_p_j,
-            #     k_d_j,
-            #     pd_q_j_ref,
-            #     pd_dq_j_ref,
-            # )
 
             # Get joint kinematic state, just written in make_write_joint_data
             q_j = data_q_j[dofs_offset_j]

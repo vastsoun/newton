@@ -581,16 +581,6 @@ class ModelInfo:
     Shape of ``(num_worlds,)`` and type :class:`int`.
     """
 
-    # TODO: This may be redundant if we know it's always the first block i.e. same as `total_cts_offset`
-    # TODO: Enable this once we've fixed the dynamic/kinematic specifics
-    # joint_cts_group_offset: wp.array | None = None
-    # """
-    # The index offset of the joint constraints group within the constraints block of each world.\n
-    # Used to index into constraint-space arrays, e.g. constraint residuals and reactions.\n
-    # Shape of ``(num_worlds,)`` and type :class:`int`.
-    # """
-
-    # TODO: This may be redundant if we know it's always the first block i.e. same as `total_cts_offset`
     joint_dynamic_cts_group_offset: wp.array | None = None
     """
     The index offset of the dynamic joint constraints group within the constraints block of each world.\n

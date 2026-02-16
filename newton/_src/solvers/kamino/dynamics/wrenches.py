@@ -363,7 +363,6 @@ def _compute_contact_cts_body_wrenches(
 
     # Extract the 3D contact force
     # NOTE: We need to scale by the time-step because the lambdas are impulses
-    # TODO: Add helper function to extract 3D vectors from flat arrays
     lambda_c = inv_dt * vec3f(lambdas_data[vio_k], lambdas_data[vio_k + 1], lambdas_data[vio_k + 2])
 
     # Extract the contact constraint Jacobian for body B

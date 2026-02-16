@@ -1617,25 +1617,32 @@ class JointsData:
     The velocity bias of the joint dynamic constraints (as flat array).
 
     Each joint has local actuation and PD control dynamics:\n
-    ``m_j * dq_j^{+} = a_j * dq_j^{-} + dt * h_j``
-
+    ```
+    m_j * dq_j^{+} = a_j * dq_j^{-} + dt * h_j
+    ```
     and is contributes to the dynamice of the system through the constraint equation:\n
-    ``dq_j^{+} = J_a_j * u^{+}``
+    ```
+    dq_j^{+} = J_q_j * u^{+}
+    ```
 
     where ``dq_j^{-}`` and ``dq_j^{+}`` are the pre- and post-event joint-space
     velocities, and ``u^{+}`` are the post-event generalized velocities of the
     system computed implicitly as a result of solving the forward dynamics problem
-    with the joint dynamic constraints. `J_a_j` is the block of the actuation Jacobian
-    matrix corresponding to the rows of DoFs of joint `j`.
+    with the joint dynamic constraints. `J_q_j` is the block of the joint-space
+    projection Jacobian matrix corresponding to the rows of DoFs of joint `j`.
 
-    This results in the following dynamic constraint equation for each joint `j`:\n
-    ``dq_j^{+} + m_j^{-1} * lambda_q_j = m_j^{-1} * (a_j * dq_j^{-} + dt * h_j)``,\n
-    ``dq_j^{+} + m_j^{-1} * lambda_q_j = qd_b_j``,\n
-    ``J_a_j * u^{+} + m_j^{-1} * lambda_q_j = qd_b_j``
-
+    This results in the following dynamic constraint equation for each joint `j`:
+    ```
+    dq_j^{+} + m_j^{-1} * lambda_q_j = m_j^{-1} * (a_j * dq_j^{-} + dt * h_j)
+    dq_j^{+} + m_j^{-1} * lambda_q_j = qd_b_j
+    J_q_j * u^{+} + m_j^{-1} * lambda_q_j = qd_b_j
+    ```
     and thus the velocity bias term of the joint-space dynamics of each joint `j` is computed as:\n
-    ``h_j := dt * ( k_p_j * ( q_j_ref - q_j^{-} ) + k_d_j * dq_j_ref ) ``,\n
-    ``qd_b_j := inv_m_j * ( a_j * dq_j^{-} + dt * h_j ) ``,\n
+    ```
+    tau_j := dt * ( tau_j_ff + k_p_j * (q_j_ref - q_j^{-} ) + k_d_j * dq_j_ref )
+    h_j := a_j * dq_j^{-} + dt * tau_j
+    qd_b_j := inv_m_j * h_j
+    ```
     where dt is the simulation time step.
 
     Shape of ``(sum(e_j),)`` and type :class:`float`,
@@ -1758,8 +1765,6 @@ class JointsData:
         Resets all joint constraint reactions to zero.
         """
         self.lambda_j.zero_()
-        # TODO: self.lambda_j_q.zero_()
-        # TODO: self.lambda_j_c.zero_()
 
     def clear_actuation_forces(self):
         """

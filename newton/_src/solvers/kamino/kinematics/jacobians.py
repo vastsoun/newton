@@ -301,7 +301,6 @@ def _build_joint_jacobians(
     R_X_j = wp.quat_to_matrix(wp.transform_get_rotation(T_j))
 
     # Retrieve the pose transforms of each body
-    # NOTE: If the base body is the world (bid=-1), use the identity transform (frame of the world's origin)
     T_B_j = wp.transform_identity()
     if bid_B > -1:
         T_B_j = state_bodies_q[bid_B]

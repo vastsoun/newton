@@ -288,6 +288,24 @@ class PADMMConfig:
     See :class:`PADMMPenaltyUpdate` for details.
     """
 
+    linear_solver_tolerance: float32
+    """
+    The default absolute tolerance for the iterative linear solver.\n
+    When positive, the iterative solver's atol is initialized to this value
+    at the start of each ADMM solve.\n
+    When zero, the iterative solver's own tolerance is left unchanged.\n
+    Must be non-negative. Defaults to `0.0`.
+    """
+
+    linear_solver_tolerance_ratio: float32
+    """
+    The ratio used to adapt the iterative linear solver tolerance from the ADMM primal residual.\n
+    When positive, the linear solver absolute tolerance is set to
+    `ratio * ||r_primal||_2` at each ADMM iteration.\n
+    When zero, the linear solver tolerance is not adapted (fixed tolerance).\n
+    Must be non-negative. Defaults to `0.0`.
+    """
+
 
 @wp.struct
 class PADMMStatus:
@@ -574,6 +592,24 @@ class PADMMSettings:
     Defaults to `PADMMPenaltyUpdate.FIXED`. See :class:`PADMMPenaltyUpdate` for details.
     """
 
+    linear_solver_tolerance: float = 0.0
+    """
+    The default absolute tolerance for the iterative linear solver.\n
+    When positive, the iterative solver's atol is initialized to this value
+    at the start of each ADMM solve.\n
+    When zero, the iterative solver's own tolerance is left unchanged.\n
+    Must be non-negative. Defaults to `0.0`.
+    """
+
+    linear_solver_tolerance_ratio: float = 0.0
+    """
+    The ratio used to adapt the iterative linear solver tolerance from the ADMM primal residual.\n
+    When positive, the linear solver absolute tolerance is set to
+    `ratio * ||r_primal||_2` at each ADMM iteration.\n
+    When zero, the linear solver tolerance is not adapted (fixed tolerance).\n
+    Must be non-negative. Defaults to `0.0`.
+    """
+
     def check(self):
         """
         Checks the validity of PADMM solver settings.
@@ -607,6 +643,12 @@ class PADMMSettings:
                 f"Invalid penalty update method: {self.penalty_update_method}. "
                 "Must be an instance of PADMMPenaltyUpdate."
             )
+        if self.linear_solver_tolerance < 0.0:
+            raise ValueError(f"Invalid linear solver tolerance: {self.linear_solver_tolerance}. Must be non-negative.")
+        if self.linear_solver_tolerance_ratio < 0.0:
+            raise ValueError(
+                f"Invalid linear solver tolerance ratio: {self.linear_solver_tolerance_ratio}. Must be non-negative."
+            )
 
     def to_config(self) -> PADMMConfig:
         """
@@ -629,6 +671,8 @@ class PADMMSettings:
         config.max_iterations = self.max_iterations
         config.penalty_update_freq = self.penalty_update_freq
         config.penalty_update_method = self.penalty_update_method
+        config.linear_solver_tolerance = self.linear_solver_tolerance
+        config.linear_solver_tolerance_ratio = self.linear_solver_tolerance_ratio
         return config
 
 

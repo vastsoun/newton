@@ -128,6 +128,7 @@ class PADMMSolver:
         self._collect_info: bool = False
         self._avoid_graph_conditionals: bool = False
         self._uses_adaptive_penalty: bool = False
+        self._linear_solver_atol: wp.array | None = None
 
         # Declare the model size cache
         self._size: ModelSize | None = None
@@ -355,7 +356,11 @@ class PADMMSolver:
         Args:
             problem (DualProblem): The dual forward dynamics problem to be solved.
         """
-        # Initialize the solver status and ALM penalty parameter
+        # Resolve the iterative solver's per-world atol array (None for non-iterative solvers).
+        inner = getattr(problem._delassus._solver, "solver", None)
+        self._linear_solver_atol = getattr(inner, "atol", None)
+
+        # Initialize the solver status, ALM penalty, and iterative solver tolerance
         self._initialize()
 
         # Add the diagonal proximal regularization to the Delassus matrix
@@ -425,7 +430,7 @@ class PADMMSolver:
         Launches a kernel to initialize the internal solver state before starting a new solve.\n
         The kernel is parallelized over the number of worlds.
         """
-        # Initialize solver status and penalty parameters from the set configurations
+        # Initialize solver status, penalty parameters, and iterative solver tolerance
         wp.launch(
             kernel=self._initialize_solver_kernel,
             dim=self._size.num_worlds,
@@ -435,6 +440,7 @@ class PADMMSolver:
                 self._data.penalty,
                 self._data.state.sigma,
                 self._data.state.a_p,
+                self._linear_solver_atol,
             ],
         )
 
@@ -1082,6 +1088,7 @@ class PADMMSolver:
                 self._data.penalty,
                 self._data.state.done,
                 self._data.status,
+                self._linear_solver_atol,
             ],
         )
 
@@ -1119,6 +1126,7 @@ class PADMMSolver:
                 self._data.state.done,
                 self._data.state.a,
                 self._data.status,
+                self._linear_solver_atol,
             ],
         )
 

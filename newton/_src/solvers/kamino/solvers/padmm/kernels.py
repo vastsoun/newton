@@ -366,6 +366,7 @@ def make_initialize_solver_kernel(use_acceleration: bool = False):
         solver_penalty: wp.array(dtype=PADMMPenalty),
         solver_state_sigma: wp.array(dtype=vec2f),
         solver_state_a_p: wp.array(dtype=float32),
+        linear_solver_atol: wp.array(dtype=float32),
     ):
         # Retrieve the world index as thread index
         wid = wp.tid()
@@ -413,6 +414,10 @@ def make_initialize_solver_kernel(use_acceleration: bool = False):
         # variables only if acceleration is used
         if wp.static(use_acceleration):
             solver_state_a_p[wid] = config.a_0
+
+        # Initialize the iterative solver tolerance
+        if linear_solver_atol and config.linear_solver_tolerance > 0.0:
+            linear_solver_atol[wid] = config.linear_solver_tolerance
 
     # Return the initialization kernel
     return _initialize_solver
@@ -923,6 +928,7 @@ def _compute_infnorm_residuals_serially(
     solver_penalty: wp.array(dtype=PADMMPenalty),
     solver_state_done: wp.array(dtype=int32),
     solver_status: wp.array(dtype=PADMMStatus),
+    linear_solver_atol: wp.array(dtype=float32),
 ):
     # Retrieve the thread index as the world index
     wid = wp.tid()
@@ -960,9 +966,12 @@ def _compute_infnorm_residuals_serially(
     # Compute element-wise max over each residual vector to compute the infinity-norm
     r_p_max = float(0.0)
     r_d_max = float(0.0)
+    r_p_l2_sq = float(0.0)
     for j in range(ncts):
         rio_j = vio + j
-        r_p_max = wp.max(r_p_max, wp.abs(solver_r_p[rio_j]))
+        r_p_j = solver_r_p[rio_j]
+        r_p_max = wp.max(r_p_max, wp.abs(r_p_j))
+        r_p_l2_sq += r_p_j * r_p_j
         r_d_max = wp.max(r_d_max, wp.abs(solver_r_d[rio_j]))
 
     # Compute the infinity-norm of the complementarity residuals
@@ -989,6 +998,11 @@ def _compute_infnorm_residuals_serially(
 
     solver_penalty[wid] = _update_penalty(config, solver_penalty[wid], status.iterations, r_p_max, r_d_max)
 
+    # Adaptively set the iterative solver tolerance from the primal residual L2 norm
+    ratio = config.linear_solver_tolerance_ratio
+    if linear_solver_atol and ratio > 0.0:
+        linear_solver_atol[wid] = ratio * wp.sqrt(r_p_l2_sq)
+
 
 @wp.kernel
 def _compute_infnorm_residuals_serially_accel(
@@ -1011,6 +1025,7 @@ def _compute_infnorm_residuals_serially_accel(
     solver_state_done: wp.array(dtype=int32),
     solver_state_a: wp.array(dtype=float32),
     solver_status: wp.array(dtype=PADMMStatus),
+    linear_solver_atol: wp.array(dtype=float32),
 ):
     # Retrieve the thread index as the world index
     wid = wp.tid()
@@ -1052,12 +1067,15 @@ def _compute_infnorm_residuals_serially_accel(
     # Compute element-wise max over each residual vector to compute the infinity-norm
     r_p_max = float(0.0)
     r_d_max = float(0.0)
+    r_p_l2_sq = float(0.0)
     r_dx_l2_sum = float(0.0)
     r_dy_l2_sum = float(0.0)
     r_dz_l2_sum = float(0.0)
     for j in range(ncts):
         rio_j = vio + j
-        r_p_max = wp.max(r_p_max, wp.abs(solver_r_p[rio_j]))
+        r_p_j = solver_r_p[rio_j]
+        r_p_max = wp.max(r_p_max, wp.abs(r_p_j))
+        r_p_l2_sq += r_p_j * r_p_j
         r_d_max = wp.max(r_d_max, wp.abs(solver_r_d[rio_j]))
         r_dx = solver_r_dx[rio_j]
         r_dy = solver_r_dy[rio_j]
@@ -1107,6 +1125,11 @@ def _compute_infnorm_residuals_serially_accel(
     solver_status[wid] = status
 
     solver_penalty[wid] = _update_penalty(config, pen, status.iterations, r_p_max, r_d_max)
+
+    # Adaptively set the iterative solver tolerance from the primal residual L2 norm
+    ratio = config.linear_solver_tolerance_ratio
+    if linear_solver_atol and ratio > 0.0:
+        linear_solver_atol[wid] = ratio * wp.sqrt(r_p_l2_sq)
 
 
 @wp.kernel

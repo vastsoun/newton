@@ -830,8 +830,8 @@ def make_compute_joints_data_kernel(correction: JointCorrectionMode = JointCorre
             m_j = a_j + dt * (b_j + k_d_j) + dt * dt * k_p_j
             # TODO @ruben: Could it still be possible that we want implicit PD without inertia?
             inv_m_j = 1.0 / m_j  # Zero division will not happen, otherwise this would not be a dynamic constraint.
-            h_j = k_p_j * (pd_q_j_ref - q_j) + k_d_j * pd_dq_j_ref
-            v_b_dyn_j = inv_m_j * (a_j * dq_j - dt * h_j) - q_j  # Fix this hack properly
+            h_j = tau_j_ff + k_p_j * (pd_q_j_ref - q_j) + k_d_j * pd_dq_j_ref
+            v_b_dyn_j = inv_m_j * (a_j * dq_j - dt * h_j)
 
             # Write joint dynamics outputs
             data_m_j[dynamic_cts_offset_j] = m_j

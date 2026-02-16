@@ -703,6 +703,7 @@ def _build_free_velocity_bias_contacts(
 def _build_free_velocity(
     # Inputs:
     model_info_num_bodies: wp.array(dtype=int32),
+    model_info_num_joint_dynamic_cts: wp.array(dtype=int32),
     model_info_bodies_offset: wp.array(dtype=int32),
     data_bodies_u_i: wp.array(dtype=vec6f),
     jacobians_J_cts_offsets: wp.array(dtype=int32),
@@ -726,16 +727,17 @@ def _build_free_velocity(
         return
 
     # Retrieve the world-specific data
-    cjmio = jacobians_J_cts_offsets[wid]
-    bio = model_info_bodies_offset[wid]
     nb = model_info_num_bodies[wid]
+    njdc = model_info_num_joint_dynamic_cts[wid]
+    bio = model_info_bodies_offset[wid]
+    cjmio = jacobians_J_cts_offsets[wid]
     vio = problem_vio[wid]
 
     # Compute the number of Jacobian rows, i.e. the number of body DoFs
     nbd = 6 * nb
 
     # Compute the thread-specific index offset
-    thread_offset = vio + tid
+    cts_offset = vio + tid
 
     # Append the column offset to the Jacobian index
     cjmio += nbd * tid
@@ -743,10 +745,17 @@ def _build_free_velocity(
     # Extract the cached impact bias scaling (i.e. restitution coefficient)
     # NOTE: This is a quick hack to avoid multiple kernels. The
     # proper way would be to perform this op only for contacts
-    epsilon_j = problem_v_i[thread_offset]
+    epsilon_j = problem_v_i[cts_offset]
 
-    # TODO
-    v_b_j = problem_v_b[thread_offset]
+    # Retrieve the cached velocity bias term for the constraint
+    v_b_j = problem_v_b[cts_offset]
+
+    # TODO @ruben: Is this correct?
+    # If the constraint is a joint dynamic constraint,
+    # then the free-velocity is simply the bias term
+    if tid < njdc:
+        problem_v_f[cts_offset] = v_b_j
+        return
 
     # Buffers
     J_i = vec6f(0.0)
@@ -771,16 +780,9 @@ def _build_free_velocity(
 
         # Accumulate the impact bias term
         v_f_j += epsilon_j * wp.dot(J_i, u_i)
-    # wp.printf("%d: v_f_j: %.10f, v_b_j: %.10f\n", tid, v_f_j, v_b_j)
-    # wp.printf("%d: v_f_j + v_b_j: %.10f\n", tid, v_f_j + v_b_j)
-
-    # # Skip if row index exceed the problem size
-    # if tid < 1:
-    #     problem_v_f[thread_offset] = v_b_j
-    #     return
 
     # Store sum of velocity bias terms
-    problem_v_f[thread_offset] = v_f_j + v_b_j
+    problem_v_f[cts_offset] = v_f_j + v_b_j
 
 
 @wp.kernel
@@ -1295,6 +1297,7 @@ class DualProblem:
             inputs=[
                 # Inputs:
                 model.info.num_bodies,
+                model.info.num_joint_dynamic_cts,
                 model.info.bodies_offset,
                 data.bodies.u_i,
                 jacobians.data.J_cts_offsets,

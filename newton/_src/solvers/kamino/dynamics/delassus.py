@@ -211,6 +211,91 @@ def _build_delassus_elementwise(
 
 
 @wp.kernel
+def _build_delassus_elementwise_sparse(
+    # Inputs:
+    model_info_bodies_offset: wp.array(dtype=int32),
+    model_bodies_inv_m_i: wp.array(dtype=float32),
+    data_bodies_inv_I_i: wp.array(dtype=mat33f),
+    jacobian_cts_num_nzb: wp.array(dtype=int32),
+    jacobian_cts_nzb_start: wp.array(dtype=int32),
+    jacobian_cts_nzb_coords: wp.array2d(dtype=int32),
+    jacobian_cts_nzb_values: wp.array(dtype=vec6f),
+    delassus_dim: wp.array(dtype=int32),
+    delassus_mio: wp.array(dtype=int32),
+    # Outputs:
+    delassus_D: wp.array(dtype=float32),
+):
+    # Retrieve the thread index as the world index and Jacobian block index pair
+    wid, tid = wp.tid()
+
+    # Retrieve the problem dimensions
+    ncts = delassus_dim[wid]
+
+    # Skip if world has no constraints
+    if ncts == 0:
+        return
+
+    # Retrieve the world dimensions
+    bio = model_info_bodies_offset[wid]
+
+    # Retrieve the number of non-zero blocks
+    num_nzb = jacobian_cts_num_nzb[wid]
+
+    # Compute Jacobian block indices from the tid
+    block_id_i = tid // num_nzb
+    block_id_j = tid % num_nzb
+
+    # Skip if index exceeds problem size
+    if block_id_i >= num_nzb:
+        return
+
+    nzb_start = jacobian_cts_nzb_start[wid]
+    global_block_id_i = nzb_start + block_id_i
+    global_block_id_j = nzb_start + block_id_j
+
+    # Get block coordinates
+    block_coords_i = jacobian_cts_nzb_coords[global_block_id_i]
+    block_coords_j = jacobian_cts_nzb_coords[global_block_id_j]
+
+    # Skip if blocks don't affect the same body
+    if block_coords_i[1] != block_coords_j[1]:
+        return
+
+    # Body index (bid) of body k w.r.t the model, from Jacobian block coords
+    bid_k = bio + block_coords_i[1] // 6
+
+    # Get block values
+    block_i = jacobian_cts_nzb_values[global_block_id_i]
+    block_j = jacobian_cts_nzb_values[global_block_id_j]
+
+    # Retrieve the world's matrix offsets
+    dmio = delassus_mio[wid]
+
+    # Load the Jacobian blocks components for body
+    Jv_i = vec3f(block_i[0], block_i[1], block_i[2])
+    Jv_j = vec3f(block_j[0], block_j[1], block_j[2])
+    Jw_i = vec3f(block_i[3], block_i[4], block_i[5])
+    Jw_j = vec3f(block_j[3], block_j[4], block_j[5])
+
+    # Linear term: inv_m_k * dot(Jv_i, Jv_j)
+    inv_m_k = model_bodies_inv_m_i[bid_k]
+    lin_ij = inv_m_k * wp.dot(Jv_i, Jv_j)
+    lin_ji = inv_m_k * wp.dot(Jv_j, Jv_i)
+
+    # Angular term: dot(Jw_i.T * I_k, Jw_j)
+    inv_I_k = data_bodies_inv_I_i[bid_k]
+    ang_ij = wp.dot(Jw_i, inv_I_k @ Jw_j)
+    ang_ji = wp.dot(Jw_j, inv_I_k @ Jw_i)
+
+    # Compute sum
+    D_ij = lin_ij + ang_ij
+    D_ji = lin_ji + ang_ji
+
+    # Store the result in the Delassus matrix
+    delassus_D[dmio + ncts * block_coords_i[0] + block_coords_j[0]] += 0.5 * (D_ij + D_ji)
+
+
+@wp.kernel
 def _regularize_delassus_diagonal(
     # Inputs:
     delassus_dim: wp.array(dtype=int32),
@@ -637,13 +722,20 @@ class DelassusOperator:
         """
         self._operator.mat.zero_()
 
-    def build(self, model: Model, data: ModelData, jacobians: DenseSystemJacobians, reset_to_zero: bool = True):
+    def build(
+        self,
+        model: Model,
+        data: ModelData,
+        jacobians: DenseSystemJacobians | SparseSystemJacobians,
+        reset_to_zero: bool = True,
+    ):
         """
         Builds the Delassus matrix using the provided Model, ModelData, and constraint Jacobians.
 
         Args:
             model (Model): The model for which the Delassus operator is built.
             data (ModelData): The current data of the model.
+            jacobians (DenseSystemJacobians | SparseSystemJacobians): The current Jacobians of the model.
             reset_to_zero (bool, optional): If True (default), resets the Delassus matrix to zero before building.
 
         Raises:
@@ -659,10 +751,12 @@ class DelassusOperator:
             raise ValueError("A valid model data of type `ModelData` must be provided to build the Delassus operator.")
 
         # Ensure the Jacobians are valid
-        if jacobians is None or not isinstance(jacobians, DenseSystemJacobians):
+        if jacobians is None or not (
+            isinstance(jacobians, DenseSystemJacobians) or isinstance(jacobians, SparseSystemJacobians)
+        ):
             raise ValueError(
-                "A valid Jacobians data container of type `DenseSystemJacobians` "
-                "must be provided to build the Delassus operator."
+                "A valid Jacobians data container of type `DenseSystemJacobians` or "
+                "`SparseSystemJacobians` must be provided to build the Delassus operator."
             )
 
         # Ensure the Delassus matrix is allocated
@@ -674,23 +768,44 @@ class DelassusOperator:
             self.zero()
 
         # Build the Delassus matrix parallelized element-wise
-        wp.launch(
-            kernel=_build_delassus_elementwise,
-            dim=(self._size.num_worlds, self._max_of_max_total_D_size),
-            inputs=[
-                # Inputs:
-                model.info.num_bodies,
-                model.info.bodies_offset,
-                model.bodies.inv_m_i,
-                data.bodies.inv_I_i,
-                jacobians.data.J_cts_offsets,
-                jacobians.data.J_cts_data,
-                self._operator.info.dim,
-                self._operator.info.mio,
-                # Outputs:
-                self._operator.mat,
-            ],
-        )
+        if isinstance(jacobians, DenseSystemJacobians):
+            wp.launch(
+                kernel=_build_delassus_elementwise,
+                dim=(self._size.num_worlds, self._max_of_max_total_D_size),
+                inputs=[
+                    # Inputs:
+                    model.info.num_bodies,
+                    model.info.bodies_offset,
+                    model.bodies.inv_m_i,
+                    data.bodies.inv_I_i,
+                    jacobians.data.J_cts_offsets,
+                    jacobians.data.J_cts_data,
+                    self._operator.info.dim,
+                    self._operator.info.mio,
+                    # Outputs:
+                    self._operator.mat,
+                ],
+            )
+        else:
+            jacobian_cts = jacobians._J_cts.bsm
+            wp.launch(
+                kernel=_build_delassus_elementwise_sparse,
+                dim=(self._size.num_worlds, jacobian_cts.max_of_num_nzb * jacobian_cts.max_of_num_nzb),
+                inputs=[
+                    # Inputs:
+                    model.info.bodies_offset,
+                    model.bodies.inv_m_i,
+                    data.bodies.inv_I_i,
+                    jacobian_cts.num_nzb,
+                    jacobian_cts.nzb_start,
+                    jacobian_cts.nzb_coords,
+                    jacobian_cts.nzb_values,
+                    self._operator.info.dim,
+                    self._operator.info.mio,
+                    # Outputs:
+                    self._operator.mat,
+                ],
+            )
 
     def regularize(self, eta: wp.array):
         """

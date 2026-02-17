@@ -344,6 +344,36 @@ def mul_mask(mask: Any, value: Any):
 def make_dot_kernel(tile_size: int, maxdim: int):
     second_tile_size = (maxdim + tile_size - 1) // tile_size
 
+    if second_tile_size == 1:  # For several systems one tile is enough to cover the full length
+
+        @wp.kernel(enable_backward=False)
+        def dot_single_tile(
+            a: wp.array3d(dtype=Any),
+            b: wp.array3d(dtype=Any),
+            world_size: wp.array(dtype=wp.int32),
+            world_active: wp.array(dtype=wp.int32),
+            result: wp.array2d(dtype=Any),
+        ):
+            """Compute the dot products between the trailing-dim arrays in a and b using tiles and pairwise summation."""
+            col, world, tid = wp.tid()
+            if not world_active[world]:
+                return
+            n = world_size[world]
+
+            ta = wp.tile_load(a[col, world], shape=tile_size, offset=0)
+            tb = wp.tile_load(b[col, world], shape=tile_size, offset=0)
+            prod = wp.tile_map(wp.mul, ta, tb)
+            if n < maxdim:
+                thresh = wp.tile_full((tile_size,), a.dtype(n), dtype=a.dtype)
+                mask = wp.tile_map(lt_mask, wp.tile_arange(tile_size, dtype=a.dtype), thresh)
+                prod = wp.tile_map(mul_mask, mask, prod)
+            s = wp.tile_sum(prod)
+
+            if tid == 0:
+                result[col, world] = s[0]
+
+        return dot_single_tile
+
     @wp.kernel(enable_backward=False)
     def dot(
         a: wp.array3d(dtype=Any),

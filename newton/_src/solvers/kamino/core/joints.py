@@ -983,6 +983,8 @@ class JointDescriptor(Descriptor):
         # Validate that the specified parameters are valid
         self._check_parameter_values()
 
+        # TODO: Add more checks based on JointDoFType because how do we
+        # handle iterating in DoF-like CTS space when num_coords != num_dofs?
         # Ensure that PD gains are only specified for actuated joints
         if self.is_passive and (np.any(self.k_p_j) or np.any(self.k_d_j)):
             raise ValueError(

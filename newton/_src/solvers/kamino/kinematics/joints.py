@@ -798,6 +798,7 @@ def make_compute_joints_data_kernel(correction: JointCorrectionMode = JointCorre
             data_dq_j,
         )
 
+        # TODO: FIX AND CLEAN THIS UP
         for j in range(num_dynamic_cts):
             coords_offset_j = coords_offset + j
             dofs_offset_j = dofs_offset + j

@@ -707,6 +707,7 @@ class USDImporter:
                 tau_j_max[0] = joint_spec.drive.forceLimit
                 if joint_spec.drive.stiffness > 0.0 and joint_spec.drive.damping > 0.0:
                     act_type = JointActuationType.POSITION_VELOCITY
+                    # TODO: How to get these from USD?
                     a_j = [0.0088] * dof_type.num_dofs  # TODO: Tune these default values
                     b_j = [0.001] * dof_type.num_dofs
                     k_p_j = [joint_spec.drive.stiffness] * dof_type.num_coords

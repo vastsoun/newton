@@ -979,7 +979,7 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
 
         # Assign Jacobian if specified
         if jacobians is not None:
-            self.bsm = jacobians._J_cts.bsm
+            self.assign(jacobians)
 
         # Optionally initialize the iterative linear system solver if one is specified
         if solver is not None:
@@ -998,6 +998,8 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
                 constraint Jacobian matrix in block sparse format.
         """
         self.bsm = jacobian._J_cts.bsm
+
+        super().initialize_default_operators()
 
     def set_regularization(self, eta: wp.array | None):
         """

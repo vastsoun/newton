@@ -31,8 +31,10 @@ from .blas import (
     block_sparse_matvec,
     block_sparse_transpose_gemv,
     block_sparse_transpose_matvec,
+    fixed_row_block_sparse_gemv,
+    fixed_row_block_sparse_matvec,
 )
-from .sparse_matrix import BlockSparseMatrices
+from .sparse_matrix import BlockSparseMatrices, FixedRowBlockSparseMatrices
 
 ###
 # Module interface
@@ -163,10 +165,16 @@ class BlockSparseLinearOperators:
 
     def initialize_default_operators(self):
         """Sets all operator functions to their default implementations."""
-        self.Ax_op = block_sparse_matvec
-        self.ATy_op = block_sparse_transpose_matvec
-        self.gemv_op = block_sparse_gemv
-        self.gemvt_op = block_sparse_transpose_gemv
+        if isinstance(self.bsm, FixedRowBlockSparseMatrices):
+            self.Ax_op = fixed_row_block_sparse_matvec
+            self.ATy_op = block_sparse_transpose_matvec
+            self.gemv_op = fixed_row_block_sparse_gemv
+            self.gemvt_op = block_sparse_transpose_gemv
+        else:
+            self.Ax_op = block_sparse_matvec
+            self.ATy_op = block_sparse_transpose_matvec
+            self.gemv_op = block_sparse_gemv
+            self.gemvt_op = block_sparse_transpose_gemv
 
     def matvec(self, x: wp.array, y: wp.array, matrix_mask: wp.array):
         """Performs the sparse matrix-vector product `y = A @ x`."""

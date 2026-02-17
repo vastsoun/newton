@@ -21,7 +21,7 @@ from typing import Any
 import warp as wp
 
 from ..core.types import FloatType, float32, int32
-from .sparse_matrix import BlockDType, BlockSparseMatrices
+from .sparse_matrix import BlockDType, BlockSparseMatrices, FixedRowBlockSparseMatrices
 
 ###
 # Module interface
@@ -260,6 +260,75 @@ def _make_block_sparse_matvec_kernel_2d(block_type: BlockDType):
                     acc += block[i, j] * x[mat_id, x_idx_base + j]
 
                 wp.atomic_add(y, mat_id, y_idx_base + i, acc)
+
+    return block_sparse_matvec_kernel
+
+
+@functools.cache
+def _make_fixed_row_block_sparse_matvec_kernel(block_type: BlockDType, blocks_per_row: int):
+    # Determine (static) block size for kernel.
+    block_shape = block_type.shape
+    if isinstance(block_type.shape, int):
+        block_shape = (block_shape, block_shape)
+    elif len(block_shape) == 0:
+        block_shape = (1, 1)
+    elif len(block_shape) == 1:
+        block_shape = (1, block_shape[0])
+
+    @wp.kernel
+    def block_sparse_matvec_kernel(
+        # Matrix data:
+        dims: wp.array2d(dtype=int32),
+        nzb_start: wp.array(dtype=int32),
+        nzb_coords: wp.array2d(dtype=int32),
+        nzb_values: wp.array(dtype=block_type.warp_type),
+        # Vector block offsets:
+        row_start: wp.array(dtype=int32),
+        col_start: wp.array(dtype=int32),
+        # Vector:
+        x: wp.array(dtype=block_type.dtype),
+        y: wp.array(dtype=block_type.dtype),
+        # Mask:
+        matrix_mask: wp.array(dtype=int32),
+    ):
+        mat_id, block_row_id = wp.tid()
+
+        n_block_rows = wp.static(block_shape[0])
+        n_block_cols = wp.static(block_shape[1])
+        row_block_stride = wp.static(blocks_per_row)
+        row_id = block_row_id * n_block_rows
+
+        # Early exit if the matrix is flagged as inactive, or row index exceed dimensions
+        if matrix_mask[mat_id] == 0 or row_id >= dims[mat_id, 0]:
+            return
+
+        global_block_idx_start = nzb_start[mat_id] + row_block_stride * block_row_id
+
+        # Perform block matrix-vector multiplication: y_block += A_block @ x_block
+        if wp.static(n_block_rows == 1):
+            acc = block_type.dtype(0.0)
+            for k in range(row_block_stride):
+                block_coord = nzb_coords[global_block_idx_start + k]
+                block = nzb_values[global_block_idx_start + k]
+                x_idx_base = col_start[mat_id] + block_coord[1]
+                for j in range(n_block_cols):
+                    acc += block[j] * x[x_idx_base + j]
+
+            y[row_start[mat_id] + row_id] = acc
+
+        else:
+            acc = wp.zeros(shape=(n_block_rows,), dtype=block_type.dtype)
+            for k in range(row_block_stride):
+                block_coord = nzb_coords[global_block_idx_start + k]
+                block = nzb_values[global_block_idx_start + k]
+                x_idx_base = col_start[mat_id] + block_coord[1]
+                for i in range(n_block_rows):
+                    for j in range(n_block_cols):
+                        acc[i] += block[i, j] * x[x_idx_base + j]
+
+            y_idx_base = row_start[mat_id] + row_id
+            for i in range(n_block_rows):
+                y[y_idx_base + i] = acc[i]
 
     return block_sparse_matvec_kernel
 
@@ -606,6 +675,79 @@ def _make_block_sparse_gemv_kernel_2d(block_type: BlockDType):
                     acc += alpha * block[i, j] * x[mat_id, x_idx_base + j]
 
                 wp.atomic_add(y, mat_id, y_idx_base + i, acc)
+
+    return block_sparse_gemv_kernel
+
+
+@functools.cache
+def _make_fixed_row_block_sparse_gemv_kernel(block_type: BlockDType, blocks_per_row: int):
+    # Determine (static) block size for kernel.
+    block_shape = block_type.shape
+    if isinstance(block_type.shape, int):
+        block_shape = (block_shape, block_shape)
+    elif len(block_shape) == 0:
+        block_shape = (1, 1)
+    elif len(block_shape) == 1:
+        block_shape = (1, block_shape[0])
+
+    @wp.kernel
+    def block_sparse_gemv_kernel(
+        # Matrix data:
+        dims: wp.array2d(dtype=int32),
+        nzb_start: wp.array(dtype=int32),
+        nzb_coords: wp.array2d(dtype=int32),
+        nzb_values: wp.array(dtype=block_type.warp_type),
+        # Vector block offsets:
+        row_start: wp.array(dtype=int32),
+        col_start: wp.array(dtype=int32),
+        # Vector:
+        x: wp.array(dtype=block_type.dtype),
+        y: wp.array(dtype=block_type.dtype),
+        # Scaling:
+        alpha: block_type.dtype,
+        beta: block_type.dtype,
+        # Mask:
+        matrix_mask: wp.array(dtype=int32),
+    ):
+        mat_id, block_row_id = wp.tid()
+
+        n_block_rows = wp.static(block_shape[0])
+        n_block_cols = wp.static(block_shape[1])
+        row_block_stride = wp.static(blocks_per_row)
+        row_id = block_row_id * n_block_rows
+
+        # Early exit if the matrix is flagged as inactive, or row index exceed dimensions
+        if matrix_mask[mat_id] == 0 or row_id >= dims[mat_id, 0]:
+            return
+
+        global_block_idx_start = nzb_start[mat_id] + row_block_stride * block_row_id
+
+        # Perform block matrix-vector multiplication: z += alpha * A_block @ x_block
+        if wp.static(n_block_rows == 1):
+            acc = block_type.dtype(0.0)
+            for k in range(row_block_stride):
+                block_coord = nzb_coords[global_block_idx_start + k]
+                block = nzb_values[global_block_idx_start + k]
+                x_idx_base = col_start[mat_id] + block_coord[1]
+                for j in range(n_block_cols):
+                    acc += block[j] * x[x_idx_base + j]
+
+            y_idx = row_start[mat_id] + row_id
+            y[y_idx] = beta * y[y_idx] + alpha * acc
+
+        else:
+            acc = wp.zeros(shape=(n_block_rows,), dtype=block_type.dtype)
+            for k in range(row_block_stride):
+                block_coord = nzb_coords[global_block_idx_start + k]
+                block = nzb_values[global_block_idx_start + k]
+                x_idx_base = col_start[mat_id] + block_coord[1]
+                for i in range(n_block_rows):
+                    for j in range(n_block_cols):
+                        acc[i] += block[i, j] * x[x_idx_base + j]
+
+            y_idx_base = row_start[mat_id] + row_id
+            for i in range(n_block_rows):
+                y[y_idx_base + i] = beta * y[y_idx_base + i] + alpha * acc[i]
 
     return block_sparse_gemv_kernel
 
@@ -1131,6 +1273,60 @@ def block_sparse_matvec(
         )
 
 
+def fixed_row_block_sparse_matvec(
+    A: FixedRowBlockSparseMatrices,
+    x: wp.array,
+    y: wp.array,
+    matrix_mask: wp.array,
+):
+    """
+    Launch kernel for block-sparse matrix-vector product: y = A * x
+
+    Args:
+        A (FixedRowBlockSparseMatrices): Sparse matrices.
+        x (wp.array): Stack of input vectors, expects either shape (sum_of_max_cols,) for the 1D flattened
+        version; or shape (num_matrices, max_of_max_cols) for the 2D version.
+        y (wp.array): Stack of output vectors, expects either shape (sum_of_max_rows,) for the 1D flattened
+        version; or shape (num_matrices, max_of_max_rows) for the 2D version.
+        matrix_mask (wp.array): Mask vector to skip matrices set to `0` in the mask.
+    """
+    y.zero_()
+
+    if len(x.shape) == 1:
+        wp.launch(
+            kernel=_make_fixed_row_block_sparse_matvec_kernel(A.nzb_dtype, A.blocks_per_row),
+            dim=(A.num_matrices, A.max_of_max_dims[0]),
+            inputs=[
+                A.dims,
+                A.nzb_start,
+                A.nzb_coords,
+                A.nzb_values,
+                A.row_start,
+                A.col_start,
+                x,
+                y,
+                matrix_mask,
+            ],
+            device=A.device,
+        )
+    else:
+        raise NotImplementedError("Not yet implemented.")
+        # wp.launch(
+        #     kernel=_make_block_sparse_matvec_kernel_2d(A.nzb_dtype),
+        #     dim=(A.num_matrices, A.max_of_num_nzb),
+        #     inputs=[
+        #         A.num_nzb,
+        #         A.nzb_start,
+        #         A.nzb_coords,
+        #         A.nzb_values,
+        #         x,
+        #         y,
+        #         matrix_mask,
+        #     ],
+        #     device=A.device,
+        # )
+
+
 def block_sparse_transpose_matvec(
     A: BlockSparseMatrices,
     y: wp.array,
@@ -1257,6 +1453,84 @@ def block_sparse_gemv(
             ],
             device=A.device,
         )
+
+
+def fixed_row_block_sparse_gemv(
+    A: FixedRowBlockSparseMatrices,
+    x: wp.array,
+    y: wp.array,
+    alpha: Any,
+    beta: Any,
+    matrix_mask: wp.array,
+):
+    """
+    Launch kernel for generalized block-sparse matrix-vector product: y = alpha * (A * x) + beta * y
+
+    Args:
+        A (FixedRowBlockSparseMatrices): Sparse matrices.
+        x (wp.array): Stack of input vectors, expects either shape (sum_of_max_cols,) for the 1D flattened
+        version; or shape (num_matrices, max_of_max_cols) for the 2D version.
+        y (wp.array): Stack of input-output vectors, expects either shape (sum_of_max_rows,) for the 1D
+        flattened version; or shape (num_matrices, max_of_max_rows) for the 2D version.
+        alpha (Any): Input scaling for matrix-vector multiplication.
+        beta (Any): Input scaling for linear offset.
+        matrix_mask (wp.array): Mask vector to skip matrices set to `0` in the mask.
+    """
+    if len(x.shape) == 1:
+        # Compute y <- alpha * A @ x + beta * y
+        # from ..utils import logger as msg
+
+        # msg.warning(f"dims: {A.dims}")
+        # msg.warning(f"nzb_start: {A.nzb_start}")
+        # msg.warning(f"nzb_coords: {A.nzb_coords}")
+        # msg.warning(f"nzb_values: {A.nzb_values}")
+        # msg.warning(f"row_start: {A.row_start}")
+        # msg.warning(f"col_start: {A.col_start}")
+        # msg.warning(f"dims: {A.dims}")
+        wp.launch(
+            kernel=_make_fixed_row_block_sparse_gemv_kernel(A.nzb_dtype, A.blocks_per_row),
+            dim=(A.num_matrices, A.max_of_max_dims[0]),
+            inputs=[
+                A.dims,
+                A.nzb_start,
+                A.nzb_coords,
+                A.nzb_values,
+                A.row_start,
+                A.col_start,
+                x,
+                y,
+                alpha,
+                beta,
+                matrix_mask,
+            ],
+            device=A.device,
+        )
+    else:
+        raise NotImplementedError("Not yet implemented.")
+        # # Compute y <= beta * y
+        # wp.launch(
+        #     kernel=_make_scale_vector_kernel_2d(0),
+        #     dim=(A.num_matrices, A.max_of_max_dims[0]),
+        #     inputs=[A.dims, A.row_start, A.col_start, y, beta, matrix_mask],
+        #     device=A.device,
+        # )
+
+        # # Compute y += alpha * A @ x
+        # wp.launch(
+        #     kernel=_make_block_sparse_gemv_kernel_2d(A.nzb_dtype),
+        #     dim=(A.num_matrices, A.max_of_num_nzb),
+        #     inputs=[
+        #         A.num_nzb,
+        #         A.nzb_start,
+        #         A.nzb_coords,
+        #         A.nzb_values,
+        #         x,
+        #         y,
+        #         alpha,
+        #         matrix_mask,
+        #     ],
+        #     device=A.device,
+        # )
 
 
 def block_sparse_transpose_gemv(

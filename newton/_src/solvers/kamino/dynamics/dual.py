@@ -1375,6 +1375,8 @@ class DualProblem:
         self._data.v_f.zero_()
         self._data.mu.zero_()
         self._data.P.fill_(1.0)
+        if self._sparse:
+            self._delassus.update()
 
     def build(
         self,
@@ -1399,7 +1401,6 @@ class DualProblem:
         # NOTE: We build this first since it will update the arrays of active constraints
         if self._sparse:
             self._delassus.assign(jacobians=jacobians)
-            self._delassus.update()
         else:
             self._delassus.build(
                 model=model,
@@ -1465,6 +1466,9 @@ class DualProblem:
         if any(s.preconditioning for s in self._settings):
             self._build_dual_preconditioner()
             self._apply_dual_preconditioner_to_dual()
+
+        if self._sparse:
+            self._delassus.update()
 
     ###
     # Internals

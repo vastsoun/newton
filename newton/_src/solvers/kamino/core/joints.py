@@ -983,6 +983,15 @@ class JointDescriptor(Descriptor):
         # Validate that the specified parameters are valid
         self._check_parameter_values()
 
+        # TODO: Add support for dynamic multi-dof joints in the future.
+        # Ensure that only revolute and prismatic joints are dynamically constrained
+        supported_implicit_joint_types = (JointDoFType.REVOLUTE, JointDoFType.PRISMATIC)
+        if (self.is_dynamic or self.is_implicit_pd) and self.dof_type not in supported_implicit_joint_types:
+            raise ValueError(
+                "Invalid joint configuration: Kamino currently supports dynamic/implicit joints "
+                f"for those that are REVOLUTE or PRISMATIC (name={self.name}, uid={self.uid})."
+            )
+
         # TODO: Add more checks based on JointDoFType because how do we
         # handle iterating in DoF-like CTS space when num_coords != num_dofs?
         # Ensure that PD gains are only specified for actuated joints
@@ -992,15 +1001,21 @@ class JointDescriptor(Descriptor):
                 f"\n  k_p_j: {self.k_p_j}"
                 f"\n  k_d_j: {self.k_d_j}"
             )
-        if self.is_implicit_pd and not (np.any(self.k_p_j) or np.any(self.k_d_j)):
-            raise ValueError(
-                f"Joint `{self.name}` is defined as implicit PD but has zero-valued PD gains:"
-                f"\n  k_p_j: {self.k_p_j}"
-                f"\n  k_d_j: {self.k_d_j}"
-            )
         if self.act_type == JointActuationType.FORCE and (np.any(self.k_p_j) or np.any(self.k_d_j)):
             raise ValueError(
                 f"Joint `{self.name}` is defined as FORCE actuated but has non-zero PD gains:"
+                f"\n  k_p_j: {self.k_p_j}"
+                f"\n  k_d_j: {self.k_d_j}"
+            )
+        if self.act_type == JointActuationType.POSITION and not np.any(self.k_p_j):
+            raise ValueError(
+                f"Joint `{self.name}` is defined as POSITION actuated but has zero-valued PD gains:"
+                f"\n  k_p_j: {self.k_p_j}"
+                f"\n  k_d_j: {self.k_d_j}"
+            )
+        if self.act_type == JointActuationType.VELOCITY and not np.any(self.k_d_j):
+            raise ValueError(
+                f"Joint `{self.name}` is defined as VELOCITY actuated but has zero-valued PD gains:"
                 f"\n  k_p_j: {self.k_p_j}"
                 f"\n  k_d_j: {self.k_d_j}"
             )

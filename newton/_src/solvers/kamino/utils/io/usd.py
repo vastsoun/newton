@@ -681,10 +681,23 @@ class USDImporter:
         tau_j_max = [float(np.finfo(np.float32).max)] * num_dofs
         return q_j_min, q_j_max, tau_j_max
 
+    def _make_joint_default_dynamics(
+        self, dof_type: JointDoFType
+    ) -> tuple[list[float], list[float], list[float], list[float]]:
+        a_j = None
+        b_j = None
+        k_p_j = None
+        k_d_j = None
+        return a_j, b_j, k_p_j, k_d_j
+
     def _parse_joint_revolute(self, joint_spec, rotation_unit: float = 1.0):
         dof_type = JointDoFType.REVOLUTE
         X_j = self.usd_axis_to_axis[joint_spec.axis].to_mat33()
         q_j_min, q_j_max, tau_j_max = self._make_joint_default_limits(dof_type)
+        a_j = None
+        b_j = None
+        k_p_j = None
+        k_d_j = None
         if joint_spec.limit.enabled:
             q_j_min[0] = rotation_unit * joint_spec.limit.lower
             q_j_max[0] = rotation_unit * joint_spec.limit.upper
@@ -692,12 +705,18 @@ class USDImporter:
             if not joint_spec.drive.acceleration:
                 act_type = JointActuationType.FORCE
                 tau_j_max[0] = joint_spec.drive.forceLimit
+                if joint_spec.drive.stiffness > 0.0 and joint_spec.drive.damping > 0.0:
+                    act_type = JointActuationType.POSITION_VELOCITY
+                    a_j = [0.0088] * dof_type.num_dofs  # TODO: Tune these default values
+                    b_j = [0.001] * dof_type.num_dofs
+                    k_p_j = [joint_spec.drive.stiffness] * dof_type.num_coords
+                    k_d_j = [joint_spec.drive.damping] * dof_type.num_dofs
             else:
                 # TODO: Should we handle acceleration drives?
                 raise ValueError("Revolute acceleration drive actuators are not yet supported.")
         else:
             act_type = JointActuationType.PASSIVE
-        return dof_type, act_type, X_j, q_j_min, q_j_max, tau_j_max
+        return dof_type, act_type, X_j, q_j_min, q_j_max, tau_j_max, a_j, b_j, k_p_j, k_d_j
 
     def _parse_joint_prismatic(self, joint_spec, distance_unit: float = 1.0):
         dof_type = JointDoFType.PRISMATIC
@@ -997,13 +1016,17 @@ class USDImporter:
         q_j_min = None
         q_j_max = None
         tau_j_max = None
+        a_j = None
+        b_j = None
+        k_p_j = None
+        k_d_j = None
 
         if joint_type == self.UsdPhysics.ObjectType.FixedJoint:
             dof_type = JointDoFType.FIXED
             act_type = JointActuationType.PASSIVE
 
         elif joint_type == self.UsdPhysics.ObjectType.RevoluteJoint:
-            dof_type, act_type, X_j, q_j_min, q_j_max, tau_j_max = self._parse_joint_revolute(
+            dof_type, act_type, X_j, q_j_min, q_j_max, tau_j_max, a_j, b_j, k_p_j, k_d_j = self._parse_joint_revolute(
                 joint_spec, rotation_unit=rotation_unit
             )
 
@@ -1111,6 +1134,10 @@ class USDImporter:
         msg.debug(f"q_j_min: {q_j_min}")
         msg.debug(f"q_j_max: {q_j_max}")
         msg.debug(f"tau_j_max: {tau_j_max}")
+        msg.debug(f"a_j: {a_j}")
+        msg.debug(f"b_j: {b_j}")
+        msg.debug(f"k_p_j: {k_p_j}")
+        msg.debug(f"k_d_j: {k_d_j}")
 
         ###
         # JointDescriptor
@@ -1131,6 +1158,10 @@ class USDImporter:
             q_j_min=q_j_min,
             q_j_max=q_j_max,
             tau_j_max=tau_j_max,
+            a_j=a_j,
+            b_j=b_j,
+            k_p_j=k_p_j,
+            k_d_j=k_d_j,
         )
 
     def _parse_geom(

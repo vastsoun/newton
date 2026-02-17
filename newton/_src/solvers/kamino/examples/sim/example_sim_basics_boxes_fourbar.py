@@ -217,6 +217,13 @@ class Example:
                 implicit_pd=implicit_pd,
             )
 
+        # TODO
+        for joint in self.builder.joints:
+            if joint.is_actuated:
+                msg.error(f"Actuated Joint:\n{joint}")
+            else:
+                msg.warning(f"Passive Joint:\n{joint}")
+
         # Offset the model to place it above the ground
         # NOTE: The USD model is centered at the origin
         offset = wp.transformf(0.0, 0.0, 0.1, 0.0, 0.0, 0.0, 1.0)
@@ -314,6 +321,9 @@ class Example:
         """Run simulation substeps."""
         for _i in range(self.sim_substeps):
             self.sim.step()
+            msg.warning("m_j: %s", self.sim.solver.data.joints.m_j)
+            msg.warning("inv_m_j: %s", self.sim.solver.data.joints.inv_m_j)
+            msg.warning("qd_b_j: %s", self.sim.solver.data.joints.qd_b_j)
             if not self.use_cuda_graph and self.logging:
                 self.logger.log()
 

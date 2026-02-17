@@ -23,6 +23,8 @@ from warp.context import Devicelike
 import newton
 import newton.examples
 from newton._src.solvers.kamino.core.builder import ModelBuilder
+from newton._src.solvers.kamino.core.joints import JointActuationType
+from newton._src.solvers.kamino.core.types import float32, int32
 from newton._src.solvers.kamino.examples import get_examples_output_path, run_headless
 from newton._src.solvers.kamino.linalg.linear import SolverShorthand as LinearSolverShorthand
 from newton._src.solvers.kamino.models import get_examples_usd_assets_path
@@ -37,6 +39,132 @@ from newton._src.solvers.kamino.utils import logger as msg
 from newton._src.solvers.kamino.utils.control import AnimationJointReference, JointSpacePIDController
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
 from newton._src.solvers.kamino.utils.sim import SimulationLogger, Simulator, SimulatorSettings, ViewerKamino
+
+###
+# Module configs
+###
+
+wp.set_module_options({"enable_backward": False})
+
+
+###
+# Kernels
+###
+
+
+@wp.kernel
+def _pd_control_callback(
+    # Inputs:
+    decimation: int32,
+    model_info_joint_coords_offset: wp.array(dtype=int32),
+    model_info_joint_dofs_offset: wp.array(dtype=int32),
+    model_info_joint_actuated_coords_offset: wp.array(dtype=int32),
+    model_info_joint_actuated_dofs_offset: wp.array(dtype=int32),
+    model_joints_wid: wp.array(dtype=int32),
+    model_joints_act_type: wp.array(dtype=int32),
+    model_joint_num_coords: wp.array(dtype=int32),
+    model_joint_num_dofs: wp.array(dtype=int32),
+    model_joint_coords_offset: wp.array(dtype=int32),
+    model_joint_dofs_offset: wp.array(dtype=int32),
+    model_joint_actuated_coords_offset: wp.array(dtype=int32),
+    model_joint_actuated_dofs_offset: wp.array(dtype=int32),
+    data_time_steps: wp.array(dtype=int32),
+    animation_frame: wp.array(dtype=int32),
+    animation_q_j_ref: wp.array2d(dtype=float32),
+    animation_dq_j_ref: wp.array2d(dtype=float32),
+    # Outputs:
+    data_joint_q_j_ref: wp.array(dtype=float32),
+    data_joint_dq_j_ref: wp.array(dtype=float32),
+):
+    """
+    A kernel to compute joint-space PID control outputs for force-actuated joints.
+    """
+    # Retrieve the the joint index from the thread indices
+    jid = wp.tid()
+
+    # Retrieve the joint actuation type
+    act_type = model_joints_act_type[jid]
+
+    # Retrieve the world index from the thread indices
+    wid = model_joints_wid[jid]
+
+    # Retrieve the current simulation step
+    step = data_time_steps[wid]
+
+    # Only proceed for force actuated joints and at
+    # simulation steps matching the control decimation
+    if act_type != JointActuationType.POSITION_VELOCITY or step % decimation != 0:
+        return
+
+    # Retrieve joint-specific mode info
+    num_coords_j = model_joint_num_coords[jid]
+    num_dofs_j = model_joint_num_dofs[jid]
+    coords_offset_j = model_joint_coords_offset[jid]
+    dofs_offset_j = model_joint_dofs_offset[jid]
+    actuated_coords_offset_j = model_joint_actuated_coords_offset[jid]
+    actuated_dofs_offset_j = model_joint_actuated_dofs_offset[jid]
+
+    # Retrieve the offset of the world's joints in the global DoF vector
+    world_coords_offset = model_info_joint_coords_offset[wid]
+    world_dofs_offset = model_info_joint_dofs_offset[wid]
+    world_actuated_coords_offset = model_info_joint_actuated_coords_offset[wid]
+    world_actuated_dofs_offset = model_info_joint_actuated_dofs_offset[wid]
+
+    # Retrieve the current frame of the animation reference for the world
+    frame = animation_frame[wid]
+
+    # Compute the global DoF offset of the joint
+    coords_offset_j += world_coords_offset
+    dofs_offset_j += world_dofs_offset
+    actuated_coords_offset_j += world_actuated_coords_offset
+    actuated_dofs_offset_j += world_actuated_dofs_offset
+
+    # Copy the joint reference coordinates and velocities
+    # from the animation data to the controller data
+    for coord in range(num_coords_j):
+        joint_coord_index = coords_offset_j + coord
+        actuator_coord_index = actuated_coords_offset_j + coord
+        data_joint_q_j_ref[joint_coord_index] = animation_q_j_ref[frame, actuator_coord_index]
+    for dof in range(num_dofs_j):
+        joint_dof_index = dofs_offset_j + dof
+        actuator_dof_index = actuated_dofs_offset_j + dof
+        data_joint_dq_j_ref[joint_dof_index] = animation_dq_j_ref[frame, actuator_dof_index]
+
+
+###
+# Launchers
+###
+
+
+def pd_control_callback(sim: Simulator, animation: AnimationJointReference, decimation: int = 1):
+    wp.launch(
+        _pd_control_callback,
+        dim=sim.model.size.sum_of_num_joints,
+        inputs=[
+            # Inputs
+            int32(decimation),
+            sim.model.info.joint_coords_offset,
+            sim.model.info.joint_dofs_offset,
+            sim.model.info.joint_actuated_coords_offset,
+            sim.model.info.joint_actuated_dofs_offset,
+            sim.model.joints.wid,
+            sim.model.joints.act_type,
+            sim.model.joints.num_coords,
+            sim.model.joints.num_dofs,
+            sim.model.joints.coords_offset,
+            sim.model.joints.dofs_offset,
+            sim.model.joints.actuated_coords_offset,
+            sim.model.joints.actuated_dofs_offset,
+            sim.solver.data.time.steps,
+            animation.data.frame,
+            animation.data.q_j_ref,
+            animation.data.dq_j_ref,
+            # Outputs:
+            sim.solver.data.joints.q_j_ref,
+            sim.solver.data.joints.dq_j_ref,
+        ],
+    )
+
 
 ###
 # Example class
@@ -61,7 +189,7 @@ class Example:
     ):
         # Initialize target frames per second and corresponding time-steps
         self.fps = 60
-        self.sim_dt = 0.001
+        self.sim_dt = 0.01
         self.frame_dt = 1.0 / self.fps
         self.sim_substeps = max(1, round(self.frame_dt / self.sim_dt))
         self.max_steps = max_steps
@@ -105,14 +233,14 @@ class Example:
         settings.dt = self.sim_dt
         settings.solver.integrator = "euler"  # Select from {"euler", "moreau"}
         settings.solver.problem.alpha = 0.1
-        settings.solver.padmm.primal_tolerance = 1e-4
-        settings.solver.padmm.dual_tolerance = 1e-4
-        settings.solver.padmm.compl_tolerance = 1e-4
+        settings.solver.padmm.primal_tolerance = 1e-6
+        settings.solver.padmm.dual_tolerance = 1e-6
+        settings.solver.padmm.compl_tolerance = 1e-6
         settings.solver.padmm.max_iterations = 200
         settings.solver.padmm.eta = 1e-5
         settings.solver.padmm.rho_0 = 0.05
         settings.solver.use_solver_acceleration = True
-        settings.solver.warmstart_mode = PADMMWarmStartMode.CONTAINERS
+        settings.solver.warmstart_mode = PADMMWarmStartMode.NONE
         settings.solver.contact_warmstart_method = WarmstarterContacts.Method.GEOM_PAIR_NET_FORCE
         settings.solver.collect_solver_info = False
         settings.solver.compute_metrics = logging and not use_cuda_graph
@@ -161,22 +289,16 @@ class Example:
 
         # Define a callback function to reset the controller
         def reset_jointspace_pid_control_callback(simulator: Simulator):
-            self.controller.reset(model=simulator.model, state=simulator.state)
             self.animation.reset(q_j_ref_out=self.controller.data.q_j_ref, dq_j_ref_out=self.controller.data.dq_j_ref)
+            simulator.solver.data.joints.q_j_ref.zero_()
+            simulator.solver.data.joints.dq_j_ref.zero_()
+            pass
 
         # Define a callback function to wrap the execution of the controller
         def compute_jointspace_pid_control_callback(simulator: Simulator):
-            self.animation.step(
-                time=simulator.solver.data.time,
-                q_j_ref_out=self.controller.data.q_j_ref,
-                dq_j_ref_out=self.controller.data.dq_j_ref,
-            )
-            self.controller.compute(
-                model=simulator.model,
-                state=simulator.state,
-                time=simulator.solver.data.time,
-                control=simulator.control,
-            )
+            self.animation.advance(time=simulator.solver.data.time)
+            pd_control_callback(sim=simulator, animation=self.animation, decimation=decimation[0])
+            pass
 
         # Set the reference tracking generation & control callbacks into the simulator
         self.sim.set_post_reset_callback(reset_jointspace_pid_control_callback)

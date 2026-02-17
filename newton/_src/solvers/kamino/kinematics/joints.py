@@ -799,16 +799,17 @@ def make_compute_joints_data_kernel(correction: JointCorrectionMode = JointCorre
         )
 
         for j in range(num_dynamic_cts):
+            coords_offset_j = coords_offset + j
             dofs_offset_j = dofs_offset + j
             dynamic_cts_offset_j = dynamic_cts_offset + j
 
             # Retrieve joint dynamic data
-            a_j = model_joint_a_j[dynamic_cts_offset_j]
-            b_j = model_joint_b_j[dynamic_cts_offset_j]
-            k_p_j = model_joint_k_p_j[dynamic_cts_offset_j]
-            k_d_j = model_joint_k_d_j[dynamic_cts_offset_j]
-            pd_q_j_ref = data_joint_q_j_ref[dynamic_cts_offset_j]
-            pd_dq_j_ref = data_joint_dq_j_ref[dynamic_cts_offset_j]
+            a_j = model_joint_a_j[dofs_offset_j]
+            b_j = model_joint_b_j[dofs_offset_j]
+            k_p_j = model_joint_k_p_j[dofs_offset_j]
+            k_d_j = model_joint_k_d_j[dofs_offset_j]
+            pd_q_j_ref = data_joint_q_j_ref[coords_offset_j]
+            pd_dq_j_ref = data_joint_dq_j_ref[dofs_offset_j]
 
             # Get joint kinematic state, just written in make_write_joint_data
             q_j = data_q_j[dofs_offset_j]

@@ -675,6 +675,68 @@ def compute_joint_pose_and_relative_motion(
     return p_j, j_r_j, j_q_j, j_u_j
 
 
+@wp.func
+def compute_and_write_joint_implicit_dynamics(
+    # Constants:
+    dt: float32,
+    coords_offset: int32,
+    dofs_offset: int32,
+    num_dynamic_cts: int32,
+    dynamic_cts_offset: int32,
+    # Inputs:
+    model_joint_a_j: wp.array(dtype=float32),
+    model_joint_b_j: wp.array(dtype=float32),
+    model_joint_k_p_j: wp.array(dtype=float32),
+    model_joint_k_d_j: wp.array(dtype=float32),
+    data_joint_q_j: wp.array(dtype=float32),
+    data_joint_dq_j: wp.array(dtype=float32),
+    data_joint_q_j_ref: wp.array(dtype=float32),
+    data_joint_dq_j_ref: wp.array(dtype=float32),
+    data_joint_tau_j_ref: wp.array(dtype=float32),
+    # Outputs:
+    data_joint_m_j: wp.array(dtype=float32),
+    data_joint_inv_m_j: wp.array(dtype=float32),
+    data_joint_qd_b_j: wp.array(dtype=float32),
+):
+    # Iterate over the dynamic constraints of the joint and
+    # compute and store the implicit dynamics intermediates
+    # TODO: We currently do not handle implicit dynamics of
+    # multi-dof joints, but we should generalize this.
+    for j in range(num_dynamic_cts):
+        coords_offset_j = coords_offset + j
+        dofs_offset_j = dofs_offset + j
+        dynamic_cts_offset_j = dynamic_cts_offset + j
+
+        # Retrieve the current joint state
+        # TODO: How can we avoid the extra memory load and
+        # instead just get them from `make_write_joint_data`?
+        q_j = data_joint_q_j[dofs_offset_j]
+        dq_j = data_joint_dq_j[dofs_offset_j]
+
+        # Retrieve the implicit joint dynamics and PD control parameters
+        a_j = model_joint_a_j[dofs_offset_j]
+        b_j = model_joint_b_j[dofs_offset_j]
+        k_p_j = model_joint_k_p_j[dofs_offset_j]
+        k_d_j = model_joint_k_d_j[dofs_offset_j]
+
+        # Retrieve PD control references
+        pd_q_j_ref = data_joint_q_j_ref[coords_offset_j]
+        pd_dq_j_ref = data_joint_dq_j_ref[dofs_offset_j]
+        pd_tau_j_ff = data_joint_tau_j_ref[dofs_offset_j]
+
+        # Compute the implicit joint dynamics intermedates
+        m_j = a_j + dt * (b_j + k_d_j) + dt * dt * k_p_j
+        inv_m_j = 1.0 / m_j
+        tau_j = pd_tau_j_ff + k_p_j * (pd_q_j_ref - q_j) + k_d_j * pd_dq_j_ref
+        h_j = a_j * dq_j + dt * tau_j
+        qd_b_j = inv_m_j * h_j
+
+        # Store the resulting joint dynamics intermadiates
+        data_joint_m_j[dynamic_cts_offset_j] = m_j
+        data_joint_inv_m_j[dynamic_cts_offset_j] = inv_m_j
+        data_joint_qd_b_j[dynamic_cts_offset_j] = qd_b_j
+
+
 ###
 # Kernels
 ###
@@ -712,19 +774,19 @@ def make_compute_joints_data_kernel(correction: JointCorrectionMode = JointCorre
         model_joint_k_d_j: wp.array(dtype=float32),
         data_body_q_i: wp.array(dtype=transformf),
         data_body_u_i: wp.array(dtype=vec6f),
-        data_joint_tau_j: wp.array(dtype=float32),
         data_joint_q_j_ref: wp.array(dtype=float32),
         data_joint_dq_j_ref: wp.array(dtype=float32),
+        data_joint_tau_j_ref: wp.array(dtype=float32),
         q_j_p: wp.array(dtype=float32),
         # Outputs:
-        data_p_j: wp.array(dtype=transformf),
-        data_r_j: wp.array(dtype=float32),
-        data_dr_j: wp.array(dtype=float32),
-        data_q_j: wp.array(dtype=float32),
-        data_dq_j: wp.array(dtype=float32),
-        data_m_j: wp.array(dtype=float32),
-        data_inv_m_j: wp.array(dtype=float32),
-        data_qd_b_j: wp.array(dtype=float32),
+        data_joint_p_j: wp.array(dtype=transformf),
+        data_joint_r_j: wp.array(dtype=float32),
+        data_joint_dr_j: wp.array(dtype=float32),
+        data_joint_q_j: wp.array(dtype=float32),
+        data_joint_dq_j: wp.array(dtype=float32),
+        data_joint_m_j: wp.array(dtype=float32),
+        data_joint_inv_m_j: wp.array(dtype=float32),
+        data_joint_qd_b_j: wp.array(dtype=float32),
     ):
         # Retrieve the thread index
         jid = wp.tid()
@@ -780,7 +842,7 @@ def make_compute_joints_data_kernel(correction: JointCorrectionMode = JointCorre
         )
 
         # Store the absolute pose of the joint frame in world coordinates
-        data_p_j[jid] = p_j
+        data_joint_p_j[jid] = p_j
 
         # Store the joint constraint residuals and motion
         wp.static(make_write_joint_data(correction))(
@@ -792,42 +854,33 @@ def make_compute_joints_data_kernel(correction: JointCorrectionMode = JointCorre
             j_q_j,
             j_u_j,
             q_j_p,
-            data_r_j,
-            data_dr_j,
-            data_q_j,
-            data_dq_j,
+            data_joint_r_j,
+            data_joint_dr_j,
+            data_joint_q_j,
+            data_joint_dq_j,
         )
 
-        # TODO: FIX AND CLEAN THIS UP
-        for j in range(num_dynamic_cts):
-            coords_offset_j = coords_offset + j
-            dofs_offset_j = dofs_offset + j
-            dynamic_cts_offset_j = dynamic_cts_offset + j
-
-            # Retrieve joint dynamic data
-            a_j = model_joint_a_j[dofs_offset_j]
-            b_j = model_joint_b_j[dofs_offset_j]
-            k_p_j = model_joint_k_p_j[dofs_offset_j]
-            k_d_j = model_joint_k_d_j[dofs_offset_j]
-            pd_q_j_ref = data_joint_q_j_ref[coords_offset_j]
-            pd_dq_j_ref = data_joint_dq_j_ref[dofs_offset_j]
-
-            # Get joint kinematic state, just written in make_write_joint_data
-            q_j = data_q_j[dofs_offset_j]
-            dq_j = data_dq_j[dofs_offset_j]
-            tau_j_ff = data_joint_tau_j[dofs_offset_j]
-
-            # Compute joint dynamic outputs
-            m_j = a_j + dt * (b_j + k_d_j) + dt * dt * k_p_j
-            # TODO @ruben: Could it still be possible that we want implicit PD without inertia?
-            inv_m_j = 1.0 / m_j  # Zero division will not happen, otherwise this would not be a dynamic constraint.
-            tau_j = tau_j_ff + k_p_j * (pd_q_j_ref - q_j) + k_d_j * pd_dq_j_ref
-            qd_b_j = inv_m_j * (a_j * dq_j + dt * tau_j)
-
-            # Write joint dynamics outputs
-            data_m_j[dynamic_cts_offset_j] = m_j
-            data_inv_m_j[dynamic_cts_offset_j] = inv_m_j
-            data_qd_b_j[dynamic_cts_offset_j] = qd_b_j
+        # Compute and store the implicit dynamics
+        # for the dynamic constraints of the joint
+        compute_and_write_joint_implicit_dynamics(
+            dt,
+            coords_offset,
+            dofs_offset,
+            num_dynamic_cts,
+            dynamic_cts_offset,
+            model_joint_a_j,
+            model_joint_b_j,
+            model_joint_k_p_j,
+            model_joint_k_d_j,
+            data_joint_q_j,
+            data_joint_dq_j,
+            data_joint_q_j_ref,
+            data_joint_dq_j_ref,
+            data_joint_tau_j_ref,
+            data_joint_m_j,
+            data_joint_inv_m_j,
+            data_joint_qd_b_j,
+        )
 
     # Return the kernel
     return _compute_joints_data
@@ -1025,9 +1078,9 @@ def compute_joints_data(
             model.joints.k_d_j,
             data.bodies.q_i,
             data.bodies.u_i,
-            data.joints.tau_j,
             data.joints.q_j_ref,
             data.joints.dq_j_ref,
+            data.joints.tau_j_ref,
             q_j_p,
             # Outputs:
             data.joints.p_j,

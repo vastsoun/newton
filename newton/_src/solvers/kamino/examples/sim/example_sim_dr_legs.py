@@ -464,7 +464,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--implicit-pd",
         action=argparse.BooleanOptionalAction,
-        default=False,
+        default=True,
         help="Enables implicit PD control of joints",
     )
     parser.add_argument(

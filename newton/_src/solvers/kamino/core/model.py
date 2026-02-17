@@ -920,6 +920,7 @@ class Model:
                 qd_b_j=wp.zeros(shape=njdyncts, dtype=float32, requires_grad=requires_grad),
                 q_j_ref=wp.clone(self.joints.q_j_0, requires_grad=requires_grad),
                 dq_j_ref=wp.clone(self.joints.dq_j_0, requires_grad=requires_grad),
+                tau_j_ref=wp.zeros(shape=njdofs, dtype=float32, requires_grad=requires_grad),
                 j_w_j=wp.zeros(shape=nj, dtype=vec6f, requires_grad=requires_grad),
                 j_w_c_j=wp.zeros(shape=nj, dtype=vec6f, requires_grad=requires_grad),
                 j_w_a_j=wp.zeros(shape=nj, dtype=vec6f, requires_grad=requires_grad),

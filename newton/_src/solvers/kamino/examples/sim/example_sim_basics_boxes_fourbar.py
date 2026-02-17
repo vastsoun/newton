@@ -52,10 +52,9 @@ wp.set_module_options({"enable_backward": False})
 @wp.kernel
 def _pd_control_callback(
     state_t: wp.array(dtype=float32),
-    # control_tau_j: wp.array(dtype=float32),
-    data_joint_tau_j: wp.array(dtype=float32),
     data_joint_q_j_ref: wp.array(dtype=float32),
     data_joint_dq_j_ref: wp.array(dtype=float32),
+    data_joint_tau_j_ref: wp.array(dtype=float32),
 ):
     """
     An example control callback kernel.
@@ -81,24 +80,31 @@ def _pd_control_callback(
     if t > t_start and t < t_0:
         data_joint_q_j_ref[jid] = 0.1
         data_joint_dq_j_ref[jid] = 0.0
+        data_joint_tau_j_ref[jid] = 0.0
     elif t > t_0 and t < t_1:
         data_joint_q_j_ref[jid] = -0.1
         data_joint_dq_j_ref[jid] = 0.0
+        data_joint_tau_j_ref[jid] = 0.0
     elif t > t_1 and t < t_2:
         data_joint_q_j_ref[jid] = 0.2
         data_joint_dq_j_ref[jid] = 0.0
+        data_joint_tau_j_ref[jid] = 0.0
     elif t > t_2 and t < t_3:
         data_joint_q_j_ref[jid] = -0.2
         data_joint_dq_j_ref[jid] = 0.0
+        data_joint_tau_j_ref[jid] = 0.0
     elif t > t_3 and t < t_4:
         data_joint_q_j_ref[jid] = 0.3
         data_joint_dq_j_ref[jid] = 0.0
+        data_joint_tau_j_ref[jid] = 0.0
     elif t > t_4 and t < t_5:
         data_joint_q_j_ref[jid] = -0.3
         data_joint_dq_j_ref[jid] = 0.0
+        data_joint_tau_j_ref[jid] = 0.0
     else:
         data_joint_q_j_ref[jid] = 0.0
         data_joint_dq_j_ref[jid] = 0.0
+        data_joint_tau_j_ref[jid] = 0.0
 
 
 @wp.kernel
@@ -141,9 +147,9 @@ def pd_control_callback(sim: Simulator):
         dim=1,
         inputs=[
             sim.solver.data.time.time,
-            sim.solver.data.joints.tau_j,
             sim.solver.data.joints.q_j_ref,
             sim.solver.data.joints.dq_j_ref,
+            sim.solver.data.joints.tau_j_ref,
         ],
     )
 

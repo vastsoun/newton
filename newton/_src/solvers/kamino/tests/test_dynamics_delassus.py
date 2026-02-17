@@ -811,6 +811,7 @@ class TestDelassusOperatorSparse(unittest.TestCase):
         preconditioner_np = rng.standard_normal((model.size.sum_of_max_total_cts,), dtype=np.float32)
         preconditioner = wp.from_numpy(preconditioner_np, dtype=wp.float32, device=self.default_device)
         delassus.set_preconditioner(preconditioner)
+        delassus.update()
 
         # Check that setting preconditioner works and allocates the constraint space temp vectors
         self.assertEqual(delassus._preconditioner, preconditioner)
@@ -860,6 +861,8 @@ class TestDelassusOperatorSparse(unittest.TestCase):
                 delassus.set_preconditioner(preconditioner)
             else:
                 delassus.set_preconditioner(None)
+
+            delassus.update()
 
             # Extract Delassus matrices as numpy arrays
             D_np = extract_delassus_sparse(delassus, only_active_dims=True)
@@ -939,6 +942,8 @@ class TestDelassusOperatorSparse(unittest.TestCase):
                 delassus.set_preconditioner(preconditioner)
             else:
                 delassus.set_preconditioner(None)
+
+            delassus.update()
 
             # Generate vectors for multiplication
             alpha = float(rng.standard_normal((1,))[0])

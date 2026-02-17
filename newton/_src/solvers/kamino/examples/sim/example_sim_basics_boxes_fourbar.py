@@ -321,9 +321,6 @@ class Example:
         """Run simulation substeps."""
         for _i in range(self.sim_substeps):
             self.sim.step()
-            msg.warning("m_j: %s", self.sim.solver.data.joints.m_j)
-            msg.warning("inv_m_j: %s", self.sim.solver.data.joints.inv_m_j)
-            msg.warning("qd_b_j: %s", self.sim.solver.data.joints.qd_b_j)
             if not self.use_cuda_graph and self.logging:
                 self.logger.log()
 

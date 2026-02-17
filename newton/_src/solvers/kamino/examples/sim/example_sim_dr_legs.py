@@ -178,6 +178,7 @@ class Example:
         num_worlds: int = 1,
         max_steps: int = 1000,
         use_cuda_graph: bool = False,
+        implicit_pd: bool = False,
         gravity: bool = True,
         ground: bool = True,
         logging: bool = False,
@@ -189,7 +190,7 @@ class Example:
     ):
         # Initialize target frames per second and corresponding time-steps
         self.fps = 60
-        self.sim_dt = 0.01
+        self.sim_dt = 0.01 if implicit_pd else 0.001
         self.frame_dt = 1.0 / self.fps
         self.sim_substeps = max(1, round(self.frame_dt / self.sim_dt))
         self.max_steps = max_steps
@@ -198,6 +199,7 @@ class Example:
         self.device = device
         self.use_cuda_graph: bool = use_cuda_graph
         self.logging: bool = logging
+        self.implicit_pd: bool = implicit_pd
 
         # Set the path to the external USD assets
         EXAMPLE_ASSETS_PATH = get_examples_usd_assets_path()
@@ -209,7 +211,11 @@ class Example:
         msg.notif("Constructing builder from imported USD ...")
         importer = USDImporter()
         self.builder: ModelBuilder = make_homogeneous_builder(
-            num_worlds=num_worlds, build_fn=importer.import_from, load_static_geometry=True, source=USD_MODEL_PATH
+            num_worlds=num_worlds,
+            build_fn=importer.import_from,
+            load_static_geometry=True,
+            source=USD_MODEL_PATH,
+            load_drive_dynamics=implicit_pd,
         )
         msg.info("total mass: %f", self.builder.worlds[0].mass_total)
         msg.info("total diag inertia: %f", self.builder.worlds[0].inertia_total)
@@ -228,19 +234,24 @@ class Example:
         for w in range(self.builder.num_worlds):
             self.builder.gravity[w].enabled = gravity
 
+        # Print-out of actuated joints used for verifying the imported USD was parsed as expected
+        for joint in self.builder.joints:
+            if joint.is_actuated:
+                msg.info(f"Joint '{joint.name}':\n{joint}\n")
+
         # Set solver settings
         settings = SimulatorSettings()
         settings.dt = self.sim_dt
-        settings.solver.integrator = "euler"  # Select from {"euler", "moreau"}
+        settings.solver.integrator = "moreau"  # Select from {"euler", "moreau"}
         settings.solver.problem.alpha = 0.1
-        settings.solver.padmm.primal_tolerance = 1e-6
-        settings.solver.padmm.dual_tolerance = 1e-6
-        settings.solver.padmm.compl_tolerance = 1e-6
+        settings.solver.padmm.primal_tolerance = 1e-4
+        settings.solver.padmm.dual_tolerance = 1e-4
+        settings.solver.padmm.compl_tolerance = 1e-4
         settings.solver.padmm.max_iterations = 200
         settings.solver.padmm.eta = 1e-5
         settings.solver.padmm.rho_0 = 0.05
         settings.solver.use_solver_acceleration = True
-        settings.solver.warmstart_mode = PADMMWarmStartMode.NONE
+        settings.solver.warmstart_mode = PADMMWarmStartMode.CONTAINERS
         settings.solver.contact_warmstart_method = WarmstarterContacts.Method.GEOM_PAIR_NET_FORCE
         settings.solver.collect_solver_info = False
         settings.solver.compute_metrics = logging and not use_cuda_graph
@@ -290,15 +301,25 @@ class Example:
         # Define a callback function to reset the controller
         def reset_jointspace_pid_control_callback(simulator: Simulator):
             self.animation.reset(q_j_ref_out=self.controller.data.q_j_ref, dq_j_ref_out=self.controller.data.dq_j_ref)
-            simulator.solver.data.joints.q_j_ref.zero_()
-            simulator.solver.data.joints.dq_j_ref.zero_()
-            pass
+            self.controller.reset(model=simulator.model, state=simulator.state)
 
         # Define a callback function to wrap the execution of the controller
         def compute_jointspace_pid_control_callback(simulator: Simulator):
-            self.animation.advance(time=simulator.solver.data.time)
-            pd_control_callback(sim=simulator, animation=self.animation, decimation=decimation[0])
-            pass
+            if self.implicit_pd:
+                self.animation.advance(time=simulator.solver.data.time)
+                pd_control_callback(sim=simulator, animation=self.animation, decimation=decimation[0])
+            else:
+                self.animation.step(
+                    time=simulator.solver.data.time,
+                    q_j_ref_out=self.controller.data.q_j_ref,
+                    dq_j_ref_out=self.controller.data.dq_j_ref,
+                )
+                self.controller.compute(
+                    model=simulator.model,
+                    state=simulator.state,
+                    time=simulator.solver.data.time,
+                    control=simulator.control,
+                )
 
         # Set the reference tracking generation & control callbacks into the simulator
         self.sim.set_post_reset_callback(reset_jointspace_pid_control_callback)
@@ -441,6 +462,12 @@ if __name__ == "__main__":
     parser.add_argument("--num-worlds", type=int, default=1, help="Number of worlds to simulate in parallel")
     parser.add_argument("--num-steps", type=int, default=1000, help="Number of steps for headless mode")
     parser.add_argument(
+        "--implicit-pd",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Enables implicit PD control of joints",
+    )
+    parser.add_argument(
         "--gravity", action=argparse.BooleanOptionalAction, default=True, help="Enables gravity in the simulation"
     )
     parser.add_argument(
@@ -508,6 +535,7 @@ if __name__ == "__main__":
         linear_solver=args.linear_solver,
         linear_solver_maxiter=args.linear_solver_maxiter,
         max_steps=args.num_steps,
+        implicit_pd=args.implicit_pd,
         gravity=args.gravity,
         ground=args.ground,
         headless=args.headless,

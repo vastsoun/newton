@@ -950,8 +950,9 @@ def _make_compute_infnorm_residuals_kernel(tile_size: int, n_cts_max: int, n_u_m
         maxiters = config.max_iterations
 
         # Compute element-wise max over each residual vector to compute the infinity-norm
-        r_p_max_acc = wp.tile_zeros(num_tiles_cts, dtype=float32, storage="shared")
-        r_d_max_acc = wp.tile_zeros(num_tiles_cts, dtype=float32, storage="shared")
+        if wp.static(num_tiles_cts > 1):
+            r_p_max_acc = wp.tile_zeros(num_tiles_cts, dtype=float32, storage="shared")
+            r_d_max_acc = wp.tile_zeros(num_tiles_cts, dtype=float32, storage="shared")
         for tile_id in range(num_tiles_cts):
             ct_id_tile = tile_id * tile_size
             if ct_id_tile >= ncts:
@@ -967,19 +968,27 @@ def _make_compute_infnorm_residuals_kernel(tile_size: int, n_cts_max: int, n_u_m
             tile = wp.tile_map(wp.abs, tile)
             if need_mask:
                 tile = wp.tile_map(wp.mul, mask, tile)
-            r_p_max_acc[tile_id] = wp.tile_max(tile)[0]
+            if wp.static(num_tiles_cts > 1):
+                r_p_max_acc[tile_id] = wp.tile_max(tile)[0]
+            else:
+                r_p_max = wp.tile_max(tile)[0]
 
             tile = wp.tile_load(solver_r_d, shape=tile_size, offset=rio_tile)
             tile = wp.tile_map(wp.abs, tile)
             if need_mask:
                 tile = wp.tile_map(wp.mul, mask, tile)
-            r_d_max_acc[tile_id] = wp.tile_max(tile)[0]
-        r_p_max = wp.tile_max(r_p_max_acc)[0]
-        r_d_max = wp.tile_max(r_d_max_acc)[0]
+            if wp.static(num_tiles_cts > 1):
+                r_d_max_acc[tile_id] = wp.tile_max(tile)[0]
+            else:
+                r_d_max = wp.tile_max(tile)[0]
+        if wp.static(num_tiles_cts > 1):
+            r_p_max = wp.tile_max(r_p_max_acc)[0]
+            r_d_max = wp.tile_max(r_d_max_acc)[0]
 
         # Compute the infinity-norm of the complementarity residuals
         nu = nl + nc
-        r_c_max_acc = wp.tile_zeros(num_tiles_u, dtype=float32, storage="shared")
+        if wp.static(num_tiles_u > 1):
+            r_c_max_acc = wp.tile_zeros(num_tiles_u, dtype=float32, storage="shared")
         for tile_id in range(num_tiles_u):
             u_id_tile = tile_id * tile_size
             if u_id_tile >= nu:
@@ -995,8 +1004,12 @@ def _make_compute_infnorm_residuals_kernel(tile_size: int, n_cts_max: int, n_u_m
             tile = wp.tile_map(wp.abs, tile)
             if need_mask:
                 tile = wp.tile_map(wp.mul, mask, tile)
-            r_c_max_acc[tile_id] = wp.tile_max(tile)[0]
-        r_c_max = wp.tile_max(r_c_max_acc)[0]
+            if wp.static(num_tiles_u > 1):
+                r_c_max_acc[tile_id] = wp.tile_max(tile)[0]
+            else:
+                r_c_max = wp.tile_max(tile)[0]
+        if wp.static(num_tiles_u > 1):
+            r_c_max = wp.tile_max(r_c_max_acc)[0]
 
         if tid == 0:
             # Store the scalar metric residuals in the solver status
@@ -1083,11 +1096,12 @@ def _make_compute_infnorm_residuals_accel_kernel(tile_size: int, n_cts_max: int,
         rho = params.rho
 
         # Compute element-wise max over each residual vector to compute the infinity-norm
-        r_p_max_acc = wp.tile_zeros(num_tiles_cts, dtype=float32, storage="shared")
-        r_d_max_acc = wp.tile_zeros(num_tiles_cts, dtype=float32, storage="shared")
-        r_dx_l2_sum_acc = wp.tile_zeros(num_tiles_cts, dtype=float32, storage="shared")
-        r_dy_l2_sum_acc = wp.tile_zeros(num_tiles_cts, dtype=float32, storage="shared")
-        r_dz_l2_sum_acc = wp.tile_zeros(num_tiles_cts, dtype=float32, storage="shared")
+        if wp.static(num_tiles_cts > 1):
+            r_p_max_acc = wp.tile_zeros(num_tiles_cts, dtype=float32, storage="shared")
+            r_d_max_acc = wp.tile_zeros(num_tiles_cts, dtype=float32, storage="shared")
+            r_dx_l2_sum_acc = wp.tile_zeros(num_tiles_cts, dtype=float32, storage="shared")
+            r_dy_l2_sum_acc = wp.tile_zeros(num_tiles_cts, dtype=float32, storage="shared")
+            r_dz_l2_sum_acc = wp.tile_zeros(num_tiles_cts, dtype=float32, storage="shared")
         for tile_id in range(num_tiles_cts):
             ct_id_tile = tile_id * tile_size
             if ct_id_tile >= ncts:
@@ -1103,36 +1117,52 @@ def _make_compute_infnorm_residuals_accel_kernel(tile_size: int, n_cts_max: int,
             tile = wp.tile_map(wp.abs, tile)
             if need_mask:
                 tile = wp.tile_map(wp.mul, mask, tile)
-            r_p_max_acc[tile_id] = wp.tile_max(tile)[0]
+            if wp.static(num_tiles_cts > 1):
+                r_p_max_acc[tile_id] = wp.tile_max(tile)[0]
+            else:
+                r_p_max = wp.tile_max(tile)[0]
 
             tile = wp.tile_load(solver_r_d, shape=tile_size, offset=rio_tile)
             tile = wp.tile_map(wp.abs, tile)
             if need_mask:
                 tile = wp.tile_map(wp.mul, mask, tile)
-            r_d_max_acc[tile_id] = wp.tile_max(tile)[0]
+            if wp.static(num_tiles_cts > 1):
+                r_d_max_acc[tile_id] = wp.tile_max(tile)[0]
+            else:
+                r_d_max = wp.tile_max(tile)[0]
 
             tile = wp.tile_load(solver_r_dx, shape=tile_size, offset=rio_tile)
             tile = wp.tile_map(wp.mul, tile, tile)
             if need_mask:
                 tile = wp.tile_map(wp.mul, mask, tile)
-            r_dx_l2_sum_acc[tile_id] = wp.tile_sum(tile)[0]
+            if wp.static(num_tiles_cts > 1):
+                r_dx_l2_sum_acc[tile_id] = wp.tile_sum(tile)[0]
+            else:
+                r_dx_l2_sum = wp.tile_sum(tile)[0]
 
             tile = wp.tile_load(solver_r_dy, shape=tile_size, offset=rio_tile)
             tile = wp.tile_map(wp.mul, tile, tile)
             if need_mask:
                 tile = wp.tile_map(wp.mul, mask, tile)
-            r_dy_l2_sum_acc[tile_id] = wp.tile_sum(tile)[0]
+            if wp.static(num_tiles_cts > 1):
+                r_dy_l2_sum_acc[tile_id] = wp.tile_sum(tile)[0]
+            else:
+                r_dy_l2_sum = wp.tile_sum(tile)[0]
 
             tile = wp.tile_load(solver_r_dz, shape=tile_size, offset=rio_tile)
             tile = wp.tile_map(wp.mul, tile, tile)
             if need_mask:
                 tile = wp.tile_map(wp.mul, mask, tile)
-            r_dz_l2_sum_acc[tile_id] = wp.tile_sum(tile)[0]
-        r_p_max = wp.tile_max(r_p_max_acc)[0]
-        r_d_max = wp.tile_max(r_d_max_acc)[0]
-        r_dx_l2_sum = wp.tile_sum(r_dx_l2_sum_acc)[0]
-        r_dy_l2_sum = wp.tile_sum(r_dy_l2_sum_acc)[0]
-        r_dz_l2_sum = wp.tile_sum(r_dz_l2_sum_acc)[0]
+            if wp.static(num_tiles_cts > 1):
+                r_dz_l2_sum_acc[tile_id] = wp.tile_sum(tile)[0]
+            else:
+                r_dz_l2_sum = wp.tile_sum(tile)[0]
+        if wp.static(num_tiles_cts > 1):
+            r_p_max = wp.tile_max(r_p_max_acc)[0]
+            r_d_max = wp.tile_max(r_d_max_acc)[0]
+            r_dx_l2_sum = wp.tile_sum(r_dx_l2_sum_acc)[0]
+            r_dy_l2_sum = wp.tile_sum(r_dy_l2_sum_acc)[0]
+            r_dz_l2_sum = wp.tile_sum(r_dz_l2_sum_acc)[0]
 
         # Compute the infinity-norm of the complementarity residuals
         nu = nl + nc
@@ -1152,8 +1182,12 @@ def _make_compute_infnorm_residuals_accel_kernel(tile_size: int, n_cts_max: int,
             tile = wp.tile_map(wp.abs, tile)
             if need_mask:
                 tile = wp.tile_map(wp.mul, mask, tile)
-            r_c_max_acc[tile_id] = wp.tile_max(tile)[0]
-        r_c_max = wp.tile_max(r_c_max_acc)[0]
+            if wp.static(num_tiles_u > 1):
+                r_c_max_acc[tile_id] = wp.tile_max(tile)[0]
+            else:
+                r_c_max = wp.tile_max(tile)[0]
+        if wp.static(num_tiles_u > 1):
+            r_c_max = wp.tile_max(r_c_max_acc)[0]
 
         if tid == 0:
             # Store the scalar metric residuals in the solver status

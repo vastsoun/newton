@@ -538,60 +538,69 @@ def _scale_row_vector_kernel(
     x[idx] = beta * x[idx]
 
 
-@wp.kernel
-def _block_sparse_gemv_regularization_kernel(
-    # Matrix data:
-    dims: wp.array2d(dtype=int32),
-    num_nzb: wp.array(dtype=int32),
-    nzb_start: wp.array(dtype=int32),
-    nzb_coords: wp.array2d(dtype=int32),
-    nzb_values: wp.array(dtype=vec6f),
-    # Vector block offsets:
-    row_start: wp.array(dtype=int32),
-    col_start: wp.array(dtype=int32),
-    # Regularization:
-    eta: wp.array(dtype=float32),
-    # Vector:
-    x: wp.array(dtype=float32),
-    y: wp.array(dtype=float32),
-    z: wp.array(dtype=float32),
-    # Scaling:
-    alpha: float32,
-    # Mask:
-    matrix_mask: wp.array(dtype=int32),
-):
-    """
-    Computes a generalized matrix-vector product with an added diagonal regularization component:
-        y <- y + alpha * (M @ x) + alpha * (diag(eta) @ z)
-    """
+@functools.cache
+def _make_block_sparse_gemv_regularization_kernel(alpha: float32):
+    # Note: this kernel factory allows to optimize for the common case alpha = 1.0. In use cases where
+    # alpha changes over time, this would need to be revisited (to avoid multiple recompilations)
+    @wp.kernel
+    def _block_sparse_gemv_regularization_kernel(
+        # Matrix data:
+        dims: wp.array2d(dtype=int32),
+        num_nzb: wp.array(dtype=int32),
+        nzb_start: wp.array(dtype=int32),
+        nzb_coords: wp.array2d(dtype=int32),
+        nzb_values: wp.array(dtype=vec6f),
+        # Vector block offsets:
+        row_start: wp.array(dtype=int32),
+        col_start: wp.array(dtype=int32),
+        # Regularization:
+        eta: wp.array(dtype=float32),
+        # Vector:
+        x: wp.array(dtype=float32),
+        y: wp.array(dtype=float32),
+        z: wp.array(dtype=float32),
+        # Mask:
+        matrix_mask: wp.array(dtype=int32),
+    ):
+        """
+        Computes a generalized matrix-vector product with an added diagonal regularization component:
+            y <- y + alpha * (M @ x) + alpha * (diag(eta) @ z)
+        """
 
-    mat_id, block_idx = wp.tid()
+        mat_id, block_idx = wp.tid()
 
-    # Early exit if the matrix is flagged as inactive.
-    if matrix_mask[mat_id] == 0:
-        return
+        # Early exit if the matrix is flagged as inactive.
+        if matrix_mask[mat_id] == 0:
+            return
 
-    # Check if block index is valid for this matrix.
-    if block_idx >= num_nzb[mat_id]:
-        return
+        # Check if block index is valid for this matrix.
+        if block_idx >= num_nzb[mat_id]:
+            return
 
-    global_block_idx = nzb_start[mat_id] + block_idx
-    block_coord = nzb_coords[global_block_idx]
-    block = nzb_values[global_block_idx]
+        global_block_idx = nzb_start[mat_id] + block_idx
+        block_coord = nzb_coords[global_block_idx]
+        block = nzb_values[global_block_idx]
 
-    # Perform block matrix-vector multiplication: z += alpha * A_block @ x_block
-    x_idx_base = col_start[mat_id] + block_coord[1]
-    acc = float32(0.0)
+        # Perform block matrix-vector multiplication: z += alpha * A_block @ x_block
+        x_idx_base = col_start[mat_id] + block_coord[1]
+        acc = float32(0.0)
 
-    for j in range(6):
-        acc += alpha * block[j] * x[x_idx_base + j]
+        for j in range(6):
+            acc += block[j] * x[x_idx_base + j]
+        if wp.static(alpha != 1.0):
+            acc *= alpha
 
-    wp.atomic_add(y, row_start[mat_id] + block_coord[0], acc)
+        wp.atomic_add(y, row_start[mat_id] + block_coord[0], acc)
 
-    if block_idx < dims[mat_id][0]:
-        vec_idx = row_start[mat_id] + block_idx
-        vec_val = z[vec_idx] * alpha * eta[vec_idx]
-        wp.atomic_add(y, vec_idx, vec_val)
+        if block_idx < dims[mat_id][0]:
+            vec_idx = row_start[mat_id] + block_idx
+            if wp.static(alpha != 1.0):
+                vec_val = z[vec_idx] * alpha * eta[vec_idx]
+            else:
+                vec_val = z[vec_idx] * eta[vec_idx]
+            wp.atomic_add(y, vec_idx, vec_val)
+
+    return _block_sparse_gemv_regularization_kernel
 
 
 ###
@@ -1530,11 +1539,31 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
         # Compute first Jacobian matrix-vector product: v <- (P @ J)^T @ x
         self.ATy_op(self._transpose_op_matrix, x, v, world_mask)
 
-        # Compute second Jacobian matrix-vector product: y <- (P @ J @ M^-1) @ v
-        self.Ax_op(self.bsm, v, y, world_mask)
-
-        # Add regularization, if provided: y <- y + diag(eta) @ x
-        self._apply_regularization(x, y, world_mask)
+        if self._eta is None:
+            # Compute second Jacobian matrix-vector product: y <- (P @ J @ M^-1) @ v
+            self.Ax_op(self.bsm, v, y, world_mask)
+        else:
+            y.zero_()
+            # Compute y <- (P @ J @ M^-1) @ v + diag(eta) @ x
+            wp.launch(
+                kernel=_make_block_sparse_gemv_regularization_kernel(1.0),
+                dim=(self.bsm.num_matrices, self.bsm.max_of_num_nzb),
+                inputs=[
+                    self.bsm.dims,
+                    self.bsm.num_nzb,
+                    self.bsm.nzb_start,
+                    self.bsm.nzb_coords,
+                    self.bsm.nzb_values,
+                    self.bsm.row_start,
+                    self.bsm.col_start,
+                    self._eta,
+                    v,
+                    y,
+                    x,
+                    world_mask,
+                ],
+                device=self.device,
+            )
 
     def matvec_transpose(self, y: wp.array, x: wp.array, world_mask: wp.array):
         """
@@ -1576,7 +1605,7 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
 
             # Compute y <- alpha * (P @ J @ M^-1) @ v + y + alpha * diag(eta) @ x
             wp.launch(
-                kernel=_block_sparse_gemv_regularization_kernel,
+                kernel=_make_block_sparse_gemv_regularization_kernel(alpha),
                 dim=(self.bsm.num_matrices, self.bsm.max_of_num_nzb),
                 inputs=[
                     self.bsm.dims,
@@ -1590,7 +1619,6 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
                     v,
                     y,
                     x,
-                    alpha,
                     world_mask,
                 ],
                 device=self.device,

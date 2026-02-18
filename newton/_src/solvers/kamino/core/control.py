@@ -45,6 +45,27 @@ class Control:
     where ``d_j`` is the number of DoFs of each joint ``j``.
     """
 
+    q_j_ref: wp.array | None = None
+    """
+    Array of reference generalized joint coordinates for implicit PD control.\n
+    Shape of ``(sum(c_j),)`` and type :class:`float`,
+    where ``c_j`` is the number of coordinates of joint ``j``.
+    """
+
+    dq_j_ref: wp.array | None = None
+    """
+    Array of reference generalized joint velocities for implicit PD control.\n
+    Shape of ``(sum(d_j),)`` and type :class:`float`,
+    where ``d_j`` is the number of DoFs of joint ``j``.
+    """
+
+    tau_j_ref: wp.array | None = None
+    """
+    Array of reference feed-forward generalized joint forces for implicit PD control.\n
+    Shape of ``(sum(d_j),)`` and type :class:`float`,
+    where ``d_j`` is the number of DoFs of joint ``j``.
+    """
+
     def copy_to(self, other: Control) -> None:
         """
         Copies the Control data to another Control object.

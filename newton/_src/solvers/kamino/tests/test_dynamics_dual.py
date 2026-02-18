@@ -39,8 +39,7 @@ class TestDualProblem(unittest.TestCase):
     def setUp(self):
         if not test_context.setup_done:
             setup_tests(clear_cache=False)
-        # self.verbose = test_context.verbose  # Set to True for detailed output
-        self.verbose = True  # Set to True for detailed output
+        self.verbose = test_context.verbose  # Set to True for detailed output
         self.default_device = wp.get_device(test_context.device)
 
     def tearDown(self):

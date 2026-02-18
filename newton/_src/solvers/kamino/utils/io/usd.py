@@ -764,7 +764,7 @@ class USDImporter:
                     tau_j_max[0] = drive.second.forceLimit
         else:
             act_type = JointActuationType.PASSIVE
-        return dof_type, act_type, X_j, q_j_min, q_j_max, tau_j_max, None, None, None, None
+        return dof_type, act_type, X_j, q_j_min, q_j_max, tau_j_max
 
     def _parse_joint_prismatic_from_d6(self, name, joint_prim, joint_spec, joint_dof, distance_unit: float = 1.0):
         dof_type = JointDoFType.PRISMATIC
@@ -788,7 +788,7 @@ class USDImporter:
                     tau_j_max[0] = drive.second.forceLimit
         else:
             act_type = JointActuationType.PASSIVE
-        return dof_type, act_type, X_j, q_j_min, q_j_max, tau_j_max, None, None, None, None
+        return dof_type, act_type, X_j, q_j_min, q_j_max, tau_j_max
 
     def _parse_joint_cylindrical_from_d6(
         self, name, joint_prim, joint_spec, distance_unit: float = 1.0, rotation_unit: float = 1.0
@@ -819,7 +819,7 @@ class USDImporter:
                     tau_j_max[1] = drive.second.forceLimit
         else:
             act_type = JointActuationType.PASSIVE
-        return dof_type, act_type, q_j_min, q_j_max, tau_j_max, None, None, None, None
+        return dof_type, act_type, q_j_min, q_j_max, tau_j_max
 
     def _parse_joint_universal_from_d6(self, name, joint_prim, joint_spec, rotation_unit: float = 1.0):
         dof_type = JointDoFType.UNIVERSAL
@@ -848,7 +848,7 @@ class USDImporter:
                     tau_j_max[1] = drive.second.forceLimit
         else:
             act_type = JointActuationType.PASSIVE
-        return dof_type, act_type, q_j_min, q_j_max, tau_j_max, None, None, None, None
+        return dof_type, act_type, q_j_min, q_j_max, tau_j_max
 
     def _parse_joint_cartesian_from_d6(
         self,
@@ -888,7 +888,7 @@ class USDImporter:
                     tau_j_max[2] = drive.second.forceLimit
         else:
             act_type = JointActuationType.PASSIVE
-        return dof_type, act_type, q_j_min, q_j_max, tau_j_max, None, None, None, None
+        return dof_type, act_type, q_j_min, q_j_max, tau_j_max
 
     def _parse_joint_spherical_from_d6(self, name, joint_prim, joint_spec, rotation_unit: float = 1.0):
         dof_type = JointDoFType.SPHERICAL
@@ -922,7 +922,7 @@ class USDImporter:
                     tau_j_max[2] = drive.second.forceLimit
         else:
             act_type = JointActuationType.PASSIVE
-        return dof_type, act_type, q_j_min, q_j_max, tau_j_max, None, None, None, None
+        return dof_type, act_type, q_j_min, q_j_max, tau_j_max
 
     def _parse_joint(
         self,
@@ -1038,7 +1038,7 @@ class USDImporter:
             )
 
         elif joint_type == self.UsdPhysics.ObjectType.PrismaticJoint:
-            dof_type, act_type, X_j, q_j_min, q_j_max, tau_j_max = self._parse_joint_prismatic(
+            dof_type, act_type, X_j, q_j_min, q_j_max, tau_j_max, a_j, b_j, k_p_j, k_d_j = self._parse_joint_prismatic(
                 joint_spec, distance_unit=distance_unit, load_drive_dynamics=load_drive_dynamics
             )
 

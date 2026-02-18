@@ -203,7 +203,7 @@ def build_unary_revolute_joint_test(
     _builder.add_joint(
         name="world_to_follower_revolute",
         dof_type=JointDoFType.REVOLUTE,
-        act_type=JointActuationType.FORCE,
+        act_type=JointActuationType.POSITION_VELOCITY if implicit_pd else JointActuationType.FORCE,
         bid_B=-1,
         bid_F=bid_F,
         B_r_Bj=vec3f(0.0, -0.15, z_offset),
@@ -315,7 +315,7 @@ def build_binary_revolute_joint_test(
     _builder.add_joint(
         name="base_to_follower_revolute",
         dof_type=JointDoFType.REVOLUTE,
-        act_type=JointActuationType.FORCE,
+        act_type=JointActuationType.POSITION_VELOCITY if implicit_pd else JointActuationType.FORCE,
         bid_B=bid_B,
         bid_F=bid_F,
         B_r_Bj=vec3f(0.0, -0.15, z_offset),
@@ -404,7 +404,7 @@ def build_unary_prismatic_joint_test(
     _builder.add_joint(
         name="world_to_follower_prismatic",
         dof_type=JointDoFType.PRISMATIC,
-        act_type=JointActuationType.FORCE,
+        act_type=JointActuationType.POSITION_VELOCITY if implicit_pd else JointActuationType.FORCE,
         bid_B=-1,
         bid_F=bid_F,
         B_r_Bj=vec3f(0.0, 0.0, z_offset),
@@ -514,7 +514,7 @@ def build_binary_prismatic_joint_test(
     _builder.add_joint(
         name="base_to_follower_prismatic",
         dof_type=JointDoFType.PRISMATIC,
-        act_type=JointActuationType.FORCE,
+        act_type=JointActuationType.POSITION_VELOCITY if implicit_pd else JointActuationType.FORCE,
         bid_B=bid_B,
         bid_F=bid_F,
         B_r_Bj=vec3f(0.0, 0.0, z_offset),
@@ -607,7 +607,7 @@ def build_unary_cylindrical_joint_test(
     _builder.add_joint(
         name="world_to_follower_cylindrical",
         dof_type=JointDoFType.CYLINDRICAL,
-        act_type=JointActuationType.FORCE,
+        act_type=JointActuationType.POSITION_VELOCITY if implicit_pd else JointActuationType.FORCE,
         bid_B=-1,
         bid_F=bid_F,
         B_r_Bj=vec3f(0.0, 0.0, z_offset),
@@ -719,7 +719,7 @@ def build_binary_cylindrical_joint_test(
     _builder.add_joint(
         name="base_to_follower_cylindrical",
         dof_type=JointDoFType.CYLINDRICAL,
-        act_type=JointActuationType.FORCE,
+        act_type=JointActuationType.POSITION_VELOCITY if implicit_pd else JointActuationType.FORCE,
         bid_B=bid_B,
         bid_F=bid_F,
         B_r_Bj=vec3f(0.0, 0.0, z_offset),
@@ -1371,7 +1371,7 @@ def build_unary_cartesian_joint_test(
     _builder.add_joint(
         name="world_to_follower_cartesian",
         dof_type=JointDoFType.CARTESIAN,
-        act_type=JointActuationType.FORCE,
+        act_type=JointActuationType.POSITION_VELOCITY if implicit_pd else JointActuationType.FORCE,
         bid_B=-1,
         bid_F=bid_F,
         B_r_Bj=vec3f(0.25, -0.25, -0.25),
@@ -1483,7 +1483,7 @@ def build_binary_cartesian_joint_test(
     _builder.add_joint(
         name="base_to_follower_cartesian",
         dof_type=JointDoFType.CARTESIAN,
-        act_type=JointActuationType.FORCE,
+        act_type=JointActuationType.POSITION_VELOCITY if implicit_pd else JointActuationType.FORCE,
         bid_B=bid_B,
         bid_F=bid_F,
         B_r_Bj=vec3f(0.25, -0.25, -0.25),

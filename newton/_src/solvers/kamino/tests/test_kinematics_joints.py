@@ -152,8 +152,7 @@ class TestKinematicsJoints(unittest.TestCase):
         if not test_context.setup_done:
             setup_tests(clear_cache=False)
         self.default_device = wp.get_device(test_context.device)
-        # self.verbose = test_context.verbose  # Set to True to enable verbose output
-        self.verbose = True  # Set to True to enable verbose output
+        self.verbose = test_context.verbose  # Set to True to enable verbose output
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
@@ -291,52 +290,60 @@ class TestKinematicsJoints(unittest.TestCase):
         compute_joints_data(model=model, data=data, q_j_p=wp.zeros_like(data.joints.q_j))
         msg.info("data.joints.p_j: %s\n", data.joints.p_j)
 
-        # Extract joint data
+        # Extract measured joint data
         r_j_np = data.joints.r_j.numpy().copy()
         dr_j_np = data.joints.dr_j.numpy().copy()
         q_j_np = data.joints.q_j.numpy().copy()
         dq_j_np = data.joints.dq_j.numpy().copy()
         m_j_np = data.joints.m_j.numpy().copy()
         inv_m_j_np = data.joints.inv_m_j.numpy().copy()
-        v_b_dyn_j_np = data.joints.dq_b_j.numpy().copy()
+        dq_b_j_np = data.joints.dq_b_j.numpy().copy()
         q_j_ref_np = data.joints.q_j_ref.numpy().copy()
         dq_j_ref_np = data.joints.dq_j_ref.numpy().copy()
+        tau_j_ref_np = data.joints.tau_j_ref.numpy().copy()
         msg.info("[measured]:  r_j: %s", r_j_np)
         msg.info("[measured]: dr_j: %s", dr_j_np)
         msg.info("[measured]:  q_j: %s", q_j_np)
         msg.info("[measured]: dq_j: %s\n", dq_j_np)
         msg.info("[measured]: m_j: %s", m_j_np)
         msg.info("[measured]: inv_m_j: %s", inv_m_j_np)
-        msg.info("[measured]: dq_b_j: %s\n", v_b_dyn_j_np)
+        msg.info("[measured]: dq_b_j: %s\n", dq_b_j_np)
         msg.info("[measured]: q_j_ref: %s", q_j_ref_np)
         msg.info("[measured]: dq_j_ref: %s\n", dq_j_ref_np)
+        msg.info("[measured]: tau_j_ref: %s\n", tau_j_ref_np)
 
-        # Construct expected joint data
+        # Compute expected joint dynamics values based on the PD control
+        # law and the equations of motion for a single revolute joint
         dt = model.time.dt.numpy().copy()[0]
         a_j_np = model.joints.a_j.numpy().copy()
         b_j_np = model.joints.b_j.numpy().copy()
         k_p_j_np = model.joints.k_p_j.numpy().copy()
         k_d_j_np = model.joints.k_d_j.numpy().copy()
+        m_j_exp_val = a_j_np[0] + dt * (b_j_np[0] + k_d_j_np[0]) + dt * dt * k_p_j_np[0]
+        inv_m_j_exp_val = 1.0 / m_j_exp_val
+        tau_j_exp_val = tau_j_ref_np[0] + k_p_j_np[0] * (q_j_ref_np[0] - q_j_np[0]) + k_d_j_np[0] * dq_j_ref_np[0]
+        h_j_exp_val = a_j_np[0] * dq_j_np[0] + dt * tau_j_exp_val
+        dq_b_j_exp_val = inv_m_j_exp_val * h_j_exp_val
+
+        # Construct expected joint data
         r_j_expected = np.array([J_DR_J[0], J_DR_J[1], J_DR_J[2], ROT_RES[1], ROT_RES[2]], dtype=np.float32)
         dr_j_expected = np.array([J_DV_J[0], J_DV_J[1], J_DV_J[2], J_DOMEGA_J[1], J_DOMEGA_J[2]], dtype=np.float32)
         q_j_expected = np.array([Q_X_J], dtype=np.float32)
         dq_j_expected = np.array([J_DOMEGA_J[0]], dtype=np.float32)
-        m_j_exp_val = a_j_np[0] + dt * (b_j_np[0] + k_d_j_np[0]) + dt * dt * k_p_j_np[0]
-        inv_m_j_exp_val = 1.0 / m_j_exp_val
-        h_j_exp_val = dt * (k_p_j_np[0] * (q_j_ref_np[0] - q_j_expected[0]) + k_d_j_np[0] * dq_j_ref_np[0])
-        v_b_dyn_j_exp_val = inv_m_j_exp_val * (a_j_np[0] * dq_j_np[0] + dt * h_j_exp_val)
         m_j_expected = np.array([m_j_exp_val], dtype=np.float32)
+        tau_j_expected = np.array([tau_j_exp_val], dtype=np.float32)
         h_j_expected = np.array([h_j_exp_val], dtype=np.float32)
         inv_m_j_expected = np.array([inv_m_j_exp_val], dtype=np.float32)
-        v_b_dyn_j_expected = np.array([v_b_dyn_j_exp_val], dtype=np.float32)
+        dq_b_j_expected = np.array([dq_b_j_exp_val], dtype=np.float32)
         msg.info("[expected]:  r_j: %s", r_j_expected)
         msg.info("[expected]: dr_j: %s", dr_j_expected)
         msg.info("[expected]:  q_j: %s", q_j_expected)
         msg.info("[expected]: dq_j: %s\n", dq_j_expected)
         msg.info("[expected]: m_j: %s", m_j_expected)
+        msg.info("[expected]: tau_j: %s", tau_j_expected)
         msg.info("[expected]: h_j: %s", h_j_expected)
         msg.info("[expected]: inv_m_j: %s", inv_m_j_expected)
-        msg.info("[expected]: dq_b_j: %s\n", v_b_dyn_j_expected)
+        msg.info("[expected]: dq_b_j: %s\n", dq_b_j_expected)
 
         # Check the joint data values
         np.testing.assert_almost_equal(r_j_np, r_j_expected)
@@ -345,7 +352,7 @@ class TestKinematicsJoints(unittest.TestCase):
         np.testing.assert_almost_equal(dq_j_np, dq_j_expected)
         np.testing.assert_almost_equal(m_j_np, m_j_expected)
         np.testing.assert_almost_equal(inv_m_j_np, inv_m_j_expected)
-        np.testing.assert_almost_equal(v_b_dyn_j_np, v_b_dyn_j_expected)
+        np.testing.assert_almost_equal(dq_b_j_np, dq_b_j_expected)
 
     def test_04_multiple_dynamic_revolute_joints(self):
         # Construct the model description using the ModelBuilder
@@ -381,50 +388,50 @@ class TestKinematicsJoints(unittest.TestCase):
         compute_joints_data(model=model, data=data, q_j_p=wp.zeros_like(data.joints.q_j))
         msg.info("data.joints.p_j:\n%s", data.joints.p_j)
 
-        # Extract joint data
+        # Extract measured joint data
         r_j_np = data.joints.r_j.numpy().copy()
         dr_j_np = data.joints.dr_j.numpy().copy()
         q_j_np = data.joints.q_j.numpy().copy()
         dq_j_np = data.joints.dq_j.numpy().copy()
         m_j_np = data.joints.m_j.numpy().copy()
         inv_m_j_np = data.joints.inv_m_j.numpy().copy()
-        v_b_dyn_j_np = data.joints.dq_b_j.numpy().copy()
+        dq_b_j_np = data.joints.dq_b_j.numpy().copy()
         q_j_ref_np = data.joints.q_j_ref.numpy().copy()
         dq_j_ref_np = data.joints.dq_j_ref.numpy().copy()
+        tau_j_ref_np = data.joints.tau_j_ref.numpy().copy()
         msg.info("[measured]:  r_j: %s", r_j_np)
         msg.info("[measured]: dr_j: %s", dr_j_np)
         msg.info("[measured]:  q_j: %s", q_j_np)
         msg.info("[measured]: dq_j: %s\n", dq_j_np)
         msg.info("[measured]: m_j: %s", m_j_np)
         msg.info("[measured]: inv_m_j: %s", inv_m_j_np)
-        msg.info("[measured]: dq_b_j: %s\n", v_b_dyn_j_np)
+        msg.info("[measured]: dq_b_j: %s\n", dq_b_j_np)
         msg.info("[measured]: q_j_ref: %s", q_j_ref_np)
         msg.info("[measured]: dq_j_ref: %s\n", dq_j_ref_np)
+        msg.info("[measured]: tau_j_ref: %s\n", tau_j_ref_np)
 
-        # Construct expected joint data
-        r_j_expected = np.array([J_DR_J[0], J_DR_J[1], J_DR_J[2], ROT_RES[1], ROT_RES[2]], dtype=np.float32)
-        dr_j_expected = np.array([J_DV_J[0], J_DV_J[1], J_DV_J[2], J_DOMEGA_J[1], J_DOMEGA_J[2]], dtype=np.float32)
-        q_j_expected = np.array([Q_X_J], dtype=np.float32)
-        dq_j_expected = np.array([J_DOMEGA_J[0]], dtype=np.float32)
-
-        # Construct expected joint data
+        # Compute expected joint dynamics values based on the PD control
+        # law and the equations of motion for a single revolute joint
         dt = model.time.dt.numpy().copy()[0]
         a_j_np = model.joints.a_j.numpy().copy()
         b_j_np = model.joints.b_j.numpy().copy()
         k_p_j_np = model.joints.k_p_j.numpy().copy()
         k_d_j_np = model.joints.k_d_j.numpy().copy()
+        m_j_exp_val = a_j_np[0] + dt * (b_j_np[0] + k_d_j_np[0]) + dt * dt * k_p_j_np[0]
+        inv_m_j_exp_val = 1.0 / m_j_exp_val
+        tau_j_exp_val = tau_j_ref_np[0] + k_p_j_np[0] * (q_j_ref_np[0] - q_j_np[0]) + k_d_j_np[0] * dq_j_ref_np[0]
+        h_j_exp_val = a_j_np[0] * dq_j_np[0] + dt * tau_j_exp_val
+        dq_b_j_exp_val = inv_m_j_exp_val * h_j_exp_val
+
+        # Construct expected joint data
         r_j_expected = np.array([J_DR_J[0], J_DR_J[1], J_DR_J[2], ROT_RES[1], ROT_RES[2]], dtype=np.float32)
         dr_j_expected = np.array([J_DV_J[0], J_DV_J[1], J_DV_J[2], J_DOMEGA_J[1], J_DOMEGA_J[2]], dtype=np.float32)
         q_j_expected = np.array([Q_X_J], dtype=np.float32)
         dq_j_expected = np.array([J_DOMEGA_J[0]], dtype=np.float32)
-        m_j_exp_val = a_j_np[0] + dt * (b_j_np[0] + k_d_j_np[0]) + dt * dt * k_p_j_np[0]
-        inv_m_j_exp_val = 1.0 / m_j_exp_val
-        h_j_exp_val = dt * (k_p_j_np[0] * (q_j_ref_np[0] - q_j_expected[0]) + k_d_j_np[0] * dq_j_ref_np[0])
-        v_b_dyn_j_exp_val = inv_m_j_exp_val * (a_j_np[0] * dq_j_np[0] + dt * h_j_exp_val)
         m_j_expected = np.array([m_j_exp_val], dtype=np.float32)
         h_j_expected = np.array([h_j_exp_val], dtype=np.float32)
         inv_m_j_expected = np.array([inv_m_j_exp_val], dtype=np.float32)
-        v_b_dyn_j_expected = np.array([v_b_dyn_j_exp_val], dtype=np.float32)
+        dq_b_j_expected = np.array([dq_b_j_exp_val], dtype=np.float32)
 
         # Tile expected values for all joints
         r_j_expected = np.tile(r_j_expected, builder.num_worlds)
@@ -434,7 +441,7 @@ class TestKinematicsJoints(unittest.TestCase):
         m_j_expected = np.tile(m_j_expected, builder.num_worlds)
         h_j_expected = np.tile(h_j_expected, builder.num_worlds)
         inv_m_j_expected = np.tile(inv_m_j_expected, builder.num_worlds)
-        v_b_dyn_j_expected = np.tile(v_b_dyn_j_expected, builder.num_worlds)
+        dq_b_j_expected = np.tile(dq_b_j_expected, builder.num_worlds)
         msg.info("[expected]:  r_j: %s", r_j_expected)
         msg.info("[expected]: dr_j: %s", dr_j_expected)
         msg.info("[expected]:  q_j: %s", q_j_expected)
@@ -442,7 +449,7 @@ class TestKinematicsJoints(unittest.TestCase):
         msg.info("[expected]: m_j: %s", m_j_expected)
         msg.info("[expected]: h_j: %s", h_j_expected)
         msg.info("[expected]: inv_m_j: %s", inv_m_j_expected)
-        msg.info("[expected]: dq_b_j: %s\n", v_b_dyn_j_expected)
+        msg.info("[expected]: dq_b_j: %s\n", dq_b_j_expected)
 
         # Check the joint data values
         np.testing.assert_almost_equal(r_j_np, r_j_expected)
@@ -451,7 +458,7 @@ class TestKinematicsJoints(unittest.TestCase):
         np.testing.assert_almost_equal(dq_j_np, dq_j_expected)
         np.testing.assert_almost_equal(m_j_np, m_j_expected)
         np.testing.assert_almost_equal(inv_m_j_np, inv_m_j_expected)
-        np.testing.assert_almost_equal(v_b_dyn_j_np, v_b_dyn_j_expected)
+        np.testing.assert_almost_equal(dq_b_j_np, dq_b_j_expected)
 
 
 ###

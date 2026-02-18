@@ -947,7 +947,7 @@ def build_boxes_fourbar(
     h_4 = h
 
     # Inertial properties
-    m_i = 0.001
+    m_i = 1.0
     i_I_i_1 = inertia.solid_cuboid_body_moment_of_inertia(m_i, d_1, w_1, h_1)
     i_I_i_2 = inertia.solid_cuboid_body_moment_of_inertia(m_i, d_2, w_2, h_2)
     i_I_i_3 = inertia.solid_cuboid_body_moment_of_inertia(m_i, d_3, w_3, h_3)

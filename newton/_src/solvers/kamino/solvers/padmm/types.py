@@ -48,6 +48,7 @@ Data Containers:
 from dataclasses import dataclass
 from enum import IntEnum
 
+import numpy as np
 import warp as wp
 from warp.context import Devicelike
 
@@ -1474,6 +1475,12 @@ class PADMMData:
         self.info: PADMMInfo | None = None
         """The (optional) PADMM solver info container."""
 
+        self.linear_solver_atol: wp.array | None = None
+        """
+        Per-world absolute tolerance array for the iterative linear solver.\n
+        Shape is (num_worlds,) and type :class:`float32`.
+        """
+
         # Perform memory allocations if model size is specified
         if size is not None:
             self.finalize(
@@ -1511,5 +1518,6 @@ class PADMMData:
             self.state = PADMMState(size, use_acceleration)
             self.residuals = PADMMResiduals(size, use_acceleration)
             self.solution = PADMMSolution(size)
+            self.linear_solver_atol = wp.full(shape=(size.num_worlds,), value=np.finfo(np.float32).eps, dtype=float32)
             if collect_info and max_iters > 0:
                 self.info = PADMMInfo(size, max_iters, use_acceleration)

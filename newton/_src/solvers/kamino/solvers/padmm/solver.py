@@ -128,7 +128,6 @@ class PADMMSolver:
         self._collect_info: bool = False
         self._avoid_graph_conditionals: bool = False
         self._uses_adaptive_penalty: bool = False
-        self._linear_solver_atol: wp.array | None = None
 
         # Declare the model size cache
         self._size: ModelSize | None = None
@@ -356,9 +355,10 @@ class PADMMSolver:
         Args:
             problem (DualProblem): The dual forward dynamics problem to be solved.
         """
-        # Resolve the iterative solver's per-world atol array (None for non-iterative solvers).
+        # Pass the PADMM-owned tolerance array to the iterative linear solver (if present).
         inner = getattr(problem._delassus._solver, "solver", None)
-        self._linear_solver_atol = getattr(inner, "atol", None)
+        if inner is not None:
+            inner.atol = self._data.linear_solver_atol
 
         # Initialize the solver status, ALM penalty, and iterative solver tolerance
         self._initialize()
@@ -440,7 +440,7 @@ class PADMMSolver:
                 self._data.penalty,
                 self._data.state.sigma,
                 self._data.state.a_p,
-                self._linear_solver_atol,
+                self._data.linear_solver_atol,
             ],
         )
 
@@ -1085,10 +1085,10 @@ class PADMMSolver:
                 self._data.residuals.r_dual,
                 self._data.residuals.r_compl,
                 # Outputs:
-                self._data.penalty,
                 self._data.state.done,
                 self._data.status,
-                self._linear_solver_atol,
+                self._data.penalty,
+                self._data.linear_solver_atol,
             ],
         )
 
@@ -1122,11 +1122,11 @@ class PADMMSolver:
                 self._data.residuals.r_dz,
                 self._data.state.a_p,
                 # Outputs:
-                self._data.penalty,
                 self._data.state.done,
                 self._data.state.a,
                 self._data.status,
-                self._linear_solver_atol,
+                self._data.penalty,
+                self._data.linear_solver_atol,
             ],
         )
 

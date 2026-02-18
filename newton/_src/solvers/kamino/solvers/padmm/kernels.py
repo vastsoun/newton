@@ -416,8 +416,10 @@ def make_initialize_solver_kernel(use_acceleration: bool = False):
             solver_state_a_p[wid] = config.a_0
 
         # Initialize the iterative solver tolerance
-        if linear_solver_atol and config.linear_solver_tolerance > 0.0:
-            linear_solver_atol[wid] = config.linear_solver_tolerance
+        if linear_solver_atol:
+            linear_solver_atol[wid] = wp.where(
+                config.linear_solver_tolerance > 0.0, config.linear_solver_tolerance, FLOAT32_EPS
+            )
 
     # Return the initialization kernel
     return _initialize_solver
@@ -925,9 +927,9 @@ def _compute_infnorm_residuals_serially(
     solver_r_d: wp.array(dtype=float32),
     solver_r_c: wp.array(dtype=float32),
     # Outputs:
-    solver_penalty: wp.array(dtype=PADMMPenalty),
     solver_state_done: wp.array(dtype=int32),
     solver_status: wp.array(dtype=PADMMStatus),
+    solver_penalty: wp.array(dtype=PADMMPenalty),
     linear_solver_atol: wp.array(dtype=float32),
 ):
     # Retrieve the thread index as the world index
@@ -1021,10 +1023,10 @@ def _compute_infnorm_residuals_serially_accel(
     solver_r_dz: wp.array(dtype=float32),
     solver_state_a_p: wp.array(dtype=float32),
     # Outputs:
-    solver_penalty: wp.array(dtype=PADMMPenalty),
     solver_state_done: wp.array(dtype=int32),
     solver_state_a: wp.array(dtype=float32),
     solver_status: wp.array(dtype=PADMMStatus),
+    solver_penalty: wp.array(dtype=PADMMPenalty),
     linear_solver_atol: wp.array(dtype=float32),
 ):
     # Retrieve the thread index as the world index

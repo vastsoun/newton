@@ -950,6 +950,8 @@ def _make_compute_infnorm_residuals_kernel(tile_size: int, n_cts_max: int, n_u_m
         maxiters = config.max_iterations
 
         # Compute element-wise max over each residual vector to compute the infinity-norm
+        r_p_max = float32(0.0)
+        r_d_max = float32(0.0)
         if wp.static(num_tiles_cts > 1):
             r_p_max_acc = wp.tile_zeros(num_tiles_cts, dtype=float32, storage="shared")
             r_d_max_acc = wp.tile_zeros(num_tiles_cts, dtype=float32, storage="shared")
@@ -987,6 +989,7 @@ def _make_compute_infnorm_residuals_kernel(tile_size: int, n_cts_max: int, n_u_m
 
         # Compute the infinity-norm of the complementarity residuals
         nu = nl + nc
+        r_c_max = float32(0.0)
         if wp.static(num_tiles_u > 1):
             r_c_max_acc = wp.tile_zeros(num_tiles_u, dtype=float32, storage="shared")
         for tile_id in range(num_tiles_u):
@@ -1096,6 +1099,11 @@ def _make_compute_infnorm_residuals_accel_kernel(tile_size: int, n_cts_max: int,
         rho = params.rho
 
         # Compute element-wise max over each residual vector to compute the infinity-norm
+        r_p_max = float32(0.0)
+        r_d_max = float32(0.0)
+        r_dx_l2_sum = float32(0.0)
+        r_dy_l2_sum = float32(0.0)
+        r_dz_l2_sum = float32(0.0)
         if wp.static(num_tiles_cts > 1):
             r_p_max_acc = wp.tile_zeros(num_tiles_cts, dtype=float32, storage="shared")
             r_d_max_acc = wp.tile_zeros(num_tiles_cts, dtype=float32, storage="shared")
@@ -1166,7 +1174,9 @@ def _make_compute_infnorm_residuals_accel_kernel(tile_size: int, n_cts_max: int,
 
         # Compute the infinity-norm of the complementarity residuals
         nu = nl + nc
-        r_c_max_acc = wp.tile_zeros(num_tiles_u, dtype=float32, storage="shared")
+        r_c_max = float32(0.0)
+        if wp.static(num_tiles_u > 1):
+            r_c_max_acc = wp.tile_zeros(num_tiles_u, dtype=float32, storage="shared")
         for tile_id in range(num_tiles_u):
             u_id_tile = tile_id * tile_size
             if u_id_tile >= nu:

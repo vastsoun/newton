@@ -1064,8 +1064,8 @@ class JointDescriptor(Descriptor):
             "----------------------------------------------\n"
             f"coords_offset: {self.coords_offset},\n"
             f"dofs_offset: {self.dofs_offset},\n"
-            f"cts_dynamic_offset: {self.dynamic_cts_offset},\n"
-            f"cts_kinematic_offset: {self.kinematic_cts_offset},\n"
+            f"dynamic_cts_offset: {self.dynamic_cts_offset},\n"
+            f"kinematic_cts_offset: {self.kinematic_cts_offset},\n"
             "----------------------------------------------\n"
             f"passive_coords_offset: {self.passive_coords_offset},\n"
             f"passive_dofs_offset: {self.passive_dofs_offset},\n"
@@ -1537,9 +1537,6 @@ class JointsData:
     is the number of DoFs of joint ``j``.
     """
 
-    # TODO (@ruben): I think we still need this to be in full DoF space to inject
-    # generalized forces in full DoF-space, when no implicit PD control is preset,
-    # plus we could use this as a feed-forward term when implicit PD control is present.
     tau_j: wp.array | None = None
     """
     Flat array of generalized forces of the joints.\n
@@ -1629,7 +1626,7 @@ class JointsData:
     where ``e_j`` is the number of dynamic constraints of joint ``j``.
     """
 
-    qd_b_j: wp.array | None = None
+    dq_b_j: wp.array | None = None
     """
     The velocity bias of the joint dynamic constraints (as flat array).
 
@@ -1651,14 +1648,14 @@ class JointsData:
     This results in the following dynamic constraint equation for each joint `j`:
     ```
     dq_j^{+} + m_j^{-1} * lambda_q_j = m_j^{-1} * (a_j * dq_j^{-} + dt * h_j)
-    dq_j^{+} + m_j^{-1} * lambda_q_j = qd_b_j
-    J_q_j * u^{+} + m_j^{-1} * lambda_q_j = qd_b_j
+    dq_j^{+} + m_j^{-1} * lambda_q_j = dq_b_j
+    J_q_j * u^{+} + m_j^{-1} * lambda_q_j = dq_b_j
     ```
     and thus the velocity bias term of the joint-space dynamics of each joint `j` is computed as:\n
     ```
     tau_j := dt * ( tau_j_ff + k_p_j * (q_j_ref - q_j^{-} ) + k_d_j * dq_j_ref )
     h_j := a_j * dq_j^{-} + dt * tau_j
-    qd_b_j := inv_m_j * h_j
+    dq_b_j := inv_m_j * h_j
     ```
     where dt is the simulation time step.
 

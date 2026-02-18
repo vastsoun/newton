@@ -917,7 +917,7 @@ class Model:
                 lambda_j=wp.zeros(shape=njcts, dtype=float32, requires_grad=requires_grad),
                 m_j=wp.zeros(shape=njdyncts, dtype=float32, requires_grad=requires_grad),
                 inv_m_j=wp.zeros(shape=njdyncts, dtype=float32, requires_grad=requires_grad),
-                qd_b_j=wp.zeros(shape=njdyncts, dtype=float32, requires_grad=requires_grad),
+                dq_b_j=wp.zeros(shape=njdyncts, dtype=float32, requires_grad=requires_grad),
                 q_j_ref=wp.clone(self.joints.q_j_0, requires_grad=requires_grad),
                 dq_j_ref=wp.clone(self.joints.dq_j_0, requires_grad=requires_grad),
                 tau_j_ref=wp.zeros(shape=njdofs, dtype=float32, requires_grad=requires_grad),

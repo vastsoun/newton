@@ -485,7 +485,7 @@ def _build_free_velocity_bias_joint_dynamics(
     model_joints_wid: wp.array(dtype=int32),
     model_joints_num_dynamic_cts: wp.array(dtype=int32),
     model_joints_dynamic_cts_offset: wp.array(dtype=int32),
-    data_joints_qd_b_j: wp.array(dtype=float32),
+    data_joints_dq_b_j: wp.array(dtype=float32),
     problem_vio: wp.array(dtype=int32),
     # Outputs:
     problem_v_b: wp.array(dtype=float32),
@@ -517,7 +517,7 @@ def _build_free_velocity_bias_joint_dynamics(
 
     # Compute the free-velocity bias for the joint
     for j in range(num_dyn_cts_j):
-        problem_v_b[cts_row_start_j + j] = -data_joints_qd_b_j[bias_row_start_j + j]
+        problem_v_b[cts_row_start_j + j] = -data_joints_dq_b_j[bias_row_start_j + j]
 
 
 @wp.kernel
@@ -1408,7 +1408,7 @@ class DualProblem:
                         model.joints.wid,
                         model.joints.num_dynamic_cts,
                         model.joints.dynamic_cts_offset,
-                        data.joints.qd_b_j,
+                        data.joints.dq_b_j,
                         self._data.vio,
                         # Outputs:
                         self._data.v_b,

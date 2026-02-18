@@ -696,7 +696,7 @@ def compute_and_write_joint_implicit_dynamics(
     # Outputs:
     data_joint_m_j: wp.array(dtype=float32),
     data_joint_inv_m_j: wp.array(dtype=float32),
-    data_joint_qd_b_j: wp.array(dtype=float32),
+    data_joint_dq_b_j: wp.array(dtype=float32),
 ):
     # Iterate over the dynamic constraints of the joint and
     # compute and store the implicit dynamics intermediates
@@ -729,12 +729,12 @@ def compute_and_write_joint_implicit_dynamics(
         inv_m_j = 1.0 / m_j
         tau_j = pd_tau_j_ff + k_p_j * (pd_q_j_ref - q_j) + k_d_j * pd_dq_j_ref
         h_j = a_j * dq_j + dt * tau_j
-        qd_b_j = inv_m_j * h_j
+        dq_b_j = inv_m_j * h_j
 
         # Store the resulting joint dynamics intermadiates
         data_joint_m_j[dynamic_cts_offset_j] = m_j
         data_joint_inv_m_j[dynamic_cts_offset_j] = inv_m_j
-        data_joint_qd_b_j[dynamic_cts_offset_j] = qd_b_j
+        data_joint_dq_b_j[dynamic_cts_offset_j] = dq_b_j
 
 
 ###
@@ -786,7 +786,7 @@ def make_compute_joints_data_kernel(correction: JointCorrectionMode = JointCorre
         data_joint_dq_j: wp.array(dtype=float32),
         data_joint_m_j: wp.array(dtype=float32),
         data_joint_inv_m_j: wp.array(dtype=float32),
-        data_joint_qd_b_j: wp.array(dtype=float32),
+        data_joint_dq_b_j: wp.array(dtype=float32),
     ):
         # Retrieve the thread index
         jid = wp.tid()
@@ -879,7 +879,7 @@ def make_compute_joints_data_kernel(correction: JointCorrectionMode = JointCorre
             data_joint_tau_j_ref,
             data_joint_m_j,
             data_joint_inv_m_j,
-            data_joint_qd_b_j,
+            data_joint_dq_b_j,
         )
 
     # Return the kernel
@@ -1090,7 +1090,7 @@ def compute_joints_data(
             data.joints.dq_j,
             data.joints.m_j,
             data.joints.inv_m_j,
-            data.joints.qd_b_j,
+            data.joints.dq_b_j,
         ],
         device=model.device,
     )

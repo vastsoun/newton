@@ -298,7 +298,7 @@ class TestKinematicsJoints(unittest.TestCase):
         dq_j_np = data.joints.dq_j.numpy().copy()
         m_j_np = data.joints.m_j.numpy().copy()
         inv_m_j_np = data.joints.inv_m_j.numpy().copy()
-        v_b_dyn_j_np = data.joints.qd_b_j.numpy().copy()
+        v_b_dyn_j_np = data.joints.dq_b_j.numpy().copy()
         q_j_ref_np = data.joints.q_j_ref.numpy().copy()
         dq_j_ref_np = data.joints.dq_j_ref.numpy().copy()
         msg.info("[measured]:  r_j: %s", r_j_np)
@@ -307,7 +307,7 @@ class TestKinematicsJoints(unittest.TestCase):
         msg.info("[measured]: dq_j: %s\n", dq_j_np)
         msg.info("[measured]: m_j: %s", m_j_np)
         msg.info("[measured]: inv_m_j: %s", inv_m_j_np)
-        msg.info("[measured]: qd_b_j: %s\n", v_b_dyn_j_np)
+        msg.info("[measured]: dq_b_j: %s\n", v_b_dyn_j_np)
         msg.info("[measured]: q_j_ref: %s", q_j_ref_np)
         msg.info("[measured]: dq_j_ref: %s\n", dq_j_ref_np)
 
@@ -336,7 +336,7 @@ class TestKinematicsJoints(unittest.TestCase):
         msg.info("[expected]: m_j: %s", m_j_expected)
         msg.info("[expected]: h_j: %s", h_j_expected)
         msg.info("[expected]: inv_m_j: %s", inv_m_j_expected)
-        msg.info("[expected]: qd_b_j: %s\n", v_b_dyn_j_expected)
+        msg.info("[expected]: dq_b_j: %s\n", v_b_dyn_j_expected)
 
         # Check the joint data values
         np.testing.assert_almost_equal(r_j_np, r_j_expected)
@@ -388,7 +388,7 @@ class TestKinematicsJoints(unittest.TestCase):
         dq_j_np = data.joints.dq_j.numpy().copy()
         m_j_np = data.joints.m_j.numpy().copy()
         inv_m_j_np = data.joints.inv_m_j.numpy().copy()
-        v_b_dyn_j_np = data.joints.qd_b_j.numpy().copy()
+        v_b_dyn_j_np = data.joints.dq_b_j.numpy().copy()
         q_j_ref_np = data.joints.q_j_ref.numpy().copy()
         dq_j_ref_np = data.joints.dq_j_ref.numpy().copy()
         msg.info("[measured]:  r_j: %s", r_j_np)
@@ -397,7 +397,7 @@ class TestKinematicsJoints(unittest.TestCase):
         msg.info("[measured]: dq_j: %s\n", dq_j_np)
         msg.info("[measured]: m_j: %s", m_j_np)
         msg.info("[measured]: inv_m_j: %s", inv_m_j_np)
-        msg.info("[measured]: qd_b_j: %s\n", v_b_dyn_j_np)
+        msg.info("[measured]: dq_b_j: %s\n", v_b_dyn_j_np)
         msg.info("[measured]: q_j_ref: %s", q_j_ref_np)
         msg.info("[measured]: dq_j_ref: %s\n", dq_j_ref_np)
 
@@ -442,7 +442,7 @@ class TestKinematicsJoints(unittest.TestCase):
         msg.info("[expected]: m_j: %s", m_j_expected)
         msg.info("[expected]: h_j: %s", h_j_expected)
         msg.info("[expected]: inv_m_j: %s", inv_m_j_expected)
-        msg.info("[expected]: qd_b_j: %s\n", v_b_dyn_j_expected)
+        msg.info("[expected]: dq_b_j: %s\n", v_b_dyn_j_expected)
 
         # Check the joint data values
         np.testing.assert_almost_equal(r_j_np, r_j_expected)

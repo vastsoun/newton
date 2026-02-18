@@ -50,7 +50,65 @@ wp.set_module_options({"enable_backward": False})
 
 
 @wp.kernel
-def _control_callback(
+def _pd_control_callback(
+    state_t: wp.array(dtype=float32),
+    data_joint_q_j_ref: wp.array(dtype=float32),
+    data_joint_dq_j_ref: wp.array(dtype=float32),
+    data_joint_tau_j_ref: wp.array(dtype=float32),
+):
+    """
+    An example control callback kernel.
+    """
+    # Set world index
+    wid = int(0)
+    jid = int(0)
+
+    # Define the time window for the active external force profile
+    t_start = float32(3.0)
+    t_window = float32(3.0)
+    t_0 = t_start + t_window
+    t_1 = t_0 + t_window
+    t_2 = t_1 + t_window
+    t_3 = t_2 + t_window
+    t_4 = t_3 + t_window
+    t_5 = t_4 + t_window
+
+    # Get the current time
+    t = state_t[wid]
+
+    # Apply a time-dependent joint references
+    if t > t_start and t < t_0:
+        data_joint_q_j_ref[jid] = 0.1
+        data_joint_dq_j_ref[jid] = 0.0
+        data_joint_tau_j_ref[jid] = 0.0
+    elif t > t_0 and t < t_1:
+        data_joint_q_j_ref[jid] = -0.1
+        data_joint_dq_j_ref[jid] = 0.0
+        data_joint_tau_j_ref[jid] = 0.0
+    elif t > t_1 and t < t_2:
+        data_joint_q_j_ref[jid] = 0.2
+        data_joint_dq_j_ref[jid] = 0.0
+        data_joint_tau_j_ref[jid] = 0.0
+    elif t > t_2 and t < t_3:
+        data_joint_q_j_ref[jid] = -0.2
+        data_joint_dq_j_ref[jid] = 0.0
+        data_joint_tau_j_ref[jid] = 0.0
+    elif t > t_3 and t < t_4:
+        data_joint_q_j_ref[jid] = 0.3
+        data_joint_dq_j_ref[jid] = 0.0
+        data_joint_tau_j_ref[jid] = 0.0
+    elif t > t_4 and t < t_5:
+        data_joint_q_j_ref[jid] = -0.3
+        data_joint_dq_j_ref[jid] = 0.0
+        data_joint_tau_j_ref[jid] = 0.0
+    else:
+        data_joint_q_j_ref[jid] = 0.0
+        data_joint_dq_j_ref[jid] = 0.0
+        data_joint_tau_j_ref[jid] = 0.0
+
+
+@wp.kernel
+def _torque_control_callback(
     state_t: wp.array(dtype=float32),
     control_tau_j: wp.array(dtype=float32),
 ):
@@ -80,12 +138,28 @@ def _control_callback(
 ###
 
 
-def control_callback(sim: Simulator):
+def pd_control_callback(sim: Simulator):
     """
     A control callback function
     """
     wp.launch(
-        _control_callback,
+        _pd_control_callback,
+        dim=1,
+        inputs=[
+            sim.solver.data.time.time,
+            sim.solver.data.joints.q_j_ref,
+            sim.solver.data.joints.dq_j_ref,
+            sim.solver.data.joints.tau_j_ref,
+        ],
+    )
+
+
+def torque_control_callback(sim: Simulator):
+    """
+    A control callback function
+    """
+    wp.launch(
+        _torque_control_callback,
         dim=1,
         inputs=[
             sim.solver.data.time.time,
@@ -107,6 +181,7 @@ class Example:
         max_steps: int = 1000,
         use_cuda_graph: bool = False,
         load_from_usd: bool = False,
+        implicit_pd: bool = True,
         gravity: bool = True,
         ground: bool = True,
         logging: bool = False,
@@ -116,7 +191,7 @@ class Example:
     ):
         # Initialize target frames per second and corresponding time-steps
         self.fps = 60
-        self.sim_dt = 0.001
+        self.sim_dt = 0.01
         self.frame_dt = 1.0 / self.fps
         self.sim_substeps = max(1, round(self.frame_dt / self.sim_dt))
         self.max_steps = max_steps
@@ -140,12 +215,24 @@ class Example:
         else:
             msg.notif("Constructing builder using model generator ...")
             self.builder: ModelBuilder = make_homogeneous_builder(
-                num_worlds=num_worlds, build_fn=build_boxes_fourbar, ground=ground
+                num_worlds=num_worlds,
+                build_fn=build_boxes_fourbar,
+                ground=ground,
+                limits=True,
+                dynamic_joints=implicit_pd,
+                implicit_pd=implicit_pd,
             )
+
+        # TODO
+        for joint in self.builder.joints:
+            if joint.is_actuated:
+                msg.error(f"Actuated Joint:\n{joint}")
+            else:
+                msg.warning(f"Passive Joint:\n{joint}")
 
         # Offset the model to place it above the ground
         # NOTE: The USD model is centered at the origin
-        offset = wp.transformf(0.0, 0.0, 0.2, 0.0, 0.0, 0.0, 1.0)
+        offset = wp.transformf(0.0, 0.0, 0.1, 0.0, 0.0, 0.0, 1.0)
         set_uniform_body_pose_offset(builder=self.builder, offset=offset)
 
         # Set gravity
@@ -155,7 +242,7 @@ class Example:
         # Set solver settings
         settings = SimulatorSettings()
         settings.dt = self.sim_dt
-        settings.solver.integrator = "moreau"  # Select from {"euler", "moreau"}
+        settings.solver.integrator = "euler"  # Select from {"euler", "moreau"}
         settings.solver.problem.preconditioning = True
         settings.solver.padmm.primal_tolerance = 1e-4
         settings.solver.padmm.dual_tolerance = 1e-4
@@ -171,7 +258,12 @@ class Example:
         # Create a simulator
         msg.notif("Building the simulator...")
         self.sim = Simulator(builder=self.builder, settings=settings, device=device)
-        self.sim.set_control_callback(control_callback)
+
+        # Set the control callback based on whether implicit PD control is enabled
+        if implicit_pd:
+            self.sim.set_control_callback(pd_control_callback)
+        else:
+            self.sim.set_control_callback(torque_control_callback)
 
         # Initialize the data logger
         self.logger: SimulationLogger | None = None
@@ -307,7 +399,13 @@ if __name__ == "__main__":
     parser.add_argument("--num-worlds", type=int, default=1, help="Number of worlds to simulate in parallel")
     parser.add_argument("--num-steps", type=int, default=3000, help="Number of steps for headless mode")
     parser.add_argument(
-        "--load-from-usd", action=argparse.BooleanOptionalAction, default=True, help="Load model from USD file"
+        "--load-from-usd", action=argparse.BooleanOptionalAction, default=False, help="Load model from USD file"
+    )
+    parser.add_argument(
+        "--implicit-pd",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Enables implicit PD control of joints",
     )
     parser.add_argument(
         "--gravity", action=argparse.BooleanOptionalAction, default=True, help="Enables gravity in the simulation"
@@ -366,6 +464,7 @@ if __name__ == "__main__":
         load_from_usd=args.load_from_usd,
         num_worlds=args.num_worlds,
         max_steps=args.num_steps,
+        implicit_pd=args.implicit_pd,
         gravity=args.gravity,
         ground=args.ground,
         headless=args.headless,

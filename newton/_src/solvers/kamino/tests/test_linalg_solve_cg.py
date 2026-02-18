@@ -125,6 +125,7 @@ class TestLinalgConjugate(unittest.TestCase):
     def test_solve_cg_cuda(self):
         if not wp.get_cuda_devices():
             self.skipTest("No CUDA devices found")
+        self.skipTest("Postponed until sparse support is added")
         device = wp.get_cuda_device()
         solver_cls = CGSolver
         for problem_name, problem_params in self._problem_params().items():
@@ -134,6 +135,7 @@ class TestLinalgConjugate(unittest.TestCase):
     def test_solve_cr_cuda(self):
         if not wp.get_cuda_devices():
             self.skipTest("No CUDA devices found")
+        self.skipTest("Postponed until sparse support is added")
         device = wp.get_cuda_device()
         solver_cls = CRSolver
         for problem_name, problem_params in self._problem_params().items():

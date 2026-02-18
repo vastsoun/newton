@@ -36,6 +36,7 @@ from newton._src.solvers.kamino.core.materials import (
     DEFAULT_RESTITUTION,
     MaterialDescriptor,
 )
+from newton._src.solvers.kamino.core.math import FLOAT32_MAX, FLOAT32_MIN
 from newton._src.solvers.kamino.core.shapes import ShapeType, SphereShape
 from newton._src.solvers.kamino.core.world import WorldDescriptor
 from newton._src.solvers.kamino.tests import setup_tests, test_context
@@ -176,9 +177,21 @@ class TestJointDescriptor(unittest.TestCase):
         self.assertEqual(joint.act_type, JointActuationType.PASSIVE)
         self.assertEqual(joint.bid_B, -1)
         self.assertEqual(joint.bid_F, -1)
+        self.assertEqual(joint.num_coords, 7)
+        self.assertEqual(joint.num_dofs, 6)
+        self.assertEqual(joint.num_dynamic_cts, 0)
+        self.assertEqual(joint.num_kinematic_cts, 0)
         np.testing.assert_array_equal(joint.B_r_Bj, np.zeros(3, dtype=np.float32))
         np.testing.assert_array_equal(joint.F_r_Fj, np.zeros(3, dtype=np.float32))
         np.testing.assert_array_equal(joint.X_j, np.zeros(9, dtype=np.float32))
+        np.testing.assert_array_equal(joint.q_j_min, np.full(6, FLOAT32_MIN, dtype=np.float32))
+        np.testing.assert_array_equal(joint.q_j_max, np.full(6, FLOAT32_MAX, dtype=np.float32))
+        np.testing.assert_array_equal(joint.dq_j_max, np.full(6, FLOAT32_MAX, dtype=np.float32))
+        np.testing.assert_array_equal(joint.tau_j_max, np.full(6, FLOAT32_MAX, dtype=np.float32))
+        np.testing.assert_array_equal(joint.a_j, np.zeros(6, dtype=np.float32))
+        np.testing.assert_array_equal(joint.b_j, np.zeros(6, dtype=np.float32))
+        np.testing.assert_array_equal(joint.k_p_j, np.zeros(6, dtype=np.float32))
+        np.testing.assert_array_equal(joint.k_d_j, np.zeros(6, dtype=np.float32))
         self.assertEqual(joint.wid, -1)
         self.assertEqual(joint.jid, -1)
         self.assertEqual(joint.coords_offset, -1)
@@ -187,7 +200,67 @@ class TestJointDescriptor(unittest.TestCase):
         self.assertEqual(joint.passive_dofs_offset, -1)
         self.assertEqual(joint.actuated_coords_offset, -1)
         self.assertEqual(joint.actuated_dofs_offset, -1)
-        self.assertEqual(joint.cts_offset, -1)
+        self.assertEqual(joint.kinematic_cts_offset, -1)
+        self.assertEqual(joint.dynamic_cts_offset, -1)
+        # Check property methods
+        self.assertEqual(joint.is_actuated, False)
+        self.assertEqual(joint.is_passive, True)
+        self.assertEqual(joint.is_binary, False)
+        self.assertEqual(joint.is_unary, True)
+        self.assertEqual(joint.is_dynamic, False)
+
+    def test_01_actuated_revolute_joint_with_effort_dynamics(self):
+        joint = JointDescriptor(
+            name="test_joint_revolute_dynamic",
+            dof_type=JointDoFType.REVOLUTE,
+            act_type=JointActuationType.FORCE,
+            bid_B=0,
+            bid_F=1,
+            a_j=1.0,
+            b_j=1.0,
+        )
+        msg.info(f"joint: {joint}")
+
+        # Check values
+        self.assertIsInstance(joint, JointDescriptor)
+        self.assertEqual(joint.name, "test_joint_revolute_dynamic")
+        self.assertIsInstance(joint.dof_type, JointDoFType)
+        self.assertIsInstance(joint.act_type, JointActuationType)
+        self.assertEqual(joint.dof_type, JointDoFType.REVOLUTE)
+        self.assertEqual(joint.act_type, JointActuationType.FORCE)
+        self.assertEqual(joint.bid_B, 0)
+        self.assertEqual(joint.bid_F, 1)
+        self.assertEqual(joint.num_coords, 1)
+        self.assertEqual(joint.num_dofs, 1)
+        self.assertEqual(joint.num_dynamic_cts, 1)
+        self.assertEqual(joint.num_kinematic_cts, 5)
+        np.testing.assert_array_equal(joint.B_r_Bj, np.zeros(3, dtype=np.float32))
+        np.testing.assert_array_equal(joint.F_r_Fj, np.zeros(3, dtype=np.float32))
+        np.testing.assert_array_equal(joint.X_j, np.zeros(9, dtype=np.float32))
+        np.testing.assert_array_equal(joint.q_j_min, float(FLOAT32_MIN))
+        np.testing.assert_array_equal(joint.q_j_max, float(FLOAT32_MAX))
+        np.testing.assert_array_equal(joint.dq_j_max, float(FLOAT32_MAX))
+        np.testing.assert_array_equal(joint.tau_j_max, float(FLOAT32_MAX))
+        np.testing.assert_array_equal(joint.a_j, 1.0)
+        np.testing.assert_array_equal(joint.b_j, 1.0)
+        np.testing.assert_array_equal(joint.k_p_j, 0.0)
+        np.testing.assert_array_equal(joint.k_d_j, 0.0)
+        self.assertEqual(joint.wid, -1)
+        self.assertEqual(joint.jid, -1)
+        self.assertEqual(joint.coords_offset, -1)
+        self.assertEqual(joint.dofs_offset, -1)
+        self.assertEqual(joint.passive_coords_offset, -1)
+        self.assertEqual(joint.passive_dofs_offset, -1)
+        self.assertEqual(joint.actuated_coords_offset, -1)
+        self.assertEqual(joint.actuated_dofs_offset, -1)
+        self.assertEqual(joint.kinematic_cts_offset, -1)
+        self.assertEqual(joint.dynamic_cts_offset, -1)
+        # Check property methods
+        self.assertEqual(joint.is_actuated, True)
+        self.assertEqual(joint.is_passive, False)
+        self.assertEqual(joint.is_binary, True)
+        self.assertEqual(joint.is_unary, False)
+        self.assertEqual(joint.is_dynamic, True)
 
 
 class TestGeometryDescriptor(unittest.TestCase):
@@ -447,7 +520,7 @@ class TestWorldDescriptor(unittest.TestCase):
         self.assertEqual(world.mass_total, 0.0)
         self.assertEqual(world.inertia_total, 0.0)
 
-    def test_01_add_body(self):
+    def test_10_add_body(self):
         world = WorldDescriptor(name="test_world", wid=37)
         msg.info(f"world.name: {world.name}")
         msg.info(f"world.uid: {world.uid}")
@@ -473,7 +546,7 @@ class TestWorldDescriptor(unittest.TestCase):
         self.assertEqual(world.mass_total, 1.5)
         self.assertEqual(world.inertia_total, 4.5)
 
-    def test_02_add_joint(self):
+    def test_20_add_joint_revolute_passive(self):
         world = WorldDescriptor(name="test_world", wid=42)
         msg.info(f"world.name: {world.name}")
         msg.info(f"world.uid: {world.uid}")
@@ -519,7 +592,55 @@ class TestWorldDescriptor(unittest.TestCase):
         self.assertEqual(world.mass_total, 1.5)
         self.assertEqual(world.inertia_total, 4.5)
 
-    def test_03_add_geometry(self):
+    def test_21_add_joint_revolute_actuated_dynamic(self):
+        world = WorldDescriptor(name="test_world", wid=42)
+        msg.info(f"world.name: {world.name}")
+        msg.info(f"world.uid: {world.uid}")
+
+        # Add two bodies to the world
+        body_0 = RigidBodyDescriptor(name="body_0", m_i=1.0)
+        world.add_body(body_0)
+        msg.info(f"body_0: {body_0}")
+        self.assertEqual(body_0.bid, 0)
+        self.assertEqual(body_0.wid, world.wid)
+        body_1 = RigidBodyDescriptor(name="body_1", m_i=0.5)
+        world.add_body(body_1)
+        msg.info(f"body_1: {body_1}")
+        self.assertEqual(body_1.bid, 1)
+        self.assertEqual(body_1.wid, world.wid)
+
+        # Define a joint between two bodies
+        joint_0 = JointDescriptor(
+            name="body_0_to_1",
+            dof_type=JointDoFType.REVOLUTE,
+            act_type=JointActuationType.PASSIVE,
+            bid_B=body_0.bid,
+            bid_F=body_1.bid,
+            a_j=1.0,
+            b_j=1.0,
+        )
+        world.add_joint(joint_0)
+        msg.info(f"joint_0: {joint_0}")
+        self.assertEqual(joint_0.jid, 0)
+        self.assertEqual(joint_0.wid, world.wid)
+        self.assertFalse(joint_0.is_actuated)
+        self.assertTrue(joint_0.is_binary)
+        self.assertTrue(joint_0.is_dynamic)
+        self.assertTrue(joint_0.is_connected_to_body(body_0.bid))
+        self.assertTrue(joint_0.is_connected_to_body(body_1.bid))
+
+        # Verify world properties
+        self.assertEqual(world.num_bodies, 2)
+        self.assertEqual(world.num_joints, 1)
+        self.assertIn(body_0.name, world.body_names)
+        self.assertIn(body_1.name, world.body_names)
+        self.assertIn(joint_0.name, world.joint_names)
+        self.assertIn(joint_0.name, world.passive_joint_names)
+        self.assertTrue(world.has_passive_dofs)
+        self.assertFalse(world.has_actuated_dofs)
+        self.assertTrue(world.has_implicit_dofs)
+
+    def test_30_add_geometry(self):
         world = WorldDescriptor(name="test_world", wid=42)
         msg.info(f"world.name: {world.name}")
         msg.info(f"world.uid: {world.uid}")
@@ -561,7 +682,7 @@ class TestWorldDescriptor(unittest.TestCase):
         self.assertIn(pgeom.name, world.physical_geom_names)
         self.assertIn(cgeom.name, world.collision_geom_names)
 
-    def test_04_add_material(self):
+    def test_40_add_material(self):
         world = WorldDescriptor(name="test_world", wid=42)
         msg.info(f"world.name: {world.name}")
         msg.info(f"world.uid: {world.uid}")
@@ -579,7 +700,7 @@ class TestWorldDescriptor(unittest.TestCase):
         self.assertIn(mat.name, world.material_names)
         self.assertIn(mat.uid, world.material_uids)
 
-    def test_05_set_base_body(self):
+    def test_50_set_base_body(self):
         world = WorldDescriptor(name="test_world", wid=42)
         msg.info(f"world.name: {world.name}")
         msg.info(f"world.uid: {world.uid}")
@@ -609,7 +730,7 @@ class TestWorldDescriptor(unittest.TestCase):
         # Attempt to set an invalid body as the base body
         self.assertRaises(ValueError, world.set_base_body, 3)
 
-    def test_05_set_base_joint(self):
+    def test_51_set_base_joint(self):
         world = WorldDescriptor(name="test_world", wid=42)
         msg.info(f"world.name: {world.name}")
         msg.info(f"world.uid: {world.uid}")

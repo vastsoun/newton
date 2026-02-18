@@ -158,6 +158,8 @@ def build_unary_revolute_joint_test(
     new_world: bool = True,
     limits: bool = True,
     ground: bool = True,
+    dynamic: bool = False,
+    implicit_pd: bool = False,
     world_index: int = 0,
 ) -> ModelBuilder:
     """
@@ -169,12 +171,14 @@ def build_unary_revolute_joint_test(
     Args:
         builder (ModelBuilder | None): An optional existing ModelBuilder to which the entities will be added.
         z_offset (float): A vertical offset to apply to the rigid body position.
-        ground (bool): Whether to include a ground plane in the world.
         new_world (bool): Whether to create a new world in the builder, to which entities will be added.\n
             If `False`, the contents are added to the existing world specified by `world_index`.\n
             If `True`, a new world is created and added to the builder. In this case the `world_index`
             argument is ignored, and the index of the newly created world will be used instead.
         limits (bool): Whether to enable limits on the joint degree of freedom.
+        ground (bool): Whether to include a ground plane in the world.
+        dynamic (bool): Whether to enable dynamic properties for the joint.
+        implicit_pd (bool): Whether to enable implicit PD control for the joint.
         world_index (int): The index of the world in the builder where the test model should be added.
     """
     # Create a new builder if none is provided
@@ -199,7 +203,7 @@ def build_unary_revolute_joint_test(
     _builder.add_joint(
         name="world_to_follower_revolute",
         dof_type=JointDoFType.REVOLUTE,
-        act_type=JointActuationType.FORCE,
+        act_type=JointActuationType.POSITION_VELOCITY if implicit_pd else JointActuationType.FORCE,
         bid_B=-1,
         bid_F=bid_F,
         B_r_Bj=vec3f(0.0, -0.15, z_offset),
@@ -207,6 +211,10 @@ def build_unary_revolute_joint_test(
         X_j=Axis.Y.to_mat33(),
         q_j_min=[-0.25 * math.pi] if limits else None,
         q_j_max=[0.25 * math.pi] if limits else None,
+        a_j=0.1 if dynamic else None,
+        b_j=0.01 if dynamic else None,
+        k_p_j=10.0 if implicit_pd else None,
+        k_d_j=0.01 if implicit_pd else None,
         world_index=world_index,
     )
     _builder.add_collision_geometry(
@@ -243,6 +251,8 @@ def build_binary_revolute_joint_test(
     new_world: bool = True,
     limits: bool = True,
     ground: bool = True,
+    dynamic: bool = False,
+    implicit_pd: bool = False,
     world_index: int = 0,
 ) -> ModelBuilder:
     """
@@ -254,12 +264,14 @@ def build_binary_revolute_joint_test(
     Args:
         builder (ModelBuilder | None): An optional existing ModelBuilder to which the entities will be added.
         z_offset (float): A vertical offset to apply to the rigid body position.
-        ground (bool): Whether to include a ground plane in the world.
         new_world (bool): Whether to create a new world in the builder, to which entities will be added.\n
             If `False`, the contents are added to the existing world specified by `world_index`.\n
             If `True`, a new world is created and added to the builder. In this case the `world_index`
             argument is ignored, and the index of the newly created world will be used instead.
         limits (bool): Whether to enable limits on the joint degree of freedom.
+        ground (bool): Whether to include a ground plane in the world.
+        dynamic (bool): Whether to set the joint to be dynamic, with non-zero armature and damping.
+        implicit_pd (bool): Whether to use implicit PD control for the joint.
         world_index (int): The index of the world in the builder where the test model should be added.
     """
     # Create a new builder if none is provided
@@ -303,7 +315,7 @@ def build_binary_revolute_joint_test(
     _builder.add_joint(
         name="base_to_follower_revolute",
         dof_type=JointDoFType.REVOLUTE,
-        act_type=JointActuationType.FORCE,
+        act_type=JointActuationType.POSITION_VELOCITY if implicit_pd else JointActuationType.FORCE,
         bid_B=bid_B,
         bid_F=bid_F,
         B_r_Bj=vec3f(0.0, -0.15, z_offset),
@@ -311,6 +323,10 @@ def build_binary_revolute_joint_test(
         X_j=Axis.Y.to_mat33(),
         q_j_min=[-0.25 * math.pi] if limits else None,
         q_j_max=[0.25 * math.pi] if limits else None,
+        a_j=0.1 if dynamic else None,
+        b_j=0.01 if dynamic else None,
+        k_p_j=10.0 if implicit_pd else None,
+        k_d_j=0.01 if implicit_pd else None,
         world_index=world_index,
     )
     _builder.add_collision_geometry(
@@ -345,6 +361,8 @@ def build_unary_prismatic_joint_test(
     new_world: bool = True,
     limits: bool = True,
     ground: bool = True,
+    dynamic: bool = False,
+    implicit_pd: bool = False,
     world_index: int = 0,
 ) -> ModelBuilder:
     """
@@ -386,7 +404,7 @@ def build_unary_prismatic_joint_test(
     _builder.add_joint(
         name="world_to_follower_prismatic",
         dof_type=JointDoFType.PRISMATIC,
-        act_type=JointActuationType.FORCE,
+        act_type=JointActuationType.POSITION_VELOCITY if implicit_pd else JointActuationType.FORCE,
         bid_B=-1,
         bid_F=bid_F,
         B_r_Bj=vec3f(0.0, 0.0, z_offset),
@@ -394,6 +412,10 @@ def build_unary_prismatic_joint_test(
         X_j=Axis.Z.to_mat33(),
         q_j_min=[-0.5] if limits else None,
         q_j_max=[0.5] if limits else None,
+        a_j=0.1 if dynamic else None,
+        b_j=0.01 if dynamic else None,
+        k_p_j=10.0 if implicit_pd else None,
+        k_d_j=0.01 if implicit_pd else None,
         world_index=world_index,
     )
     _builder.add_collision_geometry(
@@ -430,6 +452,8 @@ def build_binary_prismatic_joint_test(
     new_world: bool = True,
     limits: bool = True,
     ground: bool = True,
+    dynamic: bool = False,
+    implicit_pd: bool = False,
     world_index: int = 0,
 ) -> ModelBuilder:
     """
@@ -490,7 +514,7 @@ def build_binary_prismatic_joint_test(
     _builder.add_joint(
         name="base_to_follower_prismatic",
         dof_type=JointDoFType.PRISMATIC,
-        act_type=JointActuationType.FORCE,
+        act_type=JointActuationType.POSITION_VELOCITY if implicit_pd else JointActuationType.FORCE,
         bid_B=bid_B,
         bid_F=bid_F,
         B_r_Bj=vec3f(0.0, 0.0, z_offset),
@@ -498,6 +522,10 @@ def build_binary_prismatic_joint_test(
         X_j=Axis.Z.to_mat33(),
         q_j_min=[-0.5] if limits else None,
         q_j_max=[0.5] if limits else None,
+        a_j=0.1 if dynamic else None,
+        b_j=0.01 if dynamic else None,
+        k_p_j=10.0 if implicit_pd else None,
+        k_d_j=0.01 if implicit_pd else None,
         world_index=world_index,
     )
     _builder.add_collision_geometry(
@@ -534,6 +562,8 @@ def build_unary_cylindrical_joint_test(
     new_world: bool = True,
     limits: bool = True,
     ground: bool = True,
+    dynamic: bool = False,
+    implicit_pd: bool = False,
     world_index: int = 0,
 ) -> ModelBuilder:
     """
@@ -545,12 +575,14 @@ def build_unary_cylindrical_joint_test(
     Args:
         builder (ModelBuilder | None): An optional existing ModelBuilder to which the entities will be added.
         z_offset (float): A vertical offset to apply to the rigid body position.
-        ground (bool): Whether to include a ground plane in the world.
         new_world (bool): Whether to create a new world in the builder, to which entities will be added.\n
             If `False`, the contents are added to the existing world specified by `world_index`.\n
             If `True`, a new world is created and added to the builder. In this case the `world_index`
             argument is ignored, and the index of the newly created world will be used instead.
         limits (bool): Whether to enable limits on the joint degrees of freedom.
+        ground (bool): Whether to include a ground plane in the world.
+        dynamic (bool): Whether to enable dynamic properties for the joint.
+        implicit_pd (bool): Whether to enable implicit PD control for the joint.
         world_index (int): The index of the world in the builder where the test model should be added.
     """
     # Create a new builder if none is provided
@@ -575,7 +607,7 @@ def build_unary_cylindrical_joint_test(
     _builder.add_joint(
         name="world_to_follower_cylindrical",
         dof_type=JointDoFType.CYLINDRICAL,
-        act_type=JointActuationType.FORCE,
+        act_type=JointActuationType.POSITION_VELOCITY if implicit_pd else JointActuationType.FORCE,
         bid_B=-1,
         bid_F=bid_F,
         B_r_Bj=vec3f(0.0, 0.0, z_offset),
@@ -583,6 +615,10 @@ def build_unary_cylindrical_joint_test(
         X_j=Axis.Z.to_mat33(),
         q_j_min=[-0.5, -0.6 * math.pi] if limits else None,
         q_j_max=[0.5, 0.6 * math.pi] if limits else None,
+        a_j=[0.1, 0.2] if dynamic else None,
+        b_j=[0.01, 0.02] if dynamic else None,
+        k_p_j=[10.0, 20.0] if implicit_pd else None,
+        k_d_j=[0.01, 0.02] if implicit_pd else None,
         world_index=world_index,
     )
     _builder.add_collision_geometry(
@@ -619,6 +655,8 @@ def build_binary_cylindrical_joint_test(
     new_world: bool = True,
     limits: bool = True,
     ground: bool = True,
+    dynamic: bool = False,
+    implicit_pd: bool = False,
     world_index: int = 0,
 ) -> ModelBuilder:
     """
@@ -630,12 +668,14 @@ def build_binary_cylindrical_joint_test(
     Args:
         builder (ModelBuilder | None): An optional existing ModelBuilder to which the entities will be added.
         z_offset (float): A vertical offset to apply to the rigid body position.
-        ground (bool): Whether to include a ground plane in the world.
         new_world (bool): Whether to create a new world in the builder, to which entities will be added.\n
             If `False`, the contents are added to the existing world specified by `world_index`.\n
             If `True`, a new world is created and added to the builder. In this case the `world_index`
             argument is ignored, and the index of the newly created world will be used instead.
         limits (bool): Whether to enable limits on the joint degrees of freedom.
+        ground (bool): Whether to include a ground plane in the world.
+        dynamic (bool): Whether to enable dynamic properties for the joint.
+        implicit_pd (bool): Whether to enable implicit PD control for the joint.
         world_index (int): The index of the world in the builder where the test model should be added.
     """
     # Create a new builder if none is provided
@@ -679,7 +719,7 @@ def build_binary_cylindrical_joint_test(
     _builder.add_joint(
         name="base_to_follower_cylindrical",
         dof_type=JointDoFType.CYLINDRICAL,
-        act_type=JointActuationType.FORCE,
+        act_type=JointActuationType.POSITION_VELOCITY if implicit_pd else JointActuationType.FORCE,
         bid_B=bid_B,
         bid_F=bid_F,
         B_r_Bj=vec3f(0.0, 0.0, z_offset),
@@ -687,6 +727,10 @@ def build_binary_cylindrical_joint_test(
         X_j=Axis.Z.to_mat33(),
         q_j_min=[-0.5, -0.6 * math.pi] if limits else None,
         q_j_max=[0.5, 0.6 * math.pi] if limits else None,
+        a_j=[0.1, 0.2] if dynamic else None,
+        b_j=[0.01, 0.02] if dynamic else None,
+        k_p_j=[10.0, 20.0] if implicit_pd else None,
+        k_d_j=[0.01, 0.02] if implicit_pd else None,
         world_index=world_index,
     )
     _builder.add_collision_geometry(
@@ -1282,6 +1326,8 @@ def build_unary_cartesian_joint_test(
     new_world: bool = True,
     limits: bool = True,
     ground: bool = True,
+    dynamic: bool = False,
+    implicit_pd: bool = False,
     world_index: int = 0,
 ) -> ModelBuilder:
     """
@@ -1293,12 +1339,14 @@ def build_unary_cartesian_joint_test(
     Args:
         builder (ModelBuilder | None): An optional existing ModelBuilder to which the entities will be added.
         z_offset (float): A vertical offset to apply to the rigid body position.
-        ground (bool): Whether to include a ground plane in the world.
         new_world (bool): Whether to create a new world in the builder, to which entities will be added.\n
             If `False`, the contents are added to the existing world specified by `world_index`.\n
             If `True`, a new world is created and added to the builder. In this case the `world_index`
             argument is ignored, and the index of the newly created world will be used instead.
         limits (bool): Whether to enable limits on the joint degrees of freedom.
+        ground (bool): Whether to include a ground plane in the world.
+        dynamic (bool): Whether to enable dynamic properties for the joint.
+        implicit_pd (bool): Whether to enable implicit PD control for the joint.
         world_index (int): The index of the world in the builder where the test model should be added.
     """
     # Create a new builder if none is provided
@@ -1323,7 +1371,7 @@ def build_unary_cartesian_joint_test(
     _builder.add_joint(
         name="world_to_follower_cartesian",
         dof_type=JointDoFType.CARTESIAN,
-        act_type=JointActuationType.FORCE,
+        act_type=JointActuationType.POSITION_VELOCITY if implicit_pd else JointActuationType.FORCE,
         bid_B=-1,
         bid_F=bid_F,
         B_r_Bj=vec3f(0.25, -0.25, -0.25),
@@ -1331,6 +1379,10 @@ def build_unary_cartesian_joint_test(
         X_j=Axis.X.to_mat33(),
         q_j_min=[-1.0, -1.0, -1.0] if limits else None,
         q_j_max=[1.0, 1.0, 1.0] if limits else None,
+        a_j=[0.1, 0.2, 0.3] if dynamic else None,
+        b_j=[0.01, 0.02, 0.03] if dynamic else None,
+        k_p_j=[10.0, 20.0, 30.0] if implicit_pd else None,
+        k_d_j=[0.01, 0.02, 0.03] if implicit_pd else None,
         world_index=world_index,
     )
     _builder.add_collision_geometry(
@@ -1367,6 +1419,8 @@ def build_binary_cartesian_joint_test(
     new_world: bool = True,
     limits: bool = True,
     ground: bool = True,
+    dynamic: bool = False,
+    implicit_pd: bool = False,
     world_index: int = 0,
 ) -> ModelBuilder:
     """
@@ -1378,12 +1432,14 @@ def build_binary_cartesian_joint_test(
     Args:
         builder (ModelBuilder | None): An optional existing ModelBuilder to which the entities will be added.
         z_offset (float): A vertical offset to apply to the rigid body position.
-        ground (bool): Whether to include a ground plane in the world.
         new_world (bool): Whether to create a new world in the builder, to which entities will be added.\n
             If `False`, the contents are added to the existing world specified by `world_index`.\n
             If `True`, a new world is created and added to the builder. In this case the `world_index`
             argument is ignored, and the index of the newly created world will be used instead.
         limits (bool): Whether to enable limits on the joint degrees of freedom.
+        ground (bool): Whether to include a ground plane in the world.
+        dynamic (bool): Whether to enable dynamic properties for the joint.
+        implicit_pd (bool): Whether to enable implicit PD control for the joint.
         world_index (int): The index of the world in the builder where the test model should be added.
     """
     # Create a new builder if none is provided
@@ -1427,7 +1483,7 @@ def build_binary_cartesian_joint_test(
     _builder.add_joint(
         name="base_to_follower_cartesian",
         dof_type=JointDoFType.CARTESIAN,
-        act_type=JointActuationType.FORCE,
+        act_type=JointActuationType.POSITION_VELOCITY if implicit_pd else JointActuationType.FORCE,
         bid_B=bid_B,
         bid_F=bid_F,
         B_r_Bj=vec3f(0.25, -0.25, -0.25),
@@ -1435,6 +1491,10 @@ def build_binary_cartesian_joint_test(
         X_j=Axis.X.to_mat33(),
         q_j_min=[-1.0, -1.0, -1.0] if limits else None,
         q_j_max=[1.0, 1.0, 1.0] if limits else None,
+        a_j=[0.1, 0.2, 0.3] if dynamic else None,
+        b_j=[0.01, 0.02, 0.03] if dynamic else None,
+        k_p_j=[10.0, 20.0, 30.0] if implicit_pd else None,
+        k_d_j=[0.01, 0.02, 0.03] if implicit_pd else None,
         world_index=world_index,
     )
     _builder.add_collision_geometry(

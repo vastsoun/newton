@@ -681,10 +681,20 @@ class USDImporter:
         tau_j_max = [float(np.finfo(np.float32).max)] * num_dofs
         return q_j_min, q_j_max, tau_j_max
 
-    def _parse_joint_revolute(self, joint_spec, rotation_unit: float = 1.0):
+    def _make_joint_default_dynamics(
+        self, dof_type: JointDoFType
+    ) -> tuple[list[float], list[float], list[float], list[float]]:
+        a_j = None
+        b_j = None
+        k_p_j = None
+        k_d_j = None
+        return a_j, b_j, k_p_j, k_d_j
+
+    def _parse_joint_revolute(self, joint_spec, rotation_unit: float = 1.0, load_drive_dynamics: bool = False):
         dof_type = JointDoFType.REVOLUTE
         X_j = self.usd_axis_to_axis[joint_spec.axis].to_mat33()
         q_j_min, q_j_max, tau_j_max = self._make_joint_default_limits(dof_type)
+        a_j, b_j, k_p_j, k_d_j = self._make_joint_default_dynamics(dof_type)
         if joint_spec.limit.enabled:
             q_j_min[0] = rotation_unit * joint_spec.limit.lower
             q_j_max[0] = rotation_unit * joint_spec.limit.upper
@@ -692,17 +702,25 @@ class USDImporter:
             if not joint_spec.drive.acceleration:
                 act_type = JointActuationType.FORCE
                 tau_j_max[0] = joint_spec.drive.forceLimit
+                if load_drive_dynamics and (joint_spec.drive.stiffness > 0.0 and joint_spec.drive.damping > 0.0):
+                    act_type = JointActuationType.POSITION_VELOCITY
+                    # TODO: How to get these from USD?
+                    a_j = [0.01] * dof_type.num_dofs
+                    b_j = [0.0001] * dof_type.num_dofs
+                    k_p_j = [joint_spec.drive.stiffness] * dof_type.num_coords
+                    k_d_j = [joint_spec.drive.damping] * dof_type.num_dofs
             else:
                 # TODO: Should we handle acceleration drives?
                 raise ValueError("Revolute acceleration drive actuators are not yet supported.")
         else:
             act_type = JointActuationType.PASSIVE
-        return dof_type, act_type, X_j, q_j_min, q_j_max, tau_j_max
+        return dof_type, act_type, X_j, q_j_min, q_j_max, tau_j_max, a_j, b_j, k_p_j, k_d_j
 
-    def _parse_joint_prismatic(self, joint_spec, distance_unit: float = 1.0):
+    def _parse_joint_prismatic(self, joint_spec, distance_unit: float = 1.0, load_drive_dynamics: bool = False):
         dof_type = JointDoFType.PRISMATIC
         X_j = self.usd_axis_to_axis[joint_spec.axis].to_mat33()
         q_j_min, q_j_max, tau_j_max = self._make_joint_default_limits(dof_type)
+        a_j, b_j, k_p_j, k_d_j = self._make_joint_default_dynamics(dof_type)
         if joint_spec.limit.enabled:
             q_j_min[0] = distance_unit * joint_spec.limit.lower
             q_j_max[0] = distance_unit * joint_spec.limit.upper
@@ -710,12 +728,19 @@ class USDImporter:
             if not joint_spec.drive.acceleration:
                 act_type = JointActuationType.FORCE
                 tau_j_max[0] = joint_spec.drive.forceLimit
+                if load_drive_dynamics and (joint_spec.drive.stiffness > 0.0 and joint_spec.drive.damping > 0.0):
+                    act_type = JointActuationType.POSITION_VELOCITY
+                    # TODO: How to get these from USD?
+                    a_j = [0.01] * dof_type.num_dofs
+                    b_j = [0.0001] * dof_type.num_dofs
+                    k_p_j = [joint_spec.drive.stiffness] * dof_type.num_coords
+                    k_d_j = [joint_spec.drive.damping] * dof_type.num_dofs
             else:
                 # TODO: Should we handle acceleration drives?
                 raise ValueError("Prismatic acceleration drive actuators are not yet supported.")
         else:
             act_type = JointActuationType.PASSIVE
-        return dof_type, act_type, X_j, q_j_min, q_j_max, tau_j_max
+        return dof_type, act_type, X_j, q_j_min, q_j_max, tau_j_max, a_j, b_j, k_p_j, k_d_j
 
     def _parse_joint_revolute_from_d6(self, name, joint_prim, joint_spec, joint_dof, rotation_unit: float = 1.0):
         dof_type = JointDoFType.REVOLUTE
@@ -909,6 +934,7 @@ class USDImporter:
         distance_unit: float = 1.0,
         rotation_unit: float = 1.0,
         only_load_enabled_joints: bool = True,
+        load_drive_dynamics: bool = False,
     ) -> JointDescriptor | None:
         # Skip this body if it is not enable and we are only loading enabled rigid bodies
         if not joint_spec.jointEnabled and only_load_enabled_joints:
@@ -997,19 +1023,23 @@ class USDImporter:
         q_j_min = None
         q_j_max = None
         tau_j_max = None
+        a_j = None
+        b_j = None
+        k_p_j = None
+        k_d_j = None
 
         if joint_type == self.UsdPhysics.ObjectType.FixedJoint:
             dof_type = JointDoFType.FIXED
             act_type = JointActuationType.PASSIVE
 
         elif joint_type == self.UsdPhysics.ObjectType.RevoluteJoint:
-            dof_type, act_type, X_j, q_j_min, q_j_max, tau_j_max = self._parse_joint_revolute(
-                joint_spec, rotation_unit=rotation_unit
+            dof_type, act_type, X_j, q_j_min, q_j_max, tau_j_max, a_j, b_j, k_p_j, k_d_j = self._parse_joint_revolute(
+                joint_spec, rotation_unit=rotation_unit, load_drive_dynamics=load_drive_dynamics
             )
 
         elif joint_type == self.UsdPhysics.ObjectType.PrismaticJoint:
-            dof_type, act_type, X_j, q_j_min, q_j_max, tau_j_max = self._parse_joint_prismatic(
-                joint_spec, distance_unit=distance_unit
+            dof_type, act_type, X_j, q_j_min, q_j_max, tau_j_max, a_j, b_j, k_p_j, k_d_j = self._parse_joint_prismatic(
+                joint_spec, distance_unit=distance_unit, load_drive_dynamics=load_drive_dynamics
             )
 
         elif joint_type == self.UsdPhysics.ObjectType.SphericalJoint:
@@ -1111,6 +1141,10 @@ class USDImporter:
         msg.debug(f"q_j_min: {q_j_min}")
         msg.debug(f"q_j_max: {q_j_max}")
         msg.debug(f"tau_j_max: {tau_j_max}")
+        msg.debug(f"a_j: {a_j}")
+        msg.debug(f"b_j: {b_j}")
+        msg.debug(f"k_p_j: {k_p_j}")
+        msg.debug(f"k_d_j: {k_d_j}")
 
         ###
         # JointDescriptor
@@ -1131,6 +1165,10 @@ class USDImporter:
             q_j_min=q_j_min,
             q_j_max=q_j_max,
             tau_j_max=tau_j_max,
+            a_j=a_j,
+            b_j=b_j,
+            k_p_j=k_p_j,
+            k_d_j=k_d_j,
         )
 
     def _parse_geom(
@@ -1528,6 +1566,7 @@ class USDImporter:
         apply_up_axis_from_stage: bool = True,
         only_load_enabled_rigid_bodies: bool = True,
         only_load_enabled_joints: bool = True,
+        load_drive_dynamics: bool = False,
         load_static_geometry: bool = True,
         load_materials: bool = True,
         meshes_are_collidable: bool = False,
@@ -1749,6 +1788,7 @@ class USDImporter:
                     joint_desc = self._parse_joint(
                         stage=stage,
                         only_load_enabled_joints=only_load_enabled_joints,
+                        load_drive_dynamics=load_drive_dynamics,
                         joint_prim=stage.GetPrimAtPath(prim_path),
                         joint_spec=joint_spec,
                         joint_type=joint_type,

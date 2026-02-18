@@ -381,7 +381,7 @@ def make_typed_write_joint_data(dof_type: JointDoFType, correction: JointCorrect
         j_r_j: vec3f,  # 3D vector of the joint-local relative pose
         j_q_j: quatf,  # 4D unit-quaternion of the joint-local relative pose
         j_u_j: vec6f,  # 6D vector ofthe joint-local relative twist
-        q_j_ref_in: wp.array(dtype=float32),  # Reference joint coordinates for correction
+        q_j_p: wp.array(dtype=float32),  # Reference joint coordinates for correction
         # Outputs:
         r_j_out: wp.array(dtype=float32),  # Flat array of joint constraint residuals
         dr_j_out: wp.array(dtype=float32),  # Flat array of joint constraint velocities
@@ -407,10 +407,10 @@ def make_typed_write_joint_data(dof_type: JointDoFType, correction: JointCorrect
 
             # Optionally generate code to correct the joint coordinates
             if wp.static(correction != JointCorrectionMode.NONE):
-                q_j_ref = _coordsvec()
+                q_j_prev = _coordsvec()
                 for j in range(num_coords):
-                    q_j_ref[j] = q_j_ref_in[coords_offset + j]
-                q_j = wp.static(get_joint_coord_correction_function(dof_type))(q_j, q_j_ref, q_j_limit)
+                    q_j_prev[j] = q_j_p[coords_offset + j]
+                q_j = wp.static(get_joint_coord_correction_function(dof_type))(q_j, q_j_prev, q_j_limit)
 
             # Store the joint DoF coordinates
             for j in range(num_coords):
@@ -439,7 +439,7 @@ def make_write_joint_data(correction: JointCorrectionMode = JointCorrectionMode.
         j_r_j: vec3f,
         j_q_j: quatf,
         j_u_j: vec6f,
-        q_j_ref: wp.array(dtype=float32),
+        q_j_p: wp.array(dtype=float32),
         # Outputs:
         data_r_j: wp.array(dtype=float32),
         data_dr_j: wp.array(dtype=float32),
@@ -472,7 +472,7 @@ def make_write_joint_data(correction: JointCorrectionMode = JointCorrectionMode.
                 j_r_j,
                 j_q_j,
                 j_u_j,
-                q_j_ref,
+                q_j_p,
                 data_r_j,
                 data_dr_j,
                 data_q_j,
@@ -487,7 +487,7 @@ def make_write_joint_data(correction: JointCorrectionMode = JointCorrectionMode.
                 j_r_j,
                 j_q_j,
                 j_u_j,
-                q_j_ref,
+                q_j_p,
                 data_r_j,
                 data_dr_j,
                 data_q_j,
@@ -502,7 +502,7 @@ def make_write_joint_data(correction: JointCorrectionMode = JointCorrectionMode.
                 j_r_j,
                 j_q_j,
                 j_u_j,
-                q_j_ref,
+                q_j_p,
                 data_r_j,
                 data_dr_j,
                 data_q_j,
@@ -517,7 +517,7 @@ def make_write_joint_data(correction: JointCorrectionMode = JointCorrectionMode.
                 j_r_j,
                 j_q_j,
                 j_u_j,
-                q_j_ref,
+                q_j_p,
                 data_r_j,
                 data_dr_j,
                 data_q_j,
@@ -532,7 +532,7 @@ def make_write_joint_data(correction: JointCorrectionMode = JointCorrectionMode.
                 j_r_j,
                 j_q_j,
                 j_u_j,
-                q_j_ref,
+                q_j_p,
                 data_r_j,
                 data_dr_j,
                 data_q_j,
@@ -547,7 +547,7 @@ def make_write_joint_data(correction: JointCorrectionMode = JointCorrectionMode.
                 j_r_j,
                 j_q_j,
                 j_u_j,
-                q_j_ref,
+                q_j_p,
                 data_r_j,
                 data_dr_j,
                 data_q_j,
@@ -562,7 +562,7 @@ def make_write_joint_data(correction: JointCorrectionMode = JointCorrectionMode.
                 j_r_j,
                 j_q_j,
                 j_u_j,
-                q_j_ref,
+                q_j_p,
                 data_r_j,
                 data_dr_j,
                 data_q_j,
@@ -577,7 +577,7 @@ def make_write_joint_data(correction: JointCorrectionMode = JointCorrectionMode.
                 j_r_j,
                 j_q_j,
                 j_u_j,
-                q_j_ref,
+                q_j_p,
                 data_r_j,
                 data_dr_j,
                 data_q_j,
@@ -592,7 +592,7 @@ def make_write_joint_data(correction: JointCorrectionMode = JointCorrectionMode.
                 j_r_j,
                 j_q_j,
                 j_u_j,
-                q_j_ref,
+                q_j_p,
                 data_r_j,
                 data_dr_j,
                 data_q_j,
@@ -675,6 +675,68 @@ def compute_joint_pose_and_relative_motion(
     return p_j, j_r_j, j_q_j, j_u_j
 
 
+@wp.func
+def compute_and_write_joint_implicit_dynamics(
+    # Constants:
+    dt: float32,
+    coords_offset: int32,
+    dofs_offset: int32,
+    num_dynamic_cts: int32,
+    dynamic_cts_offset: int32,
+    # Inputs:
+    model_joint_a_j: wp.array(dtype=float32),
+    model_joint_b_j: wp.array(dtype=float32),
+    model_joint_k_p_j: wp.array(dtype=float32),
+    model_joint_k_d_j: wp.array(dtype=float32),
+    data_joint_q_j: wp.array(dtype=float32),
+    data_joint_dq_j: wp.array(dtype=float32),
+    data_joint_q_j_ref: wp.array(dtype=float32),
+    data_joint_dq_j_ref: wp.array(dtype=float32),
+    data_joint_tau_j_ref: wp.array(dtype=float32),
+    # Outputs:
+    data_joint_m_j: wp.array(dtype=float32),
+    data_joint_inv_m_j: wp.array(dtype=float32),
+    data_joint_dq_b_j: wp.array(dtype=float32),
+):
+    # Iterate over the dynamic constraints of the joint and
+    # compute and store the implicit dynamics intermediates
+    # TODO: We currently do not handle implicit dynamics of
+    # multi-dof joints, but we should generalize this.
+    for j in range(num_dynamic_cts):
+        coords_offset_j = coords_offset + j
+        dofs_offset_j = dofs_offset + j
+        dynamic_cts_offset_j = dynamic_cts_offset + j
+
+        # Retrieve the current joint state
+        # TODO: How can we avoid the extra memory load and
+        # instead just get them from `make_write_joint_data`?
+        q_j = data_joint_q_j[dofs_offset_j]
+        dq_j = data_joint_dq_j[dofs_offset_j]
+
+        # Retrieve the implicit joint dynamics and PD control parameters
+        a_j = model_joint_a_j[dofs_offset_j]
+        b_j = model_joint_b_j[dofs_offset_j]
+        k_p_j = model_joint_k_p_j[dofs_offset_j]
+        k_d_j = model_joint_k_d_j[dofs_offset_j]
+
+        # Retrieve PD control references
+        pd_q_j_ref = data_joint_q_j_ref[coords_offset_j]
+        pd_dq_j_ref = data_joint_dq_j_ref[dofs_offset_j]
+        pd_tau_j_ff = data_joint_tau_j_ref[dofs_offset_j]
+
+        # Compute the implicit joint dynamics intermedates
+        m_j = a_j + dt * (b_j + k_d_j) + dt * dt * k_p_j
+        inv_m_j = 1.0 / m_j
+        tau_j = pd_tau_j_ff + k_p_j * (pd_q_j_ref - q_j) + k_d_j * pd_dq_j_ref
+        h_j = a_j * dq_j + dt * tau_j
+        dq_b_j = inv_m_j * h_j
+
+        # Store the resulting joint dynamics intermadiates
+        data_joint_m_j[dynamic_cts_offset_j] = m_j
+        data_joint_inv_m_j[dynamic_cts_offset_j] = inv_m_j
+        data_joint_dq_b_j[dynamic_cts_offset_j] = dq_b_j
+
+
 ###
 # Kernels
 ###
@@ -691,26 +753,40 @@ def make_compute_joints_data_kernel(correction: JointCorrectionMode = JointCorre
         # Inputs:
         model_info_joint_coords_offset: wp.array(dtype=int32),
         model_info_joint_dofs_offset: wp.array(dtype=int32),
-        model_info_joint_cts_offset: wp.array(dtype=int32),
+        model_info_joint_dynamic_cts_offset: wp.array(dtype=int32),
+        model_info_joint_kinematic_cts_offset: wp.array(dtype=int32),
+        model_time_dt: wp.array(dtype=float32),
         model_joint_wid: wp.array(dtype=int32),
         model_joint_dof_type: wp.array(dtype=int32),
+        model_joint_num_dynamic_cts: wp.array(dtype=int32),
         model_joint_coords_offset: wp.array(dtype=int32),
         model_joint_dofs_offset: wp.array(dtype=int32),
-        model_joint_cts_offset: wp.array(dtype=int32),
+        model_joint_dynamic_cts_offset: wp.array(dtype=int32),
+        model_joint_kinematic_cts_offset: wp.array(dtype=int32),
         model_joint_bid_B: wp.array(dtype=int32),
         model_joint_bid_F: wp.array(dtype=int32),
         model_joint_B_r_Bj: wp.array(dtype=vec3f),
         model_joint_F_r_Fj: wp.array(dtype=vec3f),
         model_joint_X_j: wp.array(dtype=mat33f),
-        state_body_q_i: wp.array(dtype=transformf),
-        state_body_u_i: wp.array(dtype=vec6f),
-        q_j_ref: wp.array(dtype=float32),
+        model_joint_a_j: wp.array(dtype=float32),
+        model_joint_b_j: wp.array(dtype=float32),
+        model_joint_k_p_j: wp.array(dtype=float32),
+        model_joint_k_d_j: wp.array(dtype=float32),
+        data_body_q_i: wp.array(dtype=transformf),
+        data_body_u_i: wp.array(dtype=vec6f),
+        data_joint_q_j_ref: wp.array(dtype=float32),
+        data_joint_dq_j_ref: wp.array(dtype=float32),
+        data_joint_tau_j_ref: wp.array(dtype=float32),
+        q_j_p: wp.array(dtype=float32),
         # Outputs:
-        data_p_j: wp.array(dtype=transformf),
-        data_r_j: wp.array(dtype=float32),
-        data_dr_j: wp.array(dtype=float32),
-        data_q_j: wp.array(dtype=float32),
-        data_dq_j: wp.array(dtype=float32),
+        data_joint_p_j: wp.array(dtype=transformf),
+        data_joint_r_j: wp.array(dtype=float32),
+        data_joint_dr_j: wp.array(dtype=float32),
+        data_joint_q_j: wp.array(dtype=float32),
+        data_joint_dq_j: wp.array(dtype=float32),
+        data_joint_m_j: wp.array(dtype=float32),
+        data_joint_inv_m_j: wp.array(dtype=float32),
+        data_joint_dq_b_j: wp.array(dtype=float32),
     ):
         # Retrieve the thread index
         jid = wp.tid()
@@ -718,36 +794,47 @@ def make_compute_joints_data_kernel(correction: JointCorrectionMode = JointCorre
         # Retrieve the joint model data
         wid = model_joint_wid[jid]
         dof_type = model_joint_dof_type[jid]
-        coords_offset = model_joint_coords_offset[jid]
-        dofs_offset = model_joint_dofs_offset[jid]
-        cts_offset = model_joint_cts_offset[jid]
+        num_dynamic_cts = model_joint_num_dynamic_cts[jid]
         bid_B = model_joint_bid_B[jid]
         bid_F = model_joint_bid_F[jid]
         B_r_Bj = model_joint_B_r_Bj[jid]
         F_r_Fj = model_joint_F_r_Fj[jid]
         X_j = model_joint_X_j[jid]
 
-        # Retrieve the index offsets of the joint's constraint and DoF dimensions
-        world_joint_coords_offset = model_info_joint_coords_offset[wid]
-        world_joint_dofs_offset = model_info_joint_dofs_offset[wid]
-        world_joint_cts_offset = model_info_joint_cts_offset[wid]
+        # Retrieve the time step
+        dt = model_time_dt[wid]
 
-        # Append the index offsets of the world's joint blocks
-        coords_offset += world_joint_coords_offset
-        dofs_offset += world_joint_dofs_offset
-        cts_offset += world_joint_cts_offset
+        # Retrieve world offsets
+        # NOTE: We load data together for better memory coalescing
+        world_coords_offset = model_info_joint_coords_offset[wid]
+        world_dofs_offset = model_info_joint_dofs_offset[wid]
+        world_dynamic_cts_offset = model_info_joint_dynamic_cts_offset[wid]
+        world_kinematic_cts_offset = model_info_joint_kinematic_cts_offset[wid]
+
+        # Retrieve joint-specific offsets
+        # NOTE: We load data together for better memory coalescing
+        joint_coords_offset = model_joint_coords_offset[jid]
+        joint_dofs_offset = model_joint_dofs_offset[jid]
+        joint_dynamic_cts_offset = model_joint_dynamic_cts_offset[jid]
+        joint_kinematic_cts_offset = model_joint_kinematic_cts_offset[jid]
+
+        # Construct offsets from world + current joint offset
+        coords_offset = world_coords_offset + joint_coords_offset
+        dofs_offset = world_dofs_offset + joint_dofs_offset
+        dynamic_cts_offset = world_dynamic_cts_offset + joint_dynamic_cts_offset
+        kinematic_cts_offset = world_kinematic_cts_offset + joint_kinematic_cts_offset
 
         # If the Base body is the world (bid=-1), use the identity transform (frame
         # of the world's origin), otherwise retrieve the Base body's pose and twist
         T_B_j = wp.transform_identity(dtype=float32)
         u_B_j = vec6f(0.0)
         if bid_B > -1:
-            T_B_j = state_body_q_i[bid_B]
-            u_B_j = state_body_u_i[bid_B]
+            T_B_j = data_body_q_i[bid_B]
+            u_B_j = data_body_u_i[bid_B]
 
         # Retrieve the Follower body's pose and twist
-        T_F_j = state_body_q_i[bid_F]
-        u_F_j = state_body_u_i[bid_F]
+        T_F_j = data_body_q_i[bid_F]
+        u_F_j = data_body_u_i[bid_F]
 
         # Compute the joint frame pose and relative motion
         p_j, j_r_j, j_q_j, j_u_j = compute_joint_pose_and_relative_motion(
@@ -755,22 +842,44 @@ def make_compute_joints_data_kernel(correction: JointCorrectionMode = JointCorre
         )
 
         # Store the absolute pose of the joint frame in world coordinates
-        data_p_j[jid] = p_j
+        data_joint_p_j[jid] = p_j
 
         # Store the joint constraint residuals and motion
         wp.static(make_write_joint_data(correction))(
             dof_type,
-            cts_offset,
+            kinematic_cts_offset,
             dofs_offset,
             coords_offset,
             j_r_j,
             j_q_j,
             j_u_j,
-            q_j_ref,
-            data_r_j,
-            data_dr_j,
-            data_q_j,
-            data_dq_j,
+            q_j_p,
+            data_joint_r_j,
+            data_joint_dr_j,
+            data_joint_q_j,
+            data_joint_dq_j,
+        )
+
+        # Compute and store the implicit dynamics
+        # for the dynamic constraints of the joint
+        compute_and_write_joint_implicit_dynamics(
+            dt,
+            coords_offset,
+            dofs_offset,
+            num_dynamic_cts,
+            dynamic_cts_offset,
+            model_joint_a_j,
+            model_joint_b_j,
+            model_joint_k_p_j,
+            model_joint_k_d_j,
+            data_joint_q_j,
+            data_joint_dq_j,
+            data_joint_q_j_ref,
+            data_joint_dq_j_ref,
+            data_joint_tau_j_ref,
+            data_joint_m_j,
+            data_joint_inv_m_j,
+            data_joint_dq_b_j,
         )
 
     # Return the kernel
@@ -914,8 +1023,8 @@ def _extract_joints_state_from_actuators(
 
 def compute_joints_data(
     model: Model,
-    q_j_ref: wp.array,
     data: ModelData,
+    q_j_p: wp.array,
     correction: JointCorrectionMode = JointCorrectionMode.TWOPI,
 ) -> None:
     """
@@ -928,8 +1037,8 @@ def compute_joints_data(
     Args:
         model (`Model`):
             The model container holding the time-invariant data of the simulation.
-        q_j_ref (`wp.array`):
-            An array of reference joint DoF coordinates used for coordinate correction.\n
+        q_j_p (`wp.array`):
+            An array of previous joint DoF coordinates used for coordinate correction.\n
             Only used for revolute DoFs of the relevant joints to enforce angle continuity.\n
             Shape of ``(sum_of_num_joint_coords,)`` and type :class:`float`.
         data (`ModelData`):
@@ -948,26 +1057,40 @@ def compute_joints_data(
             # Inputs:
             model.info.joint_coords_offset,
             model.info.joint_dofs_offset,
-            model.info.joint_cts_offset,
+            model.info.joint_dynamic_cts_offset,
+            model.info.joint_kinematic_cts_offset,
+            model.time.dt,
             model.joints.wid,
             model.joints.dof_type,
+            model.joints.num_dynamic_cts,
             model.joints.coords_offset,
             model.joints.dofs_offset,
-            model.joints.cts_offset,
+            model.joints.dynamic_cts_offset,
+            model.joints.kinematic_cts_offset,
             model.joints.bid_B,
             model.joints.bid_F,
             model.joints.B_r_Bj,
             model.joints.F_r_Fj,
             model.joints.X_j,
+            model.joints.a_j,
+            model.joints.b_j,
+            model.joints.k_p_j,
+            model.joints.k_d_j,
             data.bodies.q_i,
             data.bodies.u_i,
-            q_j_ref,
+            data.joints.q_j_ref,
+            data.joints.dq_j_ref,
+            data.joints.tau_j_ref,
+            q_j_p,
             # Outputs:
             data.joints.p_j,
             data.joints.r_j,
             data.joints.dr_j,
             data.joints.q_j,
             data.joints.dq_j,
+            data.joints.m_j,
+            data.joints.inv_m_j,
+            data.joints.dq_b_j,
         ],
         device=model.device,
     )

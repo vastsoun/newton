@@ -542,6 +542,10 @@ class SolverKamino(SolverBase):
         if (joint_q is not None or joint_u is not None) and (actuator_q is not None or actuator_u is not None):
             raise ValueError("Combined joint and actuator targets are not supported. Only one type may be provided.")
 
+        # Ensure that joint/actuator velocity-only resets are prevented
+        if (joint_q is None and joint_u is not None) or (actuator_q is None and actuator_u is not None):
+            raise ValueError("Velocity-only joint or actuator resets are not supported.")
+
         # Run the pre-reset callback if it has been set
         self._run_pre_reset_callback(state_out=state_out)
 
@@ -766,7 +770,7 @@ class SolverKamino(SolverBase):
         update_body_inertias(model=self._model.bodies, data=self._data.bodies)
 
         # Reset all joints to their model default states
-        self._data.joints.reset_state(q_j_ref=self._model.joints.q_j_ref)
+        self._data.joints.reset_state(q_j_0=self._model.joints.q_j_0)
         self._data.joints.clear_all()
 
         # Reset the joint-limits interface
@@ -963,8 +967,8 @@ class SolverKamino(SolverBase):
         # purposes, e.g. account for roll-over of revolute joints etc
         compute_joints_data(
             model=self._model,
-            q_j_ref=_q_j_p,
             data=self._data,
+            q_j_p=_q_j_p,
             correction=self._settings.rotation_correction,
         )
 

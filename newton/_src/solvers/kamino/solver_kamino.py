@@ -737,6 +737,9 @@ class SolverKamino(SolverBase):
         wp.copy(self._data.joints.dq_j, state_in.dq_j)
         wp.copy(self._data.joints.lambda_j, state_in.lambda_j)
         wp.copy(self._data.joints.tau_j, control_in.tau_j)
+        wp.copy(self._data.joints.q_j_ref, control_in.q_j_ref)
+        wp.copy(self._data.joints.dq_j_ref, control_in.dq_j_ref)
+        wp.copy(self._data.joints.tau_j_ref, control_in.tau_j_ref)
 
     def _write_step_output(self, state_out: State):
         """

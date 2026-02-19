@@ -73,8 +73,9 @@ def _pd_control_callback(
     animation_q_j_ref: wp.array2d(dtype=float32),
     animation_dq_j_ref: wp.array2d(dtype=float32),
     # Outputs:
-    data_joint_q_j_ref: wp.array(dtype=float32),
-    data_joint_dq_j_ref: wp.array(dtype=float32),
+    control_q_j_ref: wp.array(dtype=float32),
+    control_dq_j_ref: wp.array(dtype=float32),
+    control_tau_j_ref: wp.array(dtype=float32),
 ):
     """
     A kernel to compute joint-space PID control outputs for force-actuated joints.
@@ -124,11 +125,12 @@ def _pd_control_callback(
     for coord in range(num_coords_j):
         joint_coord_index = coords_offset_j + coord
         actuator_coord_index = actuated_coords_offset_j + coord
-        data_joint_q_j_ref[joint_coord_index] = animation_q_j_ref[frame, actuator_coord_index]
+        control_q_j_ref[joint_coord_index] = animation_q_j_ref[frame, actuator_coord_index]
     for dof in range(num_dofs_j):
         joint_dof_index = dofs_offset_j + dof
         actuator_dof_index = actuated_dofs_offset_j + dof
-        data_joint_dq_j_ref[joint_dof_index] = animation_dq_j_ref[frame, actuator_dof_index]
+        control_dq_j_ref[joint_dof_index] = animation_dq_j_ref[frame, actuator_dof_index]
+        control_tau_j_ref[joint_coord_index] = 0.0  # No feed-forward term in this example
 
 
 ###
@@ -160,8 +162,9 @@ def pd_control_callback(sim: Simulator, animation: AnimationJointReference, deci
             animation.data.q_j_ref,
             animation.data.dq_j_ref,
             # Outputs:
-            sim.solver.data.joints.q_j_ref,
-            sim.solver.data.joints.dq_j_ref,
+            sim.control.q_j_ref,
+            sim.control.dq_j_ref,
+            sim.control.tau_j_ref,
         ],
     )
 

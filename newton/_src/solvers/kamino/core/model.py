@@ -995,7 +995,10 @@ class Model:
         # Create a new control container on the specified device
         with wp.ScopedDevice(device=device):
             control = Control(
-                tau_j=wp.zeros(shape=self.size.sum_of_num_joint_dofs, dtype=float32, requires_grad=requires_grad)
+                tau_j=wp.zeros(shape=self.size.sum_of_num_joint_dofs, dtype=float32, requires_grad=requires_grad),
+                q_j_ref=wp.zeros(shape=self.size.sum_of_num_joint_coords, dtype=float32, requires_grad=requires_grad),
+                dq_j_ref=wp.zeros(shape=self.size.sum_of_num_joint_dofs, dtype=float32, requires_grad=requires_grad),
+                tau_j_ref=wp.zeros(shape=self.size.sum_of_num_joint_dofs, dtype=float32, requires_grad=requires_grad),
             )
 
         # Return the constructed control container

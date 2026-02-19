@@ -57,21 +57,8 @@ class BlockSparseLinearOperators:
         self._active_cols: wp.array | None = None
 
         if self.bsm is not None:
-            int32_size_bytes = 4  # Size of wp.int32 in bytes
-            self._active_rows = wp.array(
-                dtype=wp.int32,
-                shape=(self.bsm.num_matrices,),
-                ptr=self.bsm.dims.ptr,
-                strides=(2 * int32_size_bytes,),
-                copy=False,
-            )
-            self._active_cols = wp.array(
-                dtype=wp.int32,
-                shape=(self.bsm.num_matrices,),
-                ptr=self.bsm.dims.ptr + int32_size_bytes,
-                strides=(2 * int32_size_bytes,),
-                copy=False,
-            )
+            self._active_rows = self.bsm.num_rows
+            self._active_cols = self.bsm.num_cols
 
     ###
     # On-device Data

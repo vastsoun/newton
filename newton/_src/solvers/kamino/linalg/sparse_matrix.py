@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING, Any, get_args
 import numpy as np
 import warp as wp
 from warp.context import Devicelike
+from warp.types import type_size_in_bytes
 
 from ..core.types import FloatType, IntType, float32, int32
 from ..utils import logger as msg
@@ -263,6 +264,82 @@ class BlockSparseMatrices:
     The flattened array containing all non-zero blocks over all sparse matrices.\n
     Shape of ``(sum_of_num_nzb,)`` and type :class:`float | vector | matrix`.
     """
+
+    ###
+    # Properties
+    ###
+
+    @property
+    def max_rows(self) -> wp.array:
+        assert self.max_dims is not None
+        index_dtype_size_bytes = type_size_in_bytes(self.index_dtype)
+        return wp.array(
+            dtype=self.index_dtype,
+            shape=(self.num_matrices,),
+            ptr=self.max_dims.ptr,
+            strides=(2 * index_dtype_size_bytes,),
+            copy=False,
+        )
+
+    @property
+    def max_cols(self) -> wp.array:
+        assert self.max_dims is not None
+        index_dtype_size_bytes = type_size_in_bytes(self.index_dtype)
+        return wp.array(
+            dtype=self.index_dtype,
+            shape=(self.num_matrices,),
+            ptr=self.max_dims.ptr + index_dtype_size_bytes,
+            strides=(2 * index_dtype_size_bytes,),
+            copy=False,
+        )
+
+    @property
+    def num_rows(self) -> wp.array:
+        assert self.dims is not None
+        index_dtype_size_bytes = type_size_in_bytes(self.index_dtype)
+        return wp.array(
+            dtype=self.index_dtype,
+            shape=(self.num_matrices,),
+            ptr=self.dims.ptr,
+            strides=(2 * index_dtype_size_bytes,),
+            copy=False,
+        )
+
+    @property
+    def num_cols(self) -> wp.array:
+        assert self.dims is not None
+        index_dtype_size_bytes = type_size_in_bytes(self.index_dtype)
+        return wp.array(
+            dtype=self.index_dtype,
+            shape=(self.num_matrices,),
+            ptr=self.dims.ptr + index_dtype_size_bytes,
+            strides=(2 * index_dtype_size_bytes,),
+            copy=False,
+        )
+
+    @property
+    def nzb_row(self) -> wp.array:
+        assert self.nzb_coords is not None
+        index_dtype_size_bytes = type_size_in_bytes(self.index_dtype)
+        return wp.array(
+            dtype=self.index_dtype,
+            shape=(self.sum_of_num_nzb,),
+            ptr=self.nzb_coords.ptr,
+            strides=(2 * index_dtype_size_bytes,),
+            copy=False,
+        )
+
+    @property
+    def nzb_col(self) -> wp.array:
+        assert self.nzb_coords is not None
+        index_dtype_size_bytes = type_size_in_bytes(self.index_dtype)
+        return wp.array(
+            dtype=self.index_dtype,
+            shape=(self.sum_of_num_nzb,),
+            ptr=self.nzb_coords.ptr + index_dtype_size_bytes,
+            strides=(2 * index_dtype_size_bytes,),
+            copy=False,
+        )
 
     ###
     # Operations

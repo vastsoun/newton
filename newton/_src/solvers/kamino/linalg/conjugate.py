@@ -335,14 +335,13 @@ def lt_mask(a: Any, b: Any):
 
 
 @wp.func
-def mul_mask(mask: Any, value: Any):
-    """Return value if mask is positive, else 0"""
-    return wp.where(mask > type(mask)(0), value, type(value)(0))
+def less_than_op(i: wp.int32, threshold: wp.int32) -> wp.float32:
+    return 1.0 if i < threshold else 0.0
 
 
 @functools.cache
 def make_dot_kernel(tile_size: int, maxdim: int):
-    second_tile_size = (maxdim + tile_size - 1) // tile_size
+    num_tiles = (maxdim + tile_size - 1) // tile_size
 
     @wp.kernel(enable_backward=False)
     def dot(
@@ -353,29 +352,32 @@ def make_dot_kernel(tile_size: int, maxdim: int):
         result: wp.array2d(dtype=Any),
     ):
         """Compute the dot products between the trailing-dim arrays in a and b using tiles and pairwise summation."""
-        col, world, _ = wp.tid()
+        col, world, tid = wp.tid()
         if not world_active[world]:
             return
         n = world_size[world]
 
-        ts = wp.tile_zeros((second_tile_size,), dtype=a.dtype, storage="shared")
-        o_src = wp.int32(0)
+        if wp.static(num_tiles > 1):
+            ts = wp.tile_zeros((num_tiles,), dtype=a.dtype, storage="shared")
 
-        for block in range(second_tile_size):
+        for tile_id in range(num_tiles):
+            o_src = tile_id * tile_size
             if o_src >= n:
                 break
             ta = wp.tile_load(a[col, world], shape=tile_size, offset=o_src)
             tb = wp.tile_load(b[col, world], shape=tile_size, offset=o_src)
-            # TODO: consider using ts[block] twice, look into += data race in wp
             prod = wp.tile_map(wp.mul, ta, tb)
             if o_src > n - tile_size:
-                thresh = wp.tile_full((tile_size,), a.dtype(n - o_src), dtype=a.dtype)
-                mask = wp.tile_map(lt_mask, wp.tile_arange(tile_size, dtype=a.dtype), thresh)
-                prod = wp.tile_map(mul_mask, mask, prod)
-            s = wp.tile_sum(prod)
-            ts[block] = s[0]
-            o_src += tile_size
-        wp.tile_store(result[col], wp.tile_sum(ts), offset=world)
+                mask = wp.tile_map(less_than_op, wp.tile_arange(tile_size, dtype=wp.int32), n - o_src)
+                prod = wp.tile_map(wp.mul, mask, prod)
+            if wp.static(num_tiles > 1):
+                ts[tile_id] = wp.tile_sum(prod)[0]
+            else:
+                s = wp.tile_sum(prod)[0]
+        if wp.static(num_tiles > 1):
+            s = wp.tile_sum(ts)[0]
+        if tid == 0:
+            result[col, world] = s
 
     return dot
 
@@ -537,12 +539,11 @@ class ConjugateSolver:
             a = a.reshape((1, *a.shape))
             b = b.reshape((1, *b.shape))
         if self.tiled_dot_product:
-            block_dim = 256
             result = self.dot_product[col_offset:]
 
-            wp.launch(
+            wp.launch_tiled(
                 self.tiled_dot_kernel,
-                dim=(a.shape[0], self.n_worlds, block_dim),
+                dim=(a.shape[0], self.n_worlds),
                 block_dim=min(256, self.dot_tile_size // 8),
                 inputs=[a, b, active_dims, world_active],
                 outputs=[result],

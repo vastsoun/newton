@@ -158,12 +158,11 @@ def _compute_joint_dof_body_wrenches_sparse(
 
     # Retrieve the starting index for the non-zero blocks for the current joint
     jac_j_nzb_start = jac_nzb_start[wid] + jac_joint_nzb_offsets[jid]
-    nzb_stride = 2 if bid_B_j > -1 else 1
 
     # Compute and store the joint actuation wrench for the Follower body
     w_j_F = vec6f(0.0)
     for j in range(d_j):
-        jac_block = jac_nzb_values[jac_j_nzb_start + nzb_stride * j]
+        jac_block = jac_nzb_values[jac_j_nzb_start + j]
         vio_j = vio + j
         tau_j = state_joints_tau_j[vio_j]
         w_j_F += jac_block * tau_j
@@ -173,7 +172,7 @@ def _compute_joint_dof_body_wrenches_sparse(
     if bid_B_j >= 0:
         w_j_B = vec6f(0.0)
         for j in range(d_j):
-            jac_block = jac_nzb_values[jac_j_nzb_start + 2 * j + 1]
+            jac_block = jac_nzb_values[jac_j_nzb_start + d_j + j]
             vio_j = vio + j
             tau_j = state_joints_tau_j[vio_j]
             w_j_B += jac_block * tau_j

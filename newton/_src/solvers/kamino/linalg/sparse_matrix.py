@@ -452,7 +452,7 @@ class BlockSparseMatrices:
             for b in range(num_nzb):
                 row_idx, col_idx = int(coords[b][0]), int(coords[b][1])
                 block_value = values[b].reshape((block_nrows, block_ncols))
-                dense_matrix[row_idx : row_idx + block_nrows, col_idx : col_idx + block_ncols] = block_value
+                dense_matrix[row_idx : row_idx + block_nrows, col_idx : col_idx + block_ncols] += block_value
             matrices.append(dense_matrix)
 
         # Return the list of dense matrices

@@ -54,6 +54,7 @@ from ..linalg.sparse_operator import BlockSparseLinearOperators
 ###
 
 __all__ = [
+    "ColMajorSparseConstraintJacobians",
     "DenseSystemJacobians",
     "DenseSystemJacobiansData",
     "SparseSystemJacobians",
@@ -177,9 +178,8 @@ def make_store_joint_jacobian_sparse_func(axes: Any):
 
         # Store the Jacobian block for the follower body
         J_F_col = 6 * (bid_F - bid_offset)
-        nzb_stride = 2 if bid_B > -1 else 1
         for i in range(num_jac_rows):
-            J_F_i_nzb_start = J_j_nzb_start + J_nzb_offset + nzb_stride * i
+            J_F_i_nzb_start = J_j_nzb_start + J_nzb_offset + i
             J_nzb_coords[J_F_i_nzb_start, 0] = row_start + i
             J_nzb_coords[J_F_i_nzb_start, 1] = J_F_col
             J_nzb_values[J_F_i_nzb_start] = JT_F_j[:, axes[i]]
@@ -188,7 +188,7 @@ def make_store_joint_jacobian_sparse_func(axes: Any):
         if bid_B > -1:
             J_B_col = 6 * (bid_B - bid_offset)
             for i in range(num_jac_rows):
-                J_B_i_nzb_start = J_j_nzb_start + J_nzb_offset + 2 * i + 1
+                J_B_i_nzb_start = J_j_nzb_start + J_nzb_offset + num_jac_rows + i
                 J_nzb_coords[J_B_i_nzb_start, 0] = row_start + i
                 J_nzb_coords[J_B_i_nzb_start, 1] = J_B_col
                 J_nzb_values[J_B_i_nzb_start] = JT_B_j[:, axes[i]]
@@ -888,6 +888,7 @@ def _build_limit_jacobians_sparse(
     jacobian_cts_num_nzb: wp.array(dtype=int32),
     jacobian_cts_nzb_coords: wp.array2d(dtype=int32),
     jacobian_cts_nzb_values: wp.array(dtype=vec6f),
+    jacobian_cts_limit_nzb_offsets: wp.array(dtype=int32),
 ):
     """
     A kernel to compute the Jacobians (constraints and actuated DoFs) for the joints in a model.
@@ -925,6 +926,7 @@ def _build_limit_jacobians_sparse(
     # Set the constraint Jacobian block for the follower body from the actuation Jacobian block
     num_limit_nzb = 2 if body_id_B_l > -1 else 1
     jac_cts_nzb_offset_world = wp.atomic_add(jacobian_cts_num_nzb, world_id, num_limit_nzb)
+    jacobian_cts_limit_nzb_offsets[limit_id] = jac_cts_nzb_offset_world
     jac_cts_nzb_idx = jacobian_cts_nzb_start[world_id] + jac_cts_nzb_offset_world
     jacobian_cts_nzb_values[jac_cts_nzb_idx] = side_l * jacobian_dofs_nzb_values[jac_dofs_nzb_idx]
     jacobian_cts_nzb_coords[jac_cts_nzb_idx, 0] = limit_cts_offset + limit_id_l
@@ -1038,6 +1040,7 @@ def _build_contact_jacobians_sparse(
     jacobian_cts_num_nzb: wp.array(dtype=int32),
     jacobian_cts_nzb_coords: wp.array2d(dtype=int32),
     jacobian_cts_nzb_values: wp.array(dtype=vec6f),
+    jacobian_cts_contact_nzb_offsets: wp.array(dtype=int32),
 ):
     """
     A kernel to compute the Jacobians (constraints and actuated DoFs) for the joints in a model.
@@ -1081,6 +1084,7 @@ def _build_contact_jacobians_sparse(
     num_contact_nzb = 6 if body_id_A_k > -1 else 3
     # Allocate non-zero blocks in the Jacobian by incrementing the number of NZB
     jac_cts_nzb_offset_world = wp.atomic_add(jacobian_cts_num_nzb, world_id, num_contact_nzb)
+    jacobian_cts_contact_nzb_offsets[contact_id] = jac_cts_nzb_offset_world
     jac_cts_nzb_offset = jacobian_cts_nzb_start[world_id] + jac_cts_nzb_offset_world
     # Store 6x3 Jacobian block as three separate 6x1 blocks
     for j in range(3):
@@ -1099,6 +1103,264 @@ def _build_contact_jacobians_sparse(
             jacobian_cts_nzb_values[jac_cts_nzb_offset + 3 + j] = JT_c_A_k[:, j]
             jacobian_cts_nzb_coords[jac_cts_nzb_offset + 3 + j, 0] = cts_idx_start + j
             jacobian_cts_nzb_coords[jac_cts_nzb_offset + 3 + j, 1] = body_idx_offset_A
+
+
+@wp.func
+def store_col_major_jacobian_block(
+    nzb_id: int32,
+    row_id: int32,
+    col_id: int32,
+    block: mat66f,
+    nzb_coords: wp.array2d(dtype=int32),
+    nzb_values: wp.array(dtype=wp.types.matrix(shape=(6, 1), dtype=float32)),
+):
+    for i in range(6):
+        nzb_id_i = nzb_id + i
+        nzb_coords[nzb_id_i, 0] = row_id
+        nzb_coords[nzb_id_i, 1] = col_id + i
+        for j in range(6):
+            nzb_values[nzb_id_i][j, 0] = block[j, i]
+
+
+@wp.kernel
+def _update_col_major_joint_jacobians(
+    # Inputs
+    model_joints_wid: wp.array(dtype=int32),
+    model_joints_num_cts: wp.array(dtype=int32),
+    model_joints_bid_B: wp.array(dtype=int32),
+    jac_cts_row_major_nzb_start: wp.array(dtype=int32),
+    jac_cts_row_major_joint_nzb_offsets: wp.array(dtype=int32),
+    jac_cts_row_major_nzb_coords: wp.array2d(dtype=int32),
+    jac_cts_row_major_nzb_values: wp.array(dtype=vec6f),
+    jac_cts_col_major_nzb_start: wp.array(dtype=int32),
+    jac_cts_col_major_joint_nzb_offsets: wp.array(dtype=int32),
+    # Outputs
+    jac_cts_col_major_nzb_coords: wp.array2d(dtype=int32),
+    jac_cts_col_major_nzb_values: wp.array(dtype=wp.types.matrix(shape=(6, 1), dtype=float32)),
+):
+    """
+    A kernel to compute the Jacobians (constraints and actuated DoFs) for the joints in a model.
+    """
+    # Retrieve the thread index as the joint index
+    jid = wp.tid()
+
+    # Retrieve the joint model data
+    wid = model_joints_wid[jid]
+    num_cts = model_joints_num_cts[jid]
+    bid_B = model_joints_bid_B[jid]
+
+    # Retrieve the Jacobian data
+    nzb_start_rm_j = jac_cts_row_major_nzb_start[wid] + jac_cts_row_major_joint_nzb_offsets[jid]
+    nzb_row_init = jac_cts_row_major_nzb_coords[nzb_start_rm_j, 0]
+    nzb_col_init_F = jac_cts_row_major_nzb_coords[nzb_start_rm_j, 1]
+
+    nzb_start_cm = jac_cts_col_major_nzb_start[wid]
+    nzb_offset_cm = jac_cts_col_major_joint_nzb_offsets[jid]
+
+    block_F = mat66f(0.0)
+
+    # Offset the Jacobian rows within the 6x6 block to avoid exceeding matrix dimensions.
+    # Since we might not fill the full 6x6 block with Jacobian entries, shifting the block upwards
+    # and filling the bottom part will prevent the block lying outside the matrix dimensions.
+    # We additional guard against the case where the shift would push the block above the start of
+    # the matrix by taking the minimum of the full shift and `nzb_row_init`.
+    block_row_init = min(6 - num_cts, nzb_row_init)
+    nzb_row_init -= block_row_init
+    for i in range(num_cts):
+        nzb_idx_rm = nzb_start_rm_j + i
+        block_rm = jac_cts_row_major_nzb_values[nzb_idx_rm]
+        block_F[block_row_init + i] = block_rm
+
+    store_col_major_jacobian_block(
+        nzb_start_cm + nzb_offset_cm,
+        nzb_row_init,
+        nzb_col_init_F,
+        block_F,
+        jac_cts_col_major_nzb_coords,
+        jac_cts_col_major_nzb_values,
+    )
+
+    if bid_B > -1:
+        nzb_col_init_B = jac_cts_row_major_nzb_coords[nzb_start_rm_j + num_cts, 1]
+        block_B = mat66f(0.0)
+        for i in range(num_cts):
+            nzb_idx_rm = nzb_start_rm_j + num_cts + i
+            block_rm = jac_cts_row_major_nzb_values[nzb_idx_rm]
+            block_B[block_row_init + i] = block_rm
+
+        store_col_major_jacobian_block(
+            nzb_start_cm + nzb_offset_cm + 6,
+            nzb_row_init,
+            nzb_col_init_B,
+            block_B,
+            jac_cts_col_major_nzb_coords,
+            jac_cts_col_major_nzb_values,
+        )
+
+
+@wp.kernel
+def _update_col_major_limit_jacobians(
+    # Inputs
+    limits_model_num: wp.array(dtype=int32),
+    limits_model_max: int32,
+    limits_wid: wp.array(dtype=int32),
+    limits_bids: wp.array(dtype=vec2i),
+    jac_cts_row_major_nzb_start: wp.array(dtype=int32),
+    jac_cts_row_major_limit_nzb_offsets: wp.array(dtype=int32),
+    jac_cts_row_major_nzb_coords: wp.array2d(dtype=int32),
+    jac_cts_row_major_nzb_values: wp.array(dtype=vec6f),
+    jac_cts_col_major_nzb_start: wp.array(dtype=int32),
+    # Outputs
+    jac_cts_col_major_num_nzb: wp.array(dtype=int32),
+    jac_cts_col_major_nzb_coords: wp.array2d(dtype=int32),
+    jac_cts_col_major_nzb_values: wp.array(dtype=wp.types.matrix(shape=(6, 1), dtype=float32)),
+):
+    """
+    A kernel to assemble the limit constraint Jacobian in a model.
+    """
+
+    # Retrieve the thread index as the limit index
+    limit_id = wp.tid()
+
+    # Skip if cid is greater than the total number of active limits in the model
+    if limit_id >= wp.min(limits_model_num[0], limits_model_max):
+        return
+
+    # Retrieve the world index of the active limit
+    world_id = limits_wid[limit_id]
+
+    # Retrieve the limit description info
+    # NOTE: *_l is used to denote a subscript for the limit index
+    body_ids_l = limits_bids[limit_id]
+    body_id_B_l = body_ids_l[0]
+
+    # Set the constraint Jacobian block for the follower body from the actuation Jacobian block
+    num_limit_nzb = 12 if body_id_B_l > -1 else 6
+    nzb_offset_cm = wp.atomic_add(jac_cts_col_major_num_nzb, world_id, num_limit_nzb)
+
+    # Retrieve the Jacobian data
+    nzb_start_rm_l = jac_cts_row_major_nzb_start[world_id] + jac_cts_row_major_limit_nzb_offsets[limit_id]
+    nzb_row_init = jac_cts_row_major_nzb_coords[nzb_start_rm_l, 0]
+    nzb_col_init_F = jac_cts_row_major_nzb_coords[nzb_start_rm_l, 1]
+
+    nzb_start_cm = jac_cts_col_major_nzb_start[world_id]
+
+    # Offset the Jacobian rows within the 6x6 block to avoid exceeding matrix dimensions.
+    # Since we might not fill the full 6x6 block with Jacobian entries, shifting the block upwards
+    # and filling the bottom part will prevent the block lying outside the matrix dimensions.
+    # We additional guard against the case where the shift would push the block above the start of
+    # the matrix by taking the minimum of the full shift and `nzb_row_init`.
+    block_row_init = min(5, nzb_row_init)
+    nzb_row_init -= block_row_init
+
+    block_F = mat66f(0.0)
+    block_F[block_row_init] = jac_cts_row_major_nzb_values[nzb_start_rm_l]
+
+    store_col_major_jacobian_block(
+        nzb_start_cm + nzb_offset_cm,
+        nzb_row_init,
+        nzb_col_init_F,
+        block_F,
+        jac_cts_col_major_nzb_coords,
+        jac_cts_col_major_nzb_values,
+    )
+
+    if body_id_B_l > -1:
+        nzb_col_init_B = jac_cts_row_major_nzb_coords[nzb_start_rm_l + 1, 1]
+
+        block_B = mat66f(0.0)
+        block_B[block_row_init] = jac_cts_row_major_nzb_values[nzb_start_rm_l + 1]
+
+        store_col_major_jacobian_block(
+            nzb_start_cm + nzb_offset_cm + 6,
+            nzb_row_init,
+            nzb_col_init_B,
+            block_B,
+            jac_cts_col_major_nzb_coords,
+            jac_cts_col_major_nzb_values,
+        )
+
+
+@wp.kernel
+def _update_col_major_contact_jacobians(
+    # Inputs:
+    contacts_model_num: wp.array(dtype=int32),
+    contacts_model_max: int32,
+    contacts_wid: wp.array(dtype=int32),
+    contacts_bid_AB: wp.array(dtype=vec2i),
+    jac_cts_row_major_nzb_start: wp.array(dtype=int32),
+    jac_cts_row_major_contact_nzb_offsets: wp.array(dtype=int32),
+    jac_cts_row_major_nzb_coords: wp.array2d(dtype=int32),
+    jac_cts_row_major_nzb_values: wp.array(dtype=vec6f),
+    jac_cts_col_major_nzb_start: wp.array(dtype=int32),
+    # Outputs
+    jac_cts_col_major_num_nzb: wp.array(dtype=int32),
+    jac_cts_col_major_nzb_coords: wp.array2d(dtype=int32),
+    jac_cts_col_major_nzb_values: wp.array(dtype=wp.types.matrix(shape=(6, 1), dtype=float32)),
+):
+    """
+    A kernel to assemble the contact constraint Jacobian in a model.
+    """
+
+    # Retrieve the thread index as the contact index
+    contact_id = wp.tid()
+
+    # Skip if cid is greater than the total number of active contacts in the model
+    if contact_id >= wp.min(contacts_model_num[0], contacts_model_max):
+        return
+
+    # Retrieve the the contact-specific data
+    world_id = contacts_wid[contact_id]
+    body_ids_k = contacts_bid_AB[contact_id]
+    body_id_A_k = body_ids_k[0]
+
+    # Set the constraint Jacobian block for the follower body from the actuation Jacobian block
+    num_contact_nzb = 12 if body_id_A_k > -1 else 6
+    nzb_offset_cm = wp.atomic_add(jac_cts_col_major_num_nzb, world_id, num_contact_nzb)
+
+    # Retrieve the Jacobian data
+    nzb_start_rm_c = jac_cts_row_major_nzb_start[world_id] + jac_cts_row_major_contact_nzb_offsets[contact_id]
+    nzb_row_init = jac_cts_row_major_nzb_coords[nzb_start_rm_c, 0]
+    nzb_col_init_F = jac_cts_row_major_nzb_coords[nzb_start_rm_c, 1]
+
+    nzb_start_cm = jac_cts_col_major_nzb_start[world_id]
+
+    # Offset the Jacobian rows within the 6x6 block to avoid exceeding matrix dimensions.
+    # Since we might not fill the full 6x6 block with Jacobian entries, shifting the block upwards
+    # and filling the bottom part will prevent the block lying outside the matrix dimensions.
+    # We additional guard against the case where the shift would push the block above the start of
+    # the matrix by taking the minimum of the full shift and `nzb_row_init`.
+    block_row_init = min(3, nzb_row_init)
+    nzb_row_init -= block_row_init
+
+    block_F = mat66f(0.0)
+    for i in range(3):
+        block_F[block_row_init + i] = jac_cts_row_major_nzb_values[nzb_start_rm_c + i]
+
+    store_col_major_jacobian_block(
+        nzb_start_cm + nzb_offset_cm,
+        nzb_row_init,
+        nzb_col_init_F,
+        block_F,
+        jac_cts_col_major_nzb_coords,
+        jac_cts_col_major_nzb_values,
+    )
+
+    if body_id_A_k > -1:
+        nzb_col_init_B = jac_cts_row_major_nzb_coords[nzb_start_rm_c + 3, 1]
+
+        block_B = mat66f(0.0)
+        for i in range(3):
+            block_B[block_row_init + i] = jac_cts_row_major_nzb_values[nzb_start_rm_c + 3 + i]
+
+        store_col_major_jacobian_block(
+            nzb_start_cm + nzb_offset_cm + 6,
+            nzb_row_init,
+            nzb_col_init_B,
+            block_B,
+            jac_cts_col_major_nzb_coords,
+            jac_cts_col_major_nzb_values,
+        )
 
 
 ###
@@ -1365,8 +1627,11 @@ class SparseSystemJacobians:
         # Declare and initialize the Jacobian data containers
         self._J_cts: BlockSparseLinearOperators | None = None
         self._J_dofs: BlockSparseLinearOperators | None = None
-        # Local (in-world) offsets for the non-zero blocks of the constraint and dofs Jacobian for each (global) joint
+        # Local (in-world) offsets for the non-zero blocks of the constraint and dofs Jacobian for
+        # each (global) joint, limit, and contact
         self._J_cts_joint_nzb_offsets: wp.array | None = None
+        self._J_cts_limit_nzb_offsets: wp.array | None = None
+        self._J_cts_contact_nzb_offsets: wp.array | None = None
         self._J_dofs_joint_nzb_offsets: wp.array | None = None
         # Local (in-world) offsets for the non-zero blocks of the dofs Jacobian for each (global) joint dof
         self._J_dofs_dof_nzb_offsets: wp.array | None = None
@@ -1476,6 +1741,10 @@ class SparseSystemJacobians:
             self._J_dofs = BlockSparseLinearOperators(bsm=bsm_dofs)
 
             self._J_cts_joint_nzb_offsets = wp.array(J_cts_joint_nzb_offsets, dtype=int32, device=device)
+            self._J_cts_limit_nzb_offsets = wp.zeros(shape=(model.size.sum_of_max_limits,), dtype=int32, device=device)
+            self._J_cts_contact_nzb_offsets = wp.zeros(
+                shape=(model.size.sum_of_max_contacts,), dtype=int32, device=device
+            )
             self._J_dofs_joint_nzb_offsets = wp.array(J_dofs_joint_nzb_offsets, dtype=int32, device=device)
             self._J_dofs_dof_nzb_offsets = wp.array(J_dofs_dof_nzb_offsets, dtype=int32, device=device)
 
@@ -1585,6 +1854,7 @@ class SparseSystemJacobians:
                     jacobian_cts.num_nzb,
                     jacobian_cts.nzb_coords,
                     jacobian_cts.nzb_values,
+                    self._J_cts_limit_nzb_offsets,
                 ],
             )
 
@@ -1611,5 +1881,237 @@ class SparseSystemJacobians:
                     jacobian_cts.num_nzb,
                     jacobian_cts.nzb_coords,
                     jacobian_cts.nzb_values,
+                    self._J_cts_contact_nzb_offsets,
+                ],
+            )
+
+
+class ColMajorSparseConstraintJacobians(BlockSparseLinearOperators):
+    """
+    Container to hold a column-major version of the constraint Jacobian that uses 6x1 blocks instead
+    of the regular 1x6 blocks.
+
+    Note:
+        This version of the Jacobian is more efficient when computing the product of the transpose
+        Jacobian with a vector.
+
+        If a Jacobian matrix has a maximum number of rows of fewer than six, this Jacobian variant
+        might lead to issues due to potential memory access outside of the allocated arrays. Avoid
+        using this Jacobian variant for such cases.
+    """
+
+    def __init__(
+        self,
+        model: Model | None = None,
+        limits: Limits | None = None,
+        contacts: Contacts | None = None,
+        jacobians: SparseSystemJacobians | None = None,
+        device: Devicelike | None = None,
+    ):
+        """
+        Constructs a column-major sparse constraint Jacobian.
+
+        Args:
+            model (Model, optional): The model containing the system's kinematic structure. If provided,
+                the Jacobian will be immediately finalized with the given model.
+            limits (Limits, optional): Limits data container for joint limit constraints.
+            contacts (Contacts, optional): Contacts data container for contact constraints.
+            jacobians (SparseSystemJacobians, optional): Row-major sparse Jacobians. If provided
+                along with model, the column-major Jacobian will be immediately updated with values
+                from the provided Jacobians.
+            device (Devicelike, optional): The device on which to allocate memory for the Jacobian
+                data structures.
+        """
+        super().__init__()
+
+        self._joint_nzb_offsets: wp.array | None = None
+        self._num_joint_nzb: wp.array | None = None
+
+        if model is not None:
+            self.finalize(model=model, limits=limits, contacts=contacts, jacobians=jacobians, device=device)
+
+    def finalize(
+        self,
+        model: Model,
+        limits: Limits | None = None,
+        contacts: Contacts | None = None,
+        jacobians: SparseSystemJacobians | None = None,
+        device: Devicelike | None = None,
+    ):
+        """
+        Initializes the data structure of the column-major constraint Jacobian.
+
+        Args:
+            model (Model): The model containing the system's kinematic structure.
+            limits (Limits, optional): Limits data container for joint limit constraints. Needs to
+                be provided if the regular Jacobian also has limit constraints.
+            contacts (Contacts, optional): Contacts data container for contact constraints. Needs to
+                be provided if the regular Jacobian also has contact constraints.
+            jacobians (SparseSystemJacobians, optional): Row-major sparse Jacobians. If provided,
+                the column-major Jacobian will be immediately updated with values from the provided
+                Jacobians after allocation.
+            device (Devicelike, optional): The device on which to allocate memory for the Jacobian
+                data structures.
+        """
+        # Extract the constraint and DoF sizes of each world
+        num_worlds = model.info.num_worlds
+        num_body_dofs = [model.worlds[w].num_body_dofs for w in range(num_worlds)]
+        num_joint_cts = [model.worlds[w].num_joint_cts for w in range(num_worlds)]
+        max_num_limits = (
+            limits.world_max_limits_host if limits and limits.model_max_limits_host > 0 else [0] * num_worlds
+        )
+        max_num_contacts = (
+            contacts.world_max_contacts_host if contacts and contacts.model_max_contacts_host > 0 else [0] * num_worlds
+        )
+        max_num_constraints = [
+            num_joint_cts[w] + max_num_limits[w] + 3 * max_num_contacts[w] for w in range(num_worlds)
+        ]
+
+        # Compute the number of non-zero blocks required for Jacobian matrix, using 6 1x6 blocks per
+        # body per joint/limit/contact
+        joint_wid = model.joints.wid.numpy()
+        joint_bid_B = model.joints.bid_B.numpy()
+        joint_num_dofs = model.joints.num_dofs.numpy()
+        joint_q_j_min = model.joints.q_j_min.numpy()
+        joint_q_j_max = model.joints.q_j_max.numpy()
+        J_cts_cm_nnzb_min = [0] * num_worlds
+        J_cts_cm_nnzb_max = [0] * num_worlds
+        J_cts_cm_joint_nzb_offsets = [0] * model.size.sum_of_num_joints
+        dofs_start = 0
+        # Add non-zero blocks for joints and joint limits
+        for _j in range(model.size.sum_of_num_joints):
+            w = joint_wid[_j]
+            J_cts_cm_joint_nzb_offsets[_j] = J_cts_cm_nnzb_min[w]
+            J_cts_cm_nnzb_min[w] += 12 if joint_bid_B[_j] > -1 else 6
+            J_cts_cm_nnzb_max[w] += 12 if joint_bid_B[_j] > -1 else 6
+            if max_num_limits[w] > 0:
+                for d_j in range(joint_num_dofs[_j]):
+                    if joint_q_j_min[dofs_start + d_j] > float(FLOAT32_MIN) or joint_q_j_max[dofs_start + d_j] < float(
+                        FLOAT32_MAX
+                    ):
+                        J_cts_cm_nnzb_max[w] += 12 if joint_bid_B[_j] > -1 else 6
+            dofs_start += joint_num_dofs[_j]
+        # Add non-zero blocks for contacts
+        # TODO: Use the candidate geom-pair info to compute maximum possible contact constraint blocks more accurately
+        if contacts is not None and contacts.model_max_contacts_host > 0:
+            for w in range(num_worlds):
+                J_cts_cm_nnzb_max[w] += 12 * max_num_contacts[w]
+
+        # Compute the sizes of the Jacobian matrix data for each world
+        J_cts_cm_dims_max = [(max_num_constraints[i], num_body_dofs[i]) for i in range(num_worlds)]
+
+        # Allocate the block-sparse linear-operator data to represent each system Jacobian
+        with wp.ScopedDevice(device):
+            # Allocate the column-major constraint Jacobian
+            self.bsm = BlockSparseMatrices(
+                num_matrices=num_worlds,
+                nzb_dtype=BlockDType(dtype=float32, shape=(6, 1)),
+                device=device,
+            )
+            self.bsm.finalize(max_dims=J_cts_cm_dims_max, capacities=J_cts_cm_nnzb_max)
+
+            self._joint_nzb_offsets = wp.array(J_cts_cm_joint_nzb_offsets, dtype=int32, device=device)
+            self._num_joint_nzb = wp.array(J_cts_cm_nnzb_min, dtype=int32, device=device)
+
+        if jacobians is not None:
+            self.update(jacobians, model, limits, contacts)
+
+    def update(
+        self,
+        jacobians: SparseSystemJacobians,
+        model: Model,
+        limits: Limits | None = None,
+        contacts: Contacts | None = None,
+    ):
+        """
+        Fills the column-major constraint Jacobian with the values of an already assembled row-major
+        Jacobian.
+
+        Args:
+            jacobians (SparseSystemJacobians): The row-major sparse system Jacobians containing the
+                constraint Jacobians.
+            model (Model): The model containing the system's kinematic structure.
+            limits (Limits, optional): Limits data container for joint limit constraints. Needs to
+                be provided if the regular Jacobian also has limit constraints.
+            contacts (Contacts, optional): Contacts data container for contact constraints. Needs to
+                 be provided if the regular Jacobian also has contact constraints.
+
+        Note:
+            The finalize() method must be called before update() to allocate the necessary data structures.
+            The dimensions of the column-major Jacobian will be set to match the input row-major Jacobian.
+        """
+        J_cts = jacobians._J_cts.bsm
+
+        # Set dimensions from input Jacobian
+        self.bsm.dims.assign(J_cts.dims)
+
+        # Update the joint constraints Jacobians
+        if model.size.sum_of_num_joints > 0:
+            wp.launch(
+                kernel=_update_col_major_joint_jacobians,
+                dim=model.size.sum_of_num_joints,
+                inputs=[
+                    # Inputs:
+                    model.joints.wid,
+                    model.joints.num_cts,
+                    model.joints.bid_B,
+                    J_cts.nzb_start,
+                    jacobians._J_cts_joint_nzb_offsets,
+                    J_cts.nzb_coords,
+                    J_cts.nzb_values,
+                    self.bsm.nzb_start,
+                    self._joint_nzb_offsets,
+                    # Outputs:
+                    self.bsm.nzb_coords,
+                    self.bsm.nzb_values,
+                ],
+            )
+
+        # Initialize the number of NZB with the number of NZB for all joints
+        wp.copy(self.bsm.num_nzb, self._num_joint_nzb)
+
+        # Update the limit constraints Jacobians if a limits data container is provided
+        if limits is not None and limits.model_max_limits_host > 0:
+            wp.launch(
+                _update_col_major_limit_jacobians,
+                dim=limits.model_max_limits_host,
+                inputs=[
+                    # Inputs:
+                    limits.model_active_limits,
+                    limits.model_max_limits_host,
+                    limits.wid,
+                    limits.bids,
+                    J_cts.nzb_start,
+                    jacobians._J_cts_limit_nzb_offsets,
+                    J_cts.nzb_coords,
+                    J_cts.nzb_values,
+                    self.bsm.nzb_start,
+                    # Outputs:
+                    self.bsm.num_nzb,
+                    self.bsm.nzb_coords,
+                    self.bsm.nzb_values,
+                ],
+            )
+
+        # Build the contact constraints Jacobians if a contacts data container is provided
+        if contacts is not None and contacts.model_max_contacts_host > 0:
+            wp.launch(
+                _update_col_major_contact_jacobians,
+                dim=contacts.model_max_contacts_host,
+                inputs=[
+                    # Inputs:
+                    contacts.model_active_contacts,
+                    contacts.model_max_contacts_host,
+                    contacts.wid,
+                    contacts.bid_AB,
+                    J_cts.nzb_start,
+                    jacobians._J_cts_contact_nzb_offsets,
+                    J_cts.nzb_coords,
+                    J_cts.nzb_values,
+                    self.bsm.nzb_start,
+                    # Outputs:
+                    self.bsm.num_nzb,
+                    self.bsm.nzb_coords,
+                    self.bsm.nzb_values,
                 ],
             )

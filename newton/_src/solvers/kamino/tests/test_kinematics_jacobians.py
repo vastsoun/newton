@@ -23,16 +23,28 @@ import unittest
 import numpy as np
 import warp as wp
 
+from newton._src.solvers.kamino.core import ModelBuilder
 from newton._src.solvers.kamino.core.math import quat_exp, screw, screw_angular, screw_linear
 from newton._src.solvers.kamino.core.model import Model, ModelData
 from newton._src.solvers.kamino.core.types import float32, int32, mat33f, transformf, vec3f, vec6f
 from newton._src.solvers.kamino.geometry.contacts import Contacts
 from newton._src.solvers.kamino.geometry.detector import CollisionDetector, CollisionDetectorSettings
 from newton._src.solvers.kamino.kinematics.constraints import make_unilateral_constraints_info, update_constraints_info
-from newton._src.solvers.kamino.kinematics.jacobians import DenseSystemJacobians, SparseSystemJacobians
+from newton._src.solvers.kamino.kinematics.jacobians import (
+    ColMajorSparseConstraintJacobians,
+    DenseSystemJacobians,
+    SparseSystemJacobians,
+)
 from newton._src.solvers.kamino.kinematics.joints import compute_joints_data
 from newton._src.solvers.kamino.kinematics.limits import Limits
-from newton._src.solvers.kamino.models.builders.basics import build_boxes_fourbar, make_basics_heterogeneous_builder
+from newton._src.solvers.kamino.models.builders.basics import (
+    build_box_on_plane,
+    build_boxes_fourbar,
+    build_boxes_hinged,
+    build_boxes_nunchaku,
+    build_cartpole,
+    make_basics_heterogeneous_builder,
+)
 from newton._src.solvers.kamino.models.builders.utils import make_homogeneous_builder
 from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.tests.utils.print import (
@@ -1044,6 +1056,25 @@ class TestKinematicsSparseSystemJacobians(unittest.TestCase):
             if J_cts_dense[mat_id].shape[0] > J_cts_sparse[mat_id].shape[0]:
                 self.assertEqual(np.max(np.abs(J_cts_dense[mat_id][J_cts_sparse[mat_id].shape[0] :, :])), 0)
 
+    def _compare_row_col_major_jacobians(
+        self,
+        jacobians: SparseSystemJacobians,
+        jacobians_col_major: ColMajorSparseConstraintJacobians,
+    ):
+        # Get the (dense) numpy version of the Jacobians
+        J_cts_row_major = jacobians._J_cts.bsm.numpy()
+        J_cts_col_major = jacobians_col_major.bsm.numpy()
+
+        msg.warning(f"J_cts_row_major: {J_cts_row_major}")
+        msg.warning(f"J_cts_col_major: {J_cts_col_major}")
+
+        self.assertEqual(len(J_cts_row_major), len(J_cts_col_major))
+
+        # Check that Jacobians match
+        for mat_id in range(len(J_cts_row_major)):
+            diff_J_cts = J_cts_row_major[mat_id] - J_cts_col_major[mat_id]
+            self.assertLess(np.max(np.abs(diff_J_cts)), self.epsilon)
+
     ###
     # Construction
     ###
@@ -1470,6 +1501,230 @@ class TestKinematicsSparseSystemJacobians(unittest.TestCase):
 
         # Check that Jacobians match
         self._compare_dense_sparse_jacobians(model, limits, detector.contacts, jacobians_dense, jacobians)
+
+    def test_13_build_col_major_single_system_jacobians(self):
+        # Construct the example
+        model, data = self._create_fourbar_example()
+
+        # Create the Jacobians container
+        jacobians = SparseSystemJacobians(model=model, device=self.default_device)
+        wp.synchronize()
+
+        # Build the system Jacobians
+        jacobians.build(model=model, data=data)
+        wp.synchronize()
+
+        # Build column-major constraint Jacobian version
+        jacobian_col_maj = ColMajorSparseConstraintJacobians(
+            model=model, jacobians=jacobians, device=self.default_device
+        )
+        jacobian_col_maj.update(jacobians, model)
+
+        # Check that Jacobians match
+        self._compare_row_col_major_jacobians(jacobians, jacobian_col_maj)
+
+    def test_14_build_col_major_single_system_jacobians_with_limits(self):
+        # Construct the example
+        model, data, limits = self._create_fourbar_example(create_limits=True)
+
+        # Create the Jacobians container
+        jacobians = SparseSystemJacobians(model=model, limits=limits, device=self.default_device)
+        wp.synchronize()
+
+        # Build the system Jacobians
+        jacobians.build(model=model, data=data, limits=limits.data)
+        wp.synchronize()
+
+        # Build column-major constraint Jacobian version
+        jacobian_col_maj = ColMajorSparseConstraintJacobians(
+            model=model, limits=limits, jacobians=jacobians, device=self.default_device
+        )
+        jacobian_col_maj.update(jacobians=jacobians, model=model, limits=limits)
+
+        # Check that Jacobians match
+        self._compare_row_col_major_jacobians(jacobians, jacobian_col_maj)
+
+    def test_15_build_col_major_single_system_jacobians_with_contacts(self):
+        # Constants
+        max_world_contacts = 12
+
+        # Construct the example
+        model, data, contacts = self._create_fourbar_example(
+            create_contacts=True,
+            max_world_contacts=max_world_contacts,
+        )
+
+        # Create the Jacobians container
+        jacobians = SparseSystemJacobians(model=model, contacts=contacts, device=self.default_device)
+        wp.synchronize()
+
+        # Build the system Jacobians
+        jacobians.build(model=model, data=data, contacts=contacts.data)
+        wp.synchronize()
+
+        # Build column-major constraint Jacobian version
+        jacobian_col_maj = ColMajorSparseConstraintJacobians(
+            model=model, contacts=contacts, jacobians=jacobians, device=self.default_device
+        )
+        jacobian_col_maj.update(jacobians=jacobians, model=model, contacts=contacts)
+
+        # Check that Jacobians match
+        self._compare_row_col_major_jacobians(jacobians, jacobian_col_maj)
+
+    def test_16_build_col_major_single_system_jacobians_with_limits_and_contacts(self):
+        # Constants
+        max_world_contacts = 12
+
+        # Construct the example
+        model, data, limits, contacts = self._create_fourbar_example(
+            create_limits=True,
+            create_contacts=True,
+            max_world_contacts=max_world_contacts,
+        )
+
+        # Create the Jacobians container
+        jacobians = SparseSystemJacobians(model=model, limits=limits, contacts=contacts, device=self.default_device)
+        wp.synchronize()
+
+        # Build the system Jacobians
+        jacobians.build(model=model, data=data, limits=limits.data, contacts=contacts.data)
+        wp.synchronize()
+
+        # Build column-major constraint Jacobian version
+        jacobian_col_maj = ColMajorSparseConstraintJacobians(
+            model=model, limits=limits, contacts=contacts, jacobians=jacobians, device=self.default_device
+        )
+        jacobian_col_maj.update(jacobians=jacobians, model=model, limits=limits, contacts=contacts)
+
+        # Check that Jacobians match
+        self._compare_row_col_major_jacobians(jacobians, jacobian_col_maj)
+
+    def test_17_build_col_major_homogeneous_system_jacobians(self):
+        # Problem constants
+        num_worlds = 3
+        max_world_contacts = 12
+
+        # Construct the example
+        model, data, limits, contacts = self._create_fourbar_example(
+            create_limits=True,
+            create_contacts=True,
+            num_worlds=num_worlds,
+            max_world_contacts=max_world_contacts,
+        )
+
+        # Create the Jacobians container
+        jacobians = SparseSystemJacobians(model=model, limits=limits, contacts=contacts, device=self.default_device)
+        wp.synchronize()
+
+        # Build the system Jacobians
+        jacobians.build(model=model, data=data, limits=limits.data, contacts=contacts.data)
+        wp.synchronize()
+
+        # Build column-major constraint Jacobian version
+        jacobian_col_maj = ColMajorSparseConstraintJacobians(
+            model=model, limits=limits, contacts=contacts, jacobians=jacobians, device=self.default_device
+        )
+        jacobian_col_maj.update(jacobians=jacobians, model=model, limits=limits, contacts=contacts)
+
+        # Check that Jacobians match
+        self._compare_row_col_major_jacobians(jacobians, jacobian_col_maj)
+
+    def test_18_build_col_major_heterogeneous_system_jacobians(self):
+        # Problem constants
+        max_world_contacts = 12
+
+        # Construct the model description using the ModelBuilder
+        # Leaving out pendulum, since that only has 5 constraints, which leads to issues with the
+        # 6x1 blocks of the column-major Jacobian
+        builder = ModelBuilder(default_world=False)
+        builder.add_builder(build_boxes_fourbar(ground=True))
+        builder.add_builder(build_boxes_nunchaku(ground=True))
+        builder.add_builder(build_boxes_hinged(ground=True))
+        builder.add_builder(build_box_on_plane(ground=True))
+        builder.add_builder(build_cartpole(z_offset=0.5, ground=True))
+
+        # Create the model from the builder
+        model = builder.finalize(device=self.default_device)
+
+        # Create a model state container
+        data = model.data(device=self.default_device)
+
+        # Construct and allocate the limits container
+        limits = Limits(model=model, device=self.default_device)
+
+        # Create the collision detector
+        settings = CollisionDetectorSettings(max_contacts_per_world=max_world_contacts, pipeline="primitive")
+        detector = CollisionDetector(model=model, builder=builder, settings=settings, device=self.default_device)
+
+        # Create the constraints info
+        make_unilateral_constraints_info(
+            model=model,
+            data=data,
+            limits=limits,
+            contacts=detector.contacts,
+            device=self.default_device,
+        )
+        if self.verbose:
+            print("")  # Add a newline for better readability
+            print_model_constraint_info(model)
+            print_model_data_info(data)
+
+        # Perturb the fourbar bodies in poses that trigger the joint limits
+        set_fourbar_body_states(model=model, data=data)
+        wp.synchronize()
+        if self.verbose:
+            print("data.bodies.q_i:\n", data.bodies.q_i)
+            print("data.bodies.u_i:\n", data.bodies.u_i)
+
+        # Compute the joints state
+        compute_joints_data(model=model, q_j_ref=wp.zeros_like(data.joints.q_j), data=data)
+        wp.synchronize()
+        if self.verbose:
+            print("data.joints.p_j:\n", data.joints.p_j)
+            print("data.joints.r_j:\n", data.joints.r_j)
+            print("data.joints.dr_j:\n", data.joints.dr_j)
+            print("data.joints.q_j:\n", data.joints.q_j)
+            print("data.joints.dq_j:\n", data.joints.dq_j)
+
+        # Run limit detection to generate active limits
+        limits.detect(model, data)
+        wp.synchronize()
+        if self.verbose:
+            print(f"limits.world_active_limits: {limits.world_active_limits}")
+            print(f"data.info.num_limits: {data.info.num_limits}")
+
+        # Run collision detection to generate active contacts
+        detector.collide(model, data)
+        wp.synchronize()
+        if self.verbose:
+            print(f"contacts.world_active_contacts: {detector.contacts.world_active_contacts}")
+            print(f"data.info.num_contacts: {data.info.num_contacts}")
+
+        # Update the constraints info
+        update_constraints_info(model=model, data=data)
+        if self.verbose:
+            print("")  # Add a newline for better readability
+            print_model_data_info(data)
+        wp.synchronize()
+
+        # Create the Jacobians container
+        jacobians = SparseSystemJacobians(
+            model=model, limits=limits, contacts=detector.contacts, device=self.default_device
+        )
+        wp.synchronize()
+
+        # Build the system Jacobians
+        jacobians.build(model=model, data=data, limits=limits.data, contacts=detector.contacts.data)
+        wp.synchronize()
+
+        # Build column-major constraint Jacobian version
+        jacobian_col_maj = ColMajorSparseConstraintJacobians(
+            model=model, limits=limits, contacts=detector.contacts, jacobians=jacobians, device=self.default_device
+        )
+        jacobian_col_maj.update(jacobians=jacobians, model=model, limits=limits, contacts=detector.contacts)
+
+        # Check that Jacobians match
+        self._compare_row_col_major_jacobians(jacobians, jacobian_col_maj)
 
     ###
     # Operations

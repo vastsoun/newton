@@ -31,7 +31,7 @@ from newton._src.solvers.kamino.models.builders.utils import (
     make_homogeneous_builder,
     set_uniform_body_pose_offset,
 )
-from newton._src.solvers.kamino.solvers.padmm import PADMMWarmStartMode
+from newton._src.solvers.kamino.solvers.padmm import PADMMPenaltyUpdate, PADMMWarmStartMode
 from newton._src.solvers.kamino.solvers.warmstart import WarmstarterContacts
 from newton._src.solvers.kamino.utils import logger as msg
 from newton._src.solvers.kamino.utils.control import AnimationJointReference, JointSpacePIDController
@@ -108,9 +108,11 @@ class Example:
         settings.solver.padmm.primal_tolerance = 1e-4
         settings.solver.padmm.dual_tolerance = 1e-4
         settings.solver.padmm.compl_tolerance = 1e-4
-        settings.solver.padmm.max_iterations = 200
+        settings.solver.padmm.max_iterations = 100
         settings.solver.padmm.eta = 1e-5
-        settings.solver.padmm.rho_0 = 0.05
+        settings.solver.padmm.rho_0 = 0.02  # try 0.02 for Balanced update
+        settings.solver.padmm.rho_min = 0.01
+        settings.solver.penalty_update_method = PADMMPenaltyUpdate.FIXED  # try BALANCED
         settings.solver.use_solver_acceleration = True
         settings.solver.warmstart_mode = PADMMWarmStartMode.CONTAINERS
         settings.solver.contact_warmstart_method = WarmstarterContacts.Method.GEOM_PAIR_NET_FORCE

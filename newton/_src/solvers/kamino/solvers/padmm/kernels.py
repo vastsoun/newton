@@ -368,6 +368,7 @@ def make_initialize_solver_kernel(use_acceleration: bool = False):
         solver_penalty: wp.array(dtype=PADMMPenalty),
         solver_state_sigma: wp.array(dtype=vec2f),
         solver_state_a_p: wp.array(dtype=float32),
+        linear_solver_atol: wp.array(dtype=float32),
     ):
         # Retrieve the world index as thread index
         wid = wp.tid()
@@ -415,6 +416,12 @@ def make_initialize_solver_kernel(use_acceleration: bool = False):
         # variables only if acceleration is used
         if wp.static(use_acceleration):
             solver_state_a_p[wid] = config.a_0
+
+        # Initialize the iterative solver tolerance
+        if linear_solver_atol:
+            linear_solver_atol[wid] = wp.where(
+                config.linear_solver_tolerance > 0.0, config.linear_solver_tolerance, FLOAT32_EPS
+            )
 
     # Return the initialization kernel
     return _initialize_solver
@@ -499,8 +506,9 @@ def _update_delassus_proximal_regularization_sparse(
     # Inputs:
     problem_dim: wp.array(dtype=int32),
     problem_vio: wp.array(dtype=int32),
+    solver_config: wp.array(dtype=PADMMConfig),
+    solver_penalty: wp.array(dtype=PADMMPenalty),
     solver_status: wp.array(dtype=PADMMStatus),
-    solver_state_sigma: wp.array(dtype=vec2f),
     # Outputs:
     delassus_eta: wp.array(dtype=float32),
 ):
@@ -525,11 +533,8 @@ def _update_delassus_proximal_regularization_sparse(
         delassus_eta[mio + tid] = 1.0
         return
 
-    # Retrieve the (current, previous) proximal regularization pair
-    sigma = solver_state_sigma[wid]
-
-    # Set the proximal regularization term
-    delassus_eta[mio + tid] = sigma[0] - sigma[1]
+    # Set the proximal regularization term: eta + rho
+    delassus_eta[mio + tid] = solver_config[wid].eta + solver_penalty[wid].rho
 
 
 @wp.kernel
@@ -891,6 +896,27 @@ def _compute_complementarity_residuals(
 
 
 @wp.func
+def _update_penalty(config: PADMMConfig, pen: PADMMPenalty, iterations: int32, r_p: float32, r_d: float32):
+    """Adaptively updates the ADMM penalty parameter based on the configured strategy.
+
+    For BALANCED mode, rho is scaled up when the primal residual dominates and
+    scaled down (to ``config.rho_min``) when the dual residual dominates, every
+    ``config.penalty_update_freq`` iterations.  For FIXED mode this is a no-op.
+    """
+    if config.penalty_update_method == int32(PADMMPenaltyUpdate.BALANCED):
+        freq = config.penalty_update_freq
+        if freq > 0 and iterations > 0 and iterations % freq == 0:
+            rho = pen.rho
+            if r_p > config.alpha * r_d:
+                rho = rho * config.tau
+            elif r_d > config.alpha * r_p:
+                rho = wp.max(rho / config.tau, config.rho_min)
+            pen.rho = rho
+            pen.num_updates += int32(1)
+    return pen
+
+
+@wp.func
 def less_than_op(i: wp.int32, threshold: wp.int32) -> wp.float32:
     return 1.0 if i < threshold else 0.0
 
@@ -915,6 +941,8 @@ def _make_compute_infnorm_residuals_kernel(tile_size: int, n_cts_max: int, n_u_m
         # Outputs:
         solver_state_done: wp.array(dtype=int32),
         solver_status: wp.array(dtype=PADMMStatus),
+        solver_penalty: wp.array(dtype=PADMMPenalty),
+        linear_solver_atol: wp.array(dtype=float32),
     ):
         # Retrieve the thread index as the world index + thread index within block
         wid, tid = wp.tid()
@@ -1031,6 +1059,9 @@ def _make_compute_infnorm_residuals_kernel(tile_size: int, n_cts_max: int, n_u_m
             # Store the updated status
             solver_status[wid] = status
 
+            # Adaptive penalty update
+            solver_penalty[wid] = _update_penalty(config, solver_penalty[wid], status.iterations, r_p_max, r_d_max)
+
     return _compute_infnorm_residuals
 
 
@@ -1048,7 +1079,6 @@ def _make_compute_infnorm_residuals_accel_kernel(tile_size: int, n_cts_max: int,
         problem_dim: wp.array(dtype=int32),
         problem_vio: wp.array(dtype=int32),
         solver_config: wp.array(dtype=PADMMConfig),
-        solver_params: wp.array(dtype=PADMMPenalty),
         solver_r_p: wp.array(dtype=float32),
         solver_r_d: wp.array(dtype=float32),
         solver_r_c: wp.array(dtype=float32),
@@ -1060,6 +1090,8 @@ def _make_compute_infnorm_residuals_accel_kernel(tile_size: int, n_cts_max: int,
         solver_state_done: wp.array(dtype=int32),
         solver_state_a: wp.array(dtype=float32),
         solver_status: wp.array(dtype=PADMMStatus),
+        solver_penalty: wp.array(dtype=PADMMPenalty),
+        linear_solver_atol: wp.array(dtype=float32),
     ):
         # Retrieve the thread index as the world index + thread index within block
         wid, tid = wp.tid()
@@ -1095,8 +1127,8 @@ def _make_compute_infnorm_residuals_accel_kernel(tile_size: int, n_cts_max: int,
         maxiters = config.max_iterations
 
         # Extract the penalty parameters
-        params = solver_params[wid]
-        rho = params.rho
+        pen = solver_penalty[wid]
+        rho = pen.rho
 
         # Compute element-wise max over each residual vector to compute the infinity-norm
         r_p_max = float32(0.0)
@@ -1233,6 +1265,9 @@ def _make_compute_infnorm_residuals_accel_kernel(tile_size: int, n_cts_max: int,
 
             # Store the updated status
             solver_status[wid] = status
+
+            # Adaptive penalty update
+            solver_penalty[wid] = _update_penalty(config, solver_penalty[wid], status.iterations, r_p_max, r_d_max)
 
     return _compute_infnorm_residuals_accel
 

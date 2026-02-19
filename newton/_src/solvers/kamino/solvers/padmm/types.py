@@ -48,6 +48,7 @@ Data Containers:
 from dataclasses import dataclass
 from enum import IntEnum
 
+import numpy as np
 import warp as wp
 from warp.context import Devicelike
 
@@ -112,6 +113,11 @@ class PADMMPenaltyUpdate(IntEnum):
     # Spectral penalty update:
     # `rho` is increased by the spectral radius of the Delassus matrix.
     # """
+    BALANCED = 1
+    """
+    Balanced-residuals penalty update:
+    `rho` is increased in order for the ratio of primal/dual residuals to be close to unity.
+    """
 
     @override
     def __str__(self):
@@ -281,6 +287,24 @@ class PADMMConfig:
     The penalty update method used to adapt the penalty parameter.\n
     Defaults to `PADMMPenaltyUpdate.FIXED`.\n
     See :class:`PADMMPenaltyUpdate` for details.
+    """
+
+    linear_solver_tolerance: float32
+    """
+    The default absolute tolerance for the iterative linear solver.\n
+    When positive, the iterative solver's atol is initialized to this value
+    at the start of each ADMM solve.\n
+    When zero, the iterative solver's own tolerance is left unchanged.\n
+    Must be non-negative. Defaults to `0.0`.
+    """
+
+    linear_solver_tolerance_ratio: float32
+    """
+    The ratio used to adapt the iterative linear solver tolerance from the ADMM primal residual.\n
+    When positive, the linear solver absolute tolerance is set to
+    `ratio * ||r_primal||_2` at each ADMM iteration.\n
+    When zero, the linear solver tolerance is not adapted (fixed tolerance).\n
+    Must be non-negative. Defaults to `0.0`.
     """
 
 
@@ -569,6 +593,24 @@ class PADMMSettings:
     Defaults to `PADMMPenaltyUpdate.FIXED`. See :class:`PADMMPenaltyUpdate` for details.
     """
 
+    linear_solver_tolerance: float = 0.0
+    """
+    The default absolute tolerance for the iterative linear solver.\n
+    When positive, the iterative solver's atol is initialized to this value
+    at the start of each ADMM solve.\n
+    When zero, the iterative solver's own tolerance is left unchanged.\n
+    Must be non-negative. Defaults to `0.0`.
+    """
+
+    linear_solver_tolerance_ratio: float = 0.0
+    """
+    The ratio used to adapt the iterative linear solver tolerance from the ADMM primal residual.\n
+    When positive, the linear solver absolute tolerance is set to
+    `ratio * ||r_primal||_2` at each ADMM iteration.\n
+    When zero, the linear solver tolerance is not adapted (fixed tolerance).\n
+    Must be non-negative. Defaults to `0.0`.
+    """
+
     def check(self):
         """
         Checks the validity of PADMM solver settings.
@@ -602,6 +644,12 @@ class PADMMSettings:
                 f"Invalid penalty update method: {self.penalty_update_method}. "
                 "Must be an instance of PADMMPenaltyUpdate."
             )
+        if self.linear_solver_tolerance < 0.0:
+            raise ValueError(f"Invalid linear solver tolerance: {self.linear_solver_tolerance}. Must be non-negative.")
+        if self.linear_solver_tolerance_ratio < 0.0:
+            raise ValueError(
+                f"Invalid linear solver tolerance ratio: {self.linear_solver_tolerance_ratio}. Must be non-negative."
+            )
 
     def to_config(self) -> PADMMConfig:
         """
@@ -624,6 +672,8 @@ class PADMMSettings:
         config.max_iterations = self.max_iterations
         config.penalty_update_freq = self.penalty_update_freq
         config.penalty_update_method = self.penalty_update_method
+        config.linear_solver_tolerance = self.linear_solver_tolerance
+        config.linear_solver_tolerance_ratio = self.linear_solver_tolerance_ratio
         return config
 
 
@@ -1425,6 +1475,12 @@ class PADMMData:
         self.info: PADMMInfo | None = None
         """The (optional) PADMM solver info container."""
 
+        self.linear_solver_atol: wp.array | None = None
+        """
+        Per-world absolute tolerance array for the iterative linear solver.\n
+        Shape is (num_worlds,) and type :class:`float32`.
+        """
+
         # Perform memory allocations if model size is specified
         if size is not None:
             self.finalize(
@@ -1462,5 +1518,6 @@ class PADMMData:
             self.state = PADMMState(size, use_acceleration)
             self.residuals = PADMMResiduals(size, use_acceleration)
             self.solution = PADMMSolution(size)
+            self.linear_solver_atol = wp.full(shape=(size.num_worlds,), value=np.finfo(np.float32).eps, dtype=float32)
             if collect_info and max_iters > 0:
                 self.info = PADMMInfo(size, max_iters, use_acceleration)

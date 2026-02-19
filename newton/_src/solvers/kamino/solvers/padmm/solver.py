@@ -55,7 +55,7 @@ from .kernels import (
     make_initialize_solver_kernel,
     make_update_dual_variables_and_compute_primal_dual_residuals,
 )
-from .types import PADMMConfig, PADMMData, PADMMSettings, PADMMWarmStartMode
+from .types import PADMMConfig, PADMMData, PADMMPenaltyUpdate, PADMMSettings, PADMMWarmStartMode
 
 ###
 # Module interface
@@ -129,6 +129,7 @@ class PADMMSolver:
         self._use_acceleration: bool = False
         self._collect_info: bool = False
         self._avoid_graph_conditionals: bool = False
+        self._uses_adaptive_penalty: bool = False
 
         # Declare the model size cache
         self._size: ModelSize | None = None
@@ -240,6 +241,9 @@ class PADMMSolver:
             self._settings = self._check_settings(model, settings)
         elif len(self._settings) == 0:
             self._settings = self._check_settings(model, None)
+
+        # Check if any world uses adaptive penalty updates (requiring per-step regularization updates)
+        self._uses_adaptive_penalty = any(s.penalty_update_method != PADMMPenaltyUpdate.FIXED for s in self._settings)
 
         # Compute the largest max iterations across all worlds
         # NOTE: This is needed to allocate the solver
@@ -353,7 +357,12 @@ class PADMMSolver:
         Args:
             problem (DualProblem): The dual forward dynamics problem to be solved.
         """
-        # Initialize the solver status and ALM penalty parameter
+        # Pass the PADMM-owned tolerance array to the iterative linear solver (if present).
+        inner = getattr(problem._delassus._solver, "solver", None)
+        if inner is not None:
+            inner.atol = self._data.linear_solver_atol
+
+        # Initialize the solver status, ALM penalty, and iterative solver tolerance
         self._initialize()
 
         # Add the diagonal proximal regularization to the Delassus matrix
@@ -423,7 +432,7 @@ class PADMMSolver:
         Launches a kernel to initialize the internal solver state before starting a new solve.\n
         The kernel is parallelized over the number of worlds.
         """
-        # Initialize solver status and penalty parameters from the set configurations
+        # Initialize solver status, penalty parameters, and iterative solver tolerance
         wp.launch(
             kernel=self._initialize_solver_kernel,
             dim=self._size.num_worlds,
@@ -433,6 +442,7 @@ class PADMMSolver:
                 self._data.penalty,
                 self._data.state.sigma,
                 self._data.state.a_p,
+                self._data.linear_solver_atol,
             ],
         )
 
@@ -441,6 +451,21 @@ class PADMMSolver:
         # to number of worlds and decremented by each world that
         # converges or reaches the maximum number of iterations
         self._data.state.done.fill_(self._size.num_worlds)
+
+    def _update_sparse_regularization(self, problem: DualProblem):
+        """Propagate eta + rho to the sparse Delassus diagonal regularization."""
+        wp.launch(
+            kernel=_update_delassus_proximal_regularization_sparse,
+            dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
+            inputs=[
+                problem.data.dim,
+                problem.data.vio,
+                self._data.config,
+                self._data.penalty,
+                self._data.status,
+                problem.delassus._eta,
+            ],
+        )
 
     def _update_regularization(self, problem: DualProblem):
         """
@@ -452,20 +477,7 @@ class PADMMSolver:
             problem (DualProblem): The dual forward dynamics problem to be solved.
         """
         if problem.sparse:
-            # Update the proximal regularization diagonal for the sparse Delassus operator
-            wp.launch(
-                kernel=_update_delassus_proximal_regularization_sparse,
-                dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
-                inputs=[
-                    # Inputs:
-                    problem.data.dim,
-                    problem.data.vio,
-                    self._data.status,
-                    self._data.state.sigma,
-                    # Outputs:
-                    problem.delassus._eta,
-                ],
-            )
+            self._update_sparse_regularization(problem)
         else:
             # Update the proximal regularization term in the Delassus matrix
             wp.launch(
@@ -513,6 +525,10 @@ class PADMMSolver:
         # Compute infinity-norm of all residuals and check for convergence
         self._update_convergence_check(problem)
 
+        # Update sparse Delassus regularization if penalty was updated adaptively
+        if problem.sparse and self._uses_adaptive_penalty:
+            self._update_sparse_regularization(problem)
+
         # Optionally record internal solver info
         if self._collect_info:
             self._update_solver_info(problem)
@@ -547,6 +563,10 @@ class PADMMSolver:
 
         # Compute infinity-norm of all residuals and check for convergence
         self._update_convergence_check_accel(problem)
+
+        # Update sparse Delassus regularization if penalty was updated adaptively
+        if problem.sparse and self._uses_adaptive_penalty:
+            self._update_sparse_regularization(problem)
 
         # Optionally update Nesterov acceleration states from the current iteration
         self._update_acceleration(problem)
@@ -1076,6 +1096,8 @@ class PADMMSolver:
                 # Outputs:
                 self._data.state.done,
                 self._data.status,
+                self._data.penalty,
+                self._data.linear_solver_atol,
             ],
         )
 
@@ -1108,7 +1130,6 @@ class PADMMSolver:
                 problem.data.dim,
                 problem.data.vio,
                 self._data.config,
-                self._data.penalty,
                 self._data.residuals.r_primal,
                 self._data.residuals.r_dual,
                 self._data.residuals.r_compl,
@@ -1120,6 +1141,8 @@ class PADMMSolver:
                 self._data.state.done,
                 self._data.state.a,
                 self._data.status,
+                self._data.penalty,
+                self._data.linear_solver_atol,
             ],
         )
 

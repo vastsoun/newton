@@ -21,6 +21,8 @@ This is the highest-level interface for the Proximal-ADMM solver for constrained
 See the :mod:`newton._src.solvers.kamino.solvers.padmm` module for a detailed description and usage example.
 """
 
+import math
+
 import warp as wp
 from warp.context import Devicelike
 
@@ -34,11 +36,11 @@ from .kernels import (
     _compute_complementarity_residuals,
     _compute_desaxce_correction,
     _compute_final_desaxce_correction,
-    _compute_infnorm_residuals_serially,
-    _compute_infnorm_residuals_serially_accel,
     _compute_projection_argument,
     _compute_solution_vectors,
     _compute_velocity_bias,
+    _make_compute_infnorm_residuals_accel_kernel,
+    _make_compute_infnorm_residuals_kernel,
     _project_to_feasible_cone,
     _reset_solver_data,
     _update_delassus_proximal_regularization,
@@ -1070,9 +1072,16 @@ class PADMMSolver:
             problem (DualProblem): The dual forward dynamics problem to be solved.
         """
         # Compute infinity-norm of all residuals and check for convergence
-        wp.launch(
-            kernel=_compute_infnorm_residuals_serially,
+        tile_size = min(2048, 2 ** math.ceil(math.log(self._size.max_of_max_total_cts, 2)))
+        block_dim = min(256, tile_size // 8)
+        wp.launch_tiled(
+            kernel=_make_compute_infnorm_residuals_kernel(
+                tile_size,
+                self._size.max_of_max_total_cts,
+                self._size.max_of_max_limits + 3 * self._size.max_of_max_contacts,
+            ),
             dim=self._size.num_worlds,
+            block_dim=block_dim,
             inputs=[
                 # Inputs:
                 problem.data.nl,
@@ -1103,9 +1112,16 @@ class PADMMSolver:
             problem (DualProblem): The dual forward dynamics problem to be solved.
         """
         # Compute infinity-norm of all residuals and check for convergence
-        wp.launch(
-            kernel=_compute_infnorm_residuals_serially_accel,
+        tile_size = min(2048, 2 ** math.ceil(math.log(self._size.max_of_max_total_cts, 2)))
+        block_dim = min(256, tile_size // 8)
+        wp.launch_tiled(
+            kernel=_make_compute_infnorm_residuals_accel_kernel(
+                tile_size,
+                self._size.max_of_max_total_cts,
+                self._size.max_of_max_limits + 3 * self._size.max_of_max_contacts,
+            ),
             dim=self._size.num_worlds,
+            block_dim=block_dim,
             inputs=[
                 # Inputs:
                 problem.data.nl,

@@ -748,7 +748,6 @@ def _compute_joint_kinematics_residual_sparse(
     model_joints_bid_B: wp.array(dtype=int32),
     model_joints_bid_F: wp.array(dtype=int32),
     data_bodies_u_i: wp.array(dtype=vec6f),
-    jac_nzb_start: wp.array(dtype=int32),
     jac_nzb_values: wp.array(dtype=vec6f),
     jac_joint_nzb_offsets: wp.array(dtype=int32),
     # Outputs:
@@ -771,7 +770,7 @@ def _compute_joint_kinematics_residual_sparse(
     cts_offset_j = model_joints_cts_offset[jid]
 
     # Retrieve the starting index for the non-zero blocks for the current joint
-    jac_j_nzb_start = jac_nzb_start[wid] + jac_joint_nzb_offsets[jid]
+    jac_j_nzb_start = jac_joint_nzb_offsets[jid]
 
     # Compute the per-joint constraint Jacobian matrix-vector product
     j_v_j = vec6f(0.0)
@@ -1448,7 +1447,6 @@ class SolutionMetrics:
                         model.joints.bid_B,
                         model.joints.bid_F,
                         data.bodies.u_i,
-                        J_cts.nzb_start,
                         J_cts.nzb_values,
                         jacobians._J_dofs_joint_nzb_offsets,
                         # Outputs:

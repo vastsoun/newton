@@ -1390,8 +1390,6 @@ class DualProblem:
         """
         if self._sparse and not isinstance(jacobians, SparseSystemJacobians):
             raise TypeError("Dual problem in sparse configuration requires sparse jacobians.")
-        elif not self._sparse and not isinstance(jacobians, DenseSystemJacobians):
-            raise TypeError("Dual problem in dense configuration requires dense jacobians.")
 
         # Initialize problem data
         if reset_to_zero:
@@ -1421,7 +1419,7 @@ class DualProblem:
         self._build_free_velocity_bias(model, data, limits, contacts)
 
         # Build the free-velocity vector
-        if self._sparse:
+        if isinstance(jacobians, SparseSystemJacobians):
             wp.copy(self._data.v_f, self._data.v_b)
             J_cts = jacobians._J_cts.bsm
             wp.launch(

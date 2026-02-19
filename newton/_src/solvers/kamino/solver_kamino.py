@@ -165,6 +165,11 @@ class SolverKaminoSettings:
     Flag to indicate whether the solver should use sparse data representations.
     """
 
+    sparse_jacobian: bool = True
+    """
+    Flag to indicate whether the solver should use sparse data representations for the Jacobian.
+    """
+
     def check(self) -> None:
         """Validates relevant solver settings."""
         if not issubclass(self.linear_solver_type, LinearSolverType):
@@ -186,6 +191,10 @@ class SolverKaminoSettings:
             raise TypeError(
                 "Invalid rotation correction mode: Expected a `JointCorrectionMode` enum value, "
                 f"but got {type(self.rotation_correction)}."
+            )
+        if self.sparse and not self.sparse_jacobian:
+            raise ValueError(
+                "Sparsity setting mismatch: `sparse` solver option requires that `sparse_jacobian` is set to `True`."
             )
         self.problem.check()
         self.padmm.check()
@@ -305,7 +314,7 @@ class SolverKamino(SolverBase):
         make_unilateral_constraints_info(model=self._model, data=self._data, limits=self._limits, contacts=contacts)
 
         # Allocate Jacobians data on the device
-        if self._settings.sparse:
+        if self._settings.sparse_jacobian:
             self._jacobians = SparseSystemJacobians(
                 model=self._model,
                 limits=self._limits,

@@ -19,7 +19,7 @@ import numpy as np
 import warp as wp
 
 from ...dynamics.delassus import BlockSparseMatrixFreeDelassusOperator, DelassusOperator
-from ...kinematics.jacobians import DenseSystemJacobians
+from ...kinematics.jacobians import DenseSystemJacobians, SparseSystemJacobians
 
 ###
 # Helper functions
@@ -58,10 +58,13 @@ def extract_active_constraint_dims(delassus: DelassusOperator) -> list[int]:
 
 
 def extract_cts_jacobians(
-    jacobians: DenseSystemJacobians,
+    jacobians: DenseSystemJacobians | SparseSystemJacobians,
     num_bodies: list[int],
     active_dims: list[int] | None = None,
 ) -> list[np.ndarray]:
+    if isinstance(jacobians, SparseSystemJacobians):
+        return jacobians._J_cts.bsm.numpy()
+
     # Reshape the flat Jacobian as a set of matrices
     num_body_dofs = [6 * num_bodies[i] for i in range(len(num_bodies))]
     cjmio = jacobians.data.J_cts_offsets.numpy()

@@ -182,6 +182,7 @@ class Example:
         max_steps: int = 1000,
         use_cuda_graph: bool = False,
         implicit_pd: bool = False,
+        dynamic_joints: bool = False,
         gravity: bool = True,
         ground: bool = True,
         logging: bool = False,
@@ -193,7 +194,7 @@ class Example:
     ):
         # Initialize target frames per second and corresponding time-steps
         self.fps = 60
-        self.sim_dt = 0.01 if implicit_pd else 0.001
+        self.sim_dt = 0.01 if (implicit_pd or dynamic_joints) else 0.001
         self.frame_dt = 1.0 / self.fps
         self.sim_substeps = max(1, round(self.frame_dt / self.sim_dt))
         self.max_steps = max_steps
@@ -203,6 +204,7 @@ class Example:
         self.use_cuda_graph: bool = use_cuda_graph
         self.logging: bool = logging
         self.implicit_pd: bool = implicit_pd
+        self.dynamic_joints: bool = dynamic_joints
 
         # Set the path to the external USD assets
         EXAMPLE_ASSETS_PATH = get_examples_usd_assets_path()
@@ -218,7 +220,7 @@ class Example:
             build_fn=importer.import_from,
             load_static_geometry=True,
             source=USD_MODEL_PATH,
-            load_drive_dynamics=implicit_pd,
+            load_drive_dynamics=implicit_pd or dynamic_joints,
         )
         msg.info("total mass: %f", self.builder.worlds[0].mass_total)
         msg.info("total diag inertia: %f", self.builder.worlds[0].inertia_total)
@@ -240,6 +242,16 @@ class Example:
         # Print-out of actuated joints used for verifying the imported USD was parsed as expected
         for joint in self.builder.joints:
             if joint.is_actuated:
+                if self.dynamic_joints or self.implicit_pd:
+                    joint.a_j = [0.1]
+                    joint.b_j = [0.001]
+                if not self.implicit_pd:
+                    joint.k_p_j = [0.0]
+                    joint.k_d_j = [0.0]
+                if (
+                    not self.implicit_pd and self.dynamic_joints
+                ) and joint.act_type == JointActuationType.POSITION_VELOCITY:
+                    joint.act_type = JointActuationType.FORCE
                 msg.info(f"Joint '{joint.name}':\n{joint}\n")
 
         # Set solver settings
@@ -467,8 +479,14 @@ if __name__ == "__main__":
     parser.add_argument(
         "--implicit-pd",
         action=argparse.BooleanOptionalAction,
-        default=True,
+        default=False,
         help="Enables implicit PD control of joints",
+    )
+    parser.add_argument(
+        "--dynamic-joints",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Enables dynamic joints in the simulation (i.e. non-zero joint armature and damping)",
     )
     parser.add_argument(
         "--gravity", action=argparse.BooleanOptionalAction, default=True, help="Enables gravity in the simulation"
@@ -539,6 +557,7 @@ if __name__ == "__main__":
         linear_solver_maxiter=args.linear_solver_maxiter,
         max_steps=args.num_steps,
         implicit_pd=args.implicit_pd,
+        dynamic_joints=args.dynamic_joints,
         gravity=args.gravity,
         ground=args.ground,
         headless=args.headless,

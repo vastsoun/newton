@@ -170,6 +170,7 @@ def _compute_jointspace_pid_control(
     controller_decimation: wp.array(dtype=int32),
     # Outputs
     control_tau_j: wp.array(dtype=float32),
+    control_tau_j_ref: wp.array(dtype=float32),
 ):
     """
     A kernel to compute joint-space PID control outputs for force-actuated joints.
@@ -261,6 +262,7 @@ def _compute_jointspace_pid_control(
         # Store the updated integrator state and actuator control forces
         controller_integrator[actuator_dof_index] = integrator
         control_tau_j[joint_dof_index] = tau_j_c
+        # control_tau_j_ref[joint_dof_index] = tau_j_c
 
 
 ###
@@ -338,6 +340,7 @@ def compute_jointspace_pid_control(
             controller.decimation,
             # Outputs
             control.tau_j,
+            control.tau_j_ref,
         ],
     )
 

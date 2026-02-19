@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>newton.SAPSortType &#8212; Newton Physics</title>
+    <title>newton.geometry.sdf_mesh &#8212; Newton Physics</title>
   
   
   
@@ -48,7 +48,7 @@
     <script src="../../_static/copybutton.js?v=f281be69"></script>
     <script src="../../_static/design-tabs.js?v=f930bc37"></script>
     <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
-    <script>DOCUMENTATION_OPTIONS.pagename = 'api/_generated/newton.SAPSortType';</script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'api/_generated/newton.geometry.sdf_mesh';</script>
     <script>
         DOCUMENTATION_OPTIONS.theme_version = '0.16.1';
         DOCUMENTATION_OPTIONS.theme_switcher_json_url = 'https://newton-physics.github.io/newton/switcher.json';
@@ -58,8 +58,8 @@
         </script>
     <link rel="index" title="Index" href="../../genindex.html" />
     <link rel="search" title="Search" href="../../search.html" />
-    <link rel="next" title="newton.SDF" href="newton.SDF.html" />
-    <link rel="prev" title="newton.ParticleFlags" href="newton.ParticleFlags.html" />
+    <link rel="next" title="newton.geometry.sdf_plane" href="newton.geometry.sdf_plane.html" />
+    <link rel="prev" title="newton.geometry.sdf_cylinder" href="newton.geometry.sdf_cylinder.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="" />
@@ -258,14 +258,14 @@
 </li>
 
 
-<li class=" current active">
+<li class=" ">
   <a class="nav-link dropdown-item nav-internal" href="../newton.html">
     newton
   </a>
 </li>
 
 
-<li class=" ">
+<li class=" current active">
   <a class="nav-link dropdown-item nav-internal" href="../newton_geometry.html">
     newton.geometry
   </a>
@@ -556,14 +556,14 @@
 </li>
 
 
-<li class="nav-item current active">
+<li class="nav-item ">
   <a class="nav-link nav-internal" href="../newton.html">
     newton
   </a>
 </li>
 
 
-<li class="nav-item ">
+<li class="nav-item current active">
   <a class="nav-link nav-internal" href="../newton_geometry.html">
     newton.geometry
   </a>
@@ -725,7 +725,7 @@
 <p aria-level="2" class="caption" role="heading"><span class="caption-text">API Reference</span></p>
 <ul class="current nav bd-sidenav">
 <li class="toctree-l1 current active"><a class="reference internal" href="../newton.html">newton</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../newton_geometry.html">newton.geometry</a></li>
+<li class="toctree-l1 current active"><a class="reference internal" href="../newton_geometry.html">newton.geometry</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../newton_ik.html">newton.ik</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../newton_math.html">newton.math</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../newton_selection.html">newton.selection</a></li>
@@ -787,7 +787,10 @@
     
     <li class="breadcrumb-item"><a href="../newton.html" class="nav-link">newton</a></li>
     
-    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">newton.SAPSortType</span></li>
+    
+    <li class="breadcrumb-item"><a href="../newton_geometry.html" class="nav-link">newton.geometry</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">newton.geometry.sdf_mesh</span></li>
   </ul>
 </nav>
 </div>
@@ -804,23 +807,24 @@
 <div id="searchbox"></div>
                 <article class="bd-article">
                   
-  <section id="newton-sapsorttype">
-<h1>newton.SAPSortType<a class="headerlink" href="#newton-sapsorttype" title="Link to this heading">#</a></h1>
-<dl class="py class">
-<dt class="sig sig-object py" id="newton.SAPSortType">
-<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">newton.</span></span><span class="sig-name descname"><span class="pre">SAPSortType</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">value</span></span></em><span class="sig-paren">)</span><a class="reference external" href="https://github.com/newton-physics/newton/blob/main/newton/_src/geometry/broad_phase_sap.py#L44"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#newton.SAPSortType" title="Link to this definition">#</a></dt>
-<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/enum.html#enum.IntEnum" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">IntEnum</span></code></a></p>
-<p>Sort algorithm to use for SAP broad phase.</p>
-<dl class="py attribute">
-<dt class="sig sig-object py" id="newton.SAPSortType.SEGMENTED">
-<span class="sig-name descname"><span class="pre">SEGMENTED</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">0</span></em><a class="headerlink" href="#newton.SAPSortType.SEGMENTED" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="newton.SAPSortType.TILE">
-<span class="sig-name descname"><span class="pre">TILE</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">1</span></em><a class="headerlink" href="#newton.SAPSortType.TILE" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
+  <section id="newton-geometry-sdf-mesh">
+<h1>newton.geometry.sdf_mesh<a class="headerlink" href="#newton-geometry-sdf-mesh" title="Link to this heading">#</a></h1>
+<dl class="py function">
+<dt class="sig sig-object py" id="newton.geometry.sdf_mesh">
+<span class="sig-prename descclassname"><span class="pre">newton.geometry.</span></span><span class="sig-name descname"><span class="pre">sdf_mesh</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mesh</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">point</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_dist</span></span></em><span class="sig-paren">)</span><a class="reference external" href="https://github.com/newton-physics/newton/blob/main/newton/_src/geometry/kernels.py#L893"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#newton.geometry.sdf_mesh" title="Link to this definition">#</a></dt>
+<dd><p>Compute signed distance to a triangle mesh.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>mesh</strong> (<a class="reference external" href="https://nvidia.github.io/warp/api_reference/_generated/warp.uint64.html#warp.uint64" title="(in Warp v1.11.1)"><em>uint64</em></a>) – Warp mesh ID (<code class="docutils literal notranslate"><span class="pre">mesh.id</span></code>).</p></li>
+<li><p><strong>[</strong><strong>m</strong><strong>]</strong> (<em>max_dist</em>) – Query point in mesh local frame, shape [3], float.</p></li>
+<li><p><strong>[</strong><strong>m</strong><strong>]</strong> – Maximum query distance.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Signed distance [m], negative inside, zero on surface, positive outside.</p>
+</dd>
+</dl>
 </dd></dl>
 
 </section>
@@ -848,11 +852,7 @@
   </div>
   <nav class="bd-toc-nav page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="visible nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#newton.SAPSortType"><code class="docutils literal notranslate"><span class="pre">SAPSortType</span></code></a><ul class="visible nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#newton.SAPSortType.SEGMENTED"><code class="docutils literal notranslate"><span class="pre">SAPSortType.SEGMENTED</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#newton.SAPSortType.TILE"><code class="docutils literal notranslate"><span class="pre">SAPSortType.TILE</span></code></a></li>
-</ul>
-</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#newton.geometry.sdf_mesh"><code class="docutils literal notranslate"><span class="pre">sdf_mesh()</span></code></a></li>
 </ul>
   </nav></div>
 

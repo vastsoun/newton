@@ -231,7 +231,7 @@ class TestDelassusOperator(unittest.TestCase):
 
         # Create the model and containers from the builder
         model, data, limits, detector, jacobians = make_containers(
-            builder=builder, max_world_contacts=max_world_contacts, device=self.default_device, sparse=False
+            builder=builder, max_world_contacts=max_world_contacts, device=self.default_device
         )
 
         # Update the containers
@@ -290,7 +290,7 @@ class TestDelassusOperator(unittest.TestCase):
 
         # Create the model and containers from the builder
         model, data, limits, detector, jacobians = make_containers(
-            builder=builder, max_world_contacts=max_world_contacts, device=self.default_device, sparse=False
+            builder=builder, max_world_contacts=max_world_contacts, device=self.default_device
         )
 
         # Update the containers
@@ -360,7 +360,7 @@ class TestDelassusOperator(unittest.TestCase):
 
         # Create the model and containers from the builder
         model, data, limits, detector, jacobians = make_containers(
-            builder=builder, max_world_contacts=max_world_contacts, device=self.default_device, sparse=False
+            builder=builder, max_world_contacts=max_world_contacts, device=self.default_device
         )
 
         # Update the containers
@@ -429,7 +429,7 @@ class TestDelassusOperator(unittest.TestCase):
 
         # Create the model and containers from the builder
         model, data, limits, detector, jacobians = make_containers(
-            builder=builder, max_world_contacts=max_world_contacts, device=self.default_device, sparse=False
+            builder=builder, max_world_contacts=max_world_contacts, device=self.default_device
         )
 
         # Update the containers
@@ -500,7 +500,7 @@ class TestDelassusOperator(unittest.TestCase):
 
         # Create the model and containers from the builder
         model, data, limits, detector, jacobians = make_containers(
-            builder=builder, max_world_contacts=max_world_contacts, device=self.default_device, sparse=False
+            builder=builder, max_world_contacts=max_world_contacts, device=self.default_device
         )
 
         # Update the containers
@@ -590,6 +590,183 @@ class TestDelassusOperator(unittest.TestCase):
             if not is_x_close or self.verbose:
                 print_error_stats(f"x[{w}]", x_wp_np[w], x_np[w], active_dims[w])
             self.assertTrue(is_x_close)
+
+    def test_09_compare_dense_sparse_delassus_operator_assembly(self):
+        # Model constants
+        max_world_contacts = 12
+
+        # Construct the model description using model builders for different systems
+        # builder = build_boxes_hinged(z_offset=0.0, ground=False)
+        builder = build_boxes_fourbar(z_offset=0.0, ground=False)
+
+        # Create the model and containers from the builder
+        model, data, limits, detector, jacobians_dense = make_containers(
+            builder=builder, max_world_contacts=max_world_contacts, device=self.default_device, sparse=False
+        )
+        jacobians_sparse = SparseSystemJacobians(
+            model=model, limits=limits, contacts=detector.contacts, device=self.default_device
+        )
+
+        # Update the containers
+        update_containers(model=model, data=data, limits=limits, detector=detector, jacobians=jacobians_dense)
+        update_containers(model=model, data=data, limits=limits, detector=detector, jacobians=jacobians_sparse)
+
+        # Create the Delassus operator
+        delassus_dense = DelassusOperator(
+            model=model,
+            data=data,
+            limits=limits,
+            contacts=detector.contacts,
+            device=self.default_device,
+            solver=LLTSequentialSolver,
+        )
+        delassus_sparse = DelassusOperator(
+            model=model,
+            data=data,
+            limits=limits,
+            contacts=detector.contacts,
+            device=self.default_device,
+            solver=LLTSequentialSolver,
+        )
+
+        # Build the Delassus operator from the current data
+        delassus_dense.build(model=model, data=data, jacobians=jacobians_dense, reset_to_zero=True)
+        delassus_sparse.build(model=model, data=data, jacobians=jacobians_sparse, reset_to_zero=True)
+
+        # Extract the active constraint dimensions
+        active_dims = extract_active_constraint_dims(delassus_dense)
+        active_size = [dims * dims for dims in active_dims]
+
+        # Extract Delassus data as numpy arrays
+        D_dense_np = extract_delassus(delassus_dense, only_active_dims=True)
+        D_sparse_np = extract_delassus(delassus_sparse, only_active_dims=True)
+
+        # For each world, compare the Delassus matrix
+        for w in range(delassus_dense.num_worlds):
+            # Compare the computed Delassus matrix with the one from the dual problem
+            is_D_close = np.allclose(D_dense_np[w], D_sparse_np[w], rtol=1e-3, atol=1e-4)
+            if not is_D_close or self.verbose:
+                print(f"[{w}]: D_dense_np (shape={D_dense_np[w].shape}):\n{D_dense_np[w]}")
+                print(f"[{w}]: D_sparse_np (shape={D_sparse_np[w].shape}):\n{D_sparse_np[w]}")
+                print_error_stats(f"D[{w}]", D_dense_np[w], D_sparse_np[w], active_size[w], show_errors=True)
+            self.assertTrue(is_D_close)
+
+    def test_10_compare_dense_sparse_homogeneous_delassus_operator_assembly(self):
+        # Model constants
+        num_worlds = 3
+        max_world_contacts = 12
+
+        # Construct a homogeneous model description using model builders
+        builder = make_homogeneous_builder(num_worlds=num_worlds, build_fn=build_boxes_nunchaku)
+
+        # Create the model and containers from the builder
+        model, data, limits, detector, jacobians_dense = make_containers(
+            builder=builder, max_world_contacts=max_world_contacts, device=self.default_device, sparse=False
+        )
+        jacobians_sparse = SparseSystemJacobians(
+            model=model, limits=limits, contacts=detector.contacts, device=self.default_device
+        )
+
+        # Update the containers
+        update_containers(model=model, data=data, limits=limits, detector=detector, jacobians=jacobians_dense)
+        update_containers(model=model, data=data, limits=limits, detector=detector, jacobians=jacobians_sparse)
+
+        # Create the Delassus operator
+        delassus_dense = DelassusOperator(
+            model=model,
+            data=data,
+            limits=limits,
+            contacts=detector.contacts,
+            device=self.default_device,
+            solver=LLTSequentialSolver,
+        )
+        delassus_sparse = DelassusOperator(
+            model=model,
+            data=data,
+            limits=limits,
+            contacts=detector.contacts,
+            device=self.default_device,
+            solver=LLTSequentialSolver,
+        )
+
+        # Build the Delassus operator from the current data
+        delassus_dense.build(model=model, data=data, jacobians=jacobians_dense, reset_to_zero=True)
+        delassus_sparse.build(model=model, data=data, jacobians=jacobians_sparse, reset_to_zero=True)
+
+        # Extract the active constraint dimensions
+        active_dims = extract_active_constraint_dims(delassus_dense)
+
+        # Extract Delassus data as numpy arrays
+        D_dense_np = extract_delassus(delassus_dense, only_active_dims=True)
+        D_sparse_np = extract_delassus(delassus_sparse, only_active_dims=True)
+
+        # For each world, compare the Delassus matrix
+        for w in range(delassus_dense.num_worlds):
+            # Compare the computed Delassus matrix with the one from the dual problem
+            is_D_close = np.allclose(D_dense_np[w], D_sparse_np[w], rtol=1e-3, atol=1e-4)
+            if not is_D_close or self.verbose:
+                print(f"[{w}]: D_dense_np (shape={D_dense_np[w].shape}):\n{D_dense_np[w]}")
+                print(f"[{w}]: D_sparse_np (shape={D_sparse_np[w].shape}):\n{D_sparse_np[w]}")
+                print_error_stats(f"D[{w}]", D_dense_np[w], D_sparse_np[w], active_dims[w] * active_dims[w])
+            self.assertTrue(is_D_close)
+
+    def test_11_compare_dense_sparse_heterogeneous_delassus_operator_assembly(self):
+        # Model constants
+        max_world_contacts = 12
+
+        # Create a heterogeneous model description using model builders
+        builder = make_basics_heterogeneous_builder()
+
+        # Create the model and containers from the builder
+        model, data, limits, detector, jacobians_dense = make_containers(
+            builder=builder, max_world_contacts=max_world_contacts, device=self.default_device, sparse=False
+        )
+        jacobians_sparse = SparseSystemJacobians(
+            model=model, limits=limits, contacts=detector.contacts, device=self.default_device
+        )
+
+        # Update the containers
+        update_containers(model=model, data=data, limits=limits, detector=detector, jacobians=jacobians_dense)
+        update_containers(model=model, data=data, limits=limits, detector=detector, jacobians=jacobians_sparse)
+
+        # Create the Delassus operator
+        delassus_dense = DelassusOperator(
+            model=model,
+            data=data,
+            limits=limits,
+            contacts=detector.contacts,
+            device=self.default_device,
+            solver=LLTSequentialSolver,
+        )
+        delassus_sparse = DelassusOperator(
+            model=model,
+            data=data,
+            limits=limits,
+            contacts=detector.contacts,
+            device=self.default_device,
+            solver=LLTSequentialSolver,
+        )
+
+        # Build the Delassus operator from the current data
+        delassus_dense.build(model=model, data=data, jacobians=jacobians_dense, reset_to_zero=True)
+        delassus_sparse.build(model=model, data=data, jacobians=jacobians_sparse, reset_to_zero=True)
+
+        # Extract the active constraint dimensions
+        active_dims = extract_active_constraint_dims(delassus_dense)
+
+        # Extract Delassus data as numpy arrays
+        D_dense_np = extract_delassus(delassus_dense, only_active_dims=True)
+        D_sparse_np = extract_delassus(delassus_sparse, only_active_dims=True)
+
+        # For each world, compare the Delassus matrix
+        for w in range(delassus_dense.num_worlds):
+            # Compare the computed Delassus matrix with the one from the dual problem
+            is_D_close = np.allclose(D_dense_np[w], D_sparse_np[w], rtol=1e-3, atol=1e-4)
+            if not is_D_close or self.verbose:
+                print(f"[{w}]: D_dense_np (shape={D_dense_np[w].shape}):\n{D_dense_np[w]}")
+                print(f"[{w}]: D_sparse_np (shape={D_sparse_np[w].shape}):\n{D_sparse_np[w]}")
+                print_error_stats(f"D[{w}]", D_dense_np[w], D_sparse_np[w], active_dims[w] * active_dims[w])
+            self.assertTrue(is_D_close)
 
 
 class TestDelassusOperatorSparse(unittest.TestCase):

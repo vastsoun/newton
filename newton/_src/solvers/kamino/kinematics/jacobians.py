@@ -1524,14 +1524,16 @@ class SparseSystemJacobians:
             self._J_dofs = BlockSparseLinearOperators(bsm=bsm_dofs)
 
             # Set all constant values into BSMs (corresponding to joint dofs/cts)
-            bsm_cts.nzb_row.assign(J_cts_nzb_row)
-            bsm_cts.nzb_col.assign(J_cts_nzb_col)
-            bsm_cts.num_cols.assign(num_body_dofs)
-            bsm_dofs.nzb_row.assign(J_dofs_nzb_row)
-            bsm_dofs.nzb_col.assign(J_dofs_nzb_col)
-            bsm_dofs.num_rows.assign(num_joint_dofs)
-            bsm_dofs.num_cols.assign(num_body_dofs)
-            bsm_dofs.num_nzb.assign(J_dofs_nnzb)
+            if bsm_cts.max_of_max_dims[0] * bsm_cts.max_of_max_dims[1] > 0:
+                bsm_cts.nzb_row.assign(J_cts_nzb_row)
+                bsm_cts.nzb_col.assign(J_cts_nzb_col)
+                bsm_cts.num_cols.assign(num_body_dofs)
+            if bsm_dofs.max_of_max_dims[0] * bsm_dofs.max_of_max_dims[1] > 0:
+                bsm_dofs.nzb_row.assign(J_dofs_nzb_row)
+                bsm_dofs.nzb_col.assign(J_dofs_nzb_col)
+                bsm_dofs.num_rows.assign(num_joint_dofs)
+                bsm_dofs.num_cols.assign(num_body_dofs)
+                bsm_dofs.num_nzb.assign(J_dofs_nnzb)
 
             # Convert per-world nzb offsets to global nzb offsets
             J_cts_nzb_start = bsm_cts.nzb_start.numpy()
@@ -1834,9 +1836,10 @@ class ColMajorSparseConstraintJacobians(BlockSparseLinearOperators):
             self.bsm.finalize(max_dims=J_cts_cm_dims_max, capacities=J_cts_cm_nnzb_max)
 
             # Set all constant values into BSM
-            self.bsm.nzb_row.assign(J_cts_nzb_row)
-            self.bsm.nzb_col.assign(J_cts_nzb_col)
-            self.bsm.num_cols.assign(num_body_dofs)
+            if self.bsm.max_of_max_dims[0] * self.bsm.max_of_max_dims[1] > 0:
+                self.bsm.nzb_row.assign(J_cts_nzb_row)
+                self.bsm.nzb_col.assign(J_cts_nzb_col)
+                self.bsm.num_cols.assign(num_body_dofs)
 
             # Convert per-world nzb offsets to global nzb offsets
             nzb_start = self.bsm.nzb_start.numpy()

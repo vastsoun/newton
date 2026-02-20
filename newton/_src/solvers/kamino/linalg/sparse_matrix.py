@@ -271,7 +271,7 @@ class BlockSparseMatrices:
 
     @property
     def max_rows(self) -> wp.array:
-        assert self.max_dims is not None
+        assert self.max_dims is not None and self.max_dims.ptr is not None
         index_dtype_size_bytes = type_size_in_bytes(self.index_dtype)
         return wp.array(
             dtype=self.index_dtype,
@@ -283,7 +283,7 @@ class BlockSparseMatrices:
 
     @property
     def max_cols(self) -> wp.array:
-        assert self.max_dims is not None
+        assert self.max_dims is not None and self.max_dims.ptr is not None
         index_dtype_size_bytes = type_size_in_bytes(self.index_dtype)
         return wp.array(
             dtype=self.index_dtype,
@@ -295,7 +295,7 @@ class BlockSparseMatrices:
 
     @property
     def num_rows(self) -> wp.array:
-        assert self.dims is not None
+        assert self.dims is not None and self.dims.ptr is not None
         index_dtype_size_bytes = type_size_in_bytes(self.index_dtype)
         return wp.array(
             dtype=self.index_dtype,
@@ -307,7 +307,7 @@ class BlockSparseMatrices:
 
     @property
     def num_cols(self) -> wp.array:
-        assert self.dims is not None
+        assert self.dims is not None and self.dims.ptr is not None
         index_dtype_size_bytes = type_size_in_bytes(self.index_dtype)
         return wp.array(
             dtype=self.index_dtype,
@@ -319,7 +319,7 @@ class BlockSparseMatrices:
 
     @property
     def nzb_row(self) -> wp.array:
-        assert self.nzb_coords is not None
+        assert self.nzb_coords is not None and self.nzb_coords.ptr is not None
         index_dtype_size_bytes = type_size_in_bytes(self.index_dtype)
         return wp.array(
             dtype=self.index_dtype,
@@ -331,7 +331,7 @@ class BlockSparseMatrices:
 
     @property
     def nzb_col(self) -> wp.array:
-        assert self.nzb_coords is not None
+        assert self.nzb_coords is not None and self.nzb_coords.ptr is not None
         index_dtype_size_bytes = type_size_in_bytes(self.index_dtype)
         return wp.array(
             dtype=self.index_dtype,

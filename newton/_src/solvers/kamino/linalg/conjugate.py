@@ -353,6 +353,12 @@ def lt_mask(a: Any, b: Any):
 
 
 @wp.func
+def mul_mask(mask: Any, value: Any):
+    """Return value if mask is positive, else 0"""
+    return wp.where(mask > type(mask)(0), value, type(value)(0))
+
+
+@wp.func
 def less_than_op(i: wp.int32, threshold: wp.int32) -> wp.float32:
     return 1.0 if i < threshold else 0.0
 
@@ -387,7 +393,7 @@ def make_dot_kernel(tile_size: int, maxdim: int):
             prod = wp.tile_map(wp.mul, ta, tb)
             if o_src > n - tile_size:
                 mask = wp.tile_map(less_than_op, wp.tile_arange(tile_size, dtype=wp.int32), n - o_src)
-                prod = wp.tile_map(wp.mul, mask, prod)
+                prod = wp.tile_map(mul_mask, mask, prod)
             if wp.static(num_tiles > 1):
                 ts[tile_id] = wp.tile_sum(prod)[0]
             else:

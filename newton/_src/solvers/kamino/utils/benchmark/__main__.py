@@ -20,6 +20,7 @@ import warp as wp
 
 from newton._src.solvers.kamino.utils import logger as msg
 from newton._src.solvers.kamino.utils.benchmark.configs import make_default_simulator_config
+from newton._src.solvers.kamino.utils.benchmark.metrics import BenchmarkMetrics
 from newton._src.solvers.kamino.utils.benchmark.problems import make_benchmark_problems
 from newton._src.solvers.kamino.utils.benchmark.runner import run_single_benchmark
 
@@ -215,12 +216,8 @@ if __name__ == "__main__":
         problem_names = args.problem_set
     msg.notif(f"problem_names: {problem_names}")
 
-    # TODO
-    # Each run will involve:
-    # {settings, problem := {builder, control, camera}, metrics}
-
-    # TODO: Settings generator
-    settings_set = {
+    # Generate a set of solver configurations to benchmark over
+    configs_set = {
         "dense_lltb_default": make_default_simulator_config(),
     }
 
@@ -233,19 +230,34 @@ if __name__ == "__main__":
         ground=args.ground,
     )
 
+    # Construct and initialize the metrics
+    # object to store benchmark data
+    metrics = BenchmarkMetrics(
+        problem_names=problem_names,
+        config_names=list(configs_set.keys()),
+        num_steps=args.num_steps,
+        solver_metrics=args.solver_metrics,
+    )
+    msg.warning(f"metrics._problem_names: {metrics._problem_names}")
+    msg.warning(f"metrics._config_names: {metrics._config_names}")
+    msg.warning(f"metrics._num_steps: {metrics._num_steps}")
+    msg.warning(f"metrics.total_time: {metrics.total_time}")
+    msg.warning(f"metrics.memory_used: {metrics.memory_used}")
+
     # Iterator over all problem names and settings and run benchmarks for each
     for problem_name, problem_config in problem_set.items():
-        for setting_name, settings in settings_set.items():
-            msg.notif("Running benchmark for problem '%s' with settings '%s'", problem_name, setting_name)
+        for config_name, configs in configs_set.items():
+            msg.notif("Running benchmark for problem '%s' with simulation configs '%s'", problem_name, config_name)
 
             # Unpack problem configurations
             builder, control, camera = problem_config
 
             # Execute the benchmark for the current problem and settings
             run_single_benchmark(
+                metrics,
                 args=args,
                 builder=builder,
-                settings=settings,
+                configs=configs,
                 control=control,
                 camera=camera,
                 device=device,

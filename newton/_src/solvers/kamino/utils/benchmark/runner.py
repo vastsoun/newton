@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import argparse
 import time
 
 import warp as wp
@@ -26,6 +27,7 @@ from ...utils import logger as msg
 from ...utils.control.rand import RandomJointController
 from ...utils.device import get_device_malloc_info, get_device_spec_info
 from ...utils.sim import SimulationLogger, Simulator, SimulatorSettings, ViewerKamino
+from .metrics import BenchmarkMetrics
 from .problems import CameraConfig, ControlConfig
 
 ###
@@ -37,7 +39,7 @@ class BenchmarkSim:
     def __init__(
         self,
         builder: ModelBuilder,
-        settings: SimulatorSettings,
+        configs: SimulatorSettings,
         control: ControlConfig | None = None,
         camera: CameraConfig | None = None,
         device: wp.DeviceLike = None,
@@ -55,7 +57,7 @@ class BenchmarkSim:
 
         # Create a simulator
         msg.info("Building the simulator...")
-        self.sim = Simulator(builder=builder, settings=settings, device=device)
+        self.sim = Simulator(builder=builder, settings=configs, device=device)
 
         # Create a random-action controller for the model
         self.ctlr = RandomJointController(
@@ -166,9 +168,10 @@ class BenchmarkSim:
 
 
 def run_single_benchmark(
-    args,
+    metrics: BenchmarkMetrics,
+    args: argparse.Namespace,
     builder: ModelBuilder,
-    settings: SimulatorSettings,
+    configs: SimulatorSettings,
     control: ControlConfig | None = None,
     camera: CameraConfig | None = None,
     device: wp.DeviceLike = None,
@@ -177,7 +180,7 @@ def run_single_benchmark(
     # Create example instance
     simulator = BenchmarkSim(
         builder=builder,
-        settings=settings,
+        configs=configs,
         control=control,
         camera=camera,
         device=device,

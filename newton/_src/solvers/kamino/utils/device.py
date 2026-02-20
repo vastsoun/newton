@@ -15,35 +15,119 @@
 
 """KAMINO: Utilities: CPU/GPU Warp Device Info"""
 
-from warp.context import Devicelike
+from typing import Literal
+
+import warp as wp
+
+###
+# Module interface
+###
+
+__all__ = [
+    "get_device_malloc_info",
+    "get_device_spec_info",
+]
 
 
-def get_device_info(device: Devicelike) -> str:
-    dinfo = "[device]:\n"
-    dinfo += f"                name: {device.name}\n"
-    dinfo += f"               alias: {device.alias}\n"
-    dinfo += f"                arch: {device.arch}\n"
-    dinfo += f"                uuid: {device.uuid}\n"
-    dinfo += f"             ordinal: {device.ordinal}\n"
-    dinfo += f"          pci_bus_id: {device.pci_bus_id}\n"
-    dinfo += f"              is_uva: {device.is_uva}\n"
-    dinfo += f"          is_primary: {device.is_primary}\n"
-    dinfo += f"  is_cubin_supported: {device.is_cubin_supported}\n"
-    dinfo += f"is_mempool_supported: {device.is_mempool_supported}\n"
-    dinfo += f"  is_mempool_enabled: {device.is_mempool_enabled}\n"
-    dinfo += f"    is_ipc_supported: {device.is_ipc_supported}\n"
-    dinfo += f"              is_cpu: {device.is_cpu}\n"
-    dinfo += f"             is_cuda: {device.is_cuda}\n"
-    dinfo += f"        is_capturing: {device.is_capturing}\n"
-    dinfo += f"         has_context: {device.has_context}\n"
-    dinfo += f"             context: {device.context}\n"
-    dinfo += f"          has_stream: {device.has_stream}\n"
-    dinfo += f"            sm_count: {device.sm_count}\n"
-    dinfo += f"total_memory (bytes): {device.total_memory}\n"
-    dinfo += f" free_memory (bytes): {device.free_memory}\n"
-    return dinfo
+###
+# Functions
+###
 
 
-def get_device_memory_allocation_info(device: Devicelike) -> str:
-    # TODO: Add printing of mempool info when available in Warp
-    return ""
+def _fmt_bytes(bytes: int) -> str:
+    """
+    Helper function to format a byte value into a human-readable string with appropriate units.
+
+    Args:
+        bytes (int):
+            The number of bytes to format.
+    Returns:
+        str:
+            A formatted string representing the byte value in appropriate units (bytes, KB, MB, GB, etc.).
+    """
+    if bytes < 1024:
+        return f"{bytes} bytes"
+    elif bytes < 1024**2:
+        return f"{bytes / 1024:.3f} KB"
+    elif bytes < 1024**3:
+        return f"{bytes / (1024**2):.3f} MB"
+    elif bytes < 1024**4:
+        return f"{bytes / (1024**3):.3f} GB"
+    else:
+        return f"{bytes / (1024**4):.3f} TB"
+
+
+def get_device_spec_info(device: wp.DeviceLike) -> str:
+    """
+    Retrieves detailed specifications of a given Warp device as a formatted string.
+
+    Args:
+        device (wp.DeviceLike):
+            The device for which to retrieve specifications.
+
+    Returns:
+        str:
+            A formatted string containing detailed specifications for the specified device.
+    """
+    spec_info: str = f"[device: `{device}`]:\n"
+    spec_info += f"                name: {device.name}\n"
+    spec_info += f"               alias: {device.alias}\n"
+    spec_info += f"                arch: {device.arch}\n"
+    spec_info += f"                uuid: {device.uuid}\n"
+    spec_info += f"             ordinal: {device.ordinal}\n"
+    spec_info += f"          pci_bus_id: {device.pci_bus_id}\n"
+    spec_info += f"              is_uva: {device.is_uva}\n"
+    spec_info += f"          is_primary: {device.is_primary}\n"
+    spec_info += f"  is_cubin_supported: {device.is_cubin_supported}\n"
+    spec_info += f"is_mempool_supported: {device.is_mempool_supported}\n"
+    spec_info += f"  is_mempool_enabled: {device.is_mempool_enabled}\n"
+    spec_info += f"    is_ipc_supported: {device.is_ipc_supported}\n"
+    spec_info += f"              is_cpu: {device.is_cpu}\n"
+    spec_info += f"             is_cuda: {device.is_cuda}\n"
+    spec_info += f"        is_capturing: {device.is_capturing}\n"
+    spec_info += f"         has_context: {device.has_context}\n"
+    spec_info += f"             context: {device.context}\n"
+    spec_info += f"          has_stream: {device.has_stream}\n"
+    spec_info += f"            sm_count: {device.sm_count}\n"
+    spec_info += f"        total_memory: {device.total_memory} (~{_fmt_bytes(device.total_memory)})\n"
+    spec_info += f"         free_memory: {device.free_memory} (~{_fmt_bytes(device.free_memory)})\n"
+    return spec_info
+
+
+def get_device_malloc_info(device: wp.DeviceLike, resolution: Literal["auto", "bytes", "MB", "GB"] = "auto") -> str:
+    """
+    Retrieves memory allocation information for the specified device as a formatted string.
+
+    Args:
+        device (wp.DeviceLike):
+            The device for which to retrieve memory allocation information.
+
+    Returns:
+        str:
+            A formatted string containing memory allocation information for the specified device.
+    """
+    # Initialize the info string
+    malloc_info: str = f"[device: `{device}`]: "
+
+    # Check resolution argument validity
+    if resolution not in ["auto", "bytes", "MB", "GB"]:
+        raise ValueError(f"Invalid resolution `{resolution}`. Must be one of 'auto', 'bytes', 'MB', or 'GB'.")
+
+    # Get memory allocation info if a CUDA device
+    if device.is_cuda:
+        mem_max_bytes = wp.get_mempool_used_mem_high(device)
+        mem_max_mb = float(mem_max_bytes) / (1024**2)
+        mem_max_gb = float(mem_max_bytes) / (1024**3)
+        if resolution == "bytes":
+            malloc_info += f"{mem_max_bytes} bytes"
+        elif resolution == "MB":
+            malloc_info += f"{mem_max_mb:.3f} MB"
+        elif resolution == "GB":
+            malloc_info += f"{mem_max_gb:.3f} GB"
+        else:  # resolution == "auto"
+            malloc_info += f"{_fmt_bytes(mem_max_bytes)}"
+    else:
+        malloc_info: str = f"[device: `{device}`]: ERROR: Device does not support CUDA"
+
+    # Return the formatted memory allocation info
+    return malloc_info

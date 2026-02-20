@@ -39,18 +39,18 @@ class StatsFloat:
             raise ValueError("StatsFloat requires a floating-point data array.")
 
         # Declare statistics arrays
-        self.median: np.ndarray = np.zeros((data.shape[0],), dtype=np.float32)
-        self.mean: np.ndarray = np.zeros((data.shape[0],), dtype=np.float32)
-        self.std: np.ndarray = np.zeros((data.shape[0],), dtype=np.float32)
-        self.min: np.ndarray = np.zeros((data.shape[0],), dtype=np.float32)
-        self.max: np.ndarray = np.zeros((data.shape[0],), dtype=np.float32)
+        self.median: np.ndarray = np.zeros((data.shape[0], data.shape[1]), dtype=np.float32)
+        self.mean: np.ndarray = np.zeros((data.shape[0], data.shape[1]), dtype=np.float32)
+        self.std: np.ndarray = np.zeros((data.shape[0], data.shape[1]), dtype=np.float32)
+        self.min: np.ndarray = np.zeros((data.shape[0], data.shape[1]), dtype=np.float32)
+        self.max: np.ndarray = np.zeros((data.shape[0], data.shape[1]), dtype=np.float32)
 
-        # Compute float stats of each problem (i.e. along axis=1)
-        self.median[:] = np.median(data, axis=1)
-        self.mean[:] = np.mean(data, axis=1)
-        self.std[:] = np.std(data, axis=1)
-        self.min[:] = np.min(data, axis=1)
-        self.max[:] = np.max(data, axis=1)
+        # Compute float stats of each problem (i.e. along axis=2)
+        self.median[:, :] = np.median(data, axis=2)
+        self.mean[:, :] = np.mean(data, axis=2)
+        self.std[:, :] = np.std(data, axis=2)
+        self.min[:, :] = np.min(data, axis=2)
+        self.max[:, :] = np.max(data, axis=2)
 
 
 class StatsInteger:
@@ -59,21 +59,21 @@ class StatsInteger:
             raise ValueError("StatsInteger requires an integer data array.")
 
         # Declare statistics arrays
-        self.median: np.ndarray = np.zeros((data.shape[0],), dtype=np.float32)
-        self.mean: np.ndarray = np.zeros((data.shape[0],), dtype=np.float32)
-        self.std: np.ndarray = np.zeros((data.shape[0],), dtype=np.float32)
-        self.min: np.ndarray = np.zeros((data.shape[0],), dtype=np.float32)
-        self.max: np.ndarray = np.zeros((data.shape[0],), dtype=np.float32)
+        self.median: np.ndarray = np.zeros((data.shape[0], data.shape[1]), dtype=np.float32)
+        self.mean: np.ndarray = np.zeros((data.shape[0], data.shape[1]), dtype=np.float32)
+        self.std: np.ndarray = np.zeros((data.shape[0], data.shape[1]), dtype=np.float32)
+        self.min: np.ndarray = np.zeros((data.shape[0], data.shape[1]), dtype=np.float32)
+        self.max: np.ndarray = np.zeros((data.shape[0], data.shape[1]), dtype=np.float32)
 
-        # Compute integer stats of each problem (i.e. along axis=1)
-        self.median[:] = np.median(data.astype(np.float32), axis=1)
-        self.mean[:] = np.mean(data.astype(np.float32), axis=1)
-        self.std[:] = np.std(data.astype(np.float32), axis=1)
-        self.min[:] = np.min(data.astype(np.float32), axis=1)
-        self.max[:] = np.max(data.astype(np.float32), axis=1)
+        # Compute integer stats of each problem (i.e. along axis=2)
+        self.median[:, :] = np.median(data.astype(np.float32), axis=2)
+        self.mean[:, :] = np.mean(data.astype(np.float32), axis=2)
+        self.std[:, :] = np.std(data.astype(np.float32), axis=2)
+        self.min[:, :] = np.min(data.astype(np.float32), axis=2)
+        self.max[:, :] = np.max(data.astype(np.float32), axis=2)
 
-        # Generate values bins for each problem (i.e. along axis=1) for histogram plotting
-        self.hist, self.binedges = np.histogram(data, bins=np.arange(self.min.min(), self.max.max(), num_bins), axis=1)
+        # Generate values bins for each problem (i.e. along axis=2) for histogram plotting
+        self.hist, self.binedges = np.histogram(data, bins=np.arange(self.min.min(), self.max.max(), num_bins), axis=2)
 
 
 class StatsBinary:
@@ -82,12 +82,12 @@ class StatsBinary:
             raise ValueError("StatsBinary requires a binary (boolean) data array.")
 
         # Declare Binary statistics arrays
-        self.count_zeros: np.ndarray = np.zeros((data.shape[0],), dtype=np.float32)
-        self.count_ones: np.ndarray = np.zeros((data.shape[0],), dtype=np.float32)
+        self.count_zeros: np.ndarray = np.zeros((data.shape[0], data.shape[1]), dtype=np.float32)
+        self.count_ones: np.ndarray = np.zeros((data.shape[0], data.shape[1]), dtype=np.float32)
 
-        # Compute binary stats of each problem (i.e. along axis=1)
-        self.count_zeros[:] = np.sum(data == 0, axis=1)
-        self.count_ones[:] = np.sum(data == 1, axis=1)
+        # Compute binary stats of each problem (i.e. along axis=2)
+        self.count_zeros[:, :] = np.sum(data == 0, axis=2)
+        self.count_ones[:, :] = np.sum(data == 1, axis=2)
 
 
 ###
@@ -96,17 +96,17 @@ class StatsBinary:
 
 
 class SolverMetrics:
-    def __init__(self, num_runs: int, num_steps: int):
+    def __init__(self, num_problems: int, num_configs: int, num_steps: int):
         # Solver-specific metrics
-        self.padmm_success: np.ndarray = np.zeros((num_runs, num_steps), dtype=np.int32)
-        self.padmm_iters: np.ndarray = np.zeros((num_runs, num_steps), dtype=np.int32)
-        self.padmm_r_p: np.ndarray = np.zeros((num_runs, num_steps), dtype=np.float32)
-        self.padmm_r_d: np.ndarray = np.zeros((num_runs, num_steps), dtype=np.float32)
-        self.padmm_r_c: np.ndarray = np.zeros((num_runs, num_steps), dtype=np.float32)
+        self.padmm_success: np.ndarray = np.zeros((num_problems, num_configs, num_steps), dtype=np.int32)
+        self.padmm_iters: np.ndarray = np.zeros((num_problems, num_configs, num_steps), dtype=np.int32)
+        self.padmm_r_p: np.ndarray = np.zeros((num_problems, num_configs, num_steps), dtype=np.float32)
+        self.padmm_r_d: np.ndarray = np.zeros((num_problems, num_configs, num_steps), dtype=np.float32)
+        self.padmm_r_c: np.ndarray = np.zeros((num_problems, num_configs, num_steps), dtype=np.float32)
 
         # Linear solver metrics (placeholders for now)
-        self.linear_solver_iters: np.ndarray = np.zeros((num_runs, num_steps), dtype=np.float32)
-        self.linear_residuals: np.ndarray = np.zeros((num_runs, num_steps), dtype=np.float32)
+        self.linear_solver_iters: np.ndarray = np.zeros((num_problems, num_configs, num_steps), dtype=np.float32)
+        self.linear_solver_r_error: np.ndarray = np.zeros((num_problems, num_configs, num_steps), dtype=np.float32)
 
         # Stats (computed after data collection)
         self.padmm_success_stats: StatsBinary | None = None
@@ -115,7 +115,7 @@ class SolverMetrics:
         self.padmm_r_d_stats: StatsFloat | None = None
         self.padmm_r_c_stats: StatsFloat | None = None
         self.linear_solver_iters_stats: StatsInteger | None = None
-        self.linear_residuals_stats: StatsFloat | None = None
+        self.linear_solver_r_error_stats: StatsFloat | None = None
 
     def compute_stats(self):
         self.padmm_success_stats = StatsBinary(self.padmm_success)
@@ -124,30 +124,42 @@ class SolverMetrics:
         self.padmm_r_d_stats = StatsFloat(self.padmm_r_d)
         self.padmm_r_c_stats = StatsFloat(self.padmm_r_c)
         self.linear_solver_iters_stats = StatsInteger(self.linear_solver_iters)
-        self.linear_residuals_stats = StatsFloat(self.linear_residuals)
+        self.linear_solver_r_error_stats = StatsFloat(self.linear_solver_r_error)
 
 
 class BenchmarkMetrics:
-    def __init__(self, run_names: list[str], num_steps: int, with_solver_metrics: bool = False):
+    def __init__(
+        self,
+        problem_names: list[str],
+        config_names: list[str],
+        num_steps: int,
+        solver_metrics: bool = False,
+    ):
         # Cache run names and counts
-        self.run_names: list[str] = run_names
-        self.num_runs = len(self.run_names)
-
-        # Per-step metrics
-        self.step_time: np.ndarray = np.zeros((self.num_runs, num_steps), dtype=np.float32)
-        self.total_time: np.ndarray = np.zeros((self.num_runs,), dtype=np.float32)
+        self._problem_names: list[str] = problem_names
+        self._config_names: list[str] = config_names
+        self._num_steps: int = num_steps
 
         # One-time metrics
-        self.gpu_memory_used: int = 0
-        self.gpu_memory_peak: int = 0
+        self.total_time: np.ndarray = np.zeros((self.num_problems, self.num_configs), dtype=np.float32)
+        self.memory_used: np.ndarray = np.zeros((self.num_problems, self.num_configs), dtype=np.float32)
 
-        # Stats (computed after data collection)
+        # Per-step metrics
+        self.step_time: np.ndarray = np.zeros((self.num_problems, self.num_configs, num_steps), dtype=np.float32)
         self.step_time_stats: StatsFloat | None = None
 
         # Optional solver-specific metrics
         self.solver_metrics: SolverMetrics | None = None
-        if with_solver_metrics:
-            self.solver_metrics = SolverMetrics(self.num_runs, num_steps)
+        if solver_metrics:
+            self.solver_metrics = SolverMetrics(self.num_problems, self.num_configs, num_steps)
+
+    @property
+    def num_problems(self) -> int:
+        return len(self._problem_names)
+
+    @property
+    def num_configs(self) -> int:
+        return len(self._config_names)
 
     def compute_stats(self):
         self.step_time_stats = StatsFloat(self.step_time)

@@ -14,6 +14,8 @@
 # limitations under the License.
 
 import argparse
+import datetime
+import os
 
 import numpy as np
 import warp as wp
@@ -36,20 +38,21 @@ from newton._src.solvers.kamino.utils.device import get_device_spec_info
 #   5. Print results, save to file, and optionally plot
 #
 #   METRICS:
-#   - Memory usage
-#   - Total runtime + per-step runtime w/ statistics (mean, std, min, max)
-#   - Solver performance metrics (Optional, because of reduced throughput)
-#   - Number of PADMM iterations to converge
-#   - Final PADMM residuals (primal, dual, compl)
+#   - [x] Memory usage
+#   - [x] Total runtime + per-step runtime w/ statistics (mean, std, min, max)
+#   - [x] Solver performance metrics (Optional, because of reduced throughput)
+#   - [x] Number of PADMM iterations to converge
+#   - [x] Final PADMM residuals (primal, dual, compl)
+#   - [ ] Physical accuracy metrics (e.g. constraint violation, energy drift, etc.)
 #
 #   ARGUMENTS:
-#   - Device selection (e.g. "cuda:0", "cpu")
-#   - Number of parallel worlds to simulate
-#   - Number of steps to simulate
-#   - Gravity on/off
-#   - Ground plane on/off
-#   - Performance metrics on/off (since it can reduce throughput)
-#   - Problem sets (boxes_fourbar, DR Legs, ANYmal, humanoid, etc.)
+#   - [x] Device selection (e.g. "cuda:0", "cpu")
+#   - [x] Number of parallel worlds to simulate
+#   - [x] Number of steps to simulate
+#   - [x] Gravity on/off
+#   - [x] Ground plane on/off
+#   - [x] Performance metrics on/off (since it can reduce throughput)
+#   - [x] Problem sets (boxes_fourbar, DR Legs, ANYmal, humanoid, etc.)
 #
 #   CONFIGURATIONS:
 #   - Linear solver type (e.g. dense/LLTB, sparse/CG, sparse/CR)
@@ -63,16 +66,15 @@ from newton._src.solvers.kamino.utils.device import get_device_spec_info
 #
 #   FUNCTIONALITY:
 #  - [x] Random actuation for each problem (optional)
-#  - [x] Separate config generation from execution to allow
-#    for easier hyperparameter sweeps and ablations
-#  - Define default configs in appropriate file for reference
-#  - Store git commit and/or diff for reproducibility
+#  - [x] Separate config generation from execution to allow for easier hyperparameter sweeps and ablations
+#  - [] Define default configs in appropriate file for reference
+#  - [] Store git commit and/or diff for reproducibility
 #
 #
 #   MODES:
-#   - BASIC: Run optimally to only measure total runtime and final memory usage
-#   - STATS: Run with detailed timing per-step to measure throughput statistics
-#   - ACCURACY: Run with solver performance metrics enabled to measure physical accuracy
+#   - [x] BASIC: Run optimally to only measure total runtime and final memory usage
+#   - [x] STATS: Run with detailed timing per-step to measure throughput statistics
+#   - [] ACCURACY: Run with solver performance metrics enabled to measure physical accuracy
 #
 ###
 
@@ -123,8 +125,8 @@ def parse_benchmark_arguments():
     parser.add_argument(
         "--num-steps",
         type=int,
-        default=1000,
-        help="Sets the number of simulation steps to execute. Defaults to `1000`.",
+        default=100,
+        help="Sets the number of simulation steps to execute. Defaults to `100`.",
     )
     parser.add_argument(
         "--gravity",
@@ -150,20 +152,20 @@ def parse_benchmark_arguments():
         "--mode",
         type=str,
         choices=SUPPORTED_BENCHMARK_MODES,
-        default="total",
+        default="accuracy",
         help="Defines the benchmark mode to run. Defaults to 'total'.\n{SUPPORTED_BENCHMARK_MODES}",
     )
     parser.add_argument(
         "--problem",
         type=str,
         choices=SUPPORTED_PROBLEM_NAMES,
-        default="fourbar",  # TODO: Make as a global constant default
+        default="fourbar",
         help=f"Defines a single benchmark problem to run. Defaults to 'fourbar'.\nSupported: {SUPPORTED_PROBLEM_NAMES}",
     )
     parser.add_argument(
         "--problem-set",
         nargs="+",
-        default=[],
+        default=["fourbar", "dr_legs"],
         help="Defines the benchmark problem(s) to run. If unspecified, the default `fourbar` problem will be used.",
     )
     parser.add_argument(
@@ -236,10 +238,13 @@ if __name__ == "__main__":
         collect_physics_metrics = True
     else:
         raise ValueError(f"Unsupported benchmark mode '{args.mode}'. Supported modes: {SUPPORTED_BENCHMARK_MODES}")
+    msg.info(f"collect_step_metrics: {collect_step_metrics}")
+    msg.info(f"collect_solver_metrics: {collect_solver_metrics}")
+    msg.info(f"collect_physics_metrics: {collect_physics_metrics}")
 
     # Print device specification info to console for reference
     spec_info = get_device_spec_info(device)
-    msg.info("[Device spec info]: %s", spec_info)
+    msg.info("[Device]: %s", spec_info)
 
     # Determine the problem set from
     # the single and list arguments
@@ -257,6 +262,8 @@ if __name__ == "__main__":
         "dense_lltb_1": make_default_simulator_config(),
         "dense_lltb_2": make_default_simulator_config(),
     }
+    config_names = list(configs_set.keys())
+    msg.notif(f"config_names: {config_names}")
 
     # Generate the problem set based on the
     # provided problem names and arguments
@@ -271,17 +278,12 @@ if __name__ == "__main__":
     # object to store benchmark data
     metrics = BenchmarkMetrics(
         problem_names=problem_names,
-        config_names=list(configs_set.keys()),
+        config_names=config_names,
         num_steps=args.num_steps,
         step_metrics=collect_step_metrics,
         solver_metrics=collect_solver_metrics,
         physics_metrics=collect_physics_metrics,
     )
-    msg.warning(f"metrics._problem_names: {metrics._problem_names}")
-    msg.warning(f"metrics._config_names: {metrics._config_names}")
-    msg.warning(f"metrics._num_steps: {metrics._num_steps}")
-    msg.warning(f"metrics.total_time: {metrics.total_time}")
-    msg.warning(f"metrics.memory_used: {metrics.memory_used}")
 
     # Iterator over all problem names and settings and run benchmarks for each
     for problem_name, problem_config in problem_set.items():
@@ -310,10 +312,25 @@ if __name__ == "__main__":
                 print_device_info=True,  # TODO
             )
 
+    # Compute final statistics for the benchmark results
+    metrics.compute_stats()
+
     # TODO
     msg.error(f"metrics.memory_used: {metrics.memory_used}")
     msg.error(f"metrics.total_time: {metrics.total_time}")
     msg.error(f"metrics.total_fps: {metrics.total_fps}")
+    msg.error(f"metrics.step_time: {metrics.step_time}")
+    msg.error(f"metrics.step_time_stats: {metrics.step_time_stats}")
+    msg.error(f"metrics.solver_metrics.padmm_iters: {metrics.solver_metrics.padmm_iters}")
+    msg.error(f"metrics.solver_metrics.padmm_iters_stats: {metrics.solver_metrics.padmm_iters_stats}")
+
+    # TODO
+    msg.info("Saving benchmark data to HDF5...")
+    DATA_DIR_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "./data"))
+    HDF5_OUTPUT_PATH = f"{DATA_DIR_PATH}/{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.hdf5"
+    os.makedirs(DATA_DIR_PATH, exist_ok=True)
+    metrics.save_to_hdf5(path=HDF5_OUTPUT_PATH)
+    msg.info("Done.")
 
     # # Plot logged data after the viewer is closed
     # if args.logging:

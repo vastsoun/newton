@@ -174,6 +174,7 @@ def build_usd(
     source: str,
     load_static_geometry: bool = True,
     ground: bool = True,
+    load_drive_dynamics: bool = True,
 ) -> ModelBuilder:
     """
     Imports a USD model and optionally adds a ground plane.
@@ -193,6 +194,7 @@ def build_usd(
     _builder = importer.import_from(
         source=source,
         load_static_geometry=load_static_geometry,
+        load_drive_dynamics=load_drive_dynamics,
     )
 
     # Optionally add ground geometry

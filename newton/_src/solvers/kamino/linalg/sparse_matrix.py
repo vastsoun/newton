@@ -29,7 +29,6 @@ import warp as wp
 from warp.context import Devicelike
 
 from ..core.types import FloatType, IntType, float32, int32
-from ..utils import logger as msg
 from .core import DenseSquareMultiLinearInfo
 
 if TYPE_CHECKING:
@@ -416,7 +415,6 @@ class BlockSparseMatrices:
                 nzb_values_np[start_idx + b] = block_value
 
         # Copy the populated non-zero block values to the device
-        msg.warning("nzb_values_np:\n%s", nzb_values_np)
         self.nzb_values.assign(nzb_values_np)
 
     def numpy(self) -> list[np.ndarray]:

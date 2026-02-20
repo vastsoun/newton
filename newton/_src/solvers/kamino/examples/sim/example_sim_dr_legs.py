@@ -24,7 +24,7 @@ import newton
 import newton.examples
 from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.examples import get_examples_output_path, run_headless
-from newton._src.solvers.kamino.linalg.linear import SolverShorthand as LinearSolverShorthand
+from newton._src.solvers.kamino.linalg.linear import LinearSolverTypeToName as LinearSolverShorthand
 from newton._src.solvers.kamino.models import get_examples_usd_assets_path
 from newton._src.solvers.kamino.models.builders.utils import (
     add_ground_box,

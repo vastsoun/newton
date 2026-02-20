@@ -172,9 +172,9 @@ def set_uniform_body_twist_offset(builder: ModelBuilder, offset: vec6f):
 
 def build_usd(
     source: str,
+    load_drive_dynamics: bool = True,
     load_static_geometry: bool = True,
     ground: bool = True,
-    load_drive_dynamics: bool = True,
 ) -> ModelBuilder:
     """
     Imports a USD model and optionally adds a ground plane.
@@ -183,6 +183,7 @@ def build_usd(
 
     Args:
         source: Path to USD file
+        load_drive_dynamics: Whether to load drive parameters from USD. Necessary for using implicit PD
         load_static_geometry: Whether to load static geometry from USD
         ground: Whether to add a ground plane
 
@@ -193,8 +194,8 @@ def build_usd(
     importer = USDImporter()
     _builder = importer.import_from(
         source=source,
-        load_static_geometry=load_static_geometry,
         load_drive_dynamics=load_drive_dynamics,
+        load_static_geometry=load_static_geometry,
     )
 
     # Optionally add ground geometry

@@ -13,6 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
+
+import git
 import h5py
 import numpy as np
 
@@ -31,6 +34,79 @@ __all__ = [
     "StatsInteger",
 ]
 
+###
+# Types - Meta-Data
+###
+
+
+class CodeInfo:
+    """
+    A utility container to encapsulate information about the code
+    repository, such as the remote URL, branch, and commit hash.
+    """
+
+    def __init__(self, path: str | None = None, empty: bool = False):
+        """
+        Initialize a CodeInfo object.
+
+        Args:
+            path (str | None):
+                The path to the git repository. If None, the current working directory is used.
+
+        Raises:
+            RuntimeError: If there is an error retrieving git repository info from the specified path.
+        """
+        # Declare git repository info attributes
+        self.repo: git.Repo | None = None
+        self.path: str | None = None
+        self.remote: str | None = None
+        self.branch: str | None = None
+        self.commit: str | None = None
+        self.diff: str | None = None
+
+        # If a path is provided, attempt to retrieve git repository info from
+        # that, otherwise attempt to retrieve from the current working directory
+        if path is not None:
+            _path = path
+        elif not empty:
+            _path = str(os.path.dirname(__file__))
+
+        # Attempt to retrieve git repository info from the specified path;
+        # if any error occurs, raise a RuntimeError with the error message
+        try:
+            self.repo = git.Repo(path=_path, search_parent_directories=True)
+            self.path = self.repo.working_tree_dir
+            self.remote = self.repo.remote().url if self.repo.remotes else None
+            self.branch = str(self.repo.active_branch)
+            self.commit = str(self.repo.head.object.hexsha)
+            self.diff = str(self.repo.git.diff())
+        except Exception as e:
+            raise RuntimeError(f"Error retrieving git repository info: {e}") from e
+
+    def __repr__(self):
+        """Returns a human-readable string representation of the CodeInfo."""
+        return (
+            f"CodeInfo(\n"
+            f"  path: {self.path}\n"
+            f"  remote: {self.remote}\n"
+            f"  branch: {self.branch}\n"
+            f"  commit: {self.commit}\n"
+            f")"
+        )
+
+    def __str__(self):
+        """Returns a human-readable string representation of the CodeInfo (same as __repr__)."""
+        return self.__repr__()
+
+    def as_dict(self) -> dict:
+        """Returns a dictionary representation of the CodeInfo."""
+        return {
+            "path": self.path,
+            "remote": self.remote,
+            "branch": self.branch,
+            "commit": self.commit,
+        }
+
 
 ###
 # Types - Statistics
@@ -38,7 +114,19 @@ __all__ = [
 
 
 class StatsFloat:
+    """A utility class to compute statistics for floating-point data arrays, such as step times and residuals."""
+
     def __init__(self, data: np.ndarray, name: str | None = None):
+        """
+        Initialize a StatsFloat object.
+
+        Args:
+            data (np.ndarray): A floating-point data array.
+            name (str | None): An optional name for the statistics object.
+
+        Raises:
+            ValueError: If the data array is not of a floating-point type.
+        """
         if not np.issubdtype(data.dtype, np.floating):
             raise ValueError("StatsFloat requires a floating-point data array.")
         self.name: str | None = name
@@ -71,7 +159,20 @@ class StatsFloat:
 
 
 class StatsInteger:
+    """A utility class to compute statistics for integer data arrays, such as counts and distributions."""
+
     def __init__(self, data: np.ndarray, num_bins: int = 20, name: str | None = None):
+        """
+        Initialize a StatsInteger object.
+
+        Args:
+            data (np.ndarray): An integer data array.
+            num_bins (int): Number of bins for histogram (default: 20).
+            name (str | None): An optional name for the statistics object.
+
+        Raises:
+            ValueError: If the data array is not of an integer type.
+        """
         if not np.issubdtype(data.dtype, np.integer):
             raise ValueError("StatsInteger requires an integer data array.")
         self.name: str | None = name
@@ -107,7 +208,19 @@ class StatsInteger:
 
 
 class StatsBinary:
+    """A utility class to compute statistics for binary (boolean) data arrays, such as counts of zeros and ones."""
+
     def __init__(self, data: np.ndarray, name: str | None = None):
+        """
+        Initialize a StatsBinary object.
+
+        Args:
+            data (np.ndarray): A binary (boolean) data array.
+            name (str | None): An optional name for the statistics object.
+
+        Raises:
+            ValueError: If the data array is not of a binary (boolean) type.
+        """
         if not np.issubdtype(data.dtype, np.integer) or not np.array_equal(data, data.astype(bool)):
             raise ValueError("StatsBinary requires a binary (boolean) data array.")
         self.name: str | None = name
@@ -163,53 +276,148 @@ class SolverMetrics:
         # TODO: self.linear_solver_r_error_stats = StatsFloat(self.linear_solver_r_error, name="linear_solver_r_error")
 
 
+class PhysicsMetrics:
+    def __init__(self, num_problems: int, num_configs: int, num_steps: int):
+        # Physics-specific metrics
+        self.r_eom: np.ndarray = np.zeros((num_problems, num_configs, num_steps), dtype=np.float32)
+        self.r_kinematics: np.ndarray = np.zeros((num_problems, num_configs, num_steps), dtype=np.float32)
+        self.r_cts_joints: np.ndarray = np.zeros((num_problems, num_configs, num_steps), dtype=np.float32)
+        self.r_cts_limits: np.ndarray = np.zeros((num_problems, num_configs, num_steps), dtype=np.float32)
+        self.r_cts_contacts: np.ndarray = np.zeros((num_problems, num_configs, num_steps), dtype=np.float32)
+        self.r_v_plus: np.ndarray = np.zeros((num_problems, num_configs, num_steps), dtype=np.float32)
+        self.r_ncp_primal: np.ndarray = np.zeros((num_problems, num_configs, num_steps), dtype=np.float32)
+        self.r_ncp_dual: np.ndarray = np.zeros((num_problems, num_configs, num_steps), dtype=np.float32)
+        self.r_ncp_compl: np.ndarray = np.zeros((num_problems, num_configs, num_steps), dtype=np.float32)
+        self.r_vi_natmap: np.ndarray = np.zeros((num_problems, num_configs, num_steps), dtype=np.float32)
+        self.f_ncp: np.ndarray = np.zeros((num_problems, num_configs, num_steps), dtype=np.float32)
+        self.f_ccp: np.ndarray = np.zeros((num_problems, num_configs, num_steps), dtype=np.float32)
+
+        # Stats (computed after data collection)
+        self.r_eom_stats: StatsFloat | None = None
+        self.r_kinematics_stats: StatsFloat | None = None
+        self.r_cts_joints_stats: StatsFloat | None = None
+        self.r_cts_limits_stats: StatsFloat | None = None
+        self.r_cts_contacts_stats: StatsFloat | None = None
+        self.r_v_plus_stats: StatsFloat | None = None
+        self.r_ncp_primal_stats: StatsFloat | None = None
+        self.r_ncp_dual_stats: StatsFloat | None = None
+        self.r_ncp_compl_stats: StatsFloat | None = None
+        self.r_vi_natmap_stats: StatsFloat | None = None
+        self.f_ncp_stats: StatsFloat | None = None
+        self.f_ccp_stats: StatsFloat | None = None
+
+    def compute_stats(self):
+        self.r_eom_stats = StatsFloat(self.r_eom, name="r_eom")
+        self.r_kinematics_stats = StatsFloat(self.r_kinematics, name="r_kinematics")
+        self.r_cts_joints_stats = StatsFloat(self.r_cts_joints, name="r_cts_joints")
+        self.r_cts_limits_stats = StatsFloat(self.r_cts_limits, name="r_cts_limits")
+        self.r_cts_contacts_stats = StatsFloat(self.r_cts_contacts, name="r_cts_contacts")
+        self.r_v_plus_stats = StatsFloat(self.r_v_plus, name="r_v_plus")
+        self.r_ncp_primal_stats = StatsFloat(self.r_ncp_primal, name="r_ncp_primal")
+        self.r_ncp_dual_stats = StatsFloat(self.r_ncp_dual, name="r_ncp_dual")
+        self.r_ncp_compl_stats = StatsFloat(self.r_ncp_compl, name="r_ncp_compl")
+        self.r_vi_natmap_stats = StatsFloat(self.r_vi_natmap, name="r_vi_natmap")
+        self.f_ncp_stats = StatsFloat(self.f_ncp, name="f_ncp")
+        self.f_ccp_stats = StatsFloat(self.f_ccp, name="f_ccp")
+
+
 class BenchmarkMetrics:
     def __init__(
         self,
-        problem_names: list[str],
-        config_names: list[str],
-        num_steps: int,
+        problem_names: list[str] | None = None,
+        config_names: list[str] | None = None,
+        num_steps: int | None = None,
         step_metrics: bool = False,
         solver_metrics: bool = False,
         physics_metrics: bool = False,
+        path: str | None = None,
     ):
-        # Cache run names and counts
-        self._problem_names: list[str] = problem_names
-        self._config_names: list[str] = config_names
-        self._num_steps: int = num_steps
+        # Declare data-set dimensions
+        self._problem_names: list[str] | None = None
+        self._config_names: list[str] | None = None
+        self._num_steps: int | None = None
 
         # One-time metrics
-        self.memory_used: np.ndarray = np.zeros((self.num_problems, self.num_configs), dtype=np.float32)
-        self.total_time: np.ndarray = np.zeros((self.num_problems, self.num_configs), dtype=np.float32)
-        self.total_fps: np.ndarray = np.zeros((self.num_problems, self.num_configs), dtype=np.float32)
+        self.memory_used: np.ndarray | None = None
+        self.total_time: np.ndarray | None = None
+        self.total_fps: np.ndarray | None = None
 
         # Per-step metrics
         self.step_time: np.ndarray | None = None
         self.step_time_stats: StatsFloat | None = None
-        if step_metrics:
-            self.step_time = np.zeros((self.num_problems, self.num_configs, num_steps), dtype=np.float32)
 
         # Optional solver-specific metrics
         self.solver_metrics: SolverMetrics | None = None
-        if solver_metrics:
-            self.solver_metrics = SolverMetrics(self.num_problems, self.num_configs, num_steps)
 
-        # Optional physics-specific metrics (placeholders for now)
-        self.physics_metrics = None  # TODO
-        if physics_metrics:
-            self.physics_metrics = None  # TODO
+        # Optional physics-specific metrics
+        self.physics_metrics: PhysicsMetrics | None = None
+
+        # Meta-data about the code repository at the time of the
+        # benchmark run for traceability and reproducibility
+        self.codeinfo: CodeInfo | None = None
+
+        # Initialize metrics data structures if problem
+        # names, config names, and num_steps are provided,
+        # otherwise load from HDF5 if path is provided
+        if problem_names is not None and config_names is not None:
+            self.finalize(
+                problem_names=problem_names,
+                config_names=config_names,
+                num_steps=num_steps,
+                step_metrics=step_metrics,
+                solver_metrics=solver_metrics,
+                physics_metrics=physics_metrics,
+            )
+        elif path is not None:
+            self.load_from_hdf5(path=path)
 
     @property
     def num_problems(self) -> int:
+        if self._problem_names is None:
+            raise ValueError("BenchmarkMetrics: problem names not set. Call finalize() first.")
         return len(self._problem_names)
 
     @property
     def num_configs(self) -> int:
+        if self._config_names is None:
+            raise ValueError("BenchmarkMetrics: config names not set. Call finalize() first.")
         return len(self._config_names)
 
     @property
     def num_steps(self) -> int:
+        if self._num_steps is None:
+            raise ValueError("BenchmarkMetrics: num_steps not set. Call finalize() first.")
         return self._num_steps
+
+    def finalize(
+        self,
+        problem_names: list[str],
+        config_names: list[str],
+        num_steps: int | None = None,
+        step_metrics: bool = False,
+        solver_metrics: bool = False,
+        physics_metrics: bool = False,
+    ):
+        # Cache run problem and config names as well as total step counts
+        self._problem_names = problem_names
+        self._config_names = config_names
+        self._num_steps = num_steps if num_steps is not None else 1
+
+        # Allocate arrays for one-time total run metrics
+        self.memory_used = np.zeros((self.num_problems, self.num_configs), dtype=np.float32)
+        self.total_time = np.zeros((self.num_problems, self.num_configs), dtype=np.float32)
+        self.total_fps = np.zeros((self.num_problems, self.num_configs), dtype=np.float32)
+
+        # Allocate per-step metrics arrays if enabled
+        if step_metrics:
+            self.step_time = np.zeros((self.num_problems, self.num_configs, self._num_steps), dtype=np.float32)
+        if solver_metrics:
+            self.solver_metrics = SolverMetrics(self.num_problems, self.num_configs, self._num_steps)
+        if physics_metrics:
+            self.physics_metrics = PhysicsMetrics(self.num_problems, self.num_configs, self._num_steps)
+
+        # Generate meta-data to record git repository info
+        self.codeinfo = CodeInfo()
 
     def record_step(
         self,
@@ -222,14 +430,40 @@ class BenchmarkMetrics:
         self.step_time[problem_idx, config_idx, step_idx] = step_time
         if self.solver_metrics is not None and solver is not None:
             # Extract PADMM solver status info - this is multiworld
-            solver_status = solver._solver_fd.data.status.numpy()[0]  # TODO
-            self.solver_metrics.padmm_converged[problem_idx, config_idx, step_idx] = int(solver_status[0])
-            self.solver_metrics.padmm_iters[problem_idx, config_idx, step_idx] = int(solver_status[1])
-            self.solver_metrics.padmm_r_p[problem_idx, config_idx, step_idx] = float(solver_status[2])
-            self.solver_metrics.padmm_r_d[problem_idx, config_idx, step_idx] = float(solver_status[3])
-            self.solver_metrics.padmm_r_c[problem_idx, config_idx, step_idx] = float(solver_status[4])
+            solver_status_np = solver._solver_fd.data.status.numpy()
+            solver_status_np = {name: solver_status_np[name].max() for name in solver_status_np.dtype.names}
+            self.solver_metrics.padmm_converged[problem_idx, config_idx, step_idx] = solver_status_np["converged"]
+            self.solver_metrics.padmm_iters[problem_idx, config_idx, step_idx] = solver_status_np["iterations"]
+            self.solver_metrics.padmm_r_p[problem_idx, config_idx, step_idx] = solver_status_np["r_p"]
+            self.solver_metrics.padmm_r_d[problem_idx, config_idx, step_idx] = solver_status_np["r_d"]
+            self.solver_metrics.padmm_r_c[problem_idx, config_idx, step_idx] = solver_status_np["r_c"]
+        if self.physics_metrics is not None and solver.metrics is not None:
+            r_eom_np = solver.metrics.data.r_eom.numpy().max(axis=0)
+            r_kinematics_np = solver.metrics.data.r_kinematics.numpy().max(axis=0)
+            r_cts_joints_np = solver.metrics.data.r_cts_joints.numpy().max(axis=0)
+            r_cts_limits_np = solver.metrics.data.r_cts_limits.numpy().max(axis=0)
+            r_cts_contacts_np = solver.metrics.data.r_cts_contacts.numpy().max(axis=0)
+            r_v_plus_np = solver.metrics.data.r_v_plus.numpy().max(axis=0)
+            r_ncp_primal_np = solver.metrics.data.r_ncp_primal.numpy().max(axis=0)
+            r_ncp_dual_np = solver.metrics.data.r_ncp_dual.numpy().max(axis=0)
+            r_ncp_compl_np = solver.metrics.data.r_ncp_compl.numpy().max(axis=0)
+            r_vi_natmap_np = solver.metrics.data.r_vi_natmap.numpy().max(axis=0)
+            f_ncp_np = solver.metrics.data.f_ncp.numpy().max(axis=0)
+            f_ccp_np = solver.metrics.data.f_ccp.numpy().max(axis=0)
+            self.physics_metrics.r_eom[problem_idx, config_idx, step_idx] = r_eom_np
+            self.physics_metrics.r_kinematics[problem_idx, config_idx, step_idx] = r_kinematics_np
+            self.physics_metrics.r_cts_joints[problem_idx, config_idx, step_idx] = r_cts_joints_np
+            self.physics_metrics.r_cts_limits[problem_idx, config_idx, step_idx] = r_cts_limits_np
+            self.physics_metrics.r_cts_contacts[problem_idx, config_idx, step_idx] = r_cts_contacts_np
+            self.physics_metrics.r_v_plus[problem_idx, config_idx, step_idx] = r_v_plus_np
+            self.physics_metrics.r_ncp_primal[problem_idx, config_idx, step_idx] = r_ncp_primal_np
+            self.physics_metrics.r_ncp_dual[problem_idx, config_idx, step_idx] = r_ncp_dual_np
+            self.physics_metrics.r_ncp_compl[problem_idx, config_idx, step_idx] = r_ncp_compl_np
+            self.physics_metrics.r_vi_natmap[problem_idx, config_idx, step_idx] = r_vi_natmap_np
+            self.physics_metrics.f_ncp[problem_idx, config_idx, step_idx] = f_ncp_np
+            self.physics_metrics.f_ccp[problem_idx, config_idx, step_idx] = f_ccp_np
 
-    def record_final(
+    def record_total(
         self,
         problem_idx: int,
         config_idx: int,
@@ -247,29 +481,101 @@ class BenchmarkMetrics:
         if self.solver_metrics is not None:
             self.solver_metrics.compute_stats()
         if self.physics_metrics is not None:
-            self.physics_metrics.compute_stats()  # TODO
+            self.physics_metrics.compute_stats()
 
     def save_to_hdf5(self, path: str):
-        with h5py.File(path, "w") as datafile:
-            # Store raw data arrays in the HDF5 file
-            datafile["Raw/perstep/step_time"] = self.step_time
-            datafile["Raw/perstep/padmm/converged"] = self.solver_metrics.padmm_converged
-            datafile["Raw/perstep/padmm/iterations"] = self.solver_metrics.padmm_iters
-            datafile["Raw/perstep/padmm/r_p"] = self.solver_metrics.padmm_r_p
-            datafile["Raw/perstep/padmm/r_d"] = self.solver_metrics.padmm_r_d
-            datafile["Raw/perstep/padmm/r_c"] = self.solver_metrics.padmm_r_c
+        # Ensure that there is in fact data to save before attempting to write to HDF5
+        if self._problem_names is None or self._config_names is None or self._num_steps is None:
+            raise ValueError("BenchmarkMetrics: problem names, config names, and num_steps must be set before saving.")
 
-            # Store per-problem and per-config metrics in the HDF5 file with appropriate naming
-            for p in range(self.num_problems):
-                for c in range(self.num_configs):
-                    problem_name = self._problem_names[p]
-                    config_name = self._config_names[c]
-                    run_name = f"{problem_name}/{config_name}"
-                    datafile[f"Runs/{run_name}/total/memory_used"] = self.memory_used[p, c]
-                    datafile[f"Runs/{run_name}/total/total_time"] = self.total_time[p, c]
-                    datafile[f"Runs/{run_name}/perstep/step_time"] = self.step_time[p, c, :]
-                    datafile[f"Runs/{run_name}/perstep/padmm/converged"] = self.solver_metrics.padmm_converged[p, c, :]
-                    datafile[f"Runs/{run_name}/perstep/padmm/iterations"] = self.solver_metrics.padmm_iters[p, c, :]
-                    datafile[f"Runs/{run_name}/perstep/padmm/r_p"] = self.solver_metrics.padmm_r_p[p, c, :]
-                    datafile[f"Runs/{run_name}/perstep/padmm/r_d"] = self.solver_metrics.padmm_r_d[p, c, :]
-                    datafile[f"Runs/{run_name}/perstep/padmm/r_c"] = self.solver_metrics.padmm_r_c[p, c, :]
+        # Open an HDF5 file for writing and save all data arrays along with meta-data about
+        # the benchmark run and code repository info for traceability and reproducibility
+        with h5py.File(path, "w") as datafile:
+            # Info about the project at the time of the benchmark run
+            datafile["Info/code/path"] = self.codeinfo.path
+            datafile["Info/code/remote"] = self.codeinfo.remote
+            datafile["Info/code/branch"] = self.codeinfo.branch
+            datafile["Info/code/commit"] = self.codeinfo.commit
+            # datafile["Info/code/diff"] = self.codeinfo.diff
+
+            # Info about the benchmark data
+            datafile["Info/problem_names"] = self._problem_names
+            datafile["Info/config_names"] = self._config_names
+            datafile["Info/num_steps"] = self._num_steps
+            datafile["Info/has_step_metrics"] = self.step_time is not None
+            datafile["Info/has_solver_metrics"] = self.solver_metrics is not None
+            datafile["Info/has_physics_metrics"] = self.physics_metrics is not None
+
+            # Basic run metrics
+            datafile["Data/total/memory_used"] = self.memory_used
+            datafile["Data/total/total_time"] = self.total_time
+            datafile["Data/total/total_fps"] = self.total_fps
+            datafile["Data/perstep/step_time"] = self.step_time
+            if self.solver_metrics is not None:
+                datafile["Data/perstep/padmm/converged"] = self.solver_metrics.padmm_converged
+                datafile["Data/perstep/padmm/iterations"] = self.solver_metrics.padmm_iters
+                datafile["Data/perstep/padmm/r_p"] = self.solver_metrics.padmm_r_p
+                datafile["Data/perstep/padmm/r_d"] = self.solver_metrics.padmm_r_d
+                datafile["Data/perstep/padmm/r_c"] = self.solver_metrics.padmm_r_c
+            if self.physics_metrics is not None:
+                datafile["Data/perstep/physics/r_eom"] = self.physics_metrics.r_eom
+                datafile["Data/perstep/physics/r_kinematics"] = self.physics_metrics.r_kinematics
+                datafile["Data/perstep/physics/r_cts_joints"] = self.physics_metrics.r_cts_joints
+                datafile["Data/perstep/physics/r_cts_limits"] = self.physics_metrics.r_cts_limits
+                datafile["Data/perstep/physics/r_cts_contacts"] = self.physics_metrics.r_cts_contacts
+                datafile["Data/perstep/physics/r_v_plus"] = self.physics_metrics.r_v_plus
+                datafile["Data/perstep/physics/r_ncp_primal"] = self.physics_metrics.r_ncp_primal
+                datafile["Data/perstep/physics/r_ncp_dual"] = self.physics_metrics.r_ncp_dual
+                datafile["Data/perstep/physics/r_ncp_compl"] = self.physics_metrics.r_ncp_compl
+                datafile["Data/perstep/physics/r_vi_natmap"] = self.physics_metrics.r_vi_natmap
+                datafile["Data/perstep/physics/f_ncp"] = self.physics_metrics.f_ncp
+                datafile["Data/perstep/physics/f_ccp"] = self.physics_metrics.f_ccp
+
+    def load_from_hdf5(self, path: str):
+        """Load raw data arrays from the HDF5 file into the BenchmarkMetrics instance"""
+        with h5py.File(path, "r") as datafile:
+            # First load the info group to get the dimensions and initialize the data arrays
+            self._problem_names = datafile["Info/problem_names"][:].astype(str).tolist()
+            self._config_names = datafile["Info/config_names"][:].astype(str).tolist()
+            self._num_steps = int(datafile["Info/num_steps"][()])
+            has_step_metrics = bool(datafile["Info/has_step_metrics"][()])
+            has_solver_metrics = bool(datafile["Info/has_solver_metrics"][()])
+            has_physics_metrics = bool(datafile["Info/has_physics_metrics"][()])
+
+            # Load code state info for traceability and reproducibility
+            self.codeinfo = CodeInfo(empty=True)
+            self.codeinfo.path = datafile["Info/code/path"][()].astype(str)
+            self.codeinfo.remote = datafile["Info/code/remote"][()].astype(str)
+            self.codeinfo.branch = datafile["Info/code/branch"][()].astype(str)
+            self.codeinfo.commit = datafile["Info/code/commit"][()].astype(str)
+            # codeinfo.diff = datafile["Info/code/diff"][()].astype(str)
+
+            # Load raw data directly into the corresponding array attributes
+            self.memory_used = datafile["Data/total/memory_used"][:, :].astype(np.int32)
+            self.total_time = datafile["Data/total/total_time"][:, :].astype(np.float32)
+            self.total_fps = datafile["Data/total/total_fps"][:, :].astype(np.float32)
+            if has_step_metrics:
+                self.step_time = datafile["Data/perstep/step_time"][:, :, :].astype(np.float32)
+            if has_solver_metrics:
+                solv_ns = "Data/perstep/padmm/"
+                self.solver_metrics = SolverMetrics(1, 1, 1)  # Placeholder initialization to create the object
+                self.solver_metrics.padmm_converged = datafile[f"{solv_ns}converged"][:, :, :].astype(np.int32)
+                self.solver_metrics.padmm_iters = datafile[f"{solv_ns}iterations"][:, :, :].astype(np.int32)
+                self.solver_metrics.padmm_r_p = datafile[f"{solv_ns}r_p"][:, :, :].astype(np.float32)
+                self.solver_metrics.padmm_r_d = datafile[f"{solv_ns}r_d"][:, :, :].astype(np.float32)
+                self.solver_metrics.padmm_r_c = datafile[f"{solv_ns}r_c"][:, :, :].astype(np.float32)
+            if has_physics_metrics:
+                phys_ns = "Data/perstep/physics/"
+                self.physics_metrics = PhysicsMetrics(1, 1, 1)  # Placeholder initialization to create the object
+                self.physics_metrics.r_eom = datafile[f"{phys_ns}r_eom"][:, :, :].astype(np.float32)
+                self.physics_metrics.r_kinematics = datafile[f"{phys_ns}r_kinematics"][:, :, :].astype(np.float32)
+                self.physics_metrics.r_cts_joints = datafile[f"{phys_ns}r_cts_joints"][:, :, :].astype(np.float32)
+                self.physics_metrics.r_cts_limits = datafile[f"{phys_ns}r_cts_limits"][:, :, :].astype(np.float32)
+                self.physics_metrics.r_cts_contacts = datafile[f"{phys_ns}r_cts_contacts"][:, :, :].astype(np.float32)
+                self.physics_metrics.r_v_plus = datafile[f"{phys_ns}r_v_plus"][:, :, :].astype(np.float32)
+                self.physics_metrics.r_ncp_primal = datafile[f"{phys_ns}r_ncp_primal"][:, :, :].astype(np.float32)
+                self.physics_metrics.r_ncp_dual = datafile[f"{phys_ns}r_ncp_dual"][:, :, :].astype(np.float32)
+                self.physics_metrics.r_ncp_compl = datafile[f"{phys_ns}r_ncp_compl"][:, :, :].astype(np.float32)
+                self.physics_metrics.r_vi_natmap = datafile[f"{phys_ns}r_vi_natmap"][:, :, :].astype(np.float32)
+                self.physics_metrics.f_ncp = datafile[f"{phys_ns}f_ncp"][:, :, :].astype(np.float32)
+                self.physics_metrics.f_ccp = datafile[f"{phys_ns}f_ccp"][:, :, :].astype(np.float32)

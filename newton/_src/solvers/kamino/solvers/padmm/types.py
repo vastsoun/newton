@@ -584,7 +584,7 @@ class PADMMSettings:
     """
     The permitted frequency of penalty updates.\n
     If zero, no updates are performed. Otherwise, updates are performed every
-    `penalty_update_freq` iterations. Defaults to `10`.
+    `penalty_update_freq` iterations. Defaults to `1`.
     """
 
     penalty_update_method: PADMMPenaltyUpdate = PADMMPenaltyUpdate.FIXED

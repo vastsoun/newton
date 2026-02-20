@@ -21,11 +21,12 @@ import numpy as np
 import warp as wp
 
 from newton._src.solvers.kamino.utils import logger as msg
-from newton._src.solvers.kamino.utils.benchmark.configs import make_default_simulator_config
-from newton._src.solvers.kamino.utils.benchmark.metrics import BenchmarkMetrics
+from newton._src.solvers.kamino.utils.benchmark.configs import make_benchmark_configs
+from newton._src.solvers.kamino.utils.benchmark.metrics import BenchmarkMetrics, CodeInfo
 from newton._src.solvers.kamino.utils.benchmark.problems import SUPPORTED_PROBLEM_NAMES, make_benchmark_problems
 from newton._src.solvers.kamino.utils.benchmark.runner import run_single_benchmark
 from newton._src.solvers.kamino.utils.device import get_device_spec_info
+from newton._src.solvers.kamino.utils.sim import SimulatorSettings
 
 ###
 # DESIGN:
@@ -43,7 +44,7 @@ from newton._src.solvers.kamino.utils.device import get_device_spec_info
 #   - [x] Solver performance metrics (Optional, because of reduced throughput)
 #   - [x] Number of PADMM iterations to converge
 #   - [x] Final PADMM residuals (primal, dual, compl)
-#   - [ ] Physical accuracy metrics (e.g. constraint violation, energy drift, etc.)
+#   - [x] Physical accuracy metrics (e.g. constraint violation, energy drift, etc.)
 #
 #   ARGUMENTS:
 #   - [x] Device selection (e.g. "cuda:0", "cpu")
@@ -67,14 +68,8 @@ from newton._src.solvers.kamino.utils.device import get_device_spec_info
 #   FUNCTIONALITY:
 #  - [x] Random actuation for each problem (optional)
 #  - [x] Separate config generation from execution to allow for easier hyperparameter sweeps and ablations
+#  - [x] Store git commit and/or diff for reproducibility
 #  - [] Define default configs in appropriate file for reference
-#  - [] Store git commit and/or diff for reproducibility
-#
-#
-#   MODES:
-#   - [x] BASIC: Run optimally to only measure total runtime and final memory usage
-#   - [x] STATS: Run with detailed timing per-step to measure throughput statistics
-#   - [] ACCURACY: Run with solver performance metrics enabled to measure physical accuracy
 #
 ###
 
@@ -82,15 +77,26 @@ from newton._src.solvers.kamino.utils.device import get_device_spec_info
 # Constants
 ###
 
-SUPPORTED_BENCHMARK_MODES = ["total", "perstep", "solver", "accuracy"]
+SUPPORTED_BENCHMARK_RUN_MODES = ["total", "perstep", "solver", "accuracy"]
 """
-A list of supported benchmark modes that determine the level of metrics collected during execution.
+A list of supported benchmark run modes that determine the level of metrics collected during execution.
 
 - "total": Only collects total runtime and final memory usage metrics.
 - "perstep": Collects detailed timing metrics for each simulation step to compute throughput statistics.
 - "solver": Collects solver performance metrics such as PADMM iterations and residuals.
 - "accuracy": Collects solver performance metrics that can be used to evaluate the physical accuracy of the simulation.
 """
+
+# TODO
+# SUPPORTED_BENCHMARK_PLOT_MODES = ["console", "perstep", "solver", "accuracy"]
+# """
+# A list of supported benchmark plot modes that determine the level of metrics collected during execution.
+
+# - "total": Only collects total runtime and final memory usage metrics.
+# - "perstep": Collects detailed timing metrics for each simulation step to compute throughput statistics.
+# - "solver": Collects solver performance metrics such as PADMM iterations and residuals.
+# - "accuracy": Collects solver performance metrics that can be used to evaluate the physical accuracy of the simulation.
+# """
 
 ###
 # Functions
@@ -129,6 +135,12 @@ def parse_benchmark_arguments():
         help="Sets the number of simulation steps to execute. Defaults to `100`.",
     )
     parser.add_argument(
+        "--dt",
+        type=float,
+        default=0.001,
+        help="Sets the simulation time step. Defaults to `0.001`.",
+    )
+    parser.add_argument(
         "--gravity",
         action=argparse.BooleanOptionalAction,
         default=True,
@@ -151,7 +163,7 @@ def parse_benchmark_arguments():
     parser.add_argument(
         "--mode",
         type=str,
-        choices=SUPPORTED_BENCHMARK_MODES,
+        choices=SUPPORTED_BENCHMARK_RUN_MODES,
         default="accuracy",
         help="Defines the benchmark mode to run. Defaults to 'total'.\n{SUPPORTED_BENCHMARK_MODES}",
     )
@@ -181,28 +193,45 @@ def parse_benchmark_arguments():
         help="Set to `True` to run `newton.example.run` tests. Defaults to `False`.",
     )
 
+    # Benchmark plotting arguments (TODO)
+    # parser.add_argument(
+    #     "--plot-mode",
+    #     type=str,
+    #     choices=SUPPORTED_BENCHMARK_PLOT_MODES,
+    #     default="accuracy",
+    #     help="Defines the benchmark mode to run. Defaults to 'total'.\n{SUPPORTED_BENCHMARK_PLOT_MODES}",
+    # )
+
     return parser.parse_args()
 
 
-###
-# Main function
-###
+def benchmark_run(args: argparse.Namespace):
+    """
+    Executes the benchmark data generation with the provided arguments.
 
-if __name__ == "__main__":
-    # Load benchmark-specific program arguments
-    args = parse_benchmark_arguments()
+    This function performs the following steps:
+    1. Parses the benchmark arguments to determine the configuration of the run.
+    2. Sets the Warp device and determines if CUDA graphs can be used.
+    3. Prints device specification info to the console for reference.
+    4. Determines the level of metrics to collect based on the specified benchmark mode.
+    5. Generates the problem set based on the provided problem names and arguments.
+    6. Constructs the `BenchmarkMetrics` object to store collected data.
+    7. Iterates over all problem names and settings, executing the benchmark for each combination.
+    8. Computes final statistics for the collected benchmark results.
+    9. Saves the collected benchmark data to an HDF5 file for later analysis and plotting.
+    10. Optionally generates plots from the collected benchmark data.
 
-    # Set global numpy configurations
-    np.set_printoptions(linewidth=20000, precision=6, threshold=10000, suppress=True)  # Suppress scientific notation
+    Args:
+        args: An `argparse.Namespace` object containing the parsed benchmark arguments.
+    """
 
-    # Clear warp cache if requested
-    if args.clear_cache:
-        wp.clear_kernel_cache()
-        wp.clear_lto_cache()
+    # First print the benchmark configuration to the console for reference
+    msg.notif(f"Running benchmark in mode: {args.mode}")
 
-    # TODO: Make optional
-    # Set the verbosity of the global message logger
-    msg.set_log_level(msg.LogLevel.INFO)
+    # Print the git commit hash and repository info to the
+    # console for traceability and reproducibility of benchmark runs
+    codeinfo = CodeInfo()
+    msg.notif(f"Benchmark will run with the following repository:\n{codeinfo}\n")
 
     # Set device if specified, otherwise use Warp's default
     if args.device:
@@ -211,13 +240,15 @@ if __name__ == "__main__":
     else:
         device = wp.get_preferred_device()
 
+    # Print device specification info to console for reference
+    spec_info = get_device_spec_info(device)
+    msg.notif("[Device]: %s", spec_info)
+
     # Determine if CUDA graphs should be used for execution
     can_use_cuda_graph = device.is_cuda and wp.is_mempool_enabled(device)
     use_cuda_graph = can_use_cuda_graph and args.cuda_graph
     msg.info(f"can_use_cuda_graph: {can_use_cuda_graph}")
-    msg.notif(f"use_cuda_graph: {use_cuda_graph}")
-    msg.notif(f"device: {device}")
-    msg.notif(f"mode: {args.mode}")
+    msg.info(f"using_cuda_graph: {use_cuda_graph}")
 
     # Determine the metrics to collect based on the benchmark mode
     if args.mode == "total":
@@ -237,14 +268,10 @@ if __name__ == "__main__":
         collect_solver_metrics = True
         collect_physics_metrics = True
     else:
-        raise ValueError(f"Unsupported benchmark mode '{args.mode}'. Supported modes: {SUPPORTED_BENCHMARK_MODES}")
+        raise ValueError(f"Unsupported benchmark mode '{args.mode}'. Supported modes: {SUPPORTED_BENCHMARK_RUN_MODES}")
     msg.info(f"collect_step_metrics: {collect_step_metrics}")
     msg.info(f"collect_solver_metrics: {collect_solver_metrics}")
     msg.info(f"collect_physics_metrics: {collect_physics_metrics}")
-
-    # Print device specification info to console for reference
-    spec_info = get_device_spec_info(device)
-    msg.info("[Device]: %s", spec_info)
 
     # Determine the problem set from
     # the single and list arguments
@@ -255,13 +282,7 @@ if __name__ == "__main__":
     msg.notif(f"problem_names: {problem_names}")
 
     # Generate a set of solver configurations to benchmark over
-    # TODO: DEFINE MORE HERE
-    configs_set = {
-        "dense_lltb_default": make_default_simulator_config(),
-        "dense_lltb_0": make_default_simulator_config(),
-        "dense_lltb_1": make_default_simulator_config(),
-        "dense_lltb_2": make_default_simulator_config(),
-    }
+    configs_set = make_benchmark_configs()
     config_names = list(configs_set.keys())
     msg.notif(f"config_names: {config_names}")
 
@@ -297,6 +318,10 @@ if __name__ == "__main__":
             # Unpack problem configurations
             builder, control, camera = problem_config
 
+            # Construct simulator configurations based on the solver
+            # configurations for the current benchmark configuration
+            sim_configs = SimulatorSettings(dt=args.dt, solver=configs)
+
             # Execute the benchmark for the current problem and settings
             run_single_benchmark(
                 problem_idx=problem_idx,
@@ -304,36 +329,68 @@ if __name__ == "__main__":
                 metrics=metrics,
                 args=args,
                 builder=builder,
-                configs=configs,
+                configs=sim_configs,
                 control=control,
                 camera=camera,
                 device=device,
                 use_cuda_graph=use_cuda_graph,
-                print_device_info=True,  # TODO
+                print_device_info=True,
             )
 
     # Compute final statistics for the benchmark results
     metrics.compute_stats()
 
-    # TODO
-    msg.error(f"metrics.memory_used: {metrics.memory_used}")
-    msg.error(f"metrics.total_time: {metrics.total_time}")
-    msg.error(f"metrics.total_fps: {metrics.total_fps}")
-    msg.error(f"metrics.step_time: {metrics.step_time}")
-    msg.error(f"metrics.step_time_stats: {metrics.step_time_stats}")
-    msg.error(f"metrics.solver_metrics.padmm_iters: {metrics.solver_metrics.padmm_iters}")
-    msg.error(f"metrics.solver_metrics.padmm_iters_stats: {metrics.solver_metrics.padmm_iters_stats}")
-
-    # TODO
-    msg.info("Saving benchmark data to HDF5...")
+    # Define and create the output directory for the benchmark results
     DATA_DIR_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "./data"))
-    HDF5_OUTPUT_PATH = f"{DATA_DIR_PATH}/{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.hdf5"
-    os.makedirs(DATA_DIR_PATH, exist_ok=True)
-    metrics.save_to_hdf5(path=HDF5_OUTPUT_PATH)
+    RUN_OUTPUT_NAME = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    RUN_OUTPUT_PATH = f"{DATA_DIR_PATH}/{RUN_OUTPUT_NAME}"
+    os.makedirs(RUN_OUTPUT_PATH, exist_ok=True)
+
+    # Export the collected benchmark data to an HDF5 file for later analysis and plotting
+    msg.info("Saving benchmark data to HDF5...")
+    RUN_HDF5_OUTPUT_PATH = f"{RUN_OUTPUT_PATH}/metrics.hdf5"
+    metrics.save_to_hdf5(path=RUN_HDF5_OUTPUT_PATH)
     msg.info("Done.")
 
+    # TODO: Add option for direct plotting after benchmark execution
     # # Plot logged data after the viewer is closed
     # if args.logging:
+    # RUN_PLOT_OUTPUT_PATH = f"{DATA_DIR_PATH}/metrics.hdf5"
+    # os.makedirs(RUN_PLOT_OUTPUT_PATH, exist_ok=True)
     #     OUTPUT_PLOT_PATH = os.path.join(os.path.dirname(os.path.realpath(__file__)), args.problems)
     #     os.makedirs(OUTPUT_PLOT_PATH, exist_ok=True)
     #     example.plot(path=OUTPUT_PLOT_PATH, show=args.show_plots)
+
+
+def benchmark_plot(args: argparse.Namespace):
+    # TODO
+    pass
+
+
+###
+# Main function
+###
+
+if __name__ == "__main__":
+    # Load benchmark-specific program arguments
+    args = parse_benchmark_arguments()
+
+    # Set global numpy configurations
+    np.set_printoptions(linewidth=20000, precision=6, threshold=10000, suppress=True)  # Suppress scientific notation
+
+    # Clear warp cache if requested
+    if args.clear_cache:
+        wp.clear_kernel_cache()
+        wp.clear_lto_cache()
+
+    # TODO: Make optional
+    # Set the verbosity of the global message logger
+    msg.set_log_level(msg.LogLevel.INFO)
+
+    # TODO: Add switching between run and plot modes
+    # Execute the benchmark run with the provided arguments
+    benchmark_run(args)
+
+    # TODO: RETRIEVE AND SAVE GIT COMMIT HASH
+    # TODO: LOAD AT SPECIFIED PATH
+    # TODO: LOAD LAST CREATED HDF5 IN OUTPUT DIRECTORY

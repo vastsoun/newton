@@ -919,13 +919,19 @@ class ConjugateResidualSolver(IterativeSolver):
 # Summary
 ###
 
+LinearSolverType = LLTSequentialSolver | LLTBlockedSolver | ConjugateGradientSolver | ConjugateResidualSolver
+"""Type alias over all linear solvers."""
 
-SolverShorthand = {
+LinearSolverTypeToName = {
     LLTSequentialSolver: "LLTS",
     LLTBlockedSolver: "LLTB",
     ConjugateGradientSolver: "CG",
     ConjugateResidualSolver: "CR",
 }
 
-LinearSolverType = LLTSequentialSolver | LLTBlockedSolver | ConjugateGradientSolver | ConjugateResidualSolver
-"""Type alias over all linear solvers."""
+LinearSolverNameToType = {
+    "LLTS": LLTSequentialSolver,
+    "LLTB": LLTBlockedSolver,
+    "CG": ConjugateGradientSolver,
+    "CR": ConjugateResidualSolver,
+}

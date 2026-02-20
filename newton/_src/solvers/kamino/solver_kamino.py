@@ -73,6 +73,16 @@ from .solvers.warmstart import WarmstarterContacts, WarmstarterLimits
 from .utils import logger as msg
 
 ###
+# Module interface
+###
+
+__all__ = [
+    "SolverKamino",
+    "SolverKaminoSettings",
+]
+
+
+###
 # Types
 ###
 
@@ -300,7 +310,9 @@ class SolverKamino(SolverBase):
 
         if self._settings.sparse and not issubclass(self._settings.linear_solver_type, IterativeSolver):
             msg.warning(
-                f"Sparse problem requires iterative solver, but got '{self._settings.linear_solver_type.__name__}'. Switching to 'ConjugateGradientSolver'."
+                "Sparse problem requires iterative solver, but got "
+                f"'{self._settings.linear_solver_type.__name__}'. "
+                "Switching to 'ConjugateGradientSolver'."
             )
             self._settings.linear_solver_type = ConjugateGradientSolver
 

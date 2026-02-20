@@ -72,6 +72,8 @@ Typical usage example:
     delassus.solve(b=rhs, x=solution)
 """
 
+import copy
+import functools
 from typing import Any
 
 import numpy as np
@@ -89,6 +91,7 @@ from ..linalg.linear import IterativeSolver
 
 # from ..linalg import Matrices, LinearOperators
 # from ..linalg.dense import DenseMatrices, DenseLinearOperators
+from ..linalg.sparse_matrix import BlockDType, BlockSparseMatrices
 from ..linalg.sparse_operator import BlockSparseLinearOperators
 
 ###
@@ -323,56 +326,106 @@ def _regularize_delassus_diagonal(
 
 
 @wp.kernel
-def _inverse_mass_matrix_matvec(
-    # Model:
-    model_info_num_bodies: wp.array(dtype=int32),
+def _merge_inv_mass_matrix_kernel(
     model_info_bodies_offset: wp.array(dtype=int32),
-    # Mass properties:
     model_bodies_inv_m_i: wp.array(dtype=float32),
     data_bodies_inv_I_i: wp.array(dtype=mat33f),
-    # Vector:
-    x: wp.array(dtype=float32),
-    # Mask:
-    world_mask: wp.array(dtype=int32),
+    num_nzb: wp.array(dtype=int32),
+    nzb_start: wp.array(dtype=int32),
+    nzb_coords: wp.array2d(dtype=int32),
+    nzb_values: wp.array(dtype=vec6f),
 ):
     """
-    Applies the inverse mass matrix to a vector in body coordinate space: x = M^-1 @ x.
+    Kernel to merge the inverse mass matrix into an existing sparse matrix, so that the resulting
+    matrix is given as `A <- A @ M^-1`.
     """
-    # Retrieve the thread index as the world index and body index
-    world_id, body_id = wp.tid()
+    mat_id, block_idx = wp.tid()
 
-    # Skip if world is inactive or body index exceeds the number of bodies in the world
-    if world_mask[world_id] == 0 or body_id >= model_info_num_bodies[world_id]:
+    # Check if block index is valid for this matrix.
+    if block_idx >= num_nzb[mat_id]:
         return
 
-    # Index of body w.r.t the model
-    global_body_id = model_info_bodies_offset[world_id] + body_id
+    global_block_idx = nzb_start[mat_id] + block_idx
+    block_coord = nzb_coords[global_block_idx]
+    block = nzb_values[global_block_idx]
 
-    # Body dof index offset in the flattened vector
-    body_dof_index = 6 * global_body_id
+    body_id = block_coord[1] // 6
+
+    # Index of body w.r.t the model
+    global_body_id = model_info_bodies_offset[mat_id] + body_id
 
     # Load the inverse mass and inverse inertia for this body
     inv_m = model_bodies_inv_m_i[global_body_id]
     inv_I = data_bodies_inv_I_i[global_body_id]
 
-    # Load the input vector components for this body
-    v = x[body_dof_index : body_dof_index + 6]
-    v_lin = wp.vec3(v[0], v[1], v[2])
-    v_ang = wp.vec3(v[3], v[4], v[5])
+    # Apply inverse mass matrices to Jacobian block
+    v = inv_m * vec3f(block[0], block[1], block[2])
+    w = inv_I @ vec3f(block[3], block[4], block[5])
 
-    # Apply inverse mass to linear velocity component
-    v_lin_out = inv_m * v_lin
+    # Write back values
+    block[0] = v[0]
+    block[1] = v[1]
+    block[2] = v[2]
+    block[3] = w[0]
+    block[4] = w[1]
+    block[5] = w[2]
+    nzb_values[global_block_idx] = block
 
-    # Apply inverse inertia to angular velocity component
-    v_ang_out = inv_I @ v_ang
 
-    # Store the result
-    x[body_dof_index + 0] = v_lin_out[0]
-    x[body_dof_index + 1] = v_lin_out[1]
-    x[body_dof_index + 2] = v_lin_out[2]
-    x[body_dof_index + 3] = v_ang_out[0]
-    x[body_dof_index + 4] = v_ang_out[1]
-    x[body_dof_index + 5] = v_ang_out[2]
+@functools.cache
+def _make_merge_preconditioner_kernel(block_type: BlockDType):
+    """
+    Generates a kernel to merge the (diagonal) preconditioning into a sparse matrix.
+    This effectively applies the preconditioning to the left (row-space) of the Jacobian.
+    """
+    # Determine (static) block size for kernel.
+    block_shape = block_type.shape
+    if isinstance(block_type.shape, int):
+        block_shape = (block_shape, block_shape)
+    elif len(block_shape) == 0:
+        block_shape = (1, 1)
+    elif len(block_shape) == 1:
+        block_shape = (1, block_shape[0])
+
+    @wp.kernel
+    def merge_preconditioner_kernel(
+        # Inputs:
+        num_nzb: wp.array(dtype=int32),
+        nzb_start: wp.array(dtype=int32),
+        nzb_coords: wp.array2d(dtype=int32),
+        row_start: wp.array(dtype=int32),
+        preconditioner: wp.array(dtype=float32),
+        # Outputs:
+        nzb_values: wp.array(dtype=block_type.warp_type),
+    ):
+        mat_id, block_idx = wp.tid()
+
+        # Check if block index is valid for this matrix.
+        if block_idx >= num_nzb[mat_id]:
+            return
+
+        n_block_rows = wp.static(block_shape[0])
+        n_block_cols = wp.static(block_shape[1])
+
+        global_block_idx = nzb_start[mat_id] + block_idx
+        block_coord = nzb_coords[global_block_idx]
+        block = nzb_values[global_block_idx]
+
+        if wp.static(n_block_rows == 1):
+            vec_coord = block_coord[0] + row_start[mat_id]
+            p_value = preconditioner[vec_coord]
+            block = block * p_value
+
+        else:
+            vec_coord_start = block_coord[0] + row_start[mat_id]
+            for i in range(n_block_rows):
+                p_value = preconditioner[vec_coord_start + i]
+                for j in range(n_block_cols):
+                    block[i, j] = block[i, j] * p_value
+
+        nzb_values[global_block_idx] = block
+
+    return merge_preconditioner_kernel
 
 
 @wp.kernel
@@ -461,50 +514,93 @@ def _add_matrix_diag_product(
 
 
 @wp.kernel
-def _set_matrix_diag_product(
-    model_data_num_total_cts: wp.array(dtype=int32),
+def _scale_row_vector_kernel(
+    # Matrix data:
+    matrix_dims: wp.array2d(dtype=int32),
+    # Vector block offsets:
     row_start: wp.array(dtype=int32),
-    d: wp.array(dtype=float32),
-    x: wp.array(dtype=float32),
-    world_mask: wp.array(dtype=int32),
+    # Inputs:
+    x: wp.array(dtype=Any),
+    beta: Any,
+    # Mask:
+    matrix_mask: wp.array(dtype=int32),
 ):
     """
-    Applies a diagonal matrix to a vector: x = diag(d) @ x
-    This is used to apply preconditioning to a vector.
+    Computes a vector scaling for all active entries: y = beta * y
     """
-    # Retrieve the thread index as the world index and constraint index
-    world_id, ct_id = wp.tid()
+    mat_id, entry_id = wp.tid()
 
-    # Terminate early if world or constraint is inactive
-    if world_mask[world_id] == 0 or ct_id >= model_data_num_total_cts[world_id]:
+    # Early exit if the matrix is flagged as inactive.
+    if matrix_mask[mat_id] == 0 or entry_id >= matrix_dims[mat_id, 0]:
         return
 
-    idx = row_start[world_id] + ct_id
-    x[idx] = d[idx] * x[idx]
+    idx = row_start[mat_id] + entry_id
+    x[idx] = beta * x[idx]
 
 
-@wp.kernel
-def _scaled_vector_sum(
-    model_data_num_total_cts: wp.array(dtype=int32),
-    row_start: wp.array(dtype=int32),
-    x: wp.array(dtype=float32),
-    y: wp.array(dtype=float32),
-    alpha: float,
-    beta: float,
-    world_mask: wp.array(dtype=int32),
-):
-    """
-    Computes the scaled vector sum: y = alpha * x + beta * y.
-    """
-    # Retrieve the thread index as the world index and constraint index
-    world_id, ct_id = wp.tid()
+@functools.cache
+def _make_block_sparse_gemv_regularization_kernel(alpha: float32):
+    # Note: this kernel factory allows to optimize for the common case alpha = 1.0. In use cases where
+    # alpha changes over time, this would need to be revisited (to avoid multiple recompilations)
+    @wp.kernel
+    def _block_sparse_gemv_regularization_kernel(
+        # Matrix data:
+        dims: wp.array2d(dtype=int32),
+        num_nzb: wp.array(dtype=int32),
+        nzb_start: wp.array(dtype=int32),
+        nzb_coords: wp.array2d(dtype=int32),
+        nzb_values: wp.array(dtype=vec6f),
+        # Vector block offsets:
+        row_start: wp.array(dtype=int32),
+        col_start: wp.array(dtype=int32),
+        # Regularization:
+        eta: wp.array(dtype=float32),
+        # Vector:
+        x: wp.array(dtype=float32),
+        y: wp.array(dtype=float32),
+        z: wp.array(dtype=float32),
+        # Mask:
+        matrix_mask: wp.array(dtype=int32),
+    ):
+        """
+        Computes a generalized matrix-vector product with an added diagonal regularization component:
+            y <- y + alpha * (M @ x) + alpha * (diag(eta) @ z)
+        """
 
-    # Terminate early if world or constraint is inactive
-    if world_mask[world_id] == 0 or ct_id >= model_data_num_total_cts[world_id]:
-        return
+        mat_id, block_idx = wp.tid()
 
-    idx = row_start[world_id] + ct_id
-    y[idx] = alpha * x[idx] + beta * y[idx]
+        # Early exit if the matrix is flagged as inactive.
+        if matrix_mask[mat_id] == 0:
+            return
+
+        # Check if block index is valid for this matrix.
+        if block_idx >= num_nzb[mat_id]:
+            return
+
+        global_block_idx = nzb_start[mat_id] + block_idx
+        block_coord = nzb_coords[global_block_idx]
+        block = nzb_values[global_block_idx]
+
+        # Perform block matrix-vector multiplication: z += alpha * A_block @ x_block
+        x_idx_base = col_start[mat_id] + block_coord[1]
+        acc = float32(0.0)
+
+        for j in range(6):
+            acc += block[j] * x[x_idx_base + j]
+        if wp.static(alpha != 1.0):
+            acc *= alpha
+
+        wp.atomic_add(y, row_start[mat_id] + block_coord[0], acc)
+
+        if block_idx < dims[mat_id][0]:
+            vec_idx = row_start[mat_id] + block_idx
+            if wp.static(alpha != 1.0):
+                vec_val = z[vec_idx] * alpha * eta[vec_idx]
+            else:
+                vec_val = z[vec_idx] * eta[vec_idx]
+            wp.atomic_add(y, vec_idx, vec_val)
+
+    return _block_sparse_gemv_regularization_kernel
 
 
 ###
@@ -960,7 +1056,6 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
         solver: LinearSolverType = None,
         solver_kwargs: dict[str, Any] | None = None,
         device: Devicelike = None,
-        build_col_major_jacobians: bool = True,
     ):
         """
         Creates a Delassus operator for the given model.
@@ -983,7 +1078,6 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
             solver (LinearSolverType, optional): The linear solver class to use for solving linear systems. Must be a subclass of `IterativeSolver`.
             solver_kwargs (dict, optional): Additional keyword arguments to pass to the solver constructor.
             device (Devicelike, optional): The device identifier for the Delassus operator. Defaults to None.
-            build_col_major_jacobians (bool): Flag to indicate whether a column-major Jacobian to speed up matrix-vector operations should be constructed. Defaults to `True`.
         """
         super().__init__()
 
@@ -1009,11 +1103,9 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
 
         # Temporary vector to store results, sized to the number of body dofs in a model.
         self._vec_temp_body_space: wp.array | None = None
-        # Temporary vectors to store results, sized to the maximum number of constraints in a model.
-        self._vec_temp_cts_space_A: wp.array | None = None
-        self._vec_temp_cts_space_B: wp.array | None = None
 
         self._col_major_jacobian: ColMajorSparseConstraintJacobians | None = None
+        self._transpose_op_matrix: BlockSparseMatrices | None = None
 
         # Allocate the Delassus operator data if at least the model is provided
         if model is not None:
@@ -1026,7 +1118,6 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
                 solver=solver,
                 device=device,
                 solver_kwargs=solver_kwargs,
-                build_col_major_jacobians=build_col_major_jacobians,
             )
 
     def finalize(
@@ -1039,7 +1130,6 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
         solver: LinearSolverType = None,
         device: Devicelike = None,
         solver_kwargs: dict[str, Any] | None = None,
-        build_col_major_jacobians: bool = True,
     ):
         """
         Allocates the Delassus operator with the specified dimensions and device.
@@ -1053,7 +1143,6 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
             solver (LinearSolverType, optional): The linear solver class to use for solving linear systems. Must be a subclass of `IterativeSolver`.
             device (Devicelike, optional): The device identifier for the Delassus operator. Defaults to None.
             solver_kwargs (dict, optional): Additional keyword arguments to pass to the solver constructor.
-            build_col_major_jacobians (bool): Flag to indicate whether a column-major Jacobian to speed up matrix-vector operations should be constructed. Defaults to `True`.
         """
         # Ensure the model container is valid
         if model is None:
@@ -1116,25 +1205,25 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
             (self._model.size.sum_of_num_body_dofs,), dtype=float32, device=self._device
         )
 
+        # Check whether any of the maximum row dimensions of the Jacobians is smaller than six.
+        # If so, we avoid building the column-major Jacobian due to potential memory access issues.
+        min_of_max_rows = np.min(self._model.info.max_total_cts.numpy())
+
+        if min_of_max_rows >= 6:
+            self._col_major_jacobian = ColMajorSparseConstraintJacobians(
+                model=self._model,
+                limits=self._limits,
+                contacts=self._contacts,
+                jacobians=self._jacobians,
+                device=self.device,
+            )
+            self._transpose_op_matrix = self._col_major_jacobian.bsm
+        else:
+            self._col_major_jacobian = None
+
         # Assign Jacobian if specified
         if jacobians is not None:
             self.assign(jacobians)
-
-        if build_col_major_jacobians:
-            # Check whether any of the maximum row dimensions of the Jacobians is smaller than six.
-            # If so, we avoid building the column-major Jacobian due to potential memory access issues.
-            min_of_max_rows = np.min(self._model.info.max_total_cts.numpy())
-
-            if min_of_max_rows >= 6:
-                self._col_major_jacobian = ColMajorSparseConstraintJacobians(
-                    model=self._model,
-                    limits=self._limits,
-                    contacts=self._contacts,
-                    jacobians=self._jacobians,
-                    device=self.device,
-                )
-            else:
-                self._col_major_jacobian = None
 
         # Optionally initialize the iterative linear system solver if one is specified
         if solver is not None:
@@ -1153,14 +1242,89 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
                 constraint Jacobian matrix in block sparse format.
         """
         self._jacobians = jacobians
-        self.bsm = jacobians._J_cts.bsm
+
+        if self._col_major_jacobian is None and self._transpose_op_matrix is None:
+            # Create copy of constraint Jacobian with separate non-zero block values, so we can apply
+            # preconditioning directly to the Jacobian.
+            self._transpose_op_matrix = copy.copy(jacobians._J_cts.bsm)
+            self._transpose_op_matrix.nzb_values = wp.empty_like(self.constraint_jacobian.nzb_values)
+
+        # Create copy of constraint Jacobian with separate non-zero block values, so we can apply
+        # preconditioning and the inverse mass matrix directly to the Jacobian.
+        if self.bsm is None:
+            self.bsm = copy.copy(jacobians._J_cts.bsm)
+            self.bsm.nzb_values = wp.empty_like(self.constraint_jacobian.nzb_values)
+
+        self.update()
 
     def update(self):
         """
         Updates any internal data structures that depend on the model, limits, contacts, or system Jacobians.
         """
-        if self._col_major_jacobian is not None:
+        if self._jacobians is None:
+            return
+
+        # Update column-major constraint Jacobian based on current system Jacobian
+        if self._col_major_jacobian is None:
+            wp.copy(self._transpose_op_matrix.nzb_values, self.constraint_jacobian.nzb_values)
+        else:
             self._col_major_jacobian.update(self._jacobians, self._model, self._limits, self._contacts)
+
+        # Copy current Jacobian values to local constraint Jacobian
+        wp.copy(self.bsm.nzb_values, self.constraint_jacobian.nzb_values)
+
+        # Apply inverse mass matrix to (copy of) constraint Jacobian
+        wp.launch(
+            kernel=_merge_inv_mass_matrix_kernel,
+            dim=(self.bsm.num_matrices, self.bsm.max_of_num_nzb),
+            inputs=[
+                # Inputs:
+                self._model.info.bodies_offset,
+                self._model.bodies.inv_m_i,
+                self._data.bodies.inv_I_i,
+                self.bsm.num_nzb,
+                self.bsm.nzb_start,
+                self.bsm.nzb_coords,
+                # Outputs:
+                self.bsm.nzb_values,
+            ],
+            device=self.bsm.device,
+        )
+
+        if self._preconditioner is not None:
+            # Apply preconditioner to (copy of) constraint Jacobian
+            wp.launch(
+                kernel=_make_merge_preconditioner_kernel(self.bsm.nzb_dtype),
+                dim=(self.bsm.num_matrices, self.bsm.max_of_num_nzb),
+                inputs=[
+                    # Inputs:
+                    self.bsm.num_nzb,
+                    self.bsm.nzb_start,
+                    self.bsm.nzb_coords,
+                    self.bsm.row_start,
+                    self._preconditioner,
+                    # Outputs:
+                    self.bsm.nzb_values,
+                ],
+                device=self.bsm.device,
+            )
+
+            # Apply preconditioner to column-major constraint Jacobian
+            wp.launch(
+                kernel=_make_merge_preconditioner_kernel(self._transpose_op_matrix.nzb_dtype),
+                dim=(self._transpose_op_matrix.num_matrices, self._transpose_op_matrix.max_of_num_nzb),
+                inputs=[
+                    # Inputs:
+                    self._transpose_op_matrix.num_nzb,
+                    self._transpose_op_matrix.nzb_start,
+                    self._transpose_op_matrix.nzb_coords,
+                    self._transpose_op_matrix.row_start,
+                    self._preconditioner,
+                    # Outputs:
+                    self._transpose_op_matrix.nzb_values,
+                ],
+                device=self._transpose_op_matrix.device,
+            )
 
     def set_regularization(self, eta: wp.array | None):
         """
@@ -1192,17 +1356,6 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
         """
         self._preconditioner = preconditioner
 
-        # Initialize memory to store intermediate results with preconditioning
-        if self._preconditioner is not None:
-            if self._vec_temp_cts_space_A is None:
-                self._vec_temp_cts_space_A = wp.empty(
-                    (self._model.size.sum_of_max_total_cts,), dtype=float32, device=self._device
-                )
-            if self._vec_temp_cts_space_B is None:
-                self._vec_temp_cts_space_B = wp.empty(
-                    (self._model.size.sum_of_max_total_cts,), dtype=float32, device=self._device
-                )
-
     def diagonal(self, diag: wp.array):
         """Stores the diagonal of the Delassus matrix in the given array.
 
@@ -1229,11 +1382,11 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
                 self._model.info.bodies_offset,
                 self._model.bodies.inv_m_i,
                 self._data.bodies.inv_I_i,
-                self.bsm.nzb_start,
-                self.bsm.num_nzb,
-                self.bsm.nzb_coords,
-                self.bsm.nzb_values,
-                self.bsm.row_start,
+                self.constraint_jacobian.nzb_start,
+                self.constraint_jacobian.num_nzb,
+                self.constraint_jacobian.nzb_coords,
+                self.constraint_jacobian.nzb_values,
+                self.constraint_jacobian.row_start,
                 diag,
             ],
             device=self._device,
@@ -1362,6 +1515,10 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
     def device(self) -> Devicelike:
         return self._model.device
 
+    @property
+    def constraint_jacobian(self) -> BlockSparseMatrices:
+        return self._jacobians._J_cts.bsm
+
     ###
     # Operations
     ###
@@ -1379,46 +1536,34 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
         v = self._vec_temp_body_space
         v.zero_()
 
-        if self._preconditioner is None:
-            # Compute first Jacobian matrix-vector product: v <- J^T @ x
-            if self._col_major_jacobian is not None:
-                self.ATy_op(self._col_major_jacobian.bsm, x, v, world_mask)
-            else:
-                self.ATy_op(self.bsm, x, v, world_mask)
+        # Compute first Jacobian matrix-vector product: v <- (P @ J)^T @ x
+        self.ATy_op(self._transpose_op_matrix, x, v, world_mask)
 
-            # Multiply by inverse mass matrix (in-place): v <- M^-1 @ v
-            self._apply_inverse_mass_matrix(v, world_mask)
-
-            # Compute second Jacobian matrix-vector product: y <- J @ v
+        if self._eta is None:
+            # Compute second Jacobian matrix-vector product: y <- (P @ J @ M^-1) @ v
             self.Ax_op(self.bsm, v, y, world_mask)
-
-            # Add regularization, if provided: y <- y + diag(eta) @ x
-            self._apply_regularization(x, y, world_mask)
-
         else:
-            x_preconditioned = self._vec_temp_cts_space_A
-
-            # Apply preconditioning to input vector: x_p <- diag(P) @ x
-            wp.copy(x_preconditioned, x)
-            self._apply_preconditioning(x_preconditioned, world_mask)
-
-            # Compute first Jacobian matrix-vector product: v <- J^T @ x_p
-            if self._col_major_jacobian is not None:
-                self.ATy_op(self._col_major_jacobian.bsm, x_preconditioned, v, world_mask)
-            else:
-                self.ATy_op(self.bsm, x_preconditioned, v, world_mask)
-
-            # Multiply by inverse mass matrix (in-place): v <- M^-1 @ v
-            self._apply_inverse_mass_matrix(v, world_mask)
-
-            # Compute second Jacobian matrix-vector product: y <- J @ v
-            self.Ax_op(self.bsm, v, y, world_mask)
-
-            # Apply preconditioning to output vector: y <- diag(P) @ y
-            self._apply_preconditioning(y, world_mask)
-
-            # Add regularization, if provided: y <- y + diag(eta) @ x
-            self._apply_regularization(x, y, world_mask)
+            y.zero_()
+            # Compute y <- (P @ J @ M^-1) @ v + diag(eta) @ x
+            wp.launch(
+                kernel=_make_block_sparse_gemv_regularization_kernel(1.0),
+                dim=(self.bsm.num_matrices, self.bsm.max_of_num_nzb),
+                inputs=[
+                    self.bsm.dims,
+                    self.bsm.num_nzb,
+                    self.bsm.nzb_start,
+                    self.bsm.nzb_coords,
+                    self.bsm.nzb_values,
+                    self.bsm.row_start,
+                    self.bsm.col_start,
+                    self._eta,
+                    v,
+                    y,
+                    x,
+                    world_mask,
+                ],
+                device=self.device,
+            )
 
     def matvec_transpose(self, y: wp.array, x: wp.array, world_mask: wp.array):
         """
@@ -1442,79 +1587,42 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
         v = self._vec_temp_body_space
         v.zero_()
 
-        if self._preconditioner is None:
-            # Compute first Jacobian matrix-vector product: v <- J^T @ x
-            if self._col_major_jacobian is not None:
-                self.ATy_op(self._col_major_jacobian.bsm, x, v, world_mask)
-            else:
-                self.ATy_op(self.bsm, x, v, world_mask)
+        # Compute first Jacobian matrix-vector product: v <- (P @ J)^T @ x
+        self.ATy_op(self._transpose_op_matrix, x, v, world_mask)
 
-            # Multiply by inverse mass matrix (in-place): v <- M^-1 @ v
-            self._apply_inverse_mass_matrix(v, world_mask)
-
+        if self._eta is None:
             # Compute second Jacobian matrix-vector product as general matrix-vector product:
-            #   y <- alpha * J @ v + beta * y
+            #   y <- alpha * (P @ J @ M^-1) @ v + beta * y
             self.gemv_op(self.bsm, v, y, alpha, beta, world_mask)
-
-            # Add regularization, if provided: y <- y + alpha * diag(eta) @ x
-            self._apply_regularization(x, y, world_mask, alpha)
-
         else:
-            x_preconditioned = self._vec_temp_cts_space_A
-            z = self._vec_temp_cts_space_B
+            # Scale y <- beta * y
+            wp.launch(
+                kernel=_scale_row_vector_kernel,
+                dim=(self.bsm.num_matrices, self.bsm.max_of_max_dims[0]),
+                inputs=[self.bsm.dims, self.bsm.row_start, y, beta, world_mask],
+                device=self.device,
+            )
 
-            # Apply preconditioning to input vector: x_p <- diag(P) @ x
-            wp.copy(x_preconditioned, x)
-            self._apply_preconditioning(x_preconditioned, world_mask)
-
-            # Compute first Jacobian matrix-vector product: v <- J^T @ x_p
-            if self._col_major_jacobian is not None:
-                self.ATy_op(self._col_major_jacobian.bsm, x_preconditioned, v, world_mask)
-            else:
-                self.ATy_op(self.bsm, x_preconditioned, v, world_mask)
-
-            # Multiply by inverse mass matrix (in-place): v <- M^-1 @ v
-            self._apply_inverse_mass_matrix(v, world_mask)
-
-            if beta == 0.0:
-                # Special case: If `beta` is zero, we can skip some of the steps and use `y`
-                # directly without having to use an additional temporary.
-
-                # Compute second Jacobian matrix-vector product using general matrix-vector product:
-                #   y <- alpha * J @ v
-                self.gemv_op(self.bsm, v, y, alpha, 0.0, world_mask)
-
-                # Apply preconditioning: y <- diag(P) @ y
-                self._apply_preconditioning(y, world_mask)
-
-                # Add regularization, if provided: y <- y + alpha * diag(eta) @ x
-                self._apply_regularization(x, y, world_mask, alpha)
-
-            else:
-                # Compute second Jacobian matrix-vector product: z <- J @ v
-                self.Ax_op(self.bsm, v, z, world_mask)
-
-                # Apply preconditioning: z <- diag(P) @ z
-                self._apply_preconditioning(z, world_mask)
-
-                # Add regularization, if provided: z <- z + diag(eta) @ x
-                self._apply_regularization(x, z, world_mask)
-
-                # Add scaling and offset: y <- alpha * z + beta * y
-                wp.launch(
-                    kernel=_scaled_vector_sum,
-                    dim=(self._model.size.num_worlds, self._model.size.max_of_max_total_cts),
-                    inputs=[
-                        self._data.info.num_total_cts,
-                        self.bsm.row_start,
-                        z,
-                        y,
-                        alpha,
-                        beta,
-                        world_mask,
-                    ],
-                    device=self._device,
-                )
+            # Compute y <- alpha * (P @ J @ M^-1) @ v + y + alpha * diag(eta) @ x
+            wp.launch(
+                kernel=_make_block_sparse_gemv_regularization_kernel(alpha),
+                dim=(self.bsm.num_matrices, self.bsm.max_of_num_nzb),
+                inputs=[
+                    self.bsm.dims,
+                    self.bsm.num_nzb,
+                    self.bsm.nzb_start,
+                    self.bsm.nzb_coords,
+                    self.bsm.nzb_values,
+                    self.bsm.row_start,
+                    self.bsm.col_start,
+                    self._eta,
+                    v,
+                    y,
+                    x,
+                    world_mask,
+                ],
+                device=self.device,
+            )
 
     def gemv_transpose(self, y: wp.array, x: wp.array, world_mask: wp.array, alpha: float = 1.0, beta: float = 0.0):
         """
@@ -1525,31 +1633,6 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
             Since the Delassus matrix is symmetric, this is equivalent to `gemv` with swapped arguments.
         """
         self.gemv(y, x, world_mask, alpha, beta)
-
-    def _apply_inverse_mass_matrix(self, x: wp.array, world_mask: wp.array):
-        """
-        Applies the inverse mass matrix to a vector in-place: x = M^-1 @ x.
-
-        Args:
-            x (wp.array): Input/output vector in body coordinate space.
-            world_mask (wp.array): Array of integers indicating which worlds to process (0 = skip).
-        """
-        if self._model is None or self._data is None:
-            raise RuntimeError("Model and data must be assigned before applying inverse mass matrix.")
-
-        wp.launch(
-            kernel=_inverse_mass_matrix_matvec,
-            dim=(self._model.size.num_worlds, self._model.size.max_of_num_bodies),
-            inputs=[
-                self._model.info.num_bodies,
-                self._model.info.bodies_offset,
-                self._model.bodies.inv_m_i,
-                self._data.bodies.inv_I_i,
-                x,
-                world_mask,
-            ],
-            device=self._device,
-        )
 
     def _apply_regularization(self, x: wp.array, y: wp.array, world_mask: wp.array, alpha: float = 1.0):
         """
@@ -1584,39 +1667,6 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
                 x,
                 y,
                 alpha,
-                world_mask,
-            ],
-            device=self._device,
-        )
-
-    def _apply_preconditioning(self, x: wp.array, world_mask: wp.array):
-        """
-        Applies diagonal preconditioning to a vector.
-
-        If a preconditioner has been set via `set_preconditioner()`, this method computes
-        `x = diag(P) @ x`, where `P` contains the diagonal elements of a preconditioning matrix.
-
-        Args:
-            x (wp.array): Vector to be scaled by the diagonal preconditioning matrix.
-                Shape `(sum_of_max_total_cts,)` and type :class:`float32`.
-            world_mask (wp.array): Array of integers indicating which worlds to process (0 = skip).
-                Shape `(num_worlds,)` and type :class:`int32`.
-        """
-        if self._model is None or self._data is None:
-            raise RuntimeError("Model and data must be assigned before applying preconditioning.")
-
-        # Skip if no preconditioner is set
-        if self._preconditioner is None:
-            return
-
-        wp.launch(
-            kernel=_set_matrix_diag_product,
-            dim=(self._model.size.num_worlds, self._model.size.max_of_max_total_cts),
-            inputs=[
-                self._data.info.num_total_cts,
-                self.bsm.row_start,
-                self._preconditioner,
-                x,
                 world_mask,
             ],
             device=self._device,

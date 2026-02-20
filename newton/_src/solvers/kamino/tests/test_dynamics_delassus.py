@@ -795,10 +795,8 @@ class TestDelassusOperatorSparse(unittest.TestCase):
         self.assertIsNone(delassus._preconditioner)
         self.assertIsNone(delassus._eta)
 
-        # Check that only body space temp vector is initialized without preconditioning
+        # Check that body space temp vector is initialized
         self.assertEqual(delassus._vec_temp_body_space.shape, (model.size.sum_of_num_body_dofs,))
-        self.assertEqual(delassus._vec_temp_cts_space_A, None)
-        self.assertEqual(delassus._vec_temp_cts_space_B, None)
 
         rng = np.random.default_rng(seed=self.seed)
         regularization_np = rng.standard_normal((model.size.sum_of_max_total_cts,), dtype=np.float32)
@@ -811,11 +809,10 @@ class TestDelassusOperatorSparse(unittest.TestCase):
         preconditioner_np = rng.standard_normal((model.size.sum_of_max_total_cts,), dtype=np.float32)
         preconditioner = wp.from_numpy(preconditioner_np, dtype=wp.float32, device=self.default_device)
         delassus.set_preconditioner(preconditioner)
+        delassus.update()
 
-        # Check that setting preconditioner works and allocates the constraint space temp vectors
+        # Check that setting preconditioner works
         self.assertEqual(delassus._preconditioner, preconditioner)
-        self.assertEqual(delassus._vec_temp_cts_space_A.shape, (model.size.sum_of_max_total_cts,))
-        self.assertEqual(delassus._vec_temp_cts_space_B.shape, (model.size.sum_of_max_total_cts,))
 
     def _check_delassus_matrix(
         self,
@@ -860,6 +857,8 @@ class TestDelassusOperatorSparse(unittest.TestCase):
                 delassus.set_preconditioner(preconditioner)
             else:
                 delassus.set_preconditioner(None)
+
+            delassus.update()
 
             # Extract Delassus matrices as numpy arrays
             D_np = extract_delassus_sparse(delassus, only_active_dims=True)
@@ -939,6 +938,8 @@ class TestDelassusOperatorSparse(unittest.TestCase):
                 delassus.set_preconditioner(preconditioner)
             else:
                 delassus.set_preconditioner(None)
+
+            delassus.update()
 
             # Generate vectors for multiplication
             alpha = float(rng.standard_normal((1,))[0])

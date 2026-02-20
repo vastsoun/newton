@@ -60,6 +60,7 @@ class BatchedLinearOperator:
         active_dims: wp.array,
         device: wp.context.Device,
         dtype: type,
+        matvec_fn: Callable | None = None,
     ):
         self._gemv_fn = gemv_fn
         self.n_worlds = n_worlds
@@ -67,6 +68,7 @@ class BatchedLinearOperator:
         self.active_dims = active_dims
         self.device = device
         self.dtype = dtype
+        self._matvec_fn = matvec_fn
 
     @classmethod
     def from_dense(cls, operator: DenseLinearOperatorData) -> BatchedLinearOperator:
@@ -112,8 +114,14 @@ class BatchedLinearOperator:
             y_flat = y.reshape((n_worlds * max_rows,))
             blas.block_sparse_gemv(A, x_flat, y_flat, alpha, beta, world_active)
 
+        def matvec_fn(x, y, world_active):
+            # Reshape 2D arrays to 1D for sparse matvec, then back
+            x_flat = x.reshape((n_worlds * max_cols,))
+            y_flat = y.reshape((n_worlds * max_rows,))
+            blas.block_sparse_matvec(A, x_flat, y_flat, world_active)
+
         dtype = A.nzb_dtype.dtype if A.nzb_dtype is not None else None
-        return cls(gemv_fn, n_worlds, max_rows, active_dims, A.device, dtype)
+        return cls(gemv_fn, n_worlds, max_rows, active_dims, A.device, dtype, matvec_fn=matvec_fn)
 
     @classmethod
     def from_block_sparse_operator(cls, A: BlockSparseLinearOperators) -> BatchedLinearOperator:
@@ -134,11 +142,21 @@ class BatchedLinearOperator:
             y_flat = y.reshape((n_worlds * max_rows,))
             A.gemv(x_flat, y_flat, world_active, alpha, beta)
 
-        return cls(gemv_fn, n_worlds, max_rows, A.active_cols, A.device, A.dtype)
+        def matvec_fn(x, y, world_active):
+            x_flat = x.reshape((n_worlds * max_cols,))
+            y_flat = y.reshape((n_worlds * max_rows,))
+            A.matvec(x_flat, y_flat, world_active)
+
+        return cls(gemv_fn, n_worlds, max_rows, A.active_cols, A.device, A.dtype, matvec_fn=matvec_fn)
 
     def gemv(self, x: wp.array2d, y: wp.array2d, world_active: wp.array, alpha: float, beta: float):
         """Compute y = alpha * A @ x + beta * y."""
         self._gemv_fn(x, y, world_active, alpha, beta)
+
+    def matvec(self, x: wp.array2d, y: wp.array2d, world_active: wp.array):
+        if self._matvec_fn is not None:
+            return self._matvec_fn(x, y, world_active)
+        return self._gemv_fn(x, y, world_active, 1.0, 0.0)
 
 
 # Implementations
@@ -588,7 +606,7 @@ class CGSolver(ConjugateSolver):
         if self.Mi is None:
             self.compute_dot(r, r, active_dims, world_active)
         else:
-            self.Mi.gemv(r, z, world_active, alpha=1.0, beta=0.0)
+            self.Mi.matvec(r, z, world_active)
             self.compute_dot(r_repeated, self.r_and_z, active_dims, world_active)
 
     def solve(
@@ -657,7 +675,7 @@ class CGSolver(ConjugateSolver):
         rz_old.assign(rz_new)
 
         # Ap = A * p
-        self.A.gemv(p, Ap, world_active, alpha=1.0, beta=0.0)
+        self.A.matvec(p, Ap, world_active)
         self.compute_dot(p, Ap, active_dims, world_active, col_offset=1)
         p_Ap = self.dot_product[1]
 
@@ -703,7 +721,7 @@ class CRSolver(ConjugateSolver):
             self.y_and_Ap = _repeat_first(self.y_and_Ap)
 
     def update_rr_zAz(self, z, Az, r, r_copy, active_dims, world_active):
-        self.A.gemv(z, Az, world_active, alpha=1.0, beta=0.0)
+        self.A.matvec(z, Az, world_active)
         r_copy.assign(r)
         self.compute_dot(self.r_and_z, self.r_and_Az, active_dims, world_active)
 
@@ -744,7 +762,7 @@ class CRSolver(ConjugateSolver):
 
         # z = M r
         if self.Mi is not None:
-            self.Mi.gemv(r, z, world_active, alpha=1.0, beta=0.0)
+            self.Mi.matvec(r, z, world_active)
 
         self.update_rr_zAz(z, Az, r, r_copy, active_dims, world_active)
 
@@ -787,7 +805,7 @@ class CRSolver(ConjugateSolver):
         zAz_old.assign(zAz_new)
 
         if self.Mi is not None:
-            self.Mi.gemv(Ap, y, world_active, alpha=1.0, beta=0.0)
+            self.Mi.matvec(Ap, y, world_active)
         self.compute_dot(Ap, y, active_dims, world_active, col_offset=1)
         y_Ap = self.dot_product[1]
 

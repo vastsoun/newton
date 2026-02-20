@@ -31,6 +31,7 @@ from newton._src.solvers.kamino.linalg.sparse_matrix import (
     dense_to_block_sparse_copy_values,
 )
 from newton._src.solvers.kamino.linalg.utils.rand import random_spd_matrix
+from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.tests.utils.extract import get_vector_block
 from newton._src.solvers.kamino.tests.utils.print import print_error_stats
 from newton._src.solvers.kamino.tests.utils.rand import RandomProblemLLT
@@ -38,8 +39,10 @@ from newton._src.solvers.kamino.tests.utils.rand import RandomProblemLLT
 
 class TestLinalgConjugate(unittest.TestCase):
     def setUp(self):
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
         self.seed = 42
-        self.verbose = True
+        self.verbose = False
 
     def tearDown(self):
         pass
@@ -494,18 +497,8 @@ class TestLinalgConjugate(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    # Global numpy configurations
-    np.set_printoptions(linewidth=20000, precision=10, threshold=20000, suppress=True)  # Suppress scientific notation
-
-    wp.init()
-
-    # Global warp configurations
-    wp.config.enable_backward = False
-    wp.config.verbose = False
-
-    # Clear caches
-    # wp.clear_kernel_cache()
-    # wp.clear_lto_cache()
+    # Test setup
+    setup_tests()
 
     # Run all tests
     unittest.main(verbosity=2)

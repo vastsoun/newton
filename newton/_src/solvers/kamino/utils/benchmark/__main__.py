@@ -1,0 +1,259 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import argparse
+
+import numpy as np
+import warp as wp
+
+from newton._src.solvers.kamino.utils import logger as msg
+from newton._src.solvers.kamino.utils.benchmark.configs import make_default_simulator_config
+from newton._src.solvers.kamino.utils.benchmark.problems import make_benchmark_problems
+from newton._src.solvers.kamino.utils.benchmark.runner import run_single_benchmark
+
+###
+# DESIGN:
+#
+#   OUTLINE:
+#   1. Supported program arguments
+#   2. Generating solver configurations (potentially multiple)
+#   3. Pretty-print configurations to console and file
+#   4. Execute benchmark runner and collect metrics
+#   5. Print results, save to file, and optionally plot
+#
+#   METRICS:
+#   - Memory usage
+#   - Total runtime + per-step runtime w/ statistics (mean, std, min, max)
+#   - Solver performance metrics (Optional, because of reduced throughput)
+#   - Number of PADMM iterations to converge
+#   - Final PADMM residuals (primal, dual, compl)
+#
+#   ARGUMENTS:
+#   - Device selection (e.g. "cuda:0", "cpu")
+#   - Number of parallel worlds to simulate
+#   - Number of steps to simulate
+#   - Gravity on/off
+#   - Ground plane on/off
+#   - Performance metrics on/off (since it can reduce throughput)
+#   - Problem sets (boxes_fourbar, DR Legs, ANYmal, humanoid, etc.)
+#
+#   CONFIGURATIONS:
+#   - Linear solver type (e.g. dense/LLTB, sparse/CG, sparse/CR)
+#   - Linear solver max iterations (0 for no limit, only for sparse/CG+CR)
+#   - PADMM iterations
+#   - PADMM tolerances (primal, dual, compl)
+#   - PADMM acceleration on/off
+#   - Warm-starting mode (none, contacts, containers)
+#   - PADMM initial rho and eta
+#   - PADMM rho update strategy (e.g. fixed, balanced)
+#
+#   FUNCTIONALITY:
+#  - [x] Random actuation for each problem (optional)
+#  - [x] Separate config generation from execution to allow
+#    for easier hyperparameter sweeps and ablations
+#  - Define default configs in appropriate file for reference
+#  - Store git commit and/or diff for reproducibility
+#
+#
+#   MODES:
+#   - BASIC: Run optimally to only measure total runtime and final memory usage
+#   - STATS: Run with detailed timing per-step to measure throughput statistics
+#   - ACCURACY: Run with solver performance metrics enabled to measure physical accuracy
+#
+###
+
+
+###
+# Functions
+###
+
+
+def parse_benchmark_arguments():
+    parser = argparse.ArgumentParser(description="Solver performance benchmark")
+
+    # Warp runtime arguments
+    parser.add_argument("--device", type=str, help="Define the Warp device to operate on, e.g. 'cuda:0' or 'cpu'.")
+    parser.add_argument(
+        "--cuda-graph",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Set to `True` to enable CUDA graph capture (only available on CUDA devices). Defaults to `True`.",
+    )
+    parser.add_argument(
+        "--clear-cache",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Set to `True` to clear Warp's kernel and LTO caches before execution. Defaults to `False`.",
+    )
+
+    # World configuration arguments
+    parser.add_argument(
+        "--num-worlds",
+        type=int,
+        default=1,
+        help="Sets the number of parallel simulation worlds to run. Defaults to `1`.",
+    )
+    parser.add_argument(
+        "--num-steps",
+        type=int,
+        default=10000,
+        help="Sets the number of simulation steps to execute. Defaults to `10000`.",
+    )
+    parser.add_argument(
+        "--gravity",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Enables/disables gravity in the simulation. Defaults to `True`.",
+    )
+    parser.add_argument(
+        "--ground",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Enables/disables ground geometry in the simulation. Defaults to `True`.",
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=0,
+        help="Sets the random seed for the simulation. Defaults to `0`.",
+    )
+
+    # Benchmark execution arguments
+    parser.add_argument(
+        "--mode",
+        type=str,
+        choices=["basic", "stats", "accuracy"],
+        default="basic",
+        help="Defines the benchmark mode to run. Defaults to 'stats'.",
+    )
+    parser.add_argument(
+        "--problem",
+        type=str,
+        choices=["fourbar", "dr_legs", "anymal", "humanoid"],  # TODO: Make as a global constant list
+        default="fourbar",  # TODO: Make as a global constant default
+        help="Defines a single benchmark problem to run. Defaults to 'fourbar'.",
+    )
+    parser.add_argument(
+        "--problem-set",
+        nargs="+",
+        default=[],
+        help="Defines the benchmark problem(s) to run. If unspecified, the default `fourbar` problem will be used.",
+    )
+    parser.add_argument(
+        "--solver-metrics",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Set to `True` to record solver physics metrics. Defaults to `False`.",
+    )
+    parser.add_argument(
+        "--viewer",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Set to `True` to run with the simulation viewer. Defaults to `False`.",
+    )
+    parser.add_argument(
+        "--test",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Set to `True` to run `newton.example.run` tests. Defaults to `False`.",
+    )
+
+    return parser.parse_args()
+
+
+###
+# Main function
+###
+
+if __name__ == "__main__":
+    # Load benchmark-specific program arguments
+    args = parse_benchmark_arguments()
+
+    # Set global numpy configurations
+    np.set_printoptions(linewidth=20000, precision=6, threshold=10000, suppress=True)  # Suppress scientific notation
+
+    # Clear warp cache if requested
+    if args.clear_cache:
+        wp.clear_kernel_cache()
+        wp.clear_lto_cache()
+
+    # TODO: Make optional
+    # Set the verbosity of the global message logger
+    msg.set_log_level(msg.LogLevel.INFO)
+
+    # Set device if specified, otherwise use Warp's default
+    if args.device:
+        device = wp.get_device(args.device)
+        wp.set_device(device)
+    else:
+        device = wp.get_preferred_device()
+
+    # Determine if CUDA graphs should be used for execution
+    can_use_cuda_graph = device.is_cuda and wp.is_mempool_enabled(device)
+    use_cuda_graph = can_use_cuda_graph and args.cuda_graph
+    msg.info(f"can_use_cuda_graph: {can_use_cuda_graph}")
+    msg.notif(f"use_cuda_graph: {use_cuda_graph}")
+    msg.notif(f"device: {device}")
+
+    # Determine the problem set from
+    # the single and list arguments
+    if len(args.problem_set) == 0:
+        problem_names = [args.problem]
+    else:
+        problem_names = args.problem_set
+    msg.notif(f"problem_names: {problem_names}")
+
+    # TODO
+    # Each run will involve:
+    # {settings, problem := {builder, control, camera}, metrics}
+
+    # TODO: Settings generator
+    settings_set = {
+        "dense_lltb_default": make_default_simulator_config(),
+    }
+
+    # Generate the problem set based on the
+    # provided problem names and arguments
+    problem_set = make_benchmark_problems(
+        names=problem_names,
+        num_worlds=args.num_worlds,
+        gravity=args.gravity,
+        ground=args.ground,
+    )
+
+    # Iterator over all problem names and settings and run benchmarks for each
+    for problem_name, problem_config in problem_set.items():
+        for setting_name, settings in settings_set.items():
+            msg.notif("Running benchmark for problem '%s' with settings '%s'", problem_name, setting_name)
+
+            # Unpack problem configurations
+            builder, control, camera = problem_config
+
+            # Execute the benchmark for the current problem and settings
+            run_single_benchmark(
+                args=args,
+                builder=builder,
+                settings=settings,
+                control=control,
+                camera=camera,
+                device=device,
+                use_cuda_graph=use_cuda_graph,
+            )
+
+    # # Plot logged data after the viewer is closed
+    # if args.logging:
+    #     OUTPUT_PLOT_PATH = os.path.join(os.path.dirname(os.path.realpath(__file__)), args.problems)
+    #     os.makedirs(OUTPUT_PLOT_PATH, exist_ok=True)
+    #     example.plot(path=OUTPUT_PLOT_PATH, show=args.show_plots)

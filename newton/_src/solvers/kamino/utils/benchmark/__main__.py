@@ -21,8 +21,9 @@ import warp as wp
 from newton._src.solvers.kamino.utils import logger as msg
 from newton._src.solvers.kamino.utils.benchmark.configs import make_default_simulator_config
 from newton._src.solvers.kamino.utils.benchmark.metrics import BenchmarkMetrics
-from newton._src.solvers.kamino.utils.benchmark.problems import make_benchmark_problems
+from newton._src.solvers.kamino.utils.benchmark.problems import SUPPORTED_PROBLEM_NAMES, make_benchmark_problems
 from newton._src.solvers.kamino.utils.benchmark.runner import run_single_benchmark
+from newton._src.solvers.kamino.utils.device import get_device_spec_info
 
 ###
 # DESIGN:
@@ -75,6 +76,19 @@ from newton._src.solvers.kamino.utils.benchmark.runner import run_single_benchma
 #
 ###
 
+###
+# Constants
+###
+
+SUPPORTED_BENCHMARK_MODES = ["total", "perstep", "solver", "accuracy"]
+"""
+A list of supported benchmark modes that determine the level of metrics collected during execution.
+
+- "total": Only collects total runtime and final memory usage metrics.
+- "perstep": Collects detailed timing metrics for each simulation step to compute throughput statistics.
+- "solver": Collects solver performance metrics such as PADMM iterations and residuals.
+- "accuracy": Collects solver performance metrics that can be used to evaluate the physical accuracy of the simulation.
+"""
 
 ###
 # Functions
@@ -109,8 +123,8 @@ def parse_benchmark_arguments():
     parser.add_argument(
         "--num-steps",
         type=int,
-        default=10000,
-        help="Sets the number of simulation steps to execute. Defaults to `10000`.",
+        default=1000,
+        help="Sets the number of simulation steps to execute. Defaults to `1000`.",
     )
     parser.add_argument(
         "--gravity",
@@ -135,16 +149,16 @@ def parse_benchmark_arguments():
     parser.add_argument(
         "--mode",
         type=str,
-        choices=["basic", "stats", "accuracy"],
-        default="basic",
-        help="Defines the benchmark mode to run. Defaults to 'stats'.",
+        choices=SUPPORTED_BENCHMARK_MODES,
+        default="total",
+        help="Defines the benchmark mode to run. Defaults to 'total'.\n{SUPPORTED_BENCHMARK_MODES}",
     )
     parser.add_argument(
         "--problem",
         type=str,
-        choices=["fourbar", "dr_legs", "anymal", "humanoid"],  # TODO: Make as a global constant list
+        choices=SUPPORTED_PROBLEM_NAMES,
         default="fourbar",  # TODO: Make as a global constant default
-        help="Defines a single benchmark problem to run. Defaults to 'fourbar'.",
+        help=f"Defines a single benchmark problem to run. Defaults to 'fourbar'.\nSupported: {SUPPORTED_PROBLEM_NAMES}",
     )
     parser.add_argument(
         "--problem-set",
@@ -153,15 +167,9 @@ def parse_benchmark_arguments():
         help="Defines the benchmark problem(s) to run. If unspecified, the default `fourbar` problem will be used.",
     )
     parser.add_argument(
-        "--solver-metrics",
-        action=argparse.BooleanOptionalAction,
-        default=False,
-        help="Set to `True` to record solver physics metrics. Defaults to `False`.",
-    )
-    parser.add_argument(
         "--viewer",
         action=argparse.BooleanOptionalAction,
-        default=True,
+        default=False,
         help="Set to `True` to run with the simulation viewer. Defaults to `False`.",
     )
     parser.add_argument(
@@ -207,6 +215,31 @@ if __name__ == "__main__":
     msg.info(f"can_use_cuda_graph: {can_use_cuda_graph}")
     msg.notif(f"use_cuda_graph: {use_cuda_graph}")
     msg.notif(f"device: {device}")
+    msg.notif(f"mode: {args.mode}")
+
+    # Determine the metrics to collect based on the benchmark mode
+    if args.mode == "total":
+        collect_step_metrics = False
+        collect_solver_metrics = False
+        collect_physics_metrics = False
+    elif args.mode == "perstep":
+        collect_step_metrics = True
+        collect_solver_metrics = False
+        collect_physics_metrics = False
+    elif args.mode == "solver":
+        collect_step_metrics = True
+        collect_solver_metrics = True
+        collect_physics_metrics = False
+    elif args.mode == "accuracy":
+        collect_step_metrics = True
+        collect_solver_metrics = True
+        collect_physics_metrics = True
+    else:
+        raise ValueError(f"Unsupported benchmark mode '{args.mode}'. Supported modes: {SUPPORTED_BENCHMARK_MODES}")
+
+    # Print device specification info to console for reference
+    spec_info = get_device_spec_info(device)
+    msg.info("[Device spec info]: %s", spec_info)
 
     # Determine the problem set from
     # the single and list arguments
@@ -217,8 +250,12 @@ if __name__ == "__main__":
     msg.notif(f"problem_names: {problem_names}")
 
     # Generate a set of solver configurations to benchmark over
+    # TODO: DEFINE MORE HERE
     configs_set = {
         "dense_lltb_default": make_default_simulator_config(),
+        "dense_lltb_0": make_default_simulator_config(),
+        "dense_lltb_1": make_default_simulator_config(),
+        "dense_lltb_2": make_default_simulator_config(),
     }
 
     # Generate the problem set based on the
@@ -236,7 +273,9 @@ if __name__ == "__main__":
         problem_names=problem_names,
         config_names=list(configs_set.keys()),
         num_steps=args.num_steps,
-        solver_metrics=args.solver_metrics,
+        step_metrics=collect_step_metrics,
+        solver_metrics=collect_solver_metrics,
+        physics_metrics=collect_physics_metrics,
     )
     msg.warning(f"metrics._problem_names: {metrics._problem_names}")
     msg.warning(f"metrics._config_names: {metrics._config_names}")
@@ -249,12 +288,18 @@ if __name__ == "__main__":
         for config_name, configs in configs_set.items():
             msg.notif("Running benchmark for problem '%s' with simulation configs '%s'", problem_name, config_name)
 
+            # Retrieve problem and config indices
+            problem_idx = metrics._problem_names.index(problem_name)
+            config_idx = metrics._config_names.index(config_name)
+
             # Unpack problem configurations
             builder, control, camera = problem_config
 
             # Execute the benchmark for the current problem and settings
             run_single_benchmark(
-                metrics,
+                problem_idx=problem_idx,
+                config_idx=config_idx,
+                metrics=metrics,
                 args=args,
                 builder=builder,
                 configs=configs,
@@ -262,7 +307,13 @@ if __name__ == "__main__":
                 camera=camera,
                 device=device,
                 use_cuda_graph=use_cuda_graph,
+                print_device_info=True,  # TODO
             )
+
+    # TODO
+    msg.error(f"metrics.memory_used: {metrics.memory_used}")
+    msg.error(f"metrics.total_time: {metrics.total_time}")
+    msg.error(f"metrics.total_fps: {metrics.total_fps}")
 
     # # Plot logged data after the viewer is closed
     # if args.logging:

@@ -25,7 +25,7 @@ from ...core.builder import ModelBuilder
 from ...examples import print_progress_bar
 from ...utils import logger as msg
 from ...utils.control.rand import RandomJointController
-from ...utils.device import get_device_malloc_info, get_device_spec_info
+from ...utils.device import get_device_malloc_info
 from ...utils.sim import SimulationLogger, Simulator, SimulatorSettings, ViewerKamino
 from .metrics import BenchmarkMetrics
 from .problems import CameraConfig, ControlConfig
@@ -166,8 +166,60 @@ class BenchmarkSim:
 # Functions
 ###
 
+def run_single_benchmark_with_viewer(
+    args: argparse.Namespace,
+    simulator: BenchmarkSim,
+) -> tuple[float, float]:
+    start_time = time.time()
+    newton.examples.run(simulator, args)
+    stop_time = time.time()
+    return start_time, stop_time
+
+
+def run_single_benchmark_with_progress(
+    simulator: BenchmarkSim,
+) -> tuple[float, float]:
+    start_time = time.time()
+    for step_idx in range(simulator.max_steps):
+        simulator.step_once()
+        wp.synchronize()
+        print_progress_bar(step_idx + 1, simulator.max_steps, start_time, prefix="Progress", suffix="")
+    stop_time = time.time()
+    return start_time, stop_time
+
+
+def run_single_benchmark_silent(
+    simulator: BenchmarkSim,
+) -> tuple[float, float]:
+    start_time = time.time()
+    for _s in range(simulator.max_steps):
+        simulator.step_once()
+        wp.synchronize()
+    stop_time = time.time()
+    return start_time, stop_time
+
+
+def run_single_benchmark_with_step_metrics(
+    problem_idx: int,
+    config_idx: int,
+    simulator: BenchmarkSim,
+    metrics: BenchmarkMetrics,
+) -> tuple[float, float]:
+    start_time = time.time()
+    step_start_time = float(start_time)
+    for step_idx in range(simulator.max_steps):
+        simulator.step_once()
+        wp.synchronize()
+        step_stop_time = time.time()
+        metrics.record_step(problem_idx, config_idx, step_idx, step_stop_time - step_start_time, simulator.sim.solver)
+        step_start_time = float(step_stop_time)
+    stop_time = time.time()
+    return start_time, stop_time
+
 
 def run_single_benchmark(
+    problem_idx: int,
+    config_idx: int,
     metrics: BenchmarkMetrics,
     args: argparse.Namespace,
     builder: ModelBuilder,
@@ -176,6 +228,8 @@ def run_single_benchmark(
     camera: CameraConfig | None = None,
     device: wp.DeviceLike = None,
     use_cuda_graph: bool = True,
+    print_device_info: bool = False,
+    progress: bool = False,
 ):
     # Create example instance
     simulator = BenchmarkSim(
@@ -188,29 +242,35 @@ def run_single_benchmark(
         max_steps=args.num_steps,
         seed=args.seed,
         viewer=args.viewer,
-        logging=args.solver_metrics,
     )
 
-    # TODO
+    msg.info("Starting benchmark run...")
     if simulator.viewer:
         msg.info("Running in Viewer mode...")
-        newton.examples.run(simulator, args)
+        start_time, stop_time = run_single_benchmark_with_viewer(args, simulator)
     else:
         msg.info(f"Running for {simulator.max_steps} steps...")
-        progress = True
-        start_time = time.time()
-        for i in range(simulator.max_steps):
-            simulator.step_once()
-            wp.synchronize()
-            if progress:
-                print_progress_bar(i + 1, simulator.max_steps, start_time, prefix="Progress", suffix="")
-        msg.info("Finished benchmark run")
+        if metrics.step_time is not None:
+            start_time, stop_time = run_single_benchmark_with_step_metrics(problem_idx, config_idx, simulator, metrics)
+        elif progress:
+            start_time, stop_time = run_single_benchmark_with_progress(simulator)
+        else:
+            start_time, stop_time = run_single_benchmark_silent(simulator)
+    msg.info("Finished benchmark run.")
 
-    # TODO
-    spec_info = get_device_spec_info(simulator.device)
-    mem_info = get_device_malloc_info(simulator.device)
-    msg.info("[Device spec info]: %s", spec_info)
-    msg.info("[Device malloc info]: %s", mem_info)
+    # Record final metrics for the benchmark run
+    metrics.record_final(
+        problem_idx=problem_idx,
+        config_idx=config_idx,
+        total_time=stop_time - start_time,
+        total_steps=int(simulator.sim.solver.data.time.steps.numpy()[0]),
+        memory_used=float(wp.get_mempool_used_mem_current(device) if device.is_cuda else 0.0),
+    )
+
+    # Optionally also print the total device memory allocated during the benchmark run
+    if print_device_info:
+        mem_info = get_device_malloc_info(simulator.device)
+        msg.info("[Device malloc info]: %s", mem_info)
 
     # # Plot logged data after the viewer is closed
     # if args.logging:

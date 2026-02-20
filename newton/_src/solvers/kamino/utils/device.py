@@ -94,7 +94,11 @@ def get_device_spec_info(device: wp.DeviceLike) -> str:
     return spec_info
 
 
-def get_device_malloc_info(device: wp.DeviceLike, resolution: Literal["auto", "bytes", "MB", "GB"] = "auto") -> str:
+def get_device_malloc_info(
+    device: wp.DeviceLike,
+    usage: Literal["current", "high"] = "current",
+    resolution: Literal["auto", "bytes", "MB", "GB"] = "auto",
+) -> str:
     """
     Retrieves memory allocation information for the specified device as a formatted string.
 
@@ -107,7 +111,7 @@ def get_device_malloc_info(device: wp.DeviceLike, resolution: Literal["auto", "b
             A formatted string containing memory allocation information for the specified device.
     """
     # Initialize the info string
-    malloc_info: str = f"[device: `{device}`]: "
+    malloc_info: str = f"[device: `{device}`][{usage}]: "
 
     # Check resolution argument validity
     if resolution not in ["auto", "bytes", "MB", "GB"]:
@@ -115,19 +119,25 @@ def get_device_malloc_info(device: wp.DeviceLike, resolution: Literal["auto", "b
 
     # Get memory allocation info if a CUDA device
     if device.is_cuda:
-        mem_max_bytes = wp.get_mempool_used_mem_high(device)
-        mem_max_mb = float(mem_max_bytes) / (1024**2)
-        mem_max_gb = float(mem_max_bytes) / (1024**3)
+        if usage == "current":
+            mem_used_bytes = wp.get_mempool_used_mem_current(device)
+        elif usage == "high":
+            mem_used_bytes = wp.get_mempool_used_mem_high(device)
+        else:
+            raise ValueError(f"Invalid usage `{usage}`. Must be one of 'current' or 'high'.")
+        mem_used_bytes = wp.get_mempool_used_mem_high(device)
+        mem_used_mb = float(mem_used_bytes) / (1024**2)
+        mem_used_gb = float(mem_used_bytes) / (1024**3)
         if resolution == "bytes":
-            malloc_info += f"{mem_max_bytes} bytes"
+            malloc_info += f"{mem_used_bytes} bytes"
         elif resolution == "MB":
-            malloc_info += f"{mem_max_mb:.3f} MB"
+            malloc_info += f"{mem_used_mb:.3f} MB"
         elif resolution == "GB":
-            malloc_info += f"{mem_max_gb:.3f} GB"
+            malloc_info += f"{mem_used_gb:.3f} GB"
         else:  # resolution == "auto"
-            malloc_info += f"{_fmt_bytes(mem_max_bytes)}"
+            malloc_info += f"{_fmt_bytes(mem_used_bytes)}"
     else:
-        malloc_info: str = f"[device: `{device}`]: ERROR: Device does not support CUDA"
+        malloc_info: str = f"[device: `{device}`][{usage}]: ERROR: Device does not support CUDA"
 
     # Return the formatted memory allocation info
     return malloc_info

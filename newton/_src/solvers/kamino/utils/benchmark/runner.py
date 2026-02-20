@@ -48,12 +48,17 @@ class BenchmarkSim:
         seed: int = 0,
         viewer: bool = False,
         logging: bool = False,
+        physics_metrics: bool = False,
     ):
         # Cache the device and other internal flags
         self.builder: ModelBuilder = builder
         self.device: wp.DeviceLike = device
         self.use_cuda_graph: bool = use_cuda_graph
         self.max_steps: int = max_steps
+
+        # Override the default compute_metrics toggle in the
+        # simulator configs based on the benchmark configuration
+        configs.solver.compute_metrics = physics_metrics
 
         # Create a simulator
         msg.info("Building the simulator...")
@@ -166,6 +171,7 @@ class BenchmarkSim:
 # Functions
 ###
 
+
 def run_single_benchmark_with_viewer(
     args: argparse.Namespace,
     simulator: BenchmarkSim,
@@ -242,6 +248,7 @@ def run_single_benchmark(
         max_steps=args.num_steps,
         seed=args.seed,
         viewer=args.viewer,
+        physics_metrics=metrics.physics_metrics is not None,
     )
 
     msg.info("Starting benchmark run...")
@@ -259,7 +266,7 @@ def run_single_benchmark(
     msg.info("Finished benchmark run.")
 
     # Record final metrics for the benchmark run
-    metrics.record_final(
+    metrics.record_total(
         problem_idx=problem_idx,
         config_idx=config_idx,
         total_time=stop_time - start_time,

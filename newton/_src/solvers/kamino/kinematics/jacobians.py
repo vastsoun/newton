@@ -902,16 +902,13 @@ def store_col_major_jacobian_block(
 @wp.kernel
 def _update_col_major_joint_jacobians(
     # Inputs
-    model_joints_wid: wp.array(dtype=int32),
     model_joints_num_cts: wp.array(dtype=int32),
     model_joints_bid_B: wp.array(dtype=int32),
     jac_cts_row_major_joint_nzb_offsets: wp.array(dtype=int32),
     jac_cts_row_major_nzb_coords: wp.array2d(dtype=int32),
     jac_cts_row_major_nzb_values: wp.array(dtype=vec6f),
-    jac_cts_col_major_nzb_start: wp.array(dtype=int32),
     jac_cts_col_major_joint_nzb_offsets: wp.array(dtype=int32),
     # Outputs
-    jac_cts_col_major_nzb_coords: wp.array2d(dtype=int32),
     jac_cts_col_major_nzb_values: wp.array(dtype=wp.types.matrix(shape=(6, 1), dtype=float32)),
 ):
     """
@@ -921,19 +918,14 @@ def _update_col_major_joint_jacobians(
     jid = wp.tid()
 
     # Retrieve the joint model data
-    wid = model_joints_wid[jid]
     num_cts = model_joints_num_cts[jid]
     bid_B = model_joints_bid_B[jid]
 
     # Retrieve the Jacobian data
     nzb_start_rm_j = jac_cts_row_major_joint_nzb_offsets[jid]
     nzb_row_init = jac_cts_row_major_nzb_coords[nzb_start_rm_j, 0]
-    nzb_col_init_F = jac_cts_row_major_nzb_coords[nzb_start_rm_j, 1]
 
-    nzb_start_cm = jac_cts_col_major_nzb_start[wid]
     nzb_offset_cm = jac_cts_col_major_joint_nzb_offsets[jid]
-
-    block_F = mat66f(0.0)
 
     # Offset the Jacobian rows within the 6x6 block to avoid exceeding matrix dimensions.
     # Since we might not fill the full 6x6 block with Jacobian entries, shifting the block upwards
@@ -945,33 +937,15 @@ def _update_col_major_joint_jacobians(
     for i in range(num_cts):
         nzb_idx_rm = nzb_start_rm_j + i
         block_rm = jac_cts_row_major_nzb_values[nzb_idx_rm]
-        block_F[block_row_init + i] = block_rm
-
-    store_col_major_jacobian_block(
-        nzb_start_cm + nzb_offset_cm,
-        nzb_row_init,
-        nzb_col_init_F,
-        block_F,
-        jac_cts_col_major_nzb_coords,
-        jac_cts_col_major_nzb_values,
-    )
+        for k in range(6):
+            jac_cts_col_major_nzb_values[nzb_offset_cm + k][block_row_init + i, 0] = block_rm[k]
 
     if bid_B > -1:
-        nzb_col_init_B = jac_cts_row_major_nzb_coords[nzb_start_rm_j + num_cts, 1]
-        block_B = mat66f(0.0)
         for i in range(num_cts):
             nzb_idx_rm = nzb_start_rm_j + num_cts + i
             block_rm = jac_cts_row_major_nzb_values[nzb_idx_rm]
-            block_B[block_row_init + i] = block_rm
-
-        store_col_major_jacobian_block(
-            nzb_start_cm + nzb_offset_cm + 6,
-            nzb_row_init,
-            nzb_col_init_B,
-            block_B,
-            jac_cts_col_major_nzb_coords,
-            jac_cts_col_major_nzb_values,
-        )
+            for k in range(6):
+                jac_cts_col_major_nzb_values[nzb_offset_cm + 6 + k][block_row_init + i, 0] = block_rm[k]
 
 
 @wp.kernel
@@ -1783,25 +1757,55 @@ class ColMajorSparseConstraintJacobians(BlockSparseLinearOperators):
         # body per joint/limit/contact
         joint_wid = model.joints.wid.numpy()
         joint_bid_B = model.joints.bid_B.numpy()
+        joint_bid_F = model.joints.bid_F.numpy()
+        joint_num_cts = model.joints.num_cts.numpy()
         joint_num_dofs = model.joints.num_dofs.numpy()
         joint_q_j_min = model.joints.q_j_min.numpy()
         joint_q_j_max = model.joints.q_j_max.numpy()
+        joint_cts_offset = model.joints.cts_offset.numpy()
+        bodies_offset = model.info.bodies_offset.numpy()
         J_cts_cm_nnzb_min = [0] * num_worlds
         J_cts_cm_nnzb_max = [0] * num_worlds
         J_cts_cm_joint_nzb_offsets = [0] * model.size.sum_of_num_joints
+        J_cts_nzb_row = [[] for _ in range(num_worlds)]
+        J_cts_nzb_col = [[] for _ in range(num_worlds)]
         dofs_start = 0
         # Add non-zero blocks for joints and joint limits
         for _j in range(model.size.sum_of_num_joints):
             w = joint_wid[_j]
             J_cts_cm_joint_nzb_offsets[_j] = J_cts_cm_nnzb_min[w]
-            J_cts_cm_nnzb_min[w] += 12 if joint_bid_B[_j] > -1 else 6
-            J_cts_cm_nnzb_max[w] += 12 if joint_bid_B[_j] > -1 else 6
+
+            # Joint nzb counts
+            is_binary = joint_bid_B[_j] > -1
+            num_adjacent_bodies = 2 if is_binary else 1
+            J_cts_cm_nnzb_min[w] += 6 * num_adjacent_bodies
+            J_cts_cm_nnzb_max[w] += 6 * num_adjacent_bodies
+
+            # Joint nzb coordinates
+            # Note: compared to the row-major Jacobian, for joints with less than 6 constraints, instead
+            # of padding the bottom 6 - num_cts rows with zeros, we shift the block start upward and zero-pad
+            # the top 6 - num_cts rows instead, to prevent exceeding matrix rows.
+            # We additionally guard against the case where the shift would push the block above the start of
+            # the matrix. Note that this strategy requires at least 6 rows.
+            cts_offset = int(joint_cts_offset[_j])
+            num_cts = int(joint_num_cts[_j])
+            nzb_row = max(0, cts_offset + num_cts - 6)
+            J_cts_nzb_row[w].extend((6 * num_adjacent_bodies) * [nzb_row])
+            col_id = int(6 * (joint_bid_F[_j] - bodies_offset[w]))
+            for i in range(6):
+                J_cts_nzb_col[w].append(col_id + i)
+            if is_binary:
+                col_id = int(6 * (joint_bid_B[_j] - bodies_offset[w]))
+                for i in range(6):
+                    J_cts_nzb_col[w].append(col_id + i)
+
+            # Limit nzb counts (maximum)
             if max_num_limits[w] > 0:
                 for d_j in range(joint_num_dofs[_j]):
                     if joint_q_j_min[dofs_start + d_j] > float(FLOAT32_MIN) or joint_q_j_max[dofs_start + d_j] < float(
                         FLOAT32_MAX
                     ):
-                        J_cts_cm_nnzb_max[w] += 12 if joint_bid_B[_j] > -1 else 6
+                        J_cts_cm_nnzb_max[w] += 6 * num_adjacent_bodies
             dofs_start += joint_num_dofs[_j]
         # Add non-zero blocks for contacts
         # TODO: Use the candidate geom-pair info to compute maximum possible contact constraint blocks more accurately
@@ -1811,6 +1815,13 @@ class ColMajorSparseConstraintJacobians(BlockSparseLinearOperators):
 
         # Compute the sizes of the Jacobian matrix data for each world
         J_cts_cm_dims_max = [(max_num_constraints[i], num_body_dofs[i]) for i in range(num_worlds)]
+
+        # Flatten nzb coordinates
+        for w in range(num_worlds):
+            J_cts_nzb_row[w] += [0] * (J_cts_cm_nnzb_max[w] - J_cts_cm_nnzb_min[w])
+            J_cts_nzb_col[w] += [0] * (J_cts_cm_nnzb_max[w] - J_cts_cm_nnzb_min[w])
+        J_cts_nzb_row = [i for rows in J_cts_nzb_row for i in rows]
+        J_cts_nzb_col = [j for cols in J_cts_nzb_col for j in cols]
 
         # Allocate the block-sparse linear-operator data to represent each system Jacobian
         with wp.ScopedDevice(device):
@@ -1822,6 +1833,18 @@ class ColMajorSparseConstraintJacobians(BlockSparseLinearOperators):
             )
             self.bsm.finalize(max_dims=J_cts_cm_dims_max, capacities=J_cts_cm_nnzb_max)
 
+            # Set all constant values into BSM
+            self.bsm.nzb_row.assign(J_cts_nzb_row)
+            self.bsm.nzb_col.assign(J_cts_nzb_col)
+            self.bsm.num_cols.assign(num_body_dofs)
+
+            # Convert per-world nzb offsets to global nzb offsets
+            nzb_start = self.bsm.nzb_start.numpy()
+            for _j in range(model.size.sum_of_num_joints):
+                w = joint_wid[_j]
+                J_cts_cm_joint_nzb_offsets[_j] += nzb_start[w]
+
+            # Move precomputed helper arrays to device
             self._joint_nzb_offsets = wp.array(J_cts_cm_joint_nzb_offsets, dtype=int32, device=device)
             self._num_joint_nzb = wp.array(J_cts_cm_nnzb_min, dtype=int32, device=device)
 
@@ -1864,16 +1887,13 @@ class ColMajorSparseConstraintJacobians(BlockSparseLinearOperators):
                 dim=model.size.sum_of_num_joints,
                 inputs=[
                     # Inputs:
-                    model.joints.wid,
                     model.joints.num_cts,
                     model.joints.bid_B,
                     jacobians._J_cts_joint_nzb_offsets,
                     J_cts.nzb_coords,
                     J_cts.nzb_values,
-                    self.bsm.nzb_start,
                     self._joint_nzb_offsets,
                     # Outputs:
-                    self.bsm.nzb_coords,
                     self.bsm.nzb_values,
                 ],
             )

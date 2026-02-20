@@ -690,7 +690,21 @@ class USDImporter:
         k_d_j = None
         return a_j, b_j, k_p_j, k_d_j
 
-    def _parse_joint_revolute(self, joint_spec, rotation_unit: float = 1.0, load_drive_dynamics: bool = False):
+    def _infer_joint_type(self, stiffness: float, damping: float, drive_enabled: bool) -> JointDoFType:
+        if not drive_enabled:
+            return JointActuationType.PASSIVE
+        elif stiffness > 0.0 and damping > 0.0:
+            return JointActuationType.POSITION_VELOCITY
+        elif stiffness > 0.0:
+            return JointActuationType.POSITION
+        elif damping > 0.0:
+            return JointActuationType.VELOCITY
+
+        return JointActuationType.FORCE
+
+    def _parse_joint_revolute(
+        self, joint_spec, rotation_unit: float = 1.0, load_drive_dynamics: bool = False, eps=1e-6
+    ):
         dof_type = JointDoFType.REVOLUTE
         X_j = self.usd_axis_to_axis[joint_spec.axis].to_mat33()
         q_j_min, q_j_max, tau_j_max = self._make_joint_default_limits(dof_type)
@@ -700,23 +714,25 @@ class USDImporter:
             q_j_max[0] = rotation_unit * joint_spec.limit.upper
         if joint_spec.drive.enabled:
             if not joint_spec.drive.acceleration:
-                act_type = JointActuationType.FORCE
                 tau_j_max[0] = joint_spec.drive.forceLimit
-                if load_drive_dynamics and (joint_spec.drive.stiffness > 0.0 and joint_spec.drive.damping > 0.0):
-                    act_type = JointActuationType.POSITION_VELOCITY
+                if load_drive_dynamics:
                     # TODO: How to get these from USD?
-                    a_j = [0.01] * dof_type.num_dofs
-                    b_j = [0.0001] * dof_type.num_dofs
+                    a_j = [eps] * dof_type.num_dofs
+                    b_j = [eps] * dof_type.num_dofs
                     k_p_j = [joint_spec.drive.stiffness] * dof_type.num_coords
                     k_d_j = [joint_spec.drive.damping] * dof_type.num_dofs
             else:
                 # TODO: Should we handle acceleration drives?
                 raise ValueError("Revolute acceleration drive actuators are not yet supported.")
-        else:
-            act_type = JointActuationType.PASSIVE
+
+        act_type = self._infer_joint_type(
+            joint_spec.drive.stiffness, joint_spec.drive.damping, joint_spec.drive.enabled
+        )
         return dof_type, act_type, X_j, q_j_min, q_j_max, tau_j_max, a_j, b_j, k_p_j, k_d_j
 
-    def _parse_joint_prismatic(self, joint_spec, distance_unit: float = 1.0, load_drive_dynamics: bool = False):
+    def _parse_joint_prismatic(
+        self, joint_spec, distance_unit: float = 1.0, load_drive_dynamics: bool = False, eps=1e-6
+    ):
         dof_type = JointDoFType.PRISMATIC
         X_j = self.usd_axis_to_axis[joint_spec.axis].to_mat33()
         q_j_min, q_j_max, tau_j_max = self._make_joint_default_limits(dof_type)
@@ -726,20 +742,20 @@ class USDImporter:
             q_j_max[0] = distance_unit * joint_spec.limit.upper
         if joint_spec.drive.enabled:
             if not joint_spec.drive.acceleration:
-                act_type = JointActuationType.FORCE
                 tau_j_max[0] = joint_spec.drive.forceLimit
-                if load_drive_dynamics and (joint_spec.drive.stiffness > 0.0 and joint_spec.drive.damping > 0.0):
-                    act_type = JointActuationType.POSITION_VELOCITY
+                if load_drive_dynamics:
                     # TODO: How to get these from USD?
-                    a_j = [0.01] * dof_type.num_dofs
-                    b_j = [0.0001] * dof_type.num_dofs
+                    a_j = [eps] * dof_type.num_dofs
+                    b_j = [eps] * dof_type.num_dofs
                     k_p_j = [joint_spec.drive.stiffness] * dof_type.num_coords
                     k_d_j = [joint_spec.drive.damping] * dof_type.num_dofs
             else:
                 # TODO: Should we handle acceleration drives?
                 raise ValueError("Prismatic acceleration drive actuators are not yet supported.")
-        else:
-            act_type = JointActuationType.PASSIVE
+
+        act_type = self._infer_joint_type(
+            joint_spec.drive.stiffness, joint_spec.drive.damping, joint_spec.drive.enabled
+        )
         return dof_type, act_type, X_j, q_j_min, q_j_max, tau_j_max, a_j, b_j, k_p_j, k_d_j
 
     def _parse_joint_revolute_from_d6(self, name, joint_prim, joint_spec, joint_dof, rotation_unit: float = 1.0):
@@ -915,6 +931,63 @@ class USDImporter:
             for drive in joint_spec.jointDrives:
                 dof = drive.first
                 if dof == self.UsdPhysics.JointDOF.RotX:
+                    tau_j_max[0] = drive.second.forceLimit
+                elif dof == self.UsdPhysics.JointDOF.RotY:
+                    tau_j_max[1] = drive.second.forceLimit
+                elif dof == self.UsdPhysics.JointDOF.RotZ:
+                    tau_j_max[2] = drive.second.forceLimit
+        else:
+            act_type = JointActuationType.PASSIVE
+        return dof_type, act_type, q_j_min, q_j_max, tau_j_max
+
+    def _parse_joint_free_from_d6(
+        self,
+        name,
+        joint_prim,
+        joint_spec,
+        distance_unit: float = 1.0,
+        rotation_unit: float = 1.0,
+    ):
+        dof_type = JointDoFType.FREE
+        q_j_min, q_j_max, tau_j_max = self._make_joint_default_limits(dof_type)
+        for limit in joint_spec.jointLimits:
+            dof = limit.first
+            if dof == self.UsdPhysics.JointDOF.TransX:
+                q_j_min[0] = distance_unit * limit.second.lower
+                q_j_max[0] = distance_unit * limit.second.upper
+            elif dof == self.UsdPhysics.JointDOF.TransY:
+                q_j_min[1] = distance_unit * limit.second.lower
+                q_j_max[1] = distance_unit * limit.second.upper
+            elif dof == self.UsdPhysics.JointDOF.TransZ:
+                q_j_min[2] = distance_unit * limit.second.lower
+                q_j_max[2] = distance_unit * limit.second.upper
+            elif dof == self.UsdPhysics.JointDOF.RotX:
+                q_j_min[0] = rotation_unit * limit.second.lower
+                q_j_max[0] = rotation_unit * limit.second.upper
+            elif dof == self.UsdPhysics.JointDOF.RotY:
+                q_j_min[1] = rotation_unit * limit.second.lower
+                q_j_max[1] = rotation_unit * limit.second.upper
+            elif dof == self.UsdPhysics.JointDOF.RotZ:
+                q_j_min[2] = rotation_unit * limit.second.lower
+                q_j_max[2] = rotation_unit * limit.second.upper
+
+        num_drives = len(joint_spec.jointDrives)
+        if num_drives > 0:
+            if num_drives != JointDoFType.FREE.num_dofs:
+                raise ValueError(
+                    f"Joint '{name}' ({joint_prim.GetPath()}) has {num_drives}"
+                    f"drives, but free joints require {JointDoFType.FREE.num_dofs} drives. "
+                )
+            act_type = JointActuationType.FORCE
+            for drive in joint_spec.jointDrives:
+                dof = drive.first
+                if dof == self.UsdPhysics.JointDOF.TransX:
+                    tau_j_max[0] = drive.second.forceLimit
+                elif dof == self.UsdPhysics.JointDOF.TransY:
+                    tau_j_max[1] = drive.second.forceLimit
+                elif dof == self.UsdPhysics.JointDOF.TransZ:
+                    tau_j_max[2] = drive.second.forceLimit
+                elif dof == self.UsdPhysics.JointDOF.RotX:
                     tau_j_max[0] = drive.second.forceLimit
                 elif dof == self.UsdPhysics.JointDOF.RotY:
                     tau_j_max[1] = drive.second.forceLimit
@@ -1122,6 +1195,10 @@ class USDImporter:
                         dof_type, act_type, q_j_min, q_j_max, tau_j_max = self._parse_joint_cartesian_from_d6(
                             name, joint_prim, joint_spec, distance_unit
                         )
+                elif len(dofs) == 6:
+                    dof_type, act_type, q_j_min, q_j_max, tau_j_max = self._parse_joint_free_from_d6(
+                        name, joint_prim, joint_spec, distance_unit, rotation_unit
+                    )
                 else:
                     raise ValueError(
                         f"Joint '{name}' ({joint_prim.GetPath()}) has {len(dofs)} free axes, "

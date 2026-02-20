@@ -16,6 +16,7 @@
 """Defines the Warp kernels used by the Proximal-ADMM solver."""
 
 import functools
+from typing import Any
 
 import warp as wp
 
@@ -921,6 +922,12 @@ def less_than_op(i: wp.int32, threshold: wp.int32) -> wp.float32:
     return 1.0 if i < threshold else 0.0
 
 
+@wp.func
+def mul_mask(mask: Any, value: Any):
+    """Return value if mask is positive, else 0"""
+    return wp.where(mask > type(mask)(0), value, type(value)(0))
+
+
 @functools.cache
 def _make_compute_infnorm_residuals_kernel(tile_size: int, n_cts_max: int, n_u_max: int):
     num_tiles_cts = (n_cts_max + tile_size - 1) // tile_size
@@ -997,7 +1004,7 @@ def _make_compute_infnorm_residuals_kernel(tile_size: int, n_cts_max: int, n_u_m
             tile = wp.tile_load(solver_r_p, shape=tile_size, offset=rio_tile)
             tile = wp.tile_map(wp.abs, tile)
             if need_mask:
-                tile = wp.tile_map(wp.mul, mask, tile)
+                tile = wp.tile_map(mul_mask, mask, tile)
             if wp.static(num_tiles_cts > 1):
                 r_p_max_acc[tile_id] = wp.tile_max(tile)[0]
             else:
@@ -1006,7 +1013,7 @@ def _make_compute_infnorm_residuals_kernel(tile_size: int, n_cts_max: int, n_u_m
             tile = wp.tile_load(solver_r_d, shape=tile_size, offset=rio_tile)
             tile = wp.tile_map(wp.abs, tile)
             if need_mask:
-                tile = wp.tile_map(wp.mul, mask, tile)
+                tile = wp.tile_map(mul_mask, mask, tile)
             if wp.static(num_tiles_cts > 1):
                 r_d_max_acc[tile_id] = wp.tile_max(tile)[0]
             else:
@@ -1034,7 +1041,7 @@ def _make_compute_infnorm_residuals_kernel(tile_size: int, n_cts_max: int, n_u_m
             tile = wp.tile_load(solver_r_c, shape=tile_size, offset=uio_tile)
             tile = wp.tile_map(wp.abs, tile)
             if need_mask:
-                tile = wp.tile_map(wp.mul, mask, tile)
+                tile = wp.tile_map(mul_mask, mask, tile)
             if wp.static(num_tiles_u > 1):
                 r_c_max_acc[tile_id] = wp.tile_max(tile)[0]
             else:
@@ -1156,7 +1163,7 @@ def _make_compute_infnorm_residuals_accel_kernel(tile_size: int, n_cts_max: int,
             tile = wp.tile_load(solver_r_p, shape=tile_size, offset=rio_tile)
             tile = wp.tile_map(wp.abs, tile)
             if need_mask:
-                tile = wp.tile_map(wp.mul, mask, tile)
+                tile = wp.tile_map(mul_mask, mask, tile)
             if wp.static(num_tiles_cts > 1):
                 r_p_max_acc[tile_id] = wp.tile_max(tile)[0]
             else:
@@ -1165,7 +1172,7 @@ def _make_compute_infnorm_residuals_accel_kernel(tile_size: int, n_cts_max: int,
             tile = wp.tile_load(solver_r_d, shape=tile_size, offset=rio_tile)
             tile = wp.tile_map(wp.abs, tile)
             if need_mask:
-                tile = wp.tile_map(wp.mul, mask, tile)
+                tile = wp.tile_map(mul_mask, mask, tile)
             if wp.static(num_tiles_cts > 1):
                 r_d_max_acc[tile_id] = wp.tile_max(tile)[0]
             else:
@@ -1174,7 +1181,7 @@ def _make_compute_infnorm_residuals_accel_kernel(tile_size: int, n_cts_max: int,
             tile = wp.tile_load(solver_r_dx, shape=tile_size, offset=rio_tile)
             tile = wp.tile_map(wp.mul, tile, tile)
             if need_mask:
-                tile = wp.tile_map(wp.mul, mask, tile)
+                tile = wp.tile_map(mul_mask, mask, tile)
             if wp.static(num_tiles_cts > 1):
                 r_dx_l2_sum_acc[tile_id] = wp.tile_sum(tile)[0]
             else:
@@ -1183,7 +1190,7 @@ def _make_compute_infnorm_residuals_accel_kernel(tile_size: int, n_cts_max: int,
             tile = wp.tile_load(solver_r_dy, shape=tile_size, offset=rio_tile)
             tile = wp.tile_map(wp.mul, tile, tile)
             if need_mask:
-                tile = wp.tile_map(wp.mul, mask, tile)
+                tile = wp.tile_map(mul_mask, mask, tile)
             if wp.static(num_tiles_cts > 1):
                 r_dy_l2_sum_acc[tile_id] = wp.tile_sum(tile)[0]
             else:
@@ -1192,7 +1199,7 @@ def _make_compute_infnorm_residuals_accel_kernel(tile_size: int, n_cts_max: int,
             tile = wp.tile_load(solver_r_dz, shape=tile_size, offset=rio_tile)
             tile = wp.tile_map(wp.mul, tile, tile)
             if need_mask:
-                tile = wp.tile_map(wp.mul, mask, tile)
+                tile = wp.tile_map(mul_mask, mask, tile)
             if wp.static(num_tiles_cts > 1):
                 r_dz_l2_sum_acc[tile_id] = wp.tile_sum(tile)[0]
             else:
@@ -1223,7 +1230,7 @@ def _make_compute_infnorm_residuals_accel_kernel(tile_size: int, n_cts_max: int,
             tile = wp.tile_load(solver_r_c, shape=tile_size, offset=uio_tile)
             tile = wp.tile_map(wp.abs, tile)
             if need_mask:
-                tile = wp.tile_map(wp.mul, mask, tile)
+                tile = wp.tile_map(mul_mask, mask, tile)
             if wp.static(num_tiles_u > 1):
                 r_c_max_acc[tile_id] = wp.tile_max(tile)[0]
             else:

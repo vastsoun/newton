@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import os
+from collections.abc import Callable
 from dataclasses import dataclass
 
 import warp as wp
@@ -29,21 +30,17 @@ from ...utils import logger as msg
 from ..io.usd import USDImporter
 
 ###
-# Constants
+# Module interface
 ###
 
-
-SUPPORTED_PROBLEM_NAMES: list[str] = [
-    "fourbar",
-    "dr_legs",
-    "anymal",
-    "humanoid",
+__all__ = [
+    "BenchmarkProblemNameToConfigFn",
+    "CameraConfig",
+    "ControlConfig",
+    "ProblemConfig",
+    "ProblemSet",
+    "make_benchmark_problems",
 ]
-"""Defines the supported benchmark problems for evaluating the Kamino solver."""
-
-
-DEFAULT_PROBLEM_NAME: str = "fourbar"
-"""Defines the default benchmark problem to use when no specific problem name is provided."""
 
 ###
 # Types
@@ -153,6 +150,15 @@ def make_benchmark_problem_dr_legs(
 # Problem Set Generator
 ###
 
+BenchmarkProblemNameToConfigFn: dict[str, Callable[..., ProblemConfig]] = {
+    "fourbar": make_benchmark_problem_fourbar,
+    "dr_legs": make_benchmark_problem_dr_legs,
+}
+"""
+Defines a mapping from benchmark problem names to their
+corresponding problem configuration generator functions.
+"""
+
 
 def make_benchmark_problems(
     names: list[str],
@@ -160,16 +166,20 @@ def make_benchmark_problems(
     gravity: bool = True,
     ground: bool = True,
 ) -> ProblemSet:
-    problems: ProblemSet = {}
+    # Ensure that problem names are provided and valid
     if names is None:
         raise ValueError("Problem names must be provided as a list of strings.")
-    for name in names:
-        if name not in SUPPORTED_PROBLEM_NAMES:
-            raise ValueError(f"Unsupported problem name: {name}.\nSupported names are: {SUPPORTED_PROBLEM_NAMES}")
+
+    # Define common generator kwargs for all problems to avoid repetition
     generator_kwargs = {"num_worlds": num_worlds, "gravity": gravity, "ground": ground}
-    if "fourbar" in names:
-        problems["fourbar"] = make_benchmark_problem_fourbar(**generator_kwargs)
-    if "dr_legs" in names:
-        problems["dr_legs"] = make_benchmark_problem_dr_legs(**generator_kwargs)
-    # TODO: Add more problems here as needed
+
+    # Generate the problem configurations for each specified problem name
+    problems: ProblemSet = {}
+    for name in names:
+        if name not in BenchmarkProblemNameToConfigFn.keys():
+            raise ValueError(
+                f"Unsupported problem name: {name}.\nSupported names are: {list(BenchmarkProblemNameToConfigFn.keys())}"
+            )
+
+        problems[name] = BenchmarkProblemNameToConfigFn[name](**generator_kwargs)
     return problems

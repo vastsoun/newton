@@ -21,6 +21,7 @@ import numpy as np
 
 from .....core.types import override
 from ...solver_kamino import SolverKamino
+from .output import print_subcolumn_metrics_table_rich
 
 ###
 # Module interface
@@ -70,6 +71,9 @@ class CodeInfo:
             _path = path
         elif not empty:
             _path = str(os.path.dirname(__file__))
+        else:
+            # If empty is True, skip retrieving git repository info and leave all attributes as None
+            return
 
         # Attempt to retrieve git repository info from the specified path;
         # if any error occurs, raise a RuntimeError with the error message
@@ -190,9 +194,6 @@ class StatsInteger:
         self.std[:, :] = np.std(data.astype(np.float32), axis=2)
         self.min[:, :] = np.min(data.astype(np.float32), axis=2)
         self.max[:, :] = np.max(data.astype(np.float32), axis=2)
-
-        # Generate values bins for each problem (i.e. along axis=2) for histogram plotting
-        # self.hist, self.binedges = np.histogram(data, bins=np.arange(self.min.min(), self.max.max(), num_bins), axis=2)
 
     @override
     def __repr__(self):
@@ -496,7 +497,7 @@ class BenchmarkMetrics:
             datafile["Info/code/remote"] = self.codeinfo.remote
             datafile["Info/code/branch"] = self.codeinfo.branch
             datafile["Info/code/commit"] = self.codeinfo.commit
-            # datafile["Info/code/diff"] = self.codeinfo.diff
+            datafile["Info/code/diff"] = self.codeinfo.diff
 
             # Info about the benchmark data
             datafile["Info/problem_names"] = self._problem_names
@@ -544,11 +545,11 @@ class BenchmarkMetrics:
 
             # Load code state info for traceability and reproducibility
             self.codeinfo = CodeInfo(empty=True)
-            self.codeinfo.path = datafile["Info/code/path"][()].astype(str)
-            self.codeinfo.remote = datafile["Info/code/remote"][()].astype(str)
-            self.codeinfo.branch = datafile["Info/code/branch"][()].astype(str)
-            self.codeinfo.commit = datafile["Info/code/commit"][()].astype(str)
-            # codeinfo.diff = datafile["Info/code/diff"][()].astype(str)
+            self.codeinfo.path = datafile["Info/code/path"][()]
+            self.codeinfo.remote = datafile["Info/code/remote"][()]
+            self.codeinfo.branch = datafile["Info/code/branch"][()]
+            self.codeinfo.commit = datafile["Info/code/commit"][()]
+            # TODO: self.codeinfo.diff = datafile["Info/code/diff"][()]
 
             # Load raw data directly into the corresponding array attributes
             self.memory_used = datafile["Data/total/memory_used"][:, :].astype(np.int32)
@@ -579,3 +580,402 @@ class BenchmarkMetrics:
                 self.physics_metrics.r_vi_natmap = datafile[f"{phys_ns}r_vi_natmap"][:, :, :].astype(np.float32)
                 self.physics_metrics.f_ncp = datafile[f"{phys_ns}f_ncp"][:, :, :].astype(np.float32)
                 self.physics_metrics.f_ccp = datafile[f"{phys_ns}f_ccp"][:, :, :].astype(np.float32)
+
+    def render_total_metrics_table(self, path: str | None = None):
+        """
+        Outputs a formatted table summarizing the total metrics
+        (memory used, total time, total FPS) for each solver
+        configuration and problem, and optionally saves the
+        table to a text file at the specified path.
+
+        Args:
+            path (`str`, optional):
+                An optional file path to save the table as a text file.\n
+                If None, the table is only printed to the console.
+
+        Raises:
+            ValueError: If the total metrics (memory used, total time, total FPS) are not available.
+        """
+        # Generate the table string for the total metrics summary and print it to the console;
+        total_metric_data = [self.memory_used, self.total_time, self.total_fps]
+        total_metric_names = ["Memory (MB)", "Total Time (s)", "Total FPS (Hz)"]
+        total_metric_formats = [lambda x: f"{x / (1024 * 1024):.2f}", ".2f", ".2f"]
+        table_str = print_subcolumn_metrics_table_rich(
+            title="Solver Benchmark: Total Metrics Summary",
+            row_header="Solver Configuration",
+            row_titles=self._config_names,
+            col_titles=self._problem_names,
+            subcol_titles=total_metric_names,
+            subcol_data=total_metric_data,
+            subcol_formats=total_metric_formats,
+        )
+
+        # If a path is provided, also save the table string to a text file at the specified path
+        if path is not None:
+            # Check if the directory for the specified path exists, and if not, create it
+            path_dir = os.path.dirname(path)
+            if path_dir and not os.path.exists(path_dir):
+                raise ValueError(
+                    f"Directory for path '{path}' does not exist. Please create the directory before saving the table."
+                )
+            with open(path, "w") as f:
+                f.write(table_str)
+
+    def render_padmm_metrics_table(self, path: str | None = None):
+        """
+        Outputs a formatted table for each problem summarizing the PADMM
+        solver metrics (convergence, iterations, residuals) for each solver
+        configuration and problem, and optionally saves the table to a text
+        file at the specified path.
+
+        Args:
+            path (`str`, optional):
+                An optional file path to save the table as a text file.\n
+                If None, the table is only printed to the console.
+
+        Raises:
+            ValueError: If the PADMM solver metrics are not available.
+        """
+        if self.solver_metrics is None:
+            raise ValueError("PADMM solver metrics are not available in this BenchmarkMetrics instance.")
+
+        # For each problem, generate the table string for the PADMM solver metrics summary and print it to the console;
+        table_strs: list[str] = []
+        for prob_idx, prob_name in enumerate(self._problem_names):
+            col_titles = ["Iterations", "r_p", "r_d", "r_c"]
+            subcol_titles = ["median", "mean", "max", "min"]
+            metric_medians = np.array(
+                [
+                    self.solver_metrics.padmm_iters_stats.median[prob_idx, :],
+                    self.solver_metrics.padmm_r_p_stats.median[prob_idx, :],
+                    self.solver_metrics.padmm_r_d_stats.median[prob_idx, :],
+                    self.solver_metrics.padmm_r_c_stats.median[prob_idx, :],
+                ]
+            )
+            metric_means = np.array(
+                [
+                    self.solver_metrics.padmm_iters_stats.mean[prob_idx, :],
+                    self.solver_metrics.padmm_r_p_stats.mean[prob_idx, :],
+                    self.solver_metrics.padmm_r_d_stats.mean[prob_idx, :],
+                    self.solver_metrics.padmm_r_c_stats.mean[prob_idx, :],
+                ]
+            )
+            metric_maxs = np.array(
+                [
+                    self.solver_metrics.padmm_iters_stats.max[prob_idx, :],
+                    self.solver_metrics.padmm_r_p_stats.max[prob_idx, :],
+                    self.solver_metrics.padmm_r_d_stats.max[prob_idx, :],
+                    self.solver_metrics.padmm_r_c_stats.max[prob_idx, :],
+                ]
+            )
+            metric_mins = np.array(
+                [
+                    self.solver_metrics.padmm_iters_stats.min[prob_idx, :],
+                    self.solver_metrics.padmm_r_p_stats.min[prob_idx, :],
+                    self.solver_metrics.padmm_r_d_stats.min[prob_idx, :],
+                    self.solver_metrics.padmm_r_c_stats.min[prob_idx, :],
+                ]
+            )
+            subcol_data = np.array([metric_medians, metric_means, metric_maxs, metric_mins])
+            subcol_formats = [".3e", ".3e", ".3e", ".3e"]
+            table_str = print_subcolumn_metrics_table_rich(
+                title=f"Solver Benchmark: PADMM Solver Metrics Summary - {prob_name}",
+                row_header="Solver Configuration",
+                row_titles=self._config_names,
+                col_titles=col_titles,
+                subcol_titles=subcol_titles,
+                subcol_data=subcol_data,
+                subcol_formats=subcol_formats,
+            )
+            table_strs.append(table_str)
+
+        # If a path is provided, also save the table string to a text file at the specified path
+        if path is not None:
+            # Check if the directory for the specified path exists, and if not, create it
+            path_dir = os.path.dirname(path)
+            if path_dir and not os.path.exists(path_dir):
+                raise ValueError(
+                    f"Directory for path '{path}' does not exist. Please create the directory before saving the table."
+                )
+            with open(path, "w") as f:
+                for table_str in table_strs:
+                    f.write(table_str)
+
+    def render_physics_metrics_table(self, path: str | None = None):
+        """
+        Outputs a formatted table for each problem summarizing the physics
+        metrics for each solver configuration and problem, and optionally
+        saves the table to a text file at the specified path.
+
+        Args:
+            path (`str`, optional):
+                An optional file path to save the table as a text file.\n
+                If None, the table is only printed to the console.
+
+        Raises:
+            ValueError: If the physics metrics are not available.
+        """
+        if self.physics_metrics is None:
+            raise ValueError("Physics metrics are not available in this BenchmarkMetrics instance.")
+
+        # For each problem, generate the table string for the physics metrics summary and print it to the console;
+        table_strs: list[str] = []
+        for prob_idx, prob_name in enumerate(self._problem_names):
+            col_titles = [
+                "r_eom",
+                "r_kinematics",
+                "r_cts_joints",
+                "r_cts_limits",
+                "r_cts_contacts",
+                "r_v_plus",
+                "r_ncp_primal",
+                "r_ncp_dual",
+                "r_ncp_compl",
+                "r_vi_natmap",
+                "f_ncp",
+                "f_ccp",
+            ]
+            subcol_titles = ["median", "mean", "max", "min"]
+            metric_medians = np.array(
+                [
+                    self.physics_metrics.r_eom_stats.median[prob_idx, :],
+                    self.physics_metrics.r_kinematics_stats.median[prob_idx, :],
+                    self.physics_metrics.r_cts_joints_stats.median[prob_idx, :],
+                    self.physics_metrics.r_cts_limits_stats.median[prob_idx, :],
+                    self.physics_metrics.r_cts_contacts_stats.median[prob_idx, :],
+                    self.physics_metrics.r_v_plus_stats.median[prob_idx, :],
+                    self.physics_metrics.r_ncp_primal_stats.median[prob_idx, :],
+                    self.physics_metrics.r_ncp_dual_stats.median[prob_idx, :],
+                    self.physics_metrics.r_ncp_compl_stats.median[prob_idx, :],
+                    self.physics_metrics.r_vi_natmap_stats.median[prob_idx, :],
+                    self.physics_metrics.f_ncp_stats.median[prob_idx, :],
+                    self.physics_metrics.f_ccp_stats.median[prob_idx, :],
+                ]
+            )
+            metric_means = np.array(
+                [
+                    self.physics_metrics.r_eom_stats.mean[prob_idx, :],
+                    self.physics_metrics.r_kinematics_stats.mean[prob_idx, :],
+                    self.physics_metrics.r_cts_joints_stats.mean[prob_idx, :],
+                    self.physics_metrics.r_cts_limits_stats.mean[prob_idx, :],
+                    self.physics_metrics.r_cts_contacts_stats.mean[prob_idx, :],
+                    self.physics_metrics.r_v_plus_stats.mean[prob_idx, :],
+                    self.physics_metrics.r_ncp_primal_stats.mean[prob_idx, :],
+                    self.physics_metrics.r_ncp_dual_stats.mean[prob_idx, :],
+                    self.physics_metrics.r_ncp_compl_stats.mean[prob_idx, :],
+                    self.physics_metrics.r_vi_natmap_stats.mean[prob_idx, :],
+                    self.physics_metrics.f_ncp_stats.mean[prob_idx, :],
+                    self.physics_metrics.f_ccp_stats.mean[prob_idx, :],
+                ]
+            )
+            metric_maxs = np.array(
+                [
+                    self.physics_metrics.r_eom_stats.max[prob_idx, :],
+                    self.physics_metrics.r_kinematics_stats.max[prob_idx, :],
+                    self.physics_metrics.r_cts_joints_stats.max[prob_idx, :],
+                    self.physics_metrics.r_cts_limits_stats.max[prob_idx, :],
+                    self.physics_metrics.r_cts_contacts_stats.max[prob_idx, :],
+                    self.physics_metrics.r_v_plus_stats.max[prob_idx, :],
+                    self.physics_metrics.r_ncp_primal_stats.max[prob_idx, :],
+                    self.physics_metrics.r_ncp_dual_stats.max[prob_idx, :],
+                    self.physics_metrics.r_ncp_compl_stats.max[prob_idx, :],
+                    self.physics_metrics.r_vi_natmap_stats.max[prob_idx, :],
+                    self.physics_metrics.f_ncp_stats.max[prob_idx, :],
+                    self.physics_metrics.f_ccp_stats.max[prob_idx, :],
+                ]
+            )
+            metric_mins = np.array(
+                [
+                    self.physics_metrics.r_eom_stats.min[prob_idx, :],
+                    self.physics_metrics.r_kinematics_stats.min[prob_idx, :],
+                    self.physics_metrics.r_cts_joints_stats.min[prob_idx, :],
+                    self.physics_metrics.r_cts_limits_stats.min[prob_idx, :],
+                    self.physics_metrics.r_cts_contacts_stats.min[prob_idx, :],
+                    self.physics_metrics.r_v_plus_stats.min[prob_idx, :],
+                    self.physics_metrics.r_ncp_primal_stats.min[prob_idx, :],
+                    self.physics_metrics.r_ncp_dual_stats.min[prob_idx, :],
+                    self.physics_metrics.r_ncp_compl_stats.min[prob_idx, :],
+                    self.physics_metrics.r_vi_natmap_stats.min[prob_idx, :],
+                    self.physics_metrics.f_ncp_stats.min[prob_idx, :],
+                    self.physics_metrics.f_ccp_stats.min[prob_idx, :],
+                ]
+            )
+            subcol_data = np.array([metric_medians, metric_means, metric_maxs, metric_mins])
+            subcol_formats = [".3e", ".3e", ".3e", ".3e"]
+            table_str = print_subcolumn_metrics_table_rich(
+                title=f"Solver Benchmark: Physics Metrics Summary - {prob_name}",
+                row_header="Solver Configuration",
+                row_titles=self._config_names,
+                col_titles=col_titles,
+                subcol_titles=subcol_titles,
+                subcol_data=subcol_data,
+                subcol_formats=subcol_formats,
+            )
+            table_strs.append(table_str)
+
+        # If a path is provided, also save the table string to a text file at the specified path
+        if path is not None:
+            # Check if the directory for the specified path exists, and if not, create it
+            path_dir = os.path.dirname(path)
+            if path_dir and not os.path.exists(path_dir):
+                raise ValueError(
+                    f"Directory for path '{path}' does not exist. Please create the directory before saving the table."
+                )
+            with open(path, "w") as f:
+                for table_str in table_strs:
+                    f.write(table_str)
+
+    def render_padmm_metrics_plots(self, path: str):
+        """
+        Generates time-series plots of the PADMM solver metrics
+        (convergence, iterations, residuals) across the simulation
+        steps for each solver configuration and problem, and
+        optionally saves the plots to a file at the specified path.
+
+        Args:
+            path (`str`):
+                Target file path of the generated plot image.\n
+
+        Raises:
+            ValueError: If the PADMM solver metrics are not available.
+        """
+        # Ensure that the PADMM solver metrics are available before attempting to render the plots
+        if self.solver_metrics is None:
+            raise ValueError("PADMM solver metrics are not available in this BenchmarkMetrics instance.")
+
+        # Attempt to import matplotlib for plotting, and raise an informative error if it's not installed
+        try:
+            import matplotlib.pyplot as plt  # noqa: PLC0415
+        except Exception as e:
+            raise ImportError(
+                "matplotlib is required to render PADMM metrics plots. Please install matplotlib and try again."
+            ) from e
+
+        # Generate time-series plots of the PADMM solver metrics across the simulation steps of each problem:
+        # - For each problem we create a figure
+        # - Each figure has a subplot for each PADMM metric in (iterations, r_p, r_d, r_c)
+        # - Within each subplot we plot a metric curve for each solver configuration
+        for prob_idx, prob_name in enumerate(self._problem_names):
+            fig, axs = plt.subplots(2, 2, figsize=(16, 12))
+            fig.suptitle(f"PADMM Solver Metrics Across Simulation Steps - {prob_name}", fontsize=16)
+            metric_names = ["Iterations", "r_p", "r_d", "r_c"]
+            metric_data = [
+                self.solver_metrics.padmm_iters[prob_idx, :, :],
+                self.solver_metrics.padmm_r_p[prob_idx, :, :],
+                self.solver_metrics.padmm_r_d[prob_idx, :, :],
+                self.solver_metrics.padmm_r_c[prob_idx, :, :],
+            ]
+            for metric_idx, (metric_name, metric_array) in enumerate(zip(metric_names, metric_data, strict=True)):
+                ax = axs[metric_idx // 2, metric_idx % 2]
+                for config_idx, config_name in enumerate(self._config_names):
+                    ax.plot(
+                        np.arange(self.num_steps),
+                        metric_array[config_idx, :],
+                        label=config_name,
+                        marker="o",
+                        markersize=4,
+                    )
+                ax.set_title(metric_name)
+                ax.set_xlabel("Simulation Step")
+                ax.set_ylabel(metric_name)
+                ax.grid()
+                ax.legend()
+            plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+            # If a path is provided, also save the plot to an image file at the specified path
+            if path is not None:
+                # Check if the directory for the specified path exists, and if not, create it
+                path_dir = os.path.dirname(path)
+                if path_dir and not os.path.exists(path_dir):
+                    raise ValueError(
+                        f"Directory for path '{path}' does not exist. Please create the directory before saving the plot."
+                    )
+                plt.savefig(path.replace(".png", f"_{prob_name}.png"))
+            plt.close(fig)
+
+    def render_physics_metrics_plots(self, path: str):
+        """
+        Generates time-series plots of the physics metrics (e.g.,
+        constraint violation etc) across the simulation steps for
+        each solver configuration and problem, and optionally
+        saves the plots to a file at the specified path.
+
+        Args:
+            path (`str`):
+                Target file path of the generated plot image.\n
+
+        Raises:
+            ValueError: If the physics metrics are not available.
+        """
+        # Ensure that the physics metrics are available before attempting to render the plots
+        if self.physics_metrics is None:
+            raise ValueError("Physics metrics are not available in this BenchmarkMetrics instance.")
+
+        # Attempt to import matplotlib for plotting, and raise an informative error if it's not installed
+        try:
+            import matplotlib.pyplot as plt  # noqa: PLC0415
+        except Exception as e:
+            raise ImportError(
+                "matplotlib is required to render physics metrics plots. Please install matplotlib and try again."
+            ) from e
+
+        # Generate time-series plots of the physics solver metrics across the simulation steps of each problem:
+        # - For each problem we create a figure
+        # - Each figure has a subplot for each physics metric in (constraint violation, energy, etc.)
+        # - Within each subplot we plot a metric curve for each solver configuration
+        for prob_idx, prob_name in enumerate(self._problem_names):
+            fig, axs = plt.subplots(3, 4, figsize=(20, 15))
+            fig.suptitle(f"Physics Metrics Across Simulation Steps - {prob_name}", fontsize=16)
+            metric_names = [
+                "r_eom",
+                "r_kinematics",
+                "r_cts_joints",
+                "r_cts_limits",
+                "r_cts_contacts",
+                "r_v_plus",
+                "r_ncp_primal",
+                "r_ncp_dual",
+                "r_ncp_compl",
+                "r_vi_natmap",
+                "f_ncp",
+                "f_ccp",
+            ]
+            metric_data = [
+                self.physics_metrics.r_eom[prob_idx, :, :],
+                self.physics_metrics.r_kinematics[prob_idx, :, :],
+                self.physics_metrics.r_cts_joints[prob_idx, :, :],
+                self.physics_metrics.r_cts_limits[prob_idx, :, :],
+                self.physics_metrics.r_cts_contacts[prob_idx, :, :],
+                self.physics_metrics.r_v_plus[prob_idx, :, :],
+                self.physics_metrics.r_ncp_primal[prob_idx, :, :],
+                self.physics_metrics.r_ncp_dual[prob_idx, :, :],
+                self.physics_metrics.r_ncp_compl[prob_idx, :, :],
+                self.physics_metrics.r_vi_natmap[prob_idx, :, :],
+                self.physics_metrics.f_ncp[prob_idx, :, :],
+                self.physics_metrics.f_ccp[prob_idx, :, :],
+            ]
+            for metric_idx, (metric_name, metric_array) in enumerate(zip(metric_names, metric_data, strict=True)):
+                ax = axs[metric_idx // 4, metric_idx % 4]
+                for config_idx, config_name in enumerate(self._config_names):
+                    ax.plot(
+                        np.arange(self.num_steps),
+                        metric_array[config_idx, :],
+                        label=config_name,
+                        marker="o",
+                        markersize=4,
+                    )
+                ax.set_title(metric_name)
+                ax.set_xlabel("Simulation Step")
+                ax.set_ylabel(metric_name)
+                ax.grid()
+                ax.legend()
+            plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+            # If a path is provided, also save the plot to an image file at the specified path
+            if path is not None:
+                # Check if the directory for the specified path exists, and if not, create it
+                path_dir = os.path.dirname(path)
+                if path_dir and not os.path.exists(path_dir):
+                    raise ValueError(
+                        f"Directory for path '{path}' does not exist. Please create the directory before saving the plot."
+                    )
+                plt.savefig(path.replace(".png", f"_{prob_name}.png"))
+            plt.close(fig)

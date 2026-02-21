@@ -278,9 +278,3 @@ def run_single_benchmark(
     if print_device_info:
         mem_info = get_device_malloc_info(simulator.device)
         msg.info("[Device malloc info]: %s", mem_info)
-
-    # # Plot logged data after the viewer is closed
-    # if args.logging:
-    #     OUTPUT_PLOT_PATH = os.path.join(os.path.dirname(os.path.realpath(__file__)), args.problems)
-    #     os.makedirs(OUTPUT_PLOT_PATH, exist_ok=True)
-    #     example.plot(path=OUTPUT_PLOT_PATH, show=args.show_plots)

@@ -23,7 +23,7 @@ import warp as wp
 from newton._src.solvers.kamino.utils import logger as msg
 from newton._src.solvers.kamino.utils.benchmark.configs import make_benchmark_configs
 from newton._src.solvers.kamino.utils.benchmark.metrics import BenchmarkMetrics, CodeInfo
-from newton._src.solvers.kamino.utils.benchmark.problems import SUPPORTED_PROBLEM_NAMES, make_benchmark_problems
+from newton._src.solvers.kamino.utils.benchmark.problems import BenchmarkProblemNameToConfigFn, make_benchmark_problems
 from newton._src.solvers.kamino.utils.benchmark.runner import run_single_benchmark
 from newton._src.solvers.kamino.utils.device import get_device_spec_info
 from newton._src.solvers.kamino.utils.sim import SimulatorSettings
@@ -77,26 +77,34 @@ from newton._src.solvers.kamino.utils.sim import SimulatorSettings
 # Constants
 ###
 
-SUPPORTED_BENCHMARK_RUN_MODES = ["total", "perstep", "solver", "accuracy"]
+SUPPORTED_BENCHMARK_RUN_MODES = ["total", "perstep", "solver", "accuracy", "import"]
 """
 A list of supported benchmark run modes that determine the level of metrics collected during execution.
 
-- "total": Only collects total runtime and final memory usage metrics.
-- "perstep": Collects detailed timing metrics for each simulation step to compute throughput statistics.
-- "solver": Collects solver performance metrics such as PADMM iterations and residuals.
-- "accuracy": Collects solver performance metrics that can be used to evaluate the physical accuracy of the simulation.
+- "total":
+    Only collects total runtime and final memory usage metrics.
+
+- "perstep":
+    Collects detailed timing metrics for each simulation step to compute throughput statistics.
+
+- "solver":
+    Collects solver performance metrics such as PADMM iterations and residuals.
+
+- "accuracy":
+    Collects solver performance metrics that can be used to evaluate the physical accuracy of the simulation.
+
+- "import":
+    Generates plots for the collected metrics given an HDF5 file containing benchmark results.\n
+    NOTE: This mode does not execute any benchmarks and only produces plots from existing data.
 """
 
-# TODO
-# SUPPORTED_BENCHMARK_PLOT_MODES = ["console", "perstep", "solver", "accuracy"]
-# """
-# A list of supported benchmark plot modes that determine the level of metrics collected during execution.
+SUPPORTED_BENCHMARK_OUTPUT_MODES = ["console", "full"]  # TODO: add more modes
+"""
+A list of supported benchmark outputs that determine the format and detail level of the benchmark results.
 
-# - "total": Only collects total runtime and final memory usage metrics.
-# - "perstep": Collects detailed timing metrics for each simulation step to compute throughput statistics.
-# - "solver": Collects solver performance metrics such as PADMM iterations and residuals.
-# - "accuracy": Collects solver performance metrics that can be used to evaluate the physical accuracy of the simulation.
-# """
+- "console": Only prints benchmark results to the console as formatted tables.
+- "full": TODO.
+"""
 
 ###
 # Functions
@@ -164,21 +172,34 @@ def parse_benchmark_arguments():
         "--mode",
         type=str,
         choices=SUPPORTED_BENCHMARK_RUN_MODES,
-        default="accuracy",
-        help="Defines the benchmark mode to run. Defaults to 'total'.\n{SUPPORTED_BENCHMARK_MODES}",
+        default="import",
+        help=f"Defines the benchmark mode to run. Defaults to 'total'.\n{SUPPORTED_BENCHMARK_RUN_MODES}",
     )
     parser.add_argument(
         "--problem",
         type=str,
-        choices=SUPPORTED_PROBLEM_NAMES,
+        choices=BenchmarkProblemNameToConfigFn.keys(),
         default="fourbar",
-        help=f"Defines a single benchmark problem to run. Defaults to 'fourbar'.\nSupported: {SUPPORTED_PROBLEM_NAMES}",
+        help="Defines a single benchmark problem to run. Defaults to 'fourbar'.",
     )
     parser.add_argument(
         "--problem-set",
         nargs="+",
         default=["fourbar", "dr_legs"],
         help="Defines the benchmark problem(s) to run. If unspecified, the default `fourbar` problem will be used.",
+    )
+    parser.add_argument(
+        "--output",
+        type=str,
+        choices=SUPPORTED_BENCHMARK_OUTPUT_MODES,
+        default="full",
+        help=f"Defines the benchmark output mode. Defaults to 'full'.\n{SUPPORTED_BENCHMARK_OUTPUT_MODES}",
+    )
+    parser.add_argument(
+        "--import-path",
+        type=str,
+        default=None,
+        help="Defines the path to the HDF5 benchmark data to import in 'import' mode. Defaults to `None`.",
     )
     parser.add_argument(
         "--viewer",
@@ -192,15 +213,6 @@ def parse_benchmark_arguments():
         default=False,
         help="Set to `True` to run `newton.example.run` tests. Defaults to `False`.",
     )
-
-    # Benchmark plotting arguments (TODO)
-    # parser.add_argument(
-    #     "--plot-mode",
-    #     type=str,
-    #     choices=SUPPORTED_BENCHMARK_PLOT_MODES,
-    #     default="accuracy",
-    #     help="Defines the benchmark mode to run. Defaults to 'total'.\n{SUPPORTED_BENCHMARK_PLOT_MODES}",
-    # )
 
     return parser.parse_args()
 
@@ -352,19 +364,68 @@ def benchmark_run(args: argparse.Namespace):
     metrics.save_to_hdf5(path=RUN_HDF5_OUTPUT_PATH)
     msg.info("Done.")
 
-    # TODO: Add option for direct plotting after benchmark execution
-    # # Plot logged data after the viewer is closed
-    # if args.logging:
-    # RUN_PLOT_OUTPUT_PATH = f"{DATA_DIR_PATH}/metrics.hdf5"
-    # os.makedirs(RUN_PLOT_OUTPUT_PATH, exist_ok=True)
-    #     OUTPUT_PLOT_PATH = os.path.join(os.path.dirname(os.path.realpath(__file__)), args.problems)
-    #     os.makedirs(OUTPUT_PLOT_PATH, exist_ok=True)
-    #     example.plot(path=OUTPUT_PLOT_PATH, show=args.show_plots)
 
+def benchmark_output(args: argparse.Namespace):
+    # If the import path is not specified load the latest created HDF5 file in the output directory
+    data_import_path = None
+    if args.import_path is None:
+        DATA_DIR_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "./data"))
+        all_runs = sorted(os.listdir(DATA_DIR_PATH))
+        if len(all_runs) == 0:
+            raise FileNotFoundError(f"No benchmark runs found in output directory '{DATA_DIR_PATH}'.")
+        latest_run = all_runs[-1]
+        data_import_path = os.path.join(DATA_DIR_PATH, latest_run, "metrics.hdf5")
+        msg.notif(f"No import path specified. Loading latest benchmark data from '{data_import_path}'.")
+    else:
+        data_import_path = args.import_path
+        msg.notif(f"Loading benchmark data from specified import path '{data_import_path}'.")
 
-def benchmark_plot(args: argparse.Namespace):
-    # TODO
-    pass
+    # Ensure that the specified import path exists and is a valid HDF5 file
+    if not os.path.exists(data_import_path):
+        raise FileNotFoundError(f"The specified import path '{data_import_path}' does not exist.")
+    elif not os.path.isfile(data_import_path):
+        raise ValueError(f"The specified import path '{data_import_path}' is not a file.")
+    elif not data_import_path.endswith(".hdf5"):
+        raise ValueError(f"The specified import path '{data_import_path}' is not an HDF5 file.")
+
+    # Retrieve the parent directory of the import path to use as the base output path for any generated plots
+    import_parent_dir = os.path.dirname(data_import_path)
+    msg.notif(f"Output will be generated in directory '{import_parent_dir}'.")
+
+    # Load the benchmark data from the specified HDF5 file into
+    # a `BenchmarkMetrics` object for analysis and plotting
+    metrics = BenchmarkMetrics(path=data_import_path)
+
+    # Compute statistics for the collected benchmark
+    # data to prepare for plotting and analysis
+    metrics.compute_stats()
+
+    # Print the total performance summary as a formatted table to the console
+    # - The columns span the problems, with a sub-column for each
+    #   metric (e.g. total time, total FPS, memory used)
+    # - The rows span the solver configurations
+    total_metrics_table_path = os.path.join(import_parent_dir, "total_metrics_summary.txt")
+    metrics.render_total_metrics_table(path=total_metrics_table_path)
+
+    # For each problem, export a table summarizing the PADMM metrics for each solver configuration
+    # - The columns span the metrics (e.g. step time, padmm.*, physics.*),
+    #   with a sub-column for each statistic (mean, std, min, max)
+    # - The rows span the solver configurations
+    if metrics.solver_metrics is not None:
+        padmm_metrics_summary_path = os.path.join(import_parent_dir, "padmm_metrics_summary.txt")
+        metrics.render_padmm_metrics_table(path=padmm_metrics_summary_path)
+        padmm_metrics_plots_path = os.path.join(import_parent_dir, "padmm_metrics_plots.png")
+        metrics.render_padmm_metrics_plots(path=padmm_metrics_plots_path)
+
+    # For each problem, export a table summarizing the PADMM metrics for each solver configuration
+    # - The columns span the metrics (e.g. step time, padmm.*, physics.*),
+    #   with a sub-column for each statistic (mean, std, min, max)
+    # - The rows span the solver configurations
+    if metrics.physics_metrics is not None:
+        physics_metrics_summary_path = os.path.join(import_parent_dir, "physics_metrics_summary.txt")
+        metrics.render_physics_metrics_table(path=physics_metrics_summary_path)
+        physics_metrics_plots_path = os.path.join(import_parent_dir, "physics_metrics_plots.png")
+        metrics.render_physics_metrics_plots(path=physics_metrics_plots_path)
 
 
 ###
@@ -387,10 +448,8 @@ if __name__ == "__main__":
     # Set the verbosity of the global message logger
     msg.set_log_level(msg.LogLevel.INFO)
 
-    # TODO: Add switching between run and plot modes
-    # Execute the benchmark run with the provided arguments
-    benchmark_run(args)
-
-    # TODO: RETRIEVE AND SAVE GIT COMMIT HASH
-    # TODO: LOAD AT SPECIFIED PATH
-    # TODO: LOAD LAST CREATED HDF5 IN OUTPUT DIRECTORY
+    # If the benchmark mode is not "import", first execute the
+    # benchmark and then produce output from the collected data
+    if args.mode != "import":
+        benchmark_run(args)
+    benchmark_output(args)

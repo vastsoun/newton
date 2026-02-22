@@ -23,6 +23,7 @@ import warp as wp
 from newton._src.solvers.kamino.utils import logger as msg
 from newton._src.solvers.kamino.utils.benchmark.configs import make_benchmark_configs
 from newton._src.solvers.kamino.utils.benchmark.metrics import BenchmarkMetrics, CodeInfo
+from newton._src.solvers.kamino.utils.benchmark.output import render_solver_configs_table
 from newton._src.solvers.kamino.utils.benchmark.problems import BenchmarkProblemNameToConfigFn, make_benchmark_problems
 from newton._src.solvers.kamino.utils.benchmark.runner import run_single_benchmark
 from newton._src.solvers.kamino.utils.device import get_device_spec_info
@@ -127,7 +128,7 @@ def parse_benchmark_arguments():
         "--mode",
         type=str,
         choices=SUPPORTED_BENCHMARK_RUN_MODES,
-        default="import",
+        default="accuracy",
         help=f"Defines the benchmark mode to run. Defaults to 'total'.\n{SUPPORTED_BENCHMARK_RUN_MODES}",
     )
     parser.add_argument(
@@ -248,9 +249,22 @@ def benchmark_run(args: argparse.Namespace):
         problem_names = args.problem_set
     msg.notif(f"problem_names: {problem_names}")
 
+    # Define and create the output directory for the benchmark results
+    DATA_DIR_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "./data"))
+    RUN_OUTPUT_NAME = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    RUN_OUTPUT_PATH = f"{DATA_DIR_PATH}/{RUN_OUTPUT_NAME}"
+    os.makedirs(RUN_OUTPUT_PATH, exist_ok=True)
+
     # Generate a set of solver configurations to benchmark over
     configs_set = make_benchmark_configs()
     msg.notif(f"config_names: {list(configs_set.keys())}")
+    render_solver_configs_table(configs=configs_set, groups=["linear", "padmm"], to_console=True)
+    render_solver_configs_table(
+        configs=configs_set,
+        path=os.path.join(RUN_OUTPUT_PATH, "solver_configs.txt"),
+        groups=["cts", "sparse", "linear", "padmm", "warmstart"],
+        to_console=False,
+    )
 
     # Generate the problem set based on the
     # provided problem names and arguments
@@ -305,12 +319,6 @@ def benchmark_run(args: argparse.Namespace):
 
     # Compute final statistics for the benchmark results
     metrics.compute_stats()
-
-    # Define and create the output directory for the benchmark results
-    DATA_DIR_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "./data"))
-    RUN_OUTPUT_NAME = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    RUN_OUTPUT_PATH = f"{DATA_DIR_PATH}/{RUN_OUTPUT_NAME}"
-    os.makedirs(RUN_OUTPUT_PATH, exist_ok=True)
 
     # Export the collected benchmark data to an HDF5 file for later analysis and plotting
     msg.info("Saving benchmark data to HDF5...")
@@ -414,5 +422,3 @@ if __name__ == "__main__":
     if args.mode != "import":
         benchmark_run(args)
     benchmark_output(args)
-
-    # TODO: Test all modes

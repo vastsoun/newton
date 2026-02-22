@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import os
+from typing import Literal
 
 import git
 import h5py
@@ -590,9 +591,8 @@ class BenchmarkMetrics:
         table to a text file at the specified path.
 
         Args:
-            path (`str`, optional):
-                An optional file path to save the table as a text file.\n
-                If None, the table is only printed to the console.
+            path (`str`):
+                File path to save the table as a text file.
 
         Raises:
             ValueError: If the total metrics (memory used, total time, total FPS) are not available.
@@ -602,7 +602,7 @@ class BenchmarkMetrics:
         total_metric_names = ["Memory (MB)", "Total Time (s)", "Total FPS (Hz)"]
         total_metric_formats = [lambda x: f"{x / (1024 * 1024):.2f}", ".2f", ".2f"]
         render_subcolumn_metrics_table_rich(
-            title="Solver Benchmark: Total Metrics Summary",
+            title="Solver Benchmark: Total Metrics",
             row_header="Solver Configuration",
             row_titles=self._config_names,
             col_titles=self._problem_names,
@@ -613,6 +613,46 @@ class BenchmarkMetrics:
             to_console=True,
         )
 
+    def render_step_time_table(self, path: str | None = None, units: Literal["s", "ms", "us"] = "ms"):
+        """
+        Outputs a formatted table for each problem summarizing the per-step time
+        metrics for each solver configuration and problem, and optionally saves
+        the table to a text file at the specified path.
+
+        Args:
+            path (`str`):
+                File path to save the table as a text file.
+
+        Raises:
+            ValueError: If the step time metrics are not available.
+        """
+        if self.step_time_stats is None:
+            raise ValueError("Step time metrics are not available in this BenchmarkMetrics instance.")
+
+        # For each problem, generate the table string for the step time metrics summary and print it to the console;
+        for prob_idx, prob_name in enumerate(self._problem_names):
+            problem_table_path = f"{path}_{prob_name}.txt" if path is not None else None
+            col_titles = [f"Step Time ({units})"]
+            subcol_titles = ["median", "mean", "max", "min"]
+            units_scaling = {"s": 1.0, "ms": 1e3, "us": 1e6}[units]
+            metric_medians = (self.step_time_stats.median[prob_idx, :] * units_scaling).reshape(1, -1)
+            metric_means = (self.step_time_stats.mean[prob_idx, :] * units_scaling).reshape(1, -1)
+            metric_maxs = (self.step_time_stats.max[prob_idx, :] * units_scaling).reshape(1, -1)
+            metric_mins = (self.step_time_stats.min[prob_idx, :] * units_scaling).reshape(1, -1)
+            subcol_data = np.array([metric_medians, metric_means, metric_maxs, metric_mins])
+            subcol_formats = [".3f", ".3f", ".3f", ".3f"]
+            render_subcolumn_metrics_table_rich(
+                title=f"Solver Benchmark: Step Time - {prob_name}",
+                row_header="Solver Configuration",
+                row_titles=self._config_names,
+                col_titles=col_titles,
+                subcol_titles=subcol_titles,
+                subcol_data=subcol_data,
+                subcol_formats=subcol_formats,
+                path=problem_table_path,
+                to_console=True,
+            )
+
     def render_padmm_metrics_table(self, path: str | None = None):
         """
         Outputs a formatted table for each problem summarizing the PADMM
@@ -621,9 +661,8 @@ class BenchmarkMetrics:
         file at the specified path.
 
         Args:
-            path (`str`, optional):
-                An optional file path to save the table as a text file.\n
-                If None, the table is only printed to the console.
+            path (`str`):
+                File path to save the table as a text file.
 
         Raises:
             ValueError: If the PADMM solver metrics are not available.
@@ -671,7 +710,7 @@ class BenchmarkMetrics:
             subcol_data = np.array([metric_medians, metric_means, metric_maxs, metric_mins])
             subcol_formats = [".3e", ".3e", ".3e", ".3e"]
             render_subcolumn_metrics_table_rich(
-                title=f"Solver Benchmark: PADMM Solver Metrics Summary - {prob_name}",
+                title=f"Solver Benchmark: PADMM Metrics - {prob_name}",
                 row_header="Solver Configuration",
                 row_titles=self._config_names,
                 col_titles=col_titles,
@@ -689,9 +728,8 @@ class BenchmarkMetrics:
         saves the table to a text file at the specified path.
 
         Args:
-            path (`str`, optional):
-                An optional file path to save the table as a text file.\n
-                If None, the table is only printed to the console.
+            path (`str`):
+                File path to save the table as a text file.
 
         Raises:
             ValueError: If the physics metrics are not available.
@@ -784,7 +822,7 @@ class BenchmarkMetrics:
             subcol_data = np.array([metric_medians, metric_means, metric_maxs, metric_mins])
             subcol_formats = [".3e", ".3e", ".3e", ".3e"]
             render_subcolumn_metrics_table_rich(
-                title=f"Solver Benchmark: Physics Metrics Summary - {prob_name}",
+                title=f"Solver Benchmark: Physics Metrics - {prob_name}",
                 row_header="Solver Configuration",
                 row_titles=self._config_names,
                 col_titles=col_titles,
@@ -827,7 +865,7 @@ class BenchmarkMetrics:
         # - Within each subplot we plot a metric curve for each solver configuration
         for prob_idx, prob_name in enumerate(self._problem_names):
             fig, axs = plt.subplots(2, 2, figsize=(16, 12))
-            fig.suptitle(f"PADMM Solver Metrics Across Simulation Steps - {prob_name}", fontsize=16)
+            fig.suptitle(f"PADMM Metrics vs Simulation Steps - {prob_name}", fontsize=16)
             metric_names = ["Iterations", "r_p", "r_d", "r_c"]
             metric_data = [
                 self.solver_metrics.padmm_iters[prob_idx, :, :],
@@ -915,7 +953,7 @@ class BenchmarkMetrics:
         # - Within each subplot we plot a metric curve for each solver configuration
         for prob_idx, prob_name in enumerate(self._problem_names):
             fig, axs = plt.subplots(3, 4, figsize=(20, 15))
-            fig.suptitle(f"Physics Metrics Across Simulation Steps - {prob_name}", fontsize=16)
+            fig.suptitle(f"Physics Metrics vs Simulation Steps - {prob_name}", fontsize=16)
             metric_names = [
                 "r_eom",
                 "r_kinematics",

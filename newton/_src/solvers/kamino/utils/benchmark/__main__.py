@@ -127,7 +127,7 @@ def parse_benchmark_arguments():
         "--mode",
         type=str,
         choices=SUPPORTED_BENCHMARK_RUN_MODES,
-        default="total",
+        default="import",
         help=f"Defines the benchmark mode to run. Defaults to 'total'.\n{SUPPORTED_BENCHMARK_RUN_MODES}",
     )
     parser.add_argument(
@@ -355,14 +355,21 @@ def benchmark_output(args: argparse.Namespace):
     # data to prepare for plotting and analysis
     metrics.compute_stats()
 
-    # Print the total performance summary as a formatted table to the console
+    # Print the total performance summary as a formatted table to the console:
     # - The columns span the problems, with a sub-column for each
     #   metric (e.g. total time, total FPS, memory used)
     # - The rows span the solver configurations
     total_metrics_table_path = os.path.join(import_parent_dir, "total_metrics.txt")
     metrics.render_total_metrics_table(path=total_metrics_table_path)
 
-    # For each problem, export a table summarizing the PADMM metrics for each solver configuration
+    # For each problem, export a table summarizing the step-time for each solver configuration:
+    # - A sub-column for each statistic (mean, std, min, max)
+    # - The rows span the solver configurations
+    if metrics.step_time is not None:
+        step_time_summary_path = os.path.join(import_parent_dir, "step_time")
+        metrics.render_step_time_table(path=step_time_summary_path)
+
+    # For each problem, export a table summarizing the PADMM metrics for each solver configuration:
     # - The columns span the metrics (e.g. step time, padmm.*, physics.*),
     #   with a sub-column for each statistic (mean, std, min, max)
     # - The rows span the solver configurations
@@ -372,7 +379,7 @@ def benchmark_output(args: argparse.Namespace):
         padmm_metrics_plots_path = os.path.join(import_parent_dir, "padmm_metrics")
         metrics.render_padmm_metrics_plots(path=padmm_metrics_plots_path)
 
-    # For each problem, export a table summarizing the PADMM metrics for each solver configuration
+    # For each problem, export a table summarizing the PADMM metrics for each solver configuration:
     # - The columns span the metrics (e.g. step time, padmm.*, physics.*),
     #   with a sub-column for each statistic (mean, std, min, max)
     # - The rows span the solver configurations

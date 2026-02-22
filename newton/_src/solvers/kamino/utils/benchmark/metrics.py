@@ -687,6 +687,7 @@ class BenchmarkMetrics:
                 subcol_titles=subcol_titles,
                 subcol_data=subcol_data,
                 subcol_formats=subcol_formats,
+                max_width=250,
             )
             table_strs.append(table_str)
 
@@ -811,6 +812,7 @@ class BenchmarkMetrics:
                 subcol_titles=subcol_titles,
                 subcol_data=subcol_data,
                 subcol_formats=subcol_formats,
+                max_width=650,
             )
             table_strs.append(table_str)
 

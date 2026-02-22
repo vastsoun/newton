@@ -34,6 +34,7 @@ def print_subcolumn_metrics_table_rich(
     subcol_titles: list[str],
     subcol_data: list[np.ndarray],
     subcol_formats: list[str | Callable] | None = None,
+    max_width: int | None = None,
 ) -> str:
     n_metrics = len(subcol_data)
     n_problems = len(col_titles)
@@ -104,8 +105,8 @@ def print_subcolumn_metrics_table_rich(
         table.add_row(*row)
 
     # Render the table to a string
-    console = Console(record=True)
+    console = Console(record=True, width=max_width)  # large width to avoid wrapping
     console.rule()
-    console.print(table)
+    console.print(table, crop=False)
     console.rule()
     return console.export_text()

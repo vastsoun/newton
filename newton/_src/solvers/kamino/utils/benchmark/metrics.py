@@ -511,7 +511,8 @@ class BenchmarkMetrics:
             datafile["Data/total/memory_used"] = self.memory_used
             datafile["Data/total/total_time"] = self.total_time
             datafile["Data/total/total_fps"] = self.total_fps
-            datafile["Data/perstep/step_time"] = self.step_time
+            if self.step_time is not None:
+                datafile["Data/perstep/step_time"] = self.step_time
             if self.solver_metrics is not None:
                 datafile["Data/perstep/padmm/converged"] = self.solver_metrics.padmm_converged
                 datafile["Data/perstep/padmm/iterations"] = self.solver_metrics.padmm_iters

@@ -21,7 +21,8 @@ import h5py
 import numpy as np
 
 from .....core.types import override
-from ...solver_kamino import SolverKamino
+from ...solver_kamino import SolverKamino, SolverKaminoSettings
+from .configs import save_solver_configs_to_hdf5
 from .output import render_subcolumn_metrics_table_rich
 
 ###
@@ -326,8 +327,8 @@ class PhysicsMetrics:
 class BenchmarkMetrics:
     def __init__(
         self,
-        problem_names: list[str] | None = None,
-        config_names: list[str] | None = None,
+        problems: list[str] | None = None,
+        configs: dict[str, SolverKaminoSettings] | None = None,
         num_steps: int | None = None,
         step_metrics: bool = False,
         solver_metrics: bool = False,
@@ -338,6 +339,10 @@ class BenchmarkMetrics:
         self._problem_names: list[str] | None = None
         self._config_names: list[str] | None = None
         self._num_steps: int | None = None
+
+        # Declare cache of the solver configurations used in the
+        # benchmark for easy reference when analyzing results
+        self._configs: dict[str, SolverKaminoSettings] | None = None
 
         # One-time metrics
         self.memory_used: np.ndarray | None = None
@@ -361,10 +366,10 @@ class BenchmarkMetrics:
         # Initialize metrics data structures if problem
         # names, config names, and num_steps are provided,
         # otherwise load from HDF5 if path is provided
-        if problem_names is not None and config_names is not None:
+        if problems is not None and configs is not None:
             self.finalize(
-                problem_names=problem_names,
-                config_names=config_names,
+                problems=problems,
+                configs=configs,
                 num_steps=num_steps,
                 step_metrics=step_metrics,
                 solver_metrics=solver_metrics,
@@ -393,16 +398,17 @@ class BenchmarkMetrics:
 
     def finalize(
         self,
-        problem_names: list[str],
-        config_names: list[str],
+        problems: list[str],
+        configs: dict[str, SolverKaminoSettings],
         num_steps: int | None = None,
         step_metrics: bool = False,
         solver_metrics: bool = False,
         physics_metrics: bool = False,
     ):
         # Cache run problem and config names as well as total step counts
-        self._problem_names = problem_names
-        self._config_names = config_names
+        self._problem_names = problems
+        self._config_names = list(configs.keys())
+        self._configs = configs
         self._num_steps = num_steps if num_steps is not None else 1
 
         # Allocate arrays for one-time total run metrics
@@ -499,6 +505,9 @@ class BenchmarkMetrics:
             datafile["Info/code/branch"] = self.codeinfo.branch
             datafile["Info/code/commit"] = self.codeinfo.commit
             datafile["Info/code/diff"] = self.codeinfo.diff
+
+            # Save solver configuration parameters
+            save_solver_configs_to_hdf5(self._configs, datafile)
 
             # Info about the benchmark data
             datafile["Info/problem_names"] = self._problem_names

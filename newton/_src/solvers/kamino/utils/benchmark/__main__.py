@@ -29,51 +29,6 @@ from newton._src.solvers.kamino.utils.device import get_device_spec_info
 from newton._src.solvers.kamino.utils.sim import SimulatorSettings
 
 ###
-# DESIGN:
-#
-#   OUTLINE:
-#   1. Supported program arguments
-#   2. Generating solver configurations (potentially multiple)
-#   3. Pretty-print configurations to console and file
-#   4. Execute benchmark runner and collect metrics
-#   5. Print results, save to file, and optionally plot
-#
-#   METRICS:
-#   - [x] Memory usage
-#   - [x] Total runtime + per-step runtime w/ statistics (mean, std, min, max)
-#   - [x] Solver performance metrics (Optional, because of reduced throughput)
-#   - [x] Number of PADMM iterations to converge
-#   - [x] Final PADMM residuals (primal, dual, compl)
-#   - [x] Physical accuracy metrics (e.g. constraint violation, energy drift, etc.)
-#
-#   ARGUMENTS:
-#   - [x] Device selection (e.g. "cuda:0", "cpu")
-#   - [x] Number of parallel worlds to simulate
-#   - [x] Number of steps to simulate
-#   - [x] Gravity on/off
-#   - [x] Ground plane on/off
-#   - [x] Performance metrics on/off (since it can reduce throughput)
-#   - [x] Problem sets (boxes_fourbar, DR Legs, ANYmal, humanoid, etc.)
-#
-#   CONFIGURATIONS:
-#   - Linear solver type (e.g. dense/LLTB, sparse/CG, sparse/CR)
-#   - Linear solver max iterations (0 for no limit, only for sparse/CG+CR)
-#   - PADMM iterations
-#   - PADMM tolerances (primal, dual, compl)
-#   - PADMM acceleration on/off
-#   - Warm-starting mode (none, contacts, containers)
-#   - PADMM initial rho and eta
-#   - PADMM rho update strategy (e.g. fixed, balanced)
-#
-#   FUNCTIONALITY:
-#  - [x] Random actuation for each problem (optional)
-#  - [x] Separate config generation from execution to allow for easier hyperparameter sweeps and ablations
-#  - [x] Store git commit and/or diff for reproducibility
-#  - [] Define default configs in appropriate file for reference
-#
-###
-
-###
 # Constants
 ###
 
@@ -139,8 +94,8 @@ def parse_benchmark_arguments():
     parser.add_argument(
         "--num-steps",
         type=int,
-        default=100,
-        help="Sets the number of simulation steps to execute. Defaults to `100`.",
+        default=5000,
+        help="Sets the number of simulation steps to execute. Defaults to `5000`.",
     )
     parser.add_argument(
         "--dt",
@@ -172,21 +127,21 @@ def parse_benchmark_arguments():
         "--mode",
         type=str,
         choices=SUPPORTED_BENCHMARK_RUN_MODES,
-        default="import",
+        default="total",
         help=f"Defines the benchmark mode to run. Defaults to 'total'.\n{SUPPORTED_BENCHMARK_RUN_MODES}",
     )
     parser.add_argument(
         "--problem",
         type=str,
         choices=BenchmarkProblemNameToConfigFn.keys(),
-        default="fourbar",
-        help="Defines a single benchmark problem to run. Defaults to 'fourbar'.",
+        default="dr_legs",
+        help="Defines a single benchmark problem to run. Defaults to 'dr_legs'.",
     )
     parser.add_argument(
         "--problem-set",
         nargs="+",
-        default=["fourbar", "dr_legs"],
-        help="Defines the benchmark problem(s) to run. If unspecified, the default `fourbar` problem will be used.",
+        default=list(BenchmarkProblemNameToConfigFn.keys()),
+        help="Defines the benchmark problem(s) to run. If unspecified, all available problems will be used.",
     )
     parser.add_argument(
         "--output",

@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
 from collections.abc import Callable
 
 import numpy as np
@@ -26,7 +27,7 @@ from rich.text import Text
 ###
 
 
-def print_subcolumn_metrics_table_rich(
+def render_subcolumn_metrics_table_rich(
     title: str,
     row_header: str,
     col_titles: list[str],
@@ -35,7 +36,9 @@ def print_subcolumn_metrics_table_rich(
     subcol_data: list[np.ndarray],
     subcol_formats: list[str | Callable] | None = None,
     max_width: int | None = None,
-) -> str:
+    path: str | None = None,
+    to_console: bool = False,
+):
     n_metrics = len(subcol_data)
     n_problems = len(col_titles)
     n_solvers = len(row_titles)
@@ -104,9 +107,18 @@ def print_subcolumn_metrics_table_rich(
                 row.append(format_value(value, subcol_formats[m_idx]))
         table.add_row(*row)
 
-    # Render the table to a string
-    console = Console(record=True, width=max_width)  # large width to avoid wrapping
-    console.rule()
-    console.print(table, crop=False)
-    console.rule()
-    return console.export_text()
+    # Render the table to the console and/or save to file
+    if path is not None:
+        path_dir = os.path.dirname(path)
+        if path_dir and not os.path.exists(path_dir):
+            raise ValueError(
+                f"Directory for path '{path}' does not exist. Please create the directory before exporting the table."
+            )
+        with open(path, "w", encoding="utf-8") as f:
+            console = Console(file=f, width=max_width)
+            console.print(table, crop=False)
+    if to_console:
+        console = Console(width=max_width)
+        console.rule()
+        console.print(table, crop=False)
+        console.rule()

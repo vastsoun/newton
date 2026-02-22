@@ -21,7 +21,7 @@ import numpy as np
 
 from .....core.types import override
 from ...solver_kamino import SolverKamino
-from .output import print_subcolumn_metrics_table_rich
+from .output import render_subcolumn_metrics_table_rich
 
 ###
 # Module interface
@@ -601,7 +601,7 @@ class BenchmarkMetrics:
         total_metric_data = [self.memory_used, self.total_time, self.total_fps]
         total_metric_names = ["Memory (MB)", "Total Time (s)", "Total FPS (Hz)"]
         total_metric_formats = [lambda x: f"{x / (1024 * 1024):.2f}", ".2f", ".2f"]
-        table_str = print_subcolumn_metrics_table_rich(
+        render_subcolumn_metrics_table_rich(
             title="Solver Benchmark: Total Metrics Summary",
             row_header="Solver Configuration",
             row_titles=self._config_names,
@@ -609,18 +609,9 @@ class BenchmarkMetrics:
             subcol_titles=total_metric_names,
             subcol_data=total_metric_data,
             subcol_formats=total_metric_formats,
+            path=path,
+            to_console=True,
         )
-
-        # If a path is provided, also save the table string to a text file at the specified path
-        if path is not None:
-            # Check if the directory for the specified path exists, and if not, create it
-            path_dir = os.path.dirname(path)
-            if path_dir and not os.path.exists(path_dir):
-                raise ValueError(
-                    f"Directory for path '{path}' does not exist. Please create the directory before saving the table."
-                )
-            with open(path, "w") as f:
-                f.write(table_str)
 
     def render_padmm_metrics_table(self, path: str | None = None):
         """
@@ -641,8 +632,8 @@ class BenchmarkMetrics:
             raise ValueError("PADMM solver metrics are not available in this BenchmarkMetrics instance.")
 
         # For each problem, generate the table string for the PADMM solver metrics summary and print it to the console;
-        table_strs: list[str] = []
         for prob_idx, prob_name in enumerate(self._problem_names):
+            problem_table_path = f"{path}_{prob_name}.txt" if path is not None else None
             col_titles = ["Iterations", "r_p", "r_d", "r_c"]
             subcol_titles = ["median", "mean", "max", "min"]
             metric_medians = np.array(
@@ -679,7 +670,7 @@ class BenchmarkMetrics:
             )
             subcol_data = np.array([metric_medians, metric_means, metric_maxs, metric_mins])
             subcol_formats = [".3e", ".3e", ".3e", ".3e"]
-            table_str = print_subcolumn_metrics_table_rich(
+            render_subcolumn_metrics_table_rich(
                 title=f"Solver Benchmark: PADMM Solver Metrics Summary - {prob_name}",
                 row_header="Solver Configuration",
                 row_titles=self._config_names,
@@ -688,20 +679,8 @@ class BenchmarkMetrics:
                 subcol_data=subcol_data,
                 subcol_formats=subcol_formats,
                 max_width=250,
+                path=problem_table_path,
             )
-            table_strs.append(table_str)
-
-        # If a path is provided, also save the table string to a text file at the specified path
-        if path is not None:
-            # Check if the directory for the specified path exists, and if not, create it
-            path_dir = os.path.dirname(path)
-            if path_dir and not os.path.exists(path_dir):
-                raise ValueError(
-                    f"Directory for path '{path}' does not exist. Please create the directory before saving the table."
-                )
-            with open(path, "w") as f:
-                for table_str in table_strs:
-                    f.write(table_str)
 
     def render_physics_metrics_table(self, path: str | None = None):
         """
@@ -721,8 +700,8 @@ class BenchmarkMetrics:
             raise ValueError("Physics metrics are not available in this BenchmarkMetrics instance.")
 
         # For each problem, generate the table string for the physics metrics summary and print it to the console;
-        table_strs: list[str] = []
         for prob_idx, prob_name in enumerate(self._problem_names):
+            problem_table_path = f"{path}_{prob_name}.txt" if path is not None else None
             col_titles = [
                 "r_eom",
                 "r_kinematics",
@@ -804,7 +783,7 @@ class BenchmarkMetrics:
             )
             subcol_data = np.array([metric_medians, metric_means, metric_maxs, metric_mins])
             subcol_formats = [".3e", ".3e", ".3e", ".3e"]
-            table_str = print_subcolumn_metrics_table_rich(
+            render_subcolumn_metrics_table_rich(
                 title=f"Solver Benchmark: Physics Metrics Summary - {prob_name}",
                 row_header="Solver Configuration",
                 row_titles=self._config_names,
@@ -813,20 +792,8 @@ class BenchmarkMetrics:
                 subcol_data=subcol_data,
                 subcol_formats=subcol_formats,
                 max_width=650,
+                path=problem_table_path,
             )
-            table_strs.append(table_str)
-
-        # If a path is provided, also save the table string to a text file at the specified path
-        if path is not None:
-            # Check if the directory for the specified path exists, and if not, create it
-            path_dir = os.path.dirname(path)
-            if path_dir and not os.path.exists(path_dir):
-                raise ValueError(
-                    f"Directory for path '{path}' does not exist. Please create the directory before saving the table."
-                )
-            with open(path, "w") as f:
-                for table_str in table_strs:
-                    f.write(table_str)
 
     def render_padmm_metrics_plots(self, path: str):
         """
@@ -890,7 +857,8 @@ class BenchmarkMetrics:
                 path_dir = os.path.dirname(path)
                 if path_dir and not os.path.exists(path_dir):
                     raise ValueError(
-                        f"Directory for path '{path}' does not exist. Please create the directory before saving the plot."
+                        f"Directory for path '{path}' does not exist. "
+                        "Please create the directory before saving the plot."
                     )
                 plt.savefig(path.replace(".png", f"_{prob_name}.png"))
             plt.close(fig)

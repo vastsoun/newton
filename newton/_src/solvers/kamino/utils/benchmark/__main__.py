@@ -94,7 +94,7 @@ def parse_benchmark_arguments():
     parser.add_argument(
         "--num-steps",
         type=int,
-        default=5000,
+        default=100,
         help="Sets the number of simulation steps to execute. Defaults to `5000`.",
     )
     parser.add_argument(

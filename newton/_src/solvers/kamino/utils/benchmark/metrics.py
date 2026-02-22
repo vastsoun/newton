@@ -22,7 +22,7 @@ import numpy as np
 
 from .....core.types import override
 from ...solver_kamino import SolverKamino, SolverKaminoSettings
-from .configs import save_solver_configs_to_hdf5
+from .configs import load_solver_configs_to_hdf5, save_solver_configs_to_hdf5
 from .output import render_subcolumn_metrics_table_rich
 
 ###
@@ -560,7 +560,10 @@ class BenchmarkMetrics:
             self.codeinfo.remote = datafile["Info/code/remote"][()]
             self.codeinfo.branch = datafile["Info/code/branch"][()]
             self.codeinfo.commit = datafile["Info/code/commit"][()]
-            # TODO: self.codeinfo.diff = datafile["Info/code/diff"][()]
+            self.codeinfo.diff = datafile["Info/code/diff"][()]
+
+            # Load solver configurations into the cache for reference
+            self._configs = load_solver_configs_to_hdf5(datafile)
 
             # Load raw data directly into the corresponding array attributes
             self.memory_used = datafile["Data/total/memory_used"][:, :].astype(np.int32)

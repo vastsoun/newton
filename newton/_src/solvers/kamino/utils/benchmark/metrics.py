@@ -849,8 +849,24 @@ class BenchmarkMetrics:
                 ax.set_xlabel("Simulation Step")
                 ax.set_ylabel(metric_name)
                 ax.grid()
-                ax.legend()
             plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+
+            # Get handles/labels from any one subplot (since they are identical)
+            handles, labels = axs.flat[0].get_legend_handles_labels()
+
+            # Add ONE legend for the whole figure, centered at the bottom
+            fig.legend(
+                handles,
+                labels,
+                loc="lower center",
+                ncol=len(labels),  # put entries in one row
+                bbox_to_anchor=(0.5, 0.02),  # (x, y) in figure coordinates
+                frameon=False,
+            )
+
+            # Make room at the bottom for the legend
+            fig.subplots_adjust(bottom=0.15)
+
             # If a path is provided, also save the plot to an image file at the specified path
             if path is not None:
                 # Check if the directory for the specified path exists, and if not, create it
@@ -860,7 +876,11 @@ class BenchmarkMetrics:
                         f"Directory for path '{path}' does not exist. "
                         "Please create the directory before saving the plot."
                     )
-                plt.savefig(path.replace(".png", f"_{prob_name}.png"))
+                fig_path = path + f"_{prob_name}.pdf"
+                plt.savefig(fig_path, format="pdf", dpi=300, bbox_inches="tight")
+
+            # Close the figure to free up memory after saving
+            # (or if not saving) before the next iteration
             plt.close(fig)
 
     def render_physics_metrics_plots(self, path: str):
@@ -938,15 +958,36 @@ class BenchmarkMetrics:
                 ax.set_xlabel("Simulation Step")
                 ax.set_ylabel(metric_name)
                 ax.grid()
-                ax.legend()
             plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+
+            # Get handles/labels from any one subplot (since they are identical)
+            handles, labels = axs.flat[0].get_legend_handles_labels()
+
+            # Add ONE legend for the whole figure, centered at the bottom
+            fig.legend(
+                handles,
+                labels,
+                loc="lower center",
+                ncol=len(labels),  # put entries in one row
+                bbox_to_anchor=(0.5, 0.02),  # (x, y) in figure coordinates
+                frameon=False,
+            )
+
+            # Make room at the bottom for the legend
+            fig.subplots_adjust(bottom=0.15)
+
             # If a path is provided, also save the plot to an image file at the specified path
             if path is not None:
                 # Check if the directory for the specified path exists, and if not, create it
                 path_dir = os.path.dirname(path)
                 if path_dir and not os.path.exists(path_dir):
                     raise ValueError(
-                        f"Directory for path '{path}' does not exist. Please create the directory before saving the plot."
+                        f"Directory for path '{path}' does not exist. "
+                        "Please create the directory before saving the plot."
                     )
-                plt.savefig(path.replace(".png", f"_{prob_name}.png"))
+                fig_path = path + f"_{prob_name}.pdf"
+                plt.savefig(fig_path, format="pdf", dpi=300, bbox_inches="tight")
+
+            # Close the figure to free up memory after saving
+            # (or if not saving) before the next iteration
             plt.close(fig)

@@ -359,7 +359,7 @@ def benchmark_output(args: argparse.Namespace):
     # - The columns span the problems, with a sub-column for each
     #   metric (e.g. total time, total FPS, memory used)
     # - The rows span the solver configurations
-    total_metrics_table_path = os.path.join(import_parent_dir, "total_metrics_summary.txt")
+    total_metrics_table_path = os.path.join(import_parent_dir, "total_metrics.txt")
     metrics.render_total_metrics_table(path=total_metrics_table_path)
 
     # For each problem, export a table summarizing the PADMM metrics for each solver configuration
@@ -367,9 +367,9 @@ def benchmark_output(args: argparse.Namespace):
     #   with a sub-column for each statistic (mean, std, min, max)
     # - The rows span the solver configurations
     if metrics.solver_metrics is not None:
-        padmm_metrics_summary_path = os.path.join(import_parent_dir, "padmm_metrics_summary.txt")
+        padmm_metrics_summary_path = os.path.join(import_parent_dir, "padmm_metrics")
         metrics.render_padmm_metrics_table(path=padmm_metrics_summary_path)
-        padmm_metrics_plots_path = os.path.join(import_parent_dir, "padmm_metrics_plots.png")
+        padmm_metrics_plots_path = os.path.join(import_parent_dir, "padmm_metrics")
         metrics.render_padmm_metrics_plots(path=padmm_metrics_plots_path)
 
     # For each problem, export a table summarizing the PADMM metrics for each solver configuration
@@ -377,9 +377,9 @@ def benchmark_output(args: argparse.Namespace):
     #   with a sub-column for each statistic (mean, std, min, max)
     # - The rows span the solver configurations
     if metrics.physics_metrics is not None:
-        physics_metrics_summary_path = os.path.join(import_parent_dir, "physics_metrics_summary.txt")
+        physics_metrics_summary_path = os.path.join(import_parent_dir, "physics_metrics")
         metrics.render_physics_metrics_table(path=physics_metrics_summary_path)
-        physics_metrics_plots_path = os.path.join(import_parent_dir, "physics_metrics_plots.png")
+        physics_metrics_plots_path = os.path.join(import_parent_dir, "physics_metrics")
         metrics.render_physics_metrics_plots(path=physics_metrics_plots_path)
 
 
@@ -408,3 +408,5 @@ if __name__ == "__main__":
     if args.mode != "import":
         benchmark_run(args)
     benchmark_output(args)
+
+    # TODO: Test all modes

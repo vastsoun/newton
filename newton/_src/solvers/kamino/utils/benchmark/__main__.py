@@ -250,8 +250,7 @@ def benchmark_run(args: argparse.Namespace):
 
     # Generate a set of solver configurations to benchmark over
     configs_set = make_benchmark_configs()
-    config_names = list(configs_set.keys())
-    msg.notif(f"config_names: {config_names}")
+    msg.notif(f"config_names: {list(configs_set.keys())}")
 
     # Generate the problem set based on the
     # provided problem names and arguments
@@ -265,8 +264,8 @@ def benchmark_run(args: argparse.Namespace):
     # Construct and initialize the metrics
     # object to store benchmark data
     metrics = BenchmarkMetrics(
-        problem_names=problem_names,
-        config_names=config_names,
+        problems=problem_names,
+        configs=configs_set,
         num_steps=args.num_steps,
         step_metrics=collect_step_metrics,
         solver_metrics=collect_solver_metrics,

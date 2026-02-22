@@ -255,47 +255,52 @@ def save_solver_configs_to_hdf5(configs: dict[str, SolverKaminoSettings], datafi
 
 def load_solver_configs_to_hdf5(datafile: h5py.File) -> dict[str, SolverKaminoSettings]:
     configs = {}
-    for scope in datafile.keys():
-        if not scope.startswith("Solver/"):
-            continue
-        config_name = scope.split("/")[1]
+    for config_name in datafile["Solver"].keys():
         config = SolverKaminoSettings()
         # ------------------------------------------------------------------------------
-        config.problem.alpha = float(datafile[f"{scope}/constraints/alpha"][()])
-        config.problem.beta = float(datafile[f"{scope}/constraints/beta"][()])
-        config.problem.gamma = float(datafile[f"{scope}/constraints/gamma"][()])
-        config.problem.delta = float(datafile[f"{scope}/constraints/delta"][()])
-        config.problem.preconditioning = bool(datafile[f"{scope}/constraints/preconditioning"][()])
+        config.problem.alpha = float(datafile[f"Solver/{config_name}/constraints/alpha"][()])
+        config.problem.beta = float(datafile[f"Solver/{config_name}/constraints/beta"][()])
+        config.problem.gamma = float(datafile[f"Solver/{config_name}/constraints/gamma"][()])
+        config.problem.delta = float(datafile[f"Solver/{config_name}/constraints/delta"][()])
+        config.problem.preconditioning = bool(datafile[f"Solver/{config_name}/constraints/preconditioning"][()])
         # ------------------------------------------------------------------------------
-        config.sparse = bool(datafile[f"{scope}/sparse_solver"][()])
-        config.sparse_jacobian = bool(datafile[f"{scope}/sparse_jacobian"][()])
+        config.sparse = bool(datafile[f"Solver/{config_name}/sparse_solver"][()])
+        config.sparse_jacobian = bool(datafile[f"Solver/{config_name}/sparse_jacobian"][()])
         # ------------------------------------------------------------------------------
-        config.linear_solver_type = LinearSolverTypeToName[datafile[f"{scope}/linear_solver/type"][()].decode("utf-8")]
-        config.linear_solver_kwargs = eval(datafile[f"{scope}/linear_solver/args"][()].decode("utf-8"))
+        config.linear_solver_type = LinearSolverNameToType[
+            datafile[f"Solver/{config_name}/linear_solver/type"][()].decode("utf-8")
+        ]
+        config.linear_solver_kwargs = eval(datafile[f"Solver/{config_name}/linear_solver/args"][()].decode("utf-8"))
         # ------------------------------------------------------------------------------
-        config.padmm.max_iterations = float(datafile[f"{scope}/padmm/max_iterations"][()])
-        config.padmm.primal_tolerance = float(datafile[f"{scope}/padmm/primal_tolerance"][()])
-        config.padmm.dual_tolerance = float(datafile[f"{scope}/padmm/dual_tolerance"][()])
-        config.padmm.compl_tolerance = float(datafile[f"{scope}/padmm/compl_tolerance"][()])
-        config.padmm.restart_tolerance = float(datafile[f"{scope}/padmm/restart_tolerance"][()])
-        config.padmm.eta = float(datafile[f"{scope}/padmm/eta"][()])
-        config.padmm.rho_0 = float(datafile[f"{scope}/padmm/rho_0"][()])
-        config.padmm.rho_min = float(datafile[f"{scope}/padmm/rho_min"][()])
-        config.padmm.a_0 = float(datafile[f"{scope}/padmm/a_0"][()])
-        config.padmm.alpha = float(datafile[f"{scope}/padmm/alpha"][()])
-        config.padmm.tau = float(datafile[f"{scope}/padmm/tau"][()])
+        config.padmm.max_iterations = float(datafile[f"Solver/{config_name}/padmm/max_iterations"][()])
+        config.padmm.primal_tolerance = float(datafile[f"Solver/{config_name}/padmm/primal_tolerance"][()])
+        config.padmm.dual_tolerance = float(datafile[f"Solver/{config_name}/padmm/dual_tolerance"][()])
+        config.padmm.compl_tolerance = float(datafile[f"Solver/{config_name}/padmm/compl_tolerance"][()])
+        config.padmm.restart_tolerance = float(datafile[f"Solver/{config_name}/padmm/restart_tolerance"][()])
+        config.padmm.eta = float(datafile[f"Solver/{config_name}/padmm/eta"][()])
+        config.padmm.rho_0 = float(datafile[f"Solver/{config_name}/padmm/rho_0"][()])
+        config.padmm.rho_min = float(datafile[f"Solver/{config_name}/padmm/rho_min"][()])
+        config.padmm.a_0 = float(datafile[f"Solver/{config_name}/padmm/a_0"][()])
+        config.padmm.alpha = float(datafile[f"Solver/{config_name}/padmm/alpha"][()])
+        config.padmm.tau = float(datafile[f"Solver/{config_name}/padmm/tau"][()])
         config.padmm.penalty_update_method = PADMMPenaltyUpdate(
-            int(datafile[f"{scope}/padmm/penalty_update_method"][()])
+            int(datafile[f"Solver/{config_name}/padmm/penalty_update_method"][()])
         )
-        config.padmm.penalty_update_freq = int(datafile[f"{scope}/padmm/penalty_update_freq"][()])
-        config.padmm.linear_solver_tolerance = float(datafile[f"{scope}/padmm/linear_solver_tolerance"][()])
-        config.padmm.linear_solver_tolerance_ratio = float(datafile[f"{scope}/padmm/linear_solver_tolerance_ratio"][()])
-        config.use_solver_acceleration = bool(datafile[f"{scope}/padmm/use_solver_acceleration"][()])
-        config.avoid_graph_conditionals = bool(datafile[f"{scope}/padmm/avoid_graph_conditionals"][()])
+        config.padmm.penalty_update_freq = int(datafile[f"Solver/{config_name}/padmm/penalty_update_freq"][()])
+        config.padmm.linear_solver_tolerance = float(
+            datafile[f"Solver/{config_name}/padmm/linear_solver_tolerance"][()]
+        )
+        config.padmm.linear_solver_tolerance_ratio = float(
+            datafile[f"Solver/{config_name}/padmm/linear_solver_tolerance_ratio"][()]
+        )
+        config.use_solver_acceleration = bool(datafile[f"Solver/{config_name}/padmm/use_solver_acceleration"][()])
+        config.avoid_graph_conditionals = bool(datafile[f"Solver/{config_name}/padmm/avoid_graph_conditionals"][()])
         # ------------------------------------------------------------------------------
-        config.warmstart_mode = PADMMWarmStartMode(int(datafile[f"{scope}/warmstarting/warmstart_mode"][()]))
+        config.warmstart_mode = PADMMWarmStartMode(
+            int(datafile[f"Solver/{config_name}/warmstarting/warmstart_mode"][()])
+        )
         config.contact_warmstart_method = WarmstarterContacts.Method(
-            int(datafile[f"{scope}/warmstarting/contact_warmstart_method"][()])
+            int(datafile[f"Solver/{config_name}/warmstarting/contact_warmstart_method"][()])
         )
         # ------------------------------------------------------------------------------
         configs[config_name] = config

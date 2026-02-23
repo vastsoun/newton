@@ -21,7 +21,7 @@ from typing import Any
 import warp as wp
 
 from ...core.math import FLOAT32_EPS, FLOAT32_MAX
-from ...core.types import float32, int32, vec2f, vec3f, vec6f
+from ...core.types import float32, int32, vec2f, vec3f
 from .math import (
     compute_cwise_vec_div,
     compute_cwise_vec_mul,
@@ -166,11 +166,15 @@ def _warmstart_desaxce_correction(
 def _warmstart_joint_constraints(
     # Inputs:
     model_time_dt: wp.array(dtype=float32),
-    model_info_total_cts_offset: wp.array(dtype=int32),
     model_info_joint_cts_offset: wp.array(dtype=int32),
+    model_info_total_cts_offset: wp.array(dtype=int32),
+    model_info_joint_dynamic_cts_group_offset: wp.array(dtype=int32),
+    model_info_joint_kinematic_cts_group_offset: wp.array(dtype=int32),
     joint_wid: wp.array(dtype=int32),
-    joint_num_cts: wp.array(dtype=int32),
-    joint_cts_offset: wp.array(dtype=int32),
+    joint_num_dynamic_cts: wp.array(dtype=int32),
+    joint_num_kinematic_cts: wp.array(dtype=int32),
+    joint_dynamic_cts_offset: wp.array(dtype=int32),
+    joint_kinematic_cts_offset: wp.array(dtype=int32),
     joint_lambda_j: wp.array(dtype=float32),
     problem_P: wp.array(dtype=float32),
     # Outputs:
@@ -182,39 +186,40 @@ def _warmstart_joint_constraints(
     jid = wp.tid()
 
     # Retrieve the joint-specific model info
-    wid = joint_wid[jid]
-    num_cts = joint_num_cts[jid]
-    cts_offset = joint_cts_offset[jid]
+    wid_j = joint_wid[jid]
+    num_dynamic_cts_j = joint_num_dynamic_cts[jid]
+    num_kinematic_cts_j = joint_num_kinematic_cts[jid]
+    dynamic_cts_start_j = joint_dynamic_cts_offset[jid]
+    kinematic_cts_start_j = joint_kinematic_cts_offset[jid]
 
     # Retrieve the world-specific info
-    dt = model_time_dt[wid]
-    world_joints_cts_offset = model_info_joint_cts_offset[wid]
-    world_total_cts_offset = model_info_total_cts_offset[wid]
+    dt = model_time_dt[wid_j]
+    world_joint_cts_start = model_info_joint_cts_offset[wid_j]
+    world_total_cts_start = model_info_total_cts_offset[wid_j]
+    world_joint_dynamic_cts_group_start = model_info_joint_dynamic_cts_group_offset[wid_j]
+    world_joint_kinematic_cts_group_start = model_info_joint_kinematic_cts_group_offset[wid_j]
 
     # Compute block offsets of the joint's constraints within
     # the joint-only constraints and total constraints arrays
-    jio_j = world_joints_cts_offset + cts_offset
-    vio_j = world_total_cts_offset + cts_offset
+    joint_dyn_cts_start = world_joint_cts_start + world_joint_dynamic_cts_group_start + dynamic_cts_start_j
+    dyn_cts_row_start_j = world_total_cts_start + world_joint_dynamic_cts_group_start + dynamic_cts_start_j
+    joint_kin_cts_start = world_joint_cts_start + world_joint_kinematic_cts_group_start + kinematic_cts_start_j
+    kin_cts_row_start_j = world_total_cts_start + world_joint_kinematic_cts_group_start + kinematic_cts_start_j
 
-    # Load the diagonal preconditioner for the joint constraints
-    # NOTE: We pre-emptively allocate a 6-element vector to
-    # account for the worst-case scenario of a 0-DOF joint
-    P = vec6f(0.0)
-    for j in range(num_cts):
-        P[j] = problem_P[vio_j + j]
-
-    # Load the joint constraint reaction forces and velocities
-    lambda_j = vec6f(0.0)
-    for j in range(num_cts):
-        lambda_j[j] = (dt / P[j]) * joint_lambda_j[jio_j + j]
-
-    # Store the joint-constraint reaction forces
-    for j in range(num_cts):
-        x_0[vio_j + j] = lambda_j[j]
-    for j in range(num_cts):
-        y_0[vio_j + j] = lambda_j[j]
-    for j in range(num_cts):
-        z_0[vio_j + j] = 0.0
+    # For each joint constraint, scale the constraint force by the time-step and
+    # the preconditioner and initialize the solver state variables accordingly
+    for j in range(num_dynamic_cts_j):
+        P_j = problem_P[dyn_cts_row_start_j + j]
+        lambda_j = (dt / P_j) * joint_lambda_j[joint_dyn_cts_start + j]
+        x_0[dyn_cts_row_start_j + j] = lambda_j
+        y_0[dyn_cts_row_start_j + j] = lambda_j
+        z_0[dyn_cts_row_start_j + j] = 0.0
+    for j in range(num_kinematic_cts_j):
+        P_j = problem_P[kin_cts_row_start_j + j]
+        lambda_j = (dt / P_j) * joint_lambda_j[joint_kin_cts_start + j]
+        x_0[kin_cts_row_start_j + j] = lambda_j
+        y_0[kin_cts_row_start_j + j] = lambda_j
+        z_0[kin_cts_row_start_j + j] = 0.0
 
 
 @wp.kernel

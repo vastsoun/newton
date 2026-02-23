@@ -672,15 +672,16 @@ def _compute_eom_residual(
 
 
 @wp.kernel
-def _compute_joint_kinematics_residual(
+def _compute_joint_kinematics_residual_dense(
     # Inputs:
     model_info_num_body_dofs: wp.array(dtype=int32),
     model_info_bodies_offset: wp.array(dtype=int32),
-    model_joints_wid: wp.array(dtype=int32),
-    model_joints_num_cts: wp.array(dtype=int32),
-    model_joints_cts_offset: wp.array(dtype=int32),
-    model_joints_bid_B: wp.array(dtype=int32),
-    model_joints_bid_F: wp.array(dtype=int32),
+    model_info_joint_kinematic_cts_group_offset: wp.array(dtype=int32),
+    model_joint_wid: wp.array(dtype=int32),
+    model_joint_num_kinematic_cts: wp.array(dtype=int32),
+    model_joint_kinematic_cts_offset: wp.array(dtype=int32),
+    model_joint_bid_B: wp.array(dtype=int32),
+    model_joint_bid_F: wp.array(dtype=int32),
     data_bodies_u_i: wp.array(dtype=vec6f),
     jacobian_cts_offset: wp.array(dtype=int32),
     jacobian_cts_data: wp.array(dtype=float32),
@@ -692,25 +693,21 @@ def _compute_joint_kinematics_residual(
     jid = wp.tid()
 
     # Retrieve the world index of the joint
-    wid = model_joints_wid[jid]
+    wid = model_joint_wid[jid]
 
     # Retrieve the body indices of the joint
     # NOTE: these indices are w.r.t the model
-    bid_F_j = model_joints_bid_F[jid]
-    bid_B_j = model_joints_bid_B[jid]
+    bid_F_j = model_joint_bid_F[jid]
+    bid_B_j = model_joint_bid_B[jid]
 
     # Retrieve the size and index offset of the joint constraint
-    num_cts_j = model_joints_num_cts[jid]
-    cts_offset_j = model_joints_cts_offset[jid]
+    num_cts_j = model_joint_num_kinematic_cts[jid]
+    cts_offset_j = model_joint_kinematic_cts_offset[jid]
 
-    # Retrieve the number of body DoFs in the world
+    # Retrieve the world-specific info
     nbd = model_info_num_body_dofs[wid]
-
-    # Retrieve the element index offset of the bodies of the world
     bio = model_info_bodies_offset[wid]
-
-    # Retrieve the constraint block index offsets of the
-    # Jacobian matrix and multipliers vector of the world
+    kgo = model_info_joint_kinematic_cts_group_offset[wid]
     mio = jacobian_cts_offset[wid]
 
     # Compute the per-joint constraint Jacobian matrix-vector product
@@ -718,14 +715,14 @@ def _compute_joint_kinematics_residual(
     u_i_F = data_bodies_u_i[bid_F_j]
     dio_F = 6 * (bid_F_j - bio)
     for j in range(num_cts_j):
-        mio_j = mio + nbd * (cts_offset_j + j) + dio_F
+        mio_j = mio + nbd * (kgo + cts_offset_j + j) + dio_F
         for i in range(6):
             j_v_j[j] += jacobian_cts_data[mio_j + i] * u_i_F[i]
     if bid_B_j >= 0:
         u_i_B = data_bodies_u_i[bid_B_j]
         dio_B = 6 * (bid_B_j - bio)
         for j in range(num_cts_j):
-            mio_j = mio + nbd * (cts_offset_j + j) + dio_B
+            mio_j = mio + nbd * (kgo + cts_offset_j + j) + dio_B
             for i in range(6):
                 j_v_j[j] += jacobian_cts_data[mio_j + i] * u_i_B[i]
 
@@ -797,10 +794,11 @@ def _compute_joint_kinematics_residual_sparse(
 @wp.kernel
 def _compute_cts_joints_residual(
     # Inputs:
-    data_info_joints_cts_offset: wp.array(dtype=int32),
-    model_joints_wid: wp.array(dtype=int32),
-    model_joints_num_cts: wp.array(dtype=int32),
-    model_joints_cts_offset: wp.array(dtype=int32),
+    model_info_joints_cts_offset: wp.array(dtype=int32),
+    model_info_joint_kinematic_cts_group_offset: wp.array(dtype=int32),
+    model_joint_wid: wp.array(dtype=int32),
+    model_joint_num_kinematic_cts: wp.array(dtype=int32),
+    model_joint_kinematic_cts_offset: wp.array(dtype=int32),
     data_joints_r_j: wp.array(dtype=float32),
     # Outputs:
     metric_r_cts_joints: wp.array(dtype=float32),
@@ -810,15 +808,16 @@ def _compute_cts_joints_residual(
     jid = wp.tid()
 
     # Retrieve the joint-specific model data
-    wid = model_joints_wid[jid]
-    num_cts_j = model_joints_num_cts[jid]
-    cts_offset_j = model_joints_cts_offset[jid]
+    wid = model_joint_wid[jid]
+    num_cts_j = model_joint_num_kinematic_cts[jid]
+    cts_offset_j = model_joint_kinematic_cts_offset[jid]
 
     # Retrieve the joint-block constraint index offset of the world
-    world_joints_cts_offset = data_info_joints_cts_offset[wid]
+    world_joint_cts_offset = model_info_joints_cts_offset[wid]
+    world_joint_kinematic_cts_group_offset = model_info_joint_kinematic_cts_group_offset[wid]
 
     # Compute the global constraint index offset for the specific joint
-    cio_j = world_joints_cts_offset + cts_offset_j
+    cio_j = world_joint_cts_offset + world_joint_kinematic_cts_group_offset + cts_offset_j
 
     # Compute the per-joint constraint residual (infinity-norm)
     r_cts_joints_j = float32(0.0)
@@ -1317,9 +1316,10 @@ class SolutionMetrics:
                 inputs=[
                     # Inputs:
                     model.info.joint_cts_offset,
+                    model.info.joint_kinematic_cts_group_offset,
                     model.joints.wid,
-                    model.joints.num_cts,
-                    model.joints.cts_offset,
+                    model.joints.num_kinematic_cts,
+                    model.joints.kinematic_cts_offset,
                     data.joints.r_j,
                     # Outputs:
                     self._data.r_cts_joints,
@@ -1414,15 +1414,16 @@ class SolutionMetrics:
         if model.size.sum_of_num_joints > 0:
             if isinstance(jacobians, DenseSystemJacobians):
                 wp.launch(
-                    kernel=_compute_joint_kinematics_residual,
+                    kernel=_compute_joint_kinematics_residual_dense,
                     dim=model.size.sum_of_num_joints,
                     inputs=[
                         # Inputs:
                         model.info.num_body_dofs,
                         model.info.bodies_offset,
+                        model.info.joint_kinematic_cts_group_offset,
                         model.joints.wid,
-                        model.joints.num_cts,
-                        model.joints.cts_offset,
+                        model.joints.num_kinematic_cts,
+                        model.joints.kinematic_cts_offset,
                         model.joints.bid_B,
                         model.joints.bid_F,
                         data.bodies.u_i,

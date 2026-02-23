@@ -73,9 +73,9 @@ def _test_control_callback(
     # Add-hoc torque magnitude based on the selected joint
     # because we want higher actuation for the two hip joints
     if reset_index == 0 or reset_index == 6:
-        torque = 0.1
-    else:
         torque = 0.01
+    else:
+        torque = 0.001
 
     # Reverse torque direction for the first leg
     if reset_index < 6:
@@ -285,7 +285,7 @@ class Example:
         reset_index = (reset_index + 1) % len(self.actuated_joint_idx)
         # If all joints have been cycled through, proceed to the next reset mode
         if reset_index == len(self.actuated_joint_idx) - 1:
-            self.sim_reset_mode = (self.sim_reset_mode + 1) % 5
+            self.sim_reset_mode = (self.sim_reset_mode + 1) % 6
             reset_index = -1
         self.sim_reset_index.fill_(reset_index)
         msg.warning(f"Next sim_reset_index: {reset_index}")
@@ -322,7 +322,9 @@ class Example:
             R_b = Rotation.from_rotvec(np.pi / 4 * np.array([0, 0, 1]))
             q_b = R_b.as_quat()  # x, y, z, w
             q_base = wp.transformf((0.1, 0.1, 0.3), q_b)
+            u_base = vec6f(0.0, 0.0, 0.05, 0.0, 0.0, 0.3)
             self.base_q.assign([q_base] * self.sim.model.size.num_worlds)
+            self.base_u.assign([u_base] * self.sim.model.size.num_worlds)
             self.sim.reset(base_q=self.base_q, base_u=self.base_u)
 
         # Demo of resetting the base state and joint configurations
@@ -333,7 +335,9 @@ class Example:
             R_b = Rotation.from_rotvec(np.pi / 4 * np.array([0, 0, 1]))
             q_b = R_b.as_quat()  # x, y, z, w
             q_base = wp.transformf((0.1, 0.1, 0.3), q_b)
+            u_base = vec6f(0.0, 0.0, 0.05, 0.0, 0.0, -0.3)
             self.base_q.assign([q_base] * self.sim.model.size.num_worlds)
+            self.base_u.assign([u_base] * self.sim.model.size.num_worlds)
             joint_q_np = np.zeros(self.sim.model.size.sum_of_num_joint_coords, dtype=np.float32)
             self.joint_q.assign(joint_q_np)
             self.sim.reset(base_q=self.base_q, base_u=self.base_u, joint_q=self.joint_q, joint_u=self.joint_u)
@@ -348,7 +352,9 @@ class Example:
             R_b = Rotation.from_rotvec(np.pi / 4 * np.array([0, 0, 1]))
             q_b = R_b.as_quat()  # x, y, z, w
             q_base = wp.transformf((0.1, 0.1, 0.3), q_b)
+            u_base = vec6f(0.0, 0.0, -0.05, 0.0, 0.0, 0.3)
             self.base_q.assign([q_base] * self.sim.model.size.num_worlds)
+            self.base_u.assign([u_base] * self.sim.model.size.num_worlds)
             actuated_joint_config = np.array(
                 [
                     np.pi / 12,
@@ -381,7 +387,9 @@ class Example:
             R_b = Rotation.from_rotvec(np.pi / 4 * np.array([0, 0, 1]))
             q_b = R_b.as_quat()  # x, y, z, w
             q_base = wp.transformf((0.1, 0.1, 0.3), q_b)
+            u_base = vec6f(0.0, 0.0, -0.05, 0.0, 0.0, -0.3)
             self.base_q.assign([q_base] * self.sim.model.size.num_worlds)
+            self.base_u.assign([u_base] * self.sim.model.size.num_worlds)
             actuated_joint_config = np.array(
                 [
                     np.pi / 12,
@@ -441,7 +449,7 @@ if __name__ == "__main__":
     parser.add_argument("--device", type=str, help="The compute device to use")
     parser.add_argument("--headless", action=argparse.BooleanOptionalAction, default=False, help="Run in headless mode")
     parser.add_argument("--num-worlds", type=int, default=1, help="Number of worlds to simulate in parallel")
-    parser.add_argument("--num-steps", type=int, default=200, help="Number of steps for headless mode")
+    parser.add_argument("--num-steps", type=int, default=400, help="Number of steps for headless mode")
     parser.add_argument("--cuda-graph", action=argparse.BooleanOptionalAction, default=True, help="Use CUDA graphs")
     parser.add_argument("--clear-cache", action=argparse.BooleanOptionalAction, default=False, help="Clear warp cache")
     parser.add_argument("--test", action=argparse.BooleanOptionalAction, default=False, help="Run tests")

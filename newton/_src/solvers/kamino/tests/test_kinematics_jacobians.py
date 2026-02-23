@@ -14,7 +14,7 @@
 # limitations under the License.
 
 """
-KAMINO: UNIT TESTS: KINEMATICS: JACOBIANS
+Unit tests for `kinematics/jacobians.py`.
 """
 
 import math

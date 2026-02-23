@@ -242,6 +242,8 @@ class Example:
         # Set solver settings
         settings = SimulatorSettings()
         settings.dt = self.sim_dt
+        settings.solver.sparse = False
+        settings.solver.sparse_jacobian = True
         settings.solver.integrator = "euler"  # Select from {"euler", "moreau"}
         settings.solver.problem.preconditioning = True
         settings.solver.padmm.primal_tolerance = 1e-4

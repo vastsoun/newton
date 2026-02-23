@@ -29,7 +29,6 @@ from newton._src.solvers.kamino.examples import get_examples_output_path, run_he
 from newton._src.solvers.kamino.linalg.linear import SolverShorthand as LinearSolverShorthand
 from newton._src.solvers.kamino.models import get_examples_usd_assets_path
 from newton._src.solvers.kamino.models.builders.utils import (
-    add_ground_box,
     make_homogeneous_builder,
     set_uniform_body_pose_offset,
 )
@@ -217,9 +216,9 @@ class Example:
         self.builder: ModelBuilder = make_homogeneous_builder(
             num_worlds=num_worlds,
             build_fn=importer.import_from,
+            load_drive_dynamics=implicit_pd,
             load_static_geometry=True,
             source=USD_MODEL_PATH,
-            load_drive_dynamics=implicit_pd,
         )
         msg.info("total mass: %f", self.builder.worlds[0].mass_total)
         msg.info("total diag inertia: %f", self.builder.worlds[0].inertia_total)
@@ -229,14 +228,14 @@ class Example:
         offset = wp.transformf(0.0, 0.0, 0.265, 0.0, 0.0, 0.0, 1.0)
         set_uniform_body_pose_offset(builder=self.builder, offset=offset)
 
-        # Add a static collision layer and geometry for the plane
-        if ground:
-            for w in range(num_worlds):
-                add_ground_box(self.builder, world_index=w, layer="world")
+        # # Add a static collision layer and geometry for the plane
+        # if ground:
+        #     for w in range(num_worlds):
+        #         add_ground_box(self.builder, world_index=w, layer="world")
 
         # Set gravity
         for w in range(self.builder.num_worlds):
-            self.builder.gravity[w].enabled = gravity
+            self.builder.gravity[w].enabled = False
 
         # Print-out of actuated joints used for verifying the imported USD was parsed as expected
         for joint in self.builder.joints:
@@ -246,6 +245,8 @@ class Example:
         # Set solver settings
         settings = SimulatorSettings()
         settings.dt = self.sim_dt
+        settings.solver.sparse = False
+        settings.solver.sparse_jacobian = True
         settings.solver.integrator = "moreau"  # Select from {"euler", "moreau"}
         settings.solver.problem.alpha = 0.1
         settings.solver.padmm.primal_tolerance = 1e-4

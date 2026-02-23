@@ -944,7 +944,9 @@ class TestKinematicsSparseSystemJacobians(unittest.TestCase):
         contacts = None
 
         # Construct the model description using the ModelBuilder
-        builder = make_homogeneous_builder(num_worlds=num_worlds, build_fn=build_boxes_fourbar)
+        builder = make_homogeneous_builder(
+            num_worlds=num_worlds, build_fn=build_boxes_fourbar, dynamic_joints=True, implicit_pd=True
+        )
 
         # Create the model from the builder
         model = builder.finalize(device=self.default_device)
@@ -983,7 +985,7 @@ class TestKinematicsSparseSystemJacobians(unittest.TestCase):
             print("data.bodies.u_i:\n", data.bodies.u_i)
 
         # Compute the joints state
-        compute_joints_data(model=model, q_j_ref=wp.zeros_like(data.joints.q_j), data=data)
+        compute_joints_data(model=model, q_j_p=wp.zeros_like(data.joints.q_j), data=data)
         wp.synchronize()
         if self.verbose:
             print("data.joints.p_j:\n", data.joints.p_j)
@@ -1065,15 +1067,16 @@ class TestKinematicsSparseSystemJacobians(unittest.TestCase):
         J_cts_row_major = jacobians._J_cts.bsm.numpy()
         J_cts_col_major = jacobians_col_major.bsm.numpy()
 
-        msg.warning(f"J_cts_row_major: {J_cts_row_major}")
-        msg.warning(f"J_cts_col_major: {J_cts_col_major}")
-
         self.assertEqual(len(J_cts_row_major), len(J_cts_col_major))
 
         # Check that Jacobians match
         for mat_id in range(len(J_cts_row_major)):
             diff_J_cts = J_cts_row_major[mat_id] - J_cts_col_major[mat_id]
-            self.assertLess(np.max(np.abs(diff_J_cts)), self.epsilon)
+            max_diff = np.max(np.abs(diff_J_cts))
+            if max_diff > self.epsilon and self.verbose:
+                msg.warning(f"[{mat_id}] J_cts_row_major:\n{J_cts_row_major[mat_id]}")
+                msg.warning(f"[{mat_id}] J_cts_col_major:\n{J_cts_col_major[mat_id]}")
+            self.assertLess(max_diff, self.epsilon)
 
     ###
     # Construction
@@ -1271,6 +1274,22 @@ class TestKinematicsSparseSystemJacobians(unittest.TestCase):
             print("contacts.model_max_contacts_host: ", contacts.model_max_contacts_host)
             print("contacts.world_max_contacts_host: ", contacts.world_max_contacts_host)
 
+        # Create a model state container
+        data = model.data(device=self.default_device)
+
+        # Create the constraints info
+        make_unilateral_constraints_info(
+            model=model,
+            data=data,
+            limits=limits,
+            contacts=contacts,
+            device=self.default_device,
+        )
+        if self.verbose:
+            print("")  # Add a newline for better readability
+            print_model_constraint_info(model)
+            print_model_data_info(data)
+
         # Create the Jacobians container
         jacobians = SparseSystemJacobians(model=model, limits=limits, contacts=contacts, device=self.default_device)
         if self.verbose:
@@ -1455,7 +1474,7 @@ class TestKinematicsSparseSystemJacobians(unittest.TestCase):
             print("data.bodies.u_i:\n", data.bodies.u_i)
 
         # Compute the joints state
-        compute_joints_data(model=model, q_j_ref=wp.zeros_like(data.joints.q_j), data=data)
+        compute_joints_data(model=model, q_j_p=wp.zeros_like(data.joints.q_j), data=data)
         wp.synchronize()
         if self.verbose:
             print("data.joints.p_j:\n", data.joints.p_j)
@@ -1677,7 +1696,7 @@ class TestKinematicsSparseSystemJacobians(unittest.TestCase):
             print("data.bodies.u_i:\n", data.bodies.u_i)
 
         # Compute the joints state
-        compute_joints_data(model=model, q_j_ref=wp.zeros_like(data.joints.q_j), data=data)
+        compute_joints_data(model=model, q_j_p=wp.zeros_like(data.joints.q_j), data=data)
         wp.synchronize()
         if self.verbose:
             print("data.joints.p_j:\n", data.joints.p_j)

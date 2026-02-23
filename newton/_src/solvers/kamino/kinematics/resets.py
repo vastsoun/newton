@@ -109,7 +109,7 @@ def _reset_body_state_from_base(
     world_mask: wp.array(dtype=int32),
     model_info_base_body_index: wp.array(dtype=int32),
     model_body_wid: wp.array(dtype=int32),
-    q_i_cache: wp.array(dtype=transformf),
+    model_bodies_q_i_0: wp.array(dtype=transformf),
     base_q: wp.array(dtype=transformf),
     base_u: wp.array(dtype=vec6f),
     # Outputs:
@@ -130,15 +130,15 @@ def _reset_body_state_from_base(
     # Retrieve the index of the base body for this world
     base_bid = model_info_base_body_index[wid]
 
-    # Retrieve the current pose of the base body
+    # Retrieve the initial pose of the base body
     if base_bid >= 0:
-        q_b_0 = q_i_cache[base_bid]
+        q_b_0 = model_bodies_q_i_0[base_bid]
     else:
         # If there is no base body, use the identity transform
         q_b_0 = wp.transform_identity(dtype=float32)
 
-    # Retrieve the current pose for this body
-    q_i_0 = q_i_cache[bid]
+    # Retrieve the initial pose for this body
+    q_i_0 = model_bodies_q_i_0[bid]
 
     # Retrieve the target state of the base body
     q_b = base_q[wid]
@@ -624,17 +624,15 @@ def reset_state_from_base_state(
     world_mask: wp.array,
     base_q: wp.array,
     base_u: wp.array,
-    q_i_cache: wp.array,
 ):
     """
     Resets the state of all bodies in the selected worlds based on the state of their
     respective base bodies. The result is stored in the provided `state_out` container.
 
-    The reset operation uses the target poses and twists of the base bodies to rigidly
-    and uniformly transform the poses and twists of all other bodies in the same world.
-
-    The current implementation sets the twists of all bodies to that of the base body,
-    but transformed to account for the relative pose offset of the base body.
+    More specifically, in each world, the reset operation rigidly transforms the initial pose of the
+    system so as to match the target pose of the base body, and sets body poses accordingly.
+    Furthermore, the twists of all bodies are set to that of the base body, but transformed to account
+    for the relative pose offset.
 
     Args:
         model (Model):
@@ -651,9 +649,6 @@ def reset_state_from_base_state(
             Array of target twists for the base bodies of each world.\n
             Shape of ``(num_worlds,)`` and type :class:`vec6f`.
     """
-    # First, cache the current body poses
-    wp.copy(q_i_cache, state_out.q_i)
-
     # Reset bodies based on base body states
     wp.launch(
         _reset_body_state_from_base,
@@ -663,7 +658,7 @@ def reset_state_from_base_state(
             world_mask,
             model.info.base_body_index,
             model.bodies.wid,
-            q_i_cache,
+            model.bodies.q_i_0,
             base_q,
             base_u,
             # Outputs:

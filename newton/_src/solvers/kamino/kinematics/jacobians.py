@@ -36,7 +36,6 @@ from ..core.model import Model, ModelData
 from ..core.types import (
     float32,
     int32,
-    mat33f,
     mat66f,
     quatf,
     transformf,
@@ -513,10 +512,10 @@ def _configure_jacobians_sparse(
 def _build_joint_jacobians_sparse(
     # Inputs
     model_joints_dof_type: wp.array(dtype=int32),
+    model_joints_num_dofs: wp.array(dtype=int32),
     model_joints_bid_B: wp.array(dtype=int32),
     model_joints_bid_F: wp.array(dtype=int32),
-    model_joints_X: wp.array(dtype=mat33f),
-    # TODO: model_joints_kinematic_cts_offset: wp.array(dtype=int32),
+    model_joints_dynamic_cts_offset: wp.array(dtype=int32),
     state_joints_p: wp.array(dtype=transformf),
     state_bodies_q: wp.array(dtype=transformf),
     jacobian_cts_nzb_offsets: wp.array(dtype=int32),
@@ -533,17 +532,17 @@ def _build_joint_jacobians_sparse(
 
     # Retrieve the joint model data
     dof_type = model_joints_dof_type[jid]
+    num_dofs = model_joints_num_dofs[jid]
     bid_B = model_joints_bid_B[jid]
     bid_F = model_joints_bid_F[jid]
-    X_j = model_joints_X[jid]
+    dyn_cts_offset = model_joints_dynamic_cts_offset[jid]
 
     # Retrieve the pose transform of the joint
     T_j = state_joints_p[jid]
     r_j = wp.transform_get_translation(T_j)
-    R_j = wp.quat_to_matrix(wp.transform_get_rotation(T_j))
+    R_X_j = wp.quat_to_matrix(wp.transform_get_rotation(T_j))
 
     # Retrieve the pose transforms of each body
-    # NOTE: If the base body is the world (bid=-1), use the identity transform (frame of the world's origin)
     T_B_j = wp.transform_identity()
     if bid_B > -1:
         T_B_j = state_bodies_q[bid_B]
@@ -557,33 +556,32 @@ def _build_joint_jacobians_sparse(
     W_j_F = screw_transform_matrix_from_points(r_j, r_F_j)
 
     # Compute the effective projector to joint frame and expand to 6D
-    R_X_j = R_j @ X_j
     R_X_bar_j = expand6d(R_X_j)
 
     # Compute the extended jacobians, i.e. without the selection-matrix multiplication
-    JT_B_j = -W_j_B @ R_X_bar_j  # Reaction is on the Base body  ; (6 x 6)
-    JT_F_j = W_j_F @ R_X_bar_j  # Action is on the Follower body ; (6 x 6)
+    JT_B_j = -W_j_B @ R_X_bar_j  # Reaction is on the Base body body ; (6 x 6)
+    JT_F_j = W_j_F @ R_X_bar_j  # Action is on the Follower body    ; (6 x 6)
 
-    # # TODO
-    # # Store joint dynamic constraint jacobians if applicable
-    # # NOTE: We use the extraction method for DoFs since dynamic constraints are in DoF-space
-    # if dyn_cts_offset >= 0:  # Negative dynamic constraint offset means the joint is not implicit
-    #     store_joint_dofs_jacobian_sparse(
-    #         dof_type,
-    #         bid_B > -1,
-    #         JT_B_j,
-    #         JT_F_j,
-    #         jacobian_cts_nzb_offsets[jid],
-    #         jacobian_cts_nzb_values,
-    #     )
+    # Store joint dynamic constraint jacobians if applicable
+    # NOTE: We use the extraction method for DoFs since dynamic constraints are in DoF-space
+    if dyn_cts_offset >= 0:  # Negative dynamic constraint offset means the joint is not implicit
+        store_joint_dofs_jacobian_sparse(
+            dof_type,
+            bid_B > -1,
+            JT_B_j,
+            JT_F_j,
+            jacobian_cts_nzb_offsets[jid],
+            jacobian_cts_nzb_values,
+        )
 
     # Store the constraint Jacobian block
+    kinematic_nzb_offset = 0 if dyn_cts_offset else (2 * num_dofs if bid_B > -1 else num_dofs)
     store_joint_cts_jacobian_sparse(
         dof_type,
         bid_B > -1,
         JT_B_j,
         JT_F_j,
-        jacobian_cts_nzb_offsets[jid],
+        jacobian_cts_nzb_offsets[jid] + kinematic_nzb_offset,
         jacobian_cts_nzb_values,
     )
 
@@ -929,7 +927,8 @@ def store_col_major_jacobian_block(
 @wp.kernel
 def _update_col_major_joint_jacobians(
     # Inputs
-    model_joints_num_cts: wp.array(dtype=int32),
+    model_joints_num_dynamic_cts: wp.array(dtype=int32),
+    model_joints_num_kinematic_cts: wp.array(dtype=int32),
     model_joints_bid_B: wp.array(dtype=int32),
     jac_cts_row_major_joint_nzb_offsets: wp.array(dtype=int32),
     jac_cts_row_major_nzb_coords: wp.array2d(dtype=int32),
@@ -945,34 +944,61 @@ def _update_col_major_joint_jacobians(
     jid = wp.tid()
 
     # Retrieve the joint model data
-    num_cts = model_joints_num_cts[jid]
+    num_dynamic_cts = model_joints_num_dynamic_cts[jid]
+    num_kinematic_cts = model_joints_num_kinematic_cts[jid]
     bid_B = model_joints_bid_B[jid]
 
     # Retrieve the Jacobian data
-    nzb_start_rm_j = jac_cts_row_major_joint_nzb_offsets[jid]
-    nzb_row_init = jac_cts_row_major_nzb_coords[nzb_start_rm_j, 0]
+    dynamic_nzb_start_rm_j = jac_cts_row_major_joint_nzb_offsets[jid]
+    kinematic_nzb_start_rm_j = dynamic_nzb_start_rm_j
 
-    nzb_offset_cm = jac_cts_col_major_joint_nzb_offsets[jid]
+    dynamic_nzb_offset_cm = jac_cts_col_major_joint_nzb_offsets[jid]
+    kinematic_nzb_offset_cm = dynamic_nzb_offset_cm
 
     # Offset the Jacobian rows within the 6x6 block to avoid exceeding matrix dimensions.
     # Since we might not fill the full 6x6 block with Jacobian entries, shifting the block upwards
     # and filling the bottom part will prevent the block lying outside the matrix dimensions.
     # We additional guard against the case where the shift would push the block above the start of
     # the matrix by taking the minimum of the full shift and `nzb_row_init`.
-    block_row_init = min(6 - num_cts, nzb_row_init)
-    nzb_row_init -= block_row_init
-    for i in range(num_cts):
-        nzb_idx_rm = nzb_start_rm_j + i
-        block_rm = jac_cts_row_major_nzb_values[nzb_idx_rm]
-        for k in range(6):
-            jac_cts_col_major_nzb_values[nzb_offset_cm + k][block_row_init + i, 0] = block_rm[k]
-
-    if bid_B > -1:
-        for i in range(num_cts):
-            nzb_idx_rm = nzb_start_rm_j + num_cts + i
+    if num_dynamic_cts > 0:
+        dynamic_nzb_row_init = jac_cts_row_major_nzb_coords[dynamic_nzb_start_rm_j, 0]
+        dynamic_block_row_init = min(6 - num_dynamic_cts, dynamic_nzb_row_init)
+        for i in range(num_dynamic_cts):
+            nzb_idx_rm = dynamic_nzb_start_rm_j + i
             block_rm = jac_cts_row_major_nzb_values[nzb_idx_rm]
             for k in range(6):
-                jac_cts_col_major_nzb_values[nzb_offset_cm + 6 + k][block_row_init + i, 0] = block_rm[k]
+                jac_cts_col_major_nzb_values[dynamic_nzb_offset_cm + k][dynamic_block_row_init + i, 0] = block_rm[k]
+
+        if bid_B > -1:
+            for i in range(num_dynamic_cts):
+                nzb_idx_rm = dynamic_nzb_start_rm_j + num_dynamic_cts + i
+                block_rm = jac_cts_row_major_nzb_values[nzb_idx_rm]
+                for k in range(6):
+                    jac_cts_col_major_nzb_values[dynamic_nzb_offset_cm + 6 + k][dynamic_block_row_init + i, 0] = (
+                        block_rm[k]
+                    )
+            kinematic_nzb_start_rm_j += 2 * num_dynamic_cts
+            kinematic_nzb_offset_cm += 12
+        else:
+            kinematic_nzb_start_rm_j += num_dynamic_cts
+            kinematic_nzb_offset_cm += 6
+
+    kinematic_nzb_row_init = jac_cts_row_major_nzb_coords[kinematic_nzb_start_rm_j, 0]
+    kinematic_block_row_init = min(6 - num_kinematic_cts, kinematic_nzb_row_init)
+    for i in range(num_kinematic_cts):
+        nzb_idx_rm = kinematic_nzb_start_rm_j + i
+        block_rm = jac_cts_row_major_nzb_values[nzb_idx_rm]
+        for k in range(6):
+            jac_cts_col_major_nzb_values[kinematic_nzb_offset_cm + k][kinematic_block_row_init + i, 0] = block_rm[k]
+
+    if bid_B > -1:
+        for i in range(num_kinematic_cts):
+            nzb_idx_rm = kinematic_nzb_start_rm_j + num_kinematic_cts + i
+            block_rm = jac_cts_row_major_nzb_values[nzb_idx_rm]
+            for k in range(6):
+                jac_cts_col_major_nzb_values[kinematic_nzb_offset_cm + 6 + k][kinematic_block_row_init + i, 0] = (
+                    block_rm[k]
+                )
 
 
 @wp.kernel
@@ -1458,10 +1484,15 @@ class SparseSystemJacobians:
         joint_bid_B = model.joints.bid_B.numpy()
         joint_bid_F = model.joints.bid_F.numpy()
         joint_num_cts = model.joints.num_cts.numpy()
+        joint_num_kinematic_cts = model.joints.num_kinematic_cts.numpy()
+        joint_num_dynamic_cts = model.joints.num_dynamic_cts.numpy()
         joint_num_dofs = model.joints.num_dofs.numpy()
         joint_q_j_min = model.joints.q_j_min.numpy()
         joint_q_j_max = model.joints.q_j_max.numpy()
-        joint_cts_offset = model.joints.cts_offset.numpy()
+        joint_dynamic_cts_offset = model.joints.dynamic_cts_offset.numpy()
+        joint_kinematic_cts_offset = model.joints.kinematic_cts_offset.numpy()
+        joint_dynamic_cts_group_offset = model.info.joint_dynamic_cts_group_offset.numpy()
+        joint_kinematic_cts_group_offset = model.info.joint_kinematic_cts_group_offset.numpy()
         joint_dofs_offset = model.joints.dofs_offset.numpy()
         bodies_offset = model.info.bodies_offset.numpy()
         J_cts_nnzb_min = [0] * num_worlds
@@ -1484,26 +1515,32 @@ class SparseSystemJacobians:
             is_binary = joint_bid_B[_j] > -1
             num_adjacent_bodies = 2 if is_binary else 1
             num_cts = int(joint_num_cts[_j])
+            num_dynamic_cts = int(joint_num_dynamic_cts[_j])
+            num_kinematic_cts = int(joint_num_kinematic_cts[_j])
             num_dofs = int(joint_num_dofs[_j])
             J_cts_nnzb_min[w] += num_adjacent_bodies * num_cts
             J_cts_nnzb_max[w] += num_adjacent_bodies * num_cts
             J_dofs_nnzb[w] += num_adjacent_bodies * num_dofs
 
             # Joint nzb coordinates
-            cts_offset = joint_cts_offset[_j]
+            dynamic_cts_offset = joint_dynamic_cts_offset[_j] + joint_dynamic_cts_group_offset[w]
+            kinematic_cts_offset = joint_kinematic_cts_offset[_j] + joint_kinematic_cts_group_offset[w]
             dofs_offset = joint_dofs_offset[_j]
-            for _ in range(num_adjacent_bodies):
-                for i in range(num_cts):
-                    J_cts_nzb_row[w].append(cts_offset + i)
+            column_ids = [6 * (joint_bid_F[_j] - bodies_offset[w])]
+            if is_binary:
+                column_ids.append(6 * (joint_bid_B[_j] - bodies_offset[w]))
+            for col_id in column_ids:
+                for i in range(num_dynamic_cts):
+                    J_cts_nzb_row[w].append(dynamic_cts_offset + i)
+                    J_cts_nzb_col[w].append(col_id)
+            for col_id in column_ids:
+                for i in range(num_kinematic_cts):
+                    J_cts_nzb_row[w].append(kinematic_cts_offset + i)
+                    J_cts_nzb_col[w].append(col_id)
+            for col_id in column_ids:
                 for i in range(num_dofs):
                     J_dofs_nzb_row[w].append(dofs_offset + i)
-            col_id = 6 * (joint_bid_F[_j] - bodies_offset[w])
-            J_cts_nzb_col[w].extend(num_cts * [col_id])
-            J_dofs_nzb_col[w].extend(num_dofs * [col_id])
-            if is_binary:
-                col_id = 6 * (joint_bid_B[_j] - bodies_offset[w])
-                J_cts_nzb_col[w].extend(num_cts * [col_id])
-                J_dofs_nzb_col[w].extend(num_dofs * [col_id])
+                    J_dofs_nzb_col[w].append(col_id)
 
             # Limit nzb counts (maximum)
             if max_num_limits[w] > 0:
@@ -1628,9 +1665,10 @@ class SparseSystemJacobians:
                 inputs=[
                     # Inputs:
                     model.joints.dof_type,
+                    model.joints.num_dofs,
                     model.joints.bid_B,
                     model.joints.bid_F,
-                    model.joints.X_j,
+                    model.joints.dynamic_cts_offset,
                     data.joints.p_j,
                     data.bodies.q_i,
                     self._J_cts_joint_nzb_offsets,
@@ -1789,11 +1827,15 @@ class ColMajorSparseConstraintJacobians(BlockSparseLinearOperators):
         joint_wid = model.joints.wid.numpy()
         joint_bid_B = model.joints.bid_B.numpy()
         joint_bid_F = model.joints.bid_F.numpy()
-        joint_num_cts = model.joints.num_cts.numpy()
+        joint_num_kinematic_cts = model.joints.num_kinematic_cts.numpy()
+        joint_num_dynamic_cts = model.joints.num_dynamic_cts.numpy()
         joint_num_dofs = model.joints.num_dofs.numpy()
         joint_q_j_min = model.joints.q_j_min.numpy()
         joint_q_j_max = model.joints.q_j_max.numpy()
-        joint_cts_offset = model.joints.cts_offset.numpy()
+        joint_dynamic_cts_offset = model.joints.dynamic_cts_offset.numpy()
+        joint_kinematic_cts_offset = model.joints.kinematic_cts_offset.numpy()
+        joint_dynamic_cts_group_offset = model.info.joint_dynamic_cts_group_offset.numpy()
+        joint_kinematic_cts_group_offset = model.info.joint_kinematic_cts_group_offset.numpy()
         bodies_offset = model.info.bodies_offset.numpy()
         J_cts_cm_nnzb_min = [0] * num_worlds
         J_cts_cm_nnzb_max = [0] * num_worlds
@@ -1809,8 +1851,9 @@ class ColMajorSparseConstraintJacobians(BlockSparseLinearOperators):
             # Joint nzb counts
             is_binary = joint_bid_B[_j] > -1
             num_adjacent_bodies = 2 if is_binary else 1
-            J_cts_cm_nnzb_min[w] += 6 * num_adjacent_bodies
-            J_cts_cm_nnzb_max[w] += 6 * num_adjacent_bodies
+            num_dynamic_cts = joint_num_dynamic_cts[_j]
+            J_cts_cm_nnzb_min[w] += num_adjacent_bodies * (12 if num_dynamic_cts > 0 else 6)
+            J_cts_cm_nnzb_max[w] += num_adjacent_bodies * (12 if num_dynamic_cts > 0 else 6)
 
             # Joint nzb coordinates
             # Note: compared to the row-major Jacobian, for joints with less than 6 constraints, instead
@@ -1818,16 +1861,24 @@ class ColMajorSparseConstraintJacobians(BlockSparseLinearOperators):
             # the top 6 - num_cts rows instead, to prevent exceeding matrix rows.
             # We additionally guard against the case where the shift would push the block above the start of
             # the matrix. Note that this strategy requires at least 6 rows.
-            cts_offset = int(joint_cts_offset[_j])
-            num_cts = int(joint_num_cts[_j])
-            nzb_row = max(0, cts_offset + num_cts - 6)
-            J_cts_nzb_row[w].extend((6 * num_adjacent_bodies) * [nzb_row])
-            col_id = int(6 * (joint_bid_F[_j] - bodies_offset[w]))
-            for i in range(6):
-                J_cts_nzb_col[w].append(col_id + i)
+            col_ids = [int(6 * (joint_bid_F[_j] - bodies_offset[w]))]
             if is_binary:
-                col_id = int(6 * (joint_bid_B[_j] - bodies_offset[w]))
+                col_ids.append(int(6 * (joint_bid_B[_j] - bodies_offset[w])))
+            # Dynamic constraint blocks
+            if num_dynamic_cts > 0:
+                dynamic_cts_offset = joint_dynamic_cts_offset[_j] + joint_dynamic_cts_group_offset[w]
+                dynamic_nzb_row = max(0, dynamic_cts_offset + num_dynamic_cts - 6)
+                for col_id in col_ids:
+                    for i in range(6):
+                        J_cts_nzb_row[w].append(dynamic_nzb_row)
+                        J_cts_nzb_col[w].append(col_id + i)
+            # Kinematic constraint blocks
+            kinematic_cts_offset = joint_kinematic_cts_offset[_j] + joint_kinematic_cts_group_offset[w]
+            num_kinematic_cts = int(joint_num_kinematic_cts[_j])
+            kinematic_nzb_row = max(0, kinematic_cts_offset + num_kinematic_cts - 6)
+            for col_id in col_ids:
                 for i in range(6):
+                    J_cts_nzb_row[w].append(kinematic_nzb_row)
                     J_cts_nzb_col[w].append(col_id + i)
 
             # Limit nzb counts (maximum)
@@ -1919,7 +1970,8 @@ class ColMajorSparseConstraintJacobians(BlockSparseLinearOperators):
                 dim=model.size.sum_of_num_joints,
                 inputs=[
                     # Inputs:
-                    model.joints.num_cts,
+                    model.joints.num_dynamic_cts,
+                    model.joints.num_kinematic_cts,
                     model.joints.bid_B,
                     jacobians._J_cts_joint_nzb_offsets,
                     J_cts.nzb_coords,

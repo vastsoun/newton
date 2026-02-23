@@ -24,7 +24,7 @@ from newton._src.solvers.kamino.models.builders.basics import build_boxes_fourba
 from newton._src.solvers.kamino.models.builders.utils import make_homogeneous_builder
 from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.utils import logger as msg
-from newton._src.solvers.kamino.utils.control.rand import RandomController
+from newton._src.solvers.kamino.utils.control.rand import RandomJointController
 
 ###
 # Tests
@@ -54,7 +54,7 @@ class TestRandomController(unittest.TestCase):
 
     def test_00_make_default(self):
         # Create a default random controller
-        controller = RandomController()
+        controller = RandomJointController()
         # Check default values
         self.assertIsNotNone(controller)
         self.assertEqual(controller._model, None)
@@ -72,7 +72,7 @@ class TestRandomController(unittest.TestCase):
         control = model.control()
 
         # Create a random controller with default arguments
-        controller = RandomController(model=model, seed=self.seed)
+        controller = RandomJointController(model=model, seed=self.seed)
 
         # Check contents
         self.assertIsNotNone(controller)
@@ -81,8 +81,8 @@ class TestRandomController(unittest.TestCase):
         self.assertIs(controller.device, model.device)
 
         # Check dimensions of the decimation array
-        self.assertEqual(controller._data.decimation.shape, (model.size.num_worlds,))
-        self.assertTrue((controller._data.decimation.numpy() == 1).all())
+        self.assertEqual(controller.data.decimation.shape, (model.size.num_worlds,))
+        self.assertTrue((controller.data.decimation.numpy() == 1).all())
 
         # Check that the seed is set correctly
         self.assertEqual(controller.seed, self.seed)
@@ -102,7 +102,7 @@ class TestRandomController(unittest.TestCase):
         control = model.control()
 
         # Create a random controller with default arguments
-        controller = RandomController(model=model, seed=self.seed)
+        controller = RandomJointController(model=model, seed=self.seed)
 
         # Check contents
         self.assertIsNotNone(controller)

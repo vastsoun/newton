@@ -162,6 +162,9 @@ def _generate_random_control_inputs(
         # Generate a random control input for the joint DoF
         tau_j_c = scale_j * wp.randf(rng_j_dof, -tau_j_max, tau_j_max)
 
+        # Clamp the control input to the maximum limits of the actuator
+        tau_j_c = wp.clamp(tau_j_c, -tau_j_max, tau_j_max)
+
         # Store the updated integrator state and actuator control forces
         control_tau_j[joint_dof_index] = tau_j_c
 
@@ -180,10 +183,10 @@ class RandomJointController:
     def __init__(
         self,
         model: Model | None = None,
-        seed: int = 0,
-        decimation: IntArrayLike | None = None,
-        scale: float | FloatArrayLike | None = None,
         device: wp.DeviceLike = None,
+        decimation: int | IntArrayLike | None = None,
+        scale: float | FloatArrayLike | None = None,
+        seed: int | None = None,
     ):
         """
         Instantiates a new `RandomJointController` and allocates
@@ -193,7 +196,10 @@ class RandomJointController:
             model (`Model`, optional):
                 The model container describing the system to be simulated.\n
                 If `None`, a call to ``finalize()`` must be made later.
-            decimation (`IntArrayLike`, optional):
+            device (`wp.DeviceLike`, optional):
+                Device to use for allocations and execution.\n
+                Defaults to `None`, in which case the model device is used.
+            decimation (`int` or `IntArrayLike`, optional):
                 Control decimation for each world expressed as a multiple of simulation steps.\n
                 Defaults to `1` for all worlds if `None`.
             scale (`float` or `FloatArrayLike`, optional):
@@ -201,13 +207,18 @@ class RandomJointController:
                 Can be specified per-DoF as an array of shape `(sum_of_num_actuated_joint_dofs,)`
                 and dtype of `float32`, or as a single float value applied uniformly across all DoFs.\n
                 Defaults to `1.0` if `None`.
-            device (`wp.DeviceLike`, optional):
-                Device to use for allocations and execution.\n
-                Defaults to `None`, in which case the preferred device is used.
+            seed (`int`, optional):
+                Seed for random number generation. If `None`, it will default to `0`.
         """
         # Declare a local reference to the model
         # for which this controller is created
-        self._model: Model | None = model
+        self._model: Model | None = None
+
+        # Cache constructor arguments for potential later
+        self._device: wp.DeviceLike = device
+        self._decimation: int | IntArrayLike | None = decimation
+        self._scale: float | FloatArrayLike | None = scale
+        self._seed: int = seed
 
         # Declare the internal controller data
         self._data: RandomJointControllerData | None = None
@@ -262,7 +273,7 @@ class RandomJointController:
     def finalize(
         self,
         model: Model,
-        seed: int = 0,
+        seed: int | None = None,
         decimation: int | IntArrayLike | None = None,
         scale: float | FloatArrayLike | None = None,
         device: wp.DeviceLike = None,
@@ -272,10 +283,12 @@ class RandomJointController:
         on-device data arrays based on the provided model.
 
         Args:
-            model (`Model`, optional):
-                The model container describing the system to be simulated.\n
-                If `None`, a call to ``finalize()`` must be made later.
-            decimation (`IntArrayLike`, optional):
+            model (`Model`):
+                The model container describing the system to be simulated.
+            device (`wp.DeviceLike`, optional):
+                Device to use for allocations and execution.\n
+                Defaults to `None`, in which case the model device is used.
+            decimation (`int` or `IntArrayLike`, optional):
                 Control decimation for each world expressed as a multiple of simulation steps.\n
                 Defaults to `1` for all worlds if `None`.
             scale (`float` or `FloatArrayLike`, optional):
@@ -283,73 +296,48 @@ class RandomJointController:
                 Can be specified per-DoF as an array of shape `(sum_of_num_actuated_joint_dofs,)`
                 and dtype of `float32`, or as a single float value applied uniformly across all DoFs.\n
                 Defaults to `1.0` if `None`.
-            device (`wp.DeviceLike`, optional):
-                Device to use for allocations and execution.\n
-                Defaults to `None`, in which case the preferred device is used.
+            seed (`int`, optional):
+                Seed for random number generation. If `None`, it will default to `0`.
 
         Raises:
             ValueError: If the model has no actuated DoFs.
             ValueError: If the length of the decimation array does not match the number of worlds.
         """
-
-        # Ensure the model is valid
+        # Ensure the model is valid and assign it to the controller
         if model is None:
             raise ValueError("Model must be provided to finalize the controller.")
         elif not isinstance(model, Model):
             raise ValueError(f"Expected model to be of type Model, but got {type(model)}.")
 
-        # Check if the decimation argument is specified, and validate it accordingly
-        if decimation is not None:
-            if isinstance(decimation, int):
-                decimation = np.full(model.size.num_worlds, decimation, dtype=np.int32)
-            elif isinstance(decimation, get_args(IntArrayLike)):
-                decsize = len(decimation)
-                if decsize != model.size.num_worlds:
-                    raise ValueError(
-                        f"Expected decimation `IntArrayLike` of length {model.size.num_worlds}, but has {decsize}."
-                    )
-            else:
-                raise ValueError(f"Expected decimation of type `int` or `IntArrayLike`, but got {type(decimation)}.")
-        # Otherwise, set it to the default value of 1 for all worlds
-        else:
-            decimation = np.full(model.size.num_worlds, 1, dtype=np.int32)
+        # Cache the model reference for use in the compute function
+        self._model = model
 
-        # Check that the model has actuated DoFs
+        # Check that the model has joint DoFs
         num_joint_dofs = model.size.sum_of_num_joint_dofs
         if num_joint_dofs == 0:
-            raise ValueError("The provided model has no actuated DoFs to generate control inputs for.")
+            raise ValueError("The provided model has no joint DoFs to generate control inputs for.")
 
-        # Check if the scale argument is specified, and validate it accordingly
-        if scale is not None:
-            if isinstance(scale, (int, float)):
-                scale = np.full(num_joint_dofs, float(scale), dtype=np.float32)
-            elif isinstance(scale, get_args(FloatArrayLike)):
-                if len(scale) != num_joint_dofs:
-                    raise ValueError(
-                        f"Expected scale `FloatArrayLike` of length {num_joint_dofs}, but has {len(scale)}"
-                    )
-            else:
-                raise ValueError(f"Expected scale of type `float` or `FloatArrayLike`, but got {type(scale)}.")
-        # Otherwise, set it to the default value of 1.0 for all DoFs
-        else:
-            scale = np.full(num_joint_dofs, 1.0, dtype=np.float32)
+        # Validate and process the constructor arguments
+        self._decimation, self._scale, self._seed = self._validate_arguments(
+            num_worlds=model.size.num_worlds,
+            num_joint_dofs=num_joint_dofs,
+            decimation=decimation if decimation is not None else self._decimation,
+            scale=scale if scale is not None else self._scale,
+            seed=seed if seed is not None else self._seed,
+        )
 
-        # Override the device if provided
+        # Override the device if provided, otherwise use the model device
         if device is not None:
-            _device = device
+            self._device = device
         else:
-            _device = model.device
-
-        # Set default decimation if not provided
-        if decimation is None:
-            decimation = np.ones(model.size.num_worlds, dtype=np.int32)
+            self._device = model.device
 
         # Allocate the controller data
-        with wp.ScopedDevice(_device):
+        with wp.ScopedDevice(self._device):
             self._data = RandomJointControllerData(
-                seed=seed,
-                decimation=wp.array(decimation, dtype=int32),
-                scale=wp.array(scale, dtype=float32),
+                seed=self._seed,
+                decimation=wp.array(self._decimation, dtype=int32),
+                scale=wp.array(self._scale, dtype=float32),
             )
 
     def compute(self, time: TimeData, control: Control):
@@ -393,3 +381,57 @@ class RandomJointController:
                 control.tau_j,
             ],
         )
+
+    ###
+    # Internals
+    ###
+
+    def _validate_arguments(
+        self,
+        num_worlds: int,
+        num_joint_dofs: int,
+        decimation: int | IntArrayLike | None,
+        scale: float | FloatArrayLike | None,
+        seed: int | None,
+    ):
+        # Check if the decimation argument is specified, and validate it accordingly
+        if decimation is not None:
+            if isinstance(decimation, int):
+                _decimation = np.full(num_worlds, decimation, dtype=np.int32)
+            elif isinstance(decimation, get_args(IntArrayLike)):
+                decsize = len(decimation)
+                if decsize != num_worlds:
+                    raise ValueError(f"Expected decimation `IntArrayLike` of length {num_worlds}, but has {decsize}.")
+                _decimation = np.array(decimation, dtype=np.int32)
+            else:
+                raise ValueError(f"Expected decimation of type `int` or `IntArrayLike`, but got {type(decimation)}.")
+        # Otherwise, set it to the default value of 1 for all worlds
+        else:
+            _decimation = np.ones(num_worlds, dtype=np.int32)
+
+        # Check if the scale argument is specified, and validate it accordingly
+        if scale is not None:
+            if isinstance(scale, (int, float)):
+                _scale = np.full(num_joint_dofs, float(scale), dtype=np.float32)
+            elif isinstance(scale, get_args(FloatArrayLike)):
+                if len(scale) != num_joint_dofs:
+                    raise ValueError(
+                        f"Expected scale `FloatArrayLike` of length {num_joint_dofs}, but has {len(scale)}"
+                    )
+                _scale = np.array(scale, dtype=np.float32)
+            else:
+                raise ValueError(f"Expected scale of type `float` or `FloatArrayLike`, but got {type(scale)}.")
+        # Otherwise, set it to the default value of 1.0 for all DoFs
+        else:
+            _scale = np.full(num_joint_dofs, 1.0, dtype=np.float32)
+
+        # Check if the seed argument is specified, and set it accordingly
+        if seed is not None:
+            if not isinstance(seed, int):
+                raise ValueError(f"Expected seed of type `int`, but got {type(seed)}.")
+            _seed = int(seed)
+        else:
+            _seed = int(0)
+
+        # Return the validated and processed arguments
+        return _decimation, _scale, _seed

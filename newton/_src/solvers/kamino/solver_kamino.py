@@ -831,7 +831,6 @@ class SolverKamino(SolverBase):
             world_mask=world_mask,
             base_q=_base_q,
             base_u=_base_u,
-            q_i_cache=self._data.bodies.q_i,
         )
 
     def _reset_to_bodies_state(

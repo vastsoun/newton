@@ -435,6 +435,10 @@ class BenchmarkMetrics:
         step_time: float,
         solver: SolverKamino | None = None,
     ):
+        if self.step_time is None:
+            raise ValueError(
+                "BenchmarkMetrics: step_time array not initialized. Call finalize() with step_metrics=True first."
+            )
         self.step_time[problem_idx, config_idx, step_idx] = step_time
         if self.solver_metrics is not None and solver is not None:
             # Extract PADMM solver status info - this is multiworld
@@ -445,7 +449,7 @@ class BenchmarkMetrics:
             self.solver_metrics.padmm_r_p[problem_idx, config_idx, step_idx] = solver_status_np["r_p"]
             self.solver_metrics.padmm_r_d[problem_idx, config_idx, step_idx] = solver_status_np["r_d"]
             self.solver_metrics.padmm_r_c[problem_idx, config_idx, step_idx] = solver_status_np["r_c"]
-        if self.physics_metrics is not None and solver.metrics is not None:
+        if self.physics_metrics is not None and solver is not None and solver.metrics is not None:
             r_eom_np = solver.metrics.data.r_eom.numpy().max(axis=0)
             r_kinematics_np = solver.metrics.data.r_kinematics.numpy().max(axis=0)
             r_cts_joints_np = solver.metrics.data.r_cts_joints.numpy().max(axis=0)
@@ -878,26 +882,32 @@ class BenchmarkMetrics:
         for prob_idx, prob_name in enumerate(self._problem_names):
             fig, axs = plt.subplots(2, 2, figsize=(16, 12))
             fig.suptitle(f"PADMM Metrics vs Simulation Steps - {prob_name}", fontsize=16)
-            metric_names = ["Iterations", "r_p", "r_d", "r_c"]
-            metric_data = [
+            titles = [
+                "PADMM Iterations",
+                "PADMM Primal Residual",
+                "PADMM Dual Residual",
+                "PADMM Complementary Residual",
+            ]
+            names = ["iterations", "r_p", "r_d", "r_c"]
+            data = [
                 self.solver_metrics.padmm_iters[prob_idx, :, :],
                 self.solver_metrics.padmm_r_p[prob_idx, :, :],
                 self.solver_metrics.padmm_r_d[prob_idx, :, :],
                 self.solver_metrics.padmm_r_c[prob_idx, :, :],
             ]
-            for metric_idx, (metric_name, metric_array) in enumerate(zip(metric_names, metric_data, strict=True)):
+            for metric_idx, (title, name, array) in enumerate(zip(titles, names, data, strict=True)):
                 ax = axs[metric_idx // 2, metric_idx % 2]
                 for config_idx, config_name in enumerate(self._config_names):
                     ax.plot(
                         np.arange(self.num_steps),
-                        metric_array[config_idx, :],
+                        array[config_idx, :],
                         label=config_name,
                         marker="o",
                         markersize=4,
                     )
-                ax.set_title(metric_name)
+                ax.set_title(title)
                 ax.set_xlabel("Simulation Step")
-                ax.set_ylabel(metric_name)
+                ax.set_ylabel(name)
                 ax.grid()
             plt.tight_layout(rect=[0, 0.03, 1, 0.95])
 
@@ -966,7 +976,35 @@ class BenchmarkMetrics:
         for prob_idx, prob_name in enumerate(self._problem_names):
             fig, axs = plt.subplots(3, 4, figsize=(20, 15))
             fig.suptitle(f"Physics Metrics vs Simulation Steps - {prob_name}", fontsize=16)
-            metric_names = [
+            equations = [
+                "$\\Vert \\, M \\, (u^+ - u^-) - dt \\, (h + J_a^T \\, \\tau) - J^T \\, \\lambda \\, \\Vert_\\infty $",
+                "$\\Vert \\, J_j \\cdot u^+ \\, \\Vert_\\infty $",
+                "$\\Vert \\, f_j(q) \\, \\Vert_\\infty $",
+                "$\\Vert \\, f_l(q) \\, \\Vert_\\infty $",
+                "$\\Vert \\, f_{c,N}(q) \\, \\Vert_\\infty $",
+                "$\\Vert \\, v^+ - D \\cdot \\lambda - v_f \\, \\Vert_\\infty $",
+                "$\\Vert \\, \\lambda - P_K(\\lambda) \\, \\Vert_\\infty $",
+                "$\\Vert \\, v_a^+ - P_{K^*}(v_a^+) \\, \\Vert_\\infty $",
+                "$\\Vert \\, \\lambda^T @ v_a^+ \\, \\Vert_\\infty $",
+                "$\\Vert \\, \\lambda - P_{K^*}(\\lambda - v_a^+(\\lambda)) \\, \\Vert_\\infty $",
+                "$ 0.5 \\, \\lambda^T \\, D \\, \\lambda + \\lambda^T \\, (v_f + s) $",
+                "$ 0.5 \\, \\lambda^T \\, D \\, \\lambda + v_f^T \\, \\lambda $",
+            ]
+            titles = [
+                f"Equations-of-Motion Residual \n ({equations[0]})",
+                f"Joint Kinematics Constraint Residual \n ({equations[1]})",
+                f"Joints Constraint Residual \n ({equations[2]})",
+                f"Limits Constraint Residual \n ({equations[3]})",
+                f"Contacts Constraint Residual \n ({equations[4]})",
+                f"Post-Event Constraint Velocity Residual \n ({equations[5]})",
+                f"NCP Primal Residual \n ({equations[6]})",
+                f"NCP Dual Residual\n ({equations[7]})",
+                f"NCP Complementary Residual\n ({equations[8]})",
+                f"VI Natural-Map Residual\n ({equations[9]})",
+                f"NCP Objective \n ({equations[10]})",
+                f"CCP Objective \n ({equations[11]})",
+            ]
+            names = [
                 "r_eom",
                 "r_kinematics",
                 "r_cts_joints",
@@ -980,7 +1018,7 @@ class BenchmarkMetrics:
                 "f_ncp",
                 "f_ccp",
             ]
-            metric_data = [
+            data = [
                 self.physics_metrics.r_eom[prob_idx, :, :],
                 self.physics_metrics.r_kinematics[prob_idx, :, :],
                 self.physics_metrics.r_cts_joints[prob_idx, :, :],
@@ -994,21 +1032,21 @@ class BenchmarkMetrics:
                 self.physics_metrics.f_ncp[prob_idx, :, :],
                 self.physics_metrics.f_ccp[prob_idx, :, :],
             ]
-            for metric_idx, (metric_name, metric_array) in enumerate(zip(metric_names, metric_data, strict=True)):
+            for metric_idx, (title, name, array) in enumerate(zip(titles, names, data, strict=True)):
                 ax = axs[metric_idx // 4, metric_idx % 4]
                 for config_idx, config_name in enumerate(self._config_names):
                     ax.plot(
                         np.arange(self.num_steps),
-                        metric_array[config_idx, :],
+                        array[config_idx, :],
                         label=config_name,
                         marker="o",
                         markersize=4,
                     )
-                ax.set_title(metric_name)
+                ax.set_title(title)
                 ax.set_xlabel("Simulation Step")
-                ax.set_ylabel(metric_name)
+                ax.set_ylabel(name)
                 ax.grid()
-            plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+            plt.tight_layout(rect=[0, 0.03, 1, 0.95], h_pad=3.0, w_pad=2.0)
 
             # Get handles/labels from any one subplot (since they are identical)
             handles, labels = axs.flat[0].get_legend_handles_labels()

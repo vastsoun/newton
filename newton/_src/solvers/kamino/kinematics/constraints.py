@@ -188,6 +188,8 @@ def make_unilateral_constraints_info(
             raise TypeError("`contacts` must be an instance of `Contacts`")
         if contacts.data is not None and contacts.model_max_contacts_host > 0:
             _assign_model_contacts_info()
+        else:
+            _make_empty_model_contacts_info()
     else:
         _make_empty_model_contacts_info()
 
@@ -200,8 +202,10 @@ def make_unilateral_constraints_info(
     world_maxnlc: list[int] = list(world_maxnl)
     world_maxncc: list[int] = [3 * maxnc for maxnc in world_maxnc]
     world_njc = [world.num_joint_cts for world in model.worlds]
+    world_njdc = [world.num_dynamic_joint_cts for world in model.worlds]
+    world_njkc = [world.num_kinematic_joint_cts for world in model.worlds]
     world_maxncts = [
-        maxnl + maxnc + njc for maxnl, maxnc, njc in zip(world_maxnlc, world_maxncc, world_njc, strict=False)
+        njc + maxnl + maxnc for njc, maxnl, maxnc in zip(world_njc, world_maxnlc, world_maxncc, strict=False)
     ]
     model.size.sum_of_max_total_cts = sum(world_maxncts)
     model.size.max_of_max_total_cts = max(world_maxncts)
@@ -212,41 +216,44 @@ def make_unilateral_constraints_info(
     world_cio = [0] + [sum(world_maxnc[:i]) for i in range(1, num_worlds + 1)]
     world_uio = [0] + [sum(world_maxnl[:i]) + sum(world_maxnc[:i]) for i in range(1, num_worlds + 1)]
 
-    # Compute the entity index offsets for limits, contacts and unilaterals
-    # NOTE: unilaterals is simply the concatenation of limits and contacts
-    world_lcio = [0] + [sum(world_maxnlc[:i]) for i in range(1, num_worlds + 1)]
-    world_ccio = [0] + [sum(world_maxncc[:i]) for i in range(1, num_worlds + 1)]
-    world_ucio = [0] + [sum(world_maxnlc[:i]) + sum(world_maxncc[:i]) for i in range(1, num_worlds + 1)]
+    # Compute the per-world absolute total constraint block offsets
+    # NOTE: These are the per-world start indices of arrays like the constraint multipliers `lambda`.
     world_ctsio = [0] + [
         sum(world_njc[:i]) + sum(world_maxnlc[:i]) + sum(world_maxncc[:i]) for i in range(1, num_worlds + 1)
     ]
 
+    # Compute the initial values of the absolute constraint group
+    # offsets for joints (dynamic + kinematic), limits, contacts
+    # TODO: Consider using absolute start indices for each group
+    # world_jdcio = [world_ctsio[i] for i in range(num_worlds)]
+    world_jdcio = [0] * num_worlds
+    world_jkcio = [world_jdcio[i] + world_njdc[i] for i in range(num_worlds)]
+    world_lcio = [world_jkcio[i] + world_njkc[i] for i in range(num_worlds)]
+    world_ccio = [world_lcio[i] for i in range(num_worlds)]
+
     # Allocate all constraint info arrays on the target device
     with wp.ScopedDevice(device):
-        # Allocate the total constraint arrays
+        # Allocate the per-world max constraints count arrays
         model.info.max_total_cts = wp.array(world_maxncts, dtype=int32)
-        model.info.total_cts_offset = wp.array(world_ctsio[:num_worlds], dtype=int32)
-
-        # Allocate the limit constraint arrays
         model.info.max_limit_cts = wp.array(world_maxnlc, dtype=int32)
-        model.info.limits_offset = wp.array(world_lio[:num_worlds], dtype=int32)
-        model.info.limit_cts_offset = wp.array(world_lcio[:num_worlds], dtype=int32)
-
-        # Allocate the contact constraint arrays
         model.info.max_contact_cts = wp.array(world_maxncc, dtype=int32)
+
+        # Allocate the per-world active constraints count arrays
+        # data.info.num_total_cts = wp.clone(model.info.num_joint_cts)
+        data.info.num_limit_cts = wp.zeros(shape=(num_worlds,), dtype=int32)
+        data.info.num_contact_cts = wp.zeros(shape=(num_worlds,), dtype=int32)
+
+        # Allocate the per-world entity start arrays
+        model.info.limits_offset = wp.array(world_lio[:num_worlds], dtype=int32)
         model.info.contacts_offset = wp.array(world_cio[:num_worlds], dtype=int32)
         model.info.unilaterals_offset = wp.array(world_uio[:num_worlds], dtype=int32)
 
-        # Allocate the unilateral constraint arrays
-        model.info.contact_cts_offset = wp.array(world_ccio[:num_worlds], dtype=int32)
-        model.info.unilateral_cts_offset = wp.array(world_ucio[:num_worlds], dtype=int32)
-
-        # Initialize the active constraint counters to zero
-        data.info.num_total_cts = wp.zeros(shape=(num_worlds,), dtype=int32)
-        data.info.num_limit_cts = wp.zeros(shape=(num_worlds,), dtype=int32)
-        data.info.limit_cts_group_offset = wp.zeros(shape=(num_worlds,), dtype=int32)
-        data.info.num_contact_cts = wp.zeros(shape=(num_worlds,), dtype=int32)
-        data.info.contact_cts_group_offset = wp.zeros(shape=(num_worlds,), dtype=int32)
+        # Allocate the per-world constraint block/group arrays
+        model.info.total_cts_offset = wp.array(world_ctsio[:num_worlds], dtype=int32)
+        model.info.joint_dynamic_cts_group_offset = wp.array(world_jdcio[:num_worlds], dtype=int32)
+        model.info.joint_kinematic_cts_group_offset = wp.array(world_jkcio[:num_worlds], dtype=int32)
+        data.info.limit_cts_group_offset = wp.array(world_lcio[:num_worlds], dtype=int32)
+        data.info.contact_cts_group_offset = wp.array(world_ccio[:num_worlds], dtype=int32)
 
 
 ###
@@ -298,12 +305,16 @@ def _update_constraints_info(
 @wp.kernel
 def _unpack_joint_constraint_solutions(
     # Inputs:
-    model_info_total_cts_offset: wp.array(dtype=int32),
     model_info_joint_cts_offset: wp.array(dtype=int32),
+    model_info_total_cts_offset: wp.array(dtype=int32),
+    model_info_joint_dynamic_cts_group_offset: wp.array(dtype=int32),
+    model_info_joint_kinematic_cts_group_offset: wp.array(dtype=int32),
     model_time_inv_dt: wp.array(dtype=float32),
-    joint_wid: wp.array(dtype=int32),
-    joint_num_cts: wp.array(dtype=int32),
-    joint_cts_offset: wp.array(dtype=int32),
+    model_joint_wid: wp.array(dtype=int32),
+    model_joints_num_dynamic_cts: wp.array(dtype=int32),
+    model_joints_num_kinematic_cts: wp.array(dtype=int32),
+    model_joints_dynamic_cts_offset: wp.array(dtype=int32),
+    model_joints_kinematic_cts_offset: wp.array(dtype=int32),
     lambdas: wp.array(dtype=float32),
     # Outputs:
     joint_lambda_j: wp.array(dtype=float32),
@@ -312,23 +323,31 @@ def _unpack_joint_constraint_solutions(
     jid = wp.tid()
 
     # Retrieve the joint-specific model info
-    wid = joint_wid[jid]
-    num_cts = joint_num_cts[jid]
-    cts_offset = joint_cts_offset[jid]
+    wid = model_joint_wid[jid]
+    num_dyn_cts_j = model_joints_num_dynamic_cts[jid]
+    num_kin_cts_j = model_joints_num_kinematic_cts[jid]
+    dyn_cts_start_j = model_joints_dynamic_cts_offset[jid]
+    kin_cts_start_j = model_joints_kinematic_cts_offset[jid]
 
     # Retrieve the world-specific info
     inv_dt = model_time_inv_dt[wid]
-    world_total_cts_offset = model_info_total_cts_offset[wid]
-    world_joints_cts_offset = model_info_joint_cts_offset[wid]
+    world_joint_cts_start = model_info_joint_cts_offset[wid]
+    world_total_cts_start = model_info_total_cts_offset[wid]
+    world_jdcgo = model_info_joint_dynamic_cts_group_offset[wid]
+    world_jkcgo = model_info_joint_kinematic_cts_group_offset[wid]
 
     # Compute block offsets of the joint's constraints within
     # the joint-only constraints and total constraints arrays
-    vio_j = world_total_cts_offset + cts_offset
-    jio_j = world_joints_cts_offset + cts_offset
+    joint_dyn_cts_start_j = world_joint_cts_start + world_jdcgo + dyn_cts_start_j
+    joint_kin_cts_start_j = world_joint_cts_start + world_jkcgo + kin_cts_start_j
+    dyn_cts_row_start_j = world_total_cts_start + world_jdcgo + dyn_cts_start_j
+    kin_cts_row_start_j = world_total_cts_start + world_jkcgo + kin_cts_start_j
 
     # Compute and store the joint-constraint reaction forces
-    for j in range(num_cts):
-        joint_lambda_j[jio_j + j] = inv_dt * lambdas[vio_j + j]
+    for j in range(num_dyn_cts_j):
+        joint_lambda_j[joint_dyn_cts_start_j + j] = inv_dt * lambdas[dyn_cts_row_start_j + j]
+    for j in range(num_kin_cts_j):
+        joint_lambda_j[joint_kin_cts_start_j + j] = inv_dt * lambdas[kin_cts_row_start_j + j]
 
 
 @wp.kernel
@@ -499,12 +518,16 @@ def unpack_constraint_solutions(
             dim=model.size.sum_of_num_joints,
             inputs=[
                 # Inputs:
-                model.info.total_cts_offset,
                 model.info.joint_cts_offset,
+                model.info.total_cts_offset,
+                model.info.joint_dynamic_cts_group_offset,
+                model.info.joint_kinematic_cts_group_offset,
                 model.time.inv_dt,
                 model.joints.wid,
-                model.joints.num_cts,
-                model.joints.cts_offset,
+                model.joints.num_dynamic_cts,
+                model.joints.num_kinematic_cts,
+                model.joints.dynamic_cts_offset,
+                model.joints.kinematic_cts_offset,
                 lambdas,
                 # Outputs:
                 data.joints.lambda_j,

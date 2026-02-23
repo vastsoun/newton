@@ -361,6 +361,8 @@ class Simulator:
         joint_u: wp.array | None = None,
         base_q: wp.array | None = None,
         base_u: wp.array | None = None,
+        bodies_q: wp.array | None = None,
+        bodies_u: wp.array | None = None,
     ):
         """
         Resets the simulation state given a combination of desired base body
@@ -398,6 +400,8 @@ class Simulator:
             joint_u=joint_u,
             base_q=base_q,
             base_u=base_u,
+            bodies_q=bodies_q,
+            bodies_u=bodies_u,
         )
 
         # Cache the current state as the previous state for the next step
@@ -418,13 +422,11 @@ class Simulator:
         # Cache the current state as the previous state for the next step
         self._data.cache_state()
 
-        # Perform collision detection
-        self._collision_detector.collide(self._model, self._solver.data)
-
         # Step the physics solver
         self._solver.step(
             state_in=self._data.state_p,
             state_out=self._data.state_n,
             control=self._data.control,
             contacts=self._contacts,
+            detector=self._collision_detector,
         )

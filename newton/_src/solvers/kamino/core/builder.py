@@ -94,13 +94,15 @@ class ModelBuilder:
         self._num_pgeoms: int = 0
         self._num_materials: int = 0
         self._num_bdofs: int = 0
-        self._num_jcoords: int = 0
-        self._num_jdofs: int = 0
-        self._num_jpcoords: int = 0
-        self._num_jpdofs: int = 0
-        self._num_jacoords: int = 0
-        self._num_jadofs: int = 0
-        self._num_jcts: int = 0
+        self._num_joint_coords: int = 0
+        self._num_joint_dofs: int = 0
+        self._num_joint_passive_coords: int = 0
+        self._num_joint_passive_dofs: int = 0
+        self._num_joint_actuated_coords: int = 0
+        self._num_joint_actuated_dofs: int = 0
+        self._num_joint_cts: int = 0
+        self._num_joint_kinematic_cts: int = 0
+        self._num_joint_dynamic_cts: int = 0
 
         # Declare per-world model descriptor sets
         self._up_axes: list[Axis] = []
@@ -157,37 +159,47 @@ class ModelBuilder:
     @property
     def num_joint_coords(self) -> int:
         """Returns the number of joint coordinates contained in the model."""
-        return self._num_jcoords
+        return self._num_joint_coords
 
     @property
     def num_joint_dofs(self) -> int:
         """Returns the number of joint degrees of freedom contained in the model."""
-        return self._num_jdofs
+        return self._num_joint_dofs
 
     @property
     def num_passive_joint_coords(self) -> int:
         """Returns the number of passive joint coordinates contained in the model."""
-        return self._num_jpcoords
+        return self._num_joint_passive_coords
 
     @property
     def num_passive_joint_dofs(self) -> int:
         """Returns the number of passive joint degrees of freedom contained in the model."""
-        return self._num_jpdofs
+        return self._num_joint_passive_dofs
 
     @property
     def num_actuated_joint_coords(self) -> int:
         """Returns the number of actuated joint coordinates contained in the model."""
-        return self._num_jacoords
+        return self._num_joint_actuated_coords
 
     @property
     def num_actuated_joint_dofs(self) -> int:
         """Returns the number of actuated joint degrees of freedom contained in the model."""
-        return self._num_jadofs
+        return self._num_joint_actuated_dofs
 
     @property
     def num_joint_cts(self) -> int:
-        """Returns the number of joint contact points contained in the model."""
-        return self._num_jcts
+        """Returns the total number of joint constraints contained in the model."""
+        return self._num_joint_cts
+
+    @property
+    def num_dynamic_joint_cts(self) -> int:
+        """Returns the number of dynamic joint constraints contained in the model."""
+        return self._num_joint_dynamic_cts
+
+    @property
+    def num_kinematic_joint_cts(self) -> int:
+        """Returns the number of kinematic joint constraints contained in the model."""
+        return self._num_joint_kinematic_cts
 
     @property
     def worlds(self) -> list[WorldDescriptor]:
@@ -366,6 +378,10 @@ class ModelBuilder:
         q_j_max: list[float] | float | None = None,
         dq_j_max: list[float] | float | None = None,
         tau_j_max: list[float] | float | None = None,
+        a_j: list[float] | float | None = None,
+        b_j: list[float] | float | None = None,
+        k_p_j: list[float] | float | None = None,
+        k_d_j: list[float] | float | None = None,
         name: str | None = None,
         uid: str | None = None,
         world_index: int = 0,
@@ -385,6 +401,10 @@ class ModelBuilder:
             q_j_max (list[float] | float | None): The maximum joint coordinate limits.
             dq_j_max (list[float] | float | None): The maximum joint velocity limits.
             tau_j_max (list[float] | float | None): The maximum joint effort limits.
+            a_j (list[float] | float | None): The joint armature along each DoF.
+            b_j (list[float] | float | None): The joint damping along each DoF.
+            k_p_j (list[float] | float | None): The joint proportional gain along each DoF.
+            k_d_j (list[float] | float | None): The joint derivative gain along each DoF.
             name (str | None): The name of the joint.
             uid (str | None): The unique identifier of the joint.
             world_index (int): The index of the world to which the joint will be added.\n
@@ -419,6 +439,10 @@ class ModelBuilder:
             q_j_max=q_j_max,
             dq_j_max=dq_j_max,
             tau_j_max=tau_j_max,
+            a_j=a_j,
+            b_j=b_j,
+            k_p_j=k_p_j,
+            k_d_j=k_d_j,
         )
 
         # Add the body descriptor to the model
@@ -449,13 +473,15 @@ class ModelBuilder:
 
         # Update model-wide counters
         self._num_joints += 1
-        self._num_jcoords += joint.num_coords
-        self._num_jdofs += joint.num_dofs
-        self._num_jpcoords += joint.num_coords if joint.is_passive else 0
-        self._num_jpdofs += joint.num_dofs if joint.is_passive else 0
-        self._num_jacoords += joint.num_coords if joint.is_actuated else 0
-        self._num_jadofs += joint.num_dofs if joint.is_actuated else 0
-        self._num_jcts += joint.num_cts
+        self._num_joint_coords += joint.num_coords
+        self._num_joint_dofs += joint.num_dofs
+        self._num_joint_passive_coords += joint.num_passive_coords
+        self._num_joint_passive_dofs += joint.num_passive_dofs
+        self._num_joint_actuated_coords += joint.num_actuated_coords
+        self._num_joint_actuated_dofs += joint.num_actuated_dofs
+        self._num_joint_cts += joint.num_cts
+        self._num_joint_dynamic_cts += joint.num_dynamic_cts
+        self._num_joint_kinematic_cts += joint.num_kinematic_cts
 
         # Return the new joint index
         return joint.jid
@@ -761,13 +787,15 @@ class ModelBuilder:
             self._num_cgeoms += world.num_collision_geoms
             self._num_pgeoms += world.num_physical_geoms
             self._num_bdofs += 6 * world.num_bodies
-            self._num_jcoords += world.num_joint_coords
-            self._num_jdofs += world.num_joint_dofs
-            self._num_jpcoords += world.num_passive_joint_coords
-            self._num_jpdofs += world.num_passive_joint_dofs
-            self._num_jacoords += world.num_actuated_joint_coords
-            self._num_jadofs += world.num_actuated_joint_dofs
-            self._num_jcts += world.num_joint_cts
+            self._num_joint_coords += world.num_joint_coords
+            self._num_joint_dofs += world.num_joint_dofs
+            self._num_joint_passive_coords += world.num_passive_joint_coords
+            self._num_joint_passive_dofs += world.num_passive_joint_dofs
+            self._num_joint_actuated_coords += world.num_actuated_joint_coords
+            self._num_joint_actuated_dofs += world.num_actuated_joint_dofs
+            self._num_joint_cts += world.num_joint_cts
+            self._num_joint_dynamic_cts += world.num_dynamic_joint_cts
+            self._num_joint_kinematic_cts += world.num_kinematic_joint_cts
 
         # Update the number of worlds
         self._num_worlds += _other._num_worlds
@@ -985,6 +1013,7 @@ class ModelBuilder:
         info_nj = []
         info_njp = []
         info_nja = []
+        info_nji = []
         info_ncg = []
         info_npg = []
         info_nbd = []
@@ -995,6 +1024,8 @@ class ModelBuilder:
         info_njaq = []
         info_njad = []
         info_njc = []
+        info_njdc = []
+        info_njkc = []
         info_bio = []
         info_jio = []
         info_bdio = []
@@ -1005,6 +1036,8 @@ class ModelBuilder:
         info_jaqio = []
         info_jadio = []
         info_jcio = []
+        info_jdcio = []
+        info_jkcio = []
         info_base_bid = []
         info_base_jid = []
         info_mass_min = []
@@ -1031,16 +1064,8 @@ class ModelBuilder:
         joints_jid = []
         joints_dofid = []
         joints_actid = []
-        joints_c_j = []
-        joints_d_j = []
-        joints_m_j = []
-        joints_qio = []
-        joints_dio = []
-        joints_cio = []
-        joints_pqio = []
-        joints_pdio = []
-        joints_aqio = []
-        joints_adio = []
+        joints_q_j_0 = []
+        joints_dq_j_0 = []
         joints_bid_B = []
         joints_bid_F = []
         joints_B_r_Bj = []
@@ -1050,7 +1075,24 @@ class ModelBuilder:
         joints_q_j_max = []
         joints_qd_j_max = []
         joints_tau_j_max = []
-        joints_q_j_ref = []
+        joints_a_j = []
+        joints_b_j = []
+        joints_k_p_j = []
+        joints_k_d_j = []
+        joints_ncoords_j = []
+        joints_ndofs_j = []
+        joints_ncts_j = []
+        joints_nkincts_j = []
+        joints_ndyncts_j = []
+        joints_q_start = []
+        joints_dq_start = []
+        joints_pq_start = []
+        joints_pdq_start = []
+        joints_aq_start = []
+        joints_adq_start = []
+        joints_cts_start = []
+        joints_dcts_start = []
+        joints_kcts_start = []
 
         # Initialize the collision geometry data collections
         cgeoms_wid = []
@@ -1093,6 +1135,7 @@ class ModelBuilder:
                 info_nj.append(world.num_joints)
                 info_njp.append(world.num_passive_joints)
                 info_nja.append(world.num_actuated_joints)
+                info_nji.append(world.num_dynamic_joints)
                 info_ncg.append(world.num_collision_geoms)
                 info_npg.append(world.num_physical_geoms)
                 info_nbd.append(world.num_body_dofs)
@@ -1103,6 +1146,8 @@ class ModelBuilder:
                 info_njaq.append(world.num_actuated_joint_coords)
                 info_njad.append(world.num_actuated_joint_dofs)
                 info_njc.append(world.num_joint_cts)
+                info_njdc.append(world.num_dynamic_joint_cts)
+                info_njkc.append(world.num_kinematic_joint_cts)
                 info_bio.append(world.bodies_idx_offset)
                 info_jio.append(world.joints_idx_offset)
 
@@ -1117,11 +1162,13 @@ class ModelBuilder:
                 info_bdio.append(world.body_dofs_idx_offset)
                 info_jqio.append(world.joint_coords_idx_offset)
                 info_jdio.append(world.joint_dofs_idx_offset)
-                info_jpqio.append(world.passive_joint_coords_idx_offset)
-                info_jpdio.append(world.passive_joint_dofs_idx_offset)
-                info_jaqio.append(world.actuated_joint_coords_idx_offset)
-                info_jadio.append(world.actuated_joint_dofs_idx_offset)
+                info_jpqio.append(world.joint_passive_coords_idx_offset)
+                info_jpdio.append(world.joint_passive_dofs_idx_offset)
+                info_jaqio.append(world.joint_actuated_coords_idx_offset)
+                info_jadio.append(world.joint_actuated_dofs_idx_offset)
                 info_jcio.append(world.joint_cts_idx_offset)
+                info_jdcio.append(world.joint_dynamic_cts_idx_offset)
+                info_jkcio.append(world.joint_kinematic_cts_idx_offset)
                 info_base_bid.append((world.base_body_idx + world.bodies_idx_offset) if world.has_base_body else -1)
                 info_base_jid.append((world.base_joint_idx + world.joints_idx_offset) if world.has_base_joint else -1)
 
@@ -1154,21 +1201,30 @@ class ModelBuilder:
                 joints_B_r_Bj.append(joint.B_r_Bj)
                 joints_F_r_Fj.append(joint.F_r_Fj)
                 joints_X_j.append(joint.X_j)
+                joints_q_j_0.extend(joint.dof_type.reference_coords)
+                joints_dq_j_0.extend(joint.dof_type.num_dofs * [0.0])
                 joints_q_j_min.extend(joint.q_j_min)
                 joints_q_j_max.extend(joint.q_j_max)
                 joints_qd_j_max.extend(joint.dq_j_max)
                 joints_tau_j_max.extend(joint.tau_j_max)
-                joints_q_j_ref.extend(joint.dof_type.reference_coords)
-                joints_c_j.append(joint.num_coords)
-                joints_d_j.append(joint.num_dofs)
-                joints_m_j.append(joint.num_cts)
-                joints_qio.append(joint.coords_offset)
-                joints_dio.append(joint.dofs_offset)
-                joints_cio.append(joint.cts_offset)
-                joints_pqio.append(joint.passive_coords_offset)
-                joints_pdio.append(joint.passive_dofs_offset)
-                joints_aqio.append(joint.actuated_coords_offset)
-                joints_adio.append(joint.actuated_dofs_offset)
+                joints_a_j.extend(joint.a_j)
+                joints_b_j.extend(joint.b_j)
+                joints_k_p_j.extend(joint.k_p_j)
+                joints_k_d_j.extend(joint.k_d_j)
+                joints_ncoords_j.append(joint.num_coords)
+                joints_ndofs_j.append(joint.num_dofs)
+                joints_ncts_j.append(joint.num_cts)
+                joints_ndyncts_j.append(joint.num_dynamic_cts)
+                joints_nkincts_j.append(joint.num_kinematic_cts)
+                joints_q_start.append(joint.coords_offset)
+                joints_dq_start.append(joint.dofs_offset)
+                joints_pq_start.append(joint.passive_coords_offset)
+                joints_pdq_start.append(joint.passive_dofs_offset)
+                joints_aq_start.append(joint.actuated_coords_offset)
+                joints_adq_start.append(joint.actuated_dofs_offset)
+                joints_cts_start.append(joint.cts_offset)
+                joints_dcts_start.append(joint.dynamic_cts_offset)
+                joints_kcts_start.append(joint.kinematic_cts_offset)
                 joints_bid_B.append(joint.bid_B + world_bio if joint.bid_B >= 0 else -1)
                 joints_bid_F.append(joint.bid_F + world_bio if joint.bid_F >= 0 else -1)
 
@@ -1265,6 +1321,8 @@ class ModelBuilder:
         model.size.max_of_num_passive_joints = max([world.num_passive_joints for world in self._worlds])
         model.size.sum_of_num_actuated_joints = sum([world.num_actuated_joints for world in self._worlds])
         model.size.max_of_num_actuated_joints = max([world.num_actuated_joints for world in self._worlds])
+        model.size.sum_of_num_dynamic_joints = sum([world.num_dynamic_joints for world in self._worlds])
+        model.size.max_of_num_dynamic_joints = max([world.num_dynamic_joints for world in self._worlds])
         model.size.sum_of_num_collision_geoms = self._num_cgeoms
         model.size.max_of_num_collision_geoms = max([world.num_collision_geoms for world in self._worlds])
         model.size.sum_of_num_physical_geoms = self._num_pgeoms
@@ -1274,23 +1332,27 @@ class ModelBuilder:
         model.size.sum_of_num_material_pairs = self._materials.num_material_pairs
         model.size.max_of_num_material_pairs = self._materials.num_material_pairs
 
-        # Compute the sum/max of model DoFs and constraints
+        # Compute the sum/max of model coords, DoFs and constraints
         model.size.sum_of_num_body_dofs = self._num_bdofs
         model.size.max_of_num_body_dofs = max([world.num_body_dofs for world in self._worlds])
-        model.size.sum_of_num_joint_coords = self._num_jcoords
+        model.size.sum_of_num_joint_coords = self._num_joint_coords
         model.size.max_of_num_joint_coords = max([world.num_joint_coords for world in self._worlds])
-        model.size.sum_of_num_joint_dofs = self._num_jdofs
+        model.size.sum_of_num_joint_dofs = self._num_joint_dofs
         model.size.max_of_num_joint_dofs = max([world.num_joint_dofs for world in self._worlds])
-        model.size.sum_of_num_passive_joint_coords = self._num_jpcoords
+        model.size.sum_of_num_passive_joint_coords = self._num_joint_passive_coords
         model.size.max_of_num_passive_joint_coords = max([world.num_passive_joint_coords for world in self._worlds])
-        model.size.sum_of_num_passive_joint_dofs = self._num_jpdofs
+        model.size.sum_of_num_passive_joint_dofs = self._num_joint_passive_dofs
         model.size.max_of_num_passive_joint_dofs = max([world.num_passive_joint_dofs for world in self._worlds])
-        model.size.sum_of_num_actuated_joint_coords = self._num_jacoords
+        model.size.sum_of_num_actuated_joint_coords = self._num_joint_actuated_coords
         model.size.max_of_num_actuated_joint_coords = max([world.num_actuated_joint_coords for world in self._worlds])
-        model.size.sum_of_num_actuated_joint_dofs = self._num_jadofs
+        model.size.sum_of_num_actuated_joint_dofs = self._num_joint_actuated_dofs
         model.size.max_of_num_actuated_joint_dofs = max([world.num_actuated_joint_dofs for world in self._worlds])
-        model.size.sum_of_num_joint_cts = self._num_jcts
+        model.size.sum_of_num_joint_cts = self._num_joint_cts
         model.size.max_of_num_joint_cts = max([world.num_joint_cts for world in self._worlds])
+        model.size.sum_of_num_dynamic_joint_cts = self._num_joint_dynamic_cts
+        model.size.max_of_num_dynamic_joint_cts = max([world.num_dynamic_joint_cts for world in self._worlds])
+        model.size.sum_of_num_kinematic_joint_cts = self._num_joint_kinematic_cts
+        model.size.max_of_num_kinematic_joint_cts = max([world.num_kinematic_joint_cts for world in self._worlds])
 
         # Initialize unilateral counts (limits, and contacts) to zero
         model.size.sum_of_max_limits = 0
@@ -1317,6 +1379,7 @@ class ModelBuilder:
                 num_joints=wp.array(info_nj, dtype=int32),
                 num_passive_joints=wp.array(info_njp, dtype=int32),
                 num_actuated_joints=wp.array(info_nja, dtype=int32),
+                num_dynamic_joints=wp.array(info_nji, dtype=int32),
                 num_collision_geoms=wp.array(info_ncg, dtype=int32),
                 num_physical_geoms=wp.array(info_npg, dtype=int32),
                 num_body_dofs=wp.array(info_nbd, dtype=int32),
@@ -1327,6 +1390,8 @@ class ModelBuilder:
                 num_actuated_joint_coords=wp.array(info_njaq, dtype=int32),
                 num_actuated_joint_dofs=wp.array(info_njad, dtype=int32),
                 num_joint_cts=wp.array(info_njc, dtype=int32),
+                num_joint_dynamic_cts=wp.array(info_njdc, dtype=int32),
+                num_joint_kinematic_cts=wp.array(info_njkc, dtype=int32),
                 bodies_offset=wp.array(info_bio, dtype=int32),
                 joints_offset=wp.array(info_jio, dtype=int32),
                 body_dofs_offset=wp.array(info_bdio, dtype=int32),
@@ -1337,6 +1402,8 @@ class ModelBuilder:
                 joint_actuated_coords_offset=wp.array(info_jaqio, dtype=int32),
                 joint_actuated_dofs_offset=wp.array(info_jadio, dtype=int32),
                 joint_cts_offset=wp.array(info_jcio, dtype=int32),
+                joint_dynamic_cts_offset=wp.array(info_jdcio, dtype=int32),
+                joint_kinematic_cts_offset=wp.array(info_jkcio, dtype=int32),
                 base_body_index=wp.array(info_base_bid, dtype=int32),
                 base_joint_index=wp.array(info_base_jid, dtype=int32),
                 mass_min=wp.array(info_mass_min, dtype=float32),
@@ -1374,16 +1441,6 @@ class ModelBuilder:
                 jid=wp.array(joints_jid, dtype=int32),
                 dof_type=wp.array(joints_dofid, dtype=int32),
                 act_type=wp.array(joints_actid, dtype=int32),
-                num_coords=wp.array(joints_c_j, dtype=int32),
-                num_dofs=wp.array(joints_d_j, dtype=int32),
-                num_cts=wp.array(joints_m_j, dtype=int32),
-                coords_offset=wp.array(joints_qio, dtype=int32),
-                dofs_offset=wp.array(joints_dio, dtype=int32),
-                passive_coords_offset=wp.array(joints_pqio, dtype=int32),
-                passive_dofs_offset=wp.array(joints_pdio, dtype=int32),
-                actuated_coords_offset=wp.array(joints_aqio, dtype=int32),
-                actuated_dofs_offset=wp.array(joints_adio, dtype=int32),
-                cts_offset=wp.array(joints_cio, dtype=int32),
                 bid_B=wp.array(joints_bid_B, dtype=int32),
                 bid_F=wp.array(joints_bid_F, dtype=int32),
                 B_r_Bj=wp.array(joints_B_r_Bj, dtype=vec3f, requires_grad=requires_grad),
@@ -1393,7 +1450,26 @@ class ModelBuilder:
                 q_j_max=wp.array(joints_q_j_max, dtype=float32, requires_grad=requires_grad),
                 dq_j_max=wp.array(joints_qd_j_max, dtype=float32, requires_grad=requires_grad),
                 tau_j_max=wp.array(joints_tau_j_max, dtype=float32, requires_grad=requires_grad),
-                q_j_ref=wp.array(joints_q_j_ref, dtype=float32, requires_grad=requires_grad),
+                a_j=wp.array(joints_a_j, dtype=float32, requires_grad=requires_grad),
+                b_j=wp.array(joints_b_j, dtype=float32, requires_grad=requires_grad),
+                k_p_j=wp.array(joints_k_p_j, dtype=float32, requires_grad=requires_grad),
+                k_d_j=wp.array(joints_k_d_j, dtype=float32, requires_grad=requires_grad),
+                q_j_0=wp.array(joints_q_j_0, dtype=float32, requires_grad=requires_grad),
+                dq_j_0=wp.array(joints_dq_j_0, dtype=float32, requires_grad=requires_grad),
+                num_coords=wp.array(joints_ncoords_j, dtype=int32),
+                num_dofs=wp.array(joints_ndofs_j, dtype=int32),
+                num_cts=wp.array(joints_ncts_j, dtype=int32),
+                num_dynamic_cts=wp.array(joints_ndyncts_j, dtype=int32),
+                num_kinematic_cts=wp.array(joints_nkincts_j, dtype=int32),
+                coords_offset=wp.array(joints_q_start, dtype=int32),
+                dofs_offset=wp.array(joints_dq_start, dtype=int32),
+                passive_coords_offset=wp.array(joints_pq_start, dtype=int32),
+                passive_dofs_offset=wp.array(joints_pdq_start, dtype=int32),
+                actuated_coords_offset=wp.array(joints_aq_start, dtype=int32),
+                actuated_dofs_offset=wp.array(joints_adq_start, dtype=int32),
+                cts_offset=wp.array(joints_cts_start, dtype=int32),
+                dynamic_cts_offset=wp.array(joints_dcts_start, dtype=int32),
+                kinematic_cts_offset=wp.array(joints_kcts_start, dtype=int32),
             )
 
             # Create the collision geometries model
@@ -1622,11 +1698,13 @@ class ModelBuilder:
         body_dofs_idx_offset: int = 0
         joint_coords_idx_offset: int = 0
         joint_dofs_idx_offset: int = 0
-        passive_joint_coords_idx_offset: int = 0
-        passive_joint_dofs_idx_offset: int = 0
-        actuated_joint_coords_idx_offset: int = 0
-        actuated_joint_dofs_idx_offset: int = 0
+        joint_passive_coords_idx_offset: int = 0
+        joint_passive_dofs_idx_offset: int = 0
+        joint_actuated_coords_idx_offset: int = 0
+        joint_actuated_dofs_idx_offset: int = 0
         joint_cts_idx_offset: int = 0
+        joint_dynamic_cts_idx_offset: int = 0
+        joint_kinematic_cts_idx_offset: int = 0
         # Iterate over each world and set their model offsets
         for world in self._worlds:
             # Set the offsets in the world descriptor to the current values
@@ -1637,11 +1715,13 @@ class ModelBuilder:
             world.body_dofs_idx_offset = int(body_dofs_idx_offset)
             world.joint_coords_idx_offset = int(joint_coords_idx_offset)
             world.joint_dofs_idx_offset = int(joint_dofs_idx_offset)
-            world.passive_joint_coords_idx_offset = int(passive_joint_coords_idx_offset)
-            world.passive_joint_dofs_idx_offset = int(passive_joint_dofs_idx_offset)
-            world.actuated_joint_coords_idx_offset = int(actuated_joint_coords_idx_offset)
-            world.actuated_joint_dofs_idx_offset = int(actuated_joint_dofs_idx_offset)
+            world.joint_passive_coords_idx_offset = int(joint_passive_coords_idx_offset)
+            world.joint_passive_dofs_idx_offset = int(joint_passive_dofs_idx_offset)
+            world.joint_actuated_coords_idx_offset = int(joint_actuated_coords_idx_offset)
+            world.joint_actuated_dofs_idx_offset = int(joint_actuated_dofs_idx_offset)
             world.joint_cts_idx_offset = int(joint_cts_idx_offset)
+            world.joint_dynamic_cts_idx_offset = int(joint_dynamic_cts_idx_offset)
+            world.joint_kinematic_cts_idx_offset = int(joint_kinematic_cts_idx_offset)
             # Update the offsets for the next world
             bodies_idx_offset += world.num_bodies
             joints_idx_offset += world.num_joints
@@ -1650,11 +1730,13 @@ class ModelBuilder:
             body_dofs_idx_offset += 6 * world.num_bodies
             joint_coords_idx_offset += world.num_joint_coords
             joint_dofs_idx_offset += world.num_joint_dofs
-            passive_joint_coords_idx_offset += world.num_passive_joint_coords
-            passive_joint_dofs_idx_offset += world.num_passive_joint_dofs
-            actuated_joint_coords_idx_offset += world.num_actuated_joint_coords
-            actuated_joint_dofs_idx_offset += world.num_actuated_joint_dofs
+            joint_passive_coords_idx_offset += world.num_passive_joint_coords
+            joint_passive_dofs_idx_offset += world.num_passive_joint_dofs
+            joint_actuated_coords_idx_offset += world.num_actuated_joint_coords
+            joint_actuated_dofs_idx_offset += world.num_actuated_joint_dofs
             joint_cts_idx_offset += world.num_joint_cts
+            joint_dynamic_cts_idx_offset += world.num_dynamic_joint_cts
+            joint_kinematic_cts_idx_offset += world.num_kinematic_joint_cts
 
     def _collect_cgeom_max_contact_hints(self) -> tuple[int, list[int]]:
         """

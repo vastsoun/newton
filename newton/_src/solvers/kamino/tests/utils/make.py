@@ -159,7 +159,7 @@ def update_containers(
     wp.synchronize()
 
     # Update joint states according to the state of the bodies
-    compute_joints_data(model=model, data=data, q_j_ref=wp.zeros_like(data.joints.q_j))
+    compute_joints_data(model=model, data=data, q_j_p=wp.zeros_like(data.joints.q_j))
     wp.synchronize()
 
     # Run joint-limit detection to generate active limits

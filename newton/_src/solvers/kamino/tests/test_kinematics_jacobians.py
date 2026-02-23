@@ -660,7 +660,7 @@ class TestKinematicsDenseSystemJacobians(unittest.TestCase):
             print("data.bodies.u_i:\n", data.bodies.u_i)
 
         # Compute the joints state
-        compute_joints_data(model=model, q_j_ref=wp.zeros_like(data.joints.q_j), data=data)
+        compute_joints_data(model=model, data=data, q_j_p=wp.zeros_like(data.joints.q_j))
         wp.synchronize()
         if self.verbose:
             print("data.joints.p_j:\n", data.joints.p_j)
@@ -774,7 +774,7 @@ class TestKinematicsDenseSystemJacobians(unittest.TestCase):
             print("data.bodies.u_i:\n", data.bodies.u_i)
 
         # Compute the joints state
-        compute_joints_data(model=model, q_j_ref=wp.zeros_like(data.joints.q_j), data=data)
+        compute_joints_data(model=model, data=data, q_j_p=wp.zeros_like(data.joints.q_j))
         wp.synchronize()
         if self.verbose:
             print("data.joints.p_j:\n", data.joints.p_j)
@@ -862,7 +862,7 @@ class TestKinematicsDenseSystemJacobians(unittest.TestCase):
             print("data.bodies.u_i:\n", data.bodies.u_i)
 
         # Compute the joints state
-        compute_joints_data(model=model, q_j_ref=wp.zeros_like(data.joints.q_j), data=data)
+        compute_joints_data(model=model, data=data, q_j_p=wp.zeros_like(data.joints.q_j))
         wp.synchronize()
         if self.verbose:
             print("data.joints.p_j:\n", data.joints.p_j)

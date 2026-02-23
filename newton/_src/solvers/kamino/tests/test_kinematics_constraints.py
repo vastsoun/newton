@@ -23,19 +23,13 @@ import warp as wp
 
 from newton._src.solvers.kamino.core.model import Model
 from newton._src.solvers.kamino.geometry.contacts import Contacts
-
-# Module to be tested
 from newton._src.solvers.kamino.kinematics.constraints import make_unilateral_constraints_info
 from newton._src.solvers.kamino.kinematics.limits import Limits
 from newton._src.solvers.kamino.models.builders.basics import build_boxes_fourbar, make_basics_heterogeneous_builder
 from newton._src.solvers.kamino.models.builders.utils import make_homogeneous_builder
 from newton._src.solvers.kamino.tests import setup_tests, test_context
-
-# Test utilities
-from newton._src.solvers.kamino.tests.utils.print import (
-    print_model_constraint_info,
-    print_model_data_info,
-)
+from newton._src.solvers.kamino.tests.utils.print import print_model_constraint_info, print_model_data_info
+from newton._src.solvers.kamino.utils import logger as msg
 
 ###
 # Module configs
@@ -51,13 +45,24 @@ wp.set_module_options({"enable_backward": False})
 
 class TestKinematicsConstraints(unittest.TestCase):
     def setUp(self):
+        # Configs
         if not test_context.setup_done:
             setup_tests(clear_cache=False)
-        self.verbose = test_context.verbose  # Set to True for detailed output
+        self.seed = 42
         self.default_device = wp.get_device(test_context.device)
+        self.verbose = test_context.verbose  # Set to True for verbose output
+
+        # Set debug-level logging to print verbose test output to console
+        if self.verbose:
+            print("\n")  # Add newline before test output for better readability
+            msg.set_log_level(msg.LogLevel.INFO)
+        else:
+            msg.reset_log_level()
 
     def tearDown(self):
         self.default_device = None
+        if self.verbose:
+            msg.reset_log_level()
 
     def test_01_single_model_make_constraints(self):
         """
@@ -67,10 +72,13 @@ class TestKinematicsConstraints(unittest.TestCase):
         max_world_contacts = 20
 
         # Construct the model description using the ModelBuilder
-        builder = build_boxes_fourbar()
+        builder = build_boxes_fourbar(dynamic_joints=True, implicit_pd=True)
 
         # Create the model from the builder
         model: Model = builder.finalize(device=self.default_device)
+        msg.info(f"model.joints.cts_offset:\n{model.joints.cts_offset}")
+        msg.info(f"model.joints.dynamic_cts_offset:\n{model.joints.dynamic_cts_offset}")
+        msg.info(f"model.joints.kinematic_cts_offset:\n{model.joints.kinematic_cts_offset}")
 
         # Create a model data
         data = model.data(device=self.default_device)
@@ -103,7 +111,7 @@ class TestKinematicsConstraints(unittest.TestCase):
             device=self.default_device,
         )
         if self.verbose:
-            print(f"model.size:\n{model.size}")
+            print(f"model.size:\n{model.size}\n\n")
             print_model_constraint_info(model)
             print_model_data_info(data)
 
@@ -112,14 +120,22 @@ class TestKinematicsConstraints(unittest.TestCase):
         Tests the population of model info with constraint sizes and offsets for a homogeneous multi-world model.
         """
         # Constants
-        max_world_contacts = 20
+        num_worlds: int = 10
+        max_world_contacts: int = 20
 
         # Construct the model description using the ModelBuilder
-        builder = make_homogeneous_builder(num_worlds=10, build_fn=build_boxes_fourbar)
-        num_worlds = builder.num_worlds
+        builder = make_homogeneous_builder(
+            num_worlds=num_worlds,
+            build_fn=build_boxes_fourbar,
+            dynamic_joints=True,
+            implicit_pd=True,
+        )
 
         # Create the model from the builder
         model: Model = builder.finalize(device=self.default_device)
+        msg.info(f"model.joints.cts_offset:\n{model.joints.cts_offset}")
+        msg.info(f"model.joints.dynamic_cts_offset:\n{model.joints.dynamic_cts_offset}")
+        msg.info(f"model.joints.kinematic_cts_offset:\n{model.joints.kinematic_cts_offset}")
 
         # Create a model data
         data = model.data(device=self.default_device)
@@ -154,6 +170,15 @@ class TestKinematicsConstraints(unittest.TestCase):
         if self.verbose:
             print_model_constraint_info(model)
             print_model_data_info(data)
+            print("\n===============================================================")
+            print("data.info.num_limits.ptr: ", data.info.num_limits.ptr)
+            print("limits.world_active_limits.ptr: ", limits.world_active_limits.ptr)
+            print("data.info.num_contacts.ptr: ", data.info.num_contacts.ptr)
+            print("contacts.world_active_contacts.ptr: ", contacts.world_active_contacts.ptr)
+
+        # Check if the data info entity counters point to the same arrays as the limits and contacts containers
+        self.assertTrue(data.info.num_limits.ptr, limits.world_active_limits.ptr)
+        self.assertTrue(data.info.num_contacts.ptr, contacts.world_active_contacts.ptr)
 
         # Extract numpy arrays from the model info
         model_max_limits = model.size.sum_of_max_limits
@@ -166,9 +191,6 @@ class TestKinematicsConstraints(unittest.TestCase):
         limits_offset = model.info.limits_offset.numpy()
         contacts_offset = model.info.contacts_offset.numpy()
         unilaterals_offset = model.info.unilaterals_offset.numpy()
-        limit_cts_offset = model.info.limit_cts_offset.numpy()
-        contact_cts_offset = model.info.contact_cts_offset.numpy()
-        unilateral_cts_offset = model.info.unilateral_cts_offset.numpy()
         total_cts_offset = model.info.total_cts_offset.numpy()
 
         # Check the model info entries
@@ -185,16 +207,13 @@ class TestKinematicsConstraints(unittest.TestCase):
             self.assertEqual(max_contacts[i], max_world_contacts)
             self.assertEqual(max_limit_cts[i], 4)
             self.assertEqual(max_contact_cts[i], 3 * max_world_contacts)
-            self.assertEqual(max_total_cts[i], 20 + 4 + 3 * max_world_contacts)
+            self.assertEqual(max_total_cts[i], 21 + 4 + 3 * max_world_contacts)
             self.assertEqual(limits_offset[i], nl)
             self.assertEqual(contacts_offset[i], nc)
             self.assertEqual(unilaterals_offset[i], nl + nc)
-            self.assertEqual(limit_cts_offset[i], nlc)
-            self.assertEqual(contact_cts_offset[i], ncc)
-            self.assertEqual(unilateral_cts_offset[i], nlc + ncc)
             self.assertEqual(total_cts_offset[i], njc + nlc + ncc)
             nj += 4
-            njc += 20
+            njc += 21
             nl += 4
             nlc += 4
             nc += max_world_contacts
@@ -246,6 +265,7 @@ class TestKinematicsConstraints(unittest.TestCase):
         if self.verbose:
             print_model_constraint_info(model)
             print_model_data_info(data)
+            print("\n===============================================================")
             print("data.info.num_limits.ptr: ", data.info.num_limits.ptr)
             print("limits.world_active_limits.ptr: ", limits.world_active_limits.ptr)
             print("data.info.num_contacts.ptr: ", data.info.num_contacts.ptr)

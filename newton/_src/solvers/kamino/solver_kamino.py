@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 import warp as wp
 from warp.context import Devicelike
@@ -45,7 +45,8 @@ from .dynamics.wrenches import (
     compute_joint_dof_body_wrenches,
 )
 from .geometry.contacts import Contacts
-from .integrators.euler import integrate_euler_semi_implicit
+from .geometry.detector import CollisionDetector
+from .integrators import IntegratorEuler, IntegratorMoreauJean
 from .kinematics.constraints import (
     make_unilateral_constraints_info,
     unpack_constraint_solutions,
@@ -62,6 +63,7 @@ from .kinematics.resets import (
     reset_body_net_wrenches,
     reset_joint_constraint_reactions,
     reset_state_from_base_state,
+    reset_state_from_bodies_state,
     reset_state_to_model_default,
     reset_time,
 )
@@ -81,6 +83,13 @@ from .utils import logger as msg
 class SolverKaminoSettings:
     """
     A container to hold configurations for :class:`SolverKamino`.
+    """
+
+    integrator: Literal["euler", "moreau"] | None = "euler"
+    """
+    The time-integrator to use for state integration.\n
+    See available options in the `integrators` module.\n
+    Defaults to `"euler"`.
     """
 
     problem: DualProblemSettings = field(default_factory=DualProblemSettings)
@@ -158,6 +167,13 @@ class SolverKaminoSettings:
     The rotation correction mode to use for rotational DoFs.\n
     See :class:`JointCorrectionMode` for available options.\n
     Defaults to `JointCorrectionMode.TWOPI`.
+    """
+
+    angular_velocity_damping: float = 0.0
+    """
+    A damping factor applied to the angular velocity of bodies during state integration.\n
+    This can help stabilize simulations with large time steps or high angular velocities.\n
+    Defaults to `0.0` (i.e. no damping).
     """
 
     sparse: bool = True
@@ -359,11 +375,22 @@ class SolverKamino(SolverBase):
         # Allocate the forward kinematics solver on the device
         self._solver_fk = ForwardKinematicsSolver(model=self._model, settings=self._settings.fk)
 
+        # Create the time-integrator instance based on the settings
+        if self._settings.integrator == "euler":
+            self._integrator = IntegratorEuler(model=self._model)
+        elif self._settings.integrator == "moreau":
+            self._integrator = IntegratorMoreauJean(model=self._model)
+        else:
+            raise ValueError(
+                f"Unsupported integrator type: Expected 'euler' or 'moreau', but got {self._settings.integrator}."
+            )
+
         # Allocate additional internal data for reset operations
         with wp.ScopedDevice(self._model.device):
             self._all_worlds_mask = wp.ones(shape=(self._model.size.num_worlds,), dtype=int32)
             self._base_q = wp.zeros(shape=(self._model.size.num_worlds,), dtype=transformf)
             self._base_u = wp.zeros(shape=(self._model.size.num_worlds,), dtype=vec6f)
+            self._bodies_u_zeros = wp.zeros(shape=(self._model.size.sum_of_num_bodies,), dtype=vec6f)
             self._actuators_q = wp.zeros(shape=(self._model.size.sum_of_num_actuated_joint_coords,), dtype=float32)
             self._actuators_u = wp.zeros(shape=(self._model.size.sum_of_num_actuated_joint_dofs,), dtype=float32)
 
@@ -494,6 +521,8 @@ class SolverKamino(SolverBase):
         joint_u: wp.array | None = None,
         base_q: wp.array | None = None,
         base_u: wp.array | None = None,
+        bodies_q: wp.array | None = None,
+        bodies_u: wp.array | None = None,
     ):
         """
         Resets the simulation state given a combination of desired base body
@@ -527,43 +556,36 @@ class SolverKamino(SolverBase):
             base_qd (wp.array, optional):
                 Optional array of target base body twists.\n
                 Shape of `(num_worlds,)` and type :class:`wp.spatial_vectorf`
+            bodies_q (wp.array, optional):
+                Optional array of target body poses.\n
+                Shape of `(num_bodies,)` and type :class:`wp.transformf`
+            bodies_u (wp.array, optional):
+                Optional array of target body twists.\n
+                Shape of `(num_bodies,)` and type :class:`wp.spatial_vectorf`
         """
+
         # Ensure the input reset targets are valid
-        if joint_q is not None and joint_q.shape[0] != self._model.size.sum_of_num_joint_coords:
-            raise ValueError(
-                f"Invalid joint_q shape: Expected ({self._model.size.sum_of_num_joint_coords},),"
-                f" but got {joint_q.shape}."
-            )
-        if joint_u is not None and joint_u.shape[0] != self._model.size.sum_of_num_joint_dofs:
-            raise ValueError(
-                f"Invalid joint_u shape: Expected ({self._model.size.sum_of_num_joint_dofs},), but got {joint_u.shape}."
-            )
-        if actuator_q is not None and actuator_q.shape[0] != self._model.size.sum_of_num_actuated_joint_coords:
-            raise ValueError(
-                f"Invalid actuator_q shape: Expected ({self._model.size.sum_of_num_actuated_joint_coords},),"
-                f" but got {actuator_q.shape}."
-            )
-        if actuator_u is not None and actuator_u.shape[0] != self._model.size.sum_of_num_actuated_joint_dofs:
-            raise ValueError(
-                f"Invalid actuator_u shape: Expected ({self._model.size.sum_of_num_actuated_joint_dofs},),"
-                f" but got {actuator_u.shape}."
-            )
-        if base_q is not None and base_q.shape[0] != self._model.size.num_worlds:
-            raise ValueError(
-                f"Invalid base_q shape: Expected ({self._model.size.num_worlds},), but got {base_q.shape}."
-            )
-        if base_u is not None and base_u.shape[0] != self._model.size.num_worlds:
-            raise ValueError(
-                f"Invalid base_u shape: Expected ({self._model.size.num_worlds},), but got {base_u.shape}."
-            )
-        if world_mask is not None and world_mask.shape[0] != self._model.size.num_worlds:
-            raise ValueError(
-                f"Invalid world_mask shape: Expected ({self._model.size.num_worlds},), but got {world_mask.shape}."
-            )
+        def _check_length(data: wp.array, name: str, expected: int):
+            if data is not None and data.shape[0] != expected:
+                raise ValueError(f"Invalid {name} shape: Expected ({expected},), but got {data.shape}.")
+
+        _check_length(joint_q, "joint_q", self._model.size.sum_of_num_joint_coords)
+        _check_length(joint_u, "joint_u", self._model.size.sum_of_num_joint_dofs)
+        _check_length(actuator_q, "actuator_q", self._model.size.sum_of_num_actuated_joint_coords)
+        _check_length(actuator_u, "actuator_u", self._model.size.sum_of_num_actuated_joint_dofs)
+        _check_length(base_q, "base_q", self._model.size.num_worlds)
+        _check_length(base_u, "base_u", self._model.size.num_worlds)
+        _check_length(bodies_q, "bodies_q", self._model.size.sum_of_num_bodies)
+        _check_length(bodies_u, "bodies_u", self._model.size.sum_of_num_bodies)
+        _check_length(world_mask, "world_mask", self._model.size.num_worlds)
 
         # Ensure that only joint or actuator targets are provided
         if (joint_q is not None or joint_u is not None) and (actuator_q is not None or actuator_u is not None):
             raise ValueError("Combined joint and actuator targets are not supported. Only one type may be provided.")
+
+        # Ensure that joint/actuator velocity-only resets are prevented
+        if (joint_q is None and joint_u is not None) or (actuator_q is None and actuator_u is not None):
+            raise ValueError("Velocity-only joint or actuator resets are not supported.")
 
         # Run the pre-reset callback if it has been set
         self._run_pre_reset_callback(state_out=state_out)
@@ -571,23 +593,20 @@ class SolverKamino(SolverBase):
         # Determine the effective world mask to use for the reset operation
         _world_mask = world_mask if world_mask is not None else self._all_worlds_mask
 
+        # Detect mode
+        base_reset = base_q is not None or base_u is not None
+        joint_reset = joint_q is not None or actuator_q is not None
+        bodies_reset = bodies_q is not None or bodies_u is not None
+
         # If no reset targets are provided, reset all bodies to the model default state
-        if (
-            (base_q is None and base_u is None)
-            and (joint_q is None and joint_u is None)
-            and (actuator_q is None and actuator_u is None)
-        ):
+        if not base_reset and not joint_reset and not bodies_reset:
             self._reset_to_default_state(
                 state_out=state_out,
                 world_mask=_world_mask,
             )
 
         # If only base targets are provided, uniformly reset all bodies to the given base states
-        elif (
-            (base_q is not None or base_u is not None)
-            and (joint_q is None and joint_u is None)
-            and (actuator_q is None and actuator_u is None)
-        ):
+        elif base_reset and not joint_reset and not bodies_reset:
             self._reset_to_base_state(
                 state_out=state_out,
                 world_mask=_world_mask,
@@ -596,7 +615,7 @@ class SolverKamino(SolverBase):
             )
 
         # If a joint target is provided, use the FK solver to reset the bodies accordingly
-        elif joint_q is not None or actuator_q is not None:
+        elif joint_reset and not bodies_reset:
             self._reset_with_fk_solve(
                 state_out=state_out,
                 world_mask=_world_mask,
@@ -608,6 +627,15 @@ class SolverKamino(SolverBase):
                 base_u=base_u,
             )
 
+        # If body targets are provided, reset bodies directly
+        elif not base_reset and not joint_reset and bodies_reset:
+            self._reset_to_bodies_state(
+                state_out=state_out,
+                world_mask=_world_mask,
+                bodies_q=bodies_q,
+                bodies_u=bodies_u,
+            )
+
         # If no valid combination of reset targets is provided, raise an error
         else:
             raise ValueError(
@@ -615,6 +643,7 @@ class SolverKamino(SolverBase):
                 f" actuator_q: {actuator_q is not None}, actuator_u: {actuator_u is not None},"
                 f" joint_q: {joint_q is not None}, joint_u: {joint_u is not None},"
                 f" base_q: {base_q is not None}, base_u: {base_u is not None}."
+                f" bodies_q: {bodies_q is not None}, bodies_u: {bodies_u is not None}."
             )
 
         # Post-process the reset operation
@@ -630,6 +659,7 @@ class SolverKamino(SolverBase):
         state_out: State,
         control: Control,
         contacts: Contacts | None = None,
+        detector: CollisionDetector | None = None,
         dt: float | None = None,
     ):
         """
@@ -646,6 +676,9 @@ class SolverKamino(SolverBase):
                 The input controls applied to the system.
             contacts (Contacts, optional):
                 The set of active contacts.
+            detector (CollisionDetector, optional):
+                An optional collision detector to use for generating contacts at the current state.\n
+                If `None`, the `contacts` data will be used as the current set of active contacts.
             dt (float, optional):
                 A uniform time-step to apply uniformly to all worlds of the simulation.
         """
@@ -656,32 +689,25 @@ class SolverKamino(SolverBase):
         # Copy the new input state and control to the internal solver data
         self._read_step_inputs(state_in=state_in, control_in=control)
 
-        # Update intermediate quantities of the bodies and joints
-        self._update_intermediates(state_in=state_in)
+        # Execute state integration:
+        #  - Optionally calls limit and contact detection to generate unilateral constraints
+        #  - Solves the forward dynamics sub-problem to compute constraint reactions
+        #  - Integrates the state forward in time
+        self._integrator.integrate(
+            forward=self._solve_forward_dynamics,
+            model=self._model,
+            data=self._data,
+            state_in=state_in,
+            state_out=state_out,
+            control=control,
+            limits=self._limits,
+            contacts=contacts,
+            detector=detector,
+        )
 
-        # Run limit detection to generate active joint limits
-        self._update_limits()
-
-        # Update the constraint state info
-        self._update_constraint_info()
-
-        # Update the differential forward kinematics to compute system Jacobians
-        self._update_jacobians(contacts=contacts)
-
-        # Compute the body actuation wrenches based on the current control inputs
-        self._update_actuation_wrenches()
-
-        # Run the pre-step callback if it has been set
-        self._run_prestep_callback(state_in, state_out, control, contacts)
-
-        # Solve the forward dynamics sub-problem to compute constraint reactions and body wrenches
-        self._forward(contacts=contacts)
-
-        # Run the mid-step callback if it has been set
-        self._run_midstep_callback(state_in, state_out, control, contacts)
-
-        # Solve the time integration sub-problem to compute the next state of the system
-        self._integrate()
+        # Update the internal joint states from the
+        # updated body states after time-integration
+        self._update_joints_data()
 
         # Compute solver solution metrics if enabled
         self._compute_metrics(state_in=state_in, contacts=contacts)
@@ -752,6 +778,9 @@ class SolverKamino(SolverBase):
         wp.copy(self._data.joints.dq_j, state_in.dq_j)
         wp.copy(self._data.joints.lambda_j, state_in.lambda_j)
         wp.copy(self._data.joints.tau_j, control_in.tau_j)
+        wp.copy(self._data.joints.q_j_ref, control_in.q_j_ref)
+        wp.copy(self._data.joints.dq_j_ref, control_in.dq_j_ref)
+        wp.copy(self._data.joints.tau_j_ref, control_in.tau_j_ref)
 
     def _write_step_output(self, state_out: State):
         """
@@ -785,7 +814,7 @@ class SolverKamino(SolverBase):
         update_body_inertias(model=self._model.bodies, data=self._data.bodies)
 
         # Reset all joints to their model default states
-        self._data.joints.reset_state(q_j_ref=self._model.joints.q_j_ref)
+        self._data.joints.reset_state(q_j_0=self._model.joints.q_j_0)
         self._data.joints.clear_all()
 
         # Reset the joint-limits interface
@@ -844,6 +873,31 @@ class SolverKamino(SolverBase):
             base_q=_base_q,
             base_u=_base_u,
             q_i_cache=self._data.bodies.q_i,
+        )
+
+    def _reset_to_bodies_state(
+        self,
+        state_out: State,
+        world_mask: wp.array,
+        bodies_q: wp.array | None = None,
+        bodies_u: wp.array | None = None,
+    ):
+        """
+        Resets the simulation to the given rigid body states.
+        There is no check that the provided states satisfy any kinematic constraints.
+        """
+
+        # use initial model poses if not provided
+        _bodies_q = bodies_q if bodies_q is not None else self._model.bodies.q_i_0
+        # use zero body velocities if not provided
+        _bodies_u = bodies_u if bodies_u is not None else self._bodies_u_zeros
+
+        reset_state_from_bodies_state(
+            model=self._model,
+            state_out=state_out,
+            world_mask=world_mask,
+            bodies_q=_bodies_q,
+            bodies_u=_bodies_u,
         )
 
     def _reset_with_fk_solve(
@@ -940,17 +994,25 @@ class SolverKamino(SolverBase):
     # Internals - Step Operations
     ###
 
-    def _update_joints_data(self, q_j_p: wp.array):
+    def _update_joints_data(self, q_j_p: wp.array | None = None):
         """
         Updates the joint states based on the current body states.
         """
+        # Use the provided previous joint states if given,
+        # otherwise use the internal cached joint states
+        if q_j_p is not None:
+            _q_j_p = q_j_p
+        else:
+            wp.copy(self._data.joints.q_j_p, self._data.joints.q_j)
+            _q_j_p = self._data.joints.q_j_p
+
         # Update the joint states based on the updated body states
         # NOTE: We use the previous state `state_p` for post-processing
         # purposes, e.g. account for roll-over of revolute joints etc
         compute_joints_data(
             model=self._model,
-            q_j_ref=q_j_p,
             data=self._data,
+            q_j_p=_q_j_p,
             correction=self._settings.rotation_correction,
         )
 
@@ -1082,16 +1144,56 @@ class SolverKamino(SolverBase):
         # Post-processing
         self._update_wrenches()
 
-    def _integrate(self):
+    def _solve_forward_dynamics(
+        self,
+        state_in: State,
+        state_out: State,
+        control: Control,
+        limits: Limits | None = None,  # TODO: Fix this interface
+        contacts: Contacts | None = None,
+        detector: CollisionDetector | None = None,
+    ):
         """
-        Solves the time integration sub-problem to compute the next state of the system.
+        TODO
         """
-        # Integrate the state of the system (i.e. of the bodies) to compute the next state
-        integrate_euler_semi_implicit(model=self._model, data=self._data)
+        # Update intermediate quantities of the bodies and joints
+        # NOTE: We update the intermediate joint and body data here
+        # to ensure that they consistent with the current state.
+        # This is to handle cases when the forward dynamics may be
+        # evaluated at intermediate points of the discrete time-step
+        # (and potentially multiple times). The intermediate data is
+        # then used to perform limit and contact detection, as well
+        # as to evaluate kinematics and dynamics quantities such as
+        # the system Jacobians and generalized mass matrix.
+        self._update_intermediates(state_in=state_in)
 
-        # Update the internal joint states based on the current and next body states
-        wp.copy(self._data.joints.q_j_p, self._data.joints.q_j)
-        self._update_joints_data(q_j_p=self._data.joints.q_j_p)
+        # If a collision detector is provided, use it to generate
+        # update the set of active contacts at the current state
+        if detector is not None:
+            detector.collide(model=self._model, data=self._data, contacts=contacts)
+
+        # If a limits container/detector is provided, run joint-limit
+        # detection to generate active joint limits at the current state
+        if limits is not None:
+            limits.detect(self._model, self._data)
+
+        # Update the constraint state info
+        self._update_constraint_info()
+
+        # Update the differential forward kinematics to compute system Jacobians
+        self._update_jacobians(contacts=contacts)
+
+        # Compute the body actuation wrenches based on the current control inputs
+        self._update_actuation_wrenches()
+
+        # Run the pre-step callback if it has been set
+        self._run_prestep_callback(state_in, state_out, control, contacts)
+
+        # Solve the forward dynamics sub-problem to compute constraint reactions and body wrenches
+        self._forward(contacts=contacts)
+
+        # Run the mid-step callback if it has been set
+        self._run_midstep_callback(state_in, state_out, control, contacts)
 
     def _compute_metrics(self, state_in: State, contacts: Contacts | None = None):
         """

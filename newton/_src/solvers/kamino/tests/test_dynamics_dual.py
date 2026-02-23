@@ -72,6 +72,7 @@ class TestDualProblem(unittest.TestCase):
 
         # Optional verbose output
         if self.verbose:
+            print("\n")  # Print a blank line for better readability
             print(f"problem.data.config: {problem.data.config}")
             print(f"problem.data.maxdim: {problem.data.maxdim}")
             print(f"problem.data.dim: {problem.data.dim}")
@@ -104,9 +105,9 @@ class TestDualProblem(unittest.TestCase):
         self.assertEqual(problem.data.v_f.size, maxdims)
         self.assertEqual(problem.data.mu.size, maxnc)
         maxdim_np = problem.data.maxdim.numpy()
-        self.assertEqual(np.sum(maxdim_np), maxdims)
+        self.assertEqual(int(np.sum(maxdim_np)), maxdims)
         dim_np = problem.data.dim.numpy()
-        self.assertEqual(np.sum(dim_np), 0)
+        self.assertEqual(int(np.sum(dim_np)), 46)  # Total number of active constraints in the default state
 
     def test_02_dual_problem_build(self):
         """

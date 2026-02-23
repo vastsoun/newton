@@ -240,13 +240,18 @@ def _compute_jointspace_pid_control(
         K_d = controller_K_d[actuator_dof_index]
         integrator = controller_integrator[actuator_dof_index]
 
+        # Compute integral limit
+        integrator_max = 0.0
+        if K_i > 0.0:
+            integrator_max = tau_j_max / K_i  # Overflow is not a concern. wp.clamp will work as expected with inf
+
         # Compute tracking errors
         q_j_err = q_j_ref - q_j
         dq_j_err = dq_j_ref - dq_j
 
         # Update the integrator state with anti-windup clamping
         integrator += q_j_err * dt
-        integrator = wp.clamp(integrator, -tau_j_max, tau_j_max)
+        integrator = wp.clamp(integrator, -integrator_max, integrator_max)
 
         # Compute the Feed-Forward + PID control generalized forces
         # NOTE: We also clamp the final control forces to avoid exceeding actuator limits

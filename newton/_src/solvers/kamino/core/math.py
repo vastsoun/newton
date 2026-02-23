@@ -32,6 +32,7 @@ from .types import (
     mat63f,
     mat66f,
     quatf,
+    transformf,
     vec3f,
     vec4f,
     vec6f,
@@ -532,6 +533,22 @@ def quat_conj_normalized_apply(q: quatf, v: vec3f) -> vec3f:
     return v - q[3] * uv_s + wp.cross(qv, uv_s)
 
 
+@wp.func
+def quat_twist_angle(q: quatf, axis: vec3f) -> wp.float32:
+    """
+    Computes the twist angle of a quaternion around a specific axis.
+
+    This function isolates the rotation component of ``q`` that occurs purely
+    around the provided ``axis`` (Twist-Swing decomposition) and returns
+    its angle in [-pi, pi].
+    """
+    # positive quaternion guarantees angle is in [-pi, pi]
+    p = quat_positive(q)
+    pv = quat_imaginary(p)
+    angle = 2.0 * wp.atan2(wp.dot(pv, axis), p.w)
+    return angle
+
+
 ###
 # Unit Quaternions
 ###
@@ -811,6 +828,56 @@ def expand6d(X: mat33f) -> mat66f:
 
     # Return the expanded matrix
     return X_6d
+
+
+###
+# Dynamics
+###
+
+
+@wp.func
+def compute_body_twist_update_with_eom(
+    dt: float32,
+    g: vec3f,
+    inv_m_i: float32,
+    I_i: mat33f,
+    inv_I_i: mat33f,
+    u_i: vec6f,
+    w_i: vec6f,
+) -> tuple[vec3f, vec3f]:
+    # Extract linear and angular parts
+    v_i = screw_linear(u_i)
+    omega_i = screw_angular(u_i)
+    S_i = wp.skew(omega_i)
+    f_i = screw_linear(w_i)
+    tau_i = screw_angular(w_i)
+
+    # Compute velocity update equations
+    v_i_n = v_i + dt * (g + inv_m_i * f_i)
+    omega_i_n = omega_i + dt * inv_I_i @ (-S_i @ (I_i @ omega_i) + tau_i)
+
+    # Return the updated velocities
+    return v_i_n, omega_i_n
+
+
+@wp.func
+def compute_body_pose_update_with_logmap(
+    dt: float32,
+    p_i: transformf,
+    v_i: vec3f,
+    omega_i: vec3f,
+) -> transformf:
+    # Extract linear and angular parts
+    r_i = wp.transform_get_translation(p_i)
+    q_i = wp.transform_get_rotation(p_i)
+
+    # Compute configuration update equations
+    r_i_n = r_i + dt * v_i
+    q_i_n = quat_box_plus(q_i, dt * omega_i)
+    p_i_n = transformf(r_i_n, q_i_n)
+
+    # Return the new pose and twist
+    return p_i_n
 
 
 ###

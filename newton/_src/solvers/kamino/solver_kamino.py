@@ -67,7 +67,7 @@ from .kinematics.resets import (
     reset_state_to_model_default,
     reset_time,
 )
-from .linalg import ConjugateGradientSolver, IterativeSolver, LinearSolverType, LLTBlockedSolver
+from .linalg import ConjugateResidualSolver, IterativeSolver, LinearSolverType, LLTBlockedSolver
 from .solvers.fk import ForwardKinematicsSolver, ForwardKinematicsSolverSettings
 from .solvers.metrics import SolutionMetrics
 from .solvers.padmm import PADMMSettings, PADMMSolver, PADMMWarmStartMode
@@ -314,11 +314,16 @@ class SolverKamino(SolverBase):
         settings.check()
         self._settings: SolverKaminoSettings = settings
 
+        # TODO: We need to rework these checks and potentially handle this check with the dynamics problem
+        # TODO: Also consider raising an error here instead of a warning
+        # Override the linear solver type to an iterative solver if
+        # sparsity is enabled but the provided solver is not iterative
         if self._settings.sparse and not issubclass(self._settings.linear_solver_type, IterativeSolver):
             msg.warning(
-                f"Sparse problem requires iterative solver, but got '{self._settings.linear_solver_type.__name__}'. Switching to 'ConjugateGradientSolver'."
+                f"Sparse dynamics requires an iterative solver, but got '{self._settings.linear_solver_type.__name__}'."
+                " Defaulting to 'ConjugateResidualSolver' as the PADMM linear solver."
             )
-            self._settings.linear_solver_type = ConjugateGradientSolver
+            self._settings.linear_solver_type = ConjugateResidualSolver
 
         # Allocate internal time-varying solver data
         self._data = self._model.data()

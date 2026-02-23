@@ -45,8 +45,8 @@ from newton._src.solvers.kamino.utils.sim.simulator import Simulator, SimulatorS
 
 @wp.kernel
 def _test_control_callback(
-    sim_has_started_resets: wp.bool,
-    sim_reset_index: int32,
+    sim_has_started_resets: wp.array(dtype=wp.bool),
+    sim_reset_index: wp.array(dtype=wp.int32),
     actuated_joint_idx: wp.array(dtype=int32),
     state_t: wp.array(dtype=float32),
     control_tau_j: wp.array(dtype=float32),
@@ -55,12 +55,13 @@ def _test_control_callback(
     An example control callback kernel.
     """
     # Skip if no joint is selected for actuation
-    if not sim_has_started_resets:
+    if not sim_has_started_resets[0]:
         return
 
     # Hack to handle negative reset index
-    if sim_reset_index < 0:
-        sim_reset_index = actuated_joint_idx.size - 1
+    reset_index = sim_reset_index[0]
+    if reset_index < 0:
+        reset_index = actuated_joint_idx.size - 1
 
     # Define the time window for the active external force profile
     t_start = float32(0.0)
@@ -71,20 +72,20 @@ def _test_control_callback(
 
     # Add-hoc torque magnitude based on the selected joint
     # because we want higher actuation for the two hip joints
-    if sim_reset_index == 0 or sim_reset_index == 6:
+    if reset_index == 0 or reset_index == 6:
         torque = 0.1
     else:
         torque = 0.01
 
     # Reverse torque direction for the first leg
-    if sim_reset_index < 6:
+    if reset_index < 6:
         torque = -torque
 
     # Apply a time-dependent external force
     if t >= t_start and t < t_end:
-        control_tau_j[actuated_joint_idx[sim_reset_index]] = torque
+        control_tau_j[actuated_joint_idx[reset_index]] = torque
     else:
-        control_tau_j[actuated_joint_idx[sim_reset_index]] = 0.0
+        control_tau_j[actuated_joint_idx[reset_index]] = 0.0
 
 
 ###
@@ -113,9 +114,7 @@ class Example:
 
         # Define internal counters
         self.sim_steps = 0
-        self.sim_reset_index = -1
-        self.sim_reset_mode = 5
-        self.sim_has_started_resets = False
+        self.sim_reset_mode = 0
 
         # Cache the device and other internal flags
         self.device = device
@@ -153,14 +152,15 @@ class Example:
         settings.solver.padmm.primal_tolerance = 1e-4
         settings.solver.padmm.dual_tolerance = 1e-4
         settings.solver.padmm.compl_tolerance = 1e-4
-        settings.solver.padmm.max_iterations = 200
+        settings.solver.padmm.max_iterations = 100
         settings.solver.padmm.eta = 1e-5
-        settings.solver.padmm.rho_0 = 0.05
+        settings.solver.padmm.rho_0 = 0.02
+        settings.solver.padmm.rho_min = 0.01
         settings.solver.use_solver_acceleration = True
         settings.solver.warmstart_mode = PADMMWarmStartMode.CONTAINERS
         settings.solver.contact_warmstart_method = WarmstarterContacts.Method.GEOM_PAIR_NET_FORCE
         settings.solver.collect_solver_info = False
-        settings.solver.compute_metrics = True
+        settings.solver.compute_metrics = False
 
         # Create a simulator
         msg.notif("Building the simulator...")
@@ -185,6 +185,8 @@ class Example:
             self.actuator_q = wp.zeros(shape=(self.sim.model.size.sum_of_num_actuated_joint_coords,), dtype=float32)
             self.actuator_u = wp.zeros(shape=(self.sim.model.size.sum_of_num_actuated_joint_dofs,), dtype=float32)
             self.actuated_joint_idx = wp.array(self.actuated_joint_idx_np, dtype=int32)
+            self.sim_has_started_resets = wp.full(shape=(1,), dtype=wp.bool, value=False)
+            self.sim_reset_index = wp.full(shape=(1,), dtype=wp.int32, value=-1)
 
         # Define the control callback function that will actuate a single joint
         def test_control_callback(sim: Simulator):
@@ -277,20 +279,23 @@ class Example:
     def update_reset_config(self):
         """Update the reset configuration based on the current reset index and mode."""
         self.sim.data.control.tau_j.zero_()
-        self.sim_has_started_resets = True
+        self.sim_has_started_resets.fill_(True)
+        reset_index = self.sim_reset_index.numpy()[0]
         self.sim_steps = 0
-        self.sim_reset_index = (self.sim_reset_index + 1) % len(self.actuated_joint_idx)
+        reset_index = (reset_index + 1) % len(self.actuated_joint_idx)
         # If all joints have been cycled through, proceed to the next reset mode
-        if self.sim_reset_index == len(self.actuated_joint_idx) - 1:
+        if reset_index == len(self.actuated_joint_idx) - 1:
             self.sim_reset_mode = (self.sim_reset_mode + 1) % 5
-            self.sim_reset_index = -1
-        msg.warning(f"Next sim_reset_index: {self.sim_reset_index}")
+            reset_index = -1
+        self.sim_reset_index.fill_(reset_index)
+        msg.warning(f"Next sim_reset_index: {reset_index}")
         msg.warning(f"Next sim_reset_mode: {self.sim_reset_mode}")
 
     def step(self):
         """Step the simulation."""
         if self.simulate_graph:
             wp.capture_launch(self.simulate_graph)
+            self.sim_steps += self.sim_substeps
         else:
             self.simulate()
 
@@ -338,7 +343,8 @@ class Example:
         if self.sim_steps >= self.max_steps and self.sim_reset_mode == 4:
             msg.notif("Resetting with base pose and specific joint configurations...")
             self.update_reset_config()
-            msg.warning(f"Resetting joint {self.actuated_joint_idx_np[self.sim_reset_index]}...")
+            reset_index = self.sim_reset_index.numpy()[0]
+            msg.warning(f"Resetting joint {self.actuated_joint_idx_np[reset_index]}...")
             R_b = Rotation.from_rotvec(np.pi / 4 * np.array([0, 0, 1]))
             q_b = R_b.as_quat()  # x, y, z, w
             q_base = wp.transformf((0.1, 0.1, 0.3), q_b)
@@ -361,7 +367,7 @@ class Example:
                 dtype=np.float32,
             )
             joint_q_np = np.zeros(self.sim.model.size.sum_of_num_joint_coords, dtype=np.float32)
-            joint_q_np[self.actuated_joint_idx_np[self.sim_reset_index]] = actuated_joint_config[self.sim_reset_index]
+            joint_q_np[self.actuated_joint_idx_np[reset_index]] = actuated_joint_config[reset_index]
             self.joint_q.assign(joint_q_np)
             self.sim.reset(base_q=self.base_q, base_u=self.base_u, joint_q=self.joint_q, joint_u=self.joint_u)
 
@@ -370,7 +376,8 @@ class Example:
         if self.sim_steps >= self.max_steps and self.sim_reset_mode == 5:
             msg.notif("Resetting with base pose and specific actuator configurations...")
             self.update_reset_config()
-            msg.warning(f"Resetting joint {self.actuated_joint_idx_np[self.sim_reset_index]}...")
+            reset_index = self.sim_reset_index.numpy()[0]
+            msg.warning(f"Resetting joint {self.actuated_joint_idx_np[reset_index]}...")
             R_b = Rotation.from_rotvec(np.pi / 4 * np.array([0, 0, 1]))
             q_b = R_b.as_quat()  # x, y, z, w
             q_base = wp.transformf((0.1, 0.1, 0.3), q_b)
@@ -393,7 +400,7 @@ class Example:
                 dtype=np.float32,
             )
             actuator_q_np = np.zeros(self.sim.model.size.sum_of_num_actuated_joint_coords, dtype=np.float32)
-            actuator_q_np[self.sim_reset_index] = actuated_joint_config[self.sim_reset_index]
+            actuator_q_np[reset_index] = actuated_joint_config[reset_index]
             self.actuator_q.assign(actuator_q_np)
             self.sim.reset(
                 base_q=self.base_q, base_u=self.base_u, actuator_q=self.actuator_q, actuator_u=self.actuator_u

@@ -131,7 +131,11 @@ class Example:
         msg.notif("Constructing builder from imported USD ...")
         importer = USDImporter()
         self.builder: ModelBuilder = make_homogeneous_builder(
-            num_worlds=num_worlds, build_fn=importer.import_from, load_static_geometry=True, source=USD_MODEL_PATH
+            num_worlds=num_worlds,
+            build_fn=importer.import_from,
+            load_drive_dynamics=False,
+            load_static_geometry=True,
+            source=USD_MODEL_PATH,
         )
         msg.info("total mass: %f", self.builder.worlds[0].mass_total)
         msg.info("total diag inertia: %f", self.builder.worlds[0].inertia_total)

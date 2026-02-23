@@ -985,7 +985,7 @@ class BenchmarkMetrics:
                 "$\\Vert \\, v^+ - D \\cdot \\lambda - v_f \\, \\Vert_\\infty $",
                 "$\\Vert \\, \\lambda - P_K(\\lambda) \\, \\Vert_\\infty $",
                 "$\\Vert \\, v_a^+ - P_{K^*}(v_a^+) \\, \\Vert_\\infty $",
-                "$\\Vert \\, \\lambda^T @ v_a^+ \\, \\Vert_\\infty $",
+                "$\\Vert \\, \\lambda^T \\, v_a^+ \\, \\Vert_\\infty $",
                 "$\\Vert \\, \\lambda - P_{K^*}(\\lambda - v_a^+(\\lambda)) \\, \\Vert_\\infty $",
                 "$ 0.5 \\, \\lambda^T \\, D \\, \\lambda + \\lambda^T \\, (v_f + s) $",
                 "$ 0.5 \\, \\lambda^T \\, D \\, \\lambda + v_f^T \\, \\lambda $",

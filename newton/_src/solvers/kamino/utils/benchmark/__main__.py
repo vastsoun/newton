@@ -33,21 +33,36 @@ from newton._src.solvers.kamino.utils.sim import SimulatorSettings
 # Constants
 ###
 
-SUPPORTED_BENCHMARK_RUN_MODES = ["total", "perstep", "solver", "accuracy", "import"]
+SUPPORTED_BENCHMARK_RUN_MODES = ["total", "stepstats", "convergence", "accuracy", "import"]
 """
 A list of supported benchmark run modes that determine the level of metrics collected during execution.
 
+Each mode includes the metrics of the previous modes, with increasing levels of detail.
+
+The supported modes are as follows:
+
 - "total":
-    Only collects total runtime and final memory usage metrics.
+    Only collects total runtime and final memory usage of each solver configuration and problem.\n
+    This mode is intended to be used for a high-level comparison of the overall throughput of
+    different solver configurations across problems, without detailed step-by-step metrics.
 
-- "perstep":
-    Collects detailed timing metrics for each simulation step to compute throughput statistics.
+- "stepstats":
+    Collects detailed timings of each simulation step to compute throughput statistics.\n
+    This mode lightly impacts overall throughput as it requires synchronizing the device at
+    each  step to measure accurate timings. It is intended to be used for analyzing the step
+    time distribution and variability across different solver configurations.
 
-- "solver":
-    Collects solver performance metrics such as PADMM iterations and residuals.
+- "convergence":
+    Collects solver performance metrics such as PADMM iterations and residuals.\n
+    This mode moderately impacts overall throughput as it requires additional computation to
+    collect and store solver metrics at each step. It is intended to be used for analyzing
+    solver convergence behavior and its relationship to step time.
 
 - "accuracy":
-    Collects solver performance metrics that can be used to evaluate the physical accuracy of the simulation.
+    Collects solver performance metrics that evaluate the physical accuracy of the simulation.
+    This mode significantly impacts overall throughput as it requires additional computation to
+    evaluate the physical accuracy metrics at each step. This is intended to be used for in-depth
+    analysis and to evaluate the trade-off between fast convergence and physical correctness.
 
 - "import":
     Generates plots for the collected metrics given an HDF5 file containing benchmark results.\n
@@ -96,7 +111,7 @@ def parse_benchmark_arguments():
         "--num-steps",
         type=int,
         default=100,
-        help="Sets the number of simulation steps to execute. Defaults to `5000`.",
+        help="Sets the number of simulation steps to execute. Defaults to `100`.",
     )
     parser.add_argument(
         "--dt",
@@ -129,14 +144,14 @@ def parse_benchmark_arguments():
         type=str,
         choices=SUPPORTED_BENCHMARK_RUN_MODES,
         default="accuracy",
-        help=f"Defines the benchmark mode to run. Defaults to 'total'.\n{SUPPORTED_BENCHMARK_RUN_MODES}",
+        help=f"Defines the benchmark mode to run. Defaults to 'accuracy'.\n{SUPPORTED_BENCHMARK_RUN_MODES}",
     )
     parser.add_argument(
         "--problem",
         type=str,
         choices=BenchmarkProblemNameToConfigFn.keys(),
         default="dr_legs",
-        help="Defines a single benchmark problem to run. Defaults to 'dr_legs'.",
+        help="Defines a single problem to benchmark. Defaults to 'dr_legs'. Ignored if '--problem-set' is provided.",
     )
     parser.add_argument(
         "--problem-set",
@@ -223,11 +238,11 @@ def benchmark_run(args: argparse.Namespace):
         collect_step_metrics = False
         collect_solver_metrics = False
         collect_physics_metrics = False
-    elif args.mode == "perstep":
+    elif args.mode == "stepstats":
         collect_step_metrics = True
         collect_solver_metrics = False
         collect_physics_metrics = False
-    elif args.mode == "solver":
+    elif args.mode == "convergence":
         collect_step_metrics = True
         collect_solver_metrics = True
         collect_physics_metrics = False

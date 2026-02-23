@@ -23,7 +23,7 @@ import numpy as np
 from .....core.types import override
 from ...solver_kamino import SolverKamino, SolverKaminoSettings
 from .configs import load_solver_configs_to_hdf5, save_solver_configs_to_hdf5
-from .output import render_subcolumn_metrics_table_rich
+from .render import render_subcolumn_metrics_table_rich
 
 ###
 # Module interface

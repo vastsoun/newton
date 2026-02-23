@@ -15,6 +15,8 @@
 
 import os
 from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 from rich import box
@@ -26,11 +28,173 @@ from ...linalg.linear import LinearSolverTypeToName
 from ...solver_kamino import SolverKaminoSettings
 
 ###
-# Metrics Data
+# Module interface
+###
+
+__all__ = [
+    "render_solver_configs_table",
+    "render_subcolumn_metrics_table",
+    "render_subcolumn_table",
+    "render_table",
+]
+
+
+###
+# Internals
 ###
 
 
-def render_subcolumn_metrics_table_rich(
+def _add_table_column_group(
+    table: Table,
+    group_name: str,
+    subcol_headers: list[str],
+    justify: str = "left",
+    color: str | None = None,
+) -> None:
+    for i, sub in enumerate(subcol_headers):
+        header = Text(justify="left")
+        if i == 0:
+            header.append(group_name, style=f"bold {color}" if color else "bold")
+        header.append("\n")
+        header.append(sub, style=f"dim {color}" if color else "dim")
+        col_justify = "center" if justify == "center" else justify
+        table.add_column(header=header, justify=col_justify, no_wrap=True)
+
+
+def _render_table_to_console_and_file(
+    table: Table,
+    path: str | None = None,
+    to_console: bool = False,
+    max_width: int | None = None,
+):
+    if path is not None:
+        path_dir = os.path.dirname(path)
+        if path_dir and not os.path.exists(path_dir):
+            raise ValueError(
+                f"Directory for path '{path}' does not exist. Please create the directory before exporting the table."
+            )
+        with open(path, "w", encoding="utf-8") as f:
+            console = Console(file=f, width=max_width)
+            console.print(table, crop=False)
+    if to_console:
+        console = Console(width=max_width)
+        console.rule()
+        console.print(table, crop=False)
+        console.rule()
+
+
+def _format_cell(x, fmt):
+    if callable(fmt):
+        return fmt(x)
+    if isinstance(fmt, str):
+        try:
+            return format(x, fmt)
+        except Exception:
+            return str(x)
+    if isinstance(x, (bool, np.bool_)):
+        return str(x)
+    if isinstance(x, (int, np.integer)):
+        return str(x)
+    if isinstance(x, (float, np.floating)):
+        return f"{float(x):.4g}"
+    return str(x)
+
+
+@dataclass
+class ColumnGroup:
+    header: str
+    subheaders: list[str]
+    subfmt: list[str | Callable | None] | None = None
+    justify: str = "left"
+    color: str | None = None
+
+
+###
+# Renderers
+###
+
+
+def render_table(
+    title: str,
+    col_headers: list[str],
+    col_colors: list[str],
+    col_fmt: list[str | Callable | None] | None,
+    data: list[Any] | np.ndarray,
+    transposed: bool = False,
+    max_width: int | None = None,
+    path: str | None = None,
+    to_console: bool = False,
+):
+    # Initialize the table with appropriate columns and styling
+    table = Table(
+        title=title,
+        show_header=True,
+        box=box.SIMPLE_HEAVY,
+        show_lines=True,
+        pad_edge=True,
+    )
+
+    # Add groups of columns based on the specified groups to include in the table
+    for header, color in zip(col_headers, col_colors, strict=True):
+        cheader = Text(justify="left")
+        cheader.append(header, style=f"bold {color}" if color else "bold")
+        table.add_column(header=cheader, justify="left", no_wrap=True)
+
+    # Add data rows
+    # If the data is transposed we need to extract from per-column format
+    if transposed:
+        ncols = len(data)
+        nrows = len(data[0])
+        for r in range(nrows):
+            rowdata = []
+            for c in range(ncols):
+                rowdata.append(_format_cell(data[c][r], col_fmt[c] if col_fmt else None))
+            table.add_row(*rowdata)
+    else:
+        for row in data:
+            rowdata = []
+            for rc in range(len(col_headers)):
+                rowdata.append(_format_cell(row[rc], col_fmt[rc] if col_fmt else None))
+            table.add_row(*rowdata)
+
+    # Render the table to the console and/or save to file
+    _render_table_to_console_and_file(table, path=path, to_console=to_console, max_width=max_width)
+
+
+def render_subcolumn_table(
+    title: str,
+    cols: list[ColumnGroup],
+    rows: list[list[Any]] | np.ndarray,
+    max_width: int | None = None,
+    path: str | None = None,
+    to_console: bool = False,
+):
+    # Initialize the table with appropriate columns and styling
+    table = Table(
+        title=title,
+        show_header=True,
+        box=box.SIMPLE_HEAVY,
+        show_lines=True,
+        pad_edge=True,
+    )
+
+    # Add groups of columns based on the specified groups to include in the table
+    for cgroup in cols:
+        _add_table_column_group(table, cgroup.header, cgroup.subheaders, color=cgroup.color, justify=cgroup.justify)
+
+    # Add data rows
+    for row in rows:
+        rowdata = []
+        for rc in range(len(cols)):
+            for rsc in range(len(cols[rc].subheaders)):
+                rowdata.append(_format_cell(row[rc][rsc], cols[rc].subfmt[rsc] if cols[rc].subfmt else None))
+        table.add_row(*rowdata)
+
+    # Render the table to the console and/or save to file
+    _render_table_to_console_and_file(table, path=path, to_console=to_console, max_width=max_width)
+
+
+def render_subcolumn_metrics_table(
     title: str,
     row_header: str,
     col_titles: list[str],
@@ -111,20 +275,7 @@ def render_subcolumn_metrics_table_rich(
         table.add_row(*row)
 
     # Render the table to the console and/or save to file
-    if path is not None:
-        path_dir = os.path.dirname(path)
-        if path_dir and not os.path.exists(path_dir):
-            raise ValueError(
-                f"Directory for path '{path}' does not exist. Please create the directory before exporting the table."
-            )
-        with open(path, "w", encoding="utf-8") as f:
-            console = Console(file=f, width=max_width)
-            console.print(table, crop=False)
-    if to_console:
-        console = Console(width=max_width)
-        console.rule()
-        console.print(table, crop=False)
-        console.rule()
+    _render_table_to_console_and_file(table, path=path, to_console=to_console, max_width=max_width)
 
 
 ###
@@ -163,24 +314,6 @@ def render_solver_configs_table(
         IOError:
             If there is an error writing the table to the specified file path.
     """
-
-    # Define a helper function to add a group of columns with a shared header
-    def add_column_group(
-        table: Table,
-        group_name: str,
-        subcol_headers: list[str],
-        justify: str = "left",
-        color: str | None = None,
-    ) -> None:
-        for i, sub in enumerate(subcol_headers):
-            header = Text(justify="left")
-            if i == 0:
-                header.append(group_name, style=f"bold {color}" if color else "bold")
-            header.append("\n")
-            header.append(sub, style=f"dim {color}" if color else "dim")
-            col_justify = "center" if justify == "center" else justify
-            table.add_column(header=header, justify=col_justify, no_wrap=True)
-
     # Initialize the table with appropriate columns and styling
     table = Table(
         title="Solver Configurations Summary",
@@ -195,17 +328,17 @@ def render_solver_configs_table(
         groups = ["linear", "padmm"]
 
     # Add the first column for configuration names
-    add_column_group(table, "Solver Configuration", ["Name"], color="white", justify="left")
+    _add_table_column_group(table, "Solver Configuration", ["Name"], color="white", justify="left")
 
     # Add groups of columns based on the specified groups to include in the table
     if "cts" in groups:
-        add_column_group(table, "Constraints", ["alpha", "beta", "gamma", "delta", "precond"], color="green")
+        _add_table_column_group(table, "Constraints", ["alpha", "beta", "gamma", "delta", "precond"], color="green")
     if "sparse" in groups:
-        add_column_group(table, "Representation", ["sparse", "sparse_jacobian"], color="yellow")
+        _add_table_column_group(table, "Representation", ["sparse", "sparse_jacobian"], color="yellow")
     if "linear" in groups:
-        add_column_group(table, "Linear Solver", ["type", "kwargs"], color="magenta")
+        _add_table_column_group(table, "Linear Solver", ["type", "kwargs"], color="magenta")
     if "padmm" in groups:
-        add_column_group(
+        _add_table_column_group(
             table,
             "PADMM",
             [
@@ -224,7 +357,7 @@ def render_solver_configs_table(
             color="cyan",
         )
     if "warmstart" in groups:
-        add_column_group(table, "Warmstarting", ["mode", "contact_method"], color="blue")
+        _add_table_column_group(table, "Warmstarting", ["mode", "contact_method"], color="blue")
 
     # Add rows for each configuration
     for name, cfg in configs.items():
@@ -264,12 +397,4 @@ def render_solver_configs_table(
         table.add_row(name, *cfg_row)
 
     # Render the table to the console and/or save to file
-    if path is not None:
-        with open(path, "w", encoding="utf-8") as f:
-            console = Console(file=f, width=500)
-            console.print(table, crop=False)
-    if to_console:
-        console = Console(width=None)
-        console.rule()
-        console.print(table, crop=False)
-        console.rule()
+    _render_table_to_console_and_file(table, path=path, to_console=to_console, max_width=500)

@@ -33,7 +33,7 @@ from .problems import (
 )
 from .render import (
     render_solver_configs_table,
-    render_subcolumn_metrics_table_rich,
+    render_subcolumn_metrics_table,
 )
 from .runner import (
     BenchmarkSim,
@@ -64,7 +64,7 @@ __all__ = [
     "make_benchmark_problems",
     "make_solver_config_default",
     "render_solver_configs_table",
-    "render_subcolumn_metrics_table_rich",
+    "render_subcolumn_metrics_table",
     "run_single_benchmark",
     "run_single_benchmark_silent",
     "run_single_benchmark_with_progress",

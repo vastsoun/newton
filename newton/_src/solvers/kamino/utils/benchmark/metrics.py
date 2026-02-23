@@ -14,7 +14,7 @@
 # limitations under the License.
 
 import os
-from typing import Literal
+from typing import Any, Literal
 
 import git
 import h5py
@@ -23,7 +23,11 @@ import numpy as np
 from .....core.types import override
 from ...solver_kamino import SolverKamino, SolverKaminoSettings
 from .configs import load_solver_configs_to_hdf5, save_solver_configs_to_hdf5
-from .render import render_subcolumn_metrics_table_rich
+from .render import (
+    ColumnGroup,
+    render_subcolumn_metrics_table,
+    render_subcolumn_table,
+)
 
 ###
 # Module interface
@@ -617,7 +621,7 @@ class BenchmarkMetrics:
         total_metric_data = [self.memory_used, self.total_time, self.total_fps]
         total_metric_names = ["Memory (MB)", "Total Time (s)", "Total FPS (Hz)"]
         total_metric_formats = [lambda x: f"{x / (1024 * 1024):.2f}", ".2f", ".2f"]
-        render_subcolumn_metrics_table_rich(
+        render_subcolumn_metrics_table(
             title="Solver Benchmark: Total Metrics",
             row_header="Solver Configuration",
             row_titles=self._config_names,
@@ -646,25 +650,46 @@ class BenchmarkMetrics:
             raise ValueError("Step time metrics are not available in this BenchmarkMetrics instance.")
 
         # For each problem, generate the table string for the step time metrics summary and print it to the console;
+        units_scaling = {"s": 1.0, "ms": 1e3, "us": 1e6}[units]
         for prob_idx, prob_name in enumerate(self._problem_names):
             problem_table_path = f"{path}_{prob_name}.txt" if path is not None else None
-            col_titles = [f"Step Time ({units})"]
-            subcol_titles = ["median", "mean", "max", "min"]
-            units_scaling = {"s": 1.0, "ms": 1e3, "us": 1e6}[units]
-            metric_medians = (self.step_time_stats.median[prob_idx, :] * units_scaling).reshape(1, -1)
-            metric_means = (self.step_time_stats.mean[prob_idx, :] * units_scaling).reshape(1, -1)
-            metric_maxs = (self.step_time_stats.max[prob_idx, :] * units_scaling).reshape(1, -1)
-            metric_mins = (self.step_time_stats.min[prob_idx, :] * units_scaling).reshape(1, -1)
-            subcol_data = np.array([metric_medians, metric_means, metric_maxs, metric_mins])
-            subcol_formats = [".3f", ".3f", ".3f", ".3f"]
-            render_subcolumn_metrics_table_rich(
+
+            cols: list[ColumnGroup] = []
+            cols.append(
+                ColumnGroup(
+                    header="Solver Configuration",
+                    subheaders=["Name"],
+                    justify="left",
+                    color="white",
+                )
+            )
+            cols.append(
+                ColumnGroup(
+                    header=f"Step Time ({units})",
+                    subheaders=["median", "mean", "max", "min"],
+                    subfmt=[".3f", ".3f", ".3f", ".3f"],
+                    justify="left",
+                    color="cyan",
+                )
+            )
+            rows: list[list[Any]] = []
+            for config_idx, config_name in enumerate(self._config_names):
+                rows.append(
+                    [
+                        [config_name],
+                        [
+                            self.step_time_stats.median[prob_idx, config_idx] * units_scaling,
+                            self.step_time_stats.mean[prob_idx, config_idx] * units_scaling,
+                            self.step_time_stats.max[prob_idx, config_idx] * units_scaling,
+                            self.step_time_stats.min[prob_idx, config_idx] * units_scaling,
+                        ],
+                    ]
+                )
+            render_subcolumn_table(
                 title=f"Solver Benchmark: Step Time - {prob_name}",
-                row_header="Solver Configuration",
-                row_titles=self._config_names,
-                col_titles=col_titles,
-                subcol_titles=subcol_titles,
-                subcol_data=subcol_data,
-                subcol_formats=subcol_formats,
+                cols=cols,
+                rows=rows,
+                max_width=300,
                 path=problem_table_path,
                 to_console=True,
             )
@@ -689,52 +714,104 @@ class BenchmarkMetrics:
         # For each problem, generate the table string for the PADMM solver metrics summary and print it to the console;
         for prob_idx, prob_name in enumerate(self._problem_names):
             problem_table_path = f"{path}_{prob_name}.txt" if path is not None else None
-            col_titles = ["Iterations", "r_p", "r_d", "r_c"]
-            subcol_titles = ["median", "mean", "max", "min"]
-            metric_medians = np.array(
-                [
-                    self.solver_metrics.padmm_iters_stats.median[prob_idx, :],
-                    self.solver_metrics.padmm_r_p_stats.median[prob_idx, :],
-                    self.solver_metrics.padmm_r_d_stats.median[prob_idx, :],
-                    self.solver_metrics.padmm_r_c_stats.median[prob_idx, :],
-                ]
+
+            cols: list[ColumnGroup] = []
+            cols.append(
+                ColumnGroup(
+                    header="Solver Configuration",
+                    subheaders=["Name"],
+                    justify="left",
+                    color="white",
+                )
             )
-            metric_means = np.array(
-                [
-                    self.solver_metrics.padmm_iters_stats.mean[prob_idx, :],
-                    self.solver_metrics.padmm_r_p_stats.mean[prob_idx, :],
-                    self.solver_metrics.padmm_r_d_stats.mean[prob_idx, :],
-                    self.solver_metrics.padmm_r_c_stats.mean[prob_idx, :],
-                ]
+            cols.append(
+                ColumnGroup(
+                    header="Converged",
+                    subheaders=["Count", "Rate"],
+                    subfmt=["d", ".2%"],
+                    justify="left",
+                    color="magenta",
+                )
             )
-            metric_maxs = np.array(
-                [
-                    self.solver_metrics.padmm_iters_stats.max[prob_idx, :],
-                    self.solver_metrics.padmm_r_p_stats.max[prob_idx, :],
-                    self.solver_metrics.padmm_r_d_stats.max[prob_idx, :],
-                    self.solver_metrics.padmm_r_c_stats.max[prob_idx, :],
-                ]
+            cols.append(
+                ColumnGroup(
+                    header="Iterations",
+                    subheaders=["median", "mean", "max", "min"],
+                    subfmt=[".0f", ".0f", ".0f", ".0f"],
+                    justify="left",
+                    color="cyan",
+                )
             )
-            metric_mins = np.array(
-                [
-                    self.solver_metrics.padmm_iters_stats.min[prob_idx, :],
-                    self.solver_metrics.padmm_r_p_stats.min[prob_idx, :],
-                    self.solver_metrics.padmm_r_d_stats.min[prob_idx, :],
-                    self.solver_metrics.padmm_r_c_stats.min[prob_idx, :],
-                ]
+            cols.append(
+                ColumnGroup(
+                    header="Primal Residual (r_p)",
+                    subheaders=["median", "mean", "max", "min"],
+                    subfmt=[".3e", ".3e", ".3e", ".3e"],
+                    justify="left",
+                    color="red",
+                )
             )
-            subcol_data = np.array([metric_medians, metric_means, metric_maxs, metric_mins])
-            subcol_formats = [".3e", ".3e", ".3e", ".3e"]
-            render_subcolumn_metrics_table_rich(
-                title=f"Solver Benchmark: PADMM Metrics - {prob_name}",
-                row_header="Solver Configuration",
-                row_titles=self._config_names,
-                col_titles=col_titles,
-                subcol_titles=subcol_titles,
-                subcol_data=subcol_data,
-                subcol_formats=subcol_formats,
-                max_width=250,
+            cols.append(
+                ColumnGroup(
+                    header="Dual Residual (r_d)",
+                    subheaders=["median", "mean", "max", "min"],
+                    subfmt=[".3e", ".3e", ".3e", ".3e"],
+                    justify="left",
+                    color="blue",
+                )
+            )
+            cols.append(
+                ColumnGroup(
+                    header="Complementarity Residual (r_c)",
+                    subheaders=["median", "mean", "max", "min"],
+                    subfmt=[".3e", ".3e", ".3e", ".3e"],
+                    justify="left",
+                    color="green",
+                )
+            )
+            rows: list[list[Any]] = []
+            for config_idx, config_name in enumerate(self._config_names):
+                success_count = self.solver_metrics.padmm_success_stats.count_ones[prob_idx, config_idx]
+                fail_count = self.solver_metrics.padmm_success_stats.count_zeros[prob_idx, config_idx]
+                total_count = success_count + fail_count
+                success_rate = success_count / total_count if total_count > 0 else 0.0
+                rows.append(
+                    [
+                        [config_name],
+                        [success_count, success_rate],
+                        [
+                            self.solver_metrics.padmm_iters_stats.median[prob_idx, config_idx],
+                            self.solver_metrics.padmm_iters_stats.mean[prob_idx, config_idx],
+                            self.solver_metrics.padmm_iters_stats.max[prob_idx, config_idx],
+                            self.solver_metrics.padmm_iters_stats.min[prob_idx, config_idx],
+                        ],
+                        [
+                            self.solver_metrics.padmm_r_p_stats.median[prob_idx, config_idx],
+                            self.solver_metrics.padmm_r_p_stats.mean[prob_idx, config_idx],
+                            self.solver_metrics.padmm_r_p_stats.max[prob_idx, config_idx],
+                            self.solver_metrics.padmm_r_p_stats.min[prob_idx, config_idx],
+                        ],
+                        [
+                            self.solver_metrics.padmm_r_d_stats.median[prob_idx, config_idx],
+                            self.solver_metrics.padmm_r_d_stats.mean[prob_idx, config_idx],
+                            self.solver_metrics.padmm_r_d_stats.max[prob_idx, config_idx],
+                            self.solver_metrics.padmm_r_d_stats.min[prob_idx, config_idx],
+                        ],
+                        [
+                            self.solver_metrics.padmm_r_c_stats.median[prob_idx, config_idx],
+                            self.solver_metrics.padmm_r_c_stats.mean[prob_idx, config_idx],
+                            self.solver_metrics.padmm_r_c_stats.max[prob_idx, config_idx],
+                            self.solver_metrics.padmm_r_c_stats.min[prob_idx, config_idx],
+                        ],
+                    ],
+                )
+            render_subcolumn_table(
+                title=f"Solver Benchmark: PADMM Convergence - {prob_name}",
+                cols=cols,
+                rows=rows,
+                max_width=300,
                 path=problem_table_path,
+                to_console=True,
             )
 
     def render_physics_metrics_table(self, path: str | None = None):
@@ -756,95 +833,206 @@ class BenchmarkMetrics:
         # For each problem, generate the table string for the physics metrics summary and print it to the console;
         for prob_idx, prob_name in enumerate(self._problem_names):
             problem_table_path = f"{path}_{prob_name}.txt" if path is not None else None
-            col_titles = [
-                "r_eom",
-                "r_kinematics",
-                "r_cts_joints",
-                "r_cts_limits",
-                "r_cts_contacts",
-                "r_v_plus",
-                "r_ncp_primal",
-                "r_ncp_dual",
-                "r_ncp_compl",
-                "r_vi_natmap",
-                "f_ncp",
-                "f_ccp",
-            ]
-            subcol_titles = ["median", "mean", "max", "min"]
-            metric_medians = np.array(
-                [
-                    self.physics_metrics.r_eom_stats.median[prob_idx, :],
-                    self.physics_metrics.r_kinematics_stats.median[prob_idx, :],
-                    self.physics_metrics.r_cts_joints_stats.median[prob_idx, :],
-                    self.physics_metrics.r_cts_limits_stats.median[prob_idx, :],
-                    self.physics_metrics.r_cts_contacts_stats.median[prob_idx, :],
-                    self.physics_metrics.r_v_plus_stats.median[prob_idx, :],
-                    self.physics_metrics.r_ncp_primal_stats.median[prob_idx, :],
-                    self.physics_metrics.r_ncp_dual_stats.median[prob_idx, :],
-                    self.physics_metrics.r_ncp_compl_stats.median[prob_idx, :],
-                    self.physics_metrics.r_vi_natmap_stats.median[prob_idx, :],
-                    self.physics_metrics.f_ncp_stats.median[prob_idx, :],
-                    self.physics_metrics.f_ccp_stats.median[prob_idx, :],
-                ]
+            cols: list[ColumnGroup] = []
+            cols.append(
+                ColumnGroup(
+                    header="Solver Configuration",
+                    subheaders=["Name"],
+                    justify="left",
+                    color="white",
+                )
             )
-            metric_means = np.array(
-                [
-                    self.physics_metrics.r_eom_stats.mean[prob_idx, :],
-                    self.physics_metrics.r_kinematics_stats.mean[prob_idx, :],
-                    self.physics_metrics.r_cts_joints_stats.mean[prob_idx, :],
-                    self.physics_metrics.r_cts_limits_stats.mean[prob_idx, :],
-                    self.physics_metrics.r_cts_contacts_stats.mean[prob_idx, :],
-                    self.physics_metrics.r_v_plus_stats.mean[prob_idx, :],
-                    self.physics_metrics.r_ncp_primal_stats.mean[prob_idx, :],
-                    self.physics_metrics.r_ncp_dual_stats.mean[prob_idx, :],
-                    self.physics_metrics.r_ncp_compl_stats.mean[prob_idx, :],
-                    self.physics_metrics.r_vi_natmap_stats.mean[prob_idx, :],
-                    self.physics_metrics.f_ncp_stats.mean[prob_idx, :],
-                    self.physics_metrics.f_ccp_stats.mean[prob_idx, :],
-                ]
+            cols.append(
+                ColumnGroup(
+                    header="r_eom",
+                    subheaders=["median", "mean", "max", "min"],
+                    subfmt=[".3e", ".3e", ".3e", ".3e"],
+                    justify="left",
+                    color="cyan",
+                )
             )
-            metric_maxs = np.array(
-                [
-                    self.physics_metrics.r_eom_stats.max[prob_idx, :],
-                    self.physics_metrics.r_kinematics_stats.max[prob_idx, :],
-                    self.physics_metrics.r_cts_joints_stats.max[prob_idx, :],
-                    self.physics_metrics.r_cts_limits_stats.max[prob_idx, :],
-                    self.physics_metrics.r_cts_contacts_stats.max[prob_idx, :],
-                    self.physics_metrics.r_v_plus_stats.max[prob_idx, :],
-                    self.physics_metrics.r_ncp_primal_stats.max[prob_idx, :],
-                    self.physics_metrics.r_ncp_dual_stats.max[prob_idx, :],
-                    self.physics_metrics.r_ncp_compl_stats.max[prob_idx, :],
-                    self.physics_metrics.r_vi_natmap_stats.max[prob_idx, :],
-                    self.physics_metrics.f_ncp_stats.max[prob_idx, :],
-                    self.physics_metrics.f_ccp_stats.max[prob_idx, :],
-                ]
+            cols.append(
+                ColumnGroup(
+                    header="r_kinematics",
+                    subheaders=["median", "mean", "max", "min"],
+                    subfmt=[".3e", ".3e", ".3e", ".3e"],
+                    justify="left",
+                    color="cyan",
+                )
             )
-            metric_mins = np.array(
-                [
-                    self.physics_metrics.r_eom_stats.min[prob_idx, :],
-                    self.physics_metrics.r_kinematics_stats.min[prob_idx, :],
-                    self.physics_metrics.r_cts_joints_stats.min[prob_idx, :],
-                    self.physics_metrics.r_cts_limits_stats.min[prob_idx, :],
-                    self.physics_metrics.r_cts_contacts_stats.min[prob_idx, :],
-                    self.physics_metrics.r_v_plus_stats.min[prob_idx, :],
-                    self.physics_metrics.r_ncp_primal_stats.min[prob_idx, :],
-                    self.physics_metrics.r_ncp_dual_stats.min[prob_idx, :],
-                    self.physics_metrics.r_ncp_compl_stats.min[prob_idx, :],
-                    self.physics_metrics.r_vi_natmap_stats.min[prob_idx, :],
-                    self.physics_metrics.f_ncp_stats.min[prob_idx, :],
-                    self.physics_metrics.f_ccp_stats.min[prob_idx, :],
-                ]
+            cols.append(
+                ColumnGroup(
+                    header="r_cts_joints",
+                    subheaders=["median", "mean", "max", "min"],
+                    subfmt=[".3e", ".3e", ".3e", ".3e"],
+                    justify="left",
+                    color="cyan",
+                )
             )
-            subcol_data = np.array([metric_medians, metric_means, metric_maxs, metric_mins])
-            subcol_formats = [".3e", ".3e", ".3e", ".3e"]
-            render_subcolumn_metrics_table_rich(
+            cols.append(
+                ColumnGroup(
+                    header="r_cts_limits",
+                    subheaders=["median", "mean", "max", "min"],
+                    subfmt=[".3e", ".3e", ".3e", ".3e"],
+                    justify="left",
+                    color="cyan",
+                )
+            )
+            cols.append(
+                ColumnGroup(
+                    header="r_cts_contacts",
+                    subheaders=["median", "mean", "max", "min"],
+                    subfmt=[".3e", ".3e", ".3e", ".3e"],
+                    justify="left",
+                    color="cyan",
+                )
+            )
+            cols.append(
+                ColumnGroup(
+                    header="r_v_plus",
+                    subheaders=["median", "mean", "max", "min"],
+                    subfmt=[".3e", ".3e", ".3e", ".3e"],
+                    justify="left",
+                    color="cyan",
+                )
+            )
+            cols.append(
+                ColumnGroup(
+                    header="r_ncp_primal",
+                    subheaders=["median", "mean", "max", "min"],
+                    subfmt=[".3e", ".3e", ".3e", ".3e"],
+                    justify="left",
+                    color="cyan",
+                )
+            )
+            cols.append(
+                ColumnGroup(
+                    header="r_ncp_dual",
+                    subheaders=["median", "mean", "max", "min"],
+                    subfmt=[".3e", ".3e", ".3e", ".3e"],
+                    justify="left",
+                    color="cyan",
+                )
+            )
+            cols.append(
+                ColumnGroup(
+                    header="r_ncp_compl",
+                    subheaders=["median", "mean", "max", "min"],
+                    subfmt=[".3e", ".3e", ".3e", ".3e"],
+                    justify="left",
+                    color="cyan",
+                )
+            )
+            cols.append(
+                ColumnGroup(
+                    header="r_vi_natmap",
+                    subheaders=["median", "mean", "max", "min"],
+                    subfmt=[".3e", ".3e", ".3e", ".3e"],
+                    justify="left",
+                    color="cyan",
+                )
+            )
+            cols.append(
+                ColumnGroup(
+                    header="f_ncp",
+                    subheaders=["median", "mean", "max", "min"],
+                    subfmt=[".3e", ".3e", ".3e", ".3e"],
+                    justify="left",
+                    color="cyan",
+                )
+            )
+            cols.append(
+                ColumnGroup(
+                    header="f_ccp",
+                    subheaders=["median", "mean", "max", "min"],
+                    subfmt=[".3e", ".3e", ".3e", ".3e"],
+                    justify="left",
+                    color="cyan",
+                )
+            )
+            rows: list[list[Any]] = []
+            for config_idx, config_name in enumerate(self._config_names):
+                rows.append(
+                    [
+                        [config_name],
+                        [
+                            self.physics_metrics.r_eom_stats.median[prob_idx, config_idx],
+                            self.physics_metrics.r_eom_stats.mean[prob_idx, config_idx],
+                            self.physics_metrics.r_eom_stats.max[prob_idx, config_idx],
+                            self.physics_metrics.r_eom_stats.min[prob_idx, config_idx],
+                        ],
+                        [
+                            self.physics_metrics.r_kinematics_stats.median[prob_idx, config_idx],
+                            self.physics_metrics.r_kinematics_stats.mean[prob_idx, config_idx],
+                            self.physics_metrics.r_kinematics_stats.max[prob_idx, config_idx],
+                            self.physics_metrics.r_kinematics_stats.min[prob_idx, config_idx],
+                        ],
+                        [
+                            self.physics_metrics.r_cts_joints_stats.median[prob_idx, config_idx],
+                            self.physics_metrics.r_cts_joints_stats.mean[prob_idx, config_idx],
+                            self.physics_metrics.r_cts_joints_stats.max[prob_idx, config_idx],
+                            self.physics_metrics.r_cts_joints_stats.min[prob_idx, config_idx],
+                        ],
+                        [
+                            self.physics_metrics.r_cts_limits_stats.median[prob_idx, config_idx],
+                            self.physics_metrics.r_cts_limits_stats.mean[prob_idx, config_idx],
+                            self.physics_metrics.r_cts_limits_stats.max[prob_idx, config_idx],
+                            self.physics_metrics.r_cts_limits_stats.min[prob_idx, config_idx],
+                        ],
+                        [
+                            self.physics_metrics.r_cts_contacts_stats.median[prob_idx, config_idx],
+                            self.physics_metrics.r_cts_contacts_stats.mean[prob_idx, config_idx],
+                            self.physics_metrics.r_cts_contacts_stats.max[prob_idx, config_idx],
+                            self.physics_metrics.r_cts_contacts_stats.min[prob_idx, config_idx],
+                        ],
+                        [
+                            self.physics_metrics.r_v_plus_stats.median[prob_idx, config_idx],
+                            self.physics_metrics.r_v_plus_stats.mean[prob_idx, config_idx],
+                            self.physics_metrics.r_v_plus_stats.max[prob_idx, config_idx],
+                            self.physics_metrics.r_v_plus_stats.min[prob_idx, config_idx],
+                        ],
+                        [
+                            self.physics_metrics.r_ncp_primal_stats.median[prob_idx, config_idx],
+                            self.physics_metrics.r_ncp_primal_stats.mean[prob_idx, config_idx],
+                            self.physics_metrics.r_ncp_primal_stats.max[prob_idx, config_idx],
+                            self.physics_metrics.r_ncp_primal_stats.min[prob_idx, config_idx],
+                        ],
+                        [
+                            self.physics_metrics.r_ncp_dual_stats.median[prob_idx, config_idx],
+                            self.physics_metrics.r_ncp_dual_stats.mean[prob_idx, config_idx],
+                            self.physics_metrics.r_ncp_dual_stats.max[prob_idx, config_idx],
+                            self.physics_metrics.r_ncp_dual_stats.min[prob_idx, config_idx],
+                        ],
+                        [
+                            self.physics_metrics.r_ncp_compl_stats.median[prob_idx, config_idx],
+                            self.physics_metrics.r_ncp_compl_stats.mean[prob_idx, config_idx],
+                            self.physics_metrics.r_ncp_compl_stats.max[prob_idx, config_idx],
+                            self.physics_metrics.r_ncp_compl_stats.min[prob_idx, config_idx],
+                        ],
+                        [
+                            self.physics_metrics.r_vi_natmap_stats.median[prob_idx, config_idx],
+                            self.physics_metrics.r_vi_natmap_stats.mean[prob_idx, config_idx],
+                            self.physics_metrics.r_vi_natmap_stats.max[prob_idx, config_idx],
+                            self.physics_metrics.r_vi_natmap_stats.min[prob_idx, config_idx],
+                        ],
+                        [
+                            self.physics_metrics.f_ncp_stats.median[prob_idx, config_idx],
+                            self.physics_metrics.f_ncp_stats.mean[prob_idx, config_idx],
+                            self.physics_metrics.f_ncp_stats.max[prob_idx, config_idx],
+                            self.physics_metrics.f_ncp_stats.min[prob_idx, config_idx],
+                        ],
+                        [
+                            self.physics_metrics.f_ccp_stats.median[prob_idx, config_idx],
+                            self.physics_metrics.f_ccp_stats.mean[prob_idx, config_idx],
+                            self.physics_metrics.f_ccp_stats.max[prob_idx, config_idx],
+                            self.physics_metrics.f_ccp_stats.min[prob_idx, config_idx],
+                        ],
+                    ]
+                )
+            render_subcolumn_table(
                 title=f"Solver Benchmark: Physics Metrics - {prob_name}",
-                row_header="Solver Configuration",
-                row_titles=self._config_names,
-                col_titles=col_titles,
-                subcol_titles=subcol_titles,
-                subcol_data=subcol_data,
-                subcol_formats=subcol_formats,
+                cols=cols,
+                rows=rows,
                 max_width=650,
                 path=problem_table_path,
             )

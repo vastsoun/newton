@@ -83,7 +83,7 @@ class TestSetup:
             data=self.data,
             limits=self.limits,
             contacts=self.contacts,
-            # solver=ConjugateGradientSolver if sparse else LLTBlockedSolver,
+            # TODO: solver=ConjugateGradientSolver if sparse else LLTBlockedSolver,
             solver=ConjugateGradientSolver,
             device=device,
             sparse=sparse,

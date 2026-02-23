@@ -88,9 +88,6 @@ from ..kinematics.jacobians import ColMajorSparseConstraintJacobians, DenseSyste
 from ..kinematics.limits import Limits
 from ..linalg import DenseLinearOperatorData, DenseSquareMultiLinearInfo, LinearSolverType
 from ..linalg.linear import IterativeSolver
-
-# from ..linalg import Matrices, LinearOperators
-# from ..linalg.dense import DenseMatrices, DenseLinearOperators
 from ..linalg.sparse_matrix import BlockDType, BlockSparseMatrices
 from ..linalg.sparse_operator import BlockSparseLinearOperators
 

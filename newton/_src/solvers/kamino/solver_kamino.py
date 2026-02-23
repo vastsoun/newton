@@ -176,12 +176,12 @@ class SolverKaminoSettings:
     Defaults to `0.0` (i.e. no damping).
     """
 
-    sparse: bool = True
+    sparse: bool = False
     """
     Flag to indicate whether the solver should use sparse data representations.
     """
 
-    sparse_jacobian: bool = True
+    sparse_jacobian: bool = False
     """
     Flag to indicate whether the solver should use sparse data representations for the Jacobian.
     """

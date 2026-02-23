@@ -1144,7 +1144,11 @@ def build_boxes_fourbar(
     return _builder
 
 
-def make_basics_heterogeneous_builder(ground: bool = True) -> ModelBuilder:
+def make_basics_heterogeneous_builder(
+    ground: bool = True,
+    dynamic_joints: bool = False,
+    implicit_pd: bool = False,
+) -> ModelBuilder:
     """
     Creates a multi-world builder with different worlds in each model.
 
@@ -1154,10 +1158,10 @@ def make_basics_heterogeneous_builder(ground: bool = True) -> ModelBuilder:
         ModelBuilder: The constructed model builder.
     """
     builder = ModelBuilder(default_world=False)
-    builder.add_builder(build_boxes_fourbar(ground=ground))
+    builder.add_builder(build_boxes_fourbar(ground=ground, dynamic_joints=dynamic_joints, implicit_pd=implicit_pd))
     builder.add_builder(build_boxes_nunchaku(ground=ground))
-    builder.add_builder(build_boxes_hinged(ground=ground))
-    builder.add_builder(build_box_pendulum(ground=ground))
+    builder.add_builder(build_boxes_hinged(ground=ground, dynamic_joints=dynamic_joints, implicit_pd=implicit_pd))
+    builder.add_builder(build_box_pendulum(ground=ground, dynamic_joints=dynamic_joints, implicit_pd=implicit_pd))
     builder.add_builder(build_box_on_plane(ground=ground))
     builder.add_builder(build_cartpole(z_offset=0.5, ground=ground))
     return builder

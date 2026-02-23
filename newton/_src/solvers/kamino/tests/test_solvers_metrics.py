@@ -21,13 +21,201 @@ import unittest
 import numpy as np
 import warp as wp
 
+from newton._src.solvers.kamino.dynamics.dual import DualProblem
 from newton._src.solvers.kamino.integrators.euler import integrate_euler_semi_implicit
+from newton._src.solvers.kamino.kinematics.jacobians import SparseSystemJacobians
 from newton._src.solvers.kamino.models.builders.basics import build_box_on_plane, build_boxes_hinged
 from newton._src.solvers.kamino.solvers.metrics import SolutionMetrics
 from newton._src.solvers.kamino.solvers.padmm import PADMMSolver
+from newton._src.solvers.kamino.solvers.padmm.types import PADMMData
 from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.tests.test_solvers_padmm import TestSetup
+from newton._src.solvers.kamino.tests.utils.extract import (
+    extract_cts_jacobians,
+    extract_delassus,
+    extract_info_vectors,
+    extract_problem_vector,
+)
 from newton._src.solvers.kamino.utils import logger as msg
+
+###
+# Helpers
+###
+
+
+def compute_metrics_numpy(problem: DualProblem, solver_data: PADMMData) -> dict[np.ndarray]:
+    """Compute numpy solution to metrics."""
+    output = {}
+    output["r_v_plus"] = []
+    output["s"] = []
+    output["f_ccp"] = []
+    output["f_ncp"] = []
+    output["v_aug"] = []
+    output["r_ncp_p"] = []
+    output["r_ncp_d"] = []
+    output["r_ncp_c"] = []
+    output["r_ncp_natmap"] = []
+
+    D = extract_delassus(problem.delassus, only_active_dims=True)
+    num_matrices = len(D)
+
+    lambdas = extract_problem_vector(problem.delassus, solver_data.solution.lambdas.numpy().astype(np.float64), True)
+    v_plus_est = extract_problem_vector(problem.delassus, solver_data.solution.v_plus.numpy().astype(np.float64), True)
+    v_f = extract_problem_vector(problem.delassus, problem.data.v_f.numpy().astype(np.float64), True)
+    P = extract_problem_vector(problem.delassus, problem.data.P.numpy().astype(np.float64), True)
+    sigma = solver_data.state.sigma.numpy().astype(np.float64)
+
+    mu = extract_info_vectors(
+        problem.data.cio.numpy(), problem.data.mu.numpy().astype(np.float64), problem.delassus.info.dim.numpy()
+    )
+
+    num_joint_cts = problem.data.njc.numpy()
+    num_contacts = problem.data.nc.numpy()
+    num_limits = problem.data.nl.numpy()
+    contact_group_offset = problem.data.ccgo.numpy()
+    limit_group_offset = problem.data.lcgo.numpy()
+
+    for mat_id in range(num_matrices):
+        D_i = D[mat_id]
+        lambdas_i = lambdas[mat_id]
+        v_plus_est_i = v_plus_est[mat_id]
+        v_f_i = v_f[mat_id]
+        mu_i = mu[mat_id]
+        P_inv_i = np.reciprocal(P[mat_id])
+        sigma_i = sigma[mat_id, 0]
+
+        # Compute the post-event constraint-space velocity from the current solution: v_plus = v_f + D @ lambda
+        v_plus_true_i = np.diag(P_inv_i) @ (
+            v_f_i + ((D_i - sigma_i * np.identity(len(P_inv_i))) @ (np.diag(P_inv_i) @ lambdas_i))
+        )
+        # Compute the post-event constraint-space velocity error as: r_v_plus = || v_plus_est - v_plus_true ||_inf
+        r_v_plus_i = np.max(np.abs(v_plus_est_i - v_plus_true_i))
+        output["r_v_plus"].append(r_v_plus_i)
+
+        # Compute the De Saxce correction for each contact as: s = G(v_plus)
+        s_i = np.zeros_like(v_plus_true_i)
+        for contact_id in range(num_contacts[mat_id]):
+            v_idx = contact_group_offset[mat_id] + 3 * contact_id
+            s_i[v_idx + 2] = mu_i[contact_id] * np.linalg.norm(v_plus_true_i[v_idx : v_idx + 2])
+        output["s"].append(s_i)
+
+        # Compute the CCP optimization objective as: f_ccp = 0.5 * lambda.dot(v_plus + v_f)
+        f_ccp_i = 0.5 * lambdas_i.dot(v_f_i + v_plus_true_i)
+        output["f_ccp"].append(f_ccp_i)
+
+        # Compute the NCP optimization objective as:  f_ncp = f_ccp + lambda.dot(s)
+        f_ncp_i = f_ccp_i + lambdas_i.dot(s_i)
+        output["f_ncp"].append(f_ncp_i)
+
+        # Compute the augmented post-event constraint-space velocity as: v_aug = v_plus + s
+        v_aug_i = v_plus_true_i + s_i
+        output["v_aug"].append(v_aug_i)
+
+        # Compute the NCP primal residual as: r_p := || lambda - proj_K(lambda) ||_inf
+        r_ncp_p_i = 0.0
+        for limit_id in range(num_limits[mat_id]):
+            lcio = limit_group_offset[mat_id] + limit_id
+            r_ncp_p_i = np.max(r_ncp_p_i, np.abs(lambdas_i[lcio] - np.max(0.0, lambdas_i[lcio])))
+
+        def project_to_coulomb_cone(x, mu):
+            xt_norm = np.linalg.norm(x[:2])
+            if mu * xt_norm > -x[2]:
+                if xt_norm <= mu * x[2]:
+                    return x
+                else:
+                    ys = (mu * xt_norm + x[2]) / (mu * mu + 1.0)
+                    yts = mu * ys / xt_norm
+                    return np.array([yts * x[0], yts * x[1], ys])
+            return np.zeros(3)
+
+        for contact_id in range(num_contacts[mat_id]):
+            ccio = contact_group_offset[mat_id] + 3 * contact_id
+            lambda_c = lambdas_i[ccio : ccio + 3] - project_to_coulomb_cone(
+                lambdas_i[ccio : ccio + 3], mu_i[contact_id]
+            )
+            r_ncp_p_i = np.max([r_ncp_p_i, np.max(np.abs(lambda_c))])
+
+        output["r_ncp_p"].append(r_ncp_p_i)
+
+        # Compute the NCP dual residual as: r_d := || v_plus + s - proj_dual_K(v_plus + s)  ||_inf
+        r_ncp_d_i = 0.0
+        for jid in range(num_joint_cts[mat_id]):
+            v_j = v_aug_i[jid]
+            r_j = np.abs(v_j)
+            r_ncp_d_i = max(r_ncp_d_i, r_j)
+
+        for lid in range(num_limits[mat_id]):
+            v_l = float(v_aug_i[limit_group_offset[mat_id] + lid])
+            v_l -= np.max(0.0, v_l)
+            r_l = np.abs(v_l)
+            r_ncp_d_i = max(r_ncp_d_i, r_l)
+
+        def project_to_coulomb_dual_cone(x: np.ndarray, mu: float) -> np.ndarray:
+            xn = x[2]
+            xt_norm = np.linalg.norm(x[:2])
+            y = np.zeros(3)
+            if xt_norm > -mu * xn:
+                if mu * xt_norm <= xn:
+                    y = x
+                else:
+                    ys = (xt_norm + mu * xn) / (mu * mu + 1.0)
+                    yts = ys / xt_norm
+                    y[0] = yts * x[0]
+                    y[1] = yts * x[1]
+                    y[2] = mu * ys
+            return y
+
+        for cid in range(num_contacts[mat_id]):
+            ccio_c = contact_group_offset[mat_id] + 3 * cid
+            mu_c = mu_i[cid]
+            v_c = v_aug_i[ccio_c : ccio_c + 3].copy()
+            v_c -= project_to_coulomb_dual_cone(v_c, mu_c)
+            r_c = np.max(np.abs(v_c))
+            r_ncp_d_i = max(r_ncp_d_i, r_c)
+
+        output["r_ncp_d"].append(r_ncp_d_i)
+
+        # Compute the NCP complementarity (lambda _|_ (v_plus + s)) residual as r_c := || lambda.dot(v_plus + s) ||_inf
+        r_ncp_c_i = 0.0
+        for lid in range(num_limits[mat_id]):
+            lcio = limit_group_offset[mat_id] + lid
+            v_l = v_aug_i[lcio]
+            lambda_l = lambdas_i[lcio]
+            r_l = np.abs(v_l * lambda_l)
+            r_ncp_c_i = max(r_ncp_c_i, r_l)
+
+        for cid in range(num_contacts[mat_id]):
+            ccio = contact_group_offset[mat_id] + 3 * cid
+            v_c = v_aug_i[ccio : ccio + 3]
+            lambda_c = lambdas_i[ccio : ccio + 3]
+            r_c = np.abs(np.dot(v_c, lambda_c))
+            r_ncp_c_i = max(r_ncp_c_i, r_c)
+        output["r_ncp_c"].append(r_ncp_c_i)
+
+        # Compute the natural-map residuals as: r_natmap = || lambda - proj_K(lambda - (v + s)) ||_inf
+        r_ncp_natmap_i = 0.0
+        for lid in range(num_limits[mat_id]):
+            lcio = limit_group_offset[mat_id] + lid
+            v_l = v_aug_i[lcio]
+            lambda_l = lambdas_i[lcio]
+            lambda_l -= np.max(0.0, lambda_l - v_l)
+            lambda_l = np.abs(lambda_l)
+            r_ncp_natmap_i = max(r_ncp_natmap_i, lambda_l)
+
+        for cid in range(num_contacts[mat_id]):
+            ccio = contact_group_offset[mat_id] + 3 * cid
+            mu_c = mu_i[cid]
+            v_c = v_aug_i[ccio : ccio + 3]
+            lambda_c = lambdas_i[ccio : ccio + 3]
+            lambda_c -= project_to_coulomb_cone(lambda_c - v_c, mu_c)
+            lambda_c = np.abs(lambda_c)
+            lambda_c_max = np.max(lambda_c)
+            r_ncp_natmap_i = max(r_ncp_natmap_i, lambda_c_max)
+
+        output["r_ncp_natmap"].append(r_ncp_natmap_i)
+
+    return output
+
 
 ###
 # Tests
@@ -406,6 +594,162 @@ class TestSolverMetrics(unittest.TestCase):
         msg.info("metrics.r_ncp_dual_argmax: %s", metrics.data.r_ncp_dual_argmax)
         msg.info("metrics.r_ncp_compl_argmax: %s", metrics.data.r_ncp_compl_argmax)
         msg.info("metrics.r_vi_natmap_argmax: %s\n", metrics.data.r_vi_natmap_argmax)
+
+    def test_05_compare_dense_sparse_padmm_solution_boxes_hinged(self):
+        """
+        Compares metrics evaluated on dense and sparse problems on a solution computed with the
+        Proximal-ADMM (PADMM) solver.
+        """
+        # Create the test problem
+        test = TestSetup(
+            builder_fn=build_boxes_hinged,
+            max_world_contacts=8,
+            gravity=True,
+            perturb=True,
+            device=self.default_device,
+            sparse=False,
+        )
+
+        # Create the PADMM solver
+        solver = PADMMSolver(model=test.model, use_acceleration=False, collect_info=True)
+
+        # Creating a default solver metrics evaluator from the test model
+        metrics_dense = SolutionMetrics(model=test.model)
+        metrics_sparse = SolutionMetrics(model=test.model)
+
+        # Create sparse version of the Jacobians
+        jacobians_sparse = SparseSystemJacobians(
+            model=test.model,
+            limits=test.limits,
+            contacts=test.detector.contacts,
+            device=self.default_device,
+        )
+        jacobians_sparse.build(
+            model=test.model,
+            data=test.data,
+            limits=test.limits.data,
+            contacts=test.detector.contacts.data,
+        )
+
+        # Create sparse version of the dual problem
+        problem_sparse = DualProblem(
+            model=test.model,
+            data=test.data,
+            limits=test.limits,
+            contacts=test.contacts,
+            device=self.default_device,
+            sparse=True,
+        )
+        problem_sparse.build(
+            model=test.model,
+            data=test.data,
+            jacobians=jacobians_sparse,
+            limits=test.limits,
+            contacts=test.detector.contacts,
+        )
+
+        # Solve the test problem
+        test.build()
+        solver.reset()
+        solver.coldstart()
+        solver.solve(problem=test.problem)
+        integrate_euler_semi_implicit(model=test.model, data=test.data)
+
+        solver._initialize()
+        solver._update_sparse_regularization(problem_sparse)
+        problem_sparse.delassus.update()
+
+        # Compute the metrics on the solution
+        metrics_dense.evaluate(
+            sigma=solver.data.state.sigma,
+            lambdas=solver.data.solution.lambdas,
+            v_plus=solver.data.solution.v_plus,
+            model=test.model,
+            data=test.data,
+            state_p=test.state_p,
+            problem=test.problem,
+            jacobians=test.jacobians,
+            limits=test.limits,
+            contacts=test.contacts,
+        )
+        metrics_sparse.evaluate(
+            sigma=solver.data.state.sigma,
+            lambdas=solver.data.solution.lambdas,
+            v_plus=solver.data.solution.v_plus,
+            model=test.model,
+            data=test.data,
+            state_p=test.state_p,
+            problem=problem_sparse,
+            jacobians=jacobians_sparse,
+            limits=test.limits,
+            contacts=test.contacts,
+        )
+
+        def check_difference(
+            val_A: wp.array | np.ndarray,
+            val_B: wp.array | np.ndarray,
+            rtol: float = 1e-5,
+            atol: float = 1e-6,
+        ):
+            if isinstance(val_A, wp.array):
+                val_A = val_A.numpy()
+            if isinstance(val_B, wp.array):
+                val_B = val_B.numpy()
+            np.testing.assert_allclose(val_A, val_B, rtol=rtol, atol=atol)
+
+        # Compare Jacobians
+        J_cts_dense_np = extract_cts_jacobians(
+            model=test.model,
+            limits=test.limits,
+            contacts=test.contacts,
+            jacobians=test.jacobians,
+            only_active_cts=True,
+        )
+        J_cts_sparse_np = jacobians_sparse._J_cts.bsm.numpy()
+        for J_cts_dense_np_i, J_cts_sparse_np_i in zip(J_cts_dense_np, J_cts_sparse_np, strict=True):
+            check_difference(J_cts_dense_np_i, J_cts_sparse_np_i)
+
+        # Compare Delassus matrix
+        D_dense_np = extract_delassus(delassus=test.problem.delassus, only_active_dims=True)
+        D_sparse_np = extract_delassus(delassus=problem_sparse.delassus, only_active_dims=True)
+        for D_dense_np_i, D_sparse_np_i in zip(D_dense_np, D_sparse_np, strict=True):
+            check_difference(D_dense_np_i, D_sparse_np_i)
+
+        # Somewhat hacky way to check `v_aug` computed in the metrics kernel, stored in `buffer_v`
+        check_difference(metrics_dense._buffer_v, metrics_sparse._buffer_v)
+        # Somewhat hacky way to check `s` computed in the metrics kernel, stored in `buffer_s`
+        check_difference(metrics_dense._buffer_s, metrics_sparse._buffer_s)
+
+        check_difference(metrics_dense.data.f_ncp, metrics_sparse.data.f_ncp)
+        check_difference(metrics_dense.data.f_ccp, metrics_sparse.data.f_ccp)
+        check_difference(metrics_dense.data.r_v_plus, metrics_sparse.data.r_v_plus)
+        check_difference(metrics_dense.data.r_eom, metrics_sparse.data.r_eom)
+        check_difference(metrics_dense.data.r_kinematics, metrics_sparse.data.r_kinematics)
+        check_difference(metrics_dense.data.r_cts_joints, metrics_sparse.data.r_cts_joints)
+        check_difference(metrics_dense.data.r_cts_limits, metrics_sparse.data.r_cts_limits)
+        check_difference(metrics_dense.data.r_cts_contacts, metrics_sparse.data.r_cts_contacts)
+        check_difference(metrics_dense.data.r_ncp_primal, metrics_sparse.data.r_ncp_primal)
+        check_difference(metrics_dense.data.r_ncp_dual, metrics_sparse.data.r_ncp_dual)
+        check_difference(metrics_dense.data.r_ncp_compl, metrics_sparse.data.r_ncp_compl)
+        check_difference(metrics_dense.data.r_vi_natmap, metrics_sparse.data.r_vi_natmap)
+
+        # Compute numpy solution to metrics
+        metrics_np = compute_metrics_numpy(test.problem, solver.data)
+        check_difference(metrics_np["r_v_plus"], metrics_sparse.data.r_v_plus)
+        check_difference(metrics_np["f_ccp"], metrics_sparse.data.f_ccp)
+        check_difference(metrics_np["f_ncp"], metrics_sparse.data.f_ncp)
+        check_difference(
+            metrics_np["r_ncp_p"],
+            metrics_sparse.data.r_ncp_primal,
+        )
+
+        # Somewhat hacky way to check `v_aug` computed in the metrics kernel, stored in `buffer_v`,
+        # and `s`, stored in `buffer_s`
+        s = extract_problem_vector(test.problem.delassus, metrics_sparse._buffer_s.numpy(), True)
+        v_aug = extract_problem_vector(test.problem.delassus, metrics_sparse._buffer_v.numpy(), True)
+        for world_id in range(test.model.size.num_worlds):
+            check_difference(metrics_np["s"][world_id], s[world_id])
+            check_difference(metrics_np["v_aug"][world_id], v_aug[world_id])
 
 
 ###

@@ -29,6 +29,7 @@ from newton._src.solvers.kamino.examples import get_examples_output_path, run_he
 from newton._src.solvers.kamino.linalg.linear import SolverShorthand as LinearSolverShorthand
 from newton._src.solvers.kamino.models import get_examples_usd_assets_path
 from newton._src.solvers.kamino.models.builders.utils import (
+    add_ground_box,
     make_homogeneous_builder,
     set_uniform_body_pose_offset,
 )
@@ -228,18 +229,20 @@ class Example:
         offset = wp.transformf(0.0, 0.0, 0.265, 0.0, 0.0, 0.0, 1.0)
         set_uniform_body_pose_offset(builder=self.builder, offset=offset)
 
-        # # Add a static collision layer and geometry for the plane
-        # if ground:
-        #     for w in range(num_worlds):
-        #         add_ground_box(self.builder, world_index=w, layer="world")
+        # Add a static collision layer and geometry for the plane
+        if ground:
+            for w in range(num_worlds):
+                add_ground_box(self.builder, world_index=w, layer="world")
 
         # Set gravity
         for w in range(self.builder.num_worlds):
-            self.builder.gravity[w].enabled = False
+            self.builder.gravity[w].enabled = gravity
 
         # Print-out of actuated joints used for verifying the imported USD was parsed as expected
         for joint in self.builder.joints:
             if joint.is_actuated:
+                joint.a_j = [0.011]  # Set joint armature according to Dynamixel XH540-V150 specs
+                joint.b_j = [0.044]  # Set joint damping according to Dynamixel XH540-V150 specs
                 msg.info(f"Joint '{joint.name}':\n{joint}\n")
 
         # Set solver settings

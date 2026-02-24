@@ -206,6 +206,9 @@ def benchmark_run(args: argparse.Namespace):
 
     Args:
         args: An `argparse.Namespace` object containing the parsed benchmark arguments.
+
+    Returns:
+        output_path: The path to the hdf5 file created, that contains all collected data.
     """
 
     # First print the benchmark configuration to the console for reference
@@ -341,21 +344,20 @@ def benchmark_run(args: argparse.Namespace):
     metrics.save_to_hdf5(path=RUN_HDF5_OUTPUT_PATH)
     msg.info("Done.")
 
+    return RUN_HDF5_OUTPUT_PATH
 
-def benchmark_output(args: argparse.Namespace):
+
+def benchmark_output(data_import_path: str | None):
     # If the import path is not specified load the latest created HDF5 file in the output directory
-    data_import_path = None
-    if args.import_path is None:
+    if data_import_path is None:
         DATA_DIR_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "./data"))
-        all_runs = sorted(os.listdir(DATA_DIR_PATH))
+        all_runs = next(os.walk(DATA_DIR_PATH))[1]
+        all_runs = sorted(all_runs, key=lambda x: os.stat(os.path.join(DATA_DIR_PATH, x)).st_mtime)
         if len(all_runs) == 0:
             raise FileNotFoundError(f"No benchmark runs found in output directory '{DATA_DIR_PATH}'.")
         latest_run = all_runs[-1]
         data_import_path = os.path.join(DATA_DIR_PATH, latest_run, "metrics.hdf5")
         msg.notif(f"No import path specified. Loading latest benchmark data from '{data_import_path}'.")
-    else:
-        data_import_path = args.import_path
-        msg.notif(f"Loading benchmark data from specified import path '{data_import_path}'.")
 
     # Ensure that the specified import path exists and is a valid HDF5 file
     if not os.path.exists(data_import_path):
@@ -435,5 +437,9 @@ if __name__ == "__main__":
     # If the benchmark mode is not "import", first execute the
     # benchmark and then produce output from the collected data
     if args.mode != "import":
-        benchmark_run(args)
-    benchmark_output(args)
+        output_path = benchmark_run(args)
+        benchmark_output(output_path)
+    else:
+        if args.import_path is not None:
+            msg.notif(f"Loading benchmark data from specified import path '{args.import_path}'.")
+        benchmark_output(args.import_path)

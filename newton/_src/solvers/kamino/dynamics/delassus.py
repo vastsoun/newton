@@ -461,6 +461,76 @@ def _make_merge_preconditioner_kernel(block_type: BlockDType):
 
 
 @wp.kernel
+def _add_armature_regularization_sparse(
+    # Inputs:
+    model_info_num_joint_dynamic_cts: wp.array(dtype=int32),
+    model_info_joint_dynamic_cts_offset: wp.array(dtype=int32),
+    row_start: wp.array(dtype=int32),
+    model_joint_inv_m_j: wp.array(dtype=float32),
+    # Outputs:
+    combined_regularization: wp.array(dtype=float32),
+):
+    # Retrieve the thread index as the world index and joint dynamics index
+    wid, tid = wp.tid()
+
+    # Retrieve the world dimensions
+    num_joint_dyn_cts = model_info_num_joint_dynamic_cts[wid]
+
+    # Skip if world has no dynamic joint constraints or indices exceed the problem size
+    if num_joint_dyn_cts == 0 or tid >= num_joint_dyn_cts:
+        return
+
+    # Retrieve the dynamic constraint index offset of the world
+    world_joint_dynamic_cts_offset = model_info_joint_dynamic_cts_offset[wid]
+
+    # Retrieve the joint's inverse mass for armature regularization
+    inv_m_j = model_joint_inv_m_j[world_joint_dynamic_cts_offset + tid]
+
+    # Get the index into the regularization
+    vec_id = row_start[wid] + tid
+
+    # Add the armature regularization
+    combined_regularization[vec_id] += inv_m_j
+
+
+@wp.kernel
+def _add_armature_regularization_preconditioned_sparse(
+    # Inputs:
+    model_info_num_joint_dynamic_cts: wp.array(dtype=int32),
+    model_info_joint_dynamic_cts_offset: wp.array(dtype=int32),
+    model_joint_inv_m_j: wp.array(dtype=float32),
+    row_start: wp.array(dtype=int32),
+    preconditioner: wp.array(dtype=float32),
+    # Outputs:
+    combined_regularization: wp.array(dtype=float32),
+):
+    # Retrieve the thread index as the world index and joint dynamics index
+    wid, tid = wp.tid()
+
+    # Retrieve the world dimensions
+    num_joint_dyn_cts = model_info_num_joint_dynamic_cts[wid]
+
+    # Skip if world has no dynamic joint constraints or indices exceed the problem size
+    if num_joint_dyn_cts == 0 or tid >= num_joint_dyn_cts:
+        return
+
+    # Retrieve the dynamic constraint index offset of the world
+    world_joint_dynamic_cts_offset = model_info_joint_dynamic_cts_offset[wid]
+
+    # Retrieve the joint's inverse mass for armature regularization
+    inv_m_j = model_joint_inv_m_j[world_joint_dynamic_cts_offset + tid]
+
+    # Get the index into the preconditioner and regularization
+    vec_id = row_start[wid] + tid
+
+    # Retrieve preconditioner value
+    p = preconditioner[vec_id]
+
+    # Add the armature regularization
+    combined_regularization[vec_id] += p * p * inv_m_j
+
+
+@wp.kernel
 def _compute_block_sparse_delassus_diagonal(
     # Inputs:
     model_info_bodies_offset: wp.array(dtype=int32),
@@ -1166,6 +1236,9 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
         self._col_major_jacobian: ColMajorSparseConstraintJacobians | None = None
         self._transpose_op_matrix: BlockSparseMatrices | None = None
 
+        # Combined regularization vector for implicit joint dynamics
+        self._combined_regularization: wp.array | None = None
+
         # Allocate the Delassus operator data if at least the model is provided
         if model is not None:
             self.finalize(
@@ -1274,6 +1347,12 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
         self._vec_temp_body_space = wp.empty(
             (self._model.size.sum_of_num_body_dofs,), dtype=float32, device=self._device
         )
+
+        # Initialize memory for combined regularization, if necessary
+        if self._model.size.max_of_num_dynamic_joint_cts > 0:
+            self._combined_regularization = wp.empty(
+                (self._model.size.sum_of_max_total_cts,), dtype=float32, device=self._device
+            )
 
         # Check whether any of the maximum row dimensions of the Jacobians is smaller than six.
         # If so, we avoid building the column-major Jacobian due to potential memory access issues.
@@ -1397,6 +1476,47 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
                 device=self._transpose_op_matrix.device,
             )
 
+        # Update combined regularization
+        if self._combined_regularization is not None:
+            if self._eta is not None:
+                wp.copy(self._combined_regularization, self._eta)
+            else:
+                self._combined_regularization.zero_()
+
+            if self._preconditioner is None:
+                # Add armature regularization to combined regularization
+                wp.launch(
+                    kernel=_add_armature_regularization_sparse,
+                    dim=(self.num_matrices, self._model.size.max_of_num_dynamic_joint_cts),
+                    inputs=[
+                        # Inputs:
+                        self._model.info.num_joint_dynamic_cts,
+                        self._model.info.joint_dynamic_cts_offset,
+                        self.bsm.row_start,
+                        self._data.joints.inv_m_j,
+                        # Outputs:
+                        self._combined_regularization,
+                    ],
+                    device=self._device,
+                )
+            else:
+                # Add armature regularization with preconditioning to combined regularization
+                wp.launch(
+                    kernel=_add_armature_regularization_preconditioned_sparse,
+                    dim=(self.num_matrices, self._model.size.max_of_num_dynamic_joint_cts),
+                    inputs=[
+                        # Inputs:
+                        self._model.info.num_joint_dynamic_cts,
+                        self._model.info.joint_dynamic_cts_offset,
+                        self._data.joints.inv_m_j,
+                        self.bsm.row_start,
+                        self._preconditioner,
+                        # Outputs:
+                        self._combined_regularization,
+                    ],
+                    device=self._device,
+                )
+
     def set_regularization(self, eta: wp.array | None):
         """
         Adds diagonal regularization to each matrix block of the Delassus operator, replacing any
@@ -1458,6 +1578,22 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
                 self.constraint_jacobian.nzb_coords,
                 self.constraint_jacobian.nzb_values,
                 self.constraint_jacobian.row_start,
+                diag,
+            ],
+            device=self._device,
+        )
+
+        # Add armature regularization
+        wp.launch(
+            kernel=_add_armature_regularization_sparse,
+            dim=(self.num_matrices, self._model.size.max_of_num_dynamic_joint_cts),
+            inputs=[
+                # Inputs:
+                self._model.info.num_joint_dynamic_cts,
+                self._model.info.joint_dynamic_cts_offset,
+                self.bsm.row_start,
+                self._data.joints.inv_m_j,
+                # Outputs:
                 diag,
             ],
             device=self._device,
@@ -1610,7 +1746,7 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
         # Compute first Jacobian matrix-vector product: v <- (P @ J)^T @ x
         self.ATy_op(self._transpose_op_matrix, x, v, world_mask)
 
-        if self._eta is None:
+        if self._eta is None and self._combined_regularization is None:
             # Compute second Jacobian matrix-vector product: y <- (P @ J @ M^-1) @ v
             self.Ax_op(self.bsm, v, y, world_mask)
         else:
@@ -1627,7 +1763,7 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
                     self.bsm.nzb_values,
                     self.bsm.row_start,
                     self.bsm.col_start,
-                    self._eta,
+                    self._eta if self._combined_regularization is None else self._combined_regularization,
                     v,
                     y,
                     x,
@@ -1661,7 +1797,7 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
         # Compute first Jacobian matrix-vector product: v <- (P @ J)^T @ x
         self.ATy_op(self._transpose_op_matrix, x, v, world_mask)
 
-        if self._eta is None:
+        if self._eta is None and self._combined_regularization is None:
             # Compute second Jacobian matrix-vector product as general matrix-vector product:
             #   y <- alpha * (P @ J @ M^-1) @ v + beta * y
             self.gemv_op(self.bsm, v, y, alpha, beta, world_mask)
@@ -1686,7 +1822,7 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
                     self.bsm.nzb_values,
                     self.bsm.row_start,
                     self.bsm.col_start,
-                    self._eta,
+                    self._eta if self._combined_regularization is None else self._combined_regularization,
                     v,
                     y,
                     x,
@@ -1704,41 +1840,3 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
             Since the Delassus matrix is symmetric, this is equivalent to `gemv` with swapped arguments.
         """
         self.gemv(y, x, world_mask, alpha, beta)
-
-    def _apply_regularization(self, x: wp.array, y: wp.array, world_mask: wp.array, alpha: float = 1.0):
-        """
-        Adds diagonal regularization to the matrix-vector product result.
-
-        If regularization values have been set via `set_regularization()`, this method computes
-        `y += alpha * diag(eta) @ x`, where `eta` contains the regularization.
-
-        Args:
-            x (wp.array): Input vector to be scaled by the diagonal regularization matrix.
-                Shape `(sum_of_max_total_cts,)` and type :class:`float32`.
-            y (wp.array): Output vector to which the regularization contribution is added.
-                Shape `(sum_of_max_total_cts,)` and type :class:`float32`.
-            world_mask (wp.array): Array of integers indicating which worlds to process (0 = skip).
-                Shape `(num_worlds,)` and type :class:`int32`.
-            alpha (float, optional): Scalar multiplier for the regularization term. Defaults to 1.0.
-        """
-        if self._model is None or self._data is None:
-            raise RuntimeError("Model and data must be assigned before applying regularization.")
-
-        # Skip if no regularization is set
-        if self._eta is None:
-            return
-
-        wp.launch(
-            kernel=_add_matrix_diag_product,
-            dim=(self._model.size.num_worlds, self._model.size.max_of_max_total_cts),
-            inputs=[
-                self._data.info.num_total_cts,
-                self.bsm.row_start,
-                self._eta,
-                x,
-                y,
-                alpha,
-                world_mask,
-            ],
-            device=self._device,
-        )

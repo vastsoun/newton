@@ -796,6 +796,7 @@ class TestDelassusOperatorSparse(unittest.TestCase):
         self.verbose = test_context.verbose  # Set to True for detailed output
         self.default_device = wp.get_device(test_context.device)
         self.seed = 42
+        self.dynamic_joints = True
 
     def tearDown(self):
         self.default_device = None
@@ -886,6 +887,18 @@ class TestDelassusOperatorSparse(unittest.TestCase):
             # Construct a list of generalized inverse mass matrices of each world
             invM_np = make_inverse_generalized_mass_matrices(model, data)
 
+            # Construct the joint armature regularization term for each world
+            active_dims = data.info.num_total_cts.numpy()
+            num_joint_dynamic_cts = model.info.num_joint_dynamic_cts.numpy()
+            joint_dynamic_cts_offset = model.info.joint_dynamic_cts_offset.numpy()
+            inv_M_q_np = [np.zeros(shape=(dim,), dtype=np.float32) for dim in active_dims]
+            if np.any(num_joint_dynamic_cts):
+                inv_m_j_np = data.joints.inv_m_j.numpy()
+                for w in range(model.info.num_worlds):
+                    inv_M_q_np[w][: num_joint_dynamic_cts[w]] = inv_m_j_np[
+                        joint_dynamic_cts_offset[w] : joint_dynamic_cts_offset[w] + num_joint_dynamic_cts[w]
+                    ]
+
             # Optional verbose output
             if self.verbose:
                 print("")  # Print a newline for better readability
@@ -901,7 +914,7 @@ class TestDelassusOperatorSparse(unittest.TestCase):
             # represented by the Delassus operator.
             for w in range(model.info.num_worlds):
                 # Compute the Delassus matrix using the inverse mass matrix and the Jacobian
-                D_w = (J_cts_np[w] @ invM_np[w]) @ J_cts_np[w].T
+                D_w = (J_cts_np[w] @ invM_np[w]) @ J_cts_np[w].T + np.diag(inv_M_q_np[w])
                 if use_preconditioner:
                     D_w = np.diag(preconditioner_list[w]) @ D_w @ np.diag(preconditioner_list[w])
                 if use_regularization:
@@ -999,6 +1012,18 @@ class TestDelassusOperatorSparse(unittest.TestCase):
             # Construct a list of generalized inverse mass matrices of each world
             invM_np = make_inverse_generalized_mass_matrices(model, data)
 
+            # Construct the joint armature regularization term for each world
+            active_dims = data.info.num_total_cts.numpy()
+            num_joint_dynamic_cts = model.info.num_joint_dynamic_cts.numpy()
+            joint_dynamic_cts_offset = model.info.joint_dynamic_cts_offset.numpy()
+            inv_M_q_np = [np.zeros(shape=(dim,), dtype=np.float32) for dim in active_dims]
+            if np.any(num_joint_dynamic_cts):
+                inv_m_j_np = data.joints.inv_m_j.numpy()
+                for w in range(model.info.num_worlds):
+                    inv_M_q_np[w][: num_joint_dynamic_cts[w]] = inv_m_j_np[
+                        joint_dynamic_cts_offset[w] : joint_dynamic_cts_offset[w] + num_joint_dynamic_cts[w]
+                    ]
+
             # For each world, compute the Delassus matrix-vector product using numpy and compare it
             # with the one from the Delassus operator class
             for w in range(model.info.num_worlds):
@@ -1012,7 +1037,7 @@ class TestDelassusOperatorSparse(unittest.TestCase):
                     self.assertTrue((vec_gemv_zero_w == offset_vec_list[w]).all())
                 else:
                     # Compute the Delassus matrix using the inverse mass matrix and the Jacobian
-                    D_w = (J_cts_np[w] @ invM_np[w]) @ J_cts_np[w].T
+                    D_w = (J_cts_np[w] @ invM_np[w]) @ J_cts_np[w].T + np.diag(inv_M_q_np[w])
                     if use_preconditioner:
                         D_w = np.diag(preconditioner_list[w]) @ D_w @ np.diag(preconditioner_list[w])
                     if use_regularization:
@@ -1096,6 +1121,18 @@ class TestDelassusOperatorSparse(unittest.TestCase):
         # Construct a list of generalized inverse mass matrices of each world
         invM_np = make_inverse_generalized_mass_matrices(model, data)
 
+        # Construct the joint armature regularization term for each world
+        active_dims = data.info.num_total_cts.numpy()
+        num_joint_dynamic_cts = model.info.num_joint_dynamic_cts.numpy()
+        joint_dynamic_cts_offset = model.info.joint_dynamic_cts_offset.numpy()
+        inv_M_q_np = [np.zeros(shape=(dim,), dtype=np.float32) for dim in active_dims]
+        if np.any(num_joint_dynamic_cts):
+            inv_m_j_np = data.joints.inv_m_j.numpy()
+            for w in range(model.info.num_worlds):
+                inv_M_q_np[w][: num_joint_dynamic_cts[w]] = inv_m_j_np[
+                    joint_dynamic_cts_offset[w] : joint_dynamic_cts_offset[w] + num_joint_dynamic_cts[w]
+                ]
+
         # Optional verbose output
         if self.verbose:
             print("")  # Print a newline for better readability
@@ -1111,7 +1148,7 @@ class TestDelassusOperatorSparse(unittest.TestCase):
         # one from the Delassus operator class
         for w in range(model.info.num_worlds):
             # Compute the Delassus matrix diagonal using the inverse mass matrix and the Jacobian
-            D_w = (J_cts_np[w] @ invM_np[w]) @ J_cts_np[w].T
+            D_w = (J_cts_np[w] @ invM_np[w]) @ J_cts_np[w].T + np.diag(inv_M_q_np[w])
             D_diag_ref = np.diag(D_w)
 
             # Compare the computed Delassus matrix diagonals
@@ -1213,7 +1250,9 @@ class TestDelassusOperatorSparse(unittest.TestCase):
         max_world_contacts = 12
 
         # Construct the model description using model builders for different systems
-        builder = build_boxes_fourbar(z_offset=0.0, ground=False)
+        builder = build_boxes_fourbar(
+            z_offset=0.0, ground=False, dynamic_joints=self.dynamic_joints, implicit_pd=self.dynamic_joints
+        )
 
         # Create the model and containers from the builder
         model, data, limits, detector, jacobians = make_containers(
@@ -1270,7 +1309,7 @@ class TestDelassusOperatorSparse(unittest.TestCase):
         max_world_contacts = 12
 
         # Create a heterogeneous model description using model builders
-        builder = make_basics_heterogeneous_builder()
+        builder = make_basics_heterogeneous_builder(dynamic_joints=self.dynamic_joints, implicit_pd=self.dynamic_joints)
 
         # Create the model and containers from the builder
         model, data, limits, detector, jacobians = make_containers(
@@ -1298,7 +1337,9 @@ class TestDelassusOperatorSparse(unittest.TestCase):
         max_world_contacts = 12
 
         # Construct the model description using model builders for different systems
-        builder = build_boxes_fourbar(z_offset=0.0, ground=False)
+        builder = build_boxes_fourbar(
+            z_offset=0.0, ground=False, dynamic_joints=self.dynamic_joints, implicit_pd=self.dynamic_joints
+        )
 
         # Create the model and containers from the builder
         model, data, limits, detector, jacobians = make_containers(
@@ -1355,7 +1396,7 @@ class TestDelassusOperatorSparse(unittest.TestCase):
         max_world_contacts = 12
 
         # Create a heterogeneous model description using model builders
-        builder = make_basics_heterogeneous_builder()
+        builder = make_basics_heterogeneous_builder(dynamic_joints=self.dynamic_joints, implicit_pd=self.dynamic_joints)
 
         # Create the model and containers from the builder
         model, data, limits, detector, jacobians = make_containers(
@@ -1383,7 +1424,9 @@ class TestDelassusOperatorSparse(unittest.TestCase):
         max_world_contacts = 12
 
         # Construct the model description using model builders for different systems
-        builder = build_boxes_fourbar(z_offset=0.0, ground=False)
+        builder = build_boxes_fourbar(
+            z_offset=0.0, ground=False, dynamic_joints=self.dynamic_joints, implicit_pd=self.dynamic_joints
+        )
 
         # Create the model and containers from the builder
         model, data, limits, detector, jacobians = make_containers(
@@ -1440,7 +1483,7 @@ class TestDelassusOperatorSparse(unittest.TestCase):
         max_world_contacts = 12
 
         # Create a heterogeneous model description using model builders
-        builder = make_basics_heterogeneous_builder()
+        builder = make_basics_heterogeneous_builder(dynamic_joints=self.dynamic_joints, implicit_pd=self.dynamic_joints)
 
         # Create the model and containers from the builder
         model, data, limits, detector, jacobians = make_containers(

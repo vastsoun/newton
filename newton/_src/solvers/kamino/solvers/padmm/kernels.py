@@ -534,9 +534,9 @@ def _update_delassus_proximal_regularization_sparse(
     # Retrieve the vector index offset of the world
     mio = problem_vio[wid]
 
-    # Set regularization to 1.0 if the solver has already converged
+    # Set regularization to 0.0 if the solver has already converged
     if status.converged > 0:
-        delassus_eta[mio + tid] = 1.0
+        delassus_eta[mio + tid] = 0.0
         return
 
     # Set the proximal regularization term: eta + rho

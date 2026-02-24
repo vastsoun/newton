@@ -1336,7 +1336,7 @@ class DualProblem:
             )
             # Assign identity regularization, to be modified by solver
             self._delassus.set_regularization(
-                wp.ones(
+                wp.zeros(
                     (model.size.sum_of_max_total_cts,),
                     dtype=float32,
                     device=device,

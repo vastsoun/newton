@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import argparse
+import gc
 import time
 
 import warp as wp
@@ -278,3 +279,8 @@ def run_single_benchmark(
     if print_device_info:
         mem_info = get_device_malloc_info(simulator.device)
         msg.info("[Device malloc info]: %s", mem_info)
+
+    # Deallocate simulator to ensure accurate memory consumption measure for the next run
+    del simulator
+    gc.collect()
+    wp.synchronize()

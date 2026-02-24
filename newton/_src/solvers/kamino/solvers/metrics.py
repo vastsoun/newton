@@ -739,11 +739,12 @@ def _compute_joint_kinematics_residual_dense(
 @wp.kernel
 def _compute_joint_kinematics_residual_sparse(
     # Inputs:
-    model_joints_wid: wp.array(dtype=int32),
-    model_joints_num_cts: wp.array(dtype=int32),
-    model_joints_cts_offset: wp.array(dtype=int32),
-    model_joints_bid_B: wp.array(dtype=int32),
-    model_joints_bid_F: wp.array(dtype=int32),
+    model_joint_wid: wp.array(dtype=int32),
+    model_joint_num_dynamic_cts: wp.array(dtype=int32),
+    model_joint_num_kinematic_cts: wp.array(dtype=int32),
+    model_joint_kinematic_cts_offset: wp.array(dtype=int32),
+    model_joint_bid_B: wp.array(dtype=int32),
+    model_joint_bid_F: wp.array(dtype=int32),
     data_bodies_u_i: wp.array(dtype=vec6f),
     jac_nzb_values: wp.array(dtype=vec6f),
     jac_joint_nzb_offsets: wp.array(dtype=int32),
@@ -755,30 +756,31 @@ def _compute_joint_kinematics_residual_sparse(
     jid = wp.tid()
 
     # Retrieve the world index of the joint
-    wid = model_joints_wid[jid]
+    wid = model_joint_wid[jid]
 
     # Retrieve the body indices of the joint
     # NOTE: these indices are w.r.t the model
-    bid_F_j = model_joints_bid_F[jid]
-    bid_B_j = model_joints_bid_B[jid]
+    bid_F_j = model_joint_bid_F[jid]
+    bid_B_j = model_joint_bid_B[jid]
 
     # Retrieve the size and index offset of the joint constraint
-    num_cts_j = model_joints_num_cts[jid]
-    cts_offset_j = model_joints_cts_offset[jid]
+    num_dyn_cts_j = model_joint_num_dynamic_cts[jid]
+    num_kin_cts_j = model_joint_num_kinematic_cts[jid]
+    kin_cts_offset_j = model_joint_kinematic_cts_offset[jid]
 
     # Retrieve the starting index for the non-zero blocks for the current joint
-    jac_j_nzb_start = jac_joint_nzb_offsets[jid]
+    jac_j_nzb_start = jac_joint_nzb_offsets[jid] + (2 * num_dyn_cts_j if bid_B_j >= 0 else num_dyn_cts_j)
 
     # Compute the per-joint constraint Jacobian matrix-vector product
     j_v_j = vec6f(0.0)
     u_i_F = data_bodies_u_i[bid_F_j]
-    for j in range(num_cts_j):
+    for j in range(num_kin_cts_j):
         jac_block = jac_nzb_values[jac_j_nzb_start + j]
         j_v_j[j] += wp.dot(jac_block, u_i_F)
     if bid_B_j >= 0:
         u_i_B = data_bodies_u_i[bid_B_j]
-        for j in range(num_cts_j):
-            jac_block = jac_nzb_values[jac_j_nzb_start + num_cts_j + j]
+        for j in range(num_kin_cts_j):
+            jac_block = jac_nzb_values[jac_j_nzb_start + num_kin_cts_j + j]
             j_v_j[j] += wp.dot(jac_block, u_i_B)
 
     # Compute the per-joint kinematics residual
@@ -787,7 +789,7 @@ def _compute_joint_kinematics_residual_sparse(
     # Update the per-world maximum residual and argmax index
     previous_max = wp.atomic_max(metric_r_kinematics, wid, r_kinematics_j)
     if r_kinematics_j >= previous_max:
-        argmax_key = int64(build_pair_key2(uint32(jid), uint32(cts_offset_j)))
+        argmax_key = int64(build_pair_key2(uint32(jid), uint32(kin_cts_offset_j)))
         wp.atomic_exch(metric_r_kinematics_argmax, wid, argmax_key)
 
 
@@ -1443,8 +1445,9 @@ class SolutionMetrics:
                     inputs=[
                         # Inputs:
                         model.joints.wid,
-                        model.joints.num_cts,
-                        model.joints.cts_offset,
+                        model.joints.num_dynamic_cts,
+                        model.joints.num_kinematic_cts,
+                        model.joints.kinematic_cts_offset,
                         model.joints.bid_B,
                         model.joints.bid_F,
                         data.bodies.u_i,

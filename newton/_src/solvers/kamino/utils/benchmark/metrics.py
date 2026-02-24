@@ -811,7 +811,6 @@ class BenchmarkMetrics:
                 rows=rows,
                 max_width=300,
                 path=problem_table_path,
-                to_console=True,
             )
 
     def render_physics_metrics_table(self, path: str | None = None):

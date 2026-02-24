@@ -575,7 +575,7 @@ def _build_joint_jacobians_sparse(
         )
 
     # Store the constraint Jacobian block
-    kinematic_nzb_offset = 0 if dyn_cts_offset else (2 * num_dofs if bid_B > -1 else num_dofs)
+    kinematic_nzb_offset = 0 if dyn_cts_offset < 0 else (2 * num_dofs if bid_B > -1 else num_dofs)
     store_joint_cts_jacobian_sparse(
         dof_type,
         bid_B > -1,

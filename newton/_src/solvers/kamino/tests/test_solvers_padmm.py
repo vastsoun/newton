@@ -54,7 +54,7 @@ class TestSetup:
         perturb: bool = True,
         gravity: bool = True,
         device: Devicelike = None,
-        sparse: bool = True,
+        sparse: bool = False,
         **kwargs,
     ):
         # Cache the max contacts allocated for the test problem

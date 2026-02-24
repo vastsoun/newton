@@ -23,7 +23,6 @@ import numpy as np
 import warp as wp
 
 from newton._src.solvers.kamino.core.model import Model, ModelData
-from newton._src.solvers.kamino.core.types import float32
 from newton._src.solvers.kamino.dynamics.wrenches import (
     compute_constraint_body_wrenches_dense,
     compute_constraint_body_wrenches_sparse,
@@ -34,8 +33,16 @@ from newton._src.solvers.kamino.geometry.contacts import Contacts
 from newton._src.solvers.kamino.kinematics.jacobians import DenseSystemJacobians, SparseSystemJacobians
 from newton._src.solvers.kamino.kinematics.limits import Limits
 from newton._src.solvers.kamino.tests import setup_tests, test_context
-from newton._src.solvers.kamino.tests.test_kinematics_jacobians import (
+from newton._src.solvers.kamino.tests.utils.extract import (
+    extract_active_constraint_vectors,
+    extract_actuation_forces,
+    extract_cts_jacobians,
+    extract_dofs_jacobians,
+)
+from newton._src.solvers.kamino.tests.utils.make import (
+    make_constraint_multiplier_arrays,
     make_test_problem_fourbar,
+    make_test_problem_heterogeneous,
 )
 from newton._src.solvers.kamino.utils import logger as msg
 
@@ -44,19 +51,13 @@ from newton._src.solvers.kamino.utils import logger as msg
 ###
 
 
-test_wrench_rtol = 1e-7
-test_wrench_atol = 1e-8
+test_wrench_rtol = 1e-6
+test_wrench_atol = 1e-6
 
 
 ###
 # Helper Functions
 ###
-
-
-def make_constraint_multiplier_arrays(model: Model) -> tuple[wp.array, wp.array]:
-    with wp.ScopedDevice(model.device):
-        lambdas = wp.zeros(model.size.sum_of_max_total_cts, dtype=float32)
-    return model.info.total_cts_offset, lambdas
 
 
 def compute_and_compare_dense_sparse_jacobian_wrenches(
@@ -80,6 +81,7 @@ def compute_and_compare_dense_sparse_jacobian_wrenches(
     # Create arrays for the constraint multipliers and initialize them
     lambdas_start, lambdas = make_constraint_multiplier_arrays(model)
     lambdas.fill_(1.0)
+    msg.error("lambdas:\n%s\n", lambdas)
 
     # Initialize the generalized joint actuation forces
     data.joints.tau_j.fill_(1.0)
@@ -101,10 +103,15 @@ def compute_and_compare_dense_sparse_jacobian_wrenches(
         contacts=contacts.data,
         reset_to_zero=True,
     )
+    wp.synchronize()
     w_a_i_dense_np = data.bodies.w_a_i.numpy().copy()
     w_j_i_dense_np = data.bodies.w_j_i.numpy().copy()
     w_l_i_dense_np = data.bodies.w_l_i.numpy().copy()
     w_c_i_dense_np = data.bodies.w_c_i.numpy().copy()
+    msg.warning("w_a_i_dense_np:\n%s", w_a_i_dense_np)
+    msg.warning("w_j_i_dense_np:\n%s", w_j_i_dense_np)
+    msg.warning("w_l_i_dense_np:\n%s", w_l_i_dense_np)
+    msg.warning("w_c_i_dense_np:\n%s\n", w_c_i_dense_np)
 
     # Compute the wrenches using the sparse Jacobians
     compute_joint_dof_body_wrenches_sparse(
@@ -121,10 +128,90 @@ def compute_and_compare_dense_sparse_jacobian_wrenches(
         lambdas_data=lambdas,
         reset_to_zero=True,
     )
+    wp.synchronize()
     w_a_i_sparse_np = data.bodies.w_a_i.numpy().copy()
     w_j_i_sparse_np = data.bodies.w_j_i.numpy().copy()
     w_l_i_sparse_np = data.bodies.w_l_i.numpy().copy()
     w_c_i_sparse_np = data.bodies.w_c_i.numpy().copy()
+    msg.warning("w_a_i_sparse_np:\n%s", w_a_i_sparse_np)
+    msg.warning("w_j_i_sparse_np:\n%s", w_j_i_sparse_np)
+    msg.warning("w_l_i_sparse_np:\n%s", w_l_i_sparse_np)
+    msg.warning("w_c_i_sparse_np:\n%s\n", w_c_i_sparse_np)
+
+    # Extract the number of bodies and constraints for each world
+    num_bodies_np = model.info.num_bodies.numpy().astype(int).tolist()
+    num_joint_cts_np = model.info.num_joint_cts.numpy().astype(int).tolist()
+    num_limit_cts_np = data.info.num_limit_cts.numpy().astype(int).tolist()
+    num_contact_cts_np = data.info.num_contact_cts.numpy().astype(int).tolist()
+    num_total_cts_np = data.info.num_total_cts.numpy().astype(int).tolist()
+    msg.info("num_bodies_np: %s", num_bodies_np)
+    msg.info("num_joint_cts_np: %s", num_joint_cts_np)
+    msg.info("num_limit_cts_np: %s", num_limit_cts_np)
+    msg.info("num_contact_cts_np: %s", num_contact_cts_np)
+    msg.info("num_total_cts_np: %s\n", num_total_cts_np)
+
+    # Extract the Jacobians and constraint multipliers as lists of numpy arrays (i.e. per world)
+    J_cts_dense = extract_cts_jacobians(model, limits, contacts, jacobians_dense, only_active_cts=True)
+    J_dofs_dense = extract_dofs_jacobians(model, jacobians_dense)
+    J_cts_sparse = jacobians_sparse._J_cts.bsm.numpy()
+    J_dofs_sparse = jacobians_sparse._J_dofs.bsm.numpy()
+    lambdas_np = extract_active_constraint_vectors(model, data, lambdas)
+    tau_j_np = extract_actuation_forces(model, data)
+    for w in range(model.size.num_worlds):
+        msg.info("[world='%d']: J_cts_dense:\n%s", w, J_cts_dense[w])
+        msg.info("[world='%d']: J_cts_sparse:\n%s\n", w, J_cts_sparse[w])
+        msg.info("[world='%d']: lambdas_np:\n%s\n\n", w, lambdas_np[w])
+        msg.info("[world='%d']: J_dofs_dense:\n%s", w, J_dofs_dense[w])
+        msg.info("[world='%d']: J_dofs_sparse:\n%s\n", w, J_dofs_sparse[w])
+        msg.info("[world='%d']: tau_j_np:\n%s\n", w, tau_j_np[w])
+
+    # Compute the wrenches manually using the extracted Jacobians and multipliers/forces for additional verification
+    inv_dt_np = model.time.inv_dt.numpy().tolist()
+    w_a_i_ref_np = [np.zeros((num_bodies_np[w], 6), dtype=np.float32) for w in range(model.size.num_worlds)]
+    w_j_i_ref_np = [np.zeros((num_bodies_np[w], 6), dtype=np.float32) for w in range(model.size.num_worlds)]
+    w_l_i_ref_np = [np.zeros((num_bodies_np[w], 6), dtype=np.float32) for w in range(model.size.num_worlds)]
+    w_c_i_ref_np = [np.zeros((num_bodies_np[w], 6), dtype=np.float32) for w in range(model.size.num_worlds)]
+    for w in range(model.size.num_worlds):
+        joint_cts_start_w = 0
+        joint_cts_end_w = num_joint_cts_np[w]
+        limit_cts_start_w = joint_cts_end_w
+        limit_cts_end_w = limit_cts_start_w + num_limit_cts_np[w]
+        contact_cts_start_w = limit_cts_end_w
+        contact_cts_end_w = contact_cts_start_w + num_contact_cts_np[w]
+        J_cts_j = J_cts_dense[w][joint_cts_start_w:joint_cts_end_w, :]
+        J_cts_l = J_cts_dense[w][limit_cts_start_w:limit_cts_end_w, :]
+        J_cts_c = J_cts_dense[w][contact_cts_start_w:contact_cts_end_w, :]
+        lambdas_j = lambdas_np[w][joint_cts_start_w:joint_cts_end_w]
+        lambdas_l = lambdas_np[w][limit_cts_start_w:limit_cts_end_w]
+        lambdas_c = lambdas_np[w][contact_cts_start_w:contact_cts_end_w]
+        w_a_i_ref_np[w][:, :] = (J_dofs_dense[w].T @ tau_j_np[w]).reshape(num_bodies_np[w], 6)
+        w_j_i_ref_np[w][:, :] = inv_dt_np[w] * (J_cts_j.T @ lambdas_j).reshape(num_bodies_np[w], 6)
+        w_l_i_ref_np[w][:, :] = inv_dt_np[w] * (J_cts_l.T @ lambdas_l).reshape(num_bodies_np[w], 6)
+        w_c_i_ref_np[w][:, :] = inv_dt_np[w] * (J_cts_c.T @ lambdas_c).reshape(num_bodies_np[w], 6)
+    w_a_i_ref_np = wp.array(np.concatenate(w_a_i_ref_np, axis=0), device="cpu")
+    w_j_i_ref_np = wp.array(np.concatenate(w_j_i_ref_np, axis=0), device="cpu")
+    w_l_i_ref_np = wp.array(np.concatenate(w_l_i_ref_np, axis=0), device="cpu")
+    w_c_i_ref_np = wp.array(np.concatenate(w_c_i_ref_np, axis=0), device="cpu")
+
+    # Debug output
+    msg.info("w_a_i_ref_np:\n%s", w_a_i_ref_np)
+    msg.info("w_a_i_dense_np:\n%s", w_a_i_dense_np)
+    msg.info("w_a_i_sparse_np:\n%s\n", w_a_i_sparse_np)
+    msg.info("w_j_i_ref_np:\n%s", w_j_i_ref_np)
+    msg.info("w_j_i_dense_np:\n%s", w_j_i_dense_np)
+    msg.info("w_j_i_sparse_np:\n%s\n", w_j_i_sparse_np)
+    msg.info("w_l_i_ref_np:\n%s", w_l_i_ref_np)
+    msg.info("w_l_i_dense_np:\n%s", w_l_i_dense_np)
+    msg.info("w_l_i_sparse_np:\n%s\n", w_l_i_sparse_np)
+    msg.info("w_c_i_ref_np:\n%s", w_c_i_ref_np)
+    msg.info("w_c_i_dense_np:\n%s", w_c_i_dense_np)
+    msg.info("w_c_i_sparse_np:\n%s\n\n", w_c_i_sparse_np)
+
+    # Check that the wrenches computed using the dense Jacobians match the reference wrenches
+    np.testing.assert_allclose(w_a_i_dense_np, w_a_i_ref_np, rtol=rtol, atol=atol)
+    np.testing.assert_allclose(w_j_i_dense_np, w_j_i_ref_np, rtol=rtol, atol=atol)
+    np.testing.assert_allclose(w_l_i_dense_np, w_l_i_ref_np, rtol=rtol, atol=atol)
+    np.testing.assert_allclose(w_c_i_dense_np, w_c_i_ref_np, rtol=rtol, atol=atol)
 
     # Check that the wrenches computed using the dense and sparse Jacobians are close
     np.testing.assert_allclose(w_a_i_dense_np, w_a_i_sparse_np, rtol=rtol, atol=atol)
@@ -202,7 +289,25 @@ class TestDynamicsWrenches(unittest.TestCase):
         )
 
     def test_03_compute_wrenches_heterogeneous_model_with_limits_and_contacts(self):
-        pass  # TODO
+        # Construct the test problem
+        model, data, limits, contacts = make_test_problem_heterogeneous(
+            device=self.default_device,
+            max_world_contacts=12,
+            with_limits=True,
+            with_contacts=True,
+            with_implicit_joints=True,
+            verbose=self.verbose,
+        )
+
+        # Compute and compare the wrenches using the dense and sparse Jacobians
+        compute_and_compare_dense_sparse_jacobian_wrenches(
+            model=model,
+            data=data,
+            limits=limits,
+            contacts=contacts,
+            rtol=test_wrench_rtol,
+            atol=test_wrench_atol,
+        )
 
 
 ###

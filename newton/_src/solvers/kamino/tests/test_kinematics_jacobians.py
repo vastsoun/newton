@@ -44,13 +44,9 @@ from newton._src.solvers.kamino.models.builders.basics import (
 )
 from newton._src.solvers.kamino.models.builders.utils import make_homogeneous_builder
 from newton._src.solvers.kamino.tests import setup_tests, test_context
-from newton._src.solvers.kamino.tests.utils.make import (
-    make_test_problem_fourbar,
-)
-from newton._src.solvers.kamino.tests.utils.print import (
-    print_model_constraint_info,
-    print_model_data_info,
-)
+from newton._src.solvers.kamino.tests.utils.extract import extract_cts_jacobians, extract_dofs_jacobians
+from newton._src.solvers.kamino.tests.utils.make import set_fourbar_body_states
+from newton._src.solvers.kamino.tests.utils.print import print_model_constraint_info, print_model_data_info
 from newton._src.solvers.kamino.utils import logger as msg
 
 ###
@@ -58,96 +54,6 @@ from newton._src.solvers.kamino.utils import logger as msg
 ###
 
 wp.set_module_options({"enable_backward": False})
-
-
-###
-# Helper Functions
-###
-
-
-def extract_cts_jacobians(
-    model: Model,
-    limits: Limits | None,
-    contacts: Contacts | None,
-    jacobians: DenseSystemJacobians,
-    verbose: bool = False,
-) -> list[np.ndarray]:
-    # Retrieve the number of worlds in the model
-    num_worlds = model.info.num_worlds
-
-    # Reshape the flat Jacobian as a set of matrices
-    cjmio = jacobians.data.J_cts_offsets.numpy()
-    J_cts_flat = jacobians.data.J_cts_data.numpy()
-    J_cts_flat_total_size = J_cts_flat.size
-    J_cts_flat_offsets = [int(cjmio[i]) for i in range(num_worlds)]
-    J_cts_flat_sizes = [0] * num_worlds
-    J_cts_flat_offsets_ext = [*J_cts_flat_offsets, J_cts_flat_total_size]
-    for i in range(num_worlds - 1, -1, -1):
-        J_cts_flat_sizes[i] = J_cts_flat_offsets_ext[i + 1] - J_cts_flat_offsets_ext[i]
-
-    # Extract each Jacobian as a matrix
-    num_bdofs = [model.worlds[w].num_body_dofs for w in range(num_worlds)]
-    num_jcts = [model.worlds[w].num_joint_cts for w in range(num_worlds)]
-    maxnl = limits.world_max_limits_host if limits is not None else [0] * num_worlds
-    maxnc = contacts.world_max_contacts_host if contacts is not None else [0] * num_worlds
-    J_cts_mat: list[np.ndarray] = []
-    for i in range(num_worlds):
-        maxncts = num_jcts[i] + maxnl[i] + 3 * maxnc[i]
-        start = J_cts_flat_offsets[i]
-        end = J_cts_flat_offsets[i] + J_cts_flat_sizes[i]
-        J_cts_mat.append(J_cts_flat[start:end].reshape((maxncts, num_bdofs[i])))
-
-    # Optional verbose output
-    if verbose:
-        print(f"J_cts_flat_total_size: {J_cts_flat_total_size}")
-        print(f"sum(J_cts_flat_sizes): {sum(J_cts_flat_sizes)}")
-        print(f"J_cts_flat_sizes: {J_cts_flat_sizes}")
-        print(f"J_cts_flat_offsets: {J_cts_flat_offsets}")
-        print("")  # Add a newline for better readability
-        for i in range(num_worlds):
-            print(f"{i}: start={J_cts_flat_offsets[i]}, end={J_cts_flat_offsets[i] + J_cts_flat_sizes[i]}")
-            print(f"J_cts_mat[{i}] ({J_cts_mat[i].shape}):\n{J_cts_mat[i]}\n")
-
-    # Return the extracted Jacobians
-    return J_cts_mat
-
-
-def extract_dofs_jacobians(model: Model, jacobians: DenseSystemJacobians, verbose: bool = False) -> list[np.ndarray]:
-    # Retrieve the number of worlds in the model
-    num_worlds = model.info.num_worlds
-
-    # Reshape the flat Jacobian as a set of matrices
-    ajmio = jacobians.data.J_dofs_offsets.numpy()
-    J_dofs_flat = jacobians.data.J_dofs_data.numpy()
-    J_dofs_flat_total_size = J_dofs_flat.size
-    J_dofs_flat_offsets = [int(ajmio[i]) for i in range(num_worlds)]
-    J_dofs_flat_sizes = [0] * num_worlds
-    J_dofs_flat_offsets_ext = [*J_dofs_flat_offsets, J_dofs_flat_total_size]
-    for i in range(num_worlds - 1, -1, -1):
-        J_dofs_flat_sizes[i] = J_dofs_flat_offsets_ext[i + 1] - J_dofs_flat_offsets_ext[i]
-
-    # Extract each Jacobian as a matrix
-    num_bdofs = [model.worlds[w].num_body_dofs for w in range(num_worlds)]
-    num_jdofs = [model.worlds[w].num_joint_dofs for w in range(num_worlds)]
-    J_dofs_mat: list[np.ndarray] = []
-    for i in range(num_worlds):
-        start = J_dofs_flat_offsets[i]
-        end = J_dofs_flat_offsets[i] + J_dofs_flat_sizes[i]
-        J_dofs_mat.append(J_dofs_flat[start:end].reshape((num_jdofs[i], num_bdofs[i])))
-
-    # Optional verbose output
-    if verbose:
-        print(f"J_dofs_flat_total_size: {J_dofs_flat_total_size}")
-        print(f"sum(J_dofs_flat_sizes): {sum(J_dofs_flat_sizes)}")
-        print(f"J_dofs_flat_sizes: {J_dofs_flat_sizes}")
-        print(f"J_dofs_flat_offsets: {J_dofs_flat_offsets}")
-        print("")  # Add a newline for better readability
-        for i in range(num_worlds):
-            print(f"{i}: start={J_dofs_flat_offsets[i]}, end={J_dofs_flat_offsets[i] + J_dofs_flat_sizes[i]}")
-            print(f"J_dofs_mat[{i}] ({J_dofs_mat[i].shape}):\n{J_dofs_mat[i]}\n")
-
-    # Return the extracted Jacobians
-    return J_dofs_mat
 
 
 ###

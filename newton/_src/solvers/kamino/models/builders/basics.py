@@ -190,7 +190,7 @@ def build_box_pendulum(
     _builder.add_joint(
         name="world_to_pendulum",
         dof_type=JointDoFType.REVOLUTE,
-        act_type=JointActuationType.FORCE,
+        act_type=JointActuationType.POSITION_VELOCITY if implicit_pd else JointActuationType.FORCE,
         bid_B=-1,
         bid_F=bid0,
         B_r_Bj=vec3f(0.0, 0.0, 0.5 * h + z_0),
@@ -545,7 +545,7 @@ def build_boxes_hinged(
     _builder.add_joint(
         name="hinge",
         dof_type=JointDoFType.REVOLUTE,
-        act_type=JointActuationType.FORCE,
+        act_type=JointActuationType.POSITION_VELOCITY if implicit_pd else JointActuationType.FORCE,
         bid_B=bid0,
         bid_F=bid1,
         B_r_Bj=vec3f(0.25, 0.05, 0.0),

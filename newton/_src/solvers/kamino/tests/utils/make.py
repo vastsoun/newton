@@ -196,10 +196,15 @@ def make_test_problem(
     max_world_contacts: int = 12,
     with_limits: bool = False,
     with_contacts: bool = False,
+    dt: float = 0.001,
     verbose: bool = False,
 ) -> tuple[Model, ModelData, Limits | None, Contacts | None]:
     # Create the model from the builder
     model = builder.finalize(device=device)
+
+    # Configure model time-steps
+    model.time.dt.fill_(wp.float32(dt))
+    model.time.inv_dt.fill_(wp.float32(1.0 / dt))
 
     # Create a model state container
     data = model.data(device=device)
@@ -276,6 +281,12 @@ def make_test_problem(
 
     # Return the problem data containers
     return model, data, limits, contacts
+
+
+def make_constraint_multiplier_arrays(model: Model) -> tuple[wp.array, wp.array]:
+    with wp.ScopedDevice(model.device):
+        lambdas = wp.zeros(model.size.sum_of_max_total_cts, dtype=float32)
+    return model.info.total_cts_offset, lambdas
 
 
 ###
@@ -388,20 +399,46 @@ def make_test_problem_fourbar(
     num_worlds: int = 1,
     with_limits: bool = False,
     with_contacts: bool = False,
+    with_implicit_joints: bool = True,
     verbose: bool = False,
 ) -> tuple[Model, ModelData, Limits | None, Contacts | None]:
     # Define the problem using the ModelBuilder
     builder: ModelBuilder = _model_utils.make_homogeneous_builder(
         num_worlds=num_worlds,
         build_fn=_model_basics.build_boxes_fourbar,
-        dynamic_joints=True,
-        implicit_pd=True,
+        dynamic_joints=with_implicit_joints,
+        implicit_pd=with_implicit_joints,
     )
 
     # Generate the problem containers using the builder
     return make_test_problem(
         builder=builder,
         set_state_fn=set_fourbar_body_states,
+        device=device,
+        max_world_contacts=max_world_contacts,
+        with_limits=with_limits,
+        with_contacts=with_contacts,
+        verbose=verbose,
+    )
+
+
+def make_test_problem_heterogeneous(
+    device: wp.DeviceLike = None,
+    max_world_contacts: int = 12,
+    with_limits: bool = False,
+    with_contacts: bool = False,
+    with_implicit_joints: bool = True,
+    verbose: bool = False,
+) -> tuple[Model, ModelData, Limits | None, Contacts | None]:
+    # Define the problem using the ModelBuilder
+    builder: ModelBuilder = _model_basics.make_basics_heterogeneous_builder(
+        dynamic_joints=with_implicit_joints,
+        implicit_pd=with_implicit_joints,
+    )
+
+    # Generate the problem containers using the builder
+    return make_test_problem(
+        builder=builder,
         device=device,
         max_world_contacts=max_world_contacts,
         with_limits=with_limits,

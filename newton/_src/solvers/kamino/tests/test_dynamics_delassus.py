@@ -227,11 +227,13 @@ class TestDelassusOperator(unittest.TestCase):
         # Construct the model description using model builders for different systems
         # builder = build_boxes_hinged(z_offset=0.0, ground=False)
         builder = build_boxes_fourbar(z_offset=0.0, ground=False, dynamic_joints=True, implicit_pd=True)
-        num_bodies = [builder.num_bodies]
 
         # Create the model and containers from the builder
         model, data, limits, detector, jacobians = make_containers(
-            builder=builder, max_world_contacts=max_world_contacts, device=self.default_device
+            builder=builder,
+            max_world_contacts=max_world_contacts,
+            device=self.default_device,
+            sparse=True,
         )
 
         # Update the containers
@@ -251,11 +253,11 @@ class TestDelassusOperator(unittest.TestCase):
         delassus.build(model=model, data=data, jacobians=jacobians, reset_to_zero=True)
 
         # Extract the active constraint dimensions
-        active_dims = extract_active_constraint_dims(delassus)
+        active_dims = extract_active_constraint_dims(data)
         active_size = [dims * dims for dims in active_dims]
 
         # Extract Jacobians as numpy arrays
-        J_cts_np = extract_cts_jacobians(jacobians=jacobians, num_bodies=num_bodies, active_dims=active_dims)
+        J_cts_np = extract_cts_jacobians(model, limits, detector.contacts, jacobians, only_active_cts=True)
 
         # Extract Delassus data as numpy arrays
         D_np = extract_delassus(delassus, only_active_dims=True)
@@ -296,9 +298,6 @@ class TestDelassusOperator(unittest.TestCase):
         # Construct a homogeneous model description using model builders
         builder = make_homogeneous_builder(num_worlds=num_worlds, build_fn=build_boxes_nunchaku)
 
-        # Create a list of number of bodies per world
-        num_bodies = [builder.num_bodies // num_worlds for _ in range(num_worlds)]
-
         # Create the model and containers from the builder
         model, data, limits, detector, jacobians = make_containers(
             builder=builder, max_world_contacts=max_world_contacts, device=self.default_device
@@ -321,10 +320,10 @@ class TestDelassusOperator(unittest.TestCase):
         delassus.build(model=model, data=data, jacobians=jacobians, reset_to_zero=True)
 
         # Extract the active constraint dimensions
-        active_dims = extract_active_constraint_dims(delassus)
+        active_dims = extract_active_constraint_dims(data)
 
         # Extract Jacobians as numpy arrays
-        J_cts_np = extract_cts_jacobians(jacobians=jacobians, num_bodies=num_bodies, active_dims=active_dims)
+        J_cts_np = extract_cts_jacobians(model, limits, detector.contacts, jacobians, only_active_cts=True)
 
         # Extract Delassus data as numpy arrays
         D_np = extract_delassus(delassus, only_active_dims=True)
@@ -378,7 +377,6 @@ class TestDelassusOperator(unittest.TestCase):
 
         # Create a heterogeneous model description using model builders
         builder = make_basics_heterogeneous_builder()
-        num_bodies = [world.num_bodies for world in builder.worlds]
 
         # Create the model and containers from the builder
         model, data, limits, detector, jacobians = make_containers(
@@ -402,10 +400,10 @@ class TestDelassusOperator(unittest.TestCase):
         delassus.build(model=model, data=data, jacobians=jacobians, reset_to_zero=True)
 
         # Extract the active constraint dimensions
-        active_dims = extract_active_constraint_dims(delassus)
+        active_dims = extract_active_constraint_dims(data)
 
         # Extract Jacobians as numpy arrays
-        J_cts_np = extract_cts_jacobians(jacobians=jacobians, num_bodies=num_bodies, active_dims=active_dims)
+        J_cts_np = extract_cts_jacobians(model, limits, detector.contacts, jacobians, only_active_cts=True)
 
         # Extract Delassus data as numpy arrays
         D_np = extract_delassus(delassus, only_active_dims=True)
@@ -471,7 +469,7 @@ class TestDelassusOperator(unittest.TestCase):
         delassus.build(model=model, data=data, jacobians=jacobians, reset_to_zero=True)
 
         # Extract the active constraint dimensions
-        active_dims = extract_active_constraint_dims(delassus)
+        active_dims = extract_active_constraint_dims(data)
 
         # Now we reset the Delassus operator to zero and use diagonal regularization to set the diagonal entries to 1.0
         eta_wp = wp.full(
@@ -551,7 +549,7 @@ class TestDelassusOperator(unittest.TestCase):
         delassus.build(model=model, data=data, jacobians=jacobians, reset_to_zero=True)
 
         # Extract the active constraint dimensions
-        active_dims = extract_active_constraint_dims(delassus)
+        active_dims = extract_active_constraint_dims(data)
 
         # Add some regularization to the Delassus matrix to ensure it is positive definite
         eta = 10.0  # TODO: investigate why this has to be so large
@@ -656,7 +654,7 @@ class TestDelassusOperator(unittest.TestCase):
         delassus_sparse.build(model=model, data=data, jacobians=jacobians_sparse, reset_to_zero=True)
 
         # Extract the active constraint dimensions
-        active_dims = extract_active_constraint_dims(delassus_dense)
+        active_dims = extract_active_constraint_dims(data)
         active_size = [dims * dims for dims in active_dims]
 
         # Extract Delassus data as numpy arrays
@@ -716,7 +714,7 @@ class TestDelassusOperator(unittest.TestCase):
         delassus_sparse.build(model=model, data=data, jacobians=jacobians_sparse, reset_to_zero=True)
 
         # Extract the active constraint dimensions
-        active_dims = extract_active_constraint_dims(delassus_dense)
+        active_dims = extract_active_constraint_dims(data)
 
         # Extract Delassus data as numpy arrays
         D_dense_np = extract_delassus(delassus_dense, only_active_dims=True)
@@ -774,7 +772,7 @@ class TestDelassusOperator(unittest.TestCase):
         delassus_sparse.build(model=model, data=data, jacobians=jacobians_sparse, reset_to_zero=True)
 
         # Extract the active constraint dimensions
-        active_dims = extract_active_constraint_dims(delassus_dense)
+        active_dims = extract_active_constraint_dims(data)
 
         # Extract Delassus data as numpy arrays
         D_dense_np = extract_delassus(delassus_dense, only_active_dims=True)

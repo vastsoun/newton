@@ -160,10 +160,10 @@ def make_containers(
 def update_containers(
     model: Model,
     data: ModelData,
-    limits: Limits,
-    detector: CollisionDetector,
-    jacobians: DenseSystemJacobians | SparseSystemJacobians,
-) -> None:
+    limits: Limits | None = None,
+    detector: CollisionDetector | None = None,
+    jacobians: DenseSystemJacobians | SparseSystemJacobians | None = None,
+):
     # Update body inertias according to the current state of the bodies
     update_body_inertias(model=model.bodies, data=data.bodies)
     wp.synchronize()
@@ -173,20 +173,25 @@ def update_containers(
     wp.synchronize()
 
     # Run joint-limit detection to generate active limits
-    limits.detect(model, data=data)
-    wp.synchronize()
+    if limits is not None:
+        limits.detect(model, data=data)
+        wp.synchronize()
 
     # Run collision detection to generate active contacts
-    detector.collide(model, data=data)
-    wp.synchronize()
+    if detector is not None:
+        detector.collide(model, data=data)
+        wp.synchronize()
 
     # Update the constraint state info
     update_constraints_info(model=model, data=data)
     wp.synchronize()
 
     # Build the dense system Jacobians
-    jacobians.build(model=model, data=data, limits=limits.data, contacts=detector.contacts.data)
-    wp.synchronize()
+    if jacobians is not None:
+        ldata = limits.data if limits is not None else None
+        cdata = detector.contacts.data if detector is not None else None
+        jacobians.build(model=model, data=data, limits=ldata, contacts=cdata)
+        wp.synchronize()
 
 
 def make_test_problem(

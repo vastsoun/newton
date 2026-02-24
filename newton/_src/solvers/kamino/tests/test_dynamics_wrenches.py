@@ -81,7 +81,6 @@ def compute_and_compare_dense_sparse_jacobian_wrenches(
     # Create arrays for the constraint multipliers and initialize them
     lambdas_start, lambdas = make_constraint_multiplier_arrays(model)
     lambdas.fill_(1.0)
-    msg.error("lambdas:\n%s\n", lambdas)
 
     # Initialize the generalized joint actuation forces
     data.joints.tau_j.fill_(1.0)
@@ -108,10 +107,6 @@ def compute_and_compare_dense_sparse_jacobian_wrenches(
     w_j_i_dense_np = data.bodies.w_j_i.numpy().copy()
     w_l_i_dense_np = data.bodies.w_l_i.numpy().copy()
     w_c_i_dense_np = data.bodies.w_c_i.numpy().copy()
-    msg.warning("w_a_i_dense_np:\n%s", w_a_i_dense_np)
-    msg.warning("w_j_i_dense_np:\n%s", w_j_i_dense_np)
-    msg.warning("w_l_i_dense_np:\n%s", w_l_i_dense_np)
-    msg.warning("w_c_i_dense_np:\n%s\n", w_c_i_dense_np)
 
     # Compute the wrenches using the sparse Jacobians
     compute_joint_dof_body_wrenches_sparse(
@@ -133,10 +128,6 @@ def compute_and_compare_dense_sparse_jacobian_wrenches(
     w_j_i_sparse_np = data.bodies.w_j_i.numpy().copy()
     w_l_i_sparse_np = data.bodies.w_l_i.numpy().copy()
     w_c_i_sparse_np = data.bodies.w_c_i.numpy().copy()
-    msg.warning("w_a_i_sparse_np:\n%s", w_a_i_sparse_np)
-    msg.warning("w_j_i_sparse_np:\n%s", w_j_i_sparse_np)
-    msg.warning("w_l_i_sparse_np:\n%s", w_l_i_sparse_np)
-    msg.warning("w_c_i_sparse_np:\n%s\n", w_c_i_sparse_np)
 
     # Extract the number of bodies and constraints for each world
     num_bodies_np = model.info.num_bodies.numpy().astype(int).tolist()
@@ -231,8 +222,7 @@ class TestDynamicsWrenches(unittest.TestCase):
         if not test_context.setup_done:
             setup_tests(clear_cache=False)
         self.default_device = wp.get_device(test_context.device)
-        # self.verbose = test_context.verbose  # Set to True for verbose output
-        self.verbose = True  # Set to True for verbose output
+        self.verbose = test_context.verbose  # Set to True for verbose output
 
         # Set info-level logging to print verbose test output to console
         if self.verbose:

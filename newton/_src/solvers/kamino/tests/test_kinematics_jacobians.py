@@ -262,6 +262,99 @@ def set_fourbar_body_states(model: Model, data: ModelData):
 
 
 ###
+# Scaffolding
+###
+
+
+def make_test_problem_fourbar(
+    device: wp.DeviceLike | None = None,
+    max_world_contacts: int = 12,
+    num_worlds: int = 1,
+    with_limits: bool = False,
+    with_contacts: bool = False,
+    verbose: bool = False,
+) -> tuple[Model, ModelData, Limits | None, Contacts | None]:
+    # Construct the model description using the ModelBuilder
+    builder = make_homogeneous_builder(
+        num_worlds=num_worlds, build_fn=build_boxes_fourbar, dynamic_joints=True, implicit_pd=True
+    )
+
+    # Create the model from the builder
+    model = builder.finalize(device=device)
+
+    # Create a model state container
+    data = model.data(device=device)
+
+    # Construct and allocate the limits container
+    limits = None
+    if with_limits:
+        limits = Limits(model=model, device=device)
+
+    # Create the collision detector
+    contacts = None
+    if with_contacts:
+        settings = CollisionDetectorSettings(max_contacts_per_world=max_world_contacts, pipeline="primitive")
+        detector = CollisionDetector(model=model, builder=builder, settings=settings, device=device)
+        contacts = detector.contacts
+
+    # Create the constraints info
+    make_unilateral_constraints_info(
+        model=model,
+        data=data,
+        limits=limits,
+        contacts=contacts,
+        device=device,
+    )
+    if verbose:
+        print("")  # Add a newline for better readability
+        print_model_constraint_info(model)
+        print_model_data_info(data)
+
+    # Perturb the fourbar bodies in poses that trigger the joint limits
+    set_fourbar_body_states(model=model, data=data)
+    wp.synchronize()
+    if verbose:
+        print("data.bodies.q_i:\n", data.bodies.q_i)
+        print("data.bodies.u_i:\n", data.bodies.u_i)
+
+    # Compute the joints state
+    compute_joints_data(model=model, q_j_p=wp.zeros_like(data.joints.q_j), data=data)
+    wp.synchronize()
+    if verbose:
+        print("data.joints.p_j:\n", data.joints.p_j)
+        print("data.joints.r_j:\n", data.joints.r_j)
+        print("data.joints.dr_j:\n", data.joints.dr_j)
+        print("data.joints.q_j:\n", data.joints.q_j)
+        print("data.joints.dq_j:\n", data.joints.dq_j)
+
+    # Run limit detection to generate active limits
+    if with_limits:
+        limits.detect(model, data)
+        wp.synchronize()
+        if verbose:
+            print(f"limits.world_active_limits: {limits.world_active_limits}")
+            print(f"data.info.num_limits: {data.info.num_limits}")
+
+    # Run collision detection to generate active contacts
+    if with_contacts:
+        detector.collide(model, data)
+        wp.synchronize()
+        if verbose:
+            print(f"contacts.world_active_contacts: {detector.contacts.world_active_contacts}")
+            print(f"data.info.num_contacts: {data.info.num_contacts}")
+
+    # Update the constraints info
+    update_constraints_info(model=model, data=data)
+    if verbose:
+        print("")  # Add a newline for better readability
+        print_model_data_info(data)
+    wp.synchronize()
+
+    # Return the problem data containers
+    return model, data, limits, contacts
+
+
+###
 # Tests
 ###
 
@@ -272,6 +365,7 @@ class TestKinematicsDenseSystemJacobians(unittest.TestCase):
         if not test_context.setup_done:
             setup_tests(clear_cache=False)
         self.default_device = wp.get_device(test_context.device)
+        # self.verbose = test_context.verbose  # Set to True for verbose output
         self.verbose = True  # Set to True for verbose output
 
         # Set debug-level logging to print verbose test output to console
@@ -928,6 +1022,7 @@ class TestKinematicsSparseSystemJacobians(unittest.TestCase):
     ###
     # Helpers
     ###
+
     def _create_fourbar_example(
         self,
         create_limits: bool = False,
@@ -1744,10 +1839,6 @@ class TestKinematicsSparseSystemJacobians(unittest.TestCase):
 
         # Check that Jacobians match
         self._compare_row_col_major_jacobians(jacobians, jacobian_col_maj)
-
-    ###
-    # Operations
-    ###
 
 
 ###

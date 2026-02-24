@@ -496,12 +496,12 @@ def _compute_cts_body_wrenches_sparse(
     # Retrieve the Jacobian matrix block coordinates
     # and values for the current non-zero block
     global_nzb_idx = J_cts_nzb_start + nzbid
-    J_ij_coords = jac_nzb_coords[global_nzb_idx]
-    J_ij = jac_nzb_values[global_nzb_idx]
+    J_ji_coords = jac_nzb_coords[global_nzb_idx]
+    J_ji = jac_nzb_values[global_nzb_idx]
 
     # Get constraint and body from the block coordinates
-    cts_row = J_ij_coords[0]
-    bid_j = J_ij_coords[1] // 6
+    cts_row = J_ji_coords[0]
+    bid_j = J_ji_coords[1] // 6
 
     # Get global body index, i.e. w.r.t the model
     global_bid_j = world_bid_start + bid_j
@@ -511,7 +511,7 @@ def _compute_cts_body_wrenches_sparse(
     lambda_j = inv_dt * lambdas_data[world_cts_start + cts_row]
 
     # Compute the joint constraint wrench for the body
-    w_ij = lambda_j * J_ij
+    w_ij = lambda_j * J_ji
 
     # Add the wrench to the appropriate array
     if cts_row >= contact_cts_group_start:

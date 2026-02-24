@@ -143,7 +143,7 @@ def parse_benchmark_arguments():
         "--mode",
         type=str,
         choices=SUPPORTED_BENCHMARK_RUN_MODES,
-        default="import",
+        default="accuracy",
         help=f"Defines the benchmark mode to run. Defaults to 'accuracy'.\n{SUPPORTED_BENCHMARK_RUN_MODES}",
     )
     parser.add_argument(

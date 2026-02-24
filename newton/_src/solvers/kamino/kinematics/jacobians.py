@@ -1279,13 +1279,13 @@ class DenseSystemJacobiansData:
         # Constraint Jacobian
         ###
 
-        self.J_cts_offsets: wp.array(dtype=int32) | None = None
+        self.J_cts_offsets: wp.array | None = None
         """
         The index offset of the constraint Jacobian matrix block of each world.\n
         Shape of ``(num_worlds,)`` and type :class:`int32`.\n
         """
 
-        self.J_cts_data: wp.array(dtype=float32) | None = None
+        self.J_cts_data: wp.array | None = None
         """
         A flat array containing the constraint Jacobian matrix data of all worlds.\n
         Shape of ``(sum(ncts_w * nbd_w),)`` and type :class:`float32`.
@@ -1295,13 +1295,13 @@ class DenseSystemJacobiansData:
         # DoFs Jacobian
         ###
 
-        self.J_dofs_offsets: wp.array(dtype=int32) | None = None
+        self.J_dofs_offsets: wp.array | None = None
         """
         The index offset of the DoF Jacobian matrix block of each world.\n
         Shape of ``(num_worlds,)`` and type :class:`int32`.\n
         """
 
-        self.J_dofs_data: wp.array(dtype=float32) | None = None
+        self.J_dofs_data: wp.array | None = None
         """
         A flat array containing the joint DoF Jacobian matrix data of all worlds.\n
         Shape of ``(sum(njad_w * nbd_w),)`` and type :class:`float32`.

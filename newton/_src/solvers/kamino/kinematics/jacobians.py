@@ -645,7 +645,6 @@ def _build_limit_jacobians_dense(
 def _build_limit_jacobians_sparse(
     # Inputs:
     model_info_bodies_offset: wp.array(dtype=int32),
-    model_info_joints_offset: wp.array(dtype=int32),
     model_joints_dofs_offset: wp.array(dtype=int32),
     model_joints_num_dofs: wp.array(dtype=int32),
     state_info_limit_cts_group_offset: wp.array(dtype=int32),
@@ -687,7 +686,7 @@ def _build_limit_jacobians_sparse(
     body_id_F_l = body_ids_l[1]
     dof_l = limits_dof[limit_id]
     side_l = limits_side[limit_id]
-    joint_id = limits_jid[limit_id] + model_info_joints_offset[world_id]
+    joint_id = limits_jid[limit_id]
 
     # Resolve which NZB of the dofs Jacobian corresponds to the limit's dof (on the follower)
     dof_id = dof_l - model_joints_dofs_offset[joint_id]  # Id of the dof among the joint's dof
@@ -1623,7 +1622,6 @@ class SparseSystemJacobians:
                 inputs=[
                     # Inputs:
                     model.info.bodies_offset,
-                    model.info.joints_offset,
                     model.joints.dofs_offset,
                     model.joints.num_dofs,
                     data.info.limit_cts_group_offset,

@@ -1231,6 +1231,9 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
         # Declare the optional (iterative) solver
         self._solver: LinearSolverType | None = None
 
+        # Flag to indicate that the operator needs an update to its data structure
+        self._needs_update: bool = False
+
         # Temporary vector to store results, sized to the number of body dofs in a model.
         self._vec_temp_body_space: wp.array | None = None
 
@@ -1380,6 +1383,8 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
             solver_kwargs = solver_kwargs or {}
             self._solver = solver(operator=self, device=self._device, **solver_kwargs)
 
+        self.set_needs_update()
+
     def assign(self, jacobians: SparseSystemJacobians):
         """
         Assigns the constraint Jacobian to the Delassus operator.
@@ -1408,6 +1413,12 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
             self.bsm.nzb_values = wp.empty_like(self.constraint_jacobian.nzb_values)
 
         self.update()
+
+    def set_needs_update(self):
+        """
+        Flags the operator as needing to update its data structure.
+        """
+        self._needs_update = True
 
     def update(self):
         """
@@ -1520,6 +1531,8 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
                     device=self._device,
                 )
 
+        self._needs_update = False
+
     def set_regularization(self, eta: wp.array | None):
         """
         Adds diagonal regularization to each matrix block of the Delassus operator, replacing any
@@ -1534,6 +1547,7 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
                 or `None` if no regularization should be applied.
         """
         self._eta = eta
+        self.set_needs_update()
 
     def set_preconditioner(self, preconditioner: wp.array | None):
         """
@@ -1549,6 +1563,7 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
                 preconditioning.
         """
         self._preconditioner = preconditioner
+        self.set_needs_update()
 
     def diagonal(self, diag: wp.array):
         """Stores the diagonal of the Delassus matrix in the given array.
@@ -1625,6 +1640,10 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
         if self._solver is None:
             raise ValueError("A linear system solver is not available. Allocate with solver=LINEAR_SOLVER_TYPE.")
 
+        # Update if data has changed
+        if self._needs_update:
+            self.update()
+
         # Optionally initialize the solver
         if reset_to_zero:
             self._solver.reset()
@@ -1655,6 +1674,10 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
         if self._solver is None:
             raise ValueError("A linear system solver is not available. Allocate with solver=LINEAR_SOLVER_TYPE.")
 
+        # Update if data has changed
+        if self._needs_update:
+            self.update()
+
         # Solve the linear system
         return self._solver.solve(b=v, x=x)
 
@@ -1680,6 +1703,10 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
         # Ensure the solver is available if pre-computation is requested
         if self._solver is None:
             raise ValueError("A linear system solver is not available. Allocate with solver=LINEAR_SOLVER_TYPE.")
+
+        # Update if data has changed
+        if self._needs_update:
+            self.update()
 
         # Solve the linear system in-place
         return self._solver.solve_inplace(x=x)
@@ -1743,6 +1770,10 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
         if self.ATy_op is None:
             raise RuntimeError("No `A^T@y` operator has been assigned.")
 
+        # Update if data has changed
+        if self._needs_update:
+            self.update()
+
         v = self._vec_temp_body_space
         v.zero_()
 
@@ -1782,6 +1813,10 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
         Note:
             Since the Delassus matrix is symmetric, this is equivalent to `matvec`.
         """
+        # Update if data has changed
+        if self._needs_update:
+            self.update()
+
         self.matvec(x, y, world_mask)
 
     def gemv(self, x: wp.array, y: wp.array, world_mask: wp.array, alpha: float = 1.0, beta: float = 0.0):
@@ -1793,6 +1828,10 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
             raise RuntimeError("No BLAS-like `GEMV` operator has been assigned.")
         if self.ATy_op is None:
             raise RuntimeError("No `A^T@y` operator has been assigned.")
+
+        # Update if data has changed
+        if self._needs_update:
+            self.update()
 
         v = self._vec_temp_body_space
         v.zero_()
@@ -1842,4 +1881,8 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
         Note:
             Since the Delassus matrix is symmetric, this is equivalent to `gemv` with swapped arguments.
         """
+        # Update if data has changed
+        if self._needs_update:
+            self.update()
+
         self.gemv(y, x, world_mask, alpha, beta)

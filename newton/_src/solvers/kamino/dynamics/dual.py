@@ -1428,7 +1428,7 @@ class DualProblem:
         self._data.mu.zero_()
         self._data.P.fill_(1.0)
         if self._sparse:
-            self._delassus.update()
+            self._delassus.set_needs_update()
 
     def build(
         self,
@@ -1518,9 +1518,6 @@ class DualProblem:
         if any(s.preconditioning for s in self._settings):
             self._build_dual_preconditioner()
             self._apply_dual_preconditioner_to_dual()
-
-        if self._sparse:
-            self._delassus.update()
 
     ###
     # Internals

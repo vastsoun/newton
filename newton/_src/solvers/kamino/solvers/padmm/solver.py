@@ -466,6 +466,7 @@ class PADMMSolver:
                 problem.delassus._eta,
             ],
         )
+        problem.delassus.set_needs_update()
 
     def _update_regularization(self, problem: DualProblem):
         """

@@ -240,7 +240,7 @@ class Example:
 
         # Print-out of actuated joints used for verifying the imported USD was parsed as expected
         for joint in self.builder.joints:
-            if joint.is_actuated:
+            if joint.is_dynamic or joint.is_implicit_pd:
                 joint.a_j = [0.011]  # Set joint armature according to Dynamixel XH540-V150 specs
                 joint.b_j = [0.044]  # Set joint damping according to Dynamixel XH540-V150 specs
                 msg.info(f"Joint '{joint.name}':\n{joint}\n")
@@ -249,7 +249,7 @@ class Example:
         settings = SimulatorSettings()
         settings.dt = self.sim_dt
         settings.solver.sparse = False
-        settings.solver.sparse_jacobian = True
+        settings.solver.sparse_jacobian = False
         settings.solver.integrator = "moreau"  # Select from {"euler", "moreau"}
         settings.solver.problem.alpha = 0.1
         settings.solver.padmm.primal_tolerance = 1e-4

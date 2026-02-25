@@ -48,6 +48,7 @@ from newton._src.solvers.kamino.tests.utils.make import (
 )
 from newton._src.solvers.kamino.tests.utils.print import print_error_stats
 from newton._src.solvers.kamino.tests.utils.rand import random_rhs_for_matrix
+from newton._src.solvers.kamino.utils import logger as msg
 
 ###
 # Helper functions
@@ -274,7 +275,7 @@ class TestDelassusOperator(unittest.TestCase):
             for w in range(delassus.num_worlds):
                 inv_M_q_np[w][: njdcts[w]] = inv_m_j_np[jdcts_start[w] : jdcts_start[w] + njdcts[w]]
                 inv_M_q_np[w] = np.diag(inv_M_q_np[w])
-                print(f"[{w}]: inv_M_q_np (shape={inv_M_q_np[w].shape}):\n{inv_M_q_np[w]}\n\n")
+                msg.info(f"[{w}]: inv_M_q_np (shape={inv_M_q_np[w].shape}):\n{inv_M_q_np[w]}\n\n")
 
         # For each world, compute the Delassus matrix using numpy and
         # compare it with the one from the Delassus operator class
@@ -285,8 +286,8 @@ class TestDelassusOperator(unittest.TestCase):
             # Compare the computed Delassus matrix with the one from the dual problem
             is_D_close = np.allclose(D_np[w], D_w, rtol=1e-3, atol=1e-4)
             if not is_D_close or self.verbose:
-                print(f"[{w}]: D_w (shape={D_w.shape}):\n{D_w}")
-                print(f"[{w}]: D_np (shape={D_np[w].shape}):\n{D_np[w]}")
+                msg.warning(f"[{w}]: D_w (shape={D_w.shape}):\n{D_w}")
+                msg.warning(f"[{w}]: D_np (shape={D_np[w].shape}):\n{D_np[w]}")
                 print_error_stats(f"D[{w}]", D_np[w], D_w, active_size[w], show_errors=True)
             self.assertTrue(is_D_close)
 

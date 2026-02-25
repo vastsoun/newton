@@ -134,7 +134,7 @@ class LimitsData:
 
     jid: wp.array | None = None
     """
-    The element index of the corresponding joint w.r.t the world.\n
+    The element index of the corresponding joint w.r.t the model.\n
     Shape of ``(model_max_limits_host,)`` and type :class:`int32`.
     """
 

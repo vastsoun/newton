@@ -75,6 +75,16 @@ from .solvers.warmstart import WarmstarterContacts, WarmstarterLimits
 from .utils import logger as msg
 
 ###
+# Module interface
+###
+
+__all__ = [
+    "SolverKamino",
+    "SolverKaminoSettings",
+]
+
+
+###
 # Types
 ###
 

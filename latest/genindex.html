@@ -830,7 +830,7 @@ window.addEventListener("load", () => mermaid.run());
             <dt><a href="api/_generated/newton.sensors.SensorIMU.html#newton.sensors.SensorIMU.__init__">(newton.sensors.SensorIMU method)</a></dt>
             <dt><a href="api/_generated/newton.sensors.SensorRaycast.html#newton.sensors.SensorRaycast.__init__">(newton.sensors.SensorRaycast method)</a></dt>
             <dt><a href="api/_generated/newton.sensors.SensorTiledCamera.html#newton.sensors.SensorTiledCamera.__init__">(newton.sensors.SensorTiledCamera method)</a></dt>
-            <dt><a href="api/_generated/newton.sensors.SensorTiledCamera.html#newton.sensors.SensorTiledCamera.Options.__init__">(newton.sensors.SensorTiledCamera.Options method)</a></dt>
+            <dt><a href="api/_generated/newton.sensors.SensorTiledCamera.html#newton.sensors.SensorTiledCamera.Config.__init__">(newton.sensors.SensorTiledCamera.Config method)</a></dt>
             <dt><a href="api/_generated/newton.solvers.SolverBase.html#newton.solvers.SolverBase.__init__">(newton.solvers.SolverBase method)</a></dt>
             <dt><a href="api/_generated/newton.solvers.SolverFeatherstone.html#newton.solvers.SolverFeatherstone.__init__">(newton.solvers.SolverFeatherstone method)</a></dt>
             <dt><a href="api/_generated/newton.solvers.SolverImplicitMPM.html#newton.solvers.SolverImplicitMPM.__init__">(newton.solvers.SolverImplicitMPM method)</a></dt>
@@ -1183,7 +1183,7 @@ window.addEventListener("load", () => mermaid.run());
     <td style="width: 33%; vertical-align: top;">
       <dl>
         <dt>
-          <a href="api/_generated/newton.sensors.SensorTiledCamera.html#newton.sensors.SensorTiledCamera.Options.backface_culling">backface_culling (newton.sensors.SensorTiledCamera.Options attribute)</a>
+          <a href="api/_generated/newton.sensors.SensorTiledCamera.html#newton.sensors.SensorTiledCamera.Config.backface_culling">backface_culling (newton.sensors.SensorTiledCamera.Config attribute)</a>
         </dt>
         <dt>
           <a href="api/_generated/newton.ModelBuilder.html#newton.ModelBuilder.balance_inertia">balance_inertia (newton.ModelBuilder attribute)</a>
@@ -1213,7 +1213,7 @@ window.addEventListener("load", () => mermaid.run());
         </dt>
         <dd>
           <dl>
-            <dt><a href="api/_generated/newton.sensors.SensorContact.html#newton.sensors.SensorContact.MatchKind.BODY">(newton.sensors.SensorContact.MatchKind attribute)</a></dt>
+            <dt><a href="api/_generated/newton.sensors.SensorContact.html#newton.sensors.SensorContact.ObjectType.BODY">(newton.sensors.SensorContact.ObjectType attribute)</a></dt>
             <dt><a href="api/_generated/newton.solvers.SolverMuJoCo.html#newton.solvers.SolverMuJoCo.TrnType.BODY">(newton.solvers.SolverMuJoCo.TrnType attribute)</a></dt>
           </dl>
         </dd>
@@ -1384,7 +1384,7 @@ window.addEventListener("load", () => mermaid.run());
           <a href="api/_generated/newton.GeoType.html#newton.GeoType.CAPSULE">CAPSULE (newton.GeoType attribute)</a>
         </dt>
         <dt>
-          <a href="api/_generated/newton.sensors.SensorTiledCamera.html#newton.sensors.SensorTiledCamera.Options.checkerboard_texture">checkerboard_texture (newton.sensors.SensorTiledCamera.Options attribute)</a>
+          <a href="api/_generated/newton.sensors.SensorTiledCamera.html#newton.sensors.SensorTiledCamera.Config.checkerboard_texture">checkerboard_texture (newton.sensors.SensorTiledCamera.Config attribute)</a>
         </dt>
         <dt>
           <a href="api/_generated/newton.Contacts.html#newton.Contacts.clear">clear() (newton.Contacts method)</a>
@@ -1420,6 +1420,9 @@ window.addEventListener("load", () => mermaid.run());
         </dt>
         <dt>
           <a href="api/_generated/newton.solvers.SolverImplicitMPM.html#newton.solvers.SolverImplicitMPM.collect_collider_impulses">collect_collider_impulses() (newton.solvers.SolverImplicitMPM method)</a>
+        </dt>
+        <dt>
+          <a href="api/_generated/newton.solvers.SolverVBD.html#newton.solvers.SolverVBD.collect_rigid_contact_forces">collect_rigid_contact_forces() (newton.solvers.SolverVBD method)</a>
         </dt>
         <dt>
           <a href="api/_generated/newton.CollisionPipeline.html#newton.CollisionPipeline.collide">collide() (newton.CollisionPipeline method)</a>
@@ -1499,10 +1502,10 @@ window.addEventListener("load", () => mermaid.run());
           <a href="api/_generated/newton.utils.color_graph.html#newton.utils.color_graph">color_graph() (in module newton.utils)</a>
         </dt>
         <dt>
-          <a href="api/_generated/newton.sensors.SensorTiledCamera.html#newton.sensors.SensorTiledCamera.Options.colors_per_shape">colors_per_shape (newton.sensors.SensorTiledCamera.Options attribute)</a>
+          <a href="api/_generated/newton.sensors.SensorTiledCamera.html#newton.sensors.SensorTiledCamera.Config.colors_per_shape">colors_per_shape (newton.sensors.SensorTiledCamera.Config attribute)</a>
         </dt>
         <dt>
-          <a href="api/_generated/newton.sensors.SensorTiledCamera.html#newton.sensors.SensorTiledCamera.Options.colors_per_world">colors_per_world (newton.sensors.SensorTiledCamera.Options attribute)</a>
+          <a href="api/_generated/newton.sensors.SensorTiledCamera.html#newton.sensors.SensorTiledCamera.Config.colors_per_world">colors_per_world (newton.sensors.SensorTiledCamera.Config attribute)</a>
         </dt>
         <dt>
           <a href="api/_generated/newton.Mesh.html#newton.Mesh.com">com (newton.Mesh attribute)</a>
@@ -1755,10 +1758,10 @@ window.addEventListener("load", () => mermaid.run());
           <a href="api/_generated/newton.ModelBuilder.html#newton.ModelBuilder.default_joint_cfg">default_joint_cfg (newton.ModelBuilder attribute)</a>
         </dt>
         <dt>
-          <a href="api/_generated/newton.sensors.SensorTiledCamera.html#newton.sensors.SensorTiledCamera.Options.default_light">default_light (newton.sensors.SensorTiledCamera.Options attribute)</a>
+          <a href="api/_generated/newton.sensors.SensorTiledCamera.html#newton.sensors.SensorTiledCamera.Config.default_light">default_light (newton.sensors.SensorTiledCamera.Config attribute)</a>
         </dt>
         <dt>
-          <a href="api/_generated/newton.sensors.SensorTiledCamera.html#newton.sensors.SensorTiledCamera.Options.default_light_shadows">default_light_shadows (newton.sensors.SensorTiledCamera.Options attribute)</a>
+          <a href="api/_generated/newton.sensors.SensorTiledCamera.html#newton.sensors.SensorTiledCamera.Config.default_light_shadows">default_light_shadows (newton.sensors.SensorTiledCamera.Config attribute)</a>
         </dt>
         <dt>
           <a href="api/_generated/newton.ModelBuilder.html#newton.ModelBuilder.default_particle_radius">default_particle_radius (newton.ModelBuilder attribute)</a>
@@ -2181,9 +2184,6 @@ window.addEventListener("load", () => mermaid.run());
         </dt>
         <dt>
           <a href="api/_generated/newton.usd.get_scale.html#newton.usd.get_scale">get_scale() (in module newton.usd)</a>
-        </dt>
-        <dt>
-          <a href="api/_generated/newton.sensors.SensorContact.html#newton.sensors.SensorContact.get_total_force">get_total_force() (newton.sensors.SensorContact method)</a>
         </dt>
         <dt>
           <a href="api/_generated/newton.usd.get_transform.html#newton.usd.get_transform">get_transform() (in module newton.usd)</a>
@@ -2821,9 +2821,6 @@ window.addEventListener("load", () => mermaid.run());
           <a href="api/_generated/newton.Mesh.html#newton.Mesh.mass">mass (newton.Mesh attribute)</a>
         </dt>
         <dt>
-          <a href="api/_generated/newton.sensors.SensorContact.html#newton.sensors.SensorContact.MatchKind.MATCH_ANY">MATCH_ANY (newton.sensors.SensorContact.MatchKind attribute)</a>
-        </dt>
-        <dt>
           <a href="api/_generated/newton.solvers.SolverImplicitMPM.html#newton.solvers.SolverImplicitMPM.Config.max_active_cell_count">max_active_cell_count (newton.solvers.SolverImplicitMPM.Config attribute)</a>
         </dt>
         <dt>
@@ -2883,13 +2880,13 @@ window.addEventListener("load", () => mermaid.run());
         <dt>
           <a href="api/_generated/newton.solvers.SolverMuJoCo.html#newton.solvers.SolverMuJoCo.mjc_jnt_to_newton_dof">mjc_jnt_to_newton_dof (newton.solvers.SolverMuJoCo attribute)</a>
         </dt>
+        <dt>
+          <a href="api/_generated/newton.solvers.SolverMuJoCo.html#newton.solvers.SolverMuJoCo.mjc_jnt_to_newton_jnt">mjc_jnt_to_newton_jnt (newton.solvers.SolverMuJoCo attribute)</a>
+        </dt>
       </dl>
     </td>
     <td style="width: 33%; vertical-align: top;">
       <dl>
-        <dt>
-          <a href="api/_generated/newton.solvers.SolverMuJoCo.html#newton.solvers.SolverMuJoCo.mjc_jnt_to_newton_jnt">mjc_jnt_to_newton_jnt (newton.solvers.SolverMuJoCo attribute)</a>
-        </dt>
         <dt>
           <a href="api/_generated/newton.solvers.SolverMuJoCo.html#newton.solvers.SolverMuJoCo.mjc_mocap_to_newton_jnt">mjc_mocap_to_newton_jnt (newton.solvers.SolverMuJoCo attribute)</a>
         </dt>
@@ -3478,13 +3475,16 @@ window.addEventListener("load", () => mermaid.run());
           <a href="api/_generated/newton.Model.html#newton.Model.sdf_volume">sdf_volume (newton.Model attribute)</a>
         </dt>
         <dt>
+          <a href="api/_generated/newton.sensors.SensorContact.html#newton.sensors.SensorContact.sensing_obj_transforms">sensing_obj_transforms (newton.sensors.SensorContact attribute)</a>
+        </dt>
+        <dt>
           <a href="api/_generated/newton.sensors.SensorContact.html#newton.sensors.SensorContact.sensing_objs">sensing_objs (newton.sensors.SensorContact attribute)</a>
         </dt>
         <dt>
           <a href="api/_generated/newton.sensors.SensorContact.html#newton.sensors.SensorContact">SensorContact (class in newton.sensors)</a>
         </dt>
         <dt>
-          <a href="api/_generated/newton.sensors.SensorContact.html#newton.sensors.SensorContact.MatchKind">SensorContact.MatchKind (class in newton.sensors)</a>
+          <a href="api/_generated/newton.sensors.SensorContact.html#newton.sensors.SensorContact.ObjectType">SensorContact.ObjectType (class in newton.sensors)</a>
         </dt>
         <dt>
           <a href="api/_generated/newton.sensors.SensorFrameTransform.html#newton.sensors.SensorFrameTransform">SensorFrameTransform (class in newton.sensors)</a>
@@ -3499,7 +3499,7 @@ window.addEventListener("load", () => mermaid.run());
           <a href="api/_generated/newton.sensors.SensorTiledCamera.html#newton.sensors.SensorTiledCamera">SensorTiledCamera (class in newton.sensors)</a>
         </dt>
         <dt>
-          <a href="api/_generated/newton.sensors.SensorTiledCamera.html#newton.sensors.SensorTiledCamera.Options">SensorTiledCamera.Options (class in newton.sensors)</a>
+          <a href="api/_generated/newton.sensors.SensorTiledCamera.html#newton.sensors.SensorTiledCamera.Config">SensorTiledCamera.Config (class in newton.sensors)</a>
         </dt>
         <dt>
           <a href="api/_generated/newton.sensors.SensorTiledCamera.html#newton.sensors.SensorTiledCamera.RenderLightType">SensorTiledCamera.RenderLightType (class in newton.sensors)</a>
@@ -3569,7 +3569,7 @@ window.addEventListener("load", () => mermaid.run());
           <a href="api/_generated/newton.sensors.SensorContact.html#newton.sensors.SensorContact.shape">shape (newton.sensors.SensorContact attribute)</a>
         </dt>
         <dt>
-          <a href="api/_generated/newton.sensors.SensorContact.html#newton.sensors.SensorContact.MatchKind.SHAPE">SHAPE (newton.sensors.SensorContact.MatchKind attribute)</a>
+          <a href="api/_generated/newton.sensors.SensorContact.html#newton.sensors.SensorContact.ObjectType.SHAPE">SHAPE (newton.sensors.SensorContact.ObjectType attribute)</a>
         </dt>
         <dt>
           <a href="api/_generated/newton.Model.html#newton.Model.shape_body">shape_body (newton.Model attribute)</a>
@@ -3651,13 +3651,13 @@ window.addEventListener("load", () => mermaid.run());
         <dt>
           <a href="api/_generated/newton.Model.html#newton.Model.shape_material_restitution">shape_material_restitution (newton.Model attribute)</a>
         </dt>
-        <dt>
-          <a href="api/_generated/newton.solvers.SolverNotifyFlags.html#newton.solvers.SolverNotifyFlags.SHAPE_PROPERTIES">SHAPE_PROPERTIES (newton.solvers.SolverNotifyFlags attribute)</a>
-        </dt>
       </dl>
     </td>
     <td style="width: 33%; vertical-align: top;">
       <dl>
+        <dt>
+          <a href="api/_generated/newton.solvers.SolverNotifyFlags.html#newton.solvers.SolverNotifyFlags.SHAPE_PROPERTIES">SHAPE_PROPERTIES (newton.solvers.SolverNotifyFlags attribute)</a>
+        </dt>
         <dt>
           <a href="api/_generated/newton.Model.html#newton.Model.shape_scale">shape_scale (newton.Model attribute)</a>
         </dt>
@@ -3942,15 +3942,18 @@ window.addEventListener("load", () => mermaid.run());
         <dt>
           <a href="api/_generated/newton.Axis.html#newton.Axis.to_vec3">to_vec3() (newton.Axis method)</a>
         </dt>
+        <dt>
+          <a href="api/_generated/newton.Axis.html#newton.Axis.to_vector">to_vector() (newton.Axis method)</a>
+        </dt>
       </dl>
     </td>
     <td style="width: 33%; vertical-align: top;">
       <dl>
         <dt>
-          <a href="api/_generated/newton.Axis.html#newton.Axis.to_vector">to_vector() (newton.Axis method)</a>
+          <a href="api/_generated/newton.solvers.SolverImplicitMPM.html#newton.solvers.SolverImplicitMPM.Config.tolerance">tolerance (newton.solvers.SolverImplicitMPM.Config attribute)</a>
         </dt>
         <dt>
-          <a href="api/_generated/newton.solvers.SolverImplicitMPM.html#newton.solvers.SolverImplicitMPM.Config.tolerance">tolerance (newton.solvers.SolverImplicitMPM.Config attribute)</a>
+          <a href="api/_generated/newton.sensors.SensorContact.html#newton.sensors.SensorContact.ObjectType.TOTAL">TOTAL (newton.sensors.SensorContact.ObjectType attribute)</a>
         </dt>
         <dt>
           <a href="api/_generated/newton.utils.EventTracer.html#newton.utils.EventTracer.trace">trace() (newton.utils.EventTracer method)</a>

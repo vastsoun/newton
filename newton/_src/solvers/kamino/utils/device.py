@@ -125,7 +125,6 @@ def get_device_malloc_info(
             mem_used_bytes = wp.get_mempool_used_mem_high(device)
         else:
             raise ValueError(f"Invalid usage `{usage}`. Must be one of 'current' or 'high'.")
-        mem_used_bytes = wp.get_mempool_used_mem_high(device)
         mem_used_mb = float(mem_used_bytes) / (1024**2)
         mem_used_gb = float(mem_used_bytes) / (1024**3)
         if resolution == "bytes":

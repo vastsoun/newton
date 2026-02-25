@@ -1418,7 +1418,7 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
         if self._col_major_jacobian is None:
             wp.copy(self._transpose_op_matrix.nzb_values, self.constraint_jacobian.nzb_values)
         else:
-            self._col_major_jacobian.update(self._jacobians, self._model, self._limits, self._contacts)
+            self._col_major_jacobian.update(self._model, self._jacobians, self._limits, self._contacts)
 
         # Copy current Jacobian values to local constraint Jacobian
         wp.copy(self.bsm.nzb_values, self.constraint_jacobian.nzb_values)

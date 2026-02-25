@@ -96,12 +96,14 @@ def extract_cts_jacobians(
         J_cts_flat_sizes[w] = J_cts_flat_offsets_ext[w + 1] - J_cts_flat_offsets_ext[w]
 
     # Retrieve the Jacobian dimensions in each world
+    has_limits = limits is not None and limits.model_max_limits_host > 0
+    has_contacts = contacts is not None and contacts.model_max_contacts_host > 0
     num_bdofs = [model.worlds[w].num_body_dofs for w in range(num_worlds)]
     num_jcts = [model.worlds[w].num_joint_cts for w in range(num_worlds)]
-    maxnl = limits.world_max_limits_host if limits is not None else [0] * num_worlds
-    maxnc = contacts.world_max_contacts_host if contacts is not None else [0] * num_worlds
-    nlact = limits.world_active_limits.numpy().tolist() if limits is not None else [0] * num_worlds
-    ncact = contacts.world_active_contacts.numpy().tolist() if contacts is not None else [0] * num_worlds
+    maxnl = limits.world_max_limits_host if has_limits else [0] * num_worlds
+    maxnc = contacts.world_max_contacts_host if has_contacts else [0] * num_worlds
+    nlact = limits.world_active_limits.numpy().tolist() if has_limits else [0] * num_worlds
+    ncact = contacts.world_active_contacts.numpy().tolist() if has_contacts else [0] * num_worlds
     nl = nlact if only_active_cts else maxnl
     nc = ncact if only_active_cts else maxnc
 

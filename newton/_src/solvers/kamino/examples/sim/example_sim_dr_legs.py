@@ -24,7 +24,7 @@ import newton
 import newton.examples
 from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.examples import get_examples_output_path, run_headless
-from newton._src.solvers.kamino.linalg.linear import SolverShorthand as LinearSolverShorthand
+from newton._src.solvers.kamino.linalg.linear import LinearSolverTypeToName as LinearSolverShorthand
 from newton._src.solvers.kamino.models import get_examples_usd_assets_path
 from newton._src.solvers.kamino.models.builders.utils import (
     add_ground_box,
@@ -112,7 +112,7 @@ class Example:
         settings.solver.padmm.eta = 1e-5
         settings.solver.padmm.rho_0 = 0.02  # try 0.02 for Balanced update
         settings.solver.padmm.rho_min = 0.01
-        settings.solver.penalty_update_method = PADMMPenaltyUpdate.FIXED  # try BALANCED
+        settings.solver.padmm.penalty_update_method = PADMMPenaltyUpdate.FIXED  # try BALANCED
         settings.solver.use_solver_acceleration = True
         settings.solver.warmstart_mode = PADMMWarmStartMode.CONTAINERS
         settings.solver.contact_warmstart_method = WarmstarterContacts.Method.GEOM_PAIR_NET_FORCE

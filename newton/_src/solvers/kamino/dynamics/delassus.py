@@ -293,7 +293,8 @@ def _build_delassus_elementwise_sparse(
     D_ji = lin_ji + ang_ji
 
     # Store the result in the Delassus matrix
-    delassus_D[dmio + ncts * block_coords_i[0] + block_coords_j[0]] += 0.5 * (D_ij + D_ji)
+    # delassus_D[dmio + ncts * block_coords_i[0] + block_coords_j[0]] += 0.5 * (D_ij + D_ji)
+    wp.atomic_add(delassus_D, dmio + ncts * block_coords_i[0] + block_coords_j[0], 0.5 * (D_ij + D_ji))
 
 
 @wp.kernel
@@ -1402,6 +1403,7 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
         # Create copy of constraint Jacobian with separate non-zero block values, so we can apply
         # preconditioning and the inverse mass matrix directly to the Jacobian.
         if self.bsm is None:
+            # TODO: DOES THIS DO WHAT WE THINK IT DOES?
             self.bsm = copy.copy(jacobians._J_cts.bsm)
             self.bsm.nzb_values = wp.empty_like(self.constraint_jacobian.nzb_values)
 
@@ -1483,6 +1485,7 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
             else:
                 self._combined_regularization.zero_()
 
+            # TODO: ?????????
             if self._preconditioner is None:
                 # Add armature regularization to combined regularization
                 wp.launch(

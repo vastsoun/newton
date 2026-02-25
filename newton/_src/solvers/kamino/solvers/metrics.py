@@ -1491,7 +1491,6 @@ class SolutionMetrics:
             delassus_pre_prev = problem.delassus._preconditioner
             problem.delassus.set_regularization(None)
             problem.delassus.set_preconditioner(None)
-            problem.delassus.update()
             problem.delassus.matvec(
                 x=lambdas,
                 y=self._buffer_v,
@@ -1499,7 +1498,6 @@ class SolutionMetrics:
             )
             problem.delassus.set_regularization(delassus_reg_prev)
             problem.delassus.set_preconditioner(delassus_pre_prev)
-            problem.delassus.update()
             wp.launch(
                 kernel=_compute_dual_problem_metrics_sparse,
                 dim=problem.size.num_worlds,

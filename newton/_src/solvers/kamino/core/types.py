@@ -81,8 +81,25 @@ float64 = wp.float64
 
 
 FloatType = float16 | float32 | float64
+"""A type union for floating-point types used in Warp."""
+
 IntType = int16 | int32 | int64
+"""A type union for integer types used in Warp."""
+
+ScalarType = FloatType | IntType
+"""A type union for scalar types, including both floating-point and integer types."""
+
 VecIntType = wp.vec2s | wp.vec2i | wp.vec2l
+"""A type union for vector types that contain integer values."""
+
+
+def warp_dtype_size(dtype):
+    """Utility function to retrieve the size of a Warp dtype in bytes."""
+    from warp._src.types import type_size_in_bytes  # noqa: PLC0415
+
+    if dtype not in ScalarType:
+        raise ValueError(f"Unsupported dtype: {dtype}")
+    return type_size_in_bytes(dtype)
 
 
 ###

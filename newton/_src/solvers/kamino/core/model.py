@@ -23,6 +23,7 @@ import numpy as np
 import warp as wp
 
 from ....geometry.flags import ShapeFlags
+from ....geometry.types import GeoType
 from ....sim.joints import JointType
 from ....sim.model import Model
 from ..utils import logger as msg
@@ -987,6 +988,7 @@ class ModelKamino:
         shape_type_np = model.shape_type.numpy()
         shape_scale_np = model.shape_scale.numpy()
         shape_flags_np = model.shape_flags.numpy()
+        shape_transform_np = model.shape_transform.numpy()
         geom_shape_collision_group_np = model.shape_collision_group.numpy()
         geom_shape_type_np = np.zeros((model.shape_count,), dtype=int)
         geom_shape_params_np = np.zeros((model.shape_count, 4), dtype=float)
@@ -997,6 +999,18 @@ class ModelKamino:
             geom_shape_params_np[s, :] = params
             if (shape_flags_np[s] & ShapeFlags.COLLIDE_SHAPES) != 0 and geom_shape_collision_group_np[s] > 0:
                 model_num_collidable_geoms += 1
+
+        # Fix plane normals: derive from the shape transform rotation (local Z-axis)
+        # instead of the hardcoded default in convert_newton_geo_to_kamino_shape.
+        for s in range(model.shape_count):
+            if shape_type_np[s] == GeoType.PLANE:
+                tf = shape_transform_np[s]
+                q_rot = _to_wpq(np.array([tf[3], tf[4], tf[5], tf[6]]))
+                normal = wp.quat_rotate(q_rot, wp.vec3(0.0, 0.0, 1.0))
+                geom_shape_params_np[s, 0] = float(normal[0])
+                geom_shape_params_np[s, 1] = float(normal[1])
+                geom_shape_params_np[s, 2] = float(normal[2])
+                geom_shape_params_np[s, 3] = 0.0
 
         # Compute total number of required contacts per world
         # TODO: We need to do this properly based on the actual geometries in each world

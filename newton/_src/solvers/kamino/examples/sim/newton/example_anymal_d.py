@@ -61,26 +61,14 @@ class Example:
         robot_builder.shape_collision_filter_pairs.append((0, 3))
         msg.debug("robot_builder.shape_collision_filter_pairs: %s", robot_builder.shape_collision_filter_pairs)
 
-        # Add a ground plane
-        # TODO: @nvtw: Remove this once global ground planes are supported
-        robot_builder.add_shape_box(
-            key="ground",
-            body=-1,
-            hx=10.0,
-            hy=10.0,
-            hz=0.5,
-            xform=wp.transformf(0.0, 0.0, -0.5, 0.0, 0.0, 0.0, 1.0),
-            cfg=newton.ModelBuilder.ShapeConfig(contact_margin=0.0),
-        )
+        # Add a ground plane per world
+        robot_builder.add_ground_plane()
 
         # Create the multi-world model by duplicating the single-robot
         # builder for the specified number of worlds
         builder = newton.ModelBuilder(up_axis=newton.Axis.Z)
         for _ in range(self.num_worlds):
             builder.add_world(robot_builder)
-        # TODO: @nvtw: Add support for global ground plane
-        # TODO: builder.add_ground_plane()
-        # builder.add_ground_plane()
 
         # Create the model from the builder
         self.model = builder.finalize(skip_validation_joints=True)
@@ -89,10 +77,14 @@ class Example:
         # TODO: Set solver configurations
         self.solver = newton.solvers.SolverKamino(self.model)
 
-        # Create state and control data containers
+        # Create state, control, and contacts data containers
         self.state_0 = self.model.state()
         self.state_1 = self.model.state()
         self.control = self.model.control()
+
+        # Use Newton's collision pipeline (same as standard Newton examples)
+        self.collision_pipeline = newton.examples.create_collision_pipeline(self.model, args)
+        self.contacts = self.model.collide(self.state_0, collision_pipeline=self.collision_pipeline)
 
         # Reset the simulation state to a valid initial configuration above the ground
         self.base_q = wp.zeros(shape=(self.num_worlds,), dtype=wp.transformf)
@@ -118,14 +110,10 @@ class Example:
     # simulate() performs one frame's worth of updates
     def simulate(self):
         for _ in range(self.sim_substeps):
-            # clear forces on the state before applying new ones
             self.state_0.clear_forces()
-            # apply forces to the model for picking, wind, etc
             self.viewer.apply_forces(self.state_0)
-            # step the simulation forward by one time step
-            self.solver.step(self.state_0, self.state_1, self.control, None, self.sim_dt)
-
-            # swap states
+            self.contacts = self.model.collide(self.state_0, collision_pipeline=self.collision_pipeline)
+            self.solver.step(self.state_0, self.state_1, self.control, self.contacts, self.sim_dt)
             self.state_0, self.state_1 = self.state_1, self.state_0
 
     def step(self):
@@ -139,7 +127,7 @@ class Example:
     def render(self):
         self.viewer.begin_frame(self.sim_time)
         self.viewer.log_state(self.state_0)
-        # TODO: self.viewer.log_contacts(self.contacts, self.state_0)
+        self.viewer.log_contacts(self.contacts, self.state_0)
         self.viewer.end_frame()
 
     def test_final(self):

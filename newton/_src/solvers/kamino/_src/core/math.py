@@ -880,6 +880,36 @@ def compute_body_pose_update_with_logmap(
     return p_i_n
 
 
+@wp.func
+def gravity_plus_coriolis_wrench(
+    g: vec3f,
+    m_i: float32,
+    I_i: mat33f,
+    omega_i: vec3f,
+) -> vec6f:
+    """
+    Compute the gravitational + Coriolis wrench acting on a body.
+    """
+    f_gi_i = m_i * g
+    tau_gi_i = -wp.skew(omega_i) @ (I_i @ omega_i)
+    return screw(f_gi_i, tau_gi_i)
+
+
+@wp.func
+def gravity_plus_coriolis_wrench_split(
+    g: vec3f,
+    m_i: float32,
+    I_i: mat33f,
+    omega_i: vec3f,
+):
+    """
+    Compute the gravitational+inertial wrench on a body.
+    """
+    f_gi_i = m_i * g
+    tau_gi_i = -wp.skew(omega_i) @ (I_i @ omega_i)
+    return f_gi_i, tau_gi_i
+
+
 ###
 # Indexing
 ###

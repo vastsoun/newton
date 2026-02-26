@@ -482,21 +482,27 @@ class PADMMSolver:
         else:
             # Update the proximal regularization term in the Delassus matrix
             wp.launch(
+                # TODO: Move this operation/kernel to problem and take args:
+                # - self._data.status.converged
+                # - self._data.state.sigma
+                # - self._data.state.sigma_p
                 kernel=_update_delassus_proximal_regularization,
                 dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
                 inputs=[
                     # Inputs:
                     problem.data.dim,
                     problem.data.mio,
+                    # TODO: self._data.status.converged
                     self._data.status,
                     self._data.state.sigma,
+                    # TODO: self._data.state.sigma_p
                     # Outputs:
                     problem.data.D,
                 ],
             )
 
             # Compute Cholesky/LDLT factorization of the Delassus matrix
-            problem._delassus.compute(reset_to_zero=True)
+            problem.delassus.compute(reset_to_zero=True)
 
     def _step(self, problem: DualProblem):
         """
@@ -509,7 +515,7 @@ class PADMMSolver:
         self._update_desaxce_correction(problem, self._data.state.z_p)
 
         # Compute the total velocity bias, i.e. rhs vector of the unconstrained linear system
-        self._update_velocity_bias(problem, self._data.state.y_p, self._data.state.z_p)
+        self._update_rhs_velocity(problem, self._data.state.y_p, self._data.state.z_p)
 
         # Compute the unconstrained solution and store in the primal variables
         self._update_unconstrained_solution(problem)
@@ -548,7 +554,7 @@ class PADMMSolver:
         self._update_desaxce_correction(problem, self._data.state.z_hat)
 
         # Compute the total velocity bias, i.e. rhs vector of the unconstrained linear system
-        self._update_velocity_bias(problem, self._data.state.y_hat, self._data.state.z_hat)
+        self._update_rhs_velocity(problem, self._data.state.y_hat, self._data.state.z_hat)
 
         # Compute the unconstrained solution and store in the primal variables
         self._update_unconstrained_solution(problem)
@@ -851,7 +857,7 @@ class PADMMSolver:
             ],
         )
 
-    def _update_velocity_bias(self, problem: DualProblem, y: wp.array, z: wp.array):
+    def _update_rhs_velocity(self, problem: DualProblem, y: wp.array, z: wp.array):
         """
         Launches a kernel to compute the total bias velocity vector using the previous state variables.\n
         The kernel is parallelized over the number of worlds and the maximum number of total constraints.
@@ -894,8 +900,8 @@ class PADMMSolver:
         """
         # TODO: We should do this in-place
         # wp.copy(self._data.state.x, self._data.state.v)
-        # problem._delassus.solve_inplace(x=self._data.state.x)
-        problem._delassus.solve(v=self._data.state.v, x=self._data.state.x)
+        # problem.delassus.solve_inplace(x=self._data.state.x)
+        problem.delassus.solve(v=self._data.state.v, x=self._data.state.x)
 
     def _update_projection_argument(self, problem: DualProblem, z: wp.array):
         """

@@ -1326,6 +1326,7 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
                 device=self._device,
             )
 
+        # TODO: Why not just capture references here?
         self._active_rows = wp.array(
             dtype=wp.int32,
             shape=(self._model.size.num_worlds,),

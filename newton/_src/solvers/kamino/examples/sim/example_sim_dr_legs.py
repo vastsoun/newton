@@ -468,7 +468,7 @@ class Example:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="DR Legs simulation example")
-    parser.add_argument("--device", type=str, help="The compute device to use")
+    parser.add_argument("--device", type=str, default=None, help="The compute device to use")
     parser.add_argument("--headless", action=argparse.BooleanOptionalAction, default=False, help="Run in headless mode")
     parser.add_argument("--num-worlds", type=int, default=1, help="Number of worlds to simulate in parallel")
     parser.add_argument("--num-steps", type=int, default=1000, help="Number of steps for headless mode")

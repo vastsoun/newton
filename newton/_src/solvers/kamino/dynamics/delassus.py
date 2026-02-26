@@ -193,15 +193,8 @@ def _build_delassus_elementwise_dense(
 
         # Angular term: dot(Jw_i.T * I_k, Jw_j)
         inv_I_k = data_bodies_inv_I_i[bid_k]
-        ang_ij = float32(0.0)
-        ang_ji = float32(0.0)
-        for r in range(3):  # Loop over rows of A (and elements of v)
-            for c in range(r, 3):  # Loop over upper triangular part of A (including diagonal)
-                ang_ij += Jw_i[r] * inv_I_k[r, c] * Jw_j[c]
-                ang_ji += Jw_j[r] * inv_I_k[r, c] * Jw_i[c]
-                if r != c:
-                    ang_ij += Jw_i[c] * inv_I_k[r, c] * Jw_j[r]
-                    ang_ji += Jw_j[c] * inv_I_k[r, c] * Jw_i[r]
+        ang_ij = wp.dot(Jw_i, inv_I_k @ Jw_j)
+        ang_ji = wp.dot(Jw_j, inv_I_k @ Jw_i)
 
         # Accumulate
         D_ij += lin_ij + ang_ij
@@ -293,7 +286,6 @@ def _build_delassus_elementwise_sparse(
     D_ji = lin_ji + ang_ji
 
     # Store the result in the Delassus matrix
-    # delassus_D[dmio + ncts * block_coords_i[0] + block_coords_j[0]] += 0.5 * (D_ij + D_ji)
     wp.atomic_add(delassus_D, dmio + ncts * block_coords_i[0] + block_coords_j[0], 0.5 * (D_ij + D_ji))
 
 
@@ -1405,10 +1397,10 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
             self._transpose_op_matrix = copy.copy(jacobians._J_cts.bsm)
             self._transpose_op_matrix.nzb_values = wp.empty_like(self.constraint_jacobian.nzb_values)
 
-        # Create copy of constraint Jacobian with separate non-zero block values, so we can apply
-        # preconditioning and the inverse mass matrix directly to the Jacobian.
+        # Create a shallow copy of the constraint Jacobian, but with a separate array for non-zero block values.
+        # The resulting sparse matrix will reference the structure of the original Jacobian, but we can apply
+        # preconditioning and the inverse mass matrix to the non-zero blocks without affecting the original Jacobian.
         if self.bsm is None:
-            # TODO: DOES THIS DO WHAT WE THINK IT DOES?
             self.bsm = copy.copy(jacobians._J_cts.bsm)
             self.bsm.nzb_values = wp.empty_like(self.constraint_jacobian.nzb_values)
 
@@ -1489,16 +1481,21 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
                 device=self._transpose_op_matrix.device,
             )
 
-        # Update combined regularization
+        # Update combined regularization term, which includes the regular regularization (eta) as
+        # well as the terms of the armature regularization. Since the armature regularization is
+        # applied to the original Delassus matrix, preconditioning has to be applied to it if
+        # present.
         if self._combined_regularization is not None:
+            # Set the combined regularization to the regular regularization if present, otherwise
+            # initialize to zero.
             if self._eta is not None:
                 wp.copy(self._combined_regularization, self._eta)
             else:
                 self._combined_regularization.zero_()
 
-            # TODO: ?????????
             if self._preconditioner is None:
-                # Add armature regularization to combined regularization
+                # If there is no preconditioner, we add the armature regularization directly to the
+                # combined regularization term.
                 wp.launch(
                     kernel=_add_armature_regularization_sparse,
                     dim=(self.num_matrices, self._model.size.max_of_num_dynamic_joint_cts),
@@ -1514,7 +1511,9 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
                     device=self._device,
                 )
             else:
-                # Add armature regularization with preconditioning to combined regularization
+                # If there is a preconditioner, we need to scale the armature regularization with
+                # the preconditioner terms (the square of the preconditioner, to be exact) before
+                # adding it to the combined regularization term.
                 wp.launch(
                     kernel=_add_armature_regularization_preconditioned_sparse,
                     dim=(self.num_matrices, self._model.size.max_of_num_dynamic_joint_cts),

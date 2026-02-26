@@ -27,7 +27,7 @@ from newton._src.solvers.kamino.core.math import screw, vec3f
 from newton._src.solvers.kamino.core.model import Model
 from newton._src.solvers.kamino.dynamics.dual import DualProblem
 from newton._src.solvers.kamino.kinematics.constraints import unpack_constraint_solutions
-from newton._src.solvers.kamino.linalg import ConjugateGradientSolver
+from newton._src.solvers.kamino.linalg import ConjugateResidualSolver, LLTBlockedSolver
 from newton._src.solvers.kamino.linalg.utils.matrix import SquareSymmetricMatrixProperties
 from newton._src.solvers.kamino.linalg.utils.range import in_range_via_gaussian_elimination
 from newton._src.solvers.kamino.models.builders import basics
@@ -83,8 +83,7 @@ class TestSetup:
             data=self.data,
             limits=self.limits,
             contacts=self.contacts,
-            # TODO: solver=ConjugateGradientSolver if sparse else LLTBlockedSolver,
-            solver=ConjugateGradientSolver,
+            solver=ConjugateResidualSolver if sparse else LLTBlockedSolver,
             device=device,
             sparse=sparse,
         )
@@ -419,13 +418,16 @@ class TestPADMMSolver(unittest.TestCase):
         solver.reset()
         solver.coldstart()
         solver.solve(problem=test.problem)
-        check_padmm_solution(self, test.model, test.problem, solver, verbose=self.verbose)
+        # check_padmm_solution(self, test.model, test.problem, solver, verbose=self.verbose)
 
         # Extract solver info
         if self.savefig:
             msg.notif("Generating solver info plots...")
             path = self.output_dir + "/test_02_padmm_solve.pdf"
             save_solver_info(solver=solver, path=path)
+
+        # Check solution
+        check_padmm_solution(self, test.model, test.problem, solver, verbose=self.verbose)
 
     def test_03_padmm_solve_with_acceleration(self):
         """
@@ -461,13 +463,16 @@ class TestPADMMSolver(unittest.TestCase):
         solver.reset()
         solver.coldstart()
         solver.solve(problem=test.problem)
-        check_padmm_solution(self, test.model, test.problem, solver, verbose=self.verbose)
+        # check_padmm_solution(self, test.model, test.problem, solver, verbose=self.verbose)
 
         # Extract solver info
         if self.savefig:
             msg.notif("Generating solver info plots...")
             path = self.output_dir + "/test_03_padmm_solve_with_acceleration.pdf"
             save_solver_info(solver=solver, path=path)
+
+        # Check solution
+        check_padmm_solution(self, test.model, test.problem, solver, verbose=self.verbose)
 
     def test_04_padmm_solve_with_internal_warmstart(self):
         """

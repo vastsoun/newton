@@ -46,7 +46,7 @@ from .core.control import ControlKamino
 from .core.data import DataKamino
 from .core.joints import JointCorrectionMode
 from .core.model import ModelKamino
-from .core.state import StateKamino
+from .core.state import StateKamino, compute_body_com_state, compute_body_frame_state
 from .core.time import advance_time
 from .core.types import float32, int32, quatf, transformf, uint32, vec2f, vec2i, vec3f, vec4f, vec6f
 from .dynamics.dual import DualProblem, DualProblemSettings
@@ -207,6 +207,8 @@ def _convert_newton_contacts_to_kamino(
     newton_point0: wp.array(dtype=wp.vec3),
     newton_point1: wp.array(dtype=wp.vec3),
     newton_normal: wp.array(dtype=wp.vec3),
+    newton_thickness0: wp.array(dtype=float32),
+    newton_thickness1: wp.array(dtype=float32),
     # Model lookups
     shape_body: wp.array(dtype=int32),
     shape_world: wp.array(dtype=int32),
@@ -248,8 +250,14 @@ def _convert_newton_contacts_to_kamino(
     s1 = newton_shape1[tid]
     b0 = shape_body[s0]
     b1 = shape_body[s1]
-    wid = shape_world[s0]
 
+    # Determine the world index.  Global shapes (shape_world == -1) can
+    # collide with shapes from any world, so fall back to the other shape.
+    w0 = shape_world[s0]
+    w1 = shape_world[s1]
+    wid = w0
+    if w0 < 0:
+        wid = w1
     if wid < 0 or wid >= kamino_num_worlds:
         return
 
@@ -267,6 +275,11 @@ def _convert_newton_contacts_to_kamino(
     # Newton normal points from shape1 → shape0.
     # Kamino convention: normal points A → B, with bid_B >= 0.
     n_newton = newton_normal[tid]
+
+    # Reconstruct Newton signed contact distance d from exported fields:
+    # d = dot((p1 - p0), n_a_to_b) - (offset0 + offset1),
+    # with n_newton = -n_a_to_b and offset* stored in rigid_contact_thickness*.
+    d_newton = -wp.dot(p1_world - p0_world, n_newton) - (newton_thickness0[tid] + newton_thickness1[tid])
 
     if b1 < 0:
         # shape1 is world-static → make it A, shape0 becomes B.
@@ -289,7 +302,9 @@ def _convert_newton_contacts_to_kamino(
         pos_B = p1_world
         normal = vec3f(-n_newton[0], -n_newton[1], -n_newton[2])
 
-    distance = wp.dot(pos_B - pos_A, normal)
+    distance = d_newton
+    if distance > 0.0:
+        return
     gapfunc = vec4f(normal[0], normal[1], normal[2], float32(distance))
     q_frame = wp.quat_from_matrix(make_contact_frame_znorm(normal))
 
@@ -1572,8 +1587,13 @@ class SolverKamino(SolverBase):
                 self._model_kamino, self._solver_kamino.data, state_in_kamino
             )
 
-        # Convert the input state from Newton's convention (i.e. to using body CoM frame)
-        state_in_kamino.convert_to_body_com_state(self.model)
+        # Convert Newton body-frame poses to Kamino CoM-frame poses using
+        # Kamino's corrected body-com offsets (can differ from Newton model data).
+        compute_body_com_state(
+            body_com=self._model_kamino.bodies.i_r_com_i,
+            body_q=state_in_kamino.q_i,
+            body_q_com=state_in_kamino.q_i,
+        )
 
         # Step the physics solver
         self._solver_kamino.step(
@@ -1584,9 +1604,18 @@ class SolverKamino(SolverBase):
             dt=dt,
         )
 
-        # Convert the output state back to Newton's convention (i.e. to using local body frame)
-        state_in_kamino.convert_to_body_frame_state(self.model)
-        state_out_kamino.convert_to_body_frame_state(self.model)
+        # Convert back from Kamino CoM-frame to Newton body-frame poses using
+        # the same corrected body-com offsets as the forward conversion.
+        compute_body_frame_state(
+            body_com=self._model_kamino.bodies.i_r_com_i,
+            body_q_com=state_in_kamino.q_i,
+            body_q=state_in_kamino.q_i,
+        )
+        compute_body_frame_state(
+            body_com=self._model_kamino.bodies.i_r_com_i,
+            body_q_com=state_out_kamino.q_i,
+            body_q=state_out_kamino.q_i,
+        )
 
         # Keep a reference for update_contacts() which needs body_q to
         # transform world-space contact positions to body-local frame.
@@ -1678,6 +1707,8 @@ class SolverKamino(SolverBase):
                 contacts.rigid_contact_point0,
                 contacts.rigid_contact_point1,
                 contacts.rigid_contact_normal,
+                contacts.rigid_contact_thickness0,
+                contacts.rigid_contact_thickness1,
                 self.model.shape_body,
                 self.model.shape_world,
                 self.model.shape_material_mu,

@@ -707,8 +707,6 @@ class ModelKamino:
         joint_wid_np = model.joint_world.numpy()
         joint_type_np = model.joint_type.numpy()
         joint_act_mode_np = model.joint_act_mode.numpy()
-        msg.error("joint_type_np: %s", joint_type_np)
-        msg.error("joint_act_mode_np: %s", joint_act_mode_np)
         joint_parent_np = model.joint_parent.numpy()
         joint_child_np = model.joint_child.numpy()
         joint_X_p_np = model.joint_X_p.numpy()
@@ -882,23 +880,13 @@ class ModelKamino:
             qd_count_j = int(joint_qd_start_np[j + 1] - joint_qd_start_np[j])
             limit_upper_j = joint_limit_upper_np[joint_qd_start_np[j] : joint_qd_start_np[j + 1]].astype(float)
             limit_lower_j = joint_limit_lower_np[joint_qd_start_np[j] : joint_qd_start_np[j + 1]].astype(float)
-            msg.error("[%s]: key_j: %s", j, model.joint_key[j])
-            msg.error("[%s]: type_j: %s", j, JointType(type_j).name)
-            msg.error("[%s]: dof_dim_j: %s", j, dof_dim_j)
-            msg.error("[%s]: q_count_j: %s", j, q_count_j)
-            msg.error("[%s]: qd_count_j: %s", j, qd_count_j)
-            msg.error("[%s]: limit_lower_j: %s", j, limit_lower_j)
-            msg.error("[%s]: limit_upper_j: %s", j, limit_upper_j)
 
             # TODO
             dof_type_j = newton_to_kamino_joint_dof_type(
                 type_j, dof_dim_j, q_count_j, qd_count_j, limit_lower_j, limit_upper_j
             )
-            msg.warning("[%s]: dof_type_j: %s", j, dof_type_j)
             ncoords_j = dof_type_j.num_coords
             ndofs_j = dof_type_j.num_dofs
-
-            msg.warning("[%s]: ndofs_j: %s", j, ndofs_j)
             ncts_j = dof_type_j.num_cts
             joint_dof_type_np[j] = dof_type_j.value
             num_joint_coords_np[wid_j] += ncoords_j
@@ -910,15 +898,12 @@ class ModelKamino:
 
             # TODO
             dofs_start_j = joint_qd_start_np[j]
-            msg.warning("[%s]: dofs_start_j: %s", j, dofs_start_j)
             joint_axes_j = joint_axis_np[dofs_start_j : dofs_start_j + ndofs_j]
             R_axis_j = axes_matrix_from_joint_type(dof_type_j, dof_dim_j, joint_axes_j)
             joint_dofs_act_mode_j = joint_act_mode_np[dofs_start_j : dofs_start_j + ndofs_j]
-            msg.warning("[%s]: joint_dofs_act_mode_j: %s", j, joint_dofs_act_mode_j)
             joint_act_mode_j = (
                 max(joint_dofs_act_mode_j) if len(joint_dofs_act_mode_j) > 0 else JointActuationType.PASSIVE
             )
-            msg.warning("[%s]: joint_act_mode_j: %s", j, joint_act_mode_j)
 
             # TODO
             act_type_j = newton_to_kamino_joint_actuation_type(joint_act_mode_j)
@@ -953,7 +938,6 @@ class ModelKamino:
             joint_B_r_Bj_np[j, :] = B_r_Bj
             joint_F_r_Fj_np[j, :] = F_r_Fj
             joint_X_j_np[j, :] = X_j
-        msg.error("joint_act_type_np: %s", joint_act_type_np)
 
         # TODO
         joint_velocity_limit_np = model.joint_velocity_limit.numpy()
@@ -1057,7 +1041,7 @@ class ModelKamino:
         body_world_np = model.body_world.numpy()
         joint_world_np = model.joint_world.numpy()
         body_world_start_np = model.body_world_start.numpy()
-        # joint_world_start_np = model.joint_world_start.numpy()
+        joint_world_start_np = model.joint_world_start.numpy()
 
         # Check for articulations
         if model.articulation_count > 0:
@@ -1075,23 +1059,14 @@ class ModelKamino:
 
         # Check for root joint (i.e. joint with no parent body (= -1))
         elif model.joint_count > 0:
-            msg.error("joint_world_np: %s", joint_world_np)
-            msg.error("joint_parent_np: %s", joint_parent_np)
-            msg.error("joint_child_np: %s", joint_child_np)
-
             # TODO: How to handle no free joint being defined?
             # Create a list of joint indices with parent body == -1 for each world
             world_parent_joints: dict[int, list[int]] = {w: [] for w in range(model.num_worlds)}
-            msg.warning("world_parent_joints: %s", world_parent_joints)
             for j in range(model.joint_count):
                 wid_j = joint_world_np[j]
-                msg.info("joint %s belongs to world %s", j, wid_j)
                 parent_j = joint_parent_np[j]
                 if parent_j == -1:
-                    msg.info("BEFORE: world_parent_joints: %s", world_parent_joints)
                     world_parent_joints[wid_j].append(j)
-                    msg.info("AFTER: world_parent_joints[%s]: %s", wid_j, world_parent_joints)
-            msg.error("world_parent_joints: %s", world_parent_joints)
 
             # For each world, assign the base body and joint based on the first joint with parent == -1,
             # If no joint with parent == -1 is found in a world, then assign the first body as base
@@ -1118,8 +1093,13 @@ class ModelKamino:
                     if joint_world_np[j] == w:
                         base_joint_idx_np[w] = j
                         break
-        msg.error("base_body_idx_np: %s", base_body_idx_np)
-        msg.error("base_joint_idx_np: %s", base_joint_idx_np)
+        # Convert global indices to per-world indices, as expected by
+        # WorldDescriptor and downstream FK solver indexing.
+        for w in range(model.num_worlds):
+            if base_body_idx_np[w] >= 0:
+                base_body_idx_np[w] -= int(body_world_start_np[w])
+            if base_joint_idx_np[w] >= 0:
+                base_joint_idx_np[w] -= int(joint_world_start_np[w])
         # Ensure that all worlds have a base body assigned
         for w in range(model.num_worlds):
             if base_body_idx_np[w] == -1:

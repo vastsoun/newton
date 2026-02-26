@@ -59,7 +59,7 @@ class Example:
         )
 
         robot_builder.shape_collision_filter_pairs.append((0, 3))
-        msg.error("robot_builder.shape_collision_filter_pairs: %s", robot_builder.shape_collision_filter_pairs)
+        msg.debug("robot_builder.shape_collision_filter_pairs: %s", robot_builder.shape_collision_filter_pairs)
 
         # Add a ground plane
         # TODO: @nvtw: Remove this once global ground planes are supported
@@ -72,7 +72,6 @@ class Example:
             xform=wp.transformf(0.0, 0.0, -0.5, 0.0, 0.0, 0.0, 1.0),
             cfg=newton.ModelBuilder.ShapeConfig(contact_margin=0.0),
         )
-        robot_builder.gravity = 0.0
 
         # Create the multi-world model by duplicating the single-robot
         # builder for the specified number of worlds
@@ -125,15 +124,6 @@ class Example:
             self.viewer.apply_forces(self.state_0)
             # step the simulation forward by one time step
             self.solver.step(self.state_0, self.state_1, self.control, None, self.sim_dt)
-
-            # TODO
-            active_contacts_np = self.solver._collision_detector_kamino.contacts.model_active_contacts.numpy()
-            num_active_contacts = active_contacts_np[0]
-            bid_AB_np = self.solver._collision_detector_kamino.contacts.bid_AB.numpy()[:num_active_contacts, :]
-            gid_AB_np = self.solver._collision_detector_kamino.contacts.gid_AB.numpy()[:num_active_contacts, :]
-            msg.warning("num_active_contacts: %s", num_active_contacts)
-            msg.warning("bid_AB:\n%s", bid_AB_np)
-            msg.warning("gid_AB:\n%s\n\n", gid_AB_np)
 
             # swap states
             self.state_0, self.state_1 = self.state_1, self.state_0

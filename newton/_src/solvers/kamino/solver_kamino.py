@@ -36,6 +36,7 @@ from ...sim import (
     ModelBuilder,
     State,
 )
+from ...sim.joints import ActuatorMode
 from ..solver import SolverBase
 
 # Kamino imports
@@ -75,10 +76,54 @@ from .kinematics.resets import (
     reset_time,
 )
 from .linalg import LinearSolverType, LLTBlockedSolver
+from .utils import logger as msg
 from .solvers.fk import ForwardKinematicsSolver, ForwardKinematicsSolverSettings
 from .solvers.metrics import SolutionMetrics
 from .solvers.padmm import PADMMSettings, PADMMSolver, PADMMWarmStartMode
 from .solvers.warmstart import WarmstarterContacts, WarmstarterLimits
+
+###
+# Kernels
+###
+
+
+@wp.kernel
+def _apply_pd_torques(
+    joint_q: wp.array(dtype=float32),
+    joint_qd: wp.array(dtype=float32),
+    joint_target_pos: wp.array(dtype=float32),
+    joint_target_ke: wp.array(dtype=float32),
+    joint_target_kd: wp.array(dtype=float32),
+    dof_has_pd: wp.array(dtype=int32),
+    dof_to_coord: wp.array(dtype=int32),
+    joint_f: wp.array(dtype=float32),
+):
+    """Computes PD torques for DOFs that have non-zero position/velocity gains.
+
+    Overwrites (not accumulates) ``joint_f`` for PD-controlled DOFs so that
+    stale torques from a previous step are not carried over.  Any user-supplied
+    external joint forces should be applied *after* this kernel via
+    ``control.joint_f``.
+
+    Note:
+        This is a temporary workaround.  Kamino's solver core does not natively
+        consume Newton's ``joint_target_ke / joint_target_kd`` gains, unlike the
+        Featherstone, XPBD, and MuJoCo solvers which apply PD drives internally.
+        Until Kamino gains native PD support, this kernel bridges the gap so that
+        Newton examples (e.g. ANYmal) work without modification.
+    """
+    tid = wp.tid()
+    if dof_has_pd[tid] == 0:
+        return
+    coord_idx = dof_to_coord[tid]
+    if coord_idx < 0:
+        return
+    ke = joint_target_ke[tid]
+    kd = joint_target_kd[tid]
+    pos_err = joint_target_pos[tid] - joint_q[coord_idx]
+    vel_err = -joint_qd[tid]
+    joint_f[tid] = ke * pos_err + kd * vel_err
+
 
 ###
 # Types
@@ -736,6 +781,7 @@ class SolverKaminoImpl(SolverBase):
         wp.copy(self._data.bodies.q_i, state_in.q_i)
         wp.copy(self._data.bodies.u_i, state_in.u_i)
         wp.copy(self._data.bodies.w_i, state_in.w_i)
+        wp.copy(self._data.bodies.w_e_i, state_in.w_i)
         wp.copy(self._data.joints.q_j, state_in.q_j)
         wp.copy(self._data.joints.q_j_p, state_in.q_j_p)
         wp.copy(self._data.joints.dq_j, state_in.dq_j)
@@ -1144,6 +1190,92 @@ class SolverKamino(SolverBase):
             settings=solver_settings,
         )
 
+        # Pre-compute PD control arrays for DOFs that have non-zero gains.
+        # This allows automatic PD torque computation in step() without
+        # requiring the user to implement a custom PD kernel.
+        self._setup_pd_control(model)
+
+    _DEFAULT_EFFORT_KE: float = 150.0
+    _DEFAULT_EFFORT_KD: float = 20.0
+
+    def _setup_pd_control(self, model: Model):
+        """Pre-compute arrays for automatic PD torque computation.
+
+        When Newton joints have non-zero ``joint_target_ke`` or ``joint_target_kd``
+        gains, this method builds the lookup tables needed to apply PD torques
+        automatically in :meth:`step`, so that user code does not need to
+        implement a custom PD kernel.
+
+        For joints in ``EFFORT`` mode (drive present but zero gains), default PD
+        gains are applied automatically so that the robot holds its pose without
+        requiring the user to set gains manually.  This matches the behaviour of
+        other Newton solvers which natively consume ``joint_target_ke / kd``.
+
+        Note:
+            This is a temporary workaround until Kamino's solver core natively
+            supports Newton's PD drive model.  It exists so that Newton examples
+            (e.g. ANYmal) work out of the box with ``SolverKamino`` without any
+            example-side modifications.
+        """
+        import numpy as np  # noqa: PLC0415
+
+        ke_np = model.joint_target_ke.numpy().copy()
+        kd_np = model.joint_target_kd.numpy().copy()
+        act_mode_np = model.joint_act_mode.numpy()
+
+        effort_mask = (act_mode_np == int(ActuatorMode.EFFORT)) & (ke_np == 0.0) & (kd_np == 0.0)
+        if np.any(effort_mask):
+            ke_np[effort_mask] = self._DEFAULT_EFFORT_KE
+            kd_np[effort_mask] = self._DEFAULT_EFFORT_KD
+            msg.info(
+                "Auto-applied default PD gains (ke=%.1f, kd=%.1f) for %d EFFORT-mode DOFs",
+                self._DEFAULT_EFFORT_KE,
+                self._DEFAULT_EFFORT_KD,
+                int(np.sum(effort_mask)),
+            )
+
+        has_pd = ((ke_np != 0.0) | (kd_np != 0.0)) & (act_mode_np != 0)
+        self._has_pd_dofs = bool(np.any(has_pd))
+
+        if not self._has_pd_dofs:
+            return
+
+        device = model.body_q.device
+        self._pd_dof_has_pd = wp.array(has_pd.astype(np.int32), dtype=int32, device=device)
+        self._pd_target_ke = wp.array(ke_np.astype(np.float32), dtype=float32, device=device)
+        self._pd_target_kd = wp.array(kd_np.astype(np.float32), dtype=float32, device=device)
+
+        q_start = model.joint_q_start.numpy()
+        qd_start = model.joint_qd_start.numpy()
+        dof_to_coord_np = np.full(model.joint_dof_count, -1, dtype=np.int32)
+        for j in range(model.joint_count):
+            ndofs = int(qd_start[j + 1] - qd_start[j])
+            ncoords = int(q_start[j + 1] - q_start[j])
+            if ndofs == ncoords:
+                for d in range(ndofs):
+                    dof_to_coord_np[int(qd_start[j]) + d] = int(q_start[j]) + d
+        self._pd_dof_to_coord = wp.array(dof_to_coord_np, dtype=int32, device=device)
+        self._pd_num_dofs = model.joint_dof_count
+
+    def _apply_pd_control(self, state: State, control: Control):
+        """Apply PD torques to ``control.joint_f`` based on current state."""
+        if not self._has_pd_dofs:
+            return
+        wp.launch(
+            _apply_pd_torques,
+            dim=self._pd_num_dofs,
+            inputs=[
+                state.joint_q,
+                state.joint_qd,
+                control.joint_target_pos,
+                self._pd_target_ke,
+                self._pd_target_kd,
+                self._pd_dof_has_pd,
+                self._pd_dof_to_coord,
+                control.joint_f,
+            ],
+        )
+
     def reset(
         self,
         state_out: State,
@@ -1213,6 +1345,9 @@ class SolverKamino(SolverBase):
             contacts (Contacts): The contact information.
             dt (float): The time step (typically in seconds).
         """
+        # Apply PD torques from joint_target_ke / joint_target_kd gains
+        self._apply_pd_control(state_in, control)
+
         # Interface the input state and control
         # containers to Kamino's equivalents
         # NOTE: These should produce zero-copy views/references

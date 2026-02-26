@@ -60,7 +60,7 @@ class Example:
         )
 
         robot_builder.shape_collision_filter_pairs.append((0, 3))
-        msg.error("robot_builder.shape_collision_filter_pairs: %s", robot_builder.shape_collision_filter_pairs)
+        msg.debug("robot_builder.shape_collision_filter_pairs: %s", robot_builder.shape_collision_filter_pairs)
 
         # Add a ground plane
         # TODO: @nvtw: Remove this once global ground planes are supported
@@ -90,10 +90,10 @@ class Example:
             # skip_validation_joint_ordering=True,
         )
 
-        msg.warning("model.shape_body: %s", self.model.shape_body)
-        msg.warning("model.shape_collision_filter_pairs: %s", self.model.shape_collision_filter_pairs)
-        msg.warning("model.shape_contact_pair_count: %s", self.model.shape_contact_pair_count)
-        msg.warning("model.shape_contact_pairs:\n%s", self.model.shape_contact_pairs)
+        msg.debug("model.shape_body: %s", self.model.shape_body)
+        msg.debug("model.shape_collision_filter_pairs: %s", self.model.shape_collision_filter_pairs)
+        msg.debug("model.shape_contact_pair_count: %s", self.model.shape_contact_pair_count)
+        msg.debug("model.shape_contact_pairs:\n%s", self.model.shape_contact_pairs)
 
         # Create the Kamino solver for the given model
         # TODO: Set solver configurations

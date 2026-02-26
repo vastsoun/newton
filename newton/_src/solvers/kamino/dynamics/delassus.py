@@ -193,15 +193,8 @@ def _build_delassus_elementwise_dense(
 
         # Angular term: dot(Jw_i.T * I_k, Jw_j)
         inv_I_k = data_bodies_inv_I_i[bid_k]
-        ang_ij = float32(0.0)
-        ang_ji = float32(0.0)
-        for r in range(3):  # Loop over rows of A (and elements of v)
-            for c in range(r, 3):  # Loop over upper triangular part of A (including diagonal)
-                ang_ij += Jw_i[r] * inv_I_k[r, c] * Jw_j[c]
-                ang_ji += Jw_j[r] * inv_I_k[r, c] * Jw_i[c]
-                if r != c:
-                    ang_ij += Jw_i[c] * inv_I_k[r, c] * Jw_j[r]
-                    ang_ji += Jw_j[c] * inv_I_k[r, c] * Jw_i[r]
+        ang_ij = wp.dot(Jw_i, inv_I_k @ Jw_j)
+        ang_ji = wp.dot(Jw_j, inv_I_k @ Jw_i)
 
         # Accumulate
         D_ij += lin_ij + ang_ij
@@ -293,7 +286,6 @@ def _build_delassus_elementwise_sparse(
     D_ji = lin_ji + ang_ji
 
     # Store the result in the Delassus matrix
-    # delassus_D[dmio + ncts * block_coords_i[0] + block_coords_j[0]] += 0.5 * (D_ij + D_ji)
     wp.atomic_add(delassus_D, dmio + ncts * block_coords_i[0] + block_coords_j[0], 0.5 * (D_ij + D_ji))
 
 

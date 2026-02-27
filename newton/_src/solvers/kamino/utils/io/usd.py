@@ -648,6 +648,7 @@ class USDImporter:
             R_i_pa = np.array(wp.quat_to_matrix(i_q_i_pa), dtype=np.float32).reshape(3, 3)
             i_I_i = R_i_pa @ np.diag(i_I_i_diag) @ R_i_pa.T
             i_I_i = wp.mat33(i_I_i)
+            i_I_i = 0.5 * (i_I_i + wp.transpose(i_I_i))  # Ensure moment of inertia is symmetric
         else:
             i_I_i = wp.mat33(0.0)
         msg.debug(f"i_I_i_diag:\n{i_I_i_diag}")

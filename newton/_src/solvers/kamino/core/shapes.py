@@ -24,7 +24,8 @@ from enum import IntEnum
 import warp as wp
 
 from ....core.types import Mat33, Vec2, Vec3, nparray
-from ....geometry.types import MESH_MAXHULLVERT, SDF, GeoType, Mesh
+from ....geometry.sdf_utils import SDF
+from ....geometry.types import GeoType, Mesh
 from .types import Descriptor, mat33f, override, vec3f, vec4f
 
 ###
@@ -582,6 +583,9 @@ class MeshShape(ShapeDescriptor):
         is_convex (bool): Whether the mesh is convex.
     """
 
+    MAX_HULL_VERTICES = Mesh.MAX_HULL_VERTICES
+    """Utility attribute to expose this constant without needing to import the newton.Mesh class directly."""
+
     def __init__(
         self,
         vertices: Sequence[Vec3] | nparray,
@@ -589,7 +593,7 @@ class MeshShape(ShapeDescriptor):
         normals: Sequence[Vec3] | nparray | None = None,
         uvs: Sequence[Vec2] | nparray | None = None,
         color: Vec3 | None = None,
-        maxhullvert: int = MESH_MAXHULLVERT,
+        maxhullvert: int | None = None,
         compute_inertia: bool = True,
         is_solid: bool = True,
         is_convex: bool = False,

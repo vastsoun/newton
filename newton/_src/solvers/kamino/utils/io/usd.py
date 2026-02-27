@@ -38,7 +38,6 @@ from ...core.materials import (
 )
 from ...core.math import I_3, screw
 from ...core.shapes import (
-    MESH_MAXHULLVERT,
     BoxShape,
     CapsuleShape,
     ConeShape,
@@ -46,7 +45,6 @@ from ...core.shapes import (
     EllipsoidShape,
     MeshShape,
     PlaneShape,
-    # SDFShape
     SphereShape,
 )
 from ...core.types import Axis, AxisType, Transform, quatf, transformf, vec3f
@@ -106,7 +104,7 @@ class USDImporter:
         """
         if cls.Sdf is None:
             try:
-                from pxr import Sdf, Usd, UsdGeom, UsdPhysics  # noqa: PLC0415
+                from pxr import Sdf, Usd, UsdGeom, UsdPhysics
 
                 cls.Sdf = Sdf
                 cls.Usd = Usd
@@ -1410,7 +1408,7 @@ class USDImporter:
             faces = self._make_faces_from_counts(indices, counts, usd_mesh_path)
 
             # Create the mesh shape (i.e. wrapper around newton.geometry.Mesh)
-            shape = MeshShape(vertices=points, indices=faces, normals=normals, maxhullvert=MESH_MAXHULLVERT)
+            shape = MeshShape(vertices=points, indices=faces, normals=normals)
         else:
             raise ValueError(
                 f"Unsupported UsdGeom type: {geom_type}. Supported types: {self.supported_usd_geom_types}."
@@ -1571,7 +1569,7 @@ class USDImporter:
             faces = self._make_faces_from_counts(indices, counts, usd_mesh_path)
 
             # Create the mesh shape (i.e. wrapper around newton.geometry.Mesh)
-            shape = MeshShape(vertices=points, indices=faces, normals=normals, maxhullvert=MESH_MAXHULLVERT)
+            shape = MeshShape(vertices=points, indices=faces, normals=normals)
             is_mesh_shape = True
         else:
             raise ValueError(

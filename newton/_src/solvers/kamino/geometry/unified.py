@@ -21,6 +21,8 @@ the broad-phase and narrow-phase of Newton's CollisionPipelineUnified, writing g
 contacts data directly into Kamino's respective format.
 """
 
+from typing import Literal
+
 # Warp imports
 import warp as wp
 from warp.context import Devicelike
@@ -35,7 +37,6 @@ from ....geometry.narrow_phase import NarrowPhase
 from ....geometry.sdf_utils import SDFData
 from ....geometry.support_function import GenericShapeData, SupportMapDataProvider, pack_mesh_ptr
 from ....geometry.types import GeoType
-from ....sim.collide_unified import BroadPhaseMode
 
 # Kamino imports
 from ..core.builder import ModelBuilder
@@ -87,6 +88,10 @@ class ContactWriterDataKamino:
     material_pair_restitution: wp.array(dtype=float32)
     material_pair_static_friction: wp.array(dtype=float32)
     material_pair_dynamic_friction: wp.array(dtype=float32)
+
+    # Contact limit and active count (Newton interface)
+    contact_max: int32
+    contact_count: wp.array(dtype=int32)
 
     # Output arrays (Kamino Contacts format)
     contacts_model_num_active: wp.array(dtype=int32)
@@ -226,25 +231,20 @@ def write_contact_unified_kamino(
         contact_data: ContactData struct from narrow phase containing contact information
         writer_data: ContactWriterDataKamino struct containing output arrays
     """
-    total_separation_needed = (
-        contact_data.radius_eff_a + contact_data.radius_eff_b + contact_data.thickness_a + contact_data.thickness_b
-    )
-
     # Normalize contact normal
     contact_normal_a_to_b = wp.normalize(contact_data.contact_normal_a_to_b)
 
-    # Compute contact points on each shape
-    a_contact_world = contact_data.contact_point_center - contact_normal_a_to_b * (
-        0.5 * contact_data.contact_distance + contact_data.radius_eff_a
-    )
-    b_contact_world = contact_data.contact_point_center + contact_normal_a_to_b * (
-        0.5 * contact_data.contact_distance + contact_data.radius_eff_b
-    )
+    # Calculate penetration distance for margin check
+    # d = surface-to-surface distance minus thickness offsets
+    total_thickness = contact_data.thickness_a + contact_data.thickness_b
+    d = contact_data.contact_distance - total_thickness
 
-    # Calculate penetration distance
-    diff = b_contact_world - a_contact_world
-    distance = wp.dot(diff, contact_normal_a_to_b)
-    d = distance - total_separation_needed
+    # Compute contact points on each shape's surface
+    # The primitive colliders return contact_point_center at the midpoint between surfaces,
+    # so we offset by half the absolute penetration depth along the normal.
+    distance_abs = wp.abs(contact_data.contact_distance)
+    a_contact_world = contact_data.contact_point_center + contact_normal_a_to_b * 0.5 * distance_abs
+    b_contact_world = contact_data.contact_point_center - contact_normal_a_to_b * 0.5 * distance_abs
 
     # Check if an explicit output index is provided, and allocate contact index if not
     if output_index < 0:
@@ -399,7 +399,7 @@ def _update_geom_poses_and_compute_aabbs(
     geom_ptr: wp.array(dtype=wp.uint64),
     geom_offset: wp.array(dtype=transformf),
     geom_margin: wp.array(dtype=float32),
-    geom_collision_radius: wp.array(dtype=float32),
+    shape_collision_radius: wp.array(dtype=float32),
     body_pose: wp.array(dtype=transformf),
     # Outputs:
     geom_pose: wp.array(dtype=transformf),
@@ -421,7 +421,7 @@ def _update_geom_poses_and_compute_aabbs(
         geom_ptr (wp.array): Array of geometry pointers (used for mesh shapes).
         geom_offset (wp.array): Array of geometry local pose offset transforms w.r.t the associated body.
         geom_contact_margin (wp.array): Array of per-geometry contact margins.
-        geom_collision_radius (wp.array): Array of geometry collision bounding sphere radii.
+        shape_collision_radius (wp.array): Array of geometry collision bounding sphere radii.
         body_pose (wp.array): Array of body poses in world coordinates.
 
     Outputs:
@@ -461,19 +461,20 @@ def _update_geom_poses_and_compute_aabbs(
     # Check if this is an infinite plane or mesh - use bounding sphere fallback
     is_infinite_plane = (geo_type == GeoType.PLANE) and (scale[0] == 0.0 and scale[1] == 0.0)
     is_mesh = geo_type == GeoType.MESH
-    is_sdf = geo_type == GeoType.SDF
+    is_hfield = geo_type == GeoType.HFIELD
 
     # Compute the geometry AABB in world coordinates
     aabb_lower = wp.vec3(0.0)
     aabb_upper = wp.vec3(0.0)
-    if is_infinite_plane or is_mesh or is_sdf:
+    if is_infinite_plane or is_mesh or is_hfield:
         # Use conservative bounding sphere approach
-        radius = geom_collision_radius[gid]
+        radius = shape_collision_radius[gid]
         half_extents = wp.vec3(radius, radius, radius)
         aabb_lower = r_g - half_extents - margin_vec
         aabb_upper = r_g + half_extents + margin_vec
     else:
         # Use support function to compute tight AABB
+        # Create generic shape data
         shape_data = GenericShapeData()
         shape_data.shape_type = geo_type
         shape_data.scale = scale
@@ -513,7 +514,7 @@ class CollisionPipelineUnifiedKamino:
         self,
         model: Model,
         builder: ModelBuilder,
-        broadphase: BroadPhaseMode = BroadPhaseMode.EXPLICIT,
+        broadphase: Literal["nxn", "sap", "explicit"] = "explicit",
         max_contacts: int | None = None,
         max_contacts_per_pair: int = DEFAULT_GEOM_PAIR_MAX_CONTACTS,
         max_triangle_pairs: int = 1_000_000,
@@ -545,7 +546,7 @@ class CollisionPipelineUnifiedKamino:
             self._device = model.device
 
         # Cache pipeline settings
-        self._broadphase: BroadPhaseMode = broadphase
+        self._broadphase: str = broadphase
         self._default_margin: float = default_margin
         self._default_friction: float = default_friction
         self._default_restitution: float = default_restitution
@@ -565,7 +566,7 @@ class CollisionPipelineUnifiedKamino:
 
         # Build shape pairs for EXPLICIT mode
         self.shape_pairs_filtered: wp.array | None = None
-        if broadphase == BroadPhaseMode.EXPLICIT:
+        if broadphase == "explicit":
             _, model_filtered_geom_pairs, _, _ = builder.make_collision_candidate_pairs()
             self.shape_pairs_filtered = wp.array(model_filtered_geom_pairs, dtype=vec2i, device=self._device)
             self._max_shape_pairs = len(model_filtered_geom_pairs)
@@ -594,30 +595,37 @@ class CollisionPipelineUnifiedKamino:
             self.geom_type = wp.zeros(self._num_geoms, dtype=int32)
             self.geom_data = wp.zeros(self._num_geoms, dtype=vec4f)
             self.geom_collision_group = wp.array(geom_collision_group_list, dtype=int32)
-            self.geom_collision_radius = wp.zeros(self._num_geoms, dtype=float32)
+            self.shape_collision_radius = wp.zeros(self._num_geoms, dtype=float32)
             self.shape_flags = wp.full(self._num_geoms, default_shape_flag, dtype=int32)
             self.shape_aabb_lower = wp.zeros(self._num_geoms, dtype=wp.vec3)
             self.shape_aabb_upper = wp.zeros(self._num_geoms, dtype=wp.vec3)
+            self.broad_phase_pairs = wp.zeros(self._max_shape_pairs, dtype=wp.vec2i)
             self.broad_phase_pair_count = wp.zeros(1, dtype=wp.int32)
-            self.broad_phase_shape_pairs = wp.zeros(self._max_shape_pairs, dtype=wp.vec2i)
-            self.material_friction = wp.full(1, self._default_friction, dtype=float32)
-            self.material_restitution = wp.full(1, self._default_restitution, dtype=float32)
-            # TODO: This is currently left empty just to satisfy the narrow phase interface
-            # but we need to implement SDF support in Kamino to make use of it
+            self.narrow_phase_contact_count = wp.zeros(1, dtype=int32)
+            # TODO: These are currently left empty just to satisfy the narrow phase interface
+            # but we need to implement SDF/mesh/heightfield support in Kamino to make use of them.
+            # With has_meshes=False, these arrays are never accessed.
             self.shape_sdf_data = wp.empty(shape=(0,), dtype=SDFData)
+            self.shape_sdf_index = wp.full_like(self.geom_type, -1)
+            self.shape_collision_aabb_lower = wp.empty(shape=(0,), dtype=wp.vec3)
+            self.shape_collision_aabb_upper = wp.empty(shape=(0,), dtype=wp.vec3)
+            self.shape_voxel_resolution = wp.empty(shape=(0,), dtype=wp.vec3i)
+            self.shape_heightfield_data = None  # TODO
+            self.heightfield_elevation_data = None  # TODO
 
         # Initialize the broad-phase backend depending on the selected mode
         match self._broadphase:
-            case BroadPhaseMode.NXN:
+            case "nxn":
                 self.nxn_broadphase = BroadPhaseAllPairs(self.geom_wid, shape_flags=None, device=self._device)
-            case BroadPhaseMode.SAP:
+            case "sap":
                 self.sap_broadphase = BroadPhaseSAP(self.geom_wid, shape_flags=None, device=self._device)
-            case BroadPhaseMode.EXPLICIT:
+            case "explicit":
                 self.explicit_broadphase = BroadPhaseExplicit()
             case _:
                 raise ValueError(f"Unsupported broad phase mode: {self._broadphase}")
 
         # Initialize narrow-phase backend with the contact writer customized for Kamino
+        # Note: has_meshes=False since Kamino doesn't support mesh collisions yet
         self.narrow_phase = NarrowPhase(
             max_candidate_pairs=self._max_shape_pairs,
             max_triangle_pairs=self._max_triangle_pairs,
@@ -625,6 +633,7 @@ class CollisionPipelineUnifiedKamino:
             shape_aabb_lower=self.shape_aabb_lower,
             shape_aabb_upper=self.shape_aabb_upper,
             contact_writer_warp_func=write_contact_unified_kamino,
+            has_meshes=False,
         )
 
         # Convert geometry data from Kamino to Newton format
@@ -669,6 +678,9 @@ class CollisionPipelineUnifiedKamino:
         # Clear contacts
         contacts.clear()
 
+        # Clear internal contact counts
+        self.narrow_phase_contact_count.zero_()
+
         # Update geometry poses from body states and compute respective AABBs
         self._update_geom_data(model, data)
 
@@ -700,32 +712,12 @@ class CollisionPipelineUnifiedKamino:
                 model.cgeoms.params,
             ],
             outputs=[
-                model.cgeoms.margin,
+                model.cgeoms.margin,  # TODO: Should this be gap or margin, or both?
                 self.geom_type,
                 self.geom_data,
             ],
             device=self._device,
         )
-
-    def _set_model_materials(self, model: Model):
-        """
-        Update material arrays from the model's material pairs.
-
-        Args:
-            model (Model): The Kamino model containing material-pair properties.
-        """
-        # TODO: Fix this to:
-        # 1. handle default material if no material_pairs exist
-        # 2. copy the per material-pair properties from the model-builder
-        if model.material_pairs is not None and model.material_pairs.num_pairs > 0:
-            # Reallocate material arrays if needed
-            if self.material_friction.shape[0] != model.material_pairs.num_pairs:
-                self.material_friction = wp.zeros(model.material_pairs.num_pairs, dtype=float32, device=self._device)
-                self.material_restitution = wp.zeros(model.material_pairs.num_pairs, dtype=float32, device=self._device)
-
-            # Copy material properties
-            wp.copy(self.material_friction, model.material_pairs.dynamic_friction)
-            wp.copy(self.material_restitution, model.material_pairs.restitution)
 
     def _update_geom_data(self, model: Model, data: ModelData):
         """
@@ -744,8 +736,8 @@ class CollisionPipelineUnifiedKamino:
                 model.cgeoms.bid,
                 model.cgeoms.ptr,
                 model.cgeoms.offset,
-                model.cgeoms.margin,
-                self.geom_collision_radius,
+                model.cgeoms.margin,  # TODO: Should this be gap or margin, or both?
+                self.shape_collision_radius,
                 data.bodies.q_i,
             ],
             outputs=[
@@ -765,7 +757,7 @@ class CollisionPipelineUnifiedKamino:
 
         # Then launch the configured broad-phase collision detection
         match self._broadphase:
-            case BroadPhaseMode.NXN:
+            case "nxn":
                 self.nxn_broadphase.launch(
                     self.shape_aabb_lower,
                     self.shape_aabb_upper,
@@ -773,11 +765,11 @@ class CollisionPipelineUnifiedKamino:
                     self.geom_collision_group,  # Simple collision groups (all = 1)
                     self.geom_wid,
                     self._num_geoms,
-                    self.broad_phase_shape_pairs,
+                    self.broad_phase_pairs,
                     self.broad_phase_pair_count,
                     device=self._device,
                 )
-            case BroadPhaseMode.SAP:
+            case "sap":
                 self.sap_broadphase.launch(
                     self.shape_aabb_lower,
                     self.shape_aabb_upper,
@@ -785,18 +777,18 @@ class CollisionPipelineUnifiedKamino:
                     self.geom_collision_group,  # Simple collision groups (all = 1)
                     self.geom_wid,
                     self._num_geoms,
-                    self.broad_phase_shape_pairs,
+                    self.broad_phase_pairs,
                     self.broad_phase_pair_count,
                     device=self._device,
                 )
-            case BroadPhaseMode.EXPLICIT:
+            case "explicit":
                 self.explicit_broadphase.launch(
                     self.shape_aabb_lower,
                     self.shape_aabb_upper,
                     None,  # AABBs are pre-expanded
                     self.shape_pairs_filtered,
                     len(self.shape_pairs_filtered),
-                    self.broad_phase_shape_pairs,
+                    self.broad_phase_pairs,
                     self.broad_phase_pair_count,
                     device=self._device,
                 )
@@ -823,13 +815,15 @@ class CollisionPipelineUnifiedKamino:
         writer_data.geom_bid = model.cgeoms.bid
         writer_data.geom_wid = model.cgeoms.wid
         writer_data.geom_mid = model.cgeoms.mid
-        writer_data.geom_margin = model.cgeoms.margin
+        writer_data.geom_margin = model.cgeoms.margin  # TODO: Should this be gap or margin, or both?
         writer_data.material_restitution = model.materials.restitution
         writer_data.material_static_friction = model.materials.static_friction
         writer_data.material_dynamic_friction = model.materials.dynamic_friction
         writer_data.material_pair_restitution = model.material_pairs.restitution
         writer_data.material_pair_static_friction = model.material_pairs.static_friction
         writer_data.material_pair_dynamic_friction = model.material_pairs.dynamic_friction
+        writer_data.contact_max = int32(contacts.model_max_contacts_host)
+        writer_data.contact_count = self.narrow_phase_contact_count
         writer_data.contacts_model_num_active = contacts.model_active_contacts
         writer_data.contacts_world_num_active = contacts.world_active_contacts
         writer_data.contact_wid = contacts.wid
@@ -845,16 +839,23 @@ class CollisionPipelineUnifiedKamino:
 
         # Run narrow phase with the custom Kamino contact writer
         self.narrow_phase.launch_custom_write(
-            candidate_pair=self.broad_phase_shape_pairs,
-            num_candidate_pair=self.broad_phase_pair_count,
+            candidate_pair=self.broad_phase_pairs,
+            candidate_pair_count=self.broad_phase_pair_count,
             shape_types=self.geom_type,
             shape_data=self.geom_data,
             shape_transform=data.cgeoms.pose,
             shape_source=model.cgeoms.ptr,
-            shape_sdf_data=self.shape_sdf_data,
-            shape_contact_margin=model.cgeoms.margin,
-            shape_collision_radius=self.geom_collision_radius,
+            sdf_data=self.shape_sdf_data,
+            shape_sdf_index=self.shape_sdf_index,
+            shape_gap=model.cgeoms.gap,  # TODO @nvtw: Could margin/gap be swapped here?
+            # TODO @nvtw: Shouldnt this also include per-geom margin?
+            shape_collision_radius=self.shape_collision_radius,
             shape_flags=self.shape_flags,
+            shape_collision_aabb_lower=self.shape_collision_aabb_lower,
+            shape_collision_aabb_upper=self.shape_collision_aabb_upper,
+            shape_voxel_resolution=self.shape_voxel_resolution,
+            shape_heightfield_data=self.shape_heightfield_data,
+            heightfield_elevation_data=self.heightfield_elevation_data,
             writer_data=writer_data,
             device=self._device,
         )

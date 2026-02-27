@@ -386,21 +386,23 @@ class CollisionGeometryDescriptor(GeometryDescriptor):
 
         self.gap: float = gap
         """
-        Additional detection threshold [m] for this geometry.\n
-        Pairwise effect is additive (``g_a + g_b``).  The broadphase
-        expands each shape's bounding volume by ``margin + gap``, and the
-        narrowphase keeps a contact when
-        ``d <= gap_a + gap_b`` (with ``d`` measured relative to
-        margin-shifted surfaces).\n
+        Additional detection threshold [m] for this geometry.
+
+        Pairwise effect is additive (``g_a + g_b``): the broadphase expands each shape's
+        bounding volume by ``margin + gap``, and the narrowphase keeps a contact when
+        ``d <= gap_a + gap_b``(with ``d`` measured relative to margin-shifted surfaces).
+
         Defaults to `0.0`.
         """
 
         self.margin: float = margin
         """
-        Surface offset [m] for this geometry.\n
+        Surface offset [m] for this geometry.
+
         Pairwise effect is additive (``m_a + m_b``): contacts are
         evaluated against the signed distance to the margin-shifted
-        surfaces, so resting separation equals ``m_a + m_b``.\n
+        surfaces, so resting separation equals ``m_a + m_b``.
+
         Defaults to `0.0`.
         """
 

@@ -197,16 +197,17 @@ def convert_kamino_shape_to_newton_geo(sid: int32, params: vec4f) -> tuple[int32
         geo_type = GeoType.PLANE
         scale = vec3f(0.0, 0.0, 0.0)  # Infinite plane
 
-    # TODO: Implement MESH, CONVEX, HFIELD support.
-    # elif sid == ShapeType.MESH:
-    #     geo_type = GeoType.MESH
-    #     scale = vec3f(0.0, 0.0, 0.0)
-    # elif sid == ShapeType.CONVEX:
-    #     geo_type = GeoType.CONVEX_MESH
-    #     scale = vec3f(0.0, 0.0, 0.0)
-    # elif sid == ShapeType.HFIELD:
-    #     geo_type = GeoType.HFIELD
-    #     scale = vec3f(0.0, 0.0, 0.0)
+    elif sid == ShapeType.MESH:
+        geo_type = GeoType.MESH
+        scale = vec3f(0.0, 0.0, 0.0)
+
+    elif sid == ShapeType.CONVEX:
+        geo_type = GeoType.CONVEX_MESH
+        scale = vec3f(0.0, 0.0, 0.0)
+
+    elif sid == ShapeType.HFIELD:
+        geo_type = GeoType.HFIELD
+        scale = vec3f(0.0, 0.0, 0.0)
 
     return geo_type, scale
 

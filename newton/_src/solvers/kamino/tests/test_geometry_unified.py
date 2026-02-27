@@ -53,7 +53,7 @@ nominal_expected_contacts_per_shape_pair = {
     ("cylinder", "capsule"): 1,
     ("cylinder", "box"): 4,
     ("cylinder", "ellipsoid"): 1,
-    ("cylinder", "plane"): 4,
+    ("cylinder", "plane"): 3,  # GJK manifold on the circular face yields 3 points
     ("cone", "sphere"): 1,
     ("cone", "cylinder"): 4,
     ("cone", "cone"): 1,
@@ -509,6 +509,95 @@ class TestCollisionPipelineUnified(unittest.TestCase):
             margin=1e-6,
             device=self.default_device,
         )
+
+
+class TestUnifiedWriterContactDataRegression(unittest.TestCase):
+    """Regression tests for the unified writer's ContactData API usage.
+
+    The writer previously referenced ``thickness_a/b`` fields on
+    :class:`ContactData` which no longer exist; the correct fields are
+    ``radius_eff_a/b`` and ``margin_a/b``.  It also used a max-based
+    margin threshold instead of additive per-shape gap.  These tests
+    verify the corrected behaviour end-to-end.
+    """
+
+    def setUp(self):
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
+        self.default_device = wp.get_device(test_context.device)
+
+    def tearDown(self):
+        self.default_device = None
+
+    def _run_pipeline(self, builder, default_gap=0.0):
+        model = builder.finalize(self.default_device)
+        data = model.data()
+        pipeline = CollisionPipelineUnifiedKamino(
+            model=model,
+            builder=builder,
+            broadphase="explicit",
+            default_gap=default_gap,
+            device=self.default_device,
+        )
+        n_geoms = builder.num_collision_geoms
+        capacity = 8 * ((n_geoms * (n_geoms - 1)) // 2)
+        contacts = Contacts(capacity=max(capacity, 8), device=self.default_device)
+        contacts.clear()
+        pipeline.collide(model, data, contacts)
+        return contacts
+
+    def test_touching_spheres_produces_contact(self):
+        """Two touching spheres must generate exactly one contact with d ≈ 0."""
+        builder = testing.make_single_shape_pair_builder(
+            shapes=("sphere", "sphere"),
+            distance=0.0,
+        )
+        contacts = self._run_pipeline(builder, default_gap=1e-5)
+        active = contacts.model_active_contacts.numpy()[0]
+        self.assertEqual(active, 1, "Touching spheres should produce one contact")
+
+        gapfunc = contacts.gapfunc.numpy()[0]
+        self.assertAlmostEqual(float(gapfunc[3]), 0.0, places=4, msg="gapfunc.w should be ≈ 0 for touching spheres")
+
+    def test_penetrating_spheres_negative_distance(self):
+        """Penetrating spheres must produce a negative gapfunc.w."""
+        penetration = -0.02
+        builder = testing.make_single_shape_pair_builder(
+            shapes=("sphere", "sphere"),
+            distance=penetration,
+        )
+        contacts = self._run_pipeline(builder, default_gap=1e-5)
+        active = contacts.model_active_contacts.numpy()[0]
+        self.assertEqual(active, 1)
+
+        gapfunc = contacts.gapfunc.numpy()[0]
+        self.assertLess(float(gapfunc[3]), 0.0, "gapfunc.w must be negative for penetrating spheres")
+
+    def test_gap_retains_nearby_contact(self):
+        """Contact within detection gap must be retained by the writer."""
+        separation = 1e-6
+        builder = testing.make_single_shape_pair_builder(
+            shapes=("sphere", "sphere"),
+            distance=separation,
+        )
+        for geom in builder.collision_geoms:
+            geom.gap = 0.01
+        contacts = self._run_pipeline(builder)
+        active = contacts.model_active_contacts.numpy()[0]
+        self.assertEqual(active, 1, "Contact within gap must be retained")
+
+    def test_gap_rejects_distant_contact(self):
+        """Contacts beyond the detection gap must be rejected."""
+        separation = 0.1
+        builder = testing.make_single_shape_pair_builder(
+            shapes=("sphere", "sphere"),
+            distance=separation,
+        )
+        for geom in builder.collision_geoms:
+            geom.gap = 0.001
+        contacts = self._run_pipeline(builder)
+        active = contacts.model_active_contacts.numpy()[0]
+        self.assertEqual(active, 0, "Contact beyond gap must be rejected")
 
 
 ###

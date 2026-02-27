@@ -233,28 +233,18 @@ def write_contact_unified_kamino(
             In both cases the model-level index is allocated from
             :attr:`ContactWriterDataKamino.contacts_model_num_active`.
     """
-    # Compute total separation from effective radii and surface margins
-    total_separation_needed = (
-        contact_data.radius_eff_a
-        + contact_data.radius_eff_b
-        + contact_data.margin_a
-        + contact_data.margin_b
-    )
-
     contact_normal_a_to_b = wp.normalize(contact_data.contact_normal_a_to_b)
 
-    # Compute contact points on each shape's surface (matching core convention)
-    a_contact_world = contact_data.contact_point_center - contact_normal_a_to_b * (
-        0.5 * contact_data.contact_distance + contact_data.radius_eff_a
-    )
-    b_contact_world = contact_data.contact_point_center + contact_normal_a_to_b * (
-        0.5 * contact_data.contact_distance + contact_data.radius_eff_b
-    )
+    # After narrow-phase post-processing (collision_core.py), contact_distance
+    # is always the surface-to-surface signed distance regardless of kernel
+    # (primitive or GJK), and contact_point_center is the midpoint between
+    # the surface contact points on each shape.
+    half_d = 0.5 * contact_data.contact_distance
+    a_contact_world = contact_data.contact_point_center - contact_normal_a_to_b * half_d
+    b_contact_world = contact_data.contact_point_center + contact_normal_a_to_b * half_d
 
-    # Signed distance relative to margin-shifted surfaces
-    diff = b_contact_world - a_contact_world
-    distance = wp.dot(diff, contact_normal_a_to_b)
-    d = distance - total_separation_needed
+    # Margin-shifted signed distance (negative = penetrating beyond margin)
+    d = contact_data.contact_distance - (contact_data.margin_a + contact_data.margin_b)
 
     # Both geoms share the same world (guaranteed by broadphase filtering)
     wid = writer_data.geom_wid[contact_data.shape_a]

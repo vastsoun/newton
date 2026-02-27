@@ -435,8 +435,8 @@ class CollisionGeometriesModel(GeometriesModel):
             Collision groups with which each collision geometry can collide.\n
             Shape of ``(num_geoms,)`` and type :class:`uint32`.
         margin (wp.array | None):
-            Collision detection margin if each collision geometry.\n
-            Used in narrow-phase collision detection algorithms to improve robustness.\n
+            Surface offset (thickness) [m] for each collision geometry.\n
+            Pairwise additive. Shifts the effective collision surface inward by this amount.\n
             Shape of ``(num_geoms,)`` and type :class:`float32`.
     """
 

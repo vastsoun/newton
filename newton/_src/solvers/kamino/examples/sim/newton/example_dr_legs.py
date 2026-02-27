@@ -52,7 +52,7 @@ class Example:
 
         # Load the DR Legs USD and add it to the builder
         asset_file = os.path.join(get_examples_usd_assets_path(), "dr_legs/usd/dr_legs_with_meshes_and_boxes.usda")
-        robot_builder.add_usd(
+        usd_import_result = robot_builder.add_usd(
             asset_file,
             collapse_fixed_joints=False,  # TODO: FIX THIS WHEN ITS TRUE
             enable_self_collisions=False,
@@ -97,7 +97,7 @@ class Example:
 
         # Create the Kamino solver for the given model
         # TODO: Set solver configurations
-        self.solver = newton.solvers.SolverKamino(self.model)
+        self.solver = newton.solvers.SolverKamino(self.model, usd_import_config=usd_import_result)
 
         # Create state and control data containers
         self.state_0 = self.model.state()
@@ -165,8 +165,9 @@ class Example:
                 self.model,
                 self.state_0,
                 "body velocities are small",
-                lambda q, qd: max(abs(qd))
-                < 0.25,  # Relaxed from 0.1 - unified pipeline has residual velocities up to ~0.2
+                lambda q, qd: (
+                    max(abs(qd)) < 0.25
+                ),  # Relaxed from 0.1 - unified pipeline has residual velocities up to ~0.2
             )
 
 

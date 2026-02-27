@@ -24,7 +24,6 @@ from enum import IntEnum
 import warp as wp
 
 from ....core.types import Mat33, Vec2, Vec3, nparray
-from ....geometry.sdf_utils import SDF
 from ....geometry.types import GeoType, Mesh
 from .types import Descriptor, mat33f, override, vec3f, vec4f
 
@@ -41,7 +40,6 @@ __all__ = [
     "EmptyShape",
     "MeshShape",
     "PlaneShape",
-    "SDFShape",
     "ShapeDescriptor",
     "ShapeType",
     "SphereShape",
@@ -98,9 +96,6 @@ class ShapeType(IntEnum):
     HFIELD = 10
     """The n-parameter height-field shape type. Parameters: height field data, etc."""
 
-    SDF = 11
-    """The n-parameter signed-distance-field shape type. Parameters: sdf data, etc."""
-
     @override
     def __str__(self):
         """Returns a string representation of the shape type."""
@@ -142,7 +137,6 @@ class ShapeType(IntEnum):
             self.MESH,
             self.CONVEX,
             self.HFIELD,
-            self.SDF,
         }
 
     @property
@@ -166,7 +160,7 @@ class ShapeType(IntEnum):
             return 3
         elif self.value == self.PLANE:
             return 4
-        elif self.value in {self.MESH, self.CONVEX, self.HFIELD, self.SDF}:
+        elif self.value in {self.MESH, self.CONVEX, self.HFIELD}:
             return -1  # Indicates variable number of parameters
         else:
             raise ValueError(f"Unknown shape type value: {self.value}")
@@ -199,8 +193,6 @@ class ShapeType(IntEnum):
                 type = GeoType.MESH
             case ShapeType.HFIELD:
                 type = GeoType.HFIELD
-            case ShapeType.SDF:
-                type = GeoType.SDF
             case _:
                 raise ValueError(f"Unknown ShapeType value: {self}")
         return type
@@ -209,8 +201,8 @@ class ShapeType(IntEnum):
 ShapeParamsLike = None | float | Iterable[float]
 """A type union that can represent any shape parameters, including None, single float, or iterable of floats."""
 
-ShapeDataLike = None | Mesh | SDF
-"""A type union that can represent any shape data, including None, Mesh, and SDF."""
+ShapeDataLike = None | Mesh
+"""A type union that can represent any shape data, including None and Mesh."""
 
 
 class ShapeDescriptor(ABC, Descriptor):
@@ -721,102 +713,6 @@ class HFieldShape(ShapeDescriptor):
         return vec4f(0.0)
 
 
-class SDFShape(ShapeDescriptor):
-    """
-    A shape descriptor for SDF shapes.
-
-    This class is a lightweight wrapper around the newton.SDF geometry type,
-    that provides the necessary interfacing to be used with the Kamino solver.
-
-    Attributes:
-        volume (wp.Volume): The Warp volume containing the SDF data.
-        mass (float): The mass of the SDF shape.
-        com (Vec3 | None): The center of mass of the SDF shape.
-        inertia (Mat33 | None): The inertia tensor of the SDF shape.
-    """
-
-    def __init__(
-        self,
-        volume: wp.Volume | None = None,
-        mass: float = 1.0,
-        com: Vec3 | None = None,
-        inertia: Mat33 | None = None,
-        name: str = "sdf",
-        uid: str | None = None,
-    ):
-        """
-        Initialize the SDF shape descriptor.
-
-        Args:
-            volume (wp.Volume | None): The Warp volume containing the SDF data.
-            mass (float): The mass of the SDF shape.
-            com (Vec3 | None): The center of mass of the SDF shape.
-            inertia (Mat33 | None): The inertia tensor of the SDF shape.
-            name (str): The name of the shape descriptor.
-            uid (str | None): Optional unique identifier of the shape descriptor.
-        """
-        super().__init__(ShapeType.SDF, name, uid)
-        self._data: SDF = SDF(
-            volume=volume,
-            mass=mass,
-            com=com,
-            I=inertia,
-        )
-
-    @override
-    def __hash__(self) -> int:
-        """Returns a hash computed using the underlying newton.SDF hash implementation."""
-        return self._data.__hash__()
-
-    @override
-    def __repr__(self):
-        """Returns a human-readable string representation of the SDFShape."""
-        return (
-            f"SDFShape(\n"
-            f"name: {self.name},\n"
-            f"uid: {self.uid},\n"
-            f"mass: {self._data.mass},\n"
-            f"com: {self._data.com},\n"
-            f"I:\n{self._data.I},\n"
-            f")"
-        )
-
-    @property
-    @override
-    def paramsvec(self) -> vec4f:
-        return vec4f(0.0)
-
-    @property
-    @override
-    def params(self) -> None:
-        return None
-
-    @property
-    @override
-    def data(self) -> SDF:
-        return self._data
-
-    @property
-    def volume(self) -> wp.Volume:
-        """Returns the Warp volume containing the SDF data."""
-        return self._data.volume
-
-    @property
-    def mass(self) -> float:
-        """Returns the mass of the SDF shape."""
-        return self._data.mass
-
-    @property
-    def com(self) -> vec3f:
-        """Returns the center of mass of the SDF shape."""
-        return self._data.com
-
-    @property
-    def inertia(self) -> mat33f:
-        """Returns the inertia tensor of the SDF shape."""
-        return self._data.I
-
-
 ###
 # Aliases
 ###
@@ -833,6 +729,5 @@ ShapeDescriptorType = (
     | PlaneShape
     | MeshShape
     | HFieldShape
-    | SDFShape
 )
 """A type union that can represent any shape descriptor, including primitive and explicit shapes."""

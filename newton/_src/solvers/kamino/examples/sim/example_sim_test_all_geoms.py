@@ -77,7 +77,6 @@ class Example:
             ShapeType.MESH,  # NOTE: Currently not supported any pipeline
             ShapeType.CONVEX,  # NOTE: Currently not supported any pipeline
             ShapeType.HFIELD,  # NOTE: Currently not supported any pipeline
-            ShapeType.SDF,  # NOTE: Currently not supported any pipeline
         ]
 
         # Generate a list of all supported shape-pair combinations for the configured pipeline

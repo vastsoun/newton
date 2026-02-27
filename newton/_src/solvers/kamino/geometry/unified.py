@@ -23,6 +23,8 @@ contacts data directly into Kamino's respective format.
 
 from typing import Literal
 
+import numpy as np
+
 # Warp imports
 import warp as wp
 from warp.context import Devicelike
@@ -195,7 +197,7 @@ def convert_kamino_shape_to_newton_geo(sid: int32, params: vec4f) -> tuple[int32
         geo_type = GeoType.PLANE
         scale = vec3f(0.0, 0.0, 0.0)  # Infinite plane
 
-    # TODO: Implement MESH, CONVEX, HFIELD, SDF
+    # TODO: Implement MESH, CONVEX, HFIELD support.
     # elif sid == ShapeType.MESH:
     #     geo_type = GeoType.MESH
     #     scale = vec3f(0.0, 0.0, 0.0)
@@ -204,9 +206,6 @@ def convert_kamino_shape_to_newton_geo(sid: int32, params: vec4f) -> tuple[int32
     #     scale = vec3f(0.0, 0.0, 0.0)
     # elif sid == ShapeType.HFIELD:
     #     geo_type = GeoType.HFIELD
-    #     scale = vec3f(0.0, 0.0, 0.0)
-    # elif sid == ShapeType.SDF:
-    #     geo_type = GeoType.SDF
     #     scale = vec3f(0.0, 0.0, 0.0)
 
     return geo_type, scale
@@ -331,6 +330,30 @@ def write_contact_unified_kamino(
 ###
 
 
+@wp.func
+def _compute_collision_radius(geo_type: int32, scale: vec3f) -> float32:
+    """Compute the bounding-sphere radius for broadphase AABB fallback.
+
+    Mirrors :func:`newton._src.geometry.utils.compute_shape_radius` for the
+    primitive shape types that Kamino currently supports.
+    """
+    radius = float32(10.0)
+    if geo_type == GeoType.SPHERE:
+        radius = scale[0]
+    elif geo_type == GeoType.BOX:
+        radius = wp.length(scale)
+    elif geo_type == GeoType.CAPSULE or geo_type == GeoType.CYLINDER or geo_type == GeoType.CONE:
+        radius = scale[0] + scale[1]
+    elif geo_type == GeoType.ELLIPSOID:
+        radius = wp.max(wp.max(scale[0], scale[1]), scale[2])
+    elif geo_type == GeoType.PLANE:
+        if scale[0] > 0.0 and scale[1] > 0.0:
+            radius = wp.length(scale)
+        else:
+            radius = float32(1.0e6)
+    return radius
+
+
 @wp.kernel
 def _convert_geom_data_kamino_to_newton(
     # Inputs:
@@ -342,13 +365,15 @@ def _convert_geom_data_kamino_to_newton(
     geom_gap: wp.array(dtype=float32),
     geom_type: wp.array(dtype=int32),
     geom_data: wp.array(dtype=vec4f),
+    shape_collision_radius: wp.array(dtype=float32),
 ):
     """
     Converts Kamino geometry data to Newton-compatible format.
 
     Converts :class:`ShapeType` and parameters to :class:`GeoType` and scale,
-    stores the per-geometry surface margin offset in ``geom_data.w``, and applies
-    a default floor to the per-geometry detection gap.
+    stores the per-geometry surface margin offset in ``geom_data.w``, applies
+    a default floor to the per-geometry detection gap, and computes the
+    bounding-sphere radius used for AABB fallback (planes, meshes, heightfields).
     """
     gid = wp.tid()
 
@@ -362,6 +387,7 @@ def _convert_geom_data_kamino_to_newton(
     geom_type[gid] = geo_type
     geom_data[gid] = vec4f(scale[0], scale[1], scale[2], margin)
     geom_gap[gid] = wp.max(default_gap, gap)
+    shape_collision_radius[gid] = _compute_collision_radius(geo_type, scale)
 
 
 @wp.kernel
@@ -524,12 +550,17 @@ class CollisionPipelineUnifiedKamino:
             self._max_shape_pairs = len(model_filtered_geom_pairs)
             self._max_contacts = self._max_shape_pairs * self._max_contacts_per_pair
 
-        # Build collision group array for NXN/SAP modes
-        # Newton's broad phase uses a simpler collision group system than Kamino's bitmask approach
-        # For NXN/SAP, we use a simple group ID (1 = collide with all, 0 = no collision)
-        # The actual filtering based on Kamino's group/collides bitmasks is done in EXPLICIT mode
-        # For NXN/SAP, we allow all pairs and let the narrow phase handle the actual collision
-        geom_collision_group_list = [1] * self._num_geoms  # All geometries can collide
+        # Build excluded pairs for NXN/SAP broadphase filtering.
+        # Kamino uses a bitmask group/collides system that is more expressive than
+        # Newton's integer collision groups. We keep all broadphase groups at 1
+        # (same-group, all pairs pass group check) and instead supply an explicit
+        # list of excluded pairs that encodes same-body, group/collides, and
+        # neighbor-joint filtering.
+        geom_collision_group_list = [1] * self._num_geoms
+        self._excluded_pairs: wp.array | None = None
+        self._num_excluded_pairs: int = 0
+        if broadphase in ("nxn", "sap"):
+            self._excluded_pairs, self._num_excluded_pairs = self._build_excluded_pairs(builder)
 
         # Capture a reference to per-geometry world indices already present in the model
         self.geom_wid: wp.array = model.cgeoms.wid
@@ -668,8 +699,88 @@ class CollisionPipelineUnifiedKamino:
                 model.cgeoms.gap,
                 self.geom_type,
                 self.geom_data,
+                self.shape_collision_radius,
             ],
             device=self._device,
+        )
+
+    @staticmethod
+    def _build_excluded_pairs(builder: ModelBuilder) -> tuple[wp.array | None, int]:
+        """Build a sorted array of shape pairs that the NXN/SAP broadphase should exclude.
+
+        Encodes the same filtering rules as
+        :meth:`ModelBuilder.make_collision_candidate_pairs` (same-body, group/collides
+        bitmask, fixed-joint and DoF-joint neighbours) but returns the *complement*:
+        pairs that should **not** collide.
+
+        Returns:
+            A tuple of ``(excluded_pairs_array, count)``.  When no exclusions are
+            needed, returns ``(None, 0)``.
+        """
+        from ..core.joints import JointDoFType  # noqa: PLC0415
+
+        geoms = builder.collision_geoms
+        joints = builder.joints
+        nw = builder.num_worlds
+        worlds = builder._worlds
+
+        # Pre-index joints per world for fast lookup
+        joint_ranges: list[tuple[int, int]] = []
+        for w in range(nw):
+            lo = len(joints)
+            hi = 0
+            for i, j in enumerate(joints):
+                if j.wid == w:
+                    lo = min(lo, i)
+                    hi = max(hi, i)
+            joint_ranges.append((lo, hi))
+
+        excluded: list[tuple[int, int]] = []
+        ncg_offset = 0
+        for wid in range(nw):
+            ncg = worlds[wid].num_collision_geoms
+            for idx1 in range(ncg):
+                gid1 = idx1 + ncg_offset
+                geom1 = geoms[gid1]
+                for idx2 in range(idx1 + 1, ncg):
+                    gid2 = idx2 + ncg_offset
+                    geom2 = geoms[gid2]
+
+                    # Same-body collision
+                    if geom1.bid == geom2.bid:
+                        excluded.append((gid1, gid2))
+                        continue
+
+                    # Group/collides bitmask check
+                    if not ((geom1.group & geom2.collides) != 0 and (geom2.group & geom1.collides) != 0):
+                        excluded.append((gid1, gid2))
+                        continue
+
+                    # Fixed-joint / DoF-joint neighbour check
+                    jlo, jhi = joint_ranges[wid]
+                    is_excluded_neighbour = False
+                    for joint in joints[jlo : jhi + 1]:
+                        is_pair = (joint.bid_B == geom1.bid and joint.bid_F == geom2.bid) or (
+                            joint.bid_B == geom2.bid and joint.bid_F == geom1.bid
+                        )
+                        if is_pair:
+                            if joint.dof_type == JointDoFType.FIXED:
+                                is_excluded_neighbour = True
+                            elif joint.bid_B >= 0:
+                                is_excluded_neighbour = True
+                            break
+                    if is_excluded_neighbour:
+                        excluded.append((gid1, gid2))
+
+            ncg_offset += ncg
+
+        if not excluded:
+            return None, 0
+
+        excluded.sort()
+        return (
+            wp.array(np.array(excluded, dtype=np.int32), dtype=wp.vec2i),
+            len(excluded),
         )
 
     def _update_geom_data(self, model: Model, data: ModelData):
@@ -716,24 +827,28 @@ class CollisionPipelineUnifiedKamino:
                     self.shape_aabb_lower,
                     self.shape_aabb_upper,
                     None,  # AABBs are pre-expanded
-                    self.geom_collision_group,  # Simple collision groups (all = 1)
+                    self.geom_collision_group,
                     self.geom_wid,
                     self._num_geoms,
                     self.broad_phase_pairs,
                     self.broad_phase_pair_count,
                     device=self._device,
+                    filter_pairs=self._excluded_pairs,
+                    num_filter_pairs=self._num_excluded_pairs,
                 )
             case "sap":
                 self.sap_broadphase.launch(
                     self.shape_aabb_lower,
                     self.shape_aabb_upper,
                     None,  # AABBs are pre-expanded
-                    self.geom_collision_group,  # Simple collision groups (all = 1)
+                    self.geom_collision_group,
                     self.geom_wid,
                     self._num_geoms,
                     self.broad_phase_pairs,
                     self.broad_phase_pair_count,
                     device=self._device,
+                    filter_pairs=self._excluded_pairs,
+                    num_filter_pairs=self._num_excluded_pairs,
                 )
             case "explicit":
                 self.explicit_broadphase.launch(

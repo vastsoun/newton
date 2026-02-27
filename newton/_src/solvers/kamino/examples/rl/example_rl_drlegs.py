@@ -33,22 +33,11 @@ from warp.context import Devicelike
 
 import newton
 import newton.examples
-from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.examples import run_headless
-from newton._src.solvers.kamino.linalg.linear import SolverShorthand as LinearSolverShorthand
+from newton._src.solvers.kamino.examples.rl.observations import DrlegsStanceObservation
+from newton._src.solvers.kamino.examples.rl.simulation import RigidBodySim
 from newton._src.solvers.kamino.models import get_examples_usd_assets_path
-from newton._src.solvers.kamino.models.builders.utils import (
-    add_ground_box,
-    make_homogeneous_builder,
-    set_uniform_body_pose_offset,
-)
-from newton._src.solvers.kamino.solvers.padmm import PADMMWarmStartMode
-from newton._src.solvers.kamino.solvers.warmstart import WarmstarterContacts
 from newton._src.solvers.kamino.utils import logger as msg
-from newton._src.solvers.kamino.utils.io.usd import USDImporter
-from newton._src.solvers.kamino.utils.sim import Simulator, SimulatorSettings, ViewerKamino
-
-from .observations import DrlegsStanceObservation
 
 ###
 # Module configs
@@ -72,7 +61,7 @@ class Example:
         action_scale: float = 0.25,
         control_decimation: int = 4,
     ):
-        # Timing: implicit PD uses larger time-steps
+        # Timing
         self.fps = 60
         self.sim_dt = 0.01
         self.frame_dt = 1.0 / self.fps
@@ -81,101 +70,39 @@ class Example:
         self.control_decimation = control_decimation
         self.action_scale = action_scale
 
-        self.device = device
-        self.torch_device = "cuda" if wp.get_device(device).is_cuda else "cpu"
-
-        # USD model loading
+        # USD model path
         EXAMPLE_ASSETS_PATH = get_examples_usd_assets_path()
         if EXAMPLE_ASSETS_PATH is None:
             raise FileNotFoundError("Failed to find USD assets path for examples: ensure `newton-assets` is installed.")
         USD_MODEL_PATH = os.path.join(EXAMPLE_ASSETS_PATH, "dr_legs/usd/dr_legs_with_meshes_and_boxes.usda")
 
-        msg.notif("Constructing builder from imported USD ...")
-        importer = USDImporter()
-        self.builder: ModelBuilder = make_homogeneous_builder(
+        # Create generic articulated body simulator
+        self.body_sim = RigidBodySim(
+            usd_model_path=USD_MODEL_PATH,
             num_worlds=num_worlds,
-            build_fn=importer.import_from,
-            load_static_geometry=True,
-            source=USD_MODEL_PATH,
-            load_drive_dynamics=True,  # implicit PD control
+            sim_dt=self.sim_dt,
+            device=device,
+            headless=headless,
+            body_pose_offset=(0.0, 0.0, 0.265, 0.0, 0.0, 0.0, 1.0),
         )
 
-        # Place robot above the ground
-        offset = wp.transformf(0.0, 0.0, 0.265, 0.0, 0.0, 0.0, 1.0)
-        set_uniform_body_pose_offset(builder=self.builder, offset=offset)
-
-        # Ground plane
-        for w in range(num_worlds):
-            add_ground_box(self.builder, world_index=w, layer="world")
-
-        # Gravity
-        for w in range(self.builder.num_worlds):
-            self.builder.gravity[w].enabled = True
-
-        # Solver settings # todo final update
-        settings = SimulatorSettings()
-        settings.dt = self.sim_dt
-        settings.solver.integrator = "moreau"
-        settings.solver.problem.alpha = 0.1
-        settings.solver.padmm.primal_tolerance = 1e-4
-        settings.solver.padmm.dual_tolerance = 1e-4
-        settings.solver.padmm.compl_tolerance = 1e-4
-        settings.solver.padmm.max_iterations = 200
-        settings.solver.padmm.eta = 1e-5
-        settings.solver.padmm.rho_0 = 0.05
-        settings.solver.use_solver_acceleration = True
-        settings.solver.warmstart_mode = PADMMWarmStartMode.CONTAINERS
-        settings.solver.contact_warmstart_method = WarmstarterContacts.Method.GEOM_PAIR_NET_FORCE
-        settings.solver.collect_solver_info = False
-        settings.solver.compute_metrics = False
-        linear_solver_cls = {v: k for k, v in LinearSolverShorthand.items()}["LLTB"]
-        settings.solver.linear_solver_type = linear_solver_cls
-        settings.solver.linear_solver_kwargs = {}
-        settings.solver.angular_velocity_damping = 0.0
-
-        # Simulator
-        msg.notif("Building the simulator...")
-        self.sim = Simulator(builder=self.builder, settings=settings, device=device)
-
-        # Extract actuated joint indices
-        self.actuated_dof_indices: list[int] = []
-        self.actuated_joint_names: list[str] = []
-        num_joints_per_world = self.sim.model.size.max_of_num_joints
-        dof_offset = 0
-        for j in range(num_joints_per_world):
-            joint = self.builder.joints[j]
-            if joint.is_actuated:
-                self.actuated_joint_names.append(joint.name)
-                for dof_idx in range(joint.num_dofs):
-                    self.actuated_dof_indices.append(dof_offset + dof_idx)
-            dof_offset += joint.num_dofs
-
-        self.num_actuated = len(self.actuated_dof_indices)
-        msg.info(f"Actuated joints ({self.num_actuated}): {self.actuated_joint_names}")
-
-        self.actuated_dof_indices_tensor = torch.tensor(
-            self.actuated_dof_indices, device=self.torch_device, dtype=torch.long
-        )
-
-        # Observation
+        # Observation builder (DR Legs specific)
         self.obs_builder = DrlegsStanceObservation(
-            sim=self.sim,
+            sim=self.body_sim.sim,
             num_worlds=num_worlds,
-            device=self.torch_device,
-            actuated_joint_indices=self.actuated_dof_indices,
-            num_actions=self.num_actuated,
+            device=self.body_sim.torch_device,
+            actuated_joint_indices=self.body_sim.actuated_dof_indices,
+            num_actions=self.body_sim.num_actuated,
+            action_scale=action_scale,
         )
         msg.info(f"Observation dim: {self.obs_builder.num_observations}")
 
-        # Zero-copy torch views of control arrays
-        num_joint_coords = self.sim.model.size.max_of_num_joint_coords
-        num_joint_dofs = self.sim.model.size.max_of_num_joint_dofs
-        self.q_j_ref_pt = wp.to_torch(self.sim.control.q_j_ref).reshape(num_worlds, num_joint_coords)
-        self.dq_j_ref_pt = wp.to_torch(self.sim.control.dq_j_ref).reshape(num_worlds, num_joint_dofs)
-
-        # Default joint positions and action buffer
-        self.default_q_j = wp.to_torch(self.sim.state.q_j).reshape(num_worlds, num_joint_coords).clone()
-        self.actions = torch.zeros((num_worlds, self.num_actuated), device=self.torch_device, dtype=torch.float32)
+        # Action buffer
+        self.actions = torch.zeros(
+            (num_worlds, self.body_sim.num_actuated),
+            device=self.body_sim.torch_device,
+            dtype=torch.float32,
+        )
 
         # Policy (None = random actions)
         self.policy = None
@@ -183,49 +110,40 @@ class Example:
         # Keyboard state
         self._reset_key_prev = False
 
-        # Viewer
-        self.viewer: ViewerKamino | None = None
-        if not headless:
-            msg.notif("Creating the 3D viewer...")
-            self.viewer = ViewerKamino(
-                builder=self.builder,
-                simulator=self.sim,
-            )
+    # Convenience accessors for the main block
+    @property
+    def torch_device(self) -> str:
+        return self.body_sim.torch_device
 
-        # Warm-up
-        msg.notif("Warming up simulator...")
-        self.step_once()
-        self.reset()
+    @property
+    def viewer(self):
+        return self.body_sim.viewer
 
     # Simulation helpers
 
     def _apply_actions(self):
         """Convert policy actions to implicit PD joint position references."""
-        # Start from the default pose
-        self.q_j_ref_pt[:] = self.default_q_j
-        # Add scaled actions at actuated joint indices only
-        self.q_j_ref_pt[:, self.actuated_dof_indices_tensor] += self.action_scale * self.actions
-        # Zero velocity reference
-        self.dq_j_ref_pt.zero_()
+        self.body_sim.q_j_ref[:] = self.body_sim.default_q_j
+        self.body_sim.q_j_ref[:, self.body_sim.actuated_dof_indices_tensor] += self.action_scale * self.actions
+        self.body_sim.dq_j_ref.zero_()
 
     def reset(self):
         """Reset the simulation and internal state."""
-        self.sim.reset()
+        self.body_sim.reset()
         self.actions.zero_()
         self.obs_builder.reset()
-        # Set default pose as the initial reference
-        self.q_j_ref_pt[:] = self.default_q_j
-        self.dq_j_ref_pt.zero_()
+        self.body_sim.q_j_ref[:] = self.body_sim.default_q_j
+        self.body_sim.dq_j_ref.zero_()
 
     def step_once(self):
         """Single physics step (used by run_headless warm-up)."""
-        self.sim.step()
+        self.body_sim.step()
 
     def step(self):
         """One RL step: observe - infer - apply - simulate."""
         # Keyboard handling
-        if self.viewer is not None and hasattr(self.viewer, "is_key_down"):
-            reset_down = bool(self.viewer.is_key_down("p"))
+        if self.body_sim.viewer is not None and hasattr(self.body_sim.viewer, "is_key_down"):
+            reset_down = bool(self.body_sim.viewer.is_key_down("p"))
             if reset_down and not self._reset_key_prev:
                 self.reset()
             self._reset_key_prev = reset_down
@@ -247,12 +165,11 @@ class Example:
         # Step physics for control_decimation substeps
         for _ in range(self.control_decimation):
             for _ in range(self.sim_substeps):
-                self.sim.step()
+                self.body_sim.step()
 
     def render(self):
         """Render the current frame."""
-        if self.viewer is not None:
-            self.viewer.render_frame()
+        self.body_sim.render()
 
     def test(self):
         """Test function for compatibility."""

@@ -22,7 +22,6 @@ import warp as wp
 
 from newton._src.solvers.kamino.geometry import (
     BoundingVolumeType,
-    BroadPhaseMode,
     CollisionDetector,
     CollisionDetectorSettings,
     CollisionPipelineType,
@@ -63,14 +62,14 @@ class TestCollisionDetectorSettings(unittest.TestCase):
         """Test making default collision detector settings."""
         settings = CollisionDetectorSettings()
         self.assertEqual(settings.pipeline, CollisionPipelineType.PRIMITIVE)
-        self.assertEqual(settings.broadphase, BroadPhaseMode.EXPLICIT)
+        self.assertEqual(settings.broadphase, "explicit")
         self.assertEqual(settings.bvtype, BoundingVolumeType.AABB)
 
     def test_01_make_with_string_args(self):
         """Test making collision detector settings with string arguments."""
         settings = CollisionDetectorSettings(pipeline="primitive", broadphase="explicit", bvtype="aabb")
         self.assertEqual(settings.pipeline, CollisionPipelineType.PRIMITIVE)
-        self.assertEqual(settings.broadphase, BroadPhaseMode.EXPLICIT)
+        self.assertEqual(settings.broadphase, "explicit")
         self.assertEqual(settings.bvtype, BoundingVolumeType.AABB)
 
 
@@ -110,7 +109,7 @@ class TestGeometryCollisionDetector(unittest.TestCase):
         # Create a collision detector with primitive pipeline
         settings = CollisionDetectorSettings(
             pipeline=CollisionPipelineType.PRIMITIVE,
-            broadphase=BroadPhaseMode.EXPLICIT,
+            broadphase="explicit",
             bvtype=BoundingVolumeType.AABB,
         )
         detector = CollisionDetector(model=model, builder=builder, settings=settings)
@@ -150,7 +149,7 @@ class TestGeometryCollisionDetector(unittest.TestCase):
         # Create a collision detector with primitive pipeline
         settings = CollisionDetectorSettings(
             pipeline=CollisionPipelineType.UNIFIED,
-            broadphase=BroadPhaseMode.EXPLICIT,
+            broadphase="explicit",
             bvtype=BoundingVolumeType.AABB,
         )
         detector = CollisionDetector(model=model, builder=builder, settings=settings)

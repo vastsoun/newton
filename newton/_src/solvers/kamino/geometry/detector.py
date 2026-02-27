@@ -35,6 +35,7 @@ Usage example:
 
 from dataclasses import dataclass
 from enum import IntEnum
+from typing import Literal
 
 import warp as wp
 
@@ -43,7 +44,7 @@ from ..core.model import Model, ModelData
 from ..core.types import override
 from ..geometry.contacts import DEFAULT_GEOM_PAIR_CONTACT_MARGIN, DEFAULT_GEOM_PAIR_MAX_CONTACTS, Contacts
 from ..geometry.primitive import BoundingVolumeType, CollisionPipelinePrimitive
-from ..geometry.unified import BroadPhaseMode, CollisionPipelineUnifiedKamino
+from ..geometry.unified import CollisionPipelineUnifiedKamino
 
 ###
 # Module configs
@@ -101,7 +102,7 @@ class CollisionDetectorSettings:
     Defaults to `PRIMITIVE`.
     """
 
-    broadphase: str | BroadPhaseMode = BroadPhaseMode.EXPLICIT
+    broadphase: Literal["nxn", "sap", "explicit"] = "explicit"
     """
     The broad-phase collision-detection to use (`NXN`, `SAP`, or `EXPLICIT`).\n
     Defaults to `EXPLICIT`.
@@ -147,8 +148,6 @@ class CollisionDetectorSettings:
         """Post-initialization processing to convert string enums to their respective types."""
         if isinstance(self.pipeline, str):
             self.pipeline = CollisionPipelineType[self.pipeline.upper()]
-        if isinstance(self.broadphase, str):
-            self.broadphase = BroadPhaseMode[self.broadphase.upper()]
         if isinstance(self.bvtype, str):
             self.bvtype = BoundingVolumeType[self.bvtype.upper()]
 

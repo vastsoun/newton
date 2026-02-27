@@ -28,7 +28,7 @@ from warp.context import Devicelike
 from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.core.model import Model, ModelData
 from newton._src.solvers.kamino.geometry.contacts import Contacts
-from newton._src.solvers.kamino.geometry.unified import BroadPhaseMode, CollisionPipelineUnifiedKamino
+from newton._src.solvers.kamino.geometry.unified import CollisionPipelineUnifiedKamino
 from newton._src.solvers.kamino.models.builders import basics, testing
 from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.tests.test_geometry_primitive import check_contacts
@@ -108,7 +108,7 @@ def test_unified_pipeline(
     rtol: float = 1e-6,
     atol: float = 0.0,
     case: str = "",
-    broadphase_modes: list[BroadPhaseMode] | None = None,
+    broadphase_modes: list[str] | None = None,
     device: Devicelike = None,
 ):
     """
@@ -117,10 +117,9 @@ def test_unified_pipeline(
     """
     # Run the narrow-phase test over each broad-phase backend
     if broadphase_modes is None:
-        broadphase_modes = [BroadPhaseMode(mode.value) for mode in BroadPhaseMode]
+        broadphase_modes = ["nxn", "sap", "explicit"]
     for bp_mode in broadphase_modes:
-        bp_name = bp_mode.name
-        msg.info("Testing unified CD on '%s' using '%s'", case, bp_name)
+        msg.info("Testing unified CD on '%s' using '%s'", case, bp_mode)
 
         # Create a test model and data
         model: Model = builder.finalize(device)
@@ -145,18 +144,18 @@ def test_unified_pipeline(
         pipeline.collide(model, data, contacts)
 
         # Optional verbose output
-        msg.debug("[%s][%s]: bodies.q_i:\n%s", case, bp_name, data.bodies.q_i)
-        msg.debug("[%s][%s]: contacts.model_active_contacts: %s", case, bp_name, contacts.model_active_contacts)
-        msg.debug("[%s][%s]: contacts.world_active_contacts: %s", case, bp_name, contacts.world_active_contacts)
-        msg.debug("[%s][%s]: contacts.wid: %s", case, bp_name, contacts.wid)
-        msg.debug("[%s][%s]: contacts.cid: %s", case, bp_name, contacts.cid)
-        msg.debug("[%s][%s]: contacts.gid_AB:\n%s", case, bp_name, contacts.gid_AB)
-        msg.debug("[%s][%s]: contacts.bid_AB:\n%s", case, bp_name, contacts.bid_AB)
-        msg.debug("[%s][%s]: contacts.position_A:\n%s", case, bp_name, contacts.position_A)
-        msg.debug("[%s][%s]: contacts.position_B:\n%s", case, bp_name, contacts.position_B)
-        msg.debug("[%s][%s]: contacts.gapfunc:\n%s", case, bp_name, contacts.gapfunc)
-        msg.debug("[%s][%s]: contacts.frame:\n%s", case, bp_name, contacts.frame)
-        msg.debug("[%s][%s]: contacts.material:\n%s", case, bp_name, contacts.material)
+        msg.debug("[%s][%s]: bodies.q_i:\n%s", case, bp_mode, data.bodies.q_i)
+        msg.debug("[%s][%s]: contacts.model_active_contacts: %s", case, bp_mode, contacts.model_active_contacts)
+        msg.debug("[%s][%s]: contacts.world_active_contacts: %s", case, bp_mode, contacts.world_active_contacts)
+        msg.debug("[%s][%s]: contacts.wid: %s", case, bp_mode, contacts.wid)
+        msg.debug("[%s][%s]: contacts.cid: %s", case, bp_mode, contacts.cid)
+        msg.debug("[%s][%s]: contacts.gid_AB:\n%s", case, bp_mode, contacts.gid_AB)
+        msg.debug("[%s][%s]: contacts.bid_AB:\n%s", case, bp_mode, contacts.bid_AB)
+        msg.debug("[%s][%s]: contacts.position_A:\n%s", case, bp_mode, contacts.position_A)
+        msg.debug("[%s][%s]: contacts.position_B:\n%s", case, bp_mode, contacts.position_B)
+        msg.debug("[%s][%s]: contacts.gapfunc:\n%s", case, bp_mode, contacts.gapfunc)
+        msg.debug("[%s][%s]: contacts.frame:\n%s", case, bp_mode, contacts.frame)
+        msg.debug("[%s][%s]: contacts.material:\n%s", case, bp_mode, contacts.material)
 
         # Check results
         check_contacts(
@@ -164,7 +163,7 @@ def test_unified_pipeline(
             expected,
             rtol=rtol,
             atol=atol,
-            case=f"{case} using {bp_name}",
+            case=f"{case} using {bp_mode}",
             header="unified CD pipeline",
         )
 
@@ -216,8 +215,9 @@ class TestCollisionPipelineUnified(unittest.TestCase):
         if not test_context.setup_done:
             setup_tests(clear_cache=False)
         self.default_device = wp.get_device(test_context.device)
-        self.verbose = test_context.verbose  # Set to True for detailed output
-        self.skip_buggy_tests = True  # Set to True to skip known-buggy tests
+        # self.verbose = test_context.verbose  # Set to True for detailed output
+        self.verbose = True  # Set to True for detailed output
+        self.skip_buggy_tests = False  # Set to True to skip known-buggy tests
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
@@ -380,7 +380,6 @@ class TestCollisionPipelineUnified(unittest.TestCase):
 
         # Run the narrow-phase test on the shape pair
         test_unified_pipeline(
-            self,
             builder=builder,
             expected=expected,
             case="sphere_on_sphere_detailed",
@@ -501,11 +500,13 @@ class TestCollisionPipelineUnified(unittest.TestCase):
         builder = basics.build_boxes_nunchaku()
 
         # Run the narrow-phase test on the shape pair
+        # Note: Use small margin to handle floating point precision for touching contacts
         test_unified_pipeline(
             builder=builder,
             expected=expected,
             case="boxes_nunchaku",
-            broadphase_modes=[BroadPhaseMode.EXPLICIT],
+            broadphase_modes=["explicit"],
+            margin=1e-6,
             device=self.default_device,
         )
 

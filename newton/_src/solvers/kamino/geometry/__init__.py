@@ -45,9 +45,6 @@ This module provides a front-end defined by:
     An enumeration defining the different collision detection pipelines
     (i.e. backends) supported by Kamino.
 
-- :class:`BroadPhaseMode`:
-    A forward declaration of the broad-phase collision detection modes of Newton.
-
 - :class:`BoundingVolumeType`:
     An enumeration defining the different types of bounding volumes
     supported by Kamino's broad-phase collision detection back-ends.
@@ -68,7 +65,7 @@ from .detector import (
     CollisionPipelineType,
 )
 from .primitive import BoundingVolumeType, CollisionPipelinePrimitive
-from .unified import BroadPhaseMode, CollisionPipelineUnifiedKamino
+from .unified import CollisionPipelineUnifiedKamino
 
 ###
 # Module interface
@@ -76,7 +73,6 @@ from .unified import BroadPhaseMode, CollisionPipelineUnifiedKamino
 
 __all__ = [
     "BoundingVolumeType",
-    "BroadPhaseMode",
     "CollisionDetector",
     "CollisionDetectorSettings",
     "CollisionPipelinePrimitive",

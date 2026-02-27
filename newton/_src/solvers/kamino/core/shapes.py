@@ -23,9 +23,9 @@ from enum import IntEnum
 
 import warp as wp
 
-from ....core.types import Mat33, Vec2, Vec3, nparray
-from ....geometry.types import GeoType, Mesh
-from .types import Descriptor, mat33f, override, vec3f, vec4f
+from ....core.types import Vec2, Vec3, nparray
+from ....geometry.types import GeoType, Heightfield, Mesh
+from .types import Descriptor, override, vec4f
 
 ###
 # Module interface
@@ -201,8 +201,8 @@ class ShapeType(IntEnum):
 ShapeParamsLike = None | float | Iterable[float]
 """A type union that can represent any shape parameters, including None, single float, or iterable of floats."""
 
-ShapeDataLike = None | Mesh
-"""A type union that can represent any shape data, including None and Mesh."""
+ShapeDataLike = None | Mesh | Heightfield
+"""A type union that can represent any shape data, including None, Mesh, and Heightfield."""
 
 
 class ShapeDescriptor(ABC, Descriptor):

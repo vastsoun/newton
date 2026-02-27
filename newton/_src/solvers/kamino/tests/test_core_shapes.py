@@ -34,7 +34,6 @@ from newton._src.solvers.kamino.core.shapes import (
     ShapeType,
     SphereShape,
 )
-from newton._src.solvers.kamino.core.types import mat33f, vec3f
 from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.utils import logger as msg
 

@@ -15,7 +15,7 @@
 
 """Utilities for solver configuration benchmarking."""
 
-from .configs import make_benchmark_configs, make_solver_config_default
+from .configs import make_benchmark_configs
 from .metrics import (
     BenchmarkMetrics,
     SolverMetrics,

@@ -65,23 +65,24 @@ class BenchmarkSim:
         msg.info("Building the simulator...")
         self.sim = Simulator(builder=builder, config=configs, device=device)
 
-        # Create a random-action controller for the model
-        self.ctlr = RandomJointController(
-            model=self.sim.model,
-            seed=seed,
-            decimation=control.decimation if control else None,
-            scale=control.scale if control else None,
-        )
-
-        # Define a callback function to wrap the execution of the controller
-        def control_callback(simulator: Simulator):
-            self.ctlr.compute(
-                time=simulator.solver.data.time,
-                control=simulator.control,
+        if control is None or not control.disable_controller:
+            # Create a random-action controller for the model
+            self.ctlr = RandomJointController(
+                model=self.sim.model,
+                seed=seed,
+                decimation=control.decimation if control else None,
+                scale=control.scale if control else None,
             )
 
-        # Set the control callbacks into the simulator
-        self.sim.set_control_callback(control_callback)
+            # Define a callback function to wrap the execution of the controller
+            def control_callback(simulator: Simulator):
+                self.ctlr.compute(
+                    time=simulator.solver.data.time,
+                    control=simulator.control,
+                )
+
+            # Set the control callbacks into the simulator
+            self.sim.set_control_callback(control_callback)
 
         # Initialize the data logger
         self.logger: SimulationLogger | None = None

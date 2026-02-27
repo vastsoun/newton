@@ -191,7 +191,7 @@ class Example:
     ):
         # Initialize target frames per second and corresponding time-steps
         self.fps = 60
-        self.sim_dt = 0.01
+        self.sim_dt = 0.01 if implicit_pd else 0.001
         self.frame_dt = 1.0 / self.fps
         self.sim_substeps = max(1, round(self.frame_dt / self.sim_dt))
         self.max_steps = max_steps
@@ -210,8 +210,16 @@ class Example:
                 num_worlds=num_worlds,
                 build_fn=importer.import_from,
                 source=USD_MODEL_PATH,
+                load_drive_dynamics=implicit_pd,
                 load_static_geometry=ground,
             )
+            # Set joint armature and damping because the purely
+            # UsdPhysics schema does not support these properties yet
+            if implicit_pd:
+                for joint in self.builder.joints:
+                    if joint.is_dynamic or joint.is_implicit_pd:
+                        joint.a_j = [0.1]
+                        joint.b_j = [0.001]
         else:
             msg.notif("Constructing builder using model generator ...")
             self.builder: ModelBuilder = make_homogeneous_builder(
@@ -401,7 +409,7 @@ if __name__ == "__main__":
     parser.add_argument("--num-worlds", type=int, default=1, help="Number of worlds to simulate in parallel")
     parser.add_argument("--num-steps", type=int, default=3000, help="Number of steps for headless mode")
     parser.add_argument(
-        "--load-from-usd", action=argparse.BooleanOptionalAction, default=False, help="Load model from USD file"
+        "--load-from-usd", action=argparse.BooleanOptionalAction, default=True, help="Load model from USD file"
     )
     parser.add_argument(
         "--implicit-pd",

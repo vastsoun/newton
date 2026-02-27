@@ -171,6 +171,8 @@ def Xform "boxes_fourbar"
             float physics:lowerLimit = -45.0
             float physics:upperLimit = 45
             float drive:angular:physics:maxForce = inf
+            float drive:angular:physics:stiffness = 1000.0
+            float drive:angular:physics:damping = 20.0
             uniform token drive:angular:physics:type = "force"
         }
 

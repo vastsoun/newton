@@ -868,6 +868,7 @@ def build_boxes_fourbar(
     builder: ModelBuilder | None = None,
     z_offset: float = 0.0,
     fixedbase: bool = False,
+    floatingbase: bool = False,
     limits: bool = True,
     ground: bool = True,
     dynamic_joints: bool = False,
@@ -875,6 +876,7 @@ def build_boxes_fourbar(
     verbose: bool = False,
     new_world: bool = True,
     world_index: int = 0,
+    actuator_ids: list[int] | None = None,
 ) -> ModelBuilder:
     """
     Constructs a basic model of a four-bar linkage.
@@ -910,6 +912,13 @@ def build_boxes_fourbar(
     # Create a new world in the builder if requested or if a new builder was created
     if new_world or builder is None:
         world_index = _builder.add_world(name="boxes_fourbar")
+
+    # Set default actuator IDs if none are provided
+    if actuator_ids is None:
+        actuator_ids = [1, 3]
+    elif not isinstance(actuator_ids, list):
+        raise TypeError("actuator_ids, if specified, must be provided as a list of integers.")
+    print(f"WARNING: Using actuator IDs: {actuator_ids}")
 
     ###
     # Base Parameters
@@ -1060,10 +1069,25 @@ def build_boxes_fourbar(
             world_index=world_index,
         )
 
+    if floatingbase:
+        _builder.add_joint(
+            name="world_to_link1",
+            dof_type=JointDoFType.FREE,
+            act_type=JointActuationType.FORCE if 0 in actuator_ids else JointActuationType.PASSIVE,
+            bid_B=-1,
+            bid_F=bid1,
+            B_r_Bj=vec3f(0.0),
+            F_r_Fj=vec3f(0.0),
+            X_j=I_3,
+            world_index=world_index,
+        )
+
+    joint_1_type_if_implicit_pd = JointActuationType.POSITION_VELOCITY if implicit_pd else JointActuationType.FORCE
+    joint_1_type = joint_1_type_if_implicit_pd if 1 in actuator_ids else JointActuationType.PASSIVE
     _builder.add_joint(
         name="link1_to_link2",
         dof_type=JointDoFType.REVOLUTE,
-        act_type=JointActuationType.POSITION_VELOCITY if implicit_pd else JointActuationType.FORCE,
+        act_type=joint_1_type,
         bid_B=bid1,
         bid_F=bid2,
         B_r_Bj=r_j1 - r_b1,
@@ -1081,7 +1105,7 @@ def build_boxes_fourbar(
     _builder.add_joint(
         name="link2_to_link3",
         dof_type=JointDoFType.REVOLUTE,
-        act_type=JointActuationType.PASSIVE,
+        act_type=JointActuationType.FORCE if 2 in actuator_ids else JointActuationType.PASSIVE,
         bid_B=bid2,
         bid_F=bid3,
         B_r_Bj=r_j2 - r_b2,
@@ -1095,7 +1119,7 @@ def build_boxes_fourbar(
     _builder.add_joint(
         name="link3_to_link4",
         dof_type=JointDoFType.REVOLUTE,
-        act_type=JointActuationType.FORCE,
+        act_type=JointActuationType.FORCE if 3 in actuator_ids else JointActuationType.PASSIVE,
         bid_B=bid3,
         bid_F=bid4,
         B_r_Bj=r_j3 - r_b3,
@@ -1109,7 +1133,7 @@ def build_boxes_fourbar(
     _builder.add_joint(
         name="link4_to_link1",
         dof_type=JointDoFType.REVOLUTE,
-        act_type=JointActuationType.PASSIVE,
+        act_type=JointActuationType.FORCE if 4 in actuator_ids else JointActuationType.PASSIVE,
         bid_B=bid4,
         bid_F=bid1,
         B_r_Bj=r_j4 - r_b4,

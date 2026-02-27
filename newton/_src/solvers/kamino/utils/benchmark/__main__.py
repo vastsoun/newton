@@ -268,21 +268,24 @@ def benchmark_run(args: argparse.Namespace):
     msg.notif(f"problem_names: {problem_names}")
 
     # Define and create the output directory for the benchmark results
-    DATA_DIR_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "./data"))
-    RUN_OUTPUT_NAME = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    RUN_OUTPUT_PATH = f"{DATA_DIR_PATH}/{RUN_OUTPUT_NAME}"
-    os.makedirs(RUN_OUTPUT_PATH, exist_ok=True)
+    RUN_OUTPUT_PATH = None
+    if args.output == "full":
+        DATA_DIR_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "./data"))
+        RUN_OUTPUT_NAME = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        RUN_OUTPUT_PATH = f"{DATA_DIR_PATH}/{RUN_OUTPUT_NAME}"
+        os.makedirs(RUN_OUTPUT_PATH, exist_ok=True)
 
     # Generate a set of solver configurations to benchmark over
     configs_set = make_benchmark_configs()
     msg.notif(f"config_names: {list(configs_set.keys())}")
     render_solver_configs_table(configs=configs_set, groups=["linear", "padmm"], to_console=True)
-    render_solver_configs_table(
-        configs=configs_set,
-        path=os.path.join(RUN_OUTPUT_PATH, "solver_configs.txt"),
-        groups=["cts", "sparse", "linear", "padmm", "warmstart"],
-        to_console=False,
-    )
+    if args.output == "full":
+        render_solver_configs_table(
+            configs=configs_set,
+            path=os.path.join(RUN_OUTPUT_PATH, "solver_configs.txt"),
+            groups=["cts", "sparse", "linear", "padmm", "warmstart"],
+            to_console=False,
+        )
 
     # Generate the problem set based on the
     # provided problem names and arguments
@@ -339,15 +342,17 @@ def benchmark_run(args: argparse.Namespace):
     metrics.compute_stats()
 
     # Export the collected benchmark data to an HDF5 file for later analysis and plotting
-    msg.info("Saving benchmark data to HDF5...")
-    RUN_HDF5_OUTPUT_PATH = f"{RUN_OUTPUT_PATH}/metrics.hdf5"
-    metrics.save_to_hdf5(path=RUN_HDF5_OUTPUT_PATH)
-    msg.info("Done.")
+    if args.output == "full":
+        msg.info("Saving benchmark data to HDF5...")
+        RUN_HDF5_OUTPUT_PATH = f"{RUN_OUTPUT_PATH}/metrics.hdf5"
+        metrics.save_to_hdf5(path=RUN_HDF5_OUTPUT_PATH)
+        msg.info("Done.")
 
-    return RUN_HDF5_OUTPUT_PATH
+    # Return collected metrics and path to export folder (None if not exported)
+    return metrics, RUN_OUTPUT_PATH
 
 
-def benchmark_output(data_import_path: str | None):
+def load_metrics(data_import_path: str | None):
     # If the import path is not specified load the latest created HDF5 file in the output directory
     if data_import_path is None:
         DATA_DIR_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "./data"))
@@ -375,6 +380,11 @@ def benchmark_output(data_import_path: str | None):
     # a `BenchmarkMetrics` object for analysis and plotting
     metrics = BenchmarkMetrics(path=data_import_path)
 
+    # Return loaded metrics and the path of the containing folder
+    return metrics, import_parent_dir
+
+
+def benchmark_output(metrics: BenchmarkMetrics, export_dir: str | None):
     # Compute statistics for the collected benchmark
     # data to prepare for plotting and analysis
     metrics.compute_stats()
@@ -383,14 +393,18 @@ def benchmark_output(data_import_path: str | None):
     # - The columns span the problems, with a sub-column for each
     #   metric (e.g. total time, total FPS, memory used)
     # - The rows span the solver configurations
-    total_metrics_table_path = os.path.join(import_parent_dir, "total_metrics.txt")
+    total_metrics_table_path = None
+    if export_dir is not None:
+        total_metrics_table_path = os.path.join(export_dir, "total_metrics.txt")
     metrics.render_total_metrics_table(path=total_metrics_table_path)
 
     # For each problem, export a table summarizing the step-time for each solver configuration:
     # - A sub-column for each statistic (mean, std, min, max)
     # - The rows span the solver configurations
     if metrics.step_time is not None:
-        step_time_summary_path = os.path.join(import_parent_dir, "step_time")
+        step_time_summary_path = None
+        if export_dir is not None:
+            step_time_summary_path = os.path.join(export_dir, "step_time")
         metrics.render_step_time_table(path=step_time_summary_path)
 
     # For each problem, export a table summarizing the PADMM metrics for each solver configuration:
@@ -398,9 +412,12 @@ def benchmark_output(data_import_path: str | None):
     #   with a sub-column for each statistic (mean, std, min, max)
     # - The rows span the solver configurations
     if metrics.solver_metrics is not None:
-        padmm_metrics_summary_path = os.path.join(import_parent_dir, "padmm_metrics")
+        padmm_metrics_summary_path = None
+        padmm_metrics_plots_path = None
+        if export_dir is not None:
+            padmm_metrics_summary_path = os.path.join(export_dir, "padmm_metrics")
+            padmm_metrics_plots_path = os.path.join(export_dir, "padmm_metrics")
         metrics.render_padmm_metrics_table(path=padmm_metrics_summary_path)
-        padmm_metrics_plots_path = os.path.join(import_parent_dir, "padmm_metrics")
         metrics.render_padmm_metrics_plots(path=padmm_metrics_plots_path)
 
     # For each problem, export a table summarizing the PADMM metrics for each solver configuration:
@@ -408,9 +425,12 @@ def benchmark_output(data_import_path: str | None):
     #   with a sub-column for each statistic (mean, std, min, max)
     # - The rows span the solver configurations
     if metrics.physics_metrics is not None:
-        physics_metrics_summary_path = os.path.join(import_parent_dir, "physics_metrics")
+        physics_metrics_summary_path = None
+        physics_metrics_plots_path = None
+        if export_dir is not None:
+            physics_metrics_summary_path = os.path.join(export_dir, "physics_metrics")
+            physics_metrics_plots_path = os.path.join(export_dir, "physics_metrics")
         metrics.render_physics_metrics_table(path=physics_metrics_summary_path)
-        physics_metrics_plots_path = os.path.join(import_parent_dir, "physics_metrics")
         metrics.render_physics_metrics_plots(path=physics_metrics_plots_path)
 
 
@@ -437,9 +457,10 @@ if __name__ == "__main__":
     # If the benchmark mode is not "import", first execute the
     # benchmark and then produce output from the collected data
     if args.mode != "import":
-        output_path = benchmark_run(args)
-        benchmark_output(output_path)
+        metrics, export_dir = benchmark_run(args)
+        benchmark_output(metrics=metrics, export_dir=export_dir)
     else:
         if args.import_path is not None:
             msg.notif(f"Loading benchmark data from specified import path '{args.import_path}'.")
-        benchmark_output(args.import_path)
+        metrics, export_dir = load_metrics(args.import_path)
+        benchmark_output(metrics=metrics, export_dir=export_dir)

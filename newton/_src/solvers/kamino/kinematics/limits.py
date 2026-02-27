@@ -20,10 +20,8 @@ from dataclasses import dataclass, field
 import warp as wp
 from warp.context import Devicelike
 
-from ..core.joints import JointDoFType
+from ..core.joints import JOINT_QMAX, JOINT_QMIN, JointDoFType
 from ..core.math import (
-    FLOAT32_MAX,
-    FLOAT32_MIN,
     quat_from_vec4,
     quat_log,
     screw,
@@ -789,8 +787,6 @@ class Limits:
         # as well as the limit capacities for each world. Corresponding sizes are defaulted to 0 (empty).
         model_max_limits = 0
         world_max_limits = [0] * model.size.num_worlds
-        floatmin = float(FLOAT32_MIN)
-        floatmax = float(FLOAT32_MAX)
         joint_wid = model.joints.wid.numpy()
         joint_num_dofs = model.joints.num_dofs.numpy()
         joint_q_j_min = model.joints.q_j_min.numpy()
@@ -799,7 +795,7 @@ class Limits:
         dofs_start = 0
         for j in range(num_joints):
             for dof in range(joint_num_dofs[j]):
-                if joint_q_j_min[dofs_start + dof] > floatmin or joint_q_j_max[dofs_start + dof] < floatmax:
+                if joint_q_j_min[dofs_start + dof] > JOINT_QMIN or joint_q_j_max[dofs_start + dof] < JOINT_QMAX:
                     model_max_limits += 1
                     world_max_limits[joint_wid[j]] += 1
             dofs_start += joint_num_dofs[j]

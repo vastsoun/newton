@@ -55,7 +55,7 @@ class Example:
             asset_file,
             collapse_fixed_joints=False,  # TODO: FIX THIS WHEN ITS TRUE
             enable_self_collisions=False,
-            hide_collision_shapes=False,
+            hide_collision_shapes=True,
         )
 
         robot_builder.shape_collision_filter_pairs.append((0, 3))

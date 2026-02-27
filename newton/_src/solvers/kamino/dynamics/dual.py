@@ -80,9 +80,9 @@ from ..core.types import (
     vec4f,
     vec6f,
 )
-from ..dynamics.delassus import DelassusOperator
+from ..dynamics.delassus import BlockSparseMatrixFreeDelassusOperator, DelassusOperator
 from ..geometry.contacts import Contacts
-from ..kinematics.jacobians import DenseSystemJacobians
+from ..kinematics.jacobians import DenseSystemJacobians, SparseSystemJacobians
 from ..kinematics.limits import Limits
 from ..linalg import LinearSolverType
 
@@ -778,6 +778,65 @@ def _build_free_velocity(
 
 
 @wp.kernel
+def _build_free_velocity_sparse(
+    # Inputs:
+    model_info_bodies_offset: wp.array(dtype=int32),
+    state_bodies_u_i: wp.array(dtype=vec6f),
+    jac_num_nzb: wp.array(dtype=int32),
+    jac_nzb_start: wp.array(dtype=int32),
+    jac_nzb_coords: wp.array2d(dtype=int32),
+    jac_nzb_values: wp.array(dtype=vec6f),
+    problem_vio: wp.array(dtype=int32),
+    problem_u_f: wp.array(dtype=vec6f),
+    problem_v_i: wp.array(dtype=float32),
+    # Outputs:
+    problem_v_f: wp.array(dtype=float32),
+):
+    # Retrieve the thread index
+    wid, nzb_id = wp.tid()
+
+    # Skip if block index exceed the number of blocks
+    if nzb_id >= jac_num_nzb[wid]:
+        return
+
+    # Retrieve block data
+    global_block_idx = jac_nzb_start[wid] + nzb_id
+    jac_block_coord = jac_nzb_coords[global_block_idx]
+    jac_block = jac_nzb_values[global_block_idx]
+
+    # Retrieve the world-specific data
+    bio = model_info_bodies_offset[wid]
+    vio = problem_vio[wid]
+
+    # Compute the thread-specific index offset
+    thread_offset = vio + jac_block_coord[0]
+
+    # Extract the cached impact bias scaling (i.e. restitution coefficient)
+    # NOTE: This is a quick hack to avoid multiple kernels. The
+    # proper way would be to perform this op only for contacts
+    epsilon_j = problem_v_i[thread_offset]
+
+    # Buffers
+    v_f_j = float32(0.0)
+
+    # Iterate over each body to accumulate velocity contributions
+    bid = jac_block_coord[1] // 6
+
+    # Extract the twist and unconstrained velocity of the body
+    u_i = state_bodies_u_i[bio + bid]
+    u_f_i = problem_u_f[bio + bid]
+
+    # Accumulate J_i @ u_i
+    v_f_j += wp.dot(jac_block, u_f_i)
+
+    # Accumulate the impact bias term
+    v_f_j += epsilon_j * wp.dot(jac_block, u_i)
+
+    # Store sum of velocity bias terms
+    wp.atomic_add(problem_v_f, thread_offset, v_f_j)
+
+
+@wp.kernel
 def _build_dual_preconditioner_all_constraints(
     # Inputs:
     problem_config: wp.array(dtype=DualProblemConfig),
@@ -830,6 +889,65 @@ def _build_dual_preconditioner_all_constraints(
             D_kk_0 = problem_D[mio + ncts * (tid + 0) + (tid + 0)]
             D_kk_1 = problem_D[mio + ncts * (tid + 1) + (tid + 1)]
             D_kk_2 = problem_D[mio + ncts * (tid + 2) + (tid + 2)]
+            # Compute the effective diagonal entry
+            # D_kk = (D_kk_0 + D_kk_1 + D_kk_2) / 3.0
+            # D_kk = wp.min(vec3f(D_kk_0, D_kk_1, D_kk_2))
+            D_kk = wp.max(vec3f(D_kk_0, D_kk_1, D_kk_2))
+            # Compute the corresponding Jacobi preconditioner entry
+            P_k = wp.sqrt(1.0 / (wp.abs(D_kk) + FLOAT32_EPS))
+            problem_P[vio + tid] = P_k
+            problem_P[vio + tid + 1] = P_k
+            problem_P[vio + tid + 2] = P_k
+
+
+@wp.kernel
+def _build_dual_preconditioner_all_constraints_sparse(
+    # Inputs:
+    problem_config: wp.array(dtype=DualProblemConfig),
+    problem_dim: wp.array(dtype=int32),
+    problem_vio: wp.array(dtype=int32),
+    problem_njc: wp.array(dtype=int32),
+    problem_nl: wp.array(dtype=int32),
+    # Outputs:
+    problem_P: wp.array(dtype=float32),
+):
+    # Retrieve the thread index
+    wid, tid = wp.tid()
+
+    # Retrieve the world-specific problem config
+    config = problem_config[wid]
+
+    # Retrieve the number of active constraints in the world
+    ncts = problem_dim[wid]
+
+    # Skip if row index exceed the problem size
+    if tid >= ncts or not config.preconditioning:
+        return
+
+    # Retrieve the vector index offset of the world
+    vio = problem_vio[wid]
+
+    # Retrieve the number of active joint and limit constraints of the world
+    njc = problem_njc[wid]
+    nl = problem_nl[wid]
+    njlc = njc + nl
+
+    # Compute the preconditioner entry for the current constraint
+    # First handle joint and limit constraints, then contact constraints
+    if tid < njlc:
+        # Retrieve the diagonal entry of the Delassus matrix
+        D_ii = problem_P[vio + tid]
+        # Compute the corresponding Jacobi preconditioner entry
+        problem_P[vio + tid] = wp.sqrt(1.0 / (wp.abs(D_ii) + FLOAT32_EPS))
+    else:
+        # Compute the contact constraint index
+        ccid = tid - njlc
+        # Only the thread of the first contact constraint dimension computes the preconditioner
+        if ccid % 3 == 0:
+            # Retrieve the diagonal entries of the Delassus matrix for the contact constraint set
+            D_kk_0 = problem_P[vio + tid]
+            D_kk_1 = problem_P[vio + tid + 1]
+            D_kk_2 = problem_P[vio + tid + 2]
             # Compute the effective diagonal entry
             # D_kk = (D_kk_0 + D_kk_1 + D_kk_2) / 3.0
             # D_kk = wp.min(vec3f(D_kk_0, D_kk_1, D_kk_2))
@@ -1011,6 +1129,7 @@ class DualProblem:
         settings: list[DualProblemSettings] | DualProblemSettings | None = None,
         compute_h: bool = False,
         device: Devicelike = None,
+        sparse: bool = True,
     ):
         """
         Constructs a dual problem interface container.
@@ -1050,11 +1169,14 @@ class DualProblem:
         self._settings: list[DualProblemSettings] = []
         """Host-side cache of the list of per world dual problem settings."""
 
-        self._delassus: DelassusOperator | None = None
+        self._delassus: DelassusOperator | BlockSparseMatrixFreeDelassusOperator | None = None
         """The Delassus operator interface container."""
 
         self._data: DualProblemData | None = None
         """The dual problem data container bundling are relevant memory allocations."""
+
+        self._sparse: bool = sparse
+        """Flag to indicate whether the dual uses a sparse data representation."""
 
         # Finalize the dual problem data if a model is provided
         if model is not None:
@@ -1107,7 +1229,7 @@ class DualProblem:
         self._settings = self._check_settings(value, self._data.num_worlds)
 
     @property
-    def delassus(self) -> DelassusOperator:
+    def delassus(self) -> DelassusOperator | BlockSparseMatrixFreeDelassusOperator:
         """
         Returns the Delassus operator interface.
         """
@@ -1121,6 +1243,13 @@ class DualProblem:
         Returns the dual problem data container.
         """
         return self._data
+
+    @property
+    def sparse(self) -> bool:
+        """
+        Returns whether the dual problem is using sparse operators.
+        """
+        return self._sparse
 
     ###
     # Operations
@@ -1195,47 +1324,99 @@ class DualProblem:
 
         # Construct the Delassus operator first since it will already process the necessary
         # model and contacts allocation sizes and will create some of the necessary arrays
-        self._delassus = DelassusOperator(
-            model=model,
-            data=data,
-            limits=limits,
-            contacts=contacts,
-            solver=solver,
-            solver_kwargs=solver_kwargs,
-            device=device,
-        )
+        if self._sparse:
+            self._delassus = BlockSparseMatrixFreeDelassusOperator(
+                model=model,
+                data=data,
+                limits=limits,
+                contacts=contacts,
+                solver=solver,
+                solver_kwargs=solver_kwargs,
+                device=device,
+            )
+            # Assign identity regularization, to be modified by solver
+            self._delassus.set_regularization(
+                wp.zeros(
+                    (model.size.sum_of_max_total_cts,),
+                    dtype=float32,
+                    device=device,
+                )
+            )
+        else:
+            self._delassus = DelassusOperator(
+                model=model,
+                data=data,
+                limits=limits,
+                contacts=contacts,
+                solver=solver,
+                solver_kwargs=solver_kwargs,
+                device=device,
+            )
 
         # Construct the dual problem data container
         with wp.ScopedDevice(device):
-            self._data = DualProblemData(
-                # Set the host-side caches of the maximal problem dimensions
-                num_worlds=self._delassus.num_worlds,
-                max_of_maxdims=self._delassus.num_maxdims,
-                # Capture references to the mode and data info arrays
-                njc=model.info.num_joint_cts,
-                nl=data.info.num_limits,
-                nc=data.info.num_contacts,
-                lio=model.info.limits_offset,
-                cio=model.info.contacts_offset,
-                uio=model.info.unilaterals_offset,
-                lcgo=data.info.limit_cts_group_offset,
-                ccgo=data.info.contact_cts_group_offset,
-                # Capture references to arrays already create by the Delassus operator
-                maxdim=self._delassus.info.maxdim,
-                dim=self._delassus.info.dim,
-                mio=self._delassus.info.mio,
-                vio=self._delassus.info.vio,
-                D=self._delassus.D,
-                # Allocate new memory for the remaining dual problem quantities
-                config=wp.array([s.to_config() for s in self.settings], dtype=DualProblemConfig),
-                h=wp.zeros(shape=(model.size.sum_of_num_bodies,), dtype=vec6f) if self._compute_h else None,
-                u_f=wp.zeros(shape=(model.size.sum_of_num_bodies,), dtype=vec6f),
-                v_b=wp.zeros(shape=(self._delassus.num_maxdims,), dtype=float32),
-                v_i=wp.zeros(shape=(self._delassus.num_maxdims,), dtype=float32),
-                v_f=wp.zeros(shape=(self._delassus.num_maxdims,), dtype=float32),
-                mu=wp.zeros(shape=(model_max_contacts_host,), dtype=float32),
-                P=wp.ones(shape=(self._delassus.num_maxdims,), dtype=float32),
-            )
+            if self._sparse:
+                self._data = DualProblemData(
+                    # Set the host-side caches of the maximal problem dimensions
+                    num_worlds=self._delassus.num_matrices,
+                    max_of_maxdims=self._delassus.max_of_max_dims,
+                    # Capture references to the mode and data info arrays
+                    njc=model.info.num_joint_cts,
+                    nl=data.info.num_limits,
+                    nc=data.info.num_contacts,
+                    lio=model.info.limits_offset,
+                    cio=model.info.contacts_offset,
+                    uio=model.info.unilaterals_offset,
+                    lcgo=data.info.limit_cts_group_offset,
+                    ccgo=data.info.contact_cts_group_offset,
+                    # Capture references to arrays already create by the Delassus operator
+                    maxdim=self._delassus.info.maxdim,
+                    dim=self._delassus.info.dim,
+                    mio=None,
+                    vio=self._delassus.info.vio,
+                    D=None,
+                    # Allocate new memory for the remaining dual problem quantities
+                    config=wp.array([s.to_config() for s in self.settings], dtype=DualProblemConfig),
+                    h=wp.zeros(shape=(model.size.sum_of_num_bodies,), dtype=vec6f) if self._compute_h else None,
+                    u_f=wp.zeros(shape=(model.size.sum_of_num_bodies,), dtype=vec6f),
+                    v_b=wp.zeros(shape=(self._delassus.sum_of_max_dims,), dtype=float32),
+                    v_i=wp.zeros(shape=(self._delassus.sum_of_max_dims,), dtype=float32),
+                    v_f=wp.zeros(shape=(self._delassus.sum_of_max_dims,), dtype=float32),
+                    mu=wp.zeros(shape=(model_max_contacts_host,), dtype=float32),
+                    P=wp.ones(shape=(self._delassus.sum_of_max_dims,), dtype=float32),
+                )
+                # Connect Delassus preconditioner to data array
+                self._delassus.set_preconditioner(self._data.P)
+            else:
+                self._data = DualProblemData(
+                    # Set the host-side caches of the maximal problem dimensions
+                    num_worlds=self._delassus.num_worlds,
+                    max_of_maxdims=self._delassus.num_maxdims,
+                    # Capture references to the mode and data info arrays
+                    njc=model.info.num_joint_cts,
+                    nl=data.info.num_limits,
+                    nc=data.info.num_contacts,
+                    lio=model.info.limits_offset,
+                    cio=model.info.contacts_offset,
+                    uio=model.info.unilaterals_offset,
+                    lcgo=data.info.limit_cts_group_offset,
+                    ccgo=data.info.contact_cts_group_offset,
+                    # Capture references to arrays already create by the Delassus operator
+                    maxdim=self._delassus.info.maxdim,
+                    dim=self._delassus.info.dim,
+                    mio=self._delassus.info.mio,
+                    vio=self._delassus.info.vio,
+                    D=self._delassus.D,
+                    # Allocate new memory for the remaining dual problem quantities
+                    config=wp.array([s.to_config() for s in self.settings], dtype=DualProblemConfig),
+                    h=wp.zeros(shape=(model.size.sum_of_num_bodies,), dtype=vec6f) if self._compute_h else None,
+                    u_f=wp.zeros(shape=(model.size.sum_of_num_bodies,), dtype=vec6f),
+                    v_b=wp.zeros(shape=(self._delassus.num_maxdims,), dtype=float32),
+                    v_i=wp.zeros(shape=(self._delassus.num_maxdims,), dtype=float32),
+                    v_f=wp.zeros(shape=(self._delassus.num_maxdims,), dtype=float32),
+                    mu=wp.zeros(shape=(model_max_contacts_host,), dtype=float32),
+                    P=wp.ones(shape=(self._delassus.num_maxdims,), dtype=float32),
+                )
 
     def zero(self):
         if self._compute_h:
@@ -1246,12 +1427,14 @@ class DualProblem:
         self._data.v_f.zero_()
         self._data.mu.zero_()
         self._data.P.fill_(1.0)
+        if self._sparse:
+            self._delassus.set_needs_update()
 
     def build(
         self,
         model: Model,
         data: ModelData,
-        jacobians: DenseSystemJacobians,
+        jacobians: DenseSystemJacobians | SparseSystemJacobians,
         limits: Limits | None = None,
         contacts: Contacts | None = None,
         reset_to_zero: bool = True,
@@ -1259,18 +1442,24 @@ class DualProblem:
         """
         Builds the dual problem for the given model, data, limits and contacts data.
         """
+        if self._sparse and not isinstance(jacobians, SparseSystemJacobians):
+            raise TypeError("Dual problem in sparse configuration requires sparse jacobians.")
+
         # Initialize problem data
         if reset_to_zero:
             self.zero()
 
         # Build the Delassus operator
         # NOTE: We build this first since it will update the arrays of active constraints
-        self._delassus.build(
-            model=model,
-            data=data,
-            jacobians=jacobians,
-            reset_to_zero=reset_to_zero,
-        )
+        if self._sparse:
+            self._delassus.assign(jacobians=jacobians)
+        else:
+            self._delassus.build(
+                model=model,
+                data=data,
+                jacobians=jacobians,
+                reset_to_zero=reset_to_zero,
+            )
 
         # Optionally also build the non-linear generalized force vector
         if self._compute_h:
@@ -1283,25 +1472,47 @@ class DualProblem:
         self._build_free_velocity_bias(model, data, limits, contacts)
 
         # Build the free-velocity vector
-        wp.launch(
-            _build_free_velocity,
-            dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
-            inputs=[
-                # Inputs:
-                model.info.num_bodies,
-                model.info.bodies_offset,
-                data.bodies.u_i,
-                jacobians.data.J_cts_offsets,
-                jacobians.data.J_cts_data,
-                self._data.dim,
-                self._data.vio,
-                self._data.u_f,
-                self._data.v_b,
-                self._data.v_i,
-                # Outputs:
-                self._data.v_f,
-            ],
-        )
+        if isinstance(jacobians, SparseSystemJacobians):
+            wp.copy(self._data.v_f, self._data.v_b)
+            J_cts = jacobians._J_cts.bsm
+            wp.launch(
+                _build_free_velocity_sparse,
+                dim=(self._size.num_worlds, J_cts.max_of_num_nzb),
+                inputs=[
+                    # Inputs:
+                    model.info.bodies_offset,
+                    data.bodies.u_i,
+                    J_cts.num_nzb,
+                    J_cts.nzb_start,
+                    J_cts.nzb_coords,
+                    J_cts.nzb_values,
+                    self._data.vio,
+                    self._data.u_f,
+                    self._data.v_i,
+                    # Outputs:
+                    self._data.v_f,
+                ],
+            )
+        else:
+            wp.launch(
+                _build_free_velocity,
+                dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
+                inputs=[
+                    # Inputs:
+                    model.info.num_bodies,
+                    model.info.bodies_offset,
+                    data.bodies.u_i,
+                    jacobians.data.J_cts_offsets,
+                    jacobians.data.J_cts_data,
+                    self._data.dim,
+                    self._data.vio,
+                    self._data.u_f,
+                    self._data.v_b,
+                    self._data.v_i,
+                    # Outputs:
+                    self._data.v_f,
+                ],
+            )
 
         # Optionally build and apply the Delassus diagonal preconditioner
         if any(s.preconditioning for s in self._settings):
@@ -1505,41 +1716,63 @@ class DualProblem:
         """
         Builds the diagonal preconditioner 'P' according to the current Delassus operator.
         """
-        wp.launch(
-            _build_dual_preconditioner_all_constraints,
-            dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
-            inputs=[
-                # Inputs:
-                self._data.config,
-                self._data.dim,
-                self._data.mio,
-                self._data.vio,
-                self._data.njc,
-                self._data.nl,
-                self._data.D,
-                # Outputs:
-                self._data.P,
-            ],
-        )
+        if self._sparse:
+            self._delassus.diagonal(self._data.P)
+            wp.launch(
+                _build_dual_preconditioner_all_constraints_sparse,
+                dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
+                inputs=[
+                    # Inputs:
+                    self._data.config,
+                    self._data.dim,
+                    self._data.vio,
+                    self._data.njc,
+                    self._data.nl,
+                    # Outputs:
+                    self._data.P,
+                ],
+            )
+        else:
+            wp.launch(
+                _build_dual_preconditioner_all_constraints,
+                dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
+                inputs=[
+                    # Inputs:
+                    self._data.config,
+                    self._data.dim,
+                    self._data.mio,
+                    self._data.vio,
+                    self._data.njc,
+                    self._data.nl,
+                    self._data.D,
+                    # Outputs:
+                    self._data.P,
+                ],
+            )
 
     def _apply_dual_preconditioner_to_dual(self):
         """
         Applies the diagonal preconditioner 'P' to the
         Delassus operator 'D' and free-velocity vector `v_f`.
         """
-        wp.launch(
-            _apply_dual_preconditioner_to_matrix,
-            dim=(self._size.num_worlds, self.delassus._max_of_max_total_D_size),
-            inputs=[
-                # Inputs:
-                self._data.dim,
-                self._data.mio,
-                self._data.vio,
-                self._data.P,
-                # Outputs:
-                self._data.D,
-            ],
-        )
+        if self._sparse:
+            # Preconditioner has already been connected to appropriate array
+            pass
+        else:
+            wp.launch(
+                _apply_dual_preconditioner_to_matrix,
+                dim=(self._size.num_worlds, self.delassus._max_of_max_total_D_size),
+                inputs=[
+                    # Inputs:
+                    self._data.dim,
+                    self._data.mio,
+                    self._data.vio,
+                    self._data.P,
+                    # Outputs:
+                    self._data.D,
+                ],
+            )
+
         wp.launch(
             _apply_dual_preconditioner_to_vector,
             dim=(self._size.num_worlds, self._size.max_of_max_total_cts),

@@ -243,9 +243,12 @@ def test_broadphase(
 
     # Run per-collision checks
     if expected_worlds is not None:
+        # Sort worlds since ordering of result might not be deterministic
+        expected_worlds_sorted = np.sort(expected_worlds)
+        actual_worlds_sorted = np.sort(broadphase._cdata.wid.numpy()[:num_model_collisions])
         np.testing.assert_array_equal(
-            actual=broadphase._cdata.wid.numpy()[:num_model_collisions],
-            desired=expected_worlds,
+            actual=actual_worlds_sorted,
+            desired=expected_worlds_sorted,
             err_msg=f"\n{broadphase_type.__name__}: Failed `wid` check for {case_name}\n",
         )
 

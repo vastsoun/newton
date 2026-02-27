@@ -1106,6 +1106,7 @@ class ModelBuilder:
         cgeoms_mid = []
         cgeoms_group = []
         cgeoms_collides = []
+        cgeoms_gap = []
         cgeoms_margin = []
 
         # Initialize the physical geometry data collections
@@ -1258,6 +1259,7 @@ class ModelBuilder:
                 cgeoms_mid.append(geom.mid)
                 cgeoms_group.append(geom.group)
                 cgeoms_collides.append(geom.collides)
+                cgeoms_gap.append(geom.gap)
                 cgeoms_margin.append(geom.margin)
                 cgeoms_ptr.append(make_geometry_source_pointer(geom, cgeom_meshes, device))
 
@@ -1486,6 +1488,7 @@ class ModelBuilder:
                 mid=wp.array(cgeoms_mid, dtype=int32),
                 group=wp.array(cgeoms_group, dtype=uint32),
                 collides=wp.array(cgeoms_collides, dtype=uint32),
+                gap=wp.array(cgeoms_gap, dtype=float32),
                 margin=wp.array(cgeoms_margin, dtype=float32),
             )
 

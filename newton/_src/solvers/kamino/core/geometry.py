@@ -297,6 +297,8 @@ class CollisionGeometryDescriptor(GeometryDescriptor):
         group: int = 1,
         collides: int = 1,
         max_contacts: int = 0,
+        gap: float = 0.0,
+        margin: float = 0.0,
         mid: int | None = None,
         **kwargs,
     ):
@@ -363,10 +365,17 @@ class CollisionGeometryDescriptor(GeometryDescriptor):
         Defaults to `0`, indicating no limit is imposed on the number of contacts generated for this geometry.
         """
 
-        self.margin: float32 = 0.0
+        # TODO: Redo docstring and default value
+        self.gap: float = gap
+        """
+        The collision detection gap to be used for the collision geometry.\n
+        Defaults to `0.0`, indicating no additional gap is applied.
+        """
+
+        # TODO: Redo docstring and default value
+        self.margin: float = margin
         """
         The collision detection margin to be used for the collision geometry.\n
-        Used in narrow-phase collision detection algorithms to improve robustness.\n
         Defaults to `0.0`, indicating no additional margin is applied.
         """
 
@@ -394,7 +403,9 @@ class CollisionGeometryDescriptor(GeometryDescriptor):
             f"material: {self.material},\n"
             f"group: {self.group},\n"
             f"collides: {self.collides},\n"
-            f"max_contacts: {self.max_contacts}\n"
+            f"max_contacts: {self.max_contacts},\n"
+            f"gap: {self.gap},\n"
+            f"margin: {self.margin},\n"
             f"wid: {self.wid},\n"
             f"gid: {self.gid},\n"
             f"mid: {self.mid},\n"
@@ -441,10 +452,15 @@ class CollisionGeometriesModel(GeometriesModel):
     Shape of ``(num_geoms,)`` and type :class:`uint32`.
     """
 
+    gap: wp.array | None = None
+    """
+    Collision detection gap if each collision geometry.\n
+    Shape of ``(num_geoms,)`` and type :class:`float32`.
+    """
+
     margin: wp.array | None = None
     """
     Collision detection margin if each collision geometry.\n
-    Used in narrow-phase collision detection algorithms to improve robustness.\n
     Shape of ``(num_geoms,)`` and type :class:`float32`.
     """
 

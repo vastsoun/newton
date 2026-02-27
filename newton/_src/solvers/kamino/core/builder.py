@@ -1233,13 +1233,13 @@ class ModelBuilder:
         def make_geometry_source_pointer(geom: GeometryDescriptor, mesh_geoms: dict, device) -> int:
             # Append to data pointers array of the shape has a Mesh, SDF or HField source
             if geom.shape.type in (ShapeType.MESH, ShapeType.CONVEX, ShapeType.HFIELD, ShapeType.SDF):
-                geom_hash = hash(geom)  # avoid repeated hash computations
+                geom_uid = geom.uid
                 # If the geometry has a Mesh, SDF or HField source,
                 # finalize it and retrieve the mesh pointer/index
-                if geom_hash not in mesh_geoms:
-                    mesh_geoms[geom_hash] = geom.shape.data.finalize(device=device)
+                if geom_uid not in mesh_geoms:
+                    mesh_geoms[geom_uid] = geom.shape.data.finalize(device=device)
                 # Return the mesh data pointer/index
-                return mesh_geoms[geom_hash]
+                return mesh_geoms[geom_uid]
             # Otherwise, append a null (i.e. zero-valued) pointer
             else:
                 return 0

@@ -651,6 +651,16 @@ class ModelKamino:
         elif not isinstance(model, Model):
             raise TypeError("Cannot finalize ModelKamino from an invalid newton.Model instance.")
 
+        # Single-world Newton models may have world index -1 (unassigned).
+        # Normalize to 0 so downstream world-based grouping works correctly.
+        if model.num_worlds == 1:
+            for attr in ("body_world", "joint_world", "shape_world"):
+                arr = getattr(model, attr)
+                arr_np = arr.numpy()
+                if np.any(arr_np < 0):
+                    arr_np[arr_np < 0] = 0
+                    arr.assign(arr_np)
+
         def _compute_entity_indices_wrt_world(entity_world: wp.array) -> np.ndarray:
             wid_np = entity_world.numpy()
             eid_np = np.zeros_like(wid_np)

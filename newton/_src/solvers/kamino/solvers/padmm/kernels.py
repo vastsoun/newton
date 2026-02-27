@@ -15,11 +15,15 @@
 
 """Defines the Warp kernels used by the Proximal-ADMM solver."""
 
+import functools
+from typing import Any
+
 import warp as wp
 
 from ...core.math import FLOAT32_EPS, FLOAT32_MAX
 from ...core.types import float32, int32, vec2f, vec3f
 from .math import (
+    compute_cwise_vec_div,
     compute_cwise_vec_mul,
     compute_desaxce_corrections,
     compute_dot_product,
@@ -47,20 +51,22 @@ __all__ = [
     "_compute_complementarity_residuals",
     "_compute_desaxce_correction",
     "_compute_final_desaxce_correction",
-    "_compute_infnorm_residuals_serially",
-    "_compute_infnorm_residuals_serially_accel",
     "_compute_projection_argument",
     "_compute_solution_vectors",
     "_compute_velocity_bias",
+    "_make_compute_infnorm_residuals_accel_kernel",
+    "_make_compute_infnorm_residuals_kernel",
     "_project_to_feasible_cone",
     "_reset_solver_data",
     "_update_delassus_proximal_regularization",
+    "_update_delassus_proximal_regularization_sparse",
     "_update_state_with_acceleration",
     "_warmstart_contact_constraints",
     "_warmstart_desaxce_correction",
     "_warmstart_joint_constraints",
     "_warmstart_limit_constraints",
     "make_collect_solver_info_kernel",
+    "make_collect_solver_info_kernel_sparse",
     "make_initialize_solver_kernel",
     "make_update_dual_variables_and_compute_primal_dual_residuals",
     "make_update_proximal_regularization_kernel",
@@ -368,6 +374,7 @@ def make_initialize_solver_kernel(use_acceleration: bool = False):
         solver_penalty: wp.array(dtype=PADMMPenalty),
         solver_state_sigma: wp.array(dtype=vec2f),
         solver_state_a_p: wp.array(dtype=float32),
+        linear_solver_atol: wp.array(dtype=float32),
     ):
         # Retrieve the world index as thread index
         wid = wp.tid()
@@ -415,6 +422,12 @@ def make_initialize_solver_kernel(use_acceleration: bool = False):
         # variables only if acceleration is used
         if wp.static(use_acceleration):
             solver_state_a_p[wid] = config.a_0
+
+        # Initialize the iterative solver tolerance
+        if linear_solver_atol:
+            linear_solver_atol[wid] = wp.where(
+                config.linear_solver_tolerance > 0.0, config.linear_solver_tolerance, FLOAT32_EPS
+            )
 
     # Return the initialization kernel
     return _initialize_solver
@@ -492,6 +505,42 @@ def _update_delassus_proximal_regularization(
 
     # Add the proximal regularization to the diagonal of the Delassus matrix
     D[mio + ncts * tid + tid] += sigma[0] - sigma[1]
+
+
+@wp.kernel
+def _update_delassus_proximal_regularization_sparse(
+    # Inputs:
+    problem_dim: wp.array(dtype=int32),
+    problem_vio: wp.array(dtype=int32),
+    solver_config: wp.array(dtype=PADMMConfig),
+    solver_penalty: wp.array(dtype=PADMMPenalty),
+    solver_status: wp.array(dtype=PADMMStatus),
+    # Outputs:
+    delassus_eta: wp.array(dtype=float32),
+):
+    # Retrieve the thread index
+    wid, tid = wp.tid()
+
+    # Retrieve the number of active constraints in the world
+    ncts = problem_dim[wid]
+
+    # Retrieve the solver status
+    status = solver_status[wid]
+
+    # Skip if row index exceed the problem size
+    if tid >= ncts:
+        return
+
+    # Retrieve the vector index offset of the world
+    mio = problem_vio[wid]
+
+    # Set regularization to 0.0 if the solver has already converged
+    if status.converged > 0:
+        delassus_eta[mio + tid] = 0.0
+        return
+
+    # Set the proximal regularization term: eta + rho
+    delassus_eta[mio + tid] = solver_config[wid].eta + solver_penalty[wid].rho
 
 
 @wp.kernel
@@ -852,201 +901,387 @@ def _compute_complementarity_residuals(
         solver_r_c[uio_u] = wp.dot(x_c, z_c)
 
 
-@wp.kernel
-def _compute_infnorm_residuals_serially(
-    # Inputs:
-    problem_nl: wp.array(dtype=int32),
-    problem_nc: wp.array(dtype=int32),
-    problem_uio: wp.array(dtype=int32),
-    problem_dim: wp.array(dtype=int32),
-    problem_vio: wp.array(dtype=int32),
-    solver_config: wp.array(dtype=PADMMConfig),
-    solver_r_p: wp.array(dtype=float32),
-    solver_r_d: wp.array(dtype=float32),
-    solver_r_c: wp.array(dtype=float32),
-    # Outputs:
-    solver_state_done: wp.array(dtype=int32),
-    solver_status: wp.array(dtype=PADMMStatus),
-):
-    # Retrieve the thread index as the world index
-    wid = wp.tid()
+@wp.func
+def _update_penalty(config: PADMMConfig, pen: PADMMPenalty, iterations: int32, r_p: float32, r_d: float32):
+    """Adaptively updates the ADMM penalty parameter based on the configured strategy.
 
-    # Retrieve the solver status
-    status = solver_status[wid]
-
-    # Skip this step if already converged
-    if status.converged:
-        return
-
-    # Update iteration counter
-    status.iterations += 1
-
-    # Capture the size of the residuals arrays
-    nl = problem_nl[wid]
-    nc = problem_nc[wid]
-    ncts = problem_dim[wid]
-
-    # Retrieve the solver configurations
-    config = solver_config[wid]
-
-    # Retrieve the index offsets of the vector block and unilateral elements
-    vio = problem_vio[wid]
-    uio = problem_uio[wid]
-
-    # Extract the solver tolerances
-    eps_p = config.primal_tolerance
-    eps_d = config.dual_tolerance
-    eps_c = config.compl_tolerance
-
-    # Extract the maximum number of iterations
-    maxiters = config.max_iterations
-
-    # Compute element-wise max over each residual vector to compute the infinity-norm
-    r_p_max = float(0.0)
-    r_d_max = float(0.0)
-    for j in range(ncts):
-        rio_j = vio + j
-        r_p_max = wp.max(r_p_max, wp.abs(solver_r_p[rio_j]))
-        r_d_max = wp.max(r_d_max, wp.abs(solver_r_d[rio_j]))
-
-    # Compute the infinity-norm of the complementarity residuals
-    nu = nl + nc
-    r_c_max = float(0.0)
-    for j in range(nu):
-        r_c_max = wp.max(r_c_max, wp.abs(solver_r_c[uio + j]))
-
-    # Store the scalar metric residuals in the solver status
-    status.r_p = r_p_max
-    status.r_d = r_d_max
-    status.r_c = r_c_max
-
-    # Check and store convergence state
-    if status.iterations > 1 and r_p_max <= eps_p and r_d_max <= eps_d and r_c_max <= eps_c:
-        status.converged = 1
-
-    # If converged or reached max iterations, decrement the number of active worlds
-    if status.converged or status.iterations >= maxiters:
-        solver_state_done[0] -= 1
-
-    # Store the updated status
-    solver_status[wid] = status
+    For BALANCED mode, rho is scaled up when the primal residual dominates and
+    scaled down (to ``config.rho_min``) when the dual residual dominates, every
+    ``config.penalty_update_freq`` iterations.  For FIXED mode this is a no-op.
+    """
+    if config.penalty_update_method == int32(PADMMPenaltyUpdate.BALANCED):
+        freq = config.penalty_update_freq
+        if freq > 0 and iterations > 0 and iterations % freq == 0:
+            rho = pen.rho
+            if r_p > config.alpha * r_d:
+                rho = rho * config.tau
+            elif r_d > config.alpha * r_p:
+                rho = wp.max(rho / config.tau, config.rho_min)
+            pen.rho = rho
+            pen.num_updates += int32(1)
+    return pen
 
 
-@wp.kernel
-def _compute_infnorm_residuals_serially_accel(
-    # Inputs:
-    problem_nl: wp.array(dtype=int32),
-    problem_nc: wp.array(dtype=int32),
-    problem_uio: wp.array(dtype=int32),
-    problem_dim: wp.array(dtype=int32),
-    problem_vio: wp.array(dtype=int32),
-    solver_config: wp.array(dtype=PADMMConfig),
-    solver_params: wp.array(dtype=PADMMPenalty),
-    solver_r_p: wp.array(dtype=float32),
-    solver_r_d: wp.array(dtype=float32),
-    solver_r_c: wp.array(dtype=float32),
-    solver_r_dx: wp.array(dtype=float32),
-    solver_r_dy: wp.array(dtype=float32),
-    solver_r_dz: wp.array(dtype=float32),
-    solver_state_a_p: wp.array(dtype=float32),
-    # Outputs:
-    solver_state_done: wp.array(dtype=int32),
-    solver_state_a: wp.array(dtype=float32),
-    solver_status: wp.array(dtype=PADMMStatus),
-):
-    # Retrieve the thread index as the world index
-    wid = wp.tid()
+@wp.func
+def less_than_op(i: wp.int32, threshold: wp.int32) -> wp.float32:
+    return 1.0 if i < threshold else 0.0
 
-    # Retrieve the solver status
-    status = solver_status[wid]
 
-    # Skip this step if already converged
-    if status.converged:
-        return
+@wp.func
+def mul_mask(mask: Any, value: Any):
+    """Return value if mask is positive, else 0"""
+    return wp.where(mask > type(mask)(0), value, type(value)(0))
 
-    # Update iteration counter
-    status.iterations += 1
 
-    # Capture the size of the residuals arrays
-    nl = problem_nl[wid]
-    nc = problem_nc[wid]
-    ncts = problem_dim[wid]
+@functools.cache
+def _make_compute_infnorm_residuals_kernel(tile_size: int, n_cts_max: int, n_u_max: int):
+    num_tiles_cts = (n_cts_max + tile_size - 1) // tile_size
+    num_tiles_u = (n_u_max + tile_size - 1) // tile_size
 
-    # Retrieve the solver configurations
-    config = solver_config[wid]
+    @wp.kernel
+    def _compute_infnorm_residuals(
+        # Inputs:
+        problem_nl: wp.array(dtype=int32),
+        problem_nc: wp.array(dtype=int32),
+        problem_uio: wp.array(dtype=int32),
+        problem_dim: wp.array(dtype=int32),
+        problem_vio: wp.array(dtype=int32),
+        solver_config: wp.array(dtype=PADMMConfig),
+        solver_r_p: wp.array(dtype=float32),
+        solver_r_d: wp.array(dtype=float32),
+        solver_r_c: wp.array(dtype=float32),
+        # Outputs:
+        solver_state_done: wp.array(dtype=int32),
+        solver_status: wp.array(dtype=PADMMStatus),
+        solver_penalty: wp.array(dtype=PADMMPenalty),
+        linear_solver_atol: wp.array(dtype=float32),
+    ):
+        # Retrieve the thread index as the world index + thread index within block
+        wid, tid = wp.tid()
 
-    # Retrieve the index offsets of the vector block and unilateral elements
-    vio = problem_vio[wid]
-    uio = problem_uio[wid]
+        # Retrieve the solver status
+        status = solver_status[wid]
 
-    # Extract the solver tolerances
-    eps_p = config.primal_tolerance
-    eps_d = config.dual_tolerance
-    eps_c = config.compl_tolerance
+        # Skip this step if already converged
+        if status.converged:
+            return
 
-    # Extract the maximum number of iterations
-    maxiters = config.max_iterations
+        # Update iteration counter
+        status.iterations += 1
 
-    # Extract the penalty parameters
-    params = solver_params[wid]
-    rho = params.rho
+        # Capture the size of the residuals arrays
+        nl = problem_nl[wid]
+        nc = problem_nc[wid]
+        ncts = problem_dim[wid]
 
-    # Compute element-wise max over each residual vector to compute the infinity-norm
-    r_p_max = float(0.0)
-    r_d_max = float(0.0)
-    r_dx_l2_sum = float(0.0)
-    r_dy_l2_sum = float(0.0)
-    r_dz_l2_sum = float(0.0)
-    for j in range(ncts):
-        rio_j = vio + j
-        r_p_max = wp.max(r_p_max, wp.abs(solver_r_p[rio_j]))
-        r_d_max = wp.max(r_d_max, wp.abs(solver_r_d[rio_j]))
-        r_dx = solver_r_dx[rio_j]
-        r_dy = solver_r_dy[rio_j]
-        r_dz = solver_r_dz[rio_j]
-        r_dx_l2_sum += r_dx * r_dx
-        r_dy_l2_sum += r_dy * r_dy
-        r_dz_l2_sum += r_dz * r_dz
+        # Retrieve the solver configurations
+        config = solver_config[wid]
 
-    # Compute the infinity-norm of the complementarity residuals
-    nu = nl + nc
-    r_c_max = float(0.0)
-    for j in range(nu):
-        r_c_max = wp.max(r_c_max, wp.abs(solver_r_c[uio + j]))
+        # Retrieve the index offsets of the vector block and unilateral elements
+        vio = problem_vio[wid]
+        uio = problem_uio[wid]
 
-    # Store the scalar metric residuals in the solver status
-    status.r_p = r_p_max
-    status.r_d = r_d_max
-    status.r_c = r_c_max
-    status.r_dx = wp.sqrt(r_dx_l2_sum)
-    status.r_dy = wp.sqrt(r_dy_l2_sum)
-    status.r_dz = wp.sqrt(r_dz_l2_sum)
-    status.r_a = rho * status.r_dy + (1.0 / rho) * status.r_dz
+        # Extract the solver tolerances
+        eps_p = config.primal_tolerance
+        eps_d = config.dual_tolerance
+        eps_c = config.compl_tolerance
 
-    # Check and store convergence state
-    if status.iterations > 1 and r_p_max <= eps_p and r_d_max <= eps_d and r_c_max <= eps_c:
-        status.converged = 1
+        # Extract the maximum number of iterations
+        maxiters = config.max_iterations
 
-    # If converged or reached max iterations, decrement the number of active worlds
-    if status.converged or status.iterations >= maxiters:
-        solver_state_done[0] -= 1
+        # Compute element-wise max over each residual vector to compute the infinity-norm
+        r_p_max = float32(0.0)
+        r_d_max = float32(0.0)
+        if wp.static(num_tiles_cts > 1):
+            r_p_max_acc = wp.tile_zeros(num_tiles_cts, dtype=float32, storage="shared")
+            r_d_max_acc = wp.tile_zeros(num_tiles_cts, dtype=float32, storage="shared")
+        for tile_id in range(num_tiles_cts):
+            ct_id_tile = tile_id * tile_size
+            if ct_id_tile >= ncts:
+                break
+            rio_tile = vio + ct_id_tile
 
-    # Restart acceleration if the residuals are not decreasing sufficiently
-    # TODO: Use a warp function that is wrapped with wp.static for conditionally compiling this
-    if status.r_a < config.restart_tolerance * status.r_a_p:
-        status.restart = 0
-        a_p = solver_state_a_p[wid]
-        solver_state_a[wid] = (1.0 + wp.sqrt(1.0 + 4.0 * a_p * a_p)) / 2.0
-    else:
-        status.restart = 1
-        status.num_restarts += 1
-        status.r_a = status.r_a_p / config.restart_tolerance
-        solver_state_a[wid] = float(config.a_0)
-    status.r_a_pp = status.r_a_p
-    status.r_a_p = status.r_a
+            # Mask out extra entries in case of heterogenous worlds
+            need_mask = ct_id_tile > ncts - tile_size
+            if need_mask:
+                mask = wp.tile_map(less_than_op, wp.tile_arange(tile_size, dtype=int32), ncts - ct_id_tile)
 
-    # Store the updated status
-    solver_status[wid] = status
+            tile = wp.tile_load(solver_r_p, shape=tile_size, offset=rio_tile)
+            tile = wp.tile_map(wp.abs, tile)
+            if need_mask:
+                tile = wp.tile_map(mul_mask, mask, tile)
+            if wp.static(num_tiles_cts > 1):
+                r_p_max_acc[tile_id] = wp.tile_max(tile)[0]
+            else:
+                r_p_max = wp.tile_max(tile)[0]
+
+            tile = wp.tile_load(solver_r_d, shape=tile_size, offset=rio_tile)
+            tile = wp.tile_map(wp.abs, tile)
+            if need_mask:
+                tile = wp.tile_map(mul_mask, mask, tile)
+            if wp.static(num_tiles_cts > 1):
+                r_d_max_acc[tile_id] = wp.tile_max(tile)[0]
+            else:
+                r_d_max = wp.tile_max(tile)[0]
+        if wp.static(num_tiles_cts > 1):
+            r_p_max = wp.tile_max(r_p_max_acc)[0]
+            r_d_max = wp.tile_max(r_d_max_acc)[0]
+
+        # Compute the infinity-norm of the complementarity residuals
+        nu = nl + nc
+        r_c_max = float32(0.0)
+        if wp.static(num_tiles_u > 1):
+            r_c_max_acc = wp.tile_zeros(num_tiles_u, dtype=float32, storage="shared")
+        for tile_id in range(num_tiles_u):
+            u_id_tile = tile_id * tile_size
+            if u_id_tile >= nu:
+                break
+            uio_tile = uio + u_id_tile
+
+            # Mask out extra entries in case of heterogenous worlds
+            need_mask = u_id_tile > nu - tile_size
+            if need_mask:
+                mask = wp.tile_map(less_than_op, wp.tile_arange(tile_size, dtype=int32), nu - u_id_tile)
+
+            tile = wp.tile_load(solver_r_c, shape=tile_size, offset=uio_tile)
+            tile = wp.tile_map(wp.abs, tile)
+            if need_mask:
+                tile = wp.tile_map(mul_mask, mask, tile)
+            if wp.static(num_tiles_u > 1):
+                r_c_max_acc[tile_id] = wp.tile_max(tile)[0]
+            else:
+                r_c_max = wp.tile_max(tile)[0]
+        if wp.static(num_tiles_u > 1):
+            r_c_max = wp.tile_max(r_c_max_acc)[0]
+
+        if tid == 0:
+            # Store the scalar metric residuals in the solver status
+            status.r_p = r_p_max
+            status.r_d = r_d_max
+            status.r_c = r_c_max
+
+            # Check and store convergence state
+            if status.iterations > 1 and r_p_max <= eps_p and r_d_max <= eps_d and r_c_max <= eps_c:
+                status.converged = 1
+
+            # If converged or reached max iterations, decrement the number of active worlds
+            if status.converged or status.iterations >= maxiters:
+                solver_state_done[0] -= 1
+
+            # Store the updated status
+            solver_status[wid] = status
+
+            # Adaptive penalty update
+            solver_penalty[wid] = _update_penalty(config, solver_penalty[wid], status.iterations, r_p_max, r_d_max)
+
+    return _compute_infnorm_residuals
+
+
+@functools.cache
+def _make_compute_infnorm_residuals_accel_kernel(tile_size: int, n_cts_max: int, n_u_max: int):
+    num_tiles_cts = (n_cts_max + tile_size - 1) // tile_size
+    num_tiles_u = (n_u_max + tile_size - 1) // tile_size
+
+    @wp.kernel
+    def _compute_infnorm_residuals_accel(
+        # Inputs:
+        problem_nl: wp.array(dtype=int32),
+        problem_nc: wp.array(dtype=int32),
+        problem_uio: wp.array(dtype=int32),
+        problem_dim: wp.array(dtype=int32),
+        problem_vio: wp.array(dtype=int32),
+        solver_config: wp.array(dtype=PADMMConfig),
+        solver_r_p: wp.array(dtype=float32),
+        solver_r_d: wp.array(dtype=float32),
+        solver_r_c: wp.array(dtype=float32),
+        solver_r_dx: wp.array(dtype=float32),
+        solver_r_dy: wp.array(dtype=float32),
+        solver_r_dz: wp.array(dtype=float32),
+        solver_state_a_p: wp.array(dtype=float32),
+        # Outputs:
+        solver_state_done: wp.array(dtype=int32),
+        solver_state_a: wp.array(dtype=float32),
+        solver_status: wp.array(dtype=PADMMStatus),
+        solver_penalty: wp.array(dtype=PADMMPenalty),
+        linear_solver_atol: wp.array(dtype=float32),
+    ):
+        # Retrieve the thread index as the world index + thread index within block
+        wid, tid = wp.tid()
+
+        # Retrieve the solver status
+        status = solver_status[wid]
+
+        # Skip this step if already converged
+        if status.converged:
+            return
+
+        # Update iteration counter
+        status.iterations += 1
+
+        # Capture the size of the residuals arrays
+        nl = problem_nl[wid]
+        nc = problem_nc[wid]
+        ncts = problem_dim[wid]
+
+        # Retrieve the solver configurations
+        config = solver_config[wid]
+
+        # Retrieve the index offsets of the vector block and unilateral elements
+        vio = problem_vio[wid]
+        uio = problem_uio[wid]
+
+        # Extract the solver tolerances
+        eps_p = config.primal_tolerance
+        eps_d = config.dual_tolerance
+        eps_c = config.compl_tolerance
+
+        # Extract the maximum number of iterations
+        maxiters = config.max_iterations
+
+        # Extract the penalty parameters
+        pen = solver_penalty[wid]
+        rho = pen.rho
+
+        # Compute element-wise max over each residual vector to compute the infinity-norm
+        r_p_max = float32(0.0)
+        r_d_max = float32(0.0)
+        r_dx_l2_sum = float32(0.0)
+        r_dy_l2_sum = float32(0.0)
+        r_dz_l2_sum = float32(0.0)
+        if wp.static(num_tiles_cts > 1):
+            r_p_max_acc = wp.tile_zeros(num_tiles_cts, dtype=float32, storage="shared")
+            r_d_max_acc = wp.tile_zeros(num_tiles_cts, dtype=float32, storage="shared")
+            r_dx_l2_sum_acc = wp.tile_zeros(num_tiles_cts, dtype=float32, storage="shared")
+            r_dy_l2_sum_acc = wp.tile_zeros(num_tiles_cts, dtype=float32, storage="shared")
+            r_dz_l2_sum_acc = wp.tile_zeros(num_tiles_cts, dtype=float32, storage="shared")
+        for tile_id in range(num_tiles_cts):
+            ct_id_tile = tile_id * tile_size
+            if ct_id_tile >= ncts:
+                break
+            rio_tile = vio + ct_id_tile
+
+            # Mask out extra entries in case of heterogenous worlds
+            need_mask = ct_id_tile > ncts - tile_size
+            if need_mask:
+                mask = wp.tile_map(less_than_op, wp.tile_arange(tile_size, dtype=int32), ncts - ct_id_tile)
+
+            tile = wp.tile_load(solver_r_p, shape=tile_size, offset=rio_tile)
+            tile = wp.tile_map(wp.abs, tile)
+            if need_mask:
+                tile = wp.tile_map(mul_mask, mask, tile)
+            if wp.static(num_tiles_cts > 1):
+                r_p_max_acc[tile_id] = wp.tile_max(tile)[0]
+            else:
+                r_p_max = wp.tile_max(tile)[0]
+
+            tile = wp.tile_load(solver_r_d, shape=tile_size, offset=rio_tile)
+            tile = wp.tile_map(wp.abs, tile)
+            if need_mask:
+                tile = wp.tile_map(mul_mask, mask, tile)
+            if wp.static(num_tiles_cts > 1):
+                r_d_max_acc[tile_id] = wp.tile_max(tile)[0]
+            else:
+                r_d_max = wp.tile_max(tile)[0]
+
+            tile = wp.tile_load(solver_r_dx, shape=tile_size, offset=rio_tile)
+            tile = wp.tile_map(wp.mul, tile, tile)
+            if need_mask:
+                tile = wp.tile_map(mul_mask, mask, tile)
+            if wp.static(num_tiles_cts > 1):
+                r_dx_l2_sum_acc[tile_id] = wp.tile_sum(tile)[0]
+            else:
+                r_dx_l2_sum = wp.tile_sum(tile)[0]
+
+            tile = wp.tile_load(solver_r_dy, shape=tile_size, offset=rio_tile)
+            tile = wp.tile_map(wp.mul, tile, tile)
+            if need_mask:
+                tile = wp.tile_map(mul_mask, mask, tile)
+            if wp.static(num_tiles_cts > 1):
+                r_dy_l2_sum_acc[tile_id] = wp.tile_sum(tile)[0]
+            else:
+                r_dy_l2_sum = wp.tile_sum(tile)[0]
+
+            tile = wp.tile_load(solver_r_dz, shape=tile_size, offset=rio_tile)
+            tile = wp.tile_map(wp.mul, tile, tile)
+            if need_mask:
+                tile = wp.tile_map(mul_mask, mask, tile)
+            if wp.static(num_tiles_cts > 1):
+                r_dz_l2_sum_acc[tile_id] = wp.tile_sum(tile)[0]
+            else:
+                r_dz_l2_sum = wp.tile_sum(tile)[0]
+        if wp.static(num_tiles_cts > 1):
+            r_p_max = wp.tile_max(r_p_max_acc)[0]
+            r_d_max = wp.tile_max(r_d_max_acc)[0]
+            r_dx_l2_sum = wp.tile_sum(r_dx_l2_sum_acc)[0]
+            r_dy_l2_sum = wp.tile_sum(r_dy_l2_sum_acc)[0]
+            r_dz_l2_sum = wp.tile_sum(r_dz_l2_sum_acc)[0]
+
+        # Compute the infinity-norm of the complementarity residuals
+        nu = nl + nc
+        r_c_max = float32(0.0)
+        if wp.static(num_tiles_u > 1):
+            r_c_max_acc = wp.tile_zeros(num_tiles_u, dtype=float32, storage="shared")
+        for tile_id in range(num_tiles_u):
+            u_id_tile = tile_id * tile_size
+            if u_id_tile >= nu:
+                break
+            uio_tile = uio + u_id_tile
+
+            # Mask out extra entries in case of heterogenous worlds
+            need_mask = u_id_tile > nu - tile_size
+            if need_mask:
+                mask = wp.tile_map(less_than_op, wp.tile_arange(tile_size, dtype=int32), nu - u_id_tile)
+
+            tile = wp.tile_load(solver_r_c, shape=tile_size, offset=uio_tile)
+            tile = wp.tile_map(wp.abs, tile)
+            if need_mask:
+                tile = wp.tile_map(mul_mask, mask, tile)
+            if wp.static(num_tiles_u > 1):
+                r_c_max_acc[tile_id] = wp.tile_max(tile)[0]
+            else:
+                r_c_max = wp.tile_max(tile)[0]
+        if wp.static(num_tiles_u > 1):
+            r_c_max = wp.tile_max(r_c_max_acc)[0]
+
+        if tid == 0:
+            # Store the scalar metric residuals in the solver status
+            status.r_p = r_p_max
+            status.r_d = r_d_max
+            status.r_c = r_c_max
+            status.r_dx = wp.sqrt(r_dx_l2_sum)
+            status.r_dy = wp.sqrt(r_dy_l2_sum)
+            status.r_dz = wp.sqrt(r_dz_l2_sum)
+            status.r_a = rho * status.r_dy + (1.0 / rho) * status.r_dz
+
+            # Check and store convergence state
+            if status.iterations > 1 and r_p_max <= eps_p and r_d_max <= eps_d and r_c_max <= eps_c:
+                status.converged = 1
+
+            # If converged or reached max iterations, decrement the number of active worlds
+            if status.converged or status.iterations >= maxiters:
+                solver_state_done[0] -= 1
+
+            # Restart acceleration if the residuals are not decreasing sufficiently
+            # TODO: Use a warp function that is wrapped with wp.static for conditionally compiling this
+            if status.r_a < config.restart_tolerance * status.r_a_p:
+                status.restart = 0
+                a_p = solver_state_a_p[wid]
+                solver_state_a[wid] = (1.0 + wp.sqrt(1.0 + 4.0 * a_p * a_p)) / 2.0
+            else:
+                status.restart = 1
+                status.num_restarts += 1
+                status.r_a = status.r_a_p / config.restart_tolerance
+                solver_state_a[wid] = float(config.a_0)
+            status.r_a_pp = status.r_a_p
+            status.r_a_p = status.r_a
+
+            # Store the updated status
+            solver_status[wid] = status
+
+            # Adaptive penalty update
+            solver_penalty[wid] = _update_penalty(config, solver_penalty[wid], status.iterations, r_p_max, r_d_max)
+
+    return _compute_infnorm_residuals_accel
 
 
 @wp.kernel
@@ -1212,7 +1447,7 @@ def make_collect_solver_info_kernel(use_acceleration: bool):
         r_pd = status.r_p / (status.r_d + FLOAT32_EPS)
         r_dp = status.r_d / (status.r_p + FLOAT32_EPS)
 
-        # Compute the post-event constraint-space velocity from the current solution: v_plus = v_f + D @ lambda
+        # Remove preconditioning from lambdas
         compute_cwise_vec_mul(ncts, vio, problem_P, solver_state_y, solver_info_lambdas)
 
         # Compute the post-event constraint-space velocity from the current solution: v_plus = v_f + D @ lambda
@@ -1286,6 +1521,179 @@ def make_collect_solver_info_kernel(use_acceleration: bool):
 
     # Return the generated kernel
     return _collect_solver_convergence_info
+
+
+def make_collect_solver_info_kernel_sparse(use_acceleration: bool):
+    """
+    Creates a kernel to collect solver convergence information after each iteration.
+
+    Specializes the kernel based on whether acceleration is enabled to reduce unnecessary overhead.
+
+    Args:
+        use_acceleration (bool): Whether acceleration is enabled in the solver.
+
+    Returns:
+        wp.kernel: The kernel function to collect solver convergence information.
+    """
+
+    @wp.kernel
+    def _collect_solver_convergence_info_sparse(
+        # Inputs:
+        problem_nl: wp.array(dtype=int32),
+        problem_nc: wp.array(dtype=int32),
+        problem_cio: wp.array(dtype=int32),
+        problem_lcgo: wp.array(dtype=int32),
+        problem_ccgo: wp.array(dtype=int32),
+        problem_dim: wp.array(dtype=int32),
+        problem_vio: wp.array(dtype=int32),
+        problem_mu: wp.array(dtype=float32),
+        problem_v_f: wp.array(dtype=float32),
+        problem_P: wp.array(dtype=float32),
+        solver_state_s: wp.array(dtype=float32),
+        solver_state_x: wp.array(dtype=float32),
+        solver_state_x_p: wp.array(dtype=float32),
+        solver_state_y: wp.array(dtype=float32),
+        solver_state_y_p: wp.array(dtype=float32),
+        solver_state_z: wp.array(dtype=float32),
+        solver_state_z_p: wp.array(dtype=float32),
+        solver_state_a: wp.array(dtype=float32),
+        solver_penalty: wp.array(dtype=PADMMPenalty),
+        solver_status: wp.array(dtype=PADMMStatus),
+        # Outputs:
+        solver_info_lambdas: wp.array(dtype=float32),
+        solver_info_v_plus: wp.array(dtype=float32),
+        solver_info_v_aug: wp.array(dtype=float32),
+        solver_info_s: wp.array(dtype=float32),
+        solver_info_offset: wp.array(dtype=int32),
+        solver_info_num_restarts: wp.array(dtype=int32),
+        solver_info_num_rho_updates: wp.array(dtype=int32),
+        solver_info_a: wp.array(dtype=float32),
+        solver_info_norm_s: wp.array(dtype=float32),
+        solver_info_norm_x: wp.array(dtype=float32),
+        solver_info_norm_y: wp.array(dtype=float32),
+        solver_info_norm_z: wp.array(dtype=float32),
+        solver_info_f_ccp: wp.array(dtype=float32),
+        solver_info_f_ncp: wp.array(dtype=float32),
+        solver_info_r_dx: wp.array(dtype=float32),
+        solver_info_r_dy: wp.array(dtype=float32),
+        solver_info_r_dz: wp.array(dtype=float32),
+        solver_info_r_primal: wp.array(dtype=float32),
+        solver_info_r_dual: wp.array(dtype=float32),
+        solver_info_r_compl: wp.array(dtype=float32),
+        solver_info_r_pd: wp.array(dtype=float32),
+        solver_info_r_dp: wp.array(dtype=float32),
+        solver_info_r_comb: wp.array(dtype=float32),
+        solver_info_r_comb_ratio: wp.array(dtype=float32),
+        solver_info_r_ncp_primal: wp.array(dtype=float32),
+        solver_info_r_ncp_dual: wp.array(dtype=float32),
+        solver_info_r_ncp_compl: wp.array(dtype=float32),
+        solver_info_r_ncp_natmap: wp.array(dtype=float32),
+    ):
+        # Retrieve the thread index as the world index
+        wid = wp.tid()
+
+        # Retrieve the world-specific data
+        nl = problem_nl[wid]
+        nc = problem_nc[wid]
+        ncts = problem_dim[wid]
+        cio = problem_cio[wid]
+        lcgo = problem_lcgo[wid]
+        ccgo = problem_ccgo[wid]
+        vio = problem_vio[wid]
+        rio = solver_info_offset[wid]
+        penalty = solver_penalty[wid]
+        status = solver_status[wid]
+
+        # Retrieve parameters
+        iter = status.iterations - 1
+
+        # Compute additional info
+        njc = ncts - (nl + 3 * nc)
+
+        # Compute and store the norms of the current solution state
+        norm_s = compute_l2_norm(ncts, vio, solver_state_s)
+        norm_x = compute_l2_norm(ncts, vio, solver_state_x)
+        norm_y = compute_l2_norm(ncts, vio, solver_state_y)
+        norm_z = compute_l2_norm(ncts, vio, solver_state_z)
+
+        # Compute (division safe) residual ratios
+        r_pd = status.r_p / (status.r_d + FLOAT32_EPS)
+        r_dp = status.r_d / (status.r_p + FLOAT32_EPS)
+
+        # Remove preconditioning from lambdas
+        compute_cwise_vec_mul(ncts, vio, problem_P, solver_state_y, solver_info_lambdas)
+
+        # Remove preconditioning from v_plus
+        compute_cwise_vec_div(ncts, vio, solver_info_v_plus, problem_P, solver_info_v_plus)
+
+        # Compute the De Saxce correction for each contact as: s = G(v_plus)
+        compute_desaxce_corrections(nc, cio, vio, ccgo, problem_mu, solver_info_v_plus, solver_info_s)
+
+        # Compute the CCP optimization objective as: f_ccp = 0.5 * lambda.dot(v_plus + v_f)
+        f_ccp = 0.5 * compute_double_dot_product(ncts, vio, solver_info_lambdas, solver_info_v_plus, problem_v_f)
+
+        # Compute the NCP optimization objective as:  f_ncp = f_ccp + lambda.dot(s)
+        f_ncp = compute_dot_product(ncts, vio, solver_info_lambdas, solver_info_s)
+        f_ncp += f_ccp
+
+        # Compute the augmented post-event constraint-space velocity as: v_aug = v_plus + s
+        compute_vector_sum(ncts, vio, solver_info_v_plus, solver_info_s, solver_info_v_aug)
+
+        # Compute the NCP primal residual as: r_p := || lambda - proj_K(lambda) ||_inf
+        r_ncp_p, _ = compute_ncp_primal_residual(nl, nc, vio, lcgo, ccgo, cio, problem_mu, solver_info_lambdas)
+
+        # Compute the NCP dual residual as: r_d := || v_plus + s - proj_dual_K(v_plus + s)  ||_inf
+        r_ncp_d, _ = compute_ncp_dual_residual(njc, nl, nc, vio, lcgo, ccgo, cio, problem_mu, solver_info_v_aug)
+
+        # Compute the NCP complementarity (lambda _|_ (v_plus + s)) residual as r_c := || lambda.dot(v_plus + s) ||_inf
+        r_ncp_c, _ = compute_ncp_complementarity_residual(
+            nl, nc, vio, lcgo, ccgo, solver_info_v_aug, solver_info_lambdas
+        )
+
+        # Compute the natural-map residuals as: r_natmap = || lambda - proj_K(lambda - (v + s)) ||_inf
+        r_ncp_natmap, _ = compute_ncp_natural_map_residual(
+            nl, nc, vio, lcgo, ccgo, cio, problem_mu, solver_info_v_aug, solver_info_lambdas
+        )
+
+        # Compute the iterate residual as: r_iter := || y - y_p ||_inf
+        r_dx = compute_preconditioned_iterate_residual(ncts, vio, problem_P, solver_state_x, solver_state_x_p)
+        r_dy = compute_preconditioned_iterate_residual(ncts, vio, problem_P, solver_state_y, solver_state_y_p)
+        r_dz = compute_inverse_preconditioned_iterate_residual(ncts, vio, problem_P, solver_state_z, solver_state_z_p)
+
+        # Compute index offset for the info of the current iteration
+        iio = rio + iter
+
+        # Store the convergence information in the solver info arrays
+        solver_info_num_rho_updates[iio] = penalty.num_updates
+        solver_info_norm_s[iio] = norm_s
+        solver_info_norm_x[iio] = norm_x
+        solver_info_norm_y[iio] = norm_y
+        solver_info_norm_z[iio] = norm_z
+        solver_info_r_dx[iio] = r_dx
+        solver_info_r_dy[iio] = r_dy
+        solver_info_r_dz[iio] = r_dz
+        solver_info_r_primal[iio] = status.r_p
+        solver_info_r_dual[iio] = status.r_d
+        solver_info_r_compl[iio] = status.r_c
+        solver_info_r_pd[iio] = r_pd
+        solver_info_r_dp[iio] = r_dp
+        solver_info_r_ncp_primal[iio] = r_ncp_p
+        solver_info_r_ncp_dual[iio] = r_ncp_d
+        solver_info_r_ncp_compl[iio] = r_ncp_c
+        solver_info_r_ncp_natmap[iio] = r_ncp_natmap
+        solver_info_f_ccp[iio] = f_ccp
+        solver_info_f_ncp[iio] = f_ncp
+
+        # Optionally store acceleration-relevant info if acceleration is enabled
+        # NOTE: This is statically evaluated to avoid unnecessary overhead when acceleration is disabled
+        if wp.static(use_acceleration):
+            solver_info_a[iio] = solver_state_a[wid]
+            solver_info_r_comb[iio] = status.r_a
+            solver_info_r_comb_ratio[iio] = status.r_a / (status.r_a_pp)
+            solver_info_num_restarts[iio] = status.num_restarts
+
+    # Return the generated kernel
+    return _collect_solver_convergence_info_sparse
 
 
 @wp.kernel

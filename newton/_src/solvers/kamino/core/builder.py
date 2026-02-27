@@ -1579,6 +1579,12 @@ class ModelBuilder:
         model_pairid = []
         model_wid = []
 
+        joint_idx_min = [len(self.joints)] * nw
+        joint_idx_max = [0] * nw
+        for i, joint in enumerate(self.joints):
+            joint_idx_min[joint.wid] = min(i, joint_idx_min[joint.wid])
+            joint_idx_max[joint.wid] = max(i, joint_idx_max[joint.wid])
+
         # Iterate over each world and construct the collision geometry pairs info
         ncg_offset = 0
         for wid in range(nw):
@@ -1612,10 +1618,14 @@ class ModelBuilder:
                 # 4. Check for collision according to the collision groupings
                 are_collidable = ((geom1.group & geom2.collides) != 0) and ((geom2.group & geom1.collides) != 0)
 
+                # Skip this pair if it does not pass the first round of filtering
+                if is_self_collision or not in_same_world or not are_collidable:
+                    continue
+
                 # 5. Check for neighbor collision for fixed and DoF joints
                 are_fixed_neighbors = False
                 are_dof_neighbors = False
-                for joint in self.joints:
+                for joint in self.joints[joint_idx_min[wid1] : joint_idx_max[wid1] + 1]:
                     if (joint.bid_B == bid1 and joint.bid_F == bid2) or (joint.bid_B == bid2 and joint.bid_F == bid1):
                         if joint.dof_type == JointDoFType.FIXED:
                             are_fixed_neighbors = True
@@ -1626,7 +1636,7 @@ class ModelBuilder:
                         break
 
                 # Assign pairid based on filtering results
-                if (not is_self_collision) and (in_same_world) and (are_collidable) and (not are_fixed_neighbors):
+                if not are_fixed_neighbors:
                     pairid = -1  # TODO: Compute as geom-pair key
                 else:
                     continue  # Skip this pair if it does not pass the filtering

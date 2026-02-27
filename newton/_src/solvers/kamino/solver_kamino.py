@@ -52,7 +52,7 @@ from .kinematics.constraints import (
     unpack_constraint_solutions,
     update_constraints_info,
 )
-from .kinematics.jacobians import DenseSystemJacobians
+from .kinematics.jacobians import DenseSystemJacobians, SparseSystemJacobians
 from .kinematics.joints import (
     compute_joints_data,
     extract_actuators_state_from_joints,
@@ -67,11 +67,22 @@ from .kinematics.resets import (
     reset_state_to_model_default,
     reset_time,
 )
-from .linalg import LinearSolverType, LLTBlockedSolver
+from .linalg import ConjugateResidualSolver, IterativeSolver, LinearSolverType, LLTBlockedSolver
 from .solvers.fk import ForwardKinematicsSolver, ForwardKinematicsSolverSettings
 from .solvers.metrics import SolutionMetrics
 from .solvers.padmm import PADMMSettings, PADMMSolver, PADMMWarmStartMode
 from .solvers.warmstart import WarmstarterContacts, WarmstarterLimits
+from .utils import logger as msg
+
+###
+# Module interface
+###
+
+__all__ = [
+    "SolverKamino",
+    "SolverKaminoSettings",
+]
+
 
 ###
 # Types
@@ -141,6 +152,13 @@ class SolverKaminoSettings:
     Defaults to `False`.
     """
 
+    avoid_graph_conditionals: bool = False
+    """
+    Avoids CUDA graph conditional nodes in iterative solvers.\n
+    When enabled, replaces `wp.capture_while` with unrolled for-loops over max iterations.\n
+    Defaults to `False`.
+    """
+
     linear_solver_type: type[LinearSolverType] = LLTBlockedSolver
     """
     The type of linear solver to use for the dynamics problem.\n
@@ -168,6 +186,16 @@ class SolverKaminoSettings:
     Defaults to `0.0` (i.e. no damping).
     """
 
+    sparse: bool = False
+    """
+    Flag to indicate whether the solver should use sparse data representations.
+    """
+
+    sparse_jacobian: bool = False
+    """
+    Flag to indicate whether the solver should use sparse data representations for the Jacobian.
+    """
+
     def check(self) -> None:
         """Validates relevant solver settings."""
         if not issubclass(self.linear_solver_type, LinearSolverType):
@@ -189,6 +217,10 @@ class SolverKaminoSettings:
             raise TypeError(
                 "Invalid rotation correction mode: Expected a `JointCorrectionMode` enum value, "
                 f"but got {type(self.rotation_correction)}."
+            )
+        if self.sparse and not self.sparse_jacobian:
+            raise ValueError(
+                "Sparsity setting mismatch: `sparse` solver option requires that `sparse_jacobian` is set to `True`."
             )
         self.problem.check()
         self.padmm.check()
@@ -292,6 +324,17 @@ class SolverKamino(SolverBase):
         settings.check()
         self._settings: SolverKaminoSettings = settings
 
+        # TODO: We need to rework these checks and potentially handle this check with the dynamics problem
+        # TODO: Also consider raising an error here instead of a warning
+        # Override the linear solver type to an iterative solver if
+        # sparsity is enabled but the provided solver is not iterative
+        if self._settings.sparse and not issubclass(self._settings.linear_solver_type, IterativeSolver):
+            msg.warning(
+                f"Sparse dynamics requires an iterative solver, but got '{self._settings.linear_solver_type.__name__}'."
+                " Defaulting to 'ConjugateResidualSolver' as the PADMM linear solver."
+            )
+            self._settings.linear_solver_type = ConjugateResidualSolver
+
         # Allocate internal time-varying solver data
         self._data = self._model.data()
 
@@ -302,23 +345,35 @@ class SolverKamino(SolverBase):
         make_unilateral_constraints_info(model=self._model, data=self._data, limits=self._limits, contacts=contacts)
 
         # Allocate Jacobians data on the device
-        self._jacobians = DenseSystemJacobians(
-            model=self._model,
-            limits=self._limits,
-            contacts=contacts,
-            device=self._model.device,
-        )
+        if self._settings.sparse_jacobian:
+            self._jacobians = SparseSystemJacobians(
+                model=self._model,
+                limits=self._limits,
+                contacts=contacts,
+                device=self._model.device,
+            )
+        else:
+            self._jacobians = DenseSystemJacobians(
+                model=self._model,
+                limits=self._limits,
+                contacts=contacts,
+                device=self._model.device,
+            )
 
         # Allocate the dual problem data on the device
+        linear_solver_kwargs = dict(self._settings.linear_solver_kwargs)
+        if self._settings.avoid_graph_conditionals and issubclass(self._settings.linear_solver_type, IterativeSolver):
+            linear_solver_kwargs.setdefault("avoid_graph_conditionals", True)
         self._problem_fd = DualProblem(
             model=self._model,
             data=self._data,
             limits=self._limits,
             contacts=contacts,
             solver=self._settings.linear_solver_type,
-            solver_kwargs=self._settings.linear_solver_kwargs,
+            solver_kwargs=linear_solver_kwargs,
             settings=self._settings.problem,
             device=self._model.device,
+            sparse=self._settings.sparse,
         )
 
         # Allocate the forward dynamics solver on the device
@@ -328,6 +383,7 @@ class SolverKamino(SolverBase):
             warmstart=self._settings.warmstart_mode,
             use_acceleration=self._settings.use_solver_acceleration,
             collect_info=self._settings.collect_solver_info,
+            avoid_graph_conditionals=self._settings.avoid_graph_conditionals,
             device=self._model.device,
         )
 

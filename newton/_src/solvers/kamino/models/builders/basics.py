@@ -190,7 +190,7 @@ def build_box_pendulum(
     _builder.add_joint(
         name="world_to_pendulum",
         dof_type=JointDoFType.REVOLUTE,
-        act_type=JointActuationType.FORCE,
+        act_type=JointActuationType.POSITION_VELOCITY if implicit_pd else JointActuationType.FORCE,
         bid_B=-1,
         bid_F=bid0,
         B_r_Bj=vec3f(0.0, 0.0, 0.5 * h + z_0),
@@ -545,7 +545,7 @@ def build_boxes_hinged(
     _builder.add_joint(
         name="hinge",
         dof_type=JointDoFType.REVOLUTE,
-        act_type=JointActuationType.FORCE,
+        act_type=JointActuationType.POSITION_VELOCITY if implicit_pd else JointActuationType.FORCE,
         bid_B=bid0,
         bid_F=bid1,
         B_r_Bj=vec3f(0.25, 0.05, 0.0),
@@ -1144,7 +1144,11 @@ def build_boxes_fourbar(
     return _builder
 
 
-def make_basics_heterogeneous_builder(ground: bool = True) -> ModelBuilder:
+def make_basics_heterogeneous_builder(
+    ground: bool = True,
+    dynamic_joints: bool = False,
+    implicit_pd: bool = False,
+) -> ModelBuilder:
     """
     Creates a multi-world builder with different worlds in each model.
 
@@ -1154,10 +1158,10 @@ def make_basics_heterogeneous_builder(ground: bool = True) -> ModelBuilder:
         ModelBuilder: The constructed model builder.
     """
     builder = ModelBuilder(default_world=False)
-    builder.add_builder(build_boxes_fourbar(ground=ground))
+    builder.add_builder(build_boxes_fourbar(ground=ground, dynamic_joints=dynamic_joints, implicit_pd=implicit_pd))
     builder.add_builder(build_boxes_nunchaku(ground=ground))
-    builder.add_builder(build_boxes_hinged(ground=ground))
-    builder.add_builder(build_box_pendulum(ground=ground))
+    builder.add_builder(build_boxes_hinged(ground=ground, dynamic_joints=dynamic_joints, implicit_pd=implicit_pd))
+    builder.add_builder(build_box_pendulum(ground=ground, dynamic_joints=dynamic_joints, implicit_pd=implicit_pd))
     builder.add_builder(build_box_on_plane(ground=ground))
     builder.add_builder(build_cartpole(z_offset=0.5, ground=ground))
     return builder

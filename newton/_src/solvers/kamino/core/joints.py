@@ -751,7 +751,10 @@ class JointDescriptor(Descriptor):
     """
 
     coords_offset: int = -1
-    """Index offset of this joint's coordinates among all joint coordinates in the world it belongs to."""
+    """
+    Index offset of this joint's coordinates among
+    all joint coordinates in the world it belongs to.
+    """
 
     dofs_offset: int = -1
     """
@@ -859,7 +862,7 @@ class JointDescriptor(Descriptor):
         """
         Returns the number of dynamic constraints introduced by this joint.
         """
-        return self.dof_type.num_dofs if self.is_dynamic else 0
+        return self.dof_type.num_dofs if self.is_dynamic or self.is_implicit_pd else 0
 
     @property
     def num_kinematic_cts(self) -> int:

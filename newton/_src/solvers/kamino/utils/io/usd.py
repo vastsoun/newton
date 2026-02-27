@@ -706,6 +706,7 @@ class USDImporter:
         self, joint_spec, rotation_unit: float = 1.0, load_drive_dynamics: bool = False, eps=1e-6
     ):
         dof_type = JointDoFType.REVOLUTE
+        act_type = JointActuationType.PASSIVE
         X_j = self.usd_axis_to_axis[joint_spec.axis].to_mat33()
         q_j_min, q_j_max, tau_j_max = self._make_joint_default_limits(dof_type)
         a_j, b_j, k_p_j, k_d_j = self._make_joint_default_dynamics(dof_type)
@@ -721,19 +722,22 @@ class USDImporter:
                     b_j = [eps] * dof_type.num_dofs
                     k_p_j = [joint_spec.drive.stiffness] * dof_type.num_coords
                     k_d_j = [joint_spec.drive.damping] * dof_type.num_dofs
+                    act_type = self._infer_joint_type(
+                        joint_spec.drive.stiffness, joint_spec.drive.damping, joint_spec.drive.enabled
+                    )
+                else:
+                    act_type = JointActuationType.FORCE
             else:
                 # TODO: Should we handle acceleration drives?
                 raise ValueError("Revolute acceleration drive actuators are not yet supported.")
 
-        act_type = self._infer_joint_type(
-            joint_spec.drive.stiffness, joint_spec.drive.damping, joint_spec.drive.enabled
-        )
         return dof_type, act_type, X_j, q_j_min, q_j_max, tau_j_max, a_j, b_j, k_p_j, k_d_j
 
     def _parse_joint_prismatic(
         self, joint_spec, distance_unit: float = 1.0, load_drive_dynamics: bool = False, eps=1e-6
     ):
         dof_type = JointDoFType.PRISMATIC
+        act_type = JointActuationType.PASSIVE
         X_j = self.usd_axis_to_axis[joint_spec.axis].to_mat33()
         q_j_min, q_j_max, tau_j_max = self._make_joint_default_limits(dof_type)
         a_j, b_j, k_p_j, k_d_j = self._make_joint_default_dynamics(dof_type)
@@ -749,13 +753,15 @@ class USDImporter:
                     b_j = [eps] * dof_type.num_dofs
                     k_p_j = [joint_spec.drive.stiffness] * dof_type.num_coords
                     k_d_j = [joint_spec.drive.damping] * dof_type.num_dofs
+                    act_type = self._infer_joint_type(
+                        joint_spec.drive.stiffness, joint_spec.drive.damping, joint_spec.drive.enabled
+                    )
+                else:
+                    act_type = JointActuationType.FORCE
             else:
                 # TODO: Should we handle acceleration drives?
                 raise ValueError("Prismatic acceleration drive actuators are not yet supported.")
 
-        act_type = self._infer_joint_type(
-            joint_spec.drive.stiffness, joint_spec.drive.damping, joint_spec.drive.enabled
-        )
         return dof_type, act_type, X_j, q_j_min, q_j_max, tau_j_max, a_j, b_j, k_p_j, k_d_j
 
     def _parse_joint_revolute_from_d6(self, name, joint_prim, joint_spec, joint_dof, rotation_unit: float = 1.0):

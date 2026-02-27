@@ -1389,6 +1389,28 @@ class SolverKamino(SolverBase):
         # Capture a reference to the contacts container
         self._contacts_kamino: ContactsKamino = self._collision_detector_kamino.contacts
 
+        # Parse solver-specific attributes imported from USD
+        kamino_attrs = getattr(model, "kamino", None)
+        if kamino_attrs is not None:
+            if solver_settings is None:
+                solver_settings = SolverKaminoSettings()
+
+            if hasattr(kamino_attrs, "padmm_primal_tolerance"):
+                solver_settings.padmm.primal_tolerance = float(kamino_attrs.padmm_primal_tolerance.numpy()[0])
+            if hasattr(kamino_attrs, "padmm_dual_tolerance"):
+                solver_settings.padmm.dual_tolerance = float(kamino_attrs.padmm_dual_tolerance.numpy()[0])
+            if hasattr(kamino_attrs, "padmm_complementarity_tolerance"):
+                solver_settings.padmm.compl_tolerance = float(kamino_attrs.padmm_complementarity_tolerance.numpy()[0])
+            if hasattr(kamino_attrs, "padmm_warmstarting"):
+                solver_settings.warmstart_mode = PADMMWarmStartMode(kamino_attrs.padmm_warmstarting.numpy()[0])
+            if hasattr(kamino_attrs, "padmm_use_acceleration"):
+                solver_settings.use_solver_acceleration = bool(kamino_attrs.padmm_use_acceleration.numpy()[0])
+            if hasattr(kamino_attrs, "joint_correction"):
+                solver_settings.rotation_correction = JointCorrectionMode(kamino_attrs.joint_correction.numpy()[0])
+
+            # TODO: Parse "constraints_alpha", "constraints_beta", "constraints_gamma",
+            # "padmm_use_preconditioning", which all seem to belong to `DualProblemConfig`
+
         # Initialize the internal Kamino solver
         self._solver_kamino = SolverKaminoImpl(
             model=self._model_kamino,
@@ -1855,6 +1877,28 @@ class SolverKamino(SolverBase):
             device=self.model.device,
         )
 
+    @staticmethod
+    def _parse_warmstarting(value: str, context: dict[str, Any] | None = None) -> int:
+        """Parse warmstart option, see :class:`PADMMWarmStartMode`."""
+        if not isinstance(value, str):
+            raise TypeError("Parser expects input of type 'str'.")
+        mapping = {"none": -1, "internal": 0, "containers": 1}
+        lower_value = value.lower().strip()
+        if lower_value not in mapping:
+            raise ValueError(f"Warmstart parameter '{value}' is not a valid option.")
+        return mapping[lower_value]
+
+    @staticmethod
+    def _parse_joint_correction(value: str, context: dict[str, Any] | None = None) -> int:
+        """Parse joint correction option, see :class:`JointCorrectionMode`."""
+        if not isinstance(value, str):
+            raise TypeError("Parser expects input of type 'str'.")
+        mapping = {"none": -1, "twopi": 0, "continuous": 1}
+        lower_value = value.lower().strip()
+        if lower_value not in mapping:
+            raise ValueError(f"Joint correction parameter '{value}' is not a valid option.")
+        return mapping[lower_value]
+
     @override
     @classmethod
     def register_custom_attributes(cls, builder: ModelBuilder) -> None:
@@ -1881,5 +1925,118 @@ class SolverKamino(SolverBase):
                 frequency=Model.AttributeFrequency.JOINT_CONSTRAINT,
                 dtype=wp.float32,
                 default=0.0,
+            )
+        )
+
+        builder.add_custom_attribute(
+            ModelBuilder.CustomAttribute(
+                name="padmm_primal_tolerance",
+                frequency=Model.AttributeFrequency.ONCE,
+                assignment=Model.AttributeAssignment.MODEL,
+                dtype=wp.float32,
+                default=1e-6,
+                namespace="kamino",
+                usd_attribute_name="newton:kamino:padmm:primalTolerance",
+            )
+        )
+        builder.add_custom_attribute(
+            ModelBuilder.CustomAttribute(
+                name="padmm_dual_tolerance",
+                frequency=Model.AttributeFrequency.ONCE,
+                assignment=Model.AttributeAssignment.MODEL,
+                dtype=wp.float32,
+                default=1e-6,
+                namespace="kamino",
+                usd_attribute_name="newton:kamino:padmm:dualTolerance",
+            )
+        )
+        builder.add_custom_attribute(
+            ModelBuilder.CustomAttribute(
+                name="padmm_complementarity_tolerance",
+                frequency=Model.AttributeFrequency.ONCE,
+                assignment=Model.AttributeAssignment.MODEL,
+                dtype=wp.float32,
+                default=1e-6,
+                namespace="kamino",
+                usd_attribute_name="newton:kamino:padmm:complementarityTolerance",
+            )
+        )
+        builder.add_custom_attribute(
+            ModelBuilder.CustomAttribute(
+                name="padmm_warmstarting",
+                frequency=Model.AttributeFrequency.ONCE,
+                assignment=Model.AttributeAssignment.MODEL,
+                dtype=wp.int32,
+                default=1,  # "containers"
+                namespace="kamino",
+                usd_attribute_name="newton:kamino:padmm:warmstarting",
+                usd_value_transformer=cls._parse_warmstarting,
+            )
+        )
+        builder.add_custom_attribute(
+            ModelBuilder.CustomAttribute(
+                name="padmm_use_acceleration",
+                frequency=Model.AttributeFrequency.ONCE,
+                assignment=Model.AttributeAssignment.MODEL,
+                dtype=wp.bool,
+                default=True,
+                namespace="kamino",
+                usd_attribute_name="newton:kamino:padmm:useAcceleration",
+            )
+        )
+        builder.add_custom_attribute(
+            ModelBuilder.CustomAttribute(
+                name="padmm_use_preconditioning",
+                frequency=Model.AttributeFrequency.ONCE,
+                assignment=Model.AttributeAssignment.MODEL,
+                dtype=wp.bool,
+                default=True,
+                namespace="kamino",
+                usd_attribute_name="newton:kamino:padmm:usePreconditioning",
+            )
+        )
+        builder.add_custom_attribute(
+            ModelBuilder.CustomAttribute(
+                name="constraints_alpha",
+                frequency=Model.AttributeFrequency.ONCE,
+                assignment=Model.AttributeAssignment.MODEL,
+                dtype=wp.float32,
+                default=0.01,
+                namespace="kamino",
+                usd_attribute_name="newton:kamino:constraints:alpha",
+            )
+        )
+        builder.add_custom_attribute(
+            ModelBuilder.CustomAttribute(
+                name="constraints_beta",
+                frequency=Model.AttributeFrequency.ONCE,
+                assignment=Model.AttributeAssignment.MODEL,
+                dtype=wp.float32,
+                default=0.01,
+                namespace="kamino",
+                usd_attribute_name="newton:kamino:constraints:beta",
+            )
+        )
+        builder.add_custom_attribute(
+            ModelBuilder.CustomAttribute(
+                name="constraints_gamma",
+                frequency=Model.AttributeFrequency.ONCE,
+                assignment=Model.AttributeAssignment.MODEL,
+                dtype=wp.float32,
+                default=0.01,
+                namespace="kamino",
+                usd_attribute_name="newton:kamino:constraints:gamma",
+            )
+        )
+        builder.add_custom_attribute(
+            ModelBuilder.CustomAttribute(
+                name="joint_correction",
+                frequency=Model.AttributeFrequency.ONCE,
+                assignment=Model.AttributeAssignment.MODEL,
+                dtype=wp.int32,
+                default=0,  # "twopi"
+                namespace="kamino",
+                usd_attribute_name="newton:kamino:jointCorrection",
+                usd_value_transformer=cls._parse_joint_correction,
             )
         )

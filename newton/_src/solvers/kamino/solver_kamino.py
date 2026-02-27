@@ -36,7 +36,7 @@ from ...sim import (
     ModelBuilder,
     State,
 )
-from ...sim.joints import ActuatorMode
+from ...sim.joints import ActuatorMode, JointType
 from ..flags import SolverNotifyFlags
 from ..solver import SolverBase
 
@@ -1377,6 +1377,9 @@ class SolverKamino(SolverBase):
         # Initialize the base solver
         super().__init__(model=model)
 
+        # Validate that the model does not contain unsupported components
+        self._validate_newton_model_compatibility(model)
+
         # Create a Kamino model from the Newton model
         self._model_kamino = ModelKamino.from_newton(model)
 
@@ -1583,9 +1586,7 @@ class SolverKamino(SolverBase):
         if contacts is not None:
             self._ingest_newton_contacts(contacts, state_in)
         else:
-            self._collision_detector_kamino.collide(
-                self._model_kamino, self._solver_kamino.data, state_in_kamino
-            )
+            self._collision_detector_kamino.collide(self._model_kamino, self._solver_kamino.data, state_in_kamino)
 
         # Convert Newton body-frame poses to Kamino CoM-frame poses using
         # Kamino's corrected body-com offsets (can differ from Newton model data).
@@ -1821,8 +1822,7 @@ class SolverKamino(SolverBase):
 
         if max_contacts > contacts.rigid_contact_max:
             msg.warning(
-                "Kamino max contacts (%d) exceeds Newton rigid_contact_max (%d); "
-                "contacts will be truncated.",
+                "Kamino max contacts (%d) exceeds Newton rigid_contact_max (%d); contacts will be truncated.",
                 max_contacts,
                 contacts.rigid_contact_max,
             )
@@ -1883,3 +1883,72 @@ class SolverKamino(SolverBase):
                 default=0.0,
             )
         )
+
+    @staticmethod
+    def _validate_newton_model_compatibility(model: Model):
+        """
+        Validates that the model does not contain components unsupported by SolverKamino:
+        - particles
+        - springs
+        - triangles, edges, tetrahedra
+        - muscles
+        - equality constraints
+        - distance, cable, or gimbal joints
+
+        Args:
+            model (Model): The Newton model to validate.
+
+        Raises:
+            ValueError: If the model contains unsupported components.
+        """
+
+        unsupported_features = []
+        if model.particle_count > 0:
+            unsupported_features.append(f"particles (found {model.particle_count})")
+        if model.spring_count > 0:
+            unsupported_features.append(f"springs (found {model.spring_count})")
+        if model.tri_count > 0:
+            unsupported_features.append(f"triangle elements (found {model.tri_count})")
+        if model.edge_count > 0:
+            unsupported_features.append(f"edge elements (found {model.edge_count})")
+        if model.tet_count > 0:
+            unsupported_features.append(f"tetrahedral elements (found {model.tet_count})")
+        if model.muscle_count > 0:
+            unsupported_features.append(f"muscles (found {model.muscle_count})")
+        if model.equality_constraint_count > 0:
+            unsupported_features.append(f"equality constraints (found {model.equality_constraint_count})")
+
+        # Check for unsupported joint types
+        if model.joint_count > 0:
+            joint_type_np = model.joint_type.numpy()
+            joint_dof_dim_np = model.joint_dof_dim.numpy()
+            joint_q_start_np = model.joint_q_start.numpy()
+            joint_qd_start_np = model.joint_qd_start.numpy()
+
+            unsupported_joint_types = {}
+
+            for j in range(model.joint_count):
+                joint_type = int(joint_type_np[j])
+                dof_dim = (int(joint_dof_dim_np[j][0]), int(joint_dof_dim_np[j][1]))
+                q_count = int(joint_q_start_np[j + 1] - joint_q_start_np[j])
+                qd_count = int(joint_qd_start_np[j + 1] - joint_qd_start_np[j])
+
+                # Check for explicitly unsupported joint types
+                if joint_type == JointType.DISTANCE:
+                    unsupported_joint_types["DISTANCE"] = unsupported_joint_types.get("DISTANCE", 0) + 1
+                elif joint_type == JointType.CABLE:
+                    unsupported_joint_types["CABLE"] = unsupported_joint_types.get("CABLE", 0) + 1
+                # Check for GIMBAL configuration (3 coords, 3 DoFs, 0 linear/3 angular)
+                elif joint_type == JointType.D6 and q_count == 3 and qd_count == 3 and dof_dim == (0, 3):
+                    unsupported_joint_types["D6 (GIMBAL)"] = unsupported_joint_types.get("D6 (GIMBAL)", 0) + 1
+
+            if len(unsupported_joint_types) > 0:
+                joint_desc = [f"{name} ({count} instances)" for name, count in unsupported_joint_types.items()]
+                unsupported_features.append("joint types: " + ", ".join(joint_desc))
+
+        # If any unsupported features were found, raise an error
+        if len(unsupported_features) > 0:
+            error_msg = "SolverKamino cannot simulate this model due to unsupported features:"
+            for feature in unsupported_features:
+                error_msg += "\n  - " + feature
+            raise ValueError(error_msg)

@@ -475,11 +475,12 @@ def add_active_pair(
 @wp.kernel
 def _update_geometries_state_and_aabb(
     # Inputs:
-    default_margin: float32,
+    default_gap: float32,
     geom_bid: wp.array(dtype=int32),
     geom_sid: wp.array(dtype=int32),
     geom_params: wp.array(dtype=vec4f),
     geom_margin: wp.array(dtype=float32),
+    geom_gap: wp.array(dtype=float32),
     geom_offset: wp.array(dtype=transformf),
     body_pose: wp.array(dtype=transformf),
     # Outputs:
@@ -487,42 +488,29 @@ def _update_geometries_state_and_aabb(
     geom_aabb: wp.array(dtype=vec6f),
 ):
     """
-    A kernel that updates the state of each geometry and computes its Axis-Aligned Bounding Box (AABB).
+    Updates the state of each geometry and computes its Axis-Aligned Bounding Box (AABB).
 
-    Inputs:
-        geom_bid (wp.array(dtype=int32)): Body index for each geometry.
-        geom_sid (wp.array(dtype=int32)): Shape index for each geometry.
-        geom_params (wp.array(dtype=vec4f)): Shape parameters for each geometry.
-        geom_offset (wp.array(dtype=transformf)): Local pose offset of each geometry relative to its body.
-        body_pose (wp.array(dtype=transformf)): Pose of each body in world coordinates.
-
-    Outputs:
-        geom_pose (wp.array(dtype=transformf)): Pose of each geometry in world coordinates.
-        geom_aabb (wp.array(dtype=vec6f)): Axis-Aligned Bounding Box for each geometry in world coordinates.
+    The AABB is expanded by ``margin + max(default_gap, gap)`` per shape so
+    the broadphase catches contacts within the detection threshold.
     """
-    # Retrieve geometry index from the thread grid
     gid = wp.tid()
 
-    # Retrieve the geometry-specific body index and pose
     bid = geom_bid[gid]
     sid = geom_sid[gid]
     X_bg = geom_offset[gid]
     params = geom_params[gid]
     margin = geom_margin[gid]
+    gap = geom_gap[gid]
 
-    # Retrieve the pose of the corresponding body
     X_b = wp.transform_identity(dtype=float32)
     if bid > -1:
         X_b = body_pose[bid]
 
-    # Compute the geometry pose in world coordinates
     X_g = wp.transform_multiply(X_b, X_bg)
 
-    # Compute the geometry bounding volume AABB based on its shape parameters
-    margin = wp.max(default_margin, margin)
-    aabb_g = aabb_geom(sid, params, margin, X_g)
+    expansion = margin + wp.max(default_gap, gap)
+    aabb_g = aabb_geom(sid, params, expansion, X_g)
 
-    # Store the geometry pose and AABB
     geom_pose[gid] = X_g
     geom_aabb[gid] = aabb_g
 
@@ -530,11 +518,12 @@ def _update_geometries_state_and_aabb(
 @wp.kernel
 def _update_geometries_state_and_bs(
     # Inputs:
-    default_margin: float32,
+    default_gap: float32,
     geom_bid: wp.array(dtype=int32),
     geom_sid: wp.array(dtype=int32),
     geom_params: wp.array(dtype=vec4f),
     geom_margin: wp.array(dtype=float32),
+    geom_gap: wp.array(dtype=float32),
     geom_offset: wp.array(dtype=transformf),
     body_pose: wp.array(dtype=transformf),
     # Outputs:
@@ -542,48 +531,29 @@ def _update_geometries_state_and_bs(
     geom_bs_radius: wp.array(dtype=float32),
 ):
     """
-    A kernel that updates the state of each geometry and computes its bounding sphere (BS).
+    Updates the state of each geometry and computes its bounding sphere (BS).
 
-    Inputs:
-        geom_bid (wp.array(dtype=int32)):
-            Body index for each geometry.
-        geom_sid (wp.array(dtype=int32)):
-            Shape index for each geometry.
-        geom_params (wp.array(dtype=vec4f)):
-            Shape parameters for each geometry.
-        geom_offset (wp.array(dtype=transformf)):
-            Local pose offset of each geometry relative to its body.
-        body_pose (wp.array(dtype=transformf)):
-            Pose of each body in world coordinates.
-    Outputs:
-        geom_pose (wp.array(dtype=transformf)):
-            Pose of each geometry in world coordinates.
-        geom_bs_radius (wp.array(dtype=float32)):
-            Radius of the bounding sphere for each geometry.
+    The bounding sphere is expanded by ``margin + max(default_gap, gap)`` per
+    shape so the broadphase catches contacts within the detection threshold.
     """
-    # Retrieve geometry index from the thread grid
     gid = wp.tid()
 
-    # Retrieve the geometry-specific body index and pose
     bid = geom_bid[gid]
     sid = geom_sid[gid]
     X_bg = geom_offset[gid]
     params = geom_params[gid]
     margin = geom_margin[gid]
+    gap = geom_gap[gid]
 
-    # Retrieve the pose of the corresponding body
     X_b = wp.transform_identity(dtype=float32)
     if bid > -1:
         X_b = body_pose[bid]
 
-    # Compute the geometry pose in world coordinates
     X_g = wp.transform_multiply(X_b, X_bg)
 
-    # Compute the geometry bounding sphere radius based on its shape parameters
-    margin = wp.max(default_margin, margin)
-    bs_g = bs_geom(sid, params, margin)
+    expansion = margin + wp.max(default_gap, gap)
+    bs_g = bs_geom(sid, params, expansion)
 
-    # Store the geometry pose and bounding sphere radius
     geom_pose[gid] = X_g
     geom_bs_radius[gid] = bs_g
 
@@ -768,26 +738,28 @@ def update_geoms_aabb(
     # Outputs:
     bv_data: BoundingVolumesData,
     # Options
-    default_margin: float | None = None,
+    default_gap: float | None = None,
 ):
     """
-    Launches a kernel to update the state of each geometry and compute its Axis-Aligned Bounding Box (AABB).
+    Launches a kernel to update the state of each geometry and compute its AABB.
 
     Args:
-        body_poses (wp.array): Pose of each body in world coordinates.
-        geoms_model (CollisionGeometriesModel): Model data for collision geometries.
-        geoms_data (GeometriesData): Data for collision geometries.
-        bv_data (BoundingVolumesData): Data for bounding volumes containing Axis-Aligned Bounding Boxes (AABB) vertices.
+        body_poses: Pose of each body in world coordinates.
+        geoms_model: Model data for collision geometries.
+        geoms_data: Data for collision geometries.
+        bv_data: Data for bounding volumes containing AABB vertices.
+        default_gap: Default detection gap [m] applied as a floor to per-geometry gaps.
     """
     wp.launch(
         _update_geometries_state_and_aabb,
         dim=geoms_model.num_geoms,
         inputs=[
-            float32(default_margin) if default_margin is not None else float32(0.0),
+            float32(default_gap) if default_gap is not None else float32(0.0),
             geoms_model.bid,
             geoms_model.sid,
             geoms_model.params,
             geoms_model.margin,
+            geoms_model.gap,
             geoms_model.offset,
             body_poses,
         ],
@@ -842,26 +814,28 @@ def update_geoms_bs(
     # Outputs:
     bv_data: BoundingVolumesData,
     # Options
-    default_margin: float | None = None,
+    default_gap: float | None = None,
 ):
     """
     Launches a kernel to update the state of each geometry and compute its bounding sphere (BS).
 
     Args:
-        body_poses (wp.array): Pose of each body in world coordinates.
-        geoms_model (CollisionGeometriesModel): Model data for collision geometries.
-        geoms_data (GeometriesData): Data for collision geometries.
-        bv_data (BoundingVolumesData): Data for bounding volumes containing bounding sphere radii.
+        body_poses: Pose of each body in world coordinates.
+        geoms_model: Model data for collision geometries.
+        geoms_data: Data for collision geometries.
+        bv_data: Data for bounding volumes containing bounding sphere radii.
+        default_gap: Default detection gap [m] applied as a floor to per-geometry gaps.
     """
     wp.launch(
         _update_geometries_state_and_bs,
         dim=geoms_model.num_geoms,
         inputs=[
-            float32(default_margin) if default_margin is not None else float32(0.0),
+            float32(default_gap) if default_gap is not None else float32(0.0),
             geoms_model.bid,
             geoms_model.sid,
             geoms_model.params,
             geoms_model.margin,
+            geoms_model.gap,
             geoms_model.offset,
             body_poses,
         ],
@@ -922,29 +896,28 @@ def primitive_broadphase_explicit(
     candidates_model: CollisionCandidatesModel,
     candidates_data: CollisionCandidatesData,
     # Options
-    default_margin: float | None = None,
+    default_gap: float | None = None,
 ):
     """
     Runs explicit broad-phase collision detection between all geometry pairs
     defined in the collision candidates model using the specified bounding volume type.
 
     Args:
-        body_poses (wp.array): Pose of each body in world coordinates.
-        geoms_model (CollisionGeometriesModel): Model data for collision geometries.
-        geoms_data (GeometriesData): Data for collision geometries.
-        bv_data (BoundingVolumesData): Data for bounding volumes.
-        bv_type (BoundingVolumeType): Type of bounding volume to use for broad-phase collision detection.
-        candidates_model (CollisionCandidatesModel): Model data for collision candidates.
-        candidates_data (CollisionCandidatesData): Data for collision candidates.
+        body_poses: Pose of each body in world coordinates.
+        geoms_model: Model data for collision geometries.
+        geoms_data: Data for collision geometries.
+        bv_data: Data for bounding volumes.
+        bv_type: Type of bounding volume to use for broad-phase collision detection.
+        candidates_model: Model data for collision candidates.
+        candidates_data: Data for collision candidates.
+        default_gap: Default detection gap [m] applied as a floor to per-geometry gaps.
     """
-    # Run the broadphase collision detection
-    # depending on the bounding volumes used
     match bv_type:
         case BoundingVolumeType.AABB:
-            update_geoms_aabb(body_poses, geoms_model, geoms_data, bv_data, default_margin)
+            update_geoms_aabb(body_poses, geoms_model, geoms_data, bv_data, default_gap)
             nxn_broadphase_aabb(geoms_model, bv_data, candidates_model, candidates_data)
         case BoundingVolumeType.BS:
-            update_geoms_bs(body_poses, geoms_model, geoms_data, bv_data, default_margin)
+            update_geoms_bs(body_poses, geoms_model, geoms_data, bv_data, default_gap)
             nxn_broadphase_bs(geoms_model, geoms_data, bv_data, candidates_model, candidates_data)
         case _:
             raise ValueError(f"Unsupported bounding volume type: {bv_type}")

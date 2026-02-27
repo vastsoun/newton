@@ -26,7 +26,7 @@ from warp.context import Devicelike
 from ...core.builder import ModelBuilder
 from ...core.model import Model, ModelData
 from ...core.types import float32, int32, vec2i, vec6f
-from ..contacts import DEFAULT_GEOM_PAIR_CONTACT_MARGIN, Contacts
+from ..contacts import DEFAULT_GEOM_PAIR_CONTACT_GAP, Contacts
 from .broadphase import (
     PRIMITIVE_BROADPHASE_SUPPORTED_SHAPES,
     BoundingVolumesData,
@@ -54,23 +54,21 @@ class CollisionPipelinePrimitive:
         self,
         builder: ModelBuilder | None = None,
         bvtype: BoundingVolumeType = BoundingVolumeType.AABB,
-        default_margin: float = DEFAULT_GEOM_PAIR_CONTACT_MARGIN,
+        default_gap: float = DEFAULT_GEOM_PAIR_CONTACT_GAP,
         device: Devicelike = None,
     ):
         """
         Initialize an instance of Kamino's optimized primitive collision detection pipeline.
 
         Args:
-            builder (ModelBuilder | None): Optional model builder to pre-compute collision pairs.
-            broadphase (BroadPhaseMode): Broad-phase collision detection algorithm to use.
-            bvtype (BoundingVolumeType): Type of bounding volume to use in broad-phase.
-            default_margin (float): Default collision margin for geometries.
-            device (Devicelike): Device on which to allocate data and perform computations.
+            builder: Optional model builder to pre-compute collision pairs.
+            bvtype: Type of bounding volume to use in broad-phase.
+            default_gap: Default detection gap [m] applied as a floor to per-geometry gaps.
+            device: Device on which to allocate data and perform computations.
         """
-        # Cache pipeline settings
         self._device: Devicelike = device
         self._bvtype: BoundingVolumeType = bvtype
-        self._default_margin: float = default_margin
+        self._default_gap: float = default_gap
 
         # Declare the internal data containers
         self._cmodel: CollisionCandidatesModel | None = None
@@ -181,11 +179,11 @@ class CollisionPipelinePrimitive:
             bv_data=self._bvdata,
             candidates_model=self._cmodel,
             candidates_data=self._cdata,
-            default_margin=self._default_margin,
+            default_gap=self._default_gap,
         )
 
         # Perform the narrow-phase collision detection to generate active contacts
-        primitive_narrowphase(model, data, self._cdata, contacts, default_margin=self._default_margin)
+        primitive_narrowphase(model, data, self._cdata, contacts, default_gap=self._default_gap)
 
     ###
     # Internals

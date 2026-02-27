@@ -50,6 +50,7 @@ from ..utils import logger as msg
 ###
 
 __all__ = [
+    "DEFAULT_GEOM_PAIR_CONTACT_GAP",
     "DEFAULT_GEOM_PAIR_MAX_CONTACTS",
     "DEFAULT_WORLD_MAX_CONTACTS",
     "ContactMode",
@@ -86,11 +87,12 @@ Ignored for mesh-based collisions.\n
 Set to `8` (with box-box collisions being a prototypical case).
 """
 
-DEFAULT_GEOM_PAIR_CONTACT_MARGIN: float = 1e-5
+DEFAULT_GEOM_PAIR_CONTACT_GAP: float = 1e-5
 """
-The global default for the per-geom-pair contact margin.\n
-Each effective contact margin for a geom-pair is computed as:
-``max(DEFAULT_GEOM_PAIR_CONTACT_MARGIN, max(geom1_margin, geom2_margin))``\n
+The global default for the per-geometry detection gap [m].\n
+Applied as a floor to each per-geometry gap value during pipeline
+initialization so that every geometry has at least this detection
+threshold.\n
 Set to `1e-5`.
 """
 
@@ -258,7 +260,10 @@ class ContactsData:
 
     gapfunc: wp.array | None = None
     """
-    The gap-function (i.e. signed-distance) of each active contact with format `(xyz: normal, w: penetration)`.\n
+    Gap-function of each active contact, format ``(xyz: normal, w: signed_distance)``.\n
+    The ``w`` component stores the signed distance between margin-shifted surfaces:
+    negative means penetration past the resting separation, positive means separation
+    within the detection gap.\n
     Shape of ``(model_max_contacts_host,)`` and type :class:`vec4f`.
     """
 

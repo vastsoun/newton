@@ -24,7 +24,7 @@ from warp.context import Devicelike
 from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.core.model import Model, ModelData
 from newton._src.solvers.kamino.core.types import float32, int32, vec2i, vec6f
-from newton._src.solvers.kamino.geometry.contacts import DEFAULT_GEOM_PAIR_CONTACT_MARGIN, Contacts
+from newton._src.solvers.kamino.geometry.contacts import DEFAULT_GEOM_PAIR_CONTACT_GAP, Contacts
 from newton._src.solvers.kamino.geometry.primitive import (
     BoundingVolumeType,
     CollisionPipelinePrimitive,
@@ -125,9 +125,9 @@ class PrimitiveBroadPhaseTestBS:
                 geom_pair=wp.zeros(shape=(model_num_geom_pairs,), dtype=vec2i),
             )
 
-    def collide(self, model: Model, data: ModelData, default_margin: float = 0.0):
+    def collide(self, model: Model, data: ModelData, default_gap: float = 0.0):
         self._cdata.clear()
-        update_geoms_bs(data.bodies.q_i, model.cgeoms, data.cgeoms, self.bvdata, default_margin)
+        update_geoms_bs(data.bodies.q_i, model.cgeoms, data.cgeoms, self.bvdata, default_gap)
         nxn_broadphase_bs(model.cgeoms, data.cgeoms, self.bvdata, self._cmodel, self._cdata)
 
 
@@ -162,9 +162,9 @@ class PrimitiveBroadPhaseTestAABB:
                 geom_pair=wp.zeros(shape=(model_num_geom_pairs,), dtype=vec2i),
             )
 
-    def collide(self, model: Model, data: ModelData, default_margin: float = 0.0):
+    def collide(self, model: Model, data: ModelData, default_gap: float = 0.0):
         self._cdata.clear()
-        update_geoms_aabb(data.bodies.q_i, model.cgeoms, data.cgeoms, self.bvdata, default_margin)
+        update_geoms_aabb(data.bodies.q_i, model.cgeoms, data.cgeoms, self.bvdata, default_gap)
         nxn_broadphase_aabb(model.cgeoms, self.bvdata, self._cmodel, self._cdata)
 
 
@@ -222,7 +222,7 @@ def test_broadphase(
     check_broadphase_allocations(testcase, builder, broadphase)
 
     # Perform broad-phase collision detection and check results
-    broadphase.collide(model, data, default_margin=margin)
+    broadphase.collide(model, data, default_gap=margin)
 
     # Check overall collision counts
     num_model_collisions = broadphase._cdata.model_num_collisions.numpy()[0]
@@ -399,7 +399,7 @@ def test_narrowphase(
 
         # Create a broad-phase backend
         broadphase = bp_type(builder=builder, device=device)
-        broadphase.collide(model, data, default_margin=margin)
+        broadphase.collide(model, data, default_gap=margin)
 
         # Calculate expected model geom pairs
         num_world_geom_pairs, *_ = builder.make_collision_candidate_pairs()
@@ -410,7 +410,7 @@ def test_narrowphase(
         contacts.clear()
 
         # Execute narrowphase for primitive shapes
-        primitive_narrowphase(model, data, broadphase._cdata, contacts, margin)
+        primitive_narrowphase(model, data, broadphase._cdata, contacts, default_gap=margin)
 
         # Optional verbose output
         msg.debug("[%s][%s]: bodies.q_i:\n%s", case, bp_name, data.bodies.q_i)
@@ -1044,7 +1044,7 @@ class TestPipelinePrimitive(unittest.TestCase):
         pipeline = CollisionPipelinePrimitive()
         self.assertIsNone(pipeline._device)
         self.assertEqual(pipeline._bvtype, BoundingVolumeType.AABB)
-        self.assertEqual(pipeline._default_margin, DEFAULT_GEOM_PAIR_CONTACT_MARGIN)
+        self.assertEqual(pipeline._default_gap, DEFAULT_GEOM_PAIR_CONTACT_GAP)
         self.assertRaises(RuntimeError, pipeline.collide, Model(), ModelData(), Contacts())
 
     def test_02_make_and_collide(self):

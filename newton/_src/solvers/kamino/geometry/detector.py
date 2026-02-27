@@ -42,7 +42,7 @@ import warp as wp
 from ..core.builder import ModelBuilder
 from ..core.model import Model, ModelData
 from ..core.types import override
-from ..geometry.contacts import DEFAULT_GEOM_PAIR_CONTACT_MARGIN, DEFAULT_GEOM_PAIR_MAX_CONTACTS, Contacts
+from ..geometry.contacts import DEFAULT_GEOM_PAIR_CONTACT_GAP, DEFAULT_GEOM_PAIR_MAX_CONTACTS, Contacts
 from ..geometry.primitive import BoundingVolumeType, CollisionPipelinePrimitive
 from ..geometry.unified import CollisionPipelineUnifiedKamino
 
@@ -137,10 +137,9 @@ class CollisionDetectorSettings:
     Defaults to `1_000_000`.
     """
 
-    default_contact_margin: float = DEFAULT_GEOM_PAIR_CONTACT_MARGIN
+    default_gap: float = DEFAULT_GEOM_PAIR_CONTACT_GAP
     """
-    The default per-geom contact margin used in the narrow-phase.\n
-    Used when a collision geometry does not specify a contact margin.\n
+    The default detection gap [m] applied as a floor to per-geometry gaps.\n
     Defaults to `1e-5`.
     """
 
@@ -311,7 +310,7 @@ class CollisionDetector:
                         device=self._device,
                         builder=builder,
                         bvtype=self._settings.bvtype,
-                        default_margin=self._settings.default_contact_margin,
+                        default_gap=self._settings.default_gap,
                     )
                 case CollisionPipelineType.UNIFIED:
                     self._unified_pipeline = CollisionPipelineUnifiedKamino(
@@ -319,8 +318,7 @@ class CollisionDetector:
                         model=model,
                         builder=builder,
                         broadphase=self._settings.broadphase,
-                        # TODO: Add support for bvtype in unified pipeline
-                        default_margin=self._settings.default_contact_margin,
+                        default_gap=self._settings.default_gap,
                         max_triangle_pairs=self._settings.max_triangle_pairs,
                         max_contacts_per_pair=self._settings.max_contacts_per_pair,
                     )

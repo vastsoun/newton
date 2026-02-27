@@ -130,7 +130,7 @@ def test_unified_pipeline(
             model=model,
             builder=builder,
             broadphase=bp_mode,
-            default_margin=margin,
+            default_gap=margin,
             device=device,
         )
 

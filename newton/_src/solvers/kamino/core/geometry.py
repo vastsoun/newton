@@ -365,18 +365,24 @@ class CollisionGeometryDescriptor(GeometryDescriptor):
         Defaults to `0`, indicating no limit is imposed on the number of contacts generated for this geometry.
         """
 
-        # TODO: Redo docstring and default value
         self.gap: float = gap
         """
-        The collision detection gap to be used for the collision geometry.\n
-        Defaults to `0.0`, indicating no additional gap is applied.
+        Additional detection threshold [m] for this geometry.\n
+        Pairwise effect is additive (``g_a + g_b``).  The broadphase
+        expands each shape's bounding volume by ``margin + gap``, and the
+        narrowphase keeps a contact when
+        ``d <= gap_a + gap_b`` (with ``d`` measured relative to
+        margin-shifted surfaces).\n
+        Defaults to `0.0`.
         """
 
-        # TODO: Redo docstring and default value
         self.margin: float = margin
         """
-        The collision detection margin to be used for the collision geometry.\n
-        Defaults to `0.0`, indicating no additional margin is applied.
+        Surface offset [m] for this geometry.\n
+        Pairwise effect is additive (``m_a + m_b``): contacts are
+        evaluated against the signed distance to the margin-shifted
+        surfaces, so resting separation equals ``m_a + m_b``.\n
+        Defaults to `0.0`.
         """
 
         ###
@@ -454,13 +460,16 @@ class CollisionGeometriesModel(GeometriesModel):
 
     gap: wp.array | None = None
     """
-    Collision detection gap if each collision geometry.\n
+    Additional detection threshold [m] for each collision geometry.\n
+    Pairwise additive.  Used by both broadphase (AABB expansion) and
+    narrowphase (contact retention).\n
     Shape of ``(num_geoms,)`` and type :class:`float32`.
     """
 
     margin: wp.array | None = None
     """
-    Collision detection margin if each collision geometry.\n
+    Surface offset [m] for each collision geometry.\n
+    Pairwise additive.  Determines resting separation between shapes.\n
     Shape of ``(num_geoms,)`` and type :class:`float32`.
     """
 

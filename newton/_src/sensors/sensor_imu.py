@@ -20,11 +20,13 @@ import warp as wp
 from ..geometry.flags import ShapeFlags
 from ..sim.model import Model
 from ..sim.state import State
+from ..utils.selection import match_labels
 
 
 @wp.kernel
 def compute_sensor_imu_kernel(
     gravity: wp.array(dtype=wp.vec3),
+    body_world: wp.array(dtype=wp.int32),
     body_com: wp.array(dtype=wp.vec3),
     shape_body: wp.array(dtype=int),
     shape_transform: wp.array(dtype=wp.transform),
@@ -52,6 +54,9 @@ def compute_sensor_imu_kernel(
         gyroscope[sensor_idx] = wp.vec3(0.0)
         return
 
+    world_idx = body_world[body_idx]
+    world_g = gravity[wp.max(world_idx, 0)]
+
     body_acc = body_qdd[body_idx]
 
     body_quat = body_q[body_idx].q
@@ -61,7 +66,7 @@ def compute_sensor_imu_kernel(
 
     acc_lin = (
         wp.spatial_top(body_acc)
-        - gravity[0]
+        - world_g
         + wp.cross(wp.spatial_bottom(body_acc), r)
         + wp.cross(vel_ang, wp.cross(vel_ang, r))
     )
@@ -80,6 +85,8 @@ class SensorIMU:
     This sensor requires the extended state attribute ``body_qdd`` to be computed by the solver.  This requires
     a solver that supports computing ``body_qdd``, and requesting ``body_qdd`` from the model before calling
     ``model.state()``. Instantiating the SensorIMU will automatically request ``body_qdd`` from the model by default.
+
+    The ``sites`` parameter accepts label patterns -- see :ref:`label-matching`.
 
     Example:
         Create a SensorIMU for a model with a list of site indices::
@@ -102,7 +109,12 @@ class SensorIMU:
     """Angular velocity readings in sensor frame, shape (n_sensors,)."""
 
     def __init__(
-        self, model: Model, sites: list[int], verbose: bool | None = None, request_state_attributes: bool = True
+        self,
+        model: Model,
+        sites: str | list[str] | list[int],
+        *,
+        verbose: bool | None = None,
+        request_state_attributes: bool = True,
     ):
         """Initialize SensorIMU.
 
@@ -111,19 +123,24 @@ class SensorIMU:
 
         Args:
             model: The model to use.
-            sites: List of site indices where IMU sensors are attached.
+            sites: List of shape indices, single pattern to match against shape
+                labels, or list of patterns where any one matches.
             verbose: If True, print details. If None, uses ``wp.config.verbose``.
             request_state_attributes: If True (default), transparently request the extended state attribute ``body_qdd`` from the model.
                 If False, ``model`` is not modified and the attribute must be requested elsewhere before calling ``model.state()``.
         Raises:
-            ValueError: If invalid sites are passed.
+            ValueError: If no labels match or invalid sites are passed.
         """
 
         self.model = model
         self.verbose = verbose if verbose is not None else wp.config.verbose
 
+        original_sites = sites
+        sites = match_labels(model.shape_label, sites)
         if not sites:
-            raise ValueError("sites must not be empty")
+            if isinstance(original_sites, list) and len(original_sites) == 0:
+                raise ValueError("'sites' must not be empty")
+            raise ValueError(f"No sites matched the given pattern {original_sites!r}")
 
         # request acceleration state attribute
         if request_state_attributes:
@@ -164,6 +181,7 @@ class SensorIMU:
             dim=self.n_sensors,
             inputs=[
                 self.model.gravity,
+                self.model.body_world,
                 self.model.body_com,
                 self.model.shape_body,
                 self.model.shape_transform,

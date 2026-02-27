@@ -15,22 +15,6 @@
 
 import enum
 
-from .... import GeoType
-
-
-class RenderShapeType(enum.IntEnum):
-    """Geometry types supported by the Warp raytracer (subset of newton.GeoType)."""
-
-    PLANE = GeoType.PLANE
-    SPHERE = GeoType.SPHERE
-    CAPSULE = GeoType.CAPSULE
-    ELLIPSOID = GeoType.ELLIPSOID
-    CYLINDER = GeoType.CYLINDER
-    BOX = GeoType.BOX
-    MESH = GeoType.MESH
-    CONE = GeoType.CONE
-    NONE = GeoType.NONE
-
 
 class RenderLightType(enum.IntEnum):
     """Light types supported by the Warp raytracer."""
@@ -40,3 +24,14 @@ class RenderLightType(enum.IntEnum):
 
     DIRECTIONAL = 1
     """Directional Light."""
+
+
+class RenderOrder(enum.IntEnum):
+    """Render Order"""
+
+    PIXEL_PRIORITY = 0
+    """Render the same pixel of every view before continuing to the next one"""
+    VIEW_PRIORITY = 1
+    """Render all pixels of a whole view before continuing to the next one"""
+    TILED = 2
+    """Render pixels in tiles, defined by tile_width x tile_height"""

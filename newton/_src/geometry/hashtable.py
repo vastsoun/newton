@@ -31,9 +31,23 @@ from __future__ import annotations
 
 import warp as wp
 
+# Note on uint64 constants: HASHTABLE_EMPTY_KEY and HASH_MIX_MULTIPLIER are
+# defined with wp.uint64() at module scope rather than cast inside kernels.
+# When a literal is cast inside a @wp.kernel or @wp.func (e.g., wp.uint64(x)),
+# Warp first creates an intermediate variable with an incorrect type (signed),
+# then casts to the target type. Defining the typed value at global scope and
+# referencing it directly in kernels avoids this intermediate.
+# On CPU builds, users may still see: "warning: integer literal is too large to
+# be represented in a signed integer type, interpreting as unsigned". This is
+# benign—no truncation or data loss occurs.
+# See also: https://github.com/NVIDIA/warp/issues/485
+
 # Sentinel value for empty slots
 _HASHTABLE_EMPTY_KEY_VALUE = 0xFFFFFFFFFFFFFFFF
 HASHTABLE_EMPTY_KEY = wp.constant(wp.uint64(_HASHTABLE_EMPTY_KEY_VALUE))
+
+# Multiplier constant from MurmurHash3's 64-bit finalizer (fmix64)
+HASH_MIX_MULTIPLIER = wp.constant(wp.uint64(0xFF51AFD7ED558CCD))
 
 
 def _next_power_of_two(n: int) -> int:
@@ -55,9 +69,50 @@ def _hashtable_hash(key: wp.uint64, capacity_mask: int) -> int:
     """Compute hash index using a simplified mixer."""
     h = key
     h = h ^ (h >> wp.uint64(33))
-    h = h * wp.uint64(0xFF51AFD7ED558CCD)
+    h = h * HASH_MIX_MULTIPLIER
     h = h ^ (h >> wp.uint64(33))
     return int(h) & capacity_mask
+
+
+@wp.func
+def hashtable_find(
+    key: wp.uint64,
+    keys: wp.array(dtype=wp.uint64),
+) -> int:
+    """Find a key and return its entry index (read-only lookup).
+
+    This function locates an existing entry without inserting. Use this for
+    read-only lookups in second-pass kernels where entries should already exist.
+
+    Args:
+        key: The uint64 key to find
+        keys: The hash table keys array (length must be power of two)
+
+    Returns:
+        Entry index (>= 0) if found, -1 if not found
+    """
+    capacity = keys.shape[0]
+    capacity_mask = capacity - 1
+    idx = _hashtable_hash(key, capacity_mask)
+
+    # Linear probing with a maximum of 'capacity' attempts
+    for _i in range(capacity):
+        # Read to check if key exists
+        stored_key = keys[idx]
+
+        if stored_key == key:
+            # Key found - return its index
+            return idx
+
+        if stored_key == HASHTABLE_EMPTY_KEY:
+            # Hit an empty slot - key doesn't exist
+            return -1
+
+        # Collision with different key - linear probe to next slot
+        idx = (idx + 1) & capacity_mask
+
+    # Searched entire table without finding key
+    return -1
 
 
 @wp.func

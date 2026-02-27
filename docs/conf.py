@@ -22,8 +22,14 @@ import datetime
 import importlib
 import inspect
 import os
+import shutil
 import sys
 from pathlib import Path
+from typing import Any
+
+# Set environment variable to indicate we're in a Sphinx build.
+# This is inherited by subprocesses (e.g., Jupyter kernels run by nbsphinx).
+os.environ["NEWTON_SPHINX_BUILD"] = "1"
 
 # Determine the Git version/tag from CI environment variables.
 # 1. Check for GitHub Actions' variable.
@@ -61,13 +67,18 @@ release = project_version
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
-# Add docs/_ext to Python import path so custom extensions can be imported
+# Add docs/ and docs/_ext to Python import path so custom extensions and
+# sibling scripts (e.g. generate_api) can be imported.
+_docs_path = str(Path(__file__).parent)
+if _docs_path not in sys.path:
+    sys.path.append(_docs_path)
 _ext_path = Path(__file__).parent / "_ext"
 if str(_ext_path) not in sys.path:
     sys.path.append(str(_ext_path))
 
 extensions = [
     "myst_parser",  # Parse markdown files
+    "nbsphinx",  # Process Jupyter notebooks
     "sphinx.ext.autodoc",
     "sphinx.ext.napoleon",  # Convert docstrings to reStructuredText
     "sphinx.ext.intersphinx",
@@ -85,8 +96,29 @@ extensions = [
     "autodoc_wpfunc",
 ]
 
+# -- nbsphinx configuration ---------------------------------------------------
+
+# Configure notebook execution mode for nbsphinx
+nbsphinx_execute = "auto"
+
+# Timeout for notebook execution (in seconds)
+nbsphinx_timeout = 600
+
+# Allow errors in notebook execution (useful for development)
+nbsphinx_allow_errors = False
+
+
 templates_path = ["_templates"]
-exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
+exclude_patterns = [
+    "_build",
+    "Thumbs.db",
+    ".DS_Store",
+    "sphinx-env/**",
+    "sphinx-env",
+    "**/site-packages/**",
+    "**/lib/**",
+    "tutorials/**/*.ipynb",
+]
 
 intersphinx_mapping = {
     "python": ("https://docs.python.org/3", None),
@@ -182,14 +214,28 @@ html_theme_options = {
     # "primary_sidebar_end": ["indices.html", "sidebar-ethical-ads.html"],
 }
 
-exclude_patterns = [
-    "sphinx-env/**",
-    "sphinx-env",
-    "**/site-packages/**",
-    "**/lib/**",
-]
 
 html_sidebars = {"**": ["sidebar-nav-bs.html"], "index": ["sidebar-nav-bs.html"]}
+
+# Version switcher configuration for multi-version docs on GitHub Pages
+# See: https://pydata-sphinx-theme.readthedocs.io/en/stable/user_guide/version-dropdown.html
+
+# Determine if we're in a CI build and which version
+_is_ci = os.environ.get("GITHUB_ACTIONS") == "true"
+_is_release = os.environ.get("GITHUB_REF", "").startswith("refs/tags/v")
+
+# Configure version switcher
+html_theme_options["switcher"] = {
+    "json_url": "https://newton-physics.github.io/newton/switcher.json",
+    "version_match": release if _is_release else "dev",
+}
+
+# Add version switcher to navbar
+html_theme_options["navbar_end"] = ["theme-switcher", "version-switcher", "navbar-icon-links"]
+
+# Disable switcher JSON validation during local builds (file not accessible locally)
+if not _is_ci:
+    html_theme_options["check_switcher"] = False
 
 # -- Math configuration -------------------------------------------------------
 
@@ -219,7 +265,7 @@ mathjax3_config = {
 # called automatically by sphinx.ext.linkcode
 
 
-def linkcode_resolve(domain, info):
+def linkcode_resolve(domain: str, info: dict[str, str]) -> str | None:
     """
     Determine the URL corresponding to Python object using introspection
     """
@@ -300,3 +346,53 @@ def linkcode_resolve(domain, info):
 
     except (ImportError, AttributeError, TypeError):
         return None
+
+
+def _copy_viser_client_into_output_static(*, outdir: Path) -> None:
+    """Ensure the Viser web client assets are available at `{outdir}/_static/viser/`.
+
+    This avoids relying on repo-relative `html_static_path` entries (which can break under `uv`),
+    and avoids writing generated assets into `docs/_static` in the working tree.
+    """
+
+    dest_dir = outdir / "_static" / "viser"
+
+    src_candidates: list[Path] = []
+
+    # Repo checkout layout (most common for local builds).
+    src_candidates.append(project_root / "newton" / "_src" / "viewer" / "viser" / "static")
+
+    # Installed package layout (e.g. building docs from an environment where `newton` is installed).
+    try:
+        import newton  # noqa: PLC0415
+
+        src_candidates.append(Path(newton.__file__).resolve().parent / "_src" / "viewer" / "viser" / "static")
+    except Exception:
+        pass
+
+    src_dir = next((p for p in src_candidates if (p / "index.html").is_file()), None)
+    if src_dir is None:
+        # Don't hard-fail doc builds; the viewer docs can still build without the embedded client.
+        expected = ", ".join(str(p) for p in src_candidates)
+        print(
+            f"Warning: could not find Viser client assets to copy. Expected `index.html` under one of: {expected}",
+            file=sys.stderr,
+        )
+        return
+
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(src_dir, dest_dir, dirs_exist_ok=True)
+
+
+def _on_builder_inited(_app: Any) -> None:
+    outdir = Path(_app.builder.outdir)
+    _copy_viser_client_into_output_static(outdir=outdir)
+
+
+def setup(app: Any) -> None:
+    # Regenerate API .rst files so builds always reflect the current public API.
+    from generate_api import generate_all  # noqa: PLC0415
+
+    generate_all()
+
+    app.connect("builder-inited", _on_builder_inited)

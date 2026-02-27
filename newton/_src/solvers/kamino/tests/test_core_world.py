@@ -29,14 +29,21 @@ from newton._src.solvers.kamino.core.gravity import (
     GRAVITY_NAME_DEFAULT,
     GravityDescriptor,
 )
-from newton._src.solvers.kamino.core.joints import JointActuationType, JointDescriptor, JointDoFType
+from newton._src.solvers.kamino.core.joints import (
+    JOINT_DQMAX,
+    JOINT_QMAX,
+    JOINT_QMIN,
+    JOINT_TAUMAX,
+    JointActuationType,
+    JointDescriptor,
+    JointDoFType,
+)
 from newton._src.solvers.kamino.core.materials import (
     DEFAULT_DENSITY,
     DEFAULT_FRICTION,
     DEFAULT_RESTITUTION,
     MaterialDescriptor,
 )
-from newton._src.solvers.kamino.core.math import FLOAT32_MAX, FLOAT32_MIN
 from newton._src.solvers.kamino.core.shapes import ShapeType, SphereShape
 from newton._src.solvers.kamino.core.world import WorldDescriptor
 from newton._src.solvers.kamino.tests import setup_tests, test_context
@@ -184,10 +191,10 @@ class TestJointDescriptor(unittest.TestCase):
         np.testing.assert_array_equal(joint.B_r_Bj, np.zeros(3, dtype=np.float32))
         np.testing.assert_array_equal(joint.F_r_Fj, np.zeros(3, dtype=np.float32))
         np.testing.assert_array_equal(joint.X_j, np.zeros(9, dtype=np.float32))
-        np.testing.assert_array_equal(joint.q_j_min, np.full(6, FLOAT32_MIN, dtype=np.float32))
-        np.testing.assert_array_equal(joint.q_j_max, np.full(6, FLOAT32_MAX, dtype=np.float32))
-        np.testing.assert_array_equal(joint.dq_j_max, np.full(6, FLOAT32_MAX, dtype=np.float32))
-        np.testing.assert_array_equal(joint.tau_j_max, np.full(6, FLOAT32_MAX, dtype=np.float32))
+        np.testing.assert_array_equal(joint.q_j_min, np.full(6, JOINT_QMIN, dtype=np.float32))
+        np.testing.assert_array_equal(joint.q_j_max, np.full(6, JOINT_QMAX, dtype=np.float32))
+        np.testing.assert_array_equal(joint.dq_j_max, np.full(6, JOINT_DQMAX, dtype=np.float32))
+        np.testing.assert_array_equal(joint.tau_j_max, np.full(6, JOINT_TAUMAX, dtype=np.float32))
         np.testing.assert_array_equal(joint.a_j, np.zeros(6, dtype=np.float32))
         np.testing.assert_array_equal(joint.b_j, np.zeros(6, dtype=np.float32))
         np.testing.assert_array_equal(joint.k_p_j, np.zeros(6, dtype=np.float32))
@@ -237,10 +244,10 @@ class TestJointDescriptor(unittest.TestCase):
         np.testing.assert_array_equal(joint.B_r_Bj, np.zeros(3, dtype=np.float32))
         np.testing.assert_array_equal(joint.F_r_Fj, np.zeros(3, dtype=np.float32))
         np.testing.assert_array_equal(joint.X_j, np.zeros(9, dtype=np.float32))
-        np.testing.assert_array_equal(joint.q_j_min, float(FLOAT32_MIN))
-        np.testing.assert_array_equal(joint.q_j_max, float(FLOAT32_MAX))
-        np.testing.assert_array_equal(joint.dq_j_max, float(FLOAT32_MAX))
-        np.testing.assert_array_equal(joint.tau_j_max, float(FLOAT32_MAX))
+        np.testing.assert_array_equal(joint.q_j_min, float(JOINT_QMIN))
+        np.testing.assert_array_equal(joint.q_j_max, float(JOINT_QMAX))
+        np.testing.assert_array_equal(joint.dq_j_max, float(JOINT_DQMAX))
+        np.testing.assert_array_equal(joint.tau_j_max, float(JOINT_TAUMAX))
         np.testing.assert_array_equal(joint.a_j, 1.0)
         np.testing.assert_array_equal(joint.b_j, 1.0)
         np.testing.assert_array_equal(joint.k_p_j, 0.0)

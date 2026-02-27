@@ -28,7 +28,14 @@ from ...core.bodies import RigidBodyDescriptor
 from ...core.builder import ModelBuilder
 from ...core.geometry import CollisionGeometryDescriptor, GeometryDescriptor
 from ...core.gravity import GravityDescriptor
-from ...core.joints import JointActuationType, JointDescriptor, JointDoFType
+from ...core.joints import (
+    JOINT_QMAX,
+    JOINT_QMIN,
+    JOINT_TAUMAX,
+    JointActuationType,
+    JointDescriptor,
+    JointDoFType,
+)
 from ...core.materials import (
     DEFAULT_DENSITY,
     DEFAULT_FRICTION,
@@ -673,10 +680,10 @@ class USDImporter:
         return dof_type
 
     def _make_joint_default_limits(self, dof_type: JointDoFType) -> tuple[list[float], list[float], list[float]]:
-        num_dofs = dof_type.num_dofs
-        q_j_min = [-float(np.finfo(np.float32).max)] * num_dofs
-        q_j_max = [float(np.finfo(np.float32).max)] * num_dofs
-        tau_j_max = [float(np.finfo(np.float32).max)] * num_dofs
+        num_dofs = int(dof_type.num_dofs)
+        q_j_min = [JOINT_QMIN] * num_dofs
+        q_j_max = [JOINT_QMAX] * num_dofs
+        tau_j_max = [JOINT_TAUMAX] * num_dofs
         return q_j_min, q_j_max, tau_j_max
 
     def _make_joint_default_dynamics(
@@ -688,7 +695,7 @@ class USDImporter:
         k_d_j = None
         return a_j, b_j, k_p_j, k_d_j
 
-    def _infer_joint_type(self, stiffness: float, damping: float, drive_enabled: bool) -> JointDoFType:
+    def _infer_joint_actuation_type(self, stiffness: float, damping: float, drive_enabled: bool) -> JointActuationType:
         if not drive_enabled:
             return JointActuationType.PASSIVE
         elif stiffness > 0.0 and damping > 0.0:
@@ -697,7 +704,6 @@ class USDImporter:
             return JointActuationType.POSITION
         elif damping > 0.0:
             return JointActuationType.VELOCITY
-
         return JointActuationType.FORCE
 
     def _parse_joint_revolute(
@@ -709,18 +715,18 @@ class USDImporter:
         q_j_min, q_j_max, tau_j_max = self._make_joint_default_limits(dof_type)
         a_j, b_j, k_p_j, k_d_j = self._make_joint_default_dynamics(dof_type)
         if joint_spec.limit.enabled:
-            q_j_min[0] = rotation_unit * joint_spec.limit.lower
-            q_j_max[0] = rotation_unit * joint_spec.limit.upper
+            q_j_min[0] = max(rotation_unit * joint_spec.limit.lower, JOINT_QMIN)
+            q_j_max[0] = min(rotation_unit * joint_spec.limit.upper, JOINT_QMAX)
         if joint_spec.drive.enabled:
             if not joint_spec.drive.acceleration:
-                tau_j_max[0] = joint_spec.drive.forceLimit
+                tau_j_max[0] = min(joint_spec.drive.forceLimit, JOINT_TAUMAX)
                 if load_drive_dynamics:
                     # TODO: How to get these from USD?
                     a_j = [eps] * dof_type.num_dofs
                     b_j = [eps] * dof_type.num_dofs
                     k_p_j = [joint_spec.drive.stiffness] * dof_type.num_coords
                     k_d_j = [joint_spec.drive.damping] * dof_type.num_dofs
-                    act_type = self._infer_joint_type(
+                    act_type = self._infer_joint_actuation_type(
                         joint_spec.drive.stiffness, joint_spec.drive.damping, joint_spec.drive.enabled
                     )
                 else:
@@ -740,18 +746,18 @@ class USDImporter:
         q_j_min, q_j_max, tau_j_max = self._make_joint_default_limits(dof_type)
         a_j, b_j, k_p_j, k_d_j = self._make_joint_default_dynamics(dof_type)
         if joint_spec.limit.enabled:
-            q_j_min[0] = distance_unit * joint_spec.limit.lower
-            q_j_max[0] = distance_unit * joint_spec.limit.upper
+            q_j_min[0] = max(distance_unit * joint_spec.limit.lower, JOINT_QMIN)
+            q_j_max[0] = min(distance_unit * joint_spec.limit.upper, JOINT_QMAX)
         if joint_spec.drive.enabled:
             if not joint_spec.drive.acceleration:
-                tau_j_max[0] = joint_spec.drive.forceLimit
+                tau_j_max[0] = min(joint_spec.drive.forceLimit, JOINT_TAUMAX)
                 if load_drive_dynamics:
                     # TODO: How to get these from USD?
                     a_j = [eps] * dof_type.num_dofs
                     b_j = [eps] * dof_type.num_dofs
                     k_p_j = [joint_spec.drive.stiffness] * dof_type.num_coords
                     k_d_j = [joint_spec.drive.damping] * dof_type.num_dofs
-                    act_type = self._infer_joint_type(
+                    act_type = self._infer_joint_actuation_type(
                         joint_spec.drive.stiffness, joint_spec.drive.damping, joint_spec.drive.enabled
                     )
                 else:
@@ -769,8 +775,8 @@ class USDImporter:
         for limit in joint_spec.jointLimits:
             dof = limit.first
             if dof == joint_dof:
-                q_j_min[0] = rotation_unit * limit.second.lower
-                q_j_max[0] = rotation_unit * limit.second.upper
+                q_j_min[0] = max(rotation_unit * limit.second.lower, JOINT_QMIN)
+                q_j_max[0] = min(rotation_unit * limit.second.upper, JOINT_QMAX)
         num_drives = len(joint_spec.jointDrives)
         if num_drives > 0:
             if num_drives != 1:
@@ -781,7 +787,7 @@ class USDImporter:
             act_type = JointActuationType.FORCE
             for drive in joint_spec.jointDrives:
                 if drive.first == joint_dof:
-                    tau_j_max[0] = drive.second.forceLimit
+                    tau_j_max[0] = min(drive.second.forceLimit, JOINT_TAUMAX)
         else:
             act_type = JointActuationType.PASSIVE
         return dof_type, act_type, X_j, q_j_min, q_j_max, tau_j_max
@@ -793,8 +799,8 @@ class USDImporter:
         for limit in joint_spec.jointLimits:
             dof = limit.first
             if dof == joint_dof:
-                q_j_min[0] = distance_unit * limit.second.lower
-                q_j_max[0] = distance_unit * limit.second.upper
+                q_j_min[0] = max(distance_unit * limit.second.lower, JOINT_QMIN)
+                q_j_max[0] = min(distance_unit * limit.second.upper, JOINT_QMAX)
         num_drives = len(joint_spec.jointDrives)
         if num_drives > 0:
             if num_drives != 1:
@@ -805,7 +811,7 @@ class USDImporter:
             act_type = JointActuationType.FORCE
             for drive in joint_spec.jointDrives:
                 if drive.first == joint_dof:
-                    tau_j_max[0] = drive.second.forceLimit
+                    tau_j_max[0] = min(drive.second.forceLimit, JOINT_TAUMAX)
         else:
             act_type = JointActuationType.PASSIVE
         return dof_type, act_type, X_j, q_j_min, q_j_max, tau_j_max
@@ -818,11 +824,11 @@ class USDImporter:
         for limit in joint_spec.jointLimits:
             dof = limit.first
             if dof == self.UsdPhysics.JointDOF.TransX:
-                q_j_min[0] = distance_unit * limit.second.lower
-                q_j_max[0] = distance_unit * limit.second.upper
+                q_j_min[0] = max(distance_unit * limit.second.lower, JOINT_QMIN)
+                q_j_max[0] = min(distance_unit * limit.second.upper, JOINT_QMAX)
             elif dof == self.UsdPhysics.JointDOF.RotX:
-                q_j_min[1] = rotation_unit * limit.second.lower
-                q_j_max[1] = rotation_unit * limit.second.upper
+                q_j_min[1] = max(rotation_unit * limit.second.lower, JOINT_QMIN)
+                q_j_max[1] = min(rotation_unit * limit.second.upper, JOINT_QMAX)
         num_drives = len(joint_spec.jointDrives)
         if num_drives > 0:
             if num_drives != JointDoFType.CYLINDRICAL.num_dofs:
@@ -834,9 +840,9 @@ class USDImporter:
             for drive in joint_spec.jointDrives:
                 dof = drive.first
                 if dof == self.UsdPhysics.JointDOF.TransX:
-                    tau_j_max[0] = drive.second.forceLimit
+                    tau_j_max[0] = min(drive.second.forceLimit, JOINT_TAUMAX)
                 elif dof == self.UsdPhysics.JointDOF.RotX:
-                    tau_j_max[1] = drive.second.forceLimit
+                    tau_j_max[1] = min(drive.second.forceLimit, JOINT_TAUMAX)
         else:
             act_type = JointActuationType.PASSIVE
         return dof_type, act_type, q_j_min, q_j_max, tau_j_max
@@ -847,11 +853,11 @@ class USDImporter:
         for limit in joint_spec.jointLimits:
             dof = limit.first
             if dof == self.UsdPhysics.JointDOF.RotX:
-                q_j_min[0] = rotation_unit * limit.second.lower
-                q_j_max[0] = rotation_unit * limit.second.upper
+                q_j_min[0] = max(rotation_unit * limit.second.lower, JOINT_QMIN)
+                q_j_max[0] = min(rotation_unit * limit.second.upper, JOINT_QMAX)
             elif dof == self.UsdPhysics.JointDOF.RotY:
-                q_j_min[1] = rotation_unit * limit.second.lower
-                q_j_max[1] = rotation_unit * limit.second.upper
+                q_j_min[1] = max(rotation_unit * limit.second.lower, JOINT_QMIN)
+                q_j_max[1] = min(rotation_unit * limit.second.upper, JOINT_QMAX)
         num_drives = len(joint_spec.jointDrives)
         if num_drives > 0:
             if num_drives != JointDoFType.UNIVERSAL.num_dofs:
@@ -863,9 +869,9 @@ class USDImporter:
             for drive in joint_spec.jointDrives:
                 dof = drive.first
                 if dof == self.UsdPhysics.JointDOF.RotX:
-                    tau_j_max[0] = drive.second.forceLimit
+                    tau_j_max[0] = min(drive.second.forceLimit, JOINT_TAUMAX)
                 elif dof == self.UsdPhysics.JointDOF.RotY:
-                    tau_j_max[1] = drive.second.forceLimit
+                    tau_j_max[1] = min(drive.second.forceLimit, JOINT_TAUMAX)
         else:
             act_type = JointActuationType.PASSIVE
         return dof_type, act_type, q_j_min, q_j_max, tau_j_max
@@ -882,14 +888,14 @@ class USDImporter:
         for limit in joint_spec.jointLimits:
             dof = limit.first
             if dof == self.UsdPhysics.JointDOF.TransX:
-                q_j_min[0] = distance_unit * limit.second.lower
-                q_j_max[0] = distance_unit * limit.second.upper
+                q_j_min[0] = max(distance_unit * limit.second.lower, JOINT_QMIN)
+                q_j_max[0] = min(distance_unit * limit.second.upper, JOINT_QMAX)
             elif dof == self.UsdPhysics.JointDOF.TransY:
-                q_j_min[1] = distance_unit * limit.second.lower
-                q_j_max[1] = distance_unit * limit.second.upper
+                q_j_min[1] = max(distance_unit * limit.second.lower, JOINT_QMIN)
+                q_j_max[1] = min(distance_unit * limit.second.upper, JOINT_QMAX)
             elif dof == self.UsdPhysics.JointDOF.TransZ:
-                q_j_min[2] = distance_unit * limit.second.lower
-                q_j_max[2] = distance_unit * limit.second.upper
+                q_j_min[2] = max(distance_unit * limit.second.lower, JOINT_QMIN)
+                q_j_max[2] = min(distance_unit * limit.second.upper, JOINT_QMAX)
         num_drives = len(joint_spec.jointDrives)
         if num_drives > 0:
             if num_drives != JointDoFType.CARTESIAN.num_dofs:
@@ -901,11 +907,11 @@ class USDImporter:
             for drive in joint_spec.jointDrives:
                 dof = drive.first
                 if dof == self.UsdPhysics.JointDOF.TransX:
-                    tau_j_max[0] = drive.second.forceLimit
+                    tau_j_max[0] = min(drive.second.forceLimit, JOINT_TAUMAX)
                 elif dof == self.UsdPhysics.JointDOF.TransY:
-                    tau_j_max[1] = drive.second.forceLimit
+                    tau_j_max[1] = min(drive.second.forceLimit, JOINT_TAUMAX)
                 elif dof == self.UsdPhysics.JointDOF.TransZ:
-                    tau_j_max[2] = drive.second.forceLimit
+                    tau_j_max[2] = min(drive.second.forceLimit, JOINT_TAUMAX)
         else:
             act_type = JointActuationType.PASSIVE
         return dof_type, act_type, q_j_min, q_j_max, tau_j_max
@@ -916,14 +922,14 @@ class USDImporter:
         for limit in joint_spec.jointLimits:
             dof = limit.first
             if dof == self.UsdPhysics.JointDOF.RotX:
-                q_j_min[0] = rotation_unit * limit.second.lower
-                q_j_max[0] = rotation_unit * limit.second.upper
+                q_j_min[0] = max(rotation_unit * limit.second.lower, JOINT_QMIN)
+                q_j_max[0] = min(rotation_unit * limit.second.upper, JOINT_QMAX)
             elif dof == self.UsdPhysics.JointDOF.RotY:
-                q_j_min[1] = rotation_unit * limit.second.lower
-                q_j_max[1] = rotation_unit * limit.second.upper
+                q_j_min[1] = max(rotation_unit * limit.second.lower, JOINT_QMIN)
+                q_j_max[1] = min(rotation_unit * limit.second.upper, JOINT_QMAX)
             elif dof == self.UsdPhysics.JointDOF.RotZ:
-                q_j_min[2] = rotation_unit * limit.second.lower
-                q_j_max[2] = rotation_unit * limit.second.upper
+                q_j_min[2] = max(rotation_unit * limit.second.lower, JOINT_QMIN)
+                q_j_max[2] = min(rotation_unit * limit.second.upper, JOINT_QMAX)
         num_drives = len(joint_spec.jointDrives)
         if num_drives > 0:
             if num_drives != JointDoFType.SPHERICAL.num_dofs:
@@ -935,11 +941,11 @@ class USDImporter:
             for drive in joint_spec.jointDrives:
                 dof = drive.first
                 if dof == self.UsdPhysics.JointDOF.RotX:
-                    tau_j_max[0] = drive.second.forceLimit
+                    tau_j_max[0] = min(drive.second.forceLimit, JOINT_TAUMAX)
                 elif dof == self.UsdPhysics.JointDOF.RotY:
-                    tau_j_max[1] = drive.second.forceLimit
+                    tau_j_max[1] = min(drive.second.forceLimit, JOINT_TAUMAX)
                 elif dof == self.UsdPhysics.JointDOF.RotZ:
-                    tau_j_max[2] = drive.second.forceLimit
+                    tau_j_max[2] = min(drive.second.forceLimit, JOINT_TAUMAX)
         else:
             act_type = JointActuationType.PASSIVE
         return dof_type, act_type, q_j_min, q_j_max, tau_j_max
@@ -957,23 +963,23 @@ class USDImporter:
         for limit in joint_spec.jointLimits:
             dof = limit.first
             if dof == self.UsdPhysics.JointDOF.TransX:
-                q_j_min[0] = distance_unit * limit.second.lower
-                q_j_max[0] = distance_unit * limit.second.upper
+                q_j_min[0] = max(distance_unit * limit.second.lower, JOINT_QMIN)
+                q_j_max[0] = min(distance_unit * limit.second.upper, JOINT_QMAX)
             elif dof == self.UsdPhysics.JointDOF.TransY:
-                q_j_min[1] = distance_unit * limit.second.lower
-                q_j_max[1] = distance_unit * limit.second.upper
+                q_j_min[1] = max(distance_unit * limit.second.lower, JOINT_QMIN)
+                q_j_max[1] = min(distance_unit * limit.second.upper, JOINT_QMAX)
             elif dof == self.UsdPhysics.JointDOF.TransZ:
-                q_j_min[2] = distance_unit * limit.second.lower
-                q_j_max[2] = distance_unit * limit.second.upper
+                q_j_min[2] = max(distance_unit * limit.second.lower, JOINT_QMIN)
+                q_j_max[2] = min(distance_unit * limit.second.upper, JOINT_QMAX)
             elif dof == self.UsdPhysics.JointDOF.RotX:
-                q_j_min[0] = rotation_unit * limit.second.lower
-                q_j_max[0] = rotation_unit * limit.second.upper
+                q_j_min[0] = max(rotation_unit * limit.second.lower, JOINT_QMIN)
+                q_j_max[0] = min(rotation_unit * limit.second.upper, JOINT_QMAX)
             elif dof == self.UsdPhysics.JointDOF.RotY:
-                q_j_min[1] = rotation_unit * limit.second.lower
-                q_j_max[1] = rotation_unit * limit.second.upper
+                q_j_min[1] = max(rotation_unit * limit.second.lower, JOINT_QMIN)
+                q_j_max[1] = min(rotation_unit * limit.second.upper, JOINT_QMAX)
             elif dof == self.UsdPhysics.JointDOF.RotZ:
-                q_j_min[2] = rotation_unit * limit.second.lower
-                q_j_max[2] = rotation_unit * limit.second.upper
+                q_j_min[2] = max(rotation_unit * limit.second.lower, JOINT_QMIN)
+                q_j_max[2] = min(rotation_unit * limit.second.upper, JOINT_QMAX)
 
         num_drives = len(joint_spec.jointDrives)
         if num_drives > 0:
@@ -986,17 +992,17 @@ class USDImporter:
             for drive in joint_spec.jointDrives:
                 dof = drive.first
                 if dof == self.UsdPhysics.JointDOF.TransX:
-                    tau_j_max[0] = drive.second.forceLimit
+                    tau_j_max[0] = min(drive.second.forceLimit, JOINT_TAUMAX)
                 elif dof == self.UsdPhysics.JointDOF.TransY:
-                    tau_j_max[1] = drive.second.forceLimit
+                    tau_j_max[1] = min(drive.second.forceLimit, JOINT_TAUMAX)
                 elif dof == self.UsdPhysics.JointDOF.TransZ:
-                    tau_j_max[2] = drive.second.forceLimit
+                    tau_j_max[2] = min(drive.second.forceLimit, JOINT_TAUMAX)
                 elif dof == self.UsdPhysics.JointDOF.RotX:
-                    tau_j_max[0] = drive.second.forceLimit
+                    tau_j_max[0] = min(drive.second.forceLimit, JOINT_TAUMAX)
                 elif dof == self.UsdPhysics.JointDOF.RotY:
-                    tau_j_max[1] = drive.second.forceLimit
+                    tau_j_max[1] = min(drive.second.forceLimit, JOINT_TAUMAX)
                 elif dof == self.UsdPhysics.JointDOF.RotZ:
-                    tau_j_max[2] = drive.second.forceLimit
+                    tau_j_max[2] = min(drive.second.forceLimit, JOINT_TAUMAX)
         else:
             act_type = JointActuationType.PASSIVE
         return dof_type, act_type, q_j_min, q_j_max, tau_j_max

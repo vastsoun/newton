@@ -1052,6 +1052,7 @@ class ModelBuilder:
         # Initialize the body data collections
         bodies_wid = []
         bodies_bid = []
+        bodies_i_r_com_i = []
         bodies_m_i = []
         bodies_inv_m_i = []
         bodies_i_I_i = []
@@ -1184,6 +1185,7 @@ class ModelBuilder:
             for body in self._bodies:
                 bodies_wid.append(body.wid)
                 bodies_bid.append(body.bid)
+                bodies_i_r_com_i.append(body.i_r_com_i)
                 bodies_m_i.append(body.m_i)
                 bodies_inv_m_i.append(1.0 / body.m_i)
                 bodies_i_I_i.append(body.i_I_i)
@@ -1428,6 +1430,7 @@ class ModelBuilder:
                 num_bodies=model.size.sum_of_num_bodies,
                 wid=wp.array(bodies_wid, dtype=int32),
                 bid=wp.array(bodies_bid, dtype=int32),
+                i_r_com_i=wp.array(bodies_i_r_com_i, dtype=vec3f, requires_grad=requires_grad),
                 m_i=wp.array(bodies_m_i, dtype=float32, requires_grad=requires_grad),
                 inv_m_i=wp.array(bodies_inv_m_i, dtype=float32, requires_grad=requires_grad),
                 i_I_i=wp.array(bodies_i_I_i, dtype=mat33f, requires_grad=requires_grad),

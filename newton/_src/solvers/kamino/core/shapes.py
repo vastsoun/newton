@@ -25,7 +25,7 @@ import warp as wp
 
 from ....core.types import Vec2, Vec3, nparray
 from ....geometry.types import GeoType, Heightfield, Mesh
-from .types import Descriptor, override, vec4f
+from .types import Descriptor, override, vec3f, vec4f
 
 ###
 # Module interface
@@ -165,37 +165,219 @@ class ShapeType(IntEnum):
         else:
             raise ValueError(f"Unknown shape type value: {self.value}")
 
-    def to_newton(self) -> GeoType:
+    @classmethod
+    def to_newton(
+        cls, shape_type: ShapeType, shape_params: ShapeParamsLike | None = None
+    ) -> tuple[GeoType, vec3f | None]:
         """
-        Converts the shape type to the corresponding Newton shape type.
+        Converts Kamino :class:`ShapeType` Newton :class:`GeoType`, and
+        optionally converts shape parameters to Newton shape scale.
+
+        Shape parameter formats:
+        - BOX:
+            - Newton: half-extents as `scale := (x, y, z)`
+            - Kamino: dimensions as `params := (depth, width, height, _)`
+        - SPHERE:
+            - Newton: radius as `scale := (radius, _, _)`
+            - Kamino: radius as `params := (radius, _, _, _)`
+        - CAPSULE:
+            - Newton: radius and half-height as `scale := (radius, half_height, _)`
+            - Kamino: radius and height as `params := (radius, height, _, _)`
+        - CYLINDER:
+            - Newton: radius and half-height as `scale := (radius, half_height, _)`
+            - Kamino: radius and height as `params := (radius, height, _, _)`
+        - CONE:
+            - Newton: radius and half-height as `scale := (radius, half_height, _)`
+            - Kamino: radius and height as `params := (radius, height, _, _)`
+        - ELLIPSOID:
+            - Newton: semi-axes as `scale := (x, y, z)`
+            - Kamino: radii as `params := (a, b, c, _)`
+        - PLANE:
+            - Newton: half-width in x, half-length in y
+            - Kamino: normal and distance as `params := (normal_x, normal_y, normal_z, distance)`
+
+        See :class:`GenericShapeData` in :file:`support_function.py` for further details.
+
+        Args:
+            shape_params(`ShapeParamsLike`, optional):
+                Kamino shape parameters as an iterable of floats.\n
+                Expected formats per shape type are described above.\n
+                If not `None`, this argument must have the expected
+                number of parameters for the given shape type.
+
+        Returns:
+            (`GeoType`, `vec3f | None`):
+                A tuple containing the corresponding Newton :class:`GeoType` and the shape scale as a :class:`vec3f`.
+
+        Raises:
+            ValueError:
+                If the shape type cannot be mapped to a Newton GeoType, or
+                if the provided parameters are invalid for the shape type.
         """
-        type = None
-        match self:
-            case ShapeType.EMPTY:
-                type = GeoType.NONE
-            case ShapeType.SPHERE:
-                type = GeoType.SPHERE
-            case ShapeType.CYLINDER:
-                type = GeoType.CYLINDER
-            case ShapeType.CONE:
-                type = GeoType.CONE
-            case ShapeType.CAPSULE:
-                type = GeoType.CAPSULE
-            case ShapeType.BOX:
-                type = GeoType.BOX
-            case ShapeType.ELLIPSOID:
-                type = GeoType.ELLIPSOID
-            case ShapeType.PLANE:
-                type = GeoType.PLANE
-            case ShapeType.CONVEX:
-                type = GeoType.CONVEX_MESH
-            case ShapeType.MESH:
-                type = GeoType.MESH
-            case ShapeType.HFIELD:
-                type = GeoType.HFIELD
-            case _:
-                raise ValueError(f"Unknown ShapeType value: {self}")
-        return type
+        # First attempt to convert the current shape
+        # type to the corresponding Newton GeoType
+        mapping = {
+            ShapeType.EMPTY: GeoType.NONE,
+            ShapeType.SPHERE: GeoType.SPHERE,
+            ShapeType.CYLINDER: GeoType.CYLINDER,
+            ShapeType.CONE: GeoType.CONE,
+            ShapeType.CAPSULE: GeoType.CAPSULE,
+            ShapeType.BOX: GeoType.BOX,
+            ShapeType.ELLIPSOID: GeoType.ELLIPSOID,
+            ShapeType.PLANE: GeoType.PLANE,
+            ShapeType.MESH: GeoType.MESH,
+            ShapeType.CONVEX: GeoType.CONVEX_MESH,
+            ShapeType.HFIELD: GeoType.HFIELD,
+        }
+        geo_type = mapping.get(shape_type, None)
+        if geo_type is None:
+            raise ValueError(f"Unsupported mapping to `newton.GeoType` from shape type: {shape_type}")
+
+        # Then, and if parameters are provided, attempt to convert the
+        # geometry parameters to the corresponding Newton shape scale
+        shape_scale = None
+        if shape_params is not None:
+            # Ensure params is either a single float or an iterable of floats
+            # with the expected number of parameters for the shape type
+            if isinstance(shape_params, float):
+                shape_params = [shape_params]
+            elif not isinstance(shape_params, Iterable):
+                raise ValueError(f"Invalid parameters type: {type(shape_params)}")
+            elif len(shape_params) != shape_type.num_params:
+                raise ValueError(
+                    f"Invalid number of parameters for shape type {shape_type}: "
+                    f"expected {shape_type.num_params}, got {len(shape_params)}"
+                )
+            # Convert the parameters to the corresponding Newton shape scale based on the shape type
+            match shape_type:
+                case ShapeType.SPHERE:
+                    # Kamino: (radius, 0, 0, 0) -> Newton: (radius, ?, ?)
+                    shape_scale = vec3f(shape_params[0], 0.0, 0.0)
+                case ShapeType.BOX:
+                    # Kamino: (depth, width, height) full size -> Newton: half-extents
+                    shape_scale = vec3f(shape_params[0] * 0.5, shape_params[1] * 0.5, shape_params[2] * 0.5)
+                case ShapeType.CAPSULE:
+                    # Kamino: (radius, height) full height -> Newton: (radius, half-height, ?)
+                    shape_scale = vec3f(shape_params[0], shape_params[1] * 0.5, 0.0)
+                case ShapeType.CYLINDER:
+                    # Kamino: (radius, height) full height -> Newton: (radius, half-height, ?)
+                    shape_scale = vec3f(shape_params[0], shape_params[1] * 0.5, 0.0)
+                case ShapeType.CONE:
+                    # Kamino: (radius, height) full height -> Newton: (radius, half-height, ?)
+                    shape_scale = vec3f(shape_params[0], shape_params[1] * 0.5, 0.0)
+                case ShapeType.ELLIPSOID:
+                    # Kamino: (a, b, c) semi-axes -> Newton: same
+                    shape_scale = vec3f(shape_params[0], shape_params[1], shape_params[2])
+                case ShapeType.PLANE:
+                    # NOTE: For an infinite plane, we use (0, 0, _) to signal an infinite extents
+                    shape_scale = vec3f(0.0, 0.0, 0.0)  # Infinite plane
+                case (ShapeType.MESH, ShapeType.CONVEX, ShapeType.HFIELD):
+                    shape_scale = vec3f(0.0, 0.0, 0.0)
+                case _:
+                    raise ValueError(f"Unsupported `ShapeType` for parameter conversion: {shape_type}")
+
+        # Return the mapped GeoType and the converted scale (if applicable)
+        return geo_type, shape_scale
+
+    @classmethod
+    def from_newton(cls, geo_type: GeoType, shape_scale: vec3f | None = None) -> tuple[ShapeType, vec4f | None]:
+        """
+        Converts Newton :class:`GeoType` to Kamino :class:`ShapeType`, and
+        optionally converts Newton shape scale to Kamino geometry parameters.
+
+        Shape parameter formats:
+        - BOX:
+            - Newton: half-extents as `scale := (x, y, z)`
+            - Kamino: dimensions as `params := (depth, width, height, _)`
+        - SPHERE:
+            - Newton: radius as `scale := (radius, _, _)`
+            - Kamino: radius as `params := (radius, _, _, _)`
+        - CAPSULE:
+            - Newton: radius and half-height as `scale := (radius, half_height, _)`
+            - Kamino: radius and height as `params := (radius, height, _, _)`
+        - CYLINDER:
+            - Newton: radius and half-height as `scale := (radius, half_height, _)`
+            - Kamino: radius and height as `params := (radius, height, _, _)`
+        - CONE:
+            - Newton: radius and half-height as `scale := (radius, half_height, _)`
+            - Kamino: radius and height as `params := (radius, height, _, _)`
+        - ELLIPSOID:
+            - Newton: semi-axes as `scale := (x, y, z)`
+            - Kamino: radii as `params := (a, b, c, _)`
+        - PLANE:
+            - Newton: half-width in x, half-length in y
+            - Kamino: normal and distance as `params := (normal_x, normal_y, normal_z, distance)`
+
+        See :class:`GenericShapeData` in :file:`support_function.py` for further details.
+
+        Args:
+            geo_type (GeoType):
+                The Newton GeoType as :class:`GeoType`, i.e. the shape geometry type.
+            shape_scale (vec3f | None):
+                Newton shape scale as an iterable of floats.\n
+                Expected formats per shape type are described above.\n
+                If not `None`, this argument must be of type :class:`vec3f`.
+
+        Returns:
+            (ShapeType, vec4f):
+            A tuple containing the corresponding Kamino :class:`ShapeType` and parameters as :class:`vec4f`.
+        """
+        # First attempt to convert the newton.GeoType
+        # to the corresponding Kamino ShapeType
+        mapping = {
+            GeoType.NONE: ShapeType.EMPTY,
+            GeoType.SPHERE: ShapeType.SPHERE,
+            GeoType.CYLINDER: ShapeType.CYLINDER,
+            GeoType.CONE: ShapeType.CONE,
+            GeoType.CAPSULE: ShapeType.CAPSULE,
+            GeoType.BOX: ShapeType.BOX,
+            GeoType.ELLIPSOID: ShapeType.ELLIPSOID,
+            GeoType.PLANE: ShapeType.PLANE,
+            GeoType.MESH: ShapeType.MESH,
+            GeoType.CONVEX_MESH: ShapeType.CONVEX,
+            GeoType.HFIELD: ShapeType.HFIELD,
+        }
+        shape_type = mapping.get(geo_type, None)
+        if shape_type is None:
+            raise ValueError(f"Unsupported mapping to `ShapeType` from newton.GeoType: {geo_type}")
+
+        # Then, and if parameters are provided, attempt to convert the
+        # geometry parameters to the corresponding Newton shape scale
+        shape_params = None
+        if shape_scale is not None:
+            # Ensure shape_scale is an iterable of floats with the expected number of parameters for the shape type
+            if not isinstance(shape_scale, vec3f):
+                raise ValueError(f"Invalid shape_scale type: {type(shape_scale)}")
+            # Convert the Newton shape scale to the corresponding
+            # Kamino geometry parameters based on the shape type
+            match geo_type:
+                case GeoType.SPHERE:
+                    # Newton: (radius, ?, ?) -> Kamino: (radius, 0, 0, 0)
+                    shape_params = vec4f(shape_scale[0], 0.0, 0.0, 0.0)
+                case GeoType.BOX:
+                    # Newton: half-extents -> Kamino: (depth, width, height) full size
+                    shape_params = vec4f(shape_scale[0] * 2.0, shape_scale[1] * 2.0, shape_scale[2] * 2.0, 0.0)
+                case GeoType.CAPSULE:
+                    # Newton: (radius, half-height, ?) -> Kamino: (radius, height, _, _)
+                    shape_params = vec4f(shape_scale[0], shape_scale[1] * 2.0, 0.0, 0.0)
+                case GeoType.CYLINDER:
+                    # Newton: (radius, half-height, ?) -> Kamino: (radius, height, _, _)
+                    shape_params = vec4f(shape_scale[0], shape_scale[1] * 2.0, 0.0, 0.0)
+                case GeoType.CONE:
+                    # Newton: (radius, half-height, ?) -> Kamino: (radius, height, _, _)
+                    shape_params = vec4f(shape_scale[0], shape_scale[1] * 2.0, 0.0, 0.0)
+                case GeoType.ELLIPSOID:
+                    # Newton: (a, b, c) semi-axes -> Kamino: (a, b, c, _)
+                    shape_params = vec4f(shape_scale[0], shape_scale[1], shape_scale[2], 0.0)
+                case GeoType.PLANE:
+                    # NOTE: For an infinite plane, we use (0, 0, _) to signal an infinite extents
+                    shape_params = vec4f(0.0, 0.0, 1.0, 0.0)  # Default normal and distance
+                case _:
+                    raise ValueError(f"Unsupported `GeoType` for parameter conversion: {geo_type}")
+
+        # Return the mapped ShapeType and the
+        # converted parameters (if applicable)
+        return shape_type, shape_params
 
 
 ShapeParamsLike = None | float | Iterable[float]

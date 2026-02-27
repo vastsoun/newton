@@ -291,7 +291,7 @@ class ViewerKamino(ViewerGL):
         # Update the geometry data
         self.log_shapes(
             name=f"/world_{geom.wid}/body_{geom.bid}/{scope}/{geom.gid}-{geom.name}",
-            geo_type=geom.shape.type.to_newton(),
+            geo_type=ShapeType.to_newton(shape_type=geom.shape.type)[0],
             geo_scale=params,
             xforms=wp.array([geom_transform], dtype=wp.transform),
             geo_is_solid=geom.shape.is_solid,

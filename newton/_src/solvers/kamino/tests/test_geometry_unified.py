@@ -622,14 +622,14 @@ class TestShapeTypeToNewton(unittest.TestCase):
             ShapeType.HFIELD: GeoType.HFIELD,
         }
         for kamino_type, newton_type in expected_mappings.items():
-            result = kamino_type.to_newton()
-            self.assertEqual(result, newton_type, f"{kamino_type} should map to {newton_type}")
+            geo_type, _ = ShapeType.to_newton(kamino_type)
+            self.assertEqual(geo_type, newton_type, f"{kamino_type} should map to {newton_type}")
 
     def test_all_enum_members_covered(self):
         """Every ShapeType member must be handled by to_newton()."""
         for member in ShapeType:
-            result = member.to_newton()
-            self.assertIsInstance(result, GeoType)
+            geo_type, _ = ShapeType.to_newton(member)
+            self.assertIsInstance(geo_type, GeoType)
 
 
 class TestUnifiedPipelineNxnBroadphase(unittest.TestCase):

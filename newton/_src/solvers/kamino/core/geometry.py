@@ -176,36 +176,55 @@ class GeometriesModel:
             Shape of ``(num_geoms,)`` and type :class:`transformf`.
     """
 
+    ###
+    # Meta-Data
+    ###
+
     num_geoms: int = 0
     """Total number of geometry elements in the model (host-side)."""
 
+    label: list[str] | None = None
+    """
+    A list containing the label of each geometry.\n
+    Length of ``num_geoms`` and type :class:`str`.
+    """
+
+    ###
+    # Identifiers
+    ###
+
     wid: wp.array | None = None
     """
-    World index each geometry element.\n
+    World index of each geometry entity.\n
     Shape of ``(num_geoms,)`` and type :class:`int`.
     """
 
     gid: wp.array | None = None
     """
-    Geometry index of each geometry element w.r.t its world.\n
+    Geometry index of each geometry entity w.r.t its world.\n
     Shape of ``(num_geoms,)`` and type :class:`int32`.
     """
 
     lid: wp.array | None = None
     """
-    Layer index of each geometry element w.r.t its body.\n
+    Layer index of each geometry entity w.r.t its body.\n
     Shape of ``(num_geoms,)`` and type :class:`int`.
     """
 
     bid: wp.array | None = None
     """
-    Body index of each geometry element.\n
+    Body index of each geometry entity.\n
     Shape of ``(num_geoms,)`` and type :class:`int`.
     """
 
+    ###
+    # Parameterization
+    ###
+
+    # TODO: Rename to type
     sid: wp.array | None = None
     """
-    Shape index of each geometry element.\n
+    Shape index of each geometry entity.\n
     Shape of ``(num_geoms,)`` and type :class:`int`.
     """
 
@@ -219,7 +238,7 @@ class GeometriesModel:
 
     params: wp.array | None = None
     """
-    Shape parameters of each geometry element if they are shape primitives.\n
+    Shape parameters of each geometry entity if they are shape primitives.\n
     Shape of ``(num_geoms,)`` and type :class:`vec4f`.
     """
 

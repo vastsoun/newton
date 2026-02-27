@@ -1050,6 +1050,7 @@ class ModelBuilder:
         gravity_vector = []
 
         # Initialize the body data collections
+        bodies_label = []
         bodies_wid = []
         bodies_bid = []
         bodies_i_r_com_i = []
@@ -1061,6 +1062,7 @@ class ModelBuilder:
         bodies_u_i_0 = []
 
         # Initialize the joint data collections
+        joints_label = []
         joints_wid = []
         joints_jid = []
         joints_dofid = []
@@ -1096,6 +1098,7 @@ class ModelBuilder:
         joints_kcts_start = []
 
         # Initialize the collision geometry data collections
+        cgeoms_label = []
         cgeoms_wid = []
         cgeoms_gid = []
         cgeoms_lid = []
@@ -1111,6 +1114,7 @@ class ModelBuilder:
         cgeoms_margin = []
 
         # Initialize the physical geometry data collections
+        pgeoms_label = []
         pgeoms_wid = []
         pgeoms_gid = []
         pgeoms_lid = []
@@ -1183,6 +1187,7 @@ class ModelBuilder:
         # A helper function to collect model bodies data
         def collect_body_model_data():
             for body in self._bodies:
+                bodies_label.append(body.name)
                 bodies_wid.append(body.wid)
                 bodies_bid.append(body.bid)
                 bodies_i_r_com_i.append(body.i_r_com_i)
@@ -1197,6 +1202,7 @@ class ModelBuilder:
         def collect_joint_model_data():
             for joint in self._joints:
                 world_bio = self._worlds[joint.wid].bodies_idx_offset
+                joints_label.append(joint.name)
                 joints_wid.append(joint.wid)
                 joints_jid.append(joint.jid)
                 joints_dofid.append(joint.dof_type.value)
@@ -1251,6 +1257,7 @@ class ModelBuilder:
         def collect_collision_geometry_model_data():
             cgeom_meshes = {}
             for geom in self._cgeoms:
+                cgeoms_label.append(geom.name)
                 cgeoms_wid.append(geom.wid)
                 cgeoms_lid.append(geom.lid)
                 cgeoms_gid.append(geom.gid)
@@ -1269,6 +1276,7 @@ class ModelBuilder:
         def collect_physical_geometry_model_data():
             pgeom_meshes = {}
             for geom in self._pgeoms:
+                pgeoms_label.append(geom.name)
                 pgeoms_wid.append(geom.wid)
                 pgeoms_lid.append(geom.lid)
                 pgeoms_gid.append(geom.gid)
@@ -1428,6 +1436,7 @@ class ModelBuilder:
             # Create the bodies model
             model.bodies = RigidBodiesModel(
                 num_bodies=model.size.sum_of_num_bodies,
+                label=bodies_label,
                 wid=wp.array(bodies_wid, dtype=int32),
                 bid=wp.array(bodies_bid, dtype=int32),
                 i_r_com_i=wp.array(bodies_i_r_com_i, dtype=vec3f, requires_grad=requires_grad),
@@ -1442,6 +1451,7 @@ class ModelBuilder:
             # Create the joints model
             model.joints = JointsModel(
                 num_joints=model.size.sum_of_num_joints,
+                label=joints_label,
                 wid=wp.array(joints_wid, dtype=int32),
                 jid=wp.array(joints_jid, dtype=int32),
                 dof_type=wp.array(joints_dofid, dtype=int32),
@@ -1480,6 +1490,7 @@ class ModelBuilder:
             # Create the collision geometries model
             model.cgeoms = CollisionGeometriesModel(
                 num_geoms=model.size.sum_of_num_collision_geoms,
+                label=cgeoms_label,
                 wid=wp.array(cgeoms_wid, dtype=int32),
                 gid=wp.array(cgeoms_gid, dtype=int32),
                 lid=wp.array(cgeoms_lid, dtype=int32),
@@ -1498,6 +1509,7 @@ class ModelBuilder:
             # Create the physical geometries model
             model.pgeoms = GeometriesModel(
                 num_geoms=model.size.sum_of_num_physical_geoms,
+                label=pgeoms_label,
                 wid=wp.array(pgeoms_wid, dtype=int32),
                 gid=wp.array(pgeoms_gid, dtype=int32),
                 lid=wp.array(pgeoms_lid, dtype=int32),

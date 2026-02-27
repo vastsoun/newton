@@ -147,8 +147,22 @@ class RigidBodiesModel:
             Shape of ``(num_bodies,)`` and type :class:`vec6`.
     """
 
+    ###
+    # Meta-Data
+    ###
+
     num_bodies: int = 0
     """Total number of body elements in the model (host-side)."""
+
+    label: list[str] | None = None
+    """
+    A list containing the label of each body.\n
+    Length of ``num_bodies`` and type :class:`str`.
+    """
+
+    ###
+    # Identifiers
+    ###
 
     wid: wp.array | None = None
     """
@@ -161,6 +175,10 @@ class RigidBodiesModel:
     Body index of each body w.r.t it's world.\n
     Shape of ``(num_bodies,)`` and type :class:`int`.
     """
+
+    ###
+    # Parameterization
+    ###
 
     i_r_com_i: wp.array | None = None
     """
@@ -191,6 +209,10 @@ class RigidBodiesModel:
     Inverse of the local moment of inertia of each body.\n
     Shape of ``(num_bodies,)`` and type :class:`mat33`.
     """
+
+    ###
+    # Initial State
+    ###
 
     q_i_0: wp.array | None = None
     """

@@ -1174,8 +1174,18 @@ class JointsModel:
     An SoA-based container to hold time-invariant model data of joints.
     """
 
+    ###
+    # Meta-Data
+    ###
+
     num_joints: int = 0
     """Total number of joints in the model (host-side)."""
+
+    label: list[str] | None = None
+    """
+    A list containing the label of each joint entity.\n
+    Length of ``num_joints`` and type :class:`str`.
+    """
 
     ###
     # Identifiers

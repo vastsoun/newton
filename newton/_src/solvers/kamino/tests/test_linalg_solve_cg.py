@@ -462,7 +462,9 @@ class TestLinalgConjugate(unittest.TestCase):
         x_wp = wp.zeros(n_worlds * maxdim, dtype=float32, device=device)
 
         # Solve with discover_sparse=True
-        solver = ConjugateGradientSolver(discover_sparse=True, sparse_block_size=block_size, sparse_threshold=1.0)
+        solver = ConjugateGradientSolver(
+            discover_sparse=True, sparse_block_size=block_size, sparse_threshold=1.0, device=device
+        )
         solver.finalize(dense_op)
         solver.compute(A_wp)
         solver.solve(b_wp, x_wp)
@@ -481,7 +483,7 @@ class TestLinalgConjugate(unittest.TestCase):
 
         # Also solve with discover_sparse=False and compare
         x_dense_wp = wp.zeros(n_worlds * maxdim, dtype=float32, device=device)
-        solver_dense = ConjugateGradientSolver(discover_sparse=False)
+        solver_dense = ConjugateGradientSolver(discover_sparse=False, device=device)
         solver_dense.finalize(dense_op)
         solver_dense.compute(A_wp)
         solver_dense.solve(b_wp, x_dense_wp)

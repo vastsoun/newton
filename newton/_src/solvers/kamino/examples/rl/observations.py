@@ -135,6 +135,7 @@ class DrlegsStanceObservation(ObservationBuilder):
         actuated_joint_indices: Per-world DOF indices of the 12 actuated
             joints within the joint-coord vector of length 36.
         num_actions: Number of policy action outputs (12 for DR Legs).
+        action_scale: Scale applied to raw actions before storing in history.
     """
 
     def __init__(
@@ -144,6 +145,7 @@ class DrlegsStanceObservation(ObservationBuilder):
         device: str,
         actuated_joint_indices: list[int],
         num_actions: int = 12,
+        action_scale: float = 0.25,
     ) -> None:
         super().__init__(sim=sim, num_worlds=num_worlds, device=device, command_dim=0)
         self._actuated_joint_indices = torch.tensor(
@@ -153,8 +155,9 @@ class DrlegsStanceObservation(ObservationBuilder):
         )
         self._num_actions = num_actions
         self._num_dofs = sim.model.size.max_of_num_joint_coords
+        self._action_scale = action_scale
 
-        # Action history buffer (most recent actions for actuated joints).
+        # Action history buffer (most recent scaled actions for actuated joints).
         self._action_history: torch.Tensor = torch.zeros(
             (num_worlds, num_actions),
             device=device,
@@ -169,7 +172,8 @@ class DrlegsStanceObservation(ObservationBuilder):
         q_j = self._get_joint_positions()  # (num_worlds, 36)
 
         if actions is not None:
-            self._action_history[:] = actions
+            # Scale to match training observation (action_transform output)
+            self._action_history[:] = self._action_scale * actions
 
         obs = torch.cat([q_j, self._action_history], dim=-1)  # (num_worlds, 48)
         return obs

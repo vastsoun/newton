@@ -404,10 +404,6 @@ def _reset_joints_of_select_worlds(
     data_q_j: wp.array(dtype=float32),
     data_dq_j: wp.array(dtype=float32),
     data_lambda_j: wp.array(dtype=float32),
-    data_j_w_j: wp.array(dtype=vec6f),
-    data_j_w_a_j: wp.array(dtype=vec6f),
-    data_j_w_c_j: wp.array(dtype=vec6f),
-    data_j_w_l_j: wp.array(dtype=vec6f),
 ):
     # Retrieve the body index from the 1D thread index
     jid = wp.tid()
@@ -482,13 +478,6 @@ def _reset_joints_of_select_worlds(
         data_q_j,
         data_dq_j,
     )
-
-    # Reset the joint-related wrenches to zero
-    zero6 = vec6f(0.0)
-    data_j_w_j[jid] = zero6
-    data_j_w_a_j[jid] = zero6
-    data_j_w_c_j[jid] = zero6
-    data_j_w_l_j[jid] = zero6
 
     # If requested, reset the joint constraint reactions to zero
     if reset_constraints:
@@ -841,10 +830,6 @@ def reset_select_worlds_to_initial_state(
             data.joints.q_j,
             data.joints.dq_j,
             data.joints.lambda_j,
-            data.joints.j_w_j,
-            data.joints.j_w_a_j,
-            data.joints.j_w_c_j,
-            data.joints.j_w_l_j,
         ],
     )
 
@@ -941,9 +926,5 @@ def reset_select_worlds_to_state(
             data.joints.q_j,
             data.joints.dq_j,
             data.joints.lambda_j,
-            data.joints.j_w_j,
-            data.joints.j_w_a_j,
-            data.joints.j_w_c_j,
-            data.joints.j_w_l_j,
         ],
     )

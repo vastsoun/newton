@@ -774,6 +774,7 @@ class Model:
     def data(
         self,
         unilateral_cts: bool = False,
+        joint_wrenches: bool = False,
         requires_grad: bool = False,
         device: Devicelike = None,
     ) -> ModelData:
@@ -783,6 +784,8 @@ class Model:
         Parameters:
             unilateral_cts (`bool`, optional):
                 Whether to include unilateral constraints (limits and contacts) in the model data. Defaults to `True`.
+            joint_wrenches (`bool`, optional):
+                Whether to include joint wrenches in the model data. Defaults to `False`.
             requires_grad (`bool`, optional):
                 Whether the model data should require gradients. Defaults to `False`.
             device (`Devicelike`, optional):
@@ -855,13 +858,14 @@ class Model:
                 m_j=wp.zeros(shape=njdyncts, dtype=float32, requires_grad=requires_grad),
                 inv_m_j=wp.zeros(shape=njdyncts, dtype=float32, requires_grad=requires_grad),
                 dq_b_j=wp.zeros(shape=njdyncts, dtype=float32, requires_grad=requires_grad),
+                # TODO: Should we make these optional and only include them when implicit joints are present?
                 q_j_ref=wp.clone(self.joints.q_j_0, requires_grad=requires_grad),
                 dq_j_ref=wp.clone(self.joints.dq_j_0, requires_grad=requires_grad),
                 tau_j_ref=wp.zeros(shape=njdofs, dtype=float32, requires_grad=requires_grad),
-                j_w_j=wp.zeros(shape=nj, dtype=vec6f, requires_grad=requires_grad),
-                j_w_c_j=wp.zeros(shape=nj, dtype=vec6f, requires_grad=requires_grad),
-                j_w_a_j=wp.zeros(shape=nj, dtype=vec6f, requires_grad=requires_grad),
-                j_w_l_j=wp.zeros(shape=nj, dtype=vec6f, requires_grad=requires_grad),
+                j_w_j=wp.zeros(shape=nj, dtype=vec6f, requires_grad=requires_grad) if joint_wrenches else None,
+                j_w_c_j=wp.zeros(shape=nj, dtype=vec6f, requires_grad=requires_grad) if joint_wrenches else None,
+                j_w_a_j=wp.zeros(shape=nj, dtype=vec6f, requires_grad=requires_grad) if joint_wrenches else None,
+                j_w_l_j=wp.zeros(shape=nj, dtype=vec6f, requires_grad=requires_grad) if joint_wrenches else None,
             )
 
             # Construct the geometries data from the model's initial state

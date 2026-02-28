@@ -188,15 +188,7 @@ def _reset_select_worlds_to_dof_state(
         data_joint_dr_j[joints_cts_start + j] = r_j[j]
         data_joint_lambda_j[joints_cts_start + j] = r_j[j]
     data_joint_p_j[joints_start + 0] = wp.transformf(r_j_world_to_cart, q_j_world_to_cart)
-    data_joint_j_w_j[joints_start + 0] = ZEROS6
-    data_joint_j_w_a_j[joints_start + 0] = ZEROS6
-    data_joint_j_w_c_j[joints_start + 0] = ZEROS6
-    data_joint_j_w_l_j[joints_start + 0] = ZEROS6
     data_joint_p_j[joints_start + 1] = wp.transformf(r_j_cart_to_pole, q_j_cart_to_pole)
-    data_joint_j_w_j[joints_start + 1] = ZEROS6
-    data_joint_j_w_a_j[joints_start + 1] = ZEROS6
-    data_joint_j_w_c_j[joints_start + 1] = ZEROS6
-    data_joint_j_w_l_j[joints_start + 1] = ZEROS6
 
 
 ###
@@ -257,10 +249,6 @@ def reset_select_worlds_to_dof_state(
             data.joints.q_j,
             data.joints.dq_j,
             data.joints.lambda_j,
-            data.joints.j_w_j,
-            data.joints.j_w_a_j,
-            data.joints.j_w_c_j,
-            data.joints.j_w_l_j,
         ],
     )
 

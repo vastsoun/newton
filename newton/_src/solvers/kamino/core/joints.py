@@ -1243,26 +1243,20 @@ class JointDescriptor(Descriptor):
 
         # Check if DoF type + actuation type are compatible
         if self.dof_type == JointDoFType.FREE and self.is_binary:
-            raise ValueError(
-                f"Invalid joint configuration: FREE joints cannot be binary (name={self.name}, uid={self.uid})."
-            )
+            raise ValueError(f"Invalid joint: FREE joints cannot be binary (name={self.name}, uid={self.uid}).")
         if self.act_type == JointActuationType.FORCE and self.dof_type == JointDoFType.FIXED:
-            raise ValueError(
-                f"Invalid joint configuration: FIXED joints cannot be actuated (name={self.name}, uid={self.uid})."
-            )
+            raise ValueError(f"Invalid joint: FIXED joints cannot be actuated (name={self.name}, uid={self.uid}).")
 
         # Check if DoF type + dynamic/implicit PD settings are compatible
         if self.is_implicit_pd and self.dof_type == JointDoFType.FREE:
             raise ValueError(
-                f"Invalid joint configuration: FREE joints cannot have implicit PD gains (name={self.name}, uid={self.uid})."
+                f"Invalid joint: FREE joints cannot have implicit PD gains (name={self.name}, uid={self.uid})."
             )
         if self.is_dynamic and self.dof_type == JointDoFType.FIXED:
-            raise ValueError(
-                f"Invalid joint configuration: FIXED joints cannot be dynamic (name={self.name}, uid={self.uid})."
-            )
+            raise ValueError(f"Invalid joint: FIXED joints cannot be dynamic (name={self.name}, uid={self.uid}).")
         if self.is_implicit_pd and self.dof_type == JointDoFType.FIXED:
             raise ValueError(
-                f"Invalid joint configuration: FIXED joints cannot have implicit PD gains (name={self.name}, uid={self.uid})."
+                f"Invalid joint: FIXED joints cannot have implicit PD gains (name={self.name}, uid={self.uid})."
             )
 
         # Set default values for joint limits if not provided
@@ -1285,7 +1279,7 @@ class JointDescriptor(Descriptor):
         supported_implicit_joint_types = (JointDoFType.REVOLUTE, JointDoFType.PRISMATIC)
         if (self.is_dynamic or self.is_implicit_pd) and self.dof_type not in supported_implicit_joint_types:
             raise ValueError(
-                "Invalid joint configuration: Kamino currently supports dynamic/implicit joints "
+                "Invalid joint: Kamino currently supports dynamic/implicit joints "
                 f"for those that are REVOLUTE or PRISMATIC (name={self.name}, uid={self.uid})."
             )
 
@@ -1997,9 +1991,6 @@ class JointsData:
 
     ###
     # Per-Body Wrenches
-    #
-    # TODO: Remove these (probably redundant) or make them optional via flag
-    # since they are mainly useful for visualization and simulation debugging
     ###
 
     j_w_j: wp.array | None = None
@@ -2102,10 +2093,11 @@ class JointsData:
         """
         Resets all joint wrenches to zero.
         """
-        self.j_w_j.zero_()
-        self.j_w_c_j.zero_()
-        self.j_w_a_j.zero_()
-        self.j_w_l_j.zero_()
+        if self.j_w_j is not None:
+            self.j_w_j.zero_()
+            self.j_w_c_j.zero_()
+            self.j_w_a_j.zero_()
+            self.j_w_l_j.zero_()
 
     def clear_all(self):
         """

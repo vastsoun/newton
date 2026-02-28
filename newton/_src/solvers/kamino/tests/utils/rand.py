@@ -20,8 +20,8 @@ import scipy.linalg
 import warp as wp
 from warp.context import Devicelike
 
-from newton._src.solvers.kamino.core.types import FloatArrayLike, float32, int32
-from newton._src.solvers.kamino.linalg.utils.rand import (
+from ...core.types import FloatArrayLike, float32, int32
+from ...linalg.utils.rand import (
     random_rhs_for_matrix,
     random_spd_matrix,
     random_symmetric_matrix,

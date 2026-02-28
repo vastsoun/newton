@@ -16,7 +16,6 @@
 import time
 
 import warp as wp
-from warp.context import Devicelike
 
 from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
 from newton._src.solvers.kamino.examples import print_progress_bar
@@ -35,7 +34,7 @@ class SimulationRunner:
         builder: ModelBuilderKamino,
         simulator: Simulator,
         controller: JointSpacePIDController | None = None,
-        device: Devicelike = None,
+        device: wp.DeviceLike = None,
         max_steps: int = 0,
         max_time: float = 0.0,
         viewer_fps: float = 60.0,

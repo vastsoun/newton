@@ -23,7 +23,6 @@ import copy
 
 import numpy as np
 import warp as wp
-from warp.context import Devicelike
 
 from .bodies import RigidBodiesModel, RigidBodyDescriptor
 from .geometry import GeometriesModel, GeometryDescriptor
@@ -78,7 +77,7 @@ class ModelBuilderKamino:
         """
         # Meta-data
         self._num_worlds: int = 0
-        self._device: Devicelike = None
+        self._device: wp.DeviceLike = None
         self._requires_grad: bool = False
 
         # Declare and initialize counters
@@ -840,7 +839,9 @@ class ModelBuilderKamino:
     # Model Compilation
     ###
 
-    def finalize(self, device: Devicelike = None, requires_grad: bool = False, base_auto: bool = True) -> ModelKamino:
+    def finalize(
+        self, device: wp.DeviceLike = None, requires_grad: bool = False, base_auto: bool = True
+    ) -> ModelKamino:
         """
         Constructs a ModelKamino object from the current ModelBuilderKamino.
 
@@ -848,7 +849,7 @@ class ModelBuilderKamino:
         object, allocating the necessary data structures on the target device.
 
         Args:
-            device (Devicelike): The target device for the model data.\n
+            device (wp.DeviceLike): The target device for the model data.\n
                 If None, the default/preferred device will determined by Warp.
             requires_grad (bool): Whether the model data should support gradients.\n
                 Defaults to False.

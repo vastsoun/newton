@@ -18,7 +18,6 @@ Provides mechanisms to define and manage constraints and their associated input/
 """
 
 import warp as wp
-from warp.context import Devicelike
 
 from ..core.data import DataKamino
 from ..core.model import ModelKamino
@@ -97,7 +96,7 @@ def make_unilateral_constraints_info(
     data: DataKamino,
     limits: LimitsKamino | None = None,
     contacts: ContactsKamino | None = None,
-    device: Devicelike = None,
+    device: wp.DeviceLike = None,
 ):
     """
     Constructs constraints entries in the ModelKaminoInfo member of a model.
@@ -107,7 +106,7 @@ def make_unilateral_constraints_info(
         data (DataKamino): The solver container holding time-varying data.
         limits (LimitsKamino, optional): The limits container holding the joint-limit data.
         contacts (ContactsKamino, optional): The contacts container holding the contact data.
-        device (Devicelike, optional): The device on which to allocate the constraint info arrays.\n
+        device (wp.DeviceLike, optional): The device on which to allocate the constraint info arrays.\n
             If None, the model's device will be used.
     """
 

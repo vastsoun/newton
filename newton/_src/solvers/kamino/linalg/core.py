@@ -24,7 +24,6 @@ from dataclasses import dataclass
 
 import numpy as np
 import warp as wp
-from warp.context import Devicelike
 
 from ..core.types import FloatType, IntType, VecIntType, float32, int32
 from ..utils import logger as msg
@@ -106,7 +105,7 @@ class DenseRectangularMultiLinearInfo:
     itype: IntType = int32
     """The integer type used for indexing the underlying data arrays."""
 
-    device: Devicelike | None = None
+    device: wp.DeviceLike | None = None
     """The device on which the data arrays are allocated."""
 
     maxdim: wp.array | None = None
@@ -163,7 +162,7 @@ class DenseRectangularMultiLinearInfo:
         dimensions: list[tuple[int, int]],
         dtype: FloatType = float32,
         itype: IntType = int32,
-        device: Devicelike = None,
+        device: wp.DeviceLike = None,
     ) -> None:
         """
         Constructs and allocates the data of the rectangular multi-linear system info on the specified device.
@@ -223,7 +222,7 @@ class DenseRectangularMultiLinearInfo:
         rvio: wp.array,
         ivio: wp.array,
         dtype: FloatType = float32,
-        device: Devicelike = None,
+        device: wp.DeviceLike = None,
     ) -> None:
         """
         Assigns the data of the square multi-linear system info from externally allocated arrays.
@@ -363,7 +362,7 @@ class DenseSquareMultiLinearInfo:
     itype: IntType = int32
     """The integer type used for indexing the underlying data arrays."""
 
-    device: Devicelike | None = None
+    device: wp.DeviceLike | None = None
     """The device on which the data arrays are allocated."""
 
     maxdim: wp.array | None = None
@@ -404,7 +403,7 @@ class DenseSquareMultiLinearInfo:
         return dims
 
     def finalize(
-        self, dimensions: list[int], dtype: FloatType = float32, itype: IntType = int32, device: Devicelike = None
+        self, dimensions: list[int], dtype: FloatType = float32, itype: IntType = int32, device: wp.DeviceLike = None
     ) -> None:
         """
         Constructs and allocates the data of the square multi-linear system info on the specified device.
@@ -452,7 +451,7 @@ class DenseSquareMultiLinearInfo:
         mio: wp.array,
         vio: wp.array,
         dtype: FloatType = float32,
-        device: Devicelike = None,
+        device: wp.DeviceLike = None,
     ) -> None:
         """
         Assigns the data of the square multi-linear system info from externally allocated arrays.

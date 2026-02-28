@@ -21,7 +21,6 @@ from dataclasses import dataclass
 
 import numpy as np
 import warp as wp
-from warp.context import Devicelike
 
 from ...core.model import ModelKamino
 from ...core.time import TimeData
@@ -263,7 +262,7 @@ class AnimationJointReference:
         rate: int | list[int] = 1,
         loop: bool | list[bool] = True,
         use_fd: bool = False,
-        device: Devicelike = None,
+        device: wp.DeviceLike = None,
     ):
         """
         Initialize the animation joint reference interface.
@@ -283,11 +282,11 @@ class AnimationJointReference:
                 the simulation step matches the set decimation. Defaults to 1 for all worlds.
             loop (bool | list[bool]): Flag(s) indicating whether the animation should loop.
             use_fd (bool): Whether to compute finite-difference velocities from the input coordinates.
-            device (Devicelike | None): Device to use for allocations and execution.
+            device (wp.DeviceLike | None): Device to use for allocations and execution.
         """
 
         # Cache the device
-        self._device: Devicelike = device
+        self._device: wp.DeviceLike = device
 
         # Declare the model dimensions meta-data
         self._num_worlds: int = 0
@@ -316,7 +315,7 @@ class AnimationJointReference:
     ###
 
     @property
-    def device(self) -> Devicelike | None:
+    def device(self) -> wp.DeviceLike | None:
         """The device used for allocations and execution."""
         return self._device
 
@@ -452,7 +451,7 @@ class AnimationJointReference:
         rate: int | list[int] = 1,
         loop: bool | list[bool] = True,
         use_fd: bool = False,
-        device: Devicelike = None,
+        device: wp.DeviceLike = None,
     ) -> None:
         """
         Allocate the animation joint reference data.
@@ -470,7 +469,7 @@ class AnimationJointReference:
                 the simulation step matches the set decimation. Defaults to 1 for all worlds.
             loop (bool | list[bool]): Flag(s) indicating whether the animation should loop.
             use_fd (bool): Whether to compute finite-difference velocities from the input coordinates.
-            device (Devicelike | None): Device to use for allocations and execution.
+            device (wp.DeviceLike | None): Device to use for allocations and execution.
 
         Raises:
             ValueError: If the model is not valid or actuated DoFs are not properly configured.

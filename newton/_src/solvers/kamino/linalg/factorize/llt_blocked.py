@@ -19,7 +19,6 @@ from ctypes import sizeof
 from functools import cache
 
 import warp as wp
-from warp.context import Devicelike
 
 from ...core.types import float32, int32
 
@@ -395,7 +394,7 @@ def llt_blocked_factorize(
     L: wp.array(dtype=float32),
     num_blocks: int = 1,
     block_dim: int = 128,  # TODO: Rename this to be clearer that this is the number of threads per TILE block and not matrix block
-    device: Devicelike = None,
+    device: wp.DeviceLike = None,
 ):
     """
     Launches the blocked Cholesky factorization kernel for a block partitioned matrix.
@@ -423,7 +422,7 @@ def llt_blocked_solve(
     x: wp.array(dtype=float32),
     num_blocks: int = 1,
     block_dim: int = 64,
-    device: Devicelike = None,
+    device: wp.DeviceLike = None,
 ):
     """
     Launches the blocked Cholesky solve kernel for a block partitioned matrix.
@@ -455,7 +454,7 @@ def llt_blocked_solve_inplace(
     x: wp.array(dtype=float32),
     num_blocks: int = 1,
     block_dim: int = 64,
-    device: Devicelike = None,
+    device: wp.DeviceLike = None,
 ):
     """
     Launches the blocked Cholesky in-place solve kernel for a block partitioned matrix.

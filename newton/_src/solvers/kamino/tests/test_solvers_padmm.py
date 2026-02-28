@@ -20,7 +20,6 @@ import unittest
 
 import numpy as np
 import warp as wp
-from warp.context import Devicelike
 
 from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
 from newton._src.solvers.kamino.core.math import screw, vec3f
@@ -53,7 +52,7 @@ class TestSetup:
         max_world_contacts: int = 32,
         perturb: bool = True,
         gravity: bool = True,
-        device: Devicelike = None,
+        device: wp.DeviceLike = None,
         sparse: bool = False,
         **kwargs,
     ):

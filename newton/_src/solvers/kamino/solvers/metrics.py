@@ -87,7 +87,6 @@ A typical example for using this module is:
 from dataclasses import dataclass
 
 import warp as wp
-from warp.context import Devicelike
 
 from ..core.data import DataKamino
 from ..core.math import screw, screw_angular, screw_linear
@@ -1122,21 +1121,21 @@ class SolutionMetrics:
     about the specific metrics computed, please refer to the documentation of that class.
     """
 
-    def __init__(self, model: ModelKamino | None = None, device: Devicelike = None):
+    def __init__(self, model: ModelKamino | None = None, device: wp.DeviceLike = None):
         """
         Initializes the solution metrics evaluator.
 
         Args:
             model (ModelKamino):
                 The model containing the time-invariant data of the simulation.
-            device (Devicelike, optional):
+            device (wp.DeviceLike, optional):
                 The device where the metrics data should be allocated.\n
                 If not specified, the model's device will be used by default.
         """
         # Declare and initialize the target device
         # NOTE: This can be overridden during a
         # later call to `finalize()` if needed
-        self._device: Devicelike = device
+        self._device: wp.DeviceLike = device
 
         # Declare the metrics data container
         self._data: SolutionMetricsData | None = None
@@ -1149,14 +1148,14 @@ class SolutionMetrics:
         if model is not None:
             self.finalize(model, device)
 
-    def finalize(self, model: ModelKamino, device: Devicelike = None):
+    def finalize(self, model: ModelKamino, device: wp.DeviceLike = None):
         """
         Finalizes the metrics data allocations on the specified device.
 
         Args:
             model (ModelKamino):
                 The model containing the time-invariant data of the simulation.
-            device (Devicelike, optional):
+            device (wp.DeviceLike, optional):
                 The device where the metrics data should be allocated.\n
                 If not specified, the model's device will be used by default.
         """
@@ -1207,7 +1206,7 @@ class SolutionMetrics:
     ###
 
     @property
-    def device(self) -> Devicelike:
+    def device(self) -> wp.DeviceLike:
         """
         Returns the device where the metrics data is allocated.
         """

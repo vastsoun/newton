@@ -18,7 +18,6 @@ import os
 
 import numpy as np
 import warp as wp
-from warp.context import Devicelike
 
 import newton
 import newton.examples
@@ -43,7 +42,7 @@ wp.set_module_options({"enable_backward": False})
 class Example:
     def __init__(
         self,
-        device: Devicelike = None,
+        device: wp.DeviceLike = None,
         max_steps: int = 1000,
         use_cuda_graph: bool = False,
         gravity: bool = True,

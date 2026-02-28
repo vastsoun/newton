@@ -34,7 +34,6 @@ See the :class:`WarmstarterLimits` and :class:`WarmstarterContacts` classes for 
 from enum import IntEnum
 
 import warp as wp
-from warp.context import Devicelike
 
 from ..core.data import DataKamino
 from ..core.math import contact_wrench_matrix_from_points
@@ -779,7 +778,7 @@ class WarmstarterLimits:
             limits (LimitsKamino): The limits container whose allocations are used to initialize the warmstarter.
         """
         # Store the device of the provided contacts container
-        self._device: Devicelike = limits.device if limits is not None else None
+        self._device: wp.DeviceLike = limits.device if limits is not None else None
 
         # Declare the internal limits cache
         self._cache: LimitsKaminoData | None = None
@@ -803,7 +802,7 @@ class WarmstarterLimits:
         self._sorter = KeySorter(max_num_keys=limits.model_max_limits_host, device=self._device)
 
     @property
-    def device(self) -> Devicelike:
+    def device(self) -> wp.DeviceLike:
         """
         Returns the device on which the warmstarter operates.
         """
@@ -940,7 +939,7 @@ class WarmstarterContacts:
         self._scaling: float32 = float32(scaling)
 
         # Set the device to use as that of the provided contacts container
-        self._device: Devicelike = contacts.device if contacts is not None else None
+        self._device: wp.DeviceLike = contacts.device if contacts is not None else None
 
         # Declare the internal contacts cache
         self._cache: ContactsKaminoData | None = None
@@ -968,7 +967,7 @@ class WarmstarterContacts:
         self._sorter = KeySorter(max_num_keys=contacts.model_max_contacts_host, device=self._device)
 
     @property
-    def device(self) -> Devicelike:
+    def device(self) -> wp.DeviceLike:
         """
         Returns the device on which the warmstarter operates.
         """

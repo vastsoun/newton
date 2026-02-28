@@ -18,7 +18,6 @@
 import numpy as np
 import scipy.linalg
 import warp as wp
-from warp.context import Devicelike
 
 from ...core.types import FloatArrayLike, float32, int32
 from ...linalg.utils.rand import (
@@ -42,7 +41,7 @@ class RandomProblemLLT:
         b: list[np.ndarray] | None = None,
         np_dtype=np.float32,
         wp_dtype=float32,
-        device: Devicelike = None,
+        device: wp.DeviceLike = None,
         upper: bool = False,
     ):
         # Check input data to ensure they are indeed lists of numpy arrays
@@ -86,7 +85,7 @@ class RandomProblemLLT:
         self.seed: int = seed
         self.np_dtype = np_dtype
         self.wp_dtype = wp_dtype
-        self.device: Devicelike = device
+        self.device: wp.DeviceLike = device
 
         # Declare the lists of reference problem data
         self.A_np: list[np.ndarray] = []
@@ -198,7 +197,7 @@ class RandomProblemLDLT:
         b: list[np.ndarray] | None = None,
         np_dtype=np.float32,
         wp_dtype=float32,
-        device: Devicelike = None,
+        device: wp.DeviceLike = None,
         lower: bool = True,
     ):
         # Check input data to ensure they are indeed lists of numpy arrays
@@ -259,7 +258,7 @@ class RandomProblemLDLT:
         self.seed: int = seed
         self.np_dtype = np_dtype
         self.wp_dtype = wp_dtype
-        self.device: Devicelike = device
+        self.device: wp.DeviceLike = device
 
         # Declare the lists of reference problem data
         self.A_np: list[np.ndarray] = []

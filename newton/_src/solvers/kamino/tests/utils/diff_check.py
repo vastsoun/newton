@@ -23,7 +23,6 @@ import os
 from collections.abc import Callable
 
 import numpy as np
-from warp.context import Devicelike
 
 from ...models import get_testing_usd_assets_path
 from ...utils.io.usd import USDImporter
@@ -42,7 +41,7 @@ def run_test_single_joint_examples(
     binary_joints: bool = True,
     passive_joints: bool = True,
     actuators: bool = True,
-    device: Devicelike = None,
+    device: wp.DeviceLike = None,
 ):
     """
     Runs a test function over all or a subset of the single-joint examples (e.g. to check some derivatives for all joint types)

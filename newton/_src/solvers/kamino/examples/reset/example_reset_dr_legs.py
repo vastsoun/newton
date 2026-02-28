@@ -19,7 +19,6 @@ import os
 import numpy as np
 import warp as wp
 from scipy.spatial.transform import Rotation
-from warp.context import Devicelike
 
 import newton
 import newton.examples
@@ -96,7 +95,7 @@ def _test_control_callback(
 class Example:
     def __init__(
         self,
-        device: Devicelike = None,
+        device: wp.DeviceLike = None,
         num_worlds: int = 1,
         max_steps: int = 1000,
         use_cuda_graph: bool = False,

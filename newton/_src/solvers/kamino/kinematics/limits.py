@@ -18,7 +18,6 @@
 from dataclasses import dataclass, field
 
 import warp as wp
-from warp.context import Devicelike
 
 from ..core.data import DataKamino
 from ..core.joints import JOINT_QMAX, JOINT_QMIN, JointDoFType
@@ -598,7 +597,7 @@ class LimitsKamino:
     def __init__(
         self,
         model: ModelKamino | None = None,
-        device: Devicelike = None,
+        device: wp.DeviceLike = None,
     ):
         # The device on which to allocate the limits data
         self._device = device
@@ -615,7 +614,7 @@ class LimitsKamino:
     ###
 
     @property
-    def device(self) -> Devicelike:
+    def device(self) -> wp.DeviceLike:
         """
         Returns the device on which the limits data is allocated.
         """
@@ -776,7 +775,7 @@ class LimitsKamino:
     # Operations
     ###
 
-    def finalize(self, model: ModelKamino, device: Devicelike = None):
+    def finalize(self, model: ModelKamino, device: wp.DeviceLike = None):
         # Ensure the model is valid
         if model is None:
             raise ValueError("LimitsKamino: model must be specified for allocation (got None)")

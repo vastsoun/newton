@@ -25,7 +25,6 @@ from dataclasses import dataclass
 
 import numpy as np
 import warp as wp
-from warp.context import Devicelike
 
 from ..core.model import ModelKamino
 from ..core.types import int32, quatf, vec2i, vec3f
@@ -356,7 +355,7 @@ class ContactAggregation:
         model: ModelKamino | None = None,
         contacts: ContactsKamino | None = None,
         static_geom_ids: list[int] | None = None,
-        device: Devicelike | None = None,
+        device: wp.DeviceLike | None = None,
         enable_positions_normals: bool = False,
     ):
         """Initialize contact aggregation.
@@ -371,7 +370,7 @@ class ContactAggregation:
             enable_positions_normals: Whether to compute average contact positions and normals per body.
         """
         # Cache the device
-        self._device: Devicelike | None = device
+        self._device: wp.DeviceLike | None = device
 
         # Forward declarations
         self._model: ModelKamino | None = None
@@ -393,7 +392,7 @@ class ContactAggregation:
         model: ModelKamino,
         contacts: ContactsKamino,
         static_geom_ids: list[int] | None = None,
-        device: Devicelike | None = None,
+        device: wp.DeviceLike | None = None,
     ) -> None:
         """Finalizes memory allocations for the contact aggregation data.
 
@@ -401,7 +400,7 @@ class ContactAggregation:
             model (ModelKamino): The model container describing the system to be simulated.
             contacts (ContactsKamino): The contacts container with per-contact data.
             static_geom_ids (list[int] | None): List of geometry IDs considered as 'static'. Defaults to [0].
-            device (Devicelike | None): Device for computation. If None, uses model's device.
+            device (wp.DeviceLike | None): Device for computation. If None, uses model's device.
         """
         # Override the device if specified
         if device is not None:

@@ -26,7 +26,6 @@ from typing import TYPE_CHECKING, Any, get_args
 
 import numpy as np
 import warp as wp
-from warp.context import Devicelike
 from warp.types import type_size_in_bytes
 
 from ..core.types import FloatType, IntType, float32, int32
@@ -163,7 +162,7 @@ class BlockSparseMatrices:
     # Host-side Metadata
     ###
 
-    device: Devicelike | None = None
+    device: wp.DeviceLike | None = None
     """Host-side cache of the device on which all data arrays are allocated."""
 
     nzb_dtype: BlockDType | None = None
@@ -350,7 +349,7 @@ class BlockSparseMatrices:
         capacities: list[int],
         nzb_dtype: BlockDType | None = None,
         index_dtype: IntType | None = None,
-        device: Devicelike | None = None,
+        device: wp.DeviceLike | None = None,
     ):
         """
         Finalizes the block-sparse matrix container by allocating on-device data arrays.
@@ -363,7 +362,7 @@ class BlockSparseMatrices:
             block_type (BlockDType, optional):
                 An optional :class:`BlockDType` specifying the fixed type of each non-zero block.\n
                 If not provided, it must be set prior to finalization.
-            device (Devicelike, optional):
+            device (wp.DeviceLike, optional):
                 An optional device on which to allocate the data arrays.\n
                 If not provided, the existing device of the container will be used.
 
@@ -712,7 +711,7 @@ def allocate_block_sparse_from_dense(
     dense_op: "DenseLinearOperatorData",
     block_size: int,
     sparsity_threshold: float = 1.0,
-    device: Devicelike | None = None,
+    device: wp.DeviceLike | None = None,
 ) -> BlockSparseMatrices:
     """
     Allocates a BlockSparseMatrices container sized for converting from a dense operator.

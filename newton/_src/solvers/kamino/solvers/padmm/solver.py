@@ -24,7 +24,6 @@ See the :mod:`newton._src.solvers.kamino.solvers.padmm` module for a detailed de
 import math
 
 import warp as wp
-from warp.context import Devicelike
 
 from ...core.data import DataKamino
 from ...core.model import ModelKamino, ModelKaminoSize
@@ -102,7 +101,7 @@ class PADMMSolver:
         use_acceleration: bool = True,
         collect_info: bool = False,
         avoid_graph_conditionals: bool = False,
-        device: Devicelike = None,
+        device: wp.DeviceLike = None,
     ):
         """
         Initializes a PADMM solver.
@@ -121,7 +120,7 @@ class PADMMSolver:
                 will increase memory consumption and reduce wall-clock time.
             avoid_graph_conditionals (bool): Set to `True` to avoid CUDA graph conditional nodes.\n
                 When enabled, replaces `wp.capture_while` with an unrolled for-loop over max iterations.
-            device (Devicelike | None): The target device on which to allocate the solver data.
+            device (wp.DeviceLike | None): The target device on which to allocate the solver data.
         """
 
         # Declare the internal solver settings cache
@@ -139,7 +138,7 @@ class PADMMSolver:
         self._data: PADMMData | None = None
 
         # Declare the device cache
-        self._device: Devicelike = None
+        self._device: wp.DeviceLike = None
 
         # Perform memory allocations if a model is provided
         if model is not None:
@@ -182,7 +181,7 @@ class PADMMSolver:
         return self._data
 
     @property
-    def device(self) -> Devicelike:
+    def device(self) -> wp.DeviceLike:
         """
         Returns the device on which the solver data is allocated.
         """
@@ -200,7 +199,7 @@ class PADMMSolver:
         use_acceleration: bool = True,
         collect_info: bool = False,
         avoid_graph_conditionals: bool = False,
-        device: Devicelike = None,
+        device: wp.DeviceLike = None,
     ):
         """
         Allocates the solver data structures on the specified device.
@@ -216,7 +215,7 @@ class PADMMSolver:
                 will increase memory consumption and reduce wall-clock time.
             avoid_graph_conditionals (bool): Set to `True` to avoid CUDA graph conditional nodes.\n
                 When enabled, replaces `wp.capture_while` with an unrolled for-loop over max iterations.
-            device (Devicelike | None): The target device on which to allocate the solver data.
+            device (wp.DeviceLike | None): The target device on which to allocate the solver data.
         """
 
         # Ensure the model is valid

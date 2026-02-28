@@ -21,7 +21,6 @@ from dataclasses import dataclass
 
 import numpy as np
 import warp as wp
-from warp.context import Devicelike
 
 from ...core.control import ControlKamino
 from ...core.joints import JointActuationType
@@ -361,7 +360,7 @@ class JointSpacePIDController:
         K_i: FloatArrayLike | None = None,
         K_d: FloatArrayLike | None = None,
         decimation: IntArrayLike | None = None,
-        device: Devicelike = None,
+        device: wp.DeviceLike = None,
     ):
         """
         A simple PID controller in joint space.
@@ -374,11 +373,11 @@ class JointSpacePIDController:
             K_d (FloatArrayLike | None): Derivative gains per actuated joint DoF.
             decimation (IntArrayLike | None): Control decimation for each world
                 expressed as a multiple of simulation steps.
-            device (Devicelike | None): Device to use for allocations and execution.
+            device (wp.DeviceLike | None): Device to use for allocations and execution.
         """
 
         # Cache the device
-        self._device: Devicelike = device
+        self._device: wp.DeviceLike = device
 
         # Declare the internal controller data
         self._data: PIDControllerData | None = None
@@ -399,7 +398,7 @@ class JointSpacePIDController:
         return self._data
 
     @property
-    def device(self) -> Devicelike:
+    def device(self) -> wp.DeviceLike:
         """The device used for allocations and execution."""
         return self._device
 
@@ -414,7 +413,7 @@ class JointSpacePIDController:
         K_i: FloatArrayLike,
         K_d: FloatArrayLike,
         decimation: IntArrayLike | None = None,
-        device: Devicelike = None,
+        device: wp.DeviceLike = None,
     ) -> None:
         """
         Allocates all internal data arrays of the controller.
@@ -426,7 +425,7 @@ class JointSpacePIDController:
             K_d (FloatArrayLike): Derivative gains per actuated joint DoF.
             decimation (IntArrayLike | None): Control decimation for each world expressed
                 as a multiple of simulation steps. Defaults to 1 for all worlds if None.
-            device (Devicelike | None): Device to use for allocations and execution.
+            device (wp.DeviceLike | None): Device to use for allocations and execution.
 
         Raises:
             ValueError: If the model has no actuated DoFs.

@@ -78,7 +78,6 @@ from typing import Any
 
 import numpy as np
 import warp as wp
-from warp.context import Devicelike
 
 from ..core.data import DataKamino
 from ..core.model import ModelKamino, ModelKaminoSize
@@ -717,7 +716,7 @@ class DelassusOperator:
         contacts: ContactsKamino | None = None,
         solver: LinearSolverType = None,
         solver_kwargs: dict[str, Any] | None = None,
-        device: Devicelike = None,
+        device: wp.DeviceLike = None,
     ):
         """
         Creates a Delassus operator for the given model, limits and contacts containers.
@@ -736,7 +735,7 @@ class DelassusOperator:
             data (DataKamino, optional): The model data container holding the state info and data.
             limits (LimitsKamino, optional): The container holding the allocated joint-limit data.
             contacts (ContactsKamino, optional): The container holding the allocated contacts data.
-            device (Devicelike, optional): The device identifier for the Delassus operator. Defaults to None.
+            device (wp.DeviceLike, optional): The device identifier for the Delassus operator. Defaults to None.
             factorizer (CholeskyFactorizer, optional): An optional Cholesky factorization object. Defaults to None.
         """
         # Declare and initialize the host-side cache of the necessary memory allocations
@@ -748,7 +747,7 @@ class DelassusOperator:
         self._max_of_max_total_D_size: int = 0
 
         # Cache the requested device
-        self._device: Devicelike = device
+        self._device: wp.DeviceLike = device
 
         # Declare the model size cache
         self._size: ModelKaminoSize | None = None
@@ -831,7 +830,7 @@ class DelassusOperator:
         limits: LimitsKamino | None = None,
         contacts: ContactsKamino | None = None,
         solver: LinearSolverType = None,
-        device: Devicelike = None,
+        device: wp.DeviceLike = None,
         solver_kwargs: dict[str, Any] | None = None,
     ):
         """
@@ -840,7 +839,7 @@ class DelassusOperator:
         Args
         ----
             dims (List[int]): The dimensions of the Delassus matrix for each world.
-            device (Devicelike, optional): The device identifier for the Delassus operator. Defaults to None.
+            device (wp.DeviceLike, optional): The device identifier for the Delassus operator. Defaults to None.
             factorizer (CholeskyFactorizer, optional): An optional Cholesky factorization object. Defaults to None.
         """
 
@@ -1172,7 +1171,7 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
         jacobians: SparseSystemJacobians | None = None,
         solver: LinearSolverType = None,
         solver_kwargs: dict[str, Any] | None = None,
-        device: Devicelike = None,
+        device: wp.DeviceLike = None,
     ):
         """
         Creates a Delassus operator for the given model.
@@ -1203,7 +1202,7 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
                 Must be a subclass of `IterativeSolver`.
             solver_kwargs (dict, optional):
                 Additional keyword arguments to pass to the solver constructor.
-            device (Devicelike, optional):
+            device (wp.DeviceLike, optional):
                 The device identifier for the Delassus operator. Defaults to None.
         """
         super().__init__()
@@ -1223,7 +1222,7 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
         self._info: DenseSquareMultiLinearInfo | None = None
 
         # Cache the requested device
-        self._device: Devicelike = device
+        self._device: wp.DeviceLike = device
 
         # Declare the optional (iterative) solver
         self._solver: LinearSolverType | None = None
@@ -1261,7 +1260,7 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
         contacts: ContactsKamino | None,
         jacobians: SparseSystemJacobians | None = None,
         solver: LinearSolverType = None,
-        device: Devicelike = None,
+        device: wp.DeviceLike = None,
         solver_kwargs: dict[str, Any] | None = None,
     ):
         """
@@ -1282,7 +1281,7 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
             solver (LinearSolverType, optional):
                 The linear solver class to use for solving linear systems.
                 Must be a subclass of `IterativeSolver`.
-            device (Devicelike, optional):
+            device (wp.DeviceLike, optional):
                 The device identifier for the Delassus operator.
                 Defaults to None.
             solver_kwargs (dict, optional):
@@ -1757,7 +1756,7 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
         return self._info.dtype
 
     @property
-    def device(self) -> Devicelike:
+    def device(self) -> wp.DeviceLike:
         return self._model.device
 
     @property

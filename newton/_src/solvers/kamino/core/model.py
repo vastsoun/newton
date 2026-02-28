@@ -18,7 +18,6 @@
 from dataclasses import dataclass
 
 import warp as wp
-from warp.context import Devicelike
 
 from .bodies import RigidBodiesData, RigidBodiesModel
 from .control import ControlKamino
@@ -629,7 +628,7 @@ class ModelKamino:
     A container to hold the time-invariant system model data.
     """
 
-    device: Devicelike = None
+    device: wp.DeviceLike = None
     """The device on which the model data is allocated.\n
     Defaults to `None`, indicating the default/preferred Warp device.
     """
@@ -684,7 +683,7 @@ class ModelKamino:
         unilateral_cts: bool = False,
         joint_wrenches: bool = False,
         requires_grad: bool = False,
-        device: Devicelike = None,
+        device: wp.DeviceLike = None,
     ) -> DataKamino:
         """
         Creates a model data container with the initial state of the model entities.
@@ -696,7 +695,7 @@ class ModelKamino:
                 Whether to include joint wrenches in the model data. Defaults to `False`.
             requires_grad (`bool`, optional):
                 Whether the model data should require gradients. Defaults to `False`.
-            device (`Devicelike`, optional):
+            device (`wp.DeviceLike`, optional):
                 The device to create the model data on. If not specified, the model's device is used.
                 Defaults to `None`. If not specified, the model's device is used.
         """
@@ -791,14 +790,14 @@ class ModelKamino:
             geoms=geoms,
         )
 
-    def state(self, requires_grad: bool = False, device: Devicelike = None) -> StateKamino:
+    def state(self, requires_grad: bool = False, device: wp.DeviceLike = None) -> StateKamino:
         """
         Creates state container initialized to the initial body state defined in the model.
 
         Parameters:
             requires_grad (`bool`, optional):
                 Whether the state should require gradients. Defaults to `False`.
-            device (`Devicelike`, optional):
+            device (`wp.DeviceLike`, optional):
                 The device to create the state on. If not specified, the model's device is used.
         """
         # If no device is specified, use the model's device
@@ -820,14 +819,14 @@ class ModelKamino:
         # Return the constructed state container
         return state
 
-    def control(self, requires_grad: bool = False, device: Devicelike = None) -> ControlKamino:
+    def control(self, requires_grad: bool = False, device: wp.DeviceLike = None) -> ControlKamino:
         """
         Creates a control container with all values initialized to zeros.
 
         Parameters:
             requires_grad (`bool`, optional):
                 Whether the control container should require gradients. Defaults to `False`.
-            device (`Devicelike`, optional):
+            device (`wp.DeviceLike`, optional):
                 The device to create the control container on. If not specified, the model's device is used.
         """
         # If no device is specified, use the model's device

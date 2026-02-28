@@ -22,6 +22,7 @@ from warp.context import Devicelike
 
 from .bodies import RigidBodiesData, RigidBodiesModel
 from .control import Control
+from .data import ModelData, ModelDataInfo
 from .geometry import GeometriesData, GeometriesModel
 from .gravity import GravityModel
 from .joints import JointsData, JointsModel
@@ -37,9 +38,8 @@ from .world import WorldDescriptor
 
 __all__ = [
     "Model",
-    "ModelData",
-    "ModelDataInfo",
     "ModelInfo",
+    "ModelSize",
 ]
 
 
@@ -621,98 +621,6 @@ class ModelInfo:
     Total diagonal inertia over all bodies in each world.\n
     Shape of ``(num_worlds,)`` and type :class:`float`.
     """
-
-
-@dataclass
-class ModelDataInfo:
-    """
-    A container to hold the time-varying information about the set of active constraints.
-    """
-
-    ###
-    # Total Constraints
-    ###
-
-    num_total_cts: wp.array | None = None
-    """
-    The total number of active constraints.\n
-    Shape of ``(num_worlds,)`` and type :class:`int32`.
-    """
-
-    ###
-    # Limits
-    ###
-
-    num_limits: wp.array | None = None
-    """
-    The number of active limits in each world.\n
-    Shape of ``(num_worlds,)`` and type :class:`int32`.
-    """
-
-    num_limit_cts: wp.array | None = None
-    """
-    The number of active limit constraints.\n
-    Shape of ``(num_worlds,)`` and type :class:`int32`.
-    """
-
-    limit_cts_group_offset: wp.array | None = None
-    """
-    The index offset of the limit constraints group within the constraints block of each world.\n
-    Shape of ``(num_worlds,)`` and type :class:`int32`.
-    """
-
-    ###
-    # Contacts
-    ###
-
-    num_contacts: wp.array | None = None
-    """
-    The number of active contacts in each world.\n
-    Shape of ``(num_worlds,)`` and type :class:`int32`.
-    """
-
-    num_contact_cts: wp.array | None = None
-    """
-    The number of active contact constraints.\n
-    Shape of ``(num_worlds,)`` and type :class:`int32`.
-    """
-
-    contact_cts_group_offset: wp.array | None = None
-    """
-    The index offset of the contact constraints group within the constraints block of each world.\n
-    Shape of ``(num_worlds,)`` and type :class:`int32`.
-    """
-
-
-@dataclass
-class ModelData:
-    """
-    A container to hold the time-varying data of the model entities.
-
-    It includes all model-specific intermediate quantities used throughout the simulation, as needed
-    to update the state of rigid bodies, joints, geometries, active constraints and time-keeping.
-    """
-
-    info: ModelDataInfo | None = None
-    """The info container holding information about the set of active constraints."""
-
-    time: TimeData | None = None
-    """Time state of the model, including the current simulation step and time."""
-
-    bodies: RigidBodiesData | None = None
-    """
-    Time-varying data of all rigid bodies in the model: poses, twists, wrenches,
-    and moments of inertia computed in world coordinates.
-    """
-
-    joints: JointsData | None = None
-    """
-    Time-varying data of joints in the model: joint frames computed in world coordinates,
-    constraint residuals and reactions, and generalized (DoF) quantities.
-    """
-
-    geoms: GeometriesData | None = None
-    """Time-varying data of geometries in the model: poses computed in world coordinates."""
 
 
 @dataclass

@@ -45,6 +45,10 @@ This module provides a front-end defined by:
     An enumeration defining the different collision detection pipelines
     (i.e. backends) supported by Kamino.
 
+- :class:`BroadPhaseType`:
+    An enumeration defining the different broad-phase
+    algorithms supported by Kamino's CD pipelines.
+
 - :class:`BoundingVolumeType`:
     An enumeration defining the different types of bounding volumes
     supported by Kamino's broad-phase collision detection back-ends.
@@ -58,8 +62,10 @@ This module provides a front-end defined by:
     geometry pairs and a narrow-phase based on the primitive colliders of Newton.
 """
 
+from .aggregation import ContactAggregation, ContactAggregationData
 from .contacts import ContactMode, ContactsKamino, ContactsKaminoData
 from .detector import (
+    BroadPhaseType,
     CollisionDetector,
     CollisionDetectorSettings,
     CollisionPipelineType,
@@ -73,11 +79,14 @@ from .unified import CollisionPipelineUnifiedKamino
 
 __all__ = [
     "BoundingVolumeType",
+    "BroadPhaseType",
     "CollisionDetector",
     "CollisionDetectorSettings",
     "CollisionPipelinePrimitive",
     "CollisionPipelineType",
     "CollisionPipelineUnifiedKamino",
+    "ContactAggregation",
+    "ContactAggregationData",
     "ContactMode",
     "ContactsKamino",
     "ContactsKaminoData",

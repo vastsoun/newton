@@ -21,10 +21,8 @@ import numpy as np
 import warp as wp
 
 from newton._src.solvers.kamino.geometry import (
-    BoundingVolumeType,
     CollisionDetector,
     CollisionDetectorSettings,
-    CollisionPipelineType,
 )
 from newton._src.solvers.kamino.models.builders import basics
 from newton._src.solvers.kamino.models.builders.utils import make_homogeneous_builder
@@ -61,16 +59,16 @@ class TestCollisionDetectorSettings(unittest.TestCase):
     def test_00_make_default(self):
         """Test making default collision detector settings."""
         settings = CollisionDetectorSettings()
-        self.assertEqual(settings.pipeline, CollisionPipelineType.PRIMITIVE)
+        self.assertEqual(settings.pipeline, "primitive")
         self.assertEqual(settings.broadphase, "explicit")
-        self.assertEqual(settings.bvtype, BoundingVolumeType.AABB)
+        self.assertEqual(settings.bvtype, "aabb")
 
     def test_01_make_with_string_args(self):
         """Test making collision detector settings with string arguments."""
         settings = CollisionDetectorSettings(pipeline="primitive", broadphase="explicit", bvtype="aabb")
-        self.assertEqual(settings.pipeline, CollisionPipelineType.PRIMITIVE)
+        self.assertEqual(settings.pipeline, "primitive")
         self.assertEqual(settings.broadphase, "explicit")
-        self.assertEqual(settings.bvtype, BoundingVolumeType.AABB)
+        self.assertEqual(settings.bvtype, "aabb")
 
 
 class TestGeometryCollisionDetector(unittest.TestCase):
@@ -105,18 +103,19 @@ class TestGeometryCollisionDetector(unittest.TestCase):
         builder = make_homogeneous_builder(num_worlds=3, build_fn=self.build_func)
         model = builder.finalize(self.default_device)
         data = model.data()
+        state = model.state()
 
         # Create a collision detector with primitive pipeline
         settings = CollisionDetectorSettings(
-            pipeline=CollisionPipelineType.PRIMITIVE,
+            pipeline="primitive",
             broadphase="explicit",
-            bvtype=BoundingVolumeType.AABB,
+            bvtype="aabb",
         )
-        detector = CollisionDetector(model=model, builder=builder, settings=settings)
+        detector = CollisionDetector(model=model, settings=settings)
         self.assertIs(detector.device, self.default_device)
 
         # Run collision detection
-        detector.collide(model, data)
+        detector.collide(data, state)
 
         # Create a list of expected number of contacts per shape pair
         expected_world_contacts: list[int] = [self.expected_contacts] * builder.num_worlds
@@ -145,18 +144,19 @@ class TestGeometryCollisionDetector(unittest.TestCase):
         builder = make_homogeneous_builder(num_worlds=3, build_fn=self.build_func)
         model = builder.finalize(self.default_device)
         data = model.data()
+        state = model.state()
 
-        # Create a collision detector with primitive pipeline
+        # Create a collision detector with unified pipeline
         settings = CollisionDetectorSettings(
-            pipeline=CollisionPipelineType.UNIFIED,
+            pipeline="unified",
             broadphase="explicit",
-            bvtype=BoundingVolumeType.AABB,
+            bvtype="aabb",
         )
-        detector = CollisionDetector(model=model, builder=builder, settings=settings)
+        detector = CollisionDetector(model=model, settings=settings)
         self.assertIs(detector.device, self.default_device)
 
         # Run collision detection
-        detector.collide(model, data)
+        detector.collide(data, state)
 
         # Create a list of expected number of contacts per shape pair
         expected_world_contacts: list[int] = [self.expected_contacts] * builder.num_worlds
@@ -173,7 +173,7 @@ class TestGeometryCollisionDetector(unittest.TestCase):
             detector.contacts,
             expected,
             case="boxes_nunchaku",
-            header="primitive pipeline",
+            header="unified pipeline",
         )
 
 

@@ -20,6 +20,10 @@ This pipeline uses an `explicit` broad-phase operating on pre-computed
 geometry pairs and a narrow-phase based on the primitive colliders of Newton.
 """
 
+from __future__ import annotations
+
+from typing import Literal
+
 import numpy as np
 import warp as wp
 
@@ -55,7 +59,7 @@ class CollisionPipelinePrimitive:
     def __init__(
         self,
         model: ModelKamino | None = None,
-        bvtype: BoundingVolumeType = BoundingVolumeType.AABB,
+        bvtype: Literal["aabb", "bs"] = "aabb",
         default_gap: float = DEFAULT_GEOM_PAIR_CONTACT_GAP,
         device: wp.DeviceLike = None,
     ):
@@ -68,7 +72,7 @@ class CollisionPipelinePrimitive:
                 If provided, the detector will be finalized using the provided model and settings.\n
                 If `None`, the detector will be created empty without allocating data, and
                 can be finalized later by providing a model to the `finalize` method.\n
-            bvtype (`BoundingVolumeType`, optional):
+            bvtype (`Literal["aabb", "bs"]`, optional):
                 Type of bounding volume to use in broad-phase.
             default_gap (`float`, optional):
                 Default detection gap [m] applied as a floor to per-geometry gaps.
@@ -77,10 +81,13 @@ class CollisionPipelinePrimitive:
                 If `None`, the `model.device` will be used if a model is provided, otherwise
                 it will default to the device preferred by Warp on the given platform.
         """
+        # Cache the model reference, target device and settings
         self._model: ModelKamino | None = model
-        self._bvtype: BoundingVolumeType = bvtype
         self._default_gap: float = default_gap
         self._device: wp.DeviceLike = device
+
+        # Convert the bounding volume type from string to enum if necessary
+        self._bvtype: BoundingVolumeType = BoundingVolumeType.from_string(bvtype)
 
         # Declare the internal data containers
         self._cmodel: CollisionCandidatesModel | None = None
@@ -104,7 +111,12 @@ class CollisionPipelinePrimitive:
     # Operations
     ###
 
-    def finalize(self, model: ModelKamino, bvtype: BoundingVolumeType | None = None, device: wp.DeviceLike = None):
+    def finalize(
+        self,
+        model: ModelKamino,
+        bvtype: Literal["aabb", "bs"] | None = None,
+        device: wp.DeviceLike = None,
+    ):
         """
         Finalizes the collision detection pipeline by allocating all necessary data structures.
 
@@ -114,7 +126,7 @@ class CollisionPipelinePrimitive:
                 If provided, the detector will be finalized using the provided model and settings.\n
                 If `None`, the detector will be created empty without allocating data, and
                 can be finalized later by providing a model to the `finalize` method.\n
-            bvtype (`BoundingVolumeType`, optional):
+            bvtype (`Literal["aabb", "bs"]`, optional):
                 Type of bounding volume to use in broad-phase.
             device (`wp.DeviceLike`, optional):
                 The target Warp device for allocation and execution.\n
@@ -135,7 +147,7 @@ class CollisionPipelinePrimitive:
 
         # Override the device if specified
         if bvtype is not None:
-            self._bvtype = bvtype
+            self._bvtype = BoundingVolumeType.from_string(bvtype)
 
         # Retrieve the number of world
         num_worlds = self._model.size.num_worlds

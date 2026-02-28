@@ -35,6 +35,8 @@ supporting both a Z-up and X-up convention.
   as well as a cache of contact data to warm-start physics solvers.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from enum import IntEnum
 
@@ -72,6 +74,13 @@ wp.set_module_options({"enable_backward": False})
 # Constants
 ###
 
+DEFAULT_MODEL_MAX_CONTACTS: int = 1000
+"""
+The global default for maximum number of contacts per model.\n
+Used when allocating contact data without a specified capacity.\n
+Set to `1000`.
+"""
+
 DEFAULT_WORLD_MAX_CONTACTS: int = 128
 """
 The global default for maximum number of contacts per world.\n
@@ -79,12 +88,12 @@ Used when allocating contact data without a specified capacity.\n
 Set to `128`.
 """
 
-DEFAULT_GEOM_PAIR_MAX_CONTACTS: int = 8
+DEFAULT_GEOM_PAIR_MAX_CONTACTS: int = 12
 """
 The global default for maximum number of contacts per geom-pair.\n
 Used when allocating contact data without a specified capacity.\n
 Ignored for mesh-based collisions.\n
-Set to `8` (with box-box collisions being a prototypical case).
+Set to `12` (with box-box collisions being a prototypical case).
 """
 
 DEFAULT_GEOM_PAIR_CONTACT_GAP: float = 1e-5

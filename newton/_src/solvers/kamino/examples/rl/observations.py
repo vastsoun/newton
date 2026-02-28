@@ -21,6 +21,8 @@ from abc import ABC, abstractmethod
 # Thirdparty
 import torch
 import warp as wp
+
+from newton._src.solvers.kamino.examples.rl.simulation import RigidBodySim
 from newton._src.solvers.kamino.examples.rl.utils import (
     StackedIndices,
     periodic_encoding,
@@ -33,7 +35,6 @@ from newton._src.solvers.kamino.examples.rl.utils import (
     yaw_to_quat,
 )
 from newton._src.solvers.kamino.utils.sim import Simulator
-from newton._src.solvers.kamino.examples.rl.simulation import RigidBodySim
 
 
 class ObservationBuilder(ABC):
@@ -137,43 +138,35 @@ class ObservationBuilder(ABC):
 class DrlegsStanceObservation(ObservationBuilder):
     """Observation builder drlegs_stance
 
-    Observation vector (48 dims):
-        * 36 DOF positions  (all joints, including passive linkages)
-        * 12 action history (actuated joints only, most recent step)
+    Observation vector (num_dofs + num_actuated dims):
+        * DOF positions  (all joints, including passive linkages)
+        * action history (actuated joints only, most recent step)
 
     Args:
-        sim: Kamino Simulator.
-        num_worlds: Number of parallel worlds.
-        device: Torch device string.
-        actuated_joint_indices: Per-world DOF indices of the 12 actuated
-            joints within the joint-coord vector of length 36.
-        num_actions: Number of policy action outputs (12 for DR Legs).
+        body_sim: A :class:`RigidBodySim` instance.
         action_scale: Scale applied to raw actions before storing in history.
     """
 
     def __init__(
         self,
-        sim: Simulator,
-        num_worlds: int,
-        device: str,
-        actuated_joint_indices: list[int],
-        num_actions: int = 12,
+        body_sim: RigidBodySim,
         action_scale: float = 0.25,
     ) -> None:
-        super().__init__(sim=sim, num_worlds=num_worlds, device=device, command_dim=0)
-        self._actuated_joint_indices = torch.tensor(
-            actuated_joint_indices,
-            device=device,
-            dtype=torch.long,
+        super().__init__(
+            sim=body_sim.sim,
+            num_worlds=body_sim.num_worlds,
+            device=body_sim.torch_device,
+            command_dim=0,
         )
-        self._num_actions = num_actions
-        self._num_dofs = sim.model.size.max_of_num_joint_coords
+        self._body_sim = body_sim
+        self._num_actions = body_sim.num_actuated
+        self._num_dofs = body_sim.num_joint_coords
         self._action_scale = action_scale
 
         # Action history buffer (most recent scaled actions for actuated joints).
         self._action_history: torch.Tensor = torch.zeros(
-            (num_worlds, num_actions),
-            device=device,
+            (body_sim.num_worlds, self._num_actions),
+            device=body_sim.torch_device,
             dtype=torch.float32,
         )
 

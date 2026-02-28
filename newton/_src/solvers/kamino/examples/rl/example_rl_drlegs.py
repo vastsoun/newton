@@ -59,13 +59,10 @@ class Example:
         max_steps: int = 10000,
         headless: bool = False,
         action_scale: float = 0.25,
-        control_decimation: int = 4,
+        control_decimation: int = 1,
     ):
         # Timing
-        self.fps = 60
         self.sim_dt = 0.01
-        self.frame_dt = 1.0 / self.fps
-        self.sim_substeps = max(1, round(self.frame_dt / self.sim_dt))
         self.max_steps = max_steps
         self.control_decimation = control_decimation
         self.action_scale = action_scale
@@ -84,15 +81,12 @@ class Example:
             device=device,
             headless=headless,
             body_pose_offset=(0.0, 0.0, 0.265, 0.0, 0.0, 0.0, 1.0),
+            use_cuda_graph=True,
         )
 
         # Observation builder (DR Legs specific)
         self.obs_builder = DrlegsStanceObservation(
-            sim=self.body_sim.sim,
-            num_worlds=num_worlds,
-            device=self.body_sim.torch_device,
-            actuated_joint_indices=self.body_sim.actuated_dof_indices,
-            num_actions=self.body_sim.num_actuated,
+            body_sim=self.body_sim,
             action_scale=action_scale,
         )
         msg.info(f"Observation dim: {self.obs_builder.num_observations}")
@@ -123,8 +117,8 @@ class Example:
 
     def _apply_actions(self):
         """Convert policy actions to implicit PD joint position references."""
-        self.body_sim.q_j_ref[:] = self.body_sim.default_q_j
-        self.body_sim.q_j_ref[:, self.body_sim.actuated_dof_indices_tensor] += self.action_scale * self.actions
+        self.body_sim.q_j_ref.zero_()
+        self.body_sim.q_j_ref[:, self.body_sim.actuated_dof_indices_tensor] = self.action_scale * self.actions
         self.body_sim.dq_j_ref.zero_()
 
     def reset(self):
@@ -132,7 +126,7 @@ class Example:
         self.body_sim.reset()
         self.actions.zero_()
         self.obs_builder.reset()
-        self.body_sim.q_j_ref[:] = self.body_sim.default_q_j
+        self.body_sim.q_j_ref.zero_()
         self.body_sim.dq_j_ref.zero_()
 
     def step_once(self):
@@ -164,8 +158,7 @@ class Example:
 
         # Step physics for control_decimation substeps
         for _ in range(self.control_decimation):
-            for _ in range(self.sim_substeps):
-                self.body_sim.step()
+            self.body_sim.step()
 
     def render(self):
         """Render the current frame."""
@@ -195,7 +188,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--control-decimation",
         type=int,
-        default=4,
+        default=1,
         help="Number of physics substeps per RL step",
     )
     parser.add_argument("--policy", type=str, default=None, help="Path to a TorchScript policy .pt file")

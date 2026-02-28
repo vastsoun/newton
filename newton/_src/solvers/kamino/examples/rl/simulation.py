@@ -26,8 +26,6 @@ from __future__ import annotations
 
 import torch
 import warp as wp
-from warp.context import Devicelike
-
 from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.core.types import transformf, vec6f
 from newton._src.solvers.kamino.geometry.aggregation import ContactAggregation
@@ -38,6 +36,7 @@ from newton._src.solvers.kamino.models.builders.utils import (
 )
 from newton._src.solvers.kamino.utils import logger as msg
 from newton._src.solvers.kamino.utils.sim import Simulator, SimulatorSettings, ViewerKamino
+from warp.context import Devicelike
 
 
 class RigidBodySim:
@@ -83,6 +82,9 @@ class RigidBodySim:
         enable_gravity: bool = True,
         settings: SimulatorSettings | None = None,
         use_cuda_graph: bool = False,
+        record_video: bool = False,
+        video_folder: str = None,
+        async_save: bool = True,
     ):
         # ----- Device setup -----
         self._device = wp.get_device(device)
@@ -134,7 +136,13 @@ class RigidBodySim:
         self.viewer: ViewerKamino | None = None
         if not headless:
             msg.notif("Creating the 3D viewer ...")
-            self.viewer = ViewerKamino(builder=self.builder, simulator=self.sim)
+            self.viewer = ViewerKamino(
+                builder=self.builder,
+                simulator=self.sim,
+                record_video=record_video,
+                async_save=async_save,
+                video_folder=video_folder,
+            )
 
         # ----- CUDA graphs -----
         self._reset_graph = None
@@ -200,6 +208,15 @@ class RigidBodySim:
 
         # Default joint positions (cloned from initial state)
         self._default_q_j = self._q_j.clone()
+
+        # Environment origins for multi-env offsets
+        self._env_origins = torch.zeros((nw, 3), device=self._torch_device)
+
+        # External wrenches (zero-copy view)
+        self._w_e_i = wp.to_torch(self.sim.solver.data.bodies.w_e_i).reshape(nw, nb, 6)
+
+        # Body masses (zero-copy view)
+        self._mass = wp.to_torch(self.sim.model.bodies.m_i).reshape(nw, nb)
 
     # ------------------------------------------------------------------
     # Metadata extraction
@@ -272,8 +289,10 @@ class RigidBodySim:
     def step(self):
         """Execute a single physics step (simulator + contact aggregation).
 
-        Uses CUDA graph replay if available.
+        Flushes any pending resets via :meth:`apply_resets` first, then runs
+        the physics step.  Uses CUDA graph replay if available.
         """
+        self.apply_resets()
         if self._step_graph:
             wp.capture_launch(self._step_graph)
         else:
@@ -508,6 +527,21 @@ class RigidBodySim:
         return len(self._actuated_dof_indices)
 
     @property
+    def env_origins(self) -> torch.Tensor:
+        """Environment origins ``(num_worlds, 3)``."""
+        return self._env_origins
+
+    @property
+    def external_wrenches(self) -> torch.Tensor:
+        """External wrenches ``(num_worlds, num_bodies, 6)``."""
+        return self._w_e_i
+
+    @property
+    def body_masses(self) -> torch.Tensor:
+        """Body masses ``(num_worlds, num_bodies)``."""
+        return self._mass
+
+    @property
     def default_q_j(self) -> torch.Tensor:
         """Default joint positions ``(num_worlds, num_joint_coords)`` cloned at init."""
         return self._default_q_j
@@ -535,6 +569,24 @@ class RigidBodySim:
     def world_mask(self) -> torch.Tensor:
         """World mask ``(num_worlds,)`` int32 for selective resets."""
         return self._world_mask
+
+    # ------------------------------------------------------------------
+    # Name lookup helpers
+    # ------------------------------------------------------------------
+
+    def find_body_index(self, name: str) -> int:
+        """Return the index of the body with the given *name*.
+
+        Raises ``ValueError`` if not found.
+        """
+        try:
+            return self._body_names.index(name)
+        except ValueError:
+            raise ValueError(f"Body '{name}' not found. Available: {self._body_names}") from None
+
+    def find_body_indices(self, names: list[str]) -> list[int]:
+        """Return indices for a list of body *names*."""
+        return [self.find_body_index(n) for n in names]
 
     # ------------------------------------------------------------------
     # Default solver settings

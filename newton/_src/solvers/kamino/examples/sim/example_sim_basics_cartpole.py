@@ -377,7 +377,7 @@ class Example:
             )
             if ground:
                 for w in range(num_worlds):
-                    add_ground_box(self.builder, z_offset=-0.5, world_index=w, layer="world")
+                    add_ground_box(self.builder, z_offset=-0.5, world_index=w)
         else:
             msg.notif("Constructing builder using model generator ...")
             self.builder: ModelBuilder = make_homogeneous_builder(
@@ -392,8 +392,7 @@ class Example:
         msg.info("self.builder.gravity:\n%s", self.builder.gravity)
         msg.info("self.builder.bodies:\n%s", self.builder.bodies)
         msg.info("self.builder.joints:\n%s", self.builder.joints)
-        msg.info("self.builder.collision_geoms:\n%s", self.builder.collision_geoms)
-        msg.info("self.builder.physical_geoms:\n%s", self.builder.physical_geoms)
+        msg.info("self.builder.geoms:\n%s", self.builder.geoms)
 
         # Set solver settings
         settings = SimulatorSettings()

@@ -60,8 +60,7 @@ def print_model_info(model: Model):
     print(f"model.info.num_passive_joints: {model.info.num_passive_joints}")
     print(f"model.info.num_actuated_joints: {model.info.num_actuated_joints}")
     print(f"model.info.num_dynamic_joints: {model.info.num_dynamic_joints}")
-    print(f"model.info.num_collision_geoms: {model.info.num_collision_geoms}")
-    print(f"model.info.num_physical_geoms: {model.info.num_physical_geoms}")
+    print(f"model.info.num_geoms: {model.info.num_geoms}")
     print(f"model.info.max_limits: {model.info.max_limits}")
     print(f"model.info.max_contacts: {model.info.max_contacts}")
     print("-------------------------------------------------------------------------------")
@@ -259,7 +258,7 @@ def print_model_state(data: ModelData, info=True):
     print(f"data.joints.j_w_c_j: {data.joints.j_w_c_j}")
     print(f"data.joints.j_w_l_j: {data.joints.j_w_l_j}")
     # Print the geometry state data
-    print(f"data.cgeoms.pose: {data.cgeoms.pose}")
+    print(f"data.geoms.pose: {data.geoms.pose}")
 
 
 ###

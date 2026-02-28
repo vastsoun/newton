@@ -128,10 +128,10 @@ def make_benchmark_problem_dr_legs(
     # NOTE: The USD model is centered at the origin
     offset = wp.transformf(0.0, 0.0, 0.265, 0.0, 0.0, 0.0, 1.0)
     set_uniform_body_pose_offset(builder=builder, offset=offset)
-    # Add a static collision layer and geometry for the plane
+    # Add a static collision geometry for the plane
     if ground:
         for w in range(num_worlds):
-            add_ground_box(builder, world_index=w, layer="world")
+            add_ground_box(builder, world_index=w)
     # Set gravity
     for w in range(builder.num_worlds):
         builder.gravity[w].enabled = gravity

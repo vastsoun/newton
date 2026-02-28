@@ -54,7 +54,6 @@ __all__ = [
 
 def add_ground_plane(
     builder: ModelBuilder,
-    layer: str = "world",
     group: int = 1,
     collides: int = 1,
     world_index: int = 0,
@@ -66,9 +65,6 @@ def add_ground_plane(
     Args:
         builder (ModelBuilder):
             The model builder to which the ground plane should be added.
-        layer (str):
-            The name of the geometry layer to which the ground plane should be added.\n
-            Defaults to `"world"`.
         group (int):
             The collision group for the ground geometry.\n
             Defaults to `1`.
@@ -85,11 +81,10 @@ def add_ground_plane(
     Returns:
         int: The ID of the added ground geometry.
     """
-    return builder.add_collision_geometry(
+    return builder.add_geometry(
         shape=PlaneShape(vec3f(0.0, 0.0, 1.0), 0.0),
         offset=transformf(0.0, 0.0, z_offset, 0.0, 0.0, 0.0, 1.0),
         name="ground",
-        layer=layer,
         group=group,
         collides=collides,
         world_index=world_index,
@@ -98,7 +93,6 @@ def add_ground_plane(
 
 def add_ground_box(
     builder: ModelBuilder,
-    layer: str = "world",
     group: int = 1,
     collides: int = 1,
     world_index: int = 0,
@@ -110,9 +104,6 @@ def add_ground_box(
     Args:
         builder (ModelBuilder):
             The model builder to which the ground box should be added.
-        layer (str):
-            The name of the geometry layer to which the ground box should be added.\n
-            Defaults to `"world"`.
         group (int):
             The collision group for the ground geometry.\n
             Defaults to `1`.
@@ -130,11 +121,10 @@ def add_ground_box(
     Returns:
         int: The ID of the added ground geometry.
     """
-    return builder.add_collision_geometry(
+    return builder.add_geometry(
         shape=BoxShape(20.0, 20.0, 1.0),
         offset=transformf(0.0, 0.0, -0.5 + z_offset, 0.0, 0.0, 0.0, 1.0),
         name="ground",
-        layer=layer,
         group=group,
         collides=collides,
         world_index=world_index,

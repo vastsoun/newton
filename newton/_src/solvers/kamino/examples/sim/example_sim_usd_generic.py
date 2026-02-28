@@ -72,10 +72,10 @@ class Example:
         msg.info("total mass: %f", self.builder.worlds[0].mass_total)
         msg.info("total diag inertia: %f", self.builder.worlds[0].inertia_total)
 
-        # Add a static collision layer and geometry for the plane
+        # Add a static collision geometry for the plane
         if ground:
             for w in range(num_worlds):
-                add_ground_box(self.builder, z_offset=-0.5, world_index=w, layer="world")
+                add_ground_box(self.builder, z_offset=-0.5, world_index=w)
 
         # Set gravity
         for w in range(self.builder.num_worlds):

@@ -22,11 +22,7 @@ from warp.context import Devicelike
 
 from .bodies import RigidBodiesData, RigidBodiesModel
 from .control import Control
-from .geometry import (
-    CollisionGeometriesModel,
-    GeometriesData,
-    GeometriesModel,
-)
+from .geometry import GeometriesData, GeometriesModel
 from .gravity import GravityModel
 from .joints import JointsData, JointsModel
 from .materials import MaterialPairsModel, MaterialsModel
@@ -103,17 +99,11 @@ class ModelSize:
     max_of_num_dynamic_joints: int = 0
     """The maximum number of dynamic joints in any world."""
 
-    sum_of_num_collision_geoms: int = 0
-    """The total number of collision geometries in the model across all worlds."""
+    sum_of_num_geoms: int = 0
+    """The total number of geometries in the model across all worlds."""
 
-    max_of_num_collision_geoms: int = 0
-    """The maximum number of collision geometries in any world."""
-
-    sum_of_num_physical_geoms: int = 0
-    """The total number of physical geometries in the model across all worlds."""
-
-    max_of_num_physical_geoms: int = 0
-    """The maximum number of physical geometries in any world."""
+    max_of_num_geoms: int = 0
+    """The maximum number of geometries in any world."""
 
     sum_of_num_materials: int = 0
     """
@@ -232,8 +222,7 @@ class ModelSize:
             ("num_passive_joints", "sum_of_num_passive_joints", "max_of_num_passive_joints"),
             ("num_actuated_joints", "sum_of_num_actuated_joints", "max_of_num_actuated_joints"),
             ("num_dynamic_joints", "sum_of_num_dynamic_joints", "max_of_num_dynamic_joints"),
-            ("num_collision_geoms", "sum_of_num_collision_geoms", "max_of_num_collision_geoms"),
-            ("num_physical_geoms", "sum_of_num_physical_geoms", "max_of_num_physical_geoms"),
+            ("num_geoms", "sum_of_num_geoms", "max_of_num_geoms"),
             ("num_material_pairs", "sum_of_num_material_pairs", "max_of_num_material_pairs"),
             ("num_body_dofs", "sum_of_num_body_dofs", "max_of_num_body_dofs"),
             ("num_joint_coords", "sum_of_num_joint_coords", "max_of_num_joint_coords"),
@@ -319,15 +308,9 @@ class ModelInfo:
     Shape of ``(num_worlds,)`` and type :class:`int`.
     """
 
-    num_collision_geoms: wp.array | None = None
+    num_geoms: wp.array | None = None
     """
-    The number of collision geometries in each world.\n
-    Shape of ``(num_worlds,)`` and type :class:`int`.
-    """
-
-    num_physical_geoms: wp.array | None = None
-    """
-    The number of physical geometries in each world.\n
+    The number of geometries in each world.\n
     Shape of ``(num_worlds,)`` and type :class:`int`.
     """
 
@@ -708,17 +691,6 @@ class ModelData:
 
     It includes all model-specific intermediate quantities used throughout the simulation, as needed
     to update the state of rigid bodies, joints, geometries, active constraints and time-keeping.
-
-    Attributes:
-        info (ModelDataInfo): The info container holding information about the set of active constraints.
-        time (TimeData): Time state of the model, including the current simulation step and time.
-        bodies (RigidBodiesData): States of all rigid bodies in the model: poses, twists, wrenches,
-            and moments of inertia computed in world coordinates.
-        joints (JointsData): States of joints in the model: joint frames computed in world coordinates,
-            constraint residuals and reactions, and generalized (DoF) quantities.
-        cgeoms (CollisionGeometriesData): States of collision geometries in the model:
-            poses, AABBs etc. computed in world coordinates.
-        pgeoms (GeometriesData): States of physical geometries in the model: poses computed in world coordinates.
     """
 
     info: ModelDataInfo | None = None
@@ -729,54 +701,23 @@ class ModelData:
 
     bodies: RigidBodiesData | None = None
     """
-    States of all rigid bodies in the model: poses, twists, wrenches,
+    Time-varying data of all rigid bodies in the model: poses, twists, wrenches,
     and moments of inertia computed in world coordinates.
     """
 
     joints: JointsData | None = None
     """
-    States of joints in the model: joint frames computed in world coordinates,
+    Time-varying data of joints in the model: joint frames computed in world coordinates,
     constraint residuals and reactions, and generalized (DoF) quantities.
     """
 
-    cgeoms: GeometriesData | None = None
-    """States of collision geometries in the model: poses computed in world coordinates."""
-
-    pgeoms: GeometriesData | None = None
-    """States of physical geometries in the model: poses computed in world coordinates."""
+    geoms: GeometriesData | None = None
+    """Time-varying data of geometries in the model: poses computed in world coordinates."""
 
 
 class Model:
     """
     A container to hold the time-invariant system model data.
-
-    Attributes:
-        device (Devicelike):
-            The device on which the model data is allocated.
-        requires_grad (bool):
-            Whether the model requires gradients for its state. Defaults to `False`.
-        size (ModelSize):
-            Host-side cache of the model summary sizes.\n
-            This is used for memory allocations and kernel thread dimensions.
-        worlds (list[WorldDescriptor]):
-            Host-side cache of the world descriptors.\n
-            This is used to construct the model and for memory allocations.
-        info (ModelInfo):
-            The model info container holding the information and meta-data of the model.
-        time (TimeModel):
-            The time model container holding time-step of each world.
-        gravity (GravityModel):
-            The gravity model container holding the gravity configurations for each world.
-        bodies (RigidBodiesModel):
-            The rigid bodies model container holding all rigid body entities in the model.
-        joints (JointsModel):
-            The joints model container holding all joint entities in the model.
-        cgeoms (CollisionGeometriesModel):
-            The collision geometries model container holding all collision geometry entities in the model.
-        pgeoms (GeometriesModel):
-            The physical geometries model container holding all physical geometry entities in the model.
-        material_pairs (MaterialPairsModel):
-            The material pairs model container holding all material pairs in the model.
     """
 
     def __init__(self):
@@ -815,11 +756,8 @@ class Model:
         self.joints: JointsModel | None = None
         """The joints model container holding all joint entities in the model."""
 
-        self.cgeoms: CollisionGeometriesModel | None = None
-        """The collision geometries model container holding all collision geometry entities in the model."""
-
-        self.pgeoms: GeometriesModel | None = None
-        """The physical geometries model container holding all physical geometry entities in the model."""
+        self.geoms: GeometriesModel | None = None
+        """The geometries model container holding all geometry entities in the model."""
 
         self.materials: MaterialsModel | None = None
         """
@@ -859,8 +797,7 @@ class Model:
         nw = self.size.num_worlds
         nb = self.size.sum_of_num_bodies
         nj = self.size.sum_of_num_joints
-        ncg = self.size.sum_of_num_collision_geoms
-        npg = self.size.sum_of_num_physical_geoms
+        ng = self.size.sum_of_num_geoms
 
         # Retrieve the joint coordinate, DoF and constraint counts
         njcoords = self.size.sum_of_num_joint_coords
@@ -883,13 +820,13 @@ class Model:
                 contact_cts_group_offset=wp.zeros(shape=nw, dtype=int32) if unilateral_cts else None,
             )
 
-            # Construct the time state
+            # Construct the time data with the initial step and time set to zero for all worlds
             time = TimeData(
                 steps=wp.zeros(shape=nw, dtype=int32, requires_grad=requires_grad),
                 time=wp.zeros(shape=nw, dtype=float32, requires_grad=requires_grad),
             )
 
-            # Construct the rigid bodies state from the model's initial state
+            # Construct the rigid bodies data from the model's initial state
             bodies = RigidBodiesData(
                 num_bodies=nb,
                 I_i=wp.zeros(shape=nb, dtype=mat33f, requires_grad=requires_grad),
@@ -904,7 +841,7 @@ class Model:
                 w_e_i=wp.zeros_like(self.bodies.u_i_0, requires_grad=requires_grad),
             )
 
-            # Construct the joints state from the model's initial state
+            # Construct the joints data from the model's initial state
             joints = JointsData(
                 num_joints=nj,
                 p_j=wp.zeros(shape=nj, dtype=transformf, requires_grad=requires_grad),
@@ -927,26 +864,19 @@ class Model:
                 j_w_l_j=wp.zeros(shape=nj, dtype=vec6f, requires_grad=requires_grad),
             )
 
-            # Construct the collision geometries state from the model's initial state
-            cgeoms = GeometriesData(
-                num_geoms=ncg,
-                pose=wp.zeros(shape=ncg, dtype=transformf, requires_grad=requires_grad),
+            # Construct the geometries data from the model's initial state
+            geoms = GeometriesData(
+                num_geoms=ng,
+                pose=wp.zeros(shape=ng, dtype=transformf, requires_grad=requires_grad),
             )
 
-            # Construct the physical geometries state from the model's initial state
-            pgeoms = GeometriesData(
-                num_geoms=npg,
-                pose=wp.zeros(shape=npg, dtype=transformf, requires_grad=requires_grad),
-            )
-
-        # Assemble and return the new model data container
+        # Assemble and return the new data container
         return ModelData(
             info=info,
             time=time,
             bodies=bodies,
             joints=joints,
-            cgeoms=cgeoms,
-            pgeoms=pgeoms,
+            geoms=geoms,
         )
 
     def state(self, requires_grad: bool = False, device: Devicelike = None) -> State:

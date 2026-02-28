@@ -26,7 +26,7 @@ import warp as wp
 from .....core.types import nparray
 from ...core.bodies import RigidBodyDescriptor
 from ...core.builder import ModelBuilder
-from ...core.geometry import CollisionGeometryDescriptor, GeometryDescriptor
+from ...core.geometry import GeometryDescriptor
 from ...core.gravity import GravityDescriptor
 from ...core.joints import (
     JOINT_QMAX,
@@ -1258,14 +1258,14 @@ class USDImporter:
             k_d_j=k_d_j,
         )
 
-    def _parse_geom(
+    def _parse_visual_geom(
         self,
         geom_prim,
         geom_type,
         body_index_map: dict[str, int],
         distance_unit: float = 1.0,
         prim_path_names: bool = False,
-    ) -> CollisionGeometryDescriptor | GeometryDescriptor | None:
+    ) -> GeometryDescriptor | None:
         """
         Parses a UsdGeom geometry prim and returns a GeometryDescriptor.
         """
@@ -1430,8 +1430,7 @@ class USDImporter:
         return GeometryDescriptor(
             name=name,
             uid=uid,
-            layer=layer,
-            bid=body_index,
+            body=body_index,
             offset=i_T_ig,
             shape=shape,
         )
@@ -1448,7 +1447,7 @@ class USDImporter:
         distance_unit: float = 1.0,
         meshes_are_collidable: bool = False,
         prim_path_names: bool = False,
-    ) -> CollisionGeometryDescriptor | GeometryDescriptor | None:
+    ) -> GeometryDescriptor | None:
         """
         Parses a UsdPhysics geometry prim and returns a GeometryDescriptor.
         """
@@ -1585,37 +1584,29 @@ class USDImporter:
         msg.debug(f"[{name}]: shape: {shape}")
 
         ###
-        # Base GeometryDescriptor
-        ###
-
-        descriptor = GeometryDescriptor(
-            name=name,
-            uid=uid,
-            layer=layer,
-            bid=body_index,
-            offset=i_T_ig,
-            shape=shape,
-        )
-
-        ###
         # Collision Properties
         ###
 
         # Promote the GeometryDescriptor to a CollisionGeometryDescriptor if it's collidable
+        geom_max_contacts: int = 0
+        geom_group: int = 0
+        geom_collides: int = 0
+        geom_material: str | None = None
+        geom_material_index: int = 0
         if geom_spec.collisionEnabled and ((meshes_are_collidable and is_mesh_shape) or not is_mesh_shape):
-            descriptor = CollisionGeometryDescriptor(base=descriptor)
-
             # Query the geom prim for the maximum number of contacts hint
-            descriptor.max_contacts = self._get_geom_max_contacts(geom_prim)
+            geom_max_contacts = self._get_geom_max_contacts(geom_prim)
 
             # Assign a material if specified
             # NOTE: Only the first material is considered for now
             materials = geom_spec.materials
             if len(materials) > 0:
-                descriptor.mid = material_index_map.get(str(materials[0]), 0)
+                geom_material = str(materials[0])
+                geom_material_index = material_index_map.get(str(materials[0]), 0)
             msg.debug(f"[{name}]: material_index_map: {material_index_map}")
             msg.debug(f"[{name}]: materials: {materials}")
-            msg.debug(f"[{name}]: mid: {descriptor.mid}")
+            msg.debug(f"[{name}]: geom_material: {geom_material}")
+            msg.debug(f"[{name}]: geom_material_index: {geom_material_index}")
 
             # Assign collision group/filters if specified
             collision_group_paths = geom_spec.collisionGroups
@@ -1633,11 +1624,25 @@ class USDImporter:
                 if cgroup != geom_group:
                     geom_collides += cgroup
             msg.debug(f"[{name}]: geom_collides: {geom_collides}")
-            descriptor.group = geom_group
-            descriptor.collides = geom_collides
 
-        # Return the final descriptor
-        return descriptor
+        ###
+        # GeometryDescriptor
+        ###
+
+        # Construct and return the GeometryDescriptor
+        # with the data imported from the USD prim
+        return GeometryDescriptor(
+            name=name,
+            uid=uid,
+            body=body_index,
+            shape=shape,
+            offset=i_T_ig,
+            material=geom_material,
+            mid=geom_material_index,
+            group=geom_group,
+            collides=geom_collides,
+            max_contacts=geom_max_contacts,
+        )
 
     ###
     # Public API
@@ -1953,7 +1958,7 @@ class USDImporter:
                     geom_type_index = self.supported_usd_geom_type_names.index(typename)
                     geom_type = self.supported_usd_geom_types[geom_type_index]
                     msg.debug(f"Parsing UsdGeom @'{geom_prim_path}' of type '{typename}'")
-                    geom_desc = self._parse_geom(
+                    geom_desc = self._parse_visual_geom(
                         geom_prim=prim,
                         geom_type=geom_type,
                         body_index_map=body_index_map,
@@ -1967,15 +1972,11 @@ class USDImporter:
             # If construction succeeded, append it to the model builder
             if geom_desc is not None:
                 # Skip static geometry if not requested
-                if geom_desc.bid == -1 and not load_static_geometry:
+                if geom_desc.body == -1 and not load_static_geometry:
                     continue
                 # Append geometry descriptor to appropriate entity
-                if type(geom_desc) is CollisionGeometryDescriptor:
-                    msg.debug("Adding collision geom '%d':\n%s\n", builder.num_collision_geoms, geom_desc)
-                    builder.add_collision_geometry_descriptor(geom=geom_desc)
-                elif type(geom_desc) is GeometryDescriptor:
-                    msg.debug("Adding physical geom '%d':\n%s\n", builder.num_physical_geoms, geom_desc)
-                    builder.add_physical_geometry_descriptor(geom=geom_desc)
+                msg.debug("Adding geom '%d':\n%s\n", builder.num_geoms, geom_desc)
+                builder.add_geometry_descriptor(geom=geom_desc)
 
             # Indicate to user that a UsdGeom has potentially not been marked for physics simulation
             else:
@@ -1987,8 +1988,7 @@ class USDImporter:
 
         msg.debug("Builder: Rigid Bodies:\n%s\n", builder.bodies)
         msg.debug("Builder: Joints:\n%s\n", builder.joints)
-        msg.debug("Builder: Physical Geoms:\n%s\n", builder.physical_geoms)
-        msg.debug("Builder: Collision Geoms:\n%s\n", builder.collision_geoms)
+        msg.debug("Builder: Geoms:\n%s\n", builder.geoms)
         msg.debug("Builder: Materials:\n%s\n", builder.materials)
 
         # Return the ModelBuilder populated from the parsed USD file

@@ -415,8 +415,8 @@ class ContactAggregation:
         # Read dimensions from the model
         num_worlds = model.size.num_worlds
         max_bodies = model.size.max_of_num_bodies
-        max_geoms = model.size.max_of_num_collision_geoms
-        num_geoms = model.cgeoms.num_geoms
+        max_geoms = model.size.max_of_num_geoms
+        num_geoms = model.geoms.num_geoms
 
         # Per-body aggregated data
         body_net_contact_force = wp.zeros((num_worlds, max_bodies, 3), dtype=wp.float32, device=self._device)
@@ -464,12 +464,12 @@ class ContactAggregation:
             static_geom_ids: List of geometry IDs (per world) that should be marked as static
         """
         # Get collision geometry data
-        cgeoms = self._model.cgeoms
-        num_geoms = cgeoms.num_geoms
+        geoms = self._model.geoms
+        num_geoms = geoms.num_geoms
 
         # Create mask on host and copy geometry per-world IDs to host
         mask_host = np.zeros(num_geoms, dtype=np.int32)
-        gid_host = cgeoms.gid.numpy()  # Per-world geometry IDs
+        gid_host = geoms.gid.numpy()  # Per-world geometry IDs
 
         # Mark geometries whose per-world ID is in static_geom_ids
         for i in range(num_geoms):
@@ -516,7 +516,7 @@ class ContactAggregation:
         # Get model dimensions
         num_worlds = self._model.size.num_worlds
         max_bodies = self._model.size.max_of_num_bodies
-        max_geoms = self._model.size.max_of_num_collision_geoms
+        max_geoms = self._model.size.max_of_num_geoms
 
         # Launch aggregation kernel for per-body force
         wp.launch(

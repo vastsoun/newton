@@ -132,16 +132,16 @@ def build_free_joint_test(
         tau_j_max=[100.0, 100.0, 100.0, 100.0, 100.0, 100.0] if limits else None,
         world_index=world_index,
     )
-    _builder.add_collision_geometry(
+    _builder.add_geometry(
         name="follower/box",
         body=bid_F,
         shape=BoxShape(1.0, 1.0, 1.0),
         world_index=world_index,
     )
 
-    # Add a static collision layer and geometry for the plane
+    # Add a static collision geometry for the plane
     if ground:
-        _builder.add_collision_geometry(
+        _builder.add_geometry(
             body=-1,
             shape=BoxShape(20.0, 20.0, 1.0),
             offset=transformf(0.0, 0.0, -1.5, 0.0, 0.0, 0.0, 1.0),
@@ -217,7 +217,7 @@ def build_unary_revolute_joint_test(
         k_d_j=0.01 if implicit_pd else None,
         world_index=world_index,
     )
-    _builder.add_collision_geometry(
+    _builder.add_geometry(
         name="base/box",
         body=-1,
         shape=BoxShape(0.3, 0.3, 0.3),
@@ -225,16 +225,16 @@ def build_unary_revolute_joint_test(
         group=2,
         collides=2,
     )
-    _builder.add_collision_geometry(
+    _builder.add_geometry(
         name="follower/box",
         body=bid_F,
         shape=BoxShape(1.0, 0.2, 0.2),
         world_index=world_index,
     )
 
-    # Add a static collision layer and geometry for the plane
+    # Add a static collision geometry for the plane
     if ground:
-        _builder.add_collision_geometry(
+        _builder.add_geometry(
             body=-1,
             shape=BoxShape(20.0, 20.0, 1.0),
             offset=transformf(0.0, 0.0, -1.5, 0.0, 0.0, 0.0, 1.0),
@@ -329,22 +329,22 @@ def build_binary_revolute_joint_test(
         k_d_j=0.01 if implicit_pd else None,
         world_index=world_index,
     )
-    _builder.add_collision_geometry(
+    _builder.add_geometry(
         name="base/box",
         body=bid_B,
         shape=BoxShape(0.3, 0.3, 0.3),
         world_index=world_index,
     )
-    _builder.add_collision_geometry(
+    _builder.add_geometry(
         name="follower/box",
         body=bid_F,
         shape=BoxShape(1.0, 0.2, 0.2),
         world_index=world_index,
     )
 
-    # Add a static collision layer and geometry for the plane
+    # Add a static collision geometry for the plane
     if ground:
-        _builder.add_collision_geometry(
+        _builder.add_geometry(
             body=-1,
             shape=BoxShape(20.0, 20.0, 1.0),
             offset=transformf(0.0, 0.0, -1.5, 0.0, 0.0, 0.0, 1.0),
@@ -418,7 +418,7 @@ def build_unary_prismatic_joint_test(
         k_d_j=0.01 if implicit_pd else None,
         world_index=world_index,
     )
-    _builder.add_collision_geometry(
+    _builder.add_geometry(
         name="base/box",
         body=-1,
         shape=BoxShape(0.05, 0.05, 1.0),
@@ -426,16 +426,16 @@ def build_unary_prismatic_joint_test(
         group=2,
         collides=2,
     )
-    _builder.add_collision_geometry(
+    _builder.add_geometry(
         name="follower/box",
         body=bid_F,
         shape=BoxShape(0.1, 0.1, 0.1),
         world_index=world_index,
     )
 
-    # Add a static collision layer and geometry for the plane
+    # Add a static collision geometry for the plane
     if ground:
-        _builder.add_collision_geometry(
+        _builder.add_geometry(
             body=-1,
             shape=BoxShape(20.0, 20.0, 1.0),
             offset=transformf(0.0, 0.0, -1.5, 0.0, 0.0, 0.0, 1.0),
@@ -528,7 +528,7 @@ def build_binary_prismatic_joint_test(
         k_d_j=0.01 if implicit_pd else None,
         world_index=world_index,
     )
-    _builder.add_collision_geometry(
+    _builder.add_geometry(
         name="base/box",
         body=bid_B,
         shape=BoxShape(0.05, 0.05, 1.0),
@@ -536,16 +536,16 @@ def build_binary_prismatic_joint_test(
         group=2,
         collides=2,
     )
-    _builder.add_collision_geometry(
+    _builder.add_geometry(
         name="follower/box",
         body=bid_F,
         shape=BoxShape(0.1, 0.1, 0.1),
         world_index=world_index,
     )
 
-    # Add a static collision layer and geometry for the plane
+    # Add a static collision geometry for the plane
     if ground:
-        _builder.add_collision_geometry(
+        _builder.add_geometry(
             body=-1,
             shape=BoxShape(20.0, 20.0, 1.0),
             offset=transformf(0.0, 0.0, -1.5, 0.0, 0.0, 0.0, 1.0),
@@ -621,7 +621,7 @@ def build_unary_cylindrical_joint_test(
         k_d_j=[0.01, 0.02] if implicit_pd else None,
         world_index=world_index,
     )
-    _builder.add_collision_geometry(
+    _builder.add_geometry(
         name="base/cylinder",
         body=-1,
         shape=CylinderShape(0.025, 1.0),
@@ -629,16 +629,16 @@ def build_unary_cylindrical_joint_test(
         group=2,
         collides=2,
     )
-    _builder.add_collision_geometry(
+    _builder.add_geometry(
         name="follower/box",
         body=bid_F,
         shape=BoxShape(0.1, 0.1, 0.1),
         world_index=world_index,
     )
 
-    # Add a static collision layer and geometry for the plane
+    # Add a static collision geometry for the plane
     if ground:
-        _builder.add_collision_geometry(
+        _builder.add_geometry(
             body=-1,
             shape=BoxShape(20.0, 20.0, 1.0),
             offset=transformf(0.0, 0.0, -1.5, 0.0, 0.0, 0.0, 1.0),
@@ -733,22 +733,22 @@ def build_binary_cylindrical_joint_test(
         k_d_j=[0.01, 0.02] if implicit_pd else None,
         world_index=world_index,
     )
-    _builder.add_collision_geometry(
+    _builder.add_geometry(
         name="base/cylinder",
         body=bid_B,
         shape=CylinderShape(0.025, 1.0),
         world_index=world_index,
     )
-    _builder.add_collision_geometry(
+    _builder.add_geometry(
         name="follower/box",
         body=bid_F,
         shape=BoxShape(0.1, 0.1, 0.1),
         world_index=world_index,
     )
 
-    # Add a static collision layer and geometry for the plane
+    # Add a static collision geometry for the plane
     if ground:
-        _builder.add_collision_geometry(
+        _builder.add_geometry(
             body=-1,
             shape=BoxShape(20.0, 20.0, 1.0),
             offset=transformf(0.0, 0.0, -1.5, 0.0, 0.0, 0.0, 1.0),
@@ -816,7 +816,7 @@ def build_unary_universal_joint_test(
         q_j_max=[0.6 * math.pi, 0.6 * math.pi] if limits else None,
         world_index=world_index,
     )
-    _builder.add_collision_geometry(
+    _builder.add_geometry(
         name="base/box",
         body=-1,
         shape=BoxShape(0.5, 0.5, 0.5),
@@ -824,16 +824,16 @@ def build_unary_universal_joint_test(
         group=2,
         collides=2,
     )
-    _builder.add_collision_geometry(
+    _builder.add_geometry(
         name="follower/box",
         body=bid_F,
         shape=BoxShape(0.5, 0.5, 0.5),
         world_index=world_index,
     )
 
-    # Add a static collision layer and geometry for the plane
+    # Add a static collision geometry for the plane
     if ground:
-        _builder.add_collision_geometry(
+        _builder.add_geometry(
             body=-1,
             shape=BoxShape(20.0, 20.0, 1.0),
             offset=transformf(0.0, 0.0, -1.5, 0.0, 0.0, 0.0, 1.0),
@@ -920,22 +920,22 @@ def build_binary_universal_joint_test(
         q_j_max=[0.6 * math.pi, 0.6 * math.pi] if limits else None,
         world_index=world_index,
     )
-    _builder.add_collision_geometry(
+    _builder.add_geometry(
         name="base/box",
         body=bid_B,
         shape=BoxShape(0.5, 0.5, 0.5),
         world_index=world_index,
     )
-    _builder.add_collision_geometry(
+    _builder.add_geometry(
         name="follower/box",
         body=bid_F,
         shape=BoxShape(0.5, 0.5, 0.5),
         world_index=world_index,
     )
 
-    # Add a static collision layer and geometry for the plane
+    # Add a static collision geometry for the plane
     if ground:
-        _builder.add_collision_geometry(
+        _builder.add_geometry(
             body=-1,
             shape=BoxShape(20.0, 20.0, 1.0),
             offset=transformf(0.0, 0.0, -1.5, 0.0, 0.0, 0.0, 1.0),
@@ -1003,7 +1003,7 @@ def build_unary_spherical_joint_test(
         q_j_max=[0.6 * math.pi, 0.6 * math.pi, 0.6 * math.pi] if limits else None,
         world_index=world_index,
     )
-    _builder.add_collision_geometry(
+    _builder.add_geometry(
         name="base/box",
         body=-1,
         shape=BoxShape(0.5, 0.5, 0.5),
@@ -1011,16 +1011,16 @@ def build_unary_spherical_joint_test(
         group=2,
         collides=2,
     )
-    _builder.add_collision_geometry(
+    _builder.add_geometry(
         name="follower/box",
         body=bid_F,
         shape=BoxShape(0.5, 0.5, 0.5),
         world_index=world_index,
     )
 
-    # Add a static collision layer and geometry for the plane
+    # Add a static collision geometry for the plane
     if ground:
-        _builder.add_collision_geometry(
+        _builder.add_geometry(
             body=-1,
             shape=BoxShape(20.0, 20.0, 1.0),
             offset=transformf(0.0, 0.0, -1.5, 0.0, 0.0, 0.0, 1.0),
@@ -1107,22 +1107,22 @@ def build_binary_spherical_joint_test(
         q_j_max=[0.6 * math.pi, 0.6 * math.pi, 0.6 * math.pi] if limits else None,
         world_index=world_index,
     )
-    _builder.add_collision_geometry(
+    _builder.add_geometry(
         name="base/box",
         body=bid_B,
         shape=BoxShape(0.5, 0.5, 0.5),
         world_index=world_index,
     )
-    _builder.add_collision_geometry(
+    _builder.add_geometry(
         name="follower/box",
         body=bid_F,
         shape=BoxShape(0.5, 0.5, 0.5),
         world_index=world_index,
     )
 
-    # Add a static collision layer and geometry for the plane
+    # Add a static collision geometry for the plane
     if ground:
-        _builder.add_collision_geometry(
+        _builder.add_geometry(
             body=-1,
             shape=BoxShape(20.0, 20.0, 1.0),
             offset=transformf(0.0, 0.0, -1.5, 0.0, 0.0, 0.0, 1.0),
@@ -1190,7 +1190,7 @@ def build_unary_gimbal_joint_test(
         # q_j_max=[0.4 * math.pi, 0.4 * math.pi, 0.4 * math.pi] if limits else None,
         world_index=world_index,
     )
-    _builder.add_collision_geometry(
+    _builder.add_geometry(
         name="base/box",
         body=-1,
         shape=BoxShape(0.5, 0.5, 0.5),
@@ -1198,16 +1198,16 @@ def build_unary_gimbal_joint_test(
         group=2,
         collides=2,
     )
-    _builder.add_collision_geometry(
+    _builder.add_geometry(
         name="follower/box",
         body=bid_F,
         shape=BoxShape(0.5, 0.5, 0.5),
         world_index=world_index,
     )
 
-    # Add a static collision layer and geometry for the plane
+    # Add a static collision geometry for the plane
     if ground:
-        _builder.add_collision_geometry(
+        _builder.add_geometry(
             body=-1,
             shape=BoxShape(20.0, 20.0, 1.0),
             offset=transformf(0.0, 0.0, -1.5, 0.0, 0.0, 0.0, 1.0),
@@ -1294,22 +1294,22 @@ def build_binary_gimbal_joint_test(
         # q_j_max=[0.4 * math.pi, 0.4 * math.pi, 0.4 * math.pi] if limits else None,
         world_index=world_index,
     )
-    _builder.add_collision_geometry(
+    _builder.add_geometry(
         name="base/box",
         body=bid_B,
         shape=BoxShape(0.5, 0.5, 0.5),
         world_index=world_index,
     )
-    _builder.add_collision_geometry(
+    _builder.add_geometry(
         name="follower/box",
         body=bid_F,
         shape=BoxShape(0.5, 0.5, 0.5),
         world_index=world_index,
     )
 
-    # Add a static collision layer and geometry for the plane
+    # Add a static collision geometry for the plane
     if ground:
-        _builder.add_collision_geometry(
+        _builder.add_geometry(
             body=-1,
             shape=BoxShape(20.0, 20.0, 1.0),
             offset=transformf(0.0, 0.0, -1.5, 0.0, 0.0, 0.0, 1.0),
@@ -1385,7 +1385,7 @@ def build_unary_cartesian_joint_test(
         k_d_j=[0.01, 0.02, 0.03] if implicit_pd else None,
         world_index=world_index,
     )
-    _builder.add_collision_geometry(
+    _builder.add_geometry(
         name="base/box",
         body=-1,
         shape=BoxShape(0.5, 0.5, 0.5),
@@ -1393,16 +1393,16 @@ def build_unary_cartesian_joint_test(
         group=2,
         collides=2,
     )
-    _builder.add_collision_geometry(
+    _builder.add_geometry(
         name="follower/box",
         body=bid_F,
         shape=BoxShape(0.5, 0.5, 0.5),
         world_index=world_index,
     )
 
-    # Add a static collision layer and geometry for the plane
+    # Add a static collision geometry for the plane
     if ground:
-        _builder.add_collision_geometry(
+        _builder.add_geometry(
             body=-1,
             shape=BoxShape(20.0, 20.0, 1.0),
             offset=transformf(0.0, 0.0, -1.5, 0.0, 0.0, 0.0, 1.0),
@@ -1497,22 +1497,22 @@ def build_binary_cartesian_joint_test(
         k_d_j=[0.01, 0.02, 0.03] if implicit_pd else None,
         world_index=world_index,
     )
-    _builder.add_collision_geometry(
+    _builder.add_geometry(
         name="base/box",
         body=bid_B,
         shape=BoxShape(0.5, 0.5, 0.5),
         world_index=world_index,
     )
-    _builder.add_collision_geometry(
+    _builder.add_geometry(
         name="follower/box",
         body=bid_F,
         shape=BoxShape(0.5, 0.5, 0.5),
         world_index=world_index,
     )
 
-    # Add a static collision layer and geometry for the plane
+    # Add a static collision geometry for the plane
     if ground:
-        _builder.add_collision_geometry(
+        _builder.add_geometry(
             body=-1,
             shape=BoxShape(20.0, 20.0, 1.0),
             offset=transformf(0.0, 0.0, -1.5, 0.0, 0.0, 0.0, 1.0),
@@ -1809,8 +1809,8 @@ def make_single_shape_pair_builder(
         i_I_i=mat33f(np.eye(3, dtype=np.float32)),
         q_i_0=transformf(r_t, q_t),
     )
-    builder.add_collision_geometry(body=bid0, name="bottom_" + bottom, shape=bottom_shape)
-    builder.add_collision_geometry(body=bid1, name="top_" + top, shape=top_shape)
+    builder.add_geometry(body=bid0, name="bottom_" + bottom, shape=bottom_shape)
+    builder.add_geometry(body=bid1, name="top_" + top, shape=top_shape)
 
     # Optionally add a ground geom below the bottom shape
     if ground_box or ground_plane:
@@ -1828,7 +1828,7 @@ def make_single_shape_pair_builder(
         "[%s]:\nBODIES:\n%s\nGEOMS:\n%s\n",
         shapes,
         builder.bodies,
-        builder.collision_geoms,
+        builder.geoms,
     )
 
     # Return the constructed builder

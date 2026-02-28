@@ -229,10 +229,10 @@ class Example:
         offset = wp.transformf(0.0, 0.0, 0.265, 0.0, 0.0, 0.0, 1.0)
         set_uniform_body_pose_offset(builder=self.builder, offset=offset)
 
-        # Add a static collision layer and geometry for the plane
+        # Add a static collision geometry for the plane
         if ground:
             for w in range(num_worlds):
-                add_ground_box(self.builder, world_index=w, layer="world")
+                add_ground_box(self.builder, world_index=w)
 
         # Set gravity
         for w in range(self.builder.num_worlds):

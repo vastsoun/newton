@@ -23,7 +23,7 @@ from enum import IntEnum
 
 import warp as wp
 
-from ...core.geometry import CollisionGeometriesModel, GeometriesData
+from ...core.geometry import GeometriesData, GeometriesModel
 from ...core.shapes import ShapeType
 from ...core.types import float32, int32, override, transformf, vec2i, vec3f, vec4f, vec6f, vec8f
 
@@ -38,6 +38,7 @@ __all__ = [
     "CollisionCandidatesModel",
     "primitive_broadphase_explicit",
 ]
+
 
 ###
 # Module configs
@@ -733,7 +734,7 @@ def _nxn_broadphase_bs(
 def update_geoms_aabb(
     # Inputs:
     body_poses: wp.array,
-    geoms_model: CollisionGeometriesModel,
+    geoms_model: GeometriesModel,
     geoms_data: GeometriesData,
     # Outputs:
     bv_data: BoundingVolumesData,
@@ -756,7 +757,7 @@ def update_geoms_aabb(
         inputs=[
             float32(default_gap) if default_gap is not None else float32(0.0),
             geoms_model.bid,
-            geoms_model.sid,
+            geoms_model.type,
             geoms_model.params,
             geoms_model.margin,
             geoms_model.gap,
@@ -770,7 +771,7 @@ def update_geoms_aabb(
 
 def nxn_broadphase_aabb(
     # Inputs:
-    geoms_model: CollisionGeometriesModel,
+    geoms_model: GeometriesModel,
     bv_data: BoundingVolumesData,
     # Outputs:
     candidates_model: CollisionCandidatesModel,
@@ -789,7 +790,7 @@ def nxn_broadphase_aabb(
         _nxn_broadphase_aabb,
         dim=candidates_model.num_model_geom_pairs,
         inputs=[
-            geoms_model.sid,
+            geoms_model.type,
             bv_data.aabb,
             candidates_model.model_num_pairs,
             candidates_model.world_num_pairs,
@@ -802,14 +803,14 @@ def nxn_broadphase_aabb(
             candidates_data.wid,
             candidates_data.geom_pair,
         ],
-        device=geoms_model.sid.device,
+        device=geoms_model.type.device,
     )
 
 
 def update_geoms_bs(
     # Inputs:
     body_poses: wp.array,
-    geoms_model: CollisionGeometriesModel,
+    geoms_model: GeometriesModel,
     geoms_data: GeometriesData,
     # Outputs:
     bv_data: BoundingVolumesData,
@@ -832,7 +833,7 @@ def update_geoms_bs(
         inputs=[
             float32(default_gap) if default_gap is not None else float32(0.0),
             geoms_model.bid,
-            geoms_model.sid,
+            geoms_model.type,
             geoms_model.params,
             geoms_model.margin,
             geoms_model.gap,
@@ -846,7 +847,7 @@ def update_geoms_bs(
 
 def nxn_broadphase_bs(
     # Inputs:
-    geoms_model: CollisionGeometriesModel,
+    geoms_model: GeometriesModel,
     geoms_data: GeometriesData,
     bv_data: BoundingVolumesData,
     # Outputs:
@@ -867,7 +868,7 @@ def nxn_broadphase_bs(
         _nxn_broadphase_bs,
         dim=candidates_model.num_model_geom_pairs,
         inputs=[
-            geoms_model.sid,
+            geoms_model.type,
             geoms_data.pose,
             bv_data.radius,
             candidates_model.model_num_pairs,
@@ -881,14 +882,14 @@ def nxn_broadphase_bs(
             candidates_data.wid,
             candidates_data.geom_pair,
         ],
-        device=geoms_model.sid.device,
+        device=geoms_model.type.device,
     )
 
 
 def primitive_broadphase_explicit(
     # Inputs:
     body_poses: wp.array,
-    geoms_model: CollisionGeometriesModel,
+    geoms_model: GeometriesModel,
     geoms_data: GeometriesData,
     bv_data: BoundingVolumesData,
     bv_type: BoundingVolumeType,

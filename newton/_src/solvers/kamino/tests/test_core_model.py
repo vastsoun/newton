@@ -83,8 +83,7 @@ class TestModel(unittest.TestCase):
         # Check the model info entries
         self.assertEqual(model.size.sum_of_num_bodies, builder.num_bodies)
         self.assertEqual(model.size.sum_of_num_joints, builder.num_joints)
-        self.assertEqual(model.size.sum_of_num_collision_geoms, builder.num_collision_geoms)
-        self.assertEqual(model.size.sum_of_num_physical_geoms, 0)
+        self.assertEqual(model.size.sum_of_num_geoms, builder.num_geoms)
         self.assertEqual(model.device, self.default_device)
 
     def test_02_double_model(self):
@@ -95,7 +94,7 @@ class TestModel(unittest.TestCase):
         # Compute the total number of elements from the two builders
         total_nb = builder1.num_bodies + builder2.num_bodies
         total_nj = builder1.num_joints + builder2.num_joints
-        total_ng = builder1.num_collision_geoms + builder2.num_collision_geoms
+        total_ng = builder1.num_geoms + builder2.num_geoms
 
         # Add the second builder to the first one
         builder1.add_builder(builder2)
@@ -115,8 +114,7 @@ class TestModel(unittest.TestCase):
         # Check the model info entries
         self.assertEqual(model.size.sum_of_num_bodies, total_nb)
         self.assertEqual(model.size.sum_of_num_joints, total_nj)
-        self.assertEqual(model.size.sum_of_num_collision_geoms, total_ng)
-        self.assertEqual(model.size.sum_of_num_physical_geoms, 0)
+        self.assertEqual(model.size.sum_of_num_geoms, total_ng)
 
     def test_03_homogeneous_model(self):
         # Constants
@@ -140,8 +138,7 @@ class TestModel(unittest.TestCase):
         # Check the model info entries
         self.assertEqual(model.size.sum_of_num_bodies, num_worlds * 2)
         self.assertEqual(model.size.sum_of_num_joints, num_worlds * 1)
-        self.assertEqual(model.size.sum_of_num_collision_geoms, num_worlds * 3)
-        self.assertEqual(model.size.sum_of_num_physical_geoms, num_worlds * 0)
+        self.assertEqual(model.size.sum_of_num_geoms, num_worlds * 3)
         self.assertEqual(model.device, self.default_device)
 
     def test_04_hetereogeneous_model(self):

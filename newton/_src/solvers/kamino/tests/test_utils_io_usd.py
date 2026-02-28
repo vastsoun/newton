@@ -29,18 +29,9 @@ from newton._src.solvers.kamino.models import (
     get_examples_usd_assets_path,
     get_testing_usd_assets_path,
 )
-from newton._src.solvers.kamino.models.builders.basics import (
-    build_box_on_plane,
-    build_box_pendulum,
-    build_boxes_fourbar,
-    build_boxes_hinged,
-    build_boxes_nunchaku,
-    build_cartpole,
-)
+from newton._src.solvers.kamino.models.builders import basics
 from newton._src.solvers.kamino.tests import setup_tests, test_context
-from newton._src.solvers.kamino.tests.utils.checks import (
-    assert_builders_equal,
-)
+from newton._src.solvers.kamino.tests.utils.checks import assert_builders_equal
 from newton._src.solvers.kamino.utils import logger as msg
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
 
@@ -750,19 +741,17 @@ class TestUSDImporter(unittest.TestCase):
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 1)
         self.assertEqual(builder_usd.num_joints, 0)
-        self.assertEqual(builder_usd.num_physical_geoms, 1)
-        self.assertEqual(builder_usd.num_collision_geoms, 1)
-        self.assertEqual(builder_usd.collision_geoms[0].wid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].gid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].lid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].bid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].shape.type, ShapeType.CAPSULE)
-        self.assertAlmostEqual(builder_usd.collision_geoms[0].shape.radius, 0.1)
-        self.assertAlmostEqual(builder_usd.collision_geoms[0].shape.height, 2.2)
-        self.assertEqual(builder_usd.collision_geoms[0].mid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].group, 1)
-        self.assertEqual(builder_usd.collision_geoms[0].collides, 1)
-        self.assertEqual(builder_usd.collision_geoms[0].max_contacts, 10)
+        self.assertEqual(builder_usd.num_geoms, 2)
+        self.assertEqual(builder_usd.geoms[0].wid, 0)
+        self.assertEqual(builder_usd.geoms[0].gid, 0)
+        self.assertEqual(builder_usd.geoms[0].body, 0)
+        self.assertEqual(builder_usd.geoms[0].shape.type, ShapeType.CAPSULE)
+        self.assertAlmostEqual(builder_usd.geoms[0].shape.radius, 0.1)
+        self.assertAlmostEqual(builder_usd.geoms[0].shape.height, 2.2)
+        self.assertEqual(builder_usd.geoms[0].mid, 0)
+        self.assertEqual(builder_usd.geoms[0].group, 1)
+        self.assertEqual(builder_usd.geoms[0].collides, 1)
+        self.assertEqual(builder_usd.geoms[0].max_contacts, 10)
 
     def test_import_geom_cone(self):
         """Test importing a body with geometric primitive cone shape from a USD file"""
@@ -772,19 +761,17 @@ class TestUSDImporter(unittest.TestCase):
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 1)
         self.assertEqual(builder_usd.num_joints, 0)
-        self.assertEqual(builder_usd.num_physical_geoms, 1)
-        self.assertEqual(builder_usd.num_collision_geoms, 1)
-        self.assertEqual(builder_usd.collision_geoms[0].wid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].gid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].lid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].bid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].shape.type, ShapeType.CONE)
-        self.assertAlmostEqual(builder_usd.collision_geoms[0].shape.radius, 0.1)
-        self.assertAlmostEqual(builder_usd.collision_geoms[0].shape.height, 2.2)
-        self.assertEqual(builder_usd.collision_geoms[0].mid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].group, 1)
-        self.assertEqual(builder_usd.collision_geoms[0].collides, 1)
-        self.assertEqual(builder_usd.collision_geoms[0].max_contacts, 10)
+        self.assertEqual(builder_usd.num_geoms, 2)
+        self.assertEqual(builder_usd.geoms[0].wid, 0)
+        self.assertEqual(builder_usd.geoms[0].gid, 0)
+        self.assertEqual(builder_usd.geoms[0].body, 0)
+        self.assertEqual(builder_usd.geoms[0].shape.type, ShapeType.CONE)
+        self.assertAlmostEqual(builder_usd.geoms[0].shape.radius, 0.1)
+        self.assertAlmostEqual(builder_usd.geoms[0].shape.height, 2.2)
+        self.assertEqual(builder_usd.geoms[0].mid, 0)
+        self.assertEqual(builder_usd.geoms[0].group, 1)
+        self.assertEqual(builder_usd.geoms[0].collides, 1)
+        self.assertEqual(builder_usd.geoms[0].max_contacts, 10)
 
     def test_import_geom_cylinder(self):
         """Test importing a body with geometric primitive cylinder shape from a USD file"""
@@ -794,19 +781,17 @@ class TestUSDImporter(unittest.TestCase):
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 1)
         self.assertEqual(builder_usd.num_joints, 0)
-        self.assertEqual(builder_usd.num_physical_geoms, 1)
-        self.assertEqual(builder_usd.num_collision_geoms, 1)
-        self.assertEqual(builder_usd.collision_geoms[0].wid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].gid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].lid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].bid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].shape.type, ShapeType.CYLINDER)
-        self.assertAlmostEqual(builder_usd.collision_geoms[0].shape.radius, 0.1)
-        self.assertAlmostEqual(builder_usd.collision_geoms[0].shape.height, 2.2)
-        self.assertEqual(builder_usd.collision_geoms[0].mid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].group, 1)
-        self.assertEqual(builder_usd.collision_geoms[0].collides, 1)
-        self.assertEqual(builder_usd.collision_geoms[0].max_contacts, 10)
+        self.assertEqual(builder_usd.num_geoms, 2)
+        self.assertEqual(builder_usd.geoms[0].wid, 0)
+        self.assertEqual(builder_usd.geoms[0].gid, 0)
+        self.assertEqual(builder_usd.geoms[0].body, 0)
+        self.assertEqual(builder_usd.geoms[0].shape.type, ShapeType.CYLINDER)
+        self.assertAlmostEqual(builder_usd.geoms[0].shape.radius, 0.1)
+        self.assertAlmostEqual(builder_usd.geoms[0].shape.height, 2.2)
+        self.assertEqual(builder_usd.geoms[0].mid, 0)
+        self.assertEqual(builder_usd.geoms[0].group, 1)
+        self.assertEqual(builder_usd.geoms[0].collides, 1)
+        self.assertEqual(builder_usd.geoms[0].max_contacts, 10)
 
     def test_import_geom_sphere(self):
         """Test importing a body with geometric primitive sphere shape from a USD file"""
@@ -816,18 +801,16 @@ class TestUSDImporter(unittest.TestCase):
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 1)
         self.assertEqual(builder_usd.num_joints, 0)
-        self.assertEqual(builder_usd.num_physical_geoms, 1)
-        self.assertEqual(builder_usd.num_collision_geoms, 1)
-        self.assertEqual(builder_usd.collision_geoms[0].wid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].gid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].lid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].bid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].shape.type, ShapeType.SPHERE)
-        self.assertAlmostEqual(builder_usd.collision_geoms[0].shape.radius, 0.11)
-        self.assertEqual(builder_usd.collision_geoms[0].mid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].group, 1)
-        self.assertEqual(builder_usd.collision_geoms[0].collides, 1)
-        self.assertEqual(builder_usd.collision_geoms[0].max_contacts, 10)
+        self.assertEqual(builder_usd.num_geoms, 2)
+        self.assertEqual(builder_usd.geoms[0].wid, 0)
+        self.assertEqual(builder_usd.geoms[0].gid, 0)
+        self.assertEqual(builder_usd.geoms[0].body, 0)
+        self.assertEqual(builder_usd.geoms[0].shape.type, ShapeType.SPHERE)
+        self.assertAlmostEqual(builder_usd.geoms[0].shape.radius, 0.11)
+        self.assertEqual(builder_usd.geoms[0].mid, 0)
+        self.assertEqual(builder_usd.geoms[0].group, 1)
+        self.assertEqual(builder_usd.geoms[0].collides, 1)
+        self.assertEqual(builder_usd.geoms[0].max_contacts, 10)
 
     def test_import_geom_ellipsoid(self):
         """Test importing a body with geometric primitive ellipsoid shape from a USD file"""
@@ -837,20 +820,18 @@ class TestUSDImporter(unittest.TestCase):
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 1)
         self.assertEqual(builder_usd.num_joints, 0)
-        self.assertEqual(builder_usd.num_physical_geoms, 1)
-        self.assertEqual(builder_usd.num_collision_geoms, 1)
-        self.assertEqual(builder_usd.collision_geoms[0].wid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].gid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].lid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].bid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].shape.type, ShapeType.ELLIPSOID)
-        self.assertAlmostEqual(builder_usd.collision_geoms[0].shape.a, 0.11)
-        self.assertAlmostEqual(builder_usd.collision_geoms[0].shape.b, 0.22)
-        self.assertAlmostEqual(builder_usd.collision_geoms[0].shape.c, 0.33)
-        self.assertEqual(builder_usd.collision_geoms[0].mid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].group, 1)
-        self.assertEqual(builder_usd.collision_geoms[0].collides, 1)
-        self.assertEqual(builder_usd.collision_geoms[0].max_contacts, 10)
+        self.assertEqual(builder_usd.num_geoms, 2)
+        self.assertEqual(builder_usd.geoms[0].wid, 0)
+        self.assertEqual(builder_usd.geoms[0].gid, 0)
+        self.assertEqual(builder_usd.geoms[0].body, 0)
+        self.assertEqual(builder_usd.geoms[0].shape.type, ShapeType.ELLIPSOID)
+        self.assertAlmostEqual(builder_usd.geoms[0].shape.a, 0.11)
+        self.assertAlmostEqual(builder_usd.geoms[0].shape.b, 0.22)
+        self.assertAlmostEqual(builder_usd.geoms[0].shape.c, 0.33)
+        self.assertEqual(builder_usd.geoms[0].mid, 0)
+        self.assertEqual(builder_usd.geoms[0].group, 1)
+        self.assertEqual(builder_usd.geoms[0].collides, 1)
+        self.assertEqual(builder_usd.geoms[0].max_contacts, 10)
 
     def test_import_geom_box(self):
         """Test importing a body with geometric primitive box shape from a USD file"""
@@ -860,20 +841,18 @@ class TestUSDImporter(unittest.TestCase):
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 1)
         self.assertEqual(builder_usd.num_joints, 0)
-        self.assertEqual(builder_usd.num_physical_geoms, 1)
-        self.assertEqual(builder_usd.num_collision_geoms, 1)
-        self.assertEqual(builder_usd.collision_geoms[0].wid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].gid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].lid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].bid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].shape.type, ShapeType.BOX)
-        self.assertAlmostEqual(builder_usd.collision_geoms[0].shape.depth, 0.22)
-        self.assertAlmostEqual(builder_usd.collision_geoms[0].shape.width, 0.44)
-        self.assertAlmostEqual(builder_usd.collision_geoms[0].shape.height, 0.66)
-        self.assertEqual(builder_usd.collision_geoms[0].mid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].group, 1)
-        self.assertEqual(builder_usd.collision_geoms[0].collides, 1)
-        self.assertEqual(builder_usd.collision_geoms[0].max_contacts, 10)
+        self.assertEqual(builder_usd.num_geoms, 2)
+        self.assertEqual(builder_usd.geoms[0].wid, 0)
+        self.assertEqual(builder_usd.geoms[0].gid, 0)
+        self.assertEqual(builder_usd.geoms[0].body, 0)
+        self.assertEqual(builder_usd.geoms[0].shape.type, ShapeType.BOX)
+        self.assertAlmostEqual(builder_usd.geoms[0].shape.depth, 0.22)
+        self.assertAlmostEqual(builder_usd.geoms[0].shape.width, 0.44)
+        self.assertAlmostEqual(builder_usd.geoms[0].shape.height, 0.66)
+        self.assertEqual(builder_usd.geoms[0].mid, 0)
+        self.assertEqual(builder_usd.geoms[0].group, 1)
+        self.assertEqual(builder_usd.geoms[0].collides, 1)
+        self.assertEqual(builder_usd.geoms[0].max_contacts, 10)
 
     ###
     # Basic models
@@ -890,10 +869,10 @@ class TestUSDImporter(unittest.TestCase):
         )
 
         # Construct a reference builder using the basics generators
-        builder_ref = build_box_on_plane(ground=False)
+        builder_ref = basics.build_box_on_plane(ground=False)
 
         # Check the loaded contents against the reference builder
-        assert_builders_equal(self, builder_usd, builder_ref)
+        assert_builders_equal(self, builder_usd, builder_ref, skip_materials=True)
 
     def test_import_basic_box_pendulum(self):
         """Test importing the basic box_pendulum model from a USD file"""
@@ -906,10 +885,10 @@ class TestUSDImporter(unittest.TestCase):
         )
 
         # Construct a reference builder using the basics generators
-        builder_ref = build_box_pendulum(ground=False)
+        builder_ref = basics.build_box_pendulum(ground=False)
 
         # Check the loaded contents against the reference builder
-        assert_builders_equal(self, builder_usd, builder_ref)
+        assert_builders_equal(self, builder_usd, builder_ref, skip_materials=True)
 
     def test_import_basic_boxes_hinged(self):
         """Test importing the basic boxes_hinged model from a USD file"""
@@ -922,10 +901,10 @@ class TestUSDImporter(unittest.TestCase):
         )
 
         # Construct a reference builder using the basics generators
-        builder_ref = build_boxes_hinged(ground=False)
+        builder_ref = basics.build_boxes_hinged(ground=False)
 
         # Check the loaded contents against the reference builder
-        assert_builders_equal(self, builder_usd, builder_ref, skip_colliders=True)
+        assert_builders_equal(self, builder_usd, builder_ref, skip_colliders=True, skip_materials=True)
 
     def test_import_basic_boxes_nunchaku(self):
         """Test importing the basic boxes_nunchaku model from a USD file"""
@@ -938,10 +917,10 @@ class TestUSDImporter(unittest.TestCase):
         )
 
         # Construct a reference builder using the basics generators
-        builder_ref = build_boxes_nunchaku(ground=False)
+        builder_ref = basics.build_boxes_nunchaku(ground=False)
 
         # Check the loaded contents against the reference builder
-        assert_builders_equal(self, builder_usd, builder_ref, skip_colliders=True)
+        assert_builders_equal(self, builder_usd, builder_ref, skip_colliders=True, skip_materials=True)
 
     def test_import_basic_boxes_fourbar(self):
         """Test importing the basic boxes_fourbar model from a USD file"""
@@ -954,10 +933,10 @@ class TestUSDImporter(unittest.TestCase):
         )
 
         # Construct a reference builder using the basics generators
-        builder_ref = build_boxes_fourbar(ground=False)
+        builder_ref = basics.build_boxes_fourbar(ground=False)
 
         # Check the loaded contents against the reference builder
-        assert_builders_equal(self, builder_usd, builder_ref)
+        assert_builders_equal(self, builder_usd, builder_ref, skip_materials=True)
 
     def test_import_basic_cartpole(self):
         """Test importing the basic cartpole model from a USD file"""
@@ -970,10 +949,10 @@ class TestUSDImporter(unittest.TestCase):
         )
 
         # Construct a reference builder using the basics generators
-        builder_ref = build_cartpole(z_offset=0.0, ground=False)
+        builder_ref = basics.build_cartpole(z_offset=0.0, ground=False)
 
         # Check the loaded contents against the reference builder
-        assert_builders_equal(self, builder_usd, builder_ref)
+        assert_builders_equal(self, builder_usd, builder_ref, skip_materials=True)
 
     ###
     # Reference models
@@ -990,8 +969,7 @@ class TestUSDImporter(unittest.TestCase):
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 10)
         self.assertEqual(builder_usd.num_joints, 14)
-        self.assertEqual(builder_usd.num_physical_geoms, 10)
-        self.assertEqual(builder_usd.num_collision_geoms, 0)
+        self.assertEqual(builder_usd.num_geoms, 10)
         self.assertEqual(builder_usd.num_materials, 1)
         self.assertEqual(builder_usd.joints[0].act_type, JointActuationType.PASSIVE)
         self.assertEqual(builder_usd.joints[0].dof_type, JointDoFType.FIXED)
@@ -1033,8 +1011,7 @@ class TestUSDImporter(unittest.TestCase):
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 31)
         self.assertEqual(builder_usd.num_joints, 36)
-        self.assertEqual(builder_usd.num_collision_geoms, 0)
-        self.assertEqual(builder_usd.num_physical_geoms, 31)
+        self.assertEqual(builder_usd.num_geoms, 31)
 
     def test_import_model_dr_legs_with_boxes(self):
         """Test importing the `DR Legs` example model from a USD file"""
@@ -1047,8 +1024,7 @@ class TestUSDImporter(unittest.TestCase):
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 31)
         self.assertEqual(builder_usd.num_joints, 36)
-        self.assertEqual(builder_usd.num_collision_geoms, 3)
-        self.assertEqual(builder_usd.num_physical_geoms, 0)
+        self.assertEqual(builder_usd.num_geoms, 3)
 
     def test_import_model_dr_legs_with_meshes_and_boxes(self):
         """Test importing the `DR Legs` example model from a USD file"""
@@ -1063,8 +1039,7 @@ class TestUSDImporter(unittest.TestCase):
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 31)
         self.assertEqual(builder_usd.num_joints, 36)
-        self.assertEqual(builder_usd.num_collision_geoms, 3)
-        self.assertEqual(builder_usd.num_physical_geoms, 31)
+        self.assertEqual(builder_usd.num_geoms, 34)
 
 
 ###

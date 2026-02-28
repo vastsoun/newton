@@ -22,6 +22,7 @@ import unittest
 import numpy as np
 import warp as wp
 
+from newton._src.geometry.types import GeoType
 from newton._src.solvers.kamino.core.shapes import (
     BoxShape,
     CapsuleShape,
@@ -97,6 +98,31 @@ class TestShapeType(unittest.TestCase):
         type = ShapeType.HFIELD
         self.assertEqual(type, 10)
         self.assertEqual(type.num_params, -1)
+
+    def test_11_conversion_to_newton_geo_type(self):
+        """All primitive ShapeType values must convert to the correct GeoType."""
+        expected_mappings = {
+            ShapeType.EMPTY: GeoType.NONE,
+            ShapeType.SPHERE: GeoType.SPHERE,
+            ShapeType.CYLINDER: GeoType.CYLINDER,
+            ShapeType.CONE: GeoType.CONE,
+            ShapeType.CAPSULE: GeoType.CAPSULE,
+            ShapeType.BOX: GeoType.BOX,
+            ShapeType.ELLIPSOID: GeoType.ELLIPSOID,
+            ShapeType.PLANE: GeoType.PLANE,
+            ShapeType.CONVEX: GeoType.CONVEX_MESH,
+            ShapeType.MESH: GeoType.MESH,
+            ShapeType.HFIELD: GeoType.HFIELD,
+        }
+        for kamino_type, newton_type in expected_mappings.items():
+            geo_type, _ = ShapeType.to_newton(kamino_type)
+            self.assertEqual(geo_type, newton_type, f"{kamino_type} should map to {newton_type}")
+
+    def test_12_all_enum_members_covered(self):
+        """Every ShapeType member must be handled by to_newton()."""
+        for member in ShapeType:
+            geo_type, _ = ShapeType.to_newton(member)
+            self.assertIsInstance(geo_type, GeoType)
 
 
 class TestShapeDescriptors(unittest.TestCase):

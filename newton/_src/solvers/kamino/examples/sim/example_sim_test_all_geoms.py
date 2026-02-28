@@ -120,9 +120,6 @@ class Example:
         # Set solver settings
         settings = SimulatorSettings()
         settings.dt = 0.001
-        settings.solver.padmm.primal_tolerance = 1e-6
-        settings.solver.padmm.dual_tolerance = 1e-6
-        settings.solver.padmm.compl_tolerance = 1e-6
         settings.solver.padmm.rho_0 = 0.1
         settings.collision_detector.pipeline = cd_pipeline
 
@@ -150,6 +147,7 @@ class Example:
             self.viewer = ViewerKamino(
                 builder=self.builder,
                 simulator=self.sim,
+                show_contacts=True,
                 record_video=record_video,
                 video_folder=video_folder,
                 async_save=async_save,

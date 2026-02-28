@@ -27,12 +27,7 @@ from warp.context import Devicelike
 
 from ..utils import logger as msg
 from .bodies import RigidBodiesModel, RigidBodyDescriptor
-from .geometry import (
-    CollisionGeometriesModel,
-    CollisionGeometryDescriptor,
-    GeometriesModel,
-    GeometryDescriptor,
-)
+from .geometry import GeometriesModel, GeometryDescriptor
 from .gravity import GravityDescriptor, GravityModel
 from .joints import (
     JointActuationType,
@@ -90,8 +85,7 @@ class ModelBuilder:
         # Declare and initialize counters
         self._num_bodies: int = 0
         self._num_joints: int = 0
-        self._num_cgeoms: int = 0
-        self._num_pgeoms: int = 0
+        self._num_geoms: int = 0
         self._num_materials: int = 0
         self._num_bdofs: int = 0
         self._num_joint_coords: int = 0
@@ -110,8 +104,7 @@ class ModelBuilder:
         self._gravity: list[GravityDescriptor] = []
         self._bodies: list[RigidBodyDescriptor] = []
         self._joints: list[JointDescriptor] = []
-        self._pgeoms: list[GeometryDescriptor] = []
-        self._cgeoms: list[CollisionGeometryDescriptor] = []
+        self._geoms: list[GeometryDescriptor] = []
 
         # Declare a global material manager
         self._materials: MaterialManager = MaterialManager()
@@ -137,14 +130,9 @@ class ModelBuilder:
         return self._num_joints
 
     @property
-    def num_collision_geoms(self) -> int:
-        """Returns the number of collision geometries contained in the model."""
-        return self._num_cgeoms
-
-    @property
-    def num_physical_geoms(self) -> int:
-        """Returns the number of physical geometries contained in the model."""
-        return self._num_pgeoms
+    def num_geoms(self) -> int:
+        """Returns the number of geometries contained in the model."""
+        return self._num_geoms
 
     @property
     def num_materials(self) -> int:
@@ -227,14 +215,9 @@ class ModelBuilder:
         return self._joints
 
     @property
-    def collision_geoms(self) -> list[CollisionGeometryDescriptor]:
-        """Returns the list of collision geometry descriptors contained in the model."""
-        return self._cgeoms
-
-    @property
-    def physical_geoms(self) -> list[GeometryDescriptor]:
-        """Returns the list of physical geometry descriptors contained in the model."""
-        return self._pgeoms
+    def geoms(self) -> list[GeometryDescriptor]:
+        """Returns the list of geometry descriptors contained in the model."""
+        return self._geoms
 
     @property
     def materials(self) -> list[MaterialDescriptor]:
@@ -300,7 +283,7 @@ class ModelBuilder:
         world_index: int = 0,
     ) -> int:
         """
-        Add a rigid body to the model using explicit specifications.
+        Add a rigid body entity to the model using explicit specifications.
 
         Args:
             m_i (float): The mass of the body.
@@ -333,7 +316,7 @@ class ModelBuilder:
 
     def add_rigid_body_descriptor(self, body: RigidBodyDescriptor, world_index: int = 0) -> int:
         """
-        Add a body to the model using a descriptor object.
+        Add a rigid body entity to the model using a descriptor object.
 
         Args:
             body (RigidBodyDescriptor): The body descriptor to be added.
@@ -387,7 +370,7 @@ class ModelBuilder:
         world_index: int = 0,
     ) -> int:
         """
-        Add a joint to the model using explicit specifications.
+        Add a joint entity to the model using explicit specifications.
 
         Args:
             act_type (JointActuationType): The actuation type of the joint.
@@ -450,11 +433,13 @@ class ModelBuilder:
 
     def add_joint_descriptor(self, joint: JointDescriptor, world_index: int = 0) -> int:
         """
-        Add a joint to the model by descriptor.
+        Add a joint entity to the model by descriptor.
 
         Args:
-            joint (JointDescriptor): The joint descriptor to be added.
-            world_index (int): The index of the world to which the joint will be added.\n
+            joint (JointDescriptor):
+                The joint descriptor to be added.
+            world_index (int):
+                The index of the world to which the joint will be added.\n
                 Defaults to the first world with index `0`.
 
         Returns:
@@ -486,64 +471,57 @@ class ModelBuilder:
         # Return the new joint index
         return joint.jid
 
-    def add_collision_layer(self, name: str, world_index: int = 0):
-        """
-        Add a new collision geometry layer to the model.
-
-        Args:
-            name (str): The name of the collision geometry layer to be added.
-            world_index (int): The index of the world to which the layer will be added.\n
-                Defaults to the first world with index `0`.
-        """
-        world = self._check_world_index(world_index)
-        world.add_collision_layer(name)
-
-    def add_physical_layer(self, name: str, world_index: int = 0):
-        """
-        Add a new physical geometry layer to the model.
-
-        Args:
-            name (str): The name of the physical geometry layer to be added.
-            world_index (int): The index of the world to which the layer will be added.\n
-                Defaults to the first world with index `0`.
-        """
-        world = self._check_world_index(world_index)
-        world.add_physical_layer(name)
-
-    def add_collision_geometry(
+    def add_geometry(
         self,
         body: int = -1,
-        layer: str = "default",
         shape: ShapeDescriptorType | None = None,
         offset: transformf | None = None,
         material: str | int | None = None,
-        max_contacts: int = 0,
         group: int = 1,
         collides: int = 1,
+        max_contacts: int = 0,
+        gap: float = 0.0,
+        margin: float = 0.0,
         name: str | None = None,
         uid: str | None = None,
         world_index: int = 0,
     ) -> int:
         """
-        Add a collision geometry to the model using explicit specifications.
+        Add a geometry entity to the model using explicit specifications.
 
         Args:
-            body (int): The index of the body to which the geometry will be attached.\n
+            body (int):
+                The index of the body to which the geometry will be attached.\n
                 Defaults to -1 (world).
-            layer (str): The name of the collision geometry layer.\n
-                Defaults to "default".
-            shape (ShapeDescriptorType | None): The shape descriptor of the geometry.
-            offset (transformf | None): The local offset of the geometry relative to the body frame.
-            material (str | int | None): The name or index of the material assigned to the geometry.
-            max_contacts (int): The maximum number of contact points for the geometry.\n
+            shape (ShapeDescriptorType | None):
+                The shape descriptor of the geometry.
+            offset (transformf | None):
+                The local offset of the geometry relative to the body frame.
+            material (str | int | None):
+                The name or index of the material assigned to the geometry.
+            max_contacts (int):
+                The maximum number of contact points for the geometry.\n
                 Defaults to 0 (unlimited).
-            group (int): The collision group of the geometry.\n
+            group (int):
+                The collision group of the geometry.\n
                 Defaults to 1.
-            collides (int): The collision mask of the geometry.\n
+            collides (int):
+                The collision mask of the geometry.\n
                 Defaults to 1.
-            name (str | None): The name of the geometry.
-            uid (str | None): The unique identifier of the geometry.
-            world_index (int): The index of the world to which the geometry will be added.\n
+            gap (float):
+                The collision detection gap of the geometry.\n
+                Defaults to 0.0.
+            margin (float):
+                The artificial surface margin of the geometry.\n
+                Defaults to 0.0.
+            name (str | None):
+                The name of the geometry.\n
+                If `None`, a default name will be generated based on the current number of geometries in the model.
+            uid (str | None):
+                The unique identifier of the geometry.\n
+                If `None`, a UUID will be generated.
+            world_index (int):
+                The index of the world to which the geometry will be added.\n
                 Defaults to the first world with index `0`.
 
         Returns:
@@ -572,11 +550,10 @@ class ModelBuilder:
         # NOTE: Specifying a name is required by the base descriptor class,
         # but we allow it to be optional here for convenience. Thus, we
         # generate a default name if none is provided.
-        geom = CollisionGeometryDescriptor(
-            name=name if name is not None else f"cgeom_{self._num_cgeoms}",
+        geom = GeometryDescriptor(
+            name=name if name is not None else f"cgeom_{self._num_geoms}",
             uid=uid,
-            bid=body,
-            layer=layer,
+            body=body,
             offset=offset if offset is not None else transformf(),
             shape=shape,
             material=self._materials[material],
@@ -584,28 +561,30 @@ class ModelBuilder:
             group=group,
             collides=collides,
             max_contacts=max_contacts,
+            gap=gap,
+            margin=margin,
         )
 
         # Add the body descriptor to the model
-        return self.add_collision_geometry_descriptor(geom, world_index=world_index)
+        return self.add_geometry_descriptor(geom, world_index=world_index)
 
-    def add_collision_geometry_descriptor(self, geom: CollisionGeometryDescriptor, world_index: int = 0) -> int:
+    def add_geometry_descriptor(self, geom: GeometryDescriptor, world_index: int = 0) -> int:
         """
-        Add a collision geometry to the model by descriptor.
+        Add a geometry to the model by descriptor.
 
         Args:
-            geom (CollisionGeometryDescriptor): The collision geometry descriptor to be added.
-            world_index (int): The index of the world to which the geometry will be added.\n
+            geom (GeometryDescriptor):
+                The geometry descriptor to be added.
+            world_index (int):
+                The index of the world to which the geometry will be added.\n
                 Defaults to the first world with index `0`.
 
         Returns:
-            int: The geometry index of the newly added collision geometry w.r.t its world.
+            int: The geometry index of the newly added geometry w.r.t its world.
         """
         # Check if the descriptor is valid
-        if not isinstance(geom, CollisionGeometryDescriptor):
-            raise TypeError(
-                f"Invalid collision geometry descriptor type: {type(geom)}. Must be `CollisionGeometryDescriptor`."
-            )
+        if not isinstance(geom, GeometryDescriptor):
+            raise TypeError(f"Invalid geometry descriptor type: {type(geom)}. Must be `GeometryDescriptor`.")
 
         # Check if the world index is valid
         world = self._check_world_index(world_index)
@@ -615,90 +594,11 @@ class ModelBuilder:
             geom.mid = self._materials.default.mid
 
         # Append body model data
-        world.add_collision_geom(geom)
-        self._insert_entity(self._cgeoms, geom, world_index=world_index)
+        world.add_geometry(geom)
+        self._insert_entity(self._geoms, geom, world_index=world_index)
 
         # Update model-wide counters
-        self._num_cgeoms += 1
-
-        # Return the new geometry index
-        return geom.gid
-
-    def add_physical_geometry(
-        self,
-        shape: ShapeDescriptorType,
-        body: int = -1,
-        layer: str = "default",
-        offset: transformf | None = None,
-        name: str | None = None,
-        uid: str | None = None,
-        world_index: int = 0,
-    ) -> int:
-        """
-        Add a physical geometry to the model using explicit specifications.
-
-        Args:
-            shape (ShapeDescriptorType): The shape descriptor of the geometry.
-            body (int): The index of the body to which the geometry will be attached.\n
-                Defaults to -1 (world).
-            layer (str): The name of the physical geometry layer.\n
-                Defaults to "default".
-            offset (transformf | None): The local offset of the geometry relative to the body frame.
-            name (str | None): The name of the geometry.
-            uid (str | None): The unique identifier of the geometry.
-            world_index (int): The index of the world to which the geometry will be added.\n
-                Defaults to the first world with index `0`.
-
-        Returns:
-            int: The index of the newly added physical geometry.
-        """
-        # Check if shape is valid
-        if not isinstance(shape, ShapeDescriptorType):
-            raise ValueError(
-                f"Shape '{shape}' must be a valid type.\nSee `ShapeDescriptorType` for the list of supported shapes."
-            )
-
-        # Create a joint descriptor from the provided specifications
-        # NOTE: Specifying a name is required by the base descriptor class,
-        # but we allow it to be optional here for convenience. Thus, we
-        # generate a default name if none is provided.
-        geom = GeometryDescriptor(
-            name=name if name is not None else f"cgeom_{self._num_cgeoms}",
-            uid=uid,
-            bid=body,
-            layer=layer,
-            offset=offset if offset is not None else transformf(),
-            shape=shape,
-        )
-
-        # Add the body descriptor to the model
-        return self.add_physical_geometry_descriptor(geom, world_index=world_index)
-
-    def add_physical_geometry_descriptor(self, geom: GeometryDescriptor, world_index: int = 0) -> int:
-        """
-        Add a physical geometry to the model by descriptor.
-
-        Args:
-            geom (GeometryDescriptor): The physical geometry descriptor to be added.
-            world_index (int): The index of the world to which the geometry will be added.\n
-                Defaults to the first world with index `0`.
-
-        Returns:
-            int: The geometry index of the newly added physical geometry w.r.t its world.
-        """
-        # Check if the descriptor is valid
-        if not isinstance(geom, GeometryDescriptor):
-            raise TypeError(f"Invalid physical geometry descriptor type: {type(geom)}. Must be `GeometryDescriptor`.")
-
-        # Check if the world index is valid
-        world = self._check_world_index(world_index)
-
-        # Append body model data
-        world.add_physical_geom(geom)
-        self._insert_entity(self._pgeoms, geom, world_index=world_index)
-
-        # Update model-wide counters
-        self._num_pgeoms += 1
+        self._num_geoms += 1
 
         # Return the new geometry index
         return geom.gid
@@ -759,8 +659,7 @@ class ModelBuilder:
         # Append the other per-entity descriptors
         self._bodies.extend(_other._bodies)
         self._joints.extend(_other._joints)
-        self._cgeoms.extend(_other._cgeoms)
-        self._pgeoms.extend(_other._pgeoms)
+        self._geoms.extend(_other._geoms)
 
         # Append the other materials
         self._materials.merge(_other._materials)
@@ -776,16 +675,13 @@ class ModelBuilder:
                 body.wid = self._num_worlds + w
             for joint in self._joints[self._num_joints : self._num_joints + world.num_joints]:
                 joint.wid = self._num_worlds + w
-            for cgeom in self._cgeoms[self._num_cgeoms : self._num_cgeoms + world.num_collision_geoms]:
-                cgeom.wid = self._num_worlds + w
-            for pgeom in self._pgeoms[self._num_pgeoms : self._num_pgeoms + world.num_physical_geoms]:
-                pgeom.wid = self._num_worlds + w
+            for geom in self._geoms[self._num_geoms : self._num_geoms + world.num_geoms]:
+                geom.wid = self._num_worlds + w
 
             # Update model-wide counters
             self._num_bodies += world.num_bodies
             self._num_joints += world.num_joints
-            self._num_cgeoms += world.num_collision_geoms
-            self._num_pgeoms += world.num_physical_geoms
+            self._num_geoms += world.num_geoms
             self._num_bdofs += 6 * world.num_bodies
             self._num_joint_coords += world.num_joint_coords
             self._num_joint_dofs += world.num_joint_dofs
@@ -1014,8 +910,7 @@ class ModelBuilder:
         info_njp = []
         info_nja = []
         info_nji = []
-        info_ncg = []
-        info_npg = []
+        info_ng = []
         info_nbd = []
         info_njq = []
         info_njd = []
@@ -1098,31 +993,19 @@ class ModelBuilder:
         joints_kcts_start = []
 
         # Initialize the collision geometry data collections
-        cgeoms_label = []
-        cgeoms_wid = []
-        cgeoms_gid = []
-        cgeoms_lid = []
-        cgeoms_bid = []
-        cgeoms_sid = []
-        cgeoms_ptr = []
-        cgeoms_params = []
-        cgeoms_offset = []
-        cgeoms_mid = []
-        cgeoms_group = []
-        cgeoms_collides = []
-        cgeoms_gap = []
-        cgeoms_margin = []
-
-        # Initialize the physical geometry data collections
-        pgeoms_label = []
-        pgeoms_wid = []
-        pgeoms_gid = []
-        pgeoms_lid = []
-        pgeoms_bid = []
-        pgeoms_sid = []
-        pgeoms_ptr = []
-        pgeoms_params = []
-        pgeoms_offset = []
+        geoms_label = []
+        geoms_wid = []
+        geoms_gid = []
+        geoms_bid = []
+        geoms_type = []
+        geoms_ptr = []
+        geoms_params = []
+        geoms_offset = []
+        geoms_material = []
+        geoms_group = []
+        geoms_collides = []
+        geoms_gap = []
+        geoms_margin = []
 
         # Initialize the material data collections
         materials_rest = []
@@ -1142,8 +1025,7 @@ class ModelBuilder:
                 info_njp.append(world.num_passive_joints)
                 info_nja.append(world.num_actuated_joints)
                 info_nji.append(world.num_dynamic_joints)
-                info_ncg.append(world.num_collision_geoms)
-                info_npg.append(world.num_physical_geoms)
+                info_ng.append(world.num_geoms)
                 info_nbd.append(world.num_body_dofs)
                 info_njq.append(world.num_joint_coords)
                 info_njd.append(world.num_joint_dofs)
@@ -1254,37 +1136,22 @@ class ModelBuilder:
                 return 0
 
         # A helper function to collect model collision geometries data
-        def collect_collision_geometry_model_data():
+        def collect_geometry_model_data():
             cgeom_meshes = {}
-            for geom in self._cgeoms:
-                cgeoms_label.append(geom.name)
-                cgeoms_wid.append(geom.wid)
-                cgeoms_lid.append(geom.lid)
-                cgeoms_gid.append(geom.gid)
-                cgeoms_bid.append(geom.bid + self._worlds[geom.wid].bodies_idx_offset if geom.bid >= 0 else -1)
-                cgeoms_sid.append(geom.shape.type.value)
-                cgeoms_params.append(geom.shape.paramsvec)
-                cgeoms_offset.append(geom.offset)
-                cgeoms_mid.append(geom.mid)
-                cgeoms_group.append(geom.group)
-                cgeoms_collides.append(geom.collides)
-                cgeoms_gap.append(geom.gap)
-                cgeoms_margin.append(geom.margin)
-                cgeoms_ptr.append(make_geometry_source_pointer(geom, cgeom_meshes, device))
-
-        # A helper function to collect model physical geometries data
-        def collect_physical_geometry_model_data():
-            pgeom_meshes = {}
-            for geom in self._pgeoms:
-                pgeoms_label.append(geom.name)
-                pgeoms_wid.append(geom.wid)
-                pgeoms_lid.append(geom.lid)
-                pgeoms_gid.append(geom.gid)
-                pgeoms_bid.append(geom.bid + self._worlds[geom.wid].bodies_idx_offset if geom.bid >= 0 else -1)
-                pgeoms_sid.append(geom.shape.type.value)
-                pgeoms_params.append(geom.shape.paramsvec)
-                pgeoms_offset.append(geom.offset)
-                pgeoms_ptr.append(make_geometry_source_pointer(geom, pgeom_meshes, device))
+            for geom in self._geoms:
+                geoms_label.append(geom.name)
+                geoms_wid.append(geom.wid)
+                geoms_gid.append(geom.gid)
+                geoms_bid.append(geom.body + self._worlds[geom.wid].bodies_idx_offset if geom.body >= 0 else -1)
+                geoms_type.append(geom.shape.type.value)
+                geoms_params.append(geom.shape.paramsvec)
+                geoms_offset.append(geom.offset)
+                geoms_material.append(geom.mid)
+                geoms_group.append(geom.group)
+                geoms_collides.append(geom.collides)
+                geoms_gap.append(geom.gap)
+                geoms_margin.append(geom.margin)
+                geoms_ptr.append(make_geometry_source_pointer(geom, cgeom_meshes, device))
 
         # A helper function to collect model material-pairs data
         def collect_material_pairs_model_data():
@@ -1300,8 +1167,7 @@ class ModelBuilder:
         collect_gravity_model_data()
         collect_body_model_data()
         collect_joint_model_data()
-        collect_collision_geometry_model_data()
-        collect_physical_geometry_model_data()
+        collect_geometry_model_data()
         collect_material_pairs_model_data()
 
         ###
@@ -1335,10 +1201,8 @@ class ModelBuilder:
         model.size.max_of_num_actuated_joints = max([world.num_actuated_joints for world in self._worlds])
         model.size.sum_of_num_dynamic_joints = sum([world.num_dynamic_joints for world in self._worlds])
         model.size.max_of_num_dynamic_joints = max([world.num_dynamic_joints for world in self._worlds])
-        model.size.sum_of_num_collision_geoms = self._num_cgeoms
-        model.size.max_of_num_collision_geoms = max([world.num_collision_geoms for world in self._worlds])
-        model.size.sum_of_num_physical_geoms = self._num_pgeoms
-        model.size.max_of_num_physical_geoms = max([world.num_physical_geoms for world in self._worlds])
+        model.size.sum_of_num_geoms = self._num_geoms
+        model.size.max_of_num_geoms = max([world.num_geoms for world in self._worlds])
         model.size.sum_of_num_materials = self._materials.num_materials
         model.size.max_of_num_materials = self._materials.num_materials
         model.size.sum_of_num_material_pairs = self._materials.num_material_pairs
@@ -1392,8 +1256,7 @@ class ModelBuilder:
                 num_passive_joints=wp.array(info_njp, dtype=int32),
                 num_actuated_joints=wp.array(info_nja, dtype=int32),
                 num_dynamic_joints=wp.array(info_nji, dtype=int32),
-                num_collision_geoms=wp.array(info_ncg, dtype=int32),
-                num_physical_geoms=wp.array(info_npg, dtype=int32),
+                num_geoms=wp.array(info_ng, dtype=int32),
                 num_body_dofs=wp.array(info_nbd, dtype=int32),
                 num_joint_coords=wp.array(info_njq, dtype=int32),
                 num_joint_dofs=wp.array(info_njd, dtype=int32),
@@ -1488,36 +1351,22 @@ class ModelBuilder:
             )
 
             # Create the collision geometries model
-            model.cgeoms = CollisionGeometriesModel(
-                num_geoms=model.size.sum_of_num_collision_geoms,
-                label=cgeoms_label,
-                wid=wp.array(cgeoms_wid, dtype=int32),
-                gid=wp.array(cgeoms_gid, dtype=int32),
-                lid=wp.array(cgeoms_lid, dtype=int32),
-                bid=wp.array(cgeoms_bid, dtype=int32),
-                sid=wp.array(cgeoms_sid, dtype=int32),
-                ptr=wp.array(cgeoms_ptr, dtype=wp.uint64),
-                params=wp.array(cgeoms_params, dtype=vec4f, requires_grad=requires_grad),
-                offset=wp.array(cgeoms_offset, dtype=transformf, requires_grad=requires_grad),
-                mid=wp.array(cgeoms_mid, dtype=int32),
-                group=wp.array(cgeoms_group, dtype=uint32),
-                collides=wp.array(cgeoms_collides, dtype=uint32),
-                gap=wp.array(cgeoms_gap, dtype=float32),
-                margin=wp.array(cgeoms_margin, dtype=float32),
-            )
-
-            # Create the physical geometries model
-            model.pgeoms = GeometriesModel(
-                num_geoms=model.size.sum_of_num_physical_geoms,
-                label=pgeoms_label,
-                wid=wp.array(pgeoms_wid, dtype=int32),
-                gid=wp.array(pgeoms_gid, dtype=int32),
-                lid=wp.array(pgeoms_lid, dtype=int32),
-                bid=wp.array(pgeoms_bid, dtype=int32),
-                sid=wp.array(pgeoms_sid, dtype=int32),
-                ptr=wp.array(pgeoms_ptr, dtype=wp.uint64),
-                params=wp.array(pgeoms_params, dtype=vec4f, requires_grad=requires_grad),
-                offset=wp.array(pgeoms_offset, dtype=transformf, requires_grad=requires_grad),
+            model.geoms = GeometriesModel(
+                num_geoms=model.size.sum_of_num_geoms,
+                label=geoms_label,
+                wid=wp.array(geoms_wid, dtype=int32),
+                gid=wp.array(geoms_gid, dtype=int32),
+                bid=wp.array(geoms_bid, dtype=int32),
+                type=wp.array(geoms_type, dtype=int32),
+                ptr=wp.array(geoms_ptr, dtype=wp.uint64),
+                params=wp.array(geoms_params, dtype=vec4f),
+                offset=wp.array(geoms_offset, dtype=transformf),
+                material=wp.array(geoms_material, dtype=int32),
+                group=wp.array(geoms_group, dtype=uint32),
+                collides=wp.array(geoms_collides, dtype=uint32),
+                gap=wp.array(geoms_gap, dtype=float32),
+                margin=wp.array(geoms_margin, dtype=float32),
+                collidable_pairs=None,  # TODO!!!!!
             )
 
             # Create the material pairs model
@@ -1545,13 +1394,13 @@ class ModelBuilder:
         max_contacts_per_world: int | None = None,
     ) -> tuple[int, list[int]]:
         # First check if there are any collision geometries
-        if self._num_cgeoms == 0:
+        if self._num_geoms == 0:
             return 0, [0] * self.num_worlds
 
         # Compute the maximum possible number of geom pairs per world
         world_max_contacts = [0] * self.num_worlds
         for w, world in enumerate(self._worlds):
-            world_num_geom_pairs = (world.num_collision_geoms * (world.num_collision_geoms - 1)) // 2
+            world_num_geom_pairs = (world.num_geoms * (world.num_geoms - 1)) // 2
             world_max_contacts[w] = world_num_geom_pairs * max_contacts_per_pair
 
         # Override the per-world maximum contacts if specified in the settings
@@ -1589,7 +1438,7 @@ class ModelBuilder:
         nw = self.num_worlds
 
         # Extract the per-world info from the builder
-        ncg = [self._worlds[i].num_collision_geoms for i in range(nw)]
+        ncg = [self._worlds[i].num_geoms for i in range(nw)]
 
         # Initialize the lists to store the collision candidate pairs and their properties of each world
         world_num_geom_pairs = []
@@ -1619,10 +1468,14 @@ class ModelBuilder:
                 gid2 = int(gid2_) + ncg_offset
 
                 # Get references to the geometries
-                geom1, geom2 = self.collision_geoms[gid1], self.collision_geoms[gid2]
+                geom1, geom2 = self.geoms[gid1], self.geoms[gid2]
+
+                # Skip if either geometry is non-collidable
+                if not geom1.is_collidable or not geom2.is_collidable:
+                    continue
 
                 # Get body indices of each geom
-                bid1, bid2 = geom1.bid, geom2.bid
+                bid1, bid2 = geom1.body, geom2.body
 
                 # Get world indices of each geom
                 wid1, wid2 = geom1.wid, geom2.wid
@@ -1711,8 +1564,7 @@ class ModelBuilder:
         # Initialize the model offsets
         bodies_idx_offset: int = 0
         joints_idx_offset: int = 0
-        collision_geoms_idx_offset: int = 0
-        physical_geoms_idx_offset: int = 0
+        geoms_idx_offset: int = 0
         body_dofs_idx_offset: int = 0
         joint_coords_idx_offset: int = 0
         joint_dofs_idx_offset: int = 0
@@ -1728,8 +1580,7 @@ class ModelBuilder:
             # Set the offsets in the world descriptor to the current values
             world.bodies_idx_offset = int(bodies_idx_offset)
             world.joints_idx_offset = int(joints_idx_offset)
-            world.collision_geoms_idx_offset = int(collision_geoms_idx_offset)
-            world.physical_geoms_idx_offset = int(physical_geoms_idx_offset)
+            world.geoms_idx_offset = int(geoms_idx_offset)
             world.body_dofs_idx_offset = int(body_dofs_idx_offset)
             world.joint_coords_idx_offset = int(joint_coords_idx_offset)
             world.joint_dofs_idx_offset = int(joint_dofs_idx_offset)
@@ -1743,8 +1594,7 @@ class ModelBuilder:
             # Update the offsets for the next world
             bodies_idx_offset += world.num_bodies
             joints_idx_offset += world.num_joints
-            collision_geoms_idx_offset += world.num_collision_geoms
-            physical_geoms_idx_offset += world.num_physical_geoms
+            geoms_idx_offset += world.num_geoms
             body_dofs_idx_offset += 6 * world.num_bodies
             joint_coords_idx_offset += world.num_joint_coords
             joint_dofs_idx_offset += world.num_joint_dofs
@@ -1756,19 +1606,19 @@ class ModelBuilder:
             joint_dynamic_cts_idx_offset += world.num_dynamic_joint_cts
             joint_kinematic_cts_idx_offset += world.num_kinematic_joint_cts
 
-    def _collect_cgeom_max_contact_hints(self) -> tuple[int, list[int]]:
+    def _collect_geom_max_contact_hints(self) -> tuple[int, list[int]]:
         """
         Collects the `max_contacts` hints from collision geometries.
         """
         model_max_contacts = 0
         world_max_contacts = [0] * self.num_worlds
         for w in range(len(self._worlds)):
-            for cgeom_maxnc in self._worlds[w].collision_geometry_max_contacts:
-                model_max_contacts += cgeom_maxnc
-                world_max_contacts[w] += cgeom_maxnc
+            for geom_maxnc in self._worlds[w].geometry_max_contacts:
+                model_max_contacts += geom_maxnc
+                world_max_contacts[w] += geom_maxnc
         return model_max_contacts, world_max_contacts
 
-    EntityDescriptorType = RigidBodyDescriptor | JointDescriptor | GeometryDescriptor | CollisionGeometryDescriptor
+    EntityDescriptorType = RigidBodyDescriptor | JointDescriptor | GeometryDescriptor
     """A type alias for model entity descriptors."""
 
     @staticmethod

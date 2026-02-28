@@ -111,7 +111,7 @@ class CollisionPipelinePrimitive:
 
         # Retrieve the number of world
         num_worlds = builder.num_worlds
-        num_geoms = len(builder.collision_geoms)
+        num_geoms = len(builder.geoms)
 
         # Construct collision pairs
         world_num_geom_pairs, model_geom_pair, model_pairid, model_wid = builder.make_collision_candidate_pairs()
@@ -173,8 +173,8 @@ class CollisionPipelinePrimitive:
         # Perform the broad-phase collision detection to generate candidate pairs
         primitive_broadphase_explicit(
             body_poses=data.bodies.q_i,
-            geoms_model=model.cgeoms,
-            geoms_data=data.cgeoms,
+            geoms_model=model.geoms,
+            geoms_data=data.geoms,
             bv_type=self._bvtype,
             bv_data=self._bvdata,
             candidates_model=self._cmodel,
@@ -216,8 +216,8 @@ class CollisionPipelinePrimitive:
         # Iterate over each candidate geometry pair
         for gid_12 in geom_pairs:
             # Retrieve the shape types
-            cgeom_1 = builder.collision_geoms[gid_12[0]]
-            cgeom_2 = builder.collision_geoms[gid_12[1]]
+            cgeom_1 = builder.geoms[gid_12[0]]
+            cgeom_2 = builder.geoms[gid_12[1]]
             shape_1 = cgeom_1.shape.type
             shape_2 = cgeom_2.shape.type
 

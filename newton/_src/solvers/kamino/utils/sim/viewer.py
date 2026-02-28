@@ -25,7 +25,7 @@ from PIL import Image
 
 from .....viewer import ViewerGL
 from ...core.builder import ModelBuilder
-from ...core.geometry import CollisionGeometryDescriptor, GeometryDescriptor
+from ...core.geometry import GeometryDescriptor
 from ...core.shapes import ShapeType
 from ...core.types import vec3f
 from ...core.world import WorldDescriptor
@@ -237,8 +237,7 @@ class ViewerKamino(ViewerGL):
 
         # Declare and initialize geometry info cache
         self._worlds: list[WorldDescriptor] = builder.worlds
-        self._collision_geometry: list[CollisionGeometryDescriptor] = builder.collision_geoms
-        self._physical_geometry: list[GeometryDescriptor] = builder.physical_geoms
+        self._geometry: list[GeometryDescriptor] = builder.geoms
 
         # Initialize video recording settings
         self._record_video = record_video
@@ -256,7 +255,7 @@ class ViewerKamino(ViewerGL):
 
     def render_geometry(self, body_poses: wp.array, geom: GeometryDescriptor, scope: str):
         # TODO: Fix this
-        bid = geom.bid + self._worlds[geom.wid].bodies_idx_offset if geom.bid >= 0 else -1
+        bid = geom.body + self._worlds[geom.wid].bodies_idx_offset if geom.body >= 0 else -1
 
         # Handle the case of static geometry (bid < 0)
         if bid < 0:
@@ -275,7 +274,7 @@ class ViewerKamino(ViewerGL):
         geom_transform = wp.transform_multiply(offset_transform, geom_transform)
 
         # Choose color based on body ID
-        color = self.body_colors[geom.bid % len(self.body_colors)]
+        color = self.body_colors[geom.body % len(self.body_colors)]
 
         # Convert shape parameters to Newton format w/ half-extents
         params = geom.shape.params
@@ -290,7 +289,7 @@ class ViewerKamino(ViewerGL):
 
         # Update the geometry data
         self.log_shapes(
-            name=f"/world_{geom.wid}/body_{geom.bid}/{scope}/{geom.gid}-{geom.name}",
+            name=f"/world_{geom.wid}/body_{geom.body}/{scope}/{geom.gid}-{geom.name}",
             geo_type=ShapeType.to_newton(shape_type=geom.shape.type)[0],
             geo_scale=params,
             xforms=wp.array([geom_transform], dtype=wp.transform),
@@ -307,16 +306,16 @@ class ViewerKamino(ViewerGL):
         body_poses = self._simulator.state.q_i.numpy()
 
         # Render each collision geom
-        for cgeom in self._collision_geometry:
+        for cgeom in self._geometry:
             if cgeom.shape.type == ShapeType.EMPTY:
                 continue
             self.render_geometry(body_poses, cgeom, scope="collision")
 
-        # Render each physical geom
-        for pgeom in self._physical_geometry:
-            if pgeom.shape.type == ShapeType.EMPTY:
-                continue
-            self.render_geometry(body_poses, pgeom, scope="physical")
+        # TODO: Render each visual geom
+        # for vgeom in self._physical_geometry:
+        #     if vgeom.shape.type == ShapeType.EMPTY:
+        #         continue
+        #     self.render_geometry(body_poses, vgeom, scope="visual")
 
         # Render contacts if they exist and visualization is enabled
         if hasattr(self._simulator, "contacts") and self._simulator.contacts is not None:

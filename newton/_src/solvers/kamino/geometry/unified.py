@@ -533,7 +533,7 @@ class CollisionPipelineUnifiedKamino:
         self._max_triangle_pairs: int = max_triangle_pairs
 
         # Get geometry count from builder
-        self._num_geoms: int = builder.num_collision_geoms
+        self._num_geoms: int = builder.num_geoms
 
         # Compute the maximum possible number of geom pairs (worst-case, needed for NXN/SAP)
         self._max_shape_pairs: int = (self._num_geoms * (self._num_geoms - 1)) // 2
@@ -564,7 +564,7 @@ class CollisionPipelineUnifiedKamino:
             self._excluded_pairs, self._num_excluded_pairs = self._build_excluded_pairs(builder)
 
         # Capture a reference to per-geometry world indices already present in the model
-        self.geom_wid: wp.array = model.cgeoms.wid
+        self.geom_wid: wp.array = model.geoms.wid
 
         # Define default shape flags for all geometries
         default_shape_flag: int = (
@@ -692,12 +692,12 @@ class CollisionPipelineUnifiedKamino:
             dim=self._num_geoms,
             inputs=[
                 self._default_gap,
-                model.cgeoms.sid,
-                model.cgeoms.params,
-                model.cgeoms.margin,
+                model.geoms.type,
+                model.geoms.params,
+                model.geoms.margin,
             ],
             outputs=[
-                model.cgeoms.gap,
+                model.geoms.gap,
                 self.geom_type,
                 self.geom_data,
                 self.shape_collision_radius,
@@ -720,7 +720,7 @@ class CollisionPipelineUnifiedKamino:
         """
         from ..core.joints import JointDoFType  # noqa: PLC0415
 
-        geoms = builder.collision_geoms
+        geoms = builder.geoms
         joints = builder.joints
         nw = builder.num_worlds
         worlds = builder._worlds
@@ -739,7 +739,7 @@ class CollisionPipelineUnifiedKamino:
         excluded: list[tuple[int, int]] = []
         ncg_offset = 0
         for wid in range(nw):
-            ncg = worlds[wid].num_collision_geoms
+            ncg = worlds[wid].num_geoms
             for idx1 in range(ncg):
                 gid1 = idx1 + ncg_offset
                 geom1 = geoms[gid1]
@@ -748,7 +748,7 @@ class CollisionPipelineUnifiedKamino:
                     geom2 = geoms[gid2]
 
                     # Same-body collision
-                    if geom1.bid == geom2.bid:
+                    if geom1.body == geom2.body:
                         excluded.append((gid1, gid2))
                         continue
 
@@ -761,8 +761,8 @@ class CollisionPipelineUnifiedKamino:
                     jlo, jhi = joint_ranges[wid]
                     is_excluded_neighbour = False
                     for joint in joints[jlo : jhi + 1]:
-                        is_pair = (joint.bid_B == geom1.bid and joint.bid_F == geom2.bid) or (
-                            joint.bid_B == geom2.bid and joint.bid_F == geom1.bid
+                        is_pair = (joint.bid_B == geom1.body and joint.bid_F == geom2.body) or (
+                            joint.bid_B == geom2.body and joint.bid_F == geom1.body
                         )
                         if is_pair:
                             if joint.dof_type == JointDoFType.FIXED:
@@ -798,16 +798,16 @@ class CollisionPipelineUnifiedKamino:
             inputs=[
                 self.geom_type,
                 self.geom_data,
-                model.cgeoms.bid,
-                model.cgeoms.ptr,
-                model.cgeoms.offset,
-                model.cgeoms.margin,
-                model.cgeoms.gap,
+                model.geoms.bid,
+                model.geoms.ptr,
+                model.geoms.offset,
+                model.geoms.margin,
+                model.geoms.gap,
                 self.shape_collision_radius,
                 data.bodies.q_i,
             ],
             outputs=[
-                data.cgeoms.pose,
+                data.geoms.pose,
                 self.shape_aabb_lower,
                 self.shape_aabb_upper,
             ],
@@ -881,10 +881,10 @@ class CollisionPipelineUnifiedKamino:
         writer_data = ContactWriterDataKamino()
         writer_data.model_max_contacts = int32(contacts.model_max_contacts_host)
         writer_data.world_max_contacts = contacts.world_max_contacts
-        writer_data.geom_bid = model.cgeoms.bid
-        writer_data.geom_wid = model.cgeoms.wid
-        writer_data.geom_mid = model.cgeoms.mid
-        writer_data.geom_gap = model.cgeoms.gap
+        writer_data.geom_bid = model.geoms.bid
+        writer_data.geom_wid = model.geoms.wid
+        writer_data.geom_mid = model.geoms.material
+        writer_data.geom_gap = model.geoms.gap
         writer_data.material_restitution = model.materials.restitution
         writer_data.material_static_friction = model.materials.static_friction
         writer_data.material_dynamic_friction = model.materials.dynamic_friction
@@ -912,11 +912,11 @@ class CollisionPipelineUnifiedKamino:
             candidate_pair_count=self.broad_phase_pair_count,
             shape_types=self.geom_type,
             shape_data=self.geom_data,
-            shape_transform=data.cgeoms.pose,
-            shape_source=model.cgeoms.ptr,
+            shape_transform=data.geoms.pose,
+            shape_source=model.geoms.ptr,
             sdf_data=self.shape_sdf_data,
             shape_sdf_index=self.shape_sdf_index,
-            shape_gap=model.cgeoms.gap,
+            shape_gap=model.geoms.gap,
             shape_collision_radius=self.shape_collision_radius,
             shape_flags=self.shape_flags,
             shape_collision_aabb_lower=self.shape_collision_aabb_lower,

@@ -25,11 +25,10 @@ import numpy as np
 import warp as wp
 from warp.context import Devicelike
 
-from newton._src.geometry.types import GeoType
 from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.core.math import I_3
 from newton._src.solvers.kamino.core.model import Model, ModelData
-from newton._src.solvers.kamino.core.shapes import ShapeType, SphereShape
+from newton._src.solvers.kamino.core.shapes import SphereShape
 from newton._src.solvers.kamino.core.types import transformf, vec6f
 from newton._src.solvers.kamino.geometry.contacts import Contacts
 from newton._src.solvers.kamino.geometry.unified import CollisionPipelineUnifiedKamino
@@ -140,7 +139,7 @@ def test_unified_pipeline(
 
         # Create a contacts container using the worst-case capacity of NxN over model-wise geom pairs
         # NOTE: This is required by the unified pipeline when using SAP and NXN broad-phases
-        capacity = max_contacts_per_pair * ((builder.num_collision_geoms * (builder.num_collision_geoms - 1)) // 2)
+        capacity = max_contacts_per_pair * ((builder.num_geoms * (builder.num_geoms - 1)) // 2)
         contacts = Contacts(capacity=capacity, device=device)
         contacts.clear()
 
@@ -515,7 +514,8 @@ class TestCollisionPipelineUnified(unittest.TestCase):
 
 
 class TestUnifiedWriterContactDataRegression(unittest.TestCase):
-    """Regression tests for the unified writer's ContactData API usage.
+    """
+    Regression tests for the unified writer's ContactData API usage.
 
     The writer previously referenced ``thickness_a/b`` fields on
     :class:`ContactData` which no longer exist; the correct fields are
@@ -532,7 +532,7 @@ class TestUnifiedWriterContactDataRegression(unittest.TestCase):
     def tearDown(self):
         self.default_device = None
 
-    def _run_pipeline(self, builder, default_gap=0.0):
+    def _run_pipeline(self, builder: ModelBuilder, default_gap=0.0):
         model = builder.finalize(self.default_device)
         data = model.data()
         pipeline = CollisionPipelineUnifiedKamino(
@@ -542,14 +542,14 @@ class TestUnifiedWriterContactDataRegression(unittest.TestCase):
             default_gap=default_gap,
             device=self.default_device,
         )
-        n_geoms = builder.num_collision_geoms
+        n_geoms = builder.num_geoms
         capacity = 8 * ((n_geoms * (n_geoms - 1)) // 2)
         contacts = Contacts(capacity=max(capacity, 8), device=self.default_device)
         contacts.clear()
         pipeline.collide(model, data, contacts)
         return contacts
 
-    def test_touching_spheres_produces_contact(self):
+    def test_00_touching_spheres_produces_contact(self):
         """Two touching spheres must generate exactly one contact with d ≈ 0."""
         builder = testing.make_single_shape_pair_builder(
             shapes=("sphere", "sphere"),
@@ -562,7 +562,7 @@ class TestUnifiedWriterContactDataRegression(unittest.TestCase):
         gapfunc = contacts.gapfunc.numpy()[0]
         self.assertAlmostEqual(float(gapfunc[3]), 0.0, places=4, msg="gapfunc.w should be ≈ 0 for touching spheres")
 
-    def test_penetrating_spheres_negative_distance(self):
+    def test_01_penetrating_spheres_negative_distance(self):
         """Penetrating spheres must produce a negative gapfunc.w."""
         penetration = -0.02
         builder = testing.make_single_shape_pair_builder(
@@ -576,60 +576,31 @@ class TestUnifiedWriterContactDataRegression(unittest.TestCase):
         gapfunc = contacts.gapfunc.numpy()[0]
         self.assertLess(float(gapfunc[3]), 0.0, "gapfunc.w must be negative for penetrating spheres")
 
-    def test_gap_retains_nearby_contact(self):
+    def test_02_gap_retains_nearby_contact(self):
         """Contact within detection gap must be retained by the writer."""
         separation = 1e-6
         builder = testing.make_single_shape_pair_builder(
             shapes=("sphere", "sphere"),
             distance=separation,
         )
-        for geom in builder.collision_geoms:
+        for geom in builder.geoms:
             geom.gap = 0.01
         contacts = self._run_pipeline(builder)
         active = contacts.model_active_contacts.numpy()[0]
         self.assertEqual(active, 1, "Contact within gap must be retained")
 
-    def test_gap_rejects_distant_contact(self):
+    def test_03_gap_rejects_distant_contact(self):
         """Contacts beyond the detection gap must be rejected."""
         separation = 0.1
         builder = testing.make_single_shape_pair_builder(
             shapes=("sphere", "sphere"),
             distance=separation,
         )
-        for geom in builder.collision_geoms:
+        for geom in builder.geoms:
             geom.gap = 0.001
         contacts = self._run_pipeline(builder)
         active = contacts.model_active_contacts.numpy()[0]
         self.assertEqual(active, 0, "Contact beyond gap must be rejected")
-
-
-class TestShapeTypeToNewton(unittest.TestCase):
-    """Tests for ShapeType.to_newton() enum conversion."""
-
-    def test_primitive_types_convert_successfully(self):
-        """All primitive ShapeType values must convert to the correct GeoType."""
-        expected_mappings = {
-            ShapeType.EMPTY: GeoType.NONE,
-            ShapeType.SPHERE: GeoType.SPHERE,
-            ShapeType.CYLINDER: GeoType.CYLINDER,
-            ShapeType.CONE: GeoType.CONE,
-            ShapeType.CAPSULE: GeoType.CAPSULE,
-            ShapeType.BOX: GeoType.BOX,
-            ShapeType.ELLIPSOID: GeoType.ELLIPSOID,
-            ShapeType.PLANE: GeoType.PLANE,
-            ShapeType.CONVEX: GeoType.CONVEX_MESH,
-            ShapeType.MESH: GeoType.MESH,
-            ShapeType.HFIELD: GeoType.HFIELD,
-        }
-        for kamino_type, newton_type in expected_mappings.items():
-            geo_type, _ = ShapeType.to_newton(kamino_type)
-            self.assertEqual(geo_type, newton_type, f"{kamino_type} should map to {newton_type}")
-
-    def test_all_enum_members_covered(self):
-        """Every ShapeType member must be handled by to_newton()."""
-        for member in ShapeType:
-            geo_type, _ = ShapeType.to_newton(member)
-            self.assertIsInstance(geo_type, GeoType)
 
 
 class TestUnifiedPipelineNxnBroadphase(unittest.TestCase):
@@ -643,7 +614,30 @@ class TestUnifiedPipelineNxnBroadphase(unittest.TestCase):
     def tearDown(self):
         self.default_device = None
 
-    def test_nxn_sphere_on_plane_generates_contacts(self):
+    def _make_two_sphere_builder(self, group_a=1, collides_a=1, group_b=1, collides_b=1, same_body=False):
+        """Helper: build a single-world scene with two spheres near each other."""
+        builder = ModelBuilder()
+        builder.add_world()
+        bid_a = builder.add_rigid_body(
+            m_i=1.0,
+            i_I_i=I_3,
+            q_i_0=transformf(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0),
+            u_i_0=vec6f(0.0),
+        )
+        if same_body:
+            bid_b = bid_a
+        else:
+            bid_b = builder.add_rigid_body(
+                m_i=1.0,
+                i_I_i=I_3,
+                q_i_0=transformf(0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0),
+                u_i_0=vec6f(0.0),
+            )
+        builder.add_geometry(body=bid_a, shape=SphereShape(radius=0.5), group=group_a, collides=collides_a)
+        builder.add_geometry(body=bid_b, shape=SphereShape(radius=0.5), group=group_b, collides=collides_b)
+        return builder
+
+    def test_00_nxn_sphere_on_plane_generates_contacts(self):
         """Sphere resting on a plane via NXN broadphase must produce contacts.
 
         Validates that shape_collision_radius is populated correctly for
@@ -669,7 +663,7 @@ class TestUnifiedPipelineNxnBroadphase(unittest.TestCase):
             device=self.default_device,
         )
 
-    def test_nxn_box_on_plane_generates_contacts(self):
+    def test_01_nxn_box_on_plane_generates_contacts(self):
         """Box on a plane via NXN broadphase must produce contacts."""
         builder = testing.make_single_shape_pair_builder(
             shapes=("box", "plane"),
@@ -690,30 +684,7 @@ class TestUnifiedPipelineNxnBroadphase(unittest.TestCase):
             device=self.default_device,
         )
 
-    def _make_two_sphere_builder(self, group_a=1, collides_a=1, group_b=1, collides_b=1, same_body=False):
-        """Helper: build a single-world scene with two spheres near each other."""
-        builder = ModelBuilder()
-        builder.add_world()
-        bid_a = builder.add_rigid_body(
-            m_i=1.0,
-            i_I_i=I_3,
-            q_i_0=transformf(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0),
-            u_i_0=vec6f(0.0),
-        )
-        if same_body:
-            bid_b = bid_a
-        else:
-            bid_b = builder.add_rigid_body(
-                m_i=1.0,
-                i_I_i=I_3,
-                q_i_0=transformf(0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0),
-                u_i_0=vec6f(0.0),
-            )
-        builder.add_collision_geometry(body=bid_a, shape=SphereShape(radius=0.5), group=group_a, collides=collides_a)
-        builder.add_collision_geometry(body=bid_b, shape=SphereShape(radius=0.5), group=group_b, collides=collides_b)
-        return builder
-
-    def test_nxn_excludes_non_collidable_pairs(self):
+    def test_02_nxn_excludes_non_collidable_pairs(self):
         """NXN broadphase must exclude pairs whose group/collides bitmasks do not overlap.
 
         Creates two spheres in the same world but with non-overlapping
@@ -732,7 +703,7 @@ class TestUnifiedPipelineNxnBroadphase(unittest.TestCase):
             device=self.default_device,
         )
 
-        n_geoms = builder.num_collision_geoms
+        n_geoms = builder.num_geoms
         capacity = 8 * ((n_geoms * (n_geoms - 1)) // 2)
         contacts = Contacts(capacity=max(capacity, 8), device=self.default_device)
         contacts.clear()
@@ -742,7 +713,7 @@ class TestUnifiedPipelineNxnBroadphase(unittest.TestCase):
         active = contacts.model_active_contacts.numpy()[0]
         self.assertEqual(active, 0, "Non-collidable groups must produce zero contacts via NXN")
 
-    def test_nxn_same_body_excluded(self):
+    def test_03_nxn_same_body_excluded(self):
         """NXN broadphase must exclude same-body shape pairs.
 
         Attaches two collision geometries to the same body and verifies
@@ -761,7 +732,7 @@ class TestUnifiedPipelineNxnBroadphase(unittest.TestCase):
             device=self.default_device,
         )
 
-        n_geoms = builder.num_collision_geoms
+        n_geoms = builder.num_geoms
         capacity = 8 * ((n_geoms * (n_geoms - 1)) // 2)
         contacts = Contacts(capacity=max(capacity, 8), device=self.default_device)
         contacts.clear()

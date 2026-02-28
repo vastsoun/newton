@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 import warp as wp
 
 from .bodies import RigidBodyDescriptor
-from .geometry import CollisionGeometryDescriptor, GeometryDescriptor
+from .geometry import GeometryDescriptor
 from .joints import JointActuationType, JointDescriptor, JointDoFType
 from .materials import MaterialDescriptor
 from .types import Descriptor
@@ -89,14 +89,9 @@ class WorldDescriptor(Descriptor):
     This is less than or equal to `num_joints`.
     """
 
-    num_collision_geoms: int = 0
+    num_geoms: int = 0
     """
-    The number of collision geometries defined in the world.
-    """
-
-    num_physical_geoms: int = 0
-    """
-    The number of physical geometries defined in the world.
+    The number of geometries defined in the world.
     """
 
     num_materials: int = 0
@@ -244,11 +239,8 @@ class WorldDescriptor(Descriptor):
     joints_idx_offset: int = 0
     """Index offset of the world's joints w.r.t the entire model."""
 
-    collision_geoms_idx_offset: int = 0
-    """Index offset of the world's collision geometries w.r.t the entire model."""
-
-    physical_geoms_idx_offset: int = 0
-    """Index offset of the world's physical geometries w.r.t the entire model."""
+    geoms_idx_offset: int = 0
+    """Index offset of the world's geometries w.r.t the entire model."""
 
     ###
     # Constraint & DoF Offsets
@@ -300,17 +292,11 @@ class WorldDescriptor(Descriptor):
     joint_uids: list[str] = field(default_factory=list[str])
     """List of joint unique identifiers (UIDs)."""
 
-    collision_geom_names: list[str] = field(default_factory=list[str])
-    """List of collision geometry names."""
+    geom_names: list[str] = field(default_factory=list[str])
+    """List of geometry names."""
 
-    collision_geom_uids: list[str] = field(default_factory=list[str])
-    """List of collision geometry unique identifiers (UIDs)."""
-
-    physical_geom_names: list[str] = field(default_factory=list[str])
-    """List of physical geometry names."""
-
-    physical_geom_uids: list[str] = field(default_factory=list[str])
-    """List of physical geometry unique identifiers (UIDs)."""
+    geom_uids: list[str] = field(default_factory=list[str])
+    """List of geometry unique identifiers (UIDs)."""
 
     material_names: list[str] = field(default_factory=list[str])
     """List of material names."""
@@ -333,14 +319,8 @@ class WorldDescriptor(Descriptor):
     dynamic_joint_names: list[str] = field(default_factory=list[str])
     """List of dynamic joint names."""
 
-    physical_geometry_layers: list[str] = field(default_factory=list[str])
-    """List of physical geometry layers."""
-
-    collision_geometry_layers: list[str] = field(default_factory=list[str])
-    """List of collision geometry layers."""
-
-    collision_geometry_max_contacts: list[int] = field(default_factory=list[int])
-    """List of maximum contacts prescribed for each collision geometry."""
+    geometry_max_contacts: list[int] = field(default_factory=list[int])
+    """List of maximum contacts prescribed for each geometry."""
 
     ###
     # Base Properties
@@ -535,64 +515,24 @@ class WorldDescriptor(Descriptor):
             self.joint_dynamic_cts.append(joint.num_dynamic_cts)
             self.dynamic_joint_names.append(joint.name)
 
-    def add_collision_layer(self, layer: str):
-        if not isinstance(layer, str):
-            raise TypeError(f"Collision layer must be a string, got `{type(layer)}` with value `{layer}` instead.")
-        if layer not in self.collision_geometry_layers:
-            self.collision_geometry_layers.append(layer)
-
-    def add_physical_layer(self, layer: str):
-        if not isinstance(layer, str):
-            raise TypeError(f"Physical layer must be a string, got `{type(layer)}` with value `{layer}` instead.")
-        if layer not in self.physical_geometry_layers:
-            self.physical_geometry_layers.append(layer)
-
-    def add_collision_geom(self, geom: CollisionGeometryDescriptor):
+    def add_geometry(self, geom: GeometryDescriptor):
         # Check if the body has already been added to a world
-        if geom.name in self.collision_geom_names:
-            raise ValueError(f"Collision geom name '{geom.name}' already exists in world '{self.name}' ({self.wid}).")
-        if geom.uid in self.collision_geom_uids:
-            raise ValueError(f"Collision geom UID '{geom.uid}' already exists in world '{self.name}' ({self.wid}).")
-
-        # Check if the layer is valid
-        if geom.layer not in self.collision_geometry_layers:
-            self.collision_geometry_layers.append(geom.layer)
+        if geom.name in self.geom_names:
+            raise ValueError(f"Geometry name '{geom.name}' already exists in world '{self.name}' ({self.wid}).")
+        if geom.uid in self.geom_uids:
+            raise ValueError(f"Geometry UID '{geom.uid}' already exists in world '{self.name}' ({self.wid}).")
 
         # Assign geometry metadata based on the current contents of the world
         geom.wid = self.wid
-        geom.gid = self.num_collision_geoms
-        geom.lid = self.collision_geometry_layers.index(geom.layer)
+        geom.gid = self.num_geoms
 
-        # Update collision geometry entity counts
-        self.num_collision_geoms += 1
-
-        # Append geometry info
-        self.collision_geom_names.append(geom.name)
-        self.collision_geom_uids.append(geom.uid)
-        self.collision_geometry_max_contacts.append(geom.max_contacts)
-
-    def add_physical_geom(self, geom: GeometryDescriptor):
-        # Check if the body has already been added to a world
-        if geom.name in self.physical_geom_names:
-            raise ValueError(f"Physical geom name '{geom.name}' already exists in world '{self.name}' ({self.wid}).")
-        if geom.uid in self.physical_geom_uids:
-            raise ValueError(f"Physical geom UID '{geom.uid}' already exists in world '{self.name}' ({self.wid}).")
-
-        # Check if the layer is valid
-        if geom.layer not in self.physical_geometry_layers:
-            self.physical_geometry_layers.append(geom.layer)
-
-        # Assign geometry metadata based on the current contents of the world
-        geom.wid = self.wid
-        geom.gid = self.num_physical_geoms
-        geom.lid = self.physical_geometry_layers.index(geom.layer)
-
-        # Update physical geometry entity counts
-        self.num_physical_geoms += 1
+        # Update geometry entity counts
+        self.num_geoms += 1
 
         # Append geometry info
-        self.physical_geom_names.append(geom.name)
-        self.physical_geom_uids.append(geom.uid)
+        self.geom_names.append(geom.name)
+        self.geom_uids.append(geom.uid)
+        self.geometry_max_contacts.append(geom.max_contacts)
 
     def add_material(self, material: MaterialDescriptor):
         # Check if the material has already been added to a world

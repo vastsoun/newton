@@ -26,7 +26,7 @@ import warp as wp
 from ..core.control import Control as ControlKamino
 from ..core.data import DataKamino
 from ..core.model import ModelKamino
-from ..core.state import State as StateKamino
+from ..core.state import StateKamino
 from ..geometry.contacts import Contacts as ContactsKamino
 from ..geometry.detector import CollisionDetector
 from ..kinematics.limits import Limits as LimitsKamino

@@ -21,7 +21,7 @@ from ..core.bodies import transform_body_inertial_properties
 from ..core.data import DataKamino
 from ..core.math import screw, screw_angular, screw_linear
 from ..core.model import ModelKamino
-from ..core.state import State
+from ..core.state import StateKamino
 from ..core.types import float32, int32, mat33f, transformf, vec3f, vec6f
 from ..kinematics.joints import compute_joint_pose_and_relative_motion, make_write_joint_data
 
@@ -588,7 +588,7 @@ def reset_joint_constraint_reactions(
 
 def reset_state_to_model_default(
     model: ModelKamino,
-    state_out: State,
+    state_out: StateKamino,
     world_mask: wp.array,
 ):
     """
@@ -598,7 +598,7 @@ def reset_state_to_model_default(
     Args:
         model (ModelKamino):
             Input model container holding the time-invariant data of the system.
-        state_out (State):
+        state_out (StateKamino):
             Output state container to be reset to the model's default state.
         world_mask (wp.array):
             Array of per-world flags indicating which worlds should be reset.\n
@@ -615,7 +615,7 @@ def reset_state_to_model_default(
 
 def reset_state_from_bodies_state(
     model: ModelKamino,
-    state_out: State,
+    state_out: StateKamino,
     world_mask: wp.array,
     bodies_q: wp.array,
     bodies_u: wp.array,
@@ -627,7 +627,7 @@ def reset_state_from_bodies_state(
     Args:
         model (ModelKamino):
             Input model container holding the time-invariant data of the system.
-        state_out (State):
+        state_out (StateKamino):
             Output state container to be reset to the model's default state.
         world_mask (wp.array):
             Array of per-world flags indicating which worlds should be reset.\n
@@ -689,7 +689,7 @@ def reset_state_from_bodies_state(
 
 def reset_state_from_base_state(
     model: ModelKamino,
-    state_out: State,
+    state_out: StateKamino,
     world_mask: wp.array,
     base_q: wp.array,
     base_u: wp.array,
@@ -706,7 +706,7 @@ def reset_state_from_base_state(
     Args:
         model (ModelKamino):
             Input model container holding the time-invariant data of the system.
-        state_out (State):
+        state_out (StateKamino):
             Output state container to be reset based on the base body states.
         world_mask (wp.array):
             Array of per-world flags indicating which worlds should be reset.\n
@@ -837,7 +837,7 @@ def reset_select_worlds_to_initial_state(
 
 def reset_select_worlds_to_state(
     model: ModelKamino,
-    state: State,
+    state: StateKamino,
     mask: wp.array,
     data: DataKamino,
     reset_constraints: bool = True,

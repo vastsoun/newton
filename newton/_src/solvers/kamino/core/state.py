@@ -21,18 +21,31 @@ from dataclasses import dataclass
 
 import warp as wp
 
+###
+# Module interface
+###
+
+__all__ = [
+    "StateKamino",
+]
+
+
+###
+# Types
+###
+
 
 @dataclass
-class State:
+class StateKamino:
     """
     Represents the time-varying state of a :class:`ModelKamino` in a simulation.
 
-    The State object holds all dynamic quantities that change over time during simulation,
-    such as rigid body poses, twists, and wrenches, as well as joint coordinates, velocities,
-    and constraint forces.
+    The :class:`StateKamino` object holds all dynamic quantities that change over time during
+    simulation, such as rigid body poses, twists, and wrenches, as well as joint coordinates,
+    velocities, and constraint forces.
 
-    State objects are typically created via :meth:`kamino.ModelKamino.state()` and are used to
-    store and update the simulation's current configuration and derived data.
+    :class:`StateKamino` objects are typically created via :meth:`kamino.ModelKamino.state()`
+    and are used to store and update the simulation's current configuration and derived data.
 
     For constrained rigid multi-body system, the state is defined formally using either:
     1. maximal-coordinates, as the absolute poses and twists of all bodies expressed in world coordinates, or
@@ -101,24 +114,24 @@ class State:
     Shape is ``(sum_of_num_joint_cts,)`` and dtype is :class:`float32`.
     """
 
-    def copy_to(self, other: State) -> None:
+    def copy_to(self, other: StateKamino) -> None:
         """
-        Copy the State data to another State object.
+        Copy the current data to another :class:`StateKamino` object.
 
         Args:
-            other: The target State object to copy data into.
+            other: The target :class:`StateKamino` object to copy data into.
         """
         other.copy_from(self)
 
-    def copy_from(self, other: State) -> None:
+    def copy_from(self, other: StateKamino) -> None:
         """
-        Copy the State data from another State object.
+        Copy the data from another :class:`StateKamino` object into the current.
 
         Args:
-            other: The source State object to copy data from.
+            other: The source :class:`StateKamino` object to copy data from.
         """
         if self.q_i is None or other.q_i is None:
-            raise ValueError("Error copying from/to uninitialized State")
+            raise ValueError("Error copying from/to uninitialized `StateKamino` instance.")
 
         wp.copy(self.q_i, other.q_i)
         wp.copy(self.u_i, other.u_i)

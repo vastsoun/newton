@@ -21,10 +21,10 @@ from .builder import ModelBuilder
 from .control import Control
 from .data import DataKamino
 from .model import ModelKamino
-from .state import State
+from .state import StateKamino
 
 ###
 # Module interface
 ###
 
-__all__ = ["Control", "DataKamino", "ModelBuilder", "ModelKamino", "State"]
+__all__ = ["Control", "DataKamino", "ModelBuilder", "ModelKamino", "StateKamino"]

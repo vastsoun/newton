@@ -26,7 +26,7 @@ from warp.context import Devicelike
 from ...core.control import Control
 from ...core.joints import JointActuationType
 from ...core.model import ModelKamino
-from ...core.state import State
+from ...core.state import StateKamino
 from ...core.time import TimeData
 from ...core.types import FloatArrayLike, IntArrayLike, float32, int32
 
@@ -271,7 +271,7 @@ def _compute_jointspace_pid_control(
 def reset_jointspace_pid_references(
     # Inputs:
     model: ModelKamino,
-    state: State,
+    state: StateKamino,
     # Outputs:
     controller: PIDControllerData,
 ) -> None:
@@ -302,7 +302,7 @@ def reset_jointspace_pid_references(
 def compute_jointspace_pid_control(
     # Inputs:
     model: ModelKamino,
-    state: State,
+    state: StateKamino,
     time: TimeData,
     controller: PIDControllerData,
     # Outputs:
@@ -481,7 +481,7 @@ class JointSpacePIDController:
                 decimation=wp.array(decimation, dtype=int32),
             )
 
-    def reset(self, model: ModelKamino, state: State) -> None:
+    def reset(self, model: ModelKamino, state: StateKamino) -> None:
         """
         Reset the internal state of the controller.
 
@@ -491,7 +491,7 @@ class JointSpacePIDController:
 
         Args:
             model (ModelKamino): The model container holding the time-invariant parameters of the simulation.
-            state (State): The current state of the system to which the references will be reset.
+            state (StateKamino): The current state of the system to which the references will be reset.
         """
 
         # First reset the references to the current state
@@ -537,7 +537,7 @@ class JointSpacePIDController:
     def compute(
         self,
         model: ModelKamino,
-        state: State,
+        state: StateKamino,
         time: TimeData,
         control: Control,
     ) -> None:
@@ -546,7 +546,7 @@ class JointSpacePIDController:
 
         Args:
             model (ModelKamino): The input model container holding the time-invariant parameters of the simulation.
-            state (State): The input state container holding the current state of the simulation.
+            state (StateKamino): The input state container holding the current state of the simulation.
             time (TimeData): The input time data container holding the current simulation time and steps.
             control (Control): The output control container where the computed control torques will be stored.
         """

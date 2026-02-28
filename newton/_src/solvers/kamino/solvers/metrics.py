@@ -92,7 +92,7 @@ from warp.context import Devicelike
 from ..core.data import DataKamino
 from ..core.math import screw, screw_angular, screw_linear
 from ..core.model import ModelKamino
-from ..core.state import State
+from ..core.state import StateKamino
 from ..core.types import float32, int32, int64, mat33f, uint32, vec2f, vec3f, vec4f, vec6f
 from ..dynamics.dual import DualProblem
 from ..geometry.contacts import Contacts
@@ -1238,7 +1238,7 @@ class SolutionMetrics:
         v_plus: wp.array,
         model: ModelKamino,
         data: DataKamino,
-        state_p: State,
+        state_p: StateKamino,
         problem: DualProblem,
         jacobians: DenseSystemJacobians | SparseSystemJacobians,
         limits: Limits | None = None,
@@ -1252,7 +1252,7 @@ class SolutionMetrics:
                 The model containing the time-invariant data of the simulation.
             data (DataKamino):
                 The model data containing the time-variant data of the simulation.
-            state_p (State):
+            state_p (StateKamino):
                 The previous state of the simulation.
             limits (Limits):
                 The joint-limits data describing active limit constraints.
@@ -1372,7 +1372,7 @@ class SolutionMetrics:
         self,
         model: ModelKamino,
         data: DataKamino,
-        state_p: State,
+        state_p: StateKamino,
         jacobians: DenseSystemJacobians | SparseSystemJacobians,
     ):
         """
@@ -1383,7 +1383,7 @@ class SolutionMetrics:
                 The model containing the time-invariant data of the simulation.
             data (DataKamino):
                 The model data containing the time-variant data of the simulation.
-            state_p (State):
+            state_p (StateKamino):
                 The previous state of the simulation.
             jacobians (DenseSystemJacobians | SparseSystemJacobians):
                 The system Jacobians of the current time-step.

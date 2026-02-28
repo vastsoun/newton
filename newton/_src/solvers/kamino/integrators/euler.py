@@ -32,7 +32,7 @@ from ..core.math import (
     screw,
 )
 from ..core.model import ModelKamino
-from ..core.state import State as StateKamino
+from ..core.state import StateKamino
 from ..core.types import (
     float32,
     int32,

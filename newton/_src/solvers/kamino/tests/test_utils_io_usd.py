@@ -738,121 +738,212 @@ class TestUSDImporter(unittest.TestCase):
         usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "geoms/test_geom_capsule.usda")
         importer = USDImporter()
         builder_usd: ModelBuilderKamino = importer.import_from(source=usd_asset_filename)
+
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 1)
         self.assertEqual(builder_usd.num_joints, 0)
         self.assertEqual(builder_usd.num_geoms, 2)
+
+        # Visual geoms are loaded first
         self.assertEqual(builder_usd.geoms[0].wid, 0)
         self.assertEqual(builder_usd.geoms[0].gid, 0)
         self.assertEqual(builder_usd.geoms[0].body, 0)
         self.assertEqual(builder_usd.geoms[0].shape.type, ShapeType.CAPSULE)
-        self.assertAlmostEqual(builder_usd.geoms[0].shape.radius, 0.1)
-        self.assertAlmostEqual(builder_usd.geoms[0].shape.height, 2.2)
-        self.assertEqual(builder_usd.geoms[0].mid, 0)
-        self.assertEqual(builder_usd.geoms[0].group, 1)
-        self.assertEqual(builder_usd.geoms[0].collides, 1)
-        self.assertEqual(builder_usd.geoms[0].max_contacts, 10)
+        self.assertAlmostEqual(builder_usd.geoms[0].shape.radius, 0.2)
+        self.assertAlmostEqual(builder_usd.geoms[0].shape.height, 3.3)
+        self.assertEqual(builder_usd.geoms[0].mid, -1)
+        self.assertEqual(builder_usd.geoms[0].group, 0)
+        self.assertEqual(builder_usd.geoms[0].collides, 0)
+        self.assertEqual(builder_usd.geoms[0].max_contacts, 0)
+
+        # Collidable geoms are loaded after visual geoms
+        self.assertEqual(builder_usd.geoms[1].wid, 0)
+        self.assertEqual(builder_usd.geoms[1].gid, 1)
+        self.assertEqual(builder_usd.geoms[1].body, 0)
+        self.assertEqual(builder_usd.geoms[1].shape.type, ShapeType.CAPSULE)
+        self.assertAlmostEqual(builder_usd.geoms[1].shape.radius, 0.1)
+        self.assertAlmostEqual(builder_usd.geoms[1].shape.height, 2.2)
+        self.assertEqual(builder_usd.geoms[1].mid, 0)
+        self.assertEqual(builder_usd.geoms[1].group, 1)
+        self.assertEqual(builder_usd.geoms[1].collides, 1)
+        self.assertEqual(builder_usd.geoms[1].max_contacts, 10)
 
     def test_import_geom_cone(self):
         """Test importing a body with geometric primitive cone shape from a USD file"""
         usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "geoms/test_geom_cone.usda")
         importer = USDImporter()
         builder_usd: ModelBuilderKamino = importer.import_from(source=usd_asset_filename)
+
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 1)
         self.assertEqual(builder_usd.num_joints, 0)
         self.assertEqual(builder_usd.num_geoms, 2)
+
+        # Visual geoms are loaded first
         self.assertEqual(builder_usd.geoms[0].wid, 0)
         self.assertEqual(builder_usd.geoms[0].gid, 0)
         self.assertEqual(builder_usd.geoms[0].body, 0)
         self.assertEqual(builder_usd.geoms[0].shape.type, ShapeType.CONE)
-        self.assertAlmostEqual(builder_usd.geoms[0].shape.radius, 0.1)
-        self.assertAlmostEqual(builder_usd.geoms[0].shape.height, 2.2)
-        self.assertEqual(builder_usd.geoms[0].mid, 0)
-        self.assertEqual(builder_usd.geoms[0].group, 1)
-        self.assertEqual(builder_usd.geoms[0].collides, 1)
-        self.assertEqual(builder_usd.geoms[0].max_contacts, 10)
+        self.assertAlmostEqual(builder_usd.geoms[0].shape.radius, 0.2)
+        self.assertAlmostEqual(builder_usd.geoms[0].shape.height, 3.3)
+        self.assertEqual(builder_usd.geoms[0].mid, -1)
+        self.assertEqual(builder_usd.geoms[0].group, 0)
+        self.assertEqual(builder_usd.geoms[0].collides, 0)
+        self.assertEqual(builder_usd.geoms[0].max_contacts, 0)
+
+        # Collidable geoms are loaded after visual geoms
+        self.assertEqual(builder_usd.geoms[1].wid, 0)
+        self.assertEqual(builder_usd.geoms[1].gid, 1)
+        self.assertEqual(builder_usd.geoms[1].body, 0)
+        self.assertEqual(builder_usd.geoms[1].shape.type, ShapeType.CONE)
+        self.assertAlmostEqual(builder_usd.geoms[1].shape.radius, 0.1)
+        self.assertAlmostEqual(builder_usd.geoms[1].shape.height, 2.2)
+        self.assertEqual(builder_usd.geoms[1].mid, 0)
+        self.assertEqual(builder_usd.geoms[1].group, 1)
+        self.assertEqual(builder_usd.geoms[1].collides, 1)
+        self.assertEqual(builder_usd.geoms[1].max_contacts, 10)
 
     def test_import_geom_cylinder(self):
         """Test importing a body with geometric primitive cylinder shape from a USD file"""
         usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "geoms/test_geom_cylinder.usda")
         importer = USDImporter()
         builder_usd: ModelBuilderKamino = importer.import_from(source=usd_asset_filename)
+
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 1)
         self.assertEqual(builder_usd.num_joints, 0)
         self.assertEqual(builder_usd.num_geoms, 2)
+
+        # Visual geoms are loaded first
         self.assertEqual(builder_usd.geoms[0].wid, 0)
         self.assertEqual(builder_usd.geoms[0].gid, 0)
         self.assertEqual(builder_usd.geoms[0].body, 0)
         self.assertEqual(builder_usd.geoms[0].shape.type, ShapeType.CYLINDER)
-        self.assertAlmostEqual(builder_usd.geoms[0].shape.radius, 0.1)
-        self.assertAlmostEqual(builder_usd.geoms[0].shape.height, 2.2)
-        self.assertEqual(builder_usd.geoms[0].mid, 0)
-        self.assertEqual(builder_usd.geoms[0].group, 1)
-        self.assertEqual(builder_usd.geoms[0].collides, 1)
-        self.assertEqual(builder_usd.geoms[0].max_contacts, 10)
+        self.assertAlmostEqual(builder_usd.geoms[0].shape.radius, 0.2)
+        self.assertAlmostEqual(builder_usd.geoms[0].shape.height, 3.3)
+        self.assertEqual(builder_usd.geoms[0].mid, -1)
+        self.assertEqual(builder_usd.geoms[0].group, 0)
+        self.assertEqual(builder_usd.geoms[0].collides, 0)
+        self.assertEqual(builder_usd.geoms[0].max_contacts, 0)
+
+        # Collidable geoms are loaded after visual geoms
+        self.assertEqual(builder_usd.geoms[1].wid, 0)
+        self.assertEqual(builder_usd.geoms[1].gid, 1)
+        self.assertEqual(builder_usd.geoms[1].body, 0)
+        self.assertEqual(builder_usd.geoms[1].shape.type, ShapeType.CYLINDER)
+        self.assertAlmostEqual(builder_usd.geoms[1].shape.radius, 0.1)
+        self.assertAlmostEqual(builder_usd.geoms[1].shape.height, 2.2)
+        self.assertEqual(builder_usd.geoms[1].mid, 0)
+        self.assertEqual(builder_usd.geoms[1].group, 1)
+        self.assertEqual(builder_usd.geoms[1].collides, 1)
+        self.assertEqual(builder_usd.geoms[1].max_contacts, 10)
 
     def test_import_geom_sphere(self):
         """Test importing a body with geometric primitive sphere shape from a USD file"""
         usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "geoms/test_geom_sphere.usda")
         importer = USDImporter()
         builder_usd: ModelBuilderKamino = importer.import_from(source=usd_asset_filename)
+
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 1)
         self.assertEqual(builder_usd.num_joints, 0)
         self.assertEqual(builder_usd.num_geoms, 2)
+
+        # Visual geoms are loaded first
         self.assertEqual(builder_usd.geoms[0].wid, 0)
         self.assertEqual(builder_usd.geoms[0].gid, 0)
         self.assertEqual(builder_usd.geoms[0].body, 0)
         self.assertEqual(builder_usd.geoms[0].shape.type, ShapeType.SPHERE)
-        self.assertAlmostEqual(builder_usd.geoms[0].shape.radius, 0.11)
-        self.assertEqual(builder_usd.geoms[0].mid, 0)
-        self.assertEqual(builder_usd.geoms[0].group, 1)
-        self.assertEqual(builder_usd.geoms[0].collides, 1)
-        self.assertEqual(builder_usd.geoms[0].max_contacts, 10)
+        self.assertAlmostEqual(builder_usd.geoms[0].shape.radius, 0.22)
+        self.assertEqual(builder_usd.geoms[0].mid, -1)
+        self.assertEqual(builder_usd.geoms[0].group, 0)
+        self.assertEqual(builder_usd.geoms[0].collides, 0)
+        self.assertEqual(builder_usd.geoms[0].max_contacts, 0)
+
+        # Collidable geoms are loaded after visual geoms
+        self.assertEqual(builder_usd.geoms[1].wid, 0)
+        self.assertEqual(builder_usd.geoms[1].gid, 1)
+        self.assertEqual(builder_usd.geoms[1].body, 0)
+        self.assertEqual(builder_usd.geoms[1].shape.type, ShapeType.SPHERE)
+        self.assertAlmostEqual(builder_usd.geoms[1].shape.radius, 0.11)
+        self.assertEqual(builder_usd.geoms[1].mid, 0)
+        self.assertEqual(builder_usd.geoms[1].group, 1)
+        self.assertEqual(builder_usd.geoms[1].collides, 1)
+        self.assertEqual(builder_usd.geoms[1].max_contacts, 10)
 
     def test_import_geom_ellipsoid(self):
         """Test importing a body with geometric primitive ellipsoid shape from a USD file"""
         usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "geoms/test_geom_ellipsoid.usda")
         importer = USDImporter()
         builder_usd: ModelBuilderKamino = importer.import_from(source=usd_asset_filename)
+
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 1)
         self.assertEqual(builder_usd.num_joints, 0)
         self.assertEqual(builder_usd.num_geoms, 2)
+
+        # Visual geoms are loaded first
         self.assertEqual(builder_usd.geoms[0].wid, 0)
         self.assertEqual(builder_usd.geoms[0].gid, 0)
         self.assertEqual(builder_usd.geoms[0].body, 0)
         self.assertEqual(builder_usd.geoms[0].shape.type, ShapeType.ELLIPSOID)
-        self.assertAlmostEqual(builder_usd.geoms[0].shape.a, 0.11)
-        self.assertAlmostEqual(builder_usd.geoms[0].shape.b, 0.22)
-        self.assertAlmostEqual(builder_usd.geoms[0].shape.c, 0.33)
-        self.assertEqual(builder_usd.geoms[0].mid, 0)
-        self.assertEqual(builder_usd.geoms[0].group, 1)
-        self.assertEqual(builder_usd.geoms[0].collides, 1)
-        self.assertEqual(builder_usd.geoms[0].max_contacts, 10)
+        self.assertAlmostEqual(builder_usd.geoms[0].shape.a, 0.22)
+        self.assertAlmostEqual(builder_usd.geoms[0].shape.b, 0.33)
+        self.assertAlmostEqual(builder_usd.geoms[0].shape.c, 0.44)
+        self.assertEqual(builder_usd.geoms[0].mid, -1)
+        self.assertEqual(builder_usd.geoms[0].group, 0)
+        self.assertEqual(builder_usd.geoms[0].collides, 0)
+        self.assertEqual(builder_usd.geoms[0].max_contacts, 0)
+
+        # Collidable geoms are loaded after visual geoms
+        self.assertEqual(builder_usd.geoms[1].wid, 0)
+        self.assertEqual(builder_usd.geoms[1].gid, 1)
+        self.assertEqual(builder_usd.geoms[1].body, 0)
+        self.assertEqual(builder_usd.geoms[1].shape.type, ShapeType.ELLIPSOID)
+        self.assertAlmostEqual(builder_usd.geoms[1].shape.a, 0.11)
+        self.assertAlmostEqual(builder_usd.geoms[1].shape.b, 0.22)
+        self.assertAlmostEqual(builder_usd.geoms[1].shape.c, 0.33)
+        self.assertEqual(builder_usd.geoms[1].mid, 0)
+        self.assertEqual(builder_usd.geoms[1].group, 1)
+        self.assertEqual(builder_usd.geoms[1].collides, 1)
+        self.assertEqual(builder_usd.geoms[1].max_contacts, 10)
 
     def test_import_geom_box(self):
         """Test importing a body with geometric primitive box shape from a USD file"""
         usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "geoms/test_geom_box.usda")
         importer = USDImporter()
         builder_usd: ModelBuilderKamino = importer.import_from(source=usd_asset_filename)
+
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 1)
         self.assertEqual(builder_usd.num_joints, 0)
         self.assertEqual(builder_usd.num_geoms, 2)
+
+        # Visual geoms are loaded first
         self.assertEqual(builder_usd.geoms[0].wid, 0)
         self.assertEqual(builder_usd.geoms[0].gid, 0)
         self.assertEqual(builder_usd.geoms[0].body, 0)
         self.assertEqual(builder_usd.geoms[0].shape.type, ShapeType.BOX)
-        self.assertAlmostEqual(builder_usd.geoms[0].shape.depth, 0.22)
-        self.assertAlmostEqual(builder_usd.geoms[0].shape.width, 0.44)
-        self.assertAlmostEqual(builder_usd.geoms[0].shape.height, 0.66)
-        self.assertEqual(builder_usd.geoms[0].mid, 0)
-        self.assertEqual(builder_usd.geoms[0].group, 1)
-        self.assertEqual(builder_usd.geoms[0].collides, 1)
-        self.assertEqual(builder_usd.geoms[0].max_contacts, 10)
+        self.assertAlmostEqual(builder_usd.geoms[0].shape.depth, 0.222)
+        self.assertAlmostEqual(builder_usd.geoms[0].shape.width, 0.444)
+        self.assertAlmostEqual(builder_usd.geoms[0].shape.height, 0.666)
+        self.assertEqual(builder_usd.geoms[0].mid, -1)
+        self.assertEqual(builder_usd.geoms[0].group, 0)
+        self.assertEqual(builder_usd.geoms[0].collides, 0)
+        self.assertEqual(builder_usd.geoms[0].max_contacts, 0)
+
+        # Collidable geoms are loaded after visual geoms
+        self.assertEqual(builder_usd.geoms[1].wid, 0)
+        self.assertEqual(builder_usd.geoms[1].gid, 1)
+        self.assertEqual(builder_usd.geoms[1].body, 0)
+        self.assertEqual(builder_usd.geoms[1].shape.type, ShapeType.BOX)
+        self.assertAlmostEqual(builder_usd.geoms[1].shape.depth, 0.22)
+        self.assertAlmostEqual(builder_usd.geoms[1].shape.width, 0.44)
+        self.assertAlmostEqual(builder_usd.geoms[1].shape.height, 0.66)
+        self.assertEqual(builder_usd.geoms[1].mid, 0)
+        self.assertEqual(builder_usd.geoms[1].group, 1)
+        self.assertEqual(builder_usd.geoms[1].collides, 1)
+        self.assertEqual(builder_usd.geoms[1].max_contacts, 10)
 
     ###
     # Basic models

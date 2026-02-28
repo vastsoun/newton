@@ -1545,113 +1545,123 @@ class ModelBuilder:
         return sum(world_max_contacts), world_max_contacts
 
     def make_collision_candidate_pairs(self, allow_neighbors: bool = False):
-        """
-        Construct the collision pair candidates for the given ModelBuilder instance.
+            """
+            Construct the collision pair candidates for the given ModelBuilder instance.
 
-        Filtering steps:
-            1. filter out self-collisions
-            2. filter out same-body collisions
-            3. filter out collision between different worlds
-            4. filter out collisions according to the collision groupings
-            5. filter out neighbor collisions for fixed joints
-            6. (optional) filter out neighbor collisions for joints w/ DoFs
+            Filtering steps:
+                1. filter out self-collisions
+                2. filter out same-body collisions
+                3. filter out collision between different worlds
+                4. filter out collisions according to the collision groupings
+                5. filter out neighbor collisions for fixed joints
+                6. (optional) filter out neighbor collisions for joints w/ DoFs
 
-        Args:
-            builder (ModelBuilder): The model builder instance containing the worlds and geometries.
-            allow_neighbors (bool, optional): If True, allows neighbor collisions for joints with DoF.
+            Args:
+                builder (ModelBuilder): The model builder instance containing the worlds and geometries.
+                allow_neighbors (bool, optional): If True, allows neighbor collisions for joints with DoF.
 
-        Returns:
-            tuple: A tuple containing:
-                - world_num_geom_pairs (list[int]): Number of collision pairs per world.
-                - model_geom_pairs (list[tuple[int, int]]): Geometry index pairs for each collision pair in the model.
-                - model_pairid (list[int]): Pair IDs for each collision pair in the model.
-                - model_wid (list[int]): World indices for each collision pair in the model.
-        """
-        # Retrieve the number of worlds
-        nw = self.num_worlds
+            Returns:
+                tuple: A tuple containing:
+                    - world_num_geom_pairs (list[int]): Number of collision pairs per world.
+                    - model_geom_pairs (list[tuple[int, int]]): Geometry index pairs for each collision pair in the model.
+                    - model_pairid (list[int]): Pair IDs for each collision pair in the model.
+                    - model_wid (list[int]): World indices for each collision pair in the model.
+            """
+            # Retrieve the number of worlds
+            nw = self.num_worlds
 
-        # Extract the per-world info from the builder
-        ncg = [self._worlds[i].num_collision_geoms for i in range(nw)]
+            # Extract the per-world info from the builder
+            ncg = [self._worlds[i].num_collision_geoms for i in range(nw)]
 
-        # Initialize the lists to store the collision candidate pairs and their properties of each world
-        world_num_geom_pairs = []
-        model_geom_pairs = []
-        model_pairid = []
-        model_wid = []
+            # Initialize the lists to store the collision candidate pairs and their properties of each world
+            world_num_geom_pairs = []
+            model_geom_pairs = []
+            model_pairid = []
+            model_wid = []
 
-        # Iterate over each world and construct the collision geometry pairs info
-        ncg_offset = 0
-        for wid in range(nw):
-            # Initialize the lists to store the collision candidate pairs and their properties
-            world_geom_pair = []
-            world_pairid = []
-            world_wid = []
+            joint_idx_min = [len(self.joints)] * nw
+            joint_idx_max = [0] * nw
+            for i, joint in enumerate(self.joints):
+                joint_idx_min[joint.wid] = min(i, joint_idx_min[joint.wid])
+                joint_idx_max[joint.wid] = max(i, joint_idx_max[joint.wid])
 
-            # Iterate over each gid pair and filtering out pairs not viable for collision detection
-            # NOTE: k=1 skips diagonal entries to exclude self-collisions
-            for gid1_, gid2_ in zip(*np.triu_indices(ncg[wid], k=1), strict=False):
-                # Convert the per-world local gids to model gid integers
-                gid1 = int(gid1_) + ncg_offset
-                gid2 = int(gid2_) + ncg_offset
+            # Iterate over each world and construct the collision geometry pairs info
+            ncg_offset = 0
+            for wid in range(nw):
+                # Initialize the lists to store the collision candidate pairs and their properties
+                world_geom_pair = []
+                world_pairid = []
+                world_wid = []
 
-                # Get references to the geometries
-                geom1, geom2 = self.collision_geoms[gid1], self.collision_geoms[gid2]
+                # Iterate over each gid pair and filtering out pairs not viable for collision detection
+                # NOTE: k=1 skips diagonal entries to exclude self-collisions
+                for gid1_, gid2_ in zip(*np.triu_indices(ncg[wid], k=1), strict=False):
+                    # Convert the per-world local gids to model gid integers
+                    gid1 = int(gid1_) + ncg_offset
+                    gid2 = int(gid2_) + ncg_offset
 
-                # Get body indices of each geom
-                bid1, bid2 = geom1.bid, geom2.bid
+                    # Get references to the geometries
+                    geom1, geom2 = self.collision_geoms[gid1], self.collision_geoms[gid2]
 
-                # Get world indices of each geom
-                wid1, wid2 = geom1.wid, geom2.wid
+                    # Get body indices of each geom
+                    bid1, bid2 = geom1.bid, geom2.bid
 
-                # 2. Check for same-body collision
-                is_self_collision = bid1 == bid2
+                    # Get world indices of each geom
+                    wid1, wid2 = geom1.wid, geom2.wid
 
-                # 3. Check for different-world collision
-                in_same_world = wid1 == wid2
+                    # 2. Check for same-body collision
+                    is_self_collision = bid1 == bid2
 
-                # 4. Check for collision according to the collision groupings
-                are_collidable = ((geom1.group & geom2.collides) != 0) and ((geom2.group & geom1.collides) != 0)
+                    # 3. Check for different-world collision
+                    in_same_world = wid1 == wid2
 
-                # 5. Check for neighbor collision for fixed and DoF joints
-                are_fixed_neighbors = False
-                are_dof_neighbors = False
-                for joint in self.joints:
-                    if (joint.bid_B == bid1 and joint.bid_F == bid2) or (joint.bid_B == bid2 and joint.bid_F == bid1):
-                        if joint.dof_type == JointDoFType.FIXED:
-                            are_fixed_neighbors = True
-                        elif joint.bid_B < 0:
-                            pass
-                        else:
-                            are_dof_neighbors = True
-                        break
+                    # 4. Check for collision according to the collision groupings
+                    are_collidable = ((geom1.group & geom2.collides) != 0) and ((geom2.group & geom1.collides) != 0)
 
-                # Assign pairid based on filtering results
-                if (not is_self_collision) and (in_same_world) and (are_collidable) and (not are_fixed_neighbors):
-                    pairid = -1  # TODO: Compute as geom-pair key
-                else:
-                    continue  # Skip this pair if it does not pass the filtering
+                    # Skip this pair if it does not pass the first round of filtering
+                    if is_self_collision or not in_same_world or not are_collidable:
+                        continue
 
-                # Apply final check for DoF neighbor collisions
-                if (not allow_neighbors) and are_dof_neighbors:
-                    continue  # Skip this pair if it does not pass the filtering
+                    # 5. Check for neighbor collision for fixed and DoF joints
+                    are_fixed_neighbors = False
+                    are_dof_neighbors = False
+                    for joint in self.joints[joint_idx_min[wid1] : joint_idx_max[wid1] + 1]:
+                        if (joint.bid_B == bid1 and joint.bid_F == bid2) or (joint.bid_B == bid2 and joint.bid_F == bid1):
+                            if joint.dof_type == JointDoFType.FIXED:
+                                are_fixed_neighbors = True
+                            elif joint.bid_B < 0:
+                                pass
+                            else:
+                                are_dof_neighbors = True
+                            break
 
-                # Append the geometry pair and pairid to the lists
-                world_geom_pair.append((gid1, gid2))
-                world_pairid.append(pairid)
-                world_wid.append(wid)
-                msg.debug("Adding broad-phase collision pair candidate: (gid1, gid2): (%d, %d)", gid1, gid2)
+                    # Assign pairid based on filtering results
+                    if not are_fixed_neighbors:
+                        pairid = -1  # TODO: Compute as geom-pair key
+                    else:
+                        continue  # Skip this pair if it does not pass the filtering
 
-            # Append the world collision pairs to the model lists
-            world_num_geom_pairs.append(len(world_geom_pair))
-            model_geom_pairs.extend(world_geom_pair)
-            model_pairid.extend(world_pairid)
-            model_wid.extend(world_wid)
+                    # Apply final check for DoF neighbor collisions
+                    if (not allow_neighbors) and are_dof_neighbors:
+                        continue  # Skip this pair if it does not pass the filtering
 
-            # Update the geometry index offset for the next world
-            ncg_offset += ncg[wid]
+                    # Append the geometry pair and pairid to the lists
+                    world_geom_pair.append((gid1, gid2))
+                    world_pairid.append(pairid)
+                    world_wid.append(wid)
+                    msg.debug("Adding broad-phase collision pair candidate: (gid1, gid2): (%d, %d)", gid1, gid2)
 
-        # Return the model total collision pair candidates and their properties
-        return world_num_geom_pairs, model_geom_pairs, model_pairid, model_wid
+                # Append the world collision pairs to the model lists
+                world_num_geom_pairs.append(len(world_geom_pair))
+                model_geom_pairs.extend(world_geom_pair)
+                model_pairid.extend(world_pairid)
+                model_wid.extend(world_wid)
+
+                # Update the geometry index offset for the next world
+                ncg_offset += ncg[wid]
+
+            # Return the model total collision pair candidates and their properties
+            return world_num_geom_pairs, model_geom_pairs, model_pairid, model_wid
 
     ###
     # Internal Functions

@@ -22,7 +22,7 @@ import numpy as np
 import warp as wp
 
 from newton._src.solvers.kamino.core.control import Control
-from newton._src.solvers.kamino.core.data import ModelData
+from newton._src.solvers.kamino.core.data import DataKamino
 from newton._src.solvers.kamino.core.joints import JointActuationType, JointCorrectionMode
 from newton._src.solvers.kamino.core.model import ModelKamino
 from newton._src.solvers.kamino.core.state import State
@@ -118,7 +118,7 @@ def assert_solver_components(testcase: unittest.TestCase, solver: SolverKamino):
     testcase.assertIsInstance(solver, SolverKamino)
     testcase.assertIsInstance(solver.settings, SolverKaminoSettings)
     testcase.assertIsInstance(solver._model, ModelKamino)
-    testcase.assertIsInstance(solver._data, ModelData)
+    testcase.assertIsInstance(solver._data, DataKamino)
     testcase.assertIsInstance(solver._limits, Limits)
     if solver._problem_fd.sparse:
         testcase.assertIsInstance(solver._jacobians, SparseSystemJacobians)

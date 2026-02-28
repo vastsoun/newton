@@ -19,7 +19,7 @@ KAMINO: UNIT TESTS: GENERAL UTILITIES
 
 import numpy as np
 
-from newton._src.solvers.kamino.core.data import ModelData
+from newton._src.solvers.kamino.core.data import DataKamino
 from newton._src.solvers.kamino.core.model import ModelKamino
 
 ###
@@ -214,7 +214,7 @@ def print_model_joints(
 
 
 # TODO: RENAME print_data_info
-def print_model_data_info(data: ModelData):
+def print_data_info(data: DataKamino):
     print("===============================================================================")
     print("data.info.num_limits: ", data.info.num_limits)
     print("data.info.num_contacts: ", data.info.num_contacts)
@@ -227,10 +227,10 @@ def print_model_data_info(data: ModelData):
     print("data.info.contact_cts_group_offset: ", data.info.contact_cts_group_offset)
 
 
-def print_model_state(data: ModelData, info=True):
+def print_data(data: DataKamino, info=True):
     # Print the state info
     if info:
-        print_model_data_info(data)
+        print_data_info(data)
     # Print body state data
     print(f"data.bodies.I_i: {data.bodies.I_i}")
     print(f"data.bodies.inv_I_i: {data.bodies.inv_I_i}")

@@ -36,7 +36,7 @@ from enum import IntEnum
 import warp as wp
 from warp.context import Devicelike
 
-from ..core.data import ModelData
+from ..core.data import DataKamino
 from ..core.math import contact_wrench_matrix_from_points
 from ..core.model import ModelKamino
 from ..core.types import float32, int32, override, quatf, transformf, uint64, vec2f, vec2i, vec3f, vec6f
@@ -585,7 +585,7 @@ def warmstart_limits_by_matched_jid_dof_key(
 
 def warmstart_contacts_by_matched_geom_pair_key_and_position(
     model: ModelKamino,
-    data: ModelData,
+    data: DataKamino,
     sorter: KeySorter,
     cache: ContactsData,
     contacts: ContactsData,
@@ -596,7 +596,7 @@ def warmstart_contacts_by_matched_geom_pair_key_and_position(
 
     Args:
         model (ModelKamino): The model containing simulation parameters.
-        data (ModelData): The model data containing body states.
+        data (DataKamino): The model data containing body states.
         sorter (KeySorter): The key sorter used to sort cached contact keys.
         cache (ContactsData): The cached contacts data from the previous simulation step.
         contacts (ContactsData): The current contacts data to be warm-started.
@@ -642,7 +642,7 @@ def warmstart_contacts_by_matched_geom_pair_key_and_position(
 
 
 def warmstart_contacts_from_geom_pair_net_force(
-    data: ModelData,
+    data: DataKamino,
     sorter: KeySorter,
     cache: ContactsData,
     contacts: ContactsData,
@@ -653,7 +653,7 @@ def warmstart_contacts_from_geom_pair_net_force(
 
     Args:
         model (ModelKamino): The model containing simulation parameters.
-        data (ModelData): The model data containing body states.
+        data (DataKamino): The model data containing body states.
         sorter (KeySorter): The key sorter used to sort cached contact keys.
         cache (ContactsData): The cached contacts data from the previous simulation step.
         contacts (ContactsData): The current contacts data to be warm-started.
@@ -698,7 +698,7 @@ def warmstart_contacts_from_geom_pair_net_force(
 
 def warmstart_contacts_by_matched_geom_pair_key_and_position_with_net_force_backup(
     model: ModelKamino,
-    data: ModelData,
+    data: DataKamino,
     sorter: KeySorter,
     cache: ContactsData,
     contacts: ContactsData,
@@ -710,7 +710,7 @@ def warmstart_contacts_by_matched_geom_pair_key_and_position_with_net_force_back
 
     Args:
         model (ModelKamino): The model containing simulation parameters.
-        data (ModelData): The model data containing body states.
+        data (DataKamino): The model data containing body states.
         sorter (KeySorter): The key sorter used to sort cached contact keys.
         cache (ContactsData): The cached contacts data from the previous simulation step.
         contacts (ContactsData): The current contacts data to be warm-started.
@@ -824,7 +824,7 @@ class WarmstarterLimits:
 
         Args:
             model (ModelKamino): The model containing simulation parameters.
-            data (ModelData): The model data containing body states.
+            data (DataKamino): The model data containing body states.
             limits (Limits): The limits container to warm-start.
         """
         # Early exit if no cache is allocated
@@ -981,7 +981,7 @@ class WarmstarterContacts:
         """
         return self._cache
 
-    def warmstart(self, model: ModelKamino, data: ModelData, contacts: Contacts):
+    def warmstart(self, model: ModelKamino, data: DataKamino, contacts: Contacts):
         """
         Warm-starts the provided contacts container using the internal cache.
 
@@ -989,7 +989,7 @@ class WarmstarterContacts:
 
         Args:
             model (ModelKamino): The model containing simulation parameters.
-            data (ModelData): The model data containing body states.
+            data (DataKamino): The model data containing body states.
             contacts (Contacts): The contacts container to warm-start.
         """
         # Early exit if no cache is allocated

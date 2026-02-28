@@ -42,7 +42,7 @@ from ....geometry.types import GeoType
 
 # Kamino imports
 from ..core.builder import ModelBuilder
-from ..core.data import ModelData
+from ..core.data import DataKamino
 from ..core.materials import DEFAULT_FRICTION, DEFAULT_RESTITUTION, make_get_material_pair_properties
 from ..core.model import ModelKamino
 from ..core.shapes import ShapeType
@@ -637,13 +637,13 @@ class CollisionPipelineUnifiedKamino:
     # Operations
     ###
 
-    def collide(self, model: ModelKamino, data: ModelData, contacts: Contacts):
+    def collide(self, model: ModelKamino, data: DataKamino, contacts: Contacts):
         """
         Runs the unified collision detection pipeline to generate discrete contacts.
 
         Args:
             model (ModelKamino): The model container holding the time-invariant parameters of the simulation.
-            data (ModelData): The data container holding the time-varying state of the simulation.
+            data (DataKamino): The data container holding the time-varying state of the simulation.
             contacts (Contacts): Output contacts container (will be cleared and populated)
         """
         # Check if contacts is allocated on the same device
@@ -785,7 +785,7 @@ class CollisionPipelineUnifiedKamino:
             len(excluded),
         )
 
-    def _update_geom_data(self, model: ModelKamino, data: ModelData):
+    def _update_geom_data(self, model: ModelKamino, data: DataKamino):
         """
         Updates geometry poses from corresponding body states and computes respective AABBs.
 
@@ -866,13 +866,13 @@ class CollisionPipelineUnifiedKamino:
             case _:
                 raise ValueError(f"Unsupported broad phase mode: {self._broadphase}")
 
-    def _run_narrowphase(self, model: ModelKamino, data: ModelData, contacts: Contacts):
+    def _run_narrowphase(self, model: ModelKamino, data: DataKamino, contacts: Contacts):
         """
         Runs narrow-phase collision detection to generate contacts.
 
         Args:
             model (ModelKamino): The model container holding the time-invariant parameters of the simulation.
-            data (ModelData): The data container holding the time-varying state of the simulation.
+            data (DataKamino): The data container holding the time-varying state of the simulation.
             contacts (Contacts): Output contacts container (will be populated by this function)
         """
         # Create a writer data struct to bundle all necessary input/output

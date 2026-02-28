@@ -40,7 +40,7 @@ from typing import Literal
 import warp as wp
 
 from ..core.builder import ModelBuilder
-from ..core.data import ModelData
+from ..core.data import DataKamino
 from ..core.model import ModelKamino
 from ..core.types import override
 from ..geometry.contacts import DEFAULT_GEOM_PAIR_CONTACT_GAP, DEFAULT_GEOM_PAIR_MAX_CONTACTS, Contacts
@@ -326,7 +326,7 @@ class CollisionDetector:
                 case _:
                     raise ValueError(f"Unsupported CollisionPipelineType: {self._settings.pipeline}")
 
-    def collide(self, model: ModelKamino, data: ModelData, contacts: Contacts | None = None):
+    def collide(self, model: ModelKamino, data: DataKamino, contacts: Contacts | None = None):
         """
         Executes collision detection given a model and its associated data.
 
@@ -336,8 +336,8 @@ class CollisionDetector:
         Args:
             model (ModelKamino):
                 The ModelKamino instance containing the collision geometries
-            data (ModelData):
-                The ModelData instance containing the state of the geometries
+            data (DataKamino):
+                The DataKamino instance containing the state of the geometries
             contacts (Contacts, optional):
                 An optional Contacts container to store the generated contacts.
                 If `None`, uses the internal Contacts container managed by the CollisionDetector.
@@ -363,8 +363,8 @@ class CollisionDetector:
             raise TypeError(f"Cannot perform collision detection: expected ModelKamino, got {type(model)}")
         if data is None:
             raise ValueError("Cannot perform collision detection: data is None")
-        if not isinstance(data, ModelData):
-            raise TypeError(f"Cannot perform collision detection: expected ModelData, got {type(data)}")
+        if not isinstance(data, DataKamino):
+            raise TypeError(f"Cannot perform collision detection: expected DataKamino, got {type(data)}")
 
         # Execute the configured collision detection pipeline
         match self._settings.pipeline:

@@ -28,7 +28,7 @@ from newton._src.solvers.kamino.kinematics.limits import Limits
 from newton._src.solvers.kamino.models.builders.basics import build_boxes_fourbar, make_basics_heterogeneous_builder
 from newton._src.solvers.kamino.models.builders.utils import make_homogeneous_builder
 from newton._src.solvers.kamino.tests import setup_tests, test_context
-from newton._src.solvers.kamino.tests.utils.print import print_model_constraint_info, print_model_data_info
+from newton._src.solvers.kamino.tests.utils.print import print_data_info, print_model_constraint_info
 from newton._src.solvers.kamino.utils import logger as msg
 
 ###
@@ -113,7 +113,7 @@ class TestKinematicsConstraints(unittest.TestCase):
         if self.verbose:
             print(f"model.size:\n{model.size}\n\n")
             print_model_constraint_info(model)
-            print_model_data_info(data)
+            print_data_info(data)
 
     def test_02_homogeneous_model_make_constraints(self):
         """
@@ -169,7 +169,7 @@ class TestKinematicsConstraints(unittest.TestCase):
         )
         if self.verbose:
             print_model_constraint_info(model)
-            print_model_data_info(data)
+            print_data_info(data)
             print("\n===============================================================")
             print("data.info.num_limits.ptr: ", data.info.num_limits.ptr)
             print("limits.world_active_limits.ptr: ", limits.world_active_limits.ptr)
@@ -264,7 +264,7 @@ class TestKinematicsConstraints(unittest.TestCase):
         )
         if self.verbose:
             print_model_constraint_info(model)
-            print_model_data_info(data)
+            print_data_info(data)
             print("\n===============================================================")
             print("data.info.num_limits.ptr: ", data.info.num_limits.ptr)
             print("limits.world_active_limits.ptr: ", limits.world_active_limits.ptr)

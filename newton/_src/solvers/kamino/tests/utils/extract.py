@@ -18,7 +18,7 @@
 import numpy as np
 import warp as wp
 
-from ...core.data import ModelData
+from ...core.data import DataKamino
 from ...core.model import ModelKamino
 from ...dynamics.delassus import BlockSparseMatrixFreeDelassusOperator, DelassusOperator
 from ...geometry.contacts import Contacts
@@ -54,19 +54,19 @@ def get_vector_block(index: int, flatvec: np.ndarray, dims: list[int], maxdims: 
 ###
 
 
-def extract_active_constraint_dims(data: ModelData) -> list[int]:
+def extract_active_constraint_dims(data: DataKamino) -> list[int]:
     active_dim_np = data.info.num_total_cts.numpy()
     return [int(active_dim_np[i]) for i in range(len(active_dim_np))]
 
 
-def extract_active_constraint_vectors(model: ModelKamino, data: ModelData, x: wp.array) -> list[np.ndarray]:
+def extract_active_constraint_vectors(model: ModelKamino, data: DataKamino, x: wp.array) -> list[np.ndarray]:
     cts_start_np = model.info.total_cts_offset.numpy()
     num_active_cts_np = extract_active_constraint_dims(data)
     x_np = x.numpy()
     return [x_np[cts_start_np[n] : cts_start_np[n] + num_active_cts_np[n]] for n in range(len(cts_start_np))]
 
 
-def extract_actuation_forces(model: ModelKamino, data: ModelData) -> list[np.ndarray]:
+def extract_actuation_forces(model: ModelKamino, data: DataKamino) -> list[np.ndarray]:
     dofs_start_np = model.info.joint_dofs_offset.numpy()
     num_dofs_np = model.info.num_joint_dofs.numpy()
     tau_j_np = data.joints.tau_j.numpy()

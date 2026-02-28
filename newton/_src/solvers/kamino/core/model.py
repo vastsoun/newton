@@ -22,7 +22,7 @@ from warp.context import Devicelike
 
 from .bodies import RigidBodiesData, RigidBodiesModel
 from .control import Control
-from .data import ModelData, ModelDataInfo
+from .data import DataKamino, DataKaminoInfo
 from .geometry import GeometriesData, GeometriesModel
 from .gravity import GravityModel
 from .joints import JointsData, JointsModel
@@ -685,7 +685,7 @@ class ModelKamino:
         joint_wrenches: bool = False,
         requires_grad: bool = False,
         device: Devicelike = None,
-    ) -> ModelData:
+    ) -> DataKamino:
         """
         Creates a model data container with the initial state of the model entities.
 
@@ -721,7 +721,7 @@ class ModelKamino:
         with wp.ScopedDevice(device=device):
             # Create a new model data info with the total constraint
             # counts initialized to the joint constraints count
-            info = ModelDataInfo(
+            info = DataKaminoInfo(
                 num_total_cts=wp.clone(self.info.num_joint_cts),
                 num_limits=wp.zeros(shape=nw, dtype=int32) if unilateral_cts else None,
                 num_contacts=wp.zeros(shape=nw, dtype=int32) if unilateral_cts else None,
@@ -783,7 +783,7 @@ class ModelKamino:
             )
 
         # Assemble and return the new data container
-        return ModelData(
+        return DataKamino(
             info=info,
             time=time,
             bodies=bodies,

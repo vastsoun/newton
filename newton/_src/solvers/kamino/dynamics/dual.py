@@ -69,7 +69,7 @@ from typing import Any
 import warp as wp
 from warp.context import Devicelike
 
-from ..core.data import ModelData
+from ..core.data import DataKamino
 from ..core.math import FLOAT32_EPS, UNIT_Z, screw, screw_angular, screw_linear
 from ..core.model import ModelKamino, ModelKaminoSize
 from ..core.types import (
@@ -1122,7 +1122,7 @@ class DualProblem:
     def __init__(
         self,
         model: ModelKamino | None = None,
-        data: ModelData | None = None,
+        data: DataKamino | None = None,
         limits: Limits | None = None,
         contacts: Contacts | None = None,
         solver: LinearSolverType | None = None,
@@ -1259,7 +1259,7 @@ class DualProblem:
     def finalize(
         self,
         model: ModelKamino,
-        data: ModelData | None = None,
+        data: DataKamino | None = None,
         limits: Limits | None = None,
         contacts: Contacts | None = None,
         solver: LinearSolverType | None = None,
@@ -1299,8 +1299,8 @@ class DualProblem:
 
         # Ensure the data container is valid if provided
         if data is not None:
-            if not isinstance(data, ModelData):
-                raise ValueError("Invalid data container provided. Must be an instance of `ModelData`.")
+            if not isinstance(data, DataKamino):
+                raise ValueError("Invalid data container provided. Must be an instance of `DataKamino`.")
 
         # Ensure the limits container is valid if provided
         if limits is not None:
@@ -1434,7 +1434,7 @@ class DualProblem:
     def build(
         self,
         model: ModelKamino,
-        data: ModelData,
+        data: DataKamino,
         jacobians: DenseSystemJacobians | SparseSystemJacobians,
         limits: Limits | None = None,
         contacts: Contacts | None = None,
@@ -1551,7 +1551,7 @@ class DualProblem:
         else:
             raise TypeError(f"Expected List[DualProblemSettings] or DualProblemSettings, got {type(settings)}")
 
-    def _build_nonlinear_generalized_force(model: ModelKamino, data: ModelData, problem: DualProblemData):
+    def _build_nonlinear_generalized_force(model: ModelKamino, data: DataKamino, problem: DualProblemData):
         """
         Builds the nonlinear generalized force vector `h`.
         """
@@ -1573,7 +1573,7 @@ class DualProblem:
             ],
         )
 
-    def _build_generalized_free_velocity(self, model: ModelKamino, data: ModelData):
+    def _build_generalized_free_velocity(self, model: ModelKamino, data: DataKamino):
         """
         Builds the generalized free-velocity vector (i.e. unconstrained) `u_f`.
         """
@@ -1600,7 +1600,7 @@ class DualProblem:
     def _build_free_velocity_bias(
         self,
         model: ModelKamino,
-        data: ModelData,
+        data: DataKamino,
         limits: Limits | None = None,
         contacts: Contacts | None = None,
     ):
@@ -1689,7 +1689,7 @@ class DualProblem:
                 ],
             )
 
-    def _build_free_velocity(self, model: ModelKamino, data: ModelData, jacobians: DenseSystemJacobians):
+    def _build_free_velocity(self, model: ModelKamino, data: DataKamino, jacobians: DenseSystemJacobians):
         """
         Builds the free-velocity vector `v_f`.
         """

@@ -21,7 +21,7 @@ import unittest
 import numpy as np
 import warp as wp
 
-from newton._src.solvers.kamino.core.data import ModelData
+from newton._src.solvers.kamino.core.data import DataKamino
 from newton._src.solvers.kamino.core.math import quat_exp, screw, screw_angular, screw_linear
 from newton._src.solvers.kamino.core.model import ModelKamino
 from newton._src.solvers.kamino.core.types import float32, int32, mat33f, transformf, vec3f, vec6f
@@ -128,7 +128,7 @@ def _set_joint_follower_body_state(
 ###
 
 
-def set_joint_follower_body_state(model: ModelKamino, data: ModelData):
+def set_joint_follower_body_state(model: ModelKamino, data: DataKamino):
     wp.launch(
         _set_joint_follower_body_state,
         dim=model.size.sum_of_num_joints,

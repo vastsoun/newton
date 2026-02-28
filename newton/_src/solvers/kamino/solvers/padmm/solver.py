@@ -26,7 +26,7 @@ import math
 import warp as wp
 from warp.context import Devicelike
 
-from ...core.data import ModelData
+from ...core.data import DataKamino
 from ...core.model import ModelKamino, ModelKaminoSize
 from ...dynamics.dual import DualProblem
 from ...geometry.contacts import Contacts
@@ -314,7 +314,7 @@ class PADMMSolver:
         self,
         problem: DualProblem,
         model: ModelKamino,
-        data: ModelData,
+        data: DataKamino,
         limits: Limits | None = None,
         contacts: Contacts | None = None,
     ):
@@ -330,7 +330,7 @@ class PADMMSolver:
             problem (DualProblem): The dual forward dynamics problem to be solved.\n
                 This is needed during warm-starts in order to access the problem preconditioning.
             model (ModelKamino): The model associated with the problem.
-            data (ModelData): The model data associated with the problem.
+            data (DataKamino): The model data associated with the problem.
             limits (Limits | None): The limits container associated with the model.\n
                 If `None`, no warm-starting from limits is performed.
             contacts (Contacts | None): The contacts container associated with the model.\n
@@ -612,7 +612,7 @@ class PADMMSolver:
     def _warmstart_joint_constraints(
         self,
         model: ModelKamino,
-        data: ModelData,
+        data: DataKamino,
         problem: DualProblem,
         x_0: wp.array,
         y_0: wp.array,
@@ -623,7 +623,7 @@ class PADMMSolver:
 
         Args:
             model (ModelKamino): The model associated with the problem.
-            data (ModelData): The model data associated with the problem.
+            data (DataKamino): The model data associated with the problem.
             problem (DualProblem): The dual forward dynamics problem to be solved.\n
                 This is needed during warm-starts in order to access the problem preconditioning.
             x_0 (wp.array): The output primal variables array to be warm-started.
@@ -657,7 +657,7 @@ class PADMMSolver:
     def _warmstart_limit_constraints(
         self,
         model: ModelKamino,
-        data: ModelData,
+        data: DataKamino,
         limits: Limits,
         problem: DualProblem,
         x_0: wp.array,
@@ -669,7 +669,7 @@ class PADMMSolver:
 
         Args:
             model (ModelKamino): The model associated with the problem.
-            data (ModelData): The model data associated with the problem.
+            data (DataKamino): The model data associated with the problem.
             limits (Limits): The limits container associated with the model.
             problem (DualProblem): The dual forward dynamics problem to be solved.\n
                 This is needed during warm-starts in order to access the problem preconditioning.
@@ -701,7 +701,7 @@ class PADMMSolver:
     def _warmstart_contact_constraints(
         self,
         model: ModelKamino,
-        data: ModelData,
+        data: DataKamino,
         contacts: Contacts,
         problem: DualProblem,
         x_0: wp.array,
@@ -713,7 +713,7 @@ class PADMMSolver:
 
         Args:
             model (ModelKamino): The model associated with the problem.
-            data (ModelData): The model data associated with the problem.
+            data (DataKamino): The model data associated with the problem.
             contacts (Contacts): The contacts container associated with the model.
             problem (DualProblem): The dual forward dynamics problem to be solved.\n
                 This is needed during warm-starts in order to access the problem preconditioning.
@@ -786,7 +786,7 @@ class PADMMSolver:
         self,
         problem: DualProblem,
         model: ModelKamino,
-        data: ModelData,
+        data: DataKamino,
         limits: Limits | None = None,
         contacts: Contacts | None = None,
     ):
@@ -797,7 +797,7 @@ class PADMMSolver:
             problem (DualProblem): The dual forward dynamics problem to be solved.\n
                 This is needed during warm-starts in order to access the problem preconditioning.
             model (ModelKamino): The model associated with the problem.
-            data (ModelData): The model data associated with the problem.
+            data (DataKamino): The model data associated with the problem.
             limits (Limits | None): The limits container associated with the model.\n
                 If `None`, no warm-starting from limits is performed.
             contacts (Contacts | None): The contacts container associated with the model.\n

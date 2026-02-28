@@ -20,7 +20,7 @@ import unittest
 import numpy as np
 import warp as wp
 
-from newton._src.solvers.kamino.core.data import ModelData
+from newton._src.solvers.kamino.core.data import DataKamino
 from newton._src.solvers.kamino.core.model import ModelKamino
 from newton._src.solvers.kamino.dynamics.delassus import BlockSparseMatrixFreeDelassusOperator, DelassusOperator
 from newton._src.solvers.kamino.geometry.contacts import Contacts
@@ -840,7 +840,7 @@ class TestDelassusOperatorSparse(unittest.TestCase):
     def _check_delassus_matrix(
         self,
         model: ModelKamino,
-        data: ModelData,
+        data: DataKamino,
         delassus: BlockSparseMatrixFreeDelassusOperator,
         jacobians: SparseSystemJacobians,
     ):
@@ -937,7 +937,7 @@ class TestDelassusOperatorSparse(unittest.TestCase):
     def _check_delassus_matrix_vector_product(
         self,
         model: ModelKamino,
-        data: ModelData,
+        data: DataKamino,
         delassus: BlockSparseMatrixFreeDelassusOperator,
         jacobians: SparseSystemJacobians,
     ):
@@ -1096,7 +1096,7 @@ class TestDelassusOperatorSparse(unittest.TestCase):
     def _check_delassus_diagonal(
         self,
         model: ModelKamino,
-        data: ModelData,
+        data: DataKamino,
         delassus: BlockSparseMatrixFreeDelassusOperator,
         jacobians: SparseSystemJacobians,
     ):

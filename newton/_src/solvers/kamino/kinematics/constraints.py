@@ -20,7 +20,7 @@ Provides mechanisms to define and manage constraints and their associated input/
 import warp as wp
 from warp.context import Devicelike
 
-from ..core.data import ModelData
+from ..core.data import DataKamino
 from ..core.model import ModelKamino
 from ..core.types import float32, int32, vec3f
 from ..geometry.contacts import ContactMode, Contacts
@@ -94,7 +94,7 @@ def get_max_constraints_per_world(
 
 def make_unilateral_constraints_info(
     model: ModelKamino,
-    data: ModelData,
+    data: DataKamino,
     limits: Limits | None = None,
     contacts: Contacts | None = None,
     device: Devicelike = None,
@@ -104,7 +104,7 @@ def make_unilateral_constraints_info(
 
     Args:
         model (ModelKamino): The model container holding time-invariant data.
-        data (ModelData): The solver container holding time-varying data.
+        data (DataKamino): The solver container holding time-varying data.
         limits (Limits, optional): The limits container holding the joint-limit data.
         contacts (Contacts, optional): The contacts container holding the contact data.
         device (Devicelike, optional): The device on which to allocate the constraint info arrays.\n
@@ -116,8 +116,8 @@ def make_unilateral_constraints_info(
         raise TypeError("`model` must be an instance of `ModelKamino`")
 
     # Ensure the data is valid
-    if not isinstance(data, ModelData):
-        raise TypeError("`data` must be an instance of `ModelData`")
+    if not isinstance(data, DataKamino):
+        raise TypeError("`data` must be an instance of `DataKamino`")
 
     # Device is not specified, use the model's device
     if device is None:
@@ -465,14 +465,14 @@ def _unpack_contact_constraint_solutions(
 
 def update_constraints_info(
     model: ModelKamino,
-    data: ModelData,
+    data: DataKamino,
 ):
     """
     Updates the active constraints info for the given model and current data.
 
     Args:
         model (ModelKamino): The model container holding time-invariant data.
-        data (ModelData): The solver container holding time-varying data.
+        data (DataKamino): The solver container holding time-varying data.
     """
     wp.launch(
         _update_constraints_info,
@@ -496,7 +496,7 @@ def unpack_constraint_solutions(
     lambdas: wp.array,
     v_plus: wp.array,
     model: ModelKamino,
-    data: ModelData,
+    data: DataKamino,
     limits: Limits | None = None,
     contacts: Contacts | None = None,
 ):
@@ -506,7 +506,7 @@ def unpack_constraint_solutions(
     Args:
         lambdas (wp.array): The array of constraint reactions (i.e. lagrange multipliers).
         v_plus (wp.array): The array of post-event constraint velocities.
-        data (ModelData): The solver container holding time-varying data.
+        data (DataKamino): The solver container holding time-varying data.
         limits (Limits, optional): The limits container holding the joint-limit data.\n
             If None, limits will be skipped.
         contacts (Contacts, optional): The contacts container holding the contact data.\n

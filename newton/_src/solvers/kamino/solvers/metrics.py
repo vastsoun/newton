@@ -89,7 +89,7 @@ from dataclasses import dataclass
 import warp as wp
 from warp.context import Devicelike
 
-from ..core.data import ModelData
+from ..core.data import DataKamino
 from ..core.math import screw, screw_angular, screw_linear
 from ..core.model import ModelKamino
 from ..core.state import State
@@ -1237,7 +1237,7 @@ class SolutionMetrics:
         lambdas: wp.array,
         v_plus: wp.array,
         model: ModelKamino,
-        data: ModelData,
+        data: DataKamino,
         state_p: State,
         problem: DualProblem,
         jacobians: DenseSystemJacobians | SparseSystemJacobians,
@@ -1250,7 +1250,7 @@ class SolutionMetrics:
         Args:
             model (ModelKamino):
                 The model containing the time-invariant data of the simulation.
-            data (ModelData):
+            data (DataKamino):
                 The model data containing the time-variant data of the simulation.
             state_p (State):
                 The previous state of the simulation.
@@ -1291,7 +1291,7 @@ class SolutionMetrics:
     def _evaluate_constraint_violations_perf(
         self,
         model: ModelKamino,
-        data: ModelData,
+        data: DataKamino,
         limits: Limits | None = None,
         contacts: Contacts | None = None,
     ):
@@ -1301,7 +1301,7 @@ class SolutionMetrics:
         Args:
             model (ModelKamino):
                 The model containing the time-invariant data of the simulation.
-            data (ModelData):
+            data (DataKamino):
                 The model data containing the time-variant data of the simulation.
             limits (Limits):
                 The joint-limits data describing active limit constraints.
@@ -1371,7 +1371,7 @@ class SolutionMetrics:
     def _evaluate_primal_problem_perf(
         self,
         model: ModelKamino,
-        data: ModelData,
+        data: DataKamino,
         state_p: State,
         jacobians: DenseSystemJacobians | SparseSystemJacobians,
     ):
@@ -1381,7 +1381,7 @@ class SolutionMetrics:
         Args:
             model (ModelKamino):
                 The model containing the time-invariant data of the simulation.
-            data (ModelData):
+            data (DataKamino):
                 The model data containing the time-variant data of the simulation.
             state_p (State):
                 The previous state of the simulation.

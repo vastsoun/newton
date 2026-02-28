@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 import warp as wp
 from warp.context import Devicelike
 
-from ..core.data import ModelData
+from ..core.data import DataKamino
 from ..core.joints import JOINT_QMAX, JOINT_QMIN, JointDoFType
 from ..core.math import (
     quat_from_vec4,
@@ -848,14 +848,14 @@ class Limits:
     def detect(
         self,
         model: ModelKamino,
-        data: ModelData,
+        data: DataKamino,
     ):
         """
         Detects the active joint limits in the model and updates the limits data.
 
         Args:
             model (ModelKamino): The model to detect limits for.
-            state (ModelData): The current state of the model.
+            state (DataKamino): The current state of the model.
         """
         # Skip this operation if no contacts data has been allocated
         if self._data is None or self._data.model_max_limits_host <= 0:
@@ -868,8 +868,8 @@ class Limits:
             raise TypeError("Limits: model must be an instance of ModelKamino")
         if data is None:
             raise ValueError("Limits: data must be specified for detection (got None)")
-        elif not isinstance(data, ModelData):
-            raise TypeError("Limits: data must be an instance of ModelData")
+        elif not isinstance(data, DataKamino):
+            raise TypeError("Limits: data must be an instance of DataKamino")
 
         # Ensure the limits data is allocated on the same device as the model
         if self._device is not None and self._device != model.device:

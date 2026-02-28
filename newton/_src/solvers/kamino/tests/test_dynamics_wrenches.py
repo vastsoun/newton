@@ -22,7 +22,7 @@ import unittest
 import numpy as np
 import warp as wp
 
-from newton._src.solvers.kamino.core.data import ModelData
+from newton._src.solvers.kamino.core.data import DataKamino
 from newton._src.solvers.kamino.core.model import ModelKamino
 from newton._src.solvers.kamino.dynamics.wrenches import (
     compute_constraint_body_wrenches_dense,
@@ -67,7 +67,7 @@ test_wrench_atol = 1e-4  # TODO: Should be 1e-6
 
 def compute_and_compare_dense_sparse_jacobian_wrenches(
     model: ModelKamino,
-    data: ModelData,
+    data: DataKamino,
     limits: Limits,
     contacts: Contacts,
 ):

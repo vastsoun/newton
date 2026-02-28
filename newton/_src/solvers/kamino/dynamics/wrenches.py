@@ -19,7 +19,7 @@ KAMINO: Dynamics: Wrenches
 
 import warp as wp
 
-from ..core.data import ModelData
+from ..core.data import DataKamino
 from ..core.model import ModelKamino
 from ..core.types import float32, int32, mat63f, vec2i, vec3f, vec6f
 from ..geometry.contacts import Contacts
@@ -529,7 +529,7 @@ def _compute_cts_body_wrenches_sparse(
 
 
 def compute_joint_dof_body_wrenches_dense(
-    model: ModelKamino, data: ModelData, jacobians: DenseSystemJacobians, reset_to_zero: bool = True
+    model: ModelKamino, data: DataKamino, jacobians: DenseSystemJacobians, reset_to_zero: bool = True
 ):
     """
     Update the actuation wrenches of the bodies based on the active joint torques.
@@ -568,7 +568,7 @@ def compute_joint_dof_body_wrenches_dense(
 
 
 def compute_joint_dof_body_wrenches_sparse(
-    model: ModelKamino, data: ModelData, jacobians: SparseSystemJacobians, reset_to_zero: bool = True
+    model: ModelKamino, data: DataKamino, jacobians: SparseSystemJacobians, reset_to_zero: bool = True
 ) -> None:
     """
     Update the actuation wrenches of the bodies based on the active joint torques.
@@ -606,7 +606,7 @@ def compute_joint_dof_body_wrenches_sparse(
 
 def compute_joint_dof_body_wrenches(
     model: ModelKamino,
-    data: ModelData,
+    data: DataKamino,
     jacobians: DenseSystemJacobians | SparseSystemJacobians,
     reset_to_zero: bool = True,
 ) -> None:
@@ -623,7 +623,7 @@ def compute_joint_dof_body_wrenches(
 
 def compute_constraint_body_wrenches_dense(
     model: ModelKamino,
-    data: ModelData,
+    data: DataKamino,
     jacobians: DenseSystemJacobians,
     lambdas_offsets: wp.array,
     lambdas_data: wp.array,
@@ -724,7 +724,7 @@ def compute_constraint_body_wrenches_dense(
 
 def compute_constraint_body_wrenches_sparse(
     model: ModelKamino,
-    data: ModelData,
+    data: DataKamino,
     jacobians: SparseSystemJacobians,
     lambdas_offsets: wp.array,
     lambdas_data: wp.array,
@@ -771,7 +771,7 @@ def compute_constraint_body_wrenches_sparse(
 
 def compute_constraint_body_wrenches(
     model: ModelKamino,
-    data: ModelData,
+    data: DataKamino,
     jacobians: DenseSystemJacobians | SparseSystemJacobians,
     lambdas_offsets: wp.array,
     lambdas_data: wp.array,

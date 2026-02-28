@@ -34,7 +34,7 @@ from ..solver import SolverBase
 # Kamino imports
 from .core.bodies import update_body_inertias, update_body_wrenches
 from .core.control import Control
-from .core.data import ModelData
+from .core.data import DataKamino
 from .core.joints import JointCorrectionMode
 from .core.model import ModelKamino
 from .core.state import State
@@ -455,7 +455,7 @@ class SolverKamino(SolverBase):
         return self._model.device
 
     @property
-    def data(self) -> ModelData:
+    def data(self) -> DataKamino:
         """
         Returns the internal solver data container.
         """

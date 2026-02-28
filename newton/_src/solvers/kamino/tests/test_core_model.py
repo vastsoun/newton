@@ -33,8 +33,8 @@ from newton._src.solvers.kamino.models.builders.basics import (
 from newton._src.solvers.kamino.models.builders.utils import make_homogeneous_builder
 from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.tests.utils.print import (
+    print_data_info,
     print_model_bodies,
-    print_model_data_info,
     print_model_info,
     print_model_joints,
 )
@@ -78,7 +78,7 @@ class TestModel(unittest.TestCase):
         state = model.data()
         if self.verbose:
             print("")  # Add a newline for better readability
-            print_model_data_info(state)
+            print_data_info(state)
 
         # Check the model info entries
         self.assertEqual(model.size.sum_of_num_bodies, builder.num_bodies)
@@ -109,7 +109,7 @@ class TestModel(unittest.TestCase):
         data = model.data()
         if self.verbose:
             print("")  # Add a newline for better readability
-            print_model_data_info(data)
+            print_data_info(data)
 
         # Check the model info entries
         self.assertEqual(model.size.sum_of_num_bodies, total_nb)
@@ -133,7 +133,7 @@ class TestModel(unittest.TestCase):
         state = model.data()
         if self.verbose:
             print("")  # Add a newline for better readability
-            print_model_data_info(state)
+            print_data_info(state)
 
         # Check the model info entries
         self.assertEqual(model.size.sum_of_num_bodies, num_worlds * 2)
@@ -160,7 +160,7 @@ class TestModel(unittest.TestCase):
         state = model.data()
         if self.verbose:
             print("")  # Add a newline for better readability
-            print_model_data_info(state)
+            print_data_info(state)
 
         # Check the model info entries
         self.assertEqual(model.info.num_worlds, num_worlds)

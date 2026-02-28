@@ -25,7 +25,7 @@ from warp.context import Devicelike
 import newton
 import newton.examples
 from newton._src.solvers.kamino.core.builder import ModelBuilder
-from newton._src.solvers.kamino.core.data import ModelData
+from newton._src.solvers.kamino.core.data import DataKamino
 from newton._src.solvers.kamino.core.math import I_3, R_x, screw
 from newton._src.solvers.kamino.core.model import ModelKamino
 from newton._src.solvers.kamino.core.types import float32, int32, mat33f, transformf, uint32, vec3f, vec6f
@@ -202,7 +202,7 @@ def reset_select_worlds_to_dof_state(
     q_j: wp.array,
     dq_j: wp.array,
     mask: wp.array,
-    data: ModelData,
+    data: DataKamino,
 ):
     """
     Reset the state of the selected worlds given an array of per-world flags.

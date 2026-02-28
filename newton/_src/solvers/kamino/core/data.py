@@ -29,8 +29,8 @@ from .time import TimeData
 ###
 
 __all__ = [
-    "ModelData",
-    "ModelDataInfo",
+    "DataKamino",
+    "DataKaminoInfo",
 ]
 
 
@@ -47,7 +47,7 @@ wp.set_module_options({"enable_backward": False})
 
 
 @dataclass
-class ModelDataInfo:
+class DataKaminoInfo:
     """
     A container to hold the time-varying information about the set of active constraints.
     """
@@ -108,7 +108,7 @@ class ModelDataInfo:
 
 
 @dataclass
-class ModelData:
+class DataKamino:
     """
     A container to hold the time-varying data of the model entities.
 
@@ -116,7 +116,7 @@ class ModelData:
     to update the state of rigid bodies, joints, geometries, active constraints and time-keeping.
     """
 
-    info: ModelDataInfo | None = None
+    info: DataKaminoInfo | None = None
     """The info container holding information about the set of active constraints."""
 
     time: TimeData | None = None

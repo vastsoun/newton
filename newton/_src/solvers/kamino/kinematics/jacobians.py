@@ -23,7 +23,7 @@ from typing import Any
 
 import warp as wp
 
-from ..core.data import ModelData
+from ..core.data import DataKamino
 from ..core.joints import JointDoFType
 from ..core.math import (
     FLOAT32_MAX,
@@ -1323,7 +1323,7 @@ class DenseSystemJacobians:
     def build(
         self,
         model: ModelKamino,
-        data: ModelData,
+        data: DataKamino,
         limits: Limits | None = None,
         contacts: Contacts | None = None,
         reset_to_zero: bool = True,
@@ -1336,7 +1336,7 @@ class DenseSystemJacobians:
             model (`ModelKamino`):
                 The model container describing the system structure
                 and properties, used to compute the Jacobians.
-            data (`ModelData`):
+            data (`DataKamino`):
                 The data container describing the time-varying state
                 of the system, used to compute the Jacobians.
             limits (`Limits`, optional):
@@ -1688,7 +1688,7 @@ class SparseSystemJacobians:
     def build(
         self,
         model: ModelKamino,
-        data: ModelData,
+        data: DataKamino,
         limits: Limits | None = None,
         contacts: Contacts | None = None,
         reset_to_zero: bool = True,
@@ -1700,7 +1700,7 @@ class SparseSystemJacobians:
         Args:
             model (`ModelKamino`):
                 The model containing the system's kinematic structure.
-            data (`ModelData`):
+            data (`DataKamino`):
                 The data container holding the time-varying state of the system.
             limits (`Limits`, optional):
                 Limits data container for joint-limit constraints. Needs to

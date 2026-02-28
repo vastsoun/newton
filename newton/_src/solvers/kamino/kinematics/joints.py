@@ -23,7 +23,7 @@ from functools import cache
 
 import warp as wp
 
-from ..core.data import ModelData
+from ..core.data import DataKamino
 from ..core.joints import JointActuationType, JointCorrectionMode, JointDoFType
 from ..core.math import (
     FLOAT32_MAX,
@@ -1024,7 +1024,7 @@ def _extract_joints_state_from_actuators(
 
 def compute_joints_data(
     model: ModelKamino,
-    data: ModelData,
+    data: DataKamino,
     q_j_p: wp.array,
     correction: JointCorrectionMode = JointCorrectionMode.TWOPI,
 ) -> None:
@@ -1042,7 +1042,7 @@ def compute_joints_data(
             An array of previous joint DoF coordinates used for coordinate correction.\n
             Only used for revolute DoFs of the relevant joints to enforce angle continuity.\n
             Shape of ``(sum_of_num_joint_coords,)`` and type :class:`float`.
-        data (`ModelData`):
+        data (`DataKamino`):
             The solver data container holding the internal time-varying state of the simulation.
     """
 

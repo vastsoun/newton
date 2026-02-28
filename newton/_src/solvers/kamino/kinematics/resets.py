@@ -18,7 +18,7 @@
 import warp as wp
 
 from ..core.bodies import transform_body_inertial_properties
-from ..core.data import ModelData
+from ..core.data import DataKamino
 from ..core.math import screw, screw_angular, screw_linear
 from ..core.model import ModelKamino
 from ..core.state import State
@@ -741,7 +741,7 @@ def reset_state_from_base_state(
 def reset_select_worlds_to_initial_state(
     model: ModelKamino,
     mask: wp.array,
-    data: ModelData,
+    data: DataKamino,
     reset_constraints: bool = True,
 ):
     """
@@ -839,7 +839,7 @@ def reset_select_worlds_to_state(
     model: ModelKamino,
     state: State,
     mask: wp.array,
-    data: ModelData,
+    data: DataKamino,
     reset_constraints: bool = True,
 ):
     """

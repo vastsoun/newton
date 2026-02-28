@@ -26,7 +26,7 @@ import warp as wp
 from warp.context import Devicelike
 
 from newton._src.solvers.kamino.core.builder import ModelBuilder
-from newton._src.solvers.kamino.core.data import ModelData
+from newton._src.solvers.kamino.core.data import DataKamino
 from newton._src.solvers.kamino.core.math import I_3
 from newton._src.solvers.kamino.core.model import ModelKamino
 from newton._src.solvers.kamino.core.shapes import SphereShape
@@ -127,7 +127,7 @@ def test_unified_pipeline(
 
         # Create a test model and data
         model: ModelKamino = builder.finalize(device)
-        data: ModelData = model.data()
+        data: DataKamino = model.data()
 
         # Create a pipeline
         pipeline = CollisionPipelineUnifiedKamino(

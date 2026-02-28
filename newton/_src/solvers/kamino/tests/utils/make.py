@@ -25,7 +25,7 @@ import warp as wp
 
 from ...core.bodies import update_body_inertias
 from ...core.builder import ModelBuilder
-from ...core.data import ModelData
+from ...core.data import DataKamino
 from ...core.math import quat_exp, screw, screw_angular, screw_linear
 from ...core.model import ModelKamino
 from ...core.types import float32, int32, mat33f, transformf, vec3f, vec6f
@@ -38,8 +38,8 @@ from ...kinematics.limits import Limits
 from ...models.builders import basics as _model_basics
 from ...models.builders import utils as _model_utils
 from .print import (
+    print_data_info,
     print_model_constraint_info,
-    print_model_data_info,
 )
 
 ###
@@ -68,7 +68,7 @@ wp.set_module_options({"enable_backward": False})
 ###
 
 
-def make_generalized_mass_matrices(model: ModelKamino, data: ModelData) -> list[np.ndarray]:
+def make_generalized_mass_matrices(model: ModelKamino, data: DataKamino) -> list[np.ndarray]:
     # Extract the masses and inertias as numpy arrays
     m_i = model.bodies.m_i.numpy()
     I_i = data.bodies.I_i.numpy()
@@ -92,7 +92,7 @@ def make_generalized_mass_matrices(model: ModelKamino, data: ModelData) -> list[
     return M_np
 
 
-def make_inverse_generalized_mass_matrices(model: ModelKamino, data: ModelData) -> list[np.ndarray]:
+def make_inverse_generalized_mass_matrices(model: ModelKamino, data: DataKamino) -> list[np.ndarray]:
     # Extract the inverse masses and inertias as numpy arrays
     inv_m_i = model.bodies.inv_m_i.numpy()
     inv_I_i = data.bodies.inv_I_i.numpy()
@@ -127,7 +127,7 @@ def make_containers(
     max_world_contacts: int = 0,
     sparse: bool = True,
     dt: float = 0.001,
-) -> tuple[ModelKamino, ModelData, Limits, CollisionDetector, DenseSystemJacobians | SparseSystemJacobians]:
+) -> tuple[ModelKamino, DataKamino, Limits, CollisionDetector, DenseSystemJacobians | SparseSystemJacobians]:
     # Create the model from the builder
     model = builder.finalize(device=device)
 
@@ -160,7 +160,7 @@ def make_containers(
 
 def update_containers(
     model: ModelKamino,
-    data: ModelData,
+    data: DataKamino,
     limits: Limits | None = None,
     detector: CollisionDetector | None = None,
     jacobians: DenseSystemJacobians | SparseSystemJacobians | None = None,
@@ -197,14 +197,14 @@ def update_containers(
 
 def make_test_problem(
     builder: ModelBuilder,
-    set_state_fn: Callable[[ModelKamino, ModelData], None] | None = None,
+    set_state_fn: Callable[[ModelKamino, DataKamino], None] | None = None,
     device: wp.DeviceLike = None,
     max_world_contacts: int = 12,
     with_limits: bool = False,
     with_contacts: bool = False,
     dt: float = 0.001,
     verbose: bool = False,
-) -> tuple[ModelKamino, ModelData, Limits | None, Contacts | None]:
+) -> tuple[ModelKamino, DataKamino, Limits | None, Contacts | None]:
     # Create the model from the builder
     model = builder.finalize(device=device)
 
@@ -238,7 +238,7 @@ def make_test_problem(
     if verbose:
         print("")  # Add a newline for better readability
         print_model_constraint_info(model)
-        print_model_data_info(data)
+        print_data_info(data)
         print("\n")  # Add a newline for better readability
 
     # If a set-state callback is provided, perturb the system
@@ -281,7 +281,7 @@ def make_test_problem(
     update_constraints_info(model=model, data=data)
     if verbose:
         print("")  # Add a newline for better readability
-        print_model_data_info(data)
+        print_data_info(data)
         print("\n")  # Add a newline for better readability
     wp.synchronize()
 
@@ -383,7 +383,7 @@ def _set_fourbar_body_states(
     state_body_u_i[bid_F] = screw(v_F_new, omega_F_new)
 
 
-def set_fourbar_body_states(model: ModelKamino, data: ModelData):
+def set_fourbar_body_states(model: ModelKamino, data: DataKamino):
     wp.launch(
         _set_fourbar_body_states,
         dim=3,  # Set to three because we only need to set the first three joints
@@ -407,7 +407,7 @@ def make_test_problem_fourbar(
     with_contacts: bool = False,
     with_implicit_joints: bool = True,
     verbose: bool = False,
-) -> tuple[ModelKamino, ModelData, Limits | None, Contacts | None]:
+) -> tuple[ModelKamino, DataKamino, Limits | None, Contacts | None]:
     # Define the problem using the ModelBuilder
     builder: ModelBuilder = _model_utils.make_homogeneous_builder(
         num_worlds=num_worlds,
@@ -435,7 +435,7 @@ def make_test_problem_heterogeneous(
     with_contacts: bool = False,
     with_implicit_joints: bool = True,
     verbose: bool = False,
-) -> tuple[ModelKamino, ModelData, Limits | None, Contacts | None]:
+) -> tuple[ModelKamino, DataKamino, Limits | None, Contacts | None]:
     # Define the problem using the ModelBuilder
     builder: ModelBuilder = _model_basics.make_basics_heterogeneous_builder(
         dynamic_joints=with_implicit_joints,

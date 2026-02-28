@@ -24,7 +24,7 @@ import warp as wp
 from warp.context import Devicelike
 
 from ...core.builder import ModelBuilder
-from ...core.control import Control
+from ...core.control import ControlKamino
 from ...core.model import ModelKamino
 from ...core.state import StateKamino
 from ...core.types import FloatArrayLike
@@ -125,7 +125,7 @@ class SimulatorData:
         state_n (StateKamino):
             The current state data of the simulation, computed from the previous step as:
             ``state_n = f(state_p, control)``, where ``f()`` is the system dynamics function.
-        control (Control):
+        control (ControlKamino):
             The control data, computed at each step as:
             ``control = g(state_n, state_p, control)``, where ``g()`` is the control function.
     """
@@ -136,7 +136,7 @@ class SimulatorData:
         """
         self.state_p: StateKamino = model.state(device=model.device)
         self.state_n: StateKamino = model.state(device=model.device)
-        self.control: Control = model.control(device=model.device)
+        self.control: ControlKamino = model.control(device=model.device)
 
     def cache_state(self):
         """
@@ -283,7 +283,7 @@ class Simulator:
         return self._data.state_p
 
     @property
-    def control(self) -> Control:
+    def control(self) -> ControlKamino:
         """
         Returns the current control inputs of the simulation.
         """

@@ -33,7 +33,7 @@ from ..solver import SolverBase
 
 # Kamino imports
 from .core.bodies import update_body_inertias, update_body_wrenches
-from .core.control import Control
+from .core.control import ControlKamino
 from .core.data import DataKamino
 from .core.joints import JointCorrectionMode
 from .core.model import ModelKamino
@@ -260,7 +260,7 @@ class SolverKamino(SolverBase):
           International Journal for Numerical Methods in Engineering, 122(16), 4093-4113.
           https://onlinelibrary.wiley.com/doi/full/10.1002/nme.6693
 
-    After constructing :class:`ModelKamino`, :class:`StateKamino`, :class:`Control` and :class:`Contacts`
+    After constructing :class:`ModelKamino`, :class:`StateKamino`, :class:`ControlKamino` and :class:`Contacts`
     objects, this physics solver may be used to advance the simulation state forward in time.
 
     Example
@@ -282,7 +282,7 @@ class SolverKamino(SolverBase):
     ResetCallbackType = Callable[["SolverKamino", StateKamino], None]
     """Defines the type signature for reset callback functions."""
 
-    StepCallbackType = Callable[["SolverKamino", StateKamino, StateKamino, Control, Contacts], None]
+    StepCallbackType = Callable[["SolverKamino", StateKamino, StateKamino, ControlKamino, Contacts], None]
     """Defines the type signature for step callback functions."""
 
     def __init__(
@@ -673,7 +673,7 @@ class SolverKamino(SolverBase):
         self,
         state_in: StateKamino,
         state_out: StateKamino,
-        control: Control,
+        control: ControlKamino,
         contacts: Contacts | None = None,
         detector: CollisionDetector | None = None,
         dt: float | None = None,
@@ -688,7 +688,7 @@ class SolverKamino(SolverBase):
                 The input current state of the simulation.
             state_out (StateKamino):
                 The output next state after time integration.
-            control (Control):
+            control (ControlKamino):
                 The input controls applied to the system.
             contacts (Contacts, optional):
                 The set of active contacts.
@@ -756,7 +756,7 @@ class SolverKamino(SolverBase):
             self._post_reset_cb(self, state_out)
 
     def _run_prestep_callback(
-        self, state_in: StateKamino, state_out: StateKamino, control: Control, contacts: Contacts
+        self, state_in: StateKamino, state_out: StateKamino, control: ControlKamino, contacts: Contacts
     ):
         """
         Runs the pre-step callback if it has been set.
@@ -765,7 +765,7 @@ class SolverKamino(SolverBase):
             self._pre_step_cb(self, state_in, state_out, control, contacts)
 
     def _run_midstep_callback(
-        self, state_in: StateKamino, state_out: StateKamino, control: Control, contacts: Contacts
+        self, state_in: StateKamino, state_out: StateKamino, control: ControlKamino, contacts: Contacts
     ):
         """
         Runs the mid-step callback if it has been set.
@@ -774,7 +774,7 @@ class SolverKamino(SolverBase):
             self._mid_step_cb(self, state_in, state_out, control, contacts)
 
     def _run_poststep_callback(
-        self, state_in: StateKamino, state_out: StateKamino, control: Control, contacts: Contacts
+        self, state_in: StateKamino, state_out: StateKamino, control: ControlKamino, contacts: Contacts
     ):
         """
         Executes the post-step callback if it has been set.
@@ -786,7 +786,7 @@ class SolverKamino(SolverBase):
     # Internals - Input/Output Operations
     ###
 
-    def _read_step_inputs(self, state_in: StateKamino, control_in: Control):
+    def _read_step_inputs(self, state_in: StateKamino, control_in: ControlKamino):
         """
         Updates the internal solver data from the input state and control.
         """
@@ -1169,7 +1169,7 @@ class SolverKamino(SolverBase):
         self,
         state_in: StateKamino,
         state_out: StateKamino,
-        control: Control,
+        control: ControlKamino,
         limits: Limits | None = None,  # TODO: Fix this interface
         contacts: Contacts | None = None,
         detector: CollisionDetector | None = None,

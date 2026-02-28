@@ -25,7 +25,7 @@ from collections.abc import Callable
 import warp as wp
 
 from ....core.types import override
-from ..core.control import Control as ControlKamino
+from ..core.control import ControlKamino
 from ..core.data import DataKamino
 from ..core.math import (
     compute_body_pose_update_with_logmap,

@@ -23,7 +23,7 @@ from collections.abc import Callable
 
 import warp as wp
 
-from ..core.control import Control as ControlKamino
+from ..core.control import ControlKamino
 from ..core.data import DataKamino
 from ..core.model import ModelKamino
 from ..core.state import StateKamino

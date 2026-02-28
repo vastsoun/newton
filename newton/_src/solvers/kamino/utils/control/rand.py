@@ -29,7 +29,7 @@ from typing import get_args
 import numpy as np
 import warp as wp
 
-from ...core.control import Control
+from ...core.control import ControlKamino
 from ...core.joints import JointActuationType
 from ...core.math import FLOAT32_MAX
 from ...core.model import ModelKamino
@@ -340,7 +340,7 @@ class RandomJointController:
                 scale=wp.array(self._scale, dtype=float32),
             )
 
-    def compute(self, time: TimeData, control: Control):
+    def compute(self, time: TimeData, control: ControlKamino):
         """
         Generate randomized generalized control forces to apply to the system.
 
@@ -352,7 +352,7 @@ class RandomJointController:
                 The input model container holding the time-invariant parameters of the simulation.
             time (TimeData):
                 The input time data container holding the current simulation time and steps.
-            control (Control):
+            control (ControlKamino):
                 The output control container where the computed control torques will be stored.
         """
         # Ensure a model has been assigned and finalized

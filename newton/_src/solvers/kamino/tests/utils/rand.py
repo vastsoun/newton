@@ -16,7 +16,6 @@
 """Unit-test utilities for generating random linear system and factorization problems."""
 
 import numpy as np
-import scipy.linalg
 import warp as wp
 
 from ...core.types import FloatArrayLike, float32, int32
@@ -200,6 +199,15 @@ class RandomProblemLDLT:
         device: wp.DeviceLike = None,
         lower: bool = True,
     ):
+        # Attempt to import scipy.linalg, which is required
+        # for the LDLT decomposition and reference solutions
+        try:
+            import scipy.linalg
+        except ImportError as e:
+            raise ImportError(
+                "scipy is required for RandomProblemLDLT but is not installed. install with: pip install scipy"
+            ) from e
+
         # Check input data to ensure they are indeed lists of numpy arrays
         if A is not None:
             if not isinstance(A, list) or not all(isinstance(a, np.ndarray) for a in A):
@@ -385,6 +393,14 @@ def _solve_cholesky_lower_numpy(L: np.ndarray, b: np.ndarray) -> tuple[np.ndarra
     Returns:
         np.ndarray: The solution vector x.
     """
+    # Attempt to import scipy.linalg, which is required
+    # for the LDLT decomposition and reference solutions
+    try:
+        import scipy.linalg
+    except ImportError as e:
+        raise ImportError(
+            "scipy is required for RandomProblemLDLT but is not installed. install with: pip install scipy"
+        ) from e
     y = scipy.linalg.solve_triangular(L, b, lower=True)
     x = scipy.linalg.solve_triangular(L.T, y, lower=False)
     return y, x
@@ -401,6 +417,14 @@ def _solve_cholesky_upper_numpy(U: np.ndarray, b: np.ndarray) -> tuple[np.ndarra
     Returns:
         np.ndarray: The solution vector x.
     """
+    # Attempt to import scipy.linalg, which is required
+    # for the LDLT decomposition and reference solutions
+    try:
+        import scipy.linalg
+    except ImportError as e:
+        raise ImportError(
+            "scipy is required for RandomProblemLDLT but is not installed. install with: pip install scipy"
+        ) from e
     y = scipy.linalg.solve_triangular(U.T, b, lower=True)
     x = scipy.linalg.solve_triangular(U, y, lower=False)
     return y, x
@@ -421,6 +445,14 @@ def _solve_ldlt_lower_numpy(
     Returns:
         np.ndarray: The solution vector x.
     """
+    # Attempt to import scipy.linalg, which is required
+    # for the LDLT decomposition and reference solutions
+    try:
+        import scipy.linalg
+    except ImportError as e:
+        raise ImportError(
+            "scipy is required for RandomProblemLDLT but is not installed. install with: pip install scipy"
+        ) from e
     PL = L[P, :]
     z = scipy.linalg.solve_triangular(PL, b[P], lower=True)
     y = z / np.diag(D)
@@ -444,6 +476,14 @@ def _solve_ldlt_upper_numpy(
     Returns:
         np.ndarray: The solution vector x.
     """
+    # Attempt to import scipy.linalg, which is required
+    # for the LDLT decomposition and reference solutions
+    try:
+        import scipy.linalg
+    except ImportError as e:
+        raise ImportError(
+            "scipy is required for RandomProblemLDLT but is not installed. install with: pip install scipy"
+        ) from e
     PU = U[P, :]
     z = scipy.linalg.solve_triangular(PU.T, b[P], lower=True)
     y = z / np.diag(D)

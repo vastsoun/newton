@@ -21,7 +21,6 @@ import threading
 from typing import ClassVar
 
 import warp as wp
-from PIL import Image
 
 from .....viewer import ViewerGL
 from ...core.builder import ModelBuilderKamino
@@ -592,6 +591,15 @@ class ViewerKamino(ViewerGL):
         This method retrieves the current rendered frame, converts it to a PIL Image,
         and saves it as a PNG file.
         """
+        # Attempt to import PIL, which is required for image saving
+        try:
+            from PIL import Image
+        except ImportError:
+            msg.warning("PIL not installed. Frames cannot be saved as images.")
+            msg.info("Install with: pip install pillow")
+            return False
+
+        # Only capture and save if we've reached the skip threshold
         if self._img_idx >= self._skip_img_idx:
             # Get frame from viewer as GPU array (height, width, 3) uint8
             frame = self.get_frame(target_image=self._frame_buffer)
@@ -638,6 +646,13 @@ class ViewerKamino(ViewerGL):
             msg.warning("imageio-ffmpeg not installed. Frames saved but video not generated.")
             msg.info("Install with: pip install imageio-ffmpeg")
             return False
+        # Try to import PIL (optional dependency for image loading)
+        try:
+            from PIL import Image
+        except ImportError:
+            msg.warning("PIL not installed. Frames saved but video not generated.")
+            msg.info("Install with: pip install pillow")
+            return False
         import numpy as np  # noqa: PLC0415
 
         # Check if we have frames to process
@@ -653,7 +668,6 @@ class ViewerKamino(ViewerGL):
             return False
 
         msg.info(f"Generating video from {len(frame_files)} frames...")
-
         try:
             # Use imageio-ffmpeg to write video
             writer = ffmpeg.write_frames(

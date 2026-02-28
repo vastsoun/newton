@@ -25,13 +25,13 @@ import warp as wp
 @dataclass
 class Control:
     """
-    Time-varying control data for a :class:`Model`.
+    Time-varying control data for a :class:`ModelKamino`.
 
     Time-varying control data currently consists of generalized joint actuation forces, with
     the intention that external actuator models or controllers will populate these attributes.
 
     The exact attributes depend on the contents of the model. Control objects
-    should generally be created using the :func:`kamino.Model.control()` function.
+    should generally be created using the :func:`kamino.ModelKamino.control()` function.
 
     We adopt the following notational conventions for the control attributes:
     - Generalized joint actuation forces are denoted by ``tau``

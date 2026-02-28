@@ -34,7 +34,7 @@ from ..core.math import (
     screw_angular,
     screw_linear,
 )
-from ..core.model import Model as ModelKamino
+from ..core.model import ModelKamino
 from ..core.state import State as StateKamino
 from ..core.types import (
     float32,

@@ -41,7 +41,7 @@ from .....geometry.collision_primitive import (
 )
 from ...core.data import ModelData
 from ...core.materials import make_get_material_pair_properties
-from ...core.model import Model
+from ...core.model import ModelKamino
 from ...core.shapes import ShapeType
 from ...core.types import (
     float32,
@@ -1740,7 +1740,7 @@ def _primitive_narrowphase(
 
 
 def primitive_narrowphase(
-    model: Model,
+    model: ModelKamino,
     data: ModelData,
     candidates: CollisionCandidatesData,
     contacts: ContactsData,

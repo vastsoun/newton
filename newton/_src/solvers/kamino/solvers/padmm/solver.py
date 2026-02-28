@@ -27,7 +27,7 @@ import warp as wp
 from warp.context import Devicelike
 
 from ...core.data import ModelData
-from ...core.model import Model, ModelSize
+from ...core.model import ModelKamino, ModelKaminoSize
 from ...dynamics.dual import DualProblem
 from ...geometry.contacts import Contacts
 from ...kinematics.limits import Limits
@@ -96,7 +96,7 @@ class PADMMSolver:
 
     def __init__(
         self,
-        model: Model | None = None,
+        model: ModelKamino | None = None,
         settings: list[PADMMSettings] | PADMMSettings | None = None,
         warmstart: PADMMWarmStartMode = PADMMWarmStartMode.NONE,
         use_acceleration: bool = True,
@@ -111,7 +111,7 @@ class PADMMSolver:
         target device, otherwise the user must call `finalize()` before using the solver.
 
         Args:
-            model (Model | None): The model for which to allocate the solver data.
+            model (ModelKamino | None): The model for which to allocate the solver data.
             limits (Limits | None): The limits container associated with the model.
             contacts (Contacts | None): The contacts container associated with the model.
             settings (list[PADMMSettings] | PADMMSettings | None): The solver settings to use.
@@ -133,7 +133,7 @@ class PADMMSolver:
         self._uses_adaptive_penalty: bool = False
 
         # Declare the model size cache
-        self._size: ModelSize | None = None
+        self._size: ModelKaminoSize | None = None
 
         # Declare the solver data container
         self._data: PADMMData | None = None
@@ -166,7 +166,7 @@ class PADMMSolver:
         return self._settings
 
     @property
-    def size(self) -> ModelSize:
+    def size(self) -> ModelKaminoSize:
         """
         Returns the host-side cache of the solver allocation sizes.
         """
@@ -194,7 +194,7 @@ class PADMMSolver:
 
     def finalize(
         self,
-        model: Model | None = None,
+        model: ModelKamino | None = None,
         settings: list[PADMMSettings] | PADMMSettings | None = None,
         warmstart: PADMMWarmStartMode = PADMMWarmStartMode.NONE,
         use_acceleration: bool = True,
@@ -206,7 +206,7 @@ class PADMMSolver:
         Allocates the solver data structures on the specified device.
 
         Args:
-            model (Model | None): The model for which to allocate the solver data.
+            model (ModelKamino | None): The model for which to allocate the solver data.
             limits (Limits | None): The limits container associated with the model.
             contacts (Contacts | None): The contacts container associated with the model.
             settings (list[PADMMSettings] | PADMMSettings | None): The solver settings to use.
@@ -221,9 +221,9 @@ class PADMMSolver:
 
         # Ensure the model is valid
         if model is None:
-            raise ValueError("A model of type `Model` must be provided to allocate the Delassus operator.")
-        elif not isinstance(model, Model):
-            raise ValueError("Invalid model provided. Must be an instance of `Model`.")
+            raise ValueError("A model of type `ModelKamino` must be provided to allocate the Delassus operator.")
+        elif not isinstance(model, ModelKamino):
+            raise ValueError("Invalid model provided. Must be an instance of `ModelKamino`.")
 
         # Cache a reference to the model size meta-data container
         self._size = model.size
@@ -313,7 +313,7 @@ class PADMMSolver:
     def warmstart(
         self,
         problem: DualProblem,
-        model: Model,
+        model: ModelKamino,
         data: ModelData,
         limits: Limits | None = None,
         contacts: Contacts | None = None,
@@ -329,7 +329,7 @@ class PADMMSolver:
         Args:
             problem (DualProblem): The dual forward dynamics problem to be solved.\n
                 This is needed during warm-starts in order to access the problem preconditioning.
-            model (Model): The model associated with the problem.
+            model (ModelKamino): The model associated with the problem.
             data (ModelData): The model data associated with the problem.
             limits (Limits | None): The limits container associated with the model.\n
                 If `None`, no warm-starting from limits is performed.
@@ -391,14 +391,14 @@ class PADMMSolver:
 
     @staticmethod
     def _check_settings(
-        model: Model | None = None, settings: list[PADMMSettings] | PADMMSettings | None = None
+        model: ModelKamino | None = None, settings: list[PADMMSettings] | PADMMSettings | None = None
     ) -> list[PADMMSettings]:
         """
         Checks and validates the provided solver settings, returning a list
         of settings objects corresponding to each world in the model.
 
         Args:
-            model (Model | None): The model for which to validate the settings.
+            model (ModelKamino | None): The model for which to validate the settings.
             settings (list[PADMMSettings] | PADMMSettings | None): The solver settings to validate.
         """
         # If no settings are provided, use defaults
@@ -611,7 +611,7 @@ class PADMMSolver:
 
     def _warmstart_joint_constraints(
         self,
-        model: Model,
+        model: ModelKamino,
         data: ModelData,
         problem: DualProblem,
         x_0: wp.array,
@@ -622,7 +622,7 @@ class PADMMSolver:
         Warm-starts the bilateral joint constraint variables from the model data container.
 
         Args:
-            model (Model): The model associated with the problem.
+            model (ModelKamino): The model associated with the problem.
             data (ModelData): The model data associated with the problem.
             problem (DualProblem): The dual forward dynamics problem to be solved.\n
                 This is needed during warm-starts in order to access the problem preconditioning.
@@ -656,7 +656,7 @@ class PADMMSolver:
 
     def _warmstart_limit_constraints(
         self,
-        model: Model,
+        model: ModelKamino,
         data: ModelData,
         limits: Limits,
         problem: DualProblem,
@@ -668,7 +668,7 @@ class PADMMSolver:
         Warm-starts the unilateral limit constraint variables from the limits data container.
 
         Args:
-            model (Model): The model associated with the problem.
+            model (ModelKamino): The model associated with the problem.
             data (ModelData): The model data associated with the problem.
             limits (Limits): The limits container associated with the model.
             problem (DualProblem): The dual forward dynamics problem to be solved.\n
@@ -700,7 +700,7 @@ class PADMMSolver:
 
     def _warmstart_contact_constraints(
         self,
-        model: Model,
+        model: ModelKamino,
         data: ModelData,
         contacts: Contacts,
         problem: DualProblem,
@@ -712,7 +712,7 @@ class PADMMSolver:
         Warm-starts the unilateral contact constraint variables from the contacts data container.
 
         Args:
-            model (Model): The model associated with the problem.
+            model (ModelKamino): The model associated with the problem.
             data (ModelData): The model data associated with the problem.
             contacts (Contacts): The contacts container associated with the model.
             problem (DualProblem): The dual forward dynamics problem to be solved.\n
@@ -785,7 +785,7 @@ class PADMMSolver:
     def _warmstart_from_containers(
         self,
         problem: DualProblem,
-        model: Model,
+        model: ModelKamino,
         data: ModelData,
         limits: Limits | None = None,
         contacts: Contacts | None = None,
@@ -796,7 +796,7 @@ class PADMMSolver:
         Args:
             problem (DualProblem): The dual forward dynamics problem to be solved.\n
                 This is needed during warm-starts in order to access the problem preconditioning.
-            model (Model): The model associated with the problem.
+            model (ModelKamino): The model associated with the problem.
             data (ModelData): The model data associated with the problem.
             limits (Limits | None): The limits container associated with the model.\n
                 If `None`, no warm-starting from limits is performed.

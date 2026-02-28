@@ -25,7 +25,7 @@ from warp.context import Devicelike
 
 from ...core.builder import ModelBuilder
 from ...core.control import Control
-from ...core.model import Model
+from ...core.model import ModelKamino
 from ...core.state import State
 from ...core.types import FloatArrayLike
 from ...geometry import CollisionDetector, CollisionDetectorSettings
@@ -130,7 +130,7 @@ class SimulatorData:
             ``control = g(state_n, state_p, control)``, where ``g()`` is the control function.
     """
 
-    def __init__(self, model: Model):
+    def __init__(self, model: ModelKamino):
         """
         Initializes the simulator data for the given model on the specified device.
         """
@@ -255,7 +255,7 @@ class Simulator:
         return self._settings
 
     @property
-    def model(self) -> Model:
+    def model(self) -> ModelKamino:
         """
         Returns the time-invariant simulation model data.
         """

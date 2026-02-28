@@ -25,7 +25,7 @@ from warp.context import Devicelike
 
 from ...core.control import Control
 from ...core.joints import JointActuationType
-from ...core.model import Model
+from ...core.model import ModelKamino
 from ...core.state import State
 from ...core.time import TimeData
 from ...core.types import FloatArrayLike, IntArrayLike, float32, int32
@@ -270,7 +270,7 @@ def _compute_jointspace_pid_control(
 
 def reset_jointspace_pid_references(
     # Inputs:
-    model: Model,
+    model: ModelKamino,
     state: State,
     # Outputs:
     controller: PIDControllerData,
@@ -301,7 +301,7 @@ def reset_jointspace_pid_references(
 
 def compute_jointspace_pid_control(
     # Inputs:
-    model: Model,
+    model: ModelKamino,
     state: State,
     time: TimeData,
     controller: PIDControllerData,
@@ -356,7 +356,7 @@ class JointSpacePIDController:
 
     def __init__(
         self,
-        model: Model | None = None,
+        model: ModelKamino | None = None,
         K_p: FloatArrayLike | None = None,
         K_i: FloatArrayLike | None = None,
         K_d: FloatArrayLike | None = None,
@@ -367,7 +367,7 @@ class JointSpacePIDController:
         A simple PID controller in joint space.
 
         Args:
-            model (Model | None): The model container describing the system to be simulated.
+            model (ModelKamino | None): The model container describing the system to be simulated.
                 If None, call ``finalize()`` later.
             K_p (FloatArrayLike | None): Proportional gains per actuated joint DoF.
             K_i (FloatArrayLike | None): Integral gains per actuated joint DoF.
@@ -409,7 +409,7 @@ class JointSpacePIDController:
 
     def finalize(
         self,
-        model: Model,
+        model: ModelKamino,
         K_p: FloatArrayLike,
         K_i: FloatArrayLike,
         K_d: FloatArrayLike,
@@ -420,7 +420,7 @@ class JointSpacePIDController:
         Allocates all internal data arrays of the controller.
 
         Args:
-            model (Model): The model container describing the system to be simulated.
+            model (ModelKamino): The model container describing the system to be simulated.
             K_p (FloatArrayLike): Proportional gains per actuated joint DoF.
             K_i (FloatArrayLike): Integral gains per actuated joint DoF.
             K_d (FloatArrayLike): Derivative gains per actuated joint DoF.
@@ -481,7 +481,7 @@ class JointSpacePIDController:
                 decimation=wp.array(decimation, dtype=int32),
             )
 
-    def reset(self, model: Model, state: State) -> None:
+    def reset(self, model: ModelKamino, state: State) -> None:
         """
         Reset the internal state of the controller.
 
@@ -490,7 +490,7 @@ class JointSpacePIDController:
         forces `tau_j` and the integrator are set to zeros.
 
         Args:
-            model (Model): The model container holding the time-invariant parameters of the simulation.
+            model (ModelKamino): The model container holding the time-invariant parameters of the simulation.
             state (State): The current state of the system to which the references will be reset.
         """
 
@@ -536,7 +536,7 @@ class JointSpacePIDController:
 
     def compute(
         self,
-        model: Model,
+        model: ModelKamino,
         state: State,
         time: TimeData,
         control: Control,
@@ -545,7 +545,7 @@ class JointSpacePIDController:
         Compute the control torques.
 
         Args:
-            model (Model): The input model container holding the time-invariant parameters of the simulation.
+            model (ModelKamino): The input model container holding the time-invariant parameters of the simulation.
             state (State): The input state container holding the current state of the simulation.
             time (TimeData): The input time data container holding the current simulation time and steps.
             control (Control): The output control container where the computed control torques will be stored.

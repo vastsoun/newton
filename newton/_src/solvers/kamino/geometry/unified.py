@@ -44,7 +44,7 @@ from ....geometry.types import GeoType
 from ..core.builder import ModelBuilder
 from ..core.data import ModelData
 from ..core.materials import DEFAULT_FRICTION, DEFAULT_RESTITUTION, make_get_material_pair_properties
-from ..core.model import Model
+from ..core.model import ModelKamino
 from ..core.shapes import ShapeType
 from ..core.types import float32, int32, quatf, transformf, uint32, uint64, vec2f, vec2i, vec3f, vec4f
 from ..geometry.contacts import (
@@ -494,7 +494,7 @@ class CollisionPipelineUnifiedKamino:
 
     def __init__(
         self,
-        model: Model,
+        model: ModelKamino,
         builder: ModelBuilder,
         broadphase: Literal["nxn", "sap", "explicit"] = "explicit",
         max_contacts: int | None = None,
@@ -637,12 +637,12 @@ class CollisionPipelineUnifiedKamino:
     # Operations
     ###
 
-    def collide(self, model: Model, data: ModelData, contacts: Contacts):
+    def collide(self, model: ModelKamino, data: ModelData, contacts: Contacts):
         """
         Runs the unified collision detection pipeline to generate discrete contacts.
 
         Args:
-            model (Model): The model container holding the time-invariant parameters of the simulation.
+            model (ModelKamino): The model container holding the time-invariant parameters of the simulation.
             data (ModelData): The data container holding the time-varying state of the simulation.
             contacts (Contacts): Output contacts container (will be cleared and populated)
         """
@@ -679,7 +679,7 @@ class CollisionPipelineUnifiedKamino:
     # Internals
     ###
 
-    def _convert_geometry_data(self, model: Model):
+    def _convert_geometry_data(self, model: ModelKamino):
         """
         Converts Kamino geometry data to the Newton format.
 
@@ -785,7 +785,7 @@ class CollisionPipelineUnifiedKamino:
             len(excluded),
         )
 
-    def _update_geom_data(self, model: Model, data: ModelData):
+    def _update_geom_data(self, model: ModelKamino, data: ModelData):
         """
         Updates geometry poses from corresponding body states and computes respective AABBs.
 
@@ -866,12 +866,12 @@ class CollisionPipelineUnifiedKamino:
             case _:
                 raise ValueError(f"Unsupported broad phase mode: {self._broadphase}")
 
-    def _run_narrowphase(self, model: Model, data: ModelData, contacts: Contacts):
+    def _run_narrowphase(self, model: ModelKamino, data: ModelData, contacts: Contacts):
         """
         Runs narrow-phase collision detection to generate contacts.
 
         Args:
-            model (Model): The model container holding the time-invariant parameters of the simulation.
+            model (ModelKamino): The model container holding the time-invariant parameters of the simulation.
             data (ModelData): The data container holding the time-varying state of the simulation.
             contacts (Contacts): Output contacts container (will be populated by this function)
         """

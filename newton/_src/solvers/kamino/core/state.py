@@ -25,13 +25,13 @@ import warp as wp
 @dataclass
 class State:
     """
-    Represents the time-varying state of a :class:`Model` in a simulation.
+    Represents the time-varying state of a :class:`ModelKamino` in a simulation.
 
     The State object holds all dynamic quantities that change over time during simulation,
     such as rigid body poses, twists, and wrenches, as well as joint coordinates, velocities,
     and constraint forces.
 
-    State objects are typically created via :meth:`kamino.Model.state()` and are used to
+    State objects are typically created via :meth:`kamino.ModelKamino.state()` and are used to
     store and update the simulation's current configuration and derived data.
 
     For constrained rigid multi-body system, the state is defined formally using either:

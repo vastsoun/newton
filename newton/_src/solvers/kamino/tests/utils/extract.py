@@ -19,7 +19,7 @@ import numpy as np
 import warp as wp
 
 from ...core.data import ModelData
-from ...core.model import Model
+from ...core.model import ModelKamino
 from ...dynamics.delassus import BlockSparseMatrixFreeDelassusOperator, DelassusOperator
 from ...geometry.contacts import Contacts
 from ...kinematics.jacobians import DenseSystemJacobians, SparseSystemJacobians
@@ -59,14 +59,14 @@ def extract_active_constraint_dims(data: ModelData) -> list[int]:
     return [int(active_dim_np[i]) for i in range(len(active_dim_np))]
 
 
-def extract_active_constraint_vectors(model: Model, data: ModelData, x: wp.array) -> list[np.ndarray]:
+def extract_active_constraint_vectors(model: ModelKamino, data: ModelData, x: wp.array) -> list[np.ndarray]:
     cts_start_np = model.info.total_cts_offset.numpy()
     num_active_cts_np = extract_active_constraint_dims(data)
     x_np = x.numpy()
     return [x_np[cts_start_np[n] : cts_start_np[n] + num_active_cts_np[n]] for n in range(len(cts_start_np))]
 
 
-def extract_actuation_forces(model: Model, data: ModelData) -> list[np.ndarray]:
+def extract_actuation_forces(model: ModelKamino, data: ModelData) -> list[np.ndarray]:
     dofs_start_np = model.info.joint_dofs_offset.numpy()
     num_dofs_np = model.info.num_joint_dofs.numpy()
     tau_j_np = data.joints.tau_j.numpy()
@@ -74,7 +74,7 @@ def extract_actuation_forces(model: Model, data: ModelData) -> list[np.ndarray]:
 
 
 def extract_cts_jacobians(
-    model: Model,
+    model: ModelKamino,
     limits: Limits | None,
     contacts: Contacts | None,
     jacobians: DenseSystemJacobians | SparseSystemJacobians,
@@ -135,7 +135,7 @@ def extract_cts_jacobians(
 
 
 def extract_dofs_jacobians(
-    model: Model,
+    model: ModelKamino,
     jacobians: DenseSystemJacobians | SparseSystemJacobians,
     verbose: bool = False,
 ) -> list[np.ndarray]:

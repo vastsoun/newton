@@ -21,7 +21,7 @@ import warp as wp
 from warp.context import Devicelike
 
 from ..core.data import ModelData
-from ..core.model import Model
+from ..core.model import ModelKamino
 from ..core.types import float32, int32, vec3f
 from ..geometry.contacts import ContactMode, Contacts
 from ..kinematics.limits import Limits
@@ -51,7 +51,7 @@ wp.set_module_options({"enable_backward": False})
 
 
 def get_max_constraints_per_world(
-    model: Model,
+    model: ModelKamino,
     limits: Limits | None,
     contacts: Contacts | None,
 ) -> list[int]:
@@ -59,7 +59,7 @@ def get_max_constraints_per_world(
     Returns the maximum number of constraints for each world in the model.
 
     Args:
-        model (Model): The model for which to compute the maximum constraints.
+        model (ModelKamino): The model for which to compute the maximum constraints.
         limits (Limits, optional): The container holding the allocated joint-limit data.
         contacts (Contacts, optional): The container holding the allocated contacts data.
 
@@ -70,8 +70,8 @@ def get_max_constraints_per_world(
     if model is None:
         raise ValueError("`model` is required but got `None`.")
     else:
-        if not isinstance(model, Model):
-            raise TypeError(f"`model` is required to be of type `Model` but got {type(model)}.")
+        if not isinstance(model, ModelKamino):
+            raise TypeError(f"`model` is required to be of type `ModelKamino` but got {type(model)}.")
 
     # Ensure the limits container is valid
     if limits is not None:
@@ -93,17 +93,17 @@ def get_max_constraints_per_world(
 
 
 def make_unilateral_constraints_info(
-    model: Model,
+    model: ModelKamino,
     data: ModelData,
     limits: Limits | None = None,
     contacts: Contacts | None = None,
     device: Devicelike = None,
 ):
     """
-    Constructs constraints entries in the ModelInfo member of a model.
+    Constructs constraints entries in the ModelKaminoInfo member of a model.
 
     Args:
-        model (Model): The model container holding time-invariant data.
+        model (ModelKamino): The model container holding time-invariant data.
         data (ModelData): The solver container holding time-varying data.
         limits (Limits, optional): The limits container holding the joint-limit data.
         contacts (Contacts, optional): The contacts container holding the contact data.
@@ -112,8 +112,8 @@ def make_unilateral_constraints_info(
     """
 
     # Ensure the model is valid
-    if not isinstance(model, Model):
-        raise TypeError("`model` must be an instance of `Model`")
+    if not isinstance(model, ModelKamino):
+        raise TypeError("`model` must be an instance of `ModelKamino`")
 
     # Ensure the data is valid
     if not isinstance(data, ModelData):
@@ -464,14 +464,14 @@ def _unpack_contact_constraint_solutions(
 
 
 def update_constraints_info(
-    model: Model,
+    model: ModelKamino,
     data: ModelData,
 ):
     """
     Updates the active constraints info for the given model and current data.
 
     Args:
-        model (Model): The model container holding time-invariant data.
+        model (ModelKamino): The model container holding time-invariant data.
         data (ModelData): The solver container holding time-varying data.
     """
     wp.launch(
@@ -495,7 +495,7 @@ def update_constraints_info(
 def unpack_constraint_solutions(
     lambdas: wp.array,
     v_plus: wp.array,
-    model: Model,
+    model: ModelKamino,
     data: ModelData,
     limits: Limits | None = None,
     contacts: Contacts | None = None,

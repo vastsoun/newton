@@ -28,7 +28,7 @@ from warp.context import Devicelike
 from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.core.data import ModelData
 from newton._src.solvers.kamino.core.math import I_3
-from newton._src.solvers.kamino.core.model import Model
+from newton._src.solvers.kamino.core.model import ModelKamino
 from newton._src.solvers.kamino.core.shapes import SphereShape
 from newton._src.solvers.kamino.core.types import transformf, vec6f
 from newton._src.solvers.kamino.geometry.contacts import Contacts
@@ -126,7 +126,7 @@ def test_unified_pipeline(
         msg.info("Testing unified CD on '%s' using '%s'", case, bp_mode)
 
         # Create a test model and data
-        model: Model = builder.finalize(device)
+        model: ModelKamino = builder.finalize(device)
         data: ModelData = model.data()
 
         # Create a pipeline

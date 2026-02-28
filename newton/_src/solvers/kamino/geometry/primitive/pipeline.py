@@ -25,7 +25,7 @@ from warp.context import Devicelike
 
 from ...core.builder import ModelBuilder
 from ...core.data import ModelData
-from ...core.model import Model
+from ...core.model import ModelKamino
 from ...core.types import float32, int32, vec2i, vec6f
 from ..contacts import DEFAULT_GEOM_PAIR_CONTACT_GAP, Contacts
 from .broadphase import (
@@ -154,12 +154,12 @@ class CollisionPipelinePrimitive:
                 geom_pair=wp.zeros(shape=(model_num_geom_pairs,), dtype=vec2i),
             )
 
-    def collide(self, model: Model, data: ModelData, contacts: Contacts):
+    def collide(self, model: ModelKamino, data: ModelData, contacts: Contacts):
         """
         Runs the unified collision detection pipeline to generate discrete contacts.
 
         Args:
-            model (Model): The model container holding the time-invariant parameters of the simulation.
+            model (ModelKamino): The model container holding the time-invariant parameters of the simulation.
             data (ModelData): The data container holding the time-varying state of the simulation.
             contacts (Contacts): Output contacts container (will be cleared and populated)
         """

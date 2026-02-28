@@ -32,7 +32,7 @@ from ..core.math import (
     expand6d,
     screw_transform_matrix_from_points,
 )
-from ..core.model import Model
+from ..core.model import ModelKamino
 from ..core.types import (
     float32,
     int32,
@@ -1218,7 +1218,7 @@ class DenseSystemJacobians:
 
     def __init__(
         self,
-        model: Model | None = None,
+        model: ModelKamino | None = None,
         limits: Limits | None = None,
         contacts: Contacts | None = None,
         device: wp.DeviceLike = None,
@@ -1234,7 +1234,7 @@ class DenseSystemJacobians:
         constraint Jacobian matrix blocks of world ``w``.
 
         Args:
-            model (`Model`, optional):
+            model (`ModelKamino`, optional):
                 The model container describing the system structure and properties, used
                 to allocate the Jacobian data and compute the matrix block sizes and index offsets.
             limits (`Limits`, optional):
@@ -1263,7 +1263,7 @@ class DenseSystemJacobians:
 
     def finalize(
         self,
-        model: Model,
+        model: ModelKamino,
         limits: Limits | None = None,
         contacts: Contacts | None = None,
         device: wp.DeviceLike = None,
@@ -1272,8 +1272,8 @@ class DenseSystemJacobians:
         if model is None:
             raise ValueError("`model` is required but got `None`.")
         else:
-            if not isinstance(model, Model):
-                raise TypeError(f"`model` is required to be of type `Model` but got {type(model)}.")
+            if not isinstance(model, ModelKamino):
+                raise TypeError(f"`model` is required to be of type `ModelKamino` but got {type(model)}.")
 
         # Ensure the limits container is valid
         if limits is not None:
@@ -1322,7 +1322,7 @@ class DenseSystemJacobians:
 
     def build(
         self,
-        model: Model,
+        model: ModelKamino,
         data: ModelData,
         limits: Limits | None = None,
         contacts: Contacts | None = None,
@@ -1333,7 +1333,7 @@ class DenseSystemJacobians:
         data of the provided model, data, limits and contacts containers.
 
         Args:
-            model (`Model`):
+            model (`ModelKamino`):
                 The model container describing the system structure
                 and properties, used to compute the Jacobians.
             data (`ModelData`):
@@ -1441,7 +1441,7 @@ class SparseSystemJacobians:
 
     def __init__(
         self,
-        model: Model | None = None,
+        model: ModelKamino | None = None,
         limits: Limits | None = None,
         contacts: Contacts | None = None,
         device: wp.DeviceLike = None,
@@ -1453,7 +1453,7 @@ class SparseSystemJacobians:
         the non-zero block coordinates are stored as local offsets for each world, joint, limit, and contact.
 
         Args:
-            model (`Model`, optional):
+            model (`ModelKamino`, optional):
                 The model container describing the system structure and properties, used
                 to allocate the Jacobian data and compute the non-zero block coordinates.
             limits (`Limits`, optional):
@@ -1485,7 +1485,7 @@ class SparseSystemJacobians:
 
     def finalize(
         self,
-        model: Model,
+        model: ModelKamino,
         limits: Limits | None = None,
         contacts: Contacts | None = None,
         device: wp.DeviceLike = None,
@@ -1495,7 +1495,7 @@ class SparseSystemJacobians:
         for each world, joint, limit, and contact based on the provided model, limits, and contacts containers.
 
         Args:
-            model (`Model`):
+            model (`ModelKamino`):
                 The model container describing the system structure and properties, used
                 to allocate the Jacobian data and compute the non-zero block coordinates.
             limits (`Limits`, optional):
@@ -1513,8 +1513,8 @@ class SparseSystemJacobians:
         if model is None:
             raise ValueError("`model` is required but got `None`.")
         else:
-            if not isinstance(model, Model):
-                raise TypeError(f"`model` is required to be of type `Model` but got {type(model)}.")
+            if not isinstance(model, ModelKamino):
+                raise TypeError(f"`model` is required to be of type `ModelKamino` but got {type(model)}.")
 
         # Ensure the limits container is valid
         if limits is not None:
@@ -1687,7 +1687,7 @@ class SparseSystemJacobians:
 
     def build(
         self,
-        model: Model,
+        model: ModelKamino,
         data: ModelData,
         limits: Limits | None = None,
         contacts: Contacts | None = None,
@@ -1698,7 +1698,7 @@ class SparseSystemJacobians:
         data of the provided model, data, limits and contacts containers.
 
         Args:
-            model (`Model`):
+            model (`ModelKamino`):
                 The model containing the system's kinematic structure.
             data (`ModelData`):
                 The data container holding the time-varying state of the system.
@@ -1840,7 +1840,7 @@ class ColMajorSparseConstraintJacobians(BlockSparseLinearOperators):
 
     def __init__(
         self,
-        model: Model | None = None,
+        model: ModelKamino | None = None,
         limits: Limits | None = None,
         contacts: Contacts | None = None,
         jacobians: SparseSystemJacobians | None = None,
@@ -1850,7 +1850,7 @@ class ColMajorSparseConstraintJacobians(BlockSparseLinearOperators):
         Constructs a column-major sparse constraint Jacobian.
 
         Args:
-            model (`Model`, optional):
+            model (`ModelKamino`, optional):
                 The model containing the system's kinematic structure. If provided,
                 the Jacobian will be immediately finalized with the given model.
             limits (`Limits`, optional):
@@ -1876,7 +1876,7 @@ class ColMajorSparseConstraintJacobians(BlockSparseLinearOperators):
 
     def finalize(
         self,
-        model: Model,
+        model: ModelKamino,
         limits: Limits | None = None,
         contacts: Contacts | None = None,
         jacobians: SparseSystemJacobians | None = None,
@@ -1886,7 +1886,7 @@ class ColMajorSparseConstraintJacobians(BlockSparseLinearOperators):
         Initializes the data structure of the column-major constraint Jacobian.
 
         Args:
-            model (`Model`):
+            model (`ModelKamino`):
                 The model containing the system's kinematic structure.
             limits (`Limits`, optional):
                 Limits data container for joint limit constraints. Needs to
@@ -2033,7 +2033,7 @@ class ColMajorSparseConstraintJacobians(BlockSparseLinearOperators):
 
     def update(
         self,
-        model: Model,
+        model: ModelKamino,
         jacobians: SparseSystemJacobians,
         limits: Limits | None = None,
         contacts: Contacts | None = None,
@@ -2045,7 +2045,7 @@ class ColMajorSparseConstraintJacobians(BlockSparseLinearOperators):
         Args:
             jacobians (`SparseSystemJacobians`):
                 The row-major sparse system Jacobians containing the constraint Jacobians.
-            model (`Model`):
+            model (`ModelKamino`):
                 The model containing the system's kinematic structure.
             limits (`Limits`, optional):
                 Limits data container for joint limit constraints. Needs to be

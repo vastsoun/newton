@@ -22,7 +22,7 @@ import unittest
 import numpy as np
 import warp as wp
 
-from newton._src.solvers.kamino.core.model import Model
+from newton._src.solvers.kamino.core.model import ModelKamino
 from newton._src.solvers.kamino.geometry.contacts import Contacts
 from newton._src.solvers.kamino.kinematics.jacobians import (
     ColMajorSparseConstraintJacobians,
@@ -525,7 +525,7 @@ class TestKinematicsSparseSystemJacobians(unittest.TestCase):
 
     def _compare_dense_sparse_jacobians(
         self,
-        model: Model,
+        model: ModelKamino,
         limits: Limits | None,
         contacts: Contacts | None,
         jacobians_dense: DenseSystemJacobians,

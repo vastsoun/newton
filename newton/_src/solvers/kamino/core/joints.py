@@ -1746,7 +1746,7 @@ class JointsModel:
 
     Shape of ``(num_joints,)`` and type :class:`int`.
 
-    Used together with :attr:`ModelInfo.joint_cts_offset`
+    Used together with :attr:`ModelKaminoInfo.joint_cts_offset`
     to index into the joint-specific blocks of:
     - array of joint constraint Lagrange multipliers `lambda_j`
 
@@ -1771,7 +1771,7 @@ class JointsModel:
     Index offset of each joint's dynamic constraints w.r.t the start
     index of dynamic joint constraints of the corresponding world.\n
 
-        Used together with :attr:`ModelInfo.joint_dynamic_cts_offset`
+        Used together with :attr:`ModelKaminoInfo.joint_dynamic_cts_offset`
         to index into the joint-specific blocks of:
     - array of effective joint-space inertia :attr:`JointsData.m_j`
     - array of joint-space damping :attr:`JointsData.b_j`
@@ -1786,7 +1786,7 @@ class JointsModel:
     Index offset of each joint's kinematic constraints w.r.t the start
     index of kinematic joint constraints of the corresponding world.\n
 
-    Used together with :attr:`ModelInfo.joint_kinematic_cts_offset`
+    Used together with :attr:`ModelKaminoInfo.joint_kinematic_cts_offset`
     to index into the joint-specific blocks of:
     - array of joint constraint residuals :attr:`JointsData.r_j`
     - array of joint constraint residual time-derivatives :attr:`JointsData.dr_j`

@@ -23,7 +23,7 @@ from warp.context import Devicelike
 
 from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.core.data import ModelData
-from newton._src.solvers.kamino.core.model import Model
+from newton._src.solvers.kamino.core.model import ModelKamino
 from newton._src.solvers.kamino.core.types import float32, int32, vec2i, vec6f
 from newton._src.solvers.kamino.geometry.contacts import DEFAULT_GEOM_PAIR_CONTACT_GAP, Contacts
 from newton._src.solvers.kamino.geometry.primitive import (
@@ -126,7 +126,7 @@ class PrimitiveBroadPhaseTestBS:
                 geom_pair=wp.zeros(shape=(model_num_geom_pairs,), dtype=vec2i),
             )
 
-    def collide(self, model: Model, data: ModelData, default_gap: float = 0.0):
+    def collide(self, model: ModelKamino, data: ModelData, default_gap: float = 0.0):
         self._cdata.clear()
         update_geoms_bs(data.bodies.q_i, model.geoms, data.geoms, self.bvdata, default_gap)
         nxn_broadphase_bs(model.geoms, data.geoms, self.bvdata, self._cmodel, self._cdata)
@@ -163,7 +163,7 @@ class PrimitiveBroadPhaseTestAABB:
                 geom_pair=wp.zeros(shape=(model_num_geom_pairs,), dtype=vec2i),
             )
 
-    def collide(self, model: Model, data: ModelData, default_gap: float = 0.0):
+    def collide(self, model: ModelKamino, data: ModelData, default_gap: float = 0.0):
         self._cdata.clear()
         update_geoms_aabb(data.bodies.q_i, model.geoms, data.geoms, self.bvdata, default_gap)
         nxn_broadphase_aabb(model.geoms, self.bvdata, self._cmodel, self._cdata)
@@ -1046,7 +1046,7 @@ class TestPipelinePrimitive(unittest.TestCase):
         self.assertIsNone(pipeline._device)
         self.assertEqual(pipeline._bvtype, BoundingVolumeType.AABB)
         self.assertEqual(pipeline._default_gap, DEFAULT_GEOM_PAIR_CONTACT_GAP)
-        self.assertRaises(RuntimeError, pipeline.collide, Model(), ModelData(), Contacts())
+        self.assertRaises(RuntimeError, pipeline.collide, ModelKamino(), ModelData(), Contacts())
 
     def test_02_make_and_collide(self):
         """

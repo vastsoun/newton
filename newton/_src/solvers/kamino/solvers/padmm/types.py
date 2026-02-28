@@ -52,7 +52,7 @@ import numpy as np
 import warp as wp
 from warp.context import Devicelike
 
-from ...core.model import ModelSize
+from ...core.model import ModelKaminoSize
 from ...core.types import float32, int32, override, vec2f
 
 ###
@@ -713,14 +713,14 @@ class PADMMState:
             Shape of ``(sum_of_max_total_cts,)`` and type :class:`float32`.
     """
 
-    def __init__(self, size: ModelSize | None = None, use_acceleration: bool = False):
+    def __init__(self, size: ModelKaminoSize | None = None, use_acceleration: bool = False):
         """
         Initializes the PADMM solver state container.
 
         If a model size is provided, allocates the state arrays accordingly.
 
         Args:
-            size (ModelSize | None): The model-size utility container holding the dimensionality of the model.
+            size (ModelKaminoSize | None): The model-size utility container holding the dimensionality of the model.
         """
 
         self.done: wp.array | None = None
@@ -826,12 +826,12 @@ class PADMMState:
         if size is not None:
             self.finalize(size, use_acceleration)
 
-    def finalize(self, size: ModelSize, use_acceleration: bool = False):
+    def finalize(self, size: ModelKaminoSize, use_acceleration: bool = False):
         """
         Allocates the PADMM solver state arrays based on the model size.
 
         Args:
-            size (ModelSize): The model-size utility container holding the dimensionality of the model.
+            size (ModelKaminoSize): The model-size utility container holding the dimensionality of the model.
         """
         # Allocate per-world solver done flags
         self.done = wp.zeros(1, dtype=int32)
@@ -910,14 +910,14 @@ class PADMMResiduals:
             Shape of ``(sum_of_max_total_cts,)`` and type :class:`float32`.
     """
 
-    def __init__(self, size: ModelSize | None = None, use_acceleration: bool = False):
+    def __init__(self, size: ModelKaminoSize | None = None, use_acceleration: bool = False):
         """
         Initializes the PADMM residuals container.
 
         If a model size is provided, allocates the residuals arrays accordingly.
 
         Args:
-            size (ModelSize | None): The model-size utility container holding the dimensionality of the model.
+            size (ModelKaminoSize | None): The model-size utility container holding the dimensionality of the model.
         """
 
         self.r_primal: wp.array | None = None
@@ -964,12 +964,12 @@ class PADMMResiduals:
         if size is not None:
             self.finalize(size, use_acceleration)
 
-    def finalize(self, size: ModelSize, use_acceleration: bool = False):
+    def finalize(self, size: ModelKaminoSize, use_acceleration: bool = False):
         """
         Allocates the residuals arrays based on the model size.
 
         Args:
-            size (ModelSize): The model-size utility container holding the dimensionality of the model.
+            size (ModelKaminoSize): The model-size utility container holding the dimensionality of the model.
             use_acceleration (bool): Flag indicating whether to allocate arrays used with acceleration.
         """
         # Allocate the main residuals arrays
@@ -1007,14 +1007,14 @@ class PADMMSolution:
             Shape of ``(sum_of_max_total_cts,)`` and type :class:`float32`.
     """
 
-    def __init__(self, size: ModelSize | None = None):
+    def __init__(self, size: ModelKaminoSize | None = None):
         """
         Initializes the PADMM solution container.
 
         If a model size is provided, allocates the solution arrays accordingly.
 
         Args:
-            size (ModelSize | None): The model-size utility container holding the dimensionality of the model.
+            size (ModelKaminoSize | None): The model-size utility container holding the dimensionality of the model.
         """
 
         self.lambdas: wp.array | None = None
@@ -1033,12 +1033,12 @@ class PADMMSolution:
         if size is not None:
             self.finalize(size)
 
-    def finalize(self, size: ModelSize):
+    def finalize(self, size: ModelKaminoSize):
         """
         Allocates the PADMM solution arrays based on the model size.
 
         Args:
-            size (ModelSize): The model-size utility container holding the dimensionality of the model.
+            size (ModelKaminoSize): The model-size utility container holding the dimensionality of the model.
         """
         self.lambdas = wp.zeros(size.sum_of_max_total_cts, dtype=float32)
         self.v_plus = wp.zeros(size.sum_of_max_total_cts, dtype=float32)
@@ -1122,7 +1122,7 @@ class PADMMInfo:
 
     def __init__(
         self,
-        size: ModelSize | None = None,
+        size: ModelKaminoSize | None = None,
         max_iters: int | None = None,
         use_acceleration: bool = False,
     ):
@@ -1132,7 +1132,7 @@ class PADMMInfo:
         If a model size is provided, allocates the solution arrays accordingly.
 
         Args:
-            size (ModelSize | None): The model-size utility container holding the dimensionality of the model.
+            size (ModelKaminoSize | None): The model-size utility container holding the dimensionality of the model.
             max_iters (int | None): The maximum number of iterations for which to allocate convergence data.
         """
 
@@ -1311,12 +1311,12 @@ class PADMMInfo:
         if size is not None:
             self.finalize(size=size, max_iters=max_iters, use_acceleration=use_acceleration)
 
-    def finalize(self, size: ModelSize, max_iters: int, use_acceleration: bool = False):
+    def finalize(self, size: ModelKaminoSize, max_iters: int, use_acceleration: bool = False):
         """
         Allocates the PADMM solver info arrays based on the model size and maximum number of iterations.
 
         Args:
-            size (ModelSize): The model-size utility container holding the dimensionality of the model.
+            size (ModelKaminoSize): The model-size utility container holding the dimensionality of the model.
             max_iters (int): The maximum number of iterations for which to allocate convergence data.
 
         Raises:
@@ -1426,7 +1426,7 @@ class PADMMData:
 
     def __init__(
         self,
-        size: ModelSize | None = None,
+        size: ModelKaminoSize | None = None,
         max_iters: int = 0,
         use_acceleration: bool = False,
         collect_info: bool = False,
@@ -1436,7 +1436,7 @@ class PADMMData:
         Initializes a PADMM solver data container.
 
         Args:
-            size (ModelSize): The model-size utility container holding the dimensionality of the model.
+            size (ModelKaminoSize): The model-size utility container holding the dimensionality of the model.
             max_iters (int): The maximum number of iterations for which to allocate convergence data.
             collect_info (bool): Set to `True` to allocate data for reporting solver convergence info.
             device (Devicelike): The target Warp device on which all data will be allocated.
@@ -1493,7 +1493,7 @@ class PADMMData:
 
     def finalize(
         self,
-        size: ModelSize,
+        size: ModelKaminoSize,
         max_iters: int = 0,
         use_acceleration: bool = False,
         collect_info: bool = False,
@@ -1503,7 +1503,7 @@ class PADMMData:
         Allocates the PADMM solver data based on the model size and maximum number of iterations.
 
         Args:
-            size (ModelSize): The model-size utility container holding the dimensionality of the model.
+            size (ModelKaminoSize): The model-size utility container holding the dimensionality of the model.
             max_iters (int): The maximum number of iterations for which to allocate convergence data.
             collect_info (bool): Set to `True` to allocate data for reporting solver convergence info.
             device (Devicelike): The target Warp device on which all data will be allocated.

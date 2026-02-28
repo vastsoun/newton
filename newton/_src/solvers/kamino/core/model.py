@@ -37,9 +37,9 @@ from .world import WorldDescriptor
 ###
 
 __all__ = [
-    "Model",
-    "ModelInfo",
-    "ModelSize",
+    "ModelKamino",
+    "ModelKaminoInfo",
+    "ModelKaminoSize",
 ]
 
 
@@ -56,7 +56,7 @@ wp.set_module_options({"enable_backward": False})
 
 
 @dataclass
-class ModelSize:
+class ModelKaminoSize:
     """
     A container to hold the summary size of memory allocations and thread dimensions.
 
@@ -214,7 +214,7 @@ class ModelSize:
     """The maximum number of active constraints of any world."""
 
     def __repr__(self):
-        """Returns a human-readable string representation of the ModelSize as a formatted table."""
+        """Returns a human-readable string representation of the ModelKaminoSize as a formatted table."""
         # List of (row title, sum attr, max attr)
         rows = [
             ("num_bodies", "sum_of_num_bodies", "max_of_num_bodies"),
@@ -245,7 +245,7 @@ class ModelSize:
         sum_width = max(len("Sum"), *(len(str(getattr(self, r[1]))) for r in rows))
         max_width = max(len("Max"), *(len(str(getattr(self, r[2]))) for r in rows))
 
-        # Write ModelSize members as a formatted table
+        # Write ModelKaminoSize members as a formatted table
         lines = []
         lines.append("-" * (name_width + 1 + sum_width + 1 + max_width))
         lines.append(f"{'Name':<{name_width}} {'Sum':>{sum_width}} {'Max':>{max_width}}")
@@ -262,7 +262,7 @@ class ModelSize:
 
 
 @dataclass
-class ModelInfo:
+class ModelKaminoInfo:
     """
     A container to hold the time-invariant information and meta-data of a model.
     """
@@ -624,7 +624,7 @@ class ModelInfo:
 
 
 @dataclass
-class Model:
+class ModelKamino:
     """
     A container to hold the time-invariant system model data.
     """
@@ -637,7 +637,7 @@ class Model:
     requires_grad: bool = False
     """Whether the model requires gradients for its state. Defaults to `False`."""
 
-    size: ModelSize | None = None
+    size: ModelKaminoSize | None = None
     """
     Host-side cache of the model summary sizes.\n
     This is used for memory allocations and kernel thread dimensions.
@@ -649,7 +649,7 @@ class Model:
     This is used to construct the model and for memory allocations.
     """
 
-    info: ModelInfo | None = None
+    info: ModelKaminoInfo | None = None
     """The model info container holding the information and meta-data of the model."""
 
     time: TimeModel | None = None

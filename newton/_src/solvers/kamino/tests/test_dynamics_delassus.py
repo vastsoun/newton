@@ -21,7 +21,7 @@ import numpy as np
 import warp as wp
 
 from newton._src.solvers.kamino.core.data import ModelData
-from newton._src.solvers.kamino.core.model import Model
+from newton._src.solvers.kamino.core.model import ModelKamino
 from newton._src.solvers.kamino.dynamics.delassus import BlockSparseMatrixFreeDelassusOperator, DelassusOperator
 from newton._src.solvers.kamino.geometry.contacts import Contacts
 from newton._src.solvers.kamino.kinematics.constraints import get_max_constraints_per_world
@@ -58,7 +58,7 @@ from newton._src.solvers.kamino.utils import logger as msg
 
 def check_delassus_allocations(
     fixture: unittest.TestCase,
-    model: Model,
+    model: ModelKamino,
     limits: Limits,
     contacts: Contacts,
     delassus: DelassusOperator,
@@ -809,7 +809,7 @@ class TestDelassusOperatorSparse(unittest.TestCase):
 
     def _check_sparse_delassus_allocations(
         self,
-        model: Model,
+        model: ModelKamino,
         delassus: BlockSparseMatrixFreeDelassusOperator,
     ):
         """Checks the allocation of a sparse Delassus operator."""
@@ -839,7 +839,7 @@ class TestDelassusOperatorSparse(unittest.TestCase):
 
     def _check_delassus_matrix(
         self,
-        model: Model,
+        model: ModelKamino,
         data: ModelData,
         delassus: BlockSparseMatrixFreeDelassusOperator,
         jacobians: SparseSystemJacobians,
@@ -936,7 +936,7 @@ class TestDelassusOperatorSparse(unittest.TestCase):
 
     def _check_delassus_matrix_vector_product(
         self,
-        model: Model,
+        model: ModelKamino,
         data: ModelData,
         delassus: BlockSparseMatrixFreeDelassusOperator,
         jacobians: SparseSystemJacobians,
@@ -1095,7 +1095,7 @@ class TestDelassusOperatorSparse(unittest.TestCase):
 
     def _check_delassus_diagonal(
         self,
-        model: Model,
+        model: ModelKamino,
         data: ModelData,
         delassus: BlockSparseMatrixFreeDelassusOperator,
         jacobians: SparseSystemJacobians,

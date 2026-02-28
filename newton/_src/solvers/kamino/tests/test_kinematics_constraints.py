@@ -21,7 +21,7 @@ import unittest
 
 import warp as wp
 
-from newton._src.solvers.kamino.core.model import Model
+from newton._src.solvers.kamino.core.model import ModelKamino
 from newton._src.solvers.kamino.geometry.contacts import Contacts
 from newton._src.solvers.kamino.kinematics.constraints import make_unilateral_constraints_info
 from newton._src.solvers.kamino.kinematics.limits import Limits
@@ -75,7 +75,7 @@ class TestKinematicsConstraints(unittest.TestCase):
         builder = build_boxes_fourbar(dynamic_joints=True, implicit_pd=True)
 
         # Create the model from the builder
-        model: Model = builder.finalize(device=self.default_device)
+        model: ModelKamino = builder.finalize(device=self.default_device)
         msg.info(f"model.joints.cts_offset:\n{model.joints.cts_offset}")
         msg.info(f"model.joints.dynamic_cts_offset:\n{model.joints.dynamic_cts_offset}")
         msg.info(f"model.joints.kinematic_cts_offset:\n{model.joints.kinematic_cts_offset}")
@@ -132,7 +132,7 @@ class TestKinematicsConstraints(unittest.TestCase):
         )
 
         # Create the model from the builder
-        model: Model = builder.finalize(device=self.default_device)
+        model: ModelKamino = builder.finalize(device=self.default_device)
         msg.info(f"model.joints.cts_offset:\n{model.joints.cts_offset}")
         msg.info(f"model.joints.dynamic_cts_offset:\n{model.joints.dynamic_cts_offset}")
         msg.info(f"model.joints.kinematic_cts_offset:\n{model.joints.kinematic_cts_offset}")
@@ -230,7 +230,7 @@ class TestKinematicsConstraints(unittest.TestCase):
         builder = make_basics_heterogeneous_builder()
 
         # Create the model from the builder
-        model: Model = builder.finalize(device=self.default_device)
+        model: ModelKamino = builder.finalize(device=self.default_device)
 
         # Create a model data
         data = model.data(device=self.default_device)

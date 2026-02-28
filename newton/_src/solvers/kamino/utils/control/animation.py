@@ -21,10 +21,9 @@ from dataclasses import dataclass
 
 import numpy as np
 import warp as wp
-from scipy.interpolate import interp1d
 from warp.context import Devicelike
 
-from ...core.model import Model
+from ...core.model import ModelKamino
 from ...core.time import TimeData
 from ...core.types import float32, int32
 
@@ -256,7 +255,7 @@ class AnimationJointReference:
 
     def __init__(
         self,
-        model: Model | None = None,
+        model: ModelKamino | None = None,
         data: np.ndarray | None = None,
         data_dt: float | None = None,
         target_dt: float | None = None,
@@ -270,7 +269,7 @@ class AnimationJointReference:
         Initialize the animation joint reference interface.
 
         Args:
-            model (Model | None): The model container used to determine the required allocation sizes.
+            model (ModelKamino | None): The model container used to determine the required allocation sizes.
                 If None, calling ``finalize()`` later can be used for deferred allocation.
             data (np.ndarray | None): The input animation reference data as a 2D numpy array.
                 If None, calling ``finalize()`` later can be used for deferred allocation.
@@ -366,6 +365,14 @@ class AnimationJointReference:
         Returns:
             np.ndarray: Up-sampled reference joint positions of shape (new_sequence_length, num_actuated_dofs).
         """
+        # Attempt to import the required interpolation function from scipy,
+        # and raise an informative error if scipy is not installed
+        try:
+            from scipy.interpolate import interp1d
+        except ImportError as e:
+            raise ImportError(
+                "`scipy` is required for up-sampling reference coordinates. Please install with: `pip install scipy`"
+            ) from e
 
         # Extract the number of samples
         num_samples, _ = q_ref.shape
@@ -437,7 +444,7 @@ class AnimationJointReference:
 
     def finalize(
         self,
-        model: Model,
+        model: ModelKamino,
         data: np.ndarray,
         data_dt: float,
         target_dt: float | None = None,
@@ -451,7 +458,7 @@ class AnimationJointReference:
         Allocate the animation joint reference data.
 
         Args:
-            model (Model): The model container used to determine the required allocation sizes.
+            model (ModelKamino): The model container used to determine the required allocation sizes.
             data (np.ndarray): The input animation reference data as a 2D numpy array.
             data_dt (float): The time-step between frames in the input data.
             target_dt (float | None): The desired time-step between frames in the animation reference.
@@ -581,7 +588,7 @@ class AnimationJointReference:
             )
 
     def plot(self, path: str | None = None, show: bool = False) -> None:
-        from matplotlib import pyplot as plt  # noqa: PLC0415
+        from matplotlib import pyplot as plt
 
         # Extract numpy arrays for plotting
         q_j_ref_np = self._data.q_j_ref.numpy()

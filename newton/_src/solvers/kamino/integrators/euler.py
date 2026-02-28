@@ -31,7 +31,7 @@ from ..core.math import (
     compute_body_twist_update_with_eom,
     screw,
 )
-from ..core.model import Model as ModelKamino
+from ..core.model import ModelKamino
 from ..core.state import State as StateKamino
 from ..core.types import (
     float32,

@@ -41,7 +41,7 @@ import warp as wp
 
 from ..core.builder import ModelBuilder
 from ..core.data import ModelData
-from ..core.model import Model
+from ..core.model import ModelKamino
 from ..core.types import override
 from ..geometry.contacts import DEFAULT_GEOM_PAIR_CONTACT_GAP, DEFAULT_GEOM_PAIR_MAX_CONTACTS, Contacts
 from ..geometry.primitive import BoundingVolumeType, CollisionPipelinePrimitive
@@ -173,7 +173,7 @@ class CollisionDetector:
 
     def __init__(
         self,
-        model: Model | None = None,
+        model: ModelKamino | None = None,
         builder: ModelBuilder | None = None,
         settings: CollisionDetectorSettings | None = None,
         device: wp.DeviceLike = None,
@@ -241,7 +241,7 @@ class CollisionDetector:
 
     def finalize(
         self,
-        model: Model,
+        model: ModelKamino,
         builder: ModelBuilder,
         settings: CollisionDetectorSettings | None = None,
         device: wp.DeviceLike = None,
@@ -268,8 +268,8 @@ class CollisionDetector:
         # Check that the model is valid
         if model is None:
             raise ValueError("Cannot finalize CollisionDetector: model is None")
-        if not isinstance(model, Model):
-            raise TypeError(f"Cannot finalize CollisionDetector: expected Model, got {type(model)}")
+        if not isinstance(model, ModelKamino):
+            raise TypeError(f"Cannot finalize CollisionDetector: expected ModelKamino, got {type(model)}")
 
         # Override the settings if specified
         if settings is not None:
@@ -326,7 +326,7 @@ class CollisionDetector:
                 case _:
                     raise ValueError(f"Unsupported CollisionPipelineType: {self._settings.pipeline}")
 
-    def collide(self, model: Model, data: ModelData, contacts: Contacts | None = None):
+    def collide(self, model: ModelKamino, data: ModelData, contacts: Contacts | None = None):
         """
         Executes collision detection given a model and its associated data.
 
@@ -334,8 +334,8 @@ class CollisionDetector:
         the configuration set during the initialization of the CollisionDetector.
 
         Args:
-            model (Model):
-                The Model instance containing the collision geometries
+            model (ModelKamino):
+                The ModelKamino instance containing the collision geometries
             data (ModelData):
                 The ModelData instance containing the state of the geometries
             contacts (Contacts, optional):
@@ -359,8 +359,8 @@ class CollisionDetector:
         # Ensure that the model and data are valid
         if model is None:
             raise ValueError("Cannot perform collision detection: model is None")
-        if not isinstance(model, Model):
-            raise TypeError(f"Cannot perform collision detection: expected Model, got {type(model)}")
+        if not isinstance(model, ModelKamino):
+            raise TypeError(f"Cannot perform collision detection: expected ModelKamino, got {type(model)}")
         if data is None:
             raise ValueError("Cannot perform collision detection: data is None")
         if not isinstance(data, ModelData):

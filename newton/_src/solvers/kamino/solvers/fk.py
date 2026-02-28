@@ -39,7 +39,7 @@ from ..core.math import (
     unit_quat_conj_apply_jacobian,
     unit_quat_conj_to_rotation_matrix,
 )
-from ..core.model import Model
+from ..core.model import ModelKamino
 from ..core.types import vec6f
 from ..linalg.blas import (
     block_sparse_ATA_blockwise_3_4_inv_diagonal_2d,
@@ -1599,20 +1599,20 @@ class ForwardKinematicsSolver:
     Forward Kinematics solver class
     """
 
-    def __init__(self, model: Model | None = None, settings: ForwardKinematicsSolverSettings | None = None):
+    def __init__(self, model: ModelKamino | None = None, settings: ForwardKinematicsSolverSettings | None = None):
         """
         Initializes the solver to solve forward kinematics for a given model.
 
         Parameters
         ----------
-        model : Model, optional
-            Model for which to solve forward kinematics. If not provided, the finalize() method
+        model : ModelKamino, optional
+            ModelKamino for which to solve forward kinematics. If not provided, the finalize() method
             must be called at a later time for deferred initialization (default: None).
         settings : ForwardKinematicsSolverSettings, optional
             Solver settings. If not provided, default settings will be used (default: None).
         """
 
-        self.model: Model | None = None
+        self.model: ModelKamino | None = None
         """Underlying model"""
 
         self.device: Devicelike = None
@@ -1633,7 +1633,7 @@ class ForwardKinematicsSolver:
         if model is not None:
             self.finalize()
 
-    def finalize(self, model: Model | None = None, settings: ForwardKinematicsSolverSettings | None = None):
+    def finalize(self, model: ModelKamino | None = None, settings: ForwardKinematicsSolverSettings | None = None):
         """
         Finishes the solver initialization, performing necessary allocations and precomputations.
         This method only needs to be called manually if a model was not provided in the constructor,
@@ -1641,8 +1641,8 @@ class ForwardKinematicsSolver:
 
         Parameters
         ----------
-        model : Model, optional
-            Model for which to solve forward kinematics. If not provided, the model given to the
+        model : ModelKamino, optional
+            ModelKamino for which to solve forward kinematics. If not provided, the model given to the
             constructor will be used. Must be provided if not given to the constructor (default: None).
         settings : ForwardKinematicsSolverSettings, optional
             Solver settings. If not provided, the settings given to the constructor, or if not, the

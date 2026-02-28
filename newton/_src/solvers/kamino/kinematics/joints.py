@@ -37,7 +37,7 @@ from ..core.math import (
     screw_linear,
     squared_norm,
 )
-from ..core.model import Model
+from ..core.model import ModelKamino
 from ..core.types import (
     float32,
     int32,
@@ -1023,7 +1023,7 @@ def _extract_joints_state_from_actuators(
 
 
 def compute_joints_data(
-    model: Model,
+    model: ModelKamino,
     data: ModelData,
     q_j_p: wp.array,
     correction: JointCorrectionMode = JointCorrectionMode.TWOPI,
@@ -1036,7 +1036,7 @@ def compute_joints_data(
     residuals and velocities of the applied bilateral constraints.
 
     Args:
-        model (`Model`):
+        model (`ModelKamino`):
             The model container holding the time-invariant data of the simulation.
         q_j_p (`wp.array`):
             An array of previous joint DoF coordinates used for coordinate correction.\n
@@ -1098,7 +1098,7 @@ def compute_joints_data(
 
 
 def extract_actuators_state_from_joints(
-    model: Model,
+    model: ModelKamino,
     world_mask: wp.array,
     joint_q: wp.array,
     joint_u: wp.array,
@@ -1112,7 +1112,7 @@ def extract_actuators_state_from_joints(
     that are not masked will have their states extracted.
 
     Args:
-        model (`Model`):
+        model (`ModelKamino`):
             The model container holding the time-invariant data of the simulation.
         joint_q (`wp.array`):
             The full array of joint coordinates.\n
@@ -1159,7 +1159,7 @@ def extract_actuators_state_from_joints(
 
 
 def extract_joints_state_from_actuators(
-    model: Model,
+    model: ModelKamino,
     world_mask: wp.array,
     actuator_q: wp.array,
     actuator_u: wp.array,
@@ -1173,7 +1173,7 @@ def extract_joints_state_from_actuators(
     that are not masked will have their states extracted.
 
     Args:
-        model (`Model`):
+        model (`ModelKamino`):
             The model container holding the time-invariant data of the simulation.
         joint_q (`wp.array`):
             The full array of joint coordinates.\n

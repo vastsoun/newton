@@ -20,14 +20,14 @@ KAMINO: UNIT TESTS: GENERAL UTILITIES
 import numpy as np
 
 from newton._src.solvers.kamino.core.data import ModelData
-from newton._src.solvers.kamino.core.model import Model
+from newton._src.solvers.kamino.core.model import ModelKamino
 
 ###
 # Model Functions
 ###
 
 
-def print_model_size(model: Model):
+def print_model_size(model: ModelKamino):
     print("Model Size:")
 
     # Print the host-side model size meta-data
@@ -48,7 +48,7 @@ def print_model_size(model: Model):
     print(f"model.size.max_of_max_unilaterals: {model.size.max_of_max_unilaterals}")
 
 
-def print_model_info(model: Model):
+def print_model_info(model: ModelKamino):
     print("===============================================================================")
     print("Model Info:")
     # Print the host-side model info meta-data
@@ -111,7 +111,7 @@ def print_model_info(model: Model):
     print(f"model.info.inertia_total: {model.info.inertia_total}")
 
 
-def print_model_constraint_info(model: Model):
+def print_model_constraint_info(model: ModelKamino):
     print("Model Constraint Info:")
     print("-------------------------------------------------------------------------------")
     print(f"model.info.max_limits: {model.info.max_limits}")
@@ -145,7 +145,7 @@ def print_model_constraint_info(model: Model):
     print(f"model.info.joint_kinematic_cts_group_offset: {model.info.joint_kinematic_cts_group_offset}")
 
 
-def print_model_bodies(model: Model, inertias=True, initial_states=True):
+def print_model_bodies(model: ModelKamino, inertias=True, initial_states=True):
     print(f"model.bodies.num_bodies: {model.bodies.num_bodies}")
     print(f"model.bodies.wid: {model.bodies.wid}")
     print(f"model.bodies.bid: {model.bodies.bid}")
@@ -160,7 +160,7 @@ def print_model_bodies(model: Model, inertias=True, initial_states=True):
 
 
 def print_model_joints(
-    model: Model,
+    model: ModelKamino,
     dimensions=True,
     offsets=True,
     parameters=True,

@@ -25,7 +25,7 @@ import numpy as np
 import warp as wp
 
 from newton._src.solvers.kamino.core.joints import JointActuationType, JointCorrectionMode, JointDoFType
-from newton._src.solvers.kamino.core.model import Model
+from newton._src.solvers.kamino.core.model import ModelKamino
 from newton._src.solvers.kamino.core.types import vec6f
 from newton._src.solvers.kamino.kinematics.joints import compute_joints_data
 from newton._src.solvers.kamino.models import get_examples_usd_assets_path
@@ -66,7 +66,7 @@ class JacobianCheckForwardKinematics(unittest.TestCase):
         seed = int(hashlib.sha256(test_name.encode("utf8")).hexdigest(), 16)
         rng = np.random.default_rng(seed)
 
-        def test_function(model: Model):
+        def test_function(model: ModelKamino):
             assert model.size.num_worlds == 1  # For simplicity we assume a single world
 
             # Generate (random) body poses
@@ -102,7 +102,7 @@ class JacobianCheckForwardKinematics(unittest.TestCase):
         self.assertTrue(success)
 
 
-def get_actuators_q_quaternion_first_ids(model: Model):
+def get_actuators_q_quaternion_first_ids(model: ModelKamino):
     """Lists the first index of every unit quaternion 4-segment in the model's actuated coordinates."""
     act_types = model.joints.act_type.numpy()
     dof_types = model.joints.dof_type.numpy()
@@ -120,7 +120,7 @@ def get_actuators_q_quaternion_first_ids(model: Model):
     return quat_ids
 
 
-def compute_actuated_coords_and_dofs_offsets(model: Model):
+def compute_actuated_coords_and_dofs_offsets(model: ModelKamino):
     """
     Helper function computing the offsets and sizes needed to extract actuated joint coordinates
     and dofs from all joint coordinates/dofs
@@ -167,7 +167,7 @@ def extract_segments(array, offsets, sizes):
     return np.array(res)
 
 
-def compute_constraint_residual_mask(model: Model):
+def compute_constraint_residual_mask(model: ModelKamino):
     """
     Computes a boolean mask for constraint residuals, True for most constraints but False
     for base joints (to filter out residuals for fixed base models if the base is reset
@@ -206,7 +206,7 @@ def compute_constraint_residual_mask(model: Model):
 
 
 def generate_random_inputs_q(
-    model: Model,
+    model: ModelKamino,
     num_poses: int,
     max_base_q: np.ndarray,
     max_actuators_q: np.ndarray,
@@ -239,7 +239,7 @@ def generate_random_inputs_q(
 
 
 def generate_random_inputs_u(
-    model: Model,
+    model: ModelKamino,
     num_poses: int,
     max_base_u: np.ndarray,
     max_actuators_u: np.ndarray,
@@ -263,7 +263,7 @@ def generate_random_inputs_u(
 
 
 def generate_random_poses(
-    model: Model,
+    model: ModelKamino,
     num_poses: int,
     max_bodies_q: np.ndarray,
     rng: np.random._generator.Generator,
@@ -289,7 +289,7 @@ def generate_random_poses(
 
 
 def simulate_random_poses(
-    model: Model,
+    model: ModelKamino,
     num_poses: int,
     max_base_q: np.ndarray,
     max_actuators_q: np.ndarray,

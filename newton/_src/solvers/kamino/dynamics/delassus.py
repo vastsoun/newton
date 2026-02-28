@@ -21,7 +21,7 @@ represents the apparent inertia within the space defined by the set of
 active constraints imposed on a constrained rigid multi-body system.
 
 This module thus provides building-blocks to realize Delassus operators across multiple
-worlds contained in a :class:`Model`. The :class:`DelassusOperator` class provides a
+worlds contained in a :class:`ModelKamino`. The :class:`DelassusOperator` class provides a
 high-level interface to encapsulate both the data representation as well as the
 relevant operations. It provides methods to allocate the necessary data arrays, build
 the Delassus matrix given the current state of the model and the active constraints,
@@ -81,7 +81,7 @@ import warp as wp
 from warp.context import Devicelike
 
 from ..core.data import ModelData
-from ..core.model import Model, ModelSize
+from ..core.model import ModelKamino, ModelKaminoSize
 from ..core.types import FloatType, float32, int32, mat33f, vec3f, vec6f
 from ..geometry.contacts import Contacts
 from ..kinematics.constraints import get_max_constraints_per_world
@@ -711,7 +711,7 @@ class DelassusOperator:
 
     def __init__(
         self,
-        model: Model | None = None,
+        model: ModelKamino | None = None,
         data: ModelData | None = None,
         limits: Limits | None = None,
         contacts: Contacts | None = None,
@@ -732,7 +732,7 @@ class DelassusOperator:
         the maximum number of constraints that can be active in each world.
 
         Args:
-            model (Model): The model container for which the Delassus operator is built.
+            model (ModelKamino): The model container for which the Delassus operator is built.
             data (ModelData, optional): The model data container holding the state info and data.
             limits (Limits, optional): The container holding the allocated joint-limit data.
             contacts (Contacts, optional): The container holding the allocated contacts data.
@@ -751,7 +751,7 @@ class DelassusOperator:
         self._device: Devicelike = device
 
         # Declare the model size cache
-        self._size: ModelSize | None = None
+        self._size: ModelKaminoSize | None = None
 
         # Initialize the Delassus data container
         self._operator: DenseLinearOperatorData | None = None
@@ -826,7 +826,7 @@ class DelassusOperator:
 
     def finalize(
         self,
-        model: Model,
+        model: ModelKamino,
         data: ModelData,
         limits: Limits | None = None,
         contacts: Contacts | None = None,
@@ -846,9 +846,11 @@ class DelassusOperator:
 
         # Ensure the model container is valid
         if model is None:
-            raise ValueError("A model container of type `Model` must be provided to allocate the Delassus operator.")
-        elif not isinstance(model, Model):
-            raise ValueError("Invalid model provided. Must be an instance of `Model`.")
+            raise ValueError(
+                "A model container of type `ModelKamino` must be provided to allocate the Delassus operator."
+            )
+        elif not isinstance(model, ModelKamino):
+            raise ValueError("Invalid model provided. Must be an instance of `ModelKamino`.")
 
         # Ensure the data container is valid if provided
         if data is None:
@@ -917,16 +919,16 @@ class DelassusOperator:
 
     def build(
         self,
-        model: Model,
+        model: ModelKamino,
         data: ModelData,
         jacobians: DenseSystemJacobians | SparseSystemJacobians,
         reset_to_zero: bool = True,
     ):
         """
-        Builds the Delassus matrix using the provided Model, ModelData, and constraint Jacobians.
+        Builds the Delassus matrix using the provided ModelKamino, ModelData, and constraint Jacobians.
 
         Args:
-            model (Model): The model for which the Delassus operator is built.
+            model (ModelKamino): The model for which the Delassus operator is built.
             data (ModelData): The current data of the model.
             jacobians (DenseSystemJacobians | SparseSystemJacobians): The current Jacobians of the model.
             reset_to_zero (bool, optional): If True (default), resets the Delassus matrix to zero before building.
@@ -936,8 +938,8 @@ class DelassusOperator:
             ValueError: If the Delassus matrix is not allocated.
         """
         # Ensure the model is valid
-        if model is None or not isinstance(model, Model):
-            raise ValueError("A valid model of type `Model` must be provided to build the Delassus operator.")
+        if model is None or not isinstance(model, ModelKamino):
+            raise ValueError("A valid model of type `ModelKamino` must be provided to build the Delassus operator.")
 
         # Ensure the data is valid
         if data is None or not isinstance(data, ModelData):
@@ -1161,7 +1163,7 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
 
     def __init__(
         self,
-        model: Model | None = None,
+        model: ModelKamino | None = None,
         data: ModelData | None = None,
         limits: Limits | None = None,
         contacts: Contacts | None = None,
@@ -1183,7 +1185,7 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
         be active in each world.
 
         Args:
-            model (Model):
+            model (ModelKamino):
                 The model container for which the Delassus operator is built.
             data (ModelData, optional):
                 The model data container holding the state info and data.
@@ -1205,7 +1207,7 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
         super().__init__()
 
         # self.bsm represents the constraint Jacobian
-        self._model: Model | None = None
+        self._model: ModelKamino | None = None
         self._data: ModelData | None = None
         self._limits: Limits | None = None
         self._contacts: Contacts | None = None
@@ -1251,7 +1253,7 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
 
     def finalize(
         self,
-        model: Model,
+        model: ModelKamino,
         data: ModelData,
         limits: Limits | None,
         contacts: Contacts | None,
@@ -1264,7 +1266,7 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
         Allocates the Delassus operator with the specified dimensions and device.
 
         Args:
-            model (Model):
+            model (ModelKamino):
                 The model container for which the Delassus operator is built.
             data (ModelData):
                 The model data container holding the state info and data.
@@ -1286,9 +1288,11 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
         """
         # Ensure the model container is valid
         if model is None:
-            raise ValueError("A model container of type `Model` must be provided to allocate the Delassus operator.")
-        elif not isinstance(model, Model):
-            raise ValueError("Invalid model provided. Must be an instance of `Model`.")
+            raise ValueError(
+                "A model container of type `ModelKamino` must be provided to allocate the Delassus operator."
+            )
+        elif not isinstance(model, ModelKamino):
+            raise ValueError("Invalid model provided. Must be an instance of `ModelKamino`.")
 
         # Ensure the data container is valid if provided
         if data is None:
@@ -1577,7 +1581,7 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
                 Shape `(sum_of_max_total_cts,)` and type :class:`float32`.
         """
         if self._model is None or self._data is None:
-            raise RuntimeError("Model and data must be assigned before computing diagonal.")
+            raise RuntimeError("ModelKamino and data must be assigned before computing diagonal.")
         if self.bsm is None:
             raise RuntimeError("Jacobian must be assigned before computing diagonal.")
 

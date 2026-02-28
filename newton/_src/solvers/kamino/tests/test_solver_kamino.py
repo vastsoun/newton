@@ -24,7 +24,7 @@ import warp as wp
 from newton._src.solvers.kamino.core.control import Control
 from newton._src.solvers.kamino.core.data import ModelData
 from newton._src.solvers.kamino.core.joints import JointActuationType, JointCorrectionMode
-from newton._src.solvers.kamino.core.model import Model
+from newton._src.solvers.kamino.core.model import ModelKamino
 from newton._src.solvers.kamino.core.state import State
 from newton._src.solvers.kamino.core.types import float32, int32, transformf, vec6f
 from newton._src.solvers.kamino.dynamics import DualProblem, DualProblemSettings
@@ -117,7 +117,7 @@ def assert_solver_settings(testcase: unittest.TestCase, settings: SolverKaminoSe
 def assert_solver_components(testcase: unittest.TestCase, solver: SolverKamino):
     testcase.assertIsInstance(solver, SolverKamino)
     testcase.assertIsInstance(solver.settings, SolverKaminoSettings)
-    testcase.assertIsInstance(solver._model, Model)
+    testcase.assertIsInstance(solver._model, ModelKamino)
     testcase.assertIsInstance(solver._data, ModelData)
     testcase.assertIsInstance(solver._limits, Limits)
     if solver._problem_fd.sparse:
@@ -154,13 +154,13 @@ def assert_states_close(testcase: unittest.TestCase, state_0: State, state_1: St
 
 def assert_states_close_masked(
     testcase: unittest.TestCase,
-    model: Model,
+    model: ModelKamino,
     state_0: State,
     state_n: State,
     state_n_ref: State,
     world_mask: wp.array,
 ):
-    testcase.assertIsInstance(model, Model)
+    testcase.assertIsInstance(model, ModelKamino)
     testcase.assertIsInstance(state_0, State)
     testcase.assertIsInstance(state_n, State)
 

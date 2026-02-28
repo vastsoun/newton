@@ -20,7 +20,7 @@ KAMINO: Dynamics: Wrenches
 import warp as wp
 
 from ..core.data import ModelData
-from ..core.model import Model
+from ..core.model import ModelKamino
 from ..core.types import float32, int32, mat63f, vec2i, vec3f, vec6f
 from ..geometry.contacts import Contacts
 from ..kinematics.jacobians import DenseSystemJacobians, SparseSystemJacobians
@@ -529,7 +529,7 @@ def _compute_cts_body_wrenches_sparse(
 
 
 def compute_joint_dof_body_wrenches_dense(
-    model: Model, data: ModelData, jacobians: DenseSystemJacobians, reset_to_zero: bool = True
+    model: ModelKamino, data: ModelData, jacobians: DenseSystemJacobians, reset_to_zero: bool = True
 ):
     """
     Update the actuation wrenches of the bodies based on the active joint torques.
@@ -568,7 +568,7 @@ def compute_joint_dof_body_wrenches_dense(
 
 
 def compute_joint_dof_body_wrenches_sparse(
-    model: Model, data: ModelData, jacobians: SparseSystemJacobians, reset_to_zero: bool = True
+    model: ModelKamino, data: ModelData, jacobians: SparseSystemJacobians, reset_to_zero: bool = True
 ) -> None:
     """
     Update the actuation wrenches of the bodies based on the active joint torques.
@@ -605,7 +605,10 @@ def compute_joint_dof_body_wrenches_sparse(
 
 
 def compute_joint_dof_body_wrenches(
-    model: Model, data: ModelData, jacobians: DenseSystemJacobians | SparseSystemJacobians, reset_to_zero: bool = True
+    model: ModelKamino,
+    data: ModelData,
+    jacobians: DenseSystemJacobians | SparseSystemJacobians,
+    reset_to_zero: bool = True,
 ) -> None:
     """
     Update the actuation wrenches of the bodies based on the active joint torques.
@@ -619,7 +622,7 @@ def compute_joint_dof_body_wrenches(
 
 
 def compute_constraint_body_wrenches_dense(
-    model: Model,
+    model: ModelKamino,
     data: ModelData,
     jacobians: DenseSystemJacobians,
     lambdas_offsets: wp.array,
@@ -720,7 +723,7 @@ def compute_constraint_body_wrenches_dense(
 
 
 def compute_constraint_body_wrenches_sparse(
-    model: Model,
+    model: ModelKamino,
     data: ModelData,
     jacobians: SparseSystemJacobians,
     lambdas_offsets: wp.array,
@@ -767,7 +770,7 @@ def compute_constraint_body_wrenches_sparse(
 
 
 def compute_constraint_body_wrenches(
-    model: Model,
+    model: ModelKamino,
     data: ModelData,
     jacobians: DenseSystemJacobians | SparseSystemJacobians,
     lambdas_offsets: wp.array,

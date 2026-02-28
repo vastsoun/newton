@@ -32,7 +32,7 @@ import warp as wp
 from ...core.control import Control
 from ...core.joints import JointActuationType
 from ...core.math import FLOAT32_MAX
-from ...core.model import Model
+from ...core.model import ModelKamino
 from ...core.time import TimeData
 from ...core.types import FloatArrayLike, IntArrayLike, float32, int32
 
@@ -182,7 +182,7 @@ class RandomJointController:
 
     def __init__(
         self,
-        model: Model | None = None,
+        model: ModelKamino | None = None,
         device: wp.DeviceLike = None,
         decimation: int | IntArrayLike | None = None,
         scale: float | FloatArrayLike | None = None,
@@ -193,7 +193,7 @@ class RandomJointController:
         on-device data arrays if a model instance is provided.
 
         Args:
-            model (`Model`, optional):
+            model (`ModelKamino`, optional):
                 The model container describing the system to be simulated.\n
                 If `None`, a call to ``finalize()`` must be made later.
             device (`wp.DeviceLike`, optional):
@@ -212,7 +212,7 @@ class RandomJointController:
         """
         # Declare a local reference to the model
         # for which this controller is created
-        self._model: Model | None = None
+        self._model: ModelKamino | None = None
 
         # Cache constructor arguments for potential later
         self._device: wp.DeviceLike = device
@@ -253,7 +253,7 @@ class RandomJointController:
         self._data.seed = s
 
     @property
-    def model(self) -> Model:
+    def model(self) -> ModelKamino:
         """The model for which this controller is created."""
         if self._model is None:
             raise RuntimeError("Controller is not finalized with a model. Call finalize() first.")
@@ -272,7 +272,7 @@ class RandomJointController:
 
     def finalize(
         self,
-        model: Model,
+        model: ModelKamino,
         seed: int | None = None,
         decimation: int | IntArrayLike | None = None,
         scale: float | FloatArrayLike | None = None,
@@ -283,7 +283,7 @@ class RandomJointController:
         on-device data arrays based on the provided model.
 
         Args:
-            model (`Model`):
+            model (`ModelKamino`):
                 The model container describing the system to be simulated.
             device (`wp.DeviceLike`, optional):
                 Device to use for allocations and execution.\n
@@ -305,9 +305,9 @@ class RandomJointController:
         """
         # Ensure the model is valid and assign it to the controller
         if model is None:
-            raise ValueError("Model must be provided to finalize the controller.")
-        elif not isinstance(model, Model):
-            raise ValueError(f"Expected model to be of type Model, but got {type(model)}.")
+            raise ValueError("ModelKamino must be provided to finalize the controller.")
+        elif not isinstance(model, ModelKamino):
+            raise ValueError(f"Expected model to be of type ModelKamino, but got {type(model)}.")
 
         # Cache the model reference for use in the compute function
         self._model = model
@@ -348,7 +348,7 @@ class RandomJointController:
         joint index, and local DoF index to ensure reproducibility across runs.
 
         Args:
-            model (Model):
+            model (ModelKamino):
                 The input model container holding the time-invariant parameters of the simulation.
             time (TimeData):
                 The input time data container holding the current simulation time and steps.

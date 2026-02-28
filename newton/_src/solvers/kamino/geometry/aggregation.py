@@ -27,7 +27,7 @@ import numpy as np
 import warp as wp
 from warp.context import Devicelike
 
-from ..core.model import Model
+from ..core.model import ModelKamino
 from ..core.types import int32, quatf, vec2i, vec3f
 from .contacts import ContactMode, Contacts
 
@@ -353,7 +353,7 @@ class ContactAggregation:
 
     def __init__(
         self,
-        model: Model | None = None,
+        model: ModelKamino | None = None,
         contacts: Contacts | None = None,
         static_geom_ids: list[int] | None = None,
         device: Devicelike | None = None,
@@ -362,7 +362,7 @@ class ContactAggregation:
         """Initialize contact aggregation.
 
         Args:
-            model (Model | None): The model container describing the system to be simulated.
+            model (ModelKamino | None): The model container describing the system to be simulated.
                 If None, call ``finalize()`` later.
             contacts (Contacts | None): The Contacts container with per-contact data.
                 If None, call ``finalize()`` later.
@@ -374,7 +374,7 @@ class ContactAggregation:
         self._device: Devicelike | None = device
 
         # Forward declarations
-        self._model: Model | None = None
+        self._model: ModelKamino | None = None
         self._contacts: Contacts | None = None
         self._data: ContactAggregationData | None = None
         self._enable_positions_normals: bool = enable_positions_normals
@@ -390,7 +390,7 @@ class ContactAggregation:
 
     def finalize(
         self,
-        model: Model,
+        model: ModelKamino,
         contacts: Contacts,
         static_geom_ids: list[int] | None = None,
         device: Devicelike | None = None,
@@ -398,7 +398,7 @@ class ContactAggregation:
         """Finalizes memory allocations for the contact aggregation data.
 
         Args:
-            model (Model): The model container describing the system to be simulated.
+            model (ModelKamino): The model container describing the system to be simulated.
             contacts (Contacts): The Contacts container with per-contact data.
             static_geom_ids (list[int] | None): List of geometry IDs considered as 'static'. Defaults to [0].
             device (Devicelike | None): Device for computation. If None, uses model's device.

@@ -37,7 +37,7 @@ from .joints import (
 )
 from .materials import MaterialDescriptor, MaterialManager, MaterialPairProperties, MaterialPairsModel, MaterialsModel
 from .math import FLOAT32_EPS
-from .model import Model, ModelInfo, ModelSize
+from .model import ModelKamino, ModelKaminoInfo, ModelKaminoSize
 from .shapes import ShapeDescriptorType, ShapeType
 from .time import TimeModel
 from .types import Axis, float32, int32, mat33f, transformf, uint32, vec3f, vec4f, vec6f
@@ -841,11 +841,11 @@ class ModelBuilder:
     # Model Compilation
     ###
 
-    def finalize(self, device: Devicelike = None, requires_grad: bool = False, base_auto: bool = True) -> Model:
+    def finalize(self, device: Devicelike = None, requires_grad: bool = False, base_auto: bool = True) -> ModelKamino:
         """
-        Constructs a Model object from the current ModelBuilder.
+        Constructs a ModelKamino object from the current ModelBuilder.
 
-        All description data contained in the builder is compiled into a Model
+        All description data contained in the builder is compiled into a ModelKamino
         object, allocating the necessary data structures on the target device.
 
         Args:
@@ -857,7 +857,7 @@ class ModelBuilder:
                 and if possible, a base joint, if neither was set.
 
         Returns:
-            Model: The constructed Model object containing the time-invariant simulation data.
+            ModelKamino: The constructed ModelKamino object containing the time-invariant simulation data.
         """
         # Number of model worlds
         num_worlds = len(self._worlds)
@@ -901,7 +901,7 @@ class ModelBuilder:
                         break
 
         ###
-        # Model data collection
+        # ModelKamino data collection
         ###
 
         # Initialize the info data collections
@@ -1175,7 +1175,7 @@ class ModelBuilder:
         ###
 
         # Compute the sum/max of model entities
-        model_size = ModelSize(
+        model_size = ModelKaminoSize(
             num_worlds=num_worlds,
             sum_of_num_bodies=self._num_bodies,
             max_of_num_bodies=max([world.num_bodies for world in self._worlds]),
@@ -1233,7 +1233,7 @@ class ModelBuilder:
         # Allocate the model data on the target device
         with wp.ScopedDevice(device):
             # Create the immutable model info arrays from the collected data
-            model_info = ModelInfo(
+            model_info = ModelKaminoInfo(
                 num_worlds=num_worlds,
                 num_bodies=wp.array(info_nb, dtype=int32),
                 num_joints=wp.array(info_nj, dtype=int32),
@@ -1370,7 +1370,7 @@ class ModelBuilder:
             )
 
         # Construct and return the complete model container
-        return Model(
+        return ModelKamino(
             device=device,
             requires_grad=requires_grad,
             size=model_size,

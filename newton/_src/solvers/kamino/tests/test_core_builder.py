@@ -35,15 +35,7 @@ from newton._src.solvers.kamino.core.materials import MaterialDescriptor
 from newton._src.solvers.kamino.core.model import ModelKamino
 from newton._src.solvers.kamino.core.shapes import SphereShape
 from newton._src.solvers.kamino.core.types import Axis, mat33f, transformf, vec6f
-from newton._src.solvers.kamino.models.builders.basics import (
-    build_box_on_plane,
-    build_box_pendulum,
-    build_boxes_fourbar,
-    build_boxes_hinged,
-    build_boxes_nunchaku,
-    build_cartpole,
-    make_basics_heterogeneous_builder,
-)
+from newton._src.solvers.kamino.models.builders import basics
 from newton._src.solvers.kamino.models.builders.utils import make_homogeneous_builder
 from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.utils import logger as msg
@@ -435,7 +427,7 @@ class TestModelBuilder(unittest.TestCase):
 
     def test_12_make_builder_box_on_plane(self):
         # Construct box-on-plane model
-        builder = build_box_on_plane()
+        builder = basics.build_box_on_plane()
         self.assertEqual(builder.num_worlds, 1)
         self.assertEqual(builder.num_bodies, 1)
         self.assertEqual(builder.num_joints, 0)
@@ -469,7 +461,7 @@ class TestModelBuilder(unittest.TestCase):
 
     def test_13_make_builder_box_pendulum(self):
         # Construct box-pendulum model
-        builder = build_box_pendulum()
+        builder = basics.build_box_pendulum()
         self.assertEqual(builder.num_worlds, 1)
         self.assertEqual(builder.num_bodies, 1)
         self.assertEqual(builder.num_joints, 1)
@@ -503,7 +495,7 @@ class TestModelBuilder(unittest.TestCase):
 
     def test_14_make_builder_boxes_hinged(self):
         # Construct boxes-hinged model
-        builder = build_boxes_hinged()
+        builder = basics.build_boxes_hinged()
         self.assertEqual(builder.num_worlds, 1)
         self.assertEqual(builder.num_bodies, 2)
         self.assertEqual(builder.num_joints, 1)
@@ -537,7 +529,7 @@ class TestModelBuilder(unittest.TestCase):
 
     def test_15_make_builder_boxes_nunchaku(self):
         # Construct boxes-nunchaku model
-        builder = build_boxes_nunchaku()
+        builder = basics.build_boxes_nunchaku()
         self.assertEqual(builder.num_worlds, 1)
         self.assertEqual(builder.num_bodies, 3)
         self.assertEqual(builder.num_joints, 2)
@@ -570,7 +562,7 @@ class TestModelBuilder(unittest.TestCase):
 
     def test_16_make_builder_boxes_fourbar(self):
         # Construct boxes-fourbar model
-        builder = build_boxes_fourbar()
+        builder = basics.build_boxes_fourbar()
         self.assertEqual(builder.num_worlds, 1)
         self.assertEqual(builder.num_bodies, 4)
         self.assertEqual(builder.num_joints, 4)
@@ -594,6 +586,31 @@ class TestModelBuilder(unittest.TestCase):
             self.assertEqual(gid, i)
             self.assertEqual(gid, builder.geoms[i].gid)
 
+        # Generate meta-data for collision detection and contacts allocation
+        model_candidate_pairs = builder.make_collision_candidate_pairs(allow_neighbors=False)
+        model_excluded_pairs = builder.make_collision_excluded_pairs(allow_neighbors=False)
+        world_num_collidables, model_num_collidables = builder.compute_num_collidable_geoms(model_candidate_pairs)
+        model_min_contacts, world_min_contacts = builder.compute_required_contact_capacity(model_candidate_pairs)
+
+        # Optional printouts for debugging
+        msg.info("model_candidate_pairs: %s", model_candidate_pairs)
+        msg.info("model_candidate_pairs_count: %s", len(model_candidate_pairs))
+        msg.info("model_excluded_pairs: %s", model_excluded_pairs)
+        msg.info("model_excluded_pairs_count: %s", len(model_excluded_pairs))
+        msg.info("world_num_collidables: %s", world_num_collidables)
+        msg.info("model_num_collidables: %s", model_num_collidables)
+        msg.info("model_min_contacts: %s", model_min_contacts)
+        msg.info("world_min_contacts: %s", world_min_contacts)
+
+        # Check that the generated meta-data matches expected values for this model
+        expected_contacts_per_world = 2 * len(model_candidate_pairs) * 12  # 12 is the max contacts per pair
+        self.assertEqual(world_num_collidables[0], 5)
+        self.assertEqual(model_num_collidables, 5)
+        self.assertEqual(len(model_candidate_pairs), 6)
+        self.assertEqual(len(model_excluded_pairs), 4)
+        self.assertEqual(model_min_contacts, expected_contacts_per_world)
+        self.assertEqual(world_min_contacts[0], expected_contacts_per_world)
+
         # Build the model
         model = builder.finalize(self.default_device)
         self.assertEqual(model.size.sum_of_num_bodies, 4)
@@ -603,7 +620,7 @@ class TestModelBuilder(unittest.TestCase):
 
     def test_17_make_builder_cartpole(self):
         # Construct cartpole model
-        builder = build_cartpole()
+        builder = basics.build_cartpole()
         self.assertEqual(builder.num_worlds, 1)
         self.assertEqual(builder.num_bodies, 2)
         self.assertEqual(builder.num_joints, 2)
@@ -627,6 +644,31 @@ class TestModelBuilder(unittest.TestCase):
             self.assertEqual(gid, i)
             self.assertEqual(gid, builder.geoms[i].gid)
 
+        # Generate meta-data for collision detection and contacts allocation
+        model_candidate_pairs = builder.make_collision_candidate_pairs(allow_neighbors=False)
+        model_excluded_pairs = builder.make_collision_excluded_pairs(allow_neighbors=False)
+        world_num_collidables, model_num_collidables = builder.compute_num_collidable_geoms(model_candidate_pairs)
+        model_min_contacts, world_min_contacts = builder.compute_required_contact_capacity(model_candidate_pairs)
+
+        # Optional printouts for debugging
+        msg.info("model_candidate_pairs: %s", model_candidate_pairs)
+        msg.info("model_candidate_pairs_count: %s", len(model_candidate_pairs))
+        msg.info("model_excluded_pairs: %s", model_excluded_pairs)
+        msg.info("model_excluded_pairs_count: %s", len(model_excluded_pairs))
+        msg.info("world_num_collidables: %s", world_num_collidables)
+        msg.info("model_num_collidables: %s", model_num_collidables)
+        msg.info("model_min_contacts: %s", model_min_contacts)
+        msg.info("world_min_contacts: %s", world_min_contacts)
+
+        # Check that the generated meta-data matches expected values for this model
+        expected_contacts_per_world = 2 * len(model_candidate_pairs) * 12  # 12 is the max contacts per pair
+        self.assertEqual(world_num_collidables[0], 3)
+        self.assertEqual(model_num_collidables, 3)
+        self.assertEqual(len(model_candidate_pairs), 2)
+        self.assertEqual(len(model_excluded_pairs), 4)
+        self.assertEqual(model_min_contacts, expected_contacts_per_world)
+        self.assertEqual(world_min_contacts[0], expected_contacts_per_world)
+
         # Build the model
         model = builder.finalize(self.default_device)
         self.assertEqual(model.size.sum_of_num_bodies, 2)
@@ -637,9 +679,9 @@ class TestModelBuilder(unittest.TestCase):
     def test_18_add_two_cartpole_worlds_to_builder(self):
         # Construct cartpole model
         builder = ModelBuilderKamino(default_world=False)
-        builder = build_cartpole(builder=builder, new_world=True)
-        builder = build_cartpole(builder=builder, new_world=True)
-        builder = build_cartpole(builder=builder, new_world=True)
+        builder = basics.build_cartpole(builder=builder, new_world=True)
+        builder = basics.build_cartpole(builder=builder, new_world=True)
+        builder = basics.build_cartpole(builder=builder, new_world=True)
         self.assertEqual(builder.num_worlds, 3)
         self.assertEqual(builder.num_bodies, 6)
         self.assertEqual(builder.num_joints, 6)
@@ -654,9 +696,9 @@ class TestModelBuilder(unittest.TestCase):
 
     def test_19_add_two_cartpole_builders(self):
         # Construct cartpole model
-        builder0 = build_cartpole()
-        builder1 = build_cartpole()
-        builder2 = build_cartpole()
+        builder0 = basics.build_cartpole()
+        builder1 = basics.build_cartpole()
+        builder2 = basics.build_cartpole()
 
         # Combine two builders into one with two worlds
         builder0.add_builder(builder1)
@@ -675,7 +717,7 @@ class TestModelBuilder(unittest.TestCase):
 
     def test_20_make_homogeneous_multi_cartpole_builder(self):
         # Construct cartpole model
-        builder = make_homogeneous_builder(num_worlds=3, build_fn=build_cartpole)
+        builder = make_homogeneous_builder(num_worlds=3, build_fn=basics.build_cartpole)
         self.assertEqual(builder.num_worlds, 3)
         self.assertEqual(builder.num_bodies, 6)
         self.assertEqual(builder.num_joints, 6)
@@ -688,9 +730,49 @@ class TestModelBuilder(unittest.TestCase):
         self.assertIs(model.worlds, builder.worlds)
         assert_model_matches_builder(self, builder, model)
 
-    def test_21_make_heterogeneous_test_builder(self):
+    def test_21_make_homogeneous_multi_fourbar_builder(self):
+        # Construct fourbar model
+        builder = make_homogeneous_builder(num_worlds=3, build_fn=basics.build_boxes_fourbar)
+        self.assertEqual(builder.num_worlds, 3)
+        self.assertEqual(builder.num_bodies, 12)
+        self.assertEqual(builder.num_joints, 12)
+        self.assertEqual(builder.num_geoms, 15)
+
+        # Generate meta-data for collision detection and contacts allocation
+        model_candidate_pairs = builder.make_collision_candidate_pairs(allow_neighbors=False)
+        model_excluded_pairs = builder.make_collision_excluded_pairs(allow_neighbors=False)
+        world_num_collidables, model_num_collidables = builder.compute_num_collidable_geoms(model_candidate_pairs)
+        model_min_contacts, world_min_contacts = builder.compute_required_contact_capacity(model_candidate_pairs)
+
+        # Optional printouts for debugging
+        msg.info("model_candidate_pairs: %s", model_candidate_pairs)
+        msg.info("model_candidate_pairs_count: %s", len(model_candidate_pairs))
+        msg.info("model_excluded_pairs: %s", model_excluded_pairs)
+        msg.info("model_excluded_pairs_count: %s", len(model_excluded_pairs))
+        msg.info("world_num_collidables: %s", world_num_collidables)
+        msg.info("model_num_collidables: %s", model_num_collidables)
+        msg.info("model_min_contacts: %s", model_min_contacts)
+        msg.info("world_min_contacts: %s", world_min_contacts)
+
+        # Check that the generated meta-data matches expected values for this model
+        expected_contacts_per_world = 2 * 6 * 12  # 12 is the max contacts per pair
+        self.assertEqual(model_num_collidables, 5 * builder.num_worlds)
+        self.assertEqual(world_num_collidables, [5] * builder.num_worlds)
+        self.assertEqual(len(model_candidate_pairs), 6 * builder.num_worlds)
+        self.assertEqual(len(model_excluded_pairs), 4 * builder.num_worlds)
+        self.assertEqual(model_min_contacts, expected_contacts_per_world * builder.num_worlds)
+        self.assertEqual(world_min_contacts, [expected_contacts_per_world] * builder.num_worlds)
+
+        # Build the model
+        model = builder.finalize(self.default_device)
+
+        # Verify that the contents of the model matches those of the combined builder
+        self.assertIs(model.worlds, builder.worlds)
+        assert_model_matches_builder(self, builder, model)
+
+    def test_22_make_heterogeneous_test_builder(self):
         # Construct cartpole model
-        builder = make_basics_heterogeneous_builder(ground=True)
+        builder = basics.make_basics_heterogeneous_builder(ground=True)
         self.assertEqual(builder.num_worlds, 6)
         self.assertEqual(builder.num_bodies, 13)
         self.assertEqual(builder.num_joints, 10)

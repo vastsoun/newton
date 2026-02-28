@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 
 import warp as wp
 
+# from ....sim.builder import ModelBuilder
 from .shapes import ShapeDescriptorType
 from .types import Descriptor, float32, int32, override, transformf
 
@@ -76,19 +77,19 @@ class GeometryDescriptor(Descriptor):
     offset: transformf = field(default_factory=wp.transform_identity)
     """Offset pose of the geometry entity w.r.t. its corresponding body, of type :class:`transformf`."""
 
-    material: str | int | None = None
-    """
-    The material assigned to the collision geometry instance.\n
-    Can be specified either as a string name or an integer index.\n
-    Defaults to `None`, indicating the default material.
-    """
-
     # TODO: Use Model.ShapeConfig instead of all these individual fields
     # config: ModelBuilder.ShapeConfig = field(default_factory=ModelBuilder.ShapeConfig)
 
     ###
     # Collision Attributes
     ###
+
+    material: str | int | None = None
+    """
+    The material assigned to the collision geometry instance.\n
+    Can be specified either as a string name or an integer index.\n
+    Defaults to `None`, indicating the default material.
+    """
 
     group: int = 1
     """
@@ -153,6 +154,12 @@ class GeometryDescriptor(Descriptor):
     Defaults to `-1` indicating that the default material will be assigned.
     """
 
+    flags: int = 0
+    """
+    Shape flags of the geometry entity, used to specify additional properties of the geometry.\n
+    Defaults to `0`, indicating that the geometry is disabled.
+    """
+
     ###
     # Operations
     ###
@@ -207,19 +214,22 @@ class GeometriesModel:
     num_geoms: int = 0
     """Total number of geometry entities in the model (host-side)."""
 
-    num_collidable_geoms: int = 0
+    num_collidable: int = 0
     """Total number of collidable geometry entities in the model (host-side)."""
 
-    num_collidable_geom_pairs: int = 0
+    num_collidable_pairs: int = 0
     """Total number of collidable geometry pairs in the model (host-side)."""
 
-    model_max_contacts: int = 0
-    """The maximum number of contacts allocated for the entire model (host-side)."""
+    num_excluded_pairs: int = 0
+    """Total number of excluded geometry pairs in the model (host-side)."""
 
-    world_max_contacts: list[int] | None = None
+    model_minimum_contacts: int = 0
+    """The minimum number of contacts required for the entire model (host-side)."""
+
+    world_minimum_contacts: list[int] | None = None
     """
-    List of the maximum number of contacts allocated for each world in the model (host-side).\n
-    The sum of all elements in `world_max_contacts` should equal `model_max_contacts`.
+    List of the minimum number of contacts required for each world in the model (host-side).\n
+    The sum of all elements in `world_minimum_contacts` should equal `model_minimum_contacts`.
     """
 
     label: list[str] | None = None
@@ -257,6 +267,12 @@ class GeometriesModel:
     type: wp.array | None = None
     """
     Shape index of each geometry entity.\n
+    Shape of ``(num_geoms,)`` and type :class:`int32`.
+    """
+
+    flags: wp.array | None = None
+    """
+    Shape flags of each geometry entity.\n
     Shape of ``(num_geoms,)`` and type :class:`int32`.
     """
 
@@ -319,9 +335,16 @@ class GeometriesModel:
 
     collidable_pairs: wp.array | None = None
     """
-    Geometry-pair indices that are collidable, i.e. can generate contacts.
+    Geometry-pair indices that are explicitly considered for collision detection.
     This array is used in broad-phase collision detection.\n
-    Shape of ``(num_collidable_geom_pairs,)`` and type :class:`int32`.
+    Shape of ``(num_collidable_pairs,)`` and type :class:`vec2i`.
+    """
+
+    excluded_pairs: wp.array | None = None
+    """
+    Geometry-pair indices that are explicitly excluded from collision detection.\n
+    This array is used in broad-phase collision detection.\n
+    Shape of ``(num_excluded_geom_pairs,)`` and type :class:`vec2i`.
     """
 
 

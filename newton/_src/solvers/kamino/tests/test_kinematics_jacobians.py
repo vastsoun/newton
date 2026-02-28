@@ -398,7 +398,7 @@ class TestKinematicsDenseSystemJacobians(unittest.TestCase):
 
     def test_07_build_single_dense_system_jacobians(self):
         # Construct the test problem
-        model, data, limits, contacts = make_test_problem_fourbar(
+        model, data, _state, limits, contacts = make_test_problem_fourbar(
             device=self.default_device,
             max_world_contacts=12,
             num_worlds=1,
@@ -447,7 +447,7 @@ class TestKinematicsDenseSystemJacobians(unittest.TestCase):
 
     def test_08_build_homogeneous_dense_system_jacobians(self):
         # Construct the test problem
-        model, data, limits, contacts = make_test_problem_fourbar(
+        model, data, _state, limits, contacts = make_test_problem_fourbar(
             device=self.default_device,
             max_world_contacts=12,
             num_worlds=3,
@@ -473,7 +473,7 @@ class TestKinematicsDenseSystemJacobians(unittest.TestCase):
 
     def test_09_build_heterogeneous_dense_system_jacobians(self):
         # Construct the test problem
-        model, data, limits, contacts = make_test_problem_heterogeneous(
+        model, data, _state, limits, contacts = make_test_problem_heterogeneous(
             device=self.default_device,
             max_world_contacts=12,
             with_limits=True,
@@ -616,7 +616,7 @@ class TestKinematicsSparseSystemJacobians(unittest.TestCase):
 
     def test_02_allocate_single_sparse_system_jacobians_with_limits(self):
         # Construct the test problem
-        model, _, limits, *_ = make_test_problem_fourbar(
+        model, _data, _state, limits, *_ = make_test_problem_fourbar(
             device=self.default_device,
             num_worlds=1,
             with_limits=True,
@@ -646,7 +646,7 @@ class TestKinematicsSparseSystemJacobians(unittest.TestCase):
 
     def test_03_allocate_single_sparse_system_jacobians_with_contacts(self):
         # Construct the test problem
-        model, _, _, contacts = make_test_problem_fourbar(
+        model, _data, _state, _limits, contacts = make_test_problem_fourbar(
             device=self.default_device,
             max_world_contacts=12,
             num_worlds=1,
@@ -677,7 +677,7 @@ class TestKinematicsSparseSystemJacobians(unittest.TestCase):
 
     def test_04_allocate_single_sparse_system_jacobians_with_limits_and_contacts(self):
         # Construct the test problem
-        model, _, limits, contacts = make_test_problem_fourbar(
+        model, _data, _state, limits, contacts = make_test_problem_fourbar(
             device=self.default_device,
             max_world_contacts=12,
             num_worlds=1,
@@ -710,7 +710,7 @@ class TestKinematicsSparseSystemJacobians(unittest.TestCase):
 
     def test_05_allocate_homogeneous_sparse_system_jacobians(self):
         # Construct the test problem
-        model, _, limits, contacts = make_test_problem_fourbar(
+        model, _data, _state, limits, contacts = make_test_problem_fourbar(
             device=self.default_device,
             max_world_contacts=12,
             num_worlds=3,
@@ -756,7 +756,7 @@ class TestKinematicsSparseSystemJacobians(unittest.TestCase):
 
     def test_06_allocate_heterogeneous_sparse_system_jacobians(self):
         # Construct the test problem
-        model, _, limits, contacts = make_test_problem_heterogeneous(
+        model, _data, _state, limits, contacts = make_test_problem_heterogeneous(
             device=self.default_device,
             max_world_contacts=12,
             with_limits=True,
@@ -823,7 +823,7 @@ class TestKinematicsSparseSystemJacobians(unittest.TestCase):
 
     def test_08_build_compare_single_system_jacobians_with_limits(self):
         # Construct the test problem
-        model, data, limits, _ = make_test_problem_fourbar(
+        model, data, _state, limits, _contacts = make_test_problem_fourbar(
             device=self.default_device,
             num_worlds=1,
             with_limits=True,
@@ -846,7 +846,7 @@ class TestKinematicsSparseSystemJacobians(unittest.TestCase):
 
     def test_09_build_compare_single_system_jacobians_with_contacts(self):
         # Construct the test problem
-        model, data, _, contacts = make_test_problem_fourbar(
+        model, data, _state, _limits, contacts = make_test_problem_fourbar(
             device=self.default_device,
             max_world_contacts=12,
             num_worlds=1,
@@ -870,7 +870,7 @@ class TestKinematicsSparseSystemJacobians(unittest.TestCase):
 
     def test_10_build_compare_single_system_jacobians_with_limits_and_contacts(self):
         # Construct the test problem
-        model, data, limits, contacts = make_test_problem_fourbar(
+        model, data, _state, limits, contacts = make_test_problem_fourbar(
             device=self.default_device,
             max_world_contacts=12,
             num_worlds=1,
@@ -894,7 +894,7 @@ class TestKinematicsSparseSystemJacobians(unittest.TestCase):
 
     def test_11_build_compare_homogeneous_system_jacobians(self):
         # Construct the test problem
-        model, data, limits, contacts = make_test_problem_fourbar(
+        model, data, _state, limits, contacts = make_test_problem_fourbar(
             device=self.default_device,
             max_world_contacts=12,
             num_worlds=3,
@@ -918,7 +918,7 @@ class TestKinematicsSparseSystemJacobians(unittest.TestCase):
 
     def test_12_build_compare_heterogeneous_system_jacobians(self):
         # Construct the test problem
-        model, data, limits, contacts = make_test_problem_heterogeneous(
+        model, data, _state, limits, contacts = make_test_problem_heterogeneous(
             device=self.default_device,
             max_world_contacts=12,
             with_limits=True,
@@ -968,7 +968,7 @@ class TestKinematicsSparseSystemJacobians(unittest.TestCase):
 
     def test_14_build_col_major_single_system_jacobians_with_limits(self):
         # Construct the test problem
-        model, data, limits, _ = make_test_problem_fourbar(
+        model, data, _state, limits, _contacts = make_test_problem_fourbar(
             device=self.default_device,
             max_world_contacts=12,
             num_worlds=1,
@@ -994,7 +994,7 @@ class TestKinematicsSparseSystemJacobians(unittest.TestCase):
 
     def test_15_build_col_major_single_system_jacobians_with_contacts(self):
         # Construct the test problem
-        model, data, _, contacts = make_test_problem_fourbar(
+        model, data, _state, _limits, contacts = make_test_problem_fourbar(
             device=self.default_device,
             max_world_contacts=12,
             num_worlds=1,
@@ -1020,7 +1020,7 @@ class TestKinematicsSparseSystemJacobians(unittest.TestCase):
 
     def test_16_build_col_major_single_system_jacobians_with_limits_and_contacts(self):
         # Construct the test problem
-        model, data, limits, contacts = make_test_problem_fourbar(
+        model, data, _state, limits, contacts = make_test_problem_fourbar(
             device=self.default_device,
             max_world_contacts=12,
             num_worlds=1,
@@ -1048,7 +1048,7 @@ class TestKinematicsSparseSystemJacobians(unittest.TestCase):
 
     def test_17_build_col_major_homogeneous_system_jacobians(self):
         # Construct the test problem
-        model, data, limits, contacts = make_test_problem_fourbar(
+        model, data, _state, limits, contacts = make_test_problem_fourbar(
             device=self.default_device,
             max_world_contacts=12,
             num_worlds=3,
@@ -1076,7 +1076,7 @@ class TestKinematicsSparseSystemJacobians(unittest.TestCase):
 
     def test_18_build_col_major_heterogeneous_system_jacobians(self):
         # Construct the test problem
-        model, data, limits, contacts = make_test_problem_heterogeneous(
+        model, data, _state, limits, contacts = make_test_problem_heterogeneous(
             device=self.default_device,
             max_world_contacts=12,
             with_limits=True,

@@ -57,6 +57,7 @@ __all__ = [
     "DenseSystemJacobians",
     "DenseSystemJacobiansData",
     "SparseSystemJacobians",
+    "SystemJacobiansType",
 ]
 
 
@@ -2128,3 +2129,11 @@ class ColMajorSparseConstraintJacobians(BlockSparseLinearOperators):
                     self.bsm.nzb_values,
                 ],
             )
+
+
+###
+# Utilities
+###
+
+SystemJacobiansType = DenseSystemJacobians | SparseSystemJacobians
+"""A utility type union of te supported system Jacobian container types."""

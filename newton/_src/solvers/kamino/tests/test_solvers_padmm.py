@@ -71,7 +71,7 @@ class TestSetup:
                 body.u_i_0 = u_0
 
         # Create the model and containers from the builder
-        self.model, self.data, self.limits, self.detector, self.jacobians = make_containers(
+        self.model, self.data, self.state, self.limits, self.detector, self.jacobians = make_containers(
             builder=self.builder, max_world_contacts=max_world_contacts, device=device, sparse=sparse
         )
         self.contacts = self.detector.contacts
@@ -90,7 +90,12 @@ class TestSetup:
 
         # Update the sim data containers
         update_containers(
-            model=self.model, data=self.data, limits=self.limits, detector=self.detector, jacobians=self.jacobians
+            model=self.model,
+            data=self.data,
+            state=self.state,
+            limits=self.limits,
+            detector=self.detector,
+            jacobians=self.jacobians,
         )
 
     def build(self):

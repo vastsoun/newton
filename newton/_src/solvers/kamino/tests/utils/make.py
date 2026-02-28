@@ -28,11 +28,12 @@ from ...core.builder import ModelBuilderKamino
 from ...core.data import DataKamino
 from ...core.math import quat_exp, screw, screw_angular, screw_linear
 from ...core.model import ModelKamino
+from ...core.state import StateKamino
 from ...core.types import float32, int32, mat33f, transformf, vec3f, vec6f
 from ...geometry.contacts import ContactsKamino
 from ...geometry.detector import CollisionDetector, CollisionDetectorSettings
 from ...kinematics.constraints import make_unilateral_constraints_info, update_constraints_info
-from ...kinematics.jacobians import DenseSystemJacobians, SparseSystemJacobians
+from ...kinematics.jacobians import DenseSystemJacobians, SparseSystemJacobians, SystemJacobiansType
 from ...kinematics.joints import compute_joints_data
 from ...kinematics.limits import LimitsKamino
 from ...models.builders import basics as _model_basics
@@ -127,7 +128,7 @@ def make_containers(
     max_world_contacts: int = 0,
     sparse: bool = True,
     dt: float = 0.001,
-) -> tuple[ModelKamino, DataKamino, LimitsKamino, CollisionDetector, DenseSystemJacobians | SparseSystemJacobians]:
+) -> tuple[ModelKamino, DataKamino, StateKamino, LimitsKamino, CollisionDetector, SystemJacobiansType]:
     # Create the model from the builder
     model = builder.finalize(device=device)
 
@@ -135,35 +136,37 @@ def make_containers(
     model.time.dt.fill_(wp.float32(dt))
     model.time.inv_dt.fill_(wp.float32(1.0 / dt))
 
-    # Create a model data container
-    data = model.data(device=device)
+    # Create a data and state container
+    data = model.data()
+    state = model.state()
 
     # Create the limits container
-    limits = LimitsKamino(model=model, device=device)
+    limits = LimitsKamino(model=model)
 
     # Create the collision detector
     settings = CollisionDetectorSettings(max_contacts_per_world=max_world_contacts, pipeline="primitive")
-    detector = CollisionDetector(model=model, builder=builder, settings=settings, device=device)
+    detector = CollisionDetector(model=model, settings=settings)
 
     # Construct the unilateral constraints members in the model info
-    make_unilateral_constraints_info(model, data, limits, detector.contacts, device=device)
+    make_unilateral_constraints_info(model, data, limits, detector.contacts)
 
     # Create the Jacobians container
     if sparse:
-        jacobians = SparseSystemJacobians(model=model, limits=limits, contacts=detector.contacts, device=device)
+        jacobians = SparseSystemJacobians(model=model, limits=limits, contacts=detector.contacts)
     else:
-        jacobians = DenseSystemJacobians(model=model, limits=limits, contacts=detector.contacts, device=device)
+        jacobians = DenseSystemJacobians(model=model, limits=limits, contacts=detector.contacts)
 
     # Return the model, data, detector, and jacobians
-    return model, data, limits, detector, jacobians
+    return model, data, state, limits, detector, jacobians
 
 
 def update_containers(
     model: ModelKamino,
     data: DataKamino,
+    state: StateKamino,
     limits: LimitsKamino | None = None,
     detector: CollisionDetector | None = None,
-    jacobians: DenseSystemJacobians | SparseSystemJacobians | None = None,
+    jacobians: SystemJacobiansType | None = None,
 ):
     # Update body inertias according to the current state of the bodies
     update_body_inertias(model=model.bodies, data=data.bodies)
@@ -175,12 +178,12 @@ def update_containers(
 
     # Run joint-limit detection to generate active limits
     if limits is not None:
-        limits.detect(model, data=data)
+        limits.detect(model=model, data=data)
         wp.synchronize()
 
     # Run collision detection to generate active contacts
     if detector is not None:
-        detector.collide(model, data=data)
+        detector.collide(data=data, state=state)
         wp.synchronize()
 
     # Update the constraint state info
@@ -204,7 +207,7 @@ def make_test_problem(
     with_contacts: bool = False,
     dt: float = 0.001,
     verbose: bool = False,
-) -> tuple[ModelKamino, DataKamino, LimitsKamino | None, ContactsKamino | None]:
+) -> tuple[ModelKamino, DataKamino, StateKamino, LimitsKamino | None, ContactsKamino | None]:
     # Create the model from the builder
     model = builder.finalize(device=device)
 
@@ -214,6 +217,7 @@ def make_test_problem(
 
     # Create a model state container
     data = model.data(device=device)
+    state = model.state(device=device)
 
     # Construct and allocate the limits container
     limits = None
@@ -224,7 +228,7 @@ def make_test_problem(
     contacts = None
     if with_contacts:
         settings = CollisionDetectorSettings(max_contacts_per_world=max_world_contacts, pipeline="primitive")
-        detector = CollisionDetector(model=model, builder=builder, settings=settings, device=device)
+        detector = CollisionDetector(model=model, settings=settings, device=device)
         contacts = detector.contacts
 
     # Create the constraints info
@@ -271,7 +275,7 @@ def make_test_problem(
 
     # Run collision detection to generate active contacts
     if with_contacts:
-        detector.collide(model, data)
+        detector.collide(data, state)
         wp.synchronize()
         if verbose:
             print(f"contacts.world_active_contacts: {detector.contacts.world_active_contacts}")
@@ -286,7 +290,7 @@ def make_test_problem(
     wp.synchronize()
 
     # Return the problem data containers
-    return model, data, limits, contacts
+    return model, data, state, limits, contacts
 
 
 def make_constraint_multiplier_arrays(model: ModelKamino) -> tuple[wp.array, wp.array]:
@@ -407,7 +411,7 @@ def make_test_problem_fourbar(
     with_contacts: bool = False,
     with_implicit_joints: bool = True,
     verbose: bool = False,
-) -> tuple[ModelKamino, DataKamino, LimitsKamino | None, ContactsKamino | None]:
+) -> tuple[ModelKamino, DataKamino, StateKamino, LimitsKamino | None, ContactsKamino | None]:
     # Define the problem using the ModelBuilderKamino
     builder: ModelBuilderKamino = _model_utils.make_homogeneous_builder(
         num_worlds=num_worlds,
@@ -435,7 +439,7 @@ def make_test_problem_heterogeneous(
     with_contacts: bool = False,
     with_implicit_joints: bool = True,
     verbose: bool = False,
-) -> tuple[ModelKamino, DataKamino, LimitsKamino | None, ContactsKamino | None]:
+) -> tuple[ModelKamino, DataKamino, StateKamino, LimitsKamino | None, ContactsKamino | None]:
     # Define the problem using the ModelBuilderKamino
     builder: ModelBuilderKamino = _model_basics.make_basics_heterogeneous_builder(
         dynamic_joints=with_implicit_joints,

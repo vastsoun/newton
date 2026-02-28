@@ -425,8 +425,6 @@ class CollisionDetector:
             # Set the world max contacts to be the same for all worlds in the model
             num_worlds = self._model.size.num_worlds
             self._world_max_contacts = [self._model_max_contacts // num_worlds] * num_worlds
-        print(f"CollisionDetector: model_max_contacts={self._model_max_contacts}")
-        print(f"CollisionDetector: world_max_contacts={self._world_max_contacts}")
 
         # Create the contacts interface which will allocate all contacts data arrays
         # NOTE: If internal allocations happen, then they will contain

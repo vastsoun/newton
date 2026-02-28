@@ -1193,7 +1193,7 @@ class SolverKamino(SolverBase):
         # If a collision detector is provided, use it to generate
         # update the set of active contacts at the current state
         if detector is not None:
-            detector.collide(model=self._model, data=self._data, contacts=contacts)
+            detector.collide(data=self._data, state=state_in, contacts=contacts)
 
         # If a limits container/detector is provided, run joint-limit
         # detection to generate active joint limits at the current state

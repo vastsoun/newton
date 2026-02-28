@@ -249,7 +249,7 @@ class TestDynamicsWrenches(unittest.TestCase):
 
     def test_01_compute_wrenches_for_single_fourbar_with_limits_and_contacts(self):
         # Construct the test problem
-        model, data, limits, contacts = make_test_problem_fourbar(
+        model, data, _state, limits, contacts = make_test_problem_fourbar(
             device=self.default_device,
             max_world_contacts=12,
             num_worlds=1,
@@ -269,7 +269,7 @@ class TestDynamicsWrenches(unittest.TestCase):
 
     def test_02_compute_wrenches_for_multiple_fourbars_with_limits_and_contacts(self):
         # Construct the test problem
-        model, data, limits, contacts = make_test_problem_fourbar(
+        model, data, _state, limits, contacts = make_test_problem_fourbar(
             device=self.default_device,
             max_world_contacts=12,
             num_worlds=3,
@@ -289,7 +289,7 @@ class TestDynamicsWrenches(unittest.TestCase):
 
     def test_03_compute_wrenches_heterogeneous_model_with_limits_and_contacts(self):
         # Construct the test problem
-        model, data, limits, contacts = make_test_problem_heterogeneous(
+        model, data, _state, limits, contacts = make_test_problem_heterogeneous(
             device=self.default_device,
             max_world_contacts=12,
             with_limits=True,

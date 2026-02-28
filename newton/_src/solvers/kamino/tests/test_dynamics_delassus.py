@@ -130,12 +130,12 @@ class TestDelassusOperator(unittest.TestCase):
         builder = build_boxes_nunchaku()
 
         # Create the model and containers from the builder
-        model, data, limits, detector, jacobians = make_containers(
+        model, data, state, limits, detector, jacobians = make_containers(
             builder=builder, max_world_contacts=max_world_contacts, device=self.default_device
         )
 
         # Update the containers
-        update_containers(model=model, data=data, limits=limits, detector=detector, jacobians=jacobians)
+        update_containers(model=model, data=data, state=state, limits=limits, detector=detector, jacobians=jacobians)
 
         # Create the Delassus operator
         delassus = DelassusOperator(
@@ -164,12 +164,12 @@ class TestDelassusOperator(unittest.TestCase):
         builder = make_homogeneous_builder(num_worlds=num_worlds, build_fn=build_boxes_nunchaku)
 
         # Create the model and containers from the builder
-        model, data, limits, detector, jacobians = make_containers(
+        model, data, state, limits, detector, jacobians = make_containers(
             builder=builder, max_world_contacts=max_world_contacts, device=self.default_device
         )
 
         # Update the containers
-        update_containers(model=model, data=data, limits=limits, detector=detector, jacobians=jacobians)
+        update_containers(model=model, data=data, state=state, limits=limits, detector=detector, jacobians=jacobians)
 
         # Create the Delassus operator
         delassus = DelassusOperator(
@@ -197,12 +197,12 @@ class TestDelassusOperator(unittest.TestCase):
         builder = make_basics_heterogeneous_builder()
 
         # Create the model and containers from the builder
-        model, data, limits, detector, jacobians = make_containers(
+        model, data, state, limits, detector, jacobians = make_containers(
             builder=builder, max_world_contacts=max_world_contacts, device=self.default_device
         )
 
         # Update the containers
-        update_containers(model=model, data=data, limits=limits, detector=detector, jacobians=jacobians)
+        update_containers(model=model, data=data, state=state, limits=limits, detector=detector, jacobians=jacobians)
 
         # Create the Delassus operator
         delassus = DelassusOperator(
@@ -231,7 +231,7 @@ class TestDelassusOperator(unittest.TestCase):
         builder = build_boxes_fourbar(z_offset=0.0, ground=False, dynamic_joints=True, implicit_pd=True)
 
         # Create the model and containers from the builder
-        model, data, limits, detector, jacobians = make_containers(
+        model, data, state, limits, detector, jacobians = make_containers(
             builder=builder,
             max_world_contacts=max_world_contacts,
             device=self.default_device,
@@ -239,7 +239,7 @@ class TestDelassusOperator(unittest.TestCase):
         )
 
         # Update the containers
-        update_containers(model=model, data=data, limits=limits, detector=detector, jacobians=jacobians)
+        update_containers(model=model, data=data, state=state, limits=limits, detector=detector, jacobians=jacobians)
 
         # Create the Delassus operator
         delassus = DelassusOperator(
@@ -301,12 +301,12 @@ class TestDelassusOperator(unittest.TestCase):
         builder = make_homogeneous_builder(num_worlds=num_worlds, build_fn=build_boxes_nunchaku)
 
         # Create the model and containers from the builder
-        model, data, limits, detector, jacobians = make_containers(
+        model, data, state, limits, detector, jacobians = make_containers(
             builder=builder, max_world_contacts=max_world_contacts, device=self.default_device
         )
 
         # Update the containers
-        update_containers(model=model, data=data, limits=limits, detector=detector, jacobians=jacobians)
+        update_containers(model=model, data=data, state=state, limits=limits, detector=detector, jacobians=jacobians)
 
         # Create the Delassus operator
         delassus = DelassusOperator(
@@ -381,12 +381,12 @@ class TestDelassusOperator(unittest.TestCase):
         builder = make_basics_heterogeneous_builder()
 
         # Create the model and containers from the builder
-        model, data, limits, detector, jacobians = make_containers(
+        model, data, state, limits, detector, jacobians = make_containers(
             builder=builder, max_world_contacts=max_world_contacts, device=self.default_device
         )
 
         # Update the containers
-        update_containers(model=model, data=data, limits=limits, detector=detector, jacobians=jacobians)
+        update_containers(model=model, data=data, state=state, limits=limits, detector=detector, jacobians=jacobians)
 
         # Create the Delassus operator
         delassus = DelassusOperator(
@@ -450,12 +450,12 @@ class TestDelassusOperator(unittest.TestCase):
         builder = make_basics_heterogeneous_builder()
 
         # Create the model and containers from the builder
-        model, data, limits, detector, jacobians = make_containers(
+        model, data, state, limits, detector, jacobians = make_containers(
             builder=builder, max_world_contacts=max_world_contacts, device=self.default_device
         )
 
         # Update the containers
-        update_containers(model=model, data=data, limits=limits, detector=detector, jacobians=jacobians)
+        update_containers(model=model, data=data, state=state, limits=limits, detector=detector, jacobians=jacobians)
 
         # Create the Delassus operator
         delassus = DelassusOperator(
@@ -521,12 +521,12 @@ class TestDelassusOperator(unittest.TestCase):
         builder = make_basics_heterogeneous_builder()
 
         # Create the model and containers from the builder
-        model, data, limits, detector, jacobians = make_containers(
+        model, data, state, limits, detector, jacobians = make_containers(
             builder=builder, max_world_contacts=max_world_contacts, device=self.default_device
         )
 
         # Update the containers
-        update_containers(model=model, data=data, limits=limits, detector=detector, jacobians=jacobians)
+        update_containers(model=model, data=data, state=state, limits=limits, detector=detector, jacobians=jacobians)
         if self.verbose:
             print("")  # Print a newline for better readability
             print(f"model.info.num_joint_cts: {model.info.num_joint_cts}")
@@ -622,7 +622,7 @@ class TestDelassusOperator(unittest.TestCase):
         builder = build_boxes_fourbar(z_offset=0.0, ground=False)
 
         # Create the model and containers from the builder
-        model, data, limits, detector, jacobians_dense = make_containers(
+        model, data, state, limits, detector, jacobians_dense = make_containers(
             builder=builder, max_world_contacts=max_world_contacts, device=self.default_device, sparse=False
         )
         jacobians_sparse = SparseSystemJacobians(
@@ -630,8 +630,8 @@ class TestDelassusOperator(unittest.TestCase):
         )
 
         # Update the containers
-        update_containers(model=model, data=data, limits=limits, detector=detector, jacobians=jacobians_dense)
-        update_containers(model=model, data=data, limits=limits, detector=detector, jacobians=jacobians_sparse)
+        update_containers(model, data, state, limits, detector, jacobians_dense)
+        update_containers(model, data, state, limits, detector, jacobians_sparse)
 
         # Create the Delassus operator
         delassus_dense = DelassusOperator(
@@ -682,7 +682,7 @@ class TestDelassusOperator(unittest.TestCase):
         builder = make_homogeneous_builder(num_worlds=num_worlds, build_fn=build_boxes_nunchaku)
 
         # Create the model and containers from the builder
-        model, data, limits, detector, jacobians_dense = make_containers(
+        model, data, state, limits, detector, jacobians_dense = make_containers(
             builder=builder, max_world_contacts=max_world_contacts, device=self.default_device, sparse=False
         )
         jacobians_sparse = SparseSystemJacobians(
@@ -690,8 +690,8 @@ class TestDelassusOperator(unittest.TestCase):
         )
 
         # Update the containers
-        update_containers(model=model, data=data, limits=limits, detector=detector, jacobians=jacobians_dense)
-        update_containers(model=model, data=data, limits=limits, detector=detector, jacobians=jacobians_sparse)
+        update_containers(model, data, state, limits, detector, jacobians_dense)
+        update_containers(model, data, state, limits, detector, jacobians_sparse)
 
         # Create the Delassus operator
         delassus_dense = DelassusOperator(
@@ -740,7 +740,7 @@ class TestDelassusOperator(unittest.TestCase):
         builder = make_basics_heterogeneous_builder()
 
         # Create the model and containers from the builder
-        model, data, limits, detector, jacobians_dense = make_containers(
+        model, data, state, limits, detector, jacobians_dense = make_containers(
             builder=builder, max_world_contacts=max_world_contacts, device=self.default_device, sparse=False
         )
         jacobians_sparse = SparseSystemJacobians(
@@ -748,8 +748,8 @@ class TestDelassusOperator(unittest.TestCase):
         )
 
         # Update the containers
-        update_containers(model=model, data=data, limits=limits, detector=detector, jacobians=jacobians_dense)
-        update_containers(model=model, data=data, limits=limits, detector=detector, jacobians=jacobians_sparse)
+        update_containers(model, data, state, limits, detector, jacobians_dense)
+        update_containers(model, data, state, limits, detector, jacobians_sparse)
 
         # Create the Delassus operator
         delassus_dense = DelassusOperator(
@@ -1173,12 +1173,12 @@ class TestDelassusOperatorSparse(unittest.TestCase):
         builder = build_boxes_nunchaku()
 
         # Create the model and containers from the builder
-        model, data, limits, detector, jacobians = make_containers(
+        model, data, state, limits, detector, jacobians = make_containers(
             builder=builder, max_world_contacts=max_world_contacts, device=self.default_device, sparse=True
         )
 
         # Update the containers
-        update_containers(model=model, data=data, limits=limits, detector=detector, jacobians=jacobians)
+        update_containers(model=model, data=data, state=state, limits=limits, detector=detector, jacobians=jacobians)
 
         # Create the sparse Delassus operator
         delassus = BlockSparseMatrixFreeDelassusOperator(
@@ -1201,12 +1201,12 @@ class TestDelassusOperatorSparse(unittest.TestCase):
         builder = make_homogeneous_builder(num_worlds=num_worlds, build_fn=build_boxes_nunchaku)
 
         # Create the model and containers from the builder
-        model, data, limits, detector, jacobians = make_containers(
+        model, data, state, limits, detector, jacobians = make_containers(
             builder=builder, max_world_contacts=max_world_contacts, device=self.default_device, sparse=True
         )
 
         # Update the containers
-        update_containers(model=model, data=data, limits=limits, detector=detector, jacobians=jacobians)
+        update_containers(model=model, data=data, state=state, limits=limits, detector=detector, jacobians=jacobians)
 
         # Create the Delassus operator
         delassus = BlockSparseMatrixFreeDelassusOperator(
@@ -1228,12 +1228,12 @@ class TestDelassusOperatorSparse(unittest.TestCase):
         builder = make_basics_heterogeneous_builder()
 
         # Create the model and containers from the builder
-        model, data, limits, detector, jacobians = make_containers(
+        model, data, state, limits, detector, jacobians = make_containers(
             builder=builder, max_world_contacts=max_world_contacts, device=self.default_device, sparse=True
         )
 
         # Update the containers
-        update_containers(model=model, data=data, limits=limits, detector=detector, jacobians=jacobians)
+        update_containers(model=model, data=data, state=state, limits=limits, detector=detector, jacobians=jacobians)
 
         # Create the Delassus operator
         delassus = BlockSparseMatrixFreeDelassusOperator(
@@ -1257,12 +1257,12 @@ class TestDelassusOperatorSparse(unittest.TestCase):
         )
 
         # Create the model and containers from the builder
-        model, data, limits, detector, jacobians = make_containers(
+        model, data, state, limits, detector, jacobians = make_containers(
             builder=builder, max_world_contacts=max_world_contacts, device=self.default_device, sparse=True
         )
 
         # Update the containers
-        update_containers(model=model, data=data, limits=limits, detector=detector, jacobians=jacobians)
+        update_containers(model=model, data=data, state=state, limits=limits, detector=detector, jacobians=jacobians)
 
         # Create the Delassus operator
         delassus = BlockSparseMatrixFreeDelassusOperator(
@@ -1286,12 +1286,12 @@ class TestDelassusOperatorSparse(unittest.TestCase):
         builder = make_homogeneous_builder(num_worlds=num_worlds, build_fn=build_boxes_nunchaku)
 
         # Create the model and containers from the builder
-        model, data, limits, detector, jacobians = make_containers(
+        model, data, state, limits, detector, jacobians = make_containers(
             builder=builder, max_world_contacts=max_world_contacts, device=self.default_device, sparse=True
         )
 
         # Update the containers
-        update_containers(model=model, data=data, limits=limits, detector=detector, jacobians=jacobians)
+        update_containers(model=model, data=data, state=state, limits=limits, detector=detector, jacobians=jacobians)
 
         # Create the Delassus operator
         delassus = BlockSparseMatrixFreeDelassusOperator(
@@ -1314,12 +1314,12 @@ class TestDelassusOperatorSparse(unittest.TestCase):
         builder = make_basics_heterogeneous_builder(dynamic_joints=self.dynamic_joints, implicit_pd=self.dynamic_joints)
 
         # Create the model and containers from the builder
-        model, data, limits, detector, jacobians = make_containers(
+        model, data, state, limits, detector, jacobians = make_containers(
             builder=builder, max_world_contacts=max_world_contacts, device=self.default_device, sparse=True
         )
 
         # Update the containers
-        update_containers(model=model, data=data, limits=limits, detector=detector, jacobians=jacobians)
+        update_containers(model=model, data=data, state=state, limits=limits, detector=detector, jacobians=jacobians)
 
         # Create the Delassus operator
         delassus = BlockSparseMatrixFreeDelassusOperator(
@@ -1344,12 +1344,12 @@ class TestDelassusOperatorSparse(unittest.TestCase):
         )
 
         # Create the model and containers from the builder
-        model, data, limits, detector, jacobians = make_containers(
+        model, data, state, limits, detector, jacobians = make_containers(
             builder=builder, max_world_contacts=max_world_contacts, device=self.default_device, sparse=True
         )
 
         # Update the containers
-        update_containers(model=model, data=data, limits=limits, detector=detector, jacobians=jacobians)
+        update_containers(model=model, data=data, state=state, limits=limits, detector=detector, jacobians=jacobians)
 
         # Create the Delassus operator
         delassus = BlockSparseMatrixFreeDelassusOperator(
@@ -1373,12 +1373,12 @@ class TestDelassusOperatorSparse(unittest.TestCase):
         builder = make_homogeneous_builder(num_worlds=num_worlds, build_fn=build_boxes_nunchaku)
 
         # Create the model and containers from the builder
-        model, data, limits, detector, jacobians = make_containers(
+        model, data, state, limits, detector, jacobians = make_containers(
             builder=builder, max_world_contacts=max_world_contacts, device=self.default_device, sparse=True
         )
 
         # Update the containers
-        update_containers(model=model, data=data, limits=limits, detector=detector, jacobians=jacobians)
+        update_containers(model=model, data=data, state=state, limits=limits, detector=detector, jacobians=jacobians)
 
         # Create the Delassus operator
         delassus = BlockSparseMatrixFreeDelassusOperator(
@@ -1401,12 +1401,12 @@ class TestDelassusOperatorSparse(unittest.TestCase):
         builder = make_basics_heterogeneous_builder(dynamic_joints=self.dynamic_joints, implicit_pd=self.dynamic_joints)
 
         # Create the model and containers from the builder
-        model, data, limits, detector, jacobians = make_containers(
+        model, data, state, limits, detector, jacobians = make_containers(
             builder=builder, max_world_contacts=max_world_contacts, device=self.default_device, sparse=True
         )
 
         # Update the containers
-        update_containers(model=model, data=data, limits=limits, detector=detector, jacobians=jacobians)
+        update_containers(model=model, data=data, state=state, limits=limits, detector=detector, jacobians=jacobians)
 
         # Create the Delassus operator
         delassus = BlockSparseMatrixFreeDelassusOperator(
@@ -1431,12 +1431,12 @@ class TestDelassusOperatorSparse(unittest.TestCase):
         )
 
         # Create the model and containers from the builder
-        model, data, limits, detector, jacobians = make_containers(
+        model, data, state, limits, detector, jacobians = make_containers(
             builder=builder, max_world_contacts=max_world_contacts, device=self.default_device, sparse=True
         )
 
         # Update the containers
-        update_containers(model=model, data=data, limits=limits, detector=detector, jacobians=jacobians)
+        update_containers(model=model, data=data, state=state, limits=limits, detector=detector, jacobians=jacobians)
 
         # Create the Delassus operator
         delassus = BlockSparseMatrixFreeDelassusOperator(
@@ -1460,12 +1460,12 @@ class TestDelassusOperatorSparse(unittest.TestCase):
         builder = make_homogeneous_builder(num_worlds=num_worlds, build_fn=build_boxes_nunchaku)
 
         # Create the model and containers from the builder
-        model, data, limits, detector, jacobians = make_containers(
+        model, data, state, limits, detector, jacobians = make_containers(
             builder=builder, max_world_contacts=max_world_contacts, device=self.default_device, sparse=True
         )
 
         # Update the containers
-        update_containers(model=model, data=data, limits=limits, detector=detector, jacobians=jacobians)
+        update_containers(model=model, data=data, state=state, limits=limits, detector=detector, jacobians=jacobians)
 
         # Create the Delassus operator
         delassus = BlockSparseMatrixFreeDelassusOperator(
@@ -1488,12 +1488,12 @@ class TestDelassusOperatorSparse(unittest.TestCase):
         builder = make_basics_heterogeneous_builder(dynamic_joints=self.dynamic_joints, implicit_pd=self.dynamic_joints)
 
         # Create the model and containers from the builder
-        model, data, limits, detector, jacobians = make_containers(
+        model, data, state, limits, detector, jacobians = make_containers(
             builder=builder, max_world_contacts=max_world_contacts, device=self.default_device, sparse=True
         )
 
         # Update the containers
-        update_containers(model=model, data=data, limits=limits, detector=detector, jacobians=jacobians)
+        update_containers(model=model, data=data, state=state, limits=limits, detector=detector, jacobians=jacobians)
 
         # Create the Delassus operator
         delassus = BlockSparseMatrixFreeDelassusOperator(

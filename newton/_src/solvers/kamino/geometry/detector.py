@@ -40,7 +40,8 @@ from typing import Literal
 import warp as wp
 
 from ..core.builder import ModelBuilder
-from ..core.model import Model, ModelData
+from ..core.data import ModelData
+from ..core.model import Model
 from ..core.types import override
 from ..geometry.contacts import DEFAULT_GEOM_PAIR_CONTACT_GAP, DEFAULT_GEOM_PAIR_MAX_CONTACTS, Contacts
 from ..geometry.primitive import BoundingVolumeType, CollisionPipelinePrimitive

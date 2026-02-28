@@ -19,7 +19,8 @@ KAMINO: Dynamics: Wrenches
 
 import warp as wp
 
-from ..core.model import Model, ModelData
+from ..core.data import ModelData
+from ..core.model import Model
 from ..core.types import float32, int32, mat63f, vec2i, vec3f, vec6f
 from ..geometry.contacts import Contacts
 from ..kinematics.jacobians import DenseSystemJacobians, SparseSystemJacobians

@@ -26,7 +26,8 @@ import math
 import warp as wp
 from warp.context import Devicelike
 
-from ...core.model import Model, ModelData, ModelSize
+from ...core.data import ModelData
+from ...core.model import Model, ModelSize
 from ...dynamics.dual import DualProblem
 from ...geometry.contacts import Contacts
 from ...kinematics.limits import Limits

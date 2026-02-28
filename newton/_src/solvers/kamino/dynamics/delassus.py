@@ -80,7 +80,8 @@ import numpy as np
 import warp as wp
 from warp.context import Devicelike
 
-from ..core.model import Model, ModelData, ModelSize
+from ..core.data import ModelData
+from ..core.model import Model, ModelSize
 from ..core.types import FloatType, float32, int32, mat33f, vec3f, vec6f
 from ..geometry.contacts import Contacts
 from ..kinematics.constraints import get_max_constraints_per_world

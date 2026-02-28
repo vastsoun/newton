@@ -42,8 +42,9 @@ from ....geometry.types import GeoType
 
 # Kamino imports
 from ..core.builder import ModelBuilder
+from ..core.data import ModelData
 from ..core.materials import DEFAULT_FRICTION, DEFAULT_RESTITUTION, make_get_material_pair_properties
-from ..core.model import Model, ModelData
+from ..core.model import Model
 from ..core.shapes import ShapeType
 from ..core.types import float32, int32, quatf, transformf, uint32, uint64, vec2f, vec2i, vec3f, vec4f
 from ..geometry.contacts import (

@@ -22,8 +22,9 @@ import unittest
 
 import warp as wp
 
+from newton._src.solvers.kamino.core.data import ModelData
 from newton._src.solvers.kamino.core.math import quat_exp, screw, screw_angular, screw_linear
-from newton._src.solvers.kamino.core.model import Model, ModelData
+from newton._src.solvers.kamino.core.model import Model
 from newton._src.solvers.kamino.core.types import float32, int32, mat33f, transformf, vec3f, vec6f
 from newton._src.solvers.kamino.kinematics.joints import compute_joints_data
 from newton._src.solvers.kamino.kinematics.limits import Limits

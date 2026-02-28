@@ -23,6 +23,7 @@ from functools import cache
 
 import warp as wp
 
+from ..core.data import ModelData
 from ..core.joints import JointActuationType, JointCorrectionMode, JointDoFType
 from ..core.math import (
     FLOAT32_MAX,
@@ -36,7 +37,7 @@ from ..core.math import (
     screw_linear,
     squared_norm,
 )
-from ..core.model import Model, ModelData
+from ..core.model import Model
 from ..core.types import (
     float32,
     int32,

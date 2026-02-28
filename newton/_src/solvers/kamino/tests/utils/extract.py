@@ -18,7 +18,8 @@
 import numpy as np
 import warp as wp
 
-from ...core.model import Model, ModelData
+from ...core.data import ModelData
+from ...core.model import Model
 from ...dynamics.delassus import BlockSparseMatrixFreeDelassusOperator, DelassusOperator
 from ...geometry.contacts import Contacts
 from ...kinematics.jacobians import DenseSystemJacobians, SparseSystemJacobians

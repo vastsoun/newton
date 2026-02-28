@@ -24,7 +24,8 @@ import warp as wp
 from warp.context import Devicelike
 
 from ...core.builder import ModelBuilder
-from ...core.model import Model, ModelData
+from ...core.data import ModelData
+from ...core.model import Model
 from ...core.types import float32, int32, vec2i, vec6f
 from ..contacts import DEFAULT_GEOM_PAIR_CONTACT_GAP, Contacts
 from .broadphase import (

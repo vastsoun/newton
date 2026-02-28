@@ -24,8 +24,8 @@ from collections.abc import Callable
 import warp as wp
 
 from ..core.control import Control as ControlKamino
+from ..core.data import ModelData as DataKamino
 from ..core.model import Model as ModelKamino
-from ..core.model import ModelData as DataKamino
 from ..core.state import State as StateKamino
 from ..geometry.contacts import Contacts as ContactsKamino
 from ..geometry.detector import CollisionDetector

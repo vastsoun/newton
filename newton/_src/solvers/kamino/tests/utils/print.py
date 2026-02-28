@@ -19,7 +19,8 @@ KAMINO: UNIT TESTS: GENERAL UTILITIES
 
 import numpy as np
 
-from newton._src.solvers.kamino.core.model import Model, ModelData
+from newton._src.solvers.kamino.core.data import ModelData
+from newton._src.solvers.kamino.core.model import Model
 
 ###
 # Model Functions

@@ -20,7 +20,8 @@ Provides mechanisms to define and manage constraints and their associated input/
 import warp as wp
 from warp.context import Devicelike
 
-from ..core.model import Model, ModelData
+from ..core.data import ModelData
+from ..core.model import Model
 from ..core.types import float32, int32, vec3f
 from ..geometry.contacts import ContactMode, Contacts
 from ..kinematics.limits import Limits

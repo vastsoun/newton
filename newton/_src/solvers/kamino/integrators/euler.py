@@ -25,13 +25,13 @@ import warp as wp
 
 from ....core.types import override
 from ..core.control import Control as ControlKamino
+from ..core.data import ModelData as DataKamino
 from ..core.math import (
     compute_body_pose_update_with_logmap,
     compute_body_twist_update_with_eom,
     screw,
 )
 from ..core.model import Model as ModelKamino
-from ..core.model import ModelData as DataKamino
 from ..core.state import State as StateKamino
 from ..core.types import (
     float32,

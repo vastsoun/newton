@@ -23,6 +23,7 @@ from typing import Any
 
 import warp as wp
 
+from ..core.data import ModelData
 from ..core.joints import JointDoFType
 from ..core.math import (
     FLOAT32_MAX,
@@ -31,7 +32,7 @@ from ..core.math import (
     expand6d,
     screw_transform_matrix_from_points,
 )
-from ..core.model import Model, ModelData
+from ..core.model import Model
 from ..core.types import (
     float32,
     int32,

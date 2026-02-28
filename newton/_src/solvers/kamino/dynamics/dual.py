@@ -69,8 +69,9 @@ from typing import Any
 import warp as wp
 from warp.context import Devicelike
 
+from ..core.data import ModelData
 from ..core.math import FLOAT32_EPS, UNIT_Z, screw, screw_angular, screw_linear
-from ..core.model import Model, ModelData, ModelSize
+from ..core.model import Model, ModelSize
 from ..core.types import (
     float32,
     int32,

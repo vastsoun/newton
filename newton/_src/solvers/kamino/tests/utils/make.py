@@ -25,8 +25,9 @@ import warp as wp
 
 from ...core.bodies import update_body_inertias
 from ...core.builder import ModelBuilder
+from ...core.data import ModelData
 from ...core.math import quat_exp, screw, screw_angular, screw_linear
-from ...core.model import Model, ModelData
+from ...core.model import Model
 from ...core.types import float32, int32, mat33f, transformf, vec3f, vec6f
 from ...geometry.contacts import Contacts
 from ...geometry.detector import CollisionDetector, CollisionDetectorSettings

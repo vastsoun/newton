@@ -39,8 +39,9 @@ from .....geometry.collision_primitive import (
     collide_sphere_cylinder,
     collide_sphere_sphere,
 )
+from ...core.data import ModelData
 from ...core.materials import make_get_material_pair_properties
-from ...core.model import Model, ModelData
+from ...core.model import Model
 from ...core.shapes import ShapeType
 from ...core.types import (
     float32,

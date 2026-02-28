@@ -22,7 +22,8 @@ import unittest
 import numpy as np
 import warp as wp
 
-from newton._src.solvers.kamino.core.model import Model, ModelData
+from newton._src.solvers.kamino.core.data import ModelData
+from newton._src.solvers.kamino.core.model import Model
 from newton._src.solvers.kamino.dynamics.wrenches import (
     compute_constraint_body_wrenches_dense,
     compute_constraint_body_wrenches_sparse,

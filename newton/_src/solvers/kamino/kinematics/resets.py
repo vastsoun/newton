@@ -18,8 +18,9 @@
 import warp as wp
 
 from ..core.bodies import transform_body_inertial_properties
+from ..core.data import ModelData
 from ..core.math import screw, screw_angular, screw_linear
-from ..core.model import Model, ModelData
+from ..core.model import Model
 from ..core.state import State
 from ..core.types import float32, int32, mat33f, transformf, vec3f, vec6f
 from ..kinematics.joints import compute_joint_pose_and_relative_motion, make_write_joint_data

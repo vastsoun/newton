@@ -20,13 +20,14 @@ from dataclasses import dataclass, field
 import warp as wp
 from warp.context import Devicelike
 
+from ..core.data import ModelData
 from ..core.joints import JOINT_QMAX, JOINT_QMIN, JointDoFType
 from ..core.math import (
     quat_from_vec4,
     quat_log,
     screw,
 )
-from ..core.model import Model, ModelData
+from ..core.model import Model
 from ..core.types import (
     float32,
     int32,

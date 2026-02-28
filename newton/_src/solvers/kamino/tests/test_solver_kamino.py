@@ -22,8 +22,9 @@ import numpy as np
 import warp as wp
 
 from newton._src.solvers.kamino.core.control import Control
+from newton._src.solvers.kamino.core.data import ModelData
 from newton._src.solvers.kamino.core.joints import JointActuationType, JointCorrectionMode
-from newton._src.solvers.kamino.core.model import Model, ModelData
+from newton._src.solvers.kamino.core.model import Model
 from newton._src.solvers.kamino.core.state import State
 from newton._src.solvers.kamino.core.types import float32, int32, transformf, vec6f
 from newton._src.solvers.kamino.dynamics import DualProblem, DualProblemSettings

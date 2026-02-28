@@ -26,8 +26,9 @@ import warp as wp
 from warp.context import Devicelike
 
 from newton._src.solvers.kamino.core.builder import ModelBuilder
+from newton._src.solvers.kamino.core.data import ModelData
 from newton._src.solvers.kamino.core.math import I_3
-from newton._src.solvers.kamino.core.model import Model, ModelData
+from newton._src.solvers.kamino.core.model import Model
 from newton._src.solvers.kamino.core.shapes import SphereShape
 from newton._src.solvers.kamino.core.types import transformf, vec6f
 from newton._src.solvers.kamino.geometry.contacts import Contacts

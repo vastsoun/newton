@@ -36,8 +36,9 @@ from enum import IntEnum
 import warp as wp
 from warp.context import Devicelike
 
+from ..core.data import ModelData
 from ..core.math import contact_wrench_matrix_from_points
-from ..core.model import Model, ModelData
+from ..core.model import Model
 from ..core.types import float32, int32, override, quatf, transformf, uint64, vec2f, vec2i, vec3f, vec6f
 from ..geometry.contacts import Contacts, ContactsData
 from ..geometry.keying import KeySorter, binary_search_find_range_start

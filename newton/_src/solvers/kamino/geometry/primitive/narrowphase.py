@@ -56,7 +56,7 @@ from ...core.types import (
     vec3f,
     vec4f,
 )
-from ...geometry.contacts import ContactsData, make_contact_frame_znorm
+from ...geometry.contacts import ContactsKaminoData, make_contact_frame_znorm
 from ...geometry.keying import build_pair_key2
 from .broadphase import CollisionCandidatesData
 
@@ -1743,7 +1743,7 @@ def primitive_narrowphase(
     model: ModelKamino,
     data: DataKamino,
     candidates: CollisionCandidatesData,
-    contacts: ContactsData,
+    contacts: ContactsKaminoData,
     default_gap: float | None = None,
 ):
     """

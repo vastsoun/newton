@@ -40,7 +40,7 @@ from ..core.data import DataKamino
 from ..core.math import contact_wrench_matrix_from_points
 from ..core.model import ModelKamino
 from ..core.types import float32, int32, override, quatf, transformf, uint64, vec2f, vec2i, vec3f, vec6f
-from ..geometry.contacts import Contacts, ContactsData
+from ..geometry.contacts import ContactsKamino, ContactsKaminoData
 from ..geometry.keying import KeySorter, binary_search_find_range_start
 from ..kinematics.limits import LimitsKamino, LimitsKaminoData
 from ..solvers.padmm.math import project_to_coulomb_cone
@@ -587,8 +587,8 @@ def warmstart_contacts_by_matched_geom_pair_key_and_position(
     model: ModelKamino,
     data: DataKamino,
     sorter: KeySorter,
-    cache: ContactsData,
-    contacts: ContactsData,
+    cache: ContactsKaminoData,
+    contacts: ContactsKaminoData,
     tolerance: float32 | None = None,
 ):
     """
@@ -598,8 +598,8 @@ def warmstart_contacts_by_matched_geom_pair_key_and_position(
         model (ModelKamino): The model containing simulation parameters.
         data (DataKamino): The model data containing body states.
         sorter (KeySorter): The key sorter used to sort cached contact keys.
-        cache (ContactsData): The cached contacts data from the previous simulation step.
-        contacts (ContactsData): The current contacts data to be warm-started.
+        cache (ContactsKaminoData): The cached contacts data from the previous simulation step.
+        contacts (ContactsKaminoData): The current contacts data to be warm-started.
     """
     # Define tolerance for matching contact points based on distance after accounting for body motion
     if tolerance is None:
@@ -644,8 +644,8 @@ def warmstart_contacts_by_matched_geom_pair_key_and_position(
 def warmstart_contacts_from_geom_pair_net_force(
     data: DataKamino,
     sorter: KeySorter,
-    cache: ContactsData,
-    contacts: ContactsData,
+    cache: ContactsKaminoData,
+    contacts: ContactsKaminoData,
     scaling: float32 | None = None,
 ):
     """
@@ -655,8 +655,8 @@ def warmstart_contacts_from_geom_pair_net_force(
         model (ModelKamino): The model containing simulation parameters.
         data (DataKamino): The model data containing body states.
         sorter (KeySorter): The key sorter used to sort cached contact keys.
-        cache (ContactsData): The cached contacts data from the previous simulation step.
-        contacts (ContactsData): The current contacts data to be warm-started.
+        cache (ContactsKaminoData): The cached contacts data from the previous simulation step.
+        contacts (ContactsKaminoData): The current contacts data to be warm-started.
     """
     # Define scaling for warm-started reactions and velocities
     if scaling is None:
@@ -700,8 +700,8 @@ def warmstart_contacts_by_matched_geom_pair_key_and_position_with_net_force_back
     model: ModelKamino,
     data: DataKamino,
     sorter: KeySorter,
-    cache: ContactsData,
-    contacts: ContactsData,
+    cache: ContactsKaminoData,
+    contacts: ContactsKaminoData,
     tolerance: float32 | None = None,
     scaling: float32 | None = None,
 ):
@@ -712,8 +712,8 @@ def warmstart_contacts_by_matched_geom_pair_key_and_position_with_net_force_back
         model (ModelKamino): The model containing simulation parameters.
         data (DataKamino): The model data containing body states.
         sorter (KeySorter): The key sorter used to sort cached contact keys.
-        cache (ContactsData): The cached contacts data from the previous simulation step.
-        contacts (ContactsData): The current contacts data to be warm-started.
+        cache (ContactsKaminoData): The cached contacts data from the previous simulation step.
+        contacts (ContactsKaminoData): The current contacts data to be warm-started.
     """
     # Define tolerance for matching contact points based on distance after accounting for body motion
     if tolerance is None:
@@ -916,7 +916,7 @@ class WarmstarterContacts:
 
     def __init__(
         self,
-        contacts: Contacts | None = None,
+        contacts: ContactsKamino | None = None,
         method: Method = Method.KEY_AND_POSITION,
         tolerance: float = 1e-5,
         scaling: float = 1.0,
@@ -925,7 +925,7 @@ class WarmstarterContacts:
         Initializes the contacts warmstarter using the allocations of the provided contacts container.
 
         Args:
-            contacts (Contacts): The contacts container whose allocations are used to initialize the warmstarter.
+            contacts (ContactsKamino): The contacts container whose allocations are used to initialize the warmstarter.
             method (WarmstarterContacts.Method): The warm-starting method to use.
             tolerance (float): The tolerance used for matching contact point positions.\n
                 Must be a floating-point value specified in meters, and within the range `[0, +inf)`.\n
@@ -943,7 +943,7 @@ class WarmstarterContacts:
         self._device: Devicelike = contacts.device if contacts is not None else None
 
         # Declare the internal contacts cache
-        self._cache: ContactsData | None = None
+        self._cache: ContactsKaminoData | None = None
 
         # Check if the contacts container has allocations and skip cache allocations if not
         if contacts is None or (contacts is not None and contacts.model_max_contacts_host <= 0):
@@ -951,7 +951,7 @@ class WarmstarterContacts:
 
         # Allocate contact data cache based on the those of the provided contacts container
         with wp.ScopedDevice(self._device):
-            self._cache = ContactsData(
+            self._cache = ContactsKaminoData(
                 model_max_contacts_host=contacts.model_max_contacts_host,
                 world_max_contacts_host=contacts.world_max_contacts_host,
                 model_active_contacts=wp.zeros_like(contacts.model_active_contacts),
@@ -975,13 +975,13 @@ class WarmstarterContacts:
         return self._device
 
     @property
-    def cache(self) -> ContactsData | None:
+    def cache(self) -> ContactsKaminoData | None:
         """
         Returns the internal contacts cache data.
         """
         return self._cache
 
-    def warmstart(self, model: ModelKamino, data: DataKamino, contacts: Contacts):
+    def warmstart(self, model: ModelKamino, data: DataKamino, contacts: ContactsKamino):
         """
         Warm-starts the provided contacts container using the internal cache.
 
@@ -990,7 +990,7 @@ class WarmstarterContacts:
         Args:
             model (ModelKamino): The model containing simulation parameters.
             data (DataKamino): The model data containing body states.
-            contacts (Contacts): The contacts container to warm-start.
+            contacts (ContactsKamino): The contacts container to warm-start.
         """
         # Early exit if no cache is allocated
         if self._cache is None:
@@ -1047,12 +1047,12 @@ class WarmstarterContacts:
                     "  - KEY_AND_POSITION_WITH_NET_WRENCH_BACKUP (4)."
                 )
 
-    def update(self, contacts: Contacts | None = None):
+    def update(self, contacts: ContactsKamino | None = None):
         """
         Updates the warmstarter's internal cache with the provided contacts data.
 
         Args:
-            contacts (Contacts): The contacts container from which to update the cache.
+            contacts (ContactsKamino): The contacts container from which to update the cache.
         """
         # Early exit if no cache is allocated or no contacts data is provided
         if self._cache is None or contacts is None:

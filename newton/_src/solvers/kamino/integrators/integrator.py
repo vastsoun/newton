@@ -27,7 +27,7 @@ from ..core.control import ControlKamino
 from ..core.data import DataKamino
 from ..core.model import ModelKamino
 from ..core.state import StateKamino
-from ..geometry.contacts import Contacts as ContactsKamino
+from ..geometry.contacts import ContactsKamino
 from ..geometry.detector import CollisionDetector
 from ..kinematics.limits import LimitsKamino
 

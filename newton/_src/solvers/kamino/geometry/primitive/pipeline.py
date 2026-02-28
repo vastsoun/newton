@@ -27,7 +27,7 @@ from ...core.builder import ModelBuilder
 from ...core.data import DataKamino
 from ...core.model import ModelKamino
 from ...core.types import float32, int32, vec2i, vec6f
-from ..contacts import DEFAULT_GEOM_PAIR_CONTACT_GAP, Contacts
+from ..contacts import DEFAULT_GEOM_PAIR_CONTACT_GAP, ContactsKamino
 from .broadphase import (
     PRIMITIVE_BROADPHASE_SUPPORTED_SHAPES,
     BoundingVolumesData,
@@ -154,14 +154,14 @@ class CollisionPipelinePrimitive:
                 geom_pair=wp.zeros(shape=(model_num_geom_pairs,), dtype=vec2i),
             )
 
-    def collide(self, model: ModelKamino, data: DataKamino, contacts: Contacts):
+    def collide(self, model: ModelKamino, data: DataKamino, contacts: ContactsKamino):
         """
         Runs the unified collision detection pipeline to generate discrete contacts.
 
         Args:
             model (ModelKamino): The model container holding the time-invariant parameters of the simulation.
             data (DataKamino): The data container holding the time-varying state of the simulation.
-            contacts (Contacts): Output contacts container (will be cleared and populated)
+            contacts (ContactsKamino): Output contacts container (will be cleared and populated)
         """
         # Ensure that the pipeline has been finalized
         # before proceeding with actual operations

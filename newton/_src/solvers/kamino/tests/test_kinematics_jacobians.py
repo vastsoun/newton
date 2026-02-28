@@ -23,7 +23,7 @@ import numpy as np
 import warp as wp
 
 from newton._src.solvers.kamino.core.model import ModelKamino
-from newton._src.solvers.kamino.geometry.contacts import Contacts
+from newton._src.solvers.kamino.geometry.contacts import ContactsKamino
 from newton._src.solvers.kamino.kinematics.jacobians import (
     ColMajorSparseConstraintJacobians,
     DenseSystemJacobians,
@@ -161,7 +161,7 @@ class TestKinematicsDenseSystemJacobians(unittest.TestCase):
             print("required_world_max_contacts: ", required_world_max_contacts)
 
         # Construct and allocate the contacts container
-        contacts = Contacts(capacity=required_world_max_contacts, device=self.default_device)
+        contacts = ContactsKamino(capacity=required_world_max_contacts, device=self.default_device)
         if self.verbose:
             print("contacts.default_max_world_contacts: ", contacts.default_max_world_contacts)
             print("contacts.model_max_contacts_host: ", contacts.model_max_contacts_host)
@@ -214,7 +214,7 @@ class TestKinematicsDenseSystemJacobians(unittest.TestCase):
             print("required_world_max_contacts: ", required_world_max_contacts)
 
         # Construct and allocate the contacts container
-        contacts = Contacts(capacity=required_world_max_contacts, device=self.default_device)
+        contacts = ContactsKamino(capacity=required_world_max_contacts, device=self.default_device)
         if self.verbose:
             print("contacts.default_max_world_contacts: ", contacts.default_max_world_contacts)
             print("contacts.model_max_contacts_host: ", contacts.model_max_contacts_host)
@@ -270,7 +270,7 @@ class TestKinematicsDenseSystemJacobians(unittest.TestCase):
             print("required_world_max_contacts: ", required_world_max_contacts)
 
         # Construct and allocate the contacts container
-        contacts = Contacts(capacity=required_world_max_contacts, device=self.default_device)
+        contacts = ContactsKamino(capacity=required_world_max_contacts, device=self.default_device)
         if self.verbose:
             print("contacts.default_max_world_contacts: ", contacts.default_max_world_contacts)
             print("contacts.model_max_contacts_host: ", contacts.model_max_contacts_host)
@@ -348,7 +348,7 @@ class TestKinematicsDenseSystemJacobians(unittest.TestCase):
             print("required_world_max_contacts: ", required_world_max_contacts)
 
         # Construct and allocate the contacts container
-        contacts = Contacts(capacity=required_world_max_contacts, device=self.default_device)
+        contacts = ContactsKamino(capacity=required_world_max_contacts, device=self.default_device)
         if self.verbose:
             print("contacts.default_max_world_contacts: ", contacts.default_max_world_contacts)
             print("contacts.model_max_contacts_host: ", contacts.model_max_contacts_host)
@@ -527,7 +527,7 @@ class TestKinematicsSparseSystemJacobians(unittest.TestCase):
         self,
         model: ModelKamino,
         limits: LimitsKamino | None,
-        contacts: Contacts | None,
+        contacts: ContactsKamino | None,
         jacobians_dense: DenseSystemJacobians,
         jacobians_sparse: SparseSystemJacobians,
     ):

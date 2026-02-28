@@ -45,7 +45,7 @@ from ..core.types import (
     vec4f,
     vec6f,
 )
-from ..geometry.contacts import Contacts as ContactsKamino
+from ..geometry.contacts import ContactsKamino
 from ..geometry.detector import CollisionDetector
 from ..kinematics.limits import LimitsKamino
 from .integrator import IntegratorBase

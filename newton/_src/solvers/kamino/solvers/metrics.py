@@ -31,7 +31,7 @@ A typical example for using this module is:
 
     # Import all relevant types from Kamino
     from newton._src.solvers.kamino.core import ModelBuilder
-    from newton._src.solvers.kamino.geometry import Contacts
+    from newton._src.solvers.kamino.geometry import ContactsKamino
     from newton._src.solvers.kamino.kinematics import LimitsKamino
     from newton._src.solvers.kamino.kinematics import DenseSystemJacobians
     from newton._src.solvers.kamino.dynamics import DualProblem
@@ -47,7 +47,7 @@ A typical example for using this module is:
     state_p = model.state()
     data = model.data()
     limits = LimitsKamino(model)
-    contacts = Contacts(builder)
+    contacts = ContactsKamino(builder)
     jacobians = DenseSystemJacobians(model, limits, contacts)
 
     # Build the Jacobians for the model and active limits and contacts
@@ -95,7 +95,7 @@ from ..core.model import ModelKamino
 from ..core.state import StateKamino
 from ..core.types import float32, int32, int64, mat33f, uint32, vec2f, vec3f, vec4f, vec6f
 from ..dynamics.dual import DualProblem
-from ..geometry.contacts import Contacts
+from ..geometry.contacts import ContactsKamino
 from ..geometry.keying import build_pair_key2
 from ..kinematics.jacobians import DenseSystemJacobians, SparseSystemJacobians
 from ..kinematics.limits import LimitsKamino
@@ -264,7 +264,7 @@ class SolutionMetricsData:
     Computed as the maximum absolute value (i.e. infinity-norm) over contact constraint residuals.
 
     Equivalent to `r_cts_contacts := || d_k ||_inf`, where `d_k` would be an array of
-    contact penetrations extracted from the `gapfunc` elements of :class:`ContactsData`.
+    contact penetrations extracted from the `gapfunc` elements of :class:`ContactsKaminoData`.
 
     Shape of ``(num_worlds,)`` and type :class:`float32`.
     """
@@ -1242,7 +1242,7 @@ class SolutionMetrics:
         problem: DualProblem,
         jacobians: DenseSystemJacobians | SparseSystemJacobians,
         limits: LimitsKamino | None = None,
-        contacts: Contacts | None = None,
+        contacts: ContactsKamino | None = None,
     ):
         """
         Evaluates all solution performance metrics.
@@ -1256,7 +1256,7 @@ class SolutionMetrics:
                 The previous state of the simulation.
             limits (LimitsKamino):
                 The joint-limits data describing active limit constraints.
-            contacts (Contacts):
+            contacts (ContactsKamino):
                 The contact data describing active contact constraints.
             problem (DualProblem):
                 The dual forward dynamics problem of the current time-step.
@@ -1293,7 +1293,7 @@ class SolutionMetrics:
         model: ModelKamino,
         data: DataKamino,
         limits: LimitsKamino | None = None,
-        contacts: Contacts | None = None,
+        contacts: ContactsKamino | None = None,
     ):
         """
         Evaluates the constraint-violation performance metrics.
@@ -1305,7 +1305,7 @@ class SolutionMetrics:
                 The model data containing the time-variant data of the simulation.
             limits (LimitsKamino):
                 The joint-limits data describing active limit constraints.
-            contacts (Contacts):
+            contacts (ContactsKamino):
                 The contact data describing active contact constraints.
         """
         # Ensure metrics data is available

@@ -21,7 +21,7 @@ import warp as wp
 from ...core.data import DataKamino
 from ...core.model import ModelKamino
 from ...dynamics.delassus import BlockSparseMatrixFreeDelassusOperator, DelassusOperator
-from ...geometry.contacts import Contacts
+from ...geometry.contacts import ContactsKamino
 from ...kinematics.jacobians import DenseSystemJacobians, SparseSystemJacobians
 from ...kinematics.limits import LimitsKamino
 
@@ -76,7 +76,7 @@ def extract_actuation_forces(model: ModelKamino, data: DataKamino) -> list[np.nd
 def extract_cts_jacobians(
     model: ModelKamino,
     limits: LimitsKamino | None,
-    contacts: Contacts | None,
+    contacts: ContactsKamino | None,
     jacobians: DenseSystemJacobians | SparseSystemJacobians,
     only_active_cts: bool = False,
     verbose: bool = False,

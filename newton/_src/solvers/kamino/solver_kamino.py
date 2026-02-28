@@ -45,7 +45,7 @@ from .dynamics.wrenches import (
     compute_constraint_body_wrenches,
     compute_joint_dof_body_wrenches,
 )
-from .geometry.contacts import Contacts
+from .geometry.contacts import ContactsKamino
 from .geometry.detector import CollisionDetector
 from .integrators import IntegratorEuler, IntegratorMoreauJean
 from .kinematics.constraints import (
@@ -260,7 +260,7 @@ class SolverKamino(SolverBase):
           International Journal for Numerical Methods in Engineering, 122(16), 4093-4113.
           https://onlinelibrary.wiley.com/doi/full/10.1002/nme.6693
 
-    After constructing :class:`ModelKamino`, :class:`StateKamino`, :class:`ControlKamino` and :class:`Contacts`
+    After constructing :class:`ModelKamino`, :class:`StateKamino`, :class:`ControlKamino` and :class:`ContactsKamino`
     objects, this physics solver may be used to advance the simulation state forward in time.
 
     Example
@@ -282,13 +282,13 @@ class SolverKamino(SolverBase):
     ResetCallbackType = Callable[["SolverKamino", StateKamino], None]
     """Defines the type signature for reset callback functions."""
 
-    StepCallbackType = Callable[["SolverKamino", StateKamino, StateKamino, ControlKamino, Contacts], None]
+    StepCallbackType = Callable[["SolverKamino", StateKamino, StateKamino, ControlKamino, ContactsKamino], None]
     """Defines the type signature for step callback functions."""
 
     def __init__(
         self,
         model: ModelKamino,
-        contacts: Contacts | None = None,
+        contacts: ContactsKamino | None = None,
         settings: SolverKaminoSettings | None = None,
     ):
         """
@@ -300,14 +300,16 @@ class SolverKamino(SolverBase):
 
         Args:
             model (ModelKamino): The multi-body systems model to simulate.
-            contacts (Contacts): The contact data container for the simulation.
+            contacts (ContactsKamino): The contact data container for the simulation.
             settings (SolverKaminoSettings | None): Optional solver settings.
         """
         # Ensure the input containers are valid
         if not isinstance(model, ModelKamino):
             raise TypeError(f"Invalid model container: Expected a `ModelKamino` instance, but got {type(model)}.")
-        if contacts is not None and not isinstance(contacts, Contacts):
-            raise TypeError(f"Invalid contacts container: Expected a `Contacts` instance, but got {type(contacts)}.")
+        if contacts is not None and not isinstance(contacts, ContactsKamino):
+            raise TypeError(
+                f"Invalid contacts container: Expected a `ContactsKamino` instance, but got {type(contacts)}."
+            )
         if settings is not None and not isinstance(settings, SolverKaminoSettings):
             raise TypeError(
                 f"Invalid solver settings: Expected a `SolverKaminoSettings` instance, but got {type(settings)}."
@@ -674,7 +676,7 @@ class SolverKamino(SolverBase):
         state_in: StateKamino,
         state_out: StateKamino,
         control: ControlKamino,
-        contacts: Contacts | None = None,
+        contacts: ContactsKamino | None = None,
         detector: CollisionDetector | None = None,
         dt: float | None = None,
     ):
@@ -690,7 +692,7 @@ class SolverKamino(SolverBase):
                 The output next state after time integration.
             control (ControlKamino):
                 The input controls applied to the system.
-            contacts (Contacts, optional):
+            contacts (ContactsKamino, optional):
                 The set of active contacts.
             detector (CollisionDetector, optional):
                 An optional collision detector to use for generating contacts at the current state.\n
@@ -756,7 +758,7 @@ class SolverKamino(SolverBase):
             self._post_reset_cb(self, state_out)
 
     def _run_prestep_callback(
-        self, state_in: StateKamino, state_out: StateKamino, control: ControlKamino, contacts: Contacts
+        self, state_in: StateKamino, state_out: StateKamino, control: ControlKamino, contacts: ContactsKamino
     ):
         """
         Runs the pre-step callback if it has been set.
@@ -765,7 +767,7 @@ class SolverKamino(SolverBase):
             self._pre_step_cb(self, state_in, state_out, control, contacts)
 
     def _run_midstep_callback(
-        self, state_in: StateKamino, state_out: StateKamino, control: ControlKamino, contacts: Contacts
+        self, state_in: StateKamino, state_out: StateKamino, control: ControlKamino, contacts: ContactsKamino
     ):
         """
         Runs the mid-step callback if it has been set.
@@ -774,7 +776,7 @@ class SolverKamino(SolverBase):
             self._mid_step_cb(self, state_in, state_out, control, contacts)
 
     def _run_poststep_callback(
-        self, state_in: StateKamino, state_out: StateKamino, control: ControlKamino, contacts: Contacts
+        self, state_in: StateKamino, state_out: StateKamino, control: ControlKamino, contacts: ContactsKamino
     ):
         """
         Executes the post-step callback if it has been set.
@@ -1056,7 +1058,7 @@ class SolverKamino(SolverBase):
         """
         update_constraints_info(model=self._model, data=self._data)
 
-    def _update_jacobians(self, contacts: Contacts | None = None):
+    def _update_jacobians(self, contacts: ContactsKamino | None = None):
         """
         Updates the forward kinematics by building the system Jacobians (of actuation and
         constraints) based on the current state of the system and set of active constraints.
@@ -1075,7 +1077,7 @@ class SolverKamino(SolverBase):
         """
         compute_joint_dof_body_wrenches(self._model, self._data, self._jacobians)
 
-    def _update_dynamics(self, contacts: Contacts | None = None):
+    def _update_dynamics(self, contacts: ContactsKamino | None = None):
         """
         Constructs the forward dynamics problem quantities based on the current state of
         the system, the set of active constraints, and the updated system Jacobians.
@@ -1089,7 +1091,7 @@ class SolverKamino(SolverBase):
             reset_to_zero=True,
         )
 
-    def _update_constraints(self, contacts: Contacts | None = None):
+    def _update_constraints(self, contacts: ContactsKamino | None = None):
         """
         Solves the forward dynamics sub-problem to compute constraint
         reactions and body wrenches effected through constraints.
@@ -1151,7 +1153,7 @@ class SolverKamino(SolverBase):
         """
         update_body_wrenches(self._model.bodies, self._data.bodies)
 
-    def _forward(self, contacts: Contacts | None = None):
+    def _forward(self, contacts: ContactsKamino | None = None):
         """
         Solves the forward dynamics sub-problem to compute constraint reactions
         and total effective body wrenches applied to each body of the system.
@@ -1171,7 +1173,7 @@ class SolverKamino(SolverBase):
         state_out: StateKamino,
         control: ControlKamino,
         limits: LimitsKamino | None = None,  # TODO: Fix this interface
-        contacts: Contacts | None = None,
+        contacts: ContactsKamino | None = None,
         detector: CollisionDetector | None = None,
     ):
         """
@@ -1216,7 +1218,7 @@ class SolverKamino(SolverBase):
         # Run the mid-step callback if it has been set
         self._run_midstep_callback(state_in, state_out, control, contacts)
 
-    def _compute_metrics(self, state_in: StateKamino, contacts: Contacts | None = None):
+    def _compute_metrics(self, state_in: StateKamino, contacts: ContactsKamino | None = None):
         """
         Computes performance metrics measuring the physical fidelity of the dynamics solver solution.
         """

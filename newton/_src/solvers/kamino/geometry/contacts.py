@@ -20,7 +20,7 @@ This module provides a set of data types and operations that define
 the data layout and conventions used to represent discrete contacts
 within the Kamino solver. It includes:
 
-- The :class:`ContactsData` dataclass defining the structure of contact data.
+- The :class:`ContactsKaminoData` dataclass defining the structure of contact data.
 
 - The :class:`ContactMode` enumeration defining the discrete contact modes
 and a member function that generates Warp functions to compute the contact
@@ -29,7 +29,7 @@ mode based on local contact velocities.
 - Utility functions for constructing contact-local coordinate frames
 supporting both a Z-up and X-up convention.
 
-- The :class:`Contacts` container which provides a high-level interface to
+- The :class:`ContactsKamino` container which provides a high-level interface to
   manage contact data, including allocations, access, and common operations,
   and fundamentally serves as the primary output of collision detectors
   as well as a cache of contact data to warm-start physics solvers.
@@ -54,8 +54,8 @@ __all__ = [
     "DEFAULT_GEOM_PAIR_MAX_CONTACTS",
     "DEFAULT_WORLD_MAX_CONTACTS",
     "ContactMode",
-    "Contacts",
-    "ContactsData",
+    "ContactsKamino",
+    "ContactsKaminoData",
     "make_contact_frame_xnorm",
     "make_contact_frame_znorm",
 ]
@@ -175,7 +175,7 @@ class ContactMode(IntEnum):
 
 
 @dataclass
-class ContactsData:
+class ContactsKaminoData:
     """
     An SoA-based container to hold time-varying contact data of a set of contact elements.
 
@@ -368,7 +368,7 @@ def make_contact_frame_xnorm(n: vec3f) -> mat33f:
 ###
 
 
-class Contacts:
+class ContactsKamino:
     """
     Provides a high-level interface to manage contact data,
     including allocations, access, and common operations.
@@ -392,7 +392,7 @@ class Contacts:
         self._device: Devicelike = None
 
         # Declare the contacts data container and initialize it to empty
-        self._data: ContactsData = ContactsData()
+        self._data: ContactsKaminoData = ContactsKaminoData()
 
         # If a capacity is specified, finalize the contacts data allocation
         if capacity is not None:
@@ -430,7 +430,7 @@ class Contacts:
         return self._device
 
     @property
-    def data(self) -> ContactsData:
+    def data(self) -> ContactsKaminoData:
         """
         Returns the managed contacts data container.
         """
@@ -665,7 +665,7 @@ class Contacts:
 
         # Skip allocation if there are no contacts to allocate
         if model_max_contacts == 0:
-            msg.debug("Contacts: Skipping contact data allocations since total requested capacity was `0`.")
+            msg.debug("ContactsKamino: Skipping contact data allocations since total requested capacity was `0`.")
             return
 
         # Override the device if specified
@@ -674,7 +674,7 @@ class Contacts:
 
         # Allocate the contacts data on the specified device
         with wp.ScopedDevice(self._device):
-            self._data = ContactsData(
+            self._data = ContactsKaminoData(
                 model_max_contacts_host=model_max_contacts,
                 world_max_contacts_host=world_max_contacts,
                 model_max_contacts=wp.array([model_max_contacts], dtype=int32),
@@ -718,4 +718,4 @@ class Contacts:
 
     def _assert_has_data(self):
         if self._data.model_max_contacts_host == 0:
-            raise RuntimeError("ContactsData has not been allocated. Call `finalize()` before accessing data.")
+            raise RuntimeError("ContactsKaminoData has not been allocated. Call `finalize()` before accessing data.")

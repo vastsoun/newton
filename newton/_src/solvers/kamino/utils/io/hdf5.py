@@ -1127,7 +1127,10 @@ class DatasetRenderer:
         self.datafile[self.namescope + "/info/maxtime"] = 0.0
 
     def add_frame(
-        self, system: RigidBodySystemData, contacts: ContactsData | None = None, problem: DualProblemData | None = None
+        self,
+        system: RigidBodySystemData,
+        contacts: ContactsData | None = None,
+        problem: DualProblemData | None = None,
     ):
         system.store(self.datafile, namespace=self.namescope + "/frames/" + str(self.framecount) + "/RigidBodySystem")
         if contacts is not None:

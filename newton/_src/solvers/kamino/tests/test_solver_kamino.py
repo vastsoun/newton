@@ -29,7 +29,7 @@ from newton._src.solvers.kamino.core.state import StateKamino
 from newton._src.solvers.kamino.core.types import float32, int32, transformf, vec6f
 from newton._src.solvers.kamino.dynamics import DualProblem, DualProblemSettings
 from newton._src.solvers.kamino.examples import print_progress_bar
-from newton._src.solvers.kamino.geometry.contacts import Contacts
+from newton._src.solvers.kamino.geometry.contacts import ContactsKamino
 from newton._src.solvers.kamino.kinematics.jacobians import DenseSystemJacobians, SparseSystemJacobians
 from newton._src.solvers.kamino.kinematics.limits import LimitsKamino
 from newton._src.solvers.kamino.linalg import ConjugateGradientSolver, LinearSolverType, LLTBlockedSolver
@@ -81,7 +81,11 @@ def _test_control_callback(
 
 
 def test_prestep_callback(
-    solver: SolverKamino, state_in: StateKamino, state_out: StateKamino, control: ControlKamino, contacts: Contacts
+    solver: SolverKamino,
+    state_in: StateKamino,
+    state_out: StateKamino,
+    control: ControlKamino,
+    contacts: ContactsKamino,
 ):
     """
     A control callback function
@@ -215,7 +219,7 @@ def step_solver(
     state_p: StateKamino,
     state_n: StateKamino,
     control: ControlKamino,
-    contacts: Contacts | None = None,
+    contacts: ContactsKamino | None = None,
     dt: float = 0.001,
     show_progress: bool = False,
 ):
@@ -317,7 +321,7 @@ class TestSolverKamino(unittest.TestCase):
         builder = make_homogeneous_builder(num_worlds=1, build_fn=build_boxes_fourbar)
         model = builder.finalize(device=self.default_device)
         _, world_max_contacts = builder.compute_required_contact_capacity(max_contacts_per_pair=16)
-        contacts = Contacts(capacity=world_max_contacts, device=model.device)
+        contacts = ContactsKamino(capacity=world_max_contacts, device=model.device)
         solver = SolverKamino(model=model, contacts=contacts)
         self.assertIsInstance(solver, SolverKamino)
         assert_solver_components(self, solver)
@@ -340,7 +344,7 @@ class TestSolverKamino(unittest.TestCase):
         builder = make_homogeneous_builder(num_worlds=1, build_fn=build_boxes_fourbar, limits=False)
         model = builder.finalize(device=self.default_device)
         _, world_max_contacts = builder.compute_required_contact_capacity(max_contacts_per_pair=16)
-        contacts = Contacts(capacity=world_max_contacts, device=model.device)
+        contacts = ContactsKamino(capacity=world_max_contacts, device=model.device)
         solver = SolverKamino(model=model, contacts=contacts)
         self.assertIsInstance(solver, SolverKamino)
         assert_solver_components(self, solver)
@@ -1346,7 +1350,7 @@ class TestSolverKamino(unittest.TestCase):
 
         # Create a contacts container for the single-instance system
         _, single_world_max_contacts = single_builder.compute_required_contact_capacity(max_contacts_per_pair=16)
-        single_contacts = Contacts(capacity=single_world_max_contacts, device=single_model.device)
+        single_contacts = ContactsKamino(capacity=single_world_max_contacts, device=single_model.device)
 
         # Create simulator and check if the initial state is consistent with the contents of the builder
         single_solver = SolverKamino(model=single_model, contacts=single_contacts)
@@ -1432,7 +1436,7 @@ class TestSolverKamino(unittest.TestCase):
 
         # Create a contacts container for the multi-instance system
         _, multi_world_max_contacts = multi_builder.compute_required_contact_capacity(max_contacts_per_pair=16)
-        multi_contacts = Contacts(capacity=multi_world_max_contacts, device=multi_model.device)
+        multi_contacts = ContactsKamino(capacity=multi_world_max_contacts, device=multi_model.device)
 
         # Create simulator and check if the initial state is consistent with the contents of the builder
         multi_solver = SolverKamino(model=multi_model, contacts=multi_contacts)

@@ -44,7 +44,7 @@ Typical usage example:
     model = builder.finalize()
     data = model.data()
     limits = LimitsKamino(model)
-    contacts = Contacts(builder)
+    contacts = ContactsKamino(builder)
     jacobians = DenseSystemJacobians(model, limits, contacts)
 
     # Define a linear solver type to use as a back-end for the
@@ -82,7 +82,7 @@ from ..core.types import (
     vec6f,
 )
 from ..dynamics.delassus import BlockSparseMatrixFreeDelassusOperator, DelassusOperator
-from ..geometry.contacts import Contacts
+from ..geometry.contacts import ContactsKamino
 from ..kinematics.jacobians import DenseSystemJacobians, SparseSystemJacobians
 from ..kinematics.limits import LimitsKamino
 from ..linalg import LinearSolverType
@@ -1124,7 +1124,7 @@ class DualProblem:
         model: ModelKamino | None = None,
         data: DataKamino | None = None,
         limits: LimitsKamino | None = None,
-        contacts: Contacts | None = None,
+        contacts: ContactsKamino | None = None,
         solver: LinearSolverType | None = None,
         solver_kwargs: dict[str, Any] | None = None,
         settings: list[DualProblemSettings] | DualProblemSettings | None = None,
@@ -1145,7 +1145,7 @@ class DualProblem:
         Args:
             model (ModelKamino, optional):
                 The model to build the dual problem for.
-            contacts (Contacts, optional):
+            contacts (ContactsKamino, optional):
                 The contacts container to use for the dual problem.
             solver (LinearSolverType, optional):
                 The linear solver to use for the Delassus operator. Defaults to None.
@@ -1261,7 +1261,7 @@ class DualProblem:
         model: ModelKamino,
         data: DataKamino | None = None,
         limits: LimitsKamino | None = None,
-        contacts: Contacts | None = None,
+        contacts: ContactsKamino | None = None,
         solver: LinearSolverType | None = None,
         solver_kwargs: dict[str, Any] | None = None,
         settings: list[DualProblemSettings] | DualProblemSettings | None = None,
@@ -1275,7 +1275,7 @@ class DualProblem:
         Args:
             model (ModelKamino, optional):
                 The model to build the dual problem for.
-            contacts (Contacts, optional):
+            contacts (ContactsKamino, optional):
                 The contacts container to use for the dual problem.
             solver (LinearSolverType, optional):
                 The linear solver to use for the Delassus operator.\n
@@ -1309,8 +1309,8 @@ class DualProblem:
 
         # Ensure the contacts container is valid if provided
         if contacts is not None:
-            if not isinstance(contacts, Contacts):
-                raise ValueError("Invalid contacts container provided. Must be an instance of `Contacts`.")
+            if not isinstance(contacts, ContactsKamino):
+                raise ValueError("Invalid contacts container provided. Must be an instance of `ContactsKamino`.")
 
         # Capture reference to the model size
         self._size = model.size
@@ -1437,7 +1437,7 @@ class DualProblem:
         data: DataKamino,
         jacobians: DenseSystemJacobians | SparseSystemJacobians,
         limits: LimitsKamino | None = None,
-        contacts: Contacts | None = None,
+        contacts: ContactsKamino | None = None,
         reset_to_zero: bool = True,
     ):
         """
@@ -1602,7 +1602,7 @@ class DualProblem:
         model: ModelKamino,
         data: DataKamino,
         limits: LimitsKamino | None = None,
-        contacts: Contacts | None = None,
+        contacts: ContactsKamino | None = None,
     ):
         """
         Builds the free-velocity bias vector `v_b`.

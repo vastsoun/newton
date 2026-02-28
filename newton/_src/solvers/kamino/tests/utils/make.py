@@ -29,7 +29,7 @@ from ...core.data import DataKamino
 from ...core.math import quat_exp, screw, screw_angular, screw_linear
 from ...core.model import ModelKamino
 from ...core.types import float32, int32, mat33f, transformf, vec3f, vec6f
-from ...geometry.contacts import Contacts
+from ...geometry.contacts import ContactsKamino
 from ...geometry.detector import CollisionDetector, CollisionDetectorSettings
 from ...kinematics.constraints import make_unilateral_constraints_info, update_constraints_info
 from ...kinematics.jacobians import DenseSystemJacobians, SparseSystemJacobians
@@ -204,7 +204,7 @@ def make_test_problem(
     with_contacts: bool = False,
     dt: float = 0.001,
     verbose: bool = False,
-) -> tuple[ModelKamino, DataKamino, LimitsKamino | None, Contacts | None]:
+) -> tuple[ModelKamino, DataKamino, LimitsKamino | None, ContactsKamino | None]:
     # Create the model from the builder
     model = builder.finalize(device=device)
 
@@ -407,7 +407,7 @@ def make_test_problem_fourbar(
     with_contacts: bool = False,
     with_implicit_joints: bool = True,
     verbose: bool = False,
-) -> tuple[ModelKamino, DataKamino, LimitsKamino | None, Contacts | None]:
+) -> tuple[ModelKamino, DataKamino, LimitsKamino | None, ContactsKamino | None]:
     # Define the problem using the ModelBuilder
     builder: ModelBuilder = _model_utils.make_homogeneous_builder(
         num_worlds=num_worlds,
@@ -435,7 +435,7 @@ def make_test_problem_heterogeneous(
     with_contacts: bool = False,
     with_implicit_joints: bool = True,
     verbose: bool = False,
-) -> tuple[ModelKamino, DataKamino, LimitsKamino | None, Contacts | None]:
+) -> tuple[ModelKamino, DataKamino, LimitsKamino | None, ContactsKamino | None]:
     # Define the problem using the ModelBuilder
     builder: ModelBuilder = _model_basics.make_basics_heterogeneous_builder(
         dynamic_joints=with_implicit_joints,

@@ -30,7 +30,7 @@ from newton._src.solvers.kamino.dynamics.wrenches import (
     compute_joint_dof_body_wrenches_dense,
     compute_joint_dof_body_wrenches_sparse,
 )
-from newton._src.solvers.kamino.geometry.contacts import Contacts
+from newton._src.solvers.kamino.geometry.contacts import ContactsKamino
 from newton._src.solvers.kamino.kinematics.jacobians import DenseSystemJacobians, SparseSystemJacobians
 from newton._src.solvers.kamino.kinematics.limits import LimitsKamino
 from newton._src.solvers.kamino.tests import setup_tests, test_context
@@ -69,7 +69,7 @@ def compute_and_compare_dense_sparse_jacobian_wrenches(
     model: ModelKamino,
     data: DataKamino,
     limits: LimitsKamino,
-    contacts: Contacts,
+    contacts: ContactsKamino,
 ):
     # Create the Jacobians container
     jacobians_dense = DenseSystemJacobians(model=model, limits=limits, contacts=contacts)

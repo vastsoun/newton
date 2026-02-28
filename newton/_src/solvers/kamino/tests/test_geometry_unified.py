@@ -31,7 +31,7 @@ from newton._src.solvers.kamino.core.math import I_3
 from newton._src.solvers.kamino.core.model import ModelKamino
 from newton._src.solvers.kamino.core.shapes import SphereShape
 from newton._src.solvers.kamino.core.types import transformf, vec6f
-from newton._src.solvers.kamino.geometry.contacts import Contacts
+from newton._src.solvers.kamino.geometry.contacts import ContactsKamino
 from newton._src.solvers.kamino.geometry.unified import CollisionPipelineUnifiedKamino
 from newton._src.solvers.kamino.models.builders import basics, testing
 from newton._src.solvers.kamino.tests import setup_tests, test_context
@@ -141,7 +141,7 @@ def test_unified_pipeline(
         # Create a contacts container using the worst-case capacity of NxN over model-wise geom pairs
         # NOTE: This is required by the unified pipeline when using SAP and NXN broad-phases
         capacity = max_contacts_per_pair * ((builder.num_geoms * (builder.num_geoms - 1)) // 2)
-        contacts = Contacts(capacity=capacity, device=device)
+        contacts = ContactsKamino(capacity=capacity, device=device)
         contacts.clear()
 
         # Execute the unified collision detection pipeline
@@ -545,7 +545,7 @@ class TestUnifiedWriterContactDataRegression(unittest.TestCase):
         )
         n_geoms = builder.num_geoms
         capacity = 8 * ((n_geoms * (n_geoms - 1)) // 2)
-        contacts = Contacts(capacity=max(capacity, 8), device=self.default_device)
+        contacts = ContactsKamino(capacity=max(capacity, 8), device=self.default_device)
         contacts.clear()
         pipeline.collide(model, data, contacts)
         return contacts
@@ -591,7 +591,7 @@ class TestUnifiedWriterContactDataRegression(unittest.TestCase):
         self.assertEqual(active, 1, "Contact within gap must be retained")
 
     def test_03_gap_rejects_distant_contact(self):
-        """Contacts beyond the detection gap must be rejected."""
+        """ContactsKamino beyond the detection gap must be rejected."""
         separation = 0.1
         builder = testing.make_single_shape_pair_builder(
             shapes=("sphere", "sphere"),
@@ -706,7 +706,7 @@ class TestUnifiedPipelineNxnBroadphase(unittest.TestCase):
 
         n_geoms = builder.num_geoms
         capacity = 8 * ((n_geoms * (n_geoms - 1)) // 2)
-        contacts = Contacts(capacity=max(capacity, 8), device=self.default_device)
+        contacts = ContactsKamino(capacity=max(capacity, 8), device=self.default_device)
         contacts.clear()
 
         pipeline.collide(model, data, contacts)
@@ -735,7 +735,7 @@ class TestUnifiedPipelineNxnBroadphase(unittest.TestCase):
 
         n_geoms = builder.num_geoms
         capacity = 8 * ((n_geoms * (n_geoms - 1)) // 2)
-        contacts = Contacts(capacity=max(capacity, 8), device=self.default_device)
+        contacts = ContactsKamino(capacity=max(capacity, 8), device=self.default_device)
         contacts.clear()
 
         pipeline.collide(model, data, contacts)

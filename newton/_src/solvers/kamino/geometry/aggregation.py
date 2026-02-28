@@ -17,7 +17,7 @@
 Contact aggregation for RL applications.
 
 This module provides functionality to aggregate per-contact data from Kamino's
-ContactsData into per-body and per-geom summaries suitable for RL observations.
+ContactsKaminoData into per-body and per-geom summaries suitable for RL observations.
 The aggregation is performed on GPU using efficient atomic operations.
 """
 
@@ -29,7 +29,7 @@ from warp.context import Devicelike
 
 from ..core.model import ModelKamino
 from ..core.types import int32, quatf, vec2i, vec3f
-from .contacts import ContactMode, Contacts
+from .contacts import ContactMode, ContactsKamino
 
 ###
 # Module interface
@@ -338,7 +338,7 @@ class ContactAggregation:
     """
     High-level interface for aggregating Kamino contact data for RL.
 
-    This class efficiently aggregates per-contact data from Kamino's ContactsData
+    This class efficiently aggregates per-contact data from Kamino's ContactsKaminoData
     into per-body and per-geom summaries suitable for RL observations. All computation
     is performed on GPU using atomic operations for efficiency.
 
@@ -354,7 +354,7 @@ class ContactAggregation:
     def __init__(
         self,
         model: ModelKamino | None = None,
-        contacts: Contacts | None = None,
+        contacts: ContactsKamino | None = None,
         static_geom_ids: list[int] | None = None,
         device: Devicelike | None = None,
         enable_positions_normals: bool = False,
@@ -364,7 +364,7 @@ class ContactAggregation:
         Args:
             model (ModelKamino | None): The model container describing the system to be simulated.
                 If None, call ``finalize()`` later.
-            contacts (Contacts | None): The Contacts container with per-contact data.
+            contacts (ContactsKamino | None): The contacts container with per-contact data.
                 If None, call ``finalize()`` later.
             static_geom_ids: List of geometry IDs considered as 'static'. Defaults to [0].
             device: Device for computation. If None, uses model's device.
@@ -375,7 +375,7 @@ class ContactAggregation:
 
         # Forward declarations
         self._model: ModelKamino | None = None
-        self._contacts: Contacts | None = None
+        self._contacts: ContactsKamino | None = None
         self._data: ContactAggregationData | None = None
         self._enable_positions_normals: bool = enable_positions_normals
 
@@ -391,7 +391,7 @@ class ContactAggregation:
     def finalize(
         self,
         model: ModelKamino,
-        contacts: Contacts,
+        contacts: ContactsKamino,
         static_geom_ids: list[int] | None = None,
         device: Devicelike | None = None,
     ) -> None:
@@ -399,7 +399,7 @@ class ContactAggregation:
 
         Args:
             model (ModelKamino): The model container describing the system to be simulated.
-            contacts (Contacts): The Contacts container with per-contact data.
+            contacts (ContactsKamino): The contacts container with per-contact data.
             static_geom_ids (list[int] | None): List of geometry IDs considered as 'static'. Defaults to [0].
             device (Devicelike | None): Device for computation. If None, uses model's device.
         """
@@ -481,7 +481,7 @@ class ContactAggregation:
 
     def compute(self, skip_if_no_contacts: bool = False):
         """
-        Compute aggregated contact data from current ContactsData.
+        Compute aggregated contact data from current ContactsKaminoData.
 
         This method should be called after simulator.step() to update contact
         force and flags. It launches GPU kernels to efficiently aggregate

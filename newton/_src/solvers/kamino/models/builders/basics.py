@@ -17,11 +17,11 @@
 Factory methods for building 'basic' models.
 
 This module provides a set of functions to create simple mechanical assemblies
-using the ModelBuilder interface. These include fundamental configurations such
+using the ModelBuilderKamino interface. These include fundamental configurations such
 as a box on a plane, a box pendulum, a cartpole, and various linked box systems.
 
 Each function constructs a specific model by adding rigid bodies, joints,
-and collision geometries to a ModelBuilder instance. The models are designed
+and collision geometries to a ModelBuilderKamino instance. The models are designed
 to serve as foundational examples for testing and demonstration purposes,
 and each features a certain subset of ill-conditioned dynamics.
 """
@@ -30,7 +30,7 @@ import math
 
 import warp as wp
 
-from ...core import ModelBuilder, inertia
+from ...core import ModelBuilderKamino, inertia
 from ...core.joints import JointActuationType, JointDoFType
 from ...core.math import FLOAT32_MAX, FLOAT32_MIN, I_3
 from ...core.shapes import BoxShape, SphereShape
@@ -57,17 +57,17 @@ __all__ = [
 
 
 def build_box_on_plane(
-    builder: ModelBuilder | None = None,
+    builder: ModelBuilderKamino | None = None,
     z_offset: float = 0.0,
     ground: bool = True,
     new_world: bool = True,
     world_index: int = 0,
-) -> ModelBuilder:
+) -> ModelBuilderKamino:
     """
     Constructs a basic model of a free-floating 'box' body and a ground box geom.
 
     Args:
-        builder (ModelBuilder | None):
+        builder (ModelBuilderKamino | None):
             An optional existing model builder to populate.\n
             If `None`, a new builder is created.
         z_offset (float):
@@ -86,11 +86,11 @@ def build_box_on_plane(
             Defaults to `0`.
 
     Returns:
-        ModelBuilder: The populated model builder.
+        ModelBuilderKamino: The populated model builder.
     """
     # Create a new builder if none is provided
     if builder is None:
-        _builder = ModelBuilder(default_world=False)
+        _builder = ModelBuilderKamino(default_world=False)
     else:
         _builder = builder
 
@@ -124,21 +124,21 @@ def build_box_on_plane(
 
 
 def build_box_pendulum(
-    builder: ModelBuilder | None = None,
+    builder: ModelBuilderKamino | None = None,
     z_offset: float = 0.7,
     ground: bool = True,
     new_world: bool = True,
     dynamic_joints: bool = False,
     implicit_pd: bool = False,
     world_index: int = 0,
-) -> ModelBuilder:
+) -> ModelBuilderKamino:
     """
     Constructs a basic model of a single box pendulum body with a unary revolute joint.
 
     This version initializes the pendulum in a horizontal configuration.
 
     Args:
-        builder (ModelBuilder | None):
+        builder (ModelBuilderKamino | None):
             An optional existing model builder to populate.\n
             If `None`, a new builder is created.
         z_offset (float):
@@ -157,11 +157,11 @@ def build_box_pendulum(
             Defaults to `0`.
 
     Returns:
-        ModelBuilder: The populated model builder.
+        ModelBuilderKamino: The populated model builder.
     """
     # Create a new builder if none is provided
     if builder is None:
-        _builder = ModelBuilder(default_world=False)
+        _builder = ModelBuilderKamino(default_world=False)
     else:
         _builder = builder
 
@@ -226,19 +226,19 @@ def build_box_pendulum(
 
 
 def build_box_pendulum_vertical(
-    builder: ModelBuilder | None = None,
+    builder: ModelBuilderKamino | None = None,
     z_offset: float = 0.7,
     ground: bool = True,
     new_world: bool = True,
     world_index: int = 0,
-) -> ModelBuilder:
+) -> ModelBuilderKamino:
     """
     Constructs a basic model of a single box pendulum body with a unary revolute joint.
 
     This version initializes the pendulum in a vertical configuration.
 
     Args:
-        builder (ModelBuilder | None):
+        builder (ModelBuilderKamino | None):
             An optional existing model builder to populate.\n
             If `None`, a new builder is created.
         z_offset (float):
@@ -257,11 +257,11 @@ def build_box_pendulum_vertical(
             Defaults to `0`.
 
     Returns:
-        ModelBuilder: The populated model builder.
+        ModelBuilderKamino: The populated model builder.
     """
     # Create a new builder if none is provided
     if builder is None:
-        _builder = ModelBuilder(default_world=False)
+        _builder = ModelBuilderKamino(default_world=False)
     else:
         _builder = builder
 
@@ -322,18 +322,18 @@ def build_box_pendulum_vertical(
 
 
 def build_cartpole(
-    builder: ModelBuilder | None = None,
+    builder: ModelBuilderKamino | None = None,
     z_offset: float = 0.0,
     ground: bool = True,
     new_world: bool = True,
     limits: bool = True,
     world_index: int = 0,
-) -> ModelBuilder:
+) -> ModelBuilderKamino:
     """
     Constructs a basic model of a cartpole mounted onto a rail.
 
     Args:
-        builder (ModelBuilder | None):
+        builder (ModelBuilderKamino | None):
             An optional existing model builder to populate.\n
             If `None`, a new builder is created.
         z_offset (float):
@@ -352,11 +352,11 @@ def build_cartpole(
             Defaults to `0`.
 
     Returns:
-        ModelBuilder: The populated model builder.
+        ModelBuilderKamino: The populated model builder.
     """
     # Create a new builder if none is provided
     if builder is None:
-        _builder = ModelBuilder(default_world=False)
+        _builder = ModelBuilderKamino(default_world=False)
     else:
         _builder = builder
 
@@ -466,19 +466,19 @@ def build_cartpole(
 
 
 def build_boxes_hinged(
-    builder: ModelBuilder | None = None,
+    builder: ModelBuilderKamino | None = None,
     z_offset: float = 0.0,
     ground: bool = True,
     dynamic_joints: bool = False,
     implicit_pd: bool = False,
     new_world: bool = True,
     world_index: int = 0,
-) -> ModelBuilder:
+) -> ModelBuilderKamino:
     """
     Constructs a basic model of a two floating boxes connected via revolute joint.
 
     Args:
-        builder (ModelBuilder | None):
+        builder (ModelBuilderKamino | None):
             An optional existing model builder to populate.\n
             If `None`, a new builder is created.
         z_offset (float):
@@ -497,11 +497,11 @@ def build_boxes_hinged(
             Defaults to `0`.
 
     Returns:
-        ModelBuilder: The populated model builder.
+        ModelBuilderKamino: The populated model builder.
     """
     # Create a new builder if none is provided
     if builder is None:
-        _builder = ModelBuilder(default_world=False)
+        _builder = ModelBuilderKamino(default_world=False)
     else:
         _builder = builder
 
@@ -579,12 +579,12 @@ def build_boxes_hinged(
 
 
 def build_boxes_nunchaku(
-    builder: ModelBuilder | None = None,
+    builder: ModelBuilderKamino | None = None,
     z_offset: float = 0.0,
     ground: bool = True,
     new_world: bool = True,
     world_index: int = 0,
-) -> ModelBuilder:
+) -> ModelBuilderKamino:
     """
     Constructs a basic model of a faux nunchaku consisting of
     two boxes and one sphere connected via spherical joints.
@@ -592,7 +592,7 @@ def build_boxes_nunchaku(
     This version initializes the nunchaku in a horizontal configuration.
 
     Args:
-        builder (ModelBuilder | None):
+        builder (ModelBuilderKamino | None):
             An optional existing model builder to populate.\n
             If `None`, a new builder is created.
         z_offset (float):
@@ -611,11 +611,11 @@ def build_boxes_nunchaku(
             Defaults to `0`.
 
     Returns:
-        ModelBuilder: The populated model builder.
+        ModelBuilderKamino: The populated model builder.
     """
     # Create a new builder if none is provided
     if builder is None:
-        _builder = ModelBuilder(default_world=False)
+        _builder = ModelBuilderKamino(default_world=False)
     else:
         _builder = builder
 
@@ -720,12 +720,12 @@ def build_boxes_nunchaku(
 
 
 def build_boxes_nunchaku_vertical(
-    builder: ModelBuilder | None = None,
+    builder: ModelBuilderKamino | None = None,
     z_offset: float = 0.0,
     ground: bool = True,
     new_world: bool = True,
     world_index: int = 0,
-) -> ModelBuilder:
+) -> ModelBuilderKamino:
     """
     Constructs a basic model of a faux nunchaku consisting of
     two boxes and one sphere connected via spherical joints.
@@ -733,7 +733,7 @@ def build_boxes_nunchaku_vertical(
     This version initializes the nunchaku in a vertical configuration.
 
     Args:
-        builder (ModelBuilder | None):
+        builder (ModelBuilderKamino | None):
             An optional existing model builder to populate.\n
             If `None`, a new builder is created.
         z_offset (float):
@@ -752,11 +752,11 @@ def build_boxes_nunchaku_vertical(
             Defaults to `0`.
 
     Returns:
-        ModelBuilder: The populated model builder.
+        ModelBuilderKamino: The populated model builder.
     """
     # Create a new builder if none is provided
     if builder is None:
-        _builder = ModelBuilder(default_world=False)
+        _builder = ModelBuilderKamino(default_world=False)
     else:
         _builder = builder
 
@@ -861,7 +861,7 @@ def build_boxes_nunchaku_vertical(
 
 
 def build_boxes_fourbar(
-    builder: ModelBuilder | None = None,
+    builder: ModelBuilderKamino | None = None,
     z_offset: float = 0.0,
     fixedbase: bool = False,
     floatingbase: bool = False,
@@ -873,12 +873,12 @@ def build_boxes_fourbar(
     new_world: bool = True,
     world_index: int = 0,
     actuator_ids: list[int] | None = None,
-) -> ModelBuilder:
+) -> ModelBuilderKamino:
     """
     Constructs a basic model of a four-bar linkage.
 
     Args:
-        builder (ModelBuilder | None):
+        builder (ModelBuilderKamino | None):
             An optional existing model builder to populate.\n
             If `None`, a new builder is created.
         z_offset (float):
@@ -897,11 +897,11 @@ def build_boxes_fourbar(
             Defaults to `0`.
 
     Returns:
-        ModelBuilder: A model builder containing the four-bar linkage.
+        ModelBuilderKamino: A model builder containing the four-bar linkage.
     """
     # Create a new builder if none is provided
     if builder is None:
-        _builder = ModelBuilder(default_world=False)
+        _builder = ModelBuilderKamino(default_world=False)
     else:
         _builder = builder
 
@@ -1167,16 +1167,16 @@ def make_basics_heterogeneous_builder(
     ground: bool = True,
     dynamic_joints: bool = False,
     implicit_pd: bool = False,
-) -> ModelBuilder:
+) -> ModelBuilderKamino:
     """
     Creates a multi-world builder with different worlds in each model.
 
     This function constructs a model builder containing all basic models.
 
     Returns:
-        ModelBuilder: The constructed model builder.
+        ModelBuilderKamino: The constructed model builder.
     """
-    builder = ModelBuilder(default_world=False)
+    builder = ModelBuilderKamino(default_world=False)
     builder.add_builder(build_boxes_fourbar(ground=ground, dynamic_joints=dynamic_joints, implicit_pd=implicit_pd))
     builder.add_builder(build_boxes_nunchaku(ground=ground))
     builder.add_builder(build_boxes_hinged(ground=ground, dynamic_joints=dynamic_joints, implicit_pd=implicit_pd))

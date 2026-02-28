@@ -22,7 +22,7 @@ from warp.context import Devicelike
 
 import newton
 import newton.examples
-from newton._src.solvers.kamino.core.builder import ModelBuilder
+from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
 from newton._src.solvers.kamino.core.shapes import ShapeType
 from newton._src.solvers.kamino.examples import get_examples_output_path, run_headless
 from newton._src.solvers.kamino.geometry import CollisionPipelineType
@@ -110,7 +110,7 @@ class Example:
 
         # Construct model builder containing all shape-pair combinations supported by the configured pipeline
         msg.info("Constructing builder using model generator ...")
-        self.builder: ModelBuilder = testing.make_shape_pairs_builder(
+        self.builder: ModelBuilderKamino = testing.make_shape_pairs_builder(
             shape_pairs=supported_shape_pairs,
             distance=0.0,
             ground_box=True,

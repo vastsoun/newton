@@ -24,7 +24,7 @@ import warp as wp
 from PIL import Image
 
 from .....viewer import ViewerGL
-from ...core.builder import ModelBuilder
+from ...core.builder import ModelBuilderKamino
 from ...core.geometry import GeometryDescriptor
 from ...core.shapes import ShapeType
 from ...core.types import vec3f
@@ -201,7 +201,7 @@ class ViewerKamino(ViewerGL):
 
     def __init__(
         self,
-        builder: ModelBuilder,
+        builder: ModelBuilderKamino,
         simulator: Simulator,
         width: int = 1920,
         height: int = 1080,

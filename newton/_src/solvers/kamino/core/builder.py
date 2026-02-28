@@ -48,7 +48,7 @@ from .world import WorldDescriptor
 ###
 
 __all__ = [
-    "ModelBuilder",
+    "ModelBuilderKamino",
 ]
 
 
@@ -64,7 +64,7 @@ wp.set_module_options({"enable_backward": False})
 ###
 
 
-class ModelBuilder:
+class ModelBuilderKamino:
     """
     A class to facilitate construction of simulation models.
     """
@@ -627,9 +627,9 @@ class ModelBuilder:
 
         return self._materials.register(material)
 
-    def add_builder(self, other: ModelBuilder):
+    def add_builder(self, other: ModelBuilderKamino):
         """
-        Extends the contents of the current ModelBuilder with those of another.
+        Extends the contents of the current ModelBuilderKamino with those of another.
 
         Each builder represents a distinct world, and this method allows for the
         combination of multiple worlds into a single model. The method ensures that the
@@ -637,14 +637,14 @@ class ModelBuilder:
         existing elements in the current builder, preventing any index conflicts.
 
         Arguments:
-            other (ModelBuilder): The other ModelBuilder whose contents are to be added to the current.
+            other (ModelBuilderKamino): The other ModelBuilderKamino whose contents are to be added to the current.
 
         Raises:
-            ValueError: If the provided builder is not of type `ModelBuilder`.
+            ValueError: If the provided builder is not of type `ModelBuilderKamino`.
         """
         # Check if the other builder is of valid type
-        if not isinstance(other, ModelBuilder):
-            raise TypeError(f"Invalid builder type: {type(other)}. Must be a ModelBuilder instance.")
+        if not isinstance(other, ModelBuilderKamino):
+            raise TypeError(f"Invalid builder type: {type(other)}. Must be a ModelBuilderKamino instance.")
 
         # Make a deep copy of the other builder to avoid modifying the original
         # TODO: How can we avoid this deep copy to improve performance
@@ -717,7 +717,7 @@ class ModelBuilder:
 
         # Check if the axis is valid
         if not isinstance(axis, Axis):
-            raise TypeError(f"ModelBuilder: Invalid axis type: {type(axis)}. Must be `Axis`.")
+            raise TypeError(f"ModelBuilderKamino: Invalid axis type: {type(axis)}. Must be `Axis`.")
 
         # Set the new up axis
         self._up_axes[world_index] = axis
@@ -811,7 +811,7 @@ class ModelBuilder:
                 if body.wid == world_index and body.name == body_key:
                     world.set_base_body(body.bid)
                     return
-        raise ValueError(f"Failed to identify the base body in world `{world_index} given key {body_key}`.")
+        raise ValueError(f"Failed to identify the base body in world `{world_index}` given key `{body_key}`.")
 
     def set_base_joint(self, joint_key: int | str, world_index: int = 0):
         """
@@ -835,7 +835,7 @@ class ModelBuilder:
                 if joint.wid == world_index and joint.name == joint_key:
                     world.set_base_joint(joint.jid)
                     return
-        raise ValueError(f"Failed to identify the base joint in world `{world_index} given key {joint_key}`.")
+        raise ValueError(f"Failed to identify the base joint in world `{world_index}` given key `{joint_key}`.")
 
     ###
     # Model Compilation
@@ -843,7 +843,7 @@ class ModelBuilder:
 
     def finalize(self, device: Devicelike = None, requires_grad: bool = False, base_auto: bool = True) -> ModelKamino:
         """
-        Constructs a ModelKamino object from the current ModelBuilder.
+        Constructs a ModelKamino object from the current ModelBuilderKamino.
 
         All description data contained in the builder is compiled into a ModelKamino
         object, allocating the necessary data structures on the target device.
@@ -862,10 +862,11 @@ class ModelBuilder:
         # Number of model worlds
         num_worlds = len(self._worlds)
         if num_worlds == 0:
-            raise ValueError("ModelBuilder: Cannot finalize an empty model with zero worlds.")
+            raise ValueError("ModelBuilderKamino: Cannot finalize an empty model with zero worlds.")
         if num_worlds != self._num_worlds:
             raise ValueError(
-                f"ModelBuilder: Inconsistent number of worlds: expected {self._num_worlds}, but found {num_worlds}."
+                "ModelBuilderKamino: Inconsistent number of worlds: "
+                f"expected {self._num_worlds}, but found {num_worlds}."
             )
 
         ###
@@ -886,7 +887,7 @@ class ModelBuilder:
                 if world.has_base_body:  # Ensure base joint & body are compatible if both were set
                     if world.base_body_idx != follower_idx:
                         raise ValueError(
-                            f"ModelBuilder: Inconsistent base body and base joint for world {world.name} ({w})"
+                            f"ModelBuilderKamino: Inconsistent base body and base joint for world {world.name} ({w})"
                         )
                 else:  # Set base body to be the follower of the base joint
                     world.set_base_body(follower_idx)
@@ -1410,7 +1411,7 @@ class ModelBuilder:
 
     def make_collision_candidate_pairs(self, allow_neighbors: bool = False):
         """
-        Construct the collision pair candidates for the given ModelBuilder instance.
+        Construct the collision pair candidates.
 
         Filtering steps:
             1. filter out self-collisions
@@ -1421,7 +1422,6 @@ class ModelBuilder:
             6. (optional) filter out neighbor collisions for joints w/ DoFs
 
         Args:
-            builder (ModelBuilder): The model builder instance containing the worlds and geometries.
             allow_neighbors (bool, optional): If True, allows neighbor collisions for joints with DoF.
 
         Returns:

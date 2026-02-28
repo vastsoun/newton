@@ -24,7 +24,7 @@ import numpy as np
 import warp as wp
 
 from ...core.bodies import update_body_inertias
-from ...core.builder import ModelBuilder
+from ...core.builder import ModelBuilderKamino
 from ...core.data import DataKamino
 from ...core.math import quat_exp, screw, screw_angular, screw_linear
 from ...core.model import ModelKamino
@@ -122,7 +122,7 @@ def make_inverse_generalized_mass_matrices(model: ModelKamino, data: DataKamino)
 
 
 def make_containers(
-    builder: ModelBuilder,
+    builder: ModelBuilderKamino,
     device: wp.DeviceLike = None,
     max_world_contacts: int = 0,
     sparse: bool = True,
@@ -196,7 +196,7 @@ def update_containers(
 
 
 def make_test_problem(
-    builder: ModelBuilder,
+    builder: ModelBuilderKamino,
     set_state_fn: Callable[[ModelKamino, DataKamino], None] | None = None,
     device: wp.DeviceLike = None,
     max_world_contacts: int = 12,
@@ -408,8 +408,8 @@ def make_test_problem_fourbar(
     with_implicit_joints: bool = True,
     verbose: bool = False,
 ) -> tuple[ModelKamino, DataKamino, LimitsKamino | None, ContactsKamino | None]:
-    # Define the problem using the ModelBuilder
-    builder: ModelBuilder = _model_utils.make_homogeneous_builder(
+    # Define the problem using the ModelBuilderKamino
+    builder: ModelBuilderKamino = _model_utils.make_homogeneous_builder(
         num_worlds=num_worlds,
         build_fn=_model_basics.build_boxes_fourbar,
         dynamic_joints=with_implicit_joints,
@@ -436,8 +436,8 @@ def make_test_problem_heterogeneous(
     with_implicit_joints: bool = True,
     verbose: bool = False,
 ) -> tuple[ModelKamino, DataKamino, LimitsKamino | None, ContactsKamino | None]:
-    # Define the problem using the ModelBuilder
-    builder: ModelBuilder = _model_basics.make_basics_heterogeneous_builder(
+    # Define the problem using the ModelBuilderKamino
+    builder: ModelBuilderKamino = _model_basics.make_basics_heterogeneous_builder(
         dynamic_joints=with_implicit_joints,
         implicit_pd=with_implicit_joints,
     )

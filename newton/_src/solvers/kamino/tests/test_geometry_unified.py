@@ -25,7 +25,7 @@ import numpy as np
 import warp as wp
 from warp.context import Devicelike
 
-from newton._src.solvers.kamino.core.builder import ModelBuilder
+from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
 from newton._src.solvers.kamino.core.data import DataKamino
 from newton._src.solvers.kamino.core.math import I_3
 from newton._src.solvers.kamino.core.model import ModelKamino
@@ -105,7 +105,7 @@ single edge or corner, generating only 1 contact point.
 
 
 def test_unified_pipeline(
-    builder: ModelBuilder,
+    builder: ModelBuilderKamino,
     expected: dict,
     max_contacts_per_pair: int = 8,
     margin: float = 0.0,
@@ -117,7 +117,7 @@ def test_unified_pipeline(
 ):
     """
     Runs the unified collision detection pipeline using all broad-phase backends
-    on a system specified via a ModelBuilder and checks the results.
+    on a system specified via a ModelBuilderKamino and checks the results.
     """
     # Run the narrow-phase test over each broad-phase backend
     if broadphase_modes is None:
@@ -533,7 +533,7 @@ class TestUnifiedWriterContactDataRegression(unittest.TestCase):
     def tearDown(self):
         self.default_device = None
 
-    def _run_pipeline(self, builder: ModelBuilder, default_gap=0.0):
+    def _run_pipeline(self, builder: ModelBuilderKamino, default_gap=0.0):
         model = builder.finalize(self.default_device)
         data = model.data()
         pipeline = CollisionPipelineUnifiedKamino(
@@ -617,7 +617,7 @@ class TestUnifiedPipelineNxnBroadphase(unittest.TestCase):
 
     def _make_two_sphere_builder(self, group_a=1, collides_a=1, group_b=1, collides_b=1, same_body=False):
         """Helper: build a single-world scene with two spheres near each other."""
-        builder = ModelBuilder()
+        builder = ModelBuilderKamino()
         builder.add_world()
         bid_a = builder.add_rigid_body(
             m_i=1.0,

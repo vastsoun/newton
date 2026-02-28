@@ -41,7 +41,7 @@ from ....geometry.support_function import GenericShapeData, SupportMapDataProvid
 from ....geometry.types import GeoType
 
 # Kamino imports
-from ..core.builder import ModelBuilder
+from ..core.builder import ModelBuilderKamino
 from ..core.data import DataKamino
 from ..core.materials import DEFAULT_FRICTION, DEFAULT_RESTITUTION, make_get_material_pair_properties
 from ..core.model import ModelKamino
@@ -495,7 +495,7 @@ class CollisionPipelineUnifiedKamino:
     def __init__(
         self,
         model: ModelKamino,
-        builder: ModelBuilder,
+        builder: ModelBuilderKamino,
         broadphase: Literal["nxn", "sap", "explicit"] = "explicit",
         max_contacts: int | None = None,
         max_contacts_per_pair: int = DEFAULT_GEOM_PAIR_MAX_CONTACTS,
@@ -509,7 +509,7 @@ class CollisionPipelineUnifiedKamino:
         Initialize an instance of Kamino's wrapper of the unified collision detection pipeline.
 
         Args:
-            builder: Kamino ModelBuilder (used to extract collision pair information).
+            builder: Kamino ModelBuilderKamino (used to extract collision pair information).
             broadphase: Broad-phase back-end to use (NXN, SAP, or EXPLICIT).
             max_contacts: Maximum contacts for the entire model (overrides computed value).
             max_contacts_per_pair: Maximum contacts per colliding geometry pair.
@@ -708,11 +708,11 @@ class CollisionPipelineUnifiedKamino:
         )
 
     @staticmethod
-    def _build_excluded_pairs(builder: ModelBuilder) -> tuple[wp.array | None, int]:
+    def _build_excluded_pairs(builder: ModelBuilderKamino) -> tuple[wp.array | None, int]:
         """Build a sorted array of shape pairs that the NXN/SAP broadphase should exclude.
 
         Encodes the same filtering rules as
-        :meth:`ModelBuilder.make_collision_candidate_pairs` (same-body, group/collides
+        :meth:`ModelBuilderKamino.make_collision_candidate_pairs` (same-body, group/collides
         bitmask, fixed-joint and DoF-joint neighbours) but returns the *complement*:
         pairs that should **not** collide.
 

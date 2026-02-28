@@ -19,7 +19,7 @@ Provides a unified interface for performing Collision Detection in Kamino.
 Usage example:
 
     # Create a model builder
-    builder = ModelBuilder()
+    builder = ModelBuilderKamino()
     # ... add bodies and collision geometries to the builder ...
 
     # Create a collision detector with desired settings
@@ -39,7 +39,7 @@ from typing import Literal
 
 import warp as wp
 
-from ..core.builder import ModelBuilder
+from ..core.builder import ModelBuilderKamino
 from ..core.data import DataKamino
 from ..core.model import ModelKamino
 from ..core.types import override
@@ -174,7 +174,7 @@ class CollisionDetector:
     def __init__(
         self,
         model: ModelKamino | None = None,
-        builder: ModelBuilder | None = None,
+        builder: ModelBuilderKamino | None = None,
         settings: CollisionDetectorSettings | None = None,
         device: wp.DeviceLike = None,
     ):
@@ -182,8 +182,8 @@ class CollisionDetector:
         Initialize the CollisionDetector.
 
         Args:
-            builder(ModelBuilder):
-                ModelBuilder instance containing the host-side model definition.
+            builder(ModelBuilderKamino):
+                ModelBuilderKamino instance containing the host-side model definition.
             device(wp.DeviceLike):
                 The target Warp device for allocation and execution.\n
                 If `None`, uses the default device selected by Warp on the given platform.
@@ -242,7 +242,7 @@ class CollisionDetector:
     def finalize(
         self,
         model: ModelKamino,
-        builder: ModelBuilder,
+        builder: ModelBuilderKamino,
         settings: CollisionDetectorSettings | None = None,
         device: wp.DeviceLike = None,
     ):
@@ -250,8 +250,8 @@ class CollisionDetector:
         Allocates CollisionDetector data on the target device.
 
         Args:
-            builder(ModelBuilder):
-                ModelBuilder instance containing the host-side model definition.
+            builder(ModelBuilderKamino):
+                ModelBuilderKamino instance containing the host-side model definition.
             settings(CollisionDetectorSettings):
                 Settings to configure the CollisionDetector.\n
                 If `None`, uses default settings.
@@ -262,8 +262,8 @@ class CollisionDetector:
         # Check that the builder is valid
         if builder is None:
             raise ValueError("Cannot finalize CollisionDetector: builder is None")
-        if not isinstance(builder, ModelBuilder):
-            raise TypeError(f"Cannot finalize CollisionDetector: expected ModelBuilder, got {type(builder)}")
+        if not isinstance(builder, ModelBuilderKamino):
+            raise TypeError(f"Cannot finalize CollisionDetector: expected ModelBuilderKamino, got {type(builder)}")
 
         # Check that the model is valid
         if model is None:

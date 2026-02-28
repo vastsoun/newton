@@ -19,7 +19,7 @@ from dataclasses import dataclass
 
 import warp as wp
 
-from ...core.builder import ModelBuilder
+from ...core.builder import ModelBuilderKamino
 from ...models import basics, get_examples_usd_assets_path
 from ...models.builders.utils import (
     add_ground_box,
@@ -61,7 +61,7 @@ class CameraConfig:
     yaw: float
 
 
-ProblemConfig = tuple[ModelBuilder, ControlConfig | None, CameraConfig | None]
+ProblemConfig = tuple[ModelBuilderKamino, ControlConfig | None, CameraConfig | None]
 """
 Defines the configurations for a single benchmark problem.
 
@@ -121,7 +121,7 @@ def make_benchmark_problem_dr_legs(
     # Create a model builder from the imported USD
     msg.notif("Constructing builder from imported USD ...")
     importer = USDImporter()
-    builder: ModelBuilder = make_homogeneous_builder(
+    builder: ModelBuilderKamino = make_homogeneous_builder(
         num_worlds=num_worlds, build_fn=importer.import_from, load_static_geometry=True, source=USD_MODEL_PATH
     )
     # Offset the model to place it above the ground

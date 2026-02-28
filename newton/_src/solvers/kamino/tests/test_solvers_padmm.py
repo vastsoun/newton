@@ -22,7 +22,7 @@ import numpy as np
 import warp as wp
 from warp.context import Devicelike
 
-from newton._src.solvers.kamino.core.builder import ModelBuilder
+from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
 from newton._src.solvers.kamino.core.math import screw, vec3f
 from newton._src.solvers.kamino.core.model import ModelKamino
 from newton._src.solvers.kamino.dynamics.dual import DualProblem
@@ -61,7 +61,7 @@ class TestSetup:
         self.max_world_contacts = max_world_contacts
 
         # Construct the model description using model builders for different systems
-        self.builder: ModelBuilder = builder_fn(**kwargs)
+        self.builder: ModelBuilderKamino = builder_fn(**kwargs)
 
         # Set ad-hoc configurations
         self.builder.gravity[0].enabled = gravity

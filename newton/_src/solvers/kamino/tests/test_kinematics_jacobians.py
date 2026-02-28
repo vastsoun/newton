@@ -70,7 +70,7 @@ class TestKinematicsDenseSystemJacobians(unittest.TestCase):
             msg.reset_log_level()
 
     def test_01_allocate_single_dense_system_jacobians_only_joints(self):
-        # Construct the model description using the ModelBuilder
+        # Construct the model description using the ModelBuilderKamino
         builder = build_boxes_fourbar()
 
         # Create the model from the builder
@@ -102,7 +102,7 @@ class TestKinematicsDenseSystemJacobians(unittest.TestCase):
         self.assertEqual(jacobians.data.J_cts_data.shape, (model_num_cts * model.size.sum_of_num_body_dofs,))
 
     def test_02_allocate_single_dense_system_jacobians_with_limits(self):
-        # Construct the model description using the ModelBuilder
+        # Construct the model description using the ModelBuilderKamino
         builder = build_boxes_fourbar()
 
         # Create the model from the builder
@@ -143,7 +143,7 @@ class TestKinematicsDenseSystemJacobians(unittest.TestCase):
         # Problem constants
         max_world_contacts = 12
 
-        # Construct the model description using the ModelBuilder
+        # Construct the model description using the ModelBuilderKamino
         builder = build_boxes_fourbar()
 
         # Create the model from the builder
@@ -190,7 +190,7 @@ class TestKinematicsDenseSystemJacobians(unittest.TestCase):
         # Problem constants
         max_world_contacts = 12
 
-        # Construct the model description using the ModelBuilder
+        # Construct the model description using the ModelBuilderKamino
         builder = build_boxes_fourbar()
 
         # Create the model from the builder
@@ -246,7 +246,7 @@ class TestKinematicsDenseSystemJacobians(unittest.TestCase):
         num_worlds = 3
         max_world_contacts = 12
 
-        # Construct the model description using the ModelBuilder
+        # Construct the model description using the ModelBuilderKamino
         builder = make_homogeneous_builder(num_worlds=num_worlds, build_fn=build_boxes_fourbar)
 
         # Create the model from the builder
@@ -323,7 +323,7 @@ class TestKinematicsDenseSystemJacobians(unittest.TestCase):
         # Problem constants
         max_world_contacts = 12
 
-        # Construct the model description using the ModelBuilder
+        # Construct the model description using the ModelBuilderKamino
         builder = make_basics_heterogeneous_builder()
         num_worlds = builder.num_worlds
 

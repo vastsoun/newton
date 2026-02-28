@@ -23,7 +23,7 @@ from warp.context import Devicelike
 
 import newton
 import newton.examples
-from newton._src.solvers.kamino.core.builder import ModelBuilder
+from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
 from newton._src.solvers.kamino.core.types import float32, int32, transformf, vec6f
 from newton._src.solvers.kamino.examples import get_examples_output_path, run_headless
 from newton._src.solvers.kamino.models import get_examples_usd_assets_path
@@ -130,7 +130,7 @@ class Example:
         # Create a model builder from the imported USD
         msg.notif("Constructing builder from imported USD ...")
         importer = USDImporter()
-        self.builder: ModelBuilder = make_homogeneous_builder(
+        self.builder: ModelBuilderKamino = make_homogeneous_builder(
             num_worlds=num_worlds,
             build_fn=importer.import_from,
             load_drive_dynamics=False,

@@ -22,7 +22,7 @@ import warp as wp
 import newton
 import newton.examples
 
-from ...core.builder import ModelBuilder
+from ...core.builder import ModelBuilderKamino
 from ...examples import print_progress_bar
 from ...utils import logger as msg
 from ...utils.control.rand import RandomJointController
@@ -39,7 +39,7 @@ from .problems import CameraConfig, ControlConfig
 class BenchmarkSim:
     def __init__(
         self,
-        builder: ModelBuilder,
+        builder: ModelBuilderKamino,
         configs: SimulatorSettings,
         control: ControlConfig | None = None,
         camera: CameraConfig | None = None,
@@ -52,7 +52,7 @@ class BenchmarkSim:
         physics_metrics: bool = False,
     ):
         # Cache the device and other internal flags
-        self.builder: ModelBuilder = builder
+        self.builder: ModelBuilderKamino = builder
         self.device: wp.DeviceLike = device
         self.use_cuda_graph: bool = use_cuda_graph
         self.max_steps: int = max_steps
@@ -229,7 +229,7 @@ def run_single_benchmark(
     config_idx: int,
     metrics: BenchmarkMetrics,
     args: argparse.Namespace,
-    builder: ModelBuilder,
+    builder: ModelBuilderKamino,
     configs: SimulatorSettings,
     control: ControlConfig | None = None,
     camera: CameraConfig | None = None,

@@ -71,7 +71,7 @@ class TestKinematicsConstraints(unittest.TestCase):
         # Constants
         max_world_contacts = 20
 
-        # Construct the model description using the ModelBuilder
+        # Construct the model description using the ModelBuilderKamino
         builder = build_boxes_fourbar(dynamic_joints=True, implicit_pd=True)
 
         # Create the model from the builder
@@ -123,7 +123,7 @@ class TestKinematicsConstraints(unittest.TestCase):
         num_worlds: int = 10
         max_world_contacts: int = 20
 
-        # Construct the model description using the ModelBuilder
+        # Construct the model description using the ModelBuilderKamino
         builder = make_homogeneous_builder(
             num_worlds=num_worlds,
             build_fn=build_boxes_fourbar,
@@ -226,7 +226,7 @@ class TestKinematicsConstraints(unittest.TestCase):
         # Constants
         max_world_contacts = 20
 
-        # Construct the model description using the ModelBuilder
+        # Construct the model description using the ModelBuilderKamino
         builder = make_basics_heterogeneous_builder()
 
         # Create the model from the builder

@@ -28,7 +28,7 @@ from collections.abc import Callable
 
 import warp as wp
 
-from ...core.builder import ModelBuilder
+from ...core.builder import ModelBuilderKamino
 from ...core.shapes import BoxShape, PlaneShape
 from ...core.types import transformf, vec3f, vec6f
 from ...utils.io.usd import USDImporter
@@ -53,7 +53,7 @@ __all__ = [
 
 
 def add_ground_plane(
-    builder: ModelBuilder,
+    builder: ModelBuilderKamino,
     group: int = 1,
     collides: int = 1,
     world_index: int = 0,
@@ -63,7 +63,7 @@ def add_ground_plane(
     Adds a static plane geometry to a given builder to represent a flat ground with infinite dimensions.
 
     Args:
-        builder (ModelBuilder):
+        builder (ModelBuilderKamino):
             The model builder to which the ground plane should be added.
         group (int):
             The collision group for the ground geometry.\n
@@ -92,7 +92,7 @@ def add_ground_plane(
 
 
 def add_ground_box(
-    builder: ModelBuilder,
+    builder: ModelBuilderKamino,
     group: int = 1,
     collides: int = 1,
     world_index: int = 0,
@@ -102,7 +102,7 @@ def add_ground_box(
     Adds a static box geometry to a given builder to represent a flat ground with finite dimensions.
 
     Args:
-        builder (ModelBuilder):
+        builder (ModelBuilderKamino):
             The model builder to which the ground box should be added.
         group (int):
             The collision group for the ground geometry.\n
@@ -131,24 +131,24 @@ def add_ground_box(
     )
 
 
-def set_uniform_body_pose_offset(builder: ModelBuilder, offset: transformf):
+def set_uniform_body_pose_offset(builder: ModelBuilderKamino, offset: transformf):
     """
     Offsets the initial poses of all rigid bodies existing in the builder uniformly by the specified offset.
 
     Args:
-        builder (ModelBuilder): The model builder containing the bodies to offset.
+        builder (ModelBuilderKamino): The model builder containing the bodies to offset.
         offset (transformf): The pose offset to apply to each body in the builder in the form of a :class:`transformf`.
     """
     for i in range(builder.num_bodies):
         builder.bodies[i].q_i_0 = wp.mul(offset, builder.bodies[i].q_i_0)
 
 
-def set_uniform_body_twist_offset(builder: ModelBuilder, offset: vec6f):
+def set_uniform_body_twist_offset(builder: ModelBuilderKamino, offset: vec6f):
     """
     Offsets the initial twists of all rigid bodies existing in the builder uniformly by the specified offset.
 
     Args:
-        builder (ModelBuilder): The model builder containing the bodies to offset.
+        builder (ModelBuilderKamino): The model builder containing the bodies to offset.
         offset (vec6f): The twist offset to apply to each body in the builder in the form of a :class:`vec6f`.
     """
     for i in range(builder.num_bodies):
@@ -165,7 +165,7 @@ def build_usd(
     load_drive_dynamics: bool = True,
     load_static_geometry: bool = True,
     ground: bool = True,
-) -> ModelBuilder:
+) -> ModelBuilderKamino:
     """
     Imports a USD model and optionally adds a ground plane.
 
@@ -178,7 +178,7 @@ def build_usd(
         ground: Whether to add a ground plane
 
     Returns:
-        ModelBuilder with imported USD model and optional ground plane
+        ModelBuilderKamino with imported USD model and optional ground plane
     """
     # Import the USD model
     importer = USDImporter()
@@ -196,7 +196,7 @@ def build_usd(
     return _builder
 
 
-def make_homogeneous_builder(num_worlds: int, build_fn: Callable, **kwargs) -> ModelBuilder:
+def make_homogeneous_builder(num_worlds: int, build_fn: Callable, **kwargs) -> ModelBuilderKamino:
     """
     Utility factory function to create a multi-world builder with identical worlds replicated across the model.
 
@@ -206,7 +206,7 @@ def make_homogeneous_builder(num_worlds: int, build_fn: Callable, **kwargs) -> M
         **kwargs: Additional keyword arguments to pass to the builder function.
 
     Returns:
-        ModelBuilder: The constructed model builder.
+        ModelBuilderKamino: The constructed model builder.
     """
     # First build a single world
     # NOTE: We want to do this first to avoid re-constructing the same model multiple
@@ -214,7 +214,7 @@ def make_homogeneous_builder(num_worlds: int, build_fn: Callable, **kwargs) -> M
     single = build_fn(**kwargs)
 
     # Then replicate it across the specified number of worlds
-    builder = ModelBuilder(default_world=False)
+    builder = ModelBuilderKamino(default_world=False)
     for _ in range(num_worlds):
         builder.add_builder(single)
     return builder

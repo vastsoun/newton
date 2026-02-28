@@ -19,7 +19,7 @@ import os
 
 import numpy as np
 
-from ...core.builder import ModelBuilder
+from ...core.builder import ModelBuilderKamino
 from .. import logger as msg
 from ..control import JointSpacePIDController
 from .simulator import Simulator
@@ -52,7 +52,7 @@ class SimulationLogger:
         if cls.plt is None:  # Only import if not already imported
             # Attempt to import matplotlib for plotting
             try:
-                import matplotlib.pyplot as plt  # noqa: PLC0415
+                import matplotlib.pyplot as plt
 
                 cls.plt = plt
             except ImportError:
@@ -62,7 +62,7 @@ class SimulationLogger:
         self,
         max_frames: int,
         sim: Simulator,
-        builder: ModelBuilder,
+        builder: ModelBuilderKamino,
         controller: JointSpacePIDController | None = None,
     ):
         """
@@ -71,8 +71,8 @@ class SimulationLogger:
         # Check if the simulation builder, and controller instances are valid
         if not isinstance(sim, Simulator):
             raise TypeError("'simulator' must be an instance of `Simulator`.")
-        if not isinstance(builder, ModelBuilder):
-            raise TypeError("'builder' must be an instance of `ModelBuilder`.")
+        if not isinstance(builder, ModelBuilderKamino):
+            raise TypeError("'builder' must be an instance of `ModelBuilderKamino`.")
         if controller is not None:
             if not isinstance(controller, JointSpacePIDController):
                 raise TypeError("'controller' must be an instance of `JointSpacePIDController` or `None`.")
@@ -88,7 +88,7 @@ class SimulationLogger:
         self._frames: int = 0
         self._max_frames: int = max_frames
         self._sim: Simulator = sim
-        self._builder: ModelBuilder = builder
+        self._builder: ModelBuilderKamino = builder
         self._ctrl: JointSpacePIDController | None = controller
 
         # Allocate logging arrays for solver convergence info

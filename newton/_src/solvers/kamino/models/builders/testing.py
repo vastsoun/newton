@@ -26,7 +26,7 @@ import math
 import numpy as np
 import warp as wp
 
-from ...core import ModelBuilder
+from ...core import ModelBuilderKamino
 from ...core.joints import JointActuationType, JointDoFType
 from ...core.math import I_3, quat_from_euler_xyz
 from ...core.shapes import (
@@ -75,13 +75,13 @@ __all__ = [
 
 
 def build_free_joint_test(
-    builder: ModelBuilder | None = None,
+    builder: ModelBuilderKamino | None = None,
     z_offset: float = 0.0,
     new_world: bool = True,
     limits: bool = True,
     ground: bool = True,
     world_index: int = 0,
-) -> ModelBuilder:
+) -> ModelBuilderKamino:
     """
     Builds a world to test free joints.
 
@@ -89,7 +89,7 @@ def build_free_joint_test(
     free joint, with optional limits applied to the joint degrees of freedom.
 
     Args:
-        builder (ModelBuilder | None): An optional existing ModelBuilder to which the entities will be added.
+        builder (ModelBuilderKamino | None): An optional existing ModelBuilderKamino to which the entities will be added.
         z_offset (float): A vertical offset to apply to the rigid body position.
         ground (bool): Whether to include a ground plane in the world.
         new_world (bool): Whether to create a new world in the builder, to which entities will be added.\n
@@ -101,7 +101,7 @@ def build_free_joint_test(
     """
     # Create a new builder if none is provided
     if builder is None:
-        _builder = ModelBuilder(default_world=False)
+        _builder = ModelBuilderKamino(default_world=False)
     else:
         _builder = builder
 
@@ -153,7 +153,7 @@ def build_free_joint_test(
 
 
 def build_unary_revolute_joint_test(
-    builder: ModelBuilder | None = None,
+    builder: ModelBuilderKamino | None = None,
     z_offset: float = 0.0,
     new_world: bool = True,
     limits: bool = True,
@@ -161,7 +161,7 @@ def build_unary_revolute_joint_test(
     dynamic: bool = False,
     implicit_pd: bool = False,
     world_index: int = 0,
-) -> ModelBuilder:
+) -> ModelBuilderKamino:
     """
     Builds a world to test unary revolute joints.
 
@@ -169,7 +169,7 @@ def build_unary_revolute_joint_test(
     revolute joint, with optional limits applied to the joint degree of freedom.
 
     Args:
-        builder (ModelBuilder | None): An optional existing ModelBuilder to which the entities will be added.
+        builder (ModelBuilderKamino | None): An optional existing ModelBuilderKamino to which the entities will be added.
         z_offset (float): A vertical offset to apply to the rigid body position.
         new_world (bool): Whether to create a new world in the builder, to which entities will be added.\n
             If `False`, the contents are added to the existing world specified by `world_index`.\n
@@ -183,7 +183,7 @@ def build_unary_revolute_joint_test(
     """
     # Create a new builder if none is provided
     if builder is None:
-        _builder = ModelBuilder(default_world=False)
+        _builder = ModelBuilderKamino(default_world=False)
     else:
         _builder = builder
 
@@ -246,7 +246,7 @@ def build_unary_revolute_joint_test(
 
 
 def build_binary_revolute_joint_test(
-    builder: ModelBuilder | None = None,
+    builder: ModelBuilderKamino | None = None,
     z_offset: float = 0.0,
     new_world: bool = True,
     limits: bool = True,
@@ -254,7 +254,7 @@ def build_binary_revolute_joint_test(
     dynamic: bool = False,
     implicit_pd: bool = False,
     world_index: int = 0,
-) -> ModelBuilder:
+) -> ModelBuilderKamino:
     """
     Builds a world to test binary revolute joints.
 
@@ -262,7 +262,7 @@ def build_binary_revolute_joint_test(
     joint, with optional limits applied to the joint degree of freedom.
 
     Args:
-        builder (ModelBuilder | None): An optional existing ModelBuilder to which the entities will be added.
+        builder (ModelBuilderKamino | None): An optional existing ModelBuilderKamino to which the entities will be added.
         z_offset (float): A vertical offset to apply to the rigid body position.
         new_world (bool): Whether to create a new world in the builder, to which entities will be added.\n
             If `False`, the contents are added to the existing world specified by `world_index`.\n
@@ -276,7 +276,7 @@ def build_binary_revolute_joint_test(
     """
     # Create a new builder if none is provided
     if builder is None:
-        _builder = ModelBuilder(default_world=False)
+        _builder = ModelBuilderKamino(default_world=False)
     else:
         _builder = builder
 
@@ -356,7 +356,7 @@ def build_binary_revolute_joint_test(
 
 
 def build_unary_prismatic_joint_test(
-    builder: ModelBuilder | None = None,
+    builder: ModelBuilderKamino | None = None,
     z_offset: float = 0.0,
     new_world: bool = True,
     limits: bool = True,
@@ -364,7 +364,7 @@ def build_unary_prismatic_joint_test(
     dynamic: bool = False,
     implicit_pd: bool = False,
     world_index: int = 0,
-) -> ModelBuilder:
+) -> ModelBuilderKamino:
     """
     Builds a world to test unary prismatic joints.
 
@@ -372,7 +372,7 @@ def build_unary_prismatic_joint_test(
     prismatic joint, with optional limits applied to the joint degree of freedom.
 
     Args:
-        builder (ModelBuilder | None): An optional existing ModelBuilder to which the entities will be added.
+        builder (ModelBuilderKamino | None): An optional existing ModelBuilderKamino to which the entities will be added.
         z_offset (float): A vertical offset to apply to the rigid body position.
         ground (bool): Whether to include a ground plane in the world.
         new_world (bool): Whether to create a new world in the builder, to which entities will be added.\n
@@ -384,7 +384,7 @@ def build_unary_prismatic_joint_test(
     """
     # Create a new builder if none is provided
     if builder is None:
-        _builder = ModelBuilder(default_world=False)
+        _builder = ModelBuilderKamino(default_world=False)
     else:
         _builder = builder
 
@@ -447,7 +447,7 @@ def build_unary_prismatic_joint_test(
 
 
 def build_binary_prismatic_joint_test(
-    builder: ModelBuilder | None = None,
+    builder: ModelBuilderKamino | None = None,
     z_offset: float = 0.0,
     new_world: bool = True,
     limits: bool = True,
@@ -455,7 +455,7 @@ def build_binary_prismatic_joint_test(
     dynamic: bool = False,
     implicit_pd: bool = False,
     world_index: int = 0,
-) -> ModelBuilder:
+) -> ModelBuilderKamino:
     """
     Builds a world to test binary prismatic joints.
 
@@ -463,7 +463,7 @@ def build_binary_prismatic_joint_test(
     joint, with optional limits applied to the joint degree of freedom.
 
     Args:
-        builder (ModelBuilder | None): An optional existing ModelBuilder to which the entities will be added.
+        builder (ModelBuilderKamino | None): An optional existing ModelBuilderKamino to which the entities will be added.
         z_offset (float): A vertical offset to apply to the rigid body position.
         ground (bool): Whether to include a ground plane in the world.
         new_world (bool): Whether to create a new world in the builder, to which entities will be added.\n
@@ -475,7 +475,7 @@ def build_binary_prismatic_joint_test(
     """
     # Create a new builder if none is provided
     if builder is None:
-        _builder = ModelBuilder(default_world=False)
+        _builder = ModelBuilderKamino(default_world=False)
     else:
         _builder = builder
 
@@ -557,7 +557,7 @@ def build_binary_prismatic_joint_test(
 
 
 def build_unary_cylindrical_joint_test(
-    builder: ModelBuilder | None = None,
+    builder: ModelBuilderKamino | None = None,
     z_offset: float = 0.0,
     new_world: bool = True,
     limits: bool = True,
@@ -565,7 +565,7 @@ def build_unary_cylindrical_joint_test(
     dynamic: bool = False,
     implicit_pd: bool = False,
     world_index: int = 0,
-) -> ModelBuilder:
+) -> ModelBuilderKamino:
     """
     Builds a world to test unary cylindrical joints.
 
@@ -573,7 +573,7 @@ def build_unary_cylindrical_joint_test(
     cylindrical joint, with optional limits applied to the joint degrees of freedom.
 
     Args:
-        builder (ModelBuilder | None): An optional existing ModelBuilder to which the entities will be added.
+        builder (ModelBuilderKamino | None): An optional existing ModelBuilderKamino to which the entities will be added.
         z_offset (float): A vertical offset to apply to the rigid body position.
         new_world (bool): Whether to create a new world in the builder, to which entities will be added.\n
             If `False`, the contents are added to the existing world specified by `world_index`.\n
@@ -587,7 +587,7 @@ def build_unary_cylindrical_joint_test(
     """
     # Create a new builder if none is provided
     if builder is None:
-        _builder = ModelBuilder(default_world=False)
+        _builder = ModelBuilderKamino(default_world=False)
     else:
         _builder = builder
 
@@ -650,7 +650,7 @@ def build_unary_cylindrical_joint_test(
 
 
 def build_binary_cylindrical_joint_test(
-    builder: ModelBuilder | None = None,
+    builder: ModelBuilderKamino | None = None,
     z_offset: float = 0.0,
     new_world: bool = True,
     limits: bool = True,
@@ -658,7 +658,7 @@ def build_binary_cylindrical_joint_test(
     dynamic: bool = False,
     implicit_pd: bool = False,
     world_index: int = 0,
-) -> ModelBuilder:
+) -> ModelBuilderKamino:
     """
     Builds a world to test binary cylindrical joints.
 
@@ -666,7 +666,7 @@ def build_binary_cylindrical_joint_test(
     joint, with optional limits applied to the joint degrees of freedom.
 
     Args:
-        builder (ModelBuilder | None): An optional existing ModelBuilder to which the entities will be added.
+        builder (ModelBuilderKamino | None): An optional existing ModelBuilderKamino to which the entities will be added.
         z_offset (float): A vertical offset to apply to the rigid body position.
         new_world (bool): Whether to create a new world in the builder, to which entities will be added.\n
             If `False`, the contents are added to the existing world specified by `world_index`.\n
@@ -680,7 +680,7 @@ def build_binary_cylindrical_joint_test(
     """
     # Create a new builder if none is provided
     if builder is None:
-        _builder = ModelBuilder(default_world=False)
+        _builder = ModelBuilderKamino(default_world=False)
     else:
         _builder = builder
 
@@ -760,13 +760,13 @@ def build_binary_cylindrical_joint_test(
 
 
 def build_unary_universal_joint_test(
-    builder: ModelBuilder | None = None,
+    builder: ModelBuilderKamino | None = None,
     z_offset: float = 0.0,
     new_world: bool = True,
     limits: bool = True,
     ground: bool = True,
     world_index: int = 0,
-) -> ModelBuilder:
+) -> ModelBuilderKamino:
     """
     Builds a world to test unary universal joints.
 
@@ -774,7 +774,7 @@ def build_unary_universal_joint_test(
     universal joint, with optional limits applied to the joint degrees of freedom.
 
     Args:
-        builder (ModelBuilder | None): An optional existing ModelBuilder to which the entities will be added.
+        builder (ModelBuilderKamino | None): An optional existing ModelBuilderKamino to which the entities will be added.
         z_offset (float): A vertical offset to apply to the rigid body position.
         ground (bool): Whether to include a ground plane in the world.
         new_world (bool): Whether to create a new world in the builder, to which entities will be added.\n
@@ -786,7 +786,7 @@ def build_unary_universal_joint_test(
     """
     # Create a new builder if none is provided
     if builder is None:
-        _builder = ModelBuilder(default_world=False)
+        _builder = ModelBuilderKamino(default_world=False)
     else:
         _builder = builder
 
@@ -845,13 +845,13 @@ def build_unary_universal_joint_test(
 
 
 def build_binary_universal_joint_test(
-    builder: ModelBuilder | None = None,
+    builder: ModelBuilderKamino | None = None,
     z_offset: float = 0.0,
     new_world: bool = True,
     limits: bool = True,
     ground: bool = True,
     world_index: int = 0,
-) -> ModelBuilder:
+) -> ModelBuilderKamino:
     """
     Builds a world to test binary universal joints.
 
@@ -859,7 +859,7 @@ def build_binary_universal_joint_test(
     joint, with optional limits applied to the joint degrees of freedom.
 
     Args:
-        builder (ModelBuilder | None): An optional existing ModelBuilder to which the entities will be added.
+        builder (ModelBuilderKamino | None): An optional existing ModelBuilderKamino to which the entities will be added.
         z_offset (float): A vertical offset to apply to the rigid body position.
         ground (bool): Whether to include a ground plane in the world.
         new_world (bool): Whether to create a new world in the builder, to which entities will be added.\n
@@ -871,7 +871,7 @@ def build_binary_universal_joint_test(
     """
     # Create a new builder if none is provided
     if builder is None:
-        _builder = ModelBuilder(default_world=False)
+        _builder = ModelBuilderKamino(default_world=False)
     else:
         _builder = builder
 
@@ -947,13 +947,13 @@ def build_binary_universal_joint_test(
 
 
 def build_unary_spherical_joint_test(
-    builder: ModelBuilder | None = None,
+    builder: ModelBuilderKamino | None = None,
     z_offset: float = 0.0,
     new_world: bool = True,
     limits: bool = True,
     ground: bool = True,
     world_index: int = 0,
-) -> ModelBuilder:
+) -> ModelBuilderKamino:
     """
     Builds a world to test unary spherical joints.
 
@@ -961,7 +961,7 @@ def build_unary_spherical_joint_test(
     spherical joint, with optional limits applied to the joint degrees of freedom.
 
     Args:
-        builder (ModelBuilder | None): An optional existing ModelBuilder to which the entities will be added.
+        builder (ModelBuilderKamino | None): An optional existing ModelBuilderKamino to which the entities will be added.
         z_offset (float): A vertical offset to apply to the rigid body position.
         ground (bool): Whether to include a ground plane in the world.
         new_world (bool): Whether to create a new world in the builder, to which entities will be added.\n
@@ -973,7 +973,7 @@ def build_unary_spherical_joint_test(
     """
     # Create a new builder if none is provided
     if builder is None:
-        _builder = ModelBuilder(default_world=False)
+        _builder = ModelBuilderKamino(default_world=False)
     else:
         _builder = builder
 
@@ -1032,13 +1032,13 @@ def build_unary_spherical_joint_test(
 
 
 def build_binary_spherical_joint_test(
-    builder: ModelBuilder | None = None,
+    builder: ModelBuilderKamino | None = None,
     z_offset: float = 0.0,
     new_world: bool = True,
     limits: bool = True,
     ground: bool = True,
     world_index: int = 0,
-) -> ModelBuilder:
+) -> ModelBuilderKamino:
     """
     Builds a world to test binary spherical joints.
 
@@ -1046,7 +1046,7 @@ def build_binary_spherical_joint_test(
     joint, with optional limits applied to the joint degrees of freedom.
 
     Args:
-        builder (ModelBuilder | None): An optional existing ModelBuilder to which the entities will be added.
+        builder (ModelBuilderKamino | None): An optional existing ModelBuilderKamino to which the entities will be added.
         z_offset (float): A vertical offset to apply to the rigid body position.
         ground (bool): Whether to include a ground plane in the world.
         new_world (bool): Whether to create a new world in the builder, to which entities will be added.\n
@@ -1058,7 +1058,7 @@ def build_binary_spherical_joint_test(
     """
     # Create a new builder if none is provided
     if builder is None:
-        _builder = ModelBuilder(default_world=False)
+        _builder = ModelBuilderKamino(default_world=False)
     else:
         _builder = builder
 
@@ -1134,13 +1134,13 @@ def build_binary_spherical_joint_test(
 
 
 def build_unary_gimbal_joint_test(
-    builder: ModelBuilder | None = None,
+    builder: ModelBuilderKamino | None = None,
     z_offset: float = 0.0,
     new_world: bool = True,
     limits: bool = True,
     ground: bool = True,
     world_index: int = 0,
-) -> ModelBuilder:
+) -> ModelBuilderKamino:
     """
     Builds a world to test unary gimbal joints.
 
@@ -1148,7 +1148,7 @@ def build_unary_gimbal_joint_test(
     gimbal joint, with optional limits applied to the joint degrees of freedom.
 
     Args:
-        builder (ModelBuilder | None): An optional existing ModelBuilder to which the entities will be added.
+        builder (ModelBuilderKamino | None): An optional existing ModelBuilderKamino to which the entities will be added.
         z_offset (float): A vertical offset to apply to the rigid body position.
         ground (bool): Whether to include a ground plane in the world.
         new_world (bool): Whether to create a new world in the builder, to which entities will be added.\n
@@ -1160,7 +1160,7 @@ def build_unary_gimbal_joint_test(
     """
     # Create a new builder if none is provided
     if builder is None:
-        _builder = ModelBuilder(default_world=False)
+        _builder = ModelBuilderKamino(default_world=False)
     else:
         _builder = builder
 
@@ -1219,13 +1219,13 @@ def build_unary_gimbal_joint_test(
 
 
 def build_binary_gimbal_joint_test(
-    builder: ModelBuilder | None = None,
+    builder: ModelBuilderKamino | None = None,
     z_offset: float = 0.0,
     new_world: bool = True,
     limits: bool = True,
     ground: bool = True,
     world_index: int = 0,
-) -> ModelBuilder:
+) -> ModelBuilderKamino:
     """
     Builds a world to test binary gimbal joints.
 
@@ -1233,7 +1233,7 @@ def build_binary_gimbal_joint_test(
     joint, with optional limits applied to the joint degrees of freedom.
 
     Args:
-        builder (ModelBuilder | None): An optional existing ModelBuilder to which the entities will be added.
+        builder (ModelBuilderKamino | None): An optional existing ModelBuilderKamino to which the entities will be added.
         z_offset (float): A vertical offset to apply to the rigid body position.
         ground (bool): Whether to include a ground plane in the world.
         new_world (bool): Whether to create a new world in the builder, to which entities will be added.\n
@@ -1245,7 +1245,7 @@ def build_binary_gimbal_joint_test(
     """
     # Create a new builder if none is provided
     if builder is None:
-        _builder = ModelBuilder(default_world=False)
+        _builder = ModelBuilderKamino(default_world=False)
     else:
         _builder = builder
 
@@ -1321,7 +1321,7 @@ def build_binary_gimbal_joint_test(
 
 
 def build_unary_cartesian_joint_test(
-    builder: ModelBuilder | None = None,
+    builder: ModelBuilderKamino | None = None,
     z_offset: float = 0.0,
     new_world: bool = True,
     limits: bool = True,
@@ -1329,7 +1329,7 @@ def build_unary_cartesian_joint_test(
     dynamic: bool = False,
     implicit_pd: bool = False,
     world_index: int = 0,
-) -> ModelBuilder:
+) -> ModelBuilderKamino:
     """
     Builds a world to test unary cartesian joints.
 
@@ -1337,7 +1337,7 @@ def build_unary_cartesian_joint_test(
     cartesian joint, with optional limits applied to the joint degrees of freedom.
 
     Args:
-        builder (ModelBuilder | None): An optional existing ModelBuilder to which the entities will be added.
+        builder (ModelBuilderKamino | None): An optional existing ModelBuilderKamino to which the entities will be added.
         z_offset (float): A vertical offset to apply to the rigid body position.
         new_world (bool): Whether to create a new world in the builder, to which entities will be added.\n
             If `False`, the contents are added to the existing world specified by `world_index`.\n
@@ -1351,7 +1351,7 @@ def build_unary_cartesian_joint_test(
     """
     # Create a new builder if none is provided
     if builder is None:
-        _builder = ModelBuilder(default_world=False)
+        _builder = ModelBuilderKamino(default_world=False)
     else:
         _builder = builder
 
@@ -1414,7 +1414,7 @@ def build_unary_cartesian_joint_test(
 
 
 def build_binary_cartesian_joint_test(
-    builder: ModelBuilder | None = None,
+    builder: ModelBuilderKamino | None = None,
     z_offset: float = 0.0,
     new_world: bool = True,
     limits: bool = True,
@@ -1422,7 +1422,7 @@ def build_binary_cartesian_joint_test(
     dynamic: bool = False,
     implicit_pd: bool = False,
     world_index: int = 0,
-) -> ModelBuilder:
+) -> ModelBuilderKamino:
     """
     Builds a world to test binary cartesian joints.
 
@@ -1430,7 +1430,7 @@ def build_binary_cartesian_joint_test(
     joint, with optional limits applied to the joint degrees of freedom.
 
     Args:
-        builder (ModelBuilder | None): An optional existing ModelBuilder to which the entities will be added.
+        builder (ModelBuilderKamino | None): An optional existing ModelBuilderKamino to which the entities will be added.
         z_offset (float): A vertical offset to apply to the rigid body position.
         new_world (bool): Whether to create a new world in the builder, to which entities will be added.\n
             If `False`, the contents are added to the existing world specified by `world_index`.\n
@@ -1444,7 +1444,7 @@ def build_binary_cartesian_joint_test(
     """
     # Create a new builder if none is provided
     if builder is None:
-        _builder = ModelBuilder(default_world=False)
+        _builder = ModelBuilderKamino(default_world=False)
     else:
         _builder = builder
 
@@ -1526,7 +1526,7 @@ def build_binary_cartesian_joint_test(
 def build_all_joints_test_model(
     z_offset: float = 0.0,
     ground: bool = False,
-) -> ModelBuilder:
+) -> ModelBuilderKamino:
     """
     Constructs a model builder containing a world for each joint type.
 
@@ -1535,10 +1535,10 @@ def build_all_joints_test_model(
         ground (bool): Whether to add a static ground plane to the model.
 
     Returns:
-        ModelBuilder: The populated model builder.
+        ModelBuilderKamino: The populated model builder.
     """
     # Create a new builder to populate
-    _builder = ModelBuilder(default_world=False)
+    _builder = ModelBuilderKamino(default_world=False)
 
     # Add a new world for each joint type
     _builder.add_builder(build_free_joint_test(z_offset=z_offset, ground=ground))
@@ -1706,9 +1706,9 @@ def make_single_shape_pair_builder(
     ground_box: bool = False,
     ground_plane: bool = False,
     ground_z: float | None = None,
-) -> ModelBuilder:
+) -> ModelBuilderKamino:
     """
-    Generates a ModelBuilder for a given shape combination with specified parameters.
+    Generates a ModelBuilderKamino for a given shape combination with specified parameters.
 
     The first shape in the combination is placed below the second shape along
     the z-axis, effectively generating a "shape[0] atop shape[1]" configuration.
@@ -1735,8 +1735,8 @@ def make_single_shape_pair_builder(
             If negative, they are penetrating by that distance.
 
     Returns:
-        ModelBuilder:
-            The constructed ModelBuilder with the specified shape combination.
+        ModelBuilderKamino:
+            The constructed ModelBuilderKamino with the specified shape combination.
     """
     # Check that the shape combination is tuple of strings
     if not (isinstance(shapes, tuple) and len(shapes) == 2 and all(isinstance(s, str) for s in shapes)):
@@ -1796,7 +1796,7 @@ def make_single_shape_pair_builder(
         top_shape = top_descriptor(*top_dims)
 
     # Create model builder and add corresponding bodies and their collision geometries
-    builder: ModelBuilder = ModelBuilder(default_world=True)
+    builder: ModelBuilderKamino = ModelBuilderKamino(default_world=True)
     bid0 = builder.add_rigid_body(
         name="bottom_" + bottom,
         m_i=1.0,
@@ -1842,7 +1842,7 @@ def make_shape_pairs_builder(
     ground_box: bool = False,
     ground_plane: bool = False,
     ground_z: float | None = None,
-) -> ModelBuilder:
+) -> ModelBuilderKamino:
     """
     Generates a builder containing a world for each specified shape combination.
 
@@ -1853,11 +1853,11 @@ def make_shape_pairs_builder(
         **kwargs:
             Additional keyword arguments to be passed to `make_single_shape_pair_builder`.
     Returns:
-        ModelBuilder
-            A ModelBuilder containing a world for each specified shape combination.
+        ModelBuilderKamino
+            A ModelBuilderKamino containing a world for each specified shape combination.
     """
-    # Create an empty ModelBuilder to hold all shape pair worlds
-    builder = ModelBuilder(default_world=False)
+    # Create an empty ModelBuilderKamino to hold all shape pair worlds
+    builder = ModelBuilderKamino(default_world=False)
 
     # Iterate over each shape pair and add its builder to the main builder
     for shapes in shape_pairs:

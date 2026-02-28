@@ -18,7 +18,7 @@ import time
 import warp as wp
 from warp.context import Devicelike
 
-from newton._src.solvers.kamino.core.builder import ModelBuilder
+from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
 from newton._src.solvers.kamino.examples import print_progress_bar
 from newton._src.solvers.kamino.utils import logger as msg
 from newton._src.solvers.kamino.utils.control import JointSpacePIDController
@@ -32,7 +32,7 @@ from newton._src.solvers.kamino.utils.sim import SimulationLogger, Simulator, Vi
 class SimulationRunner:
     def __init__(
         self,
-        builder: ModelBuilder,
+        builder: ModelBuilderKamino,
         simulator: Simulator,
         controller: JointSpacePIDController | None = None,
         device: Devicelike = None,

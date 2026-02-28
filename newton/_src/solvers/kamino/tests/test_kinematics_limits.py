@@ -186,7 +186,7 @@ class TestKinematicsLimits(unittest.TestCase):
         """
         Tests the allocation of a LimitsKamino container.
         """
-        # Construct the model description using the ModelBuilder
+        # Construct the model description using the ModelBuilderKamino
         builder = make_homogeneous_builder(num_worlds=3, build_fn=basics.build_boxes_fourbar)
         model = builder.finalize(device=self.default_device)
 
@@ -236,7 +236,7 @@ class TestKinematicsLimits(unittest.TestCase):
         msg.info("limits.velocity: %s", limits.velocity)
 
     def test_02_check_revolute_joint(self):
-        # Construct the model description using the ModelBuilder
+        # Construct the model description using the ModelBuilderKamino
         builder = make_homogeneous_builder(num_worlds=4, build_fn=testing.build_unary_revolute_joint_test)
         num_worlds = builder.num_worlds
 

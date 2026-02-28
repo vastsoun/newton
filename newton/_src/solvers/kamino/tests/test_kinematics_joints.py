@@ -168,7 +168,7 @@ class TestKinematicsJoints(unittest.TestCase):
             msg.reset_log_level()
 
     def test_01_single_revolute_joint(self):
-        # Construct the model description using the ModelBuilder
+        # Construct the model description using the ModelBuilderKamino
         builder = build_unary_revolute_joint_test()
 
         # Create the model and state
@@ -211,7 +211,7 @@ class TestKinematicsJoints(unittest.TestCase):
         np.testing.assert_almost_equal(dq_j_np, dq_j_expected)
 
     def test_02_multiple_revolute_joints(self):
-        # Construct the model description using the ModelBuilder
+        # Construct the model description using the ModelBuilderKamino
         builder = make_homogeneous_builder(num_worlds=4, build_fn=build_unary_revolute_joint_test)
 
         # Create the model and state
@@ -260,7 +260,7 @@ class TestKinematicsJoints(unittest.TestCase):
         np.testing.assert_almost_equal(dq_j_np, dq_j_expected)
 
     def test_03_single_dynamic_revolute_joint(self):
-        # Construct the model description using the ModelBuilder
+        # Construct the model description using the ModelBuilderKamino
         builder = build_unary_revolute_joint_test(dynamic=True, implicit_pd=True)
 
         # Create the model and state
@@ -356,7 +356,7 @@ class TestKinematicsJoints(unittest.TestCase):
         np.testing.assert_almost_equal(dq_b_j_np, dq_b_j_expected)
 
     def test_04_multiple_dynamic_revolute_joints(self):
-        # Construct the model description using the ModelBuilder
+        # Construct the model description using the ModelBuilderKamino
         builder = make_homogeneous_builder(
             num_worlds=4, build_fn=build_unary_revolute_joint_test, dynamic=True, implicit_pd=True
         )

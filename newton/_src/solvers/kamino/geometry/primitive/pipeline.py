@@ -23,7 +23,7 @@ geometry pairs and a narrow-phase based on the primitive colliders of Newton.
 import warp as wp
 from warp.context import Devicelike
 
-from ...core.builder import ModelBuilder
+from ...core.builder import ModelBuilderKamino
 from ...core.data import DataKamino
 from ...core.model import ModelKamino
 from ...core.types import float32, int32, vec2i, vec6f
@@ -53,7 +53,7 @@ class CollisionPipelinePrimitive:
 
     def __init__(
         self,
-        builder: ModelBuilder | None = None,
+        builder: ModelBuilderKamino | None = None,
         bvtype: BoundingVolumeType = BoundingVolumeType.AABB,
         default_gap: float = DEFAULT_GEOM_PAIR_CONTACT_GAP,
         device: Devicelike = None,
@@ -93,12 +93,14 @@ class CollisionPipelinePrimitive:
     # Operations
     ###
 
-    def finalize(self, builder: ModelBuilder, bvtype: BoundingVolumeType | None = None, device: Devicelike = None):
+    def finalize(
+        self, builder: ModelBuilderKamino, bvtype: BoundingVolumeType | None = None, device: Devicelike = None
+    ):
         """
         Finalizes the collision detection pipeline by allocating all necessary data structures.
 
         Args:
-            builder (ModelBuilder): The model builder used to pre-compute collision pairs.
+            builder (ModelBuilderKamino): The model builder used to pre-compute collision pairs.
             bvtype (BoundingVolumeType | None): Optional bounding volume type to override the default.
             device (Devicelike): The Warp device on which the pipeline will operate.
         """
@@ -203,13 +205,13 @@ class CollisionPipelinePrimitive:
                 "Please call `finalize(builder, device)` before using the pipeline."
             )
 
-    def _assert_shapes_supported(self, geom_pairs: list[tuple[int, int]], builder: ModelBuilder):
+    def _assert_shapes_supported(self, geom_pairs: list[tuple[int, int]], builder: ModelBuilderKamino):
         """
         Checks whether all collision geometries in the provided builder are supported
         by the primitive narrow-phase collider.
 
         Args:
-            builder (ModelBuilder): The model builder containing the collision geometries.
+            builder (ModelBuilderKamino): The model builder containing the collision geometries.
 
         Raises:
             ValueError: If any unsupported shape type is found.

@@ -45,7 +45,7 @@ Usage
 A typical example for using this module is:
 
     # Import all relevant types from Kamino
-    from newton._src.solvers.kamino.core import ModelBuilder
+    from newton._src.solvers.kamino.core import ModelBuilderKamino
     from newton._src.solvers.kamino.geometry import ContactsKamino
     from newton._src.solvers.kamino.kinematics import LimitsKamino
     from newton._src.solvers.kamino.kinematics import DenseSystemJacobians
@@ -53,7 +53,7 @@ A typical example for using this module is:
     from newton._src.solvers.kamino.solvers import PADMMSolver
 
     # Create a model builder and add bodies, joints, geoms, etc.
-    builder = ModelBuilder()
+    builder = ModelBuilderKamino()
     ...
 
     # Create a model from the builder and construct additional

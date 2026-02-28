@@ -715,61 +715,61 @@ class ModelData:
     """Time-varying data of geometries in the model: poses computed in world coordinates."""
 
 
+@dataclass
 class Model:
     """
     A container to hold the time-invariant system model data.
     """
 
-    def __init__(self):
-        self.device: Devicelike = None
-        """The device on which the model data is allocated.\n
-        Defaults to `None`, indicating the default/preferred Warp device.
-        """
+    device: Devicelike = None
+    """The device on which the model data is allocated.\n
+    Defaults to `None`, indicating the default/preferred Warp device.
+    """
 
-        self.requires_grad: bool = False
-        """Whether the model requires gradients for its state. Defaults to `False`."""
+    requires_grad: bool = False
+    """Whether the model requires gradients for its state. Defaults to `False`."""
 
-        self.size: ModelSize = ModelSize()
-        """
-        Host-side cache of the model summary sizes.\n
-        This is used for memory allocations and kernel thread dimensions.
-        """
+    size: ModelSize | None = None
+    """
+    Host-side cache of the model summary sizes.\n
+    This is used for memory allocations and kernel thread dimensions.
+    """
 
-        self.worlds: list[WorldDescriptor] = []
-        """
-        Host-side cache of the world descriptors.\n
-        This is used to construct the model and for memory allocations.
-        """
+    worlds: list[WorldDescriptor] | None = None
+    """
+    Host-side cache of the world descriptors.\n
+    This is used to construct the model and for memory allocations.
+    """
 
-        self.info: ModelInfo | None = None
-        """The model info container holding the information and meta-data of the model."""
+    info: ModelInfo | None = None
+    """The model info container holding the information and meta-data of the model."""
 
-        self.time: TimeModel | None = None
-        """The time model container holding time-step of each world."""
+    time: TimeModel | None = None
+    """The time model container holding time-step of each world."""
 
-        self.gravity: GravityModel | None = None
-        """The gravity model container holding the gravity configurations for each world."""
+    gravity: GravityModel | None = None
+    """The gravity model container holding the gravity configurations for each world."""
 
-        self.bodies: RigidBodiesModel | None = None
-        """The rigid bodies model container holding all rigid body entities in the model."""
+    bodies: RigidBodiesModel | None = None
+    """The rigid bodies model container holding all rigid body entities in the model."""
 
-        self.joints: JointsModel | None = None
-        """The joints model container holding all joint entities in the model."""
+    joints: JointsModel | None = None
+    """The joints model container holding all joint entities in the model."""
 
-        self.geoms: GeometriesModel | None = None
-        """The geometries model container holding all geometry entities in the model."""
+    geoms: GeometriesModel | None = None
+    """The geometries model container holding all geometry entities in the model."""
 
-        self.materials: MaterialsModel | None = None
-        """
-        The materials model container holding all material entities in the model.\n
-        The materials data is currently defined globally to be shared by all worlds.
-        """
+    materials: MaterialsModel | None = None
+    """
+    The materials model container holding all material entities in the model.\n
+    The materials data is currently defined globally to be shared by all worlds.
+    """
 
-        self.material_pairs: MaterialPairsModel | None = None
-        """
-        The material pairs model container holding all material pairs in the model.\n
-        The material-pairs data is currently defined globally to be shared by all worlds.
-        """
+    material_pairs: MaterialPairsModel | None = None
+    """
+    The material pairs model container holding all material pairs in the model.\n
+    The material-pairs data is currently defined globally to be shared by all worlds.
+    """
 
     def data(
         self,

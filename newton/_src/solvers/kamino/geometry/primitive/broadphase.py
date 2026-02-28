@@ -18,6 +18,8 @@ Provides implementations of broad-phase collision
 detection used by the primitive collision pipeline.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from enum import IntEnum
 
@@ -77,6 +79,14 @@ class BoundingVolumeType(IntEnum):
 
     BS = 1
     """Bounding Sphere (BS)"""
+
+    @classmethod
+    def from_string(cls, s: str) -> BoundingVolumeType:
+        """Converts a string to a BoundingVolumeType enum value."""
+        try:
+            return cls[s.upper()]
+        except KeyError as e:
+            raise ValueError(f"Invalid BoundingVolumeType: {s}. Valid options are: {[e.name for e in cls]}") from e
 
     @override
     def __str__(self):
@@ -151,12 +161,6 @@ class CollisionCandidatesModel:
     wid: wp.array | None = None
     """
     World index of each collision pair.\n
-    Shape of ``(sum_of_num_candidate_pairs,)`` and type :class:`int32`.
-    """
-
-    pairid: wp.array | None = None
-    """
-    Index of each the collision pair.\n
     Shape of ``(sum_of_num_candidate_pairs,)`` and type :class:`int32`.
     """
 

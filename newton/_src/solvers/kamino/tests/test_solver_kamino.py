@@ -31,7 +31,7 @@ from newton._src.solvers.kamino.dynamics import DualProblem, DualProblemSettings
 from newton._src.solvers.kamino.examples import print_progress_bar
 from newton._src.solvers.kamino.geometry.contacts import Contacts
 from newton._src.solvers.kamino.kinematics.jacobians import DenseSystemJacobians, SparseSystemJacobians
-from newton._src.solvers.kamino.kinematics.limits import Limits
+from newton._src.solvers.kamino.kinematics.limits import LimitsKamino
 from newton._src.solvers.kamino.linalg import ConjugateGradientSolver, LinearSolverType, LLTBlockedSolver
 from newton._src.solvers.kamino.models.builders.basics import build_boxes_fourbar
 from newton._src.solvers.kamino.models.builders.utils import make_homogeneous_builder
@@ -119,7 +119,7 @@ def assert_solver_components(testcase: unittest.TestCase, solver: SolverKamino):
     testcase.assertIsInstance(solver.settings, SolverKaminoSettings)
     testcase.assertIsInstance(solver._model, ModelKamino)
     testcase.assertIsInstance(solver._data, DataKamino)
-    testcase.assertIsInstance(solver._limits, Limits)
+    testcase.assertIsInstance(solver._limits, LimitsKamino)
     if solver._problem_fd.sparse:
         testcase.assertIsInstance(solver._jacobians, SparseSystemJacobians)
     else:

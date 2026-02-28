@@ -32,7 +32,7 @@ A typical example for using this module is:
     # Import all relevant types from Kamino
     from newton._src.solvers.kamino.core import ModelBuilder
     from newton._src.solvers.kamino.geometry import Contacts
-    from newton._src.solvers.kamino.kinematics import Limits
+    from newton._src.solvers.kamino.kinematics import LimitsKamino
     from newton._src.solvers.kamino.kinematics import DenseSystemJacobians
     from newton._src.solvers.kamino.dynamics import DualProblem
     from newton._src.solvers.kamino.solvers import PADMMSolver
@@ -46,7 +46,7 @@ A typical example for using this module is:
     model = builder.finalize()
     state_p = model.state()
     data = model.data()
-    limits = Limits(model)
+    limits = LimitsKamino(model)
     contacts = Contacts(builder)
     jacobians = DenseSystemJacobians(model, limits, contacts)
 
@@ -98,7 +98,7 @@ from ..dynamics.dual import DualProblem
 from ..geometry.contacts import Contacts
 from ..geometry.keying import build_pair_key2
 from ..kinematics.jacobians import DenseSystemJacobians, SparseSystemJacobians
-from ..kinematics.limits import Limits
+from ..kinematics.limits import LimitsKamino
 from ..solvers.padmm.math import (
     compute_desaxce_corrections,
     compute_dot_product,
@@ -244,7 +244,7 @@ class SolutionMetricsData:
     Computed as the maximum absolute value (i.e. infinity-norm) over joint-limit constraint residuals.
 
     Equivalent to `r_cts_limits := || r_l ||_inf`, where `r_l` would be an array of joint-limit
-    constraint residuals constructed from the collection of `r_q` elements defined in :class:`LimitsData`.
+    constraint residuals constructed from the collection of `r_q` elements defined in :class:`LimitsKaminoData`.
 
     Shape of ``(num_worlds,)`` and type :class:`float32`.
     """
@@ -1241,7 +1241,7 @@ class SolutionMetrics:
         state_p: StateKamino,
         problem: DualProblem,
         jacobians: DenseSystemJacobians | SparseSystemJacobians,
-        limits: Limits | None = None,
+        limits: LimitsKamino | None = None,
         contacts: Contacts | None = None,
     ):
         """
@@ -1254,7 +1254,7 @@ class SolutionMetrics:
                 The model data containing the time-variant data of the simulation.
             state_p (StateKamino):
                 The previous state of the simulation.
-            limits (Limits):
+            limits (LimitsKamino):
                 The joint-limits data describing active limit constraints.
             contacts (Contacts):
                 The contact data describing active contact constraints.
@@ -1292,7 +1292,7 @@ class SolutionMetrics:
         self,
         model: ModelKamino,
         data: DataKamino,
-        limits: Limits | None = None,
+        limits: LimitsKamino | None = None,
         contacts: Contacts | None = None,
     ):
         """
@@ -1303,7 +1303,7 @@ class SolutionMetrics:
                 The model containing the time-invariant data of the simulation.
             data (DataKamino):
                 The model data containing the time-variant data of the simulation.
-            limits (Limits):
+            limits (LimitsKamino):
                 The joint-limits data describing active limit constraints.
             contacts (Contacts):
                 The contact data describing active contact constraints.

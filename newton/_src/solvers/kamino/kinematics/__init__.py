@@ -25,7 +25,7 @@ from .constraints import (
 )
 from .jacobians import DenseSystemJacobians, DenseSystemJacobiansData
 from .joints import compute_joints_data, extract_actuators_state_from_joints, extract_joints_state_from_actuators
-from .limits import Limits, LimitsData
+from .limits import LimitsKamino, LimitsKaminoData
 
 ###
 # Module interface
@@ -34,8 +34,8 @@ from .limits import Limits, LimitsData
 __all__ = [
     "DenseSystemJacobians",
     "DenseSystemJacobiansData",
-    "Limits",
-    "LimitsData",
+    "LimitsKamino",
+    "LimitsKaminoData",
     "compute_joints_data",
     "extract_actuators_state_from_joints",
     "extract_joints_state_from_actuators",

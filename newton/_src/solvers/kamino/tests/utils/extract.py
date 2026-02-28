@@ -23,7 +23,7 @@ from ...core.model import ModelKamino
 from ...dynamics.delassus import BlockSparseMatrixFreeDelassusOperator, DelassusOperator
 from ...geometry.contacts import Contacts
 from ...kinematics.jacobians import DenseSystemJacobians, SparseSystemJacobians
-from ...kinematics.limits import Limits
+from ...kinematics.limits import LimitsKamino
 
 ###
 # Helper functions
@@ -75,7 +75,7 @@ def extract_actuation_forces(model: ModelKamino, data: DataKamino) -> list[np.nd
 
 def extract_cts_jacobians(
     model: ModelKamino,
-    limits: Limits | None,
+    limits: LimitsKamino | None,
     contacts: Contacts | None,
     jacobians: DenseSystemJacobians | SparseSystemJacobians,
     only_active_cts: bool = False,

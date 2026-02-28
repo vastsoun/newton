@@ -26,7 +26,7 @@ from newton._src.solvers.kamino.dynamics.delassus import BlockSparseMatrixFreeDe
 from newton._src.solvers.kamino.geometry.contacts import Contacts
 from newton._src.solvers.kamino.kinematics.constraints import get_max_constraints_per_world
 from newton._src.solvers.kamino.kinematics.jacobians import SparseSystemJacobians
-from newton._src.solvers.kamino.kinematics.limits import Limits
+from newton._src.solvers.kamino.kinematics.limits import LimitsKamino
 from newton._src.solvers.kamino.linalg import LLTSequentialSolver
 from newton._src.solvers.kamino.models.builders.basics import (
     build_boxes_fourbar,
@@ -59,7 +59,7 @@ from newton._src.solvers.kamino.utils import logger as msg
 def check_delassus_allocations(
     fixture: unittest.TestCase,
     model: ModelKamino,
-    limits: Limits,
+    limits: LimitsKamino,
     contacts: Contacts,
     delassus: DelassusOperator,
 ) -> None:

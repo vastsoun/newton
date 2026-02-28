@@ -59,7 +59,7 @@ from .kinematics.joints import (
     extract_actuators_state_from_joints,
     extract_joints_state_from_actuators,
 )
-from .kinematics.limits import Limits
+from .kinematics.limits import LimitsKamino
 from .kinematics.resets import (
     reset_body_net_wrenches,
     reset_joint_constraint_reactions,
@@ -340,7 +340,7 @@ class SolverKamino(SolverBase):
         self._data = self._model.data()
 
         # Allocate a joint-limits interface
-        self._limits = Limits(model=self._model, device=self._model.device)
+        self._limits = LimitsKamino(model=self._model, device=self._model.device)
 
         # Construct the unilateral constraints members in the model info
         make_unilateral_constraints_info(model=self._model, data=self._data, limits=self._limits, contacts=contacts)
@@ -1170,7 +1170,7 @@ class SolverKamino(SolverBase):
         state_in: StateKamino,
         state_out: StateKamino,
         control: ControlKamino,
-        limits: Limits | None = None,  # TODO: Fix this interface
+        limits: LimitsKamino | None = None,  # TODO: Fix this interface
         contacts: Contacts | None = None,
         detector: CollisionDetector | None = None,
     ):

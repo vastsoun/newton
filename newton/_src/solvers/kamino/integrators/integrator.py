@@ -29,7 +29,7 @@ from ..core.model import ModelKamino
 from ..core.state import StateKamino
 from ..geometry.contacts import Contacts as ContactsKamino
 from ..geometry.detector import CollisionDetector
-from ..kinematics.limits import Limits as LimitsKamino
+from ..kinematics.limits import LimitsKamino
 
 ###
 # Module interface

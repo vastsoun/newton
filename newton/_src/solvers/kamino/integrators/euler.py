@@ -44,7 +44,7 @@ from ..core.types import (
 )
 from ..geometry.contacts import Contacts as ContactsKamino
 from ..geometry.detector import CollisionDetector
-from ..kinematics.limits import Limits as LimitsKamino
+from ..kinematics.limits import LimitsKamino
 from .integrator import IntegratorBase
 
 ###

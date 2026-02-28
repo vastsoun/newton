@@ -40,7 +40,7 @@ Typical usage example:
     # containers to hold joint-limits, contacts, Jacobians
     model = builder.finalize()
     data = model.data()
-    limits = Limits(model)
+    limits = LimitsKamino(model)
     contacts = Contacts(builder)
     jacobians = DenseSystemJacobians(model, limits, contacts)
 
@@ -86,7 +86,7 @@ from ..core.types import FloatType, float32, int32, mat33f, vec3f, vec6f
 from ..geometry.contacts import Contacts
 from ..kinematics.constraints import get_max_constraints_per_world
 from ..kinematics.jacobians import ColMajorSparseConstraintJacobians, DenseSystemJacobians, SparseSystemJacobians
-from ..kinematics.limits import Limits
+from ..kinematics.limits import LimitsKamino
 from ..linalg import DenseLinearOperatorData, DenseSquareMultiLinearInfo, LinearSolverType
 from ..linalg.linear import IterativeSolver
 from ..linalg.sparse_matrix import BlockDType, BlockSparseMatrices
@@ -713,7 +713,7 @@ class DelassusOperator:
         self,
         model: ModelKamino | None = None,
         data: DataKamino | None = None,
-        limits: Limits | None = None,
+        limits: LimitsKamino | None = None,
         contacts: Contacts | None = None,
         solver: LinearSolverType = None,
         solver_kwargs: dict[str, Any] | None = None,
@@ -734,7 +734,7 @@ class DelassusOperator:
         Args:
             model (ModelKamino): The model container for which the Delassus operator is built.
             data (DataKamino, optional): The model data container holding the state info and data.
-            limits (Limits, optional): The container holding the allocated joint-limit data.
+            limits (LimitsKamino, optional): The container holding the allocated joint-limit data.
             contacts (Contacts, optional): The container holding the allocated contacts data.
             device (Devicelike, optional): The device identifier for the Delassus operator. Defaults to None.
             factorizer (CholeskyFactorizer, optional): An optional Cholesky factorization object. Defaults to None.
@@ -828,7 +828,7 @@ class DelassusOperator:
         self,
         model: ModelKamino,
         data: DataKamino,
-        limits: Limits | None = None,
+        limits: LimitsKamino | None = None,
         contacts: Contacts | None = None,
         solver: LinearSolverType = None,
         device: Devicelike = None,
@@ -862,8 +862,8 @@ class DelassusOperator:
 
         # Ensure the limits container is valid if provided
         if limits is not None:
-            if not isinstance(limits, Limits):
-                raise ValueError("Invalid limits container provided. Must be an instance of `Limits`.")
+            if not isinstance(limits, LimitsKamino):
+                raise ValueError("Invalid limits container provided. Must be an instance of `LimitsKamino`.")
 
         # Ensure the contacts container is valid if provided
         if contacts is not None:
@@ -1137,7 +1137,7 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
         # containers to hold joint-limits, contacts, Jacobians
         model = builder.finalize()
         data = model.data()
-        limits = Limits(model)
+        limits = LimitsKamino(model)
         contacts = Contacts(builder)
         jacobians = SparseSystemJacobians(model, limits, contacts)
 
@@ -1167,7 +1167,7 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
         self,
         model: ModelKamino | None = None,
         data: DataKamino | None = None,
-        limits: Limits | None = None,
+        limits: LimitsKamino | None = None,
         contacts: Contacts | None = None,
         jacobians: SparseSystemJacobians | None = None,
         solver: LinearSolverType = None,
@@ -1191,7 +1191,7 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
                 The model container for which the Delassus operator is built.
             data (DataKamino, optional):
                 The model data container holding the state info and data.
-            limits (Limits, optional):
+            limits (LimitsKamino, optional):
                 Limits data container for joint limit constraints.
             contacts (Contacts, optional):
                 Contacts data container for contact constraints.
@@ -1211,7 +1211,7 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
         # self.bsm represents the constraint Jacobian
         self._model: ModelKamino | None = None
         self._data: DataKamino | None = None
-        self._limits: Limits | None = None
+        self._limits: LimitsKamino | None = None
         self._contacts: Contacts | None = None
         self._preconditioner: wp.array | None = None
         self._eta: wp.array | None = None
@@ -1257,7 +1257,7 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
         self,
         model: ModelKamino,
         data: DataKamino,
-        limits: Limits | None,
+        limits: LimitsKamino | None,
         contacts: Contacts | None,
         jacobians: SparseSystemJacobians | None = None,
         solver: LinearSolverType = None,
@@ -1272,7 +1272,7 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
                 The model container for which the Delassus operator is built.
             data (DataKamino):
                 The model data container holding the state info and data.
-            limits (Limits, optional):
+            limits (LimitsKamino, optional):
                 Limits data container for joint limit constraints.
             contacts (Contacts, optional):
                 Contacts data container for contact constraints.

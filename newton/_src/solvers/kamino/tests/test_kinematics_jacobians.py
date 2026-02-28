@@ -29,7 +29,7 @@ from newton._src.solvers.kamino.kinematics.jacobians import (
     DenseSystemJacobians,
     SparseSystemJacobians,
 )
-from newton._src.solvers.kamino.kinematics.limits import Limits
+from newton._src.solvers.kamino.kinematics.limits import LimitsKamino
 from newton._src.solvers.kamino.models.builders.basics import build_boxes_fourbar, make_basics_heterogeneous_builder
 from newton._src.solvers.kamino.models.builders.utils import make_homogeneous_builder
 from newton._src.solvers.kamino.tests import setup_tests, test_context
@@ -115,7 +115,7 @@ class TestKinematicsDenseSystemJacobians(unittest.TestCase):
             print(f"model.size.sum_of_num_joint_dofs: {model.size.sum_of_num_joint_dofs}")
 
         # Construct and allocate the limits container
-        limits = Limits(model=model, device=self.default_device)
+        limits = LimitsKamino(model=model, device=self.default_device)
         if self.verbose:
             print("limits.model_max_limits_host: ", limits.model_max_limits_host)
             print("limits.world_max_limits_host: ", limits.world_max_limits_host)
@@ -203,7 +203,7 @@ class TestKinematicsDenseSystemJacobians(unittest.TestCase):
             print(f"model.size.sum_of_num_joint_dofs: {model.size.sum_of_num_joint_dofs}")
 
         # Construct and allocate the limits container
-        limits = Limits(model=model, device=self.default_device)
+        limits = LimitsKamino(model=model, device=self.default_device)
         if self.verbose:
             print("limits.model_max_limits_host: ", limits.model_max_limits_host)
             print("limits.world_max_limits_host: ", limits.world_max_limits_host)
@@ -259,7 +259,7 @@ class TestKinematicsDenseSystemJacobians(unittest.TestCase):
             print(f"model.size.sum_of_num_joint_dofs: {model.size.sum_of_num_joint_dofs}")
 
         # Construct and allocate the limits container
-        limits = Limits(model=model, device=self.default_device)
+        limits = LimitsKamino(model=model, device=self.default_device)
         if self.verbose:
             print("limits.model_max_limits_host: ", limits.model_max_limits_host)
             print("limits.world_max_limits_host: ", limits.world_max_limits_host)
@@ -337,7 +337,7 @@ class TestKinematicsDenseSystemJacobians(unittest.TestCase):
             print(f"model.size.sum_of_num_joint_dofs: {model.size.sum_of_num_joint_dofs}")
 
         # Construct and allocate the limits container
-        limits = Limits(model=model, device=self.default_device)
+        limits = LimitsKamino(model=model, device=self.default_device)
         if self.verbose:
             print("limits.model_max_limits_host: ", limits.model_max_limits_host)
             print("limits.world_max_limits_host: ", limits.world_max_limits_host)
@@ -526,7 +526,7 @@ class TestKinematicsSparseSystemJacobians(unittest.TestCase):
     def _compare_dense_sparse_jacobians(
         self,
         model: ModelKamino,
-        limits: Limits | None,
+        limits: LimitsKamino | None,
         contacts: Contacts | None,
         jacobians_dense: DenseSystemJacobians,
         jacobians_sparse: SparseSystemJacobians,

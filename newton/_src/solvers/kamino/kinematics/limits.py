@@ -48,7 +48,7 @@ from ..utils import logger as msg
 # Module interface
 ###
 
-__all__ = ["Limits", "LimitsData"]
+__all__ = ["LimitsKamino", "LimitsKaminoData"]
 
 
 ###
@@ -64,7 +64,7 @@ wp.set_module_options({"enable_backward": False})
 
 
 @dataclass
-class LimitsData:
+class LimitsKaminoData:
     """
     An SoA-based container to hold time-varying data of a set of active joint-limits.
 
@@ -590,7 +590,7 @@ def _detect_active_joint_configuration_limits(
 ###
 
 
-class Limits:
+class LimitsKamino:
     """
     A container to hold and manage time-varying joint-limits.
     """
@@ -604,7 +604,7 @@ class Limits:
         self._device = device
 
         # Declare the joint-limits data container and initialize it to empty
-        self._data: LimitsData = LimitsData()
+        self._data: LimitsKaminoData = LimitsKaminoData()
 
         # Perform memory allocation if max_limits is specified
         if model is not None:
@@ -622,7 +622,7 @@ class Limits:
         return self._device
 
     @property
-    def data(self) -> LimitsData:
+    def data(self) -> LimitsKaminoData:
         """
         Returns the managed limits data container.
         """
@@ -779,9 +779,9 @@ class Limits:
     def finalize(self, model: ModelKamino, device: Devicelike = None):
         # Ensure the model is valid
         if model is None:
-            raise ValueError("Limits: model must be specified for allocation (got None)")
+            raise ValueError("LimitsKamino: model must be specified for allocation (got None)")
         elif not isinstance(model, ModelKamino):
-            raise TypeError("Limits: model must be an instance of ModelKamino")
+            raise TypeError("LimitsKamino: model must be an instance of ModelKamino")
 
         # Extract the joint limits allocation sizes from the model
         # The memory allocation requires the total number of limits (over multiple worlds)
@@ -803,7 +803,7 @@ class Limits:
 
         # Skip allocation if there are no limits to allocate
         if model_max_limits == 0:
-            msg.debug("Limits: Skipping joint-limit data allocations since total requested capacity was `0`.")
+            msg.debug("LimitsKamino: Skipping joint-limit data allocations since total requested capacity was `0`.")
             return
 
         # Override the device if specified
@@ -812,7 +812,7 @@ class Limits:
 
         # Allocate the limits data on the specified device
         with wp.ScopedDevice(self._device):
-            self._data = LimitsData(
+            self._data = LimitsKaminoData(
                 model_max_limits_host=model_max_limits,
                 world_max_limits_host=world_max_limits,
                 model_max_limits=wp.array([model_max_limits], dtype=int32),
@@ -863,17 +863,17 @@ class Limits:
 
         # Ensure the model and state are valid
         if model is None:
-            raise ValueError("Limits: model must be specified for detection (got None)")
+            raise ValueError("LimitsKamino: model must be specified for detection (got None)")
         elif not isinstance(model, ModelKamino):
-            raise TypeError("Limits: model must be an instance of ModelKamino")
+            raise TypeError("LimitsKamino: model must be an instance of ModelKamino")
         if data is None:
-            raise ValueError("Limits: data must be specified for detection (got None)")
+            raise ValueError("LimitsKamino: data must be specified for detection (got None)")
         elif not isinstance(data, DataKamino):
-            raise TypeError("Limits: data must be an instance of DataKamino")
+            raise TypeError("LimitsKamino: data must be an instance of DataKamino")
 
         # Ensure the limits data is allocated on the same device as the model
         if self._device is not None and self._device != model.device:
-            raise ValueError(f"Limits: data device {self._device} does not match model device {model.device}")
+            raise ValueError(f"LimitsKamino: data device {self._device} does not match model device {model.device}")
 
         # Clear the current limits count
         self.clear()
@@ -920,4 +920,4 @@ class Limits:
         Asserts that the limits data has been allocated.
         """
         if self._data is None:
-            raise ValueError("Limits: data has not been allocated. Please call 'finalize()' first.")
+            raise ValueError("LimitsKamino: data has not been allocated. Please call 'finalize()' first.")

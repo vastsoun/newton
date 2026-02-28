@@ -30,7 +30,7 @@ from ...core.data import DataKamino
 from ...core.model import ModelKamino, ModelKaminoSize
 from ...dynamics.dual import DualProblem
 from ...geometry.contacts import Contacts
-from ...kinematics.limits import Limits
+from ...kinematics.limits import LimitsKamino
 from .kernels import (
     _apply_dual_preconditioner_to_solution,
     _apply_dual_preconditioner_to_state,
@@ -112,7 +112,7 @@ class PADMMSolver:
 
         Args:
             model (ModelKamino | None): The model for which to allocate the solver data.
-            limits (Limits | None): The limits container associated with the model.
+            limits (LimitsKamino | None): The limits container associated with the model.
             contacts (Contacts | None): The contacts container associated with the model.
             settings (list[PADMMSettings] | PADMMSettings | None): The solver settings to use.
             use_acceleration (bool): Set to `True` to enable Nesterov acceleration.
@@ -207,7 +207,7 @@ class PADMMSolver:
 
         Args:
             model (ModelKamino | None): The model for which to allocate the solver data.
-            limits (Limits | None): The limits container associated with the model.
+            limits (LimitsKamino | None): The limits container associated with the model.
             contacts (Contacts | None): The contacts container associated with the model.
             settings (list[PADMMSettings] | PADMMSettings | None): The solver settings to use.
             use_acceleration (bool): Set to `True` to enable Nesterov acceleration.
@@ -315,7 +315,7 @@ class PADMMSolver:
         problem: DualProblem,
         model: ModelKamino,
         data: DataKamino,
-        limits: Limits | None = None,
+        limits: LimitsKamino | None = None,
         contacts: Contacts | None = None,
     ):
         """
@@ -331,7 +331,7 @@ class PADMMSolver:
                 This is needed during warm-starts in order to access the problem preconditioning.
             model (ModelKamino): The model associated with the problem.
             data (DataKamino): The model data associated with the problem.
-            limits (Limits | None): The limits container associated with the model.\n
+            limits (LimitsKamino | None): The limits container associated with the model.\n
                 If `None`, no warm-starting from limits is performed.
             contacts (Contacts | None): The contacts container associated with the model.\n
                 If `None`, no warm-starting from contacts is performed.
@@ -658,7 +658,7 @@ class PADMMSolver:
         self,
         model: ModelKamino,
         data: DataKamino,
-        limits: Limits,
+        limits: LimitsKamino,
         problem: DualProblem,
         x_0: wp.array,
         y_0: wp.array,
@@ -670,7 +670,7 @@ class PADMMSolver:
         Args:
             model (ModelKamino): The model associated with the problem.
             data (DataKamino): The model data associated with the problem.
-            limits (Limits): The limits container associated with the model.
+            limits (LimitsKamino): The limits container associated with the model.
             problem (DualProblem): The dual forward dynamics problem to be solved.\n
                 This is needed during warm-starts in order to access the problem preconditioning.
             x_0 (wp.array): The output primal variables array to be warm-started.
@@ -787,7 +787,7 @@ class PADMMSolver:
         problem: DualProblem,
         model: ModelKamino,
         data: DataKamino,
-        limits: Limits | None = None,
+        limits: LimitsKamino | None = None,
         contacts: Contacts | None = None,
     ):
         """
@@ -798,7 +798,7 @@ class PADMMSolver:
                 This is needed during warm-starts in order to access the problem preconditioning.
             model (ModelKamino): The model associated with the problem.
             data (DataKamino): The model data associated with the problem.
-            limits (Limits | None): The limits container associated with the model.\n
+            limits (LimitsKamino | None): The limits container associated with the model.\n
                 If `None`, no warm-starting from limits is performed.
             contacts (Contacts | None): The contacts container associated with the model.\n
                 If `None`, no warm-starting from contacts is performed.

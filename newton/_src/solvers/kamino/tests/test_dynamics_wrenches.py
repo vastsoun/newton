@@ -32,7 +32,7 @@ from newton._src.solvers.kamino.dynamics.wrenches import (
 )
 from newton._src.solvers.kamino.geometry.contacts import Contacts
 from newton._src.solvers.kamino.kinematics.jacobians import DenseSystemJacobians, SparseSystemJacobians
-from newton._src.solvers.kamino.kinematics.limits import Limits
+from newton._src.solvers.kamino.kinematics.limits import LimitsKamino
 from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.tests.utils.extract import (
     extract_active_constraint_vectors,
@@ -68,7 +68,7 @@ test_wrench_atol = 1e-4  # TODO: Should be 1e-6
 def compute_and_compare_dense_sparse_jacobian_wrenches(
     model: ModelKamino,
     data: DataKamino,
-    limits: Limits,
+    limits: LimitsKamino,
     contacts: Contacts,
 ):
     # Create the Jacobians container

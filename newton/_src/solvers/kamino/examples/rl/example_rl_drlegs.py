@@ -28,6 +28,7 @@ import os
 
 import numpy as np
 import torch
+import torch.nn as nn
 import warp as wp
 from warp.context import Devicelike
 
@@ -45,6 +46,41 @@ from newton._src.solvers.kamino.utils import logger as msg
 
 wp.set_module_options({"enable_backward": False})
 
+ACTIVATION_MAP = {
+    "elu": nn.ELU,
+    "relu": nn.ReLU,
+    "selu": nn.SELU,
+    "tanh": nn.Tanh,
+}
+
+
+def load_rsl_rl_actor(checkpoint_path: str, device: str, hidden_dims: list[int], activation: str = "elu") -> nn.Module:
+    """Load an rsl_rl ActorCritic checkpoint and return the actor network for inference."""
+    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
+    state_dict = checkpoint["model_state_dict"]
+
+    # Infer obs/action dims from the actor weights
+    num_obs = state_dict["actor.0.weight"].shape[1]
+    last_actor_idx = max(int(k.split(".")[1]) for k in state_dict if k.startswith("actor."))
+    num_actions = state_dict[f"actor.{last_actor_idx}.weight"].shape[0]
+
+    # Build actor Sequential: Linear, Act, Linear, Act, ..., Linear
+    act_fn = ACTIVATION_MAP[activation]
+    layers = []
+    dims = [num_obs, *hidden_dims, num_actions]
+    for i in range(len(dims) - 1):
+        layers.append(nn.Linear(dims[i], dims[i + 1]))
+        if i < len(dims) - 2:
+            layers.append(act_fn())
+    actor = nn.Sequential(*layers)
+
+    # Load only the actor weights
+    actor_state = {k.removeprefix("actor."): v for k, v in state_dict.items() if k.startswith("actor.")}
+    actor.load_state_dict(actor_state)
+    actor.eval()
+    actor.to(device)
+    return actor
+
 
 ###
 # Example class
@@ -60,9 +96,10 @@ class Example:
         headless: bool = False,
         action_scale: float = 0.25,
         control_decimation: int = 1,
+        sim_dt: float = 0.01,
     ):
         # Timing
-        self.sim_dt = 0.01
+        self.sim_dt = sim_dt
         self.max_steps = max_steps
         self.control_decimation = control_decimation
         self.action_scale = action_scale
@@ -191,7 +228,10 @@ if __name__ == "__main__":
         default=1,
         help="Number of physics substeps per RL step",
     )
-    parser.add_argument("--policy", type=str, default=None, help="Path to a TorchScript policy .pt file")
+    parser.add_argument("--sim-dt", type=float, default=0.01, help="Physics substep duration in seconds")
+    parser.add_argument("--policy", type=str, default=None, help="Path to an rsl_rl checkpoint .pt file")
+    parser.add_argument("--hidden-dims", type=int, nargs="+", default=[64, 64, 64], help="Actor hidden layer dims")
+    parser.add_argument("--activation", type=str, default="elu", help="Actor activation function")
     parser.add_argument(
         "--clear-cache",
         action=argparse.BooleanOptionalAction,
@@ -229,11 +269,14 @@ if __name__ == "__main__":
         headless=args.headless,
         action_scale=args.action_scale,
         control_decimation=args.control_decimation,
+        sim_dt=args.sim_dt,
     )
 
     # Load trained policy if provided
     if args.policy:
-        example.policy = torch.jit.load(args.policy, map_location=example.torch_device)
+        example.policy = load_rsl_rl_actor(
+            args.policy, device=example.torch_device, hidden_dims=args.hidden_dims, activation=args.activation
+        )
         msg.info(f"Loaded policy from: {args.policy}")
     else:
         msg.info("No policy provided — using random actions")

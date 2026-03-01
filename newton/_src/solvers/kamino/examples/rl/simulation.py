@@ -26,6 +26,8 @@ from __future__ import annotations
 
 import torch
 import warp as wp
+from warp.context import Devicelike
+
 from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.core.types import transformf, vec6f
 from newton._src.solvers.kamino.geometry.aggregation import ContactAggregation
@@ -36,7 +38,6 @@ from newton._src.solvers.kamino.models.builders.utils import (
 )
 from newton._src.solvers.kamino.utils import logger as msg
 from newton._src.solvers.kamino.utils.sim import Simulator, SimulatorSettings, ViewerKamino
-from warp.context import Devicelike
 
 
 class RigidBodySim:
@@ -83,7 +84,7 @@ class RigidBodySim:
         settings: SimulatorSettings | None = None,
         use_cuda_graph: bool = False,
         record_video: bool = False,
-        video_folder: str = None,
+        video_folder: str | None = None,
         async_save: bool = True,
     ):
         # ----- Device setup -----
@@ -195,7 +196,7 @@ class RigidBodySim:
         self._update_base_u = False
 
         # Contact aggregation
-        ground_geom_ids = [self.sim.model.cgeoms.num_geoms - 1]
+        ground_geom_ids = [self.sim.model.size.max_of_num_collision_geoms - 1]
         self._contact_aggregation = ContactAggregation(
             model=self.sim.model,
             contacts=self.sim.contacts,

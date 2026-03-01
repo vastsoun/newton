@@ -134,13 +134,24 @@ class ObservationBuilder(ABC):
         num_joint_dofs = self._sim.model.size.max_of_num_joint_dofs
         return wp.to_torch(self._sim.state.dq_j).reshape(self._num_worlds, num_joint_dofs)
 
+    def _get_root_positions(self) -> torch.Tensor:
+        """Root body positions as a PyTorch tensor ``(num_worlds, 3)``.
 
-class DrlegsStanceObservation(ObservationBuilder):
-    """Observation builder drlegs_stance
+        Zero-copy view of the underlying Warp array (body 0, xyz).
+        """
+        num_bodies = self._sim.model.size.max_of_num_bodies
+        q_i = wp.to_torch(self._sim.state.q_i).reshape(self._num_worlds, num_bodies, 7)
+        return q_i[:, 0, :3]
 
-    Observation vector (num_dofs + num_actuated dims):
-        * DOF positions  (all joints, including passive linkages)
-        * action history (actuated joints only, most recent step)
+
+class DrlegsBaseObservation(ObservationBuilder):
+    """Base observation builder for DR Legs.
+
+    Observation vector (63D):
+        * root position        (3D  — pelvis xyz)
+        * DOF positions        (36D — all joints, including passive linkages)
+        * action history t-0   (12D — actuated joints, current step)
+        * action history t-1   (12D — actuated joints, previous step)
 
     Args:
         body_sim: A :class:`RigidBodySim` instance.
@@ -163,8 +174,13 @@ class DrlegsStanceObservation(ObservationBuilder):
         self._num_dofs = body_sim.num_joint_coords
         self._action_scale = action_scale
 
-        # Action history buffer (most recent scaled actions for actuated joints).
+        # Action history buffers (actuated joints only).
         self._action_history: torch.Tensor = torch.zeros(
+            (body_sim.num_worlds, self._num_actions),
+            device=body_sim.torch_device,
+            dtype=torch.float32,
+        )
+        self._action_history_prev: torch.Tensor = torch.zeros(
             (body_sim.num_worlds, self._num_actions),
             device=body_sim.torch_device,
             dtype=torch.float32,
@@ -172,23 +188,29 @@ class DrlegsStanceObservation(ObservationBuilder):
 
     @property
     def num_observations(self) -> int:
-        return self._num_dofs + self._num_actions  # 36 + 12 = 48
+        return 3 + self._num_dofs + self._num_actions + self._num_actions  # 63
 
     def compute(self, actions: torch.Tensor | None = None) -> torch.Tensor:
-        q_j = self._get_joint_positions()  # (num_worlds, 36)
-
         if actions is not None:
-            # Scale to match training observation (action_transform output)
+            self._action_history_prev[:] = self._action_history
             self._action_history[:] = self._action_scale * actions
 
-        obs = torch.cat([q_j, self._action_history], dim=-1)  # (num_worlds, 48)
+        root_pos = self._get_root_positions()  # (num_worlds, 3)
+        q_j = self._get_joint_positions()  # (num_worlds, 36)
+
+        obs = torch.cat(
+            [root_pos, q_j, self._action_history, self._action_history_prev],
+            dim=-1,
+        )  # (num_worlds, 63)
         return obs
 
     def reset(self, env_ids: torch.Tensor | None = None) -> None:
         if env_ids is None:
             self._action_history.zero_()
+            self._action_history_prev.zero_()
         else:
             self._action_history[env_ids] = 0.0
+            self._action_history_prev[env_ids] = 0.0
 
 
 # ---------------------------------------------------------------------------

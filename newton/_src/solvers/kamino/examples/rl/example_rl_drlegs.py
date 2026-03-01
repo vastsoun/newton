@@ -35,7 +35,7 @@ from warp.context import Devicelike
 import newton
 import newton.examples
 from newton._src.solvers.kamino.examples import run_headless
-from newton._src.solvers.kamino.examples.rl.observations import DrlegsStanceObservation
+from newton._src.solvers.kamino.examples.rl.observations import DrlegsBaseObservation
 from newton._src.solvers.kamino.examples.rl.simulation import RigidBodySim
 from newton._src.solvers.kamino.models import get_examples_usd_assets_path
 from newton._src.solvers.kamino.utils import logger as msg
@@ -122,7 +122,7 @@ class Example:
         )
 
         # Observation builder (DR Legs specific)
-        self.obs_builder = DrlegsStanceObservation(
+        self.obs_builder = DrlegsBaseObservation(
             body_sim=self.body_sim,
             action_scale=action_scale,
         )

@@ -271,8 +271,8 @@ class ShapeType(IntEnum):
                 case ShapeType.PLANE:
                     # NOTE: For an infinite plane, we use (0, 0, _) to signal an infinite extents
                     shape_scale = vec3f(0.0, 0.0, 0.0)  # Infinite plane
-                case (ShapeType.MESH, ShapeType.CONVEX, ShapeType.HFIELD):
-                    shape_scale = vec3f(0.0, 0.0, 0.0)
+                case ShapeType.MESH | ShapeType.CONVEX | ShapeType.HFIELD:
+                    shape_scale = vec3f(shape_params[0], shape_params[1], shape_params[2])
                 case _:
                     raise ValueError(f"Unsupported `ShapeType` for parameter conversion: {shape_type}")
 
@@ -372,6 +372,9 @@ class ShapeType(IntEnum):
                 case GeoType.PLANE:
                     # NOTE: For an infinite plane, we use (0, 0, _) to signal an infinite extents
                     shape_params = vec4f(0.0, 0.0, 1.0, 0.0)  # Default normal and distance
+                case GeoType.MESH | GeoType.CONVEX_MESH | GeoType.HFIELD:
+                    # For mesh, convex mesh, and heightfield, parameters are not directly convertible
+                    shape_params = vec4f(shape_scale[0], shape_scale[1], shape_scale[2], 0.0)
                 case _:
                     raise ValueError(f"Unsupported `GeoType` for parameter conversion: {geo_type}")
 
@@ -835,12 +838,13 @@ class MeshShape(ShapeDescriptor):
     @property
     @override
     def paramsvec(self) -> vec4f:
-        return vec4f(0.0)
+        return vec4f(1.0, 1.0, 1.0, 0.0)
 
     @property
     @override
-    def params(self) -> float:
-        return 1.0
+    def params(self) -> tuple[float, float, float]:
+        """Returns the XYZ scaling of the mesh."""
+        return 1.0, 1.0, 1.0
 
     @property
     @override
@@ -891,8 +895,14 @@ class HFieldShape(ShapeDescriptor):
 
     @property
     @override
-    def params(self) -> vec4f:
-        return vec4f(0.0)
+    def paramsvec(self) -> vec4f:
+        return vec4f(1.0, 1.0, 1.0, 0.0)
+
+    @property
+    @override
+    def params(self) -> tuple[float, float, float]:
+        """Returns the XYZ scaling of the height-field."""
+        return 1.0, 1.0, 1.0
 
 
 ###
@@ -913,3 +923,103 @@ ShapeDescriptorType = (
     | HFieldShape
 )
 """A type union that can represent any shape descriptor, including primitive and explicit shapes."""
+
+
+###
+# Utilities
+###
+
+
+def max_contacts_for_shape_pair(type_a: int, type_b: int) -> tuple[int, int]:
+    """
+    Count the number of potential contact points for a collision pair in both
+    directions of the collision pair (collisions from A to B and from B to A).
+
+    Inputs must be canonicalized such that the type of shape A is less than or equal to the type of shape B.
+
+    Args:
+        type_a: First shape type
+        type_b: Second shape type
+
+    Returns:
+        tuple[int, int]: Number of contact points for collisions between A->B and B->A.
+    """
+    # Ensure the shape types are ordered canonically
+    if type_a > type_b:
+        type_a, type_b = type_b, type_a
+
+    if type_a == ShapeType.SPHERE:
+        return 1, 0
+
+    elif type_a == ShapeType.CYLINDER:
+        if type_b == ShapeType.CYLINDER:
+            return 4, 4
+        elif type_b == ShapeType.CONE:
+            return 4, 4
+        elif type_b == ShapeType.CAPSULE:
+            return 4, 4
+        elif type_b == ShapeType.BOX:
+            return 8, 8
+        elif type_b == ShapeType.ELLIPSOID:
+            return 4, 4
+        elif type_b == ShapeType.PLANE:
+            return 6, 6
+        elif type_b == ShapeType.MESH or type_b == ShapeType.CONVEX:
+            pass  # TODO: WHAT TO RETURN WHEN MESH SUPPORT IS ADDED?
+
+    elif type_a == ShapeType.CONE:
+        if type_b == ShapeType.CONE:
+            return 4, 4
+        elif type_b == ShapeType.CAPSULE:
+            return 4, 4
+        elif type_b == ShapeType.BOX:
+            return 8, 8
+        elif type_b == ShapeType.ELLIPSOID:
+            return 8, 8
+        elif type_b == ShapeType.PLANE:
+            return 8, 8
+        elif type_b == ShapeType.MESH or type_b == ShapeType.CONVEX:
+            pass  # TODO: WHAT TO RETURN WHEN MESH SUPPORT IS ADDED?
+
+    elif type_a == ShapeType.CAPSULE:
+        if type_b == ShapeType.CAPSULE:
+            return 2, 2
+        elif type_b == ShapeType.BOX:
+            return 8, 8
+        elif type_b == ShapeType.ELLIPSOID:
+            return 8, 8
+        elif type_b == ShapeType.PLANE:
+            return 8, 8
+        elif type_b == ShapeType.MESH or type_b == ShapeType.CONVEX:
+            pass  # TODO: WHAT TO RETURN WHEN MESH SUPPORT IS ADDED?
+
+    elif type_a == ShapeType.BOX:
+        if type_b == ShapeType.BOX:
+            return 12, 12
+        elif type_b == ShapeType.ELLIPSOID:
+            return 8, 8
+        elif type_b == ShapeType.PLANE:
+            return 12, 12
+        elif type_b == ShapeType.MESH or type_b == ShapeType.CONVEX:
+            pass  # TODO: WHAT TO RETURN WHEN MESH SUPPORT IS ADDED?
+
+    elif type_a == ShapeType.ELLIPSOID:
+        if type_b == ShapeType.ELLIPSOID:
+            return 4, 4
+        elif type_b == ShapeType.PLANE:
+            return 4, 4
+        elif type_b == ShapeType.MESH or type_b == ShapeType.CONVEX:
+            pass  # TODO: WHAT TO RETURN WHEN MESH SUPPORT IS ADDED?
+
+    elif type_a == ShapeType.PLANE:
+        if type_b == ShapeType.MESH or type_b == ShapeType.CONVEX:
+            pass  # TODO: WHAT TO RETURN WHEN MESH SUPPORT IS ADDED?
+
+    elif type_a == ShapeType.MESH or type_a == ShapeType.CONVEX:
+        if type_a == ShapeType.HFIELD:
+            pass  # TODO: WHAT TO RETURN WHEN MESH SUPPORT IS ADDED?
+        else:
+            pass  # TODO: WHAT TO RETURN WHEN MESH SUPPORT IS ADDED?
+
+    # unsupported type combination
+    return 0, 0

@@ -805,8 +805,8 @@ class JointDoFType(IntEnum):
             raise ValueError(f"Invalid shape of dof_axes: {dof_axes.shape}. Expected: {(dof_dim[0] + dof_dim[1], 3)}.")
 
         # Retrieve the number of DoFs for the joint type
-        num_dofs = dof_dim[0] + dof_dim[1]
-        print(f"{dof_type} with {num_dofs} DoFs and axis:\n{dof_axes}")
+        # num_dofs = dof_dim[0] + dof_dim[1]
+        # print(f"{dof_type} with {num_dofs} DoFs and axis:\n{dof_axes}")
 
         # Determine the joint axes matrix based on the DoF type and axes
         if dof_type == JointDoFType.FIXED:
@@ -836,7 +836,7 @@ class JointDoFType(IntEnum):
             R_axis_j = wp.mat33f(*ax_lin.tolist(), *ay_lin.tolist(), *az_lin.tolist())
         else:
             raise ValueError(f"Unsupported joint DOF type: {dof_type}")
-        print(f"R_axis_j for {dof_type}:\n{R_axis_j}")
+        # print(f"R_axis_j for {dof_type}:\n{R_axis_j}")
 
         # Return the computed joint axes rotation matrix or None
         # if the joint type does not require an axes matrix

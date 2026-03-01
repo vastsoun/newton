@@ -24,6 +24,7 @@ import numpy as np
 import warp as wp
 
 from .....core.types import nparray
+from .....geometry.flags import ShapeFlags
 from .....usd import utils as usd_utils
 from .....utils.topology import topological_sort_undirected
 from ...core.bodies import RigidBodyDescriptor
@@ -730,9 +731,7 @@ class USDImporter:
             return JointActuationType.VELOCITY
         return JointActuationType.FORCE
 
-    def _parse_joint_revolute(
-        self, joint_spec, rotation_unit: float = 1.0, load_drive_dynamics: bool = False, eps=1e-6
-    ):
+    def _parse_joint_revolute(self, joint_spec, rotation_unit: float = 1.0, load_drive_dynamics: bool = False):
         dof_type = JointDoFType.REVOLUTE
         act_type = JointActuationType.PASSIVE
         X_j = self.usd_axis_to_axis[joint_spec.axis].to_mat33()
@@ -744,12 +743,12 @@ class USDImporter:
         if joint_spec.drive.enabled:
             if not joint_spec.drive.acceleration:
                 tau_j_max[0] = min(joint_spec.drive.forceLimit, JOINT_TAUMAX)
-                if load_drive_dynamics:
-                    # TODO: How to get these from USD?
-                    a_j = [eps] * dof_type.num_dofs
-                    b_j = [eps] * dof_type.num_dofs
-                    k_p_j = [joint_spec.drive.stiffness] * dof_type.num_coords
-                    k_d_j = [joint_spec.drive.damping] * dof_type.num_dofs
+                has_pd_gains = joint_spec.drive.stiffness > 0.0 or joint_spec.drive.damping > 0.0
+                if load_drive_dynamics and has_pd_gains:
+                    a_j = [0.0] * dof_type.num_dofs
+                    b_j = [0.0] * dof_type.num_dofs
+                    k_p_j = [joint_spec.drive.stiffness / rotation_unit] * dof_type.num_coords
+                    k_d_j = [joint_spec.drive.damping / rotation_unit] * dof_type.num_dofs
                     act_type = self._infer_joint_actuation_type(
                         joint_spec.drive.stiffness, joint_spec.drive.damping, joint_spec.drive.enabled
                     )
@@ -761,9 +760,7 @@ class USDImporter:
 
         return dof_type, act_type, X_j, q_j_min, q_j_max, tau_j_max, a_j, b_j, k_p_j, k_d_j
 
-    def _parse_joint_prismatic(
-        self, joint_spec, distance_unit: float = 1.0, load_drive_dynamics: bool = False, eps=1e-6
-    ):
+    def _parse_joint_prismatic(self, joint_spec, distance_unit: float = 1.0, load_drive_dynamics: bool = False):
         dof_type = JointDoFType.PRISMATIC
         act_type = JointActuationType.PASSIVE
         X_j = self.usd_axis_to_axis[joint_spec.axis].to_mat33()
@@ -775,10 +772,10 @@ class USDImporter:
         if joint_spec.drive.enabled:
             if not joint_spec.drive.acceleration:
                 tau_j_max[0] = min(joint_spec.drive.forceLimit, JOINT_TAUMAX)
-                if load_drive_dynamics:
-                    # TODO: How to get these from USD?
-                    a_j = [eps] * dof_type.num_dofs
-                    b_j = [eps] * dof_type.num_dofs
+                has_pd_gains = joint_spec.drive.stiffness > 0.0 or joint_spec.drive.damping > 0.0
+                if load_drive_dynamics and has_pd_gains:
+                    a_j = [0.0] * dof_type.num_dofs
+                    b_j = [0.0] * dof_type.num_dofs
                     k_p_j = [joint_spec.drive.stiffness] * dof_type.num_coords
                     k_d_j = [joint_spec.drive.damping] * dof_type.num_dofs
                     act_type = self._infer_joint_actuation_type(
@@ -1466,6 +1463,7 @@ class USDImporter:
             shape=shape,
             group=0,
             collides=0,
+            flags=ShapeFlags.VISIBLE,
         )
 
     def _parse_physics_geom(
@@ -1479,6 +1477,7 @@ class USDImporter:
         material_index_map: dict[str, int],
         distance_unit: float = 1.0,
         meshes_are_collidable: bool = False,
+        force_show_colliders: bool = False,
         prim_path_names: bool = False,
     ) -> GeometryDescriptor | None:
         """
@@ -1626,9 +1625,13 @@ class USDImporter:
         geom_collides: int = 0
         geom_material: str | None = None
         geom_material_index: int = 0
+        geom_flags = 0
         if geom_spec.collisionEnabled and ((meshes_are_collidable and is_mesh_shape) or not is_mesh_shape):
             # Query the geom prim for the maximum number of contacts hint
             geom_max_contacts = self._get_geom_max_contacts(geom_prim)
+
+            # Enable collision for this geom by setting the appropriate flags
+            geom_flags = geom_flags | ShapeFlags.COLLIDE_SHAPES | ShapeFlags.COLLIDE_PARTICLES
 
             # Assign a material if specified
             # NOTE: Only the first material is considered for now
@@ -1658,6 +1661,10 @@ class USDImporter:
                     geom_collides += cgroup
             msg.debug(f"[{name}]: geom_collides: {geom_collides}")
 
+        # Set the geom to be visible if it is a non-collidable mesh and we are forcing show colliders
+        if force_show_colliders:
+            geom_flags = geom_flags | ShapeFlags.VISIBLE
+
         ###
         # GeometryDescriptor
         ###
@@ -1675,6 +1682,7 @@ class USDImporter:
             group=geom_group,
             collides=geom_collides,
             max_contacts=geom_max_contacts,
+            flags=geom_flags,
         )
 
     ###
@@ -1697,6 +1705,7 @@ class USDImporter:
         load_static_geometry: bool = True,
         load_materials: bool = True,
         meshes_are_collidable: bool = False,
+        force_show_colliders: bool = False,
         use_prim_path_names: bool = False,
         use_articulation_root_name: bool = True,
     ) -> ModelBuilderKamino:
@@ -2182,6 +2191,7 @@ class USDImporter:
                                 material_index_map=material_index_map,
                                 distance_unit=distance_unit,
                                 meshes_are_collidable=meshes_are_collidable,
+                                force_show_colliders=force_show_colliders,
                                 prim_path_names=use_prim_path_names,
                             )
                             break  # Stop after the first match

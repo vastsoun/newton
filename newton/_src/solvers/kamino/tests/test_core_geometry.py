@@ -81,7 +81,7 @@ class TestGeometryDescriptor(unittest.TestCase):
         self.assertEqual(geom.wid, -1)
         self.assertEqual(geom.gid, -1)
         self.assertEqual(geom.mid, -1)
-        self.assertEqual(geom.flags, 0)
+        self.assertEqual(geom.flags, 7)
         self.assertIsInstance(geom.shape.uid, str)
 
         # Check hash function
@@ -113,7 +113,7 @@ class TestGeometryDescriptor(unittest.TestCase):
         self.assertEqual(geom.body, -1)
         self.assertEqual(geom.shape.type, ShapeType.MESH)
         self.assertEqual(geom.shape.num_params, -1)
-        self.assertEqual(geom.shape.params, 1.0)
+        self.assertEqual(geom.shape.params, (1.0, 1.0, 1.0))
         self.assertEqual(geom.shape.name, "mesh")
         self.assertEqual(geom.offset, wp.transform_identity(dtype=wp.float32))
         self.assertEqual(geom.material, "steel")
@@ -124,7 +124,7 @@ class TestGeometryDescriptor(unittest.TestCase):
         self.assertEqual(geom.wid, -1)
         self.assertEqual(geom.gid, -1)
         self.assertEqual(geom.mid, -1)
-        self.assertEqual(geom.flags, 0)
+        self.assertEqual(geom.flags, 7)
         self.assertIsInstance(geom.shape.uid, str)
         self.assertTrue(np.array_equal(geom.shape.vertices, np.array(vertices)))
         self.assertTrue(np.array_equal(geom.shape.indices, np.array(indices).flatten()))

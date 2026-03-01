@@ -24,6 +24,7 @@ import copy
 import numpy as np
 import warp as wp
 
+from ....geometry.flags import ShapeFlags
 from .bodies import RigidBodiesModel, RigidBodyDescriptor
 from .geometry import GeometriesModel, GeometryDescriptor
 from .gravity import GravityDescriptor, GravityModel
@@ -36,9 +37,9 @@ from .joints import (
 from .materials import MaterialDescriptor, MaterialManager, MaterialPairProperties, MaterialPairsModel, MaterialsModel
 from .math import FLOAT32_EPS
 from .model import ModelKamino, ModelKaminoInfo, ModelKaminoSize
-from .shapes import ShapeDescriptorType, ShapeType
+from .shapes import ShapeDescriptorType, ShapeType, max_contacts_for_shape_pair
 from .time import TimeModel
-from .types import Axis, float32, int32, mat33f, transformf, uint32, vec2i, vec3f, vec4f, vec6f
+from .types import Axis, float32, int32, mat33f, transformf, vec2i, vec3f, vec4f, vec6f
 from .world import WorldDescriptor
 
 ###
@@ -1380,8 +1381,7 @@ class ModelBuilderKamino:
                 params=wp.array(geoms_params, dtype=vec4f),
                 offset=wp.array(geoms_offset, dtype=transformf),
                 material=wp.array(geoms_material, dtype=int32),
-                group=wp.array(geoms_group, dtype=uint32),
-                collides=wp.array(geoms_collides, dtype=uint32),
+                group=wp.array(geoms_group, dtype=int32),
                 gap=wp.array(geoms_gap, dtype=float32),
                 margin=wp.array(geoms_margin, dtype=float32),
                 collidable_pairs=wp.array(np.array(model_collidable_pairs), dtype=vec2i),
@@ -1406,8 +1406,8 @@ class ModelBuilderKamino:
 
         # Construct and return the complete model container
         return ModelKamino(
-            device=device,
-            requires_grad=requires_grad,
+            _device=device,
+            _requires_grad=requires_grad,
             size=model_size,
             worlds=self._worlds,
             info=model_info,
@@ -1571,6 +1571,12 @@ class ModelBuilderKamino:
                 for idx2 in range(idx1 + 1, ncg):
                     gid2 = idx2 + ncg_offset
                     geom2 = self.geoms[gid2]
+
+                    # Skip if either geometry is non-collidable since they won't be considered in the broadphase anyway
+                    if (geom1.flags & ShapeFlags.COLLIDE_SHAPES == 0) or (geom2.flags & ShapeFlags.COLLIDE_SHAPES == 0):
+                        continue
+
+                    # Form the candidate pair tuple with sorted geom index order
                     candidate_pair = (min(gid1, gid2), max(gid1, gid2))
 
                     # Same-body collision
@@ -1669,7 +1675,7 @@ class ModelBuilderKamino:
             if geom1.shape.type > geom2.shape.type:
                 g1, g2 = g2, g1
                 geom1, geom2 = geom2, geom1
-            num_contacts_a, num_contacts_b = self._count_contact_points_for_pair(
+            num_contacts_a, num_contacts_b = max_contacts_for_shape_pair(
                 type_a=geom1.shape.type,
                 type_b=geom2.shape.type,
             )
@@ -1770,105 +1776,6 @@ class ModelBuilderKamino:
                 model_max_contacts += geom_maxnc
                 world_max_contacts[w] += geom_maxnc
         return model_max_contacts, world_max_contacts
-
-    @staticmethod
-    def _count_contact_points_for_pair(type_a: int, type_b: int) -> tuple[int, int]:
-        """
-        Count the number of potential contact points for a collision pair in both directions
-        of the collision pair (collisions from A to B and from B to A).
-
-        Inputs must be canonicalized such that the type of shape A is less than or equal to the type of shape B.
-
-        Args:
-            shape_a: First shape index
-            shape_b: Second shape index
-            type_a: First shape type
-            type_b: Second shape type
-            scale_a: Shape scale of first shape
-            scale_b: Shape scale of second shape
-
-        Returns:
-            tuple[int, int]: Number of contact points for collisions between A->B and B->A.
-        """
-        # Ensure the shape types are ordered canonically
-        if type_a > type_b:
-            raise ValueError("Shape types must be ordered such that type_a <= type_b")
-
-        if type_a == ShapeType.SPHERE:
-            return 1, 0
-
-        elif type_a == ShapeType.CYLINDER:
-            if type_b == ShapeType.CYLINDER:
-                return 4, 4
-            elif type_b == ShapeType.CONE:
-                return 4, 4
-            elif type_b == ShapeType.CAPSULE:
-                return 4, 4
-            elif type_b == ShapeType.BOX:
-                return 8, 8
-            elif type_b == ShapeType.ELLIPSOID:
-                return 4, 4
-            elif type_b == ShapeType.PLANE:
-                return 6, 6
-            elif type_b == ShapeType.MESH or type_b == ShapeType.CONVEX:
-                pass
-
-        elif type_a == ShapeType.CONE:
-            if type_b == ShapeType.CONE:
-                return 4, 4
-            elif type_b == ShapeType.CAPSULE:
-                return 4, 4
-            elif type_b == ShapeType.BOX:
-                return 8, 8
-            elif type_b == ShapeType.ELLIPSOID:
-                return 8, 8
-            elif type_b == ShapeType.PLANE:
-                return 8, 8
-            elif type_b == ShapeType.MESH or type_b == ShapeType.CONVEX:
-                pass
-
-        elif type_a == ShapeType.CAPSULE:
-            if type_b == ShapeType.CAPSULE:
-                return 2, 2
-            elif type_b == ShapeType.BOX:
-                return 8, 8
-            elif type_b == ShapeType.ELLIPSOID:
-                return 8, 8
-            elif type_b == ShapeType.PLANE:
-                return 8, 8
-            elif type_b == ShapeType.MESH or type_b == ShapeType.CONVEX:
-                pass
-
-        elif type_a == ShapeType.BOX:
-            if type_b == ShapeType.BOX:
-                return 12, 12
-            elif type_b == ShapeType.ELLIPSOID:
-                return 8, 8
-            elif type_b == ShapeType.PLANE:
-                return 12, 12
-            elif type_b == ShapeType.MESH or type_b == ShapeType.CONVEX:
-                pass
-
-        elif type_a == ShapeType.ELLIPSOID:
-            if type_b == ShapeType.ELLIPSOID:
-                return 4, 4
-            elif type_b == ShapeType.PLANE:
-                return 4, 4
-            elif type_b == ShapeType.MESH or type_b == ShapeType.CONVEX:
-                pass
-
-        elif type_a == ShapeType.PLANE:
-            if type_b == ShapeType.MESH or type_b == ShapeType.CONVEX:
-                pass
-
-        elif type_a == ShapeType.MESH or type_a == ShapeType.CONVEX:
-            if type_a == ShapeType.HFIELD:
-                pass
-            else:
-                pass
-
-        # unsupported type combination
-        return 0, 0
 
     EntityDescriptorType = RigidBodyDescriptor | JointDescriptor | GeometryDescriptor
     """A type alias for model entity descriptors."""

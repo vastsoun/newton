@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 import warp as wp
 
 # from ....sim.builder import ModelBuilder
+from ....geometry.flags import ShapeFlags
 from .shapes import ShapeDescriptorType
 from .types import Descriptor, float32, int32, override, transformf
 
@@ -154,7 +155,7 @@ class GeometryDescriptor(Descriptor):
     Defaults to `-1` indicating that the default material will be assigned.
     """
 
-    flags: int = 0
+    flags: int = ShapeFlags.VISIBLE | ShapeFlags.COLLIDE_SHAPES | ShapeFlags.COLLIDE_PARTICLES
     """
     Shape flags of the geometry entity, used to specify additional properties of the geometry.\n
     Defaults to `0`, indicating that the geometry is disabled.
@@ -309,12 +310,6 @@ class GeometriesModel:
     group: wp.array | None = None
     """
     Collision group assigned to each collision geometry.\n
-    Shape of ``(num_geoms,)`` and type :class:`uint32`.
-    """
-
-    collides: wp.array | None = None
-    """
-    Collision groups with which each collision geometry can collide.\n
     Shape of ``(num_geoms,)`` and type :class:`uint32`.
     """
 

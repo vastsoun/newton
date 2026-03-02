@@ -31,6 +31,8 @@ the net force/wrench on the associated body CoMs are employed to estimate the wa
 See the :class:`WarmstarterLimits` and :class:`WarmstarterContacts` classes for detailed usage.
 """
 
+from __future__ import annotations
+
 from enum import IntEnum
 
 import warp as wp
@@ -902,6 +904,16 @@ class WarmstarterContacts:
         Warm-starts contacts by matching geom-pair keys and contact-point positions,
         with a backup strategy using the net body-CoM contact wrench per geom-pair.
         """
+
+        @classmethod
+        def from_string(cls, s: str) -> WarmstarterContacts.Method:
+            """Converts a string to a WarmstarterContacts.Method enum value."""
+            try:
+                return cls[s.upper()]
+            except KeyError as e:
+                raise ValueError(
+                    f"Invalid WarmstarterContacts.Method: {s}. Valid options are: {[e.name for e in cls]}"
+                ) from e
 
         @override
         def __str__(self):

@@ -36,8 +36,6 @@ import newton.examples
 # Kamino imports
 from newton._src.solvers.kamino.geometry import CollisionDetectorConfig
 from newton._src.solvers.kamino.models import get_basics_usd_assets_path
-from newton._src.solvers.kamino.solver_kamino import SolverKaminoConfig
-from newton._src.solvers.kamino.solvers.warmstart import WarmstarterContacts
 from newton._src.solvers.kamino.utils import logger as msg
 
 
@@ -101,7 +99,7 @@ class Example:
         solver_config.padmm.rho_0 = 0.1
         solver_config.use_solver_acceleration = True
         solver_config.warmstart_mode = "containers"
-        solver_config.contact_warmstart_method = WarmstarterContacts.Method.GEOM_PAIR_NET_FORCE
+        solver_config.contact_warmstart_method = "geom_pair_net_force"
 
         # Create the Kamino solver for the given model
         msg.notif("Creating the Kamino solver for the given model...")

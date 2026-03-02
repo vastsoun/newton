@@ -27,7 +27,6 @@ from newton._src.solvers.kamino.examples import get_examples_output_path, run_he
 from newton._src.solvers.kamino.models import get_basics_usd_assets_path
 from newton._src.solvers.kamino.models.builders.basics import build_box_on_plane
 from newton._src.solvers.kamino.models.builders.utils import make_homogeneous_builder
-from newton._src.solvers.kamino.solvers.warmstart import WarmstarterContacts
 from newton._src.solvers.kamino.utils import logger as msg
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
 from newton._src.solvers.kamino.utils.sim import SimulationLogger, Simulator, SimulatorConfig, ViewerKamino
@@ -166,7 +165,7 @@ class Example:
         config.solver.padmm.rho_0 = 0.1
         config.solver.use_solver_acceleration = True
         config.solver.warmstart_mode = "containers"
-        config.solver.contact_warmstart_method = WarmstarterContacts.Method.KEY_AND_POSITION_WITH_NET_FORCE_BACKUP
+        config.solver.contact_warmstart_method = "key_and_position_with_net_force_backup"
         config.solver.collect_solver_info = True
         config.solver.compute_metrics = logging and not use_cuda_graph
 

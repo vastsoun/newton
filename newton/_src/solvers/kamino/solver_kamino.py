@@ -384,11 +384,17 @@ class SolverKaminoConfig:
     Defaults to `containers` to warmstart from the solver data containers.
     """
 
-    contact_warmstart_method: WarmstarterContacts.Method = WarmstarterContacts.Method.KEY_AND_POSITION
+    contact_warmstart_method: Literal[
+        "key_and_position",
+        "geom_pair_net_force",
+        "geom_pair_net_wrench",
+        "key_and_position_with_net_force_backup",
+        "key_and_position_with_net_wrench_backup",
+    ] = "key_and_position"
     """
     Method to be used for warm-starting contacts.\n
     See :class:`WarmstarterContacts.Method` for available options.\n
-    Defaults to `WarmstarterContacts.Method.KEY_AND_POSITION`.
+    Defaults to `key_and_position`.
     """
 
     use_solver_acceleration: bool = True
@@ -462,11 +468,8 @@ class SolverKaminoConfig:
             )
         # Conversion to PADMMWarmStartMode will raise an error if the input string is invalid.
         PADMMWarmStartMode.from_string(self.warmstart_mode)
-        if not isinstance(self.contact_warmstart_method, WarmstarterContacts.Method):
-            raise TypeError(
-                "Invalid contact warmstart method: Expected a `WarmstarterContacts.Method` enum value, "
-                f"but got {type(self.contact_warmstart_method)}."
-            )
+        # Conversion to WarmstarterContacts.Method will raise an error if the input string is invalid.
+        WarmstarterContacts.Method.from_string(self.contact_warmstart_method)
         if not isinstance(self.rotation_correction, JointCorrectionMode):
             raise TypeError(
                 "Invalid rotation correction mode: Expected a `JointCorrectionMode` enum value, "
@@ -671,7 +674,7 @@ class SolverKaminoImpl(SolverBase):
             self._ws_limits = WarmstarterLimits(limits=self._limits)
             self._ws_contacts = WarmstarterContacts(
                 contacts=contacts,
-                method=self._config.contact_warmstart_method,
+                method=WarmstarterContacts.Method.from_string(self._config.contact_warmstart_method),
             )
 
         # Allocate the solution metrics evaluator if enabled

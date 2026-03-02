@@ -16,7 +16,6 @@
 import os
 from typing import Any, Literal
 
-import git
 import h5py
 import numpy as np
 
@@ -63,6 +62,17 @@ class CodeInfo:
         Raises:
             RuntimeError: If there is an error retrieving git repository info from the specified path.
         """
+        # TODO: Consider using a silent warning and allowing the CodeInfo
+        # to be initialized with None values instead of raising an error
+        # Attempt to import git first, and warn user
+        # if the necessary package is not installed
+        try:
+            import git
+        except ImportError as e:
+            raise ImportError(
+                "The GitPython package is required for downloading git folders. Install it with: pip install gitpython"
+            ) from e
+
         # Declare git repository info attributes
         self.repo: git.Repo | None = None
         self.path: str | None = None
@@ -1056,7 +1066,7 @@ class BenchmarkMetrics:
 
         # Attempt to import matplotlib for plotting, and raise an informative error if it's not installed
         try:
-            import matplotlib.pyplot as plt  # noqa: PLC0415
+            import matplotlib.pyplot as plt
         except Exception as e:
             raise ImportError(
                 "matplotlib is required to render PADMM metrics plots. Please install matplotlib and try again."
@@ -1150,7 +1160,7 @@ class BenchmarkMetrics:
 
         # Attempt to import matplotlib for plotting, and raise an informative error if it's not installed
         try:
-            import matplotlib.pyplot as plt  # noqa: PLC0415
+            import matplotlib.pyplot as plt
         except Exception as e:
             raise ImportError(
                 "matplotlib is required to render physics metrics plots. Please install matplotlib and try again."

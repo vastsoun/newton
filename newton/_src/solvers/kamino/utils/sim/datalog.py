@@ -240,7 +240,7 @@ class SimulationLogger:
 
         # Create an array for time logging
         # TODO: Handle array-valued time-steps
-        dt = self._sim.settings.dt
+        dt = self._sim.config.dt
         time = np.arange(0, self._frames, dtype=np.float32) * dt
 
         # Plot the PADMM convergence information
@@ -256,7 +256,7 @@ class SimulationLogger:
         axs[0].grid()
 
         # Plot the PADMM primal residuals
-        eps_p = self._sim.settings.solver.padmm.primal_tolerance
+        eps_p = self._sim.config.solver.padmm.primal_tolerance
         axs[1].step(time, self.log_padmm_r_p[: self._frames], label="PADMM Primal Residual", color="orange")
         axs[1].axhline(eps_p, color="black", linestyle="--", linewidth=1.0, label=f"eps_p={eps_p:.1e}")
         axs[1].set_title("PADMM Primal Residual")
@@ -266,7 +266,7 @@ class SimulationLogger:
         axs[1].grid()
 
         # Plot the PADMM dual residuals
-        eps_d = self._sim.settings.solver.padmm.dual_tolerance
+        eps_d = self._sim.config.solver.padmm.dual_tolerance
         axs[2].step(time, self.log_padmm_r_d[: self._frames], label="PADMM Dual Residual", color="green")
         axs[2].axhline(eps_d, color="black", linestyle="--", linewidth=1.0, label=f"eps_d={eps_d:.1e}")
         axs[2].set_title("PADMM Dual Residual")
@@ -276,7 +276,7 @@ class SimulationLogger:
         axs[2].grid()
 
         # Plot the PADMM complementarity residuals
-        eps_c = self._sim.settings.solver.padmm.compl_tolerance
+        eps_c = self._sim.config.solver.padmm.compl_tolerance
         axs[3].step(time, self.log_padmm_r_c[: self._frames], label="PADMM Complementarity Residual", color="red")
         axs[3].axhline(eps_c, color="black", linestyle="--", linewidth=1.0, label=f"eps_c={eps_c:.1e}")
         axs[3].set_title("PADMM Complementarity Residual")
@@ -338,7 +338,7 @@ class SimulationLogger:
             return
 
         # Create an array for time logging
-        dt = self._sim.settings.dt
+        dt = self._sim.config.dt
         time = np.arange(0, self._frames, dtype=np.float32) * dt
 
         # Then plot the joint tracking results
@@ -410,7 +410,7 @@ class SimulationLogger:
             return
 
         # Create an array for time logging
-        dt = self._sim.settings.dt
+        dt = self._sim.config.dt
         time = np.arange(0, self._frames, dtype=np.float32) * dt
 
         # Plot the solution metrics

@@ -30,7 +30,7 @@ from newton._src.solvers.kamino.models.builders.utils import make_homogeneous_bu
 from newton._src.solvers.kamino.utils import logger as msg
 from newton._src.solvers.kamino.utils.control import JointSpacePIDController
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
-from newton._src.solvers.kamino.utils.sim import SimulationLogger, Simulator, SimulatorSettings, ViewerKamino
+from newton._src.solvers.kamino.utils.sim import SimulationLogger, Simulator, SimulatorConfig, ViewerKamino
 
 ###
 # Example class
@@ -85,20 +85,20 @@ class Example:
         for w in range(self.builder.num_worlds):
             self.builder.gravity[w].enabled = gravity
 
-        # Set solver settings
-        settings = SimulatorSettings()
-        settings.dt = self.sim_dt
-        settings.solver.problem.preconditioning = True
-        settings.solver.padmm.primal_tolerance = 1e-6
-        settings.solver.padmm.dual_tolerance = 1e-6
-        settings.solver.padmm.compl_tolerance = 1e-6
-        settings.solver.padmm.rho_0 = 0.1
-        settings.solver.rotation_correction = JointCorrectionMode.CONTINUOUS
-        settings.solver.compute_metrics = logging and not use_cuda_graph
+        # Set solver config
+        config = SimulatorConfig()
+        config.dt = self.sim_dt
+        config.solver.problem.preconditioning = True
+        config.solver.padmm.primal_tolerance = 1e-6
+        config.solver.padmm.dual_tolerance = 1e-6
+        config.solver.padmm.compl_tolerance = 1e-6
+        config.solver.padmm.rho_0 = 0.1
+        config.solver.rotation_correction = JointCorrectionMode.CONTINUOUS
+        config.solver.compute_metrics = logging and not use_cuda_graph
 
         # Create a simulator
         msg.notif("Building the simulator...")
-        self.sim = Simulator(builder=self.builder, settings=settings, device=device)
+        self.sim = Simulator(builder=self.builder, config=config, device=device)
 
         # Create a joint-space PID controller
         njq = self.sim.model.size.sum_of_num_joint_dofs

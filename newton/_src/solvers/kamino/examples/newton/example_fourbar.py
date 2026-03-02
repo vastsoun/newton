@@ -36,7 +36,7 @@ import newton.examples
 # Kamino imports
 from newton._src.solvers.kamino.geometry import CollisionDetectorSettings
 from newton._src.solvers.kamino.models import get_basics_usd_assets_path
-from newton._src.solvers.kamino.solver_kamino import SolverKaminoSettings
+from newton._src.solvers.kamino.solver_kamino import SolverKaminoConfig
 from newton._src.solvers.kamino.solvers.padmm import PADMMWarmStartMode
 from newton._src.solvers.kamino.solvers.warmstart import WarmstarterContacts
 from newton._src.solvers.kamino.utils import logger as msg
@@ -93,22 +93,22 @@ class Example:
         collision_detector_settings = CollisionDetectorSettings()
         collision_detector_settings.pipeline = "unified"
         collision_detector_settings.max_contacts = 32 * self.num_worlds
-        solver_settings = SolverKaminoSettings()
-        solver_settings.problem.preconditioning = True
-        solver_settings.padmm.primal_tolerance = 1e-4
-        solver_settings.padmm.dual_tolerance = 1e-4
-        solver_settings.padmm.compl_tolerance = 1e-4
-        solver_settings.padmm.max_iterations = 200
-        solver_settings.padmm.rho_0 = 0.1
-        solver_settings.use_solver_acceleration = True
-        solver_settings.warmstart_mode = PADMMWarmStartMode.CONTAINERS
-        solver_settings.contact_warmstart_method = WarmstarterContacts.Method.GEOM_PAIR_NET_FORCE
+        solver_config = SolverKaminoConfig()
+        solver_config.problem.preconditioning = True
+        solver_config.padmm.primal_tolerance = 1e-4
+        solver_config.padmm.dual_tolerance = 1e-4
+        solver_config.padmm.compl_tolerance = 1e-4
+        solver_config.padmm.max_iterations = 200
+        solver_config.padmm.rho_0 = 0.1
+        solver_config.use_solver_acceleration = True
+        solver_config.warmstart_mode = PADMMWarmStartMode.CONTAINERS
+        solver_config.contact_warmstart_method = WarmstarterContacts.Method.GEOM_PAIR_NET_FORCE
 
         # Create the Kamino solver for the given model
         msg.notif("Creating the Kamino solver for the given model...")
         self.solver = newton.solvers.SolverKamino(
             model=self.model,
-            solver_settings=solver_settings,
+            solver_config=solver_config,
             collision_detector_settings=collision_detector_settings,
         )
 
@@ -182,8 +182,9 @@ class Example:
                 self.model,
                 self.state_0,
                 "body velocities are small",
-                lambda q, qd: max(abs(qd))
-                < 0.25,  # Relaxed from 0.1 - unified pipeline has residual velocities up to ~0.2
+                lambda q, qd: (
+                    max(abs(qd)) < 0.25
+                ),  # Relaxed from 0.1 - unified pipeline has residual velocities up to ~0.2
             )
 
 

@@ -405,13 +405,20 @@ class StateKamino:
             joint_q_prev = state.joint_q_prev
         else:
             joint_q_prev = wp.clone(state.joint_q)
+            # Assign new array to input state
+            state.joint_q_prev = state.joint_q
 
         # If the state contains the Kamino-specific `joint_lambdas` custom attribute,
-        # capture a reference to it; otherwise, create a new array for it.
+        # capture a reference to it; otherwise, create a new array for it. Since we dont' have any
+        # information about the Kamino model at this point, we use a conservative estimate,
+        # allocating a lambda for every constraint and dof of all joints even if some joints might
+        # not have dynamic joint constraints.
         if hasattr(state, "joint_lambdas"):
             joint_lambdas = state.joint_lambdas
         else:
-            joint_lambdas = wp.zeros(shape=(model.joint_constraint_count,), dtype=wp.float32, device=device)
+            joint_lambdas = wp.zeros(shape=(6 * model.joint_count,), dtype=wp.float32, device=device)
+            # Assign new array to input state
+            state.joint_lambdas = joint_lambdas
 
         # Optionally initialize the `joint_q_prev` array to match the current `joint_q`
         if initialize_state_prev:

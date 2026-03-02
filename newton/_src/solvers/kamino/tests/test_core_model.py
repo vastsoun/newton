@@ -839,8 +839,10 @@ class TestModelConversions(unittest.TestCase):
         self.assertEqual(state_0.body_q.size, model_0.body_count)
         self.assertIsNotNone(state_0.joint_q_prev)
         self.assertEqual(state_0.joint_q_prev.size, model_0.joint_coord_count)
-        self.assertIsNotNone(state_0.joint_lambdas)
-        self.assertEqual(state_0.joint_lambdas.size, model_0.joint_constraint_count)
+        # TODO: `joint_lambda` is currently not automatically added to Newton states, only if
+        #       they have been converted by Kamino.
+        # self.assertIsNotNone(state_0.joint_lambdas)
+        # self.assertEqual(state_0.joint_lambdas.size, model_0.joint_constraint_count)
 
         # Create a Kamino state container
         state_1: StateKamino = model_1.state()

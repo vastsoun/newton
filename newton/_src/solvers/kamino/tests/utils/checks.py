@@ -293,7 +293,10 @@ def assert_builders_equal(
 def assert_state_equal(
     test: unittest.TestCase, state0: StateKamino, state1: StateKamino, excluded: list[str] | None = None
 ) -> None:
-    attributes = ["q_i", "u_i", "w_i", "q_j", "q_j_p", "dq_j", "lambda_j"]
+    # TODO: `lambda_j` might currently be conservatively sized if the state has been converted from
+    #       a Newton state. In this case, array sizes might not match.
+    attributes = ["q_i", "u_i", "w_i", "q_j", "q_j_p", "dq_j"]
+    # attributes = ["q_i", "u_i", "w_i", "q_j", "q_j_p", "dq_j", "lambda_j"]
     if excluded:
         attributes = [attr for attr in attributes if attr not in excluded]
     assert_array_attributes_equal(test, state0, state1, attributes)

@@ -1067,7 +1067,7 @@ class SolverKaminoImpl(SolverBase):
         wp.copy(self._data.joints.q_j, state_in.q_j)
         wp.copy(self._data.joints.q_j_p, state_in.q_j_p)
         wp.copy(self._data.joints.dq_j, state_in.dq_j)
-        wp.copy(self._data.joints.lambda_j, state_in.lambda_j)
+        wp.copy(self._data.joints.lambda_j, state_in.lambda_j, count=self._data.joints.lambda_j.size)
         wp.copy(self._data.joints.tau_j, control_in.tau_j)
         wp.copy(self._data.joints.q_j_ref, control_in.q_j_ref)
         wp.copy(self._data.joints.dq_j_ref, control_in.dq_j_ref)
@@ -1086,7 +1086,7 @@ class SolverKaminoImpl(SolverBase):
         wp.copy(state_out.q_j, self._data.joints.q_j)
         wp.copy(state_out.q_j_p, self._data.joints.q_j_p)
         wp.copy(state_out.dq_j, self._data.joints.dq_j)
-        wp.copy(state_out.lambda_j, self._data.joints.lambda_j)
+        wp.copy(state_out.lambda_j, self._data.joints.lambda_j, count=self._data.joints.lambda_j.size)
 
     ###
     # Internals - Reset Operations

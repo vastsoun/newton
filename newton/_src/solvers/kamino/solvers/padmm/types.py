@@ -21,11 +21,11 @@ High-level Settings:
     Defines the ALM penalty update methods supported by the PADMM solver.
 - :class:`PADMMWarmStartMode`:
     Defines the warmstart modes supported by the PADMM solver.
-- :class:`PADMMSettings`:
-    A container that defines user-facing PADMM solver settings.\n
+- :class:`PADMMConfig`:
+    A container that defines user-facing PADMM solver config.\n
 
 Warp Structs:
-- :class:`PADMMConfig`:
+- :class:`PADMMConfigStruct`:
     Warp struct for on-device PADMM configurations.
 - :class:`PADMMStatus`:
     Warp struct for on-device PADMM solver status.
@@ -60,12 +60,12 @@ from ...core.types import float32, int32, override, vec2f
 
 __all__ = [
     "PADMMConfig",
+    "PADMMConfigStruct",
     "PADMMData",
     "PADMMInfo",
     "PADMMPenalty",
     "PADMMPenaltyUpdate",
     "PADMMResiduals",
-    "PADMMSettings",
     "PADMMSolution",
     "PADMMState",
     "PADMMStatus",
@@ -93,7 +93,7 @@ class PADMMPenaltyUpdate(IntEnum):
     FIXED = 0
     """
     Fixed penalty:
-        `rho` is initialized to `settings.rho_0`, remaining constant over the solve.
+        `rho` is initialized to `config.rho_0`, remaining constant over the solve.
     """
 
     # TODO: Implement adaptive penalty updates
@@ -167,7 +167,7 @@ class PADMMWarmStartMode(IntEnum):
 
 
 @wp.struct
-class PADMMConfig:
+class PADMMConfigStruct:
     """
     A warp struct to hold PADMM per-world solver configurations on the target device.
 
@@ -431,7 +431,7 @@ class PADMMPenalty:
             equals the number of matrix factorizations performed.
         rho (float32): The current value of the ALM penalty parameter.\n
             If adaptive penalty scheme is used, this value may change during
-            solve operations, while being lower-bounded by `settings.rho_min`
+            solve operations, while being lower-bounded by `config.rho_min`
             to ensure numerical stability.
         rho_p (float32): The previous value of the ALM penalty parameter.\n
             As diagonal regularization of the lhs matrix (e.g. Delassus
@@ -451,7 +451,7 @@ class PADMMPenalty:
     """
     The current value of the ALM penalty parameter.\n
     If adaptive penalty scheme is used, this value may change during
-    solve operations, while being lower-bounded by `settings.rho_min`
+    solve operations, while being lower-bounded by `config.rho_min`
     to ensure numerical stability.
     """
 
@@ -471,9 +471,9 @@ class PADMMPenalty:
 
 
 @dataclass
-class PADMMSettings:
+class PADMMConfig:
     """
-    A container to bundle PADMM solver settings.
+    A container to bundle PADMM solver config.
 
     Attributes:
         primal_tolerance (float): The target tolerance on the total primal residual `r_primal`.\n
@@ -612,7 +612,7 @@ class PADMMSettings:
 
     def check(self):
         """
-        Checks the validity of PADMM solver settings.
+        Checks the validity of PADMM solver config.
         """
         if self.primal_tolerance < 0.0:
             raise ValueError(f"Invalid primal tolerance: {self.primal_tolerance}. Must be non-negative.")
@@ -650,30 +650,30 @@ class PADMMSettings:
                 f"Invalid linear solver tolerance ratio: {self.linear_solver_tolerance_ratio}. Must be non-negative."
             )
 
-    def to_config(self) -> PADMMConfig:
+    def to_struct(self) -> PADMMConfigStruct:
         """
-        Converts the host-side settings to the corresponding device-side object.
+        Converts the host-side config to the corresponding device-side object.
 
         Returns:
-            PADMMConfig: The solver settings as a warp struct.
+            PADMMConfigStruct: The solver config as a warp struct.
         """
-        config = PADMMConfig()
-        config.primal_tolerance = self.primal_tolerance
-        config.dual_tolerance = self.dual_tolerance
-        config.compl_tolerance = self.compl_tolerance
-        config.restart_tolerance = self.restart_tolerance
-        config.eta = self.eta
-        config.rho_0 = self.rho_0
-        config.rho_min = self.rho_min
-        config.a_0 = self.a_0
-        config.alpha = self.alpha
-        config.tau = self.tau
-        config.max_iterations = self.max_iterations
-        config.penalty_update_freq = self.penalty_update_freq
-        config.penalty_update_method = self.penalty_update_method
-        config.linear_solver_tolerance = self.linear_solver_tolerance
-        config.linear_solver_tolerance_ratio = self.linear_solver_tolerance_ratio
-        return config
+        config_struct = PADMMConfigStruct()
+        config_struct.primal_tolerance = self.primal_tolerance
+        config_struct.dual_tolerance = self.dual_tolerance
+        config_struct.compl_tolerance = self.compl_tolerance
+        config_struct.restart_tolerance = self.restart_tolerance
+        config_struct.eta = self.eta
+        config_struct.rho_0 = self.rho_0
+        config_struct.rho_min = self.rho_min
+        config_struct.a_0 = self.a_0
+        config_struct.alpha = self.alpha
+        config_struct.tau = self.tau
+        config_struct.max_iterations = self.max_iterations
+        config_struct.penalty_update_freq = self.penalty_update_freq
+        config_struct.penalty_update_method = self.penalty_update_method
+        config_struct.linear_solver_tolerance = self.linear_solver_tolerance
+        config_struct.linear_solver_tolerance_ratio = self.linear_solver_tolerance_ratio
+        return config_struct
 
 
 class PADMMState:
@@ -1407,8 +1407,8 @@ class PADMMData:
 
     Attributes:
         config (wp.array): Array of per-world solver configurations,
-            of type :class:`PADMMConfig` and shape ``(num_worlds,)``.\n
-            Each element is the on-device version of :class:`PADMMSettings`.
+            of type :class:`PADMMConfigStruct` and shape ``(num_worlds,)``.\n
+            Each element is the on-device version of :class:`PADMMConfig`.
         status (wp.array): Array of per-world solver status,
             of type :class:`PADMMStatus` and shape ``(num_worlds,)``.\n
             Each element holds the status of the solver on
@@ -1446,8 +1446,8 @@ class PADMMData:
 
         self.config: wp.array | None = None
         """
-        Array of on-device PADMM solver settings.\n
-        Shape is (num_worlds,) and type :class:`PADMMConfig`.
+        Array of on-device PADMM solver configs.\n
+        Shape is (num_worlds,) and type :class:`PADMMConfigStruct`.
         """
 
         self.status: wp.array | None = None
@@ -1511,7 +1511,7 @@ class PADMMData:
             ValueError: If either ``size.num_worlds`` or `max_iters`` are not a positive integers.
         """
         with wp.ScopedDevice(device):
-            self.config = wp.zeros(shape=(size.num_worlds,), dtype=PADMMConfig)
+            self.config = wp.zeros(shape=(size.num_worlds,), dtype=PADMMConfigStruct)
             self.status = wp.zeros(shape=(size.num_worlds,), dtype=PADMMStatus)
             self.penalty = wp.zeros(shape=(size.num_worlds,), dtype=PADMMPenalty)
             self.state = PADMMState(size, use_acceleration)

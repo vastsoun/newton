@@ -84,15 +84,15 @@ A typical example for using this module is:
 """
 
 from .solver import PADMMSolver
-from .types import PADMMPenaltyUpdate, PADMMSettings, PADMMWarmStartMode
+from .types import PADMMConfig, PADMMPenaltyUpdate, PADMMWarmStartMode
 
 ###
 # Module interface
 ###
 
 __all__ = [
+    "PADMMConfig",
     "PADMMPenaltyUpdate",
-    "PADMMSettings",
     "PADMMSolver",
     "PADMMWarmStartMode",
 ]

@@ -36,7 +36,7 @@ from newton._src.solvers.kamino.linalg import ConjugateGradientSolver, LinearSol
 from newton._src.solvers.kamino.models.builders.basics import build_boxes_fourbar
 from newton._src.solvers.kamino.models.builders.utils import make_homogeneous_builder
 from newton._src.solvers.kamino.solver_kamino import SolverKaminoConfig, SolverKaminoImpl
-from newton._src.solvers.kamino.solvers import PADMMSettings, PADMMSolver, PADMMWarmStartMode
+from newton._src.solvers.kamino.solvers import PADMMConfig, PADMMSolver, PADMMWarmStartMode
 from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.utils import logger as msg
 
@@ -112,7 +112,7 @@ atol = 1e-6
 def assert_solver_config(testcase: unittest.TestCase, config: SolverKaminoConfig):
     testcase.assertIsInstance(config, SolverKaminoConfig)
     testcase.assertIsInstance(config.problem, DualProblemConfig)
-    testcase.assertIsInstance(config.padmm, PADMMSettings)
+    testcase.assertIsInstance(config.padmm, PADMMConfig)
     testcase.assertIsInstance(config.warmstart_mode, PADMMWarmStartMode)
     testcase.assertTrue(issubclass(config.linear_solver_type, LinearSolverType))
     testcase.assertIsInstance(config.rotation_correction, JointCorrectionMode)
@@ -264,7 +264,7 @@ class TestSolverKaminoConfig(unittest.TestCase):
     def test_01_make_explicit(self):
         config = SolverKaminoConfig(
             problem=DualProblemConfig(),
-            padmm=PADMMSettings(),
+            padmm=PADMMConfig(),
             warmstart_mode=PADMMWarmStartMode.CONTAINERS,
             linear_solver_type=ConjugateGradientSolver,
             rotation_correction=JointCorrectionMode.CONTINUOUS,

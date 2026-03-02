@@ -80,7 +80,7 @@ from .kinematics.resets import (
 from .linalg import ConjugateResidualSolver, IterativeSolver, LinearSolverType, LLTBlockedSolver
 from .solvers.fk import ForwardKinematicsSolver, ForwardKinematicsSolverSettings
 from .solvers.metrics import SolutionMetrics
-from .solvers.padmm import PADMMSettings, PADMMSolver, PADMMWarmStartMode
+from .solvers.padmm import PADMMConfig, PADMMSolver, PADMMWarmStartMode
 from .solvers.warmstart import WarmstarterContacts, WarmstarterLimits
 from .utils import logger as msg
 
@@ -365,10 +365,10 @@ class SolverKaminoConfig:
     See :class:`DualProblemConfig` for more details.
     """
 
-    padmm: PADMMSettings = field(default_factory=PADMMSettings)
+    padmm: PADMMConfig = field(default_factory=PADMMConfig)
     """
-    Settings for the dynamics solver.\n
-    See :class:`PADMMSettings` for more details.
+    Config for the dynamics solver.\n
+    See :class:`PADMMConfig` for more details.
     """
 
     fk: ForwardKinematicsSolverSettings = field(default_factory=ForwardKinematicsSolverSettings)
@@ -636,7 +636,7 @@ class SolverKaminoImpl(SolverBase):
         # Allocate the forward dynamics solver on the device
         self._solver_fd = PADMMSolver(
             model=self._model,
-            settings=self._config.padmm,
+            config=self._config.padmm,
             warmstart=self._config.warmstart_mode,
             use_acceleration=self._config.use_solver_acceleration,
             collect_info=self._config.collect_solver_info,

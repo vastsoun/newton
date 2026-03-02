@@ -600,10 +600,10 @@ class RigidBodySim:
         settings.dt = sim_dt
         settings.solver.integrator = "moreau"
         settings.solver.problem.alpha = 0.1
-        settings.solver.padmm.primal_tolerance = 1e-4
-        settings.solver.padmm.dual_tolerance = 1e-4
-        settings.solver.padmm.compl_tolerance = 1e-4
-        settings.solver.padmm.max_iterations = 200
+        settings.solver.padmm.primal_tolerance = 1e-3
+        settings.solver.padmm.dual_tolerance = 1e-3
+        settings.solver.padmm.compl_tolerance = 1e-3
+        settings.solver.padmm.max_iterations = 100
         settings.solver.padmm.eta = 1e-5
         settings.solver.padmm.rho_0 = 0.05
         settings.solver.use_solver_acceleration = True

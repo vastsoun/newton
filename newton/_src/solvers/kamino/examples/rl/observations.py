@@ -21,7 +21,6 @@ from abc import ABC, abstractmethod
 # Thirdparty
 import torch
 import warp as wp
-
 from newton._src.solvers.kamino.examples.rl.simulation import RigidBodySim
 from newton._src.solvers.kamino.examples.rl.utils import (
     StackedIndices,
@@ -35,6 +34,30 @@ from newton._src.solvers.kamino.examples.rl.utils import (
     yaw_to_quat,
 )
 from newton._src.solvers.kamino.utils.sim import Simulator
+
+
+class PhaseRate(torch.nn.Module):
+    """
+    Defines the mapping between robot measurements and a pretrained phase rate.
+    """
+
+    def __init__(self, path, obs_cmd_range) -> None:
+        super().__init__()
+        self.obs_cmd_idx = list(obs_cmd_range)
+
+        # Load pre-trained model
+        model = torch.load(path, weights_only=False)
+        model.eval()
+
+        # Turn off gradients of the pretrained parameters
+        for param in model.parameters():
+            param.requires_grad_(False)
+
+        super().add_module("_phase_rate", model)
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        path_cmd = input[:, self.obs_cmd_idx]
+        return self._phase_rate(path_cmd)
 
 
 class ObservationBuilder(ABC):
@@ -214,35 +237,36 @@ class DrlegsBaseObservation(ObservationBuilder):
 
 
 # ---------------------------------------------------------------------------
-# BdxObservation — standalone BDX observation builder
+# BipedalObservation — standalone Bipedal observation builder
 # ---------------------------------------------------------------------------
 
 
-class BdxObservation(ObservationBuilder, torch.nn.Module):
-    """BDX observation builder for inference.
+class BipedalObservation(ObservationBuilder, torch.nn.Module):
+    """Bipedal observation builder for inference.
 
-    Reads commands from :pyattr:`command` (shape ``(num_worlds, 11)``),
+    Reads commands from :pyattr:`command` (shape ``(num_worlds, 10)``),
     simulator state from a :class:`RigidBodySim`, and maintains action
-    history internally.
+    history and gait phase internally.
 
-    Command tensor layout (11 dims)::
+    Command tensor layout (10 dims)::
 
          [0]      path_heading         (1)
          [1:3]    path_position_2d     (2)
          [3:5]    cmd_vel_xy           (2)
          [5]      cmd_yaw_rate         (1)
-         [6]      phase                (1)
-         [7:11]   neck_cmd             (4)
+         [6:10]   neck_cmd             (4)
+
+    Phase is managed internally via a pretrained :class:`PhaseRate` model
+    that predicts the gait frequency from the path command.
     """
 
     # -- Command tensor indices --
-    CMD_DIM = 11
+    CMD_DIM = 10
     CMD_PATH_HEADING = 0
     CMD_PATH_POSITION = slice(1, 3)
     CMD_VEL = slice(3, 5)
     CMD_YAW_RATE = 5
-    CMD_PHASE = 6
-    CMD_NECK = slice(7, 11)
+    CMD_HEAD = slice(6, 10)
 
     def __init__(
         self,
@@ -252,6 +276,8 @@ class BdxObservation(ObservationBuilder, torch.nn.Module):
         joint_velocity_scale: float,
         path_deviation_scale: float,
         phase_embedding_dim: int,
+        phase_rate_policy_path: str,
+        dt: float = 0.02,
         num_joints: int = 14,
     ) -> None:
         torch.nn.Module.__init__(self)
@@ -263,6 +289,7 @@ class BdxObservation(ObservationBuilder, torch.nn.Module):
             command_dim=self.CMD_DIM,
         )
         self._body_sim = body_sim
+        self._dt = dt
 
         self.joint_velocity_scale = joint_velocity_scale
         self.path_deviation_scale = path_deviation_scale
@@ -311,6 +338,10 @@ class BdxObservation(ObservationBuilder, torch.nn.Module):
         self._action_hist_0 = torch.zeros(self._num_worlds, num_joints, device=self._device, dtype=torch.float)
         self._action_hist_1 = torch.zeros(self._num_worlds, num_joints, device=self._device, dtype=torch.float)
 
+        # Internal gait phase state
+        self._phase = torch.zeros(self._num_worlds, device=self._device, dtype=torch.float)
+        self._phase_rate = PhaseRate(phase_rate_policy_path, self.obs_idx.path_cmd)
+
         # Cached intermediates (populated by compute, used by subclasses
         # for privileged observations)
         self._root_orientation_in_path: torch.Tensor | None = None
@@ -321,7 +352,7 @@ class BdxObservation(ObservationBuilder, torch.nn.Module):
         # Move registered buffers to device
         self.to(self._device)
 
-    def get_feature_module(self) -> BdxObservation:
+    def get_feature_module(self) -> BipedalObservation:
         return self
 
     @property
@@ -345,8 +376,7 @@ class BdxObservation(ObservationBuilder, torch.nn.Module):
         path_position_2d = self.command[:, self.CMD_PATH_POSITION]
         path_cmd_vel = self.command[:, self.CMD_VEL]
         path_cmd_yaw_rate = self.command[:, self.CMD_YAW_RATE]
-        phase = self.command[:, self.CMD_PHASE]
-        neck_cmd = self.command[:, self.CMD_NECK]
+        neck_cmd = self.command[:, self.CMD_HEAD]
 
         # -- Root orientation --
         root_orientations = sim.q_i[:, 0, 3:]
@@ -385,8 +415,14 @@ class BdxObservation(ObservationBuilder, torch.nn.Module):
         path_lin_vel_in_root = quat_inv_apply(root_orientation_in_path, path_lin_vel_in_path)
         path_ang_vel_in_root = quat_inv_apply(root_orientation_in_path, path_ang_vel_in_path)
 
+        # -- Phase (advanced internally via pretrained PhaseRate model) --
+        path_cmd = torch.cat((path_cmd_vel, path_cmd_yaw_rate.view(-1, 1)), dim=-1)  # (nw, 3)
+        with torch.no_grad():
+            rate = self._phase_rate._phase_rate(path_cmd).squeeze(-1)  # (nw,)
+        self._phase = (self._phase + rate * self._dt) % 1.0
+
         # -- Phase encoding --
-        phase_enc_vector = phase_encoding(phase, self._freq_2pi, self._offset)
+        phase_enc_vector = phase_encoding(self._phase, self._freq_2pi, self._offset)
 
         # -- Joint state --
         dof_positions = sim.q_j
@@ -428,12 +464,14 @@ class BdxObservation(ObservationBuilder, torch.nn.Module):
         return obs
 
     def reset(self, env_ids: torch.Tensor | None = None) -> None:
-        """Reset action history for the given environments."""
+        """Reset action history and phase for the given environments."""
         if env_ids is None:
             normalized = (self._body_sim.q_j - self._joint_position_default) / self._joint_position_range
             self._action_hist_0[:] = normalized
             self._action_hist_1[:] = normalized
+            self._phase.zero_()
         else:
             normalized = (self._body_sim.q_j[env_ids] - self._joint_position_default) / self._joint_position_range
             self._action_hist_0[env_ids] = normalized
             self._action_hist_1[env_ids] = normalized
+            self._phase[env_ids] = 0.0

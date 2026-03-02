@@ -13,11 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Xbox gamepad / keyboard controller for BDX walking-only RL inference.
+"""General-purpose Xbox gamepad / keyboard controller for RL inference.
 
-Reads Xbox 360/One controller input (or keyboard via the viewer) and writes
-directly to :pyattr:`BdxObservation.command` — no external motion-engine
-dependency.
+Reads Xbox 360/One controller input (or keyboard via the viewer) and
+provides velocity commands and head pose deltas.  Optionally integrates
+a 2-D path (heading + position) from the velocity commands.
 
 Input is selected automatically:
 
@@ -26,29 +26,36 @@ Input is selected automatically:
 2. Keyboard via the 3D viewer window (if a viewer is provided).
 3. No-op — zero commands, robot stands still.
 
+Gamepad mapping::
+
+    Left stick Y          forward / backward velocity
+    Left stick X          yaw rate (angular velocity)
+    Triggers (L minus R)  lateral velocity
+    Right stick Y         head pitch (look up / down)
+    Right stick X         head yaw (look left / right)
+    Select / Back         reset
+
 Keyboard layout (viewer window must have focus)::
 
     I / K  — forward / backward
     J / L  — strafe left / right
     U / O  — turn left / right
-    T / G  — neck pitch up / down
-    F / H  — neck yaw left / right
+    T / G  — head pitch up / down
+    F / H  — head yaw left / right
+    P      — reset
 """
 
 from __future__ import annotations
 
+# Python
 import math
 
+# Thirdparty
 import torch
-
-from newton._src.solvers.kamino.examples.rl.observations import BdxObservation
-from newton._src.solvers.kamino.examples.rl.utils import (
-    quat_to_projected_yaw,
-    yaw_apply_2d,
-)
+from newton._src.solvers.kamino.examples.rl.utils import yaw_apply_2d
 
 # ---------------------------------------------------------------------------
-# Inline utilities (avoid external deps)
+# Inline utilities
 # ---------------------------------------------------------------------------
 
 
@@ -90,73 +97,100 @@ def _scale_asym(value: float, neg_scale: float, pos_scale: float) -> float:
 
 
 class JoystickController:
-    """Xbox gamepad / keyboard -> BdxObservation.command for walking-only inference.
+    """General-purpose Xbox gamepad / keyboard controller for RL inference.
+
+    Reads gamepad axes or keyboard keys and exposes command outputs as
+    attributes.  Optionally integrates a 2-D path (heading + position)
+    from the velocity commands.
 
     Gamepad mapping:
-      Left stick   -> walking velocity (forward / lateral)
-      Right stick  -> head look direction (neck pitch / yaw)
-      Triggers     -> yaw rate (L minus R)
+      Left stick Y          -> forward velocity
+      Left stick X          -> yaw rate (angular velocity)
+      Triggers (L minus R)  -> lateral velocity
+      Right stick Y         -> neck pitch
+      Right stick X         -> neck yaw
+      Select / Back         -> reset
 
     Keyboard mapping (see module docstring for layout).
+
+    Output attributes (updated each :meth:`update` call):
+      ``forward_velocity``  Forward velocity   (positive = forward)
+      ``lateral_velocity``  Lateral velocity   (positive = strafe left)
+      ``angular_velocity``  Angular velocity   (positive = turn left)
+      ``head_pitch``        Head pitch command (positive = look up)
+      ``head_yaw``          Head yaw command   (positive = look left)
+
+    Path state (when ``root_pos_2d`` is passed to :meth:`update`):
+      ``path_heading``      Integrated heading  ``(num_worlds, 1)``
+      ``path_position``     Integrated position ``(num_worlds, 2)``
     """
 
     def __init__(
         self,
-        obs_builder: BdxObservation,
         dt: float,
         viewer=None,
-        forward_velocity_max: float = 0.3,
-        lateral_velocity_max: float = 0.2,
-        angular_velocity_max: float = 0.8,
-        neck_pitch_up: float = 1.0,
-        neck_pitch_down: float = 0.6,
-        neck_yaw_max: float = 0.9,
+        num_worlds: int = 1,
+        device: str = "cuda:0",
+        forward_velocity_max: float = 0.6,
+        lateral_velocity_max: float = 0.4,
+        angular_velocity_max: float = 1.7,
+        head_pitch_up: float = 1.0,
+        head_pitch_down: float = 0.6,
+        head_yaw_max: float = 0.9,
         axis_deadband: float = 0.2,
         trigger_deadband: float = 0.2,
-        joystick_cutoff_hz: float = 10.0,
+        cutoff_hz: float = 15.0,
         path_deviation_max: float = 0.1,
-        phase_rate: float = 1.0,
     ) -> None:
-        self._obs = obs_builder
         self._dt = dt
         self._viewer = viewer
+        self._num_worlds = num_worlds
+        self._device = device
 
         # Velocity limits
         self._fwd_max = forward_velocity_max
         self._lat_max = lateral_velocity_max
         self._ang_max = angular_velocity_max
 
-        # Neck limits
-        self._neck_pitch_up = neck_pitch_up
-        self._neck_pitch_down = neck_pitch_down
-        self._neck_yaw_max = neck_yaw_max
+        # Head limits
+        self._head_pitch_up = head_pitch_up
+        self._head_pitch_down = head_pitch_down
+        self._head_yaw_max = head_yaw_max
 
         # Deadband thresholds
         self._axis_db = axis_deadband
         self._trig_db = trigger_deadband
 
-        # Path integration
+        # Path integration limit
         self._path_dev_max = path_deviation_max
-        self._phase_rate = phase_rate
 
-        # Internal state (tensors created on first reset)
-        self._heading: torch.Tensor | None = None
-        self._path_pos: torch.Tensor | None = None
-        self._phase: torch.Tensor | None = None
+        # Low-pass filters (named by semantic axis)
+        self._forward_filter = _LowPassFilter(cutoff_hz, dt)
+        self._lateral_filter = _LowPassFilter(cutoff_hz, dt)
+        self._angular_filter = _LowPassFilter(cutoff_hz, dt)
+        self._head_pitch_filter = _LowPassFilter(cutoff_hz, dt)
+        self._head_yaw_filter = _LowPassFilter(cutoff_hz, dt)
 
-        # Low-pass filters (one per axis)
-        self._lx_f = _LowPassFilter(joystick_cutoff_hz, dt)
-        self._ly_f = _LowPassFilter(joystick_cutoff_hz, dt)
-        self._rx_f = _LowPassFilter(joystick_cutoff_hz, dt)
-        self._ry_f = _LowPassFilter(joystick_cutoff_hz, dt)
-        self._tl_f = _LowPassFilter(joystick_cutoff_hz, dt)
-        self._tr_f = _LowPassFilter(joystick_cutoff_hz, dt)
+        # Path state (per-world)
+        self.path_heading = torch.zeros(num_worlds, 1, device=device)
+        self.path_position = torch.zeros(num_worlds, 2, device=device)
+
+        # Command outputs (updated by update())
+        self.forward_velocity: float = 0.0
+        self.lateral_velocity: float = 0.0
+        self.angular_velocity: float = 0.0
+        self.head_pitch: float = 0.0
+        self.head_yaw: float = 0.0
+
+        # Reset edge-detection state
+        self._reset_prev = False
 
         # --- Input mode detection ---
         self._controller = None
         self._mode: str | None = None  # "joystick", "keyboard", or None
 
         try:
+            # Thirdparty
             from xbox360controller import Xbox360Controller
 
             self._controller = Xbox360Controller(0, axis_threshold=0.015)
@@ -169,32 +203,40 @@ class JoystickController:
                     "No joystick found. Using keyboard controls:\n"
                     "  I/K — forward/backward    J/L — strafe left/right\n"
                     "  U/O — turn left/right     T/G — look up/down\n"
-                    "  F/H — look left/right"
+                    "  F/H — look left/right\n"
+                    "  P   — reset"
                 )
             else:
                 print("No joystick or keyboard available. Commands will be zero.")
 
     # ------------------------------------------------------------------
-    # Raw input reading
+    # Input reading
     # ------------------------------------------------------------------
 
-    def _read_raw(self) -> tuple[float, float, float, float, float, float]:
-        """Read raw axis values: (lx, ly, rx, ry, trigger_l, trigger_r).
+    def _read_input(self) -> tuple[float, float, float, float, float]:
+        """Read controller input as semantic axes.
 
-        Gamepad convention: pushing stick left/up is negative.
+        Returns:
+            ``(forward, lateral, angular, head_pitch, head_yaw)``
+
+        Sign convention — positive means:
+          forward   : walk forward
+          lateral   : strafe left
+          angular   : turn left  (CCW)
+          head_pitch: look up
+          head_yaw  : look left
         """
         if self._mode == "joystick":
             c = self._controller
             return (
-                c.axis_l.x,
-                c.axis_l.y,
-                c.axis_r.x,
-                c.axis_r.y,
-                c.trigger_l.value,
-                c.trigger_r.value,
+                -c.axis_l.y,  # forward   (negate: HW up is negative)
+                c.trigger_l.value - c.trigger_r.value,  # lateral   (L trigger = strafe left)
+                -c.axis_l.x,  # angular   (negate: HW left is negative)
+                -c.axis_r.y,  # head pitch (negate: HW up is negative)
+                -c.axis_r.x,  # head yaw   (negate: HW left is negative)
             )
 
-        # Keyboard — map key pairs to ±1.0 per "axis"
+        # Keyboard fallback
         v = self._viewer
 
         def _axis(neg_key: str, pos_key: str) -> float:
@@ -206,105 +248,104 @@ class JoystickController:
             return val
 
         return (
-            _axis("j", "l"),  # left stick X:  J = left(-), L = right(+)
-            _axis("i", "k"),  # left stick Y:  I = up(-),   K = down(+)
-            _axis("f", "h"),  # right stick X: F = left(-), H = right(+)
-            _axis("t", "g"),  # right stick Y: T = up(-),   G = down(+)
-            1.0 if v.is_key_down("u") else 0.0,  # left trigger  (turn left)
-            1.0 if v.is_key_down("o") else 0.0,  # right trigger (turn right)
+            _axis("k", "i"),  # forward:    I = forward(+), K = backward(-)
+            _axis("l", "j"),  # lateral:    J = left(+),    L = right(-)
+            _axis("o", "u"),  # angular:    U = left(+),    O = right(-)
+            _axis("g", "t"),  # head pitch: T = up(+),      G = down(-)
+            _axis("h", "f"),  # head yaw:   F = left(+),    H = right(-)
         )
 
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
 
-    def update(self) -> None:
-        """Read input and write command tensor.  Call once per RL step."""
+    def update(self, root_pos_2d: torch.Tensor | None = None) -> None:
+        """Read input, compute commands, and optionally advance the path.
+
+        Args:
+            root_pos_2d: Current robot XY position ``(num_worlds, 2)`` for
+                path deviation clipping.  When ``None``, path integration
+                is skipped.
+        """
         if self._mode is None:
             return
 
-        sim = self._obs._body_sim
-        device = self._obs._device
+        # --- Read & filter ---
+        fwd_raw, lat_raw, ang_raw, npitch_raw, nyaw_raw = self._read_input()
 
-        # Lazy-init state tensors on first call
-        if self._heading is None:
-            self._heading = torch.zeros(sim.num_worlds, 1, device=device)
-            self._path_pos = torch.zeros(sim.num_worlds, 2, device=device)
-            self._phase = torch.zeros(sim.num_worlds, device=device)
-            self.reset()
+        fwd = _deadband(self._forward_filter.update(fwd_raw), self._axis_db)
+        lat = _deadband(self._lateral_filter.update(lat_raw), self._trig_db)
+        ang = _deadband(self._angular_filter.update(ang_raw), self._axis_db)
+        npitch = _deadband(self._head_pitch_filter.update(npitch_raw), self._axis_db)
+        nyaw = _deadband(self._head_yaw_filter.update(nyaw_raw), self._axis_db)
 
-        # --- Raw axes -> filter -> deadband ---
-        raw_lx, raw_ly, raw_rx, raw_ry, raw_tl, raw_tr = self._read_raw()
+        # --- Scale to physical units ---
+        self.forward_velocity = fwd * self._fwd_max
+        self.lateral_velocity = lat * self._lat_max
+        self.angular_velocity = ang * self._ang_max
+        self.head_pitch = _scale_asym(npitch, self._head_pitch_down, self._head_pitch_up)
+        self.head_yaw = nyaw * self._head_yaw_max
 
-        lx = _deadband(self._lx_f.update(raw_lx), self._axis_db)
-        ly = _deadband(self._ly_f.update(raw_ly), self._axis_db)
-        rx = _deadband(self._rx_f.update(raw_rx), self._axis_db)
-        ry = _deadband(self._ry_f.update(raw_ry), self._axis_db)
-        tl = _deadband(self._tl_f.update(raw_tl), self._trig_db)
-        tr = _deadband(self._tr_f.update(raw_tr), self._trig_db)
+        # --- Path integration ---
+        if root_pos_2d is not None:
+            dt = self._dt
+            cmd_vel = torch.tensor(
+                [[self.forward_velocity, self.lateral_velocity]],
+                device=self._device,
+            )
 
-        # --- Map to velocities ---
-        vel_x = -ly * self._fwd_max
-        vel_y = -lx * self._lat_max
-        yaw_rate = (tl - tr) * self._ang_max
+            # Mid-point heading integration
+            mid_heading = self.path_heading + 0.5 * dt * self.angular_velocity
+            self.path_position += yaw_apply_2d(mid_heading, cmd_vel) * dt
 
-        # --- Map to neck (walking mode: forward=0, roll=0) ---
-        neck_pitch = _scale_asym(-ry, self._neck_pitch_down, self._neck_pitch_up)
-        neck_yaw = -rx * self._neck_yaw_max
+            # Update heading
+            self.path_heading += self.angular_velocity * dt
 
-        # --- Integrate path (matches joystick_commands._advance_path) ---
-        dt = self._dt
-        cmd_vel = torch.tensor([[vel_x, vel_y]], device=device)
+            # Clip path deviation to root position
+            diff = self.path_position - root_pos_2d
+            clipped = diff.renorm(p=2, dim=0, maxnorm=self._path_dev_max)
+            self.path_position[:] = root_pos_2d + clipped
 
-        # 0. Update position with mid-point heading
-        mid_heading = self._heading + 0.5 * dt * yaw_rate
-        self._path_pos += yaw_apply_2d(mid_heading, cmd_vel) * dt
+    def close(self) -> None:
+        """Release gamepad resources so the process can exit cleanly."""
+        if self._controller is not None:
+            try:
+                self._controller.close()
+            except Exception:
+                pass
+            self._controller = None
 
-        # 1. Update heading
-        self._heading += yaw_rate * dt
+    def check_reset(self) -> bool:
+        """Return True on the rising edge of the reset input.
 
-        # 2. Clip path deviation to root position (renorm per-world)
-        root_pos_2d = sim.q_i[:, 0, :2]
-        diff = self._path_pos - root_pos_2d
-        clipped = diff.renorm(p=2, dim=0, maxnorm=self._path_dev_max)
-        self._path_pos[:] = root_pos_2d + clipped
+        Gamepad: Select/Back button.  Keyboard: ``p`` key.
+        """
+        pressed = False
+        if self._mode == "joystick":
+            pressed = bool(self._controller.button_select.is_pressed)
+            # Also allow keyboard 'p' when a gamepad is connected
+            if not pressed and self._viewer is not None and hasattr(self._viewer, "is_key_down"):
+                pressed = bool(self._viewer.is_key_down("p"))
+        elif self._mode == "keyboard" and self._viewer is not None:
+            pressed = bool(self._viewer.is_key_down("p"))
+        triggered = pressed and not self._reset_prev
+        self._reset_prev = pressed
+        return triggered
 
-        # 3. Advance phase
-        self._phase = (self._phase + self._phase_rate * dt) % 1.0
+    def reset(self, root_pos_2d: torch.Tensor | None = None, root_yaw: torch.Tensor | None = None) -> None:
+        """Reset path state and filters.
 
-        # --- Write all 11 dims to command tensor ---
-        cmd = self._obs.command
-        cmd[:, BdxObservation.CMD_PATH_HEADING] = self._heading[:, 0]
-        cmd[:, BdxObservation.CMD_PATH_POSITION] = self._path_pos
-        cmd[:, BdxObservation.CMD_VEL] = cmd_vel
-        cmd[:, BdxObservation.CMD_YAW_RATE] = yaw_rate
-        cmd[:, BdxObservation.CMD_PHASE] = self._phase
-        cmd[:, BdxObservation.CMD_NECK] = torch.tensor(
-            [0.0, neck_pitch, neck_yaw, 0.0],
-            device=device,
-        )
+        Args:
+            root_pos_2d: Current robot XY position ``(num_worlds, 2)``.
+            root_yaw: Current robot yaw angle ``(num_worlds, 1)``.
+        """
+        if root_yaw is not None:
+            self.path_heading[:] = root_yaw
+        if root_pos_2d is not None:
+            self.path_position[:] = root_pos_2d
 
-    def reset(self) -> None:
-        """Reset internal state to match current robot pose.  Call on sim reset."""
-        sim = self._obs._body_sim
-
-        if self._heading is None:
-            return
-
-        # Heading from current robot yaw
-        root_quat = sim.q_i[:, 0, 3:]
-        self._heading[:] = quat_to_projected_yaw(root_quat)
-
-        # Path position from current robot XY
-        self._path_pos[:] = sim.q_i[:, 0, :2]
-
-        # Phase
-        self._phase.zero_()
-
-        # Filters
-        self._lx_f.reset()
-        self._ly_f.reset()
-        self._rx_f.reset()
-        self._ry_f.reset()
-        self._tl_f.reset()
-        self._tr_f.reset()
+        self._forward_filter.reset()
+        self._lateral_filter.reset()
+        self._angular_filter.reset()
+        self._head_pitch_filter.reset()
+        self._head_yaw_filter.reset()

@@ -14,15 +14,15 @@
 # limitations under the License.
 
 ###########################################################################
-# Example: BDX RL policy play-back
+# Example: Bipedal RL policy play-back
 #
-# Runs a trained RL walking policy on the BDX humanoid robot using the
+# Runs a trained RL walking policy on the robot using the
 # Kamino solver with implicit PD joint control.  Velocity commands come
 # from an Xbox gamepad or, when no gamepad is connected, from keyboard
 # input via the 3-D viewer.
 #
 # Usage:
-#   python example_rl_bdx.py
+#   python example_rl_bipedal.py
 ###########################################################################
 
 # Python
@@ -30,27 +30,25 @@ import argparse
 import os
 
 # Thirdparty
-import newton
-import newton.examples
 import numpy as np
 import torch
 import warp as wp
 from newton._src.solvers.kamino.examples import run_headless
 from newton._src.solvers.kamino.examples.rl.joystick import JoystickController
-from newton._src.solvers.kamino.examples.rl.observations import BdxObservation
+from newton._src.solvers.kamino.examples.rl.observations import BipedalObservation
 from newton._src.solvers.kamino.examples.rl.simulation import RigidBodySim
-from newton._src.solvers.kamino.examples.rl.utils import _load_policy_checkpoint
+from newton._src.solvers.kamino.examples.rl.utils import _load_policy_checkpoint, quat_to_projected_yaw
 from newton._src.solvers.kamino.models import get_examples_usd_assets_path
 from newton._src.solvers.kamino.utils import logger as msg
 from warp.context import Devicelike
 
 # ---------------------------------------------------------------------------
-# BDX joint normalization (from training config)
+# Bipedal joint normalization (from training config)
 # ---------------------------------------------------------------------------
 # Each entry maps joint name -> (position_offset, position_scale) used to
 # normalise joint positions in the observation vector.
 
-_BDX_JOINT_NORMALIZATION = {
+_BIPEDAL_JOINT_NORMALIZATION = {
     "NECK_FORWARD": (1.23, 0.19),
     "NECK_PITCH": (-1.09, 0.44),
     "NECK_YAW": (0.0, 0.35),
@@ -67,9 +65,9 @@ _BDX_JOINT_NORMALIZATION = {
     "LEFT_ANKLE_PITCH": (0.22, 0.66),
 }
 
-_BDX_JOINT_VELOCITY_SCALE = 5.0
-_BDX_PATH_DEVIATION_SCALE = 0.1
-_BDX_PHASE_EMBEDDING_DIM = 4
+_BIPEDAL_JOINT_VELOCITY_SCALE = 5.0
+_BIPEDAL_PATH_DEVIATION_SCALE = 0.1
+_BIPEDAL_PHASE_EMBEDDING_DIM = 4
 
 
 def _build_normalization(joint_names: list[str]):
@@ -77,10 +75,10 @@ def _build_normalization(joint_names: list[str]):
     offsets: list[float] = []
     scales: list[float] = []
     for name in joint_names:
-        if name in _BDX_JOINT_NORMALIZATION:
-            o, s = _BDX_JOINT_NORMALIZATION[name]
+        if name in _BIPEDAL_JOINT_NORMALIZATION:
+            o, s = _BIPEDAL_JOINT_NORMALIZATION[name]
         else:
-            msg.warning(f"Joint '{name}' not in BDX normalization dict -- using identity.")
+            msg.warning(f"Joint '{name}' not in BIPEDAL normalization dict -- using identity.")
             o, s = 0.0, 1.0
         offsets.append(o)
         scales.append(s)
@@ -109,7 +107,7 @@ class Example:
         EXAMPLE_ASSETS_PATH = get_examples_usd_assets_path()
         if EXAMPLE_ASSETS_PATH is None:
             raise FileNotFoundError("Failed to find USD assets path for examples: ensure `newton-assets` is installed.")
-        USD_MODEL_PATH = os.path.join(EXAMPLE_ASSETS_PATH, "bdx/bdx.usda")
+        USD_MODEL_PATH = os.path.join(EXAMPLE_ASSETS_PATH, "bipedal/bipedal.usda")
 
         # Create generic articulated body simulator
         self.sim_wrapper = RigidBodySim(
@@ -121,7 +119,7 @@ class Example:
             body_pose_offset=(0.0, 0.0, -0.15, 0.0, 0.0, 0.0, 1.0),
         )
 
-        # Override PD gains (BDX-specific)
+        # Override PD gains
         self.sim_wrapper.sim.model.joints.k_p_j.fill_(15.0)
         self.sim_wrapper.sim.model.joints.k_d_j.fill_(0.6)
         self.sim_wrapper.sim.model.joints.a_j.fill_(0.004)
@@ -132,24 +130,31 @@ class Example:
         self.joint_pos_offset = torch.tensor(joint_pos_offset, device=self.torch_device)
         self.joint_pos_scale = torch.tensor(joint_pos_scale, device=self.torch_device)
 
-        # Observation builder (BDX walking)
-        self.obs = BdxObservation(
+        # Observation builder
+        self.obs = BipedalObservation(
             body_sim=self.sim_wrapper,
             joint_position_default=joint_pos_offset,
             joint_position_range=joint_pos_scale,
-            joint_velocity_scale=_BDX_JOINT_VELOCITY_SCALE,
-            path_deviation_scale=_BDX_PATH_DEVIATION_SCALE,
-            phase_embedding_dim=_BDX_PHASE_EMBEDDING_DIM,
+            joint_velocity_scale=_BIPEDAL_JOINT_VELOCITY_SCALE,
+            path_deviation_scale=_BIPEDAL_PATH_DEVIATION_SCALE,
+            phase_embedding_dim=_BIPEDAL_PHASE_EMBEDDING_DIM,
+            phase_rate_policy_path=PHASE_RATE_POLICY_PATH,
+            dt=self.env_dt,
             num_joints=len(self.joint_pos_offset),
         )
         msg.info(f"Observation dim: {self.obs.num_observations}")
 
         # Joystick / keyboard command controller
         self.joystick = JoystickController(
-            obs_builder=self.obs,
             dt=self.env_dt,
             viewer=self.sim_wrapper.viewer,
+            num_worlds=num_worlds,
+            device=self.torch_device,
         )
+        # Initialize path to current robot pose
+        root_pos_2d = self.sim_wrapper.q_i[:, 0, :2]
+        root_yaw = quat_to_projected_yaw(self.sim_wrapper.q_i[:, 0, 3:])
+        self.joystick.reset(root_pos_2d=root_pos_2d, root_yaw=root_yaw)
 
         # Action buffer
         self.actions = torch.zeros(
@@ -162,9 +167,6 @@ class Example:
 
         # Policy (None = zero actions)
         self.policy = policy
-
-        # Keyboard state
-        self._reset_key_prev = False
 
     # Convenience accessors for the main block
     @property
@@ -179,7 +181,9 @@ class Example:
         """Reset the simulation and internal state."""
         self.sim_wrapper.reset()
         self.obs.reset()
-        self.joystick.reset()
+        root_pos_2d = self.sim_wrapper.q_i[:, 0, :2]
+        root_yaw = quat_to_projected_yaw(self.sim_wrapper.q_i[:, 0, 3:])
+        self.joystick.reset(root_pos_2d=root_pos_2d, root_yaw=root_yaw)
         self.actions = self.sim_wrapper.q_j.clone()
 
     def step_once(self):
@@ -188,15 +192,35 @@ class Example:
 
     def step(self):
         """One RL step: commands -> observe -> infer -> apply -> simulate."""
-        # Reset on 'p' key
-        if self.sim_wrapper.viewer is not None and hasattr(self.sim_wrapper.viewer, "is_key_down"):
-            reset_down = bool(self.sim_wrapper.viewer.is_key_down("p"))
-            if reset_down and not self._reset_key_prev:
-                self.reset()
-            self._reset_key_prev = reset_down
+        # Reset on gamepad Select/Back button or keyboard 'p'
+        if self.joystick.check_reset():
+            self.reset()
 
-        # Update velocity / neck commands from gamepad or keyboard
-        self.joystick.update()
+        # Update velocity / head commands from gamepad or keyboard
+        self.joystick.update(root_pos_2d=self.sim_wrapper.q_i[:, 0, :2])
+
+        # Write joystick commands to observation
+        cmd = self.obs.command
+        cmd[:, BipedalObservation.CMD_PATH_HEADING] = self.joystick.path_heading[:, 0]
+        cmd[:, BipedalObservation.CMD_PATH_POSITION] = self.joystick.path_position
+        cmd[:, BipedalObservation.CMD_VEL] = torch.tensor(
+            [[self.joystick.forward_velocity, self.joystick.lateral_velocity]],
+            device=self.torch_device,
+        )
+        cmd[:, BipedalObservation.CMD_YAW_RATE] = self.joystick.angular_velocity
+
+        # Head command: head_forward is an up-bias coupled to head pitch
+        # (looking up also raises the head). head_pitch = forward + pitch.
+        js = self.joystick
+        head_forward = max(js.head_pitch, 0.0) * 0.4
+        head_z_des = max(-1.0, min(head_forward, 0.3))
+        head_roll_des = 0.0
+        head_pitch_des = max(-0.6, min(head_forward + js.head_pitch, 1.0))
+        head_yaw_des = max(-1.0, min(js.head_yaw, 1.0))
+        cmd[:, BipedalObservation.CMD_HEAD] = torch.tensor(
+            [head_z_des, head_roll_des, head_pitch_des, head_yaw_des],
+            device=self.torch_device,
+        )
 
         # Compute observation from current state (with previous setpoints)
         obs = self.obs.compute(setpoints=self.actions)
@@ -222,7 +246,7 @@ class Example:
 ###########################################################################
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="BDX RL play example")
+    parser = argparse.ArgumentParser(description="Bipedal RL play example")
     parser.add_argument("--device", type=str, help="The compute device to use")
     parser.add_argument(
         "--headless",
@@ -247,7 +271,8 @@ if __name__ == "__main__":
     torch_device = "cuda" if device.is_cuda else "cpu"
 
     # Load trained policy
-    POLICY_PATH = os.path.join(get_examples_usd_assets_path(), "bdx/model.pt")
+    POLICY_PATH = os.path.join(get_examples_usd_assets_path(), "bipedal/model.pt")
+    PHASE_RATE_POLICY_PATH = os.path.join(get_examples_usd_assets_path(), "bipedal/phase_rate.pt")
     policy = _load_policy_checkpoint(POLICY_PATH, device=torch_device)
     msg.info(f"Loaded policy from: {POLICY_PATH}")
 
@@ -257,13 +282,18 @@ if __name__ == "__main__":
         headless=args.headless,
     )
 
-    if args.headless:
-        msg.notif("Running in headless mode...")
-        run_headless(example, progress=True)
-    else:
-        msg.notif("Running in Viewer mode...")
-        if hasattr(example.viewer, "set_camera"):
-            example.viewer.set_camera(wp.vec3(0.6, 0.6, 0.3), -10.0, 225.0)
-        while example.sim_wrapper.is_running():
-            example.step()
-            example.render()
+    try:
+        if args.headless:
+            msg.notif("Running in headless mode...")
+            run_headless(example, progress=True)
+        else:
+            msg.notif("Running in Viewer mode...")
+            if hasattr(example.viewer, "set_camera"):
+                example.viewer.set_camera(wp.vec3(0.6, 0.6, 0.3), -10.0, 225.0)
+            while example.sim_wrapper.is_running():
+                example.step()
+                example.render()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        example.joystick.close()

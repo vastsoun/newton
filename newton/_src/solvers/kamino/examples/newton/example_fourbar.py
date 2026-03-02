@@ -37,7 +37,6 @@ import newton.examples
 from newton._src.solvers.kamino.geometry import CollisionDetectorConfig
 from newton._src.solvers.kamino.models import get_basics_usd_assets_path
 from newton._src.solvers.kamino.solver_kamino import SolverKaminoConfig
-from newton._src.solvers.kamino.solvers.padmm import PADMMWarmStartMode
 from newton._src.solvers.kamino.solvers.warmstart import WarmstarterContacts
 from newton._src.solvers.kamino.utils import logger as msg
 
@@ -101,7 +100,7 @@ class Example:
         solver_config.padmm.max_iterations = 200
         solver_config.padmm.rho_0 = 0.1
         solver_config.use_solver_acceleration = True
-        solver_config.warmstart_mode = PADMMWarmStartMode.CONTAINERS
+        solver_config.warmstart_mode = "containers"
         solver_config.contact_warmstart_method = WarmstarterContacts.Method.GEOM_PAIR_NET_FORCE
 
         # Create the Kamino solver for the given model
@@ -182,9 +181,8 @@ class Example:
                 self.model,
                 self.state_0,
                 "body velocities are small",
-                lambda q, qd: (
-                    max(abs(qd)) < 0.25
-                ),  # Relaxed from 0.1 - unified pipeline has residual velocities up to ~0.2
+                lambda q, qd: max(abs(qd))
+                < 0.25,  # Relaxed from 0.1 - unified pipeline has residual velocities up to ~0.2
             )
 
 

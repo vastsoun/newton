@@ -45,6 +45,8 @@ Data Containers:
     The highest-level PADMM data container, bundling all other PADMM-related data into a single object.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 from enum import IntEnum
 
@@ -154,6 +156,14 @@ class PADMMWarmStartMode(IntEnum):
         The solver uses values from externally provided solution
         containers as warmstart information for the current solve.
     """
+
+    @classmethod
+    def from_string(cls, s: str) -> PADMMWarmStartMode:
+        """Converts a string to a PADMMWarmStartMode enum value."""
+        try:
+            return cls[s.upper()]
+        except KeyError as e:
+            raise ValueError(f"Invalid PADMMWarmStartMode: {s}. Valid options are: {[e.name for e in cls]}") from e
 
     @override
     def __str__(self):

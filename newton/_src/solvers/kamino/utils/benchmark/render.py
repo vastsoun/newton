@@ -393,7 +393,7 @@ def render_solver_configs_table(
                 ]
             )
         if "warmstart" in groups:
-            cfg_row.extend([str(cfg.warmstart_mode.name), str(cfg.contact_warmstart_method.name)])
+            cfg_row.extend([cfg.warmstart_mode, str(cfg.contact_warmstart_method.name)])
         table.add_row(name, *cfg_row)
 
     # Render the table to the console and/or save to file

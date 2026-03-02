@@ -17,7 +17,7 @@ import h5py
 
 from ...linalg.linear import LinearSolverNameToType, LinearSolverTypeToName
 from ...solver_kamino import SolverKaminoConfig
-from ...solvers.padmm import PADMMPenaltyUpdate, PADMMWarmStartMode
+from ...solvers.padmm import PADMMPenaltyUpdate
 from ...solvers.warmstart import WarmstarterContacts
 
 ###
@@ -70,7 +70,7 @@ def make_solver_config_default() -> tuple[str, SolverKaminoConfig]:
     config.avoid_graph_conditionals = False
     # ------------------------------------------------------------------------------
     # Warm-starting
-    config.warmstart_mode = PADMMWarmStartMode.CONTAINERS
+    config.warmstart_mode = "containers"
     config.contact_warmstart_method = WarmstarterContacts.Method.GEOM_PAIR_NET_FORCE
     # ------------------------------------------------------------------------------
     return name, config
@@ -108,7 +108,7 @@ def make_solver_config_dense_lltb_fast_dr_legs() -> tuple[str, SolverKaminoConfi
     config.avoid_graph_conditionals = False
     # ------------------------------------------------------------------------------
     # Warm-starting
-    config.warmstart_mode = PADMMWarmStartMode.CONTAINERS
+    config.warmstart_mode = "containers"
     config.contact_warmstart_method = WarmstarterContacts.Method.GEOM_PAIR_NET_FORCE
     # ------------------------------------------------------------------------------
     return name, config
@@ -147,7 +147,7 @@ def make_solver_config_sparse_cr_fast_dr_legs() -> tuple[str, SolverKaminoConfig
     config.avoid_graph_conditionals = False
     # ------------------------------------------------------------------------------
     # Warm-starting
-    config.warmstart_mode = PADMMWarmStartMode.CONTAINERS
+    config.warmstart_mode = "containers"
     config.contact_warmstart_method = WarmstarterContacts.Method.GEOM_PAIR_NET_FORCE
     # ------------------------------------------------------------------------------
     return name, config
@@ -185,7 +185,7 @@ def make_solver_config_sparse_cr_adaptiv_rho_balanced_dr_legs() -> tuple[str, So
     config.avoid_graph_conditionals = False
     # ------------------------------------------------------------------------------
     # Warm-starting
-    config.warmstart_mode = PADMMWarmStartMode.CONTAINERS
+    config.warmstart_mode = "containers"
     config.contact_warmstart_method = WarmstarterContacts.Method.GEOM_PAIR_NET_FORCE
     # ------------------------------------------------------------------------------
     return name, config
@@ -249,7 +249,7 @@ def save_solver_configs_to_hdf5(configs: dict[str, SolverKaminoConfig], datafile
         datafile[f"{scope}/padmm/use_solver_acceleration"] = config.use_solver_acceleration
         datafile[f"{scope}/padmm/avoid_graph_conditionals"] = config.avoid_graph_conditionals
         # ------------------------------------------------------------------------------
-        datafile[f"{scope}/warmstarting/warmstart_mode"] = config.warmstart_mode.value
+        datafile[f"{scope}/warmstarting/warmstart_mode"] = config.warmstart_mode
         datafile[f"{scope}/warmstarting/contact_warmstart_method"] = config.contact_warmstart_method.value
 
 
@@ -296,9 +296,7 @@ def load_solver_configs_to_hdf5(datafile: h5py.File) -> dict[str, SolverKaminoCo
         config.use_solver_acceleration = bool(datafile[f"Solver/{config_name}/padmm/use_solver_acceleration"][()])
         config.avoid_graph_conditionals = bool(datafile[f"Solver/{config_name}/padmm/avoid_graph_conditionals"][()])
         # ------------------------------------------------------------------------------
-        config.warmstart_mode = PADMMWarmStartMode(
-            int(datafile[f"Solver/{config_name}/warmstarting/warmstart_mode"][()])
-        )
+        config.warmstart_mode = str(datafile[f"Solver/{config_name}/warmstarting/warmstart_mode"][()])
         config.contact_warmstart_method = WarmstarterContacts.Method(
             int(datafile[f"Solver/{config_name}/warmstarting/contact_warmstart_method"][()])
         )

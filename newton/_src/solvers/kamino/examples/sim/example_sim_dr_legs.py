@@ -32,7 +32,7 @@ from newton._src.solvers.kamino.models.builders.utils import (
     make_homogeneous_builder,
     set_uniform_body_pose_offset,
 )
-from newton._src.solvers.kamino.solvers.padmm import PADMMPenaltyUpdate, PADMMWarmStartMode
+from newton._src.solvers.kamino.solvers.padmm import PADMMPenaltyUpdate
 from newton._src.solvers.kamino.solvers.warmstart import WarmstarterContacts
 from newton._src.solvers.kamino.utils import logger as msg
 from newton._src.solvers.kamino.utils.control import AnimationJointReference, JointSpacePIDController
@@ -260,7 +260,7 @@ class Example:
         config.solver.padmm.rho_min = 0.01
         config.solver.padmm.penalty_update_method = PADMMPenaltyUpdate.FIXED  # try BALANCED
         config.solver.use_solver_acceleration = True
-        config.solver.warmstart_mode = PADMMWarmStartMode.CONTAINERS
+        config.solver.warmstart_mode = "containers"
         config.solver.contact_warmstart_method = WarmstarterContacts.Method.GEOM_PAIR_NET_FORCE
         config.solver.collect_solver_info = False
         config.solver.compute_metrics = logging and not use_cuda_graph

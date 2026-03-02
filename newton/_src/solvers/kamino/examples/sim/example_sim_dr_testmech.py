@@ -25,7 +25,6 @@ from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
 from newton._src.solvers.kamino.examples import get_examples_output_path, run_headless
 from newton._src.solvers.kamino.models import get_examples_usd_assets_path
 from newton._src.solvers.kamino.models.builders.utils import make_homogeneous_builder
-from newton._src.solvers.kamino.solvers.padmm import PADMMWarmStartMode
 from newton._src.solvers.kamino.utils import logger as msg
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
 from newton._src.solvers.kamino.utils.sim import SimulationLogger, Simulator, SimulatorConfig, ViewerKamino
@@ -89,7 +88,7 @@ class Example:
         config.solver.padmm.max_iterations = 200
         config.solver.padmm.rho_0 = 0.1
         config.solver.use_solver_acceleration = True
-        config.solver.warmstart_mode = PADMMWarmStartMode.CONTAINERS
+        config.solver.warmstart_mode = "containers"
         config.solver.collect_solver_info = False
         config.solver.compute_metrics = logging and not use_cuda_graph
 

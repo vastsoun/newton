@@ -1064,7 +1064,6 @@ class SolverKaminoImpl(SolverBase):
         wp.copy(self._data.bodies.u_i, state_in.u_i)
         wp.copy(self._data.bodies.w_i, state_in.w_i)
         # wp.copy(self._data.bodies.w_e_i, state_in.w_i_e)  # TODO: How to plug into picking forces?
-        wp.copy(self._data.bodies.w_e_i, state_in.w_i)  # TODO: REMOVE THIS
         wp.copy(self._data.joints.q_j, state_in.q_j)
         wp.copy(self._data.joints.q_j_p, state_in.q_j_p)
         wp.copy(self._data.joints.dq_j, state_in.dq_j)

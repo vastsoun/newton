@@ -26,7 +26,8 @@ import math
 import warp as wp
 
 from ...core.data import DataKamino
-from ...core.model import ModelKamino, ModelKaminoSize
+from ...core.model import ModelKamino
+from ...core.size import SizeKamino
 from ...dynamics.dual import DualProblem
 from ...geometry.contacts import ContactsKamino
 from ...kinematics.limits import LimitsKamino
@@ -132,7 +133,7 @@ class PADMMSolver:
         self._uses_adaptive_penalty: bool = False
 
         # Declare the model size cache
-        self._size: ModelKaminoSize | None = None
+        self._size: SizeKamino | None = None
 
         # Declare the solver data container
         self._data: PADMMData | None = None
@@ -165,7 +166,7 @@ class PADMMSolver:
         return self._config
 
     @property
-    def size(self) -> ModelKaminoSize:
+    def size(self) -> SizeKamino:
         """
         Returns the host-side cache of the solver allocation sizes.
         """

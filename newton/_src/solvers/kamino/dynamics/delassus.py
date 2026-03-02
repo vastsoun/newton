@@ -80,7 +80,8 @@ import numpy as np
 import warp as wp
 
 from ..core.data import DataKamino
-from ..core.model import ModelKamino, ModelKaminoSize
+from ..core.model import ModelKamino
+from ..core.size import SizeKamino
 from ..core.types import FloatType, float32, int32, mat33f, vec3f, vec6f
 from ..geometry.contacts import ContactsKamino
 from ..kinematics.constraints import get_max_constraints_per_world
@@ -750,7 +751,7 @@ class DelassusOperator:
         self._device: wp.DeviceLike = device
 
         # Declare the model size cache
-        self._size: ModelKaminoSize | None = None
+        self._size: SizeKamino | None = None
 
         # Initialize the Delassus data container
         self._operator: DenseLinearOperatorData | None = None

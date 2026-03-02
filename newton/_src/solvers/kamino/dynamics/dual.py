@@ -70,7 +70,8 @@ import warp as wp
 
 from ..core.data import DataKamino
 from ..core.math import FLOAT32_EPS, UNIT_Z, screw, screw_angular, screw_linear
-from ..core.model import ModelKamino, ModelKaminoSize
+from ..core.model import ModelKamino
+from ..core.size import SizeKamino
 from ..core.types import (
     float32,
     int32,
@@ -1168,7 +1169,7 @@ class DualProblem:
         self._device: wp.DeviceLike = device
 
         # Declare the model size cache
-        self._size: ModelKaminoSize | None = None
+        self._size: SizeKamino | None = None
 
         self._config: list[DualProblemConfig] = []
         """Host-side cache of the list of per world dual problem config."""
@@ -1208,7 +1209,7 @@ class DualProblem:
         return self._device
 
     @property
-    def size(self) -> ModelKaminoSize:
+    def size(self) -> SizeKamino:
         """
         Returns the model size of the dual problem.
         This is the size of the model that the dual problem is built for.

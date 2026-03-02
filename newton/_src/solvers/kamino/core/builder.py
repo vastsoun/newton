@@ -36,8 +36,9 @@ from .joints import (
 )
 from .materials import MaterialDescriptor, MaterialManager, MaterialPairProperties, MaterialPairsModel, MaterialsModel
 from .math import FLOAT32_EPS
-from .model import ModelKamino, ModelKaminoInfo, ModelKaminoSize
+from .model import ModelKamino, ModelKaminoInfo
 from .shapes import ShapeDescriptorType, ShapeType, max_contacts_for_shape_pair
+from .size import SizeKamino
 from .time import TimeModel
 from .types import Axis, float32, int32, mat33f, transformf, vec2i, vec3f, vec4f, vec6f
 from .world import WorldDescriptor
@@ -1188,7 +1189,7 @@ class ModelBuilderKamino:
         ###
 
         # Compute the sum/max of model entities
-        model_size = ModelKaminoSize(
+        model_size = SizeKamino(
             num_worlds=num_worlds,
             sum_of_num_bodies=self._num_bodies,
             max_of_num_bodies=max([world.num_bodies for world in self._worlds]),

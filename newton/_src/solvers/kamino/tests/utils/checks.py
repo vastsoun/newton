@@ -28,7 +28,8 @@ from ...core.control import ControlKamino
 from ...core.geometry import GeometriesModel
 from ...core.joints import JointsModel
 from ...core.materials import MaterialPairsModel, MaterialsModel
-from ...core.model import ModelKamino, ModelKaminoInfo, ModelKaminoSize
+from ...core.model import ModelKamino, ModelKaminoInfo
+from ...core.size import SizeKamino
 from ...core.state import StateKamino
 from ...utils import logger as msg
 
@@ -309,7 +310,7 @@ def assert_control_equal(
 
 
 def assert_model_size_equal(
-    test: unittest.TestCase, size0: ModelKaminoSize, size1: ModelKaminoSize, excluded: list[str] | None = None
+    test: unittest.TestCase, size0: SizeKamino, size1: SizeKamino, excluded: list[str] | None = None
 ) -> None:
     attributes = [
         "num_worlds",

@@ -51,6 +51,7 @@ from .joints import (
 )
 from .materials import MaterialManager, MaterialPairsModel, MaterialsModel
 from .shapes import ShapeType
+from .size import SizeKamino
 from .state import StateKamino
 from .time import TimeData, TimeModel
 from .types import float32, int32, mat33f, transformf, vec2i, vec3f, vec4f, vec6f
@@ -63,7 +64,6 @@ from .world import WorldDescriptor
 __all__ = [
     "ModelKamino",
     "ModelKaminoInfo",
-    "ModelKaminoSize",
 ]
 
 
@@ -75,214 +75,8 @@ wp.set_module_options({"enable_backward": False})
 
 
 ###
-# Containers
+# Types
 ###
-
-
-@dataclass
-class ModelKaminoSize:
-    """
-    A container to hold the summary size of memory allocations and thread dimensions.
-
-    Notes:
-    - The sums are used for memory allocations.
-    - The maximums are used to define 2D thread shapes: (num_worlds, max_of_max_XXX)
-    - Where `XXX` is the maximum number of limits, contacts, unilaterals, or constraints in any world.
-    """
-
-    num_worlds: int = 0
-    """The number of worlds represented in the model."""
-
-    sum_of_num_bodies: int = 0
-    """The total number of bodies in the model across all worlds."""
-
-    max_of_num_bodies: int = 0
-    """The maximum number of bodies in any world."""
-
-    sum_of_num_joints: int = 0
-    """The total number of joints in the model across all worlds."""
-
-    max_of_num_joints: int = 0
-    """The maximum number of joints in any world."""
-
-    sum_of_num_passive_joints: int = 0
-    """The total number of passive joints in the model across all worlds."""
-
-    max_of_num_passive_joints: int = 0
-    """The maximum number of passive joints in any world."""
-
-    sum_of_num_actuated_joints: int = 0
-    """The total number of actuated joints in the model across all worlds."""
-
-    max_of_num_actuated_joints: int = 0
-    """The maximum number of actuated joints in any world."""
-
-    sum_of_num_dynamic_joints: int = 0
-    """The total number of dynamic joints in the model across all worlds."""
-
-    max_of_num_dynamic_joints: int = 0
-    """The maximum number of dynamic joints in any world."""
-
-    sum_of_num_geoms: int = 0
-    """The total number of geometries in the model across all worlds."""
-
-    max_of_num_geoms: int = 0
-    """The maximum number of geometries in any world."""
-
-    sum_of_num_materials: int = 0
-    """
-    The total number of materials in the model across all worlds.
-
-    In the present implementation, this will be equal to `max_of_num_materials`,
-    since model materials are defined globally for all worlds. We plan to also
-    introduce per-world materials in the future.
-    """
-
-    max_of_num_materials: int = 0
-    """
-    The maximum number of materials in any world.
-
-    In the present implementation, this will be equal to `sum_of_num_materials`,
-    since model materials are defined globally for all worlds. We plan to also
-    introduce per-world materials in the future.
-    """
-
-    sum_of_num_material_pairs: int = 0
-    """The total number of material pairs in the model across all worlds."""
-
-    max_of_num_material_pairs: int = 0
-    """The maximum number of material pairs in any world."""
-
-    sum_of_num_body_dofs: int = 0
-    """The total number of body DoFs in the model across all worlds."""
-
-    max_of_num_body_dofs: int = 0
-    """The maximum number of body DoFs in any world."""
-
-    sum_of_num_joint_coords: int = 0
-    """The total number of joint coordinates in the model across all worlds."""
-
-    max_of_num_joint_coords: int = 0
-    """The maximum number of joint coordinates in any world."""
-
-    sum_of_num_joint_dofs: int = 0
-    """The total number of joint DoFs in the model across all worlds."""
-
-    max_of_num_joint_dofs: int = 0
-    """The maximum number of joint DoFs in any world."""
-
-    sum_of_num_passive_joint_coords: int = 0
-    """The total number of passive joint coordinates in the model across all worlds."""
-
-    max_of_num_passive_joint_coords: int = 0
-    """The maximum number of passive joint coordinates in any world."""
-
-    sum_of_num_passive_joint_dofs: int = 0
-    """The total number of passive joint DoFs in the model across all worlds."""
-
-    max_of_num_passive_joint_dofs: int = 0
-    """The maximum number of passive joint DoFs in any world."""
-
-    sum_of_num_actuated_joint_coords: int = 0
-    """The total number of actuated joint coordinates in the model across all worlds."""
-
-    max_of_num_actuated_joint_coords: int = 0
-    """The maximum number of actuated joint coordinates in any world."""
-
-    sum_of_num_actuated_joint_dofs: int = 0
-    """The total number of actuated joint DoFs in the model across all worlds."""
-
-    max_of_num_actuated_joint_dofs: int = 0
-    """The maximum number of actuated joint DoFs in any world."""
-
-    sum_of_num_joint_cts: int = 0
-    """The total number of joint constraints in the model across all worlds."""
-
-    max_of_num_joint_cts: int = 0
-    """The maximum number of joint constraints in any world."""
-
-    sum_of_num_dynamic_joint_cts: int = 0
-    """The total number of dynamic joint constraints in the model across all worlds."""
-
-    max_of_num_dynamic_joint_cts: int = 0
-    """The maximum number of dynamic joint constraints in any world."""
-
-    sum_of_num_kinematic_joint_cts: int = 0
-    """The total number of kinematic joint constraints in the model across all worlds."""
-
-    max_of_num_kinematic_joint_cts: int = 0
-    """The maximum number of kinematic joint constraints in any world."""
-
-    sum_of_max_limits: int = 0
-    """The total maximum number of limits allocated for the model across all worlds."""
-
-    max_of_max_limits: int = 0
-    """The maximum number of active limits of any world."""
-
-    sum_of_max_contacts: int = 0
-    """The total maximum number of contacts allocated for the model across all worlds."""
-
-    max_of_max_contacts: int = 0
-    """The maximum number of active contacts of any world."""
-
-    sum_of_max_unilaterals: int = 0
-    """The maximum number of active unilateral entities, i.e. joint-limits and contacts."""
-
-    max_of_max_unilaterals: int = 0
-    """The maximum number of active unilaterals of any world."""
-
-    sum_of_max_total_cts: int = 0
-    """The total maximum number of active constraints allocated for the model across all worlds."""
-
-    max_of_max_total_cts: int = 0
-    """The maximum number of active constraints of any world."""
-
-    def __repr__(self):
-        """Returns a human-readable string representation of the ModelKaminoSize as a formatted table."""
-        # List of (row title, sum attr, max attr)
-        rows = [
-            ("num_bodies", "sum_of_num_bodies", "max_of_num_bodies"),
-            ("num_joints", "sum_of_num_joints", "max_of_num_joints"),
-            ("num_passive_joints", "sum_of_num_passive_joints", "max_of_num_passive_joints"),
-            ("num_actuated_joints", "sum_of_num_actuated_joints", "max_of_num_actuated_joints"),
-            ("num_dynamic_joints", "sum_of_num_dynamic_joints", "max_of_num_dynamic_joints"),
-            ("num_geoms", "sum_of_num_geoms", "max_of_num_geoms"),
-            ("num_material_pairs", "sum_of_num_material_pairs", "max_of_num_material_pairs"),
-            ("num_body_dofs", "sum_of_num_body_dofs", "max_of_num_body_dofs"),
-            ("num_joint_coords", "sum_of_num_joint_coords", "max_of_num_joint_coords"),
-            ("num_joint_dofs", "sum_of_num_joint_dofs", "max_of_num_joint_dofs"),
-            ("num_passive_joint_coords", "sum_of_num_passive_joint_coords", "max_of_num_passive_joint_coords"),
-            ("num_passive_joint_dofs", "sum_of_num_passive_joint_dofs", "max_of_num_passive_joint_dofs"),
-            ("num_actuated_joint_coords", "sum_of_num_actuated_joint_coords", "max_of_num_actuated_joint_coords"),
-            ("num_actuated_joint_dofs", "sum_of_num_actuated_joint_dofs", "max_of_num_actuated_joint_dofs"),
-            ("num_joint_cts", "sum_of_num_joint_cts", "max_of_num_joint_cts"),
-            ("num_dynamic_joint_cts", "sum_of_num_dynamic_joint_cts", "max_of_num_dynamic_joint_cts"),
-            ("num_kinematic_joint_cts", "sum_of_num_kinematic_joint_cts", "max_of_num_kinematic_joint_cts"),
-            ("max_limits", "sum_of_max_limits", "max_of_max_limits"),
-            ("max_contacts", "sum_of_max_contacts", "max_of_max_contacts"),
-            ("max_unilaterals", "sum_of_max_unilaterals", "max_of_max_unilaterals"),
-            ("max_total_cts", "sum_of_max_total_cts", "max_of_max_total_cts"),
-        ]
-
-        # Compute column widths
-        name_width = max(len("Name"), *(len(r[0]) for r in rows))
-        sum_width = max(len("Sum"), *(len(str(getattr(self, r[1]))) for r in rows))
-        max_width = max(len("Max"), *(len(str(getattr(self, r[2]))) for r in rows))
-
-        # Write ModelKaminoSize members as a formatted table
-        lines = []
-        lines.append("-" * (name_width + 1 + sum_width + 1 + max_width))
-        lines.append(f"{'Name':<{name_width}} {'Sum':>{sum_width}} {'Max':>{max_width}}")
-        lines.append("-" * (name_width + 1 + sum_width + 1 + max_width))
-        for name, sum_attr, max_attr in rows:
-            sum_val = getattr(self, sum_attr)
-            max_val = getattr(self, max_attr)
-            line = f"{name:<{name_width}} {sum_val:>{sum_width}} {max_val:>{max_width}}"
-            lines.append(line)
-            lines.append("-" * (name_width + 1 + sum_width + 1 + max_width))
-
-        # Join the lines into a single string
-        return "\n".join(lines)
 
 
 @dataclass
@@ -668,7 +462,7 @@ class ModelKamino:
     _requires_grad: bool = False
     """Whether the model was finalized (see :meth:`ModelBuilder.finalize`) with gradient computation enabled."""
 
-    size: ModelKaminoSize | None = None
+    size: SizeKamino | None = None
     """
     Host-side cache of the model summary sizes.\n
     This is used for memory allocations and kernel thread dimensions.
@@ -1409,8 +1203,8 @@ class ModelKamino:
                 inertia_total=float(inertia_total_np[w]),
             )
 
-        # Construct ModelKaminoSize from the newton.Model instance
-        model_size = ModelKaminoSize(
+        # Construct SizeKamino from the newton.Model instance
+        model_size = SizeKamino(
             num_worlds=model.world_count,
             sum_of_num_bodies=int(num_bodies_np.sum()),
             max_of_num_bodies=int(num_bodies_np.max()),

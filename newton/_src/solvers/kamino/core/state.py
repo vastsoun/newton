@@ -23,6 +23,7 @@ import warp as wp
 
 from ....sim.model import Model
 from ....sim.state import State
+from .size import SizeKamino
 from .types import vec6f
 
 ###
@@ -355,6 +356,7 @@ class StateKamino:
     @classmethod
     def from_newton(
         cls,
+        size: SizeKamino,
         model: Model,
         state: State,
         initialize_state_prev: bool = False,
@@ -378,12 +380,6 @@ class StateKamino:
         Returns:
             A :class:`kamino.StateKamino` object that aliases the data of the input :class:`newton.State` object.
         """
-        # Ensure the model is valid
-        if model is None:
-            raise ValueError("A Model instance must be provided to convert to StateKamino.")
-        if not isinstance(model, Model):
-            raise TypeError(f"Expected model of type Model, but got {type(model)}.")
-
         # Ensure the state is valid
         if state is None:
             raise ValueError("A State instance must be provided to convert to StateKamino.")
@@ -411,7 +407,7 @@ class StateKamino:
         if hasattr(state, "joint_lambdas"):
             joint_lambdas = state.joint_lambdas
         else:
-            joint_lambdas = wp.zeros(shape=(model.joint_constraint_count,), dtype=wp.float32, device=device)
+            joint_lambdas = wp.zeros(shape=(size.sum_of_num_joint_cts,), dtype=wp.float32, device=device)
 
         # Optionally initialize the `joint_q_prev` array to match the current `joint_q`
         if initialize_state_prev:

@@ -175,10 +175,10 @@ class BroadPhaseType(IntEnum):
 class CollisionDetectorSettings:
     """Defines the settings for configuring a CollisionDetector."""
 
-    pipeline: Literal["primitive", "unified"] = "primitive"
+    pipeline: Literal["primitive", "unified"] = "unified"
     """
     The type of collision-detection pipeline to use, either `primitive` or `unified`.\n
-    Defaults to `primitive`.
+    Defaults to `unified`.
     """
 
     broadphase: Literal["nxn", "sap", "explicit"] = "explicit"

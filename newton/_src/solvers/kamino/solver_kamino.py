@@ -1066,7 +1066,8 @@ class SolverKaminoImpl(SolverBase):
         wp.copy(self._data.bodies.q_i, state_in.q_i)
         wp.copy(self._data.bodies.u_i, state_in.u_i)
         wp.copy(self._data.bodies.w_i, state_in.w_i)
-        wp.copy(self._data.bodies.w_e_i, state_in.w_i_e)  # TODO: How to plug into picking forces?
+        # wp.copy(self._data.bodies.w_e_i, state_in.w_i_e)  # TODO: How to plug into picking forces?
+        wp.copy(self._data.bodies.w_e_i, state_in.w_i)  # TODO: REMOVE THIS
         wp.copy(self._data.joints.q_j, state_in.q_j)
         wp.copy(self._data.joints.q_j_p, state_in.q_j_p)
         wp.copy(self._data.joints.dq_j, state_in.dq_j)
@@ -1085,7 +1086,7 @@ class SolverKaminoImpl(SolverBase):
         wp.copy(state_out.q_i, self._data.bodies.q_i)
         wp.copy(state_out.u_i, self._data.bodies.u_i)
         wp.copy(state_out.w_i, self._data.bodies.w_i)
-        wp.copy(state_out.w_i_e, self._data.bodies.w_e_i)  # TODO: How to plug into picking forces?
+        # wp.copy(state_out.w_i_e, self._data.bodies.w_e_i)  # TODO: How to plug into picking forces?
         wp.copy(state_out.q_j, self._data.joints.q_j)
         wp.copy(state_out.q_j_p, self._data.joints.q_j_p)
         wp.copy(state_out.dq_j, self._data.joints.dq_j)
@@ -1738,7 +1739,7 @@ class SolverKamino(SolverBase):
         if contacts is not None:
             self._ingest_newton_contacts(contacts, state_in)
         else:
-            self._collision_detector_kamino.collide(self._model_kamino, self._solver_kamino.data, state_in_kamino)
+            self._collision_detector_kamino.collide(self._solver_kamino.data, state_in_kamino)
 
         # Convert Newton body-frame poses to Kamino CoM-frame poses using
         # Kamino's corrected body-com offsets (can differ from Newton model data).
@@ -1844,10 +1845,7 @@ class SolverKamino(SolverBase):
         """
         import numpy as np  # noqa: PLC0415
 
-        from .core.joints import (  # noqa: PLC0415
-            JointDoFType,
-            axes_matrix_from_joint_type,
-        )
+        from .core.joints import JointDoFType  # noqa: PLC0415
 
         model = self.model
         joints_km = self._model_kamino.joints
@@ -1860,7 +1858,8 @@ class SolverKamino(SolverBase):
         joint_axis_np = model.joint_axis.numpy()
         joint_dof_dim_np = model.joint_dof_dim.numpy()
         joint_qd_start_np = model.joint_qd_start.numpy()
-
+        joint_limit_lower_np = model.joint_limit_lower.numpy()
+        joint_limit_upper_np = model.joint_limit_upper.numpy()
         dof_type_np = joints_km.dof_type.numpy()
 
         n_joints = model.joint_count
@@ -1874,7 +1873,9 @@ class SolverKamino(SolverBase):
             dofs_start_j = int(joint_qd_start_np[j])
             ndofs_j = dof_type_j.num_dofs
             joint_axes_j = joint_axis_np[dofs_start_j : dofs_start_j + ndofs_j]
-            R_axis_j = axes_matrix_from_joint_type(dof_type_j, dof_dim_j, joint_axes_j)
+            joint_q_min_j = joint_limit_lower_np[dofs_start_j : dofs_start_j + ndofs_j]
+            joint_q_max_j = joint_limit_upper_np[dofs_start_j : dofs_start_j + ndofs_j]
+            R_axis_j = JointDoFType.from_newton(dof_type_j, dof_dim_j, joint_axes_j, joint_q_min_j, joint_q_max_j)
 
             parent_bid = int(joint_parent_np[j])
             p_r_p_com = wp.vec3f(body_com_np[parent_bid]) if parent_bid >= 0 else wp.vec3f(0.0, 0.0, 0.0)
@@ -2019,18 +2020,18 @@ class SolverKamino(SolverBase):
         # State attributes
         builder.add_custom_attribute(
             ModelBuilder.CustomAttribute(
-                name="joint_q_prev",
+                name="body_f_ext",
                 assignment=Model.AttributeAssignment.STATE,
-                frequency=Model.AttributeFrequency.JOINT_COORD,
-                dtype=wp.float32,
-                default=0.0,
+                frequency=Model.AttributeFrequency.BODY,
+                dtype=vec6f,
+                default=vec6f(0.0),
             )
         )
         builder.add_custom_attribute(
             ModelBuilder.CustomAttribute(
-                name="joint_lambdas",
+                name="joint_q_prev",
                 assignment=Model.AttributeAssignment.STATE,
-                frequency=Model.AttributeFrequency.JOINT_CONSTRAINT,
+                frequency=Model.AttributeFrequency.JOINT_COORD,
                 dtype=wp.float32,
                 default=0.0,
             )

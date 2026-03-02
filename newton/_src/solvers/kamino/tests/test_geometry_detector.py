@@ -22,7 +22,7 @@ import warp as wp
 
 from newton._src.solvers.kamino.geometry import (
     CollisionDetector,
-    CollisionDetectorSettings,
+    CollisionDetectorConfig,
 )
 from newton._src.solvers.kamino.models.builders import basics
 from newton._src.solvers.kamino.models.builders.utils import make_homogeneous_builder
@@ -37,7 +37,7 @@ from newton._src.solvers.kamino.utils import logger as msg
 ###
 
 
-class TestCollisionDetectorSettings(unittest.TestCase):
+class TestCollisionDetectorConfig(unittest.TestCase):
     def setUp(self):
         if not test_context.setup_done:
             setup_tests(clear_cache=False)
@@ -57,18 +57,18 @@ class TestCollisionDetectorSettings(unittest.TestCase):
             msg.reset_log_level()
 
     def test_00_make_default(self):
-        """Test making default collision detector settings."""
-        settings = CollisionDetectorSettings()
-        self.assertEqual(settings.pipeline, "primitive")
-        self.assertEqual(settings.broadphase, "explicit")
-        self.assertEqual(settings.bvtype, "aabb")
+        """Test making default collision detector config."""
+        config = CollisionDetectorConfig()
+        self.assertEqual(config.pipeline, "primitive")
+        self.assertEqual(config.broadphase, "explicit")
+        self.assertEqual(config.bvtype, "aabb")
 
     def test_01_make_with_string_args(self):
-        """Test making collision detector settings with string arguments."""
-        settings = CollisionDetectorSettings(pipeline="primitive", broadphase="explicit", bvtype="aabb")
-        self.assertEqual(settings.pipeline, "primitive")
-        self.assertEqual(settings.broadphase, "explicit")
-        self.assertEqual(settings.bvtype, "aabb")
+        """Test making collision detector config with string arguments."""
+        config = CollisionDetectorConfig(pipeline="primitive", broadphase="explicit", bvtype="aabb")
+        self.assertEqual(config.pipeline, "primitive")
+        self.assertEqual(config.broadphase, "explicit")
+        self.assertEqual(config.bvtype, "aabb")
 
 
 class TestGeometryCollisionDetector(unittest.TestCase):
@@ -106,12 +106,12 @@ class TestGeometryCollisionDetector(unittest.TestCase):
         state = model.state()
 
         # Create a collision detector with primitive pipeline
-        settings = CollisionDetectorSettings(
+        config = CollisionDetectorConfig(
             pipeline="primitive",
             broadphase="explicit",
             bvtype="aabb",
         )
-        detector = CollisionDetector(model=model, settings=settings)
+        detector = CollisionDetector(model=model, config=config)
         self.assertIs(detector.device, self.default_device)
 
         # Run collision detection
@@ -147,12 +147,12 @@ class TestGeometryCollisionDetector(unittest.TestCase):
         state = model.state()
 
         # Create a collision detector with unified pipeline
-        settings = CollisionDetectorSettings(
+        config = CollisionDetectorConfig(
             pipeline="unified",
             broadphase="explicit",
             bvtype="aabb",
         )
-        detector = CollisionDetector(model=model, settings=settings)
+        detector = CollisionDetector(model=model, config=config)
         self.assertIs(detector.device, self.default_device)
 
         # Run collision detection

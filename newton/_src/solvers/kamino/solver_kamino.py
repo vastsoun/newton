@@ -54,7 +54,7 @@ from .dynamics.wrenches import (
     compute_joint_dof_body_wrenches,
 )
 from .geometry.contacts import ContactsKamino, make_contact_frame_znorm
-from .geometry.detector import CollisionDetector, CollisionDetectorSettings
+from .geometry.detector import CollisionDetector, CollisionDetectorConfig
 from .geometry.keying import build_pair_key2
 from .integrators import IntegratorEuler, IntegratorMoreauJean
 from .kinematics.constraints import (
@@ -1523,7 +1523,7 @@ class SolverKamino(SolverBase):
         self,
         model: Model,
         solver_config: SolverKaminoConfig | None = None,
-        collision_detector_settings: CollisionDetectorSettings | None = None,
+        collision_detector_config: CollisionDetectorConfig | None = None,
     ):
         """
         TODO
@@ -1537,7 +1537,7 @@ class SolverKamino(SolverBase):
         # Create a collision detector
         self._collision_detector_kamino = CollisionDetector(
             model=self._model_kamino,
-            settings=collision_detector_settings,
+            config=collision_detector_config,
         )
 
         # Capture a reference to the contacts container

@@ -27,7 +27,7 @@ from ...core.control import ControlKamino
 from ...core.model import ModelKamino
 from ...core.state import StateKamino
 from ...core.types import FloatArrayLike
-from ...geometry import CollisionDetector, CollisionDetectorSettings
+from ...geometry import CollisionDetector, CollisionDetectorConfig
 from ...solver_kamino import SolverKaminoConfig, SolverKaminoImpl
 
 ###
@@ -65,10 +65,10 @@ class SimulatorSettings:
     Defaults to `0.001` seconds.
     """
 
-    collision_detector: CollisionDetectorSettings = field(default_factory=CollisionDetectorSettings)
+    collision_detector: CollisionDetectorConfig = field(default_factory=CollisionDetectorConfig)
     """
-    The settings for the collision detector.
-    See :class:`CollisionDetectorSettings` for more details.
+    The config for the collision detector.
+    See :class:`CollisionDetectorConfig` for more details.
     """
 
     solver: SolverKaminoConfig = field(default_factory=SolverKaminoConfig)
@@ -97,9 +97,9 @@ class SimulatorSettings:
         else:
             raise TypeError("Invalid time-step: must be a `float` or a `FloatArrayLike`.`")
 
-        # Ensure nested settings are properly created
-        if not isinstance(self.collision_detector, CollisionDetectorSettings):
-            raise TypeError(f"Invalid type for collision_detector settings: {type(self.collision_detector)}")
+        # Ensure nested configs are properly created
+        if not isinstance(self.collision_detector, CollisionDetectorConfig):
+            raise TypeError(f"Invalid type for collision_detector config: {type(self.collision_detector)}")
         if not isinstance(self.solver, SolverKaminoConfig):
             raise TypeError(f"Invalid type for solver config: {type(self.solver)}")
 
@@ -223,7 +223,7 @@ class Simulator:
         # Allocate collision detection and contacts interface
         self._collision_detector = CollisionDetector(
             model=self._model,
-            settings=self._settings.collision_detector,
+            config=self._settings.collision_detector,
         )
 
         # Capture a reference to the contacts manager

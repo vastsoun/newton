@@ -34,7 +34,7 @@ import newton
 import newton.examples
 
 # Kamino imports
-from newton._src.solvers.kamino.geometry import CollisionDetectorSettings
+from newton._src.solvers.kamino.geometry import CollisionDetectorConfig
 from newton._src.solvers.kamino.models import get_basics_usd_assets_path
 from newton._src.solvers.kamino.solver_kamino import SolverKaminoConfig
 from newton._src.solvers.kamino.solvers.padmm import PADMMWarmStartMode
@@ -90,9 +90,9 @@ class Example:
         self.model = builder.finalize(skip_validation_joints=True)
 
         # Create and configure settings for SolverKamino and the collision detector
-        collision_detector_settings = CollisionDetectorSettings()
-        collision_detector_settings.pipeline = "unified"
-        collision_detector_settings.max_contacts = 32 * self.num_worlds
+        collision_detector_config = CollisionDetectorConfig()
+        collision_detector_config.pipeline = "unified"
+        collision_detector_config.max_contacts = 32 * self.num_worlds
         solver_config = SolverKaminoConfig()
         solver_config.problem.preconditioning = True
         solver_config.padmm.primal_tolerance = 1e-4
@@ -109,7 +109,7 @@ class Example:
         self.solver = newton.solvers.SolverKamino(
             model=self.model,
             solver_config=solver_config,
-            collision_detector_settings=collision_detector_settings,
+            collision_detector_config=collision_detector_config,
         )
 
         # Create state and control data containers

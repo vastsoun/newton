@@ -78,7 +78,7 @@ from .kinematics.resets import (
     reset_time,
 )
 from .linalg import ConjugateResidualSolver, IterativeSolver, LinearSolverType, LLTBlockedSolver
-from .solvers.fk import ForwardKinematicsSolver, ForwardKinematicsSolverSettings
+from .solvers.fk import ForwardKinematicsSolver, ForwardKinematicsSolverConfig
 from .solvers.metrics import SolutionMetrics
 from .solvers.padmm import PADMMConfig, PADMMSolver, PADMMWarmStartMode
 from .solvers.warmstart import WarmstarterContacts, WarmstarterLimits
@@ -371,10 +371,10 @@ class SolverKaminoConfig:
     See :class:`PADMMConfig` for more details.
     """
 
-    fk: ForwardKinematicsSolverSettings = field(default_factory=ForwardKinematicsSolverSettings)
+    fk: ForwardKinematicsSolverConfig = field(default_factory=ForwardKinematicsSolverConfig)
     """
-    Settings for the forward kinematics solver.\n
-    See :class:`ForwardKinematicsSolverSettings` for more details.
+    Config for the forward kinematics solver.\n
+    See :class:`ForwardKinematicsSolverConfig` for more details.
     """
 
     warmstart_mode: PADMMWarmStartMode = PADMMWarmStartMode.CONTAINERS
@@ -645,7 +645,7 @@ class SolverKaminoImpl(SolverBase):
         )
 
         # Allocate the forward kinematics solver on the device
-        self._solver_fk = ForwardKinematicsSolver(model=self._model, settings=self._config.fk)
+        self._solver_fk = ForwardKinematicsSolver(model=self._model, config=self._config.fk)
 
         # Create the time-integrator instance based on the config
         if self._config.integrator == "euler":

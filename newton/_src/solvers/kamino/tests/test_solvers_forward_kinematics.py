@@ -32,7 +32,7 @@ from newton._src.solvers.kamino.models import get_examples_usd_assets_path
 from newton._src.solvers.kamino.solvers.fk import (
     FKPreconditionerOptions,
     ForwardKinematicsSolver,
-    ForwardKinematicsSolverSettings,
+    ForwardKinematicsSolverConfig,
 )
 from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.tests.utils.diff_check import diff_check, run_test_single_joint_examples
@@ -312,11 +312,11 @@ def simulate_random_poses(
     residual_mask = compute_constraint_residual_mask(model)
 
     # Run forward kinematics on all random poses
-    settings = ForwardKinematicsSolverSettings()
-    settings.reset_state = True
-    settings.use_sparsity = False  # Change for sparse/dense solver
-    settings.preconditioner = FKPreconditionerOptions.JACOBI_BLOCK_DIAGONAL  # Change to test preconditioners
-    solver = ForwardKinematicsSolver(model, settings)
+    config = ForwardKinematicsSolverConfig()
+    config.reset_state = True
+    config.use_sparsity = False  # Change for sparse/dense solver
+    config.preconditioner = FKPreconditionerOptions.JACOBI_BLOCK_DIAGONAL  # Change to test preconditioners
+    solver = ForwardKinematicsSolver(model, config)
     success_flags = []
     with wp.ScopedDevice(model.device):
         bodies_q = wp.array(shape=(model.size.sum_of_num_bodies), dtype=wp.transformf)
@@ -562,7 +562,7 @@ class HeterogenousModelSparseJacobianAssemblyCheck(unittest.TestCase):
         base_q_np, actuators_q_np = generate_random_inputs_q(model, num_poses, base_q_max, actuators_q_max, rng)
 
         # Assemble and compare dense and sparse Jacobian for each pose
-        solver = ForwardKinematicsSolver(model, settings=ForwardKinematicsSolverSettings(use_sparsity=True))
+        solver = ForwardKinematicsSolver(model, config=ForwardKinematicsSolverConfig(use_sparsity=True))
         with wp.ScopedDevice(model.device):
             bodies_q = wp.array(shape=(model.size.sum_of_num_bodies), dtype=wp.transformf)
             base_q = wp.array(shape=(model.size.num_worlds), dtype=wp.transformf)

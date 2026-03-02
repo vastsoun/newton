@@ -1276,6 +1276,7 @@ class SolverKamino(SolverBase):
         model: Model,
         solver_config: SolverKaminoConfig | None = None,
         collision_detector_config: CollisionDetectorConfig | None = None,
+        usd_import_result: dict[str, Any] | None = None,
     ):
         """
         TODO
@@ -1297,6 +1298,42 @@ class SolverKamino(SolverBase):
 
         # Capture a reference to the contacts container
         self._contacts_kamino: ContactsKamino = self._collision_detector_kamino.contacts
+
+        # Parse solver-specific scene attributes imported from USD
+        if solver_config is None and usd_import_result is not None:
+            solver_config = SolverKaminoConfig()
+            scene_attrs = usd_import_result["scene_attributes"]
+
+            padmm_primal_tolerance = scene_attrs.get("newton:kamino:padmm:primalTolerance")
+            if padmm_primal_tolerance is not None:
+                solver_config.padmm.primal_tolerance = padmm_primal_tolerance
+            padmm_dual_tolerance = scene_attrs.get("newton:kamino:padmm:dualTolerance")
+            if padmm_dual_tolerance is not None:
+                solver_config.padmm.dual_tolerance = padmm_dual_tolerance
+            padmm_complementarity_tolerance = scene_attrs.get("newton:kamino:padmm:complementarityTolerance")
+            if padmm_complementarity_tolerance is not None:
+                solver_config.padmm.compl_tolerance = padmm_complementarity_tolerance
+            padmm_warmstarting = scene_attrs.get("newton:kamino:padmm:warmstarting")
+            if padmm_warmstarting is not None:
+                solver_config.warmstart_mode = self._parse_warmstarting(padmm_warmstarting)
+            padmm_use_acceleration = scene_attrs.get("newton:kamino:padmm:useAcceleration")
+            if padmm_use_acceleration is not None:
+                solver_config.use_solver_acceleration = padmm_use_acceleration
+            joint_correction = scene_attrs.get("newton:kamino:jointCorrection")
+            if joint_correction is not None:
+                solver_config.rotation_correction = self._parse_joint_correction(joint_correction)
+            constraints_alpha = scene_attrs.get("newton:kamino:constraints:alpha")
+            if constraints_alpha is not None:
+                solver_config.problem.alpha = constraints_alpha
+            constraints_beta = scene_attrs.get("newton:kamino:constraints:beta")
+            if constraints_beta is not None:
+                solver_config.problem.beta = constraints_beta
+            constraints_gamma = scene_attrs.get("newton:kamino:constraints:gamma")
+            if constraints_gamma is not None:
+                solver_config.problem.gamma = constraints_gamma
+            constraints_use_preconditioning = scene_attrs.get("newton:kamino:constraints:usePreconditioning")
+            if constraints_use_preconditioning is not None:
+                solver_config.problem.preconditioning = constraints_use_preconditioning
 
         # Initialize the internal Kamino solver
         self._solver_kamino = SolverKaminoImpl(
@@ -1621,6 +1658,36 @@ class SolverKamino(SolverBase):
             for feature in unsupported_features:
                 error_msg += "\n  - " + feature
             raise ValueError(error_msg)
+
+    @staticmethod
+    def _parse_warmstarting(value: str) -> PADMMWarmStartMode:
+        """Parse warmstart option, see :class:`PADMMWarmStartMode`."""
+        if not isinstance(value, str):
+            raise TypeError("Parser expects input of type 'str'.")
+        mapping = {
+            "none": PADMMWarmStartMode.NONE,
+            "internal": PADMMWarmStartMode.INTERNAL,
+            "containers": PADMMWarmStartMode.CONTAINERS,
+        }
+        lower_value = value.lower().strip()
+        if lower_value not in mapping:
+            raise ValueError(f"Warmstart parameter '{value}' is not a valid option.")
+        return mapping[lower_value]
+
+    @staticmethod
+    def _parse_joint_correction(value: str) -> JointCorrectionMode:
+        """Parse joint correction option, see :class:`JointCorrectionMode`."""
+        if not isinstance(value, str):
+            raise TypeError("Parser expects input of type 'str'.")
+        mapping = {
+            "none": JointCorrectionMode.NONE,
+            "twopi": JointCorrectionMode.TWOPI,
+            "continuous": JointCorrectionMode.CONTINUOUS,
+        }
+        lower_value = value.lower().strip()
+        if lower_value not in mapping:
+            raise ValueError(f"Joint correction parameter '{value}' is not a valid option.")
+        return mapping[lower_value]
 
     def _update_gravity(self):
         """

@@ -13,13 +13,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Defines the Control container for Kamino."""
+"""Defines the control container of Kamino."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
 import warp as wp
+
+from ....sim.control import Control
+
+###
+# Types
+###
 
 
 @dataclass
@@ -37,6 +43,10 @@ class ControlKamino:
     - Generalized joint actuation forces are denoted by ``tau``
     - Subscripts ``_j`` denote joint-indexed quantities, e.g. :attr:`tau_j`.
     """
+
+    ###
+    # Attributes
+    ###
 
     tau_j: wp.array | None = None
     """
@@ -66,6 +76,10 @@ class ControlKamino:
     where ``d_j`` is the number of DoFs of joint ``j``.
     """
 
+    ###
+    # Operations
+    ###
+
     def copy_to(self, other: ControlKamino) -> None:
         """
         Copies the ControlKamino data to another ControlKamino object.
@@ -87,3 +101,39 @@ class ControlKamino:
         if self.tau_j is None or other.tau_j is None:
             raise ValueError("Error copying from/to uninitialized ControlKamino")
         wp.copy(self.tau_j, other.tau_j)
+
+    @classmethod
+    def from_newton(cls, control: Control) -> ControlKamino:
+        """
+        Constructs a :class:`kamino.ControlKamino` object from a :class:`newton.Control` object.
+
+        This operation serves only as a adaptor-like constructor to interface a
+        :class:`newton.Control`, effectively creating an alias without copying data.
+
+        Args:
+            control: The source :class:`newton.Control` object to be adapted.
+        """
+        return ControlKamino(
+            tau_j=control.joint_f,
+            tau_j_ref=control.joint_act,
+            q_j_ref=control.joint_target_pos,
+            dq_j_ref=control.joint_target_vel,
+        )
+
+    @classmethod
+    def to_newton(cls, control: ControlKamino) -> Control:
+        """
+        Constructs a :class:`newton.Control` object from a :class:`kamino.ControlKamino` object.
+
+        This operation serves only as a adaptor-like constructor to interface a
+        :class:`kamino.ControlKamino`, effectively creating an alias without copying data.
+
+        Args:
+            control: The source :class:`kamino.ControlKamino` object to be adapted.
+        """
+        control_newton = Control()
+        control_newton.joint_f = control.tau_j
+        control_newton.joint_act = control.tau_j_ref
+        control_newton.joint_target_pos = control.q_j_ref
+        control_newton.joint_target_vel = control.dq_j_ref
+        return control_newton

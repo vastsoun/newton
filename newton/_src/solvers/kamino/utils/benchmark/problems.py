@@ -62,12 +62,13 @@ class CameraConfig:
     yaw: float
 
 
-ProblemConfig = tuple[ModelBuilderKamino, ControlConfig | None, CameraConfig | None]
+ProblemConfig = tuple[ModelBuilderKamino | Callable, ControlConfig | None, CameraConfig | None]
 """
 Defines the configurations for a single benchmark problem.
 
 This contains:
-- A model builder that constructs the simulation worlds for the benchmark problem.
+- A model builder that constructs the simulation worlds for the benchmark problem, or a callable
+  taking no arguments returning such a builder (for deferred loading of the problem assets).
 - Optional control configurations for perturbing the benchmark problem.
 - Optional camera configurations for visualizing the benchmark problem.
 """
@@ -93,20 +94,23 @@ def make_benchmark_problem_fourbar(
     gravity: bool = True,
     ground: bool = True,
 ) -> ProblemConfig:
-    builder = make_homogeneous_builder(
-        num_worlds=num_worlds,
-        build_fn=basics.build_boxes_fourbar,
-        ground=ground,
-    )
-    for w in range(builder.num_worlds):
-        builder.gravity[w].enabled = gravity
+    def builder_fn():
+        builder = make_homogeneous_builder(
+            num_worlds=num_worlds,
+            build_fn=basics.build_boxes_fourbar,
+            ground=ground,
+        )
+        for w in range(num_worlds):
+            builder.gravity[w].enabled = gravity
+        return builder
+
     control = ControlConfig(decimation=20, scale=20.0)
     camera = CameraConfig(
         position=(-0.2, -0.5, 0.1),
         pitch=-5.0,
         yaw=70.0,
     )
-    return builder, control, camera
+    return builder_fn, control, camera
 
 
 def make_benchmark_problem_dr_legs(
@@ -119,23 +123,27 @@ def make_benchmark_problem_dr_legs(
     if EXAMPLE_ASSETS_PATH is None:
         raise FileNotFoundError("Failed to find USD assets path for examples: ensure `newton-assets` is installed.")
     USD_MODEL_PATH = os.path.join(EXAMPLE_ASSETS_PATH, "dr_legs/usd/dr_legs_with_meshes_and_boxes.usda")
-    # Create a model builder from the imported USD
-    msg.notif("Constructing builder from imported USD ...")
-    importer = USDImporter()
-    builder: ModelBuilderKamino = make_homogeneous_builder(
-        num_worlds=num_worlds, build_fn=importer.import_from, load_static_geometry=True, source=USD_MODEL_PATH
-    )
-    # Offset the model to place it above the ground
-    # NOTE: The USD model is centered at the origin
-    offset = wp.transformf(0.0, 0.0, 0.265, 0.0, 0.0, 0.0, 1.0)
-    set_uniform_body_pose_offset(builder=builder, offset=offset)
-    # Add a static collision geometry for the plane
-    if ground:
-        for w in range(num_worlds):
-            add_ground_box(builder, world_index=w)
-    # Set gravity
-    for w in range(builder.num_worlds):
-        builder.gravity[w].enabled = gravity
+
+    def builder_fn():
+        # Create a model builder from the imported USD
+        msg.notif("Constructing builder from imported USD ...")
+        importer = USDImporter()
+        builder: ModelBuilderKamino = make_homogeneous_builder(
+            num_worlds=num_worlds, build_fn=importer.import_from, load_static_geometry=True, source=USD_MODEL_PATH
+        )
+        # Offset the model to place it above the ground
+        # NOTE: The USD model is centered at the origin
+        offset = wp.transformf(0.0, 0.0, 0.265, 0.0, 0.0, 0.0, 1.0)
+        set_uniform_body_pose_offset(builder=builder, offset=offset)
+        # Add a static collision geometry for the plane
+        if ground:
+            for w in range(num_worlds):
+                add_ground_box(builder, world_index=w)
+        # Set gravity
+        for w in range(builder.num_worlds):
+            builder.gravity[w].enabled = gravity
+        return builder
+
     # Set control configurations
     control = ControlConfig(decimation=20, scale=0.25)
     # Set the camera configuration for better visualization of the system
@@ -144,7 +152,7 @@ def make_benchmark_problem_dr_legs(
         pitch=-10.0,
         yaw=225.0,
     )
-    return builder, control, camera
+    return builder_fn, control, camera
 
 
 ###

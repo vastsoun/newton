@@ -20,6 +20,7 @@ import os
 import numpy as np
 import warp as wp
 
+from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
 from newton._src.solvers.kamino.utils import logger as msg
 from newton._src.solvers.kamino.utils.benchmark.configs import make_benchmark_configs
 from newton._src.solvers.kamino.utils.benchmark.metrics import BenchmarkMetrics, CodeInfo
@@ -309,15 +310,17 @@ def benchmark_run(args: argparse.Namespace):
 
     # Iterator over all problem names and settings and run benchmarks for each
     for problem_name, problem_config in problem_set.items():
+        # Unpack problem configurations
+        builder, control, camera = problem_config
+        if not isinstance(builder, ModelBuilderKamino):
+            builder = builder()
+
         for config_name, configs in configs_set.items():
             msg.notif("Running benchmark for problem '%s' with simulation configs '%s'", problem_name, config_name)
 
             # Retrieve problem and config indices
             problem_idx = metrics._problem_names.index(problem_name)
             config_idx = metrics._config_names.index(config_name)
-
-            # Unpack problem configurations
-            builder, control, camera = problem_config
 
             # Construct simulator configurations based on the solver
             # configurations for the current benchmark configuration

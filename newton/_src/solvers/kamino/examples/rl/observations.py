@@ -394,6 +394,7 @@ class BdxObservation(ObservationBuilder, torch.nn.Module):
         relative_dof_positions = (dof_positions - self._joint_position_default) / self._joint_position_range
 
         # -- Action history --
+        # TODO make this implementation more efficient
         if setpoints is not None:
             self._action_hist_1.copy_(self._action_hist_0)
             self._action_hist_0[:] = (setpoints - self._joint_position_default) / self._joint_position_range

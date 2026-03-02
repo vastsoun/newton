@@ -137,6 +137,17 @@ def yaw_inv_apply_2d(yaw: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
     return torch.stack([c * vx + s * vy, -s * vx + c * vy], dim=-1).view(-1, 2)
 
 
+@torch.jit.script
+def yaw_apply_2d(yaw: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
+    """Forward yaw rotation of a 2-D vector."""
+    yaw = yaw.reshape(-1, 1)
+    v = v.reshape(-1, 2)
+    vx, vy = v[:, 0], v[:, 1]
+    s = torch.sin(yaw[:, 0])
+    c = torch.cos(yaw[:, 0])
+    return torch.stack([c * vx - s * vy, s * vx + c * vy], dim=-1).view(-1, 2)
+
+
 # ---------------------------------------------------------------------------
 # StackedIndices — lightweight named-range bookkeeping
 # ---------------------------------------------------------------------------
@@ -212,3 +223,66 @@ def phase_encoding(
 ) -> torch.Tensor:
     """Encode a scalar phase into a sin/cos feature vector."""
     return torch.sin(torch.outer(phase, freq_2pi) + offset)
+
+
+# ---------------------------------------------------------------------------
+# Checkpoint loading helpers
+# ---------------------------------------------------------------------------
+
+
+def _build_mlp_from_state_dict(sd: dict, prefix: str, activation: str = "elu") -> torch.nn.Sequential:
+    """Reconstruct a Sequential MLP from a state dict with numbered layers."""
+    act_map = {"elu": torch.nn.ELU, "relu": torch.nn.ReLU, "tanh": torch.nn.Tanh}
+    act_cls = act_map.get(activation, torch.nn.ELU)
+    # Collect linear layer indices (keys like "actor.0.weight", "actor.2.weight", ...)
+    indices = sorted({int(k.split(".")[1]) for k in sd if k.startswith(prefix + ".")})
+    layers: list[torch.nn.Module] = []
+    for i, idx in enumerate(indices):
+        w = sd[f"{prefix}.{idx}.weight"]
+        b = sd[f"{prefix}.{idx}.bias"]
+        lin = torch.nn.Linear(w.shape[1], w.shape[0])
+        lin.weight.data.copy_(w)
+        lin.bias.data.copy_(b)
+        layers.append(lin)
+        if i < len(indices) - 1:  # activation after every layer except the last
+            layers.append(act_cls())
+    return torch.nn.Sequential(*layers)
+
+
+def _load_policy_checkpoint(path: str, device: str) -> callable:
+    """Load a raw rsl_rl training checkpoint and return a callable policy.
+
+    Handles both TorchScript (.pt exported via torch.jit.save) and raw
+    training checkpoints (saved via torch.save with model_state_dict).
+
+    Args:
+        path: Path to the checkpoint file.
+        device: Torch device string (e.g. ``"cuda"`` or ``"cpu"``).
+    """
+    try:
+        return torch.jit.load(path, map_location=device)
+    except RuntimeError:
+        pass
+
+    ckpt = torch.load(path, map_location=device, weights_only=False)
+    model_sd = ckpt["model_state_dict"]
+
+    actor = _build_mlp_from_state_dict(model_sd, "actor").to(device)
+    actor.eval()
+
+    # Observation normalizer (if present)
+    obs_norm_sd = ckpt.get("obs_norm_state_dict")
+    if obs_norm_sd is not None:
+        mean = obs_norm_sd["_mean"].to(device)
+        std = obs_norm_sd["_std"].to(device)
+        eps = 1e-2
+
+        def policy(obs: torch.Tensor) -> torch.Tensor:
+            return actor((obs - mean) / (std + eps))
+
+    else:
+
+        def policy(obs: torch.Tensor) -> torch.Tensor:
+            return actor(obs)
+
+    return policy

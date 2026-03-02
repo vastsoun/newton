@@ -26,14 +26,14 @@ from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.core.joints import JointActuationType
 from newton._src.solvers.kamino.core.types import float32, int32
 from newton._src.solvers.kamino.examples import get_examples_output_path, run_headless
-from newton._src.solvers.kamino.linalg.linear import SolverShorthand as LinearSolverShorthand
+from newton._src.solvers.kamino.linalg.linear import LinearSolverTypeToName as LinearSolverShorthand
 from newton._src.solvers.kamino.models import get_examples_usd_assets_path
 from newton._src.solvers.kamino.models.builders.utils import (
     add_ground_box,
     make_homogeneous_builder,
     set_uniform_body_pose_offset,
 )
-from newton._src.solvers.kamino.solvers.padmm import PADMMWarmStartMode
+from newton._src.solvers.kamino.solvers.padmm import PADMMPenaltyUpdate, PADMMWarmStartMode
 from newton._src.solvers.kamino.solvers.warmstart import WarmstarterContacts
 from newton._src.solvers.kamino.utils import logger as msg
 from newton._src.solvers.kamino.utils.control import AnimationJointReference, JointSpacePIDController
@@ -187,6 +187,7 @@ class Example:
         logging: bool = False,
         linear_solver: str = "LLTB",
         linear_solver_maxiter: int = 0,
+        avoid_graph_conditionals: bool = False,
         headless: bool = False,
         record_video: bool = False,
         async_save: bool = False,
@@ -216,9 +217,9 @@ class Example:
         self.builder: ModelBuilder = make_homogeneous_builder(
             num_worlds=num_worlds,
             build_fn=importer.import_from,
+            load_drive_dynamics=implicit_pd,
             load_static_geometry=True,
             source=USD_MODEL_PATH,
-            load_drive_dynamics=implicit_pd,
         )
         msg.info("total mass: %f", self.builder.worlds[0].mass_total)
         msg.info("total diag inertia: %f", self.builder.worlds[0].inertia_total)
@@ -239,20 +240,26 @@ class Example:
 
         # Print-out of actuated joints used for verifying the imported USD was parsed as expected
         for joint in self.builder.joints:
-            if joint.is_actuated:
+            if joint.is_dynamic or joint.is_implicit_pd:
+                joint.a_j = [0.011]  # Set joint armature according to Dynamixel XH540-V150 specs
+                joint.b_j = [0.044]  # Set joint damping according to Dynamixel XH540-V150 specs
                 msg.info(f"Joint '{joint.name}':\n{joint}\n")
 
         # Set solver settings
         settings = SimulatorSettings()
         settings.dt = self.sim_dt
+        settings.solver.sparse = False
+        settings.solver.sparse_jacobian = False
         settings.solver.integrator = "moreau"  # Select from {"euler", "moreau"}
         settings.solver.problem.alpha = 0.1
         settings.solver.padmm.primal_tolerance = 1e-4
         settings.solver.padmm.dual_tolerance = 1e-4
         settings.solver.padmm.compl_tolerance = 1e-4
-        settings.solver.padmm.max_iterations = 200
+        settings.solver.padmm.max_iterations = 100
         settings.solver.padmm.eta = 1e-5
-        settings.solver.padmm.rho_0 = 0.05
+        settings.solver.padmm.rho_0 = 0.02  # try 0.02 for Balanced update
+        settings.solver.padmm.rho_min = 0.01
+        settings.solver.padmm.penalty_update_method = PADMMPenaltyUpdate.FIXED  # try BALANCED
         settings.solver.use_solver_acceleration = True
         settings.solver.warmstart_mode = PADMMWarmStartMode.CONTAINERS
         settings.solver.contact_warmstart_method = WarmstarterContacts.Method.GEOM_PAIR_NET_FORCE
@@ -261,6 +268,7 @@ class Example:
         linear_solver_cls = {v: k for k, v in LinearSolverShorthand.items()}[linear_solver.upper()]
         settings.solver.linear_solver_type = linear_solver_cls
         settings.solver.linear_solver_kwargs = {"maxiter": linear_solver_maxiter} if linear_solver_maxiter > 0 else {}
+        settings.solver.avoid_graph_conditionals = avoid_graph_conditionals
         settings.solver.angular_velocity_damping = 0.0
 
         # Create a simulator
@@ -460,7 +468,7 @@ class Example:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="DR Legs simulation example")
-    parser.add_argument("--device", type=str, help="The compute device to use")
+    parser.add_argument("--device", type=str, default=None, help="The compute device to use")
     parser.add_argument("--headless", action=argparse.BooleanOptionalAction, default=False, help="Run in headless mode")
     parser.add_argument("--num-worlds", type=int, default=1, help="Number of worlds to simulate in parallel")
     parser.add_argument("--num-steps", type=int, default=1000, help="Number of steps for headless mode")
@@ -502,6 +510,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--linear-solver-maxiter", default=0, type=int, help="Max number of iterations for iterative linear solvers"
     )
+    parser.add_argument(
+        "--avoid-graph-conditionals",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Avoid CUDA graph conditional nodes in iterative solvers",
+    )
     args = parser.parse_args()
 
     # Set global numpy configurations
@@ -537,6 +551,7 @@ if __name__ == "__main__":
         num_worlds=args.num_worlds,
         linear_solver=args.linear_solver,
         linear_solver_maxiter=args.linear_solver_maxiter,
+        avoid_graph_conditionals=args.avoid_graph_conditionals,
         max_steps=args.num_steps,
         implicit_pd=args.implicit_pd,
         gravity=args.gravity,

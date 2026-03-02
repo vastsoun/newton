@@ -16,9 +16,13 @@
 """Utilities for extracting data from Kamino data structures"""
 
 import numpy as np
+import warp as wp
 
-from ...dynamics.delassus import DelassusOperator
-from ...kinematics.jacobians import DenseSystemJacobians
+from ...core.model import Model, ModelData
+from ...dynamics.delassus import BlockSparseMatrixFreeDelassusOperator, DelassusOperator
+from ...geometry.contacts import Contacts
+from ...kinematics.jacobians import DenseSystemJacobians, SparseSystemJacobians
+from ...kinematics.limits import Limits
 
 ###
 # Helper functions
@@ -49,89 +53,138 @@ def get_vector_block(index: int, flatvec: np.ndarray, dims: list[int], maxdims: 
 ###
 
 
-def extract_active_constraint_dims(delassus: DelassusOperator) -> list[int]:
-    # Extract the active constraint dimensions
-    active_dim_np = delassus.info.dim.numpy()
-    active_dims = [int(active_dim_np[i]) for i in range(len(active_dim_np))]
-    return active_dims
+def extract_active_constraint_dims(data: ModelData) -> list[int]:
+    active_dim_np = data.info.num_total_cts.numpy()
+    return [int(active_dim_np[i]) for i in range(len(active_dim_np))]
+
+
+def extract_active_constraint_vectors(model: Model, data: ModelData, x: wp.array) -> list[np.ndarray]:
+    cts_start_np = model.info.total_cts_offset.numpy()
+    num_active_cts_np = extract_active_constraint_dims(data)
+    x_np = x.numpy()
+    return [x_np[cts_start_np[n] : cts_start_np[n] + num_active_cts_np[n]] for n in range(len(cts_start_np))]
+
+
+def extract_actuation_forces(model: Model, data: ModelData) -> list[np.ndarray]:
+    dofs_start_np = model.info.joint_dofs_offset.numpy()
+    num_dofs_np = model.info.num_joint_dofs.numpy()
+    tau_j_np = data.joints.tau_j.numpy()
+    return [tau_j_np[dofs_start_np[n] : dofs_start_np[n] + num_dofs_np[n]] for n in range(len(dofs_start_np))]
 
 
 def extract_cts_jacobians(
-    jacobians: DenseSystemJacobians,
-    num_bodies: list[int],
-    active_dims: list[int] | None = None,
+    model: Model,
+    limits: Limits | None,
+    contacts: Contacts | None,
+    jacobians: DenseSystemJacobians | SparseSystemJacobians,
+    only_active_cts: bool = False,
+    verbose: bool = False,
 ) -> list[np.ndarray]:
+    if isinstance(jacobians, SparseSystemJacobians):
+        return jacobians._J_cts.bsm.numpy()
+
+    # Retrieve the number of worlds in the model
+    num_worlds = model.info.num_worlds
+
     # Reshape the flat Jacobian as a set of matrices
-    num_body_dofs = [6 * num_bodies[i] for i in range(len(num_bodies))]
-    cjmio = jacobians.data.J_cts_offsets.numpy()
-    num_jacobians = int(cjmio.size)
+    J_cts_flat_offsets = jacobians.data.J_cts_offsets.numpy().astype(int).tolist()
     J_cts_flat = jacobians.data.J_cts_data.numpy()
     J_cts_flat_total_size = J_cts_flat.size
-    J_cts_flat_offsets = [int(cjmio[i]) for i in range(num_jacobians)]
-    J_cts_flat_sizes = [0] * num_jacobians
+    J_cts_flat_sizes = [0] * num_worlds
     J_cts_flat_offsets_ext = [*J_cts_flat_offsets, J_cts_flat_total_size]
-    J_cts_flat_shapes = [(0, 0)] * num_jacobians
-    for i in range(num_jacobians - 1, -1, -1):
-        J_cts_flat_sizes[i] = J_cts_flat_offsets_ext[i + 1] - J_cts_flat_offsets_ext[i]
-        nbd_i = num_body_dofs[i]
-        J_cts_flat_shapes[i] = (J_cts_flat_sizes[i] // nbd_i, nbd_i)
+    for w in range(num_worlds - 1, -1, -1):
+        J_cts_flat_sizes[w] = J_cts_flat_offsets_ext[w + 1] - J_cts_flat_offsets_ext[w]
+
+    # Retrieve the Jacobian dimensions in each world
+    has_limits = limits is not None and limits.model_max_limits_host > 0
+    has_contacts = contacts is not None and contacts.model_max_contacts_host > 0
+    num_bdofs = [model.worlds[w].num_body_dofs for w in range(num_worlds)]
+    num_jcts = [model.worlds[w].num_joint_cts for w in range(num_worlds)]
+    maxnl = limits.world_max_limits_host if has_limits else [0] * num_worlds
+    maxnc = contacts.world_max_contacts_host if has_contacts else [0] * num_worlds
+    nlact = limits.world_active_limits.numpy().tolist() if has_limits else [0] * num_worlds
+    ncact = contacts.world_active_contacts.numpy().tolist() if has_contacts else [0] * num_worlds
+    nl = nlact if only_active_cts else maxnl
+    nc = ncact if only_active_cts else maxnc
 
     # Extract each Jacobian as a matrix
     J_cts_mat: list[np.ndarray] = []
-    for i in range(num_jacobians):
-        if active_dims is not None and len(active_dims) > 0:
-            J_rows = active_dims[i]
-        else:
-            J_rows = J_cts_flat_shapes[i][0]
-        J_cols = J_cts_flat_shapes[i][1]
-        J_cts_mat.append(
-            J_cts_flat[J_cts_flat_offsets[i] : J_cts_flat_offsets[i] + J_cts_flat_sizes[i]].reshape(
-                J_cts_flat_shapes[i]
-            )[:J_rows, :J_cols]
-        )
+    for w in range(num_worlds):
+        ncts = num_jcts[w] + nl[w] + 3 * nc[w]
+        J_cts_size = ncts * num_bdofs[w]
+        if J_cts_size > J_cts_flat_sizes[w]:
+            raise ValueError(f"Jacobian size {J_cts_size} exceeds flat size {J_cts_flat_sizes[w]} for world {w}")
+        start = J_cts_flat_offsets[w]
+        end = J_cts_flat_offsets[w] + J_cts_size
+        J_cts_mat.append(J_cts_flat[start:end].reshape((ncts, num_bdofs[w])))
 
-    # Return the list of Jacobian matrices
+    # Optional verbose output
+    if verbose:
+        print(f"J_cts_flat_total_size: {J_cts_flat_total_size}")
+        print(f"sum(J_cts_flat_sizes): {sum(J_cts_flat_sizes)}")
+        print(f"J_cts_flat_sizes: {J_cts_flat_sizes}")
+        print(f"J_cts_flat_offsets: {J_cts_flat_offsets}")
+        print("")  # Add a newline for better readability
+        for w in range(num_worlds):
+            print(f"{w}: start={J_cts_flat_offsets[w]}, end={J_cts_flat_offsets[w] + J_cts_flat_sizes[w]}")
+            print(f"J_cts_mat[{w}] ({J_cts_mat[w].shape}):\n{J_cts_mat[w]}\n")
+
+    # Return the extracted Jacobians
     return J_cts_mat
 
 
 def extract_dofs_jacobians(
-    jacobians: DenseSystemJacobians,
-    num_body_dofs: list[int],
-    active_dims: list[int] | None = None,
+    model: Model,
+    jacobians: DenseSystemJacobians | SparseSystemJacobians,
+    verbose: bool = False,
 ) -> list[np.ndarray]:
+    if isinstance(jacobians, SparseSystemJacobians):
+        return jacobians._J_cts.bsm.numpy()
+
+    # Retrieve the number of worlds in the model
+    num_worlds = model.info.num_worlds
+
     # Reshape the flat Jacobian as a set of matrices
     ajmio = jacobians.data.J_dofs_offsets.numpy()
-    num_jacobians = int(ajmio.size)
     J_dofs_flat = jacobians.data.J_dofs_data.numpy()
     J_dofs_flat_total_size = J_dofs_flat.size
-    J_dofs_flat_offsets = [int(ajmio[i]) for i in range(num_jacobians)]
-    J_dofs_flat_sizes = [0] * num_jacobians
+    J_dofs_flat_offsets = [int(ajmio[i]) for i in range(num_worlds)]
+    J_dofs_flat_sizes = [0] * num_worlds
     J_dofs_flat_offsets_ext = [*J_dofs_flat_offsets, J_dofs_flat_total_size]
-    J_dofs_flat_shapes = [(0, 0)] * num_jacobians
-    for i in range(num_jacobians - 1, -1, -1):
+    for i in range(num_worlds - 1, -1, -1):
         J_dofs_flat_sizes[i] = J_dofs_flat_offsets_ext[i + 1] - J_dofs_flat_offsets_ext[i]
-        nbd_i = num_body_dofs[i]
-        J_dofs_flat_shapes[i] = (J_dofs_flat_sizes[i] // nbd_i, nbd_i)
 
     # Extract each Jacobian as a matrix
-    J_cts_mat: list[np.ndarray] = []
-    for i in range(num_jacobians):
-        if active_dims is not None and len(active_dims) > 0:
-            J_rows = active_dims[i]
-        else:
-            J_rows = J_dofs_flat_shapes[i][0]
-        J_cols = J_dofs_flat_shapes[i][1]
-        J_cts_mat.append(
-            J_dofs_flat[J_dofs_flat_offsets[i] : J_dofs_flat_offsets[i] + J_dofs_flat_sizes[i]].reshape(
-                J_dofs_flat_shapes[i]
-            )[:J_rows, :J_cols]
-        )
+    num_bdofs = [model.worlds[w].num_body_dofs for w in range(num_worlds)]
+    num_jdofs = [model.worlds[w].num_joint_dofs for w in range(num_worlds)]
+    J_dofs_mat: list[np.ndarray] = []
+    for i in range(num_worlds):
+        start = J_dofs_flat_offsets[i]
+        end = J_dofs_flat_offsets[i] + J_dofs_flat_sizes[i]
+        J_dofs_mat.append(J_dofs_flat[start:end].reshape((num_jdofs[i], num_bdofs[i])))
 
-    # Return the list of Jacobian matrices
-    return J_cts_mat
+    # Optional verbose output
+    if verbose:
+        print(f"J_dofs_flat_total_size: {J_dofs_flat_total_size}")
+        print(f"sum(J_dofs_flat_sizes): {sum(J_dofs_flat_sizes)}")
+        print(f"J_dofs_flat_sizes: {J_dofs_flat_sizes}")
+        print(f"J_dofs_flat_offsets: {J_dofs_flat_offsets}")
+        print("")  # Add a newline for better readability
+        for i in range(num_worlds):
+            print(f"{i}: start={J_dofs_flat_offsets[i]}, end={J_dofs_flat_offsets[i] + J_dofs_flat_sizes[i]}")
+            print(f"J_dofs_mat[{i}] ({J_dofs_mat[i].shape}):\n{J_dofs_mat[i]}\n")
+
+    # Return the extracted Jacobians
+    return J_dofs_mat
 
 
-def extract_delassus(delassus: DelassusOperator, only_active_dims: bool = False) -> list[np.ndarray]:
+def extract_delassus(
+    delassus: DelassusOperator | BlockSparseMatrixFreeDelassusOperator,
+    only_active_dims: bool = False,
+) -> list[np.ndarray]:
+    if isinstance(delassus, BlockSparseMatrixFreeDelassusOperator):
+        return extract_delassus_sparse(delassus=delassus, only_active_dims=only_active_dims)
+
     maxdim_wp_np = delassus.info.maxdim.numpy()
     dim_wp_np = delassus.info.dim.numpy()
     mio_wp_np = delassus.info.mio.numpy()
@@ -153,16 +206,94 @@ def extract_delassus(delassus: DelassusOperator, only_active_dims: bool = False)
     return D_mat
 
 
+def extract_delassus_sparse(
+    delassus: BlockSparseMatrixFreeDelassusOperator, only_active_dims: bool = False
+) -> list[np.ndarray]:
+    """
+    Extracts the (dense) Delassus matrix from the sparse matrix-free Delassus operator by querying
+    individual matrix columns.
+    """
+    num_worlds = delassus._model.size.num_worlds
+    sum_max_cts = delassus._model.size.sum_of_max_total_cts
+    max_cts_np = delassus._model.info.max_total_cts.numpy()
+
+    num_cts = delassus._data.info.num_total_cts
+    num_cts_np = num_cts.numpy()
+    max_dim = np.max(num_cts_np) if only_active_dims else np.max(max_cts_np)
+
+    D_mat: list[np.ndarray] = []
+    for world_id in range(num_worlds):
+        if only_active_dims:
+            D_mat.append(np.zeros((num_cts_np[world_id], num_cts_np[world_id]), dtype=np.float32))
+        else:
+            D_mat.append(np.zeros((max_cts_np[world_id], max_cts_np[world_id]), dtype=np.float32))
+
+    vec_query = wp.empty((sum_max_cts,), dtype=wp.float32, device=delassus._device)
+    vec_response = wp.empty((sum_max_cts,), dtype=wp.float32, device=delassus._device)
+
+    @wp.kernel
+    def _set_unit_entry(
+        # Inputs:
+        index: int,
+        world_dim: wp.array(dtype=wp.int32),
+        entry_start: wp.array(dtype=wp.int32),
+        # Output:
+        x: wp.array(dtype=wp.float32),
+    ):
+        world_id = wp.tid()
+
+        if index >= world_dim[world_id]:
+            return
+
+        x[entry_start[world_id] + index] = 1.0
+
+    entry_start_np = delassus.bsm.row_start.numpy()
+
+    world_mask = wp.ones((num_worlds,), dtype=wp.int32, device=delassus._device)
+
+    for dim in range(max_dim):
+        # Query the operator by computing the product with a vector where only entry `dim` is set to 1.
+        vec_query.zero_()
+        wp.launch(
+            kernel=_set_unit_entry,
+            dim=num_worlds,
+            inputs=[
+                # Inputs:
+                dim,
+                num_cts,
+                delassus.bsm.row_start,
+                # Outputs:
+                vec_query,
+            ],
+        )
+        delassus.matvec(vec_query, vec_response, world_mask)
+        vec_response_np = vec_response.numpy()
+
+        # Set the response as the corresponding column of each matrix
+        for world_id in range(num_worlds):
+            D_mat_dim = D_mat[world_id].shape[0]
+            if dim >= D_mat_dim:
+                continue
+            start_idx = entry_start_np[world_id]
+            D_mat[world_id][:, dim] = vec_response_np[start_idx : start_idx + D_mat_dim]
+
+    return D_mat
+
+
 def extract_problem_vector(
-    delassus: DelassusOperator, vector: np.ndarray, only_active_dims: bool = False
+    delassus: DelassusOperator | BlockSparseMatrixFreeDelassusOperator,
+    vector: np.ndarray,
+    only_active_dims: bool = False,
 ) -> list[np.ndarray]:
     maxdim_wp_np = delassus.info.maxdim.numpy()
     dim_wp_np = delassus.info.dim.numpy()
     vio_wp_np = delassus.info.vio.numpy()
 
+    num_worlds = delassus.num_worlds if isinstance(delassus, DelassusOperator) else delassus.num_matrices
+
     # Extract each vector for each world
     vectors_np: list[np.ndarray] = []
-    for i in range(delassus.num_worlds):
+    for i in range(num_worlds):
         vec_maxdim = maxdim_wp_np[i]
         vec_start = vio_wp_np[i]
         vec_end = vec_start + vec_maxdim

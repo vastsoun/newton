@@ -335,9 +335,9 @@ def transform_body_inertial_properties(
     I_i = R_i @ i_I_i @ wp.transpose(R_i)
     inv_I_i = R_i @ inv_i_I_i @ wp.transpose(R_i)
 
-    # TODO: Ensure symmetry of the inertia matrices (to avoid numerical issues)
-    # I_i = make_symmetric(I_i)
-    # inv_I_i = make_symmetric(inv_I_i)
+    # Ensure symmetry of the inertia matrices (to avoid numerical issues)
+    I_i = make_symmetric(I_i)
+    inv_I_i = make_symmetric(inv_I_i)
 
     # Return the computed moment of inertia matrices in world coordinates
     return I_i, inv_I_i

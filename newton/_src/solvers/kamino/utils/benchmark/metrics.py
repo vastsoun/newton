@@ -20,7 +20,7 @@ import h5py
 import numpy as np
 
 from .....core.types import override
-from ...solver_kamino import SolverKamino, SolverKaminoSettings
+from ...solver_kamino import SolverKamino, SolverKaminoConfig
 from .configs import load_solver_configs_to_hdf5, save_solver_configs_to_hdf5
 from .render import (
     ColumnGroup,
@@ -342,7 +342,7 @@ class BenchmarkMetrics:
     def __init__(
         self,
         problems: list[str] | None = None,
-        configs: dict[str, SolverKaminoSettings] | None = None,
+        configs: dict[str, SolverKaminoConfig] | None = None,
         num_steps: int | None = None,
         step_metrics: bool = False,
         solver_metrics: bool = False,
@@ -356,7 +356,7 @@ class BenchmarkMetrics:
 
         # Declare cache of the solver configurations used in the
         # benchmark for easy reference when analyzing results
-        self._configs: dict[str, SolverKaminoSettings] | None = None
+        self._configs: dict[str, SolverKaminoConfig] | None = None
 
         # One-time metrics
         self.memory_used: np.ndarray | None = None
@@ -413,7 +413,7 @@ class BenchmarkMetrics:
     def finalize(
         self,
         problems: list[str],
-        configs: dict[str, SolverKaminoSettings],
+        configs: dict[str, SolverKaminoConfig],
         num_steps: int | None = None,
         step_metrics: bool = False,
         solver_metrics: bool = False,

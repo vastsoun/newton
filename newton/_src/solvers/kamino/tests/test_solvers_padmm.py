@@ -30,7 +30,7 @@ from newton._src.solvers.kamino.linalg import ConjugateResidualSolver, LLTBlocke
 from newton._src.solvers.kamino.linalg.utils.matrix import SquareSymmetricMatrixProperties
 from newton._src.solvers.kamino.linalg.utils.range import in_range_via_gaussian_elimination
 from newton._src.solvers.kamino.models.builders import basics
-from newton._src.solvers.kamino.solvers.padmm import PADMMSettings, PADMMSolver, PADMMWarmStartMode
+from newton._src.solvers.kamino.solvers.padmm import PADMMConfig, PADMMSolver, PADMMWarmStartMode
 from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.tests.utils.extract import (
     extract_delassus,
@@ -148,7 +148,7 @@ def check_padmm_solution(
         # Recover the original (preconditioned) Delassua matrix from the in-place regularized storage
         dtype = D_wp_np[w].dtype
         ncts = D_wp_np[w].shape[0]
-        I_np = dtype.type(solver.settings[0].eta + solver.settings[0].rho_0) * np.eye(D_wp_np[w].shape[0], dtype=dtype)
+        I_np = dtype.type(solver.config[0].eta + solver.config[0].rho_0) * np.eye(D_wp_np[w].shape[0], dtype=dtype)
         D = D_wp_np[w] - I_np
 
         # Recover original Delassus matrix and v_f from preconditioned versions
@@ -190,12 +190,12 @@ def check_padmm_solution(
 
         # Check results
         test.assertTrue(converged)
-        test.assertLessEqual(iterations, solver.settings[w].max_iterations)
-        test.assertLessEqual(r_p, solver.settings[w].primal_tolerance)
-        test.assertLessEqual(r_d, solver.settings[w].dual_tolerance)
-        test.assertLessEqual(r_c, solver.settings[w].compl_tolerance)
-        test.assertLessEqual(error_dual_abs_l2, solver.settings[w].dual_tolerance)
-        test.assertLessEqual(error_dual_abs_inf, solver.settings[w].dual_tolerance)
+        test.assertLessEqual(iterations, solver.config[w].max_iterations)
+        test.assertLessEqual(r_p, solver.config[w].primal_tolerance)
+        test.assertLessEqual(r_d, solver.config[w].dual_tolerance)
+        test.assertLessEqual(r_c, solver.config[w].compl_tolerance)
+        test.assertLessEqual(error_dual_abs_l2, solver.config[w].dual_tolerance)
+        test.assertLessEqual(error_dual_abs_inf, solver.config[w].dual_tolerance)
 
 
 def save_solver_info(solver: PADMMSolver, path: str | None = None, verbose: bool = False):
@@ -354,13 +354,13 @@ class TestPADMMSolver(unittest.TestCase):
         """
         Test creating a PADMMSolver with default initialization.
         """
-        # Creating a default PADMMSolver without any model or settings
+        # Creating a default PADMMSolver without any model or config
         # should result in a solver without any memory allocation.
         solver = PADMMSolver()
         self.assertIsNone(solver._size)
         self.assertIsNone(solver._data)
         self.assertIsNone(solver._device)
-        self.assertEqual(solver.settings, [])
+        self.assertEqual(solver.config, [])
 
         # Requesting the solver data container when the
         # solver has not been finalized should raise an
@@ -374,7 +374,7 @@ class TestPADMMSolver(unittest.TestCase):
         # Create a test setup
         test = TestSetup(builder_fn=basics.build_box_on_plane, max_world_contacts=8, device=self.default_device)
 
-        # Creating a default PADMMSolver without any model or settings
+        # Creating a default PADMMSolver without any model or config
         # should result in a solver without any memory allocation.
         solver = PADMMSolver()
 
@@ -385,33 +385,33 @@ class TestPADMMSolver(unittest.TestCase):
         self.assertIsNotNone(solver._size)
         self.assertIsNotNone(solver._data)
         self.assertIsNotNone(solver._device)
-        self.assertEqual(len(solver.settings), test.model.size.num_worlds)
+        self.assertEqual(len(solver.config), test.model.size.num_worlds)
         self.assertIs(solver._device, test.model.device)
         self.assertIs(solver.size, test.model.size)
 
     def test_02_padmm_solve(self):
         """
-        Tests the Proximal-ADMM (PADMM) solver with default settings on the reference problem.
+        Tests the Proximal-ADMM (PADMM) solver with default config on the reference problem.
         """
         # Create the test problem
         test = TestSetup(builder_fn=basics.build_box_on_plane, max_world_contacts=8, device=self.default_device)
 
-        # Define solver settings
+        # Define solver config
         # NOTE: These are all equal to their default values
         # but are defined here explicitly for the purposes
         # of experimentation and testing.
-        settings = PADMMSettings()
-        settings.primal_tolerance = 1e-6
-        settings.dual_tolerance = 1e-6
-        settings.compl_tolerance = 1e-6
-        settings.eta = 1e-5
-        settings.rho_0 = 1.0
-        settings.max_iterations = 200
+        config = PADMMConfig()
+        config.primal_tolerance = 1e-6
+        config.dual_tolerance = 1e-6
+        config.compl_tolerance = 1e-6
+        config.eta = 1e-5
+        config.rho_0 = 1.0
+        config.max_iterations = 200
 
         # Create the PADMM solver
         solver = PADMMSolver(
             model=test.model,
-            settings=settings,
+            config=config,
             warmstart=PADMMWarmStartMode.NONE,
             use_acceleration=False,
             collect_info=True,
@@ -440,23 +440,23 @@ class TestPADMMSolver(unittest.TestCase):
         # Create the test problem
         test = TestSetup(builder_fn=basics.build_box_on_plane, max_world_contacts=8, device=self.default_device)
 
-        # Define solver settings
+        # Define solver config
         # NOTE: These are all equal to their default values
         # but are defined here explicitly for the purposes
         # of experimentation and testing.
-        settings = PADMMSettings()
-        settings.primal_tolerance = 1e-6
-        settings.dual_tolerance = 1e-6
-        settings.compl_tolerance = 1e-6
-        settings.restart_tolerance = 0.999
-        settings.eta = 1e-5
-        settings.rho_0 = 1.0
-        settings.max_iterations = 200
+        config = PADMMConfig()
+        config.primal_tolerance = 1e-6
+        config.dual_tolerance = 1e-6
+        config.compl_tolerance = 1e-6
+        config.restart_tolerance = 0.999
+        config.eta = 1e-5
+        config.rho_0 = 1.0
+        config.max_iterations = 200
 
         # Create the PADMM solver
         solver = PADMMSolver(
             model=test.model,
-            settings=settings,
+            config=config,
             warmstart=PADMMWarmStartMode.NONE,
             use_acceleration=True,
             collect_info=True,
@@ -485,22 +485,22 @@ class TestPADMMSolver(unittest.TestCase):
         # Create the test problem
         test = TestSetup(builder_fn=basics.build_box_on_plane, max_world_contacts=8, device=self.default_device)
 
-        # Define solver settings
+        # Define solver config
         # NOTE: These are all equal to their default values
         # but are defined here explicitly for the purposes
         # of experimentation and testing.
-        settings = PADMMSettings()
-        settings.primal_tolerance = 1e-6
-        settings.dual_tolerance = 1e-6
-        settings.compl_tolerance = 1e-6
-        settings.eta = 1e-5
-        settings.rho_0 = 1.0
-        settings.max_iterations = 200
+        config = PADMMConfig()
+        config.primal_tolerance = 1e-6
+        config.dual_tolerance = 1e-6
+        config.compl_tolerance = 1e-6
+        config.eta = 1e-5
+        config.rho_0 = 1.0
+        config.max_iterations = 200
 
         # Create the ADMM solver
         solver = PADMMSolver(
             model=test.model,
-            settings=settings,
+            config=config,
             warmstart=PADMMWarmStartMode.INTERNAL,
             use_acceleration=False,
             collect_info=True,
@@ -532,22 +532,22 @@ class TestPADMMSolver(unittest.TestCase):
         # Create the test problem
         test = TestSetup(builder_fn=basics.build_box_on_plane, max_world_contacts=8, device=self.default_device)
 
-        # Define solver settings
+        # Define solver config
         # NOTE: These are all equal to their default values
         # but are defined here explicitly for the purposes
         # of experimentation and testing.
-        settings = PADMMSettings()
-        settings.primal_tolerance = 1e-6
-        settings.dual_tolerance = 1e-6
-        settings.compl_tolerance = 1e-6
-        settings.eta = 1e-5
-        settings.rho_0 = 1.0
-        settings.max_iterations = 200
+        config = PADMMConfig()
+        config.primal_tolerance = 1e-6
+        config.dual_tolerance = 1e-6
+        config.compl_tolerance = 1e-6
+        config.eta = 1e-5
+        config.rho_0 = 1.0
+        config.max_iterations = 200
 
         # Create the ADMM solver
         solver = PADMMSolver(
             model=test.model,
-            settings=settings,
+            config=config,
             warmstart=PADMMWarmStartMode.CONTAINERS,
             use_acceleration=False,
             collect_info=True,
@@ -580,23 +580,23 @@ class TestPADMMSolver(unittest.TestCase):
         # Create the test problem
         test = TestSetup(builder_fn=basics.build_box_on_plane, max_world_contacts=8, device=self.default_device)
 
-        # Define solver settings
+        # Define solver config
         # NOTE: These are all equal to their default values
         # but are defined here explicitly for the purposes
         # of experimentation and testing.
-        settings = PADMMSettings()
-        settings.primal_tolerance = 1e-6
-        settings.dual_tolerance = 1e-6
-        settings.compl_tolerance = 1e-6
-        settings.restart_tolerance = 0.999
-        settings.eta = 1e-5
-        settings.rho_0 = 1.0
-        settings.max_iterations = 200
+        config = PADMMConfig()
+        config.primal_tolerance = 1e-6
+        config.dual_tolerance = 1e-6
+        config.compl_tolerance = 1e-6
+        config.restart_tolerance = 0.999
+        config.eta = 1e-5
+        config.rho_0 = 1.0
+        config.max_iterations = 200
 
         # Create the ADMM solver
         solver = PADMMSolver(
             model=test.model,
-            settings=settings,
+            config=config,
             warmstart=PADMMWarmStartMode.INTERNAL,
             use_acceleration=True,
             collect_info=True,
@@ -628,23 +628,23 @@ class TestPADMMSolver(unittest.TestCase):
         # Create the test problem
         test = TestSetup(builder_fn=basics.build_box_on_plane, max_world_contacts=8, device=self.default_device)
 
-        # Define solver settings
+        # Define solver config
         # NOTE: These are all equal to their default values
         # but are defined here explicitly for the purposes
         # of experimentation and testing.
-        settings = PADMMSettings()
-        settings.primal_tolerance = 1e-6
-        settings.dual_tolerance = 1e-6
-        settings.compl_tolerance = 1e-6
-        settings.restart_tolerance = 0.999
-        settings.eta = 1e-5
-        settings.rho_0 = 1.0
-        settings.max_iterations = 200
+        config = PADMMConfig()
+        config.primal_tolerance = 1e-6
+        config.dual_tolerance = 1e-6
+        config.compl_tolerance = 1e-6
+        config.restart_tolerance = 0.999
+        config.eta = 1e-5
+        config.rho_0 = 1.0
+        config.max_iterations = 200
 
         # Create the ADMM solver
         solver = PADMMSolver(
             model=test.model,
-            settings=settings,
+            config=config,
             warmstart=PADMMWarmStartMode.CONTAINERS,
             use_acceleration=True,
             collect_info=True,

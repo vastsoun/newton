@@ -55,7 +55,7 @@ from .kernels import (
     make_initialize_solver_kernel,
     make_update_dual_variables_and_compute_primal_dual_residuals,
 )
-from .types import PADMMConfig, PADMMData, PADMMPenaltyUpdate, PADMMSettings, PADMMWarmStartMode
+from .types import PADMMConfig, PADMMConfigStruct, PADMMData, PADMMPenaltyUpdate, PADMMWarmStartMode
 
 ###
 # Module interface
@@ -96,7 +96,7 @@ class PADMMSolver:
     def __init__(
         self,
         model: ModelKamino | None = None,
-        settings: list[PADMMSettings] | PADMMSettings | None = None,
+        config: list[PADMMConfig] | PADMMConfig | None = None,
         warmstart: PADMMWarmStartMode = PADMMWarmStartMode.NONE,
         use_acceleration: bool = True,
         collect_info: bool = False,
@@ -113,7 +113,7 @@ class PADMMSolver:
             model (ModelKamino | None): The model for which to allocate the solver data.
             limits (LimitsKamino | None): The limits container associated with the model.
             contacts (ContactsKamino | None): The contacts container associated with the model.
-            settings (list[PADMMSettings] | PADMMSettings | None): The solver settings to use.
+            config (list[PADMMConfig] | PADMMConfig | None): The solver config to use.
             use_acceleration (bool): Set to `True` to enable Nesterov acceleration.
             collect_info (bool): Set to `True` to enable collection of solver convergence info.\n
                 This setting is intended only for analysis and debugging purposes, as it
@@ -123,9 +123,9 @@ class PADMMSolver:
             device (wp.DeviceLike | None): The target device on which to allocate the solver data.
         """
 
-        # Declare the internal solver settings cache
+        # Declare the internal solver config cache
         self._warmstart: PADMMWarmStartMode = PADMMWarmStartMode.NONE
-        self._settings: list[PADMMSettings] = []
+        self._config: list[PADMMConfig] = []
         self._use_acceleration: bool = False
         self._collect_info: bool = False
         self._avoid_graph_conditionals: bool = False
@@ -144,7 +144,7 @@ class PADMMSolver:
         if model is not None:
             self.finalize(
                 model=model,
-                settings=settings,
+                config=config,
                 warmstart=warmstart,
                 use_acceleration=use_acceleration,
                 collect_info=collect_info,
@@ -157,12 +157,12 @@ class PADMMSolver:
     ###
 
     @property
-    def settings(self) -> list[PADMMSettings]:
+    def config(self) -> list[PADMMConfig]:
         """
-        Returns the host-side cache of the solver settings.\n
-        They are used to construct the warp array of type :class:`PADMMConfig` on the target device.
+        Returns the host-side cache of the solver config.\n
+        They are used to construct the warp array of type :class:`PADMMConfigStruct` on the target device.
         """
-        return self._settings
+        return self._config
 
     @property
     def size(self) -> ModelKaminoSize:
@@ -194,7 +194,7 @@ class PADMMSolver:
     def finalize(
         self,
         model: ModelKamino | None = None,
-        settings: list[PADMMSettings] | PADMMSettings | None = None,
+        config: list[PADMMConfig] | PADMMConfig | None = None,
         warmstart: PADMMWarmStartMode = PADMMWarmStartMode.NONE,
         use_acceleration: bool = True,
         collect_info: bool = False,
@@ -208,7 +208,7 @@ class PADMMSolver:
             model (ModelKamino | None): The model for which to allocate the solver data.
             limits (LimitsKamino | None): The limits container associated with the model.
             contacts (ContactsKamino | None): The contacts container associated with the model.
-            settings (list[PADMMSettings] | PADMMSettings | None): The solver settings to use.
+            config (list[PADMMConfig] | PADMMConfig | None): The solver config to use.
             use_acceleration (bool): Set to `True` to enable Nesterov acceleration.
             collect_info (bool): Set to `True` to enable collection of solver convergence info.\n
                 This setting is intended only for analysis and debugging purposes, as it
@@ -236,19 +236,19 @@ class PADMMSolver:
         # Set the target device if specified, otherwise use the model device
         self._device = device if device is not None else model.device
 
-        # Cache the solver settings
-        if settings is not None:
-            self._settings = self._check_settings(model, settings)
-        elif len(self._settings) == 0:
-            self._settings = self._check_settings(model, None)
+        # Cache the solver config
+        if config is not None:
+            self._config = self._check_config(model, config)
+        elif len(self._config) == 0:
+            self._config = self._check_config(model, None)
 
         # Check if any world uses adaptive penalty updates (requiring per-step regularization updates)
-        self._uses_adaptive_penalty = any(s.penalty_update_method != PADMMPenaltyUpdate.FIXED for s in self._settings)
+        self._uses_adaptive_penalty = any(c.penalty_update_method != PADMMPenaltyUpdate.FIXED for c in self._config)
 
         # Compute the largest max iterations across all worlds
         # NOTE: This is needed to allocate the solver
         # info arrays if `collect_info` is enabled
-        max_of_max_iters = max([s.max_iterations for s in self._settings])
+        max_of_max_iters = max([c.max_iterations for c in self._config])
         self._max_of_max_iters = max_of_max_iters
 
         # Allocate memory in device global memory
@@ -261,9 +261,9 @@ class PADMMSolver:
         )
 
         # Write algorithm configs into device memory
-        configs = [s.to_config() for s in self._settings]
+        configs = [c.to_struct() for c in self._config]
         with wp.ScopedDevice(self._device):
-            self._data.config = wp.array(configs, dtype=PADMMConfig)
+            self._data.config = wp.array(configs, dtype=PADMMConfigStruct)
 
         # Specialize certain solver kernels depending on whether acceleration is enabled
         self._initialize_solver_kernel = make_initialize_solver_kernel(use_acceleration)
@@ -389,43 +389,43 @@ class PADMMSolver:
     ###
 
     @staticmethod
-    def _check_settings(
-        model: ModelKamino | None = None, settings: list[PADMMSettings] | PADMMSettings | None = None
-    ) -> list[PADMMSettings]:
+    def _check_config(
+        model: ModelKamino | None = None, config: list[PADMMConfig] | PADMMConfig | None = None
+    ) -> list[PADMMConfig]:
         """
-        Checks and validates the provided solver settings, returning a list
-        of settings objects corresponding to each world in the model.
+        Checks and validates the provided solver config, returning a list
+        of config objects corresponding to each world in the model.
 
         Args:
-            model (ModelKamino | None): The model for which to validate the settings.
-            settings (list[PADMMSettings] | PADMMSettings | None): The solver settings to validate.
+            model (ModelKamino | None): The model for which to validate the config.
+            config (list[PADMMConfig] | PADMMConfig | None): The solver config to validate.
         """
-        # If no settings are provided, use defaults
-        if settings is None:
-            # If no model is provided, use a single default settings object
+        # If no config is provided, use defaults
+        if config is None:
+            # If no model is provided, use a single default config object
             if model is None:
-                settings = [PADMMSettings()]
+                config = [PADMMConfig()]
 
-            # If a model is provided, create a list of default settings
+            # If a model is provided, create a list of default config
             # objects based on the number of worlds in the model
             else:
                 num_worlds = model.info.num_worlds
-                settings = [PADMMSettings()] * num_worlds
+                config = [PADMMConfig()] * num_worlds
 
-        # If a single settings object is provided, convert it to a list
-        elif isinstance(settings, PADMMSettings):
-            settings = [settings] * (model.info.num_worlds if model else 1)
+        # If a single config object is provided, convert it to a list
+        elif isinstance(config, PADMMConfig):
+            config = [config] * (model.info.num_worlds if model else 1)
 
-        # If a list of settings is provided, ensure it matches the number
-        # of worlds and that all settings are instances of PADMMSettings
-        elif isinstance(settings, list):
-            if model is not None and len(settings) != model.info.num_worlds:
-                raise ValueError(f"Expected {model.info.num_worlds} settings, got {len(settings)}")
-            if not all(isinstance(s, PADMMSettings) for s in settings):
-                raise TypeError("All settings must be instances of PADMMSettings")
+        # If a list of configs is provided, ensure it matches the number
+        # of worlds and that all configs are instances of PADMMConfig
+        elif isinstance(config, list):
+            if model is not None and len(config) != model.info.num_worlds:
+                raise ValueError(f"Expected {model.info.num_worlds} configs, got {len(config)}")
+            if not all(isinstance(s, PADMMConfig) for s in config):
+                raise TypeError("All configs must be instances of PADMMConfig")
 
-        # Return the validated settings
-        return settings
+        # Return the validated config
+        return config
 
     def _initialize(self):
         """

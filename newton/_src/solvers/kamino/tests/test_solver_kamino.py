@@ -27,7 +27,7 @@ from newton._src.solvers.kamino.core.joints import JointActuationType, JointCorr
 from newton._src.solvers.kamino.core.model import ModelKamino
 from newton._src.solvers.kamino.core.state import StateKamino
 from newton._src.solvers.kamino.core.types import float32, int32, transformf, vec6f
-from newton._src.solvers.kamino.dynamics import DualProblem, DualProblemSettings
+from newton._src.solvers.kamino.dynamics import DualProblem, DualProblemConfig
 from newton._src.solvers.kamino.examples import print_progress_bar
 from newton._src.solvers.kamino.geometry.contacts import ContactsKamino
 from newton._src.solvers.kamino.kinematics.jacobians import DenseSystemJacobians, SparseSystemJacobians
@@ -35,8 +35,8 @@ from newton._src.solvers.kamino.kinematics.limits import LimitsKamino
 from newton._src.solvers.kamino.linalg import ConjugateGradientSolver, LinearSolverType, LLTBlockedSolver
 from newton._src.solvers.kamino.models.builders.basics import build_boxes_fourbar
 from newton._src.solvers.kamino.models.builders.utils import make_homogeneous_builder
-from newton._src.solvers.kamino.solver_kamino import SolverKaminoImpl, SolverKaminoSettings
-from newton._src.solvers.kamino.solvers import PADMMSettings, PADMMSolver, PADMMWarmStartMode
+from newton._src.solvers.kamino.solver_kamino import SolverKaminoConfig, SolverKaminoImpl
+from newton._src.solvers.kamino.solvers import PADMMConfig, PADMMSolver, PADMMWarmStartMode
 from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.utils import logger as msg
 
@@ -109,18 +109,18 @@ rtol = 1e-7
 atol = 1e-6
 
 
-def assert_solver_settings(testcase: unittest.TestCase, settings: SolverKaminoSettings):
-    testcase.assertIsInstance(settings, SolverKaminoSettings)
-    testcase.assertIsInstance(settings.problem, DualProblemSettings)
-    testcase.assertIsInstance(settings.padmm, PADMMSettings)
-    testcase.assertIsInstance(settings.warmstart_mode, PADMMWarmStartMode)
-    testcase.assertTrue(issubclass(settings.linear_solver_type, LinearSolverType))
-    testcase.assertIsInstance(settings.rotation_correction, JointCorrectionMode)
+def assert_solver_config(testcase: unittest.TestCase, config: SolverKaminoConfig):
+    testcase.assertIsInstance(config, SolverKaminoConfig)
+    testcase.assertIsInstance(config.problem, DualProblemConfig)
+    testcase.assertIsInstance(config.padmm, PADMMConfig)
+    testcase.assertIsInstance(config.warmstart_mode, PADMMWarmStartMode)
+    testcase.assertTrue(issubclass(config.linear_solver_type, LinearSolverType))
+    testcase.assertIsInstance(config.rotation_correction, JointCorrectionMode)
 
 
 def assert_solver_components(testcase: unittest.TestCase, solver: SolverKaminoImpl):
     testcase.assertIsInstance(solver, SolverKaminoImpl)
-    testcase.assertIsInstance(solver.settings, SolverKaminoSettings)
+    testcase.assertIsInstance(solver.config, SolverKaminoConfig)
     testcase.assertIsInstance(solver._model, ModelKamino)
     testcase.assertIsInstance(solver._data, DataKamino)
     testcase.assertIsInstance(solver._limits, LimitsKamino)
@@ -237,7 +237,7 @@ def step_solver(
 ###
 
 
-class TestSolverKaminoSettings(unittest.TestCase):
+class TestSolverKaminoConfig(unittest.TestCase):
     def setUp(self):
         if not test_context.setup_done:
             setup_tests(clear_cache=False)
@@ -257,20 +257,20 @@ class TestSolverKaminoSettings(unittest.TestCase):
             msg.reset_log_level()
 
     def test_00_make_default(self):
-        settings = SolverKaminoSettings()
-        assert_solver_settings(self, settings)
-        self.assertEqual(settings.linear_solver_type, LLTBlockedSolver)
+        config = SolverKaminoConfig()
+        assert_solver_config(self, config)
+        self.assertEqual(config.linear_solver_type, LLTBlockedSolver)
 
     def test_01_make_explicit(self):
-        settings = SolverKaminoSettings(
-            problem=DualProblemSettings(),
-            padmm=PADMMSettings(),
+        config = SolverKaminoConfig(
+            problem=DualProblemConfig(),
+            padmm=PADMMConfig(),
             warmstart_mode=PADMMWarmStartMode.CONTAINERS,
             linear_solver_type=ConjugateGradientSolver,
             rotation_correction=JointCorrectionMode.CONTINUOUS,
         )
-        assert_solver_settings(self, settings)
-        self.assertEqual(settings.linear_solver_type, ConjugateGradientSolver)
+        assert_solver_config(self, config)
+        self.assertEqual(config.linear_solver_type, ConjugateGradientSolver)
 
 
 class TestSolverKaminoImpl(unittest.TestCase):

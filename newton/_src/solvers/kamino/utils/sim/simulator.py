@@ -27,8 +27,8 @@ from ...core.control import ControlKamino
 from ...core.model import ModelKamino
 from ...core.state import StateKamino
 from ...core.types import FloatArrayLike
-from ...geometry import CollisionDetector, CollisionDetectorSettings
-from ...solver_kamino import SolverKaminoImpl, SolverKaminoSettings
+from ...geometry import CollisionDetector, CollisionDetectorConfig
+from ...solver_kamino import SolverKaminoConfig, SolverKaminoImpl
 
 ###
 # Module interface
@@ -36,8 +36,8 @@ from ...solver_kamino import SolverKaminoImpl, SolverKaminoSettings
 
 __all__ = [
     "Simulator",
+    "SimulatorConfig",
     "SimulatorData",
-    "SimulatorSettings",
 ]
 
 
@@ -54,9 +54,9 @@ wp.set_module_options({"enable_backward": False})
 
 
 @dataclass
-class SimulatorSettings:
+class SimulatorConfig:
     """
-    Holds the configuration settings for the simulator.
+    Holds the configuration for the simulator.
     """
 
     dt: float | FloatArrayLike = 0.001
@@ -65,21 +65,21 @@ class SimulatorSettings:
     Defaults to `0.001` seconds.
     """
 
-    collision_detector: CollisionDetectorSettings = field(default_factory=CollisionDetectorSettings)
+    collision_detector: CollisionDetectorConfig = field(default_factory=CollisionDetectorConfig)
     """
-    The settings for the collision detector.
-    See :class:`CollisionDetectorSettings` for more details.
+    The config for the collision detector.
+    See :class:`CollisionDetectorConfig` for more details.
     """
 
-    solver: SolverKaminoSettings = field(default_factory=SolverKaminoSettings)
+    solver: SolverKaminoConfig = field(default_factory=SolverKaminoConfig)
     """
-    The settings for the dynamics solver.\n
-    See :class:`SolverKaminoSettings` for more details.
+    The config for the dynamics solver.\n
+    See :class:`SolverKaminoConfig` for more details.
     """
 
     def check(self) -> None:
         """
-        Checks the validity of the settings.
+        Checks the validity of the config.
         """
         # First check the time-step
         if isinstance(self.dt, float):
@@ -97,19 +97,19 @@ class SimulatorSettings:
         else:
             raise TypeError("Invalid time-step: must be a `float` or a `FloatArrayLike`.`")
 
-        # Ensure nested settings are properly created
-        if not isinstance(self.collision_detector, CollisionDetectorSettings):
-            raise TypeError(f"Invalid type for collision_detector settings: {type(self.collision_detector)}")
-        if not isinstance(self.solver, SolverKaminoSettings):
-            raise TypeError(f"Invalid type for solver settings: {type(self.solver)}")
+        # Ensure nested configs are properly created
+        if not isinstance(self.collision_detector, CollisionDetectorConfig):
+            raise TypeError(f"Invalid type for collision_detector config: {type(self.collision_detector)}")
+        if not isinstance(self.solver, SolverKaminoConfig):
+            raise TypeError(f"Invalid type for solver config: {type(self.solver)}")
 
-        # Then check the nested settings values
+        # Then check the nested config values
         # TODO: self.collision_detector.check()
         self.solver.check()
 
     def __post_init__(self):
         """
-        Post-initialization processing to ensure nested settings are properly created.
+        Post-initialization processing to ensure nested configs are properly created.
         """
         self.check()
 
@@ -185,7 +185,7 @@ class Simulator:
     def __init__(
         self,
         builder: ModelBuilderKamino,
-        settings: SimulatorSettings = None,
+        config: SimulatorConfig = None,
         device: wp.DeviceLike = None,
         shadow: bool = False,
     ):
@@ -194,15 +194,15 @@ class Simulator:
 
         Args:
             builder (ModelBuilderKamino): The model builder defining the model to be simulated.
-            settings (SimulatorSettings, optional): The simulator settings to use. If None, default settings are used.
+            config (SimulatorConfig, optional): The simulator config to use. If None, the default config are used.
             device (wp.DeviceLike, optional): The device to run the simulation on. If None, the default device is used.
             shadow (bool, optional): If True, maintains a host-side copy of the simulation data for easy access.
         """
-        # Cache simulator settings: If no settings are provided, use defaults
-        if settings is None:
-            settings = SimulatorSettings()
-        settings.check()
-        self._settings: SimulatorSettings = settings
+        # Cache simulator config: If no config is provided, use default configs
+        if config is None:
+            config = SimulatorConfig()
+        config.check()
+        self._config: SimulatorConfig = config
 
         # Cache the target device use for the simulation
         self._device: wp.DeviceLike = device
@@ -212,10 +212,10 @@ class Simulator:
         self._model = builder.finalize(device=self._device)
 
         # Configure model time-steps across all worlds
-        if isinstance(self._settings.dt, float):
-            self._model.time.set_uniform_timestep(self._settings.dt)
-        elif isinstance(self._settings.dt, FloatArrayLike):
-            self._model.time.set_timesteps(self._settings.dt)
+        if isinstance(self._config.dt, float):
+            self._model.time.set_uniform_timestep(self._config.dt)
+        elif isinstance(self._config.dt, FloatArrayLike):
+            self._model.time.set_timesteps(self._config.dt)
 
         # Allocate time-varying simulation data
         self._data = SimulatorData(model=self._model)
@@ -223,7 +223,7 @@ class Simulator:
         # Allocate collision detection and contacts interface
         self._collision_detector = CollisionDetector(
             model=self._model,
-            settings=self._settings.collision_detector,
+            config=self._config.collision_detector,
         )
 
         # Capture a reference to the contacts manager
@@ -233,7 +233,7 @@ class Simulator:
         self._solver = SolverKaminoImpl(
             model=self._model,
             contacts=self._contacts,
-            settings=self._settings.solver,
+            config=self._config.solver,
         )
 
         # Initialize callbacks
@@ -250,11 +250,11 @@ class Simulator:
     ###
 
     @property
-    def settings(self) -> SimulatorSettings:
+    def config(self) -> SimulatorConfig:
         """
-        Returns the simulator settings.
+        Returns the simulator config.
         """
-        return self._settings
+        return self._config
 
     @property
     def model(self) -> ModelKamino:

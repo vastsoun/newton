@@ -25,7 +25,7 @@ from rich.table import Table
 from rich.text import Text
 
 from ...linalg.linear import LinearSolverTypeToName
-from ...solver_kamino import SolverKaminoSettings
+from ...solver_kamino import SolverKaminoConfig
 
 ###
 # Module interface
@@ -284,7 +284,7 @@ def render_subcolumn_metrics_table(
 
 
 def render_solver_configs_table(
-    configs: dict[str, SolverKaminoSettings],
+    configs: dict[str, SolverKaminoConfig],
     path: str | None = None,
     groups: list[str] | None = None,
     to_console: bool = False,
@@ -293,8 +293,8 @@ def render_solver_configs_table(
     Renders a rich table summarizing the solver configurations.
 
     Args:
-        configs (dict[str, SolverKaminoSettings]):
-            A dictionary mapping configuration names to SolverKaminoSettings objects.
+        configs (dict[str, SolverKaminoConfig]):
+            A dictionary mapping configuration names to SolverKaminoConfig objects.
         path (str, optional):
             The file path to save the rendered table as a text file. If None, the table is not saved to a file.
         groups (list[str], optional):

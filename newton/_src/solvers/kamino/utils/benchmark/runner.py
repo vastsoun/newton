@@ -27,7 +27,7 @@ from ...examples import print_progress_bar
 from ...utils import logger as msg
 from ...utils.control.rand import RandomJointController
 from ...utils.device import get_device_malloc_info
-from ...utils.sim import SimulationLogger, Simulator, SimulatorSettings, ViewerKamino
+from ...utils.sim import SimulationLogger, Simulator, SimulatorConfig, ViewerKamino
 from .metrics import BenchmarkMetrics
 from .problems import CameraConfig, ControlConfig
 
@@ -40,7 +40,7 @@ class BenchmarkSim:
     def __init__(
         self,
         builder: ModelBuilderKamino,
-        configs: SimulatorSettings,
+        configs: SimulatorConfig,
         control: ControlConfig | None = None,
         camera: CameraConfig | None = None,
         device: wp.DeviceLike = None,
@@ -63,7 +63,7 @@ class BenchmarkSim:
 
         # Create a simulator
         msg.info("Building the simulator...")
-        self.sim = Simulator(builder=builder, settings=configs, device=device)
+        self.sim = Simulator(builder=builder, config=configs, device=device)
 
         # Create a random-action controller for the model
         self.ctlr = RandomJointController(
@@ -230,7 +230,7 @@ def run_single_benchmark(
     metrics: BenchmarkMetrics,
     args: argparse.Namespace,
     builder: ModelBuilderKamino,
-    configs: SimulatorSettings,
+    configs: SimulatorConfig,
     control: ControlConfig | None = None,
     camera: CameraConfig | None = None,
     device: wp.DeviceLike = None,

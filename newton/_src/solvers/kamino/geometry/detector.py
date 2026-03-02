@@ -25,15 +25,15 @@ Usage example:
     # Finalize the model
     model = builder.finalize(device="cuda:0")
 
-    # Create a collision detector with desired settings
-    settings = CollisionDetectorSettings(
+    # Create a collision detector with desired config
+    config = CollisionDetectorConfig(
         pipeline="unified",
         broadphase="explicit",
         bvtype="aabb",
     )
 
     # Create the collision detector
-    detector = CollisionDetector(model=model, settings=settings)
+    detector = CollisionDetector(model=model, config=config)
 """
 
 from __future__ import annotations
@@ -64,7 +64,7 @@ from ..geometry.unified import CollisionPipelineUnifiedKamino
 __all__ = [
     "BroadPhaseType",
     "CollisionDetector",
-    "CollisionDetectorSettings",
+    "CollisionDetectorConfig",
     "CollisionPipelineType",
 ]
 
@@ -172,8 +172,8 @@ class BroadPhaseType(IntEnum):
 
 
 @dataclass
-class CollisionDetectorSettings:
-    """Defines the settings for configuring a CollisionDetector."""
+class CollisionDetectorConfig:
+    """Defines the config for a CollisionDetector."""
 
     pipeline: Literal["primitive", "unified"] = "unified"
     """
@@ -267,7 +267,7 @@ class CollisionDetector:
     def __init__(
         self,
         model: ModelKamino | None = None,
-        settings: CollisionDetectorSettings | None = None,
+        config: CollisionDetectorConfig | None = None,
         device: wp.DeviceLike = None,
     ):
         """
@@ -276,7 +276,7 @@ class CollisionDetector:
         Args:
             model (`ModelKamino`, optional):
                 The model container holding the time-invariant data of the system being simulated.\n
-                If provided, the detector will be finalized using the provided model and settings.\n
+                If provided, the detector will be finalized using the provided model and config.\n
                 If `None`, the detector will be created empty without allocating data, and
                 can be finalized later by providing a model to the `finalize` method.\n
             device (`wp.DeviceLike`, optional):
@@ -291,8 +291,8 @@ class CollisionDetector:
         # Cache a reference to the target model
         self._model: ModelKamino | None = model
 
-        # Cache the collision detector settings
-        self._settings: CollisionDetectorSettings | None = settings
+        # Cache the collision detector config
+        self._config: CollisionDetectorConfig | None = config
 
         # Declare the contacts container
         self._contacts: ContactsKamino | None = None
@@ -308,7 +308,7 @@ class CollisionDetector:
 
         # Finalize the collision detector if a model is provided
         if model is not None:
-            self.finalize(model=model, settings=settings, device=device)
+            self.finalize(model=model, config=config, device=device)
 
     ###
     # Properties
@@ -325,9 +325,9 @@ class CollisionDetector:
         return self._model
 
     @property
-    def settings(self) -> CollisionDetectorSettings | None:
-        """Returns the settings used to configure the CollisionDetector."""
-        return self._settings
+    def config(self) -> CollisionDetectorConfig | None:
+        """Returns the config used to configure the CollisionDetector."""
+        return self._config
 
     @property
     def contacts(self) -> ContactsKamino | None:
@@ -351,7 +351,7 @@ class CollisionDetector:
     def finalize(
         self,
         model: ModelKamino | None = None,
-        settings: CollisionDetectorSettings | None = None,
+        config: CollisionDetectorConfig | None = None,
         device: wp.DeviceLike = None,
     ):
         """
@@ -360,12 +360,12 @@ class CollisionDetector:
         Args:
             model (ModelKamino, optional):
                 The model container holding the time-invariant data of the system being simulated.\n
-                If provided, the detector will be finalized using the provided model and settings.\n
+                If provided, the detector will be finalized using the provided model and config.\n
                 If `None`, the detector will be created empty without allocating data, and
                 can be finalized later by providing a model to the `finalize` method.\n
-            settings (CollisionDetectorSettings, optional):
-                Settings to configure the CollisionDetector.\n
-                If `None`, uses default settings.
+            config (CollisionDetectorConfig, optional):
+                Config for the CollisionDetector.\n
+                If `None`, uses default config.
             device (wp.DeviceLike, optional):
                 The target Warp device for allocation and execution.\n
                 If `None`, the `model.device` will be used if a model is provided, otherwise
@@ -388,19 +388,19 @@ class CollisionDetector:
         else:
             self._device = self._model.device
 
-        # Override the settings if specified, ensuring that they are valid
-        if settings is not None:
-            if not isinstance(settings, CollisionDetectorSettings):
+        # Override the config if specified, ensuring that they are valid
+        if config is not None:
+            if not isinstance(config, CollisionDetectorConfig):
                 raise TypeError(
-                    f"Cannot finalize CollisionDetector: expected CollisionDetectorSettings, got {type(settings)}"
+                    f"Cannot finalize CollisionDetector: expected CollisionDetectorConfig, got {type(config)}"
                 )
-            self._settings = settings
-        # If no settings are provided, use the defaults
-        if self._settings is None:
-            self._settings = CollisionDetectorSettings()
+            self._config = config
+        # If no config is provided, use the defaults
+        if self._config is None:
+            self._config = CollisionDetectorConfig()
 
-        # Configure the collision detection pipeline type based on the settings
-        self._pipeline_type = CollisionPipelineType.from_string(self._settings.pipeline)
+        # Configure the collision detection pipeline type based on the config
+        self._pipeline_type = CollisionPipelineType.from_string(self._config.pipeline)
 
         # TODO: FIX THIS SO THAT PER-WORLD MAX IS ACTUALLY BASED ON THE NUM OF COLLIDABLE
         # GOEMS IN EACH WORLD, INSTEAD OF JUST DIVIDING THE MODEL MAX BY THE NUM WORLDS
@@ -412,15 +412,15 @@ class CollisionDetector:
             self._world_max_contacts = self._model.geoms.world_minimum_contacts
         else:
             # Estimate based on broad phase mode and available information
-            if self._settings.broadphase == "explicit" and self._model.geoms.collidable_pairs is not None:
+            if self._config.broadphase == "explicit" and self._model.geoms.collidable_pairs is not None:
                 # For EXPLICIT mode, we know the maximum possible pairs
                 # Estimate ~10 contacts per shape pair (conservative for mesh-mesh contacts)
-                self._model_max_contacts = max(self._settings.max_contacts, self._model.geoms.num_collidable_pairs * 10)
+                self._model_max_contacts = max(self._config.max_contacts, self._model.geoms.num_collidable_pairs * 10)
             else:
                 # For NXN/SAP dynamic broad phase, estimate based on shape count
                 # Assume each shape contacts ~20 others on average (conservative estimate)
                 # This scales much better than O(N²) while still being safe
-                self._model_max_contacts = max(self._settings.max_contacts, self._model.geoms.num_collidable * 20)
+                self._model_max_contacts = max(self._config.max_contacts, self._model.geoms.num_collidable * 20)
 
             # Set the world max contacts to be the same for all worlds in the model
             num_worlds = self._model.size.num_worlds
@@ -440,17 +440,17 @@ class CollisionDetector:
                     self._primitive_pipeline = CollisionPipelinePrimitive(
                         device=self._device,
                         model=self._model,
-                        bvtype=self._settings.bvtype,
-                        default_gap=self._settings.default_gap,
+                        bvtype=self._config.bvtype,
+                        default_gap=self._config.default_gap,
                     )
                 case CollisionPipelineType.UNIFIED:
                     self._unified_pipeline = CollisionPipelineUnifiedKamino(
                         device=self._device,
                         model=self._model,
-                        broadphase=self._settings.broadphase,
-                        default_gap=self._settings.default_gap,
-                        max_triangle_pairs=self._settings.max_triangle_pairs,
-                        max_contacts_per_pair=self._settings.max_contacts_per_pair,
+                        broadphase=self._config.broadphase,
+                        default_gap=self._config.default_gap,
+                        max_triangle_pairs=self._config.max_triangle_pairs,
+                        max_contacts_per_pair=self._config.max_contacts_per_pair,
                     )
                 case _:
                     raise ValueError(f"Unsupported CollisionPipelineType: {self._pipeline_type}")

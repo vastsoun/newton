@@ -28,7 +28,7 @@ from newton._src.solvers.kamino.examples import get_examples_output_path, run_he
 from newton._src.solvers.kamino.models.builders.utils import add_ground_box, make_homogeneous_builder
 from newton._src.solvers.kamino.utils import logger as msg
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
-from newton._src.solvers.kamino.utils.sim import SimulationLogger, Simulator, SimulatorSettings, ViewerKamino
+from newton._src.solvers.kamino.utils.sim import SimulationLogger, Simulator, SimulatorConfig, ViewerKamino
 
 ###
 # Example class
@@ -80,20 +80,20 @@ class Example:
         for w in range(self.builder.num_worlds):
             self.builder.gravity[w].enabled = gravity
 
-        # Set solver settings
-        settings = SimulatorSettings()
-        settings.dt = self.sim_dt
-        settings.solver.problem.alpha = 0.1
-        settings.solver.padmm.primal_tolerance = 1e-6
-        settings.solver.padmm.dual_tolerance = 1e-6
-        settings.solver.padmm.compl_tolerance = 1e-6
-        settings.solver.padmm.max_iterations = 200
-        settings.solver.padmm.rho_0 = 0.05
-        settings.solver.compute_metrics = logging and not use_cuda_graph
+        # Set solver config
+        config = SimulatorConfig()
+        config.dt = self.sim_dt
+        config.solver.problem.alpha = 0.1
+        config.solver.padmm.primal_tolerance = 1e-6
+        config.solver.padmm.dual_tolerance = 1e-6
+        config.solver.padmm.compl_tolerance = 1e-6
+        config.solver.padmm.max_iterations = 200
+        config.solver.padmm.rho_0 = 0.05
+        config.solver.compute_metrics = logging and not use_cuda_graph
 
         # Create a simulator
         msg.notif("Building the simulator...")
-        self.sim = Simulator(builder=self.builder, settings=settings, device=device)
+        self.sim = Simulator(builder=self.builder, config=config, device=device)
 
         # Initialize the data logger
         self.logger: SimulationLogger | None = None

@@ -48,13 +48,13 @@ from .core.model import ModelKamino
 from .core.state import StateKamino, compute_body_com_state, compute_body_frame_state
 from .core.time import advance_time
 from .core.types import float32, int32, quatf, transformf, uint32, vec2f, vec2i, vec3f, vec4f, vec6f
-from .dynamics.dual import DualProblem, DualProblemSettings
+from .dynamics.dual import DualProblem, DualProblemConfig
 from .dynamics.wrenches import (
     compute_constraint_body_wrenches,
     compute_joint_dof_body_wrenches,
 )
 from .geometry.contacts import ContactsKamino, make_contact_frame_znorm
-from .geometry.detector import CollisionDetector, CollisionDetectorSettings
+from .geometry.detector import CollisionDetector, CollisionDetectorConfig
 from .geometry.keying import build_pair_key2
 from .integrators import IntegratorEuler, IntegratorMoreauJean
 from .kinematics.constraints import (
@@ -78,9 +78,9 @@ from .kinematics.resets import (
     reset_time,
 )
 from .linalg import ConjugateResidualSolver, IterativeSolver, LinearSolverType, LLTBlockedSolver
-from .solvers.fk import ForwardKinematicsSolver, ForwardKinematicsSolverSettings
+from .solvers.fk import ForwardKinematicsSolver, ForwardKinematicsSolverConfig
 from .solvers.metrics import SolutionMetrics
-from .solvers.padmm import PADMMSettings, PADMMSolver, PADMMWarmStartMode
+from .solvers.padmm import PADMMConfig, PADMMSolver, PADMMWarmStartMode
 from .solvers.warmstart import WarmstarterContacts, WarmstarterLimits
 from .utils import logger as msg
 
@@ -90,8 +90,8 @@ from .utils import logger as msg
 
 __all__ = [
     "SolverKamino",
+    "SolverKaminoConfig",
     "SolverKaminoImpl",
-    "SolverKaminoSettings",
 ]
 
 ###
@@ -347,7 +347,7 @@ def _convert_newton_contacts_to_kamino(
 
 
 @dataclass
-class SolverKaminoSettings:
+class SolverKaminoConfig:
     """
     A container to hold configurations for :class:`SolverKamino`.
     """
@@ -359,22 +359,22 @@ class SolverKaminoSettings:
     Defaults to `"euler"`.
     """
 
-    problem: DualProblemSettings = field(default_factory=DualProblemSettings)
+    problem: DualProblemConfig = field(default_factory=DualProblemConfig)
     """
-    Settings for the dynamics problem.\n
-    See :class:`DualProblemSettings` for more details.
-    """
-
-    padmm: PADMMSettings = field(default_factory=PADMMSettings)
-    """
-    Settings for the dynamics solver.\n
-    See :class:`PADMMSettings` for more details.
+    Config for the dynamics problem.\n
+    See :class:`DualProblemConfig` for more details.
     """
 
-    fk: ForwardKinematicsSolverSettings = field(default_factory=ForwardKinematicsSolverSettings)
+    padmm: PADMMConfig = field(default_factory=PADMMConfig)
     """
-    Settings for the forward kinematics solver.\n
-    See :class:`ForwardKinematicsSolverSettings` for more details.
+    Config for the dynamics solver.\n
+    See :class:`PADMMConfig` for more details.
+    """
+
+    fk: ForwardKinematicsSolverConfig = field(default_factory=ForwardKinematicsSolverConfig)
+    """
+    Config for the forward kinematics solver.\n
+    See :class:`ForwardKinematicsSolverConfig` for more details.
     """
 
     warmstart_mode: PADMMWarmStartMode = PADMMWarmStartMode.CONTAINERS
@@ -454,7 +454,7 @@ class SolverKaminoSettings:
     """
 
     def check(self) -> None:
-        """Validates relevant solver settings."""
+        """Validates relevant solver config."""
         if not issubclass(self.linear_solver_type, LinearSolverType):
             raise TypeError(
                 "Invalid linear solver type: Expected a subclass of `LinearSolverType`, "
@@ -484,7 +484,7 @@ class SolverKaminoSettings:
         self.fk.check()
 
     def __post_init__(self):
-        """Post-initialization to validate settings."""
+        """Post-initialization to validate config."""
         self.check()
 
 
@@ -525,8 +525,8 @@ class SolverKaminoImpl(SolverBase):
     .. code-block:: python
 
         contacts = ...
-        settings = newton.solvers.kamino.SolverKaminoSettings()
-        solver = newton.solvers.SolverKamino(model, contacts, settings)
+        config = newton.solvers.kamino.SolverKaminoConfig()
+        solver = newton.solvers.SolverKamino(model, contacts, config)
 
         # simulation loop
         for i in range(100):
@@ -545,19 +545,19 @@ class SolverKaminoImpl(SolverBase):
         self,
         model: ModelKamino,
         contacts: ContactsKamino | None = None,
-        settings: SolverKaminoSettings | None = None,
+        config: SolverKaminoConfig | None = None,
     ):
         """
         Initializes the Kamino physics solver for the given set of multi-body systems
         defined in `model`, and the total contact allocations defined in `contacts`.
 
-        Explicit solver settings may be provided through the `settings` argument. If no
-        settings are provided, default settings will be used.
+        Explicit solver config may be provided through the `config` argument. If no
+        config is provided, a default config will be used.
 
         Args:
             model (ModelKamino): The multi-body systems model to simulate.
             contacts (ContactsKamino): The contact data container for the simulation.
-            settings (SolverKaminoSettings | None): Optional solver settings.
+            config (SolverKaminoConfig | None): Optional solver config.
         """
         # Ensure the input containers are valid
         if not isinstance(model, ModelKamino):
@@ -566,10 +566,8 @@ class SolverKaminoImpl(SolverBase):
             raise TypeError(
                 f"Invalid contacts container: Expected a `ContactsKamino` instance, but got {type(contacts)}."
             )
-        if settings is not None and not isinstance(settings, SolverKaminoSettings):
-            raise TypeError(
-                f"Invalid solver settings: Expected a `SolverKaminoSettings` instance, but got {type(settings)}."
-            )
+        if config is not None and not isinstance(config, SolverKaminoConfig):
+            raise TypeError(f"Invalid solver config: Expected a `SolverKaminoConfig` instance, but got {type(config)}.")
 
         # First initialize the base solver
         # NOTE: Although we pass the model here, we will re-assign it below
@@ -577,22 +575,22 @@ class SolverKaminoImpl(SolverBase):
         super().__init__(model=model)
         self._model = model
 
-        # Cache solver settings: If no settings are provided, use defaults
-        if settings is None:
-            settings = SolverKaminoSettings()
-        settings.check()
-        self._settings: SolverKaminoSettings = settings
+        # Cache solver config: If no config is provided, use default
+        if config is None:
+            config = SolverKaminoConfig()
+        config.check()
+        self._config: SolverKaminoConfig = config
 
         # TODO: We need to rework these checks and potentially handle this check with the dynamics problem
         # TODO: Also consider raising an error here instead of a warning
         # Override the linear solver type to an iterative solver if
         # sparsity is enabled but the provided solver is not iterative
-        if self._settings.sparse and not issubclass(self._settings.linear_solver_type, IterativeSolver):
+        if self._config.sparse and not issubclass(self._config.linear_solver_type, IterativeSolver):
             msg.warning(
-                f"Sparse dynamics requires an iterative solver, but got '{self._settings.linear_solver_type.__name__}'."
+                f"Sparse dynamics requires an iterative solver, but got '{self._config.linear_solver_type.__name__}'."
                 " Defaulting to 'ConjugateResidualSolver' as the PADMM linear solver."
             )
-            self._settings.linear_solver_type = ConjugateResidualSolver
+            self._config.linear_solver_type = ConjugateResidualSolver
 
         # Allocate internal time-varying solver data
         self._data = self._model.data()
@@ -604,7 +602,7 @@ class SolverKaminoImpl(SolverBase):
         make_unilateral_constraints_info(model=self._model, data=self._data, limits=self._limits, contacts=contacts)
 
         # Allocate Jacobians data on the device
-        if self._settings.sparse_jacobian:
+        if self._config.sparse_jacobian:
             self._jacobians = SparseSystemJacobians(
                 model=self._model,
                 limits=self._limits,
@@ -620,43 +618,43 @@ class SolverKaminoImpl(SolverBase):
             )
 
         # Allocate the dual problem data on the device
-        linear_solver_kwargs = dict(self._settings.linear_solver_kwargs)
-        if self._settings.avoid_graph_conditionals and issubclass(self._settings.linear_solver_type, IterativeSolver):
+        linear_solver_kwargs = dict(self._config.linear_solver_kwargs)
+        if self._config.avoid_graph_conditionals and issubclass(self._config.linear_solver_type, IterativeSolver):
             linear_solver_kwargs.setdefault("avoid_graph_conditionals", True)
         self._problem_fd = DualProblem(
             model=self._model,
             data=self._data,
             limits=self._limits,
             contacts=contacts,
-            solver=self._settings.linear_solver_type,
+            solver=self._config.linear_solver_type,
             solver_kwargs=linear_solver_kwargs,
-            settings=self._settings.problem,
+            config=self._config.problem,
             device=self._model.device,
-            sparse=self._settings.sparse,
+            sparse=self._config.sparse,
         )
 
         # Allocate the forward dynamics solver on the device
         self._solver_fd = PADMMSolver(
             model=self._model,
-            settings=self._settings.padmm,
-            warmstart=self._settings.warmstart_mode,
-            use_acceleration=self._settings.use_solver_acceleration,
-            collect_info=self._settings.collect_solver_info,
-            avoid_graph_conditionals=self._settings.avoid_graph_conditionals,
+            config=self._config.padmm,
+            warmstart=self._config.warmstart_mode,
+            use_acceleration=self._config.use_solver_acceleration,
+            collect_info=self._config.collect_solver_info,
+            avoid_graph_conditionals=self._config.avoid_graph_conditionals,
             device=self._model.device,
         )
 
         # Allocate the forward kinematics solver on the device
-        self._solver_fk = ForwardKinematicsSolver(model=self._model, settings=self._settings.fk)
+        self._solver_fk = ForwardKinematicsSolver(model=self._model, config=self._config.fk)
 
-        # Create the time-integrator instance based on the settings
-        if self._settings.integrator == "euler":
+        # Create the time-integrator instance based on the config
+        if self._config.integrator == "euler":
             self._integrator = IntegratorEuler(model=self._model)
-        elif self._settings.integrator == "moreau":
+        elif self._config.integrator == "moreau":
             self._integrator = IntegratorMoreauJean(model=self._model)
         else:
             raise ValueError(
-                f"Unsupported integrator type: Expected 'euler' or 'moreau', but got {self._settings.integrator}."
+                f"Unsupported integrator type: Expected 'euler' or 'moreau', but got {self._config.integrator}."
             )
 
         # Allocate additional internal data for reset operations
@@ -671,16 +669,16 @@ class SolverKaminoImpl(SolverBase):
         # Allocate the contacts warmstarter if enabled
         self._ws_limits: WarmstarterLimits | None = None
         self._ws_contacts: WarmstarterContacts | None = None
-        if self._settings.warmstart_mode == PADMMWarmStartMode.CONTAINERS:
+        if self._config.warmstart_mode == PADMMWarmStartMode.CONTAINERS:
             self._ws_limits = WarmstarterLimits(limits=self._limits)
             self._ws_contacts = WarmstarterContacts(
                 contacts=contacts,
-                method=self._settings.contact_warmstart_method,
+                method=self._config.contact_warmstart_method,
             )
 
         # Allocate the solution metrics evaluator if enabled
         self._metrics: SolutionMetrics | None = None
-        if self._settings.compute_metrics:
+        if self._config.compute_metrics:
             self._metrics = SolutionMetrics(model=self._model)
 
         # Initialize callbacks
@@ -699,11 +697,11 @@ class SolverKaminoImpl(SolverBase):
     ###
 
     @property
-    def settings(self) -> SolverKaminoSettings:
+    def config(self) -> SolverKaminoConfig:
         """
-        Returns the host-side cache of high-level solver settings.
+        Returns the host-side cache of high-level solver config.
         """
-        return self._settings
+        return self._config
 
     @property
     def device(self) -> wp.DeviceLike:
@@ -1308,7 +1306,7 @@ class SolverKaminoImpl(SolverBase):
             model=self._model,
             data=self._data,
             q_j_p=_q_j_p,
-            correction=self._settings.rotation_correction,
+            correction=self._config.rotation_correction,
         )
 
     def _update_intermediates(self, state_in: StateKamino):
@@ -1370,8 +1368,8 @@ class SolverKaminoImpl(SolverBase):
         """
         # If warm-starting is enabled, initialize unilateral
         # constraints containers from the current solver data
-        if self._settings.warmstart_mode > PADMMWarmStartMode.NONE:
-            if self._settings.warmstart_mode == PADMMWarmStartMode.CONTAINERS:
+        if self._config.warmstart_mode > PADMMWarmStartMode.NONE:
+            if self._config.warmstart_mode == PADMMWarmStartMode.CONTAINERS:
                 self._ws_limits.warmstart(self._limits)
                 self._ws_contacts.warmstart(self._model, self._data, contacts)
             self._solver_fd.warmstart(
@@ -1414,7 +1412,7 @@ class SolverKaminoImpl(SolverBase):
         # If warmstarting is enabled, update the limits and contacts caches
         # with the constraint reactions generated by the dynamics solver
         # NOTE: This needs to happen after unpacking the multipliers
-        if self._settings.warmstart_mode == PADMMWarmStartMode.CONTAINERS:
+        if self._config.warmstart_mode == PADMMWarmStartMode.CONTAINERS:
             self._ws_limits.update(self._limits)
             self._ws_contacts.update(contacts)
 
@@ -1494,7 +1492,7 @@ class SolverKaminoImpl(SolverBase):
         """
         Computes performance metrics measuring the physical fidelity of the dynamics solver solution.
         """
-        if self._settings.compute_metrics:
+        if self._config.compute_metrics:
             self.metrics.reset()
             self._metrics.evaluate(
                 sigma=self._solver_fd.data.state.sigma,
@@ -1524,8 +1522,8 @@ class SolverKamino(SolverBase):
     def __init__(
         self,
         model: Model,
-        solver_settings: SolverKaminoSettings | None = None,
-        collision_detector_settings: CollisionDetectorSettings | None = None,
+        solver_config: SolverKaminoConfig | None = None,
+        collision_detector_config: CollisionDetectorConfig | None = None,
     ):
         """
         TODO
@@ -1539,7 +1537,7 @@ class SolverKamino(SolverBase):
         # Create a collision detector
         self._collision_detector_kamino = CollisionDetector(
             model=self._model_kamino,
-            settings=collision_detector_settings,
+            config=collision_detector_config,
         )
 
         # Capture a reference to the contacts container
@@ -1549,7 +1547,7 @@ class SolverKamino(SolverBase):
         self._solver_kamino = SolverKaminoImpl(
             model=self._model_kamino,
             contacts=self._contacts_kamino,
-            settings=solver_settings,
+            config=solver_config,
         )
 
         # Build per-world geom offset array for contact conversion

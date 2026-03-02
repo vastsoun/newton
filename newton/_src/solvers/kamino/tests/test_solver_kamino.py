@@ -27,7 +27,7 @@ from newton._src.solvers.kamino.core.joints import JointActuationType, JointCorr
 from newton._src.solvers.kamino.core.model import ModelKamino
 from newton._src.solvers.kamino.core.state import StateKamino
 from newton._src.solvers.kamino.core.types import float32, int32, transformf, vec6f
-from newton._src.solvers.kamino.dynamics import DualProblem, DualProblemSettings
+from newton._src.solvers.kamino.dynamics import DualProblem, DualProblemConfig
 from newton._src.solvers.kamino.examples import print_progress_bar
 from newton._src.solvers.kamino.geometry.contacts import ContactsKamino
 from newton._src.solvers.kamino.kinematics.jacobians import DenseSystemJacobians, SparseSystemJacobians
@@ -111,7 +111,7 @@ atol = 1e-6
 
 def assert_solver_config(testcase: unittest.TestCase, config: SolverKaminoConfig):
     testcase.assertIsInstance(config, SolverKaminoConfig)
-    testcase.assertIsInstance(config.problem, DualProblemSettings)
+    testcase.assertIsInstance(config.problem, DualProblemConfig)
     testcase.assertIsInstance(config.padmm, PADMMSettings)
     testcase.assertIsInstance(config.warmstart_mode, PADMMWarmStartMode)
     testcase.assertTrue(issubclass(config.linear_solver_type, LinearSolverType))
@@ -263,7 +263,7 @@ class TestSolverKaminoConfig(unittest.TestCase):
 
     def test_01_make_explicit(self):
         config = SolverKaminoConfig(
-            problem=DualProblemSettings(),
+            problem=DualProblemConfig(),
             padmm=PADMMSettings(),
             warmstart_mode=PADMMWarmStartMode.CONTAINERS,
             linear_solver_type=ConjugateGradientSolver,

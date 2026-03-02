@@ -48,7 +48,7 @@ from .core.model import ModelKamino
 from .core.state import StateKamino, compute_body_com_state, compute_body_frame_state
 from .core.time import advance_time
 from .core.types import float32, int32, quatf, transformf, uint32, vec2f, vec2i, vec3f, vec4f, vec6f
-from .dynamics.dual import DualProblem, DualProblemSettings
+from .dynamics.dual import DualProblem, DualProblemConfig
 from .dynamics.wrenches import (
     compute_constraint_body_wrenches,
     compute_joint_dof_body_wrenches,
@@ -359,10 +359,10 @@ class SolverKaminoConfig:
     Defaults to `"euler"`.
     """
 
-    problem: DualProblemSettings = field(default_factory=DualProblemSettings)
+    problem: DualProblemConfig = field(default_factory=DualProblemConfig)
     """
-    Settings for the dynamics problem.\n
-    See :class:`DualProblemSettings` for more details.
+    Config for the dynamics problem.\n
+    See :class:`DualProblemConfig` for more details.
     """
 
     padmm: PADMMSettings = field(default_factory=PADMMSettings)
@@ -628,7 +628,7 @@ class SolverKaminoImpl(SolverBase):
             contacts=contacts,
             solver=self._config.linear_solver_type,
             solver_kwargs=linear_solver_kwargs,
-            settings=self._config.problem,
+            config=self._config.problem,
             device=self._model.device,
             sparse=self._config.sparse,
         )

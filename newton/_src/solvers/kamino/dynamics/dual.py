@@ -92,8 +92,8 @@ from ..linalg import LinearSolverType
 
 __all__ = [
     "DualProblem",
+    "DualProblemConfig",
     "DualProblemData",
-    "DualProblemSettings",
 ]
 
 
@@ -110,7 +110,7 @@ wp.set_module_options({"enable_backward": False})
 
 
 @wp.struct
-class DualProblemConfig:
+class DualProblemConfigStruct:
     """
     A Warp struct to hold on-device configuration parameters of a dual problem.
     """
@@ -146,7 +146,7 @@ class DualProblemData:
     config: wp.array | None = None
     """
     Problem configuration parameters for each world.\n
-    Shape of `(num_worlds,)` and type :class:`DualProblemConfig`.
+    Shape of `(num_worlds,)` and type :class:`DualProblemConfigStruct`.
     """
 
     ###
@@ -530,7 +530,7 @@ def _build_free_velocity_bias_joint_kinematics(
     model_joints_num_kinematic_cts: wp.array(dtype=int32),
     model_joints_kinematic_cts_offset: wp.array(dtype=int32),
     data_joints_r_j: wp.array(dtype=float32),
-    problem_config: wp.array(dtype=DualProblemConfig),
+    problem_config: wp.array(dtype=DualProblemConfigStruct),
     problem_vio: wp.array(dtype=int32),
     # Outputs:
     problem_v_b: wp.array(dtype=float32),
@@ -580,7 +580,7 @@ def _build_free_velocity_bias_limits(
     limits_wid: wp.array(dtype=int32),
     limits_lid: wp.array(dtype=int32),
     limits_r_q: wp.array(dtype=float32),
-    problem_config: wp.array(dtype=DualProblemConfig),
+    problem_config: wp.array(dtype=DualProblemConfigStruct),
     problem_vio: wp.array(dtype=int32),
     # Outputs:
     problem_v_b: wp.array(dtype=float32),
@@ -625,7 +625,7 @@ def _build_free_velocity_bias_contacts(
     contacts_cid: wp.array(dtype=int32),
     contacts_gapfunc: wp.array(dtype=vec4f),
     contacts_material: wp.array(dtype=vec2f),
-    problem_config: wp.array(dtype=DualProblemConfig),
+    problem_config: wp.array(dtype=DualProblemConfigStruct),
     problem_vio: wp.array(dtype=int32),
     # Outputs:
     problem_v_b: wp.array(dtype=float32),
@@ -839,7 +839,7 @@ def _build_free_velocity_sparse(
 @wp.kernel
 def _build_dual_preconditioner_all_constraints(
     # Inputs:
-    problem_config: wp.array(dtype=DualProblemConfig),
+    problem_config: wp.array(dtype=DualProblemConfigStruct),
     problem_dim: wp.array(dtype=int32),
     problem_mio: wp.array(dtype=int32),
     problem_vio: wp.array(dtype=int32),
@@ -903,7 +903,7 @@ def _build_dual_preconditioner_all_constraints(
 @wp.kernel
 def _build_dual_preconditioner_all_constraints_sparse(
     # Inputs:
-    problem_config: wp.array(dtype=DualProblemConfig),
+    problem_config: wp.array(dtype=DualProblemConfigStruct),
     problem_dim: wp.array(dtype=int32),
     problem_vio: wp.array(dtype=int32),
     problem_njc: wp.array(dtype=int32),
@@ -1048,7 +1048,7 @@ def _apply_dual_preconditioner_to_vector(
 
 
 @dataclass
-class DualProblemSettings:
+class DualProblemConfig:
     """
     A struct to hold configuration parameters of a dual problem.
     """
@@ -1089,7 +1089,7 @@ class DualProblemSettings:
 
     def check(self) -> None:
         """
-        Validate the settings.
+        Validate the config.
         """
         if self.alpha < 0.0 or self.alpha > 1.0:
             raise ValueError(f"Invalid alpha: {self.alpha}. Must be in range [0, 1.0].")
@@ -1100,17 +1100,17 @@ class DualProblemSettings:
         if self.delta < 0.0:
             raise ValueError(f"Invalid delta: {self.delta}. Must be non-negative.")
 
-    def to_config(self) -> DualProblemConfig:
+    def to_struct(self) -> DualProblemConfigStruct:
         """
-        Convert the settings to a DualProblemConfig struct.
+        Convert the config to a DualProblemConfigStruct struct.
         """
-        config = DualProblemConfig()
-        config.alpha = wp.float32(self.alpha)
-        config.beta = wp.float32(self.beta)
-        config.gamma = wp.float32(self.gamma)
-        config.delta = wp.float32(self.delta)
-        config.preconditioning = wp.bool(self.preconditioning)
-        return config
+        config_struct = DualProblemConfigStruct()
+        config_struct.alpha = wp.float32(self.alpha)
+        config_struct.beta = wp.float32(self.beta)
+        config_struct.gamma = wp.float32(self.gamma)
+        config_struct.delta = wp.float32(self.delta)
+        config_struct.preconditioning = wp.bool(self.preconditioning)
+        return config_struct
 
 
 class DualProblem:
@@ -1126,7 +1126,7 @@ class DualProblem:
         contacts: ContactsKamino | None = None,
         solver: LinearSolverType | None = None,
         solver_kwargs: dict[str, Any] | None = None,
-        settings: list[DualProblemSettings] | DualProblemSettings | None = None,
+        config: list[DualProblemConfig] | DualProblemConfig | None = None,
         compute_h: bool = False,
         device: wp.DeviceLike = None,
         sparse: bool = True,
@@ -1148,10 +1148,10 @@ class DualProblem:
                 The contacts container to use for the dual problem.
             solver (LinearSolverType, optional):
                 The linear solver to use for the Delassus operator. Defaults to None.
-            settings (List[DualProblemSettings] | DualProblemSettings, optional):
-                The settings for the dual problem.\n
-                If a single `DualProblemSettings` object is provided, it will be replicated for all worlds.
-                Defaults to `None`, indicating that default settings will be used for all worlds.
+            config (List[DualProblemConfig] | DualProblemConfig, optional):
+                The config for the dual problem.\n
+                If a single `DualProblemConfig` object is provided, it will be replicated for all worlds.
+                Defaults to `None`, indicating that default config will be used for all worlds.
             compute_h (bool, optional):
                 Set to `True` to enable the computation of the nonlinear
                 generalized forces vectors in construction of the dual problem.\n
@@ -1166,8 +1166,8 @@ class DualProblem:
         # Declare the model size cache
         self._size: ModelKaminoSize | None = None
 
-        self._settings: list[DualProblemSettings] = []
-        """Host-side cache of the list of per world dual problem settings."""
+        self._config: list[DualProblemConfig] = []
+        """Host-side cache of the list of per world dual problem config."""
 
         self._delassus: DelassusOperator | BlockSparseMatrixFreeDelassusOperator | None = None
         """The Delassus operator interface container."""
@@ -1187,7 +1187,7 @@ class DualProblem:
                 contacts=contacts,
                 solver=solver,
                 solver_kwargs=solver_kwargs,
-                settings=settings,
+                config=config,
                 compute_h=compute_h,
                 device=device,
             )
@@ -1214,19 +1214,19 @@ class DualProblem:
         return self._size
 
     @property
-    def settings(self) -> list[DualProblemSettings]:
+    def config(self) -> list[DualProblemConfig]:
         """
-        Returns the list of per world dual problem settings.
+        Returns the list of per world dual problem config.
         """
-        return self._settings
+        return self._config
 
-    @settings.setter
-    def settings(self, value: list[DualProblemSettings] | DualProblemSettings):
+    @config.setter
+    def config(self, value: list[DualProblemConfig] | DualProblemConfig):
         """
-        Sets the list of per world dual problem settings.
-        If a single `DualProblemSettings` object is provided, it will be replicated for all worlds.
+        Sets the list of per world dual problem config.
+        If a single `DualProblemConfig` object is provided, it will be replicated for all worlds.
         """
-        self._settings = self._check_settings(value, self._data.num_worlds)
+        self._config = self._check_config(value, self._data.num_worlds)
 
     @property
     def delassus(self) -> DelassusOperator | BlockSparseMatrixFreeDelassusOperator:
@@ -1263,7 +1263,7 @@ class DualProblem:
         contacts: ContactsKamino | None = None,
         solver: LinearSolverType | None = None,
         solver_kwargs: dict[str, Any] | None = None,
-        settings: list[DualProblemSettings] | DualProblemSettings | None = None,
+        config: list[DualProblemConfig] | DualProblemConfig | None = None,
         compute_h: bool = False,
         device: wp.DeviceLike = None,
     ):
@@ -1279,10 +1279,10 @@ class DualProblem:
             solver (LinearSolverType, optional):
                 The linear solver to use for the Delassus operator.\n
                 Defaults to `None`.
-            settings (List[DualProblemSettings] | DualProblemSettings, optional):
-                The settings for the dual problem.\n
-                If a single `DualProblemSettings` object is provided, it will be replicated for all worlds.
-                Defaults to `None`, indicating that default settings will be used for all worlds.
+            config (List[DualProblemConfig] | DualProblemConfig, optional):
+                The config for the dual problem.\n
+                If a single `DualProblemConfig` object is provided, it will be replicated for all worlds.
+                Defaults to `None`, indicating that default config will be used for all worlds.
             compute_nonlinear_forces (bool, optional):
                 Set to `True` to enable the computation of the nonlinear
                 generalized forces vectors in construction of the dual problem.\n
@@ -1314,8 +1314,8 @@ class DualProblem:
         # Capture reference to the model size
         self._size = model.size
 
-        # Check settings validity and update cache
-        self._settings = self._check_settings(settings, model.info.num_worlds)
+        # Check config validity and update cache
+        self._config = self._check_config(config, model.info.num_worlds)
         self._compute_h = compute_h
 
         # Determine the maximum number of contacts supported by the model
@@ -1376,7 +1376,7 @@ class DualProblem:
                     vio=self._delassus.info.vio,
                     D=None,
                     # Allocate new memory for the remaining dual problem quantities
-                    config=wp.array([s.to_config() for s in self.settings], dtype=DualProblemConfig),
+                    config=wp.array([c.to_struct() for c in self.config], dtype=DualProblemConfigStruct),
                     h=wp.zeros(shape=(model.size.sum_of_num_bodies,), dtype=vec6f) if self._compute_h else None,
                     u_f=wp.zeros(shape=(model.size.sum_of_num_bodies,), dtype=vec6f),
                     v_b=wp.zeros(shape=(self._delassus.sum_of_max_dims,), dtype=float32),
@@ -1408,7 +1408,7 @@ class DualProblem:
                     vio=self._delassus.info.vio,
                     D=self._delassus.D,
                     # Allocate new memory for the remaining dual problem quantities
-                    config=wp.array([s.to_config() for s in self.settings], dtype=DualProblemConfig),
+                    config=wp.array([c.to_struct() for c in self.config], dtype=DualProblemConfigStruct),
                     h=wp.zeros(shape=(model.size.sum_of_num_bodies,), dtype=vec6f) if self._compute_h else None,
                     u_f=wp.zeros(shape=(model.size.sum_of_num_bodies,), dtype=vec6f),
                     v_b=wp.zeros(shape=(self._delassus.num_maxdims,), dtype=float32),
@@ -1515,7 +1515,7 @@ class DualProblem:
             )
 
         # Optionally build and apply the Delassus diagonal preconditioner
-        if any(s.preconditioning for s in self._settings):
+        if any(s.preconditioning for s in self._config):
             self._build_dual_preconditioner()
             self._apply_dual_preconditioner_to_dual()
 
@@ -1524,31 +1524,31 @@ class DualProblem:
     ###
 
     @staticmethod
-    def _check_settings(
-        settings: list[DualProblemSettings] | DualProblemSettings | None, num_worlds: int
-    ) -> list[DualProblemSettings]:
+    def _check_config(
+        config: list[DualProblemConfig] | DualProblemConfig | None, num_worlds: int
+    ) -> list[DualProblemConfig]:
         """
-        Checks and prepares the settings for the dual problem.
+        Checks and prepares the config for the dual problem.
 
-        If a single `DualProblemSettings` object is provided, it will be replicated for all worlds.
-        If a list of settings is provided, it will ensure that the number of settings matches the number of worlds.
+        If a single `DualProblemConfig` object is provided, it will be replicated for all worlds.
+        If a list of configs is provided, it will ensure that the number of configs matches the number of worlds.
         """
-        if settings is None:
-            # If no settings are provided, use default settings
-            return [DualProblemSettings()] * num_worlds
-        elif isinstance(settings, DualProblemSettings):
-            # If a single settings object is provided, replicate it for all worlds
-            return [settings] * num_worlds
-        elif isinstance(settings, list):
-            # Ensure the settings are of the correct type and length
-            if len(settings) != num_worlds:
-                raise ValueError(f"Expected {num_worlds} settings, got {len(settings)}")
-            for s in settings:
-                if not isinstance(s, DualProblemSettings):
-                    raise TypeError(f"Expected DualProblemSettings, got {type(s)}")
-            return settings
+        if config is None:
+            # If no config is provided, use default config
+            return [DualProblemConfig()] * num_worlds
+        elif isinstance(config, DualProblemConfig):
+            # If a single config object is provided, replicate it for all worlds
+            return [config] * num_worlds
+        elif isinstance(config, list):
+            # Ensure the configs are of the correct type and length
+            if len(config) != num_worlds:
+                raise ValueError(f"Expected {num_worlds} configs, got {len(config)}")
+            for c in config:
+                if not isinstance(c, DualProblemConfig):
+                    raise TypeError(f"Expected DualProblemConfig, got {type(c)}")
+            return config
         else:
-            raise TypeError(f"Expected List[DualProblemSettings] or DualProblemSettings, got {type(settings)}")
+            raise TypeError(f"Expected List[DualProblemConfig] or DualProblemConfig, got {type(config)}")
 
     def _build_nonlinear_generalized_force(model: ModelKamino, data: DataKamino, problem: DualProblemData):
         """

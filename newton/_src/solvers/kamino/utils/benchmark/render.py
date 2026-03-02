@@ -88,7 +88,7 @@ def _render_table_to_console_and_file(
                 f"Directory for path '{path}' does not exist. Please create the directory before exporting the table."
             )
         with open(path, "w", encoding="utf-8") as f:
-            console = Console(file=f, width=max_width)
+            console = Console(file=f, width=9999999)
             console.print(table, crop=False)
     if to_console:
         console = Console(width=max_width)

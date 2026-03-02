@@ -435,11 +435,11 @@ class SolverKaminoConfig:
     Defaults to an empty dictionary.
     """
 
-    rotation_correction: JointCorrectionMode = JointCorrectionMode.TWOPI
+    rotation_correction: Literal["twopi", "continuous", "none"] = "twopi"
     """
     The rotation correction mode to use for rotational DoFs.\n
     See :class:`JointCorrectionMode` for available options.\n
-    Defaults to `JointCorrectionMode.TWOPI`.
+    Defaults to `twopi`.
     """
 
     angular_velocity_damping: float = 0.0
@@ -470,11 +470,8 @@ class SolverKaminoConfig:
         PADMMWarmStartMode.from_string(self.warmstart_mode)
         # Conversion to WarmstarterContacts.Method will raise an error if the input string is invalid.
         WarmstarterContacts.Method.from_string(self.contact_warmstart_method)
-        if not isinstance(self.rotation_correction, JointCorrectionMode):
-            raise TypeError(
-                "Invalid rotation correction mode: Expected a `JointCorrectionMode` enum value, "
-                f"but got {type(self.rotation_correction)}."
-            )
+        # Conversion to JointCorrectionMode will raise an error if the input string is invalid.
+        JointCorrectionMode.from_string(self.rotation_correction)
         if self.sparse and not self.sparse_jacobian:
             raise ValueError(
                 "Sparsity setting mismatch: `sparse` solver option requires that `sparse_jacobian` is set to `True`."
@@ -581,6 +578,7 @@ class SolverKaminoImpl(SolverBase):
         config.check()
         self._config: SolverKaminoConfig = config
         self._warmstart_mode: PADMMWarmStartMode = PADMMWarmStartMode.from_string(config.warmstart_mode)
+        self._rotation_correction: JointCorrectionMode = JointCorrectionMode.from_string(config.rotation_correction)
 
         # TODO: We need to rework these checks and potentially handle this check with the dynamics problem
         # TODO: Also consider raising an error here instead of a warning
@@ -1307,7 +1305,7 @@ class SolverKaminoImpl(SolverBase):
             model=self._model,
             data=self._data,
             q_j_p=_q_j_p,
-            correction=self._config.rotation_correction,
+            correction=self._rotation_correction,
         )
 
     def _update_intermediates(self, state_in: StateKamino):

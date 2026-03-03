@@ -19,10 +19,6 @@ from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
-from rich import box
-from rich.console import Console
-from rich.table import Table
-from rich.text import Text
 
 from ...linalg.linear import LinearSolverTypeToName
 from ...solver_kamino import SolverKaminoConfig
@@ -45,12 +41,21 @@ __all__ = [
 
 
 def _add_table_column_group(
-    table: Table,
+    table,
     group_name: str,
     subcol_headers: list[str],
     justify: str = "left",
     color: str | None = None,
 ) -> None:
+    # Attempt to import rich first, and warn user
+    # if the necessary package is not installed
+    try:
+        from rich.text import Text  # noqa: PLC0415
+    except ImportError as e:
+        raise ImportError(
+            "The `rich` package is required for rendering tables. Install it with: pip install rich"
+        ) from e
+
     for i, sub in enumerate(subcol_headers):
         header = Text(justify="left")
         if i == 0:
@@ -62,11 +67,20 @@ def _add_table_column_group(
 
 
 def _render_table_to_console_and_file(
-    table: Table,
+    table,
     path: str | None = None,
     to_console: bool = False,
     max_width: int | None = None,
 ):
+    # Attempt to import rich first, and warn user
+    # if the necessary package is not installed
+    try:
+        from rich.text import Console  # noqa: PLC0415
+    except ImportError as e:
+        raise ImportError(
+            "The `rich` package is required for rendering tables. Install it with: pip install rich"
+        ) from e
+
     if path is not None:
         path_dir = os.path.dirname(path)
         if path_dir and not os.path.exists(path_dir):
@@ -125,6 +139,17 @@ def render_table(
     path: str | None = None,
     to_console: bool = False,
 ):
+    # Attempt to import rich first, and warn user
+    # if the necessary package is not installed
+    try:
+        from rich import box  # noqa: PLC0415
+        from rich.table import Table  # noqa: PLC0415
+        from rich.text import Text  # noqa: PLC0415
+    except ImportError as e:
+        raise ImportError(
+            "The `rich` package is required for rendering tables. Install it with: pip install rich"
+        ) from e
+
     # Initialize the table with appropriate columns and styling
     table = Table(
         title=title,
@@ -169,6 +194,16 @@ def render_subcolumn_table(
     path: str | None = None,
     to_console: bool = False,
 ):
+    # Attempt to import rich first, and warn user
+    # if the necessary package is not installed
+    try:
+        from rich import box  # noqa: PLC0415
+        from rich.table import Table  # noqa: PLC0415
+    except ImportError as e:
+        raise ImportError(
+            "The `rich` package is required for rendering tables. Install it with: pip install rich"
+        ) from e
+
     # Initialize the table with appropriate columns and styling
     table = Table(
         title=title,
@@ -206,6 +241,17 @@ def render_subcolumn_metrics_table(
     path: str | None = None,
     to_console: bool = False,
 ):
+    # Attempt to import rich first, and warn user
+    # if the necessary package is not installed
+    try:
+        from rich import box  # noqa: PLC0415
+        from rich.table import Table  # noqa: PLC0415
+        from rich.text import Text  # noqa: PLC0415
+    except ImportError as e:
+        raise ImportError(
+            "The `rich` package is required for rendering tables. Install it with: pip install rich"
+        ) from e
+
     n_metrics = len(subcol_data)
     n_problems = len(col_titles)
     n_solvers = len(row_titles)
@@ -314,6 +360,16 @@ def render_solver_configs_table(
         IOError:
             If there is an error writing the table to the specified file path.
     """
+    # Attempt to import rich first, and warn user
+    # if the necessary package is not installed
+    try:
+        from rich import box  # noqa: PLC0415
+        from rich.table import Table  # noqa: PLC0415
+    except ImportError as e:
+        raise ImportError(
+            "The `rich` package is required for rendering tables. Install it with: pip install rich"
+        ) from e
+
     # Initialize the table with appropriate columns and styling
     table = Table(
         title="Solver Configurations Summary",

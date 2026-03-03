@@ -88,7 +88,7 @@ class Example:
         # Reset the simulation state to a valid initial configuration above the ground
         self.base_q = wp.zeros(shape=(self.num_worlds,), dtype=wp.transformf)
         q_b = wp.quat_identity(dtype=wp.float32)
-        q_base = wp.transformf((0.0, 0.0, 0.3), q_b)
+        q_base = wp.transformf((0.0, 0.0, 0.5), q_b)
         self.base_q.assign([q_base] * self.num_worlds)
         self.solver.reset(state_out=self.state_0, base_q=self.base_q)
 

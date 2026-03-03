@@ -98,10 +98,11 @@ class JoystickController:
         head_yaw_max: float = 0.9,
         axis_deadband: float = 0.2,
         trigger_deadband: float = 0.2,
-        cutoff_hz: float = 15.0,
+        cutoff_hz: float = 10.0,
         path_deviation_max: float = 0.1,
     ) -> None:
         self._dt = dt
+        self._cutoff_hz = cutoff_hz
         self._viewer = viewer
         self._num_worlds = num_worlds
         self._device = device
@@ -309,3 +310,13 @@ class JoystickController:
         self._angular_filter.reset()
         self._head_pitch_filter.reset()
         self._head_yaw_filter.reset()
+
+    def set_dt(self, dt: float) -> None:
+        """Change the timestep used for path integration and filtering."""
+        self._dt = dt
+        hz = self._cutoff_hz
+        self._forward_filter = _LowPassFilter(hz, dt)
+        self._lateral_filter = _LowPassFilter(hz, dt)
+        self._angular_filter = _LowPassFilter(hz, dt)
+        self._head_pitch_filter = _LowPassFilter(hz, dt)
+        self._head_yaw_filter = _LowPassFilter(hz, dt)

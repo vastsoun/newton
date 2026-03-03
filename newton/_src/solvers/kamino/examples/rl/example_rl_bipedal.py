@@ -36,6 +36,7 @@ import warp as wp
 from newton._src.solvers.kamino.examples import run_headless
 from newton._src.solvers.kamino.examples.rl.joystick import JoystickController
 from newton._src.solvers.kamino.examples.rl.observations import BipedalObservation
+from newton._src.solvers.kamino.examples.rl.sim_loop import SimLoop
 from newton._src.solvers.kamino.examples.rl.simulation import RigidBodySim
 from newton._src.solvers.kamino.examples.rl.utils import _load_policy_checkpoint, quat_to_projected_yaw
 from newton._src.solvers.kamino.models import get_examples_usd_assets_path
@@ -188,16 +189,8 @@ class Example:
         """Single physics step (used by run_headless warm-up)."""
         self.sim_wrapper.step()
 
-    def step(self):
-        """One RL step: commands -> observe -> infer -> apply -> simulate."""
-        # Reset on gamepad Select/Back button or keyboard 'p'
-        if self.joystick.check_reset():
-            self.reset()
-
-        # Update velocity / head commands from gamepad or keyboard
-        self.joystick.update(root_pos_2d=self.sim_wrapper.q_i[:, 0, :2])
-
-        # Write joystick commands to observation
+    def update_input(self):
+        """Transfer joystick commands to the observation command tensor."""
         cmd = self.obs.command
         cmd[:, BipedalObservation.CMD_PATH_HEADING] = self.joystick.path_heading[:, 0]
         cmd[:, BipedalObservation.CMD_PATH_POSITION] = self.joystick.path_position
@@ -220,6 +213,8 @@ class Example:
         self._neck_cmd_buf[3] = head_yaw_des
         cmd[:, BipedalObservation.CMD_HEAD] = self._neck_cmd_buf
 
+    def sim_step(self):
+        """Observations -> policy inference -> actions -> physics step."""
         # Compute observation from current state (with previous setpoints)
         obs = self.obs.compute(setpoints=self.actions)
 
@@ -235,6 +230,14 @@ class Example:
         # Step physics
         for _ in range(self.control_decimation):
             self.sim_wrapper.step()
+
+    def step(self):
+        """One RL step: commands -> observe -> infer -> apply -> simulate."""
+        if self.joystick.check_reset():
+            self.reset()
+        self.joystick.update(root_pos_2d=self.sim_wrapper.q_i[:, 0, :2])
+        self.update_input()
+        self.sim_step()
 
     def render(self):
         """Render the current frame."""
@@ -253,6 +256,18 @@ if __name__ == "__main__":
         action=argparse.BooleanOptionalAction,
         default=False,
         help="Run in headless mode",
+    )
+    parser.add_argument(
+        "--mode",
+        choices=["sync", "async"],
+        default="sync",
+        help="Sim loop mode: sync (default) or async",
+    )
+    parser.add_argument(
+        "--render-fps",
+        type=float,
+        default=30.0,
+        help="Target render FPS for async mode (default: 30)",
     )
     args = parser.parse_args()
 
@@ -287,12 +302,10 @@ if __name__ == "__main__":
             msg.notif("Running in headless mode...")
             run_headless(example, progress=True)
         else:
-            msg.notif("Running in Viewer mode...")
+            msg.notif(f"Running in Viewer mode ({args.mode})...")
             if hasattr(example.viewer, "set_camera"):
                 example.viewer.set_camera(wp.vec3(0.6, 0.6, 0.3), -10.0, 225.0)
-            while example.sim_wrapper.is_running():
-                example.step()
-                example.render()
+            SimLoop(example, mode=args.mode, render_fps=args.render_fps).run()
     except KeyboardInterrupt:
         pass
     finally:

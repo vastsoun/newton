@@ -19,9 +19,8 @@ import numpy as np
 import warp as wp
 
 from ....sim.model import Model
-from ..core.model import ModelKamino
+from ..core.gravity import GravityModel
 from ..core.shapes import ShapeType, max_contacts_for_shape_pair
-from ..core.types import vec4f
 from ..utils import logger as msg
 
 ###
@@ -262,15 +261,29 @@ def compute_required_contact_capacity(
 
 
 # TODO: Use a kernel for this operation
-def convert_model_gravity(model_in: Model, model_out: ModelKamino) -> None:
+def convert_model_gravity(model_in: Model, gravity_out: GravityModel) -> None:
     """
-    Re-derive Kamino's GravityModel from Newton's model.gravity.
+    Converts the gravity representation from the Newton model to the Kamino format.
+
+    Args:
+        model_in (Model):
+            The input Newton model containing the gravity information to be converted.
+        gravity_out (GravityModel):
+            The output GravityModel instance where the converted gravity data will be stored.\n
+            If the arrays within `gravity_out` are not already allocated
+            with the appropriate shapes, this function will allocate them.
+
     """
-    gravity_np = model_in.gravity.numpy()
+    # Capture the necessary properties from source model
     num_worlds = model_in.world_count
+    gravity_np = model_in.gravity.numpy()
+
+    # Allocate data for the conversion
     g_dir_acc_np = np.zeros((num_worlds, 4), dtype=np.float32)
     vector_np = np.zeros((num_worlds, 4), dtype=np.float32)
 
+    # Convert each world's gravity vector into direction
+    # and acceleration, and pack into the output arrays
     for w in range(num_worlds):
         g_vec = gravity_np[w, :]
         accel = float(np.linalg.norm(g_vec))
@@ -283,6 +296,7 @@ def convert_model_gravity(model_in: Model, model_out: ModelKamino) -> None:
         vector_np[w, :3] = g_vec
         vector_np[w, 3] = 1.0
 
-    device = model_out.device
-    wp.copy(model_out.gravity.g_dir_acc, wp.array(g_dir_acc_np, dtype=vec4f, device=device))
-    wp.copy(model_out.gravity.vector, wp.array(vector_np, dtype=vec4f, device=device))
+    # TODO: Check if `gravity_out` has been finalized with allocated arrays, and if not allocate them here.
+    # Store converted gravity data in the target model
+    gravity_out.g_dir_acc.assign(g_dir_acc_np)
+    gravity_out.vector.assign(vector_np)

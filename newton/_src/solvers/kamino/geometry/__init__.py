@@ -23,10 +23,10 @@ This module provides a front-end defined by:
     An enumeration defining the different modes a contact can be in, such as `OPEN`,
     `STICKING`, and `SLIDING`, and defines utilities for computing contacts modes.
 
-- :class:`ContactsData`:
+- :class:`ContactsKaminoData`:
     A simple dataclass defining the data layout and contents of discrete contacts.
 
-- :class:`Contacts`:
+- :class:`ContactsKamino`:
     A data interface class for allocating and managing contacts data. This
     serves as the container with which collision detection pipelines operate,
     storing all generated contacts.
@@ -37,7 +37,7 @@ This module provides a front-end defined by:
     using different pipelines, and is responsible for determining the necessary
     allocations of contacts data based on the contents of the simulation.
 
-- :class:`CollisionDetectorSettings`:
+- :class:`CollisionDetectorConfig`:
     A simple dataclass defining and bundling the set of configurations supported
     by the :class:`CollisionDetector`: class and its subordinate CD pipelines.
 
@@ -45,8 +45,9 @@ This module provides a front-end defined by:
     An enumeration defining the different collision detection pipelines
     (i.e. backends) supported by Kamino.
 
-- :class:`BroadPhaseMode`:
-    A forward declaration of the broad-phase collision detection modes of Newton.
+- :class:`BroadPhaseType`:
+    An enumeration defining the different broad-phase
+    algorithms supported by Kamino's CD pipelines.
 
 - :class:`BoundingVolumeType`:
     An enumeration defining the different types of bounding volumes
@@ -61,14 +62,16 @@ This module provides a front-end defined by:
     geometry pairs and a narrow-phase based on the primitive colliders of Newton.
 """
 
-from .contacts import ContactMode, Contacts, ContactsData
+from .aggregation import ContactAggregation, ContactAggregationData
+from .contacts import ContactMode, ContactsKamino, ContactsKaminoData
 from .detector import (
+    BroadPhaseType,
     CollisionDetector,
-    CollisionDetectorSettings,
+    CollisionDetectorConfig,
     CollisionPipelineType,
 )
 from .primitive import BoundingVolumeType, CollisionPipelinePrimitive
-from .unified import BroadPhaseMode, CollisionPipelineUnifiedKamino
+from .unified import CollisionPipelineUnifiedKamino
 
 ###
 # Module interface
@@ -76,13 +79,15 @@ from .unified import BroadPhaseMode, CollisionPipelineUnifiedKamino
 
 __all__ = [
     "BoundingVolumeType",
-    "BroadPhaseMode",
+    "BroadPhaseType",
     "CollisionDetector",
-    "CollisionDetectorSettings",
+    "CollisionDetectorConfig",
     "CollisionPipelinePrimitive",
     "CollisionPipelineType",
     "CollisionPipelineUnifiedKamino",
+    "ContactAggregation",
+    "ContactAggregationData",
     "ContactMode",
-    "Contacts",
-    "ContactsData",
+    "ContactsKamino",
+    "ContactsKaminoData",
 ]

@@ -17,7 +17,7 @@
 Contact aggregation for RL applications.
 
 This module provides functionality to aggregate per-contact data from Kamino's
-ContactsData into per-body and per-geom summaries suitable for RL observations.
+ContactsKaminoData into per-body and per-geom summaries suitable for RL observations.
 The aggregation is performed on GPU using efficient atomic operations.
 """
 
@@ -25,11 +25,10 @@ from dataclasses import dataclass
 
 import numpy as np
 import warp as wp
-from warp.context import Devicelike
 
-from ..core.model import Model
+from ..core.model import ModelKamino
 from ..core.types import int32, quatf, vec2i, vec3f
-from .contacts import ContactMode, Contacts
+from .contacts import ContactMode, ContactsKamino
 
 ###
 # Module interface
@@ -338,7 +337,7 @@ class ContactAggregation:
     """
     High-level interface for aggregating Kamino contact data for RL.
 
-    This class efficiently aggregates per-contact data from Kamino's ContactsData
+    This class efficiently aggregates per-contact data from Kamino's ContactsKaminoData
     into per-body and per-geom summaries suitable for RL observations. All computation
     is performed on GPU using atomic operations for efficiency.
 
@@ -353,29 +352,29 @@ class ContactAggregation:
 
     def __init__(
         self,
-        model: Model | None = None,
-        contacts: Contacts | None = None,
+        model: ModelKamino | None = None,
+        contacts: ContactsKamino | None = None,
         static_geom_ids: list[int] | None = None,
-        device: Devicelike | None = None,
+        device: wp.DeviceLike | None = None,
         enable_positions_normals: bool = False,
     ):
         """Initialize contact aggregation.
 
         Args:
-            model (Model | None): The model container describing the system to be simulated.
+            model (ModelKamino | None): The model container describing the system to be simulated.
                 If None, call ``finalize()`` later.
-            contacts (Contacts | None): The Contacts container with per-contact data.
+            contacts (ContactsKamino | None): The contacts container with per-contact data.
                 If None, call ``finalize()`` later.
             static_geom_ids: List of geometry IDs considered as 'static'. Defaults to [0].
             device: Device for computation. If None, uses model's device.
             enable_positions_normals: Whether to compute average contact positions and normals per body.
         """
         # Cache the device
-        self._device: Devicelike | None = device
+        self._device: wp.DeviceLike | None = device
 
         # Forward declarations
-        self._model: Model | None = None
-        self._contacts: Contacts | None = None
+        self._model: ModelKamino | None = None
+        self._contacts: ContactsKamino | None = None
         self._data: ContactAggregationData | None = None
         self._enable_positions_normals: bool = enable_positions_normals
 
@@ -390,18 +389,18 @@ class ContactAggregation:
 
     def finalize(
         self,
-        model: Model,
-        contacts: Contacts,
+        model: ModelKamino,
+        contacts: ContactsKamino,
         static_geom_ids: list[int] | None = None,
-        device: Devicelike | None = None,
+        device: wp.DeviceLike | None = None,
     ) -> None:
         """Finalizes memory allocations for the contact aggregation data.
 
         Args:
-            model (Model): The model container describing the system to be simulated.
-            contacts (Contacts): The Contacts container with per-contact data.
+            model (ModelKamino): The model container describing the system to be simulated.
+            contacts (ContactsKamino): The contacts container with per-contact data.
             static_geom_ids (list[int] | None): List of geometry IDs considered as 'static'. Defaults to [0].
-            device (Devicelike | None): Device for computation. If None, uses model's device.
+            device (wp.DeviceLike | None): Device for computation. If None, uses model's device.
         """
         # Override the device if specified
         if device is not None:
@@ -415,8 +414,8 @@ class ContactAggregation:
         # Read dimensions from the model
         num_worlds = model.size.num_worlds
         max_bodies = model.size.max_of_num_bodies
-        max_geoms = model.size.max_of_num_collision_geoms
-        num_geoms = model.cgeoms.num_geoms
+        max_geoms = model.size.max_of_num_geoms
+        num_geoms = model.geoms.num_geoms
 
         # Per-body aggregated data
         body_net_contact_force = wp.zeros((num_worlds, max_bodies, 3), dtype=wp.float32, device=self._device)
@@ -464,12 +463,12 @@ class ContactAggregation:
             static_geom_ids: List of geometry IDs (per world) that should be marked as static
         """
         # Get collision geometry data
-        cgeoms = self._model.cgeoms
-        num_geoms = cgeoms.num_geoms
+        geoms = self._model.geoms
+        num_geoms = geoms.num_geoms
 
         # Create mask on host and copy geometry per-world IDs to host
         mask_host = np.zeros(num_geoms, dtype=np.int32)
-        gid_host = cgeoms.gid.numpy()  # Per-world geometry IDs
+        gid_host = geoms.gid.numpy()  # Per-world geometry IDs
 
         # Mark geometries whose per-world ID is in static_geom_ids
         for i in range(num_geoms):
@@ -481,7 +480,7 @@ class ContactAggregation:
 
     def compute(self, skip_if_no_contacts: bool = False):
         """
-        Compute aggregated contact data from current ContactsData.
+        Compute aggregated contact data from current ContactsKaminoData.
 
         This method should be called after simulator.step() to update contact
         force and flags. It launches GPU kernels to efficiently aggregate
@@ -516,7 +515,7 @@ class ContactAggregation:
         # Get model dimensions
         num_worlds = self._model.size.num_worlds
         max_bodies = self._model.size.max_of_num_bodies
-        max_geoms = self._model.size.max_of_num_collision_geoms
+        max_geoms = self._model.size.max_of_num_geoms
 
         # Launch aggregation kernel for per-body force
         wp.launch(

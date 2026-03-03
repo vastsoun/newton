@@ -9,17 +9,8 @@ newton.sensors
    :toctree: _generated
    :nosignatures:
 
-   MatchKind
    SensorContact
    SensorFrameTransform
    SensorIMU
    SensorRaycast
    SensorTiledCamera
-
-.. rubric:: Functions
-
-.. autosummary::
-   :toctree: _generated
-   :signatures: long
-
-   populate_contacts

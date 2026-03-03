@@ -21,11 +21,11 @@ High-level Settings:
     Defines the ALM penalty update methods supported by the PADMM solver.
 - :class:`PADMMWarmStartMode`:
     Defines the warmstart modes supported by the PADMM solver.
-- :class:`PADMMSettings`:
-    A container that defines user-facing PADMM solver settings.\n
+- :class:`PADMMConfig`:
+    A container that defines user-facing PADMM solver config.\n
 
 Warp Structs:
-- :class:`PADMMConfig`:
+- :class:`PADMMConfigStruct`:
     Warp struct for on-device PADMM configurations.
 - :class:`PADMMStatus`:
     Warp struct for on-device PADMM solver status.
@@ -45,14 +45,16 @@ Data Containers:
     The highest-level PADMM data container, bundling all other PADMM-related data into a single object.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 from enum import IntEnum
+from typing import Literal
 
 import numpy as np
 import warp as wp
-from warp.context import Devicelike
 
-from ...core.model import ModelSize
+from ...core.size import SizeKamino
 from ...core.types import float32, int32, override, vec2f
 
 ###
@@ -61,12 +63,12 @@ from ...core.types import float32, int32, override, vec2f
 
 __all__ = [
     "PADMMConfig",
+    "PADMMConfigStruct",
     "PADMMData",
     "PADMMInfo",
     "PADMMPenalty",
     "PADMMPenaltyUpdate",
     "PADMMResiduals",
-    "PADMMSettings",
     "PADMMSolution",
     "PADMMState",
     "PADMMStatus",
@@ -94,7 +96,7 @@ class PADMMPenaltyUpdate(IntEnum):
     FIXED = 0
     """
     Fixed penalty:
-        `rho` is initialized to `settings.rho_0`, remaining constant over the solve.
+        `rho` is initialized to `config.rho_0`, remaining constant over the solve.
     """
 
     # TODO: Implement adaptive penalty updates
@@ -118,6 +120,14 @@ class PADMMPenaltyUpdate(IntEnum):
     Balanced-residuals penalty update:
     `rho` is increased in order for the ratio of primal/dual residuals to be close to unity.
     """
+
+    @classmethod
+    def from_string(cls, s: str) -> PADMMPenaltyUpdate:
+        """Converts a string to a PADMMPenaltyUpdate enum value."""
+        try:
+            return cls[s.upper()]
+        except KeyError as e:
+            raise ValueError(f"Invalid PADMMPenaltyUpdate: {s}. Valid options are: {[e.name for e in cls]}") from e
 
     @override
     def __str__(self):
@@ -156,6 +166,14 @@ class PADMMWarmStartMode(IntEnum):
         containers as warmstart information for the current solve.
     """
 
+    @classmethod
+    def from_string(cls, s: str) -> PADMMWarmStartMode:
+        """Converts a string to a PADMMWarmStartMode enum value."""
+        try:
+            return cls[s.upper()]
+        except KeyError as e:
+            raise ValueError(f"Invalid PADMMWarmStartMode: {s}. Valid options are: {[e.name for e in cls]}") from e
+
     @override
     def __str__(self):
         """Returns a string representation of the PADMMWarmStartMode."""
@@ -168,7 +186,7 @@ class PADMMWarmStartMode(IntEnum):
 
 
 @wp.struct
-class PADMMConfig:
+class PADMMConfigStruct:
     """
     A warp struct to hold PADMM per-world solver configurations on the target device.
 
@@ -432,7 +450,7 @@ class PADMMPenalty:
             equals the number of matrix factorizations performed.
         rho (float32): The current value of the ALM penalty parameter.\n
             If adaptive penalty scheme is used, this value may change during
-            solve operations, while being lower-bounded by `settings.rho_min`
+            solve operations, while being lower-bounded by `config.rho_min`
             to ensure numerical stability.
         rho_p (float32): The previous value of the ALM penalty parameter.\n
             As diagonal regularization of the lhs matrix (e.g. Delassus
@@ -452,7 +470,7 @@ class PADMMPenalty:
     """
     The current value of the ALM penalty parameter.\n
     If adaptive penalty scheme is used, this value may change during
-    solve operations, while being lower-bounded by `settings.rho_min`
+    solve operations, while being lower-bounded by `config.rho_min`
     to ensure numerical stability.
     """
 
@@ -472,9 +490,9 @@ class PADMMPenalty:
 
 
 @dataclass
-class PADMMSettings:
+class PADMMConfig:
     """
-    A container to bundle PADMM solver settings.
+    A container to bundle PADMM solver config.
 
     Attributes:
         primal_tolerance (float): The target tolerance on the total primal residual `r_primal`.\n
@@ -506,8 +524,8 @@ class PADMMSettings:
         penalty_update_freq (int): The permitted frequency of penalty updates.\n
             If zero, no updates are performed. Otherwise, updates are performed every
             `penalty_update_freq` iterations. Defaults to `10`.
-        penalty_update_method (PADMMPenaltyUpdate): The penalty update method used to adapt the penalty parameter.\n
-            Defaults to `PADMMPenaltyUpdate.FIXED`. See :class:`PADMMPenaltyUpdate` for details.
+        penalty_update_method (str): The penalty update method used to adapt the penalty parameter.\n
+            Defaults to `fixed`. See :class:`PADMMPenaltyUpdate` for details.
 
     """
 
@@ -587,10 +605,10 @@ class PADMMSettings:
     `penalty_update_freq` iterations. Defaults to `1`.
     """
 
-    penalty_update_method: PADMMPenaltyUpdate = PADMMPenaltyUpdate.FIXED
+    penalty_update_method: Literal["fixed", "balanced"] = "fixed"
     """
     The penalty update method used to adapt the penalty parameter.\n
-    Defaults to `PADMMPenaltyUpdate.FIXED`. See :class:`PADMMPenaltyUpdate` for details.
+    Defaults to `fixed`. See :class:`PADMMPenaltyUpdate` for details.
     """
 
     linear_solver_tolerance: float = 0.0
@@ -613,7 +631,7 @@ class PADMMSettings:
 
     def check(self):
         """
-        Checks the validity of PADMM solver settings.
+        Checks the validity of PADMM solver config.
         """
         if self.primal_tolerance < 0.0:
             raise ValueError(f"Invalid primal tolerance: {self.primal_tolerance}. Must be non-negative.")
@@ -639,11 +657,8 @@ class PADMMSettings:
             raise ValueError(f"Invalid maximum iterations: {self.max_iterations}. Must be a positive integer.")
         if self.penalty_update_freq < 0:
             raise ValueError(f"Invalid penalty update frequency: {self.penalty_update_freq}. Must be non-negative.")
-        if not isinstance(self.penalty_update_method, PADMMPenaltyUpdate):
-            raise TypeError(
-                f"Invalid penalty update method: {self.penalty_update_method}. "
-                "Must be an instance of PADMMPenaltyUpdate."
-            )
+        # Conversion to PADMMPenaltyUpdate will raise an error if the input string is invalid.
+        PADMMPenaltyUpdate.from_string(self.penalty_update_method)
         if self.linear_solver_tolerance < 0.0:
             raise ValueError(f"Invalid linear solver tolerance: {self.linear_solver_tolerance}. Must be non-negative.")
         if self.linear_solver_tolerance_ratio < 0.0:
@@ -651,30 +666,34 @@ class PADMMSettings:
                 f"Invalid linear solver tolerance ratio: {self.linear_solver_tolerance_ratio}. Must be non-negative."
             )
 
-    def to_config(self) -> PADMMConfig:
+    def to_struct(self) -> PADMMConfigStruct:
         """
-        Converts the host-side settings to the corresponding device-side object.
+        Converts the host-side config to the corresponding device-side object.
 
         Returns:
-            PADMMConfig: The solver settings as a warp struct.
+            PADMMConfigStruct: The solver config as a warp struct.
         """
-        config = PADMMConfig()
-        config.primal_tolerance = self.primal_tolerance
-        config.dual_tolerance = self.dual_tolerance
-        config.compl_tolerance = self.compl_tolerance
-        config.restart_tolerance = self.restart_tolerance
-        config.eta = self.eta
-        config.rho_0 = self.rho_0
-        config.rho_min = self.rho_min
-        config.a_0 = self.a_0
-        config.alpha = self.alpha
-        config.tau = self.tau
-        config.max_iterations = self.max_iterations
-        config.penalty_update_freq = self.penalty_update_freq
-        config.penalty_update_method = self.penalty_update_method
-        config.linear_solver_tolerance = self.linear_solver_tolerance
-        config.linear_solver_tolerance_ratio = self.linear_solver_tolerance_ratio
-        return config
+        config_struct = PADMMConfigStruct()
+        config_struct.primal_tolerance = self.primal_tolerance
+        config_struct.dual_tolerance = self.dual_tolerance
+        config_struct.compl_tolerance = self.compl_tolerance
+        config_struct.restart_tolerance = self.restart_tolerance
+        config_struct.eta = self.eta
+        config_struct.rho_0 = self.rho_0
+        config_struct.rho_min = self.rho_min
+        config_struct.a_0 = self.a_0
+        config_struct.alpha = self.alpha
+        config_struct.tau = self.tau
+        config_struct.max_iterations = self.max_iterations
+        config_struct.penalty_update_freq = self.penalty_update_freq
+        config_struct.penalty_update_method = PADMMPenaltyUpdate.from_string(self.penalty_update_method)
+        config_struct.linear_solver_tolerance = self.linear_solver_tolerance
+        config_struct.linear_solver_tolerance_ratio = self.linear_solver_tolerance_ratio
+        return config_struct
+
+    def __post_init__(self):
+        """Post-initialization to validate config."""
+        self.check()
 
 
 class PADMMState:
@@ -713,14 +732,14 @@ class PADMMState:
             Shape of ``(sum_of_max_total_cts,)`` and type :class:`float32`.
     """
 
-    def __init__(self, size: ModelSize | None = None, use_acceleration: bool = False):
+    def __init__(self, size: SizeKamino | None = None, use_acceleration: bool = False):
         """
         Initializes the PADMM solver state container.
 
         If a model size is provided, allocates the state arrays accordingly.
 
         Args:
-            size (ModelSize | None): The model-size utility container holding the dimensionality of the model.
+            size (SizeKamino | None): The model-size utility container holding the dimensionality of the model.
         """
 
         self.done: wp.array | None = None
@@ -826,12 +845,12 @@ class PADMMState:
         if size is not None:
             self.finalize(size, use_acceleration)
 
-    def finalize(self, size: ModelSize, use_acceleration: bool = False):
+    def finalize(self, size: SizeKamino, use_acceleration: bool = False):
         """
         Allocates the PADMM solver state arrays based on the model size.
 
         Args:
-            size (ModelSize): The model-size utility container holding the dimensionality of the model.
+            size (SizeKamino): The model-size utility container holding the dimensionality of the model.
         """
         # Allocate per-world solver done flags
         self.done = wp.zeros(1, dtype=int32)
@@ -910,14 +929,14 @@ class PADMMResiduals:
             Shape of ``(sum_of_max_total_cts,)`` and type :class:`float32`.
     """
 
-    def __init__(self, size: ModelSize | None = None, use_acceleration: bool = False):
+    def __init__(self, size: SizeKamino | None = None, use_acceleration: bool = False):
         """
         Initializes the PADMM residuals container.
 
         If a model size is provided, allocates the residuals arrays accordingly.
 
         Args:
-            size (ModelSize | None): The model-size utility container holding the dimensionality of the model.
+            size (SizeKamino | None): The model-size utility container holding the dimensionality of the model.
         """
 
         self.r_primal: wp.array | None = None
@@ -964,12 +983,12 @@ class PADMMResiduals:
         if size is not None:
             self.finalize(size, use_acceleration)
 
-    def finalize(self, size: ModelSize, use_acceleration: bool = False):
+    def finalize(self, size: SizeKamino, use_acceleration: bool = False):
         """
         Allocates the residuals arrays based on the model size.
 
         Args:
-            size (ModelSize): The model-size utility container holding the dimensionality of the model.
+            size (SizeKamino): The model-size utility container holding the dimensionality of the model.
             use_acceleration (bool): Flag indicating whether to allocate arrays used with acceleration.
         """
         # Allocate the main residuals arrays
@@ -1007,14 +1026,14 @@ class PADMMSolution:
             Shape of ``(sum_of_max_total_cts,)`` and type :class:`float32`.
     """
 
-    def __init__(self, size: ModelSize | None = None):
+    def __init__(self, size: SizeKamino | None = None):
         """
         Initializes the PADMM solution container.
 
         If a model size is provided, allocates the solution arrays accordingly.
 
         Args:
-            size (ModelSize | None): The model-size utility container holding the dimensionality of the model.
+            size (SizeKamino | None): The model-size utility container holding the dimensionality of the model.
         """
 
         self.lambdas: wp.array | None = None
@@ -1033,12 +1052,12 @@ class PADMMSolution:
         if size is not None:
             self.finalize(size)
 
-    def finalize(self, size: ModelSize):
+    def finalize(self, size: SizeKamino):
         """
         Allocates the PADMM solution arrays based on the model size.
 
         Args:
-            size (ModelSize): The model-size utility container holding the dimensionality of the model.
+            size (SizeKamino): The model-size utility container holding the dimensionality of the model.
         """
         self.lambdas = wp.zeros(size.sum_of_max_total_cts, dtype=float32)
         self.v_plus = wp.zeros(size.sum_of_max_total_cts, dtype=float32)
@@ -1122,7 +1141,7 @@ class PADMMInfo:
 
     def __init__(
         self,
-        size: ModelSize | None = None,
+        size: SizeKamino | None = None,
         max_iters: int | None = None,
         use_acceleration: bool = False,
     ):
@@ -1132,7 +1151,7 @@ class PADMMInfo:
         If a model size is provided, allocates the solution arrays accordingly.
 
         Args:
-            size (ModelSize | None): The model-size utility container holding the dimensionality of the model.
+            size (SizeKamino | None): The model-size utility container holding the dimensionality of the model.
             max_iters (int | None): The maximum number of iterations for which to allocate convergence data.
         """
 
@@ -1311,12 +1330,12 @@ class PADMMInfo:
         if size is not None:
             self.finalize(size=size, max_iters=max_iters, use_acceleration=use_acceleration)
 
-    def finalize(self, size: ModelSize, max_iters: int, use_acceleration: bool = False):
+    def finalize(self, size: SizeKamino, max_iters: int, use_acceleration: bool = False):
         """
         Allocates the PADMM solver info arrays based on the model size and maximum number of iterations.
 
         Args:
-            size (ModelSize): The model-size utility container holding the dimensionality of the model.
+            size (SizeKamino): The model-size utility container holding the dimensionality of the model.
             max_iters (int): The maximum number of iterations for which to allocate convergence data.
 
         Raises:
@@ -1408,8 +1427,8 @@ class PADMMData:
 
     Attributes:
         config (wp.array): Array of per-world solver configurations,
-            of type :class:`PADMMConfig` and shape ``(num_worlds,)``.\n
-            Each element is the on-device version of :class:`PADMMSettings`.
+            of type :class:`PADMMConfigStruct` and shape ``(num_worlds,)``.\n
+            Each element is the on-device version of :class:`PADMMConfig`.
         status (wp.array): Array of per-world solver status,
             of type :class:`PADMMStatus` and shape ``(num_worlds,)``.\n
             Each element holds the status of the solver on
@@ -1426,20 +1445,20 @@ class PADMMData:
 
     def __init__(
         self,
-        size: ModelSize | None = None,
+        size: SizeKamino | None = None,
         max_iters: int = 0,
         use_acceleration: bool = False,
         collect_info: bool = False,
-        device: Devicelike = None,
+        device: wp.DeviceLike = None,
     ):
         """
         Initializes a PADMM solver data container.
 
         Args:
-            size (ModelSize): The model-size utility container holding the dimensionality of the model.
+            size (SizeKamino): The model-size utility container holding the dimensionality of the model.
             max_iters (int): The maximum number of iterations for which to allocate convergence data.
             collect_info (bool): Set to `True` to allocate data for reporting solver convergence info.
-            device (Devicelike): The target Warp device on which all data will be allocated.
+            device (wp.DeviceLike): The target Warp device on which all data will be allocated.
 
         Raises:
             ValueError: If either ``size.num_worlds`` or `max_iters`` are not a positive integers.
@@ -1447,8 +1466,8 @@ class PADMMData:
 
         self.config: wp.array | None = None
         """
-        Array of on-device PADMM solver settings.\n
-        Shape is (num_worlds,) and type :class:`PADMMConfig`.
+        Array of on-device PADMM solver configs.\n
+        Shape is (num_worlds,) and type :class:`PADMMConfigStruct`.
         """
 
         self.status: wp.array | None = None
@@ -1493,26 +1512,26 @@ class PADMMData:
 
     def finalize(
         self,
-        size: ModelSize,
+        size: SizeKamino,
         max_iters: int = 0,
         use_acceleration: bool = False,
         collect_info: bool = False,
-        device: Devicelike = None,
+        device: wp.DeviceLike = None,
     ):
         """
         Allocates the PADMM solver data based on the model size and maximum number of iterations.
 
         Args:
-            size (ModelSize): The model-size utility container holding the dimensionality of the model.
+            size (SizeKamino): The model-size utility container holding the dimensionality of the model.
             max_iters (int): The maximum number of iterations for which to allocate convergence data.
             collect_info (bool): Set to `True` to allocate data for reporting solver convergence info.
-            device (Devicelike): The target Warp device on which all data will be allocated.
+            device (wp.DeviceLike): The target Warp device on which all data will be allocated.
 
         Raises:
             ValueError: If either ``size.num_worlds`` or `max_iters`` are not a positive integers.
         """
         with wp.ScopedDevice(device):
-            self.config = wp.zeros(shape=(size.num_worlds,), dtype=PADMMConfig)
+            self.config = wp.zeros(shape=(size.num_worlds,), dtype=PADMMConfigStruct)
             self.status = wp.zeros(shape=(size.num_worlds,), dtype=PADMMStatus)
             self.penalty = wp.zeros(shape=(size.num_worlds,), dtype=PADMMPenalty)
             self.state = PADMMState(size, use_acceleration)

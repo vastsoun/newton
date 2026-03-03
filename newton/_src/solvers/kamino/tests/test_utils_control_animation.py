@@ -21,7 +21,7 @@ import unittest
 import numpy as np
 import warp as wp
 
-from newton._src.solvers.kamino.core.builder import ModelBuilder
+from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
 from newton._src.solvers.kamino.core.types import float32
 from newton._src.solvers.kamino.models import get_examples_usd_assets_path
 from newton._src.solvers.kamino.tests import setup_tests, test_context
@@ -72,7 +72,7 @@ class TestAnimationJointReference(unittest.TestCase):
 
         # Import USD model of DR Legs
         importer = USDImporter()
-        builder: ModelBuilder = importer.import_from(source=USD_MODEL_PATH)
+        builder: ModelBuilderKamino = importer.import_from(source=USD_MODEL_PATH)
         model = builder.finalize(device=self.default_device)
         data = model.data(device=self.default_device)
 
@@ -178,7 +178,7 @@ class TestAnimationJointReference(unittest.TestCase):
 
         # Import USD model of DR Legs
         importer = USDImporter()
-        builder: ModelBuilder = importer.import_from(source=USD_MODEL_PATH)
+        builder: ModelBuilderKamino = importer.import_from(source=USD_MODEL_PATH)
         model = builder.finalize(device=self.default_device)
         data = model.data(device=self.default_device)
 
@@ -321,7 +321,7 @@ class TestAnimationJointReference(unittest.TestCase):
 
         # Import USD model of DR Legs
         importer = USDImporter()
-        builder: ModelBuilder = importer.import_from(source=USD_MODEL_PATH)
+        builder: ModelBuilderKamino = importer.import_from(source=USD_MODEL_PATH)
         model = builder.finalize(device=self.default_device)
         data = model.data(device=self.default_device)
 
@@ -464,7 +464,7 @@ class TestAnimationJointReference(unittest.TestCase):
 
         # Import USD model of DR Legs
         importer = USDImporter()
-        builder: ModelBuilder = importer.import_from(source=USD_MODEL_PATH)
+        builder: ModelBuilderKamino = importer.import_from(source=USD_MODEL_PATH)
         model = builder.finalize(device=self.default_device)
         data = model.data(device=self.default_device)
 

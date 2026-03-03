@@ -18,21 +18,18 @@ import os
 
 import numpy as np
 import warp as wp
-from warp.context import Devicelike
 
 import newton
 import newton.examples
-from newton._src.solvers.kamino.core.builder import ModelBuilder
+from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
 from newton._src.solvers.kamino.core.types import float32
 from newton._src.solvers.kamino.examples import get_examples_output_path, run_headless
 from newton._src.solvers.kamino.models import get_basics_usd_assets_path
 from newton._src.solvers.kamino.models.builders.basics import build_boxes_hinged
 from newton._src.solvers.kamino.models.builders.utils import make_homogeneous_builder
-from newton._src.solvers.kamino.solvers.padmm import PADMMWarmStartMode
-from newton._src.solvers.kamino.solvers.warmstart import WarmstarterContacts
 from newton._src.solvers.kamino.utils import logger as msg
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
-from newton._src.solvers.kamino.utils.sim import SimulationLogger, Simulator, SimulatorSettings, ViewerKamino
+from newton._src.solvers.kamino.utils.sim import SimulationLogger, Simulator, SimulatorConfig, ViewerKamino
 
 ###
 # Module configs
@@ -99,7 +96,7 @@ def control_callback(sim: Simulator):
 class Example:
     def __init__(
         self,
-        device: Devicelike = None,
+        device: wp.DeviceLike = None,
         num_worlds: int = 1,
         max_steps: int = 1000,
         use_cuda_graph: bool = False,
@@ -128,7 +125,7 @@ class Example:
             msg.notif("Constructing builder from imported USD ...")
             USD_MODEL_PATH = os.path.join(get_basics_usd_assets_path(), "boxes_hinged.usda")
             importer = USDImporter()
-            self.builder: ModelBuilder = make_homogeneous_builder(
+            self.builder: ModelBuilderKamino = make_homogeneous_builder(
                 num_worlds=num_worlds,
                 build_fn=importer.import_from,
                 source=USD_MODEL_PATH,
@@ -136,7 +133,7 @@ class Example:
             )
         else:
             msg.notif("Constructing builder using model generator ...")
-            self.builder: ModelBuilder = make_homogeneous_builder(
+            self.builder: ModelBuilderKamino = make_homogeneous_builder(
                 num_worlds=num_worlds, build_fn=build_boxes_hinged, ground=ground
             )
 
@@ -144,24 +141,24 @@ class Example:
         for w in range(self.builder.num_worlds):
             self.builder.gravity[w].enabled = gravity
 
-        # Set solver settings
-        settings = SimulatorSettings()
-        settings.dt = self.sim_dt
-        settings.solver.problem.preconditioning = True
-        settings.solver.padmm.primal_tolerance = 1e-6
-        settings.solver.padmm.dual_tolerance = 1e-6
-        settings.solver.padmm.compl_tolerance = 1e-6
-        settings.solver.padmm.max_iterations = 200
-        settings.solver.padmm.rho_0 = 0.1
-        settings.solver.use_solver_acceleration = True
-        settings.solver.warmstart_mode = PADMMWarmStartMode.CONTAINERS
-        settings.solver.contact_warmstart_method = WarmstarterContacts.Method.GEOM_PAIR_NET_FORCE
-        settings.solver.collect_solver_info = False
-        settings.solver.compute_metrics = logging and not use_cuda_graph
+        # Set solver config
+        config = SimulatorConfig()
+        config.dt = self.sim_dt
+        config.solver.problem.preconditioning = True
+        config.solver.padmm.primal_tolerance = 1e-6
+        config.solver.padmm.dual_tolerance = 1e-6
+        config.solver.padmm.compl_tolerance = 1e-6
+        config.solver.padmm.max_iterations = 200
+        config.solver.padmm.rho_0 = 0.1
+        config.solver.use_solver_acceleration = True
+        config.solver.warmstart_mode = "containers"
+        config.solver.contact_warmstart_method = "geom_pair_net_force"
+        config.solver.collect_solver_info = False
+        config.solver.compute_metrics = logging and not use_cuda_graph
 
         # Create a simulator
         msg.notif("Building the simulator...")
-        self.sim = Simulator(builder=self.builder, settings=settings, device=device)
+        self.sim = Simulator(builder=self.builder, config=config, device=device)
         self.sim.set_control_callback(control_callback)
 
         # Initialize the data logger

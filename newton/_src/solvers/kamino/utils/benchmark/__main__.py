@@ -27,7 +27,7 @@ from newton._src.solvers.kamino.utils.benchmark.problems import BenchmarkProblem
 from newton._src.solvers.kamino.utils.benchmark.render import render_solver_configs_table
 from newton._src.solvers.kamino.utils.benchmark.runner import run_single_benchmark
 from newton._src.solvers.kamino.utils.device import get_device_spec_info
-from newton._src.solvers.kamino.utils.sim import SimulatorSettings
+from newton._src.solvers.kamino.utils.sim import SimulatorConfig
 
 ###
 # Constants
@@ -318,7 +318,7 @@ def benchmark_run(args: argparse.Namespace):
 
             # Construct simulator configurations based on the solver
             # configurations for the current benchmark configuration
-            sim_configs = SimulatorSettings(dt=args.dt, solver=configs)
+            sim_configs = SimulatorConfig(dt=args.dt, solver=configs)
 
             # Execute the benchmark for the current problem and settings
             run_single_benchmark(

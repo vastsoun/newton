@@ -18,9 +18,10 @@
 import warp as wp
 
 from ..core.bodies import transform_body_inertial_properties
+from ..core.data import DataKamino
 from ..core.math import screw, screw_angular, screw_linear
-from ..core.model import Model, ModelData
-from ..core.state import State
+from ..core.model import ModelKamino
+from ..core.state import StateKamino
 from ..core.types import float32, int32, mat33f, transformf, vec3f, vec6f
 from ..kinematics.joints import compute_joint_pose_and_relative_motion, make_write_joint_data
 
@@ -404,10 +405,6 @@ def _reset_joints_of_select_worlds(
     data_q_j: wp.array(dtype=float32),
     data_dq_j: wp.array(dtype=float32),
     data_lambda_j: wp.array(dtype=float32),
-    data_j_w_j: wp.array(dtype=vec6f),
-    data_j_w_a_j: wp.array(dtype=vec6f),
-    data_j_w_c_j: wp.array(dtype=vec6f),
-    data_j_w_l_j: wp.array(dtype=vec6f),
 ):
     # Retrieve the body index from the 1D thread index
     jid = wp.tid()
@@ -483,13 +480,6 @@ def _reset_joints_of_select_worlds(
         data_dq_j,
     )
 
-    # Reset the joint-related wrenches to zero
-    zero6 = vec6f(0.0)
-    data_j_w_j[jid] = zero6
-    data_j_w_a_j[jid] = zero6
-    data_j_w_c_j[jid] = zero6
-    data_j_w_l_j[jid] = zero6
-
     # If requested, reset the joint constraint reactions to zero
     if reset_constraints:
         for j in range(num_dynamic_cts):
@@ -510,7 +500,7 @@ def _reset_joints_of_select_worlds(
 
 
 def reset_time(
-    model: Model,
+    model: ModelKamino,
     time: wp.array,
     steps: wp.array,
     world_mask: wp.array,
@@ -529,7 +519,7 @@ def reset_time(
 
 
 def reset_body_net_wrenches(
-    model: Model,
+    model: ModelKamino,
     body_w: wp.array,
     world_mask: wp.array,
 ):
@@ -555,7 +545,7 @@ def reset_body_net_wrenches(
 
 
 def reset_joint_constraint_reactions(
-    model: Model,
+    model: ModelKamino,
     lambda_j: wp.array,
     world_mask: wp.array,
 ):
@@ -566,7 +556,7 @@ def reset_joint_constraint_reactions(
     to clear out any accumulated reaction forces from the previous step.
 
     Args:
-        model (Model):
+        model (ModelKamino):
             The model container holding the time-invariant data of the simulation.
         lambda_j (wp.array):
             The array of joint constraint reaction forces/torques.\n
@@ -597,8 +587,8 @@ def reset_joint_constraint_reactions(
 
 
 def reset_state_to_model_default(
-    model: Model,
-    state_out: State,
+    model: ModelKamino,
+    state_out: StateKamino,
     world_mask: wp.array,
 ):
     """
@@ -606,9 +596,9 @@ def reset_state_to_model_default(
     in the model, but only for the worlds specified by the `world_mask`.
 
     Args:
-        model (Model):
+        model (ModelKamino):
             Input model container holding the time-invariant data of the system.
-        state_out (State):
+        state_out (StateKamino):
             Output state container to be reset to the model's default state.
         world_mask (wp.array):
             Array of per-world flags indicating which worlds should be reset.\n
@@ -624,8 +614,8 @@ def reset_state_to_model_default(
 
 
 def reset_state_from_bodies_state(
-    model: Model,
-    state_out: State,
+    model: ModelKamino,
+    state_out: StateKamino,
     world_mask: wp.array,
     bodies_q: wp.array,
     bodies_u: wp.array,
@@ -635,9 +625,9 @@ def reset_state_from_bodies_state(
     The result is stored in the provided `state_out` container.
 
     Args:
-        model (Model):
+        model (ModelKamino):
             Input model container holding the time-invariant data of the system.
-        state_out (State):
+        state_out (StateKamino):
             Output state container to be reset to the model's default state.
         world_mask (wp.array):
             Array of per-world flags indicating which worlds should be reset.\n
@@ -698,8 +688,8 @@ def reset_state_from_bodies_state(
 
 
 def reset_state_from_base_state(
-    model: Model,
-    state_out: State,
+    model: ModelKamino,
+    state_out: StateKamino,
     world_mask: wp.array,
     base_q: wp.array,
     base_u: wp.array,
@@ -714,9 +704,9 @@ def reset_state_from_base_state(
     for the relative pose offset.
 
     Args:
-        model (Model):
+        model (ModelKamino):
             Input model container holding the time-invariant data of the system.
-        state_out (State):
+        state_out (StateKamino):
             Output state container to be reset based on the base body states.
         world_mask (wp.array):
             Array of per-world flags indicating which worlds should be reset.\n
@@ -749,9 +739,9 @@ def reset_state_from_base_state(
 
 
 def reset_select_worlds_to_initial_state(
-    model: Model,
+    model: ModelKamino,
     mask: wp.array,
-    data: ModelData,
+    data: DataKamino,
     reset_constraints: bool = True,
 ):
     """
@@ -841,19 +831,15 @@ def reset_select_worlds_to_initial_state(
             data.joints.q_j,
             data.joints.dq_j,
             data.joints.lambda_j,
-            data.joints.j_w_j,
-            data.joints.j_w_a_j,
-            data.joints.j_w_c_j,
-            data.joints.j_w_l_j,
         ],
     )
 
 
 def reset_select_worlds_to_state(
-    model: Model,
-    state: State,
+    model: ModelKamino,
+    state: StateKamino,
     mask: wp.array,
-    data: ModelData,
+    data: DataKamino,
     reset_constraints: bool = True,
 ):
     """
@@ -941,9 +927,5 @@ def reset_select_worlds_to_state(
             data.joints.q_j,
             data.joints.dq_j,
             data.joints.lambda_j,
-            data.joints.j_w_j,
-            data.joints.j_w_a_j,
-            data.joints.j_w_c_j,
-            data.joints.j_w_l_j,
         ],
     )

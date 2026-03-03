@@ -18,7 +18,6 @@
 from __future__ import annotations
 
 import warp as wp
-from warp.context import Devicelike
 
 from ...core.math import FLOAT32_EPS
 from ...core.types import float32, int32
@@ -178,7 +177,7 @@ def llt_sequential_factorize(
     mio: wp.array(dtype=int32),
     A: wp.array(dtype=float32),
     L: wp.array(dtype=float32),
-    device: Devicelike = None,
+    device: wp.DeviceLike = None,
 ):
     """
     Launches the sequential Cholesky factorization kernel for a block partitioned matrix.
@@ -207,7 +206,7 @@ def llt_sequential_solve(
     b: wp.array(dtype=float32),
     y: wp.array(dtype=float32),
     x: wp.array(dtype=float32),
-    device: Devicelike = None,
+    device: wp.DeviceLike = None,
 ):
     """
     Launches the sequential solve kernel using the Cholesky factorization of a block partitioned matrix.
@@ -237,7 +236,7 @@ def llt_sequential_solve_inplace(
     vio: wp.array(dtype=int32),
     L: wp.array(dtype=float32),
     x: wp.array(dtype=float32),
-    device: Devicelike = None,
+    device: wp.DeviceLike = None,
 ):
     """
     Launches the sequential in-place solve kernel using the Cholesky factorization of a block partitioned matrix.

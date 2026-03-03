@@ -20,16 +20,15 @@ from pathlib import Path
 
 import numpy as np
 import warp as wp
-from warp.context import Devicelike
 
 import newton
 import newton.examples
-from newton._src.solvers.kamino.core.builder import ModelBuilder
+from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
 from newton._src.solvers.kamino.examples import get_examples_output_path, run_headless
 from newton._src.solvers.kamino.models.builders.utils import add_ground_box, make_homogeneous_builder
 from newton._src.solvers.kamino.utils import logger as msg
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
-from newton._src.solvers.kamino.utils.sim import SimulationLogger, Simulator, SimulatorSettings, ViewerKamino
+from newton._src.solvers.kamino.utils.sim import SimulationLogger, Simulator, SimulatorConfig, ViewerKamino
 
 ###
 # Example class
@@ -40,7 +39,7 @@ class Example:
     def __init__(
         self,
         usd_model_path: Path,
-        device: Devicelike = None,
+        device: wp.DeviceLike = None,
         num_worlds: int = 1,
         max_steps: int = 1000,
         use_cuda_graph: bool = False,
@@ -66,35 +65,35 @@ class Example:
         # Create a model builder from the imported USD
         msg.notif("Constructing builder from imported USD ...")
         importer = USDImporter()
-        self.builder: ModelBuilder = make_homogeneous_builder(
+        self.builder: ModelBuilderKamino = make_homogeneous_builder(
             num_worlds=num_worlds, build_fn=importer.import_from, load_static_geometry=True, source=usd_model_path
         )
         msg.info("total mass: %f", self.builder.worlds[0].mass_total)
         msg.info("total diag inertia: %f", self.builder.worlds[0].inertia_total)
 
-        # Add a static collision layer and geometry for the plane
+        # Add a static collision geometry for the plane
         if ground:
             for w in range(num_worlds):
-                add_ground_box(self.builder, z_offset=-0.5, world_index=w, layer="world")
+                add_ground_box(self.builder, z_offset=-0.5, world_index=w)
 
         # Set gravity
         for w in range(self.builder.num_worlds):
             self.builder.gravity[w].enabled = gravity
 
-        # Set solver settings
-        settings = SimulatorSettings()
-        settings.dt = self.sim_dt
-        settings.solver.problem.alpha = 0.1
-        settings.solver.padmm.primal_tolerance = 1e-6
-        settings.solver.padmm.dual_tolerance = 1e-6
-        settings.solver.padmm.compl_tolerance = 1e-6
-        settings.solver.padmm.max_iterations = 200
-        settings.solver.padmm.rho_0 = 0.05
-        settings.solver.compute_metrics = logging and not use_cuda_graph
+        # Set solver config
+        config = SimulatorConfig()
+        config.dt = self.sim_dt
+        config.solver.problem.alpha = 0.1
+        config.solver.padmm.primal_tolerance = 1e-6
+        config.solver.padmm.dual_tolerance = 1e-6
+        config.solver.padmm.compl_tolerance = 1e-6
+        config.solver.padmm.max_iterations = 200
+        config.solver.padmm.rho_0 = 0.05
+        config.solver.compute_metrics = logging and not use_cuda_graph
 
         # Create a simulator
         msg.notif("Building the simulator...")
-        self.sim = Simulator(builder=self.builder, settings=settings, device=device)
+        self.sim = Simulator(builder=self.builder, config=config, device=device)
 
         # Initialize the data logger
         self.logger: SimulationLogger | None = None

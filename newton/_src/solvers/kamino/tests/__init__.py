@@ -17,7 +17,6 @@ from dataclasses import dataclass
 
 import numpy as np
 import warp as wp
-from warp.context import Devicelike
 
 __all__ = ["setup_tests", "test_context"]
 
@@ -34,7 +33,7 @@ class TestContext:
     verbose: bool = False
     """ Global default verbosity flag to be used by unit tests """
 
-    device: Devicelike | None = None
+    device: wp.DeviceLike | None = None
     """ Global default device to be used by unit tests """
 
 
@@ -47,7 +46,7 @@ test_context = TestContext()
 ###
 
 
-def setup_tests(verbose: bool = False, device: Devicelike | str | None = None, clear_cache: bool = True):
+def setup_tests(verbose: bool = False, device: wp.DeviceLike | str | None = None, clear_cache: bool = True):
     # Numpy configuration
     np.set_printoptions(
         linewidth=999999, edgeitems=999999, threshold=999999, precision=10, suppress=True

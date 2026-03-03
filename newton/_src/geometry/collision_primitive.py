@@ -34,12 +34,13 @@ Conventions:
 
 Returns (single contact): (distance: float, position: vec3, normal: vec3)
 Returns (multi contact): (distances: vecN, positions: matNx3, normals: vecN or matNx3)
-                        Use wp.inf for unpopulated contact slots.
+                        Use MAXVAL for unpopulated contact slots.
 """
 
-from typing import Any
-
 import warp as wp
+
+from ..core.types import MAXVAL
+from ..math import normalize_with_norm, safe_div
 
 # Local type definitions for use within kernels
 _vec8f = wp.types.vector(8, wp.float32)
@@ -48,19 +49,6 @@ _mat43f = wp.types.matrix((4, 3), wp.float32)
 _mat83f = wp.types.matrix((8, 3), wp.float32)
 
 MINVAL = 1e-15
-
-
-@wp.func
-def safe_div(x: Any, y: Any) -> Any:
-    return x / wp.where(y != 0.0, y, MINVAL)
-
-
-@wp.func
-def normalize_with_norm(x: Any):
-    norm = wp.length(x)
-    if norm == 0.0:
-        return x, 0.0
-    return x / norm, norm
 
 
 @wp.func
@@ -206,7 +194,7 @@ def collide_capsule_capsule(
     cap2_axis: wp.vec3,
     cap2_radius: float,
     cap2_half_length: float,
-) -> tuple[float, wp.vec3, wp.vec3]:
+) -> tuple[wp.vec2, wp.types.matrix((2, 3), wp.float32), wp.vec3]:
     """Core contact geometry calculation for capsule-capsule collision.
 
     Args:
@@ -221,27 +209,76 @@ def collide_capsule_capsule(
 
     Returns:
       Tuple containing:
-        dist: Distance between surfaces (negative if overlapping)
-        pos: Contact position (midpoint between closest surface points)
-        normal: Contact normal vector (from first capsule toward second)
+        contact_dist: Vector of contact distances (MAXVAL for invalid contacts)
+        contact_pos: Matrix of contact positions (one per row)
+        contact_normal: Shared contact normal vector (from capsule 1 toward capsule 2)
     """
+    contact_dist = wp.vec2(MAXVAL, MAXVAL)
+    contact_pos = _mat23f()
+    contact_normal = wp.vec3()
 
-    # TODO(team): parallel axes case
+    # Calculate scaled axes and center difference
+    axis1 = cap1_axis * cap1_half_length
+    axis2 = cap2_axis * cap2_half_length
+    dif = cap1_pos - cap2_pos
 
-    # Calculate capsule segments
-    seg1 = cap1_axis * cap1_half_length
-    seg2 = cap2_axis * cap2_half_length
+    # Compute matrix coefficients and determinant
+    ma = wp.dot(axis1, axis1)
+    mb = -wp.dot(axis1, axis2)
+    mc = wp.dot(axis2, axis2)
+    u = -wp.dot(axis1, dif)
+    v = wp.dot(axis2, dif)
+    det = ma * mc - mb * mb
 
-    # Find closest points between capsule centerlines
-    pt1, pt2 = closest_segment_to_segment_points(
-        cap1_pos - seg1,
-        cap1_pos + seg1,
-        cap2_pos - seg2,
-        cap2_pos + seg2,
-    )
+    # Non-parallel axes: 1 contact
+    if wp.abs(det) >= MINVAL:
+        inv_det = 1.0 / det
+        x1 = (mc * u - mb * v) * inv_det
+        x2 = (ma * v - mb * u) * inv_det
 
-    # Use sphere-sphere collision between closest points
-    return collide_sphere_sphere(pt1, cap1_radius, pt2, cap2_radius)
+        if x1 > 1.0:
+            x1 = 1.0
+            x2 = (v - mb) / mc
+        elif x1 < -1.0:
+            x1 = -1.0
+            x2 = (v + mb) / mc
+
+        if x2 > 1.0:
+            x2 = 1.0
+            x1 = wp.clamp((u - mb) / ma, -1.0, 1.0)
+        elif x2 < -1.0:
+            x2 = -1.0
+            x1 = wp.clamp((u + mb) / ma, -1.0, 1.0)
+
+        # Find nearest points
+        vec1 = cap1_pos + axis1 * x1
+        vec2 = cap2_pos + axis2 * x2
+
+        dist, pos, normal = collide_sphere_sphere(vec1, cap1_radius, vec2, cap2_radius)
+        contact_dist[0] = dist
+        contact_pos[0] = pos
+        contact_normal = normal
+
+    # Parallel axes: 2 contacts (use first contact's normal for both)
+    else:
+        # First contact: positive end of capsule 1
+        vec1 = cap1_pos + axis1
+        x2 = wp.clamp((v - mb) / mc, -1.0, 1.0)
+        vec2 = cap2_pos + axis2 * x2
+        dist, pos, normal = collide_sphere_sphere(vec1, cap1_radius, vec2, cap2_radius)
+        contact_dist[0] = dist
+        contact_pos[0] = pos
+        contact_normal = normal  # Use first contact's normal for both
+
+        # Second contact: negative end of capsule 1
+        vec1 = cap1_pos - axis1
+        x2 = wp.clamp((v + mb) / mc, -1.0, 1.0)
+        vec2 = cap2_pos + axis2 * x2
+        dist, pos, _normal = collide_sphere_sphere(vec1, cap1_radius, vec2, cap2_radius)
+        contact_dist[1] = dist
+        contact_pos[1] = pos
+
+    return contact_dist, contact_pos, contact_normal
 
 
 @wp.func
@@ -339,6 +376,7 @@ def collide_plane_box(
     box_pos: wp.vec3,
     box_rot: wp.mat33,
     box_size: wp.vec3,
+    margin: float = 0.0,
 ) -> tuple[wp.vec4, wp.types.matrix((4, 3), wp.float32), wp.vec3]:
     """Core contact geometry calculation for plane-box collision.
 
@@ -348,10 +386,11 @@ def collide_plane_box(
       box_pos: Center position of the box
       box_rot: Rotation matrix of the box
       box_size: Half-extents of the box along each axis
+      margin: Contact margin for early contact generation (default: 0.0)
 
     Returns:
       Tuple containing:
-        contact_dist: Vector of contact distances (wp.inf for unpopulated contacts)
+        contact_dist: Vector of contact distances (MAXVAL for unpopulated contacts)
         contact_pos: Matrix of contact positions (one per row)
         contact_normal: contact normal vector
     """
@@ -359,11 +398,13 @@ def collide_plane_box(
     corner = wp.vec3()
     center_dist = wp.dot(box_pos - plane_pos, plane_normal)
 
-    dist = wp.vec4(wp.inf)
+    dist = wp.vec4(MAXVAL)
     pos = _mat43f()
 
-    # test all corners, pick bottom 4
+    # Test all corners and keep up to 4 deepest (most negative) contacts.
+    # Track the current worst kept contact by index for O(1) replacement checks.
     ncontact = wp.int32(0)
+    worst_idx = wp.int32(0)
     for i in range(8):
         # get corner in local coordinates
         corner.x = wp.where((i & 1) != 0, box_size.x, -box_size.x)
@@ -373,19 +414,33 @@ def collide_plane_box(
         # get corner in global coordinates relative to box center
         corner = box_rot @ corner
 
-        # compute distance to plane, skip if too far or pointing up
+        # Compute distance to plane and skip corners beyond margin.
         ldist = wp.dot(plane_normal, corner)
-        if center_dist + ldist > 0 or ldist > 0:
+        cdist = center_dist + ldist
+        if cdist > margin:
             continue
 
-        cdist = center_dist + ldist
+        cpos = corner + box_pos - 0.5 * plane_normal * cdist
 
-        dist[ncontact] = cdist
-        pos[ncontact] = corner + box_pos - 0.5 * plane_normal * cdist
-        ncontact += 1
+        if ncontact < 4:
+            dist[ncontact] = cdist
+            pos[ncontact] = cpos
+            if ncontact == 0 or cdist > dist[worst_idx]:
+                worst_idx = ncontact
+            ncontact += 1
+        else:
+            if cdist < dist[worst_idx]:
+                dist[worst_idx] = cdist
+                pos[worst_idx] = cpos
 
-        if ncontact >= 4:
-            break
+                # Recompute worst index (largest distance among kept contacts).
+                worst_idx = 0
+                if dist[1] > dist[worst_idx]:
+                    worst_idx = 1
+                if dist[2] > dist[worst_idx]:
+                    worst_idx = 2
+                if dist[3] > dist[worst_idx]:
+                    worst_idx = 3
 
     return dist, pos, plane_normal
 
@@ -491,7 +546,7 @@ def collide_plane_cylinder(
     """
 
     # Initialize output matrices
-    contact_dist = wp.vec4(wp.inf)
+    contact_dist = wp.vec4(MAXVAL)
     contact_pos = _mat43f()
     contact_count = 0
 
@@ -540,24 +595,26 @@ def collide_plane_cylinder(
     contact_pos[contact_count] = pos2
     contact_count = contact_count + 1
 
-    # Try triangle contact points on side closer to plane
+    # Try two additional side contacts on the end cap closer to plane.
+    # For degenerate configurations (cross product near zero), keep these as MAXVAL.
     prjvec1 = -prjvec * 0.5
     dist3 = dist0 + prjaxis + prjvec1
-    # Compute sideways vector scaled by radius*sqrt(3)/2
     vec1 = wp.cross(vec, axis)
-    vec1 = wp.normalize(vec1) * (cylinder_radius * wp.sqrt(3.0) * 0.5)
+    vec1_len_sqr = wp.dot(vec1, vec1)
+    if vec1_len_sqr >= 1e-12:
+        vec1 = vec1 * safe_div(cylinder_radius * wp.sqrt(3.0) * 0.5, wp.sqrt(vec1_len_sqr))
 
-    # Add contact point A - adjust to closest side
-    pos3 = cylinder_center + vec1 + axis - vec * 0.5 - n * (dist3 * 0.5)
-    contact_dist[contact_count] = dist3
-    contact_pos[contact_count] = pos3
-    contact_count = contact_count + 1
+        # Add contact point A - adjust to closest side
+        pos3 = cylinder_center + vec1 + axis - vec * 0.5 - n * (dist3 * 0.5)
+        contact_dist[contact_count] = dist3
+        contact_pos[contact_count] = pos3
+        contact_count = contact_count + 1
 
-    # Add contact point B - adjust to closest side
-    pos4 = cylinder_center - vec1 + axis - vec * 0.5 - n * (dist3 * 0.5)
-    contact_dist[contact_count] = dist3
-    contact_pos[contact_count] = pos4
-    contact_count = contact_count + 1
+        # Add contact point B - adjust to closest side
+        pos4 = cylinder_center - vec1 + axis - vec * 0.5 - n * (dist3 * 0.5)
+        contact_dist[contact_count] = dist3
+        contact_pos[contact_count] = pos4
+        contact_count = contact_count + 1
 
     return contact_dist, contact_pos, n
 
@@ -619,7 +676,7 @@ def collide_box_box(
 
     Returns:
       Tuple containing:
-        contact_dist: Vector of contact distances (wp.inf for unpopulated contacts)
+        contact_dist: Vector of contact distances (MAXVAL for unpopulated contacts)
         contact_pos: Matrix of contact positions (one per row)
         contact_normals: Matrix of contact normal vectors (one per row)
     """
@@ -627,7 +684,7 @@ def collide_box_box(
     # Initialize output matrices
     contact_dist = _vec8f()
     for i in range(8):
-        contact_dist[i] = wp.inf
+        contact_dist[i] = MAXVAL
     contact_pos = _mat83f()
     contact_normals = _mat83f()
     contact_count = 0
@@ -1133,7 +1190,7 @@ def collide_capsule_box(
 
     Returns:
       Tuple containing:
-        contact_dist: Vector of contact distances (wp.inf for unpopulated contacts)
+        contact_dist: Vector of contact distances (MAXVAL for unpopulated contacts)
         contact_pos: Matrix of contact positions (one per row)
         contact_normals: Matrix of contact normal vectors (one per row)
     """
@@ -1308,7 +1365,7 @@ def collide_capsule_box(
         c1 = wp.where((ee2 > 0) == w_neg, 1, 2)
 
     if cltype == -4:  # invalid type
-        return wp.vec2(wp.inf), _mat23f(), _mat23f()
+        return wp.vec2(MAXVAL), _mat23f(), _mat23f()
 
     if cltype >= 0 and cltype // 3 != 1:  # closest to a corner of the box
         c1 = axisdir ^ clcorner
@@ -1439,7 +1496,7 @@ def collide_capsule_box(
         # collide with sphere using core function
         dist2, pos2, normal2 = collide_sphere_box(s2_pos_g, capsule_radius, box_pos, box_rot, box_size)
     else:
-        dist2 = wp.inf
+        dist2 = MAXVAL
         pos2 = wp.vec3()
         normal2 = wp.vec3()
 

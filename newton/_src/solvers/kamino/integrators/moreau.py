@@ -25,7 +25,8 @@ from collections.abc import Callable
 import warp as wp
 
 from ....core.types import override
-from ..core.control import Control as ControlKamino
+from ..core.control import ControlKamino
+from ..core.data import DataKamino
 from ..core.math import (
     compute_body_pose_update_with_logmap,
     compute_body_twist_update_with_eom,
@@ -33,9 +34,8 @@ from ..core.math import (
     screw_angular,
     screw_linear,
 )
-from ..core.model import Model as ModelKamino
-from ..core.model import ModelData as DataKamino
-from ..core.state import State as StateKamino
+from ..core.model import ModelKamino
+from ..core.state import StateKamino
 from ..core.types import (
     float32,
     int32,
@@ -45,9 +45,9 @@ from ..core.types import (
     vec4f,
     vec6f,
 )
-from ..geometry.contacts import Contacts as ContactsKamino
+from ..geometry.contacts import ContactsKamino
 from ..geometry.detector import CollisionDetector
-from ..kinematics.limits import Limits as LimitsKamino
+from ..kinematics.limits import LimitsKamino
 from .integrator import IntegratorBase
 
 ###

@@ -17,11 +17,11 @@
 Factory methods for building 'basic' models.
 
 This module provides a set of functions to create simple mechanical assemblies
-using the ModelBuilder interface. These include fundamental configurations such
+using the ModelBuilderKamino interface. These include fundamental configurations such
 as a box on a plane, a box pendulum, a cartpole, and various linked box systems.
 
 Each function constructs a specific model by adding rigid bodies, joints,
-and collision geometries to a ModelBuilder instance. The models are designed
+and collision geometries to a ModelBuilderKamino instance. The models are designed
 to serve as foundational examples for testing and demonstration purposes,
 and each features a certain subset of ill-conditioned dynamics.
 """
@@ -30,7 +30,7 @@ import math
 
 import warp as wp
 
-from ...core import ModelBuilder, inertia
+from ...core import ModelBuilderKamino, inertia
 from ...core.joints import JointActuationType, JointDoFType
 from ...core.math import FLOAT32_MAX, FLOAT32_MIN, I_3
 from ...core.shapes import BoxShape, SphereShape
@@ -57,17 +57,17 @@ __all__ = [
 
 
 def build_box_on_plane(
-    builder: ModelBuilder | None = None,
+    builder: ModelBuilderKamino | None = None,
     z_offset: float = 0.0,
     ground: bool = True,
     new_world: bool = True,
     world_index: int = 0,
-) -> ModelBuilder:
+) -> ModelBuilderKamino:
     """
     Constructs a basic model of a free-floating 'box' body and a ground box geom.
 
     Args:
-        builder (ModelBuilder | None):
+        builder (ModelBuilderKamino | None):
             An optional existing model builder to populate.\n
             If `None`, a new builder is created.
         z_offset (float):
@@ -86,11 +86,11 @@ def build_box_on_plane(
             Defaults to `0`.
 
     Returns:
-        ModelBuilder: The populated model builder.
+        ModelBuilderKamino: The populated model builder.
     """
     # Create a new builder if none is provided
     if builder is None:
-        _builder = ModelBuilder(default_world=False)
+        _builder = ModelBuilderKamino(default_world=False)
     else:
         _builder = builder
 
@@ -107,12 +107,12 @@ def build_box_on_plane(
         world_index=world_index,
     )
 
-    # Add a collision layer and geometries
-    _builder.add_collision_geometry(body=bid0, shape=BoxShape(0.2, 0.2, 0.2), world_index=world_index)
+    # Add collision geometries
+    _builder.add_geometry(body=bid0, shape=BoxShape(0.2, 0.2, 0.2), world_index=world_index)
 
-    # Add a static collision layer and geometry for the plane
+    # Add a static collision geometry for the plane
     if ground:
-        _builder.add_collision_geometry(
+        _builder.add_geometry(
             body=-1,
             shape=BoxShape(20.0, 20.0, 1.0),
             offset=transformf(0.0, 0.0, -0.5, 0.0, 0.0, 0.0, 1.0),
@@ -124,21 +124,21 @@ def build_box_on_plane(
 
 
 def build_box_pendulum(
-    builder: ModelBuilder | None = None,
+    builder: ModelBuilderKamino | None = None,
     z_offset: float = 0.7,
     ground: bool = True,
     new_world: bool = True,
     dynamic_joints: bool = False,
     implicit_pd: bool = False,
     world_index: int = 0,
-) -> ModelBuilder:
+) -> ModelBuilderKamino:
     """
     Constructs a basic model of a single box pendulum body with a unary revolute joint.
 
     This version initializes the pendulum in a horizontal configuration.
 
     Args:
-        builder (ModelBuilder | None):
+        builder (ModelBuilderKamino | None):
             An optional existing model builder to populate.\n
             If `None`, a new builder is created.
         z_offset (float):
@@ -157,11 +157,11 @@ def build_box_pendulum(
             Defaults to `0`.
 
     Returns:
-        ModelBuilder: The populated model builder.
+        ModelBuilderKamino: The populated model builder.
     """
     # Create a new builder if none is provided
     if builder is None:
-        _builder = ModelBuilder(default_world=False)
+        _builder = ModelBuilderKamino(default_world=False)
     else:
         _builder = builder
 
@@ -203,17 +203,17 @@ def build_box_pendulum(
         world_index=world_index,
     )
 
-    # Add a collision layer and geometries
-    _builder.add_collision_geometry(
+    # Add collision geometries
+    _builder.add_geometry(
         name="box",
         body=bid0,
         shape=BoxShape(d, w, h),
         world_index=world_index,
     )
 
-    # Add a static collision layer and geometry for the plane
+    # Add a static collision geometry for the plane
     if ground:
-        _builder.add_collision_geometry(
+        _builder.add_geometry(
             name="ground",
             body=-1,
             shape=BoxShape(20.0, 20.0, 1.0),
@@ -226,19 +226,19 @@ def build_box_pendulum(
 
 
 def build_box_pendulum_vertical(
-    builder: ModelBuilder | None = None,
+    builder: ModelBuilderKamino | None = None,
     z_offset: float = 0.7,
     ground: bool = True,
     new_world: bool = True,
     world_index: int = 0,
-) -> ModelBuilder:
+) -> ModelBuilderKamino:
     """
     Constructs a basic model of a single box pendulum body with a unary revolute joint.
 
     This version initializes the pendulum in a vertical configuration.
 
     Args:
-        builder (ModelBuilder | None):
+        builder (ModelBuilderKamino | None):
             An optional existing model builder to populate.\n
             If `None`, a new builder is created.
         z_offset (float):
@@ -257,11 +257,11 @@ def build_box_pendulum_vertical(
             Defaults to `0`.
 
     Returns:
-        ModelBuilder: The populated model builder.
+        ModelBuilderKamino: The populated model builder.
     """
     # Create a new builder if none is provided
     if builder is None:
-        _builder = ModelBuilder(default_world=False)
+        _builder = ModelBuilderKamino(default_world=False)
     else:
         _builder = builder
 
@@ -299,17 +299,17 @@ def build_box_pendulum_vertical(
         world_index=world_index,
     )
 
-    # Add a collision layer and geometries
-    _builder.add_collision_geometry(
+    # Add collision geometries
+    _builder.add_geometry(
         name="box",
         body=bid0,
         shape=BoxShape(d, w, h),
         world_index=world_index,
     )
 
-    # Add a static collision layer and geometry for the plane
+    # Add a static collision geometry for the plane
     if ground:
-        _builder.add_collision_geometry(
+        _builder.add_geometry(
             name="ground",
             body=-1,
             shape=BoxShape(20.0, 20.0, 1.0),
@@ -322,18 +322,18 @@ def build_box_pendulum_vertical(
 
 
 def build_cartpole(
-    builder: ModelBuilder | None = None,
+    builder: ModelBuilderKamino | None = None,
     z_offset: float = 0.0,
     ground: bool = True,
     new_world: bool = True,
     limits: bool = True,
     world_index: int = 0,
-) -> ModelBuilder:
+) -> ModelBuilderKamino:
     """
     Constructs a basic model of a cartpole mounted onto a rail.
 
     Args:
-        builder (ModelBuilder | None):
+        builder (ModelBuilderKamino | None):
             An optional existing model builder to populate.\n
             If `None`, a new builder is created.
         z_offset (float):
@@ -352,11 +352,11 @@ def build_cartpole(
             Defaults to `0`.
 
     Returns:
-        ModelBuilder: The populated model builder.
+        ModelBuilderKamino: The populated model builder.
     """
     # Create a new builder if none is provided
     if builder is None:
-        _builder = ModelBuilder(default_world=False)
+        _builder = ModelBuilderKamino(default_world=False)
     else:
         _builder = builder
 
@@ -422,28 +422,25 @@ def build_cartpole(
         world_index=world_index,
     )
 
-    # Add a collision layer and geometries
-    _builder.add_collision_geometry(
+    # Add collision geometries
+    _builder.add_geometry(
         name="cart",
-        layer="primary",
         body=bid0,
         shape=BoxShape(*dims_cart),
         group=2,
         collides=2,
         world_index=world_index,
     )
-    _builder.add_collision_geometry(
+    _builder.add_geometry(
         name="pole",
-        layer="primary",
         body=bid1,
         shape=BoxShape(*dims_pole),
         group=3,
         collides=3,
         world_index=world_index,
     )
-    _builder.add_collision_geometry(
+    _builder.add_geometry(
         name="rail",
-        layer="world",
         body=-1,
         shape=BoxShape(*dims_rail),
         offset=transformf(0.0, 0.0, z_offset, 0.0, 0.0, 0.0, 1.0),
@@ -452,11 +449,10 @@ def build_cartpole(
         world_index=world_index,
     )
 
-    # Add a static collision layer and geometry for the plane
+    # Add a static collision geometry for the plane
     if ground:
-        _builder.add_collision_geometry(
+        _builder.add_geometry(
             name="ground",
-            layer="world",
             body=-1,
             shape=BoxShape(20.0, 20.0, 1.0),
             offset=transformf(0.0, 0.0, -1.0 + z_offset, 0.0, 0.0, 0.0, 1.0),
@@ -470,19 +466,19 @@ def build_cartpole(
 
 
 def build_boxes_hinged(
-    builder: ModelBuilder | None = None,
+    builder: ModelBuilderKamino | None = None,
     z_offset: float = 0.0,
     ground: bool = True,
     dynamic_joints: bool = False,
     implicit_pd: bool = False,
     new_world: bool = True,
     world_index: int = 0,
-) -> ModelBuilder:
+) -> ModelBuilderKamino:
     """
     Constructs a basic model of a two floating boxes connected via revolute joint.
 
     Args:
-        builder (ModelBuilder | None):
+        builder (ModelBuilderKamino | None):
             An optional existing model builder to populate.\n
             If `None`, a new builder is created.
         z_offset (float):
@@ -501,11 +497,11 @@ def build_boxes_hinged(
             Defaults to `0`.
 
     Returns:
-        ModelBuilder: The populated model builder.
+        ModelBuilderKamino: The populated model builder.
     """
     # Create a new builder if none is provided
     if builder is None:
-        _builder = ModelBuilder(default_world=False)
+        _builder = ModelBuilderKamino(default_world=False)
     else:
         _builder = builder
 
@@ -558,17 +554,17 @@ def build_boxes_hinged(
         world_index=world_index,
     )
 
-    # Add a collision layer and geometries
-    _builder.add_collision_geometry(
+    # Add collision geometries
+    _builder.add_geometry(
         name="base/box", body=bid0, shape=BoxShape(d, w, h), group=2, collides=3, world_index=world_index
     )
-    _builder.add_collision_geometry(
+    _builder.add_geometry(
         name="follower/box", body=bid1, shape=BoxShape(d, w, h), group=3, collides=5, world_index=world_index
     )
 
-    # Add a static collision layer and geometry for the plane
+    # Add a static collision geometry for the plane
     if ground:
-        _builder.add_collision_geometry(
+        _builder.add_geometry(
             name="ground",
             body=-1,
             shape=BoxShape(20.0, 20.0, 1.0),
@@ -583,12 +579,12 @@ def build_boxes_hinged(
 
 
 def build_boxes_nunchaku(
-    builder: ModelBuilder | None = None,
+    builder: ModelBuilderKamino | None = None,
     z_offset: float = 0.0,
     ground: bool = True,
     new_world: bool = True,
     world_index: int = 0,
-) -> ModelBuilder:
+) -> ModelBuilderKamino:
     """
     Constructs a basic model of a faux nunchaku consisting of
     two boxes and one sphere connected via spherical joints.
@@ -596,7 +592,7 @@ def build_boxes_nunchaku(
     This version initializes the nunchaku in a horizontal configuration.
 
     Args:
-        builder (ModelBuilder | None):
+        builder (ModelBuilderKamino | None):
             An optional existing model builder to populate.\n
             If `None`, a new builder is created.
         z_offset (float):
@@ -615,11 +611,11 @@ def build_boxes_nunchaku(
             Defaults to `0`.
 
     Returns:
-        ModelBuilder: The populated model builder.
+        ModelBuilderKamino: The populated model builder.
     """
     # Create a new builder if none is provided
     if builder is None:
-        _builder = ModelBuilder(default_world=False)
+        _builder = ModelBuilderKamino(default_world=False)
     else:
         _builder = builder
 
@@ -696,20 +692,20 @@ def build_boxes_nunchaku(
         world_index=world_index,
     )
 
-    # Add a collision layer and geometries
-    _builder.add_collision_geometry(
+    # Add collision geometries
+    _builder.add_geometry(
         name="box_bottom", body=bid0, shape=BoxShape(d, w, h), group=2, collides=3, world_index=world_index
     )
-    _builder.add_collision_geometry(
+    _builder.add_geometry(
         name="sphere_middle", body=bid1, shape=SphereShape(r), group=3, collides=5, world_index=world_index
     )
-    _builder.add_collision_geometry(
+    _builder.add_geometry(
         name="box_top", body=bid2, shape=BoxShape(d, w, h), group=2, collides=3, world_index=world_index
     )
 
-    # Add a static collision layer and geometry for the plane
+    # Add a static collision geometry for the plane
     if ground:
-        _builder.add_collision_geometry(
+        _builder.add_geometry(
             name="ground",
             body=-1,
             shape=BoxShape(20.0, 20.0, 1.0),
@@ -724,12 +720,12 @@ def build_boxes_nunchaku(
 
 
 def build_boxes_nunchaku_vertical(
-    builder: ModelBuilder | None = None,
+    builder: ModelBuilderKamino | None = None,
     z_offset: float = 0.0,
     ground: bool = True,
     new_world: bool = True,
     world_index: int = 0,
-) -> ModelBuilder:
+) -> ModelBuilderKamino:
     """
     Constructs a basic model of a faux nunchaku consisting of
     two boxes and one sphere connected via spherical joints.
@@ -737,7 +733,7 @@ def build_boxes_nunchaku_vertical(
     This version initializes the nunchaku in a vertical configuration.
 
     Args:
-        builder (ModelBuilder | None):
+        builder (ModelBuilderKamino | None):
             An optional existing model builder to populate.\n
             If `None`, a new builder is created.
         z_offset (float):
@@ -756,11 +752,11 @@ def build_boxes_nunchaku_vertical(
             Defaults to `0`.
 
     Returns:
-        ModelBuilder: The populated model builder.
+        ModelBuilderKamino: The populated model builder.
     """
     # Create a new builder if none is provided
     if builder is None:
-        _builder = ModelBuilder(default_world=False)
+        _builder = ModelBuilderKamino(default_world=False)
     else:
         _builder = builder
 
@@ -837,20 +833,20 @@ def build_boxes_nunchaku_vertical(
         world_index=world_index,
     )
 
-    # Add a collision layer and geometries
-    _builder.add_collision_geometry(
+    # Add collision geometries
+    _builder.add_geometry(
         name="box_bottom", body=bid0, shape=BoxShape(d, w, h), group=2, collides=3, world_index=world_index
     )
-    _builder.add_collision_geometry(
+    _builder.add_geometry(
         name="sphere_middle", body=bid1, shape=SphereShape(r), group=3, collides=5, world_index=world_index
     )
-    _builder.add_collision_geometry(
+    _builder.add_geometry(
         name="box_top", body=bid2, shape=BoxShape(d, w, h), group=2, collides=3, world_index=world_index
     )
 
-    # Add a static collision layer and geometry for the plane
+    # Add a static collision geometry for the plane
     if ground:
-        _builder.add_collision_geometry(
+        _builder.add_geometry(
             name="ground",
             body=-1,
             shape=BoxShape(20.0, 20.0, 1.0),
@@ -865,9 +861,10 @@ def build_boxes_nunchaku_vertical(
 
 
 def build_boxes_fourbar(
-    builder: ModelBuilder | None = None,
+    builder: ModelBuilderKamino | None = None,
     z_offset: float = 0.0,
     fixedbase: bool = False,
+    floatingbase: bool = False,
     limits: bool = True,
     ground: bool = True,
     dynamic_joints: bool = False,
@@ -875,12 +872,13 @@ def build_boxes_fourbar(
     verbose: bool = False,
     new_world: bool = True,
     world_index: int = 0,
-) -> ModelBuilder:
+    actuator_ids: list[int] | None = None,
+) -> ModelBuilderKamino:
     """
     Constructs a basic model of a four-bar linkage.
 
     Args:
-        builder (ModelBuilder | None):
+        builder (ModelBuilderKamino | None):
             An optional existing model builder to populate.\n
             If `None`, a new builder is created.
         z_offset (float):
@@ -899,17 +897,23 @@ def build_boxes_fourbar(
             Defaults to `0`.
 
     Returns:
-        ModelBuilder: A model builder containing the four-bar linkage.
+        ModelBuilderKamino: A model builder containing the four-bar linkage.
     """
     # Create a new builder if none is provided
     if builder is None:
-        _builder = ModelBuilder(default_world=False)
+        _builder = ModelBuilderKamino(default_world=False)
     else:
         _builder = builder
 
     # Create a new world in the builder if requested or if a new builder was created
     if new_world or builder is None:
         world_index = _builder.add_world(name="boxes_fourbar")
+
+    # Set default actuator IDs if none are provided
+    if actuator_ids is None:
+        actuator_ids = [1, 3]
+    elif not isinstance(actuator_ids, list):
+        raise TypeError("actuator_ids, if specified, must be provided as a list of integers.")
 
     ###
     # Base Parameters
@@ -1060,10 +1064,25 @@ def build_boxes_fourbar(
             world_index=world_index,
         )
 
+    if floatingbase:
+        _builder.add_joint(
+            name="world_to_link1",
+            dof_type=JointDoFType.FREE,
+            act_type=JointActuationType.FORCE if 0 in actuator_ids else JointActuationType.PASSIVE,
+            bid_B=-1,
+            bid_F=bid1,
+            B_r_Bj=vec3f(0.0),
+            F_r_Fj=vec3f(0.0),
+            X_j=I_3,
+            world_index=world_index,
+        )
+
+    joint_1_type_if_implicit_pd = JointActuationType.POSITION_VELOCITY if implicit_pd else JointActuationType.FORCE
+    joint_1_type = joint_1_type_if_implicit_pd if 1 in actuator_ids else JointActuationType.PASSIVE
     _builder.add_joint(
         name="link1_to_link2",
         dof_type=JointDoFType.REVOLUTE,
-        act_type=JointActuationType.POSITION_VELOCITY if implicit_pd else JointActuationType.FORCE,
+        act_type=joint_1_type,
         bid_B=bid1,
         bid_F=bid2,
         B_r_Bj=r_j1 - r_b1,
@@ -1081,7 +1100,7 @@ def build_boxes_fourbar(
     _builder.add_joint(
         name="link2_to_link3",
         dof_type=JointDoFType.REVOLUTE,
-        act_type=JointActuationType.PASSIVE,
+        act_type=JointActuationType.FORCE if 2 in actuator_ids else JointActuationType.PASSIVE,
         bid_B=bid2,
         bid_F=bid3,
         B_r_Bj=r_j2 - r_b2,
@@ -1095,7 +1114,7 @@ def build_boxes_fourbar(
     _builder.add_joint(
         name="link3_to_link4",
         dof_type=JointDoFType.REVOLUTE,
-        act_type=JointActuationType.FORCE,
+        act_type=JointActuationType.FORCE if 3 in actuator_ids else JointActuationType.PASSIVE,
         bid_B=bid3,
         bid_F=bid4,
         B_r_Bj=r_j3 - r_b3,
@@ -1109,7 +1128,7 @@ def build_boxes_fourbar(
     _builder.add_joint(
         name="link4_to_link1",
         dof_type=JointDoFType.REVOLUTE,
-        act_type=JointActuationType.PASSIVE,
+        act_type=JointActuationType.FORCE if 4 in actuator_ids else JointActuationType.PASSIVE,
         bid_B=bid4,
         bid_F=bid1,
         B_r_Bj=r_j4 - r_b4,
@@ -1124,15 +1143,15 @@ def build_boxes_fourbar(
     # Geometries
     ###
 
-    # Add a collision layer and geometries
-    _builder.add_collision_geometry(name="box_1", body=bid1, shape=BoxShape(d_1, w_1, h_1), world_index=world_index)
-    _builder.add_collision_geometry(name="box_2", body=bid2, shape=BoxShape(d_2, w_2, h_2), world_index=world_index)
-    _builder.add_collision_geometry(name="box_3", body=bid3, shape=BoxShape(d_3, w_3, h_3), world_index=world_index)
-    _builder.add_collision_geometry(name="box_4", body=bid4, shape=BoxShape(d_4, w_4, h_4), world_index=world_index)
+    # Add collision geometries
+    _builder.add_geometry(name="box_1", body=bid1, shape=BoxShape(d_1, w_1, h_1), world_index=world_index)
+    _builder.add_geometry(name="box_2", body=bid2, shape=BoxShape(d_2, w_2, h_2), world_index=world_index)
+    _builder.add_geometry(name="box_3", body=bid3, shape=BoxShape(d_3, w_3, h_3), world_index=world_index)
+    _builder.add_geometry(name="box_4", body=bid4, shape=BoxShape(d_4, w_4, h_4), world_index=world_index)
 
-    # Add a static collision layer and geometry for the plane
+    # Add a static collision geometry for the plane
     if ground:
-        _builder.add_collision_geometry(
+        _builder.add_geometry(
             name="ground",
             body=-1,
             shape=BoxShape(20.0, 20.0, 1.0),
@@ -1148,16 +1167,16 @@ def make_basics_heterogeneous_builder(
     ground: bool = True,
     dynamic_joints: bool = False,
     implicit_pd: bool = False,
-) -> ModelBuilder:
+) -> ModelBuilderKamino:
     """
     Creates a multi-world builder with different worlds in each model.
 
     This function constructs a model builder containing all basic models.
 
     Returns:
-        ModelBuilder: The constructed model builder.
+        ModelBuilderKamino: The constructed model builder.
     """
-    builder = ModelBuilder(default_world=False)
+    builder = ModelBuilderKamino(default_world=False)
     builder.add_builder(build_boxes_fourbar(ground=ground, dynamic_joints=dynamic_joints, implicit_pd=implicit_pd))
     builder.add_builder(build_boxes_nunchaku(ground=ground))
     builder.add_builder(build_boxes_hinged(ground=ground, dynamic_joints=dynamic_joints, implicit_pd=implicit_pd))

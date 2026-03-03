@@ -24,11 +24,21 @@ import numpy as np
 import warp as wp
 
 from .....core.types import nparray
+from .....geometry.flags import ShapeFlags
+from .....usd import utils as usd_utils
+from .....utils.topology import topological_sort_undirected
 from ...core.bodies import RigidBodyDescriptor
-from ...core.builder import ModelBuilder
-from ...core.geometry import CollisionGeometryDescriptor, GeometryDescriptor
+from ...core.builder import ModelBuilderKamino
+from ...core.geometry import GeometryDescriptor
 from ...core.gravity import GravityDescriptor
-from ...core.joints import JointActuationType, JointDescriptor, JointDoFType
+from ...core.joints import (
+    JOINT_QMAX,
+    JOINT_QMIN,
+    JOINT_TAUMAX,
+    JointActuationType,
+    JointDescriptor,
+    JointDoFType,
+)
 from ...core.materials import (
     DEFAULT_DENSITY,
     DEFAULT_FRICTION,
@@ -38,7 +48,6 @@ from ...core.materials import (
 )
 from ...core.math import I_3, screw
 from ...core.shapes import (
-    MESH_MAXHULLVERT,
     BoxShape,
     CapsuleShape,
     ConeShape,
@@ -46,7 +55,6 @@ from ...core.shapes import (
     EllipsoidShape,
     MeshShape,
     PlaneShape,
-    # SDFShape
     SphereShape,
 )
 from ...core.types import Axis, AxisType, Transform, quatf, transformf, vec3f
@@ -106,7 +114,7 @@ class USDImporter:
         """
         if cls.Sdf is None:
             try:
-                from pxr import Sdf, Usd, UsdGeom, UsdPhysics  # noqa: PLC0415
+                from pxr import Sdf, Usd, UsdGeom, UsdPhysics
 
                 cls.Sdf = Sdf
                 cls.Usd = Usd
@@ -261,6 +269,14 @@ class USDImporter:
         if "PhysicsRigidBodyAPI" in parent.GetAppliedSchemas():
             return parent
         return USDImporter._get_prim_parent_body(parent)
+
+    @staticmethod
+    def _prim_is_rigid_body(prim) -> bool:
+        if prim is None:
+            return False
+        if "PhysicsRigidBodyAPI" in prim.GetAppliedSchemas():
+            return True
+        return False
 
     @staticmethod
     def _get_material_default_override(prim) -> bool:
@@ -428,6 +444,13 @@ class USDImporter:
         return int(max_contacts) if max_contacts is not None else 0
 
     @staticmethod
+    def _warn_invalid_desc(path, descriptor) -> bool:
+        if not descriptor.isValid:
+            msg.warning(f'Invalid {type(descriptor).__name__} descriptor for prim at path "{path}".')
+            return True
+        return False
+
+    @staticmethod
     def _material_pair_properties_from(first: MaterialDescriptor, second: MaterialDescriptor) -> MaterialPairProperties:
         pair_properties = MaterialPairProperties()
         pair_properties.restitution = 0.5 * (first.restitution + second.restitution)
@@ -511,6 +534,7 @@ class USDImporter:
         mass_unit: float = 1.0,
         offset_xform: wp.transformf | None = None,
         only_load_enabled_rigid_bodies: bool = True,
+        prim_path_names: bool = False,
     ) -> RigidBodyDescriptor | None:
         # Skip this body if it is not enable and we are only loading enabled rigid bodies
         if not rigid_body_spec.rigidBodyEnabled and only_load_enabled_rigid_bodies:
@@ -543,10 +567,15 @@ class USDImporter:
         ###
 
         # Retrieve the name and UID of the rigid body from the prim
+        path = self._get_prim_path(rigid_body_prim)
         name = self._get_prim_name(rigid_body_prim)
         uid = self._get_prim_uid(rigid_body_prim)
-        msg.debug(f"name: {name}")
-        msg.debug(f"uid: {uid}")
+
+        # Use the explicit prim path as the geometry name if specified
+        name = path if prim_path_names else name
+        msg.debug(f"[Body]: path: {path}")
+        msg.debug(f"[Body]: uid: {uid}")
+        msg.debug(f"[Body]: name: {name}")
 
         ###
         # PhysicsRigidBodyAPI
@@ -580,13 +609,12 @@ class USDImporter:
         m_i_default = 0.0
         i_r_com_i_default = np.zeros(3, dtype=np.float32)
         i_I_i_default = np.zeros((3, 3), dtype=np.float32)
-        i_q_i_pa_default = np.array([0.0, 0.0, 0.0, 1.0], dtype=np.float32)
 
         # Extract the mass, center of mass, diagonal inertia, and principal axes from the prim
         m_i = mass_unit * self._parse_float(rigid_body_prim, "physics:mass", default=m_i_default)
         i_r_com_i = distance_unit * self._parse_vec(rigid_body_prim, "physics:centerOfMass", default=i_r_com_i_default)
         i_I_i_diag = inertia_unit * self._parse_vec(rigid_body_prim, "physics:diagonalInertia", default=i_I_i_default)
-        i_q_i_pa = self._parse_quat(rigid_body_prim, "physics:principalAxes", default=i_q_i_pa_default)
+        i_q_i_pa = usd_utils.get_quat(rigid_body_prim, "physics:principalAxes", wp.quat_identity())
         msg.debug(f"m_i: {m_i}")
         msg.debug(f"i_r_com_i: {i_r_com_i}")
         msg.debug(f"i_I_i_diag: {i_I_i_diag}")
@@ -616,13 +644,14 @@ class USDImporter:
         # TODO: Should we handle massless bodies?
 
         # Compute the moment of inertia matrix (in body-local coordinates) from the diagonal inertia and principal axes
-        i_I_i_diag = wp.diag(vec3f(i_I_i_diag))
-        i_q_i_pa = wp.normalize(quatf(i_q_i_pa))
-        R_i_pa = wp.quat_to_matrix(i_q_i_pa)
-        i_I_i = R_i_pa @ i_I_i_diag @ wp.transpose(R_i_pa)
+        if np.linalg.norm(i_I_i_diag) > 0.0:
+            R_i_pa = np.array(wp.quat_to_matrix(i_q_i_pa), dtype=np.float32).reshape(3, 3)
+            i_I_i = R_i_pa @ np.diag(i_I_i_diag) @ R_i_pa.T
+            i_I_i = wp.mat33(i_I_i)
+        else:
+            i_I_i = wp.mat33(0.0)
         msg.debug(f"i_I_i_diag:\n{i_I_i_diag}")
         msg.debug(f"i_q_i_pa: {i_q_i_pa}")
-        msg.debug(f"R_i_pa:\n{R_i_pa}")
         msg.debug(f"i_I_i:\n{i_I_i}")
 
         # Compute the center of mass in world coordinates
@@ -645,6 +674,7 @@ class USDImporter:
             name=name,
             uid=uid,
             m_i=m_i,
+            i_r_com_i=i_r_com_i,
             i_I_i=i_I_i,
             q_i_0=q_i_0,
             u_i_0=u_i_0,
@@ -675,10 +705,10 @@ class USDImporter:
         return dof_type
 
     def _make_joint_default_limits(self, dof_type: JointDoFType) -> tuple[list[float], list[float], list[float]]:
-        num_dofs = dof_type.num_dofs
-        q_j_min = [-float(np.finfo(np.float32).max)] * num_dofs
-        q_j_max = [float(np.finfo(np.float32).max)] * num_dofs
-        tau_j_max = [float(np.finfo(np.float32).max)] * num_dofs
+        num_dofs = int(dof_type.num_dofs)
+        q_j_min = [JOINT_QMIN] * num_dofs
+        q_j_max = [JOINT_QMAX] * num_dofs
+        tau_j_max = [JOINT_TAUMAX] * num_dofs
         return q_j_min, q_j_max, tau_j_max
 
     def _make_joint_default_dynamics(
@@ -690,7 +720,7 @@ class USDImporter:
         k_d_j = None
         return a_j, b_j, k_p_j, k_d_j
 
-    def _infer_joint_type(self, stiffness: float, damping: float, drive_enabled: bool) -> JointDoFType:
+    def _infer_joint_actuation_type(self, stiffness: float, damping: float, drive_enabled: bool) -> JointActuationType:
         if not drive_enabled:
             return JointActuationType.PASSIVE
         elif stiffness > 0.0 and damping > 0.0:
@@ -699,30 +729,27 @@ class USDImporter:
             return JointActuationType.POSITION
         elif damping > 0.0:
             return JointActuationType.VELOCITY
-
         return JointActuationType.FORCE
 
-    def _parse_joint_revolute(
-        self, joint_spec, rotation_unit: float = 1.0, load_drive_dynamics: bool = False, eps=1e-6
-    ):
+    def _parse_joint_revolute(self, joint_spec, rotation_unit: float = 1.0, load_drive_dynamics: bool = False):
         dof_type = JointDoFType.REVOLUTE
         act_type = JointActuationType.PASSIVE
         X_j = self.usd_axis_to_axis[joint_spec.axis].to_mat33()
         q_j_min, q_j_max, tau_j_max = self._make_joint_default_limits(dof_type)
         a_j, b_j, k_p_j, k_d_j = self._make_joint_default_dynamics(dof_type)
         if joint_spec.limit.enabled:
-            q_j_min[0] = rotation_unit * joint_spec.limit.lower
-            q_j_max[0] = rotation_unit * joint_spec.limit.upper
+            q_j_min[0] = max(rotation_unit * joint_spec.limit.lower, JOINT_QMIN)
+            q_j_max[0] = min(rotation_unit * joint_spec.limit.upper, JOINT_QMAX)
         if joint_spec.drive.enabled:
             if not joint_spec.drive.acceleration:
-                tau_j_max[0] = joint_spec.drive.forceLimit
-                if load_drive_dynamics:
-                    # TODO: How to get these from USD?
-                    a_j = [eps] * dof_type.num_dofs
-                    b_j = [eps] * dof_type.num_dofs
-                    k_p_j = [joint_spec.drive.stiffness] * dof_type.num_coords
-                    k_d_j = [joint_spec.drive.damping] * dof_type.num_dofs
-                    act_type = self._infer_joint_type(
+                tau_j_max[0] = min(joint_spec.drive.forceLimit, JOINT_TAUMAX)
+                has_pd_gains = joint_spec.drive.stiffness > 0.0 or joint_spec.drive.damping > 0.0
+                if load_drive_dynamics and has_pd_gains:
+                    a_j = [0.0] * dof_type.num_dofs
+                    b_j = [0.0] * dof_type.num_dofs
+                    k_p_j = [joint_spec.drive.stiffness / rotation_unit] * dof_type.num_coords
+                    k_d_j = [joint_spec.drive.damping / rotation_unit] * dof_type.num_dofs
+                    act_type = self._infer_joint_actuation_type(
                         joint_spec.drive.stiffness, joint_spec.drive.damping, joint_spec.drive.enabled
                     )
                 else:
@@ -733,27 +760,25 @@ class USDImporter:
 
         return dof_type, act_type, X_j, q_j_min, q_j_max, tau_j_max, a_j, b_j, k_p_j, k_d_j
 
-    def _parse_joint_prismatic(
-        self, joint_spec, distance_unit: float = 1.0, load_drive_dynamics: bool = False, eps=1e-6
-    ):
+    def _parse_joint_prismatic(self, joint_spec, distance_unit: float = 1.0, load_drive_dynamics: bool = False):
         dof_type = JointDoFType.PRISMATIC
         act_type = JointActuationType.PASSIVE
         X_j = self.usd_axis_to_axis[joint_spec.axis].to_mat33()
         q_j_min, q_j_max, tau_j_max = self._make_joint_default_limits(dof_type)
         a_j, b_j, k_p_j, k_d_j = self._make_joint_default_dynamics(dof_type)
         if joint_spec.limit.enabled:
-            q_j_min[0] = distance_unit * joint_spec.limit.lower
-            q_j_max[0] = distance_unit * joint_spec.limit.upper
+            q_j_min[0] = max(distance_unit * joint_spec.limit.lower, JOINT_QMIN)
+            q_j_max[0] = min(distance_unit * joint_spec.limit.upper, JOINT_QMAX)
         if joint_spec.drive.enabled:
             if not joint_spec.drive.acceleration:
-                tau_j_max[0] = joint_spec.drive.forceLimit
-                if load_drive_dynamics:
-                    # TODO: How to get these from USD?
-                    a_j = [eps] * dof_type.num_dofs
-                    b_j = [eps] * dof_type.num_dofs
+                tau_j_max[0] = min(joint_spec.drive.forceLimit, JOINT_TAUMAX)
+                has_pd_gains = joint_spec.drive.stiffness > 0.0 or joint_spec.drive.damping > 0.0
+                if load_drive_dynamics and has_pd_gains:
+                    a_j = [0.0] * dof_type.num_dofs
+                    b_j = [0.0] * dof_type.num_dofs
                     k_p_j = [joint_spec.drive.stiffness] * dof_type.num_coords
                     k_d_j = [joint_spec.drive.damping] * dof_type.num_dofs
-                    act_type = self._infer_joint_type(
+                    act_type = self._infer_joint_actuation_type(
                         joint_spec.drive.stiffness, joint_spec.drive.damping, joint_spec.drive.enabled
                     )
                 else:
@@ -771,8 +796,8 @@ class USDImporter:
         for limit in joint_spec.jointLimits:
             dof = limit.first
             if dof == joint_dof:
-                q_j_min[0] = rotation_unit * limit.second.lower
-                q_j_max[0] = rotation_unit * limit.second.upper
+                q_j_min[0] = max(rotation_unit * limit.second.lower, JOINT_QMIN)
+                q_j_max[0] = min(rotation_unit * limit.second.upper, JOINT_QMAX)
         num_drives = len(joint_spec.jointDrives)
         if num_drives > 0:
             if num_drives != 1:
@@ -783,7 +808,7 @@ class USDImporter:
             act_type = JointActuationType.FORCE
             for drive in joint_spec.jointDrives:
                 if drive.first == joint_dof:
-                    tau_j_max[0] = drive.second.forceLimit
+                    tau_j_max[0] = min(drive.second.forceLimit, JOINT_TAUMAX)
         else:
             act_type = JointActuationType.PASSIVE
         return dof_type, act_type, X_j, q_j_min, q_j_max, tau_j_max
@@ -795,8 +820,8 @@ class USDImporter:
         for limit in joint_spec.jointLimits:
             dof = limit.first
             if dof == joint_dof:
-                q_j_min[0] = distance_unit * limit.second.lower
-                q_j_max[0] = distance_unit * limit.second.upper
+                q_j_min[0] = max(distance_unit * limit.second.lower, JOINT_QMIN)
+                q_j_max[0] = min(distance_unit * limit.second.upper, JOINT_QMAX)
         num_drives = len(joint_spec.jointDrives)
         if num_drives > 0:
             if num_drives != 1:
@@ -807,7 +832,7 @@ class USDImporter:
             act_type = JointActuationType.FORCE
             for drive in joint_spec.jointDrives:
                 if drive.first == joint_dof:
-                    tau_j_max[0] = drive.second.forceLimit
+                    tau_j_max[0] = min(drive.second.forceLimit, JOINT_TAUMAX)
         else:
             act_type = JointActuationType.PASSIVE
         return dof_type, act_type, X_j, q_j_min, q_j_max, tau_j_max
@@ -820,11 +845,11 @@ class USDImporter:
         for limit in joint_spec.jointLimits:
             dof = limit.first
             if dof == self.UsdPhysics.JointDOF.TransX:
-                q_j_min[0] = distance_unit * limit.second.lower
-                q_j_max[0] = distance_unit * limit.second.upper
+                q_j_min[0] = max(distance_unit * limit.second.lower, JOINT_QMIN)
+                q_j_max[0] = min(distance_unit * limit.second.upper, JOINT_QMAX)
             elif dof == self.UsdPhysics.JointDOF.RotX:
-                q_j_min[1] = rotation_unit * limit.second.lower
-                q_j_max[1] = rotation_unit * limit.second.upper
+                q_j_min[1] = max(rotation_unit * limit.second.lower, JOINT_QMIN)
+                q_j_max[1] = min(rotation_unit * limit.second.upper, JOINT_QMAX)
         num_drives = len(joint_spec.jointDrives)
         if num_drives > 0:
             if num_drives != JointDoFType.CYLINDRICAL.num_dofs:
@@ -836,9 +861,9 @@ class USDImporter:
             for drive in joint_spec.jointDrives:
                 dof = drive.first
                 if dof == self.UsdPhysics.JointDOF.TransX:
-                    tau_j_max[0] = drive.second.forceLimit
+                    tau_j_max[0] = min(drive.second.forceLimit, JOINT_TAUMAX)
                 elif dof == self.UsdPhysics.JointDOF.RotX:
-                    tau_j_max[1] = drive.second.forceLimit
+                    tau_j_max[1] = min(drive.second.forceLimit, JOINT_TAUMAX)
         else:
             act_type = JointActuationType.PASSIVE
         return dof_type, act_type, q_j_min, q_j_max, tau_j_max
@@ -849,11 +874,11 @@ class USDImporter:
         for limit in joint_spec.jointLimits:
             dof = limit.first
             if dof == self.UsdPhysics.JointDOF.RotX:
-                q_j_min[0] = rotation_unit * limit.second.lower
-                q_j_max[0] = rotation_unit * limit.second.upper
+                q_j_min[0] = max(rotation_unit * limit.second.lower, JOINT_QMIN)
+                q_j_max[0] = min(rotation_unit * limit.second.upper, JOINT_QMAX)
             elif dof == self.UsdPhysics.JointDOF.RotY:
-                q_j_min[1] = rotation_unit * limit.second.lower
-                q_j_max[1] = rotation_unit * limit.second.upper
+                q_j_min[1] = max(rotation_unit * limit.second.lower, JOINT_QMIN)
+                q_j_max[1] = min(rotation_unit * limit.second.upper, JOINT_QMAX)
         num_drives = len(joint_spec.jointDrives)
         if num_drives > 0:
             if num_drives != JointDoFType.UNIVERSAL.num_dofs:
@@ -865,9 +890,9 @@ class USDImporter:
             for drive in joint_spec.jointDrives:
                 dof = drive.first
                 if dof == self.UsdPhysics.JointDOF.RotX:
-                    tau_j_max[0] = drive.second.forceLimit
+                    tau_j_max[0] = min(drive.second.forceLimit, JOINT_TAUMAX)
                 elif dof == self.UsdPhysics.JointDOF.RotY:
-                    tau_j_max[1] = drive.second.forceLimit
+                    tau_j_max[1] = min(drive.second.forceLimit, JOINT_TAUMAX)
         else:
             act_type = JointActuationType.PASSIVE
         return dof_type, act_type, q_j_min, q_j_max, tau_j_max
@@ -884,14 +909,14 @@ class USDImporter:
         for limit in joint_spec.jointLimits:
             dof = limit.first
             if dof == self.UsdPhysics.JointDOF.TransX:
-                q_j_min[0] = distance_unit * limit.second.lower
-                q_j_max[0] = distance_unit * limit.second.upper
+                q_j_min[0] = max(distance_unit * limit.second.lower, JOINT_QMIN)
+                q_j_max[0] = min(distance_unit * limit.second.upper, JOINT_QMAX)
             elif dof == self.UsdPhysics.JointDOF.TransY:
-                q_j_min[1] = distance_unit * limit.second.lower
-                q_j_max[1] = distance_unit * limit.second.upper
+                q_j_min[1] = max(distance_unit * limit.second.lower, JOINT_QMIN)
+                q_j_max[1] = min(distance_unit * limit.second.upper, JOINT_QMAX)
             elif dof == self.UsdPhysics.JointDOF.TransZ:
-                q_j_min[2] = distance_unit * limit.second.lower
-                q_j_max[2] = distance_unit * limit.second.upper
+                q_j_min[2] = max(distance_unit * limit.second.lower, JOINT_QMIN)
+                q_j_max[2] = min(distance_unit * limit.second.upper, JOINT_QMAX)
         num_drives = len(joint_spec.jointDrives)
         if num_drives > 0:
             if num_drives != JointDoFType.CARTESIAN.num_dofs:
@@ -903,11 +928,11 @@ class USDImporter:
             for drive in joint_spec.jointDrives:
                 dof = drive.first
                 if dof == self.UsdPhysics.JointDOF.TransX:
-                    tau_j_max[0] = drive.second.forceLimit
+                    tau_j_max[0] = min(drive.second.forceLimit, JOINT_TAUMAX)
                 elif dof == self.UsdPhysics.JointDOF.TransY:
-                    tau_j_max[1] = drive.second.forceLimit
+                    tau_j_max[1] = min(drive.second.forceLimit, JOINT_TAUMAX)
                 elif dof == self.UsdPhysics.JointDOF.TransZ:
-                    tau_j_max[2] = drive.second.forceLimit
+                    tau_j_max[2] = min(drive.second.forceLimit, JOINT_TAUMAX)
         else:
             act_type = JointActuationType.PASSIVE
         return dof_type, act_type, q_j_min, q_j_max, tau_j_max
@@ -918,14 +943,14 @@ class USDImporter:
         for limit in joint_spec.jointLimits:
             dof = limit.first
             if dof == self.UsdPhysics.JointDOF.RotX:
-                q_j_min[0] = rotation_unit * limit.second.lower
-                q_j_max[0] = rotation_unit * limit.second.upper
+                q_j_min[0] = max(rotation_unit * limit.second.lower, JOINT_QMIN)
+                q_j_max[0] = min(rotation_unit * limit.second.upper, JOINT_QMAX)
             elif dof == self.UsdPhysics.JointDOF.RotY:
-                q_j_min[1] = rotation_unit * limit.second.lower
-                q_j_max[1] = rotation_unit * limit.second.upper
+                q_j_min[1] = max(rotation_unit * limit.second.lower, JOINT_QMIN)
+                q_j_max[1] = min(rotation_unit * limit.second.upper, JOINT_QMAX)
             elif dof == self.UsdPhysics.JointDOF.RotZ:
-                q_j_min[2] = rotation_unit * limit.second.lower
-                q_j_max[2] = rotation_unit * limit.second.upper
+                q_j_min[2] = max(rotation_unit * limit.second.lower, JOINT_QMIN)
+                q_j_max[2] = min(rotation_unit * limit.second.upper, JOINT_QMAX)
         num_drives = len(joint_spec.jointDrives)
         if num_drives > 0:
             if num_drives != JointDoFType.SPHERICAL.num_dofs:
@@ -937,11 +962,11 @@ class USDImporter:
             for drive in joint_spec.jointDrives:
                 dof = drive.first
                 if dof == self.UsdPhysics.JointDOF.RotX:
-                    tau_j_max[0] = drive.second.forceLimit
+                    tau_j_max[0] = min(drive.second.forceLimit, JOINT_TAUMAX)
                 elif dof == self.UsdPhysics.JointDOF.RotY:
-                    tau_j_max[1] = drive.second.forceLimit
+                    tau_j_max[1] = min(drive.second.forceLimit, JOINT_TAUMAX)
                 elif dof == self.UsdPhysics.JointDOF.RotZ:
-                    tau_j_max[2] = drive.second.forceLimit
+                    tau_j_max[2] = min(drive.second.forceLimit, JOINT_TAUMAX)
         else:
             act_type = JointActuationType.PASSIVE
         return dof_type, act_type, q_j_min, q_j_max, tau_j_max
@@ -959,23 +984,23 @@ class USDImporter:
         for limit in joint_spec.jointLimits:
             dof = limit.first
             if dof == self.UsdPhysics.JointDOF.TransX:
-                q_j_min[0] = distance_unit * limit.second.lower
-                q_j_max[0] = distance_unit * limit.second.upper
+                q_j_min[0] = max(distance_unit * limit.second.lower, JOINT_QMIN)
+                q_j_max[0] = min(distance_unit * limit.second.upper, JOINT_QMAX)
             elif dof == self.UsdPhysics.JointDOF.TransY:
-                q_j_min[1] = distance_unit * limit.second.lower
-                q_j_max[1] = distance_unit * limit.second.upper
+                q_j_min[1] = max(distance_unit * limit.second.lower, JOINT_QMIN)
+                q_j_max[1] = min(distance_unit * limit.second.upper, JOINT_QMAX)
             elif dof == self.UsdPhysics.JointDOF.TransZ:
-                q_j_min[2] = distance_unit * limit.second.lower
-                q_j_max[2] = distance_unit * limit.second.upper
+                q_j_min[2] = max(distance_unit * limit.second.lower, JOINT_QMIN)
+                q_j_max[2] = min(distance_unit * limit.second.upper, JOINT_QMAX)
             elif dof == self.UsdPhysics.JointDOF.RotX:
-                q_j_min[0] = rotation_unit * limit.second.lower
-                q_j_max[0] = rotation_unit * limit.second.upper
+                q_j_min[0] = max(rotation_unit * limit.second.lower, JOINT_QMIN)
+                q_j_max[0] = min(rotation_unit * limit.second.upper, JOINT_QMAX)
             elif dof == self.UsdPhysics.JointDOF.RotY:
-                q_j_min[1] = rotation_unit * limit.second.lower
-                q_j_max[1] = rotation_unit * limit.second.upper
+                q_j_min[1] = max(rotation_unit * limit.second.lower, JOINT_QMIN)
+                q_j_max[1] = min(rotation_unit * limit.second.upper, JOINT_QMAX)
             elif dof == self.UsdPhysics.JointDOF.RotZ:
-                q_j_min[2] = rotation_unit * limit.second.lower
-                q_j_max[2] = rotation_unit * limit.second.upper
+                q_j_min[2] = max(rotation_unit * limit.second.lower, JOINT_QMIN)
+                q_j_max[2] = min(rotation_unit * limit.second.upper, JOINT_QMAX)
 
         num_drives = len(joint_spec.jointDrives)
         if num_drives > 0:
@@ -988,17 +1013,17 @@ class USDImporter:
             for drive in joint_spec.jointDrives:
                 dof = drive.first
                 if dof == self.UsdPhysics.JointDOF.TransX:
-                    tau_j_max[0] = drive.second.forceLimit
+                    tau_j_max[0] = min(drive.second.forceLimit, JOINT_TAUMAX)
                 elif dof == self.UsdPhysics.JointDOF.TransY:
-                    tau_j_max[1] = drive.second.forceLimit
+                    tau_j_max[1] = min(drive.second.forceLimit, JOINT_TAUMAX)
                 elif dof == self.UsdPhysics.JointDOF.TransZ:
-                    tau_j_max[2] = drive.second.forceLimit
+                    tau_j_max[2] = min(drive.second.forceLimit, JOINT_TAUMAX)
                 elif dof == self.UsdPhysics.JointDOF.RotX:
-                    tau_j_max[0] = drive.second.forceLimit
+                    tau_j_max[0] = min(drive.second.forceLimit, JOINT_TAUMAX)
                 elif dof == self.UsdPhysics.JointDOF.RotY:
-                    tau_j_max[1] = drive.second.forceLimit
+                    tau_j_max[1] = min(drive.second.forceLimit, JOINT_TAUMAX)
                 elif dof == self.UsdPhysics.JointDOF.RotZ:
-                    tau_j_max[2] = drive.second.forceLimit
+                    tau_j_max[2] = min(drive.second.forceLimit, JOINT_TAUMAX)
         else:
             act_type = JointActuationType.PASSIVE
         return dof_type, act_type, q_j_min, q_j_max, tau_j_max
@@ -1014,6 +1039,7 @@ class USDImporter:
         rotation_unit: float = 1.0,
         only_load_enabled_joints: bool = True,
         load_drive_dynamics: bool = False,
+        prim_path_names: bool = False,
     ) -> JointDescriptor | None:
         # Skip this body if it is not enable and we are only loading enabled rigid bodies
         if not joint_spec.jointEnabled and only_load_enabled_joints:
@@ -1023,11 +1049,16 @@ class USDImporter:
         # Prim Identifiers
         ###
 
-        # Retrieve the name and UID of the joint from the prim
+        # Retrieve the name and UID of the rigid body from the prim
+        path = self._get_prim_path(joint_prim)
         name = self._get_prim_name(joint_prim)
         uid = self._get_prim_uid(joint_prim)
-        msg.debug(f"name: {name}")
-        msg.debug(f"uid: {uid}")
+
+        # Use the explicit prim path as the geometry name if specified
+        name = path if prim_path_names else name
+        msg.debug(f"[Joint]: path: {path}")
+        msg.debug(f"[Joint]: uid: {uid}")
+        msg.debug(f"[Joint]: name: {name}")
 
         ###
         # PhysicsJoint Common Properties
@@ -1254,14 +1285,14 @@ class USDImporter:
             k_d_j=k_d_j,
         )
 
-    def _parse_geom(
+    def _parse_visual_geom(
         self,
         geom_prim,
         geom_type,
         body_index_map: dict[str, int],
         distance_unit: float = 1.0,
         prim_path_names: bool = False,
-    ) -> CollisionGeometryDescriptor | GeometryDescriptor | None:
+    ) -> GeometryDescriptor | None:
         """
         Parses a UsdGeom geometry prim and returns a GeometryDescriptor.
         """
@@ -1301,7 +1332,7 @@ class USDImporter:
             name = path
         # Otherwise define the a condensed name based on the body and geometry layer
         else:
-            name = f"{self._get_leaf_name(body_name)}/{layer}/{name}"
+            name = f"{self._get_leaf_name(body_name)}/visual/{layer}/{name}"
         msg.debug(f"[Geom]: name: {name}")
 
         ###
@@ -1359,7 +1390,7 @@ class USDImporter:
             shape = ConeShape(radius=radius, height=height)
 
         elif geom_type == self.UsdGeom.Cube:
-            d, w, h = distance_unit * scale
+            d, w, h = 2.0 * distance_unit * scale
             shape = BoxShape(depth=d, width=w, height=h)
 
         elif geom_type == self.UsdGeom.Cylinder:
@@ -1382,6 +1413,7 @@ class USDImporter:
         elif geom_type == self.UsdGeom.Sphere:
             sphere = self.UsdGeom.Sphere(geom_prim)
             radius = distance_unit * sphere.GetRadiusAttr().Get()
+            scale = np.array(scale, dtype=np.float32)
             if np.all(scale[0:] == scale[0]):
                 shape = SphereShape(radius=radius)
             else:
@@ -1410,7 +1442,7 @@ class USDImporter:
             faces = self._make_faces_from_counts(indices, counts, usd_mesh_path)
 
             # Create the mesh shape (i.e. wrapper around newton.geometry.Mesh)
-            shape = MeshShape(vertices=points, indices=faces, normals=normals, maxhullvert=MESH_MAXHULLVERT)
+            shape = MeshShape(vertices=points, indices=faces, normals=normals)
         else:
             raise ValueError(
                 f"Unsupported UsdGeom type: {geom_type}. Supported types: {self.supported_usd_geom_types}."
@@ -1426,10 +1458,12 @@ class USDImporter:
         return GeometryDescriptor(
             name=name,
             uid=uid,
-            layer=layer,
-            bid=body_index,
+            body=body_index,
             offset=i_T_ig,
             shape=shape,
+            group=0,
+            collides=0,
+            flags=ShapeFlags.VISIBLE,
         )
 
     def _parse_physics_geom(
@@ -1443,8 +1477,9 @@ class USDImporter:
         material_index_map: dict[str, int],
         distance_unit: float = 1.0,
         meshes_are_collidable: bool = False,
+        force_show_colliders: bool = False,
         prim_path_names: bool = False,
-    ) -> CollisionGeometryDescriptor | GeometryDescriptor | None:
+    ) -> GeometryDescriptor | None:
         """
         Parses a UsdPhysics geometry prim and returns a GeometryDescriptor.
         """
@@ -1478,7 +1513,7 @@ class USDImporter:
             name = path
         # Otherwise define the a condensed name based on the body and geometry layer
         else:
-            name = f"{self._get_leaf_name(body_name)}/{layer}/{name}"
+            name = f"{self._get_leaf_name(body_name)}/physics/{layer}/{name}"
         msg.debug(f"[Geom]: name: {name}")
 
         ###
@@ -1571,7 +1606,7 @@ class USDImporter:
             faces = self._make_faces_from_counts(indices, counts, usd_mesh_path)
 
             # Create the mesh shape (i.e. wrapper around newton.geometry.Mesh)
-            shape = MeshShape(vertices=points, indices=faces, normals=normals, maxhullvert=MESH_MAXHULLVERT)
+            shape = MeshShape(vertices=points, indices=faces, normals=normals)
             is_mesh_shape = True
         else:
             raise ValueError(
@@ -1581,37 +1616,33 @@ class USDImporter:
         msg.debug(f"[{name}]: shape: {shape}")
 
         ###
-        # Base GeometryDescriptor
-        ###
-
-        descriptor = GeometryDescriptor(
-            name=name,
-            uid=uid,
-            layer=layer,
-            bid=body_index,
-            offset=i_T_ig,
-            shape=shape,
-        )
-
-        ###
         # Collision Properties
         ###
 
         # Promote the GeometryDescriptor to a CollisionGeometryDescriptor if it's collidable
+        geom_max_contacts: int = 0
+        geom_group: int = 0
+        geom_collides: int = 0
+        geom_material: str | None = None
+        geom_material_index: int = 0
+        geom_flags = 0
         if geom_spec.collisionEnabled and ((meshes_are_collidable and is_mesh_shape) or not is_mesh_shape):
-            descriptor = CollisionGeometryDescriptor(base=descriptor)
-
             # Query the geom prim for the maximum number of contacts hint
-            descriptor.max_contacts = self._get_geom_max_contacts(geom_prim)
+            geom_max_contacts = self._get_geom_max_contacts(geom_prim)
+
+            # Enable collision for this geom by setting the appropriate flags
+            geom_flags = geom_flags | ShapeFlags.COLLIDE_SHAPES | ShapeFlags.COLLIDE_PARTICLES
 
             # Assign a material if specified
             # NOTE: Only the first material is considered for now
             materials = geom_spec.materials
             if len(materials) > 0:
-                descriptor.mid = material_index_map.get(str(materials[0]), 0)
+                geom_material = str(materials[0])
+                geom_material_index = material_index_map.get(str(materials[0]), 0)
             msg.debug(f"[{name}]: material_index_map: {material_index_map}")
             msg.debug(f"[{name}]: materials: {materials}")
-            msg.debug(f"[{name}]: mid: {descriptor.mid}")
+            msg.debug(f"[{name}]: geom_material: {geom_material}")
+            msg.debug(f"[{name}]: geom_material_index: {geom_material_index}")
 
             # Assign collision group/filters if specified
             collision_group_paths = geom_spec.collisionGroups
@@ -1629,11 +1660,30 @@ class USDImporter:
                 if cgroup != geom_group:
                     geom_collides += cgroup
             msg.debug(f"[{name}]: geom_collides: {geom_collides}")
-            descriptor.group = geom_group
-            descriptor.collides = geom_collides
 
-        # Return the final descriptor
-        return descriptor
+        # Set the geom to be visible if it is a non-collidable mesh and we are forcing show colliders
+        if force_show_colliders:
+            geom_flags = geom_flags | ShapeFlags.VISIBLE
+
+        ###
+        # GeometryDescriptor
+        ###
+
+        # Construct and return the GeometryDescriptor
+        # with the data imported from the USD prim
+        return GeometryDescriptor(
+            name=name,
+            uid=uid,
+            body=body_index,
+            shape=shape,
+            offset=i_T_ig,
+            material=geom_material,
+            mid=geom_material_index,
+            group=geom_group,
+            collides=geom_collides,
+            max_contacts=geom_max_contacts,
+            flags=geom_flags,
+        )
 
     ###
     # Public API
@@ -1645,15 +1695,20 @@ class USDImporter:
         root_path: str = "/",
         xform: Transform | None = None,
         ignore_paths: list[str] | None = None,
-        builder: ModelBuilder | None = None,
+        builder: ModelBuilderKamino | None = None,
         apply_up_axis_from_stage: bool = True,
         only_load_enabled_rigid_bodies: bool = True,
         only_load_enabled_joints: bool = True,
+        retain_joint_ordering: bool = True,
+        retain_geom_ordering: bool = True,
         load_drive_dynamics: bool = False,
         load_static_geometry: bool = True,
         load_materials: bool = True,
         meshes_are_collidable: bool = False,
-    ) -> ModelBuilder:
+        force_show_colliders: bool = False,
+        use_prim_path_names: bool = False,
+        use_articulation_root_name: bool = True,
+    ) -> ModelBuilderKamino:
         """
         Parses an OpenUSD file.
         """
@@ -1667,9 +1722,11 @@ class USDImporter:
 
         # Retrieve the default prim name to assign as the name of the world
         if stage.HasDefaultPrim():
-            default_prim_name = stage.GetDefaultPrim().GetName()
+            default_prim = stage.GetDefaultPrim()
+            default_prim_name = default_prim.GetName()
         else:
             default_prim_name = Path(source).name if isinstance(source, str) else "world"
+        msg.debug(f"default_prim_path: {default_prim.GetPath() if stage.HasDefaultPrim() else 'N/A'}")
         msg.debug(f"default_prim_name: {default_prim_name}")
 
         ###
@@ -1706,9 +1763,9 @@ class USDImporter:
         # Load the USD file into an object dictionary
         ret_dict = self.UsdPhysics.LoadUsdPhysicsFromRange(stage, [root_path], excludePaths=ignore_paths)
 
-        # Create a new ModelBuilder if not provided
+        # Create a new ModelBuilderKamino if not provided
         if builder is None:
-            builder = ModelBuilder(default_world=False)
+            builder = ModelBuilderKamino(default_world=False)
             builder.add_world(name=default_prim_name)
 
         ###
@@ -1817,12 +1874,42 @@ class USDImporter:
         msg.debug(f"cgroup_index_map: {cgroup_index_map}")
 
         ###
+        # Articulations
+        ###
+
+        # Construct a list of articulation root bodies to create FREE
+        # joints if not already defined explicitly in the USD file
+        articulation_root_body_paths = []
+        if self.UsdPhysics.ObjectType.Articulation in ret_dict:
+            paths, articulation_descs = ret_dict[self.UsdPhysics.ObjectType.Articulation]
+            for path, _desc in zip(paths, articulation_descs, strict=False):
+                articulation_prim = stage.GetPrimAtPath(path)
+                try:
+                    parent_prim = articulation_prim.GetParent()
+                except Exception:
+                    parent_prim = None
+                if articulation_prim.HasAPI(self.UsdPhysics.ArticulationRootAPI):
+                    if self._prim_is_rigid_body(articulation_prim):
+                        msg.debug(f"Adding articulation_prim at '{path}' as articulation root body")
+                        articulation_root_body_paths.append(articulation_prim.GetPath())
+                elif (
+                    parent_prim is not None
+                    and parent_prim.IsValid()
+                    and parent_prim.HasAPI(self.UsdPhysics.ArticulationRootAPI)
+                ):
+                    if self._prim_is_rigid_body(parent_prim):
+                        msg.debug(f"Adding parent_prim at '{parent_prim.GetPath()}' as articulation root body")
+                        articulation_root_body_paths.append(parent_prim.GetPath())
+        msg.debug(f"articulation_root_body_paths: {articulation_root_body_paths}")
+
+        ###
         # Bodies
         ###
 
         # Define a mapping from prim paths to body indices
         # NOTE: This can be used for both rigid and flexible bodies
         body_index_map = {}
+        body_path_map = {}
 
         # Parse for and import UsdPhysicsRigidBody prims
         if self.UsdPhysics.ObjectType.RigidBody in ret_dict:
@@ -1837,66 +1924,231 @@ class USDImporter:
                     distance_unit=distance_unit,
                     rotation_unit=rotation_unit,
                     mass_unit=mass_unit,
+                    prim_path_names=use_prim_path_names,
                 )
                 if rigid_body_desc is not None:
                     msg.debug(f"Adding body '{builder.num_bodies}':\n{rigid_body_desc}\n")
-                    body_index_map[str(prim_path)] = builder.add_rigid_body_descriptor(body=rigid_body_desc)
+                    body_index = builder.add_rigid_body_descriptor(body=rigid_body_desc)
+                    body_index_map[str(prim_path)] = body_index
+                    body_path_map[body_index] = str(prim_path)
                 else:
                     msg.debug(f"Rigid body @'{prim_path}' not loaded. Will be treated as static geometry.")
                     body_index_map[str(prim_path)] = -1  # Body not loaded, is statically part of the world
         msg.debug(f"body_index_map: {body_index_map}")
+        msg.debug(f"body_path_map: {body_path_map}")
 
         ###
         # Joints
         ###
 
-        # First construct lists of joint prim paths and their types that
-        # retain the order of the joints as specified in the USD file.
-        joint_prim_paths = []
-        joint_type_names = []
-        for prim in stage.Traverse():
-            if prim.GetTypeName() in self.supported_usd_joint_type_names:
-                joint_type_names.append(prim.GetTypeName())
-                joint_prim_paths.append(prim.GetPath())
-        msg.debug(f"joint_prim_paths: {joint_prim_paths}")
-        msg.debug(f"joint_type_names: {joint_type_names}")
+        # Define a list to hold all joint descriptors to be added to the builder after sorting
+        joint_descriptors: list[JointDescriptor] = []
+        articulation_root_joints: list[JointDescriptor] = []
 
-        # Then iterate over each pair of prim path and joint type-name to parse the joint specifications
-        for joint_prim_path, joint_type_name in zip(joint_prim_paths, joint_type_names, strict=False):
-            joint_type = self.supported_usd_joint_types[self.supported_usd_joint_type_names.index(joint_type_name)]
-            joint_paths, joint_specs = ret_dict[joint_type]
-            for prim_path, joint_spec in zip(joint_paths, joint_specs, strict=False):
-                if prim_path == joint_prim_path:
-                    msg.debug(f"Parsing joint @'{prim_path}' of type '{joint_type_name}'")
-                    joint_desc = self._parse_joint(
-                        stage=stage,
-                        only_load_enabled_joints=only_load_enabled_joints,
-                        load_drive_dynamics=load_drive_dynamics,
-                        joint_prim=stage.GetPrimAtPath(prim_path),
-                        joint_spec=joint_spec,
-                        joint_type=joint_type,
-                        body_index_map=body_index_map,
-                        distance_unit=distance_unit,
-                        rotation_unit=rotation_unit,
+        # If retaining joint ordering, first construct lists of joint prim paths and their
+        # types that retain the order of the joints as specified in the USD file, then iterate
+        # over each pair of prim path and joint type-name to parse the joint specifications
+        if retain_joint_ordering:
+            # First construct lists of joint prim paths and their types that
+            # retain the order of the joints as specified in the USD file.
+            joint_prim_paths = []
+            joint_type_names = []
+            for prim in stage.Traverse():
+                if prim.GetTypeName() in self.supported_usd_joint_type_names:
+                    joint_type_names.append(prim.GetTypeName())
+                    joint_prim_paths.append(prim.GetPath())
+            msg.debug(f"joint_prim_paths: {joint_prim_paths}")
+            msg.debug(f"joint_type_names: {joint_type_names}")
+
+            # Then iterate over each pair of prim path and joint type-name to parse the joint specifications
+            for joint_prim_path, joint_type_name in zip(joint_prim_paths, joint_type_names, strict=False):
+                joint_type = self.supported_usd_joint_types[self.supported_usd_joint_type_names.index(joint_type_name)]
+                joint_paths, joint_specs = ret_dict[joint_type]
+                for prim_path, joint_spec in zip(joint_paths, joint_specs, strict=False):
+                    if prim_path == joint_prim_path:
+                        msg.debug(f"Parsing joint @'{prim_path}' of type '{joint_type_name}'")
+                        joint_desc = self._parse_joint(
+                            stage=stage,
+                            only_load_enabled_joints=only_load_enabled_joints,
+                            joint_prim=stage.GetPrimAtPath(prim_path),
+                            joint_spec=joint_spec,
+                            joint_type=joint_type,
+                            body_index_map=body_index_map,
+                            distance_unit=distance_unit,
+                            rotation_unit=rotation_unit,
+                            load_drive_dynamics=load_drive_dynamics,
+                            prim_path_names=use_prim_path_names,
+                        )
+                        if joint_desc is not None:
+                            msg.debug(f"Adding joint '{builder.num_joints}':\n{joint_desc}\n")
+                            joint_descriptors.append(joint_desc)
+                            # Check if the joint's Follower body is the articulation root
+                            if body_path_map[joint_desc.bid_F] in articulation_root_body_paths:
+                                articulation_root_joints.append(joint_desc)
+                        else:
+                            msg.debug(f"Joint @'{prim_path}' not loaded. Will be ignored.")
+                        break  # Stop after the first match
+
+        # If not retaining joint ordering, simply iterate over the joint types in any order and parse the joints
+        # NOTE: This has been added only to be able to reproduce the behavior of the newton.ModelBuilder
+        # TODO: Once the newton.ModelBuilder is updated to retain USD joint ordering, this branch can be removed
+        else:
+            # Collect joint specifications grouped by their USD-native joint type
+            joint_specifications = {}
+            for key, value in ret_dict.items():
+                if key in self.supported_usd_joint_types:
+                    paths, joint_specs = value
+                    for path, joint_spec in zip(paths, joint_specs, strict=False):
+                        joint_specifications[str(path)] = (joint_spec, key)
+
+            # Then iterate over each pair of prim path and joint type-name to parse the joint specifications
+            for prim_path, (joint_spec, joint_type_name) in joint_specifications.items():
+                joint_type = self.supported_usd_joint_types[self.supported_usd_joint_types.index(joint_type_name)]
+                msg.debug(f"Parsing joint @'{prim_path}' of type '{joint_type_name}'")
+                joint_desc = self._parse_joint(
+                    stage=stage,
+                    only_load_enabled_joints=only_load_enabled_joints,
+                    joint_prim=stage.GetPrimAtPath(prim_path),
+                    joint_spec=joint_spec,
+                    joint_type=joint_type,
+                    body_index_map=body_index_map,
+                    distance_unit=distance_unit,
+                    rotation_unit=rotation_unit,
+                    load_drive_dynamics=load_drive_dynamics,
+                    prim_path_names=use_prim_path_names,
+                )
+                if joint_desc is not None:
+                    msg.debug(f"Adding joint '{builder.num_joints}':\n{joint_desc}\n")
+                    joint_descriptors.append(joint_desc)
+                    # Check if the joint's Follower body is the articulation root
+                    if body_path_map[joint_desc.bid_F] in articulation_root_body_paths:
+                        articulation_root_joints.append(joint_desc)
+                else:
+                    msg.debug(f"Joint @'{prim_path}' not loaded. Will be ignored.")
+
+        # For each articulation root body that does not have an explicit joint
+        # defined in the USD file, add a FREE joint to attach it to the world
+        if len(articulation_root_joints) != len(articulation_root_body_paths):
+            for root_body_path in articulation_root_body_paths:
+                # Check if the root body already has a joint defined in the USD file
+                root_body_index = int(body_index_map[str(root_body_path)])
+                has_joint = False
+                for joint_desc in articulation_root_joints:
+                    if joint_desc.has_follower_body(root_body_index):
+                        has_joint = True
+                        break
+                if has_joint:
+                    msg.debug(
+                        f"Articulation root body '{root_body_path}' already has a joint defined. Skipping FREE joint."
                     )
-                    if joint_desc is not None:
-                        msg.debug(f"Adding joint '{builder.num_joints}':\n{joint_desc}\n")
-                        builder.add_joint_descriptor(joint=joint_desc)
-                    else:
-                        msg.debug(f"Joint @'{prim_path}' not loaded. Will be ignored.")
-                    break  # Stop after the first match
+                    continue
+
+                # If not, create a FREE joint descriptor to attach the root body to the
+                # world and insert it at the beginning of the joint descriptors list
+                root_body_name = builder.bodies[root_body_index].name
+
+                joint_desc = JointDescriptor(
+                    name=f"world_to_{root_body_name}"
+                    if use_articulation_root_name
+                    else f"joint_{builder.num_joints + 1}",
+                    dof_type=JointDoFType.FREE,
+                    act_type=JointActuationType.PASSIVE,
+                    bid_B=-1,
+                    bid_F=root_body_index,
+                    X_j=Axis.X.to_mat33(),
+                )
+                msg.debug(
+                    f"Adding FREE joint '{joint_desc.name}' to attach articulation "
+                    f"root body '{root_body_path}' to the world:\n{joint_desc}\n"
+                )
+                joint_descriptors.insert(0, joint_desc)
+
+        # If an articulation is present, sort joint indices according
+        # to DFS to produce a minimum-depth kinematic tree ordering
+        if len(articulation_root_body_paths) > 0 and len(joint_descriptors) > 0:
+            # Create a list of body-pair indices (B, F) for each joint
+            joint_body_pairs = [(joint_desc.bid_B, joint_desc.bid_F) for joint_desc in joint_descriptors]
+            # Perform a topological sort of the joints based on their body-pair indices
+            joint_indices, reversed_joints = topological_sort_undirected(joints=joint_body_pairs, use_dfs=True)
+            # Reverse the order of the joints that were reversed during the topological
+            # sort to maintain the original joint directionality as much as possible
+            for i in reversed_joints:
+                joint_desc = joint_descriptors[i]
+                joint_desc.bid_B, joint_desc.bid_F = joint_desc.bid_F, joint_desc.bid_B
+                joint_desc.B_r_Bj, joint_desc.F_r_Fj = joint_desc.F_r_Fj, joint_desc.B_r_Bj
+            # Reorder the joint descriptors based on the topological sort
+            joint_descriptors = [joint_descriptors[i] for i in joint_indices]
+
+        # Add all descriptors to the builder
+        for joint_desc in joint_descriptors:
+            builder.add_joint_descriptor(joint=joint_desc)
 
         ###
         # Geometry
         ###
 
-        # Traverse the stage to collect geometry prim paths and their types
-        for prim in stage.Traverse():
-            # Skip non-geom prims
-            if not prim.IsA(self.UsdGeom.Gprim):
-                msg.debug(f"Skipping non-geom prim: {prim.GetPath()}")
-                continue
+        # Define a list to hold all geometry prims found in the
+        # stage, including those nested within instances
+        path_geom_prim_map = {}
+        visual_geom_prims = []
+        collision_geom_prims = []
 
+        # Define a function to check if a given prim has an enabled collider
+        def _is_enabled_collider(prim) -> bool:
+            if collider := self.UsdPhysics.CollisionAPI(prim):
+                return collider.GetCollisionEnabledAttr().Get()
+            return False
+
+        # Define a recursive function to traverse the stage and collect
+        # all UsdGeom prims, including those nested within instances
+        def _collect_geom_prims(prim, colliders=True, visuals=True):
+            if prim.IsA(self.UsdGeom.Gprim):
+                msg.debug(f"Found UsdGeom prim: {prim.GetPath()}, type: {prim.GetTypeName()}")
+                path = str(prim.GetPath())
+                if path not in path_geom_prim_map:
+                    is_collider = _is_enabled_collider(prim)
+                    if is_collider and colliders:
+                        collision_geom_prims.append(prim)
+                        path_geom_prim_map[path] = prim
+                    if not is_collider and visuals:
+                        visual_geom_prims.append(prim)
+                        path_geom_prim_map[path] = prim
+            elif prim.IsInstance():
+                proto = prim.GetPrototype()
+                for child in proto.GetChildren():
+                    inst_child = stage.GetPrimAtPath(child.GetPath().ReplacePrefix(proto.GetPath(), prim.GetPath()))
+                    _collect_geom_prims(inst_child, colliders=colliders, visuals=visuals)
+
+        # If enabled, traverse the stage to collect geometry
+        # prims in the order they are defined in the USD file
+        if retain_geom_ordering:
+            # Traverse the stage to collect geometry prims
+            for prim in stage.Traverse():
+                _collect_geom_prims(prim=prim)
+
+        # Otherwise, simply retrieve the geometry prim paths and descriptors from the physics shape
+        else:
+            # First traverse only visuals
+            for prim in stage.Traverse():
+                _collect_geom_prims(prim=prim, colliders=False)
+
+            # Then iterate through physics-only shapes
+            for key, value in ret_dict.items():
+                if key in self.supported_usd_physics_shape_types:
+                    paths, shape_specs = value
+                    for xpath, shape_spec in zip(paths, shape_specs, strict=False):
+                        if self._warn_invalid_desc(xpath, shape_spec):
+                            continue
+                        _collect_geom_prims(prim=stage.GetPrimAtPath(str(xpath)), visuals=False)
+
+        # Define separate lists to hold geometry descriptors for visual and physics geometry
+        visual_geoms: list[GeometryDescriptor] = []
+        physics_geoms: list[GeometryDescriptor] = []
+
+        # Define a function to process each geometry prim and construct geometry descriptors based on whether
+        # they are marked for physics simulation or not. The geometry descriptors are then added to the
+        # corresponding list to be added to the builder at the end of the process.
+        def _process_geom_prim(prim):
             # Extract UsdGeom prim information
             geom_prim_path = prim.GetPath()
             typename = prim.GetTypeName()
@@ -1922,7 +2174,7 @@ class USDImporter:
                         msg.debug(f"Found {len(geom_paths)} geometry descriptors of type '{typename}'")
                     else:
                         msg.critical(f"No UsdPhysics shape descriptors found that match prim type '{typename}'")
-                        continue
+                        return
 
                     # Iterate over physics geom descriptors until a match to the target geom prims is found
                     for geom_path, geom_spec in zip(geom_paths, geom_specs, strict=False):
@@ -1939,43 +2191,54 @@ class USDImporter:
                                 material_index_map=material_index_map,
                                 distance_unit=distance_unit,
                                 meshes_are_collidable=meshes_are_collidable,
+                                force_show_colliders=force_show_colliders,
+                                prim_path_names=use_prim_path_names,
                             )
                             break  # Stop after the first match
                 else:
                     msg.warning(f"Skipping unsupported physics geom prim: {geom_prim_path} of type {typename}")
-                    continue
+                    return
             else:
                 if typename in self.supported_usd_geom_type_names:
                     geom_type_index = self.supported_usd_geom_type_names.index(typename)
                     geom_type = self.supported_usd_geom_types[geom_type_index]
                     msg.debug(f"Parsing UsdGeom @'{geom_prim_path}' of type '{typename}'")
-                    geom_desc = self._parse_geom(
+                    geom_desc = self._parse_visual_geom(
                         geom_prim=prim,
                         geom_type=geom_type,
                         body_index_map=body_index_map,
                         distance_unit=distance_unit,
-                        prim_path_names=False,
+                        prim_path_names=use_prim_path_names,
                     )
                 else:
                     msg.warning(f"Skipping unsupported geom prim: {geom_prim_path} of type {typename}")
-                    continue
+                    return
 
             # If construction succeeded, append it to the model builder
             if geom_desc is not None:
                 # Skip static geometry if not requested
-                if geom_desc.bid == -1 and not load_static_geometry:
-                    continue
+                if geom_desc.body == -1 and not load_static_geometry:
+                    return
                 # Append geometry descriptor to appropriate entity
-                if type(geom_desc) is CollisionGeometryDescriptor:
-                    msg.debug("Adding collision geom '%d':\n%s\n", builder.num_collision_geoms, geom_desc)
-                    builder.add_collision_geometry_descriptor(geom=geom_desc)
-                elif type(geom_desc) is GeometryDescriptor:
-                    msg.debug("Adding physical geom '%d':\n%s\n", builder.num_physical_geoms, geom_desc)
-                    builder.add_physical_geometry_descriptor(geom=geom_desc)
+                if type(geom_desc) is GeometryDescriptor:
+                    if has_physics_schemas:
+                        msg.debug("Adding physics geom '%d':\n%s\n", builder.num_geoms, geom_desc)
+                        physics_geoms.append(geom_desc)
+                    else:
+                        msg.debug("Adding visual geom '%d':\n%s\n", builder.num_geoms, geom_desc)
+                        visual_geoms.append(geom_desc)
 
             # Indicate to user that a UsdGeom has potentially not been marked for physics simulation
             else:
                 msg.critical("Failed to parse geom prim '%s'", geom_prim_path)
+
+        # Process each geometry prim to construct geometry descriptors
+        for geom_prim in visual_geom_prims + collision_geom_prims:
+            _process_geom_prim(geom_prim)
+
+        # Add all geoms grouped by whether they belong to the physics scene or not
+        for geom_desc in visual_geoms + physics_geoms:
+            builder.add_geometry_descriptor(geom=geom_desc)
 
         ###
         # Summary
@@ -1983,9 +2246,8 @@ class USDImporter:
 
         msg.debug("Builder: Rigid Bodies:\n%s\n", builder.bodies)
         msg.debug("Builder: Joints:\n%s\n", builder.joints)
-        msg.debug("Builder: Physical Geoms:\n%s\n", builder.physical_geoms)
-        msg.debug("Builder: Collision Geoms:\n%s\n", builder.collision_geoms)
+        msg.debug("Builder: Geoms:\n%s\n", builder.geoms)
         msg.debug("Builder: Materials:\n%s\n", builder.materials)
 
-        # Return the ModelBuilder populated from the parsed USD file
+        # Return the ModelBuilderKamino populated from the parsed USD file
         return builder

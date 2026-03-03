@@ -25,14 +25,13 @@ import numpy as np
 import warp as wp
 
 from newton._src.solvers.kamino.core.joints import JointActuationType, JointCorrectionMode, JointDoFType
-from newton._src.solvers.kamino.core.model import Model
+from newton._src.solvers.kamino.core.model import ModelKamino
 from newton._src.solvers.kamino.core.types import vec6f
 from newton._src.solvers.kamino.kinematics.joints import compute_joints_data
 from newton._src.solvers.kamino.models import get_examples_usd_assets_path
 from newton._src.solvers.kamino.solvers.fk import (
-    FKPreconditionerOptions,
     ForwardKinematicsSolver,
-    ForwardKinematicsSolverSettings,
+    ForwardKinematicsSolverConfig,
 )
 from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.tests.utils.diff_check import diff_check, run_test_single_joint_examples
@@ -66,7 +65,7 @@ class JacobianCheckForwardKinematics(unittest.TestCase):
         seed = int(hashlib.sha256(test_name.encode("utf8")).hexdigest(), 16)
         rng = np.random.default_rng(seed)
 
-        def test_function(model: Model):
+        def test_function(model: ModelKamino):
             assert model.size.num_worlds == 1  # For simplicity we assume a single world
 
             # Generate (random) body poses
@@ -102,7 +101,7 @@ class JacobianCheckForwardKinematics(unittest.TestCase):
         self.assertTrue(success)
 
 
-def get_actuators_q_quaternion_first_ids(model: Model):
+def get_actuators_q_quaternion_first_ids(model: ModelKamino):
     """Lists the first index of every unit quaternion 4-segment in the model's actuated coordinates."""
     act_types = model.joints.act_type.numpy()
     dof_types = model.joints.dof_type.numpy()
@@ -120,7 +119,7 @@ def get_actuators_q_quaternion_first_ids(model: Model):
     return quat_ids
 
 
-def compute_actuated_coords_and_dofs_offsets(model: Model):
+def compute_actuated_coords_and_dofs_offsets(model: ModelKamino):
     """
     Helper function computing the offsets and sizes needed to extract actuated joint coordinates
     and dofs from all joint coordinates/dofs
@@ -167,7 +166,7 @@ def extract_segments(array, offsets, sizes):
     return np.array(res)
 
 
-def compute_constraint_residual_mask(model: Model):
+def compute_constraint_residual_mask(model: ModelKamino):
     """
     Computes a boolean mask for constraint residuals, True for most constraints but False
     for base joints (to filter out residuals for fixed base models if the base is reset
@@ -186,10 +185,11 @@ def compute_constraint_residual_mask(model: Model):
     mask = np.array(model.size.sum_of_num_joint_cts * [True])
 
     # Exclude base joints
+    base_joint_index = model.info.base_joint_index.numpy().tolist()
     for wd_id in range(model.size.num_worlds):
-        if not model.worlds[wd_id].has_base_joint:
+        if base_joint_index[wd_id] < 0:
             continue
-        base_jt_id = first_joint_id[wd_id] + model.worlds[wd_id].base_joint_idx
+        base_jt_id = base_joint_index[wd_id]
         ct_offset = first_joint_ct_id[base_jt_id]
         mask[ct_offset : ct_offset + num_joint_cts[base_jt_id]] = False
 
@@ -206,7 +206,7 @@ def compute_constraint_residual_mask(model: Model):
 
 
 def generate_random_inputs_q(
-    model: Model,
+    model: ModelKamino,
     num_poses: int,
     max_base_q: np.ndarray,
     max_actuators_q: np.ndarray,
@@ -239,7 +239,7 @@ def generate_random_inputs_q(
 
 
 def generate_random_inputs_u(
-    model: Model,
+    model: ModelKamino,
     num_poses: int,
     max_base_u: np.ndarray,
     max_actuators_u: np.ndarray,
@@ -263,7 +263,7 @@ def generate_random_inputs_u(
 
 
 def generate_random_poses(
-    model: Model,
+    model: ModelKamino,
     num_poses: int,
     max_bodies_q: np.ndarray,
     rng: np.random._generator.Generator,
@@ -289,7 +289,7 @@ def generate_random_poses(
 
 
 def simulate_random_poses(
-    model: Model,
+    model: ModelKamino,
     num_poses: int,
     max_base_q: np.ndarray,
     max_actuators_q: np.ndarray,
@@ -312,11 +312,11 @@ def simulate_random_poses(
     residual_mask = compute_constraint_residual_mask(model)
 
     # Run forward kinematics on all random poses
-    settings = ForwardKinematicsSolverSettings()
-    settings.reset_state = True
-    settings.use_sparsity = False  # Change for sparse/dense solver
-    settings.preconditioner = FKPreconditionerOptions.JACOBI_BLOCK_DIAGONAL  # Change to test preconditioners
-    solver = ForwardKinematicsSolver(model, settings)
+    config = ForwardKinematicsSolverConfig()
+    config.reset_state = True
+    config.use_sparsity = False  # Change for sparse/dense solver
+    config.preconditioner = "jacobi_block_diagonal"  # Change to test preconditioners
+    solver = ForwardKinematicsSolver(model, config)
     success_flags = []
     with wp.ScopedDevice(model.device):
         bodies_q = wp.array(shape=(model.size.sum_of_num_bodies), dtype=wp.transformf)
@@ -562,7 +562,7 @@ class HeterogenousModelSparseJacobianAssemblyCheck(unittest.TestCase):
         base_q_np, actuators_q_np = generate_random_inputs_q(model, num_poses, base_q_max, actuators_q_max, rng)
 
         # Assemble and compare dense and sparse Jacobian for each pose
-        solver = ForwardKinematicsSolver(model, settings=ForwardKinematicsSolverSettings(use_sparsity=True))
+        solver = ForwardKinematicsSolver(model, config=ForwardKinematicsSolverConfig(use_sparsity=True))
         with wp.ScopedDevice(model.device):
             bodies_q = wp.array(shape=(model.size.sum_of_num_bodies), dtype=wp.transformf)
             base_q = wp.array(shape=(model.size.num_worlds), dtype=wp.transformf)

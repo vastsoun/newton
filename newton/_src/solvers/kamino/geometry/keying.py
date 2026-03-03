@@ -20,7 +20,6 @@ TODO: Add more detailed description and documentation.
 """
 
 import warp as wp
-from warp.context import Devicelike
 
 from ..core.types import int32, int64, uint32, uint64, vec2i
 
@@ -302,13 +301,13 @@ class KeySorter:
     A utility class for sorting integer keys using radix sort.
     """
 
-    def __init__(self, max_num_keys: int, device: Devicelike = None):
+    def __init__(self, max_num_keys: int, device: wp.DeviceLike = None):
         """
         Creates a KeySorter instance to sort keys using radix sort.
 
         Args:
             max_num_keys (int): Maximum number of keys to sort.
-            device (Devicelike, optional): Device to allocate buffers on (None for default).
+            device (wp.DeviceLike, optional): Device to allocate buffers on (None for default).
         """
         # Declare and initialize the maximum number of keys
         # NOTE: This is used set dimensions of all kernel launches
@@ -336,7 +335,7 @@ class KeySorter:
         )
 
     @property
-    def device(self) -> Devicelike:
+    def device(self) -> wp.DeviceLike:
         """Returns the device on which the KeySorter is allocated."""
         return self._device
 

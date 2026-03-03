@@ -3,6 +3,16 @@ Visualization
 
 Newton provides multiple viewer backends for different visualization needs, from real-time rendering to offline recording and external integrations.
 
+All viewer backends share a common interface with ``set_model()``, ``begin_frame()``, ``log_state()``, and ``end_frame()`` methods.
+
+**Limiting rendered worlds**: When training with many parallel environments, rendering all worlds can impact performance. 
+All viewers support the ``max_worlds`` parameter to limit visualization to a subset of environments:
+
+.. code-block:: python
+
+    # Only render the first 4 environments
+    viewer.set_model(model, max_worlds=4)
+
 Real-time Viewers
 -----------------
 
@@ -100,28 +110,27 @@ To use binary format, install the optional dependency:
 
 **Loading and playing back recordings:**
 
+Use :class:`~newton.viewer.ViewerFile` to load a recording, then restore the model and state for a given frame. Use :class:`~newton.viewer.ViewerGL` (or another rendering viewer) to visualize.
+
 .. code-block:: python
 
     # Load a recording for playback
-    recorder = newton.utils.RecorderModelAndState()
-    recorder.load_from_file("simulation.bin")
+    viewer_file = newton.viewer.ViewerFile("simulation.bin")
+    viewer_file.load_recording()
 
-    # Create model and state for playback
+    # Restore the model and state from the recording
     model = newton.Model()
-    state = newton.State()
+    viewer_file.load_model(model)
 
-    # Restore the model from the recording
-    recorder.playback_model(model)
+    state = model.state()
+    viewer_file.load_state(state, frame_id=10)  # frame index in [0, get_frame_count())
 
-    # Playback a specific frame (e.g., frame 10)
-    recorder.playback(state, frame_index=10)
-
-    # Use with any viewer to visualize
+    # Use ViewerGL for visualization
     viewer = newton.viewer.ViewerGL()
     viewer.set_model(model)
     viewer.log_state(state)
 
-For a complete example with UI controls for playback, see ``newton/examples/example_replay_viewer.py``.
+For a complete example with UI controls for scrubbing and playback, see ``newton/examples/basic/example_replay_viewer.py``.
 
 Key parameters:
 
@@ -238,6 +247,98 @@ Then, you can use the rerun SDK in a Jupyter notebook by importing the :mod:`rer
 
 The history of states will be available in the viewer to scrub through the simulation timeline.
 
+Viser Viewer
+~~~~~~~~~~~~
+
+The :class:`~newton.viewer.ViewerViser` backend integrates with the `viser <https://viser.studio>`_ visualization library,
+providing web-based 3D visualization that works in any browser and has native Jupyter notebook support.
+
+**Installation**: Requires the viser package:
+
+.. code-block:: bash
+
+    pip install viser
+
+**Usage**:
+
+.. code-block:: python
+
+    # Default usage: starts a web server on port 8080
+    viewer = newton.viewer.ViewerViser(port=8080)
+
+    # Open http://localhost:8080 in your browser to view the simulation
+
+    viewer.set_model(model)
+
+    # at every frame:
+    viewer.begin_frame(sim_time)
+    viewer.log_state(state)
+    viewer.end_frame()
+
+    # Close the viewer when done
+    viewer.close()
+
+Key parameters:
+
+- ``port``: Port number for the web server (default: ``8080``)
+- ``label``: Optional label for the browser window title
+- ``verbose``: If True, print the server URL when starting (default: ``True``)
+- ``share``: If True, create a publicly accessible URL via viser's share feature
+- ``record_to_viser``: Path to record the visualization to a ``.viser`` file for later playback
+
+**Recording and playback**
+
+ViewerViser can record simulations to ``.viser`` files for later playback:
+
+.. code-block:: python
+
+    # Record to a .viser file
+    viewer = newton.viewer.ViewerViser(record_to_viser="my_simulation.viser")
+
+    viewer.set_model(model)
+
+    # Run simulation...
+    for frame in range(500):
+        viewer.begin_frame(sim_time)
+        viewer.log_state(state)
+        viewer.end_frame()
+        sim_time += frame_dt
+
+    # Save the recording
+    viewer.save_recording()
+
+The recorded ``.viser`` file can be played back using the viser HTML player.
+
+**Jupyter notebook support**
+
+ViewerViser has native Jupyter notebook integration. When recording is enabled, calling ``show_notebook()`` 
+will display an embedded player with timeline controls:
+
+.. code-block:: python
+
+    viewer = newton.viewer.ViewerViser(record_to_viser="simulation.viser")
+    viewer.set_model(model)
+
+    # Run simulation...
+    for frame in range(500):
+        viewer.begin_frame(sim_time)
+        viewer.log_state(state)
+        viewer.end_frame()
+        sim_time += frame_dt
+
+    # Display in notebook with timeline controls
+    viewer.show_notebook()  # or simply `viewer` at the end of a cell
+
+When no recording is active, ``show_notebook()`` displays the live server in an IFrame.
+
+The viser viewer provides features like:
+
+- Real-time 3D visualization in any web browser
+- Interactive camera controls (pan, zoom, orbit)
+- GPU-accelerated batched mesh rendering
+- Recording and playback capabilities
+- Public URL sharing via viser's share feature
+
 Utility Viewers
 ---------------
 
@@ -292,6 +393,10 @@ Choosing the Right Viewer
       - Advanced visualization and analysis
       - Web interface
       - rerun-sdk
+    * - :class:`~newton.viewer.ViewerViser`
+      - Browser-based visualization and Jupyter notebooks
+      - Web interface, .viser files
+      - viser
     * - :class:`~newton.viewer.ViewerNull`
       - Headless/automated environments
       - None

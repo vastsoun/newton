@@ -23,7 +23,6 @@ independent linear systems, including rectangular and square systems.
 from collections.abc import Callable
 
 import warp as wp
-from warp.context import Devicelike
 
 from ..core.types import FloatType
 from .blas import (
@@ -120,7 +119,7 @@ class BlockSparseLinearOperators:
         return self.bsm.nzb_dtype.dtype
 
     @property
-    def device(self) -> Devicelike:
+    def device(self) -> wp.DeviceLike:
         return self.bsm.device
 
     @property

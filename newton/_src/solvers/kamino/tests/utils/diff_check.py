@@ -23,10 +23,9 @@ import os
 from collections.abc import Callable
 
 import numpy as np
-from warp.context import Devicelike
 
-from newton._src.solvers.kamino.models import get_testing_usd_assets_path
-from newton._src.solvers.kamino.utils.io.usd import USDImporter
+from ...models import get_testing_usd_assets_path
+from ...utils.io.usd import USDImporter
 
 ###
 # Module interface
@@ -42,7 +41,7 @@ def run_test_single_joint_examples(
     binary_joints: bool = True,
     passive_joints: bool = True,
     actuators: bool = True,
-    device: Devicelike = None,
+    device: wp.DeviceLike = None,
 ):
     """
     Runs a test function over all or a subset of the single-joint examples (e.g. to check some derivatives for all joint types)
@@ -50,7 +49,7 @@ def run_test_single_joint_examples(
     Parameters
     ----------
     test_fun: function
-        test function to run on each example, with signature kamino.core.Model -> bool, returning a success flag
+        test function to run on each example, with signature kamino.core.ModelKamino -> bool, returning a success flag
     test_name: str, optional
         a name for the test to print as part of the error message upon failure (default: "test")
     unary_joints: bool, optional

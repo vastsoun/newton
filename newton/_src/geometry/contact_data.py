@@ -37,8 +37,8 @@ class ContactData:
         contact_distance: Signed distance between shapes (negative indicates penetration)
         radius_eff_a: Effective radius of shape A (for rounded shapes like spheres/capsules)
         radius_eff_b: Effective radius of shape B (for rounded shapes like spheres/capsules)
-        thickness_a: Collision thickness offset for shape A
-        thickness_b: Collision thickness offset for shape B
+        margin_a: Collision surface margin offset for shape A
+        margin_b: Collision surface margin offset for shape B
         shape_a: Index of the first shape in the collision pair
         shape_b: Index of the second shape in the collision pair
         margin: Contact detection margin/threshold
@@ -52,11 +52,45 @@ class ContactData:
     contact_distance: float
     radius_eff_a: float
     radius_eff_b: float
-    thickness_a: float
-    thickness_b: float
+    margin_a: float
+    margin_b: float
     shape_a: int
     shape_b: int
     margin: float
     contact_stiffness: float
     contact_damping: float
     contact_friction_scale: float
+
+
+@wp.func
+def contact_passes_margin_check(
+    contact_data: ContactData,
+) -> bool:
+    """
+    Check if a contact passes the margin check and should be written.
+
+    Args:
+        contact_data: ContactData struct containing contact information
+
+    Returns:
+        True if the contact distance is within the contact margin, False otherwise
+    """
+    total_separation_needed = (
+        contact_data.radius_eff_a + contact_data.radius_eff_b + contact_data.margin_a + contact_data.margin_b
+    )
+
+    # Distance calculation matching box_plane_collision
+    contact_normal_a_to_b = wp.normalize(contact_data.contact_normal_a_to_b)
+
+    a_contact_world = contact_data.contact_point_center - contact_normal_a_to_b * (
+        0.5 * contact_data.contact_distance + contact_data.radius_eff_a
+    )
+    b_contact_world = contact_data.contact_point_center + contact_normal_a_to_b * (
+        0.5 * contact_data.contact_distance + contact_data.radius_eff_b
+    )
+
+    diff = b_contact_world - a_contact_world
+    distance = wp.dot(diff, contact_normal_a_to_b)
+    d = distance - total_separation_needed
+
+    return d <= contact_data.margin

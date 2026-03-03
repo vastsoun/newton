@@ -18,11 +18,10 @@ import os
 
 import numpy as np
 import warp as wp
-from warp.context import Devicelike
 
 import newton
 import newton.examples
-from newton._src.solvers.kamino.core.builder import ModelBuilder
+from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
 from newton._src.solvers.kamino.core.joints import JointActuationType
 from newton._src.solvers.kamino.core.types import float32, int32
 from newton._src.solvers.kamino.examples import get_examples_output_path, run_headless
@@ -33,12 +32,10 @@ from newton._src.solvers.kamino.models.builders.utils import (
     make_homogeneous_builder,
     set_uniform_body_pose_offset,
 )
-from newton._src.solvers.kamino.solvers.padmm import PADMMPenaltyUpdate, PADMMWarmStartMode
-from newton._src.solvers.kamino.solvers.warmstart import WarmstarterContacts
 from newton._src.solvers.kamino.utils import logger as msg
 from newton._src.solvers.kamino.utils.control import AnimationJointReference, JointSpacePIDController
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
-from newton._src.solvers.kamino.utils.sim import SimulationLogger, Simulator, SimulatorSettings, ViewerKamino
+from newton._src.solvers.kamino.utils.sim import SimulationLogger, Simulator, SimulatorConfig, ViewerKamino
 
 ###
 # Module configs
@@ -177,7 +174,7 @@ def pd_control_callback(sim: Simulator, animation: AnimationJointReference, deci
 class Example:
     def __init__(
         self,
-        device: Devicelike = None,
+        device: wp.DeviceLike = None,
         num_worlds: int = 1,
         max_steps: int = 1000,
         use_cuda_graph: bool = False,
@@ -214,7 +211,7 @@ class Example:
         # Create a model builder from the imported USD
         msg.notif("Constructing builder from imported USD ...")
         importer = USDImporter()
-        self.builder: ModelBuilder = make_homogeneous_builder(
+        self.builder: ModelBuilderKamino = make_homogeneous_builder(
             num_worlds=num_worlds,
             build_fn=importer.import_from,
             load_drive_dynamics=implicit_pd,
@@ -229,10 +226,10 @@ class Example:
         offset = wp.transformf(0.0, 0.0, 0.265, 0.0, 0.0, 0.0, 1.0)
         set_uniform_body_pose_offset(builder=self.builder, offset=offset)
 
-        # Add a static collision layer and geometry for the plane
+        # Add a static collision geometry for the plane
         if ground:
             for w in range(num_worlds):
-                add_ground_box(self.builder, world_index=w, layer="world")
+                add_ground_box(self.builder, world_index=w)
 
         # Set gravity
         for w in range(self.builder.num_worlds):
@@ -245,35 +242,35 @@ class Example:
                 joint.b_j = [0.044]  # Set joint damping according to Dynamixel XH540-V150 specs
                 msg.info(f"Joint '{joint.name}':\n{joint}\n")
 
-        # Set solver settings
-        settings = SimulatorSettings()
-        settings.dt = self.sim_dt
-        settings.solver.sparse = False
-        settings.solver.sparse_jacobian = False
-        settings.solver.integrator = "moreau"  # Select from {"euler", "moreau"}
-        settings.solver.problem.alpha = 0.1
-        settings.solver.padmm.primal_tolerance = 1e-4
-        settings.solver.padmm.dual_tolerance = 1e-4
-        settings.solver.padmm.compl_tolerance = 1e-4
-        settings.solver.padmm.max_iterations = 100
-        settings.solver.padmm.eta = 1e-5
-        settings.solver.padmm.rho_0 = 0.02  # try 0.02 for Balanced update
-        settings.solver.padmm.rho_min = 0.01
-        settings.solver.padmm.penalty_update_method = PADMMPenaltyUpdate.FIXED  # try BALANCED
-        settings.solver.use_solver_acceleration = True
-        settings.solver.warmstart_mode = PADMMWarmStartMode.CONTAINERS
-        settings.solver.contact_warmstart_method = WarmstarterContacts.Method.GEOM_PAIR_NET_FORCE
-        settings.solver.collect_solver_info = False
-        settings.solver.compute_metrics = logging and not use_cuda_graph
+        # Set solver config
+        config = SimulatorConfig()
+        config.dt = self.sim_dt
+        config.solver.sparse = False
+        config.solver.sparse_jacobian = False
+        config.solver.integrator = "moreau"  # Select from {"euler", "moreau"}
+        config.solver.problem.alpha = 0.1
+        config.solver.padmm.primal_tolerance = 1e-4
+        config.solver.padmm.dual_tolerance = 1e-4
+        config.solver.padmm.compl_tolerance = 1e-4
+        config.solver.padmm.max_iterations = 100
+        config.solver.padmm.eta = 1e-5
+        config.solver.padmm.rho_0 = 0.02  # try 0.02 for Balanced update
+        config.solver.padmm.rho_min = 0.01
+        config.solver.padmm.penalty_update_method = "fixed"  # try "balanced"
+        config.solver.use_solver_acceleration = True
+        config.solver.warmstart_mode = "containers"
+        config.solver.contact_warmstart_method = "geom_pair_net_force"
+        config.solver.collect_solver_info = False
+        config.solver.compute_metrics = logging and not use_cuda_graph
         linear_solver_cls = {v: k for k, v in LinearSolverShorthand.items()}[linear_solver.upper()]
-        settings.solver.linear_solver_type = linear_solver_cls
-        settings.solver.linear_solver_kwargs = {"maxiter": linear_solver_maxiter} if linear_solver_maxiter > 0 else {}
-        settings.solver.avoid_graph_conditionals = avoid_graph_conditionals
-        settings.solver.angular_velocity_damping = 0.0
+        config.solver.linear_solver_type = linear_solver_cls
+        config.solver.linear_solver_kwargs = {"maxiter": linear_solver_maxiter} if linear_solver_maxiter > 0 else {}
+        config.solver.avoid_graph_conditionals = avoid_graph_conditionals
+        config.solver.angular_velocity_damping = 0.0
 
         # Create a simulator
         msg.notif("Building the simulator...")
-        self.sim = Simulator(builder=self.builder, settings=settings, device=device)
+        self.sim = Simulator(builder=self.builder, config=config, device=device)
 
         # Load animation data for dr_legs
         NUMPY_ANIMATION_PATH = os.path.join(EXAMPLE_ASSETS_PATH, "dr_legs/animation/dr_legs_animation_100fps.npy")
@@ -282,7 +279,7 @@ class Example:
 
         # Compute animation time step and rate
         animation_dt = 0.01  # 100 fps
-        animation_rate = round(animation_dt / settings.dt)
+        animation_rate = round(animation_dt / config.dt)
         msg.info(f"animation_dt: {animation_dt}")
         msg.info(f"animation_rate: {animation_rate}")
 
@@ -291,7 +288,7 @@ class Example:
             model=self.sim.model,
             data=animation_np,
             data_dt=animation_dt,
-            target_dt=settings.dt,
+            target_dt=config.dt,
             decimation=1,
             rate=1,
             loop=False,

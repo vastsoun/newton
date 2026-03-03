@@ -56,7 +56,7 @@ class TestDualProblem(unittest.TestCase):
         builder = make_basics_heterogeneous_builder()
 
         # Create the model and containers from the builder
-        model, data, limits, detector, _jacobians = make_containers(
+        model, data, _state, limits, detector, _jacobians = make_containers(
             builder=builder, max_world_contacts=max_world_contacts, device=self.default_device
         )
 
@@ -121,12 +121,12 @@ class TestDualProblem(unittest.TestCase):
         num_worlds = builder.num_worlds
 
         # Create the model and containers from the builder
-        model, data, limits, detector, jacobians = make_containers(
+        model, data, state, limits, detector, jacobians = make_containers(
             builder=builder, max_world_contacts=max_world_contacts, device=self.default_device
         )
 
         # Update the containers
-        update_containers(model=model, data=data, limits=limits, detector=detector, jacobians=jacobians)
+        update_containers(model=model, data=data, state=state, limits=limits, detector=detector, jacobians=jacobians)
         if self.verbose:
             print_model_info(model)
 

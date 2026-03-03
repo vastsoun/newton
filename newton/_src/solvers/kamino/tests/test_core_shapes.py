@@ -22,6 +22,7 @@ import unittest
 import numpy as np
 import warp as wp
 
+from newton._src.geometry.types import GeoType
 from newton._src.solvers.kamino.core.shapes import (
     BoxShape,
     CapsuleShape,
@@ -31,11 +32,9 @@ from newton._src.solvers.kamino.core.shapes import (
     EmptyShape,
     MeshShape,
     PlaneShape,
-    SDFShape,
     ShapeType,
     SphereShape,
 )
-from newton._src.solvers.kamino.core.types import mat33f, vec3f
 from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.utils import logger as msg
 
@@ -100,10 +99,30 @@ class TestShapeType(unittest.TestCase):
         self.assertEqual(type, 10)
         self.assertEqual(type.num_params, -1)
 
-    def test_11_sdf_shape(self):
-        type = ShapeType.SDF
-        self.assertEqual(type, 11)
-        self.assertEqual(type.num_params, -1)
+    def test_11_conversion_to_newton_geo_type(self):
+        """All primitive ShapeType values must convert to the correct GeoType."""
+        expected_mappings = {
+            ShapeType.EMPTY: GeoType.NONE,
+            ShapeType.SPHERE: GeoType.SPHERE,
+            ShapeType.CYLINDER: GeoType.CYLINDER,
+            ShapeType.CONE: GeoType.CONE,
+            ShapeType.CAPSULE: GeoType.CAPSULE,
+            ShapeType.BOX: GeoType.BOX,
+            ShapeType.ELLIPSOID: GeoType.ELLIPSOID,
+            ShapeType.PLANE: GeoType.PLANE,
+            ShapeType.CONVEX: GeoType.CONVEX_MESH,
+            ShapeType.MESH: GeoType.MESH,
+            ShapeType.HFIELD: GeoType.HFIELD,
+        }
+        for kamino_type, newton_type in expected_mappings.items():
+            geo_type, _ = ShapeType.to_newton(kamino_type)
+            self.assertEqual(geo_type, newton_type, f"{kamino_type} should map to {newton_type}")
+
+    def test_12_all_enum_members_covered(self):
+        """Every ShapeType member must be handled by to_newton()."""
+        for member in ShapeType:
+            geo_type, _ = ShapeType.to_newton(member)
+            self.assertIsInstance(geo_type, GeoType)
 
 
 class TestShapeDescriptors(unittest.TestCase):
@@ -298,7 +317,7 @@ class TestShapeDescriptors(unittest.TestCase):
         self.assertEqual(shape.name, "mesh")
         self.assertEqual(shape.type, ShapeType.MESH)
         self.assertEqual(shape.num_params, -1)
-        self.assertEqual(shape.params, 1.0)
+        self.assertEqual(shape.params, (1.0, 1.0, 1.0))
         self.assertTrue(np.array_equal(shape.vertices, np.array(vertices)))
         self.assertTrue(np.array_equal(shape.indices, np.array(indices).flatten()))
 
@@ -321,7 +340,7 @@ class TestShapeDescriptors(unittest.TestCase):
         self.assertEqual(shape.name, "convex")
         self.assertEqual(shape.type, ShapeType.CONVEX)
         self.assertEqual(shape.num_params, -1)
-        self.assertEqual(shape.params, 1.0)
+        self.assertEqual(shape.params, (1.0, 1.0, 1.0))
         self.assertTrue(np.array_equal(shape.vertices, np.array(vertices)))
         self.assertTrue(np.array_equal(shape.indices, np.array(indices).flatten()))
 
@@ -348,31 +367,6 @@ class TestShapeDescriptors(unittest.TestCase):
     #     self.assertEqual(shape.params, None)
     #     self.assertTrue(np.array_equal(shape.vertices, np.array(vertices)))
     #     self.assertTrue(np.array_equal(shape.indices, np.array(indices).flatten()))
-
-    def test_11_sdf_shape(self):
-        if self.default_device.is_cpu:
-            self.skipTest("SDFShape tests are skipped on CPU device.")
-        # Create an SDF shape
-        volume = wp.Volume.allocate((-10, -10, -10), (10, 10, 10), voxel_size=0.5, device=self.default_device)
-        shape = SDFShape(volume)
-        # Check default values
-        self.assertEqual(shape.name, "sdf")
-        self.assertEqual(shape.type, ShapeType.SDF)
-        self.assertEqual(shape.num_params, -1)
-        self.assertEqual(shape.params, None)
-        self.assertEqual(shape.mass, 1.0)
-        self.assertEqual(shape.com, vec3f(0.0))
-        self.assertEqual(shape.inertia, mat33f(np.eye(3)))
-
-        # Check hash function
-        shape_hash = hash(shape)
-        shape_hash2 = hash(shape)
-        base_hash = super(SDFShape, shape).__hash__()
-        self.assertEqual(shape_hash, shape_hash2)
-        self.assertNotEqual(shape_hash, base_hash)
-        msg.info(f"SDFShape hash: {shape_hash}")
-        msg.info(f"SDFShape hash (2): {shape_hash2}")
-        msg.info(f"SDFShape base hash: {base_hash}")
 
 
 ###

@@ -22,16 +22,17 @@ import unittest
 import numpy as np
 import warp as wp
 
-from newton._src.solvers.kamino.core.model import Model, ModelData
+from newton._src.solvers.kamino.core.data import DataKamino
+from newton._src.solvers.kamino.core.model import ModelKamino
 from newton._src.solvers.kamino.dynamics.wrenches import (
     compute_constraint_body_wrenches_dense,
     compute_constraint_body_wrenches_sparse,
     compute_joint_dof_body_wrenches_dense,
     compute_joint_dof_body_wrenches_sparse,
 )
-from newton._src.solvers.kamino.geometry.contacts import Contacts
+from newton._src.solvers.kamino.geometry.contacts import ContactsKamino
 from newton._src.solvers.kamino.kinematics.jacobians import DenseSystemJacobians, SparseSystemJacobians
-from newton._src.solvers.kamino.kinematics.limits import Limits
+from newton._src.solvers.kamino.kinematics.limits import LimitsKamino
 from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.tests.utils.extract import (
     extract_active_constraint_vectors,
@@ -65,10 +66,10 @@ test_wrench_atol = 1e-4  # TODO: Should be 1e-6
 
 
 def compute_and_compare_dense_sparse_jacobian_wrenches(
-    model: Model,
-    data: ModelData,
-    limits: Limits,
-    contacts: Contacts,
+    model: ModelKamino,
+    data: DataKamino,
+    limits: LimitsKamino,
+    contacts: ContactsKamino,
 ):
     # Create the Jacobians container
     jacobians_dense = DenseSystemJacobians(model=model, limits=limits, contacts=contacts)
@@ -248,7 +249,7 @@ class TestDynamicsWrenches(unittest.TestCase):
 
     def test_01_compute_wrenches_for_single_fourbar_with_limits_and_contacts(self):
         # Construct the test problem
-        model, data, limits, contacts = make_test_problem_fourbar(
+        model, data, _state, limits, contacts = make_test_problem_fourbar(
             device=self.default_device,
             max_world_contacts=12,
             num_worlds=1,
@@ -268,7 +269,7 @@ class TestDynamicsWrenches(unittest.TestCase):
 
     def test_02_compute_wrenches_for_multiple_fourbars_with_limits_and_contacts(self):
         # Construct the test problem
-        model, data, limits, contacts = make_test_problem_fourbar(
+        model, data, _state, limits, contacts = make_test_problem_fourbar(
             device=self.default_device,
             max_world_contacts=12,
             num_worlds=3,
@@ -288,7 +289,7 @@ class TestDynamicsWrenches(unittest.TestCase):
 
     def test_03_compute_wrenches_heterogeneous_model_with_limits_and_contacts(self):
         # Construct the test problem
-        model, data, limits, contacts = make_test_problem_heterogeneous(
+        model, data, _state, limits, contacts = make_test_problem_heterogeneous(
             device=self.default_device,
             max_world_contacts=12,
             with_limits=True,

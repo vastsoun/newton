@@ -16,12 +16,10 @@
 """Unit-test utilities for generating random linear system and factorization problems."""
 
 import numpy as np
-import scipy.linalg
 import warp as wp
-from warp.context import Devicelike
 
-from newton._src.solvers.kamino.core.types import FloatArrayLike, float32, int32
-from newton._src.solvers.kamino.linalg.utils.rand import (
+from ...core.types import FloatArrayLike, float32, int32
+from ...linalg.utils.rand import (
     random_rhs_for_matrix,
     random_spd_matrix,
     random_symmetric_matrix,
@@ -42,7 +40,7 @@ class RandomProblemLLT:
         b: list[np.ndarray] | None = None,
         np_dtype=np.float32,
         wp_dtype=float32,
-        device: Devicelike = None,
+        device: wp.DeviceLike = None,
         upper: bool = False,
     ):
         # Check input data to ensure they are indeed lists of numpy arrays
@@ -86,7 +84,7 @@ class RandomProblemLLT:
         self.seed: int = seed
         self.np_dtype = np_dtype
         self.wp_dtype = wp_dtype
-        self.device: Devicelike = device
+        self.device: wp.DeviceLike = device
 
         # Declare the lists of reference problem data
         self.A_np: list[np.ndarray] = []
@@ -198,9 +196,18 @@ class RandomProblemLDLT:
         b: list[np.ndarray] | None = None,
         np_dtype=np.float32,
         wp_dtype=float32,
-        device: Devicelike = None,
+        device: wp.DeviceLike = None,
         lower: bool = True,
     ):
+        # Attempt to import scipy.linalg, which is required
+        # for the LDLT decomposition and reference solutions
+        try:
+            import scipy.linalg
+        except ImportError as e:
+            raise ImportError(
+                "scipy is required for RandomProblemLDLT but is not installed. install with: pip install scipy"
+            ) from e
+
         # Check input data to ensure they are indeed lists of numpy arrays
         if A is not None:
             if not isinstance(A, list) or not all(isinstance(a, np.ndarray) for a in A):
@@ -259,7 +266,7 @@ class RandomProblemLDLT:
         self.seed: int = seed
         self.np_dtype = np_dtype
         self.wp_dtype = wp_dtype
-        self.device: Devicelike = device
+        self.device: wp.DeviceLike = device
 
         # Declare the lists of reference problem data
         self.A_np: list[np.ndarray] = []
@@ -386,6 +393,14 @@ def _solve_cholesky_lower_numpy(L: np.ndarray, b: np.ndarray) -> tuple[np.ndarra
     Returns:
         np.ndarray: The solution vector x.
     """
+    # Attempt to import scipy.linalg, which is required
+    # for the LDLT decomposition and reference solutions
+    try:
+        import scipy.linalg
+    except ImportError as e:
+        raise ImportError(
+            "scipy is required for RandomProblemLDLT but is not installed. install with: pip install scipy"
+        ) from e
     y = scipy.linalg.solve_triangular(L, b, lower=True)
     x = scipy.linalg.solve_triangular(L.T, y, lower=False)
     return y, x
@@ -402,6 +417,14 @@ def _solve_cholesky_upper_numpy(U: np.ndarray, b: np.ndarray) -> tuple[np.ndarra
     Returns:
         np.ndarray: The solution vector x.
     """
+    # Attempt to import scipy.linalg, which is required
+    # for the LDLT decomposition and reference solutions
+    try:
+        import scipy.linalg
+    except ImportError as e:
+        raise ImportError(
+            "scipy is required for RandomProblemLDLT but is not installed. install with: pip install scipy"
+        ) from e
     y = scipy.linalg.solve_triangular(U.T, b, lower=True)
     x = scipy.linalg.solve_triangular(U, y, lower=False)
     return y, x
@@ -422,6 +445,14 @@ def _solve_ldlt_lower_numpy(
     Returns:
         np.ndarray: The solution vector x.
     """
+    # Attempt to import scipy.linalg, which is required
+    # for the LDLT decomposition and reference solutions
+    try:
+        import scipy.linalg
+    except ImportError as e:
+        raise ImportError(
+            "scipy is required for RandomProblemLDLT but is not installed. install with: pip install scipy"
+        ) from e
     PL = L[P, :]
     z = scipy.linalg.solve_triangular(PL, b[P], lower=True)
     y = z / np.diag(D)
@@ -445,6 +476,14 @@ def _solve_ldlt_upper_numpy(
     Returns:
         np.ndarray: The solution vector x.
     """
+    # Attempt to import scipy.linalg, which is required
+    # for the LDLT decomposition and reference solutions
+    try:
+        import scipy.linalg
+    except ImportError as e:
+        raise ImportError(
+            "scipy is required for RandomProblemLDLT but is not installed. install with: pip install scipy"
+        ) from e
     PU = U[P, :]
     z = scipy.linalg.solve_triangular(PU.T, b[P], lower=True)
     y = z / np.diag(D)

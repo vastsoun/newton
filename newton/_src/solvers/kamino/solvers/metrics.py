@@ -30,15 +30,15 @@ Usage
 A typical example for using this module is:
 
     # Import all relevant types from Kamino
-    from newton._src.solvers.kamino.core import ModelBuilder
-    from newton._src.solvers.kamino.geometry import Contacts
-    from newton._src.solvers.kamino.kinematics import Limits
+    from newton._src.solvers.kamino.core import ModelBuilderKamino
+    from newton._src.solvers.kamino.geometry import ContactsKamino
+    from newton._src.solvers.kamino.kinematics import LimitsKamino
     from newton._src.solvers.kamino.kinematics import DenseSystemJacobians
     from newton._src.solvers.kamino.dynamics import DualProblem
     from newton._src.solvers.kamino.solvers import PADMMSolver
 
     # Create a model builder and add bodies, joints, geoms, etc.
-    builder = ModelBuilder()
+    builder = ModelBuilderKamino()
     ...
 
     # Create a model from the builder and construct additional
@@ -46,8 +46,8 @@ A typical example for using this module is:
     model = builder.finalize()
     state_p = model.state()
     data = model.data()
-    limits = Limits(model)
-    contacts = Contacts(builder)
+    limits = LimitsKamino(model)
+    contacts = ContactsKamino(builder)
     jacobians = DenseSystemJacobians(model, limits, contacts)
 
     # Build the Jacobians for the model and active limits and contacts
@@ -87,17 +87,17 @@ A typical example for using this module is:
 from dataclasses import dataclass
 
 import warp as wp
-from warp.context import Devicelike
 
+from ..core.data import DataKamino
 from ..core.math import screw, screw_angular, screw_linear
-from ..core.model import Model, ModelData
-from ..core.state import State
+from ..core.model import ModelKamino
+from ..core.state import StateKamino
 from ..core.types import float32, int32, int64, mat33f, uint32, vec2f, vec3f, vec4f, vec6f
 from ..dynamics.dual import DualProblem
-from ..geometry.contacts import Contacts
+from ..geometry.contacts import ContactsKamino
 from ..geometry.keying import build_pair_key2
 from ..kinematics.jacobians import DenseSystemJacobians, SparseSystemJacobians
-from ..kinematics.limits import Limits
+from ..kinematics.limits import LimitsKamino
 from ..solvers.padmm.math import (
     compute_desaxce_corrections,
     compute_dot_product,
@@ -243,7 +243,7 @@ class SolutionMetricsData:
     Computed as the maximum absolute value (i.e. infinity-norm) over joint-limit constraint residuals.
 
     Equivalent to `r_cts_limits := || r_l ||_inf`, where `r_l` would be an array of joint-limit
-    constraint residuals constructed from the collection of `r_q` elements defined in :class:`LimitsData`.
+    constraint residuals constructed from the collection of `r_q` elements defined in :class:`LimitsKaminoData`.
 
     Shape of ``(num_worlds,)`` and type :class:`float32`.
     """
@@ -263,7 +263,7 @@ class SolutionMetricsData:
     Computed as the maximum absolute value (i.e. infinity-norm) over contact constraint residuals.
 
     Equivalent to `r_cts_contacts := || d_k ||_inf`, where `d_k` would be an array of
-    contact penetrations extracted from the `gapfunc` elements of :class:`ContactsData`.
+    contact penetrations extracted from the `gapfunc` elements of :class:`ContactsKaminoData`.
 
     Shape of ``(num_worlds,)`` and type :class:`float32`.
     """
@@ -1121,21 +1121,21 @@ class SolutionMetrics:
     about the specific metrics computed, please refer to the documentation of that class.
     """
 
-    def __init__(self, model: Model | None = None, device: Devicelike = None):
+    def __init__(self, model: ModelKamino | None = None, device: wp.DeviceLike = None):
         """
         Initializes the solution metrics evaluator.
 
         Args:
-            model (Model):
+            model (ModelKamino):
                 The model containing the time-invariant data of the simulation.
-            device (Devicelike, optional):
+            device (wp.DeviceLike, optional):
                 The device where the metrics data should be allocated.\n
                 If not specified, the model's device will be used by default.
         """
         # Declare and initialize the target device
         # NOTE: This can be overridden during a
         # later call to `finalize()` if needed
-        self._device: Devicelike = device
+        self._device: wp.DeviceLike = device
 
         # Declare the metrics data container
         self._data: SolutionMetricsData | None = None
@@ -1148,20 +1148,20 @@ class SolutionMetrics:
         if model is not None:
             self.finalize(model, device)
 
-    def finalize(self, model: Model, device: Devicelike = None):
+    def finalize(self, model: ModelKamino, device: wp.DeviceLike = None):
         """
         Finalizes the metrics data allocations on the specified device.
 
         Args:
-            model (Model):
+            model (ModelKamino):
                 The model containing the time-invariant data of the simulation.
-            device (Devicelike, optional):
+            device (wp.DeviceLike, optional):
                 The device where the metrics data should be allocated.\n
                 If not specified, the model's device will be used by default.
         """
         # Ensure the model is valid
-        if not isinstance(model, Model):
-            raise TypeError("Expected 'model' to be of type Model.")
+        if not isinstance(model, ModelKamino):
+            raise TypeError("Expected 'model' to be of type ModelKamino.")
 
         # Set the target device for metrics data allocation and execution
         # If no device is specified, use the model's device by default
@@ -1206,7 +1206,7 @@ class SolutionMetrics:
     ###
 
     @property
-    def device(self) -> Devicelike:
+    def device(self) -> wp.DeviceLike:
         """
         Returns the device where the metrics data is allocated.
         """
@@ -1235,27 +1235,27 @@ class SolutionMetrics:
         sigma: wp.array,
         lambdas: wp.array,
         v_plus: wp.array,
-        model: Model,
-        data: ModelData,
-        state_p: State,
+        model: ModelKamino,
+        data: DataKamino,
+        state_p: StateKamino,
         problem: DualProblem,
         jacobians: DenseSystemJacobians | SparseSystemJacobians,
-        limits: Limits | None = None,
-        contacts: Contacts | None = None,
+        limits: LimitsKamino | None = None,
+        contacts: ContactsKamino | None = None,
     ):
         """
         Evaluates all solution performance metrics.
 
         Args:
-            model (Model):
+            model (ModelKamino):
                 The model containing the time-invariant data of the simulation.
-            data (ModelData):
+            data (DataKamino):
                 The model data containing the time-variant data of the simulation.
-            state_p (State):
+            state_p (StateKamino):
                 The previous state of the simulation.
-            limits (Limits):
+            limits (LimitsKamino):
                 The joint-limits data describing active limit constraints.
-            contacts (Contacts):
+            contacts (ContactsKamino):
                 The contact data describing active contact constraints.
             problem (DualProblem):
                 The dual forward dynamics problem of the current time-step.
@@ -1289,22 +1289,22 @@ class SolutionMetrics:
 
     def _evaluate_constraint_violations_perf(
         self,
-        model: Model,
-        data: ModelData,
-        limits: Limits | None = None,
-        contacts: Contacts | None = None,
+        model: ModelKamino,
+        data: DataKamino,
+        limits: LimitsKamino | None = None,
+        contacts: ContactsKamino | None = None,
     ):
         """
         Evaluates the constraint-violation performance metrics.
 
         Args:
-            model (Model):
+            model (ModelKamino):
                 The model containing the time-invariant data of the simulation.
-            data (ModelData):
+            data (DataKamino):
                 The model data containing the time-variant data of the simulation.
-            limits (Limits):
+            limits (LimitsKamino):
                 The joint-limits data describing active limit constraints.
-            contacts (Contacts):
+            contacts (ContactsKamino):
                 The contact data describing active contact constraints.
         """
         # Ensure metrics data is available
@@ -1369,20 +1369,20 @@ class SolutionMetrics:
 
     def _evaluate_primal_problem_perf(
         self,
-        model: Model,
-        data: ModelData,
-        state_p: State,
+        model: ModelKamino,
+        data: DataKamino,
+        state_p: StateKamino,
         jacobians: DenseSystemJacobians | SparseSystemJacobians,
     ):
         """
         Evaluates the primal problem performance metrics.
 
         Args:
-            model (Model):
+            model (ModelKamino):
                 The model containing the time-invariant data of the simulation.
-            data (ModelData):
+            data (DataKamino):
                 The model data containing the time-variant data of the simulation.
-            state_p (State):
+            state_p (StateKamino):
                 The previous state of the simulation.
             jacobians (DenseSystemJacobians | SparseSystemJacobians):
                 The system Jacobians of the current time-step.
@@ -1452,7 +1452,7 @@ class SolutionMetrics:
                         model.joints.bid_F,
                         data.bodies.u_i,
                         J_cts.nzb_values,
-                        jacobians._J_dofs_joint_nzb_offsets,
+                        jacobians._J_cts_joint_nzb_offsets,
                         # Outputs:
                         self._data.r_kinematics,
                         self._data.r_kinematics_argmax,

@@ -22,12 +22,12 @@ import warp as wp
 import newton
 import newton.examples
 
-from ...core.builder import ModelBuilder
+from ...core.builder import ModelBuilderKamino
 from ...examples import print_progress_bar
 from ...utils import logger as msg
 from ...utils.control.rand import RandomJointController
 from ...utils.device import get_device_malloc_info
-from ...utils.sim import SimulationLogger, Simulator, SimulatorSettings, ViewerKamino
+from ...utils.sim import SimulationLogger, Simulator, SimulatorConfig, ViewerKamino
 from .metrics import BenchmarkMetrics
 from .problems import CameraConfig, ControlConfig
 
@@ -39,8 +39,8 @@ from .problems import CameraConfig, ControlConfig
 class BenchmarkSim:
     def __init__(
         self,
-        builder: ModelBuilder,
-        configs: SimulatorSettings,
+        builder: ModelBuilderKamino,
+        configs: SimulatorConfig,
         control: ControlConfig | None = None,
         camera: CameraConfig | None = None,
         device: wp.DeviceLike = None,
@@ -52,7 +52,7 @@ class BenchmarkSim:
         physics_metrics: bool = False,
     ):
         # Cache the device and other internal flags
-        self.builder: ModelBuilder = builder
+        self.builder: ModelBuilderKamino = builder
         self.device: wp.DeviceLike = device
         self.use_cuda_graph: bool = use_cuda_graph
         self.max_steps: int = max_steps
@@ -63,7 +63,7 @@ class BenchmarkSim:
 
         # Create a simulator
         msg.info("Building the simulator...")
-        self.sim = Simulator(builder=builder, settings=configs, device=device)
+        self.sim = Simulator(builder=builder, config=configs, device=device)
 
         # Create a random-action controller for the model
         self.ctlr = RandomJointController(
@@ -229,8 +229,8 @@ def run_single_benchmark(
     config_idx: int,
     metrics: BenchmarkMetrics,
     args: argparse.Namespace,
-    builder: ModelBuilder,
-    configs: SimulatorSettings,
+    builder: ModelBuilderKamino,
+    configs: SimulatorConfig,
     control: ControlConfig | None = None,
     camera: CameraConfig | None = None,
     device: wp.DeviceLike = None,

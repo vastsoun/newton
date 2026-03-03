@@ -25,6 +25,7 @@ from typing import Any
 import warp as wp
 
 from .....geometry.collision_primitive import (
+    MAXVAL,
     collide_box_box,
     collide_capsule_box,
     collide_capsule_capsule,
@@ -38,8 +39,9 @@ from .....geometry.collision_primitive import (
     collide_sphere_cylinder,
     collide_sphere_sphere,
 )
+from ...core.data import DataKamino
 from ...core.materials import make_get_material_pair_properties
-from ...core.model import Model, ModelData
+from ...core.model import ModelKamino
 from ...core.shapes import ShapeType
 from ...core.types import (
     float32,
@@ -54,7 +56,7 @@ from ...core.types import (
     vec3f,
     vec4f,
 )
-from ...geometry.contacts import ContactsData, make_contact_frame_znorm
+from ...geometry.contacts import ContactsKaminoData, make_contact_frame_znorm
 from ...geometry.keying import build_pair_key2
 from .broadphase import CollisionCandidatesData
 
@@ -790,33 +792,35 @@ def capsule_capsule(
     )
 
     # Add the active contact to the global contacts arrays
-    add_single_contact(
-        model_max_contacts,
-        world_max_contacts,
-        wid,
-        capsule1.gid,
-        capsule2.gid,
-        capsule1.bid,
-        capsule2.bid,
-        margin,
-        distance,
-        position,
-        normal,
-        friction,
-        restitution,
-        contact_model_num,
-        contact_world_num,
-        contact_wid,
-        contact_cid,
-        contact_gid_AB,
-        contact_bid_AB,
-        contact_position_A,
-        contact_position_B,
-        contact_gapfunc,
-        contact_frame,
-        contact_material,
-        contact_key,
-    )
+    for k in range(2):
+        if distance[k] != MAXVAL:
+            add_single_contact(
+                model_max_contacts,
+                world_max_contacts,
+                wid,
+                capsule1.gid,
+                capsule2.gid,
+                capsule1.bid,
+                capsule2.bid,
+                margin,
+                distance[k],
+                position[k],
+                normal,
+                friction,
+                restitution,
+                contact_model_num,
+                contact_world_num,
+                contact_wid,
+                contact_cid,
+                contact_gid_AB,
+                contact_bid_AB,
+                contact_position_A,
+                contact_position_B,
+                contact_gapfunc,
+                contact_frame,
+                contact_material,
+                contact_key,
+            )
 
 
 @wp.func
@@ -1317,12 +1321,12 @@ def plane_cylinder(
 @wp.kernel
 def _primitive_narrowphase(
     # Inputs
-    default_margin: float32,
+    default_gap: float32,
     geom_bid: wp.array(dtype=int32),
     geom_sid: wp.array(dtype=int32),
     geom_mid: wp.array(dtype=int32),
     geom_params: wp.array(dtype=vec4f),
-    geom_margin: wp.array(dtype=float32),
+    geom_gap: wp.array(dtype=float32),
     geom_pose: wp.array(dtype=transformf),
     candidate_model_num_pairs: wp.array(dtype=int32),
     candidate_wid: wp.array(dtype=int32),
@@ -1368,28 +1372,22 @@ def _primitive_narrowphase(
     gid1 = geom_pair[0]
     gid2 = geom_pair[1]
 
-    # Retrieve the data of the first geom
-    # NOTE: We retrieve data per-geom for memory coalescing
     bid1 = geom_bid[gid1]
     sid1 = geom_sid[gid1]
     mid1 = geom_mid[gid1]
     params1 = geom_params[gid1]
-    margin1 = geom_margin[gid1]
+    gap1 = geom_gap[gid1]
     pose1 = geom_pose[gid1]
 
-    # Retrieve the data of the second geom
-    # NOTE: We retrieve data per-geom for memory coalescing
     bid2 = geom_bid[gid2]
     sid2 = geom_sid[gid2]
     mid2 = geom_mid[gid2]
     params2 = geom_params[gid2]
-    margin2 = geom_margin[gid1]
+    gap2 = geom_gap[gid2]
     pose2 = geom_pose[gid2]
 
-    # Compute the effective geom-pair contact margin based
-    # on those of the two geoms and the global default
-    # TODO: How can we support negative margins here?
-    contact_margin_12 = wp.max(default_margin, wp.max(margin1, margin2))
+    # Effective detection gap: additive per-shape gaps with default floor
+    contact_gap_12 = wp.max(default_gap, gap1) + wp.max(default_gap, gap2)
 
     # Retrieve the material properties for the geom pair
     restitution_12, _, mu_12 = wp.static(make_get_material_pair_properties())(
@@ -1411,7 +1409,7 @@ def _primitive_narrowphase(
             make_sphere(pose1, params1, gid1, bid1),
             make_sphere(pose2, params2, gid2, bid2),
             wid,
-            contact_margin_12,
+            contact_gap_12,
             mu_12,
             restitution_12,
             contact_model_num,
@@ -1435,7 +1433,7 @@ def _primitive_narrowphase(
             make_sphere(pose1, params1, gid1, bid1),
             make_cylinder(pose2, params2, gid2, bid2),
             wid,
-            contact_margin_12,
+            contact_gap_12,
             mu_12,
             restitution_12,
             contact_model_num,
@@ -1462,7 +1460,7 @@ def _primitive_narrowphase(
             make_sphere(pose1, params1, gid1, bid1),
             make_capsule(pose2, params2, gid2, bid2),
             wid,
-            contact_margin_12,
+            contact_gap_12,
             mu_12,
             restitution_12,
             contact_model_num,
@@ -1486,7 +1484,7 @@ def _primitive_narrowphase(
             make_sphere(pose1, params1, gid1, bid1),
             make_box(pose2, params2, gid2, bid2),
             wid,
-            contact_margin_12,
+            contact_gap_12,
             mu_12,
             restitution_12,
             contact_model_num,
@@ -1540,7 +1538,7 @@ def _primitive_narrowphase(
             make_capsule(pose1, params1, gid1, bid1),
             make_capsule(pose2, params2, gid2, bid2),
             wid,
-            contact_margin_12,
+            contact_gap_12,
             mu_12,
             restitution_12,
             contact_model_num,
@@ -1564,7 +1562,7 @@ def _primitive_narrowphase(
             make_capsule(pose1, params1, gid1, bid1),
             make_box(pose2, params2, gid2, bid2),
             wid,
-            contact_margin_12,
+            contact_gap_12,
             mu_12,
             restitution_12,
             contact_model_num,
@@ -1591,7 +1589,7 @@ def _primitive_narrowphase(
             make_box(pose1, params1, gid1, bid1),
             make_box(pose2, params2, gid2, bid2),
             wid,
-            contact_margin_12,
+            contact_gap_12,
             mu_12,
             restitution_12,
             contact_model_num,
@@ -1622,7 +1620,7 @@ def _primitive_narrowphase(
             make_plane(pose1, params1, gid1, bid1),
             make_sphere(pose2, params2, gid2, bid2),
             wid,
-            contact_margin_12,
+            contact_gap_12,
             mu_12,
             restitution_12,
             contact_model_num,
@@ -1646,7 +1644,7 @@ def _primitive_narrowphase(
             make_plane(pose1, params1, gid1, bid1),
             make_box(pose2, params2, gid2, bid2),
             wid,
-            contact_margin_12,
+            contact_gap_12,
             mu_12,
             restitution_12,
             contact_model_num,
@@ -1670,7 +1668,7 @@ def _primitive_narrowphase(
             make_plane(pose1, params1, gid1, bid1),
             make_ellipsoid(pose2, params2, gid2, bid2),
             wid,
-            contact_margin_12,
+            contact_gap_12,
             mu_12,
             restitution_12,
             contact_model_num,
@@ -1694,7 +1692,7 @@ def _primitive_narrowphase(
             make_plane(pose1, params1, gid1, bid1),
             make_capsule(pose2, params2, gid2, bid2),
             wid,
-            contact_margin_12,
+            contact_gap_12,
             mu_12,
             restitution_12,
             contact_model_num,
@@ -1718,7 +1716,7 @@ def _primitive_narrowphase(
             make_plane(pose1, params1, gid1, bid1),
             make_cylinder(pose2, params2, gid2, bid2),
             wid,
-            contact_margin_12,
+            contact_gap_12,
             mu_12,
             restitution_12,
             contact_model_num,
@@ -1742,47 +1740,39 @@ def _primitive_narrowphase(
 
 
 def primitive_narrowphase(
-    model: Model,
-    data: ModelData,
+    model: ModelKamino,
+    data: DataKamino,
     candidates: CollisionCandidatesData,
-    contacts: ContactsData,
-    default_margin: float | None = None,
+    contacts: ContactsKaminoData,
+    default_gap: float | None = None,
 ):
     """
     Launches the narrow-phase collision detection kernel optimized for primitive shapes.
 
     Args:
-        model (Model):
-            The model containing the collision geometries.
-        data (ModelData):
-            The data containing the current state of the geometries.
-        candidates (CollisionCandidatesData):
-            The collision container holding collision pairs.
-        contacts (ContactsData):
-            The contacts container to store detected contacts.
-        default_margin (float | None):
-            The default contact margin to override those specified by collision geometries.\n
-            If None, `0.0` is used.
+        model: The model containing the collision geometries.
+        data: The data containing the current state of the geometries.
+        candidates: The collision container holding collision pairs.
+        contacts: The contacts container to store detected contacts.
+        default_gap: Default detection gap [m] applied as a floor to per-geometry gaps.
+            If None, ``0.0`` is used.
     """
-    # Set default contact margin if not provided
-    if default_margin is None:
-        default_margin = 0.0
-    # Check if the default contact margin is valid
-    if not isinstance(default_margin, float):
-        raise TypeError("default_margin must be of type `float`")
+    if default_gap is None:
+        default_gap = 0.0
+    if not isinstance(default_gap, float):
+        raise TypeError("default_gap must be of type `float`")
 
-    # Launch the narrow-phase primitive collision detection kernel
     wp.launch(
         _primitive_narrowphase,
         dim=candidates.num_model_geom_pairs,
         inputs=[
-            float32(default_margin),
-            model.cgeoms.bid,
-            model.cgeoms.sid,
-            model.cgeoms.mid,
-            model.cgeoms.params,
-            model.cgeoms.margin,
-            data.cgeoms.pose,
+            float32(default_gap),
+            model.geoms.bid,
+            model.geoms.type,
+            model.geoms.material,
+            model.geoms.params,
+            model.geoms.gap,
+            data.geoms.pose,
             candidates.model_num_collisions,
             candidates.wid,
             candidates.geom_pair,

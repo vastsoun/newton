@@ -18,15 +18,14 @@ import os
 
 import numpy as np
 import warp as wp
-from warp.context import Devicelike
 
 import newton
 import newton.examples
-from newton._src.solvers.kamino.core.builder import ModelBuilder
+from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
 from newton._src.solvers.kamino.examples import get_examples_output_path, run_headless
 from newton._src.solvers.kamino.models.builders.testing import build_all_joints_test_model
 from newton._src.solvers.kamino.utils import logger as msg
-from newton._src.solvers.kamino.utils.sim import SimulationLogger, Simulator, SimulatorSettings, ViewerKamino
+from newton._src.solvers.kamino.utils.sim import SimulationLogger, Simulator, SimulatorConfig, ViewerKamino
 
 ###
 # Module configs
@@ -43,7 +42,7 @@ wp.set_module_options({"enable_backward": False})
 class Example:
     def __init__(
         self,
-        device: Devicelike = None,
+        device: wp.DeviceLike = None,
         max_steps: int = 1000,
         use_cuda_graph: bool = False,
         gravity: bool = True,
@@ -66,24 +65,24 @@ class Example:
 
         # Construct model builder
         msg.notif("Constructing builder using model generator ...")
-        self.builder: ModelBuilder = build_all_joints_test_model(ground=ground)
+        self.builder: ModelBuilderKamino = build_all_joints_test_model(ground=ground)
 
         # Set gravity
         for w in range(self.builder.num_worlds):
             self.builder.gravity[w].enabled = gravity
 
-        # Set solver settings
-        settings = SimulatorSettings()
-        settings.dt = self.sim_dt
-        settings.solver.padmm.primal_tolerance = 1e-6
-        settings.solver.padmm.dual_tolerance = 1e-6
-        settings.solver.padmm.compl_tolerance = 1e-6
-        settings.solver.padmm.rho_0 = 0.1
-        settings.solver.compute_metrics = logging and not use_cuda_graph
+        # Set solver config
+        config = SimulatorConfig()
+        config.dt = self.sim_dt
+        config.solver.padmm.primal_tolerance = 1e-6
+        config.solver.padmm.dual_tolerance = 1e-6
+        config.solver.padmm.compl_tolerance = 1e-6
+        config.solver.padmm.rho_0 = 0.1
+        config.solver.compute_metrics = logging and not use_cuda_graph
 
         # Create a simulator
         msg.notif("Building the simulator...")
-        self.sim = Simulator(builder=self.builder, settings=settings, device=device)
+        self.sim = Simulator(builder=self.builder, config=config, device=device)
 
         # # Initialize the data logger
         self.logger: SimulationLogger | None = None

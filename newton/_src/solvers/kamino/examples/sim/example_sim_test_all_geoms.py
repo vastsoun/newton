@@ -18,11 +18,10 @@ import os
 
 import numpy as np
 import warp as wp
-from warp.context import Devicelike
 
 import newton
 import newton.examples
-from newton._src.solvers.kamino.core.builder import ModelBuilder
+from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
 from newton._src.solvers.kamino.core.shapes import ShapeType
 from newton._src.solvers.kamino.examples import get_examples_output_path, run_headless
 from newton._src.solvers.kamino.geometry import CollisionPipelineType
@@ -30,7 +29,7 @@ from newton._src.solvers.kamino.geometry.primitive.broadphase import PRIMITIVE_B
 from newton._src.solvers.kamino.geometry.primitive.narrowphase import PRIMITIVE_NARROWPHASE_SUPPORTED_SHAPE_PAIRS
 from newton._src.solvers.kamino.models.builders import testing
 from newton._src.solvers.kamino.utils import logger as msg
-from newton._src.solvers.kamino.utils.sim import SimulationLogger, Simulator, SimulatorSettings, ViewerKamino
+from newton._src.solvers.kamino.utils.sim import SimulationLogger, Simulator, SimulatorConfig, ViewerKamino
 
 ###
 # Example class
@@ -40,7 +39,7 @@ from newton._src.solvers.kamino.utils.sim import SimulationLogger, Simulator, Si
 class Example:
     def __init__(
         self,
-        device: Devicelike,
+        device: wp.DeviceLike,
         max_steps: int = 1000,
         use_cuda_graph: bool = False,
         pipeline_name: str = "primitive",
@@ -77,7 +76,6 @@ class Example:
             ShapeType.MESH,  # NOTE: Currently not supported any pipeline
             ShapeType.CONVEX,  # NOTE: Currently not supported any pipeline
             ShapeType.HFIELD,  # NOTE: Currently not supported any pipeline
-            ShapeType.SDF,  # NOTE: Currently not supported any pipeline
         ]
 
         # Generate a list of all supported shape-pair combinations for the configured pipeline
@@ -111,25 +109,22 @@ class Example:
 
         # Construct model builder containing all shape-pair combinations supported by the configured pipeline
         msg.info("Constructing builder using model generator ...")
-        self.builder: ModelBuilder = testing.make_shape_pairs_builder(
+        self.builder: ModelBuilderKamino = testing.make_shape_pairs_builder(
             shape_pairs=supported_shape_pairs,
             distance=0.0,
             ground_box=True,
             ground_z=-2.0,
         )
 
-        # Set solver settings
-        settings = SimulatorSettings()
-        settings.dt = 0.001
-        settings.solver.padmm.primal_tolerance = 1e-6
-        settings.solver.padmm.dual_tolerance = 1e-6
-        settings.solver.padmm.compl_tolerance = 1e-6
-        settings.solver.padmm.rho_0 = 0.1
-        settings.collision_detector.pipeline = cd_pipeline
+        # Set solver config
+        config = SimulatorConfig()
+        config.dt = 0.001
+        config.solver.padmm.rho_0 = 0.1
+        config.collision_detector.pipeline = cd_pipeline
 
         # Create a simulator
         msg.info("Building the simulator...")
-        self.sim = Simulator(builder=self.builder, settings=settings, device=device)
+        self.sim = Simulator(builder=self.builder, config=config, device=device)
 
         # Initialize the data logger
         self.logger: SimulationLogger | None = None
@@ -151,6 +146,7 @@ class Example:
             self.viewer = ViewerKamino(
                 builder=self.builder,
                 simulator=self.sim,
+                show_contacts=True,
                 record_video=record_video,
                 video_folder=video_folder,
                 async_save=async_save,

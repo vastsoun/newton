@@ -1552,14 +1552,8 @@ class SolverKamino(SolverBase):
             config=solver_config,
         )
 
-        # Build per-world geom offset array for contact conversion
-        import numpy as np  # noqa: PLC0415
-
-        geom_offsets = np.array(
-            [w.geoms_idx_offset for w in self._model_kamino.worlds],
-            dtype=np.int32,
-        )
-        self._world_geom_offset = wp.array(geom_offsets, dtype=int32, device=model.device)
+        # Per-world geom offset array for contact conversion
+        self._world_geom_offset = self._model_kamino.info.geom_offset
 
         # Reference to body_q from the latest step output, used by update_contacts()
         self._last_state_body_q: wp.array | None = None

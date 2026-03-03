@@ -472,6 +472,12 @@ class ModelKaminoInfo:
     Shape of ``(num_worlds,)`` and type :class:`int`.
     """
 
+    geom_offset: wp.array | None = None
+    """
+    The geom index offset of each world w.r.t. the model.\n
+    Shape of ``(num_worlds,)`` and type :class:`int`.
+    """
+
     ###
     # DoF Offsets
     ###
@@ -666,12 +672,6 @@ class ModelKamino:
     """
     Host-side cache of the model summary sizes.\n
     This is used for memory allocations and kernel thread dimensions.
-    """
-
-    worlds: list[WorldDescriptor] | None = None
-    """
-    Host-side cache of the world descriptors.\n
-    This is used to construct the model and for memory allocations.
     """
 
     info: ModelKaminoInfo | None = None
@@ -1606,7 +1606,6 @@ class ModelKamino:
             _device=model.device,
             _requires_grad=model.requires_grad,
             size=model_size,
-            worlds=model_worlds,
             info=model_info,
             time=model_time,
             gravity=model_gravity,

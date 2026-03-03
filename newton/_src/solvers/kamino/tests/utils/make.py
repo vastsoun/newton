@@ -79,9 +79,11 @@ def make_generalized_mass_matrices(model: ModelKamino, data: DataKamino) -> list
 
     # Iterate over each world in the model and construct the generalized mass matrix
     num_worlds = model.info.num_worlds
+    num_bodies = model.info.num_bodies.numpy().tolist()
+    bodies_offset = model.info.bodies_offset.numpy().tolist()
     for w in range(num_worlds):
-        nb = model.worlds[w].num_bodies
-        bio = model.worlds[w].bodies_idx_offset
+        nb = num_bodies[w]
+        bio = bodies_offset[w]
         M = np.zeros((6 * nb, 6 * nb), dtype=np.float32)
         for i in range(nb):
             start = 6 * i
@@ -103,9 +105,11 @@ def make_inverse_generalized_mass_matrices(model: ModelKamino, data: DataKamino)
 
     # Iterate over each world in the model and construct the inverse generalized mass matrix
     num_worlds = model.info.num_worlds
+    num_bodies = model.info.num_bodies.numpy().tolist()
+    bodies_offset = model.info.bodies_offset.numpy().tolist()
     for w in range(num_worlds):
-        nb = model.worlds[w].num_bodies
-        bio = model.worlds[w].bodies_idx_offset
+        nb = num_bodies[w]
+        bio = bodies_offset[w]
         invM = np.zeros((6 * nb, 6 * nb), dtype=np.float32)
         for i in range(nb):
             start = 6 * i

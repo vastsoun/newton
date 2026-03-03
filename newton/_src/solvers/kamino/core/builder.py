@@ -925,6 +925,7 @@ class ModelBuilderKamino:
         info_njkc = []
         info_bio = []
         info_jio = []
+        info_gio = []
         info_bdio = []
         info_jqio = []
         info_jdio = []
@@ -1041,6 +1042,7 @@ class ModelBuilderKamino:
                 info_njkc.append(world.num_kinematic_joint_cts)
                 info_bio.append(world.bodies_idx_offset)
                 info_jio.append(world.joints_idx_offset)
+                info_gio.append(world.geoms_idx_offset)
 
                 # Collect the model mass and inertia data
                 info_mass_min.append(world.mass_min)
@@ -1282,6 +1284,7 @@ class ModelBuilderKamino:
                 num_joint_kinematic_cts=wp.array(info_njkc, dtype=int32),
                 bodies_offset=wp.array(info_bio, dtype=int32),
                 joints_offset=wp.array(info_jio, dtype=int32),
+                geom_offset=wp.array(info_gio, dtype=int32),
                 body_dofs_offset=wp.array(info_bdio, dtype=int32),
                 joint_coords_offset=wp.array(info_jqio, dtype=int32),
                 joint_dofs_offset=wp.array(info_jdio, dtype=int32),
@@ -1409,7 +1412,6 @@ class ModelBuilderKamino:
             _device=device,
             _requires_grad=requires_grad,
             size=model_size,
-            worlds=self._worlds,
             info=model_info,
             time=model_time,
             gravity=model_gravity,

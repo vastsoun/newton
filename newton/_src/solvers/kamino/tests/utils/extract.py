@@ -99,8 +99,8 @@ def extract_cts_jacobians(
     # Retrieve the Jacobian dimensions in each world
     has_limits = limits is not None and limits.model_max_limits_host > 0
     has_contacts = contacts is not None and contacts.model_max_contacts_host > 0
-    num_bdofs = [model.worlds[w].num_body_dofs for w in range(num_worlds)]
-    num_jcts = [model.worlds[w].num_joint_cts for w in range(num_worlds)]
+    num_bdofs = model.info.num_body_dofs.numpy().tolist()
+    num_jcts = model.info.num_joint_cts.numpy().tolist()
     maxnl = limits.world_max_limits_host if has_limits else [0] * num_worlds
     maxnc = contacts.world_max_contacts_host if has_contacts else [0] * num_worlds
     nlact = limits.world_active_limits.numpy().tolist() if has_limits else [0] * num_worlds
@@ -156,8 +156,8 @@ def extract_dofs_jacobians(
         J_dofs_flat_sizes[i] = J_dofs_flat_offsets_ext[i + 1] - J_dofs_flat_offsets_ext[i]
 
     # Extract each Jacobian as a matrix
-    num_bdofs = [model.worlds[w].num_body_dofs for w in range(num_worlds)]
-    num_jdofs = [model.worlds[w].num_joint_dofs for w in range(num_worlds)]
+    num_bdofs = model.info.num_body_dofs.numpy().tolist()
+    num_jdofs = model.info.num_joint_dofs.numpy().tolist()
     J_dofs_mat: list[np.ndarray] = []
     for i in range(num_worlds):
         start = J_dofs_flat_offsets[i]

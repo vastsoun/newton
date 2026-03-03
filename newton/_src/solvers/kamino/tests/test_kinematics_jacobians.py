@@ -24,6 +24,7 @@ import warp as wp
 
 from newton._src.solvers.kamino.core.model import ModelKamino
 from newton._src.solvers.kamino.geometry.contacts import ContactsKamino
+from newton._src.solvers.kamino.kinematics.constraints import make_unilateral_constraints_info
 from newton._src.solvers.kamino.kinematics.jacobians import (
     ColMajorSparseConstraintJacobians,
     DenseSystemJacobians,
@@ -277,6 +278,9 @@ class TestKinematicsDenseSystemJacobians(unittest.TestCase):
             print("contacts.world_max_contacts_host: ", contacts.world_max_contacts_host)
             print("contacts.world_max_contacts_host: ", contacts.world_max_contacts_host)
 
+        # Build model info
+        make_unilateral_constraints_info(model, model.data(), limits, contacts)
+
         # Create the Jacobians container
         jacobians = DenseSystemJacobians(model=model, limits=limits, contacts=contacts, device=self.default_device)
         if self.verbose:
@@ -286,15 +290,12 @@ class TestKinematicsDenseSystemJacobians(unittest.TestCase):
             print(f"J_cts_data: shape={jacobians.data.J_cts_data.shape}")
 
         # Compute the total maximum number of constraints
-        num_body_dofs = [model.worlds[w].num_body_dofs for w in range(num_worlds)]
-        num_joint_dofs = [model.worlds[w].num_joint_dofs for w in range(num_worlds)]
-        num_total_cts = [
-            (model.worlds[w].num_joint_cts + limits.world_max_limits_host[w] + 3 * contacts.world_max_contacts_host[w])
-            for w in range(num_worlds)
-        ]
+        num_body_dofs = model.info.num_body_dofs.numpy().tolist()
+        num_joint_dofs = model.info.num_joint_dofs.numpy().tolist()
+        max_total_cts = model.info.max_total_cts.numpy().tolist()
         if self.verbose:
             print("num_body_dofs: ", num_body_dofs)
-            print("num_total_cts: ", num_total_cts)
+            print("max_total_cts: ", max_total_cts)
             print("num_joint_dofs: ", num_joint_dofs)
 
         # Compute Jacobian sizes
@@ -302,7 +303,7 @@ class TestKinematicsDenseSystemJacobians(unittest.TestCase):
         J_cts_size: list[int] = [0] * num_worlds
         for w in range(num_worlds):
             J_dofs_size[w] = num_joint_dofs[w] * num_body_dofs[w]
-            J_cts_size[w] = num_total_cts[w] * num_body_dofs[w]
+            J_cts_size[w] = max_total_cts[w] * num_body_dofs[w]
 
         # Compute Jacobian offsets
         J_dofs_offsets: list[int] = [0] + [sum(J_dofs_size[:w]) for w in range(1, num_worlds)]
@@ -354,6 +355,9 @@ class TestKinematicsDenseSystemJacobians(unittest.TestCase):
             print("contacts.model_max_contacts_host: ", contacts.model_max_contacts_host)
             print("contacts.world_max_contacts_host: ", contacts.world_max_contacts_host)
 
+        # Build model info
+        make_unilateral_constraints_info(model, model.data(), limits, contacts)
+
         # Create the Jacobians container
         jacobians = DenseSystemJacobians(model=model, limits=limits, contacts=contacts)
         if self.verbose:
@@ -363,15 +367,12 @@ class TestKinematicsDenseSystemJacobians(unittest.TestCase):
             print(f"J_cts_data: shape={jacobians.data.J_cts_data.shape}")
 
         # Compute the total maximum number of constraints
-        num_body_dofs = [model.worlds[w].num_body_dofs for w in range(num_worlds)]
-        num_joint_dofs = [model.worlds[w].num_joint_dofs for w in range(num_worlds)]
-        num_total_cts = [
-            (model.worlds[w].num_joint_cts + limits.world_max_limits_host[w] + 3 * contacts.world_max_contacts_host[w])
-            for w in range(num_worlds)
-        ]
+        num_body_dofs = model.info.num_body_dofs.numpy().tolist()
+        num_joint_dofs = model.info.num_joint_dofs.numpy().tolist()
+        max_total_cts = model.info.max_total_cts.numpy().tolist()
         if self.verbose:
             print("num_body_dofs: ", num_body_dofs)
-            print("num_total_cts: ", num_total_cts)
+            print("max_total_cts: ", max_total_cts)
             print("num_joint_dofs: ", num_joint_dofs)
 
         # Compute Jacobian sizes
@@ -379,7 +380,7 @@ class TestKinematicsDenseSystemJacobians(unittest.TestCase):
         J_cts_size: list[int] = [0] * num_worlds
         for w in range(num_worlds):
             J_dofs_size[w] = num_joint_dofs[w] * num_body_dofs[w]
-            J_cts_size[w] = num_total_cts[w] * num_body_dofs[w]
+            J_cts_size[w] = max_total_cts[w] * num_body_dofs[w]
 
         # Compute Jacobian offsets
         J_dofs_offsets: list[int] = [0] + [sum(J_dofs_size[:w]) for w in range(1, num_worlds)]
@@ -730,18 +731,15 @@ class TestKinematicsSparseSystemJacobians(unittest.TestCase):
             print(f"J_dofs max_nzb (shape={jacobians._J_dofs.bsm.max_nzb.shape}): {jacobians._J_dofs.bsm.max_nzb}")
 
         # Check the allocation of Jacobians
-        num_body_dofs = [model.worlds[w].num_body_dofs for w in range(model.size.num_worlds)]
-        num_joint_dofs = [model.worlds[w].num_joint_dofs for w in range(model.size.num_worlds)]
-        num_total_cts = [
-            (model.worlds[w].num_joint_cts + limits.world_max_limits_host[w] + 3 * contacts.world_max_contacts_host[w])
-            for w in range(model.size.num_worlds)
-        ]
+        num_body_dofs = model.info.num_body_dofs.numpy().tolist()
+        num_joint_dofs = model.info.num_joint_dofs.numpy().tolist()
+        max_total_cts = model.info.max_total_cts.numpy().tolist()
         self.assertEqual(jacobians._J_cts.bsm.num_matrices, model.size.num_worlds)
         self.assertEqual(jacobians._J_dofs.bsm.num_matrices, model.size.num_worlds)
         self.assertTrue(
             (
                 jacobians._J_cts.bsm.max_dims.numpy()
-                == [[num_total_cts[w], num_body_dofs[w]] for w in range(model.size.num_worlds)]
+                == [[max_total_cts[w], num_body_dofs[w]] for w in range(model.size.num_worlds)]
             ).all()
         )
         self.assertTrue(
@@ -751,7 +749,7 @@ class TestKinematicsSparseSystemJacobians(unittest.TestCase):
             ).all()
         )
         self.assertTrue(
-            (jacobians._J_cts.bsm.max_nzb.numpy() == [2 * num_total_cts[w] for w in range(model.size.num_worlds)]).all()
+            (jacobians._J_cts.bsm.max_nzb.numpy() == [2 * max_total_cts[w] for w in range(model.size.num_worlds)]).all()
         )
 
     def test_06_allocate_heterogeneous_sparse_system_jacobians(self):
@@ -776,18 +774,15 @@ class TestKinematicsSparseSystemJacobians(unittest.TestCase):
             print(f"J_dofs max_nzb (shape={jacobians._J_dofs.bsm.max_nzb.shape}): {jacobians._J_dofs.bsm.max_nzb}")
 
         # Check the allocation of Jacobians
-        num_body_dofs = [model.worlds[w].num_body_dofs for w in range(model.size.num_worlds)]
-        num_joint_dofs = [model.worlds[w].num_joint_dofs for w in range(model.size.num_worlds)]
-        num_total_cts = [
-            (model.worlds[w].num_joint_cts + limits.world_max_limits_host[w] + 3 * contacts.world_max_contacts_host[w])
-            for w in range(model.size.num_worlds)
-        ]
+        num_body_dofs = model.info.num_body_dofs.numpy().tolist()
+        num_joint_dofs = model.info.num_joint_dofs.numpy().tolist()
+        max_total_cts = model.info.max_total_cts.numpy().tolist()
         self.assertEqual(jacobians._J_cts.bsm.num_matrices, model.size.num_worlds)
         self.assertEqual(jacobians._J_dofs.bsm.num_matrices, model.size.num_worlds)
         self.assertTrue(
             (
                 jacobians._J_cts.bsm.max_dims.numpy()
-                == [[num_total_cts[w], num_body_dofs[w]] for w in range(model.size.num_worlds)]
+                == [[max_total_cts[w], num_body_dofs[w]] for w in range(model.size.num_worlds)]
             ).all()
         )
         self.assertTrue(

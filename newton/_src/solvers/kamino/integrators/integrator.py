@@ -23,13 +23,13 @@ from collections.abc import Callable
 
 import warp as wp
 
-from ..core.control import Control as ControlKamino
-from ..core.model import Model as ModelKamino
-from ..core.model import ModelData as DataKamino
-from ..core.state import State as StateKamino
-from ..geometry.contacts import Contacts as ContactsKamino
+from ..core.control import ControlKamino
+from ..core.data import DataKamino
+from ..core.model import ModelKamino
+from ..core.state import StateKamino
+from ..geometry.contacts import ContactsKamino
 from ..geometry.detector import CollisionDetector
-from ..kinematics.limits import Limits as LimitsKamino
+from ..kinematics.limits import LimitsKamino
 
 ###
 # Module interface

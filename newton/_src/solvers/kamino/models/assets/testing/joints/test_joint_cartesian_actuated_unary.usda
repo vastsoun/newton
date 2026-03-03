@@ -74,11 +74,11 @@ def Xform "test_joint_cartesian_actuated_unary"
             float limit:transX:physics:low = -10
             float limit:transX:physics:high = 10
 
-            # transY is the first DoF of the cartesian joint
+            # transY is the second DoF of the cartesian joint
             float limit:transY:physics:low = -20
             float limit:transY:physics:high = 20
 
-            # transZ is the first DoF of the cartesian joint
+            # transZ is the third DoF of the cartesian joint
             float limit:transZ:physics:low = -30
             float limit:transZ:physics:high = 30
 

@@ -25,27 +25,38 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 import warp as wp
-from warp.context import Devicelike
 
 # Newton imports
 from ...core.types import override
+from ...sim import (
+    Contacts,
+    Control,
+    Model,
+    ModelBuilder,
+    State,
+)
+from ...sim.joints import JointType
+from ..flags import SolverNotifyFlags
 from ..solver import SolverBase
 
 # Kamino imports
 from .core.bodies import update_body_inertias, update_body_wrenches
-from .core.control import Control
+from .core.control import ControlKamino
+from .core.conversions import convert_model_joint_transforms
+from .core.data import DataKamino
+from .core.gravity import convert_model_gravity
 from .core.joints import JointCorrectionMode
-from .core.model import Model, ModelData
-from .core.state import State
+from .core.model import ModelKamino
+from .core.state import StateKamino, compute_body_com_state, compute_body_frame_state
 from .core.time import advance_time
 from .core.types import float32, int32, transformf, vec6f
-from .dynamics.dual import DualProblem, DualProblemSettings
+from .dynamics.dual import DualProblem, DualProblemConfig
 from .dynamics.wrenches import (
     compute_constraint_body_wrenches,
     compute_joint_dof_body_wrenches,
 )
-from .geometry.contacts import Contacts
-from .geometry.detector import CollisionDetector
+from .geometry.contacts import ContactsKamino, convert_contacts_kamino_to_newton, convert_contacts_newton_to_kamino
+from .geometry.detector import CollisionDetector, CollisionDetectorConfig
 from .integrators import IntegratorEuler, IntegratorMoreauJean
 from .kinematics.constraints import (
     make_unilateral_constraints_info,
@@ -58,7 +69,7 @@ from .kinematics.joints import (
     extract_actuators_state_from_joints,
     extract_joints_state_from_actuators,
 )
-from .kinematics.limits import Limits
+from .kinematics.limits import LimitsKamino
 from .kinematics.resets import (
     reset_body_net_wrenches,
     reset_joint_constraint_reactions,
@@ -68,9 +79,9 @@ from .kinematics.resets import (
     reset_time,
 )
 from .linalg import ConjugateResidualSolver, IterativeSolver, LinearSolverType, LLTBlockedSolver
-from .solvers.fk import ForwardKinematicsSolver, ForwardKinematicsSolverSettings
+from .solvers.fk import ForwardKinematicsSolver, ForwardKinematicsSolverConfig
 from .solvers.metrics import SolutionMetrics
-from .solvers.padmm import PADMMSettings, PADMMSolver, PADMMWarmStartMode
+from .solvers.padmm import PADMMConfig, PADMMSolver, PADMMWarmStartMode
 from .solvers.warmstart import WarmstarterContacts, WarmstarterLimits
 from .utils import logger as msg
 
@@ -80,7 +91,8 @@ from .utils import logger as msg
 
 __all__ = [
     "SolverKamino",
-    "SolverKaminoSettings",
+    "SolverKaminoConfig",
+    "SolverKaminoImpl",
 ]
 
 
@@ -90,7 +102,7 @@ __all__ = [
 
 
 @dataclass
-class SolverKaminoSettings:
+class SolverKaminoConfig:
     """
     A container to hold configurations for :class:`SolverKamino`.
     """
@@ -102,36 +114,42 @@ class SolverKaminoSettings:
     Defaults to `"euler"`.
     """
 
-    problem: DualProblemSettings = field(default_factory=DualProblemSettings)
+    problem: DualProblemConfig = field(default_factory=DualProblemConfig)
     """
-    Settings for the dynamics problem.\n
-    See :class:`DualProblemSettings` for more details.
-    """
-
-    padmm: PADMMSettings = field(default_factory=PADMMSettings)
-    """
-    Settings for the dynamics solver.\n
-    See :class:`PADMMSettings` for more details.
+    Config for the dynamics problem.\n
+    See :class:`DualProblemConfig` for more details.
     """
 
-    fk: ForwardKinematicsSolverSettings = field(default_factory=ForwardKinematicsSolverSettings)
+    padmm: PADMMConfig = field(default_factory=PADMMConfig)
     """
-    Settings for the forward kinematics solver.\n
-    See :class:`ForwardKinematicsSolverSettings` for more details.
+    Config for the dynamics solver.\n
+    See :class:`PADMMConfig` for more details.
     """
 
-    warmstart_mode: PADMMWarmStartMode = PADMMWarmStartMode.CONTAINERS
+    fk: ForwardKinematicsSolverConfig = field(default_factory=ForwardKinematicsSolverConfig)
+    """
+    Config for the forward kinematics solver.\n
+    See :class:`ForwardKinematicsSolverConfig` for more details.
+    """
+
+    warmstart_mode: Literal["none", "internal", "containers"] = "containers"
     """
     Warmstart mode to be used for the dynamics solver.\n
     See :class:`PADMMWarmStartMode` for the available options.\n
-    Defaults to `PADMMWarmStartMode.CONTAINERS to warmstart from the solver data containers.
+    Defaults to `containers` to warmstart from the solver data containers.
     """
 
-    contact_warmstart_method: WarmstarterContacts.Method = WarmstarterContacts.Method.KEY_AND_POSITION
+    contact_warmstart_method: Literal[
+        "key_and_position",
+        "geom_pair_net_force",
+        "geom_pair_net_wrench",
+        "key_and_position_with_net_force_backup",
+        "key_and_position_with_net_wrench_backup",
+    ] = "key_and_position"
     """
     Method to be used for warm-starting contacts.\n
     See :class:`WarmstarterContacts.Method` for available options.\n
-    Defaults to `WarmstarterContacts.Method.KEY_AND_POSITION`.
+    Defaults to `key_and_position`.
     """
 
     use_solver_acceleration: bool = True
@@ -172,11 +190,11 @@ class SolverKaminoSettings:
     Defaults to an empty dictionary.
     """
 
-    rotation_correction: JointCorrectionMode = JointCorrectionMode.TWOPI
+    rotation_correction: Literal["twopi", "continuous", "none"] = "twopi"
     """
     The rotation correction mode to use for rotational DoFs.\n
     See :class:`JointCorrectionMode` for available options.\n
-    Defaults to `JointCorrectionMode.TWOPI`.
+    Defaults to `twopi`.
     """
 
     angular_velocity_damping: float = 0.0
@@ -197,27 +215,18 @@ class SolverKaminoSettings:
     """
 
     def check(self) -> None:
-        """Validates relevant solver settings."""
+        """Validates relevant solver config."""
         if not issubclass(self.linear_solver_type, LinearSolverType):
             raise TypeError(
                 "Invalid linear solver type: Expected a subclass of `LinearSolverType`, "
                 f"but got {type(self.linear_solver_type)}."
             )
-        if not isinstance(self.warmstart_mode, PADMMWarmStartMode):
-            raise TypeError(
-                "Invalid warmstart mode: Expected a `PADMMWarmStartMode` enum value, "
-                f"but got {type(self.warmstart_mode)}."
-            )
-        if not isinstance(self.contact_warmstart_method, WarmstarterContacts.Method):
-            raise TypeError(
-                "Invalid contact warmstart method: Expected a `WarmstarterContacts.Method` enum value, "
-                f"but got {type(self.contact_warmstart_method)}."
-            )
-        if not isinstance(self.rotation_correction, JointCorrectionMode):
-            raise TypeError(
-                "Invalid rotation correction mode: Expected a `JointCorrectionMode` enum value, "
-                f"but got {type(self.rotation_correction)}."
-            )
+        # Conversion to PADMMWarmStartMode will raise an error if the input string is invalid.
+        PADMMWarmStartMode.from_string(self.warmstart_mode)
+        # Conversion to WarmstarterContacts.Method will raise an error if the input string is invalid.
+        WarmstarterContacts.Method.from_string(self.contact_warmstart_method)
+        # Conversion to JointCorrectionMode will raise an error if the input string is invalid.
+        JointCorrectionMode.from_string(self.rotation_correction)
         if self.sparse and not self.sparse_jacobian:
             raise ValueError(
                 "Sparsity setting mismatch: `sparse` solver option requires that `sparse_jacobian` is set to `True`."
@@ -227,7 +236,7 @@ class SolverKaminoSettings:
         self.fk.check()
 
     def __post_init__(self):
-        """Post-initialization to validate settings."""
+        """Post-initialization to validate config."""
         self.check()
 
 
@@ -236,7 +245,7 @@ class SolverKaminoSettings:
 ###
 
 
-class SolverKamino(SolverBase):
+class SolverKaminoImpl(SolverBase):
     """
     A physics solver for simulating constrained multi-body systems for arbitrary mechanical assemblies.
 
@@ -259,7 +268,7 @@ class SolverKamino(SolverBase):
           International Journal for Numerical Methods in Engineering, 122(16), 4093-4113.
           https://onlinelibrary.wiley.com/doi/full/10.1002/nme.6693
 
-    After constructing :class:`Model`, :class:`State`, :class:`Control` and :class:`Contacts`
+    After constructing :class:`ModelKamino`, :class:`StateKamino`, :class:`ControlKamino` and :class:`ContactsKamino`
     objects, this physics solver may be used to advance the simulation state forward in time.
 
     Example
@@ -268,84 +277,85 @@ class SolverKamino(SolverBase):
     .. code-block:: python
 
         contacts = ...
-        settings = newton.solvers.kamino.SolverKaminoSettings()
-        solver = newton.solvers.SolverKamino(model, contacts, settings)
+        config = newton.solvers.kamino.SolverKaminoConfig()
+        solver = newton.solvers.SolverKamino(model, contacts, config)
 
         # simulation loop
         for i in range(100):
             solver.step(state_in, state_out, control, contacts, dt)
             state_in, state_out = state_out, state_in
-
     """
 
-    ResetCallbackType = Callable[["SolverKamino", State], None]
+    ResetCallbackType = Callable[["SolverKamino", StateKamino], None]
     """Defines the type signature for reset callback functions."""
 
-    StepCallbackType = Callable[["SolverKamino", State, State, Control, Contacts], None]
+    StepCallbackType = Callable[["SolverKamino", StateKamino, StateKamino, ControlKamino, ContactsKamino], None]
     """Defines the type signature for step callback functions."""
 
     def __init__(
         self,
-        model: Model,
-        contacts: Contacts | None = None,
-        settings: SolverKaminoSettings | None = None,
+        model: ModelKamino,
+        contacts: ContactsKamino | None = None,
+        config: SolverKaminoConfig | None = None,
     ):
         """
         Initializes the Kamino physics solver for the given set of multi-body systems
         defined in `model`, and the total contact allocations defined in `contacts`.
 
-        Explicit solver settings may be provided through the `settings` argument. If no
-        settings are provided, default settings will be used.
+        Explicit solver config may be provided through the `config` argument. If no
+        config is provided, a default config will be used.
 
         Args:
-            model (Model): The multi-body systems model to simulate.
-            contacts (Contacts): The contact data container for the simulation.
-            settings (SolverKaminoSettings | None): Optional solver settings.
+            model (ModelKamino): The multi-body systems model to simulate.
+            contacts (ContactsKamino): The contact data container for the simulation.
+            config (SolverKaminoConfig | None): Optional solver config.
         """
         # Ensure the input containers are valid
-        if not isinstance(model, Model):
-            raise TypeError(f"Invalid model container: Expected a `Model` instance, but got {type(model)}.")
-        if contacts is not None and not isinstance(contacts, Contacts):
-            raise TypeError(f"Invalid contacts container: Expected a `Contacts` instance, but got {type(contacts)}.")
-        if settings is not None and not isinstance(settings, SolverKaminoSettings):
+        if not isinstance(model, ModelKamino):
+            raise TypeError(f"Invalid model container: Expected a `ModelKamino` instance, but got {type(model)}.")
+        if contacts is not None and not isinstance(contacts, ContactsKamino):
             raise TypeError(
-                f"Invalid solver settings: Expected a `SolverKaminoSettings` instance, but got {type(settings)}."
+                f"Invalid contacts container: Expected a `ContactsKamino` instance, but got {type(contacts)}."
             )
+        if config is not None and not isinstance(config, SolverKaminoConfig):
+            raise TypeError(f"Invalid solver config: Expected a `SolverKaminoConfig` instance, but got {type(config)}.")
 
         # First initialize the base solver
         # NOTE: Although we pass the model here, we will re-assign it below
-        # since currently Kamino defines its own :class`Model` class.
+        # since currently Kamino defines its own :class`ModelKamino` class.
         super().__init__(model=model)
         self._model = model
 
-        # Cache solver settings: If no settings are provided, use defaults
-        if settings is None:
-            settings = SolverKaminoSettings()
-        settings.check()
-        self._settings: SolverKaminoSettings = settings
+        # Cache solver config: If no config is provided, use default
+        if config is None:
+            config = SolverKaminoConfig()
+        config.check()
+        self._config: SolverKaminoConfig = config
+        self._warmstart_mode: PADMMWarmStartMode = PADMMWarmStartMode.from_string(config.warmstart_mode)
+        self._rotation_correction: JointCorrectionMode = JointCorrectionMode.from_string(config.rotation_correction)
 
         # TODO: We need to rework these checks and potentially handle this check with the dynamics problem
         # TODO: Also consider raising an error here instead of a warning
         # Override the linear solver type to an iterative solver if
         # sparsity is enabled but the provided solver is not iterative
-        if self._settings.sparse and not issubclass(self._settings.linear_solver_type, IterativeSolver):
+        if self._config.sparse and not issubclass(self._config.linear_solver_type, IterativeSolver):
             msg.warning(
-                f"Sparse dynamics requires an iterative solver, but got '{self._settings.linear_solver_type.__name__}'."
+                f"Sparse dynamics requires an iterative solver, but got '{self._config.linear_solver_type.__name__}'."
                 " Defaulting to 'ConjugateResidualSolver' as the PADMM linear solver."
             )
-            self._settings.linear_solver_type = ConjugateResidualSolver
+            self._config.linear_solver_type = ConjugateResidualSolver
 
         # Allocate internal time-varying solver data
         self._data = self._model.data()
 
         # Allocate a joint-limits interface
-        self._limits = Limits(model=self._model, device=self._model.device)
+        self._limits = LimitsKamino(model=self._model, device=self._model.device)
 
         # Construct the unilateral constraints members in the model info
         make_unilateral_constraints_info(model=self._model, data=self._data, limits=self._limits, contacts=contacts)
 
         # Allocate Jacobians data on the device
-        if self._settings.sparse_jacobian:
+        if self._config.sparse_jacobian:
             self._jacobians = SparseSystemJacobians(
                 model=self._model,
                 limits=self._limits,
@@ -361,43 +371,43 @@ class SolverKamino(SolverBase):
             )
 
         # Allocate the dual problem data on the device
-        linear_solver_kwargs = dict(self._settings.linear_solver_kwargs)
-        if self._settings.avoid_graph_conditionals and issubclass(self._settings.linear_solver_type, IterativeSolver):
+        linear_solver_kwargs = dict(self._config.linear_solver_kwargs)
+        if self._config.avoid_graph_conditionals and issubclass(self._config.linear_solver_type, IterativeSolver):
             linear_solver_kwargs.setdefault("avoid_graph_conditionals", True)
         self._problem_fd = DualProblem(
             model=self._model,
             data=self._data,
             limits=self._limits,
             contacts=contacts,
-            solver=self._settings.linear_solver_type,
+            solver=self._config.linear_solver_type,
             solver_kwargs=linear_solver_kwargs,
-            settings=self._settings.problem,
+            config=self._config.problem,
             device=self._model.device,
-            sparse=self._settings.sparse,
+            sparse=self._config.sparse,
         )
 
         # Allocate the forward dynamics solver on the device
         self._solver_fd = PADMMSolver(
             model=self._model,
-            settings=self._settings.padmm,
-            warmstart=self._settings.warmstart_mode,
-            use_acceleration=self._settings.use_solver_acceleration,
-            collect_info=self._settings.collect_solver_info,
-            avoid_graph_conditionals=self._settings.avoid_graph_conditionals,
+            config=self._config.padmm,
+            warmstart=self._warmstart_mode,
+            use_acceleration=self._config.use_solver_acceleration,
+            collect_info=self._config.collect_solver_info,
+            avoid_graph_conditionals=self._config.avoid_graph_conditionals,
             device=self._model.device,
         )
 
         # Allocate the forward kinematics solver on the device
-        self._solver_fk = ForwardKinematicsSolver(model=self._model, settings=self._settings.fk)
+        self._solver_fk = ForwardKinematicsSolver(model=self._model, config=self._config.fk)
 
-        # Create the time-integrator instance based on the settings
-        if self._settings.integrator == "euler":
+        # Create the time-integrator instance based on the config
+        if self._config.integrator == "euler":
             self._integrator = IntegratorEuler(model=self._model)
-        elif self._settings.integrator == "moreau":
+        elif self._config.integrator == "moreau":
             self._integrator = IntegratorMoreauJean(model=self._model)
         else:
             raise ValueError(
-                f"Unsupported integrator type: Expected 'euler' or 'moreau', but got {self._settings.integrator}."
+                f"Unsupported integrator type: Expected 'euler' or 'moreau', but got {self._config.integrator}."
             )
 
         # Allocate additional internal data for reset operations
@@ -412,24 +422,24 @@ class SolverKamino(SolverBase):
         # Allocate the contacts warmstarter if enabled
         self._ws_limits: WarmstarterLimits | None = None
         self._ws_contacts: WarmstarterContacts | None = None
-        if self._settings.warmstart_mode == PADMMWarmStartMode.CONTAINERS:
+        if self._warmstart_mode == PADMMWarmStartMode.CONTAINERS:
             self._ws_limits = WarmstarterLimits(limits=self._limits)
             self._ws_contacts = WarmstarterContacts(
                 contacts=contacts,
-                method=self._settings.contact_warmstart_method,
+                method=WarmstarterContacts.Method.from_string(self._config.contact_warmstart_method),
             )
 
         # Allocate the solution metrics evaluator if enabled
         self._metrics: SolutionMetrics | None = None
-        if self._settings.compute_metrics:
+        if self._config.compute_metrics:
             self._metrics = SolutionMetrics(model=self._model)
 
         # Initialize callbacks
-        self._pre_reset_cb: SolverKamino.ResetCallbackType | None = None
-        self._post_reset_cb: SolverKamino.ResetCallbackType | None = None
-        self._pre_step_cb: SolverKamino.StepCallbackType | None = None
-        self._mid_step_cb: SolverKamino.StepCallbackType | None = None
-        self._post_step_cb: SolverKamino.StepCallbackType | None = None
+        self._pre_reset_cb: SolverKaminoImpl.ResetCallbackType | None = None
+        self._post_reset_cb: SolverKaminoImpl.ResetCallbackType | None = None
+        self._pre_step_cb: SolverKaminoImpl.StepCallbackType | None = None
+        self._mid_step_cb: SolverKaminoImpl.StepCallbackType | None = None
+        self._post_step_cb: SolverKaminoImpl.StepCallbackType | None = None
 
         # Initialize all internal solver data
         with wp.ScopedDevice(self._model.device):
@@ -440,21 +450,21 @@ class SolverKamino(SolverBase):
     ###
 
     @property
-    def settings(self) -> SolverKaminoSettings:
+    def config(self) -> SolverKaminoConfig:
         """
-        Returns the host-side cache of high-level solver settings.
+        Returns the host-side cache of high-level solver config.
         """
-        return self._settings
+        return self._config
 
     @property
-    def device(self) -> Devicelike:
+    def device(self) -> wp.DeviceLike:
         """
         Returns the device where the solver data is allocated.
         """
         return self._model.device
 
     @property
-    def data(self) -> ModelData:
+    def data(self) -> DataKamino:
         """
         Returns the internal solver data container.
         """
@@ -528,7 +538,7 @@ class SolverKamino(SolverBase):
 
     def reset(
         self,
-        state_out: State,
+        state_out: StateKamino,
         world_mask: wp.array | None = None,
         actuator_q: wp.array | None = None,
         actuator_u: wp.array | None = None,
@@ -548,7 +558,7 @@ class SolverKamino(SolverBase):
         `state_out` must initially contain the current state of the simulation.
 
         Args:
-            state_out (State):
+            state_out (StateKamino):
                 The output state container to which the reset state data is written.
             world_mask (wp.array, optional):
                 Optional array of per-world masks indicating which worlds should be reset.\n
@@ -670,10 +680,10 @@ class SolverKamino(SolverBase):
     @override
     def step(
         self,
-        state_in: State,
-        state_out: State,
-        control: Control,
-        contacts: Contacts | None = None,
+        state_in: StateKamino,
+        state_out: StateKamino,
+        control: ControlKamino,
+        contacts: ContactsKamino | None = None,
         detector: CollisionDetector | None = None,
         dt: float | None = None,
     ):
@@ -683,13 +693,13 @@ class SolverKamino(SolverBase):
         `contacts`. The updated state is written to `state_out`.
 
         Args:
-            state_in (State):
+            state_in (StateKamino):
                 The input current state of the simulation.
-            state_out (State):
+            state_out (StateKamino):
                 The output next state after time integration.
-            control (Control):
+            control (ControlKamino):
                 The input controls applied to the system.
-            contacts (Contacts, optional):
+            contacts (ContactsKamino, optional):
                 The set of active contacts.
             detector (CollisionDetector, optional):
                 An optional collision detector to use for generating contacts at the current state.\n
@@ -736,39 +746,58 @@ class SolverKamino(SolverBase):
         # Copy the updated internal solver state to the output state
         self._write_step_output(state_out=state_out)
 
+    @override
+    def notify_model_changed(self, flags: int):
+        pass  # TODO
+
+    @override
+    def update_contacts(self, contacts: Contacts) -> None:
+        pass  # TODO
+
+    @override
+    @classmethod
+    def register_custom_attributes(cls, flags: int):
+        pass  # TODO
+
     ###
     # Internals - Callback Operations
     ###
 
-    def _run_pre_reset_callback(self, state_out: State):
+    def _run_pre_reset_callback(self, state_out: StateKamino):
         """
         Runs the pre-reset callback if it has been set.
         """
         if self._pre_reset_cb is not None:
             self._pre_reset_cb(self, state_out)
 
-    def _run_post_reset_callback(self, state_out: State):
+    def _run_post_reset_callback(self, state_out: StateKamino):
         """
         Runs the post-reset callback if it has been set.
         """
         if self._post_reset_cb is not None:
             self._post_reset_cb(self, state_out)
 
-    def _run_prestep_callback(self, state_in: State, state_out: State, control: Control, contacts: Contacts):
+    def _run_prestep_callback(
+        self, state_in: StateKamino, state_out: StateKamino, control: ControlKamino, contacts: ContactsKamino
+    ):
         """
         Runs the pre-step callback if it has been set.
         """
         if self._pre_step_cb is not None:
             self._pre_step_cb(self, state_in, state_out, control, contacts)
 
-    def _run_midstep_callback(self, state_in: State, state_out: State, control: Control, contacts: Contacts):
+    def _run_midstep_callback(
+        self, state_in: StateKamino, state_out: StateKamino, control: ControlKamino, contacts: ContactsKamino
+    ):
         """
         Runs the mid-step callback if it has been set.
         """
         if self._mid_step_cb is not None:
             self._mid_step_cb(self, state_in, state_out, control, contacts)
 
-    def _run_poststep_callback(self, state_in: State, state_out: State, control: Control, contacts: Contacts):
+    def _run_poststep_callback(
+        self, state_in: StateKamino, state_out: StateKamino, control: ControlKamino, contacts: ContactsKamino
+    ):
         """
         Executes the post-step callback if it has been set.
         """
@@ -779,7 +808,7 @@ class SolverKamino(SolverBase):
     # Internals - Input/Output Operations
     ###
 
-    def _read_step_inputs(self, state_in: State, control_in: Control):
+    def _read_step_inputs(self, state_in: StateKamino, control_in: ControlKamino):
         """
         Updates the internal solver data from the input state and control.
         """
@@ -788,6 +817,7 @@ class SolverKamino(SolverBase):
         wp.copy(self._data.bodies.q_i, state_in.q_i)
         wp.copy(self._data.bodies.u_i, state_in.u_i)
         wp.copy(self._data.bodies.w_i, state_in.w_i)
+        wp.copy(self._data.bodies.w_e_i, state_in.w_i_e)
         wp.copy(self._data.joints.q_j, state_in.q_j)
         wp.copy(self._data.joints.q_j_p, state_in.q_j_p)
         wp.copy(self._data.joints.dq_j, state_in.dq_j)
@@ -797,7 +827,7 @@ class SolverKamino(SolverBase):
         wp.copy(self._data.joints.dq_j_ref, control_in.dq_j_ref)
         wp.copy(self._data.joints.tau_j_ref, control_in.tau_j_ref)
 
-    def _write_step_output(self, state_out: State):
+    def _write_step_output(self, state_out: StateKamino):
         """
         Updates the output state from the internal solver data.
         """
@@ -806,6 +836,7 @@ class SolverKamino(SolverBase):
         wp.copy(state_out.q_i, self._data.bodies.q_i)
         wp.copy(state_out.u_i, self._data.bodies.u_i)
         wp.copy(state_out.w_i, self._data.bodies.w_i)
+        wp.copy(state_out.w_i_e, self._data.bodies.w_e_i)
         wp.copy(state_out.q_j, self._data.joints.q_j)
         wp.copy(state_out.q_j_p, self._data.joints.q_j_p)
         wp.copy(state_out.dq_j, self._data.joints.dq_j)
@@ -854,7 +885,7 @@ class SolverKamino(SolverBase):
         # Reset the forward dynamics solver
         self._solver_fd.reset()
 
-    def _reset_to_default_state(self, state_out: State, world_mask: wp.array):
+    def _reset_to_default_state(self, state_out: StateKamino, world_mask: wp.array):
         """
         Resets the simulation to the default state defined in the model.
         """
@@ -866,7 +897,7 @@ class SolverKamino(SolverBase):
 
     def _reset_to_base_state(
         self,
-        state_out: State,
+        state_out: StateKamino,
         world_mask: wp.array,
         base_q: wp.array | None = None,
         base_u: wp.array | None = None,
@@ -891,7 +922,7 @@ class SolverKamino(SolverBase):
 
     def _reset_to_bodies_state(
         self,
-        state_out: State,
+        state_out: StateKamino,
         world_mask: wp.array,
         bodies_q: wp.array | None = None,
         bodies_u: wp.array | None = None,
@@ -916,7 +947,7 @@ class SolverKamino(SolverBase):
 
     def _reset_with_fk_solve(
         self,
-        state_out: State,
+        state_out: StateKamino,
         world_mask: wp.array,
         joint_q: wp.array | None = None,
         joint_u: wp.array | None = None,
@@ -1027,10 +1058,10 @@ class SolverKamino(SolverBase):
             model=self._model,
             data=self._data,
             q_j_p=_q_j_p,
-            correction=self._settings.rotation_correction,
+            correction=self._rotation_correction,
         )
 
-    def _update_intermediates(self, state_in: State):
+    def _update_intermediates(self, state_in: StateKamino):
         """
         Updates intermediate quantities required for the forward dynamics solve.
         """
@@ -1049,7 +1080,7 @@ class SolverKamino(SolverBase):
         """
         update_constraints_info(model=self._model, data=self._data)
 
-    def _update_jacobians(self, contacts: Contacts | None = None):
+    def _update_jacobians(self, contacts: ContactsKamino | None = None):
         """
         Updates the forward kinematics by building the system Jacobians (of actuation and
         constraints) based on the current state of the system and set of active constraints.
@@ -1068,7 +1099,7 @@ class SolverKamino(SolverBase):
         """
         compute_joint_dof_body_wrenches(self._model, self._data, self._jacobians)
 
-    def _update_dynamics(self, contacts: Contacts | None = None):
+    def _update_dynamics(self, contacts: ContactsKamino | None = None):
         """
         Constructs the forward dynamics problem quantities based on the current state of
         the system, the set of active constraints, and the updated system Jacobians.
@@ -1082,15 +1113,15 @@ class SolverKamino(SolverBase):
             reset_to_zero=True,
         )
 
-    def _update_constraints(self, contacts: Contacts | None = None):
+    def _update_constraints(self, contacts: ContactsKamino | None = None):
         """
         Solves the forward dynamics sub-problem to compute constraint
         reactions and body wrenches effected through constraints.
         """
         # If warm-starting is enabled, initialize unilateral
         # constraints containers from the current solver data
-        if self._settings.warmstart_mode > PADMMWarmStartMode.NONE:
-            if self._settings.warmstart_mode == PADMMWarmStartMode.CONTAINERS:
+        if self._warmstart_mode > PADMMWarmStartMode.NONE:
+            if self._warmstart_mode == PADMMWarmStartMode.CONTAINERS:
                 self._ws_limits.warmstart(self._limits)
                 self._ws_contacts.warmstart(self._model, self._data, contacts)
             self._solver_fd.warmstart(
@@ -1133,7 +1164,7 @@ class SolverKamino(SolverBase):
         # If warmstarting is enabled, update the limits and contacts caches
         # with the constraint reactions generated by the dynamics solver
         # NOTE: This needs to happen after unpacking the multipliers
-        if self._settings.warmstart_mode == PADMMWarmStartMode.CONTAINERS:
+        if self._warmstart_mode == PADMMWarmStartMode.CONTAINERS:
             self._ws_limits.update(self._limits)
             self._ws_contacts.update(contacts)
 
@@ -1144,7 +1175,7 @@ class SolverKamino(SolverBase):
         """
         update_body_wrenches(self._model.bodies, self._data.bodies)
 
-    def _forward(self, contacts: Contacts | None = None):
+    def _forward(self, contacts: ContactsKamino | None = None):
         """
         Solves the forward dynamics sub-problem to compute constraint reactions
         and total effective body wrenches applied to each body of the system.
@@ -1160,11 +1191,11 @@ class SolverKamino(SolverBase):
 
     def _solve_forward_dynamics(
         self,
-        state_in: State,
-        state_out: State,
-        control: Control,
-        limits: Limits | None = None,  # TODO: Fix this interface
-        contacts: Contacts | None = None,
+        state_in: StateKamino,
+        state_out: StateKamino,
+        control: ControlKamino,
+        limits: LimitsKamino | None = None,  # TODO: Fix this interface
+        contacts: ContactsKamino | None = None,
         detector: CollisionDetector | None = None,
     ):
         """
@@ -1184,7 +1215,7 @@ class SolverKamino(SolverBase):
         # If a collision detector is provided, use it to generate
         # update the set of active contacts at the current state
         if detector is not None:
-            detector.collide(model=self._model, data=self._data, contacts=contacts)
+            detector.collide(data=self._data, state=state_in, contacts=contacts)
 
         # If a limits container/detector is provided, run joint-limit
         # detection to generate active joint limits at the current state
@@ -1209,11 +1240,11 @@ class SolverKamino(SolverBase):
         # Run the mid-step callback if it has been set
         self._run_midstep_callback(state_in, state_out, control, contacts)
 
-    def _compute_metrics(self, state_in: State, contacts: Contacts | None = None):
+    def _compute_metrics(self, state_in: StateKamino, contacts: ContactsKamino | None = None):
         """
         Computes performance metrics measuring the physical fidelity of the dynamics solver solution.
         """
-        if self._settings.compute_metrics:
+        if self._config.compute_metrics:
             self.metrics.reset()
             self._metrics.evaluate(
                 sigma=self._solver_fd.data.state.sigma,
@@ -1233,3 +1264,379 @@ class SolverKamino(SolverBase):
         Updates simulation time-keeping (i.e. physical time and discrete steps).
         """
         advance_time(self._model.time, self._data.time)
+
+
+class SolverKamino(SolverBase):
+    """
+    TODO
+    """
+
+    def __init__(
+        self,
+        model: Model,
+        solver_config: SolverKaminoConfig | None = None,
+        collision_detector_config: CollisionDetectorConfig | None = None,
+    ):
+        """
+        TODO
+        """
+        # Initialize the base solver
+        super().__init__(model=model)
+
+        # Validate that the model does not contain unsupported components
+        self._validate_model_compatibility(model)
+
+        # Create a Kamino model from the Newton model
+        self._model_kamino = ModelKamino.from_newton(model)
+
+        # Create a collision detector
+        self._collision_detector_kamino = CollisionDetector(
+            model=self._model_kamino,
+            config=collision_detector_config,
+        )
+
+        # Capture a reference to the contacts container
+        self._contacts_kamino: ContactsKamino = self._collision_detector_kamino.contacts
+
+        # Initialize the internal Kamino solver
+        self._solver_kamino = SolverKaminoImpl(
+            model=self._model_kamino,
+            contacts=self._contacts_kamino,
+            config=solver_config,
+        )
+
+        # Reference to the latest state from the latest step output, used by update_contacts()
+        self._state_p: State | None = None
+
+    def reset(
+        self,
+        state_out: State,
+        world_mask: wp.array | None = None,
+        actuator_q: wp.array | None = None,
+        actuator_u: wp.array | None = None,
+        joint_q: wp.array | None = None,
+        joint_u: wp.array | None = None,
+        base_q: wp.array | None = None,
+        base_u: wp.array | None = None,
+    ):
+        """
+        Resets the simulation state given a combination of desired base body
+        and joint states, as well as an optional per-world mask array indicating
+        which worlds should be reset. The reset state is written to `state_out`.
+
+        For resets given absolute quantities like base body poses, the
+        `state_out` must initially contain the current state of the simulation.
+
+        Args:
+            state_out (State):
+                The output state container to which the reset state data is written.
+            world_mask (wp.array, optional):
+                Optional array of per-world masks indicating which worlds should be reset.\n
+                Shape of `(num_worlds,)` and type :class:`wp.int8 | wp.bool`
+            actuator_q (wp.array, optional):
+                Optional array of target actuated joint coordinates.\n
+                Shape of `(num_actuated_joint_coords,)` and type :class:`wp.float32`
+            actuator_u (wp.array, optional):
+                Optional array of target actuated joint DoF velocities.\n
+                Shape of `(num_actuated_joint_dofs,)` and type :class:`wp.float32`
+            joint_q (wp.array, optional):
+                Optional array of target joint coordinates.\n
+                Shape of `(num_joint_coords,)` and type :class:`wp.float32`
+            joint_qd (wp.array, optional):
+                Optional array of target joint DoF velocities.\n
+                Shape of `(num_joint_dofs,)` and type :class:`wp.float32`
+            base_q (wp.array, optional):
+                Optional array of target base body poses.\n
+                Shape of `(num_worlds,)` and type :class:`wp.transformf`
+            base_qd (wp.array, optional):
+                Optional array of target base body twists.\n
+                Shape of `(num_worlds,)` and type :class:`wp.spatial_vectorf`
+        """
+        self._solver_kamino.reset(
+            state_out=StateKamino.from_newton(self._model_kamino.size, self.model, state_out),
+            world_mask=world_mask,
+            actuator_q=actuator_q,
+            actuator_u=actuator_u,
+            joint_q=joint_q,
+            joint_u=joint_u,
+            base_q=base_q,
+            base_u=base_u,
+        )
+
+    @override
+    def step(self, state_in: State, state_out: State, control: Control, contacts: Contacts, dt: float):
+        """
+        Simulate the model for a given time step using the given control input.
+
+        When ``contacts`` is not ``None`` (i.e. produced by :meth:`Model.collide`),
+        those contacts are converted to Kamino's internal format and used directly,
+        bypassing Kamino's own collision detector.  When ``contacts`` is ``None``,
+        Kamino's internal collision pipeline runs as a fallback.
+
+        Args:
+            state_in (State): The input state.
+            state_out (State): The output state.
+            control (Control): The control input.
+                Defaults to `None` which means the control values from the
+                :class:`Model` are used.
+            contacts (Contacts): The contact information from Newton's collision
+                pipeline, or ``None`` to use Kamino's internal collision detector.
+            dt (float): The time step (typically in seconds).
+        """
+        # Interface the input state and control
+        # containers to Kamino's equivalents
+        # NOTE: These should produce zero-copy views/references
+        # to the arrays of the source Newton containers.
+        state_in_kamino = StateKamino.from_newton(self._model_kamino.size, self.model, state_in)
+        state_out_kamino = StateKamino.from_newton(self._model_kamino.size, self.model, state_out)
+        control_kamino = ControlKamino.from_newton(control)
+
+        # If contacts are provided, use them directly, bypassing Kamino's collision detector
+        if contacts is not None:
+            convert_contacts_newton_to_kamino(self.model, state_in, contacts, self._contacts_kamino)
+            _detector = None
+        # Otherwise, use Kamino's internal collision detector to generate contacts
+        else:
+            _detector = self._collision_detector_kamino
+
+        # Convert Newton body-frame poses to Kamino CoM-frame poses using
+        # Kamino's corrected body-com offsets (can differ from Newton model data).
+        # TODO: state_in_kamino.convert_to_body_com_state(model=self.model)
+        compute_body_com_state(
+            body_com=self._model_kamino.bodies.i_r_com_i,
+            body_q=state_in_kamino.q_i,
+            body_q_com=state_in_kamino.q_i,
+        )
+
+        # Step the physics solver
+        self._solver_kamino.step(
+            state_in=state_in_kamino,
+            state_out=state_out_kamino,
+            control=control_kamino,
+            contacts=self._contacts_kamino,
+            detector=_detector,
+            dt=dt,
+        )
+
+        # Convert back from Kamino CoM-frame to Newton body-frame poses using
+        # the same corrected body-com offsets as the forward conversion.
+        # state_in_kamino.convert_to_body_frame_state(model=self.model)
+        # state_out_kamino.convert_to_body_frame_state(model=self.model)
+        compute_body_frame_state(
+            body_com=self._model_kamino.bodies.i_r_com_i,
+            body_q_com=state_in_kamino.q_i,
+            body_q=state_in_kamino.q_i,
+        )
+        compute_body_frame_state(
+            body_com=self._model_kamino.bodies.i_r_com_i,
+            body_q_com=state_out_kamino.q_i,
+            body_q=state_out_kamino.q_i,
+        )
+
+        # Keep a reference for update_contacts() which needs body_q to
+        # transform world-space contact positions to body-local frame.
+        self._state_p = state_out
+
+    @override
+    def notify_model_changed(self, flags: int):
+        """Propagate Newton model property changes to Kamino's internal ModelKamino.
+
+        Args:
+            flags: Bitmask of :class:`SolverNotifyFlags` indicating which properties changed.
+        """
+        if flags & SolverNotifyFlags.MODEL_PROPERTIES:
+            self._update_gravity()
+
+        if flags & SolverNotifyFlags.BODY_PROPERTIES:
+            pass  # TODO: convert to CoM-frame if body_q_i_0 is changed at runtime?
+
+        if flags & SolverNotifyFlags.BODY_INERTIAL_PROPERTIES:
+            # Kamino's RigidBodiesModel references Newton's arrays directly
+            # (m_i, inv_m_i, i_I_i, inv_i_I_i, i_r_com_i), so no copy needed.
+            pass
+
+        if flags & SolverNotifyFlags.SHAPE_PROPERTIES:
+            pass  # TODO: ???
+
+        if flags & SolverNotifyFlags.JOINT_PROPERTIES:
+            self._update_joint_transforms()
+
+        if flags & SolverNotifyFlags.JOINT_DOF_PROPERTIES:
+            # Joint limits (q_j_min, q_j_max, dq_j_max, tau_j_max) are direct
+            # references to Newton's arrays, so no copy needed.
+            pass
+
+        if flags & SolverNotifyFlags.ACTUATOR_PROPERTIES:
+            pass  # TODO: ???
+
+        if flags & SolverNotifyFlags.CONSTRAINT_PROPERTIES:
+            pass  # TODO: ???
+
+        unsupported = flags & ~(
+            SolverNotifyFlags.MODEL_PROPERTIES
+            | SolverNotifyFlags.BODY_INERTIAL_PROPERTIES
+            | SolverNotifyFlags.JOINT_PROPERTIES
+            | SolverNotifyFlags.JOINT_DOF_PROPERTIES
+        )
+        if unsupported:
+            msg.warning(
+                "SolverKamino.notify_model_changed: flags 0x%x not yet supported",
+                unsupported,
+            )
+
+    @override
+    def update_contacts(self, contacts: Contacts, state: State | None = None) -> None:
+        """
+        Converts Kamino contacts to Newton's Contacts format.
+
+        Args:
+            contacts: The Newton Contacts object to populate.
+            state: Optional simulation state providing ``body_q`` for converting
+                world-space contact positions to body-local frame. Falls back to
+                the last ``state_out`` from :meth:`step` if not provided.
+        """
+        # Determine the source state to use for contact conversion
+        if state is not None:
+            _state = state
+        elif self._state_p is not None:
+            _state = self._state_p
+        # Skip contact conversion if no state is provided and no previous state is available
+        else:
+            msg.warning(
+                "SolverKamino.update_contacts: no state provided and "
+                "no previous state available, cannot convert contacts"
+            )
+            return
+
+        # Convert Kamino's internal contact representation to Newton's format
+        convert_contacts_kamino_to_newton(self.model, _state, self._contacts_kamino, contacts)
+
+    @override
+    @classmethod
+    def register_custom_attributes(cls, builder: ModelBuilder) -> None:
+        """
+        Register custom attributes for SolverKamino.
+
+        Args:
+            builder (ModelBuilder): The model builder to register the custom attributes to.
+        """
+        # State attributes
+        builder.add_custom_attribute(
+            ModelBuilder.CustomAttribute(
+                name="body_f_total",
+                assignment=Model.AttributeAssignment.STATE,
+                frequency=Model.AttributeFrequency.BODY,
+                dtype=vec6f,
+                default=vec6f(0.0),
+            )
+        )
+        builder.add_custom_attribute(
+            ModelBuilder.CustomAttribute(
+                name="joint_q_prev",
+                assignment=Model.AttributeAssignment.STATE,
+                frequency=Model.AttributeFrequency.JOINT_COORD,
+                dtype=wp.float32,
+                default=0.0,
+            )
+        )
+        builder.add_custom_attribute(
+            ModelBuilder.CustomAttribute(
+                name="joint_lambdas",
+                assignment=Model.AttributeAssignment.STATE,
+                frequency=Model.AttributeFrequency.JOINT_CONSTRAINT,
+                dtype=wp.float32,
+                default=0.0,
+            )
+        )
+
+    ###
+    # Internals
+    ###
+
+    @staticmethod
+    def _validate_model_compatibility(model: Model):
+        """
+        Validates that the model does not contain components unsupported by SolverKamino:
+        - particles
+        - springs
+        - triangles, edges, tetrahedra
+        - muscles
+        - equality constraints
+        - distance, cable, or gimbal joints
+
+        Args:
+            model (Model): The Newton model to validate.
+
+        Raises:
+            ValueError: If the model contains unsupported components.
+        """
+
+        unsupported_features = []
+        if model.particle_count > 0:
+            unsupported_features.append(f"particles (found {model.particle_count})")
+        if model.spring_count > 0:
+            unsupported_features.append(f"springs (found {model.spring_count})")
+        if model.tri_count > 0:
+            unsupported_features.append(f"triangle elements (found {model.tri_count})")
+        if model.edge_count > 0:
+            unsupported_features.append(f"edge elements (found {model.edge_count})")
+        if model.tet_count > 0:
+            unsupported_features.append(f"tetrahedral elements (found {model.tet_count})")
+        if model.muscle_count > 0:
+            unsupported_features.append(f"muscles (found {model.muscle_count})")
+        if model.equality_constraint_count > 0:
+            unsupported_features.append(f"equality constraints (found {model.equality_constraint_count})")
+
+        # Check for unsupported joint types
+        if model.joint_count > 0:
+            joint_type_np = model.joint_type.numpy()
+            joint_dof_dim_np = model.joint_dof_dim.numpy()
+            joint_q_start_np = model.joint_q_start.numpy()
+            joint_qd_start_np = model.joint_qd_start.numpy()
+
+            unsupported_joint_types = {}
+
+            for j in range(model.joint_count):
+                joint_type = int(joint_type_np[j])
+                dof_dim = (int(joint_dof_dim_np[j][0]), int(joint_dof_dim_np[j][1]))
+                q_count = int(joint_q_start_np[j + 1] - joint_q_start_np[j])
+                qd_count = int(joint_qd_start_np[j + 1] - joint_qd_start_np[j])
+
+                # Check for explicitly unsupported joint types
+                if joint_type == JointType.DISTANCE:
+                    unsupported_joint_types["DISTANCE"] = unsupported_joint_types.get("DISTANCE", 0) + 1
+                elif joint_type == JointType.CABLE:
+                    unsupported_joint_types["CABLE"] = unsupported_joint_types.get("CABLE", 0) + 1
+                # Check for GIMBAL configuration (3 coords, 3 DoFs, 0 linear/3 angular)
+                elif joint_type == JointType.D6 and q_count == 3 and qd_count == 3 and dof_dim == (0, 3):
+                    unsupported_joint_types["D6 (GIMBAL)"] = unsupported_joint_types.get("D6 (GIMBAL)", 0) + 1
+
+            if len(unsupported_joint_types) > 0:
+                joint_desc = [f"{name} ({count} instances)" for name, count in unsupported_joint_types.items()]
+                unsupported_features.append("joint types: " + ", ".join(joint_desc))
+
+        # If any unsupported features were found, raise an error
+        if len(unsupported_features) > 0:
+            error_msg = "SolverKamino cannot simulate this model due to unsupported features:"
+            for feature in unsupported_features:
+                error_msg += "\n  - " + feature
+            raise ValueError(error_msg)
+
+    def _update_gravity(self):
+        """
+        Updates Kamino's :class:`GravityModel` from Newton's model.gravity.
+
+        Called when :data:`SolverNotifyFlags.MODEL_PROPERTIES` is raised,
+        indicating that ``model.gravity`` may have changed at runtime.
+        """
+        convert_model_gravity(self.model, self._model_kamino.gravity)
+
+    def _update_joint_transforms(self):
+        """
+        Re-derive Kamino joint anchors and axes from Newton's joint_X_p / joint_X_c.
+
+        Called when :data:`SolverNotifyFlags.JOINT_PROPERTIES` is raised,
+        indicating that ``model.joint_X_p`` or ``model.joint_X_c`` may have
+        changed at runtime (e.g. animated root transforms).
+        """
+        convert_model_joint_transforms(self.model, self._model_kamino.joints)

@@ -39,7 +39,7 @@ from .math import (
     compute_vector_sum,
     project_to_coulomb_cone,
 )
-from .types import PADMMConfig, PADMMPenalty, PADMMPenaltyUpdate, PADMMStatus
+from .types import PADMMConfigStruct, PADMMPenalty, PADMMPenaltyUpdate, PADMMStatus
 
 ###
 # Module interface
@@ -368,7 +368,7 @@ def make_initialize_solver_kernel(use_acceleration: bool = False):
     @wp.kernel
     def _initialize_solver(
         # Inputs:
-        solver_config: wp.array(dtype=PADMMConfig),
+        solver_config: wp.array(dtype=PADMMConfigStruct),
         # Outputs:
         solver_status: wp.array(dtype=PADMMStatus),
         solver_penalty: wp.array(dtype=PADMMPenalty),
@@ -437,7 +437,7 @@ def make_update_proximal_regularization_kernel(method: PADMMPenaltyUpdate):
     @wp.kernel
     def _update_proximal_regularization(
         # Inputs:
-        solver_config: wp.array(dtype=PADMMConfig),
+        solver_config: wp.array(dtype=PADMMConfigStruct),
         solver_penalty: wp.array(dtype=PADMMPenalty),
         solver_status: wp.array(dtype=PADMMStatus),
         # Outputs:
@@ -512,7 +512,7 @@ def _update_delassus_proximal_regularization_sparse(
     # Inputs:
     problem_dim: wp.array(dtype=int32),
     problem_vio: wp.array(dtype=int32),
-    solver_config: wp.array(dtype=PADMMConfig),
+    solver_config: wp.array(dtype=PADMMConfigStruct),
     solver_penalty: wp.array(dtype=PADMMPenalty),
     solver_status: wp.array(dtype=PADMMStatus),
     # Outputs:
@@ -601,7 +601,7 @@ def _compute_velocity_bias(
     problem_dim: wp.array(dtype=int32),
     problem_vio: wp.array(dtype=int32),
     problem_v_f: wp.array(dtype=float32),
-    solver_config: wp.array(dtype=PADMMConfig),
+    solver_config: wp.array(dtype=PADMMConfigStruct),
     solver_penalty: wp.array(dtype=PADMMPenalty),
     solver_status: wp.array(dtype=PADMMStatus),
     solver_s: wp.array(dtype=float32),
@@ -767,7 +767,7 @@ def make_update_dual_variables_and_compute_primal_dual_residuals(use_acceleratio
         problem_dim: wp.array(dtype=int32),
         problem_vio: wp.array(dtype=int32),
         problem_P: wp.array(dtype=float32),
-        solver_config: wp.array(dtype=PADMMConfig),
+        solver_config: wp.array(dtype=PADMMConfigStruct),
         solver_penalty: wp.array(dtype=PADMMPenalty),
         solver_status: wp.array(dtype=PADMMStatus),
         solver_x: wp.array(dtype=float32),
@@ -902,7 +902,7 @@ def _compute_complementarity_residuals(
 
 
 @wp.func
-def _update_penalty(config: PADMMConfig, pen: PADMMPenalty, iterations: int32, r_p: float32, r_d: float32):
+def _update_penalty(config: PADMMConfigStruct, pen: PADMMPenalty, iterations: int32, r_p: float32, r_d: float32):
     """Adaptively updates the ADMM penalty parameter based on the configured strategy.
 
     For BALANCED mode, rho is scaled up when the primal residual dominates and
@@ -946,7 +946,7 @@ def _make_compute_infnorm_residuals_kernel(tile_size: int, n_cts_max: int, n_u_m
         problem_uio: wp.array(dtype=int32),
         problem_dim: wp.array(dtype=int32),
         problem_vio: wp.array(dtype=int32),
-        solver_config: wp.array(dtype=PADMMConfig),
+        solver_config: wp.array(dtype=PADMMConfigStruct),
         solver_r_p: wp.array(dtype=float32),
         solver_r_d: wp.array(dtype=float32),
         solver_r_c: wp.array(dtype=float32),
@@ -1090,7 +1090,7 @@ def _make_compute_infnorm_residuals_accel_kernel(tile_size: int, n_cts_max: int,
         problem_uio: wp.array(dtype=int32),
         problem_dim: wp.array(dtype=int32),
         problem_vio: wp.array(dtype=int32),
-        solver_config: wp.array(dtype=PADMMConfig),
+        solver_config: wp.array(dtype=PADMMConfigStruct),
         solver_r_p: wp.array(dtype=float32),
         solver_r_d: wp.array(dtype=float32),
         solver_r_c: wp.array(dtype=float32),

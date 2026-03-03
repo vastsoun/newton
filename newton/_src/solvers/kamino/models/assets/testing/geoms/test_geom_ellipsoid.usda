@@ -56,7 +56,7 @@ def Xform "test_geom_ellipsoid"
                 def Sphere "visual_ellipsoid"
                 {
                     double radius = 1.0
-                    float3 xformOp:scale = (0.11, 0.22, 0.33)
+                    float3 xformOp:scale = (0.22, 0.33, 0.44)
                     quatf xformOp:orient = (1, 0, 0, 0)
                     double3 xformOp:translate = (0, 0, 0)
                     uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]

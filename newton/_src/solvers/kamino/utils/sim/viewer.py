@@ -21,11 +21,10 @@ import threading
 from typing import ClassVar
 
 import warp as wp
-from PIL import Image
 
 from .....viewer import ViewerGL
-from ...core.builder import ModelBuilder
-from ...core.geometry import CollisionGeometryDescriptor, GeometryDescriptor
+from ...core.builder import ModelBuilderKamino
+from ...core.geometry import GeometryDescriptor
 from ...core.shapes import ShapeType
 from ...core.types import vec3f
 from ...core.world import WorldDescriptor
@@ -201,7 +200,7 @@ class ViewerKamino(ViewerGL):
 
     def __init__(
         self,
-        builder: ModelBuilder,
+        builder: ModelBuilderKamino,
         simulator: Simulator,
         width: int = 1920,
         height: int = 1080,
@@ -237,8 +236,7 @@ class ViewerKamino(ViewerGL):
 
         # Declare and initialize geometry info cache
         self._worlds: list[WorldDescriptor] = builder.worlds
-        self._collision_geometry: list[CollisionGeometryDescriptor] = builder.collision_geoms
-        self._physical_geometry: list[GeometryDescriptor] = builder.physical_geoms
+        self._geometry: list[GeometryDescriptor] = builder.geoms
 
         # Initialize video recording settings
         self._record_video = record_video
@@ -256,7 +254,7 @@ class ViewerKamino(ViewerGL):
 
     def render_geometry(self, body_poses: wp.array, geom: GeometryDescriptor, scope: str):
         # TODO: Fix this
-        bid = geom.bid + self._worlds[geom.wid].bodies_idx_offset if geom.bid >= 0 else -1
+        bid = geom.body + self._worlds[geom.wid].bodies_idx_offset if geom.body >= 0 else -1
 
         # Handle the case of static geometry (bid < 0)
         if bid < 0:
@@ -275,7 +273,7 @@ class ViewerKamino(ViewerGL):
         geom_transform = wp.transform_multiply(offset_transform, geom_transform)
 
         # Choose color based on body ID
-        color = self.body_colors[geom.bid % len(self.body_colors)]
+        color = self.body_colors[geom.body % len(self.body_colors)]
 
         # Convert shape parameters to Newton format w/ half-extents
         params = geom.shape.params
@@ -290,8 +288,8 @@ class ViewerKamino(ViewerGL):
 
         # Update the geometry data
         self.log_shapes(
-            name=f"/world_{geom.wid}/body_{geom.bid}/{scope}/{geom.gid}-{geom.name}",
-            geo_type=geom.shape.type.to_newton(),
+            name=f"/world_{geom.wid}/body_{geom.body}/{scope}/{geom.gid}-{geom.name}",
+            geo_type=ShapeType.to_newton(shape_type=geom.shape.type)[0],
             geo_scale=params,
             xforms=wp.array([geom_transform], dtype=wp.transform),
             geo_is_solid=geom.shape.is_solid,
@@ -307,16 +305,16 @@ class ViewerKamino(ViewerGL):
         body_poses = self._simulator.state.q_i.numpy()
 
         # Render each collision geom
-        for cgeom in self._collision_geometry:
+        for cgeom in self._geometry:
             if cgeom.shape.type == ShapeType.EMPTY:
                 continue
             self.render_geometry(body_poses, cgeom, scope="collision")
 
-        # Render each physical geom
-        for pgeom in self._physical_geometry:
-            if pgeom.shape.type == ShapeType.EMPTY:
-                continue
-            self.render_geometry(body_poses, pgeom, scope="physical")
+        # TODO: Render each visual geom
+        # for vgeom in self._physical_geometry:
+        #     if vgeom.shape.type == ShapeType.EMPTY:
+        #         continue
+        #     self.render_geometry(body_poses, vgeom, scope="visual")
 
         # Render contacts if they exist and visualization is enabled
         if hasattr(self._simulator, "contacts") and self._simulator.contacts is not None:
@@ -593,6 +591,15 @@ class ViewerKamino(ViewerGL):
         This method retrieves the current rendered frame, converts it to a PIL Image,
         and saves it as a PNG file.
         """
+        # Attempt to import PIL, which is required for image saving
+        try:
+            from PIL import Image
+        except ImportError:
+            msg.warning("PIL not installed. Frames cannot be saved as images.")
+            msg.info("Install with: pip install pillow")
+            return False
+
+        # Only capture and save if we've reached the skip threshold
         if self._img_idx >= self._skip_img_idx:
             # Get frame from viewer as GPU array (height, width, 3) uint8
             frame = self.get_frame(target_image=self._frame_buffer)
@@ -639,6 +646,13 @@ class ViewerKamino(ViewerGL):
             msg.warning("imageio-ffmpeg not installed. Frames saved but video not generated.")
             msg.info("Install with: pip install imageio-ffmpeg")
             return False
+        # Try to import PIL (optional dependency for image loading)
+        try:
+            from PIL import Image
+        except ImportError:
+            msg.warning("PIL not installed. Frames saved but video not generated.")
+            msg.info("Install with: pip install pillow")
+            return False
         import numpy as np  # noqa: PLC0415
 
         # Check if we have frames to process
@@ -654,7 +668,6 @@ class ViewerKamino(ViewerGL):
             return False
 
         msg.info(f"Generating video from {len(frame_files)} frames...")
-
         try:
             # Use imageio-ffmpeg to write video
             writer = ffmpeg.write_frames(

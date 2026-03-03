@@ -21,15 +21,14 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 
 import warp as wp
-from warp.context import Devicelike
 
-from ...core.builder import ModelBuilder
-from ...core.control import Control
-from ...core.model import Model
-from ...core.state import State
+from ...core.builder import ModelBuilderKamino
+from ...core.control import ControlKamino
+from ...core.model import ModelKamino
+from ...core.state import StateKamino
 from ...core.types import FloatArrayLike
-from ...geometry import CollisionDetector, CollisionDetectorSettings
-from ...solver_kamino import SolverKamino, SolverKaminoSettings
+from ...geometry import CollisionDetector, CollisionDetectorConfig
+from ...solver_kamino import SolverKaminoConfig, SolverKaminoImpl
 
 ###
 # Module interface
@@ -37,8 +36,8 @@ from ...solver_kamino import SolverKamino, SolverKaminoSettings
 
 __all__ = [
     "Simulator",
+    "SimulatorConfig",
     "SimulatorData",
-    "SimulatorSettings",
 ]
 
 
@@ -55,9 +54,9 @@ wp.set_module_options({"enable_backward": False})
 
 
 @dataclass
-class SimulatorSettings:
+class SimulatorConfig:
     """
-    Holds the configuration settings for the simulator.
+    Holds the configuration for the simulator.
     """
 
     dt: float | FloatArrayLike = 0.001
@@ -66,21 +65,21 @@ class SimulatorSettings:
     Defaults to `0.001` seconds.
     """
 
-    collision_detector: CollisionDetectorSettings = field(default_factory=CollisionDetectorSettings)
+    collision_detector: CollisionDetectorConfig = field(default_factory=CollisionDetectorConfig)
     """
-    The settings for the collision detector.
-    See :class:`CollisionDetectorSettings` for more details.
+    The config for the collision detector.
+    See :class:`CollisionDetectorConfig` for more details.
     """
 
-    solver: SolverKaminoSettings = field(default_factory=SolverKaminoSettings)
+    solver: SolverKaminoConfig = field(default_factory=SolverKaminoConfig)
     """
-    The settings for the dynamics solver.\n
-    See :class:`SolverKaminoSettings` for more details.
+    The config for the dynamics solver.\n
+    See :class:`SolverKaminoConfig` for more details.
     """
 
     def check(self) -> None:
         """
-        Checks the validity of the settings.
+        Checks the validity of the config.
         """
         # First check the time-step
         if isinstance(self.dt, float):
@@ -98,19 +97,19 @@ class SimulatorSettings:
         else:
             raise TypeError("Invalid time-step: must be a `float` or a `FloatArrayLike`.`")
 
-        # Ensure nested settings are properly created
-        if not isinstance(self.collision_detector, CollisionDetectorSettings):
-            raise TypeError(f"Invalid type for collision_detector settings: {type(self.collision_detector)}")
-        if not isinstance(self.solver, SolverKaminoSettings):
-            raise TypeError(f"Invalid type for solver settings: {type(self.solver)}")
+        # Ensure nested configs are properly created
+        if not isinstance(self.collision_detector, CollisionDetectorConfig):
+            raise TypeError(f"Invalid type for collision_detector config: {type(self.collision_detector)}")
+        if not isinstance(self.solver, SolverKaminoConfig):
+            raise TypeError(f"Invalid type for solver config: {type(self.solver)}")
 
-        # Then check the nested settings values
+        # Then check the nested config values
         # TODO: self.collision_detector.check()
         self.solver.check()
 
     def __post_init__(self):
         """
-        Post-initialization processing to ensure nested settings are properly created.
+        Post-initialization processing to ensure nested configs are properly created.
         """
         self.check()
 
@@ -120,23 +119,23 @@ class SimulatorData:
     Holds the time-varying data for the simulation.
 
     Attributes:
-        state_p (State):
+        state_p (StateKamino):
             The previous state data of the simulation
-        state_n (State):
+        state_n (StateKamino):
             The current state data of the simulation, computed from the previous step as:
             ``state_n = f(state_p, control)``, where ``f()`` is the system dynamics function.
-        control (Control):
+        control (ControlKamino):
             The control data, computed at each step as:
             ``control = g(state_n, state_p, control)``, where ``g()`` is the control function.
     """
 
-    def __init__(self, model: Model):
+    def __init__(self, model: ModelKamino):
         """
         Initializes the simulator data for the given model on the specified device.
         """
-        self.state_p: State = model.state(device=model.device)
-        self.state_n: State = model.state(device=model.device)
-        self.control: Control = model.control(device=model.device)
+        self.state_p: StateKamino = model.state(device=model.device)
+        self.state_n: StateKamino = model.state(device=model.device)
+        self.control: ControlKamino = model.control(device=model.device)
 
     def cache_state(self):
         """
@@ -157,19 +156,19 @@ class Simulator:
     The Simulator class encapsulates the entire simulation pipeline, including model definition,
     state management, collision detection, constraint handling, and time integration.
 
-    A Simulator is typically instantiated from a :class:`ModelBuilder` that defines the model
+    A Simulator is typically instantiated from a :class:`ModelBuilderKamino` that defines the model
     to be simulated. The simulator manages the time-stepping loop, invoking callbacks at various
     stages of the simulation step, and provides access to the current state and control inputs.
 
     Example:
     ```python
         # Create a model builder and define the model
-        builder = ModelBuilder()
+        builder = ModelBuilderKamino()
 
         # Define the model components (e.g., bodies, joints, collision geometries etc.)
         builder.add_rigid_body(...)
         builder.add_joint(...)
-        builder.add_collision_geometry(...)
+        builder.add_geometry(...)
 
         # Create the simulator from the builder
         simulator = Simulator(builder)
@@ -184,54 +183,57 @@ class Simulator:
     """Defines a common type signature for all simulator callback functions."""
 
     def __init__(
-        self, builder: ModelBuilder, settings: SimulatorSettings = None, device: Devicelike = None, shadow: bool = False
+        self,
+        builder: ModelBuilderKamino,
+        config: SimulatorConfig = None,
+        device: wp.DeviceLike = None,
+        shadow: bool = False,
     ):
         """
         Initializes the simulator with the given model builder, time-step, and device.
 
         Args:
-            builder (ModelBuilder): The model builder defining the model to be simulated.
-            settings (SimulatorSettings, optional): The simulator settings to use. If None, default settings are used.
-            device (Devicelike, optional): The device to run the simulation on. If None, the default device is used.
+            builder (ModelBuilderKamino): The model builder defining the model to be simulated.
+            config (SimulatorConfig, optional): The simulator config to use. If None, the default config are used.
+            device (wp.DeviceLike, optional): The device to run the simulation on. If None, the default device is used.
             shadow (bool, optional): If True, maintains a host-side copy of the simulation data for easy access.
         """
-        # Cache simulator settings: If no settings are provided, use defaults
-        if settings is None:
-            settings = SimulatorSettings()
-        settings.check()
-        self._settings: SimulatorSettings = settings
+        # Cache simulator config: If no config is provided, use default configs
+        if config is None:
+            config = SimulatorConfig()
+        config.check()
+        self._config: SimulatorConfig = config
 
         # Cache the target device use for the simulation
-        self._device: Devicelike = device
+        self._device: wp.DeviceLike = device
 
         # Finalize the model from the builder on the specified
         # device, allocating all necessary model data structures
         self._model = builder.finalize(device=self._device)
 
         # Configure model time-steps across all worlds
-        if isinstance(self._settings.dt, float):
-            self._model.time.set_uniform_timestep(self._settings.dt)
-        elif isinstance(self._settings.dt, FloatArrayLike):
-            self._model.time.set_timesteps(self._settings.dt)
+        if isinstance(self._config.dt, float):
+            self._model.time.set_uniform_timestep(self._config.dt)
+        elif isinstance(self._config.dt, FloatArrayLike):
+            self._model.time.set_timesteps(self._config.dt)
 
         # Allocate time-varying simulation data
         self._data = SimulatorData(model=self._model)
 
         # Allocate collision detection and contacts interface
         self._collision_detector = CollisionDetector(
-            builder=builder,
             model=self._model,
-            settings=self._settings.collision_detector,
+            config=self._config.collision_detector,
         )
 
         # Capture a reference to the contacts manager
         self._contacts = self._collision_detector.contacts
 
         # Define a physics solver for time-stepping
-        self._solver = SolverKamino(
+        self._solver = SolverKaminoImpl(
             model=self._model,
             contacts=self._contacts,
-            settings=self._settings.solver,
+            config=self._config.solver,
         )
 
         # Initialize callbacks
@@ -248,14 +250,14 @@ class Simulator:
     ###
 
     @property
-    def settings(self) -> SimulatorSettings:
+    def config(self) -> SimulatorConfig:
         """
-        Returns the simulator settings.
+        Returns the simulator config.
         """
-        return self._settings
+        return self._config
 
     @property
-    def model(self) -> Model:
+    def model(self) -> ModelKamino:
         """
         Returns the time-invariant simulation model data.
         """
@@ -269,21 +271,21 @@ class Simulator:
         return self._data
 
     @property
-    def state(self) -> State:
+    def state(self) -> StateKamino:
         """
         Returns the current state of the simulation.
         """
         return self._data.state_n
 
     @property
-    def state_previous(self) -> State:
+    def state_previous(self) -> StateKamino:
         """
         Returns the previous state of the simulation.
         """
         return self._data.state_p
 
     @property
-    def control(self) -> Control:
+    def control(self) -> ControlKamino:
         """
         Returns the current control inputs of the simulation.
         """
@@ -318,7 +320,7 @@ class Simulator:
         return self._collision_detector
 
     @property
-    def solver(self) -> SolverKamino:
+    def solver(self) -> SolverKaminoImpl:
         """
         Returns the physics step solver.
         """

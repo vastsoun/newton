@@ -13,12 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import h5py
-
 from ...linalg.linear import LinearSolverNameToType, LinearSolverTypeToName
-from ...solver_kamino import SolverKaminoSettings
-from ...solvers.padmm import PADMMPenaltyUpdate, PADMMWarmStartMode
-from ...solvers.warmstart import WarmstarterContacts
+from ...solver_kamino import SolverKaminoConfig
 
 ###
 # Module interface
@@ -38,157 +34,157 @@ __all__ = [
 ###
 
 
-def make_solver_config_default() -> tuple[str, SolverKaminoSettings]:
+def make_solver_config_default() -> tuple[str, SolverKaminoConfig]:
     # ------------------------------------------------------------------------------
     name = "Default"
     # ------------------------------------------------------------------------------
-    settings = SolverKaminoSettings()
+    config = SolverKaminoConfig()
     # ------------------------------------------------------------------------------
     # Constraint stabilization
-    settings.problem.alpha = 0.1
+    config.problem.alpha = 0.1
     # ------------------------------------------------------------------------------
     # Jacobian representation
-    settings.sparse = False
-    settings.sparse_jacobian = False
+    config.sparse = False
+    config.sparse_jacobian = False
     # ------------------------------------------------------------------------------
     # Linear system solver
-    settings.linear_solver_type = LinearSolverNameToType["LLTB"]
-    settings.linear_solver_kwargs = {}
+    config.linear_solver_type = LinearSolverNameToType["LLTB"]
+    config.linear_solver_kwargs = {}
     # ------------------------------------------------------------------------------
     # PADMM
-    settings.padmm.max_iterations = 200
-    settings.padmm.primal_tolerance = 1e-6
-    settings.padmm.dual_tolerance = 1e-6
-    settings.padmm.compl_tolerance = 1e-6
-    settings.padmm.restart_tolerance = 0.999
-    settings.padmm.eta = 1e-5
-    settings.padmm.rho_0 = 1.0
-    settings.padmm.rho_min = 1e-5
-    settings.padmm.penalty_update_method = PADMMPenaltyUpdate.FIXED
-    settings.padmm.penalty_update_freq = 1
-    settings.use_solver_acceleration = True
-    settings.avoid_graph_conditionals = False
+    config.padmm.max_iterations = 200
+    config.padmm.primal_tolerance = 1e-6
+    config.padmm.dual_tolerance = 1e-6
+    config.padmm.compl_tolerance = 1e-6
+    config.padmm.restart_tolerance = 0.999
+    config.padmm.eta = 1e-5
+    config.padmm.rho_0 = 1.0
+    config.padmm.rho_min = 1e-5
+    config.padmm.penalty_update_method = "fixed"
+    config.padmm.penalty_update_freq = 1
+    config.use_solver_acceleration = True
+    config.avoid_graph_conditionals = False
     # ------------------------------------------------------------------------------
     # Warm-starting
-    settings.warmstart_mode = PADMMWarmStartMode.CONTAINERS
-    settings.contact_warmstart_method = WarmstarterContacts.Method.GEOM_PAIR_NET_FORCE
+    config.warmstart_mode = "containers"
+    config.contact_warmstart_method = "geom_pair_net_force"
     # ------------------------------------------------------------------------------
-    return name, settings
+    return name, config
 
 
-def make_solver_config_dense_lltb_fast_dr_legs() -> tuple[str, SolverKaminoSettings]:
+def make_solver_config_dense_lltb_fast_dr_legs() -> tuple[str, SolverKaminoConfig]:
     # ------------------------------------------------------------------------------
     name = "Dense LLTB Fast DR Legs"
     # ------------------------------------------------------------------------------
-    settings = SolverKaminoSettings()
+    config = SolverKaminoConfig()
     # ------------------------------------------------------------------------------
     # Constraint stabilization
-    settings.problem.alpha = 0.1
+    config.problem.alpha = 0.1
     # ------------------------------------------------------------------------------
     # Jacobian representation
-    settings.sparse = False
-    settings.sparse_jacobian = False
+    config.sparse = False
+    config.sparse_jacobian = False
     # ------------------------------------------------------------------------------
     # Linear system solver
-    settings.linear_solver_type = LinearSolverNameToType["LLTB"]
-    settings.linear_solver_kwargs = {}
+    config.linear_solver_type = LinearSolverNameToType["LLTB"]
+    config.linear_solver_kwargs = {}
     # ------------------------------------------------------------------------------
     # PADMM
-    settings.padmm.max_iterations = 200
-    settings.padmm.primal_tolerance = 1e-4
-    settings.padmm.dual_tolerance = 1e-4
-    settings.padmm.compl_tolerance = 1e-4
-    settings.padmm.restart_tolerance = 0.999
-    settings.padmm.eta = 1e-5
-    settings.padmm.rho_0 = 0.05
-    settings.padmm.rho_min = 1e-5
-    settings.padmm.penalty_update_method = PADMMPenaltyUpdate.FIXED
-    settings.padmm.penalty_update_freq = 1
-    settings.use_solver_acceleration = True
-    settings.avoid_graph_conditionals = False
+    config.padmm.max_iterations = 200
+    config.padmm.primal_tolerance = 1e-4
+    config.padmm.dual_tolerance = 1e-4
+    config.padmm.compl_tolerance = 1e-4
+    config.padmm.restart_tolerance = 0.999
+    config.padmm.eta = 1e-5
+    config.padmm.rho_0 = 0.05
+    config.padmm.rho_min = 1e-5
+    config.padmm.penalty_update_method = "fixed"
+    config.padmm.penalty_update_freq = 1
+    config.use_solver_acceleration = True
+    config.avoid_graph_conditionals = False
     # ------------------------------------------------------------------------------
     # Warm-starting
-    settings.warmstart_mode = PADMMWarmStartMode.CONTAINERS
-    settings.contact_warmstart_method = WarmstarterContacts.Method.GEOM_PAIR_NET_FORCE
+    config.warmstart_mode = "containers"
+    config.contact_warmstart_method = "geom_pair_net_force"
     # ------------------------------------------------------------------------------
-    return name, settings
+    return name, config
 
 
 # TODO @cavemor: PLEASE ADD YOUR BEST CONFIGS HERE
-def make_solver_config_sparse_cr_fast_dr_legs() -> tuple[str, SolverKaminoSettings]:
+def make_solver_config_sparse_cr_fast_dr_legs() -> tuple[str, SolverKaminoConfig]:
     # ------------------------------------------------------------------------------
     name = "Sparse CR Fast DR Legs"
     # ------------------------------------------------------------------------------
-    settings = SolverKaminoSettings()
+    config = SolverKaminoConfig()
     # ------------------------------------------------------------------------------
     # Constraint stabilization
-    settings.problem.alpha = 0.1
+    config.problem.alpha = 0.1
     # ------------------------------------------------------------------------------
     # Jacobian representation
-    settings.sparse = True
-    settings.sparse_jacobian = True
+    config.sparse = True
+    config.sparse_jacobian = True
     # ------------------------------------------------------------------------------
     # Linear system solver
-    settings.linear_solver_type = LinearSolverNameToType["CR"]
-    settings.linear_solver_kwargs = {"maxiter": 9}
+    config.linear_solver_type = LinearSolverNameToType["CR"]
+    config.linear_solver_kwargs = {"maxiter": 9}
     # ------------------------------------------------------------------------------
     # PADMM
-    settings.padmm.max_iterations = 100
-    settings.padmm.primal_tolerance = 1e-4
-    settings.padmm.dual_tolerance = 1e-4
-    settings.padmm.compl_tolerance = 1e-4
-    settings.padmm.restart_tolerance = 0.999
-    settings.padmm.eta = 1e-5
-    settings.padmm.rho_0 = 0.05
-    settings.padmm.rho_min = 0.01
-    settings.padmm.penalty_update_method = PADMMPenaltyUpdate.FIXED
-    settings.padmm.penalty_update_freq = 1
-    settings.use_solver_acceleration = True
-    settings.avoid_graph_conditionals = False
+    config.padmm.max_iterations = 100
+    config.padmm.primal_tolerance = 1e-4
+    config.padmm.dual_tolerance = 1e-4
+    config.padmm.compl_tolerance = 1e-4
+    config.padmm.restart_tolerance = 0.999
+    config.padmm.eta = 1e-5
+    config.padmm.rho_0 = 0.05
+    config.padmm.rho_min = 0.01
+    config.padmm.penalty_update_method = "fixed"
+    config.padmm.penalty_update_freq = 1
+    config.use_solver_acceleration = True
+    config.avoid_graph_conditionals = False
     # ------------------------------------------------------------------------------
     # Warm-starting
-    settings.warmstart_mode = PADMMWarmStartMode.CONTAINERS
-    settings.contact_warmstart_method = WarmstarterContacts.Method.GEOM_PAIR_NET_FORCE
+    config.warmstart_mode = "containers"
+    config.contact_warmstart_method = "geom_pair_net_force"
     # ------------------------------------------------------------------------------
-    return name, settings
+    return name, config
 
 
-def make_solver_config_sparse_cr_adaptiv_rho_balanced_dr_legs() -> tuple[str, SolverKaminoSettings]:
+def make_solver_config_sparse_cr_adaptiv_rho_balanced_dr_legs() -> tuple[str, SolverKaminoConfig]:
     # ------------------------------------------------------------------------------
     name = "Sparse CR Adaptive Rho Balanced DR Legs"
     # ------------------------------------------------------------------------------
-    settings = SolverKaminoSettings()
+    config = SolverKaminoConfig()
     # ------------------------------------------------------------------------------
     # Constraint stabilization
-    settings.problem.alpha = 0.1
+    config.problem.alpha = 0.1
     # ------------------------------------------------------------------------------
     # Jacobian representation
-    settings.sparse = True
-    settings.sparse_jacobian = True
+    config.sparse = True
+    config.sparse_jacobian = True
     # ------------------------------------------------------------------------------
     # Linear system solver
-    settings.linear_solver_type = LinearSolverNameToType["CR"]
-    settings.linear_solver_kwargs = {"maxiter": 9}
+    config.linear_solver_type = LinearSolverNameToType["CR"]
+    config.linear_solver_kwargs = {"maxiter": 9}
     # ------------------------------------------------------------------------------
     # PADMM
-    settings.padmm.max_iterations = 100
-    settings.padmm.primal_tolerance = 1e-4
-    settings.padmm.dual_tolerance = 1e-4
-    settings.padmm.compl_tolerance = 1e-4
-    settings.padmm.restart_tolerance = 0.999
-    settings.padmm.eta = 1e-5
-    settings.padmm.rho_0 = 0.05
-    settings.padmm.rho_min = 0.01
-    settings.padmm.penalty_update_method = PADMMPenaltyUpdate.BALANCED
-    settings.padmm.penalty_update_freq = 10
-    settings.use_solver_acceleration = True
-    settings.avoid_graph_conditionals = False
+    config.padmm.max_iterations = 100
+    config.padmm.primal_tolerance = 1e-4
+    config.padmm.dual_tolerance = 1e-4
+    config.padmm.compl_tolerance = 1e-4
+    config.padmm.restart_tolerance = 0.999
+    config.padmm.eta = 1e-5
+    config.padmm.rho_0 = 0.05
+    config.padmm.rho_min = 0.01
+    config.padmm.penalty_update_method = "balanced"
+    config.padmm.penalty_update_freq = 10
+    config.use_solver_acceleration = True
+    config.avoid_graph_conditionals = False
     # ------------------------------------------------------------------------------
     # Warm-starting
-    settings.warmstart_mode = PADMMWarmStartMode.CONTAINERS
-    settings.contact_warmstart_method = WarmstarterContacts.Method.GEOM_PAIR_NET_FORCE
+    config.warmstart_mode = "containers"
+    config.contact_warmstart_method = "geom_pair_net_force"
     # ------------------------------------------------------------------------------
-    return name, settings
+    return name, config
 
 
 ###
@@ -196,14 +192,14 @@ def make_solver_config_sparse_cr_adaptiv_rho_balanced_dr_legs() -> tuple[str, So
 ###
 
 
-def make_benchmark_configs() -> dict[str, SolverKaminoSettings]:
+def make_benchmark_configs() -> dict[str, SolverKaminoConfig]:
     generators = [
         make_solver_config_default,
         make_solver_config_dense_lltb_fast_dr_legs,
         make_solver_config_sparse_cr_fast_dr_legs,
         make_solver_config_sparse_cr_adaptiv_rho_balanced_dr_legs,
     ]
-    solver_configs: dict[str, SolverKaminoSettings] = {}
+    solver_configs: dict[str, SolverKaminoConfig] = {}
     for gen in generators:
         name, config = gen()
         solver_configs[name] = config
@@ -215,7 +211,7 @@ def make_benchmark_configs() -> dict[str, SolverKaminoSettings]:
 ###
 
 
-def save_solver_configs_to_hdf5(configs: dict[str, SolverKaminoSettings], datafile: h5py.File):
+def save_solver_configs_to_hdf5(configs: dict[str, SolverKaminoConfig], datafile):
     for config_name, config in configs.items():
         scope = f"Solver/{config_name}"
         # ------------------------------------------------------------------------------
@@ -249,14 +245,14 @@ def save_solver_configs_to_hdf5(configs: dict[str, SolverKaminoSettings], datafi
         datafile[f"{scope}/padmm/use_solver_acceleration"] = config.use_solver_acceleration
         datafile[f"{scope}/padmm/avoid_graph_conditionals"] = config.avoid_graph_conditionals
         # ------------------------------------------------------------------------------
-        datafile[f"{scope}/warmstarting/warmstart_mode"] = config.warmstart_mode.value
-        datafile[f"{scope}/warmstarting/contact_warmstart_method"] = config.contact_warmstart_method.value
+        datafile[f"{scope}/warmstarting/warmstart_mode"] = config.warmstart_mode
+        datafile[f"{scope}/warmstarting/contact_warmstart_method"] = config.contact_warmstart_method
 
 
-def load_solver_configs_to_hdf5(datafile: h5py.File) -> dict[str, SolverKaminoSettings]:
+def load_solver_configs_to_hdf5(datafile) -> dict[str, SolverKaminoConfig]:
     configs = {}
     for config_name in datafile["Solver"].keys():
-        config = SolverKaminoSettings()
+        config = SolverKaminoConfig()
         # ------------------------------------------------------------------------------
         config.problem.alpha = float(datafile[f"Solver/{config_name}/constraints/alpha"][()])
         config.problem.beta = float(datafile[f"Solver/{config_name}/constraints/beta"][()])
@@ -283,9 +279,7 @@ def load_solver_configs_to_hdf5(datafile: h5py.File) -> dict[str, SolverKaminoSe
         config.padmm.a_0 = float(datafile[f"Solver/{config_name}/padmm/a_0"][()])
         config.padmm.alpha = float(datafile[f"Solver/{config_name}/padmm/alpha"][()])
         config.padmm.tau = float(datafile[f"Solver/{config_name}/padmm/tau"][()])
-        config.padmm.penalty_update_method = PADMMPenaltyUpdate(
-            int(datafile[f"Solver/{config_name}/padmm/penalty_update_method"][()])
-        )
+        config.padmm.penalty_update_method = str(datafile[f"Solver/{config_name}/padmm/penalty_update_method"][()])
         config.padmm.penalty_update_freq = int(datafile[f"Solver/{config_name}/padmm/penalty_update_freq"][()])
         config.padmm.linear_solver_tolerance = float(
             datafile[f"Solver/{config_name}/padmm/linear_solver_tolerance"][()]
@@ -296,11 +290,9 @@ def load_solver_configs_to_hdf5(datafile: h5py.File) -> dict[str, SolverKaminoSe
         config.use_solver_acceleration = bool(datafile[f"Solver/{config_name}/padmm/use_solver_acceleration"][()])
         config.avoid_graph_conditionals = bool(datafile[f"Solver/{config_name}/padmm/avoid_graph_conditionals"][()])
         # ------------------------------------------------------------------------------
-        config.warmstart_mode = PADMMWarmStartMode(
-            int(datafile[f"Solver/{config_name}/warmstarting/warmstart_mode"][()])
-        )
-        config.contact_warmstart_method = WarmstarterContacts.Method(
-            int(datafile[f"Solver/{config_name}/warmstarting/contact_warmstart_method"][()])
+        config.warmstart_mode = str(datafile[f"Solver/{config_name}/warmstarting/warmstart_mode"][()])
+        config.contact_warmstart_method = str(
+            datafile[f"Solver/{config_name}/warmstarting/contact_warmstart_method"][()]
         )
         # ------------------------------------------------------------------------------
         configs[config_name] = config

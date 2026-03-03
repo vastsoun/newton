@@ -19,14 +19,15 @@ KAMINO: UNIT TESTS: GENERAL UTILITIES
 
 import numpy as np
 
-from newton._src.solvers.kamino.core.model import Model, ModelData
+from ...core.data import DataKamino
+from ...core.model import ModelKamino
 
 ###
 # Model Functions
 ###
 
 
-def print_model_size(model: Model):
+def print_model_size(model: ModelKamino):
     print("Model Size:")
 
     # Print the host-side model size meta-data
@@ -47,7 +48,7 @@ def print_model_size(model: Model):
     print(f"model.size.max_of_max_unilaterals: {model.size.max_of_max_unilaterals}")
 
 
-def print_model_info(model: Model):
+def print_model_info(model: ModelKamino):
     print("===============================================================================")
     print("Model Info:")
     # Print the host-side model info meta-data
@@ -60,8 +61,7 @@ def print_model_info(model: Model):
     print(f"model.info.num_passive_joints: {model.info.num_passive_joints}")
     print(f"model.info.num_actuated_joints: {model.info.num_actuated_joints}")
     print(f"model.info.num_dynamic_joints: {model.info.num_dynamic_joints}")
-    print(f"model.info.num_collision_geoms: {model.info.num_collision_geoms}")
-    print(f"model.info.num_physical_geoms: {model.info.num_physical_geoms}")
+    print(f"model.info.num_geoms: {model.info.num_geoms}")
     print(f"model.info.max_limits: {model.info.max_limits}")
     print(f"model.info.max_contacts: {model.info.max_contacts}")
     print("-------------------------------------------------------------------------------")
@@ -111,7 +111,7 @@ def print_model_info(model: Model):
     print(f"model.info.inertia_total: {model.info.inertia_total}")
 
 
-def print_model_constraint_info(model: Model):
+def print_model_constraint_info(model: ModelKamino):
     print("Model Constraint Info:")
     print("-------------------------------------------------------------------------------")
     print(f"model.info.max_limits: {model.info.max_limits}")
@@ -145,7 +145,7 @@ def print_model_constraint_info(model: Model):
     print(f"model.info.joint_kinematic_cts_group_offset: {model.info.joint_kinematic_cts_group_offset}")
 
 
-def print_model_bodies(model: Model, inertias=True, initial_states=True):
+def print_model_bodies(model: ModelKamino, inertias=True, initial_states=True):
     print(f"model.bodies.num_bodies: {model.bodies.num_bodies}")
     print(f"model.bodies.wid: {model.bodies.wid}")
     print(f"model.bodies.bid: {model.bodies.bid}")
@@ -160,7 +160,7 @@ def print_model_bodies(model: Model, inertias=True, initial_states=True):
 
 
 def print_model_joints(
-    model: Model,
+    model: ModelKamino,
     dimensions=True,
     offsets=True,
     parameters=True,
@@ -214,7 +214,7 @@ def print_model_joints(
 
 
 # TODO: RENAME print_data_info
-def print_model_data_info(data: ModelData):
+def print_data_info(data: DataKamino):
     print("===============================================================================")
     print("data.info.num_limits: ", data.info.num_limits)
     print("data.info.num_contacts: ", data.info.num_contacts)
@@ -227,10 +227,10 @@ def print_model_data_info(data: ModelData):
     print("data.info.contact_cts_group_offset: ", data.info.contact_cts_group_offset)
 
 
-def print_model_state(data: ModelData, info=True):
+def print_data(data: DataKamino, info=True):
     # Print the state info
     if info:
-        print_model_data_info(data)
+        print_data_info(data)
     # Print body state data
     print(f"data.bodies.I_i: {data.bodies.I_i}")
     print(f"data.bodies.inv_I_i: {data.bodies.inv_I_i}")
@@ -259,7 +259,7 @@ def print_model_state(data: ModelData, info=True):
     print(f"data.joints.j_w_c_j: {data.joints.j_w_c_j}")
     print(f"data.joints.j_w_l_j: {data.joints.j_w_l_j}")
     # Print the geometry state data
-    print(f"data.cgeoms.pose: {data.cgeoms.pose}")
+    print(f"data.geoms.pose: {data.geoms.pose}")
 
 
 ###

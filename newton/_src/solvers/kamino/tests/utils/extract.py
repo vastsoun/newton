@@ -18,11 +18,12 @@
 import numpy as np
 import warp as wp
 
-from ...core.model import Model, ModelData
+from ...core.data import DataKamino
+from ...core.model import ModelKamino
 from ...dynamics.delassus import BlockSparseMatrixFreeDelassusOperator, DelassusOperator
-from ...geometry.contacts import Contacts
+from ...geometry.contacts import ContactsKamino
 from ...kinematics.jacobians import DenseSystemJacobians, SparseSystemJacobians
-from ...kinematics.limits import Limits
+from ...kinematics.limits import LimitsKamino
 
 ###
 # Helper functions
@@ -53,19 +54,19 @@ def get_vector_block(index: int, flatvec: np.ndarray, dims: list[int], maxdims: 
 ###
 
 
-def extract_active_constraint_dims(data: ModelData) -> list[int]:
+def extract_active_constraint_dims(data: DataKamino) -> list[int]:
     active_dim_np = data.info.num_total_cts.numpy()
     return [int(active_dim_np[i]) for i in range(len(active_dim_np))]
 
 
-def extract_active_constraint_vectors(model: Model, data: ModelData, x: wp.array) -> list[np.ndarray]:
+def extract_active_constraint_vectors(model: ModelKamino, data: DataKamino, x: wp.array) -> list[np.ndarray]:
     cts_start_np = model.info.total_cts_offset.numpy()
     num_active_cts_np = extract_active_constraint_dims(data)
     x_np = x.numpy()
     return [x_np[cts_start_np[n] : cts_start_np[n] + num_active_cts_np[n]] for n in range(len(cts_start_np))]
 
 
-def extract_actuation_forces(model: Model, data: ModelData) -> list[np.ndarray]:
+def extract_actuation_forces(model: ModelKamino, data: DataKamino) -> list[np.ndarray]:
     dofs_start_np = model.info.joint_dofs_offset.numpy()
     num_dofs_np = model.info.num_joint_dofs.numpy()
     tau_j_np = data.joints.tau_j.numpy()
@@ -73,9 +74,9 @@ def extract_actuation_forces(model: Model, data: ModelData) -> list[np.ndarray]:
 
 
 def extract_cts_jacobians(
-    model: Model,
-    limits: Limits | None,
-    contacts: Contacts | None,
+    model: ModelKamino,
+    limits: LimitsKamino | None,
+    contacts: ContactsKamino | None,
     jacobians: DenseSystemJacobians | SparseSystemJacobians,
     only_active_cts: bool = False,
     verbose: bool = False,
@@ -98,8 +99,8 @@ def extract_cts_jacobians(
     # Retrieve the Jacobian dimensions in each world
     has_limits = limits is not None and limits.model_max_limits_host > 0
     has_contacts = contacts is not None and contacts.model_max_contacts_host > 0
-    num_bdofs = [model.worlds[w].num_body_dofs for w in range(num_worlds)]
-    num_jcts = [model.worlds[w].num_joint_cts for w in range(num_worlds)]
+    num_bdofs = model.info.num_body_dofs.numpy().tolist()
+    num_jcts = model.info.num_joint_cts.numpy().tolist()
     maxnl = limits.world_max_limits_host if has_limits else [0] * num_worlds
     maxnc = contacts.world_max_contacts_host if has_contacts else [0] * num_worlds
     nlact = limits.world_active_limits.numpy().tolist() if has_limits else [0] * num_worlds
@@ -134,7 +135,7 @@ def extract_cts_jacobians(
 
 
 def extract_dofs_jacobians(
-    model: Model,
+    model: ModelKamino,
     jacobians: DenseSystemJacobians | SparseSystemJacobians,
     verbose: bool = False,
 ) -> list[np.ndarray]:
@@ -155,8 +156,8 @@ def extract_dofs_jacobians(
         J_dofs_flat_sizes[i] = J_dofs_flat_offsets_ext[i + 1] - J_dofs_flat_offsets_ext[i]
 
     # Extract each Jacobian as a matrix
-    num_bdofs = [model.worlds[w].num_body_dofs for w in range(num_worlds)]
-    num_jdofs = [model.worlds[w].num_joint_dofs for w in range(num_worlds)]
+    num_bdofs = model.info.num_body_dofs.numpy().tolist()
+    num_jdofs = model.info.num_joint_dofs.numpy().tolist()
     J_dofs_mat: list[np.ndarray] = []
     for i in range(num_worlds):
         start = J_dofs_flat_offsets[i]

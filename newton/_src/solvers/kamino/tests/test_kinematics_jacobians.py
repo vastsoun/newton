@@ -22,14 +22,15 @@ import unittest
 import numpy as np
 import warp as wp
 
-from newton._src.solvers.kamino.core.model import Model
-from newton._src.solvers.kamino.geometry.contacts import Contacts
+from newton._src.solvers.kamino.core.model import ModelKamino
+from newton._src.solvers.kamino.geometry.contacts import ContactsKamino
+from newton._src.solvers.kamino.kinematics.constraints import make_unilateral_constraints_info
 from newton._src.solvers.kamino.kinematics.jacobians import (
     ColMajorSparseConstraintJacobians,
     DenseSystemJacobians,
     SparseSystemJacobians,
 )
-from newton._src.solvers.kamino.kinematics.limits import Limits
+from newton._src.solvers.kamino.kinematics.limits import LimitsKamino
 from newton._src.solvers.kamino.models.builders.basics import build_boxes_fourbar, make_basics_heterogeneous_builder
 from newton._src.solvers.kamino.models.builders.utils import make_homogeneous_builder
 from newton._src.solvers.kamino.tests import setup_tests, test_context
@@ -70,7 +71,7 @@ class TestKinematicsDenseSystemJacobians(unittest.TestCase):
             msg.reset_log_level()
 
     def test_01_allocate_single_dense_system_jacobians_only_joints(self):
-        # Construct the model description using the ModelBuilder
+        # Construct the model description using the ModelBuilderKamino
         builder = build_boxes_fourbar()
 
         # Create the model from the builder
@@ -102,7 +103,7 @@ class TestKinematicsDenseSystemJacobians(unittest.TestCase):
         self.assertEqual(jacobians.data.J_cts_data.shape, (model_num_cts * model.size.sum_of_num_body_dofs,))
 
     def test_02_allocate_single_dense_system_jacobians_with_limits(self):
-        # Construct the model description using the ModelBuilder
+        # Construct the model description using the ModelBuilderKamino
         builder = build_boxes_fourbar()
 
         # Create the model from the builder
@@ -115,7 +116,7 @@ class TestKinematicsDenseSystemJacobians(unittest.TestCase):
             print(f"model.size.sum_of_num_joint_dofs: {model.size.sum_of_num_joint_dofs}")
 
         # Construct and allocate the limits container
-        limits = Limits(model=model, device=self.default_device)
+        limits = LimitsKamino(model=model, device=self.default_device)
         if self.verbose:
             print("limits.model_max_limits_host: ", limits.model_max_limits_host)
             print("limits.world_max_limits_host: ", limits.world_max_limits_host)
@@ -143,7 +144,7 @@ class TestKinematicsDenseSystemJacobians(unittest.TestCase):
         # Problem constants
         max_world_contacts = 12
 
-        # Construct the model description using the ModelBuilder
+        # Construct the model description using the ModelBuilderKamino
         builder = build_boxes_fourbar()
 
         # Create the model from the builder
@@ -161,7 +162,7 @@ class TestKinematicsDenseSystemJacobians(unittest.TestCase):
             print("required_world_max_contacts: ", required_world_max_contacts)
 
         # Construct and allocate the contacts container
-        contacts = Contacts(capacity=required_world_max_contacts, device=self.default_device)
+        contacts = ContactsKamino(capacity=required_world_max_contacts, device=self.default_device)
         if self.verbose:
             print("contacts.default_max_world_contacts: ", contacts.default_max_world_contacts)
             print("contacts.model_max_contacts_host: ", contacts.model_max_contacts_host)
@@ -190,7 +191,7 @@ class TestKinematicsDenseSystemJacobians(unittest.TestCase):
         # Problem constants
         max_world_contacts = 12
 
-        # Construct the model description using the ModelBuilder
+        # Construct the model description using the ModelBuilderKamino
         builder = build_boxes_fourbar()
 
         # Create the model from the builder
@@ -203,7 +204,7 @@ class TestKinematicsDenseSystemJacobians(unittest.TestCase):
             print(f"model.size.sum_of_num_joint_dofs: {model.size.sum_of_num_joint_dofs}")
 
         # Construct and allocate the limits container
-        limits = Limits(model=model, device=self.default_device)
+        limits = LimitsKamino(model=model, device=self.default_device)
         if self.verbose:
             print("limits.model_max_limits_host: ", limits.model_max_limits_host)
             print("limits.world_max_limits_host: ", limits.world_max_limits_host)
@@ -214,7 +215,7 @@ class TestKinematicsDenseSystemJacobians(unittest.TestCase):
             print("required_world_max_contacts: ", required_world_max_contacts)
 
         # Construct and allocate the contacts container
-        contacts = Contacts(capacity=required_world_max_contacts, device=self.default_device)
+        contacts = ContactsKamino(capacity=required_world_max_contacts, device=self.default_device)
         if self.verbose:
             print("contacts.default_max_world_contacts: ", contacts.default_max_world_contacts)
             print("contacts.model_max_contacts_host: ", contacts.model_max_contacts_host)
@@ -246,7 +247,7 @@ class TestKinematicsDenseSystemJacobians(unittest.TestCase):
         num_worlds = 3
         max_world_contacts = 12
 
-        # Construct the model description using the ModelBuilder
+        # Construct the model description using the ModelBuilderKamino
         builder = make_homogeneous_builder(num_worlds=num_worlds, build_fn=build_boxes_fourbar)
 
         # Create the model from the builder
@@ -259,7 +260,7 @@ class TestKinematicsDenseSystemJacobians(unittest.TestCase):
             print(f"model.size.sum_of_num_joint_dofs: {model.size.sum_of_num_joint_dofs}")
 
         # Construct and allocate the limits container
-        limits = Limits(model=model, device=self.default_device)
+        limits = LimitsKamino(model=model, device=self.default_device)
         if self.verbose:
             print("limits.model_max_limits_host: ", limits.model_max_limits_host)
             print("limits.world_max_limits_host: ", limits.world_max_limits_host)
@@ -270,12 +271,15 @@ class TestKinematicsDenseSystemJacobians(unittest.TestCase):
             print("required_world_max_contacts: ", required_world_max_contacts)
 
         # Construct and allocate the contacts container
-        contacts = Contacts(capacity=required_world_max_contacts, device=self.default_device)
+        contacts = ContactsKamino(capacity=required_world_max_contacts, device=self.default_device)
         if self.verbose:
             print("contacts.default_max_world_contacts: ", contacts.default_max_world_contacts)
             print("contacts.model_max_contacts_host: ", contacts.model_max_contacts_host)
             print("contacts.world_max_contacts_host: ", contacts.world_max_contacts_host)
             print("contacts.world_max_contacts_host: ", contacts.world_max_contacts_host)
+
+        # Build model info
+        make_unilateral_constraints_info(model, model.data(), limits, contacts)
 
         # Create the Jacobians container
         jacobians = DenseSystemJacobians(model=model, limits=limits, contacts=contacts, device=self.default_device)
@@ -286,15 +290,12 @@ class TestKinematicsDenseSystemJacobians(unittest.TestCase):
             print(f"J_cts_data: shape={jacobians.data.J_cts_data.shape}")
 
         # Compute the total maximum number of constraints
-        num_body_dofs = [model.worlds[w].num_body_dofs for w in range(num_worlds)]
-        num_joint_dofs = [model.worlds[w].num_joint_dofs for w in range(num_worlds)]
-        num_total_cts = [
-            (model.worlds[w].num_joint_cts + limits.world_max_limits_host[w] + 3 * contacts.world_max_contacts_host[w])
-            for w in range(num_worlds)
-        ]
+        num_body_dofs = model.info.num_body_dofs.numpy().tolist()
+        num_joint_dofs = model.info.num_joint_dofs.numpy().tolist()
+        max_total_cts = model.info.max_total_cts.numpy().tolist()
         if self.verbose:
             print("num_body_dofs: ", num_body_dofs)
-            print("num_total_cts: ", num_total_cts)
+            print("max_total_cts: ", max_total_cts)
             print("num_joint_dofs: ", num_joint_dofs)
 
         # Compute Jacobian sizes
@@ -302,7 +303,7 @@ class TestKinematicsDenseSystemJacobians(unittest.TestCase):
         J_cts_size: list[int] = [0] * num_worlds
         for w in range(num_worlds):
             J_dofs_size[w] = num_joint_dofs[w] * num_body_dofs[w]
-            J_cts_size[w] = num_total_cts[w] * num_body_dofs[w]
+            J_cts_size[w] = max_total_cts[w] * num_body_dofs[w]
 
         # Compute Jacobian offsets
         J_dofs_offsets: list[int] = [0] + [sum(J_dofs_size[:w]) for w in range(1, num_worlds)]
@@ -323,7 +324,7 @@ class TestKinematicsDenseSystemJacobians(unittest.TestCase):
         # Problem constants
         max_world_contacts = 12
 
-        # Construct the model description using the ModelBuilder
+        # Construct the model description using the ModelBuilderKamino
         builder = make_basics_heterogeneous_builder()
         num_worlds = builder.num_worlds
 
@@ -337,7 +338,7 @@ class TestKinematicsDenseSystemJacobians(unittest.TestCase):
             print(f"model.size.sum_of_num_joint_dofs: {model.size.sum_of_num_joint_dofs}")
 
         # Construct and allocate the limits container
-        limits = Limits(model=model, device=self.default_device)
+        limits = LimitsKamino(model=model, device=self.default_device)
         if self.verbose:
             print("limits.model_max_limits_host: ", limits.model_max_limits_host)
             print("limits.world_max_limits_host: ", limits.world_max_limits_host)
@@ -348,11 +349,14 @@ class TestKinematicsDenseSystemJacobians(unittest.TestCase):
             print("required_world_max_contacts: ", required_world_max_contacts)
 
         # Construct and allocate the contacts container
-        contacts = Contacts(capacity=required_world_max_contacts, device=self.default_device)
+        contacts = ContactsKamino(capacity=required_world_max_contacts, device=self.default_device)
         if self.verbose:
             print("contacts.default_max_world_contacts: ", contacts.default_max_world_contacts)
             print("contacts.model_max_contacts_host: ", contacts.model_max_contacts_host)
             print("contacts.world_max_contacts_host: ", contacts.world_max_contacts_host)
+
+        # Build model info
+        make_unilateral_constraints_info(model, model.data(), limits, contacts)
 
         # Create the Jacobians container
         jacobians = DenseSystemJacobians(model=model, limits=limits, contacts=contacts)
@@ -363,15 +367,12 @@ class TestKinematicsDenseSystemJacobians(unittest.TestCase):
             print(f"J_cts_data: shape={jacobians.data.J_cts_data.shape}")
 
         # Compute the total maximum number of constraints
-        num_body_dofs = [model.worlds[w].num_body_dofs for w in range(num_worlds)]
-        num_joint_dofs = [model.worlds[w].num_joint_dofs for w in range(num_worlds)]
-        num_total_cts = [
-            (model.worlds[w].num_joint_cts + limits.world_max_limits_host[w] + 3 * contacts.world_max_contacts_host[w])
-            for w in range(num_worlds)
-        ]
+        num_body_dofs = model.info.num_body_dofs.numpy().tolist()
+        num_joint_dofs = model.info.num_joint_dofs.numpy().tolist()
+        max_total_cts = model.info.max_total_cts.numpy().tolist()
         if self.verbose:
             print("num_body_dofs: ", num_body_dofs)
-            print("num_total_cts: ", num_total_cts)
+            print("max_total_cts: ", max_total_cts)
             print("num_joint_dofs: ", num_joint_dofs)
 
         # Compute Jacobian sizes
@@ -379,7 +380,7 @@ class TestKinematicsDenseSystemJacobians(unittest.TestCase):
         J_cts_size: list[int] = [0] * num_worlds
         for w in range(num_worlds):
             J_dofs_size[w] = num_joint_dofs[w] * num_body_dofs[w]
-            J_cts_size[w] = num_total_cts[w] * num_body_dofs[w]
+            J_cts_size[w] = max_total_cts[w] * num_body_dofs[w]
 
         # Compute Jacobian offsets
         J_dofs_offsets: list[int] = [0] + [sum(J_dofs_size[:w]) for w in range(1, num_worlds)]
@@ -398,7 +399,7 @@ class TestKinematicsDenseSystemJacobians(unittest.TestCase):
 
     def test_07_build_single_dense_system_jacobians(self):
         # Construct the test problem
-        model, data, limits, contacts = make_test_problem_fourbar(
+        model, data, _state, limits, contacts = make_test_problem_fourbar(
             device=self.default_device,
             max_world_contacts=12,
             num_worlds=1,
@@ -447,7 +448,7 @@ class TestKinematicsDenseSystemJacobians(unittest.TestCase):
 
     def test_08_build_homogeneous_dense_system_jacobians(self):
         # Construct the test problem
-        model, data, limits, contacts = make_test_problem_fourbar(
+        model, data, _state, limits, contacts = make_test_problem_fourbar(
             device=self.default_device,
             max_world_contacts=12,
             num_worlds=3,
@@ -473,7 +474,7 @@ class TestKinematicsDenseSystemJacobians(unittest.TestCase):
 
     def test_09_build_heterogeneous_dense_system_jacobians(self):
         # Construct the test problem
-        model, data, limits, contacts = make_test_problem_heterogeneous(
+        model, data, _state, limits, contacts = make_test_problem_heterogeneous(
             device=self.default_device,
             max_world_contacts=12,
             with_limits=True,
@@ -525,9 +526,9 @@ class TestKinematicsSparseSystemJacobians(unittest.TestCase):
 
     def _compare_dense_sparse_jacobians(
         self,
-        model: Model,
-        limits: Limits | None,
-        contacts: Contacts | None,
+        model: ModelKamino,
+        limits: LimitsKamino | None,
+        contacts: ContactsKamino | None,
         jacobians_dense: DenseSystemJacobians,
         jacobians_sparse: SparseSystemJacobians,
     ):
@@ -616,7 +617,7 @@ class TestKinematicsSparseSystemJacobians(unittest.TestCase):
 
     def test_02_allocate_single_sparse_system_jacobians_with_limits(self):
         # Construct the test problem
-        model, _, limits, *_ = make_test_problem_fourbar(
+        model, _data, _state, limits, *_ = make_test_problem_fourbar(
             device=self.default_device,
             num_worlds=1,
             with_limits=True,
@@ -646,7 +647,7 @@ class TestKinematicsSparseSystemJacobians(unittest.TestCase):
 
     def test_03_allocate_single_sparse_system_jacobians_with_contacts(self):
         # Construct the test problem
-        model, _, _, contacts = make_test_problem_fourbar(
+        model, _data, _state, _limits, contacts = make_test_problem_fourbar(
             device=self.default_device,
             max_world_contacts=12,
             num_worlds=1,
@@ -677,7 +678,7 @@ class TestKinematicsSparseSystemJacobians(unittest.TestCase):
 
     def test_04_allocate_single_sparse_system_jacobians_with_limits_and_contacts(self):
         # Construct the test problem
-        model, _, limits, contacts = make_test_problem_fourbar(
+        model, _data, _state, limits, contacts = make_test_problem_fourbar(
             device=self.default_device,
             max_world_contacts=12,
             num_worlds=1,
@@ -710,7 +711,7 @@ class TestKinematicsSparseSystemJacobians(unittest.TestCase):
 
     def test_05_allocate_homogeneous_sparse_system_jacobians(self):
         # Construct the test problem
-        model, _, limits, contacts = make_test_problem_fourbar(
+        model, _data, _state, limits, contacts = make_test_problem_fourbar(
             device=self.default_device,
             max_world_contacts=12,
             num_worlds=3,
@@ -730,18 +731,15 @@ class TestKinematicsSparseSystemJacobians(unittest.TestCase):
             print(f"J_dofs max_nzb (shape={jacobians._J_dofs.bsm.max_nzb.shape}): {jacobians._J_dofs.bsm.max_nzb}")
 
         # Check the allocation of Jacobians
-        num_body_dofs = [model.worlds[w].num_body_dofs for w in range(model.size.num_worlds)]
-        num_joint_dofs = [model.worlds[w].num_joint_dofs for w in range(model.size.num_worlds)]
-        num_total_cts = [
-            (model.worlds[w].num_joint_cts + limits.world_max_limits_host[w] + 3 * contacts.world_max_contacts_host[w])
-            for w in range(model.size.num_worlds)
-        ]
+        num_body_dofs = model.info.num_body_dofs.numpy().tolist()
+        num_joint_dofs = model.info.num_joint_dofs.numpy().tolist()
+        max_total_cts = model.info.max_total_cts.numpy().tolist()
         self.assertEqual(jacobians._J_cts.bsm.num_matrices, model.size.num_worlds)
         self.assertEqual(jacobians._J_dofs.bsm.num_matrices, model.size.num_worlds)
         self.assertTrue(
             (
                 jacobians._J_cts.bsm.max_dims.numpy()
-                == [[num_total_cts[w], num_body_dofs[w]] for w in range(model.size.num_worlds)]
+                == [[max_total_cts[w], num_body_dofs[w]] for w in range(model.size.num_worlds)]
             ).all()
         )
         self.assertTrue(
@@ -751,12 +749,12 @@ class TestKinematicsSparseSystemJacobians(unittest.TestCase):
             ).all()
         )
         self.assertTrue(
-            (jacobians._J_cts.bsm.max_nzb.numpy() == [2 * num_total_cts[w] for w in range(model.size.num_worlds)]).all()
+            (jacobians._J_cts.bsm.max_nzb.numpy() == [2 * max_total_cts[w] for w in range(model.size.num_worlds)]).all()
         )
 
     def test_06_allocate_heterogeneous_sparse_system_jacobians(self):
         # Construct the test problem
-        model, _, limits, contacts = make_test_problem_heterogeneous(
+        model, _data, _state, limits, contacts = make_test_problem_heterogeneous(
             device=self.default_device,
             max_world_contacts=12,
             with_limits=True,
@@ -776,18 +774,15 @@ class TestKinematicsSparseSystemJacobians(unittest.TestCase):
             print(f"J_dofs max_nzb (shape={jacobians._J_dofs.bsm.max_nzb.shape}): {jacobians._J_dofs.bsm.max_nzb}")
 
         # Check the allocation of Jacobians
-        num_body_dofs = [model.worlds[w].num_body_dofs for w in range(model.size.num_worlds)]
-        num_joint_dofs = [model.worlds[w].num_joint_dofs for w in range(model.size.num_worlds)]
-        num_total_cts = [
-            (model.worlds[w].num_joint_cts + limits.world_max_limits_host[w] + 3 * contacts.world_max_contacts_host[w])
-            for w in range(model.size.num_worlds)
-        ]
+        num_body_dofs = model.info.num_body_dofs.numpy().tolist()
+        num_joint_dofs = model.info.num_joint_dofs.numpy().tolist()
+        max_total_cts = model.info.max_total_cts.numpy().tolist()
         self.assertEqual(jacobians._J_cts.bsm.num_matrices, model.size.num_worlds)
         self.assertEqual(jacobians._J_dofs.bsm.num_matrices, model.size.num_worlds)
         self.assertTrue(
             (
                 jacobians._J_cts.bsm.max_dims.numpy()
-                == [[num_total_cts[w], num_body_dofs[w]] for w in range(model.size.num_worlds)]
+                == [[max_total_cts[w], num_body_dofs[w]] for w in range(model.size.num_worlds)]
             ).all()
         )
         self.assertTrue(
@@ -823,7 +818,7 @@ class TestKinematicsSparseSystemJacobians(unittest.TestCase):
 
     def test_08_build_compare_single_system_jacobians_with_limits(self):
         # Construct the test problem
-        model, data, limits, _ = make_test_problem_fourbar(
+        model, data, _state, limits, _contacts = make_test_problem_fourbar(
             device=self.default_device,
             num_worlds=1,
             with_limits=True,
@@ -846,7 +841,7 @@ class TestKinematicsSparseSystemJacobians(unittest.TestCase):
 
     def test_09_build_compare_single_system_jacobians_with_contacts(self):
         # Construct the test problem
-        model, data, _, contacts = make_test_problem_fourbar(
+        model, data, _state, _limits, contacts = make_test_problem_fourbar(
             device=self.default_device,
             max_world_contacts=12,
             num_worlds=1,
@@ -870,7 +865,7 @@ class TestKinematicsSparseSystemJacobians(unittest.TestCase):
 
     def test_10_build_compare_single_system_jacobians_with_limits_and_contacts(self):
         # Construct the test problem
-        model, data, limits, contacts = make_test_problem_fourbar(
+        model, data, _state, limits, contacts = make_test_problem_fourbar(
             device=self.default_device,
             max_world_contacts=12,
             num_worlds=1,
@@ -894,7 +889,7 @@ class TestKinematicsSparseSystemJacobians(unittest.TestCase):
 
     def test_11_build_compare_homogeneous_system_jacobians(self):
         # Construct the test problem
-        model, data, limits, contacts = make_test_problem_fourbar(
+        model, data, _state, limits, contacts = make_test_problem_fourbar(
             device=self.default_device,
             max_world_contacts=12,
             num_worlds=3,
@@ -918,7 +913,7 @@ class TestKinematicsSparseSystemJacobians(unittest.TestCase):
 
     def test_12_build_compare_heterogeneous_system_jacobians(self):
         # Construct the test problem
-        model, data, limits, contacts = make_test_problem_heterogeneous(
+        model, data, _state, limits, contacts = make_test_problem_heterogeneous(
             device=self.default_device,
             max_world_contacts=12,
             with_limits=True,
@@ -968,7 +963,7 @@ class TestKinematicsSparseSystemJacobians(unittest.TestCase):
 
     def test_14_build_col_major_single_system_jacobians_with_limits(self):
         # Construct the test problem
-        model, data, limits, _ = make_test_problem_fourbar(
+        model, data, _state, limits, _contacts = make_test_problem_fourbar(
             device=self.default_device,
             max_world_contacts=12,
             num_worlds=1,
@@ -994,7 +989,7 @@ class TestKinematicsSparseSystemJacobians(unittest.TestCase):
 
     def test_15_build_col_major_single_system_jacobians_with_contacts(self):
         # Construct the test problem
-        model, data, _, contacts = make_test_problem_fourbar(
+        model, data, _state, _limits, contacts = make_test_problem_fourbar(
             device=self.default_device,
             max_world_contacts=12,
             num_worlds=1,
@@ -1020,7 +1015,7 @@ class TestKinematicsSparseSystemJacobians(unittest.TestCase):
 
     def test_16_build_col_major_single_system_jacobians_with_limits_and_contacts(self):
         # Construct the test problem
-        model, data, limits, contacts = make_test_problem_fourbar(
+        model, data, _state, limits, contacts = make_test_problem_fourbar(
             device=self.default_device,
             max_world_contacts=12,
             num_worlds=1,
@@ -1048,7 +1043,7 @@ class TestKinematicsSparseSystemJacobians(unittest.TestCase):
 
     def test_17_build_col_major_homogeneous_system_jacobians(self):
         # Construct the test problem
-        model, data, limits, contacts = make_test_problem_fourbar(
+        model, data, _state, limits, contacts = make_test_problem_fourbar(
             device=self.default_device,
             max_world_contacts=12,
             num_worlds=3,
@@ -1076,7 +1071,7 @@ class TestKinematicsSparseSystemJacobians(unittest.TestCase):
 
     def test_18_build_col_major_heterogeneous_system_jacobians(self):
         # Construct the test problem
-        model, data, limits, contacts = make_test_problem_heterogeneous(
+        model, data, _state, limits, contacts = make_test_problem_heterogeneous(
             device=self.default_device,
             max_world_contacts=12,
             with_limits=True,

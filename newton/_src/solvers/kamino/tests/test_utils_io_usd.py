@@ -19,38 +19,21 @@ import math
 import os
 import unittest
 
-import numpy as np
 import warp as wp
 
-from newton._src.solvers.kamino.core.builder import ModelBuilder
-from newton._src.solvers.kamino.core.joints import JointActuationType, JointDoFType
+from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
+from newton._src.solvers.kamino.core.joints import JOINT_QMAX, JOINT_QMIN, JointActuationType, JointDoFType
 from newton._src.solvers.kamino.core.shapes import ShapeType
 from newton._src.solvers.kamino.models import (
     get_basics_usd_assets_path,
     get_examples_usd_assets_path,
     get_testing_usd_assets_path,
 )
-from newton._src.solvers.kamino.models.builders.basics import (
-    build_box_on_plane,
-    build_box_pendulum,
-    build_boxes_fourbar,
-    build_boxes_hinged,
-    build_boxes_nunchaku,
-    build_cartpole,
-)
+from newton._src.solvers.kamino.models.builders import basics
 from newton._src.solvers.kamino.tests import setup_tests, test_context
-from newton._src.solvers.kamino.tests.utils.checks import (
-    assert_builders_equal,
-)
+from newton._src.solvers.kamino.tests.utils.checks import assert_builders_equal
 from newton._src.solvers.kamino.utils import logger as msg
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
-
-###
-# Constants
-###
-
-FLOAT32_MAX = np.finfo(np.float32).max
-FLOAT32_MIN = np.finfo(np.float32).min
 
 ###
 # Tests
@@ -89,7 +72,7 @@ class TestUSDImporter(unittest.TestCase):
         """Test importing a passive revolute joint with limits from a USD file"""
         usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "joints/test_joint_revolute_passive_unary.usda")
         importer = USDImporter()
-        builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
+        builder_usd: ModelBuilderKamino = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 1)
         self.assertEqual(builder_usd.num_joints, 1)
@@ -111,7 +94,7 @@ class TestUSDImporter(unittest.TestCase):
         """Test importing a passive revolute joint with limits from a USD file"""
         usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "joints/test_joint_revolute_passive.usda")
         importer = USDImporter()
-        builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
+        builder_usd: ModelBuilderKamino = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 2)
         self.assertEqual(builder_usd.num_joints, 1)
@@ -133,7 +116,7 @@ class TestUSDImporter(unittest.TestCase):
         """Test importing a actuated revolute joint with limits from a USD file"""
         usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "joints/test_joint_revolute_actuated.usda")
         importer = USDImporter()
-        builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
+        builder_usd: ModelBuilderKamino = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 2)
         self.assertEqual(builder_usd.num_joints, 1)
@@ -156,7 +139,7 @@ class TestUSDImporter(unittest.TestCase):
         """Test importing a passive prismatic joint with limits from a USD file"""
         usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "joints/test_joint_prismatic_passive_unary.usda")
         importer = USDImporter()
-        builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
+        builder_usd: ModelBuilderKamino = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 1)
         self.assertEqual(builder_usd.num_joints, 1)
@@ -178,7 +161,7 @@ class TestUSDImporter(unittest.TestCase):
         """Test importing a passive prismatic joint with limits from a USD file"""
         usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "joints/test_joint_prismatic_passive.usda")
         importer = USDImporter()
-        builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
+        builder_usd: ModelBuilderKamino = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 2)
         self.assertEqual(builder_usd.num_joints, 1)
@@ -200,7 +183,7 @@ class TestUSDImporter(unittest.TestCase):
         """Test importing a actuated prismatic joint with limits from a USD file"""
         usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "joints/test_joint_prismatic_actuated.usda")
         importer = USDImporter()
-        builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
+        builder_usd: ModelBuilderKamino = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 2)
         self.assertEqual(builder_usd.num_joints, 1)
@@ -223,7 +206,7 @@ class TestUSDImporter(unittest.TestCase):
         """Test importing a passive spherical joint with limits from a USD file"""
         usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "joints/test_joint_spherical_unary.usda")
         importer = USDImporter()
-        builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
+        builder_usd: ModelBuilderKamino = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 1)
         self.assertEqual(builder_usd.num_joints, 1)
@@ -238,14 +221,14 @@ class TestUSDImporter(unittest.TestCase):
         self.assertEqual(len(builder_usd.joints[0].q_j_min), 3)
         self.assertEqual(len(builder_usd.joints[0].q_j_max), 3)
         self.assertEqual(len(builder_usd.joints[0].tau_j_max), 3)
-        self.assertEqual(builder_usd.joints[0].q_j_min, [FLOAT32_MIN, FLOAT32_MIN, FLOAT32_MIN])
-        self.assertEqual(builder_usd.joints[0].q_j_max, [FLOAT32_MAX, FLOAT32_MAX, FLOAT32_MAX])
+        self.assertEqual(builder_usd.joints[0].q_j_min, [JOINT_QMIN, JOINT_QMIN, JOINT_QMIN])
+        self.assertEqual(builder_usd.joints[0].q_j_max, [JOINT_QMAX, JOINT_QMAX, JOINT_QMAX])
 
     def test_import_joint_spherical(self):
         """Test importing a passive spherical joint with limits from a USD file"""
         usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "joints/test_joint_spherical.usda")
         importer = USDImporter()
-        builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
+        builder_usd: ModelBuilderKamino = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 2)
         self.assertEqual(builder_usd.num_joints, 1)
@@ -260,8 +243,8 @@ class TestUSDImporter(unittest.TestCase):
         self.assertEqual(len(builder_usd.joints[0].q_j_min), 3)
         self.assertEqual(len(builder_usd.joints[0].q_j_max), 3)
         self.assertEqual(len(builder_usd.joints[0].tau_j_max), 3)
-        self.assertEqual(builder_usd.joints[0].q_j_min, [FLOAT32_MIN, FLOAT32_MIN, FLOAT32_MIN])
-        self.assertEqual(builder_usd.joints[0].q_j_max, [FLOAT32_MAX, FLOAT32_MAX, FLOAT32_MAX])
+        self.assertEqual(builder_usd.joints[0].q_j_min, [JOINT_QMIN, JOINT_QMIN, JOINT_QMIN])
+        self.assertEqual(builder_usd.joints[0].q_j_max, [JOINT_QMAX, JOINT_QMAX, JOINT_QMAX])
 
     ###
     # Joints based on specializations of UsdPhysicsD6Joint
@@ -271,7 +254,7 @@ class TestUSDImporter(unittest.TestCase):
         """Test importing a passive cylindrical joint with limits from a USD file"""
         usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "joints/test_joint_cylindrical_passive_unary.usda")
         importer = USDImporter()
-        builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
+        builder_usd: ModelBuilderKamino = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 1)
         self.assertEqual(builder_usd.num_joints, 1)
@@ -286,14 +269,14 @@ class TestUSDImporter(unittest.TestCase):
         self.assertEqual(len(builder_usd.joints[0].q_j_min), 2)
         self.assertEqual(len(builder_usd.joints[0].q_j_max), 2)
         self.assertEqual(len(builder_usd.joints[0].tau_j_max), 2)
-        self.assertEqual(builder_usd.joints[0].q_j_min, [-1, FLOAT32_MIN])
-        self.assertEqual(builder_usd.joints[0].q_j_max, [1, FLOAT32_MAX])
+        self.assertEqual(builder_usd.joints[0].q_j_min, [-1, JOINT_QMIN])
+        self.assertEqual(builder_usd.joints[0].q_j_max, [1, JOINT_QMAX])
 
     def test_import_joint_cylindrical_passive(self):
         """Test importing a passive cylindrical joint with limits from a USD file"""
         usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "joints/test_joint_cylindrical_passive.usda")
         importer = USDImporter()
-        builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
+        builder_usd: ModelBuilderKamino = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 2)
         self.assertEqual(builder_usd.num_joints, 1)
@@ -308,14 +291,14 @@ class TestUSDImporter(unittest.TestCase):
         self.assertEqual(len(builder_usd.joints[0].q_j_min), 2)
         self.assertEqual(len(builder_usd.joints[0].q_j_max), 2)
         self.assertEqual(len(builder_usd.joints[0].tau_j_max), 2)
-        self.assertEqual(builder_usd.joints[0].q_j_min, [-1, FLOAT32_MIN])
-        self.assertEqual(builder_usd.joints[0].q_j_max, [1, FLOAT32_MAX])
+        self.assertEqual(builder_usd.joints[0].q_j_min, [-1, JOINT_QMIN])
+        self.assertEqual(builder_usd.joints[0].q_j_max, [1, JOINT_QMAX])
 
     def test_import_joint_cylindrical_actuated(self):
         """Test importing a actuated cylindrical joint with limits from a USD file"""
         usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "joints/test_joint_cylindrical_actuated.usda")
         importer = USDImporter()
-        builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
+        builder_usd: ModelBuilderKamino = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 2)
         self.assertEqual(builder_usd.num_joints, 1)
@@ -330,15 +313,15 @@ class TestUSDImporter(unittest.TestCase):
         self.assertEqual(len(builder_usd.joints[0].q_j_min), 2)
         self.assertEqual(len(builder_usd.joints[0].q_j_max), 2)
         self.assertEqual(len(builder_usd.joints[0].tau_j_max), 2)
-        self.assertEqual(builder_usd.joints[0].q_j_min, [-1, FLOAT32_MIN])
-        self.assertEqual(builder_usd.joints[0].q_j_max, [1, FLOAT32_MAX])
+        self.assertEqual(builder_usd.joints[0].q_j_min, [-1, JOINT_QMIN])
+        self.assertEqual(builder_usd.joints[0].q_j_max, [1, JOINT_QMAX])
         self.assertEqual(builder_usd.joints[0].tau_j_max, [100.0, 200.0])
 
     def test_import_joint_universal_passive_unary(self):
         """Test importing a passive universal joint with limits from a USD file"""
         usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "joints/test_joint_universal_passive_unary.usda")
         importer = USDImporter()
-        builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
+        builder_usd: ModelBuilderKamino = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 1)
         self.assertEqual(builder_usd.num_joints, 1)
@@ -360,7 +343,7 @@ class TestUSDImporter(unittest.TestCase):
         """Test importing a passive universal joint with limits from a USD file"""
         usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "joints/test_joint_universal_passive.usda")
         importer = USDImporter()
-        builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
+        builder_usd: ModelBuilderKamino = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 2)
         self.assertEqual(builder_usd.num_joints, 1)
@@ -382,7 +365,7 @@ class TestUSDImporter(unittest.TestCase):
         """Test importing a actuated universal joint with limits from a USD file"""
         usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "joints/test_joint_universal_actuated.usda")
         importer = USDImporter()
-        builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
+        builder_usd: ModelBuilderKamino = importer.import_from(source=usd_asset_filename)
 
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 2)
@@ -406,7 +389,7 @@ class TestUSDImporter(unittest.TestCase):
         """Test importing a passive cylindrical joint with limits from a USD file"""
         usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "joints/test_joint_cartesian_passive_unary.usda")
         importer = USDImporter()
-        builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
+        builder_usd: ModelBuilderKamino = importer.import_from(source=usd_asset_filename)
 
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 1)
@@ -429,7 +412,7 @@ class TestUSDImporter(unittest.TestCase):
         """Test importing a passive cylindrical joint with limits from a USD file"""
         usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "joints/test_joint_cartesian_passive.usda")
         importer = USDImporter()
-        builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
+        builder_usd: ModelBuilderKamino = importer.import_from(source=usd_asset_filename)
 
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 2)
@@ -452,7 +435,7 @@ class TestUSDImporter(unittest.TestCase):
         """Test importing a actuated cylindrical joint with limits from a USD file"""
         usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "joints/test_joint_cartesian_actuated.usda")
         importer = USDImporter()
-        builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
+        builder_usd: ModelBuilderKamino = importer.import_from(source=usd_asset_filename)
 
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 2)
@@ -480,7 +463,7 @@ class TestUSDImporter(unittest.TestCase):
         """Test importing a passive revolute joint with limits from a USD file"""
         usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "joints/test_joint_d6_revolute_passive.usda")
         importer = USDImporter()
-        builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
+        builder_usd: ModelBuilderKamino = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 2)
         self.assertEqual(builder_usd.num_joints, 1)
@@ -502,7 +485,7 @@ class TestUSDImporter(unittest.TestCase):
         """Test importing a actuated revolute joint with limits from a USD file"""
         usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "joints/test_joint_d6_revolute_actuated.usda")
         importer = USDImporter()
-        builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
+        builder_usd: ModelBuilderKamino = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 2)
         self.assertEqual(builder_usd.num_joints, 1)
@@ -525,7 +508,7 @@ class TestUSDImporter(unittest.TestCase):
         """Test importing a passive prismatic joint with limits from a USD file"""
         usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "joints/test_joint_d6_prismatic_passive.usda")
         importer = USDImporter()
-        builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
+        builder_usd: ModelBuilderKamino = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 2)
         self.assertEqual(builder_usd.num_joints, 1)
@@ -547,7 +530,7 @@ class TestUSDImporter(unittest.TestCase):
         """Test importing a actuated prismatic joint with limits from a USD file"""
         usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "joints/test_joint_d6_prismatic_actuated.usda")
         importer = USDImporter()
-        builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
+        builder_usd: ModelBuilderKamino = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 2)
         self.assertEqual(builder_usd.num_joints, 1)
@@ -570,7 +553,7 @@ class TestUSDImporter(unittest.TestCase):
         """Test importing a passive cylindrical joint with limits from a USD file"""
         usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "joints/test_joint_d6_cylindrical_passive.usda")
         importer = USDImporter()
-        builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
+        builder_usd: ModelBuilderKamino = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 2)
         self.assertEqual(builder_usd.num_joints, 1)
@@ -585,14 +568,14 @@ class TestUSDImporter(unittest.TestCase):
         self.assertEqual(len(builder_usd.joints[0].q_j_min), 2)
         self.assertEqual(len(builder_usd.joints[0].q_j_max), 2)
         self.assertEqual(len(builder_usd.joints[0].tau_j_max), 2)
-        self.assertEqual(builder_usd.joints[0].q_j_min, [-1.0, FLOAT32_MIN])
-        self.assertEqual(builder_usd.joints[0].q_j_max, [1.0, FLOAT32_MAX])
+        self.assertEqual(builder_usd.joints[0].q_j_min, [-1.0, JOINT_QMIN])
+        self.assertEqual(builder_usd.joints[0].q_j_max, [1.0, JOINT_QMAX])
 
     def test_import_joint_d6_cylindrical_actuated(self):
         """Test importing a actuated cylindrical joint with limits from a USD file"""
         usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "joints/test_joint_d6_cylindrical_actuated.usda")
         importer = USDImporter()
-        builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
+        builder_usd: ModelBuilderKamino = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 2)
         self.assertEqual(builder_usd.num_joints, 1)
@@ -607,15 +590,15 @@ class TestUSDImporter(unittest.TestCase):
         self.assertEqual(len(builder_usd.joints[0].q_j_min), 2)
         self.assertEqual(len(builder_usd.joints[0].q_j_max), 2)
         self.assertEqual(len(builder_usd.joints[0].tau_j_max), 2)
-        self.assertEqual(builder_usd.joints[0].q_j_min, [-1.0, FLOAT32_MIN])
-        self.assertEqual(builder_usd.joints[0].q_j_max, [1.0, FLOAT32_MAX])
+        self.assertEqual(builder_usd.joints[0].q_j_min, [-1.0, JOINT_QMIN])
+        self.assertEqual(builder_usd.joints[0].q_j_max, [1.0, JOINT_QMAX])
         self.assertEqual(builder_usd.joints[0].tau_j_max, [100.0, 200.0])
 
     def test_import_joint_d6_universal_passive(self):
         """Test importing a passive universal joint with limits from a USD file"""
         usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "joints/test_joint_d6_universal_passive.usda")
         importer = USDImporter()
-        builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
+        builder_usd: ModelBuilderKamino = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 2)
         self.assertEqual(builder_usd.num_joints, 1)
@@ -637,7 +620,7 @@ class TestUSDImporter(unittest.TestCase):
         """Test importing a actuated universal joint with limits from a USD file"""
         usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "joints/test_joint_d6_universal_actuated.usda")
         importer = USDImporter()
-        builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
+        builder_usd: ModelBuilderKamino = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 2)
         self.assertEqual(builder_usd.num_joints, 1)
@@ -660,7 +643,7 @@ class TestUSDImporter(unittest.TestCase):
         """Test importing a passive cartesian joint with limits from a USD file"""
         usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "joints/test_joint_d6_cartesian_passive.usda")
         importer = USDImporter()
-        builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
+        builder_usd: ModelBuilderKamino = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 2)
         self.assertEqual(builder_usd.num_joints, 1)
@@ -682,7 +665,7 @@ class TestUSDImporter(unittest.TestCase):
         """Test importing a actuated cartesian joint with limits from a USD file"""
         usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "joints/test_joint_d6_cartesian_actuated.usda")
         importer = USDImporter()
-        builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
+        builder_usd: ModelBuilderKamino = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 2)
         self.assertEqual(builder_usd.num_joints, 1)
@@ -705,7 +688,7 @@ class TestUSDImporter(unittest.TestCase):
         """Test importing a passive spherical joint with limits from a USD file"""
         usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "joints/test_joint_d6_spherical_passive.usda")
         importer = USDImporter()
-        builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
+        builder_usd: ModelBuilderKamino = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 2)
         self.assertEqual(builder_usd.num_joints, 1)
@@ -727,7 +710,7 @@ class TestUSDImporter(unittest.TestCase):
         """Test importing a actuated spherical joint with limits from a USD file"""
         usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "joints/test_joint_d6_spherical_actuated.usda")
         importer = USDImporter()
-        builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
+        builder_usd: ModelBuilderKamino = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 2)
         self.assertEqual(builder_usd.num_joints, 1)
@@ -754,134 +737,213 @@ class TestUSDImporter(unittest.TestCase):
         """Test importing a body with geometric primitive capsule shape from a USD file"""
         usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "geoms/test_geom_capsule.usda")
         importer = USDImporter()
-        builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
+        builder_usd: ModelBuilderKamino = importer.import_from(source=usd_asset_filename)
+
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 1)
         self.assertEqual(builder_usd.num_joints, 0)
-        self.assertEqual(builder_usd.num_physical_geoms, 1)
-        self.assertEqual(builder_usd.num_collision_geoms, 1)
-        self.assertEqual(builder_usd.collision_geoms[0].wid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].gid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].lid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].bid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].shape.type, ShapeType.CAPSULE)
-        self.assertAlmostEqual(builder_usd.collision_geoms[0].shape.radius, 0.1)
-        self.assertAlmostEqual(builder_usd.collision_geoms[0].shape.height, 2.2)
-        self.assertEqual(builder_usd.collision_geoms[0].mid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].group, 1)
-        self.assertEqual(builder_usd.collision_geoms[0].collides, 1)
-        self.assertEqual(builder_usd.collision_geoms[0].max_contacts, 10)
+        self.assertEqual(builder_usd.num_geoms, 2)
+
+        # Visual geoms are loaded first
+        self.assertEqual(builder_usd.geoms[0].wid, 0)
+        self.assertEqual(builder_usd.geoms[0].gid, 0)
+        self.assertEqual(builder_usd.geoms[0].body, 0)
+        self.assertEqual(builder_usd.geoms[0].shape.type, ShapeType.CAPSULE)
+        self.assertAlmostEqual(builder_usd.geoms[0].shape.radius, 0.2)
+        self.assertAlmostEqual(builder_usd.geoms[0].shape.height, 3.3)
+        self.assertEqual(builder_usd.geoms[0].mid, -1)
+        self.assertEqual(builder_usd.geoms[0].group, 0)
+        self.assertEqual(builder_usd.geoms[0].collides, 0)
+        self.assertEqual(builder_usd.geoms[0].max_contacts, 0)
+
+        # Collidable geoms are loaded after visual geoms
+        self.assertEqual(builder_usd.geoms[1].wid, 0)
+        self.assertEqual(builder_usd.geoms[1].gid, 1)
+        self.assertEqual(builder_usd.geoms[1].body, 0)
+        self.assertEqual(builder_usd.geoms[1].shape.type, ShapeType.CAPSULE)
+        self.assertAlmostEqual(builder_usd.geoms[1].shape.radius, 0.1)
+        self.assertAlmostEqual(builder_usd.geoms[1].shape.height, 2.2)
+        self.assertEqual(builder_usd.geoms[1].mid, 0)
+        self.assertEqual(builder_usd.geoms[1].group, 1)
+        self.assertEqual(builder_usd.geoms[1].collides, 1)
+        self.assertEqual(builder_usd.geoms[1].max_contacts, 10)
 
     def test_import_geom_cone(self):
         """Test importing a body with geometric primitive cone shape from a USD file"""
         usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "geoms/test_geom_cone.usda")
         importer = USDImporter()
-        builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
+        builder_usd: ModelBuilderKamino = importer.import_from(source=usd_asset_filename)
+
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 1)
         self.assertEqual(builder_usd.num_joints, 0)
-        self.assertEqual(builder_usd.num_physical_geoms, 1)
-        self.assertEqual(builder_usd.num_collision_geoms, 1)
-        self.assertEqual(builder_usd.collision_geoms[0].wid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].gid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].lid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].bid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].shape.type, ShapeType.CONE)
-        self.assertAlmostEqual(builder_usd.collision_geoms[0].shape.radius, 0.1)
-        self.assertAlmostEqual(builder_usd.collision_geoms[0].shape.height, 2.2)
-        self.assertEqual(builder_usd.collision_geoms[0].mid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].group, 1)
-        self.assertEqual(builder_usd.collision_geoms[0].collides, 1)
-        self.assertEqual(builder_usd.collision_geoms[0].max_contacts, 10)
+        self.assertEqual(builder_usd.num_geoms, 2)
+
+        # Visual geoms are loaded first
+        self.assertEqual(builder_usd.geoms[0].wid, 0)
+        self.assertEqual(builder_usd.geoms[0].gid, 0)
+        self.assertEqual(builder_usd.geoms[0].body, 0)
+        self.assertEqual(builder_usd.geoms[0].shape.type, ShapeType.CONE)
+        self.assertAlmostEqual(builder_usd.geoms[0].shape.radius, 0.2)
+        self.assertAlmostEqual(builder_usd.geoms[0].shape.height, 3.3)
+        self.assertEqual(builder_usd.geoms[0].mid, -1)
+        self.assertEqual(builder_usd.geoms[0].group, 0)
+        self.assertEqual(builder_usd.geoms[0].collides, 0)
+        self.assertEqual(builder_usd.geoms[0].max_contacts, 0)
+
+        # Collidable geoms are loaded after visual geoms
+        self.assertEqual(builder_usd.geoms[1].wid, 0)
+        self.assertEqual(builder_usd.geoms[1].gid, 1)
+        self.assertEqual(builder_usd.geoms[1].body, 0)
+        self.assertEqual(builder_usd.geoms[1].shape.type, ShapeType.CONE)
+        self.assertAlmostEqual(builder_usd.geoms[1].shape.radius, 0.1)
+        self.assertAlmostEqual(builder_usd.geoms[1].shape.height, 2.2)
+        self.assertEqual(builder_usd.geoms[1].mid, 0)
+        self.assertEqual(builder_usd.geoms[1].group, 1)
+        self.assertEqual(builder_usd.geoms[1].collides, 1)
+        self.assertEqual(builder_usd.geoms[1].max_contacts, 10)
 
     def test_import_geom_cylinder(self):
         """Test importing a body with geometric primitive cylinder shape from a USD file"""
         usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "geoms/test_geom_cylinder.usda")
         importer = USDImporter()
-        builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
+        builder_usd: ModelBuilderKamino = importer.import_from(source=usd_asset_filename)
+
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 1)
         self.assertEqual(builder_usd.num_joints, 0)
-        self.assertEqual(builder_usd.num_physical_geoms, 1)
-        self.assertEqual(builder_usd.num_collision_geoms, 1)
-        self.assertEqual(builder_usd.collision_geoms[0].wid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].gid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].lid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].bid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].shape.type, ShapeType.CYLINDER)
-        self.assertAlmostEqual(builder_usd.collision_geoms[0].shape.radius, 0.1)
-        self.assertAlmostEqual(builder_usd.collision_geoms[0].shape.height, 2.2)
-        self.assertEqual(builder_usd.collision_geoms[0].mid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].group, 1)
-        self.assertEqual(builder_usd.collision_geoms[0].collides, 1)
-        self.assertEqual(builder_usd.collision_geoms[0].max_contacts, 10)
+        self.assertEqual(builder_usd.num_geoms, 2)
+
+        # Visual geoms are loaded first
+        self.assertEqual(builder_usd.geoms[0].wid, 0)
+        self.assertEqual(builder_usd.geoms[0].gid, 0)
+        self.assertEqual(builder_usd.geoms[0].body, 0)
+        self.assertEqual(builder_usd.geoms[0].shape.type, ShapeType.CYLINDER)
+        self.assertAlmostEqual(builder_usd.geoms[0].shape.radius, 0.2)
+        self.assertAlmostEqual(builder_usd.geoms[0].shape.height, 3.3)
+        self.assertEqual(builder_usd.geoms[0].mid, -1)
+        self.assertEqual(builder_usd.geoms[0].group, 0)
+        self.assertEqual(builder_usd.geoms[0].collides, 0)
+        self.assertEqual(builder_usd.geoms[0].max_contacts, 0)
+
+        # Collidable geoms are loaded after visual geoms
+        self.assertEqual(builder_usd.geoms[1].wid, 0)
+        self.assertEqual(builder_usd.geoms[1].gid, 1)
+        self.assertEqual(builder_usd.geoms[1].body, 0)
+        self.assertEqual(builder_usd.geoms[1].shape.type, ShapeType.CYLINDER)
+        self.assertAlmostEqual(builder_usd.geoms[1].shape.radius, 0.1)
+        self.assertAlmostEqual(builder_usd.geoms[1].shape.height, 2.2)
+        self.assertEqual(builder_usd.geoms[1].mid, 0)
+        self.assertEqual(builder_usd.geoms[1].group, 1)
+        self.assertEqual(builder_usd.geoms[1].collides, 1)
+        self.assertEqual(builder_usd.geoms[1].max_contacts, 10)
 
     def test_import_geom_sphere(self):
         """Test importing a body with geometric primitive sphere shape from a USD file"""
         usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "geoms/test_geom_sphere.usda")
         importer = USDImporter()
-        builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
+        builder_usd: ModelBuilderKamino = importer.import_from(source=usd_asset_filename)
+
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 1)
         self.assertEqual(builder_usd.num_joints, 0)
-        self.assertEqual(builder_usd.num_physical_geoms, 1)
-        self.assertEqual(builder_usd.num_collision_geoms, 1)
-        self.assertEqual(builder_usd.collision_geoms[0].wid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].gid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].lid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].bid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].shape.type, ShapeType.SPHERE)
-        self.assertAlmostEqual(builder_usd.collision_geoms[0].shape.radius, 0.11)
-        self.assertEqual(builder_usd.collision_geoms[0].mid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].group, 1)
-        self.assertEqual(builder_usd.collision_geoms[0].collides, 1)
-        self.assertEqual(builder_usd.collision_geoms[0].max_contacts, 10)
+        self.assertEqual(builder_usd.num_geoms, 2)
+
+        # Visual geoms are loaded first
+        self.assertEqual(builder_usd.geoms[0].wid, 0)
+        self.assertEqual(builder_usd.geoms[0].gid, 0)
+        self.assertEqual(builder_usd.geoms[0].body, 0)
+        self.assertEqual(builder_usd.geoms[0].shape.type, ShapeType.SPHERE)
+        self.assertAlmostEqual(builder_usd.geoms[0].shape.radius, 0.22)
+        self.assertEqual(builder_usd.geoms[0].mid, -1)
+        self.assertEqual(builder_usd.geoms[0].group, 0)
+        self.assertEqual(builder_usd.geoms[0].collides, 0)
+        self.assertEqual(builder_usd.geoms[0].max_contacts, 0)
+
+        # Collidable geoms are loaded after visual geoms
+        self.assertEqual(builder_usd.geoms[1].wid, 0)
+        self.assertEqual(builder_usd.geoms[1].gid, 1)
+        self.assertEqual(builder_usd.geoms[1].body, 0)
+        self.assertEqual(builder_usd.geoms[1].shape.type, ShapeType.SPHERE)
+        self.assertAlmostEqual(builder_usd.geoms[1].shape.radius, 0.11)
+        self.assertEqual(builder_usd.geoms[1].mid, 0)
+        self.assertEqual(builder_usd.geoms[1].group, 1)
+        self.assertEqual(builder_usd.geoms[1].collides, 1)
+        self.assertEqual(builder_usd.geoms[1].max_contacts, 10)
 
     def test_import_geom_ellipsoid(self):
         """Test importing a body with geometric primitive ellipsoid shape from a USD file"""
         usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "geoms/test_geom_ellipsoid.usda")
         importer = USDImporter()
-        builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
+        builder_usd: ModelBuilderKamino = importer.import_from(source=usd_asset_filename)
+
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 1)
         self.assertEqual(builder_usd.num_joints, 0)
-        self.assertEqual(builder_usd.num_physical_geoms, 1)
-        self.assertEqual(builder_usd.num_collision_geoms, 1)
-        self.assertEqual(builder_usd.collision_geoms[0].wid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].gid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].lid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].bid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].shape.type, ShapeType.ELLIPSOID)
-        self.assertAlmostEqual(builder_usd.collision_geoms[0].shape.a, 0.11)
-        self.assertAlmostEqual(builder_usd.collision_geoms[0].shape.b, 0.22)
-        self.assertAlmostEqual(builder_usd.collision_geoms[0].shape.c, 0.33)
-        self.assertEqual(builder_usd.collision_geoms[0].mid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].group, 1)
-        self.assertEqual(builder_usd.collision_geoms[0].collides, 1)
-        self.assertEqual(builder_usd.collision_geoms[0].max_contacts, 10)
+        self.assertEqual(builder_usd.num_geoms, 2)
+
+        # Visual geoms are loaded first
+        self.assertEqual(builder_usd.geoms[0].wid, 0)
+        self.assertEqual(builder_usd.geoms[0].gid, 0)
+        self.assertEqual(builder_usd.geoms[0].body, 0)
+        self.assertEqual(builder_usd.geoms[0].shape.type, ShapeType.ELLIPSOID)
+        self.assertAlmostEqual(builder_usd.geoms[0].shape.a, 0.22)
+        self.assertAlmostEqual(builder_usd.geoms[0].shape.b, 0.33)
+        self.assertAlmostEqual(builder_usd.geoms[0].shape.c, 0.44)
+        self.assertEqual(builder_usd.geoms[0].mid, -1)
+        self.assertEqual(builder_usd.geoms[0].group, 0)
+        self.assertEqual(builder_usd.geoms[0].collides, 0)
+        self.assertEqual(builder_usd.geoms[0].max_contacts, 0)
+
+        # Collidable geoms are loaded after visual geoms
+        self.assertEqual(builder_usd.geoms[1].wid, 0)
+        self.assertEqual(builder_usd.geoms[1].gid, 1)
+        self.assertEqual(builder_usd.geoms[1].body, 0)
+        self.assertEqual(builder_usd.geoms[1].shape.type, ShapeType.ELLIPSOID)
+        self.assertAlmostEqual(builder_usd.geoms[1].shape.a, 0.11)
+        self.assertAlmostEqual(builder_usd.geoms[1].shape.b, 0.22)
+        self.assertAlmostEqual(builder_usd.geoms[1].shape.c, 0.33)
+        self.assertEqual(builder_usd.geoms[1].mid, 0)
+        self.assertEqual(builder_usd.geoms[1].group, 1)
+        self.assertEqual(builder_usd.geoms[1].collides, 1)
+        self.assertEqual(builder_usd.geoms[1].max_contacts, 10)
 
     def test_import_geom_box(self):
         """Test importing a body with geometric primitive box shape from a USD file"""
         usd_asset_filename = os.path.join(self.TEST_USD_ASSETS_PATH, "geoms/test_geom_box.usda")
         importer = USDImporter()
-        builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
+        builder_usd: ModelBuilderKamino = importer.import_from(source=usd_asset_filename)
+
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 1)
         self.assertEqual(builder_usd.num_joints, 0)
-        self.assertEqual(builder_usd.num_physical_geoms, 1)
-        self.assertEqual(builder_usd.num_collision_geoms, 1)
-        self.assertEqual(builder_usd.collision_geoms[0].wid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].gid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].lid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].bid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].shape.type, ShapeType.BOX)
-        self.assertAlmostEqual(builder_usd.collision_geoms[0].shape.depth, 0.22)
-        self.assertAlmostEqual(builder_usd.collision_geoms[0].shape.width, 0.44)
-        self.assertAlmostEqual(builder_usd.collision_geoms[0].shape.height, 0.66)
-        self.assertEqual(builder_usd.collision_geoms[0].mid, 0)
-        self.assertEqual(builder_usd.collision_geoms[0].group, 1)
-        self.assertEqual(builder_usd.collision_geoms[0].collides, 1)
-        self.assertEqual(builder_usd.collision_geoms[0].max_contacts, 10)
+        self.assertEqual(builder_usd.num_geoms, 2)
+
+        # Visual geoms are loaded first
+        self.assertEqual(builder_usd.geoms[0].wid, 0)
+        self.assertEqual(builder_usd.geoms[0].gid, 0)
+        self.assertEqual(builder_usd.geoms[0].body, 0)
+        self.assertEqual(builder_usd.geoms[0].shape.type, ShapeType.BOX)
+        self.assertAlmostEqual(builder_usd.geoms[0].shape.depth, 0.222)
+        self.assertAlmostEqual(builder_usd.geoms[0].shape.width, 0.444)
+        self.assertAlmostEqual(builder_usd.geoms[0].shape.height, 0.666)
+        self.assertEqual(builder_usd.geoms[0].mid, -1)
+        self.assertEqual(builder_usd.geoms[0].group, 0)
+        self.assertEqual(builder_usd.geoms[0].collides, 0)
+        self.assertEqual(builder_usd.geoms[0].max_contacts, 0)
+
+        # Collidable geoms are loaded after visual geoms
+        self.assertEqual(builder_usd.geoms[1].wid, 0)
+        self.assertEqual(builder_usd.geoms[1].gid, 1)
+        self.assertEqual(builder_usd.geoms[1].body, 0)
+        self.assertEqual(builder_usd.geoms[1].shape.type, ShapeType.BOX)
+        self.assertAlmostEqual(builder_usd.geoms[1].shape.depth, 0.22)
+        self.assertAlmostEqual(builder_usd.geoms[1].shape.width, 0.44)
+        self.assertAlmostEqual(builder_usd.geoms[1].shape.height, 0.66)
+        self.assertEqual(builder_usd.geoms[1].mid, 0)
+        self.assertEqual(builder_usd.geoms[1].group, 1)
+        self.assertEqual(builder_usd.geoms[1].collides, 1)
+        self.assertEqual(builder_usd.geoms[1].max_contacts, 10)
 
     ###
     # Basic models
@@ -893,15 +955,15 @@ class TestUSDImporter(unittest.TestCase):
         # Construct a builder from imported USD asset
         usd_asset_filename = os.path.join(self.BASICS_USD_ASSETS_PATH, "box_on_plane.usda")
         importer = USDImporter()
-        builder_usd: ModelBuilder = importer.import_from(
+        builder_usd: ModelBuilderKamino = importer.import_from(
             source=usd_asset_filename, load_static_geometry=False, load_materials=False
         )
 
         # Construct a reference builder using the basics generators
-        builder_ref = build_box_on_plane(ground=False)
+        builder_ref = basics.build_box_on_plane(ground=False)
 
         # Check the loaded contents against the reference builder
-        assert_builders_equal(self, builder_usd, builder_ref)
+        assert_builders_equal(self, builder_usd, builder_ref, skip_materials=True)
 
     def test_import_basic_box_pendulum(self):
         """Test importing the basic box_pendulum model from a USD file"""
@@ -909,15 +971,15 @@ class TestUSDImporter(unittest.TestCase):
         # Construct a builder from imported USD asset
         usd_asset_filename = os.path.join(self.BASICS_USD_ASSETS_PATH, "box_pendulum.usda")
         importer = USDImporter()
-        builder_usd: ModelBuilder = importer.import_from(
+        builder_usd: ModelBuilderKamino = importer.import_from(
             source=usd_asset_filename, load_static_geometry=False, load_materials=False
         )
 
         # Construct a reference builder using the basics generators
-        builder_ref = build_box_pendulum(ground=False)
+        builder_ref = basics.build_box_pendulum(ground=False)
 
         # Check the loaded contents against the reference builder
-        assert_builders_equal(self, builder_usd, builder_ref)
+        assert_builders_equal(self, builder_usd, builder_ref, skip_materials=True)
 
     def test_import_basic_boxes_hinged(self):
         """Test importing the basic boxes_hinged model from a USD file"""
@@ -925,15 +987,15 @@ class TestUSDImporter(unittest.TestCase):
         # Construct a builder from imported USD asset
         usd_asset_filename = os.path.join(self.BASICS_USD_ASSETS_PATH, "boxes_hinged.usda")
         importer = USDImporter()
-        builder_usd: ModelBuilder = importer.import_from(
+        builder_usd: ModelBuilderKamino = importer.import_from(
             source=usd_asset_filename, load_static_geometry=False, load_materials=False
         )
 
         # Construct a reference builder using the basics generators
-        builder_ref = build_boxes_hinged(ground=False)
+        builder_ref = basics.build_boxes_hinged(ground=False)
 
         # Check the loaded contents against the reference builder
-        assert_builders_equal(self, builder_usd, builder_ref, skip_colliders=True)
+        assert_builders_equal(self, builder_usd, builder_ref, skip_colliders=True, skip_materials=True)
 
     def test_import_basic_boxes_nunchaku(self):
         """Test importing the basic boxes_nunchaku model from a USD file"""
@@ -941,15 +1003,15 @@ class TestUSDImporter(unittest.TestCase):
         # Construct a builder from imported USD asset
         usd_asset_filename = os.path.join(self.BASICS_USD_ASSETS_PATH, "boxes_nunchaku.usda")
         importer = USDImporter()
-        builder_usd: ModelBuilder = importer.import_from(
+        builder_usd: ModelBuilderKamino = importer.import_from(
             source=usd_asset_filename, load_static_geometry=False, load_materials=False
         )
 
         # Construct a reference builder using the basics generators
-        builder_ref = build_boxes_nunchaku(ground=False)
+        builder_ref = basics.build_boxes_nunchaku(ground=False)
 
         # Check the loaded contents against the reference builder
-        assert_builders_equal(self, builder_usd, builder_ref, skip_colliders=True)
+        assert_builders_equal(self, builder_usd, builder_ref, skip_colliders=True, skip_materials=True)
 
     def test_import_basic_boxes_fourbar(self):
         """Test importing the basic boxes_fourbar model from a USD file"""
@@ -957,15 +1019,15 @@ class TestUSDImporter(unittest.TestCase):
         # Construct a builder from imported USD asset
         usd_asset_filename = os.path.join(self.BASICS_USD_ASSETS_PATH, "boxes_fourbar.usda")
         importer = USDImporter()
-        builder_usd: ModelBuilder = importer.import_from(
+        builder_usd: ModelBuilderKamino = importer.import_from(
             source=usd_asset_filename, load_static_geometry=False, load_materials=False
         )
 
         # Construct a reference builder using the basics generators
-        builder_ref = build_boxes_fourbar(ground=False)
+        builder_ref = basics.build_boxes_fourbar(ground=False)
 
         # Check the loaded contents against the reference builder
-        assert_builders_equal(self, builder_usd, builder_ref)
+        assert_builders_equal(self, builder_usd, builder_ref, skip_materials=True)
 
     def test_import_basic_cartpole(self):
         """Test importing the basic cartpole model from a USD file"""
@@ -973,15 +1035,15 @@ class TestUSDImporter(unittest.TestCase):
         # Construct a builder from imported USD asset
         usd_asset_filename = os.path.join(self.BASICS_USD_ASSETS_PATH, "cartpole.usda")
         importer = USDImporter()
-        builder_usd: ModelBuilder = importer.import_from(
+        builder_usd: ModelBuilderKamino = importer.import_from(
             source=usd_asset_filename, load_static_geometry=True, load_materials=False
         )
 
         # Construct a reference builder using the basics generators
-        builder_ref = build_cartpole(z_offset=0.0, ground=False)
+        builder_ref = basics.build_cartpole(z_offset=0.0, ground=False)
 
         # Check the loaded contents against the reference builder
-        assert_builders_equal(self, builder_usd, builder_ref)
+        assert_builders_equal(self, builder_usd, builder_ref, skip_materials=True)
 
     ###
     # Reference models
@@ -994,12 +1056,11 @@ class TestUSDImporter(unittest.TestCase):
         print("")  # Add a newline for better readability
         usd_asset_filename = os.path.join(self.EXAMPLES_USD_ASSETS_PATH, "dr_testmech/usd/dr_testmech.usda")
         importer = USDImporter()
-        builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
+        builder_usd: ModelBuilderKamino = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 10)
         self.assertEqual(builder_usd.num_joints, 14)
-        self.assertEqual(builder_usd.num_physical_geoms, 10)
-        self.assertEqual(builder_usd.num_collision_geoms, 0)
+        self.assertEqual(builder_usd.num_geoms, 10)
         self.assertEqual(builder_usd.num_materials, 1)
         self.assertEqual(builder_usd.joints[0].act_type, JointActuationType.PASSIVE)
         self.assertEqual(builder_usd.joints[0].dof_type, JointDoFType.FIXED)
@@ -1037,12 +1098,11 @@ class TestUSDImporter(unittest.TestCase):
         print("")  # Add a newline for better readability
         usd_asset_filename = os.path.join(self.EXAMPLES_USD_ASSETS_PATH, "dr_legs/usd/dr_legs.usda")
         importer = USDImporter()
-        builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
+        builder_usd: ModelBuilderKamino = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 31)
         self.assertEqual(builder_usd.num_joints, 36)
-        self.assertEqual(builder_usd.num_collision_geoms, 0)
-        self.assertEqual(builder_usd.num_physical_geoms, 31)
+        self.assertEqual(builder_usd.num_geoms, 31)
 
     def test_import_model_dr_legs_with_boxes(self):
         """Test importing the `DR Legs` example model from a USD file"""
@@ -1051,12 +1111,11 @@ class TestUSDImporter(unittest.TestCase):
         print("")  # Add a newline for better readability
         usd_asset_filename = os.path.join(self.EXAMPLES_USD_ASSETS_PATH, "dr_legs/usd/dr_legs_with_boxes.usda")
         importer = USDImporter()
-        builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
+        builder_usd: ModelBuilderKamino = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 31)
         self.assertEqual(builder_usd.num_joints, 36)
-        self.assertEqual(builder_usd.num_collision_geoms, 3)
-        self.assertEqual(builder_usd.num_physical_geoms, 0)
+        self.assertEqual(builder_usd.num_geoms, 3)
 
     def test_import_model_dr_legs_with_meshes_and_boxes(self):
         """Test importing the `DR Legs` example model from a USD file"""
@@ -1067,12 +1126,11 @@ class TestUSDImporter(unittest.TestCase):
             self.EXAMPLES_USD_ASSETS_PATH, "dr_legs/usd/dr_legs_with_meshes_and_boxes.usda"
         )
         importer = USDImporter()
-        builder_usd: ModelBuilder = importer.import_from(source=usd_asset_filename)
+        builder_usd: ModelBuilderKamino = importer.import_from(source=usd_asset_filename)
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 31)
         self.assertEqual(builder_usd.num_joints, 36)
-        self.assertEqual(builder_usd.num_collision_geoms, 3)
-        self.assertEqual(builder_usd.num_physical_geoms, 31)
+        self.assertEqual(builder_usd.num_geoms, 34)
 
 
 ###

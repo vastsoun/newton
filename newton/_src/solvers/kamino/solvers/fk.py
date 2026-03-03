@@ -23,10 +23,10 @@ import sys
 from dataclasses import dataclass
 from enum import IntEnum
 from functools import cache
+from typing import Literal
 
 import numpy as np
 import warp as wp
-from warp.context import Devicelike
 
 from ..core.joints import JointActuationType, JointDoFType
 from ..core.math import (
@@ -39,7 +39,7 @@ from ..core.math import (
     unit_quat_conj_apply_jacobian,
     unit_quat_conj_to_rotation_matrix,
 )
-from ..core.model import Model
+from ..core.model import ModelKamino
 from ..core.types import vec6f
 from ..linalg.blas import (
     block_sparse_ATA_blockwise_3_4_inv_diagonal_2d,
@@ -55,7 +55,7 @@ from ..linalg.sparse_operator import BlockSparseLinearOperators
 # Module interface
 ###
 
-__all__ = ["ForwardKinematicsSolver", "ForwardKinematicsSolverSettings", "ForwardKinematicsSolverStatus"]
+__all__ = ["ForwardKinematicsSolver", "ForwardKinematicsSolverConfig", "ForwardKinematicsSolverStatus"]
 
 
 ###
@@ -1491,7 +1491,7 @@ def _update_cg_tolerance_kernel(
 ###
 
 
-class FKPreconditionerOptions(IntEnum):
+class FKPreconditionerType(IntEnum):
     """Conjugate gradient preconditioning options of the FK solver, if sparsity is enabled."""
 
     NONE = 0
@@ -1504,11 +1504,19 @@ class FKPreconditionerOptions(IntEnum):
     """Blockwise-diagonal Jacobi preconditioner, alternating blocks of size 3 and 4 along the diagonal,
        corresponding to the position and orientation (quaternion) of individual rigid bodies."""
 
+    @classmethod
+    def from_string(cls, s: str) -> FKPreconditionerType:
+        """Converts a string to a FKPreconditionerType enum value."""
+        try:
+            return cls[s.upper()]
+        except KeyError as e:
+            raise ValueError(f"Invalid FKPreconditionerType: {s}. Valid options are: {[e.name for e in cls]}") from e
+
 
 @dataclass
-class ForwardKinematicsSolverSettings:
+class ForwardKinematicsSolverConfig:
     """
-    Host-side class to store settings for the forward kinematics solve.
+    Host-side class to store config for the forward kinematics solve.
     """
 
     max_newton_iterations: int = 30
@@ -1539,9 +1547,9 @@ class ForwardKinematicsSolverSettings:
     """Whether to use sparse Jacobian and solver; otherwise, dense versions are used (default: True).
        Changes to this setting after the solver's initialization lead to undefined behavior."""
 
-    preconditioner: FKPreconditionerOptions = FKPreconditionerOptions.JACOBI_BLOCK_DIAGONAL
+    preconditioner: Literal["none", "jacobi_diagonal", "jacobi_block_diagonal"] = "jacobi_block_diagonal"
     """Preconditioner to use for the Conjugate Gradient solver if sparsity is enabled
-       (default: JACOBI_BLOCK_DIAGONAL).
+       (default: "jacobi_block_diagonal").
        Changes to this setting after the solver's initialization lead to undefined behavior."""
 
     use_adaptive_cg_tolerance: bool = True
@@ -1551,10 +1559,10 @@ class ForwardKinematicsSolverSettings:
 
     def check(self):
         """
-        Checks that the settings are valid.
+        Checks that the config is valid.
 
         Raises:
-            ValueError: If any of the settings is invalid.
+            ValueError: If any of the config values is invalid.
         """
         if self.max_newton_iterations <= 0:
             raise ValueError("`max_newton_iterations` must be positive.")
@@ -1566,9 +1574,11 @@ class ForwardKinematicsSolverSettings:
             raise ValueError("`TILE_SIZE_CTS` must be positive.")
         if self.TILE_SIZE_VRS <= 0:
             raise ValueError("`TILE_SIZE_VRS` must be positive.")
+        # Conversion to FKPreconditionerType will raise an error if the input string is invalid.
+        FKPreconditionerType.from_string(self.preconditioner)
 
     def __post_init__(self):
-        """Post-initialization hook to check settings validity."""
+        """Post-initialization hook to check config validity."""
         self.check()
 
 
@@ -1599,41 +1609,41 @@ class ForwardKinematicsSolver:
     Forward Kinematics solver class
     """
 
-    def __init__(self, model: Model | None = None, settings: ForwardKinematicsSolverSettings | None = None):
+    def __init__(self, model: ModelKamino | None = None, config: ForwardKinematicsSolverConfig | None = None):
         """
         Initializes the solver to solve forward kinematics for a given model.
 
         Parameters
         ----------
-        model : Model, optional
-            Model for which to solve forward kinematics. If not provided, the finalize() method
+        model : ModelKamino, optional
+            ModelKamino for which to solve forward kinematics. If not provided, the finalize() method
             must be called at a later time for deferred initialization (default: None).
-        settings : ForwardKinematicsSolverSettings, optional
-            Solver settings. If not provided, default settings will be used (default: None).
+        config : ForwardKinematicsSolverConfig, optional
+            Solver config. If not provided, the default config will be used (default: None).
         """
 
-        self.model: Model | None = None
+        self.model: ModelKamino | None = None
         """Underlying model"""
 
-        self.device: Devicelike = None
+        self.device: wp.DeviceLike = None
         """Device for data allocations"""
 
-        self.settings: ForwardKinematicsSolverSettings = ForwardKinematicsSolverSettings()
-        """Solver settings"""
+        self.config: ForwardKinematicsSolverConfig = ForwardKinematicsSolverConfig()
+        """Solver config"""
 
         self.graph: wp.Graph | None = None
         """Cuda graph for the convenience function with verbosity options"""
 
         # Note: there are many other internal data members below, which are not documented here
 
-        # Set model and settings, and finalize if model was provided
+        # Set model and config, and finalize if model was provided
         self.model = model
-        if settings is not None:
-            self.settings = settings
+        if config is not None:
+            self.config = config
         if model is not None:
             self.finalize()
 
-    def finalize(self, model: Model | None = None, settings: ForwardKinematicsSolverSettings | None = None):
+    def finalize(self, model: ModelKamino | None = None, config: ForwardKinematicsSolverConfig | None = None):
         """
         Finishes the solver initialization, performing necessary allocations and precomputations.
         This method only needs to be called manually if a model was not provided in the constructor,
@@ -1641,19 +1651,19 @@ class ForwardKinematicsSolver:
 
         Parameters
         ----------
-        model : Model, optional
-            Model for which to solve forward kinematics. If not provided, the model given to the
+        model : ModelKamino, optional
+            ModelKamino for which to solve forward kinematics. If not provided, the model given to the
             constructor will be used. Must be provided if not given to the constructor (default: None).
-        settings : ForwardKinematicsSolverSettings, optional
-            Solver settings. If not provided, the settings given to the constructor, or if not, the
-            default settings will be used (default: None).
+        config : ForwardKinematicsSolverConfig, optional
+            Solver config. If not provided, the config given to the constructor, or if not, the
+            default config will be used (default: None).
         """
 
-        # Initialize the model and settings if provided
+        # Initialize the model and config if provided
         if model is not None:
             self.model = model
-        if settings is not None:
-            self.settings = settings
+        if config is not None:
+            self.config = config
         if self.model is None:
             raise ValueError("ForwardKinematicsSolver: error, provided model is None.")
 
@@ -1662,6 +1672,9 @@ class ForwardKinematicsSolver:
 
         # Retrieve / compute dimensions - Worlds
         self.num_worlds = self.model.size.num_worlds  # For convenience
+
+        # Convert preconditioner type
+        self._preconditioner_type = FKPreconditionerType.from_string(self.config.preconditioner)
 
         # Retrieve / compute dimensions - Bodies
         num_bodies = self.model.info.num_bodies.numpy()  # Number of bodies per world
@@ -1737,11 +1750,11 @@ class ForwardKinematicsSolver:
         base_q_default = np.zeros(7 * self.num_worlds, dtype=np.float32)  # Default base pose
         bodies_q_0 = self.model.bodies.q_i_0.numpy()
         base_joint_ids = self.num_worlds * [-1]  # Base joint id per world
+        base_joint_ids_input = self.model.info.base_joint_index.numpy().tolist()
+        base_body_ids_input = self.model.info.base_body_index.numpy().tolist()
         for wd_id in range(self.num_worlds):
-            # Retrieve base joint id if set
-            base_joint_id = -1
-            if self.model.worlds[wd_id].has_base_joint:
-                base_joint_id = first_joint_id_prev[wd_id] + self.model.worlds[wd_id].base_joint_idx
+            # Retrieve base joint id
+            base_joint_id = base_joint_ids_input[wd_id]
 
             # Copy data for all kept joints
             world_joint_ids = [
@@ -1794,8 +1807,8 @@ class ForwardKinematicsSolver:
                 dof_offset = -6 * wd_id - 1  # We encode offsets in base_u negatively with i -> -i - 1
                 actuated_dofs_map.extend(range(dof_offset, dof_offset - 6, -1))
                 base_joint_ids[wd_id] = len(joints_dof_type) - 1
-            elif self.model.worlds[wd_id].has_base_body:  # Add an actuated free joint to the base body
-                base_body_id = first_body_id[wd_id] + self.model.worlds[wd_id].base_body_idx
+            elif base_body_ids_input[wd_id] >= 0:  # Add an actuated free joint to the base body
+                base_body_id = base_body_ids_input[wd_id]
                 joints_dof_type.append(JointDoFType.FREE)
                 joints_act_type.append(JointActuationType.FORCE)
                 joints_bid_B.append(-1)
@@ -1898,9 +1911,9 @@ class ForwardKinematicsSolver:
 
         # Retrieve / compute dimensions - Number of tiles (for kernels using Tile API)
         self.num_tiles_constraints = (
-            self.num_constraints_max + self.settings.TILE_SIZE_CTS - 1
-        ) // self.settings.TILE_SIZE_CTS
-        self.num_tiles_states = (self.num_states_max + self.settings.TILE_SIZE_VRS - 1) // self.settings.TILE_SIZE_VRS
+            self.num_constraints_max + self.config.TILE_SIZE_CTS - 1
+        ) // self.config.TILE_SIZE_CTS
+        self.num_tiles_states = (self.num_states_max + self.config.TILE_SIZE_VRS - 1) // self.config.TILE_SIZE_VRS
 
         # Data allocation or transfer from numpy to warp
         with wp.ScopedDevice(self.device):
@@ -1932,7 +1945,7 @@ class ForwardKinematicsSolver:
 
             # Line search
             self.max_line_search_iterations = wp.array(dtype=wp.int32, shape=(1,))  # Max iterations
-            self.max_line_search_iterations.fill_(self.settings.max_line_search_iterations)
+            self.max_line_search_iterations.fill_(self.config.max_line_search_iterations)
             self.line_search_iteration = wp.array(dtype=wp.int32, shape=(self.num_worlds,))  # Iteration count
             self.line_search_loop_condition = wp.array(dtype=wp.int32, shape=(1,))  # Loop condition
             self.line_search_success = wp.array(dtype=wp.int32, shape=(self.num_worlds,))  # Convergence, per world
@@ -1949,13 +1962,13 @@ class ForwardKinematicsSolver:
 
             # Gauss-Newton
             self.max_newton_iterations = wp.array(dtype=wp.int32, shape=(1,))  # Max iterations
-            self.max_newton_iterations.fill_(self.settings.max_newton_iterations)
+            self.max_newton_iterations.fill_(self.config.max_newton_iterations)
             self.newton_iteration = wp.array(dtype=wp.int32, shape=(self.num_worlds,))  # Iteration count
             self.newton_loop_condition = wp.array(dtype=wp.int32, shape=(1,))  # Loop condition
             self.newton_success = wp.array(dtype=wp.int32, shape=(self.num_worlds,))  # Convergence per world
             self.newton_mask = wp.array(dtype=wp.int32, shape=(self.num_worlds,))  # Flag to keep iterating per world
             self.tolerance = wp.array(dtype=wp.float32, shape=(1,))  # Tolerance on max constraint
-            self.tolerance.fill_(self.settings.tolerance)
+            self.tolerance.fill_(self.config.tolerance)
             self.actuators_q = wp.array(dtype=wp.float32, shape=(self.num_actuated_coords,))  # Actuated coordinates
             self.pos_control_transforms = wp.array(
                 dtype=wp.transformf, shape=(self.num_joints_tot,)
@@ -1971,7 +1984,7 @@ class ForwardKinematicsSolver:
             self.jacobian = wp.zeros(
                 dtype=wp.float32, shape=(self.num_worlds, self.num_constraints_max, self.num_states_max)
             )  # Constraints Jacobian per world
-            if not self.settings.use_sparsity:
+            if not self.config.use_sparsity:
                 self.lhs = wp.zeros(
                     dtype=wp.float32, shape=(self.num_worlds, self.num_states_max, self.num_states_max)
                 )  # Gauss-Newton left-hand side per world
@@ -2019,10 +2032,10 @@ class ForwardKinematicsSolver:
             self._eval_jacobian_T_constraints_kernel,
             self._eval_merit_function_kernel,
             self._eval_merit_function_gradient_kernel,
-        ) = create_tile_based_kernels(self.settings.TILE_SIZE_CTS, self.settings.TILE_SIZE_VRS)
+        ) = create_tile_based_kernels(self.config.TILE_SIZE_CTS, self.config.TILE_SIZE_VRS)
 
         # Compute sparsity pattern and initialize linear solver for dense (semi-sparse) case
-        if not self.settings.use_sparsity:
+        if not self.config.use_sparsity:
             # Jacobian sparsity pattern
             sparsity_pattern = np.zeros((self.num_worlds, self.num_constraints_max, self.num_states_max), dtype=int)
             for wd_id in range(self.num_worlds):
@@ -2069,7 +2082,7 @@ class ForwardKinematicsSolver:
             self.linear_solver_llt.capture_sparsity_pattern(sparsity_pattern_lhs, num_states)
 
         # Compute sparsity pattern and initialize linear solver for sparse case
-        if self.settings.use_sparsity:
+        if self.config.use_sparsity:
             self.sparse_jacobian = BlockSparseMatrices(
                 device=self.device, nzb_dtype=BlockDType(dtype=wp.float32, shape=(7,)), num_matrices=self.num_worlds
             )
@@ -2144,12 +2157,12 @@ class ForwardKinematicsSolver:
             self.sparse_jacobian_op = BlockSparseLinearOperators(self.sparse_jacobian)
 
             # Initialize preconditioner
-            if self.settings.preconditioner == FKPreconditionerOptions.JACOBI_DIAGONAL:
+            if self._preconditioner_type == FKPreconditionerType.JACOBI_DIAGONAL:
                 self.jacobian_diag_inv = wp.array(
                     dtype=wp.float32, device=self.device, shape=(self.num_worlds, self.num_states_max)
                 )
                 preconditioner_op = BatchedLinearOperator.from_diagonal(self.jacobian_diag_inv, self.num_states)
-            elif self.settings.preconditioner == FKPreconditionerOptions.JACOBI_BLOCK_DIAGONAL:
+            elif self._preconditioner_type == FKPreconditionerType.JACOBI_BLOCK_DIAGONAL:
                 self.inv_blocks_3 = wp.array(
                     dtype=wp.mat33f, shape=(self.num_worlds, self.num_bodies_max), device=self.device
                 )
@@ -2569,7 +2582,7 @@ class ForwardKinematicsSolver:
         up-to-date (because we will already have checked convergence before the first loop iteration)
         """
         # Evaluate constraints Jacobian
-        if self.settings.use_sparsity:
+        if self.config.use_sparsity:
             self._assemble_sparse_jacobian(bodies_q, self.pos_control_transforms, self.newton_mask)
         else:
             self._eval_kinematic_constraints_jacobian(
@@ -2577,7 +2590,7 @@ class ForwardKinematicsSolver:
             )
 
         # Evaluate Gauss-Newton left-hand side (J^T * J) if needed, and right-hand side (-J^T * C)
-        if self.settings.use_sparsity:
+        if self.config.use_sparsity:
             self.sparse_jacobian_op.matvec_transpose(self.constraints, self.grad, self.newton_mask)
         else:
             wp.launch_tiled(
@@ -2602,15 +2615,15 @@ class ForwardKinematicsSolver:
         )
 
         # Compute step (system solve)
-        if self.settings.use_sparsity:
-            if self.settings.preconditioner == FKPreconditionerOptions.JACOBI_DIAGONAL:
+        if self.config.use_sparsity:
+            if self._preconditioner_type == FKPreconditionerType.JACOBI_DIAGONAL:
                 block_sparse_ATA_inv_diagonal_2d(self.sparse_jacobian, self.jacobian_diag_inv, self.newton_mask)
-            elif self.settings.preconditioner == FKPreconditionerOptions.JACOBI_BLOCK_DIAGONAL:
+            elif self._preconditioner_type == FKPreconditionerType.JACOBI_BLOCK_DIAGONAL:
                 block_sparse_ATA_blockwise_3_4_inv_diagonal_2d(
                     self.sparse_jacobian, self.inv_blocks_3, self.inv_blocks_4, self.newton_mask
                 )
             self.step.zero_()
-            if self.settings.use_adaptive_cg_tolerance:
+            if self.config.use_adaptive_cg_tolerance:
                 self._update_cg_tolerance(self.max_constraint, self.newton_mask)
             else:
                 self.cg_atol.fill_(1e-8)
@@ -2718,13 +2731,13 @@ class ForwardKinematicsSolver:
         )
 
         # Update constraints Jacobian
-        if self.settings.use_sparsity:
+        if self.config.use_sparsity:
             self._assemble_sparse_jacobian(bodies_q, pos_control_transforms, world_mask)
         else:
             self._eval_kinematic_constraints_jacobian(bodies_q, pos_control_transforms, world_mask, self.jacobian)
 
         # Evaluate system left-hand side (J^T * J) if needed, and right-hand side (J^T * targets_cts_u)
-        if self.settings.use_sparsity:
+        if self.config.use_sparsity:
             self.sparse_jacobian_op.matvec_transpose(self.target_cts_u, self.rhs, world_mask)
         else:
             wp.launch_tiled(
@@ -2743,10 +2756,10 @@ class ForwardKinematicsSolver:
             )
 
         # Compute body velocities (system solve)
-        if self.settings.use_sparsity:
-            if self.settings.preconditioner == FKPreconditionerOptions.JACOBI_DIAGONAL:
+        if self.config.use_sparsity:
+            if self._preconditioner_type == FKPreconditionerType.JACOBI_DIAGONAL:
                 block_sparse_ATA_inv_diagonal_2d(self.sparse_jacobian, self.jacobian_diag_inv, world_mask)
-            elif self.settings.preconditioner == FKPreconditionerOptions.JACOBI_BLOCK_DIAGONAL:
+            elif self._preconditioner_type == FKPreconditionerType.JACOBI_BLOCK_DIAGONAL:
                 block_sparse_ATA_blockwise_3_4_inv_diagonal_2d(
                     self.sparse_jacobian, self.inv_blocks_3, self.inv_blocks_4, world_mask
                 )
@@ -2834,7 +2847,7 @@ class ForwardKinematicsSolver:
     ):
         """
         Assembles the sparse Jacobian (under self.sparse_jacobian) given input body poses and control transforms.
-        Note: only safe to call if this object was finalized with sparsity enabled in the settings.
+        Note: only safe to call if this object was finalized with sparsity enabled in the config.
         """
         assert bodies_q.device == self.device
         assert pos_control_transforms.device == self.device
@@ -2969,7 +2982,7 @@ class ForwardKinematicsSolver:
             self.newton_mask.fill_(1)
 
         # Optionally reset state
-        if self.settings.reset_state:
+        if self.config.reset_state:
             if base_q is None:
                 self._reset_state(bodies_q, self.newton_mask)
             else:

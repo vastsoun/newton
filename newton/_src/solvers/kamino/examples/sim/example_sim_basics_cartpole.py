@@ -18,24 +18,23 @@ import os
 from dataclasses import dataclass
 
 import numpy as np
-import torch
+import torch  # noqa: TID253
 import warp as wp
-from warp.context import Devicelike
 
 import newton
 import newton.examples
-from newton._src.solvers.kamino.core.builder import ModelBuilder
+from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
+from newton._src.solvers.kamino.core.data import DataKamino
 from newton._src.solvers.kamino.core.math import I_3, R_x, screw
-from newton._src.solvers.kamino.core.model import Model, ModelData
+from newton._src.solvers.kamino.core.model import ModelKamino
 from newton._src.solvers.kamino.core.types import float32, int32, mat33f, transformf, uint32, vec3f, vec6f
 from newton._src.solvers.kamino.examples import get_examples_output_path, run_headless
 from newton._src.solvers.kamino.models import get_basics_usd_assets_path
 from newton._src.solvers.kamino.models.builders.basics import build_cartpole
 from newton._src.solvers.kamino.models.builders.utils import add_ground_box, make_homogeneous_builder
-from newton._src.solvers.kamino.solvers.padmm import PADMMWarmStartMode
 from newton._src.solvers.kamino.utils import logger as msg
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
-from newton._src.solvers.kamino.utils.sim import SimulationLogger, Simulator, SimulatorSettings, ViewerKamino
+from newton._src.solvers.kamino.utils.sim import SimulationLogger, Simulator, SimulatorConfig, ViewerKamino
 
 ###
 # Module configs
@@ -188,15 +187,7 @@ def _reset_select_worlds_to_dof_state(
         data_joint_dr_j[joints_cts_start + j] = r_j[j]
         data_joint_lambda_j[joints_cts_start + j] = r_j[j]
     data_joint_p_j[joints_start + 0] = wp.transformf(r_j_world_to_cart, q_j_world_to_cart)
-    data_joint_j_w_j[joints_start + 0] = ZEROS6
-    data_joint_j_w_a_j[joints_start + 0] = ZEROS6
-    data_joint_j_w_c_j[joints_start + 0] = ZEROS6
-    data_joint_j_w_l_j[joints_start + 0] = ZEROS6
     data_joint_p_j[joints_start + 1] = wp.transformf(r_j_cart_to_pole, q_j_cart_to_pole)
-    data_joint_j_w_j[joints_start + 1] = ZEROS6
-    data_joint_j_w_a_j[joints_start + 1] = ZEROS6
-    data_joint_j_w_c_j[joints_start + 1] = ZEROS6
-    data_joint_j_w_l_j[joints_start + 1] = ZEROS6
 
 
 ###
@@ -205,11 +196,11 @@ def _reset_select_worlds_to_dof_state(
 
 
 def reset_select_worlds_to_dof_state(
-    model: Model,
+    model: ModelKamino,
     q_j: wp.array,
     dq_j: wp.array,
     mask: wp.array,
-    data: ModelData,
+    data: DataKamino,
 ):
     """
     Reset the state of the selected worlds given an array of per-world flags.
@@ -257,10 +248,6 @@ def reset_select_worlds_to_dof_state(
             data.joints.q_j,
             data.joints.dq_j,
             data.joints.lambda_j,
-            data.joints.j_w_j,
-            data.joints.j_w_a_j,
-            data.joints.j_w_c_j,
-            data.joints.j_w_l_j,
         ],
     )
 
@@ -343,7 +330,7 @@ def test_control_callback(sim: Simulator):
 class Example:
     def __init__(
         self,
-        device: Devicelike = None,
+        device: wp.DeviceLike = None,
         num_worlds: int = 1,
         max_steps: int = 1000,
         use_cuda_graph: bool = False,
@@ -372,15 +359,15 @@ class Example:
             msg.notif("Constructing builder from imported USD ...")
             USD_MODEL_PATH = os.path.join(get_basics_usd_assets_path(), "cartpole.usda")
             importer = USDImporter()
-            self.builder: ModelBuilder = make_homogeneous_builder(
+            self.builder: ModelBuilderKamino = make_homogeneous_builder(
                 num_worlds=num_worlds, build_fn=importer.import_from, load_static_geometry=True, source=USD_MODEL_PATH
             )
             if ground:
                 for w in range(num_worlds):
-                    add_ground_box(self.builder, z_offset=-0.5, world_index=w, layer="world")
+                    add_ground_box(self.builder, z_offset=-0.5, world_index=w)
         else:
             msg.notif("Constructing builder using model generator ...")
-            self.builder: ModelBuilder = make_homogeneous_builder(
+            self.builder: ModelBuilderKamino = make_homogeneous_builder(
                 num_worlds=num_worlds, build_fn=build_cartpole, ground=ground
             )
 
@@ -392,27 +379,26 @@ class Example:
         msg.info("self.builder.gravity:\n%s", self.builder.gravity)
         msg.info("self.builder.bodies:\n%s", self.builder.bodies)
         msg.info("self.builder.joints:\n%s", self.builder.joints)
-        msg.info("self.builder.collision_geoms:\n%s", self.builder.collision_geoms)
-        msg.info("self.builder.physical_geoms:\n%s", self.builder.physical_geoms)
+        msg.info("self.builder.geoms:\n%s", self.builder.geoms)
 
-        # Set solver settings
-        settings = SimulatorSettings()
-        settings.dt = self.sim_dt
-        settings.solver.problem.alpha = 0.1
-        settings.solver.problem.beta = 0.1
-        settings.solver.padmm.primal_tolerance = 1e-6
-        settings.solver.padmm.dual_tolerance = 1e-6
-        settings.solver.padmm.compl_tolerance = 1e-6
-        settings.solver.padmm.max_iterations = 200
-        settings.solver.padmm.rho_0 = 0.05
-        settings.solver.use_solver_acceleration = True
-        settings.solver.warmstart_mode = PADMMWarmStartMode.CONTAINERS
-        settings.solver.collect_solver_info = False
-        settings.solver.compute_metrics = logging and not use_cuda_graph
+        # Set solver config
+        config = SimulatorConfig()
+        config.dt = self.sim_dt
+        config.solver.problem.alpha = 0.1
+        config.solver.problem.beta = 0.1
+        config.solver.padmm.primal_tolerance = 1e-6
+        config.solver.padmm.dual_tolerance = 1e-6
+        config.solver.padmm.compl_tolerance = 1e-6
+        config.solver.padmm.max_iterations = 200
+        config.solver.padmm.rho_0 = 0.05
+        config.solver.use_solver_acceleration = True
+        config.solver.warmstart_mode = "containers"
+        config.solver.collect_solver_info = False
+        config.solver.compute_metrics = logging and not use_cuda_graph
 
         # Create a simulator
         msg.notif("Building the simulator...")
-        self.sim = Simulator(builder=self.builder, settings=settings, device=device)
+        self.sim = Simulator(builder=self.builder, config=config, device=device)
         self.sim.set_control_callback(test_control_callback)
 
         # Initialize the data logger

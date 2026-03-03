@@ -45,23 +45,23 @@ Usage
 A typical example for using this module is:
 
     # Import all relevant types from Kamino
-    from newton._src.solvers.kamino.core import ModelBuilder
-    from newton._src.solvers.kamino.geometry import Contacts
-    from newton._src.solvers.kamino.kinematics import Limits
+    from newton._src.solvers.kamino.core import ModelBuilderKamino
+    from newton._src.solvers.kamino.geometry import ContactsKamino
+    from newton._src.solvers.kamino.kinematics import LimitsKamino
     from newton._src.solvers.kamino.kinematics import DenseSystemJacobians
     from newton._src.solvers.kamino.dynamics import DualProblem
     from newton._src.solvers.kamino.solvers import PADMMSolver
 
     # Create a model builder and add bodies, joints, geoms, etc.
-    builder = ModelBuilder()
+    builder = ModelBuilderKamino()
     ...
 
     # Create a model from the builder and construct additional
     # containers to hold joint-limits, contacts, Jacobians
     model = builder.finalize()
     data = model.data()
-    limits = Limits(model)
-    contacts = Contacts(builder)
+    limits = LimitsKamino(model)
+    contacts = ContactsKamino(builder)
     jacobians = DenseSystemJacobians(model, limits, contacts)
 
     # Build the Jacobians for the model and active limits and contacts
@@ -84,15 +84,15 @@ A typical example for using this module is:
 """
 
 from .solver import PADMMSolver
-from .types import PADMMPenaltyUpdate, PADMMSettings, PADMMWarmStartMode
+from .types import PADMMConfig, PADMMPenaltyUpdate, PADMMWarmStartMode
 
 ###
 # Module interface
 ###
 
 __all__ = [
+    "PADMMConfig",
     "PADMMPenaltyUpdate",
-    "PADMMSettings",
     "PADMMSolver",
     "PADMMWarmStartMode",
 ]

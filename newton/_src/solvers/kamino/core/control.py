@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Defines the Control container for Kamino."""
+"""Defines the control container of Kamino."""
 
 from __future__ import annotations
 
@@ -21,22 +21,32 @@ from dataclasses import dataclass
 
 import warp as wp
 
+from ....sim.control import Control
+
+###
+# Types
+###
+
 
 @dataclass
-class Control:
+class ControlKamino:
     """
-    Time-varying control data for a :class:`Model`.
+    Time-varying control data for a :class:`ModelKamino`.
 
     Time-varying control data currently consists of generalized joint actuation forces, with
     the intention that external actuator models or controllers will populate these attributes.
 
-    The exact attributes depend on the contents of the model. Control objects
-    should generally be created using the :func:`kamino.Model.control()` function.
+    The exact attributes depend on the contents of the model. ControlKamino objects
+    should generally be created using the :func:`kamino.ModelKamino.control()` function.
 
     We adopt the following notational conventions for the control attributes:
     - Generalized joint actuation forces are denoted by ``tau``
     - Subscripts ``_j`` denote joint-indexed quantities, e.g. :attr:`tau_j`.
     """
+
+    ###
+    # Attributes
+    ###
 
     tau_j: wp.array | None = None
     """
@@ -66,24 +76,64 @@ class Control:
     where ``d_j`` is the number of DoFs of joint ``j``.
     """
 
-    def copy_to(self, other: Control) -> None:
+    ###
+    # Operations
+    ###
+
+    def copy_to(self, other: ControlKamino) -> None:
         """
-        Copies the Control data to another Control object.
+        Copies the ControlKamino data to another ControlKamino object.
 
         Args:
-            other: The target Control object to copy data into.
+            other: The target ControlKamino object to copy data into.
         """
         if self.tau_j is None or other.tau_j is None:
-            raise ValueError("Error copying from/to uninitialized Control")
+            raise ValueError("Error copying from/to uninitialized ControlKamino")
         wp.copy(other.tau_j, self.tau_j)
 
-    def copy_from(self, other: Control) -> None:
+    def copy_from(self, other: ControlKamino) -> None:
         """
-        Copies the Control data from another Control object.
+        Copies the ControlKamino data from another ControlKamino object.
 
         Args:
-            other: The source Control object to copy data from.
+            other: The source ControlKamino object to copy data from.
         """
         if self.tau_j is None or other.tau_j is None:
-            raise ValueError("Error copying from/to uninitialized Control")
+            raise ValueError("Error copying from/to uninitialized ControlKamino")
         wp.copy(self.tau_j, other.tau_j)
+
+    @staticmethod
+    def from_newton(control: Control) -> ControlKamino:
+        """
+        Constructs a :class:`kamino.ControlKamino` object from a :class:`newton.Control` object.
+
+        This operation serves only as a adaptor-like constructor to interface a
+        :class:`newton.Control`, effectively creating an alias without copying data.
+
+        Args:
+            control: The source :class:`newton.Control` object to be adapted.
+        """
+        return ControlKamino(
+            tau_j=control.joint_f,
+            tau_j_ref=control.joint_act,
+            q_j_ref=control.joint_target_pos,
+            dq_j_ref=control.joint_target_vel,
+        )
+
+    @staticmethod
+    def to_newton(control: ControlKamino) -> Control:
+        """
+        Constructs a :class:`newton.Control` object from a :class:`kamino.ControlKamino` object.
+
+        This operation serves only as a adaptor-like constructor to interface a
+        :class:`kamino.ControlKamino`, effectively creating an alias without copying data.
+
+        Args:
+            control: The source :class:`kamino.ControlKamino` object to be adapted.
+        """
+        control_newton = Control()
+        control_newton.joint_f = control.tau_j
+        control_newton.joint_act = control.tau_j_ref
+        control_newton.joint_target_pos = control.q_j_ref
+        control_newton.joint_target_vel = control.dq_j_ref
+        return control_newton

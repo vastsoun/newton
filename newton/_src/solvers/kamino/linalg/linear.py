@@ -27,7 +27,6 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 import warp as wp
-from warp.context import Devicelike
 
 from ..core.types import FloatType, float32, override
 from . import conjugate, factorize
@@ -70,7 +69,7 @@ class LinearSolver(ABC):
         atol: float | None = None,
         rtol: float | None = None,
         dtype: FloatType = float32,
-        device: Devicelike | None = None,
+        device: wp.DeviceLike | None = None,
         **kwargs: dict[str, Any],
     ):
         # Declare and initialize the internal reference to the matrix/operator data
@@ -86,7 +85,7 @@ class LinearSolver(ABC):
         self._rtol: float = rtol
 
         # Declare and initialize the device identifier
-        self._device: Devicelike = device
+        self._device: wp.DeviceLike = device
 
         # If an operator is provided, proceed with any necessary memory allocations
         if operator is not None:
@@ -107,7 +106,7 @@ class LinearSolver(ABC):
         return self._dtype
 
     @property
-    def device(self) -> Devicelike:
+    def device(self) -> wp.DeviceLike:
         return self._device
 
     ###
@@ -200,7 +199,7 @@ class DirectSolver(LinearSolver):
         rtol: float | None = None,
         ftol: float | None = None,
         dtype: FloatType = float32,
-        device: Devicelike | None = None,
+        device: wp.DeviceLike | None = None,
         **kwargs: dict[str, Any],
     ):
         # Default factorization tolerance to machine epsilon if not provided
@@ -282,7 +281,7 @@ class IterativeSolver(LinearSolver):
         atol: float | wp.array | None = None,
         rtol: float | wp.array | None = None,
         dtype: FloatType = float32,
-        device: Devicelike | None = None,
+        device: wp.DeviceLike | None = None,
         maxiter: int | wp.array | None = None,
         world_active: wp.array | None = None,
         preconditioner: Any = None,
@@ -449,7 +448,7 @@ class LLTSequentialSolver(DirectSolver):
         rtol: float | None = None,
         ftol: float | None = None,
         dtype: FloatType = float32,
-        device: Devicelike | None = None,
+        device: wp.DeviceLike | None = None,
         **kwargs: dict[str, Any],
     ):
         # Declare LLT-specific internal data
@@ -569,7 +568,7 @@ class LLTBlockedSolver(DirectSolver):
         rtol: float | None = None,
         ftol: float | None = None,
         dtype: FloatType = float32,
-        device: Devicelike | None = None,
+        device: wp.DeviceLike | None = None,
         **kwargs: dict[str, Any],
     ):
         # Declare LLT-specific internal data

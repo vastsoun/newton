@@ -36,10 +36,11 @@ These include:
 
 import os
 
-from .builders import basics, testing, utils
+from .builders import basics, basics_newton, testing, utils
 
 __all__ = [
     "basics",
+    "basics_newton",
     "builders",
     "get_basics_usd_assets_path",
     "get_examples_usd_assets_path",

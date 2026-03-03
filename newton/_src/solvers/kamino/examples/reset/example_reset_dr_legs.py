@@ -18,12 +18,11 @@ import os
 
 import numpy as np
 import warp as wp
-from scipy.spatial.transform import Rotation
-from warp.context import Devicelike
+from scipy.spatial.transform import Rotation  # noqa: TID253
 
 import newton
 import newton.examples
-from newton._src.solvers.kamino.core.builder import ModelBuilder
+from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
 from newton._src.solvers.kamino.core.types import float32, int32, transformf, vec6f
 from newton._src.solvers.kamino.examples import get_examples_output_path, run_headless
 from newton._src.solvers.kamino.models import get_examples_usd_assets_path
@@ -31,12 +30,10 @@ from newton._src.solvers.kamino.models.builders.utils import (
     make_homogeneous_builder,
     set_uniform_body_pose_offset,
 )
-from newton._src.solvers.kamino.solvers.padmm import PADMMWarmStartMode
-from newton._src.solvers.kamino.solvers.warmstart import WarmstarterContacts
 from newton._src.solvers.kamino.utils import logger as msg
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
 from newton._src.solvers.kamino.utils.sim import ViewerKamino
-from newton._src.solvers.kamino.utils.sim.simulator import Simulator, SimulatorSettings
+from newton._src.solvers.kamino.utils.sim.simulator import Simulator, SimulatorConfig
 
 ###
 # Kernels
@@ -96,7 +93,7 @@ def _test_control_callback(
 class Example:
     def __init__(
         self,
-        device: Devicelike = None,
+        device: wp.DeviceLike = None,
         num_worlds: int = 1,
         max_steps: int = 1000,
         use_cuda_graph: bool = False,
@@ -130,7 +127,7 @@ class Example:
         # Create a model builder from the imported USD
         msg.notif("Constructing builder from imported USD ...")
         importer = USDImporter()
-        self.builder: ModelBuilder = make_homogeneous_builder(
+        self.builder: ModelBuilderKamino = make_homogeneous_builder(
             num_worlds=num_worlds,
             build_fn=importer.import_from,
             load_drive_dynamics=False,
@@ -149,26 +146,26 @@ class Example:
         for w in range(self.builder.num_worlds):
             self.builder.gravity[w].enabled = False
 
-        # Set solver settings
-        settings = SimulatorSettings()
-        settings.dt = self.sim_dt
-        settings.solver.problem.alpha = 0.1
-        settings.solver.padmm.primal_tolerance = 1e-4
-        settings.solver.padmm.dual_tolerance = 1e-4
-        settings.solver.padmm.compl_tolerance = 1e-4
-        settings.solver.padmm.max_iterations = 100
-        settings.solver.padmm.eta = 1e-5
-        settings.solver.padmm.rho_0 = 0.02
-        settings.solver.padmm.rho_min = 0.01
-        settings.solver.use_solver_acceleration = True
-        settings.solver.warmstart_mode = PADMMWarmStartMode.CONTAINERS
-        settings.solver.contact_warmstart_method = WarmstarterContacts.Method.GEOM_PAIR_NET_FORCE
-        settings.solver.collect_solver_info = False
-        settings.solver.compute_metrics = False
+        # Set solver config
+        config = SimulatorConfig()
+        config.dt = self.sim_dt
+        config.solver.problem.alpha = 0.1
+        config.solver.padmm.primal_tolerance = 1e-4
+        config.solver.padmm.dual_tolerance = 1e-4
+        config.solver.padmm.compl_tolerance = 1e-4
+        config.solver.padmm.max_iterations = 100
+        config.solver.padmm.eta = 1e-5
+        config.solver.padmm.rho_0 = 0.02
+        config.solver.padmm.rho_min = 0.01
+        config.solver.use_solver_acceleration = True
+        config.solver.warmstart_mode = "containers"
+        config.solver.contact_warmstart_method = "geom_pair_net_force"
+        config.solver.collect_solver_info = False
+        config.solver.compute_metrics = False
 
         # Create a simulator
         msg.notif("Building the simulator...")
-        self.sim = Simulator(builder=self.builder, settings=settings, device=device)
+        self.sim = Simulator(builder=self.builder, config=config, device=device)
 
         # Create a list of actuated joint indices from the model and builder
         self.actuated_joint_idx_np = np.zeros(shape=(self.sim.model.size.sum_of_num_actuated_joints,), dtype=np.int32)

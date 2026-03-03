@@ -18,17 +18,15 @@
 from dataclasses import dataclass, field
 
 import warp as wp
-from warp.context import Devicelike
 
-from ..core.joints import JointDoFType
+from ..core.data import DataKamino
+from ..core.joints import JOINT_QMAX, JOINT_QMIN, JointDoFType
 from ..core.math import (
-    FLOAT32_MAX,
-    FLOAT32_MIN,
     quat_from_vec4,
     quat_log,
     screw,
 )
-from ..core.model import Model, ModelData
+from ..core.model import ModelKamino
 from ..core.types import (
     float32,
     int32,
@@ -49,7 +47,7 @@ from ..utils import logger as msg
 # Module interface
 ###
 
-__all__ = ["Limits", "LimitsData"]
+__all__ = ["LimitsKamino", "LimitsKaminoData"]
 
 
 ###
@@ -65,7 +63,7 @@ wp.set_module_options({"enable_backward": False})
 
 
 @dataclass
-class LimitsData:
+class LimitsKaminoData:
     """
     An SoA-based container to hold time-varying data of a set of active joint-limits.
 
@@ -76,7 +74,7 @@ class LimitsData:
     """
     Host-side cache of the maximum number of limits allocated across all worlds.\n
     The number of allocated limits in the model is determined by the ModelBuilder when finalizing
-    a ``Model``, and is equal to the sum over all finite-valued limits defined by each joint.\n
+    a ``ModelKamino``, and is equal to the sum over all finite-valued limits defined by each joint.\n
     The single entry is then less than or equal to the total ``num_joint_dofs`` of the entire model.\n
     This is cached on the host-side for managing data allocations and setting thread sizes in kernels.
     """
@@ -85,7 +83,7 @@ class LimitsData:
     """
     Host-side cache of the maximum number of limits allocated per world.\n
     The number of allocated limits per world is determined by the ModelBuilder when finalizing a
-    ``Model``, and is equal to the sum over all finite-valued limits defined by each joint of each world.\n
+    ``ModelKamino``, and is equal to the sum over all finite-valued limits defined by each joint of each world.\n
     Each entry is then less than or equal to the total ``num_joint_dofs`` of the corresponding world.\n
     This is cached on the host-side for managing data allocations and setting thread sizes in kernels.
     """
@@ -94,7 +92,7 @@ class LimitsData:
     """
     The maximum number of limits allocated for the model across all worlds.\n
     The number of allocated limits in the model is determined by the ModelBuilder when finalizing
-    a ``Model``, and is equal to the sum over all finite-valued limits defined by each joint.\n
+    a ``ModelKamino``, and is equal to the sum over all finite-valued limits defined by each joint.\n
     The single entry is then less than or equal to the total ``num_joint_dofs`` of the entire model.\n
     Shape of ``(1,)`` and type :class:`int32`.
     """
@@ -109,7 +107,7 @@ class LimitsData:
     """
     The maximum number of limits allocated per world.\n
     The number of allocated limits per world is determined by the ModelBuilder when finalizing a
-    ``Model``, and is equal to the sum over all finite-valued limits defined by each joint of each world.\n
+    ``ModelKamino``, and is equal to the sum over all finite-valued limits defined by each joint of each world.\n
     Each entry is then less than or equal to the total ``num_joint_dofs`` of the corresponding world.\n
     Shape of ``(num_worlds,)`` and type :class:`int32`.
     """
@@ -591,21 +589,21 @@ def _detect_active_joint_configuration_limits(
 ###
 
 
-class Limits:
+class LimitsKamino:
     """
     A container to hold and manage time-varying joint-limits.
     """
 
     def __init__(
         self,
-        model: Model | None = None,
-        device: Devicelike = None,
+        model: ModelKamino | None = None,
+        device: wp.DeviceLike = None,
     ):
         # The device on which to allocate the limits data
         self._device = device
 
         # Declare the joint-limits data container and initialize it to empty
-        self._data: LimitsData = LimitsData()
+        self._data: LimitsKaminoData = LimitsKaminoData()
 
         # Perform memory allocation if max_limits is specified
         if model is not None:
@@ -616,14 +614,14 @@ class Limits:
     ###
 
     @property
-    def device(self) -> Devicelike:
+    def device(self) -> wp.DeviceLike:
         """
         Returns the device on which the limits data is allocated.
         """
         return self._device
 
     @property
-    def data(self) -> LimitsData:
+    def data(self) -> LimitsKaminoData:
         """
         Returns the managed limits data container.
         """
@@ -777,20 +775,18 @@ class Limits:
     # Operations
     ###
 
-    def finalize(self, model: Model, device: Devicelike = None):
+    def finalize(self, model: ModelKamino, device: wp.DeviceLike = None):
         # Ensure the model is valid
         if model is None:
-            raise ValueError("Limits: model must be specified for allocation (got None)")
-        elif not isinstance(model, Model):
-            raise TypeError("Limits: model must be an instance of Model")
+            raise ValueError("LimitsKamino: model must be specified for allocation (got None)")
+        elif not isinstance(model, ModelKamino):
+            raise TypeError("LimitsKamino: model must be an instance of ModelKamino")
 
         # Extract the joint limits allocation sizes from the model
         # The memory allocation requires the total number of limits (over multiple worlds)
         # as well as the limit capacities for each world. Corresponding sizes are defaulted to 0 (empty).
         model_max_limits = 0
         world_max_limits = [0] * model.size.num_worlds
-        floatmin = float(FLOAT32_MIN)
-        floatmax = float(FLOAT32_MAX)
         joint_wid = model.joints.wid.numpy()
         joint_num_dofs = model.joints.num_dofs.numpy()
         joint_q_j_min = model.joints.q_j_min.numpy()
@@ -799,14 +795,14 @@ class Limits:
         dofs_start = 0
         for j in range(num_joints):
             for dof in range(joint_num_dofs[j]):
-                if joint_q_j_min[dofs_start + dof] > floatmin or joint_q_j_max[dofs_start + dof] < floatmax:
+                if joint_q_j_min[dofs_start + dof] > JOINT_QMIN or joint_q_j_max[dofs_start + dof] < JOINT_QMAX:
                     model_max_limits += 1
                     world_max_limits[joint_wid[j]] += 1
             dofs_start += joint_num_dofs[j]
 
         # Skip allocation if there are no limits to allocate
         if model_max_limits == 0:
-            msg.debug("Limits: Skipping joint-limit data allocations since total requested capacity was `0`.")
+            msg.debug("LimitsKamino: Skipping joint-limit data allocations since total requested capacity was `0`.")
             return
 
         # Override the device if specified
@@ -815,7 +811,7 @@ class Limits:
 
         # Allocate the limits data on the specified device
         with wp.ScopedDevice(self._device):
-            self._data = LimitsData(
+            self._data = LimitsKaminoData(
                 model_max_limits_host=model_max_limits,
                 world_max_limits_host=world_max_limits,
                 model_max_limits=wp.array([model_max_limits], dtype=int32),
@@ -850,15 +846,15 @@ class Limits:
 
     def detect(
         self,
-        model: Model,
-        data: ModelData,
+        model: ModelKamino,
+        data: DataKamino,
     ):
         """
         Detects the active joint limits in the model and updates the limits data.
 
         Args:
-            model (Model): The model to detect limits for.
-            state (ModelData): The current state of the model.
+            model (ModelKamino): The model to detect limits for.
+            state (DataKamino): The current state of the model.
         """
         # Skip this operation if no contacts data has been allocated
         if self._data is None or self._data.model_max_limits_host <= 0:
@@ -866,17 +862,17 @@ class Limits:
 
         # Ensure the model and state are valid
         if model is None:
-            raise ValueError("Limits: model must be specified for detection (got None)")
-        elif not isinstance(model, Model):
-            raise TypeError("Limits: model must be an instance of Model")
+            raise ValueError("LimitsKamino: model must be specified for detection (got None)")
+        elif not isinstance(model, ModelKamino):
+            raise TypeError("LimitsKamino: model must be an instance of ModelKamino")
         if data is None:
-            raise ValueError("Limits: data must be specified for detection (got None)")
-        elif not isinstance(data, ModelData):
-            raise TypeError("Limits: data must be an instance of ModelData")
+            raise ValueError("LimitsKamino: data must be specified for detection (got None)")
+        elif not isinstance(data, DataKamino):
+            raise TypeError("LimitsKamino: data must be an instance of DataKamino")
 
         # Ensure the limits data is allocated on the same device as the model
         if self._device is not None and self._device != model.device:
-            raise ValueError(f"Limits: data device {self._device} does not match model device {model.device}")
+            raise ValueError(f"LimitsKamino: data device {self._device} does not match model device {model.device}")
 
         # Clear the current limits count
         self.clear()
@@ -923,4 +919,4 @@ class Limits:
         Asserts that the limits data has been allocated.
         """
         if self._data is None:
-            raise ValueError("Limits: data has not been allocated. Please call 'finalize()' first.")
+            raise ValueError("LimitsKamino: data has not been allocated. Please call 'finalize()' first.")

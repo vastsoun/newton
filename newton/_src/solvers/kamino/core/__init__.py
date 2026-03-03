@@ -17,13 +17,14 @@
 KAMINO: Core Module
 """
 
-from .builder import ModelBuilder
-from .control import Control
-from .model import Model, ModelData
-from .state import State
+from .builder import ModelBuilderKamino
+from .control import ControlKamino
+from .data import DataKamino
+from .model import ModelKamino
+from .state import StateKamino
 
 ###
 # Module interface
 ###
 
-__all__ = ["Control", "Model", "ModelBuilder", "ModelData", "State"]
+__all__ = ["ControlKamino", "DataKamino", "ModelBuilderKamino", "ModelKamino", "StateKamino"]

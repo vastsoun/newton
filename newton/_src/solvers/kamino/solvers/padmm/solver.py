@@ -24,12 +24,13 @@ See the :mod:`newton._src.solvers.kamino.solvers.padmm` module for a detailed de
 import math
 
 import warp as wp
-from warp.context import Devicelike
 
-from ...core.model import Model, ModelData, ModelSize
+from ...core.data import DataKamino
+from ...core.model import ModelKamino
+from ...core.size import SizeKamino
 from ...dynamics.dual import DualProblem
-from ...geometry.contacts import Contacts
-from ...kinematics.limits import Limits
+from ...geometry.contacts import ContactsKamino
+from ...kinematics.limits import LimitsKamino
 from .kernels import (
     _apply_dual_preconditioner_to_solution,
     _apply_dual_preconditioner_to_state,
@@ -55,7 +56,7 @@ from .kernels import (
     make_initialize_solver_kernel,
     make_update_dual_variables_and_compute_primal_dual_residuals,
 )
-from .types import PADMMConfig, PADMMData, PADMMPenaltyUpdate, PADMMSettings, PADMMWarmStartMode
+from .types import PADMMConfig, PADMMConfigStruct, PADMMData, PADMMPenaltyUpdate, PADMMWarmStartMode
 
 ###
 # Module interface
@@ -95,13 +96,13 @@ class PADMMSolver:
 
     def __init__(
         self,
-        model: Model | None = None,
-        settings: list[PADMMSettings] | PADMMSettings | None = None,
+        model: ModelKamino | None = None,
+        config: list[PADMMConfig] | PADMMConfig | None = None,
         warmstart: PADMMWarmStartMode = PADMMWarmStartMode.NONE,
         use_acceleration: bool = True,
         collect_info: bool = False,
         avoid_graph_conditionals: bool = False,
-        device: Devicelike = None,
+        device: wp.DeviceLike = None,
     ):
         """
         Initializes a PADMM solver.
@@ -110,41 +111,41 @@ class PADMMSolver:
         target device, otherwise the user must call `finalize()` before using the solver.
 
         Args:
-            model (Model | None): The model for which to allocate the solver data.
-            limits (Limits | None): The limits container associated with the model.
-            contacts (Contacts | None): The contacts container associated with the model.
-            settings (list[PADMMSettings] | PADMMSettings | None): The solver settings to use.
+            model (ModelKamino | None): The model for which to allocate the solver data.
+            limits (LimitsKamino | None): The limits container associated with the model.
+            contacts (ContactsKamino | None): The contacts container associated with the model.
+            config (list[PADMMConfig] | PADMMConfig | None): The solver config to use.
             use_acceleration (bool): Set to `True` to enable Nesterov acceleration.
             collect_info (bool): Set to `True` to enable collection of solver convergence info.\n
                 This setting is intended only for analysis and debugging purposes, as it
                 will increase memory consumption and reduce wall-clock time.
             avoid_graph_conditionals (bool): Set to `True` to avoid CUDA graph conditional nodes.\n
                 When enabled, replaces `wp.capture_while` with an unrolled for-loop over max iterations.
-            device (Devicelike | None): The target device on which to allocate the solver data.
+            device (wp.DeviceLike | None): The target device on which to allocate the solver data.
         """
 
-        # Declare the internal solver settings cache
+        # Declare the internal solver config cache
         self._warmstart: PADMMWarmStartMode = PADMMWarmStartMode.NONE
-        self._settings: list[PADMMSettings] = []
+        self._config: list[PADMMConfig] = []
         self._use_acceleration: bool = False
         self._collect_info: bool = False
         self._avoid_graph_conditionals: bool = False
         self._uses_adaptive_penalty: bool = False
 
         # Declare the model size cache
-        self._size: ModelSize | None = None
+        self._size: SizeKamino | None = None
 
         # Declare the solver data container
         self._data: PADMMData | None = None
 
         # Declare the device cache
-        self._device: Devicelike = None
+        self._device: wp.DeviceLike = None
 
         # Perform memory allocations if a model is provided
         if model is not None:
             self.finalize(
                 model=model,
-                settings=settings,
+                config=config,
                 warmstart=warmstart,
                 use_acceleration=use_acceleration,
                 collect_info=collect_info,
@@ -157,15 +158,15 @@ class PADMMSolver:
     ###
 
     @property
-    def settings(self) -> list[PADMMSettings]:
+    def config(self) -> list[PADMMConfig]:
         """
-        Returns the host-side cache of the solver settings.\n
-        They are used to construct the warp array of type :class:`PADMMConfig` on the target device.
+        Returns the host-side cache of the solver config.\n
+        They are used to construct the warp array of type :class:`PADMMConfigStruct` on the target device.
         """
-        return self._settings
+        return self._config
 
     @property
-    def size(self) -> ModelSize:
+    def size(self) -> SizeKamino:
         """
         Returns the host-side cache of the solver allocation sizes.
         """
@@ -181,7 +182,7 @@ class PADMMSolver:
         return self._data
 
     @property
-    def device(self) -> Devicelike:
+    def device(self) -> wp.DeviceLike:
         """
         Returns the device on which the solver data is allocated.
         """
@@ -193,36 +194,36 @@ class PADMMSolver:
 
     def finalize(
         self,
-        model: Model | None = None,
-        settings: list[PADMMSettings] | PADMMSettings | None = None,
+        model: ModelKamino | None = None,
+        config: list[PADMMConfig] | PADMMConfig | None = None,
         warmstart: PADMMWarmStartMode = PADMMWarmStartMode.NONE,
         use_acceleration: bool = True,
         collect_info: bool = False,
         avoid_graph_conditionals: bool = False,
-        device: Devicelike = None,
+        device: wp.DeviceLike = None,
     ):
         """
         Allocates the solver data structures on the specified device.
 
         Args:
-            model (Model | None): The model for which to allocate the solver data.
-            limits (Limits | None): The limits container associated with the model.
-            contacts (Contacts | None): The contacts container associated with the model.
-            settings (list[PADMMSettings] | PADMMSettings | None): The solver settings to use.
+            model (ModelKamino | None): The model for which to allocate the solver data.
+            limits (LimitsKamino | None): The limits container associated with the model.
+            contacts (ContactsKamino | None): The contacts container associated with the model.
+            config (list[PADMMConfig] | PADMMConfig | None): The solver config to use.
             use_acceleration (bool): Set to `True` to enable Nesterov acceleration.
             collect_info (bool): Set to `True` to enable collection of solver convergence info.\n
                 This setting is intended only for analysis and debugging purposes, as it
                 will increase memory consumption and reduce wall-clock time.
             avoid_graph_conditionals (bool): Set to `True` to avoid CUDA graph conditional nodes.\n
                 When enabled, replaces `wp.capture_while` with an unrolled for-loop over max iterations.
-            device (Devicelike | None): The target device on which to allocate the solver data.
+            device (wp.DeviceLike | None): The target device on which to allocate the solver data.
         """
 
         # Ensure the model is valid
         if model is None:
-            raise ValueError("A model of type `Model` must be provided to allocate the Delassus operator.")
-        elif not isinstance(model, Model):
-            raise ValueError("Invalid model provided. Must be an instance of `Model`.")
+            raise ValueError("A model of type `ModelKamino` must be provided to allocate the Delassus operator.")
+        elif not isinstance(model, ModelKamino):
+            raise ValueError("Invalid model provided. Must be an instance of `ModelKamino`.")
 
         # Cache a reference to the model size meta-data container
         self._size = model.size
@@ -236,19 +237,21 @@ class PADMMSolver:
         # Set the target device if specified, otherwise use the model device
         self._device = device if device is not None else model.device
 
-        # Cache the solver settings
-        if settings is not None:
-            self._settings = self._check_settings(model, settings)
-        elif len(self._settings) == 0:
-            self._settings = self._check_settings(model, None)
+        # Cache the solver config
+        if config is not None:
+            self._config = self._check_config(model, config)
+        elif len(self._config) == 0:
+            self._config = self._check_config(model, None)
 
         # Check if any world uses adaptive penalty updates (requiring per-step regularization updates)
-        self._uses_adaptive_penalty = any(s.penalty_update_method != PADMMPenaltyUpdate.FIXED for s in self._settings)
+        self._uses_adaptive_penalty = any(
+            PADMMPenaltyUpdate.from_string(c.penalty_update_method) != PADMMPenaltyUpdate.FIXED for c in self._config
+        )
 
         # Compute the largest max iterations across all worlds
         # NOTE: This is needed to allocate the solver
         # info arrays if `collect_info` is enabled
-        max_of_max_iters = max([s.max_iterations for s in self._settings])
+        max_of_max_iters = max([c.max_iterations for c in self._config])
         self._max_of_max_iters = max_of_max_iters
 
         # Allocate memory in device global memory
@@ -261,9 +264,9 @@ class PADMMSolver:
         )
 
         # Write algorithm configs into device memory
-        configs = [s.to_config() for s in self._settings]
+        configs = [c.to_struct() for c in self._config]
         with wp.ScopedDevice(self._device):
-            self._data.config = wp.array(configs, dtype=PADMMConfig)
+            self._data.config = wp.array(configs, dtype=PADMMConfigStruct)
 
         # Specialize certain solver kernels depending on whether acceleration is enabled
         self._initialize_solver_kernel = make_initialize_solver_kernel(use_acceleration)
@@ -312,10 +315,10 @@ class PADMMSolver:
     def warmstart(
         self,
         problem: DualProblem,
-        model: Model,
-        data: ModelData,
-        limits: Limits | None = None,
-        contacts: Contacts | None = None,
+        model: ModelKamino,
+        data: DataKamino,
+        limits: LimitsKamino | None = None,
+        contacts: ContactsKamino | None = None,
     ):
         """
         Warm-starts the internal solver state based on the selected warm-start mode.
@@ -328,11 +331,11 @@ class PADMMSolver:
         Args:
             problem (DualProblem): The dual forward dynamics problem to be solved.\n
                 This is needed during warm-starts in order to access the problem preconditioning.
-            model (Model): The model associated with the problem.
-            data (ModelData): The model data associated with the problem.
-            limits (Limits | None): The limits container associated with the model.\n
+            model (ModelKamino): The model associated with the problem.
+            data (DataKamino): The model data associated with the problem.
+            limits (LimitsKamino | None): The limits container associated with the model.\n
                 If `None`, no warm-starting from limits is performed.
-            contacts (Contacts | None): The contacts container associated with the model.\n
+            contacts (ContactsKamino | None): The contacts container associated with the model.\n
                 If `None`, no warm-starting from contacts is performed.
         """
         # TODO: IS THIS EVEN NECESSARY AT ALL?
@@ -389,43 +392,43 @@ class PADMMSolver:
     ###
 
     @staticmethod
-    def _check_settings(
-        model: Model | None = None, settings: list[PADMMSettings] | PADMMSettings | None = None
-    ) -> list[PADMMSettings]:
+    def _check_config(
+        model: ModelKamino | None = None, config: list[PADMMConfig] | PADMMConfig | None = None
+    ) -> list[PADMMConfig]:
         """
-        Checks and validates the provided solver settings, returning a list
-        of settings objects corresponding to each world in the model.
+        Checks and validates the provided solver config, returning a list
+        of config objects corresponding to each world in the model.
 
         Args:
-            model (Model | None): The model for which to validate the settings.
-            settings (list[PADMMSettings] | PADMMSettings | None): The solver settings to validate.
+            model (ModelKamino | None): The model for which to validate the config.
+            config (list[PADMMConfig] | PADMMConfig | None): The solver config to validate.
         """
-        # If no settings are provided, use defaults
-        if settings is None:
-            # If no model is provided, use a single default settings object
+        # If no config is provided, use defaults
+        if config is None:
+            # If no model is provided, use a single default config object
             if model is None:
-                settings = [PADMMSettings()]
+                config = [PADMMConfig()]
 
-            # If a model is provided, create a list of default settings
+            # If a model is provided, create a list of default config
             # objects based on the number of worlds in the model
             else:
                 num_worlds = model.info.num_worlds
-                settings = [PADMMSettings()] * num_worlds
+                config = [PADMMConfig()] * num_worlds
 
-        # If a single settings object is provided, convert it to a list
-        elif isinstance(settings, PADMMSettings):
-            settings = [settings] * (model.info.num_worlds if model else 1)
+        # If a single config object is provided, convert it to a list
+        elif isinstance(config, PADMMConfig):
+            config = [config] * (model.info.num_worlds if model else 1)
 
-        # If a list of settings is provided, ensure it matches the number
-        # of worlds and that all settings are instances of PADMMSettings
-        elif isinstance(settings, list):
-            if model is not None and len(settings) != model.info.num_worlds:
-                raise ValueError(f"Expected {model.info.num_worlds} settings, got {len(settings)}")
-            if not all(isinstance(s, PADMMSettings) for s in settings):
-                raise TypeError("All settings must be instances of PADMMSettings")
+        # If a list of configs is provided, ensure it matches the number
+        # of worlds and that all configs are instances of PADMMConfig
+        elif isinstance(config, list):
+            if model is not None and len(config) != model.info.num_worlds:
+                raise ValueError(f"Expected {model.info.num_worlds} configs, got {len(config)}")
+            if not all(isinstance(s, PADMMConfig) for s in config):
+                raise TypeError("All configs must be instances of PADMMConfig")
 
-        # Return the validated settings
-        return settings
+        # Return the validated config
+        return config
 
     def _initialize(self):
         """
@@ -610,8 +613,8 @@ class PADMMSolver:
 
     def _warmstart_joint_constraints(
         self,
-        model: Model,
-        data: ModelData,
+        model: ModelKamino,
+        data: DataKamino,
         problem: DualProblem,
         x_0: wp.array,
         y_0: wp.array,
@@ -621,8 +624,8 @@ class PADMMSolver:
         Warm-starts the bilateral joint constraint variables from the model data container.
 
         Args:
-            model (Model): The model associated with the problem.
-            data (ModelData): The model data associated with the problem.
+            model (ModelKamino): The model associated with the problem.
+            data (DataKamino): The model data associated with the problem.
             problem (DualProblem): The dual forward dynamics problem to be solved.\n
                 This is needed during warm-starts in order to access the problem preconditioning.
             x_0 (wp.array): The output primal variables array to be warm-started.
@@ -655,9 +658,9 @@ class PADMMSolver:
 
     def _warmstart_limit_constraints(
         self,
-        model: Model,
-        data: ModelData,
-        limits: Limits,
+        model: ModelKamino,
+        data: DataKamino,
+        limits: LimitsKamino,
         problem: DualProblem,
         x_0: wp.array,
         y_0: wp.array,
@@ -667,9 +670,9 @@ class PADMMSolver:
         Warm-starts the unilateral limit constraint variables from the limits data container.
 
         Args:
-            model (Model): The model associated with the problem.
-            data (ModelData): The model data associated with the problem.
-            limits (Limits): The limits container associated with the model.
+            model (ModelKamino): The model associated with the problem.
+            data (DataKamino): The model data associated with the problem.
+            limits (LimitsKamino): The limits container associated with the model.
             problem (DualProblem): The dual forward dynamics problem to be solved.\n
                 This is needed during warm-starts in order to access the problem preconditioning.
             x_0 (wp.array): The output primal variables array to be warm-started.
@@ -699,9 +702,9 @@ class PADMMSolver:
 
     def _warmstart_contact_constraints(
         self,
-        model: Model,
-        data: ModelData,
-        contacts: Contacts,
+        model: ModelKamino,
+        data: DataKamino,
+        contacts: ContactsKamino,
         problem: DualProblem,
         x_0: wp.array,
         y_0: wp.array,
@@ -711,9 +714,9 @@ class PADMMSolver:
         Warm-starts the unilateral contact constraint variables from the contacts data container.
 
         Args:
-            model (Model): The model associated with the problem.
-            data (ModelData): The model data associated with the problem.
-            contacts (Contacts): The contacts container associated with the model.
+            model (ModelKamino): The model associated with the problem.
+            data (DataKamino): The model data associated with the problem.
+            contacts (ContactsKamino): The contacts container associated with the model.
             problem (DualProblem): The dual forward dynamics problem to be solved.\n
                 This is needed during warm-starts in order to access the problem preconditioning.
             x_0 (wp.array): The output primal variables array to be warm-started.
@@ -784,10 +787,10 @@ class PADMMSolver:
     def _warmstart_from_containers(
         self,
         problem: DualProblem,
-        model: Model,
-        data: ModelData,
-        limits: Limits | None = None,
-        contacts: Contacts | None = None,
+        model: ModelKamino,
+        data: DataKamino,
+        limits: LimitsKamino | None = None,
+        contacts: ContactsKamino | None = None,
     ):
         """
         Warm-starts the internal solver state from the provided model data and limits and contacts containers.
@@ -795,11 +798,11 @@ class PADMMSolver:
         Args:
             problem (DualProblem): The dual forward dynamics problem to be solved.\n
                 This is needed during warm-starts in order to access the problem preconditioning.
-            model (Model): The model associated with the problem.
-            data (ModelData): The model data associated with the problem.
-            limits (Limits | None): The limits container associated with the model.\n
+            model (ModelKamino): The model associated with the problem.
+            data (DataKamino): The model data associated with the problem.
+            limits (LimitsKamino | None): The limits container associated with the model.\n
                 If `None`, no warm-starting from limits is performed.
-            contacts (Contacts | None): The contacts container associated with the model.\n
+            contacts (ContactsKamino | None): The contacts container associated with the model.\n
                 If `None`, no warm-starting from contacts is performed.
         """
         # Capture references to the warm-start variables

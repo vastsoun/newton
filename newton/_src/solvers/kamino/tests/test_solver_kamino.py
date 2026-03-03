@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Unit tests for the :class:`SolverKamino` class"""
+"""Unit tests for the :class:`SolverKaminoImpl` class"""
 
 import time
 import unittest
@@ -21,21 +21,22 @@ import unittest
 import numpy as np
 import warp as wp
 
-from newton._src.solvers.kamino.core.control import Control
-from newton._src.solvers.kamino.core.joints import JointActuationType, JointCorrectionMode
-from newton._src.solvers.kamino.core.model import Model, ModelData
-from newton._src.solvers.kamino.core.state import State
+from newton._src.solvers.kamino.core.control import ControlKamino
+from newton._src.solvers.kamino.core.data import DataKamino
+from newton._src.solvers.kamino.core.joints import JointActuationType
+from newton._src.solvers.kamino.core.model import ModelKamino
+from newton._src.solvers.kamino.core.state import StateKamino
 from newton._src.solvers.kamino.core.types import float32, int32, transformf, vec6f
-from newton._src.solvers.kamino.dynamics import DualProblem, DualProblemSettings
+from newton._src.solvers.kamino.dynamics import DualProblem, DualProblemConfig
 from newton._src.solvers.kamino.examples import print_progress_bar
-from newton._src.solvers.kamino.geometry.contacts import Contacts
+from newton._src.solvers.kamino.geometry.contacts import ContactsKamino
 from newton._src.solvers.kamino.kinematics.jacobians import DenseSystemJacobians, SparseSystemJacobians
-from newton._src.solvers.kamino.kinematics.limits import Limits
+from newton._src.solvers.kamino.kinematics.limits import LimitsKamino
 from newton._src.solvers.kamino.linalg import ConjugateGradientSolver, LinearSolverType, LLTBlockedSolver
 from newton._src.solvers.kamino.models.builders.basics import build_boxes_fourbar
 from newton._src.solvers.kamino.models.builders.utils import make_homogeneous_builder
-from newton._src.solvers.kamino.solver_kamino import SolverKamino, SolverKaminoSettings
-from newton._src.solvers.kamino.solvers import PADMMSettings, PADMMSolver, PADMMWarmStartMode
+from newton._src.solvers.kamino.solver_kamino import SolverKaminoConfig, SolverKaminoImpl
+from newton._src.solvers.kamino.solvers import PADMMConfig, PADMMSolver
 from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.utils import logger as msg
 
@@ -80,7 +81,11 @@ def _test_control_callback(
 
 
 def test_prestep_callback(
-    solver: SolverKamino, state_in: State, state_out: State, control: Control, contacts: Contacts
+    solver: SolverKaminoImpl,
+    state_in: StateKamino,
+    state_out: StateKamino,
+    control: ControlKamino,
+    contacts: ContactsKamino,
 ):
     """
     A control callback function
@@ -104,21 +109,21 @@ rtol = 1e-7
 atol = 1e-6
 
 
-def assert_solver_settings(testcase: unittest.TestCase, settings: SolverKaminoSettings):
-    testcase.assertIsInstance(settings, SolverKaminoSettings)
-    testcase.assertIsInstance(settings.problem, DualProblemSettings)
-    testcase.assertIsInstance(settings.padmm, PADMMSettings)
-    testcase.assertIsInstance(settings.warmstart_mode, PADMMWarmStartMode)
-    testcase.assertTrue(issubclass(settings.linear_solver_type, LinearSolverType))
-    testcase.assertIsInstance(settings.rotation_correction, JointCorrectionMode)
+def assert_solver_config(testcase: unittest.TestCase, config: SolverKaminoConfig):
+    testcase.assertIsInstance(config, SolverKaminoConfig)
+    testcase.assertIsInstance(config.problem, DualProblemConfig)
+    testcase.assertIsInstance(config.padmm, PADMMConfig)
+    testcase.assertIsInstance(config.warmstart_mode, str)
+    testcase.assertTrue(issubclass(config.linear_solver_type, LinearSolverType))
+    testcase.assertIsInstance(config.rotation_correction, str)
 
 
-def assert_solver_components(testcase: unittest.TestCase, solver: SolverKamino):
-    testcase.assertIsInstance(solver, SolverKamino)
-    testcase.assertIsInstance(solver.settings, SolverKaminoSettings)
-    testcase.assertIsInstance(solver._model, Model)
-    testcase.assertIsInstance(solver._data, ModelData)
-    testcase.assertIsInstance(solver._limits, Limits)
+def assert_solver_components(testcase: unittest.TestCase, solver: SolverKaminoImpl):
+    testcase.assertIsInstance(solver, SolverKaminoImpl)
+    testcase.assertIsInstance(solver.config, SolverKaminoConfig)
+    testcase.assertIsInstance(solver._model, ModelKamino)
+    testcase.assertIsInstance(solver._data, DataKamino)
+    testcase.assertIsInstance(solver._limits, LimitsKamino)
     if solver._problem_fd.sparse:
         testcase.assertIsInstance(solver._jacobians, SparseSystemJacobians)
     else:
@@ -127,9 +132,9 @@ def assert_solver_components(testcase: unittest.TestCase, solver: SolverKamino):
     testcase.assertIsInstance(solver._solver_fd, PADMMSolver)
 
 
-def assert_states_equal(testcase: unittest.TestCase, state_0: State, state_1: State):
-    testcase.assertIsInstance(state_0, State)
-    testcase.assertIsInstance(state_1, State)
+def assert_states_equal(testcase: unittest.TestCase, state_0: StateKamino, state_1: StateKamino):
+    testcase.assertIsInstance(state_0, StateKamino)
+    testcase.assertIsInstance(state_1, StateKamino)
     np.testing.assert_array_equal(state_0.q_i.numpy(), state_1.q_i.numpy())
     np.testing.assert_array_equal(state_0.u_i.numpy(), state_1.u_i.numpy())
     np.testing.assert_array_equal(state_0.w_i.numpy(), state_1.w_i.numpy())
@@ -139,9 +144,9 @@ def assert_states_equal(testcase: unittest.TestCase, state_0: State, state_1: St
     np.testing.assert_array_equal(state_0.lambda_j.numpy(), state_1.lambda_j.numpy())
 
 
-def assert_states_close(testcase: unittest.TestCase, state_0: State, state_1: State):
-    testcase.assertIsInstance(state_0, State)
-    testcase.assertIsInstance(state_1, State)
+def assert_states_close(testcase: unittest.TestCase, state_0: StateKamino, state_1: StateKamino):
+    testcase.assertIsInstance(state_0, StateKamino)
+    testcase.assertIsInstance(state_1, StateKamino)
     np.testing.assert_allclose(state_0.q_i.numpy(), state_1.q_i.numpy(), rtol=rtol, atol=atol)
     np.testing.assert_allclose(state_0.u_i.numpy(), state_1.u_i.numpy(), rtol=rtol, atol=atol)
     np.testing.assert_allclose(state_0.w_i.numpy(), state_1.w_i.numpy(), rtol=rtol, atol=atol)
@@ -153,15 +158,15 @@ def assert_states_close(testcase: unittest.TestCase, state_0: State, state_1: St
 
 def assert_states_close_masked(
     testcase: unittest.TestCase,
-    model: Model,
-    state_0: State,
-    state_n: State,
-    state_n_ref: State,
+    model: ModelKamino,
+    state_0: StateKamino,
+    state_n: StateKamino,
+    state_n_ref: StateKamino,
     world_mask: wp.array,
 ):
-    testcase.assertIsInstance(model, Model)
-    testcase.assertIsInstance(state_0, State)
-    testcase.assertIsInstance(state_n, State)
+    testcase.assertIsInstance(model, ModelKamino)
+    testcase.assertIsInstance(state_0, StateKamino)
+    testcase.assertIsInstance(state_n, StateKamino)
 
     num_bodies_per_world = model.size.max_of_num_bodies
     num_joint_dofs_per_world = model.size.max_of_num_joint_dofs
@@ -210,11 +215,11 @@ def assert_states_close_masked(
 
 def step_solver(
     num_steps: int,
-    solver: SolverKamino,
-    state_p: State,
-    state_n: State,
-    control: Control,
-    contacts: Contacts | None = None,
+    solver: SolverKaminoImpl,
+    state_p: StateKamino,
+    state_n: StateKamino,
+    control: ControlKamino,
+    contacts: ContactsKamino | None = None,
     dt: float = 0.001,
     show_progress: bool = False,
 ):
@@ -232,7 +237,7 @@ def step_solver(
 ###
 
 
-class TestSolverKaminoSettings(unittest.TestCase):
+class TestSolverKaminoConfig(unittest.TestCase):
     def setUp(self):
         if not test_context.setup_done:
             setup_tests(clear_cache=False)
@@ -252,23 +257,23 @@ class TestSolverKaminoSettings(unittest.TestCase):
             msg.reset_log_level()
 
     def test_00_make_default(self):
-        settings = SolverKaminoSettings()
-        assert_solver_settings(self, settings)
-        self.assertEqual(settings.linear_solver_type, LLTBlockedSolver)
+        config = SolverKaminoConfig()
+        assert_solver_config(self, config)
+        self.assertEqual(config.linear_solver_type, LLTBlockedSolver)
 
     def test_01_make_explicit(self):
-        settings = SolverKaminoSettings(
-            problem=DualProblemSettings(),
-            padmm=PADMMSettings(),
-            warmstart_mode=PADMMWarmStartMode.CONTAINERS,
+        config = SolverKaminoConfig(
+            problem=DualProblemConfig(),
+            padmm=PADMMConfig(),
+            warmstart_mode="containers",
             linear_solver_type=ConjugateGradientSolver,
-            rotation_correction=JointCorrectionMode.CONTINUOUS,
+            rotation_correction="continuous",
         )
-        assert_solver_settings(self, settings)
-        self.assertEqual(settings.linear_solver_type, ConjugateGradientSolver)
+        assert_solver_config(self, config)
+        self.assertEqual(config.linear_solver_type, ConjugateGradientSolver)
 
 
-class TestSolverKamino(unittest.TestCase):
+class TestSolverKaminoImpl(unittest.TestCase):
     def setUp(self):
         if not test_context.setup_done:
             setup_tests(clear_cache=False)
@@ -297,7 +302,7 @@ class TestSolverKamino(unittest.TestCase):
         """
         Test that creating a default Kamino solver without a model raises an error.
         """
-        self.assertRaises(TypeError, lambda: SolverKamino())
+        self.assertRaises(TypeError, lambda: SolverKaminoImpl())
 
     def test_01_make_default_valid_with_limits_and_without_contacts(self):
         """
@@ -305,8 +310,8 @@ class TestSolverKamino(unittest.TestCase):
         """
         builder = make_homogeneous_builder(num_worlds=1, build_fn=build_boxes_fourbar)
         model = builder.finalize(device=self.default_device)
-        solver = SolverKamino(model=model)
-        self.assertIsInstance(solver, SolverKamino)
+        solver = SolverKaminoImpl(model=model)
+        self.assertIsInstance(solver, SolverKaminoImpl)
         assert_solver_components(self, solver)
 
     def test_02_make_default_valid_with_limits_and_with_contacts(self):
@@ -316,9 +321,9 @@ class TestSolverKamino(unittest.TestCase):
         builder = make_homogeneous_builder(num_worlds=1, build_fn=build_boxes_fourbar)
         model = builder.finalize(device=self.default_device)
         _, world_max_contacts = builder.compute_required_contact_capacity(max_contacts_per_pair=16)
-        contacts = Contacts(capacity=world_max_contacts, device=model.device)
-        solver = SolverKamino(model=model, contacts=contacts)
-        self.assertIsInstance(solver, SolverKamino)
+        contacts = ContactsKamino(capacity=world_max_contacts, device=model.device)
+        solver = SolverKaminoImpl(model=model, contacts=contacts)
+        self.assertIsInstance(solver, SolverKaminoImpl)
         assert_solver_components(self, solver)
 
     def test_03_make_default_valid_without_limits_and_without_contacts(self):
@@ -327,8 +332,8 @@ class TestSolverKamino(unittest.TestCase):
         """
         builder = make_homogeneous_builder(num_worlds=1, build_fn=build_boxes_fourbar, limits=False)
         model = builder.finalize(device=self.default_device)
-        solver = SolverKamino(model=model)
-        self.assertIsInstance(solver, SolverKamino)
+        solver = SolverKaminoImpl(model=model)
+        self.assertIsInstance(solver, SolverKaminoImpl)
         assert_solver_components(self, solver)
         self.assertIsNone(solver._limits.data.wid)
 
@@ -339,9 +344,9 @@ class TestSolverKamino(unittest.TestCase):
         builder = make_homogeneous_builder(num_worlds=1, build_fn=build_boxes_fourbar, limits=False)
         model = builder.finalize(device=self.default_device)
         _, world_max_contacts = builder.compute_required_contact_capacity(max_contacts_per_pair=16)
-        contacts = Contacts(capacity=world_max_contacts, device=model.device)
-        solver = SolverKamino(model=model, contacts=contacts)
-        self.assertIsInstance(solver, SolverKamino)
+        contacts = ContactsKamino(capacity=world_max_contacts, device=model.device)
+        solver = SolverKaminoImpl(model=model, contacts=contacts)
+        self.assertIsInstance(solver, SolverKaminoImpl)
         assert_solver_components(self, solver)
         self.assertIsNone(solver._limits.data.wid)
 
@@ -355,7 +360,7 @@ class TestSolverKamino(unittest.TestCase):
         """
         builder = make_homogeneous_builder(num_worlds=3, build_fn=build_boxes_fourbar, limits=False)
         model = builder.finalize(device=self.default_device)
-        solver = SolverKamino(model=model)
+        solver = SolverKaminoImpl(model=model)
 
         # Create reset argument arrays
         state_0 = model.state()
@@ -409,7 +414,7 @@ class TestSolverKamino(unittest.TestCase):
         """
         builder = make_homogeneous_builder(num_worlds=3, build_fn=build_boxes_fourbar, limits=False)
         model = builder.finalize(device=self.default_device)
-        solver = SolverKamino(model=model)
+        solver = SolverKaminoImpl(model=model)
 
         # Set a pre-step control callback to apply external forces
         # that will sufficiently perturb the system state
@@ -475,7 +480,7 @@ class TestSolverKamino(unittest.TestCase):
         """
         builder = make_homogeneous_builder(num_worlds=3, build_fn=build_boxes_fourbar, limits=False)
         model = builder.finalize(device=self.default_device)
-        solver = SolverKamino(model=model)
+        solver = SolverKaminoImpl(model=model)
 
         # Set a pre-step control callback to apply external forces
         # that will sufficiently perturb the system state
@@ -667,7 +672,7 @@ class TestSolverKamino(unittest.TestCase):
         """
         builder = make_homogeneous_builder(num_worlds=3, build_fn=build_boxes_fourbar, limits=False)
         model = builder.finalize(device=self.default_device)
-        solver = SolverKamino(model=model)
+        solver = SolverKaminoImpl(model=model)
 
         # Set a pre-step control callback to apply external forces
         # that will sufficiently perturb the system state
@@ -870,7 +875,7 @@ class TestSolverKamino(unittest.TestCase):
         """
         builder = make_homogeneous_builder(num_worlds=3, build_fn=build_boxes_fourbar, limits=False)
         model = builder.finalize(device=self.default_device)
-        solver = SolverKamino(model=model)
+        solver = SolverKaminoImpl(model=model)
 
         # Set a pre-step control callback to apply external forces
         # that will sufficiently perturb the system state
@@ -1167,8 +1172,8 @@ class TestSolverKamino(unittest.TestCase):
         msg.info(f"[single]: [init]: single_state_p.lambda_j:\n{single_state_p.lambda_j}\n\n")
 
         # Create simulator and check if the initial state is consistent with the contents of the builder
-        single_solver = SolverKamino(model=single_model)
-        self.assertIsInstance(single_solver, SolverKamino)
+        single_solver = SolverKaminoImpl(model=single_model)
+        self.assertIsInstance(single_solver, SolverKaminoImpl)
         assert_solver_components(self, single_solver)
         self.assertIs(single_solver._model, single_model)
 
@@ -1249,7 +1254,7 @@ class TestSolverKamino(unittest.TestCase):
         multi_control = multi_model.control()
 
         # Create simulator and check if the initial state is consistent with the contents of the builder
-        multi_solver = SolverKamino(model=multi_model)
+        multi_solver = SolverKaminoImpl(model=multi_model)
         self.assertEqual(multi_model.size.sum_of_num_bodies, single_model.size.sum_of_num_bodies * num_worlds)
         self.assertEqual(multi_model.size.sum_of_num_joints, single_model.size.sum_of_num_joints * num_worlds)
         for i, body in enumerate(multi_builder.bodies):
@@ -1345,11 +1350,11 @@ class TestSolverKamino(unittest.TestCase):
 
         # Create a contacts container for the single-instance system
         _, single_world_max_contacts = single_builder.compute_required_contact_capacity(max_contacts_per_pair=16)
-        single_contacts = Contacts(capacity=single_world_max_contacts, device=single_model.device)
+        single_contacts = ContactsKamino(capacity=single_world_max_contacts, device=single_model.device)
 
         # Create simulator and check if the initial state is consistent with the contents of the builder
-        single_solver = SolverKamino(model=single_model, contacts=single_contacts)
-        self.assertIsInstance(single_solver, SolverKamino)
+        single_solver = SolverKaminoImpl(model=single_model, contacts=single_contacts)
+        self.assertIsInstance(single_solver, SolverKaminoImpl)
         assert_solver_components(self, single_solver)
         self.assertIs(single_solver._model, single_model)
 
@@ -1431,10 +1436,10 @@ class TestSolverKamino(unittest.TestCase):
 
         # Create a contacts container for the multi-instance system
         _, multi_world_max_contacts = multi_builder.compute_required_contact_capacity(max_contacts_per_pair=16)
-        multi_contacts = Contacts(capacity=multi_world_max_contacts, device=multi_model.device)
+        multi_contacts = ContactsKamino(capacity=multi_world_max_contacts, device=multi_model.device)
 
         # Create simulator and check if the initial state is consistent with the contents of the builder
-        multi_solver = SolverKamino(model=multi_model, contacts=multi_contacts)
+        multi_solver = SolverKaminoImpl(model=multi_model, contacts=multi_contacts)
         self.assertEqual(multi_model.size.sum_of_num_bodies, single_model.size.sum_of_num_bodies * num_worlds)
         self.assertEqual(multi_model.size.sum_of_num_joints, single_model.size.sum_of_num_joints * num_worlds)
         for i, body in enumerate(multi_builder.bodies):

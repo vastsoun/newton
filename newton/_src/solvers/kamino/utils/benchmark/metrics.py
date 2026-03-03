@@ -16,12 +16,10 @@
 import os
 from typing import Any, Literal
 
-import git
-import h5py
 import numpy as np
 
 from .....core.types import override
-from ...solver_kamino import SolverKamino, SolverKaminoSettings
+from ...solver_kamino import SolverKamino, SolverKaminoConfig
 from .configs import load_solver_configs_to_hdf5, save_solver_configs_to_hdf5
 from .render import (
     ColumnGroup,
@@ -63,6 +61,17 @@ class CodeInfo:
         Raises:
             RuntimeError: If there is an error retrieving git repository info from the specified path.
         """
+        # TODO: Consider using a silent warning and allowing the CodeInfo
+        # to be initialized with None values instead of raising an error
+        # Attempt to import git first, and warn user
+        # if the necessary package is not installed
+        try:
+            import git
+        except ImportError as e:
+            raise ImportError(
+                "The GitPython package is required for downloading git folders. Install it with: pip install gitpython"
+            ) from e
+
         # Declare git repository info attributes
         self.repo: git.Repo | None = None
         self.path: str | None = None
@@ -332,7 +341,7 @@ class BenchmarkMetrics:
     def __init__(
         self,
         problems: list[str] | None = None,
-        configs: dict[str, SolverKaminoSettings] | None = None,
+        configs: dict[str, SolverKaminoConfig] | None = None,
         num_steps: int | None = None,
         step_metrics: bool = False,
         solver_metrics: bool = False,
@@ -346,7 +355,7 @@ class BenchmarkMetrics:
 
         # Declare cache of the solver configurations used in the
         # benchmark for easy reference when analyzing results
-        self._configs: dict[str, SolverKaminoSettings] | None = None
+        self._configs: dict[str, SolverKaminoConfig] | None = None
 
         # One-time metrics
         self.memory_used: np.ndarray | None = None
@@ -403,7 +412,7 @@ class BenchmarkMetrics:
     def finalize(
         self,
         problems: list[str],
-        configs: dict[str, SolverKaminoSettings],
+        configs: dict[str, SolverKaminoConfig],
         num_steps: int | None = None,
         step_metrics: bool = False,
         solver_metrics: bool = False,
@@ -500,6 +509,15 @@ class BenchmarkMetrics:
             self.physics_metrics.compute_stats()
 
     def save_to_hdf5(self, path: str):
+        # Attempt to import h5py first, and warn user
+        # if the necessary package is not installed
+        try:
+            import h5py  # noqa: PLC0415
+        except ImportError as e:
+            raise ImportError(
+                "The `h5py` package is required for saving to HDF5. Install it with: pip install h5py"
+            ) from e
+
         # Ensure that there is in fact data to save before attempting to write to HDF5
         if self._problem_names is None or self._config_names is None or self._num_steps is None:
             raise ValueError("BenchmarkMetrics: problem names, config names, and num_steps must be set before saving.")
@@ -552,6 +570,15 @@ class BenchmarkMetrics:
                 datafile["Data/perstep/physics/f_ccp"] = self.physics_metrics.f_ccp
 
     def load_from_hdf5(self, path: str):
+        # Attempt to import h5py first, and warn user
+        # if the necessary package is not installed
+        try:
+            import h5py  # noqa: PLC0415
+        except ImportError as e:
+            raise ImportError(
+                "The `h5py` package is required for saving to HDF5. Install it with: pip install h5py"
+            ) from e
+
         """Load raw data arrays from the HDF5 file into the BenchmarkMetrics instance"""
         with h5py.File(path, "r") as datafile:
             # First load the info group to get the dimensions and initialize the data arrays
@@ -1056,7 +1083,7 @@ class BenchmarkMetrics:
 
         # Attempt to import matplotlib for plotting, and raise an informative error if it's not installed
         try:
-            import matplotlib.pyplot as plt  # noqa: PLC0415
+            import matplotlib.pyplot as plt
         except Exception as e:
             raise ImportError(
                 "matplotlib is required to render PADMM metrics plots. Please install matplotlib and try again."
@@ -1150,7 +1177,7 @@ class BenchmarkMetrics:
 
         # Attempt to import matplotlib for plotting, and raise an informative error if it's not installed
         try:
-            import matplotlib.pyplot as plt  # noqa: PLC0415
+            import matplotlib.pyplot as plt
         except Exception as e:
             raise ImportError(
                 "matplotlib is required to render physics metrics plots. Please install matplotlib and try again."

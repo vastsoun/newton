@@ -34,7 +34,7 @@ from .bodies import RigidBodiesData, RigidBodiesModel
 from .control import ControlKamino
 from .conversions import (
     compute_required_contact_capacity,
-    flatten_entity_local_transforms,
+    convert_entity_local_transforms,
 )
 from .data import DataKamino, DataKaminoInfo
 from .geometry import GeometriesData, GeometriesModel
@@ -727,7 +727,7 @@ class ModelKamino:
         # rotated frame, and downstream joint_X_p transforms are updated to account
         # for the parent body's frame change.
         # ---------------------------------------------------------------------------
-        flatten_entity_local_transforms(model)
+        convert_entity_local_transforms(model)
         # ----------------------------------------------------------------------------
 
         def _to_wpq(q):

@@ -29,8 +29,8 @@ from .shapes import ShapeType, max_contacts_for_shape_pair
 
 __all__ = [
     "compute_required_contact_capacity",
+    "convert_entity_local_transforms",
     "convert_model_joint_transforms",
-    "flatten_entity_local_transforms",
 ]
 
 ###
@@ -38,7 +38,7 @@ __all__ = [
 ###
 
 
-def flatten_entity_local_transforms(model: Model) -> None:
+def convert_entity_local_transforms(model: Model) -> None:
     """
     Converts all entity-local transforms (i.e. of bodies, joints and shapes) in the
     given  Newton model to a format that is compatible with Kamino's constraint system.

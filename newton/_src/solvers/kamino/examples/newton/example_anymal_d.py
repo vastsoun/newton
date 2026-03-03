@@ -30,7 +30,7 @@ import newton.examples
 
 class Example:
     def __init__(self, viewer, num_worlds=8, args=None):
-        # TODO
+        # Set simulation run-time configurations
         self.fps = 60
         self.sim_dt = 0.0025
         self.frame_dt = 1.0 / self.fps
@@ -51,10 +51,9 @@ class Example:
         asset_file = str(asset_path / "usd" / "anymal_d.usda")
         robot_builder.add_usd(
             asset_file,
-            force_show_colliders=True,
             force_position_velocity_actuation=True,
-            collapse_fixed_joints=False,  # TODO: FIX THIS WHEN ITS TRUE
-            enable_self_collisions=False,
+            collapse_fixed_joints=True,
+            enable_self_collisions=True,
             hide_collision_shapes=True,
         )
 
@@ -71,13 +70,13 @@ class Example:
         self.model = builder.finalize(skip_validation_joints=True)
 
         # Create the Kamino solver for the given model
-        # TODO: Set solver configurations
         self.solver = newton.solvers.SolverKamino(self.model)
 
         # Create state, control, and contacts data containers
         self.state_0 = self.model.state()
         self.state_1 = self.model.state()
         self.control = self.model.control()
+        self.contacts = self.model.contacts()
 
         # Use Newton's collision pipeline (same as standard Newton examples)
         self.collision_pipeline = newton.examples.create_collision_pipeline(self.model, args)

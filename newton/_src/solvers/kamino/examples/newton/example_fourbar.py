@@ -62,8 +62,6 @@ class Example:
             joint_ordering=None,
             force_show_colliders=True,
             force_position_velocity_actuation=True,
-            # bodies_follow_joint_ordering=True, TODO: CHECK THAT THIS WORKS
-            collapse_fixed_joints=False,  # TODO: FIX THIS WHEN ITS TRUE
             enable_self_collisions=False,
             hide_collision_shapes=False,
         )

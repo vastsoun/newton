@@ -22,19 +22,16 @@
 #
 ###########################################################################
 
-import os
-
 import warp as wp
 
 import newton
 import newton.examples
-from newton._src.solvers.kamino.models import get_examples_usd_assets_path
 from newton._src.solvers.kamino.utils import logger as msg
 
 
 class Example:
     def __init__(self, viewer, num_worlds=8, args=None):
-        # TODO
+        # Set simulation run-time configurations
         self.fps = 60
         self.sim_dt = 0.0025
         self.frame_dt = 1.0 / self.fps
@@ -51,15 +48,14 @@ class Example:
         robot_builder.default_shape_cfg.gap = 0.0
 
         # Load the DR Legs USD and add it to the builder
-        asset_file = os.path.join(get_examples_usd_assets_path(), "dr_legs/usd/dr_legs_with_meshes_and_boxes.usda")
-        # asset_path = newton.utils.download_asset("disneyresearch")
-        # asset_file = str(asset_path / "dr_legs/usd" / "dr_legs_with_meshes_and_boxes.usda")
+        asset_path = newton.utils.download_asset("disneyresearch")
+        asset_file = str(asset_path / "dr_legs/usd" / "dr_legs_with_meshes_and_boxes.usda")
         robot_builder.add_usd(
             asset_file,
             joint_ordering=None,
             force_show_colliders=True,
             force_position_velocity_actuation=True,
-            collapse_fixed_joints=False,  # TODO: FIX THIS WHEN ITS TRUE
+            collapse_fixed_joints=False,  # TODO @cavemor: Fails when True, investigate (doesn't have fixed joints)
             enable_self_collisions=False,
             hide_collision_shapes=True,
         )
@@ -76,19 +72,26 @@ class Example:
         # Create the model from the builder
         self.model = builder.finalize(skip_validation_joints=True)
 
+        # TODO @nvtw: This is a temporary fix because `robot_builder.default_shape_cfg`
+        # is not correctly applied to the shapes when using `add_usd()`,
+        msg.warning("self.model.shape_margin: %s", self.model.shape_margin)
+        msg.warning("self.model.shape_gap: %s", self.model.shape_gap)
+        self.model.shape_margin.fill_(0.0)
+        self.model.shape_gap.fill_(1e-5)
+
         # Create the Kamino solver for the given model
-        # TODO: Set solver configurations
         self.solver = newton.solvers.SolverKamino(self.model)
 
         # Create state and control data containers
         self.state_0 = self.model.state()
         self.state_1 = self.model.state()
         self.control = self.model.control()
+        self.contacts = self.model.contacts()
 
         # Reset the simulation state to a valid initial configuration above the ground
         self.base_q = wp.zeros(shape=(self.num_worlds,), dtype=wp.transformf)
         q_b = wp.quat_identity(dtype=wp.float32)
-        q_base = wp.transformf((0.0, 0.0, 0.5), q_b)
+        q_base = wp.transformf((0.0, 0.0, 0.4), q_b)
         self.base_q.assign([q_base] * self.num_worlds)
         self.solver.reset(state_out=self.state_0, base_q=self.base_q)
 
@@ -125,7 +128,7 @@ class Example:
     def render(self):
         self.viewer.begin_frame(self.sim_time)
         self.viewer.log_state(self.state_0)
-        # TODO: self.viewer.log_contacts(self.contacts, self.state_0)
+        # TODO @nvtw: self.viewer.log_contacts(self.contacts, self.state_1)
         self.viewer.end_frame()
 
     def test_final(self):

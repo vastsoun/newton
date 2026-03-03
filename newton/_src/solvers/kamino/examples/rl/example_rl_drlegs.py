@@ -138,8 +138,18 @@ class Example:
         # Policy (None = random actions)
         self.policy = None
 
-        # Keyboard state
-        self._reset_key_prev = False
+        # Gamepad for reset button
+        self._gamepad = None
+        try:
+            from xbox360controller import Xbox360Controller
+
+            self._gamepad = Xbox360Controller(0, axis_threshold=0.015)
+            msg.info("Gamepad connected (Select/Back = reset, or press P).")
+        except Exception:
+            msg.info("No gamepad found. Press P to reset.")
+
+        # Reset edge-detection state
+        self._reset_prev = False
 
     # Convenience accessors for the main block
     @property
@@ -172,12 +182,15 @@ class Example:
 
     def step(self):
         """One RL step: observe - infer - apply - simulate."""
-        # Keyboard handling
-        if self.body_sim.viewer is not None and hasattr(self.body_sim.viewer, "is_key_down"):
-            reset_down = bool(self.body_sim.viewer.is_key_down("p"))
-            if reset_down and not self._reset_key_prev:
-                self.reset()
-            self._reset_key_prev = reset_down
+        # Reset on gamepad Select/Back button or keyboard 'p'
+        reset_pressed = False
+        if self._gamepad is not None:
+            reset_pressed = bool(self._gamepad.button_select.is_pressed)
+        if not reset_pressed and self.body_sim.viewer is not None and hasattr(self.body_sim.viewer, "is_key_down"):
+            reset_pressed = bool(self.body_sim.viewer.is_key_down("p"))
+        if reset_pressed and not self._reset_prev:
+            self.reset()
+        self._reset_prev = reset_pressed
 
         # Compute observation from current state
         obs = self.obs_builder.compute(actions=self.actions)
@@ -281,11 +294,20 @@ if __name__ == "__main__":
     else:
         msg.info("No policy provided — using random actions")
 
-    if args.headless:
-        msg.notif("Running in headless mode...")
-        run_headless(example, progress=True)
-    else:
-        msg.notif("Running in Viewer mode...")
-        if hasattr(example.viewer, "set_camera"):
-            example.viewer.set_camera(wp.vec3(0.6, 0.6, 0.3), -10.0, 225.0)
-        newton.examples.run(example, args)
+    try:
+        if args.headless:
+            msg.notif("Running in headless mode...")
+            run_headless(example, progress=True)
+        else:
+            msg.notif("Running in Viewer mode...")
+            if hasattr(example.viewer, "set_camera"):
+                example.viewer.set_camera(wp.vec3(0.6, 0.6, 0.3), -10.0, 225.0)
+            newton.examples.run(example, args)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        if example._gamepad is not None:
+            try:
+                example._gamepad.close()
+            except Exception:
+                pass

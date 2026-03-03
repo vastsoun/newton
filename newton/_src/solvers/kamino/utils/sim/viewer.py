@@ -15,11 +15,13 @@
 
 """The customized debug viewer of Kamino"""
 
+# Python
 import glob
 import os
 import threading
 from typing import ClassVar
 
+# Thirdparty
 import warp as wp
 
 from .....viewer import ViewerGL

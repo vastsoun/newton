@@ -14,12 +14,18 @@
 # limitations under the License.
 
 ###########################################################################
-# Example: DR Legs RL policy play-back
+# Example: DR Legs walk policy play-back
 #
-# Runs a trained RL policy on the DR Legs robot using the Kamino solver with implicit PD joint control.
+# Runs a trained walk RL policy on the DR Legs robot using the Kamino
+# solver with implicit PD joint control.  Velocity commands come from an
+# Xbox gamepad or keyboard via the 3-D viewer.
+#
+# The policy expects 72D observations:
+#   base (63D) + phase encoding (4D) + cmd_vel (2D) + root_lin_vel (3D)
 #
 # Usage:
-#   python example_rl_drlegs.py --policy path/to/model.pt  # trained policy
+#   python example_rl_drlegs.py --policy path/to/model.pt
+#   python example_rl_drlegs.py --policy path/to/model.pt --mode async
 #   python example_rl_drlegs.py --headless --num-steps 200
 ###########################################################################
 
@@ -28,15 +34,16 @@ import os
 
 import numpy as np
 import torch
-import torch.nn as nn
 import warp as wp
 from warp.context import Devicelike
 
-import newton
-import newton.examples
+from newton._src.solvers.kamino.core.joints import JointActuationType
 from newton._src.solvers.kamino.examples import run_headless
+from newton._src.solvers.kamino.examples.rl.joystick import JoystickConfig, JoystickController
 from newton._src.solvers.kamino.examples.rl.observations import DrlegsBaseObservation
 from newton._src.solvers.kamino.examples.rl.simulation import RigidBodySim
+from newton._src.solvers.kamino.examples.rl.simulation_runner import SimulationRunner
+from newton._src.solvers.kamino.examples.rl.utils import _load_policy_checkpoint, periodic_encoding
 from newton._src.solvers.kamino.models import get_examples_usd_assets_path
 from newton._src.solvers.kamino.utils import logger as msg
 
@@ -46,40 +53,17 @@ from newton._src.solvers.kamino.utils import logger as msg
 
 wp.set_module_options({"enable_backward": False})
 
-ACTIVATION_MAP = {
-    "elu": nn.ELU,
-    "relu": nn.ReLU,
-    "selu": nn.SELU,
-    "tanh": nn.Tanh,
-}
-
-
-def load_rsl_rl_actor(checkpoint_path: str, device: str, hidden_dims: list[int], activation: str = "elu") -> nn.Module:
-    """Load an rsl_rl ActorCritic checkpoint and return the actor network for inference."""
-    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
-    state_dict = checkpoint["model_state_dict"]
-
-    # Infer obs/action dims from the actor weights
-    num_obs = state_dict["actor.0.weight"].shape[1]
-    last_actor_idx = max(int(k.split(".")[1]) for k in state_dict if k.startswith("actor."))
-    num_actions = state_dict[f"actor.{last_actor_idx}.weight"].shape[0]
-
-    # Build actor Sequential: Linear, Act, Linear, Act, ..., Linear
-    act_fn = ACTIVATION_MAP[activation]
-    layers = []
-    dims = [num_obs, *hidden_dims, num_actions]
-    for i in range(len(dims) - 1):
-        layers.append(nn.Linear(dims[i], dims[i + 1]))
-        if i < len(dims) - 2:
-            layers.append(act_fn())
-    actor = nn.Sequential(*layers)
-
-    # Load only the actor weights
-    actor_state = {k.removeprefix("actor."): v for k, v in state_dict.items() if k.startswith("actor.")}
-    actor.load_state_dict(actor_state)
-    actor.eval()
-    actor.to(device)
-    return actor
+# ---------------------------------------------------------------------------
+# Walk task constants
+# ---------------------------------------------------------------------------
+_ACTION_SCALE = 0.4  # joint position scale (rad) for walk policy
+_CONTACT_DURATION = 0.35  # seconds per foot contact phase
+_PHASE_RATE = 1.0 / (2.0 * _CONTACT_DURATION)  # ~1.4286 Hz gait frequency
+_PHASE_EMBEDDING_K = 2  # periodic encoding order -> 4D embedding
+_VEL_CMD_MAX = 0.3  # m/s max velocity command
+_PD_KP = 15.0  # proportional gain (N·m/rad) for actuated joints
+_PD_KD = 0.6  # derivative gain (N·m·s/rad) for actuated joints
+_PD_ARMATURE = 0.01  # rotor inertia (kg·m²) for actuated joints
 
 
 ###
@@ -91,18 +75,18 @@ class Example:
     def __init__(
         self,
         device: Devicelike = None,
-        num_worlds: int = 1,
-        max_steps: int = 10000,
+        policy=None,
         headless: bool = False,
-        action_scale: float = 0.25,
-        control_decimation: int = 1,
         sim_dt: float = 0.01,
+        control_decimation: int = 1,
+        max_steps: int = 10000,
     ):
         # Timing
         self.sim_dt = sim_dt
-        self.max_steps = max_steps
         self.control_decimation = control_decimation
-        self.action_scale = action_scale
+        self.env_dt = sim_dt * control_decimation
+        self.max_steps = max_steps
+        num_worlds = 1
 
         # USD model path
         EXAMPLE_ASSETS_PATH = get_examples_usd_assets_path()
@@ -111,7 +95,7 @@ class Example:
         USD_MODEL_PATH = os.path.join(EXAMPLE_ASSETS_PATH, "dr_legs/usd/dr_legs_with_meshes_and_boxes.usda")
 
         # Create generic articulated body simulator
-        self.body_sim = RigidBodySim(
+        self.sim_wrapper = RigidBodySim(
             usd_model_path=USD_MODEL_PATH,
             num_worlds=num_worlds,
             sim_dt=self.sim_dt,
@@ -121,86 +105,131 @@ class Example:
             use_cuda_graph=True,
         )
 
-        # Observation builder (DR Legs specific)
-        self.obs_builder = DrlegsBaseObservation(
-            body_sim=self.body_sim,
-            action_scale=action_scale,
-        )
-        msg.info(f"Observation dim: {self.obs_builder.num_observations}")
+        # Override implicit PD gains to match training config exactly
+        act_type = wp.to_torch(self.sim_wrapper.sim.model.joints.act_type)
+        k_p = wp.to_torch(self.sim_wrapper.sim.model.joints.k_p_j)
+        k_d = wp.to_torch(self.sim_wrapper.sim.model.joints.k_d_j)
+        a_j = wp.to_torch(self.sim_wrapper.sim.model.joints.a_j)
+        b_j = wp.to_torch(self.sim_wrapper.sim.model.joints.b_j)
+        actuated_mask = act_type != JointActuationType.PASSIVE
+        k_p[actuated_mask] = _PD_KP
+        k_d[actuated_mask] = _PD_KD
+        a_j[actuated_mask] = _PD_ARMATURE
+        k_p[~actuated_mask] = 0.0
+        k_d[~actuated_mask] = 0.0
+        b_j.fill_(0.0)
 
-        # Action buffer
+        # Observation builder (63D base)
+        self.obs_builder = DrlegsBaseObservation(
+            body_sim=self.sim_wrapper,
+            action_scale=_ACTION_SCALE,
+        )
+
+        # Phase clock for gait timing
+        self._phase = torch.zeros(num_worlds, device=self.torch_device, dtype=torch.float32)
+        freq_2pi, offset = periodic_encoding(k=_PHASE_EMBEDDING_K)
+        self._freq_2pi = torch.from_numpy(freq_2pi).float().to(self.torch_device)
+        self._offset = torch.from_numpy(offset).float().to(self.torch_device)
+        self._phase_enc = torch.zeros(num_worlds, _PHASE_EMBEDDING_K * 2, device=self.torch_device, dtype=torch.float32)
+
+        # Command velocity buffer (filled by joystick each step)
+        self._cmd_vel = torch.zeros(num_worlds, 2, device=self.torch_device, dtype=torch.float32)
+
+        # Full observation buffer (72D = 63 + 4 + 2 + 3)
+        obs_dim = self.obs_builder.num_observations + _PHASE_EMBEDDING_K * 2 + 2 + 3
+        self._obs_buffer = torch.zeros(num_worlds, obs_dim, device=self.torch_device, dtype=torch.float32)
+        msg.info(f"Observation dim: {obs_dim}")
+
+        # Action buffer (12 actuated joints)
         self.actions = torch.zeros(
-            (num_worlds, self.body_sim.num_actuated),
-            device=self.body_sim.torch_device,
+            (num_worlds, self.sim_wrapper.num_actuated),
+            device=self.torch_device,
             dtype=torch.float32,
         )
 
+        # Joystick for velocity commands
+        self.joystick = JoystickController(
+            dt=self.env_dt,
+            viewer=self.sim_wrapper.viewer,
+            num_worlds=num_worlds,
+            device=self.torch_device,
+            config=JoystickConfig(
+                forward_velocity_base=_VEL_CMD_MAX,
+                forward_velocity_turbo=0.0,
+                lateral_velocity_base=_VEL_CMD_MAX,
+                lateral_velocity_turbo=0.0,
+                angular_velocity_base=0.0,
+                angular_velocity_turbo=0.0,
+            ),
+        )
+
         # Policy (None = random actions)
-        self.policy = None
+        self.policy = policy
 
-        # Gamepad for reset button
-        self._gamepad = None
-        try:
-            from xbox360controller import Xbox360Controller
-
-            self._gamepad = Xbox360Controller(0, axis_threshold=0.015)
-            msg.info("Gamepad connected (Select/Back = reset, or press P).")
-        except Exception:
-            msg.info("No gamepad found. Press P to reset.")
-
-        # Reset edge-detection state
-        self._reset_prev = False
-
-    # Convenience accessors for the main block
+    # Convenience accessors
     @property
     def torch_device(self) -> str:
-        return self.body_sim.torch_device
+        return self.sim_wrapper.torch_device
 
     @property
     def viewer(self):
-        return self.body_sim.viewer
+        return self.sim_wrapper.viewer
 
     # Simulation helpers
 
     def _apply_actions(self):
         """Convert policy actions to implicit PD joint position references."""
-        self.body_sim.q_j_ref.zero_()
-        self.body_sim.q_j_ref[:, self.body_sim.actuated_dof_indices_tensor] = self.action_scale * self.actions
-        self.body_sim.dq_j_ref.zero_()
+        self.sim_wrapper.q_j_ref.zero_()
+        self.sim_wrapper.q_j_ref[:, self.sim_wrapper.actuated_dof_indices_tensor] = _ACTION_SCALE * self.actions
+        self.sim_wrapper.dq_j_ref.zero_()
 
     def reset(self):
         """Reset the simulation and internal state."""
-        self.body_sim.reset()
+        self.sim_wrapper.reset()
         self.actions.zero_()
         self.obs_builder.reset()
-        self.body_sim.q_j_ref.zero_()
-        self.body_sim.dq_j_ref.zero_()
+        self._phase.zero_()
+        self._cmd_vel.zero_()
+        self.sim_wrapper.q_j_ref.zero_()
+        self.sim_wrapper.dq_j_ref.zero_()
+        self.joystick.reset()
 
     def step_once(self):
         """Single physics step (used by run_headless warm-up)."""
-        self.body_sim.step()
+        self.sim_wrapper.step()
 
-    def step(self):
-        """One RL step: observe - infer - apply - simulate."""
-        # Reset on gamepad Select/Back button or keyboard 'p'
-        reset_pressed = False
-        if self._gamepad is not None:
-            reset_pressed = bool(self._gamepad.button_select.is_pressed)
-        if not reset_pressed and self.body_sim.viewer is not None and hasattr(self.body_sim.viewer, "is_key_down"):
-            reset_pressed = bool(self.body_sim.viewer.is_key_down("p"))
-        if reset_pressed and not self._reset_prev:
-            self.reset()
-        self._reset_prev = reset_pressed
+    def update_input(self):
+        """Transfer joystick velocity commands to the command buffer."""
+        self._cmd_vel[0, 0] = self.joystick.forward_velocity
+        self._cmd_vel[0, 1] = self.joystick.lateral_velocity
 
-        # Compute observation from current state
-        obs = self.obs_builder.compute(actions=self.actions)
+    def sim_step(self):
+        """Observations -> policy inference -> actions -> physics step."""
+        # Advance phase clock
+        self._phase.add_(self.env_dt * _PHASE_RATE).remainder_(1.0)
+
+        # Base observation (63D)
+        base_obs = self.obs_builder.compute(actions=self.actions)
+
+        # Phase encoding (4D): sin(phase * freq_2pi + offset)
+        torch.sin(torch.outer(self._phase, self._freq_2pi).add_(self._offset), out=self._phase_enc)
+
+        # Root linear velocity (3D, world frame)
+        root_lin_vel = self.sim_wrapper.u_i[:, 0, :3]
+
+        # Build full 72D observation
+        d_base = base_obs.shape[1]
+        d_phase = self._phase_enc.shape[1]
+        self._obs_buffer[:, :d_base] = base_obs
+        self._obs_buffer[:, d_base : d_base + d_phase] = self._phase_enc
+        self._obs_buffer[:, d_base + d_phase : d_base + d_phase + 2] = self._cmd_vel
+        self._obs_buffer[:, d_base + d_phase + 2 :] = root_lin_vel
 
         # Policy inference
         with torch.no_grad():
             if self.policy is not None:
-                self.actions[:] = self.policy(obs)
+                self.actions[:] = self.policy(self._obs_buffer)
             else:
-                # Random actions in [-1, 1] if no policy provided # todo for testing only, remove later
                 self.actions[:] = 2.0 * torch.rand_like(self.actions) - 1.0
 
         # Write action targets to implicit PD controller
@@ -208,15 +237,19 @@ class Example:
 
         # Step physics for control_decimation substeps
         for _ in range(self.control_decimation):
-            self.body_sim.step()
+            self.sim_wrapper.step()
+
+    def step(self):
+        """One RL step: check reset -> joystick -> observe -> infer -> apply -> simulate."""
+        if self.joystick.check_reset():
+            self.reset()
+        self.joystick.update()
+        self.update_input()
+        self.sim_step()
 
     def render(self):
         """Render the current frame."""
-        self.body_sim.render()
-
-    def test(self):
-        """Test function for compatibility."""
-        pass
+        self.sim_wrapper.render()
 
 
 ###
@@ -224,7 +257,7 @@ class Example:
 ###
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="DR Legs RL play example")
+    parser = argparse.ArgumentParser(description="DR Legs walk policy play example")
     parser.add_argument("--device", type=str, help="The compute device to use")
     parser.add_argument(
         "--headless",
@@ -232,39 +265,30 @@ if __name__ == "__main__":
         default=False,
         help="Run in headless mode",
     )
-    parser.add_argument("--num-worlds", type=int, default=1, help="Number of worlds")
     parser.add_argument("--num-steps", type=int, default=10000, help="Steps for headless mode")
-    parser.add_argument("--action-scale", type=float, default=0.25, help="Action scaling factor")
     parser.add_argument(
         "--control-decimation",
         type=int,
-        default=1,
+        default=5,
         help="Number of physics substeps per RL step",
     )
-    parser.add_argument("--sim-dt", type=float, default=0.01, help="Physics substep duration in seconds")
+    parser.add_argument("--sim-dt", type=float, default=0.004, help="Physics substep duration in seconds")
     parser.add_argument("--policy", type=str, default=None, help="Path to an rsl_rl checkpoint .pt file")
-    parser.add_argument("--hidden-dims", type=int, nargs="+", default=[64, 64, 64], help="Actor hidden layer dims")
-    parser.add_argument("--activation", type=str, default="elu", help="Actor activation function")
     parser.add_argument(
-        "--clear-cache",
-        action=argparse.BooleanOptionalAction,
-        default=False,
-        help="Clear warp cache",
+        "--mode",
+        choices=["sync", "async"],
+        default="sync",
+        help="Sim loop mode: sync (default) or async",
     )
     parser.add_argument(
-        "--test",
-        action=argparse.BooleanOptionalAction,
-        default=False,
-        help="Run tests",
+        "--render-fps",
+        type=float,
+        default=30.0,
+        help="Target render FPS for async mode (default: 30)",
     )
     args = parser.parse_args()
 
     np.set_printoptions(linewidth=20000, precision=6, threshold=10000, suppress=True)
-
-    if args.clear_cache:
-        wp.clear_kernel_cache()
-        wp.clear_lto_cache()
-
     msg.set_log_level(msg.LogLevel.INFO)
 
     if args.device:
@@ -275,39 +299,36 @@ if __name__ == "__main__":
 
     msg.info(f"device: {device}")
 
-    example = Example(
-        device=device,
-        num_worlds=args.num_worlds,
-        max_steps=args.num_steps,
-        headless=args.headless,
-        action_scale=args.action_scale,
-        control_decimation=args.control_decimation,
-        sim_dt=args.sim_dt,
-    )
+    # Convert warp device to torch device string
+    torch_device = "cuda" if device.is_cuda else "cpu"
 
     # Load trained policy if provided
+    policy = None
     if args.policy:
-        example.policy = load_rsl_rl_actor(
-            args.policy, device=example.torch_device, hidden_dims=args.hidden_dims, activation=args.activation
-        )
+        policy = _load_policy_checkpoint(args.policy, device=torch_device)
         msg.info(f"Loaded policy from: {args.policy}")
     else:
-        msg.info("No policy provided — using random actions")
+        msg.info("No policy provided -- using random actions")
+
+    example = Example(
+        device=device,
+        policy=policy,
+        headless=args.headless,
+        sim_dt=args.sim_dt,
+        control_decimation=args.control_decimation,
+        max_steps=args.num_steps,
+    )
 
     try:
         if args.headless:
             msg.notif("Running in headless mode...")
             run_headless(example, progress=True)
         else:
-            msg.notif("Running in Viewer mode...")
+            msg.notif(f"Running in Viewer mode ({args.mode})...")
             if hasattr(example.viewer, "set_camera"):
                 example.viewer.set_camera(wp.vec3(0.6, 0.6, 0.3), -10.0, 225.0)
-            newton.examples.run(example, args)
+            SimulationRunner(example, mode=args.mode, render_fps=args.render_fps).run()
     except KeyboardInterrupt:
         pass
     finally:
-        if example._gamepad is not None:
-            try:
-                example._gamepad.close()
-            except Exception:
-                pass
+        example.joystick.close()

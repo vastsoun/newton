@@ -815,8 +815,7 @@ class SolverKaminoImpl(SolverBase):
         wp.copy(self._data.bodies.q_i, state_in.q_i)
         wp.copy(self._data.bodies.u_i, state_in.u_i)
         wp.copy(self._data.bodies.w_i, state_in.w_i)
-        # wp.copy(self._data.bodies.w_e_i, state_in.w_i_e)  # TODO: How to plug into picking forces?
-        wp.copy(self._data.bodies.w_e_i, state_in.w_i)  # TODO: REMOVE THIS
+        wp.copy(self._data.bodies.w_e_i, state_in.w_i_e)
         wp.copy(self._data.joints.q_j, state_in.q_j)
         wp.copy(self._data.joints.q_j_p, state_in.q_j_p)
         wp.copy(self._data.joints.dq_j, state_in.dq_j)
@@ -835,7 +834,7 @@ class SolverKaminoImpl(SolverBase):
         wp.copy(state_out.q_i, self._data.bodies.q_i)
         wp.copy(state_out.u_i, self._data.bodies.u_i)
         wp.copy(state_out.w_i, self._data.bodies.w_i)
-        # wp.copy(state_out.w_i_e, self._data.bodies.w_e_i)  # TODO: How to plug into picking forces?
+        wp.copy(state_out.w_i_e, self._data.bodies.w_e_i)
         wp.copy(state_out.q_j, self._data.joints.q_j)
         wp.copy(state_out.q_j_p, self._data.joints.q_j_p)
         wp.copy(state_out.dq_j, self._data.joints.dq_j)
@@ -1608,7 +1607,7 @@ class SolverKamino(SolverBase):
         # State attributes
         builder.add_custom_attribute(
             ModelBuilder.CustomAttribute(
-                name="body_f_ext",
+                name="body_f_total",
                 assignment=Model.AttributeAssignment.STATE,
                 frequency=Model.AttributeFrequency.BODY,
                 dtype=vec6f,
@@ -1620,6 +1619,15 @@ class SolverKamino(SolverBase):
                 name="joint_q_prev",
                 assignment=Model.AttributeAssignment.STATE,
                 frequency=Model.AttributeFrequency.JOINT_COORD,
+                dtype=wp.float32,
+                default=0.0,
+            )
+        )
+        builder.add_custom_attribute(
+            ModelBuilder.CustomAttribute(
+                name="joint_lambdas",
+                assignment=Model.AttributeAssignment.STATE,
+                frequency=Model.AttributeFrequency.JOINT_CONSTRAINT,
                 dtype=wp.float32,
                 default=0.0,
             )

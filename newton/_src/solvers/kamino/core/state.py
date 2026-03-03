@@ -353,9 +353,8 @@ class StateKamino:
             body_q=self.q_i,
         )
 
-    @classmethod
+    @staticmethod
     def from_newton(
-        cls,
         size: SizeKamino,
         model: Model,
         state: State,
@@ -395,19 +394,31 @@ class StateKamino:
         else:
             raise ValueError("State must have at least body_q or joint_q defined to determine device for StateKamino.")
 
+        # If the state contains the Kamino-specific `body_f_total` custom attribute,
+        # capture a reference to it; otherwise, create a new array for it.
+        if hasattr(state, "body_f_total"):
+            body_f_total = state.body_f_total
+        else:
+            body_f_total = wp.zeros_like(state.body_f)
+            state.body_f_total = body_f_total
+
         # If the state contains the Kamino-specific `joint_q_prev` custom attribute,
         # capture a reference to it; otherwise, create a new array for it.
         if hasattr(state, "joint_q_prev"):
             joint_q_prev = state.joint_q_prev
         else:
             joint_q_prev = wp.clone(state.joint_q)
+            state.joint_q_prev = joint_q_prev
 
         # If the state contains the Kamino-specific `joint_lambdas` custom attribute,
         # capture a reference to it; otherwise, create a new array for it.
-        if hasattr(state, "joint_lambdas"):
+        is_joint_lambdas_valid = hasattr(state, "joint_lambdas") and state.joint_lambdas is not None
+        is_joint_lambdas_valid &= state.joint_lambdas.shape == (size.sum_of_num_joint_cts,)
+        if is_joint_lambdas_valid:
             joint_lambdas = state.joint_lambdas
         else:
             joint_lambdas = wp.zeros(shape=(size.sum_of_num_joint_cts,), dtype=wp.float32, device=device)
+            state.joint_lambdas = joint_lambdas
 
         # Optionally initialize the `joint_q_prev` array to match the current `joint_q`
         if initialize_state_prev:
@@ -417,7 +428,8 @@ class StateKamino:
         state_kamino = StateKamino(
             q_i=state.body_q,
             u_i=state.body_qd.view(dtype=vec6f),  # TODO: change to wp.spatial_vector
-            w_i=state.body_f.view(dtype=vec6f),  # TODO: change to wp.spatial_vector
+            w_i=body_f_total.view(dtype=vec6f),  # TODO: change to wp.spatial_vector
+            w_i_e=state.body_f.view(dtype=vec6f),  # TODO: change to wp.spatial_vector
             q_j=state.joint_q,
             q_j_p=joint_q_prev,
             dq_j=state.joint_qd,
@@ -433,8 +445,8 @@ class StateKamino:
         # relevant data from the input newton.State
         return state_kamino
 
-    @classmethod
-    def to_newton(cls, model: Model, state: StateKamino, convert_to_body_frame: bool = False) -> State:
+    @staticmethod
+    def to_newton(model: Model, state: StateKamino, convert_to_body_frame: bool = False) -> State:
         """
         Constructs a :class:`newton.State` object from a :class:`kamino.StateKamino` object.
 
@@ -472,11 +484,12 @@ class StateKamino:
         state_newton = State()
         state_newton.body_q = state.q_i
         state_newton.body_qd = state.u_i.view(dtype=wp.spatial_vectorf)
-        state_newton.body_f = state.w_i.view(dtype=wp.spatial_vectorf)
+        state_newton.body_f = state.w_i_e.view(dtype=wp.spatial_vectorf)
         state_newton.joint_q = state.q_j
         state_newton.joint_qd = state.dq_j
 
         # Add Kamino-specific custom attributes to the newton.State object
+        state_newton.body_f_total = state.w_i.view(dtype=wp.spatial_vectorf)
         state_newton.joint_q_prev = state.q_j_p
         state_newton.joint_lambdas = state.lambda_j
 

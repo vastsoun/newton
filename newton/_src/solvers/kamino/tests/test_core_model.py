@@ -847,26 +847,34 @@ class TestModelConversions(unittest.TestCase):
         self.assertIsInstance(state_1.q_i, wp.array)
         self.assertEqual(state_1.q_i.size, model_1.size.sum_of_num_bodies)
 
-        state_2: StateKamino = StateKamino.from_newton(model_0, state_0, True, False)
+        state_2: StateKamino = StateKamino.from_newton(model_2.size, model_0, state_0, True, False)
         self.assertIsInstance(state_2.q_i, wp.array)
         self.assertEqual(state_2.q_i.size, model_1.size.sum_of_num_bodies)
+        # NOTE: Check ptr due to conversion from wp.spatial_vectorf
+        self.assertIs(state_2.u_i.ptr, state_0.body_qd.ptr)
+        self.assertIs(state_2.w_i.ptr, state_0.body_f_total.ptr)
+        self.assertIs(state_2.w_i_e.ptr, state_0.body_f.ptr)
+        # NOTE: Check that the same arrays because these should be pure references
         self.assertIs(state_2.q_i, state_0.body_q)
-        self.assertIs(state_2.u_i.ptr, state_0.body_qd.ptr)  # NOTE: Check ptr due to conversion from wp.spatial_vectorf
-        self.assertIs(state_2.w_i.ptr, state_0.body_f.ptr)  # NOTE: Check ptr due to conversion from wp.spatial_vectorf
         self.assertIs(state_2.q_j, state_0.joint_q)
         self.assertIs(state_2.dq_j, state_0.joint_qd)
         self.assertIs(state_2.q_j_p, state_0.joint_q_prev)
+        self.assertIs(state_2.lambda_j, state_0.joint_lambdas)
         test_util_checks.assert_state_equal(self, state_2, state_1)
 
         state_3: State = StateKamino.to_newton(model_0, state_2)
         self.assertIsInstance(state_3.body_q, wp.array)
         self.assertEqual(state_3.body_q.size, model_0.body_count)
+        # NOTE: Check ptr due to conversion from vec6f
+        self.assertIs(state_3.body_qd.ptr, state_2.u_i.ptr)
+        self.assertIs(state_3.body_f_total.ptr, state_2.w_i.ptr)
+        self.assertIs(state_3.body_f.ptr, state_2.w_i_e.ptr)
+        # NOTE: Check that the same arrays because these should be pure references
         self.assertIs(state_3.body_q, state_2.q_i)
-        self.assertIs(state_3.body_qd.ptr, state_2.u_i.ptr)  # NOTE: Check ptr due to conversion from vec6f
-        self.assertIs(state_3.body_f.ptr, state_2.w_i.ptr)  # NOTE: Check ptr due to conversion from vec6f
         self.assertIs(state_3.joint_q, state_2.q_j)
         self.assertIs(state_3.joint_qd, state_2.dq_j)
         self.assertIs(state_3.joint_q_prev, state_2.q_j_p)
+        self.assertIs(state_3.joint_lambdas, state_2.lambda_j)
 
     def test_20_control_conversions(self):
         """

@@ -19,7 +19,9 @@ import numpy as np
 import warp as wp
 
 from ....sim.model import Model
+from ..core.model import ModelKamino
 from ..core.shapes import ShapeType, max_contacts_for_shape_pair
+from ..core.types import vec4f
 from ..utils import logger as msg
 
 ###
@@ -28,6 +30,7 @@ from ..utils import logger as msg
 
 __all__ = [
     "compute_required_contact_capacity",
+    "convert_model_gravity",
     "flatten_entity_local_transforms",
 ]
 
@@ -256,3 +259,30 @@ def compute_required_contact_capacity(
 
     # Return the per-world maximum contacts list
     return sum(world_max_contacts), world_max_contacts
+
+
+# TODO: Use a kernel for this operation
+def convert_model_gravity(model_in: Model, model_out: ModelKamino) -> None:
+    """
+    Re-derive Kamino's GravityModel from Newton's model.gravity.
+    """
+    gravity_np = model_in.gravity.numpy()
+    num_worlds = model_in.world_count
+    g_dir_acc_np = np.zeros((num_worlds, 4), dtype=np.float32)
+    vector_np = np.zeros((num_worlds, 4), dtype=np.float32)
+
+    for w in range(num_worlds):
+        g_vec = gravity_np[w, :]
+        accel = float(np.linalg.norm(g_vec))
+        if accel > 0.0:
+            direction = g_vec / accel
+        else:
+            direction = np.array([0.0, 0.0, -1.0])
+        g_dir_acc_np[w, :3] = direction
+        g_dir_acc_np[w, 3] = accel
+        vector_np[w, :3] = g_vec
+        vector_np[w, 3] = 1.0
+
+    device = model_out.device
+    wp.copy(model_out.gravity.g_dir_acc, wp.array(g_dir_acc_np, dtype=vec4f, device=device))
+    wp.copy(model_out.gravity.vector, wp.array(vector_np, dtype=vec4f, device=device))

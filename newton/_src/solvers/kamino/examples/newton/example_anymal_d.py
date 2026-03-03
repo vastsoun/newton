@@ -26,17 +26,15 @@ import warp as wp
 
 import newton
 import newton.examples
-import newton.utils
-from newton._src.solvers.kamino.utils import logger as msg
 
 
 class Example:
     def __init__(self, viewer, num_worlds=8, args=None):
         # TODO
         self.fps = 60
+        self.sim_dt = 0.0025
         self.frame_dt = 1.0 / self.fps
-        self.sim_substeps = 16
-        self.sim_dt = self.frame_dt / self.sim_substeps
+        self.sim_substeps = max(1, round(self.frame_dt / self.sim_dt))
         self.sim_time = 0.0
         self.num_worlds = num_worlds
         self.viewer = viewer
@@ -53,7 +51,6 @@ class Example:
         asset_file = str(asset_path / "usd" / "anymal_d.usda")
         robot_builder.add_usd(
             asset_file,
-            # joint_ordering=None,
             force_show_colliders=True,
             force_position_velocity_actuation=True,
             collapse_fixed_joints=False,  # TODO: FIX THIS WHEN ITS TRUE
@@ -61,17 +58,14 @@ class Example:
             hide_collision_shapes=True,
         )
 
-        robot_builder.shape_collision_filter_pairs.append((0, 3))
-        msg.debug("robot_builder.shape_collision_filter_pairs: %s", robot_builder.shape_collision_filter_pairs)
-
-        # Add a ground plane per world
-        robot_builder.add_ground_plane()
-
         # Create the multi-world model by duplicating the single-robot
         # builder for the specified number of worlds
         builder = newton.ModelBuilder(up_axis=newton.Axis.Z)
         for _ in range(self.num_worlds):
             builder.add_world(robot_builder)
+
+        # Add a global ground plane applied to all worlds
+        builder.add_ground_plane()
 
         # Create the model from the builder
         self.model = builder.finalize(skip_validation_joints=True)

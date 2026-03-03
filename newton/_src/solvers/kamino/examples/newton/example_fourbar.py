@@ -22,18 +22,13 @@
 #
 ###########################################################################
 
-# Python imports
 import os
 
-# Numpy/Warp imports
 import numpy as np
 import warp as wp
 
-# Newton imports
 import newton
 import newton.examples
-
-# Kamino imports
 from newton._src.solvers.kamino.geometry import CollisionDetectorConfig
 from newton._src.solvers.kamino.models import get_basics_usd_assets_path
 from newton._src.solvers.kamino.utils import logger as msg
@@ -43,10 +38,10 @@ class Example:
     def __init__(self, viewer, num_worlds=8, args=None):
         # Set simulation run-time configurations
         self.fps = 60
+        self.sim_dt = 0.0025
         self.frame_dt = 1.0 / self.fps
+        self.sim_substeps = max(1, round(self.frame_dt / self.sim_dt))
         self.sim_time = 0.0
-        self.sim_substeps = 16
-        self.sim_dt = self.frame_dt / self.sim_substeps
         self.num_worlds = num_worlds
         self.viewer = viewer
         self.device = wp.get_device()
@@ -78,9 +73,6 @@ class Example:
         builder = newton.ModelBuilder(up_axis=newton.Axis.Z)
         for _ in range(self.num_worlds):
             builder.add_world(robot_builder)
-        # TODO: @nvtw: Add support for global ground plane
-        # TODO: builder.add_ground_plane()
-        # builder.add_ground_plane()
 
         # Create the model from the builder
         msg.notif("Creating the model from the builder...")
@@ -143,13 +135,9 @@ class Example:
     # simulate() performs one frame's worth of updates
     def simulate(self):
         for _ in range(self.sim_substeps):
-            # clear forces on the state before applying new ones
             self.state_0.clear_forces()
-            # apply forces to the model for picking, wind, etc
             self.viewer.apply_forces(self.state_0)
-            # step the simulation forward by one time step
             self.solver.step(self.state_0, self.state_1, self.control, None, self.sim_dt)
-            # swap states
             self.state_0, self.state_1 = self.state_1, self.state_0
 
     def step(self):
@@ -162,7 +150,6 @@ class Example:
     def render(self):
         self.viewer.begin_frame(self.sim_time)
         self.viewer.log_state(self.state_0)
-        # TODO: self.viewer.log_contacts(self.contacts, self.state_0)
         self.viewer.end_frame()
 
     def test_final(self):

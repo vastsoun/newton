@@ -35,7 +35,7 @@ from ...sim import (
     ModelBuilder,
     State,
 )
-from ...sim.joints import JointTargetMode, JointType
+from ...sim.joints import JointType
 from ..flags import SolverNotifyFlags
 from ..solver import SolverBase
 
@@ -47,15 +47,14 @@ from .core.joints import JointCorrectionMode
 from .core.model import ModelKamino
 from .core.state import StateKamino, compute_body_com_state, compute_body_frame_state
 from .core.time import advance_time
-from .core.types import float32, int32, quatf, transformf, uint32, vec2f, vec2i, vec3f, vec4f, vec6f
+from .core.types import float32, int32, transformf, vec3f, vec4f, vec6f
 from .dynamics.dual import DualProblem, DualProblemConfig
 from .dynamics.wrenches import (
     compute_constraint_body_wrenches,
     compute_joint_dof_body_wrenches,
 )
-from .geometry.contacts import ContactsKamino, make_contact_frame_znorm
+from .geometry.contacts import ContactsKamino, convert_contacts_kamino_to_newton, convert_contacts_newton_to_kamino
 from .geometry.detector import CollisionDetector, CollisionDetectorConfig
-from .geometry.keying import build_pair_key2
 from .integrators import IntegratorEuler, IntegratorMoreauJean
 from .kinematics.constraints import (
     make_unilateral_constraints_info,
@@ -93,252 +92,6 @@ __all__ = [
     "SolverKaminoConfig",
     "SolverKaminoImpl",
 ]
-
-###
-# Kernels
-###
-
-
-@wp.kernel
-def _apply_pd_torques(
-    joint_q: wp.array(dtype=float32),
-    joint_qd: wp.array(dtype=float32),
-    joint_target_pos: wp.array(dtype=float32),
-    joint_target_ke: wp.array(dtype=float32),
-    joint_target_kd: wp.array(dtype=float32),
-    dof_has_pd: wp.array(dtype=int32),
-    dof_to_coord: wp.array(dtype=int32),
-    joint_f: wp.array(dtype=float32),
-):
-    """Computes PD torques for DOFs that have non-zero position/velocity gains.
-
-    Overwrites (not accumulates) ``joint_f`` for PD-controlled DOFs so that
-    stale torques from a previous step are not carried over.  Any user-supplied
-    external joint forces should be applied *after* this kernel via
-    ``control.joint_f``.
-
-    Note:
-        This is a temporary workaround.  Kamino's solver core does not natively
-        consume Newton's ``joint_target_ke / joint_target_kd`` gains, unlike the
-        Featherstone, XPBD, and MuJoCo solvers which apply PD drives internally.
-        Until Kamino gains native PD support, this kernel bridges the gap so that
-        Newton examples (e.g. ANYmal) work without modification.
-    """
-    tid = wp.tid()
-    if dof_has_pd[tid] == 0:
-        return
-    coord_idx = dof_to_coord[tid]
-    if coord_idx < 0:
-        return
-    ke = joint_target_ke[tid]
-    kd = joint_target_kd[tid]
-    pos_err = joint_target_pos[tid] - joint_q[coord_idx]
-    vel_err = -joint_qd[tid]
-    joint_f[tid] = ke * pos_err + kd * vel_err
-
-
-@wp.kernel
-def _convert_kamino_contacts_to_newton(
-    n_active: wp.array(dtype=int32),
-    kamino_wid: wp.array(dtype=int32),
-    kamino_gid_AB: wp.array(dtype=vec2i),
-    kamino_position_A: wp.array(dtype=vec3f),
-    kamino_position_B: wp.array(dtype=vec3f),
-    kamino_gapfunc: wp.array(dtype=vec4f),
-    world_geom_offset: wp.array(dtype=int32),
-    shape_body: wp.array(dtype=int32),
-    body_q: wp.array(dtype=wp.transformf),
-    max_output: int32,
-    # outputs
-    rigid_contact_count: wp.array(dtype=int32),
-    rigid_contact_shape0: wp.array(dtype=int32),
-    rigid_contact_shape1: wp.array(dtype=int32),
-    rigid_contact_point0: wp.array(dtype=wp.vec3),
-    rigid_contact_point1: wp.array(dtype=wp.vec3),
-    rigid_contact_normal: wp.array(dtype=wp.vec3),
-):
-    """Converts Kamino's internal contact representation to Newton's Contacts format."""
-    tid = wp.tid()
-    n = wp.min(n_active[0], max_output)
-
-    if tid == 0:
-        rigid_contact_count[0] = n
-
-    if tid >= n:
-        return
-
-    wid = kamino_wid[tid]
-    offset = world_geom_offset[wid]
-    gids = kamino_gid_AB[tid]
-    shape0 = offset + gids[0]
-    shape1 = offset + gids[1]
-
-    rigid_contact_shape0[tid] = shape0
-    rigid_contact_shape1[tid] = shape1
-
-    normal = wp.vec3(
-        float(kamino_gapfunc[tid][0]),
-        float(kamino_gapfunc[tid][1]),
-        float(kamino_gapfunc[tid][2]),
-    )
-    rigid_contact_normal[tid] = normal
-
-    pos_a = wp.vec3(
-        float(kamino_position_A[tid][0]),
-        float(kamino_position_A[tid][1]),
-        float(kamino_position_A[tid][2]),
-    )
-    pos_b = wp.vec3(
-        float(kamino_position_B[tid][0]),
-        float(kamino_position_B[tid][1]),
-        float(kamino_position_B[tid][2]),
-    )
-
-    body_a = shape_body[shape0]
-    body_b = shape_body[shape1]
-
-    X_inv_a = wp.transform_identity()
-    if body_a >= 0:
-        X_inv_a = wp.transform_inverse(body_q[body_a])
-    X_inv_b = wp.transform_identity()
-    if body_b >= 0:
-        X_inv_b = wp.transform_inverse(body_q[body_b])
-
-    rigid_contact_point0[tid] = wp.transform_point(X_inv_a, pos_a)
-    rigid_contact_point1[tid] = wp.transform_point(X_inv_b, pos_b)
-
-
-@wp.kernel
-def _convert_newton_contacts_to_kamino(
-    # Newton contact inputs
-    newton_contact_count: wp.array(dtype=int32),
-    newton_shape0: wp.array(dtype=int32),
-    newton_shape1: wp.array(dtype=int32),
-    newton_point0: wp.array(dtype=wp.vec3),
-    newton_point1: wp.array(dtype=wp.vec3),
-    newton_normal: wp.array(dtype=wp.vec3),
-    newton_thickness0: wp.array(dtype=float32),
-    newton_thickness1: wp.array(dtype=float32),
-    # Model lookups
-    shape_body: wp.array(dtype=int32),
-    shape_world: wp.array(dtype=int32),
-    shape_mu: wp.array(dtype=float32),
-    shape_restitution: wp.array(dtype=float32),
-    body_q: wp.array(dtype=wp.transformf),
-    kamino_max_contacts: int32,
-    kamino_num_worlds: int32,
-    kamino_world_max_contacts: wp.array(dtype=int32),
-    # Kamino contact outputs
-    kamino_model_active: wp.array(dtype=int32),
-    kamino_world_active: wp.array(dtype=int32),
-    kamino_wid: wp.array(dtype=int32),
-    kamino_cid: wp.array(dtype=int32),
-    kamino_gid_AB: wp.array(dtype=vec2i),
-    kamino_bid_AB: wp.array(dtype=vec2i),
-    kamino_position_A: wp.array(dtype=vec3f),
-    kamino_position_B: wp.array(dtype=vec3f),
-    kamino_gapfunc: wp.array(dtype=vec4f),
-    kamino_frame: wp.array(dtype=quatf),
-    kamino_material: wp.array(dtype=vec2f),
-    kamino_key: wp.array(dtype=wp.uint64),
-):
-    """Convert Newton Contacts to Kamino's ContactsKamino format.
-
-    Reads body-local contact points from Newton, transforms them to world-space,
-    and populates the Kamino contact arrays with the A/B convention that Kamino's
-    solver core expects (bid_B >= 0, normal points A -> B).
-
-    Newton's ``rigid_contact_normal`` points from shape1 toward shape0 (the
-    direction that pushes shape0 away from shape1).
-    """
-    tid = wp.tid()
-    nc = newton_contact_count[0]
-    if tid >= nc or tid >= kamino_max_contacts:
-        return
-
-    s0 = newton_shape0[tid]
-    s1 = newton_shape1[tid]
-    b0 = shape_body[s0]
-    b1 = shape_body[s1]
-
-    # Determine the world index.  Global shapes (shape_world == -1) can
-    # collide with shapes from any world, so fall back to the other shape.
-    w0 = shape_world[s0]
-    w1 = shape_world[s1]
-    wid = w0
-    if w0 < 0:
-        wid = w1
-    if wid < 0 or wid >= kamino_num_worlds:
-        return
-
-    # Body-local → world-space
-    X0 = wp.transform_identity()
-    if b0 >= 0:
-        X0 = body_q[b0]
-    X1 = wp.transform_identity()
-    if b1 >= 0:
-        X1 = body_q[b1]
-
-    p0_world = wp.transform_point(X0, newton_point0[tid])
-    p1_world = wp.transform_point(X1, newton_point1[tid])
-
-    # Newton normal points from shape1 → shape0.
-    # Kamino convention: normal points A → B, with bid_B >= 0.
-    n_newton = newton_normal[tid]
-
-    # Reconstruct Newton signed contact distance d from exported fields:
-    # d = dot((p1 - p0), n_a_to_b) - (offset0 + offset1),
-    # with n_newton = -n_a_to_b and offset* stored in rigid_contact_thickness*.
-    d_newton = -wp.dot(p1_world - p0_world, n_newton) - (newton_thickness0[tid] + newton_thickness1[tid])
-
-    if b1 < 0:
-        # shape1 is world-static → make it A, shape0 becomes B.
-        # Newton normal already points from shape1 (A) to shape0 (B).
-        gid_A = s1
-        gid_B = s0
-        bid_A = b1
-        bid_B = b0
-        pos_A = p1_world
-        pos_B = p0_world
-        normal = vec3f(n_newton[0], n_newton[1], n_newton[2])
-    else:
-        # Both dynamic or shape0 is static → keep A=shape0, B=shape1.
-        # Newton normal goes shape1→shape0 = B→A, need A→B so negate.
-        gid_A = s0
-        gid_B = s1
-        bid_A = b0
-        bid_B = b1
-        pos_A = p0_world
-        pos_B = p1_world
-        normal = vec3f(-n_newton[0], -n_newton[1], -n_newton[2])
-
-    distance = d_newton
-    if distance > 0.0:
-        return
-    gapfunc = vec4f(normal[0], normal[1], normal[2], float32(distance))
-    q_frame = wp.quat_from_matrix(make_contact_frame_znorm(normal))
-
-    mu = float32(0.5) * (shape_mu[s0] + shape_mu[s1])
-    rest = float32(0.5) * (shape_restitution[s0] + shape_restitution[s1])
-
-    mcid = wp.atomic_add(kamino_model_active, 0, 1)
-    wcid = wp.atomic_add(kamino_world_active, wid, 1)
-
-    world_max = kamino_world_max_contacts[wid]
-    if mcid < kamino_max_contacts and wcid < world_max:
-        kamino_wid[mcid] = wid
-        kamino_cid[mcid] = wcid
-        kamino_gid_AB[mcid] = vec2i(gid_A, gid_B)
-        kamino_bid_AB[mcid] = vec2i(bid_A, bid_B)
-        kamino_position_A[mcid] = pos_A
-        kamino_position_B[mcid] = pos_B
-        kamino_gapfunc[mcid] = gapfunc
-        kamino_frame[mcid] = q_frame
-        kamino_material[mcid] = vec2f(mu, rest)
-        kamino_key[mcid] = build_pair_key2(uint32(gid_A), uint32(gid_B))
-    else:
-        wp.atomic_sub(kamino_model_active, 0, 1)
-        wp.atomic_sub(kamino_world_active, wid, 1)
 
 
 ###
@@ -529,7 +282,6 @@ class SolverKaminoImpl(SolverBase):
         for i in range(100):
             solver.step(state_in, state_out, control, contacts, dt)
             state_in, state_out = state_out, state_in
-
     """
 
     ResetCallbackType = Callable[["SolverKamino", StateKamino], None]
@@ -1531,7 +1283,7 @@ class SolverKamino(SolverBase):
         super().__init__(model=model)
 
         # Validate that the model does not contain unsupported components
-        self._validate_newton_model_compatibility(model)
+        self._validate_model_compatibility(model)
 
         # Create a Kamino model from the Newton model
         self._model_kamino = ModelKamino.from_newton(model)
@@ -1552,97 +1304,8 @@ class SolverKamino(SolverBase):
             config=solver_config,
         )
 
-        # Per-world geom offset array for contact conversion
-        self._world_geom_offset = self._model_kamino.info.geom_offset
-
-        # Reference to body_q from the latest step output, used by update_contacts()
-        self._last_state_body_q: wp.array | None = None
-
-        # Pre-compute PD control arrays for DOFs that have non-zero gains.
-        # This allows automatic PD torque computation in step() without
-        # requiring the user to implement a custom PD kernel.
-        self._setup_pd_control(model)
-
-    _DEFAULT_EFFORT_KE: float = 150.0
-    _DEFAULT_EFFORT_KD: float = 20.0
-
-    def _setup_pd_control(self, model: Model):
-        """Pre-compute arrays for automatic PD torque computation.
-
-        When Newton joints have non-zero ``joint_target_ke`` or ``joint_target_kd``
-        gains, this method builds the lookup tables needed to apply PD torques
-        automatically in :meth:`step`, so that user code does not need to
-        implement a custom PD kernel.
-
-        For joints in ``EFFORT`` mode (drive present but zero gains), default PD
-        gains are applied automatically so that the robot holds its pose without
-        requiring the user to set gains manually.  This matches the behaviour of
-        other Newton solvers which natively consume ``joint_target_ke / kd``.
-
-        Note:
-            This is a temporary workaround until Kamino's solver core natively
-            supports Newton's PD drive model.  It exists so that Newton examples
-            (e.g. ANYmal) work out of the box with ``SolverKamino`` without any
-            example-side modifications.
-        """
-        import numpy as np  # noqa: PLC0415
-
-        ke_np = model.joint_target_ke.numpy().copy()
-        kd_np = model.joint_target_kd.numpy().copy()
-        act_mode_np = model.joint_target_mode.numpy()
-
-        effort_mask = (act_mode_np == int(JointTargetMode.EFFORT)) & (ke_np == 0.0) & (kd_np == 0.0)
-        if np.any(effort_mask):
-            ke_np[effort_mask] = self._DEFAULT_EFFORT_KE
-            kd_np[effort_mask] = self._DEFAULT_EFFORT_KD
-            msg.info(
-                "Auto-applied default PD gains (ke=%.1f, kd=%.1f) for %d EFFORT-mode DOFs",
-                self._DEFAULT_EFFORT_KE,
-                self._DEFAULT_EFFORT_KD,
-                int(np.sum(effort_mask)),
-            )
-
-        has_pd = ((ke_np != 0.0) | (kd_np != 0.0)) & (act_mode_np != 0)
-        self._has_pd_dofs = bool(np.any(has_pd))
-
-        if not self._has_pd_dofs:
-            return
-
-        device = model.body_q.device
-        self._pd_dof_has_pd = wp.array(has_pd.astype(np.int32), dtype=int32, device=device)
-        self._pd_target_ke = wp.array(ke_np.astype(np.float32), dtype=float32, device=device)
-        self._pd_target_kd = wp.array(kd_np.astype(np.float32), dtype=float32, device=device)
-
-        q_start = model.joint_q_start.numpy()
-        qd_start = model.joint_qd_start.numpy()
-        dof_to_coord_np = np.full(model.joint_dof_count, -1, dtype=np.int32)
-        for j in range(model.joint_count):
-            ndofs = int(qd_start[j + 1] - qd_start[j])
-            ncoords = int(q_start[j + 1] - q_start[j])
-            if ndofs == ncoords:
-                for d in range(ndofs):
-                    dof_to_coord_np[int(qd_start[j]) + d] = int(q_start[j]) + d
-        self._pd_dof_to_coord = wp.array(dof_to_coord_np, dtype=int32, device=device)
-        self._pd_num_dofs = model.joint_dof_count
-
-    def _apply_pd_control(self, state: State, control: Control):
-        """Apply PD torques to ``control.joint_f`` based on current state."""
-        if not self._has_pd_dofs:
-            return
-        wp.launch(
-            _apply_pd_torques,
-            dim=self._pd_num_dofs,
-            inputs=[
-                state.joint_q,
-                state.joint_qd,
-                control.joint_target_pos,
-                self._pd_target_ke,
-                self._pd_target_kd,
-                self._pd_dof_has_pd,
-                self._pd_dof_to_coord,
-                control.joint_f,
-            ],
-        )
+        # Reference to the latest state from the latest step output, used by update_contacts()
+        self._state_p: State | None = None
 
     def reset(
         self,
@@ -1689,7 +1352,7 @@ class SolverKamino(SolverBase):
                 Shape of `(num_worlds,)` and type :class:`wp.spatial_vectorf`
         """
         self._solver_kamino.reset(
-            state_out=StateKamino.from_newton(self.model, state_out),
+            state_out=StateKamino.from_newton(self._model_kamino.size, self.model, state_out),
             world_mask=world_mask,
             actuator_q=actuator_q,
             actuator_u=actuator_u,
@@ -1719,24 +1382,25 @@ class SolverKamino(SolverBase):
                 pipeline, or ``None`` to use Kamino's internal collision detector.
             dt (float): The time step (typically in seconds).
         """
-        # Apply PD torques from joint_target_ke / joint_target_kd gains
-        self._apply_pd_control(state_in, control)
-
         # Interface the input state and control
         # containers to Kamino's equivalents
         # NOTE: These should produce zero-copy views/references
         # to the arrays of the source Newton containers.
-        state_in_kamino = StateKamino.from_newton(self.model, state_in)
-        state_out_kamino = StateKamino.from_newton(self.model, state_out)
+        state_in_kamino = StateKamino.from_newton(self._model_kamino.size, self.model, state_in)
+        state_out_kamino = StateKamino.from_newton(self._model_kamino.size, self.model, state_out)
         control_kamino = ControlKamino.from_newton(control)
 
+        # If contacts are provided, use them directly, bypassing Kamino's collision detector
         if contacts is not None:
-            self._ingest_newton_contacts(contacts, state_in)
+            convert_contacts_newton_to_kamino(self.model, state_in, contacts, self._contacts_kamino)
+            _detector = None
+        # Otherwise, use Kamino's internal collision detector to generate contacts
         else:
-            self._collision_detector_kamino.collide(self._solver_kamino.data, state_in_kamino)
+            _detector = self._collision_detector_kamino
 
         # Convert Newton body-frame poses to Kamino CoM-frame poses using
         # Kamino's corrected body-com offsets (can differ from Newton model data).
+        # TODO: state_in_kamino.convert_to_body_com_state(model=self.model)
         compute_body_com_state(
             body_com=self._model_kamino.bodies.i_r_com_i,
             body_q=state_in_kamino.q_i,
@@ -1749,11 +1413,14 @@ class SolverKamino(SolverBase):
             state_out=state_out_kamino,
             control=control_kamino,
             contacts=self._contacts_kamino,
+            detector=_detector,
             dt=dt,
         )
 
         # Convert back from Kamino CoM-frame to Newton body-frame poses using
         # the same corrected body-com offsets as the forward conversion.
+        # state_in_kamino.convert_to_body_frame_state(model=self.model)
+        # state_out_kamino.convert_to_body_frame_state(model=self.model)
         compute_body_frame_state(
             body_com=self._model_kamino.bodies.i_r_com_i,
             body_q_com=state_in_kamino.q_i,
@@ -1767,7 +1434,7 @@ class SolverKamino(SolverBase):
 
         # Keep a reference for update_contacts() which needs body_q to
         # transform world-space contact positions to body-local frame.
-        self._last_state_body_q = state_out.body_q
+        self._state_p = state_out
 
     @override
     def notify_model_changed(self, flags: int):
@@ -1779,10 +1446,16 @@ class SolverKamino(SolverBase):
         if flags & SolverNotifyFlags.MODEL_PROPERTIES:
             self._update_gravity()
 
+        if flags & SolverNotifyFlags.BODY_PROPERTIES:
+            pass  # TODO: convert to CoM-frame if body_q_i_0 is changed at runtime?
+
         if flags & SolverNotifyFlags.BODY_INERTIAL_PROPERTIES:
             # Kamino's RigidBodiesModel references Newton's arrays directly
             # (m_i, inv_m_i, i_I_i, inv_i_I_i, i_r_com_i), so no copy needed.
             pass
+
+        if flags & SolverNotifyFlags.SHAPE_PROPERTIES:
+            pass  # TODO: ???
 
         if flags & SolverNotifyFlags.JOINT_PROPERTIES:
             self._update_joint_transforms()
@@ -1790,8 +1463,13 @@ class SolverKamino(SolverBase):
         if flags & SolverNotifyFlags.JOINT_DOF_PROPERTIES:
             # Joint limits (q_j_min, q_j_max, dq_j_max, tau_j_max) are direct
             # references to Newton's arrays, so no copy needed.
-            # Re-run PD setup in case target gains changed.
-            self._setup_pd_control(self.model)
+            pass
+
+        if flags & SolverNotifyFlags.ACTUATOR_PROPERTIES:
+            pass  # TODO: ???
+
+        if flags & SolverNotifyFlags.CONSTRAINT_PROPERTIES:
+            pass  # TODO: ???
 
         unsupported = flags & ~(
             SolverNotifyFlags.MODEL_PROPERTIES
@@ -1831,7 +1509,8 @@ class SolverKamino(SolverBase):
         wp.copy(self._model_kamino.gravity.vector, wp.array(vector_np, dtype=vec4f, device=device))
 
     def _update_joint_transforms(self):
-        """Re-derive Kamino joint anchors and axes from Newton's joint_X_p / joint_X_c.
+        """
+        Re-derive Kamino joint anchors and axes from Newton's joint_X_p / joint_X_c.
 
         Called when :data:`SolverNotifyFlags.JOINT_PROPERTIES` is raised,
         indicating that ``model.joint_X_p`` or ``model.joint_X_c`` may have
@@ -1890,66 +1569,10 @@ class SolverKamino(SolverBase):
         joints_km.F_r_Fj.assign(wp.array(F_r_Fj_np, dtype=vec3f, device=device))
         joints_km.X_j.assign(wp.array(X_j_np.reshape((n_joints, 3, 3)), dtype=wp.mat33f, device=device))
 
-    def _ingest_newton_contacts(self, contacts: Contacts, state: State):
-        """Convert Newton's Contacts to Kamino's ContactsKamino for the solver core.
-
-        Transforms body-local contact points to world-space, applies the A/B
-        convention expected by Kamino (bid_B >= 0, normal A -> B), and populates
-        all required ContactsKamino fields.
-        """
-        kc = self._contacts_kamino
-        kc.clear()
-
-        max_kamino = kc.data.model_max_contacts_host
-        if max_kamino == 0:
-            return
-
-        dim = min(contacts.rigid_contact_max, max_kamino)
-        if dim == 0:
-            return
-
-        num_worlds = self._model_kamino.size.num_worlds
-        wp.launch(
-            _convert_newton_contacts_to_kamino,
-            dim=dim,
-            inputs=[
-                contacts.rigid_contact_count,
-                contacts.rigid_contact_shape0,
-                contacts.rigid_contact_shape1,
-                contacts.rigid_contact_point0,
-                contacts.rigid_contact_point1,
-                contacts.rigid_contact_normal,
-                contacts.rigid_contact_margin0,
-                contacts.rigid_contact_margin1,
-                self.model.shape_body,
-                self.model.shape_world,
-                self.model.shape_material_mu,
-                self.model.shape_material_restitution,
-                state.body_q,
-                int32(max_kamino),
-                int32(num_worlds),
-                kc.data.world_max_contacts,
-            ],
-            outputs=[
-                kc.data.model_active_contacts,
-                kc.data.world_active_contacts,
-                kc.data.wid,
-                kc.data.cid,
-                kc.data.gid_AB,
-                kc.data.bid_AB,
-                kc.data.position_A,
-                kc.data.position_B,
-                kc.data.gapfunc,
-                kc.data.frame,
-                kc.data.material,
-                kc.data.key,
-            ],
-            device=self.model.device,
-        )
-
     @override
     def update_contacts(self, contacts: Contacts, state: State | None = None) -> None:
-        """Convert Kamino contacts to Newton's Contacts format for viewer visualization.
+        """
+        Converts Kamino contacts to Newton's Contacts format.
 
         Args:
             contacts: The Newton Contacts object to populate.
@@ -1957,50 +1580,21 @@ class SolverKamino(SolverBase):
                 world-space contact positions to body-local frame. Falls back to
                 the last ``state_out`` from :meth:`step` if not provided.
         """
-        body_q = state.body_q if state is not None else self._last_state_body_q
-        if body_q is None:
-            return
-
-        kc = self._contacts_kamino
-        max_contacts = kc.data.model_max_contacts_host
-
-        if max_contacts == 0:
-            return
-
-        if max_contacts > contacts.rigid_contact_max:
+        # Determine the source state to use for contact conversion
+        if state is not None:
+            _state = state
+        elif self._state_p is not None:
+            _state = self._state_p
+        # Skip contact conversion if no state is provided and no previous state is available
+        else:
             msg.warning(
-                "Kamino max contacts (%d) exceeds Newton rigid_contact_max (%d); contacts will be truncated.",
-                max_contacts,
-                contacts.rigid_contact_max,
+                "SolverKamino.update_contacts: no state provided and "
+                "no previous state available, cannot convert contacts"
             )
+            return
 
-        dim = min(max_contacts, contacts.rigid_contact_max)
-
-        wp.launch(
-            _convert_kamino_contacts_to_newton,
-            dim=dim,
-            inputs=[
-                kc.data.model_active_contacts,
-                kc.data.wid,
-                kc.data.gid_AB,
-                kc.data.position_A,
-                kc.data.position_B,
-                kc.data.gapfunc,
-                self._world_geom_offset,
-                self.model.shape_body,
-                body_q,
-                int32(contacts.rigid_contact_max),
-            ],
-            outputs=[
-                contacts.rigid_contact_count,
-                contacts.rigid_contact_shape0,
-                contacts.rigid_contact_shape1,
-                contacts.rigid_contact_point0,
-                contacts.rigid_contact_point1,
-                contacts.rigid_contact_normal,
-            ],
-            device=self.model.device,
-        )
+        # Convert Kamino's internal contact representation to Newton's format
+        convert_contacts_kamino_to_newton(self.model, _state, self._contacts_kamino, contacts)
 
     @override
     @classmethod
@@ -2032,7 +1626,7 @@ class SolverKamino(SolverBase):
         )
 
     @staticmethod
-    def _validate_newton_model_compatibility(model: Model):
+    def _validate_model_compatibility(model: Model):
         """
         Validates that the model does not contain components unsupported by SolverKamino:
         - particles

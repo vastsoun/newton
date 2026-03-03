@@ -35,11 +35,11 @@ from newton._src.solvers.kamino.utils import logger as msg
 class Example:
     def __init__(self, viewer, num_worlds=8, args=None):
         # TODO
-        self.fps = 50
+        self.fps = 60
+        self.sim_dt = 0.0025
         self.frame_dt = 1.0 / self.fps
+        self.sim_substeps = max(1, round(self.frame_dt / self.sim_dt))
         self.sim_time = 0.0
-        self.sim_substeps = 4
-        self.sim_dt = self.frame_dt / self.sim_substeps
         self.num_worlds = num_worlds
         self.viewer = viewer
         self.device = wp.get_device()
@@ -52,6 +52,8 @@ class Example:
 
         # Load the DR Legs USD and add it to the builder
         asset_file = os.path.join(get_examples_usd_assets_path(), "dr_legs/usd/dr_legs_with_meshes_and_boxes.usda")
+        # asset_path = newton.utils.download_asset("disneyresearch")
+        # asset_file = str(asset_path / "dr_legs/usd" / "dr_legs_with_meshes_and_boxes.usda")
         robot_builder.add_usd(
             asset_file,
             joint_ordering=None,
@@ -62,41 +64,17 @@ class Example:
             hide_collision_shapes=True,
         )
 
-        robot_builder.shape_collision_filter_pairs.append((0, 3))
-        msg.debug("robot_builder.shape_collision_filter_pairs: %s", robot_builder.shape_collision_filter_pairs)
-
-        # Add a ground plane
-        # TODO: @nvtw: Remove this once global ground planes are supported
-        robot_builder.add_shape_box(
-            label="ground",
-            body=-1,
-            hx=1.0,
-            hy=1.0,
-            hz=0.1,
-            xform=wp.transformf(0.0, 0.0, -0.2, 0.0, 0.0, 0.0, 1.0),
-            cfg=newton.ModelBuilder.ShapeConfig(margin=0.0, gap=0.0),
-        )
-
         # Create the multi-world model by duplicating the single-robot
         # builder for the specified number of worlds
         builder = newton.ModelBuilder(up_axis=newton.Axis.Z)
         for _ in range(self.num_worlds):
             builder.add_world(robot_builder)
-        # TODO: @nvtw: Add support for global ground plane
-        # TODO: builder.add_ground_plane()
-        # builder.add_ground_plane()
+
+        # Add a global ground plane applied to all worlds
+        builder.add_ground_plane()
 
         # Create the model from the builder
-        self.model = builder.finalize(
-            # skip_all_validations=True,
-            skip_validation_joints=True,
-            # skip_validation_joint_ordering=True,
-        )
-
-        msg.debug("model.shape_body: %s", self.model.shape_body)
-        msg.debug("model.shape_collision_filter_pairs: %s", self.model.shape_collision_filter_pairs)
-        msg.debug("model.shape_contact_pair_count: %s", self.model.shape_contact_pair_count)
-        msg.debug("model.shape_contact_pairs:\n%s", self.model.shape_contact_pairs)
+        self.model = builder.finalize(skip_validation_joints=True)
 
         # Create the Kamino solver for the given model
         # TODO: Set solver configurations

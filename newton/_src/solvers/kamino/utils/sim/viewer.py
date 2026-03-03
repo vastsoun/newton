@@ -15,11 +15,13 @@
 
 """The customized debug viewer of Kamino"""
 
+# Python
 import glob
 import os
 import threading
 from typing import ClassVar
 
+# Thirdparty
 import warp as wp
 from PIL import Image
 
@@ -306,11 +308,11 @@ class ViewerKamino(ViewerGL):
         # Extract body poses from the kamino simulator
         body_poses = self._simulator.state.q_i.numpy()
 
-        # Render only the last collision geom
-        if self._collision_geometry:
-            cgeom = self._collision_geometry[-1]
-            if cgeom.shape.type != ShapeType.EMPTY:
-                self.render_geometry(body_poses, cgeom, scope="collision")
+        # Render each collision geom
+        for cgeom in self._collision_geometry:
+            if cgeom.shape.type == ShapeType.EMPTY:
+                continue
+            self.render_geometry(body_poses, cgeom, scope="collision")
 
         # Render each physical geom
         for pgeom in self._physical_geometry:
@@ -634,11 +636,13 @@ class ViewerKamino(ViewerGL):
         """
         # Try to import imageio-ffmpeg (optional dependency)
         try:
+            # Thirdparty
             import imageio_ffmpeg as ffmpeg  # noqa: PLC0415
         except ImportError:
             msg.warning("imageio-ffmpeg not installed. Frames saved but video not generated.")
             msg.info("Install with: pip install imageio-ffmpeg")
             return False
+        # Thirdparty
         import numpy as np  # noqa: PLC0415
 
         # Check if we have frames to process

@@ -39,8 +39,12 @@ from newton._src.solvers.kamino.examples.rl.observations import BipedalObservati
 from newton._src.solvers.kamino.examples.rl.sim_loop import SimLoop
 from newton._src.solvers.kamino.examples.rl.simulation import RigidBodySim
 from newton._src.solvers.kamino.examples.rl.utils import _load_policy_checkpoint, quat_to_projected_yaw
-from newton._src.solvers.kamino.models import get_examples_usd_assets_path
 from newton._src.solvers.kamino.utils import logger as msg
+
+# Asset root relative to this file
+_ASSETS_DIR = os.path.normpath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "..", "..", "..", "walking-character-rl", "walking_rl_kamino", "assets", "usd")
+)
 from warp.context import Devicelike
 
 # ---------------------------------------------------------------------------
@@ -105,10 +109,7 @@ class Example:
         self.env_dt = self.sim_dt * self.control_decimation
 
         # USD model path
-        EXAMPLE_ASSETS_PATH = get_examples_usd_assets_path()
-        if EXAMPLE_ASSETS_PATH is None:
-            raise FileNotFoundError("Failed to find USD assets path for examples: ensure `newton-assets` is installed.")
-        USD_MODEL_PATH = os.path.join(EXAMPLE_ASSETS_PATH, "bipedal/bipedal_t.usda")
+        USD_MODEL_PATH = os.path.join(_ASSETS_DIR, "bipedal", "bipedal.usda")
 
         # Create generic articulated body simulator
         self.sim_wrapper = RigidBodySim(
@@ -286,8 +287,8 @@ if __name__ == "__main__":
     torch_device = "cuda" if device.is_cuda else "cpu"
 
     # Load trained policy
-    POLICY_PATH = os.path.join(get_examples_usd_assets_path(), "bipedal/model.pt")
-    PHASE_RATE_POLICY_PATH = os.path.join(get_examples_usd_assets_path(), "bipedal/phase_rate.pt")
+    POLICY_PATH = os.path.join(_ASSETS_DIR, "bipedal", "model.pt")
+    PHASE_RATE_POLICY_PATH = os.path.join(_ASSETS_DIR, "bipedal", "phase_rate.pt")
     policy = _load_policy_checkpoint(POLICY_PATH, device=torch_device)
     msg.info(f"Loaded policy from: {POLICY_PATH}")
 

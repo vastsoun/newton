@@ -306,11 +306,11 @@ class ViewerKamino(ViewerGL):
         # Extract body poses from the kamino simulator
         body_poses = self._simulator.state.q_i.numpy()
 
-        # Render each collision geom
-        for cgeom in self._collision_geometry:
-            if cgeom.shape.type == ShapeType.EMPTY:
-                continue
-            self.render_geometry(body_poses, cgeom, scope="collision")
+        # Render only the last collision geom
+        if self._collision_geometry:
+            cgeom = self._collision_geometry[-1]
+            if cgeom.shape.type != ShapeType.EMPTY:
+                self.render_geometry(body_poses, cgeom, scope="collision")
 
         # Render each physical geom
         for pgeom in self._physical_geometry:

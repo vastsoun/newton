@@ -691,6 +691,10 @@ class PADMMConfig:
         config_struct.linear_solver_tolerance_ratio = self.linear_solver_tolerance_ratio
         return config_struct
 
+    def __post_init__(self):
+        """Post-initialization to validate config."""
+        self.check()
+
 
 class PADMMState:
     """

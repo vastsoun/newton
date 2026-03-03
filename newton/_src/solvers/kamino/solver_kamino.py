@@ -42,13 +42,14 @@ from ..solver import SolverBase
 # Kamino imports
 from .core.bodies import update_body_inertias, update_body_wrenches
 from .core.control import ControlKamino
+from .core.conversions import convert_model_joint_transforms
 from .core.data import DataKamino
 from .core.gravity import convert_model_gravity
 from .core.joints import JointCorrectionMode
 from .core.model import ModelKamino
 from .core.state import StateKamino, compute_body_com_state, compute_body_frame_state
 from .core.time import advance_time
-from .core.types import float32, int32, transformf, vec3f, vec6f
+from .core.types import float32, int32, transformf, vec6f
 from .dynamics.dual import DualProblem, DualProblemConfig
 from .dynamics.wrenches import (
     compute_constraint_body_wrenches,
@@ -1483,71 +1484,6 @@ class SolverKamino(SolverBase):
                 unsupported,
             )
 
-    def _update_gravity(self):
-        """Updates Kamino's :class:`GravityModel` from Newton's model.gravity."""
-        convert_model_gravity(self.model, self._model_kamino.gravity)
-
-    def _update_joint_transforms(self):
-        """
-        Re-derive Kamino joint anchors and axes from Newton's joint_X_p / joint_X_c.
-
-        Called when :data:`SolverNotifyFlags.JOINT_PROPERTIES` is raised,
-        indicating that ``model.joint_X_p`` or ``model.joint_X_c`` may have
-        changed at runtime (e.g. animated root transforms).
-        """
-        import numpy as np  # noqa: PLC0415
-
-        from .core.joints import JointDoFType  # noqa: PLC0415
-
-        model = self.model
-        joints_km = self._model_kamino.joints
-
-        joint_X_p_np = model.joint_X_p.numpy()
-        joint_X_c_np = model.joint_X_c.numpy()
-        body_com_np = model.body_com.numpy()
-        joint_parent_np = model.joint_parent.numpy()
-        joint_child_np = model.joint_child.numpy()
-        joint_axis_np = model.joint_axis.numpy()
-        joint_dof_dim_np = model.joint_dof_dim.numpy()
-        joint_qd_start_np = model.joint_qd_start.numpy()
-        joint_limit_lower_np = model.joint_limit_lower.numpy()
-        joint_limit_upper_np = model.joint_limit_upper.numpy()
-        dof_type_np = joints_km.dof_type.numpy()
-
-        n_joints = model.joint_count
-        B_r_Bj_np = np.zeros((n_joints, 3), dtype=np.float32)
-        F_r_Fj_np = np.zeros((n_joints, 3), dtype=np.float32)
-        X_j_np = np.zeros((n_joints, 9), dtype=np.float32)
-
-        for j in range(n_joints):
-            dof_type_j = JointDoFType(int(dof_type_np[j]))
-            dof_dim_j = (int(joint_dof_dim_np[j][0]), int(joint_dof_dim_np[j][1]))
-            dofs_start_j = int(joint_qd_start_np[j])
-            ndofs_j = dof_type_j.num_dofs
-            joint_axes_j = joint_axis_np[dofs_start_j : dofs_start_j + ndofs_j]
-            joint_q_min_j = joint_limit_lower_np[dofs_start_j : dofs_start_j + ndofs_j]
-            joint_q_max_j = joint_limit_upper_np[dofs_start_j : dofs_start_j + ndofs_j]
-            R_axis_j = JointDoFType.from_newton(dof_type_j, dof_dim_j, joint_axes_j, joint_q_min_j, joint_q_max_j)
-
-            parent_bid = int(joint_parent_np[j])
-            p_r_p_com = wp.vec3f(body_com_np[parent_bid]) if parent_bid >= 0 else wp.vec3f(0.0, 0.0, 0.0)
-            c_r_c_com = wp.vec3f(body_com_np[int(joint_child_np[j])])
-
-            X_p_j = wp.transformf(*joint_X_p_np[j, :])
-            X_c_j = wp.transformf(*joint_X_c_np[j, :])
-            q_p_j = wp.transform_get_rotation(X_p_j)
-            p_r_p_j = wp.transform_get_translation(X_p_j)
-            c_r_c_j = wp.transform_get_translation(X_c_j)
-
-            B_r_Bj_np[j, :] = p_r_p_j - p_r_p_com
-            F_r_Fj_np[j, :] = c_r_c_j - c_r_c_com
-            X_j_np[j, :] = wp.quat_to_matrix(q_p_j) @ R_axis_j
-
-        device = model.device
-        joints_km.B_r_Bj.assign(wp.array(B_r_Bj_np, dtype=vec3f, device=device))
-        joints_km.F_r_Fj.assign(wp.array(F_r_Fj_np, dtype=vec3f, device=device))
-        joints_km.X_j.assign(wp.array(X_j_np.reshape((n_joints, 3, 3)), dtype=wp.mat33f, device=device))
-
     @override
     def update_contacts(self, contacts: Contacts, state: State | None = None) -> None:
         """
@@ -1612,6 +1548,10 @@ class SolverKamino(SolverBase):
                 default=0.0,
             )
         )
+
+    ###
+    # Internals
+    ###
 
     @staticmethod
     def _validate_model_compatibility(model: Model):
@@ -1681,3 +1621,17 @@ class SolverKamino(SolverBase):
             for feature in unsupported_features:
                 error_msg += "\n  - " + feature
             raise ValueError(error_msg)
+
+    def _update_gravity(self):
+        """Updates Kamino's :class:`GravityModel` from Newton's model.gravity."""
+        convert_model_gravity(self.model, self._model_kamino.gravity)
+
+    def _update_joint_transforms(self):
+        """
+        Re-derive Kamino joint anchors and axes from Newton's joint_X_p / joint_X_c.
+
+        Called when :data:`SolverNotifyFlags.JOINT_PROPERTIES` is raised,
+        indicating that ``model.joint_X_p`` or ``model.joint_X_c`` may have
+        changed at runtime (e.g. animated root transforms).
+        """
+        convert_model_joint_transforms(self.model, self._model_kamino.joints)

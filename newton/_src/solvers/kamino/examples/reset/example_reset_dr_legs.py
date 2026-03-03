@@ -30,8 +30,6 @@ from newton._src.solvers.kamino.models.builders.utils import (
     make_homogeneous_builder,
     set_uniform_body_pose_offset,
 )
-from newton._src.solvers.kamino.solvers.padmm import PADMMWarmStartMode
-from newton._src.solvers.kamino.solvers.warmstart import WarmstarterContacts
 from newton._src.solvers.kamino.utils import logger as msg
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
 from newton._src.solvers.kamino.utils.sim import ViewerKamino
@@ -160,8 +158,8 @@ class Example:
         config.solver.padmm.rho_0 = 0.02
         config.solver.padmm.rho_min = 0.01
         config.solver.use_solver_acceleration = True
-        config.solver.warmstart_mode = PADMMWarmStartMode.CONTAINERS
-        config.solver.contact_warmstart_method = WarmstarterContacts.Method.GEOM_PAIR_NET_FORCE
+        config.solver.warmstart_mode = "containers"
+        config.solver.contact_warmstart_method = "geom_pair_net_force"
         config.solver.collect_solver_info = False
         config.solver.compute_metrics = False
 

@@ -22,7 +22,6 @@ import warp as wp
 import newton
 import newton.examples
 from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
-from newton._src.solvers.kamino.core.joints import JointCorrectionMode
 from newton._src.solvers.kamino.examples import get_examples_output_path, run_headless
 from newton._src.solvers.kamino.models import get_basics_usd_assets_path
 from newton._src.solvers.kamino.models.builders.basics import build_box_pendulum_vertical
@@ -93,7 +92,7 @@ class Example:
         config.solver.padmm.dual_tolerance = 1e-6
         config.solver.padmm.compl_tolerance = 1e-6
         config.solver.padmm.rho_0 = 0.1
-        config.solver.rotation_correction = JointCorrectionMode.CONTINUOUS
+        config.solver.rotation_correction = "continuous"
         config.solver.compute_metrics = logging and not use_cuda_graph
 
         # Create a simulator

@@ -30,7 +30,6 @@ from newton._src.solvers.kamino.core.types import vec6f
 from newton._src.solvers.kamino.kinematics.joints import compute_joints_data
 from newton._src.solvers.kamino.models import get_examples_usd_assets_path
 from newton._src.solvers.kamino.solvers.fk import (
-    FKPreconditionerOptions,
     ForwardKinematicsSolver,
     ForwardKinematicsSolverConfig,
 )
@@ -315,7 +314,7 @@ def simulate_random_poses(
     config = ForwardKinematicsSolverConfig()
     config.reset_state = True
     config.use_sparsity = False  # Change for sparse/dense solver
-    config.preconditioner = FKPreconditionerOptions.JACOBI_BLOCK_DIAGONAL  # Change to test preconditioners
+    config.preconditioner = "jacobi_block_diagonal"  # Change to test preconditioners
     solver = ForwardKinematicsSolver(model, config)
     success_flags = []
     with wp.ScopedDevice(model.device):

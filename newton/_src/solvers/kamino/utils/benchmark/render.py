@@ -387,13 +387,13 @@ def render_solver_configs_table(
                     f"{cfg.padmm.eta:.0e}",
                     f"{cfg.padmm.rho_0}",
                     f"{cfg.padmm.rho_min}",
-                    str(cfg.padmm.penalty_update_method.name),
+                    cfg.padmm.penalty_update_method,
                     str(cfg.padmm.penalty_update_freq),
                     str(cfg.use_solver_acceleration),
                 ]
             )
         if "warmstart" in groups:
-            cfg_row.extend([str(cfg.warmstart_mode.name), str(cfg.contact_warmstart_method.name)])
+            cfg_row.extend([cfg.warmstart_mode, cfg.contact_warmstart_method])
         table.add_row(name, *cfg_row)
 
     # Render the table to the console and/or save to file

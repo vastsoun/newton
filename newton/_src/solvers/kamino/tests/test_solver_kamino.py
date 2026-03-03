@@ -23,7 +23,7 @@ import warp as wp
 
 from newton._src.solvers.kamino.core.control import ControlKamino
 from newton._src.solvers.kamino.core.data import DataKamino
-from newton._src.solvers.kamino.core.joints import JointActuationType, JointCorrectionMode
+from newton._src.solvers.kamino.core.joints import JointActuationType
 from newton._src.solvers.kamino.core.model import ModelKamino
 from newton._src.solvers.kamino.core.state import StateKamino
 from newton._src.solvers.kamino.core.types import float32, int32, transformf, vec6f
@@ -36,7 +36,7 @@ from newton._src.solvers.kamino.linalg import ConjugateGradientSolver, LinearSol
 from newton._src.solvers.kamino.models.builders.basics import build_boxes_fourbar
 from newton._src.solvers.kamino.models.builders.utils import make_homogeneous_builder
 from newton._src.solvers.kamino.solver_kamino import SolverKaminoConfig, SolverKaminoImpl
-from newton._src.solvers.kamino.solvers import PADMMConfig, PADMMSolver, PADMMWarmStartMode
+from newton._src.solvers.kamino.solvers import PADMMConfig, PADMMSolver
 from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.utils import logger as msg
 
@@ -113,9 +113,9 @@ def assert_solver_config(testcase: unittest.TestCase, config: SolverKaminoConfig
     testcase.assertIsInstance(config, SolverKaminoConfig)
     testcase.assertIsInstance(config.problem, DualProblemConfig)
     testcase.assertIsInstance(config.padmm, PADMMConfig)
-    testcase.assertIsInstance(config.warmstart_mode, PADMMWarmStartMode)
+    testcase.assertIsInstance(config.warmstart_mode, str)
     testcase.assertTrue(issubclass(config.linear_solver_type, LinearSolverType))
-    testcase.assertIsInstance(config.rotation_correction, JointCorrectionMode)
+    testcase.assertIsInstance(config.rotation_correction, str)
 
 
 def assert_solver_components(testcase: unittest.TestCase, solver: SolverKaminoImpl):
@@ -265,9 +265,9 @@ class TestSolverKaminoConfig(unittest.TestCase):
         config = SolverKaminoConfig(
             problem=DualProblemConfig(),
             padmm=PADMMConfig(),
-            warmstart_mode=PADMMWarmStartMode.CONTAINERS,
+            warmstart_mode="containers",
             linear_solver_type=ConjugateGradientSolver,
-            rotation_correction=JointCorrectionMode.CONTINUOUS,
+            rotation_correction="continuous",
         )
         assert_solver_config(self, config)
         self.assertEqual(config.linear_solver_type, ConjugateGradientSolver)

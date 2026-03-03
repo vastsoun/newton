@@ -377,18 +377,24 @@ class SolverKaminoConfig:
     See :class:`ForwardKinematicsSolverConfig` for more details.
     """
 
-    warmstart_mode: PADMMWarmStartMode = PADMMWarmStartMode.CONTAINERS
+    warmstart_mode: Literal["none", "internal", "containers"] = "containers"
     """
     Warmstart mode to be used for the dynamics solver.\n
     See :class:`PADMMWarmStartMode` for the available options.\n
-    Defaults to `PADMMWarmStartMode.CONTAINERS to warmstart from the solver data containers.
+    Defaults to `containers` to warmstart from the solver data containers.
     """
 
-    contact_warmstart_method: WarmstarterContacts.Method = WarmstarterContacts.Method.KEY_AND_POSITION
+    contact_warmstart_method: Literal[
+        "key_and_position",
+        "geom_pair_net_force",
+        "geom_pair_net_wrench",
+        "key_and_position_with_net_force_backup",
+        "key_and_position_with_net_wrench_backup",
+    ] = "key_and_position"
     """
     Method to be used for warm-starting contacts.\n
     See :class:`WarmstarterContacts.Method` for available options.\n
-    Defaults to `WarmstarterContacts.Method.KEY_AND_POSITION`.
+    Defaults to `key_and_position`.
     """
 
     use_solver_acceleration: bool = True
@@ -429,11 +435,11 @@ class SolverKaminoConfig:
     Defaults to an empty dictionary.
     """
 
-    rotation_correction: JointCorrectionMode = JointCorrectionMode.TWOPI
+    rotation_correction: Literal["twopi", "continuous", "none"] = "twopi"
     """
     The rotation correction mode to use for rotational DoFs.\n
     See :class:`JointCorrectionMode` for available options.\n
-    Defaults to `JointCorrectionMode.TWOPI`.
+    Defaults to `twopi`.
     """
 
     angular_velocity_damping: float = 0.0
@@ -460,21 +466,12 @@ class SolverKaminoConfig:
                 "Invalid linear solver type: Expected a subclass of `LinearSolverType`, "
                 f"but got {type(self.linear_solver_type)}."
             )
-        if not isinstance(self.warmstart_mode, PADMMWarmStartMode):
-            raise TypeError(
-                "Invalid warmstart mode: Expected a `PADMMWarmStartMode` enum value, "
-                f"but got {type(self.warmstart_mode)}."
-            )
-        if not isinstance(self.contact_warmstart_method, WarmstarterContacts.Method):
-            raise TypeError(
-                "Invalid contact warmstart method: Expected a `WarmstarterContacts.Method` enum value, "
-                f"but got {type(self.contact_warmstart_method)}."
-            )
-        if not isinstance(self.rotation_correction, JointCorrectionMode):
-            raise TypeError(
-                "Invalid rotation correction mode: Expected a `JointCorrectionMode` enum value, "
-                f"but got {type(self.rotation_correction)}."
-            )
+        # Conversion to PADMMWarmStartMode will raise an error if the input string is invalid.
+        PADMMWarmStartMode.from_string(self.warmstart_mode)
+        # Conversion to WarmstarterContacts.Method will raise an error if the input string is invalid.
+        WarmstarterContacts.Method.from_string(self.contact_warmstart_method)
+        # Conversion to JointCorrectionMode will raise an error if the input string is invalid.
+        JointCorrectionMode.from_string(self.rotation_correction)
         if self.sparse and not self.sparse_jacobian:
             raise ValueError(
                 "Sparsity setting mismatch: `sparse` solver option requires that `sparse_jacobian` is set to `True`."
@@ -580,6 +577,8 @@ class SolverKaminoImpl(SolverBase):
             config = SolverKaminoConfig()
         config.check()
         self._config: SolverKaminoConfig = config
+        self._warmstart_mode: PADMMWarmStartMode = PADMMWarmStartMode.from_string(config.warmstart_mode)
+        self._rotation_correction: JointCorrectionMode = JointCorrectionMode.from_string(config.rotation_correction)
 
         # TODO: We need to rework these checks and potentially handle this check with the dynamics problem
         # TODO: Also consider raising an error here instead of a warning
@@ -637,7 +636,7 @@ class SolverKaminoImpl(SolverBase):
         self._solver_fd = PADMMSolver(
             model=self._model,
             config=self._config.padmm,
-            warmstart=self._config.warmstart_mode,
+            warmstart=self._warmstart_mode,
             use_acceleration=self._config.use_solver_acceleration,
             collect_info=self._config.collect_solver_info,
             avoid_graph_conditionals=self._config.avoid_graph_conditionals,
@@ -669,11 +668,11 @@ class SolverKaminoImpl(SolverBase):
         # Allocate the contacts warmstarter if enabled
         self._ws_limits: WarmstarterLimits | None = None
         self._ws_contacts: WarmstarterContacts | None = None
-        if self._config.warmstart_mode == PADMMWarmStartMode.CONTAINERS:
+        if self._warmstart_mode == PADMMWarmStartMode.CONTAINERS:
             self._ws_limits = WarmstarterLimits(limits=self._limits)
             self._ws_contacts = WarmstarterContacts(
                 contacts=contacts,
-                method=self._config.contact_warmstart_method,
+                method=WarmstarterContacts.Method.from_string(self._config.contact_warmstart_method),
             )
 
         # Allocate the solution metrics evaluator if enabled
@@ -1306,7 +1305,7 @@ class SolverKaminoImpl(SolverBase):
             model=self._model,
             data=self._data,
             q_j_p=_q_j_p,
-            correction=self._config.rotation_correction,
+            correction=self._rotation_correction,
         )
 
     def _update_intermediates(self, state_in: StateKamino):
@@ -1368,8 +1367,8 @@ class SolverKaminoImpl(SolverBase):
         """
         # If warm-starting is enabled, initialize unilateral
         # constraints containers from the current solver data
-        if self._config.warmstart_mode > PADMMWarmStartMode.NONE:
-            if self._config.warmstart_mode == PADMMWarmStartMode.CONTAINERS:
+        if self._warmstart_mode > PADMMWarmStartMode.NONE:
+            if self._warmstart_mode == PADMMWarmStartMode.CONTAINERS:
                 self._ws_limits.warmstart(self._limits)
                 self._ws_contacts.warmstart(self._model, self._data, contacts)
             self._solver_fd.warmstart(
@@ -1412,7 +1411,7 @@ class SolverKaminoImpl(SolverBase):
         # If warmstarting is enabled, update the limits and contacts caches
         # with the constraint reactions generated by the dynamics solver
         # NOTE: This needs to happen after unpacking the multipliers
-        if self._config.warmstart_mode == PADMMWarmStartMode.CONTAINERS:
+        if self._warmstart_mode == PADMMWarmStartMode.CONTAINERS:
             self._ws_limits.update(self._limits)
             self._ws_contacts.update(contacts)
 

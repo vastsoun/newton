@@ -243,7 +243,9 @@ class PADMMSolver:
             self._config = self._check_config(model, None)
 
         # Check if any world uses adaptive penalty updates (requiring per-step regularization updates)
-        self._uses_adaptive_penalty = any(c.penalty_update_method != PADMMPenaltyUpdate.FIXED for c in self._config)
+        self._uses_adaptive_penalty = any(
+            PADMMPenaltyUpdate.from_string(c.penalty_update_method) != PADMMPenaltyUpdate.FIXED for c in self._config
+        )
 
         # Compute the largest max iterations across all worlds
         # NOTE: This is needed to allocate the solver

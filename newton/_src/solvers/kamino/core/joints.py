@@ -15,6 +15,8 @@
 
 """Provides definitions of core joint types & containers"""
 
+from __future__ import annotations
+
 import math
 from dataclasses import dataclass, field
 from enum import IntEnum
@@ -128,7 +130,7 @@ class JointActuationType(IntEnum):
         return self.__str__()
 
     @classmethod
-    def to_newton(cls, type: "JointActuationType") -> JointTargetMode:
+    def to_newton(cls, type: JointActuationType) -> JointTargetMode:
         """
         Converts a `JointActuationType` to the corresponding `JointTargetMode`.
 
@@ -148,7 +150,7 @@ class JointActuationType(IntEnum):
         return mapping[type]
 
     @classmethod
-    def from_newton(cls, mode: JointTargetMode) -> "JointActuationType":
+    def from_newton(cls, mode: JointTargetMode) -> JointActuationType:
         """
         Converts a `JointTargetMode` to the corresponding `JointActuationType`.
 
@@ -205,6 +207,14 @@ class JointCorrectionMode(IntEnum):
             return float(PI)
         else:
             raise ValueError(f"Unknown joint correction mode: {self.value}")
+
+    @classmethod
+    def from_string(cls, s: str) -> JointCorrectionMode:
+        """Converts a string to a JointCorrectionMode enum value."""
+        try:
+            return cls[s.upper()]
+        except KeyError as e:
+            raise ValueError(f"Invalid JointCorrectionMode: {s}. Valid options are: {[e.name for e in cls]}") from e
 
     @override
     def __str__(self):
@@ -619,7 +629,7 @@ class JointDoFType(IntEnum):
             raise ValueError(f"Unknown joint DoF type: {self.value}")
 
     @classmethod
-    def to_newton(cls, dof_type: "JointDoFType") -> JointType | None:
+    def to_newton(cls, dof_type: JointDoFType) -> JointType | None:
         """
         Converts a `JointDoFType` to the corresponding `JointType`.
 
@@ -657,7 +667,7 @@ class JointDoFType(IntEnum):
         dof_dim: tuple[int, int],
         limit_lower: np.ndarray,
         limit_upper: np.ndarray,
-    ) -> "JointDoFType":
+    ) -> JointDoFType:
         """
         Converts a `JointType` to the corresponding `JointDoFType`.
 
@@ -755,7 +765,7 @@ class JointDoFType(IntEnum):
 
     @staticmethod
     def axes_matrix_from_joint_type(
-        dof_type: "JointDoFType",
+        dof_type: JointDoFType,
         dof_dim: tuple[int, int],
         dof_axes: np.ndarray,
     ) -> wp.mat33f | None:

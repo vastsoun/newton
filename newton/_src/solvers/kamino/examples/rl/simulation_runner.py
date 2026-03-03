@@ -31,7 +31,7 @@ import threading
 import time
 
 
-class SimLoop:
+class SimulationRunner:
     """Run an RL example in sync or async mode.
 
     Args:

@@ -36,15 +36,29 @@ import warp as wp
 from newton._src.solvers.kamino.examples import run_headless
 from newton._src.solvers.kamino.examples.rl.joystick import JoystickController
 from newton._src.solvers.kamino.examples.rl.observations import BipedalObservation
-from newton._src.solvers.kamino.examples.rl.sim_loop import SimLoop
 from newton._src.solvers.kamino.examples.rl.simulation import RigidBodySim
+from newton._src.solvers.kamino.examples.rl.simulation_runner import SimulationRunner
 from newton._src.solvers.kamino.examples.rl.utils import _load_policy_checkpoint, quat_to_projected_yaw
 from newton._src.solvers.kamino.utils import logger as msg
 
 # Asset root relative to this file
 _ASSETS_DIR = os.path.normpath(
-    os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "..", "..", "..", "walking-character-rl", "walking_rl_kamino", "assets", "usd")
+    os.path.join(
+        os.path.dirname(__file__),
+        "..",
+        "..",
+        "..",
+        "..",
+        "..",
+        "..",
+        "..",
+        "walking-character-rl",
+        "walking_rl_kamino",
+        "assets",
+        "usd",
+    )
 )
+# Thirdparty
 from warp.context import Devicelike
 
 # ---------------------------------------------------------------------------
@@ -306,7 +320,7 @@ if __name__ == "__main__":
             msg.notif(f"Running in Viewer mode ({args.mode})...")
             if hasattr(example.viewer, "set_camera"):
                 example.viewer.set_camera(wp.vec3(0.6, 0.6, 0.3), -10.0, 225.0)
-            SimLoop(example, mode=args.mode, render_fps=args.render_fps).run()
+            SimulationRunner(example, mode=args.mode, render_fps=args.render_fps).run()
     except KeyboardInterrupt:
         pass
     finally:

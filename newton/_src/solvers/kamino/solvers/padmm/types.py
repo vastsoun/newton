@@ -49,6 +49,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import IntEnum
+from typing import Literal
 
 import numpy as np
 import warp as wp
@@ -119,6 +120,14 @@ class PADMMPenaltyUpdate(IntEnum):
     Balanced-residuals penalty update:
     `rho` is increased in order for the ratio of primal/dual residuals to be close to unity.
     """
+
+    @classmethod
+    def from_string(cls, s: str) -> PADMMPenaltyUpdate:
+        """Converts a string to a PADMMPenaltyUpdate enum value."""
+        try:
+            return cls[s.upper()]
+        except KeyError as e:
+            raise ValueError(f"Invalid PADMMPenaltyUpdate: {s}. Valid options are: {[e.name for e in cls]}") from e
 
     @override
     def __str__(self):
@@ -515,8 +524,8 @@ class PADMMConfig:
         penalty_update_freq (int): The permitted frequency of penalty updates.\n
             If zero, no updates are performed. Otherwise, updates are performed every
             `penalty_update_freq` iterations. Defaults to `10`.
-        penalty_update_method (PADMMPenaltyUpdate): The penalty update method used to adapt the penalty parameter.\n
-            Defaults to `PADMMPenaltyUpdate.FIXED`. See :class:`PADMMPenaltyUpdate` for details.
+        penalty_update_method (str): The penalty update method used to adapt the penalty parameter.\n
+            Defaults to `fixed`. See :class:`PADMMPenaltyUpdate` for details.
 
     """
 
@@ -596,10 +605,10 @@ class PADMMConfig:
     `penalty_update_freq` iterations. Defaults to `1`.
     """
 
-    penalty_update_method: PADMMPenaltyUpdate = PADMMPenaltyUpdate.FIXED
+    penalty_update_method: Literal["fixed", "balanced"] = "fixed"
     """
     The penalty update method used to adapt the penalty parameter.\n
-    Defaults to `PADMMPenaltyUpdate.FIXED`. See :class:`PADMMPenaltyUpdate` for details.
+    Defaults to `fixed`. See :class:`PADMMPenaltyUpdate` for details.
     """
 
     linear_solver_tolerance: float = 0.0
@@ -648,11 +657,8 @@ class PADMMConfig:
             raise ValueError(f"Invalid maximum iterations: {self.max_iterations}. Must be a positive integer.")
         if self.penalty_update_freq < 0:
             raise ValueError(f"Invalid penalty update frequency: {self.penalty_update_freq}. Must be non-negative.")
-        if not isinstance(self.penalty_update_method, PADMMPenaltyUpdate):
-            raise TypeError(
-                f"Invalid penalty update method: {self.penalty_update_method}. "
-                "Must be an instance of PADMMPenaltyUpdate."
-            )
+        # Conversion to PADMMPenaltyUpdate will raise an error if the input string is invalid.
+        PADMMPenaltyUpdate.from_string(self.penalty_update_method)
         if self.linear_solver_tolerance < 0.0:
             raise ValueError(f"Invalid linear solver tolerance: {self.linear_solver_tolerance}. Must be non-negative.")
         if self.linear_solver_tolerance_ratio < 0.0:
@@ -680,7 +686,7 @@ class PADMMConfig:
         config_struct.tau = self.tau
         config_struct.max_iterations = self.max_iterations
         config_struct.penalty_update_freq = self.penalty_update_freq
-        config_struct.penalty_update_method = self.penalty_update_method
+        config_struct.penalty_update_method = PADMMPenaltyUpdate.from_string(self.penalty_update_method)
         config_struct.linear_solver_tolerance = self.linear_solver_tolerance
         config_struct.linear_solver_tolerance_ratio = self.linear_solver_tolerance_ratio
         return config_struct

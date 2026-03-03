@@ -387,7 +387,7 @@ def render_solver_configs_table(
                     f"{cfg.padmm.eta:.0e}",
                     f"{cfg.padmm.rho_0}",
                     f"{cfg.padmm.rho_min}",
-                    str(cfg.padmm.penalty_update_method.name),
+                    cfg.padmm.penalty_update_method,
                     str(cfg.padmm.penalty_update_freq),
                     str(cfg.use_solver_acceleration),
                 ]

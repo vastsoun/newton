@@ -17,7 +17,6 @@ import h5py
 
 from ...linalg.linear import LinearSolverNameToType, LinearSolverTypeToName
 from ...solver_kamino import SolverKaminoConfig
-from ...solvers.padmm import PADMMPenaltyUpdate
 
 ###
 # Module interface
@@ -63,7 +62,7 @@ def make_solver_config_default() -> tuple[str, SolverKaminoConfig]:
     config.padmm.eta = 1e-5
     config.padmm.rho_0 = 1.0
     config.padmm.rho_min = 1e-5
-    config.padmm.penalty_update_method = PADMMPenaltyUpdate.FIXED
+    config.padmm.penalty_update_method = "fixed"
     config.padmm.penalty_update_freq = 1
     config.use_solver_acceleration = True
     config.avoid_graph_conditionals = False
@@ -101,7 +100,7 @@ def make_solver_config_dense_lltb_fast_dr_legs() -> tuple[str, SolverKaminoConfi
     config.padmm.eta = 1e-5
     config.padmm.rho_0 = 0.05
     config.padmm.rho_min = 1e-5
-    config.padmm.penalty_update_method = PADMMPenaltyUpdate.FIXED
+    config.padmm.penalty_update_method = "fixed"
     config.padmm.penalty_update_freq = 1
     config.use_solver_acceleration = True
     config.avoid_graph_conditionals = False
@@ -140,7 +139,7 @@ def make_solver_config_sparse_cr_fast_dr_legs() -> tuple[str, SolverKaminoConfig
     config.padmm.eta = 1e-5
     config.padmm.rho_0 = 0.05
     config.padmm.rho_min = 0.01
-    config.padmm.penalty_update_method = PADMMPenaltyUpdate.FIXED
+    config.padmm.penalty_update_method = "fixed"
     config.padmm.penalty_update_freq = 1
     config.use_solver_acceleration = True
     config.avoid_graph_conditionals = False
@@ -178,7 +177,7 @@ def make_solver_config_sparse_cr_adaptiv_rho_balanced_dr_legs() -> tuple[str, So
     config.padmm.eta = 1e-5
     config.padmm.rho_0 = 0.05
     config.padmm.rho_min = 0.01
-    config.padmm.penalty_update_method = PADMMPenaltyUpdate.BALANCED
+    config.padmm.penalty_update_method = "balanced"
     config.padmm.penalty_update_freq = 10
     config.use_solver_acceleration = True
     config.avoid_graph_conditionals = False
@@ -282,9 +281,7 @@ def load_solver_configs_to_hdf5(datafile: h5py.File) -> dict[str, SolverKaminoCo
         config.padmm.a_0 = float(datafile[f"Solver/{config_name}/padmm/a_0"][()])
         config.padmm.alpha = float(datafile[f"Solver/{config_name}/padmm/alpha"][()])
         config.padmm.tau = float(datafile[f"Solver/{config_name}/padmm/tau"][()])
-        config.padmm.penalty_update_method = PADMMPenaltyUpdate(
-            int(datafile[f"Solver/{config_name}/padmm/penalty_update_method"][()])
-        )
+        config.padmm.penalty_update_method = str(datafile[f"Solver/{config_name}/padmm/penalty_update_method"][()])
         config.padmm.penalty_update_freq = int(datafile[f"Solver/{config_name}/padmm/penalty_update_freq"][()])
         config.padmm.linear_solver_tolerance = float(
             datafile[f"Solver/{config_name}/padmm/linear_solver_tolerance"][()]

@@ -102,8 +102,8 @@ class ControlKamino:
             raise ValueError("Error copying from/to uninitialized ControlKamino")
         wp.copy(self.tau_j, other.tau_j)
 
-    @classmethod
-    def from_newton(cls, control: Control) -> ControlKamino:
+    @staticmethod
+    def from_newton(control: Control) -> ControlKamino:
         """
         Constructs a :class:`kamino.ControlKamino` object from a :class:`newton.Control` object.
 
@@ -120,8 +120,8 @@ class ControlKamino:
             dq_j_ref=control.joint_target_vel,
         )
 
-    @classmethod
-    def to_newton(cls, control: ControlKamino) -> Control:
+    @staticmethod
+    def to_newton(control: ControlKamino) -> Control:
         """
         Constructs a :class:`newton.Control` object from a :class:`kamino.ControlKamino` object.
 

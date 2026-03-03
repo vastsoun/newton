@@ -684,8 +684,8 @@ class ModelKamino:
         # Return the constructed control container
         return control
 
-    @classmethod
-    def from_newton(cls, model: Model) -> ModelKamino:
+    @staticmethod
+    def from_newton(model: Model) -> ModelKamino:
         """
         Finalizes the :class:`ModelKamino` from an existing instance of :class:`newton.Model`.
         """

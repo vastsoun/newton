@@ -129,8 +129,8 @@ class JointActuationType(IntEnum):
         """Returns a string representation of the joint actuation type."""
         return self.__str__()
 
-    @classmethod
-    def to_newton(cls, type: JointActuationType) -> JointTargetMode:
+    @staticmethod
+    def to_newton(act_type: JointActuationType) -> JointTargetMode:
         """
         Converts a `JointActuationType` to the corresponding `JointTargetMode`.
 
@@ -138,19 +138,26 @@ class JointActuationType(IntEnum):
             type (JointActuationType): The joint actuation type to convert.
 
         Returns:
-            JointTargetMode: The corresponding Newton joint target mode.
+            JointTargetMode:
+                The corresponding Newton joint target mode, or None if not applicable.
         """
-        mapping = {
+        _MAP_TO_NEWTON: dict[JointActuationType, JointTargetMode | None] = {
             JointActuationType.PASSIVE: JointTargetMode.NONE,
             JointActuationType.FORCE: JointTargetMode.EFFORT,
             JointActuationType.POSITION: JointTargetMode.POSITION,
             JointActuationType.VELOCITY: JointTargetMode.VELOCITY,
             JointActuationType.POSITION_VELOCITY: JointTargetMode.POSITION_VELOCITY,
+            # No direct mapping to a single Newton target mode since it
+            # involves both position/velocity targets and force targets
+            JointActuationType.POSITION_VELOCITY_FORCE: None,
         }
-        return mapping[type]
+        target_mode = _MAP_TO_NEWTON.get(act_type, None)
+        if target_mode is None:
+            raise ValueError(f"Unsupported joint actuation type for conversion to Newton joint target mode: {act_type}")
+        return target_mode
 
-    @classmethod
-    def from_newton(cls, mode: JointTargetMode) -> JointActuationType:
+    @staticmethod
+    def from_newton(target_mode: JointTargetMode) -> JointActuationType:
         """
         Converts a `JointTargetMode` to the corresponding `JointActuationType`.
 
@@ -158,16 +165,20 @@ class JointActuationType(IntEnum):
             mode (JointTargetMode): The Newton joint target mode to convert.
 
         Returns:
-            JointActuationType: The corresponding joint actuation type.
+            JointActuationType | None:
+                The corresponding joint actuation type, or None if not applicable.
         """
-        mapping = {
+        _MAP_FROM_NEWTON: dict[JointTargetMode, JointActuationType] = {
             JointTargetMode.NONE: JointActuationType.PASSIVE,
             JointTargetMode.EFFORT: JointActuationType.FORCE,
             JointTargetMode.POSITION: JointActuationType.POSITION,
             JointTargetMode.VELOCITY: JointActuationType.VELOCITY,
             JointTargetMode.POSITION_VELOCITY: JointActuationType.POSITION_VELOCITY,
         }
-        return mapping[mode]
+        act_type = _MAP_FROM_NEWTON.get(target_mode, None)
+        if act_type is None:
+            raise ValueError(f"Unsupported joint target mode for conversion to joint actuation type: {target_mode}")
+        return act_type
 
 
 class JointCorrectionMode(IntEnum):
@@ -381,6 +392,10 @@ class JointDoFType(IntEnum):
     Constraints:
         6D vector: {`T_x`, `T_y`, `T_z`, `R_x`, `R_y`, `R_z`}
     """
+
+    ###
+    # Operations
+    ###
 
     @override
     def __str__(self):
@@ -628,8 +643,8 @@ class JointDoFType(IntEnum):
         else:
             raise ValueError(f"Unknown joint DoF type: {self.value}")
 
-    @classmethod
-    def to_newton(cls, dof_type: JointDoFType) -> JointType | None:
+    @staticmethod
+    def to_newton(dof_type: JointDoFType) -> JointType | None:
         """
         Converts a `JointDoFType` to the corresponding `JointType`.
 
@@ -639,7 +654,7 @@ class JointDoFType(IntEnum):
         Returns:
             JointType | None: The corresponding Newton joint type, or None if unsupported.
         """
-        mapping = {
+        _MAP_TO_NEWTON: dict[JointDoFType, JointType] = {
             # All trivially supported DoF types map directly
             # to their corresponding Newton joint types
             JointDoFType.FREE: JointType.FREE,
@@ -653,14 +668,13 @@ class JointDoFType(IntEnum):
             JointDoFType.UNIVERSAL: JointType.D6,
             JointDoFType.GIMBAL: JointType.D6,
         }
-        joint_type = mapping.get(dof_type, None)
-        if joint_type is not None:
-            return joint_type
-        return None
+        joint_type = _MAP_TO_NEWTON.get(dof_type, None)
+        if joint_type is None:
+            raise ValueError(f"Unsupported joint DoF type for conversion to Newton joint type: {dof_type}")
+        return joint_type
 
-    @classmethod
+    @staticmethod
     def from_newton(
-        cls,
         type: JointType,
         q_count: int,
         qd_count: int,
@@ -678,14 +692,17 @@ class JointDoFType(IntEnum):
             JointDoFType: The corresponding joint DoF type.
         """
         # First try directly mapping the trivially supported types
-        direct_mapping = {
+        _MAP_TO_KAMINO: dict[JointType, JointDoFType | None] = {
             JointType.FREE: JointDoFType.FREE,
             JointType.REVOLUTE: JointDoFType.REVOLUTE,
             JointType.PRISMATIC: JointDoFType.PRISMATIC,
             JointType.BALL: JointDoFType.SPHERICAL,
             JointType.FIXED: JointDoFType.FIXED,
+            # NOTE: D6 joints require special handling
+            # to infer the corresponding DoF type
+            JointType.D6: None,
         }
-        dof_type = direct_mapping.get(type, None)
+        dof_type = _MAP_TO_KAMINO.get(type, None)
         if dof_type is not None:
             return dof_type
 

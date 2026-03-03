@@ -96,6 +96,10 @@ class ShapeType(IntEnum):
     HFIELD = 10
     """The n-parameter height-field shape type. Parameters: height field data, etc."""
 
+    ###
+    # Operations
+    ###
+
     @override
     def __str__(self):
         """Returns a string representation of the shape type."""
@@ -165,10 +169,8 @@ class ShapeType(IntEnum):
         else:
             raise ValueError(f"Unknown shape type value: {self.value}")
 
-    @classmethod
-    def to_newton(
-        cls, shape_type: ShapeType, shape_params: ShapeParamsLike | None = None
-    ) -> tuple[GeoType, vec3f | None]:
+    @staticmethod
+    def to_newton(shape_type: ShapeType, shape_params: ShapeParamsLike | None = None) -> tuple[GeoType, vec3f | None]:
         """
         Converts Kamino :class:`ShapeType` Newton :class:`GeoType`, and
         optionally converts shape parameters to Newton shape scale.
@@ -216,7 +218,7 @@ class ShapeType(IntEnum):
         """
         # First attempt to convert the current shape
         # type to the corresponding Newton GeoType
-        mapping = {
+        _MAP_TO_NEWTON: dict[ShapeType, GeoType] = {
             ShapeType.EMPTY: GeoType.NONE,
             ShapeType.SPHERE: GeoType.SPHERE,
             ShapeType.CYLINDER: GeoType.CYLINDER,
@@ -229,7 +231,7 @@ class ShapeType(IntEnum):
             ShapeType.CONVEX: GeoType.CONVEX_MESH,
             ShapeType.HFIELD: GeoType.HFIELD,
         }
-        geo_type = mapping.get(shape_type, None)
+        geo_type = _MAP_TO_NEWTON.get(shape_type, None)
         if geo_type is None:
             raise ValueError(f"Unsupported mapping to `newton.GeoType` from shape type: {shape_type}")
 
@@ -279,8 +281,8 @@ class ShapeType(IntEnum):
         # Return the mapped GeoType and the converted scale (if applicable)
         return geo_type, shape_scale
 
-    @classmethod
-    def from_newton(cls, geo_type: GeoType, shape_scale: vec3f | None = None) -> tuple[ShapeType, vec4f | None]:
+    @staticmethod
+    def from_newton(geo_type: GeoType, shape_scale: vec3f | None = None) -> tuple[ShapeType, vec4f | None]:
         """
         Converts Newton :class:`GeoType` to Kamino :class:`ShapeType`, and
         optionally converts Newton shape scale to Kamino geometry parameters.
@@ -324,7 +326,7 @@ class ShapeType(IntEnum):
         """
         # First attempt to convert the newton.GeoType
         # to the corresponding Kamino ShapeType
-        mapping = {
+        _MAP_TO_KAMINO: dict[GeoType, ShapeType] = {
             GeoType.NONE: ShapeType.EMPTY,
             GeoType.SPHERE: ShapeType.SPHERE,
             GeoType.CYLINDER: ShapeType.CYLINDER,
@@ -337,7 +339,7 @@ class ShapeType(IntEnum):
             GeoType.CONVEX_MESH: ShapeType.CONVEX,
             GeoType.HFIELD: ShapeType.HFIELD,
         }
-        shape_type = mapping.get(geo_type, None)
+        shape_type = _MAP_TO_KAMINO.get(geo_type, None)
         if shape_type is None:
             raise ValueError(f"Unsupported mapping to `ShapeType` from newton.GeoType: {geo_type}")
 

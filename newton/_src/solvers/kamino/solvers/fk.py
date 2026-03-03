@@ -23,6 +23,7 @@ import sys
 from dataclasses import dataclass
 from enum import IntEnum
 from functools import cache
+from typing import Literal
 
 import numpy as np
 import warp as wp
@@ -1503,6 +1504,14 @@ class FKPreconditionerOptions(IntEnum):
     """Blockwise-diagonal Jacobi preconditioner, alternating blocks of size 3 and 4 along the diagonal,
        corresponding to the position and orientation (quaternion) of individual rigid bodies."""
 
+    @classmethod
+    def from_string(cls, s: str) -> FKPreconditionerOptions:
+        """Converts a string to a FKPreconditionerOptions enum value."""
+        try:
+            return cls[s.upper()]
+        except KeyError as e:
+            raise ValueError(f"Invalid FKPreconditionerOptions: {s}. Valid options are: {[e.name for e in cls]}") from e
+
 
 @dataclass
 class ForwardKinematicsSolverConfig:
@@ -1538,9 +1547,9 @@ class ForwardKinematicsSolverConfig:
     """Whether to use sparse Jacobian and solver; otherwise, dense versions are used (default: True).
        Changes to this setting after the solver's initialization lead to undefined behavior."""
 
-    preconditioner: FKPreconditionerOptions = FKPreconditionerOptions.JACOBI_BLOCK_DIAGONAL
+    preconditioner: Literal["none", "jacobi_diagonal", "jacobi_block_diagonal"] = "jacobi_block_diagonal"
     """Preconditioner to use for the Conjugate Gradient solver if sparsity is enabled
-       (default: JACOBI_BLOCK_DIAGONAL).
+       (default: "jacobi_block_diagonal").
        Changes to this setting after the solver's initialization lead to undefined behavior."""
 
     use_adaptive_cg_tolerance: bool = True
@@ -1565,6 +1574,8 @@ class ForwardKinematicsSolverConfig:
             raise ValueError("`TILE_SIZE_CTS` must be positive.")
         if self.TILE_SIZE_VRS <= 0:
             raise ValueError("`TILE_SIZE_VRS` must be positive.")
+        # Conversion to FKPreconditionerOptions will raise an error if the input string is invalid.
+        FKPreconditionerOptions.from_string(self.preconditioner)
 
     def __post_init__(self):
         """Post-initialization hook to check config validity."""
@@ -1661,6 +1672,9 @@ class ForwardKinematicsSolver:
 
         # Retrieve / compute dimensions - Worlds
         self.num_worlds = self.model.size.num_worlds  # For convenience
+
+        # Convert preconditioner option
+        self._preconditioner_option = FKPreconditionerOptions.from_string(self.config.preconditioner)
 
         # Retrieve / compute dimensions - Bodies
         num_bodies = self.model.info.num_bodies.numpy()  # Number of bodies per world
@@ -2143,12 +2157,12 @@ class ForwardKinematicsSolver:
             self.sparse_jacobian_op = BlockSparseLinearOperators(self.sparse_jacobian)
 
             # Initialize preconditioner
-            if self.config.preconditioner == FKPreconditionerOptions.JACOBI_DIAGONAL:
+            if self._preconditioner_option == FKPreconditionerOptions.JACOBI_DIAGONAL:
                 self.jacobian_diag_inv = wp.array(
                     dtype=wp.float32, device=self.device, shape=(self.num_worlds, self.num_states_max)
                 )
                 preconditioner_op = BatchedLinearOperator.from_diagonal(self.jacobian_diag_inv, self.num_states)
-            elif self.config.preconditioner == FKPreconditionerOptions.JACOBI_BLOCK_DIAGONAL:
+            elif self._preconditioner_option == FKPreconditionerOptions.JACOBI_BLOCK_DIAGONAL:
                 self.inv_blocks_3 = wp.array(
                     dtype=wp.mat33f, shape=(self.num_worlds, self.num_bodies_max), device=self.device
                 )
@@ -2602,9 +2616,9 @@ class ForwardKinematicsSolver:
 
         # Compute step (system solve)
         if self.config.use_sparsity:
-            if self.config.preconditioner == FKPreconditionerOptions.JACOBI_DIAGONAL:
+            if self._preconditioner_option == FKPreconditionerOptions.JACOBI_DIAGONAL:
                 block_sparse_ATA_inv_diagonal_2d(self.sparse_jacobian, self.jacobian_diag_inv, self.newton_mask)
-            elif self.config.preconditioner == FKPreconditionerOptions.JACOBI_BLOCK_DIAGONAL:
+            elif self._preconditioner_option == FKPreconditionerOptions.JACOBI_BLOCK_DIAGONAL:
                 block_sparse_ATA_blockwise_3_4_inv_diagonal_2d(
                     self.sparse_jacobian, self.inv_blocks_3, self.inv_blocks_4, self.newton_mask
                 )
@@ -2743,9 +2757,9 @@ class ForwardKinematicsSolver:
 
         # Compute body velocities (system solve)
         if self.config.use_sparsity:
-            if self.config.preconditioner == FKPreconditionerOptions.JACOBI_DIAGONAL:
+            if self._preconditioner_option == FKPreconditionerOptions.JACOBI_DIAGONAL:
                 block_sparse_ATA_inv_diagonal_2d(self.sparse_jacobian, self.jacobian_diag_inv, world_mask)
-            elif self.config.preconditioner == FKPreconditionerOptions.JACOBI_BLOCK_DIAGONAL:
+            elif self._preconditioner_option == FKPreconditionerOptions.JACOBI_BLOCK_DIAGONAL:
                 block_sparse_ATA_blockwise_3_4_inv_diagonal_2d(
                     self.sparse_jacobian, self.inv_blocks_3, self.inv_blocks_4, world_mask
                 )

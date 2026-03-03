@@ -1129,7 +1129,7 @@ class ModelBuilderKamino:
         # NOTE: This also finalizes the mesh/SDF/HField data on the device
         def make_geometry_source_pointer(geom: GeometryDescriptor, mesh_geoms: dict, device) -> int:
             # Append to data pointers array of the shape has a Mesh, SDF or HField source
-            if geom.shape.type in (ShapeType.MESH, ShapeType.CONVEX, ShapeType.HFIELD, ShapeType.SDF):
+            if geom.shape.type in (ShapeType.MESH, ShapeType.CONVEX, ShapeType.HFIELD):
                 geom_uid = geom.uid
                 # If the geometry has a Mesh, SDF or HField source,
                 # finalize it and retrieve the mesh pointer/index

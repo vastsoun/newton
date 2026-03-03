@@ -332,7 +332,9 @@ def _compute_bipedal_obs_core(
 
     # Path velocities in root frame
     _write_vec3(obs, o + obs_offsets[_OBS_PATH_LIN_VEL], wp.quat_rotate_inv(root_in_path, cmd_vel))
-    _write_vec3(obs, o + obs_offsets[_OBS_PATH_ANG_VEL], wp.quat_rotate_inv(root_in_path, wp.vec3(0.0, 0.0, cmd_yaw_rate)))
+    _write_vec3(
+        obs, o + obs_offsets[_OBS_PATH_ANG_VEL], wp.quat_rotate_inv(root_in_path, wp.vec3(0.0, 0.0, cmd_yaw_rate))
+    )
 
     # Phase encoding
     p = phase[w]

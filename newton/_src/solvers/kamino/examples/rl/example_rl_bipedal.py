@@ -157,13 +157,11 @@ class Example:
         self.joystick.reset(root_pos_2d=root_pos_2d, root_yaw=root_yaw)
 
         # Action buffer
-        self.actions = torch.zeros(
-            (num_worlds, self.sim_wrapper.num_actuated),
-            device=self.sim_wrapper.torch_device,
-            dtype=torch.float32,
-        )
-
         self.actions = self.sim_wrapper.q_j.clone()
+
+        # Pre-allocated command buffers (eliminates per-step torch.tensor())
+        self._cmd_vel_buf = torch.zeros(1, 2, device=self.torch_device)
+        self._neck_cmd_buf = torch.zeros(4, device=self.torch_device)
 
         # Policy (None = zero actions)
         self.policy = policy
@@ -184,7 +182,7 @@ class Example:
         root_pos_2d = self.sim_wrapper.q_i[:, 0, :2]
         root_yaw = quat_to_projected_yaw(self.sim_wrapper.q_i[:, 0, 3:])
         self.joystick.reset(root_pos_2d=root_pos_2d, root_yaw=root_yaw)
-        self.actions = self.sim_wrapper.q_j.clone()
+        self.actions[:] = self.sim_wrapper.q_j
 
     def step_once(self):
         """Single physics step (used by run_headless warm-up)."""
@@ -203,10 +201,9 @@ class Example:
         cmd = self.obs.command
         cmd[:, BipedalObservation.CMD_PATH_HEADING] = self.joystick.path_heading[:, 0]
         cmd[:, BipedalObservation.CMD_PATH_POSITION] = self.joystick.path_position
-        cmd[:, BipedalObservation.CMD_VEL] = torch.tensor(
-            [[self.joystick.forward_velocity, self.joystick.lateral_velocity]],
-            device=self.torch_device,
-        )
+        self._cmd_vel_buf[0, 0] = self.joystick.forward_velocity
+        self._cmd_vel_buf[0, 1] = self.joystick.lateral_velocity
+        cmd[:, BipedalObservation.CMD_VEL] = self._cmd_vel_buf
         cmd[:, BipedalObservation.CMD_YAW_RATE] = self.joystick.angular_velocity
 
         # Head command: head_forward is an up-bias coupled to head pitch
@@ -217,17 +214,20 @@ class Example:
         head_roll_des = 0.0
         head_pitch_des = max(-0.6, min(head_forward + js.head_pitch, 1.0))
         head_yaw_des = max(-1.0, min(js.head_yaw, 1.0))
-        cmd[:, BipedalObservation.CMD_HEAD] = torch.tensor(
-            [head_z_des, head_roll_des, head_pitch_des, head_yaw_des],
-            device=self.torch_device,
-        )
+        self._neck_cmd_buf[0] = head_z_des
+        self._neck_cmd_buf[1] = head_roll_des
+        self._neck_cmd_buf[2] = head_pitch_des
+        self._neck_cmd_buf[3] = head_yaw_des
+        cmd[:, BipedalObservation.CMD_HEAD] = self._neck_cmd_buf
 
         # Compute observation from current state (with previous setpoints)
         obs = self.obs.compute(setpoints=self.actions)
 
-        # Policy inference
+        # Policy inference (in-place: no clone, no intermediates)
         with torch.no_grad():
-            self.actions = self.joint_pos_scale * self.policy(obs).clone() + self.joint_pos_offset
+            raw = self.policy(obs)
+            torch.mul(raw, self.joint_pos_scale, out=self.actions)
+            self.actions.add_(self.joint_pos_offset)
 
         # Write action targets to implicit PD controller
         self.sim_wrapper.q_j_ref[:] = self.actions

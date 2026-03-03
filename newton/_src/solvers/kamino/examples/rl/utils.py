@@ -22,6 +22,7 @@ and periodic phase encoding — no external RL-framework dependency.
 from __future__ import annotations
 
 # Python
+import math
 from typing import List, Tuple, Union
 
 # Thirdparty
@@ -286,3 +287,40 @@ def _load_policy_checkpoint(path: str, device: str) -> callable:
             return actor(obs)
 
     return policy
+
+
+# ---------------------------------------------------------------------------
+# Joystick controller
+# ---------------------------------------------------------------------------
+
+
+def _deadband(value: float, threshold: float) -> float:
+    """Remove dead zone and rescale to full range."""
+    if abs(value) < threshold:
+        return 0.0
+    sign = 1.0 if value > 0.0 else -1.0
+    return sign * (abs(value) - threshold) / (1.0 - threshold)
+
+
+class _LowPassFilter:
+    """Scalar backward-Euler low-pass filter."""
+
+    def __init__(self, cutoff_hz: float, dt: float) -> None:
+        omega = cutoff_hz * 2.0 * math.pi
+        self.alpha = omega * dt / (omega * dt + 1.0)
+        self.value: float | None = None
+
+    def update(self, x: float) -> float:
+        if self.value is None:
+            self.value = x
+        else:
+            self.value = (1.0 - self.alpha) * self.value + self.alpha * x
+        return self.value
+
+    def reset(self) -> None:
+        self.value = None
+
+
+def _scale_asym(value: float, neg_scale: float, pos_scale: float) -> float:
+    """Asymmetric scaling around zero."""
+    return value * neg_scale if value < 0.0 else value * pos_scale

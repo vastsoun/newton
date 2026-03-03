@@ -52,48 +52,7 @@ import math
 
 # Thirdparty
 import torch
-from newton._src.solvers.kamino.examples.rl.utils import yaw_apply_2d
-
-# ---------------------------------------------------------------------------
-# Inline utilities
-# ---------------------------------------------------------------------------
-
-
-def _deadband(value: float, threshold: float) -> float:
-    """Remove dead zone and rescale to full range."""
-    if abs(value) < threshold:
-        return 0.0
-    sign = 1.0 if value > 0.0 else -1.0
-    return sign * (abs(value) - threshold) / (1.0 - threshold)
-
-
-class _LowPassFilter:
-    """Scalar backward-Euler low-pass filter."""
-
-    def __init__(self, cutoff_hz: float, dt: float) -> None:
-        omega = cutoff_hz * 2.0 * math.pi
-        self.alpha = omega * dt / (omega * dt + 1.0)
-        self.value: float | None = None
-
-    def update(self, x: float) -> float:
-        if self.value is None:
-            self.value = x
-        else:
-            self.value = (1.0 - self.alpha) * self.value + self.alpha * x
-        return self.value
-
-    def reset(self) -> None:
-        self.value = None
-
-
-def _scale_asym(value: float, neg_scale: float, pos_scale: float) -> float:
-    """Asymmetric scaling around zero."""
-    return value * neg_scale if value < 0.0 else value * pos_scale
-
-
-# ---------------------------------------------------------------------------
-# JoystickController
-# ---------------------------------------------------------------------------
+from newton._src.solvers.kamino.examples.rl.utils import _deadband, _LowPassFilter, _scale_asym, yaw_apply_2d
 
 
 class JoystickController:
@@ -181,6 +140,9 @@ class JoystickController:
         self.angular_velocity: float = 0.0
         self.head_pitch: float = 0.0
         self.head_yaw: float = 0.0
+
+        # Pre-allocated command velocity buffer (eliminates per-step torch.tensor())
+        self._cmd_vel_buf = torch.zeros(1, 2, device=device)
 
         # Reset edge-detection state
         self._reset_prev = False
@@ -289,14 +251,12 @@ class JoystickController:
         # --- Path integration ---
         if root_pos_2d is not None:
             dt = self._dt
-            cmd_vel = torch.tensor(
-                [[self.forward_velocity, self.lateral_velocity]],
-                device=self._device,
-            )
+            self._cmd_vel_buf[0, 0] = self.forward_velocity
+            self._cmd_vel_buf[0, 1] = self.lateral_velocity
 
             # Mid-point heading integration
             mid_heading = self.path_heading + 0.5 * dt * self.angular_velocity
-            self.path_position += yaw_apply_2d(mid_heading, cmd_vel) * dt
+            self.path_position += yaw_apply_2d(mid_heading, self._cmd_vel_buf) * dt
 
             # Update heading
             self.path_heading += self.angular_velocity * dt

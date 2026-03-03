@@ -22,18 +22,172 @@ from abc import ABC, abstractmethod
 import torch
 import warp as wp
 from newton._src.solvers.kamino.examples.rl.simulation import RigidBodySim
-from newton._src.solvers.kamino.examples.rl.utils import (
-    StackedIndices,
-    periodic_encoding,
-    phase_encoding,
-    quat_inv_apply,
-    quat_inv_mul,
-    quat_to_projected_yaw,
-    quat_to_rotation9D,
-    yaw_inv_apply_2d,
-    yaw_to_quat,
-)
+from newton._src.solvers.kamino.examples.rl.utils import StackedIndices, periodic_encoding
 from newton._src.solvers.kamino.utils.sim import Simulator
+
+# ---------------------------------------------------------------------------
+# Warp helpers for BipedalObservation
+# ---------------------------------------------------------------------------
+
+
+@wp.func
+def _wp_yaw_to_quat(yaw: float) -> wp.quat:
+    half = yaw * 0.5
+    return wp.quat(0.0, 0.0, wp.sin(half), wp.cos(half))
+
+
+@wp.func
+def _wp_quat_inv_mul(a: wp.quat, b: wp.quat) -> wp.quat:
+    return wp.mul(wp.quat_inverse(a), b)
+
+
+@wp.func
+def _wp_quat_to_projected_yaw(q: wp.quat) -> float:
+    qx = q[0]
+    qy = q[1]
+    qz = q[2]
+    qw = q[3]
+    return wp.atan2(2.0 * (qz * qw + qx * qy), qw * qw + qx * qx - qy * qy - qz * qz)
+
+
+@wp.func
+def _wp_yaw_inv_apply_2d(yaw: float, vx: float, vy: float) -> wp.vec2:
+    s = wp.sin(yaw)
+    c = wp.cos(yaw)
+    return wp.vec2(c * vx + s * vy, -s * vx + c * vy)
+
+
+@wp.kernel
+def _compute_bipedal_obs_core(
+    obs: wp.array(dtype=wp.float32),
+    q_i: wp.array(dtype=wp.float32),
+    u_i: wp.array(dtype=wp.float32),
+    q_j: wp.array(dtype=wp.float32),
+    dq_j: wp.array(dtype=wp.float32),
+    command: wp.array(dtype=wp.float32),
+    phase: wp.array(dtype=wp.float32),
+    freq_2pi: wp.array(dtype=wp.float32),
+    offset_enc: wp.array(dtype=wp.float32),
+    joint_default: wp.array(dtype=wp.float32),
+    joint_range: wp.array(dtype=wp.float32),
+    num_bodies: int,
+    num_joint_coords: int,
+    num_joint_dofs: int,
+    num_obs: int,
+    inv_path_dev_scale: float,
+    inv_joint_vel_scale: float,
+    phase_enc_dim: int,
+    num_joints: int,
+    cmd_dim: int,
+):
+    w = wp.tid()
+
+    # Flat array strides
+    qi_base = w * num_bodies * 7
+    ui_base = w * num_bodies * 6
+    qj_base = w * num_joint_coords
+    dqj_base = w * num_joint_dofs
+    cmd_base = w * cmd_dim
+    o = w * num_obs
+
+    # Root pose (body 0)
+    root_quat = wp.quat(q_i[qi_base + 3], q_i[qi_base + 4], q_i[qi_base + 5], q_i[qi_base + 6])
+    root_x = q_i[qi_base + 0]
+    root_y = q_i[qi_base + 1]
+
+    # Root velocities (body 0)
+    root_lin_vel = wp.vec3(u_i[ui_base + 0], u_i[ui_base + 1], u_i[ui_base + 2])
+    root_ang_vel = wp.vec3(u_i[ui_base + 3], u_i[ui_base + 4], u_i[ui_base + 5])
+
+    # Commands
+    path_heading = command[cmd_base + 0]
+    path_pos_x = command[cmd_base + 1]
+    path_pos_y = command[cmd_base + 2]
+    cmd_vel_x = command[cmd_base + 3]
+    cmd_vel_y = command[cmd_base + 4]
+    cmd_yaw_rate = command[cmd_base + 5]
+    neck_0 = command[cmd_base + 6]
+    neck_1 = command[cmd_base + 7]
+    neck_2 = command[cmd_base + 8]
+    neck_3 = command[cmd_base + 9]
+
+    # root_orientation_in_path = inv(path_quat) * root_quat
+    path_quat = _wp_yaw_to_quat(path_heading)
+    root_in_path = _wp_quat_inv_mul(path_quat, root_quat)
+
+    # [0:9] Orientation as flattened 3x3 rotation matrix
+    rot = wp.quat_to_matrix(root_in_path)
+    obs[o + 0] = rot[0, 0]
+    obs[o + 1] = rot[0, 1]
+    obs[o + 2] = rot[0, 2]
+    obs[o + 3] = rot[1, 0]
+    obs[o + 4] = rot[1, 1]
+    obs[o + 5] = rot[1, 2]
+    obs[o + 6] = rot[2, 0]
+    obs[o + 7] = rot[2, 1]
+    obs[o + 8] = rot[2, 2]
+
+    # [9:13] Position deviations (scaled)
+    diff_x = root_x - path_pos_x
+    diff_y = root_y - path_pos_y
+    rtp = _wp_yaw_inv_apply_2d(path_heading, diff_x, diff_y)
+    obs[o + 9] = rtp[0] * inv_path_dev_scale
+    obs[o + 10] = rtp[1] * inv_path_dev_scale
+
+    root_heading = _wp_quat_to_projected_yaw(root_in_path)
+    pth = _wp_yaw_inv_apply_2d(root_heading, -rtp[0], -rtp[1])
+    obs[o + 11] = pth[0] * inv_path_dev_scale
+    obs[o + 12] = pth[1] * inv_path_dev_scale
+
+    # [13:16] Path command
+    obs[o + 13] = cmd_vel_x
+    obs[o + 14] = cmd_vel_y
+    obs[o + 15] = cmd_yaw_rate
+
+    # [16:22] Path velocities in root frame
+    plv = wp.quat_rotate_inv(root_in_path, wp.vec3(cmd_vel_x, cmd_vel_y, 0.0))
+    pav = wp.quat_rotate_inv(root_in_path, wp.vec3(0.0, 0.0, cmd_yaw_rate))
+    obs[o + 16] = plv[0]
+    obs[o + 17] = plv[1]
+    obs[o + 18] = plv[2]
+    obs[o + 19] = pav[0]
+    obs[o + 20] = pav[1]
+    obs[o + 21] = pav[2]
+
+    # [22:22+phase_enc_dim] Phase encoding
+    p = phase[w]
+    for i in range(phase_enc_dim):
+        obs[o + 22 + i] = wp.sin(p * freq_2pi[i] + offset_enc[i])
+
+    # Variable offsets (depend on phase_enc_dim)
+    o_neck = 22 + phase_enc_dim
+    o_root_vel = o_neck + 4
+    o_joint_pos = o_root_vel + 6
+    o_joint_vel = o_joint_pos + num_joints
+
+    # Neck command
+    obs[o + o_neck + 0] = neck_0
+    obs[o + o_neck + 1] = neck_1
+    obs[o + o_neck + 2] = neck_2
+    obs[o + o_neck + 3] = neck_3
+
+    # Root velocities in root frame
+    rlv = wp.quat_rotate_inv(root_quat, root_lin_vel)
+    rav = wp.quat_rotate_inv(root_quat, root_ang_vel)
+    obs[o + o_root_vel + 0] = rlv[0]
+    obs[o + o_root_vel + 1] = rlv[1]
+    obs[o + o_root_vel + 2] = rlv[2]
+    obs[o + o_root_vel + 3] = rav[0]
+    obs[o + o_root_vel + 4] = rav[1]
+    obs[o + o_root_vel + 5] = rav[2]
+
+    # Normalized joint positions
+    for j in range(num_joints):
+        obs[o + o_joint_pos + j] = (q_j[qj_base + j] - joint_default[j]) / joint_range[j]
+
+    # Normalized joint velocities
+    for j in range(num_joints):
+        obs[o + o_joint_vel + j] = dq_j[dqj_base + j] * inv_joint_vel_scale
 
 
 class PhaseRate(torch.nn.Module):
@@ -209,6 +363,13 @@ class DrlegsBaseObservation(ObservationBuilder):
             dtype=torch.float32,
         )
 
+        # Pre-allocated observation buffer (eliminates torch.cat)
+        self._obs_buffer = torch.zeros(
+            (num_worlds, self._num_dofs + num_actions),
+            device=device,
+            dtype=torch.float32,
+        )
+
     @property
     def num_observations(self) -> int:
         return 3 + self._num_dofs + self._num_actions + self._num_actions  # 63
@@ -218,14 +379,9 @@ class DrlegsBaseObservation(ObservationBuilder):
             self._action_history_prev[:] = self._action_history
             self._action_history[:] = self._action_scale * actions
 
-        root_pos = self._get_root_positions()  # (num_worlds, 3)
-        q_j = self._get_joint_positions()  # (num_worlds, 36)
-
-        obs = torch.cat(
-            [root_pos, q_j, self._action_history, self._action_history_prev],
-            dim=-1,
-        )  # (num_worlds, 63)
-        return obs
+        self._obs_buffer[:, : self._num_dofs] = q_j
+        self._obs_buffer[:, self._num_dofs :] = self._action_history
+        return self._obs_buffer
 
     def reset(self, env_ids: torch.Tensor | None = None) -> None:
         if env_ids is None:
@@ -352,6 +508,45 @@ class BipedalObservation(ObservationBuilder, torch.nn.Module):
         # Move registered buffers to device
         self.to(self._device)
 
+        # -- Pre-allocated observation buffer --
+        self._obs_buffer = torch.zeros(self._num_worlds, self.num_obs, device=self._device, dtype=torch.float)
+        self._wp_obs = wp.from_torch(self._obs_buffer.reshape(-1))
+
+        # Phase rate
+        self._phase_rate_input = torch.zeros(self._num_worlds, 3, device=self._device, dtype=torch.float)
+
+        # Warp views of simulator state
+        self._wp_q_i = wp.from_torch(body_sim.q_i.reshape(-1))
+        self._wp_u_i = wp.from_torch(body_sim.u_i.reshape(-1))
+        self._wp_q_j = wp.from_torch(body_sim.q_j.reshape(-1))
+        self._wp_dq_j = wp.from_torch(body_sim.dq_j.reshape(-1))
+        self._wp_command = wp.from_torch(self._command.reshape(-1))
+        self._wp_phase = wp.from_torch(self._phase)
+        self._wp_freq_2pi = wp.from_torch(self._freq_2pi)
+        self._wp_offset = wp.from_torch(self._offset)
+        self._wp_joint_default = wp.from_torch(self._joint_position_default)
+        self._wp_joint_range = wp.from_torch(self._joint_position_range)
+
+        # Stride constants for kernel
+        self._num_bodies = body_sim.num_bodies
+        self._num_joint_coords = body_sim.num_joint_coords
+        self._num_joint_dofs = body_sim.num_joint_dofs
+        self._num_joints = num_joints
+        self._phase_enc_dim = phase_encoding_size
+        self._wp_device = body_sim.device
+
+        # Pre-computed inverse scales
+        self._inv_path_dev_scale = 1.0 / path_deviation_scale
+        self._inv_joint_vel_scale = 1.0 / joint_velocity_scale
+
+        # Action history slice indices
+        self._hist_start = self.obs_idx.history.start
+        self._hist_mid = self._hist_start + num_joints
+
+        # Indices for cached velocity views
+        self._root_lin_vel_start = self.obs_idx.root_lin_vel_in_root.start
+        self._root_ang_vel_start = self.obs_idx.root_ang_vel_in_root.start
+
     def get_feature_module(self) -> BipedalObservation:
         return self
 
@@ -367,101 +562,61 @@ class BipedalObservation(ObservationBuilder, torch.nn.Module):
                 shape ``(num_worlds, num_joints)``.  ``None`` on the very
                 first step before any action has been applied.
         """
-        sim = self._body_sim
         nw = self._num_worlds
-        device = self._device
 
-        # -- Read commands (pre-clipped by caller) --
-        path_heading = self.command[:, self.CMD_PATH_HEADING]
-        path_position_2d = self.command[:, self.CMD_PATH_POSITION]
-        path_cmd_vel = self.command[:, self.CMD_VEL]
-        path_cmd_yaw_rate = self.command[:, self.CMD_YAW_RATE]
-        neck_cmd = self.command[:, self.CMD_HEAD]
-
-        # -- Root orientation --
-        root_orientations = sim.q_i[:, 0, 3:]
-        path_orientation = yaw_to_quat(path_heading)
-        root_orientation_in_path = quat_inv_mul(path_orientation, root_orientations)
-
-        # Orientation as 9D rotation matrix
-        root_orientation_in_path_9d = quat_to_rotation9D(root_orientation_in_path)
-
-        # Heading (from noisy orientation)
-        root_heading_in_path = quat_to_projected_yaw(root_orientation_in_path)
-
-        # -- Position --
-        root_translation_in_path = yaw_inv_apply_2d(path_heading, sim.q_i[:, 0, :2] - path_position_2d)
-        path_translation_in_heading = yaw_inv_apply_2d(root_heading_in_path, -root_translation_in_path)
-
-        # -- Velocities --
-        root_lin_vel_in_root = quat_inv_apply(root_orientations, sim.u_i[:, 0, :3])
-        root_ang_vel_in_root = quat_inv_apply(root_orientations, sim.u_i[:, 0, 3:])
-
-        # Path velocities rotated to root frame
-        path_lin_vel_in_path = torch.cat(
-            (
-                path_cmd_vel,
-                torch.zeros((nw, 1), dtype=torch.float, device=device),
-            ),
-            dim=-1,
-        )
-        path_ang_vel_in_path = torch.cat(
-            (
-                torch.zeros((nw, 2), dtype=torch.float, device=device),
-                path_cmd_yaw_rate.view(-1, 1),
-            ),
-            dim=-1,
-        )
-        path_lin_vel_in_root = quat_inv_apply(root_orientation_in_path, path_lin_vel_in_path)
-        path_ang_vel_in_root = quat_inv_apply(root_orientation_in_path, path_ang_vel_in_path)
-
-        # -- Phase (advanced internally via pretrained PhaseRate model) --
-        path_cmd = torch.cat((path_cmd_vel, path_cmd_yaw_rate.view(-1, 1)), dim=-1)  # (nw, 3)
+        # -- Phase advance --
+        self._phase_rate_input[:, :2] = self._command[:, self.CMD_VEL]
+        self._phase_rate_input[:, 2] = self._command[:, self.CMD_YAW_RATE]
         with torch.no_grad():
-            rate = self._phase_rate._phase_rate(path_cmd).squeeze(-1)  # (nw,)
-        self._phase = (self._phase + rate * self._dt) % 1.0
+            rate = self._phase_rate._phase_rate(self._phase_rate_input).squeeze(-1)
+        self._phase.add_(rate * self._dt).remainder_(1.0)
 
-        # -- Phase encoding --
-        phase_enc_vector = phase_encoding(self._phase, self._freq_2pi, self._offset)
-
-        # -- Joint state --
-        dof_positions = sim.q_j
-        dof_velocity_estimate = sim.dq_j
-        relative_dof_positions = (dof_positions - self._joint_position_default) / self._joint_position_range
-
-        # -- Action history --
-        # TODO make this implementation more efficient
-        if setpoints is not None:
-            self._action_hist_1.copy_(self._action_hist_0)
-            self._action_hist_0[:] = (setpoints - self._joint_position_default) / self._joint_position_range
-
-        # -- Build observation --
-        obs = torch.cat(
-            (
-                root_orientation_in_path_9d,
-                root_translation_in_path / self.path_deviation_scale,
-                path_translation_in_heading / self.path_deviation_scale,
-                path_cmd_vel,
-                path_cmd_yaw_rate.view(-1, 1),
-                path_lin_vel_in_root,
-                path_ang_vel_in_root,
-                phase_enc_vector,
-                neck_cmd,
-                root_lin_vel_in_root,
-                root_ang_vel_in_root,
-                relative_dof_positions,
-                dof_velocity_estimate / self.joint_velocity_scale,
-                self._action_hist_0,
-                self._action_hist_1,
-            ),
-            dim=-1,
+        # -- Warp kernel: obs[0:hist_start] --
+        wp.launch(
+            _compute_bipedal_obs_core,
+            dim=nw,
+            inputs=[
+                self._wp_obs,
+                self._wp_q_i,
+                self._wp_u_i,
+                self._wp_q_j,
+                self._wp_dq_j,
+                self._wp_command,
+                self._wp_phase,
+                self._wp_freq_2pi,
+                self._wp_offset,
+                self._wp_joint_default,
+                self._wp_joint_range,
+                self._num_bodies,
+                self._num_joint_coords,
+                self._num_joint_dofs,
+                self.num_obs,
+                self._inv_path_dev_scale,
+                self._inv_joint_vel_scale,
+                self._phase_enc_dim,
+                self._num_joints,
+                self.CMD_DIM,
+            ],
+            device=self._wp_device,
         )
 
-        self._root_orientation_in_path = root_orientation_in_path
-        self._root_lin_vel_in_root = root_lin_vel_in_root
-        self._root_ang_vel_in_root = root_ang_vel_in_root
+        # -- Action history: pointer swap (no copy) then overwrite --
+        self._action_hist_0, self._action_hist_1 = self._action_hist_1, self._action_hist_0
+        if setpoints is not None:
+            torch.sub(setpoints, self._joint_position_default, out=self._action_hist_0)
+            self._action_hist_0.div_(self._joint_position_range)
 
-        return obs
+        # -- Write action history into pre-allocated buffer --
+        self._obs_buffer[:, self._hist_start : self._hist_mid] = self._action_hist_0
+        self._obs_buffer[:, self._hist_mid : self._hist_start + self.history_size] = self._action_hist_1
+
+        # -- Cache velocity views for subclasses --
+        s = self._root_lin_vel_start
+        self._root_lin_vel_in_root = self._obs_buffer[:, s : s + 3]
+        s = self._root_ang_vel_start
+        self._root_ang_vel_in_root = self._obs_buffer[:, s : s + 3]
+
+        return self._obs_buffer
 
     def reset(self, env_ids: torch.Tensor | None = None) -> None:
         """Reset action history and phase for the given environments."""

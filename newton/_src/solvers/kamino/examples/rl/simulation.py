@@ -24,6 +24,7 @@
 
 from __future__ import annotations
 
+# Thirdparty
 import torch
 import warp as wp
 from warp.context import Devicelike
@@ -31,11 +32,14 @@ from warp.context import Devicelike
 from newton._src.solvers.kamino.core.builder import ModelBuilder
 from newton._src.solvers.kamino.core.types import transformf, vec6f
 from newton._src.solvers.kamino.geometry.aggregation import ContactAggregation
+from newton._src.solvers.kamino.linalg.linear import SolverShorthand as LinearSolverShorthand
 from newton._src.solvers.kamino.models.builders.utils import (
     build_usd,
     make_homogeneous_builder,
     set_uniform_body_pose_offset,
 )
+from newton._src.solvers.kamino.solvers.padmm import PADMMWarmStartMode
+from newton._src.solvers.kamino.solvers.warmstart import WarmstarterContacts
 from newton._src.solvers.kamino.utils import logger as msg
 from newton._src.solvers.kamino.utils.sim import Simulator, SimulatorSettings, ViewerKamino
 
@@ -598,7 +602,7 @@ class RigidBodySim:
         """Return sensible default solver settings for RL."""
         settings = SimulatorSettings()
         settings.dt = sim_dt
-        settings.solver.integrator = "moreau"
+        settings.solver.integrator = "moreau"  # Select from {"euler", "moreau"}
         settings.solver.problem.alpha = 0.1
         settings.solver.padmm.primal_tolerance = 1e-3
         settings.solver.padmm.dual_tolerance = 1e-3
@@ -607,6 +611,15 @@ class RigidBodySim:
         settings.solver.padmm.eta = 1e-5
         settings.solver.padmm.rho_0 = 0.05
         settings.solver.use_solver_acceleration = True
+        settings.solver.warmstart_mode = PADMMWarmStartMode.CONTAINERS
+        settings.solver.contact_warmstart_method = WarmstarterContacts.Method.GEOM_PAIR_NET_FORCE
         settings.solver.collect_solver_info = False
         settings.solver.compute_metrics = False
+        linear_solver_cls = {v: k for k, v in LinearSolverShorthand.items()}["LLTB"]
+        settings.solver.linear_solver_type = linear_solver_cls
+        linear_solver_maxiter = 0
+        settings.solver.linear_solver_kwargs = {"maxiter": linear_solver_maxiter} if linear_solver_maxiter > 0 else {}
+        settings.solver.angular_velocity_damping = 0.0
+        settings.collision_detector.max_contacts_per_world = 45
+        settings.collision_detector.max_contacts_per_pair = 1
         return settings

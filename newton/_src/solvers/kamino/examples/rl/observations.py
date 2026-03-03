@@ -29,20 +29,12 @@ from newton._src.solvers.kamino.utils.sim import Simulator
 # Warp helpers for BipedalObservation
 # ---------------------------------------------------------------------------
 
-
-@wp.func
-def _wp_yaw_to_quat(yaw: float) -> wp.quat:
-    half = yaw * 0.5
-    return wp.quat(0.0, 0.0, wp.sin(half), wp.cos(half))
+_Z_AXIS = wp.constant(wp.vec3(0.0, 0.0, 1.0))
 
 
 @wp.func
-def _wp_quat_inv_mul(a: wp.quat, b: wp.quat) -> wp.quat:
-    return wp.mul(wp.quat_inverse(a), b)
-
-
-@wp.func
-def _wp_quat_to_projected_yaw(q: wp.quat) -> float:
+def _projected_yaw(q: wp.quat) -> float:
+    """Extract the yaw angle from a quaternion (no warp builtin equivalent)."""
     qx = q[0]
     qy = q[1]
     qz = q[2]
@@ -51,10 +43,41 @@ def _wp_quat_to_projected_yaw(q: wp.quat) -> float:
 
 
 @wp.func
-def _wp_yaw_inv_apply_2d(yaw: float, vx: float, vy: float) -> wp.vec2:
-    s = wp.sin(yaw)
-    c = wp.cos(yaw)
-    return wp.vec2(c * vx + s * vy, -s * vx + c * vy)
+def _write_vec3(obs: wp.array(dtype=wp.float32), idx: int, v: wp.vec3):
+    obs[idx + 0] = v[0]
+    obs[idx + 1] = v[1]
+    obs[idx + 2] = v[2]
+
+
+# Observation group indices into the offsets array (must match _OBS_NAMES order).
+_OBS_ORI = wp.constant(0)
+_OBS_PATH_DEV = wp.constant(1)
+_OBS_PATH_DEV_H = wp.constant(2)
+_OBS_PATH_CMD = wp.constant(3)
+_OBS_PATH_LIN_VEL = wp.constant(4)
+_OBS_PATH_ANG_VEL = wp.constant(5)
+_OBS_PHASE_ENC = wp.constant(6)
+_OBS_NECK = wp.constant(7)
+_OBS_ROOT_LIN_VEL = wp.constant(8)
+_OBS_ROOT_ANG_VEL = wp.constant(9)
+_OBS_JOINT_POS = wp.constant(10)
+_OBS_JOINT_VEL = wp.constant(11)
+
+# Python-side list matching the constant order above.
+_OBS_NAMES = [
+    "orientation_root_to_path",
+    "path_deviation",
+    "path_deviation_in_heading",
+    "path_cmd",
+    "path_lin_vel_in_root",
+    "path_ang_vel_in_root",
+    "phase_encoding",
+    "neck_cmd",
+    "root_lin_vel_in_root",
+    "root_ang_vel_in_root",
+    "normalized_joint_positions",
+    "normalized_joint_velocities",
+]
 
 
 @wp.kernel
@@ -70,15 +93,16 @@ def _compute_bipedal_obs_core(
     offset_enc: wp.array(dtype=wp.float32),
     joint_default: wp.array(dtype=wp.float32),
     joint_range: wp.array(dtype=wp.float32),
+    obs_offsets: wp.array(dtype=wp.int32),
     num_bodies: int,
     num_joint_coords: int,
     num_joint_dofs: int,
     num_obs: int,
+    cmd_dim: int,
     inv_path_dev_scale: float,
     inv_joint_vel_scale: float,
     phase_enc_dim: int,
     num_joints: int,
-    cmd_dim: int,
 ):
     w = wp.tid()
 
@@ -90,104 +114,68 @@ def _compute_bipedal_obs_core(
     cmd_base = w * cmd_dim
     o = w * num_obs
 
-    # Root pose (body 0)
+    # Root pose & velocities (body 0)
     root_quat = wp.quat(q_i[qi_base + 3], q_i[qi_base + 4], q_i[qi_base + 5], q_i[qi_base + 6])
-    root_x = q_i[qi_base + 0]
-    root_y = q_i[qi_base + 1]
-
-    # Root velocities (body 0)
     root_lin_vel = wp.vec3(u_i[ui_base + 0], u_i[ui_base + 1], u_i[ui_base + 2])
     root_ang_vel = wp.vec3(u_i[ui_base + 3], u_i[ui_base + 4], u_i[ui_base + 5])
 
     # Commands
     path_heading = command[cmd_base + 0]
-    path_pos_x = command[cmd_base + 1]
-    path_pos_y = command[cmd_base + 2]
-    cmd_vel_x = command[cmd_base + 3]
-    cmd_vel_y = command[cmd_base + 4]
+    cmd_vel = wp.vec3(command[cmd_base + 3], command[cmd_base + 4], 0.0)
     cmd_yaw_rate = command[cmd_base + 5]
-    neck_0 = command[cmd_base + 6]
-    neck_1 = command[cmd_base + 7]
-    neck_2 = command[cmd_base + 8]
-    neck_3 = command[cmd_base + 9]
 
     # root_orientation_in_path = inv(path_quat) * root_quat
-    path_quat = _wp_yaw_to_quat(path_heading)
-    root_in_path = _wp_quat_inv_mul(path_quat, root_quat)
+    path_quat = wp.quat_from_axis_angle(_Z_AXIS, path_heading)
+    root_in_path = wp.mul(wp.quat_inverse(path_quat), root_quat)
 
-    # [0:9] Orientation as flattened 3x3 rotation matrix
+    # Orientation as flattened 3x3 rotation matrix
     rot = wp.quat_to_matrix(root_in_path)
-    obs[o + 0] = rot[0, 0]
-    obs[o + 1] = rot[0, 1]
-    obs[o + 2] = rot[0, 2]
-    obs[o + 3] = rot[1, 0]
-    obs[o + 4] = rot[1, 1]
-    obs[o + 5] = rot[1, 2]
-    obs[o + 6] = rot[2, 0]
-    obs[o + 7] = rot[2, 1]
-    obs[o + 8] = rot[2, 2]
+    oi = o + obs_offsets[_OBS_ORI]
+    for i in range(3):
+        for j in range(3):
+            obs[oi + i * 3 + j] = rot[i, j]
 
-    # [9:13] Position deviations (scaled)
-    diff_x = root_x - path_pos_x
-    diff_y = root_y - path_pos_y
-    rtp = _wp_yaw_inv_apply_2d(path_heading, diff_x, diff_y)
-    obs[o + 9] = rtp[0] * inv_path_dev_scale
-    obs[o + 10] = rtp[1] * inv_path_dev_scale
+    # Path deviation in path frame (scaled)
+    diff = wp.vec3(q_i[qi_base + 0] - command[cmd_base + 1], q_i[qi_base + 1] - command[cmd_base + 2], 0.0)
+    rtp = wp.quat_rotate_inv(path_quat, diff)
+    obs[o + obs_offsets[_OBS_PATH_DEV] + 0] = rtp[0] * inv_path_dev_scale
+    obs[o + obs_offsets[_OBS_PATH_DEV] + 1] = rtp[1] * inv_path_dev_scale
 
-    root_heading = _wp_quat_to_projected_yaw(root_in_path)
-    pth = _wp_yaw_inv_apply_2d(root_heading, -rtp[0], -rtp[1])
-    obs[o + 11] = pth[0] * inv_path_dev_scale
-    obs[o + 12] = pth[1] * inv_path_dev_scale
+    # Path deviation in heading frame (scaled)
+    root_heading = _projected_yaw(root_in_path)
+    heading_quat = wp.quat_from_axis_angle(_Z_AXIS, root_heading)
+    pth = wp.quat_rotate_inv(heading_quat, wp.vec3(-rtp[0], -rtp[1], 0.0))
+    obs[o + obs_offsets[_OBS_PATH_DEV_H] + 0] = pth[0] * inv_path_dev_scale
+    obs[o + obs_offsets[_OBS_PATH_DEV_H] + 1] = pth[1] * inv_path_dev_scale
 
-    # [13:16] Path command
-    obs[o + 13] = cmd_vel_x
-    obs[o + 14] = cmd_vel_y
-    obs[o + 15] = cmd_yaw_rate
+    # Path command
+    _write_vec3(obs, o + obs_offsets[_OBS_PATH_CMD], wp.vec3(cmd_vel[0], cmd_vel[1], cmd_yaw_rate))
 
-    # [16:22] Path velocities in root frame
-    plv = wp.quat_rotate_inv(root_in_path, wp.vec3(cmd_vel_x, cmd_vel_y, 0.0))
-    pav = wp.quat_rotate_inv(root_in_path, wp.vec3(0.0, 0.0, cmd_yaw_rate))
-    obs[o + 16] = plv[0]
-    obs[o + 17] = plv[1]
-    obs[o + 18] = plv[2]
-    obs[o + 19] = pav[0]
-    obs[o + 20] = pav[1]
-    obs[o + 21] = pav[2]
+    # Path velocities in root frame
+    _write_vec3(obs, o + obs_offsets[_OBS_PATH_LIN_VEL], wp.quat_rotate_inv(root_in_path, cmd_vel))
+    _write_vec3(obs, o + obs_offsets[_OBS_PATH_ANG_VEL], wp.quat_rotate_inv(root_in_path, wp.vec3(0.0, 0.0, cmd_yaw_rate)))
 
-    # [22:22+phase_enc_dim] Phase encoding
+    # Phase encoding
     p = phase[w]
+    op = o + obs_offsets[_OBS_PHASE_ENC]
     for i in range(phase_enc_dim):
-        obs[o + 22 + i] = wp.sin(p * freq_2pi[i] + offset_enc[i])
-
-    # Variable offsets (depend on phase_enc_dim)
-    o_neck = 22 + phase_enc_dim
-    o_root_vel = o_neck + 4
-    o_joint_pos = o_root_vel + 6
-    o_joint_vel = o_joint_pos + num_joints
+        obs[op + i] = wp.sin(p * freq_2pi[i] + offset_enc[i])
 
     # Neck command
-    obs[o + o_neck + 0] = neck_0
-    obs[o + o_neck + 1] = neck_1
-    obs[o + o_neck + 2] = neck_2
-    obs[o + o_neck + 3] = neck_3
+    on = o + obs_offsets[_OBS_NECK]
+    for i in range(4):
+        obs[on + i] = command[cmd_base + 6 + i]
 
     # Root velocities in root frame
-    rlv = wp.quat_rotate_inv(root_quat, root_lin_vel)
-    rav = wp.quat_rotate_inv(root_quat, root_ang_vel)
-    obs[o + o_root_vel + 0] = rlv[0]
-    obs[o + o_root_vel + 1] = rlv[1]
-    obs[o + o_root_vel + 2] = rlv[2]
-    obs[o + o_root_vel + 3] = rav[0]
-    obs[o + o_root_vel + 4] = rav[1]
-    obs[o + o_root_vel + 5] = rav[2]
+    _write_vec3(obs, o + obs_offsets[_OBS_ROOT_LIN_VEL], wp.quat_rotate_inv(root_quat, root_lin_vel))
+    _write_vec3(obs, o + obs_offsets[_OBS_ROOT_ANG_VEL], wp.quat_rotate_inv(root_quat, root_ang_vel))
 
-    # Normalized joint positions
+    # Normalized joint positions & velocities
+    ojp = o + obs_offsets[_OBS_JOINT_POS]
+    ojv = o + obs_offsets[_OBS_JOINT_VEL]
     for j in range(num_joints):
-        obs[o + o_joint_pos + j] = (q_j[qj_base + j] - joint_default[j]) / joint_range[j]
-
-    # Normalized joint velocities
-    for j in range(num_joints):
-        obs[o + o_joint_vel + j] = dq_j[dqj_base + j] * inv_joint_vel_scale
+        obs[ojp + j] = (q_j[qj_base + j] - joint_default[j]) / joint_range[j]
+        obs[ojv + j] = dq_j[dqj_base + j] * inv_joint_vel_scale
 
 
 class PhaseRate(torch.nn.Module):
@@ -527,6 +515,14 @@ class BipedalObservation(ObservationBuilder, torch.nn.Module):
         self._wp_joint_default = wp.from_torch(self._joint_position_default)
         self._wp_joint_range = wp.from_torch(self._joint_position_range)
 
+        # Observation group offsets from StackedIndices (matches _OBS_NAMES order)
+        obs_offsets = torch.tensor(
+            [self.obs_idx[name].start for name in _OBS_NAMES],
+            dtype=torch.int32,
+            device=self._device,
+        )
+        self._wp_obs_offsets = wp.from_torch(obs_offsets)
+
         # Stride constants for kernel
         self._num_bodies = body_sim.num_bodies
         self._num_joint_coords = body_sim.num_joint_coords
@@ -587,15 +583,16 @@ class BipedalObservation(ObservationBuilder, torch.nn.Module):
                 self._wp_offset,
                 self._wp_joint_default,
                 self._wp_joint_range,
+                self._wp_obs_offsets,
                 self._num_bodies,
                 self._num_joint_coords,
                 self._num_joint_dofs,
                 self.num_obs,
+                self.CMD_DIM,
                 self._inv_path_dev_scale,
                 self._inv_joint_vel_scale,
                 self._phase_enc_dim,
                 self._num_joints,
-                self.CMD_DIM,
             ],
             device=self._wp_device,
         )

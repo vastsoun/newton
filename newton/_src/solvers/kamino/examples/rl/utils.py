@@ -28,125 +28,70 @@ from typing import List, Tuple, Union
 # Thirdparty
 import numpy as np
 import torch
+import warp as wp
 
 # ---------------------------------------------------------------------------
-# Quaternion helpers  (xyzw convention, batched over dim 0)
+# Rotation helpers  (xyzw convention, warp kernels with torch tensor wrappers)
 # ---------------------------------------------------------------------------
 
-
-@torch.jit.script
-def _atan2(y: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
-    ans = torch.atan(y / x)
-    ans = torch.where((x < 0.0) & (y >= 0.0), ans + torch.pi, ans)
-    ans = torch.where((x < 0.0) & (y < 0.0), ans - torch.pi, ans)
-    ans = torch.where(x == 0, torch.sign(y) * 0.5 * torch.pi, ans)
-    return ans
+_Z_AXIS = wp.constant(wp.vec3(0.0, 0.0, 1.0))
 
 
-@torch.jit.script
-def yaw_to_quat(yaw: torch.Tensor) -> torch.Tensor:
-    """Pure yaw rotation → quaternion (xyzw)."""
-    yaw = yaw.reshape(-1, 1)
-    half = yaw * 0.5
-    z = torch.zeros_like(half)
-    return torch.stack([z, z, torch.sin(half), torch.cos(half)], dim=-1).view(-1, 4)
+@wp.kernel
+def _quat_to_projected_yaw_kernel(
+    q: wp.array(dtype=wp.float32),
+    yaw: wp.array(dtype=wp.float32),
+):
+    i = wp.tid()
+    base = i * 4
+    qx = q[base + 0]
+    qy = q[base + 1]
+    qz = q[base + 2]
+    qw = q[base + 3]
+    yaw[i] = wp.atan2(2.0 * (qz * qw + qx * qy), qw * qw + qx * qx - qy * qy - qz * qz)
 
 
-@torch.jit.script
-def quat_inv_mul(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
-    """Quaternion product ``inv(a) * b``."""
-    a = a.reshape(-1, 4)
-    b = b.reshape(-1, 4)
-    x1, y1, z1, w1 = a[:, 0], a[:, 1], a[:, 2], a[:, 3]
-    x2, y2, z2, w2 = b[:, 0], b[:, 1], b[:, 2], b[:, 3]
-    ww = (-z1 - x1) * (x2 + y2)
-    yy = (w1 + y1) * (w2 + z2)
-    zz = (w1 - y1) * (w2 - z2)
-    xx = ww + yy + zz
-    qq = 0.5 * (xx + (x1 - z1) * (x2 - y2))
-    w = qq - ww + (y1 - z1) * (y2 - z2)
-    x = qq - xx + (w1 - x1) * (x2 + w2)
-    y = qq - yy + (w1 + x1) * (y2 + z2)
-    z = qq - zz + (-z1 - y1) * (w2 - x2)
-    return torch.stack([x, y, z, w], dim=-1).view(-1, 4)
-
-
-@torch.jit.script
-def quat_inv_apply(q: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
-    """Inverse-quaternion rotation ``inv(q) · v``."""
-    q = q.reshape(-1, 4)
-    v = v.reshape(-1, 3)
-    xyz = q[:, :3]
-    t = xyz.cross(v, dim=-1)
-    t += t
-    return (v - q[:, 3:] * t + xyz.cross(t, dim=-1)).view(-1, 3)
-
-
-@torch.jit.script
-def quat_to_rotation9D(q: torch.Tensor) -> torch.Tensor:
-    """Quaternion → flattened 3×3 rotation matrix (row-major, 9 dims)."""
-    q = q.reshape(-1, 4)
-    qx, qy, qz, qw = q[:, 0], q[:, 1], q[:, 2], q[:, 3]
-    qxx = 2.0 * qx * qx
-    qxy = 2.0 * qx * qy
-    qxz = 2.0 * qx * qz
-    qxw = 2.0 * qx * qw
-    qyy = 2.0 * qy * qy
-    qyz = 2.0 * qy * qz
-    qyw = 2.0 * qy * qw
-    qzz = 2.0 * qz * qz
-    qzw = 2.0 * qz * qw
-    return torch.stack(
-        (
-            1.0 - qyy - qzz,
-            qxy - qzw,
-            qxz + qyw,
-            qxy + qzw,
-            1.0 - qxx - qzz,
-            qyz - qxw,
-            qxz - qyw,
-            qyz + qxw,
-            1.0 - qxx - qyy,
-        ),
-        -1,
-    ).view(-1, 9)
-
-
-@torch.jit.script
 def quat_to_projected_yaw(q: torch.Tensor) -> torch.Tensor:
     """Extract yaw angle from quaternion.  Returns shape ``(-1, 1)``."""
-    q = q.reshape(-1, 4)
-    qx, qy, qz, qw = q[:, 0], q[:, 1], q[:, 2], q[:, 3]
-    qxx = qx * qx
-    qxy = qx * qy
-    qyy = qy * qy
-    qzz = qz * qz
-    qzw = qz * qw
-    qww = qw * qw
-    yaw = _atan2(2.0 * (qzw + qxy), qww + qxx - qyy - qzz)
+    q_flat = q.reshape(-1, 4).contiguous()
+    n = q_flat.shape[0]
+    yaw = torch.empty(n, dtype=torch.float32, device=q.device)
+    wp.launch(
+        _quat_to_projected_yaw_kernel,
+        dim=n,
+        inputs=[wp.from_torch(q_flat.reshape(-1)), wp.from_torch(yaw)],
+        device=str(q.device),
+    )
     return yaw.view(-1, 1)
 
 
-@torch.jit.script
-def yaw_inv_apply_2d(yaw: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
-    """Inverse yaw rotation of a 2-D vector."""
-    yaw = yaw.reshape(-1, 1)
-    v = v.reshape(-1, 2)
-    vx, vy = v[:, 0], v[:, 1]
-    s = torch.sin(yaw[:, 0])
-    c = torch.cos(yaw[:, 0])
-    return torch.stack([c * vx + s * vy, -s * vx + c * vy], dim=-1).view(-1, 2)
+@wp.kernel
+def _yaw_apply_2d_kernel(
+    yaw: wp.array(dtype=wp.float32),
+    v: wp.array(dtype=wp.float32),
+    out: wp.array(dtype=wp.float32),
+):
+    i = wp.tid()
+    q = wp.quat_from_axis_angle(_Z_AXIS, yaw[i])
+    base = i * 2
+    r = wp.quat_rotate(q, wp.vec3(v[base], v[base + 1], 0.0))
+    out[base] = r[0]
+    out[base + 1] = r[1]
 
 
-@torch.jit.script
 def yaw_apply_2d(yaw: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
     """Forward yaw rotation of a 2-D vector."""
-    yaw = yaw.reshape(-1, 1)
-    v = v.reshape(-1, 2)
-    vx, vy = v[:, 0], v[:, 1]
-    s = torch.sin(yaw[:, 0])
-    c = torch.cos(yaw[:, 0])
-    return torch.stack([c * vx - s * vy, s * vx + c * vy], dim=-1).view(-1, 2)
+    yaw_flat = yaw.reshape(-1).contiguous()
+    v_flat = v.reshape(-1, 2).contiguous()
+    n = yaw_flat.shape[0]
+    out = torch.empty_like(v_flat)
+    wp.launch(
+        _yaw_apply_2d_kernel,
+        dim=n,
+        inputs=[wp.from_torch(yaw_flat), wp.from_torch(v_flat.reshape(-1)), wp.from_torch(out.reshape(-1))],
+        device=str(yaw.device),
+    )
+    return out.view(-1, 2)
 
 
 # ---------------------------------------------------------------------------
@@ -215,15 +160,6 @@ def periodic_encoding(k: int) -> Tuple[np.ndarray, np.ndarray]:
         freq_2pi[2 * i + 1] = freq
         offset[2 * i] = 0.5 * np.pi
     return freq_2pi, offset
-
-
-def phase_encoding(
-    phase: torch.Tensor,
-    freq_2pi: torch.Tensor,
-    offset: torch.Tensor,
-) -> torch.Tensor:
-    """Encode a scalar phase into a sin/cos feature vector."""
-    return torch.sin(torch.outer(phase, freq_2pi) + offset)
 
 
 # ---------------------------------------------------------------------------

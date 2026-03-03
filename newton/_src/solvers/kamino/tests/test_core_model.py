@@ -18,360 +18,26 @@ Unit tests for the :class:`ModelKamino` class and related functionality.
 """
 
 import copy
-import math
 import os
 import unittest
 
 import warp as wp
 
-# Newton imports
 import newton
-
-# Kamino imports
 import newton._src.solvers.kamino.tests.utils.checks as test_util_checks
-from newton._src.core import Axis
-from newton._src.sim import (
-    # JointType,
-    Control,
-    JointTargetMode,
-    Model,
-    ModelBuilder,
-    State,
-)
-from newton._src.solvers.kamino.core import inertia
+from newton._src.sim import Control, Model, ModelBuilder, State
 from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
 from newton._src.solvers.kamino.core.control import ControlKamino
-from newton._src.solvers.kamino.core.joints import JOINT_QMAX, JOINT_QMIN
 from newton._src.solvers.kamino.core.model import ModelKamino
 from newton._src.solvers.kamino.core.state import StateKamino
-from newton._src.solvers.kamino.models import basics, get_basics_usd_assets_path, get_examples_usd_assets_path
+from newton._src.solvers.kamino.models import basics as basics_kamino
+from newton._src.solvers.kamino.models import basics_newton, get_basics_usd_assets_path, get_examples_usd_assets_path
 from newton._src.solvers.kamino.models.builders import utils as model_utils
 from newton._src.solvers.kamino.solver_kamino import SolverKamino
 from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.tests.utils import print as print_utils
 from newton._src.solvers.kamino.utils import logger as msg
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
-
-###
-# Utilities
-###
-
-
-def build_boxes_fourbar_newton(
-    builder: ModelBuilder | None = None,
-    z_offset: float = 0.0,
-    fixedbase: bool = False,
-    floatingbase: bool = True,
-    limits: bool = True,
-    ground: bool = True,
-    dynamic_joints: bool = False,
-    implicit_pd: bool = False,
-    verbose: bool = False,
-    new_world: bool = True,
-    actuator_ids: list[int] | None = None,
-) -> ModelBuilder:
-    """
-    Constructs a basic model of a four-bar linkage.
-
-    Args:
-        builder (ModelBuilder | None):
-            An optional existing model builder to populate.\n
-            If `None`, a new builder is created.
-        z_offset (float):
-            A vertical offset to apply to the initial position of the box.
-        ground (bool):
-            Whether to add a static ground plane to the model.
-        new_world (bool):
-            Whether to create a new world in the builder for this model.\n
-            If `True`, a new world is created and added to the builder.
-
-    Returns:
-        ModelBuilder: A model builder containing the four-bar linkage.
-    """
-    # Create a new builder if none is provided
-    if builder is None:
-        _builder = ModelBuilder()
-    else:
-        _builder = builder
-
-    # Create a new world in the builder if requested or if a new builder was created
-    if new_world or builder is None:
-        _builder.begin_world()
-
-    # Set default actuator IDs if none are provided
-    if actuator_ids is None:
-        actuator_ids = [1, 3]
-    elif not isinstance(actuator_ids, list):
-        raise TypeError("actuator_ids, if specified, must be provided as a list of integers.")
-
-    ###
-    # Base Parameters
-    ###
-
-    # Constant to set an initial z offset for the bodies
-    # NOTE: for testing purposes, recommend values are {0.0, -0.001}
-    z_0 = z_offset
-
-    # Box dimensions
-    d = 0.01
-    w = 0.01
-    h = 0.1
-
-    # Margins
-    mj = 0.001
-    dj = 0.5 * d + mj
-
-    ###
-    # Body parameters
-    ###
-
-    # Box dimensions
-    d_1 = h
-    w_1 = w
-    h_1 = d
-    d_2 = d
-    w_2 = w
-    h_2 = h
-    d_3 = h
-    w_3 = w
-    h_3 = d
-    d_4 = d
-    w_4 = w
-    h_4 = h
-
-    # Inertial properties
-    m_i = 1.0
-    i_I_i_1 = inertia.solid_cuboid_body_moment_of_inertia(m_i, d_1, w_1, h_1)
-    i_I_i_2 = inertia.solid_cuboid_body_moment_of_inertia(m_i, d_2, w_2, h_2)
-    i_I_i_3 = inertia.solid_cuboid_body_moment_of_inertia(m_i, d_3, w_3, h_3)
-    i_I_i_4 = inertia.solid_cuboid_body_moment_of_inertia(m_i, d_4, w_4, h_4)
-    if verbose:
-        print(f"i_I_i_1:\n{i_I_i_1}")
-        print(f"i_I_i_2:\n{i_I_i_2}")
-        print(f"i_I_i_3:\n{i_I_i_3}")
-        print(f"i_I_i_4:\n{i_I_i_4}")
-
-    # Initial body positions
-    r_0 = wp.vec3f(0.0, 0.0, z_0)
-    dr_b1 = wp.vec3f(0.0, 0.0, 0.5 * d)
-    dr_b2 = wp.vec3f(0.5 * h + dj, 0.0, 0.5 * h + dj)
-    dr_b3 = wp.vec3f(0.0, 0.0, 0.5 * d + h + dj + mj)
-    dr_b4 = wp.vec3f(-0.5 * h - dj, 0.0, 0.5 * h + dj)
-
-    # Initial positions of the bodies
-    r_b1 = r_0 + dr_b1
-    r_b2 = r_b1 + dr_b2
-    r_b3 = r_b1 + dr_b3
-    r_b4 = r_b1 + dr_b4
-    if verbose:
-        print(f"r_b1: {r_b1}")
-        print(f"r_b2: {r_b2}")
-        print(f"r_b3: {r_b3}")
-        print(f"r_b4: {r_b4}")
-
-    # Initial body poses
-    q_i_1 = wp.transformf(r_b1, wp.quat_identity(dtype=wp.float32))
-    q_i_2 = wp.transformf(r_b2, wp.quat_identity(dtype=wp.float32))
-    q_i_3 = wp.transformf(r_b3, wp.quat_identity(dtype=wp.float32))
-    q_i_4 = wp.transformf(r_b4, wp.quat_identity(dtype=wp.float32))
-
-    # Initial joint positions
-    r_j1 = wp.vec3f(r_b2.x, 0.0, r_b1.z)
-    r_j2 = wp.vec3f(r_b2.x, 0.0, r_b3.z)
-    r_j3 = wp.vec3f(r_b4.x, 0.0, r_b3.z)
-    r_j4 = wp.vec3f(r_b4.x, 0.0, r_b1.z)
-    if verbose:
-        print(f"r_j1: {r_j1}")
-        print(f"r_j2: {r_j2}")
-        print(f"r_j3: {r_j3}")
-        print(f"r_j4: {r_j4}")
-
-    ###
-    # Bodies
-    ###
-
-    bid1 = _builder.add_link(
-        label="link_1",
-        mass=m_i,
-        inertia=i_I_i_1,
-        xform=q_i_1,
-        lock_inertia=True,
-    )
-
-    bid2 = _builder.add_link(
-        label="link_2",
-        mass=m_i,
-        inertia=i_I_i_2,
-        xform=q_i_2,
-        lock_inertia=True,
-    )
-
-    bid3 = _builder.add_link(
-        label="link_3",
-        mass=m_i,
-        inertia=i_I_i_3,
-        xform=q_i_3,
-        lock_inertia=True,
-    )
-
-    bid4 = _builder.add_link(
-        label="link_4",
-        mass=m_i,
-        inertia=i_I_i_4,
-        xform=q_i_4,
-        lock_inertia=True,
-    )
-
-    ###
-    # Geometries
-    ###
-
-    _builder.add_shape_box(
-        label="box_1",
-        body=bid1,
-        hx=0.5 * d_1,
-        hy=0.5 * w_1,
-        hz=0.5 * h_1,
-        cfg=ModelBuilder.ShapeConfig(margin=0.0, gap=0.0),
-    )
-    _builder.add_shape_box(
-        label="box_2",
-        body=bid2,
-        hx=0.5 * d_2,
-        hy=0.5 * w_2,
-        hz=0.5 * h_2,
-        cfg=ModelBuilder.ShapeConfig(margin=0.0, gap=0.0),
-    )
-
-    _builder.add_shape_box(
-        label="box_3",
-        body=bid3,
-        hx=0.5 * d_3,
-        hy=0.5 * w_3,
-        hz=0.5 * h_3,
-        cfg=ModelBuilder.ShapeConfig(margin=0.0, gap=0.0),
-    )
-
-    _builder.add_shape_box(
-        label="box_4",
-        body=bid4,
-        hx=0.5 * d_4,
-        hy=0.5 * w_4,
-        hz=0.5 * h_4,
-        cfg=ModelBuilder.ShapeConfig(margin=0.0, gap=0.0),
-    )
-
-    # Add a static collision layer and geometry for the plane
-    if ground:
-        _builder.add_shape_box(
-            label="ground",
-            body=-1,
-            hx=10.0,
-            hy=10.0,
-            hz=0.5,
-            xform=wp.transformf(0.0, 0.0, -0.5, 0.0, 0.0, 0.0, 1.0),
-            cfg=ModelBuilder.ShapeConfig(margin=0.0, gap=0.0),
-        )
-
-    ###
-    # Joints
-    ###
-
-    if limits:
-        qmin = -0.25 * math.pi
-        qmax = 0.25 * math.pi
-    else:
-        qmin = float(JOINT_QMIN)
-        qmax = float(JOINT_QMAX)
-
-    if fixedbase:
-        _builder.add_joint_fixed(
-            label="world_to_link1",
-            parent=-1,
-            child=bid1,
-            parent_xform=wp.transform_identity(dtype=wp.float32),
-            child_xform=wp.transformf(-r_b1, wp.quat_identity(dtype=wp.float32)),
-        )
-
-    if floatingbase:
-        _builder.add_joint_free(
-            label="world_to_link1",
-            parent=-1,
-            child=bid1,
-            parent_xform=wp.transform_identity(dtype=wp.float32),
-            child_xform=wp.transform_identity(dtype=wp.float32),
-        )
-
-    passive_joint_dof_config = ModelBuilder.JointDofConfig(
-        axis=Axis.Y,
-        actuator_mode=JointTargetMode.NONE,
-        limit_lower=qmin,
-        limit_upper=qmax,
-    )
-    effort_joint_dof_config = ModelBuilder.JointDofConfig(
-        axis=Axis.Y,
-        actuator_mode=JointTargetMode.EFFORT,
-        limit_lower=qmin,
-        limit_upper=qmax,
-        armature=0.1 if dynamic_joints else 0.0,
-        friction=0.001 if dynamic_joints else 0.0,
-    )
-    pd_joint_dof_config = ModelBuilder.JointDofConfig(
-        axis=Axis.Y,
-        actuator_mode=JointTargetMode.POSITION_VELOCITY,
-        armature=0.1 if dynamic_joints else 0.0,
-        friction=0.001 if dynamic_joints else 0.0,
-        target_ke=1000.0,
-        target_kd=20.0,
-        limit_lower=qmin,
-        limit_upper=qmax,
-    )
-
-    joint_1_config_if_implicit_pd = pd_joint_dof_config if implicit_pd else effort_joint_dof_config
-    joint_1_config_if_actuated = joint_1_config_if_implicit_pd if 1 in actuator_ids else passive_joint_dof_config
-    _builder.add_joint_revolute(
-        label="link1_to_link2",
-        parent=bid1,
-        child=bid2,
-        axis=joint_1_config_if_actuated if 1 in actuator_ids else passive_joint_dof_config,
-        parent_xform=wp.transformf(r_j1 - r_b1, wp.quat_identity(dtype=wp.float32)),
-        child_xform=wp.transformf(r_j1 - r_b2, wp.quat_identity(dtype=wp.float32)),
-    )
-
-    _builder.add_joint_revolute(
-        label="link2_to_link3",
-        parent=bid2,
-        child=bid3,
-        axis=effort_joint_dof_config if 2 in actuator_ids else passive_joint_dof_config,
-        parent_xform=wp.transformf(r_j2 - r_b2, wp.quat_identity(dtype=wp.float32)),
-        child_xform=wp.transformf(r_j2 - r_b3, wp.quat_identity(dtype=wp.float32)),
-    )
-
-    _builder.add_joint_revolute(
-        label="link3_to_link4",
-        parent=bid3,
-        child=bid4,
-        axis=effort_joint_dof_config if 3 in actuator_ids else passive_joint_dof_config,
-        parent_xform=wp.transformf(r_j3 - r_b3, wp.quat_identity(dtype=wp.float32)),
-        child_xform=wp.transformf(r_j3 - r_b4, wp.quat_identity(dtype=wp.float32)),
-    )
-
-    _builder.add_joint_revolute(
-        label="link4_to_link1",
-        parent=bid4,
-        child=bid1,
-        axis=effort_joint_dof_config if 4 in actuator_ids else passive_joint_dof_config,
-        parent_xform=wp.transformf(r_j4 - r_b4, wp.quat_identity(dtype=wp.float32)),
-        child_xform=wp.transformf(r_j4 - r_b1, wp.quat_identity(dtype=wp.float32)),
-    )
-
-    # Signal the end of setting-up the new world
-    if new_world or builder is None:
-        _builder.end_world()
-
-    # Return the lists of element indices
-    return _builder
-
 
 ###
 # Tests
@@ -399,7 +65,7 @@ class TestModel(unittest.TestCase):
 
     def test_01_single_model(self):
         # Create a model builder
-        builder = basics.build_boxes_hinged()
+        builder = basics_kamino.build_boxes_hinged()
 
         # Finalize the model
         model: ModelKamino = builder.finalize(self.default_device)
@@ -421,8 +87,8 @@ class TestModel(unittest.TestCase):
 
     def test_02_double_model(self):
         # Create a model builder
-        builder1 = basics.build_boxes_hinged()
-        builder2 = basics.build_boxes_nunchaku()
+        builder1 = basics_kamino.build_boxes_hinged()
+        builder2 = basics_kamino.build_boxes_nunchaku()
 
         # Compute the total number of elements from the two builders
         total_nb = builder1.num_bodies + builder2.num_bodies
@@ -454,7 +120,7 @@ class TestModel(unittest.TestCase):
         num_worlds = 4
 
         # Create a model builder
-        builder = model_utils.make_homogeneous_builder(num_worlds=num_worlds, build_fn=basics.build_boxes_hinged)
+        builder = model_utils.make_homogeneous_builder(num_worlds=num_worlds, build_fn=basics_kamino.build_boxes_hinged)
 
         # Finalize the model
         model: ModelKamino = builder.finalize(self.default_device)
@@ -476,7 +142,7 @@ class TestModel(unittest.TestCase):
 
     def test_04_hetereogeneous_model(self):
         # Create a model builder
-        builder = basics.make_basics_heterogeneous_builder()
+        builder = basics_kamino.make_basics_heterogeneous_builder()
         num_worlds = builder.num_worlds
 
         # Finalize the model
@@ -532,7 +198,7 @@ class TestModelConversions(unittest.TestCase):
         builder_0.default_shape_cfg.gap = 0.0
 
         # Create a fourbar using Newton's ModelBuilder
-        builder_0: ModelBuilder = build_boxes_fourbar_newton(
+        builder_0: ModelBuilder = basics_newton.build_boxes_fourbar(
             builder=builder_0,
             z_offset=0.0,
             fixedbase=False,
@@ -551,7 +217,7 @@ class TestModelConversions(unittest.TestCase):
         builder_0.end_world()
 
         # Create a fourbar using Kamino's ModelBuilderKamino
-        builder_1: ModelBuilderKamino = basics.build_boxes_fourbar(
+        builder_1: ModelBuilderKamino = basics_kamino.build_boxes_fourbar(
             builder=None,
             z_offset=0.0,
             fixedbase=False,
@@ -796,7 +462,7 @@ class TestModelConversions(unittest.TestCase):
         builder_0.default_shape_cfg.gap = 0.0
 
         # Create a fourbar using Newton's ModelBuilder
-        builder_0: ModelBuilder = build_boxes_fourbar_newton(
+        builder_0: ModelBuilder = basics_newton.build_boxes_fourbar(
             builder=builder_0,
             z_offset=0.0,
             fixedbase=False,
@@ -813,7 +479,7 @@ class TestModelConversions(unittest.TestCase):
         builder_0.end_world()
 
         # Create a fourbar using Kamino's ModelBuilderKamino
-        builder_1: ModelBuilderKamino = basics.build_boxes_fourbar(
+        builder_1: ModelBuilderKamino = basics_kamino.build_boxes_fourbar(
             builder=None,
             z_offset=0.0,
             fixedbase=False,
@@ -888,7 +554,7 @@ class TestModelConversions(unittest.TestCase):
         builder_0.default_shape_cfg.gap = 0.0
 
         # Create a fourbar using Newton's ModelBuilder
-        builder_0: ModelBuilder = build_boxes_fourbar_newton(
+        builder_0: ModelBuilder = basics_newton.build_boxes_fourbar(
             builder=builder_0,
             z_offset=0.0,
             fixedbase=False,
@@ -907,7 +573,7 @@ class TestModelConversions(unittest.TestCase):
         builder_0.end_world()
 
         # Create a fourbar using Kamino's ModelBuilderKamino
-        builder_1: ModelBuilderKamino = basics.build_boxes_fourbar(
+        builder_1: ModelBuilderKamino = basics_kamino.build_boxes_fourbar(
             builder=None,
             z_offset=0.0,
             fixedbase=False,

@@ -138,6 +138,13 @@ def convert_entity_local_transforms(model: Model) -> None:
         if child < 0 or _quat_is_identity(q_corr):
             continue
 
+        if child in body_corr:
+            msg.warning(
+                "Body %d is the child of multiple joints requiring joint_X_c "
+                "correction. The previous correction will be overwritten, which "
+                "may produce incorrect joint constraints for loop-closing joints.",
+                child,
+            )
         body_corr[child] = q_corr.copy()
 
         # Update child-side joint transform: rotation becomes identity,

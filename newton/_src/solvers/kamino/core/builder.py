@@ -1285,7 +1285,7 @@ class ModelBuilderKamino:
                 num_joint_kinematic_cts=wp.array(info_njkc, dtype=int32),
                 bodies_offset=wp.array(info_bio, dtype=int32),
                 joints_offset=wp.array(info_jio, dtype=int32),
-                geom_offset=wp.array(info_gio, dtype=int32),
+                geoms_offset=wp.array(info_gio, dtype=int32),
                 body_dofs_offset=wp.array(info_bdio, dtype=int32),
                 joint_coords_offset=wp.array(info_jqio, dtype=int32),
                 joint_dofs_offset=wp.array(info_jdio, dtype=int32),

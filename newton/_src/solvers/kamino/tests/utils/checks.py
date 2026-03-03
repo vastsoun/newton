@@ -388,6 +388,7 @@ def assert_model_info_equal(
         "max_total_cts",
         "bodies_offset",
         "joints_offset",
+        "geoms_offset",
         "body_dofs_offset",
         "joint_coords_offset",
         "joint_dofs_offset",

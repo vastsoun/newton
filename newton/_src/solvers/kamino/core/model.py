@@ -248,6 +248,12 @@ class ModelKaminoInfo:
     Shape of ``(num_worlds,)`` and type :class:`int`.
     """
 
+    geoms_offset: wp.array | None = None
+    """
+    The geom index offset of each world w.r.t. the model.\n
+    Shape of ``(num_worlds,)`` and type :class:`int`.
+    """
+
     limits_offset: wp.array | None = None
     """
     The limit index offset of each world w.r.t the model.\n
@@ -263,12 +269,6 @@ class ModelKaminoInfo:
     unilaterals_offset: wp.array | None = None
     """
     The index offset of the unilaterals (limits + contacts) block of each world.\n
-    Shape of ``(num_worlds,)`` and type :class:`int`.
-    """
-
-    geom_offset: wp.array | None = None
-    """
-    The geom index offset of each world w.r.t. the model.\n
     Shape of ``(num_worlds,)`` and type :class:`int`.
     """
 
@@ -1269,6 +1269,7 @@ class ModelKamino:
                 num_joint_kinematic_cts=wp.array(num_joint_kinematic_cts_np, dtype=int32),
                 bodies_offset=wp.array(world_body_offset_np, dtype=int32),
                 joints_offset=wp.array(world_joint_offset_np, dtype=int32),
+                geoms_offset=wp.array(world_shape_offset_np, dtype=int32),
                 body_dofs_offset=wp.array(world_body_dof_offset_np, dtype=int32),
                 joint_coords_offset=wp.array(world_joint_coord_offset_np, dtype=int32),
                 joint_dofs_offset=wp.array(world_joint_dof_offset_np, dtype=int32),

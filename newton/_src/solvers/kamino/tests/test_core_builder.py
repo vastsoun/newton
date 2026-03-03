@@ -75,7 +75,7 @@ def assert_model_matches_builder(test: unittest.TestCase, builder: ModelBuilderK
         test.assertEqual(model.info.num_joint_kinematic_cts.numpy()[w], world.num_kinematic_joint_cts)
         test.assertEqual(model.info.bodies_offset.numpy()[w], world.bodies_idx_offset)
         test.assertEqual(model.info.joints_offset.numpy()[w], world.joints_idx_offset)
-        test.assertEqual(model.info.geom_offset.numpy()[w], world.geoms_idx_offset)
+        test.assertEqual(model.info.geoms_offset.numpy()[w], world.geoms_idx_offset)
         test.assertEqual(model.info.body_dofs_offset.numpy()[w], world.body_dofs_idx_offset)
         test.assertEqual(model.info.joint_coords_offset.numpy()[w], world.joint_coords_idx_offset)
         test.assertEqual(model.info.joint_dofs_offset.numpy()[w], world.joint_dofs_idx_offset)

@@ -21,6 +21,7 @@ from abc import ABC, abstractmethod
 # Thirdparty
 import torch
 import warp as wp
+
 from newton._src.solvers.kamino.examples.rl.simulation import RigidBodySim
 from newton._src.solvers.kamino.examples.rl.utils import StackedIndices, periodic_encoding
 from newton._src.solvers.kamino.utils.sim import Simulator
@@ -153,7 +154,9 @@ def _compute_bipedal_obs_core(
 
     # Path velocities in root frame
     _write_vec3(obs, o + obs_offsets[_OBS_PATH_LIN_VEL], wp.quat_rotate_inv(root_in_path, cmd_vel))
-    _write_vec3(obs, o + obs_offsets[_OBS_PATH_ANG_VEL], wp.quat_rotate_inv(root_in_path, wp.vec3(0.0, 0.0, cmd_yaw_rate)))
+    _write_vec3(
+        obs, o + obs_offsets[_OBS_PATH_ANG_VEL], wp.quat_rotate_inv(root_in_path, wp.vec3(0.0, 0.0, cmd_yaw_rate))
+    )
 
     # Phase encoding
     p = phase[w]
@@ -353,8 +356,8 @@ class DrlegsBaseObservation(ObservationBuilder):
 
         # Pre-allocated observation buffer (eliminates torch.cat)
         self._obs_buffer = torch.zeros(
-            (num_worlds, self._num_dofs + num_actions),
-            device=device,
+            (body_sim.num_worlds, 3 + self._num_dofs + 2 * self._num_actions),
+            device=body_sim.torch_device,
             dtype=torch.float32,
         )
 
@@ -367,8 +370,15 @@ class DrlegsBaseObservation(ObservationBuilder):
             self._action_history_prev[:] = self._action_history
             self._action_history[:] = self._action_scale * actions
 
-        self._obs_buffer[:, : self._num_dofs] = q_j
-        self._obs_buffer[:, self._num_dofs :] = self._action_history
+        root_pos = self._get_root_positions()
+        q_j = self._get_joint_positions()
+
+        d = self._num_dofs
+        a = self._num_actions
+        self._obs_buffer[:, :3] = root_pos
+        self._obs_buffer[:, 3 : 3 + d] = q_j
+        self._obs_buffer[:, 3 + d : 3 + d + a] = self._action_history
+        self._obs_buffer[:, 3 + d + a :] = self._action_history_prev
         return self._obs_buffer
 
     def reset(self, env_ids: torch.Tensor | None = None) -> None:

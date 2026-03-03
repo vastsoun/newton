@@ -1623,7 +1623,12 @@ class SolverKamino(SolverBase):
             raise ValueError(error_msg)
 
     def _update_gravity(self):
-        """Updates Kamino's :class:`GravityModel` from Newton's model.gravity."""
+        """
+        Updates Kamino's :class:`GravityModel` from Newton's model.gravity.
+
+        Called when :data:`SolverNotifyFlags.MODEL_PROPERTIES` is raised,
+        indicating that ``model.gravity`` may have changed at runtime.
+        """
         convert_model_gravity(self.model, self._model_kamino.gravity)
 
     def _update_joint_transforms(self):

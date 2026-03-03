@@ -55,7 +55,6 @@ from .size import SizeKamino
 from .state import StateKamino
 from .time import TimeData, TimeModel
 from .types import float32, int32, mat33f, transformf, vec2i, vec3f, vec4f, vec6f
-from .world import WorldDescriptor
 
 ###
 # Module interface
@@ -759,7 +758,6 @@ class ModelKamino:
         num_shapes_np = _compute_num_entities_per_world(model.shape_world, model.world_count)
 
         # Compute body coord/DoF counts per world
-        num_body_coords_np = num_bodies_np * 7
         num_body_dofs_np = num_bodies_np * 6
 
         # Compute joint coord/DoF/constraint counts per world
@@ -1055,7 +1053,6 @@ class ModelKamino:
         body_world_np = model.body_world.numpy()
         joint_world_np = model.joint_world.numpy()
         body_world_start_np = model.body_world_start.numpy()
-        joint_world_start_np = model.joint_world_start.numpy()
 
         # Check for articulations
         if model.articulation_count > 0:
@@ -1142,50 +1139,6 @@ class ModelKamino:
         ###
         # Model Attributes
         ###
-
-        # TODO: Construct the world descriptors from the newton.Model instance
-        model_worlds: list[WorldDescriptor] = [None] * model.world_count
-        for w in range(model.world_count):
-            model_worlds[w] = WorldDescriptor(
-                name=f"world_{w}",
-                wid=w,
-                num_bodies=int(num_bodies_np[w]),
-                num_joints=int(num_joints_np[w]),
-                num_passive_joints=int(num_passive_joints_np[w]),
-                num_actuated_joints=int(num_actuated_joints_np[w]),
-                num_geoms=int(num_shapes_np[w]),
-                num_materials=0,  # TODO: how to handle both global and per-world materials simultaneously?
-                num_body_coords=int(num_body_coords_np[w]),
-                num_body_dofs=int(num_body_dofs_np[w]),
-                num_joint_coords=int(num_joint_coords_np[w]),
-                num_joint_dofs=int(num_joint_dofs_np[w]),
-                num_joint_cts=int(num_joint_cts_np[w]),
-                num_passive_joint_coords=int(num_joint_passive_coords_np[w]),
-                num_passive_joint_dofs=int(num_joint_passive_dofs_np[w]),
-                num_actuated_joint_coords=int(num_joint_actuated_coords_np[w]),
-                num_actuated_joint_dofs=int(num_joint_actuated_dofs_np[w]),
-                # TODO
-                bodies_idx_offset=int(world_body_offset_np[w]),
-                joints_idx_offset=int(world_joint_offset_np[w]),
-                geoms_idx_offset=int(world_shape_offset_np[w]),
-                body_dofs_idx_offset=int(world_body_dof_offset_np[w]),
-                joint_coords_idx_offset=int(world_joint_coord_offset_np[w]),
-                joint_dofs_idx_offset=int(world_joint_dof_offset_np[w]),
-                joint_passive_coords_idx_offset=int(world_passive_joint_coord_offset_np[w]),
-                joint_passive_dofs_idx_offset=int(world_passive_joint_dofs_offset_np[w]),
-                joint_actuated_coords_idx_offset=int(world_actuated_joint_coord_offset_np[w]),
-                joint_actuated_dofs_idx_offset=int(world_actuated_joint_dofs_offset_np[w]),
-                joint_cts_idx_offset=int(world_joint_cts_offset_np[w]),
-                joint_dynamic_cts_idx_offset=int(world_joint_dynamic_cts_offset_np[w]),
-                joint_kinematic_cts_idx_offset=int(world_joint_kinematic_cts_offset_np[w]),
-                # TODO
-                base_body_idx=max(-1, int(base_body_idx_np[w] - body_world_start_np[w])),
-                base_joint_idx=max(-1, int(base_joint_idx_np[w] - joint_world_start_np[w])),
-                mass_min=float(mass_min_np[w]),
-                mass_max=float(mass_max_np[w]),
-                mass_total=float(mass_total_np[w]),
-                inertia_total=float(inertia_total_np[w]),
-            )
 
         # Construct SizeKamino from the newton.Model instance
         model_size = SizeKamino(

@@ -109,13 +109,9 @@ class Example:
     # simulate() performs one frame's worth of updates
     def simulate(self):
         for _ in range(self.sim_substeps):
-            # clear forces on the state before applying new ones
             self.state_0.clear_forces()
-            # apply forces to the model for picking, wind, etc
             self.viewer.apply_forces(self.state_0)
-            # step the simulation forward by one time step
             self.solver.step(self.state_0, self.state_1, self.control, None, self.sim_dt)
-            # swap states
             self.state_0, self.state_1 = self.state_1, self.state_0
 
     def step(self):

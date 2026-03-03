@@ -352,6 +352,23 @@ class SolverKaminoImpl(SolverBase):
         # Construct the unilateral constraints members in the model info
         make_unilateral_constraints_info(model=self._model, data=self._data, limits=self._limits, contacts=contacts)
 
+        msg.error("model_kamino.info.num_joint_cts: %s", self._model.info.num_joint_cts)
+        msg.error("model_kamino.info.num_joint_dynamic_cts: %s", self._model.info.num_joint_dynamic_cts)
+        msg.error("model_kamino.info.num_joint_kinematic_cts: %s", self._model.info.num_joint_kinematic_cts)
+        msg.error("model_kamino.info.total_cts_offset: %s", self._model.info.total_cts_offset)
+        msg.error("model_kamino.info.joint_dynamic_cts_group_offset: %s", self._model.info.joint_dynamic_cts_group_offset)
+        msg.error("model_kamino.info.joint_kinematic_cts_group_offset: %s", self._model.info.joint_kinematic_cts_group_offset)
+        msg.error("model_kamino.joints.act_type: %s", self._model.joints.act_type)
+        msg.error("model_kamino.joints.a_j: %s", self._model.joints.a_j)
+        msg.error("model_kamino.joints.k_p_j: %s", self._model.joints.k_p_j)
+        msg.error("model_kamino.joints.k_d_j: %s", self._model.joints.k_d_j)
+        msg.error("model_kamino.joints.num_cts: %s", self._model.joints.num_cts)
+        msg.error("model_kamino.joints.num_dynamic_cts: %s", self._model.joints.num_dynamic_cts)
+        msg.error("model_kamino.joints.num_kinematic_cts: %s", self._model.joints.num_kinematic_cts)
+        msg.error("model_kamino.joints.cts_offset: %s", self._model.joints.cts_offset)
+        msg.error("model_kamino.joints.dynamic_cts_offset: %s", self._model.joints.dynamic_cts_offset)
+        msg.error("model_kamino.joints.kinematic_cts_offset: %s", self._model.joints.kinematic_cts_offset)
+
         # Allocate Jacobians data on the device
         if self._config.sparse_jacobian:
             self._jacobians = SparseSystemJacobians(

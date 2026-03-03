@@ -77,6 +77,10 @@ class Example:
         # Create the model from the builder
         msg.notif("Creating the model from the builder...")
         self.model = builder.finalize(skip_validation_joints=True)
+        msg.warning("model.joint_target_mode: %s", self.model.joint_target_mode)
+        msg.warning("model.joint_armature: %s", self.model.joint_armature)
+        msg.warning("model.joint_target_ke: %s", self.model.joint_target_ke)
+        msg.warning("model.joint_target_kd: %s", self.model.joint_target_kd)
 
         # Create and configure settings for SolverKamino and the collision detector
         collision_detector_config = CollisionDetectorConfig()
@@ -101,14 +105,11 @@ class Example:
             collision_detector_config=collision_detector_config,
         )
 
-        # Create state and control data containers
+        # Create state, control, and contacts data containers
         self.state_0 = self.model.state()
         self.state_1 = self.model.state()
         self.control = self.model.control()
-
-        # Use Newton's collision pipeline (same as standard Newton examples)
-        # TODO: self.collision_pipeline = newton.examples.create_collision_pipeline(self.model, args)
-        # TODO: self.contacts = self.model.collide(self.state_0, collision_pipeline=self.collision_pipeline)
+        self.contacts = self.model.contacts()
 
         # Reset the simulation state to a valid initial configuration above the ground
         msg.notif("Resetting the simulation state to a valid initial configuration above the ground...")
@@ -142,7 +143,7 @@ class Example:
             self.state_0.clear_forces()
             self.viewer.apply_forces(self.state_0)
             self.solver.step(self.state_0, self.state_1, self.control, None, self.sim_dt)
-            # TODO: self.solver.update_contacts(self.contacts, self.state_1)
+            self.solver.update_contacts(self.contacts, self.state_0)
             self.state_0, self.state_1 = self.state_1, self.state_0
 
     def step(self):
@@ -154,8 +155,16 @@ class Example:
 
     def render(self):
         self.viewer.begin_frame(self.sim_time)
+        # Since rendering is called after stepping the simulation, the previous and next
+        # states correspond to self.state_1 and self.state_0 due to the reference swaps,
+        # so contacts are rendered with self.state_1 to match the body positions at the
+        # time of contact generation.
         self.viewer.log_state(self.state_0)
-        # TODO: self.viewer.log_contacts(self.contacts, self.state_0)
+        # TODO @cavemor: why does calling `log_contacts` fail?
+        # msg.warning("contacts.rigid_contact_count: %s", self.contacts.rigid_contact_count)
+        # msg.warning("contacts.rigid_contact_shape1: %s", self.contacts.rigid_contact_shape1)
+        # msg.warning("contacts.rigid_contact_point1: %s", self.contacts.rigid_contact_point1)
+        # self.viewer.log_contacts(self.contacts, self.state_1)
         self.viewer.end_frame()
 
     def test_final(self):

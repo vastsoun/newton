@@ -115,10 +115,6 @@ jobs:
         if: always()
         run: df -h
 
-      - name: Check disk space (post-test)
-        if: always()
-        run: df -h
-
       - name: Test Summary
         if: ${{ !cancelled() }}
         uses: test-summary/action@31493c76ec9e7aa675f1585d3ed6f1da69269a86  # v2.4

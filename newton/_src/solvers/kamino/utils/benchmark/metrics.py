@@ -16,7 +16,6 @@
 import os
 from typing import Any, Literal
 
-import h5py
 import numpy as np
 
 from .....core.types import override
@@ -510,6 +509,15 @@ class BenchmarkMetrics:
             self.physics_metrics.compute_stats()
 
     def save_to_hdf5(self, path: str):
+        # Attempt to import h5py first, and warn user
+        # if the necessary package is not installed
+        try:
+            import h5py  # noqa: PLC0415
+        except ImportError as e:
+            raise ImportError(
+                "The `h5py` package is required for saving to HDF5. Install it with: pip install h5py"
+            ) from e
+
         # Ensure that there is in fact data to save before attempting to write to HDF5
         if self._problem_names is None or self._config_names is None or self._num_steps is None:
             raise ValueError("BenchmarkMetrics: problem names, config names, and num_steps must be set before saving.")
@@ -562,6 +570,15 @@ class BenchmarkMetrics:
                 datafile["Data/perstep/physics/f_ccp"] = self.physics_metrics.f_ccp
 
     def load_from_hdf5(self, path: str):
+        # Attempt to import h5py first, and warn user
+        # if the necessary package is not installed
+        try:
+            import h5py  # noqa: PLC0415
+        except ImportError as e:
+            raise ImportError(
+                "The `h5py` package is required for saving to HDF5. Install it with: pip install h5py"
+            ) from e
+
         """Load raw data arrays from the HDF5 file into the BenchmarkMetrics instance"""
         with h5py.File(path, "r") as datafile:
             # First load the info group to get the dimensions and initialize the data arrays

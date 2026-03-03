@@ -13,8 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import h5py
-
 from ...linalg.linear import LinearSolverNameToType, LinearSolverTypeToName
 from ...solver_kamino import SolverKaminoConfig
 
@@ -213,7 +211,7 @@ def make_benchmark_configs() -> dict[str, SolverKaminoConfig]:
 ###
 
 
-def save_solver_configs_to_hdf5(configs: dict[str, SolverKaminoConfig], datafile: h5py.File):
+def save_solver_configs_to_hdf5(configs: dict[str, SolverKaminoConfig], datafile):
     for config_name, config in configs.items():
         scope = f"Solver/{config_name}"
         # ------------------------------------------------------------------------------
@@ -251,7 +249,7 @@ def save_solver_configs_to_hdf5(configs: dict[str, SolverKaminoConfig], datafile
         datafile[f"{scope}/warmstarting/contact_warmstart_method"] = config.contact_warmstart_method
 
 
-def load_solver_configs_to_hdf5(datafile: h5py.File) -> dict[str, SolverKaminoConfig]:
+def load_solver_configs_to_hdf5(datafile) -> dict[str, SolverKaminoConfig]:
     configs = {}
     for config_name in datafile["Solver"].keys():
         config = SolverKaminoConfig()

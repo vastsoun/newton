@@ -25,7 +25,10 @@ from newton._src.solvers.kamino.utils import logger as msg
 from newton._src.solvers.kamino.utils.benchmark.configs import make_benchmark_configs
 from newton._src.solvers.kamino.utils.benchmark.metrics import BenchmarkMetrics, CodeInfo
 from newton._src.solvers.kamino.utils.benchmark.problems import BenchmarkProblemNameToConfigFn, make_benchmark_problems
-from newton._src.solvers.kamino.utils.benchmark.render import render_solver_configs_table
+from newton._src.solvers.kamino.utils.benchmark.render import (
+    render_problem_dimensions_table,
+    render_solver_configs_table,
+)
 from newton._src.solvers.kamino.utils.benchmark.runner import run_single_benchmark
 from newton._src.solvers.kamino.utils.device import get_device_spec_info
 from newton._src.solvers.kamino.utils.sim import Simulator
@@ -340,6 +343,15 @@ def benchmark_run(args: argparse.Namespace):
                 use_cuda_graph=use_cuda_graph,
                 print_device_info=True,
             )
+
+    # Print table with problem dimensions
+    render_problem_dimensions_table(metrics._problem_dims, to_console=True)
+    if args.output == "full":
+        render_problem_dimensions_table(
+            metrics._problem_dims,
+            path=os.path.join(RUN_OUTPUT_PATH, "problem_dimensions.txt"),
+            to_console=False,
+        )
 
     # Compute final statistics for the benchmark results
     metrics.compute_stats()

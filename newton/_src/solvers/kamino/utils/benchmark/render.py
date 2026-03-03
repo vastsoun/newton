@@ -21,13 +21,15 @@ from typing import Any
 import numpy as np
 
 from ...linalg.linear import LinearSolverTypeToName
-from ...solver_kamino import SolverKamino
+from ...solver_kamino import SolverKaminoConfig
+from .problems import ProblemDimensions
 
 ###
 # Module interface
 ###
 
 __all__ = [
+    "render_problem_dimensions_table",
     "render_solver_configs_table",
     "render_subcolumn_metrics_table",
     "render_subcolumn_table",
@@ -330,7 +332,7 @@ def render_subcolumn_metrics_table(
 
 
 def render_solver_configs_table(
-    configs: dict[str, SolverKamino.Config],
+    configs: dict[str, SolverKaminoConfig],
     path: str | None = None,
     groups: list[str] | None = None,
     to_console: bool = False,
@@ -339,8 +341,8 @@ def render_solver_configs_table(
     Renders a rich table summarizing the solver configurations.
 
     Args:
-        configs (dict[str, SolverKamino.Config]):
-            A dictionary mapping configuration names to SolverKamino.Config objects.
+        configs (dict[str, SolverKaminoConfig]):
+            A dictionary mapping configuration names to SolverKaminoConfig objects.
         path (str, optional):
             The file path to save the rendered table as a text file. If None, the table is not saved to a file.
         groups (list[str], optional):
@@ -451,6 +453,75 @@ def render_solver_configs_table(
         if "warmstart" in groups:
             cfg_row.extend([cfg.warmstart_mode, cfg.contact_warmstart_method])
         table.add_row(name, *cfg_row)
+
+    # Render the table to the console and/or save to file
+    _render_table_to_console_and_file(table, path=path, to_console=to_console, max_width=None)
+
+
+###
+# Problem Dimensions
+###
+
+
+def render_problem_dimensions_table(
+    problem_dims: dict[str, ProblemDimensions],
+    path: str | None = None,
+    to_console: bool = False,
+):
+    """
+    Renders a rich table summarizing the problem dimensions.
+
+    Args:
+        configs (dict[str, SolverKaminoConfig]):
+            A dictionary mapping configuration names to problem dimensions.
+        path (str, optional):
+            The file path to save the rendered table as a text file. If None, the table is not saved to a file.
+        to_console (bool, optional):
+            If True, also prints the table to the console.
+
+    Raises:
+        ValueError:
+            If the configs dictionary is empty or if any of the configuration objects are missing required attributes.
+        IOError:
+            If there is an error writing the table to the specified file path.
+    """
+    # Attempt to import rich first, and warn user
+    # if the necessary package is not installed
+    try:
+        from rich import box  # noqa: PLC0415
+        from rich.table import Table  # noqa: PLC0415
+    except ImportError as e:
+        raise ImportError(
+            "The `rich` package is required for rendering tables. Install it with: pip install rich"
+        ) from e
+
+    # Initialize the table with appropriate columns and styling
+    table = Table(
+        title="Problem Dimensions Summary",
+        show_header=True,
+        box=box.SIMPLE_HEAVY,
+        show_lines=True,
+        pad_edge=True,
+    )
+
+    # Table header
+    _add_table_column_group(
+        table,
+        "",
+        ["Problem", "# Body Dofs", "# Joint Dofs", "Min Delassus Dim", "Max Delassus Dim"],
+        color="white",
+        justify="left",
+    )
+
+    # Add row for each problem
+    for name, dims in problem_dims.items():
+        row = [
+            str(dims.num_body_dofs),
+            str(dims.num_joint_dofs),
+            str(dims.min_delassus_dim),
+            str(dims.max_delassus_dim),
+        ]
+        table.add_row(name, *row)
 
     # Render the table to the console and/or save to file
     _render_table_to_console_and_file(table, path=path, to_console=to_console, max_width=None)

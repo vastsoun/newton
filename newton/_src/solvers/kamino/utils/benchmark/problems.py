@@ -38,13 +38,23 @@ __all__ = [
     "CameraConfig",
     "ControlConfig",
     "ProblemConfig",
+    "ProblemDimensions",
     "ProblemSet",
     "make_benchmark_problems",
+    "save_problem_dimensions_to_hdf5",
 ]
 
 ###
 # Types
 ###
+
+
+@dataclass
+class ProblemDimensions:
+    num_body_dofs: int = -1
+    num_joint_dofs: int = -1
+    min_delassus_dim: int = -1
+    max_delassus_dim: int = -1
 
 
 @dataclass
@@ -192,3 +202,12 @@ def make_benchmark_problems(
 
         problems[name] = BenchmarkProblemNameToConfigFn[name](**generator_kwargs)
     return problems
+
+
+def save_problem_dimensions_to_hdf5(problem_dims: dict[str, ProblemDimensions], datafile):
+    for problem_name, dims in problem_dims.items():
+        scope = f"Problems/{problem_name}"
+        datafile[f"{scope}/num_body_dofs"] = dims.num_body_dofs
+        datafile[f"{scope}/num_joint_dofs"] = dims.num_joint_dofs
+        datafile[f"{scope}/min_delassus_dim"] = dims.min_delassus_dim
+        datafile[f"{scope}/max_delassus_dim"] = dims.max_delassus_dim

@@ -21,6 +21,7 @@ import numpy as np
 from .....core.types import override
 from ...solver_kamino import SolverKamino
 from .configs import load_solver_configs_to_hdf5, save_solver_configs_to_hdf5
+from .problems import ProblemDimensions, save_problem_dimensions_to_hdf5
 from .render import (
     ColumnGroup,
     render_subcolumn_metrics_table,
@@ -353,6 +354,9 @@ class BenchmarkMetrics:
         self._config_names: list[str] | None = None
         self._num_steps: int | None = None
 
+        # Declare problem dimensions
+        self._problem_dims: dict[str, ProblemDimensions] = {}
+
         # Declare cache of the solver configurations used in the
         # benchmark for easy reference when analyzing results
         self._configs: dict[str, SolverKamino.Config] | None = None
@@ -531,6 +535,9 @@ class BenchmarkMetrics:
             datafile["Info/code/branch"] = self.codeinfo.branch
             datafile["Info/code/commit"] = self.codeinfo.commit
             datafile["Info/code/diff"] = self.codeinfo.diff
+
+            # Problem dimensions
+            save_problem_dimensions_to_hdf5(self._problem_dims, datafile)
 
             # Save solver configuration parameters
             save_solver_configs_to_hdf5(self._configs, datafile)

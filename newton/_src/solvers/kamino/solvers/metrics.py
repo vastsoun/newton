@@ -1452,7 +1452,7 @@ class SolutionMetrics:
                         model.joints.bid_F,
                         data.bodies.u_i,
                         J_cts.nzb_values,
-                        jacobians._J_dofs_joint_nzb_offsets,
+                        jacobians._J_cts_joint_nzb_offsets,
                         # Outputs:
                         self._data.r_kinematics,
                         self._data.r_kinematics_argmax,

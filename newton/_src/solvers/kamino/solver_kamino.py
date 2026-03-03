@@ -43,11 +43,12 @@ from ..solver import SolverBase
 from .core.bodies import update_body_inertias, update_body_wrenches
 from .core.control import ControlKamino
 from .core.data import DataKamino
+from .core.gravity import convert_model_gravity
 from .core.joints import JointCorrectionMode
 from .core.model import ModelKamino
 from .core.state import StateKamino, compute_body_com_state, compute_body_frame_state
 from .core.time import advance_time
-from .core.types import float32, int32, transformf, vec3f, vec4f, vec6f
+from .core.types import float32, int32, transformf, vec3f, vec6f
 from .dynamics.dual import DualProblem, DualProblemConfig
 from .dynamics.wrenches import (
     compute_constraint_body_wrenches,
@@ -1483,29 +1484,8 @@ class SolverKamino(SolverBase):
             )
 
     def _update_gravity(self):
-        """Re-derive Kamino's GravityModel from Newton's model.gravity."""
-        import numpy as np  # noqa: PLC0415
-
-        gravity_np = self.model.gravity.numpy()
-        num_worlds = self.model.num_worlds
-        g_dir_acc_np = np.zeros((num_worlds, 4), dtype=np.float32)
-        vector_np = np.zeros((num_worlds, 4), dtype=np.float32)
-
-        for w in range(num_worlds):
-            g_vec = gravity_np[w, :]
-            accel = float(np.linalg.norm(g_vec))
-            if accel > 0.0:
-                direction = g_vec / accel
-            else:
-                direction = np.array([0.0, 0.0, -1.0])
-            g_dir_acc_np[w, :3] = direction
-            g_dir_acc_np[w, 3] = accel
-            vector_np[w, :3] = g_vec
-            vector_np[w, 3] = 1.0
-
-        device = self.model.device
-        wp.copy(self._model_kamino.gravity.g_dir_acc, wp.array(g_dir_acc_np, dtype=vec4f, device=device))
-        wp.copy(self._model_kamino.gravity.vector, wp.array(vector_np, dtype=vec4f, device=device))
+        """Updates Kamino's :class:`GravityModel` from Newton's model.gravity."""
+        convert_model_gravity(self.model, self._model_kamino.gravity)
 
     def _update_joint_transforms(self):
         """

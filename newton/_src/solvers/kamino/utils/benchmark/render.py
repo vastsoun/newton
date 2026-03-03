@@ -344,7 +344,7 @@ def render_solver_configs_table(
         path (str, optional):
             The file path to save the rendered table as a text file. If None, the table is not saved to a file.
         groups (list[str], optional):
-            A list of groups to include in the table. If None, default groups are used.\n
+            A list of groups to include in the table. If None, "sparse", "linear" and "padmm" are used.\n
             Supported groups include:
             - "cts": Constraint parameters (alpha, beta, gamma, delta, preconditioning)
             - "sparse": Sparse representation settings (sparse, sparse_jacobian)
@@ -379,9 +379,9 @@ def render_solver_configs_table(
         pad_edge=True,
     )
 
-    # If no groups are specified, default to showing linear solver and PADMM settings
+    # If no groups are specified, default to showing sparsity, linear solver and PADMM settings
     if groups is None:
-        groups = ["linear", "padmm"]
+        groups = ["sparse", "linear", "padmm"]
 
     # Add the first column for configuration names
     _add_table_column_group(table, "Solver Configuration", ["Name"], color="white", justify="left")
@@ -453,4 +453,4 @@ def render_solver_configs_table(
         table.add_row(name, *cfg_row)
 
     # Render the table to the console and/or save to file
-    _render_table_to_console_and_file(table, path=path, to_console=to_console, max_width=500)
+    _render_table_to_console_and_file(table, path=path, to_console=to_console, max_width=None)

@@ -472,6 +472,12 @@ class ModelKaminoInfo:
     Shape of ``(num_worlds,)`` and type :class:`int`.
     """
 
+    geom_offset: wp.array | None = None
+    """
+    The geom index offset of each world w.r.t. the model.\n
+    Shape of ``(num_worlds,)`` and type :class:`int`.
+    """
+
     ###
     # DoF Offsets
     ###

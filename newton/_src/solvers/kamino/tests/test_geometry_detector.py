@@ -59,7 +59,7 @@ class TestCollisionDetectorConfig(unittest.TestCase):
     def test_00_make_default(self):
         """Test making default collision detector config."""
         config = CollisionDetectorConfig()
-        self.assertEqual(config.pipeline, "primitive")
+        self.assertEqual(config.pipeline, "unified")
         self.assertEqual(config.broadphase, "explicit")
         self.assertEqual(config.bvtype, "aabb")
 

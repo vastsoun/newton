@@ -35,7 +35,7 @@ from newton._src.solvers.kamino.utils import logger as msg
 
 
 class Example:
-    def __init__(self, viewer, num_worlds=8, args=None):
+    def __init__(self, viewer, num_worlds=1, args=None):
         # Set simulation run-time configurations
         self.fps = 60
         self.sim_dt = 0.0025
@@ -53,7 +53,7 @@ class Example:
         robot_builder.default_shape_cfg.margin = 0.0
         robot_builder.default_shape_cfg.gap = 0.0
 
-        # Load the Anymal D USD and add it to the builder
+        # Load the basic four-bar USD and add it to the builder
         msg.notif("Loading USD asset and adding it to the model builder...")
         asset_file = os.path.join(get_basics_usd_assets_path(), "boxes_fourbar.usda")
         robot_builder.add_usd(
@@ -106,6 +106,10 @@ class Example:
         self.state_1 = self.model.state()
         self.control = self.model.control()
 
+        # Use Newton's collision pipeline (same as standard Newton examples)
+        # TODO: self.collision_pipeline = newton.examples.create_collision_pipeline(self.model, args)
+        # TODO: self.contacts = self.model.collide(self.state_0, collision_pipeline=self.collision_pipeline)
+
         # Reset the simulation state to a valid initial configuration above the ground
         msg.notif("Resetting the simulation state to a valid initial configuration above the ground...")
         self.base_q = wp.zeros(shape=(self.num_worlds,), dtype=wp.transformf)
@@ -138,6 +142,7 @@ class Example:
             self.state_0.clear_forces()
             self.viewer.apply_forces(self.state_0)
             self.solver.step(self.state_0, self.state_1, self.control, None, self.sim_dt)
+            # TODO: self.solver.update_contacts(self.contacts, self.state_1)
             self.state_0, self.state_1 = self.state_1, self.state_0
 
     def step(self):
@@ -150,6 +155,7 @@ class Example:
     def render(self):
         self.viewer.begin_frame(self.sim_time)
         self.viewer.log_state(self.state_0)
+        # TODO: self.viewer.log_contacts(self.contacts, self.state_0)
         self.viewer.end_frame()
 
     def test_final(self):

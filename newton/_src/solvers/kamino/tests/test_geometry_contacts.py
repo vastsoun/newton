@@ -28,6 +28,8 @@ from newton._src.solvers.kamino.core.types import int32, mat33f, vec3f
 from newton._src.solvers.kamino.geometry.contacts import (
     ContactMode,
     ContactsKamino,
+    convert_contacts_kamino_to_newton,
+    convert_contacts_newton_to_kamino,
     make_contact_frame_xnorm,
     make_contact_frame_znorm,
 )

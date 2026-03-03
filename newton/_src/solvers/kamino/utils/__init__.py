@@ -15,9 +15,9 @@
 
 """KAMINO: Utilities"""
 
-from .profiles import (
-    PerformanceProfile,
-)
+from . import device
+from . import logger as msg
+from .profiles import PerformanceProfile
 
 ###
 # Module API
@@ -25,4 +25,6 @@ from .profiles import (
 
 __all__ = [
     "PerformanceProfile",
+    "device",
+    "msg",
 ]

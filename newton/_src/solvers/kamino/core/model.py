@@ -1131,22 +1131,6 @@ class ModelKamino:
             mass_min_np[w] = min(masses_w)
             mass_max_np[w] = max(masses_w)
 
-        # Construct per-world gravity
-        gravity_g_dir_acc_np = np.zeros(shape=(model.world_count, 4), dtype=float)
-        gravity_vector_np = np.zeros(shape=(model.world_count, 4), dtype=float)
-        gravity_np = model.gravity.numpy()
-        for w in range(model.world_count):
-            gravity_accel = np.linalg.norm(gravity_np[w, :])
-            if gravity_accel > 0.0:
-                gravity_dir = gravity_np[w, :] / gravity_accel
-            else:
-                gravity_dir = np.array([0.0, 0.0, -1.0])
-            gravity_g_dir_acc_np[w, :] = np.array(
-                [gravity_dir[0], gravity_dir[1], gravity_dir[2], gravity_accel], dtype=float
-            )
-            gravity_vector_np[w, 0:3] = gravity_np[w, :]
-            gravity_vector_np[w, 3] = 1.0  # Enable gravity by default in all worlds
-
         # Construct the per-material and per-material-pair properties
         materials_rest = [materials_manager.restitution_vector()]
         materials_static_fric = [materials_manager.static_friction_vector()]
@@ -1295,10 +1279,7 @@ class ModelKamino:
             )
 
             # Per-world gravity
-            model_gravity = GravityModel(
-                g_dir_acc=wp.array(gravity_g_dir_acc_np, dtype=vec4f),
-                vector=wp.array(gravity_vector_np, dtype=vec4f),
-            )
+            model_gravity = GravityModel.from_newton(model)
 
             # Rigid bodies
             model_bodies = RigidBodiesModel(

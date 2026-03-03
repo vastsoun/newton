@@ -44,7 +44,7 @@ from newton._src.solvers.kamino.utils import logger as msg
 from warp.context import Devicelike
 
 # ---------------------------------------------------------------------------
-# Bipedal joint normalization (from training config)
+# Bipedal joint normalization
 # ---------------------------------------------------------------------------
 # Each entry maps joint name -> (position_offset, position_scale) used to
 # normalise joint positions in the observation vector.
@@ -108,7 +108,7 @@ class Example:
         EXAMPLE_ASSETS_PATH = get_examples_usd_assets_path()
         if EXAMPLE_ASSETS_PATH is None:
             raise FileNotFoundError("Failed to find USD assets path for examples: ensure `newton-assets` is installed.")
-        USD_MODEL_PATH = os.path.join(EXAMPLE_ASSETS_PATH, "bipedal/bipedal.usda")
+        USD_MODEL_PATH = os.path.join(EXAMPLE_ASSETS_PATH, "bipedal/bipedal_t.usda")
 
         # Create generic articulated body simulator
         self.sim_wrapper = RigidBodySim(

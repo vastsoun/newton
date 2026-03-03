@@ -33,6 +33,7 @@ Gamepad mapping::
     Triggers (L minus R)  lateral velocity
     Right stick Y         head pitch (look up / down)
     Right stick X         head yaw (look left / right)
+    RB (right bumper)     turbo (hold for higher velocity limits)
     Select / Back         reset
 
 Keyboard layout (viewer window must have focus)::
@@ -48,11 +49,62 @@ Keyboard layout (viewer window must have focus)::
 from __future__ import annotations
 
 # Python
+import dataclasses
 import math
 
 # Thirdparty
 import torch
-from newton._src.solvers.kamino.examples.rl.utils import _deadband, _LowPassFilter, _scale_asym, yaw_apply_2d
+from newton._src.solvers.kamino.examples.rl.utils import (
+    RateLimitedValue,
+    _deadband,
+    _LowPassFilter,
+    _scale_asym,
+    yaw_apply_2d,
+)
+
+
+@dataclasses.dataclass
+class JoystickConfig:
+    """Velocity limits and turbo parameters for :class:`JoystickController`.
+
+    Each velocity axis has a *base* value (no turbo) and a *turbo* delta
+    that is blended in as turbo_alpha ramps from 0 → 1::
+
+        effective_max = base + turbo_alpha * turbo
+    """
+
+    # Velocity limits
+    forward_velocity_base: float = 0.3
+    forward_velocity_turbo: float = 0.3
+    lateral_velocity_base: float = 0.15
+    lateral_velocity_turbo: float = 0.15
+    angular_velocity_base: float = 1.0
+    angular_velocity_turbo: float = 0.75
+
+    # Head limits
+    head_pitch_up: float = 1.0
+    head_pitch_down: float = 0.6
+    head_yaw_max: float = 0.9
+
+    # Input processing
+    axis_deadband: float = 0.2
+    trigger_deadband: float = 0.2
+    cutoff_hz: float = 10.0
+
+    # Path integration
+    path_deviation_max: float = 0.1
+
+    # Turbo ramp rate
+    turbo_rate: float = 2.0
+
+    def forward_velocity_max(self, turbo_alpha: float) -> float:
+        return self.forward_velocity_base + turbo_alpha * self.forward_velocity_turbo
+
+    def lateral_velocity_max(self, turbo_alpha: float) -> float:
+        return self.lateral_velocity_base + turbo_alpha * self.lateral_velocity_turbo
+
+    def angular_velocity_max(self, turbo_alpha: float) -> float:
+        return self.angular_velocity_base + turbo_alpha * self.angular_velocity_turbo
 
 
 class JoystickController:
@@ -68,6 +120,7 @@ class JoystickController:
       Triggers (L minus R)  -> lateral velocity
       Right stick Y         -> neck pitch
       Right stick X         -> neck yaw
+      RB (right bumper)     -> turbo (hold)
       Select / Back         -> reset
 
     Keyboard mapping (see module docstring for layout).
@@ -78,6 +131,7 @@ class JoystickController:
       ``angular_velocity``  Angular velocity   (positive = turn left)
       ``head_pitch``        Head pitch command (positive = look up)
       ``head_yaw``          Head yaw command   (positive = look left)
+      ``turbo_alpha``       Current turbo blend factor (0.0 – 1.0)
 
     Path state (when ``root_pos_2d`` is passed to :meth:`update`):
       ``path_heading``      Integrated heading  ``(num_worlds, 1)``
@@ -90,46 +144,25 @@ class JoystickController:
         viewer=None,
         num_worlds: int = 1,
         device: str = "cuda:0",
-        forward_velocity_max: float = 0.6,
-        lateral_velocity_max: float = 0.4,
-        angular_velocity_max: float = 1.7,
-        head_pitch_up: float = 1.0,
-        head_pitch_down: float = 0.6,
-        head_yaw_max: float = 0.9,
-        axis_deadband: float = 0.2,
-        trigger_deadband: float = 0.2,
-        cutoff_hz: float = 10.0,
-        path_deviation_max: float = 0.1,
+        config: JoystickConfig | None = None,
     ) -> None:
+        cfg = config or JoystickConfig()
+        self._cfg = cfg
         self._dt = dt
-        self._cutoff_hz = cutoff_hz
         self._viewer = viewer
         self._num_worlds = num_worlds
         self._device = device
 
-        # Velocity limits
-        self._fwd_max = forward_velocity_max
-        self._lat_max = lateral_velocity_max
-        self._ang_max = angular_velocity_max
-
-        # Head limits
-        self._head_pitch_up = head_pitch_up
-        self._head_pitch_down = head_pitch_down
-        self._head_yaw_max = head_yaw_max
-
-        # Deadband thresholds
-        self._axis_db = axis_deadband
-        self._trig_db = trigger_deadband
-
-        # Path integration limit
-        self._path_dev_max = path_deviation_max
-
         # Low-pass filters (named by semantic axis)
-        self._forward_filter = _LowPassFilter(cutoff_hz, dt)
-        self._lateral_filter = _LowPassFilter(cutoff_hz, dt)
-        self._angular_filter = _LowPassFilter(cutoff_hz, dt)
-        self._head_pitch_filter = _LowPassFilter(cutoff_hz, dt)
-        self._head_yaw_filter = _LowPassFilter(cutoff_hz, dt)
+        hz = cfg.cutoff_hz
+        self._forward_filter = _LowPassFilter(hz, dt)
+        self._lateral_filter = _LowPassFilter(hz, dt)
+        self._angular_filter = _LowPassFilter(hz, dt)
+        self._head_pitch_filter = _LowPassFilter(hz, dt)
+        self._head_yaw_filter = _LowPassFilter(hz, dt)
+
+        # Turbo ramp (rate-limited 0→1 blend)
+        self._turbo = RateLimitedValue(cfg.turbo_rate, dt)
 
         # Path state (per-world)
         self.path_heading = torch.zeros(num_worlds, 1, device=device)
@@ -141,6 +174,7 @@ class JoystickController:
         self.angular_velocity: float = 0.0
         self.head_pitch: float = 0.0
         self.head_yaw: float = 0.0
+        self.turbo_alpha: float = 0.0
 
         # Pre-allocated command velocity buffer (eliminates per-step torch.tensor())
         self._cmd_vel_buf = torch.zeros(1, 2, device=device)
@@ -171,10 +205,6 @@ class JoystickController:
                 )
             else:
                 print("No joystick or keyboard available. Commands will be zero.")
-
-    # ------------------------------------------------------------------
-    # Input reading
-    # ------------------------------------------------------------------
 
     def _read_input(self) -> tuple[float, float, float, float, float]:
         """Read controller input as semantic axes.
@@ -218,9 +248,11 @@ class JoystickController:
             _axis("h", "f"),  # head yaw:   F = left(+),    H = right(-)
         )
 
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
+    def _read_turbo(self) -> float:
+        """Return 1.0 if turbo is engaged, 0.0 otherwise."""
+        if self._mode == "joystick":
+            return 1.0 if self._controller.button_trigger_r.is_pressed else 0.0
+        return 0.0
 
     def update(self, root_pos_2d: torch.Tensor | None = None) -> None:
         """Read input, compute commands, and optionally advance the path.
@@ -233,21 +265,26 @@ class JoystickController:
         if self._mode is None:
             return
 
+        cfg = self._cfg
+
         # --- Read & filter ---
         fwd_raw, lat_raw, ang_raw, npitch_raw, nyaw_raw = self._read_input()
 
-        fwd = _deadband(self._forward_filter.update(fwd_raw), self._axis_db)
-        lat = _deadband(self._lateral_filter.update(lat_raw), self._trig_db)
-        ang = _deadband(self._angular_filter.update(ang_raw), self._axis_db)
-        npitch = _deadband(self._head_pitch_filter.update(npitch_raw), self._axis_db)
-        nyaw = _deadband(self._head_yaw_filter.update(nyaw_raw), self._axis_db)
+        fwd = _deadband(self._forward_filter.update(fwd_raw), cfg.axis_deadband)
+        lat = _deadband(self._lateral_filter.update(lat_raw), cfg.trigger_deadband)
+        ang = _deadband(self._angular_filter.update(ang_raw), cfg.axis_deadband)
+        npitch = _deadband(self._head_pitch_filter.update(npitch_raw), cfg.axis_deadband)
+        nyaw = _deadband(self._head_yaw_filter.update(nyaw_raw), cfg.axis_deadband)
+
+        # --- Turbo ---
+        self.turbo_alpha = self._turbo.update(self._read_turbo())
 
         # --- Scale to physical units ---
-        self.forward_velocity = fwd * self._fwd_max
-        self.lateral_velocity = lat * self._lat_max
-        self.angular_velocity = ang * self._ang_max
-        self.head_pitch = _scale_asym(npitch, self._head_pitch_down, self._head_pitch_up)
-        self.head_yaw = nyaw * self._head_yaw_max
+        self.forward_velocity = fwd * cfg.forward_velocity_max(self.turbo_alpha)
+        self.lateral_velocity = lat * cfg.lateral_velocity_max(self.turbo_alpha)
+        self.angular_velocity = ang * cfg.angular_velocity_max(self.turbo_alpha)
+        self.head_pitch = _scale_asym(npitch, cfg.head_pitch_down, cfg.head_pitch_up)
+        self.head_yaw = nyaw * cfg.head_yaw_max
 
         # --- Path integration ---
         if root_pos_2d is not None:
@@ -264,7 +301,7 @@ class JoystickController:
 
             # Clip path deviation to root position
             diff = self.path_position - root_pos_2d
-            clipped = diff.renorm(p=2, dim=0, maxnorm=self._path_dev_max)
+            clipped = diff.renorm(p=2, dim=0, maxnorm=cfg.path_deviation_max)
             self.path_position[:] = root_pos_2d + clipped
 
     def close(self) -> None:
@@ -310,13 +347,15 @@ class JoystickController:
         self._angular_filter.reset()
         self._head_pitch_filter.reset()
         self._head_yaw_filter.reset()
+        self._turbo.reset()
 
     def set_dt(self, dt: float) -> None:
         """Change the timestep used for path integration and filtering."""
         self._dt = dt
-        hz = self._cutoff_hz
+        hz = self._cfg.cutoff_hz
         self._forward_filter = _LowPassFilter(hz, dt)
         self._lateral_filter = _LowPassFilter(hz, dt)
         self._angular_filter = _LowPassFilter(hz, dt)
         self._head_pitch_filter = _LowPassFilter(hz, dt)
         self._head_yaw_filter = _LowPassFilter(hz, dt)
+        self._turbo.dt = dt

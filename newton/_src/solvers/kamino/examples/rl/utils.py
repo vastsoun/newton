@@ -257,6 +257,30 @@ class _LowPassFilter:
         self.value = None
 
 
+class RateLimitedValue:
+    """Scalar rate limiter — clamps the rate of change to ±rate_limit/s."""
+
+    def __init__(self, rate_limit: float, dt: float) -> None:
+        self.rate_limit = rate_limit
+        self.dt = dt
+        self.value: float = 0.0
+        self._initialized = False
+
+    def update(self, target: float) -> float:
+        if not self._initialized:
+            self._initialized = True
+            self.value = target
+        else:
+            max_delta = self.rate_limit * self.dt
+            delta = max(-max_delta, min(target - self.value, max_delta))
+            self.value += delta
+        return self.value
+
+    def reset(self) -> None:
+        self.value = 0.0
+        self._initialized = False
+
+
 def _scale_asym(value: float, neg_scale: float, pos_scale: float) -> float:
     """Asymmetric scaling around zero."""
     return value * neg_scale if value < 0.0 else value * pos_scale
